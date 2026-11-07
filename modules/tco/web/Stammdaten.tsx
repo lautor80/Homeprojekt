@@ -97,6 +97,9 @@ function VereinTab() {
           <TextField label="Webhook-Schlüssel (X-TCO-Key)" type="Password" value={t('n8n_mail_key')} onChange={s('n8n_mail_key')} readonly={ro} />
           <TextField label="Webhook „EP3 Import Hallenrechnungen“" value={t('n8n_ep3_url')} onChange={s('n8n_ep3_url')} readonly={ro} />
           <TextField label="Authorization-Header für den EP3-Webhook (optional)" type="Password" value={t('n8n_ep3_auth')} onChange={s('n8n_ep3_auth')} readonly={ro} placeholder="Basic …" />
+          <TextField label="Webhook „Rückmeldungen Jugendtraining“ (TCO_N8N_STUNDEN)" value={t('n8n_stunden_url')} onChange={s('n8n_stunden_url')} readonly={ro} />
+          <TextField label="Webhook „Schulferien Saarland“ (ferien-saarland)" value={t('n8n_ferien_url')} onChange={s('n8n_ferien_url')} readonly={ro} />
+          <TextField label="Authorization-Header für Rückmeldungen und Ferien (optional)" type="Password" value={t('n8n_stunden_auth')} onChange={s('n8n_stunden_auth')} readonly={ro} placeholder="Basic …" />
         </FormGrid>
       </Panel>
 

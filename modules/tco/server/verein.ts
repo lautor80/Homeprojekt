@@ -25,6 +25,9 @@ export interface Verein {
   n8n_mail_key: string | null;
   n8n_ep3_url: string | null;
   n8n_ep3_auth: string | null;
+  n8n_stunden_url: string | null;
+  n8n_ferien_url: string | null;
+  n8n_stunden_auth: string | null;
   halle_stichtag: string;
   halle_ausschluss: string;
   fi_bankkonten: string;

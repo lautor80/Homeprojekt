@@ -11,6 +11,7 @@ import { BusinessError } from '../../../server/src/errors.js';
 import { halleRoutes, P_HALLE } from './halle/routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
+import { jtRoutes, P_JT } from './jt/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -18,7 +19,7 @@ const P = {
 };
 
 const MASKE = '********';
-const GEHEIM = ['paperless_token', 'n8n_mail_key', 'n8n_ep3_auth'] as const;
+const GEHEIM = ['paperless_token', 'n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth'] as const;
 
 const vereinSchema = z.object({
   name: z.string().trim().min(1, 'Bitte den Vereinsnamen angeben').max(70),
@@ -31,6 +32,7 @@ const vereinSchema = z.object({
   paperless_url: z.string().nullish(), paperless_token: z.string().nullish(),
   n8n_mail_url: z.string().nullish(), n8n_mail_key: z.string().nullish(),
   n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
+  n8n_stunden_url: z.string().nullish(), n8n_ferien_url: z.string().nullish(), n8n_stunden_auth: z.string().nullish(),
   halle_stichtag: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   halle_ausschluss: z.string().default(''),
   fi_bankkonten: z.string().optional(),
@@ -63,6 +65,7 @@ async function routes(app: FastifyInstance) {
              paperless_url = ${d.paperless_url || null}, paperless_token = ${d.paperless_token || null},
              n8n_mail_url = ${d.n8n_mail_url || null}, n8n_mail_key = ${d.n8n_mail_key || null},
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
+             n8n_stunden_url = ${d.n8n_stunden_url || null}, n8n_ferien_url = ${d.n8n_ferien_url || null}, n8n_stunden_auth = ${d.n8n_stunden_auth || null},
              halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
@@ -129,6 +132,7 @@ async function routes(app: FastifyInstance) {
   await halleRoutes(app);
   await fiRoutes(app);
   await sollRoutes(app);
+  await jtRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -145,6 +149,9 @@ const tco: ServerModule = {
     { id: P_SOLL.display, text: 'Sollstellung anzeigen' },
     { id: P_SOLL.edit, text: 'Sollstellung: Lastschriftlauf erzeugen, herunterladen, stornieren' },
     { id: P_SOLL.glaeubiger, text: 'Sollstellung: Gläubigerdaten (Vereinskonto, Gläubiger-ID) pflegen' },
+    { id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },
+    { id: P_JT.edit, text: 'Jugendtraining: Zeiten erfassen und importieren, Zeitnachweise ablegen, als bezahlt kennzeichnen' },
+    { id: P_JT.entgelte, text: 'Jugendtraining: Trainer und Trainerentgelte pflegen' },
     { id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)' },
   ],
@@ -158,6 +165,9 @@ const tco: ServerModule = {
     { type: 'FIKONTO', text: 'FI-Konto', permission: P_FI.display },
     { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
     { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
+    { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },
+    { type: 'JT_NACHWEIS', text: 'Zeitnachweis Jugendtraining', permission: P_JT.display },
+    { type: 'TRAINERENTGELT', text: 'Trainerentgelt', permission: P_JT.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_HALLE.display },
   ],
