@@ -34,6 +34,8 @@ export interface UploadMeta {
   documentType?: number;
   storagePath?: number;
   tags?: number[];
+  /** MIME-Typ der Datei (Standard application/pdf) */
+  mime?: string;
 }
 
 const cache = new Map<string, { url: string; until: number }>();
@@ -157,6 +159,10 @@ export class Paperless {
     return r.id;
   }
 
+  async dokumenttypen(): Promise<{ id: number; name: string }[]> {
+    return this.liste('document_types');
+  }
+
   async korrespondenten(): Promise<{ id: number; name: string }[]> {
     return this.liste('correspondents');
   }
@@ -168,7 +174,7 @@ export class Paperless {
   /** Datei hochladen – liefert die Task-UUID */
   async upload(pdf: Buffer, filename: string, meta: UploadMeta = {}): Promise<string> {
     const form = new FormData();
-    form.append('document', new Blob([new Uint8Array(pdf)], { type: 'application/pdf' }), filename);
+    form.append('document', new Blob([new Uint8Array(pdf)], { type: meta.mime ?? 'application/pdf' }), filename);
     if (meta.title) form.append('title', meta.title);
     if (meta.created) form.append('created', meta.created);
     if (meta.correspondent) form.append('correspondent', String(meta.correspondent));

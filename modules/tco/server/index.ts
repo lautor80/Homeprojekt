@@ -13,6 +13,7 @@ import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
+import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -135,6 +136,7 @@ async function routes(app: FastifyInstance) {
   await sollRoutes(app);
   await jtRoutes(app);
   await clubhausRoutes(app);
+  await mitgliederRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -156,6 +158,8 @@ const tco: ServerModule = {
     { id: P_JT.entgelte, text: 'Jugendtraining: Trainer und Trainerentgelte pflegen' },
     { id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
     { id: P_CH.edit, text: 'Clubhaus: Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
+    { id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
+    { id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Bank, Verträge, Austritt, Unterlagen ablegen und versenden' },
     { id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)' },
   ],
@@ -175,7 +179,7 @@ const tco: ServerModule = {
     { type: 'GETRAENKERECHNUNG', text: 'Getränkerechnung', permission: P_CH.display },
     { type: 'CLUBHAUS', text: 'Clubhaus-Forderungsliste', permission: P_CH.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
-    { type: 'MITGLIED', text: 'Mitglied', permission: P_HALLE.display },
+    { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display },
   ],
   migrationsDir: path.join(APP_ROOT, 'modules', 'tco', 'server', 'migrations'),
   routes,

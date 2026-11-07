@@ -6,6 +6,7 @@ import { FiBelege } from './fi/FiBelege';
 import { Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
 import { Clubhaus } from './clubhaus/Clubhaus';
+import { Mitglieder } from './mitglieder/Mitglieder';
 
 /** TC Oberthal – Vereinsportal (Port der abap2UI5-Apps) */
 const mod: WebModule = {
@@ -16,6 +17,7 @@ const mod: WebModule = {
       text: 'TC Oberthal',
       children: [
         { text: 'Stammdaten', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
+        { text: 'Mitglieder', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
         {
           text: 'Abrechnungen', icon: 'receipt',
           children: [
@@ -36,6 +38,7 @@ const mod: WebModule = {
     },
   ],
   routes: [
+    { path: '/tco/mitglieder', component: Mitglieder, permission: 'tco.mitglieder:display' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
     { path: '/tco/hallenpreise', component: Hallenpreise, permission: 'tco.halle:display' },
     { path: '/tco/sollstellung', component: Sollstellung, permission: 'tco.soll:display' },
@@ -45,6 +48,7 @@ const mod: WebModule = {
     { path: '/tco/stammdaten', component: TcoStammdaten, permission: 'tco.stammdaten:edit' },
   ],
   tiles: [
+    { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
     { text: 'Hallenpreise', subtitle: 'Produkte und Preismatrix', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
     { text: 'Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
