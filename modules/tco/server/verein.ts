@@ -37,6 +37,12 @@ export interface Verein {
   fi_feld_beleg: string;
   fi_feld_betrag: string;
   fi_feld_sap: string;
+  ch_konto_einnahmen: string;
+  ch_konto_ware: string;
+  ch_reinigung: number;
+  ch_provision: number;
+  ch_wirt: string;
+  ch_feld_json: string;
 }
 
 /** Komma-Liste aus den Einstellungen */

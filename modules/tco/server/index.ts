@@ -12,6 +12,7 @@ import { halleRoutes, P_HALLE } from './halle/routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
+import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -133,6 +134,7 @@ async function routes(app: FastifyInstance) {
   await fiRoutes(app);
   await sollRoutes(app);
   await jtRoutes(app);
+  await clubhausRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -152,6 +154,8 @@ const tco: ServerModule = {
     { id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },
     { id: P_JT.edit, text: 'Jugendtraining: Zeiten erfassen und importieren, Zeitnachweise ablegen, als bezahlt kennzeichnen' },
     { id: P_JT.entgelte, text: 'Jugendtraining: Trainer und Trainerentgelte pflegen' },
+    { id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
+    { id: P_CH.edit, text: 'Clubhaus: Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
     { id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)' },
   ],
@@ -168,6 +172,8 @@ const tco: ServerModule = {
     { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },
     { type: 'JT_NACHWEIS', text: 'Zeitnachweis Jugendtraining', permission: P_JT.display },
     { type: 'TRAINERENTGELT', text: 'Trainerentgelt', permission: P_JT.display },
+    { type: 'GETRAENKERECHNUNG', text: 'Getränkerechnung', permission: P_CH.display },
+    { type: 'CLUBHAUS', text: 'Clubhaus-Forderungsliste', permission: P_CH.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_HALLE.display },
   ],
