@@ -73,7 +73,7 @@ export function AuftragDetail() {
         const v = await api.get<Auftrag & { nummerVorschau: string }>(`${T}/neu/${neuTyp}`);
         setVorschau(v.nummerVorschau);
         setA({ ...v, kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
-          gewicht: null, ladenummer: null, besonderheiten: null });
+          gewicht: null, lademeter: null, ladenummer: null, besonderheiten: null });
         setAdr({ kunde: null, unternehmer: null, rechnungsempfaenger: null });
       } else {
         const d = await api.get<Auftrag>(`${T}/auftraege/${nr}`);
@@ -307,6 +307,8 @@ export function AuftragDetail() {
                 <F label="Fahrzeugtyp">{werteSelect('FAHRZEUGTYP', 'fahrzeugtyp')}</F>
                 <F label="Ladegut">{werteSelect('LADEGUT', 'ladegut')}</F>
                 <F label="Gewicht"><Input style={{ width: '8rem' }} maxlength={4} value={a.gewicht ?? ''} readonly={!mayEdit} onInput={(e) => set('gewicht', e.target.value)} /></F>
+                <F label="Lademeter"><Input style={{ width: '8rem' }} value={a.lademeter === null || a.lademeter === undefined ? '' : String(a.lademeter).replace('.', ',')} readonly={!mayEdit}
+                                            onInput={(e) => set('lademeter', e.target.value.trim() ? e.target.value : null)} /></F>
                 <F label="Ladeweise">{werteSelect('LADEWEISE', 'ladeweise')}</F>
                 <F label="Palettentausch">{werteSelect('PALETTENTAUSCH', 'palettentausch', false)}</F>
               </Spalte>

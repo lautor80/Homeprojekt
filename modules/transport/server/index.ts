@@ -54,6 +54,10 @@ const auftragSchema = z.object({
   fahrzeugtyp: txt(10),
   ladegut: txt(10),
   gewicht: txt(10),
+  lademeter: z.union([z.number(), z.string()]).nullish().transform((v) => {
+    const s = String(v ?? '').trim().replace(',', '.');
+    return s ? Number(s) : null;
+  }).refine((v) => v === null || (Number.isFinite(v) && v >= 0 && v < 10000), 'Lademeter bitte als Zahl angeben.'),
   ladeweise: txt(10),
   palettentausch: txt(10),
   ladenummer: txt(30),
@@ -109,6 +113,7 @@ async function auftragSchreiben(tx: Tx, nr: string, d: AuftragInput, typ: 'F' | 
     fahrzeugtyp: d.fahrzeugtyp,
     ladegut: d.ladegut,
     gewicht: d.gewicht,
+    lademeter: d.lademeter,
     ladeweise: d.ladeweise,
     palettentausch: d.palettentausch,
     ladenummer: d.ladenummer,

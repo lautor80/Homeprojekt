@@ -53,6 +53,7 @@ const MAP: Record<ImportArt, Record<string, FeldDef>> = {
     STEUERRELEVANT: { col: 'steuerrelevant', conv: 'bool' },
     DOK_FEHLEN: { col: 'dok_fehlen', conv: 'bool' },
     LEISTUNGSDATUM: { col: 'leistungsdatum', conv: 'date' },
+    LADEMETER: { col: 'lademeter', conv: 'amount' },
   },
   POS: {
     RGNR_TXT: { col: 'auftragsnr', conv: 'text' },
@@ -377,6 +378,7 @@ export async function ausfuehren(tx: Tx, dateien: Geparst[]): Promise<Ergebnis> 
       }
     }
     if (!r.anlagedatum) r.anlagedatum = `${String(r.auftragsnr).slice(0, 4)}-01-01`;
+    if (r.lademeter === 0) delete r.lademeter; // SAP: 0.0 = nicht gepflegt
   }
   zaehl.AUF = await einfuegen(tx, 'AUF', auf);
 

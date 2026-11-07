@@ -63,6 +63,7 @@ export interface Auftrag {
   ladenummer: string | null;
   ladegut: string | null;
   gewicht: string | null;
+  lademeter: number | null;
   ladeweise: string | null;
   palettentausch: string | null;
   ordernummer: string | null;
@@ -143,6 +144,7 @@ function mapAuftrag(r: Record<string, unknown>): Auftrag {
     ladenummer: r.ladenummer as string | null,
     ladegut: r.ladegut as string | null,
     gewicht: r.gewicht as string | null,
+    lademeter: r.lademeter === null || r.lademeter === undefined ? null : Number(r.lademeter),
     ladeweise: r.ladeweise as string | null,
     palettentausch: r.palettentausch as string | null,
     ordernummer: r.ordernummer as string | null,

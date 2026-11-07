@@ -121,6 +121,7 @@ export async function transportauftragPdf(nr: string): Promise<Buffer> {
     ['Fahrzeugtyp', await wertText('FAHRZEUGTYP', a.fahrzeugtyp)],
     ['Ladegut', await wertText('LADEGUT', a.ladegut)],
     ['Gewicht', a.gewicht ?? ''],
+    ['Lademeter', a.lademeter ? `${a.lademeter.toLocaleString('de-DE')} m` : ''],
     ['Ladeweise', await wertText('LADEWEISE', a.ladeweise)],
     ['Palettentausch', await wertText('PALETTENTAUSCH', a.palettentausch)],
   ];
