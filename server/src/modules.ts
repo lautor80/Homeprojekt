@@ -7,8 +7,9 @@ import { corePermissions, type PermissionGroup } from './permissions.js';
 // Welche davon aktiv sind, steuert PORTAL_MODULES in der .env.
 // ---------------------------------------------------------------------------
 import beispiel from '../../modules/beispiel/server/index.js';
+import transport from '../../modules/transport/server/index.js';
 
-const available: ServerModule[] = [beispiel];
+const available: ServerModule[] = [beispiel, transport];
 
 export function activeModules(): ServerModule[] {
   return available.filter((m) => config.modules.includes(m.id));

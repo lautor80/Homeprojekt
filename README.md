@@ -12,7 +12,7 @@ jede Installation schaltet nur ihre Module ein.
 | Berechtigungen | Rollen aus Berechtigungen „Objekt:Aktivität“, Module bringen ihre Berechtigungen selbst mit |
 | Änderungsbelege | wie CDHDR/CDPOS, per Datenbank-Trigger – lückenlos, unveränderlich, mit Benutzer, Aktion und Begründung |
 | Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Integrations-URLs |
-| PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates) |
+| PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |
 | Nummernkreise | lückenlose Nummern je Objekt und Jahr (`core.next_number`) |
 | Betrieb | Docker Compose, Installationsskript, tägliches Backup, Update- und Restore-Skript |
 
@@ -91,6 +91,24 @@ Vorlage ist `modules/beispiel` (Kontakte mit Liste, Objektseite, Löschen mit Be
    Bausteine: `AppPage`, `FormGrid`/`TextField`, `ChangeHistoryButton`, `ConfirmDialog` (mit Begründung), `api`, `toast`.
 5. Registrieren in `server/src/modules.ts` und `web/src/modules.ts`.
 6. Aktivieren in der `.env`: `PORTAL_MODULES=transport` und `./update.sh`.
+
+## Modul `transport` (Euroflex-Auftragsverwaltung)
+
+Portierung der abap2UI5-App `Z2UI5_CL_EU_AUFTRAG` mit der Logik aus `ZCL_EU_AUFTRAG`.
+Einschalten mit `PORTAL_MODULES=transport` in der `.env`. Gotenberg wird dafür **nicht** gebraucht:
+Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt.
+
+| Funktion | Inhalt |
+|---|---|
+| Aufträge | Fracht- und Holzträgeraufträge, Liste (gruppiert nach Status) oder Baum Art → Kunde → Auftrag mit Saldo, Filter Geschäftsjahr/Fakturadatum/Status/Suche |
+| Objektseite | Beteiligte (Kunde, Unternehmer, abw. Rechnungsempfänger), Auftrags-/Fahrzeugdaten, zwei Stops, Holzträgerpositionen, Besonderheiten, Änderungshistorie |
+| Rechnungen | Einzel- und Sammelrechnungen mit lückenlosen Nummern (Start je Jahr in den Stammdaten), PDF mit EPC-GiroCode, XRechnung 3.0 (UBL) |
+| Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (URL + Token in den Stammdaten) |
+| Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch), E-Mail-Texte |
+| Übernahme aus SAP | „Neu → Import aus SAP-Export …“: CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten). Nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen |
+
+Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create`, `transport.versand:execute`,
+`transport.kontakte:edit`, `transport.stammdaten:edit`, `transport.import:execute`.
 
 ### Regeln für Buchhaltungs-/Belegobjekte
 

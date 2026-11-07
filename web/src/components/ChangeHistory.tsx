@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import { AnalyticalTable, Bar, Button, Dialog, MessageStrip, Tag } from '@ui5/webcomponents-react';
@@ -78,10 +79,10 @@ export function ChangeHistoryButton({ objectType, objectKey }: { objectType: str
 
   return (
     <>
-      <Button icon="history" design="Transparent" onClick={show} tooltip="Änderungshistorie">
+      <Button icon="history" design="Transparent" onClick={show}>
         Änderungshistorie
       </Button>
-      <Dialog
+      {createPortal(<Dialog
         open={open}
         onClose={() => setOpen(false)}
         headerText={`Änderungshistorie ${objectKey}`}
@@ -98,7 +99,7 @@ export function ChangeHistoryButton({ objectType, objectKey }: { objectType: str
           visibleRows={12}
           scaleWidthMode="Smart"
         />
-      </Dialog>
+      </Dialog>, document.body)}
     </>
   );
 }

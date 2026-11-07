@@ -5,6 +5,10 @@ export const sql = postgres(config.databaseUrl, {
   max: 10,
   onnotice: () => {},
   transform: { undefined: null },
+  types: {
+    // Spalten vom Typ "date" als Text JJJJ-MM-TT liefern (keine Zeitzonen-Verschiebung)
+    date: { to: 1082, from: [1082], serialize: (x: string) => x, parse: (x: string) => x },
+  },
 });
 
 export type Sql = typeof sql;
