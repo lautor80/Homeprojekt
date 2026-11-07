@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql, withChange, type ChangeContext, type Tx } from './db.js';
-import { config } from './config.js';
+import { config, modulAktiv } from './config.js';
 import { hasPermission } from './permissions.js';
 
 export const SESSION_COOKIE = 'portal_sid';
@@ -115,7 +115,7 @@ async function apiKeyAuth(req: FastifyRequest, reply: FastifyReply, key: string)
                  where key_hash = ${sha256(key)} and active
                    and (expires_on is null or expires_on >= current_date)`
     : [];
-  if (!k || !config.modules.includes(k.module)) {
+  if (!k || !modulAktiv(k.module)) {
     const n = f && f.until > Date.now() ? f.count + 1 : 1;
     keyFailures.set(req.ip, { count: n, until: Date.now() + 15 * 60_000 });
     return reply.code(401).send({ message: 'Ungültiger, gesperrter oder abgelaufener API-Schlüssel.' });

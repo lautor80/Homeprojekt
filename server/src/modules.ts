@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { modulAktiv } from './config.js';
 import type { AuditObjectDef, ServerModule } from './module.js';
 import { corePermissions, type PermissionGroup } from './permissions.js';
 
@@ -13,7 +13,7 @@ import tco from '../../modules/tco/server/index.js';
 const available: ServerModule[] = [beispiel, transport, tco];
 
 export function activeModules(): ServerModule[] {
-  return available.filter((m) => config.modules.includes(m.id));
+  return available.filter((m) => modulAktiv(m.id));
 }
 
 export const activeModuleIds = () => activeModules().map((m) => m.id);

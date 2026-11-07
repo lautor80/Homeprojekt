@@ -47,7 +47,7 @@ if [[ -f .env ]]; then
 else
   info "Konfiguration anlegen"
   ask PORT    "Port für das Portal" "8080"
-  ask MODULES "Aktive Module (kommagetrennt)" "beispiel"
+  ask MODULES "Aktive Module (* = alle, sonst kommagetrennt)" "*"
   ask DOMAIN  "Domain für HTTPS mit eigenem Zertifikat (leer = eigener Reverse Proxy / nur HTTP)" ""
   DBPW=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)
   sed -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${DBPW}|" \

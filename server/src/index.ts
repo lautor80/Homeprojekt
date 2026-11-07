@@ -1,7 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
 import { migrate } from './migrate.js';
-import { activeModules } from './modules.js';
+import { activeModuleIds, activeModules } from './modules.js';
 import { sql } from './db.js';
 
 async function waitForDb(retries = 30) {
@@ -22,7 +22,7 @@ async function main() {
   await migrate(activeModules(), (m) => console.log(m));
   const app = await buildApp();
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(`Aktive Module: ${config.modules.join(', ') || '(keine)'}`);
+  app.log.info(`Aktive Module: ${activeModuleIds().join(', ') || '(keine)'} (PORTAL_MODULES=${config.modules.join(',')})`);
 
   const stop = async () => {
     await app.close();

@@ -43,6 +43,19 @@ baut und startet alle Container und gibt die Adresse aus. Beim ersten Aufruf im 
 Hinter einem vorhandenen Reverse Proxy (z. B. Nginx Proxy Manager): Domain leer lassen,
 Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECURE_COOKIES=true` setzen.
 
+### Installation über Portainer
+
+1. In Portainer **Stacks → Add stack**, Name z. B. `portal`, **Web editor**.
+2. Inhalt von [`portainer-stack.yml`](portainer-stack.yml) einfügen.
+3. Unter **Environment variables** `POSTGRES_PASSWORD` mit einem langen Zufallswert setzen
+   (optional `PORTAL_PORT`, Standard 8080).
+4. **Deploy the stack** – danach `http://<server>:8080` öffnen und den ersten Administrator anlegen.
+
+Alle Fachmodule sind aktiv (`PORTAL_MODULES=*`). Was jemand im Menü sieht, steuern die Rollen
+(Administration → Rollen): Ein Menüpunkt erscheint nur mit der passenden Berechtigung, eine leere Gruppe
+verschwindet ganz. **Update:** Stack öffnen → *Update the stack* mit *Re-pull image* – die Datenbank wird beim
+Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db` und `portal_backups`.
+
 ### Betrieb
 
 ```bash

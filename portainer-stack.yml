@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# Portalbasis – Stack für Portainer (Stacks → Add stack → Web editor)
+#
+# Nutzt das fertige Image aus der GitHub Container Registry (wird bei jedem
+# Push auf main gebaut) – kein Build auf dem Server nötig.
+# Alle Fachmodule sind aktiv (PORTAL_MODULES=*); was ein Benutzer im Menü
+# sieht, steuern Rollen und Berechtigungen unter Administration → Rollen.
+#
+# In Portainer unter „Environment variables“ mindestens setzen:
+#   POSTGRES_PASSWORD   langes Zufallspasswort (später nicht mehr ändern)
+# Optional: PORTAL_PORT (8080), PORTAL_MODULES (*), SECURE_COOKIES (false),
+#           BACKUP_TIME (02:30), BACKUP_KEEP_DAYS (30), PORTAL_IMAGE
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD als Umgebungsvariable setzen}
+      TZ: Europe/Berlin
+    volumes:
+      - portal_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command: ["gotenberg", "--chromium-disable-javascript=true"]
+
+  app:
+    image: ${PORTAL_IMAGE:-ghcr.io/lautor80/homeprojekt:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://portal:${POSTGRES_PASSWORD}@db:5432/portal
+      PORTAL_MODULES: ${PORTAL_MODULES:-*}
+      GOTENBERG_URL: http://gotenberg:3000
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+      TZ: Europe/Berlin
+    ports:
+      - "${PORTAL_PORT:-8080}:8080"
+
+  # Tägliches Datenbank-Backup (pg_dump) ins Volume portal_backups
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: portal
+      PGUSER: portal
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_TIME: ${BACKUP_TIME:-02:30}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      TZ: Europe/Berlin
+    volumes:
+      - portal_backups:/backups
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo "Backup-Dienst aktiv: täglich um $${BACKUP_TIME}, Aufbewahrung $${BACKUP_KEEP_DAYS} Tage"
+        last=""
+        while true; do
+          if [ "$$(date +%H:%M)" = "$${BACKUP_TIME}" ] && [ "$$last" != "$$(date +%F)" ]; then
+            f="/backups/portal_$$(date +%Y-%m-%d_%H%M%S).dump"
+            if pg_dump -Fc -f "$$f.tmp" && mv "$$f.tmp" "$$f"; then echo "$$(date '+%F %T') Backup erstellt: $$f"; else echo "Backup FEHLGESCHLAGEN"; fi
+            find /backups -name '*.dump' -type f -mtime +"$${BACKUP_KEEP_DAYS}" -print -delete
+            last="$$(date +%F)"
+          fi
+          sleep 30
+        done
+
+volumes:
+  portal_db:
+  portal_backups:
