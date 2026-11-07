@@ -29,6 +29,7 @@ const coreAuditObjects: AuditObjectDef[] = [
   { type: 'USER_ROLE', text: 'Rollenzuordnung', permission: 'core.users:display' },
   { type: 'ROLE', text: 'Rolle', permission: 'core.roles:display' },
   { type: 'SETTING', text: 'Einstellung', permission: 'core.settings:edit' },
+  { type: 'API_KEY', text: 'API-Schlüssel', permission: 'core.apikeys:display' },
 ];
 
 export function auditObjects(): AuditObjectDef[] {

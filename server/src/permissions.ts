@@ -18,6 +18,8 @@ export const corePermissions: PermissionDef[] = [
   { id: 'core.roles:edit', text: 'Rollen anlegen und ändern' },
   { id: 'core.audit:display', text: 'Änderungsbelege anzeigen (alle Objekte)' },
   { id: 'core.settings:edit', text: 'Systemeinstellungen ändern' },
+  { id: 'core.apikeys:display', text: 'API-Schlüssel anzeigen' },
+  { id: 'core.apikeys:edit', text: 'API-Schlüssel anlegen, ändern und sperren' },
 ];
 
 /** Prüft, ob eine Menge von Berechtigungen eine bestimmte Berechtigung enthält. */

@@ -6,6 +6,7 @@ import { ZodError } from 'zod';
 import { config } from './config.js';
 import { sql } from './db.js';
 import { registerAuth } from './auth.js';
+import { apiKeyRoutes } from './routes/apikeys.js';
 import { BusinessError } from './errors.js';
 import { activeModules } from './modules.js';
 import { setupRoutes } from './routes/setup.js';
@@ -49,6 +50,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(settingsRoutes);
   await app.register(adminRoutes);
   await app.register(auditRoutes);
+  await app.register(apiKeyRoutes);
 
   for (const m of activeModules()) {
     if (m.routes) await app.register(async (scope) => m.routes!(scope), { prefix: `/api/m/${m.id}` });

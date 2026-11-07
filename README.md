@@ -13,6 +13,7 @@ jede Installation schaltet nur ihre Module ein.
 | Änderungsbelege | wie CDHDR/CDPOS, per Datenbank-Trigger – lückenlos, unveränderlich, mit Benutzer, Aktion und Begründung |
 | Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Integrations-URLs |
 | PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |
+| API-Schlüssel | Zugriff für Fremdsysteme (n8n, Webformulare) per `Authorization: Bearer …` – je Schlüssel genau ein Projekt/Modul mit ausgewählten Rechten |
 | Nummernkreise | lückenlose Nummern je Objekt und Jahr (`core.next_number`) |
 | Betrieb | Docker Compose, Installationsskript, tägliches Backup, Update- und Restore-Skript |
 
@@ -118,6 +119,29 @@ Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create
   Transaktion erfolgreich ist (lückenlos).
 - Vier-Augen-Prinzip später: getrennte Berechtigungen (z. B. `:erzeugen` / `:freigeben`) anlegen und
   über Rollen trennen – kein Umbau nötig.
+
+## API-Schlüssel für Fremdsysteme
+
+Unter **Administration → API-Schlüssel** legt man je Projekt/Modul Schlüssel an (z. B. `n8n` für `transport`)
+und wählt die Berechtigungen aus diesem Modul. Der Schlüssel (`pk_<modul>_…`) wird **nur einmal** angezeigt;
+gespeichert wird nur sein SHA-256-Hash.
+
+- gilt ausschließlich für `/api/m/<modul>/…` (plus `GET /api/key` als Verbindungstest), nie für Benutzer, Rollen oder andere Module
+- kein Cookie, kein CSRF-Header nötig: `Authorization: Bearer pk_transport_…`
+- Änderungsbelege tragen den Benutzer `api:<name>`
+- sperren/entsperren (mit Begründung), neuen Schlüssel erzeugen (alter sofort ungültig), optionales Ablaufdatum
+- nach 20 ungültigen Schlüsseln je IP 15 Minuten Pause
+
+```bash
+K=pk_transport_...
+curl -H "Authorization: Bearer $K" https://portal.example/api/key
+curl -H "Authorization: Bearer $K" -H 'Content-Type: application/json' \
+     -d '{"kundenname":"Brauerei Becker","land":"DE","plz":"66386","ort":"St. Ingbert"}' \
+     https://portal.example/api/m/transport/adressen          # → {"adrnr":1001}
+curl -H "Authorization: Bearer $K" -H 'Content-Type: application/json' \
+     -d '{"typ":"F","kunde":1001,"frachtpreis_ek":450,"frachtpreis_vk":600,"steuerrelevant":true,"dok_fehlen":false}' \
+     https://portal.example/api/m/transport/auftraege         # → {"auftragsnr":"2026_0015"}
+```
 
 ## Sicherheit
 
