@@ -60,3 +60,6 @@ export interface PaperlessInfo {
   doknr: string | null; link: string | null; notizen: { id: number; note: string; created: string }[];
   versionen: { id: number; label: string | null; added: string | null; isRoot: boolean }[]; ansicht: string | null; fehler?: string;
 }
+
+/** Buchungsnummer ohne führende Nullen anzeigen (gespeichert im SAP-Format, 10-stellig) */
+export const bidText = (bid: string | null | undefined) => (bid ?? '').replace(/^0+(?=\d)/, '');

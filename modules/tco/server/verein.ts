@@ -32,6 +32,7 @@ export interface Verein {
   n8n_ep3_user: string | null;
   halle_stichtag: string;
   halle_ausschluss: string;
+  halle_plaetze: string;
   fi_bankkonten: string;
   fi_manuell_konten: string;
   fi_beleg_typen: string;

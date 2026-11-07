@@ -18,6 +18,12 @@ export function ep3Typ(kopf: string[]): Ep3Typ | null {
   return null;
 }
 
+/** BID im SAP-Format (10 Stellen, führende Nullen) – wie die aus SAP übernommenen Buchungen und Rechnungspositionen */
+export const bidNorm = (b: string) => { const t = b.trim(); return /^\d{1,9}$/.test(t) ? t.padStart(10, '0') : t; };
+
+/** Spalten mit dem gebuchten Platz im EP3-Export (Name bevorzugt, sonst Nummer) */
+const PLATZ_SPALTEN = ['PLATZ', 'SQUARE', 'SQUARE_NAME', 'COURT', 'SNAME', 'SID'];
+
 const STATUS: Record<string, string> = { single: '1', subscription: '3', cancelled: '2' };
 
 export interface ImportErgebnis { typ: Ep3Typ | null; text: string; ok: boolean }
@@ -67,7 +73,7 @@ async function texteImportieren(tx: Db, rows: string[][], idx: (n: string) => nu
   const it = idx('TEXT');
   const texte = new Map<string, string>();
   for (const r of rows) {
-    const bid = (r[ib] ?? '').trim();
+    const bid = bidNorm(r[ib] ?? '');
     if (!bid || texte.has(bid)) continue;
     texte.set(bid, (r[it] ?? '').replace(/\s*\n\s*/g, ' ').trim());
   }
@@ -78,14 +84,15 @@ async function texteImportieren(tx: Db, rows: string[][], idx: (n: string) => nu
   return { typ: 'TEXTE', ok: true, text: `Buchungstexte: ${rows.length} gelesen, ${texte.size} übertragen` };
 }
 
-interface ImpBuchung { bid: string; datum: string; time_start: string | null; time_ende: string | null; kunde: string; text: string | null; status: string; preis: number | null }
+interface ImpBuchung { bid: string; datum: string; time_start: string | null; time_ende: string | null; kunde: string; text: string | null; status: string; preis: number | null; platz: string | null }
 
 async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) => number): Promise<ImportErgebnis> {
-  const i = { bid: idx('BID'), datum: idx('DATUM'), von: idx('TIME_START'), bis: idx('TIME_ENDE'), kunde: idx('KUNDE'), text: idx('TEXT'), status: idx('STATUS'), preis: idx('PREIS') };
+  const i = { bid: idx('BID'), datum: idx('DATUM'), von: idx('TIME_START'), bis: idx('TIME_ENDE'), kunde: idx('KUNDE'), text: idx('TEXT'), status: idx('STATUS'), preis: idx('PREIS'),
+    platz: PLATZ_SPALTEN.map(idx).find((x) => x >= 0) ?? -1 };
   if (i.bid < 0 || i.datum < 0) throw new BusinessError('Spalten BID / DATUM nicht gefunden.');
   const liste: ImpBuchung[] = [];
   for (const r of rows) {
-    const bid = (r[i.bid] ?? '').trim();
+    const bid = bidNorm(r[i.bid] ?? '');
     let datum: string | null = null;
     try { datum = sapDatum((r[i.datum] ?? '').trim().split(/[ T]/)[0]); } catch { datum = null; }
     if (!bid || !datum) continue;
@@ -100,6 +107,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
       text: i.text >= 0 ? (r[i.text] ?? '').trim() || null : null,
       status: STATUS[st] ?? (/^\d$/.test(st) ? st : '0'),
       preis: Number.isFinite(pr) ? pr : null,
+      platz: i.platz >= 0 ? (r[i.platz] ?? '').trim() || null : null,
     });
   }
   if (!liste.length) throw new BusinessError('Keine gültigen Buchungen in der Datei gefunden');
@@ -127,15 +135,19 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
     if (!alt) {
       const erbe = b.status === '3' && !aboEinzel.has(b.bid) ? abgerechnetJeBid.get(b.bid) ?? '' : '';
       if (erbe) geerbt++;
-      await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text)
-               values (${b.bid}, ${b.datum}, ${b.time_start}, ${b.time_ende}, ${b.kunde}, ${b.status}, ${desc}, ${b.preis}, ${h}, ${erbe}, ${b.text})`;
+      await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz)
+               values (${b.bid}, ${b.datum}, ${b.time_start}, ${b.time_ende}, ${b.kunde}, ${b.status}, ${desc}, ${b.preis}, ${h}, ${erbe}, ${b.text}, ${b.platz})`;
       neu++;
       continue;
     }
     best.delete(key(b));
-    if ((alt.assigned ?? '') !== '') { abgerechnet++; continue; }
+    if ((alt.assigned ?? '') !== '') {
+      if (b.platz) await tx`update tco.bookings set platz = ${b.platz} where bid = ${b.bid} and datum = ${b.datum} and platz is distinct from ${b.platz}`;
+      abgerechnet++;
+      continue;
+    }
     await tx`update tco.bookings set time_start = ${b.time_start}, time_ende = ${b.time_ende}, kunde = ${b.kunde}, status = ${b.status},
-                    description = ${desc}, preis = ${b.preis}, geaendert = ${h}, text = ${b.text}
+                    description = ${desc}, preis = ${b.preis}, geaendert = ${h}, text = ${b.text}, platz = coalesce(${b.platz}, platz)
               where bid = ${b.bid} and datum = ${b.datum}`;
     geaendert++;
   }

@@ -41,6 +41,7 @@ const vereinSchema = z.object({
   n8n_ep3_user: z.string().nullish(), n8n_ep3_pw: z.string().nullish(),
   halle_stichtag: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   halle_ausschluss: z.string().default(''),
+  halle_plaetze: z.string().optional(),
   fi_bankkonten: z.string().optional(),
   fi_manuell_konten: z.string().optional(),
   fi_beleg_typen: z.string().optional(),
@@ -104,7 +105,7 @@ async function routes(app: FastifyInstance) {
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
              n8n_stunden_url = ${d.n8n_stunden_url || null}, n8n_ferien_url = ${d.n8n_ferien_url || null}, n8n_stunden_auth = ${d.n8n_stunden_auth || null},
              n8n_stunden_user = ${d.n8n_stunden_user || null}, n8n_ep3_user = ${d.n8n_ep3_user || null},
-             halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss},
+             halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss}, halle_plaetze = ${d.halle_plaetze ?? alt.halle_plaetze},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
              fi_feld_sap = ${d.fi_feld_sap}, updated_at = now()

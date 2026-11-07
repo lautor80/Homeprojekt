@@ -226,13 +226,13 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.equal(r.body.adrnr, '0000000012');
   assert.equal(r.body.kontakt.mobil, '491711234567');
   assert.equal(r.body.kanal, 'E');
-  const abo = r.body.buchungen.find((b: any) => b.bid === '600');
+  const abo = r.body.buchungen.find((b: any) => b.bid === '0000000600');
   assert.deepEqual([abo.art, abo.termine, abo.betrag], ['Abo', 2, 300]);
 
   r = await call('GET', `${H}/person?kunde=${encodeURIComponent('ERIKA MUSTER')}`);
   assert.equal(r.body.adrnr, '9900000017');
   const ebs = r.body.buchungen;
-  assert.equal(ebs.find((b: any) => b.bid === '501').text, 'Training mit Ballmaschine');
+  assert.equal(ebs.find((b: any) => b.bid === '0000000501').text, 'Training mit Ballmaschine');
 
   // ---- Zuordnen (neue Rechnung), Zukunft wird abgewiesen
   r = await call('POST', `${H}/zuordnen`, { rgnr: 'NEU', kunde: 'ERIKA MUSTER', buchungen: ebs.map((b: any) => ({ bid: b.bid, datum: b.datum })) });
@@ -258,7 +258,7 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   r = await call('GET', `${H}/rechnungen/${rg}`);
   const pos = r.body.positionen;
   assert.equal(pos.length, 4);
-  const p1 = pos.find((p: any) => p.bid === '501');
+  const p1 = pos.find((p: any) => p.bid === '0000000501');
   assert.deepEqual([p1.anzahl, p1.ep, p1.betrag], [2, 17.5, 35]);
   assert.ok(p1.beschreibung.startsWith('Einzelbuchung\tMontag\t02.11.2026\t16:00 - 18:00 Uhr'));
   const pg = pos.find((p: any) => p.prod_key === '093');
@@ -269,9 +269,9 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.equal(r.status, 200, JSON.stringify(r.body));
   [k] = await sql`select betrag::float8 as betrag from tco.rgkopf where rgnr_txt = ${rg}`;
   assert.equal(k.betrag, 50);
-  const [b501] = await sql`select assigned from tco.bookings where bid = '501'`;
+  const [b501] = await sql`select assigned from tco.bookings where bid = '0000000501'`;
   assert.equal(b501.assigned, '');
-  r = await call('POST', `${H}/zuordnen`, { rgnr: rg, kunde: 'ERIKA MUSTER', buchungen: [{ bid: '501', datum: '2026-11-02' }] });
+  r = await call('POST', `${H}/zuordnen`, { rgnr: rg, kunde: 'ERIKA MUSTER', buchungen: [{ bid: '0000000501', datum: '2026-11-02' }] });
   assert.equal(r.body.anzahl, 1);
   r = await call('POST', `${H}/rechnungen/${rg}/nummerieren`);
   assert.match(r.body.text, /4 Positionen/);
@@ -329,10 +329,10 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.equal(r.status, 200, JSON.stringify(r.body));
 
   // ---- Abo: Zuordnung sperrt die Serie, neue Termine erben die Sperre
-  r = await call('POST', `${H}/zuordnen`, { rgnr: 'NEU', kunde: 'MAX MEIER-LÜDENSCHEID', buchungen: [{ bid: '600', datum: '2026-11-05' }] });
+  r = await call('POST', `${H}/zuordnen`, { rgnr: 'NEU', kunde: 'MAX MEIER-LÜDENSCHEID', buchungen: [{ bid: '0000000600', datum: '2026-11-05' }] });
   assert.equal(r.body.anzahl, 1);
   const rg2 = r.body.rgnr_txt;
-  const offen600 = await sql`select count(*)::int as n from tco.bookings where bid = '600' and coalesce(assigned, '') = ''`;
+  const offen600 = await sql`select count(*)::int as n from tco.bookings where bid = '0000000600' and coalesce(assigned, '') = ''`;
   assert.equal(offen600[0].n, 0);
   r = await call('POST', `${H}/import/datei`, { name: 'b.csv', data: b64('BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n600;19.11.2026;18:00;19:00;Max Meier-Lüdenscheid;subscription\n') });
   assert.match(r.body.text, /automatisch mitgesperrt/);
@@ -340,11 +340,11 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.deepEqual([k.betrag, k.adrnr], [300, '0000000012']);
 
   // ---- Buchung irrelevant / wieder offen
-  r = await call('POST', `${H}/buchungen/aktion`, { bid: '503', datum: '2026-11-04', aktion: 'irrelevant' });
+  r = await call('POST', `${H}/buchungen/aktion`, { bid: '0000000503', datum: '2026-11-04', aktion: 'irrelevant' });
   assert.equal(r.status, 200);
   r = await call('GET', `${H}/irrelevant?kunde=${encodeURIComponent('MAX MEIER-LÜDENSCHEID')}`);
   assert.equal(r.body.length, 1);
-  r = await call('POST', `${H}/buchungen/aktion`, { bid: '503', datum: '2026-11-04', aktion: 'relevant' });
+  r = await call('POST', `${H}/buchungen/aktion`, { bid: '0000000503', datum: '2026-11-04', aktion: 'relevant' });
   assert.equal(r.status, 200);
 
   // ---- automatische Zuordnung
@@ -366,4 +366,44 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   r = await call('POST', `${H}/import/n8n`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body[0].text, /1 neu/);
+});
+
+test('Hallenabrechnung: BID-Format SAP/EP3, Abo als Einzel, Sommer-Abos', async () => {
+  // Bestand aus SAP (10-stellige BID): abgerechnet, irrelevant, Abo als Einzel
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, assigned) values
+    ('0000007001', '2026-10-10', '10:00', '11:00', 'ANDREAS THEWES', '1', 'X'),
+    ('0000007002', '2026-10-11', '10:00', '11:00', 'EVA SCHEID', '1', 'Y'),
+    ('0000007100', '2026-10-09', '18:00', '19:00', 'TINA NOACK', '3', '')`;
+  await sql`insert into tco.bookings_ch (bid, status_abw) values ('0000007100', '1')`;
+  // früherer Portal-Import ohne führende Nullen → Duplikate; Migration 009 räumt auf
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, assigned) values
+    ('7001', '2026-10-10', '10:00', '11:00', 'ANDREAS THEWES', '1', ''),
+    ('7002', '2026-10-11', '10:00', '11:00', 'EVA SCHEID', '1', ''),
+    ('7100', '2026-10-16', '18:00', '19:00', 'TINA NOACK', '3', '')`;
+  const mig = fs.readFileSync(new URL('../../modules/tco/server/migrations/009_bid_format.sql', import.meta.url), 'utf8');
+  await sql.unsafe(mig);
+  const rest = await sql`select bid, datum::text, assigned from tco.bookings where bid like '%70%' or bid like '%71%' order by bid, datum`;
+  assert.deepEqual(rest.map((x) => [x.bid, x.datum, x.assigned]), [
+    ['0000007001', '2026-10-10', 'X'], ['0000007002', '2026-10-11', 'Y'], ['0000007100', '2026-10-09', ''], ['0000007100', '2026-10-16', ''],
+  ]);
+
+  // EP3-Import ohne führende Nullen trifft den SAP-Satz
+  let r = await call('POST', `${H}/import/datei`, { name: 'b.csv', data: b64('BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS;SQUARE\n7002;11.10.2026;10:00;11:00;Eva Scheid;single;Halle\n7100;23.10.2026;18:00;19:00;Tina Noack;subscription;Halle\n') });
+  assert.match(r.body.text, /1 neu, 0 aktualisiert, 1 bereits abgerechnet/);
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('EVA SCHEID')}`);
+  assert.equal(r.body.buchungen.length, 0);
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('ANDREAS THEWES')}`);
+  assert.equal(r.body.buchungen.length, 0);
+  // Abo als Einzel: jeder Termin einzeln (16.10. fehlt im EP3-Export dieses Zeitraums → entfallen)
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('TINA NOACK')}`);
+  assert.deepEqual(r.body.buchungen.map((b: any) => [b.bid, b.datum, b.art]), [
+    ['0000007100', '2026-10-09', 'Einzel'], ['0000007100', '2026-10-23', 'Einzel']]);
+
+  // Sommer-Abos: Außenplatz entfällt, Halle wird abgerechnet
+  r = await call('POST', `${H}/import/datei`, { name: 'b.csv', data: b64('BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS;SQUARE\n' +
+    '8001;14.09.2026;18:00;19:00;Yury Klimov;subscription;Platz 1\n8001;21.09.2026;18:00;19:00;Yury Klimov;subscription;Platz 1\n' +
+    '8002;15.09.2026;18:00;19:00;Yury Klimov;subscription;Halle\n' +
+    '8003;28.09.2026;18:00;19:00;Yury Klimov;subscription;\n8003;05.10.2026;18:00;19:00;Yury Klimov;subscription;\n') });
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('YURY KLIMOV')}`);
+  assert.deepEqual(r.body.buchungen.map((b: any) => [b.bid, b.datum, b.termine]), [['0000008002', '2026-09-15', 1], ['0000008003', '2026-10-05', 1]]);
 });

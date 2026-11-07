@@ -128,12 +128,22 @@ export async function adrnrErmitteln(db: Db, kunde: string): Promise<string | nu
 // Lesen
 // ---------------------------------------------------------------------------
 
-/** offene Buchungen (ASSIGNED leer), bepreist; Abos einmal je BID */
+/** Sommersaison für Abos: 01.05.–30.09. – auf den Außenplätzen keine Abrechnung */
+export const sommerAbo = (datum: string) => datum.slice(5) >= '05-01' && datum.slice(5) <= '09-30';
+/** Platz zählt als Halle (Stammdaten: Plätze, die auch im Sommer abgerechnet werden) */
+export const istHalle = (platz: string | null | undefined, v: Verein) =>
+  !!platz && (v.halle_plaetze || 'Halle').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean)
+    .some((h) => platz.trim().toUpperCase() === h || (h.length > 2 && platz.trim().toUpperCase().includes(h)));
+
+/**
+ * offene Buchungen (ASSIGNED leer), bepreist; Abos einmal je BID.
+ * Abo-Termine vom 01.05. bis 30.09. entfallen, sofern nicht in der Halle gebucht (auch „Abo als Einzel“).
+ */
 export async function offeneBuchungen(db: Db, v: Verein, preise?: Preise, kunde?: string): Promise<Buchung[]> {
   const p = preise ?? await preiseLesen(db);
   const ausschluss = v.halle_ausschluss.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
   const rows = await db`
-    select b.bid, b.datum::text, b.time_start::text, b.time_ende::text, b.kunde, b.status,
+    select b.bid, b.datum::text, b.time_start::text, b.time_ende::text, b.kunde, b.status, b.platz,
            coalesce(t.text, b.text) as text, c.status_abw
       from tco.bookings b
       left join tco.bookingstxt t on t.bid = b.bid
@@ -147,6 +157,7 @@ export async function offeneBuchungen(db: Db, v: Verein, preise?: Preise, kunde?
   const out: Buchung[] = [];
   const abo = new Map<string, Buchung>();
   for (const r of rows) {
+    if (r.status === '3' && sommerAbo(r.datum) && !istHalle(r.platz, v)) continue;
     const status = r.status === '3' && r.status_abw === '1' ? '1' : r.status;
     if (status === '3') {
       const a = abo.get(r.bid);

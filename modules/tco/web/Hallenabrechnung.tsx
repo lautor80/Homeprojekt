@@ -19,6 +19,7 @@ import { toast } from '@core/toast';
 import {
   H, RG_STATE, RG_STATUS, dat, dateiLesen, eur, wtag, zeit,
   type Buchung, type PaperlessInfo, type Person, type PersonDetail, type Position, type Rechnung,
+  bidText,
 } from './util';
 import { AutoDialog, MailDialog, MailtextDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
@@ -403,7 +404,7 @@ function PersonPanel(props: {
       Header: 'Buchung', accessor: 'bid', width: 120,
       Cell: ({ row }: Cell) => (
         <FlexBox direction="Column">
-          <Text>{row.original.bid}</Text>
+          <Text>{bidText(row.original.bid)}</Text>
           <ObjectStatus state={row.original.art === 'Abo' ? 'Information' : 'None'}>
             {row.original.art === 'Abo' ? `Abo · ${row.original.termine} Termin(e)` : 'Einzel'}
           </ObjectStatus>
@@ -462,7 +463,7 @@ function PersonPanel(props: {
             {
               text: 'Buchung irrelevant setzen', onClick: () => props.onConfirm({
                 titel: 'Buchung irrelevant setzen', ok: 'Irrelevant',
-                text: `Buchung ${b.bid} (${dat(b.datum)}${b.art === 'Abo' ? ', ganze Abo-Serie' : ''}) wird nicht abgerechnet. Unter „Irrelevante Buchungen“ lässt sie sich wieder öffnen.`,
+                text: `Buchung ${bidText(b.bid)} (${dat(b.datum)}${b.art === 'Abo' ? ', ganze Abo-Serie' : ''}) wird nicht abgerechnet. Unter „Irrelevante Buchungen“ lässt sie sich wieder öffnen.`,
                 run: async () => { const x = await api.post<{ text: string }>(`${H}/buchungen/aktion`, { bid: b.bid, datum: b.datum, aktion: 'irrelevant' }); toast(x.text); },
               }),
             },
@@ -587,7 +588,7 @@ function PersonPanel(props: {
              onToggle={(e) => { if (!(e.target as unknown as { collapsed: boolean }).collapsed && !irrelevant) api.get<typeof irrelevant>(`${H}/irrelevant?kunde=${encodeURIComponent(d.kunde)}`).then(setIrrelevant); }}>
         {(irrelevant ?? []).length === 0 ? <Text>Keine</Text> : (irrelevant ?? []).map((b) => (
           <FlexBox key={b.bid} alignItems="Center" style={{ gap: '1rem' }}>
-            <Text>{b.bid} · {dat(b.datum)} {zeit(b.time_start)}–{zeit(b.time_ende)} Uhr{b.termine > 1 ? ` · ${b.termine} Termine` : ''}</Text>
+            <Text>{bidText(b.bid)} · {dat(b.datum)} {zeit(b.time_start)}–{zeit(b.time_ende)} Uhr{b.termine > 1 ? ` · ${b.termine} Termine` : ''}</Text>
             {edit && <Button design="Transparent" icon="undo" onClick={() => tun(async () => {
               const r = await api.post<{ text: string }>(`${H}/buchungen/aktion`, { bid: b.bid, datum: b.datum, aktion: 'relevant' });
               setIrrelevant(null);

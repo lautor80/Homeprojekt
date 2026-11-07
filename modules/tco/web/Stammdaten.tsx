@@ -153,6 +153,7 @@ function VereinTab() {
             <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={t('halle_stichtag')} readonly={ro} onChange={(e) => setV({ ...v, halle_stichtag: e.detail.value })} />
           </FieldBox>
           <TextField label="EP3-Namen ohne Abrechnung (durch Komma getrennt)" value={t('halle_ausschluss')} onChange={s('halle_ausschluss')} readonly={ro} />
+          <TextField label="Plätze mit Abo-Abrechnung auch im Sommer 01.05.–30.09. (EP3-Platzname oder -Nummer, durch Komma)" value={t('halle_plaetze')} onChange={s('halle_plaetze')} readonly={ro} placeholder="Halle" />
         </FormGrid>
       </Panel>
 

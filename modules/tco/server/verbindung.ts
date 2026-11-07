@@ -57,7 +57,13 @@ async function pruefen(v: Verein, e: Endpunkt): Promise<{ ok: boolean; text: str
         const j = JSON.parse(text) as Record<string, string>;
         const n = (s?: string) => (s ? Math.max(0, s.trim().split('\n').length - 1) : 0);
         if (!j.bookings_csv && !j.kunden_csv) return { ok: false, text: 'Verbunden, aber n8n hat keine EP3-Daten geliefert.' };
-        return { ok: true, text: `Verbunden: ${n(j.bookings_csv)} Buchungen, ${n(j.kunden_csv)} Kunden geliefert (nichts übernommen).` };
+        const kopf = (j.bookings_csv ?? '').split('\n')[0].split(/[;,]/).map((x) => x.trim().replace(/"/g, '').toUpperCase());
+        const platz = ['PLATZ', 'SQUARE', 'SQUARE_NAME', 'COURT', 'SNAME', 'SID'].find((x) => kopf.includes(x));
+        return {
+          ok: true,
+          text: `Verbunden: ${n(j.bookings_csv)} Buchungen, ${n(j.kunden_csv)} Kunden geliefert (nichts übernommen). `
+            + (platz ? `Platz kommt aus Spalte ${platz}.` : `Achtung: keine Platzspalte im Export (Spalten: ${kopf.join(', ')}) – Sommer-Abos gelten als Außenplatz.`),
+        };
       } catch { return { ok: false, text: 'Verbunden, aber die Antwort ist kein JSON.' }; }
     }
     case 'stunden': {
