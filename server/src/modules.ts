@@ -8,8 +8,9 @@ import { corePermissions, type PermissionGroup } from './permissions.js';
 // ---------------------------------------------------------------------------
 import beispiel from '../../modules/beispiel/server/index.js';
 import transport from '../../modules/transport/server/index.js';
+import tco from '../../modules/tco/server/index.js';
 
-const available: ServerModule[] = [beispiel, transport];
+const available: ServerModule[] = [beispiel, transport, tco];
 
 export function activeModules(): ServerModule[] {
   return available.filter((m) => config.modules.includes(m.id));

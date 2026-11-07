@@ -1,4 +1,4 @@
-import { Pdf } from './base.js';
+import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import type { Adresse, Firma } from '../data.js';
 import { condense } from '../format.js';
 

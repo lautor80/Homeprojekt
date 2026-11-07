@@ -1,4 +1,4 @@
-import { Pdf } from './base.js';
+import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { C, abschnitt, adressZeilen, anschrift, folgeKopf, fusszeilen, infoBlock, kopf, titel } from './layout.js';
 import { auftragLesen, firmaLesen, wertText, type Stop } from '../data.js';
 import { condense, dat, eur, heute } from '../format.js';

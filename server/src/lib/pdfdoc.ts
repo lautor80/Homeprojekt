@@ -28,13 +28,13 @@ export class Pdf {
   private chunks: Buffer[] = [];
   private done: Promise<Buffer>;
 
-  constructor(info: { title?: string; author?: string } = {}) {
+  constructor(info: { title?: string; author?: string; creator?: string } = {}) {
     this.doc = new PDFDocument({
       size: 'A4',
       margin: 0,
       autoFirstPage: false,
       bufferPages: true,
-      info: { Title: info.title, Author: info.author, Creator: 'Portalbasis Transport' },
+      info: { Title: info.title, Author: info.author, Creator: info.creator ?? 'Portalbasis' },
     });
     this.done = new Promise((resolve) => {
       this.doc.on('data', (c: Buffer) => this.chunks.push(c));

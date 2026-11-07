@@ -1,4 +1,4 @@
-import { Pdf } from './base.js';
+import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { C, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, titel } from './layout.js';
 import { fakturaAuftraege, firmaLesen, kaeufer } from '../data.js';
 import { addTage, condense, dat, eur, heute, kategorie, netto } from '../format.js';

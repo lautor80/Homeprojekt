@@ -120,6 +120,22 @@ Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create
 - Vier-Augen-Prinzip später: getrennte Berechtigungen (z. B. `:erzeugen` / `:freigeben`) anlegen und
   über Rollen trennen – kein Umbau nötig.
 
+## Modul `tco` (TC Oberthal – Vereinsportal)
+
+Portierung der abap2UI5-Apps des Vereinsportals. Einschalten mit `PORTAL_MODULES=tco`.
+Das Datenmodell (Schema `tco`) enthält bereits alle Vereinstabellen aus SAP; die Apps folgen nach Priorität.
+
+| App | Stand |
+|---|---|
+| Hallenabrechnung | fertig: EP3-Import (n8n oder CSV), Preisfindung je Buchungsminute, Zuordnen einzeln/gesammelt/automatisch, manuelle Positionen inkl. Schlüsselliste, Rechnungs-PDF mit GiroCode, Ablage in Paperless (Neudruck = neue Version, Freigabelink, Metadaten), Versand per E-Mail (n8n-Workflow „TCO Mailversand aus SAP“), WhatsApp und Mailentwurf, Wiedereröffnen versendeter Rechnungen mit Begründung, Hallenpreise mit Prüfung |
+| FI Belege, Sollstellungen, Jugendtraining, Clubhaus, Mitglieder, Einnahmen & Ausgaben, Beiträge, Kontenstamm | folgen |
+
+Gegenüber SAP behoben: Rechnungsbetrag = Summe der Positionen (manuelle Positionen mit Menge), Status springt beim Neudruck
+nicht mehr zurück, Preis eines Einzeltermins aus dem eigenen Datum, robuste Namenszuordnung, keine 999er-Grenze der Rechnungsnummer.
+
+**Übernahme aus SAP:** Report `ZTCO_ARCHIVE` exportiert die Tabellen als CSV → *TC Oberthal → Stammdaten → Übernahme aus SAP*
+(mehrere Dateien auf einmal, Tabelle aus dem Dateinamen, Prüfung vor dem Schreiben).
+
 ## API-Schlüssel für Fremdsysteme
 
 Unter **Administration → API-Schlüssel** legt man je Projekt/Modul Schlüssel an (z. B. `n8n` für `transport`)

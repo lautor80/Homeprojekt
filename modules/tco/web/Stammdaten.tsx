@@ -1,0 +1,205 @@
+import { useEffect, useState } from 'react';
+import {
+  AnalyticalTable, Bar, Button, DatePicker, FileUploader, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
+  SegmentedButtonItem, Tab, TabContainer, Text,
+} from '@ui5/webcomponents-react';
+import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
+import { api } from '@core/api';
+import { AppPage } from '@core/components/AppPage';
+import { ChangeHistoryButton } from '@core/components/ChangeHistory';
+import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
+import { useCan } from '@core/session';
+import { toast } from '@core/toast';
+import { TCO, dateiLesen } from './util';
+
+type Verein = Record<string, string | number | null>;
+
+export function TcoStammdaten() {
+  const can = useCan();
+  return (
+    <AppPage title="Stammdaten TC Oberthal" subtitle="Vereinsdaten für Ausdrucke, Anbindungen und Übernahme aus SAP">
+      <TabContainer contentBackgroundDesign="Transparent">
+        <Tab text="Verein und Anbindungen" selected><VereinTab /></Tab>
+        {can('tco.import:execute') ? <Tab text="Übernahme aus SAP"><ImportTab /></Tab> : null}
+      </TabContainer>
+    </AppPage>
+  );
+}
+
+function VereinTab() {
+  const can = useCan();
+  const ro = !can('tco.stammdaten:edit');
+  const [v, setV] = useState<Verein | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => { api.get<Verein>(`${TCO}/verein`).then(setV).catch((e) => setError(e.message)); }, []);
+  if (!v) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
+  const s = (k: string) => (x: string) => setV({ ...v, [k]: x });
+  const t = (k: string) => (v[k] ?? '') as string;
+
+  async function save() {
+    setBusy(true); setError(null);
+    try {
+      await api.put(`${TCO}/verein`, v);
+      toast('Vereinsdaten gesichert');
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <Panel headerText="Verein (Rechnungssteller)" fixed>
+        <FormGrid>
+          <TextField label="Name (auch Empfänger im GiroCode)" required value={t('name')} onChange={s('name')} readonly={ro} />
+          <TextField label="Straße" value={t('strasse')} onChange={s('strasse')} readonly={ro} />
+          <TextField label="PLZ / Ort" value={t('plz_ort')} onChange={s('plz_ort')} readonly={ro} />
+          <TextField label="Ansprechpartner (Rechnung, Mailtexte)" value={t('ansprechpartner')} onChange={s('ansprechpartner')} readonly={ro} />
+          <TextField label="Steuernummer" value={t('steuernr')} onChange={s('steuernr')} readonly={ro} />
+          <TextField label="E-Mail" value={t('email')} onChange={s('email')} readonly={ro} />
+          <TextField label="Bank" value={t('bank')} onChange={s('bank')} readonly={ro} />
+          <TextField label="IBAN" value={t('iban')} onChange={s('iban')} readonly={ro} />
+          <TextField label="BIC" value={t('bic')} onChange={s('bic')} readonly={ro} />
+          <TextField label="Zahlungsziel Hallenrechnung (Tage)" type="Number" value={String(v.zahlungsziel_tage ?? 8)} onChange={s('zahlungsziel_tage')} readonly={ro} />
+          <FieldBox label="Logo für das Kopfband (weiß auf Orange)">
+            <FlexBox alignItems="Center" style={{ gap: '0.75rem', background: '#E2701F', padding: '0.5rem', borderRadius: '0.5rem', width: 'fit-content' }}>
+              <img alt="Logo" src={(v.logo as string) || '/api/m/tco/logo'} style={{ height: '3rem' }} />
+            </FlexBox>
+            {!ro && (
+              <FlexBox style={{ gap: '0.5rem' }}>
+                <FileUploader hideInput accept="image/png,image/jpeg" onChange={async (e) => { const f = e.detail.files?.[0]; if (f) setV({ ...v, logo: await dateiLesen(f) }); }}>
+                  <Button icon="upload">Eigenes Logo</Button>
+                </FileUploader>
+                {v.logo && <Button design="Transparent" icon="reset" onClick={() => setV({ ...v, logo: null })}>Vereinslogo</Button>}
+              </FlexBox>
+            )}
+          </FieldBox>
+        </FormGrid>
+      </Panel>
+
+      <Panel headerText="Paperless-ngx" fixed style={{ marginTop: '1rem' }}>
+        <FormGrid>
+          <TextField label="URL (mehrere durch Komma: erst LAN, dann Internet)" value={t('paperless_url')} onChange={s('paperless_url')} readonly={ro} />
+          <TextField label="API-Token" type="Password" value={t('paperless_token')} onChange={s('paperless_token')} readonly={ro} />
+        </FormGrid>
+        {!ro && (
+          <FlexBox alignItems="Center" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
+            <Button icon="connected" onClick={async () => { await save(); setTest(await api.post(`${TCO}/verein/paperless-test`)); }}>Sichern und Verbindung testen</Button>
+            {test && <ObjectStatus state={test.ok ? 'Positive' : 'Negative'}>{test.text}</ObjectStatus>}
+          </FlexBox>
+        )}
+      </Panel>
+
+      <Panel headerText="n8n" fixed style={{ marginTop: '1rem' }}>
+        <FormGrid>
+          <TextField label="Webhook „TCO Mailversand“" value={t('n8n_mail_url')} onChange={s('n8n_mail_url')} readonly={ro} />
+          <TextField label="Webhook-Schlüssel (X-TCO-Key)" type="Password" value={t('n8n_mail_key')} onChange={s('n8n_mail_key')} readonly={ro} />
+          <TextField label="Webhook „EP3 Import Hallenrechnungen“" value={t('n8n_ep3_url')} onChange={s('n8n_ep3_url')} readonly={ro} />
+          <TextField label="Authorization-Header für den EP3-Webhook (optional)" type="Password" value={t('n8n_ep3_auth')} onChange={s('n8n_ep3_auth')} readonly={ro} placeholder="Basic …" />
+        </FormGrid>
+      </Panel>
+
+      <Panel headerText="Hallenabrechnung" fixed style={{ marginTop: '1rem' }}>
+        <FormGrid>
+          <FieldBox label="Buchungen abrechnen ab (Datum nach)">
+            <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={t('halle_stichtag')} readonly={ro} onChange={(e) => setV({ ...v, halle_stichtag: e.detail.value })} />
+          </FieldBox>
+          <TextField label="EP3-Namen ohne Abrechnung (durch Komma getrennt)" value={t('halle_ausschluss')} onChange={s('halle_ausschluss')} readonly={ro} />
+        </FormGrid>
+      </Panel>
+
+      <Bar style={{ marginTop: '1rem' }} endContent={<>
+        <ChangeHistoryButton objectType="TCO_VEREIN" objectKey="1" />
+        {!ro && <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}
+      </>} />
+    </>
+  );
+}
+
+interface Ergebnis { datei: string; tabelle: string | null; saetze: number; neu: number; fehler: string[]; ignoriert: string[]; geschrieben?: number }
+
+function ImportTab() {
+  const [files, setFiles] = useState<{ name: string; data: string }[]>([]);
+  const [modus, setModus] = useState<'neu' | 'aktualisieren'>('neu');
+  const [rows, setRows] = useState<Ergebnis[]>([]);
+  const [bestand, setBestand] = useState<{ tabelle: string; saetze: number }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [fertig, setFertig] = useState(false);
+
+  const ladeBestand = () => api.get<typeof bestand>(`${TCO}/import/tabellen`).then(setBestand).catch(() => undefined);
+  useEffect(() => { ladeBestand(); }, []);
+
+  async function add(list: FileList | null) {
+    if (!list?.length) return;
+    const neu = [...files];
+    for (const f of Array.from(list)) {
+      const data = await dateiLesen(f);
+      const i = neu.findIndex((x) => x.name === f.name);
+      if (i >= 0) neu[i] = { name: f.name, data }; else neu.push({ name: f.name, data });
+    }
+    setFiles(neu);
+    setFertig(false);
+    setBusy(true); setError(null);
+    try { setRows(await api.post(`${TCO}/import/pruefen`, { dateien: neu, modus })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  async function ausfuehren() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<Ergebnis[]>(`${TCO}/import/ausfuehren`, { dateien: files, modus });
+      setRows(r);
+      setFertig(true);
+      toast(`${r.reduce((s, x) => s + (x.geschrieben ?? 0), 0)} Sätze übernommen`, 5000);
+      ladeBestand();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  const columns: AnalyticalTableColumnDefinition[] = [
+    { Header: 'Datei', accessor: 'datei', minWidth: 180 },
+    { Header: 'Tabelle', accessor: 'tabelle', width: 140, Cell: ({ value }: Cell) => (value ? `tco.${value}` : '–') },
+    { Header: 'Sätze', accessor: 'saetze', width: 90, hAlign: 'End' },
+    { Header: 'davon neu', accessor: 'neu', width: 100, hAlign: 'End' },
+    { Header: 'übernommen', accessor: 'geschrieben', width: 110, hAlign: 'End' },
+    {
+      Header: 'Hinweise', id: 'hinweis', minWidth: 260,
+      Cell: ({ row }: Cell) => {
+        const r = row.original as Ergebnis;
+        if (r.fehler.length) return <ObjectStatus state="Negative">{r.fehler.join(' · ')}</ObjectStatus>;
+        return <Text>{r.ignoriert.length ? `nicht übernommene Spalten: ${r.ignoriert.join(', ').toUpperCase()}` : 'ok'}</Text>;
+      },
+    },
+  ];
+
+  return (
+    <>
+      <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
+        Die CSV-Dateien aus dem SAP-Report ZTCO_ARCHIVE (Export) hier auswählen – mehrere auf einmal. Die Tabelle ergibt sich aus dem Dateinamen
+        (z. B. ZTCO_RGKOPF.CSV, BANKAB.CSV). „Nur neue Sätze“ lässt vorhandene Daten unverändert; „Vorhandene aktualisieren“ überschreibt sie mit dem SAP-Stand.
+      </MessageStrip>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <FlexBox alignItems="Center" style={{ gap: '1rem', marginBottom: '0.75rem' }}>
+        <FileUploader multiple hideInput accept=".csv,.CSV,text/csv" onChange={(e) => add(e.detail.files)}>
+          <Button icon="add-document">CSV-Dateien wählen</Button>
+        </FileUploader>
+        <SegmentedButton onSelectionChange={(e) => setModus((e.detail.selectedItems[0] as HTMLElement).dataset.m as typeof modus)}>
+          <SegmentedButtonItem data-m="neu" selected={modus === 'neu'}>Nur neue Sätze</SegmentedButtonItem>
+          <SegmentedButtonItem data-m="aktualisieren" selected={modus === 'aktualisieren'}>Vorhandene aktualisieren</SegmentedButtonItem>
+        </SegmentedButton>
+        <Button design="Emphasized" icon="upload" loading={busy} disabled={!files.length || fertig || rows.every((r) => !r.tabelle)} onClick={ausfuehren}>Übernehmen</Button>
+        {files.length > 0 && <Button design="Transparent" onClick={() => { setFiles([]); setRows([]); setFertig(false); }}>Auswahl leeren</Button>}
+      </FlexBox>
+      <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 2)} noDataText="Noch keine Dateien ausgewählt" loading={busy} />
+      <Panel headerText="Aktueller Bestand" fixed style={{ marginTop: '1rem' }}>
+        <FlexBox wrap="Wrap" style={{ gap: '0.25rem 1.5rem' }}>
+          {bestand.map((b) => (
+            <FlexBox key={b.tabelle} style={{ width: '13rem' }} justifyContent="SpaceBetween">
+              <Label>{b.tabelle}</Label><Text>{b.saetze.toLocaleString('de-DE')}</Text>
+            </FlexBox>
+          ))}
+        </FlexBox>
+      </Panel>
+    </>
+  );
+}
