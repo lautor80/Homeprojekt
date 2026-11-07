@@ -187,13 +187,13 @@ function ImportTab() {
   return (
     <>
       <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
-        Die CSV-Dateien aus dem SAP-Report ZTCO_ARCHIVE (Export) hier auswählen – mehrere auf einmal. Die Tabelle ergibt sich aus dem Dateinamen
-        (z. B. ZTCO_RGKOPF.CSV, BANKAB.CSV). „Nur neue Sätze“ lässt vorhandene Daten unverändert; „Vorhandene aktualisieren“ überschreibt sie mit dem SAP-Stand.
+        Die ZIP-Datei aus dem SAP-Report ZTCO_PORTAL_EXPORT (alle Tabellen) oder einzelne CSV-Dateien aus ZTCO_ARCHIVE hier auswählen.
+        Die Tabelle ergibt sich aus dem Dateinamen (z. B. ZTCO_RGKOPF.CSV, BANKAB.CSV); erst wird geprüft, dann mit „Übernehmen“ geschrieben. „Nur neue Sätze“ lässt vorhandene Daten unverändert; „Vorhandene aktualisieren“ überschreibt sie mit dem SAP-Stand.
       </MessageStrip>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <FlexBox alignItems="Center" style={{ gap: '1rem', marginBottom: '0.75rem' }}>
-        <FileUploader multiple hideInput accept=".csv,.CSV,text/csv" onChange={(e) => add(e.detail.files)}>
-          <Button icon="add-document">CSV-Dateien wählen</Button>
+        <FileUploader multiple hideInput accept=".csv,.CSV,.zip,.ZIP,text/csv,application/zip" onChange={(e) => add(e.detail.files)}>
+          <Button icon="add-document">ZIP- oder CSV-Dateien wählen</Button>
         </FileUploader>
         <SegmentedButton onSelectionChange={(e) => setModus((e.detail.selectedItems[0] as HTMLElement).dataset.m as typeof modus)}>
           <SegmentedButtonItem data-m="neu" selected={modus === 'neu'}>Nur neue Sätze</SegmentedButtonItem>

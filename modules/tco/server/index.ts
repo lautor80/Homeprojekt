@@ -6,6 +6,8 @@ import { APP_ROOT } from '../../../server/src/config.js';
 import { change, requireAuth } from '../../../server/src/auth.js';
 import { asset, DB, paperless, plAktiv, vereinLesen } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
+import { entpacken, istZip } from '../../../server/src/lib/zip.js';
+import { BusinessError } from '../../../server/src/errors.js';
 import { halleRoutes, P_HALLE } from './halle/routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
@@ -92,8 +94,16 @@ async function routes(app: FastifyInstance) {
     dateien: z.array(z.object({ name: z.string(), data: z.string() })).min(1),
     modus: z.enum(['neu', 'aktualisieren']).default('neu'),
   });
-  const dekodiert = (d: { name: string; data: string }[]) =>
-    d.map((x) => ({ name: x.name, inhalt: Buffer.from(x.data.replace(/^data:[^,]*,/, ''), 'base64') }));
+  /** Dateien dekodieren; ZIP-Archive (Report ZTCO_PORTAL_EXPORT) werden entpackt */
+  const dekodiert = (d: { name: string; data: string }[]) => d.flatMap((x) => {
+    const inhalt = Buffer.from(x.data.replace(/^data:[^,]*,/, ''), 'base64');
+    if (!istZip(inhalt)) return [{ name: x.name, inhalt }];
+    try {
+      return entpacken(inhalt).filter((e) => /\.(csv|txt)$/i.test(e.name));
+    } catch (e) {
+      throw new BusinessError(`${x.name}: ${(e as Error).message}`);
+    }
+  });
 
   app.get('/import/tabellen', { preHandler: requireAuth(P.import) }, async () => {
     const out: { tabelle: string; saetze: number }[] = [];
@@ -112,7 +122,7 @@ async function routes(app: FastifyInstance) {
   app.post('/import/ausfuehren', { preHandler: requireAuth(P.import), bodyLimit: 200 * 1024 * 1024 }, async (req) => {
     const d = importSchema.parse(req.body);
     return change(req, (tx) => ausfuehren(tx, dekodiert(d.dateien), d.modus), {
-      action: 'SAP_IMPORT', reason: d.dateien.map((x) => x.name).join(', '),
+      action: 'SAP_IMPORT', reason: d.dateien.map((x) => x.name).join(', ').slice(0, 500),
     });
   });
 

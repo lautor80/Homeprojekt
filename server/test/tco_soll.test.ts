@@ -3,6 +3,7 @@
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import zlib from 'node:zlib';
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
@@ -68,10 +69,11 @@ test('Sollstellung: Vorschlag, Lauf, Datei, Verbuchung in FI, Storno', async () 
     '0000000005;1;01;Erwachsene;105;halbjährlich;20200101;;60,00\n';
   const bpr = 'ART;GUELTIG_AB;GUELTIG_BIS;BETRAG\n01;20200101;20261231;60,00\n01;20270101;;65,00\n';
   const kt = 'KONTO;NAME;KENNZAHL\n1200;Girokonto;BA\n8002;Mitgliedsbeiträge;\n8006;Jugendtraining;\n8100;Spenden;\n';
-  let r = await call('POST', '/api/m/tco/import/ausfuehren', { modus: 'neu', dateien: [
-    { name: 'ZTCO_MITGLIEDER.CSV', data: b64(mg) }, { name: 'ZTCO_SEPA.CSV', data: b64(sp) }, { name: 'ZTCO_VERTRAEGE.CSV', data: b64(vt) },
-    { name: 'ZTCO_BEITRAG_PR.CSV', data: b64(bpr) }, { name: 'ZTCO_FIKONTEN.CSV', data: b64(kt) },
-  ] });
+  // Import als ZIP wie aus dem SAP-Report ZTCO_PORTAL_EXPORT (deflate + stored gemischt)
+  const zip = zipErzeugen([['MITGLIEDER.CSV', mg], ['SEPA.CSV', sp], ['VERTRAEGE.CSV', vt], ['BEITRAG_PR.CSV', bpr], ['FIKONTEN.CSV', kt]]);
+  let r = await call('POST', '/api/m/tco/import/pruefen', { dateien: [{ name: 'TCO_PORTAL_EXPORT.zip', data: zip.toString('base64') }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('POST', '/api/m/tco/import/ausfuehren', { modus: 'neu', dateien: [{ name: 'TCO_PORTAL_EXPORT.zip', data: zip.toString('base64') }] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
 
   // ---- Gläubigerdaten
@@ -168,3 +170,21 @@ test('Sollstellung: Vorschlag, Lauf, Datei, Verbuchung in FI, Storno', async () 
   r = await call('POST', `${S}/vorschlag`, { sollper: '202702', mitMb: false, mitJt: true, faellig: '2027-02-02' });
   assert.deepEqual(r.body.pos.map((p: any) => p.artname), ['Jugendtraining']);
 });
+
+/** Minimaler ZIP-Schreiber für den Test (gerade Einträge deflate, ungerade stored) */
+function zipErzeugen(dateien: [string, string][]): Buffer {
+  const lokal: Buffer[] = []; const zentral: Buffer[] = []; let off = 0;
+  dateien.forEach(([name, text], i) => {
+    const roh = Buffer.from(text, 'utf8'); const methode = i % 2 === 0 ? 8 : 0;
+    const daten = methode === 8 ? zlib.deflateRawSync(roh) : roh; const n = Buffer.from(name);
+    const crc = zlib.crc32(roh);
+    const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(methode, 8);
+    lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(daten.length, 18); lh.writeUInt32LE(roh.length, 22); lh.writeUInt16LE(n.length, 26);
+    const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(methode, 10);
+    ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(daten.length, 20); ch.writeUInt32LE(roh.length, 24); ch.writeUInt16LE(n.length, 28); ch.writeUInt32LE(off, 42);
+    lokal.push(lh, n, daten); zentral.push(ch, n); off += 30 + n.length + daten.length;
+  });
+  const cd = Buffer.concat(zentral); const e = Buffer.alloc(22);
+  e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(dateien.length, 8); e.writeUInt16LE(dateien.length, 10); e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(off, 16);
+  return Buffer.concat([...lokal, cd, e]);
+}

@@ -14,7 +14,7 @@ export const TABELLEN = [
   'kunden', 'bookings', 'bookings_ch', 'bookingstxt', 'produkte', 'prmatrix', 'rgkopf', 'rgpos', 'rgtz',
   'fikonten', 'fikontojahr', 'fibuchungen', 'fibankab', 'finotiz', 'fipapermap', 'paperless', 'projekte', 'anlagen',
   'soll_cfg', 'soll_kopf', 'soll_pos', 'ford', 'forderungen', 'werg', 'werg_beleg', 'werg_pl',
-  'jrueckm', 'jt_doku', 'trentgelt', 'tplan', 'tfrei', 'ferien',
+  'jrueckm', 'jt_doku', 'trentgelt', 'tplan', 'tfrei', 'ferien', 'rpt_variant',
 ] as const;
 
 const ALIAS: Record<string, string> = { BANKAB: 'fibankab' };
