@@ -26,6 +26,7 @@ interface Row {
   belege: number[];
   belegText: string;
   notiz: string;
+  laufid: string | null;     // Sollstellung: Positionen kommen aus dem Lauf
 }
 
 let uid = 1;
@@ -78,7 +79,7 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
         uid: uid++, sel: u.status === 'neu', neu: u.status === 'neu', datum: u.datum, text: u.buchungsText, name: u.name, zweck: u.zweck,
         betrag: u.betrag, betragEingabe: betragText(u.betrag), statusText: u.statusText, herkunft: u.herkunft, art: u.art,
         positionen: u.positionen.length ? u.positionen.map((p, i) => pos(p.gkonto, i === 0 ? 0 : p.betrag, p.text ?? '', p.rgnr ?? null)) : [pos()],
-        summenmodus: false, belege: u.belegVorschlag?.doks ?? [], belegText: u.belegVorschlag?.text ?? '', notiz: '',
+        summenmodus: false, belege: u.belegVorschlag?.doks ?? [], belegText: u.belegVorschlag?.text ?? '', notiz: '', laufid: u.laufid,
       })));
     } catch (e) {
       setError((e as Error).message);
@@ -93,7 +94,7 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
   const neueZeile = (vorlage?: Row) => setRows((l) => [...l, vorlage
     ? { ...vorlage, uid: uid++, belege: [], belegText: '', notiz: '', statusText: `Kopie von ${vorlage.text}` }
     : { uid: uid++, sel: true, neu: true, datum: heute(), text: '', name: '', zweck: '', betrag: 0, betragEingabe: '', statusText: 'manuelle Buchung',
-        herkunft: '', art: 'hand', positionen: [pos()], summenmodus: false, belege: [], belegText: '', notiz: '' }]);
+        herkunft: '', art: 'hand', positionen: [pos()], summenmodus: false, belege: [], belegText: '', notiz: '', laufid: null }]);
 
   const ausgewaehlt = rows.filter((r) => r.neu && r.sel);
   const summeNeu = Math.round(ausgewaehlt.reduce((s, r) => s + berechnet(r).betrag, 0) * 100) / 100;
@@ -108,7 +109,7 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
         konto, iban: datei?.iban ?? null,
         umsaetze: ausgewaehlt.map((x) => {
           const b = berechnet(x);
-          return { datum: x.datum, text: x.text, betrag: b.betrag, positionen: b.positionen, belege: x.belege, notiz: x.notiz || null };
+          return { datum: x.datum, text: x.text, betrag: b.betrag, positionen: b.positionen, belege: x.belege, notiz: x.notiz || null, laufid: x.laufid };
         }),
       });
       onDone(datei?.endsaldo !== null && datei ? `${r.text} · Endsaldo Bank ${eur(datei.endsaldo)}` : r.text, r.warnungen);
@@ -151,7 +152,18 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
               : <ObjectStatus state={b.betrag > 0 ? 'Positive' : b.betrag < 0 ? 'Negative' : 'None'}>{eur(b.betrag)}</ObjectStatus>}
           </div>
           <div style={{ width: '24rem' }}>
-            {r.neu ? r.positionen.map((p, i) => (
+            {r.neu && r.laufid ? (() => {
+              const l = datei?.laeufe.find((x) => x.laufid === r.laufid);
+              return (
+                <div>
+                  <ObjectStatus state={l && l.summe === r.betrag ? 'Positive' : 'Critical'} showDefaultIcon>
+                    {l ? `${l.text}, ${eur(l.summe)}` : `Sollstellung Lauf ${Number(r.laufid)}`}
+                  </ObjectStatus><br />
+                  <Label wrappingType="Normal">Wird je Position auf die Erlöskonten aufgeteilt{l && l.summe !== r.betrag ? ' – Summe passt nicht zur Gutschrift (Rücklastschrift?)' : ''}.</Label><br />
+                  <Button design="Transparent" icon="decline" onClick={() => upd(r.uid, (x) => ({ ...x, laufid: null, art: 'hand', herkunft: '' }))}>Zuordnung aufheben</Button>
+                </div>
+              );
+            })() : r.neu ? r.positionen.map((p, i) => (
               <div key={i} style={{ marginBottom: '0.35rem' }}>
                 <FlexBox style={{ gap: '0.25rem' }} alignItems="Center">
                   <KontoBox konten={konten} value={p.gkonto} ohne={konto} style={{ flex: 1 }} placeholder="Gegenkonto wählen …"
@@ -171,7 +183,17 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
                 )}
               </div>
             )) : <Text>{r.statusText}</Text>}
-            {r.neu && (
+            {r.neu && !r.laufid && !manuell && r.betrag > 0 && (datei?.laeufe.length ?? 0) > 0 && (
+              <Select style={{ width: '100%', marginTop: '0.15rem' }} onChange={(e) => {
+                const id = (e.detail.selectedOption as HTMLElement).dataset.key;
+                const l = datei!.laeufe.find((x) => x.laufid === id);
+                if (l) upd(r.uid, (x) => ({ ...x, laufid: l.laufid, art: 'hand', positionen: [pos(l.konto)], herkunft: 'von Hand: Sollstellung' }));
+              }}>
+                <Option data-key="" selected>Sollstellung zuordnen …</Option>
+                {datei!.laeufe.map((l) => <Option key={l.laufid} data-key={l.laufid}>{l.text} · {eur(l.summe)}</Option>)}
+              </Select>
+            )}
+            {r.neu && !r.laufid && (
               <FlexBox style={{ gap: '0.25rem' }} wrap="Wrap">
                 <Button design="Transparent" icon="add" onClick={() => upd(r.uid, (x) => ({ ...x, art: 'hand', positionen: [...x.positionen, pos()] }))}>
                   {r.positionen.length > 1 ? 'Weitere Position' : 'Aufteilen'}

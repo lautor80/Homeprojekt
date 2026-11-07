@@ -22,10 +22,12 @@ export interface BankUmsatz {
   id: number; datum: string; valuta: string | null; name: string; zweck: string; buchungstext: string; betrag: number;
   saldo: number | null; status: 'neu' | 'gebucht'; statusText: string; positionen: Position[]; herkunft: string;
   art: 'regel' | 'historie' | 'keine'; belegVorschlag: { doks: number[]; text: string } | null; buchungsText: string;
+  laufid: string | null;
 }
+export interface OffenerLauf { laufid: string; sollper: string; faellig: string | null; summe: number; anzahl: number; konto: string; text: string }
 export interface BankDatei {
   konto: string; info: string; iban: string | null; von: string; bis: string; endsaldo: number | null; saldoFi: number;
-  umsaetze: BankUmsatz[]; hinweise: string[];
+  umsaetze: BankUmsatz[]; hinweise: string[]; laeufe: OffenerLauf[];
 }
 
 /** Betragseingabe „1.234,56“, „-50“, „12.50“ */

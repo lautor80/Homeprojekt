@@ -34,6 +34,7 @@ const umsatzSchema = z.object({
   positionen: z.array(positionSchema).min(1, 'Gegenkonto fehlt'),
   belege: z.array(z.coerce.number().int().positive()).default([]),
   notiz: z.string().max(255).nullish(),
+  laufid: z.string().regex(/^\d+$/).nullish(),
 });
 
 export async function fiRoutes(app: FastifyInstance) {

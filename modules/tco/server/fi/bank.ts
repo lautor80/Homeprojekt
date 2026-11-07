@@ -4,6 +4,7 @@ import type { Db } from '../verein.js';
 import { addTage, runden } from '../format.js';
 import { kontenLesen, kontostand } from './daten.js';
 import type { Position } from './buchen.js';
+import { laufZuZahlung, offeneLaeufe, type OffenerLauf } from '../soll/logik.js';
 
 /** Bankimport (BANK_FILE_READ, BANK_MATCH_EXISTING, BANK_PROPOSE_ACCOUNTS, BANK_PROPOSE_DOCS) */
 
@@ -24,6 +25,7 @@ export interface BankUmsatz {
   art: 'regel' | 'historie' | 'keine';
   belegVorschlag: { doks: number[]; text: string } | null;
   buchungsText: string;        // Text der Buchung („Name Verwendungszweck“)
+  laufid: string | null;       // Sollstellung (Sammelgutschrift)
 }
 
 export interface BankDatei {
@@ -36,6 +38,7 @@ export interface BankDatei {
   saldoFi: number;              // Kontostand lt. FI zum letzten Buchungstag (ohne neue Umsätze)
   umsaetze: BankUmsatz[];
   hinweise: string[];
+  laeufe: OffenerLauf[];       // offene Sollstellungen zur manuellen Zuordnung
 }
 
 const DATUM = /^(\d{2})\.(\d{2})\.(\d{4})$/;
@@ -81,7 +84,7 @@ export function bankDateiLesen(buf: Buffer) {
     throw new BusinessError(`Keine Bankdatei: Spalten Buchungstag/Verwendungszweck/Betrag nicht gefunden. Erste Zeile: "${rows[0].join(';').slice(0, 120)}"`);
   }
   const f = (r: string[], i: number) => (i >= 0 ? (r[i] ?? '').replace(/\s*\n\s*/g, ' ').trim() : '');
-  const umsaetze: Omit<BankUmsatz, 'status' | 'statusText' | 'positionen' | 'herkunft' | 'art' | 'belegVorschlag' | 'buchungsText'>[] = [];
+  const umsaetze: Omit<BankUmsatz, 'status' | 'statusText' | 'positionen' | 'herkunft' | 'art' | 'belegVorschlag' | 'buchungsText' | 'laufid'>[] = [];
   let id = 0;
   for (const r of rows.slice(1)) {
     const d = datum(f(r, c.tag));
@@ -115,6 +118,7 @@ function endsaldo(u: { datum: string; betrag: number; saldo: number | null }[], 
 export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   offeneBelege: { id: number; datum: string | null; betrag: number | null }[]): Promise<BankDatei> {
   const d = bankDateiLesen(buf);
+  const laeufe = await offeneLaeufe(db);
   const hinweise: string[] = [];
 
   // IBAN-Prüfung gegen das FI-Konto (E13)
@@ -133,7 +137,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   const bis = datumListe[datumListe.length - 1];
   const u: BankUmsatz[] = d.umsaetze.map((x) => ({
     ...x, status: 'neu', statusText: 'neu', positionen: [], herkunft: '', art: 'keine', belegVorschlag: null,
-    buchungsText: kurzText(x.name, x.zweck),
+    buchungsText: kurzText(x.name, x.zweck), laufid: null,
   }));
 
   // ---- Abgleich (drei Läufe, jede vorhandene Buchung höchstens einmal)
@@ -190,8 +194,19 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
     return true;
   };
 
+  const laufVergeben = new Set<string>();
   for (const x of u.filter((y) => y.status === 'neu')) {
     const nz = `${x.name} ${x.zweck}`;
+    // Sammelgutschrift einer Sollstellung (Summe passt, Fälligkeit ±14 Tage)
+    if (x.betrag > 0) {
+      const l = laufZuZahlung(laeufe.filter((y) => !laufVergeben.has(y.laufid)), x.betrag, x.datum);
+      if (l && setze(x, l.konto, `Regel: ${l.text} – wird je Position aufgeteilt`, 'regel')) {
+        x.laufid = l.laufid;
+        laufVergeben.add(l.laufid);
+        x.buchungsText = `SEPA-Sammeleinzug ${l.sollper.slice(4, 6)}/${l.sollper.slice(0, 4)} Lauf ${Number(l.laufid)}`;
+        continue;
+      }
+    }
     const zweckU = x.zweck.toUpperCase();
     if (konto === '654' && /teilzahlung darlehen/i.test(nz)) { setze(x, '1360', 'Regel: Teilzahlung Darlehen', 'regel'); continue; }
     if (konto === '654' && /abschluss per/i.test(nz)) { setze(x, '2100', 'Regel: Darlehenszinsen', 'regel'); continue; }
@@ -235,7 +250,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
 
   // ---- Belegvorschlag
   const vergeben = new Set<number>();
-  for (const x of u.filter((y) => y.status === 'neu')) {
+  for (const x of u.filter((y) => y.status === 'neu' && !y.laufid)) {
     const key = musterSchluessel(x.name, x.zweck);
     if (!key) continue;
     const gkonto = x.positionen[0]?.gkonto ?? null;
@@ -259,6 +274,6 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
 
   return {
     konto, info: d.info, iban: d.iban, von, bis, endsaldo: endsaldo(u, bis),
-    saldoFi: await kontostand(db, konto, bis), umsaetze: u, hinweise,
+    saldoFi: await kontostand(db, konto, bis), umsaetze: u, hinweise, laeufe,
   };
 }

@@ -8,6 +8,7 @@ import { asset, DB, paperless, plAktiv, vereinLesen } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { halleRoutes, P_HALLE } from './halle/routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
+import { P_SOLL, sollRoutes } from './soll/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -117,6 +118,7 @@ async function routes(app: FastifyInstance) {
 
   await halleRoutes(app);
   await fiRoutes(app);
+  await sollRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -130,6 +132,9 @@ const tco: ServerModule = {
     { id: P_FI.display, text: 'FI Belege anzeigen, Notizen erfassen' },
     { id: P_FI.buchen, text: 'FI: Bankimport und manuelle Buchungen, Belege und Rechnungen zuordnen' },
     { id: P_FI.storno, text: 'FI-Belege stornieren' },
+    { id: P_SOLL.display, text: 'Sollstellung anzeigen' },
+    { id: P_SOLL.edit, text: 'Sollstellung: Lastschriftlauf erzeugen, herunterladen, stornieren' },
+    { id: P_SOLL.glaeubiger, text: 'Sollstellung: Gläubigerdaten (Vereinskonto, Gläubiger-ID) pflegen' },
     { id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)' },
   ],
@@ -141,6 +146,8 @@ const tco: ServerModule = {
     { type: 'SCHLUESSEL', text: 'Hallenschlüssel', permission: P_HALLE.display },
     { type: 'FIBELEG', text: 'FI-Beleg', permission: P_FI.display },
     { type: 'FIKONTO', text: 'FI-Konto', permission: P_FI.display },
+    { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
+    { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_HALLE.display },
   ],

@@ -1,6 +1,7 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { dat, runden } from '../format.js';
+import { laufPositionen, laufVerbucht, laufZuruecksetzen } from '../soll/logik.js';
 
 /** Schreibende FI-Logik: Buchen, Storno, Rechnung und Belege zuordnen, Notizen */
 
@@ -19,9 +20,11 @@ export interface Umsatz {
   positionen: Position[];
   belege?: number[];
   notiz?: string | null;
+  /** Sammelgutschrift einer Sollstellung: Positionen kommen aus dem Lauf */
+  laufid?: string | null;
 }
 
-export interface Gebucht { internenr: string; belnr: string; rechnungen: string[]; belege: number[] }
+export interface Gebucht { internenr: string; belnr: string; rechnungen: string[]; belege: number[]; laufid: string | null }
 
 const TEXT_MAX = 60;
 const kurz = (s: string, n = TEXT_MAX) => (s.length > n ? s.slice(0, n) : s);
@@ -76,6 +79,18 @@ function pruefen(u: Umsatz, nr: number): string[] {
  * Gegenseite je Position (Soll/Haben vertauscht, POSNR je Konto ab 0). Alles oder nichts.
  */
 export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: string): Promise<Gebucht[]> {
+  // Sollstellung: je Position eine Erlöszeile (Splitbuchung), Summe muss zur Gutschrift passen
+  const laufPos = new Map<Umsatz, { adrnr: string; vertragnr: string }[]>();
+  for (const u of umsaetze) {
+    if (!u.laufid) continue;
+    const lp = await laufPositionen(tx, u.laufid);
+    const summe = runden(lp.reduce((s, p) => s + p.betrag, 0));
+    if (summe !== runden(u.betrag)) {
+      throw new BusinessError(`${dat(u.datum)} ${u.text.slice(0, 30)}: Summe Sollstellung Lauf ${Number(u.laufid)} (${summe.toFixed(2)}) ≠ Gutschrift (${runden(u.betrag).toFixed(2)})`);
+    }
+    u.positionen = lp.map((p) => ({ gkonto: p.gkonto, betrag: p.betrag, text: p.text, rgnr: null }));
+    laufPos.set(u, lp);
+  }
   const fehler = umsaetze.flatMap((u, i) => pruefen(u, i + 1));
   if (fehler.length) throw new BusinessError(`Bitte folgende Umsätze prüfen:\n${fehler.join('\n')}`);
   await sperren(tx);
@@ -124,7 +139,8 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     }
     const belege = u.belege?.length ? await belegeZuordnen(tx, internenr, u.belege) : [];
     if (u.notiz?.trim()) await notizAnlegen(tx, internenr, u.notiz, benutzer);
-    out.push({ internenr, belnr, rechnungen, belege });
+    if (u.laufid) await laufVerbucht(tx, u.laufid, internenr, u.datum);
+    out.push({ internenr, belnr, rechnungen, belege, laufid: u.laufid ?? null });
   }
   return out;
 }
@@ -214,12 +230,14 @@ export async function stornieren(tx: Db, internenr: string, grund: string, benut
 
   const rechnungen = [...new Set(rows.map((r) => r.rgnr_txt).filter(Boolean))] as string[];
   for (const rg of rechnungen) await rechnungLoesen(tx, internenr, rg);
+  const lauf = await laufZuruecksetzen(tx, internenr);
   await notizAnlegen(tx, neu, `Stornogrund (Storno zu ${internenr}): ${grund.trim()}`, benutzer);
   await notizAnlegen(tx, internenr, `Storniert durch ${neu}: ${grund.trim()}`, benutzer);
   return {
-    internenr: neu, belnr, rechnungen,
+    internenr: neu, belnr, rechnungen, lauf,
     text: `Buchung ${internenr} storniert – Storno-Beleg ${neu} (ext. ${belnr})`
-      + (rechnungen.length ? `; Rechnung ${rechnungen.join(', ')} wieder offen` : ''),
+      + (rechnungen.length ? `; Rechnung ${rechnungen.join(', ')} wieder offen` : '')
+      + (lauf ? `; Sollstellung Lauf ${Number(lauf)} wieder offen` : ''),
   };
 }
 
