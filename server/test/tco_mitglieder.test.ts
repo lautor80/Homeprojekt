@@ -107,6 +107,7 @@ before(async () => {
     ('0000000102', '1', '90', 'Jugendtraining', '102', 'monatlich', '2025-01-01', null, 35),
     ('0000000102', '2', '3', 'Jugendliche', '102', 'halbjährlich', '2025-01-01', null, 20),
     ('0000000103', '1', '5', 'Erwachsene', '103', 'halbjährlich', '2010-01-01', '2024-12-31', 55)`;
+  await sql`update tco.vertraege set zahler_adrnr = '0000000000' where adrnr = '0000000102' and vertragnr = '2'`; // SAP-Initialwert
   await sql`insert into tco.mitgliedera (adrnr, trainer, zuid) values ('0000000101', false, '77')`;
 });
 after(async () => {
@@ -139,6 +140,7 @@ test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   assert.equal(r.body.bank.mandatsref, '101101');
   assert.equal(r.body.bank.kontoinhaber, 'Hans Müller');
   assert.deepEqual(r.body.familie.map((p: any) => p.rolle), ['Mitglied', 'Abweichender Zahler']);
+  assert.deepEqual(r.body.vertraege.map((v: any) => [v.zahler_adrnr, v.zahler]), [['', 'wie Mitglied (Müller, Hans)'], ['', 'wie Mitglied (Müller, Hans)']]);
   // Detail Hans: Verträge inkl. Mia, SEPA
   r = await call('GET', `${M}/m/0000000101`);
   assert.deepEqual(r.body.vertraege.map((v: any) => [v.person, v.vertragnr]), [['Hans Müller', '1'], ['Mia Müller', '1'], ['Mia Müller', '2']]);

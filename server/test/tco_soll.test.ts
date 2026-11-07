@@ -63,7 +63,7 @@ test('Sollstellung: Vorschlag, Lauf, Datei, Verbuchung in FI, Storno', async () 
     '0000000001;1;01;Erwachsene;101;halbjährlich;20200101;;60,00;\n' +
     '0000000001;2;100;Spende;101;jährlich;20200101;;25,00;\n' +
     '0000000002;1;90;Jugendtraining;102;monatlich;20250101;;35,00;0000000002\n' + // Vertrag nennt das Kind selbst → abweichender Zahler gilt
-    '0000000002;2;03;Jugendliche;102;halbjährlich;20250101;;30,00;\n' +
+    '0000000002;2;03;Jugendliche;102;halbjährlich;20250101;;30,00;0000000000\n' +
     '0000000003;1;01;Erwachsene;103;halbjährlich;20200101;;60,00;\n' +
     '0000000004;1;01;Erwachsene;104;halbjährlich;20200101;;60,00;\n' +
     '0000000005;1;01;Erwachsene;105;halbjährlich;20200101;;60,00;\n';

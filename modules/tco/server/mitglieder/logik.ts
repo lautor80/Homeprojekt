@@ -20,6 +20,8 @@ export const ZAHLUNGSWEISEN: Record<string, string> = {
 export const ART_JUGEND = '90';
 
 export const leer = (s: unknown) => (s == null ? '' : String(s).trim());
+/** Adressverweis (Zahler): leer oder SAP-Initialwert „0000000000“ = kein Verweis */
+export const verweis = (s: unknown) => (/^0*$/.test(leer(s)) ? '' : leer(s));
 const nr = (adrnr: string) => String(Number(adrnr) || adrnr);
 
 /** Name für Vergleiche: klein, Umlaute/Akzente aufgelöst, ohne Anrede und Sonderzeichen */
@@ -113,7 +115,7 @@ export async function mandatsref(db: Db, adrnr: string): Promise<string> {
   const [m] = await db`select mandatsrefenz, adrnrkih from tco.mitglieder where adrnr = ${adrnr}`;
   if (!m) return '';
   if (leer(m.mandatsrefenz)) return leer(m.mandatsrefenz);
-  const z = leer(m.adrnrkih) || adrnr;
+  const z = verweis(m.adrnrkih) || adrnr;
   const [zm] = await db`select mandatsrefenz from tco.mitglieder where adrnr = ${z}`;
   if (leer(zm?.mandatsrefenz)) return leer(zm.mandatsrefenz);
   const s = await db`select mandatsnr, status, gueltigbis, manuell_aktiv from tco.sepa where adrnr in ${db([z, adrnr])} order by angelegtam desc nulls last`;
@@ -124,14 +126,14 @@ export interface Person { adrnr: string; name: string; mitglnrn: string; geburts
 
 /** Mitglied, abweichender Zahler und alle (nicht ausgetretenen) Personen mit demselben Zahler bzw. diesem Mitglied als Zahler */
 export async function familieLesen(db: Db, m: Record<string, any>): Promise<Person[]> {
-  const kopf = leer(m.adrnrkih) || m.adrnr;
+  const kopf = verweis(m.adrnrkih) || m.adrnr;
   const rows = await db`select adrnr, vorname, nachname, mitglnrn, geburtsdatum, eintritt, austritt, adrnrkih from tco.mitglieder
                          where adrnr = ${kopf} or adrnr = ${m.adrnr}
                             or (austritt is null and (adrnrkih = ${kopf} or adrnrkih = ${m.adrnr}))`;
   const p: Person[] = rows.map((r) => ({
     adrnr: r.adrnr, name: condense(`${leer(r.vorname)} ${leer(r.nachname)}`), mitglnrn: leer(r.mitglnrn), geburtsdatum: r.geburtsdatum,
     eintritt: r.eintritt, austritt: r.austritt,
-    rolle: r.adrnr === m.adrnr ? 'Mitglied' : r.adrnr === leer(m.adrnrkih) ? 'Abweichender Zahler' : r.adrnrkih === m.adrnr ? 'Zahlt über dieses Mitglied' : 'Familienmitglied',
+    rolle: r.adrnr === m.adrnr ? 'Mitglied' : r.adrnr === verweis(m.adrnrkih) ? 'Abweichender Zahler' : r.adrnrkih === m.adrnr ? 'Zahlt über dieses Mitglied' : 'Familienmitglied',
   }));
   const rang = (x: Person) => (x.adrnr === m.adrnr ? 0 : x.rolle === 'Abweichender Zahler' ? 1 : 2);
   return p.sort((a, b) => rang(a) - rang(b) || (a.geburtsdatum ?? '').localeCompare(b.geburtsdatum ?? ''));
@@ -147,16 +149,16 @@ export async function vertraegeLesen(db: Db, m: Record<string, any>): Promise<Ve
   const rows = await db`select v.*, p.vorname, p.nachname, p.geburtsdatum, z.vorname as z_vorname, z.nachname as z_nachname,
                                k.vorname as k_vorname, k.nachname as k_nachname
                           from tco.vertraege v join tco.mitglieder p on p.adrnr = v.adrnr
-                          left join tco.mitglieder z on z.adrnr = nullif(v.zahler_adrnr, '') and z.adrnr <> v.adrnr
-                          left join tco.mitglieder k on k.adrnr = nullif(p.adrnrkih, '') and k.adrnr <> p.adrnr
+                          left join tco.mitglieder z on z.adrnr = v.zahler_adrnr and z.adrnr <> v.adrnr and ltrim(v.zahler_adrnr, '0') <> ''
+                          left join tco.mitglieder k on k.adrnr = p.adrnrkih and k.adrnr <> p.adrnr and ltrim(p.adrnrkih, '0') <> ''
                          where v.adrnr = ${m.adrnr} or (p.adrnrkih = ${m.adrnr} and p.adrnr <> ${m.adrnr})`;
   const h = heute();
   return rows.map((v) => ({
     adrnr: v.adrnr, person: condense(`${leer(v.vorname)} ${leer(v.nachname)}`), vertragnr: leer(v.vertragnr), art: leer(v.art),
     artname: leer(v.artname), sollstellung: leer(v.sollstellung), vertragbegin: v.vertragbegin, vertragende: v.vertragende,
     // Zahler am Vertrag = Mitglied selbst gilt wie „kein abweichender Zahler“ (wie in der Sollstellung)
-    betrag: Number(v.betrag ?? 0), zahler_adrnr: leer(v.zahler_adrnr) === v.adrnr ? '' : leer(v.zahler_adrnr),
-    zahler: leer(v.zahler_adrnr) && leer(v.zahler_adrnr) !== v.adrnr
+    betrag: Number(v.betrag ?? 0), zahler_adrnr: verweis(v.zahler_adrnr) === v.adrnr ? '' : verweis(v.zahler_adrnr),
+    zahler: verweis(v.zahler_adrnr) && verweis(v.zahler_adrnr) !== v.adrnr
       ? (v.z_nachname != null ? condense(`${leer(v.z_nachname)}, ${leer(v.z_vorname)}`) : `${Number(v.zahler_adrnr) || v.zahler_adrnr} (nicht gefunden)`)
       : v.k_nachname != null ? `wie Mitglied (${condense(`${leer(v.k_nachname)}, ${leer(v.k_vorname)}`)})` : 'wie Mitglied',
     laeuft: !v.vertragende || v.vertragende >= h, eigen: v.adrnr === m.adrnr, _geb: v.geburtsdatum,
@@ -167,7 +169,7 @@ export async function vertraegeLesen(db: Db, m: Record<string, any>): Promise<Ve
 }
 
 export async function sepaLesen(db: Db, m: Record<string, any>) {
-  const ids = [...new Set([m.adrnr, leer(m.adrnrkih)].filter(Boolean))];
+  const ids = [...new Set([m.adrnr, verweis(m.adrnrkih)].filter(Boolean))];
   const rows = await db`select s.*, p.vorname, p.nachname, p.austritt from tco.sepa s join tco.mitglieder p on p.adrnr = s.adrnr
                          where s.adrnr in ${db(ids)} order by s.angelegtam desc nulls last`;
   return rows.map((s) => ({
@@ -180,7 +182,7 @@ export async function sepaLesen(db: Db, m: Record<string, any>) {
 export async function detailLesen(db: Db, adrnr: string) {
   const m = await mitgliedLesen(db, adrnr);
   const [a] = await db`select trainer, zuid, steuernummer from tco.mitgliedera where adrnr = ${adrnr}`;
-  const [z] = m.adrnrkih ? await db`select adrnr, vorname, nachname, austritt, iban1 from tco.mitglieder where adrnr = ${m.adrnrkih}` : [];
+  const [z] = verweis(m.adrnrkih) ? await db`select adrnr, vorname, nachname, austritt, iban1 from tco.mitglieder where adrnr = ${m.adrnrkih}` : [];
   const [k] = await db`select kanal from tco.kommpref where adrnr = ${adrnr}`;
   const schluessel = await db`select counter, ausgabe, ausgabebeleg, ruecknahme, ruecknahmebeleg from tco.schluessel where adrnr = ${adrnr} order by counter`;
   const notizen = await db`select notiz_id, erstellt_am, erstellt_von, notiz from tco.mgnotiz where adrnr = ${adrnr} order by erstellt_am desc`;
@@ -196,8 +198,8 @@ export async function detailLesen(db: Db, adrnr: string) {
     bank: {
       zahlungsart: leer(m.zahlungsart), zahlungsart_txt: ZAHLUNGSARTEN[leer(m.zahlungsart)] ?? leer(m.zahlungsart),
       zahlungsweise: leer(m.zahlungsweise), zahlungsweise_txt: ZAHLUNGSWEISEN[leer(m.zahlungsweise)] ?? leer(m.zahlungsweise),
-      iban: leer(m.iban1), bic: leer(m.bic1), bank: leer(m.bank1), abwkontoinh: leer(m.abwkontoinh), adrnrkih: leer(m.adrnrkih),
-      kontoinhaber: (await kontoinhaberText(db, m.abwkontoinh, m.adrnrkih)) || condense(`${leer(m.vorname)} ${leer(m.nachname)}`),
+      iban: leer(m.iban1), bic: leer(m.bic1), bank: leer(m.bank1), abwkontoinh: leer(m.abwkontoinh), adrnrkih: verweis(m.adrnrkih),
+      kontoinhaber: (await kontoinhaberText(db, m.abwkontoinh, verweis(m.adrnrkih) || null)) || condense(`${leer(m.vorname)} ${leer(m.nachname)}`),
       zahler: z ? { adrnr: z.adrnr, name: condense(`${leer(z.nachname)}, ${leer(z.vorname)}`), austritt: z.austritt, iban: leer(z.iban1) } : null,
       mandatsref: await mandatsref(db, adrnr),
     },
@@ -411,7 +413,7 @@ export async function vertragAendern(tx: Db, adrnr: string, vertragnr: string, b
   if (b.zahler !== undefined) {
     let z = leer(b.zahler);
     if (z === adrnr) z = '';
-    if (z !== leer(v.zahler_adrnr)) {
+    if (z !== verweis(v.zahler_adrnr)) {
       if (z && !(await vertragsZahler(tx)).some((x) => x.adrnr === z)) throw new BusinessError('Der Zahler hat kein aktives SEPA-Mandat.');
       await tx`update tco.vertraege set zahler_adrnr = ${z || null} where adrnr = ${adrnr} and vertragnr = ${vertragnr}`;
       texte.push(z ? 'Zahler gesichert (ab nächster Sollstellung)' : 'Zahler wie Mitglied gesichert');

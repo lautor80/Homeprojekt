@@ -40,8 +40,12 @@ async function spalten(db: Db, tabelle: string): Promise<Spalte[]> {
   return rows as unknown as Spalte[];
 }
 
+/** Verweise auf Adressnummern: SAP-Initialwert „0000000000“ = kein Verweis */
+const ADR_VERWEIS = new Set(['adrnrkih', 'zahler_adrnr']);
+
 function wandeln(v: string, s: Spalte): unknown {
   const t = v.trim();
+  if (ADR_VERWEIS.has(s.name) && /^0*$/.test(t)) return null;
   switch (s.typ) {
     case 'date': return sapDatum(t);
     case 'time without time zone': return sapZeit(t);
