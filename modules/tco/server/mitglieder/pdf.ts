@@ -15,9 +15,9 @@ export type Art = (typeof ARTEN)[number];
 export const ART_TEXT: Record<Art, string> = {
   1: 'Aufnahmebestätigung', 2: 'Mitgliederinformation', 3: 'Mitgliedschaftsbestätigung', 4: 'Kündigungsbestätigung', 5: 'SEPA-Lastschriftmandat',
 };
-/** Paperless-Dokumenttypen (Name); SEPA: erster Typ mit „SEPA“ oder „Mandat“ im Namen */
+/** Paperless-Dokumenttypen wie in SAP (IDs 9–12); SEPA: erster Typ mit „SEPA“ oder „Mandat“ im Namen */
 export const ART_DOKTYP: Record<Art, string> = {
-  1: 'Aufnahmebestätigung', 2: 'Mitgliederinformation', 3: 'Mitgliedschaftsbestätigung', 4: 'Kündigungsbestätigung', 5: 'SEPA-Lastschriftmandat',
+  1: 'Aufnahmeantrag', 2: 'Mitgliederinformation', 3: 'Mitgliedschaftsbestätigung', 4: 'Kündigungsbestätigung', 5: 'SEPA-Lastschriftmandat',
 };
 const GLAEUBIGER_ID = 'DE65ZZZ00000112871';
 
