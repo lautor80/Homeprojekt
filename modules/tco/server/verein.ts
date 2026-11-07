@@ -28,6 +28,8 @@ export interface Verein {
   n8n_stunden_url: string | null;
   n8n_ferien_url: string | null;
   n8n_stunden_auth: string | null;
+  n8n_stunden_user: string | null;
+  n8n_ep3_user: string | null;
   halle_stichtag: string;
   halle_ausschluss: string;
   fi_bankkonten: string;

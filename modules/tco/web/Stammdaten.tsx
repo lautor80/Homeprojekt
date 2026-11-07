@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   AnalyticalTable, Bar, Button, DatePicker, FileUploader, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
-  SegmentedButtonItem, Tab, TabContainer, Text,
+  SegmentedButtonItem, Tab, TabContainer, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -26,13 +26,40 @@ export function TcoStammdaten() {
   );
 }
 
+interface Test { ok: boolean; text: string; dauer_ms?: number }
+
+/** Prüfknopf je Endpunkt: sendet die aktuellen Formularwerte (Geheimnisse maskiert = gespeicherter Wert) */
+function Testen({ endpunkt, v }: { endpunkt: string; v: Verein }) {
+  const [busy, setBusy] = useState(false);
+  const [r, setR] = useState<Test | null>(null);
+  return (
+    <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
+      <Button icon="connected" disabled={busy} onClick={async () => {
+        setBusy(true); setR(null);
+        try { setR(await api.post<Test>(`${TCO}/verein/test/${endpunkt}`, v)); } catch (e) { setR({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+      }}>{busy ? 'Prüfe …' : 'Verbindung prüfen'}</Button>
+      {r && <ObjectStatus state={r.ok ? 'Positive' : 'Negative'} showDefaultIcon>{r.text}{r.dauer_ms != null ? ` (${(r.dauer_ms / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s)` : ''}</ObjectStatus>}
+    </FlexBox>
+  );
+}
+
+function Endpunkt({ titel, hinweis, endpunkt, v, ro, children }: { titel: string; hinweis: string; endpunkt: string; v: Verein; ro: boolean; children: ReactNode }) {
+  return (
+    <div style={{ borderTop: '1px solid var(--sapGroup_TitleBorderColor)', padding: '0.75rem 0' }}>
+      <Title level="H6">{titel}</Title>
+      <Text style={{ display: 'block', margin: '0.15rem 0 0.5rem', color: 'var(--sapContent_LabelColor)' }}>{hinweis}</Text>
+      <FormGrid>{children}</FormGrid>
+      {!ro && <Testen endpunkt={endpunkt} v={v} />}
+    </div>
+  );
+}
+
 function VereinTab() {
   const can = useCan();
   const ro = !can('tco.stammdaten:edit');
   const [v, setV] = useState<Verein | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => { api.get<Verein>(`${TCO}/verein`).then(setV).catch((e) => setError(e.message)); }, []);
   if (!v) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
@@ -83,24 +110,41 @@ function VereinTab() {
           <TextField label="URL (mehrere durch Komma: erst LAN, dann Internet)" value={t('paperless_url')} onChange={s('paperless_url')} readonly={ro} />
           <TextField label="API-Token" type="Password" value={t('paperless_token')} onChange={s('paperless_token')} readonly={ro} />
         </FormGrid>
-        {!ro && (
-          <FlexBox alignItems="Center" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
-            <Button icon="connected" onClick={async () => { await save(); setTest(await api.post(`${TCO}/verein/paperless-test`)); }}>Sichern und Verbindung testen</Button>
-            {test && <ObjectStatus state={test.ok ? 'Positive' : 'Negative'}>{test.text}</ObjectStatus>}
-          </FlexBox>
-        )}
+        {!ro && <Testen endpunkt="paperless" v={v} />}
       </Panel>
 
-      <Panel headerText="n8n" fixed style={{ marginTop: '1rem' }}>
-        <FormGrid>
-          <TextField label="Webhook „TCO Mailversand“" value={t('n8n_mail_url')} onChange={s('n8n_mail_url')} readonly={ro} />
-          <TextField label="Webhook-Schlüssel (X-TCO-Key)" type="Password" value={t('n8n_mail_key')} onChange={s('n8n_mail_key')} readonly={ro} />
-          <TextField label="Webhook „EP3 Import Hallenrechnungen“" value={t('n8n_ep3_url')} onChange={s('n8n_ep3_url')} readonly={ro} />
-          <TextField label="Authorization-Header für den EP3-Webhook (optional)" type="Password" value={t('n8n_ep3_auth')} onChange={s('n8n_ep3_auth')} readonly={ro} placeholder="Basic …" />
-          <TextField label="Webhook „Rückmeldungen Jugendtraining“ (TCO_N8N_STUNDEN)" value={t('n8n_stunden_url')} onChange={s('n8n_stunden_url')} readonly={ro} />
-          <TextField label="Webhook „Schulferien Saarland“ (ferien-saarland)" value={t('n8n_ferien_url')} onChange={s('n8n_ferien_url')} readonly={ro} />
-          <TextField label="Authorization-Header für Rückmeldungen und Ferien (optional)" type="Password" value={t('n8n_stunden_auth')} onChange={s('n8n_stunden_auth')} readonly={ro} placeholder="Basic …" />
-        </FormGrid>
+      <Panel headerText="n8n-Webhooks" fixed style={{ marginTop: '1rem' }}>
+        <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
+          Zugangsdaten zu Nextcloud, EP3 oder dem Mailserver liegen in den n8n-Workflows, nicht im Portal. Hier wird nur die Anmeldung am
+          jeweiligen Webhook eingetragen – Benutzer und Passwort wie in der SAP-Destination (SM59, „Basic Authentication“), sofern der
+          Webhook in n8n eine Anmeldung verlangt. Die Prüfung nutzt die eingegebenen Werte, auch ungesichert.
+        </MessageStrip>
+        <Endpunkt titel="Rückmeldungen Jugendtraining (SM59: TCO_N8N_STUNDEN)" endpunkt="stunden" v={v} ro={ro}
+                  hinweis="Liest die Stundenrückmeldungen aus Nextcloud. Gilt auch für den Ferien-Webhook.">
+          <TextField label="Webhook-URL" value={t('n8n_stunden_url')} onChange={s('n8n_stunden_url')} readonly={ro} placeholder="http://…:5678/webhook/…" />
+          <TextField label="Benutzer (Basic Auth)" value={t('n8n_stunden_user')} onChange={s('n8n_stunden_user')} readonly={ro} placeholder="z. B. torsten.laub@tc-oberthal.de" />
+          <TextField label="Passwort" type="Password" value={t('n8n_stunden_pw')} onChange={s('n8n_stunden_pw')} readonly={ro} />
+        </Endpunkt>
+        <Endpunkt titel="Schulferien Saarland (ferien-saarland)" endpunkt="ferien" v={v} ro={ro}
+                  hinweis="Anmeldung wie bei den Rückmeldungen.">
+          <TextField label="Webhook-URL" value={t('n8n_ferien_url')} onChange={s('n8n_ferien_url')} readonly={ro} />
+        </Endpunkt>
+        <Endpunkt titel="EP3 Import Hallenrechnungen" endpunkt="ep3" v={v} ro={ro}
+                  hinweis="Der Test ruft den EP3-Export ab, übernimmt aber nichts.">
+          <TextField label="Webhook-URL" value={t('n8n_ep3_url')} onChange={s('n8n_ep3_url')} readonly={ro} />
+          <TextField label="Benutzer (Basic Auth, optional)" value={t('n8n_ep3_user')} onChange={s('n8n_ep3_user')} readonly={ro} />
+          <TextField label="Passwort" type="Password" value={t('n8n_ep3_pw')} onChange={s('n8n_ep3_pw')} readonly={ro} />
+        </Endpunkt>
+        <Endpunkt titel="TCO Mailversand" endpunkt="mail" v={v} ro={ro}
+                  hinweis="Der Test prüft nur, ob der Workflow aktiv ist – es wird keine E-Mail versendet.">
+          <TextField label="Webhook-URL" value={t('n8n_mail_url')} onChange={s('n8n_mail_url')} readonly={ro} />
+          <TextField label="Webhook-Schlüssel (Header X-TCO-Key)" type="Password" value={t('n8n_mail_key')} onChange={s('n8n_mail_key')} readonly={ro} />
+        </Endpunkt>
+        {v.n8n_stunden_pw && !v.n8n_stunden_user && (
+          <MessageStrip hideCloseButton design="Critical" style={{ marginTop: '0.5rem' }}>
+            Für die Rückmeldungen ist noch ein früher direkt eingetragener Authorization-Header hinterlegt. Er gilt weiter, bis Benutzer und Passwort eingetragen werden.
+          </MessageStrip>
+        )}
       </Panel>
 
       <Panel headerText="Hallenabrechnung" fixed style={{ marginTop: '1rem' }}>

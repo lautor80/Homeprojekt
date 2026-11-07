@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { change, requireAuth } from '../../../server/src/auth.js';
-import { asset, DB, paperless, plAktiv, vereinLesen } from './verein.js';
+import { asset, DB, vereinLesen, type Verein } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { entpacken, istZip } from '../../../server/src/lib/zip.js';
 import { BusinessError } from '../../../server/src/errors.js';
@@ -12,6 +12,7 @@ import { halleRoutes, P_HALLE } from './halle/routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
+import { ENDPUNKTE, verbindungTesten } from './verbindung.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
 
@@ -35,6 +36,9 @@ const vereinSchema = z.object({
   n8n_mail_url: z.string().nullish(), n8n_mail_key: z.string().nullish(),
   n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
   n8n_stunden_url: z.string().nullish(), n8n_ferien_url: z.string().nullish(), n8n_stunden_auth: z.string().nullish(),
+  /** Basic Auth für die Webhooks: Benutzer sichtbar, Passwort nur schreibend (MASKE = unverändert) */
+  n8n_stunden_user: z.string().nullish(), n8n_stunden_pw: z.string().nullish(),
+  n8n_ep3_user: z.string().nullish(), n8n_ep3_pw: z.string().nullish(),
   halle_stichtag: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   halle_ausschluss: z.string().default(''),
   fi_bankkonten: z.string().optional(),
@@ -46,18 +50,49 @@ const vereinSchema = z.object({
   fi_feld_sap: z.string().trim().min(1).optional(),
 });
 
+type VereinEingabe = z.infer<typeof vereinSchema>;
+
+/** Basic-Auth-Header aus Benutzer und Passwort (wie SM59 „Basic Authentication“) */
+export const basicAuth = (user: string, pw: string) => `Basic ${Buffer.from(`${user}:${pw}`, 'utf8').toString('base64')}`;
+
+/**
+ * Geheime Felder übernehmen: MASKE = bisheriger Wert. Für die Webhooks wird aus Benutzer und Passwort
+ * der Authorization-Header gebildet; ohne Benutzer und Passwort entfällt die Anmeldung.
+ */
+function zugangUebernehmen(d: VereinEingabe, alt: Verein) {
+  for (const g of GEHEIM) if (d[g] === MASKE) d[g] = alt[g];
+  for (const [k, auth, userAlt] of [['stunden', 'n8n_stunden_auth', alt.n8n_stunden_user], ['ep3', 'n8n_ep3_auth', alt.n8n_ep3_user]] as const) {
+    if (d[`n8n_${k}_pw`] === undefined && d[`n8n_${k}_user`] === undefined) { d[auth] = alt[auth]; continue; }
+    const user = (d[`n8n_${k}_user`] ?? '').trim();
+    const pw = d[`n8n_${k}_pw`] ?? '';
+    if (pw === MASKE) {
+      // Passwort unverändert: bisherigen Header behalten (auch einen früher direkt eingetragenen)
+      if (user && user !== (userAlt ?? '')) throw new BusinessError('Nach dem Ändern des Benutzers bitte das Passwort neu eingeben.');
+      d[auth] = alt[auth];
+      d[`n8n_${k}_user`] = userAlt ?? null;
+      continue;
+    }
+    if (!user && !pw) { d[auth] = null; d[`n8n_${k}_user`] = null; continue; }
+    if (!user || !pw) throw new BusinessError('Für die Anmeldung am Webhook bitte Benutzer und Passwort angeben.');
+    d[auth] = basicAuth(user, pw);
+    d[`n8n_${k}_user`] = user;
+  }
+}
+
 async function routes(app: FastifyInstance) {
   app.get('/verein', { preHandler: requireAuth() }, async () => {
     const v = await vereinLesen();
     const out: Record<string, unknown> = { ...v };
     for (const g of GEHEIM) out[g] = v[g] ? MASKE : '';
+    out.n8n_stunden_pw = v.n8n_stunden_auth ? MASKE : '';
+    out.n8n_ep3_pw = v.n8n_ep3_auth ? MASKE : '';
     return out;
   });
 
   app.put('/verein', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
     const d = vereinSchema.parse(req.body);
     const alt = await vereinLesen();
-    for (const g of GEHEIM) if (d[g] === MASKE) d[g] = alt[g];
+    zugangUebernehmen(d, alt);
     const FI = ['fi_bankkonten', 'fi_manuell_konten', 'fi_beleg_typen', 'fi_beleg_pfad', 'fi_feld_beleg', 'fi_feld_betrag', 'fi_feld_sap'] as const;
     for (const k of FI) if (d[k] === undefined) d[k] = alt[k];
     await change(req, (tx) => tx`
@@ -68,6 +103,7 @@ async function routes(app: FastifyInstance) {
              n8n_mail_url = ${d.n8n_mail_url || null}, n8n_mail_key = ${d.n8n_mail_key || null},
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
              n8n_stunden_url = ${d.n8n_stunden_url || null}, n8n_ferien_url = ${d.n8n_ferien_url || null}, n8n_stunden_auth = ${d.n8n_stunden_auth || null},
+             n8n_stunden_user = ${d.n8n_stunden_user || null}, n8n_ep3_user = ${d.n8n_ep3_user || null},
              halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
@@ -80,18 +116,18 @@ async function routes(app: FastifyInstance) {
   app.get('/logo', { preHandler: requireAuth() }, async (_req, reply) =>
     reply.type('image/png').header('cache-control', 'max-age=86400').send(asset('logo_weiss.png')));
 
-  /** Verbindungstest Paperless */
-  app.post('/verein/paperless-test', { preHandler: requireAuth(P.stammdaten) }, async () => {
-    const v = await vereinLesen();
-    if (!plAktiv(v)) return { ok: false, text: 'Paperless ist nicht eingerichtet (URL und Token).' };
-    try {
-      const pl = paperless(v);
-      const url = await pl.baseUrl();
-      const k = await pl.korrespondenten();
-      return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten)` };
-    } catch (e) {
-      return { ok: false, text: (e as Error).message };
-    }
+  /** Verbindungstest Paperless (gespeicherte Werte) */
+  app.post('/verein/paperless-test', { preHandler: requireAuth(P.stammdaten) }, async () => verbindungTesten(await vereinLesen(), 'paperless'));
+
+  /** Verbindungstest je Endpunkt mit den Werten aus dem Formular (noch nicht gesichert); MASKE = gespeicherter Wert */
+  app.post('/verein/test/:endpunkt', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
+    const { endpunkt } = z.object({ endpunkt: z.enum(ENDPUNKTE) }).parse(req.params);
+    const alt = await vereinLesen();
+    const d = vereinSchema.partial().parse(req.body ?? {}) as VereinEingabe;
+    zugangUebernehmen(d, alt);
+    const v = { ...alt } as Verein;
+    for (const [k, w] of Object.entries(d)) if (w !== undefined && k in alt) (v as unknown as Record<string, unknown>)[k] = w || null;
+    return verbindungTesten(v, endpunkt);
   });
 
   // ---------------------------------------------------------------- Übernahme aus SAP
