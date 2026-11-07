@@ -267,7 +267,7 @@ function Vertraege({ d, aw, edit, onNeu, onAktion }: {
       Cell: ({ row }: Cell) => (edit && aw && row.original.laeuft
         ? (
           <Select style={{ width: '100%' }} onChange={(e) => put(row.original, { zahler: (e.detail.selectedOption as HTMLElement).dataset.z || null })}>
-            <Option data-z="" selected={!row.original.zahler_adrnr}>wie Mitglied</Option>
+            <Option data-z="" selected={!row.original.zahler_adrnr}>{row.original.zahler_adrnr ? 'wie Mitglied' : row.original.zahler}</Option>
             {aw.vtZahler.filter((z) => z.adrnr !== row.original.adrnr).map((z) => <Option key={z.adrnr} data-z={z.adrnr} selected={z.adrnr === row.original.zahler_adrnr}>{z.text}</Option>)}
             {row.original.zahler_adrnr && !aw.vtZahler.some((z) => z.adrnr === row.original.zahler_adrnr) && <Option data-z={row.original.zahler_adrnr} selected>{row.original.zahler} (ohne aktives Mandat)</Option>}
           </Select>

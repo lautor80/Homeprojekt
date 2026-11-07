@@ -20,6 +20,14 @@ export const STATUS: Record<string, { text: string; state: 'None' | 'Information
   S: { text: 'Storniert', state: 'Negative' },
 };
 const ART = { mitglied: 'MB', jugend: 'JT', spende: 'SP' } as const;
+
+/** Adressnummer vergleichbar machen: numerisch auf 10 Stellen, „0000000000“/leer = keine */
+export function adrKey(a: unknown): string {
+  const t = String(a ?? '').trim();
+  if (!t) return '';
+  if (/^\d+$/.test(t)) return Number(t) === 0 ? '' : t.padStart(10, '0');
+  return t;
+}
 export const BEITRAGSART_TEXT: Record<string, string> = { MB: 'Mitgliedsbeitrag', JT: 'Jugendtraining', SP: 'Spende' };
 
 // ---------------------------------------------------------------- Gläubigerdaten
@@ -109,8 +117,8 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
            vertragbegin::text as beginn, vertragende::text as ende, coalesce(betrag, 0)::float8 as betrag, zahler_adrnr, betrag_indiv
       from tco.vertraege
      where vertragbegin <= ${stichtag} and (vertragende is null or vertragende >= ${stichtag})`;
-  const mg = new Map((await db`select * from tco.mitglieder`).map((m) => [m.adrnr as string, m]));
-  const sepa = new Map((await db`select adrnr, mandatsnr, status, angelegtam::text as angelegtam, gueltigbis::text as gueltigbis from tco.sepa`).map((s) => [s.adrnr as string, s]));
+  const mg = new Map((await db`select * from tco.mitglieder`).map((m) => [adrKey(m.adrnr), m]));
+  const sepa = new Map((await db`select adrnr, mandatsnr, status, angelegtam::text as angelegtam, gueltigbis::text as gueltigbis from tco.sepa`).map((s) => [adrKey(s.adrnr), s]));
   const done = new Map((await db`select adrnr, vertragnr, laufid from tco.soll_pos where sollper = ${sollper}`).map((d) => [`${d.adrnr}|${d.vertragnr}`, d.laufid as string]));
   const beitraege = new Map((await db`select art, erloeskonto from tco.beitrag`).map((b) => [artNorm(b.art), b.erloeskonto as string | null]));
   const preise = await db`select art, gueltig_ab::text as ab, gueltig_bis::text as bis, betrag::float8 as betrag from tco.beitrag_pr`;
@@ -131,7 +139,7 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
       mitglied_name: '', zahler_adrnr: '', zahler_name: '', zahler_sort: '', fi_name: '', iban: '', bic: '', mandatsref: '',
       mandatsdatum: null, laufid: null, meldung: '', state: 'Positive', grund: '',
     };
-    const m = mg.get(v.adrnr);
+    const m = mg.get(adrKey(v.adrnr));
     if (!m) { excl.push({ ...p, meldung: 'Mitglied nicht gefunden', state: 'Negative', grund: 'Mitglied nicht gefunden' }); continue; }
     p.mitglied_name = `${m.nachname ?? ''}, ${m.vorname ?? ''}`;
     if (faellig && !inLaufzeit(faellig, v.beginn, v.ende)) {
@@ -139,18 +147,27 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
         meldung: `Einzugsdatum ${dat(faellig)} außerhalb der Vertragslaufzeit (${dat(v.beginn)} - ${v.ende ? dat(v.ende) : 'unbefristet'})` });
       continue;
     }
-    // Zahler: am Vertrag, sonst abweichender Zahler des Mitglieds, sonst das Mitglied
+    // Zahler: explizit am Vertrag (≠ Mitglied), sonst abweichender Zahler des Mitglieds, sonst das Mitglied.
+    // Ein Vertrag, der das Mitglied selbst als Zahler nennt, gilt als „ohne abweichenden Zahler“.
     let z = m;
-    const vtrZahler = !!v.zahler_adrnr;
-    if (vtrZahler && v.zahler_adrnr !== m.adrnr) {
-      const zz = mg.get(v.zahler_adrnr);
+    const mAdr = adrKey(m.adrnr);
+    const vAdr = adrKey(v.zahler_adrnr);
+    const vtrZahler = !!vAdr && vAdr !== mAdr;
+    const kih = adrKey(m.adrnrkih);
+    if (vtrZahler) {
+      const zz = mg.get(vAdr);
       if (!zz) {
-        excl.push({ ...p, state: 'Negative', grund: 'Zahler am Vertrag nicht gefunden', meldung: `Zahler ${String(v.zahler_adrnr).replace(/^0+/, '')} am Vertrag nicht gefunden` });
+        excl.push({ ...p, state: 'Negative', grund: 'Zahler am Vertrag nicht gefunden', meldung: `Zahler ${vAdr.replace(/^0+/, '')} am Vertrag nicht gefunden` });
         continue;
       }
       z = zz;
-    } else if (!vtrZahler && m.adrnrkih && m.adrnrkih !== m.adrnr) {
-      z = mg.get(m.adrnrkih) ?? m;
+    } else if (kih && kih !== mAdr) {
+      const zz = mg.get(kih);
+      if (!zz) {
+        excl.push({ ...p, state: 'Negative', grund: 'Abweichender Zahler nicht gefunden', meldung: `Abweichender Zahler ${kih.replace(/^0+/, '')} des Mitglieds nicht gefunden` });
+        continue;
+      }
+      z = zz;
     }
     p.zahler_adrnr = z.adrnr;
     let inhaber = String((vtrZahler ? z.abwkontoinh : m.abwkontoinh) ?? '').trim();
@@ -161,8 +178,8 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
     p.fi_name = sepaText(`${z.nachname ?? ''} ${z.vorname ?? ''}`, 40).toUpperCase();
     p.iban = normalisieren(z.iban1);
     p.bic = normalisieren(z.bic1);
-    let s = sepa.get(z.adrnr);
-    if (!s && !vtrZahler) s = sepa.get(m.adrnr);
+    let s = sepa.get(adrKey(z.adrnr));
+    if (!s && !vtrZahler) s = sepa.get(mAdr);
     if (s) { p.mandatsref = String(s.mandatsnr ?? '').trim(); p.mandatsdatum = s.angelegtam; }
     const zahlart = vtrZahler && z.zahlungsart ? z.zahlungsart : m.zahlungsart || z.zahlungsart;
 

@@ -144,16 +144,21 @@ export interface Vertrag {
 
 /** Verträge des Mitglieds und der Personen, die über dieses Mitglied zahlen */
 export async function vertraegeLesen(db: Db, m: Record<string, any>): Promise<Vertrag[]> {
-  const rows = await db`select v.*, p.vorname, p.nachname, p.geburtsdatum, z.vorname as z_vorname, z.nachname as z_nachname
+  const rows = await db`select v.*, p.vorname, p.nachname, p.geburtsdatum, z.vorname as z_vorname, z.nachname as z_nachname,
+                               k.vorname as k_vorname, k.nachname as k_nachname
                           from tco.vertraege v join tco.mitglieder p on p.adrnr = v.adrnr
-                          left join tco.mitglieder z on z.adrnr = nullif(v.zahler_adrnr, '')
+                          left join tco.mitglieder z on z.adrnr = nullif(v.zahler_adrnr, '') and z.adrnr <> v.adrnr
+                          left join tco.mitglieder k on k.adrnr = nullif(p.adrnrkih, '') and k.adrnr <> p.adrnr
                          where v.adrnr = ${m.adrnr} or (p.adrnrkih = ${m.adrnr} and p.adrnr <> ${m.adrnr})`;
   const h = heute();
   return rows.map((v) => ({
     adrnr: v.adrnr, person: condense(`${leer(v.vorname)} ${leer(v.nachname)}`), vertragnr: leer(v.vertragnr), art: leer(v.art),
     artname: leer(v.artname), sollstellung: leer(v.sollstellung), vertragbegin: v.vertragbegin, vertragende: v.vertragende,
-    betrag: Number(v.betrag ?? 0), zahler_adrnr: leer(v.zahler_adrnr),
-    zahler: leer(v.zahler_adrnr) ? condense(`${leer(v.z_nachname)}, ${leer(v.z_vorname)}`) : 'wie Mitglied',
+    // Zahler am Vertrag = Mitglied selbst gilt wie „kein abweichender Zahler“ (wie in der Sollstellung)
+    betrag: Number(v.betrag ?? 0), zahler_adrnr: leer(v.zahler_adrnr) === v.adrnr ? '' : leer(v.zahler_adrnr),
+    zahler: leer(v.zahler_adrnr) && leer(v.zahler_adrnr) !== v.adrnr
+      ? (v.z_nachname != null ? condense(`${leer(v.z_nachname)}, ${leer(v.z_vorname)}`) : `${Number(v.zahler_adrnr) || v.zahler_adrnr} (nicht gefunden)`)
+      : v.k_nachname != null ? `wie Mitglied (${condense(`${leer(v.k_nachname)}, ${leer(v.k_vorname)}`)})` : 'wie Mitglied',
     laeuft: !v.vertragende || v.vertragende >= h, eigen: v.adrnr === m.adrnr, _geb: v.geburtsdatum,
   }) as Vertrag & { _geb: string | null })
     .sort((a, b) => Number(!a.eigen) - Number(!b.eigen) || (a._geb ?? '').localeCompare(b._geb ?? '') || a.adrnr.localeCompare(b.adrnr)

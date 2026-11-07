@@ -59,14 +59,14 @@ test('Sollstellung: Vorschlag, Lauf, Datei, Verbuchung in FI, Storno', async () 
     '0000000004;Tom;Ohne;L;DE02500105170137075030;;;J;;104\n' +   // kein Mandat
     '0000000005;Bar;Zahler;B;DE02500105170137075030;;;J;;105\n';  // Barzahler
   const sp = 'ADRNR;MANDATSNR;STATUS;ANGELEGTAM;GUELTIGBIS\n0000000001;TCO-101;X;20200101;\n0000000003;TCO-103;X;20200101;\n';
-  const vt = 'ADRNR;VERTRAGNR;ART;ARTNAME;MITGLNR;SOLLSTELLUNG;VERTRAGBEGIN;VERTRAGENDE;BETRAG\n' +
-    '0000000001;1;01;Erwachsene;101;halbjährlich;20200101;;60,00\n' +
-    '0000000001;2;100;Spende;101;jährlich;20200101;;25,00\n' +
-    '0000000002;1;90;Jugendtraining;102;monatlich;20250101;;35,00\n' +
-    '0000000002;2;03;Jugendliche;102;halbjährlich;20250101;;30,00\n' +
-    '0000000003;1;01;Erwachsene;103;halbjährlich;20200101;;60,00\n' +
-    '0000000004;1;01;Erwachsene;104;halbjährlich;20200101;;60,00\n' +
-    '0000000005;1;01;Erwachsene;105;halbjährlich;20200101;;60,00\n';
+  const vt = 'ADRNR;VERTRAGNR;ART;ARTNAME;MITGLNR;SOLLSTELLUNG;VERTRAGBEGIN;VERTRAGENDE;BETRAG;ZAHLER_ADRNR\n' +
+    '0000000001;1;01;Erwachsene;101;halbjährlich;20200101;;60,00;\n' +
+    '0000000001;2;100;Spende;101;jährlich;20200101;;25,00;\n' +
+    '0000000002;1;90;Jugendtraining;102;monatlich;20250101;;35,00;0000000002\n' + // Vertrag nennt das Kind selbst → abweichender Zahler gilt
+    '0000000002;2;03;Jugendliche;102;halbjährlich;20250101;;30,00;\n' +
+    '0000000003;1;01;Erwachsene;103;halbjährlich;20200101;;60,00;\n' +
+    '0000000004;1;01;Erwachsene;104;halbjährlich;20200101;;60,00;\n' +
+    '0000000005;1;01;Erwachsene;105;halbjährlich;20200101;;60,00;\n';
   const bpr = 'ART;GUELTIG_AB;GUELTIG_BIS;BETRAG\n01;20200101;20261231;60,00\n01;20270101;;65,00\n';
   const kt = 'KONTO;NAME;KENNZAHL\n1200;Girokonto;BA\n8002;Mitgliedsbeiträge;\n8006;Jugendtraining;\n8100;Spenden;\n';
   // Import als ZIP wie aus dem SAP-Report ZTCO_PORTAL_EXPORT (deflate + stored gemischt)
