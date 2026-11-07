@@ -11,23 +11,23 @@ const mod: WebModule = {
   name: 'TC Oberthal',
   nav: [
     {
-      text: 'Abrechnungen',
-      children: [
-        { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
-        { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
-        { text: 'Sollstellung', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
-      ],
-    },
-    {
-      text: 'Finanzen',
-      children: [
-        { text: 'FI Belege', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
-      ],
-    },
-    {
-      text: 'Verein',
+      text: 'TC Oberthal',
       children: [
         { text: 'Stammdaten', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
+        {
+          text: 'Abrechnungen', icon: 'receipt',
+          children: [
+            { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
+            { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
+          ],
+        },
+        {
+          text: 'Finanzen', icon: 'money-bills',
+          children: [
+            { text: 'Sollstellung', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
+            { text: 'FI-Belege', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
+          ],
+        },
       ],
     },
   ],

@@ -10,6 +10,7 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
   home: { text: 'Start', icon: 'home', path: '/' },
   admin: {
     text: 'Administration',
+    einruecken: true,
     children: [
       { text: 'Benutzer', icon: 'group', path: '/admin/benutzer', permission: 'core.users:display' },
       { text: 'Rollen', icon: 'role', path: '/admin/rollen', permission: 'core.roles:display' },

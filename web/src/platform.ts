@@ -13,6 +13,8 @@ export interface NavEntry {
   /** Eintrag nur sichtbar mit dieser Berechtigung */
   permission?: string;
   children?: NavEntry[];
+  /** Stufe 1: Einträge darunter in der Seitenleiste einrücken */
+  einruecken?: boolean;
 }
 
 export interface RouteDef {

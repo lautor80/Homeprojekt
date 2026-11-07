@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type ReactElement } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Avatar, Button, Dialog, IllustratedMessage, NavigationLayout, ShellBar, ShellBarBranding,
-  SideNavigation, SideNavigationGroup, SideNavigationItem, UserMenu, UserMenuAccount, UserMenuItem,
+  SideNavigation, SideNavigationGroup, SideNavigationItem, SideNavigationSubItem, UserMenu, UserMenuAccount, UserMenuItem,
 } from '@ui5/webcomponents-react';
 import { useSession, useCan } from '../session';
 import { coreNav, coreRoutes } from './core';
@@ -52,9 +52,20 @@ export function Shell() {
   const isSelected = (path?: string) =>
     !!path && (path === '/' ? location.pathname === '/' : location.pathname === path || location.pathname.startsWith(path + '/'));
 
-  const item = (e: NavEntry) => (
-    <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={isSelected(e.path)}
-                        onClick={() => e.path && navigate(e.path)} />
+  // Stufe 2: Eintrag (direkt aufrufbar oder mit Stufe 3 aufklappbar), Stufe 3: Untereintrag
+  const eingerueckt = collapsed ? undefined : { display: 'block', marginInlineStart: '1.5rem' };
+  const sub = (e: NavEntry) => (
+    <SideNavigationSubItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={isSelected(e.path)}
+                           style={eingerueckt}
+                           onClick={() => e.path && navigate(e.path)} />
+  );
+  const item = (e: NavEntry, einruecken = false) => (
+    <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={!e.children && isSelected(e.path)}
+                        style={einruecken ? eingerueckt : undefined}
+                        expanded={e.children ? true : undefined} unselectable={!!e.children}
+                        onClick={() => !e.children && e.path && navigate(e.path)}>
+      {e.children?.map(sub)}
+    </SideNavigationItem>
   );
 
   return (
@@ -80,7 +91,7 @@ export function Shell() {
             {nav.map((e) =>
               e.children ? (
                 <SideNavigationGroup key={e.text} text={e.text} expanded>
-                  {e.children.map(item)}
+                  {e.children.map((c) => item(c, !!e.einruecken))}
                 </SideNavigationGroup>
               ) : (
                 item(e)

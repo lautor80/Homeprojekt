@@ -9,7 +9,7 @@ const mod: WebModule = {
   name: 'Transport',
   nav: [
     {
-      text: 'Transport',
+      text: 'Euroflex',
       children: [
         { text: 'Aufträge', icon: 'shipping-status', path: '/transport/auftraege', permission: 'transport.auftraege:display' },
         { text: 'Stammdaten', icon: 'database', path: '/transport/stammdaten', permission: 'transport.stammdaten:edit' },
