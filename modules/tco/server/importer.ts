@@ -57,7 +57,7 @@ function wandeln(v: string, s: Spalte): unknown {
       const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(t.replace(/[^\d]/g, ''));
       return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z` : null;
     }
-    default: return t === '' ? null : t;
+    default: return t === '' ? (s.schluessel || !s.nullbar ? '' : null) : t;
   }
 }
 
@@ -109,7 +109,8 @@ async function vorbereiten(db: Db, datei: string, inhalt: Buffer): Promise<Vorbe
       if (erg.fehler.length < 10) erg.fehler.push(`Zeile ${i + 2}: ${(e as Error).message}`);
       return;
     }
-    if (keys.some((k) => z[k] === null || z[k] === undefined || z[k] === '')) {
+    // leere Textschlüssel sind in SAP erlaubt (z. B. FIPAPERMAP-KONTO), nur der erste Schlüssel muss gefüllt sein
+    if (keys.some((k) => z[k] === null || z[k] === undefined) || z[keys[0]] === '') {
       if (erg.fehler.length < 10) erg.fehler.push(`Zeile ${i + 2}: Schlüssel leer`);
       return;
     }

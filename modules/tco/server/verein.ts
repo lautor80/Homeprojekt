@@ -27,7 +27,17 @@ export interface Verein {
   n8n_ep3_auth: string | null;
   halle_stichtag: string;
   halle_ausschluss: string;
+  fi_bankkonten: string;
+  fi_manuell_konten: string;
+  fi_beleg_typen: string;
+  fi_beleg_pfad: string;
+  fi_feld_beleg: string;
+  fi_feld_betrag: string;
+  fi_feld_sap: string;
 }
+
+/** Komma-Liste aus den Einstellungen */
+export const liste = (s: string | null | undefined) => (s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export async function vereinLesen(db: Db = DB): Promise<Verein> {
   const [v] = await db`select * from tco.verein where id = 1`;

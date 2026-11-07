@@ -109,6 +109,18 @@ function VereinTab() {
         </FormGrid>
       </Panel>
 
+      <Panel headerText="FI Belege" fixed style={{ marginTop: '1rem' }}>
+        <FormGrid>
+          <TextField label="Konten mit Bankdatei (CSV-Umsatzexport)" value={t('fi_bankkonten')} onChange={s('fi_bankkonten')} readonly={ro} placeholder="1200,654" />
+          <TextField label="Kasse und Konten ohne Bankdatei (manuelle Buchung)" value={t('fi_manuell_konten')} onChange={s('fi_manuell_konten')} readonly={ro} placeholder="1000,1210,1220" />
+          <TextField label="Paperless-Dokumenttypen offener Belege" value={t('fi_beleg_typen')} onChange={s('fi_beleg_typen')} readonly={ro} />
+          <TextField label="Paperless-Speicherpfad offener Belege" value={t('fi_beleg_pfad')} onChange={s('fi_beleg_pfad')} readonly={ro} />
+          <TextField label="Custom Field interne Belegnummer (Name oder ID)" value={t('fi_feld_beleg')} onChange={s('fi_feld_beleg')} readonly={ro} />
+          <TextField label="Custom Field „SAP“ zugeordnet (Name oder ID)" value={t('fi_feld_sap')} onChange={s('fi_feld_sap')} readonly={ro} />
+          <TextField label="Custom Field Betrag (Name oder ID)" value={t('fi_feld_betrag')} onChange={s('fi_feld_betrag')} readonly={ro} />
+        </FormGrid>
+      </Panel>
+
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="TCO_VEREIN" objectKey="1" />
         {!ro && <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}

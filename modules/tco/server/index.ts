@@ -7,6 +7,7 @@ import { change, requireAuth } from '../../../server/src/auth.js';
 import { asset, DB, paperless, plAktiv, vereinLesen } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { halleRoutes, P_HALLE } from './halle/routes.js';
+import { fiRoutes, P_FI } from './fi/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -29,6 +30,13 @@ const vereinSchema = z.object({
   n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
   halle_stichtag: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   halle_ausschluss: z.string().default(''),
+  fi_bankkonten: z.string().optional(),
+  fi_manuell_konten: z.string().optional(),
+  fi_beleg_typen: z.string().optional(),
+  fi_beleg_pfad: z.string().optional(),
+  fi_feld_beleg: z.string().trim().min(1).optional(),
+  fi_feld_betrag: z.string().trim().min(1).optional(),
+  fi_feld_sap: z.string().trim().min(1).optional(),
 });
 
 async function routes(app: FastifyInstance) {
@@ -43,6 +51,8 @@ async function routes(app: FastifyInstance) {
     const d = vereinSchema.parse(req.body);
     const alt = await vereinLesen();
     for (const g of GEHEIM) if (d[g] === MASKE) d[g] = alt[g];
+    const FI = ['fi_bankkonten', 'fi_manuell_konten', 'fi_beleg_typen', 'fi_beleg_pfad', 'fi_feld_beleg', 'fi_feld_betrag', 'fi_feld_sap'] as const;
+    for (const k of FI) if (d[k] === undefined) d[k] = alt[k];
     await change(req, (tx) => tx`
       update tco.verein set name = ${d.name}, strasse = ${d.strasse ?? null}, plz_ort = ${d.plz_ort ?? null}, iban = ${d.iban},
              bic = ${d.bic ?? null}, bank = ${d.bank ?? null}, steuernr = ${d.steuernr ?? null}, ansprechpartner = ${d.ansprechpartner ?? null},
@@ -50,7 +60,10 @@ async function routes(app: FastifyInstance) {
              paperless_url = ${d.paperless_url || null}, paperless_token = ${d.paperless_token || null},
              n8n_mail_url = ${d.n8n_mail_url || null}, n8n_mail_key = ${d.n8n_mail_key || null},
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
-             halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss}, updated_at = now()
+             halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss},
+             fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
+             fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
+             fi_feld_sap = ${d.fi_feld_sap}, updated_at = now()
        where id = 1`);
     return { ok: true };
   });
@@ -103,6 +116,7 @@ async function routes(app: FastifyInstance) {
   });
 
   await halleRoutes(app);
+  await fiRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -113,6 +127,9 @@ const tco: ServerModule = {
     { id: P_HALLE.edit, text: 'Hallenabrechnung: Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
     { id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
     { id: P_HALLE.preise, text: 'Hallenpreise pflegen' },
+    { id: P_FI.display, text: 'FI Belege anzeigen, Notizen erfassen' },
+    { id: P_FI.buchen, text: 'FI: Bankimport und manuelle Buchungen, Belege und Rechnungen zuordnen' },
+    { id: P_FI.storno, text: 'FI-Belege stornieren' },
     { id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)' },
   ],
@@ -122,6 +139,8 @@ const tco: ServerModule = {
     { type: 'HALLENPREIS', text: 'Hallenpreis', permission: P_HALLE.display },
     { type: 'KOMMPREF', text: 'Bevorzugter Versandweg', permission: P_HALLE.display },
     { type: 'SCHLUESSEL', text: 'Hallenschlüssel', permission: P_HALLE.display },
+    { type: 'FIBELEG', text: 'FI-Beleg', permission: P_FI.display },
+    { type: 'FIKONTO', text: 'FI-Konto', permission: P_FI.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_HALLE.display },
   ],

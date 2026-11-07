@@ -128,10 +128,13 @@ Das Datenmodell (Schema `tco`) enthält bereits alle Vereinstabellen aus SAP; di
 | App | Stand |
 |---|---|
 | Hallenabrechnung | fertig: EP3-Import (n8n oder CSV), Preisfindung je Buchungsminute, Zuordnen einzeln/gesammelt/automatisch, manuelle Positionen inkl. Schlüsselliste, Rechnungs-PDF mit GiroCode, Ablage in Paperless (Neudruck = neue Version, Freigabelink, Metadaten), Versand per E-Mail (n8n-Workflow „TCO Mailversand aus SAP“), WhatsApp und Mailentwurf, Wiedereröffnen versendeter Rechnungen mit Begründung, Hallenpreise mit Prüfung |
-| FI Belege, Sollstellungen, Jugendtraining, Clubhaus, Mitglieder, Einnahmen & Ausgaben, Beiträge, Kontenstamm | folgen |
+| FI Belege | fertig: Buchungsliste je Zeitraum/Konto mit Jahresanfang, Tagessaldo und aktuellem Saldo, Bankimport (CSV-Umsatzexport) mit Abgleich, Gegenkonto- und Belegvorschlag, Aufteilung (z. B. SumUp-Gebühren), manuelle Buchung für Kasse/Konten ohne Bankdatei, Hallenrechnung zuordnen (Teilzahlung), Belege aus Paperless zuordnen/entfernen, Beleg einer früheren Zahlung übernehmen, Notizen, **Storno per Gegenbuchung** – FI-Belege sind in der Datenbank gegen Ändern und Löschen gesperrt |
+| Sollstellungen, Jugendtraining, Clubhaus, Mitglieder, Einnahmen & Ausgaben, Beiträge, Kontenstamm | folgen |
 
 Gegenüber SAP behoben: Rechnungsbetrag = Summe der Positionen (manuelle Positionen mit Menge), Status springt beim Neudruck
 nicht mehr zurück, Preis eines Einzeltermins aus dem eigenen Datum, robuste Namenszuordnung, keine 999er-Grenze der Rechnungsnummer.
+FI: Storno nimmt die Rechnungszahlung zurück, Notizen gehen nicht mehr verloren, Bankdatei wird über die IBAN gegen das Konto geprüft,
+eine einzige Saldenrechnung, Paperless-Fehler werden angezeigt, Nummernvergabe mit Sperre, Belegzuordnungen mit Begründung rücknehmbar.
 
 **Übernahme aus SAP:** Report `ZTCO_ARCHIVE` exportiert die Tabellen als CSV → *TC Oberthal → Stammdaten → Übernahme aus SAP*
 (mehrere Dateien auf einmal, Tabelle aus dem Dateinamen, Prüfung vor dem Schreiben).

@@ -204,6 +204,43 @@ export class Paperless {
     return null;
   }
 
+  /** Custom Field per Name oder per ID („3“) */
+  async feld(nameOderId: string): Promise<{ id: number; name: string; data_type?: string } | null> {
+    const l = await this.liste('custom_fields');
+    if (/^\d+$/.test(nameOderId.trim())) {
+      const id = Number(nameOderId);
+      return l.find((x) => x.id === id) ?? { id, name: nameOderId };
+    }
+    return l.find((x) => x.name.trim().toLowerCase() === nameOderId.trim().toLowerCase()) ?? null;
+  }
+
+  /** Wert eines Custom Fields aus einem Dokument (Feld per Name oder ID) */
+  async feldWert(doc: Record<string, any>, nameOderId: string): Promise<unknown> {
+    const f = await this.feld(nameOderId);
+    return f ? (doc.custom_fields ?? []).find((x: { field: number }) => x.field === f.id)?.value ?? null : null;
+  }
+
+  /** Dokumente suchen (Paperless-Filterparameter), alle Seiten */
+  async dokumenteSuchen(filter: Record<string, string>): Promise<Record<string, any>[]> {
+    const q = new URLSearchParams(filter).toString();
+    return this.alle<Record<string, any>>(`api/documents/?${q}`);
+  }
+
+  /** IDs zu Namen (Dokumenttypen, Speicherpfade …); unbekannte Namen entfallen */
+  async ids(art: 'correspondents' | 'document_types' | 'storage_paths' | 'tags', namen: string[]): Promise<number[]> {
+    const out: number[] = [];
+    for (const n of namen) {
+      const id = await this.idByName(art, n);
+      if (id) out.push(id);
+    }
+    return out;
+  }
+
+  async korrespondentName(id: number | null | undefined): Promise<string> {
+    if (!id) return '';
+    return (await this.liste('correspondents')).find((x) => x.id === id)?.name ?? '';
+  }
+
   async dokument(id: number): Promise<Record<string, any>> {
     return this.json('GET', `api/documents/${id}/`);
   }
@@ -236,7 +273,7 @@ export class Paperless {
       const vorhanden: { field: number; value: unknown }[] = doc.custom_fields ?? [];
       const neu = new Map(vorhanden.map((f) => [f.field, f.value]));
       for (const [name, value] of Object.entries(m.customFields)) {
-        const f = (await this.liste('custom_fields')).find((x) => x.name.trim().toLowerCase() === name.toLowerCase());
+        const f = await this.feld(name);
         if (!f) { warn.push(`Custom Field „${name}“ fehlt in Paperless`); continue; }
         let v: unknown = value;
         if (f.data_type === 'monetary' && typeof value === 'number') v = `EUR${value.toFixed(2)}`;
