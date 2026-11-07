@@ -135,8 +135,13 @@ CLASS lcl_export IMPLEMENTATION.
         rv = COND #( WHEN ia_wert IS INITIAL THEN `` ELSE |{ ia_wert }| ).
       WHEN 'T'.                                   " Uhrzeit HHMMSS
         rv = |{ ia_wert }|.
-      WHEN 'P' OR 'F' OR 'I' OR 'b' OR 's' OR '8' OR 'a' OR 'e'.   " Zahlen mit Punkt
-        rv = |{ ia_wert NUMBER = RAW }|.
+      WHEN 'I' OR 'b' OR 's' OR '8'.              " Ganzzahlen
+        DATA(lv_int) = CONV int8( ia_wert ).
+        rv = |{ lv_int }|.
+      WHEN 'P' OR 'F' OR 'a' OR 'e'.              " Dezimalzahlen mit Punkt, ohne Tausendertrenner
+        " NUMBER = RAW ist nur bei statisch numerischem Typ erlaubt, IA_WERT ist generisch (ANY)
+        DATA(lv_dec) = CONV decfloat34( ia_wert ).
+        rv = |{ lv_dec NUMBER = RAW }|.
       WHEN 'X' OR 'y'.                            " Rohdaten hexadezimal
         rv = |{ ia_wert }|.
       WHEN OTHERS.                                " C, N, STRING
