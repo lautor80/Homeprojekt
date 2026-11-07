@@ -1,0 +1,64 @@
+import { useCallback, useEffect, useState } from 'react';
+import { BusyIndicator, FlexBox, MessageStrip } from '@ui5/webcomponents-react';
+import { api, ApiError } from './api';
+import { SessionContext, type Me } from './session';
+import { ForcedPasswordPage, LoginPage, SetupPage } from './pages/AuthPages';
+import { Shell } from './shell/Shell';
+import { applyBranding } from './branding';
+
+type State =
+  | { kind: 'loading' }
+  | { kind: 'setup' }
+  | { kind: 'login'; settings: Record<string, unknown> }
+  | { kind: 'ready'; me: Me }
+  | { kind: 'error'; message: string };
+
+export function App() {
+  const [state, setState] = useState<State>({ kind: 'loading' });
+
+  const load = useCallback(async () => {
+    try {
+      const { needsSetup } = await api.get<{ needsSetup: boolean }>('/api/setup/status');
+      if (needsSetup) return setState({ kind: 'setup' });
+      try {
+        const me = await api.get<Me>('/api/auth/me');
+        applyBranding(me.settings);
+        setState({ kind: 'ready', me });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          const settings = await api.get<Record<string, unknown>>('/api/settings/public');
+          applyBranding(settings);
+          setState({ kind: 'login', settings });
+        } else throw e;
+      }
+    } catch (e) {
+      setState({ kind: 'error', message: (e as Error).message });
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    await api.post('/api/auth/logout').catch(() => {});
+    window.history.replaceState(null, '', '/');
+    await load();
+  }, [load]);
+
+  useEffect(() => { load(); }, [load]);
+
+  switch (state.kind) {
+    case 'loading':
+      return <FlexBox justifyContent="Center" alignItems="Center" style={{ height: '100%' }}><BusyIndicator active /></FlexBox>;
+    case 'error':
+      return <MessageStrip design="Negative" hideCloseButton>Server nicht erreichbar: {state.message}</MessageStrip>;
+    case 'setup':
+      return <SetupPage onDone={load} />;
+    case 'login':
+      return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined} onDone={load} />;
+    case 'ready':
+      if (state.me.user.mustChangePassword) return <ForcedPasswordPage onDone={load} onLogout={logout} />;
+      return (
+        <SessionContext.Provider value={{ me: state.me, reload: load, logout }}>
+          <Shell />
+        </SessionContext.Provider>
+      );
+  }
+}

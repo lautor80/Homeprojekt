@@ -1,0 +1,8 @@
+node_modules
+dist
+web/dist
+web/public/fonts
+data
+.env
+.git
+*.log
