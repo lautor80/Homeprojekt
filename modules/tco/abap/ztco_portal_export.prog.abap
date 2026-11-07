@@ -161,7 +161,13 @@ ENDCLASS.
 
 
 INITIALIZATION.
-  p_file = |TCO_PORTAL_EXPORT_{ sy-datum }.zip|.
+  " Vorschlag: Desktop des Benutzers mit vollem Pfad (sonst SAP-GUI-Arbeitsverzeichnis)
+  DATA lv_desktop TYPE string.
+  cl_gui_frontend_services=>get_desktop_directory( CHANGING desktop_directory = lv_desktop
+                                                   EXCEPTIONS OTHERS = 1 ).
+  cl_gui_cfw=>flush( ).
+  p_file = COND #( WHEN lv_desktop IS INITIAL THEN |TCO_PORTAL_EXPORT_{ sy-datum }.zip|
+                   ELSE |{ lv_desktop }\\TCO_PORTAL_EXPORT_{ sy-datum }.zip| ).
 
 AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
   DATA lv_name TYPE string.
