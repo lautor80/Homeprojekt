@@ -221,3 +221,51 @@ test('Rollen: zugeordnete Benutzer anzeigen, einzeln entziehen, Rolle löschen e
   assert.equal((await admin('DELETE', '/api/admin/roles/MITGLIED')).status, 400);
   assert.equal((await admin('DELETE', '/api/admin/roles/ADMIN')).status, 400);
 });
+
+test('Benutzer: Status direkt sperren, Einzelanlage aus Mitglied/EP3, Austritt sperrt den Benutzer', async () => {
+  // Einzelanlage: Kandidaten enthalten Mitglied ohne Benutzer und EP3-Kunde ohne Benutzer
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email, eintritt, mitglnrn) values ('0000000505', 'Eva', 'Einzeln', 'eva@example.org', '2024-01-01', '505')`;
+  await sql`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname) values ('55', 'gast.g', 'enabled', 'gast@example.org', 'Gerd', 'Gast')`;
+  let r = await admin('GET', `${M}/benutzer-kandidaten?suche=ein`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.some((k: { art: string; schluessel: string }) => k.art === 'MITGLIED' && k.schluessel === '0000000505'));
+  r = await admin('GET', `${M}/benutzer-kandidaten?suche=gast`);
+  assert.ok(r.body.some((k: { art: string; schluessel: string }) => k.art === 'EP3' && k.schluessel === '55'));
+  assert.equal((await paula('GET', `${M}/benutzer-kandidaten?suche=a`)).status, 403);
+
+  r = await admin('POST', `${M}/benutzer-einzeln`, { art: 'MITGLIED', schluessel: '0000000505', mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.username, 'eva@example.org');
+  assert.ok(r.body.startkennwort);
+  assert.deepEqual((await sql`select ur.role_id from core.user_roles ur join core.users u on u.id = ur.user_id where u.username = 'eva@example.org'`).map((x) => x.role_id), ['MITGLIED']);
+  assert.equal((await admin('POST', `${M}/benutzer-einzeln`, { art: 'MITGLIED', schluessel: '0000000505' })).status, 400, 'nur einmal');
+  r = await admin('POST', `${M}/benutzer-einzeln`, { art: 'EP3', schluessel: '55' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.username, 'gast@example.org');
+  assert.deepEqual((await sql`select ur.role_id from core.user_roles ur join core.users u on u.id = ur.user_id where u.username = 'gast@example.org'`).map((x) => x.role_id), ['HALLENNUTZER']);
+
+  // Status direkt sperren/entsperren
+  const [eva] = await sql`select id::text from core.users where username = 'eva@example.org'`;
+  r = await admin('POST', `/api/admin/users/${eva.id}/aktiv`, { aktiv: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await sql`select active from core.users where id = ${eva.id}`)[0].active, false);
+  r = await admin('POST', `/api/admin/users/${eva.id}/aktiv`, { aktiv: true });
+  assert.equal((await sql`select active from core.users where id = ${eva.id}`)[0].active, true);
+  const [ad] = await sql`select id::text from core.users where username = 'admin'`;
+  assert.equal((await admin('POST', `/api/admin/users/${ad.id}/aktiv`, { aktiv: false })).status, 400, 'nicht sich selbst');
+  assert.equal((await paula('POST', `/api/admin/users/${eva.id}/aktiv`, { aktiv: false })).status, 403);
+
+  // Austritt in der Vergangenheit (Verwaltung) → Benutzer sofort gesperrt
+  r = await admin('POST', `${M}/m/0000000505/austritt`, { austritt: '2025-12-31' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Benutzer eva@example\.org gesperrt/);
+  assert.equal((await sql`select active from core.users where id = ${eva.id}`)[0].active, false);
+  // Kündigung zum Jahresende sperrt erst nach dem Austritt (täglicher Lauf)
+  const { ausgetreteneSperren } = await import('../../modules/tco/server/mitglieder/selbst.js');
+  const r2 = await sql.begin((tx) => ausgetreteneSperren(tx as never));
+  assert.ok(!r2.gesperrt.includes('paula.portal'), 'Paula: Austritt erst zum Jahresende');
+  await sql`update tco.mitglieder set austritt = current_date - 1 where adrnr = '0000000501'`;
+  const r3 = await sql.begin((tx) => ausgetreteneSperren(tx as never));
+  assert.ok(r3.gesperrt.includes('paula.portal'));
+  assert.equal((await paula('GET', `${M}/meine`)).status, 401, 'Sitzung beendet');
+});

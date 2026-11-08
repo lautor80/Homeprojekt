@@ -19,7 +19,11 @@ import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '.
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
-import { bankAendern, eigeneAdrnr, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST } from './selbst.js';
+import {
+  ausgetreteneSperren, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
+} from './selbst.js';
+import { ep3Anlegen } from '../platz/registrierung.js';
+import { withChange } from '../../../../server/src/db.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -105,7 +109,21 @@ async function maskierteBankdatenAufloesen(n: z.infer<typeof neuSchema>): Promis
   if (istMaskiert(n.bic)) n.bic = quelle.bic;
 }
 
+/** täglicher Lauf: Benutzer ausgetretener Mitglieder sperren */
+let austrittLauf: ReturnType<typeof setInterval> | null = null;
+async function austrittSperrenLauf(log: FastifyInstance['log']) {
+  try {
+    const r = await withChange({ userId: null, username: 'system', action: 'AUSTRITT_SPERRE' }, (tx) => ausgetreteneSperren(tx));
+    if (r.gesperrt.length || r.rolleEntzogen.length) log.info(r, 'Benutzer ausgetretener Mitglieder gesperrt');
+  } catch (e) { log.warn(e, 'Sperre ausgetretener Mitglieder fehlgeschlagen'); }
+}
+
 export async function mitgliederRoutes(app: FastifyInstance) {
+  if (!austrittLauf && process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
+    setTimeout(() => austrittSperrenLauf(app.log), 15_000).unref();
+    austrittLauf = setInterval(() => austrittSperrenLauf(app.log), 6 * 3600_000);
+    austrittLauf.unref();
+  }
   const lesen = { preHandler: requireAuth(P_MG.display) };
   const schreiben = { preHandler: requireAuth(P_MG.edit) };
   const selbst = { preHandler: requireAuth(P_SELBST) };
@@ -153,6 +171,25 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const r = await change(req, (tx) => kuendigen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG', reason: k.grund ?? null });
     const b = await kuendigungBestaetigen(DB, v, r, k.grund ?? null);
     return { ...b, text: `${r.text}${b.gesendet ? ' Die Kündigungsbestätigung wurde per E-Mail gesendet.' : ''}` };
+  });
+
+  // ---------------------------------------------------------------- Administration → Benutzer: einzelner Benutzer aus Mitglied/EP3-Kunde
+  app.get('/mitglieder/benutzer-kandidaten', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { suche } = z.object({ suche: z.string().max(80).default('') }).parse(req.query);
+    return benutzerKandidaten(DB, suche);
+  });
+  app.post('/mitglieder/benutzer-einzeln', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const b = z.object({ art: z.enum(['MITGLIED', 'EP3']), schluessel: z.string().min(1), mail: z.boolean().default(true) }).parse(req.body);
+    if (b.art === 'EP3') {
+      const r = await change(req, (tx) => ep3Anlegen(tx, b.schluessel), { action: 'EP3_BENUTZER', reason: b.schluessel });
+      return { ...r, rolle: 'Hallennutzer' };
+    }
+    const v = await vereinLesen();
+    const r = await change(req, (tx) => mitgliederBenutzerAnlegen(tx, v, { mail: b.mail, adrnr: b.schluessel }), { action: 'MITGLIEDER_BENUTZER', reason: b.schluessel });
+    if (r.hochgestuft) return { text: 'Vorhandener Hallennutzer (EP3) wurde dem Mitglied zugeordnet und zur Rolle Mitglied hochgestuft.', username: null, startkennwort: null, rolle: 'Mitglied' };
+    const a = r.angelegt[0];
+    if (!a) throw new BusinessError(r.uebersprungen[0] ?? 'Kein Benutzer angelegt.');
+    return { text: `Benutzer ${a.username} angelegt (Rolle Mitglied) – ${a.hinweis}.`, username: a.username, startkennwort: a.startkennwort, rolle: 'Mitglied' };
   });
 
   // ---------------------------------------------------------------- Administration → Benutzer: Mitglieder als Benutzer anlegen
@@ -216,7 +253,12 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/m/:adrnr/austritt', schreiben, async (req) => {
     const { adrnr: a } = pAdr.parse(req.params);
     const b = z.object({ austritt: datumOpt }).parse(req.body);
-    return { text: await change(req, (tx) => austrittSichern(tx, a, b.austritt), { action: 'AUSTRITT' }) };
+    return { text: await change(req, async (tx) => {
+      const t = await austrittSichern(tx, a, b.austritt);
+      // Austritt in der Vergangenheit: Benutzer sofort sperren (sonst übernimmt das der tägliche Lauf nach dem Austrittsdatum)
+      const s = await ausgetreteneSperren(tx, a);
+      return t + (s.gesperrt.length ? ` Benutzer ${s.gesperrt.join(', ')} gesperrt.` : '') + (s.rolleEntzogen.length ? ` Rolle Mitglied entzogen (${s.rolleEntzogen.join(', ')}).` : '');
+    }, { action: 'AUSTRITT' }) };
   });
 
   app.post('/mitglieder/m/:adrnr/trainer', schreiben, async (req) => {

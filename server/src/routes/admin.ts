@@ -86,6 +86,21 @@ export async function adminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Benutzer direkt aus der Tabelle sperren/entsperren */
+  app.post('/api/admin/users/:id/aktiv', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { aktiv } = z.object({ aktiv: z.boolean() }).parse(req.body);
+    if (!aktiv && id === req.user!.id) throw new BusinessError('Der eigene Benutzer kann nicht gesperrt werden.');
+    const [u] = await change(req, async (tx) => {
+      const r = await tx`update core.users set active = ${aktiv} where id = ${id} returning username, display_name`;
+      if (!r.length) throw new BusinessError('Benutzer nicht gefunden.', 404);
+      await assertAdminRemains(tx);
+      if (!aktiv) await tx`delete from core.sessions where user_id = ${id}`;
+      return r;
+    }, { action: aktiv ? 'ENTSPERREN' : 'SPERREN' });
+    return { text: `${u.display_name || u.username} ${aktiv ? 'entsperrt' : 'gesperrt – alle Sitzungen beendet'}.` };
+  });
+
   app.post('/api/admin/users/:id/password', { preHandler: requireAuth('core.users:edit') }, async (req, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const { password } = z.object({ password: z.string() }).parse(req.body);

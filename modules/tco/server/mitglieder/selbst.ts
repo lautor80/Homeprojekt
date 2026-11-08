@@ -162,18 +162,26 @@ export interface AngelegterBenutzer { adrnr: string; name: string; username: str
  * zugeordnet und von Hallennutzer auf Mitglied hochgestuft; ein importiertes EP3-Kennwort gilt weiter.
  * Ohne Kennwort entsteht ein Startkennwort (Pflichtänderung); es wird per E-Mail gesendet (wenn eingerichtet) oder zurückgegeben.
  */
-export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: boolean }): Promise<{ angelegt: AngelegterBenutzer[]; hochgestuft: number; gesendet: number; uebersprungen: string[] }> {
+export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: boolean; adrnr?: string }): Promise<{ angelegt: AngelegterBenutzer[]; hochgestuft: number; gesendet: number; uebersprungen: string[] }> {
   await rolleSicherstellen(tx);
   const mitglieder = await tx`
     select m.adrnr, m.vorname, m.nachname, lower(trim(coalesce(m.email, ''))) as email, a.zuid
       from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
      where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null
+       ${o.adrnr ? tx`and m.adrnr = ${o.adrnr}` : tx``}
      order by m.nachname, m.vorname, m.adrnr`;
+  if (o.adrnr && !mitglieder.length) throw new BusinessError('Das Mitglied ist ausgetreten oder hat bereits einen Benutzer.');
   const r = { angelegt: [] as AngelegterBenutzer[], hochgestuft: 0, gesendet: 0, uebersprungen: [] as string[] };
   const { randomBytes } = await import('node:crypto');
   // E-Mail-Adressen, die mehrere Mitglieder teilen (Familien): Anmeldename dann vorname.nachname
   const mehrfach = new Set<string>();
   { const seen = new Set<string>(); for (const m of mitglieder) { if (!m.email) continue; if (seen.has(m.email)) mehrfach.add(m.email); seen.add(m.email); } }
+  if (o.adrnr && mitglieder[0]?.email) {
+    // Einzelanlage: gemeinsame Familienadresse auch gegen den Bestand prüfen
+    const [x] = await tx`select count(*)::int as n from tco.mitglieder where lower(trim(coalesce(email, ''))) = ${mitglieder[0].email} and adrnr <> ${o.adrnr}
+                          and (austritt is null or austritt >= current_date)`;
+    if (x.n) mehrfach.add(mitglieder[0].email);
+  }
   for (const m of mitglieder) {
     const name = condense(`${leer(m.nachname)}, ${leer(m.vorname)}`).replace(/^, |, $/g, '');
     const voll = condense(`${leer(m.vorname)} ${leer(m.nachname)}`).toUpperCase();
@@ -224,6 +232,61 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
       if (e instanceof BusinessError && e.statusCode === 409) { r.uebersprungen.push(`${name}: ${e.message}`); continue; }
       throw e;
     }
+  }
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Einzelanlage: Kandidaten (Mitglieder und EP3-Kunden ohne Benutzer)
+// ---------------------------------------------------------------------------
+export async function benutzerKandidaten(db: Db, suche: string) {
+  const q = `%${condense(suche).toLowerCase()}%`;
+  const mitglieder = await db`
+    select m.adrnr as schluessel, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.email, m.mitglnrn,
+           m.austritt::text as austritt
+      from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
+     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null
+       and (lower(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '') || ' ' || coalesce(m.email, '') || ' ' || coalesce(m.mitglnrn, '')) like ${q})
+     order by m.nachname, m.vorname limit 30`;
+  const kunden = await db`
+    select distinct on (k.zuid) k.zuid as schluessel, nullif(trim(coalesce(k.nachname, '') || ', ' || coalesce(k.vorname, '')), ',') as name, k.zalias, k.email,
+           k.pw_hash is not null as kennwort
+      from tco.kunden k
+     where k.benutzer_id is null and coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
+       and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)
+       and lower(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '') || ' ' || coalesce(k.email, '') || ' ' || k.zalias) like ${q}
+     order by k.zuid, k.zalias limit 30`;
+  return [
+    ...mitglieder.map((m) => ({ art: 'MITGLIED' as const, schluessel: m.schluessel, name: m.name, info: `Mitglied ${m.mitglnrn || m.schluessel}${m.email ? ` · ${m.email}` : ''}${m.austritt ? ` · Austritt ${dat(m.austritt)}` : ''}` })),
+    ...kunden.map((k) => ({ art: 'EP3' as const, schluessel: k.schluessel, name: k.name || k.zalias, info: `EP3 „${k.zalias}“${k.email ? ` · ${k.email}` : ''}${k.kennwort ? ' · EP3-Kennwort vorhanden' : ''}` })),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Austritt → Benutzer sperren
+// ---------------------------------------------------------------------------
+/**
+ * Benutzer von Mitgliedern, deren Austritt erreicht ist, sperren (Sitzungen beenden). Ausgenommen: Benutzer mit weiteren
+ * Rollen außer MITGLIED/HALLENNUTZER (z. B. Vorstand) – dort wird nur die Rolle MITGLIED entzogen.
+ * adrnr = nur dieses Mitglied (direkt nach Kündigung/Austritt), sonst alle (täglicher Lauf).
+ */
+export async function ausgetreteneSperren(tx: Db, adrnr?: string): Promise<{ gesperrt: string[]; rolleEntzogen: string[] }> {
+  const rows = await tx`
+    select u.id, u.username,
+           exists (select 1 from core.user_roles ur where ur.user_id = u.id and ur.role_id not in (${ROLLE_MITGLIED}, ${ROLLE})) as weitere
+      from tco.mitglieder m join tco.mitgliedera a on a.adrnr = m.adrnr join core.users u on u.id = a.benutzer_id
+     where m.austritt is not null and m.austritt < current_date and u.active
+       ${adrnr ? tx`and m.adrnr = ${adrnr}` : tx``}`;
+  const r = { gesperrt: [] as string[], rolleEntzogen: [] as string[] };
+  for (const u of rows) {
+    if (u.weitere) {
+      const x = await tx`delete from core.user_roles where user_id = ${u.id} and role_id = ${ROLLE_MITGLIED}`;
+      if (x.count) r.rolleEntzogen.push(u.username);
+      continue;
+    }
+    await tx`update core.users set active = false where id = ${u.id}`;
+    await tx`delete from core.sessions where user_id = ${u.id}`;
+    r.gesperrt.push(u.username);
   }
   return r;
 }

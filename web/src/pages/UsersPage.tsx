@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Text,
+  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
+  SegmentedButton, SegmentedButtonItem, Switch, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -39,6 +40,8 @@ export function UsersPage() {
   const mitTco = me.modules.includes('tco');
   const [mg, setMg] = useState<'frage' | MgAnlage | null>(null);
   const [mgMail, setMgMail] = useState(true);
+  const [filter, setFilter] = useState<'ALLE' | 'AKTIV' | 'GESPERRT'>('ALLE');
+  const [einzeln, setEinzeln] = useState(false);
   const users = useLoad(() => api.get<User[]>('/api/admin/users'));
   const roles = useLoad(() => (can('core.roles:display') ? api.get<Role[]>('/api/admin/roles') : Promise.resolve([] as Role[])));
   const [edit, setEdit] = useState<Edit | null>(null);
@@ -82,15 +85,36 @@ export function UsersPage() {
     }
   }
 
+  async function aktivSetzen(u: User, aktiv: boolean) {
+    setError(null);
+    try {
+      const r = await api.post<{ text: string }>(`/api/admin/users/${u.id}/aktiv`, { aktiv });
+      toast(r.text);
+    } catch (e) { setError((e as Error).message); }
+    users.reload();
+  }
+  const anzahl = { ALLE: users.data?.length ?? 0, AKTIV: users.data?.filter((u) => u.active).length ?? 0, GESPERRT: users.data?.filter((u) => !u.active).length ?? 0 };
+  const sichtbar = (users.data ?? []).filter((u) => filter === 'ALLE' || (filter === 'AKTIV') === u.active);
+
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Benutzer', accessor: 'username', width: 140 },
     { Header: 'Name', accessor: 'displayName' },
     { Header: 'E-Mail', accessor: 'email' },
     { Header: 'Rollen', accessor: (u: Record<string, any>) => u.roles.join(', '), id: 'roles' },
     {
-      Header: 'Status', accessor: 'active', width: 110,
-      Cell: ({ row }: CellInstance) =>
-        (row.original as User).active ? <ObjectStatus state="Positive">Aktiv</ObjectStatus> : <ObjectStatus state="Negative">Gesperrt</ObjectStatus>,
+      Header: 'Status', accessor: 'active', width: 150,
+      Cell: ({ row }: CellInstance) => {
+        const u = row.original as User;
+        const status = u.active ? <ObjectStatus state="Positive">Aktiv</ObjectStatus> : <ObjectStatus state="Negative">Gesperrt</ObjectStatus>;
+        if (!darfAendern || u.id === me.user.id) return status;
+        return (
+          // Klick auf den Schalter öffnet nicht den Bearbeiten-Dialog
+          <div className="portal-row" style={{ flexWrap: 'nowrap' }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <Switch checked={u.active} tooltip={u.active ? 'Sperren' : 'Entsperren'} onChange={(e) => aktivSetzen(u, e.target.checked)} />
+            {status}
+          </div>
+        );
+      },
     },
     { Header: 'Letzte Anmeldung', accessor: 'lastLoginAt', width: 180, Cell: ({ value }: CellInstance) => (value ? fmtDateTime(value) : '–') },
   ];
@@ -100,6 +124,7 @@ export function UsersPage() {
       title="Benutzer"
       subtitle={users.data ? `${users.data.length} Benutzer` : undefined}
       actions={mayEdit && (<>
+        {mitTco && <Button icon="add-employee" onClick={() => { setError(null); setEinzeln(true); }}>Aus Mitglied/EP3 anlegen</Button>}
         {mitTco && <Button icon="group" onClick={() => setMg('frage')}>Mitglieder als Benutzer anlegen</Button>}
         <Button design="Emphasized" icon="add" onClick={() => { setError(null); setEdit({ isNew: true, active: true, roles: [] }); }}>
           Anlegen
@@ -158,9 +183,16 @@ export function UsersPage() {
         </Dialog>
       )}
       {users.error && <MessageStrip design="Negative">{users.error}</MessageStrip>}
+      {error && !edit && !mg && !einzeln && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SegmentedButton style={{ marginBottom: '0.5rem' }} onSelectionChange={(e) => setFilter((e.detail.selectedItems[0] as HTMLElement).dataset.f as typeof filter)}>
+        <SegmentedButtonItem data-f="ALLE" selected={filter === 'ALLE'}>Alle ({anzahl.ALLE})</SegmentedButtonItem>
+        <SegmentedButtonItem data-f="AKTIV" selected={filter === 'AKTIV'}>Aktiv ({anzahl.AKTIV})</SegmentedButtonItem>
+        <SegmentedButtonItem data-f="GESPERRT" selected={filter === 'GESPERRT'}>Gesperrt ({anzahl.GESPERRT})</SegmentedButtonItem>
+      </SegmentedButton>
+      {einzeln && <EinzelAnlage onClose={() => setEinzeln(false)} onDone={() => users.reload()} />}
       <AnalyticalTable
         columns={columns}
-        data={users.data ?? []}
+        data={sichtbar}
         loading={users.loading}
         filterable
         sortable
@@ -235,5 +267,68 @@ export function UsersPage() {
         <TextField label="Neues Startpasswort (mind. 10 Zeichen)" type="Password" value={newPw} onChange={setNewPw} />
       </Dialog>
     </AppPage>
+  );
+}
+
+/** einzelnen Benutzer aus einem Mitglied (Rolle Mitglied) oder EP3-Kunden (Rolle Hallennutzer) anlegen */
+interface Kandidat { art: 'MITGLIED' | 'EP3'; schluessel: string; name: string; info: string }
+function EinzelAnlage({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [suche, setSuche] = useState('');
+  const [liste, setListe] = useState<Kandidat[]>([]);
+  const [wahl, setWahl] = useState<Kandidat | null>(null);
+  const [mail, setMail] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ergebnis, setErgebnis] = useState<{ text: string; username: string | null; startkennwort: string | null } | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => api.get<Kandidat[]>(`/api/m/tco/mitglieder/benutzer-kandidaten?suche=${encodeURIComponent(suche)}`).then(setListe).catch((e) => setError(e.message)), 250);
+    return () => clearTimeout(t);
+  }, [suche]);
+  async function anlegen() {
+    if (!wahl) return;
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string; username: string | null; startkennwort: string | null }>('/api/m/tco/mitglieder/benutzer-einzeln', { art: wahl.art, schluessel: wahl.schluessel, mail });
+      setErgebnis(r); toast(r.text, 6000); onDone();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open headerText="Benutzer aus Mitglied oder EP3-Kunde anlegen" style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={ergebnis ? <Button design="Emphasized" onClick={onClose}>Schließen</Button> : <>
+              <Button design="Emphasized" icon="add-employee" disabled={!wahl || busy} onClick={anlegen}>Anlegen</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
+        {ergebnis ? (
+          <>
+            <MessageStrip design="Positive" hideCloseButton>{ergebnis.text}</MessageStrip>
+            {ergebnis.startkennwort && (
+              <MessageStrip design="Critical" hideCloseButton>
+                Anmeldename <b>{ergebnis.username}</b> · Startkennwort <code>{ergebnis.startkennwort}</code> – bitte sicher weitergeben, es wird nur einmal angezeigt und muss bei der ersten Anmeldung geändert werden.
+              </MessageStrip>
+            )}
+          </>
+        ) : (
+          <>
+            <Label showColon>Mitglied oder EP3-Kunde (ohne Benutzer)</Label>
+            <ComboBox style={{ width: '100%' }} placeholder="Name, E-Mail oder Mitgliedsnummer" filter="None"
+                      onInput={(e) => { setSuche(e.target.value); setWahl(null); }}
+                      onSelectionChange={(e) => { const k = (e.detail.item as HTMLElement | null)?.dataset.k; setWahl(liste.find((x) => `${x.art}:${x.schluessel}` === k) ?? null); }}>
+              {liste.map((k) => <ComboBoxItem key={`${k.art}:${k.schluessel}`} data-k={`${k.art}:${k.schluessel}`} text={k.name} additionalText={k.info} />)}
+            </ComboBox>
+            {wahl && (
+              <MessageStrip design="Information" hideCloseButton>
+                {wahl.art === 'MITGLIED'
+                  ? `${wahl.name}: Benutzer mit Rolle „Mitglied“ (Meine Mitgliedschaft + Einzelbuchung). Anmeldename = E-Mail-Adresse; Kennwort aus EP3 (falls vorhanden) oder Startkennwort.`
+                  : `${wahl.name}: Benutzer mit Rolle „Hallennutzer“ (nur Einzelbuchung). Anmeldename = E-Mail bzw. EP3-Alias; EP3-Kennwort gilt weiter, sonst Startkennwort.`}
+              </MessageStrip>
+            )}
+            {wahl?.art === 'MITGLIED' && <CheckBox text="Startkennwort per E-Mail senden (wenn der Mailversand eingerichtet ist)" checked={mail} onChange={(e) => setMail(e.target.checked)} />}
+            <Text className="portal-muted portal-small">Aufgeführt werden aktive Mitglieder und EP3-Kunden, die noch keinen Benutzer haben. Ausgetretene Mitglieder werden nach dem Austrittsdatum automatisch gesperrt.</Text>
+          </>
+        )}
+      </div>
+    </Dialog>
   );
 }
