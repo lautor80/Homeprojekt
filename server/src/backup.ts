@@ -55,6 +55,22 @@ interface Inhalt { manifest: Manifest; daten: Record<string, string> }
 export const dumpVerzeichnis = () => process.env.DUMP_DIR ?? path.join(APP_ROOT, 'data', 'backups');
 let ordnerCache: { pfad: string; dauerhaft: boolean } | null = null;
 
+/**
+ * Im Container: liegt der Ordner auf einem eingebundenen Volume/Host-Ordner? Sonst steckt er in der
+ * Container-Schicht und ist nach jedem Update (Container neu erstellt) leer.
+ */
+export async function eingebunden(pfad: string): Promise<boolean> {
+  const imContainer = await fs.access('/.dockerenv').then(() => true, () => false);
+  if (!imContainer) return true;
+  const info = await fs.readFile('/proc/self/mountinfo', 'utf8').catch(() => null);
+  if (!info) return true;
+  const ziel = path.resolve(pfad);
+  return info.split('\n').some((z) => {
+    const mp = z.split(' ')[4]?.replace(/\\040/g, ' ');
+    return !!mp && mp !== '/' && (ziel === mp || ziel.startsWith(`${mp}/`));
+  });
+}
+
 /** Sicherungsordner; ist er nicht beschreibbar, wird ein temporärer Ordner genutzt (nicht dauerhaft) */
 export async function ordner(): Promise<{ pfad: string; dauerhaft: boolean }> {
   if (ordnerCache) return ordnerCache;
@@ -62,7 +78,7 @@ export async function ordner(): Promise<{ pfad: string; dauerhaft: boolean }> {
   try {
     await fs.mkdir(soll, { recursive: true });
     await fs.access(soll, fs.constants.W_OK);
-    ordnerCache = { pfad: soll, dauerhaft: true };
+    ordnerCache = { pfad: soll, dauerhaft: await eingebunden(soll) };
   } catch {
     const tmp = path.join(os.tmpdir(), 'portal-sicherungen');
     await fs.mkdir(tmp, { recursive: true });

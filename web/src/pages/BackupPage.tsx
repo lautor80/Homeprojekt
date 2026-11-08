@@ -140,8 +140,8 @@ export function BackupPage() {
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {d && !d.dauerhaft && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
-          Der Sicherungsordner ist nicht dauerhaft eingerichtet ({d.pfad}) – Sicherungen gehen beim Neustart des Portals verloren. Bitte jede Sicherung herunterladen
-          oder das Update einspielen, das den Ordner als Volume einbindet.
+          Der Sicherungsordner {d.pfad} ist nicht als Volume bzw. Host-Ordner eingebunden – Sicherungen gehen beim nächsten Update oder Neustart
+          des Containers verloren. Bitte jede Sicherung herunterladen und im Stack das Volume <code>portal_sicherungen:/app/data/sicherungen</code> eintragen.
         </MessageStrip>
       )}
       {d?.letzteRuecksicherung && (
