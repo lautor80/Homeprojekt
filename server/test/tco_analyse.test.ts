@@ -235,7 +235,8 @@ test('Teilnehmer Jugendtraining: Liste, Detail, mailto', async () => {
 test('Teilnehmer: Auswahl für das PDF entspricht der Trefferliste', async () => {
   const { auswaehlen } = await import('../../modules/tco/server/teilnehmer/pdf.js');
   const { teilnehmerLesen } = await import('../../modules/tco/server/teilnehmer/logik.js');
-  const alle = await teilnehmerLesen(sql);
+  const { DB } = await import('../../modules/tco/server/verein.js');
+  const alle = await teilnehmerLesen(DB);
   const namen = (f: Parameters<typeof auswaehlen>[1]) => auswaehlen(alle, f).map((t) => t.name);
   assert.deepEqual(namen({ filter: 'ALL', suche: '', adrnrs: [] }), ['Gast, Tim', 'Krämer, Lena']);
   assert.deepEqual(namen({ filter: 'NONMEMBER', suche: '', adrnrs: [] }), ['Gast, Tim']);
