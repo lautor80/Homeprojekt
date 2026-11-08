@@ -47,7 +47,7 @@ export interface Manifest {
   ausgeschlossen: string[];
   mitAenderungsbelegen: boolean;
 }
-interface Inhalt { manifest: Manifest; daten: Record<string, string> }
+export interface Inhalt { manifest: Manifest; daten: Record<string, string> }
 
 // ---------------------------------------------------------------------------
 // Ablageort
@@ -142,14 +142,32 @@ export async function uebersicht() {
 // ---------------------------------------------------------------------------
 // Sichern
 // ---------------------------------------------------------------------------
-async function copyTo(db: Tx, tabelle: string, spalten: string[]): Promise<string> {
+async function copyTo(db: Tx, tabelle: string, spalten: string[], onZeilen?: (n: number) => void): Promise<string> {
   const stream = await db.unsafe(`copy ${voll(tabelle)} (${spalten.map(q).join(', ')}) to stdout`).readable();
   const teile: Buffer[] = [];
-  for await (const c of stream) teile.push(Buffer.from(c as Buffer));
+  for await (const c of stream) {
+    const b = Buffer.from(c as Buffer);
+    teile.push(b);
+    if (onZeilen) { let n = 0; for (let i = b.indexOf(10); i !== -1; i = b.indexOf(10, i + 1)) n++; if (n) onZeilen(n); }
+  }
   return Buffer.concat(teile).toString('utf8');
 }
 
-export async function sichern(o: { schemas?: string[]; mitAenderungsbelegen?: boolean; von: string; notiz?: string; art?: Manifest['art'] }): Promise<Inhalt> {
+/** Fortschritt beim Lesen: bisher gelesene Zeilen, aktuelle Tabelle */
+export type Fortschritt = (f: { zeilen: number; tabelle: string; nr: number; anzahl: number }) => void;
+
+/** geschätzte Zeilenzahl einer Sicherung (Statistik von PostgreSQL, für die Restdauer) */
+export async function schaetzung(o: { schemas?: string[]; mitAenderungsbelegen?: boolean }): Promise<number> {
+  const aktiv = aktiveSchemas();
+  const schemas = (o.schemas?.length ? o.schemas : aktiv).filter((x) => aktiv.includes(x));
+  const rows = await sql`
+    select n.nspname || '.' || c.relname as name, greatest(c.reltuples, 0)::bigint as geschaetzt
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where c.relkind = 'r' and n.nspname = any(${schemas})`;
+  return rows.filter((r) => !NIE.has(r.name) && (o.mitAenderungsbelegen !== false || !AUDIT.has(r.name))).reduce((x, r) => x + Number(r.geschaetzt), 0);
+}
+
+export async function sichern(o: { schemas?: string[]; mitAenderungsbelegen?: boolean; von: string; notiz?: string; art?: Manifest['art']; fortschritt?: Fortschritt }): Promise<Inhalt> {
   const aktiv = aktiveSchemas();
   const schemas = (o.schemas?.length ? o.schemas : aktiv).filter((s) => aktiv.includes(s));
   if (!schemas.length) throw new BusinessError('Bitte mindestens einen Bereich zum Sichern wählen.');
@@ -162,8 +180,10 @@ export async function sichern(o: { schemas?: string[]; mitAenderungsbelegen?: bo
       .filter((id) => schemas.includes(id.split('/')[0]));
     const daten: Record<string, string> = {};
     const info: TabelleInfo[] = [];
-    for (const t of tabs) {
-      const text = await copyTo(db, t.name, t.spalten.map((s) => s.name));
+    let gelesen = 0;
+    for (const [nr, t] of tabs.entries()) {
+      o.fortschritt?.({ zeilen: gelesen, tabelle: t.name, nr: nr + 1, anzahl: tabs.length });
+      const text = await copyTo(db, t.name, t.spalten.map((s) => s.name), o.fortschritt ? (n) => { gelesen += n; o.fortschritt!({ zeilen: gelesen, tabelle: t.name, nr: nr + 1, anzahl: tabs.length }); } : undefined);
       daten[t.name] = text;
       info.push({ ...t, zeilen: text ? text.split('\n').length - 1 : 0 });
     }
@@ -230,6 +250,29 @@ export const kurzinfo = (m: Manifest, verschluesselt: boolean) => ({
   tabellen: m.tabellen.length, zeilen: m.tabellen.reduce((s, t) => s + t.zeilen, 0),
 });
 
+/** wie `datei`, packt das .portal-Format aber im Hintergrund (gzip im Thread-Pool), damit der Server ansprechbar bleibt */
+export async function dateiAsync(inhalt: Inhalt, format: Dateiformat, passwort?: string | null): Promise<Buffer> {
+  if (format === 'zip') return datei(inhalt, format, passwort);
+  if (passwort && passwort.length < 8) throw new BusinessError('Das Passwort für die Sicherung muss mindestens 8 Zeichen haben.');
+  const gz = await new Promise<Buffer>((ok, fehler) => zlib.gzip(Buffer.from(JSON.stringify(inhalt), 'utf8'), { level: 6 }, (e, r) => (e ? fehler(e) : ok(r))));
+  if (!passwort) return Buffer.concat([MAGIC, Buffer.from([0]), gz]);
+  const salz = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const k = await new Promise<Buffer>((ok, fehler) => crypto.scrypt(passwort, salz, 32, { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (e, r) => (e ? fehler(e) : ok(r))));
+  const c = crypto.createCipheriv('aes-256-gcm', k, iv);
+  const daten = Buffer.concat([c.update(gz), c.final()]);
+  return Buffer.concat([MAGIC, Buffer.from([1]), salz, iv, c.getAuthTag(), daten]);
+}
+
+/** Dateiname einer Sicherung (Zeitstempel, Art, Format) */
+export function dateiname(m: Manifest, format: Dateiformat) {
+  const z = new Date(m.erstellt);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const stempel = `${z.getFullYear()}-${p2(z.getMonth() + 1)}-${p2(z.getDate())}_${p2(z.getHours())}${p2(z.getMinutes())}${p2(z.getSeconds())}`;
+  const art = m.art === 'vor-ruecksicherung' ? '_vor-ruecksicherung' : m.art === 'automatisch' ? '_automatisch' : '';
+  return `portal_${stempel}${art}.${format}`;
+}
+
 /** Datei im gewünschten Format erzeugen (ZIP/XML ist nie verschlüsselt) */
 export function datei(inhalt: Inhalt, format: Dateiformat, passwort?: string | null): Buffer {
   if (format === 'zip') {
@@ -239,15 +282,12 @@ export function datei(inhalt: Inhalt, format: Dateiformat, passwort?: string | n
   return verpacken(inhalt, passwort);
 }
 
-export async function speichern(inhalt: Inhalt, passwort?: string | null, format: Dateiformat = 'portal'): Promise<{ name: string; groesse: number; dauerhaft: boolean }> {
+export async function speichern(inhalt: Inhalt, passwort?: string | null, format: Dateiformat = 'portal', fertig?: Buffer): Promise<{ name: string; groesse: number; dauerhaft: boolean }> {
   const { pfad, dauerhaft } = await ordner();
-  const z = new Date(inhalt.manifest.erstellt);
-  const p2 = (n: number) => String(n).padStart(2, '0');
-  const stempel = `${z.getFullYear()}-${p2(z.getMonth() + 1)}-${p2(z.getDate())}_${p2(z.getHours())}${p2(z.getMinutes())}${p2(z.getSeconds())}`;
-  const art = inhalt.manifest.art === 'vor-ruecksicherung' ? '_vor-ruecksicherung' : inhalt.manifest.art === 'automatisch' ? '_automatisch' : '';
-  let name = `portal_${stempel}${art}.${format}`;
-  for (let i = 2; await fs.stat(path.join(pfad, name)).then(() => true, () => false); i++) name = `portal_${stempel}${art}_${i}.${format}`;
-  const b = datei(inhalt, format, passwort);
+  const basis = dateiname(inhalt.manifest, format).replace(/\.(portal|zip)$/, '');
+  let name = `${basis}.${format}`;
+  for (let i = 2; await fs.stat(path.join(pfad, name)).then(() => true, () => false); i++) name = `${basis}_${i}.${format}`;
+  const b = fertig ?? datei(inhalt, format, passwort);
   await fs.writeFile(path.join(pfad, name), b, { mode: 0o600 });
   await fs.writeFile(path.join(pfad, `${name}.json`), JSON.stringify(kurzinfo(inhalt.manifest, !!passwort)), { mode: 0o600 });
   return { name, groesse: b.length, dauerhaft };

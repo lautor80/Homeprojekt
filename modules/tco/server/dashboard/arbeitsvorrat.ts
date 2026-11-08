@@ -81,6 +81,20 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
+  // Sicherung: täglicher Nextcloud-Export fehlgeschlagen bzw. seit über 36 Stunden ohne Erfolg
+  if (can(req, 'core.backup:create')) {
+    const [b] = await db`select aktiv, letzter_fehler, letzte_meldung, to_char(letzter_lauf at time zone 'Europe/Berlin', 'YYYY-MM-DD') as lauf,
+                                (letzter_erfolg is null or letzter_erfolg < now() - interval '36 hours') as veraltet
+                           from core.backup_export where id = 1`;
+    if (b?.aktiv && (b.letzter_fehler || b.veraltet)) {
+      out.push({
+        key: 'BACKUP_EXPORT', bereich: 'Administration', icon: 'cloud', state: 'Negative',
+        titel: b.letzter_fehler ? 'Nextcloud-Export der Sicherung fehlgeschlagen' : 'Keine aktuelle Sicherung in der Nextcloud',
+        text: b.letzte_meldung ?? 'Der tägliche Export ist noch nicht gelaufen.', datum: b.lauf, pfad: '/admin/sicherung',
+      });
+    }
+  }
+
   // Platzbuchung: Registrierungen neuer Hallennutzer warten auf Bestätigung
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit

@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { migrate } from './migrate.js';
 import { activeModuleIds, activeModules } from './modules.js';
 import { sql } from './db.js';
+import { planerStarten } from './backup-export.js';
 
 async function waitForDb(retries = 30) {
   for (let i = 1; i <= retries; i++) {
@@ -22,6 +23,7 @@ async function main() {
   await migrate(activeModules(), (m) => console.log(m));
   const app = await buildApp();
   await app.listen({ port: config.port, host: config.host });
+  planerStarten(app.log);
   app.log.info(`Aktive Module: ${activeModuleIds().join(', ') || '(keine)'} (PORTAL_MODULES=${config.modules.join(',')})`);
 
   const stop = async () => {

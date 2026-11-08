@@ -35,6 +35,7 @@ const coreAuditObjects: AuditObjectDef[] = [
   { type: 'SETTING', text: 'Einstellung', permission: 'core.settings:edit' },
   { type: 'API_KEY', text: 'API-Schlüssel', permission: 'core.apikeys:display' },
   { type: 'PAPERLESS_MAPPING', text: 'Paperless-Zuordnung', permission: 'core.settings:edit' },
+  { type: 'BACKUP_EXPORT', text: 'Nextcloud-Export der Sicherung', permission: 'core.backup:create' },
 ];
 
 export function auditObjects(): AuditObjectDef[] {

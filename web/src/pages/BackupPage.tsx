@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea, Title,
+  AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '../api';
@@ -24,6 +24,46 @@ interface Uebersicht {
   datenbank: number; schemas: SchemaInfo[]; pfad: string; dauerhaft: boolean; dateien: Datei[];
   nacht: { name: string; groesse: number; geaendert: string }[];
   letzteRuecksicherung: { zeitpunkt: string; datei: string; schemas: string[]; von: string; sicherheitskopie: string } | null;
+  laufend: Job | null;
+}
+interface Job {
+  id: string; art: 'sicherung' | 'nextcloud'; von: string; phase: string; text: string; detail: string; prozent: number;
+  laufzeitSekunden: number; restSekunden: number | null; fertig: boolean; fehler: string | null; ergebnis: { name?: string; text?: string } | null;
+}
+interface Export {
+  aktiv: boolean; url: string; benutzer: string; passwort: string; ordner: string; uhrzeit: string; format: 'portal' | 'zip'; datei_passwort: string;
+  mit_aenderungsbelegen: boolean; aufbewahrung_tage: number; letzter_lauf: string | null; letzter_erfolg: string | null; letzte_meldung: string | null;
+  letzte_datei: string | null; letzte_dauer_s: number | null; letzter_fehler: boolean; fehlt: string[];
+}
+
+/** Sekunden lesbar: „ca. 2 Min. 10 s“ */
+function dauer(s: number | null): string {
+  if (s === null) return 'wird geschätzt …';
+  if (s < 60) return `ca. ${s} s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `ca. ${m} Min.${s % 60 && m < 5 ? ` ${s % 60} s` : ''}` : `ca. ${Math.floor(m / 60)} Std. ${m % 60} Min.`;
+}
+
+/** Hintergrundauftrag abfragen, bis er fertig ist */
+async function abwarten(id: string, onStand: (j: Job) => void): Promise<Job> {
+  for (;;) {
+    const j = await api.get<Job>(`/api/backup/job/${id}`);
+    onStand(j);
+    if (j.fertig) return j;
+    await new Promise((ok) => setTimeout(ok, 1000));
+  }
+}
+
+function Fortschritt({ j }: { j: Job }) {
+  return (
+    <div className="portal-bk__fortschritt">
+      <ProgressIndicator value={j.prozent} displayValue={`${j.prozent} %`} valueState={j.fehler ? 'Negative' : j.fertig ? 'Positive' : 'None'} style={{ width: '100%' }} />
+      <div className="portal-bk__fortschritt-text">
+        <span><strong>{j.text}</strong>{j.detail ? ` – ${j.detail}` : ''}</span>
+        <span>{j.fertig ? `${j.laufzeitSekunden} s` : `läuft seit ${j.laufzeitSekunden} s · noch ${dauer(j.restSekunden)}`}</span>
+      </div>
+    </div>
+  );
 }
 interface Pruefung {
   manifest: { erstellt: string; von: string; notiz: string; schemas: string[]; mitAenderungsbelegen: boolean };
@@ -53,19 +93,28 @@ export function BackupPage() {
   const [rs, setRs] = useState<Datei | null>(null);
   const [format, setFormat] = useState<'portal' | 'zip'>('portal');
   const [xml, setXml] = useState<Datei | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
-  const laden = () => api.get<Uebersicht>('/api/backup').then((r) => { setD(r); setAuswahl((a) => a ?? r.schemas.map((s) => s.schema)); }).catch((e) => setError(e.message));
-  useEffect(() => { laden(); }, []);
+  const laden = () => api.get<Uebersicht>('/api/backup').then((r) => { setD(r); setAuswahl((a) => a ?? r.schemas.map((s) => s.schema)); return r; }).catch((e) => { setError(e.message); return null; });
+  useEffect(() => {
+    // läuft schon eine Sicherung (z. B. nach Neuladen der Seite), deren Fortschritt anzeigen
+    laden().then((r) => { if (r?.laufend && r.laufend.art === 'sicherung') abwarten(r.laufend.id, setJob).then(() => laden()).catch(() => undefined); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function erstellen() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ name: string; text: string }>('/api/backup', { schemas: auswahl, mitAenderungsbelegen: audit, notiz, format, passwort: format === 'zip' ? null : pw || null });
+      const start = await api.post<Job>('/api/backup/start', { schemas: auswahl, mitAenderungsbelegen: audit, notiz, format, passwort: format === 'zip' ? null : pw || null });
+      setJob(start);
+      const j = await abwarten(start.id, setJob);
+      if (j.fehler) throw new Error(j.fehler);
+      const r = j.ergebnis as { name: string; text: string };
       toast(r.text, 6000);
       setNotiz(''); setPw(''); setPw2('');
       await laden();
       await download(`/api/backup/datei/${encodeURIComponent(r.name)}`, r.name);
+      setJob(null);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -189,14 +238,18 @@ export function BackupPage() {
               sich ohne Passwort nicht wiederherstellen. Dokumente selbst liegen in Paperless und werden dort gesichert.
             </Text>
             <div><Button design="Emphasized" icon="save" disabled={busy || !auswahl?.length || !!pwFehler} onClick={erstellen}>Sicherung erstellen und herunterladen</Button></div>
+            {job && job.art === 'sicherung' && <Fortschritt j={job} />}
           </div>
         </div>
       </Section>
 
-      <Section title="Sicherungen im Portal" count={d?.dateien.length ?? 0} flush>
+      <Section title="Sicherungen im Portal" count={d?.dateien.length ?? 0} flush
+               status={d ? <Text className="portal-muted portal-small">Ablage: {d.pfad}{d.dauerhaft ? '' : ' (nicht dauerhaft!)'}</Text> : undefined}>
         <AnalyticalTable columns={columns} data={d?.dateien ?? []} loading={!d} visibleRows={Math.min(Math.max(d?.dateien.length ?? 0, 1), 12)} minRows={1}
                          noDataText="Noch keine Sicherung – oben erstellen oder eine Datei hochladen" />
       </Section>
+
+      <NextcloudExport onError={setError} />
 
       <Section title="Nächtliche Datenbanksicherungen" count={d?.nacht.length ?? 0}>
         {d?.nacht.length ? (
@@ -334,5 +387,89 @@ function XmlDialog({ datei, onClose, laden }: { datei: Datei; onClose: () => voi
         <MessageStrip design="Critical" hideCloseButton>Die ZIP-Datei ist unverschlüsselt und enthält alle Daten der Sicherung im Klartext.</MessageStrip>
       </div>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- täglicher Export in die Nextcloud
+function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
+  const [c, setC] = useState<Export | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [job, setJob] = useState<Job | null>(null);
+  const laden = () => api.get<Export>('/api/backup/nextcloud').then(setC).catch((e) => onError(e.message));
+  useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!c) return null;
+  const set = (x: Partial<Export>) => setC({ ...c, ...x });
+  const daten = () => ({
+    aktiv: c.aktiv, url: c.url, benutzer: c.benutzer, passwort: c.passwort, ordner: c.ordner, uhrzeit: c.uhrzeit, format: c.format,
+    datei_passwort: c.format === 'zip' ? '' : c.datei_passwort, mit_aenderungsbelegen: c.mit_aenderungsbelegen, aufbewahrung_tage: c.aufbewahrung_tage,
+  });
+  async function lauf(fn: () => Promise<void>) {
+    setBusy(true); onError(null);
+    try { await fn(); } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
+  }
+  const status = c.letzter_lauf
+    ? <ObjectStatus state={c.letzter_fehler ? 'Negative' : 'Positive'} showDefaultIcon>{c.letzter_fehler ? 'Fehler' : 'OK'} · {zeit(c.letzter_lauf)}</ObjectStatus>
+    : <ObjectStatus state="None">noch nicht gelaufen</ObjectStatus>;
+  return (
+    <Section title="Täglicher Export in die Nextcloud" status={status}
+             actions={<>
+               <Button icon="connected" disabled={busy} onClick={() => lauf(async () => { toast((await api.post<{ text: string }>('/api/backup/nextcloud/testen', daten())).text, 6000); })}>Verbindung testen</Button>
+               <Button icon="save" design="Emphasized" disabled={busy} onClick={() => lauf(async () => { const r = await api.put<Export & { text: string }>('/api/backup/nextcloud', daten()); setC(r); toast(r.text, 5000); })}>Speichern</Button>
+             </>}>
+      <div className="portal-bk">
+        <div className="portal-bk__form">
+          <Switch checked={c.aktiv} textOn="An" textOff="Aus" onChange={(e) => set({ aktiv: e.target.checked })} />
+          <Text className="portal-muted portal-small">
+            Erstellt jeden Tag ab der eingestellten Uhrzeit eine vollständige Sicherung (alle Bereiche) und lädt sie per WebDAV in den Zielordner.
+            Ältere automatische Sicherungen im Ordner werden nach der Aufbewahrungsdauer gelöscht, andere Dateien bleiben unberührt.
+          </Text>
+          <Label showColon required>Nextcloud-Adresse</Label>
+          <Input value={c.url} placeholder="https://cloud.beispiel.de" onInput={(e) => set({ url: e.target.value })} />
+          <Label showColon required>Benutzer</Label>
+          <Input value={c.benutzer} onInput={(e) => set({ benutzer: e.target.value })} />
+          <Label showColon required>App-Passwort</Label>
+          <Input type="Password" value={c.passwort} placeholder="Nextcloud → Einstellungen → Sicherheit → App-Passwort" onInput={(e) => set({ passwort: e.target.value })} />
+          <Label showColon required>Zielordner</Label>
+          <Input value={c.ordner} placeholder="/Vorstand/Portal-Sicherungen" onInput={(e) => set({ ordner: e.target.value })} />
+        </div>
+        <div className="portal-bk__form">
+          <Label showColon>Uhrzeit</Label>
+          <TimePicker formatPattern="HH:mm" value={c.uhrzeit} onChange={(e) => e.detail.value && set({ uhrzeit: e.detail.value })} style={{ width: '8rem' }} />
+          <Label showColon>Format</Label>
+          <div className="portal-row">
+            <RadioButton name="nc-format" text=".portal (empfohlen)" checked={c.format === 'portal'} onChange={() => set({ format: 'portal' })} />
+            <RadioButton name="nc-format" text="ZIP mit XML (unverschlüsselt)" checked={c.format === 'zip'} onChange={() => set({ format: 'zip' })} />
+          </div>
+          {c.format === 'portal' ? <>
+            <Label showColon>Datei-Passwort (verschlüsselt die Sicherung)</Label>
+            <Input type="Password" value={c.datei_passwort} placeholder="mindestens 8 Zeichen – dringend empfohlen" onInput={(e) => set({ datei_passwort: e.target.value })}
+                   valueState={c.datei_passwort && c.datei_passwort.length < 8 ? 'Negative' : !c.datei_passwort ? 'Critical' : 'None'} />
+          </> : <Text style={{ color: 'var(--sapCriticalTextColor)' }} className="portal-small">ZIP/XML ist unverschlüsselt – der Zielordner darf nur dem Vorstand zugänglich sein.</Text>}
+          <CheckBox text="Änderungsbelege mitsichern" checked={c.mit_aenderungsbelegen} onChange={(e) => set({ mit_aenderungsbelegen: e.target.checked })} />
+          <Label showColon>Aufbewahrung (Tage, 0 = nie löschen)</Label>
+          <Input type="Number" value={String(c.aufbewahrung_tage)} onInput={(e) => set({ aufbewahrung_tage: Number(e.target.value) || 0 })} style={{ width: '8rem' }} />
+        </div>
+      </div>
+      {c.letzte_meldung && (
+        <MessageStrip design={c.letzter_fehler ? 'Negative' : 'Positive'} hideCloseButton style={{ marginTop: '0.75rem' }}>
+          Letzter Lauf{c.letzter_lauf ? ` ${zeit(c.letzter_lauf)}` : ''}: {c.letzte_meldung}
+          {c.letzter_erfolg && c.letzter_fehler ? ` – letzter erfolgreicher Export ${zeit(c.letzter_erfolg)}.` : ''}
+        </MessageStrip>
+      )}
+      <div className="portal-row" style={{ marginTop: '0.75rem' }}>
+        <Button icon="cloud" disabled={busy || !!c.fehlt.length}
+                tooltip={c.fehlt.length ? `Zuerst speichern bzw. ergänzen: ${c.fehlt.join(', ')}` : undefined}
+                onClick={() => lauf(async () => {
+                  const start = await api.post<Job>('/api/backup/nextcloud/jetzt', {});
+                  setJob(start);
+                  const j = await abwarten(start.id, setJob);
+                  await laden();
+                  if (j.fehler) throw new Error(j.fehler);
+                  toast(String(j.ergebnis?.text ?? 'Export fertig.'), 6000);
+                })}>Jetzt exportieren</Button>
+        {c.fehlt.length > 0 && <Text className="portal-muted portal-small">Noch einzurichten: {c.fehlt.join(', ')}</Text>}
+      </div>
+      {job && <Fortschritt j={job} />}
+    </Section>
   );
 }
