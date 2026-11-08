@@ -569,7 +569,8 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   assert.equal((await dennis('GET', `${A}/registrierungen`)).status, 403);
 
   // erneuter Kundenimport (ohne PW-Spalte) behält Zuordnung und Kennwort, legt nichts doppelt an
-  imp = await sql.begin((tx) => ep3Importieren(tx as never, ['ZUID;ZALIAS;STATUS;EMAIL;KEY;VALUE', '77;dennis77;enabled;dennis@example.org;firstname;Dennis', '78;erika;enabled;erika@example.org;firstname;Erika'].join('\n')));
+  imp = await sql.begin((tx) => ep3Importieren(tx as never, ['ZUID;ZALIAS;STATUS;EMAIL;KEY;VALUE', '77;dennis77;enabled;dennis@example.org;firstname;Dennis', '77;dennis77;enabled;dennis@example.org;lastname;Gast',
+    '78;erika;enabled;erika@example.org;firstname;Erika', '78;erika;enabled;erika@example.org;lastname;Extern'].join('\n')));
   assert.equal(imp.ok, true);
   assert.doesNotMatch(imp.text, /Benutzer angelegt/);
   const [k] = await sql`select benutzer_id, pw_hash from tco.kunden where zuid = '77'`;
@@ -581,6 +582,7 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   r = await admin('POST', `${A}/ep3/anlegen-alle`, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.angelegt, 1);
+  assert.equal((await sql`select count(*)::int as n from core.users where username = 'erika@example.org'`)[0].n, 1, JSON.stringify(r.body));
   assert.equal((await client()('POST', '/api/auth/login', { username: 'erika@example.org', password: 'erika-pw-1' })).status, 200);
   // Anmeldung per E-Mail-Adresse auch für Benutzer mit anderem Anmeldenamen (Carla aus der Registrierung)
   assert.equal((await client()('POST', '/api/auth/login', { username: 'carla@example.org', password: 'ganz-geheim-123' })).status, 200);
