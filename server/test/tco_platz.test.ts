@@ -522,10 +522,10 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   const csv = ['ZUID;ZALIAS;STATUS;EMAIL;PW;KEY;VALUE',
     `77;dennis77;enabled;dennis@example.org;${hash};firstname;Dennis`, `77;dennis77;enabled;dennis@example.org;${hash};lastname;Gast`,
     `78;erika;enabled;erika@example.org;${hashSync('erika-pw-1', 6)};firstname;Erika`, `78;erika;enabled;erika@example.org;${hashSync('erika-pw-1', 6)};lastname;Extern`].join('\n');
+  // EP3-Buchung von Dennis (Name in Großschrift, wie der Import sie anlegt) – Erika hat keine
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000007701', ${tag(5)}, '18:00', '19:00', 'DENNIS GAST', '1', 'Halle')`;
   let imp = await sql.begin((tx) => ep3Importieren(tx as never, csv));
   assert.match(imp.text, /2 Kennwörter übernommen/);
-  // EP3-Buchung von Dennis (Name in Großschrift, wie der Import sie anlegt)
-  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000007701', ${tag(5)}, '18:00', '19:00', 'DENNIS GAST', '1', 'Halle')`;
 
   // Import legt die Benutzer direkt an (nur mit Buchung in den letzten 12 Monaten): Anmeldename = E-Mail, Anzeigename „Nachname, Vorname“, Rolle Hallennutzer
   assert.match(imp.text, /1 Benutzer angelegt/);
