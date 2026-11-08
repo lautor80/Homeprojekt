@@ -46,7 +46,7 @@ export function AblageProvider({ children }: { children: ReactNode }) {
   const [, neu] = useState(0);
   const [laeuft, setLaeuft] = useState(false);
   const [meldung, setMeldung] = useState<(AblageErgebnis & { fehler?: boolean }) | null>(null);
-  const timer = useRef<number>();
+  const timer = useRef<number | undefined>(undefined);
 
   const anmelden = useCallback((e: Eintrag, istErsatz: boolean) => {
     const l = istErsatz ? ersatz : seiten;
