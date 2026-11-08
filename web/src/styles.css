@@ -635,3 +635,13 @@ ui5-busy-indicator { max-width: 100%; }
 
 /* Sperrhinweis (gleichzeitige Bearbeitung) */
 .portal-sperre { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; width: 100%; }
+
+/* ResponsiveTable: Kartenliste auf dem Handy */
+.portal-rt { display: grid; gap: 0.5rem; padding: 0.5rem; }
+.portal-rt__karte { border: 1px solid var(--sapList_BorderColor, #e5e5e5); border-radius: var(--portal-radius, 0.75rem); padding: 0.5rem 0.75rem; background: var(--sapList_Background, #fff); min-width: 0; }
+.portal-rt__karte--hervor { background: var(--sapInformationBackground, #e1f4ff); }
+.portal-rt__titel { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; font-weight: 700; margin-bottom: 0.25rem; min-width: 0; }
+.portal-rt__felder { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 0.75rem; }
+.portal-rt__feld { display: flex; flex-direction: column; min-width: 0; }
+.portal-rt__label { font-size: 0.75rem; color: var(--sapContent_LabelColor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-rt__wert { min-width: 0; overflow-wrap: anywhere; }

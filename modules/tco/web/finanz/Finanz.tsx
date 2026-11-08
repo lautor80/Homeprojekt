@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  AnalyticalTable, BusyIndicator, Button, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select, Text,
+  BusyIndicator, Button, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { Section } from '@core/components/Section';
+import { ResponsiveTable, useKlein } from '@core/components/ResponsiveTable';
 import { TCO, dat, eur } from '../util';
 import { BalkenDiagramm, VerlaufDiagramm } from './Diagramme';
 
@@ -50,6 +51,7 @@ export function Finanz() {
   const [d, setD] = useState<Uebersicht | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const klein = useKlein();
 
   const jahreLaden = () => api.get<Auswahl>(`${FZ}/jahre`).then(setAw).catch((e) => setError(e.message));
   const laden = async (j = jahr) => {
@@ -107,7 +109,7 @@ export function Finanz() {
   return (
     <AppPage title={`Einnahmen und Ausgaben ${jahr}`} subtitle={stand}
              actions={<>
-               <Label>Geschäftsjahr</Label>
+               {!klein && <Label>Geschäftsjahr</Label>}
                <Select style={{ width: '7rem' }} onChange={(ev) => setJahr(Number((ev.detail.selectedOption as HTMLElement).dataset.j))}>
                  {(aw?.jahre ?? [jahr]).map((j) => <Option key={j} data-j={j} selected={j === jahr}>{j}</Option>)}
                </Select>
@@ -119,7 +121,7 @@ export function Finanz() {
         {d && e && (
           <div className="portal-stack">
             {/* Kacheln (RENDER_TILE) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))', gap: 'var(--portal-gap, 1rem)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: klein ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(13rem, 1fr))', gap: klein ? '0.5rem' : 'var(--portal-gap, 1rem)' }}>
               <Kpi titel="Einnahmen" sub={`Geschäftsjahr ${jahr}`} wert={e.einnahmen} state="Positive" fuss="Konten 8001 – 8999" />
               <Kpi titel="Ausgaben" sub={`Geschäftsjahr ${jahr}`} wert={e.ausgaben} state="Critical" fuss="Konten 2001 – 7999" />
               <Kpi titel="Gewinn" sub={`Einnahmen − Ausgaben ${jahr}`} wert={e.gewinn} state={kpiFarbe(e.gewinn)} fuss={stand} />
@@ -136,33 +138,33 @@ export function Finanz() {
               <GeldKarte d={d} />
               {/* Grafik (RENDER_CHART) */}
               <Section title="Verlauf">
-                <BalkenDiagramm titel={`Einnahmen und Ausgaben je Monat ${jahr}`} name1="Einnahmen" name2="Ausgaben"
+                <BalkenDiagramm schmal={klein} titel={`Einnahmen und Ausgaben je Monat ${jahr}`} name1="Einnahmen" name2="Ausgaben"
                                 punkte={d.monate.map((m) => ({ label: MON_KURZ[m.monat - 1], val1: m.einnahmen, val2: m.ausgaben }))} />
               </Section>
             </div>
 
             <Section title={`Einnahmen und Ausgaben je Monat ${jahr}`} flush>
-              <AnalyticalTable columns={monatSpalten} data={monate} visibleRows={monate.length}
+              <ResponsiveTable columns={monatSpalten} data={monate} visibleRows={monate.length} hervorheben={(r) => r.gesamt}
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.gesamt ? 'Information' : 'None')} />
             </Section>
 
             <Section title="Einnahmen und Ausgaben je Geschäftsjahr" count={d.jahre.length} flush>
-              <AnalyticalTable columns={jahrSpalten} data={d.jahre} visibleRows={d.jahre.length} />
+              <ResponsiveTable columns={jahrSpalten} data={d.jahre} visibleRows={d.jahre.length} />
             </Section>
 
             <Section title={`Geldkonten ${jahr}`} count={d.geldkonten.length} flush>
-              <AnalyticalTable columns={geldSpalten} data={d.geldkonten} visibleRows={Math.max(d.geldkonten.length, 1)} noDataText="Keine Geldkonten mit Bestand oder Bewegung" />
+              <ResponsiveTable titelSpalten={2} columns={geldSpalten} data={d.geldkonten} visibleRows={Math.max(d.geldkonten.length, 1)} noDataText="Keine Geldkonten mit Bestand oder Bewegung" />
             </Section>
 
             <Section title="Einnahmen je Konto" count={d.einnahmen.length} flush>
-              <AnalyticalTable columns={kontoSpalten(true)} data={d.einnahmen} visibleRows={Math.max(d.einnahmen.length, 1)} noDataText={`Keine Einnahmen in ${jahr - 1}/${jahr}`} />
+              <ResponsiveTable titelSpalten={2} columns={kontoSpalten(true)} data={d.einnahmen} visibleRows={Math.max(d.einnahmen.length, 1)} noDataText={`Keine Einnahmen in ${jahr - 1}/${jahr}`} />
             </Section>
 
             <Section title="Ausgaben je Konto" count={d.ausgaben.length} flush>
-              <AnalyticalTable columns={kontoSpalten(false)} data={d.ausgaben} visibleRows={Math.max(d.ausgaben.length, 1)} noDataText={`Keine Ausgaben in ${jahr - 1}/${jahr}`} />
+              <ResponsiveTable titelSpalten={2} columns={kontoSpalten(false)} data={d.ausgaben} visibleRows={Math.max(d.ausgaben.length, 1)} noDataText={`Keine Ausgaben in ${jahr - 1}/${jahr}`} />
             </Section>
 
-            <Monatsverlauf jahr={jahr} auswahl={aw} />
+            <Monatsverlauf jahr={jahr} auswahl={aw} klein={klein} />
           </div>
         )}
       </BusyIndicator>
@@ -186,8 +188,8 @@ function GeldKarte({ d }: { d: Uebersicht }) {
   const l = d.liquiditaet;
   const e = d.ergebnis;
   const zeile = (text: string, v: number, state: State = 'None', fett = false) => (
-    <div className="portal-row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', padding: '0.15rem 0' }}>
-      {fett ? <Label style={{ fontWeight: 'bold' }}>{text}</Label> : <Text>{text}</Text>}
+    <div className="portal-row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', padding: '0.15rem 0', gap: '0.5rem' }}>
+      {fett ? <Label style={{ fontWeight: 'bold', minWidth: 0 }} wrappingType="Normal">{text}</Label> : <Text style={{ minWidth: 0 }}>{text}</Text>}
       <Betrag v={v} state={state} fett={fett} />
     </div>
   );
@@ -211,7 +213,7 @@ function GeldKarte({ d }: { d: Uebersicht }) {
 }
 
 /** Monatsverlauf über mehrere Jahre für gewählte Geldkonten (ZCL_TCO_FINANZEN=>MONATSVERLAUF) */
-function Monatsverlauf({ jahr, auswahl }: { jahr: number; auswahl: Auswahl | null }) {
+function Monatsverlauf({ jahr, auswahl, klein }: { jahr: number; auswahl: Auswahl | null; klein: boolean }) {
   const [jahre, setJahre] = useState<number[]>([jahr - 1, jahr]);
   const [konten, setKonten] = useState<string[]>([]);
   const [v, setV] = useState<{ verlauf: Verlauf[]; anfangsbestand: number } | null>(null);
@@ -228,20 +230,23 @@ function Monatsverlauf({ jahr, auswahl }: { jahr: number; auswahl: Auswahl | nul
   const punkte = (v?.verlauf ?? []).map((p) => ({ label: `${String(p.monat).padStart(2, '0')}/${p.jahr}`, einnahmen: p.einnahmen, ausgaben: p.ausgaben, bestand: p.bestand, zukunft: p.zukunft }));
   const letzte = [...(v?.verlauf ?? [])].reverse().find((p) => !p.zukunft) ?? v?.verlauf.at(-1);
   const summe = (k: 'einnahmen' | 'ausgaben') => (v?.verlauf ?? []).reduce((s, p) => s + p[k], 0);
+  const filter = (
+    <>
+      <Label>Jahre</Label>
+      <MultiComboBox style={{ width: klein ? '100%' : '12rem' }} placeholder="Jahre wählen"
+                     onSelectionChange={(ev) => setJahre(ev.detail.items.map((i) => Number((i as HTMLElement).dataset.j)))}>
+        {alleJahre.map((j) => <MultiComboBoxItem key={j} data-j={j} text={String(j)} selected={jahre.includes(j)} />)}
+      </MultiComboBox>
+      <Label>Geldkonten</Label>
+      <MultiComboBox style={{ width: klein ? '100%' : '16rem' }} placeholder="alle Geldkonten"
+                     onSelectionChange={(ev) => setKonten(ev.detail.items.map((i) => (i as HTMLElement).dataset.k!))}>
+        {(auswahl?.geldkonten ?? []).map((k) => <MultiComboBoxItem key={k.konto} data-k={k.konto} text={`${k.konto} ${k.name}`} selected={konten.includes(k.konto)} />)}
+      </MultiComboBox>
+    </>
+  );
   return (
-    <Section title="Monatsverlauf Geldkonten"
-             actions={<>
-               <Label>Jahre</Label>
-               <MultiComboBox style={{ width: '12rem' }} placeholder="Jahre wählen"
-                              onSelectionChange={(ev) => setJahre(ev.detail.items.map((i) => Number((i as HTMLElement).dataset.j)))}>
-                 {alleJahre.map((j) => <MultiComboBoxItem key={j} data-j={j} text={String(j)} selected={jahre.includes(j)} />)}
-               </MultiComboBox>
-               <Label>Geldkonten</Label>
-               <MultiComboBox style={{ width: '16rem' }} placeholder="alle Geldkonten"
-                              onSelectionChange={(ev) => setKonten(ev.detail.items.map((i) => (i as HTMLElement).dataset.k!))}>
-                 {(auswahl?.geldkonten ?? []).map((k) => <MultiComboBoxItem key={k.konto} data-k={k.konto} text={`${k.konto} ${k.name}`} selected={konten.includes(k.konto)} />)}
-               </MultiComboBox>
-             </>}>
+    <Section title="Monatsverlauf Geldkonten" actions={klein ? undefined : filter}>
+      {klein && <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '0.75rem' }}>{filter}</div>}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {v && (
         <Attributes narrow>
@@ -253,7 +258,7 @@ function Monatsverlauf({ jahr, auswahl }: { jahr: number; auswahl: Auswahl | nul
           </Attribute>
         </Attributes>
       )}
-      {punkte.length ? <VerlaufDiagramm punkte={punkte} /> : <div className="portal-empty">Bitte mindestens ein Jahr wählen.</div>}
+      {punkte.length ? <VerlaufDiagramm punkte={punkte} schmal={klein} /> : <div className="portal-empty">Bitte mindestens ein Jahr wählen.</div>}
       <div className="portal-muted portal-small" style={{ marginTop: '0.5rem' }}>
         Einnahmen und Ausgaben werden über das Gegenkonto den gewählten Geldkonten zugeordnet; der Kontostand ist der Stand der gewählten Geldkonten zum Monatsende. Zukünftige Monate sind blass dargestellt.
       </div>

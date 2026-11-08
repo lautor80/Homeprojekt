@@ -14,9 +14,10 @@ const kurz = (v: number) => (Math.abs(v) >= 1000 ? `${fmt(v / 1000, 1)}k` : fmt(
 export interface BalkenPunkt { label: string; val1: number; val2: number }
 
 /** Zwei Säulen je Punkt (z. B. Einnahmen und Ausgaben je Monat) mit Raster, Achsen und Legende */
-export function BalkenDiagramm({ titel, name1, name2, punkte }: { titel: string; name1: string; name2: string; punkte: BalkenPunkt[] }) {
+export function BalkenDiagramm({ titel, name1, name2, punkte, schmal = false }: { titel: string; name1: string; name2: string; punkte: BalkenPunkt[]; schmal?: boolean }) {
   if (!punkte.length) return null;
-  const W = 800, H = 300, ML = 66, MR = 20, MT = 52, MB = 40;
+  // schmal (Handy): kleinere Zeichenfläche → Schrift wird beim Skalieren nicht winzig
+  const W = schmal ? 420 : 800, H = schmal ? 260 : 300, ML = schmal ? 44 : 66, MR = schmal ? 8 : 20, MT = 52, MB = 40;
   const pw = W - ML - MR, ph = H - MT - MB, y0 = MT + ph;
   const max = Math.max(1, ...punkte.flatMap((p) => [p.val1, p.val2]));
   const bw = Math.max(3, pw / (punkte.length * 3));
@@ -32,16 +33,16 @@ export function BalkenDiagramm({ titel, name1, name2, punkte }: { titel: string;
         <g key={i}>
           {p.val1 > 0 && <rect x={x(i) - bw - 1} y={y0 - h(p.val1)} width={bw} height={h(p.val1)} fill={C1} rx={2}><title>{`${name1} ${p.label}: ${fmt(p.val1, 2)} €`}</title></rect>}
           {p.val2 > 0 && <rect x={x(i) + 1} y={y0 - h(p.val2)} width={bw} height={h(p.val2)} fill={C2} rx={2}><title>{`${name2} ${p.label}: ${fmt(p.val2, 2)} €`}</title></rect>}
-          <text x={x(i)} y={y0 + 16} textAnchor="middle" fontSize={10} fill={TEXT}>{p.label}</text>
+          <text x={x(i)} y={y0 + 16} textAnchor="middle" fontSize={10} fill={TEXT}>{schmal ? p.label.slice(0, 1) : p.label}</text>
         </g>
       ))}
       <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TEXT} />
       <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TEXT} />
-      <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>{titel}</text>
+      {!schmal && <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>{titel}</text>}
       <rect x={ML} y={28} width={14} height={9} fill={C1} rx={2} />
       <text x={ML + 20} y={36} fontSize={11} fill={TEXT}>{name1}</text>
-      <rect x={ML + 140} y={28} width={14} height={9} fill={C2} rx={2} />
-      <text x={ML + 160} y={36} fontSize={11} fill={TEXT}>{name2}</text>
+      <rect x={ML + 120} y={28} width={14} height={9} fill={C2} rx={2} />
+      <text x={ML + 140} y={36} fontSize={11} fill={TEXT}>{name2}</text>
     </svg>
   );
 }
@@ -52,9 +53,9 @@ export interface VerlaufPunkt { label: string; einnahmen: number; ausgaben: numb
  * Monatsverlauf über mehrere Jahre: Säulen Einnahmen/Ausgaben (linke Achse) und Linie Kontostand
  * der gewählten Geldkonten zum Monatsende (rechte Achse). Zukünftige Monate werden blass gezeichnet.
  */
-export function VerlaufDiagramm({ punkte }: { punkte: VerlaufPunkt[] }) {
+export function VerlaufDiagramm({ punkte, schmal = false }: { punkte: VerlaufPunkt[]; schmal?: boolean }) {
   if (!punkte.length) return null;
-  const W = 800, H = 320, ML = 66, MR = 70, MT = 52, MB = 44;
+  const W = schmal ? 420 : 800, H = schmal ? 300 : 320, ML = schmal ? 42 : 66, MR = schmal ? 44 : 70, MT = schmal ? 60 : 52, MB = 44;
   const pw = W - ML - MR, ph = H - MT - MB, y0 = MT + ph;
   const maxB = Math.max(1, ...punkte.flatMap((p) => [p.einnahmen, p.ausgaben]));
   const bMin = Math.min(0, ...punkte.map((p) => p.bestand)), bMax = Math.max(1, ...punkte.map((p) => p.bestand));
@@ -65,7 +66,7 @@ export function VerlaufDiagramm({ punkte }: { punkte: VerlaufPunkt[] }) {
   const yl = (v: number) => y0 - ((v - bMin) / bRange) * ph;
   // Jahresgrenzen beschriften (Label „MM/JJJJ“ → Jahr)
   const jahre = punkte.map((p, i) => ({ i, jahr: p.label.slice(-4) })).filter((p, i, a) => i === 0 || a[i - 1].jahr !== p.jahr);
-  const dicht = punkte.length > 24;
+  const dicht = punkte.length > (schmal ? 12 : 24);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 820 }} fontFamily="var(--sapFontFamily)" role="img" aria-label="Monatsverlauf">
       {[0, 1, 2, 3, 4].map((k) => {
@@ -99,13 +100,13 @@ export function VerlaufDiagramm({ punkte }: { punkte: VerlaufPunkt[] }) {
       ))}
       <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TEXT} />
       <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TEXT} />
-      <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>Monatsverlauf Geldkonten</text>
-      <rect x={ML} y={28} width={14} height={9} fill={C1} rx={2} />
-      <text x={ML + 20} y={36} fontSize={11} fill={TEXT}>Einnahmen</text>
-      <rect x={ML + 110} y={28} width={14} height={9} fill={C2} rx={2} />
-      <text x={ML + 130} y={36} fontSize={11} fill={TEXT}>Ausgaben</text>
-      <line x1={ML + 220} y1={32} x2={ML + 244} y2={32} stroke={C3} strokeWidth={2.5} />
-      <text x={ML + 250} y={36} fontSize={11} fill={TEXT}>Kontostand Monatsende (rechte Achse)</text>
+      {!schmal && <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>Monatsverlauf Geldkonten</text>}
+      <rect x={ML} y={schmal ? 12 : 28} width={14} height={9} fill={C1} rx={2} />
+      <text x={ML + 20} y={schmal ? 20 : 36} fontSize={11} fill={TEXT}>Einnahmen</text>
+      <rect x={ML + 110} y={schmal ? 12 : 28} width={14} height={9} fill={C2} rx={2} />
+      <text x={ML + 130} y={schmal ? 20 : 36} fontSize={11} fill={TEXT}>Ausgaben</text>
+      <line x1={schmal ? ML : ML + 220} y1={schmal ? 36 : 32} x2={schmal ? ML + 24 : ML + 244} y2={schmal ? 36 : 32} stroke={C3} strokeWidth={2.5} />
+      <text x={schmal ? ML + 30 : ML + 250} y={schmal ? 40 : 36} fontSize={11} fill={TEXT}>{schmal ? 'Kontostand (rechte Achse)' : 'Kontostand Monatsende (rechte Achse)'}</text>
     </svg>
   );
 }
