@@ -42,7 +42,7 @@ export function FiBelege() {
   const [notizZ, setNotizZ] = useState<Zeile | null>(null);
   const [gkZ, setGkZ] = useState<Zeile | null>(null);
   const [zahlRg, setZahlRg] = useState<string | null | undefined>(undefined);
-  const [bank, setBank] = useState(false);
+  const [bank, setBank] = useState<false | 'bank' | 'manuell'>(false);
   const [ok, setOk] = useState<string | null>(null);
 
   Object.assign(merk, { zr, von, bis, konto, tab });
@@ -242,8 +242,8 @@ export function FiBelege() {
   );
 
   const actions = <>
-    {buchen && <Button icon="upload" onClick={() => setBank(true)}>Bankimport</Button>}
-    {buchen && <Button icon="add" onClick={() => setBank(true)}>Manuelle Buchung</Button>}
+    {buchen && <Button icon="upload" onClick={() => setBank('bank')}>Bankimport</Button>}
+    {buchen && <Button icon="add" onClick={() => setBank('manuell')}>Manuelle Buchung</Button>}
     <Button icon="lead" onClick={() => setZahlRg(null)}>Teilzahlungen</Button>
     <ChangeHistoryButton objectType="FIBELEG" objectKey={stornoZ?.internenr ?? belege ?? ''} />
   </>;
@@ -281,7 +281,7 @@ export function FiBelege() {
       />
 
       {init && (
-        <BankimportDialog open={bank} start={konto} konten={init.konten} bankkonten={init.bankkonten} manuellKonten={init.manuellKonten}
+        <BankimportDialog open={!!bank} modus={bank || 'bank'} start={konto} konten={init.konten} bankkonten={init.bankkonten} manuellKonten={init.manuellKonten}
                           rechnungen={liste?.rechnungen ?? []} onClose={() => setBank(false)}
                           onDone={(t, w) => { setOk(t); if (w.length) setError(w.join('\n')); neuLaden(); }} />
       )}

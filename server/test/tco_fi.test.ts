@@ -164,6 +164,22 @@ test('FI Belege: Bankimport, Buchen, Rechnung, Storno', async () => {
   assert.equal(r.body.storniertDurch, '0000000107');
   assert.match(r.body.notizen[0].notiz, /Storniert durch 0000000107: Falsche Rechnung/);
 
+  // ---- nur in den Stammdaten hinterlegte Geldkonten, nur im Geschäftsjahr verwendete Konten
+  const kassenUmsatz = { datum: '2026-11-05', text: 'Einzahlung', betrag: 20, positionen: [{ gkonto: '8005', betrag: 20 }] };
+  r = await call('POST', `${F}/buchen`, { konto: '1000', modus: 'bank', umsaetze: [kassenUmsatz] });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /nicht als Konto mit Bankdatei hinterlegt/);
+  r = await call('POST', `${F}/buchen`, { konto: '1200', modus: 'manuell', umsaetze: [kassenUmsatz] });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /nicht für manuelle Buchungen hinterlegt/);
+  r = await call('POST', `${F}/buchen`, { konto: '8005', umsaetze: [{ ...kassenUmsatz, positionen: [{ gkonto: '1000', betrag: 20 }] }] });
+  assert.equal(r.status, 400, 'Erlöskonto ist kein Geldkonto');
+  await sql`insert into tco.fikontojahr (konto, jahr, aktiv) values ('8005', 2026, false)`;
+  r = await call('POST', `${F}/buchen`, { konto: '1000', modus: 'manuell', umsaetze: [kassenUmsatz] });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /nicht in Verwendung: 8005 \(2026\)/);
+  await sql`delete from tco.fikontojahr where konto = '8005' and jahr = 2026`;
+
   // ---- Rechnung nachträglich an Buchung zuordnen (Liste)
   r = await call('POST', `${F}/buchen`, { konto: '1000', umsaetze: [{ datum: '2026-11-06', text: 'Barzahlung Meier Halle', betrag: 100, positionen: [{ gkonto: '8003', betrag: 100 }] }] });
   const kasse = r.body.gebucht[0].internenr;

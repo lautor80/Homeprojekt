@@ -101,6 +101,19 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     const da = new Set((await tx`select konto from tco.fikonten where konto = any(${[...konten]})`).map((r) => r.konto as string));
     throw new BusinessError(`Konto nicht im Kontenstamm: ${[...konten].filter((x) => !da.has(x)).join(', ')}`);
   }
+  // Kontenverwendung je Geschäftsjahr (Kontenstamm): nicht verwendete Konten sind gesperrt
+  const jahre = [...new Set(umsaetze.map((u) => Number(u.datum.slice(0, 4))))];
+  const gesperrt = await tx`select konto, jahr from tco.fikontojahr where not aktiv and konto = any(${[...konten]}) and jahr = any(${jahre})`;
+  const verstoss = new Set<string>();
+  for (const u of umsaetze) {
+    const jahr = Number(u.datum.slice(0, 4));
+    for (const k of [u.konto, ...u.positionen.map((p) => p.gkonto)]) {
+      if (gesperrt.some((g) => g.konto === k && Number(g.jahr) === jahr)) verstoss.add(`${k} (${jahr})`);
+    }
+  }
+  if (verstoss.size) {
+    throw new BusinessError(`Konto im Kontenstamm für das Geschäftsjahr nicht in Verwendung: ${[...verstoss].join(', ')} – bitte ein anderes Konto wählen oder die Verwendung unter Einstellungen → Kontenstamm freigeben.`);
+  }
 
   const out: Gebucht[] = [];
   const sortiert = [...umsaetze].sort((a, b) => a.datum.localeCompare(b.datum));

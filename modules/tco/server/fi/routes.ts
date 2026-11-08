@@ -151,13 +151,26 @@ export async function fiRoutes(app: FastifyInstance) {
   app.post('/fi/buchen', { preHandler: requireAuth(P_FI.buchen) }, async (req) => {
     const b = z.object({
       konto: z.string().min(1), iban: z.string().nullish(), umsaetze: z.array(umsatzSchema).min(1, 'Keine Umsätze ausgewählt'),
+      /** bank = Umsätze aus der Bankdatei, manuell = Kasse und Konten ohne Bankdatei; ohne Angabe aus den Stammdaten abgeleitet */
+      modus: z.enum(['bank', 'manuell']).optional(),
     }).parse(req.body);
+    const v = await vereinLesen();
+    const bank = liste(v.fi_bankkonten);
+    const manuellKonten = liste(v.fi_manuell_konten);
+    const modus = b.modus ?? (bank.includes(b.konto) ? 'bank' : 'manuell');
+    if (modus === 'bank' && !bank.includes(b.konto)) {
+      throw new BusinessError(`Konto ${b.konto} ist in den Stammdaten nicht als Konto mit Bankdatei hinterlegt (TC Oberthal → Einstellungen → Stammdaten → FI-Belege).`);
+    }
+    if (modus === 'manuell' && !manuellKonten.includes(b.konto)) {
+      throw new BusinessError(`Konto ${b.konto} ist in den Stammdaten nicht für manuelle Buchungen hinterlegt (TC Oberthal → Einstellungen → Stammdaten → FI-Belege).`);
+    }
     const umsaetze: Umsatz[] = b.umsaetze.map((u) => ({
       konto: b.konto, ...u,
       // leere Zusatzpositionen (z. B. SumUp-Gebühr 0) entfallen
       positionen: u.positionen.length > 1 ? u.positionen.filter((p) => p.betrag !== 0) : u.positionen,
+      // Sollstellungs-Läufe gibt es nur aus der Bankdatei
+      laufid: modus === 'bank' ? u.laufid : null,
     }));
-    const v = await vereinLesen();
     const erg = await change(req, async (tx) => {
       const r = await umsaetzeBuchen(tx, umsaetze, benutzer(req));
       if (b.iban) {

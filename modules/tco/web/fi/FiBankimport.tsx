@@ -44,11 +44,18 @@ function berechnet(r: Row): { betrag: number; positionen: Position[] } {
   return { betrag: r.betrag, positionen: erste ? [{ gkonto: erste.gkonto, betrag: rest, text: erste.text || null, rgnr: erste.rgnr }, ...weitere] : [] };
 }
 
-export function BankimportDialog({ open, start, konten, bankkonten, manuellKonten, rechnungen, onClose, onDone }: {
-  open: boolean; start: string; konten: Konto[]; bankkonten: string[]; manuellKonten: string[]; rechnungen: OffeneRechnung[];
+/**
+ * modus „bank“: nur die in den Stammdaten als „Konten mit Bankdatei“ hinterlegten Konten, Umsätze aus der CSV-Datei.
+ * modus „manuell“: nur „Kasse und Konten ohne Bankdatei“ (z. B. Kasse, Sparkasse) – Buchungen von Hand erfassen.
+ * Angeboten werden nur Konten, die im Kontenstamm existieren und im aktuellen Geschäftsjahr verwendet werden.
+ */
+export function BankimportDialog({ open, modus, start, konten, bankkonten, manuellKonten, rechnungen, onClose, onDone }: {
+  open: boolean; modus: 'bank' | 'manuell'; start: string; konten: Konto[]; bankkonten: string[]; manuellKonten: string[]; rechnungen: OffeneRechnung[];
   onClose: () => void; onDone: (text: string, warnungen: string[]) => void;
 }) {
-  const geldkonten = [...bankkonten, ...manuellKonten];
+  const hinterlegt = modus === 'bank' ? bankkonten : manuellKonten;
+  const geldkonten = hinterlegt.filter((k) => konten.some((x) => x.konto === k && x.aktiv));
+  const ungueltig = hinterlegt.filter((k) => !geldkonten.includes(k));
   const [konto, setKonto] = useState(start);
   const [datei, setDatei] = useState<BankDatei | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -57,18 +64,20 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [belegFuer, setBelegFuer] = useState<Row | null>(null);
-  const manuell = !bankkonten.includes(konto);
+  const manuell = modus === 'manuell';
 
   useEffect(() => {
     if (!open) return;
-    setKonto(geldkonten.includes(start) ? start : bankkonten[0] ?? manuellKonten[0] ?? '');
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    setKonto(geldkonten.includes(start) ? start : geldkonten[0] ?? '');
+  }, [open, modus]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    setDatei(null); setRows([]); setError(null); setKontostand(null);
-    if (open && konto && !bankkonten.includes(konto)) {
+    setDatei(null); setError(null); setKontostand(null);
+    // manuell: gleich eine leere Buchung zum Erfassen
+    setRows(manuell && open && konto ? [leer()] : []);
+    if (open && konto && manuell) {
       api.get<{ betrag: number; letzteBuchung: string | null }>(`${F}/kontostand${qs({ konto })}`).then(setKontostand);
     }
-  }, [konto, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [konto, open, modus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function dateiLaden(f: File) {
     setBusy(true); setError(null);
@@ -91,12 +100,14 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
   const upd = (u: number, f: (r: Row) => Row) => setRows((l) => l.map((r) => (r.uid === u ? f(r) : r)));
   const updPos = (u: number, i: number, p: Partial<Row['positionen'][number]>) =>
     upd(u, (r) => ({ ...r, art: 'hand', positionen: r.positionen.map((x, j) => (j === i ? { ...x, ...p } : x)) }));
+  const leer = (): Row => ({ uid: uid++, sel: true, neu: true, datum: heute(), text: '', name: '', zweck: '', betrag: 0, betragEingabe: '', statusText: 'manuelle Buchung',
+    herkunft: '', art: 'hand', positionen: [pos()], summenmodus: false, belege: [], belegText: '', notiz: '', laufid: null });
   const neueZeile = (vorlage?: Row) => setRows((l) => [...l, vorlage
     ? { ...vorlage, uid: uid++, belege: [], belegText: '', notiz: '', statusText: `Kopie von ${vorlage.text}` }
-    : { uid: uid++, sel: true, neu: true, datum: heute(), text: '', name: '', zweck: '', betrag: 0, betragEingabe: '', statusText: 'manuelle Buchung',
-        herkunft: '', art: 'hand', positionen: [pos()], summenmodus: false, belege: [], belegText: '', notiz: '', laufid: null }]);
+    : leer()]);
 
-  const ausgewaehlt = rows.filter((r) => r.neu && r.sel);
+  // leere, unberührte Erfasszeilen zählen nicht
+  const ausgewaehlt = rows.filter((r) => r.neu && r.sel && !(manuell && !r.text.trim() && !r.betrag && r.positionen.every((p) => !p.gkonto && !p.eingabe)));
   const summeNeu = Math.round(ausgewaehlt.reduce((s, r) => s + berechnet(r).betrag, 0) * 100) / 100;
   const saldoNeu = datei ? Math.round((datei.saldoFi + summeNeu) * 100) / 100 : kontostand ? Math.round((kontostand.betrag + summeNeu) * 100) / 100 : null;
   const differenz = datei?.endsaldo !== null && datei && saldoNeu !== null ? Math.round((datei.endsaldo! - saldoNeu) * 100) / 100 : null;
@@ -106,7 +117,7 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
     setBusy(true); setError(null);
     try {
       const r = await api.post<{ text: string; warnungen: string[] }>(`${F}/buchen`, {
-        konto, iban: datei?.iban ?? null,
+        konto, modus, iban: datei?.iban ?? null,
         umsaetze: ausgewaehlt.map((x) => {
           const b = berechnet(x);
           return { datum: x.datum, text: x.text, betrag: b.betrag, positionen: b.positionen, belege: x.belege, notiz: x.notiz || null, laufid: x.laufid };
@@ -168,6 +179,9 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
                 <FlexBox style={{ gap: '0.25rem' }} alignItems="Center">
                   <KontoBox konten={konten} value={p.gkonto} ohne={konto} style={{ flex: 1 }} placeholder="Gegenkonto wählen …"
                             onChange={(k) => updPos(r.uid, i, { gkonto: k, rgnr: k === '8003' ? p.rgnr : null })} />
+                  {p.gkonto && !konten.some((x) => x.konto === p.gkonto && x.aktiv) && (
+                    <ObjectStatus state="Negative" showDefaultIcon>{konten.some((x) => x.konto === p.gkonto) ? 'nicht in Verwendung' : 'nicht im Kontenstamm'}</ObjectStatus>
+                  )}
                   {r.positionen.length > 1 && (i > 0 || r.summenmodus
                     ? <Input value={p.eingabe} placeholder="Betrag" style={{ width: '6.5rem' }} onInput={(e) => updPos(r.uid, i, { eingabe: e.target.value })} />
                     : <Text style={{ width: '6.5rem', textAlign: 'right' }}>{betragText(b.positionen[0]?.betrag ?? 0)}</Text>)}
@@ -225,7 +239,7 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
 
   return createPortal(<>
     <Dialog open={open} resizable onClose={onClose} style={{ width: '96vw', height: '94vh' }}
-            headerText={manuell ? 'Kasse / Konto – Buchungen manuell erfassen' : 'Bankimport – neue Umsätze kontieren'}
+            headerText={manuell ? 'Manuelle Buchung – Kasse und Konten ohne Bankdatei' : 'Bankimport – neue Umsätze kontieren'}
             footer={<Bar startContent={<Text>{ausgewaehlt.length} Umsatz/Umsätze ausgewählt · {eur(summeNeu)}</Text>} endContent={<>
               <Button design="Emphasized" disabled={!ausgewaehlt.length} loading={busy} onClick={buchen}>
                 {manuell ? 'Erfasste Buchungen buchen' : 'Ausgewählte Umsätze buchen'}
@@ -235,27 +249,37 @@ export function BankimportDialog({ open, start, konten, bankkonten, manuellKonte
       <FlexBox style={{ gap: '1rem', marginBottom: '0.75rem' }} alignItems="End" wrap="Wrap">
         <div>
           <Label>Konto (FI)</Label><br />
-          <Select style={{ width: '18rem' }} onChange={(e) => setKonto((e.detail.selectedOption as HTMLElement).dataset.key!)}>
+          <Select style={{ width: '18rem' }} disabled={!geldkonten.length} onChange={(e) => setKonto((e.detail.selectedOption as HTMLElement).dataset.key!)}>
             {geldkonten.map((k) => (
-              <Option key={k} data-key={k} selected={k === konto}>
-                {k} – {konten.find((x) => x.konto === k)?.name ?? ''}{bankkonten.includes(k) ? ' (Bankdatei)' : ' (manuell)'}
-              </Option>
+              <Option key={k} data-key={k} selected={k === konto}>{k} – {konten.find((x) => x.konto === k)?.name ?? ''}</Option>
             ))}
           </Select>
         </div>
-        {!manuell && (
+        {!manuell && konto && (
           <FileUploader accept=".csv,.txt" hideInput={false} placeholder="Umsatzexport der Bank (CSV) wählen …" style={{ width: '22rem' }}
                         onChange={(e) => { const f = e.detail.files?.[0]; if (f) dateiLaden(f); }}>
             <Button icon="upload">Bankdatei</Button>
           </FileUploader>
         )}
-        {manuell && <Button icon="add" onClick={() => neueZeile()}>Buchung hinzufügen</Button>}
+        {manuell && konto && <Button icon="add" onClick={() => neueZeile()}>Weitere Buchung</Button>}
         {datei && <CheckBox text="Bereits gebuchte Umsätze einblenden" checked={gebuchtZeigen} onChange={(e) => setGebuchtZeigen(e.target.checked)} />}
       </FlexBox>
 
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {(datei?.hinweise ?? []).map((h) => <MessageStrip key={h} design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>{h}</MessageStrip>)}
-      {manuell && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>Für dieses Konto gibt es keine Bankdatei – Buchungen hier erfassen (+ Einzahlung / − Auszahlung).</MessageStrip>}
+      {!geldkonten.length && (
+        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          {manuell
+            ? 'Es ist kein Konto für manuelle Buchungen hinterlegt. Bitte unter TC Oberthal → Einstellungen → Stammdaten bei „Kasse und Konten ohne Bankdatei“ eintragen (z. B. Kasse, Sparkasse).'
+            : 'Es ist kein Konto mit Bankdatei hinterlegt. Bitte unter TC Oberthal → Einstellungen → Stammdaten bei „Konten mit Bankdatei“ eintragen.'}
+        </MessageStrip>
+      )}
+      {ungueltig.length > 0 && (
+        <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          In den Stammdaten hinterlegt, aber im Kontenstamm nicht vorhanden oder {new Date().getFullYear()} nicht in Verwendung: {ungueltig.join(', ')}
+        </MessageStrip>
+      )}
+      {manuell && konto && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>Buchungen ohne Bankdatei erfassen: + Einzahlung / − Auszahlung, Gegenkonto wählen. Für eine Umbuchung (z. B. Kasse → Bank) das andere Geldkonto als Gegenkonto wählen.</MessageStrip>}
 
       {datei && (
         <FlexBox style={{ gap: '2rem', marginBottom: '0.75rem' }} wrap="Wrap">
