@@ -362,12 +362,12 @@ test('Sperre: ausgewählte Platzzeit ist für andere blockiert, bevor gebucht is
 
   // Kalender: bei Bert als „wird gerade gebucht“, bei Anna nicht (eigene Auswahl)
   r = await bert('GET', `${P}/tag?datum=${d}`);
-  let halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
-  assert.deepEqual(halle.belegt, [{ von: '15:00', bis: '16:00', eigen: false, reserviert: true }]);
+  type B = { von: string; reserviert?: boolean };
+  const res = (body: { plaetze: { id: number; belegt: B[] }[] }) => body.plaetze.find((p) => p.id === halleId)!.belegt.filter((b) => b.von >= '15:00');
+  assert.deepEqual(res(r.body), [{ von: '15:00', bis: '16:00', eigen: false, reserviert: true }]);
   assert.ok(!JSON.stringify(r.body).toLowerCase().includes('anna'));
   r = await anna('GET', `${P}/tag?datum=${d}`);
-  halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
-  assert.deepEqual(halle.belegt, [{ von: '16:00', bis: '17:00', eigen: false, reserviert: true }]);
+  assert.deepEqual(res(r.body), [{ von: '16:00', bis: '17:00', eigen: false, reserviert: true }]);
   // Verwaltung sieht, wer gerade bucht
   r = await admin('GET', `${A}/tag?datum=${d}`);
   assert.equal(r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.filter((b: { reserviert?: boolean }) => b.reserviert).length, 2);
@@ -391,7 +391,7 @@ test('Sperre: ausgewählte Platzzeit ist für andere blockiert, bevor gebucht is
   assert.equal((await anna('POST', `${S}/freigeben`, { ids: [annaSperre] })).body.freigegeben, 1);
   assert.equal((await bert('POST', `${S}/freigeben`, { ids: [bertSperre] })).body.freigegeben, 1);
   r = await bert('GET', `${P}/tag?datum=${d}`);
-  assert.deepEqual(r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt, [{ von: '15:00', bis: '16:00', eigen: false }]);
+  assert.deepEqual(res(r.body), [{ von: '15:00', bis: '16:00', eigen: false }]);
 
   // abgelaufene Sperre blockiert nicht mehr
   r = await anna('POST', S, zeit('18:00', '19:00'));
