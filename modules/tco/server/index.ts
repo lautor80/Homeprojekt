@@ -29,6 +29,7 @@ import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
 import { platzRoutes, P_PLATZ } from './platz/routes.js';
 import { rolleSicherstellen } from './platz/registrierung.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
+import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -190,6 +191,7 @@ async function routes(app: FastifyInstance) {
   await jtRoutes(app);
   await meineZeitenRoutes(app);
   await clubhausRoutes(app);
+  await verzehrRoutes(app);
   await mitgliederRoutes(app);
   await kontenRoutes(app);
   await finanzRoutes(app);
@@ -243,6 +245,10 @@ const tco: ServerModule = {
     // ---------------------------------------------------------------- Clubhaus
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
+    { area: 'Clubhaus', app: 'Mein Verzehr', id: P_VZ.edit, text: 'Eigenen Verzehr auf das eigene Mitgliedskonto anschreiben, eigene Positionen und Abrechnungen sehen, eigene Einträge in der Frist stornieren (nur das dem Benutzer zugeordnete Mitglied)' },
+    { area: 'Clubhaus', app: 'Theke', id: P_VZ.theke, text: 'Thekendienst: Gastbelege erfassen und kassieren, Verzehr für Mitglieder anschreiben, Belege drucken und per E-Mail/WhatsApp senden, heutige Positionen stornieren' },
+    { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.display, text: 'Verzehrbuch anzeigen: alle Positionen, Belege, Kennzahlen, Monatsabschluss-Vorschau' },
+    { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.admin, text: 'Verzehr verwalten: Preisliste Speisen/Sonstiges und Gästepreise, Stornos, Monatsabschluss (Sammelabrechnungen), Belege bezahlen/stornieren, Einstellungen', requires: [P_VZ.display] },
     // ---------------------------------------------------------------- Finanzen
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.display, text: 'Sollstellungen anzeigen' },
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
@@ -294,6 +300,9 @@ const tco: ServerModule = {
     { type: 'TRAINERENTGELT', text: 'Trainerentgelt', permission: P_JT.display },
     { type: 'GETRAENKERECHNUNG', text: 'Getränkerechnung', permission: P_CH.display },
     { type: 'CLUBHAUS', text: 'Clubhaus-Forderungsliste', permission: P_CH.display },
+    { type: 'VZ_POSTEN', text: 'Verzehrposition Clubhaus', permission: P_VZ.display },
+    { type: 'VZ_BELEG', text: 'Verzehrbeleg / Sammelabrechnung Clubhaus', permission: P_VZ.display },
+    { type: 'VZ_CFG', text: 'Einstellungen Verzehr', permission: P_VZ.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'PLATZ', text: 'Platz', permission: P_PLATZ.admin },
     { type: 'PLATZBELEGUNG', text: 'Feste Platzbelegung (Training, Sperrzeit)', permission: P_PLATZ.admin },

@@ -49,7 +49,7 @@ export async function sollRoutes(app: FastifyInstance) {
     const sp = sollperVorschlag();
     return {
       cfg, fehlt: konfigFehlt(cfg), laeufe: await laeufeLesen(DB),
-      vorschlag: { sollper: sp, faellig: vorschlagFaelligkeit(heute(), cfg.vorlauf, sp), mitMb: istBeitragsmonat(sp), mitJt: true },
+      vorschlag: { sollper: sp, faellig: vorschlagFaelligkeit(heute(), cfg.vorlauf, sp), mitMb: istBeitragsmonat(sp), mitJt: true, mitVz: true },
     };
   });
 
@@ -69,14 +69,14 @@ export async function sollRoutes(app: FastifyInstance) {
   });
 
   app.post('/soll/vorschlag', { preHandler: requireAuth(P_SOLL.display) }, async (req) => {
-    const b = z.object({ sollper, mitMb: z.boolean(), mitJt: z.boolean(), faellig: datum.nullish() }).parse(req.body);
-    const v = await vorschlag(DB, b.sollper, b.mitMb, b.mitJt, b.faellig ?? null);
+    const b = z.object({ sollper, mitMb: z.boolean(), mitJt: z.boolean(), mitVz: z.boolean().default(false), faellig: datum.nullish() }).parse(req.body);
+    const v = await vorschlag(DB, b.sollper, b.mitMb, b.mitJt, b.faellig ?? null, b.mitVz);
     const sb = bankSchutz(req);
     return { ...v, pos: schuetzen(v.pos, sb), tx: schuetzen(lastschriften(v.pos, null), sb), bankKlar: sb.klar };
   });
 
   app.post('/soll/laeufe', { preHandler: requireAuth(P_SOLL.edit) }, async (req) => {
-    const b = z.object({ sollper, mitMb: z.boolean(), mitJt: z.boolean(), faellig: datum, ohne: z.array(z.string()).default([]) }).parse(req.body);
+    const b = z.object({ sollper, mitMb: z.boolean(), mitJt: z.boolean(), mitVz: z.boolean().default(false), faellig: datum, ohne: z.array(z.string()).default([]) }).parse(req.body);
     const cfg = await konfigLesen(DB, await vereinLesen());
     const r = await change(req, (tx) => laufErzeugen(tx, cfg, b, benutzer(req)), { action: 'SOLLSTELLUNG' });
     const meldungen = schuetzen(r.meldungen as Record<string, any>[], bankSchutz(req));

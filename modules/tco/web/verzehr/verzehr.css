@@ -1,0 +1,66 @@
+/* Clubhaus-Verzehr – Handy zuerst */
+.portal-vz { max-width: 44rem; margin: 0 auto; }
+.portal-vz--breit { max-width: none; }
+
+.portal-vz__kopf {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem; margin-bottom: 0.75rem;
+  border-radius: var(--portal-radius, 0.75rem); background: var(--sapGroup_ContentBackground, #fff); box-shadow: var(--portal-shadow);
+}
+.portal-vz__kopf-wert { font-size: 1.375rem; font-weight: 300; color: var(--sapTextColor); white-space: nowrap; }
+.portal-vz__kopf-label { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+
+.portal-vz__rubriken { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.portal-vz__rubriken ui5-toggle-button { width: 100%; height: 2.75rem; }
+
+.portal-vz__produkte { display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-vz__produkt {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.75rem;
+  padding: 0.5rem 0.75rem; min-height: 3rem;
+  border-radius: var(--portal-radius, 0.75rem); background: var(--sapGroup_ContentBackground, #fff);
+  border: 1px solid var(--sapList_BorderColor);
+}
+.portal-vz__produkt--aktiv { border-color: var(--sapButton_Emphasized_BorderColor, #0064d9); }
+.portal-vz__produkt-name { font-weight: 600; color: var(--sapTextColor); overflow-wrap: anywhere; }
+.portal-vz__produkt-preis { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-vz__menge { display: flex; align-items: center; gap: 0.25rem; }
+.portal-vz__menge-zahl { min-width: 1.75rem; text-align: center; font-size: 1.125rem; font-weight: 700; color: var(--sapTextColor); }
+.portal-vz__menge ui5-button { min-width: 2.75rem; height: 2.75rem; }
+
+.portal-vz__warenkorb {
+  position: sticky; bottom: 0; margin-top: 0.75rem; padding: 0.75rem 1rem;
+  border-radius: var(--portal-radius, 0.75rem); background: var(--sapGroup_ContentBackground, #fff); box-shadow: var(--portal-shadow);
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.portal-vz__zeile { display: flex; justify-content: space-between; gap: 0.75rem; font-size: var(--sapFontSize); color: var(--sapTextColor); }
+.portal-vz__zeile--summe { font-size: 1.125rem; font-weight: 700; padding-top: 0.25rem; border-top: 1px solid var(--sapList_BorderColor); }
+.portal-vz__aktionen { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.portal-vz__aktionen--3 { grid-template-columns: repeat(3, 1fr); }
+.portal-vz__aktionen ui5-button { width: 100%; height: 2.75rem; }
+
+.portal-vz__liste { display: flex; flex-direction: column; }
+.portal-vz__eintrag {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; align-items: center;
+  padding: 0.625rem 1rem; border-bottom: 1px solid var(--sapList_BorderColor); color: var(--sapTextColor);
+}
+.portal-vz__eintrag:last-child { border-bottom: 0; }
+.portal-vz__eintrag-titel { font-weight: 600; overflow-wrap: anywhere; }
+.portal-vz__eintrag-info { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-vz__eintrag-rechts { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; font-weight: 700; }
+
+.portal-vz__kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.portal-vz__kpi { padding: 0.75rem 1rem; border-radius: var(--portal-radius, 0.75rem); background: var(--sapGroup_ContentBackground, #fff); box-shadow: var(--portal-shadow); }
+.portal-vz__kpi-label { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-vz__kpi-wert { font-size: 1.5rem; font-weight: 300; color: var(--sapTextColor); }
+.portal-vz__kpi-sub { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+
+.portal-vz__filter { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin-bottom: 0.75rem; }
+.portal-vz__balken { display: grid; grid-template-columns: minmax(0, 9rem) 1fr auto; align-items: center; gap: 0.5rem; padding: 0.25rem 0; font-size: var(--sapFontSmallSize); color: var(--sapTextColor); }
+.portal-vz__balken i { display: block; height: 0.625rem; border-radius: 0.3rem; background: var(--sapChart_OrderedColor_1, #0064d9); }
+.portal-vz__form { display: flex; flex-direction: column; gap: 1rem; min-width: min(26rem, 86vw); }
+.portal-vz__feld { display: flex; flex-direction: column; gap: 0.375rem; }
+
+@media (max-width: 600px) {
+  .portal-vz__kopf-wert { font-size: 1.125rem; }
+  .portal-vz__rubriken ui5-toggle-button { font-size: var(--sapFontSmallSize); }
+}

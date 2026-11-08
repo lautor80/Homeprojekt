@@ -6,6 +6,9 @@ import { FiBelege } from './fi/FiBelege';
 import { Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
 import { Clubhaus } from './clubhaus/Clubhaus';
+import { MeinVerzehr } from './verzehr/MeinVerzehr';
+import { Theke } from './verzehr/Theke';
+import { Verzehrbuch } from './verzehr/Verzehrbuch';
 import { Mitglieder } from './mitglieder/Mitglieder';
 import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
@@ -88,6 +91,9 @@ const mod: WebModule = {
           text: 'Clubhaus', icon: 'meal',
           children: [
             { text: 'Clubhausabrechnung', icon: 'receipt', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
+            { text: 'Mein Verzehr', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
+            { text: 'Theke', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
+            { text: 'Verzehrbuch', icon: 'sales-order', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
           ],
         },
         {
@@ -115,6 +121,9 @@ const mod: WebModule = {
     { path: '/tco/sollstellung', component: Sollstellung, permission: 'tco.soll:display' },
     { path: '/tco/jugendtraining', component: Jugendtraining, permission: 'tco.jt:display' },
     { path: '/tco/clubhaus', component: Clubhaus, permission: 'tco.clubhaus:display' },
+    { path: '/tco/verzehr', component: MeinVerzehr, permission: 'tco.verzehr:edit' },
+    { path: '/tco/theke', component: Theke, permission: 'tco.verzehr:theke' },
+    { path: '/tco/verzehrbuch', component: Verzehrbuch, permission: 'tco.verzehr:display' },
     { path: '/tco/fi', component: FiBelege, permission: 'tco.fi:display' },
     { path: '/tco/stammdaten', component: TcoStammdaten, permission: 'tco.stammdaten:edit' },
     { path: '/tco/uebersicht', component: DashboardPage, permission: 'tco.dashboard:display' },
@@ -145,6 +154,9 @@ const mod: WebModule = {
     { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
+    { text: 'Mein Verzehr', subtitle: 'Verzehr im Clubhaus auf das eigene Konto anschreiben', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
+    { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
+    { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'sales-order', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
     { text: 'FI-Belege', subtitle: 'Bankimport, Belege, Storno', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
     { text: 'Beitragsforecast', subtitle: 'Hochrechnung der Beitragseinnahmen', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },

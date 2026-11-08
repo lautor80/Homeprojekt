@@ -19,7 +19,7 @@ export const STATUS: Record<string, { text: string; state: 'None' | 'Information
   V: { text: 'Verbucht', state: 'Positive' },
   S: { text: 'Storniert', state: 'Negative' },
 };
-const ART = { mitglied: 'MB', jugend: 'JT', spende: 'SP' } as const;
+const ART = { mitglied: 'MB', jugend: 'JT', spende: 'SP', verzehr: 'VZ' } as const;
 
 /** Adressnummer vergleichbar machen: numerisch auf 10 Stellen, „0000000000“/leer = keine */
 export function adrKey(a: unknown): string {
@@ -28,7 +28,7 @@ export function adrKey(a: unknown): string {
   if (/^\d+$/.test(t)) return Number(t) === 0 ? '' : t.padStart(10, '0');
   return t;
 }
-export const BEITRAGSART_TEXT: Record<string, string> = { MB: 'Mitgliedsbeitrag', JT: 'Jugendtraining', SP: 'Spende' };
+export const BEITRAGSART_TEXT: Record<string, string> = { MB: 'Mitgliedsbeitrag', JT: 'Jugendtraining', SP: 'Spende', VZ: 'Verzehr Clubhaus' };
 
 // ---------------------------------------------------------------- Gläubigerdaten
 export interface Konfig { gl_name: string; iban: string; bic: string; gl_id: string; bankkonto: string; vorlauf: number }
@@ -109,7 +109,7 @@ export interface SollPos {
 }
 
 /** Vorschlag (VORSCHLAG_ERMITTELN) */
-export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: boolean, faellig: string | null) {
+export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: boolean, faellig: string | null, mitVz = false) {
   const stichtag = `${sollper.slice(0, 4)}-${sollper.slice(4, 6)}-01`;
   const monat = sollper.slice(4, 6);
   const vtr = await db`
@@ -147,25 +147,58 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
         meldung: `Einzugsdatum ${dat(faellig)} außerhalb der Vertragslaufzeit (${dat(v.beginn)} - ${v.ende ? dat(v.ende) : 'unbefristet'})` });
       continue;
     }
+    const erg = zahlerPruefen(p, m, v.zahler_adrnr, bart, { mg, sepa, done, stichtag });
+    if ('excl' in erg) excl.push(erg.excl); else pos.push(erg.pos);
+  }
+
+  // Verzehrabrechnungen Clubhaus (Sammelabrechnungen mit Zahlart Lastschrift, noch in keinem Lauf)
+  if (mitVz) {
+    const belege = await db`select b.rgnr, b.adrnr, b.monat, b.betrag::float8 as betrag, coalesce(nullif(c.erloeskonto, ''), '8400') as konto
+                              from tco.vz_belege b left join tco.vz_cfg c on c.id = 1
+                             where b.art = 'SAMMEL' and b.status = 'GESTELLT' and b.zahlart = 'LASTSCHRIFT' and b.laufid is null and b.datum <= ${stichtag}::date + interval '1 month'
+                             order by b.rgnr`;
+    for (const b of belege) {
+      const p: SollPos = {
+        key: `${b.adrnr}|${b.rgnr}`, sollper, adrnr: b.adrnr, vertragnr: b.rgnr, art: 'VZ', artname: `Verzehr Clubhaus ${b.monat.slice(4, 6)}/${b.monat.slice(0, 4)}`,
+        beitragsart: ART.verzehr, betrag: runden(Number(b.betrag)), konto: b.konto, mitglnr: '',
+        mitglied_name: '', zahler_adrnr: '', zahler_name: '', zahler_sort: '', fi_name: '', iban: '', bic: '', mandatsref: '',
+        mandatsdatum: null, laufid: null, meldung: '', state: 'Positive', grund: '',
+      };
+      const m = mg.get(adrKey(b.adrnr));
+      if (!m) { excl.push({ ...p, meldung: 'Mitglied nicht gefunden', state: 'Negative', grund: 'Mitglied nicht gefunden' }); continue; }
+      p.mitglied_name = `${m.nachname ?? ''}, ${m.vorname ?? ''}`;
+      p.mitglnr = String(m.mitglnrn ?? '').replace(/^0+/, '');
+      const erg = zahlerPruefen(p, m, null, ART.verzehr, { mg, sepa, done, stichtag });
+      if ('excl' in erg) excl.push(erg.excl); else pos.push(erg.pos);
+    }
+  }
+  pos.sort((a, b) => a.zahler_sort.localeCompare(b.zahler_sort, 'de') || a.zahler_adrnr.localeCompare(b.zahler_adrnr)
+    || a.mitglied_name.localeCompare(b.mitglied_name, 'de') || a.beitragsart.localeCompare(b.beitragsart) || a.vertragnr.localeCompare(b.vertragnr));
+  excl.sort((a, b) => a.grund.localeCompare(b.grund) || a.mitglied_name.localeCompare(b.mitglied_name, 'de'));
+  return { pos, excl };
+}
+
+
+/** Zahler, Bankverbindung und SEPA-Mandat prüfen (gemeinsam für Verträge und Verzehrabrechnungen) */
+function zahlerPruefen(p: SollPos, m: Record<string, any>, zahlerAdrnr: unknown, bart: string,
+  k: { mg: Map<string, Record<string, any>>; sepa: Map<string, Record<string, any>>; done: Map<string, string>; stichtag: string }): { pos: SollPos } | { excl: SollPos } {
     // Zahler: explizit am Vertrag (≠ Mitglied), sonst abweichender Zahler des Mitglieds, sonst das Mitglied.
     // Ein Vertrag, der das Mitglied selbst als Zahler nennt, gilt als „ohne abweichenden Zahler“.
     let z = m;
     const mAdr = adrKey(m.adrnr);
-    const vAdr = adrKey(v.zahler_adrnr);
+    const vAdr = adrKey(zahlerAdrnr);
     const vtrZahler = !!vAdr && vAdr !== mAdr;
     const kih = adrKey(m.adrnrkih);
     if (vtrZahler) {
-      const zz = mg.get(vAdr);
+      const zz = k.mg.get(vAdr);
       if (!zz) {
-        excl.push({ ...p, state: 'Negative', grund: 'Zahler am Vertrag nicht gefunden', meldung: `Zahler ${vAdr.replace(/^0+/, '')} am Vertrag nicht gefunden` });
-        continue;
+        return { excl: ({ ...p, state: 'Negative', grund: 'Zahler am Vertrag nicht gefunden', meldung: `Zahler ${vAdr.replace(/^0+/, '')} am Vertrag nicht gefunden` }) };
       }
       z = zz;
     } else if (kih && kih !== mAdr) {
-      const zz = mg.get(kih);
+      const zz = k.mg.get(kih);
       if (!zz) {
-        excl.push({ ...p, state: 'Negative', grund: 'Abweichender Zahler nicht gefunden', meldung: `Abweichender Zahler ${kih.replace(/^0+/, '')} des Mitglieds nicht gefunden` });
-        continue;
+        return { excl: ({ ...p, state: 'Negative', grund: 'Abweichender Zahler nicht gefunden', meldung: `Abweichender Zahler ${kih.replace(/^0+/, '')} des Mitglieds nicht gefunden` }) };
       }
       z = zz;
     }
@@ -178,17 +211,17 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
     p.fi_name = sepaText(`${z.nachname ?? ''} ${z.vorname ?? ''}`, 40).toUpperCase();
     p.iban = normalisieren(z.iban1);
     p.bic = normalisieren(z.bic1);
-    let s = sepa.get(adrKey(z.adrnr));
-    if (!s && !vtrZahler) s = sepa.get(mAdr);
+    let s = k.sepa.get(adrKey(z.adrnr));
+    if (!s && !vtrZahler) s = k.sepa.get(mAdr);
     if (s) { p.mandatsref = String(s.mandatsnr ?? '').trim(); p.mandatsdatum = s.angelegtam; }
     const zahlart = vtrZahler && z.zahlungsart ? z.zahlungsart : m.zahlungsart || z.zahlungsart;
 
-    const lauf = done.get(p.key);
+    const lauf = k.done.get(p.key);
     let meldung = '';
     let state: SollPos['state'] = 'Negative';
     let grund = '';
     if (lauf) { meldung = `Bereits eingezogen (Lauf ${Number(lauf)})`; state = 'Information'; grund = 'Bereits eingezogen'; p.laufid = lauf; }
-    else if (bart !== ART.jugend && m.austritt && m.austritt < stichtag) { meldung = `Ausgetreten zum ${dat(String(m.austritt).slice(0, 10))}`; state = 'Critical'; grund = 'Mitglied ausgetreten'; }
+    else if (bart !== ART.jugend && m.austritt && m.austritt < k.stichtag) { meldung = `Ausgetreten zum ${dat(String(m.austritt).slice(0, 10))}`; state = 'Critical'; grund = 'Mitglied ausgetreten'; }
     else if (zahlart !== 'L') { meldung = `Keine Lastschrift (Zahlungsart "${zahlart ?? ''}")`; state = 'Critical'; }
     else if (!p.iban) meldung = 'IBAN fehlt';
     else if (!ibanGueltig(p.iban)) meldung = `IBAN ${p.iban} ungültig`;
@@ -196,22 +229,17 @@ export async function vorschlag(db: Db, sollper: string, mitMb: boolean, mitJt: 
     else if (!referenzGueltig(p.mandatsref)) meldung = `Mandatsreferenz ${p.mandatsref} ungültig`;
     else if (!s || !p.mandatsdatum) meldung = 'Kein SEPA-Mandat / Mandatsdatum fehlt';
     else if (!s.status) meldung = 'SEPA-Mandat ist nicht aktiv';
-    else if (s.gueltigbis && s.gueltigbis < stichtag) meldung = `SEPA-Mandat gültig bis ${dat(s.gueltigbis)}`;
+    else if (s.gueltigbis && s.gueltigbis < k.stichtag) meldung = `SEPA-Mandat gültig bis ${dat(s.gueltigbis)}`;
     else if (p.mandatsdatum > heute()) meldung = `Mandatsdatum ${dat(p.mandatsdatum)} liegt in der Zukunft`;
     else if (!['DE', 'AT', 'BE', 'BG', 'CY', 'CZ', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 'IE', 'IS', 'IT', 'LI', 'LT', 'LU', 'LV', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK'].includes(p.iban.slice(0, 2)) && !p.bic) {
       meldung = `BIC für Konto in ${p.iban.slice(0, 2)} (außerhalb EWR) fehlt`;
     }
-    if (meldung) { excl.push({ ...p, meldung, state, grund: grund || meldung }); continue; }
+    if (meldung) return { excl: { ...p, meldung, state, grund: grund || meldung } };
     if (z.einzuglastmandliegtvor !== 'J' && (vtrZahler || m.einzuglastmandliegtvor !== 'J')) {
       p.meldung = 'Kennzeichen "Mandat liegt vor" nicht gesetzt';
       p.state = 'Critical';
     }
-    pos.push(p);
-  }
-  pos.sort((a, b) => a.zahler_sort.localeCompare(b.zahler_sort, 'de') || a.zahler_adrnr.localeCompare(b.zahler_adrnr)
-    || a.mitglied_name.localeCompare(b.mitglied_name, 'de') || a.beitragsart.localeCompare(b.beitragsart) || a.vertragnr.localeCompare(b.vertragnr));
-  excl.sort((a, b) => a.grund.localeCompare(b.grund) || a.mitglied_name.localeCompare(b.mitglied_name, 'de'));
-  return { pos, excl };
+    return { pos: p };
 }
 
 export interface Tx { zahler_adrnr: string; zahler_name: string; fi_name: string; iban: string; bic: string; mandatsref: string; mandatsdatum: string; betrag: number; anzahl: number; e2e_id: string; zweck: string; positionen: string }
@@ -249,11 +277,11 @@ export function lastschriften(pos: Pick<SollPos, 'zahler_adrnr' | 'zahler_name' 
  * Lauf erzeugen (LAUF_ERZEUGEN): Vorschlag wird hier neu ermittelt (aktuelle Mandate/IBAN, E10);
  * `ohne`: abgewählte Positionen (E7). Fehler der Dateiprüfung verhindern den Lauf.
  */
-export async function laufErzeugen(tx: Db, cfg: Konfig, p: { sollper: string; mitMb: boolean; mitJt: boolean; faellig: string; ohne: string[] }, benutzer: string) {
+export async function laufErzeugen(tx: Db, cfg: Konfig, p: { sollper: string; mitMb: boolean; mitJt: boolean; mitVz?: boolean; faellig: string; ohne: string[] }, benutzer: string) {
   const fehlt = konfigFehlt(cfg);
   if (fehlt.length) throw new BusinessError(`Gläubigerdaten unvollständig: ${fehlt.join(', ')}. Ohne diese Angaben kann keine Lastschriftdatei erzeugt werden.`);
   await tx`select pg_advisory_xact_lock(hashtext('tco.soll_kopf'))`;
-  const v = await vorschlag(tx, p.sollper, p.mitMb, p.mitJt, p.faellig);
+  const v = await vorschlag(tx, p.sollper, p.mitMb, p.mitJt, p.faellig, p.mitVz ?? false);
   const pos = v.pos.filter((x) => !p.ohne.includes(x.key));
   if (!pos.length) return { laufid: null, meldungen: [{ zeile: 0, zahlerNr: '', schwere: 'E', feld: 'Positionen', text: 'Keine Positionen für den Einzug vorhanden.' }] as Meldung[] };
 
@@ -292,6 +320,8 @@ export async function laufErzeugen(tx: Db, cfg: Konfig, p: { sollper: string; mi
     if ((e as { code?: string }).code === '23505') throw new BusinessError('Lauf konnte nicht gesichert werden (Positionen bereits eingezogen?).');
     throw e;
   }
+  const vz = pos.filter((x) => x.beitragsart === ART.verzehr).map((x) => x.vertragnr);
+  if (vz.length) await tx`update tco.vz_belege set laufid = ${laufid} where rgnr = any(${vz})`;
   return { laufid, meldungen: r.meldungen, anzahl: pos.length, summe };
 }
 
@@ -326,6 +356,7 @@ export async function laufStornieren(tx: Db, laufid: string) {
   if (k.status !== 'E') throw new BusinessError(k.status === 'V' ? 'Der Lauf ist bereits in FI verbucht – bitte zuerst dort die Buchung stornieren.' : 'Stornieren ist nur vor der Verbuchung möglich.');
   await tx`delete from tco.soll_pos where laufid = ${laufid}`;
   await tx`update tco.soll_kopf set status = 'S' where laufid = ${laufid}`;
+  await tx`update tco.vz_belege set laufid = null where laufid = ${laufid} and status <> 'BEZAHLT'`;
 }
 
 // ---------------------------------------------------------------- Zusammenspiel mit FI Belege
@@ -382,6 +413,8 @@ export async function laufVerbucht(tx: Db, laufid: string, internenr: string, da
               where laufid = ${laufid} and adrnr = ${p.adrnr} and vertragnr = ${p.vertragnr}`;
   }
   await tx`update tco.soll_kopf set status = 'V', zahl_datum = ${datum}, fi_datum = current_date where laufid = ${laufid}`;
+  // Verzehrabrechnungen des Laufs gelten mit der Verbuchung als bezahlt
+  await tx`update tco.vz_belege set status = 'BEZAHLT', bezahlt_am = ${datum} where laufid = ${laufid} and status = 'GESTELLT'`;
 }
 
 /** Storno in FI: Lauf wieder offen (FI_ZUORDNUNG_AUFHEBEN) */
@@ -390,6 +423,7 @@ export async function laufZuruecksetzen(tx: Db, internenr: string): Promise<stri
   if (!p) return null;
   await tx`update tco.soll_pos set status = '', internenr = null, fi_posnr = null where laufid = ${p.laufid} and internenr = ${internenr}`;
   await tx`update tco.soll_kopf set status = 'E', zahl_datum = null, fi_datum = null where laufid = ${p.laufid} and status = 'V'`;
+  await tx`update tco.vz_belege set status = 'GESTELLT', bezahlt_am = null where laufid = ${p.laufid} and status = 'BEZAHLT'`;
   return p.laufid;
 }
 

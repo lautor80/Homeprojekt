@@ -35,7 +35,7 @@ interface Pos {
 }
 interface Tx { zahler_name: string; iban: string; mandatsref: string; e2e_id: string; anzahl: number; betrag: number; positionen: string; zweck: string }
 interface Meldung { zeile: number; zahlerNr: string; schwere: 'E' | 'W'; feld: string; text: string }
-interface Init { cfg: Cfg; fehlt: string[]; laeufe: Lauf[]; vorschlag: { sollper: string; faellig: string; mitMb: boolean; mitJt: boolean } }
+interface Init { cfg: Cfg; fehlt: string[]; laeufe: Lauf[]; vorschlag: { sollper: string; faellig: string; mitMb: boolean; mitJt: boolean; mitVz?: boolean } }
 
 const monat = (sp: string) => `${sp.slice(4, 6)}/${sp.slice(0, 4)}`;
 const maske = (iban: string) => (iban && iban.length > 6 ? `${iban.slice(0, 2)}•• •••• ${iban.slice(-4)}` : iban);
@@ -176,6 +176,7 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
   const [faellig, setFaellig] = useState(init?.vorschlag.faellig ?? '');
   const [mitMb, setMitMb] = useState(init?.vorschlag.mitMb ?? false);
   const [mitJt, setMitJt] = useState(init?.vorschlag.mitJt ?? true);
+  const [mitVz, setMitVz] = useState(init?.vorschlag.mitVz ?? true);
   const [v, setV] = useState<{ pos: Pos[]; excl: Pos[]; tx: Tx[] } | null>(null);
   const [ohne, setOhne] = useState<Set<string>>(new Set());
   const [meldungen, setMeldungen] = useState<Meldung[]>([]);
@@ -194,12 +195,12 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
   }
   async function vorschlagen() {
     setBusy(true); setError(null); setMeldungen([]);
-    try { setV(await api.post(`${S}/vorschlag`, { sollper, faellig, mitMb, mitJt })); setTab('pos'); setOhne(new Set()); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { setV(await api.post(`${S}/vorschlag`, { sollper, faellig, mitMb, mitJt, mitVz })); setTab('pos'); setOhne(new Set()); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   async function erzeugen() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ ok: boolean; laufid?: string; meldungen: Meldung[]; text: string }>(`${S}/laeufe`, { sollper, faellig, mitMb, mitJt, ohne: [...ohne] });
+      const r = await api.post<{ ok: boolean; laufid?: string; meldungen: Meldung[]; text: string }>(`${S}/laeufe`, { sollper, faellig, mitMb, mitJt, mitVz, ohne: [...ohne] });
       setMeldungen(r.meldungen);
       if (!r.ok) { setError(r.text); setTab('msg'); return; }
       // Die SEPA-Datei enthält die IBANs im Klartext – Download nur mit Bankdaten-Berechtigung
@@ -232,6 +233,7 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
           <FlexBox>
             <CheckBox text="Mitgliedsbeiträge und Spenden (Januar/Juli)" checked={mitMb} onChange={(e) => { setMitMb(e.target.checked); reset(); }} />
             <CheckBox text="Jugendtraining (monatlich)" checked={mitJt} onChange={(e) => { setMitJt(e.target.checked); reset(); }} />
+            <CheckBox text="Verzehrabrechnungen Clubhaus (offene Sammelabrechnungen mit Lastschrift)" checked={mitVz} onChange={(e) => { setMitVz(e.target.checked); reset(); }} />
           </FlexBox>
         </FlexBox>
         <Button design="Emphasized" icon="detail-view" loading={busy && !v} onClick={vorschlagen}>Vorschlag ermitteln</Button>

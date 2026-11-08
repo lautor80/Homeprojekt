@@ -65,6 +65,13 @@ export const K = {
       { name: 'periode', text: 'Sollperiode (JJJJMM)', beispiel: '202601' }, { name: 'summe', text: 'Summe', beispiel: 12345.67 }, { name: 'anzahl', text: 'Anzahl Lastschriften', beispiel: 210 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', dokumenttyp: 'Lastschrifteinzug', speicherpfad: 'Buchhaltung', datum: '{heute}', felder: { Betrag: '{summe}', DOKID: '{dokid}' } },
   },
+  verzehr: {
+    id: 'clubhaus.verzehr', text: 'Verzehrbeleg Clubhaus (Gastbeleg / Sammelabrechnung)',
+    platzhalter: [{ name: 'rgnr', text: 'Belegnummer', beispiel: 'VZM-2026-11-0001' }, { name: 'person', text: 'Mitglied bzw. Gast „Nachname Vorname“ (Korrespondent)', beispiel: 'Muster Max' },
+      { name: 'art', text: 'Gastbeleg / Sammelabrechnung', beispiel: 'Sammelabrechnung' }, { name: 'monat', text: 'Monat (JJJJMM, Sammelabrechnung)', beispiel: '202611' },
+      { name: 'betrag', text: 'Betrag', beispiel: 38.5 }, { name: 'datum', text: 'Belegdatum', beispiel: '2026-11-30' }, PH.heute, PH.benutzer, PH_DOKID],
+    standard: { titel: 'Verzehr {rgnr}', korrespondent: '{person}', dokumenttyp: 'Verzehrbeleg', speicherpfad: 'Buchhaltung', datum: '{datum}', felder: { Betrag: '{betrag}', DOKID: '{rgnr}' } },
+  },
   clubhaus: {
     id: 'clubhaus.abrechnung', text: 'Clubhausabrechnung (Forderungsliste)',
     platzhalter: [{ name: 'titel', text: 'Titel laut Abrechnung', beispiel: 'Clubhausabrechnung 2026_10' }, { name: 'jahr', text: 'Jahr', beispiel: 2026 }, { name: 'monat', text: 'Monat', beispiel: 10 },

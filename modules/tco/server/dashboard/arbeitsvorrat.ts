@@ -47,6 +47,40 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
+  // Clubhaus-Verzehr: offene Gastbelege (nicht kassiert) und überfällige Sammelabrechnungen
+  if (can(req, 'tco.verzehr:display')) {
+    const [g] = await db`select count(*)::int as n, coalesce(sum(betrag), 0)::float8 as betrag, to_char(min(datum), 'YYYY-MM-DD') as seit
+                           from tco.vz_belege where art = 'GAST' and status = 'OFFEN' and datum < current_date`;
+    if (g?.n) {
+      out.push({
+        key: 'VZ_GAST_OFFEN', bereich: 'Clubhaus', icon: 'meal', state: 'Critical',
+        titel: `${g.n} Gastbeleg${g.n === 1 ? '' : 'e'} nicht kassiert`,
+        text: `${eur(Number(g.betrag))} € aus vergangenen Abenden – an der Theke kassieren oder stornieren.`,
+        datum: g.seit, pfad: '/tco/theke', betrag: Number(g.betrag),
+      });
+    }
+    const [f] = await db`select count(*)::int as n, coalesce(sum(betrag), 0)::float8 as betrag, to_char(min(faellig), 'YYYY-MM-DD') as seit
+                           from tco.vz_belege where art = 'SAMMEL' and status = 'GESTELLT' and faellig < current_date and zahlart <> 'LASTSCHRIFT'`;
+    if (f?.n) {
+      out.push({
+        key: 'VZ_UEBERFAELLIG', bereich: 'Clubhaus', icon: 'receipt', state: 'Critical',
+        titel: `${f.n} Verzehrabrechnung${f.n === 1 ? '' : 'en'} überfällig`,
+        text: `${eur(Number(f.betrag))} € offen – Zahlungseingang prüfen oder erinnern.`,
+        datum: f.seit, pfad: '/tco/verzehrbuch?tab=belege', betrag: Number(f.betrag),
+      });
+    }
+    const [o] = await db`select count(distinct adrnr)::int as n, coalesce(sum(betrag), 0)::float8 as betrag from tco.vz_posten
+                           where adrnr is not null and rgnr is null and storniert_am is null and datum < date_trunc('month', current_date)`;
+    if (o?.n) {
+      out.push({
+        key: 'VZ_ABSCHLUSS', bereich: 'Clubhaus', icon: 'sales-order', state: 'Information',
+        titel: 'Monatsabschluss Verzehr steht an',
+        text: `${o.n} Mitglied${o.n === 1 ? '' : 'er'} mit ${eur(Number(o.betrag))} € offenem Verzehr aus Vormonaten.`,
+        datum: null, pfad: '/tco/verzehrbuch?tab=abschluss', betrag: Number(o.betrag),
+      });
+    }
+  }
+
   // Platzbuchung: Registrierungen neuer Hallennutzer warten auf Bestätigung
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
