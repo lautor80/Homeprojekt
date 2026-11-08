@@ -45,6 +45,8 @@ export const corePermissions: PermissionDef[] = [
   { id: 'core.apikeys:edit', text: 'API-Schlüssel anlegen, ändern und sperren', area: 'Administration', app: 'API-Schlüssel' },
   { id: 'core.audit:display', text: 'Änderungsbelege anzeigen (alle Objekte)', area: 'Administration', app: 'Änderungsbelege' },
   { id: 'core.settings:edit', text: 'Systemeinstellungen ändern', area: 'Administration', app: 'Einstellungen' },
+  { id: 'core.backup:create', text: 'Sicherungen erstellen, herunterladen und löschen (enthalten alle Daten, auch Kennwort-Hashes und Bankdaten)', area: 'Administration', app: 'Sicherung' },
+  { id: 'core.backup:restore', text: 'Sicherungen hochladen und zurücksichern (ersetzt Daten!)', area: 'Administration', app: 'Sicherung', requires: ['core.backup:create'] },
 ];
 
 /**

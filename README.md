@@ -59,13 +59,15 @@ Paperless/n8n). Das Repository enthält keine Vereinsdaten; alles kommt aus den 
 Alle Fachmodule sind aktiv (`PORTAL_MODULES=*`). Was jemand im Menü sieht, steuern die Rollen
 (Administration → Rollen): Ein Menüpunkt erscheint nur mit der passenden Berechtigung, eine leere Gruppe
 verschwindet ganz. **Update:** Stack öffnen → *Update the stack* mit *Re-pull image* – die Datenbank wird beim
-Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db` und `portal_backups`.
+Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db`, `portal_backups` (nächtlicher pg_dump) und `portal_sicherungen` (Portal-Sicherungen).
 
 ### Betrieb
 
 ```bash
 ./update.sh                                   # Backup, git pull, neu bauen, Migrationen
-./restore.sh data/backups/portal_<datum>.dump # Backup zurückspielen
+./restore.sh data/backups/portal_<datum>.dump # Backup zurückspielen (ganze Datenbank, Shell)
+# Im Portal: Administration → Sicherung – Sicherung je Bereich (Basis, TC Oberthal, Euroflex),
+# optional verschlüsselt, Download/Upload, Prüfung und Rücksicherung mit automatischer Sicherheitskopie.
 docker compose exec backup sh /backup.sh now  # Backup sofort
 docker compose logs -f app                    # Log ansehen
 ```

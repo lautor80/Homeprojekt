@@ -4,6 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 set -a; source .env; set +a
 
+mkdir -p data/sicherungen
+chown 1000:1000 data/sicherungen 2>/dev/null || sudo chown 1000:1000 data/sicherungen 2>/dev/null || chmod 777 data/sicherungen
+
 echo "==> Backup vor dem Update"
 docker compose exec -T backup sh /backup.sh now
 

@@ -18,6 +18,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/web/dist ./web/dist
 COPY --from=build /app/server/migrations ./server/migrations
 COPY --from=build /app/modules ./modules
+# Sicherungsordner der Portal-Sicherung (Volume); nächtliche pg_dump-Sicherungen werden lesend eingebunden
+RUN mkdir -p /app/data/sicherungen /app/data/backups && chown -R node:node /app/data
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

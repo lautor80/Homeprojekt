@@ -62,7 +62,9 @@ fi
 set -a; source .env; set +a
 
 # --- 3. Starten ----------------------------------------------------------------
-mkdir -p data/postgres data/backups data/caddy
+mkdir -p data/postgres data/backups data/caddy data/sicherungen
+# Portal-Sicherungen schreibt der App-Container als Benutzer node (UID 1000)
+chown 1000:1000 data/sicherungen 2>/dev/null || sudo chown 1000:1000 data/sicherungen 2>/dev/null || chmod 777 data/sicherungen
 PROFILE=()
 [[ -n "${PORTAL_DOMAIN:-}" ]] && PROFILE=(--profile https)
 

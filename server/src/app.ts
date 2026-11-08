@@ -15,6 +15,7 @@ import { adminRoutes } from './routes/admin.js';
 import { auditRoutes } from './routes/audit.js';
 import { settingsRoutes } from './routes/settings.js';
 import { paperlessMappingRoutes } from './routes/paperless.js';
+import { backupRoutes } from './routes/backup.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
@@ -50,6 +51,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(authRoutes);
   await app.register(settingsRoutes);
   await app.register(paperlessMappingRoutes);
+  await app.register(backupRoutes);
   await app.register(adminRoutes);
   await app.register(auditRoutes);
   await app.register(apiKeyRoutes);

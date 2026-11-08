@@ -49,6 +49,9 @@ services:
       TZ: Europe/Berlin
     ports:
       - "${PORTAL_PORT:-8080}:8080"
+    volumes:
+      - portal_sicherungen:/app/data/sicherungen
+      - portal_backups:/app/data/backups:ro
 
   # Tägliches Datenbank-Backup (pg_dump) ins Volume portal_backups
   backup:
@@ -86,3 +89,4 @@ services:
 volumes:
   portal_db:
   portal_backups:
+  portal_sicherungen:

@@ -40,6 +40,9 @@ services:
       TZ: ${TZ:-Europe/Berlin}
     ports:
       - "${PORTAL_PORT:-8080}:8080"
+    volumes:
+      - ./data/sicherungen:/app/data/sicherungen
+      - ./data/backups:/app/data/backups:ro
 
   backup:
     image: postgres:16-alpine
