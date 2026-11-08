@@ -86,8 +86,8 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
             Auswählbar sind nur die Kontakte dieses Auftrags. Änderungen gelten für alle Aufträge, denen der Kontakt zugeordnet ist.
           </MessageStrip>
           <FieldBox label="Kontakt">
-            <ComboBox selectedValue={nr} onSelectionChange={(e) => setNr((e.detail.item as unknown as { value: string })?.value ?? '')}>
-              {auswahl.map((a) => <ComboBoxItem key={a.key} value={a.key} text={a.text} additionalText={a.zusatz} />)}
+            <ComboBox value={auswahl.find((a) => a.key === nr)?.text ?? ''} onSelectionChange={(e) => setNr((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
+              {auswahl.map((a) => <ComboBoxItem key={a.key} data-k={a.key} text={a.text} additionalText={a.zusatz} selected={a.key === nr} />)}
             </ComboBox>
           </FieldBox>
         </>
@@ -99,8 +99,8 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
         <TextField label="Straße" value={k.strasse} onChange={set('strasse')} />
         <TextField label="Hausnummer" value={k.hausnummer} onChange={set('hausnummer')} />
         <FieldBox label="Land">
-          <ComboBox selectedValue={k.land ?? ''} onSelectionChange={(e) => set('land')((e.detail.item as unknown as { value: string })?.value ?? '')}>
-            {LAENDER.map(([c, n]) => <ComboBoxItem key={c} value={c} text={n} additionalText={c} />)}
+          <ComboBox value={LAENDER.find(([c]) => c === (k.land ?? ''))?.[1] ?? (k.land ?? '')} onSelectionChange={(e) => set('land')((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
+            {LAENDER.map(([c, n]) => <ComboBoxItem key={c} data-k={c} text={n} additionalText={c} selected={c === (k.land ?? '')} />)}
           </ComboBox>
         </FieldBox>
         <TextField label="PLZ" value={k.plz} onChange={set('plz')} />

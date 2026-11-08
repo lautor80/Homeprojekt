@@ -178,12 +178,18 @@ export function AuftragDetail() {
   const unter = isNew ? 'Noch nicht gespeichert (Nummer wird beim Speichern vergeben)'
     : a.faktura ? `Fakturiert mit ${a.faktura} am ${dat(a.fakturadatum)}` : 'Offen';
 
+  // Anzeige: Name des gewählten Kontakts (der Schlüssel steht am Eintrag, nicht im Feld)
+  const adrName = (f: 'kunde' | 'unternehmer' | 'rechnungsempfaenger') => {
+    const n = a[f];
+    if (!n) return '';
+    return adrDD.find((d) => d.key === String(n))?.text ?? adr[f]?.kundenname ?? `Kontakt ${n}`;
+  };
   const adrCombo = (f: 'kunde' | 'unternehmer' | 'rechnungsempfaenger') => (
-    <ComboBox style={full} selectedValue={a[f] ? String(a[f]) : ''} placeholder="Name oder Ort eingeben" readonly={!mayEdit}
+    <ComboBox key={`${f}-${a[f] ?? ''}-${adrDD.length}`} style={full} value={adrName(f)} placeholder="Name oder Ort eingeben" readonly={!mayEdit}
               showClearIcon
-              onSelectionChange={(e) => waehleAdresse(f, (e.detail.item as unknown as { value?: string })?.value)}
+              onSelectionChange={(e) => waehleAdresse(f, (e.detail.item as HTMLElement | null)?.dataset.k)}
               onChange={(e) => { if (!e.target.value) waehleAdresse(f, undefined); }}>
-      {adrDD.map((d) => <ComboBoxItem key={d.key} value={d.key} text={d.text} additionalText={d.zusatz} />)}
+      {adrDD.map((d) => <ComboBoxItem key={d.key} data-k={d.key} text={d.text} additionalText={d.zusatz} selected={d.key === String(a[f] ?? '')} />)}
     </ComboBox>
   );
 
