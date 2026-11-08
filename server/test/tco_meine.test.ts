@@ -94,7 +94,7 @@ test('Meine Mitgliedschaft: Anmeldung mit Startkennwort, nur eigene Daten, Konta
   assert.equal(r.body.mitglied.adrnr, '0000000501');
   assert.ok(!r.body.bank.iban.includes('2030000000'), 'IBAN maskiert');
   assert.equal(r.body.vertraege.length, 3, 'eigene 2 + Kim über Paula');
-  assert.equal(r.body.kuendigungsTermine[0], `${jahr}-12-31`);
+  assert.equal(r.body.kuendigung.mitgliedschaft, `${jahr}-12-31`);
   // keine fremden Daten
   assert.equal((await paula('GET', `${M}/liste?status=AKTIV`)).status, 403);
   assert.equal((await paula('GET', `${M}/m/0000000504`)).status, 403);
