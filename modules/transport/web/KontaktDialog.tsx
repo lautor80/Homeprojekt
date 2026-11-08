@@ -87,7 +87,7 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
           </MessageStrip>
           <FieldBox label="Kontakt">
             <ComboBox value={auswahl.find((a) => a.key === nr)?.text ?? ''} onSelectionChange={(e) => setNr((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-              {auswahl.map((a) => <ComboBoxItem key={a.key} data-k={a.key} text={a.text} additionalText={a.zusatz} selected={a.key === nr} />)}
+              {auswahl.map((a) => <ComboBoxItem key={a.key} data-k={a.key} text={a.text} additionalText={a.zusatz} />)}
             </ComboBox>
           </FieldBox>
         </>
@@ -100,7 +100,7 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
         <TextField label="Hausnummer" value={k.hausnummer} onChange={set('hausnummer')} />
         <FieldBox label="Land">
           <ComboBox value={LAENDER.find(([c]) => c === (k.land ?? ''))?.[1] ?? (k.land ?? '')} onSelectionChange={(e) => set('land')((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-            {LAENDER.map(([c, n]) => <ComboBoxItem key={c} data-k={c} text={n} additionalText={c} selected={c === (k.land ?? '')} />)}
+            {LAENDER.map(([c, n]) => <ComboBoxItem key={c} data-k={c} text={n} additionalText={c} />)}
           </ComboBox>
         </FieldBox>
         <TextField label="PLZ" value={k.plz} onChange={set('plz')} />

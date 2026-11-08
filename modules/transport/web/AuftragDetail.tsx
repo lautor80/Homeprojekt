@@ -189,7 +189,7 @@ export function AuftragDetail() {
               showClearIcon
               onSelectionChange={(e) => waehleAdresse(f, (e.detail.item as HTMLElement | null)?.dataset.k)}
               onChange={(e) => { if (!e.target.value) waehleAdresse(f, undefined); }}>
-      {adrDD.map((d) => <ComboBoxItem key={d.key} data-k={d.key} text={d.text} additionalText={d.zusatz} selected={d.key === String(a[f] ?? '')} />)}
+      {adrDD.map((d) => <ComboBoxItem key={d.key} data-k={d.key} text={d.text} additionalText={d.zusatz} />)}
     </ComboBox>
   );
 
