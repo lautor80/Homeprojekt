@@ -6,6 +6,7 @@ import { sql } from '../db.js';
 import { change, requireAuth } from '../auth.js';
 import { BusinessError } from '../errors.js';
 import { istZip } from '../backup-xml.js';
+import { activeModules } from '../modules.js';
 import {
   aktiveSchemas, datei, dateipfad, dumps, dumpVerzeichnis, entpacken, istVerschluesselt, kurzinfo, liste, ordner, pruefen, ruecksichern, sichern, speichern, uebersicht,
 } from '../backup.js';
@@ -124,6 +125,8 @@ export async function backupRoutes(app: FastifyInstance) {
     // Sicherheitskopie aller aktiven Bereiche (unverschlüsselt im Sicherungsordner)
     const vorher = await speichern(await sichern({ von: benutzer(req), notiz: `Automatisch vor Rücksicherung von ${n}`, art: 'vor-ruecksicherung' }));
     const r = await ruecksichern(inhalt, b.schemas);
+    // Module stellen ihren festen Stand wieder her (Systemrollen, Pflichtberechtigungen)
+    for (const m of activeModules()) await m.nachRuecksicherung?.().catch((e) => req.log.error(e, `nachRuecksicherung ${m.id}`));
     req.log.warn({ datei: n, schemas: b.schemas, von: benutzer(req) }, 'Portal-Rücksicherung durchgeführt');
     const protokoll = { zeitpunkt: new Date().toISOString(), datei: n, schemas: b.schemas, von: benutzer(req), sicherheitskopie: vorher.name };
     if (!r.abgemeldet) {

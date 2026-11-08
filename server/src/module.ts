@@ -53,6 +53,8 @@ export interface ServerModule {
    * (z. B. Mitglied in „Meine Mitgliedschaft“). true = erlaubt.
    */
   sperreErlaubt?: (req: import('fastify').FastifyRequest, objekt: string, schluessel: string) => Promise<boolean>;
+  /** nach einer Rücksicherung (z. B. Systemrollen und feste Berechtigungen wiederherstellen) */
+  nachRuecksicherung?: () => Promise<void>;
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
   sperrObjekte?: AuditObjectDef[];
   /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */

@@ -337,8 +337,10 @@ async function fremdschluesselPruefen(tx: Tx, schemas: string[]): Promise<{ fehl
     const [{ n }] = await tx.unsafe(`select count(*)::int as n from ${voll(f.kind)} c where ${bed}`);
     if (!n) continue;
     const kindSchema = (f.kind as string).split('.')[0];
-    // Verweise aus NICHT zurückgesicherten Bereichen mit „on delete set null“ (z. B. Trainer → Portal-Benutzer) leeren
-    if (f.confdeltype === 'n' && !schemas.includes(kindSchema)) {
+    const elternSchema = (f.eltern as string).split('.')[0];
+    // bereichsübergreifende Verweise mit „on delete set null“ (z. B. Mitglied/EP3-Kunde/Buchung → Portal-Benutzer) leeren,
+    // wenn eine der beiden Seiten nicht zurückgesichert wird (Benutzer inzwischen gelöscht bzw. in der Sicherung nicht vorhanden)
+    if (f.confdeltype === 'n' && (!schemas.includes(kindSchema) || !schemas.includes(elternSchema))) {
       await tx.unsafe(`update ${voll(f.kind)} c set ${ks.map((k) => `${q(k)} = null`).join(', ')} where ${bed}`);
       bereinigt.push(`${f.kind}: ${n} Verweis(e) auf ${f.eltern} geleert (Datensatz nicht mehr vorhanden)`);
     } else {

@@ -27,6 +27,7 @@ import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
 import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
 import { platzRoutes, P_PLATZ } from './platz/routes.js';
+import { rolleSicherstellen } from './platz/registrierung.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 
 const P = {
@@ -263,6 +264,8 @@ const tco: ServerModule = {
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
+  // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
+  nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
   // „Meine Mitgliedschaft“: das eigene Mitglied darf gesperrt werden (gegen gleichzeitige Pflege durch den Vorstand)
   sperreErlaubt: async (req, objekt, schluessel) => {
     if (objekt !== 'MITGLIED' || !req.user?.id || !req.user.permissions.has('tco.meinedaten:edit')) return false;

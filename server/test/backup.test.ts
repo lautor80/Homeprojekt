@@ -235,3 +235,52 @@ test('Sicherung als ZIP mit XML: erstellen, bearbeiten, hochladen, zurücksicher
   assert.equal(r.status, 200);
   assert.ok(zipLesen(r.body as Buffer).has('daten/core/settings.xml'));
 });
+
+test('Vollständigkeit: jede Tabelle und jede Spalte aller aktiven Bereiche ist in der Sicherung (außer bewusst ausgeschlossenen)', async () => {
+  const { sichern, aktiveSchemas } = await import('../src/backup.js');
+  const schemas = aktiveSchemas();
+  const inhalt = await sichern({ von: 'Test' });
+  const gesichert = new Map(inhalt.manifest.tabellen.map((t) => [t.name, t.spalten.map((s) => s.name).sort()]));
+  const ist = await sql`
+    select n.nspname || '.' || c.relname as name,
+           array_agg(a.attname::text order by a.attname) as spalten
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped and a.attgenerated = ''
+     where c.relkind in ('r', 'p') and n.nspname = any(${schemas})
+     group by 1 order by 1`;
+  const fehlen: string[] = [];
+  for (const t of ist) {
+    if (inhalt.manifest.ausgeschlossen.includes(t.name)) continue;
+    const g = gesichert.get(t.name);
+    if (!g) { fehlen.push(`Tabelle ${t.name}`); continue; }
+    for (const sp of t.spalten as string[]) if (!g.includes(sp)) fehlen.push(`Spalte ${t.name}.${sp}`);
+  }
+  assert.deepEqual(fehlen, []);
+  assert.deepEqual([...inhalt.manifest.ausgeschlossen].sort(), ['core.sessions', 'core.sperren']);
+  // Tabellen außerhalb der Bereiche gibt es nicht (außer der Migrationsliste)
+  const fremd = await sql`select n.nspname || '.' || c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
+                          where c.relkind = 'r' and n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and not (n.nspname = any(${schemas}))`;
+  assert.deepEqual(fremd.map((x) => x.name), ['public.schema_migrations']);
+  // neuere Tabellen sind dabei
+  for (const t of ['tco.platzbelegungen', 'tco.registrierungen', 'tco.plaetze', 'core.paperless_mapping']) assert.ok(gesichert.has(t), t);
+  assert.ok(gesichert.get('tco.kunden')!.includes('pw_hash') && gesichert.get('tco.kunden')!.includes('benutzer_id'));
+});
+
+test('Rücksicherung eines Bereichs: Verweise auf inzwischen gelöschte Benutzer werden geleert statt abzubrechen', async () => {
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'weg.user', displayName: 'Weg', password: 'start-passwort', roles: [] })).status, 200);
+  const [u] = await sql`select id from core.users where username = 'weg.user'`;
+  await sql`insert into tco.kunden (zuid, zalias, status, benutzer_id) values ('88', 'weg', 'enabled', ${u.id})`;
+  await sql`insert into tco.platzbelegungen (bezeichnung, datum_von, datum_bis, zeit_von, zeit_bis) values ('Jugendtraining', '2026-01-01', '2026-12-31', '16:00', '18:00')`;
+  let r = await admin('POST', B, { schemas: ['tco'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const name = r.body.name;
+  // Benutzer danach gelöscht
+  await sql`delete from core.users where id = ${u.id}`;
+  await sql`delete from tco.platzbelegungen`;
+  r = await admin('POST', `${B}/datei/${name}/ruecksichern`, { schemas: ['tco'], bestaetigung: 'WIEDERHERSTELLEN' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '88'`)[0].benutzer_id, null);
+  assert.equal(Number((await sql`select count(*)::int as n from tco.platzbelegungen`)[0].n), 1);
+  // Systemrollen sind nach der Rücksicherung vorhanden
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.meinedaten:edit', 'tco.platzbuchung:edit']);
+});
