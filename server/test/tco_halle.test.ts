@@ -358,6 +358,7 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   r = await call('GET', `${H}/auto`);
   const maxAuto = r.body.find((x: any) => x.kunde === 'MAX MEIER-LÜDENSCHEID');
   assert.equal(maxAuto.ziel, rg2); // jüngste Rechnung „In Bearbeitung“
+  assert.equal(maxAuto.zielInfo.find((z: any) => z.rgnr === rg2).status, '1');
   r = await call('POST', `${H}/auto`, { kunden: r.body.map((x: any) => ({ kunde: x.kunde, ziel: x.ziel, buchungen: x.buchungen.filter((b: any) => b.auswahl).map((b: any) => ({ bid: b.bid, datum: b.datum })) })) });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /2 Buchung\(en\) zugeordnet: 1 neue Rechnung\(en\), 1 bestehende ergänzt/);

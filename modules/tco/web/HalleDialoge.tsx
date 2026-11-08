@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus, Option,
-  Panel, Select, Switch, Text, TextArea, Title,
+  Bar, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option,
+  Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
-import { H, RG_STATUS, dat, eur, wtag, zeit, type Buchung, type PaperlessInfo, type PersonDetail, type Rechnung } from './util';
+import { H, RG_STATUS, dat, eur, type PaperlessInfo, type PersonDetail, type Rechnung } from './util';
 
 const portal = (el: React.ReactElement) => createPortal(el, document.body);
 
@@ -313,94 +313,6 @@ export function VersionenDialog({ info, onClose }: { info: PaperlessInfo | null;
           <Text>{v.added ? dat(v.added) : ''}{i === (info?.versionen.length ?? 0) - 1 ? ' · aktuell' : ''}</Text>
         </FlexBox>
       ))}
-    </Dialog>,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Automatische Zuordnung
-// ---------------------------------------------------------------------------
-interface AutoKunde { kunde: string; name: string; ziele: string[]; ziel: string; buchungen: (Buchung & { auswahl: boolean; hinweis: string; ziel?: string })[] }
-
-export function AutoDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (t: string) => void }) {
-  const [daten, setDaten] = useState<AutoKunde[] | null>(null);
-  const [zukunft, setZukunft] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setDaten(null); setError(null);
-    api.get<AutoKunde[]>(`${H}/auto`).then(setDaten).catch((e) => setError(e.message));
-  }, [open]);
-
-  const setK = (i: number, fn: (k: AutoKunde) => AutoKunde) => setDaten((d) => d!.map((k, j) => (j === i ? fn(k) : k)));
-  const anzahl = (daten ?? []).reduce((s, k) => s + k.buchungen.filter((b) => b.auswahl).length, 0);
-  const summe = (daten ?? []).reduce((s, k) => s + k.buchungen.filter((b) => b.auswahl).reduce((t, b) => t + b.betrag, 0), 0);
-
-  async function buchen() {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api.post<{ text: string }>(`${H}/auto`, {
-        kunden: daten!.map((k) => ({ kunde: k.kunde, ziel: k.ziel, buchungen: k.buchungen.filter((b) => b.auswahl).map((b) => ({ bid: b.bid, datum: b.datum, ziel: b.ziel })) })),
-      });
-      onDone(r.text);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return portal(
-    <Dialog open={open} headerText="Automatische Zuordnung – Vorschau" onClose={onClose} style={{ width: 'min(64rem, 96vw)', height: '88vh' }}
-            footer={<Bar startContent={<Text>{anzahl} Buchung(en) ausgewählt · {eur(summe)}</Text>} endContent={<>
-              <Button design="Emphasized" loading={busy} disabled={!anzahl} onClick={buchen}>Zuordnen und buchen</Button>
-              <Button onClick={onClose}>Abbrechen</Button>
-            </>} />}>
-      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
-      <FlexBox alignItems="Center" style={{ gap: '0.5rem', marginBottom: '0.5rem' }}>
-        <Switch checked={zukunft} onChange={(e) => setZukunft(e.target.checked)} />
-        <Text>Zukünftige Buchungen anzeigen</Text>
-        <Text style={{ marginLeft: 'auto', color: 'var(--sapContent_LabelColor)' }}>
-          Vorausgewählt sind alle Buchungen bis heute ohne Preisfehler. Ziel je Kunde: jüngste Rechnung „In Bearbeitung“, sonst neue Rechnung.
-        </Text>
-      </FlexBox>
-      {!daten ? <BusyIndicator active /> : daten.length === 0 ? <Text>Keine offenen Buchungen vorhanden</Text> : daten.map((k, i) => {
-        const sichtbar = k.buchungen.filter((b) => zukunft || !b.zukunft);
-        if (!sichtbar.length) return null;
-        return (
-          <Panel key={k.kunde} fixed style={{ marginBottom: '0.5rem' }} header={
-            <FlexBox alignItems="Center" style={{ gap: '1rem', width: '100%' }}>
-              <CheckBox checked={sichtbar.every((b) => b.auswahl)}
-                        onChange={(e) => setK(i, (x) => ({ ...x, buchungen: x.buchungen.map((b) => ((zukunft || !b.zukunft) ? { ...b, auswahl: e.target.checked } : b)) }))} />
-              <Title level="H6">{k.name}</Title>
-              <Text>{sichtbar.length} Buchung(en)</Text>
-              <FlexBox alignItems="Center" style={{ gap: '0.5rem', marginLeft: 'auto' }}>
-                <Label>Ziel</Label>
-                <Select style={{ width: '14rem' }} onChange={(e) => setK(i, (x) => ({ ...x, ziel: (e.detail.selectedOption as HTMLElement).dataset.z! }))}>
-                  {k.ziele.map((z) => <Option key={z} data-z={z} selected={k.ziel === z}>{z}</Option>)}
-                  <Option data-z="NEU" selected={k.ziel === 'NEU'}>Neue Rechnung anlegen</Option>
-                </Select>
-              </FlexBox>
-            </FlexBox>
-          }>
-            {sichtbar.map((b) => (
-              <FlexBox key={`${b.bid}|${b.datum}`} alignItems="Center" style={{ gap: '1rem', padding: '0.1rem 0' }}>
-                <CheckBox checked={b.auswahl}
-                          onChange={(e) => setK(i, (x) => ({ ...x, buchungen: x.buchungen.map((y) => (y === b ? { ...y, auswahl: e.target.checked } : y)) }))} />
-                <Text style={{ width: '16rem' }}>{wtag(b.datum)}, {dat(b.datum)} · {zeit(b.time_start)}–{zeit(b.time_ende)}</Text>
-                <ObjectStatus state={b.art === 'Abo' ? 'Information' : 'None'} style={{ width: '4rem' }}>{b.art}</ObjectStatus>
-                <Text style={{ width: '7rem', textAlign: 'right' }}>{eur(b.betrag)}</Text>
-                <Text style={{ color: b.fehler ? 'var(--sapNegativeTextColor)' : 'var(--sapContent_LabelColor)', flex: 1 }}>
-                  {b.zukunft ? 'Zukunft · ' : ''}{b.hinweis}
-                </Text>
-              </FlexBox>
-            ))}
-          </Panel>
-        );
-      })}
     </Dialog>,
   );
 }

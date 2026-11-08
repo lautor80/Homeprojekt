@@ -1,0 +1,80 @@
+/* Hallenabrechnung – Dialog „Automatische Zuordnung“ */
+.portal-az { display: flex; flex-direction: column; gap: 0.75rem; }
+.portal-az__fuss { white-space: normal; }
+
+.portal-az__kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+.portal-az__kpi {
+  display: flex; flex-direction: column; gap: 0.125rem; padding: 0.625rem 0.875rem; min-width: 0;
+  border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_HeaderBackground, #f5f6f7);
+  border-left: 0.25rem solid var(--sapInformativeColor, #0070f2);
+}
+.portal-az__kpi span { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-az__kpi b { font-size: 1.25rem; font-weight: 400; color: var(--sapTextColor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-az__kpi small { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-az__kpi--warn { border-left-color: var(--sapNegativeElementColor, #aa0808); }
+.portal-az__kpi--warn b { color: var(--sapNegativeTextColor, #aa0808); }
+
+.portal-az__leiste {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+  position: sticky; top: -1rem; z-index: 2; padding: 0.5rem 0;
+  background: var(--sapGroup_ContentBackground, #fff); border-bottom: 1px solid var(--sapList_BorderColor);
+}
+.portal-az__suche { width: 14rem; }
+.portal-az__leiste-rechts { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.125rem; }
+
+.portal-az__leer { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 3rem 0; color: var(--sapContent_LabelColor); }
+.portal-az__leer ui5-icon { width: 2.5rem; height: 2.5rem; color: var(--sapPositiveElementColor, #188918); }
+
+.portal-az__liste { display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-az__kunde {
+  border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem);
+  background: var(--sapGroup_ContentBackground, #fff); overflow: hidden;
+}
+.portal-az__kunde--aktiv { border-left: 0.25rem solid var(--sapButton_Emphasized_Background, #0070f2); }
+.portal-az__kopf {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(12rem, 18rem) 7rem;
+  align-items: center; gap: 0.5rem; padding: 0.375rem 0.75rem 0.375rem 0.25rem;
+}
+.portal-az__name {
+  display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0.25rem; border: 0; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 0.375rem;
+}
+.portal-az__name:hover { background: var(--sapList_Hover_Background, #eaecee); }
+.portal-az__name ui5-icon { flex: none; color: var(--sapContent_IconColor); width: 0.875rem; height: 0.875rem; }
+.portal-az__name > span { display: flex; flex-direction: column; min-width: 0; }
+.portal-az__name-text { font-weight: 700; color: var(--sapTextColor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-az__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-az__ziel ui5-select { width: 100%; }
+.portal-az__summe { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
+
+.portal-az__buchungen { border-top: 1px solid var(--sapList_BorderColor); background: var(--sapList_Background, #fff); }
+.portal-az__zeile {
+  display: grid; grid-template-columns: auto 8.5rem 6.5rem 6rem 8rem minmax(0, 1fr) 6rem;
+  align-items: center; gap: 0.5rem; padding: 0.125rem 0.75rem 0.125rem 1.75rem; cursor: pointer;
+  border-left: 0.25rem solid transparent; font-size: var(--sapFontSize);
+}
+.portal-az__zeile + .portal-az__zeile { border-top: 1px solid var(--sapList_BorderColor); }
+.portal-az__zeile:hover { background: var(--sapList_Hover_Background, #eaecee); }
+.portal-az__zeile:not(.portal-az__zeile--an) { color: var(--sapContent_LabelColor); }
+.portal-az__zeile--an { background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+.portal-az__zeile--fehler { border-left-color: var(--sapNegativeElementColor, #aa0808); }
+.portal-az__zeile--fehler .portal-az__hinweis { color: var(--sapNegativeTextColor, #aa0808); }
+.portal-az__datum b { display: inline-block; width: 1.5rem; }
+.portal-az__zeit, .portal-az__betrag { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.portal-az__betrag { text-align: right; color: var(--sapTextColor); }
+.portal-az__platz, .portal-az__hinweis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-az__hinweis { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-az__art { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+
+@media (max-width: 860px) {
+  .portal-az__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .portal-az__kopf { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .portal-az__ziel { grid-column: 2 / -1; grid-row: 2; }
+  .portal-az__summe { grid-column: 3; grid-row: 1; }
+  .portal-az__zeile { grid-template-columns: auto minmax(0, 1fr) auto; grid-auto-flow: row; padding-left: 0.75rem; }
+  .portal-az__zeile > .portal-az__datum { grid-column: 2; }
+  .portal-az__zeile > .portal-az__betrag { grid-column: 3; grid-row: 1; }
+  .portal-az__zeile > .portal-az__zeit, .portal-az__zeile > .portal-az__platz, .portal-az__zeile > .portal-az__art { grid-column: 2 / -1; display: inline; }
+  .portal-az__zeile > .portal-az__hinweis { grid-column: 2 / -1; }
+  .portal-az__leiste-rechts { margin-left: 0; }
+}

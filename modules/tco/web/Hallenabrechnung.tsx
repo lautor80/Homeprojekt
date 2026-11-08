@@ -26,7 +26,8 @@ import {
   type Buchung, type PaperlessInfo, type Person, type PersonDetail, type Position, type Rechnung,
   bidText,
 } from './util';
-import { AutoDialog, MailDialog, MailtextDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
+import { AutoDialog } from './AutoZuordnung';
+import { MailDialog, MailtextDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
 /** Filter bleiben beim Wechsel zwischen Seiten erhalten */
 const merk = {

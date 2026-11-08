@@ -49,6 +49,7 @@ export interface Buchung {
   fehler: string | null;
   vergangen: boolean;
   zukunft: boolean;        // Datum nach heute (für automatische Zuordnung)
+  platz?: string | null;
 }
 
 export interface Person {
@@ -168,7 +169,7 @@ export async function offeneBuchungen(db: Db, v: Verein, preise?: Preise, kunde?
       bid: r.bid, datum: r.datum, time_start: r.time_start, time_ende: r.time_ende, kunde: r.kunde ?? '', status,
       art: status === '3' ? 'Abo' : 'Einzel', text: r.text, termine: 1,
       betrag: pr.betrag, dauer: pr.dauer, prodKey: pr.prodKey, fehler: pr.fehler,
-      vergangen: vergangen(r.datum, r.time_ende), zukunft: r.datum > heute(),
+      vergangen: vergangen(r.datum, r.time_ende), zukunft: r.datum > heute(), platz: r.platz ?? null,
     };
     if (status === '3') abo.set(r.bid, b);
     out.push(b);
@@ -534,18 +535,22 @@ export async function kanalSichern(tx: Db, k: Kontakt | null, kanal: 'E' | 'W', 
 export async function autoVorschau(db: Db, v: Verein) {
   const buchungen = await offeneBuchungen(db, v);
   const kunden = [...new Set(buchungen.map((b) => b.kunde))].sort();
-  const ziele = new Map<string, { rgnr_txt: string; status: string }[]>();
+  const ziele = new Map<string, { rgnr: string; status: string; positionen: number }[]>();
   for (const k of kunden) {
-    const r = await db`select rgnr_txt, status, versendet::text from tco.rgkopf where kunde = ${k} order by rgnr_txt desc`;
-    ziele.set(k, r.filter((x) => rgAenderbar(x as never)).map((x) => ({ rgnr_txt: x.rgnr_txt, status: x.status })));
+    const r = await db`select k.rgnr_txt, k.status, k.versendet::text,
+                              (select count(*)::int from tco.rgpos p where p.rgnr_txt = k.rgnr_txt) as positionen
+                         from tco.rgkopf k where k.kunde = ${k} order by k.rgnr_txt desc`;
+    ziele.set(k, r.filter((x) => rgAenderbar(x as never))
+      .map((x) => ({ rgnr: x.rgnr_txt, status: x.status, positionen: Number(x.positionen) })));
   }
   return kunden.map((k) => {
     const z = ziele.get(k) ?? [];
-    const vorschlag = z.find((x) => x.status === '1')?.rgnr_txt ?? 'NEU';
+    const vorschlag = z.find((x) => x.status === '1')?.rgnr ?? 'NEU';
     return {
       kunde: k,
       name: nameSchoen(k),
-      ziele: z.map((x) => x.rgnr_txt),
+      ziele: z.map((x) => x.rgnr),
+      zielInfo: z,
       ziel: vorschlag,
       buchungen: buchungen.filter((b) => b.kunde === k).map((b) => ({
         ...b,
