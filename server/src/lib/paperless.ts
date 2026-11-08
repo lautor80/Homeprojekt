@@ -167,6 +167,25 @@ export class Paperless {
     return this.liste('correspondents');
   }
 
+  async tags(): Promise<{ id: number; name: string }[]> {
+    return this.liste('tags');
+  }
+
+  async speicherpfade(): Promise<{ id: number; name: string }[]> {
+    return this.liste('storage_paths');
+  }
+
+  /** Tag suchen, bei Bedarf anlegen (ohne automatische Zuordnung) */
+  async tag(name: string, anlegen = true): Promise<number | null> {
+    const id = await this.idByName('tags', name);
+    if (id || !anlegen) return id;
+    const r = await this.json<{ id: number; name: string }>('POST', 'api/tags/', {
+      name: name.trim(), matching_algorithm: 0, match: '', is_insensitive: true,
+    });
+    this.stammCache.get('tags')?.push(r);
+    return r.id;
+  }
+
   // -------------------------------------------------------------------------
   // Dokumente
   // -------------------------------------------------------------------------

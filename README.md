@@ -41,7 +41,12 @@ baut und startet alle Container und gibt die Adresse aus. Beim ersten Aufruf im 
 | `caddy` | optional (`PORTAL_DOMAIN` gesetzt): HTTPS mit automatischem Zertifikat |
 
 Hinter einem vorhandenen Reverse Proxy (z. B. Nginx Proxy Manager): Domain leer lassen,
-Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECURE_COOKIES=true` setzen.
+Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECURE_COOKIES=true` und
+`TRUST_PROXY=true` setzen (dann zählt die Client-IP aus `X-Forwarded-For` für die Anmeldesperren).
+Ohne Proxy bleibt `TRUST_PROXY=false` – sonst ließen sich die Sperren mit gefälschten Headern umgehen.
+
+Nach der Einrichtung: **TC Oberthal → Stammdaten** ausfüllen (Vereinsname, Anschrift, IBAN, Steuernummer,
+Paperless/n8n). Das Repository enthält keine Vereinsdaten; alles kommt aus den Stammdaten bzw. dem SAP-Import.
 
 ### Installation über Portainer
 
@@ -85,6 +90,29 @@ web/src/             Kern der Oberfläche: Shell, Login, Administration, wiederv
 modules/<id>/server  Modul: Routen, Berechtigungen, eigene Migrationen (eigenes DB-Schema)
 modules/<id>/web     Modul: Navigation, Seiten, Kacheln
 ```
+
+## Oberflächen-Leitfaden (Fiori Horizon)
+
+Die Oberfläche folgt den SAP-Fiori-Floorplans; die Gestaltungsschicht liegt in `web/src/styles.css`
+(Klassen `portal-*`, ausschließlich Theme-Variablen → Hell/Dunkel und Akzentfarbe automatisch) und den
+Kernbausteinen in `web/src/components/`. In Modulseiten **keine eigenen Layouts** mit festen Breiten bauen,
+sondern diese Bausteine verwenden:
+
+| Baustein | Zweck (Fiori-Entsprechung) |
+|---|---|
+| `AppPage` | Seitenrahmen (Dynamic Page): Titel, Untertitel, Aktionen rechts, einklappbarer Kopfbereich, Fußleiste |
+| `Filters` / `Filter` / `HeaderKpi` | Filterzeile im Kopfbereich (Filter Bar) mit Beschriftung über dem Feld; Kennzahl rechts |
+| `MasterDetail` | Liste links (bleibt beim Scrollen stehen), Objekt rechts; auf dem Handy eine Spalte mit „Zur Liste“ (Flexible Column Layout) |
+| `ObjectHeader` | Objektkopf: Avatar/Initialen, Titel, Untertitel, Statuszeile (`ObjectStatus`), Aktionen, Attribute (Object Page Header) |
+| `Section` | Abschnitt als weiße Karte mit Titel, Anzahl, Status und Aktionen; `flush` für Tabellen (Object Page Section) |
+| `Attributes` / `Attribute` | Beschriftete Anzeigewerte im Raster (Formular-Anzeige) |
+| `Tile` | Kachel der Startseite mit optionaler Kennzahl (Launchpad-Kachel); Kennzahl über `HomeTile.kpi` im Modul |
+| `FormGrid` / `TextField` / `CheckField` | Eingabeformulare in Dialogen |
+| `ConfirmDialog`, `PdfDialog`, `MenuButton`, `ChangeHistoryButton`, `toast` | Sicherheitsabfrage mit Begründung, PDF-Vorschau, Menü-Button, Änderungshistorie, Erfolgsmeldung |
+
+Regeln: Beträge rechtsbündig mit `eur()`, Datum mit `dat()`; Status immer als `ObjectStatus` (Positive/Critical/
+Negative/Information), nie als freie Farbe; Diagramme als SVG mit `--sapChart_OrderedColor_1…11`; Texte Deutsch
+mit den Fachbegriffen der SAP-App. Hell/Dunkel schaltet der Benutzer im Benutzermenü um (`web/src/theme.ts`).
 
 ## Neues Modul anlegen (z. B. `transport`)
 
@@ -136,14 +164,23 @@ Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create
 ## Modul `tco` (TC Oberthal – Vereinsportal)
 
 Portierung der abap2UI5-Apps des Vereinsportals. Einschalten mit `PORTAL_MODULES=tco`.
-Das Datenmodell (Schema `tco`) enthält bereits alle Vereinstabellen aus SAP; die Apps folgen nach Priorität.
+Das Datenmodell (Schema `tco`) enthält alle Vereinstabellen aus SAP; alle Apps der SAP-Navigation (`Z2UI5_TCO_MAINPAGE_V2`) sind übernommen.
 
 | App | Stand |
 |---|---|
 | Hallenabrechnung | fertig: EP3-Import (n8n oder CSV), Preisfindung je Buchungsminute, Zuordnen einzeln/gesammelt/automatisch, manuelle Positionen inkl. Schlüsselliste, Rechnungs-PDF mit GiroCode, Ablage in Paperless (Neudruck = neue Version, Freigabelink, Metadaten), Versand per E-Mail (n8n-Workflow „TCO Mailversand aus SAP“), WhatsApp und Mailentwurf, Wiedereröffnen versendeter Rechnungen mit Begründung, Hallenpreise mit Prüfung |
 | FI Belege | fertig: Buchungsliste je Zeitraum/Konto mit Jahresanfang, Tagessaldo und aktuellem Saldo, Bankimport (CSV-Umsatzexport) mit Abgleich, Gegenkonto- und Belegvorschlag, Aufteilung (z. B. SumUp-Gebühren), manuelle Buchung für Kasse/Konten ohne Bankdatei, Hallenrechnung zuordnen (Teilzahlung), Belege aus Paperless zuordnen/entfernen, Beleg einer früheren Zahlung übernehmen, Notizen, **Storno per Gegenbuchung** – FI-Belege sind in der Datenbank gegen Ändern und Löschen gesperrt |
 | Sollstellung | fertig: Gläubigerdaten mit Prüfung (IBAN, Gläubiger-ID), Vorschlag je Sollmonat (Turnus, Laufzeit, Beitragsstamm, Zahler am Vertrag bzw. abweichender Zahler, Mandat, Ausschlussgründe), einzelne Positionen abwählbar, SEPA-Datei pain.008.001.02 im Linear-Layout (je Zahler und Mandat eine Lastschrift), PDF-Protokoll mit Ablage in Paperless, Storno. **Verbucht wird nur in FI Belege:** der Bankimport erkennt die Sammelgutschrift und bucht sie je Position auf die Erlöskonten; ein Storno dort öffnet den Lauf wieder |
-| Jugendtraining, Clubhaus, Mitglieder, Einnahmen & Ausgaben, Beiträge, Kontenstamm | folgen |
+| Jugendtraining | fertig: Trainingszeiten erfassen/importieren (n8n, Nextcloud), Zeitnachweise als PDF mit Ablage in Paperless, Trainer und Trainerentgelte, als bezahlt kennzeichnen |
+| Clubhausabrechnung | fertig: Getränkerechnungen, Belegzuordnung, Forderungsliste berechnen und ablegen, Getränkepreise, Absatz und Diagramme |
+| Mitglieder | fertig: Stammdaten, Bank & SEPA-Mandat, Verträge, Familie & Schlüssel, Dokumente (Paperless), Notizen, Unterlagen (Aufnahmeantrag, Mitgliederinformation) drucken/ablegen/versenden, Neuanlage mit Vertrag |
+| Vereinsübersicht | fertig: Dashboard auf der Startseite mit KPI-Kacheln/Cards je Bereich (Mitglieder, Clubhaus, Finanzen, Jugend, Halle), Geschäftsjahr, Diagramme (Mitgliederentwicklung, Clubheimerträge, Einnahmen/Ausgaben/Kontostand mit Jahres-/Kontenauswahl, Trainingsstunden je Trainer, Hallenbuchungen Abo/Einzel), Liquidität, Detail-Popups, Beitragsstufenwechsel Jugendliche → Erwachsene mit Bestätigung und Änderungsbeleg |
+| Mitglieder-Analyse, Teilnehmer Jugendtraining, Dokumenten-Upload | fertig: Grid-Tabelle mit serverseitiger Gruppierung/Zwischensummen, 14 Filter, Sortierung, Spaltenauswahl, Anzeigevarianten (eigene/globale), Kennzahlen, SVG-Diagramme, CSV-Export; Teilnehmerliste Jugendtraining mit Filter Alle/Mitglieder/Nichtmitglieder, Suche, Mehrfachauswahl und „E-Mail an Auswahl“ (BCC), Detail mit Verträgen; Mehrfach-Upload von Belegen nach Paperless mit Dokumenttyp, Korrespondent, Datum, Tags, Speicherpfad, Notiz und Statusliste |
+| Beiträge | fertig: Beitragsstamm mit zeitabhängigen Beträgen (lückenlos, letzter Zeitraum offen), neuer Betrag ab Datum teilt den Zeitraum, Löschen verlängert den Vorgänger, Prüfungen (Pflichtfelder, Erlöskonto im Kontenstamm, Lücken/Überschneidungen), aktiv/inaktiv, Hinweis auf bestehende Sollstellungspositionen, Erstbefüllung aus den Verträgen, Verträge je Beitragsart |
+| Beitragsforecast | fertig: Hochrechnung Basisjahr/Folgejahr je Monat und Vertragsart aus den laufenden Verträgen (Stichtag Monatserster, Januar alle, Juli ohne Spende, übrige Monate Jugendtraining), Vorjahr als Vergleich, Säulendiagramm, Mitglieder als dritte Stufe |
+| Einnahmen & Ausgaben | fertig: Kennzahlen Einnahmen/Ausgaben/Gewinn/Geldbestand, Abgleich mit der Veränderung der Geldbestände, Säulendiagramm je Monat, Monats- und 5-Jahres-Tabelle, Geldkonten mit Anfangsbestand/Zugang/Abgang, Einnahmen und Ausgaben je Konto mit Vorjahr, Liquidität, Monatsverlauf je Geldkonto |
+| Jahresabschluss | fertig: Einnahmen-Ausgaben-Rechnung je Tätigkeitsbereich (A–D, Kennzahl im Kontenstamm), Überschussrechnung mit zwei Vorjahren, Bankbestände, Anlagevermögen mit linearer AfA (Monate im Erstjahr, Spiegel und Wertentwicklung), PDF mit wählbaren Teilen EAR / Steuererklärung (3 Jahre) / Anlagevermögen, Ablage in Paperless |
+| Kontenstamm | fertig: Konten (Nr., Bezeichnung, Kennzahl, Profit-Center) mit Buchungen und Saldo je Jahr (Fenster 6 Jahre), Kontenverwendung je Geschäftsjahr mit Vorschlag, Filter, Pflege der Jahresanfangs- und Endbestände der Geldkonten mit Abgleich gegen die Saldenrechnung |
 
 Gegenüber SAP behoben: Rechnungsbetrag = Summe der Positionen (manuelle Positionen mit Menge), Status springt beim Neudruck
 nicht mehr zurück, Preis eines Einzeltermins aus dem eigenen Datum, robuste Namenszuordnung, keine 999er-Grenze der Rechnungsnummer.

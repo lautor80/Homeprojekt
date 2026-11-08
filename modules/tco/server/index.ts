@@ -15,6 +15,15 @@ import { jtRoutes, P_JT } from './jt/routes.js';
 import { ENDPUNKTE, verbindungTesten } from './verbindung.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
+import { kontenRoutes, P_KONTEN } from './konten/routes.js';
+import { finanzRoutes, P_FINANZ } from './finanz/routes.js';
+import { beitraegeRoutes, P_BEITRAEGE } from './beitraege/routes.js';
+import { forecastRoutes, P_FORECAST } from './forecast/routes.js';
+import { abschlussRoutes, P_ABSCHLUSS } from './abschluss/routes.js';
+import { dashboardRoutes, P_DASH } from './dashboard/routes.js';
+import { analyseRoutes, P_AN } from './analyse/routes.js';
+import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
+import { P_UP, uploadRoutes } from './upload/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -49,6 +58,7 @@ const vereinSchema = z.object({
   fi_feld_beleg: z.string().trim().min(1).optional(),
   fi_feld_betrag: z.string().trim().min(1).optional(),
   fi_feld_sap: z.string().trim().min(1).optional(),
+  mg_ansprechpartner: z.string().optional(),
 });
 
 type VereinEingabe = z.infer<typeof vereinSchema>;
@@ -81,7 +91,7 @@ function zugangUebernehmen(d: VereinEingabe, alt: Verein) {
 }
 
 async function routes(app: FastifyInstance) {
-  app.get('/verein', { preHandler: requireAuth() }, async () => {
+  app.get('/verein', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const v = await vereinLesen();
     const out: Record<string, unknown> = { ...v };
     for (const g of GEHEIM) out[g] = v[g] ? MASKE : '';
@@ -108,7 +118,7 @@ async function routes(app: FastifyInstance) {
              halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss}, halle_plaetze = ${d.halle_plaetze ?? alt.halle_plaetze},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
-             fi_feld_sap = ${d.fi_feld_sap}, updated_at = now()
+             fi_feld_sap = ${d.fi_feld_sap}, mg_ansprechpartner = ${d.mg_ansprechpartner ?? alt.mg_ansprechpartner ?? ''}, updated_at = now()
        where id = 1`);
     return { ok: true };
   });
@@ -174,6 +184,15 @@ async function routes(app: FastifyInstance) {
   await jtRoutes(app);
   await clubhausRoutes(app);
   await mitgliederRoutes(app);
+  await kontenRoutes(app);
+  await finanzRoutes(app);
+  await beitraegeRoutes(app);
+  await forecastRoutes(app);
+  await abschlussRoutes(app);
+  await dashboardRoutes(app);
+  await analyseRoutes(app);
+  await teilnehmerRoutes(app);
+  await uploadRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -197,6 +216,19 @@ const tco: ServerModule = {
     { id: P_CH.edit, text: 'Clubhaus: Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
     { id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
     { id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Bank, Verträge, Austritt, Unterlagen ablegen und versenden' },
+    { id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
+    { id: P_DASH.edit, text: 'Vereinsübersicht: Beitragsstufenwechsel (Jugendverträge umstellen)' },
+    { id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
+    { id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
+    { id: P_BEITRAEGE.display, text: 'Beiträge (Beitragsstamm) anzeigen' },
+    { id: P_BEITRAEGE.edit, text: 'Beiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
+    { id: P_FORECAST.display, text: 'Beitragsforecast anzeigen' },
+    { id: P_FINANZ.display, text: 'Einnahmen & Ausgaben anzeigen' },
+    { id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
+    { id: P_KONTEN.edit, text: 'Kontenstamm pflegen: Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
+    { id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
+    { id: P_ABSCHLUSS.edit, text: 'Jahresabschluss: Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
+    { id: P_UP.execute, text: 'Dokumenten-Upload: Belege nach Paperless übertragen' },
     { id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)' },
   ],
@@ -208,6 +240,9 @@ const tco: ServerModule = {
     { type: 'SCHLUESSEL', text: 'Hallenschlüssel', permission: P_HALLE.display },
     { type: 'FIBELEG', text: 'FI-Beleg', permission: P_FI.display },
     { type: 'FIKONTO', text: 'FI-Konto', permission: P_FI.display },
+    { type: 'FIBANKAB', text: 'Anfangs-/Endbestand Geldkonto', permission: P_KONTEN.display },
+    { type: 'BEITRAG', text: 'Beitragsart', permission: P_BEITRAEGE.display },
+    { type: 'ANLAGE', text: 'Anlageobjekt', permission: P_ABSCHLUSS.display },
     { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
     { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
     { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },
