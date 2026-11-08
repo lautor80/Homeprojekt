@@ -218,6 +218,29 @@ test('Teilnehmer Jugendtraining: Liste, Detail, mailto', async () => {
   assert.deepEqual(r.body.ohneEmail, ['Gast, Tim']);
   r = await call('POST', `${T}/mailto`, { adrnrs: ['0000000104'] });
   assert.equal(r.body.url, null);
+
+  // PDF im Vereinslayout mit derselben Auswahl wie die App
+  r = await call('GET', `${T}/pdf`);
+  assert.equal(r.status, 200);
+  assert.match(r.ct, /application\/pdf/);
+  assert.equal(r.raw.subarray(0, 5).toString(), '%PDF-');
+  r = await call('GET', `${T}/pdf?filter=MEMBER&suche=kr`);
+  assert.equal(r.status, 200);
+  r = await call('GET', `${T}/pdf?adrnrs=0000000104`);
+  assert.equal(r.status, 200);
+  r = await call('GET', `${T}/pdf?filter=UNSINN`);
+  assert.equal(r.status, 400);
+});
+
+test('Teilnehmer: Auswahl für das PDF entspricht der Trefferliste', async () => {
+  const { auswaehlen } = await import('../../modules/tco/server/teilnehmer/pdf.js');
+  const { teilnehmerLesen } = await import('../../modules/tco/server/teilnehmer/logik.js');
+  const alle = await teilnehmerLesen(sql);
+  const namen = (f: Parameters<typeof auswaehlen>[1]) => auswaehlen(alle, f).map((t) => t.name);
+  assert.deepEqual(namen({ filter: 'ALL', suche: '', adrnrs: [] }), ['Gast, Tim', 'Krämer, Lena']);
+  assert.deepEqual(namen({ filter: 'NONMEMBER', suche: '', adrnrs: [] }), ['Gast, Tim']);
+  assert.deepEqual(namen({ filter: 'ALL', suche: 'lena@', adrnrs: [] }), ['Krämer, Lena']);
+  assert.deepEqual(namen({ filter: 'ALL', suche: '', adrnrs: ['0000000104'] }), ['Gast, Tim']);
 });
 
 test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () => {

@@ -11,6 +11,7 @@ import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { ObjectHeader } from '@core/components/ObjectHeader';
 import { Section } from '@core/components/Section';
 import { useLoad } from '@core/components/useLoad';
+import { PdfDialog } from '@core/components/PdfDialog';
 import { TCO, dat, eur } from '../util';
 import { Dlg } from '../mitglieder/Dialoge';
 
@@ -35,6 +36,14 @@ export function Teilnehmer() {
   const [sel, setSel] = useState<string[]>([]);
   const [detail, setDetail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pdf, setPdf] = useState<string | null>(null);
+
+  /** PDF mit derselben Auswahl wie die Trefferliste; sind Teilnehmer markiert, nur diese */
+  const pdfUrl = () => {
+    const q = new URLSearchParams({ filter, suche });
+    if (markiertSichtbar.length) q.set('adrnrs', markiertSichtbar.join(','));
+    return `${TN}/pdf?${q.toString()}`;
+  };
 
   const rows = useMemo(() => {
     const s = suche.trim().toUpperCase();
@@ -45,6 +54,7 @@ export function Teilnehmer() {
   const markiert = (data?.teilnehmer ?? []).filter((t) => sel.includes(t.adrnr));
   const mitEmail = markiert.filter((t) => t.email);
   const alleSichtbar = rows.length > 0 && rows.every((t) => sel.includes(t.adrnr));
+  const markiertSichtbar = sel.filter((a) => rows.some((t) => t.adrnr === a));
 
   const toggle = (a: string, an: boolean) => setSel(an ? [...new Set([...sel, a])] : sel.filter((x) => x !== a));
   const columns: AnalyticalTableColumnDefinition[] = [
@@ -97,6 +107,10 @@ export function Teilnehmer() {
   return (
     <AppPage title={`Teilnehmer Jugendtraining (${rows.length})`} subtitle={`${einheiten} Einheiten – Personen mit laufendem Jugendtraining-Vertrag`} header={header}
              actions={<>
+               <Button icon="pdf-attachment" disabled={!rows.length} onClick={() => setPdf(pdfUrl())}
+                       tooltip="Teilnehmerliste als PDF im Vereinslayout (aktuelle Auswahl bzw. markierte Teilnehmer)">
+                 {markiertSichtbar.length ? `PDF (${markiertSichtbar.length} markiert)` : 'PDF-Ansicht'}
+               </Button>
                <Button icon="email" disabled={!mitEmail.length} onClick={mail}>{markiert.length ? `E-Mail an Auswahl (${markiert.length})` : 'E-Mail an Auswahl'}</Button>
                <Button icon="refresh" design="Transparent" onClick={() => { setSel([]); reload(); }}>Neu laden</Button>
              </>}>
@@ -112,6 +126,8 @@ export function Teilnehmer() {
         Stammdaten werden unter „Mitglieder“ gepflegt.
       </MessageStrip>
       {detail && <DetailDialog adrnr={detail} onClose={() => setDetail(null)} />}
+      {pdf && <PdfDialog url={pdf} title="Teilnehmer Jugendtraining" filename={`Teilnehmer_Jugendtraining_${new Date().toLocaleDateString('sv-SE')}.pdf`}
+                         onClose={() => setPdf(null)} />}
     </AppPage>
   );
 }

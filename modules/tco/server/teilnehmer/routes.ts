@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../../../server/src/auth.js';
-import { DB } from '../verein.js';
+import { DB, vereinLesen } from '../verein.js';
+import { auswaehlen, teilnehmerPdf, teilnehmerTitel } from './pdf.js';
 import { mailtoLink, teilnehmerDetail, teilnehmerLesen } from './logik.js';
 
 /** Die App zeigt nur an; eine Pflege gibt es (wie in SAP) nicht – Stammdaten werden unter „Mitglieder“ geändert. */
@@ -17,6 +18,19 @@ export async function teilnehmerRoutes(app: FastifyInstance) {
       teilnehmer: t, einheiten: t.reduce((s, x) => s + x.einheiten, 0),
       mitglieder: t.filter((x) => x.mitglied).length, nichtmitglieder: t.filter((x) => !x.mitglied).length,
     };
+  });
+
+  /** Teilnehmerliste als PDF im Vereinslayout – gleiche Auswahl wie in der App (Filter, Suche, Markierung) */
+  app.get('/teilnehmer/pdf', lesen, async (req, reply) => {
+    const q = z.object({
+      filter: z.enum(['ALL', 'MEMBER', 'NONMEMBER']).default('ALL'),
+      suche: z.string().max(100).default(''),
+      adrnrs: z.string().max(20000).default(''),
+    }).parse(req.query);
+    const auswahl = { filter: q.filter, suche: q.suche, adrnrs: q.adrnrs.split(',').map((x) => x.trim()).filter(Boolean) };
+    const rows = auswaehlen(await teilnehmerLesen(DB), auswahl);
+    const pdf = await teilnehmerPdf(await vereinLesen(), rows, auswahl);
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="${teilnehmerTitel()}.pdf"`).send(pdf);
   });
 
   app.get('/teilnehmer/:adrnr', lesen, async (req) => {
