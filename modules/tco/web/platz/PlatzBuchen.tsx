@@ -474,13 +474,13 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
           {pruefung && !pruefung.fehler && (
             <>
               <div style={{ minWidth: 0, flex: 1 }}>
+                <ObjectStatus state={sperre.zustand === 'eigen' ? 'Positive' : 'Critical'} showDefaultIcon style={{ display: 'block', marginBottom: '0.25rem' }}>
+                  {sperre.zustand === 'eigen' ? 'für dich reserviert' : sperre.zustand === 'fremd' ? 'wird gerade gebucht' : 'frei'}
+                </ObjectStatus>
                 <div className="portal-pb__preis-wert">{preisText(pruefung.preis)}</div>
                 <div className="portal-muted portal-small">{pruefung.preis.kostenfrei ? 'Freiplatz ohne Gebühr' : pruefung.preis.fehler ? 'Preis ermittelt die Hallenabrechnung' : pruefung.preis.text}</div>
                 <PreisAufschluesselung preis={pruefung.preis} />
               </div>
-              <ObjectStatus state={sperre.zustand === 'eigen' ? 'Positive' : 'Critical'} showDefaultIcon>
-                {sperre.zustand === 'eigen' ? 'für dich reserviert' : sperre.zustand === 'fremd' ? 'wird gerade gebucht' : 'frei'}
-              </ObjectStatus>
             </>
           )}
         </div>
@@ -488,6 +488,11 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
           <Text className="portal-muted portal-small">
             Buchbar {p.vorlauf_min ? `bis ${p.vorlauf_min} Std. vor Beginn, ` : ''}höchstens {p.vorlauf_max} Tage im Voraus.
             {p.storno_frist ? ` Ändern und Stornieren bis ${p.storno_frist} Std. vor Beginn.` : ' Ändern und Stornieren bis zum Beginn.'}
+          </Text>
+        )}
+        {p?.abrechnen && (
+          <Text className="portal-muted portal-small">
+            Die Bezahlung erfolgt per Rechnung: Gebuchte Stunden werden gesammelt abgerechnet, die Rechnung erhältst du per E-Mail.
           </Text>
         )}
       </div>
