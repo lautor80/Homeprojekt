@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, BusyIndicator, Button, DateRangePicker, FlexBox, IllustratedMessage, Input, Label, Link, List, ListItemCustom,
+  AnalyticalTable, BusyIndicator, Button, DateRangePicker, FlexBox, Icon, Input, Link, List, ListItemCustom,
   ListItemGroup, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Panel, SegmentedButton, SegmentedButtonItem,
-  Select, Switch, Text, Title, Toolbar, ToolbarButton, ToolbarSpacer,
+  Select, Switch, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import '@ui5/webcomponents-fiori/dist/illustrations/NoData.js';
@@ -14,6 +14,11 @@ import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { MenuButton } from '@core/components/MenuButton';
 import { PdfDialog } from '@core/components/PdfDialog';
+import { Section } from '@core/components/Section';
+import { Attribute, Attributes } from '@core/components/Attributes';
+import { ObjectHeader } from '@core/components/ObjectHeader';
+import { MasterDetail } from '@core/components/MasterDetail';
+import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import {
@@ -141,36 +146,29 @@ export function Hallenabrechnung() {
   const rechnung = detail?.rechnungen.find((r) => r.rgnr_txt === rgnr) ?? null;
 
   const header = (
-    <FlexBox wrap="Wrap" alignItems="End" style={{ gap: '1rem 1.5rem' }}>
-      <FlexBox direction="Column">
-        <Label>Status</Label>
-        <MultiComboBox style={{ width: '18rem' }} placeholder="alle"
+    <Filters>
+      <Filter label="Status" width="18rem">
+        <MultiComboBox style={{ width: '100%' }} placeholder="alle"
                        onSelectionChange={(e) => setStatus(e.detail.items.map((i) => (i as HTMLElement).dataset.key!))}>
           {Object.entries(RG_STATUS).map(([k, t]) => <MultiComboBoxItem key={k} data-key={k} text={`${k} – ${t}`} selected={status.includes(k)} />)}
         </MultiComboBox>
-      </FlexBox>
-      <FlexBox direction="Column">
-        <Label>Druckdatum</Label>
-        <DateRangePicker style={{ width: '15rem' }} placeholder="alle" formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd"
+      </Filter>
+      <Filter label="Druckdatum" width="15rem">
+        <DateRangePicker style={{ width: '100%' }} placeholder="alle" formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd"
                          value={von ? `${von} - ${bis || von}` : ''}
                          onChange={(e) => {
                            const [a, b] = (e.detail.value || '').split(' - ');
                            setVon(a || ''); setBis(b || a || '');
                          }} />
-      </FlexBox>
-      <FlexBox direction="Column">
-        <Label>Person / Rechnung</Label>
-        <Input style={{ width: '14rem' }} icon={<span />} placeholder="Name oder Nummer" value={suche} onInput={(e) => setSuche(e.target.value)} />
-      </FlexBox>
-      <FlexBox direction="Column">
-        <Label>Offene Buchungen</Label>
+      </Filter>
+      <Filter label="Person / Rechnung" width="14rem">
+        <Input style={{ width: '100%' }} icon={<span />} placeholder="Name oder Nummer" value={suche} showClearIcon onInput={(e) => setSuche(e.target.value)} />
+      </Filter>
+      <Filter label="Offene Buchungen">
         <Switch checked={mitBuchungen} onChange={(e) => setMitBuchungen(e.target.checked)} />
-      </FlexBox>
-      <FlexBox direction="Column" style={{ marginLeft: 'auto', textAlign: 'right' }}>
-        <Label>Gesamt offen</Label>
-        <Title level="H4">{eur(liste?.gesamtOffen)}</Title>
-      </FlexBox>
-    </FlexBox>
+      </Filter>
+      <HeaderKpi label="Gesamt offen" value={eur(liste?.gesamtOffen)} state={(liste?.gesamtOffen ?? 0) > 0 ? 'Critical' : 'None'} />
+    </Filters>
   );
 
   return (
@@ -187,18 +185,20 @@ export function Hallenabrechnung() {
       <input ref={fileRef} type="file" accept=".csv,.txt" multiple hidden onChange={(e) => csvImport(e.target.files)} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
-        <FlexBox alignItems="Start" style={{ gap: '1rem' }}>
-          {/* ------------------------------------------------ Personen */}
-          <div style={{ width: '24rem', flexShrink: 0 }}>
-            <Toolbar>
-              <Title level="H5">Personen ({personen.length})</Title>
-              <ToolbarSpacer />
+        <MasterDetail
+          emptyTitle="Keine Person ausgewählt" emptyText="Links eine Person wählen, um Buchungen und Rechnungen zu bearbeiten."
+          onBack={() => { setKunde(null); setRgnr(null); }}
+          masterHead={
+            <FlexBox justifyContent="SpaceBetween" alignItems="Center" wrap="Wrap" style={{ gap: '0.5rem' }}>
+              <Title level="H5">Personen <span className="portal-muted">({personen.length})</span></Title>
               <SegmentedButton onSelectionChange={(e) => setSort((e.detail.selectedItems[0] as HTMLElement).dataset.key as typeof sort)}>
                 <SegmentedButtonItem data-key="buchungen" selected={sort === 'buchungen'}>Buchungen</SegmentedButtonItem>
                 <SegmentedButtonItem data-key="name" selected={sort === 'name'}>Name</SegmentedButtonItem>
                 <SegmentedButtonItem data-key="betrag" selected={sort === 'betrag'}>Betrag</SegmentedButtonItem>
               </SegmentedButton>
-            </Toolbar>
+            </FlexBox>
+          }
+          master={
             <List selectionMode="Single" noDataText={liste ? 'Keine Personen in der Selektion' : 'Wird geladen …'}
                   onItemClick={(e) => { setKunde((e.detail.item as HTMLElement).dataset.kunde ?? null); setRgnr(null); }}>
               {gruppen.map((g) => (
@@ -208,34 +208,28 @@ export function Hallenabrechnung() {
                       <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ width: '100%', padding: '0.4rem 0' }}>
                         <FlexBox direction="Column" style={{ minWidth: 0 }}>
                           <Text style={{ fontWeight: 'bold' }}>{p.name}</Text>
-                          <Text style={{ fontSize: 'var(--sapFontSmallSize)', color: 'var(--sapContent_LabelColor)' }}>
+                          <Text className="portal-small portal-muted">
                             {p.offeneBuchungen} Buchung(en) · {p.rechnungen.length} Rechnung(en)
                             {p.rechnungen.length ? ` · ${p.rechnungen.slice(0, 3).map((r) => r.rgnr_txt).join(', ')}${p.rechnungen.length > 3 ? ' …' : ''}` : ''}
                           </Text>
                         </FlexBox>
-                        <Text style={{ whiteSpace: 'nowrap' }}>{eur(p.betrag)}</Text>
+                        <Text className="portal-nowrap">{eur(p.betrag)}</Text>
                       </FlexBox>
                     </ListItemCustom>
                   ))}
                 </ListItemGroup>
               ))}
             </List>
-          </div>
-
-          {/* ------------------------------------------------ Detail */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {!detail ? (
-              <IllustratedMessage name="SimpleEmptyList" titleText="Keine Person ausgewählt" subtitleText="Links eine Person wählen, um Buchungen und Rechnungen zu bearbeiten." />
-            ) : (
-              <PersonPanel
-                d={detail} rgnr={rgnr} setRgnr={setRgnr} rechnung={rechnung} edit={edit} versand={versand} tun={tun}
-                onSchliessen={() => { setKunde(null); setRgnr(null); }}
-                onPdf={(nr) => setPdf(nr)} onPosition={() => setPosDlg(true)} onMail={(nrs) => setMail(nrs)} onWa={(nrs) => setWa(nrs)}
-                onMailtext={(nr) => setMailtext(nr)} onZahlungen={setZahlungen} onVersionen={setVersionen} onConfirm={setConfirm}
-              />
-            )}
-          </div>
-        </FlexBox>
+          }
+          detail={detail ? (
+            <PersonPanel
+              d={detail} rgnr={rgnr} setRgnr={setRgnr} rechnung={rechnung} edit={edit} versand={versand} tun={tun}
+              onSchliessen={() => { setKunde(null); setRgnr(null); }}
+              onPdf={(nr) => setPdf(nr)} onPosition={() => setPosDlg(true)} onMail={(nrs) => setMail(nrs)} onWa={(nrs) => setWa(nrs)}
+              onMailtext={(nr) => setMailtext(nr)} onZahlungen={setZahlungen} onVersionen={setVersionen} onConfirm={setConfirm}
+            />
+          ) : null}
+        />
       </BusyIndicator>
 
       <PdfDialog url={pdf ? `${H}/rechnungen/${encodeURIComponent(pdf)}/pdf` : null} title={`Druckvoransicht Rechnung ${pdf ?? ''}`}
@@ -473,115 +467,105 @@ function PersonPanel(props: {
     },
   ];
 
-  const kv = (label: string, wert: React.ReactNode) => (
-    <FlexBox direction="Column" style={{ minWidth: '9rem' }}>
-      <Label>{label}</Label>
-      <div>{wert || <Text>–</Text>}</div>
-    </FlexBox>
-  );
-
   return (
-    <FlexBox direction="Column" style={{ gap: '1rem' }}>
-      {/* Kopf */}
-      <Panel fixed header={
-        <Toolbar design="Transparent" style={{ width: '100%' }}>
-          <Title level="H3">{d.name}</Title>
-          <ObjectStatus state={d.offeneRechnungen ? 'Critical' : 'None'}>{d.offeneRechnungen} offene Rechnung(en)</ObjectStatus>
-          <ToolbarSpacer />
-          {d.adrnr && <Text>Adressnummer {d.adrnr}</Text>}
-          <ToolbarButton icon="decline" design="Transparent" onClick={props.onSchliessen} />
-        </Toolbar>
-      }>
-        <FlexBox wrap="Wrap" style={{ gap: '1rem 2rem' }}>
-          {kv('Anschrift', k && <Text>{k.strasse}<br />{k.plz} {k.ort}</Text>)}
-          {kv('E-Mail', k?.email && <Link href={`mailto:${k.email}`}>{k.email}</Link>)}
-          {kv('Telefon', k?.telefon && <Link href={`tel:${k.telefon}`}>{k.telefon}</Link>)}
-          {kv('Bevorzugter Versand', k && (
-            <SegmentedButton onSelectionChange={(e) => {
-              const kanal = (e.detail.selectedItems[0] as HTMLElement).dataset.k;
-              if (kanal && edit) tun(post(`${H}/kanal`, { adrnr: k.adrnr, kanal }));
-            }}>
-              <SegmentedButtonItem data-k="E" disabled={!k.email || !edit} selected={d.kanal === 'E'}>E-Mail</SegmentedButtonItem>
-              <SegmentedButtonItem data-k="W" disabled={!k.mobil || !edit} selected={d.kanal === 'W'}>WhatsApp</SegmentedButtonItem>
-            </SegmentedButton>
-          ))}
-          {kv('Offene Buchungen', <Text>{d.buchungen.length} · {eur(d.betragBuchungen)}</Text>)}
-          {kv('Offene Rechnungen', <Text>{eur(d.offenRechnungen)}{d.gezahlt ? ` (bereits gezahlt ${eur(d.gezahlt)})` : ''}</Text>)}
-          {kv('Gesamtbetrag', <Text style={{ fontWeight: 'bold' }}>{eur(d.offenRechnungen + d.betragBuchungen)}</Text>)}
-        </FlexBox>
+    <div className="portal-stack" style={{ gap: 0 }}>
+      {/* Objektkopf */}
+      <ObjectHeader
+        title={d.name}
+        icon="customer"
+        subtitle={d.adrnr ? `Adressnummer ${d.adrnr}` : 'Kein Mitglied / EP3-Kunde zugeordnet'}
+        status={<>
+          <ObjectStatus state={d.offeneRechnungen ? 'Critical' : 'None'} inverted={!!d.offeneRechnungen}>{d.offeneRechnungen} offene Rechnung(en)</ObjectStatus>
+          <ObjectStatus state="Information">{d.buchungen.length} offene Buchung(en)</ObjectStatus>
+          {d.kanal === 'E' && <ObjectStatus icon={<Icon name="email" />} state="None">E-Mail bevorzugt</ObjectStatus>}
+          {d.kanal === 'W' && <ObjectStatus icon={<Icon name="discussion" />} state="None">WhatsApp bevorzugt</ObjectStatus>}
+        </>}
+        actions={<Button icon="decline" design="Transparent" tooltip="Schließen" onClick={props.onSchliessen} />}
+      >
+        <Attributes>
+          <Attribute label="Anschrift">{k && <>{k.strasse}<br />{k.plz} {k.ort}</>}</Attribute>
+          <Attribute label="E-Mail">{k?.email && <Link href={`mailto:${k.email}`}>{k.email}</Link>}</Attribute>
+          <Attribute label="Telefon">{k?.telefon && <Link href={`tel:${k.telefon}`}>{k.telefon}</Link>}</Attribute>
+          <Attribute label="Bevorzugter Versand">
+            {k && (
+              <SegmentedButton onSelectionChange={(e) => {
+                const kanal = (e.detail.selectedItems[0] as HTMLElement).dataset.k;
+                if (kanal && edit) tun(post(`${H}/kanal`, { adrnr: k.adrnr, kanal }));
+              }}>
+                <SegmentedButtonItem data-k="E" disabled={!k.email || !edit} selected={d.kanal === 'E'}>E-Mail</SegmentedButtonItem>
+                <SegmentedButtonItem data-k="W" disabled={!k.mobil || !edit} selected={d.kanal === 'W'}>WhatsApp</SegmentedButtonItem>
+              </SegmentedButton>
+            )}
+          </Attribute>
+          <Attribute label="Offene Buchungen">{d.buchungen.length} · {eur(d.betragBuchungen)}</Attribute>
+          <Attribute label="Offene Rechnungen">{eur(d.offenRechnungen)}{d.gezahlt ? ` (bereits gezahlt ${eur(d.gezahlt)})` : ''}</Attribute>
+          <Attribute label="Gesamtbetrag" strong>{eur(d.offenRechnungen + d.betragBuchungen)}</Attribute>
+        </Attributes>
         {!k && <MessageStrip design="Critical" hideCloseButton style={{ marginTop: '0.75rem' }}>
           Zum EP3-Namen „{d.kunde}“ gibt es kein Mitglied und keinen EP3-Kunden. Für den Druck braucht die Rechnung eine Anschrift.
         </MessageStrip>}
-      </Panel>
+      </ObjectHeader>
 
       {/* Rechnungen */}
-      <Panel fixed header={
-        <Toolbar design="Transparent" style={{ width: '100%' }}>
-          <Title level="H5">Rechnungen ({d.rechnungen.length})</Title>
-          <ToolbarSpacer />
-          {versand && d.rechnungen.filter((r) => !['4', '6'].includes(r.status)).length > 1 && (
-            <ToolbarButton icon="email" text="Alle offenen per E-Mail" disabled={!k?.email}
-                           onClick={() => props.onMail(d.rechnungen.filter((r) => !['4', '6'].includes(r.status)).map((r) => r.rgnr_txt))} />
-          )}
-          {edit && <ToolbarButton icon="add" text="Anlegen" onClick={() => tun(async () => {
-            const r = await api.post<{ rgnr_txt: string }>(`${H}/rechnungen`, { kunde: d.kunde });
-            setRgnr(r.rgnr_txt);
-            return { text: `Rechnung ${r.rgnr_txt} angelegt` };
-          })} />}
-        </Toolbar>
-      }>
+      <Section title="Rechnungen" count={d.rechnungen.length} flush
+               actions={<>
+                 {versand && d.rechnungen.filter((r) => !['4', '6'].includes(r.status)).length > 1 && (
+                   <Button icon="email" design="Transparent" disabled={!k?.email}
+                           onClick={() => props.onMail(d.rechnungen.filter((r) => !['4', '6'].includes(r.status)).map((r) => r.rgnr_txt))}>Alle offenen per E-Mail</Button>
+                 )}
+                 {edit && <Button icon="add" design="Transparent" onClick={() => tun(async () => {
+                   const r = await api.post<{ rgnr_txt: string }>(`${H}/rechnungen`, { kunde: d.kunde });
+                   setRgnr(r.rgnr_txt);
+                   return { text: `Rechnung ${r.rgnr_txt} angelegt` };
+                 })}>Anlegen</Button>}
+               </>}>
         <AnalyticalTable columns={rgCols} data={d.rechnungen} visibleRows={Math.max(d.rechnungen.length, 1)} rowHeight={48}
                          noDataText="Keine Rechnungen in der Selektion" sortable
                          onRowClick={(e) => setRgnr(e.detail.row.original.rgnr_txt)} />
-      </Panel>
+      </Section>
 
       {/* Positionen */}
       {rechnung && (
-        <Panel fixed header={
-          <Toolbar design="Transparent" style={{ width: '100%' }}>
-            <Title level="H5">Positionen zu {rechnung.rgnr_txt} ({pos?.length ?? 0})</Title>
-            <ObjectStatus state={RG_STATE[rechnung.status]}>{RG_STATUS[rechnung.status]}</ObjectStatus>
-            <ToolbarSpacer />
-            {edit && rechnung.aenderbar && <ToolbarButton icon="add" text="Position hinzufügen" onClick={props.onPosition} />}
-            {edit && rechnung.aenderbar && (pos?.length ?? 0) > 1 && <ToolbarButton icon="sort" text="Neu nummerieren" onClick={() => tun(post(`${rgUrl(rechnung.rgnr_txt)}/nummerieren`))} />}
-            <ChangeHistoryButton objectType="RECHNUNG" objectKey={rechnung.rgnr_txt} />
-          </Toolbar>
-        }>
-          {!rechnung.aenderbar && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>
+        <Section title={`Positionen zu ${rechnung.rgnr_txt}`} count={pos?.length ?? 0} flush
+                 status={<ObjectStatus state={RG_STATE[rechnung.status]} inverted>{RG_STATUS[rechnung.status]}</ObjectStatus>}
+                 actions={<>
+                   {edit && rechnung.aenderbar && <Button icon="add" design="Transparent" onClick={props.onPosition}>Position hinzufügen</Button>}
+                   {edit && rechnung.aenderbar && (pos?.length ?? 0) > 1 && <Button icon="sort" design="Transparent" onClick={() => tun(post(`${rgUrl(rechnung.rgnr_txt)}/nummerieren`))}>Neu nummerieren</Button>}
+                   <ChangeHistoryButton objectType="RECHNUNG" objectKey={rechnung.rgnr_txt} />
+                 </>}>
+          {!rechnung.aenderbar && <MessageStrip hideCloseButton style={{ margin: '0.75rem 1rem 0.25rem' }}>
             Die Rechnung ist {RG_STATUS[rechnung.status].toLowerCase()} und nimmt keine Positionen mehr auf.{rechnung.status === '3' ? ' Über das Menü „Wieder eröffnen“ wird sie änderbar.' : ''}
           </MessageStrip>}
           <AnalyticalTable columns={posCols} data={pos ?? []} loading={!pos} visibleRows={Math.max(pos?.length ?? 1, 1)}
                            noDataText="Keine Positionen" />
           {pl && (pl.doknr || pl.fehler) && (
-            <FlexBox wrap="Wrap" style={{ gap: '1rem 2rem', marginTop: '0.75rem' }}>
-              {pl.fehler && <MessageStrip design="Critical" hideCloseButton>{pl.fehler}</MessageStrip>}
-              {pl.link && kv('Paperless-Freigabelink (30 Tage)', <Link href={pl.link} target="_blank">{pl.link}</Link>)}
-              {pl.ansicht && kv('Paperless-Dokument', <Link href={pl.ansicht} target="_blank">Dokument {pl.doknr} öffnen{pl.versionen.length > 1 ? ` (${pl.versionen.length} Fassungen)` : ''}</Link>)}
-              {pl.notizen.length > 0 && kv('Paperless-Notizen', (
-                <FlexBox direction="Column">
-                  {pl.notizen.slice(0, 6).map((n) => <Text key={n.id} style={{ fontSize: 'var(--sapFontSmallSize)' }}>{dat(n.created)} · {n.note}</Text>)}
-                </FlexBox>
-              ))}
-            </FlexBox>
+            <div style={{ padding: '0.75rem 1rem 1rem' }}>
+              {pl.fehler && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>{pl.fehler}</MessageStrip>}
+              <Attributes>
+                {pl.link && <Attribute label="Paperless-Freigabelink (30 Tage)"><Link href={pl.link} target="_blank">{pl.link}</Link></Attribute>}
+                {pl.ansicht && <Attribute label="Paperless-Dokument"><Link href={pl.ansicht} target="_blank">Dokument {pl.doknr} öffnen{pl.versionen.length > 1 ? ` (${pl.versionen.length} Fassungen)` : ''}</Link></Attribute>}
+                {pl.notizen.length > 0 && (
+                  <Attribute label="Paperless-Notizen" wide>
+                    {pl.notizen.slice(0, 6).map((n) => <div key={n.id} className="portal-small">{dat(n.created)} · {n.note}</div>)}
+                  </Attribute>
+                )}
+              </Attributes>
+            </div>
           )}
-        </Panel>
+        </Section>
       )}
 
       {/* Offene Buchungen */}
-      <Panel fixed header={
-        <Toolbar design="Transparent" style={{ width: '100%' }}>
-          <Title level="H5">Offene Buchungen ({d.buchungen.length})</Title>
-          <ToolbarSpacer />
-          {edit && vergangene.length > 0 && (
-            <ToolbarButton icon="add-process" design="Emphasized"
-                           text={rechnung?.aenderbar ? `Vergangene zu ${rechnung.rgnr_txt} (${vergangene.length})` : `Vergangene auf neue Rechnung (${vergangene.length})`}
-                           onClick={() => zuordnen(rechnung?.aenderbar ? rechnung.rgnr_txt : 'NEU', vergangene)} />
-          )}
-        </Toolbar>
-      }>
+      <Section title="Offene Buchungen" count={d.buchungen.length} flush
+               actions={edit && vergangene.length > 0 ? (
+                 <Button icon="add-process" design="Emphasized"
+                         onClick={() => zuordnen(rechnung?.aenderbar ? rechnung.rgnr_txt : 'NEU', vergangene)}>
+                   {rechnung?.aenderbar ? `Vergangene zu ${rechnung.rgnr_txt} (${vergangene.length})` : `Vergangene auf neue Rechnung (${vergangene.length})`}
+                 </Button>
+               ) : undefined}>
         <AnalyticalTable columns={bCols} data={d.buchungen} visibleRows={Math.max(d.buchungen.length, 1)} rowHeight={56}
                          noDataText="Keine offenen Buchungen" sortable />
-      </Panel>
+      </Section>
 
       {/* Irrelevante Buchungen */}
       <Panel collapsed headerText="Irrelevant gesetzte Buchungen"
@@ -597,6 +581,6 @@ function PersonPanel(props: {
           </FlexBox>
         ))}
       </Panel>
-    </FlexBox>
+    </div>
   );
 }

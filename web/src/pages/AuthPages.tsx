@@ -1,18 +1,23 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { Button, Card, CardHeader, FlexBox, Input, Label, MessageStrip, Title } from '@ui5/webcomponents-react';
+import { Button, FlexBox, Input, Label, MessageStrip, Title } from '@ui5/webcomponents-react';
 import { api } from '../api';
 
-/** Zentrierte Karte für Anmeldung, Einrichtung und Passwortwechsel. */
+/** Zentrierte Karte für Anmeldung, Einrichtung und Passwortwechsel (Fiori-Anmeldeseite). */
 function CenterCard({ title, subtitle, logo, children }: { title: string; subtitle?: string; logo?: string; children: ReactNode }) {
+  const kuerzel = title.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('');
   return (
-    <FlexBox justifyContent="Center" alignItems="Center" style={{ minHeight: '100%', padding: '1rem', boxSizing: 'border-box' }}>
-      <Card style={{ width: 'min(440px, 100%)' }} header={<CardHeader titleText={title} subtitleText={subtitle} />}>
-        <div style={{ padding: '1rem 1.25rem 1.5rem' }}>
-          {logo && <img src={logo} alt="" style={{ maxHeight: 72, display: 'block', margin: '0 auto 1rem' }} />}
-          {children}
+    <div className="portal-auth">
+      <div className="portal-auth__card">
+        <div className="portal-auth__brand">
+          {logo ? <img src={logo} alt="" className="portal-auth__logo" /> : <div className="portal-auth__mark" aria-hidden>{kuerzel || 'P'}</div>}
+          <div>
+            <h1 className="portal-auth__title">{title}</h1>
+            {subtitle && <div className="portal-auth__subtitle">{subtitle}</div>}
+          </div>
         </div>
-      </Card>
-    </FlexBox>
+        {children}
+      </div>
+    </div>
   );
 }
 

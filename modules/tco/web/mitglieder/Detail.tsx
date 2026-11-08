@@ -9,6 +9,8 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
+import { Attribute, Attributes } from '@core/components/Attributes';
+import { ObjectHeader } from '@core/components/ObjectHeader';
 import { dat, eur } from '../util';
 import { MG, type Auswahl, type Detail } from './typen';
 import { BankDialog, KommDialog, KopfDialog, VertragDialog } from './Dialoge';
@@ -17,17 +19,12 @@ import { Dokumente } from './Dokumente';
 const t = (s: string | null | undefined) => (s ? <Text>{s}</Text> : null);
 const ibanFormat = (s: string) => s.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim();
 
-/** Beschriftetes Feld (Label über Wert) */
+/** Beschriftetes Feld (Label über Wert) – Kernbaustein Attribute */
 export function Feld({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0 }}>
-      <Label>{label}</Label>
-      <div style={{ minHeight: '1.25rem', overflowWrap: 'anywhere' }}>{children || <Text>–</Text>}</div>
-    </div>
-  );
+  return <Attribute label={label}>{children}</Attribute>;
 }
 export const Raster = ({ children }: { children: ReactNode }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(13rem, 1fr))', gap: '0.75rem 1.5rem', padding: '0.5rem 0' }}>{children}</div>
+  <div style={{ padding: '0.5rem 0' }}><Attributes>{children}</Attributes></div>
 );
 
 export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: string; edit: boolean; onChanged: () => void; onOpen: (a: string) => void }) {
@@ -64,38 +61,45 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
   const ausgetreten = !!m.austritt;
   const unterlagen = aw?.unterlagen ?? {};
 
+  const initialen = `${m.vorname?.[0] ?? ''}${m.nachname?.[0] ?? ''}`.toUpperCase() || undefined;
   return (
     <div>
-      <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.75rem', marginBottom: '0.25rem' }}>
-        <Title level="H3">{d.titel}</Title>
-        <ObjectStatus state={m.aktiv ? 'Positive' : ausgetreten ? 'Negative' : 'Critical'} inverted>
-          {m.aktiv ? 'Aktiv' : ausgetreten ? `Austritt ${dat(m.austritt)}` : m.mitglnrn ? 'Ohne Eintritt' : 'Zahler'}
-        </ObjectStatus>
-        {d.trainer && <ObjectStatus state="Information" inverted>Trainer</ObjectStatus>}
-        {d.zuid && <ObjectStatus state="Information">EP3-Kunde {d.zuid}</ObjectStatus>}
-      </FlexBox>
-      <Text>{[m.mitglnrn && `Mitglied Nr. ${m.mitglnrn}`, `Adressnummer ${Number(m.adrnr)}`, [m.strasse, `${m.plz} ${m.ort}`.trim()].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</Text>
-      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ margin: '0.5rem 0', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      <ObjectHeader
+        title={d.titel}
+        initials={initialen}
+        subtitle={[m.mitglnrn && `Mitglied Nr. ${m.mitglnrn}`, `Adressnummer ${Number(m.adrnr)}`, [m.strasse, `${m.plz} ${m.ort}`.trim()].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+        status={<>
+          <ObjectStatus state={m.aktiv ? 'Positive' : ausgetreten ? 'Negative' : 'Critical'} inverted>
+            {m.aktiv ? 'Aktiv' : ausgetreten ? `Austritt ${dat(m.austritt)}` : m.mitglnrn ? 'Ohne Eintritt' : 'Zahler'}
+          </ObjectStatus>
+          {d.trainer && <ObjectStatus state="Information" inverted>Trainer</ObjectStatus>}
+          {d.zuid && <ObjectStatus state="Information">EP3-Kunde {d.zuid}</ObjectStatus>}
+          {m.eintritt && <span className="portal-muted portal-small">Eintritt {dat(m.eintritt)}</span>}
+        </>}
+        actions={<>
+          <Button icon="email" design="Transparent" onClick={() => setDlg('komm')}>Kommunikation</Button>
+          <ChangeHistoryButton objectType="MITGLIED" objectKey={adrnr} />
+        </>}
+      >
+        <div className="portal-row">
+          <Label>Unterlage</Label>
+          <Select style={{ width: '15rem' }} onChange={(e) => setArt((e.detail.selectedOption as HTMLElement).dataset.k!)}>
+            {Object.entries(unterlagen).map(([k, t]) => <Option key={k} data-k={k} selected={k === art}>{t}</Option>)}
+          </Select>
+          <Button icon="show" onClick={() => setPdf(`${MG}/m/${adrnr}/unterlage/${art}`)}>Voransicht</Button>
+          {edit && aw?.paperless && (
+            <Button icon="upload-to-cloud" disabled={busy} onClick={() => aktion(async () => {
+              const r = await api.post<{ id: number; text: string; warnungen: string[] }>(`${MG}/m/${adrnr}/unterlage/${art}/ablegen`);
+              setDocSel([r.id]);
+              return r;
+            }, false)}>Ablegen</Button>
+          )}
+        </div>
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginTop: '0.75rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      </ObjectHeader>
 
-      <Toolbar design="Transparent" style={{ marginTop: '0.25rem' }}>
-        <Label>Unterlage</Label>
-        <Select style={{ width: '15rem' }} onChange={(e) => setArt((e.detail.selectedOption as HTMLElement).dataset.k!)}>
-          {Object.entries(unterlagen).map(([k, t]) => <Option key={k} data-k={k} selected={k === art}>{t}</Option>)}
-        </Select>
-        <Button icon="show" onClick={() => setPdf(`${MG}/m/${adrnr}/unterlage/${art}`)}>Voransicht</Button>
-        {edit && aw?.paperless && (
-          <Button icon="upload-to-cloud" disabled={busy} onClick={() => aktion(async () => {
-            const r = await api.post<{ id: number; text: string; warnungen: string[] }>(`${MG}/m/${adrnr}/unterlage/${art}/ablegen`);
-            setDocSel([r.id]);
-            return r;
-          }, false)}>Ablegen</Button>
-        )}
-        <ToolbarSpacer />
-        <Button icon="email" onClick={() => setDlg('komm')}>Kommunikation</Button>
-        <ChangeHistoryButton objectType="MITGLIED" objectKey={adrnr} />
-      </Toolbar>
-
-      <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
+      <div className="portal-section">
+      <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
         <Tab data-key="stamm" text="Stammdaten" selected={tab === 'stamm'}>
           <Stammdaten d={d} edit={edit} onEdit={() => setDlg('kopf')} onAktion={aktion} />
         </Tab>
@@ -133,6 +137,7 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
           <Notizen d={d} edit={edit} onAktion={aktion} />
         </Tab>
       </TabContainer>
+      </div>
 
       {pdf && <PdfDialog url={pdf} title={`Voransicht: ${unterlagen[art]} – ${d.titel}`} filename={`${unterlagen[art]}_${m.nachname}_${m.vorname}.pdf`} onClose={() => setPdf(null)} />}
       {dlg === 'kopf' && <KopfDialog d={d} onClose={(ok) => { setDlg(null); if (ok) aktion(async () => ({ text: 'Stammdaten gesichert.' })); }} />}

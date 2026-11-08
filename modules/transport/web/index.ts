@@ -6,7 +6,8 @@ import { Stammdaten } from './Stammdaten';
 /** Transportmodul (Euroflex Auftragsverwaltung) */
 const mod: WebModule = {
   id: 'transport',
-  name: 'Transport',
+  name: 'Euroflex',
+  icon: 'shipping-status',
   nav: [
     {
       text: 'Euroflex',

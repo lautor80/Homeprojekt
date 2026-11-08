@@ -8,10 +8,13 @@ import '@ui5/webcomponents-react/dist/Assets.js';
 import '@ui5/webcomponents-icons/dist/AllIcons.js';
 import '@ui5/webcomponents-fiori/dist/illustrations/AllIllustrations.js';
 import { App } from './App';
+import { erscheinungInitialisieren } from './theme';
+import './styles.css';
 
 setLanguage('de');
 // Schrift "72" kommt lokal aus /fonts (siehe scripts/fonts.mjs), nicht vom CDN
 setDefaultFontLoading(false);
+erscheinungInitialisieren();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

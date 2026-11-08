@@ -10,6 +10,7 @@ import { enabledModules } from '../modules';
 import type { NavEntry, RouteDef } from '../platform';
 import { ChangePasswordForm } from '../pages/AuthPages';
 import { toast } from '../toast';
+import { aktuelleErscheinung, erscheinungSetzen } from '../theme';
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('') || '?';
@@ -31,6 +32,7 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 900);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [dunkel, setDunkel] = useState(aktuelleErscheinung() === 'dunkel');
   const profileRef = useRef<HTMLElement | null>(null);
 
   const modules = enabledModules(me.modules);
@@ -100,7 +102,7 @@ export function Shell() {
           </SideNavigation>
         }
       >
-        <div style={{ height: '100%', overflow: 'auto' }}>
+        <div className="portal-content">
           <Routes>
             {routes.map((r) => {
               const C = r.component;
@@ -128,6 +130,8 @@ export function Shell() {
         }
       >
         <UserMenuItem icon="key" text="Passwort ändern" onClick={() => { setMenuOpen(false); setPwOpen(true); }} />
+        <UserMenuItem icon={dunkel ? 'light-mode' : 'dark-mode'} text={dunkel ? 'Helles Design' : 'Dunkles Design'}
+                      onClick={() => { const d = !dunkel; setDunkel(d); erscheinungSetzen(d ? 'dunkel' : 'hell'); setMenuOpen(false); }} />
       </UserMenu>
 
       <Dialog open={pwOpen} headerText="Passwort ändern" onClose={() => setPwOpen(false)} style={{ width: 'min(420px, 95vw)' }}>
