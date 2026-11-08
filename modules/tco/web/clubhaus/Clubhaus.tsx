@@ -55,13 +55,15 @@ export function Clubhaus() {
       {d && (
         <FlexBox alignItems="Start" style={{ gap: '1rem' }} wrap="Wrap">
           <div style={{ flex: '0 0 19rem', maxWidth: '19rem' }}>
-            <Toolbar design="Transparent">
-              <Title level="H5">Rechnungen ({d.rechnungen.length})</Title>
-              <ToolbarSpacer />
-              {edit && d.paperless && <Button icon="chain-link" design="Transparent" disabled={!offen}
-                                               onClick={() => aktion(() => api.post(`${CH}/belege/alle`, { jahr }))}>Belege zuordnen</Button>}
-              {edit && <Button icon="add-document" design="Emphasized" onClick={() => setRg(null)}>Neu</Button>}
-            </Toolbar>
+            {/* Titel und Buttons umbrechen statt den Titel abzuschneiden */}
+            <div className="portal-ch__kopf">
+              <Title level="H5" wrappingType="Normal">Rechnungen ({d.rechnungen.length})</Title>
+              <div className="portal-ch__knoepfe">
+                {edit && d.paperless && <Button icon="chain-link" design="Transparent" disabled={!offen}
+                                                 onClick={() => aktion(() => api.post(`${CH}/belege/alle`, { jahr }))}>Belege zuordnen</Button>}
+                {edit && <Button icon="add-document" design="Emphasized" onClick={() => setRg(null)}>Neu</Button>}
+              </div>
+            </div>
             <List onItemClick={(e) => setRg((e.detail.item as HTMLElement).dataset.rg!)} noDataText={`Keine Getränkerechnungen ${jahr}`}>
               {d.rechnungen.map((r) => (
                 <ListItemStandard key={r.rgnr} data-rg={r.rgnr} type="Active" icon={r.belege.length ? 'pdf-attachment' : 'sales-document'}
@@ -131,17 +133,20 @@ function Forderungen({ d, edit, onAktion, onError }: { d: Init; edit: boolean; o
   const punkte = zeilen.filter((x) => x.monat >= 1 && x.monat <= 12).map((x) => ({ label: MON_KURZ[x.monat - 1], einnahme: -x.einzahlungen, op: x.offene_posten }));
   return (
     <>
-      <Toolbar design="Transparent">
-        <Label>Monat</Label>
-        <Select style={{ width: '10rem' }} onChange={(e) => setMonat(Number((e.detail.selectedOption as HTMLElement).dataset.m))}>
-          {MONATE.map((m, i) => <Option key={m} data-m={i + 1} selected={i + 1 === monat}>{m}</Option>)}
-        </Select>
-        <ToolbarSpacer />
-        {f?.doc_id && <Text>Abgelegt: DOKID {String(f.doc_id).padStart(6, '0')}</Text>}
-        {edit && <Button icon="simulate" design="Emphasized" onClick={() => onAktion(() => api.post(`${CH}/berechnen`, { jahr: d.jahr, monat }))}>
-          Ab {MONATE[monat - 1]} berechnen</Button>}
-        <Button icon="print" onClick={() => setPdf(true)}>Drucken</Button>
-      </Toolbar>
+      <div className="portal-ch__kopf">
+        <div className="portal-ch__knoepfe">
+          <Label>Monat</Label>
+          <Select style={{ width: '10rem' }} onChange={(e) => setMonat(Number((e.detail.selectedOption as HTMLElement).dataset.m))}>
+            {MONATE.map((m, i) => <Option key={m} data-m={i + 1} selected={i + 1 === monat}>{m}</Option>)}
+          </Select>
+          {f?.doc_id && <Text>Abgelegt: DOKID {String(f.doc_id).padStart(6, '0')}</Text>}
+        </div>
+        <div className="portal-ch__knoepfe">
+          {edit && <Button icon="simulate" design="Emphasized" onClick={() => onAktion(() => api.post(`${CH}/berechnen`, { jahr: d.jahr, monat }))}>
+            Ab {MONATE[monat - 1]} berechnen</Button>}
+          <Button icon="print" onClick={() => setPdf(true)}>Drucken</Button>
+        </div>
+      </div>
       <AnalyticalTable columns={columns} data={zeilen} visibleRows={zeilen.length}
                        onRowClick={(e) => { const m = e.detail.row.original.monat; if (m >= 1 && m <= 12) setMonat(m); }}
                        withRowHighlight highlightField={(x: Record<string, any>) => (x.monat === monat ? 'Information' : 'None')} />
@@ -206,9 +211,9 @@ function Absatz() {
   return (
     <>
       {a.fehlt.length > 0 && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Ohne Getränkestammsatz und daher nicht bewertet: {a.fehlt.join(', ')}</MessageStrip>}
-      <Toolbar design="Transparent">
-        <Title level="H5">{KENNZAHLEN.find((k) => k[0] === kz)![1]}{kz === 'MENGE' ? ` in ${einheit === 'KISTE' ? 'Kisten' : 'Flaschen'}` : ' (EUR)'}</Title>
-        <ToolbarSpacer />
+      <div className="portal-ch__kopf">
+        <Title level="H5" wrappingType="Normal">{KENNZAHLEN.find((k) => k[0] === kz)![1]}{kz === 'MENGE' ? ` in ${einheit === 'KISTE' ? 'Kisten' : 'Flaschen'}` : ' (EUR)'}</Title>
+        <div className="portal-ch__knoepfe">
         <SegmentedButton onSelectionChange={(e) => setEinheit((e.detail.selectedItems[0] as HTMLElement).dataset.e as 'KISTE')}>
           <SegmentedButtonItem data-e="KISTE" selected={einheit === 'KISTE'}>Kisten</SegmentedButtonItem>
           <SegmentedButtonItem data-e="FLASCHE" selected={einheit === 'FLASCHE'}>Flaschen</SegmentedButtonItem>
@@ -216,7 +221,8 @@ function Absatz() {
         <Select style={{ width: '14rem' }} onChange={(e) => setKz((e.detail.selectedOption as HTMLElement).dataset.k!)}>
           {KENNZAHLEN.map(([k, t]) => <Option key={k} data-k={k} selected={k === kz}>{t}</Option>)}
         </Select>
-      </Toolbar>
+        </div>
+      </div>
       <AnalyticalTable columns={columns} data={tabelle} visibleRows={Math.max(tabelle.length, 2)} noDataText="Keine Getränkerechnungen"
                        withRowHighlight highlightField={(r: Record<string, any>) => (r.gesamtzeile ? 'Information' : 'None')} />
       <Panel headerText="Entwicklung Absatz und durchschnittlicher EK-Preis" style={{ marginTop: '0.75rem' }}>
