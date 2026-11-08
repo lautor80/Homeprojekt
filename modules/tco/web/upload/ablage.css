@@ -26,3 +26,15 @@
 .portal-ablage__zeile--Positive ui5-icon { color: var(--sapPositiveElementColor, #188918); }
 .portal-ablage__zeile--Negative ui5-icon { color: var(--sapNegativeElementColor, #aa0808); }
 .portal-ablage__zeile--Negative span { color: var(--sapNegativeTextColor, #aa0808); }
+
+/* Dokumenten-Upload: Metadaten-Raster und Ablagezone */
+.portal-up__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.75rem 1rem; }
+.portal-up__feld { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.portal-up__drop {
+  display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0; padding: 1rem 1.25rem; cursor: pointer;
+  border: 2px dashed var(--sapField_BorderColor, #89919a); border-radius: var(--portal-radius, 0.75rem);
+  background: var(--sapList_Background, #fff); color: var(--sapTextColor); transition: background 0.15s, border-color 0.15s;
+}
+.portal-up__drop ui5-icon { width: 1.75rem; height: 1.75rem; color: var(--sapContent_IconColor, #0070f2); }
+.portal-up__drop:hover, .portal-up__drop:focus-visible { border-color: var(--sapBrandColor, #0070f2); }
+.portal-up__drop--ueber { border-color: var(--sapBrandColor, #0070f2); background: var(--sapInformationBackground, #e1f4ff); }

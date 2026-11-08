@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Bar, BusyIndicator, Button, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, Option, Select, Text,
-} from '@ui5/webcomponents-react';
+import { Bar, BusyIndicator, Button, Dialog, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@core/api';
 import { useSession } from '@core/session';
 import { useAblage, useAblageZiel } from '@core/ablage';
 import { toast } from '@core/toast';
 import { dateiLesen } from '../util';
 import { UP } from './Upload';
+import { LEER, MetaFelder, metaFuerUpload, vorgabeLesen, vorgabeSpeichern, vorgabeText, type Stamm, type Vorgabe } from './MetaFelder';
 import './ablage.css';
 
 /**
@@ -16,20 +16,9 @@ import './ablage.css';
  * sie werden sofort mit der Voreinstellung (Dokumenttyp, Korrespondent, Tags, Speicherpfad) nach Paperless übertragen.
  * Titel = Dateiname, Dokumentdatum = heute. Die Voreinstellung gilt je Benutzer und Browser.
  */
-interface Eintrag { id: number; name: string }
-interface Stamm { paperless: boolean; dokumenttypen: Eintrag[]; korrespondenten: Eintrag[]; tags: Eintrag[]; speicherpfade: Eintrag[]; heute: string; dateitypen: string[] }
-interface Vorgabe { doktyp: string; korrespondent: string; tags: number[]; speicherpfad: string; notiz: string }
 interface Ergebnis { id: number | null; text: string; state: 'Positive' | 'Critical' | 'Negative' }
 interface Protokoll { name: string; text: string; state: 'Information' | 'Positive' | 'Critical' | 'Negative' }
 
-const LEER: Vorgabe = { doktyp: '', korrespondent: '', tags: [], speicherpfad: '', notiz: '' };
-const schluessel = (userId: string) => `tco.ablage.${userId}`;
-function vorgabeLesen(userId: string): Vorgabe | null {
-  try { const v = localStorage.getItem(schluessel(userId)); return v ? { ...LEER, ...JSON.parse(v) } : null; } catch { return null; }
-}
-function vorgabeSpeichern(userId: string, v: Vorgabe) {
-  try { localStorage.setItem(schluessel(userId), JSON.stringify(v)); } catch { /* Speicher nicht verfügbar – gilt dann nur bis zum Neuladen */ }
-}
 const ohneEndung = (n: string) => n.replace(/\.[^.]+$/, '');
 const endung = (n: string) => (/\.([a-z0-9]+)$/i.exec(n)?.[1] ?? '').toLowerCase();
 
@@ -53,11 +42,13 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
     return s;
   };
 
-  const name = (l: Eintrag[] | undefined, id: string) => l?.find((x) => String(x.id) === id)?.name;
-  const zusammenfassung = vorgabe
-    ? [name(stamm?.dokumenttypen, vorgabe.doktyp) ?? (vorgabe.doktyp ? 'Dokumenttyp gewählt' : 'ohne Dokumenttyp'),
-       name(stamm?.korrespondenten, vorgabe.korrespondent), vorgabe.tags.length ? `${vorgabe.tags.length} Tag(s)` : null].filter(Boolean).join(' · ')
-    : 'Noch nicht voreingestellt';
+  const zusammenfassung = vorgabeText(vorgabe, stamm);
+  // Voreinstellung kann auch im Dokumenten-Upload geändert werden (gleicher Speicher)
+  useEffect(() => {
+    const neu = () => setVorgabe(vorgabeLesen(me.user.id));
+    window.addEventListener('tco-ablage-vorgabe', neu);
+    return () => window.removeEventListener('tco-ablage-vorgabe', neu);
+  }, [me.user.id]);
   useEffect(() => { if (vorgabe && !stamm) stammLaden().catch(() => undefined); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function uebertragen(files: File[], v: Vorgabe) {
@@ -76,11 +67,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
       else {
         try {
           const r = await api.post<Ergebnis>(`${UP}/datei`, {
-            datei: f.name, inhalt: await dateiLesen(f), meta: {
-              titel: ohneEndung(f.name), datum: s.heute, doktyp: v.doktyp ? Number(v.doktyp) : null,
-              korrespondent: v.korrespondent ? Number(v.korrespondent) : null, korrespondentNeu: '',
-              tags: v.tags, tagsNeu: [], speicherpfad: v.speicherpfad ? Number(v.speicherpfad) : null, notiz: v.notiz,
-            },
+            datei: f.name, inhalt: await dateiLesen(f), meta: { titel: ohneEndung(f.name), datum: s.heute, ...metaFuerUpload(v) },
           });
           p = { name: f.name, text: r.text, state: r.state };
           if (r.state !== 'Negative') ok++;
@@ -92,6 +79,8 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
       setLauf({ fertig: i + 1, gesamt: files.length });
     }
     setLauf(null);
+    // neu angelegte Korrespondenten/Tags erscheinen danach in den Auswahllisten
+    if (v.korrespondentNeu.trim() || v.tagsNeu.trim()) setStamm(null);
     setProtokoll((alt) => [...neu.reverse(), ...alt].slice(0, 30));
     const fehler = files.length - ok;
     return `${ok} von ${files.length} Datei(en) in Paperless abgelegt${fehler ? ` – ${fehler} fehlgeschlagen (Details unter „Fehler“ im Ablagefeld)` : ''}`;
@@ -183,15 +172,7 @@ function VorgabeDialog({ stamm, vorgabe, wartend, onClose, onSpeichern }: {
   stamm: Stamm | null; vorgabe: Vorgabe; wartend: number; onClose: () => void; onSpeichern: (v: Vorgabe) => void;
 }) {
   const [v, setV] = useState<Vorgabe>(vorgabe);
-  const auswahl = (label: string, feld: 'doktyp' | 'korrespondent' | 'speicherpfad', liste: Eintrag[] | undefined, leer: string, pflicht = false) => (
-    <div className="portal-ablage__feld">
-      <Label required={pflicht} showColon>{label}</Label>
-      <Select style={{ width: '100%' }} onChange={(e) => setV({ ...v, [feld]: (e.detail.selectedOption as HTMLElement).dataset.k ?? '' })}>
-        <Option data-k="" selected={!v[feld]}>{leer}</Option>
-        {(liste ?? []).map((x) => <Option key={x.id} data-k={String(x.id)} selected={String(x.id) === v[feld]}>{x.name}</Option>)}
-      </Select>
-    </div>
-  );
+  const navigate = useNavigate();
   return createPortal(
     <Dialog open headerText="Ablagefeld – Voreinstellung" style={{ width: 'min(30rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={<>
@@ -205,23 +186,10 @@ function VorgabeDialog({ stamm, vorgabe, wartend, onClose, onSpeichern }: {
       {stamm?.paperless && (
         <div className="portal-ablage__form">
           {wartend > 0 && <MessageStrip design="Information" hideCloseButton>Bitte zuerst festlegen, wie die {wartend} Datei(en) abgelegt werden sollen.</MessageStrip>}
-          {auswahl('Dokumenttyp', 'doktyp', stamm.dokumenttypen, '– bitte wählen –', true)}
-          {auswahl('Korrespondent', 'korrespondent', stamm.korrespondenten, '– keine Angabe –')}
-          <div className="portal-ablage__feld">
-            <Label showColon>Tags</Label>
-            <MultiComboBox style={{ width: '100%' }} placeholder="keine"
-                           onSelectionChange={(e) => setV({ ...v, tags: e.detail.items.map((i) => Number((i as HTMLElement).dataset.id)) })}>
-              {stamm.tags.map((t) => <MultiComboBoxItem key={t.id} data-id={t.id} text={t.name} selected={v.tags.includes(t.id)} />)}
-            </MultiComboBox>
-          </div>
-          {auswahl('Speicherpfad', 'speicherpfad', stamm.speicherpfade, '– Standard von Paperless –')}
-          <div className="portal-ablage__feld">
-            <Label showColon>Notiz (an jedes Dokument)</Label>
-            <Input style={{ width: '100%' }} value={v.notiz} maxlength={500} onInput={(e) => setV({ ...v, notiz: e.target.value })} />
-          </div>
+          <MetaFelder stamm={stamm} v={v} onChange={setV} pflichtDoktyp kompakt />
           <Text className="portal-muted portal-small">
-            Titel = Dateiname, Dokumentdatum = heute. Die Voreinstellung gilt für Ihren Benutzer in diesem Browser.
-            Für abweichende Angaben je Datei: Finanzen → Dokumenten-Upload.
+            Titel = Dateiname, Dokumentdatum = heute. Die Voreinstellung gilt für Ihren Benutzer in diesem Browser und wird auch im Dokumenten-Upload verwendet.
+            Für abweichende Angaben je Datei: <Link onClick={() => { onClose(); navigate('/tco/upload'); }}>Finanzen → Dokumenten-Upload</Link>.
           </Text>
         </div>
       )}
