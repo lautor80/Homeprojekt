@@ -16,6 +16,7 @@ import { lieferscheinPdf, transportauftragPdf } from './pdf/dokumente.js';
 import { xrechnungErzeugen } from './xrechnung.js';
 import { paperlessSenden } from './paperless.js';
 import { dokumentAblegen, paperlessFirma } from './dokumente.js';
+import { kontaktRoutes } from './kontakte.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst } from './importer.js';
 
 export const P = {
@@ -420,6 +421,7 @@ async function routes(app: FastifyInstance) {
   });
 
   // ---- Kontakte ----
+  await kontaktRoutes(app, P);
   app.get('/adressen', { preHandler: requireAuth(P.display) }, async () => {
     const rows = await sql`select adrnr, kundenname, kundenname2, land, ort from transport.adressen
                            where coalesce(kundenname, '') <> '' or coalesce(kundenname2, '') <> ''

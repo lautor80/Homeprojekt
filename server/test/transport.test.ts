@@ -206,3 +206,28 @@ test('Dokumente zum Auftrag: ohne Paperless Hinweis statt Fehler beim Lesen', as
   r = await call('GET', `${T}/auftraege/2025_0041/dokumente/5/datei`);
   assert.equal(r.status, 404);
 });
+
+test('Kontakte: Liste mit Rollen, Detail mit Aufträgen, Löschen nur ohne Aufträge', async () => {
+  let r = await call('GET', `${T}/kontakte/liste`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const k792 = r.body.zeilen.find((z: any) => z.adrnr === 792);
+  assert.ok(k792.rollen.includes('Kunde'));
+  assert.ok(k792.auftraege >= 1);
+  assert.ok(r.body.anzahl.ALLE >= r.body.anzahl.KUNDEN);
+  r = await call('GET', `${T}/kontakte/liste?filter=UNTERNEHMER`);
+  assert.ok(r.body.zeilen.every((z: any) => z.rollen.includes('Unternehmer')));
+  r = await call('GET', `${T}/kontakte/792`);
+  assert.equal(r.status, 200);
+  assert.ok(r.body.auftraege.length >= 1);
+  assert.ok(r.body.auftraege.every((a: any) => a.rollen.length > 0));
+  assert.equal(typeof r.body.kennzahlen.umsatzGesamt, 'number');
+  // Löschen: mit Aufträgen gesperrt, ohne möglich
+  r = await call('DELETE', `${T}/kontakte/792`);
+  assert.equal(r.status, 400);
+  const neu = await call('POST', `${T}/adressen`, { kundenname: 'Löschtest GmbH', land: 'DE', ort: 'Nirgendwo', force: true });
+  assert.equal(neu.status, 200, JSON.stringify(neu.body));
+  r = await call('DELETE', `${T}/kontakte/${neu.body.adrnr}`);
+  assert.equal(r.status, 200);
+  r = await call('GET', `${T}/kontakte/${neu.body.adrnr}/dokumente`);
+  assert.equal(r.body.paperless, false);
+});
