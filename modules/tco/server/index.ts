@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { change, requireAuth } from '../../../server/src/auth.js';
-import { asset, DB, vereinLesen, type Verein } from './verein.js';
+import { asset, DB, paperless, plAktiv, vereinLesen, type Verein } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { entpacken, istZip } from '../../../server/src/lib/zip.js';
 import { BusinessError } from '../../../server/src/errors.js';
@@ -27,6 +27,7 @@ import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
 import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
 import { platzRoutes, P_PLATZ } from './platz/routes.js';
+import { TCO_KONTEXTE } from './paperless-kontexte.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -259,6 +260,8 @@ const tco: ServerModule = {
       text: 'Bankverbindung von Mitgliedern und Zahlern ändern', requires: [P_MG.edit] },
   ],
   sensitiveFields: BANK_FELDER,
+  paperlessKontexte: TCO_KONTEXTE,
+  paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
   auditObjects: [
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },
     { type: 'BUCHUNG', text: 'Hallenbuchung', permission: P_HALLE.display },

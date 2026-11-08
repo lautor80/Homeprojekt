@@ -1,3 +1,5 @@
+import type { KontextDef } from './lib/paperless-mapping.js';
+import type { Paperless } from './lib/paperless.js';
 import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
@@ -37,4 +39,8 @@ export interface ServerModule {
   migrationsDir?: string;
   /** Registriert die Routen. Prefix /api/m/<id> wird automatisch gesetzt. */
   routes?: (app: FastifyInstance) => Promise<void> | void;
+  /** Ablagekontexte für Paperless mit Platzhaltern und Standardregel (zentrale Zuordnung, Administration) */
+  paperlessKontexte?: KontextDef[];
+  /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */
+  paperlessClient?: () => Promise<Paperless | null>;
 }

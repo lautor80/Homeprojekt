@@ -17,6 +17,8 @@ import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
 import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
 import type { Verein } from '../verein.js';
+import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -331,12 +333,13 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     if (!id) {
       if (!b.inhalt) throw new BusinessError('Bitte eine Dok-Nr. angeben oder ein PDF ablegen.');
       const datei = (b.datei ?? 'Aufnahmeantrag.pdf').split(/[\\/]/).pop()!;
-      const task = await pl.upload(binaer(b.inhalt), datei, { title: datei.replace(/\.pdf$/i, '') || 'Aufnahmeantrag' });
-      try { id = await pl.warteAufDokument(task, 60); } catch (e) {
+      // Felder laut zentraler Paperless-Zuordnung (Kontext „Aufnahmeantrag“)
+      try {
+        id = (await kontextAblegen(pl, K.mitgliedAntrag, 'tco', { datei, heute: heute(), benutzer: benutzer(req) }, binaer(b.inhalt), datei, { warteSekunden: 60 })).id;
+      } catch (e) {
         throw new BusinessError(`Paperless hat den Antrag nicht übernommen (${(e as Error).message}). Ggf. ist er schon vorhanden – dann über die Dok-Nr. laden.`);
       }
       if (!id) throw new BusinessError('Paperless verarbeitet den Antrag noch – bitte gleich über die Dok-Nr. laden.');
-      await pl.metadatenSetzen(id, { documentType: 'Aufnahmeantrag', storagePath: SPEICHERPFAD }).catch(() => []);
     }
     const d = await pl.dokument(id).catch(() => null);
     if (!d || !leer(d.content)) throw new BusinessError(`Paperless-Dokument ${id} nicht gefunden oder ohne lesbaren Text.`);

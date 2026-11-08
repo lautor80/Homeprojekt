@@ -4,6 +4,8 @@ import { paperless, plAktiv, type Verein } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
 import { leer, normName } from './logik.js';
 import { ART_DOKTYP, ART_TEXT, type Art } from './pdf.js';
+import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 /** Paperless-Anbindung der Mitgliederakte: Dokumente je Korrespondent „Nachname Vorname“, Ablage, Upload, Mailtexte */
 
@@ -70,13 +72,13 @@ export async function unterlageAblegen(v: Verein, art: Art, m: Record<string, an
     }
   }
   if (!id) {
-    const task = await pl.upload(pdf, datei, { title: titel, created: heute() });
-    id = await pl.warteAufDokument(task, 30);
-    if (!id) throw new BusinessError('Hochgeladen, die Dokument-ID ist aber noch nicht verfügbar – bitte in einer Minute erneut ablegen.');
-    warnungen.push(...await pl.metadatenSetzen(id, {
-      title: titel, correspondent: k?.name ?? korrName(m), documentType: await doktypName(pl, art), storagePath: SPEICHERPFAD,
-    }).catch((e) => [`Metadaten: ${(e as Error).message}`]));
-    await pl.notizAnlegen(id, `${ART_TEXT[art]} erzeugt (${benutzer}, Vereinsportal)`).catch(() => undefined);
+    // Felder laut zentraler Paperless-Zuordnung (Kontext „Mitglied – erzeugte Unterlage“)
+    const r = await kontextAblegen(pl, K.mitgliedUnterlage, 'tco', {
+      ...mitgliedWerte(m), art: ART_TEXT[art], doktyp: await doktypName(pl, art), heute: heute(), benutzer, verein: v.name,
+    }, pdf, datei, { ueberschreiben: k ? { correspondent: k.name } : undefined });
+    if (!r.id) throw new BusinessError('Hochgeladen, die Dokument-ID ist aber noch nicht verfügbar – bitte in einer Minute erneut ablegen.');
+    id = r.id;
+    warnungen.push(...r.warnungen);
   }
   const link = await pl.neuesteVersion(id).then((ver) => pl.freigabelink(ver, 30)).catch(() => '');
   return {
@@ -89,18 +91,20 @@ export async function unterlageAblegen(v: Verein, art: Art, m: Record<string, an
 export async function dateiAblegen(v: Verein, m: Record<string, any>, f: { datei: string; mime: string; inhalt: Buffer; titel: string; doktyp: number | null; notiz: string }, benutzer: string) {
   const pl = plPruefen(v);
   const k = await korrespondentFinden(pl, m);
-  const korr = k?.id ?? await pl.korrespondent(korrName(m));
-  if (!korr) throw new BusinessError(`Der Korrespondent „${korrName(m)}“ konnte in Paperless nicht angelegt werden.`);
-  const sp = await pl.idByName('storage_paths', SPEICHERPFAD);
-  const task = await pl.upload(f.inhalt, f.datei, {
-    title: f.titel || f.datei, created: heute(), correspondent: korr, documentType: f.doktyp ?? undefined, storagePath: sp ?? undefined, mime: f.mime,
-  });
-  const id = await pl.warteAufDokument(task, 30);
-  if (id && f.notiz.trim()) await pl.notizAnlegen(id, `${f.notiz.trim()} (${benutzer}, Vereinsportal)`).catch(() => undefined);
-  return id
-    ? `„${f.titel || f.datei}“ in Paperless abgelegt (Dokument ${id}).`
-    : 'Die Datei liegt in Paperless, die Verarbeitung läuft noch. Bitte die Dokumente gleich aktualisieren.';
+  const doktyp = f.doktyp ? (await pl.dokumenttypen()).find((t) => t.id === f.doktyp)?.name ?? '' : '';
+  // Felder laut zentraler Paperless-Zuordnung (Kontext „Mitglied – Datei ablegen“)
+  const r = await kontextAblegen(pl, K.mitgliedDatei, 'tco', {
+    ...mitgliedWerte(m), datei: f.datei, titel: f.titel || f.datei.replace(/\.[^.]+$/, ''), doktyp,
+    notiz: f.notiz.trim() ? `${f.notiz.trim()} (${benutzer}, Vereinsportal)` : '', heute: heute(), benutzer, verein: v.name,
+  }, f.inhalt, f.datei, { mime: f.mime, ueberschreiben: k ? { correspondent: k.name } : undefined });
+  if (!r.id) return 'Die Datei liegt in Paperless, die Verarbeitung läuft noch. Bitte die Dokumente gleich aktualisieren.';
+  return `„${f.titel || f.datei}“ in Paperless abgelegt (Dokument ${r.id}).${r.warnungen.length ? ` Hinweis: ${r.warnungen.join('; ')}` : ''}`;
 }
+
+/** Platzhalter des Mitglieds für die Paperless-Zuordnung */
+export const mitgliedWerte = (m: Record<string, any>) => ({
+  mitglied: korrName(m), vorname: leer(m.vorname), nachname: leer(m.nachname), adrnr: m.adrnr ?? '', mitglnr: m.mitglnrn ?? '',
+});
 
 export async function freigabelinks(v: Verein, ids: number[]): Promise<{ id: number; titel: string; link: string }[]> {
   const pl = plPruefen(v);

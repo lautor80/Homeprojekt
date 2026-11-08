@@ -305,6 +305,31 @@ test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () =>
   assert.equal(map.n, 1);
   r = await call('POST', '/api/m/tco/fi/belege/hochladen', { datei: 'x.pdf', inhalt: pdf, internenr: ['0000004711'] });
   assert.equal(r.status, 400);
+
+  // ---- zentrale Paperless-Zuordnung: Regel ändern wirkt auf die Ablage
+  r = await call('GET', '/api/paperless/mapping');
+  assert.equal(r.status, 200);
+  const tcoK = r.body.module.find((m: any) => m.modul === 'tco');
+  assert.ok(tcoK.kontexte.some((k: any) => k.id === 'fi.beleg' && !k.geaendert));
+  r = await call('GET', '/api/paperless/mapping/tco/listen');
+  assert.equal(r.body.paperless, true);
+  assert.deepEqual(r.body.dokumenttypen, ['Quittung', 'Rechnung']);
+  r = await call('POST', '/api/paperless/mapping/tco/fi.beleg/vorschau', { titel: 'Beleg {datei|ohneEndung} ({heute|datum})' });
+  assert.equal(r.body.title, 'Beleg Lieferschein_4711 (08.11.2026)');
+  r = await call('PUT', '/api/paperless/mapping/tco/fi.beleg', { titel: 'BELEG {datei|ohneEndung|upper}', dokumenttyp: 'Quittung', tags: 'Portal, FI {heute}' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('POST', '/api/m/tco/fi/belege/hochladen', { datei: 'kasse.pdf', inhalt: pdf });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const dokM = mock.docs.get(r.body.id)!;
+  assert.equal(dokM.title, 'BELEG KASSE');
+  assert.equal(dokM.type, '10', 'Dokumenttyp Quittung aus der Regel');
+  assert.ok(dokM.tags.length === 2, 'zwei Tags, davon einer neu angelegt');
+  // zurücksetzen → Standard (Titel = Dateiname, Typ aus Stammdaten)
+  r = await call('DELETE', '/api/paperless/mapping/tco/fi.beleg');
+  assert.equal(r.status, 200);
+  r = await call('POST', '/api/m/tco/fi/belege/hochladen', { datei: 'kasse2.pdf', inhalt: pdf });
+  assert.equal(mock.docs.get(r.body.id)!.title, 'kasse2');
+  assert.equal(mock.docs.get(r.body.id)!.type, '9');
 });
 
 test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {
@@ -318,4 +343,5 @@ test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {
   assert.equal((await leser('POST', `${A}/daten`, {})).status, 403);
   assert.equal((await leser('GET', `${U}/stamm`)).status, 403);
   assert.equal((await leser('POST', `${U}/datei`, {})).status, 403);
+  assert.equal((await leser('GET', '/api/paperless/mapping')).status, 403);
 });

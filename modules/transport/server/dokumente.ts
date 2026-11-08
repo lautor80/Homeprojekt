@@ -1,6 +1,8 @@
 import { BusinessError } from '../../../server/src/errors.js';
 import { Paperless, PaperlessError, paperlessKonfiguriert } from '../../../server/src/lib/paperless.js';
 import type { Firma } from './data.js';
+import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
+import { K } from './paperless-kontexte.js';
 
 /**
  * Dokumente zum Auftrag: Datei (Drag & Drop, Auswahl, Screenshot) nach Paperless –
@@ -23,7 +25,7 @@ export function paperlessFirma(f: Firma): Paperless {
   return new Paperless({ url: f.paperless_url, token: f.paperless_token });
 }
 
-export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: string | null; datum: string }, datei: string, inhalt: string) {
+export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: string | null; unternehmer?: string | null; kennzeichen?: string | null; ordernummer?: string | null; datum: string; benutzer?: string }, datei: string, inhalt: string) {
   const name = datei.split(/[\\/]/).pop()!.trim().slice(0, 150);
   const e = endung(name);
   if (!DATEITYPEN.includes(e)) throw new BusinessError(`Dateityp „${e || '?'}“ wird nicht unterstützt (erlaubt: ${DATEITYPEN.join(', ')}).`);
@@ -31,16 +33,14 @@ export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: 
   if (!daten.length) throw new BusinessError('Die Datei ist leer.');
   if (daten.length > 50 * 1024 * 1024) throw new BusinessError('Die Datei ist größer als 50 MB.');
   const pl = paperlessFirma(f);
-  const titel = `Auftrag ${a.auftragsnr} – ${name.replace(/\.[^.]+$/, '')}`.slice(0, 120);
   try {
-    const korr = a.kunde ? await pl.korrespondent(a.kunde) : null;
-    const tag = await pl.tag(`Auftrag ${a.auftragsnr}`);
-    const task = await pl.upload(daten, name, {
-      title: titel, created: a.datum, correspondent: korr ?? undefined, tags: tag ? [tag] : [], mime: MIME[e] ?? 'application/octet-stream',
-    });
-    const id = await pl.warteAufDokument(task, 30);
-    if (!id) throw new BusinessError('Paperless verarbeitet die Datei noch – bitte in einer Minute die Dokumentliste aktualisieren (Tag „Auftrag …“).');
-    return { id, titel, datei: name };
+    // Felder laut zentraler Paperless-Zuordnung (Kontext „Dokument zum Auftrag“)
+    const r = await kontextAblegen(pl, K.auftragDokument, 'transport', {
+      auftragsnr: a.auftragsnr, kunde: a.kunde ?? '', unternehmer: a.unternehmer ?? '', kennzeichen: a.kennzeichen ?? '', ordernummer: a.ordernummer ?? '',
+      datei: name, heute: a.datum, benutzer: a.benutzer ?? '',
+    }, daten, name, { mime: MIME[e] ?? 'application/octet-stream', benutzer: a.benutzer });
+    if (!r.id) throw new BusinessError('Paperless verarbeitet die Datei noch – bitte in einer Minute die Dokumentliste aktualisieren (Tag „Auftrag …“).');
+    return { id: r.id, titel: r.zuordnung.title || name, datei: name, warnungen: r.warnungen };
   } catch (x) {
     if (x instanceof PaperlessError) throw new BusinessError(x.message);
     throw x;

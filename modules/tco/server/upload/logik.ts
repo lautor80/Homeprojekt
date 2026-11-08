@@ -2,6 +2,8 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { PaperlessError } from '../../../../server/src/lib/paperless.js';
 import { heute } from '../format.js';
 import { paperless, plAktiv, type Verein } from '../verein.js';
+import { nachtragen, zuordnen } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 /**
  * Dokumenten-Upload – Port von Z2UI5_CL_TCO_UPLOAD_MULTI / Z2UI5_CL_TCO_FILEUPLOAD.
@@ -92,16 +94,24 @@ export async function hochladen(v: Verein, datei: string, inhalt: string, m: Met
   if (!korr && m.korrespondentNeu.trim()) korr = await pl.korrespondent(m.korrespondentNeu);
   const tags = [...m.tags];
   for (const t of m.tagsNeu) { const id = await pl.tag(t); if (id && !tags.includes(id)) tags.push(id); }
-  const titel = m.titel.trim() || name.replace(/\.[^.]+$/, '');
   try {
+    // Titel, Datum, Notiz und Custom Fields laut zentraler Paperless-Zuordnung (Kontext „Dokumenten-Upload“);
+    // Dokumenttyp, Korrespondent, Speicherpfad und Tags kommen aus der Auswahl des Benutzers (IDs)
+    const werte = { datei: name, titel: m.titel.trim() || name.replace(/\.[^.]+$/, ''), datum: m.datum, heute: heute(), benutzer, verein: v.name, dokid: '' };
+    const z = await zuordnen(K.upload, 'tco', werte);
     const task = await pl.upload(daten, name, {
-      title: titel, created: m.datum, correspondent: korr ?? undefined, documentType: m.doktyp ?? undefined,
+      title: z.title || werte.titel, created: z.created ?? m.datum, correspondent: korr ?? undefined, documentType: m.doktyp ?? undefined,
       storagePath: m.speicherpfad ?? undefined, tags, mime,
     });
     const id = await pl.warteAufDokument(task, 30);
-    if (id && m.notiz.trim()) await pl.notizAnlegen(id, `${m.notiz.trim()} (${benutzer}, Vereinsportal)`).catch(() => undefined);
+    const warnungen: string[] = [];
+    if (id) {
+      const z2 = await zuordnen(K.upload, 'tco', { ...werte, dokid: String(id).padStart(6, '0') });
+      warnungen.push(...await nachtragen(pl, id, z2, undefined));
+      if (m.notiz.trim()) await pl.notizAnlegen(id, `${m.notiz.trim()} (${benutzer}, Vereinsportal)`).catch(() => undefined);
+    }
     return id
-      ? { id, text: `Abgelegt als Dokument ${id}`, state: 'Positive' }
+      ? { id, text: `Abgelegt als Dokument ${id}${warnungen.length ? ` – ${warnungen.join('; ')}` : ''}`, state: 'Positive' }
       : { id: null, text: 'Übertragen – Paperless verarbeitet die Datei noch', state: 'Critical' };
   } catch (e) {
     if (e instanceof PaperlessError) return { id: null, text: e.message, state: 'Negative' };

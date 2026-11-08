@@ -18,6 +18,7 @@ import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
 import { dokumentAblegen, paperlessFirma } from './dokumente.js';
 import { kontaktRoutes } from './kontakte.js';
+import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst } from './importer.js';
 
 export const P = {
@@ -398,10 +399,14 @@ async function routes(app: FastifyInstance) {
     const a = await auftragLesen(nr);
     const k = a.kundeAdr;
     const kunde = k ? [k.kundenname, k.kundenname2].filter(Boolean).join(' ').trim() || null : null;
-    const d = await dokumentAblegen(await firmaLesen(), { auftragsnr: nr, kunde, datum: new Date().toISOString().slice(0, 10) }, b.datei, b.inhalt);
+    const u = a.unternehmerAdr;
+    const d = await dokumentAblegen(await firmaLesen(), {
+      auftragsnr: nr, kunde, unternehmer: u ? [u.kundenname, u.kundenname2].filter(Boolean).join(' ').trim() : null, kennzeichen: a.kennzeichen, ordernummer: a.ordernummer,
+      datum: new Date().toISOString().slice(0, 10), benutzer: benutzerName(req),
+    }, b.datei, b.inhalt);
     await change(req, (tx) => tx`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_von)
                                 values (${nr}, ${d.id}, ${d.titel}, ${d.datei}, ${benutzerName(req)}) on conflict do nothing`, { action: 'DOKUMENT_ABLEGEN' });
-    return { id: d.id, text: `„${d.datei}“ in Paperless abgelegt (Dokument ${d.id}) und Auftrag ${nr} zugeordnet` };
+    return { id: d.id, text: `„${d.datei}“ in Paperless abgelegt (Dokument ${d.id}) und Auftrag ${nr} zugeordnet${d.warnungen.length ? ` – ${d.warnungen.join('; ')}` : ''}` };
   });
 
   /** nur die Verknüpfung lösen – das Dokument bleibt in Paperless */
@@ -432,7 +437,7 @@ async function routes(app: FastifyInstance) {
         msgs.push({ faktura: f, ok: false, message: 'PDF konnte nicht erzeugt werden.' });
         continue;
       }
-      const e = await paperlessSenden(firma, r.pdf, r.filename, r.title, r.datum);
+      const e = await paperlessSenden(firma, r, benutzerName(req));
       msgs.push({ faktura: f, ...e });
     }
     return msgs;
@@ -620,6 +625,8 @@ const mod: ServerModule = {
   id: 'transport',
   name: 'Transport',
   migrationsDir: path.join(APP_ROOT, 'modules', 'transport', 'server', 'migrations'),
+  paperlessKontexte: TRANSPORT_KONTEXTE,
+  paperlessClient: async () => { const f = await firmaLesen(); return f.paperless_url && f.paperless_token ? paperlessFirma(f) : null; },
   permissions: [
     { area: 'Euroflex', app: 'Aufträge', id: P.display, text: 'Aufträge anzeigen und drucken' },
     { area: 'Euroflex', app: 'Aufträge', id: P.edit, text: 'Aufträge anlegen und ändern' },

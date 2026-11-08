@@ -7,6 +7,8 @@ import { anlagenLesen, spiegelBerechnen, wertentwicklung, type Anlage, type Spie
 import {
   bankBestaende, BEREICHE, bereichText, earBerechnen, jahreswerteLesen, ueberschussBerechnen, type Bankbestand, type Ear, type Jahreswert, type Ueberschuss,
 } from './logik.js';
+import { kontextAblegen, kontextAktualisieren } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 /**
  * Jahresabschluss als PDF – Port von ZCL_TCO_JAHRESABSCHLUSS_PDF (Layout wie Hallenrechnung /
@@ -490,12 +492,16 @@ export async function abschlussAblegen(v: Verein, jahr: number, titel: string, p
   let id = Number((await pl.dokumenteSuchen({ title__iexact: titel }).catch(() => []))[0]?.id) || null;
   const neu = !id;
   if (id) await pl.warteAufDokument(await pl.uploadVersion(id, pdf, `${titel}.pdf`, `Neudruck ${dat(heute())}`), 15).catch(() => null);
-  else {
-    id = await pl.warteAufDokument(await pl.upload(pdf, `${titel}.pdf`, { title: titel, created: `${jahr}-12-31` }), 30);
-    if (!id) throw new BusinessError('Hochgeladen, die DOKID ist aber noch nicht verfügbar – bitte in einer Minute erneut ablegen.');
+  const werte = { titel, jahr, ergebnis, verein: v.name, heute: heute(), benutzer };
+  const warnungen: string[] = [];
+  if (!id) {
+    const r = await kontextAblegen(pl, K.abschluss, 'tco', werte, pdf, `${titel}.pdf`, { benutzer });
+    if (!r.id) throw new BusinessError('Hochgeladen, die DOKID ist aber noch nicht verfügbar – bitte in einer Minute erneut ablegen.');
+    id = r.id;
+    warnungen.push(...r.warnungen);
   }
-  const warnungen = await pl.metadatenSetzen(id, { title: titel, correspondent: v.name, storagePath: 'Buchhaltung', customFields: { Betrag: ergebnis, DOKID: String(id).padStart(6, '0') } })
-    .catch((e) => [`Metadaten: ${(e as Error).message}`]);
+  // Felder laut zentraler Paperless-Zuordnung (Kontext „Jahresabschluss“)
+  warnungen.push(...(await kontextAktualisieren(pl, K.abschluss, 'tco', id, werte, { ohneNotiz: true })).warnungen);
   await pl.notizAnlegen(id, `${titel}, Ergebnis ${betragText(ergebnis)} – Portal ${benutzer}, ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`).catch(() => undefined);
   return { id, text: `${neu ? '„' + titel + '“ in Paperless abgelegt' : 'Neue Version nach Paperless übertragen'} (DOKID ${String(id).padStart(6, '0')}).`, warnungen };
 }

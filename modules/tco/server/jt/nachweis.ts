@@ -3,6 +3,8 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { condense, dat, heute, runden, zahl } from '../format.js';
 import { paperless, plAktiv, type Db, type Verein } from '../verein.js';
 import { dokuLesen, grenzen, gezahlt, monatsname, saetzeLesen, satzAm, type Doku } from './logik.js';
+import { kontextAblegen, kontextAktualisieren } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 /**
  * Zeitnachweis Jugendtraining (interner Beleg) – Port von ZCL_TCO_JT_NACHWEIS.
@@ -225,10 +227,14 @@ export async function nachweisAblegen(
   if (id) {
     const task = await pl.uploadVersion(id, pdf, datei, `Neudruck ${dat(heute())}`);
     await pl.warteAufDokument(task, 15).catch(() => null);
-  } else {
-    const task = await pl.upload(pdf, datei, { title: k.belegnr, created: heute() });
-    id = await pl.warteAufDokument(task, 30);
-    if (!id) throw new BusinessError('Hochgeladen, die DOKID ist aber noch nicht verfügbar – bitte in einer Minute erneut übertragen.');
+  }
+  const werte = { belegnr: k.belegnr, trainer: condense(`${k.nachname} ${k.vorname}`), monat: k.monat, betrag: k.betrag, stunden: k.stunden, heute: heute(), benutzer, verein: v.name };
+  const nachtragWarn: string[] = [];
+  if (!id) {
+    const r = await kontextAblegen(pl, K.jtNachweis, 'tco', werte, pdf, datei, { benutzer });
+    if (!r.id) throw new BusinessError('Hochgeladen, die DOKID ist aber noch nicht verfügbar – bitte in einer Minute erneut übertragen.');
+    id = r.id;
+    nachtragWarn.push(...r.warnungen);
   }
   const docId = id;
   const bezahltBetrag = k.neu_bezahlt ? k.betrag : gezahlt(alt, k.betrag);
@@ -240,12 +246,10 @@ export async function nachweisAblegen(
                erstellt_um = excluded.erstellt_um, erstellt_von = excluded.erstellt_von, bezahlt_am = excluded.bezahlt_am,
                stunden = excluded.stunden, betrag = excluded.betrag, bezahlt_betrag = excluded.bezahlt_betrag`;
   });
-  const warnungen: string[] = [];
+  const warnungen: string[] = [...nachtragWarn];
   const dokid = String(docId).padStart(6, '0');
-  warnungen.push(...await pl.metadatenSetzen(docId, {
-    title: k.belegnr, correspondent: condense(`${k.nachname} ${k.vorname}`), documentType: DOKTYP, storagePath: SPEICHERPFAD,
-    customFields: { Betrag: k.betrag, DOKID: dokid },
-  }).catch((e) => [`Metadaten: ${(e as Error).message}`]));
+  // Felder laut zentraler Paperless-Zuordnung (Kontext „Zeitnachweis Jugendtraining“)
+  warnungen.push(...(await kontextAktualisieren(pl, K.jtNachweis, 'tco', docId, werte, { ohneNotiz: true })).warnungen);
   await pl.notizAnlegen(docId, notizText(k, alt, erst, benutzer)).catch((e) => { warnungen.push(`Notiz: ${(e as Error).message}`); });
   // Freigabelink für die neueste Version vorbereiten (WhatsApp)
   await pl.neuesteVersion(docId).then((ver) => pl.freigabelink(ver, 30)).catch(() => undefined);

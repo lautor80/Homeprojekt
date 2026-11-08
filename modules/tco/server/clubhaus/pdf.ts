@@ -4,6 +4,8 @@ import { dat, heute, zahl } from '../format.js';
 import { betragText, C, LEFT, RIGHT, alleFusszeilen } from '../pdf/layout.js';
 import { logoWeiss, paperless, plAktiv, type Db, type Verein } from '../verein.js';
 import { einzahlungenLesen, forderungenLesen, MONATE, type Ford } from './logik.js';
+import { kontextAblegen, kontextAktualisieren } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 /** Clubhausabrechnung bis einschließlich Monat – Ersatz für die Smartform ZTCO_CLUBHAUSABRECHUNG2 */
 
@@ -114,14 +116,18 @@ export async function clubhausAblegen(db: Db, v: Verein, jahr: number, monat: nu
   if (!id) id = Number((await pl.dokumenteSuchen({ title__iexact: titel }).catch(() => []))[0]?.id) || null;
   const neu = !id;
   if (id) await pl.warteAufDokument(await pl.uploadVersion(id, pdf, `${titel}.pdf`, `Neudruck ${dat(heute())}`), 15).catch(() => null);
-  else {
-    id = await pl.warteAufDokument(await pl.upload(pdf, `${titel}.pdf`, { title: titel, created: heute() }), 30);
-    if (!id) throw new BusinessError('Hochgeladen, die DOKID ist aber noch nicht verfügbar – bitte in einer Minute erneut ablegen.');
+  const werte = { titel, jahr, monat, kontostand: op, wirt: v.ch_wirt, verein: v.name, heute: heute(), benutzer };
+  const warnungen: string[] = [];
+  if (!id) {
+    const r = await kontextAblegen(pl, K.clubhaus, 'tco', werte, pdf, `${titel}.pdf`, { benutzer });
+    if (!r.id) throw new BusinessError('Hochgeladen, die DOKID ist aber noch nicht verfügbar – bitte in einer Minute erneut ablegen.');
+    id = r.id;
+    warnungen.push(...r.warnungen);
   }
   const docId = id;
   await schreiben(async (tx) => { await tx`update tco.forderungen set rechnung = ${String(docId)} where jahr = ${jahr} and monat = ${monat}`; });
-  const warnungen = await pl.metadatenSetzen(docId, { title: titel, correspondent: v.ch_wirt, storagePath: 'Buchhaltung', customFields: { Betrag: op, DOKID: String(docId).padStart(6, '0') } })
-    .catch((e) => [`Metadaten: ${(e as Error).message}`]);
+  // Felder laut zentraler Paperless-Zuordnung (Kontext „Clubhausabrechnung“)
+  warnungen.push(...(await kontextAktualisieren(pl, K.clubhaus, 'tco', docId, werte, { ohneNotiz: true })).warnungen);
   await pl.notizAnlegen(docId, `Clubhausabrechnung bis ${MONATE[monat - 1]} ${jahr}, Kontostand ${betragText(op)} – Portal ${benutzer}, ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}`).catch(() => undefined);
   return { id: docId, text: `${neu ? 'In Paperless abgelegt' : 'Neue Version nach Paperless übertragen'} (DOKID ${String(docId).padStart(6, '0')}).`, warnungen };
 }

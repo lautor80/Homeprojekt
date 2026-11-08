@@ -5,6 +5,8 @@ import { condense, dat, heute, eur } from '../format.js';
 import { kontaktLesen, mailSenden, whatsappLink, type Kontakt, type MailAnhang } from '../kommunikation.js';
 import { adrnrErmitteln, positionenLesen, statusSetzen } from './daten.js';
 import { rechnungPdf } from './pdf.js';
+import { kontextAktualisieren, uploadMeta, zuordnen } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 export interface DruckErgebnis {
   pdf: Buffer;
@@ -97,18 +99,14 @@ export async function rechnungDrucken(db: Db, v: Verein, rgnr: string, w: Schrei
           }
         }
       }
+      const werte = { rgnr, kunde: korrespondentName(kontakt), betrag: k.betrag, angelegt_am: k.angelegt_am ?? heute(), heute: heute(), benutzer: '', verein: v.name };
       if (neu) {
-        const task = await pl.upload(pdf, filename, { title: `Hallenrechnung ${rgnr}`, created: k.angelegt_am ?? heute() });
+        const z = await zuordnen(K.halleRechnung, 'tco', { ...werte, dokid: '' });
+        const task = await pl.upload(pdf, filename, (await uploadMeta(pl, z)).meta);
         docId = await pl.warteAufDokument(task);
       }
       if (docId) {
-        warnungen.push(...await pl.metadatenSetzen(docId, {
-          title: `Hallenrechnung ${rgnr}`,
-          correspondent: korrespondentName(kontakt),
-          documentType: 'Hallenrechnung',
-          storagePath: 'Buchhaltung',
-          customFields: { Betrag: k.betrag, DOKID: rgnr },
-        }));
+        warnungen.push(...(await kontextAktualisieren(pl, K.halleRechnung, 'tco', docId, werte, { ohneNotiz: !neu })).warnungen);
         const ziel = versionId ?? await pl.neuesteVersion(docId);
         link = await pl.freigabelinkAnlegen(ziel, 30);
         message = neu

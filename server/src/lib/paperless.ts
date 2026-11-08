@@ -133,7 +133,7 @@ export class Paperless {
 
   private stammCache = new Map<string, { id: number; name: string; data_type?: string }[]>();
 
-  private async liste(art: 'correspondents' | 'document_types' | 'storage_paths' | 'custom_fields' | 'tags') {
+  async liste(art: 'correspondents' | 'document_types' | 'storage_paths' | 'custom_fields' | 'tags') {
     let l = this.stammCache.get(art);
     if (!l) {
       l = await this.alle<{ id: number; name: string; data_type?: string }>(`api/${art}/`);

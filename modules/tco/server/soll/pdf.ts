@@ -3,6 +3,8 @@ import { logoWeiss, paperless, type Verein } from '../verein.js';
 import { dat, heute, runden } from '../format.js';
 import { betragText, C, kuerzen, LEFT, RIGHT } from '../pdf/layout.js';
 import { BEITRAGSART_TEXT, STATUS } from './logik.js';
+import { kontextAblegen, kontextAktualisieren } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 /** Protokoll eines Lastschriftlaufs (Port von ZCL_TCO_SOLL_PDF) */
 
@@ -121,21 +123,22 @@ export async function sollAblegen(v: Verein, k: Kopf & { pl_doc_id: number | nul
   const titel = sollTitel(k);
   const datei = `${titel}.pdf`;
   let id = k.pl_doc_id;
-  let text: string;
+  let text = `Neue Version nach Paperless übertragen (DOKID ${id}).`;
   if (id) {
     const task = await pl.uploadVersion(id, pdf, datei, `Neudruck ${dat(heute())}`);
     await pl.warteAufDokument(task, 15).catch(() => null);
-    text = `Neue Version nach Paperless übertragen (DOKID ${id}).`;
-  } else {
-    const task = await pl.upload(pdf, datei, { title: titel, created: heute() });
-    id = await pl.warteAufDokument(task, 30);
-    if (!id) return { id: null, text: 'Hochgeladen, DOKID noch nicht verfügbar – bitte später erneut übertragen.', warnungen: [] as string[] };
+  }
+  const werte = { titel, laufid: Number(k.laufid), periode: k.sollper, summe: k.summe, anzahl: k.anz_tx, verein: v.name, heute: heute(), benutzer };
+  const warnungen: string[] = [];
+  if (!id) {
+    const r = await kontextAblegen(pl, K.sollLauf, 'tco', werte, pdf, datei, { benutzer });
+    if (!r.id) return { id: null, text: 'Hochgeladen, DOKID noch nicht verfügbar – bitte später erneut übertragen.', warnungen: [] as string[] };
+    id = r.id;
+    warnungen.push(...r.warnungen);
     text = `Sollstellung nach Paperless übertragen (DOKID ${id}).`;
   }
-  const warnungen = await pl.metadatenSetzen(id, {
-    title: titel, correspondent: v.name, documentType: 'Lastschrifteinzug', storagePath: 'Buchhaltung',
-    customFields: { Betrag: k.summe, DOKID: String(id) },
-  }).catch((e) => [`Metadaten: ${(e as Error).message}`]);
+  // Felder laut zentraler Paperless-Zuordnung (Kontext „Sollstellung“)
+  warnungen.push(...(await kontextAktualisieren(pl, K.sollLauf, 'tco', id, werte, { ohneNotiz: true })).warnungen);
   await pl.notizAnlegen(id, `Sollstellung Lauf ${Number(k.laufid)} ${monat(k.sollper)}: ${k.anz_tx} Lastschriften, ${betragText(k.summe)}, Status ${STATUS[k.status]?.text ?? k.status} – ${benutzer}, ${new Date().toLocaleString('de-DE')}`).catch(() => undefined);
   return { id, text, warnungen };
 }

@@ -7,6 +7,8 @@ import { PaperlessError } from '../../../server/src/lib/paperless.js';
 import { adresseLesen, firmaLesen, isoDate } from './data.js';
 import { condense } from './format.js';
 import { DATEITYPEN, paperlessFirma } from './dokumente.js';
+import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
+import { K } from './paperless-kontexte.js';
 
 /**
  * Kontakte (Euroflex) im Layout der Mitglieder: Liste mit Rollen-Filter und Kennzahlen,
@@ -146,11 +148,10 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
     if (!daten.length) throw new BusinessError('Die Datei ist leer.');
     const mime = /^data:([^;,]+)/.exec(b.inhalt)?.[1] ?? 'application/octet-stream';
     try {
-      const { pl, k, name: n } = await korrespondent(nr, true);
-      const task = await pl.upload(daten, datei, { title: `${n} – ${datei.replace(/\.[^.]+$/, '')}`.slice(0, 120), created: new Date().toISOString().slice(0, 10), correspondent: k ?? undefined, mime });
-      const id = await pl.warteAufDokument(task, 30);
-      if (id) await pl.notizAnlegen(id, `Abgelegt beim Kontakt ${nr} (${benutzer(req)}, Euroflex-Portal)`).catch(() => undefined);
-      return { id, text: id ? `„${datei}“ in Paperless abgelegt (Dokument ${id}, Korrespondent ${n})` : 'Übertragen – Paperless verarbeitet die Datei noch' };
+      const { pl, name: n } = await korrespondent(nr, false);
+      // Felder laut zentraler Paperless-Zuordnung (Kontext „Dokument zum Kontakt“)
+      const r = await kontextAblegen(pl, K.kontaktDokument, 'transport', { kontakt: n, adrnr: nr, datei, heute: new Date().toISOString().slice(0, 10), benutzer: benutzer(req) }, daten, datei, { mime });
+      return { id: r.id, text: r.id ? `„${datei}“ in Paperless abgelegt (Dokument ${r.id}, Korrespondent ${n})${r.warnungen.length ? ` – ${r.warnungen.join('; ')}` : ''}` : 'Übertragen – Paperless verarbeitet die Datei noch' };
     } catch (x) { return paperlessFehler(x); }
   });
 

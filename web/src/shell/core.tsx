@@ -4,6 +4,7 @@ import { UsersPage } from '../pages/UsersPage';
 import { RolesPage } from '../pages/RolesPage';
 import { AuditPage } from '../pages/AuditPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { PaperlessMappingPage } from '../pages/PaperlessMappingPage';
 import { ApiKeysPage } from '../pages/ApiKeysPage';
 
 export const coreNav: { home: NavEntry; admin: NavEntry } = {
@@ -17,6 +18,7 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
       { text: 'API-Schlüssel', icon: 'key', path: '/admin/api-schluessel', permission: 'core.apikeys:display' },
       { text: 'Änderungsbelege', icon: 'history', path: '/admin/aenderungsbelege', permission: 'core.audit:display' },
       { text: 'Einstellungen', icon: 'action-settings', path: '/admin/einstellungen', permission: 'core.settings:edit' },
+      { text: 'Paperless-Zuordnung', icon: 'attachment', path: '/admin/paperless', permission: 'core.settings:edit' },
     ],
   },
 };
@@ -28,4 +30,5 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/api-schluessel', component: ApiKeysPage, permission: 'core.apikeys:display' },
   { path: '/admin/aenderungsbelege', component: AuditPage, permission: 'core.audit:display' },
   { path: '/admin/einstellungen', component: SettingsPage, permission: 'core.settings:edit' },
+  { path: '/admin/paperless', component: PaperlessMappingPage, permission: 'core.settings:edit' },
 ];

@@ -14,7 +14,10 @@ import {
 import { bankAbgleich } from './bank.js';
 import { bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
-import { hochladen } from '../upload/logik.js';
+import { dateiPruefen, dekodieren } from '../upload/logik.js';
+import { PaperlessError } from '../../../../server/src/lib/paperless.js';
+import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
+import { K } from '../paperless-kontexte.js';
 
 export const P_FI = {
   display: 'tco.fi:display',
@@ -246,17 +249,25 @@ export async function fiRoutes(app: FastifyInstance) {
       if (!da) throw new BusinessError(`Buchung ${n} nicht gefunden`);
     }
     const pl = paperless(v);
-    const [doktyp] = await pl.ids('document_types', liste(v.fi_beleg_typen));
-    const [pfad] = await pl.ids('storage_paths', liste(v.fi_beleg_pfad));
-    const r = await hochladen(v, b.datei, b.inhalt, {
-      titel: b.titel ?? '', datum: heute(), doktyp: doktyp ?? null, korrespondent: null, korrespondentNeu: '',
-      tags: [], tagsNeu: [], speicherpfad: pfad ?? null, notiz: b.internenr.length ? `Abgelegt zu Buchung ${b.internenr.join(', ')}` : '',
-    }, benutzer(req));
-    if (r.state === 'Negative' || !r.id) return { id: r.id, text: r.text, warnungen: [], zugeordnet: [] };
+    const name = b.datei.split(/[\\/]/).pop()!.trim();
+    const { daten, mime } = dekodieren(name, b.inhalt);
+    dateiPruefen(name, daten.length);
+    // Felder laut zentraler Paperless-Zuordnung (Kontext „FI-Beleg“)
+    let r: { id: number | null; warnungen: string[] };
+    try {
+      r = await kontextAblegen(pl, K.fiBeleg, 'tco', {
+        datei: name, buchungen: b.internenr.join(', '), fi_belegtyp: liste(v.fi_beleg_typen)[0] ?? '', fi_belegpfad: liste(v.fi_beleg_pfad)[0] ?? '',
+        heute: heute(), benutzer: benutzer(req), verein: v.name,
+      }, daten, name, { mime, benutzer: benutzer(req), ueberschreiben: b.titel ? { title: b.titel } : undefined });
+    } catch (e) {
+      if (e instanceof PaperlessError) return { id: null, text: e.message, warnungen: [], zugeordnet: [] };
+      throw e;
+    }
+    if (!r.id) return { id: null, text: 'Übertragen – Paperless verarbeitet die Datei noch', warnungen: r.warnungen, zugeordnet: [] };
     const id = r.id;
-    if (!b.internenr.length) return { id, text: `Beleg ${id} in Paperless abgelegt – offen, wird beim Bankimport vorgeschlagen`, warnungen: [], zugeordnet: [] };
+    if (!b.internenr.length) return { id, text: `Beleg ${id} in Paperless abgelegt – offen, wird beim Bankimport vorgeschlagen`, warnungen: r.warnungen, zugeordnet: [] };
     await change(req, async (tx) => { for (const n of b.internenr) await belegeZuordnen(tx, n, [id]); }, { action: 'BELEG_ZUORDNEN' });
-    const warnungen: string[] = [];
+    const warnungen: string[] = [...r.warnungen];
     for (const [i, n] of b.internenr.entries()) warnungen.push(...(await zuordnungMelden(v, [id], n, i > 0)));
     return { id, text: `Beleg ${id} abgelegt und Buchung ${b.internenr.join(', ')} zugeordnet`, warnungen, zugeordnet: b.internenr };
   });
