@@ -184,8 +184,8 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   assert.match(roh, /\/FontFile2/, 'Schriften eingebettet');
   assert.doesNotMatch(roh, /\/BaseFont \/Helvetica/, 'keine Standardschriften in PDF/A');
   assert.match(roh, /\/GTS_PDFA1/);
-  const pr = (await call('GET', `${T}/zugferd/${jahr}_5001/pruefung`)).body;
-  assert.equal(pr.ok, true, JSON.stringify(pr.punkte.filter((x: any) => !x.ok)));
+  const zpr = (await call('GET', `${T}/zugferd/${jahr}_5001/pruefung`)).body;
+  assert.equal(zpr.ok, true, JSON.stringify(zpr.punkte.filter((x: any) => !x.ok)));
   const cii = (await call('GET', `${T}/zugferd/${jahr}_5001/datei`));
   assert.equal(cii.status, 200);
   assert.match(cii.text, /<rsm:CrossIndustryInvoice/);
@@ -195,9 +195,9 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   assert.match(cii.text, /<ram:TaxTotalAmount currencyID="EUR">134.90<\/ram:TaxTotalAmount>/);
   assert.equal((cii.text.match(/<ram:IncludedSupplyChainTradeLineItem>/g) ?? []).length, 2);
   // Reihenfolge laut CII-Schema: PaymentMeans vor ApplicableTradeTax vor PaymentTerms vor MonetarySummation
-  const pos = ['SpecifiedTradeSettlementPaymentMeans', 'ApplicableTradeTax', 'SpecifiedTradePaymentTerms', 'SpecifiedTradeSettlementHeaderMonetarySummation']
+  const reihe = ['SpecifiedTradeSettlementPaymentMeans', 'ApplicableTradeTax', 'SpecifiedTradePaymentTerms', 'SpecifiedTradeSettlementHeaderMonetarySummation']
     .map((t) => cii.text.lastIndexOf(`<ram:${t}>`));
-  assert.ok(pos.every((x, i) => x >= 0 && (i === 0 || x > pos[i - 1])), 'Elementreihenfolge CII');
+  assert.ok(reihe.every((x: number, i: number) => x >= 0 && (i === 0 || x > reihe[i - 1])), 'Elementreihenfolge CII');
   // Lieferschein/Transportauftrag bleiben normale PDFs
   assert.doesNotMatch(((await call('GET', `${T}/pdf/L/2025_0041`)).body as Buffer).toString('latin1'), /factur-x/);
 
