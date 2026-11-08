@@ -1,5 +1,5 @@
 -- Clubhaus-Verzehr: Anschreiben auf das Mitgliedskonto, Gastbelege an der Theke, Sammelabrechnung zum Monatsende.
--- Preise kommen aus tco.produkte (Getränke 100–189, Speisen 200–299, Sonstiges 300–399); optionaler Gästepreis.
+-- Preise kommen aus tco.produkte (Getränke 100–199, Speisen 200–299, Sonstiges 300–399); optionaler Gästepreis.
 alter table tco.produkte add column if not exists preis_gast numeric(15,2);
 
 create table if not exists tco.vz_cfg (

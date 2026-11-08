@@ -5,7 +5,7 @@ import { addTage, condense, heute, runden } from '../format.js';
 /**
  * Clubhaus-Verzehr: Mitglieder schreiben ihren Verzehr auf das eigene Konto an und zahlen gesammelt
  * zum Monatsende (Sammelabrechnung); Gäste zahlen am Abend an der Theke (Gastbeleg).
- * Preise: tco.produkte – Getränke 100–189 (Clubhausabrechnung), Speisen 200–299, Sonstiges 300–399,
+ * Preise: tco.produkte – Getränke 100–199 (Clubhausabrechnung), Speisen 200–299, Sonstiges 300–399,
  * optional ein eigener Gästepreis. Jede Position speichert Text und Preis als Momentaufnahme.
  *
  * Sicherheit: „Mein Verzehr“ arbeitet ausschließlich mit der Adressnummer des angemeldeten Benutzers;
@@ -15,7 +15,7 @@ import { addTage, condense, heute, runden } from '../format.js';
 
 export const RUBRIKEN = { G: 'Getränke', S: 'Speisen', X: 'Sonstiges' } as const;
 export type Rubrik = keyof typeof RUBRIKEN;
-const BEREICH: Record<Rubrik, [number, number]> = { G: [100, 189], S: [200, 299], X: [300, 399] };
+const BEREICH: Record<Rubrik, [number, number]> = { G: [100, 199], S: [200, 299], X: [300, 399] };
 export const ZAHLARTEN = ['BAR', 'KARTE', 'PAYPAL', 'UEBERWEISUNG', 'LASTSCHRIFT'] as const;
 export type Zahlart = (typeof ZAHLARTEN)[number];
 export const ZAHLART_TEXT: Record<Zahlart, string> = { BAR: 'Bar', KARTE: 'Karte', PAYPAL: 'PayPal', UEBERWEISUNG: 'Überweisung', LASTSCHRIFT: 'Lastschrift' };

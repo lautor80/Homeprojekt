@@ -30,7 +30,7 @@ export interface Getraenk { prod_key: string; valid_from: string; valid_to: stri
 export async function getraenkeLesen(db: Db): Promise<Getraenk[]> {
   const r = await db`select prod_key, to_char(valid_from, 'YYYY-MM-DD') as valid_from, to_char(valid_to, 'YYYY-MM-DD') as valid_to,
                             upper(trim(coalesce(text, ''))) as text, coalesce(preis, 0)::float8 as preis, menge
-                       from tco.produkte where length(prod_key) = 3 and prod_key >= '100' and prod_key < '190'
+                       from tco.produkte where length(prod_key) = 3 and prod_key >= '100' and prod_key < '200'
                       order by prod_key::int, valid_from`;
   return r.map((x) => ({ ...x, menge: Number(String(x.menge ?? '').replace(',', '.')) || 0 })) as unknown as Getraenk[];
 }
@@ -57,7 +57,7 @@ export async function getraenkSpeichern(tx: Db, d: { prod_key: string | null; te
   if (!key) {
     const [n] = await tx`select coalesce(max(prod_key::int), 99) + 1 as k from tco.produkte where length(prod_key) = 3 and prod_key >= '100' and prod_key < '190'`;
     key = String(n.k);
-    const [dup] = await tx`select 1 from tco.produkte where length(prod_key) = 3 and prod_key >= '100' and prod_key < '190' and upper(trim(text)) = ${text}`;
+    const [dup] = await tx`select 1 from tco.produkte where length(prod_key) = 3 and prod_key >= '100' and prod_key < '200' and upper(trim(text)) = ${text}`;
     if (dup) throw new BusinessError(`Das Getränk „${text}“ gibt es bereits.`);
     await tx`insert into tco.produkte (prod_key, valid_from, valid_to, text, preis, typ, menge) values (${key}, ${d.ab}, '9999-12-31', ${text}, ${d.preis}, 'G', ${String(d.menge)})`;
     return `Getränk ${text} angelegt.`;

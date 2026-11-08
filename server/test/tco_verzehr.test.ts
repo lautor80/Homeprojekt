@@ -115,10 +115,10 @@ test('Systemrolle MITGLIED enthält Mein Verzehr; Berechtigungsobjekte vorhanden
 });
 
 test('Preisliste: Speisen anlegen, Gästepreis, Getränke bleiben in der Clubhausabrechnung getrennt', async () => {
-  let r = await admin('PUT', `${V}/produkte`, { rubrik: 'S', text: 'Bratwurst mit Brötchen', preis: 2.5, preis_gast: 3 });
+  let r = await admin('PUT', `${V}/produkte`, { rubrik: 'S', text: 'Bratwurst mit Brötchen', preis: 2.5, preis_gast: 3, ab: '2020-01-01' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.prod_key, '200');
-  r = await admin('PUT', `${V}/produkte`, { rubrik: 'S', text: 'Pommes', preis: 3 });
+  r = await admin('PUT', `${V}/produkte`, { rubrik: 'S', text: 'Pommes', preis: 3, ab: '2020-01-01' });
   assert.equal(r.body.prod_key, '201');
   r = await admin('PUT', `${V}/produkte`, { rubrik: 'S', text: 'pommes', preis: 3 });
   assert.equal(r.status, 400);
