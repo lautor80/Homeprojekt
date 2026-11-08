@@ -85,10 +85,19 @@
 .portal-hp__name { font-weight: 700; color: var(--sapTextColor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .portal-hp__summe { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .portal-hp__rg {
-  display: grid; grid-template-columns: 5.75rem 6.75rem minmax(0, 1fr); align-items: center; gap: 0.5rem;
-  font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor);
+  display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) auto; align-items: center; gap: 0.375rem;
+  font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); min-height: 1.75rem;
 }
+/* Statussymbole: offen = Textfarbe (schwarz/weiß je Theme), versendet = orange, teilbezahlt = blau, bezahlt = grün */
+.portal-hp__symbol { width: 1rem; height: 1rem; justify-self: center; color: var(--sapTextColor); }
+.portal-hp__knopf { min-width: 1.75rem; width: 1.75rem; height: 1.75rem; }
+.portal-hp__rg--offen .portal-hp__symbol { color: var(--sapTextColor); }
+.portal-hp__rg--versendet .portal-hp__symbol, .portal-hp__rg--versendet .portal-hp__nr { color: var(--sapCriticalColor, #e76500); }
+.portal-hp__rg--teil .portal-hp__knopf { color: var(--sapInformativeColor, #0070f2); --sapButton_Lite_TextColor: var(--sapInformativeColor, #0070f2); }
+.portal-hp__rg--teil .portal-hp__nr { color: var(--sapInformativeColor, #0070f2); }
+.portal-hp__rg--bezahlt .portal-hp__symbol, .portal-hp__rg--bezahlt .portal-hp__nr { color: var(--sapPositiveColor, #256f3a); }
+.portal-hp__rg--ausgefallen .portal-hp__symbol, .portal-hp__rg--ausgefallen .portal-hp__nr { color: var(--sapNegativeColor, #aa0808); }
 .portal-hp__nr { font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
 .portal-hp__nr ui5-icon { width: 0.875rem; height: 0.875rem; color: var(--sapContent_IconColor); }
 .portal-hp__betrag { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
-.portal-hp__buchungen { grid-template-columns: 5.75rem minmax(0, 1fr) auto; color: var(--sapCriticalTextColor, #b44f00); }
+

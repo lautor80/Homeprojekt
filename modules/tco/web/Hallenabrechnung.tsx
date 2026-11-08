@@ -39,6 +39,16 @@ const merk = {
 
 type Confirm = { titel: string; text: string; grund?: boolean; danger?: boolean; ok: string; run: (grund: string) => Promise<void> } | null;
 
+/** Symbol je Rechnungsstatus in der Personenliste (Farbe über CSS-Klasse) */
+const RG_SYMBOL: Record<string, { icon: string; klasse: string }> = {
+  '1': { icon: 'collections-insight', klasse: 'offen' },  // in Bearbeitung
+  '2': { icon: 'collections-insight', klasse: 'offen' },  // gedruckt, noch nicht versendet
+  '3': { icon: 'email', klasse: 'versendet' },
+  '5': { icon: 'money-bills', klasse: 'teil' },
+  '4': { icon: 'paid-leave', klasse: 'bezahlt' },
+  '6': { icon: 'decline', klasse: 'ausgefallen' },
+};
+
 export function Hallenabrechnung() {
   const can = useCan();
   const navigate = useNavigate();
@@ -217,20 +227,27 @@ export function Hallenabrechnung() {
                           <span className="portal-hp__summe">{eur(p.betrag)}</span>
                         </div>
                         {/* jede Rechnung der Person in der Selektion mit Status und offenem Betrag */}
-                        {[...p.rechnungen].sort((a, b) => a.status.localeCompare(b.status) || b.rgnr_txt.localeCompare(a.rgnr_txt)).map((r) => (
-                          <div key={r.rgnr_txt} className="portal-hp__rg">
-                            <span className="portal-hp__nr">{r.rgnr_txt}</span>
-                            <ObjectStatus state={RG_STATE[r.status] ?? 'None'} inverted={r.status !== '1'}>{RG_STATUS[r.status] ?? r.status}</ObjectStatus>
-                            <span className="portal-hp__betrag">
-                              {r.status === '5' ? <>offen {eur(r.offen)} <span className="portal-muted">von {eur(r.betrag)}</span></>
-                                : ['4', '6'].includes(r.status) ? eur(r.betrag) : eur(r.offen)}
-                            </span>
-                          </div>
-                        ))}
+                        {/* je Rechnung: Symbol nach Status (ohne Text), Rechnungsnummer, Betrag */}
+                        {[...p.rechnungen].sort((a, b) => a.status.localeCompare(b.status) || b.rgnr_txt.localeCompare(a.rgnr_txt)).map((r) => {
+                          const st = RG_SYMBOL[r.status] ?? RG_SYMBOL['1'];
+                          return (
+                            <div key={r.rgnr_txt} className={`portal-hp__rg portal-hp__rg--${st.klasse}`} title={RG_STATUS[r.status] ?? r.status}>
+                              {r.status === '5' ? (
+                                <Button design="Transparent" icon={st.icon} className="portal-hp__knopf" tooltip={`Teilbezahlt – Zahlungen anzeigen`}
+                                        onClick={(e) => { e.stopPropagation(); setZahlungen({ rgnr_txt: r.rgnr_txt, betrag: r.betrag, gezahlt: r.betrag - r.offen } as Rechnung); }} />
+                              ) : <Icon name={st.icon} className="portal-hp__symbol" />}
+                              <span className="portal-hp__nr">{r.rgnr_txt}</span>
+                              <span className="portal-hp__betrag">
+                                {r.status === '5' ? <>{eur(r.offen)} <span className="portal-muted">von {eur(r.betrag)}</span></>
+                                  : ['4', '6'].includes(r.status) ? eur(r.betrag) : eur(r.offen)}
+                              </span>
+                            </div>
+                          );
+                        })}
                         {p.offeneBuchungen > 0 && (
-                          <div className="portal-hp__rg portal-hp__buchungen">
-                            <span className="portal-hp__nr"><Icon name="appointment-2" /></span>
-                            <span>{p.offeneBuchungen} Buchung(en) ohne Rechnung</span>
+                          <div className="portal-hp__rg portal-hp__rg--offen" title={`${p.offeneBuchungen} Buchung(en) ohne Rechnung`}>
+                            <Icon name="collections-insight" className="portal-hp__symbol" />
+                            <span className="portal-hp__nr portal-muted">{p.offeneBuchungen}×</span>
                             <span className="portal-hp__betrag">{eur(p.betragBuchungen)}</span>
                           </div>
                         )}
