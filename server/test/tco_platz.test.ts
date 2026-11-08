@@ -261,3 +261,13 @@ test('EP3-Buchungen belegen den Platz über die Aliase', async () => {
   const t = await anna('GET', `${P}/tag?datum=${d}`);
   assert.deepEqual(t.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt, [{ von: '09:00', bis: '11:00', eigen: false }]);
 });
+
+test('EP3-Buchungen ohne Platzangabe belegen den einzigen Hallenplatz', async () => {
+  const d = tag(5);
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status) values ('0000004712', ${d}, '15:00', '16:00', 'DORA EXTERN', '1')`;
+  const t = await anna('GET', `${P}/tag?datum=${d}`);
+  assert.deepEqual(t.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt, [{ von: '15:00', bis: '16:00', eigen: false }]);
+  assert.deepEqual(t.body.plaetze.find((p: { id: number }) => p.id === platz1Id).belegt, []);
+  const r = await anna('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00' });
+  assert.equal(r.status, 400);
+});

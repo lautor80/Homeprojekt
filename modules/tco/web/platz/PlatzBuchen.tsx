@@ -69,6 +69,8 @@ export function PlatzBuchen() {
   const tagLaden = (d = datum) => api.get<Tag>(`${PB}/tag?datum=${d}`).then(setTag).catch(fehler);
   const meineLaden = () => api.get<Meine>(`${PB}/meine?zeitraum=${zeitraum}`).then(setMeine).catch(fehler);
   useEffect(() => { setTag(null); tagLaden(datum); }, [datum]); // eslint-disable-line react-hooks/exhaustive-deps
+  // „vorbei“ läuft mit: Tagesansicht alle 5 Minuten still neu laden
+  useEffect(() => { const t = setInterval(() => tagLaden(datum), 5 * 60_000); return () => clearInterval(t); }, [datum]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (ansicht === 'meine') { setMeine(null); meineLaden(); } }, [ansicht, zeitraum]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const neuLaden = async () => { await Promise.all([tagLaden(), ansicht === 'meine' ? meineLaden() : null]); };
@@ -123,6 +125,7 @@ export function PlatzBuchen() {
               <span><i className="portal-pb__punkt portal-pb__punkt--frei" />frei – antippen zum Buchen</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--eigen" />meine Buchung</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt</span>
+              <span><i className="portal-pb__punkt portal-pb__punkt--vorbei" />vorbei / nicht buchbar</span>
             </div>
 
             {!tag && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
@@ -237,7 +240,15 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
   const ende = Math.ceil(Math.max(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_bis))) / 60) * 60;
   const y = (m: number) => `${((m - start) / 60) * REM_JE_STD}rem`;
   const h = (m: number) => `${(m / 60) * REM_JE_STD}rem`;
-  const vorbei = (m: number) => !!tag.heute && (tag.datum < tag.heute || (tag.datum === tag.heute && m <= min(tag.jetzt ?? '00:00')));
+  // Minuten seit Tagesbeginn, ab denen gebucht werden kann (vorbei + Mindestvorlauf); −∞/∞ für ganze Tage
+  const tageBis = tag.heute ? Math.round((Date.parse(`${tag.datum}T12:00:00Z`) - Date.parse(`${tag.heute}T12:00:00Z`)) / 86_400_000) : 0;
+  const jetztMin = min(tag.jetzt ?? '00:00');
+  const grenze = (p: TagPlatz) => {
+    if (admin || !tag.heute) return -Infinity;
+    if (tageBis > p.vorlauf_max) return Infinity;
+    return jetztMin + p.vorlauf_min * 60 - tageBis * 1440;
+  };
+  const vorbeiBis = admin || !tag.heute ? -Infinity : tageBis < 0 ? Infinity : tageBis === 0 ? jetztMin : -Infinity;
   const stunden: number[] = [];
   for (let m = start; m < ende; m += 60) stunden.push(m);
   const spalten = `3rem repeat(${plaetze.length}, minmax(${plaetze.length > 2 ? '7.5rem' : '9rem'}, 1fr))`;
@@ -260,13 +271,19 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
         {plaetze.map((p) => {
           const auf = min(p.zeit_von);
           const zu = min(p.zeit_bis);
+          const ab = grenze(p);
           const slots: number[] = [];
           if (!p.geschlossen) {
             for (let m = auf; m + p.dauer_min <= zu; m += p.raster) {
               const frei = !p.belegt.some((b) => min(b.von) < m + p.raster && (min(b.bis) || 1440) > m);
-              if (frei && !vorbei(m)) slots.push(m);
+              if (frei && m >= ab) slots.push(m);
             }
           }
+          // grauer Bereich: vorbei bzw. wegen Vorlauf nicht mehr (oder noch nicht) buchbar
+          const grauBis = p.geschlossen ? start : Math.min(Math.max(ab, start), ende);
+          const grauText = ab === Infinity ? `buchbar höchstens ${p.vorlauf_max} Tage im Voraus`
+            : tageBis < 0 || (tageBis === 0 && !p.vorlauf_min) ? 'vorbei' : 'nicht mehr buchbar';
+          const grauGanz = grauBis >= ende;
           return (
             <div key={p.id} className="portal-pb__spalte">
               {stunden.map((m) => <div key={m} className="portal-pb__linie" style={{ top: y(m) }} />)}
@@ -275,6 +292,11 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
                 : <>
                     {auf > start && <div className="portal-pb__zu" style={{ top: 0, height: h(auf - start) }} />}
                     {zu < ende && <div className="portal-pb__zu" style={{ top: y(zu), height: h(ende - zu) }} />}
+                    {grauBis > start && (
+                      <div className={`portal-pb__vorbei${grauGanz ? ' portal-pb__vorbei--ganz' : ''}`} style={{ top: 0, height: h(grauBis - start) }}>
+                        {(grauGanz || grauBis - start >= 60) && <span>{grauText}</span>}
+                      </div>
+                    )}
                   </>}
               {!admin && slots.map((m) => (
                 <button key={m} type="button" className="portal-pb__frei" style={{ top: y(m), height: h(p.raster) }}
@@ -285,8 +307,10 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
               {p.belegt.map((b, i) => {
                 const von = Math.max(min(b.von), start);
                 const bis = min(b.bis) || 1440;
-                const cls = b.eigen ? 'portal-pb__block--eigen' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt';
-                const klickbar = (b.eigen && b.aenderbar) || (admin && !!b.bid);
+                const alt = bis <= vorbeiBis; // für normale Nutzer: vergangene Stunde grau, nicht änderbar
+                const cls = (b.eigen ? 'portal-pb__block--eigen' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
+                  + (alt ? ' portal-pb__block--vorbei' : '');
+                const klickbar = (b.eigen && b.aenderbar && !alt) || (admin && !!b.bid);
                 return (
                   <button key={i} type="button" className={`portal-pb__block ${cls}`} disabled={!klickbar}
                           style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={() => klickbar && onEigen?.(p, b)}>

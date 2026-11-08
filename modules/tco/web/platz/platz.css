@@ -92,3 +92,18 @@
   padding: 0.75rem; border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_HeaderBackground, #f5f6f7);
 }
 .portal-pb__preis-wert { font-size: 1.5rem; font-weight: 300; color: var(--sapTextColor); }
+
+/* vergangene bzw. nicht mehr buchbare Zeit (normale Nutzer) */
+.portal-pb__vorbei {
+  position: absolute; left: 0; right: 0; z-index: 0;
+  background: var(--sapNeutralBackground, #eff1f2); opacity: 0.85;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 0.25rem;
+  font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor);
+}
+.portal-pb__vorbei span { background: var(--sapGroup_ContentBackground, #fff); padding: 0.125rem 0.5rem; border-radius: 0.25rem; }
+.portal-pb__punkt--vorbei { background: var(--sapNeutralBackground, #eff1f2); border: 1px solid var(--sapList_BorderColor); }
+.portal-pb__block--vorbei {
+  background: var(--sapNeutralBackground, #eff1f2) !important; color: var(--sapContent_LabelColor) !important;
+  border-left: 0.25rem solid var(--sapContent_LabelColor) !important; box-shadow: none !important; opacity: 0.85;
+}
+.portal-pb__vorbei--ganz { align-items: center; }

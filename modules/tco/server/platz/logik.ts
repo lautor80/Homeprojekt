@@ -135,6 +135,9 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
   const zu = new Map<string, number>();
   for (const p of plaetze) for (const n of namenVon(p)) if (!zu.has(n)) zu.set(n, p.id);
   if (!zu.size) return [];
+  // EP3-Buchungen ohne Platzangabe gehören zur Halle, wenn es genau einen aktiven Hallenplatz gibt
+  const hallen = await db`select name from tco.plaetze where art = 'HALLE' and aktiv`;
+  const ohnePlatz = hallen.length === 1 ? plaetze.find((p) => p.name === hallen[0].name) : undefined;
   const rows = await db`
     select b.bid, b.datum::text, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis, b.kunde,
            b.status, b.platz, b.benutzer_id::text, b.quelle, coalesce(b.assigned, '') as assigned, coalesce(t.text, b.text) as text
@@ -143,13 +146,13 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
      where b.datum between ${von} and ${bis}
        and coalesce(b.status, '') not in ('2', '4')
        and b.time_start is not null and b.time_ende is not null
-       and upper(trim(b.platz)) = any(${[...zu.keys()]})
+       and (upper(trim(b.platz)) = any(${[...zu.keys()]}) ${ohnePlatz ? db`or coalesce(trim(b.platz), '') = ''` : db``})
      order by b.datum, b.time_start`;
   return rows.map((r) => {
     const e = minuten(r.bis) || 1440; // Ende 00:00 = Mitternacht
     return {
       bid: r.bid, datum: r.datum, von: minuten(r.von), bis: e, kunde: r.kunde ?? '', status: r.status ?? '', platz: r.platz,
-      platzId: zu.get(gross(r.platz))!, benutzer_id: r.benutzer_id, quelle: r.quelle, assigned: r.assigned, text: r.text,
+      platzId: (r.platz?.trim() ? zu.get(gross(r.platz)) : ohnePlatz?.id)!, benutzer_id: r.benutzer_id, quelle: r.quelle, assigned: r.assigned, text: r.text,
     };
   });
 }
