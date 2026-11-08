@@ -337,9 +337,10 @@ test('Verzehrbuch, Arbeitsvorrat, Monatsabschluss mit Sammelabrechnungen und Las
   assert.equal(r.body.posten.length, 2);
   const brat = r.body.posten.find((p: any) => p.prod_key === '200');
   assert.equal((await admin('POST', `${V}/storno`, { id: brat.id, grund: 'Rückmeldung Mitglied' })).status, 200);
+  const vs = await admin('GET', `${V}/abschluss?monat=${vormonat()}`);
   r = await admin('POST', `${V}/abschluss`, { monat: vormonat(), adrnrs: [MAX], versenden: false });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.belege.length, 1);
+  assert.equal(r.body.belege.length, 1, JSON.stringify({ r: r.body, vs: vs.body }));
   assert.match(r.body.belege[0], /-0002$/);
   assert.equal((await sql`select betrag::float8 as b from tco.vz_belege where rgnr = ${r.body.belege[0]}`)[0].b, 6);
 
