@@ -52,7 +52,8 @@ export function App() {
     case 'setup':
       return <SetupPage onDone={load} />;
     case 'login':
-      return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined} onDone={load} />;
+      return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined} onDone={load}
+                        registrierung={(state.settings.registrierung as { pfad: string; titel: string; text: string } | null) ?? null} />;
     case 'ready':
       if (state.me.user.mustChangePassword) return <ForcedPasswordPage onDone={load} onLogout={logout} />;
       return (

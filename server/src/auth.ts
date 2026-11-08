@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql, withChange, type ChangeContext, type Tx } from './db.js';
 import { config, modulAktiv } from './config.js';
 import { hasPermission } from './permissions.js';
+import { compareSync as bcryptVergleich } from './vendor/bcryptjs/index.js';
 
 export const SESSION_COOKIE = 'portal_sid';
 
@@ -28,7 +29,12 @@ declare module 'fastify' {
 }
 
 export const hashPassword = (pw: string) => hash(pw, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
-export const verifyPassword = (h: string, pw: string) => verify(h, pw).catch(() => false);
+/** übernommene Kennwörter (bcrypt $2y$ aus EP3) werden ebenfalls geprüft und beim nächsten Anmelden auf argon2 umgestellt */
+export const istAltesHashformat = (h: string) => /^\$2[abxy]?\$\d\d\$/.test(h);
+export const verifyPassword = async (h: string, pw: string): Promise<boolean> => {
+  if (istAltesHashformat(h)) { try { return bcryptVergleich(pw, h); } catch { return false; } }
+  return verify(h, pw).catch(() => false);
+};
 
 export function validatePassword(pw: string): string | null {
   if (pw.length < 10) return 'Das Passwort muss mindestens 10 Zeichen lang sein.';

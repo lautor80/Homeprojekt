@@ -264,7 +264,9 @@ const tco: ServerModule = {
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
   // ausgewählte, noch nicht gesicherte Platzzeit (Sperre mit Zeitraum, Schlüssel = Platz-ID)
   sperrObjekte: [{ type: 'PLATZZEIT', text: 'Platzzeit', permission: `${P_PLATZ.buchen}|${P_PLATZ.admin}|${P_PLATZ.serie}` }],
+  registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Für die Platzbuchung registrieren', text: 'Zugang zur Buchung von Hallen- und Freiplätzen – nach Freigabe durch den Verein.' },
   auditObjects: [
+    { type: 'REGISTRIERUNG', text: 'Registrierung Hallennutzer', permission: P_PLATZ.admin },
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },
     { type: 'BUCHUNG', text: 'Hallenbuchung', permission: P_HALLE.display },
     { type: 'HALLENPREIS', text: 'Hallenpreis', permission: P_HALLE.display },

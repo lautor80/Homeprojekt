@@ -43,6 +43,11 @@ export interface ServerModule {
   routes?: (app: FastifyInstance) => Promise<void> | void;
   /** Ablagekontexte für Paperless mit Platzhaltern und Standardregel (zentrale Zuordnung, Administration) */
   paperlessKontexte?: KontextDef[];
+  /**
+   * Selbstregistrierung (Anmeldeseite → „Registrieren“): öffentlicher Pfad unter /api/m/<id>/… mit GET (Info) und POST
+   * (Registrierung). Der Server stellt sicher, dass so angelegte Benutzer nur die vorgesehene Rolle erhalten.
+   */
+  registrierung?: { pfad: string; titel: string; text: string };
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
   sperrObjekte?: AuditObjectDef[];
   /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */

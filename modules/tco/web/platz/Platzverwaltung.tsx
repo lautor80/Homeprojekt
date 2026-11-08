@@ -16,6 +16,7 @@ import { SperrHinweis, sperreSetzen, useSperre } from '@core/sperre';
 import { useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
 import { Kalender, hhmm, min, tagPlus, tagText, type Belegt, type TagPlatz } from './PlatzBuchen';
+import { Zugaenge } from './Zugaenge';
 import './platz.css';
 
 /**
@@ -78,6 +79,9 @@ export function Platzverwaltung() {
         </Tab>
         <Tab data-key="benutzer" text="Benutzer" icon="employee" selected={tab === 'benutzer'}>
           {tab === 'benutzer' && <BenutzerZuordnung aktion={aktion} />}
+        </Tab>
+        <Tab data-key="zugaenge" text="Zugänge" icon="add-employee" selected={tab === 'zugaenge'}>
+          {tab === 'zugaenge' && <Zugaenge aktion={aktion} />}
         </Tab>
       </TabContainer>
     </AppPage>

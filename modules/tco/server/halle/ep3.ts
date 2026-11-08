@@ -47,11 +47,14 @@ export async function ep3Importieren(tx: Db, inhalt: string | Buffer): Promise<I
 
 async function kundenImportieren(tx: Db, rows: string[][], idx: (n: string) => number): Promise<ImportErgebnis> {
   const i = { zuid: idx('ZUID'), zalias: idx('ZALIAS'), status: idx('STATUS'), email: idx('EMAIL'), key: idx('KEY'), value: idx('VALUE') };
+  // optional: Kennwort-Hash aus bs_users.pw (Spalte PW/ZPW/PASSWORD) – für die Übernahme ins Portal
+  const iPw = ['PW', 'ZPW', 'PASSWORD', 'PASSWORT'].map(idx).find((x) => x >= 0) ?? -1;
   const kunden = new Map<string, Record<string, string>>();
   for (const r of rows) {
     const zuid = (r[i.zuid] ?? '').trim();
     if (!zuid) continue;
     const k = kunden.get(zuid) ?? { zuid, zalias: (r[i.zalias] ?? '').trim(), status: (r[i.status] ?? '').trim(), email: (r[i.email] ?? '').trim() };
+    if (iPw >= 0 && /^\$2[abxy]?\$\d\d\$/.test((r[iPw] ?? '').trim())) k.pw_hash = (r[iPw] ?? '').trim();
     const key = (r[i.key] ?? '').trim().toLowerCase();
     const val = (r[i.value] ?? '').trim();
     const feld: Record<string, string> = { firstname: 'vorname', lastname: 'nachname', street: 'strasse', zip: 'plz', city: 'wohnort', phone: 'telefonnummer', gender: 'geschlecht' };
@@ -59,13 +62,23 @@ async function kundenImportieren(tx: Db, rows: string[][], idx: (n: string) => n
     kunden.set(zuid, k);
   }
   const zuids = [...kunden.keys()];
-  if (zuids.length) await tx`delete from tco.kunden where zuid = any(${zuids})`;
-  for (const k of kunden.values()) {
-    await tx`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname, strasse, plz, wohnort, telefonnummer, geschlecht)
-             values (${k.zuid}, ${k.zalias || k.zuid}, ${k.status || null}, ${k.email || null}, ${k.vorname ?? null}, ${k.nachname ?? null},
-                     ${k.strasse ?? null}, ${k.plz ?? null}, ${k.wohnort ?? null}, ${k.telefonnummer ?? null}, ${k.geschlecht ?? null})`;
+  // Portalzuordnung und übernommene Kennwörter überleben den erneuten Import
+  const bisher = new Map<string, { benutzer_id: string | null; pw_hash: string | null }>();
+  if (zuids.length) {
+    for (const b of await tx`select zuid, benutzer_id::text, pw_hash from tco.kunden where zuid = any(${zuids}) and (benutzer_id is not null or pw_hash is not null)`) {
+      bisher.set(b.zuid, { benutzer_id: b.benutzer_id, pw_hash: b.pw_hash });
+    }
+    await tx`delete from tco.kunden where zuid = any(${zuids})`;
   }
-  return { typ: 'KUNDEN', ok: true, text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen` };
+  for (const k of kunden.values()) {
+    const alt = bisher.get(k.zuid);
+    await tx`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname, strasse, plz, wohnort, telefonnummer, geschlecht, pw_hash, benutzer_id)
+             values (${k.zuid}, ${k.zalias || k.zuid}, ${k.status || null}, ${k.email || null}, ${k.vorname ?? null}, ${k.nachname ?? null},
+                     ${k.strasse ?? null}, ${k.plz ?? null}, ${k.wohnort ?? null}, ${k.telefonnummer ?? null}, ${k.geschlecht ?? null},
+                     ${k.pw_hash ?? alt?.pw_hash ?? null}, ${alt?.benutzer_id ?? null})`;
+  }
+  const mitPw = [...kunden.values()].filter((k) => k.pw_hash).length;
+  return { typ: 'KUNDEN', ok: true, text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen${mitPw ? `, ${mitPw} Kennwörter übernommen` : ''}` };
 }
 
 async function texteImportieren(tx: Db, rows: string[][], idx: (n: string) => number): Promise<ImportErgebnis> {

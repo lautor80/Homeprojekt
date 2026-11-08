@@ -11,6 +11,11 @@ import {
 } from './logik.js';
 import { minuten, preiseLesen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
+import {
+  ablehnen, benutzernameFrei, bestaetigen, ep3Abgleich, ep3Anlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
+} from './registrierung.js';
+import { vereinLesen } from '../verein.js';
+import { mailSenden } from '../kommunikation.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle).
@@ -68,9 +73,116 @@ const serieAnfrage = z.object({
   plaetze: z.array(z.coerce.number().int().positive()).default([]),
 });
 
+/** Registrierung: Schutz gegen Massenanmeldungen und Kennwort-Raten je IP */
+const regVersuche = new Map<string, { n: number; bis: number }>();
+function regLimit(ip: string, max: number) {
+  const jetztMs = Date.now();
+  const v = regVersuche.get(ip);
+  const cur = v && v.bis > jetztMs ? v : { n: 0, bis: jetztMs + 60 * 60_000 };
+  cur.n++;
+  regVersuche.set(ip, cur);
+  if (cur.n > max) throw new BusinessError('Zu viele Versuche. Bitte später erneut versuchen.', 429);
+}
+
+const registrierung = z.object({
+  benutzername: z.string().trim().min(3, 'Benutzername: mindestens 3 Zeichen').max(50).regex(/^[a-zA-Z0-9._-]+$/, 'Benutzername: nur Buchstaben, Ziffern, . _ -'),
+  vorname: z.string().trim().min(1, 'Bitte den Vornamen angeben.').max(60),
+  nachname: z.string().trim().min(1, 'Bitte den Nachnamen angeben.').max(60),
+  email: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.').max(120),
+  telefon: z.string().trim().max(40).nullish(),
+  nachricht: z.string().trim().max(500).nullish(),
+  passwort: z.string().max(200).nullish(),
+  ep3_konto: z.string().trim().max(120).nullish(),
+  ep3_passwort: z.string().max(200).nullish(),
+  datenschutz: z.literal(true, { errorMap: () => ({ message: 'Bitte der Verarbeitung der Daten zustimmen.' }) }),
+});
+
 export async function platzRoutes(app: FastifyInstance) {
   const buchen = { preHandler: requireAuth(P_PLATZ.buchen) };
   const admin = { preHandler: requireAuth(P_PLATZ.admin) };
+  // Rolle „Hallennutzer“ bei jedem Start auf den vorgesehenen Stand bringen (nur Einzelbuchung)
+  await rolleSicherstellen(DB).catch((e) => app.log.error(e, 'Rolle HALLENNUTZER konnte nicht geprüft werden'));
+
+  // ------------------------------------------------------------------ Registrierung (öffentlich, ohne Anmeldung)
+  app.get('/platz/registrierung', async () => {
+    const v = await vereinLesen();
+    const [ep3] = await DB`select exists (select 1 from tco.kunden where pw_hash is not null) as ja`;
+    return {
+      verein: v.name, ep3: !!ep3?.ja,
+      hinweis: 'Nach der Freigabe durch den Verein können Sie Hallen- und Freiplätze für sich buchen (Einzelbuchungen). Abos vergibt der Hallenwart.',
+    };
+  });
+  app.get('/platz/registrierung/frei', async (req) => {
+    const { benutzername } = z.object({ benutzername: z.string().trim().min(3).max(50) }).parse(req.query);
+    return { frei: await benutzernameFrei(DB, benutzername) };
+  });
+  app.post('/platz/registrierung', async (req) => {
+    regLimit(req.ip, 15);
+    const e = registrierung.parse(req.body);
+    if (!e.ep3_konto && !e.passwort) throw new BusinessError('Bitte ein Kennwort wählen oder das bestehende EP3-Konto angeben.');
+    const r = await registrieren(DB, e, req.ip);
+    req.log.info({ registrierung: r.id, benutzername: e.benutzername, ip: req.ip }, 'Registrierung eingegangen');
+    return r;
+  });
+
+  // ------------------------------------------------------------------ Freigabe (Platzverwaltung)
+  app.get('/platz/admin/registrierungen', admin, async (req) => {
+    const q = z.object({ status: z.enum(['OFFEN', 'ALLE']).default('OFFEN') }).parse(req.query);
+    return registrierungenLesen(DB, q.status);
+  });
+  app.post('/platz/admin/registrierungen/:id/bestaetigen', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const b = z.object({
+      zuordnung: z.discriminatedUnion('art', [
+        z.object({ art: z.literal('MITGLIED'), adrnr: z.string().min(1) }),
+        z.object({ art: z.literal('EP3'), zuid: z.string().min(1) }),
+        z.object({ art: z.literal('NEU') }),
+      ]),
+      bemerkung: z.string().max(500).nullish(),
+    }).parse(req.body);
+    const wer = req.user!.displayName || req.user!.username;
+    const r = await change(req, (tx) => bestaetigen(tx, id, b, wer), { action: 'REGISTRIERUNG_FREIGABE', reason: String(id) });
+    // Benachrichtigung, wenn der Mailversand eingerichtet ist (nicht kritisch)
+    let mail = '';
+    try {
+      const v = await vereinLesen();
+      if (v.n8n_mail_url && r.email) {
+        await mailSenden(v, {
+          modus: 'senden', anwendung: 'Platzbuchung', objekt: `REG-${id}`, an: r.email, benutzer: wer, anhaenge: [],
+          betreff: `${v.name}: Ihr Zugang zur Platzbuchung ist freigeschaltet`,
+          text: `Guten Tag ${r.anzeigename},
+
+Ihre Registrierung für die Platzbuchung wurde freigegeben. Sie können sich jetzt im Portal anmelden`
+            + (r.ep3 ? ' – mit Ihrem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort.' : ' – mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.')
+            + `
+
+Viele Grüße
+${v.name}`,
+        });
+        mail = ' Benachrichtigung per E-Mail gesendet.';
+      }
+    } catch (e) { mail = ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
+    return { text: r.text + mail };
+  });
+  app.post('/platz/admin/registrierungen/:id/ablehnen', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const b = z.object({ bemerkung: z.string().max(500).nullish() }).parse(req.body ?? {});
+    return { text: await change(req, (tx) => ablehnen(tx, id, b.bemerkung ?? null, req.user!.displayName || req.user!.username), { action: 'REGISTRIERUNG_ABLEHNUNG', reason: String(id) }) };
+  });
+
+  // ------------------------------------------------------------------ EP3-Abgleich (Platzverwaltung)
+  app.get('/platz/admin/ep3', admin, async () => ep3Abgleich(DB));
+  app.post('/platz/admin/ep3/:zuid/verknuepfen', admin, async (req) => {
+    const { zuid } = z.object({ zuid: z.string().min(1) }).parse(req.params);
+    const b = z.object({ benutzer_id: z.string().uuid().nullish(), adrnr: z.string().min(1).nullish() }).parse(req.body ?? {});
+    if (b.benutzer_id) return { text: await change(req, (tx) => ep3Verknuepfen(tx, zuid, b.benutzer_id!), { action: 'EP3_ZUORDNUNG', reason: zuid }) };
+    if (b.adrnr) return { text: await change(req, (tx) => ep3Mitglied(tx, zuid, b.adrnr!), { action: 'EP3_ZUORDNUNG', reason: zuid }) };
+    throw new BusinessError('Bitte einen Benutzer oder ein Mitglied wählen.');
+  });
+  app.post('/platz/admin/ep3/:zuid/anlegen', admin, async (req) => {
+    const { zuid } = z.object({ zuid: z.string().min(1) }).parse(req.params);
+    return change(req, (tx) => ep3Anlegen(tx, zuid), { action: 'EP3_BENUTZER', reason: zuid });
+  });
 
   // ------------------------------------------------------------------ Platz buchen (eigene Buchungen)
   app.get('/platz/tag', buchen, async (req) => {

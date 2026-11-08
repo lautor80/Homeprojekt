@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { addTage, condense, dat } from '../format.js';
 import { minuten, preisBerechnen, preiseLesen, type Preise } from '../halle/preis.js';
+import { adrnrAusZuid } from '../kommunikation.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle) – grob nach dem EP3-Buchungssystem:
@@ -227,9 +228,15 @@ export function preisVon(p: Platz | undefined, datum: string, von: number, bis: 
 export async function ichLesen(db: Db, benutzerId: string): Promise<Ich | null> {
   const [m] = await db`select a.adrnr, m.vorname, m.nachname from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr
                         where a.benutzer_id = ${benutzerId}`;
-  if (!m) return null;
-  const name = condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`);
-  return { benutzerId, adrnr: m.adrnr, name, kunde: name.toUpperCase() };
+  if (m) {
+    const name = condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`);
+    return { benutzerId, adrnr: m.adrnr, name, kunde: name.toUpperCase() };
+  }
+  // kein Mitglied: EP3-Kunde bzw. im Portal registrierter Hallennutzer (Adressnummer 99 + ZUID)
+  const [k] = await db`select zuid, zalias, vorname, nachname from tco.kunden where benutzer_id = ${benutzerId} order by zalias limit 1`;
+  if (!k) return null;
+  const name = condense(`${k.vorname ?? ''} ${k.nachname ?? ''}`) || k.zalias;
+  return { benutzerId, adrnr: adrnrAusZuid(k.zuid), name, kunde: name.toUpperCase() };
 }
 
 /** Benutzer ↔ Mitglied (dieselbe Zuordnung wie bei „Meine Trainingszeiten“) */

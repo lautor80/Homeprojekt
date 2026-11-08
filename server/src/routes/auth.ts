@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql, withChange } from '../db.js';
 import {
-  createSession, destroySession, hashPassword, requireAuth, validatePassword, verifyPassword, changeCtx,
+  createSession, destroySession, hashPassword, istAltesHashformat, requireAuth, validatePassword, verifyPassword, changeCtx,
 } from '../auth.js';
 import { getPublicSettings } from './settings.js';
 import { activeModuleIds } from '../modules.js';
@@ -31,6 +31,8 @@ export async function authRoutes(app: FastifyInstance) {
     }
     failures.delete(key);
     await sql`update core.users set last_login_at = now() where id = ${u.id}`;
+    // übernommenes EP3-Kennwort: jetzt im aktuellen Verfahren speichern
+    if (istAltesHashformat(u.password_hash)) await sql`update core.users set password_hash = ${await hashPassword(body.password)} where id = ${u.id}`;
     await createSession(req, reply, u.id);
     return { ok: true };
   });

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { activeModules } from '../modules.js';
 import { sql } from '../db.js';
 import { change, requireAuth } from '../auth.js';
 
@@ -13,7 +14,11 @@ export async function getSettings(keys?: readonly string[]): Promise<Record<stri
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
-export const getPublicSettings = () => getSettings(PUBLIC_KEYS);
+export async function getPublicSettings() {
+  const s = await getSettings(PUBLIC_KEYS);
+  const reg = activeModules().find((m) => m.registrierung)?.registrierung ?? null;
+  return { ...s, registrierung: reg };
+}
 
 const settingsSchema = z.object({
   'org.name': z.string().min(1).max(100).optional(),
