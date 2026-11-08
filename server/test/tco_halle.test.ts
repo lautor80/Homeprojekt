@@ -336,6 +336,13 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.equal(offen600[0].n, 0);
   r = await call('POST', `${H}/import/datei`, { name: 'b.csv', data: b64('BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n600;19.11.2026;18:00;19:00;Max Meier-Lüdenscheid;subscription\n') });
   assert.match(r.body.text, /automatisch mitgesperrt/);
+  // Reparatur: ein früherer Import hat einen Termin der bezahlten Serie offen angelegt (Serie verschoben)
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, assigned)
+            values ('0000000600', '2026-11-26', '18:00', '19:00', 'MAX MEIER-LÜDENSCHEID', '3', '')`;
+  r = await call('POST', `${H}/import/datei`, { name: 'b.csv', data: b64('BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n600;26.11.2026;18:00;19:00;Max Meier-Lüdenscheid;subscription\n') });
+  assert.match(r.body.text, /nachträglich gesperrt/);
+  const offen600b = await sql`select count(*)::int as n from tco.bookings where bid = '0000000600' and coalesce(assigned, '') = ''`;
+  assert.equal(offen600b[0].n, 0);
   [k] = await sql`select betrag::float8 as betrag, adrnr from tco.rgkopf where rgnr_txt = ${rg2}`;
   assert.deepEqual([k.betrag, k.adrnr], [300, '0000000012']);
 
