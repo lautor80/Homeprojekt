@@ -162,3 +162,37 @@ test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12.,
   assert.equal((await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', bestaetigung: true })).status, 400, 'nur einmal');
   assert.ok((await sql`select count(*)::int as n from core.change_header where object_type = 'MITGLIED' and action = 'KUENDIGUNG'`)[0].n >= 2);
 });
+
+test('Sperre: eigenes Mitglied in „Meine Mitgliedschaft“ sperrbar, fremdes nicht; Vorstand und Mitglied blockieren sich gegenseitig', async () => {
+  const S = '/api/sperren';
+  const kim = client();
+  assert.equal((await kim('POST', '/api/auth/login', { username: 'kim.portal', password: 'mein-neues-kennwort' })).status, 200);
+  // Kim sperrt sich selbst – nicht Paula
+  let r = await kim('POST', S, { objekt: 'MITGLIED', schluessel: '0000000502', bezeichnung: 'Mitglied Kim Portal (Meine Mitgliedschaft)' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const id = r.body.id as number;
+  assert.equal((await kim('POST', S, { objekt: 'MITGLIED', schluessel: '0000000501' })).status, 403);
+  // Sperrübersicht zeigt die Sperre
+  r = await admin('GET', S);
+  assert.ok(r.body.some((s: { id: number; bezeichnung: string }) => s.id === id && /Meine Mitgliedschaft/.test(s.bezeichnung)));
+  // Vorstand kann Kim gerade nicht bearbeiten
+  assert.equal((await admin('POST', S, { objekt: 'MITGLIED', schluessel: '0000000502' })).status, 423);
+  r = await admin('POST', `${M}/m/0000000502/kanal`, { kanal: 'E' });
+  assert.equal(r.status, 423, JSON.stringify(r.body));
+  await kim('POST', `${S}/freigeben`, { ids: [id] });
+  // umgekehrt: Vorstand sperrt, Kim kann nicht speichern
+  r = await admin('POST', S, { objekt: 'MITGLIED', schluessel: '0000000502' });
+  assert.equal(r.status, 200);
+  r = await kim('PUT', `${M}/meine/kontakt`, { strasse: 'Weg 2', plz: '66649', ort: 'Oberthal', telefon: '', mobil: '', email: 'kim@example.org', bildrechte: false });
+  assert.equal(r.status, 423, JSON.stringify(r.body));
+  assert.equal((await kim('POST', S, { objekt: 'MITGLIED', schluessel: '0000000502' })).status, 423);
+});
+
+test('Meine Dokumente: ohne Paperless leer mit Hinweis, fremde Dokumente nicht abrufbar', async () => {
+  let r = await paula('GET', `${M}/meine/dokumente`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.dokumente, []);
+  assert.match(r.body.hinweis, /nicht eingerichtet/);
+  r = await paula('GET', `${M}/meine/dokumente/4711`);
+  assert.ok([400, 404].includes(r.status), String(r.status));
+});

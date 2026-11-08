@@ -48,6 +48,11 @@ export interface ServerModule {
    * (Registrierung). Der Server stellt sicher, dass so angelegte Benutzer nur die vorgesehene Rolle erhalten.
    */
   registrierung?: { pfad: string; titel: string; text: string };
+  /**
+   * Sperren ohne die Berechtigung des Objekttyps erlauben, wenn es das EIGENE Objekt des Benutzers ist
+   * (z. B. Mitglied in „Meine Mitgliedschaft“). true = erlaubt.
+   */
+  sperreErlaubt?: (req: import('fastify').FastifyRequest, objekt: string, schluessel: string) => Promise<boolean>;
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
   sperrObjekte?: AuditObjectDef[];
   /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */

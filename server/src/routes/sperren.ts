@@ -4,6 +4,7 @@ import { sql } from '../db.js';
 import { can, requireAuth } from '../auth.js';
 import { BusinessError } from '../errors.js';
 import { alle, DAUER_S, freigeben, sperrDef, sperren, verlaengern } from '../sperren.js';
+import { activeModules } from '../modules.js';
 
 /**
  * Sperren gegen gleichzeitige Bearbeitung (Oberfläche):
@@ -29,7 +30,12 @@ export async function sperrRoutes(app: FastifyInstance) {
     if (!req.sitzung) throw new BusinessError('Sperren sind nur für angemeldete Benutzer der Oberfläche möglich.', 403);
     const def = sperrDef(b.objekt);
     if (!def) throw new BusinessError(`Unbekannter Objekttyp „${b.objekt}“.`);
-    if (!def.permission.split('|').some((x) => can(req, x)) && !can(req, P_SPERREN)) throw new BusinessError(`Keine Berechtigung (${def.permission}).`, 403);
+    if (!def.permission.split('|').some((x) => can(req, x)) && !can(req, P_SPERREN)) {
+      // eigenes Objekt (z. B. Mitglied in „Meine Mitgliedschaft“)?
+      let eigen = false;
+      for (const m of activeModules()) if (m.sperreErlaubt && await m.sperreErlaubt(req, b.objekt, b.schluessel)) { eigen = true; break; }
+      if (!eigen) throw new BusinessError(`Keine Berechtigung (${def.permission}).`, 403);
+    }
     const r = await sperren({
       sitzung: req.sitzung, benutzerId: req.user!.id || null, benutzer: req.user!.displayName || req.user!.username,
       objekt: b.objekt, schluessel: b.schluessel, von: b.von, bis: b.bis, bezeichnung: b.bezeichnung,

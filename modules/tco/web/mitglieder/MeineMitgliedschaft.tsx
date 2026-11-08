@@ -41,8 +41,13 @@ export function MeineMitgliedschaft() {
   const [busy, setBusy] = useState(false);
   const [dlg, setDlg] = useState<'kontakt' | 'bank' | null>(null);
   const [kuend, setKuend] = useState<{ art: 'MITGLIEDSCHAFT' } | { art: 'VERTRAG'; v: Vertrag & { endeBei: string } } | null>(null);
-  const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null);
-  const sperre = useSperre('MITGLIED', d?.mitglied.adrnr ?? null, !!dlg || !!kuend, { bezeichnung: 'Meine Mitgliedschaft' });
+  const [pdf, setPdf] = useState<{ url: string; name: string; server?: boolean } | null>(null);
+  // Sperre, solange ein Änderungs- oder Kündigungsdialog offen ist (Vorstand kann dann nicht gleichzeitig pflegen und umgekehrt)
+  const sperre = useSperre('MITGLIED', d?.mitglied.adrnr ?? null, !!dlg || !!kuend,
+    { bezeichnung: d ? `Mitglied ${d.mitglied.vorname} ${d.mitglied.nachname} (Meine Mitgliedschaft)` : 'Mitglied' });
+  const [docs, setDocs] = useState<{ dokumente: { id: number; titel: string; erstellt: string; typ: string; datei: string }[]; hinweis: string | null } | null>(null);
+  useEffect(() => { api.get<typeof docs>(`${MG}/dokumente`).then(setDocs).catch(() => setDocs({ dokumente: [], hinweis: 'Dokumente konnten nicht geladen werden.' })); }, []);
+  const gesperrt = sperre.zustand === 'fremd';
 
   const laden = () => api.get<Meine>(MG).then(setD).catch((e) => { const x = e as { status?: number; message: string }; if (x.status === 403) setKein(x.message); else setError(x.message); });
   useEffect(() => { laden(); }, []);
@@ -67,8 +72,10 @@ export function MeineMitgliedschaft() {
   if (kein) return <AppPage title="Meine Mitgliedschaft"><MessageStrip design="Information" hideCloseButton>{kein}</MessageStrip></AppPage>;
   if (!d) return <AppPage title="Meine Mitgliedschaft">{error ? <MessageStrip design="Negative">{error}</MessageStrip> : <BusyIndicator active style={{ display: 'block', padding: '2rem' }} />}</AppPage>;
   const m = d.mitglied;
-  const eigene = d.vertraege.filter((v) => v.eigen);
-  const fremde = d.vertraege.filter((v) => !v.eigen);
+  // nur laufende Verträge (auch bereits gekündigte, die noch nicht beendet sind)
+  const aktive = d.vertraege.filter((v) => v.laeuft);
+  const eigene = aktive.filter((v) => v.eigen);
+  const fremde = aktive.filter((v) => !v.eigen);
 
   return (
     <AppPage title="Meine Mitgliedschaft" subtitle="Eigene Daten sehen und pflegen">
@@ -77,7 +84,7 @@ export function MeineMitgliedschaft() {
       <ObjectHeader title={`${m.vorname} ${m.nachname}`} subtitle={`Mitgliedsnummer ${m.mitglnrn || m.adrnr}`}
                     status={m.austritt ? <ObjectStatus state="Critical" inverted>Austritt zum {dat(m.austritt)}</ObjectStatus> : <ObjectStatus state="Positive" inverted>aktives Mitglied</ObjectStatus>}
                     actions={<>
-                      {!d.gekuendigt && <Button design="Negative" icon="decline" onClick={() => { setError(null); setKuend({ art: 'MITGLIEDSCHAFT' }); }}>Mitgliedschaft kündigen</Button>}
+                      {!d.gekuendigt && <Button design="Negative" icon="decline" disabled={gesperrt} onClick={() => { setError(null); setKuend({ art: 'MITGLIEDSCHAFT' }); }}>Mitgliedschaft kündigen</Button>}
                     </>}>
         <Attributes>
           <Attribute label="Eintritt">{dat(m.eintritt)}</Attribute>
@@ -87,7 +94,7 @@ export function MeineMitgliedschaft() {
         </Attributes>
       </ObjectHeader>
 
-      <Section title="Kontaktdaten" actions={<Button icon="edit" onClick={() => { setError(null); setDlg('kontakt'); }}>Ändern</Button>}>
+      <Section title="Kontaktdaten" actions={<Button icon="edit" disabled={gesperrt} onClick={() => { setError(null); setDlg('kontakt'); }}>Ändern</Button>}>
         <Attributes>
           <Attribute label="Anschrift">{m.strasse}<br />{m.plz} {m.ort}</Attribute>
           <Attribute label="Telefon">{m.telefon || '–'}</Attribute>
@@ -110,12 +117,27 @@ export function MeineMitgliedschaft() {
         </Attributes>
       </Section>
 
-      <Section title="Verträge" count={d.vertraege.length} flush>
+      <Section title="Aktive Verträge" count={aktive.length} flush>
         <Vertragstabelle vertraege={[...eigene, ...fremde]} onKuendigen={(v) => { setError(null); setKuend({ art: 'VERTRAG', v }); }} />
         <Text className="portal-muted portal-small" style={{ display: 'block', padding: '0.5rem 1rem' }}>
           Mitgliedschaft und Verträge enden zum 31.12. des laufenden Jahres ({dat(d.kuendigung.mitgliedschaft)}), Jugendtraining zum nächsten 30.09. ({dat(d.kuendigung.jugend)}).
           Kündigungsdatum ist das Tagesdatum; die Bestätigung wird gedruckt und per E-Mail zugestellt.
         </Text>
+      </Section>
+
+      <Section title="Dokumente" count={docs?.dokumente.length ?? undefined} flush>
+        {!docs ? <BusyIndicator active style={{ display: 'block', padding: '1rem' }} />
+          : docs.hinweis ? <Text className="portal-muted" style={{ display: 'block', padding: '0.75rem 1rem' }}>{docs.hinweis}</Text>
+            : <AnalyticalTable data={docs.dokumente} minRows={1} visibleRows={Math.min(Math.max(docs.dokumente.length, 1), 10)} rowHeight={44} noDataText="Keine Dokumente abgelegt"
+                               columns={[
+                                 { Header: 'Datum', accessor: 'erstellt', width: 110, Cell: ({ value }: Cell) => dat(value) },
+                                 { Header: 'Dokument', accessor: 'titel', minWidth: 220 },
+                                 { Header: 'Art', accessor: 'typ', width: 200 },
+                                 {
+                                   Header: '', id: 'oeffnen', width: 120,
+                                   Cell: ({ row }: Cell) => <Button design="Transparent" icon="show" onClick={() => setPdf({ url: `${MG}/dokumente/${row.original.id}`, name: row.original.datei || `${row.original.titel}.pdf`, server: true })}>Öffnen</Button>,
+                                 },
+                               ]} />}
       </Section>
 
       {d.familie.length > 0 && (
@@ -126,14 +148,14 @@ export function MeineMitgliedschaft() {
         </Section>
       )}
 
-      {dlg === 'kontakt' && <KontaktDialog start={m} busy={busy} error={error} onClose={() => setDlg(null)} onSave={(k) => aktion(() => api.put(`${MG}/kontakt`, k))} />}
-      {dlg === 'bank' && <BankDialog busy={busy} error={error} onClose={() => setDlg(null)} onSave={(b) => aktion(() => api.put(`${MG}/bank`, b))} />}
-      {kuend && <KuendigungDialog k={kuend} info={d.kuendigung} vertraege={eigene} busy={busy} error={error} onClose={() => setKuend(null)}
+      {dlg === 'kontakt' && <KontaktDialog start={m} busy={busy || gesperrt || sperre.zustand === 'laden'} error={gesperrt ? sperre.text : error} onClose={() => setDlg(null)} onSave={(k) => aktion(() => api.put(`${MG}/kontakt`, k))} />}
+      {dlg === 'bank' && <BankDialog busy={busy || gesperrt || sperre.zustand === 'laden'} error={gesperrt ? sperre.text : error} onClose={() => setDlg(null)} onSave={(b) => aktion(() => api.put(`${MG}/bank`, b))} />}
+      {kuend && <KuendigungDialog k={kuend} info={d.kuendigung} vertraege={eigene} busy={busy || gesperrt || sperre.zustand === 'laden'} error={gesperrt ? sperre.text : error} onClose={() => setKuend(null)}
                                   onConfirm={(grund) => aktion(() => api.post(`${MG}/kuendigung`, {
                                     art: kuend.art, grund: grund || null, bestaetigung: true,
                                     ...(kuend.art === 'VERTRAG' ? { adrnr: kuend.v.adrnr, vertragnr: kuend.v.vertragnr } : {}),
                                   }))} />}
-      {pdf && <PdfDialog url={pdf.url} title="Kündigungsbestätigung" filename={pdf.name} onClose={() => { URL.revokeObjectURL(pdf.url); setPdf(null); }} />}
+      {pdf && <PdfDialog url={pdf.url} title={pdf.server ? pdf.name : 'Kündigungsbestätigung'} filename={pdf.name} onClose={() => { if (!pdf.server) URL.revokeObjectURL(pdf.url); setPdf(null); }} />}
     </AppPage>
   );
 }
@@ -166,7 +188,7 @@ function KontaktDialog({ start, busy, error, onClose, onSave }: { start: Kontakt
   const set = (f: keyof Kontakt) => (v: string) => setK({ ...k, [f]: v });
   return createPortal(
     <Dialog open headerText="Kontaktdaten ändern" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Emphasized" loading={busy} onClick={() => onSave(k)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<Bar endContent={<><Button design="Emphasized" disabled={busy} onClick={() => onSave(k)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <FormGrid>
         <TextField label="Straße und Hausnummer" required value={k.strasse} onChange={set('strasse')} wide />
@@ -187,7 +209,7 @@ function BankDialog({ busy, error, onClose, onSave }: { busy: boolean; error: st
   const [ok, setOk] = useState(false);
   return createPortal(
     <Dialog open headerText="Bankverbindung ändern" style={{ width: 'min(32rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Emphasized" loading={busy} disabled={!b.iban.trim() || !ok} onClick={() => onSave(b)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<Bar endContent={<><Button design="Emphasized" disabled={busy || !b.iban.trim() || !ok} onClick={() => onSave(b)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <FormGrid columns={1}>
         <TextField label="Neue IBAN" required value={b.iban} onChange={(v) => setB({ ...b, iban: v })} placeholder="DE.." />
@@ -209,7 +231,7 @@ function KuendigungDialog({ k, info, vertraege, busy, error, onClose, onConfirm 
   const laufende = vertraege.filter((v) => v.laeuft && !v.vertragende);
   return createPortal(
     <Dialog open headerText={k.art === 'MITGLIEDSCHAFT' ? 'Mitgliedschaft kündigen' : 'Vertrag kündigen'} style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Negative" icon="decline" loading={busy} disabled={!ok} onClick={() => onConfirm(grund)}>Verbindlich kündigen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<Bar endContent={<><Button design="Negative" icon="decline" disabled={busy || !ok} onClick={() => onConfirm(grund)}>Verbindlich kündigen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <div style={{ display: 'grid', gap: '0.75rem' }}>
         <Attributes narrow>

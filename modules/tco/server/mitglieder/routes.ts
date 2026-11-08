@@ -19,7 +19,7 @@ import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '.
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
-import { bankAendern, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST } from './selbst.js';
+import { bankAendern, eigeneAdrnr, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST } from './selbst.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -125,6 +125,25 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     if (istMaskiert(b.iban)) throw new BusinessError('Bitte die vollständige neue IBAN eingeben.');
     return { text: await change(req, (tx) => bankAendern(tx, benutzerId(req), b), { action: 'SELBSTAUSKUNFT', reason: 'Bankverbindung' }) };
   });
+  app.get('/mitglieder/meine/dokumente', selbst, async (req) => {
+    const v = await vereinLesen();
+    if (!plAktiv(v)) return { dokumente: [], hinweis: 'Die Dokumentenablage ist nicht eingerichtet.' };
+    const m = await mitgliedLesen(DB, await eigeneAdrnr(DB, benutzerId(req)));
+    const r = await dokumenteLesen(v, m).catch(() => null);
+    if (!r) return { dokumente: [], hinweis: 'Die Dokumentenablage ist gerade nicht erreichbar.' };
+    return { dokumente: r.dokumente.map(({ id, titel, erstellt, typ, datei }) => ({ id, titel, erstellt, typ, datei })), hinweis: null };
+  });
+  app.get('/mitglieder/meine/dokumente/:id', selbst, async (req, reply) => {
+    const { id } = z.object({ id: docId }).parse(req.params);
+    const v = await vereinLesen();
+    const m = await mitgliedLesen(DB, await eigeneAdrnr(DB, benutzerId(req)));
+    // nur Dokumente des eigenen Korrespondenten
+    const r = await dokumenteLesen(v, m);
+    if (!r.dokumente.some((d) => d.id === id)) throw new BusinessError('Dokument nicht gefunden.', 404);
+    const d = await plPruefen(v).download(id);
+    return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
+  });
+
   app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {
     const k = z.object({
       art: z.enum(['MITGLIEDSCHAFT', 'VERTRAG']), adrnr: z.string().nullish(), vertragnr: z.string().nullish(), grund: z.string().max(500).nullish(),

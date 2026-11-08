@@ -263,6 +263,12 @@ const tco: ServerModule = {
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
+  // „Meine Mitgliedschaft“: das eigene Mitglied darf gesperrt werden (gegen gleichzeitige Pflege durch den Vorstand)
+  sperreErlaubt: async (req, objekt, schluessel) => {
+    if (objekt !== 'MITGLIED' || !req.user?.id || !req.user.permissions.has('tco.meinedaten:edit')) return false;
+    const [a] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${req.user.id}`;
+    return a?.adrnr === schluessel;
+  },
   // ausgewählte, noch nicht gesicherte Platzzeit (Sperre mit Zeitraum, Schlüssel = Platz-ID)
   sperrObjekte: [{ type: 'PLATZZEIT', text: 'Platzzeit', permission: `${P_PLATZ.buchen}|${P_PLATZ.admin}|${P_PLATZ.serie}` }],
   registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Für die Platzbuchung registrieren', text: 'Zugang zur Buchung von Hallen- und Freiplätzen – nach Freigabe durch den Verein.' },
