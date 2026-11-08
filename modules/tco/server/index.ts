@@ -26,6 +26,7 @@ import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
 import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
+import { platzRoutes, P_PLATZ } from './platz/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -181,6 +182,7 @@ async function routes(app: FastifyInstance) {
   });
 
   await halleRoutes(app);
+  await platzRoutes(app);
   await fiRoutes(app);
   await sollRoutes(app);
   await jtRoutes(app);
@@ -229,6 +231,10 @@ const tco: ServerModule = {
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.display, text: 'Hallenabrechnung anzeigen' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.edit, text: 'Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
+    { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.buchen,
+      text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
+    { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
+      text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
     // ---------------------------------------------------------------- Clubhaus
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
