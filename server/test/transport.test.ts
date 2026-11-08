@@ -23,7 +23,7 @@ async function call(method: string, path: string, payload?: unknown) {
   const set = res.headers['set-cookie'];
   if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
   const ct = String(res.headers['content-type'] ?? '');
-  return { status: res.statusCode, body: ct.includes('json') ? JSON.parse(res.body) : res.rawPayload, ct };
+  return { status: res.statusCode, body: ct.includes('json') ? JSON.parse(res.body) : res.rawPayload, ct, text: res.body };
 }
 const T = '/api/m/transport';
 const b64 = (s: string, enc: BufferEncoding = 'utf8') => Buffer.from(s, enc).toString('base64');
@@ -171,6 +171,35 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   const xr2 = (await call('GET', `${T}/xrechnung/${jahr}_5002`)).body;
   assert.match(xr2.xml, /VATEX-EU-AE/);
   assert.ok(xr2.hinweise.some((h: string) => /BT-48/.test(h)));
+
+  // ---- ZUGFeRD: Rechnungs-PDF ist PDF/A-3 mit eingebetteter factur-x.xml ----
+  const zpdf = (await call('GET', `${T}/pdf/R/${jahr}_5001`)).body as Buffer;
+  const roh = zpdf.toString('latin1');
+  assert.ok(roh.startsWith('%PDF-1.7'), 'PDF 1.7');
+  assert.match(roh, /<pdfaid:part>3<\/pdfaid:part>/);
+  assert.match(roh, /<pdfaid:conformance>B<\/pdfaid:conformance>/);
+  assert.match(roh, /\/AFRelationship \/Alternative/);
+  assert.match(roh, /\/UF \(factur-x\.xml\)/);
+  assert.match(roh, /<fx:ConformanceLevel>EN 16931<\/fx:ConformanceLevel>/);
+  assert.match(roh, /\/FontFile2/, 'Schriften eingebettet');
+  assert.doesNotMatch(roh, /\/BaseFont \/Helvetica/, 'keine Standardschriften in PDF/A');
+  assert.match(roh, /\/GTS_PDFA1/);
+  const pr = (await call('GET', `${T}/zugferd/${jahr}_5001/pruefung`)).body;
+  assert.equal(pr.ok, true, JSON.stringify(pr.punkte.filter((x: any) => !x.ok)));
+  const cii = (await call('GET', `${T}/zugferd/${jahr}_5001/datei`));
+  assert.equal(cii.status, 200);
+  assert.match(cii.text, /<rsm:CrossIndustryInvoice/);
+  assert.match(cii.text, /<ram:ID>urn:cen.eu:en16931:2017<\/ram:ID>/);
+  assert.match(cii.text, /<ram:BasisAmount>710.00<\/ram:BasisAmount>/);
+  assert.match(cii.text, /<ram:DuePayableAmount>1344.90<\/ram:DuePayableAmount>/);
+  assert.match(cii.text, /<ram:TaxTotalAmount currencyID="EUR">134.90<\/ram:TaxTotalAmount>/);
+  assert.equal((cii.text.match(/<ram:IncludedSupplyChainTradeLineItem>/g) ?? []).length, 2);
+  // Reihenfolge laut CII-Schema: PaymentMeans vor ApplicableTradeTax vor PaymentTerms vor MonetarySummation
+  const pos = ['SpecifiedTradeSettlementPaymentMeans', 'ApplicableTradeTax', 'SpecifiedTradePaymentTerms', 'SpecifiedTradeSettlementHeaderMonetarySummation']
+    .map((t) => cii.text.lastIndexOf(`<ram:${t}>`));
+  assert.ok(pos.every((x, i) => x >= 0 && (i === 0 || x > pos[i - 1])), 'Elementreihenfolge CII');
+  // Lieferschein/Transportauftrag bleiben normale PDFs
+  assert.doesNotMatch(((await call('GET', `${T}/pdf/L/2025_0041`)).body as Buffer).toString('latin1'), /factur-x/);
 
   // ---- Mails ----
   const mails = (await call('POST', `${T}/mails`, { art: 'R', auftraege: ['2025_0041', h.body.auftragsnr] })).body;

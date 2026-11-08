@@ -76,6 +76,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
             footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
         „E-Mail öffnen“ startet dein Mailprogramm mit Empfänger, Betreff und Standardtext. Das PDF lädst du daneben herunter und hängst es an.
+        Bei Rechnungen ist das PDF bereits die E-Rechnung (ZUGFeRD 2.3, EN 16931) – die XRechnung-XML ist nur für Behördenportale nötig.
       </MessageStrip>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -108,32 +109,73 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
 // E-Rechnung (XRechnung 3.0): Hinweise, Vorschau, XML, Download
 // ---------------------------------------------------------------------------
 export interface XRes { faktura: string; filename: string; xml: string; hinweise: string[]; html: string; xmlHtml: string; anzahlAuftraege: number }
+interface Pruefung { profil: string; datei: string; groesse: number; ok: boolean; punkte: { punkt: string; ok: boolean; detail?: string }[]; hinweise: string[] }
 
+/**
+ * E-Rechnung: Das Rechnungs-PDF ist eine ZUGFeRD-Rechnung (PDF/A-3 mit eingebetteter factur-x.xml);
+ * zusätzlich gibt es die XRechnung (UBL) für Behörden/Portale. Hier: Vorschau, Hinweise, Downloads, Prüfung.
+ */
 export function XRechnungDialog({ data, onClose }: { data: XRes | null; onClose: () => void }) {
-  const [tab, setTab] = useState<'HTML' | 'XML'>('HTML');
+  const [tab, setTab] = useState<'HTML' | 'XML' | 'PRUEF'>('HTML');
   const [error, setError] = useState<string | null>(null);
+  const [pruefung, setPruefung] = useState<Pruefung | null>(null);
+  useEffect(() => {
+    setPruefung(null);
+    if (tab === 'PRUEF' && data) api.get<Pruefung>(`${T}/zugferd/${encodeURIComponent(data.faktura)}/pruefung`).then(setPruefung).catch((e) => setError(e.message));
+  }, [tab, data?.faktura]); // eslint-disable-line react-hooks/exhaustive-deps
+  const herunterladen = (url: string, name: string) => download(url, name).then(() => toast(`${name} heruntergeladen.`)).catch((e) => setError(e.message));
   return (
-    <Dialog open={!!data} headerText={`E-Rechnung ${data?.faktura ?? ''} (XRechnung 3.0)`} onClose={onClose} resizable draggable
+    <Dialog open={!!data} headerText={`E-Rechnung ${data?.faktura ?? ''}`} onClose={onClose} resizable draggable
             style={{ width: 'min(64rem, 95vw)', height: '80vh' }}
             footer={<Bar endContent={<>
-              <Button design="Emphasized" icon="download"
-                      onClick={() => data && download(`${T}/xrechnung/${encodeURIComponent(data.faktura)}/datei`, data.filename)
-                        .then(() => toast(`E-Rechnung ${data.faktura} heruntergeladen.`)).catch((e) => setError(e.message))}>
-                E-Rechnung herunterladen
-              </Button>
+              {data && <Button design="Emphasized" icon="pdf-attachment" onClick={() => herunterladen(`${T}/pdf/R/${encodeURIComponent(data.faktura)}`, `Rechnung_${data.faktura}.pdf`)}>
+                PDF (ZUGFeRD) herunterladen
+              </Button>}
+              {data && <Button icon="download" onClick={() => herunterladen(`${T}/xrechnung/${encodeURIComponent(data.faktura)}/datei`, data.filename)}>XRechnung (XML)</Button>}
+              {data && <Button icon="download" onClick={() => herunterladen(`${T}/zugferd/${encodeURIComponent(data.faktura)}/datei`, `${data.faktura}_factur-x.xml`)}>factur-x.xml</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </>} />}>
-      {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+      <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>
+        Das Rechnungs-PDF ist eine E-Rechnung nach ZUGFeRD 2.3 / Factur-X (EN 16931): PDF/A-3 mit eingebetteter factur-x.xml – ein Dokument für Mensch und Buchhaltungssoftware.
+        Für Behördenportale steht zusätzlich die XRechnung (UBL) zum Download bereit.
+      </MessageStrip>
       {!!data?.hinweise.length && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           {data.hinweise.map((h) => <div key={h}>{h}</div>)}
         </MessageStrip>
       )}
-      <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key as 'HTML' | 'XML')}>
+      <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key as 'HTML')}>
         <Tab text="Vorschau" data-key="HTML" selected={tab === 'HTML'} />
-        <Tab text="XML" data-key="XML" selected={tab === 'XML'} />
+        <Tab text="XML (XRechnung)" data-key="XML" selected={tab === 'XML'} />
+        <Tab text="Prüfung ZUGFeRD-PDF" data-key="PRUEF" selected={tab === 'PRUEF'} />
       </TabContainer>
-      {data && <div dangerouslySetInnerHTML={{ __html: tab === 'HTML' ? data.html : data.xmlHtml }} />}
+      {data && tab !== 'PRUEF' && <div dangerouslySetInnerHTML={{ __html: tab === 'HTML' ? data.html : data.xmlHtml }} />}
+      {tab === 'PRUEF' && (
+        <div style={{ padding: '0.75rem 0.25rem' }}>
+          {!pruefung && !error && <Text>Rechnung wird erzeugt und geprüft …</Text>}
+          {pruefung && (
+            <>
+              <MessageStrip design={pruefung.ok ? 'Positive' : 'Negative'} hideCloseButton style={{ marginBottom: '0.75rem' }}>
+                {pruefung.ok ? 'Alle Strukturprüfungen bestanden' : 'Mindestens eine Prüfung fehlgeschlagen'} · {pruefung.profil} · {Math.round(pruefung.groesse / 1024)} KB
+              </MessageStrip>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <tbody>
+                  {pruefung.punkte.map((p) => (
+                    <tr key={p.punkt} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                      <td style={{ padding: '0.35rem 0.5rem', width: '2rem' }}><ObjectStatus state={p.ok ? 'Positive' : 'Negative'} showDefaultIcon /></td>
+                      <td style={{ padding: '0.35rem 0.5rem' }}>{p.punkt}{p.detail ? <span className="portal-muted"> – {p.detail}</span> : null}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.75rem' }}>
+                Strukturprüfung des Portals. Für einen vollständigen Nachweis das PDF gelegentlich extern prüfen (z. B. veraPDF für PDF/A, Mustang oder der KoSIT-Validator für den XML-Teil).
+              </Text>
+            </>
+          )}
+        </div>
+      )}
     </Dialog>
   );
 }

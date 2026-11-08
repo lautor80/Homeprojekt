@@ -1,4 +1,8 @@
+import path from 'node:path';
 import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
+import { APP_ROOT } from '../../../../server/src/config.js';
+import { ciiXml, facturXXmp, FX_DATEI } from '../zugferd.js';
+import { rechnungsdaten } from '../xrechnung.js';
 import { C, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, titel } from './layout.js';
 import { fakturaAuftraege, firmaLesen, kaeufer } from '../data.js';
 import { addTage, condense, dat, eur, heute, kategorie, netto } from '../format.js';
@@ -10,7 +14,17 @@ export interface RechnungPdf {
   title: string;
   filename: string;
   pdf: Buffer;
+  /** eingebettete E-Rechnung (ZUGFeRD/Factur-X, CII) */
+  xml: string;
+  /** Hinweise zu fehlenden Pflichtangaben der E-Rechnung */
+  hinweise: string[];
 }
+
+/** Schriften für PDF/A (Liberation Sans, SIL OFL – metrisch kompatibel zu Helvetica) */
+const FONTS = {
+  regular: path.join(APP_ROOT, 'modules', 'transport', 'server', 'assets', 'fonts', 'LiberationSans-Regular.ttf'),
+  bold: path.join(APP_ROOT, 'modules', 'transport', 'server', 'assets', 'fonts', 'LiberationSans-Bold.ttf'),
+};
 
 interface Pos {
   nr: string;
@@ -30,6 +44,9 @@ const ROW_H = 11.5;
  * Rechnungs-PDF (Einzel- oder Sammelrechnung) – Nachbau von ZCL_EU_RECHNUNG_PDF.
  * Endbetrag = gespeicherter Rechnungsbetrag (RGBETRAG), Netto und USt daraus zurückgerechnet.
  * Zahlungsblock mit GiroCode (EPC-QR).
+ *
+ * E-Rechnung: Das PDF ist eine ZUGFeRD-2.3-/Factur-X-Rechnung (Profil EN 16931) – PDF/A-3b mit
+ * eingebetteten Schriften, Factur-X-XMP-Schema und der Rechnung als factur-x.xml (Beziehung „Alternative“).
  */
 export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> {
   const auftraege = await fakturaAuftraege(faktura);
@@ -88,7 +105,19 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
   const titelText = multi ? 'Sammelrechnung' : 'Rechnung';
   const kunde = condense(`${buyer?.kundenname ?? ''} ${buyer?.kundenname2 ?? ''}`);
 
-  const p = new Pdf({ title: `${titelText} ${faktura}`, author: firma.name });
+  const daten = await rechnungsdaten(faktura);
+  const xml = daten ? ciiXml(daten) : '';
+  const p = new Pdf({
+    title: `${titelText} ${faktura}`, author: firma.name, subject: `${titelText} ${faktura} für ${kunde}`, creator: 'Euroflex-Portal',
+    pdfa: FONTS, lang: 'de-DE',
+  });
+  if (xml) {
+    p.xmp(facturXXmp());
+    p.anhang(Buffer.from(xml, 'utf8'), {
+      name: FX_DATEI, mime: 'text/xml', relationship: 'Alternative', description: 'Factur-X/ZUGFeRD-Rechnung (EN 16931)',
+      datum: new Date(`${datum}T12:00:00Z`),
+    });
+  }
 
   // ---- Seite 1: Kopf ----
   p.newPage();
@@ -208,7 +237,8 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
   // Hinweis E-Rechnung
   p.rect(C.left, y - 3.3, 18, 4.6, { fill: C.soft, stroke: C.line, lw: 0.25, radius: 1 });
   p.text(29, y, 'E-Rechnung', { size: 7.5, bold: true, align: 'C' });
-  p.text(41, y, 'Diese Rechnung erhalten Sie zusätzlich als XRechnung 3.0 (EN 16931) im XML-Format.', { size: 7.5, color: C.muted });
+  p.text(41, y, 'Dieses PDF ist eine E-Rechnung nach ZUGFeRD 2.3 / Factur-X, Profil EN 16931.', { size: 7.5, color: C.muted });
+  p.text(41, y + 3.5, 'Die Rechnungsdaten sind maschinenlesbar als factur-x.xml in das PDF eingebettet (PDF/A-3).', { size: 7.5, color: C.muted });
   p.text(C.left, y + 9, 'Vielen Dank für Ihren Auftrag!');
 
   fusszeilen(p, firma);
@@ -220,5 +250,7 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
     title: `${titelText} ${faktura} - ${buyer?.kundenname ?? ''}`,
     filename: `Rechnung_${faktura}.pdf`,
     pdf: await p.render(),
+    xml,
+    hinweise: daten?.hinweise ?? [],
   };
 }

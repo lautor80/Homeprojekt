@@ -23,19 +23,41 @@ export interface RectOpts {
 
 const hex = (c: string) => (c.startsWith('#') ? c : `#${c}`);
 
+export interface PdfOptions {
+  title?: string;
+  author?: string;
+  subject?: string;
+  creator?: string;
+  /**
+   * PDF/A-3b (ISO 19005-3) erzeugen – Voraussetzung für ZUGFeRD/Factur-X. Erfordert eingebettete
+   * Schriften (TrueType-Dateien für normal und fett); die 14 Standardschriften sind in PDF/A nicht erlaubt.
+   */
+  pdfa?: { regular: string; bold: string };
+  /** Dokumentsprache (BCP 47), z. B. de-DE */
+  lang?: string;
+}
+
 export class Pdf {
   readonly doc: PDFKit.PDFDocument;
   private chunks: Buffer[] = [];
   private done: Promise<Buffer>;
+  private readonly pdfa: boolean;
 
-  constructor(info: { title?: string; author?: string; creator?: string } = {}) {
+  constructor(info: PdfOptions = {}) {
+    this.pdfa = !!info.pdfa;
     this.doc = new PDFDocument({
       size: 'A4',
       margin: 0,
       autoFirstPage: false,
       bufferPages: true,
-      info: { Title: info.title, Author: info.author, Creator: info.creator ?? 'Portalbasis' },
-    });
+      lang: info.lang ?? 'de-DE',
+      ...(info.pdfa ? { subset: 'PDF/A-3b', pdfVersion: '1.7' } : {}),
+      info: { Title: info.title, Author: info.author, Subject: info.subject, Creator: info.creator ?? 'Portalbasis' },
+    } as ConstructorParameters<typeof PDFDocument>[0]);
+    if (info.pdfa) {
+      this.doc.registerFont('Sans', info.pdfa.regular);
+      this.doc.registerFont('Sans-Bold', info.pdfa.bold);
+    }
     this.done = new Promise((resolve) => {
       this.doc.on('data', (c: Buffer) => this.chunks.push(c));
       this.doc.on('end', () => resolve(Buffer.concat(this.chunks)));
@@ -55,7 +77,24 @@ export class Pdf {
   }
 
   private font(size = 9, bold = false) {
-    this.doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+    const name = this.pdfa ? (bold ? 'Sans-Bold' : 'Sans') : bold ? 'Helvetica-Bold' : 'Helvetica';
+    this.doc.font(name).fontSize(size);
+  }
+
+  /**
+   * Datei einbetten (PDF/A-3: zugehörige Datei mit AFRelationship). Für ZUGFeRD/Factur-X:
+   * name 'factur-x.xml', mime 'text/xml', relationship 'Alternative'.
+   */
+  anhang(data: Buffer, o: { name: string; mime: string; description?: string; relationship?: 'Alternative' | 'Data' | 'Source' | 'Supplement' | 'Unspecified'; datum?: Date }) {
+    const d = o.datum ?? new Date();
+    (this.doc as unknown as { file: (src: Buffer, opts: Record<string, unknown>) => void }).file(data, {
+      name: o.name, type: o.mime, description: o.description, relationship: o.relationship ?? 'Unspecified', creationDate: d, modifiedDate: d,
+    });
+  }
+
+  /** Zusätzliche XMP-Metadaten (RDF-Beschreibungen), z. B. das Factur-X-Erweiterungsschema */
+  xmp(rdf: string) {
+    (this.doc as unknown as { appendXML: (xml: string) => void }).appendXML(rdf);
   }
 
   textWidth(text: string, o: TextOpts = {}): number {

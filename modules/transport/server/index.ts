@@ -14,6 +14,7 @@ import { condense, heute } from './format.js';
 import { rechnungPdf } from './pdf/rechnung.js';
 import { lieferscheinPdf, transportauftragPdf } from './pdf/dokumente.js';
 import { xrechnungErzeugen } from './xrechnung.js';
+import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
 import { dokumentAblegen, paperlessFirma } from './dokumente.js';
 import { kontaktRoutes } from './kontakte.js';
@@ -323,6 +324,23 @@ async function routes(app: FastifyInstance) {
     const res = await xrechnungErzeugen(faktura);
     const [{ n }] = await sql`select count(*)::int as n from transport.auftraege where faktura = ${faktura}`;
     return { ...res, anzahlAuftraege: n };
+  });
+
+  /** ZUGFeRD/Factur-X: eingebettetes CII-XML einzeln herunterladen */
+  app.get('/zugferd/:faktura/datei', { preHandler: requireAuth(P.display) }, async (req, reply) => {
+    const { faktura } = z.object({ faktura: z.string() }).parse(req.params);
+    const r = await zugferdXml(faktura);
+    if (!r) throw new BusinessError(`Rechnung ${faktura} nicht gefunden.`, 404);
+    return reply.type('application/xml; charset=utf-8').header('content-disposition', `attachment; filename="${faktura}_${FX_DATEI}"`).send(r.xml);
+  });
+
+  /** Selbstprüfung der E-Rechnung: PDF/A-3-Struktur, Einbettung, Pflichtangaben */
+  app.get('/zugferd/:faktura/pruefung', { preHandler: requireAuth(P.display) }, async (req) => {
+    const { faktura } = z.object({ faktura: z.string() }).parse(req.params);
+    const r = await rechnungPdf(faktura);
+    if (!r) throw new BusinessError(`Rechnung ${faktura} nicht gefunden.`, 404);
+    const pr = pdfPruefen(r.pdf, r.xml);
+    return { faktura, profil: 'ZUGFeRD 2.3 / Factur-X 1.0 – EN 16931', datei: FX_DATEI, groesse: r.pdf.length, ...pr, hinweise: r.hinweise };
   });
 
   app.get('/xrechnung/:faktura/datei', { preHandler: requireAuth(P.display) }, async (req, reply) => {

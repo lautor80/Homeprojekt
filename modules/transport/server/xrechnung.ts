@@ -10,7 +10,7 @@ export interface XRechnung {
   xmlHtml: string;
 }
 
-interface Line {
+export interface Line {
   name: string;
   text: string;
   artikel: string;
@@ -22,12 +22,12 @@ interface Line {
 }
 
 const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-const amt = (v: number) => v.toFixed(2);
-const esc = (v: unknown) =>
+export const amt = (v: number) => v.toFixed(2);
+export const esc = (v: unknown) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!);
 
 /** Element nur ausgeben, wenn ein Wert vorhanden ist */
-function el(name: string, value: unknown, attr = ''): string {
+export function el(name: string, value: unknown, attr = ''): string {
   const v = condense(String(value ?? ''));
   if (!v) return '';
   return attr ? `<${name} ${attr}>${esc(v)}</${name}>` : `<${name}>${esc(v)}</${name}>`;
@@ -39,23 +39,47 @@ function el(name: string, value: unknown, attr = ''): string {
  * Netto und USt daraus zurückgerechnet. Fehlende Pflichtangaben werden als Hinweise geliefert,
  * die XML wird trotzdem erzeugt.
  */
-export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
-  const res: XRechnung = { faktura, filename: `XRechnung_${faktura}.xml`, xml: '', hinweise: [], html: '', xmlHtml: '' };
+/** Rechnungsdaten nach EN 16931 – gemeinsame Grundlage für XRechnung (UBL) und ZUGFeRD/Factur-X (CII) */
+export interface Rechnungsdaten {
+  faktura: string;
+  fakturadatum: string;
+  firma: Awaited<ReturnType<typeof firmaLesen>>;
+  buyer: NonNullable<ReturnType<typeof kaeufer>>;
+  buyerName: string;
+  buyerKontakt: string;
+  ustid: string;
+  lines: Line[];
+  tax: Map<string, { basis: number; steuer: number }>;
+  netto: number;
+  steuer: number;
+  brutto: number;
+  ref: string;
+  order: string;
+  von: string | null;
+  bis: string | null;
+  hasO: boolean;
+  anzahl: number;
+  zahlungsziel: string;
+  faellig: string;
+  katSatz: (k: string) => number;
+  hinweise: string[];
+}
+
+export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | null> {
+  const hinweise: string[] = [];
   const firma = await firmaLesen();
   const satz = firma.ust_satz;
   const katSatz = (k: string) => (k === 'S' ? satz : 0);
 
   const auftraege = await fakturaAuftraege(faktura);
-  if (!auftraege.length) {
-    res.hinweise.push(`Zur Rechnung ${faktura} wurden keine Aufträge gefunden.`);
-    return res;
-  }
+  if (!auftraege.length) return null;
 
   let fakturadatum = auftraege[0].fakturadatum;
   if (!fakturadatum) {
     fakturadatum = heute();
-    res.hinweise.push('Fakturadatum fehlt - Tagesdatum als Rechnungsdatum verwendet.');
+    hinweise.push('Fakturadatum fehlt - Tagesdatum als Rechnungsdatum verwendet.');
   }
+  const res = { hinweise };
 
   const buyer = { ...(kaeufer(auftraege[0]) ?? ({} as Record<string, never>)) } as NonNullable<ReturnType<typeof kaeufer>>;
   const lines: Line[] = [];
@@ -139,6 +163,29 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
   if (hasO && tax.size > 1) res.hinweise.push('Nicht steuerbare und steuerbare Aufträge in einer Rechnung sind in der XRechnung nicht zulässig.');
   if (!ref) ref = auftraege[0].auftragsnr;
 
+  const buyerName = condense(`${buyer.kundenname ?? ''} ${buyer.kundenname2 ?? ''}`);
+  const buyerKontakt = condense(`${buyer.vorname ?? ''} ${buyer.name ?? ''}`);
+  const zahlungsziel = `Zahlbar innerhalb von ${firma.zahlungsziel_tage} Tagen nach Rechnungserhalt.`;
+  const faelligD = new Date(`${fakturadatum}T12:00:00Z`);
+  faelligD.setUTCDate(faelligD.getUTCDate() + Number(firma.zahlungsziel_tage || 0));
+  return {
+    faktura, fakturadatum, firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO,
+    anzahl: auftraege.length, zahlungsziel, faellig: faelligD.toISOString().slice(0, 10), katSatz, hinweise,
+  };
+}
+
+export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
+  const res: XRechnung = { faktura, filename: `XRechnung_${faktura}.xml`, xml: '', hinweise: [], html: '', xmlHtml: '' };
+  const d = await rechnungsdaten(faktura);
+  if (!d) {
+    res.hinweise.push(`Zur Rechnung ${faktura} wurden keine Aufträge gefunden.`);
+    return res;
+  }
+  res.hinweise.push(...d.hinweise);
+  const { firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, fakturadatum, zahlungsziel, katSatz } = d;
+  const satz = firma.ust_satz;
+  const anzahl = d.anzahl;
+
   const katXml = (kat: string, tag: string) => {
     const x = [`<${tag}>`, el('cbc:ID', kat)];
     if (kat !== 'O') x.push(el('cbc:Percent', amt(katSatz(kat))));
@@ -151,9 +198,6 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
     return x;
   };
 
-  const buyerName = condense(`${buyer.kundenname ?? ''} ${buyer.kundenname2 ?? ''}`);
-  const buyerKontakt = condense(`${buyer.vorname ?? ''} ${buyer.name ?? ''}`);
-  const zahlungsziel = `Zahlbar innerhalb von ${firma.zahlungsziel_tage} Tagen nach Rechnungserhalt.`;
   const E = 'currencyID="EUR"';
 
   // XML (UBL 2.1 Invoice, Elementreihenfolge laut XSD)
@@ -167,12 +211,12 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
     el('cbc:ID', faktura),
     el('cbc:IssueDate', fakturadatum),
     el('cbc:InvoiceTypeCode', '380'),
-    auftraege.length > 1 ? el('cbc:Note', `Sammelrechnung über ${auftraege.length} Transportaufträge`) : '',
+    anzahl > 1 ? el('cbc:Note', `Sammelrechnung über ${anzahl} Transportaufträge`) : '',
     el('cbc:DocumentCurrencyCode', 'EUR'),
     el('cbc:BuyerReference', ref),
   ];
   if (von && von !== bis) x.push('<cac:InvoicePeriod>', el('cbc:StartDate', von), el('cbc:EndDate', bis), '</cac:InvoicePeriod>');
-  if (auftraege.length === 1 && order) x.push('<cac:OrderReference>', el('cbc:ID', order), '</cac:OrderReference>');
+  if (anzahl === 1 && order) x.push('<cac:OrderReference>', el('cbc:ID', order), '</cac:OrderReference>');
 
   // Rechnungssteller
   x.push(
@@ -297,7 +341,7 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
 }
 
 /** XML mit Einrückung je Hierarchieebene (2 Leerzeichen) */
-function formatieren(xml: string): string {
+export function formatieren(xml: string): string {
   let out = '';
   let depth = 0;
   let last: 'D' | 'S' | 'E' | 'T' = 'D';

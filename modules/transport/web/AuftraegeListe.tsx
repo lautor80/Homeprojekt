@@ -410,7 +410,7 @@ export function AuftraegeListe() {
           { text: 'Transportauftrag versenden', onClick: () => versenden('T') },
           { text: 'Lieferschein versenden', onClick: () => versenden('L') },
           { text: 'Rechnung versenden', onClick: () => versenden('R') },
-          { text: 'E-Rechnung anzeigen (XRechnung)', icon: 'attachment-text-file', onClick: erechnung },
+          { text: 'E-Rechnung (ZUGFeRD / XRechnung)', icon: 'attachment-text-file', onClick: erechnung },
           { text: 'Rechnung an Paperless senden', icon: 'cloud', onClick: paperless },
         ]} />
       </>}
