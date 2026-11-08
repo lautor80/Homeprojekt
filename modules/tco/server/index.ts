@@ -215,6 +215,7 @@ const tco: ServerModule = {
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
     // ---------------------------------------------------------------- Mitglieder
+    { area: 'Mitglieder', app: 'Meine Mitgliedschaft', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },

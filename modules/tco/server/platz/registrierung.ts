@@ -19,29 +19,37 @@ import { adrnrAusZuid } from '../kommunikation.js';
  */
 export const ROLLE = 'HALLENNUTZER';
 export const ROLLE_RECHTE = ['tco.platzbuchung:edit'];
+/** Systemrolle für Vereinsmitglieder: eigene Mitgliedsdaten („Meine Mitgliedschaft“) und Einzelbuchung */
+export const ROLLE_MITGLIED = 'MITGLIED';
+export const ROLLE_MITGLIED_RECHTE = ['tco.meinedaten:edit', 'tco.platzbuchung:edit'];
+/** feste Systemrollen – Berechtigungen werden bei jedem Start und vor jeder automatischen Anlage erzwungen */
+export const SYSTEMROLLEN: Record<string, { name: string; text: string; rechte: string[] }> = {
+  [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen). Berechtigungen fest vorgegeben.', rechte: ROLLE_RECHTE },
+  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“) sowie eigene Einzelbuchungen. Berechtigungen fest vorgegeben.', rechte: ROLLE_MITGLIED_RECHTE },
+};
 const GESPERRT = ['blocked', 'deleted', 'disabled'];
 
-const istBcrypt = (h: string | null | undefined) => !!h && /^\$2[abxy]?\$\d\d\$/.test(h);
+export const istBcrypt = (h: string | null | undefined) => !!h && /^\$2[abxy]?\$\d\d\$/.test(h);
 const name = (v?: string | null, n?: string | null) => condense(`${v ?? ''} ${n ?? ''}`);
 
-/** Rolle HALLENNUTZER: vorhanden, Systemrolle, genau die vorgesehenen Berechtigungen */
+/** Systemrollen HALLENNUTZER und MITGLIED: vorhanden, Systemrolle, genau die vorgesehenen Berechtigungen */
 export async function rolleSicherstellen(db: Db): Promise<void> {
-  await db`insert into core.roles (id, name, description, system)
-           values (${ROLLE}, 'Hallennutzer', 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen). Berechtigungen fest vorgegeben.', true)
-           on conflict (id) do update set system = true`;
-  await db`delete from core.role_permissions where role_id = ${ROLLE} and permission <> all(${ROLLE_RECHTE})`;
-  for (const p of ROLLE_RECHTE) {
-    await db`insert into core.role_permissions (role_id, permission) values (${ROLLE}, ${p}) on conflict do nothing`;
+  for (const [id, r] of Object.entries(SYSTEMROLLEN)) {
+    await db`insert into core.roles (id, name, description, system) values (${id}, ${r.name}, ${r.text}, true)
+             on conflict (id) do update set system = true`;
+    await db`delete from core.role_permissions where role_id = ${id} and permission <> all(${r.rechte})`;
+    for (const p of r.rechte) await db`insert into core.role_permissions (role_id, permission) values (${id}, ${p}) on conflict do nothing`;
   }
 }
 
-/** Nach dem Anlegen: der Benutzer hat ausschließlich die Rolle HALLENNUTZER und damit genau ROLLE_RECHTE */
-async function rechtePruefen(db: Db, benutzerId: string) {
+/** Nach dem Anlegen: der Benutzer hat ausschließlich die vorgesehene Systemrolle und damit genau deren Berechtigungen */
+export async function rechtePruefen(db: Db, benutzerId: string, rolle: string = ROLLE) {
+  const soll = SYSTEMROLLEN[rolle].rechte;
   const rollen = (await db`select role_id from core.user_roles where user_id = ${benutzerId}`).map((r) => r.role_id as string);
   const rechte = (await db`select distinct rp.permission from core.user_roles ur join core.role_permissions rp on rp.role_id = ur.role_id
                             where ur.user_id = ${benutzerId} order by 1`).map((r) => r.permission as string);
-  if (rollen.length !== 1 || rollen[0] !== ROLLE || rechte.join(',') !== [...ROLLE_RECHTE].sort().join(',')) {
-    throw new BusinessError(`Sicherheitsprüfung fehlgeschlagen: Der neue Benutzer hätte mehr als die Einzelbuchung erhalten (${rollen.join(', ')} → ${rechte.join(', ')}). Vorgang abgebrochen.`, 500);
+  if (rollen.length !== 1 || rollen[0] !== rolle || rechte.join(',') !== [...soll].sort().join(',')) {
+    throw new BusinessError(`Sicherheitsprüfung fehlgeschlagen: Der Benutzer hätte mehr als die Rolle ${SYSTEMROLLEN[rolle].name} erhalten (${rollen.join(', ')} → ${rechte.join(', ')}). Vorgang abgebrochen.`, 500);
   }
 }
 
@@ -176,14 +184,15 @@ export interface Freigabe {
   bemerkung?: string | null;
 }
 
-async function benutzerAnlegen(tx: Db, b: { username: string; displayName: string; email: string | null; passwortHash: string; mussAendern: boolean }): Promise<string> {
+export async function benutzerAnlegen(tx: Db, b: { username: string; displayName: string; email: string | null; passwortHash: string; mussAendern: boolean; rolle?: string }): Promise<string> {
+  const rolle = b.rolle ?? ROLLE;
   const [exists] = await tx`select 1 from core.users where lower(username) = lower(${b.username})`;
   if (exists) throw new BusinessError(`Der Benutzername „${b.username}“ ist inzwischen vergeben.`, 409);
   await rolleSicherstellen(tx);
   const [u] = await tx`insert into core.users (username, display_name, email, password_hash, must_change_password)
                        values (${b.username}, ${b.displayName}, ${b.email}, ${b.passwortHash}, ${b.mussAendern}) returning id`;
-  await tx`insert into core.user_roles (user_id, role_id) values (${u.id}, ${ROLLE})`;
-  await rechtePruefen(tx, u.id);
+  await tx`insert into core.user_roles (user_id, role_id) values (${u.id}, ${rolle})`;
+  await rechtePruefen(tx, u.id, rolle);
   return u.id as string;
 }
 
@@ -340,7 +349,7 @@ export async function ep3Anlegen(tx: Db, zuid: string): Promise<{ username: stri
 }
 
 /** Benutzername für einen EP3-Kunden: E-Mail-Adresse, sonst EP3-Alias; bei Kollision mit Zusatz */
-async function freierBenutzername(tx: Db, email: string | null | undefined, alias: string, zuid: string): Promise<string> {
+export async function freierBenutzername(tx: Db, email: string | null | undefined, alias: string, zuid: string): Promise<string> {
   const mail = (email ?? '').trim().toLowerCase();
   const kandidaten = [
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) ? mail : '',

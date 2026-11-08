@@ -19,6 +19,7 @@ import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '.
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
+import { bankAendern, kontaktSichern, kuendigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST } from './selbst.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -107,6 +108,45 @@ async function maskierteBankdatenAufloesen(n: z.infer<typeof neuSchema>): Promis
 export async function mitgliederRoutes(app: FastifyInstance) {
   const lesen = { preHandler: requireAuth(P_MG.display) };
   const schreiben = { preHandler: requireAuth(P_MG.edit) };
+  const selbst = { preHandler: requireAuth(P_SELBST) };
+  const benutzerId = (req: FastifyRequest) => {
+    if (!req.user?.id) throw new BusinessError('Bitte mit einem persönlichen Benutzer anmelden.', 403);
+    return req.user.id;
+  };
+
+  // ---------------------------------------------------------------- „Meine Mitgliedschaft“ (nur eigene Daten)
+  app.get('/mitglieder/meine', selbst, async (req) => meineLesen(DB, benutzerId(req)));
+  app.put('/mitglieder/meine/kontakt', selbst, async (req) => {
+    const k = z.object({ strasse: txt, plz: txt, ort: txt, telefon: txt, mobil: txt, email: txt, bildrechte: z.boolean().default(false) }).parse(req.body);
+    return { text: await change(req, (tx) => kontaktSichern(tx, benutzerId(req), k), { action: 'SELBSTAUSKUNFT' }) };
+  });
+  app.put('/mitglieder/meine/bank', selbst, async (req) => {
+    const b = z.object({ iban: z.string().min(1, 'Bitte die IBAN angeben.'), bic: txt, bank: txt }).parse(req.body);
+    if (istMaskiert(b.iban)) throw new BusinessError('Bitte die vollständige neue IBAN eingeben.');
+    return { text: await change(req, (tx) => bankAendern(tx, benutzerId(req), b), { action: 'SELBSTAUSKUNFT', reason: 'Bankverbindung' }) };
+  });
+  app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {
+    const k = z.object({
+      art: z.enum(['MITGLIEDSCHAFT', 'VERTRAG']), adrnr: z.string().nullish(), vertragnr: z.string().nullish(), zum: datum, grund: z.string().max(500).nullish(),
+      bestaetigung: z.literal(true, { errorMap: () => ({ message: 'Bitte die Kündigung bestätigen.' }) }),
+    }).parse(req.body);
+    const v = await vereinLesen();
+    return { text: await change(req, (tx) => kuendigen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG', reason: k.grund ?? null }) };
+  });
+
+  // ---------------------------------------------------------------- Administration → Benutzer: Mitglieder als Benutzer anlegen
+  app.post('/mitglieder/benutzer-anlegen', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const o = z.object({ mail: z.boolean().default(true) }).parse(req.body ?? {});
+    const v = await vereinLesen();
+    const r = await change(req, (tx) => mitgliederBenutzerAnlegen(tx, v, o), { action: 'MITGLIEDER_BENUTZER' });
+    const offen = r.angelegt.filter((a) => a.startkennwort).length;
+    return {
+      ...r,
+      text: `${r.angelegt.length} Benutzer angelegt (Rolle Mitglied)${r.hochgestuft ? `, ${r.hochgestuft} vorhandene Hallennutzer zu Mitgliedern hochgestuft` : ''}`
+        + `${r.gesendet ? `, ${r.gesendet} Startkennwörter per E-Mail gesendet` : ''}${offen ? `, ${offen} Startkennwörter zum Weitergeben (Liste herunterladen)` : ''}`
+        + `${r.uebersprungen.length ? `, ${r.uebersprungen.length} übersprungen` : ''}.`,
+    };
+  });
 
   // ---------------------------------------------------------------- Liste / Stammdaten der Auswahl
   app.get('/mitglieder/liste', lesen, async (req) => {

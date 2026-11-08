@@ -7,6 +7,7 @@ import { Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
 import { Clubhaus } from './clubhaus/Clubhaus';
 import { Mitglieder } from './mitglieder/Mitglieder';
+import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Analyse } from './analyse/Analyse';
 import { Teilnehmer } from './teilnehmer/Teilnehmer';
@@ -59,6 +60,7 @@ const mod: WebModule = {
         {
           text: 'Mitglieder', icon: 'group',
           children: [
+            { text: 'Meine Mitgliedschaft', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
             { text: 'Mitgliedsbeiträge', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
             { text: 'Mitglieder-Analyse', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
@@ -104,6 +106,7 @@ const mod: WebModule = {
   ],
   routes: [
     { path: '/tco/mitglieder', component: Mitglieder, permission: 'tco.mitglieder:display' },
+    { path: '/tco/meine-mitgliedschaft', component: MeineMitgliedschaft, permission: 'tco.meinedaten:edit' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
     { path: '/tco/hallenpreise', component: Hallenpreise, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
@@ -129,6 +132,7 @@ const mod: WebModule = {
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
     { text: 'Stammdaten', subtitle: 'Verein, Anbindungen, SAP-Übernahme', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
+    { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
