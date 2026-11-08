@@ -94,6 +94,7 @@ before(async () => {
     (${THEO}, 'Theo', 'Theke', '2020-01-01', '', 'U', null, null, null, '', '', '')`;
   await sql`insert into tco.sepa (adrnr, mandatsnr, status, angelegtam) values (${MAX}, 'TCO-401', 'X', '2020-01-01')`;
   await sql`insert into tco.mitgliedera (adrnr) values (${MAX}), (${PETRA}), (${THEO})`;
+  await sql`insert into tco.fikonten (konto, name, kennzahl) values ('1200', 'Girokonto', 'BA'), ('8400', 'Clubhaus Verzehr', '')`;
   // Getränke (Clubhausabrechnung) und Speisen
   await sql`insert into tco.produkte (prod_key, valid_from, valid_to, text, preis, preis_gast, typ, menge) values
     ('100', '2020-01-01', '9999-12-31', 'BITBURGER 0,33', 2.00, 2.50, 'G', '24'),

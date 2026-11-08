@@ -164,7 +164,9 @@ export async function gastBuchen(tx: Db, d: { rgnr?: string | null; gast_name: s
     const [b] = await tx`select status from tco.vz_belege where rgnr = ${rgnr} and art = 'GAST'`;
     if (!b) throw new BusinessError('Gastbeleg nicht gefunden.');
     if (b.status !== 'OFFEN') throw new BusinessError('Dieser Gastbeleg ist bereits kassiert – bitte einen neuen anlegen.');
-    await tx`update tco.vz_belege set gast_name = ${name || null}, gast_gruppe = ${condense(d.gast_gruppe ?? '') || null}, email = ${condense(d.email ?? '') || null}, mobil = ${condense(d.mobil ?? '') || null} where rgnr = ${rgnr}`;
+    // nur gefüllte Angaben übernehmen (Erweiterung vom Handy schickt oft nur Positionen)
+    await tx`update tco.vz_belege set gast_name = coalesce(${name || null}, gast_name), gast_gruppe = coalesce(${condense(d.gast_gruppe ?? '') || null}, gast_gruppe),
+                                      email = coalesce(${condense(d.email ?? '') || null}, email), mobil = coalesce(${condense(d.mobil ?? '') || null}, mobil) where rgnr = ${rgnr}`;
   } else {
     rgnr = await naechsteNummer(tx, `VZG-${heute().slice(0, 4)}-`, 5);
     await tx`insert into tco.vz_belege (rgnr, art, gast_name, gast_gruppe, email, mobil, datum, status, erstellt_von)
