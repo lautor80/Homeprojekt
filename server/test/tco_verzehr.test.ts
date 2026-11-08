@@ -232,6 +232,10 @@ test('Theke: Gastbeleg mit Gästepreisen, kassieren, PDF, Mail, Mitglied anschre
   const [p] = await sql`select id from tco.vz_posten where adrnr = ${MAX} and datum < current_date limit 1`;
   r = await theo('POST', `${V}/theke/storno`, { id: Number(p.id) });
   assert.equal(r.status, 400);
+  // zweiter Gastbeleg bekommt die Folgenummer
+  r = await theo('POST', `${V}/theke/gast`, { gast_gruppe: 'TC Marpingen', positionen: [{ prod_key: '201', anzahl: 2 }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.rgnr, /-00002$/);
   // heutige Liste zeigt Mitglieder nur mit Namen
   r = await theo('GET', `${V}/theke/heute`);
   assert.ok(r.body.some((x: any) => x.person === 'Petra Lehmann' && !x.gast));
@@ -337,10 +341,9 @@ test('Verzehrbuch, Arbeitsvorrat, Monatsabschluss mit Sammelabrechnungen und Las
   assert.equal(r.body.posten.length, 2);
   const brat = r.body.posten.find((p: any) => p.prod_key === '200');
   assert.equal((await admin('POST', `${V}/storno`, { id: brat.id, grund: 'Rückmeldung Mitglied' })).status, 200);
-  const vs = await admin('GET', `${V}/abschluss?monat=${vormonat()}`);
   r = await admin('POST', `${V}/abschluss`, { monat: vormonat(), adrnrs: [MAX], versenden: false });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.belege.length, 1, JSON.stringify({ r: r.body, vs: vs.body }));
+  assert.equal(r.body.belege.length, 1, JSON.stringify(r.body));
   assert.match(r.body.belege[0], /-0002$/);
   assert.equal((await sql`select betrag::float8 as b from tco.vz_belege where rgnr = ${r.body.belege[0]}`)[0].b, 6);
 

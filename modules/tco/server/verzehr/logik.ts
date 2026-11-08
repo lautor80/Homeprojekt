@@ -151,7 +151,7 @@ export async function mitgliedBuchen(tx: Db, adrnr: string, datum: string, wuens
 }
 
 async function naechsteNummer(tx: Db, praefix: string, stellen: number) {
-  const [r] = await tx`select coalesce(max(substring(rgnr from ${praefix.length + 1})::int), 0) + 1 as n from tco.vz_belege where rgnr like ${`${praefix}%`} and substring(rgnr from ${praefix.length + 1}) ~ '^[0-9]+$'`;
+  const [r] = await tx`select coalesce(max(substr(rgnr, ${praefix.length + 1}::int)::int), 0) + 1 as n from tco.vz_belege where rgnr like ${`${praefix}%`} and substr(rgnr, ${praefix.length + 1}::int) ~ '^[0-9]+$'`;
   return `${praefix}${String(r.n).padStart(stellen, '0')}`;
 }
 
