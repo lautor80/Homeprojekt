@@ -12,6 +12,7 @@ import { ChangeHistoryButton, fmtDateTime } from '../components/ChangeHistory';
 import { useCan, useSession } from '../session';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
+import { InitialeZuordnung, ZuordnungFelder } from './BenutzerZuordnung';
 
 interface User {
   id: string;
@@ -40,7 +41,8 @@ export function UsersPage() {
   const mitTco = me.modules.includes('tco');
   const [mg, setMg] = useState<'frage' | MgAnlage | null>(null);
   const [mgMail, setMgMail] = useState(true);
-  const [filter, setFilter] = useState<'ALLE' | 'AKTIV' | 'GESPERRT'>('ALLE');
+  const [filter, setFilter] = useState<'ALLE' | 'AKTIV' | 'GESPERRT'>('AKTIV');
+  const [mapping, setMapping] = useState(false);
   const [einzeln, setEinzeln] = useState(false);
   const users = useLoad(() => api.get<User[]>('/api/admin/users'));
   const roles = useLoad(() => (can('core.roles:display') ? api.get<Role[]>('/api/admin/roles') : Promise.resolve([] as Role[])));
@@ -124,6 +126,7 @@ export function UsersPage() {
       title="Benutzer"
       subtitle={users.data ? `${users.data.length} Benutzer` : undefined}
       actions={mayEdit && (<>
+        {mitTco && <Button icon="chain-link" onClick={() => setMapping(true)}>Initiale Zuordnung</Button>}
         {mitTco && <Button icon="add-employee" onClick={() => { setError(null); setEinzeln(true); }}>Aus Mitglied/EP3 anlegen</Button>}
         {mitTco && <Button icon="group" onClick={() => setMg('frage')}>Mitglieder als Benutzer anlegen</Button>}
         <Button design="Emphasized" icon="add" onClick={() => { setError(null); setEdit({ isNew: true, active: true, roles: [] }); }}>
@@ -189,6 +192,7 @@ export function UsersPage() {
         <SegmentedButtonItem data-f="AKTIV" selected={filter === 'AKTIV'}>Aktiv ({anzahl.AKTIV})</SegmentedButtonItem>
         <SegmentedButtonItem data-f="GESPERRT" selected={filter === 'GESPERRT'}>Gesperrt ({anzahl.GESPERRT})</SegmentedButtonItem>
       </SegmentedButton>
+      {mapping && <InitialeZuordnung onClose={() => setMapping(false)} onDone={() => users.reload()} />}
       {einzeln && <EinzelAnlage onClose={() => setEinzeln(false)} onDone={() => users.reload()} />}
       <AnalyticalTable
         columns={columns}
@@ -250,6 +254,16 @@ export function UsersPage() {
                 </MultiComboBox>
               </FieldBox>
             </FormGrid>
+            {mitTco && !edit.isNew && edit.id && (
+              <ZuordnungFelder benutzerId={edit.id} darf={mayEdit}
+                               onGeaendert={async () => {
+                                 // Zuordnung kann die Rolle „Mitglied“ ergänzen – Rollen im Dialog nachziehen, damit Sichern sie nicht wieder entfernt
+                                 const l = await api.get<User[]>('/api/admin/users');
+                                 const u = l.find((x) => x.id === edit.id);
+                                 if (u) setEdit((e) => (e ? { ...e, roles: u.roles } : e));
+                                 users.reload();
+                               }} />
+            )}
           </>
         )}
       </Dialog>

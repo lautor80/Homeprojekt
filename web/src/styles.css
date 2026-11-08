@@ -650,3 +650,5 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-ch__kopf { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 0.5rem; padding: 0.25rem 0 0.5rem; min-width: 0; }
 .portal-ch__kopf > ui5-title { min-width: 0; flex: 1 1 auto; }
 .portal-ch__knoepfe { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; margin-left: auto; }
+.portal-bz { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0.5rem 0.75rem; align-items: center; }
+@media (max-width: 600px) { .portal-bz { grid-template-columns: 1fr; } }

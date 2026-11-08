@@ -23,6 +23,7 @@ import {
   ausgetreteneSperren, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
 } from './selbst.js';
 import { ep3Anlegen } from '../platz/registrierung.js';
+import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
@@ -190,6 +191,28 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const a = r.angelegt[0];
     if (!a) throw new BusinessError(r.uebersprungen[0] ?? 'Kein Benutzer angelegt.');
     return { text: `Benutzer ${a.username} angelegt (Rolle Mitglied) – ${a.hinweis}.`, username: a.username, startkennwort: a.startkennwort, rolle: 'Mitglied' };
+  });
+
+  // ---------------------------------------------------------------- Administration → Benutzer: Zuordnung Mitglied / EP3-Kunde
+  const uid = z.object({ id: z.string().uuid() });
+  app.get('/mitglieder/benutzer/:id/zuordnung', { preHandler: requireAuth('core.users:display') }, async (req) => zuordnungLesen(DB, uid.parse(req.params).id));
+  app.put('/mitglieder/benutzer/:id/zuordnung', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { id } = uid.parse(req.params);
+    const b = z.object({ adrnr: z.string().nullish(), zuid: z.string().nullish(), rolleMitglied: z.boolean().default(true) }).parse(req.body);
+    const ziel = { ...(b.adrnr !== undefined ? { adrnr: b.adrnr || null } : {}), ...(b.zuid !== undefined ? { zuid: b.zuid || null } : {}), rolleMitglied: b.rolleMitglied };
+    return { text: await change(req, (tx) => zuordnungSetzen(tx, id, ziel), { action: 'BENUTZER_ZUORDNUNG' }) };
+  });
+  app.get('/mitglieder/zuordnung-suche', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { suche } = z.object({ suche: z.string().max(80).default('') }).parse(req.query);
+    return zuordnungSuchen(DB, suche);
+  });
+  app.get('/mitglieder/benutzer-mapping', { preHandler: requireAuth('core.users:edit') }, async () => mappingVorschlaege(DB));
+  app.post('/mitglieder/benutzer-mapping', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const b = z.object({
+      liste: z.array(z.object({ benutzerId: z.string().uuid(), adrnr: z.string().nullish(), zuid: z.string().nullish() })).min(1, 'Bitte mindestens eine Zuordnung wählen.'),
+      rolleMitglied: z.boolean().default(true),
+    }).parse(req.body);
+    return { text: await change(req, (tx) => mappingUebernehmen(tx, b.liste, b.rolleMitglied), { action: 'BENUTZER_MAPPING' }) };
   });
 
   // ---------------------------------------------------------------- Administration → Benutzer: Mitglieder als Benutzer anlegen

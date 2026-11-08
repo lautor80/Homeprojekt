@@ -269,3 +269,41 @@ test('Benutzer: Status direkt sperren, Einzelanlage aus Mitglied/EP3, Austritt s
   assert.ok(r3.gesperrt.includes('paula.portal'));
   assert.equal((await paula('GET', `${M}/meine`)).status, 401, 'Sitzung beendet');
 });
+
+test('Benutzer ↔ Mitglied/EP3: einzeln zuordnen und initiales Mapping', async () => {
+  // vorhandene Benutzer ohne Zuordnung (z. B. vor dem Portal angelegt)
+  for (const [u, n, e] of [['ines', 'Ines Initial', 'ines@example.org'], ['kai.k', 'Kunde, Kai', null]] as const) {
+    assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: n, email: e, password: 'start-passwort', roles: [] })).status, 200);
+  }
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email, eintritt) values ('0000000506', 'Ines', 'Initial', 'ines@example.org', '2023-01-01')`;
+  await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname) values ('66', 'kai.k', 'enabled', 'Kai', 'Kunde'), ('67', 'ines.ep3', 'enabled', 'Ines', 'Initial')`;
+  let r = await admin('GET', `${M}/benutzer-mapping`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const ines = r.body.find((v: { username: string }) => v.username === 'ines');
+  const kai = r.body.find((v: { username: string }) => v.username === 'kai.k');
+  assert.equal(ines.mitglied.adrnr, '0000000506');
+  assert.equal(ines.mitglied.grund, 'gleiche E-Mail');
+  assert.equal(ines.ep3.zuid, '67');
+  assert.equal(kai.mitglied, null);
+  assert.equal(kai.ep3.zuid, '66');
+  assert.equal(kai.ep3.grund, 'gleicher Benutzername');
+  r = await admin('POST', `${M}/benutzer-mapping`, { liste: [{ benutzerId: ines.benutzerId, adrnr: ines.mitglied.adrnr, zuid: ines.ep3.zuid }, { benutzerId: kai.benutzerId, zuid: '66' }], rolleMitglied: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /1 Mitglied\(er\) und 2 EP3-Kunde\(n\)/);
+  r = await admin('GET', `${M}/benutzer/${ines.benutzerId}/zuordnung`);
+  assert.equal(r.body.mitglied.adrnr, '0000000506');
+  assert.deepEqual([r.body.ep3.zuid, r.body.ep3.ueber], ['67', 'MITGLIED']);
+  assert.deepEqual((await sql`select role_id from core.user_roles where user_id = ${ines.benutzerId}`).map((x) => x.role_id), ['MITGLIED']);
+  r = await admin('GET', `${M}/benutzer/${kai.benutzerId}/zuordnung`);
+  assert.deepEqual([r.body.mitglied, r.body.ep3.ueber], [null, 'BENUTZER']);
+  // danach keine Vorschläge mehr für beide
+  r = await admin('GET', `${M}/benutzer-mapping`);
+  assert.ok(!r.body.some((v: { username: string }) => ['ines', 'kai.k'].includes(v.username)));
+  // einzeln ändern/entfernen; EP3-Kunde eines anderen Benutzers abgelehnt
+  r = await admin('PUT', `${M}/benutzer/${kai.benutzerId}/zuordnung`, { zuid: '67' });
+  assert.equal(r.status, 400);
+  r = await admin('PUT', `${M}/benutzer/${kai.benutzerId}/zuordnung`, { zuid: null });
+  assert.equal(r.status, 200);
+  assert.equal((await admin('GET', `${M}/benutzer/${kai.benutzerId}/zuordnung`)).body.ep3, null);
+  assert.equal((await paula('GET', `${M}/benutzer-mapping`)).status, 403);
+});
