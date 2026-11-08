@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { change, requireAuth } from '../../../../server/src/auth.js';
+import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { mitgliedDokumentPruefen } from '../dokumentfreigabe.js';
@@ -14,6 +14,9 @@ import {
 import { ART_TEXT, ARTEN, druckdatenLesen, unterlagePdf } from './pdf.js';
 import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, mailText, plPruefen, SPEICHERPFAD, unterlageAblegen } from './dokumente.js';
 import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
+import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
+import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
+import type { Verein } from '../verein.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -29,6 +32,37 @@ const txt = z.string().default('');
 /** Daten-URL oder Base64 → Buffer */
 const binaer = (s: string) => Buffer.from(s.replace(/^data:[^,]*;base64,/, ''), 'base64');
 
+// ---------------------------------------------------------------- Schutz der Bankdaten (siehe ../bankdaten.ts)
+type Detail = Awaited<ReturnType<typeof detailLesen>>;
+
+/** Detail ohne Bankdaten-Berechtigung: IBAN/BIC maskiert, freier Kontoinhaber-Text maskiert */
+function detailSchuetzen(d: Detail, s: Feldschutz): Detail & { bankKlar: boolean } {
+  if (s.klar) return { ...d, bankKlar: true };
+  const freitext = !!d.bank.abwkontoinh && !d.bank.adrnrkih;
+  return {
+    ...d, bankKlar: false,
+    bank: {
+      ...d.bank, iban: s.iban(d.bank.iban), bic: s.bic(d.bank.bic), abwkontoinh: s.text(d.bank.abwkontoinh),
+      kontoinhaber: freitext ? maskText(d.bank.kontoinhaber) : d.bank.kontoinhaber,
+      zahler: d.bank.zahler ? { ...d.bank.zahler, iban: s.iban(d.bank.zahler.iban) } : null,
+    },
+  };
+}
+
+/** Druckdaten für die Voransicht ohne Berechtigung: Bankverbindung maskiert (auch die des Zahlers) */
+function druckSchuetzen(d: Awaited<ReturnType<typeof druckdatenLesen>>, s: Feldschutz) {
+  if (s.klar) return d;
+  const bank = (x: Record<string, any>): Record<string, any> => ({ ...x, iban1: s.iban(x.iban1), bic1: s.bic(x.bic1), abwkontoinh: s.text(x.abwkontoinh) });
+  const freitext = !!leer(d.m.abwkontoinh) && !leer(d.m.adrnrkih);
+  return { ...d, m: bank(d.m), zahler: d.zahler ? bank(d.zahler) : null, kontoinhaber: freitext ? maskText(d.kontoinhaber) : d.kontoinhaber };
+}
+
+/** Dokument gehört zu einem Mitglied; Dokumente mit Bankdaten nur mit Berechtigung */
+async function dokFreigeben(req: FastifyRequest, v: Verein, id: number) {
+  const { typ } = await mitgliedDokumentPruefen(DB, v, id);
+  if (doktypMitBankdaten(typ)) bankdatenErforderlich(bankSchutz(req), `Das Dokument (${typ})`);
+}
+
 const kopfSchema = z.object({
   anrede: txt, vorname: txt, nachname: txt, strasse: txt, plz: txt, ort: txt, telefon: txt, mobil: txt, email: txt,
   geburtsdatum: datumOpt, eintritt: datumOpt, datenschutz: z.boolean().default(false), bildrechte: z.boolean().default(false),
@@ -43,6 +77,30 @@ const neuSchema = kopfSchema.omit({ eintritt: true }).extend({
   vertraege: z.array(z.object({ art: z.string().min(1), beginn: datumOpt, betrag: z.coerce.number(), turnus: txt })),
   antrag_docid: z.coerce.number().int().positive().nullish(),
 });
+
+/**
+ * Neuanlage mit maskierter IBAN/BIC (Benutzer ohne Bankdaten-Berechtigung, Vorbelegung aus Zahler oder
+ * Aufnahmeantrag): Der Klartext wird serverseitig aus derselben Quelle übernommen und nie an die
+ * Oberfläche gegeben. Eine selbst eingetippte IBAN ist nie maskiert und wird unverändert verwendet.
+ */
+async function maskierteBankdatenAufloesen(n: z.infer<typeof neuSchema>): Promise<void> {
+  if (!istMaskiert(n.iban) && !istMaskiert(n.bic)) return;
+  let quelle: { iban: string; bic: string } | null = null;
+  if (n.zahler_modus === 'BESTEHEND' && n.zahler_adrnr) {
+    const [z] = await DB`select iban1, bic1 from tco.mitglieder where adrnr = ${n.zahler_adrnr}`;
+    if (z && leer(z.iban1)) quelle = { iban: leer(z.iban1), bic: leer(z.bic1) };
+  }
+  if (!quelle && n.antrag_docid) {
+    const d = await plPruefen(await vereinLesen()).dokument(n.antrag_docid).catch(() => null);
+    if (d && leer(d.content)) {
+      const { antrag } = parse(String(d.content), await mapLesen(DB));
+      if (antrag.iban) quelle = { iban: antrag.iban, bic: antrag.bic };
+    }
+  }
+  if (!quelle) throw new BusinessError('Die IBAN ist maskiert und kann keiner Quelle zugeordnet werden – bitte die vollständige IBAN eingeben.');
+  if (istMaskiert(n.iban)) n.iban = quelle.iban;
+  if (istMaskiert(n.bic)) n.bic = quelle.bic;
+}
 
 export async function mitgliederRoutes(app: FastifyInstance) {
   const lesen = { preHandler: requireAuth(P_MG.display) };
@@ -60,8 +118,9 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.get('/mitglieder/auswahl', lesen, async (req) => {
     const q = z.object({ ohne: z.string().nullish() }).parse(req.query);
     const { arten, turnusse } = await vertragsarten(DB);
+    const sb = bankSchutz(req);
     return {
-      zahler: await zahlerAuswahl(DB, q.ohne ?? undefined), vtZahler: await vertragsZahler(DB), arten, turnusse,
+      zahler: (await zahlerAuswahl(DB, q.ohne ?? undefined)).map((z) => ({ ...z, iban: sb.iban(z.iban) })), vtZahler: await vertragsZahler(DB), arten, turnusse,
       zahlungsarten: ZAHLUNGSARTEN, zahlungsweisen: ZAHLUNGSWEISEN, unterlagen: ART_TEXT, paperless: plAktiv(await vereinLesen()),
     };
   });
@@ -73,7 +132,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- Objektseite
-  app.get('/mitglieder/m/:adrnr', lesen, async (req) => detailLesen(DB, pAdr.parse(req.params).adrnr));
+  app.get('/mitglieder/m/:adrnr', lesen, async (req) => detailSchuetzen(await detailLesen(DB, pAdr.parse(req.params).adrnr), bankSchutz(req)));
 
   app.put('/mitglieder/m/:adrnr/kopf', schreiben, async (req) => {
     const { adrnr: a } = pAdr.parse(req.params);
@@ -81,9 +140,12 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return { text: 'Stammdaten gesichert.' };
   });
 
-  app.put('/mitglieder/m/:adrnr/bank', schreiben, async (req) => {
+  // Bankverbindung ändern: Mitglieder pflegen UND Bankdaten ändern (setzt den Klartext voraus)
+  app.put('/mitglieder/m/:adrnr/bank', schreiben, async (req, reply) => {
+    if (!can(req, P_BANK.edit)) return reply.code(403).send({ message: `Keine Berechtigung (${P_BANK.edit}).` });
     const { adrnr: a } = pAdr.parse(req.params);
     const b = z.object({ zahlungsart: z.string(), zahlungsweise: txt, iban: txt, bic: txt, bank: txt, abwkontoinh: txt, adrnrkih: txt }).parse(req.body);
+    if ([b.iban, b.bic, b.abwkontoinh].some(istMaskiert)) throw new BusinessError('Maskierte Bankdaten können nicht gespeichert werden – bitte die vollständigen Werte eingeben.');
     await change(req, (tx) => bankSichern(tx, a, b));
     return { text: 'Bankverbindung gesichert.' };
   });
@@ -154,7 +216,9 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const m = await mitgliedLesen(DB, pAdr.parse(req.params).adrnr);
     const v = await vereinLesen();
     if (!plAktiv(v)) return { paperless: false, korrespondent: null, dokumente: [], soll: korrName(m) };
-    return { paperless: true, soll: korrName(m), ...await dokumenteLesen(v, m) };
+    const r = await dokumenteLesen(v, m);
+    const klar = bankSchutz(req).klar;
+    return { paperless: true, soll: korrName(m), ...r, dokumente: r.dokumente.map((x) => ({ ...x, gesperrt: !klar && doktypMitBankdaten(x.typ) })) };
   });
 
   app.get('/mitglieder/doktypen', lesen, async () => {
@@ -166,7 +230,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: docId }).parse(req.params);
     const v = await vereinLesen();
     const pl = plPruefen(v);
-    await mitgliedDokumentPruefen(DB, v, id);
+    await dokFreigeben(req, v, id);
     const d = await pl.download(id);
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
@@ -175,7 +239,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: docId }).parse(req.params);
     const v = await vereinLesen();
     const pl = plPruefen(v);
-    await mitgliedDokumentPruefen(DB, v, id);
+    await dokFreigeben(req, v, id);
     return (await pl.notizen(id)).map((n) => ({
       id: n.id, text: n.note, erstellt: n.created, von: typeof n.user === 'object' && n.user ? n.user.username ?? '' : '',
     }));
@@ -184,13 +248,17 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/dokument/:id/notizen', schreiben, async (req) => {
     const { id } = z.object({ id: docId }).parse(req.params);
     const b = z.object({ text: z.string().min(1, 'Bitte einen Text eingeben.').max(4000) }).parse(req.body);
-    await plPruefen(await vereinLesen()).notizAnlegen(id, `${b.text.trim()} (${benutzer(req)}, Vereinsportal)`);
+    const v = await vereinLesen();
+    await dokFreigeben(req, v, id);
+    await plPruefen(v).notizAnlegen(id, `${b.text.trim()} (${benutzer(req)}, Vereinsportal)`);
     return { text: 'Notiz an das Dokument angehängt.' };
   });
 
   app.post('/mitglieder/dokumente/links', lesen, async (req) => {
     const b = z.object({ ids: z.array(docId).min(1, 'Bitte mindestens ein Dokument markieren.').max(20) }).parse(req.body);
-    return freigabelinks(await vereinLesen(), b.ids);
+    const v = await vereinLesen();
+    for (const id of b.ids) await dokFreigeben(req, v, id);
+    return freigabelinks(v, b.ids);
   });
 
   app.post('/mitglieder/m/:adrnr/dokumente', { ...schreiben, bodyLimit: 30 * 1024 * 1024 }, async (req) => {
@@ -206,7 +274,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- Unterlagen / Kommunikation
   app.get('/mitglieder/m/:adrnr/unterlage/:art', lesen, async (req, reply) => {
     const p = z.object({ adrnr, art }).parse(req.params);
-    const d = await druckdatenLesen(DB, p.adrnr);
+    const d = druckSchuetzen(await druckdatenLesen(DB, p.adrnr), bankSchutz(req));
     const pdf = await unterlagePdf(await vereinLesen(), p.art, d);
     const name = `${ART_TEXT[p.art]}_${leer(d.m.nachname)}_${leer(d.m.vorname)}.pdf`;
     return reply.type('application/pdf').header('content-disposition', `inline; filename="${encodeURIComponent(name)}"`).send(pdf);
@@ -228,6 +296,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const v = await vereinLesen();
     const k = await kontaktLesen(DB, a);
     if (!k) throw new BusinessError('Mitglied nicht gefunden.');
+    for (const id of b.ids) await dokFreigeben(req, v, id);
     const links = b.ids.length ? await freigabelinks(v, b.ids) : [];
     const { betreff, text } = mailText(v, b.art, k.vorname, links);
     const [p] = await DB`select kanal from tco.kommpref where adrnr = ${a}`;
@@ -248,7 +317,11 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- Neuanlage
-  app.get('/mitglieder/neu/zahler/:adrnr', lesen, async (req) => zahlerVorschlag(DB, pAdr.parse(req.params).adrnr));
+  app.get('/mitglieder/neu/zahler/:adrnr', lesen, async (req) => {
+    const r = await zahlerVorschlag(DB, pAdr.parse(req.params).adrnr);
+    const sb = bankSchutz(req);
+    return { ...r, iban: sb.iban(r.iban), bic: sb.bic(r.bic) };
+  });
 
   /** Aufnahmeantrag aus Paperless (Dok-Nr.) oder als PDF (wird zuerst nach Paperless übertragen) lesen */
   app.post('/mitglieder/neu/antrag', { ...schreiben, bodyLimit: 30 * 1024 * 1024 }, async (req) => {
@@ -277,14 +350,17 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     if (vorh) hinweise.unshift(`Mitglied existiert bereits: ${condense(`${vorh.vorname ?? ''} ${vorh.nachname ?? ''}`)} (Adressnr. ${Number(vorh.adrnr)}) – Anlegen gesperrt.`);
     if (!vart.length) hinweise.push('Mitgliedschaft nicht eindeutig erkannt – bitte Vertrag in der Tabelle auswählen.');
     const eintritt = String(d.created_date ?? d.created ?? '').slice(0, 10) || heute();
+    const sb = bankSchutz(req);
     return {
-      docid: id, titel: d.title ?? '', antrag, vart: vart.map((x) => x.art), zahler, existiert: !!vorh, hinweise,
+      docid: id, titel: d.title ?? '', vart: vart.map((x) => x.art), zahler, existiert: !!vorh, hinweise,
+      antrag: { ...antrag, iban: sb.iban(antrag.iban), bic: sb.bic(antrag.bic), kontoinhaber: sb.text(antrag.kontoinhaber) },
       eintritt, sepa_datum: antrag.antragsdatum ?? eintritt,
     };
   });
 
   app.post('/mitglieder/neu', schreiben, async (req) => {
     const n = neuSchema.parse(req.body);
+    await maskierteBankdatenAufloesen(n);
     const r = await change(req, (tx) => mitgliedNeu(tx, n), { action: 'MITGLIED_NEU' });
     const warnungen: string[] = [];
     if (n.antrag_docid) {

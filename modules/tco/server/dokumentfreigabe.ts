@@ -1,6 +1,6 @@
 import { BusinessError } from '../../../server/src/errors.js';
 import { liste, paperless, type Db, type Verein } from './verein.js';
-import { korrName } from './mitglieder/dokumente.js';
+import { normName } from './mitglieder/logik.js';
 
 /**
  * Zugriffsschutz für Paperless-Dokumente: Eine Dokument-ID darf nur durchgereicht werden,
@@ -35,12 +35,19 @@ export async function fiDokumentPruefen(db: Db, v: Verein, id: number): Promise<
   throw verweigert();
 }
 
-/** Mitglieder: Dokumente, deren Korrespondent ein Mitglied/Zahler des Vereins ist */
-export async function mitgliedDokumentPruefen(db: Db, v: Verein, id: number): Promise<void> {
+/**
+ * Mitglieder: Dokumente, deren Korrespondent ein Mitglied/Zahler des Vereins ist.
+ * Liefert den Dokumenttyp (für die Prüfung auf Bankdaten).
+ */
+export async function mitgliedDokumentPruefen(db: Db, v: Verein, id: number): Promise<{ typ: string }> {
   const pl = paperless(v);
   const d = await pl.dokument(id).catch(() => null);
   if (!d?.correspondent) throw verweigert();
-  const name = await pl.korrespondentName(Number(d.correspondent));
+  // Namensvergleich wie korrespondentFinden (Umlaute, Reihenfolge Nachname/Vorname, Anrede)
+  const name = normName(await pl.korrespondentName(Number(d.correspondent)));
   const personen = await db`select nachname, vorname from tco.mitglieder`;
-  if (!personen.some((m) => korrName(m) === name)) throw verweigert();
+  const passt = (m: Record<string, any>) => [`${m.nachname ?? ''} ${m.vorname ?? ''}`, `${m.vorname ?? ''} ${m.nachname ?? ''}`].some((x) => normName(x) === name);
+  if (!name || !personen.some(passt)) throw verweigert();
+  const typ = d.document_type ? (await pl.dokumenttypen()).find((t) => t.id === Number(d.document_type))?.name ?? '' : '';
+  return { typ };
 }

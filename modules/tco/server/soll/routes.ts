@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
+import type { Feldschutz } from '../../../../server/src/schutz.js';
+import { bankdatenErforderlich, bankSchutz } from '../bankdaten.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { heute } from '../format.js';
@@ -21,6 +23,18 @@ const sollper = z.string().regex(/^\d{4}(0[1-9]|1[0-2])$/, 'Bitte einen Sollmona
 const laufid = z.object({ id: z.string().regex(/^\d{1,10}$/) });
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';
 const pad = (id: string) => id.padStart(10, '0');
+
+/** Bankdaten der Zahler ohne Berechtigung maskieren (Positionen, Lastschriften, Meldungstexte) */
+function schuetzen<T extends Record<string, any>>(rows: T[], s: Feldschutz): T[] {
+  if (s.klar) return rows;
+  return rows.map((r) => ({
+    ...r,
+    ...('iban' in r ? { iban: s.iban(r.iban) } : {}),
+    ...('bic' in r ? { bic: s.bic(r.bic) } : {}),
+    ...('meldung' in r && r.meldung ? { meldung: s.freitext(r.meldung) } : {}),
+    ...('text' in r && typeof r.text === 'string' ? { text: s.freitext(r.text) } : {}),
+  }));
+}
 
 /** Sollmonat-Vorbelegung: bis zum 15. der laufende Monat, danach der Folgemonat */
 function sollperVorschlag(): string {
@@ -57,20 +71,28 @@ export async function sollRoutes(app: FastifyInstance) {
   app.post('/soll/vorschlag', { preHandler: requireAuth(P_SOLL.display) }, async (req) => {
     const b = z.object({ sollper, mitMb: z.boolean(), mitJt: z.boolean(), faellig: datum.nullish() }).parse(req.body);
     const v = await vorschlag(DB, b.sollper, b.mitMb, b.mitJt, b.faellig ?? null);
-    return { ...v, tx: lastschriften(v.pos, null) };
+    const sb = bankSchutz(req);
+    return { ...v, pos: schuetzen(v.pos, sb), tx: schuetzen(lastschriften(v.pos, null), sb), bankKlar: sb.klar };
   });
 
   app.post('/soll/laeufe', { preHandler: requireAuth(P_SOLL.edit) }, async (req) => {
     const b = z.object({ sollper, mitMb: z.boolean(), mitJt: z.boolean(), faellig: datum, ohne: z.array(z.string()).default([]) }).parse(req.body);
     const cfg = await konfigLesen(DB, await vereinLesen());
     const r = await change(req, (tx) => laufErzeugen(tx, cfg, b, benutzer(req)), { action: 'SOLLSTELLUNG' });
-    if (!r.laufid) return { ok: false, meldungen: r.meldungen, text: 'Die Lastschriftdatei wurde nicht erzeugt. Details siehe „Prüfmeldungen“.' };
-    return { ok: true, laufid: r.laufid, meldungen: r.meldungen, text: `Lauf ${Number(r.laufid)} erzeugt – Datei wird heruntergeladen.` };
+    const meldungen = schuetzen(r.meldungen as Record<string, any>[], bankSchutz(req));
+    if (!r.laufid) return { ok: false, meldungen, text: 'Die Lastschriftdatei wurde nicht erzeugt. Details siehe „Prüfmeldungen“.' };
+    return { ok: true, laufid: r.laufid, meldungen, text: `Lauf ${Number(r.laufid)} erzeugt – Datei wird heruntergeladen.` };
   });
 
-  app.get('/soll/laeufe/:id', { preHandler: requireAuth(P_SOLL.display) }, async (req) => laufLesen(DB, pad(laufid.parse(req.params).id)));
+  app.get('/soll/laeufe/:id', { preHandler: requireAuth(P_SOLL.display) }, async (req) => {
+    const l = await laufLesen(DB, pad(laufid.parse(req.params).id));
+    const sb = bankSchutz(req);
+    return { ...l, pos: schuetzen(l.pos as unknown as Record<string, any>[], sb), tx: schuetzen(l.tx, sb), bankKlar: sb.klar };
+  });
 
+  // Die SEPA-Datei enthält alle IBANs im Klartext → zusätzlich Bankdaten-Berechtigung
   app.get('/soll/laeufe/:id/datei', { preHandler: requireAuth(P_SOLL.edit) }, async (req, reply) => {
+    bankdatenErforderlich(bankSchutz(req), 'Die SEPA-Lastschriftdatei');
     const id = pad(laufid.parse(req.params).id);
     const [k] = await DB`select sollper, xml, status from tco.soll_kopf where laufid = ${id}`;
     if (!k?.xml) throw new BusinessError('Zu diesem Lauf ist keine Datei gespeichert.');

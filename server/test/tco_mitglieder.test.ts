@@ -80,7 +80,7 @@ const server = http.createServer((req, res) => {
       const d = mock.docs.get(id);
       if (!d) return send(404, {});
       if (req.method === 'PATCH') { Object.assign(d.meta, JSON.parse(body)); return send(200, {}); }
-      return send(200, { id, title: d.title, custom_fields: [], versions: [{ id }, ...d.versions.map((v) => ({ id: v }))] });
+      return send(200, { id, title: d.title, custom_fields: [], correspondent: d.meta.correspondent ?? null, document_type: d.meta.document_type ?? null, versions: [{ id }, ...d.versions.map((v) => ({ id: v }))] });
     }
     send(404, { u });
   });

@@ -2,9 +2,26 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../db.js';
 import { can, requireAuth } from '../auth.js';
-import { auditObjects } from '../modules.js';
+import { auditObjects, sensitiveFields } from '../modules.js';
+import { maskieren } from '../schutz.js';
 
-async function loadDocs(where: { type?: string; key?: string; username?: string; from?: string; to?: string; limit: number }) {
+/**
+ * Maskierung geschützter Spalten: je Tabelle die Felder, deren Klartext der Benutzer nicht sehen darf.
+ * Die Belege selbst bleiben unverändert gespeichert (Revisionssicherheit).
+ */
+function maskenFuer(req: FastifyRequest) {
+  const m = new Map<string, Map<string, 'iban' | 'bic' | 'text'>>();
+  for (const d of sensitiveFields()) {
+    if (can(req, d.permission)) continue;
+    const t = m.get(d.table) ?? new Map();
+    for (const [f, art] of Object.entries(d.fields)) t.set(f, art);
+    m.set(d.table, t);
+  }
+  return m;
+}
+
+async function loadDocs(req: FastifyRequest, where: { type?: string; key?: string; username?: string; from?: string; to?: string; limit: number }) {
+  const masken = maskenFuer(req);
   const headers = await sql`
     select h.id, h.object_type as "objectType", h.object_key as "objectKey", h.table_name as "tableName",
            h.change_ind as "changeInd", h.action, h.reason, h.username, h.changed_at as "changedAt"
@@ -22,11 +39,15 @@ async function loadDocs(where: { type?: string; key?: string; username?: string;
     select header_id as "headerId", field, old_value as "oldValue", new_value as "newValue"
       from core.change_item where header_id = any(${headers.map((h) => h.id)})
      order by id`;
+  const tabelle = new Map(headers.map((h) => [String(h.id), String(h.tableName)]));
   const byHeader = new Map<string, unknown[]>();
   for (const i of items) {
     const k = String(i.headerId);
     if (!byHeader.has(k)) byHeader.set(k, []);
-    byHeader.get(k)!.push({ field: i.field, oldValue: i.oldValue, newValue: i.newValue });
+    const art = masken.get(tabelle.get(k) ?? '')?.get(String(i.field));
+    byHeader.get(k)!.push(art
+      ? { field: i.field, oldValue: maskieren(i.oldValue, art), newValue: maskieren(i.newValue, art), masked: true }
+      : { field: i.field, oldValue: i.oldValue, newValue: i.newValue });
   }
   return headers.map((h) => ({ ...h, id: String(h.id), items: byHeader.get(String(h.id)) ?? [] }));
 }
@@ -50,13 +71,13 @@ export async function auditRoutes(app: FastifyInstance) {
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       limit: z.coerce.number().int().min(1).max(2000).default(500),
     }).parse(req.query);
-    return loadDocs({ type: q.objectType, key: q.objectKey, username: q.username, from: q.from, to: q.to, limit: q.limit });
+    return loadDocs(req, { type: q.objectType, key: q.objectKey, username: q.username, from: q.from, to: q.to, limit: q.limit });
   });
 
   /** Historie eines einzelnen Objekts – Button "Änderungshistorie" in den Fachanwendungen. */
   app.get('/api/audit/object/:type/:key', { preHandler: requireAuth() }, async (req, reply) => {
     const { type, key } = z.object({ type: z.string(), key: z.string() }).parse(req.params);
     if (!mayDisplayObject(req, type)) return reply.code(403).send({ message: 'Keine Berechtigung für diese Historie.' });
-    return loadDocs({ type, key, limit: 1000 });
+    return loadDocs(req, { type, key, limit: 1000 });
   });
 }

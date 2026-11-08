@@ -9,6 +9,7 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { ObjectHeader } from '@core/components/ObjectHeader';
 import { dat, eur } from '../util';
@@ -28,6 +29,7 @@ export const Raster = ({ children }: { children: ReactNode }) => (
 );
 
 export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: string; edit: boolean; onChanged: () => void; onOpen: (a: string) => void }) {
+  const can = useCan();
   const [d, setD] = useState<Detail | null>(null);
   const [aw, setAw] = useState<Auswahl | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,8 +109,14 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
           <Toolbar design="Transparent">
             <Title level="H5">Bankverbindung</Title>
             <ToolbarSpacer />
-            {edit && <Button icon="edit" onClick={() => setDlg('bank')}>Bearbeiten</Button>}
+            {edit && can('tco.bankdaten:edit') && <Button icon="edit" onClick={() => setDlg('bank')}>Bearbeiten</Button>}
           </Toolbar>
+          {!d.bankKlar && (
+            <MessageStrip hideCloseButton design="Information" style={{ marginBottom: '0.5rem' }}>
+              IBAN, BIC und abweichender Kontoinhaber werden maskiert angezeigt. Für den Klartext ist die Berechtigung
+              „Bankdaten von Personen“ (Rollenpflege → Datenschutz) nötig.
+            </MessageStrip>
+          )}
           <Raster>
             <Feld label="Zahlungsart">{t(d.bank.zahlungsart_txt)}</Feld>
             <Feld label="Zahlungsweise">{t(d.bank.zahlungsweise_txt)}</Feld>

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
+import type { SensitiveFieldDef } from './schutz.js';
 
 export interface AuditObjectDef {
   type: string;
@@ -27,6 +28,11 @@ export interface ServerModule {
    * die Historie eines einzelnen Objekts sehen darf (Button "Änderungshistorie").
    */
   auditObjects?: AuditObjectDef[];
+  /**
+   * Geschützte Spalten: In Änderungsbelegen werden alte/neue Werte ohne die angegebene
+   * Berechtigung maskiert (z. B. IBAN). Siehe server/src/schutz.ts.
+   */
+  sensitiveFields?: SensitiveFieldDef[];
   /** Absoluter Pfad zum Ordner mit *.sql-Migrationen (alphabetisch ausgeführt). */
   migrationsDir?: string;
   /** Registriert die Routen. Prefix /api/m/<id> wird automatisch gesetzt. */

@@ -12,6 +12,7 @@ import {
   belegEntfernen, belegeZuordnen, notizAnlegen, rechnungVerknuepfen, stornieren, umsaetzeBuchen, type Umsatz,
 } from './buchen.js';
 import { bankAbgleich } from './bank.js';
+import { bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
 
 export const P_FI = {
@@ -141,7 +142,10 @@ export async function fiRoutes(app: FastifyInstance) {
     }
     const buf = Buffer.from(b.data.replace(/^data:[^,]*,/, ''), 'base64');
     const r = await bankAbgleich(DB, b.konto, buf, offen);
-    return { ...r, hinweise: [...r.hinweise, ...hinweise] };
+    // IBANs Dritter im Verwendungszweck nur mit Bankdaten-Berechtigung im Klartext (eigene Konto-IBAN bleibt)
+    const sb = bankSchutz(req);
+    const umsaetze = sb.klar ? r.umsaetze : r.umsaetze.map((u) => ({ ...u, zweck: sb.freitext(u.zweck), buchungsText: sb.freitext(u.buchungsText) }));
+    return { ...r, umsaetze, hinweise: [...r.hinweise, ...hinweise] };
   });
 
   app.post('/fi/buchen', { preHandler: requireAuth(P_FI.buchen) }, async (req) => {

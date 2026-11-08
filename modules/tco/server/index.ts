@@ -24,6 +24,7 @@ import { dashboardRoutes, P_DASH } from './dashboard/routes.js';
 import { analyseRoutes, P_AN } from './analyse/routes.js';
 import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
+import { BANK_FELDER, P_BANK } from './bankdaten.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -206,7 +207,7 @@ const tco: ServerModule = {
     { area: 'Verein', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { area: 'Verein', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
     { area: 'Verein', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
-    { area: 'Verein', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Bank, Verträge, Austritt, Unterlagen ablegen und versenden' },
+    { area: 'Verein', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
     { area: 'Verein', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
     { area: 'Verein', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
     { area: 'Verein', app: 'Beiträge', id: P_BEITRAEGE.display, text: 'Beitragsstamm anzeigen' },
@@ -235,7 +236,13 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
+    // ---------------------------------------------------------------- Datenschutz (Feldberechtigungen)
+    { area: 'Datenschutz', app: 'Bankdaten von Personen', id: P_BANK.display,
+      text: 'IBAN, BIC und abweichenden Kontoinhaber im Klartext sehen (sonst maskiert) – auch in Unterlagen, Änderungsbelegen und der SEPA-Datei' },
+    { area: 'Datenschutz', app: 'Bankdaten von Personen', id: P_BANK.edit,
+      text: 'Bankverbindung von Mitgliedern und Zahlern ändern', requires: [P_MG.edit] },
   ],
+  sensitiveFields: BANK_FELDER,
   auditObjects: [
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },
     { type: 'BUCHUNG', text: 'Hallenbuchung', permission: P_HALLE.display },

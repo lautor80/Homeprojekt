@@ -165,6 +165,7 @@ function Meldungen({ m }: { m: Meldung[] }) {
 
 // ---------------------------------------------------------------- Neue Sollstellung
 function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; onZurueck: () => void; onErzeugt: (id: string, text: string) => void }) {
+  const bankKlar = useCan()('tco.bankdaten:display');
   const [sollper, setSollper] = useState(init?.vorschlag.sollper ?? '');
   const [faellig, setFaellig] = useState(init?.vorschlag.faellig ?? '');
   const [mitMb, setMitMb] = useState(init?.vorschlag.mitMb ?? false);
@@ -195,7 +196,9 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
       const r = await api.post<{ ok: boolean; laufid?: string; meldungen: Meldung[]; text: string }>(`${S}/laeufe`, { sollper, faellig, mitMb, mitJt, ohne: [...ohne] });
       setMeldungen(r.meldungen);
       if (!r.ok) { setError(r.text); setTab('msg'); return; }
-      await download(`${S}/laeufe/${Number(r.laufid)}/datei`, `TCO_Sollstellung_${Number(r.laufid)}_${sollper}.xml`);
+      // Die SEPA-Datei enthält die IBANs im Klartext – Download nur mit Bankdaten-Berechtigung
+      if (bankKlar) await download(`${S}/laeufe/${Number(r.laufid)}/datei`, `TCO_Sollstellung_${Number(r.laufid)}_${sollper}.xml`);
+      else r.text += ' Die Datei kann nur mit der Berechtigung „Bankdaten von Personen“ heruntergeladen werden.';
       const warn = r.meldungen.filter((m) => m.schwere === 'W').length;
       onErzeugt(r.laufid!, r.text + (warn ? ` ${warn} Warnung(en) – siehe Lauf.` : ''));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -261,6 +264,7 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
 function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => void }) {
   const can = useCan();
   const edit = can('tco.soll:edit');
+  const bankKlar = can('tco.bankdaten:display');
   const [l, setL] = useState<{ kopf: Lauf & { msgid: string; erzeit: string }; pos: Pos[]; tx: Tx[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [storno, setStorno] = useState(false);
@@ -288,7 +292,7 @@ function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => vo
              actions={<>
                <Button icon="nav-back" onClick={onZurueck}>Zurück</Button>
                <Button icon="print" onClick={() => setPdf(true)}>Druckvorschau</Button>
-               {edit && k?.status !== 'S' && <Button icon="download" onClick={() => download(`${S}/laeufe/${nr}/datei`, `TCO_Sollstellung_${nr}_${k?.sollper}.xml`).catch((e) => setError(e.message))}>Datei herunterladen</Button>}
+               {edit && k?.status !== 'S' && <Button icon="download" disabled={!bankKlar} tooltip={bankKlar ? undefined : 'Die SEPA-Datei enthält IBANs im Klartext – Berechtigung „Bankdaten von Personen“ nötig'} onClick={() => download(`${S}/laeufe/${nr}/datei`, `TCO_Sollstellung_${nr}_${k?.sollper}.xml`).catch((e) => setError(e.message))}>Datei herunterladen</Button>}
                {edit && k?.status === 'E' && <Button design="Negative" icon="undo" onClick={() => setStorno(true)}>Stornieren</Button>}
                <ChangeHistoryButton objectType="SOLLSTELLUNG" objectKey={laufid} />
              </>}>

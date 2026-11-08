@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, FileUploader, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Title,
+  AnalyticalTable, Button, CheckBox, DatePicker, FileUploader, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -181,8 +181,17 @@ export function NeuDialog({ onClose }: { onClose: (adrnr: string | null, text?: 
           <TextField label="PLZ Zahler" value={v.z_plz} onChange={f('z_plz')} />
           <TextField label="Ort Zahler" value={v.z_ort} onChange={f('z_ort')} />
         </>)}
-        {ls && <TextField label="IBAN" required value={v.iban} onChange={f('iban')} />}
-        {ls && <TextField label="BIC" value={v.bic} onChange={f('bic')} />}
+        {ls && (v.iban.includes('•')
+          ? (
+            <FieldBox label="IBAN (übernommen, maskiert)">
+              <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+                <Text title="Die vollständige IBAN wird beim Anlegen serverseitig aus dem Zahler bzw. Aufnahmeantrag übernommen.">{v.iban}</Text>
+                <Button design="Transparent" icon="edit" onClick={() => setV((o) => ({ ...o, iban: '', bic: '' }))}>Andere IBAN eingeben</Button>
+              </FlexBox>
+            </FieldBox>
+          )
+          : <TextField label="IBAN" required value={v.iban} onChange={f('iban')} />)}
+        {ls && <TextField label="BIC" value={v.bic} onChange={f('bic')} readonly={v.bic.includes('•')} />}
         {ls && <TextField label="Kreditinstitut" value={v.bank} onChange={f('bank')} />}
         {ls && <Datum label="Datum SEPA-Mandat" value={v.sepa_datum} onChange={f('sepa_datum')} />}
         {ls && (

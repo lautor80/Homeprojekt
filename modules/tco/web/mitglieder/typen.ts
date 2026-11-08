@@ -30,6 +30,8 @@ export interface Sepa {
 }
 export interface Detail {
   mitglied: Mitglied; titel: string; bank: Bank; trainer: boolean; zuid: string; kanal: string;
+  /** false = Bankdaten kommen maskiert (Berechtigung tco.bankdaten:display fehlt) */
+  bankKlar: boolean;
   familie: Person[]; vertraege: Vertrag[]; sepa: Sepa[];
   schluessel: { counter: string; ausgabe: string | null; ausgabebeleg: string | null; ruecknahme: string | null; ruecknahmebeleg: string | null }[];
   notizen: { notiz_id: string; erstellt_am: string; erstellt_von: string | null; notiz: string }[];
@@ -39,4 +41,4 @@ export interface Auswahl {
   zahler: { adrnr: string; text: string; iban: string }[]; vtZahler: { adrnr: string; text: string }[]; arten: VertragsArt[]; turnusse: string[];
   zahlungsarten: Record<string, string>; zahlungsweisen: Record<string, string>; unterlagen: Record<string, string>; paperless: boolean;
 }
-export interface Dok { id: number; titel: string; erstellt: string; typ: string; notizen: number; datei: string; mime: string }
+export interface Dok { id: number; titel: string; erstellt: string; typ: string; notizen: number; datei: string; mime: string; /** enthält Bankdaten, Berechtigung fehlt */ gesperrt?: boolean }

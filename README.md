@@ -114,6 +114,23 @@ Regeln: Beträge rechtsbündig mit `eur()`, Datum mit `dat()`; Status immer als 
 Negative/Information), nie als freie Farbe; Diagramme als SVG mit `--sapChart_OrderedColor_1…11`; Texte Deutsch
 mit den Fachbegriffen der SAP-App. Hell/Dunkel schaltet der Benutzer im Benutzermenü um (`web/src/theme.ts`).
 
+## Sensible Daten (Feldberechtigungen)
+
+Sensible Felder verlassen den Server ohne passende Berechtigung **nur maskiert** – in Listen, Detailseiten,
+PDF-Voransichten, Exporten und Änderungsbelegen. Die Maskierung passiert serverseitig (`server/src/schutz.ts`);
+die Oberfläche zeigt nur, was sie bekommt.
+
+| Berechtigung | Wirkung |
+|---|---|
+| `tco.bankdaten:display` | IBAN, BIC und abweichender Kontoinhaber von Mitgliedern/Zahlern/Lastschriftpositionen im Klartext; Download der SEPA-Datei; Öffnen/Versenden von Paperless-Dokumenten mit Bankdaten (Aufnahmeantrag, Mitgliederinformation, SEPA-Mandat). Ohne: `DE••••••••••••••••3000`, `COBA•••••••`, `E•••• B•••••••` |
+| `tco.bankdaten:edit` | Bankverbindung ändern (setzt den Klartext und „Mitglieder pflegen“ voraus) |
+
+Weitere Regeln: maskierte Eingaben werden nie gespeichert (Neuanlage übernimmt eine maskiert vorbelegte IBAN
+serverseitig aus Zahler bzw. Aufnahmeantrag); Änderungsbelege bleiben unverändert gespeichert und werden nur bei
+der Anzeige maskiert (auch für `core.audit:display`); die eigenen Vereinskonten sind keine Personendaten und
+nicht maskiert. Neue geschützte Felder: im Modul `sensitiveFields` (für Änderungsbelege) deklarieren und in den
+Routen `feldschutz(req, permission)` anwenden.
+
 ## Neues Modul anlegen (z. B. `transport`)
 
 Vorlage ist `modules/beispiel` (Kontakte mit Liste, Objektseite, Löschen mit Begründung, PDF, Historie).

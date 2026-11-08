@@ -1,6 +1,7 @@
 import { modulAktiv } from './config.js';
 import type { AuditObjectDef, ServerModule } from './module.js';
 import { corePermissions, gliedern, type PermissionGroup } from './permissions.js';
+import type { SensitiveFieldDef } from './schutz.js';
 
 // ---------------------------------------------------------------------------
 // Verfügbare Fachmodule. Neues Modul: hier importieren und eintragen.
@@ -35,4 +36,9 @@ const coreAuditObjects: AuditObjectDef[] = [
 
 export function auditObjects(): AuditObjectDef[] {
   return [...coreAuditObjects, ...activeModules().flatMap((m) => m.auditObjects ?? [])];
+}
+
+/** Geschützte Spalten aller aktiven Module (für die Maskierung der Änderungsbelege) */
+export function sensitiveFields(): SensitiveFieldDef[] {
+  return activeModules().flatMap((m) => m.sensitiveFields ?? []);
 }

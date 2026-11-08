@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, FileUploader, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
+  AnalyticalTable, Button, CheckBox, FileUploader, Icon, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -30,16 +30,25 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm }: {
   const rows = (d?.dokumente ?? []).filter((x) => !jahr || x.erstellt.startsWith(jahr));
   const istPdf = (x: Dok) => x.mime === 'application/pdf' || /\.pdf$/i.test(x.datei) || !x.datei;
   const oeffnen = (x: Dok) => (istPdf(x) ? setAnsicht(x) : download(`${MG}/dokument/${x.id}/datei`, x.datei).catch((e) => onError(e.message)));
+  const gesperrt = 'Enthält Bankdaten – Öffnen und Versenden nur mit der Berechtigung „Bankdaten von Personen“';
   const toggle = (id: number, an: boolean) => onSel(an ? [...new Set([...sel, id])] : sel.filter((x) => x !== id));
   const columns: AnalyticalTableColumnDefinition[] = [
-    { Header: '', id: 'sel', width: 50, Cell: ({ row }: Cell) => <CheckBox checked={sel.includes(row.original.id)} onChange={(e) => toggle(row.original.id, e.target.checked)} /> },
-    { Header: 'Titel', accessor: 'titel', minWidth: 200, Cell: ({ row, value }: Cell) => <Link onClick={() => oeffnen(row.original)}>{value}</Link> },
+    {
+      Header: '', id: 'sel', width: 50,
+      Cell: ({ row }: Cell) => <CheckBox disabled={row.original.gesperrt} checked={sel.includes(row.original.id)} onChange={(e) => toggle(row.original.id, e.target.checked)} />,
+    },
+    {
+      Header: 'Titel', accessor: 'titel', minWidth: 200,
+      Cell: ({ row, value }: Cell) => (row.original.gesperrt
+        ? <span title={gesperrt} className="portal-row"><Icon name="locked" style={{ width: '0.875rem', height: '0.875rem', color: 'var(--sapContent_LabelColor)' }} />{value}</span>
+        : <Link onClick={() => oeffnen(row.original)}>{value}</Link>),
+    },
     { Header: 'Dokumenttyp', accessor: 'typ', minWidth: 150 },
     { Header: 'Datum', accessor: 'erstellt', width: 105, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Dok-Nr.', accessor: 'id', width: 85, hAlign: 'End' },
     {
       Header: 'Notizen', accessor: 'notizen', width: 100,
-      Cell: ({ row, value }: Cell) => <Button design="Transparent" icon="notes" onClick={() => setNotizen(row.original)}>{String(value)}</Button>,
+      Cell: ({ row, value }: Cell) => <Button design="Transparent" icon="notes" disabled={row.original.gesperrt} onClick={() => setNotizen(row.original)}>{String(value)}</Button>,
     },
   ];
 
