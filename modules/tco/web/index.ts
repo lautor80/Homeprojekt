@@ -20,6 +20,7 @@ import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
 import { PlatzBuchen } from './platz/PlatzBuchen';
 import { Platzverwaltung } from './platz/Platzverwaltung';
+import { Serienbuchung } from './platz/Serienbuchung';
 import { api } from '@core/api';
 import type { TileKpi } from '@core/platform';
 import { H, TCO, eur } from './util';
@@ -77,6 +78,7 @@ const mod: WebModule = {
             { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
             { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
+            { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
             { text: 'Platzverwaltung', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
           ],
         },
@@ -106,6 +108,7 @@ const mod: WebModule = {
     { path: '/tco/hallenpreise', component: Hallenpreise, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
     { path: '/tco/platzverwaltung', component: Platzverwaltung, permission: 'tco.platz:admin' },
+    { path: '/tco/serienbuchung', component: Serienbuchung, permission: 'tco.platz:serie' },
     { path: '/tco/sollstellung', component: Sollstellung, permission: 'tco.soll:display' },
     { path: '/tco/jugendtraining', component: Jugendtraining, permission: 'tco.jt:display' },
     { path: '/tco/clubhaus', component: Clubhaus, permission: 'tco.clubhaus:display' },
@@ -135,6 +138,7 @@ const mod: WebModule = {
     { text: 'Hallenpreise', subtitle: 'Produkte und Preismatrix', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display', kpi: kpiHalle },
     { text: 'Platz buchen', subtitle: 'Freiplätze und Halle – eigene Buchungen mit Preisen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
+    { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },

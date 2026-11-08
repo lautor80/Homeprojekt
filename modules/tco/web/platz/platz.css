@@ -107,3 +107,34 @@
   border-left: 0.25rem solid var(--sapContent_LabelColor) !important; box-shadow: none !important; opacity: 0.85;
 }
 .portal-pb__vorbei--ganz { align-items: center; }
+
+/* Serienbuchung (Hallenwart) */
+.portal-sb__kombis { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.5rem; margin-top: 0.75rem; }
+.portal-sb__kombi {
+  display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.75rem; text-align: left; cursor: pointer;
+  font: inherit; color: var(--sapTextColor); background: var(--sapGroup_ContentBackground, #fff);
+  border: 1px solid var(--sapList_BorderColor); border-left: 0.25rem solid var(--sapPositiveElementColor, #188918);
+  border-radius: var(--portal-radius, 0.75rem);
+}
+.portal-sb__kombi > span { flex: 1; min-width: 0; }
+.portal-sb__kombi small { color: var(--sapContent_LabelColor); }
+.portal-sb__kombi ui5-icon { color: var(--sapPositiveElementColor, #188918); flex: none; }
+.portal-sb__kombi--teil { border-left-color: var(--sapCriticalElementColor, #e76500); }
+.portal-sb__kombi--teil ui5-icon { color: var(--sapCriticalElementColor, #e76500); }
+.portal-sb__kombi:hover { background: var(--sapList_Hover_Background, #eaecee); }
+.portal-sb__kombi--aktiv { background: var(--sapList_SelectionBackgroundColor, #ebf8ff); border-color: var(--sapButton_Emphasized_Background, #0070f2); }
+
+.portal-sb__matrix-scroll { overflow-x: auto; }
+.portal-sb__matrix { border-collapse: collapse; width: 100%; font-size: var(--sapFontSize); }
+.portal-sb__matrix th, .portal-sb__matrix td { padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: center; white-space: nowrap; }
+.portal-sb__matrix th { position: sticky; top: 0; background: var(--sapList_HeaderBackground, #f5f6f7); font-weight: 400; vertical-align: bottom; }
+.portal-sb__matrix th:first-child, .portal-sb__datum { text-align: left; position: sticky; left: 0; background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-sb__kopfinfo { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-sb__frei ui5-icon { color: var(--sapPositiveElementColor, #188918); width: 1rem; height: 1rem; }
+.portal-sb__belegt { color: var(--sapNegativeTextColor, #aa0808); font-size: var(--sapFontSmallSize); }
+.portal-sb__belegt ui5-icon { color: var(--sapNegativeElementColor, #aa0808); width: 0.875rem; height: 0.875rem; vertical-align: middle; }
+.portal-sb__an { background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+.portal-sb__matrix th.portal-sb__an { background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+
+.portal-sb__summe { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem 1.5rem; margin-bottom: 0.75rem; }
+.portal-sb__summe > div { display: flex; flex-direction: column; gap: 0.125rem; }

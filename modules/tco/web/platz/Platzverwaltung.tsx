@@ -11,6 +11,8 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { FieldBox, FormGrid } from '@core/components/FormFields';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
+import { useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
 import { Kalender, hhmm, min, tagPlus, tagText, type Belegt, type TagPlatz } from './PlatzBuchen';
 import './platz.css';
@@ -248,23 +250,16 @@ function Belegung({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
 }
 
 // ---------------------------------------------------------------- Abos (nur hier im Portal)
-interface AboForm { platz_id: number; adrnr: string; ab: string; bis_datum: string; von: string; bis: string; text: string }
 
 function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
+  const can = useCan();
+  const navigate = useNavigate();
   const [abos, setAbos] = useState<AboZeile[] | null>(null);
-  const [plaetze, setPlaetze] = useState<Platz[]>([]);
-  const [mitglieder, setMitglieder] = useState<Mitglied[]>([]);
-  const [form, setForm] = useState<AboForm | null>(null);
-  const [vorschau, setVorschau] = useState<Vorschau | null>(null);
-  const [ueberspringen, setUeberspringen] = useState(false);
   const [ende, setEnde] = useState<{ bid: string; ab: string } | null>(null);
   const laden = () => api.get<AboZeile[]>(`${PA}/abos`).then(setAbos);
   useEffect(() => {
     laden();
-    api.get<{ plaetze: Platz[] }>(`${PA}/plaetze`).then((r) => setPlaetze(r.plaetze.filter((p) => p.aktiv)));
-    api.get<{ mitglieder: Mitglied[] }>(`${PA}/benutzer`).then((r) => setMitglieder(r.mitglieder));
   }, []);
-  useEffect(() => { setVorschau(null); }, [form]);
 
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Abo', accessor: 'bid', width: 110 },
@@ -282,88 +277,18 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         ? <Button design="Transparent" icon="stop" onClick={() => setEnde({ bid: row.original.bid, ab: isoHeute() })}>Beenden</Button> : null),
     },
   ];
-  const p = plaetze.find((x) => x.id === form?.platz_id);
-  const uhr = useMemo(() => (p ? zeiten(p.raster).filter((z) => min(z) >= min(p.zeit_von) && (z === '24:00' ? 1440 : min(z)) <= min(p.zeit_bis)) : []), [p]);
-  const konflikte = vorschau?.termine.filter((t) => t.konflikt) ?? [];
-  const neu = (): AboForm => {
-    const pl = plaetze.find((x) => x.art === 'HALLE') ?? plaetze[0];
-    return { platz_id: pl?.id ?? 0, adrnr: '', ab: tagPlus(isoHeute(), 1), bis_datum: tagPlus(isoHeute(), 7 * 20), von: '18:00', bis: '19:00', text: '' };
-  };
-
   return (
     <>
       <Toolbar design="Transparent">
         <Title level="H5">Abos ({abos?.length ?? 0})</Title>
         <ToolbarSpacer />
-        <Button icon="add" design="Emphasized" disabled={!plaetze.length} onClick={() => { setForm(neu()); setUeberspringen(false); }}>Abo anlegen</Button>
+        {can('tco.platz:serie') && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/serienbuchung')}>Abo anlegen (Serienbuchung)</Button>}
       </Toolbar>
       <AnalyticalTable columns={columns} data={abos ?? []} loading={!abos} visibleRows={Math.max(abos?.length ?? 0, 3)} noDataText="Noch keine Abos über das Portal angelegt" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
-        Abos werden nur hier im Portal angelegt. Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
+        Abos legt der Hallenwart über die Serienbuchung an (auch mehrere Plätze, zweiwöchentlich oder monatlich). Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
         für andere erscheinen die Termine als „belegt“. Abgerechnet wird wie bei EP3-Abos einmal je Serie über die Hallenabrechnung.
       </MessageStrip>
-
-      {form && createPortal(
-        <Dialog open headerText="Abo anlegen" style={{ width: 'min(48rem, 96vw)' }} onClose={() => setForm(null)}
-                footer={<Bar endContent={<>
-                  <Button icon="detail-view" disabled={busy || !form.adrnr} onClick={() => aktion(async () => setVorschau(await api.post<Vorschau>(`${PA}/abos/vorschau`, form)))}>Termine prüfen</Button>
-                  <Button design="Emphasized" disabled={busy || !vorschau || (konflikte.length > 0 && !ueberspringen) || konflikte.length === vorschau.termine.length}
-                          onClick={() => aktion(() => api.post(`${PA}/abos`, { ...form, ueberspringen }), async () => { setForm(null); await laden(); })}>Abo anlegen</Button>
-                  <Button onClick={() => setForm(null)}>Abbrechen</Button>
-                </>} />}>
-          <FormGrid>
-            <FieldBox label="Mitglied" required>
-              <ComboBox value={mitglieder.find((m) => m.adrnr === form.adrnr)?.name ?? ''} placeholder="Mitglied suchen"
-                        onSelectionChange={(e) => setForm({ ...form, adrnr: (e.detail.item as HTMLElement | null)?.dataset.k ?? '' })}>
-                {mitglieder.map((m) => <ComboBoxItem key={m.adrnr} data-k={m.adrnr} text={m.name} />)}
-              </ComboBox>
-            </FieldBox>
-            <FieldBox label="Platz" required>
-              <Select onChange={(e) => setForm({ ...form, platz_id: Number((e.detail.selectedOption as HTMLElement).dataset.k) })}>
-                {plaetze.map((x) => <Option key={x.id} data-k={x.id} selected={x.id === form.platz_id}>{x.name}</Option>)}
-              </Select>
-            </FieldBox>
-            <FieldBox label="Erster Termin (legt den Wochentag fest)" required>
-              <DatePicker formatPattern="EEEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={form.ab} onChange={(e) => e.detail.value && setForm({ ...form, ab: e.detail.value })} />
-            </FieldBox>
-            <FieldBox label="Letzter Termin spätestens" required>
-              <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={form.bis_datum} onChange={(e) => e.detail.value && setForm({ ...form, bis_datum: e.detail.value })} />
-            </FieldBox>
-            <FieldBox label="Uhrzeit" required>
-              <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
-                <Select style={{ width: '7rem' }} onChange={(e) => setForm({ ...form, von: (e.detail.selectedOption as HTMLElement).dataset.k! })}>
-                  {uhr.slice(0, -1).map((z) => <Option key={z} data-k={z} selected={form.von === z}>{z}</Option>)}
-                </Select>
-                <Text>bis</Text>
-                <Select style={{ width: '7rem' }} onChange={(e) => setForm({ ...form, bis: (e.detail.selectedOption as HTMLElement).dataset.k! })}>
-                  {uhr.slice(1).map((z) => <Option key={z} data-k={z} selected={form.bis === z}>{z}</Option>)}
-                </Select>
-                <Text>Uhr</Text>
-              </div>
-            </FieldBox>
-            <FieldBox label="Notiz"><Input value={form.text} maxlength={200} onInput={(e) => setForm({ ...form, text: e.target.value })} /></FieldBox>
-          </FormGrid>
-          {vorschau && (
-            <div style={{ marginTop: '1rem' }}>
-              <MessageStrip design={konflikte.length ? 'Critical' : 'Positive'} hideCloseButton>
-                {vorschau.kunde}: {vorschau.termine.length} Termin(e) {vorschau.wochentag}s auf {vorschau.platz}
-                {konflikte.length ? `, davon ${konflikte.length} nicht frei` : ', alle frei'} ·
-                {' '}{vorschau.preis.kostenfrei ? 'kostenfrei' : vorschau.preis.betrag === null ? `Preis: ${vorschau.preis.fehler}` : `Abo-Preis ${eur(vorschau.preis.betrag)}`}
-              </MessageStrip>
-              {konflikte.length > 0 && (
-                <>
-                  <ul style={{ margin: '0.5rem 0', paddingLeft: '1.25rem' }}>
-                    {konflikte.map((t) => <li key={t.datum}><Text>{dat(t.datum)}: {t.konflikt}</Text></li>)}
-                  </ul>
-                  <CheckBox text="Belegte Termine auslassen und Abo mit den freien Terminen anlegen" checked={ueberspringen}
-                            onChange={(e) => setUeberspringen(e.target.checked)} />
-                </>
-              )}
-            </div>
-          )}
-        </Dialog>,
-        document.body,
-      )}
 
       {ende && createPortal(
         <Dialog open headerText={`Abo ${ende.bid} beenden`} onClose={() => setEnde(null)}

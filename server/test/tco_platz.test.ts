@@ -271,3 +271,51 @@ test('EP3-Buchungen ohne Platzangabe belegen den einzigen Hallenplatz', async ()
   const r = await anna('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00' });
   assert.equal(r.status, 400);
 });
+
+test('Serienbuchung (Hallenwart): Verfügbarkeit, Kombinationen, Abo über mehrere Plätze', async () => {
+  for (const name of ['Platz 2', 'Platz 3']) {
+    assert.equal((await admin('POST', `${A}/plaetze`, { ...PLATZ1, name })).status, 200);
+  }
+  const p2 = (await admin('GET', `${A}/plaetze`)).body.plaetze.find((p: { name: string }) => p.name === 'Platz 2').id;
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000004713', ${tag(15)}, '18:00', '19:00', 'EVA EXTERN', '1', 'Platz 2')`;
+  const S = `${P}/serie`;
+  const anfrage = { ab: tag(8), bis_datum: tag(22), von: '18:00', bis: '20:00', rhythmus: 'WOECHENTLICH', anzahl: 2, art: 'FREI' };
+
+  // nur Hallenwart (hier: Admin), nicht Mitglieder
+  assert.equal((await anna('POST', `${S}/pruefen`, anfrage)).status, 403);
+  let r = await admin('POST', `${S}/pruefen`, anfrage);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.termine.length, 3);
+  const v2 = r.body.plaetze.find((p: { id: number }) => p.id === p2);
+  assert.equal(v2.frei, 2);
+  assert.match(v2.termine[1], /belegt 18:00–19:00/);
+  assert.deepEqual(r.body.kombinationen[0].namen, ['Platz 1', 'Platz 3']);
+  assert.equal(r.body.kombinationen[0].vollstaendig, true);
+
+  // monatlich am gleichen Wochentag (2. Dienstag)
+  r = await admin('POST', `${S}/pruefen`, { ...anfrage, ab: '2026-11-10', bis_datum: '2027-02-28', rhythmus: 'MONATLICH', anzahl: 1 });
+  assert.deepEqual(r.body.termine.map((t: { datum: string }) => t.datum), ['2026-11-10', '2026-12-08', '2027-01-12', '2027-02-09']);
+  assert.match(r.body.rhythmus, /jeden 2\. Dienstag/);
+
+  // belegter Termin ohne „auslassen“ → Fehler
+  const buchung = { ...anfrage, adrnr: ANNA, text: 'Mannschaftstraining' };
+  r = await admin('POST', S, { ...buchung, plaetze: [platz1Id, p2] });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /nicht frei/);
+  r = await admin('POST', S, { ...buchung, plaetze: [platz1Id, p2], ueberspringen: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.bids.length, 2);
+  assert.match(r.body.text, /5 Buchung\(en\).*1 belegte Termin/);
+  const rows = await sql`select status, coalesce(assigned, '') as assigned, kunde from tco.bookings where bid = any(${r.body.bids})`;
+  assert.equal(rows.length, 5);
+  assert.ok(rows.every((x) => x.status === '3' && x.assigned === 'X' && x.kunde === 'ANNA SPIELERIN'));
+  // Anna sieht die Serien als eigene Abos
+  const meine = await anna('GET', `${P}/meine`);
+  assert.equal(meine.body.abos.filter((a: { bid: string }) => r.body.bids.includes(a.bid)).length, 2);
+
+  // einmalig, vereinsintern über mehrere Stunden in der Halle → ohne Rechnung
+  r = await admin('POST', S, { ab: tag(9), von: '10:00', bis: '13:00', rhythmus: 'EINMALIG', anzahl: 1, plaetze: [halleId], intern: 'Medenspiel Herren 40', ueberspringen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [m] = await sql`select status, coalesce(assigned, '') as assigned, kunde from tco.bookings where bid = ${r.body.bids[0]}`;
+  assert.deepEqual(m, { status: '1', assigned: 'X', kunde: 'MEDENSPIEL HERREN 40' });
+});

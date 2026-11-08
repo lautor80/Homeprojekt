@@ -10,6 +10,7 @@ import {
   tagLesen, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
 import { minuten, preiseLesen } from '../halle/preis.js';
+import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle).
@@ -20,7 +21,7 @@ import { minuten, preiseLesen } from '../halle/preis.js';
  *
  * „Platzverwaltung“ (tco.platz:admin): Plätze und Buchungsregeln, Belegung mit Namen, Abos, Benutzerzuordnung.
  */
-export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin' };
+export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie' };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
 const uhr = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/, 'Uhrzeit im Format HH:MM');
@@ -58,6 +59,14 @@ async function ich(req: FastifyRequest): Promise<Ich> {
   if (!i) throw new BusinessError('Ihr Benutzer ist keinem Mitglied zugeordnet. Bitte beim Vorstand melden (Zuordnung unter Tennishalle → Platzverwaltung → Benutzer).', 403);
   return i;
 }
+
+const serieAnfrage = z.object({
+  ab: datum, bis_datum: datum.nullish(), von: uhr, bis: uhr,
+  rhythmus: z.enum(['EINMALIG', 'WOECHENTLICH', 'ZWEIWOECHENTLICH', 'MONATLICH']),
+  anzahl: z.coerce.number().int().min(1).max(20),
+  art: z.enum(['HALLE', 'FREI']).nullish(),
+  plaetze: z.array(z.coerce.number().int().positive()).default([]),
+});
 
 export async function platzRoutes(app: FastifyInstance) {
   const buchen = { preHandler: requireAuth(P_PLATZ.buchen) };
@@ -160,6 +169,23 @@ export async function platzRoutes(app: FastifyInstance) {
   });
 
   app.get('/platz/admin/benutzer', admin, async () => benutzerListe(DB));
+
+  // ------------------------------------------------------------------ Serienbuchung (Hallenwart)
+  const serie = { preHandler: requireAuth(P_PLATZ.serie) };
+  app.get('/platz/serie/stamm', serie, async () => {
+    const plaetze = (await plaetzeLesen(DB, true)).map((p) => ({ id: p.id, name: p.name, art: p.art, raster: p.raster, zeit_von: p.zeit_von, zeit_bis: p.zeit_bis, abrechnen: p.abrechnen }));
+    const { mitglieder } = await benutzerListe(DB);
+    return { plaetze, mitglieder, rhythmen: RHYTHMEN, heute: jetzt().datum };
+  });
+  app.post('/platz/serie/pruefen', serie, async (req) => verfuegbarkeit(DB, serieAnfrage.parse(req.body)));
+  app.post('/platz/serie', serie, async (req) => {
+    const e = serieAnfrage.extend({
+      plaetze: z.array(z.coerce.number().int().positive()).min(1, 'Bitte mindestens einen Platz wählen.'),
+      adrnr: z.string().nullish(), intern: z.string().max(60).nullish(), text: z.string().max(200).nullish(),
+      ueberspringen: z.boolean().default(false),
+    }).parse(req.body);
+    return change(req, (tx) => serieBuchen(tx, e), { action: 'PLATZ_SERIE', reason: `${e.rhythmus} ${e.ab} ${e.von}–${e.bis}` });
+  });
 
   app.put('/platz/admin/benutzer', admin, async (req) => {
     const e = z.object({ benutzer_id: z.string().uuid(), adrnr: z.string().min(1).nullable() }).parse(req.body);

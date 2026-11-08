@@ -233,6 +233,8 @@ const tco: ServerModule = {
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
     { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.buchen,
       text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
+    { area: 'Tennishalle', app: 'Serienbuchung', id: P_PLATZ.serie,
+      text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
       text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
     // ---------------------------------------------------------------- Clubhaus
