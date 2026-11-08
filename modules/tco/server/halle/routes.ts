@@ -143,7 +143,7 @@ export async function halleRoutes(app: FastifyInstance) {
     const v = await vereinLesen();
     const j = await ep3UeberN8n(v, benutzer(req));
     const out: { datei: string; ok: boolean; text: string }[] = [];
-    for (const [datei, inhalt] of [['Kunden', j.kunden_csv], ['Texte', j.texte_csv], ['Buchungen', j.bookings_csv]] as const) {
+    for (const [datei, inhalt] of [['Kunden', j.kunden_csv], ['Texte', j.texte_csv], ['Buchungen', j.bookings_csv], ['Events', j.events_csv]] as const) {
       if (!inhalt) continue;
       try {
         const r = await change(req, (tx) => ep3Importieren(tx, inhalt), { action: 'EP3_IMPORT', reason: `n8n ${datei}` });

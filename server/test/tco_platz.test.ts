@@ -615,3 +615,83 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await sql`select zuid from tco.mitgliedera where adrnr = ${ANNA}`)[0].zuid, '79');
 });
+
+test('Feste Belegungen (Jugendtraining) blockieren und erscheinen für alle; nur freigegebene Plätze im Kalender', async () => {
+  const d = tag(6);
+  const wt = String(((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
+  // Jugendtraining wöchentlich am Wochentag von d auf Platz 1, 16–18 Uhr
+  let r = await admin('POST', `${A}/feste`, { bezeichnung: 'Jugendtraining', art: 'TRAINING', plaetze: [platz1Id], wochentage: wt, datum_von: tag(0), datum_bis: tag(60), zeit_von: '16:00', zeit_bis: '18:00', hinweis: 'U12' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const festId = r.body.id;
+  assert.equal((await bert('POST', `${A}/feste`, { bezeichnung: 'X', art: 'SPERRE', wochentage: '1', datum_von: d, datum_bis: d, zeit_von: '10:00', zeit_bis: '11:00' })).status, 403);
+  // Sperrzeit für alle Plätze (einmalig)
+  r = await admin('POST', `${A}/feste`, { bezeichnung: 'Platzpflege', art: 'SPERRE', plaetze: [], wochentage: '1234567', datum_von: d, datum_bis: d, zeit_von: '08:00', zeit_bis: '09:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  r = await bert('GET', `${P}/tag?datum=${d}`);
+  const p1 = r.body.plaetze.find((p: { id: number }) => p.id === platz1Id);
+  const training = p1.belegt.find((b: { von: string }) => b.von === '16:00');
+  assert.deepEqual(training, { von: '16:00', bis: '18:00', eigen: false, fest: { art: 'TRAINING', bezeichnung: 'Jugendtraining', hinweis: 'U12' } });
+  assert.ok(r.body.plaetze.every((p: { belegt: { von: string; fest?: { bezeichnung: string } }[] }) => p.belegt.some((b) => b.von === '08:00' && b.fest?.bezeichnung === 'Platzpflege')), 'Sperrzeit auf allen Plätzen');
+  // an einem anderen Wochentag kein Training
+  r = await bert('GET', `${P}/tag?datum=${tag(7)}`);
+  assert.ok(!r.body.plaetze.find((p: { id: number }) => p.id === platz1Id).belegt.some((b: { fest?: unknown }) => b.fest));
+
+  // Buchung/Prüfung im Training abgelehnt
+  r = await bert('POST', `${P}/pruefen`, { platz_id: platz1Id, datum: d, von: '17:00', bis: '18:00' });
+  assert.match(r.body.fehler, /Jugendtraining/);
+  r = await bert('POST', `${P}/buchungen`, { platz_id: platz1Id, datum: d, von: '16:30', bis: '17:30' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /durch „Jugendtraining“ belegt/);
+  // Serienbuchung sieht das Training als belegt
+  r = await admin('POST', `${P}/serie/pruefen`, { ab: d, von: '16:00', bis: '17:00', rhythmus: 'EINMALIG', anzahl: 1, plaetze: [platz1Id] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.plaetze.find((p: { id: number }) => p.id === platz1Id).termine[0], /Jugendtraining/);
+
+  // deaktivieren → wieder buchbar
+  r = await admin('GET', `${A}/feste`);
+  const f = r.body.liste.find((x: { id: number }) => x.id === festId);
+  r = await admin('PUT', `${A}/feste/${festId}`, { ...f, aktiv: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await bert('POST', `${P}/pruefen`, { platz_id: platz1Id, datum: d, von: '17:00', bis: '18:00' });
+  assert.equal(r.body.fehler, null);
+
+  // nur freigegebene Plätze: Platz nur am Wochenende / erst ab später gültig
+  const andererTag = wt === '7' ? '1' : String(Number(wt) + 1);
+  r = await admin('POST', `${A}/plaetze`, { ...PLATZ1, name: 'Platz Spezial', wochentage: andererTag });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const spezial = r.body.id;
+  r = await admin('POST', `${A}/plaetze`, { ...PLATZ1, name: 'Platz Zukunft', gueltig_von: tag(30) });
+  const zukunft = r.body.id;
+  r = await bert('GET', `${P}/tag?datum=${d}`);
+  assert.ok(!r.body.plaetze.some((p: { id: number }) => p.id === spezial || p.id === zukunft), 'geschlossene Plätze ausgeblendet');
+  r = await admin('GET', `${A}/tag?datum=${d}`);
+  assert.ok(!r.body.plaetze.some((p: { id: number }) => p.id === spezial));
+  r = await bert('GET', `${P}/tag?datum=${tag(7)}`);
+  assert.ok(r.body.plaetze.some((p: { id: number }) => p.id === spezial), 'am freigegebenen Wochentag sichtbar');
+  await admin('PUT', `${A}/plaetze-massen`, { ids: [spezial, zukunft], felder: { aktiv: false } });
+});
+
+test('EP3-Events werden als feste Belegungen übernommen (ersetzen sich beim nächsten Import)', async () => {
+  const { ep3Importieren } = await import('../../modules/tco/server/halle/ep3.js');
+  const d = tag(8);
+  const csv = ['EID;PLATZ;DATETIME_START;DATETIME_END;NAME;STATUS',
+    `501;Tennishalle;${d} 15:00;${d} 17:00;Jugendtraining Mittwoch;enabled`,
+    `502;;${d} 07:00;${d} 08:00;Hallenreinigung;enabled`,
+    `503;Unbekannter Platz;${d} 10:00;${d} 11:00;Turnier;enabled`].join('\n');
+  let imp = await sql.begin((tx) => ep3Importieren(tx as never, csv));
+  assert.equal(imp.typ, 'EVENTS');
+  assert.match(imp.text, /2 als feste Belegungen übernommen, 1 ohne bekannten Platz/);
+  let r = await bert('GET', `${P}/tag?datum=${d}`);
+  const halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
+  assert.ok(halle.belegt.some((b: { von: string; fest?: { bezeichnung: string; art: string } }) => b.von === '15:00' && b.fest?.bezeichnung === 'Jugendtraining Mittwoch' && b.fest.art === 'TRAINING'));
+  assert.ok(halle.belegt.some((b: { von: string; fest?: { art: string } }) => b.von === '07:00' && b.fest?.art === 'SPERRE'));
+  // EP3-Belegungen sind im Portal nicht änderbar
+  r = await admin('GET', `${A}/feste`);
+  const ep3 = r.body.liste.find((x: { quelle: string }) => x.quelle === 'EP3');
+  assert.equal((await admin('DELETE', `${A}/feste/${ep3.id}`)).status, 404);
+  // erneuter Import ersetzt
+  imp = await sql.begin((tx) => ep3Importieren(tx as never, ['EID;PLATZ;DATETIME_START;DATETIME_END;NAME;STATUS', `601;Halle;${d} 18:00;${d} 19:00;Training Erwachsene;enabled`].join('\n')));
+  r = await admin('GET', `${A}/feste`);
+  assert.deepEqual(r.body.liste.filter((x: { quelle: string }) => x.quelle === 'EP3').map((x: { ext_id: string }) => x.ext_id), ['601']);
+});

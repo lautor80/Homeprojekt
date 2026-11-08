@@ -4,7 +4,7 @@ Liefert dem Portal die EP3-Daten (Buchungen, Kunden **mit Kennwort-Hash**, Buchu
 das Format, das `Hallenabrechnung → EP3-Import (n8n)` erwartet:
 
 ```json
-{ "bookings_csv": "BID;DATUM;…", "kunden_csv": "ZUID;ZALIAS;STATUS;EMAIL;PW;KEY;VALUE…", "texte_csv": "BID;TEXT…" }
+{ "bookings_csv": "BID;DATUM;…", "kunden_csv": "ZUID;ZALIAS;STATUS;EMAIL;PW;KEY;VALUE…", "texte_csv": "BID;TEXT…", "events_csv": "EID;PLATZ;DATETIME_START;DATETIME_END;NAME;STATUS…" }
 ```
 
 ## Einrichten
@@ -26,6 +26,12 @@ u.pw AS PW
 ```
 
 (aus `bs_users`). Alles Weitere erkennt das Portal automatisch; erneute Importe behalten Portalzuordnung und Kennwort.
+
+## Events (Jugendtraining, Sperrzeiten)
+
+EP3-Events (`bs_events`, Name aus `bs_events_meta.name`) werden als **feste Platzbelegungen** übernommen und ersetzen bei jedem Import die
+zuvor aus EP3 übernommenen. Platz über Bezeichnung/Alias; Events ohne Platz gelten für alle Plätze. Eigene Belegungen pflegt die
+Platzverwaltung unter „Training & Sperrzeiten“ – sie bleiben vom Import unberührt.
 
 ## Hinweise
 

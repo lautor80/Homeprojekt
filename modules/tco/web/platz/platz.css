@@ -11,6 +11,7 @@
 .portal-pb__punkt--frei { background: var(--sapList_Background, #fff); border: 1px dashed var(--sapList_BorderColor); }
 .portal-pb__punkt--eigen { background: var(--sapButton_Emphasized_Background, #0070f2); }
 .portal-pb__punkt--belegt { background: var(--sapNeutralBackground, #eff1f2); border: 1px solid var(--sapNeutralBorderColor, #788fa6); }
+.portal-pb__punkt--training { background: var(--sapIndicationColor_6b, #e0f5ea); border: 1px solid var(--sapIndicationColor_6, #256f3a); }
 .portal-pb__punkt--reserviert { background: repeating-linear-gradient(135deg, var(--sapCriticalBackground, #fef7f1) 0 3px, var(--sapCriticalColor, #e76500) 3px 4px); border: 1px solid var(--sapCriticalColor, #e76500); }
 
 .portal-pb__scroll {
@@ -83,6 +84,15 @@
 .portal-pb__block--admin {
   background: var(--sapInformationBackground, #e1f4ff); color: var(--sapTextColor);
   border-left: 0.25rem solid var(--sapInformativeColor, #0070f2);
+}
+/* Jugendtraining / Veranstaltung / Sperrzeit (feste Belegung ohne Buchung) */
+.portal-pb__block--training {
+  background: var(--sapIndicationColor_6b, #e0f5ea); color: var(--sapIndicationColor_6, #256f3a);
+  border-left: 0.25rem solid var(--sapIndicationColor_6, #256f3a); font-weight: 600;
+}
+.portal-pb__block--sperre {
+  background: repeating-linear-gradient(135deg, var(--sapNeutralBackground, #eff1f2) 0 0.4rem, var(--sapList_Background, #fff) 0.4rem 0.8rem);
+  color: var(--sapNeutralTextColor, #475e75); border-left-color: var(--sapNeutralBorderColor, #788fa6);
 }
 /* gerade von jemand anderem ausgewählt (Sperre, noch nicht gebucht) */
 .portal-pb__block--reserviert {

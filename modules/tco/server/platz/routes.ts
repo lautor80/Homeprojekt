@@ -15,6 +15,7 @@ import {
   ablehnen, benutzernameFrei, bestaetigen, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
+import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
 import { mailSenden } from '../kommunikation.js';
 
 /**
@@ -213,7 +214,7 @@ ${v.name}`,
     let fehler = regelnPruefen({ platz: p, datum: e.datum, von, bis }, false);
     if (!fehler) {
       const b = (await belegungLesen(DB, [p], e.datum, e.datum, req.sitzung)).find((x) => (x.reserviert || x.bid !== e.bid) && x.von < bis && x.bis > von);
-      if (b) fehler = b.reserviert ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht.` : `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
+      if (b) fehler = b.fest ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr: ${b.fest.bezeichnung}.` : b.reserviert ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht.` : `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
     }
     return { fehler, preis: preisVon(p, e.datum, von, bis, '1', await preiseLesen(DB)) };
   });
@@ -266,6 +267,25 @@ ${v.name}`,
     const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
     await change(req, (tx) => platzLoeschen(tx, id), { action: 'PLATZ_LOESCHEN' });
     return { text: 'Platz gelöscht.' };
+  });
+
+  // ------------------------------------------------------------------ Feste Belegungen (Jugendtraining, Sperrzeiten)
+  const fest = z.object({
+    bezeichnung: z.string().max(80), art: z.enum(['TRAINING', 'SPERRE', 'VERANSTALTUNG']),
+    plaetze: z.array(z.coerce.number().int().positive()).default([]),
+    wochentage: z.string().regex(/^[1-7]{1,7}$/, 'Bitte mindestens einen Wochentag wählen.'),
+    datum_von: datum, datum_bis: datum, zeit_von: uhr, zeit_bis: uhr, hinweis: z.string().max(300).nullish().transform((x) => x ?? null),
+    aktiv: z.boolean().default(true),
+  });
+  app.get('/platz/admin/feste', admin, async () => ({ liste: await festeLesen(DB), arten: BELEGUNG_ARTEN }));
+  app.post('/platz/admin/feste', admin, async (req) => change(req, (tx) => festeSpeichern(tx, null, fest.parse(req.body)), { action: 'PLATZBELEGUNG' }));
+  app.put('/platz/admin/feste/:id', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    return change(req, (tx) => festeSpeichern(tx, id, fest.parse(req.body)), { action: 'PLATZBELEGUNG' });
+  });
+  app.delete('/platz/admin/feste/:id', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    return { text: await change(req, (tx) => festeLoeschen(tx, id), { action: 'PLATZBELEGUNG' }) };
   });
 
   app.get('/platz/admin/tag', admin, async (req) => {

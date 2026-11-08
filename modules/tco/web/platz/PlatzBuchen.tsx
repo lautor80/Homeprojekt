@@ -20,7 +20,7 @@ import './platz.css';
  */
 const PB = `${TCO}/platz`;
 
-export interface Belegt { von: string; bis: string; eigen: boolean; reserviert?: boolean; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
+export interface Belegt { von: string; bis: string; eigen: boolean; reserviert?: boolean; fest?: { art: 'TRAINING' | 'SPERRE' | 'VERANSTALTUNG'; bezeichnung: string; hinweis: string | null }; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
 export interface TagPlatz {
   id: number; name: string; art: 'HALLE' | 'FREI'; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
@@ -127,6 +127,7 @@ export function PlatzBuchen() {
               <span><i className="portal-pb__punkt portal-pb__punkt--eigen" />meine Buchung</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--reserviert" />wird gerade gebucht</span>
+              <span><i className="portal-pb__punkt portal-pb__punkt--training" />Training / Sperrzeit</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--vorbei" />vorbei / nicht buchbar</span>
             </div>
 
@@ -310,17 +311,19 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
                 const von = Math.max(min(b.von), start);
                 const bis = min(b.bis) || 1440;
                 const alt = bis <= vorbeiBis; // für normale Nutzer: vergangene Stunde grau, nicht änderbar
-                const cls = (b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
+                const cls = (b.fest ? `portal-pb__block--training${b.fest.art === 'SPERRE' ? ' portal-pb__block--sperre' : ''}` : b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
                   + (alt ? ' portal-pb__block--vorbei' : '');
-                const klickbar = !b.reserviert && ((b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
+                const klickbar = !b.reserviert && !b.fest && ((b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
                 return (
                   <button key={i} type="button" className={`portal-pb__block ${cls}`} disabled={!klickbar}
                           style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={() => klickbar && onEigen?.(p, b)}>
                     <span className="portal-pb__block-zeit">{b.von}–{b.bis}</span>
                     {b.eigen && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Mein Abo' : 'Meine Buchung'} · {preisText(b)}</span>}
+                    {b.fest && <span className="portal-pb__block-text" title={b.fest.hinweis ?? undefined}>{b.fest.bezeichnung}</span>}
+                    {b.fest?.hinweis && <span className="portal-pb__block-text portal-pb__block-notiz">{b.fest.hinweis}</span>}
                     {b.reserviert && <span className="portal-pb__block-text">Wird gerade gebucht{admin && b.kunde ? ` · ${b.kunde}` : ''}</span>}
-                    {!b.reserviert && !b.eigen && !admin && <span className="portal-pb__block-text">Belegt</span>}
-                    {!b.reserviert && admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
+                    {!b.fest && !b.reserviert && !b.eigen && !admin && <span className="portal-pb__block-text">Belegt</span>}
+                    {!b.fest && !b.reserviert && admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
                     {(b.eigen || admin) && b.text && <span className="portal-pb__block-text portal-pb__block-notiz">{b.text}</span>}
                   </button>
                 );

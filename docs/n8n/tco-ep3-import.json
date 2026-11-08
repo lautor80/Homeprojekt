@@ -96,7 +96,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Drei Abfragen zu CSV-Texten zusammenbauen, wie sie das Portal erwartet (Trennzeichen ;, UTF-8, Kopfzeile).\nfunction csv(rows) {\n  if (!rows.length) return '';\n  const spalten = Object.keys(rows[0].json);\n  const feld = (v) => {\n    if (v === null || v === undefined) return '';\n    let s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v);\n    s = s.replace(/\\r?\\n/g, ' ');\n    return /[;\"]/.test(s) ? `\"${s.replace(/\"/g, '\"\"')}\"` : s;\n  };\n  return [spalten.join(';'), ...rows.map((r) => spalten.map((c) => feld(r.json[c])).join(';'))].join('\\n') + '\\n';\n}\nconst buchungen = $('EP3 Buchungen').all();\nconst kunden = $('EP3 Kunden').all();\nconst texte = $('EP3 Texte').all();\nreturn [{ json: {\n  bookings_csv: csv(buchungen),\n  kunden_csv: csv(kunden),\n  texte_csv: csv(texte),\n  anzahl: { buchungen: buchungen.length, kunden: kunden.length, texte: texte.length },\n  quelle: $('Webhook').first().json.body?.quelle ?? null,\n} }];"
+        "jsCode": "// Drei Abfragen zu CSV-Texten zusammenbauen, wie sie das Portal erwartet (Trennzeichen ;, UTF-8, Kopfzeile).\nfunction csv(rows) {\n  if (!rows.length) return '';\n  const spalten = Object.keys(rows[0].json);\n  const feld = (v) => {\n    if (v === null || v === undefined) return '';\n    let s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v);\n    s = s.replace(/\\r?\\n/g, ' ');\n    return /[;\"]/.test(s) ? `\"${s.replace(/\"/g, '\"\"')}\"` : s;\n  };\n  return [spalten.join(';'), ...rows.map((r) => spalten.map((c) => feld(r.json[c])).join(';'))].join('\\n') + '\\n';\n}\nconst buchungen = $('EP3 Buchungen').all();\nconst kunden = $('EP3 Kunden').all();\nconst texte = $('EP3 Texte').all();\nconst events = $('EP3 Events').all();\nreturn [{ json: {\n  bookings_csv: csv(buchungen),\n  kunden_csv: csv(kunden),\n  texte_csv: csv(texte),\n  events_csv: csv(events),\n  anzahl: { buchungen: buchungen.length, kunden: kunden.length, texte: texte.length, events: events.length },\n  quelle: $('Webhook').first().json.body?.quelle ?? null,\n} }];"
       },
       "id": "csv",
       "name": "CSV bauen",
@@ -110,7 +110,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ bookings_csv: $json.bookings_csv, kunden_csv: $json.kunden_csv, texte_csv: $json.texte_csv, anzahl: $json.anzahl }) }}",
+        "responseBody": "={{ JSON.stringify({ bookings_csv: $json.bookings_csv, kunden_csv: $json.kunden_csv, texte_csv: $json.texte_csv, events_csv: $json.events_csv, anzahl: $json.anzahl }) }}",
         "options": {}
       },
       "id": "respond",
@@ -121,6 +121,29 @@
         1300,
         300
       ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT e.eid AS EID, s.name AS PLATZ,\n       DATE_FORMAT(e.datetime_start, '%Y-%m-%d %H:%i') AS DATETIME_START,\n       DATE_FORMAT(e.datetime_end, '%Y-%m-%d %H:%i') AS DATETIME_END,\n       COALESCE(n.value, '') AS NAME, e.status AS STATUS\n  FROM bs_events e\n  LEFT JOIN bs_squares s ON s.sid = e.sid\n  LEFT JOIN bs_events_meta n ON n.eid = e.eid AND n.`key` = 'name'\n WHERE e.datetime_end >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)\n ORDER BY e.datetime_start",
+        "options": {}
+      },
+      "id": "ep3-events",
+      "name": "EP3 Events",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        780,
+        480
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "EP3_DB",
+          "name": "EP3 MySQL (ep3-bs)"
+        }
+      }
     }
   ],
   "connections": {
@@ -161,7 +184,7 @@
       "main": [
         [
           {
-            "node": "CSV bauen",
+            "node": "EP3 Events",
             "type": "main",
             "index": 0
           }
@@ -173,6 +196,17 @@
         [
           {
             "node": "Antwort an Portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EP3 Events": {
+      "main": [
+        [
+          {
+            "node": "CSV bauen",
             "type": "main",
             "index": 0
           }

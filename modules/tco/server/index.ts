@@ -293,6 +293,7 @@ const tco: ServerModule = {
     { type: 'CLUBHAUS', text: 'Clubhaus-Forderungsliste', permission: P_CH.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'PLATZ', text: 'Platz', permission: P_PLATZ.admin },
+    { type: 'PLATZBELEGUNG', text: 'Feste Platzbelegung (Training, Sperrzeit)', permission: P_PLATZ.admin },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
   ],
   migrationsDir: path.join(APP_ROOT, 'modules', 'tco', 'server', 'migrations'),

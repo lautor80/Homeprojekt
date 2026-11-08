@@ -3,17 +3,19 @@ import { csvParse, dekodieren, sapDatum, sapZeit } from '../../../../server/src/
 import type { Db, Verein } from '../verein.js';
 import { dat, heute, zeit } from '../format.js';
 import { ep3BenutzerAnlegen } from '../platz/registrierung.js';
+import { ep3EventsImportieren } from '../platz/belegungen.js';
 
 /**
  * Import der EP3-Exporte (Buchungssystem ep3-bs): Buchungen, Kunden, Buchungstexte.
  * Port von IMPORT_CSV / CSV_TYP_ERMITTELN / ZCL_TCO_RECHNUNGEN=>BOOKINGS_IMPORTIEREN.
  */
 
-export type Ep3Typ = 'BUCHUNGEN' | 'KUNDEN' | 'TEXTE';
+export type Ep3Typ = 'BUCHUNGEN' | 'KUNDEN' | 'TEXTE' | 'EVENTS';
 
 export function ep3Typ(kopf: string[]): Ep3Typ | null {
   const k = new Set(kopf.map((s) => s.trim().toUpperCase()));
   if (k.has('ZUID') && k.has('KEY')) return 'KUNDEN';
+  if (k.has('EID') && k.has('DATETIME_START')) return 'EVENTS';
   if (k.has('BID') && k.has('DATUM')) return 'BUCHUNGEN';
   if (k.has('BID') && k.has('TEXT')) return 'TEXTE';
   return null;
@@ -39,10 +41,18 @@ export async function ep3Importieren(tx: Db, inhalt: string | Buffer): Promise<I
   const daten = rows.slice(1);
   if (typ === 'KUNDEN') return kundenImportieren(tx, daten, idx);
   if (typ === 'TEXTE') return texteImportieren(tx, daten, idx);
+  if (typ === 'EVENTS') {
+    // Platz über Bezeichnung oder Alias (wie bei den Buchungen)
+    const plaetze = await tx`select id, name, aliase from tco.plaetze`;
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toUpperCase();
+    const map = new Map<string, number>();
+    for (const p of plaetze) for (const n of [p.name, ...String(p.aliase ?? '').split(',')]) if (norm(n)) map.set(norm(n), p.id);
+    return { typ: 'EVENTS', ok: true, text: await ep3EventsImportieren(tx, daten, idx, (n) => map.get(norm(n)) ?? null) };
+  }
   if (typ === 'BUCHUNGEN') return buchungenImportieren(tx, daten, idx);
   return {
     typ: null, ok: false,
-    text: `Die Datei konnte keiner Tabelle zugeordnet werden. Erwartet: EP3_BOOKINGS (BID, DATUM …), EP3_USER (ZUID, KEY, VALUE …) oder EP3_TEXTE (BID, TEXT). Erkannt wurden: ${kopf.join(', ')}`,
+    text: `Die Datei konnte keiner Tabelle zugeordnet werden. Erwartet: EP3_BOOKINGS (BID, DATUM …), EP3_USER (ZUID, KEY, VALUE …), EP3_TEXTE (BID, TEXT) oder EP3_EVENTS (EID, DATETIME_START …). Erkannt wurden: ${kopf.join(', ')}`,
   };
 }
 
@@ -194,7 +204,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
 }
 
 /** EP3-Import über den n8n-Workflow „TCO EP3 Import Hallenrechnungen“ */
-export async function ep3UeberN8n(v: Verein, benutzer: string): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string }> {
+export async function ep3UeberN8n(v: Verein, benutzer: string): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string }> {
   if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Stammdaten → Anbindungen).');
   let res: Response;
   try {

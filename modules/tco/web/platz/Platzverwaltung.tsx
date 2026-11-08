@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
 import { Kalender, hhmm, min, tagPlus, tagText, type Belegt, type TagPlatz } from './PlatzBuchen';
 import { Zugaenge } from './Zugaenge';
+import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
 
 /**
@@ -74,6 +75,9 @@ export function Platzverwaltung() {
         <Tab data-key="belegung" text="Belegung" icon="calendar" selected={tab === 'belegung'}>
           {tab === 'belegung' && <Belegung aktion={aktion} busy={busy} />}
         </Tab>
+        <Tab data-key="feste" text="Training & Sperrzeiten" icon="private" selected={tab === 'feste'}>
+          {tab === 'feste' && <FesteTab aktion={aktion} />}
+        </Tab>
         <Tab data-key="abos" text="Abos" icon="repost" selected={tab === 'abos'}>
           {tab === 'abos' && <Abos aktion={aktion} busy={busy} />}
         </Tab>
@@ -89,6 +93,12 @@ export function Platzverwaltung() {
 }
 
 type Aktion = (fn: () => Promise<unknown>, nachher?: () => unknown) => Promise<boolean>;
+
+function FesteTab({ aktion }: { aktion: Aktion }) {
+  const [plaetze, setPlaetze] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => { api.get<{ plaetze: Platz[] }>(`${PA}/plaetze`).then((r) => setPlaetze(r.plaetze.map((p) => ({ id: p.id, name: p.name })))); }, []);
+  return <FesteBelegungen aktion={aktion} plaetze={plaetze} />;
+}
 
 // ---------------------------------------------------------------- Plätze
 function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
