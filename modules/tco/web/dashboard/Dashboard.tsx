@@ -7,6 +7,7 @@ import { AppPage } from '@core/components/AppPage';
 import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { ComboChart, LineChart, StackedBarChart } from './Chart';
+import { Arbeitsvorrat } from './Arbeitsvorrat';
 import { DetailDialog } from './DetailDialog';
 import { FinCard } from './FinCard';
 import { KpiCard } from './KpiCard';
@@ -43,6 +44,7 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
   const jahrVorher = useRef<number | null>(null);
+  const [neu, setNeu] = useState(0);
 
   const laden = async (j: number | null, a: Auswahl) => {
     setLaedt(true); setError(null);
@@ -125,10 +127,11 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
           <Select style={{ width: '7.5rem' }} onChange={(e) => jahrWechseln(Number((e.detail.selectedOption as HTMLElement).dataset.j))}>
             {(d?.jahre ?? (jahr ? [jahr] : [])).map((j) => <Option key={j} data-j={j} selected={j === (d?.jahr ?? jahr)}>{String(j)}</Option>)}
           </Select>
-          <Button icon="refresh" design="Transparent" tooltip="Kennzahlen neu laden" disabled={laedt} onClick={() => laden(jahr, auswahl)} />
+          <Button icon="refresh" design="Transparent" tooltip="Kennzahlen neu laden" disabled={laedt} onClick={() => { setNeu((n) => n + 1); laden(jahr, auswahl); }} />
         </div>
       </div>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      <Arbeitsvorrat neu={neu} />
       {!d && laedt && <BusyIndicator active style={{ display: 'block', width: '100%', marginTop: '2rem' }} />}
       {d && d.bereiche.map((b) => (
         <Section key={b.key} title={b.title} status={laedt ? <BusyIndicator active size="S" style={{ display: 'block' }} /> : undefined}>

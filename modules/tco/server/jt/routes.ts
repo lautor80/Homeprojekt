@@ -127,6 +127,17 @@ export async function jtRoutes(app: FastifyInstance) {
     return { ...r, text: `Als bezahlt am ${b.datum.split('-').reverse().join('.')} gekennzeichnet. ${r.text}` };
   });
 
+  /** Freigabe des Trainers zurücknehmen (z. B. für Korrekturen) – nur solange nicht bezahlt */
+  app.post('/jt/nachweis/freigabe-aufheben', { preHandler: requireAuth(P_JT.edit) }, async (req) => {
+    const b = nm.parse(req.body);
+    const d = await dokuLesen(DB, b.adrnr, b.monat);
+    if (!d?.freigegeben_am) throw new BusinessError('Dieser Zeitnachweis ist nicht freigegeben.');
+    if (d.bezahlt_am) throw new BusinessError('Der Zeitnachweis ist bereits (teilweise) bezahlt – die Freigabe bleibt bestehen.');
+    await change(req, async (tx) => { await tx`update tco.jt_doku set freigegeben_am = null, freigegeben_von = null where adrnr = ${b.adrnr} and monat = ${b.monat}`; },
+      { action: 'JT_FREIGABE', reason: 'Freigabe zurückgenommen' });
+    return { text: `Freigabe zurückgenommen – der Trainer kann den ${monatsname(b.monat)} wieder bearbeiten und erneut freigeben.` };
+  });
+
   app.get('/jt/nachweis/dokument', { preHandler: requireAuth(P_JT.display) }, async (req, reply) => {
     const q = nm.parse(req.query);
     const d = await dokuLesen(DB, q.adrnr, q.monat);

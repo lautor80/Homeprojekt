@@ -13,6 +13,7 @@ import {
   auswahlBereinigen, chartClubhaus, chartHalle, chartHalleJahre, chartJugend, chartMtgJahre, chartMtgMonate, datenJahre,
   jahreAufbauen, jahreAuswahl, jahreText, JUG_GESAMT, JUG_TRAINER, type KeyText,
 } from './charts.js';
+import { arbeitsvorrat } from './arbeitsvorrat.js';
 import { geldkonten, kontoKey, liquiditaet, monatsverlauf } from './finanzen.js';
 import {
   bswVertragWechseln, collectClubhaus, collectFinanzen, collectHalle, collectJugend, collectMitglieder,
@@ -103,6 +104,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
       },
     };
   });
+
+  /** Arbeitsvorrat: offene Vorgänge (je nach Berechtigung des Benutzers) */
+  app.get('/dashboard/arbeitsvorrat', { preHandler: requireAuth(P_DASH.display) }, async (req) => arbeitsvorrat(DB, req));
 
   /** Detail-Popup einer Kennzahl */
   app.get('/dashboard/detail/:key', { preHandler: requireAuth(P_DASH.display) }, async (req) => {

@@ -22,6 +22,7 @@ interface Ferientag { datum: string; ferien: string | null; feiertag: string | n
 interface Abr {
   adrnr: string; trainer: string; stunden: number; betrag: number; satz: number | null; status: string; state: State;
   doc_id: number | null; belegnr: string | null; bezahlt_am: string | null; bezahlbar: boolean; mobil: boolean;
+  freigegeben_am: string | null;
 }
 interface Monat {
   monat: string; titel: string; von: string; bis: string; arten: string[]; trainer: Trainer[]; zeiten: Zeit[]; ferien: Ferientag[];
@@ -50,11 +51,13 @@ const aktMonat = () => isoHeute().slice(0, 7).replace('-', '');
 export function Jugendtraining() {
   const can = useCan();
   const edit = can('tco.jt:edit');
-  const [monat, setMonat] = useState(aktMonat);
+  // Einsprung aus dem Arbeitsvorrat: ?monat=JJJJMM&tab=abr
+  const [start] = useState(() => new URLSearchParams(window.location.search));
+  const [monat, setMonat] = useState(() => (/^\d{6}$/.test(start.get('monat') ?? '') ? start.get('monat')! : aktMonat()));
   const [m, setM] = useState<Monat | null>(null);
   const [adrnr, setAdrnr] = useState('');
   const [sel, setSel] = useState<string | null>(null);
-  const [tab, setTab] = useState('zeiten');
+  const [tab, setTab] = useState(() => start.get('tab') ?? 'zeiten');
   const [error, setError] = useState<string | null>(null);
   const [imp, setImp] = useState<ImportErg | null>(null);
   // Zeiten des gewählten Trainers sperren (Belegschlüssel adrnr/datum/art), solange Zeiten/Wochenraster offen sind
@@ -388,7 +391,7 @@ function Abrechnung({ m, edit, onAktion, onError }: { m: Monat; edit: boolean; o
     { Header: 'Betrag', accessor: 'betrag', width: 110, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
     { Header: 'Beleg', accessor: 'status', minWidth: 260, Cell: ({ row }: Cell) => <ObjectStatus state={row.original.state}>{row.original.status}</ObjectStatus> },
     {
-      Header: 'Zeitnachweis', id: 'akt', width: 330, disableSortBy: true,
+      Header: 'Zeitnachweis', id: 'akt', width: 370, disableSortBy: true,
       Cell: ({ row }: Cell) => {
         const a: Abr = row.original;
         return (
@@ -396,6 +399,10 @@ function Abrechnung({ m, edit, onAktion, onError }: { m: Monat; edit: boolean; o
             <Button icon="print" design="Transparent" disabled={!a.stunden} onClick={() => setPdf({ url: `${J}/nachweis/pdf?${q(a.adrnr)}`, titel: `Zeitnachweis ${a.trainer} – ${m.titel}`, ablage: a.adrnr })}>Drucken</Button>
             <Button icon="attachment" design="Transparent" disabled={!a.doc_id} onClick={() => setPdf({ url: `${J}/nachweis/dokument?${q(a.adrnr)}`, titel: `${a.belegnr} (abgelegt)` })}>Beleg</Button>
             {edit && <Button icon="discussion" design="Transparent" disabled={!a.doc_id || !a.mobil} onClick={() => whatsapp(a.adrnr)}>WhatsApp</Button>}
+            {edit && a.freigegeben_am && !a.bezahlt_am && (
+              <Button icon="undo" design="Transparent" tooltip="Freigabe des Trainers zurücknehmen – der Monat wird für ihn wieder bearbeitbar"
+                      onClick={() => onAktion(async () => { toast((await api.post<{ text: string }>(`${J}/nachweis/freigabe-aufheben`, { adrnr: a.adrnr, monat: m.monat })).text, 5000); })} />
+            )}
           </FlexBox>
         );
       },

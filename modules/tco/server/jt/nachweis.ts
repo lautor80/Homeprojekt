@@ -214,6 +214,7 @@ function notizText(k: Kopf, alt: Doku | null, erst: boolean, benutzer: string): 
 export async function nachweisAblegen(
   db: Db, v: Verein, k: Kopf, alt: Doku | null, pdf: Buffer, benutzer: string,
   schreiben: (fn: (tx: Db) => Promise<void>) => Promise<void>,
+  opts: { anlass?: string } = {},
 ): Promise<{ id: number; text: string; warnungen: string[] }> {
   if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).');
   const pl = paperless(v);
@@ -250,7 +251,7 @@ export async function nachweisAblegen(
   const dokid = String(docId).padStart(6, '0');
   // Felder laut zentraler Paperless-Zuordnung (Kontext „Zeitnachweis Jugendtraining“)
   warnungen.push(...(await kontextAktualisieren(pl, K.jtNachweis, 'tco', docId, werte, { ohneNotiz: true })).warnungen);
-  await pl.notizAnlegen(docId, notizText(k, alt, erst, benutzer)).catch((e) => { warnungen.push(`Notiz: ${(e as Error).message}`); });
+  await pl.notizAnlegen(docId, `${opts.anlass ? `${opts.anlass}. ` : ''}${notizText(k, alt, erst, benutzer)}`).catch((e) => { warnungen.push(`Notiz: ${(e as Error).message}`); });
   // Freigabelink für die neueste Version vorbereiten (WhatsApp)
   await pl.neuesteVersion(docId).then((ver) => pl.freigabelink(ver, 30)).catch(() => undefined);
   const text = `${erst ? 'Zeitnachweis in Paperless abgelegt'

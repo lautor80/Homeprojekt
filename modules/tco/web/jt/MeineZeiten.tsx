@@ -25,8 +25,12 @@ interface Monat {
   monat: string; titel: string; von: string; bis: string; arten: string[]; ferien: Ferientag[];
   trainer: { name: string; satz: number | null }; zeiten: Zeit[]; stunden: number; betrag: number;
   status: { text: string; state: State }; nachweis: { belegnr: string | null; erstellt_am: string | null; bezahlt_am: string | null } | null; gesperrt: boolean;
+  /** Freigabe durch den Trainer (Monatsabschluss) */
+  freigabe: { am: string; von: string | null } | null;
+  /** true = Monat kann freigegeben werden, sonst der Grund */
+  freigebbar: true | string;
 }
-interface Nachweis { monat: string; titel: string; belegnr: string | null; erstellt_am: string | null; bezahlt_am: string | null; stunden: number; betrag: number }
+interface Nachweis { monat: string; titel: string; belegnr: string | null; erstellt_am: string | null; bezahlt_am: string | null; stunden: number; betrag: number; freigegeben_am: string | null }
 interface Erfassung { datum: string; trainingsart: string; anzahl: string; altArt: string | null }
 
 const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -66,12 +70,14 @@ export function MeineZeiten() {
   const [tage, setTage] = useState(false);
   const [pdf, setPdf] = useState<{ url: string; titel: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [freigabe, setFreigabe] = useState(false);
 
   const laden = (mon = monat) => api.get<Monat>(`${MZ}/monat?monat=${mon}`)
     .then((r) => { setM(r); setKein(null); })
     .catch((e) => { if ((e as { status?: number }).status === 403) setKein(e.message); else setError(e.message); });
   useEffect(() => { setM(null); laden(monat); }, [monat]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { api.get<Nachweis[]>(`${MZ}/nachweise`).then(setArchiv).catch(() => setArchiv([])); }, []);
+  const archivLaden = () => api.get<Nachweis[]>(`${MZ}/nachweise`).then(setArchiv).catch(() => setArchiv([]));
+  useEffect(() => { archivLaden(); }, []);
 
   const ferien = new Map<string, Ferientag>((m?.ferien ?? []).map((f) => [f.datum, f]));
   const offen = (m?.zeiten ?? []).filter((z) => !z.anzahl).length;
@@ -129,7 +135,9 @@ export function MeineZeiten() {
 
               {m.gesperrt && (
                 <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.75rem' }}>
-                  Dieser Monat ist abgerechnet und bezahlt. Änderungen bitte über die Jugendleitung.
+                  {m.freigabe && !m.nachweis?.bezahlt_am
+                    ? `Du hast diesen Monat am ${dat(m.freigabe.am.slice(0, 10))} freigegeben. Änderungen bitte über die Jugendleitung.`
+                    : 'Dieser Monat ist abgerechnet und bezahlt. Änderungen bitte über die Jugendleitung.'}
                 </MessageStrip>
               )}
 
@@ -177,10 +185,21 @@ export function MeineZeiten() {
                   <Text>
                     {m.nachweis
                       ? <>Abgelegt{m.nachweis.erstellt_am ? ` am ${dat(m.nachweis.erstellt_am)}` : ''}{m.nachweis.bezahlt_am ? `, bezahlt am ${dat(m.nachweis.bezahlt_am)}` : ''}{m.nachweis.belegnr ? ` · ${m.nachweis.belegnr}` : ''}</>
-                      : 'Noch nicht abgelegt – die Jugendleitung erstellt den Nachweis zur Abrechnung.'}
+                      : 'Noch nicht abgelegt – nach Monatsende gibst du den Nachweis hier frei.'}
                   </Text>
+                  {m.freigabe && (
+                    <ObjectStatus state={m.nachweis?.bezahlt_am ? 'Positive' : 'Information'} inverted icon={<Icon name="approvals" />}>
+                      Freigegeben {dat(m.freigabe.am.slice(0, 10))}
+                    </ObjectStatus>
+                  )}
                 </div>
+                {!m.freigabe && !m.gesperrt && m.freigebbar !== true && m.stunden > 0 && (
+                  <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>{m.freigebbar}</Text>
+                )}
                 <div className="portal-mz__aktionen" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+                  {!m.freigabe && !m.gesperrt && (
+                    <Button design="Emphasized" icon="approvals" disabled={m.freigebbar !== true || busy} onClick={() => setFreigabe(true)}>Monat freigeben</Button>
+                  )}
                   <Button icon="show" disabled={!m.stunden} onClick={() => pdfZeigen(`${MZ}/nachweis/pdf?monat=${m.monat}`, `Zeitnachweis ${m.titel} (aktueller Stand)`)}>Voransicht</Button>
                   <Button icon="pdf-attachment" disabled={!m.nachweis} onClick={() => pdfZeigen(`${MZ}/nachweis/dokument?monat=${m.monat}`, `Zeitnachweis ${m.titel}`)}>Abgelegter Nachweis</Button>
                 </div>
@@ -196,7 +215,9 @@ export function MeineZeiten() {
                           <div className="portal-mz__art">{a.titel}</div>
                           <div className="portal-mz__info">
                             <span>{zahl(a.stunden)} Std. · {eur(a.betrag)}</span>
-                            {a.bezahlt_am ? <ObjectStatus state="Positive">bezahlt {dat(a.bezahlt_am)}</ObjectStatus> : <ObjectStatus state="Critical">offen</ObjectStatus>}
+                            {a.bezahlt_am ? <ObjectStatus state="Positive">bezahlt {dat(a.bezahlt_am)}</ObjectStatus>
+                              : a.freigegeben_am ? <ObjectStatus state="Information">freigegeben {dat(a.freigegeben_am)}</ObjectStatus>
+                                : <ObjectStatus state="Critical">offen</ObjectStatus>}
                           </div>
                         </div>
                         <Icon name="pdf-attachment" style={{ color: 'var(--sapContent_IconColor)' }} />
@@ -226,6 +247,31 @@ export function MeineZeiten() {
                                     toast(text); setTage(false);
                                   }
                                 }} />}
+      {freigabe && m && createPortal(
+        <Dialog open headerText={`${m.titel} freigeben`} onClose={() => setFreigabe(false)}
+                footer={<Bar endContent={<>
+                  <Button design="Emphasized" icon="approvals" disabled={busy}
+                          onClick={async () => {
+                            let text = '';
+                            const ok = await aktion(async () => {
+                              const r = await api.post<{ text: string; warnungen: string[] }>(`${MZ}/freigeben`, { monat: m.monat });
+                              text = r.text;
+                            });
+                            setFreigabe(false);
+                            if (ok) { toast(text, 6000); archivLaden(); }
+                          }}>Freigeben</Button>
+                  <Button onClick={() => setFreigabe(false)}>Abbrechen</Button>
+                </>} />}>
+          <div className="portal-mz__form" style={{ maxWidth: '26rem' }}>
+            <Text>
+              Mit der Freigabe bestätigst du {zahl(m.stunden)} Stunden ({eur(m.betrag)}) für {m.titel}. Der Zeitnachweis wird abgelegt und
+              an die Jugendleitung zur Zahlung weitergegeben. Danach kannst du die Zeiten des Monats nicht mehr ändern.
+            </Text>
+            <Text className="portal-muted portal-small">Nach der Zahlung erhältst du hier den Nachweis mit Zahlvermerk als neue Fassung.</Text>
+          </div>
+        </Dialog>,
+        document.body,
+      )}
       {pdf && <PdfDialog url={pdf.url} title={pdf.titel} filename={`${pdf.titel.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.pdf`} onClose={() => setPdf(null)} />}
     </AppPage>
   );

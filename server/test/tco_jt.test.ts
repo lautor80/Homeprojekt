@@ -238,3 +238,89 @@ test('Jugendtraining: Entgelte, Zeiten, Import, Nachweis, Bezahlt, Nachmeldung',
   const [ch] = await sql`select count(*)::int as n from core.change_header where object_type = 'JT_ZEIT'`;
   assert.ok(ch.n > 0);
 });
+
+test('Freigabe durch den Trainer, Arbeitsvorrat, Zahlung mit neuer Version', async () => {
+  // eigener Client für den Trainer (der globale Cookie gehört dem Admin)
+  let jc = '';
+  const jan = async (method: string, path: string, payload?: unknown) => {
+    const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie: jc, 'x-portal-request': '1' } });
+    const set = res.headers['set-cookie'];
+    if (set) jc = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
+    return { status: res.statusCode, body: String(res.headers['content-type']).includes('json') ? JSON.parse(res.body) : res.body };
+  };
+  const MZ = `${J}/meine`;
+  assert.equal((await call('POST', '/api/admin/roles', { id: 'TRAINER', name: 'Trainer', permissions: ['tco.jtmeine:edit'] })).status, 200);
+  assert.equal((await call('POST', '/api/admin/users', { username: 'jan', displayName: 'Jan', password: 'start-passwort', roles: ['TRAINER'] })).status, 200);
+  const [{ id }] = await sql`select id::text as id from core.users where username = 'jan'`;
+  assert.equal((await call('PUT', `${J}/trainer/benutzer`, { adrnr: '0000000281', benutzer_id: id })).status, 200);
+  assert.equal((await jan('POST', '/api/auth/login', { username: 'jan', password: 'start-passwort' })).status, 200);
+  assert.equal((await jan('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' })).status, 200);
+
+  // Tage ohne Dauer verhindern die Freigabe, ebenso ein nicht abgeschlossener Monat
+  let r = await jan('GET', `${MZ}/monat?monat=202610`);
+  assert.match(r.body.freigebbar, /fehlt noch die Dauer/);
+  assert.equal(r.body.freigabe, null);
+  r = await jan('POST', `${MZ}/freigeben`, { monat: '202610' });
+  assert.equal(r.status, 400);
+  r = await jan('POST', `${MZ}/freigeben`, { monat: '203001' });
+  assert.match(r.body.message, /nach Monatsende/);
+  for (const datum of ['2026-10-05', '2026-10-19']) {
+    assert.equal((await jan('POST', `${MZ}/zeiten`, { datum, trainingsart: 'Jugendtraining', anzahl: 1 })).status, 200);
+  }
+  r = await jan('GET', `${MZ}/monat?monat=202610`);
+  assert.equal(r.body.freigebbar, true);
+  assert.equal(r.body.betrag, 100); // 3 + 1 + 1 Std. × 20 €
+
+  // Freigabe: Paperless-Dokument mit Betrag, Monat gesperrt
+  r = await jan('POST', `${MZ}/freigeben`, { monat: '202610' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /freigegeben \(2026_10_TCO_JW\)/);
+  const [doku] = await sql`select doc_id, freigegeben_von, freigegeben_am is not null as frei, betrag::float8 as betrag from tco.jt_doku where adrnr = '0000000281' and monat = '202610'`;
+  assert.deepEqual({ frei: doku.frei, von: doku.freigegeben_von, betrag: doku.betrag }, { frei: true, von: 'Jan', betrag: 100 });
+  const doc = mock.docs.get(doku.doc_id)!;
+  assert.deepEqual(doc.meta.custom_fields.find((f: any) => f.field === 3), { field: 3, value: 'EUR100.00' });
+  assert.match(doc.notes.at(-1)!, /Vom Trainer freigegeben \(5 Std\., 100,00 €\)/);
+  r = await jan('POST', `${MZ}/zeiten`, { datum: '2026-10-20', trainingsart: 'Jugendtraining', anzahl: 1 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /freigegeben/);
+  r = await jan('GET', `${MZ}/monat?monat=202610`);
+  assert.equal(r.body.gesperrt, true);
+  assert.ok(r.body.freigabe.am);
+  assert.equal((await jan('POST', `${MZ}/freigeben`, { monat: '202610' })).status, 400);
+
+  // Jugendleitung: Status und Arbeitsvorrat; Trainer hat keinen Zugriff auf die Vereinsübersicht
+  r = await call('GET', `${J}/monat?monat=202610`);
+  let a = r.body.abrechnung.find((x: any) => x.adrnr === '0000000281');
+  assert.match(a.status, /^2026_10 freigegeben am \d\d\.\d\d\.\d{4} – zur Zahlung · DOKID/);
+  assert.ok(a.freigegeben_am);
+  r = await call('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const av = r.body.find((x: any) => x.key === 'JT:0000000281:202610');
+  assert.equal(av.pfad, '/tco/jugendtraining?monat=202610&tab=abr');
+  assert.equal(av.betrag, 100);
+  assert.match(av.titel, /Jan Weißing – Oktober 2026 freigegeben/);
+  assert.equal((await jan('GET', '/api/m/tco/dashboard/arbeitsvorrat')).status, 403);
+
+  // Freigabe zurücknehmen → Trainer kann korrigieren und erneut freigeben (neue Version)
+  r = await call('POST', `${J}/nachweis/freigabe-aufheben`, { adrnr: '0000000281', monat: '202610' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await jan('POST', `${MZ}/zeiten`, { datum: '2026-10-19', trainingsart: 'Jugendtraining', anzahl: 2 })).status, 200);
+  r = await jan('POST', `${MZ}/freigeben`, { monat: '202610' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(doc.versions.length, 1);
+  assert.deepEqual(doc.meta.custom_fields.find((f: any) => f.field === 3), { field: 3, value: 'EUR120.00' });
+
+  // Zahlung: neue Version mit Zahlvermerk, verschwindet aus dem Arbeitsvorrat, Trainer sieht „bezahlt“
+  r = await call('POST', `${J}/nachweis/bezahlt`, { adrnr: '0000000281', monat: '202610', datum: '2026-11-07' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(doc.versions.length, 2);
+  r = await call('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.ok(!r.body.some((x: any) => x.key === 'JT:0000000281:202610'));
+  assert.equal((await call('POST', `${J}/nachweis/freigabe-aufheben`, { adrnr: '0000000281', monat: '202610' })).status, 400);
+  r = await jan('GET', `${MZ}/nachweise`);
+  assert.deepEqual(r.body.map((x: any) => [x.monat, x.bezahlt_am, x.betrag]), [['202610', '2026-11-07', 120]]);
+  r = await jan('GET', `${MZ}/nachweis/dokument?monat=202610`);
+  assert.equal(r.status, 200);
+  const [{ n }] = await sql`select count(*)::int as n from core.change_header where action = 'JT_FREIGABE'`;
+  assert.ok(n >= 3);
+});

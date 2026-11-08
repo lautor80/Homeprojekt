@@ -210,3 +210,25 @@
 .portal-dash__row--Positive td:first-child { border-left-color: var(--sapPositiveColor); }
 .portal-dash__row--Negative td:first-child { border-left-color: var(--sapNegativeColor); }
 .portal-dash__row--Critical td:first-child { border-left-color: var(--sapCriticalColor); }
+
+/* Arbeitsvorrat */
+.portal-av { display: flex; flex-direction: column; }
+.portal-av__eintrag {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.75rem;
+  padding: 0.625rem 1rem; border: 0; border-bottom: 1px solid var(--sapList_BorderColor); border-left: 0.25rem solid var(--sapInformativeColor);
+  background: transparent; color: var(--sapTextColor); font: inherit; text-align: left; cursor: pointer;
+}
+.portal-av__eintrag:last-child { border-bottom: 0; }
+.portal-av__eintrag:hover { background: var(--sapList_Hover_Background); }
+.portal-av__eintrag--Critical { border-left-color: var(--sapCriticalColor); }
+.portal-av__eintrag--Negative { border-left-color: var(--sapNegativeColor); }
+.portal-av__icon { color: var(--sapContent_IconColor); }
+.portal-av__inhalt { min-width: 0; }
+.portal-av__titel { font-weight: bold; overflow-wrap: anywhere; }
+.portal-av__text { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); overflow-wrap: anywhere; }
+.portal-av__datum { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); white-space: nowrap; }
+.portal-av__pfeil { color: var(--sapContent_IconColor); width: 0.875rem; }
+@media (max-width: 600px) {
+  .portal-av__eintrag { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .portal-av__datum { display: none; }
+}
