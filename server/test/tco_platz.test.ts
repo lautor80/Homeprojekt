@@ -574,7 +574,7 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   assert.doesNotMatch(imp.text, /Benutzer angelegt/);
   const [k] = await sql`select benutzer_id, pw_hash from tco.kunden where zuid = '77'`;
   assert.ok(k.benutzer_id && k.pw_hash);
-  assert.equal(Number((await sql`select count(*)::int as n from core.users where username like '%@example.org'`)[0].n), 2, 'dennis + carla');
+  assert.equal(Number((await sql`select count(*)::int as n from core.users where username like '%@example.org'`)[0].n), 1, 'nur Dennis');
 
   // Erika bekommt eine Buchung → „Alle mit Buchung anlegen“ legt sie an, Anmeldung mit E-Mail und EP3-Kennwort
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000007801', ${tag(-10)}, '09:00', '10:00', 'ERIKA EXTERN', '1', 'Halle')`;
