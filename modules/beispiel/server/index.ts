@@ -39,9 +39,9 @@ const mod: ServerModule = {
   name: 'Beispiel: Kontakte',
   migrationsDir: path.join(APP_ROOT, 'modules', 'beispiel', 'server', 'migrations'),
   permissions: [
-    { id: P.display, text: 'Kontakte anzeigen' },
-    { id: P.edit, text: 'Kontakte anlegen und ändern' },
-    { id: P.delete, text: 'Kontakte löschen' },
+    { app: 'Kontakte', id: P.display, text: 'Kontakte anzeigen' },
+    { app: 'Kontakte', id: P.edit, text: 'Kontakte anlegen und ändern' },
+    { app: 'Kontakte', id: P.delete, text: 'Kontakte löschen' },
   ],
   auditObjects: [{ type: 'KONTAKT', text: 'Kontakt', permission: P.display }],
 

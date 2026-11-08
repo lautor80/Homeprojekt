@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
-import { AnalyticalTable, Bar, Button, CheckBox, Dialog, MessageStrip, Panel, Tag } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Bar, Button, Dialog, MessageStrip, Tag } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
@@ -9,9 +9,9 @@ import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useCan } from '../session';
 import { toast } from '../toast';
+import { PermissionEditor, type PermGroup } from '../components/PermissionEditor';
 
 interface Role { id: string; name: string; description: string | null; system: boolean; permissions: string[]; userCount: number }
-interface PermGroup { module: string; name: string; permissions: { id: string; text: string }[] }
 type Edit = Partial<Role> & { isNew: boolean };
 
 export function RolesPage() {
@@ -25,11 +25,14 @@ export function RolesPage() {
   const [busy, setBusy] = useState(false);
 
   const readonlyPerms = !mayEdit || !!edit?.system;
-  const togglePerm = (id: string, on: boolean) => {
-    if (!edit) return;
-    const set = new Set(edit.permissions ?? []);
-    if (on) set.add(id); else set.delete(id);
-    setEdit({ ...edit, permissions: [...set].sort() });
+
+  /** „12 Berechtigungen in 5 Apps“ für die Liste */
+  const appNamen = new Map<string, string>();
+  for (const g of catalog.data ?? []) for (const a of g.areas) for (const app of a.apps) for (const p of app.permissions) appNamen.set(p.id, `${g.module}/${a.name}/${app.name}`);
+  const umfang = (perms: string[]) => {
+    if (perms.includes('*')) return 'alle';
+    const apps = new Set(perms.map((p) => appNamen.get(p)).filter(Boolean));
+    return `${perms.length} in ${apps.size} App${apps.size === 1 ? '' : 's'}`;
   };
 
   async function save() {
@@ -66,7 +69,7 @@ export function RolesPage() {
     { Header: 'Rolle', accessor: 'id', width: 160 },
     { Header: 'Bezeichnung', accessor: 'name' },
     { Header: 'Beschreibung', accessor: 'description' },
-    { Header: 'Berechtigungen', accessor: (r: Record<string, any>) => (r.permissions.includes('*') ? 'alle' : String(r.permissions.length)), id: 'perms', width: 140 },
+    { Header: 'Berechtigungen', accessor: (r: Record<string, any>) => umfang(r.permissions), id: 'perms', width: 170 },
     { Header: 'Benutzer', accessor: 'userCount', width: 100 },
     { Header: '', accessor: 'system', width: 90, Cell: ({ value }: CellInstance) => (value ? <Tag hideStateIcon>System</Tag> : null) },
   ];
@@ -94,7 +97,7 @@ export function RolesPage() {
         open={!!edit}
         headerText={edit?.isNew ? 'Rolle anlegen' : `Rolle ${edit?.id ?? ''}`}
         onClose={() => setEdit(null)}
-        style={{ width: 'min(760px, 95vw)' }}
+        style={{ width: 'min(1100px, 96vw)' }}
         footer={
           <Bar
             startContent={!edit?.isNew && edit?.id ? <ChangeHistoryButton objectType="ROLE" objectKey={edit.id} /> : undefined}
@@ -120,17 +123,10 @@ export function RolesPage() {
               <TextField label="Bezeichnung" required value={edit.name} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, name: v })} />
               <TextField label="Beschreibung" wide value={edit.description} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, description: v })} />
             </FormGrid>
-            {!edit.system && (catalog.data ?? []).map((g) => (
-              <Panel key={g.module} headerText={g.name} style={{ marginTop: '1rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                  {g.permissions.map((p) => (
-                    <CheckBox key={p.id} text={p.text} title={p.id} readonly={readonlyPerms}
-                              checked={edit.permissions?.includes(p.id)}
-                              onChange={(e) => togglePerm(p.id, e.target.checked)} />
-                  ))}
-                </div>
-              </Panel>
-            ))}
+            {!edit.system && catalog.data && (
+              <PermissionEditor catalog={catalog.data} value={edit.permissions ?? []} readonly={readonlyPerms}
+                                onChange={(permissions) => setEdit({ ...edit, permissions })} />
+            )}
           </>
         )}
       </Dialog>

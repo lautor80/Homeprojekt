@@ -475,6 +475,67 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Berechtigungen einer Rolle (PermissionEditor): Modul → Bereich → App → Aktivität
+   --------------------------------------------------------------------------- */
+.portal-perm__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin: 1rem 0 0.75rem;
+}
+.portal-perm__module { margin-bottom: 0.75rem; }
+.portal-perm__count {
+  font-size: var(--sapFontSmallSize, 0.75rem);
+  color: var(--sapContent_LabelColor);
+  padding: 0.0625rem 0.5rem;
+  border-radius: 1rem;
+  background: var(--sapNeutralBackground, #eff1f2);
+  white-space: nowrap;
+}
+.portal-perm__count--on {
+  color: var(--sapInformativeTextColor);
+  background: var(--sapInformationBackground, #e1f4ff);
+}
+.portal-perm__bulk { display: inline-flex; gap: 0.125rem; }
+.portal-perm__area + .portal-perm__area { border-top: 1px solid var(--sapList_BorderColor); }
+.portal-perm__area-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.25rem 1rem;
+  background: var(--sapList_GroupHeaderBackground, var(--sapList_HeaderBackground, #f5f6f7));
+  border-bottom: 1px solid var(--sapList_BorderColor);
+}
+.portal-perm__area-title {
+  font-weight: 700;
+  color: var(--sapList_GroupHeaderTextColor, var(--sapTextColor));
+  font-size: var(--sapFontSize);
+}
+.portal-perm__area-head .portal-perm__bulk { margin-left: auto; }
+.portal-perm__app {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  gap: 0 1rem;
+  align-items: start;
+  padding: 0.25rem 1rem 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--sapList_BorderColor);
+  border-left: 0.1875rem solid transparent;
+}
+.portal-perm__app:last-child { border-bottom: none; }
+.portal-perm__app--on { border-left-color: var(--sapSelectedColor, #0064d9); }
+.portal-perm__app-name { font-weight: 700; }
+.portal-perm__acts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0 0.5rem;
+}
+@media (max-width: 700px) {
+  .portal-perm__app { grid-template-columns: minmax(0, 1fr); }
+  .portal-perm__acts { padding-left: 1.5rem; }
+}
+
+/* ---------------------------------------------------------------------------
    Kleinigkeiten
    --------------------------------------------------------------------------- */
 .portal-muted { color: var(--sapContent_LabelColor); }

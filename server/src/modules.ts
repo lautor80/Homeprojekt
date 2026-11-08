@@ -1,6 +1,6 @@
 import { modulAktiv } from './config.js';
 import type { AuditObjectDef, ServerModule } from './module.js';
-import { corePermissions, type PermissionGroup } from './permissions.js';
+import { corePermissions, gliedern, type PermissionGroup } from './permissions.js';
 
 // ---------------------------------------------------------------------------
 // Verfügbare Fachmodule. Neues Modul: hier importieren und eintragen.
@@ -20,8 +20,8 @@ export const activeModuleIds = () => activeModules().map((m) => m.id);
 
 export function permissionCatalog(): PermissionGroup[] {
   return [
-    { module: 'core', name: 'Basis', permissions: corePermissions },
-    ...activeModules().map((m) => ({ module: m.id, name: m.name, permissions: m.permissions })),
+    { module: 'core', name: 'Basis', permissions: corePermissions, areas: gliedern('Basis', corePermissions) },
+    ...activeModules().map((m) => ({ module: m.id, name: m.name, permissions: m.permissions, areas: gliedern(m.name, m.permissions) })),
   ];
 }
 

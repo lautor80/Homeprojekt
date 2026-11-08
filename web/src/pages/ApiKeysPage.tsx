@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Panel, Select, Text, TextArea,
+  AnalyticalTable, Bar, Button, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -11,13 +11,13 @@ import { ChangeHistoryButton, fmtDateTime } from '../components/ChangeHistory';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useCan } from '../session';
 import { toast } from '../toast';
+import { PermissionEditor, type PermGroup } from '../components/PermissionEditor';
 
 interface ApiKey {
   id: string; module: string; moduleName: string; name: string; prefix: string; permissions: string[];
   expires_on: string | null; active: boolean; status: 'Aktiv' | 'Gesperrt' | 'Abgelaufen';
   created_at: string; created_by: string; last_used_at: string | null; last_used_ip: string | null;
 }
-interface PermGroup { module: string; name: string; permissions: { id: string; text: string }[] }
 type Edit = { id?: string; module: string; name: string; permissions: string[]; expires_on: string | null; active?: boolean };
 
 const statusState = { Aktiv: 'Positive', Gesperrt: 'Negative', Abgelaufen: 'Critical' } as const;
@@ -35,13 +35,7 @@ export function ApiKeysPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const groupPerms = modules.find((g) => g.module === edit?.module)?.permissions ?? [];
-  const toggle = (id: string, on: boolean) => {
-    if (!edit) return;
-    const s = new Set(edit.permissions);
-    if (on) s.add(id); else s.delete(id);
-    setEdit({ ...edit, permissions: [...s].sort() });
-  };
+  const modulKatalog = modules.filter((g) => g.module === edit?.module);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -129,7 +123,7 @@ export function ApiKeysPage() {
         open={!!edit}
         headerText={edit?.id ? `API-Schlüssel ${edit.name}` : 'API-Schlüssel anlegen'}
         onClose={() => setEdit(null)}
-        style={{ width: 'min(760px, 95vw)' }}
+        style={{ width: 'min(1000px, 96vw)' }}
         footer={
           <Bar
             startContent={edit?.id ? <ChangeHistoryButton objectType="API_KEY" objectKey={`${edit.module}/${edit.name}`} /> : undefined}
@@ -161,14 +155,8 @@ export function ApiKeysPage() {
                             style={{ width: '100%' }} onChange={(e) => setEdit({ ...edit, expires_on: e.detail.value || null })} />
               </FieldBox>
             </FormGrid>
-            <Panel headerText={`Berechtigungen im Modul ${modules.find((g) => g.module === edit.module)?.name ?? edit.module}`} fixed style={{ marginTop: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                {groupPerms.map((p) => (
-                  <CheckBox key={p.id} text={p.text} readonly={!mayEdit}
-                            checked={edit.permissions.includes(p.id)} onChange={(e) => toggle(p.id, e.target.checked)} />
-                ))}
-              </div>
-            </Panel>
+            <PermissionEditor catalog={modulKatalog} value={edit.permissions} readonly={!mayEdit}
+                              onChange={(permissions) => setEdit({ ...edit, permissions })} />
           </>
         )}
       </Dialog>
