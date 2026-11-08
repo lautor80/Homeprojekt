@@ -17,6 +17,7 @@ import { Finanz } from './finanz/Finanz';
 import { Konten } from './konten/Konten';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
+import { Ablage } from './upload/Ablage';
 import { PlatzBuchen } from './platz/PlatzBuchen';
 import { Platzverwaltung } from './platz/Platzverwaltung';
 import { api } from '@core/api';
@@ -39,6 +40,8 @@ const mod: WebModule = {
   name: 'TC Oberthal',
   icon: 'badge',
   home: { component: Dashboard, permission: 'tco.dashboard:display' },
+  // Ablagefeld unten in der Navigation: Dateien hineinziehen → Paperless (mit Voreinstellung)
+  sideWidgets: [{ component: Ablage, permission: 'tco.upload:execute' }],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps (Gliederung wie die Rollenpflege)
   nav: [
     {

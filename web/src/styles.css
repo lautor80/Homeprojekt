@@ -550,3 +550,17 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-nowrap { white-space: nowrap; }
 .portal-stack { display: flex; flex-direction: column; gap: var(--portal-gap); }
 .portal-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ---------------------------------------------------------------------------
+   Linke Leiste: Navigation + Bausteine der Module (z. B. Ablagefeld)
+   --------------------------------------------------------------------------- */
+.portal-side { height: 100%; display: flex; flex-direction: column; background: var(--sapList_Background, #fff); box-shadow: var(--sapContent_Shadow0); }
+.portal-side__nav { flex: 1 1 auto; min-height: 0; box-shadow: none; }
+.portal-side__widgets {
+  flex: none; width: 0; min-width: 100%;            /* so breit wie die Navigation, nie breiter */
+  padding: 0.5rem; border-top: 1px solid var(--sapList_BorderColor); box-sizing: border-box;
+}
+.portal-side__widgets--eingeklappt { padding: 0.375rem 0.25rem; }
+@media (width < 600px) {
+  .portal-side, .portal-side__nav { width: 100%; }
+}

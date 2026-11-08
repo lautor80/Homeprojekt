@@ -50,6 +50,10 @@ export function Shell() {
   }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const routes: RouteDef[] = [...coreRoutes, ...modules.flatMap((m) => m.routes)];
+  const widgets = modules.flatMap((m) => m.sideWidgets ?? []).filter((w) => can(w.permission));
+
+  /** Auf dem Handy liegt die Navigation über dem Inhalt: nach der Auswahl wieder einklappen */
+  const gehe = (path: string) => { navigate(path); if (window.innerWidth < 600) setCollapsed(true); };
 
   const isSelected = (path?: string) =>
     !!path && (path === '/' ? location.pathname === '/' : location.pathname === path || location.pathname.startsWith(path + '/'));
@@ -59,7 +63,7 @@ export function Shell() {
   const sub = (e: NavEntry) => (
     <SideNavigationSubItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={isSelected(e.path)}
                            style={eingerueckt}
-                           onClick={() => e.path && navigate(e.path)} />
+                           onClick={() => e.path && gehe(e.path)} />
   );
   // Stufe-2-Gruppen sind eingeklappt; nur die Gruppe mit der geöffneten Seite klappt automatisch auf.
   // Der Benutzer kann jede Gruppe selbst auf- und zuklappen (der Zustand bleibt bis zum Seitenwechsel in eine andere Gruppe).
@@ -68,7 +72,7 @@ export function Shell() {
     <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={!e.children && isSelected(e.path)}
                         style={einruecken ? eingerueckt : undefined}
                         expanded={e.children ? enthaeltAktiv(e) : undefined} unselectable={!!e.children}
-                        onClick={() => !e.children && e.path && navigate(e.path)}>
+                        onClick={() => !e.children && e.path && gehe(e.path)}>
       {e.children?.map(sub)}
     </SideNavigationItem>
   );
@@ -92,7 +96,8 @@ export function Shell() {
           />
         }
         sideContent={
-          <SideNavigation>
+          <div className="portal-side">
+          <SideNavigation collapsed={collapsed} className="portal-side__nav">
             {nav.map((e) =>
               e.children ? (
                 <SideNavigationGroup key={e.text} text={e.text} expanded>
@@ -103,6 +108,12 @@ export function Shell() {
               ),
             )}
           </SideNavigation>
+          {widgets.length > 0 && (
+            <div className={`portal-side__widgets${collapsed ? ' portal-side__widgets--eingeklappt' : ''}`}>
+              {widgets.map((w, i) => <w.component key={i} collapsed={collapsed} />)}
+            </div>
+          )}
+          </div>
         }
       >
         <div className="portal-content">

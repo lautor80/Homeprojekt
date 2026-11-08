@@ -1,0 +1,28 @@
+/* Ablagefeld in der linken Navigation */
+.portal-ablage {
+  display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 0.75rem; min-height: 3.25rem; box-sizing: border-box;
+  border: 2px dashed var(--sapField_BorderColor, #bcc3ca); border-radius: var(--portal-radius, 0.75rem);
+  background: var(--sapField_Background, #fff); color: var(--sapContent_LabelColor); cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.portal-ablage:hover, .portal-ablage:focus-visible { border-color: var(--sapButton_Emphasized_Background, #0070f2); outline: none; }
+.portal-ablage--ueber {
+  border-style: solid; border-color: var(--sapButton_Emphasized_Background, #0070f2);
+  background: var(--sapList_SelectionBackgroundColor, #ebf8ff); color: var(--sapLinkColor);
+}
+.portal-ablage--lauf { cursor: progress; }
+.portal-ablage--klein { justify-content: center; padding: 0.5rem 0; min-height: 2.75rem; }
+.portal-ablage__icon { flex: none; width: 1.375rem; height: 1.375rem; color: var(--sapContent_IconColor); }
+.portal-ablage--ueber .portal-ablage__icon { color: var(--sapLinkColor); }
+.portal-ablage__text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.portal-ablage__titel { font-weight: 700; color: var(--sapTextColor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-ablage__info { font-size: var(--sapFontSmallSize); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-ablage__leiste { display: flex; flex-wrap: wrap; justify-content: space-between; margin-top: 0.125rem; }
+.portal-ablage__form { display: flex; flex-direction: column; gap: 0.75rem; }
+.portal-ablage__feld { display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-ablage__protokoll { display: flex; flex-direction: column; }
+.portal-ablage__zeile { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-ablage__zeile span { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-ablage__zeile--Positive ui5-icon { color: var(--sapPositiveElementColor, #188918); }
+.portal-ablage__zeile--Negative ui5-icon { color: var(--sapNegativeElementColor, #aa0808); }
+.portal-ablage__zeile--Negative span { color: var(--sapNegativeTextColor, #aa0808); }

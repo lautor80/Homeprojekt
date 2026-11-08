@@ -61,4 +61,9 @@ export interface WebModule {
    * Wird nur gezeigt, wenn der Benutzer die Berechtigung hat.
    */
   home?: { component: ComponentType; permission?: string };
+  /**
+   * Optionale Bausteine unten in der linken Navigationsleiste (z. B. Ablagefeld für Dateien).
+   * Auf jeder Seite sichtbar, nur mit der Berechtigung; collapsed = Navigation eingeklappt.
+   */
+  sideWidgets?: { component: ComponentType<{ collapsed: boolean }>; permission?: string }[];
 }
