@@ -259,16 +259,17 @@ export async function ep3Abgleich(db: Db) {
       left join tco.mitgliedera a on a.zuid = k.zuid
      where coalesce(k.status, '') <> all(${GESPERRT}) and coalesce(k.status, '') <> 'placeholder'
      order by k.zuid, k.zalias`;
-  const benutzer = await db`select u.id::text as id, u.username, u.display_name as name, lower(coalesce(u.email, '')) as email, a.adrnr
-                              from core.users u left join tco.mitgliedera a on a.benutzer_id = u.id where u.active`;
+  const benutzer = await db`select u.id::text as id, u.username, u.display_name as name, lower(coalesce(u.email, '')) as email, a.adrnr,
+                                     upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) as mitglied_name, lower(trim(coalesce(m.email, ''))) as mitglied_email
+                              from core.users u left join tco.mitgliedera a on a.benutzer_id = u.id left join tco.mitglieder m on m.adrnr = a.adrnr where u.active`;
   const out = [];
   for (const k of kunden) {
     const email = (k.email ?? '').trim().toLowerCase();
     const voll = name(k.vorname, k.nachname).toUpperCase();
     const treffer: { art: 'BENUTZER' | 'MITGLIED'; schluessel: string; name: string; grund: string }[] = [];
     for (const u of benutzer) {
-      const grund = u.username.toLowerCase() === k.zalias.toLowerCase() ? 'gleicher Benutzername' : email && u.email === email ? 'gleiche E-Mail'
-        : voll && condense(u.name).toUpperCase() === voll ? 'gleicher Name' : null;
+      const grund = u.username.toLowerCase() === k.zalias.toLowerCase() ? 'gleicher Benutzername' : email && (u.email === email || u.mitglied_email === email) ? 'gleiche E-Mail'
+        : voll && (condense(u.name).toUpperCase() === voll || u.mitglied_name === voll) ? 'gleicher Name' : null;
       if (grund) treffer.push({ art: 'BENUTZER', schluessel: u.id, name: `${u.name} (${u.username})${u.adrnr ? ` · Mitglied ${u.adrnr}` : ''}`, grund });
     }
     if (!k.mitglied_adrnr) {
