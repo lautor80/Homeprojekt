@@ -62,7 +62,7 @@ export function Getraenke({ edit }: { edit: boolean }) {
         </FlexBox>
       )}
       <Toolbar design="Transparent"><Title level="H5">Getränke ({aktuell.length})</Title></Toolbar>
-      <AnalyticalTable columns={columns} data={l ?? []} loading={!l} visibleRows={Math.max(l?.length ?? 0, 3)} groupable
+      <AnalyticalTable minRows={1} columns={columns} data={l ?? []} loading={!l} visibleRows={Math.max(l?.length ?? 0, 1)} groupable
                        noDataText="Noch keine Getränke (Schlüssel ab 100 in der Produkttabelle)" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Ein neuer Preis ab einem Datum grenzt den bisherigen Satz am Vortag ab. Maßgeblich für den VK in der Forderungsliste ist das Rechnungsdatum.

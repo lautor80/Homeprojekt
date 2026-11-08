@@ -91,7 +91,7 @@ export function ChangeHistoryButton({ objectType, objectKey }: { objectType: str
         footer={<Bar endContent={<Button onClick={() => setOpen(false)}>Schließen</Button>} />}
       >
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
-        <AnalyticalTable
+        <AnalyticalTable minRows={1}
           columns={changeColumns(false)}
           data={docs ? flattenDocs(docs) : []}
           loading={!docs && !error}

@@ -133,7 +133,7 @@ export function BeitragDialog({ art, edit: darf, onClose }: { art: string | null
 
           <Title level="H5" style={{ margin: '1rem 0 0.25rem' }}>Beträge je Zeitraum</Title>
           {preise.length > 0 && (
-            <AnalyticalTable columns={prCols} data={preise} visibleRows={Math.min(preise.length, 8)} rowHeight={44}
+            <AnalyticalTable minRows={1} columns={prCols} data={preise} visibleRows={Math.min(preise.length, 8)} rowHeight={44}
                              withRowHighlight highlightField={(r: Record<string, any>) => r.state} />
           )}
           {edit && (
@@ -154,7 +154,7 @@ export function BeitragDialog({ art, edit: darf, onClose }: { art: string | null
 
           {!d.neu && (
             <Panel collapsed headerText={`Verträge zur Beitragsart (${d.vertraege.filter((v) => v.laeuft).length} laufend, ${d.vertraege.length} gesamt)`} style={{ marginTop: '1rem' }}>
-              <AnalyticalTable columns={vtCols} data={d.vertraege} visibleRows={Math.min(Math.max(d.vertraege.length, 1), 8)} rowHeight={44}
+              <AnalyticalTable minRows={1} columns={vtCols} data={d.vertraege} visibleRows={Math.min(Math.max(d.vertraege.length, 1), 8)} rowHeight={44}
                                noDataText="Keine Verträge zu dieser Beitragsart" sortable
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.laeuft ? 'Positive' : 'None')} />
               <Attributes narrow>

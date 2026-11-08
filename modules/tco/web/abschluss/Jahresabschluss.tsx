@@ -59,7 +59,7 @@ function Baum({ columns, data, minZeilen = 2, noDataText }: { columns: Analytica
           <Button design="Transparent" icon="collapse-all" onClick={() => alle(false)}>Alle zuklappen</Button>
         </div>
       )}
-      <AnalyticalTable columns={columns} data={data} isTreeTable tableInstance={ref as never} onRowExpandChange={nachlesen}
+      <AnalyticalTable minRows={1} columns={columns} data={data} isTreeTable tableInstance={ref as never} onRowExpandChange={nachlesen}
                        visibleRows={Math.max(sichtbar(data), minZeilen)} noDataText={noDataText}
                        reactTableOptions={{ autoResetExpanded: false, getRowId: (r: Zeile) => r.id }} />
     </>
@@ -218,7 +218,7 @@ export function Jahresabschluss() {
             {baum ? (
               <Baum columns={earBaumSpalten} data={earBaum} noDataText={`Für ${jahr} liegen keine Buchungen vor.`} />
             ) : (
-              <AnalyticalTable columns={earTabelleSpalten} data={earTabelle} visibleRows={Math.max(earTabelle.length, 2)} noDataText={`Für ${jahr} liegen keine Buchungen vor.`}
+              <AnalyticalTable minRows={1} columns={earTabelleSpalten} data={earTabelle} visibleRows={Math.max(earTabelle.length, 1)} noDataText={`Für ${jahr} liegen keine Buchungen vor.`}
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.state ?? 'None')} />
             )}
           </Section>
@@ -228,7 +228,7 @@ export function Jahresabschluss() {
               {baum ? (
                 <Baum columns={uebSpalten} data={uebBaum} minZeilen={3} />
               ) : (
-                <AnalyticalTable columns={uebSpalten} data={uebTabelle} visibleRows={uebTabelle.length}
+                <AnalyticalTable minRows={1} columns={uebSpalten} data={uebTabelle} visibleRows={uebTabelle.length}
                                  withRowHighlight highlightField={(r: Record<string, any>) => (r.state ?? 'None')} />
               )}
             </Section>
@@ -236,7 +236,7 @@ export function Jahresabschluss() {
 
           <Section title="Bankkonten – Anfangs- und Endbestand" count={d.bank.length} flush>
             {d.bank.length
-              ? <AnalyticalTable columns={bankSpalten} data={d.bank} visibleRows={d.bank.length} />
+              ? <AnalyticalTable minRows={1} columns={bankSpalten} data={d.bank} visibleRows={d.bank.length} />
               : <Empty>Keine Geld- oder Darlehenskonten (Kennzahl BA/BK) mit Bestand in {jahr}.</Empty>}
           </Section>
 
@@ -255,7 +255,7 @@ export function Jahresabschluss() {
               </Attributes>
             </div>
             {d.anlagen.spiegel.length ? (
-              <AnalyticalTable columns={anlSpalten} data={d.anlagen.spiegel} visibleRows={d.anlagen.spiegel.length}
+              <AnalyticalTable minRows={1} columns={anlSpalten} data={d.anlagen.spiegel} visibleRows={d.anlagen.spiegel.length}
                                onRowClick={(e) => setAnlage(e.detail.row.original.anlnr)}
                                withRowHighlight highlightField={(r: Record<string, any>) => ANL_STATE[r.status as Spiegel['status']]} />
             ) : <Empty>Bis {jahr} sind keine Anlageobjekte erfasst.</Empty>}

@@ -253,7 +253,7 @@ function Zeiten({ m, zeiten, ferien, sel, edit, onSetzen, onLoeschen, onNeu }: {
         <ToolbarSpacer />
         {edit && <Button icon="add" design="Transparent" onClick={onNeu}>Neue Position{sel ? ` (${dat(sel)})` : ''}</Button>}
       </Toolbar>
-      <AnalyticalTable columns={columns} data={zeiten} visibleRows={Math.max(zeiten.length, 3)} noDataText="Keine Trainingszeiten im Monat – im Kalender einen Tag wählen oder importieren"
+      <AnalyticalTable minRows={1} columns={columns} data={zeiten} visibleRows={Math.max(zeiten.length, 1)} noDataText="Keine Trainingszeiten im Monat – im Kalender einen Tag wählen oder importieren"
                        withRowHighlight highlightField={(r: Record<string, any>) => (r.datum === sel ? 'Information' : r.anzahl ? 'None' : 'Critical')} />
     </>
   );
@@ -306,7 +306,7 @@ function Woche({ m, zeiten, ferien, edit, adrnr, onSetzen, onLoeschen, onAktion 
           })}>Trainingstage generieren</Button>
         </>}
       </Toolbar>
-      <AnalyticalTable columns={columns} data={m.arten.map((a) => ({ art: a }))} visibleRows={m.arten.length} />
+      <AnalyticalTable minRows={1} columns={columns} data={m.arten.map((a) => ({ art: a }))} visibleRows={m.arten.length} />
     </>
   );
 }
@@ -353,7 +353,7 @@ function Import({ m, edit, erg, onErg, onError, onAktion }: {
       {erg && <>
         <MessageStrip design={erg.state === 'None' ? 'Information' : erg.state} hideCloseButton style={{ marginBottom: '0.5rem' }}>{erg.text}</MessageStrip>
         <Title level="H5" style={{ margin: '0.5rem 0' }}>Importprotokoll</Title>
-        <AnalyticalTable columns={columns} data={erg.prot} visibleRows={Math.max(erg.prot.length, 1)} noDataText="Keine Rückmeldungen im Monat" />
+        <AnalyticalTable minRows={1} columns={columns} data={erg.prot} visibleRows={Math.max(erg.prot.length, 1)} noDataText="Keine Rückmeldungen im Monat" />
       </>}
     </>
   );
@@ -427,7 +427,7 @@ function Abrechnung({ m, edit, onAktion, onError }: { m: Monat; edit: boolean; o
         <Title level="H5">Trainerübersicht {m.titel}</Title>
         <ToolbarSpacer />
       </Toolbar>
-      <AnalyticalTable columns={columns} data={m.abrechnung} visibleRows={Math.max(m.abrechnung.length, 3)} noDataText="Keine Trainer mit Trainer-Kennzeichen – siehe „Entgelte“" />
+      <AnalyticalTable minRows={1} columns={columns} data={m.abrechnung} visibleRows={Math.max(m.abrechnung.length, 1)} noDataText="Keine Trainer mit Trainer-Kennzeichen – siehe „Entgelte“" />
       <PdfDialog url={pdf?.url ?? null} title={pdf?.titel ?? ''} filename={`${pdf?.titel ?? 'Zeitnachweis'}.pdf`} onClose={() => setPdf(null)}
                  actions={edit && pdf?.ablage && m.paperless && <Button design="Emphasized" icon="upload-to-cloud" loading={busy} onClick={() => ablegen(pdf.ablage!)}>Nach Paperless übertragen</Button>} />
     </>

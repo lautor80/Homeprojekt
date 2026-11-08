@@ -281,7 +281,7 @@ export function FiBelege() {
           Ohne Buchung (Strg+V auf dieser Seite, Ablagefeld links) entsteht ein offener Beleg, den der Bankimport vorschlägt.
         </Label>
       )}
-      <AnalyticalTable
+      <AnalyticalTable minRows={1}
         key={`${geladen?.von}|${geladen?.bis}|${geladen?.konto}|${tab}|${tage.length}`}
         columns={columns}
         data={gefiltert}
@@ -293,7 +293,7 @@ export function FiBelege() {
           initialState: { groupBy: ['datum'], sortBy: [{ id: 'datum', desc: true }], expanded: Object.fromEntries(tage.map((t) => [`datum:${t}`, true])) },
           autoResetExpanded: false,
         }}
-        visibleRows={Math.max(gefiltert.length + tage.length, 3)}
+        visibleRows={Math.max(gefiltert.length + tage.length, 1)}
         noDataText={geladen ? 'Keine Buchungen im Zeitraum' : 'Zeitraum und Konto wählen, dann „Go“'}
       />
 

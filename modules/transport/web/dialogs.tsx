@@ -266,7 +266,7 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
         </FileUploader>
         <Text>{files.length ? files.map((f) => f.name).join(', ') : 'Noch keine Dateien ausgewählt'}</Text>
       </FlexBox>
-      <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 3)} scaleWidthMode="Smart" />
+      <AnalyticalTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} scaleWidthMode="Smart" />
     </Dialog>
   );
 }

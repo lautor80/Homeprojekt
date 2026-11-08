@@ -68,7 +68,7 @@ export function FesteBelegungen({ aktion, plaetze }: { aktion: Aktion; plaetze: 
         <Button design="Transparent" icon={alte ? 'filter' : 'history'} onClick={() => setAlte(!alte)}>{alte ? 'Nur aktuelle' : 'Auch vergangene'}</Button>
         <Button design="Emphasized" icon="add" onClick={() => setForm({ bezeichnung: 'Jugendtraining', art: 'TRAINING', plaetze: [], wochentage: '1', datum_von: heute, datum_bis: `${heute.slice(0, 4)}-09-30` > heute ? `${heute.slice(0, 4)}-09-30` : `${Number(heute.slice(0, 4)) + 1}-09-30`, zeit_von: '16:00', zeit_bis: '18:00', hinweis: null, aktiv: true })}>Neue Belegung</Button>
       </Toolbar>
-      <AnalyticalTable columns={columns} data={zeilen} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(zeilen.length, 3), 15)} rowHeight={44}
+      <AnalyticalTable columns={columns} data={zeilen} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(zeilen.length, 1), 15)} rowHeight={44}
                        noDataText="Keine festen Belegungen – z. B. die Jugendtrainingszeiten hier anlegen" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Feste Belegungen erscheinen im Buchungskalender für alle mit ihrer Bezeichnung und blockieren Buchungen (auch Serien und Abos).

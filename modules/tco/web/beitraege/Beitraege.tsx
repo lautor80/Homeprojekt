@@ -128,11 +128,11 @@ export function Beitraege() {
       {d && !d.leer && (
         <Section title="Beitragsarten" count={zeilen.length} flush
                  status={<Text className="portal-muted portal-small">Inaktive Beiträge werden weiter eingezogen, sind aber für neue Verträge gesperrt.</Text>}>
-          <AnalyticalTable
+          <AnalyticalTable minRows={1}
             key={`${filter}|${gruppen.join('|')}|${zeilen.length}`}
             columns={columns} data={zeilen} groupable sortable rowHeight={44}
             reactTableOptions={{ initialState: { groupBy: ['gruppe'], expanded: Object.fromEntries(gruppen.map((g) => [`gruppe:${g}`, true])) }, autoResetExpanded: false }}
-            visibleRows={Math.max(zeilen.length + gruppen.length, 3)}
+            visibleRows={Math.max(zeilen.length + gruppen.length, 1)}
             noDataText={suche || filter ? 'Keine Beitragsart zu dieser Auswahl' : 'Keine Beitragsarten vorhanden'}
           />
         </Section>

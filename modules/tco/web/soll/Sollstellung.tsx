@@ -45,12 +45,12 @@ const artenText = (l: Pick<Lauf, 'mit_mb' | 'mit_jt'>) => [l.mit_mb && 'Beiträg
 function Gruppiert({ columns, data, by, noData }: { columns: AnalyticalTableColumnDefinition[]; data: Pos[]; by: string; noData: string }) {
   const gruppen = [...new Set(data.map((d) => String((d as unknown as Record<string, unknown>)[by] ?? '')))];
   return (
-    <AnalyticalTable
+    <AnalyticalTable minRows={1}
       key={`${by}|${gruppen.join('|')}|${data.length}`}
       columns={columns.map((c) => (c.id === by || c.accessor === by ? { ...c, disableGroupBy: false } : { ...c, Aggregated: () => null }))}
       data={data} groupable sortable
       reactTableOptions={{ initialState: { groupBy: [by], expanded: Object.fromEntries(gruppen.map((g) => [`${by}:${g}`, true])) }, autoResetExpanded: false }}
-      visibleRows={Math.max(data.length + gruppen.length, 3)} noDataText={noData}
+      visibleRows={Math.max(data.length + gruppen.length, 1)} noDataText={noData}
     />
   );
 }
@@ -88,8 +88,8 @@ export function Sollstellung() {
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}
       {init && <Glaeubiger init={init} onSaved={laden} />}
       <Title level="H5" style={{ margin: '1rem 0 0.5rem' }}>Lastschriftläufe ({init?.laeufe.length ?? 0})</Title>
-      <AnalyticalTable columns={laufColumns} data={init?.laeufe ?? []} loading={!init} sortable
-                       visibleRows={Math.max(init?.laeufe.length ?? 0, 3)} noDataText="Noch keine Lastschriftläufe"
+      <AnalyticalTable minRows={1} columns={laufColumns} data={init?.laeufe ?? []} loading={!init} sortable
+                       visibleRows={Math.max(init?.laeufe.length ?? 0, 1)} noDataText="Noch keine Lastschriftläufe"
                        onRowClick={(e) => setAnsicht(e.detail.row.original.laufid)} />
     </AppPage>
   );
@@ -254,7 +254,7 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
             <Gruppiert columns={cols} data={v.pos} by="zahler_name" noData="Keine Positionen fällig" />
           </Tab>
           <Tab data-key="tx" text={`Lastschriften (${txAnz})`} selected={tab === 'tx'}>
-            <AnalyticalTable columns={txColumns} data={v.tx} visibleRows={Math.max(v.tx.length, 3)} noDataText="Keine Lastschriften" />
+            <AnalyticalTable minRows={1} columns={txColumns} data={v.tx} visibleRows={Math.max(v.tx.length, 1)} noDataText="Keine Lastschriften" />
           </Tab>
           <Tab data-key="excl" text={`Ausgeschlossen (${v.excl.length})`} selected={tab === 'excl'}>
             <Gruppiert columns={exclCols} data={v.excl} by="grund" noData="Nichts ausgeschlossen" />
@@ -322,7 +322,7 @@ function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => vo
             <Gruppiert columns={cols} data={l.pos} by="zahler_name" noData={k?.status === 'S' ? 'Lauf storniert – keine Positionen' : 'Keine Positionen'} />
           </Tab>
           <Tab text={`Lastschriften (${l.tx.length})`}>
-            <AnalyticalTable columns={txColumns} data={l.tx} visibleRows={Math.max(l.tx.length, 3)} noDataText="Keine Lastschriften" />
+            <AnalyticalTable minRows={1} columns={txColumns} data={l.tx} visibleRows={Math.max(l.tx.length, 1)} noDataText="Keine Lastschriften" />
           </Tab>
         </TabContainer>
       )}

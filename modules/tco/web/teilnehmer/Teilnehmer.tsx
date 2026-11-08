@@ -118,7 +118,7 @@ export function Teilnehmer() {
       <Section title="Trefferliste" count={rows.length} flush
                status={sel.length ? <Text className="portal-muted">{sel.length} markiert{mitEmail.length < markiert.length ? `, ${markiert.length - mitEmail.length} ohne E-Mail` : ''}</Text> : undefined}
                actions={sel.length ? <Button design="Transparent" onClick={() => setSel([])}>Auswahl aufheben</Button> : undefined}>
-        <AnalyticalTable columns={columns} data={rows} loading={loading} sortable visibleRows={Math.min(Math.max(rows.length, 3), 25)}
+        <AnalyticalTable minRows={1} columns={columns} data={rows} loading={loading} sortable visibleRows={Math.min(Math.max(rows.length, 1), 25)}
                          noDataText="Keine Teilnehmer gefunden" />
       </Section>
       <MessageStrip hideCloseButton>
@@ -174,7 +174,7 @@ function DetailDialog({ adrnr, onClose }: { adrnr: string; onClose: () => void }
             </Attributes>
           </ObjectHeader>
           <Section title="Verträge" count={d.vertraege.length} flush>
-            <AnalyticalTable columns={columns} data={d.vertraege} visibleRows={Math.max(d.vertraege.length, 1)} noDataText="Keine Verträge"
+            <AnalyticalTable minRows={1} columns={columns} data={d.vertraege} visibleRows={Math.max(d.vertraege.length, 1)} noDataText="Keine Verträge"
                              withRowHighlight highlightField={(r: Record<string, any>) => (r.laeuft ? (r.jugend ? 'Information' : 'None') : 'Critical')} />
           </Section>
         </>

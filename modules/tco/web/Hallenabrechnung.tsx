@@ -560,7 +560,7 @@ function PersonPanel(props: {
                    return { text: `Rechnung ${r.rgnr_txt} angelegt` };
                  })}>Anlegen</Button>}
                </>}>
-        <AnalyticalTable columns={rgCols} data={d.rechnungen} visibleRows={Math.max(d.rechnungen.length, 1)} rowHeight={48}
+        <AnalyticalTable minRows={1} columns={rgCols} data={d.rechnungen} visibleRows={Math.max(d.rechnungen.length, 1)} rowHeight={48}
                          noDataText="Keine Rechnungen in der Selektion" sortable
                          onRowClick={(e) => setRgnr(e.detail.row.original.rgnr_txt)} />
       </Section>
@@ -578,7 +578,7 @@ function PersonPanel(props: {
           {!rechnung.aenderbar && <MessageStrip hideCloseButton style={{ margin: '0.75rem 1rem 0.25rem' }}>
             Die Rechnung ist {RG_STATUS[rechnung.status].toLowerCase()} und nimmt keine Positionen mehr auf.{rechnung.status === '3' ? ' Über das Menü „Wieder eröffnen“ wird sie änderbar.' : ''}
           </MessageStrip>}
-          <AnalyticalTable columns={posCols} data={pos ?? []} loading={!pos} visibleRows={Math.max(pos?.length ?? 1, 1)}
+          <AnalyticalTable minRows={1} columns={posCols} data={pos ?? []} loading={!pos} visibleRows={Math.max(pos?.length ?? 1, 1)}
                            noDataText="Keine Positionen" />
           {pl && (pl.doknr || pl.fehler) && (
             <div style={{ padding: '0.75rem 1rem 1rem' }}>
@@ -605,7 +605,7 @@ function PersonPanel(props: {
                    {rechnung?.aenderbar ? `Vergangene zu ${rechnung.rgnr_txt} (${vergangene.length})` : `Vergangene auf neue Rechnung (${vergangene.length})`}
                  </Button>
                ) : undefined}>
-        <AnalyticalTable columns={bCols} data={d.buchungen} visibleRows={Math.max(d.buchungen.length, 1)} rowHeight={56}
+        <AnalyticalTable minRows={1} columns={bCols} data={d.buchungen} visibleRows={Math.max(d.buchungen.length, 1)} rowHeight={56}
                          noDataText="Keine offenen Buchungen" sortable />
       </Section>
 

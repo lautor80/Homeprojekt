@@ -201,7 +201,7 @@ function RollenBenutzer({ rolle, darf, onChanged, onError }: { rolle: string; da
         <ToolbarSpacer />
         {darf && <Button icon="decline" disabled={!wahl.length} onClick={() => setFrage(wahl)}>{wahl.length ? `${wahl.length} markierten entziehen` : 'Markierten entziehen'}</Button>}
       </Toolbar>
-      <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(liste?.length ?? 0, 2), 8)}
+      <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 8)}
                        selectionMode={darf ? 'Multiple' : 'None'} rowHeight={40}
                        onRowSelect={(e) => setWahl(Object.keys(e.detail.selectedRowIds ?? {}).filter((k) => (e.detail.selectedRowIds as Record<string, boolean>)[k]).map((k) => (liste ?? [])[Number(k)]?.id).filter(Boolean) as string[])}
                        noDataText="Diese Rolle ist keinem Benutzer zugeordnet" />

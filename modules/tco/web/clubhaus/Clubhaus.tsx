@@ -147,7 +147,7 @@ function Forderungen({ d, edit, onAktion, onError }: { d: Init; edit: boolean; o
           <Button icon="print" onClick={() => setPdf(true)}>Drucken</Button>
         </div>
       </div>
-      <AnalyticalTable columns={columns} data={zeilen} visibleRows={zeilen.length}
+      <AnalyticalTable minRows={1} columns={columns} data={zeilen} visibleRows={zeilen.length}
                        onRowClick={(e) => { const m = e.detail.row.original.monat; if (m >= 1 && m <= 12) setMonat(m); }}
                        withRowHighlight highlightField={(x: Record<string, any>) => (x.monat === monat ? 'Information' : 'None')} />
       <MessageStrip hideCloseButton style={{ margin: '0.5rem 0' }}>
@@ -223,7 +223,7 @@ function Absatz() {
         </Select>
         </div>
       </div>
-      <AnalyticalTable columns={columns} data={tabelle} visibleRows={Math.max(tabelle.length, 2)} noDataText="Keine Getränkerechnungen"
+      <AnalyticalTable minRows={1} columns={columns} data={tabelle} visibleRows={Math.max(tabelle.length, 1)} noDataText="Keine Getränkerechnungen"
                        withRowHighlight highlightField={(r: Record<string, any>) => (r.gesamtzeile ? 'Information' : 'None')} />
       <Panel headerText="Entwicklung Absatz und durchschnittlicher EK-Preis" style={{ marginTop: '0.75rem' }}>
         <AbsatzDiagramm punkte={punkte} einheit={einheit === 'KISTE' ? 'Kisten' : 'Flaschen'} />

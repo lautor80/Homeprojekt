@@ -104,7 +104,7 @@ export function ApiKeysPage() {
     >
       {keys.error && <MessageStrip design="Negative">{keys.error}</MessageStrip>}
       {error && !edit && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
-      <AnalyticalTable
+      <AnalyticalTable minRows={1}
         columns={columns}
         data={data}
         loading={keys.loading}

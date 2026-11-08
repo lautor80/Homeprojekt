@@ -110,16 +110,16 @@ export function Forecast() {
           </Section>
 
           <Section title="Beiträge je Monat" flush>
-            <AnalyticalTable columns={monatCols} data={d.monate} visibleRows={12} rowHeight={40} />
+            <AnalyticalTable minRows={1} columns={monatCols} data={d.monate} visibleRows={12} rowHeight={40} />
           </Section>
 
           <Section title="Beiträge je Vertragsart" count={d.knoten.filter((k) => k.ebene === 2).length} flush
                    status={<Text className="portal-muted portal-small">Stichtag je Monatserster: Januar alle Beiträge, Juli ohne Spende, übrige Monate Jugendtraining</Text>}>
-            <AnalyticalTable
+            <AnalyticalTable minRows={1}
               key={`${jahr}|${mitglieder}|${knoten.length}`}
               columns={knotenCols} data={knoten} groupable rowHeight={40}
               reactTableOptions={{ initialState: { groupBy: ['kategorie'], expanded: Object.fromEntries(kategorien.map((k) => [`kategorie:${k}`, true])) }, autoResetExpanded: false }}
-              visibleRows={Math.max(knoten.length + kategorien.length, 3)}
+              visibleRows={Math.max(knoten.length + kategorien.length, 1)}
               withRowHighlight highlightField={(r: Record<string, any>) => (r.ebene === 1 ? 'Information' : 'None')}
               noDataText="Keine Verträge im Zeitraum"
             />

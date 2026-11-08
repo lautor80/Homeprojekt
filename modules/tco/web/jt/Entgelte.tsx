@@ -145,7 +145,7 @@ export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onCha
           <Text style={{ color: 'var(--sapContent_LabelColor)' }}>Der bis dahin gültige Satz wird am Vortag automatisch abgegrenzt.</Text>
         </FlexBox>
       )}
-      <AnalyticalTable columns={columns} data={daten} loading={!d} visibleRows={Math.max(daten.length, 3)} noDataText="Keine Entgelte in dieser Auswahl" />
+      <AnalyticalTable minRows={1} columns={columns} data={daten} loading={!d} visibleRows={Math.max(daten.length, 1)} noDataText="Keine Entgelte in dieser Auswahl" />
 
         </>
       )}
@@ -165,7 +165,7 @@ export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onCha
           })}>Als Trainer aufnehmen</Button>
         </>}
       </Toolbar>
-      <AnalyticalTable columns={trainerColumns} data={d?.trainer ?? []} loading={!d} visibleRows={Math.max(d?.trainer.length ?? 0, 2)} noDataText="Noch keine Trainer" />
+      <AnalyticalTable minRows={1} columns={trainerColumns} data={d?.trainer ?? []} loading={!d} visibleRows={Math.max(d?.trainer.length ?? 0, 1)} noDataText="Noch keine Trainer" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         „Meine Trainingszeiten“: Ist einem Trainer ein Portal-Benutzer zugeordnet und hat dieser die Berechtigung „Meine Trainingszeiten“
         (Rollenpflege → Jugend), meldet der Trainer seine Zeiten selbst zurück – ausschließlich für sich, ohne Einblick in andere Trainer.

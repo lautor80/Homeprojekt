@@ -127,7 +127,7 @@ export function InitialeZuordnung({ onClose, onDone }: { onClose: () => void; on
           Vorschläge für aktive Benutzer ohne Mitglied bzw. EP3-Kunde – eindeutige Treffer nach gleicher E-Mail, gleichem Benutzernamen oder gleichem Namen.
           Häkchen entfernen, um einen Vorschlag auszulassen. Einzelne Zuordnungen lassen sich jederzeit im Benutzer-Dialog ändern.
         </Text>
-        <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={2} visibleRows={Math.min(Math.max(liste?.length ?? 0, 2), 14)} rowHeight={52}
+        <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={2} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 14)} rowHeight={52}
                          noDataText="Keine Vorschläge – alle Benutzer sind zugeordnet oder es gibt keine eindeutigen Treffer" />
         <CheckBox text="Benutzern mit Mitglied die Rolle „Mitglied“ geben (Meine Mitgliedschaft + Einzelbuchung; ersetzt „Hallennutzer“)" checked={rolle} onChange={(e) => setRolle(e.target.checked)} />
       </div>

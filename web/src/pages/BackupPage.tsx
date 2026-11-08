@@ -194,7 +194,7 @@ export function BackupPage() {
       </Section>
 
       <Section title="Sicherungen im Portal" count={d?.dateien.length ?? 0} flush>
-        <AnalyticalTable columns={columns} data={d?.dateien ?? []} loading={!d} visibleRows={Math.min(Math.max(d?.dateien.length ?? 0, 2), 12)} minRows={1}
+        <AnalyticalTable columns={columns} data={d?.dateien ?? []} loading={!d} visibleRows={Math.min(Math.max(d?.dateien.length ?? 0, 1), 12)} minRows={1}
                          noDataText="Noch keine Sicherung – oben erstellen oder eine Datei hochladen" />
       </Section>
 

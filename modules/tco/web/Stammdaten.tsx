@@ -255,7 +255,7 @@ function ImportTab() {
         <Button design="Emphasized" icon="upload" loading={busy} disabled={!files.length || fertig || rows.every((r) => !r.tabelle)} onClick={ausfuehren}>Übernehmen</Button>
         {files.length > 0 && <Button design="Transparent" onClick={() => { setFiles([]); setRows([]); setFertig(false); }}>Auswahl leeren</Button>}
       </FlexBox>
-      <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 2)} noDataText="Noch keine Dateien ausgewählt" loading={busy} />
+      <AnalyticalTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} noDataText="Noch keine Dateien ausgewählt" loading={busy} />
       <Panel headerText="Aktueller Bestand" fixed style={{ marginTop: '1rem' }}>
         <FlexBox wrap="Wrap" style={{ gap: '0.25rem 1.5rem' }}>
           {bestand.map((b) => (

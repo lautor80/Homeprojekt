@@ -38,7 +38,7 @@ function zelle(c: AnalyticalTableColumnDefinition, r: Record<string, any>): Reac
  */
 export function ResponsiveTable({ columns, data, titelSpalten = 1, hervorheben, noDataText, ...rest }: Props) {
   const klein = useKlein();
-  if (!klein) return <AnalyticalTable columns={columns} data={data} noDataText={noDataText} {...rest} />;
+  if (!klein) return <AnalyticalTable minRows={1} columns={columns} data={data} noDataText={noDataText} {...rest} />;
   if (!data.length) return <div className="portal-empty" style={{ padding: '0.75rem 1rem' }}>{noDataText ?? 'Keine Daten'}</div>;
   const kopf = columns.slice(0, titelSpalten);
   const felder = columns.slice(titelSpalten).filter((c) => typeof c.Header === 'string' && c.Header);

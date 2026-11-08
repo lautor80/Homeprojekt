@@ -174,7 +174,7 @@ export function Upload() {
       </div>
       <Section title="Dateien" count={dateien.length} flush
                status={fertig ? <Text className="portal-muted">{fertig} übertragen</Text> : undefined}>
-        <AnalyticalTable columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 3)} noDataText="Noch keine Dateien – hierher ziehen oder „Dateien wählen“ (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
+        <AnalyticalTable minRows={1} columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 1)} noDataText="Noch keine Dateien – hierher ziehen oder „Dateien wählen“ (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
                          withRowHighlight highlightField={(r: Record<string, any>) => r.state} />
       </Section>
       <MessageStrip hideCloseButton>

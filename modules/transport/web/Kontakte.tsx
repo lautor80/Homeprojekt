@@ -184,7 +184,7 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
             </div>
           </Tab>
           <Tab data-key="auf" text={`Aufträge (${d.auftraege.length})`} selected={tab === 'auf'}>
-            <AnalyticalTable columns={columns} data={d.auftraege} visibleRows={Math.min(Math.max(d.auftraege.length, 2), 15)} minRows={1}
+            <AnalyticalTable columns={columns} data={d.auftraege} visibleRows={Math.min(Math.max(d.auftraege.length, 1), 15)} minRows={1}
                              noDataText="Keine Aufträge mit diesem Kontakt" onRowClick={(e) => navigate(`/transport/auftraege/${e.detail.row.original.auftragsnr}`)} />
           </Tab>
           <Tab data-key="dok" text="Dokumente" selected={tab === 'dok'}>

@@ -177,7 +177,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         </Button>
         <Button icon="add" design="Emphasized" onClick={() => setForm({ ...NEU, sort: (plaetze?.length ?? 0) + 1 })}>Platz anlegen</Button>
       </Toolbar>
-      <AnalyticalTable columns={columns} data={plaetze ?? []} loading={!plaetze} visibleRows={Math.max(plaetze?.length ?? 0, 3)}
+      <AnalyticalTable minRows={1} columns={columns} data={plaetze ?? []} loading={!plaetze} visibleRows={Math.max(plaetze?.length ?? 0, 1)}
                        selectionMode="Multiple" selectionBehavior="RowSelector"
                        reactTableOptions={{ getRowId: (r: Platz) => String(r.id), autoResetSelectedRows: false }}
                        onRowSelect={(e) => setAuswahl(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number))}
@@ -416,7 +416,7 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         <ToolbarSpacer />
         {can('tco.platz:serie') && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/serienbuchung')}>Abo anlegen (Serienbuchung)</Button>}
       </Toolbar>
-      <AnalyticalTable columns={columns} data={abos ?? []} loading={!abos} visibleRows={Math.max(abos?.length ?? 0, 3)} noDataText="Noch keine Abos über das Portal angelegt" />
+      <AnalyticalTable minRows={1} columns={columns} data={abos ?? []} loading={!abos} visibleRows={Math.max(abos?.length ?? 0, 1)} noDataText="Noch keine Abos über das Portal angelegt" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Abos legt der Hallenwart über die Serienbuchung an (auch mehrere Plätze, zweiwöchentlich oder monatlich). Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
         für andere erscheinen die Termine als „belegt“. Abgerechnet wird wie bei EP3-Abos einmal je Serie über die Hallenabrechnung.
@@ -470,7 +470,7 @@ function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
         <ToolbarSpacer />
         <Input placeholder="Suchen" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '14rem' }} />
       </Toolbar>
-      <AnalyticalTable columns={columns} data={liste} loading={!d} visibleRows={Math.min(Math.max(liste.length, 3), 15)} rowHeight={48} noDataText="Keine Benutzer" />
+      <AnalyticalTable minRows={1} columns={columns} data={liste} loading={!d} visibleRows={Math.min(Math.max(liste.length, 1), 15)} rowHeight={48} noDataText="Keine Benutzer" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Gebucht wird immer für das Mitglied, dem der angemeldete Benutzer zugeordnet ist (dieselbe Zuordnung wie bei „Meine Trainingszeiten“).
         Zusätzlich braucht der Benutzer die Berechtigung „Platz buchen“ (Rollenpflege → Tennishalle).

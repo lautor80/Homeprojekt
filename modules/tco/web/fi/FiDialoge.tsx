@@ -169,9 +169,9 @@ export function ZuordnenDialog({ open, ziele, titel, vorauswahl = [], onPick, on
             <Button icon="add" onClick={perId}>Per ID hinzufügen</Button>
           </FlexBox>
           {hinweis && <MessageStrip design="Information" onClose={() => setHinweis(null)} style={{ marginBottom: '0.5rem' }}>{hinweis}</MessageStrip>}
-          <AnalyticalTable
+          <AnalyticalTable minRows={1}
             columns={columns} data={gefiltert} loading={!belege} sortable
-            visibleRows={Math.max(gefiltert.length, 3)}
+            visibleRows={Math.max(gefiltert.length, 1)}
             noDataText="Keine nicht zugeordneten Dokumente vorhanden – Beleg per ID hinzufügen"
             onRowClick={(e) => setVorschau(e.detail.row.original.id)}
             markNavigatedRow={(r) => r.original.id === vorschau}
@@ -435,7 +435,7 @@ export function GegenkontoDialog({ zeile, onClose, onDone }: { zeile: Zeile | nu
       </FlexBox>
       <FlexBox style={{ gap: '1rem' }}>
         <div style={{ flex: '1 1 55%', minWidth: 0 }}>
-          <AnalyticalTable columns={columns} data={gefiltert} loading={!l} visibleRows={Math.max(gefiltert.length, 3)}
+          <AnalyticalTable minRows={1} columns={columns} data={gefiltert} loading={!l} visibleRows={Math.max(gefiltert.length, 1)}
                            noDataText="Keine passenden Buchungen" onRowClick={(e) => setWahl(e.detail.row.original as Hist)}
                            markNavigatedRow={(r) => r.original.internenr === wahl?.internenr} />
         </div>

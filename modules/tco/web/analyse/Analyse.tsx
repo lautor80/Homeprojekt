@@ -111,8 +111,8 @@ export function Analyse() {
           <Tab data-key="tabelle" text="Trefferliste" icon="table-view" selected={tab === 'tabelle'}>
             <Section title="Mitglieder und Verträge" count={rows.length ? rows.length - 1 : 0} flush
                      status={sicht.group_by ? <Text className="portal-muted">gruppiert nach {init.gruppen.find((g) => g[0] === sicht.group_by)?.[1]}</Text> : undefined}>
-              <AnalyticalTable columns={columns} data={rows} loading={busy} sortable={false}
-                               visibleRows={Math.min(Math.max(rows.length, 3), 25)} noDataText="Keine Mitglieder zu dieser Auswahl"
+              <AnalyticalTable minRows={1} columns={columns} data={rows} loading={busy} sortable={false}
+                               visibleRows={Math.min(Math.max(rows.length, 1), 25)} noDataText="Keine Mitglieder zu dieser Auswahl"
                                withRowHighlight highlightField={(r: Record<string, any>) => r.highlight} />
             </Section>
             <MessageStrip hideCloseButton>

@@ -159,7 +159,7 @@ export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: {
         <ToolbarSpacer />
         <Text style={{ fontWeight: 'bold' }}>Summe Brutto: {eur(brutto)}</Text>
       </Toolbar>
-      <AnalyticalTable columns={columns} data={sichtbar} visibleRows={Math.max(sichtbar.length, 2)} noDataText="Keine Positionen – „Alle Produkte anzeigen“ wählen" />
+      <AnalyticalTable minRows={1} columns={columns} data={sichtbar} visibleRows={Math.max(sichtbar.length, 1)} noDataText="Keine Positionen – „Alle Produkte anzeigen“ wählen" />
 
       {paperless && (
         <Panel headerText={`Paperless-Belege${belege.length ? ` (${belege.length})` : ''}`} style={{ marginTop: '0.75rem' }}>
@@ -170,7 +170,7 @@ export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: {
               {Math.abs(belegSumme - brutto) > 0.05 ? ` – Abweichung ${eur(r2(belegSumme - brutto))}` : ''}
             </MessageStrip>
           )}
-          {rgnr && belege.length > 0 && <AnalyticalTable columns={belegCols} data={belege} visibleRows={belege.length} />}
+          {rgnr && belege.length > 0 && <AnalyticalTable minRows={1} columns={belegCols} data={belege} visibleRows={belege.length} />}
           {rgnr && edit && (
             <FlexBox wrap="Wrap" alignItems="Center" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
               <Button icon="search" onClick={() => zuordnen('AUTO')}>Beleg ermitteln</Button>

@@ -428,7 +428,7 @@ export function AuftraegeListe() {
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {toolbar}
       {ansicht === 'LIST' ? (
-        <AnalyticalTable
+        <AnalyticalTable minRows={1}
           columns={columns}
           data={liste}
           loading={loading}
@@ -448,11 +448,11 @@ export function AuftraegeListe() {
             }
           }}
           rowHeight={52}
-          visibleRows={Math.max(liste.length + anzGruppen, 3)}
+          visibleRows={Math.max(liste.length + anzGruppen, 1)}
           noDataText="Keine Aufträge für die Auswahl"
         />
       ) : (
-        <AnalyticalTable
+        <AnalyticalTable minRows={1}
           columns={treeColumns}
           data={tree.rows}
           isTreeTable
@@ -460,7 +460,7 @@ export function AuftraegeListe() {
           tableInstance={treeRef as never}
           reactTableOptions={treeOptions}
           rowHeight={52}
-          visibleRows={Math.max(zeilenBaum(tree.rows), 3)}
+          visibleRows={Math.max(zeilenBaum(tree.rows), 1)}
           noDataText="Keine Aufträge für die Auswahl"
         />
       )}
