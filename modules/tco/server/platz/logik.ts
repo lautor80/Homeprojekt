@@ -222,13 +222,22 @@ export const istEigen = (b: Pick<Belegung, 'benutzer_id' | 'quelle' | 'kunde' | 
 // Preis
 // ---------------------------------------------------------------------------
 
-export interface Preis { betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string }
+export interface Preis {
+  betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string;
+  /** wie der Preis zustande kommt: Abschnitte je Preisklasse */
+  teile: { text: string; von: string; bis: string; minuten: number; stundenpreis: number; betrag: number }[];
+}
 
 export function preisVon(p: Platz | undefined, datum: string, von: number, bis: number, status: '1' | '3', preise: Preise): Preis {
-  if (p && !p.abrechnen) return { betrag: 0, kostenfrei: true, fehler: null, text: 'kostenfrei' };
-  const r = preisBerechnen({ datum, time_start: hhmm(von), time_ende: hhmm(bis), status }, preise);
-  if (r.fehler) return { betrag: null, kostenfrei: false, fehler: r.fehler, text: 'Preis laut Hallenabrechnung' };
-  return { betrag: r.betrag, kostenfrei: false, fehler: null, text: status === '3' ? 'Abo-Preis laut Hallenpreisen' : 'Einzelpreis laut Hallenpreisen' };
+  if (p && !p.abrechnen) return { betrag: 0, kostenfrei: true, fehler: null, text: 'kostenfrei', teile: [] };
+  const r = preisBerechnen({ datum, time_start: hhmm(von), time_ende: bis >= 1440 ? '24:00' : hhmm(bis), status }, preise);
+  if (r.fehler) return { betrag: null, kostenfrei: false, fehler: r.fehler, text: 'Preis laut Hallenabrechnung', teile: [] };
+  const teile = (r.teile ?? []).map(({ prodKey: _k, ...t }) => t);
+  const mehrere = new Set(teile.map((t) => t.text)).size > 1;
+  return {
+    betrag: r.betrag, kostenfrei: false, fehler: null, teile,
+    text: mehrere ? `${status === '3' ? 'Abo' : 'Einzel'}: ${teile.length} Preisklassen` : `${teile[0]?.text ?? (status === '3' ? 'Abo-Preis' : 'Einzelpreis')} · ${teile[0] ? `${teile[0].stundenpreis.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €/Std.` : ''}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +477,7 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
     einzel.push({
       bid: r.bid, datum: r.datum, von: r.von, bis: r.bis, platz: r.platz ?? '–', platz_id: p?.id ?? null,
       art: p ? ARTEN[p.art] : '', status: r.status,
-      preis: r.status === '2' ? { betrag: 0, kostenfrei: false, fehler: null, text: 'storniert' } : preisVon(p, r.datum, von, minuten(r.bis), '1', preise),
+      preis: r.status === '2' ? { betrag: 0, kostenfrei: false, fehler: null, text: 'storniert', teile: [] } : preisVon(p, r.datum, von, minuten(r.bis), '1', preise),
       aenderbar, aenderbar_bis: aenderbar && frist ? `${dat(fristEnde.toISOString().slice(0, 10))} ${fristEnde.toISOString().slice(11, 16)} Uhr` : null,
       quelle: r.quelle === QUELLE ? 'Portal' : 'EP3', text: r.text, abgerechnet: r.assigned === 'Y',
     });

@@ -41,11 +41,16 @@ export const istSommer = (datum: string) => datum.slice(5) >= '05-01' && datum.s
 export const minuten = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
+/** Preisbestandteil: zusammenhängender Zeitabschnitt mit einem Preis (z. B. 17:00–18:00 Tagespreis, 18:00–18:30 Abendpreis) */
+export interface PreisTeil { prodKey: string; text: string; von: string; bis: string; minuten: number; stundenpreis: number; betrag: number }
+
 export interface PreisErgebnis {
   betrag: number;
   dauer: number;
   prodKey: string | null;
   fehler: string | null;
+  /** Aufschlüsselung nach Preisklassen in zeitlicher Reihenfolge */
+  teile?: PreisTeil[];
 }
 
 /**
@@ -83,6 +88,7 @@ export function preisBerechnen(
   if (!fenster.length) return { ...r, fehler: `Keine gültigen Hallenpreise für ${WOCHENTAG_TEXT[tag]} hinterlegt` };
 
   const proKey = new Map<string, { preis: number; min: number }>();
+  const abschnitte: { key: string; von: number; bis: number; preis: number }[] = [];
   let lueckeVon = -1;
   let lueckeBis = 0;
   let konfliktVon = -1;
@@ -103,6 +109,10 @@ export function preisBerechnen(
     const e = proKey.get(first.key) ?? { preis: first.preis, min: 0 };
     e.min++;
     proKey.set(first.key, e);
+    // Abschnitte für die Anzeige
+    const letzter = abschnitte[abschnitte.length - 1];
+    if (letzter && letzter.key === first.key && letzter.bis === m) letzter.bis = m + 1;
+    else abschnitte.push({ key: first.key, von: m, bis: m + 1, preis: first.preis });
   }
   const msg: string[] = [];
   if (lueckeVon >= 0) msg.push(`Kein Hallenpreis für ${WOCHENTAG_TEXT[tag]} ${hhmm(lueckeVon)} bis ${hhmm(lueckeBis)} Uhr hinterlegt`);
@@ -116,6 +126,11 @@ export function preisBerechnen(
   }
   if (msg.length) return { ...r, fehler: msg.join('; ') };
   r.betrag = runden(sum);
+  const textVon = (key: string) => p.produkte.find((x) => x.prod_key === key && x.valid_from <= b.datum && x.valid_to >= b.datum)?.text?.trim() || `Preis ${key}`;
+  r.teile = abschnitte.map((a) => ({
+    prodKey: a.key, text: textVon(a.key), von: hhmm(a.von), bis: a.bis === 1440 ? '24:00' : hhmm(a.bis), minuten: a.bis - a.von,
+    stundenpreis: a.preis, betrag: runden((a.preis * (a.bis - a.von)) / 60),
+  }));
   return r;
 }
 

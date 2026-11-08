@@ -27,7 +27,8 @@ export interface TagPlatz {
   geschlossen: string | null; belegt: Belegt[];
 }
 interface Tag { datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[] }
-interface Preis { betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string }
+interface PreisTeil { text: string; von: string; bis: string; minuten: number; stundenpreis: number; betrag: number }
+interface Preis { betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string; teile?: PreisTeil[] }
 interface Einzel {
   bid: string; datum: string; von: string; bis: string; platz: string; platz_id: number | null; art: string; status: string;
   preis: Preis; aenderbar: boolean; aenderbar_bis: string | null; quelle: string; text: string | null; abgerechnet: boolean;
@@ -52,6 +53,36 @@ export const tagText = (iso: string) => `${WT_LANG[new Date(`${iso}T12:00:00Z`).
 const klein = () => window.matchMedia?.('(max-width: 700px)').matches ?? false;
 const preisText = (p: Preis | { betrag?: number | null; kostenfrei?: boolean }) =>
   (p.kostenfrei ? 'kostenfrei' : p.betrag === null || p.betrag === undefined ? 'Preis folgt' : eur(p.betrag));
+/** „1 Std. 30 Min.“ → kompakt für Buttons: „1:30 Std.“ */
+const dauerKurz = (m: number) => (m % 60 ? (m < 60 ? `${m} Min.` : `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} Std.`) : `${m / 60} Std.`);
+const minText = (m: number) => (m % 60 ? (m < 60 ? `${m} Min.` : `${Math.floor(m / 60)} Std. ${m % 60} Min.`) : `${m / 60} Std.`);
+
+/** Wie der Preis zustande kommt: je Preisklasse Zeitraum, Dauer × Stundenpreis = Betrag */
+export function PreisAufschluesselung({ preis, kompakt = false }: { preis: Preis; kompakt?: boolean }) {
+  const t = preis.teile ?? [];
+  if (preis.kostenfrei || !t.length) return null;
+  const mehrere = t.length > 1;
+  return (
+    <div className={`portal-pb__aufschl${kompakt ? ' portal-pb__aufschl--kompakt' : ''}`}>
+      {mehrere && !kompakt && <div className="portal-pb__aufschl-titel">Gebucht über {t.length} Preisklassen:</div>}
+      {t.map((x, i) => (
+        <div key={i} className="portal-pb__aufschl-zeile">
+          <span className="portal-pb__aufschl-zeit">{x.von}–{x.bis}</span>
+          <span className="portal-pb__aufschl-text">{x.text}</span>
+          <span className="portal-pb__aufschl-rechnung">{minText(x.minuten)} × {eur(x.stundenpreis)}/Std.</span>
+          <span className="portal-pb__aufschl-betrag">{eur(x.betrag)}</span>
+        </div>
+      ))}
+      {mehrere && (
+        <div className="portal-pb__aufschl-zeile portal-pb__aufschl-summe">
+          <span className="portal-pb__aufschl-zeit" /><span className="portal-pb__aufschl-text">Gesamt</span><span className="portal-pb__aufschl-rechnung" />
+          <span className="portal-pb__aufschl-betrag">{eur(preis.betrag)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const dauerText = (m: number) => (m % 60 ? `${Math.floor(m / 60) ? `${Math.floor(m / 60)} Std. ` : ''}${m % 60} Min.` : `${m / 60} Std.`);
 
 export function PlatzBuchen() {
@@ -177,6 +208,7 @@ export function PlatzBuchen() {
                             {b.aenderbar_bis && <span>änderbar bis {b.aenderbar_bis}</span>}
                             {b.text && <span>„{b.text}“</span>}
                           </div>
+                          {b.status !== '2' && <PreisAufschluesselung preis={b.preis} kompakt />}
                         </div>
                         <div className="portal-mz__dauer">
                           <div className="portal-mz__dauer-std">{b.status === '2' ? '–' : preisText(b.preis)}</div>
@@ -208,6 +240,7 @@ export function PlatzBuchen() {
                               {a.quelle === 'EP3' && <ObjectStatus state="Information">aus EP3</ObjectStatus>}
                               {a.text && <span>„{a.text}“</span>}
                             </div>
+                            <PreisAufschluesselung preis={a.preis} kompakt />
                           </div>
                           <div className="portal-mz__dauer">
                             <div className="portal-mz__dauer-std">{preisText(a.preis)}</div>
@@ -418,12 +451,17 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
         </div>
         <div className="portal-mz__feld">
           <Label required>Dauer</Label>
-          <div className="portal-mz__chips">
+          {/* eigene Buttons statt ToggleButton: zweizeilig (Dauer + Endzeit), brechen nicht ab und umbrechen auf dem Handy */}
+          <div className="portal-pb__dauern" role="radiogroup" aria-label="Dauer">
             {dauern.map((d) => (
-              <ToggleButton key={d} pressed={e.dauer === d} design={e.dauer === d ? 'Emphasized' : 'Default'} onClick={() => setE({ ...e, dauer: d })}>{dauerText(d)}</ToggleButton>
+              <button key={d} type="button" role="radio" aria-checked={e.dauer === d} title={dauerText(d)}
+                      className={`portal-pb__dauer${e.dauer === d ? ' portal-pb__dauer--an' : ''}`} onClick={() => setE({ ...e, dauer: d })}>
+                <span className="portal-pb__dauer-wert">{dauerKurz(d)}</span>
+                <span className="portal-pb__dauer-bis">bis {hhmm(Math.min(min(e.von) + d, 1440))}</span>
+              </button>
             ))}
           </div>
-          <Text className="portal-muted portal-small">{e.von}–{bis} Uhr</Text>
+          <Text className="portal-muted portal-small">{e.von}–{bis} Uhr · {dauerText(e.dauer)}</Text>
         </div>
         <div className="portal-mz__feld">
           <Label>Notiz (z. B. Spielpartner)</Label>
@@ -435,9 +473,10 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
           {pruefung?.fehler && <ObjectStatus state="Negative" showDefaultIcon>{pruefung.fehler}</ObjectStatus>}
           {pruefung && !pruefung.fehler && (
             <>
-              <div>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="portal-pb__preis-wert">{preisText(pruefung.preis)}</div>
                 <div className="portal-muted portal-small">{pruefung.preis.kostenfrei ? 'Freiplatz ohne Gebühr' : pruefung.preis.fehler ? 'Preis ermittelt die Hallenabrechnung' : pruefung.preis.text}</div>
+                <PreisAufschluesselung preis={pruefung.preis} />
               </div>
               <ObjectStatus state={sperre.zustand === 'eigen' ? 'Positive' : 'Critical'} showDefaultIcon>
                 {sperre.zustand === 'eigen' ? 'für dich reserviert' : sperre.zustand === 'fremd' ? 'wird gerade gebucht' : 'frei'}
