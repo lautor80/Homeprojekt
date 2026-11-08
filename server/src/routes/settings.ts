@@ -14,7 +14,7 @@ export async function getSettings(keys?: readonly string[]): Promise<Record<stri
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
-export async function getPublicSettings() {
+export async function getPublicSettings(): Promise<Record<string, unknown>> {
   const s = await getSettings(PUBLIC_KEYS);
   const reg = activeModules().find((m) => m.registrierung)?.registrierung ?? null;
   return { ...s, registrierung: reg };

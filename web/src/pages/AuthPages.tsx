@@ -147,18 +147,18 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
                   <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.5rem' }}>
                     Mit den bisherigen EP3-Zugangsdaten wird Ihr Konto zugeordnet – Ihre Buchungen bleiben erhalten und Ihr EP3-Kennwort gilt auch im Portal weiter.
                   </Text>
-                  <Field label="EP3-Benutzername oder E-Mail" required><Input style={full} value={f.ep3_konto} onInput={set('ep3_konto')} autocomplete="off" /></Field>
-                  <Field label="EP3-Kennwort" required><Input style={full} type="Password" value={f.ep3_passwort} onInput={set('ep3_passwort')} autocomplete="off" /></Field>
+                  <Field label="EP3-Benutzername oder E-Mail" required><Input style={full} value={f.ep3_konto} onInput={set('ep3_konto')} /></Field>
+                  <Field label="EP3-Kennwort" required><Input style={full} type="Password" value={f.ep3_passwort} onInput={set('ep3_passwort')} /></Field>
                 </div>
               )}
             </div>
           )}
           <Field label={alt ? 'Neues Kennwort (optional, sonst gilt das EP3-Kennwort)' : 'Kennwort (mindestens 10 Zeichen)'} required={!alt}>
-            <Input style={full} type="Password" value={f.passwort} onInput={set('passwort')} autocomplete="new-password" />
+            <Input style={full} type="Password" value={f.passwort} onInput={set('passwort')} />
           </Field>
           {(f.passwort || !alt) && (
             <Field label="Kennwort wiederholen" required={!alt}>
-              <Input style={full} type="Password" value={f.passwort2} onInput={set('passwort2')} valueState={mismatch ? 'Negative' : 'None'} autocomplete="new-password" />
+              <Input style={full} type="Password" value={f.passwort2} onInput={set('passwort2')} valueState={mismatch ? 'Negative' : 'None'} />
             </Field>
           )}
           <Field label="Mitteilung an den Verein (optional)"><Input style={full} value={f.nachricht} onInput={set('nachricht')} maxlength={500} /></Field>
