@@ -7,6 +7,7 @@ import { kontaktLesen, whatsappLink } from '../kommunikation.js';
 import {
   abrechnung, ARTEN, entgeltAendern, entgeltLoeschen, entgeltNeu, entgelteLesen, ferienLesen, ferienSynchronisieren, grenzen,
   importieren, mitgliederSuchen, monatsname, rueckmeldungenAbrufen, saetzeLesen, tageGenerieren, trainerLesen, trainerSetzen,
+  benutzerAuswahl, trainerBenutzerSetzen,
   zeitenLesen, zeitLoeschen, zeitSetzen,
 } from './logik.js';
 import { nachweisAblegen, nachweisDaten, nachweisPdf } from './nachweis.js';
@@ -151,8 +152,15 @@ export async function jtRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- Entgelte und Trainer
   app.get('/jt/entgelte', { preHandler: requireAuth(P_JT.display) }, async () => ({
-    entgelte: await entgelteLesen(DB), trainer: await trainerLesen(DB), mitglieder: await mitgliederSuchen(DB),
+    entgelte: await entgelteLesen(DB), trainer: await trainerLesen(DB), mitglieder: await mitgliederSuchen(DB), benutzer: await benutzerAuswahl(DB),
   }));
+
+  /** Portal-Benutzer für „Meine Trainingszeiten“ zuordnen */
+  app.put('/jt/trainer/benutzer', { preHandler: requireAuth(P_JT.entgelte) }, async (req) => {
+    const b = z.object({ adrnr, benutzer_id: z.string().uuid().nullable() }).parse(req.body);
+    await change(req, (tx) => trainerBenutzerSetzen(tx, b.adrnr, b.benutzer_id));
+    return { text: b.benutzer_id ? 'Benutzer zugeordnet – der Trainer kann seine Zeiten jetzt selbst zurückmelden.' : 'Zuordnung entfernt.' };
+  });
 
   app.post('/jt/entgelte', { preHandler: requireAuth(P_JT.entgelte) }, async (req) => {
     const b = z.object({ adrnr, ab: datum, betrag: z.coerce.number() }).parse(req.body);

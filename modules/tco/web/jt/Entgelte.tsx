@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AnalyticalTable, Button, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectStatus,
-  SegmentedButton, SegmentedButtonItem, Text, Title, Toolbar, ToolbarSpacer,
+  Option, Select, SegmentedButton, SegmentedButtonItem, Text, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -13,8 +13,8 @@ import { TCO, dat, eur } from '../util';
 const J = `${TCO}/jt`;
 
 interface Entgelt { adrnr: string; trainer: string; valid_from: string | null; valid_to: string; betrag: number; status: 'OLD' | 'CUR' | 'FUT'; status_txt: string; aktiv: boolean }
-interface Trainer { adrnr: string; name: string; steuernummer: string; satz: number | null }
-interface Daten { entgelte: Entgelt[]; trainer: Trainer[]; mitglieder: { adrnr: string; name: string; trainer: boolean }[] }
+interface Trainer { adrnr: string; name: string; steuernummer: string; satz: number | null; benutzer_id: string | null; benutzer: string | null }
+interface Daten { entgelte: Entgelt[]; trainer: Trainer[]; mitglieder: { adrnr: string; name: string; trainer: boolean }[]; benutzer: { id: string; name: string; username: string }[] }
 
 const STATE = { OLD: 'None', CUR: 'Positive', FUT: 'Information' } as const;
 const FILTER = [['OLD', 'Abgelaufen'], ['CUR', 'Aktuell'], ['FUT', 'Künftig'], ['ALL', 'Alle']] as const;
@@ -84,6 +84,23 @@ export function Entgelte({ onChanged }: { onChanged: () => void }) {
         : row.original.steuernummer || '–'),
     },
     {
+      Header: 'Portal-Benutzer (Meine Trainingszeiten)', id: 'benutzer', width: 300, disableSortBy: true,
+      Cell: ({ row }: Cell) => (edit
+        ? (
+          <Select style={{ width: '17rem' }}
+                  onChange={(e) => {
+                    const id = (e.detail.selectedOption as HTMLElement).dataset.k || null;
+                    aktion(() => api.put<{ text: string }>(`${J}/trainer/benutzer`, { adrnr: row.original.adrnr, benutzer_id: id }));
+                  }}>
+            <Option data-k="" selected={!row.original.benutzer_id}>– kein Benutzer –</Option>
+            {(d?.benutzer ?? []).map((u) => (
+              <Option key={u.id} data-k={u.id} selected={u.id === row.original.benutzer_id}>{`${u.name} (${u.username})`}</Option>
+            ))}
+          </Select>
+        )
+        : row.original.benutzer || '–'),
+    },
+    {
       Header: '', id: 'aus', width: 210, disableSortBy: true,
       Cell: ({ row }: Cell) => (edit ? <Button icon="decline" design="Transparent" onClick={() => aktion(() => api.put(`${J}/trainer`, { adrnr: row.original.adrnr, aktiv: false }))}>Nicht mehr Trainer</Button> : null),
     },
@@ -136,6 +153,10 @@ export function Entgelte({ onChanged }: { onChanged: () => void }) {
         </>}
       </Toolbar>
       <AnalyticalTable columns={trainerColumns} data={d?.trainer ?? []} loading={!d} visibleRows={Math.max(d?.trainer.length ?? 0, 2)} noDataText="Noch keine Trainer" />
+      <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
+        „Meine Trainingszeiten“: Ist einem Trainer ein Portal-Benutzer zugeordnet und hat dieser die Berechtigung „Meine Trainingszeiten“
+        (Rollenpflege → Jugend), meldet der Trainer seine Zeiten selbst zurück – ausschließlich für sich, ohne Einblick in andere Trainer.
+      </MessageStrip>
 
       <ConfirmDialog open={!!weg} danger title="Entgelt löschen"
                      text={weg ? `Satz ${eur(weg.betrag)} von ${weg.trainer} bis ${weg.valid_to === '9999-12-31' ? 'unbefristet' : dat(weg.valid_to)} löschen?` : ''}

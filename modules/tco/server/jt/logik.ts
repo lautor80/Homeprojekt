@@ -126,7 +126,11 @@ export async function entgeltLoeschen(tx: Db, adrnr: string, validTo: string) {
 // Trainer
 // ---------------------------------------------------------------------------
 
-export interface Trainer { adrnr: string; name: string; vorname: string; nachname: string; steuernummer: string; satz: number | null }
+export interface Trainer {
+  adrnr: string; name: string; vorname: string; nachname: string; steuernummer: string; satz: number | null;
+  /** zugeordneter Portal-Benutzer für „Meine Trainingszeiten“ */
+  benutzer_id: string | null; benutzer: string | null;
+}
 
 export async function namenLesen(db: Db, adrnrs: string[]): Promise<Map<string, string>> {
   if (!adrnrs.length) return new Map();
@@ -146,14 +150,36 @@ export async function namenLesen(db: Db, adrnrs: string[]): Promise<Map<string, 
 export async function trainerLesen(db: Db): Promise<Trainer[]> {
   const rows = await db`
     select a.adrnr, coalesce(m.vorname, '') as vorname, coalesce(m.nachname, '') as nachname, coalesce(a.steuernummer, '') as steuernummer,
-           (select e.betrag::float8 from tco.trentgelt e where e.adrnr = a.adrnr and e.valid_to >= current_date order by e.valid_to limit 1) as satz
-      from tco.mitgliedera a left join tco.mitglieder m on m.adrnr = a.adrnr
+           (select e.betrag::float8 from tco.trentgelt e where e.adrnr = a.adrnr and e.valid_to >= current_date order by e.valid_to limit 1) as satz,
+           a.benutzer_id::text as benutzer_id, u.display_name as benutzer
+      from tco.mitgliedera a left join tco.mitglieder m on m.adrnr = a.adrnr left join core.users u on u.id = a.benutzer_id
      where a.trainer
      order by m.nachname, m.vorname`;
   return rows.map((r) => ({
     adrnr: r.adrnr, vorname: r.vorname, nachname: r.nachname, steuernummer: r.steuernummer,
     name: condense(`${r.vorname} ${r.nachname}`) || r.adrnr, satz: r.satz === null ? null : Number(r.satz),
+    benutzer_id: r.benutzer_id ?? null, benutzer: r.benutzer ?? null,
   }));
+}
+
+/** Portal-Benutzer einem Trainer zuordnen (null = Zuordnung lösen); ein Benutzer gehört zu höchstens einem Trainer */
+export async function trainerBenutzerSetzen(tx: Db, adrnr: string, benutzerId: string | null) {
+  const [t] = await tx`select trainer from tco.mitgliedera where adrnr = ${adrnr}`;
+  if (!t?.trainer) throw new BusinessError('Die Person ist nicht als Trainer gekennzeichnet.');
+  if (benutzerId) {
+    const [u] = await tx`select display_name from core.users where id = ${benutzerId}`;
+    if (!u) throw new BusinessError('Benutzer nicht gefunden.');
+    const [belegt] = await tx`select a.adrnr, m.vorname, m.nachname from tco.mitgliedera a left join tco.mitglieder m on m.adrnr = a.adrnr
+                               where a.benutzer_id = ${benutzerId} and a.adrnr <> ${adrnr}`;
+    if (belegt) throw new BusinessError(`Der Benutzer ${u.display_name} ist bereits ${condense(`${belegt.vorname ?? ''} ${belegt.nachname ?? ''}`)} zugeordnet.`);
+  }
+  await tx`update tco.mitgliedera set benutzer_id = ${benutzerId} where adrnr = ${adrnr}`;
+}
+
+/** Portal-Benutzer zur Auswahl in der Trainerpflege */
+export async function benutzerAuswahl(db: Db): Promise<{ id: string; name: string; username: string }[]> {
+  const rows = await db`select id::text as id, display_name, username from core.users where active order by display_name`;
+  return rows.map((r) => ({ id: r.id, name: r.display_name, username: r.username }));
 }
 
 export async function trainerSetzen(tx: Db, adrnr: string, aktiv: boolean, steuernummer?: string | null) {

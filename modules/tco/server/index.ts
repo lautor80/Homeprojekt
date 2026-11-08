@@ -25,6 +25,7 @@ import { analyseRoutes, P_AN } from './analyse/routes.js';
 import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
+import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -183,6 +184,7 @@ async function routes(app: FastifyInstance) {
   await fiRoutes(app);
   await sollRoutes(app);
   await jtRoutes(app);
+  await meineZeitenRoutes(app);
   await clubhausRoutes(app);
   await mitgliederRoutes(app);
   await kontenRoutes(app);
@@ -217,6 +219,8 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
     // ---------------------------------------------------------------- Jugend
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
+    { area: 'Jugend', app: 'Meine Trainingszeiten', id: P_JTM.edit,
+      text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.edit, text: 'Zeiten erfassen und importieren, Zeitnachweise ablegen, als bezahlt kennzeichnen' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.entgelte, text: 'Trainer und Trainerentgelte pflegen' },
