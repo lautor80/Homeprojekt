@@ -253,7 +253,9 @@ export async function ep3Abgleich(db: Db) {
   const kunden = await db`
     select distinct on (k.zuid) k.zuid, k.zalias, k.email, k.vorname, k.nachname, k.status, k.pw_hash is not null as kennwort, k.benutzer_id::text,
            u.username as benutzer, a.adrnr as mitglied_adrnr,
-           (select count(*)::int from tco.bookings b where upper(trim(b.kunde)) = upper(trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, ''))) and b.datum >= current_date - 365) as buchungen
+           (select count(*)::int from tco.bookings b
+             where b.datum >= current_date - 365 and coalesce(b.status, '') not in ('2', '4')
+               and upper(trim(b.kunde)) in (upper(trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, ''))), upper(trim(k.zalias)))) as buchungen
       from tco.kunden k
       left join core.users u on u.id = k.benutzer_id
       left join tco.mitgliedera a on a.zuid = k.zuid

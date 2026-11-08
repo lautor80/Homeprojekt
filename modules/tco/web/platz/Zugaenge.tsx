@@ -177,15 +177,16 @@ function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
   const [liste, setListe] = useState<Ep3Kunde[] | null>(null);
   const [suche, setSuche] = useState('');
   const [nurOffen, setNurOffen] = useState(true);
+  const [nurAktiv, setNurAktiv] = useState(true);
   const [start, setStart] = useState<{ username: string; startkennwort: string | null; text: string } | null>(null);
   const laden = () => api.get<Ep3Kunde[]>(`${PA}/ep3`).then(setListe);
   useEffect(() => { laden(); }, []);
-  const zeilen = (liste ?? []).filter((k) => (!nurOffen || (!k.benutzer && !k.mitglied)) && (!suche || `${k.name} ${k.alias} ${k.email ?? ''}`.toLowerCase().includes(suche.toLowerCase())));
+  const zeilen = (liste ?? []).filter((k) => (!nurOffen || (!k.benutzer && !k.mitglied)) && (!nurAktiv || k.buchungen > 0) && (!suche || `${k.name} ${k.alias} ${k.email ?? ''}`.toLowerCase().includes(suche.toLowerCase())));
 
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'EP3-Kunde', id: 'kunde', minWidth: 200, Cell: ({ row }: Cell) => { const k = row.original as Ep3Kunde; return <div style={{ lineHeight: 1.3 }}><Text>{k.name || k.alias}</Text><br /><Label>{k.alias} · {k.zuid}{k.email ? ` · ${k.email}` : ''}</Label></div>; } },
     { Header: 'Status', accessor: 'status', width: 90 },
-    { Header: 'Buchungen (12 Mon.)', accessor: 'buchungen', width: 110, hAlign: 'End' },
+    { Header: 'Buchungen 12 Mon.', accessor: 'buchungen', width: 120, hAlign: 'End' },
     { Header: 'Kennwort', id: 'pw', width: 110, Cell: ({ row }: Cell) => ((row.original as Ep3Kunde).kennwort ? <ObjectStatus state="Positive">importiert</ObjectStatus> : <ObjectStatus state="None">fehlt</ObjectStatus>) },
     {
       Header: 'Portal', id: 'portal', minWidth: 320,
@@ -213,13 +214,14 @@ function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
       <Toolbar design="Transparent">
         <Title level="H5">EP3-Kunden ({zeilen.length})</Title>
         <ToolbarSpacer />
-        <Button design="Emphasized" icon="add-employee" onClick={() => aktion(() => api.post(`${PA}/ep3/anlegen-alle`, {}), laden)}>Alle ohne Zugang anlegen</Button>
+        <Button design="Emphasized" icon="add-employee" onClick={() => aktion(() => api.post(`${PA}/ep3/anlegen-alle`, {}), laden)}>Alle mit Buchung anlegen</Button>
+        <Button design="Transparent" icon={nurAktiv ? 'calendar' : 'clear-filter'} onClick={() => setNurAktiv(!nurAktiv)}>{nurAktiv ? 'Nur mit Buchung (12 Monate)' : 'Auch ohne Buchung'}</Button>
         <Button design="Transparent" icon={nurOffen ? 'filter' : 'clear-filter'} onClick={() => setNurOffen(!nurOffen)}>{nurOffen ? 'Nur ohne Zuordnung' : 'Alle'}</Button>
         <Input placeholder="Suchen" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '14rem' }} />
       </Toolbar>
       <AnalyticalTable columns={columns} data={zeilen} loading={!liste} visibleRows={Math.min(Math.max(zeilen.length, 3), 20)} rowHeight={52} noDataText="Keine EP3-Kunden ohne Zuordnung" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
-        Der Kundenimport legt für alle aktiven EP3-Kunden automatisch Hallennutzer an: Anmeldename = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“,
+        Der Kundenimport legt für alle EP3-Kunden mit mindestens einer Buchung in den letzten 12 Monaten automatisch Hallennutzer an (sichtbar unter Administration → Benutzer): Anmeldename = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“,
         Rolle Hallennutzer; Mitglieder werden über ZUID, E-Mail oder Name zugeordnet. Wurde das EP3-Kennwort importiert (Spalte PW), gilt es weiter – sonst muss es in der
         Benutzerpflege gesetzt werden. Hier bleiben nur Sonderfälle: Vorschläge zum Verknüpfen mit vorhandenen Benutzern/Mitgliedern oder einzelnes Anlegen.
       </MessageStrip>

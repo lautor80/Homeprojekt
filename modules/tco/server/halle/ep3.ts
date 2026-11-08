@@ -85,7 +85,8 @@ async function kundenImportieren(tx: Db, rows: string[][], idx: (n: string) => n
     typ: 'KUNDEN', ok: true,
     text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen${mitPw ? `, ${mitPw} Kennwörter übernommen` : ''}`
       + (b.angelegt ? `, ${b.angelegt} Benutzer angelegt` : '') + (b.mitglieder ? ` (${b.mitglieder} Mitgliedern zugeordnet)` : '')
-      + (b.ohneKennwort ? `, ${b.ohneKennwort} ohne Kennwort (Kennwort über die Benutzerpflege setzen)` : ''),
+      + (b.ohneKennwort ? `, ${b.ohneKennwort} ohne Kennwort (Kennwort über die Benutzerpflege setzen)` : '')
+      + (b.ohneBuchung ? `, ${b.ohneBuchung} ohne Buchung in den letzten 12 Monaten nicht übernommen` : ''),
   };
 }
 

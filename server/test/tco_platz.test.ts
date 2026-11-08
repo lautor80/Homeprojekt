@@ -527,8 +527,10 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   // EP3-Buchung von Dennis (Name in Großschrift, wie der Import sie anlegt)
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000007701', ${tag(5)}, '18:00', '19:00', 'DENNIS GAST', '1', 'Halle')`;
 
-  // Import legt die Benutzer direkt an: Anmeldename = E-Mail, Anzeigename „Nachname, Vorname“, Rolle Hallennutzer, EP3-Kennwort gilt
-  assert.match(imp.text, /2 Benutzer angelegt/);
+  // Import legt die Benutzer direkt an (nur mit Buchung in den letzten 12 Monaten): Anmeldename = E-Mail, Anzeigename „Nachname, Vorname“, Rolle Hallennutzer
+  assert.match(imp.text, /1 Benutzer angelegt/);
+  assert.match(imp.text, /1 ohne Buchung in den letzten 12 Monaten nicht übernommen/);
+  assert.equal((await sql`select count(*)::int as n from core.users where username = 'erika@example.org'`)[0].n, 0, 'Erika ohne Buchung wird nicht übernommen');
   const [ud] = await sql`select id, username, display_name, must_change_password from core.users where username = 'dennis@example.org'`;
   assert.ok(ud, 'Benutzer mit E-Mail als Anmeldename');
   assert.equal(ud.display_name, 'Gast, Dennis');
@@ -572,15 +574,23 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   assert.doesNotMatch(imp.text, /Benutzer angelegt/);
   const [k] = await sql`select benutzer_id, pw_hash from tco.kunden where zuid = '77'`;
   assert.ok(k.benutzer_id && k.pw_hash);
-  assert.equal(Number((await sql`select count(*)::int as n from core.users where username like '%@example.org'`)[0].n), 2);
+  assert.equal(Number((await sql`select count(*)::int as n from core.users where username like '%@example.org'`)[0].n), 2, 'dennis + carla');
 
-  // Anmeldung auch für Erika mit E-Mail und EP3-Kennwort
+  // Erika bekommt eine Buchung → „Alle mit Buchung anlegen“ legt sie an, Anmeldung mit E-Mail und EP3-Kennwort
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000007801', ${tag(-10)}, '09:00', '10:00', 'ERIKA EXTERN', '1', 'Halle')`;
+  r = await admin('POST', `${A}/ep3/anlegen-alle`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.angelegt, 1);
   assert.equal((await client()('POST', '/api/auth/login', { username: 'erika@example.org', password: 'erika-pw-1' })).status, 200);
   // Anmeldung per E-Mail-Adresse auch für Benutzer mit anderem Anmeldenamen (Carla aus der Registrierung)
   assert.equal((await client()('POST', '/api/auth/login', { username: 'carla@example.org', password: 'ganz-geheim-123' })).status, 200);
 
-  // Kunde ohne Kennwort und ohne E-Mail: Alias als Anmeldename, Kennwort muss gesetzt werden
+  // Kunde ohne Kennwort und ohne E-Mail: Alias als Anmeldename, Kennwort muss gesetzt werden; ohne Buchung bleibt er außen vor
   await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname) values ('80', 'fritz.f', 'enabled', 'Fritz', 'Fremd')`;
+  r = await admin('POST', `${A}/ep3/anlegen-alle`, {});
+  assert.equal(r.body.angelegt, 0);
+  assert.equal(r.body.ohneBuchung, 1);
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000008001', ${tag(-3)}, '09:00', '10:00', 'FRITZ FREMD', '1', 'Halle')`;
   r = await admin('POST', `${A}/ep3/anlegen-alle`, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.angelegt, 1);

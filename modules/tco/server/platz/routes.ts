@@ -181,7 +181,7 @@ ${v.name}`,
   });
   app.post('/platz/admin/ep3/anlegen-alle', admin, async (req) => {
     const r = await change(req, (tx) => ep3BenutzerAnlegen(tx), { action: 'EP3_BENUTZER' });
-    return { ...r, text: `${r.angelegt} Benutzer angelegt (${r.mitglieder} Mitgliedern zugeordnet${r.ohneKennwort ? `, ${r.ohneKennwort} ohne Kennwort` : ''}${r.uebersprungen ? `, ${r.uebersprungen} übersprungen` : ''}).` };
+    return { ...r, text: `${r.angelegt} Benutzer angelegt (${r.mitglieder} Mitgliedern zugeordnet${r.ohneKennwort ? `, ${r.ohneKennwort} ohne Kennwort` : ''}${r.uebersprungen ? `, ${r.uebersprungen} übersprungen` : ''}).${r.ohneBuchung ? ` ${r.ohneBuchung} Kunden ohne Buchung in den letzten 12 Monaten nicht übernommen.` : ''}` };
   });
   app.post('/platz/admin/ep3/:zuid/anlegen', admin, async (req) => {
     const { zuid } = z.object({ zuid: z.string().min(1) }).parse(req.params);
