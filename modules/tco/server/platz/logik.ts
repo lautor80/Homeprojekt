@@ -378,7 +378,7 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
        and b.datum between ${addTage(j.datum, -400)} and ${addTage(j.datum, 400)}
      order by b.datum, b.time_start`;
   const preise = await preiseLesen(db);
-  const istKommend = (r: { datum: string; bis: string }) => minutenBis(r.datum, minuten(r.bis), j) > 0;
+  const istKommend = (r: Record<string, unknown>) => minutenBis(String(r.datum), minuten(String(r.bis)), j) > 0;
 
   const einzel: MeineEinzel[] = [];
   const aboRows = new Map<string, typeof rows>();
@@ -404,7 +404,7 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
 
   const abos: MeinAbo[] = [];
   for (const [bid, termine] of aboRows) {
-    const kommende = termine.filter((t) => istKommend(t as never));
+    const kommende = termine.filter((t) => istKommend(t));
     if ((zeitraum === 'kommend') !== (kommende.length > 0)) continue;
     const t0 = termine[0];
     const p = zuPlatz(t0.platz);
