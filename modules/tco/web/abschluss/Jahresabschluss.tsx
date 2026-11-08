@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text,
@@ -42,7 +42,29 @@ const textZelle = ({ row }: Cell) => {
     </FlexBox>
   );
 };
-const zeilenBaum = (rows: Zeile[]): number => rows.reduce((n, r) => n + 1 + (r.subRows ? zeilenBaum(r.subRows) : 0), 0);
+/** Baumtabelle: startet eingeklappt; die Höhe folgt den aufgeklappten Zeilen; Alle auf-/zuklappen */
+function Baum({ columns, data, minZeilen = 2, noDataText }: { columns: AnalyticalTableColumnDefinition[]; data: Zeile[]; minZeilen?: number; noDataText?: string }) {
+  const ref = useRef<{ state?: { expanded?: Record<string, boolean> }; toggleAllRowsExpanded?: (v: boolean) => void } | null>(null);
+  const [offen, setOffen] = useState<Record<string, boolean>>({});
+  // nach dem Klick den tatsächlichen Zustand der Tabelle übernehmen (unabhängig von der Ereignisreihenfolge)
+  const nachlesen = () => setTimeout(() => setOffen({ ...(ref.current?.state?.expanded ?? {}) }), 0);
+  const sichtbar = (rows: Zeile[]): number => rows.reduce((n, r) => n + 1 + (r.subRows && offen[r.id] ? sichtbar(r.subRows) : 0), 0);
+  const alle = (v: boolean) => { ref.current?.toggleAllRowsExpanded?.(v); nachlesen(); };
+  const hatUnterzeilen = data.some((r) => r.subRows?.length);
+  return (
+    <>
+      {hatUnterzeilen && (
+        <div className="portal-row" style={{ justifyContent: 'flex-end', padding: '0.25rem 0.5rem' }}>
+          <Button design="Transparent" icon="expand-all" onClick={() => alle(true)}>Alle aufklappen</Button>
+          <Button design="Transparent" icon="collapse-all" onClick={() => alle(false)}>Alle zuklappen</Button>
+        </div>
+      )}
+      <AnalyticalTable columns={columns} data={data} isTreeTable tableInstance={ref as never} onRowExpandChange={nachlesen}
+                       visibleRows={Math.max(sichtbar(data), minZeilen)} noDataText={noDataText}
+                       reactTableOptions={{ autoResetExpanded: false, getRowId: (r: Zeile) => r.id }} />
+    </>
+  );
+}
 
 export function Jahresabschluss() {
   const can = useCan();
@@ -194,8 +216,7 @@ export function Jahresabschluss() {
 
           <Section title={`Tätigkeitsbereiche und Konten ${jahr}`} flush>
             {baum ? (
-              <AnalyticalTable columns={earBaumSpalten} data={earBaum} isTreeTable visibleRows={Math.max(zeilenBaum(earBaum), 2)} noDataText={`Für ${jahr} liegen keine Buchungen vor.`}
-                               reactTableOptions={{ autoResetExpanded: false, getRowId: (r: Zeile) => r.id, initialState: { expanded: { A: true, B: true, C: true, D: true } } }} />
+              <Baum columns={earBaumSpalten} data={earBaum} noDataText={`Für ${jahr} liegen keine Buchungen vor.`} />
             ) : (
               <AnalyticalTable columns={earTabelleSpalten} data={earTabelle} visibleRows={Math.max(earTabelle.length, 2)} noDataText={`Für ${jahr} liegen keine Buchungen vor.`}
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.state ?? 'None')} />
@@ -205,8 +226,7 @@ export function Jahresabschluss() {
           {u && (
             <Section title={`Überschussrechnung – ${jahr} mit Vorjahresvergleich`} flush>
               {baum ? (
-                <AnalyticalTable columns={uebSpalten} data={uebBaum} isTreeTable visibleRows={Math.max(zeilenBaum(uebBaum), 3)}
-                                 reactTableOptions={{ autoResetExpanded: false, getRowId: (r: Zeile) => r.id, initialState: { expanded: { U1: true, U2: true } } }} />
+                <Baum columns={uebSpalten} data={uebBaum} minZeilen={3} />
               ) : (
                 <AnalyticalTable columns={uebSpalten} data={uebTabelle} visibleRows={uebTabelle.length}
                                  withRowHighlight highlightField={(r: Record<string, any>) => (r.state ?? 'None')} />
