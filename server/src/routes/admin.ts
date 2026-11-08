@@ -143,17 +143,41 @@ export async function adminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Benutzer einer Rolle */
+  app.get('/api/admin/roles/:id/users', { preHandler: requireAuth('core.roles:display') }, async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    return sql`select u.id, u.username, u.display_name as "displayName", u.email, u.active, u.last_login_at as "lastLoginAt",
+                      (select count(*)::int from core.user_roles x where x.user_id = u.id) as "rollen"
+                 from core.user_roles ur join core.users u on u.id = ur.user_id
+                where ur.role_id = ${id} order by lower(u.display_name), lower(u.username)`;
+  });
+
+  /** Rolle einzelnen Benutzern entziehen */
+  app.post('/api/admin/roles/:id/entziehen', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { benutzer } = z.object({ benutzer: z.array(z.string().uuid()).min(1, 'Bitte mindestens einen Benutzer wählen.') }).parse(req.body);
+    if (id === 'ADMIN') {
+      if (benutzer.includes(req.user!.id)) throw new BusinessError('Die eigene Administratorrolle kann nicht entzogen werden.');
+      const [{ n }] = await sql`select count(*)::int as n from core.user_roles ur join core.users u on u.id = ur.user_id
+                                 where ur.role_id = 'ADMIN' and u.active and not (u.id = any(${benutzer}::uuid[]))`;
+      if (!n) throw new BusinessError('Mindestens ein aktiver Administrator muss bleiben.');
+    }
+    const n = await change(req, async (tx) => (await tx`delete from core.user_roles where role_id = ${id} and user_id = any(${benutzer}::uuid[])`).count,
+      { action: 'ROLLE_ENTZIEHEN', reason: id });
+    return { text: `Rolle ${id} ${n} Benutzer(n) entzogen.` };
+  });
+
   app.delete('/api/admin/roles/:id', { preHandler: requireAuth('core.roles:edit') }, async (req) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    await change(req, async (tx) => {
+    return change(req, async (tx) => {
       const [r] = await tx`select system from core.roles where id = ${id}`;
       if (!r) throw new BusinessError('Rolle nicht gefunden.');
       if (r.system) throw new BusinessError('Systemrollen können nicht gelöscht werden.');
       await tx`delete from core.role_permissions where role_id = ${id}`;
-      await tx`delete from core.user_roles where role_id = ${id}`;
+      const n = (await tx`delete from core.user_roles where role_id = ${id}`).count;
       await tx`delete from core.roles where id = ${id}`;
-    });
-    return { ok: true };
+      return n;
+    }, { action: 'ROLLE_LOESCHEN', reason: id }).then((n) => ({ ok: true, text: `Rolle ${id} gelöscht${n ? ` und ${n} Benutzer(n) entzogen` : ''}.` }));
   });
 }
 

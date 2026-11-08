@@ -196,3 +196,28 @@ test('Meine Dokumente: ohne Paperless leer mit Hinweis, fremde Dokumente nicht a
   r = await paula('GET', `${M}/meine/dokumente/4711`);
   assert.ok([400, 404].includes(r.status), String(r.status));
 });
+
+test('Rollen: zugeordnete Benutzer anzeigen, einzeln entziehen, Rolle löschen entzieht allen', async () => {
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'TESTROLLE', name: 'Test', permissions: ['tco.mitglieder:display'] })).status, 200);
+  const ids = (await sql`select id::text, username from core.users where username in ('kim.portal', 'paula.portal')`);
+  for (const u of ids) await sql`insert into core.user_roles (user_id, role_id) values (${u.id}, 'TESTROLLE')`;
+  let r = await admin('GET', '/api/admin/roles/TESTROLLE/users');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.map((x: { username: string }) => x.username).sort(), ['kim.portal', 'paula.portal']);
+  const kimId = ids.find((x) => x.username === 'kim.portal')!.id;
+  r = await admin('POST', '/api/admin/roles/TESTROLLE/entziehen', { benutzer: [kimId] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await sql`select role_id from core.user_roles where user_id = ${kimId} order by 1`).map((x) => x.role_id), ['MITGLIED'], 'andere Rollen bleiben');
+  assert.equal((await paula('POST', '/api/admin/roles/TESTROLLE/entziehen', { benutzer: [kimId] })).status, 403);
+  // letzter Admin / eigene Adminrolle bleibt
+  const [a] = await sql`select id::text from core.users where username = 'admin'`;
+  r = await admin('POST', '/api/admin/roles/ADMIN/entziehen', { benutzer: [a.id] });
+  assert.equal(r.status, 400);
+  // Rolle löschen: wird allen entzogen; Systemrollen nicht löschbar
+  r = await admin('DELETE', '/api/admin/roles/TESTROLLE');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /1 Benutzer\(n\) entzogen/);
+  assert.equal((await sql`select count(*)::int as n from core.user_roles where role_id = 'TESTROLLE'`)[0].n, 0);
+  assert.equal((await admin('DELETE', '/api/admin/roles/MITGLIED')).status, 400);
+  assert.equal((await admin('DELETE', '/api/admin/roles/ADMIN')).status, 400);
+});

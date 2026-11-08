@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
-import { AnalyticalTable, Bar, Button, Dialog, MessageStrip, Tag } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Bar, Button, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
+import { fmtDateTime } from '../components/ChangeHistory';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
@@ -14,6 +15,7 @@ import { PermissionEditor, type PermGroup } from '../components/PermissionEditor
 
 interface Role { id: string; name: string; description: string | null; system: boolean; permissions: string[]; userCount: number }
 type Edit = Partial<Role> & { isNew: boolean };
+interface RolleBenutzer { id: string; username: string; displayName: string; email: string | null; active: boolean; lastLoginAt: string | null; rollen: number }
 
 export function RolesPage() {
   const can = useCan();
@@ -23,7 +25,8 @@ export function RolesPage() {
   const [edit, setEdit] = useState<Edit | null>(null);
   const sperre = useSperre('ROLE', edit && !edit.isNew ? edit.id : null, darfAendern, { bezeichnung: `Rolle ${edit?.id ?? ''}` });
   const mayEdit = darfAendern && sperre.eigen;
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
+  const darfEntziehen = can('core.users:edit');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -57,11 +60,12 @@ export function RolesPage() {
   }
 
   async function remove() {
-    setConfirmDelete(false);
+    const r = confirmDelete!;
+    setConfirmDelete(null);
     try {
-      await api.del(`/api/admin/roles/${edit!.id}`);
+      const x = await api.del<{ text: string }>(`/api/admin/roles/${r.id}`);
       setEdit(null);
-      toast('Rolle gelöscht');
+      toast(x.text, 6000);
       roles.reload();
     } catch (e) {
       setError((e as Error).message);
@@ -75,6 +79,11 @@ export function RolesPage() {
     { Header: 'Berechtigungen', accessor: (r: Record<string, any>) => umfang(r.permissions), id: 'perms', width: 170 },
     { Header: 'Benutzer', accessor: 'userCount', width: 100 },
     { Header: '', accessor: 'system', width: 90, Cell: ({ value }: CellInstance) => (value ? <Tag hideStateIcon>System</Tag> : null) },
+    ...(darfAendern ? [{
+      Header: '', id: 'loeschen', width: 60, disableSortBy: true,
+      Cell: ({ row }: CellInstance) => ((row.original as Role).system ? null
+        : <Button design="Transparent" icon="delete" tooltip="Rolle löschen" onClick={(e) => { e.stopPropagation(); setError(null); setConfirmDelete(row.original as Role); }} />),
+    }] : []),
   ];
 
   return (
@@ -106,7 +115,7 @@ export function RolesPage() {
             startContent={!edit?.isNew && edit?.id ? <ChangeHistoryButton objectType="ROLE" objectKey={edit.id} /> : undefined}
             endContent={<>
               {mayEdit && !edit?.isNew && !edit?.system && (
-                <Button design="Negative" icon="delete" onClick={() => setConfirmDelete(true)}>Löschen</Button>
+                <Button design="Negative" icon="delete" onClick={() => setConfirmDelete(edit as Role)}>Löschen</Button>
               )}
               {mayEdit && <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}
               <Button onClick={() => setEdit(null)}>{mayEdit ? 'Abbrechen' : 'Schließen'}</Button>
@@ -119,7 +128,10 @@ export function RolesPage() {
             <SperrHinweis s={sperre} />
             {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
             {edit.system && (
-              <MessageStrip hideCloseButton style={{ marginBottom: '1rem' }}>Systemrolle: besitzt alle Berechtigungen, nur Bezeichnung änderbar.</MessageStrip>
+              <MessageStrip hideCloseButton style={{ marginBottom: '1rem' }}>
+                {edit.id === 'ADMIN' ? 'Systemrolle: besitzt alle Berechtigungen, nur Bezeichnung änderbar.'
+                  : 'Systemrolle mit fest vorgegebenen Berechtigungen (wird vom Portal automatisch angelegt und bei der Benutzeranlage vergeben) – nicht änderbar oder löschbar; einzelnen Benutzern kann sie entzogen werden.'}
+              </MessageStrip>
             )}
             <FormGrid>
               <TextField label="Rollen-ID (GROSS, z. B. KASSENWART)" required value={edit.id} readonly={!edit.isNew}
@@ -127,7 +139,10 @@ export function RolesPage() {
               <TextField label="Bezeichnung" required value={edit.name} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, name: v })} />
               <TextField label="Beschreibung" wide value={edit.description} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, description: v })} />
             </FormGrid>
-            {!edit.system && catalog.data && (
+            {!edit.isNew && edit.id && (
+              <RollenBenutzer rolle={edit.id} darf={darfEntziehen && sperre.eigen} onChanged={roles.reload} onError={setError} />
+            )}
+            {edit.id !== 'ADMIN' && catalog.data && (
               <PermissionEditor catalog={catalog.data} value={edit.permissions ?? []} readonly={readonlyPerms}
                                 onChange={(permissions) => setEdit({ ...edit, permissions })} />
             )}
@@ -136,14 +151,64 @@ export function RolesPage() {
       </Dialog>
 
       <ConfirmDialog
-        open={confirmDelete}
+        open={!!confirmDelete}
         danger
         title="Rolle löschen"
-        text={`Rolle ${edit?.id} löschen? Zugeordnete Benutzer verlieren diese Berechtigungen.`}
+        text={confirmDelete ? `Rolle ${confirmDelete.id} („${confirmDelete.name}“) löschen?${confirmDelete.userCount ? ` Sie wird ${confirmDelete.userCount} Benutzer(n) entzogen – diese verlieren die Berechtigungen der Rolle.` : ' Sie ist keinem Benutzer zugeordnet.'}` : ''}
         confirmText="Löschen"
         onConfirm={remove}
-        onCancel={() => setConfirmDelete(false)}
+        onCancel={() => setConfirmDelete(null)}
       />
     </AppPage>
+  );
+}
+
+/** Benutzer, denen die Rolle zugeordnet ist – einzeln oder markiert entziehen */
+function RollenBenutzer({ rolle, darf, onChanged, onError }: { rolle: string; darf: boolean; onChanged: () => void; onError: (m: string | null) => void }) {
+  const [liste, setListe] = useState<RolleBenutzer[] | null>(null);
+  const [wahl, setWahl] = useState<string[]>([]);
+  const [frage, setFrage] = useState<string[] | null>(null);
+  const laden = () => api.get<RolleBenutzer[]>(`/api/admin/roles/${encodeURIComponent(rolle)}/users`).then((l) => { setListe(l); setWahl([]); }).catch((e) => onError(e.message));
+  useEffect(() => { laden(); }, [rolle]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function entziehen(ids: string[]) {
+    setFrage(null);
+    try {
+      const r = await api.post<{ text: string }>(`/api/admin/roles/${encodeURIComponent(rolle)}/entziehen`, { benutzer: ids });
+      toast(r.text);
+      await laden();
+      onChanged();
+    } catch (e) { onError((e as Error).message); }
+  }
+  const namen = (ids: string[]) => (liste ?? []).filter((u) => ids.includes(u.id)).map((u) => u.displayName || u.username);
+
+  const columns: AnalyticalTableColumnDefinition[] = [
+    { Header: 'Name', accessor: 'displayName', minWidth: 180 },
+    { Header: 'Benutzer', accessor: 'username', width: 200 },
+    { Header: 'E-Mail', accessor: 'email', minWidth: 180 },
+    { Header: 'Rollen', accessor: 'rollen', width: 80, hAlign: 'End' },
+    { Header: 'Status', accessor: 'active', width: 100, Cell: ({ value }: CellInstance) => (value ? <ObjectStatus state="Positive">aktiv</ObjectStatus> : <ObjectStatus state="Negative">gesperrt</ObjectStatus>) },
+    { Header: 'Letzte Anmeldung', accessor: 'lastLoginAt', width: 170, Cell: ({ value }: CellInstance) => (value ? fmtDateTime(value) : '–') },
+    ...(darf ? [{
+      Header: '', id: 'weg', width: 120, disableSortBy: true,
+      Cell: ({ row }: CellInstance) => <Button design="Transparent" icon="decline" onClick={() => setFrage([(row.original as RolleBenutzer).id])}>Entziehen</Button>,
+    }] : []),
+  ];
+  return (
+    <div style={{ margin: '0.5rem 0 1rem' }}>
+      <Toolbar design="Transparent">
+        <Title level="H5">Zugeordnete Benutzer ({liste?.length ?? 0})</Title>
+        <ToolbarSpacer />
+        {darf && <Button icon="decline" disabled={!wahl.length} onClick={() => setFrage(wahl)}>{wahl.length ? `${wahl.length} markierten entziehen` : 'Markierten entziehen'}</Button>}
+      </Toolbar>
+      <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(liste?.length ?? 0, 2), 8)}
+                       selectionMode={darf ? 'Multiple' : 'None'} rowHeight={40}
+                       onRowSelect={(e) => setWahl(Object.keys(e.detail.selectedRowIds ?? {}).filter((k) => (e.detail.selectedRowIds as Record<string, boolean>)[k]).map((k) => (liste ?? [])[Number(k)]?.id).filter(Boolean) as string[])}
+                       noDataText="Diese Rolle ist keinem Benutzer zugeordnet" />
+      {!darf && liste && liste.length > 0 && <Label>Zum Entziehen wird die Berechtigung „Benutzer anlegen und ändern“ benötigt.</Label>}
+      <ConfirmDialog open={!!frage} danger title="Rolle entziehen" confirmText="Entziehen"
+                     text={frage ? `Rolle ${rolle} entziehen: ${namen(frage).join(', ')}? Die Benutzer verlieren die Berechtigungen dieser Rolle (andere Rollen bleiben).` : ''}
+                     onCancel={() => setFrage(null)} onConfirm={() => entziehen(frage!)} />
+    </div>
   );
 }
