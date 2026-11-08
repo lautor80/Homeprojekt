@@ -89,6 +89,8 @@ function VereinTab() {
           <TextField label="IBAN" value={t('iban')} onChange={s('iban')} readonly={ro} />
           <TextField label="BIC" value={t('bic')} onChange={s('bic')} readonly={ro} />
           <TextField label="Zahlungsziel Hallenrechnung (Tage)" type="Number" value={String(v.zahlungsziel_tage ?? 8)} onChange={s('zahlungsziel_tage')} readonly={ro} />
+          <TextField label="Ansprechpartner in Mitglieder-Mails (eine Zeile je Person: Name – Aufgabe – Telefon)" multiline wide
+                     value={t('mg_ansprechpartner')} onChange={s('mg_ansprechpartner')} readonly={ro} />
           <FieldBox label="Logo für das Kopfband (weiß auf Orange)">
             <FlexBox alignItems="Center" style={{ gap: '0.75rem', background: '#E2701F', padding: '0.5rem', borderRadius: '0.5rem', width: 'fit-content' }}>
               <img alt="Logo" src={(v.logo as string) || '/api/m/tco/logo'} style={{ height: '3rem' }} />

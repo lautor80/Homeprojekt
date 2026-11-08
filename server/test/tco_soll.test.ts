@@ -77,10 +77,10 @@ test('Sollstellung: Vorschlag, Lauf, Datei, Verbuchung in FI, Storno', async () 
   assert.equal(r.status, 200, JSON.stringify(r.body));
 
   // ---- Gläubigerdaten
-  r = await call('PUT', `${S}/cfg`, { gl_name: 'Tennisclub Oberthal e.V.', iban: 'DE70 5919 0000 0401 2390 06', bic: '', gl_id: 'DE99ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
+  r = await call('PUT', `${S}/cfg`, { gl_name: 'Tennisclub Oberthal e.V.', iban: 'DE02 1203 0000 0000 2020 51', bic: '', gl_id: 'DE99ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
   assert.equal(r.status, 400);
   assert.match(r.body.message, /Gläubiger-ID/);
-  r = await call('PUT', `${S}/cfg`, { gl_name: 'Tennisclub Oberthal e.V.', iban: 'DE70 5919 0000 0401 2390 06', bic: '', gl_id: 'DE98ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
+  r = await call('PUT', `${S}/cfg`, { gl_name: 'Tennisclub Oberthal e.V.', iban: 'DE02 1203 0000 0000 2020 51', bic: '', gl_id: 'DE98ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await call('GET', `${S}/init`);
   assert.deepEqual(r.body.fehlt, []);

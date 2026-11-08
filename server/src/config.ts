@@ -34,6 +34,12 @@ export const config = {
   sessionHours: Number(process.env.SESSION_HOURS ?? 12),
   /** Cookie nur über HTTPS senden (hinter Reverse Proxy mit TLS auf true setzen). */
   secureCookies: process.env.SECURE_COOKIES === 'true',
+  /**
+   * X-Forwarded-For des vorgeschalteten Proxys vertrauen. Nur einschalten, wenn der App-Port
+   * ausschließlich über einen Reverse Proxy erreichbar ist – sonst lassen sich die IP-basierten
+   * Sperren (Login, API-Schlüssel) mit gefälschten Headern umgehen.
+   */
+  trustProxy: process.env.TRUST_PROXY === 'true',
   webDist: path.join(APP_ROOT, 'web', 'dist'),
   logLevel: process.env.LOG_LEVEL ?? 'info',
 };

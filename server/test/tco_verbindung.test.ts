@@ -24,7 +24,7 @@ async function call(method: string, path: string, payload?: unknown) {
   return { status: res.statusCode, body: JSON.parse(res.body || '{}') };
 }
 
-const BASIC = `Basic ${Buffer.from('torsten.laub@tc-oberthal.de:geheim').toString('base64')}`;
+const BASIC = `Basic ${Buffer.from('test.user@example.org:geheim').toString('base64')}`;
 const server = http.createServer((req, res) => {
   const send = (code: number, data: unknown) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(typeof data === 'string' ? data : JSON.stringify(data)); };
   const u = req.url ?? '';
@@ -56,7 +56,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   const port = (server.address() as { port: number }).port;
   const B = `http://127.0.0.1:${port}/webhook`;
   let r = await call('GET', '/api/m/tco/verein');
-  const v = { ...r.body, n8n_stunden_url: `${B}/stunden`, n8n_ferien_url: `${B}/ferien`, n8n_mail_url: `${B}/mail`, n8n_stunden_user: 'torsten.laub@tc-oberthal.de', n8n_stunden_pw: 'falsch' };
+  const v = { ...r.body, n8n_stunden_url: `${B}/stunden`, n8n_ferien_url: `${B}/ferien`, n8n_mail_url: `${B}/mail`, n8n_stunden_user: 'test.user@example.org', n8n_stunden_pw: 'falsch' };
 
   // ungesichert prüfen: falsches Passwort → abgelehnt, richtiges → Daten
   r = await call('POST', '/api/m/tco/verein/test/stunden', v);
@@ -70,7 +70,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   r = await call('PUT', '/api/m/tco/verein', { ...v, n8n_stunden_pw: 'geheim' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const [db] = await sql`select n8n_stunden_auth, n8n_stunden_user from tco.verein`;
-  assert.deepEqual([db.n8n_stunden_auth, db.n8n_stunden_user], [BASIC, 'torsten.laub@tc-oberthal.de']);
+  assert.deepEqual([db.n8n_stunden_auth, db.n8n_stunden_user], [BASIC, 'test.user@example.org']);
   r = await call('GET', '/api/m/tco/verein');
   assert.equal(r.body.n8n_stunden_pw, '********');
   assert.equal(r.body.n8n_stunden_auth, '********');

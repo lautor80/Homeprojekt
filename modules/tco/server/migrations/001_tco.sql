@@ -11,20 +11,20 @@ create schema tco;
 -- ---------------------------------------------------------------------------
 create table tco.verein (
   id               int primary key default 1 check (id = 1),
-  name             text not null default 'Tennisclub Oberthal e.V.',
-  strasse          text default 'Osenbachstraße 86a',
-  plz_ort          text default '66649 Oberthal',
-  iban             text default 'DE70591900000401239006',
+  name             text not null default 'Verein',
+  strasse          text,
+  plz_ort          text,
+  iban             text,
   bic              text,
-  bank             text default 'Bank 1 Saar',
-  steuernr         text default '060/140/07367',
-  ansprechpartner  text default 'Torsten Laub',
+  bank             text,
+  steuernr         text,
+  ansprechpartner  text,
   email            text,
   zahlungsziel_tage int not null default 8,
   logo             text,                           -- Data-URL; leer = Vereinslogo
-  paperless_url    text default 'http://192.168.178.105:8010,https://ngx.tc-oberthal.de',
+  paperless_url    text,                           -- mehrere durch Komma: erst LAN, dann Internet
   paperless_token  text,
-  n8n_mail_url     text default 'http://192.168.178.106:5678/webhook/tco-mailversand',
+  n8n_mail_url     text,
   n8n_mail_key     text,
   n8n_ep3_url      text,                           -- Webhook „TCO EP3 Import Hallenrechnungen“
   n8n_ep3_auth     text,                           -- optional: Authorization-Header

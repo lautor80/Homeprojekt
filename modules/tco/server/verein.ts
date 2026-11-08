@@ -46,6 +46,8 @@ export interface Verein {
   ch_provision: number;
   ch_wirt: string;
   ch_feld_json: string;
+  /** Ansprechpartner-Zeilen für die Mitglieder-Mailtexte */
+  mg_ansprechpartner: string;
 }
 
 /** Komma-Liste aus den Einstellungen */

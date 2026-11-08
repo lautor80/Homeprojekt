@@ -10,8 +10,8 @@ alter table tco.ferien add column if not exists feiertag text;
 
 -- n8n-Webhooks (bisher SM59-Destination TCO_N8N_STUNDEN)
 alter table tco.verein
-  add column if not exists n8n_stunden_url  text default 'http://192.168.178.106:5678/webhook/TCO_N8N_STUNDEN',
-  add column if not exists n8n_ferien_url   text default 'http://192.168.178.106:5678/webhook/ferien-saarland',
+  add column if not exists n8n_stunden_url  text,
+  add column if not exists n8n_ferien_url   text,
   add column if not exists n8n_stunden_auth text;
 select core.enable_audit('tco.verein', 'TCO_VEREIN', 'id', 'paperless_token,n8n_mail_key,n8n_ep3_auth,n8n_stunden_auth', 'updated_at,logo');
 

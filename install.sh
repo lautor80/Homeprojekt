@@ -55,7 +55,7 @@ else
       -e "s|^PORTAL_MODULES=.*|PORTAL_MODULES=${MODULES}|" \
       -e "s|^PORTAL_DOMAIN=.*|PORTAL_DOMAIN=${DOMAIN}|" \
       .env.example > .env
-  [[ -n "$DOMAIN" ]] && sed -i "s|^SECURE_COOKIES=.*|SECURE_COOKIES=true|" .env
+  [[ -n "$DOMAIN" ]] && sed -i -e "s|^SECURE_COOKIES=.*|SECURE_COOKIES=true|" -e "s|^TRUST_PROXY=.*|TRUST_PROXY=true|" .env
   chmod 600 .env
   ok ".env erstellt (Datenbank-Passwort zufällig erzeugt)"
 fi

@@ -18,7 +18,7 @@ import { settingsRoutes } from './routes/settings.js';
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: opts.logger === false ? false : { level: config.logLevel },
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     bodyLimit: 5 * 1024 * 1024,
   });
 

@@ -39,7 +39,7 @@ after(async () => {
 
 test('FI Belege: Bankimport, Buchen, Rechnung, Storno', async () => {
   // ---- Stammdaten aus SAP
-  const konten = 'KONTO;NAME;KENNZAHL\n1200;Girokonto Bank 1 Saar;BA\n1000;Kasse;BK\n654;Darlehen;BA\n4970;Kosten Geldverkehr;\n8003;Hallenmiete;\n8005;Clubheimerträge;\n2300;Versicherungen;\n8100;Spenden;\n';
+  const konten = 'KONTO;NAME;KENNZAHL\n1200;Girokonto Testbank;BA\n1000;Kasse;BK\n654;Darlehen;BA\n4970;Kosten Geldverkehr;\n8003;Hallenmiete;\n8005;Clubheimerträge;\n2300;Versicherungen;\n8100;Spenden;\n';
   const bankab = 'JAHR;KONTO;ANFANGSBESTAND;ENDBESTAND\n2026;1200;1.000,00;\n';
   const rg = 'RGNR_TXT;JAHR;RGNR;KUNDE;BETRAG;STATUS;ANGELEGT_AM;VERSENDET;ADRNR;DOKNR\n' +
     '2026_014;2026;14;ERIKA MUSTER;80,00;3;20261001;20261002;9900000017;000321\n' +
@@ -65,16 +65,16 @@ test('FI Belege: Bankimport, Buchen, Rechnung, Storno', async () => {
 
   // ---- Bankimport: Hallenrechnung, SumUp, bereits gebucht, Historie mit Dauerbeleg, unbekannt
   const csv = 'sep=;\nBezeichnung Auftragskonto;IBAN Auftragskonto;Bankname Auftragskonto;Buchungstag;Valutadatum;Name Zahlungsbeteiligter;IBAN Zahlungsbeteiligter;Buchungstext;Verwendungszweck;Betrag;Saldo nach Buchung\n' +
-    'Girokonto;DE70591900000401239006;Bank 1 Saar;03.11.2026;03.11.2026;Erika Muster;DE11;Gutschrift;"Rechnung 2026 014\nHalle";80,00;920,00\n' +
-    'Girokonto;DE70591900000401239006;Bank 1 Saar;02.11.2026;02.11.2026;Allianz Versicherung;DE22;Lastschrift;Beitrag;-120,00;760,00\n' +
-    'Girokonto;DE70591900000401239006;Bank 1 Saar;04.11.2026;04.11.2026;SumUp Payments;DE33;Gutschrift;Auszahlung;95,50;1.015,50\n' +
-    'Girokonto;DE70591900000401239006;Bank 1 Saar;04.11.2026;04.11.2026;Max Meier;DE44;Gutschrift;Hallenmiete 2026_015 Teil;40,00;1.055,50\n' +
-    'Girokonto;DE70591900000401239006;Bank 1 Saar;05.11.2026;05.11.2026;Allianz Versicherung;DE22;Lastschrift;Beitrag Dezember;-120,00;935,50\n' +
-    'Girokonto;DE70591900000401239006;Bank 1 Saar;05.11.2026;05.11.2026;Unbekannt GmbH;DE55;Gutschrift;Spende;50,00;985,50\n';
+    'Girokonto;DE02120300000000202051;Testbank;03.11.2026;03.11.2026;Erika Muster;DE11;Gutschrift;"Rechnung 2026 014\nHalle";80,00;920,00\n' +
+    'Girokonto;DE02120300000000202051;Testbank;02.11.2026;02.11.2026;Allianz Versicherung;DE22;Lastschrift;Beitrag;-120,00;760,00\n' +
+    'Girokonto;DE02120300000000202051;Testbank;04.11.2026;04.11.2026;SumUp Payments;DE33;Gutschrift;Auszahlung;95,50;1.015,50\n' +
+    'Girokonto;DE02120300000000202051;Testbank;04.11.2026;04.11.2026;Max Meier;DE44;Gutschrift;Hallenmiete 2026_015 Teil;40,00;1.055,50\n' +
+    'Girokonto;DE02120300000000202051;Testbank;05.11.2026;05.11.2026;Allianz Versicherung;DE22;Lastschrift;Beitrag Dezember;-120,00;935,50\n' +
+    'Girokonto;DE02120300000000202051;Testbank;05.11.2026;05.11.2026;Unbekannt GmbH;DE55;Gutschrift;Spende;50,00;985,50\n';
   r = await call('POST', `${F}/bank/lesen`, { konto: '1200', data: b64(csv, 'latin1') });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const d = r.body;
-  assert.equal(d.iban, 'DE70591900000401239006');
+  assert.equal(d.iban, 'DE02120300000000202051');
   assert.equal(d.endsaldo, 985.5);
   const u = (name: string, zweck?: string) => d.umsaetze.find((x: any) => x.name === name && (!zweck || x.zweck.startsWith(zweck)));
   assert.equal(u('Erika Muster').zweck, 'Rechnung 2026 014 Halle'); // Zeilenumbruch → Leerzeichen
@@ -89,7 +89,7 @@ test('FI Belege: Bankimport, Buchen, Rechnung, Storno', async () => {
   assert.equal(u('Unbekannt GmbH').positionen.length, 0);
 
   // ---- falsches Konto: IBAN gehört zu 1200
-  await sql`insert into tco.fibankiban (konto, iban) values ('1200', 'DE70591900000401239006')`;
+  await sql`insert into tco.fibankiban (konto, iban) values ('1200', 'DE02120300000000202051')`;
   r = await call('POST', `${F}/bank/lesen`, { konto: '654', data: b64(csv) });
   assert.equal(r.status, 400);
   assert.match(r.body.message, /gehört zu Konto 1200/);

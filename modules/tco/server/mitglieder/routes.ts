@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
+import { mitgliedDokumentPruefen } from '../dokumentfreigabe.js';
 import { condense, heute } from '../format.js';
 import { kontaktLesen, mailSenden, whatsappLink } from '../kommunikation.js';
 import {
@@ -163,13 +164,19 @@ export async function mitgliederRoutes(app: FastifyInstance) {
 
   app.get('/mitglieder/dokument/:id/datei', lesen, async (req, reply) => {
     const { id } = z.object({ id: docId }).parse(req.params);
-    const d = await plPruefen(await vereinLesen()).download(id);
+    const v = await vereinLesen();
+    const pl = plPruefen(v);
+    await mitgliedDokumentPruefen(DB, v, id);
+    const d = await pl.download(id);
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
 
   app.get('/mitglieder/dokument/:id/notizen', lesen, async (req) => {
     const { id } = z.object({ id: docId }).parse(req.params);
-    return (await plPruefen(await vereinLesen()).notizen(id)).map((n) => ({
+    const v = await vereinLesen();
+    const pl = plPruefen(v);
+    await mitgliedDokumentPruefen(DB, v, id);
+    return (await pl.notizen(id)).map((n) => ({
       id: n.id, text: n.note, erstellt: n.created, von: typeof n.user === 'object' && n.user ? n.user.username ?? '' : '',
     }));
   });

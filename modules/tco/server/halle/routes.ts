@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, paperless, plAktiv, vereinLesen } from '../verein.js';
+import { halleDokumentPruefen } from '../dokumentfreigabe.js';
 import { heute } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
 import {
@@ -86,8 +87,10 @@ export async function halleRoutes(app: FastifyInstance) {
   /** PDF einer Paperless-Fassung durchreichen */
   app.get('/halle/paperless/:id/pdf', { preHandler: requireAuth(P_HALLE.display) }, async (req, reply) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
-    const d = await paperless(await vereinLesen()).download(id);
-    return reply.type(d.contentType).header('content-disposition', `inline; filename="${d.filename}"`).send(d.data);
+    const v = await vereinLesen();
+    await halleDokumentPruefen(DB, v, id);
+    const d = await paperless(v).download(id);
+    return reply.type(d.contentType).header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(d.filename)}`).send(d.data);
   });
 
   app.get('/halle/rechnungen/:rgnr/zahlungen', { preHandler: requireAuth(P_HALLE.display) }, async (req) => {

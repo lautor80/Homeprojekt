@@ -35,6 +35,7 @@ services:
       PORTAL_MODULES: ${PORTAL_MODULES:-*}
       GOTENBERG_URL: http://gotenberg:3000
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       SESSION_HOURS: ${SESSION_HOURS:-12}
       TZ: ${TZ:-Europe/Berlin}
     ports:

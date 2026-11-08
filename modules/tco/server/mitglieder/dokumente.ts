@@ -137,15 +137,13 @@ export function mailText(v: Verein, art: Art | '', vorname: string, links: { tit
     teile.push('', links.length === 1 ? 'Deine Unterlage kannst du hier abrufen:' : 'Deine Unterlagen kannst du hier abrufen:');
     for (const l of links) teile.push(l.titel, l.link);
   }
-  if (a !== '4') {
-    teile.push('', 'Bei Fragen rund um Training, Mitgliedschaft oder unseren Verein stehen dir folgende Ansprechpartner gerne zur Verfügung:',
-      'Yury Klimov  - Trainer                       - 0162-8061079',
-      'Jan Weissing - Trainer & Jugendwart          - 0172-1732213',
-      'Torsten Laub - Mitgliedschaft & Organisation - 0173-6602450');
+  const ansprechpartner = (v.mg_ansprechpartner ?? '').split('\n').map((z) => z.trim()).filter(Boolean);
+  if (a !== '4' && ansprechpartner.length) {
+    teile.push('', 'Bei Fragen rund um Training, Mitgliedschaft oder unseren Verein stehen dir folgende Ansprechpartner gerne zur Verfügung:', ...ansprechpartner);
   }
   teile.push('', a === '1' ? 'Wir freuen uns auf viele gemeinsame Stunden auf dem Platz – willkommen in der TC-Familie!'
     : a === '4' ? 'Wir bedanken uns für deine Mitgliedschaft und viele schöne gemeinsame Zeit auf und abseits des Platzes und wünschen dir für die Zukunft alles Gute!'
       : 'Wir freuen uns auf viele gemeinsame Stunden auf dem Platz!',
-  '', 'Sportliche Grüße', v.ansprechpartner || 'Torsten Laub', 'TC Oberthal');
-  return { betreff: `${art ? ART_TEXT[art] : 'Mitgliederunterlagen'} TC Oberthal`, text: teile.join('\n') };
+  '', 'Sportliche Grüße', v.ansprechpartner || v.name, v.name);
+  return { betreff: `${art ? ART_TEXT[art] : 'Mitgliederunterlagen'} ${v.name}`, text: teile.join('\n') };
 }

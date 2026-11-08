@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, liste, paperless, plAktiv, vereinLesen } from '../verein.js';
+import { fiDokumentPruefen } from '../dokumentfreigabe.js';
 import { addTage, heute } from '../format.js';
 import {
   buchungenLesen, gegenkontoHistorie, kontenLesen, kontostand, offeneRechnungen, RG_STATUS, salden, zahlungen,
@@ -115,7 +116,9 @@ export async function fiRoutes(app: FastifyInstance) {
 
   app.get('/fi/belege/:id/pdf', { preHandler: requireAuth(P_FI.display) }, async (req, reply) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
-    const d = await paperless(await vereinLesen()).download(id);
+    const v = await vereinLesen();
+    await fiDokumentPruefen(DB, v, id);
+    const d = await paperless(v).download(id);
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
 

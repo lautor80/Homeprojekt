@@ -11,6 +11,10 @@ read -r -p "Datenbank ${POSTGRES_DB} wird durch $(basename "$FILE") ERSETZT. For
 [[ "$A" == "ja" ]] || exit 1
 
 docker compose stop app
-docker compose exec -T backup sh -c "pg_restore --clean --if-exists --no-owner -d \"$POSTGRES_DB\"" < "$FILE"
+# Alles entfernen, was der Dump nicht kennt (sonst bleiben Tabellen neuerer Migrationen stehen und
+# schema_migrations fällt zurück – beim nächsten Start würden Migrationen erneut laufen und scheitern).
+docker compose exec -T backup psql -v ON_ERROR_STOP=1 -d "$POSTGRES_DB" -c \
+  "drop schema if exists core cascade; drop schema if exists tco cascade; drop schema if exists transport cascade; drop schema if exists beispiel cascade; drop table if exists public.schema_migrations;"
+docker compose exec -T backup sh -c "pg_restore --no-owner -d \"$POSTGRES_DB\"" < "$FILE"
 docker compose start app
 echo "✔ Rücksicherung abgeschlossen"
