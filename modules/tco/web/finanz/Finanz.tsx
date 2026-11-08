@@ -89,8 +89,8 @@ export function Finanz() {
     spalte('Geldbestand 31.12.', 'geld_eb', (r) => <Betrag v={r.geld_eb} />, { minWidth: 140 }),
   ];
   const geldSpalten: AnalyticalTableColumnDefinition[] = [
-    { Header: 'Konto', accessor: 'konto', width: 90 },
-    { Header: 'Bezeichnung', accessor: 'name', minWidth: 180 },
+    { Header: 'Konto', accessor: 'konto', width: 90, Cell: ({ value }: Cell) => <Text>{value}</Text> },
+    { Header: 'Bezeichnung', accessor: 'name', minWidth: 180, Cell: ({ value }: Cell) => <Text>{value}</Text> },
     spalte('Anfangsbestand', 'anfangsbestand', (r) => <Betrag v={r.anfangsbestand} />),
     spalte('Zugang (Soll)', 'zugang', (r) => <Betrag v={r.zugang} />),
     spalte('Abgang (Haben)', 'abgang', (r) => <Betrag v={r.abgang} />),
@@ -98,8 +98,8 @@ export function Finanz() {
   ];
   // mehr Ausgaben = schlechter: Vorzeichen der Veränderung für Ausgaben umkehren
   const kontoSpalten = (einnahmen: boolean): AnalyticalTableColumnDefinition[] => [
-    { Header: 'Konto', accessor: 'konto', width: 90 },
-    { Header: 'Bezeichnung', accessor: 'name', minWidth: 180 },
+    { Header: 'Konto', accessor: 'konto', width: 90, Cell: ({ value }: Cell) => <Text>{value}</Text> },
+    { Header: 'Bezeichnung', accessor: 'name', minWidth: 180, Cell: ({ value }: Cell) => <Text>{value}</Text> },
     spalte(String(jahr - 1), 'wert_vj', (r) => <Betrag v={r.wert_vj} />),
     spalte(String(jahr), 'wert', (r) => <Betrag v={r.wert} fett />),
     spalte('Veränderung', 'delta', (r) => <Betrag v={r.wert - r.wert_vj} state={stateOf(einnahmen ? r.wert - r.wert_vj : r.wert_vj - r.wert)} />),
@@ -143,6 +143,8 @@ export function Finanz() {
               </Section>
             </div>
 
+            <Monatsverlauf jahr={jahr} auswahl={aw} klein={klein} />
+
             <Section title={`Einnahmen und Ausgaben je Monat ${jahr}`} flush>
               <ResponsiveTable columns={monatSpalten} data={monate} visibleRows={monate.length} hervorheben={(r) => r.gesamt}
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.gesamt ? 'Information' : 'None')} />
@@ -164,7 +166,6 @@ export function Finanz() {
               <ResponsiveTable titelSpalten={2} columns={kontoSpalten(false)} data={d.ausgaben} visibleRows={Math.max(d.ausgaben.length, 1)} noDataText={`Keine Ausgaben in ${jahr - 1}/${jahr}`} />
             </Section>
 
-            <Monatsverlauf jahr={jahr} auswahl={aw} klein={klein} />
           </div>
         )}
       </BusyIndicator>
