@@ -332,6 +332,16 @@ test('Verzehrbuch, Arbeitsvorrat, Monatsabschluss mit Sammelabrechnungen und Las
   assert.equal(r.status, 200);
   r = await admin('GET', `${V}/abschluss?monat=${vormonat()}`);
   assert.equal(r.body.zeilen.find((z: any) => z.adrnr === MAX).betrag, 11);
+  // einzelnen Verbrauch der wieder offenen Positionen stornieren und den Monat für Max neu abrechnen
+  r = await admin('GET', `${V}/buch?von=2000-01-01&bis=${tagImVormonat(28)}&adrnr=${MAX}&status=OFFEN`);
+  assert.equal(r.body.posten.length, 2);
+  const brat = r.body.posten.find((p: any) => p.prod_key === '200');
+  assert.equal((await admin('POST', `${V}/storno`, { id: brat.id, grund: 'Rückmeldung Mitglied' })).status, 200);
+  r = await admin('POST', `${V}/abschluss`, { monat: vormonat(), adrnrs: [MAX], versenden: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.belege.length, 1);
+  assert.match(r.body.belege[0], /-0002$/);
+  assert.equal((await sql`select betrag::float8 as b from tco.vz_belege where rgnr = ${r.body.belege[0]}`)[0].b, 6);
 
   // Admin-Storno einer beliebigen offenen Position, Änderungsbelege
   const [pos] = await sql`select id from tco.vz_posten where adrnr = ${PETRA} and storniert_am is null`;

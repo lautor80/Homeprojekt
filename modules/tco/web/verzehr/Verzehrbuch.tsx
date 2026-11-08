@@ -175,6 +175,7 @@ function Belege({ admin, busy, neu, aktion, onPdf, warnen }: { admin: boolean; b
   const [zahlart, setZahlart] = useState<Zahlart | ''>('');
   const [storno, setStorno] = useState<Beleg | null>(null);
   const [grund, setGrund] = useState('');
+  const [nachStorno, setNachStorno] = useState<Beleg | null>(null);
   useEffect(() => { api.get<Beleg[]>(`${VZ}/belege${qs({ art: f.art, status: f.status })}`).then(setListe).catch(() => setListe([])); }, [f, neu]);
   const mail = (b: Beleg) => aktion(async () => { const r = await api.post<{ text: string; warnungen: string[] }>(`${VZ}/belege/${b.rgnr}/mail`, {}); toast(r.text, 5000); warnen(r.warnungen); });
   const columns: AnalyticalTableColumnDefinition[] = [
@@ -240,13 +241,63 @@ function Belege({ admin, busy, neu, aktion, onPdf, warnen }: { admin: boolean; b
         </Dialog>, document.body)}
       {storno && createPortal(
         <Dialog open headerText={`${storno.rgnr} stornieren`} onClose={() => setStorno(null)}
-                footer={<Bar endContent={<><Button design="Negative" disabled={busy} onClick={async () => { if (await aktion(() => api.post(`${VZ}/belege/${storno.rgnr}/storno`, { grund }), 'Beleg storniert.')) setStorno(null); }}>Stornieren</Button><Button onClick={() => setStorno(null)}>Abbrechen</Button></>} />}>
+                footer={<Bar endContent={<><Button design="Negative" disabled={busy} onClick={async () => { if (await aktion(() => api.post(`${VZ}/belege/${storno.rgnr}/storno`, { grund }), 'Beleg storniert.')) { setStorno(null); if (storno.art === 'SAMMEL') setNachStorno(storno); } }}>Stornieren</Button><Button onClick={() => setStorno(null)}>Abbrechen</Button></>} />}>
           <div className="portal-vz__form" style={{ maxWidth: '26rem' }}>
-            <Text>{storno.art === 'SAMMEL' ? 'Die Positionen der Sammelabrechnung werden wieder offen und beim nächsten Monatsabschluss erneut abgerechnet.' : 'Alle Positionen des Gastbelegs werden storniert.'}</Text>
+            <Text>{storno.art === 'SAMMEL' ? 'Die Positionen der Sammelabrechnung werden wieder offen. Danach kannst du einzelne Verbräuche stornieren und den Monat neu abrechnen.' : 'Alle Positionen des Gastbelegs werden storniert.'}</Text>
             <div className="portal-vz__feld"><Label>Grund</Label><Input value={grund} onInput={(e) => setGrund(e.target.value)} style={{ width: '100%' }} /></div>
           </div>
         </Dialog>, document.body)}
+      {nachStorno && <PositionenKorrektur beleg={nachStorno} busy={busy} aktion={aktion} onClose={() => setNachStorno(null)} />}
     </>
+  );
+}
+
+/** Nach dem Storno einer Sammelabrechnung: die wieder offenen Verbräuche des Mitglieds einzeln stornieren, dann neu abrechnen */
+function PositionenKorrektur({ beleg, busy, aktion, onClose }: { beleg: Beleg; busy: boolean; aktion: Aktion; onClose: () => void }) {
+  const [posten, setPosten] = useState<BuchPosten[] | null>(null);
+  const [grund, setGrund] = useState('');
+  const monat = beleg.monat ?? aktMonat();
+  const laden = () => {
+    const g = monatsgrenzen(monat);
+    api.get<BuchDaten>(`${VZ}/buch${qs({ von: '2000-01-01', bis: g.bis, adrnr: beleg.adrnr ?? '', status: 'OFFEN' })}`).then((d) => setPosten(d.posten)).catch(() => setPosten([]));
+  };
+  useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const offen = (posten ?? []).filter((p) => p.status === 'OFFEN');
+  const summe = offen.reduce((s, p) => s + p.betrag, 0);
+  return createPortal(
+    <Dialog open stretch={klein()} headerText={`${beleg.person ?? ''} – Verbräuche bis ${monatsname(monat)}`} onClose={onClose}
+            footer={<Bar startContent={<Text className="portal-muted">{offen.length} offen · {eur(summe)}</Text>}
+                         endContent={<>
+                           <Button design="Emphasized" icon="sales-order" disabled={busy || !offen.length}
+                                   onClick={async () => { if (await aktion(async () => { const r = await api.post<{ text: string; prot: { rgnr: string; text: string }[] }>(`${VZ}/abschluss`, { monat, adrnrs: [beleg.adrnr], versenden: true }); toast(r.prot.map((p) => `${p.rgnr}: ${p.text}`).join('\n') || r.text, 6000); })) onClose(); }}>
+                             Monat neu abrechnen
+                           </Button>
+                           <Button onClick={onClose}>Schließen</Button>
+                         </>} />}>
+      <div className="portal-vz__form" style={{ minWidth: 'min(40rem, 90vw)' }}>
+        <MessageStrip design="Information" hideCloseButton>Sammelabrechnung {beleg.rgnr} ist storniert. Streiche hier einzelne Verbräuche und erzeuge die Abrechnung danach neu – oder lass die Positionen offen, dann laufen sie in den nächsten Monatsabschluss.</MessageStrip>
+        <div className="portal-vz__feld"><Label>Stornogrund (für die nächsten Stornos)</Label><Input value={grund} onInput={(e) => setGrund(e.target.value)} style={{ width: '100%' }} placeholder="z. B. Fehlbuchung laut Rückmeldung des Mitglieds" /></div>
+        {!posten ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : (
+          <div className="portal-vz__liste" style={{ border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem' }}>
+            {posten.map((p) => (
+              <div key={p.id} className="portal-vz__eintrag" style={p.status !== 'OFFEN' ? { opacity: 0.55 } : undefined}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="portal-vz__eintrag-titel">{p.anzahl} × {p.text}</div>
+                  <div className="portal-vz__eintrag-info"><span>{dat(p.datum)} {p.zeit}</span><span>{p.selbst ? 'selbst erfasst' : `erfasst von ${p.erfasst_von}`}</span>{p.status !== 'OFFEN' && <ObjectStatus state={STATUS_STATE[p.status]}>{STATUS_TEXT[p.status]}{p.storno_grund ? ` (${p.storno_grund})` : ''}</ObjectStatus>}</div>
+                </div>
+                <div className="portal-vz__eintrag-rechts">
+                  <span>{eur(p.betrag)}</span>
+                  {p.status === 'OFFEN' && <Button icon="delete" design="Transparent" tooltip="Verbrauch stornieren" disabled={busy}
+                                                   onClick={() => aktion(() => api.post(`${VZ}/storno`, { id: p.id, grund }), 'Position storniert.').then((ok) => { if (ok) laden(); })} />}
+                </div>
+              </div>
+            ))}
+            {!posten.length && <Text className="portal-muted" style={{ padding: '0.75rem 1rem' }}>Keine offenen Positionen.</Text>}
+          </div>
+        )}
+      </div>
+    </Dialog>,
+    document.body,
   );
 }
 
