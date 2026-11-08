@@ -12,7 +12,7 @@ import {
 import { minuten, preiseLesen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 import {
-  ablehnen, benutzernameFrei, bestaetigen, ep3Abgleich, ep3Anlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
+  ablehnen, benutzernameFrei, bestaetigen, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
@@ -85,7 +85,7 @@ function regLimit(ip: string, max: number) {
 }
 
 const registrierung = z.object({
-  benutzername: z.string().trim().min(3, 'Benutzername: mindestens 3 Zeichen').max(50).regex(/^[a-zA-Z0-9._-]+$/, 'Benutzername: nur Buchstaben, Ziffern, . _ -'),
+  benutzername: z.string().trim().min(3, 'Benutzername: mindestens 3 Zeichen').max(50).regex(/^[a-zA-Z0-9._@+-]+$/, 'Benutzername: nur Buchstaben, Ziffern, . _ - @'),
   vorname: z.string().trim().min(1, 'Bitte den Vornamen angeben.').max(60),
   nachname: z.string().trim().min(1, 'Bitte den Nachnamen angeben.').max(60),
   email: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.').max(120),
@@ -178,6 +178,10 @@ ${v.name}`,
     if (b.benutzer_id) return { text: await change(req, (tx) => ep3Verknuepfen(tx, zuid, b.benutzer_id!), { action: 'EP3_ZUORDNUNG', reason: zuid }) };
     if (b.adrnr) return { text: await change(req, (tx) => ep3Mitglied(tx, zuid, b.adrnr!), { action: 'EP3_ZUORDNUNG', reason: zuid }) };
     throw new BusinessError('Bitte einen Benutzer oder ein Mitglied wählen.');
+  });
+  app.post('/platz/admin/ep3/anlegen-alle', admin, async (req) => {
+    const r = await change(req, (tx) => ep3BenutzerAnlegen(tx), { action: 'EP3_BENUTZER' });
+    return { ...r, text: `${r.angelegt} Benutzer angelegt (${r.mitglieder} Mitgliedern zugeordnet${r.ohneKennwort ? `, ${r.ohneKennwort} ohne Kennwort` : ''}${r.uebersprungen ? `, ${r.uebersprungen} übersprungen` : ''}).` };
   });
   app.post('/platz/admin/ep3/:zuid/anlegen', admin, async (req) => {
     const { zuid } = z.object({ zuid: z.string().min(1) }).parse(req.params);

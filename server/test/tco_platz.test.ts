@@ -527,33 +527,33 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   // EP3-Buchung von Dennis (Name in Großschrift, wie der Import sie anlegt)
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000007701', ${tag(5)}, '18:00', '19:00', 'DENNIS GAST', '1', 'Halle')`;
 
+  // Import legt die Benutzer direkt an: Anmeldename = E-Mail, Anzeigename „Nachname, Vorname“, Rolle Hallennutzer, EP3-Kennwort gilt
+  assert.match(imp.text, /2 Benutzer angelegt/);
+  const [ud] = await sql`select id, username, display_name, must_change_password from core.users where username = 'dennis@example.org'`;
+  assert.ok(ud, 'Benutzer mit E-Mail als Anmeldename');
+  assert.equal(ud.display_name, 'Gast, Dennis');
+  assert.equal(ud.must_change_password, false);
+  assert.deepEqual((await sql`select role_id from core.user_roles where user_id = ${ud.id}`).map((x) => x.role_id), ['HALLENNUTZER']);
+  assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '77'`)[0].benutzer_id, ud.id);
+
+  // Registrierung mit diesem EP3-Konto ist nicht mehr nötig – Hinweis auf vorhandenen Zugang
   const R = `${P}/registrierung`;
   const gast = client();
   assert.equal((await gast('GET', R)).body.ep3, true);
-  const eingabe = { vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'falsch' };
-  let r = await gast('POST', R, eingabe);
+  let r = await gast('POST', R, { vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'falsch' });
   assert.equal(r.status, 401, 'falsches EP3-Kennwort');
-  r = await gast('POST', R, { ...eingabe, ep3_konto: 'Dennis@example.org', ep3_passwort: 'EP3geheim!' });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.ep3, true);
-  assert.equal((await gast('POST', R, { ...eingabe, benutzername: 'dennis2', ep3_passwort: 'EP3geheim!' })).status, 409, 'EP3-Konto schon in Registrierung');
+  r = await gast('POST', R, { vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'EP3geheim!' });
+  assert.equal(r.status, 409);
+  assert.match(r.body.message, /bereits einen Portalzugang/);
 
-  r = await admin('GET', `${A}/registrierungen`);
-  const reg = r.body.find((x: { benutzername: string }) => x.benutzername === 'dennis.gast');
-  assert.equal(reg.ep3_zuid, '77');
-  assert.equal(reg.ep3_alias, 'dennis77');
-  r = await admin('POST', `${A}/registrierungen/${reg.id}/bestaetigen`, { zuordnung: { art: 'NEU' } });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.match(r.body.text, /EP3-Kunde 77/);
-
-  // Anmeldung mit dem EP3-Kennwort; danach liegt der Hash im Portalverfahren vor
+  // Anmeldung mit E-Mail und EP3-Kennwort; danach liegt der Hash im Portalverfahren vor
   const dennis = client();
-  assert.equal((await dennis('POST', '/api/auth/login', { username: 'dennis.gast', password: 'anderes' })).status, 401);
-  r = await dennis('POST', '/api/auth/login', { username: 'dennis.gast', password: 'EP3geheim!' });
+  assert.equal((await dennis('POST', '/api/auth/login', { username: 'dennis@example.org', password: 'anderes' })).status, 401);
+  r = await dennis('POST', '/api/auth/login', { username: 'Dennis@Example.org', password: 'EP3geheim!' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  const [u] = await sql`select password_hash from core.users where username = 'dennis.gast'`;
+  const [u] = await sql`select password_hash from core.users where username = 'dennis@example.org'`;
   assert.match(u.password_hash, /^\$argon2/);
-  assert.equal((await client()('POST', '/api/auth/login', { username: 'dennis.gast', password: 'EP3geheim!' })).status, 200, 'weiterhin gleiches Kennwort');
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'dennis@example.org', password: 'EP3geheim!' })).status, 200, 'weiterhin gleiches Kennwort');
   // bucht als EP3-Kunde (Adressnummer 99…), alte EP3-Buchung ist eigene
   r = await dennis('GET', `${P}/tag?datum=${tag(5)}`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -563,30 +563,35 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   assert.equal(eigen.bid, '0000007701');
   r = await dennis('GET', `${P}/meine?zeitraum=kommend`);
   assert.ok(r.body.einzel.some((e: { bid: string }) => e.bid === '0000007701'));
-  assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '77'`)[0].benutzer_id !== null, true);
   assert.equal((await dennis('GET', `${A}/plaetze`)).status, 403);
+  assert.equal((await dennis('GET', `${A}/registrierungen`)).status, 403);
 
-  // erneuter Kundenimport (ohne PW-Spalte) behält Zuordnung und Kennwort
+  // erneuter Kundenimport (ohne PW-Spalte) behält Zuordnung und Kennwort, legt nichts doppelt an
   imp = await sql.begin((tx) => ep3Importieren(tx as never, ['ZUID;ZALIAS;STATUS;EMAIL;KEY;VALUE', '77;dennis77;enabled;dennis@example.org;firstname;Dennis', '78;erika;enabled;erika@example.org;firstname;Erika'].join('\n')));
   assert.equal(imp.ok, true);
+  assert.doesNotMatch(imp.text, /Benutzer angelegt/);
   const [k] = await sql`select benutzer_id, pw_hash from tco.kunden where zuid = '77'`;
   assert.ok(k.benutzer_id && k.pw_hash);
-  assert.ok((await sql`select pw_hash from tco.kunden where zuid = '78'`)[0].pw_hash);
+  assert.equal(Number((await sql`select count(*)::int as n from core.users where username like '%@example.org'`)[0].n), 2);
 
-  // EP3-Abgleich: Erika hat noch keinen Zugang → direkt anlegen, EP3-Kennwort gilt
+  // Anmeldung auch für Erika mit E-Mail und EP3-Kennwort
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'erika@example.org', password: 'erika-pw-1' })).status, 200);
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'erika', password: 'erika-pw-1' })).status, 200, 'Anmeldung per E-Mail-Adresse aus dem Benutzerstamm');
+
+  // Kunde ohne Kennwort und ohne E-Mail: Alias als Anmeldename, Kennwort muss gesetzt werden
+  await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname) values ('80', 'fritz.f', 'enabled', 'Fritz', 'Fremd')`;
+  r = await admin('POST', `${A}/ep3/anlegen-alle`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.angelegt, 1);
+  assert.equal(r.body.ohneKennwort, 1);
+  const [uf] = await sql`select username, must_change_password from core.users where username = 'fritz.f'`;
+  assert.equal(uf.must_change_password, true);
+
+  // EP3-Abgleich zeigt die Zuordnungen
   r = await admin('GET', `${A}/ep3`);
   assert.equal(r.status, 200);
-  const erika = r.body.find((x: { zuid: string }) => x.zuid === '78');
-  assert.equal(erika.kennwort, true);
-  assert.equal(erika.benutzer, null);
-  assert.equal(r.body.find((x: { zuid: string }) => x.zuid === '77').benutzer, 'dennis.gast');
-  r = await admin('POST', `${A}/ep3/78/anlegen`, {});
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.username, 'erika');
-  assert.equal(r.body.startkennwort, null);
-  assert.equal((await client()('POST', '/api/auth/login', { username: 'erika', password: 'erika-pw-1' })).status, 200);
-  assert.deepEqual((await sql`select ur.role_id from core.user_roles ur join core.users u on u.id = ur.user_id where u.username = 'erika'`).map((x) => x.role_id), ['HALLENNUTZER']);
-  assert.equal((await admin('POST', `${A}/ep3/78/anlegen`, {})).status, 400, 'nur einmal');
+  assert.equal(r.body.find((x: { zuid: string }) => x.zuid === '77').benutzer, 'dennis@example.org');
+  assert.equal(r.body.find((x: { zuid: string }) => x.zuid === '78').benutzer, 'erika@example.org');
 
   // Verknüpfen eines EP3-Kunden mit vorhandenem Mitglied-Benutzer: ZUID landet am Mitglied
   await sql`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname) values ('79', 'anna.s', 'enabled', null, 'Anna', 'Spielerin')`;

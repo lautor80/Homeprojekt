@@ -11,7 +11,7 @@ jede Installation schaltet nur ihre Module ein.
 | Anmeldung | Benutzer/Passwort (Argon2), Sitzungen, Sperre nach Fehlversuchen, Passwortwechsel beim ersten Login |
 | Berechtigungen | Rollen aus Berechtigungen „Objekt:Aktivität“, Module bringen ihre Berechtigungen selbst mit |
 | Änderungsbelege | wie CDHDR/CDPOS, per Datenbank-Trigger – lückenlos, unveränderlich, mit Benutzer, Aktion und Begründung |
-| Registrierung | Selbstregistrierung für Hallennutzer mit Freigabe durch die Platzverwaltung (Zuordnung zu Mitglied/EP3-Kunde), feste Systemrolle „Hallennutzer“ (nur Einzelbuchung), Übernahme der EP3-Kennwörter (bcrypt aus bs_users.pw, Kundenexport mit Spalte PW) |
+| Registrierung | Selbstregistrierung für Hallennutzer mit Freigabe durch die Platzverwaltung (Zuordnung zu Mitglied/EP3-Kunde), feste Systemrolle „Hallennutzer“ (nur Einzelbuchung), Übernahme der EP3-Kennwörter (bcrypt aus bs_users.pw, Kundenexport mit Spalte PW); der Kundenimport legt für alle aktiven EP3-Kunden Hallennutzer an (Anmeldename = E-Mail, „Nachname, Vorname“, Zuordnung zu Mitgliedern über ZUID/E-Mail/Name); Anmeldung mit Benutzername oder E-Mail |
 | Sperren | wie SM12: Objekt beim Öffnen zur Bearbeitung gesperrt (Typ + Schlüssel der Änderungsbelege), Durchsetzung im Datenbank-Trigger, Lebenszeichen, Ablauf nach 2 Min. bzw. 15 Min. Inaktivität, Platzzeiten schon bei Auswahl; Übersicht/Aufheben unter Administration → Sperren |
 | Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Integrations-URLs |
 | PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |

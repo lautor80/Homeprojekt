@@ -20,8 +20,12 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.code(429).send({ message: 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.' });
     }
 
-    const [u] = await sql`select id, password_hash, active from core.users
-                          where lower(username) = lower(${body.username})`;
+    // Benutzername oder (eindeutige) E-Mail-Adresse
+    let [u] = await sql`select id, password_hash, active from core.users where lower(username) = lower(${body.username})`;
+    if (!u && body.username.includes('@')) {
+      const treffer = await sql`select id, password_hash, active from core.users where lower(email) = lower(${body.username.trim()}) and active`;
+      if (treffer.length === 1) u = treffer[0];
+    }
     const ok = u && u.active && (await verifyPassword(u.password_hash, body.password));
     if (!ok) {
       const cur = f && f.until > Date.now() ? f : { count: 0, until: Date.now() + WINDOW };

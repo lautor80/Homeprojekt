@@ -52,7 +52,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.post('/api/admin/users', { preHandler: requireAuth('core.users:edit') }, async (req, reply) => {
     const body = userBase.extend({
-      username: z.string().min(3).max(50).regex(/^[a-zA-Z0-9._-]+$/, 'Nur Buchstaben, Ziffern, . _ -'),
+      username: z.string().min(3).max(50).regex(/^[a-zA-Z0-9._@+-]+$/, 'Nur Buchstaben, Ziffern, . _ - @'),
       password: z.string(),
     }).parse(req.body);
     const err = validatePassword(body.password);

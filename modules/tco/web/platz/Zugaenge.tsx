@@ -213,13 +213,15 @@ function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
       <Toolbar design="Transparent">
         <Title level="H5">EP3-Kunden ({zeilen.length})</Title>
         <ToolbarSpacer />
+        <Button design="Emphasized" icon="add-employee" onClick={() => aktion(() => api.post(`${PA}/ep3/anlegen-alle`, {}), laden)}>Alle ohne Zugang anlegen</Button>
         <Button design="Transparent" icon={nurOffen ? 'filter' : 'clear-filter'} onClick={() => setNurOffen(!nurOffen)}>{nurOffen ? 'Nur ohne Zuordnung' : 'Alle'}</Button>
         <Input placeholder="Suchen" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '14rem' }} />
       </Toolbar>
       <AnalyticalTable columns={columns} data={zeilen} loading={!liste} visibleRows={Math.min(Math.max(zeilen.length, 3), 20)} rowHeight={52} noDataText="Keine EP3-Kunden ohne Zuordnung" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
-        Vorschläge nach gleichem Benutzernamen, gleicher E-Mail oder gleichem Namen. „Als Hallennutzer anlegen“ erzeugt einen Portalbenutzer mit dem EP3-Alias als Anmeldename;
-        wurde das EP3-Kennwort importiert (Kundenexport mit Spalte PW), gilt es weiter – sonst wird ein Startkennwort angezeigt.
+        Der Kundenimport legt für alle aktiven EP3-Kunden automatisch Hallennutzer an: Anmeldename = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“,
+        Rolle Hallennutzer; Mitglieder werden über ZUID, E-Mail oder Name zugeordnet. Wurde das EP3-Kennwort importiert (Spalte PW), gilt es weiter – sonst muss es in der
+        Benutzerpflege gesetzt werden. Hier bleiben nur Sonderfälle: Vorschläge zum Verknüpfen mit vorhandenen Benutzern/Mitgliedern oder einzelnes Anlegen.
       </MessageStrip>
       {start && (
         <ConfirmDialog open title="Startkennwort" confirmText="Schließen" onCancel={() => setStart(null)} onConfirm={() => setStart(null)}

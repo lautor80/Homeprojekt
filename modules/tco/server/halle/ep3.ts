@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { csvParse, dekodieren, sapDatum, sapZeit } from '../../../../server/src/lib/sapcsv.js';
 import type { Db, Verein } from '../verein.js';
 import { dat, heute, zeit } from '../format.js';
+import { ep3BenutzerAnlegen } from '../platz/registrierung.js';
 
 /**
  * Import der EP3-Exporte (Buchungssystem ep3-bs): Buchungen, Kunden, Buchungstexte.
@@ -78,7 +79,14 @@ async function kundenImportieren(tx: Db, rows: string[][], idx: (n: string) => n
                      ${k.pw_hash ?? alt?.pw_hash ?? null}, ${alt?.benutzer_id ?? null})`;
   }
   const mitPw = [...kunden.values()].filter((k) => k.pw_hash).length;
-  return { typ: 'KUNDEN', ok: true, text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen${mitPw ? `, ${mitPw} Kennwörter übernommen` : ''}` };
+  // Portalbenutzer für alle aktiven EP3-Kunden anlegen (Benutzername = E-Mail, Rolle Hallennutzer) und zuordnen
+  const b = await ep3BenutzerAnlegen(tx, zuids);
+  return {
+    typ: 'KUNDEN', ok: true,
+    text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen${mitPw ? `, ${mitPw} Kennwörter übernommen` : ''}`
+      + (b.angelegt ? `, ${b.angelegt} Benutzer angelegt` : '') + (b.mitglieder ? ` (${b.mitglieder} Mitgliedern zugeordnet)` : '')
+      + (b.ohneKennwort ? `, ${b.ohneKennwort} ohne Kennwort (Kennwort über die Benutzerpflege setzen)` : ''),
+  };
 }
 
 async function texteImportieren(tx: Db, rows: string[][], idx: (n: string) => number): Promise<ImportErgebnis> {

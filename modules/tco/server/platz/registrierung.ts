@@ -318,9 +318,7 @@ export async function ep3Anlegen(tx: Db, zuid: string): Promise<{ username: stri
   if (k.some((x) => x.benutzer_id)) throw new BusinessError('Dieser EP3-Kunde hat bereits einen Portalzugang.');
   const [mz] = await tx`select a.adrnr, a.benutzer_id from tco.mitgliedera a where a.zuid = ${zuid}`;
   if (mz?.benutzer_id) throw new BusinessError('Das zugehörige Mitglied hat bereits einen Benutzer.');
-  const basis = k[0].zalias.replace(/[^a-zA-Z0-9._-]/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 50) || `ep3.${zuid}`;
-  let username = basis.length >= 3 ? basis : `ep3.${basis}`;
-  for (let i = 2; (await tx`select 1 from core.users where lower(username) = lower(${username})`).length; i++) username = `${basis}.${i}`;
+  const username = await freierBenutzername(tx, k[0].email, k[0].zalias, zuid);
   const mitHash = k.find((x) => istBcrypt(x.pw_hash));
   let startkennwort: string | null = null;
   let hash: string;
@@ -337,4 +335,77 @@ export async function ep3Anlegen(tx: Db, zuid: string): Promise<{ username: stri
     username, startkennwort,
     text: `Benutzer ${username} angelegt (Rolle Hallennutzer${mz ? `, Mitglied ${mz.adrnr}` : ''})${mitHash ? ' – bisheriges EP3-Kennwort gilt weiter.' : ' – Startkennwort bitte sicher übermitteln, es wird beim ersten Anmelden geändert.'}`,
   };
+}
+
+/** Benutzername für einen EP3-Kunden: E-Mail-Adresse, sonst EP3-Alias; bei Kollision mit Zusatz */
+async function freierBenutzername(tx: Db, email: string | null | undefined, alias: string, zuid: string): Promise<string> {
+  const mail = (email ?? '').trim().toLowerCase();
+  const kandidaten = [
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) ? mail : '',
+    alias.replace(/[^a-zA-Z0-9._@+-]/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 50),
+    `ep3.${zuid}`,
+  ].filter((x) => x.length >= 3);
+  for (const basis of kandidaten) {
+    if (!(await tx`select 1 from core.users where lower(username) = lower(${basis})`).length) return basis;
+  }
+  const basis = kandidaten[0];
+  for (let i = 2; ; i++) {
+    const n = `${basis}.${i}`;
+    if (!(await tx`select 1 from core.users where lower(username) = lower(${n})`).length) return n;
+  }
+}
+
+/**
+ * Nach dem Kundenimport: für alle aktiven EP3-Kunden ohne Portalzugang einen Hallennutzer anlegen.
+ * Benutzername = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“, Rolle HALLENNUTZER,
+ * Kennwort = übernommener EP3-Hash (ohne Hash: Zufallskennwort, Änderung beim ersten Anmelden – Kennwort über Benutzerpflege setzen).
+ * Zuordnung: Mitglied mit gleicher ZUID (Mitglied → Zusatzdaten), sonst gleiche E-Mail oder gleicher Name, sonst EP3-Kunde selbst.
+ */
+export async function ep3BenutzerAnlegen(tx: Db, zuids?: string[]): Promise<{ angelegt: number; mitglieder: number; ohneKennwort: number; uebersprungen: number }> {
+  const kunden = await tx`
+    select distinct on (k.zuid) k.zuid, k.zalias, k.email, k.vorname, k.nachname, k.pw_hash
+      from tco.kunden k
+     where coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
+       and k.benutzer_id is null
+       and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)
+       ${zuids ? tx`and k.zuid = any(${zuids})` : tx``}
+     order by k.zuid, k.zalias`;
+  const r = { angelegt: 0, mitglieder: 0, ohneKennwort: 0, uebersprungen: 0 };
+  if (!kunden.length) return r;
+  await rolleSicherstellen(tx);
+  const { randomBytes } = await import('node:crypto');
+  for (const k of kunden) {
+    const email = (k.email ?? '').trim().toLowerCase();
+    const voll = name(k.vorname, k.nachname).toUpperCase();
+    // Mitglied: ZUID, sonst E-Mail, sonst Name – nur wenn es noch keinen Benutzer hat
+    const [m] = await tx`
+      select m.adrnr from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
+       where a.benutzer_id is null and (m.austritt is null or m.austritt >= current_date)
+         and (a.zuid = ${k.zuid}
+              or (${email} <> '' and lower(trim(coalesce(m.email, ''))) = ${email})
+              or (${voll} <> '' and upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) = ${voll}))
+       order by (a.zuid = ${k.zuid}) desc nulls last, (lower(trim(coalesce(m.email, ''))) = ${email}) desc, m.adrnr
+       limit 1`;
+    const username = await freierBenutzername(tx, k.email, k.zalias, k.zuid);
+    const anzeige = k.nachname || k.vorname ? condense(`${k.nachname ?? ''}, ${k.vorname ?? ''}`).replace(/^, |, $/g, '') : k.zalias;
+    let hash: string;
+    let mussAendern = false;
+    if (istBcrypt(k.pw_hash)) hash = k.pw_hash;
+    else { hash = await hashPassword(randomBytes(18).toString('base64url')); mussAendern = true; r.ohneKennwort++; }
+    try {
+      const uid = await benutzerAnlegen(tx, { username, displayName: anzeige, email: email || null, passwortHash: hash, mussAendern });
+      if (m) {
+        await tx`insert into tco.mitgliedera (adrnr, benutzer_id, zuid) values (${m.adrnr}, ${uid}, ${k.zuid})
+                 on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id, zuid = coalesce(tco.mitgliedera.zuid, excluded.zuid)`;
+        r.mitglieder++;
+      } else {
+        await tx`update tco.kunden set benutzer_id = ${uid} where zuid = ${k.zuid}`;
+      }
+      r.angelegt++;
+    } catch (e) {
+      if (e instanceof BusinessError && e.statusCode === 409) { r.uebersprungen++; continue; }
+      throw e;
+    }
+  }
+  return r;
 }
