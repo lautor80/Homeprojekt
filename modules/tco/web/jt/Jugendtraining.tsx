@@ -129,6 +129,9 @@ export function Jugendtraining() {
           <Tab data-key="ent" text="Entgelte" icon="money-bills" selected={tab === 'ent'}>
             <Entgelte onChanged={() => laden()} />
           </Tab>
+          <Tab data-key="trainer" text="Trainer" icon="employee" selected={tab === 'trainer'}>
+            <Entgelte teil="trainer" onChanged={() => laden()} />
+          </Tab>
         </TabContainer>
       )}
     </AppPage>

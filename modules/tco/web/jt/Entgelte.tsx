@@ -27,7 +27,11 @@ function Feld({ wert, disabled, width, onSave }: { wert: string; disabled?: bool
   return <Input value={v} disabled={disabled} style={{ width }} onInput={(e) => setV(e.target.value)} onChange={() => v !== wert && onSave(v)} />;
 }
 
-export function Entgelte({ onChanged }: { onChanged: () => void }) {
+/**
+ * teil = 'entgelte': Stundensätze je Trainer; teil = 'trainer': Trainerliste mit Steuernummer und
+ * Portal-Benutzer für „Meine Trainingszeiten“ (eigener Reiter in der Abrechnung Jugendtraining).
+ */
+export function Entgelte({ onChanged, teil = 'entgelte' }: { onChanged: () => void; teil?: 'entgelte' | 'trainer' }) {
   const can = useCan();
   const edit = can('tco.jt:entgelte');
   const [d, setD] = useState<Daten | null>(null);
@@ -109,6 +113,8 @@ export function Entgelte({ onChanged }: { onChanged: () => void }) {
   return (
     <>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {teil === 'entgelte' && (
+        <>
       <Toolbar design="Transparent">
         <Title level="H5">Trainerentgelte (Euro je Stunde)</Title>
         <SegmentedButton onSelectionChange={(e) => setFilter((e.detail.selectedItems[0] as HTMLElement).dataset.f!)} style={{ marginInlineStart: '1rem' }}>
@@ -137,7 +143,11 @@ export function Entgelte({ onChanged }: { onChanged: () => void }) {
       )}
       <AnalyticalTable columns={columns} data={daten} loading={!d} visibleRows={Math.max(daten.length, 3)} noDataText="Keine Entgelte in dieser Auswahl" />
 
-      <Toolbar design="Transparent" style={{ marginTop: '1.5rem' }}>
+        </>
+      )}
+      {teil === 'trainer' && (
+        <>
+      <Toolbar design="Transparent">
         <Title level="H5">Trainer ({d?.trainer.length ?? 0})</Title>
         <ToolbarSpacer />
         {edit && <>
@@ -158,6 +168,8 @@ export function Entgelte({ onChanged }: { onChanged: () => void }) {
         (Rollenpflege → Jugend), meldet der Trainer seine Zeiten selbst zurück – ausschließlich für sich, ohne Einblick in andere Trainer.
       </MessageStrip>
 
+        </>
+      )}
       <ConfirmDialog open={!!weg} danger title="Entgelt löschen"
                      text={weg ? `Satz ${eur(weg.betrag)} von ${weg.trainer} bis ${weg.valid_to === '9999-12-31' ? 'unbefristet' : dat(weg.valid_to)} löschen?` : ''}
                      confirmText="Löschen" onCancel={() => setWeg(null)}
