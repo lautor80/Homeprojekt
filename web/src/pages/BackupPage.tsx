@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea, Title,
+  AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '../api';
@@ -114,7 +114,7 @@ export function BackupPage() {
     { Header: 'Von', id: 'von', width: 140, Cell: ({ row }: Cell) => row.original.info?.von ?? '–' },
     { Header: 'Größe', accessor: 'groesse', width: 90, hAlign: 'End', Cell: ({ value }: Cell) => mb(value) },
     { Header: 'Format', id: 'format', width: 90, Cell: ({ row }: Cell) => (row.original.format === 'zip' ? <ObjectStatus state="Information">ZIP/XML</ObjectStatus> : <Text>.portal</Text>) },
-    { Header: '', id: 'schutz', width: 50, Cell: ({ row }: Cell) => (row.original.verschluesselt ? <ObjectStatus state="Positive" icon="locked" /> : null) },
+    { Header: '', id: 'schutz', width: 50, Cell: ({ row }: Cell) => (row.original.verschluesselt ? <ObjectStatus state="Positive" icon={<Icon name="locked" />} /> : null) },
     {
       Header: '', id: 'aktion', width: 270,
       Cell: ({ row }: Cell) => (

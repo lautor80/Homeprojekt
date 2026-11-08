@@ -35,7 +35,7 @@ const heute = new Date().toISOString().slice(0, 10);
 const jahr = Number(heute.slice(0, 4));
 
 // ---------------------------------------------------------------- Paperless-Attrappe
-const mock = { docs: new Map<number, { title: string; created: string; tags: string[]; type: string; corr: string; notes: string[] }>(), next: 900, tags: [{ id: 1, name: 'Beleg' }], korr: [{ id: 5, name: 'Getränke Becker' }] };
+const mock = { docs: new Map<number, { title: string; created: string; tags: string[]; type: string; corr: string; notes: string[]; custom_fields: { field: number; value: unknown }[] }>(), next: 900, tags: [{ id: 1, name: 'Beleg' }], korr: [{ id: 5, name: 'Getränke Becker' }], felder: [] as { id: number; name: string; data_type: string }[] };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -50,7 +50,7 @@ const server = http.createServer((req, res) => {
       const id = mock.next++;
       const alle = (n: string) => [...body.matchAll(form(n))].map((x) => x[1]);
       if (/filename="dublette\.pdf"/.test(body)) return send(200, 'task-dup');
-      mock.docs.set(id, { title: alle('title')[0] ?? '', created: alle('created')[0] ?? '', tags: alle('tags'), type: alle('document_type')[0] ?? '', corr: alle('correspondent')[0] ?? '', notes: [] });
+      mock.docs.set(id, { title: alle('title')[0] ?? '', created: alle('created')[0] ?? '', tags: alle('tags'), type: alle('document_type')[0] ?? '', corr: alle('correspondent')[0] ?? '', notes: [], custom_fields: [] });
       return send(200, `task-${id}`);
     }
     if ((m = /^\/api\/tasks\/\?task_id=task-(\w+)/.exec(u))) {
@@ -60,11 +60,18 @@ const server = http.createServer((req, res) => {
     if (/^\/api\/(correspondents|document_types|storage_paths|custom_fields|tags)\//.test(u) && req.method === 'GET') {
       const art = u.split('/')[2];
       const lists: Record<string, unknown[]> = {
-        correspondents: mock.korr, document_types: [{ id: 9, name: 'Rechnung' }, { id: 10, name: 'Quittung' }], storage_paths: [{ id: 2, name: 'Buchhaltung' }], custom_fields: [], tags: mock.tags,
+        correspondents: mock.korr, document_types: [{ id: 9, name: 'Rechnung' }, { id: 10, name: 'Quittung' }], storage_paths: [{ id: 2, name: 'Buchhaltung' }], custom_fields: mock.felder, tags: mock.tags,
       };
       return send(200, { results: lists[art], next: null });
     }
     if (u === '/api/correspondents/' && req.method === 'POST') { const k = { id: 6, name: JSON.parse(body).name }; mock.korr.push(k); return send(201, k); }
+    if (u === '/api/custom_fields/' && req.method === 'POST') { const b = JSON.parse(body); const f = { id: 40 + mock.felder.length, name: b.name, data_type: b.data_type }; mock.felder.push(f); return send(201, f); }
+    if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) {
+      const d = mock.docs.get(Number(m[1]));
+      if (!d) return send(404, {});
+      if (req.method === 'PATCH') { const b = JSON.parse(body); if (b.custom_fields) d.custom_fields = b.custom_fields; return send(200, { id: Number(m[1]) }); }
+      return send(200, { id: Number(m[1]), title: d.title, custom_fields: d.custom_fields });
+    }
     if (u === '/api/tags/' && req.method === 'POST') { const k = { id: mock.tags.length + 1, name: JSON.parse(body).name }; mock.tags.push(k); return send(201, k); }
     if ((m = /^\/api\/documents\/(\d+)\/notes\/$/.exec(u))) { mock.docs.get(Number(m[1]))?.notes.push(JSON.parse(body || '{}').note); return send(200, []); }
     send(404, { u });
@@ -266,11 +273,28 @@ test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () =>
   assert.equal(doc.corr, '6', 'neuer Korrespondent angelegt');
   assert.deepEqual(doc.tags, ['1', '2'], 'vorhandener und neu angelegter Tag');
   assert.match(doc.notes[0], /^per Upload \(Admin, Vereinsportal\)$/);
+  assert.deepEqual(doc.custom_fields, [], 'ohne Folgeaktion kein Feld');
+
+  // Folgeaktion: Feld fehlt in Paperless → als Textfeld angelegt und gesetzt; vorhandener Korrespondent (andere Schreibweise) wird nicht doppelt angelegt
+  r = await call('GET', `${U}/stamm`);
+  assert.deepEqual([r.body.folgeaktion.vorhanden, r.body.folgeaktion.auswahl], [false, false]);
+  assert.ok(r.body.folgeaktion.optionen.includes('Bezahlen'));
+  const anzahlKorr = mock.korr.length;
+  r = await call('POST', `${U}/datei`, { datei: 'rechnung_nov.pdf', inhalt: pdf, meta: { ...meta, korrespondentNeu: 'getränke becker', tagsNeu: [], folgeaktion: 'Bezahlen' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.state, 'Positive', JSON.stringify(r.body));
+  const doc2 = mock.docs.get(r.body.id)!;
+  assert.equal(doc2.corr, '5', 'vorhandener Korrespondent genutzt');
+  assert.equal(mock.korr.length, anzahlKorr, 'kein neuer Korrespondent');
+  assert.deepEqual(mock.felder.map((f) => [f.name, f.data_type]), [['Folgeaktion', 'string']]);
+  assert.deepEqual(doc2.custom_fields, [{ field: 40, value: 'Bezahlen' }]);
+  r = await call('GET', `${U}/stamm`);
+  assert.equal(r.body.folgeaktion.vorhanden, true);
 
   // Titel aus dem Dateinamen, Bild als Dateityp, Hinweis auf Ziel-Bereich bei CSV
   r = await call('POST', `${U}/datei`, { datei: 'quittung.jpg', inhalt: `data:image/jpeg;base64,${Buffer.from('bild').toString('base64')}`, meta: { ...meta, titel: '', korrespondentNeu: '', tagsNeu: [], notiz: '' } });
   assert.equal(r.body.state, 'Positive');
-  assert.equal(mock.docs.get(901)!.title, 'quittung');
+  assert.equal(mock.docs.get(r.body.id)!.title, 'quittung');
   r = await call('POST', `${U}/datei`, { datei: 'jugend_oktober.csv', inhalt: `data:text/csv;base64,${Buffer.from('a;b').toString('base64')}`, meta });
   assert.equal(r.body.bereich, 'Jugendabrechnung');
 

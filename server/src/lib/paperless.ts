@@ -239,6 +239,18 @@ export class Paperless {
     return l.find((x) => x.name.trim().toLowerCase() === nameOderId.trim().toLowerCase()) ?? null;
   }
 
+  /** Custom Field mit allen Angaben (z. B. Auswahlwerte eines Select-Felds) */
+  async feldDetails(name: string): Promise<{ id: number; name: string; data_type?: string; extra_data?: { select_options?: (string | { id: string; label: string })[] } } | null> {
+    return ((await this.liste('custom_fields')) as Record<string, any>[]).find((x) => String(x.name).trim().toLowerCase() === name.trim().toLowerCase()) as never ?? null;
+  }
+
+  /** Custom Field anlegen (z. B. Textfeld „Folgeaktion“) */
+  async feldAnlegen(name: string, dataType: 'string' | 'select' = 'string'): Promise<{ id: number; name: string; data_type: string }> {
+    const r = await this.json<{ id: number; name: string; data_type: string }>('POST', 'api/custom_fields/', { name: name.trim(), data_type: dataType });
+    this.stammCache.get('custom_fields')?.push(r);
+    return r;
+  }
+
   /** Wert eines Custom Fields aus einem Dokument (Feld per Name oder ID) */
   async feldWert(doc: Record<string, any>, nameOderId: string): Promise<unknown> {
     const f = await this.feld(nameOderId);

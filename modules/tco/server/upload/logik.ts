@@ -68,17 +68,32 @@ export function dateiPruefen(datei: string, bytes: number) {
 export interface Meta {
   titel: string; datum: string; doktyp: number | null; korrespondent: number | null; korrespondentNeu: string;
   tags: number[]; tagsNeu: string[]; speicherpfad: number | null; notiz: string;
+  /** was mit dem Dokument zu tun ist – Custom Field „Folgeaktion“ in Paperless */
+  folgeaktion?: string;
 }
+
+/** Custom Field in Paperless für die Folgeaktion; fehlt es, wird es beim ersten Ablegen als Textfeld angelegt */
+export const FOLGEAKTION_FELD = 'Folgeaktion';
+/** Vorschläge, wenn das Feld (noch) kein Auswahlfeld mit eigenen Werten ist */
+export const FOLGEAKTION_VORSCHLAEGE = ['Keine (nur ablegen)', 'Bezahlen', 'Prüfen und freigeben', 'Buchen (FI-Beleg)', 'An Kassenwart weiterleiten', 'An Vorstand weiterleiten', 'Rückfrage klären', 'Wiedervorlage'];
+
+/** Auswahlwerte eines Select-Felds (Paperless ≥ 2.13: {id,label}, älter: Texte) */
+const optionen = (f: { extra_data?: { select_options?: (string | { id: string; label: string })[] } } | null) =>
+  (f?.extra_data?.select_options ?? []).map((o) => (typeof o === 'string' ? o : o.label)).filter(Boolean);
 export interface UploadErgebnis { id: number | null; text: string; state: 'Positive' | 'Critical' | 'Negative' }
 
 /** Stammdaten aus Paperless für die Auswahlfelder */
 export async function stammLesen(v: Verein) {
-  if (!plAktiv(v)) return { paperless: false, dokumenttypen: [], korrespondenten: [], tags: [], speicherpfade: [], heute: heute() };
+  const leer = { feld: FOLGEAKTION_FELD, vorhanden: false, auswahl: false, optionen: FOLGEAKTION_VORSCHLAEGE };
+  if (!plAktiv(v)) return { paperless: false, dokumenttypen: [], korrespondenten: [], tags: [], speicherpfade: [], heute: heute(), folgeaktion: leer };
   const pl = paperless(v);
   const sort = (l: { id: number; name: string }[]) => l.map((x) => ({ id: x.id, name: x.name })).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const f = await pl.feldDetails(FOLGEAKTION_FELD).catch(() => null);
+  const auswahl = f?.data_type === 'select' && optionen(f).length > 0;
   return {
     paperless: true, dokumenttypen: sort(await pl.dokumenttypen()), korrespondenten: sort(await pl.korrespondenten()),
     tags: sort(await pl.tags()), speicherpfade: sort(await pl.speicherpfade()), heute: heute(),
+    folgeaktion: { feld: FOLGEAKTION_FELD, vorhanden: !!f, auswahl, optionen: auswahl ? optionen(f) : FOLGEAKTION_VORSCHLAEGE },
   };
 }
 
@@ -109,6 +124,7 @@ export async function hochladen(v: Verein, datei: string, inhalt: string, m: Met
       const z2 = await zuordnen(K.upload, 'tco', { ...werte, dokid: String(id).padStart(6, '0') });
       warnungen.push(...await nachtragen(pl, id, z2, undefined));
       if (m.notiz.trim()) await pl.notizAnlegen(id, `${m.notiz.trim()} (${benutzer}, Vereinsportal)`).catch(() => undefined);
+      if (m.folgeaktion?.trim()) warnungen.push(...await folgeaktionSetzen(pl, id, m.folgeaktion.trim()));
     }
     return id
       ? { id, text: `Abgelegt als Dokument ${id}${warnungen.length ? ` – ${warnungen.join('; ')}` : ''}`, state: 'Positive' }
@@ -116,5 +132,24 @@ export async function hochladen(v: Verein, datei: string, inhalt: string, m: Met
   } catch (e) {
     if (e instanceof PaperlessError) return { id: null, text: e.message, state: 'Negative' };
     throw e;
+  }
+}
+
+/** Folgeaktion als Custom Field setzen: Auswahlfeld → passende Option, sonst Text; fehlendes Feld wird als Textfeld angelegt */
+async function folgeaktionSetzen(pl: ReturnType<typeof paperless>, id: number, wert: string): Promise<string[]> {
+  try {
+    let f = await pl.feldDetails(FOLGEAKTION_FELD);
+    if (!f) f = await pl.feldAnlegen(FOLGEAKTION_FELD, 'string');
+    let v: string | number = wert;
+    if (f.data_type === 'select') {
+      const opts = f.extra_data?.select_options ?? [];
+      const i = opts.findIndex((o) => (typeof o === 'string' ? o : o.label).toLowerCase() === wert.toLowerCase());
+      if (i < 0) return [`Folgeaktion „${wert}“ ist im Auswahlfeld „${FOLGEAKTION_FELD}“ nicht vorhanden`];
+      const o = opts[i];
+      v = typeof o === 'string' ? i : o.id;
+    }
+    return await pl.metadatenSetzen(id, { customFields: { [String(f.id)]: v } });
+  } catch (e) {
+    return [`Folgeaktion nicht gesetzt: ${(e as Error).message}`];
   }
 }

@@ -122,7 +122,7 @@ export function Upload() {
     {
       Header: 'Status', accessor: 'status', minWidth: 220,
       Cell: ({ row, value }: Cell) => (
-        <ObjectStatus state={row.original.state} icon={row.original.state === 'Positive' ? 'accept' : row.original.state === 'Negative' ? 'error' : undefined}>
+        <ObjectStatus state={row.original.state} icon={row.original.state === 'Positive' ? <Icon name="accept" /> : row.original.state === 'Negative' ? <Icon name="error" /> : undefined}>
           {value}{row.original.bereich && row.original.bereich !== 'FI Belege' ? ` · Hinweis: ${row.original.bereich}` : ''}
         </ObjectStatus>
       ),

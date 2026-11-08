@@ -9,10 +9,14 @@ import {
  * und von beiden Stellen gemeinsam genutzt.
  */
 export interface Eintrag { id: number; name: string }
-export interface Stamm { paperless: boolean; dokumenttypen: Eintrag[]; korrespondenten: Eintrag[]; tags: Eintrag[]; speicherpfade: Eintrag[]; heute: string; dateitypen: string[] }
-export interface Vorgabe { doktyp: string; korrespondent: string; korrespondentNeu: string; tags: number[]; tagsNeu: string; speicherpfad: string; notiz: string }
+export interface Stamm {
+  paperless: boolean; dokumenttypen: Eintrag[]; korrespondenten: Eintrag[]; tags: Eintrag[]; speicherpfade: Eintrag[]; heute: string; dateitypen: string[];
+  /** Custom Field „Folgeaktion“: Auswahlfeld mit festen Werten oder Text mit Vorschlägen */
+  folgeaktion?: { feld: string; vorhanden: boolean; auswahl: boolean; optionen: string[] };
+}
+export interface Vorgabe { doktyp: string; korrespondent: string; korrespondentNeu: string; tags: number[]; tagsNeu: string; speicherpfad: string; notiz: string; folgeaktion: string }
 
-export const LEER: Vorgabe = { doktyp: '', korrespondent: '', korrespondentNeu: '', tags: [], tagsNeu: '', speicherpfad: '', notiz: '' };
+export const LEER: Vorgabe = { doktyp: '', korrespondent: '', korrespondentNeu: '', tags: [], tagsNeu: '', speicherpfad: '', notiz: '', folgeaktion: '' };
 const schluessel = (userId: string) => `tco.ablage.${userId}`;
 export function vorgabeLesen(userId: string): Vorgabe | null {
   try { const v = localStorage.getItem(schluessel(userId)); return v ? { ...LEER, ...JSON.parse(v) } : null; } catch { return null; }
@@ -29,7 +33,7 @@ export function metaFuerUpload(v: Vorgabe) {
     korrespondent: v.korrespondent ? Number(v.korrespondent) : null,
     korrespondentNeu: v.korrespondent ? '' : v.korrespondentNeu.trim(),
     tags: v.tags, tagsNeu: v.tagsNeu.split(',').map((t) => t.trim()).filter(Boolean),
-    speicherpfad: v.speicherpfad ? Number(v.speicherpfad) : null, notiz: v.notiz,
+    speicherpfad: v.speicherpfad ? Number(v.speicherpfad) : null, notiz: v.notiz, folgeaktion: v.folgeaktion.trim(),
   };
 }
 
@@ -40,7 +44,7 @@ export function vorgabeText(v: Vorgabe | null, s: Stamm | null): string {
   const tags = v.tags.length + v.tagsNeu.split(',').filter((t) => t.trim()).length;
   return [name(s?.dokumenttypen, v.doktyp) ?? (v.doktyp ? 'Dokumenttyp gewählt' : 'ohne Dokumenttyp'),
     name(s?.korrespondenten, v.korrespondent) ?? (v.korrespondentNeu.trim() ? `${v.korrespondentNeu.trim()} (neu)` : null),
-    tags ? `${tags} Tag(s)` : null].filter(Boolean).join(' · ');
+    tags ? `${tags} Tag(s)` : null, v.folgeaktion.trim() ? `→ ${v.folgeaktion.trim()}` : null].filter(Boolean).join(' · ');
 }
 
 export function MetaFelder({ stamm, v, onChange, pflichtDoktyp = false, kompakt = false }: {
@@ -64,6 +68,18 @@ export function MetaFelder({ stamm, v, onChange, pflichtDoktyp = false, kompakt 
   return (
     <>
       {feld('Dokumenttyp', auswahl('doktyp', stamm.dokumenttypen, pflichtDoktyp ? '– bitte wählen –' : '– keine Angabe –'), pflichtDoktyp)}
+      {stamm.folgeaktion && feld('Folgeaktion', stamm.folgeaktion.auswahl ? (
+        <Select style={{ width: '100%' }} onChange={(e) => onChange({ ...v, folgeaktion: (e.detail.selectedOption as HTMLElement).dataset.k ?? '' })}>
+          <Option data-k="" selected={!v.folgeaktion}>– keine –</Option>
+          {stamm.folgeaktion.optionen.map((o) => <Option key={o} data-k={o} selected={o === v.folgeaktion}>{o}</Option>)}
+        </Select>
+      ) : (
+        <ComboBox style={{ width: '100%' }} value={v.folgeaktion} placeholder="Was ist mit dem Dokument zu tun?" showClearIcon noTypeahead
+                  onInput={(e) => onChange({ ...v, folgeaktion: e.target.value })}
+                  onSelectionChange={(e) => onChange({ ...v, folgeaktion: (e.detail.item as HTMLElement | null)?.getAttribute('text') ?? v.folgeaktion })}>
+          {stamm.folgeaktion.optionen.map((o) => <ComboBoxItem key={o} text={o} />)}
+        </ComboBox>
+      ), false, stamm.folgeaktion.vorhanden ? undefined : `Wird in Paperless als Feld „${stamm.folgeaktion.feld}“ angelegt.`)}
       {feld('Korrespondent', (
         <ComboBox style={{ width: '100%' }} value={korrName} placeholder="wählen oder neuen Namen eingeben" showClearIcon noTypeahead
                   valueState={neuKorr ? 'Information' : 'None'}

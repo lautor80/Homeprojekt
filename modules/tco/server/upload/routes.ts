@@ -13,6 +13,7 @@ const metaSchema = z.object({
   doktyp: id.nullish().transform((x) => x ?? null), korrespondent: id.nullish().transform((x) => x ?? null), korrespondentNeu: z.string().max(100).default(''),
   tags: z.array(id).default([]), tagsNeu: z.array(z.string().trim().min(1).max(60)).default([]),
   speicherpfad: id.nullish().transform((x) => x ?? null), notiz: z.string().max(2000).default(''),
+  folgeaktion: z.string().trim().max(120).default(''),
 });
 
 export async function uploadRoutes(app: FastifyInstance) {
