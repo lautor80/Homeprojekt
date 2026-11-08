@@ -339,3 +339,110 @@ test('Platzverwaltung: Massenänderung und Raster direkt', async () => {
   assert.equal(r.status, 400);
   assert.equal((await bert('PUT', `${A}/plaetze-massen`, { ids: frei, felder: { aktiv: false } })).status, 403);
 });
+
+test('Sperre: ausgewählte Platzzeit ist für andere blockiert, bevor gebucht ist', async () => {
+  const d = tag(4);
+  const S = '/api/sperren';
+  const zeit = (v: string, b: string) => ({ objekt: 'PLATZZEIT', schluessel: String(halleId), von: `${d}T${v}`, bis: `${d}T${b}`, bezeichnung: 'Halle' });
+  let r = await anna('POST', S, zeit('15:00', '16:00'));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const annaSperre = r.body.id as number;
+  // erneut (z. B. Dialog neu gerendert): gleiche Sperre, nur verlängert
+  assert.equal((await anna('POST', S, zeit('15:00', '16:00'))).body.id, annaSperre);
+
+  // Bert: überlappende Auswahl abgelehnt – ohne Namen
+  r = await bert('POST', S, zeit('15:00', '17:00'));
+  assert.equal(r.status, 423);
+  assert.match(r.body.message, /wird gerade von jemand anderem gebucht/);
+  assert.ok(!JSON.stringify(r.body).toLowerCase().includes('anna'));
+  // angrenzende Zeit geht
+  r = await bert('POST', S, zeit('16:00', '17:00'));
+  assert.equal(r.status, 200);
+  const bertSperre = r.body.id as number;
+
+  // Kalender: bei Bert als „wird gerade gebucht“, bei Anna nicht (eigene Auswahl)
+  r = await bert('GET', `${P}/tag?datum=${d}`);
+  let halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
+  assert.deepEqual(halle.belegt, [{ von: '15:00', bis: '16:00', eigen: false, reserviert: true }]);
+  assert.ok(!JSON.stringify(r.body).toLowerCase().includes('anna'));
+  r = await anna('GET', `${P}/tag?datum=${d}`);
+  halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
+  assert.deepEqual(halle.belegt, [{ von: '16:00', bis: '17:00', eigen: false, reserviert: true }]);
+  // Verwaltung sieht, wer gerade bucht
+  r = await admin('GET', `${A}/tag?datum=${d}`);
+  assert.equal(r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.filter((b: { reserviert?: boolean }) => b.reserviert).length, 2);
+
+  // Bert kann die von Anna ausgewählte Zeit weder prüfen noch buchen
+  r = await bert('POST', `${P}/pruefen`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00' });
+  assert.match(r.body.fehler, /jemand anderem/);
+  r = await bert('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /wird gerade von jemand anderem gebucht/);
+  // Anna bucht ihre Auswahl
+  r = await anna('POST', `${P}/pruefen`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00' });
+  assert.equal(r.body.fehler, null);
+  r = await anna('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  // Lebenszeichen und Freigabe
+  r = await anna('POST', `${S}/verlaengern`, { ids: [annaSperre, bertSperre] });
+  assert.deepEqual(r.body.aktiv, [annaSperre], 'fremde Sperren werden nicht verlängert');
+  assert.equal((await bert('POST', `${S}/freigeben`, { ids: [annaSperre] })).body.freigegeben, 0, 'fremde Sperre nicht freigebbar');
+  assert.equal((await anna('POST', `${S}/freigeben`, { ids: [annaSperre] })).body.freigegeben, 1);
+  assert.equal((await bert('POST', `${S}/freigeben`, { ids: [bertSperre] })).body.freigegeben, 1);
+  r = await bert('GET', `${P}/tag?datum=${d}`);
+  assert.deepEqual(r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt, [{ von: '15:00', bis: '16:00', eigen: false }]);
+
+  // abgelaufene Sperre blockiert nicht mehr
+  r = await anna('POST', S, zeit('18:00', '19:00'));
+  await sql`update core.sperren set ablauf = now() - interval '1 second' where id = ${r.body.id}`;
+  assert.equal((await bert('POST', S, zeit('18:00', '19:00'))).status, 200);
+  // ohne Buchungsrecht keine Platzsperre; unbekannte Objekte abgelehnt
+  const leer = client();
+  assert.equal((await leer('POST', S, zeit('20:00', '21:00'))).status, 401);
+  assert.equal((await bert('POST', S, { objekt: 'GIBTSNICHT', schluessel: '1' })).status, 400);
+  assert.equal((await bert('POST', S, { objekt: 'MITGLIED', schluessel: ANNA })).status, 403);
+});
+
+test('Sperre: Objekt in Bearbeitung – Änderungen anderer werden in der Datenbank abgelehnt', async () => {
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'wart', displayName: 'Hallenwart Willi', password: 'start-passwort', roles: ['ADMIN'] })).status, 200);
+  const wart = await anmelden('wart');
+  const S = '/api/sperren';
+  let r = await wart('POST', S, { objekt: 'PLATZ', schluessel: String(halleId), bezeichnung: 'Platz Halle' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const id = r.body.id as number;
+  // Admin will denselben Platz bearbeiten: Sperre und Speichern abgelehnt
+  r = await admin('POST', S, { objekt: 'PLATZ', schluessel: String(halleId) });
+  assert.equal(r.status, 423);
+  assert.match(r.body.message, /Platz Halle wird gerade von Hallenwart Willi bearbeitet/);
+  assert.equal(r.body.inhaber.benutzer, 'Hallenwart Willi');
+  r = await admin('POST', S, { objekt: 'PLATZ', schluessel: '*' });
+  assert.equal(r.status, 423, 'Tabellensperre kollidiert mit Einzelsperre');
+  r = await admin('PUT', `${A}/plaetze/${halleId}`, { ...HALLE, hinweis: 'vom Admin' });
+  assert.equal(r.status, 423, JSON.stringify(r.body));
+  assert.match(r.body.message, /Hallenwart Willi/);
+  assert.equal((await sql`select hinweis from tco.plaetze where id = ${halleId}`)[0].hinweis, 'Hallenschuhe!');
+  // anderer Platz ist frei
+  r = await admin('PUT', `${A}/plaetze/${platz1Id}`, { ...PLATZ1, hinweis: 'frei bearbeitbar' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Inhaber darf speichern
+  r = await wart('PUT', `${A}/plaetze/${halleId}`, { ...HALLE, hinweis: 'vom Hallenwart' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  // Administration: Sperrliste und Aufheben
+  r = await admin('GET', S);
+  assert.equal(r.status, 200);
+  assert.ok(r.body.some((s: { id: number; objektText: string }) => s.id === id && s.objektText === 'Platz'));
+  assert.equal((await bert('GET', S)).status, 403);
+  r = await admin('DELETE', `${S}/${id}`);
+  assert.equal(r.status, 200);
+  r = await admin('PUT', `${A}/plaetze/${halleId}`, { ...HALLE });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  // Abmelden gibt alle Sperren der Sitzung frei
+  r = await wart('POST', S, { objekt: 'PLATZ', schluessel: '*' });
+  assert.equal(r.status, 200);
+  assert.equal((await admin('POST', S, { objekt: 'PLATZ', schluessel: String(platz1Id) })).status, 423);
+  await wart('POST', '/api/auth/logout');
+  assert.equal((await admin('POST', S, { objekt: 'PLATZ', schluessel: String(platz1Id) })).status, 200);
+});

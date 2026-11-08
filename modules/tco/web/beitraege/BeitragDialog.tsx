@@ -10,6 +10,7 @@ import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { betrag as betragFmt, dat, eur } from '../util';
 import { BT, type Detail, type Preis } from './typen';
+import { SperrHinweis, useSperre } from '@core/sperre';
 
 /** Betrag für das Eingabefeld: Zahl → deutsche Schreibweise, Text bleibt wie eingegeben */
 const txt = (v: number | string) => (typeof v === 'number' ? betragFmt(v) : v);
@@ -18,13 +19,16 @@ const txt = (v: number | string) => (typeof v === 'number' ? betragFmt(v) : v);
  * Beitrag bearbeiten / neu anlegen (POPUP_DISPLAY der SAP-App): Stammdaten, Beträge je Zeitraum
  * (lückenlos, letzter offen), neuer Betrag ab Datum, Verträge zur Beitragsart.
  */
-export function BeitragDialog({ art, edit, onClose }: { art: string | null; edit: boolean; onClose: (text?: string, warnung?: string | null) => void }) {
+export function BeitragDialog({ art, edit: darf, onClose }: { art: string | null; edit: boolean; onClose: (text?: string, warnung?: string | null) => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [preise, setPreise] = useState<Preis[]>([]);
   const [neuAb, setNeuAb] = useState('');
   const [neuBetrag, setNeuBetrag] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // bestehende Beitragsart während der Bearbeitung sperren (Neuanlage ohne Sperre)
+  const sperre = useSperre('BEITRAG', art, darf, { bezeichnung: `Beitragsart ${art ?? ''}` });
+  const edit = darf && sperre.eigen;
 
   useEffect(() => {
     api.get<Detail>(art === null ? `${BT}/neu` : `${BT}/${encodeURIComponent(art)}`)
@@ -100,6 +104,7 @@ export function BeitragDialog({ art, edit, onClose }: { art: string | null; edit
                            <Button onClick={() => onClose()}>{edit ? 'Abbrechen' : 'Schließen'}</Button>
                          </>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       {!d ? <Text>Lade …</Text> : (
         <>
           <FormGrid>

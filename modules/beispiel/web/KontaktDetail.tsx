@@ -8,6 +8,7 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import type { Kontakt } from './KontakteList';
 
 const empty: Partial<Kontakt> = { name: '', firma: '', email: '', telefon: '', notiz: '', aktiv: true };
@@ -71,8 +72,9 @@ export function KontaktDetail() {
     }
   }
 
+  const sperre = useSperre('KONTAKT', !isNew ? k?.nummer : null, editing && !isNew, { bezeichnung: `Kontakt ${k?.nummer ?? ''}` });
   if (!k) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : <BusyIndicator active style={{ margin: '2rem' }} />;
-  const ro = !editing;
+  const ro = !editing || !sperre.eigen;
 
   return (
     <AppPage
@@ -87,10 +89,11 @@ export function KontaktDetail() {
         )}
       </>}
       footer={editing && <>
-        <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>
+        <Button design="Emphasized" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
         <Button onClick={() => (isNew ? navigate('/beispiel/kontakte') : (setK(orig), setEditing(false), setError(null)))}>Abbrechen</Button>
       </>}
     >
+      <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
       <Panel headerText="Allgemein" fixed>
         <FormGrid>

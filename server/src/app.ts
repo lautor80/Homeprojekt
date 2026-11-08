@@ -16,6 +16,8 @@ import { auditRoutes } from './routes/audit.js';
 import { settingsRoutes } from './routes/settings.js';
 import { paperlessMappingRoutes } from './routes/paperless.js';
 import { backupRoutes } from './routes/backup.js';
+import { sperrRoutes } from './routes/sperren.js';
+import { GesperrtError } from './sperren.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
@@ -32,8 +34,10 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       const msg = err.issues.map((i) => `${i.path.join('.') || 'Eingabe'}: ${i.message}`).join('; ');
       return reply.code(400).send({ message: msg });
     }
+    if (err instanceof GesperrtError) return reply.code(423).send({ message: err.message, code: 'GESPERRT', inhaber: err.inhaber });
     if (err instanceof BusinessError) return reply.code(err.statusCode).send({ message: err.message });
     const pgCode = (err as { code?: string }).code;
+    if (pgCode === 'LK423') return reply.code(423).send({ message: err.message, code: 'GESPERRT' });
     if (pgCode === '23505') return reply.code(409).send({ message: 'Eintrag existiert bereits.' });
     if (pgCode === '23503') return reply.code(409).send({ message: 'Eintrag wird noch verwendet.' });
     const e = err as { statusCode?: number; message?: string };
@@ -52,6 +56,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(settingsRoutes);
   await app.register(paperlessMappingRoutes);
   await app.register(backupRoutes);
+  await app.register(sperrRoutes);
   await app.register(adminRoutes);
   await app.register(auditRoutes);
   await app.register(apiKeyRoutes);

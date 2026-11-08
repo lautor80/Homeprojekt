@@ -8,6 +8,7 @@ import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { dat, eur } from '../util';
 import { GRUPPE_NEU, KO, type KontoZeile, type Uebersicht } from './typen';
 import { Bestaende } from './Bestaende';
@@ -35,7 +36,7 @@ function geaendert(z: KontoZeile, db: Map<string, KontoZeile>): boolean {
 
 export function Konten() {
   const can = useCan();
-  const edit = can('tco.konten:edit');
+  const darf = can('tco.konten:edit');
   const [d, setD] = useState<Uebersicht | null>(null);
   const [rows, setRows] = useState<KontoZeile[]>([]);
   const [suche, setSuche] = useState('');
@@ -44,6 +45,9 @@ export function Konten() {
   const [msg, setMsg] = useState<{ text: string; design: Design } | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('konten');
+  // Kontenstamm wird als Ganzes gespeichert → alle Konten sperren, solange der Reiter offen ist
+  const sperre = useSperre('FIKONTO', '*', darf && tab === 'konten', { bezeichnung: 'Kontenstamm' });
+  const edit = darf && tab === 'konten' && sperre.eigen;
 
   const kopie = (z: KontoZeile[]) => z.map((r) => ({ ...r, jahre: r.jahre.map((j) => ({ ...j })) }));
 
@@ -154,6 +158,7 @@ export function Konten() {
                {edit && <Button icon="save" design="Emphasized" disabled={busy || !hatAenderungen} onClick={speichern}>Speichern</Button>}
              </>}>
       {msg && <MessageStrip design={msg.design} onClose={() => setMsg(null)} style={{ marginBottom: '0.5rem' }}>{msg.text}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
         <Tab data-key="konten" text="Konten und Verwendung" icon="list" selected={tab === 'konten'}>
           <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
@@ -193,7 +198,7 @@ export function Konten() {
         </BusyIndicator>
         </Tab>
         <Tab data-key="bestaende" text="Anfangsbestände Geldkonten" icon="wallet" selected={tab === 'bestaende'}>
-          {tab === 'bestaende' && d && <Bestaende edit={edit} jahre={jahre} aktJahr={d.aktJahr} />}
+          {tab === 'bestaende' && d && <Bestaende edit={darf} jahre={jahre} aktJahr={d.aktJahr} />}
         </Tab>
       </TabContainer>
     </AppPage>

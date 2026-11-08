@@ -102,7 +102,7 @@ export async function verfuegbarkeit(db: Db, a: SerienAnfrage) {
       const r = regelnPruefen({ platz: p, datum: d, von, bis }, true);
       if (r) return r.replace(`${p.name}: `, '');
       const b = bel.find((x) => x.platzId === p.id && x.datum === d && x.von < bis && x.bis > von);
-      return b ? `belegt ${hhmm(b.von)}–${hhmm(b.bis)} (${b.status === '3' ? 'Abo' : 'Einzel'}${b.kunde ? `, ${b.kunde}` : ''})` : null;
+      return b ? `belegt ${hhmm(b.von)}–${hhmm(b.bis)} (${b.reserviert ? 'gerade in Auswahl' : b.status === '3' ? 'Abo' : 'Einzel'}${b.kunde ? `, ${b.kunde}` : ''})` : null;
     });
     return {
       id: p.id, name: p.name, art: p.art, abrechnen: p.abrechnen, termine: t, frei: t.filter((x) => !x).length,

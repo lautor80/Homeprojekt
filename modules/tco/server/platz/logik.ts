@@ -151,10 +151,18 @@ export function geschlossen(p: Platz, datum: string): string | null {
 export interface Belegung {
   bid: string; datum: string; von: number; bis: number; kunde: string; status: string; platz: string; platzId: number;
   benutzer_id: string | null; quelle: string | null; assigned: string; text: string | null;
+  /** gerade von einer anderen Sitzung ausgewählt (Sperre PLATZZEIT, noch nicht gebucht) */
+  reserviert?: boolean;
 }
 
-/** aktive Buchungen (nicht storniert/entfallen) der Plätze im Zeitraum */
-export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: string): Promise<Belegung[]> {
+/** Sperrobjekt für eine ausgewählte, noch nicht gesicherte Platzzeit (Schlüssel = Platz-ID, Zeitraum von/bis) */
+export const PLATZZEIT = 'PLATZZEIT';
+
+/**
+ * aktive Buchungen (nicht storniert/entfallen) der Plätze im Zeitraum – dazu Zeiten, die eine ANDERE Sitzung gerade
+ * ausgewählt hat (reserviert). Eigene Sitzung: Parameter sitzung, sonst die der Transaktion (app.sitzung).
+ */
+export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: string, sitzung?: string | null): Promise<Belegung[]> {
   const zu = new Map<string, number>();
   for (const p of plaetze) for (const n of namenVon(p)) if (!zu.has(n)) zu.set(n, p.id);
   if (!zu.size) return [];
@@ -171,13 +179,28 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
        and b.time_start is not null and b.time_ende is not null
        and (upper(trim(b.platz)) = any(${[...zu.keys()]}) ${ohnePlatz ? db`or coalesce(trim(b.platz), '') = ''` : db``})
      order by b.datum, b.time_start`;
-  return rows.map((r) => {
+  const out: Belegung[] = rows.map((r) => {
     const e = minuten(r.bis) || 1440; // Ende 00:00 = Mitternacht
     return {
       bid: r.bid, datum: r.datum, von: minuten(r.von), bis: e, kunde: r.kunde ?? '', status: r.status ?? '', platz: r.platz,
       platzId: (r.platz?.trim() ? zu.get(gross(r.platz)) : ohnePlatz?.id)!, benutzer_id: r.benutzer_id, quelle: r.quelle, assigned: r.assigned, text: r.text,
     };
   });
+  const res = await db`
+    select schluessel, benutzer, to_char(von, 'YYYY-MM-DD') as datum, to_char(von, 'HH24:MI') as von,
+           case when bis::date > von::date then '24:00' else to_char(bis, 'HH24:MI') end as bis
+      from core.sperren
+     where objekt = ${PLATZZEIT} and schluessel = any(${plaetze.map((p) => String(p.id))}::text[]) and ablauf > now()
+       and von is not null and von::date between ${von}::date and ${bis}::date
+       and sitzung <> coalesce(${sitzung ?? null}::text, nullif(current_setting('app.sitzung', true), ''), '')`;
+  for (const r of res) {
+    const p = plaetze.find((x) => String(x.id) === r.schluessel)!;
+    out.push({
+      bid: '', datum: r.datum, von: minuten(r.von), bis: minuten(r.bis) || 1440, kunde: r.benutzer, status: 'R', platz: p.name, platzId: p.id,
+      benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true,
+    });
+  }
+  return out;
 }
 
 /** gehört die Buchung dem Mitglied? Portal: buchender Benutzer; EP3: gleicher Kundenname */
@@ -263,7 +286,8 @@ async function sperren(tx: Db, platzId: number, datum: string) {
 
 async function konflikt(tx: Db, s: Slot, ohneBid?: string): Promise<string | null> {
   const b = (await belegungLesen(tx, [s.platz], s.datum, s.datum))
-    .find((x) => x.bid !== ohneBid && x.von < s.bis && x.bis > s.von);
+    .find((x) => (x.reserviert || x.bid !== ohneBid) && x.von < s.bis && x.bis > s.von);
+  if (b?.reserviert) return `${s.platz.name} am ${dat(s.datum)} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht. Bitte eine andere Zeit wählen.`;
   return b ? `${s.platz.name} ist am ${dat(s.datum)} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.` : null;
 }
 
@@ -349,12 +373,12 @@ export interface TagPlatz {
   id: number; name: string; art: string; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
   geschlossen: string | null;
-  belegt: { von: string; bis: string; eigen: boolean; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }[];
+  belegt: { von: string; bis: string; eigen: boolean; reserviert?: boolean; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }[];
 }
 
-export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin'): Promise<TagPlatz[]> {
+export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitzung?: string | null): Promise<TagPlatz[]> {
   const plaetze = (await plaetzeLesen(db, true)).filter((p) => p.gueltig_bis >= datum);
-  const bel = await belegungLesen(db, plaetze, datum, datum);
+  const bel = await belegungLesen(db, plaetze, datum, datum, sitzung);
   const preise = await preiseLesen(db);
   const j = jetzt();
   return plaetze.map((p) => ({
@@ -363,6 +387,8 @@ export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin'): Pro
     abrechnen: p.abrechnen, geschlossen: geschlossen(p, datum),
     belegt: bel.filter((b) => b.platzId === p.id).map((b) => {
       const zeit = { von: hhmm(b.von), bis: hhmm(b.bis) };
+      // gerade in Auswahl bei jemand anderem: normale Nutzer ohne Namen
+      if (b.reserviert) return sicht === 'admin' ? { ...zeit, eigen: false, reserviert: true, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true };
       const art = b.status === '3' ? 'Abo' as const : 'Einzel' as const;
       if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text };
       // fremde Buchung: nur Zeitraum – kein Name, keine Nummer, kein Text
@@ -466,7 +492,7 @@ export async function aboVorschau(db: Db, e: AboEingabe) {
     const f = regelnPruefen({ platz, datum: d, von, bis }, true);
     if (f) return { datum: d, konflikt: f };
     const b = bel.find((x) => x.datum === d && x.von < bis && x.bis > von);
-    return { datum: d, konflikt: b ? `belegt ${hhmm(b.von)}–${hhmm(b.bis)} Uhr (${b.status === '3' ? 'Abo' : 'Einzel'}, ${b.kunde || 'ohne Namen'})` : null };
+    return { datum: d, konflikt: b ? `belegt ${hhmm(b.von)}–${hhmm(b.bis)} Uhr (${b.reserviert ? 'gerade in Auswahl' : b.status === '3' ? 'Abo' : 'Einzel'}, ${b.kunde || 'ohne Namen'})` : null };
   });
   const preis = preisVon(platz, e.ab, von, bis, '3', await preiseLesen(db));
   return { platz: platz.name, kunde: condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`), wochentag: wochentagText(e.ab), termine, preis };

@@ -77,7 +77,7 @@ export async function platzRoutes(app: FastifyInstance) {
     const i = await ich(req);
     const q = z.object({ datum }).parse(req.query);
     const j = jetzt();
-    return { datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i) };
+    return { datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung) };
   });
 
   app.get('/platz/meine', buchen, async (req) => {
@@ -96,8 +96,8 @@ export async function platzRoutes(app: FastifyInstance) {
     const bis = e.bis === '24:00' ? 1440 : minuten(e.bis);
     let fehler = regelnPruefen({ platz: p, datum: e.datum, von, bis }, false);
     if (!fehler) {
-      const b = (await belegungLesen(DB, [p], e.datum, e.datum)).find((x) => x.bid !== e.bid && x.von < bis && x.bis > von);
-      if (b) fehler = `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
+      const b = (await belegungLesen(DB, [p], e.datum, e.datum, req.sitzung)).find((x) => (x.reserviert || x.bid !== e.bid) && x.von < bis && x.bis > von);
+      if (b) fehler = b.reserviert ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht.` : `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
     }
     return { fehler, preis: preisVon(p, e.datum, von, bis, '1', await preiseLesen(DB)) };
   });
@@ -154,7 +154,7 @@ export async function platzRoutes(app: FastifyInstance) {
 
   app.get('/platz/admin/tag', admin, async (req) => {
     const q = z.object({ datum }).parse(req.query);
-    return { datum: q.datum, plaetze: await tagLesen(DB, q.datum, 'admin') };
+    return { datum: q.datum, plaetze: await tagLesen(DB, q.datum, 'admin', req.sitzung) };
   });
 
   app.post('/platz/admin/storno', admin, async (req) => {

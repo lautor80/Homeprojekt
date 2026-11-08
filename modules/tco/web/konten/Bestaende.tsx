@@ -3,6 +3,7 @@ import { BusyIndicator, Button, Input, Label, MessageStrip, ObjectStatus, Option
 import { api } from '@core/api';
 import { Section } from '@core/components/Section';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { betrag, eur } from '../util';
 import { KO, type Bestand } from './typen';
 
@@ -27,11 +28,14 @@ const text = (v: number | null) => (v === null ? '' : betrag(v));
 
 interface Zeile extends Bestand { ab: string; eb: string }
 
-export function Bestaende({ edit, jahre, aktJahr }: { edit: boolean; jahre: number[]; aktJahr: number }) {
+export function Bestaende({ edit: darf, jahre, aktJahr }: { edit: boolean; jahre: number[]; aktJahr: number }) {
   const [jahr, setJahr] = useState(jahre.includes(aktJahr) ? aktJahr : jahre[jahre.length - 1]);
   const [zeilen, setZeilen] = useState<Zeile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bestände des gewählten Jahres sperren (Belegschlüssel jahr/konto)
+  const sperre = useSperre('FIBANKAB', String(jahr), darf, { bezeichnung: `Bestände Geldkonten ${jahr}` });
+  const edit = darf && sperre.eigen;
 
   async function laden(j = jahr) {
     setBusy(true);
@@ -61,6 +65,7 @@ export function Bestaende({ edit, jahre, aktJahr }: { edit: boolean; jahre: numb
   return (
     <>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       <Section title={`Bestände Geldkonten ${jahr}`} count={zeilen?.length ?? 0} flush
                actions={<>
                  <Label>Geschäftsjahr</Label>

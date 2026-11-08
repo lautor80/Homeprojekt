@@ -8,8 +8,11 @@ import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { useSession } from '../session';
 import { applyBranding } from '../branding';
 import { toast } from '../toast';
+import { SperrHinweis, useSperre } from '../sperre';
 
 type S = Record<string, string | null>;
+/** auf dieser Seite gepflegte Einstellungen – je Schlüssel gesperrt (andere Einstellungen bleiben frei) */
+const SCHLUESSEL = ['org.name', 'org.logo', 'org.color', 'org.address', 'integration.paperless.url', 'integration.n8n.url'] as const;
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -27,6 +30,10 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (loaded.data) setS(loaded.data); }, [loaded.data]);
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- feste Liste, Reihenfolge stabil
+  const sperren = SCHLUESSEL.map((k) => useSperre('SETTING', k, true, { bezeichnung: 'Einstellungen' }));
+  const sperre = sperren.find((x) => !x.eigen) ?? sperren[0];
+  const darf = sperren.every((x) => x.eigen);
 
   const set = (k: string) => (v: string | null) => setS({ ...s, [k]: v });
 
@@ -65,8 +72,9 @@ export function SettingsPage() {
     <AppPage
       title="Einstellungen"
       actions={<><ChangeHistoryButton objectType="SETTING" objectKey="org.name" /></>}
-      footer={<Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}
+      footer={<Button design="Emphasized" loading={busy} disabled={!darf} onClick={save}>Sichern</Button>}
     >
+      <SperrHinweis s={{ ...sperre, erneut: () => sperren.forEach((x) => x.erneut()) }} />
       {(error || loaded.error) && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error ?? loaded.error}</MessageStrip>}
       <Panel headerText="Organisation" fixed>
         <FormGrid>

@@ -8,6 +8,7 @@ import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { TCO, dat, eur } from '../util';
 
 const J = `${TCO}/jt`;
@@ -31,9 +32,11 @@ function Feld({ wert, disabled, width, onSave }: { wert: string; disabled?: bool
  * teil = 'entgelte': Stundensätze je Trainer; teil = 'trainer': Trainerliste mit Steuernummer und
  * Portal-Benutzer für „Meine Trainingszeiten“ (eigener Reiter in der Abrechnung Jugendtraining).
  */
-export function Entgelte({ onChanged, teil = 'entgelte' }: { onChanged: () => void; teil?: 'entgelte' | 'trainer' }) {
+export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onChanged: () => void; teil?: 'entgelte' | 'trainer'; aktiv?: boolean }) {
   const can = useCan();
-  const edit = can('tco.jt:entgelte');
+  // Entgelte/Trainer werden direkt in der Tabelle gepflegt → alle sperren, solange der Reiter offen ist
+  const sperre = useSperre('TRAINERENTGELT', '*', can('tco.jt:entgelte') && aktiv, { bezeichnung: teil === 'trainer' ? 'Trainerliste' : 'Trainerentgelte' });
+  const edit = can('tco.jt:entgelte') && aktiv && sperre.eigen;
   const [d, setD] = useState<Daten | null>(null);
   const [filter, setFilter] = useState<string>('CUR');
   const [neu, setNeu] = useState({ adrnr: '', ab: isoHeute(), betrag: '' });
@@ -113,6 +116,7 @@ export function Entgelte({ onChanged, teil = 'entgelte' }: { onChanged: () => vo
   return (
     <>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       {teil === 'entgelte' && (
         <>
       <Toolbar design="Transparent">

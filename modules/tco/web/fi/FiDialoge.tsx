@@ -10,6 +10,7 @@ import { usePdf } from '@core/components/PdfDialog';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { useSession } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { dat, eur } from '../util';
 import { F, betragFarbe, type Beleg, type Konto, type Zeile } from './typen';
 
@@ -191,9 +192,11 @@ interface BuchungInfo {
   notizen: { id: string; notiz: string; erstellt_von: string; erstellt_am: string }[];
 }
 
-export function BelegeDialog({ internenr, edit, onClose, onChanged }: {
+export function BelegeDialog({ internenr, edit: darf, onClose, onChanged }: {
   internenr: string | null; edit: boolean; onClose: () => void; onChanged: () => void;
 }) {
+  const sperre = useSperre('FIBELEG', internenr, darf, { bezeichnung: `FI-Buchung ${internenr ?? ''}` });
+  const edit = darf && sperre.eigen;
   const [b, setB] = useState<BuchungInfo | null>(null);
   const [akt, setAkt] = useState<number | null>(null);
   const [notizen, setNotizen] = useState<{ notizen: { id: number; note: string; created: string; user?: any }[]; url: string } | null>(null);
@@ -220,6 +223,7 @@ export function BelegeDialog({ internenr, edit, onClose, onChanged }: {
               <Button onClick={onClose}>Schließen</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       <FlexBox style={{ gap: '1rem', height: '100%' }}>
         <div style={{ flex: '0 0 20rem' }}>
           {k && (
@@ -274,6 +278,7 @@ export function StornoDialog({ zeile, onClose, onDone }: { zeile: Zeile | null; 
   const [grund, setGrund] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const sperre = useSperre('FIBELEG', zeile?.internenr, true, { bezeichnung: `FI-Buchung ${zeile?.internenr ?? ''}` });
   useEffect(() => { setGrund(''); setError(null); }, [zeile]);
   async function ok() {
     setBusy(true);
@@ -291,11 +296,12 @@ export function StornoDialog({ zeile, onClose, onDone }: { zeile: Zeile | null; 
     <Dialog open={!!zeile} headerText={`Buchung ${zeile?.internenr ?? ''} stornieren`} state="Negative" onClose={onClose}
             style={{ width: 'min(36rem, 95vw)' }}
             footer={<Bar endContent={<>
-              <Button design="Negative" disabled={!grund.trim()} loading={busy} onClick={ok}>Stornieren</Button>
+              <Button design="Negative" disabled={!grund.trim() || !sperre.eigen} loading={busy} onClick={ok}>Stornieren</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       {zeile && <>
         {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+        <SperrHinweis s={sperre} />
         <Text>{dat(zeile.datum)} · {eur(zeile.betrag)} · {zeile.text}</Text><br />
         <Text>Gegenkonto: {zeile.gkonto} {zeile.gkontoName}</Text>
         <MessageStrip hideCloseButton style={{ margin: '0.75rem 0' }}>
@@ -317,6 +323,7 @@ export function NotizenDialog({ zeile, onClose, onChanged }: { zeile: Zeile | nu
   const [b, setB] = useState<BuchungInfo | null>(null);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const sperre = useSperre('FIBELEG', zeile?.internenr, true, { bezeichnung: `FI-Buchung ${zeile?.internenr ?? ''}` });
   const laden = () => zeile?.internenr && api.get<BuchungInfo>(`${F}/buchung/${zeile.internenr}`).then(setB).catch((e) => setError(e.message));
   useEffect(() => { setB(null); setText(''); setError(null); laden(); }, [zeile]); // eslint-disable-line react-hooks/exhaustive-deps
   async function speichern() {
@@ -334,15 +341,16 @@ export function NotizenDialog({ zeile, onClose, onChanged }: { zeile: Zeile | nu
             footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {zeile && <Text>{dat(zeile.datum)} · {eur(zeile.betrag)} · {zeile.text}</Text>}
       {error && <MessageStrip design="Negative" hideCloseButton style={{ margin: '0.5rem 0' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} style={{ marginTop: '0.5rem' }} />
       <FlexBox style={{ gap: '0.5rem', margin: '0.75rem 0' }}>
-        <Input value={text} maxlength={255} placeholder="Kurze Notiz zur Buchung …" style={{ flex: 1 }}
-               onInput={(e) => setText(e.target.value)} onChange={() => text.trim() && speichern()} />
-        <Button design="Emphasized" disabled={!text.trim()} onClick={speichern}>Speichern</Button>
+        <Input value={text} maxlength={255} placeholder="Kurze Notiz zur Buchung …" style={{ flex: 1 }} readonly={!sperre.eigen}
+               onInput={(e) => setText(e.target.value)} onChange={() => text.trim() && sperre.eigen && speichern()} />
+        <Button design="Emphasized" disabled={!text.trim() || !sperre.eigen} onClick={speichern}>Speichern</Button>
       </FlexBox>
       {(b?.notizen ?? []).map((n) => (
         <FlexBox key={n.id} justifyContent="SpaceBetween" alignItems="Start" style={{ borderBottom: '1px solid var(--sapList_BorderColor)', padding: '0.5rem 0' }}>
           <div><Text>{n.notiz}</Text><br /><Label>{n.erstellt_von} · {new Date(n.erstellt_am).toLocaleString('de-DE')}</Label></div>
-          {n.erstellt_von === ich && <Button design="Transparent" icon="delete" onClick={() => loeschen(n.id)}>Löschen</Button>}
+          {n.erstellt_von === ich && sperre.eigen && <Button design="Transparent" icon="delete" onClick={() => loeschen(n.id)}>Löschen</Button>}
         </FlexBox>
       ))}
       {b && !b.notizen.length && <Text>Noch keine Notizen</Text>}
@@ -381,6 +389,7 @@ export function GegenkontoDialog({ zeile, onClose, onDone }: { zeile: Zeile | nu
   const [gleich, setGleich] = useState(true);
   const [wahl, setWahl] = useState<Hist | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sperre = useSperre('FIBELEG', zeile?.internenr, true, { bezeichnung: `FI-Buchung ${zeile?.internenr ?? ''}` });
   useEffect(() => {
     setL(null); setWahl(null); setError(null);
     if (zeile?.gkonto && zeile.internenr) {
@@ -412,10 +421,11 @@ export function GegenkontoDialog({ zeile, onClose, onDone }: { zeile: Zeile | nu
     <Dialog open={!!zeile} resizable style={{ width: '92vw', height: '88vh' }} onClose={onClose}
             headerText={`${zeile?.gkonto ?? ''} ${zeile?.gkontoName ?? ''} – letzte 12 Monate, Referenzbetrag ${eur(Math.abs(zeile?.betrag ?? 0))}`}
             footer={<Bar endContent={<>
-              <Button design="Emphasized" disabled={!wahl?.belege} onClick={verknuepfen}>Beleg verknüpfen</Button>
+              <Button design="Emphasized" disabled={!wahl?.belege || !sperre.eigen} onClick={verknuepfen}>Beleg verknüpfen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>
         Die Belege der gewählten Buchung werden zusätzlich mit Buchung {zeile?.internenr} verknüpft (z. B. Vertrag einer wiederkehrenden Zahlung).
       </MessageStrip>

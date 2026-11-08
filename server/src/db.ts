@@ -22,6 +22,8 @@ export interface ChangeContext {
   reason?: string | null;
   /** Fachliche Aktion, z. B. "STORNO" oder "PASSWORT_RESET". */
   action?: string | null;
+  /** Anmeldesitzung (Hash), für die Sperrprüfung im Trigger; leer = keine Sperrprüfung (API, Hintergrund) */
+  sitzung?: string | null;
 }
 
 /**
@@ -34,7 +36,8 @@ export async function withChange<T>(ctx: ChangeContext, fn: (tx: Tx) => Promise<
       set_config('app.user_id',  ${ctx.userId ?? ''}, true),
       set_config('app.username', ${ctx.username}, true),
       set_config('app.reason',   ${ctx.reason ?? ''}, true),
-      set_config('app.action',   ${ctx.action ?? ''}, true)`;
+      set_config('app.action',   ${ctx.action ?? ''}, true),
+      set_config('app.sitzung',  ${ctx.sitzung ?? ''}, true)`;
     return fn(tx as unknown as Tx);
   }) as Promise<T>;
 }

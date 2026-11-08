@@ -8,6 +8,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
+import { useSperre } from '@core/sperre';
 import { TCO, dat, eur } from '../util';
 import '../jt/meine.css';
 import './platz.css';
@@ -19,7 +20,7 @@ import './platz.css';
  */
 const PB = `${TCO}/platz`;
 
-export interface Belegt { von: string; bis: string; eigen: boolean; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
+export interface Belegt { von: string; bis: string; eigen: boolean; reserviert?: boolean; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
 export interface TagPlatz {
   id: number; name: string; art: 'HALLE' | 'FREI'; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
@@ -69,8 +70,8 @@ export function PlatzBuchen() {
   const tagLaden = (d = datum) => api.get<Tag>(`${PB}/tag?datum=${d}`).then(setTag).catch(fehler);
   const meineLaden = () => api.get<Meine>(`${PB}/meine?zeitraum=${zeitraum}`).then(setMeine).catch(fehler);
   useEffect(() => { setTag(null); tagLaden(datum); }, [datum]); // eslint-disable-line react-hooks/exhaustive-deps
-  // „vorbei“ läuft mit: Tagesansicht alle 5 Minuten still neu laden
-  useEffect(() => { const t = setInterval(() => tagLaden(datum), 5 * 60_000); return () => clearInterval(t); }, [datum]); // eslint-disable-line react-hooks/exhaustive-deps
+  // „vorbei“ und gerade ausgewählte Zeiten anderer laufen mit: Tagesansicht alle 30 Sekunden still neu laden (nicht während des Buchens)
+  useEffect(() => { if (entwurf) return; const t = setInterval(() => tagLaden(datum), 30_000); return () => clearInterval(t); }, [datum, entwurf]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (ansicht === 'meine') { setMeine(null); meineLaden(); } }, [ansicht, zeitraum]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const neuLaden = async () => { await Promise.all([tagLaden(), ansicht === 'meine' ? meineLaden() : null]); };
@@ -125,6 +126,7 @@ export function PlatzBuchen() {
               <span><i className="portal-pb__punkt portal-pb__punkt--frei" />frei – antippen zum Buchen</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--eigen" />meine Buchung</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt</span>
+              <span><i className="portal-pb__punkt portal-pb__punkt--reserviert" />wird gerade gebucht</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--vorbei" />vorbei / nicht buchbar</span>
             </div>
 
@@ -222,7 +224,7 @@ export function PlatzBuchen() {
       </div>
 
       {entwurf && (
-        <BuchungDialog entwurf={entwurf} onClose={() => setEntwurf(null)}
+        <BuchungDialog entwurf={entwurf} onClose={() => { setEntwurf(null); tagLaden(); }}
                        onFertig={async (text) => { toast(text); setEntwurf(null); await neuLaden(); }} />
       )}
     </AppPage>
@@ -308,16 +310,17 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
                 const von = Math.max(min(b.von), start);
                 const bis = min(b.bis) || 1440;
                 const alt = bis <= vorbeiBis; // für normale Nutzer: vergangene Stunde grau, nicht änderbar
-                const cls = (b.eigen ? 'portal-pb__block--eigen' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
+                const cls = (b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
                   + (alt ? ' portal-pb__block--vorbei' : '');
-                const klickbar = (b.eigen && b.aenderbar && !alt) || (admin && !!b.bid);
+                const klickbar = !b.reserviert && ((b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
                 return (
                   <button key={i} type="button" className={`portal-pb__block ${cls}`} disabled={!klickbar}
                           style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={() => klickbar && onEigen?.(p, b)}>
                     <span className="portal-pb__block-zeit">{b.von}–{b.bis}</span>
                     {b.eigen && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Mein Abo' : 'Meine Buchung'} · {preisText(b)}</span>}
-                    {!b.eigen && !admin && <span className="portal-pb__block-text">Belegt</span>}
-                    {admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
+                    {b.reserviert && <span className="portal-pb__block-text">Wird gerade gebucht{admin && b.kunde ? ` · ${b.kunde}` : ''}</span>}
+                    {!b.reserviert && !b.eigen && !admin && <span className="portal-pb__block-text">Belegt</span>}
+                    {!b.reserviert && admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
                     {(b.eigen || admin) && b.text && <span className="portal-pb__block-text portal-pb__block-notiz">{b.text}</span>}
                   </button>
                 );
@@ -342,6 +345,8 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
   useEffect(() => { api.get<Tag>(`${PB}/tag?datum=${e.datum}`).then(setTag).catch((x) => setMeldung((x as Error).message)); }, [e.datum]);
   const p = tag?.plaetze.find((x) => x.id === e.platz_id) ?? null;
   const bis = hhmm(min(e.von) + e.dauer);
+  // gewählte Zeit sofort für andere sperren – auch solange die Buchung noch nicht gesichert ist
+  const sperre = useSperre('PLATZZEIT', String(e.platz_id), true, { von: `${e.datum}T${e.von}`, bis: `${e.datum}T${bis}`, bezeichnung: p?.name ?? 'Platz' });
   useEffect(() => {
     setPruefung(null);
     if (!p) return;
@@ -350,7 +355,7 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
         .then(setPruefung).catch((x) => setMeldung((x as Error).message));
     }, 200);
     return () => clearTimeout(t);
-  }, [e.platz_id, e.datum, e.von, e.dauer, p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [e.platz_id, e.datum, e.von, e.dauer, p?.id, sperre.zustand]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const beginne = useMemo(() => {
     if (!p) return [] as string[];
@@ -377,11 +382,17 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
     <Dialog open stretch={klein()} headerText={e.bid ? 'Buchung ändern' : 'Platz buchen'} onClose={onClose}
             footer={<Bar endContent={<>
               {e.bid && <Button design="Negative" icon="cancel" disabled={busy} onClick={() => setStorno(true)}>Stornieren</Button>}
-              <Button design="Emphasized" disabled={busy || !pruefung || !!pruefung.fehler} onClick={speichern}>{e.bid ? 'Speichern' : 'Verbindlich buchen'}</Button>
+              <Button design="Emphasized" disabled={busy || !pruefung || !!pruefung.fehler || sperre.zustand !== 'eigen'} onClick={speichern}>{e.bid ? 'Speichern' : 'Verbindlich buchen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       <div className="portal-mz__form">
         {meldung && <MessageStrip design="Negative" onClose={() => setMeldung(null)}>{meldung}</MessageStrip>}
+        {(sperre.zustand === 'fremd' || sperre.zustand === 'fehler' || sperre.zustand === 'inaktiv') && (
+          <MessageStrip design="Critical" hideCloseButton>
+            {sperre.zustand === 'fremd' ? `${sperre.text} Bitte eine andere Zeit oder einen anderen Platz wählen.` : sperre.text}
+            {sperre.zustand !== 'fremd' && <> <Button design="Transparent" icon="refresh" onClick={sperre.erneut}>Erneut reservieren</Button></>}
+          </MessageStrip>
+        )}
         <div className="portal-mz__feld">
           <Label required>Datum</Label>
           <DatePicker formatPattern="EEEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={e.datum} style={{ width: '100%' }}
@@ -417,7 +428,7 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
         </div>
 
         <div className="portal-pb__preis">
-          {!pruefung && <BusyIndicator active size="S" />}
+          {(!pruefung || sperre.zustand === 'laden') && <BusyIndicator active size="S" />}
           {pruefung?.fehler && <ObjectStatus state="Negative" showDefaultIcon>{pruefung.fehler}</ObjectStatus>}
           {pruefung && !pruefung.fehler && (
             <>
@@ -425,7 +436,9 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
                 <div className="portal-pb__preis-wert">{preisText(pruefung.preis)}</div>
                 <div className="portal-muted portal-small">{pruefung.preis.kostenfrei ? 'Freiplatz ohne Gebühr' : pruefung.preis.fehler ? 'Preis ermittelt die Hallenabrechnung' : pruefung.preis.text}</div>
               </div>
-              <ObjectStatus state="Positive" showDefaultIcon>frei</ObjectStatus>
+              <ObjectStatus state={sperre.zustand === 'eigen' ? 'Positive' : 'Critical'} showDefaultIcon>
+                {sperre.zustand === 'eigen' ? 'für dich reserviert' : sperre.zustand === 'fremd' ? 'wird gerade gebucht' : 'frei'}
+              </ObjectStatus>
             </>
           )}
         </div>

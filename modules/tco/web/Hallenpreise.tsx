@@ -8,6 +8,7 @@ import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { H, dat, eur } from './util';
 
 interface Produkt { prod_key: string; valid_from: string; valid_to?: string; text: string; preis: number | string; typ: string | null }
@@ -36,7 +37,9 @@ const zelle = { padding: '0.15rem 0.35rem' } as const;
 
 export function Hallenpreise() {
   const can = useCan();
-  const edit = can('tco.halle:preise');
+  // Preismatrix als Ganzes sperren (alle Produkte/Zeitfenster werden gemeinsam gespeichert)
+  const sperre = useSperre('HALLENPREIS', '*', can('tco.halle:preise'), { bezeichnung: 'Hallenpreise' });
+  const edit = can('tco.halle:preise') && sperre.eigen;
   const [produkte, setProdukte] = useState<Produkt[]>([]);
   const [fenster, setFenster] = useState<Fenster[]>([]);
   const [gruppen, setGruppen] = useState<Gruppe[]>([]);
@@ -129,6 +132,7 @@ export function Hallenpreise() {
                <ChangeHistoryButton objectType="HALLENPREIS" objectKey={filterKey || '001'} />
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       {befunde && (
         <MessageStrip design={fehler.length ? 'Negative' : 'Positive'} hideCloseButton style={{ marginBottom: '0.5rem' }}>
           {fehler.length

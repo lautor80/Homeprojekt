@@ -10,6 +10,7 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { TCO, dateiLesen } from './util';
 
 type Verein = Record<string, string | number | null>;
@@ -56,7 +57,8 @@ function Endpunkt({ titel, hinweis, endpunkt, v, ro, children }: { titel: string
 
 function VereinTab() {
   const can = useCan();
-  const ro = !can('tco.stammdaten:edit');
+  const sperre = useSperre('TCO_VEREIN', '1', can('tco.stammdaten:edit'), { bezeichnung: 'Vereinsdaten' });
+  const ro = !can('tco.stammdaten:edit') || !sperre.eigen;
   const [v, setV] = useState<Verein | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,6 +79,7 @@ function VereinTab() {
   return (
     <>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       <Panel headerText="Verein (Rechnungssteller)" fixed>
         <FormGrid>
           <TextField label="Name (auch Empfänger im GiroCode)" required value={t('name')} onChange={s('name')} readonly={ro} />

@@ -5,6 +5,7 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { AB, anlnrText, type Anlage } from './typen';
 
 /** Monatsregel wie ZCL_TCO_ANLAGEN=>MONATE_ERSTJAHR: Anschaffungsmonat bis Dezember */
@@ -14,11 +15,13 @@ const heute = () => new Date().toISOString().slice(0, 10);
 interface Form { bezeichnung: string; anschdat: string; anschwert: string; nutzdauer: string; monate_ej: string; notiz: string }
 
 /** Anlageobjekt erfassen / bearbeiten (Formular der SAP-App „Anlagevermögen“) */
-export function AnlageDialog({ anlnr, edit, onClose }: { anlnr: number | null; edit: boolean; onClose: (geaendert: boolean) => void }) {
+export function AnlageDialog({ anlnr, edit: darf, onClose }: { anlnr: number | null; edit: boolean; onClose: (geaendert: boolean) => void }) {
   const [f, setF] = useState<Form>({ bezeichnung: '', anschdat: heute(), anschwert: '', nutzdauer: '10', monate_ej: String(monateErstjahr(heute())), notiz: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [frage, setFrage] = useState(false);
+  const sperre = useSperre('ANLAGE', anlnr ? String(anlnr) : null, darf, { bezeichnung: anlnr ? `Anlageobjekt ${anlnrText(anlnr)}` : undefined });
+  const edit = darf && sperre.eigen;
   const s = (k: keyof Form) => (v: string) => setF((x) => ({ ...x, [k]: v }));
 
   useEffect(() => {
@@ -56,6 +59,7 @@ export function AnlageDialog({ anlnr, edit, onClose }: { anlnr: number | null; e
               <Button onClick={() => onClose(false)}>{edit ? 'Abbrechen' : 'Schließen'}</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       <FormGrid>
         <TextField label="Bezeichnung" required value={f.bezeichnung} onChange={s('bezeichnung')} readonly={!edit} wide />
         <FieldBox label="Anschaffungsdatum" required>

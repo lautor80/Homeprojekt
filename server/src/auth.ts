@@ -22,6 +22,8 @@ export interface AuthUser {
 declare module 'fastify' {
   interface FastifyRequest {
     user: AuthUser | null;
+    /** Hash des Sitzungs-Tokens (nur Anmeldung per Oberfläche) – Inhaber von Sperren */
+    sitzung: string | null;
   }
 }
 
@@ -52,7 +54,10 @@ export async function createSession(req: FastifyRequest, reply: FastifyReply, us
 
 export async function destroySession(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const token = req.cookies[SESSION_COOKIE];
-  if (token) await sql`delete from core.sessions where token_hash = ${sha256(token)}`;
+  if (token) {
+    await sql`delete from core.sessions where token_hash = ${sha256(token)}`;
+    await sql`delete from core.sperren where sitzung = ${sha256(token)}`;
+  }
   reply.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
@@ -80,9 +85,11 @@ export async function loadUser(userId: string): Promise<AuthUser | null> {
 /** Plugin: Sitzung auflösen, CSRF-Schutz, Hilfsfunktionen. */
 export function registerAuth(app: FastifyInstance): void {
   app.decorateRequest('user', null);
+  app.decorateRequest('sitzung', null);
 
   app.addHook('onRequest', async (req, reply) => {
     req.user = null;
+    req.sitzung = null;
     if (!req.url.startsWith('/api/')) return;
 
     // API-Schlüssel: kein Cookie, daher kein CSRF-Risiko; nur Modul-Schnittstellen
@@ -98,7 +105,10 @@ export function registerAuth(app: FastifyInstance): void {
     if (!token) return;
     const [s] = await sql`select user_id from core.sessions
                           where token_hash = ${sha256(token)} and expires_at > now()`;
-    if (s) req.user = await loadUser(s.user_id);
+    if (s) {
+      req.user = await loadUser(s.user_id);
+      if (req.user) req.sitzung = sha256(token);
+    }
   });
 }
 
@@ -160,7 +170,7 @@ export function can(req: FastifyRequest, permission: string): boolean {
 
 /** Änderungskontext aus der Anfrage – für withChange(). */
 export function changeCtx(req: FastifyRequest, extra: Partial<ChangeContext> = {}): ChangeContext {
-  return { userId: req.user?.id || null, username: req.user?.username ?? 'anonym', ...extra };
+  return { userId: req.user?.id || null, username: req.user?.username ?? 'anonym', sitzung: req.sitzung ?? null, ...extra };
 }
 
 /** Kurzform: Transaktion mit Änderungsbeleg im Namen des angemeldeten Benutzers. */

@@ -8,6 +8,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { FormGrid, TextField } from '@core/components/FormFields';
 import { PdfDialog, download } from '@core/components/PdfDialog';
 import { useCan } from '@core/session';
@@ -97,7 +98,10 @@ export function Sollstellung() {
 // ---------------------------------------------------------------- Gläubigerdaten
 function Glaeubiger({ init, onSaved }: { init: Init; onSaved: () => void }) {
   const can = useCan();
-  const ro = !can('tco.soll:glaeubiger');
+  // Sperre nur, solange der Bereich aufgeklappt ist
+  const [offen, setOffen] = useState(!!init.fehlt.length);
+  const sperre = useSperre('SOLL_CFG', 'TCO', offen && can('tco.soll:glaeubiger'), { bezeichnung: 'Gläubigerdaten' });
+  const ro = !can('tco.soll:glaeubiger') || !sperre.eigen;
   const [c, setC] = useState(init.cfg);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -107,7 +111,9 @@ function Glaeubiger({ init, onSaved }: { init: Init; onSaved: () => void }) {
     try { toast((await api.put<{ text: string }>(`${S}/cfg`, c)).text); onSaved(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return (
-    <Panel headerText="Gläubigerdaten (Verein)" collapsed={!init.fehlt.length}>
+    <Panel headerText="Gläubigerdaten (Verein)" collapsed={!init.fehlt.length}
+           onToggle={(e) => setOffen(!(e.target as unknown as { collapsed: boolean }).collapsed)}>
+      <SperrHinweis s={sperre} />
       {init.fehlt.length > 0 && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
         Gläubigerdaten unvollständig: {init.fehlt.join(', ')}. Ohne diese Angaben kann keine Lastschriftdatei erzeugt werden.</MessageStrip>}
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
@@ -263,7 +269,8 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
 // ---------------------------------------------------------------- Detail eines Laufs
 function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => void }) {
   const can = useCan();
-  const edit = can('tco.soll:edit');
+  const sperre = useSperre('SOLLSTELLUNG', laufid, can('tco.soll:edit'), { bezeichnung: `Sollstellungslauf ${Number(laufid)}` });
+  const edit = can('tco.soll:edit') && sperre.eigen;
   const bankKlar = can('tco.bankdaten:display');
   const [l, setL] = useState<{ kopf: Lauf & { msgid: string; erzeit: string }; pos: Pos[]; tx: Tx[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -297,6 +304,7 @@ function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => vo
                <ChangeHistoryButton objectType="SOLLSTELLUNG" objectKey={laufid} />
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       {k && (
         <FlexBox alignItems="Center" style={{ gap: '1rem', marginBottom: '0.75rem' }} wrap="Wrap">
           <ObjectStatus state={STATUS[k.status]?.state} showDefaultIcon>{STATUS[k.status]?.text}</ObjectStatus>

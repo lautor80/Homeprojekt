@@ -28,7 +28,7 @@ export const FORMAT = 'portal-sicherung';
 export const VERSION = 1;
 const MAGIC = Buffer.from('PSIC1');
 /** nie sichern: Anmeldesitzungen (werden bei Rücksicherung der Basis geleert) */
-const NIE = new Set(['core.sessions']);
+const NIE = new Set(['core.sessions', 'core.sperren']);
 const AUDIT = new Set(['core.change_header', 'core.change_item']);
 
 export const SCHEMA_TEXT: Record<string, string> = { core: 'Basis (Benutzer, Rollen, Einstellungen, API-Schlüssel, Änderungsbelege)' };
@@ -376,7 +376,7 @@ export async function ruecksichern(inhalt: Inhalt, schemas: string[]): Promise<{
     const ausgeschlossen = new Set(m.ausgeschlossen);
     // 1. leeren: alle Tabellen der Bereiche – außer ausgeschlossenen (Sitzungen nur bei Basis, Änderungsbelege nur wenn mitgesichert)
     for (const tab of jetzt) {
-      if (tab.name === 'core.sessions') { await tx`delete from core.sessions`; continue; }
+      if (tab.name === 'core.sessions' || tab.name === 'core.sperren') { await tx.unsafe(`delete from ${tab.name}`); continue; }
       if (ausgeschlossen.has(tab.name)) continue;
       await tx.unsafe(`delete from ${voll(tab.name)}`);
     }

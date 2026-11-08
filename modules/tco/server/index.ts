@@ -262,6 +262,8 @@ const tco: ServerModule = {
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
+  // ausgewählte, noch nicht gesicherte Platzzeit (Sperre mit Zeitraum, Schlüssel = Platz-ID)
+  sperrObjekte: [{ type: 'PLATZZEIT', text: 'Platzzeit', permission: `${P_PLATZ.buchen}|${P_PLATZ.admin}|${P_PLATZ.serie}` }],
   auditObjects: [
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },
     { type: 'BUCHUNG', text: 'Hallenbuchung', permission: P_HALLE.display },
@@ -281,7 +283,8 @@ const tco: ServerModule = {
     { type: 'GETRAENKERECHNUNG', text: 'Getränkerechnung', permission: P_CH.display },
     { type: 'CLUBHAUS', text: 'Clubhaus-Forderungsliste', permission: P_CH.display },
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
-    { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display },
+    { type: 'PLATZ', text: 'Platz', permission: P_PLATZ.admin },
+    { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
   ],
   migrationsDir: path.join(APP_ROOT, 'modules', 'tco', 'server', 'migrations'),
   routes,

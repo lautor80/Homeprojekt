@@ -7,6 +7,7 @@ import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { T, type Werte } from './util';
 
 interface Firma {
@@ -27,6 +28,7 @@ function FirmaTab() {
   const [f, setF] = useState<Firma | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const sperre = useSperre('FIRMA', '1', true, { bezeichnung: 'Firmendaten Transport' });
   useEffect(() => { api.get<Firma>(`${T}/firma`).then(setF).catch((e) => setError(e.message)); }, []);
   if (!f) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
   const s = (k: keyof Firma) => (v: string) => setF({ ...f, [k]: v });
@@ -53,6 +55,7 @@ function FirmaTab() {
   }
   return (
     <>
+      <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
       <Panel headerText="Rechnungssteller" fixed>
         <FormGrid>
@@ -100,7 +103,7 @@ function FirmaTab() {
       </Panel>
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
-        <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>
+        <Button design="Emphasized" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
       </>} />
     </>
   );
@@ -109,6 +112,7 @@ function FirmaTab() {
 function ProdukteTab() {
   const [list, setList] = useState<Produkt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sperre = useSperre('PRODUKT', '*', true, { bezeichnung: 'Produkte Transport' });
   useEffect(() => { api.get<Produkt[]>(`${T}/produkte`).then(setList).catch((e) => setError(e.message)); }, []);
   if (!list) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
   const set = (i: number, k: keyof Produkt, v: string | number | null) => setList(list.map((p, j) => (j === i ? { ...p, [k]: v } : p)));
@@ -123,6 +127,7 @@ function ProdukteTab() {
   }
   return (
     <>
+      <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
       <Text>Produkte erscheinen als Vorschlag in der Trägerbestellung neuer Holzträgeraufträge (nur gültige).</Text>
       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.75rem' }}>
@@ -143,7 +148,7 @@ function ProdukteTab() {
       </table>
       <Bar style={{ marginTop: '1rem' }}
            startContent={<Button icon="add" onClick={() => setList([...list, { prod_key: '', text: '', preis: 0, gueltig_bis: null, sort: list.length + 1 }])}>Produkt hinzufügen</Button>}
-           endContent={<Button design="Emphasized" onClick={save}>Sichern</Button>} />
+           endContent={<Button design="Emphasized" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
     </>
   );
 }
@@ -152,6 +157,7 @@ function WerteTab() {
   const [werte, setWerte] = useState<Werte | null>(null);
   const [neu, setNeu] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const sperre = useSperre('WERT', '*', true, { bezeichnung: 'Wertelisten Transport' });
   const lade = () => api.get<Werte>(`${T}/werte`).then(setWerte).catch((e) => setError(e.message));
   useEffect(() => { lade(); }, []);
   if (!werte) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
@@ -175,16 +181,17 @@ function WerteTab() {
   }
   return (
     <>
+      <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1rem' }}>
         {(Object.keys(WERTE_TITEL) as (keyof Werte)[]).map((typ) => (
           <Panel key={typ} headerText={WERTE_TITEL[typ]} fixed>
             {werte[typ].map((w) => (
-              <WertZeile key={w.key} schluessel={w.key} text={w.text} aktiv={w.aktiv ?? true} onSave={(t, a) => aendern(typ, w.key, t, a)} />
+              <WertZeile key={w.key} gesperrt={!sperre.eigen} schluessel={w.key} text={w.text} aktiv={w.aktiv ?? true} onSave={(t, a) => aendern(typ, w.key, t, a)} />
             ))}
             <FlexBox style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
               <Input style={{ flex: 1 }} placeholder="Neuer Wert" value={neu[typ] ?? ''} onInput={(e) => setNeu({ ...neu, [typ]: e.target.value })} />
-              <Button icon="add" disabled={!(neu[typ] ?? '').trim()} onClick={() => anlegen(typ)}>Anlegen</Button>
+              <Button icon="add" disabled={!sperre.eigen || !(neu[typ] ?? '').trim()} onClick={() => anlegen(typ)}>Anlegen</Button>
             </FlexBox>
           </Panel>
         ))}
@@ -193,7 +200,7 @@ function WerteTab() {
   );
 }
 
-function WertZeile({ schluessel, text, aktiv, onSave }: { schluessel: string; text: string; aktiv: boolean; onSave: (t: string, a: boolean) => void }) {
+function WertZeile({ schluessel, text, aktiv, gesperrt, onSave }: { gesperrt: boolean; schluessel: string; text: string; aktiv: boolean; onSave: (t: string, a: boolean) => void }) {
   const [t, setT] = useState(text);
   const [a, setA] = useState(aktiv);
   const geaendert = t !== text || a !== aktiv;
@@ -202,7 +209,7 @@ function WertZeile({ schluessel, text, aktiv, onSave }: { schluessel: string; te
       <Text style={{ width: '2.5rem', color: 'var(--sapContent_LabelColor)' }}>{schluessel}</Text>
       <Input style={{ flex: 1 }} value={t} onInput={(e) => setT(e.target.value)} />
       <CheckBox text="aktiv" checked={a} onChange={(e) => setA(e.target.checked)} />
-      <Button icon="save" design="Transparent" disabled={!geaendert} onClick={() => onSave(t, a)} />
+      <Button icon="save" design="Transparent" disabled={gesperrt || !geaendert} onClick={() => onSave(t, a)} />
     </FlexBox>
   );
 }
@@ -210,6 +217,7 @@ function WertZeile({ schluessel, text, aktiv, onSave }: { schluessel: string; te
 function MailtexteTab() {
   const [list, setList] = useState<MailText[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const sperre = useSperre('MAILTEXT', '*', true, { bezeichnung: 'E-Mail-Texte Transport' });
   useEffect(() => { api.get<MailText[]>(`${T}/mailtexte`).then(setList).catch((e) => setError(e.message)); }, []);
   if (!list) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
   async function save() {
@@ -222,6 +230,7 @@ function MailtexteTab() {
   }
   return (
     <>
+      <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
       <MessageStrip hideCloseButton style={{ marginBottom: '1rem' }}>
         Platzhalter: {'{ANREDE}'} (z. B. „Sehr geehrter Herr Müller“), {'{AUFTRAG}'}, {'{RECHNUNG}'}.
@@ -235,7 +244,7 @@ function MailtexteTab() {
           </Panel>
         ))}
       </div>
-      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" onClick={save}>Sichern</Button>} />
+      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
     </>
   );
 }

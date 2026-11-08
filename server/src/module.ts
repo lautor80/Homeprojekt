@@ -8,6 +8,8 @@ export interface AuditObjectDef {
   type: string;
   text: string;
   permission: string;
+  /** Sperre dieses Objekts sperrt auch diese Objekttypen mit gleichem Schlüssel (z. B. Mitglied → Schlüssel) */
+  sperrtAuch?: string[];
 }
 
 /**
@@ -41,6 +43,8 @@ export interface ServerModule {
   routes?: (app: FastifyInstance) => Promise<void> | void;
   /** Ablagekontexte für Paperless mit Platzhaltern und Standardregel (zentrale Zuordnung, Administration) */
   paperlessKontexte?: KontextDef[];
+  /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
+  sperrObjekte?: AuditObjectDef[];
   /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */
   paperlessClient?: () => Promise<Paperless | null>;
 }

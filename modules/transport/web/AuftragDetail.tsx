@@ -7,6 +7,7 @@ import {
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { useCan } from '@core/session';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { toast } from '@core/toast';
 import { DocsDialog, type Doc } from './dialogs';
 import { AuftragDokumente } from './AuftragDokumente';
@@ -51,7 +52,9 @@ export function AuftragDetail() {
   const isNew = !!neuTyp;
   const navigate = useNavigate();
   const can = useCan();
-  const mayEdit = can('transport.auftraege:edit');
+  const darfAendern = can('transport.auftraege:edit');
+  const sperre = useSperre('AUFTRAG', isNew ? null : nr, darfAendern, { bezeichnung: `Auftrag ${nr ?? ''}` });
+  const mayEdit = darfAendern && sperre.eigen;
 
   const [a, setA] = useState<Auftrag | null>(null);
   const [vorschau, setVorschau] = useState<string>('');
@@ -270,6 +273,7 @@ export function AuftragDetail() {
               <Button icon="add-contact" design="Transparent" onClick={() => setKontakt('NEU')}>Kontakt anlegen</Button>
               <Button icon="edit" design="Transparent" onClick={() => kontakteAuftrag.length ? setKontakt('EDIT') : toast('Diesem Auftrag ist noch kein Kontakt zugeordnet.')}>Kontakt bearbeiten</Button>
             </> : undefined}>
+            <SperrHinweis s={sperre} style={{ marginBottom: '1rem' }} />
             {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
             {!!a.faktura && (
               <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>

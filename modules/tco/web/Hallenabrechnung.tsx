@@ -12,6 +12,7 @@ import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { MenuButton } from '@core/components/MenuButton';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { Section } from '@core/components/Section';
@@ -294,6 +295,9 @@ function PersonPanel(props: {
   const [pos, setPos] = useState<Position[] | null>(null);
   const [pl, setPl] = useState<PaperlessInfo | null>(null);
   const [irrelevant, setIrrelevant] = useState<{ bid: string; datum: string; termine: number; time_start: string; time_ende: string }[] | null>(null);
+  // gewählte (änderbare) Rechnung gegen gleichzeitige Bearbeitung sperren
+  const sperre = useSperre('RECHNUNG', rechnung?.aenderbar ? rechnung.rgnr_txt : null, edit, { bezeichnung: rechnung ? `Hallenrechnung ${rechnung.rgnr_txt}` : undefined });
+  const rgEdit = edit && sperre.eigen;
 
   useEffect(() => {
     setPos(null);
@@ -396,7 +400,7 @@ function PersonPanel(props: {
     },
     {
       Header: '', id: 'weg', width: 60, disableSortBy: true,
-      Cell: ({ row }: Cell) => (edit && rechnung?.aenderbar ? (
+      Cell: ({ row }: Cell) => (rgEdit && rechnung?.aenderbar ? (
         <Button icon="delete" design="Transparent" onClick={() => {
           const p = row.original as Position;
           const nr = rechnung!.rgnr_txt;
@@ -549,10 +553,11 @@ function PersonPanel(props: {
         <Section title={`Positionen zu ${rechnung.rgnr_txt}`} count={pos?.length ?? 0} flush
                  status={<ObjectStatus state={RG_STATE[rechnung.status]} inverted>{RG_STATUS[rechnung.status]}</ObjectStatus>}
                  actions={<>
-                   {edit && rechnung.aenderbar && <Button icon="add" design="Transparent" onClick={props.onPosition}>Position hinzufügen</Button>}
-                   {edit && rechnung.aenderbar && (pos?.length ?? 0) > 1 && <Button icon="sort" design="Transparent" onClick={() => tun(post(`${rgUrl(rechnung.rgnr_txt)}/nummerieren`))}>Neu nummerieren</Button>}
+                   {rgEdit && rechnung.aenderbar && <Button icon="add" design="Transparent" onClick={props.onPosition}>Position hinzufügen</Button>}
+                   {rgEdit && rechnung.aenderbar && (pos?.length ?? 0) > 1 && <Button icon="sort" design="Transparent" onClick={() => tun(post(`${rgUrl(rechnung.rgnr_txt)}/nummerieren`))}>Neu nummerieren</Button>}
                    <ChangeHistoryButton objectType="RECHNUNG" objectKey={rechnung.rgnr_txt} />
                  </>}>
+          <SperrHinweis s={sperre} style={{ margin: '0.75rem 1rem 0.25rem', width: 'auto' }} />
           {!rechnung.aenderbar && <MessageStrip hideCloseButton style={{ margin: '0.75rem 1rem 0.25rem' }}>
             Die Rechnung ist {RG_STATUS[rechnung.status].toLowerCase()} und nimmt keine Positionen mehr auf.{rechnung.status === '3' ? ' Über das Menü „Wieder eröffnen“ wird sie änderbar.' : ''}
           </MessageStrip>}
@@ -577,7 +582,7 @@ function PersonPanel(props: {
 
       {/* Offene Buchungen */}
       <Section title="Offene Buchungen" count={d.buchungen.length} flush
-               actions={edit && vergangene.length > 0 ? (
+               actions={edit && vergangene.length > 0 && (!rechnung?.aenderbar || rgEdit) ? (
                  <Button icon="add-process" design="Emphasized"
                          onClick={() => zuordnen(rechnung?.aenderbar ? rechnung.rgnr_txt : 'NEU', vergangene)}>
                    {rechnung?.aenderbar ? `Vergangene zu ${rechnung.rgnr_txt} (${vergangene.length})` : `Vergangene auf neue Rechnung (${vergangene.length})`}

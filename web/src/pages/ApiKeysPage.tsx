@@ -11,6 +11,7 @@ import { ChangeHistoryButton, fmtDateTime } from '../components/ChangeHistory';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useCan } from '../session';
 import { toast } from '../toast';
+import { SperrHinweis, useSperre } from '../sperre';
 import { PermissionEditor, type PermGroup } from '../components/PermissionEditor';
 
 interface ApiKey {
@@ -25,11 +26,14 @@ const datum = (v: string | null) => (v ? v.split('-').reverse().join('.') : '');
 
 export function ApiKeysPage() {
   const can = useCan();
-  const mayEdit = can('core.apikeys:edit');
+  const darfAendern = can('core.apikeys:edit');
   const keys = useLoad(() => api.get<ApiKey[]>('/api/admin/api-keys'));
   const catalog = useLoad(() => api.get<PermGroup[]>('/api/admin/permissions'));
   const modules = useMemo(() => (catalog.data ?? []).filter((g) => g.module !== 'core'), [catalog.data]);
   const [edit, setEdit] = useState<Edit | null>(null);
+  const original = edit?.id ? (keys.data ?? []).find((k) => k.id === edit.id) : undefined;
+  const sperre = useSperre('API_KEY', original ? `${original.module}/${original.name}` : null, darfAendern, { bezeichnung: `API-Schlüssel ${edit?.name ?? ''}` });
+  const mayEdit = darfAendern && sperre.eigen;
   const [shown, setShown] = useState<{ key: string; module: string } | null>(null);
   const [confirm, setConfirm] = useState<'sperren' | 'entsperren' | 'rotate' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +144,7 @@ export function ApiKeysPage() {
       >
         {edit && (
           <>
+            <SperrHinweis s={sperre} />
             {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
             <FormGrid>
               <FieldBox label="Projekt / Modul" required>

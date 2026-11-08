@@ -9,6 +9,7 @@ import { AppPage } from '@core/components/AppPage';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { TCO, dat, dateiLesen, eur } from '../util';
 import { Entgelte } from './Entgelte';
 
@@ -56,6 +57,9 @@ export function Jugendtraining() {
   const [tab, setTab] = useState('zeiten');
   const [error, setError] = useState<string | null>(null);
   const [imp, setImp] = useState<ImportErg | null>(null);
+  // Zeiten des gewählten Trainers sperren (Belegschlüssel adrnr/datum/art), solange Zeiten/Wochenraster offen sind
+  const sperre = useSperre('JT_ZEIT', adrnr || null, edit && (tab === 'zeiten' || tab === 'woche'), { bezeichnung: 'Trainingszeiten' });
+  const zeitEdit = edit && !!adrnr && sperre.eigen;
 
   const laden = (mon = monat) => api.get<Monat>(`${J}/monat?monat=${mon}`).then((r) => {
     setM(r);
@@ -82,7 +86,7 @@ export function Jugendtraining() {
     const f = ferien.get(d);
     if (f?.ferien) toast(`${dat(d)} liegt in den ${f.ferien}.`);
     if (f?.feiertag) toast(`${dat(d)} ist ein Feiertag: ${f.feiertag}.`);
-    if (edit && adrnr && !zeiten.some((z) => z.datum === d)) setzen({ datum: d, trainingsart: 'Jugendtraining', anzahl: 0 });
+    if (zeitEdit && !zeiten.some((z) => z.datum === d)) setzen({ datum: d, trainingsart: 'Jugendtraining', anzahl: 0 });
   }
 
   const trainerOptionen = m?.abrechnung ?? [];
@@ -96,6 +100,7 @@ export function Jugendtraining() {
                <Button icon="navigation-right-arrow" design="Transparent" onClick={() => setMonat(monatVerschieben(monat, 1))} />
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      {(tab === 'zeiten' || tab === 'woche') && <SperrHinweis s={sperre} />}
       {m && (
         <FlexBox wrap="Wrap" alignItems="Start" style={{ gap: '2rem', marginBottom: '1rem' }}>
           <Kalender m={m} zeiten={zeiten} ferien={ferien} sel={sel} onTag={tagWaehlen} />
@@ -114,11 +119,11 @@ export function Jugendtraining() {
       {m && (
         <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
           <Tab data-key="zeiten" text="Zeiten" additionalText={String(zeiten.length)} icon="list" selected={tab === 'zeiten'}>
-            <Zeiten m={m} zeiten={zeiten} ferien={ferien} sel={sel} edit={edit && !!adrnr} onSetzen={setzen} onLoeschen={loeschen}
+            <Zeiten m={m} zeiten={zeiten} ferien={ferien} sel={sel} edit={zeitEdit} onSetzen={setzen} onLoeschen={loeschen}
                     onNeu={() => tagWaehlen(sel ?? (isoHeute() >= m.von && isoHeute() <= m.bis ? isoHeute() : m.von))} />
           </Tab>
           <Tab data-key="woche" text="Wochenraster" icon="grid" selected={tab === 'woche'}>
-            <Woche m={m} zeiten={zeiten} ferien={ferien} edit={edit && !!adrnr} adrnr={adrnr} onSetzen={setzen} onLoeschen={loeschen} onAktion={aktion} />
+            <Woche m={m} zeiten={zeiten} ferien={ferien} edit={zeitEdit} adrnr={adrnr} onSetzen={setzen} onLoeschen={loeschen} onAktion={aktion} />
           </Tab>
           <Tab data-key="import" text="Import" icon="upload" selected={tab === 'import'}>
             <Import m={m} edit={edit} erg={imp} onErg={(r) => { setImp(r); laden(); }} onError={setError} onAktion={aktion} />
@@ -127,10 +132,10 @@ export function Jugendtraining() {
             <Abrechnung m={m} edit={edit} onAktion={aktion} onError={setError} />
           </Tab>
           <Tab data-key="ent" text="Entgelte" icon="money-bills" selected={tab === 'ent'}>
-            <Entgelte onChanged={() => laden()} />
+            <Entgelte onChanged={() => laden()} aktiv={tab === 'ent'} />
           </Tab>
           <Tab data-key="trainer" text="Trainer" icon="employee" selected={tab === 'trainer'}>
-            <Entgelte teil="trainer" onChanged={() => laden()} />
+            <Entgelte teil="trainer" onChanged={() => laden()} aktiv={tab === 'trainer'} />
           </Tab>
         </TabContainer>
       )}

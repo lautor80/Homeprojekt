@@ -9,6 +9,7 @@ import { ObjectHeader } from '../components/ObjectHeader';
 import { Section } from '../components/Section';
 import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { toast } from '../toast';
+import { SperrHinweis, useSperre } from '../sperre';
 
 /**
  * Paperless-Zuordnung: je Ablagekontext (FI-Beleg, Mitglied, Auftrag, Rechnung …) die Regeln, wie Titel,
@@ -83,6 +84,7 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [neuesFeld, setNeuesFeld] = useState('');
+  const sperre = useSperre('PAPERLESS_MAPPING', `${modul}/${k.id}`, true, { bezeichnung: `Paperless-Zuordnung ${k.text}` });
 
   useEffect(() => { api.get<Listen>(`/api/paperless/mapping/${modul}/listen`).then(setListen).catch(() => setListen(null)); }, [modul]);
   useEffect(() => {
@@ -142,11 +144,12 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
                       {listen && !listen.paperless && <ObjectStatus state="Critical">Paperless für {modulName} nicht eingerichtet – keine Auswahllisten</ObjectStatus>}
                       {listen?.fehler && <ObjectStatus state="Critical">{listen.fehler}</ObjectStatus>}</>}
                     actions={<>
-                      <Button design="Emphasized" icon="save" disabled={busy} onClick={speichern}>Speichern</Button>
-                      <Button icon="reset" disabled={busy || (standard && !k.geaendert)} onClick={zuruecksetzen}>Auf Standard zurücksetzen</Button>
+                      <Button design="Emphasized" icon="save" disabled={busy || !sperre.eigen} onClick={speichern}>Speichern</Button>
+                      <Button icon="reset" disabled={busy || !sperre.eigen || (standard && !k.geaendert)} onClick={zuruecksetzen}>Auf Standard zurücksetzen</Button>
                       <ChangeHistoryButton objectType="PAPERLESS_MAPPING" objectKey={`${modul}/${k.id}`} />
                     </>}>
         {k.beschreibung && <Text>{k.beschreibung}</Text>}
+        <SperrHinweis s={sperre} style={{ marginTop: '0.5rem' }} />
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginTop: '0.5rem' }}>{error}</MessageStrip>}
       </ObjectHeader>
 

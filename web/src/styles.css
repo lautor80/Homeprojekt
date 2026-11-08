@@ -632,3 +632,6 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-bk__nacht { display: flex; flex-direction: column; gap: 0.125rem; max-width: 40rem; }
 .portal-bk__pruef { padding: 0.5rem 0.75rem; border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); }
 .portal-bk__pruef .portal-row { margin-left: 2.75rem; }
+
+/* Sperrhinweis (gleichzeitige Bearbeitung) */
+.portal-sperre { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; width: 100%; }

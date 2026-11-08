@@ -5,13 +5,14 @@ import {
   Option, Select, StepInput, Switch, Tab, TabContainer, Text, TextArea, Title, ToggleButton, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
-import { api } from '@core/api';
+import { api, ApiError } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { FieldBox, FormGrid } from '@core/components/FormFields';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
+import { SperrHinweis, sperreSetzen, useSperre } from '@core/sperre';
 import { useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
 import { Kalender, hhmm, min, tagPlus, tagText, type Belegt, type TagPlatz } from './PlatzBuchen';
@@ -93,6 +94,8 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const [auswahl, setAuswahl] = useState<number[]>([]);
   const [massen, setMassen] = useState<{ basis: Omit<Platz, 'id'>; werte: Omit<Platz, 'id'>; geaendert: string[] } | null>(null);
   const laden = () => api.get<{ plaetze: Platz[] }>(`${PA}/plaetze`).then((r) => setPlaetze(r.plaetze));
+  const sperre = useSperre('PLATZ', form?.id ? String(form.id) : null, true, { bezeichnung: `Platz ${form?.name ?? ''}` });
+  const massenSperre = useMassenSperre(massen ? auswahl : [], plaetze);
   /** Einzelfeld direkt aus der Tabelle (z. B. Raster) über die Massenänderung speichern */
   const feldSetzen = (id: number, felder: Partial<Platz>) => aktion(() => api.put(`${PA}/plaetze-massen`, { ids: [id], felder }), laden);
   const kopieren = (p: Omit<Platz, 'id'> & { id?: number }) => {
@@ -173,13 +176,14 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
       {form && createPortal(
         <Dialog open headerText={form.id ? `Platz „${form.name}“` : 'Platz anlegen'} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setForm(null)}
                 footer={<Bar startContent={form.id ? <>
-                               <Button design="Transparent" icon="delete" onClick={() => setWeg(true)}>Löschen</Button>
+                               <Button design="Transparent" icon="delete" disabled={!sperre.eigen} onClick={() => setWeg(true)}>Löschen</Button>
                                <Button design="Transparent" icon="copy" onClick={() => kopieren(form)}>Kopieren</Button>
                              </> : undefined}
                              endContent={<>
-                               <Button design="Emphasized" disabled={busy || !form.name.trim()} onClick={speichern}>Speichern</Button>
+                               <Button design="Emphasized" disabled={busy || !sperre.eigen || !form.name.trim()} onClick={speichern}>Speichern</Button>
                                <Button onClick={() => setForm(null)}>Abbrechen</Button>
                              </>} />}>
+          <SperrHinweis s={sperre} />
           <PlatzFormular f={form} setF={(x) => setForm({ ...form, ...x })} />
         </Dialog>,
         document.body,
@@ -190,7 +194,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
                                {massen.geaendert.length ? `Wird gesetzt: ${massen.geaendert.map((k) => FELD_TEXT[k] ?? k).join(', ')}` : 'Noch nichts geändert'}
                              </Text>}
                              endContent={<>
-                               <Button design="Emphasized" disabled={busy || !massen.geaendert.length}
+                               <Button design="Emphasized" disabled={busy || !massenSperre.frei || !massen.geaendert.length}
                                        onClick={() => aktion(() => api.put(`${PA}/plaetze-massen`, {
                                          ids: auswahl,
                                          felder: Object.fromEntries(massen.geaendert.map((k) => [k, (massen.werte as Record<string, unknown>)[k]])),
@@ -199,6 +203,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
                                </Button>
                                <Button onClick={() => setMassen(null)}>Abbrechen</Button>
                              </>} />}>
+          {massenSperre.fehler.map((f) => <MessageStrip key={f} design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>{f}</MessageStrip>)}
           <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
             Vorbelegt mit den Werten von „{plaetze?.find((p) => auswahl.includes(p.id))?.name}“. Nur die Felder, die Sie hier ändern, werden für
             {' '}{plaetze?.filter((p) => auswahl.includes(p.id)).map((p) => p.name).join(', ')} übernommen. Bezeichnung, weitere Bezeichnungen und Reihenfolge bleiben je Platz erhalten.
@@ -219,6 +224,34 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
                      onConfirm={() => { setWeg(false); if (form?.id) aktion(() => api.del(`${PA}/plaetze/${form.id}`), async () => { setForm(null); await laden(); }); }} />
     </>
   );
+}
+
+/** Massenänderung: alle gewählten Plätze sperren, solange der Dialog offen ist */
+function useMassenSperre(ids: number[], plaetze: Platz[] | null) {
+  const [zustand, setZustand] = useState<{ frei: boolean; fehler: string[] }>({ frei: false, fehler: [] });
+  const schluessel = ids.slice().sort((a, b) => a - b).join(',');
+  useEffect(() => {
+    if (!ids.length) { setZustand({ frei: false, fehler: [] }); return; }
+    let ende = false;
+    const freigaben: (() => void)[] = [];
+    setZustand({ frei: false, fehler: [] });
+    (async () => {
+      const fehler: string[] = [];
+      for (const id of ids) {
+        const name = plaetze?.find((p) => p.id === id)?.name ?? String(id);
+        try {
+          freigaben.push(await sperreSetzen('PLATZ', String(id), { bezeichnung: `Platz ${name}` },
+            () => { if (!ende) setZustand((z) => ({ frei: false, fehler: [...z.fehler, `Sperre für ${name} abgelaufen – Dialog bitte neu öffnen.`] })); }));
+        } catch (e) {
+          fehler.push(e instanceof ApiError && e.status === 423 ? e.message : `${name}: ${(e as Error).message}`);
+        }
+      }
+      if (ende) { freigaben.forEach((f) => f()); return; }
+      setZustand({ frei: !fehler.length, fehler });
+    })();
+    return () => { ende = true; freigaben.forEach((f) => f()); };
+  }, [schluessel]); // eslint-disable-line react-hooks/exhaustive-deps
+  return zustand;
 }
 
 function Zahl({ wert, onChange, min: mn = 0, max, schritt = 1, einheit }: { wert: number; onChange: (n: number) => void; min?: number; max?: number; schritt?: number; einheit: string }) {

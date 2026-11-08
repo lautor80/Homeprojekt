@@ -9,6 +9,7 @@ import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { dat, eur } from '../util';
 import { CH } from './Clubhaus';
 
@@ -38,8 +39,10 @@ function ZahlFeld({ wert, onSave, width = '6rem', disabled }: { wert: number; on
   return <Input value={v} disabled={disabled} style={{ width }} onInput={(e) => setV(e.target.value)} onChange={save} onKeyDown={(e) => e.key === 'Enter' && save()} />;
 }
 
-export function RechnungDialog({ rgnr, jahr, edit, paperless, onClose }: { rgnr: string | null; jahr: number; edit: boolean; paperless: boolean; onClose: (geaendert: boolean) => void }) {
+export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: { rgnr: string | null; jahr: number; edit: boolean; paperless: boolean; onClose: (geaendert: boolean) => void }) {
   const [nr, setNr] = useState(rgnr ?? '');
+  const sperre = useSperre('GETRAENKERECHNUNG', rgnr, darf, { bezeichnung: `Getränkerechnung ${rgnr ?? ''}` });
+  const edit = darf && sperre.eigen;
   const [datum, setDatum] = useState(jahr === new Date().getFullYear() ? heute() : `${jahr}-01-01`);
   const [pos, setPos] = useState<Pos[]>([]);
   const [belege, setBelege] = useState<Beleg[]>([]);
@@ -130,6 +133,7 @@ export function RechnungDialog({ rgnr, jahr, edit, paperless, onClose }: { rgnr:
               <Button onClick={() => onClose(geaendert)}>{edit ? 'Abbrechen' : 'Schließen'}</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <SperrHinweis s={sperre} />
       {edit && (
         <Panel headerText="Belegdaten importieren (JSON aus Paperless oder OCR-Text)" collapsed={!!rgnr} style={{ marginBottom: '0.5rem' }}>
           <TextArea value={text} rows={5} style={{ width: '100%' }} placeholder='JSON aus dem Paperless-Feld "JSON" oder den OCR-Text der Rechnung hier einfügen …'

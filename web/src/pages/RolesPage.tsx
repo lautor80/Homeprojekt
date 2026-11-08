@@ -9,6 +9,7 @@ import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useCan } from '../session';
 import { toast } from '../toast';
+import { SperrHinweis, useSperre } from '../sperre';
 import { PermissionEditor, type PermGroup } from '../components/PermissionEditor';
 
 interface Role { id: string; name: string; description: string | null; system: boolean; permissions: string[]; userCount: number }
@@ -16,10 +17,12 @@ type Edit = Partial<Role> & { isNew: boolean };
 
 export function RolesPage() {
   const can = useCan();
-  const mayEdit = can('core.roles:edit');
+  const darfAendern = can('core.roles:edit');
   const roles = useLoad(() => api.get<Role[]>('/api/admin/roles'));
   const catalog = useLoad(() => api.get<PermGroup[]>('/api/admin/permissions'));
   const [edit, setEdit] = useState<Edit | null>(null);
+  const sperre = useSperre('ROLE', edit && !edit.isNew ? edit.id : null, darfAendern, { bezeichnung: `Rolle ${edit?.id ?? ''}` });
+  const mayEdit = darfAendern && sperre.eigen;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,6 +116,7 @@ export function RolesPage() {
       >
         {edit && (
           <>
+            <SperrHinweis s={sperre} />
             {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
             {edit.system && (
               <MessageStrip hideCloseButton style={{ marginBottom: '1rem' }}>Systemrolle: besitzt alle Berechtigungen, nur Bezeichnung änderbar.</MessageStrip>

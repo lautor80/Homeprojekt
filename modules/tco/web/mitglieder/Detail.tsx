@@ -17,6 +17,7 @@ import { MG, type Auswahl, type Detail } from './typen';
 import { BankDialog, KommDialog, KopfDialog, VertragDialog } from './Dialoge';
 import { Dokumente } from './Dokumente';
 import { useAblageZiel } from '@core/ablage';
+import { SperrHinweis, useSperre } from '@core/sperre';
 
 const t = (s: string | null | undefined) => (s ? <Text>{s}</Text> : null);
 const ibanFormat = (s: string) => s.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim();
@@ -29,7 +30,7 @@ export const Raster = ({ children }: { children: ReactNode }) => (
   <div style={{ padding: '0.5rem 0' }}><Attributes>{children}</Attributes></div>
 );
 
-export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: string; edit: boolean; onChanged: () => void; onOpen: (a: string) => void }) {
+export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr: string; edit: boolean; onChanged: () => void; onOpen: (a: string) => void }) {
   const can = useCan();
   const [d, setD] = useState<Detail | null>(null);
   const [aw, setAw] = useState<Auswahl | null>(null);
@@ -41,6 +42,9 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
   const [busy, setBusy] = useState(false);
   const [docSel, setDocSel] = useState<number[]>([]);
   const [eingang, setEingang] = useState<File[]>([]);
+  // Sperre gegen gleichzeitige Bearbeitung: nur mit eigener Sperre bearbeitbar
+  const sperre = useSperre('MITGLIED', adrnr, darf, { bezeichnung: d ? `Mitglied ${d.titel}` : undefined });
+  const edit = darf && sperre.eigen;
 
   // Ablage (Drag & Drop ins Ablagefeld, Strg+V): Dokumente des Mitglieds – Dokumenttyp wird je Datei abgefragt
   useAblageZiel(edit && d ? {
@@ -106,6 +110,7 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
           )}
         </div>
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginTop: '0.75rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+        <SperrHinweis s={sperre} style={{ marginTop: '0.75rem', marginBottom: 0 }} />
       </ObjectHeader>
 
       <div className="portal-section">

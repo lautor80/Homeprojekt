@@ -3,6 +3,7 @@ import { Bar, Button, ComboBox, ComboBoxItem, Dialog, Input, MessageStrip, Title
 import { api, ApiError } from '@core/api';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { toast } from '@core/toast';
+import { SperrHinweis, useSperre } from '@core/sperre';
 import { LAENDER } from './laender';
 import { T, type Adresse, type AdrDD } from './util';
 
@@ -69,13 +70,15 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
   }
 
   const edit = modus === 'EDIT';
+  const sperre = useSperre('ADRESSE', edit && nr ? nr : null, edit, { bezeichnung: `Kontakt ${k.kundenname || nr}` });
   return (
     <Dialog open={!!modus} headerText={edit ? 'Kontakt bearbeiten' : 'Neuer Kontakt'} onClose={onClose}
             style={{ width: 'min(56rem, 95vw)' }}
             footer={<Bar endContent={<>
-              <Button design="Emphasized" icon={edit ? 'save' : 'add-contact'} loading={busy} onClick={save}>{edit ? 'Speichern' : 'Anlegen'}</Button>
+              <Button design="Emphasized" icon={edit ? 'save' : 'add-contact'} loading={busy} disabled={edit && !sperre.eigen} onClick={save}>{edit ? 'Speichern' : 'Anlegen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
+      {edit && <SperrHinweis s={sperre} style={{ marginBottom: '0.75rem' }} />}
       {hinweis && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.75rem' }}>{hinweis}</MessageStrip>}
       {edit && (
         <>

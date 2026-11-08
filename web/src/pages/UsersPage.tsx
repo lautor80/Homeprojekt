@@ -10,6 +10,7 @@ import { CheckField, FieldBox, FormGrid, TextField } from '../components/FormFie
 import { ChangeHistoryButton, fmtDateTime } from '../components/ChangeHistory';
 import { useCan } from '../session';
 import { toast } from '../toast';
+import { SperrHinweis, useSperre } from '../sperre';
 
 interface User {
   id: string;
@@ -27,10 +28,12 @@ type Edit = Partial<User> & { password?: string; isNew: boolean };
 
 export function UsersPage() {
   const can = useCan();
-  const mayEdit = can('core.users:edit');
+  const darfAendern = can('core.users:edit');
   const users = useLoad(() => api.get<User[]>('/api/admin/users'));
   const roles = useLoad(() => (can('core.roles:display') ? api.get<Role[]>('/api/admin/roles') : Promise.resolve([] as Role[])));
   const [edit, setEdit] = useState<Edit | null>(null);
+  const sperre = useSperre('USER', edit && !edit.isNew ? edit.username : null, darfAendern, { bezeichnung: `Benutzer ${edit?.username ?? ''}` });
+  const mayEdit = darfAendern && sperre.eigen;
   const [pwFor, setPwFor] = useState<User | null>(null);
   const [newPw, setNewPw] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +129,7 @@ export function UsersPage() {
       >
         {edit && (
           <>
+            <SperrHinweis s={sperre} />
             {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
             <FormGrid>
               <TextField label="Benutzername" required value={edit.username} readonly={!edit.isNew || !mayEdit}
