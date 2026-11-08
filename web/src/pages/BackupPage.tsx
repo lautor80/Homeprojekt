@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Text, TextArea, Title,
+  AnalyticalTable, Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '../api';
@@ -15,10 +15,11 @@ import { toast } from '../toast';
  * Sicherung und Rücksicherung aller Daten und Einstellungen (alle Anwendungen):
  * Sicherung erstellen (Bereiche, Änderungsbelege, optional verschlüsselt), Liste mit Download,
  * Hochladen, Prüfen und Rücksichern einzelner Bereiche mit automatischer Sicherheitskopie.
+ * Formate: .portal (kompakt, optional verschlüsselt) oder ZIP mit XML-Dateien (lesbar, bearbeitbar, importierbar).
  */
 interface SchemaInfo { schema: string; text: string; tabellen: number; zeilen: number }
 interface Kurz { erstellt: string; von: string; notiz: string; art: string; schemas: string[]; verschluesselt: boolean; mitAenderungsbelegen: boolean; tabellen: number; zeilen: number }
-interface Datei { name: string; groesse: number; geaendert: string; info: Kurz | null; verschluesselt: boolean }
+interface Datei { name: string; groesse: number; geaendert: string; info: Kurz | null; verschluesselt: boolean; format: 'portal' | 'zip' }
 interface Uebersicht {
   datenbank: number; schemas: SchemaInfo[]; pfad: string; dauerhaft: boolean; dateien: Datei[];
   nacht: { name: string; groesse: number; geaendert: string }[];
@@ -50,6 +51,8 @@ export function BackupPage() {
   const [pw2, setPw2] = useState('');
   const [weg, setWeg] = useState<string | null>(null);
   const [rs, setRs] = useState<Datei | null>(null);
+  const [format, setFormat] = useState<'portal' | 'zip'>('portal');
+  const [xml, setXml] = useState<Datei | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const laden = () => api.get<Uebersicht>('/api/backup').then((r) => { setD(r); setAuswahl((a) => a ?? r.schemas.map((s) => s.schema)); }).catch((e) => setError(e.message));
@@ -58,7 +61,7 @@ export function BackupPage() {
   async function erstellen() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ name: string; text: string }>('/api/backup', { schemas: auswahl, mitAenderungsbelegen: audit, notiz, passwort: pw || null });
+      const r = await api.post<{ name: string; text: string }>('/api/backup', { schemas: auswahl, mitAenderungsbelegen: audit, notiz, format, passwort: format === 'zip' ? null : pw || null });
       toast(r.text, 6000);
       setNotiz(''); setPw(''); setPw2('');
       await laden();
@@ -80,7 +83,21 @@ export function BackupPage() {
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); if (input.current) input.current.value = ''; }
   }
 
-  const pwFehler = pw && pw.length < 8 ? 'mindestens 8 Zeichen' : pw && pw !== pw2 ? 'Wiederholung stimmt nicht überein' : null;
+  /** vorhandene Sicherung als ZIP mit XML herunterladen (POST, verschlüsselt mit Passwort) */
+  async function alsXml(f: Datei, passwort: string | null) {
+    const res = await fetch(`/api/backup/datei/${encodeURIComponent(f.name)}/xml`, {
+      method: 'POST', credentials: 'same-origin', body: JSON.stringify({ passwort }),
+      headers: { 'content-type': 'application/json', 'x-portal-request': '1' },
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(JSON.parse(t || '{}').message ?? `Fehler ${res.status}`); }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await res.blob());
+    a.download = f.name.replace(/\.(portal|zip)$/, '.zip');
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  }
+
+  const pwFehler = format === 'portal' && pw && pw.length < 8 ? 'mindestens 8 Zeichen' : pw && pw !== pw2 ? 'Wiederholung stimmt nicht überein' : null;
 
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Erstellt', id: 'erstellt', width: 160, Cell: ({ row }: Cell) => zeit(row.original.info?.erstellt ?? row.original.geaendert) },
@@ -96,12 +113,17 @@ export function BackupPage() {
     { Header: 'Art', id: 'art', width: 150, Cell: ({ row }: Cell) => <ObjectStatus state={row.original.info?.art === 'vor-ruecksicherung' ? 'Information' : 'None'}>{ART[row.original.info?.art ?? ''] ?? 'hochgeladen'}</ObjectStatus> },
     { Header: 'Von', id: 'von', width: 140, Cell: ({ row }: Cell) => row.original.info?.von ?? '–' },
     { Header: 'Größe', accessor: 'groesse', width: 90, hAlign: 'End', Cell: ({ value }: Cell) => mb(value) },
+    { Header: 'Format', id: 'format', width: 90, Cell: ({ row }: Cell) => (row.original.format === 'zip' ? <ObjectStatus state="Information">ZIP/XML</ObjectStatus> : <Text>.portal</Text>) },
     { Header: '', id: 'schutz', width: 50, Cell: ({ row }: Cell) => (row.original.verschluesselt ? <ObjectStatus state="Positive" icon="locked" /> : null) },
     {
-      Header: '', id: 'aktion', width: 230,
+      Header: '', id: 'aktion', width: 270,
       Cell: ({ row }: Cell) => (
         <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
           <Button design="Transparent" icon="download" tooltip="Herunterladen" onClick={() => download(`/api/backup/datei/${encodeURIComponent(row.original.name)}`, row.original.name).catch((e) => setError(e.message))} />
+          {row.original.format === 'portal' && (
+            <Button design="Transparent" icon="document-text" tooltip="Als XML (ZIP) herunterladen"
+                    onClick={() => (row.original.verschluesselt ? setXml(row.original) : alsXml(row.original, null).catch((e) => setError(e.message)))} />
+          )}
           {zurueck && <Button design="Transparent" icon="undo" onClick={() => setRs(row.original)}>Zurücksichern</Button>}
           <Button design="Transparent" icon="delete" tooltip="Löschen" onClick={() => setWeg(row.original.name)} />
         </div>
@@ -112,7 +134,7 @@ export function BackupPage() {
   return (
     <AppPage title="Sicherung" subtitle="Daten und Einstellungen aller Anwendungen sichern und zurücksichern"
              actions={zurueck ? <>
-               <input ref={input} type="file" accept=".portal" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) hochladen(f); }} />
+               <input ref={input} type="file" accept=".portal,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) hochladen(f); }} />
                <Button icon="upload" disabled={busy} onClick={() => input.current?.click()}>Sicherung hochladen</Button>
              </> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
@@ -145,9 +167,22 @@ export function BackupPage() {
           <div className="portal-bk__form">
             <Label showColon>Notiz (optional)</Label>
             <TextArea rows={2} value={notiz} maxlength={300} placeholder="z. B. vor Jahresabschluss 2026" onInput={(e) => setNotiz(e.target.value)} />
+            <Label showColon>Format</Label>
+            <div className="portal-row">
+              <RadioButton name="bk-format" text=".portal (kompakt, optional verschlüsselt)" checked={format === 'portal'} onChange={() => setFormat('portal')} />
+              <RadioButton name="bk-format" text="ZIP mit XML (lesbar, unverschlüsselt)" checked={format === 'zip'} onChange={() => setFormat('zip')} />
+            </div>
+            {format === 'zip' && (
+              <Text className="portal-muted portal-small">
+                Je Tabelle eine XML-Datei (daten/&lt;bereich&gt;/&lt;tabelle&gt;.xml) plus manifest.xml. Die Datei lässt sich mit jedem ZIP-Programm öffnen, prüfen
+                und – mit unveränderten Spalten – bearbeitet wieder hochladen und zurücksichern.
+              </Text>
+            )}
+            {format === 'portal' && <>
             <Label showColon>Passwort (optional, verschlüsselt die Datei)</Label>
             <Input type="Password" value={pw} placeholder="leer = unverschlüsselt" onInput={(e) => setPw(e.target.value)} valueState={pwFehler && pw.length < 8 ? 'Negative' : 'None'} />
             {pw && <Input type="Password" value={pw2} placeholder="Passwort wiederholen" onInput={(e) => setPw2(e.target.value)} valueState={pw !== pw2 ? 'Negative' : 'None'} />}
+            </>}
             {pwFehler && <Text style={{ color: 'var(--sapNegativeTextColor)' }} className="portal-small">Passwort: {pwFehler}</Text>}
             <Text className="portal-muted portal-small">
               Die Sicherung enthält alle Daten der gewählten Bereiche – auch Kennwort-Hashes, Bank- und Personendaten. Verschlüsselte Sicherungen lassen
@@ -184,6 +219,7 @@ export function BackupPage() {
       <ConfirmDialog open={!!weg} danger title="Sicherung löschen" confirmText="Löschen" text={`Sicherung ${weg ?? ''} endgültig löschen?`}
                      onCancel={() => setWeg(null)}
                      onConfirm={async () => { const n = weg!; setWeg(null); try { const r = await api.del<{ text: string }>(`/api/backup/datei/${encodeURIComponent(n)}`); toast(r.text); laden(); } catch (e) { setError((e as Error).message); } }} />
+      {xml && <XmlDialog datei={xml} onClose={() => setXml(null)} laden={alsXml} />}
       {rs && <RuecksicherungDialog datei={rs} onClose={() => setRs(null)} onDone={laden} />}
     </AppPage>
   );
@@ -271,6 +307,31 @@ function RuecksicherungDialog({ datei, onClose, onDone }: { datei: Datei; onClos
             <Input value={best} onInput={(e) => setBest(e.target.value)} placeholder="WIEDERHERSTELLEN" />
           </>
         )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** verschlüsselte Sicherung entschlüsseln und als ZIP mit XML herunterladen */
+function XmlDialog({ datei, onClose, laden }: { datei: Datei; onClose: () => void; laden: (f: Datei, pw: string | null) => Promise<void> }) {
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function los() {
+    setBusy(true); setError(null);
+    try { await laden(datei, pw); onClose(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open headerText={`Als XML (ZIP) – ${datei.name}`} style={{ width: 'min(30rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="download" disabled={!pw || busy} onClick={los}>Herunterladen</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <div className="portal-bk__form">
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+        <Label showColon>Passwort der Sicherung</Label>
+        <Input type="Password" value={pw} onInput={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && los()} />
+        <MessageStrip design="Critical" hideCloseButton>Die ZIP-Datei ist unverschlüsselt und enthält alle Daten der Sicherung im Klartext.</MessageStrip>
       </div>
     </Dialog>
   );

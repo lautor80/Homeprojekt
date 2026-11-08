@@ -68,6 +68,7 @@ Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db`,
 ./restore.sh data/backups/portal_<datum>.dump # Backup zurückspielen (ganze Datenbank, Shell)
 # Im Portal: Administration → Sicherung – Sicherung je Bereich (Basis, TC Oberthal, Euroflex),
 # optional verschlüsselt, Download/Upload, Prüfung und Rücksicherung mit automatischer Sicherheitskopie.
+# Format wahlweise .portal (kompakt, optional verschlüsselt) oder ZIP mit XML-Dateien (lesbar, bearbeitbar, importierbar).
 docker compose exec backup sh /backup.sh now  # Backup sofort
 docker compose logs -f app                    # Log ansehen
 ```

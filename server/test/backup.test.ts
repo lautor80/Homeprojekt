@@ -165,3 +165,73 @@ test('Komplette Rücksicherung inkl. Basis: Einstellungen und Benutzer, Abmeldun
   // neue Datensätze nach der Rücksicherung bekommen freie Nummern (Zähler zurückgesetzt)
   assert.equal((await admin('POST', '/api/admin/roles', { id: 'NACH', name: 'Danach', permissions: [] })).status, 200);
 });
+
+test('XML-Format: Werte mit Steuerzeichen, Tabs, Zeilenumbrüchen, Backslash und NULL bleiben erhalten', async () => {
+  const { tabelleXml, tabelleAusXml, copyText, copyZeilen, zipSchreiben, zipLesen } = await import('../src/backup-xml.js');
+  const werte = [['a\tb', 'Zeile1\nZeile2\r\n', 'C:\\pfad\\n', null, 'Steuer\u0001zeichen', 'Ümlaut & <tag> "x" 🎾', '']];
+  const text = copyText(werte);
+  assert.deepEqual(copyZeilen(text), werte);
+  const spalten = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((name) => ({ name, typ: 'text' }));
+  const xml = tabelleXml('tco.test', spalten, text);
+  assert.match(xml, /b64="1"/);
+  assert.match(xml, /<wert spalte="d" null="1"\/>/);
+  const zurueck = tabelleAusXml(xml, 'test.xml');
+  assert.equal(zurueck.text, text);
+  assert.equal(zurueck.zeilen, 1);
+  const zip = zipSchreiben([{ name: 'ä/x.xml', daten: Buffer.from(xml) }, { name: 'leer.txt', daten: Buffer.alloc(0) }]);
+  const gelesen = zipLesen(zip);
+  assert.equal(gelesen.get('ä/x.xml')!.toString(), xml);
+  assert.equal(gelesen.get('leer.txt')!.length, 0);
+});
+
+test('Sicherung als ZIP mit XML: erstellen, bearbeiten, hochladen, zurücksichern; .portal umwandeln', async () => {
+  const { zipLesen, zipSchreiben } = await import('../src/backup-xml.js');
+  let r = await admin('POST', B, { schemas: ['tco'], format: 'zip', passwort: 'sehr-geheim-123' });
+  assert.equal(r.status, 400, 'ZIP ist nie verschlüsselt');
+  r = await admin('POST', B, { schemas: ['tco'], format: 'zip', notiz: 'als XML' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const name = r.body.name as string;
+  assert.match(name, /\.zip$/);
+  const liste = await admin('GET', B);
+  assert.equal(liste.body.dateien.find((f: any) => f.name === name)?.format, 'zip');
+
+  const roh = (await admin('GET', `${B}/datei/${name}`)).body as Buffer;
+  const dateien = zipLesen(roh);
+  assert.ok(dateien.has('manifest.xml'));
+  assert.ok(dateien.has('LIESMICH.txt'));
+  assert.match(dateien.get('manifest.xml')!.toString(), /<sicherung format="portal-sicherung"[\s\S]*<bereich>tco<\/bereich>/);
+  const mxml = dateien.get('daten/tco/mitglieder.xml')!.toString();
+  assert.match(mxml, /<wert spalte="vorname">Hanna<\/wert>/);
+
+  // unverändert prüfbar
+  r = await admin('POST', `${B}/datei/${name}/pruefen`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.schemas[0].status, 'gleich');
+
+  // bearbeiten (Wert mit Sonderzeichen), in Unterordner neu packen, hochladen, zurücksichern
+  dateien.set('daten/tco/mitglieder.xml', Buffer.from(mxml.replace('>Hanna<', '>Johanna &amp; Co<')));
+  const neu = zipSchreiben([...dateien].map(([n, d]) => ({ name: `export/${n}`, daten: d })));
+  r = await admin('POST', `${B}/hochladen`, neu, { 'content-type': 'application/octet-stream', 'x-dateiname': 'bearbeitet.zip' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.name, 'bearbeitet.zip');
+  r = await admin('POST', `${B}/datei/bearbeitet.zip/ruecksichern`, { schemas: ['tco'], bestaetigung: 'WIEDERHERSTELLEN' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await sql`select vorname from tco.mitglieder where adrnr = '0000000901'`)[0].vorname, 'Johanna & Co');
+
+  // fehlende Tabellendatei wird erkannt
+  const kaputt = new Map(dateien);
+  kaputt.delete('daten/tco/mitglieder.xml');
+  r = await admin('POST', `${B}/hochladen`, zipSchreiben([...kaputt].map(([n, d]) => ({ name: n, daten: d }))), { 'content-type': 'application/octet-stream', 'x-dateiname': 'kaputt.zip' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /fehlt die Tabellendatei/);
+
+  // vorhandene .portal-Sicherungen als XML (ZIP) umwandeln – verschlüsselt nur mit Passwort
+  r = await admin('POST', `${B}/datei/${geheim}/xml`, {});
+  assert.equal(r.status, 400);
+  r = await admin('POST', `${B}/datei/${geheim}/xml`, { passwort: 'sehr-geheim-123' });
+  assert.equal(r.status, 200);
+  assert.ok(zipLesen(r.body as Buffer).has('daten/tco/mitglieder.xml'));
+  r = await admin('POST', `${B}/datei/${datei}/xml`, {});
+  assert.equal(r.status, 200);
+  assert.ok(zipLesen(r.body as Buffer).has('daten/core/settings.xml'));
+});

@@ -7,6 +7,7 @@ import { sql, type Tx } from './db.js';
 import { APP_ROOT } from './config.js';
 import { BusinessError } from './errors.js';
 import { activeModules } from './modules.js';
+import { inhaltZuZip, istZip, zipZuInhalt } from './backup-xml.js';
 
 /**
  * Sicherung und Rücksicherung aller Daten und Einstellungen über alle Anwendungen hinweg.
@@ -15,6 +16,7 @@ import { activeModules } from './modules.js';
  * COPY-Textformat, dazu ein Manifest (Zeitpunkt, Ersteller, Migrationsstand, Tabellen, Zeilen).
  * Datei: „PSIC1“ + Kennbyte (0 = offen, 1 = verschlüsselt) [+ Salz, IV, Tag] + gzip(JSON).
  * Verschlüsselung: AES-256-GCM, Schlüssel per scrypt aus dem Passwort.
+ * Alternativ: ZIP mit XML-Dateien (manifest.xml + je Tabelle eine XML, unverschlüsselt, lesbar/bearbeitbar), siehe backup-xml.ts.
  *
  * Rücksicherung: in EINER Transaktion, wahlweise je Schema. Trigger (Änderungsbelege, Fremdschlüssel-
  * Aktionen) sind dabei aus (session_replication_role = replica); danach werden alle Fremdschlüssel geprüft.
@@ -70,7 +72,9 @@ export async function ordner(): Promise<{ pfad: string; dauerhaft: boolean }> {
 }
 export const ordnerZuruecksetzen = () => { ordnerCache = null; };
 
-const NAME = /^[\w.-]+\.portal$/;
+const NAME = /^[\w.-]+\.(portal|zip)$/;
+export type Dateiformat = 'portal' | 'zip';
+export const formatVon = (name: string): Dateiformat => (name.endsWith('.zip') ? 'zip' : 'portal');
 export function dateipfad(dir: string, name: string) {
   if (!NAME.test(name)) throw new BusinessError('Ungültiger Dateiname.');
   return path.join(dir, name);
@@ -175,6 +179,13 @@ export function verpacken(inhalt: Inhalt, passwort?: string | null): Buffer {
 export const istVerschluesselt = (b: Buffer) => b.subarray(0, 5).equals(MAGIC) && b[5] === 1;
 
 export function entpacken(b: Buffer, passwort?: string | null): Inhalt {
+  if (istZip(b)) {
+    const inhalt = zipZuInhalt(b) as Inhalt;
+    if (inhalt.manifest.format !== FORMAT) throw new BusinessError('Die ZIP-Datei ist keine Portal-Sicherung (manifest.xml: format).');
+    if (inhalt.manifest.version > VERSION) throw new BusinessError('Die Sicherung stammt von einer neueren Portalversion – bitte zuerst das Portal aktualisieren.');
+    if (!['manuell', 'automatisch', 'vor-ruecksicherung'].includes(inhalt.manifest.art)) inhalt.manifest.art = 'manuell';
+    return inhalt;
+  }
   if (b.length < 6 || !b.subarray(0, 5).equals(MAGIC)) throw new BusinessError('Die Datei ist keine Portal-Sicherung.');
   let gz: Buffer;
   if (b[5] === 1) {
@@ -203,18 +214,27 @@ export const kurzinfo = (m: Manifest, verschluesselt: boolean) => ({
   tabellen: m.tabellen.length, zeilen: m.tabellen.reduce((s, t) => s + t.zeilen, 0),
 });
 
-export async function speichern(inhalt: Inhalt, passwort?: string | null): Promise<{ name: string; groesse: number; dauerhaft: boolean }> {
+/** Datei im gewünschten Format erzeugen (ZIP/XML ist nie verschlüsselt) */
+export function datei(inhalt: Inhalt, format: Dateiformat, passwort?: string | null): Buffer {
+  if (format === 'zip') {
+    if (passwort) throw new BusinessError('Das ZIP/XML-Format ist unverschlüsselt – für eine verschlüsselte Sicherung bitte das Format .portal wählen.');
+    return inhaltZuZip(inhalt);
+  }
+  return verpacken(inhalt, passwort);
+}
+
+export async function speichern(inhalt: Inhalt, passwort?: string | null, format: Dateiformat = 'portal'): Promise<{ name: string; groesse: number; dauerhaft: boolean }> {
   const { pfad, dauerhaft } = await ordner();
   const z = new Date(inhalt.manifest.erstellt);
   const p2 = (n: number) => String(n).padStart(2, '0');
   const stempel = `${z.getFullYear()}-${p2(z.getMonth() + 1)}-${p2(z.getDate())}_${p2(z.getHours())}${p2(z.getMinutes())}${p2(z.getSeconds())}`;
   const art = inhalt.manifest.art === 'vor-ruecksicherung' ? '_vor-ruecksicherung' : inhalt.manifest.art === 'automatisch' ? '_automatisch' : '';
-  let name = `portal_${stempel}${art}.portal`;
-  for (let i = 2; await fs.stat(path.join(pfad, name)).then(() => true, () => false); i++) name = `portal_${stempel}${art}_${i}.portal`;
-  const datei = verpacken(inhalt, passwort);
-  await fs.writeFile(path.join(pfad, name), datei, { mode: 0o600 });
+  let name = `portal_${stempel}${art}.${format}`;
+  for (let i = 2; await fs.stat(path.join(pfad, name)).then(() => true, () => false); i++) name = `portal_${stempel}${art}_${i}.${format}`;
+  const b = datei(inhalt, format, passwort);
+  await fs.writeFile(path.join(pfad, name), b, { mode: 0o600 });
   await fs.writeFile(path.join(pfad, `${name}.json`), JSON.stringify(kurzinfo(inhalt.manifest, !!passwort)), { mode: 0o600 });
-  return { name, groesse: datei.length, dauerhaft };
+  return { name, groesse: b.length, dauerhaft };
 }
 
 export async function liste() {
@@ -233,7 +253,7 @@ export async function liste() {
       await fh.close();
       verschluesselt = istVerschluesselt(kopf);
     }
-    out.push({ name, groesse: st.size, geaendert: st.mtime.toISOString(), info, verschluesselt });
+    out.push({ name, groesse: st.size, geaendert: st.mtime.toISOString(), info, verschluesselt, format: formatVon(name) });
   }
   out.sort((a, b) => (b.info?.erstellt ?? b.geaendert).localeCompare(a.info?.erstellt ?? a.geaendert));
   return { pfad, dauerhaft, dateien: out };
