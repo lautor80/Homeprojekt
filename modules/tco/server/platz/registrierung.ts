@@ -363,20 +363,25 @@ async function freierBenutzername(tx: Db, email: string | null | undefined, alia
  * Kennwort = übernommener EP3-Hash (ohne Hash: Zufallskennwort, Änderung beim ersten Anmelden – Kennwort über Benutzerpflege setzen).
  * Zuordnung: Mitglied mit gleicher ZUID (Mitglied → Zusatzdaten), sonst gleiche E-Mail oder gleicher Name, sonst EP3-Kunde selbst.
  */
-export async function ep3BenutzerAnlegen(tx: Db, zuids?: string[]): Promise<{ angelegt: number; mitglieder: number; ohneKennwort: number; uebersprungen: number }> {
+export async function ep3BenutzerAnlegen(tx: Db, zuids?: string[]): Promise<{ angelegt: number; mitglieder: number; ohneKennwort: number; uebersprungen: number; ohneBuchung: number }> {
+  // nur Kunden mit mindestens einer Buchung in den letzten 12 Monaten (Name wie in den EP3-Buchungen); Karteileichen bleiben außen vor
   const kunden = await tx`
-    select distinct on (k.zuid) k.zuid, k.zalias, k.email, k.vorname, k.nachname, k.pw_hash
+    select distinct on (k.zuid) k.zuid, k.zalias, k.email, k.vorname, k.nachname, k.pw_hash,
+           exists (select 1 from tco.bookings b
+                    where b.datum >= current_date - 365 and coalesce(b.status, '') not in ('2', '4')
+                      and upper(trim(b.kunde)) in (upper(trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, ''))), upper(trim(k.zalias)))) as aktiv
       from tco.kunden k
      where coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
        and k.benutzer_id is null
        and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)
        ${zuids ? tx`and k.zuid = any(${zuids})` : tx``}
      order by k.zuid, k.zalias`;
-  const r = { angelegt: 0, mitglieder: 0, ohneKennwort: 0, uebersprungen: 0 };
+  const r = { angelegt: 0, mitglieder: 0, ohneKennwort: 0, uebersprungen: 0, ohneBuchung: kunden.filter((k) => !k.aktiv).length };
   if (!kunden.length) return r;
   await rolleSicherstellen(tx);
   const { randomBytes } = await import('node:crypto');
   for (const k of kunden) {
+    if (!k.aktiv) continue;
     const email = (k.email ?? '').trim().toLowerCase();
     const voll = name(k.vorname, k.nachname).toUpperCase();
     // Mitglied: ZUID, sonst E-Mail, sonst Name – nur wenn es noch keinen Benutzer hat
