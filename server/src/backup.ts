@@ -87,7 +87,7 @@ export function aktiveSchemas(): string[] {
 }
 export const schemaText = (s: string) => SCHEMA_TEXT[s] ?? activeModules().find((m) => m.id === s)?.name ?? s;
 
-async function tabellen(db: typeof sql | Tx, schemas: string[]): Promise<{ name: string; spalten: { name: string; typ: string }[] }[]> {
+async function tabellen(db: Tx, schemas: string[]): Promise<{ name: string; spalten: { name: string; typ: string }[] }[]> {
   const rows = await db`
     select n.nspname || '.' || c.relname as name,
            json_agg(json_build_object('name', a.attname, 'typ', format_type(a.atttypid, a.atttypmod)) order by a.attnum) as spalten
@@ -103,7 +103,7 @@ async function tabellen(db: typeof sql | Tx, schemas: string[]): Promise<{ name:
 /** Übersicht für die Oberfläche: je Schema Tabellen und Zeilen */
 export async function uebersicht() {
   const schemas = aktiveSchemas();
-  const tabs = await tabellen(sql, schemas);
+  const tabs = await tabellen(sql as unknown as Tx, schemas);
   const zaehl = await sql`
     select n.nspname || '.' || c.relname as name, greatest(c.reltuples, 0)::bigint as geschaetzt
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -263,7 +263,7 @@ export async function pruefen(inhalt: Inhalt): Promise<{ manifest: Manifest; sch
   const m = inhalt.manifest;
   const aktiv = aktiveSchemas();
   const aktuell = new Set((await sql`select id from public.schema_migrations`).map((r) => r.id as string));
-  const jetzt = await tabellen(sql, aktiv);
+  const jetzt = await tabellen(sql as unknown as Tx, aktiv);
   const out: SchemaPruefung[] = [];
   for (const s of m.schemas) {
     const tabs = m.tabellen.filter((t) => t.name.startsWith(`${s}.`));
