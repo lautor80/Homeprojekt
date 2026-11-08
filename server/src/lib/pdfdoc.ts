@@ -45,14 +45,19 @@ export class Pdf {
 
   constructor(info: PdfOptions = {}) {
     this.pdfa = !!info.pdfa;
+    // nur gesetzte Metadaten übergeben (undefined würde als Text „undefined“ ins PDF geschrieben)
+    const meta: Record<string, string> = { Creator: info.creator ?? 'Portalbasis' };
+    if (info.title) meta.Title = info.title;
+    if (info.author) meta.Author = info.author;
+    if (info.subject) meta.Subject = info.subject;
     this.doc = new PDFDocument({
       size: 'A4',
       margin: 0,
       autoFirstPage: false,
       bufferPages: true,
-      lang: info.lang ?? 'de-DE',
+      ...(info.lang ? { lang: info.lang } : {}),
       ...(info.pdfa ? { subset: 'PDF/A-3b', pdfVersion: '1.7' } : {}),
-      info: { Title: info.title, Author: info.author, Subject: info.subject, Creator: info.creator ?? 'Portalbasis' },
+      info: meta,
     } as ConstructorParameters<typeof PDFDocument>[0]);
     if (info.pdfa) {
       this.doc.registerFont('Sans', info.pdfa.regular);
