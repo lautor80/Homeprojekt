@@ -160,7 +160,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         <Button icon="add" design="Emphasized" onClick={() => setForm({ ...NEU, sort: (plaetze?.length ?? 0) + 1 })}>Platz anlegen</Button>
       </Toolbar>
       <AnalyticalTable columns={columns} data={plaetze ?? []} loading={!plaetze} visibleRows={Math.max(plaetze?.length ?? 0, 3)}
-                       selectionMode="MultiSelect" selectionBehavior="RowSelector"
+                       selectionMode="Multiple" selectionBehavior="RowSelector"
                        reactTableOptions={{ getRowId: (r: Platz) => String(r.id), autoResetSelectedRows: false }}
                        onRowSelect={(e) => setAuswahl(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number))}
                        noDataText="Noch keine Plätze – z. B. „Halle“ (Hallenpreise) und „Platz 1“ … (kostenfrei) anlegen"
@@ -193,7 +193,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
                                <Button design="Emphasized" disabled={busy || !massen.geaendert.length}
                                        onClick={() => aktion(() => api.put(`${PA}/plaetze-massen`, {
                                          ids: auswahl,
-                                         felder: Object.fromEntries(massen.geaendert.map((k) => [k, massen.werte[k as keyof typeof massen.werte]])),
+                                         felder: Object.fromEntries(massen.geaendert.map((k) => [k, (massen.werte as Record<string, unknown>)[k]])),
                                        }), async () => { setMassen(null); await laden(); })}>
                                  Auf {auswahl.length} Platz/Plätze anwenden
                                </Button>
@@ -204,9 +204,10 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
             {' '}{plaetze?.filter((p) => auswahl.includes(p.id)).map((p) => p.name).join(', ')} übernommen. Bezeichnung, weitere Bezeichnungen und Reihenfolge bleiben je Platz erhalten.
           </MessageStrip>
           <PlatzFormular massen f={massen.werte} setF={(x) => {
-            const werte = { ...massen.werte, ...x };
-            const geaendert = (Object.keys(werte) as (keyof typeof werte)[])
-              .filter((k) => MASSEN_FELDER.includes(k as string) && JSON.stringify(werte[k]) !== JSON.stringify(massen.basis[k])) as string[];
+            const werte = { ...massen.werte, ...x } as Omit<Platz, 'id'>;
+            const basis = massen.basis as Record<string, unknown>;
+            const neu = werte as Record<string, unknown>;
+            const geaendert = MASSEN_FELDER.filter((k) => JSON.stringify(neu[k]) !== JSON.stringify(basis[k]));
             setMassen({ ...massen, werte, geaendert });
           }} />
         </Dialog>,
