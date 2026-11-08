@@ -576,7 +576,8 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
 
   // Anmeldung auch für Erika mit E-Mail und EP3-Kennwort
   assert.equal((await client()('POST', '/api/auth/login', { username: 'erika@example.org', password: 'erika-pw-1' })).status, 200);
-  assert.equal((await client()('POST', '/api/auth/login', { username: 'erika', password: 'erika-pw-1' })).status, 200, 'Anmeldung per E-Mail-Adresse aus dem Benutzerstamm');
+  // Anmeldung per E-Mail-Adresse auch für Benutzer mit anderem Anmeldenamen (Carla aus der Registrierung)
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'carla@example.org', password: 'ganz-geheim-123' })).status, 200);
 
   // Kunde ohne Kennwort und ohne E-Mail: Alias als Anmeldename, Kennwort muss gesetzt werden
   await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname) values ('80', 'fritz.f', 'enabled', 'Fritz', 'Fremd')`;
