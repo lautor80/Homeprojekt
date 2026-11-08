@@ -128,6 +128,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   let geaendert = 0;
   let abgerechnet = 0;
   let geerbt = 0;
+  let repariert = 0;
   const h = heute();
   for (const b of liste) {
     const desc = `${dat(b.datum)} von ${zeit(b.time_start)} bis ${zeit(b.time_ende)} Uhr`;
@@ -146,8 +147,13 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
       abgerechnet++;
       continue;
     }
+    // Reparatur: offene Termine einer bereits abgerechneten Abo-Serie, die ein früherer Import angelegt hat
+    // (z. B. Serie in EP3 auf einen anderen Wochentag verschoben – gleiche BID, neue Daten), erben die Kennzeichnung
+    const erbeAlt = b.status === '3' && !aboEinzel.has(b.bid) ? abgerechnetJeBid.get(b.bid) ?? '' : '';
+    if (erbeAlt) repariert++;
     await tx`update tco.bookings set time_start = ${b.time_start}, time_ende = ${b.time_ende}, kunde = ${b.kunde}, status = ${b.status},
                     description = ${desc}, preis = ${b.preis}, geaendert = ${h}, text = ${b.text}, platz = coalesce(${b.platz}, platz)
+                    ${erbeAlt ? tx`, assigned = ${erbeAlt}` : tx``}
               where bid = ${b.bid} and datum = ${b.datum}`;
     geaendert++;
   }
@@ -161,6 +167,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   let text = `Buchungen: ${liste.length} gelesen, ${neu} neu, ${geaendert} aktualisiert, ${abgerechnet} bereits abgerechnet`;
   if (entfallen) text += `, ${entfallen} entfallen`;
   if (geerbt) text += ` (${geerbt} neue Termine bereits abgerechneter Abos automatisch mitgesperrt)`;
+  if (repariert) text += ` (${repariert} offene Termine bereits abgerechneter Abos nachträglich gesperrt)`;
   return { typ: 'BUCHUNGEN', ok: true, text };
 }
 
