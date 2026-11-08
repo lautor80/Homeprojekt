@@ -270,7 +270,7 @@ export async function verzehrbuch(db: Db, f: Filter) {
        ${f.suche ? db`and (p.text ilike ${`%${f.suche}%`} or m.nachname ilike ${`%${f.suche}%`} or m.vorname ilike ${`%${f.suche}%`} or b.gast_name ilike ${`%${f.suche}%`} or b.gast_gruppe ilike ${`%${f.suche}%`})` : db``}
      order by p.datum desc, p.zeit desc, p.id desc`;
   return rows.map((r) => ({
-    ...r, id: Number(r.id), anzahl: Number(r.anzahl), preis: Number(r.preis), betrag: Number(r.betrag),
+    ...(r as unknown as Record<string, unknown>), id: Number(r.id), anzahl: Number(r.anzahl), preis: Number(r.preis), betrag: Number(r.betrag),
     status: r.storniert_am ? 'STORNIERT' : !r.rgnr || r.beleg_status === 'OFFEN' ? 'OFFEN' : r.beleg_status === 'BEZAHLT' ? 'BEZAHLT' : 'ABGERECHNET',
     gast: !r.adrnr && r.beleg_art === 'GAST',
   }));
@@ -300,7 +300,9 @@ export async function kennzahlen(db: Db, von: string, bis: string) {
   };
 }
 
-export async function belegeLesen(db: Db, f: { von?: string; bis?: string; art?: 'GAST' | 'SAMMEL'; status?: string; monat?: string }) {
+export type BelegZeile = Beleg & { person: string | null; mitglied_email: string; posten: number };
+
+export async function belegeLesen(db: Db, f: { von?: string; bis?: string; art?: 'GAST' | 'SAMMEL'; status?: string; monat?: string }): Promise<BelegZeile[]> {
   const rows = await db`
     select b.rgnr, b.art, b.adrnr, b.gast_name, b.gast_gruppe, b.email, b.mobil, to_char(b.datum, 'YYYY-MM-DD') as datum, b.monat, b.status,
            b.betrag::float8 as betrag, b.zahlart, to_char(b.faellig, 'YYYY-MM-DD') as faellig, to_char(b.bezahlt_am, 'YYYY-MM-DD') as bezahlt_am, b.doc_id,
@@ -313,7 +315,7 @@ export async function belegeLesen(db: Db, f: { von?: string; bis?: string; art?:
        ${f.von ? db`and b.datum >= ${f.von}` : db``} ${f.bis ? db`and b.datum <= ${f.bis}` : db``}
        ${f.art ? db`and b.art = ${f.art}` : db``} ${f.status ? db`and b.status = ${f.status}` : db``} ${f.monat ? db`and b.monat = ${f.monat}` : db``}
      order by b.datum desc, b.rgnr desc`;
-  return rows.map((r) => ({ ...r, betrag: Number(r.betrag) }));
+  return rows.map((r) => ({ ...(r as unknown as BelegZeile), betrag: Number(r.betrag) }));
 }
 
 // ---------------------------------------------------------------- Monatsabschluss
