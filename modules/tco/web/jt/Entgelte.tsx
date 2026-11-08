@@ -10,6 +10,7 @@ import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { TCO, dat, eur } from '../util';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 const J = `${TCO}/jt`;
 
@@ -129,10 +130,9 @@ export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onCha
       {edit && (
         <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.5rem', margin: '0.25rem 0 0.75rem' }}>
           <Label>Neues Entgelt für</Label>
-          <ComboBox value={d?.trainer.find((t) => t.adrnr === neu.adrnr)?.name ?? ''} style={{ width: '16rem' }} placeholder="Trainer wählen"
-                    onSelectionChange={(e) => setNeu({ ...neu, adrnr: (e.detail.item as HTMLElement | null)?.dataset.k ?? '' })}>
-            {(d?.trainer ?? []).map((t) => <ComboBoxItem key={t.adrnr} data-k={t.adrnr} text={t.name} />)}
-          </ComboBox>
+          <AuswahlBox wert={neu.adrnr} style={{ width: '16rem' }} placeholder="Trainer wählen"
+                      eintraege={(d?.trainer ?? []).map((t) => ({ key: t.adrnr, text: t.name, zusatz: t.adrnr }))}
+                      onWaehle={(k) => setNeu({ ...neu, adrnr: k ?? '' })} />
           <Label>gültig ab</Label>
           <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={neu.ab} style={{ width: '9.5rem' }} onChange={(e) => setNeu({ ...neu, ab: e.detail.value })} />
           <Input value={neu.betrag} placeholder="€/Std." style={{ width: '6rem', textAlign: 'end' }} onInput={(e) => setNeu({ ...neu, betrag: e.target.value })} />
@@ -155,10 +155,9 @@ export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onCha
         <Title level="H5">Trainer ({d?.trainer.length ?? 0})</Title>
         <ToolbarSpacer />
         {edit && <>
-          <ComboBox value={d?.mitglieder.find((x) => x.adrnr === neuTrainer)?.name ?? ''} placeholder="Mitglied suchen" style={{ width: '16rem' }}
-                    onSelectionChange={(e) => setNeuTrainer((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-            {(d?.mitglieder ?? []).filter((x) => !x.trainer).map((x) => <ComboBoxItem key={x.adrnr} data-k={x.adrnr} text={x.name} />)}
-          </ComboBox>
+          <AuswahlBox wert={neuTrainer} placeholder="Mitglied suchen" style={{ width: '16rem' }}
+                      eintraege={(d?.mitglieder ?? []).filter((x) => !x.trainer).map((x) => ({ key: x.adrnr, text: x.name, zusatz: x.adrnr }))}
+                      onWaehle={(k) => setNeuTrainer(k ?? '')} />
           <Button icon="add-employee" disabled={!neuTrainer} onClick={() => aktion(async () => {
             const r = await api.put<{ text: string }>(`${J}/trainer`, { adrnr: neuTrainer, aktiv: true });
             setNeuTrainer('');

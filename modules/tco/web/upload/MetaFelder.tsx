@@ -65,7 +65,7 @@ export function MetaFelder({ stamm, v, onChange, pflichtDoktyp = false, kompakt 
     <>
       {feld('Dokumenttyp', auswahl('doktyp', stamm.dokumenttypen, pflichtDoktyp ? '– bitte wählen –' : '– keine Angabe –'), pflichtDoktyp)}
       {feld('Korrespondent', (
-        <ComboBox style={{ width: '100%' }} value={korrName} placeholder="wählen oder neuen Namen eingeben" showClearIcon
+        <ComboBox style={{ width: '100%' }} value={korrName} placeholder="wählen oder neuen Namen eingeben" showClearIcon noTypeahead
                   valueState={neuKorr ? 'Information' : 'None'}
                   valueStateMessage={<span>„{v.korrespondentNeu.trim()}“ wird beim Ablegen in Paperless neu angelegt.</span>}
                   onInput={(e) => {

@@ -6,6 +6,7 @@ import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { LAENDER } from './laender';
 import { T, type Adresse, type AdrDD } from './util';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 const leer: Adresse = {
   kundenname: '', kundenname2: null, anrede: null, name: null, vorname: null, strasse: null, hausnummer: null, land: 'DE',
@@ -86,9 +87,7 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
             Auswählbar sind nur die Kontakte dieses Auftrags. Änderungen gelten für alle Aufträge, denen der Kontakt zugeordnet ist.
           </MessageStrip>
           <FieldBox label="Kontakt">
-            <ComboBox value={auswahl.find((a) => a.key === nr)?.text ?? ''} onSelectionChange={(e) => setNr((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-              {auswahl.map((a) => <ComboBoxItem key={a.key} data-k={a.key} text={a.text} additionalText={a.zusatz} />)}
-            </ComboBox>
+            <AuswahlBox wert={nr} leerErlaubt={false} eintraege={auswahl.map((a) => ({ key: a.key, text: a.text, zusatz: a.zusatz }))} onWaehle={(k) => setNr(k ?? '')} />
           </FieldBox>
         </>
       )}
@@ -99,9 +98,7 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
         <TextField label="Straße" value={k.strasse} onChange={set('strasse')} />
         <TextField label="Hausnummer" value={k.hausnummer} onChange={set('hausnummer')} />
         <FieldBox label="Land">
-          <ComboBox value={LAENDER.find(([c]) => c === (k.land ?? ''))?.[1] ?? (k.land ?? '')} onSelectionChange={(e) => set('land')((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-            {LAENDER.map(([c, n]) => <ComboBoxItem key={c} data-k={c} text={n} additionalText={c} />)}
-          </ComboBox>
+          <AuswahlBox wert={k.land ?? ''} eintraege={LAENDER.map(([c, n]) => ({ key: c, text: n, zusatz: c }))} onWaehle={(x) => set('land')(x ?? '')} />
         </FieldBox>
         <TextField label="PLZ" value={k.plz} onChange={set('plz')} />
         <TextField label="Ort" value={k.ort} onChange={set('ort')} />

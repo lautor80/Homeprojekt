@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
 import { dat } from '../util';
 import { DASH, type Detail } from './typen';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 interface Props {
   kpiKey: string;
@@ -93,10 +94,8 @@ export function DetailDialog({ kpiKey, jahr, edit, onClose }: Props) {
                       ))}
                       {bsw && (
                         <td>
-                          <ComboBox value={d.stufen?.find((s) => s.key === sel[k])?.text ?? ''} placeholder="Beitragsstufe wählen" style={{ width: '100%' }} disabled={!edit}
-                                    onSelectionChange={(e) => setSel({ ...sel, [k]: (e.detail.item as HTMLElement | null)?.dataset.k ?? '' })}>
-                            {(d.stufen ?? []).map((s) => <ComboBoxItem key={s.key} data-k={s.key} text={s.text} />)}
-                          </ComboBox>
+                          <AuswahlBox wert={sel[k]} placeholder="Beitragsstufe wählen" style={{ width: '100%' }} disabled={!edit}
+                                      eintraege={(d.stufen ?? []).map((s) => ({ key: s.key, text: s.text }))} onWaehle={(x) => setSel({ ...sel, [k]: x ?? '' })} />
                         </td>
                       )}
                     </tr>

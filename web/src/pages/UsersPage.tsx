@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
+  AnalyticalTable, Bar, Button, CheckBox, Dialog, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
   SegmentedButton, SegmentedButtonItem, Switch, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
@@ -13,6 +13,7 @@ import { useCan, useSession } from '../session';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
 import { InitialeZuordnung, ZuordnungFelder } from './BenutzerZuordnung';
+import { AuswahlBox } from '../components/AuswahlBox';
 
 interface User {
   id: string;
@@ -326,11 +327,10 @@ function EinzelAnlage({ onClose, onDone }: { onClose: () => void; onDone: () => 
         ) : (
           <>
             <Label showColon>Mitglied oder EP3-Kunde (ohne Benutzer)</Label>
-            <ComboBox style={{ width: '100%' }} placeholder="Name, E-Mail oder Mitgliedsnummer" filter="None"
-                      onInput={(e) => { setSuche(e.target.value); setWahl(null); }}
-                      onSelectionChange={(e) => { const k = (e.detail.item as HTMLElement | null)?.dataset.k; setWahl(liste.find((x) => `${x.art}:${x.schluessel}` === k) ?? null); }}>
-              {liste.map((k) => <ComboBoxItem key={`${k.art}:${k.schluessel}`} data-k={`${k.art}:${k.schluessel}`} text={k.name} additionalText={k.info} />)}
-            </ComboBox>
+            <AuswahlBox style={{ width: '100%' }} placeholder="Name, E-Mail oder Mitgliedsnummer" filter="None" wert={wahl ? `${wahl.art}:${wahl.schluessel}` : ''}
+                        eintraege={liste.map((k) => ({ key: `${k.art}:${k.schluessel}`, text: k.name, zusatz: k.info }))}
+                        onSuche={(t) => { setSuche(t); setWahl(null); }}
+                        onWaehle={(k) => setWahl(liste.find((x) => `${x.art}:${x.schluessel}` === k) ?? null)} />
             {wahl && (
               <MessageStrip design="Information" hideCloseButton>
                 {wahl.art === 'MITGLIED'

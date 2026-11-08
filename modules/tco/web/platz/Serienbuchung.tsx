@@ -11,6 +11,7 @@ import { toast } from '@core/toast';
 import { TCO, dat, eur } from '../util';
 import { hhmm, min, tagPlus } from './PlatzBuchen';
 import './platz.css';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 /**
  * Serienbuchung (Hallenwart): mehrere Plätze über mehrere Stunden, einmalig oder wiederholt
@@ -102,9 +103,9 @@ export function Serienbuchung() {
           </FieldBox>
           {fuer === 'MITGLIED'
             ? <FieldBox label="Mitglied" required>
-                <ComboBox value={kunde ?? ''} placeholder="Mitglied suchen" onSelectionChange={(e) => setAdrnr((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-                  {(stamm?.mitglieder ?? []).map((m) => <ComboBoxItem key={m.adrnr} data-k={m.adrnr} text={m.name} />)}
-                </ComboBox>
+                <AuswahlBox wert={adrnr} placeholder="Mitglied suchen"
+                            eintraege={(stamm?.mitglieder ?? []).map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.adrnr }))}
+                            onWaehle={(k) => setAdrnr(k ?? '')} />
               </FieldBox>
             : <FieldBox label="Bezeichnung" required>
                 <Input value={intern} maxlength={60} placeholder="z. B. Medenspiel Herren 40, Jugendtraining" onInput={(e) => setIntern(e.target.value)} />

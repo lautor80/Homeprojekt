@@ -8,6 +8,7 @@ import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Ce
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { TCO } from '../util';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 /**
  * Zugänge zur Platzbuchung (Platzverwaltung):
@@ -142,10 +143,8 @@ function FreigabeDialog({ r, onClose, onDone, aktion }: { r: Registrierung; onCl
         <Label showColon>Für wen bucht dieser Benutzer?</Label>
         <RadioButton name="zu" text="Mitglied des Vereins" checked={art === 'MITGLIED'} onChange={() => setArt('MITGLIED')} />
         {art === 'MITGLIED' && (
-          <ComboBox value={mitglieder.find((m) => m.adrnr === adrnr)?.name ?? ''} placeholder="Mitglied suchen" style={{ width: '100%' }}
-                    onSelectionChange={(e) => setAdrnr((e.detail.item as HTMLElement | null)?.dataset.k ?? '')}>
-            {mitglieder.map((m) => <ComboBoxItem key={m.adrnr} data-k={m.adrnr} text={m.name} additionalText={m.adrnr} />)}
-          </ComboBox>
+          <AuswahlBox wert={adrnr} placeholder="Mitglied suchen" style={{ width: '100%' }}
+                      eintraege={mitglieder.map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.adrnr }))} onWaehle={(k) => setAdrnr(k ?? '')} />
         )}
         <RadioButton name="zu" text="Bestehender EP3-Kunde (bisherige Hallenbuchungen gehören dazu)" checked={art === 'EP3'} onChange={() => setArt('EP3')} />
         {art === 'EP3' && (

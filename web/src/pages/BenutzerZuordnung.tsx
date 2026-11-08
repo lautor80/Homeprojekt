@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
+  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { toast } from '../toast';
+import { AuswahlBox } from '../components/AuswahlBox';
 
 /**
  * Zuordnung Benutzer ↔ Mitglied / EP3-Kunde (Fachmodul TC Oberthal) für die Benutzerpflege:
@@ -47,11 +48,10 @@ export function ZuordnungFelder({ benutzerId, darf, onGeaendert }: { benutzerId:
         <Label showColon>Mitglied</Label>
         <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
           {darf ? (
-            <ComboBox style={{ flex: 1 }} value={z.mitglied ? `${z.mitglied.name} (${z.mitglied.adrnr})` : ''} placeholder="Mitglied suchen (Name, E-Mail, Nummer)" filter="None"
-                      onInput={(e) => setSuche(e.target.value)}
-                      onSelectionChange={(e) => { const k = (e.detail.item as HTMLElement | null)?.dataset.k; if (k && k !== z.mitglied?.adrnr) setzen({ adrnr: k }); }}>
-              {t.mitglieder.map((m) => <ComboBoxItem key={m.adrnr} data-k={m.adrnr} text={`${m.name} (${m.adrnr})`} additionalText={m.benutzer ? `Benutzer ${m.benutzer}` : m.email ?? ''} />)}
-            </ComboBox>
+            <AuswahlBox style={{ flex: 1 }} wert={z.mitglied?.adrnr ?? ''} placeholder="Mitglied suchen (Name, E-Mail, Nummer)" filter="None" leerErlaubt={false}
+                        eintraege={[...(z.mitglied && !t.mitglieder.some((m) => m.adrnr === z.mitglied!.adrnr) ? [{ key: z.mitglied.adrnr, text: `${z.mitglied.name} (${z.mitglied.adrnr})` }] : []),
+                          ...t.mitglieder.map((m) => ({ key: m.adrnr, text: `${m.name} (${m.adrnr})`, zusatz: m.benutzer ? `Benutzer ${m.benutzer}` : m.email ?? '' }))]}
+                        onSuche={setSuche} onWaehle={(k) => { if (k && k !== z.mitglied?.adrnr) setzen({ adrnr: k }); }} />
           ) : <Text>{z.mitglied ? `${z.mitglied.name} (${z.mitglied.adrnr})` : '–'}</Text>}
           {z.mitglied?.austritt && <ObjectStatus state="Critical">Austritt {z.mitglied.austritt.split('-').reverse().join('.')}</ObjectStatus>}
           {darf && z.mitglied && <Button design="Transparent" icon="decline" tooltip="Zuordnung entfernen" onClick={() => setzen({ adrnr: null })} />}
@@ -59,12 +59,10 @@ export function ZuordnungFelder({ benutzerId, darf, onGeaendert }: { benutzerId:
         <Label showColon>EP3-Kunde</Label>
         <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
           {darf ? (
-            <ComboBox style={{ flex: 1 }} value={z.ep3 ? `${z.ep3.name} – ${z.ep3.alias} (${z.ep3.zuid})` : ''} placeholder="EP3-Kunde suchen (Name, E-Mail, Alias)" filter="None"
-                      onInput={(e) => setSuche(e.target.value)}
-                      onSelectionChange={(e) => { const k = (e.detail.item as HTMLElement | null)?.dataset.k; if (k && k !== z.ep3?.zuid) setzen({ zuid: k }); }}>
-              {t.kunden.map((k) => <ComboBoxItem key={k.zuid} data-k={k.zuid} text={`${k.name || k.zalias} – ${k.zalias} (${k.zuid})`}
-                                                 additionalText={k.benutzer ? `Benutzer ${k.benutzer}` : k.mitglied ? `Mitglied ${k.mitglied}` : k.email ?? ''} />)}
-            </ComboBox>
+            <AuswahlBox style={{ flex: 1 }} wert={z.ep3?.zuid ?? ''} placeholder="EP3-Kunde suchen (Name, E-Mail, Alias)" filter="None" leerErlaubt={false}
+                        eintraege={[...(z.ep3 && !t.kunden.some((k) => k.zuid === z.ep3!.zuid) ? [{ key: z.ep3.zuid, text: `${z.ep3.name} – ${z.ep3.alias} (${z.ep3.zuid})` }] : []),
+                          ...t.kunden.map((k) => ({ key: k.zuid, text: `${k.name || k.zalias} – ${k.zalias} (${k.zuid})`, zusatz: k.benutzer ? `Benutzer ${k.benutzer}` : k.mitglied ? `Mitglied ${k.mitglied}` : k.email ?? '' }))]}
+                        onSuche={setSuche} onWaehle={(k) => { if (k && k !== z.ep3?.zuid) setzen({ zuid: k }); }} />
           ) : <Text>{z.ep3 ? `${z.ep3.name} – ${z.ep3.alias}` : '–'}</Text>}
           {darf && z.ep3 && <Button design="Transparent" icon="decline" tooltip="Zuordnung entfernen" onClick={() => setzen({ zuid: null })} />}
         </div>

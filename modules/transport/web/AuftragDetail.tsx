@@ -13,6 +13,7 @@ import { DocsDialog, type Doc } from './dialogs';
 import { AuftragDokumente } from './AuftragDokumente';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Stop, type Traeger, type Werte } from './util';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
 function F({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
@@ -185,12 +186,9 @@ export function AuftragDetail() {
     return adrDD.find((d) => d.key === String(n))?.text ?? adr[f]?.kundenname ?? `Kontakt ${n}`;
   };
   const adrCombo = (f: 'kunde' | 'unternehmer' | 'rechnungsempfaenger') => (
-    <ComboBox key={`${f}-${a[f] ?? ''}-${adrDD.length}`} style={full} value={adrName(f)} placeholder="Name oder Ort eingeben" readonly={!mayEdit}
-              showClearIcon
-              onSelectionChange={(e) => waehleAdresse(f, (e.detail.item as HTMLElement | null)?.dataset.k)}
-              onChange={(e) => { if (!e.target.value) waehleAdresse(f, undefined); }}>
-      {adrDD.map((d) => <ComboBoxItem key={d.key} data-k={d.key} text={d.text} additionalText={d.zusatz} />)}
-    </ComboBox>
+    <AuswahlBox style={full} wert={a[f] ? String(a[f]) : ''} placeholder="Name oder Ort eingeben" readonly={!mayEdit}
+                eintraege={adrDD.length ? adrDD.map((d) => ({ key: d.key, text: d.text, zusatz: d.zusatz })) : a[f] ? [{ key: String(a[f]), text: adrName(f) }] : []}
+                onWaehle={(k) => waehleAdresse(f, k ?? undefined)} />
   );
 
   const beteiligter = (titelB: string, f: 'kunde' | 'unternehmer' | 'rechnungsempfaenger', mitTel = true) => {

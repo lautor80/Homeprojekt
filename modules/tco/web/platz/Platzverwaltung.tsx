@@ -19,6 +19,7 @@ import { Kalender, hhmm, min, tagPlus, tagText, type Belegt, type TagPlatz } fro
 import { Zugaenge } from './Zugaenge';
 import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 
 /**
  * Platzverwaltung: Plätze (Freiplätze/Halle) mit Gültigkeit, Öffnungszeiten, Zeitraster, Buchungsdauern,
@@ -453,13 +454,9 @@ function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
       Header: 'Mitglied (bucht in „Platz buchen“ als …)', id: 'mitglied', minWidth: 300,
       Cell: ({ row }: Cell) => (
         <div className="portal-row" style={{ flexWrap: 'nowrap', width: '100%' }}>
-          <ComboBox value={row.original.mitglied ?? ''} placeholder="Mitglied suchen" style={{ width: '16rem' }}
-                    onSelectionChange={(e) => {
-                      const adrnr = (e.detail.item as HTMLElement | null)?.dataset.k;
-                      if (adrnr && adrnr !== row.original.adrnr) aktion(() => api.put(`${PA}/benutzer`, { benutzer_id: row.original.id, adrnr }), laden);
-                    }}>
-            {(d?.mitglieder ?? []).map((m) => <ComboBoxItem key={m.adrnr} data-k={m.adrnr} text={m.name} />)}
-          </ComboBox>
+          <AuswahlBox wert={row.original.adrnr} placeholder="Mitglied suchen" style={{ width: '16rem' }} leerErlaubt={false}
+                      eintraege={(d?.mitglieder ?? []).map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.adrnr }))}
+                      onWaehle={(adrnr) => { if (adrnr && adrnr !== row.original.adrnr) aktion(() => api.put(`${PA}/benutzer`, { benutzer_id: row.original.id, adrnr }), laden); }} />
           {row.original.adrnr && <Button design="Transparent" icon="decline" tooltip="Zuordnung entfernen"
                                          onClick={() => aktion(() => api.put(`${PA}/benutzer`, { benutzer_id: row.original.id, adrnr: null }), laden)} />}
         </div>
