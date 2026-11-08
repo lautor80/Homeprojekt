@@ -15,6 +15,8 @@ import {
   BelegeDialog, GegenkontoDialog, KontoBox, NotizenDialog, StornoDialog, ZahlungenDialog, ZuordnenDialog, useWarnungen,
 } from './FiDialoge';
 import { BankimportDialog } from './FiBankimport';
+import { AblageFlaeche, useAblageZiel } from '@core/ablage';
+import { fiBelegZiel } from './ablage';
 import { F, ZEITRAEUME, betragFarbe, zeitraum, type FiInit, type Liste, type Zeile } from './typen';
 
 /** Filter bleiben beim Seitenwechsel erhalten; Start: aktueller Monat, Konto 1200 */
@@ -88,6 +90,11 @@ export function FiBelege() {
     }
   }
 
+  // Ablage (Drag & Drop, Strg+V): geöffnete Buchung bzw. offener Beleg für den Bankimport
+  useAblageZiel(!buchen || !init?.paperless ? null
+    : belege ? fiBelegZiel([belege], `Buchung ${belege}`, () => neuLaden())
+    : fiBelegZiel([], 'FI-Beleg (offen, für den Bankimport)'));
+
   /** Zuordnen markiert alle Zeilen mit gleicher ext. Belegnummer am selben Tag (Sammelbeleg), sonst die interne Nummer */
   const ziele = (z: Zeile) => [...new Set(zeilen.filter((x) => x.internenr && (z.belnr ? x.belnr === z.belnr && x.datum === z.datum && x.konto === z.konto : x.internenr === z.internenr)).map((x) => x.internenr!))];
 
@@ -144,12 +151,16 @@ export function FiBelege() {
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
         if (z.sammel) return <Label>{z.sammel} Buchungen</Label>;
-        return (
+        const inhalt = (
           <FlexBox style={{ gap: '0.25rem' }}>
             <Button design={z.anhaenge ? 'Positive' : 'Negative'} icon="attachment" onClick={() => setBelege(z.internenr)}>{z.anhaenge}</Button>
-            {buchen && <Button design="Transparent" icon="add-document" onClick={() => setZuordnen(ziele(z))} />}
+            {buchen && <Button design="Transparent" icon="add-document" tooltip="Beleg zuordnen – oder Datei hierher ziehen" onClick={() => setZuordnen(ziele(z))} />}
           </FlexBox>
         );
+        // Datei direkt auf die Belegspalte ziehen → ablegen und dieser Buchung (bzw. dem Sammelbeleg) zuordnen
+        return buchen && z.internenr && init?.paperless
+          ? <AblageFlaeche ziel={fiBelegZiel(ziele(z), `Buchung ${z.internenr}`, () => neuLaden())}>{inhalt}</AblageFlaeche>
+          : inhalt;
       },
     },
     {
@@ -198,7 +209,7 @@ export function FiBelege() {
         );
       },
     },
-  ].map((c) => (c.id === 'datum' || c.Aggregated ? c : { ...c, Aggregated: () => null })) as AnalyticalTableColumnDefinition[], [salden, liste, buchen, storno, geladen]); // eslint-disable-line react-hooks/exhaustive-deps
+  ].map((c) => (c.id === 'datum' || c.Aggregated ? c : { ...c, Aggregated: () => null })) as AnalyticalTableColumnDefinition[], [salden, liste, buchen, storno, geladen, init?.paperless]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const header = (
     <FlexBox direction="Column" style={{ gap: '0.5rem' }}>
@@ -264,6 +275,12 @@ export function FiBelege() {
         </SegmentedButton>
       </FlexBox>
 
+      {buchen && init?.paperless && (
+        <Label wrappingType="Normal" style={{ display: 'block', marginBottom: '0.25rem' }}>
+          Belege ablegen: Datei auf die Spalte „Belege“ einer Buchung ziehen – oder Belege öffnen und Screenshot mit Strg+V einfügen.
+          Ohne Buchung (Strg+V auf dieser Seite, Ablagefeld links) entsteht ein offener Beleg, den der Bankimport vorschlägt.
+        </Label>
+      )}
       <AnalyticalTable
         key={`${geladen?.von}|${geladen?.bis}|${geladen?.konto}|${tab}|${tage.length}`}
         columns={columns}

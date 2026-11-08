@@ -194,3 +194,15 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   assert.ok(hist.some((d: { tableName: string }) => d.tableName === 'transport.traeger'));
   assert.ok(hist.some((d: { action: string }) => d.action === 'SAMMELRECHNUNG'));
 });
+
+test('Dokumente zum Auftrag: ohne Paperless Hinweis statt Fehler beim Lesen', async () => {
+  let r = await call('GET', `${T}/auftraege/2025_0041/dokumente`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.paperless, false);
+  assert.deepEqual(r.body.dokumente, []);
+  r = await call('POST', `${T}/auftraege/2025_0041/dokumente`, { datei: 'lieferschein.jpg', inhalt: `data:image/jpeg;base64,${b64('x')}` });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Paperless ist nicht eingerichtet/);
+  r = await call('GET', `${T}/auftraege/2025_0041/dokumente/5/datei`);
+  assert.equal(r.status, 404);
+});

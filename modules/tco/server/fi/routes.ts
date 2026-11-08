@@ -14,6 +14,7 @@ import {
 import { bankAbgleich } from './bank.js';
 import { bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
+import { hochladen } from '../upload/logik.js';
 
 export const P_FI = {
   display: 'tco.fi:display',
@@ -227,6 +228,37 @@ export async function fiRoutes(app: FastifyInstance) {
     }
     const n = neu.reduce((s, z) => s + z.doks.length, 0);
     return { text: `${n} Zuordnung(en) gespeichert`, warnungen };
+  });
+
+  /**
+   * Datei per Ablagefeld/Drag & Drop/Screenshot als FI-Beleg nach Paperless (Dokumenttyp und Speicherpfad
+   * aus den Stammdaten). Mit Buchung(en): sofort zuordnen; ohne: offener Beleg (Vorschlag im Bankimport).
+   */
+  app.post('/fi/belege/hochladen', { preHandler: requireAuth(P_FI.buchen), bodyLimit: 50 * 1024 * 1024 }, async (req) => {
+    const b = z.object({
+      datei: z.string().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.'),
+      internenr: z.array(nr).default([]), titel: z.string().max(200).nullish(),
+    }).parse(req.body);
+    const v = await vereinLesen();
+    if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (TC Oberthal → Stammdaten).');
+    for (const n of b.internenr) {
+      const [da] = await DB`select 1 from tco.fibuchungen where internenr = ${n} limit 1`;
+      if (!da) throw new BusinessError(`Buchung ${n} nicht gefunden`);
+    }
+    const pl = paperless(v);
+    const [doktyp] = await pl.ids('document_types', liste(v.fi_beleg_typen));
+    const [pfad] = await pl.ids('storage_paths', liste(v.fi_beleg_pfad));
+    const r = await hochladen(v, b.datei, b.inhalt, {
+      titel: b.titel ?? '', datum: heute(), doktyp: doktyp ?? null, korrespondent: null, korrespondentNeu: '',
+      tags: [], tagsNeu: [], speicherpfad: pfad ?? null, notiz: b.internenr.length ? `Abgelegt zu Buchung ${b.internenr.join(', ')}` : '',
+    }, benutzer(req));
+    if (r.state === 'Negative' || !r.id) return { id: r.id, text: r.text, warnungen: [], zugeordnet: [] };
+    const id = r.id;
+    if (!b.internenr.length) return { id, text: `Beleg ${id} in Paperless abgelegt – offen, wird beim Bankimport vorgeschlagen`, warnungen: [], zugeordnet: [] };
+    await change(req, async (tx) => { for (const n of b.internenr) await belegeZuordnen(tx, n, [id]); }, { action: 'BELEG_ZUORDNEN' });
+    const warnungen: string[] = [];
+    for (const [i, n] of b.internenr.entries()) warnungen.push(...(await zuordnungMelden(v, [id], n, i > 0)));
+    return { id, text: `Beleg ${id} abgelegt und Buchung ${b.internenr.join(', ')} zugeordnet`, warnungen, zugeordnet: b.internenr };
   });
 
   app.post('/fi/belege/entfernen', { preHandler: requireAuth(P_FI.buchen) }, async (req) => {

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { z } from 'zod';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { sql, type Tx } from '../../../server/src/db.js';
@@ -15,6 +15,7 @@ import { rechnungPdf } from './pdf/rechnung.js';
 import { lieferscheinPdf, transportauftragPdf } from './pdf/dokumente.js';
 import { xrechnungErzeugen } from './xrechnung.js';
 import { paperlessSenden } from './paperless.js';
+import { dokumentAblegen, paperlessFirma } from './dokumente.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst } from './importer.js';
 
 export const P = {
@@ -360,6 +361,45 @@ async function routes(app: FastifyInstance) {
       });
     }
     return res;
+  });
+
+  // ---- Dokumente zum Auftrag (Paperless) ----
+  const benutzerName = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';
+  app.get('/auftraege/:nr/dokumente', { preHandler: requireAuth(P.display) }, async (req) => {
+    const { nr } = z.object({ nr: z.string() }).parse(req.params);
+    const rows = await sql`select doc_id, titel, datei, erstellt_am, erstellt_von from transport.auftrag_dokumente
+                            where auftragsnr = ${nr} order by erstellt_am desc`;
+    const f = await firmaLesen();
+    return { paperless: !!(f.paperless_url && f.paperless_token), dokumente: rows };
+  });
+
+  app.post('/auftraege/:nr/dokumente', { preHandler: requireAuth(P.edit), bodyLimit: 50 * 1024 * 1024 }, async (req) => {
+    const { nr } = z.object({ nr: z.string() }).parse(req.params);
+    const b = z.object({ datei: z.string().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.') }).parse(req.body);
+    const a = await auftragLesen(nr);
+    const k = a.kundeAdr;
+    const kunde = k ? [k.kundenname, k.kundenname2].filter(Boolean).join(' ').trim() || null : null;
+    const d = await dokumentAblegen(await firmaLesen(), { auftragsnr: nr, kunde, datum: new Date().toISOString().slice(0, 10) }, b.datei, b.inhalt);
+    await change(req, (tx) => tx`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_von)
+                                values (${nr}, ${d.id}, ${d.titel}, ${d.datei}, ${benutzerName(req)}) on conflict do nothing`, { action: 'DOKUMENT_ABLEGEN' });
+    return { id: d.id, text: `„${d.datei}“ in Paperless abgelegt (Dokument ${d.id}) und Auftrag ${nr} zugeordnet` };
+  });
+
+  /** nur die Verknüpfung lösen – das Dokument bleibt in Paperless */
+  app.delete('/auftraege/:nr/dokumente/:id', { preHandler: requireAuth(P.edit) }, async (req) => {
+    const p = z.object({ nr: z.string(), id: z.coerce.number().int().positive() }).parse(req.params);
+    const r = await change(req, (tx) => tx`delete from transport.auftrag_dokumente where auftragsnr = ${p.nr} and doc_id = ${p.id}`, { action: 'DOKUMENT_LOESEN' });
+    if (!r.count) throw new BusinessError('Dokument ist dem Auftrag nicht zugeordnet.');
+    return { text: `Dokument ${p.id} vom Auftrag ${p.nr} gelöst (bleibt in Paperless)` };
+  });
+
+  /** Datei nur für Dokumente, die einem Auftrag zugeordnet sind */
+  app.get('/auftraege/:nr/dokumente/:id/datei', { preHandler: requireAuth(P.display) }, async (req, reply) => {
+    const p = z.object({ nr: z.string(), id: z.coerce.number().int().positive() }).parse(req.params);
+    const [da] = await sql`select 1 from transport.auftrag_dokumente where auftragsnr = ${p.nr} and doc_id = ${p.id}`;
+    if (!da) throw new BusinessError('Dokument nicht gefunden.', 404);
+    const d = await paperlessFirma(await firmaLesen()).download(p.id);
+    return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
 
   // ---- Paperless ----

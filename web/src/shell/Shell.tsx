@@ -11,6 +11,7 @@ import type { NavEntry, RouteDef } from '../platform';
 import { ChangePasswordForm } from '../pages/AuthPages';
 import { toast } from '../toast';
 import { aktuelleErscheinung, erscheinungSetzen } from '../theme';
+import { AblageProvider } from '../ablage';
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('') || '?';
@@ -78,7 +79,7 @@ export function Shell() {
   );
 
   return (
-    <>
+    <AblageProvider>
       <NavigationLayout
         mode={collapsed ? 'Collapsed' : 'Expanded'}
         style={{ height: '100%' }}
@@ -151,6 +152,6 @@ export function Shell() {
       <Dialog open={pwOpen} headerText="Passwort ändern" onClose={() => setPwOpen(false)} style={{ width: 'min(420px, 95vw)' }}>
         {pwOpen && <ChangePasswordForm onDone={() => { setPwOpen(false); toast('Passwort geändert'); }} />}
       </Dialog>
-    </>
+    </AblageProvider>
   );
 }

@@ -9,6 +9,7 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { DocsDialog, type Doc } from './dialogs';
+import { AuftragDokumente } from './AuftragDokumente';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Stop, type Traeger, type Werte } from './util';
 
@@ -362,6 +363,14 @@ export function AuftragDetail() {
                   ))}
                 </tbody>
               </table>
+            </ObjectPageSubSection>
+          </ObjectPageSection>
+        ) : <></>}
+
+        {!isNew && nr ? (
+          <ObjectPageSection id="dokumente" titleText="Dokumente">
+            <ObjectPageSubSection id="dokumente-sub" titleText="Dokumente in Paperless" hideTitleText>
+              <AuftragDokumente nr={nr} edit={mayEdit} />
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}

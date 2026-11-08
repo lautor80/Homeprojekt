@@ -16,6 +16,7 @@ import { dat, eur } from '../util';
 import { MG, type Auswahl, type Detail } from './typen';
 import { BankDialog, KommDialog, KopfDialog, VertragDialog } from './Dialoge';
 import { Dokumente } from './Dokumente';
+import { useAblageZiel } from '@core/ablage';
 
 const t = (s: string | null | undefined) => (s ? <Text>{s}</Text> : null);
 const ibanFormat = (s: string) => s.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim();
@@ -39,6 +40,13 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
   const [pdf, setPdf] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [docSel, setDocSel] = useState<number[]>([]);
+  const [eingang, setEingang] = useState<File[]>([]);
+
+  // Ablage (Drag & Drop ins Ablagefeld, Strg+V): Dokumente des Mitglieds – Dokumenttyp wird je Datei abgefragt
+  useAblageZiel(edit && d ? {
+    titel: `${d.titel} – Dokumente`,
+    annehmen: (files) => { setTab('dok'); setEingang((alt) => [...alt, ...files]); },
+  } : null);
 
   const laden = () => api.get<Detail>(`${MG}/m/${adrnr}`).then(setD).catch((e) => setError(e.message));
   useEffect(() => {
@@ -139,7 +147,8 @@ export function MitgliedDetail({ adrnr, edit, onChanged, onOpen }: { adrnr: stri
           <Schluessel d={d} edit={edit} onAktion={aktion} />
         </Tab>
         <Tab data-key="dok" text="Dokumente" selected={tab === 'dok'}>
-          {tab === 'dok' && <Dokumente adrnr={adrnr} edit={edit} sel={docSel} onSel={setDocSel} onError={setError} onKomm={() => setDlg('komm')} />}
+          {tab === 'dok' && <Dokumente adrnr={adrnr} edit={edit} sel={docSel} onSel={setDocSel} onError={setError} onKomm={() => setDlg('komm')}
+                                       eingang={eingang} onEingang={(f) => setEingang((alt) => [...alt, ...f])} onErledigt={() => setEingang((alt) => alt.slice(1))} />}
         </Tab>
         <Tab data-key="not" text={`Notizen (${d.notizen.length})`} selected={tab === 'not'}>
           <Notizen d={d} edit={edit} onAktion={aktion} />

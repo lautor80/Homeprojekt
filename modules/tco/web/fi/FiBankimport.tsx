@@ -6,6 +6,8 @@ import {
 import { api, qs } from '@core/api';
 import { dat, dateiLesen, eur } from '../util';
 import { KontoBox, ZuordnenDialog } from './FiDialoge';
+import { AblageFlaeche } from '@core/ablage';
+import { fiBelegZiel } from './ablage';
 import { F, betragParse, betragText, heute, type BankDatei, type Konto, type OffeneRechnung, type Position } from './typen';
 
 interface Row {
@@ -138,8 +140,8 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
     const b = berechnet(r);
     const fehlt = r.neu && b.positionen.some((p) => !p.gkonto);
     const rand = !r.neu ? 'var(--sapList_BorderColor)' : fehlt ? 'var(--sapCriticalColor)' : r.art === 'historie' ? 'var(--sapInformativeColor)' : 'var(--sapPositiveColor)';
-    return (
-      <div key={r.uid} style={{ borderLeft: `4px solid ${rand}`, padding: '0.5rem 0.75rem', marginBottom: '0.5rem', background: 'var(--sapList_Background)', opacity: r.neu ? 1 : 0.6 }}>
+    const box = (
+      <div style={{ borderLeft: `4px solid ${rand}`, padding: '0.5rem 0.75rem', marginBottom: '0.5rem', background: 'var(--sapList_Background)', opacity: r.neu ? 1 : 0.6 }}>
         <FlexBox style={{ gap: '0.75rem' }} alignItems="Start">
           <CheckBox checked={r.sel && r.neu} disabled={!r.neu} onChange={(e) => upd(r.uid, (x) => ({ ...x, sel: e.target.checked }))} />
           <div style={{ width: '7.5rem' }}>
@@ -235,6 +237,11 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
         </FlexBox>
       </div>
     );
+    // Beleg direkt auf den Umsatz ziehen: Ablage in Paperless, beim Buchen zugeordnet
+    return r.neu
+      ? <AblageFlaeche key={r.uid} ziel={fiBelegZiel([], `Umsatz ${dat(r.datum)} ${r.text || r.name}`.trim(),
+          (ids) => ids.length && upd(r.uid, (x) => ({ ...x, belege: [...new Set([...x.belege, ...ids])], belegText: '' })))}>{box}</AblageFlaeche>
+      : <div key={r.uid}>{box}</div>;
   };
 
   return createPortal(<>

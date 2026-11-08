@@ -287,6 +287,24 @@ test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () =>
   assert.equal(r.status, 400);
   r = await call('POST', `${U}/datei`, { datei: 'x.pdf', inhalt: pdf, meta: { ...meta, datum: '7.10.2026' } });
   assert.equal(r.status, 400);
+
+  // ---- FI-Beleg per Ablage: offen (ohne Buchung) und direkt zu einer Buchung, Screenshot als PNG
+  await sql`update tco.verein set fi_beleg_typen = 'Rechnung', fi_beleg_pfad = 'Buchhaltung'`;
+  const png = `data:image/png;base64,${Buffer.from('png').toString('base64')}`;
+  r = await call('POST', '/api/m/tco/fi/belege/hochladen', { datei: 'Screenshot 2026-11-08 16-56.png', inhalt: png });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /offen, wird beim Bankimport vorgeschlagen/);
+  const offen = mock.docs.get(r.body.id)!;
+  assert.equal(offen.type, '9', 'Dokumenttyp aus den Stammdaten (FI-Belegtypen)');
+  await sql`insert into tco.fibuchungen (internenr, konto, posnr, jahr, monat, datum, text, betrag, soll, haben)
+            values ('0000000999', '1200', 0, 2026, 11, '2026-11-08', 'Test', 10, 10, 0)`;
+  r = await call('POST', '/api/m/tco/fi/belege/hochladen', { datei: 'quittung.pdf', inhalt: pdf, internenr: ['0000000999'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.zugeordnet, ['0000000999']);
+  const [map] = await sql`select count(*)::int as n from tco.fipapermap where internenr = '0000000999' and ltrim(doknr, '0') = ${String(r.body.id)}`;
+  assert.equal(map.n, 1);
+  r = await call('POST', '/api/m/tco/fi/belege/hochladen', { datei: 'x.pdf', inhalt: pdf, internenr: ['0000004711'] });
+  assert.equal(r.status, 400);
 });
 
 test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {

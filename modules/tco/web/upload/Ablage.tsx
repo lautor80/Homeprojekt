@@ -5,6 +5,7 @@ import {
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { useSession } from '@core/session';
+import { useAblage, useAblageZiel } from '@core/ablage';
 import { toast } from '@core/toast';
 import { dateiLesen } from '../util';
 import { UP } from './Upload';
@@ -43,6 +44,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
   const [protokoll, setProtokoll] = useState<Protokoll[]>([]);
   const [zeigeProtokoll, setZeigeProtokoll] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { seitenZiel, ablegen } = useAblage();
 
   const stammLaden = async () => {
     if (stamm) return stamm;
@@ -92,15 +94,19 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
     setLauf(null);
     setProtokoll((alt) => [...neu.reverse(), ...alt].slice(0, 30));
     const fehler = files.length - ok;
-    toast(`${ok} von ${files.length} Datei(en) in Paperless abgelegt${fehler ? ` – ${fehler} fehlgeschlagen (Details im Ablagefeld)` : ''}`, 6000);
+    return `${ok} von ${files.length} Datei(en) in Paperless abgelegt${fehler ? ` – ${fehler} fehlgeschlagen (Details unter „Fehler“ im Ablagefeld)` : ''}`;
   }
 
-  /** Dateien annehmen: ohne Voreinstellung erst einstellen, dann übertragen */
-  const annehmen = (files: File[]) => {
+  /** Dateien mit der Voreinstellung ablegen: ohne Voreinstellung erst einstellen, dann übertragen */
+  const mitVorgabe = async (files: File[]) => {
     if (!files.length || lauf) return;
     if (!vorgabe) { setWartend(files); setEinstellen(true); stammLaden().catch((e) => toast((e as Error).message, 6000)); return; }
-    uebertragen(files, vorgabe);
+    return uebertragen(files, vorgabe);
   };
+  // Ersatzziel für Strg+V und Ablagen auf Seiten ohne eigenes Ziel
+  useAblageZiel({ titel: 'Paperless (Voreinstellung)', annehmen: mitVorgabe }, true);
+  /** Feld in der Navigation: auf Seiten mit Objekt dorthin, sonst mit Voreinstellung */
+  const annehmen = (files: File[]) => (seitenZiel ? ablegen(files, seitenZiel) : ablegen(files));
 
   const dnd = {
     onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setUeber(true); } },
@@ -113,7 +119,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
     <>
       <input ref={fileRef} type="file" multiple hidden onChange={(e) => { annehmen(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
       <div className={`portal-ablage${ueber ? ' portal-ablage--ueber' : ''}${collapsed ? ' portal-ablage--klein' : ''}${lauf ? ' portal-ablage--lauf' : ''}`}
-           role="button" tabIndex={0} title={collapsed ? `Dateien ablegen (Paperless) – ${zusammenfassung}` : undefined}
+           role="button" tabIndex={0} title={collapsed ? `Dateien ablegen – ${seitenZiel ? seitenZiel.titel : zusammenfassung}` : undefined}
            aria-label="Dateien nach Paperless ablegen: hierher ziehen oder auswählen"
            onClick={() => !lauf && fileRef.current?.click()}
            onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !lauf) { e.preventDefault(); fileRef.current?.click(); } }}
@@ -126,7 +132,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
             <span className="portal-ablage__titel">
               {lauf ? `Übertrage ${lauf.fertig + 1 > lauf.gesamt ? lauf.gesamt : lauf.fertig + 1} von ${lauf.gesamt} …` : ueber ? 'Loslassen zum Ablegen' : 'Dateien hier ablegen'}
             </span>
-            <span className="portal-ablage__info">{zusammenfassung}</span>
+            <span className="portal-ablage__info">{seitenZiel ? `→ ${seitenZiel.titel}` : zusammenfassung}</span>
           </div>
         )}
       </div>
@@ -149,7 +155,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
                        onSpeichern={(v) => {
                          setVorgabe(v); vorgabeSpeichern(me.user.id, v); setEinstellen(false);
                          const f = wartend; setWartend([]);
-                         if (f.length) uebertragen(f, v); else toast('Voreinstellung gespeichert');
+                         if (f.length) uebertragen(f, v).then((t) => t && toast(t, 6000)); else toast('Voreinstellung gespeichert');
                        }} />
       )}
       {zeigeProtokoll && createPortal(

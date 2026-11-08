@@ -564,3 +564,39 @@ ui5-busy-indicator { max-width: 100%; }
 @media (width < 600px) {
   .portal-side, .portal-side__nav { width: 100%; }
 }
+
+/* ---------------------------------------------------------------------------
+   Ablage (Drag & Drop, Strg+V) – Zielfläche, Box, Meldung mit „Rückgängig“
+   --------------------------------------------------------------------------- */
+.portal-ablageziel { position: relative; border-radius: var(--portal-radius, 0.75rem); }
+.portal-ablageziel--ueber { outline: 2px solid var(--sapButton_Emphasized_Background, #0070f2); outline-offset: 2px; background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+.portal-ablageziel--ueber::after {
+  content: attr(data-ziel); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none;
+  padding: 0.5rem 1rem; border-radius: 0.5rem; background: var(--sapButton_Emphasized_Background, #0070f2); color: var(--sapButton_Emphasized_TextColor, #fff);
+  font-weight: 700; white-space: nowrap; box-shadow: var(--sapContent_Shadow2);
+}
+.portal-ablagebox {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.875rem 1rem; cursor: pointer; box-sizing: border-box;
+  border: 2px dashed var(--sapField_BorderColor, #bcc3ca); border-radius: var(--portal-radius, 0.75rem);
+  color: var(--sapContent_LabelColor); background: var(--sapField_Background, #fff); transition: background 0.15s, border-color 0.15s;
+}
+.portal-ablagebox ui5-icon { flex: none; width: 1.5rem; height: 1.5rem; color: var(--sapContent_IconColor); }
+.portal-ablagebox:hover, .portal-ablagebox:focus-visible { border-color: var(--sapButton_Emphasized_Background, #0070f2); outline: none; }
+.portal-ablagebox--ueber { border-style: solid; border-color: var(--sapButton_Emphasized_Background, #0070f2); background: var(--sapList_SelectionBackgroundColor, #ebf8ff); color: var(--sapLinkColor); }
+.portal-ablagebox--kompakt { padding: 0.5rem 0.75rem; font-size: var(--sapFontSmallSize); }
+.portal-ablagebox--aus { opacity: 0.5; cursor: default; }
+.portal-ablage-meldung {
+  position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 1000; max-width: min(40rem, 94vw);
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 0.75rem; background: var(--sapPageHeader_Background, #fff); color: var(--sapTextColor);
+  box-shadow: var(--sapContent_Shadow2); border-left: 0.25rem solid var(--sapPositiveElementColor, #188918);
+}
+.portal-ablage-meldung > ui5-icon { flex: none; color: var(--sapPositiveElementColor, #188918); }
+.portal-ablage-meldung > span { flex: 1; min-width: 0; }
+.portal-ablage-meldung--fehler { border-left-color: var(--sapNegativeElementColor, #aa0808); }
+.portal-ablage-meldung--fehler > ui5-icon { color: var(--sapNegativeElementColor, #aa0808); }
+/* Dokumentliste am Objekt (z. B. Auftrag) */
+.portal-ad { display: flex; flex-direction: column; border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); overflow: hidden; }
+.portal-ad__zeile { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; }
+.portal-ad__zeile + .portal-ad__zeile { border-top: 1px solid var(--sapList_BorderColor); }
+.portal-ad__zeile > ui5-icon { color: var(--sapContent_IconColor); }

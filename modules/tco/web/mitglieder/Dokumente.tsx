@@ -7,6 +7,7 @@ import { api } from '@core/api';
 import { FormGrid, TextField } from '@core/components/FormFields';
 import { download, PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
+import { AblageFlaeche } from '@core/ablage';
 import { dat, dateiLesen } from '../util';
 import { MG, type Dok } from './typen';
 import { Auswahlfeld, Dlg } from './Dialoge';
@@ -15,8 +16,10 @@ interface Antwort { paperless: boolean; soll: string; korrespondent: { id: numbe
 interface Notiz { id: number; text: string; erstellt: string; von: string }
 
 /** Paperless-Dokumente des Mitglieds (Korrespondent „Nachname Vorname“) mit Jahresfilter, Auswahl, Notizen und Upload */
-export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm }: {
+export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = [], onEingang, onErledigt }: {
   adrnr: string; edit: boolean; sel: number[]; onSel: (ids: number[]) => void; onError: (t: string) => void; onKomm: () => void;
+  /** abgelegte Dateien (Drag & Drop, Strg+V), werden nacheinander mit Dokumenttyp abgefragt */
+  eingang?: File[]; onEingang?: (f: File[]) => void; onErledigt?: () => void;
 }) {
   const [d, setD] = useState<Antwort | null>(null);
   const [jahr, setJahr] = useState('');
@@ -25,6 +28,12 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm }: {
   const [upload, setUpload] = useState<{ datei: string; inhalt: string; groesse: number } | null>(null);
   const laden = () => api.get<Antwort>(`${MG}/m/${adrnr}/dokumente`).then(setD).catch((e) => onError(e.message));
   useEffect(() => { laden(); }, [adrnr]); // eslint-disable-line react-hooks/exhaustive-deps
+  // nächste abgelegte Datei in den Ablage-Dialog übernehmen
+  const naechste = eingang[0];
+  useEffect(() => {
+    if (!naechste || upload) return;
+    dateiLesen(naechste).then((inhalt) => setUpload({ datei: naechste.name, inhalt, groesse: naechste.size }));
+  }, [naechste, upload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const jahre = useMemo(() => [...new Set((d?.dokumente ?? []).map((x) => x.erstellt.slice(0, 4)).filter(Boolean))].sort().reverse(), [d]);
   const rows = (d?.dokumente ?? []).filter((x) => !jahr || x.erstellt.startsWith(jahr));
@@ -74,10 +83,16 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm }: {
         )}
       </Toolbar>
       {!d.korrespondent && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>In Paperless gibt es noch keinen Korrespondenten „{d.soll}“ – er wird beim ersten Ablegen angelegt.</MessageStrip>}
-      <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine Dokumente in Paperless" />
+      {edit && onEingang
+        ? <AblageFlaeche ziel={{ titel: 'Dokumente des Mitglieds', annehmen: (f) => onEingang(f) }}>
+            <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine Dokumente in Paperless – Datei hierher ziehen oder Screenshot mit Strg+V einfügen" />
+          </AblageFlaeche>
+        : <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine Dokumente in Paperless" />}
+      {edit && onEingang && <Label wrappingType="Normal" style={{ display: 'block', marginTop: '0.25rem' }}>Dateien auf die Liste ziehen oder Screenshot mit Strg+V einfügen – danach Dokumenttyp wählen.</Label>}
       {ansicht && <PdfDialog url={`${MG}/dokument/${ansicht.id}/datei`} title={ansicht.titel} filename={ansicht.datei || `${ansicht.titel}.pdf`} onClose={() => setAnsicht(null)} />}
       {notizen && <NotizDialog dok={notizen} edit={edit} onClose={(neu) => { setNotizen(null); if (neu) laden(); }} />}
-      {upload && <UploadDialog adrnr={adrnr} f={upload} onClose={(t) => { setUpload(null); if (t) { toast(t, 5000); laden(); } }} />}
+      {upload && <UploadDialog adrnr={adrnr} f={upload} rest={Math.max(0, eingang.length - 1)}
+                               onClose={(t) => { setUpload(null); if (eingang.length) onErledigt?.(); if (t) { toast(t, 5000); laden(); } }} />}
     </>
   );
 }
@@ -107,14 +122,14 @@ function NotizDialog({ dok, edit, onClose }: { dok: Dok; edit: boolean; onClose:
   );
 }
 
-function UploadDialog({ adrnr, f, onClose }: { adrnr: string; f: { datei: string; inhalt: string; groesse: number }; onClose: (t: string | null) => void }) {
+function UploadDialog({ adrnr, f, rest = 0, onClose }: { adrnr: string; f: { datei: string; inhalt: string; groesse: number }; rest?: number; onClose: (t: string | null) => void }) {
   const [typen, setTypen] = useState<{ id: number; name: string }[]>([]);
   const [v, setV] = useState({ titel: f.datei.replace(/\.[^.]+$/, ''), doktyp: '', notiz: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { api.get<{ id: number; name: string }[]>(`${MG}/doktypen`).then(setTypen).catch((e) => setError(e.message)); }, []);
   return (
-    <Dlg titel="Dokument in Paperless ablegen" onClose={() => onClose(null)}
+    <Dlg titel={`Dokument in Paperless ablegen${rest ? ` (noch ${rest} weitere)` : ''}`} onClose={() => onClose(null)}
          fuss={<Button design="Emphasized" disabled={busy || !v.doktyp} onClick={async () => {
            setBusy(true);
            try {
