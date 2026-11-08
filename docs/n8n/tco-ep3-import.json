@@ -1,0 +1,188 @@
+{
+  "name": "TCO EP3 Import Portal",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tco-ep3-import",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "tco-ep3-import",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EP3_WEBHOOK",
+          "name": "Portal → n8n (Header Authorization)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT b.bid AS BID,\n       DATE_FORMAT(r.date, '%Y-%m-%d') AS DATUM,\n       TIME_FORMAT(r.time_start, '%H:%i') AS TIME_START,\n       TIME_FORMAT(r.time_end, '%H:%i') AS TIME_ENDE,\n       COALESCE(NULLIF(TRIM(CONCAT(COALESCE(fn.value, ''), ' ', COALESCE(ln.value, ''))), ''), u.alias) AS KUNDE,\n       u.alias AS ALIAS, u.uid AS ZUID,\n       b.status AS STATUS, b.status_billing AS STATUS_BILLING,\n       s.name AS PLATZ,\n       DATE_FORMAT(b.created, '%Y-%m-%d') AS ERSTELLT\n  FROM bs_bookings b\n  JOIN bs_reservations r ON r.bid = b.bid\n  JOIN bs_users u ON u.uid = b.uid\n  LEFT JOIN bs_squares s ON s.sid = b.sid\n  LEFT JOIN bs_users_meta fn ON fn.uid = u.uid AND fn.`key` = 'firstname'\n  LEFT JOIN bs_users_meta ln ON ln.uid = u.uid AND ln.`key` = 'lastname'\n WHERE r.date >= DATE_SUB(CURDATE(), INTERVAL 18 MONTH)\n ORDER BY r.date, r.time_start, b.bid",
+        "options": {}
+      },
+      "id": "ep3-buchungen",
+      "name": "EP3 Buchungen",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        260,
+        300
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "EP3_DB",
+          "name": "EP3 MySQL (ep3-bs)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.uid AS ZUID, u.alias AS ZALIAS, u.status AS STATUS, u.email AS EMAIL,\n       u.pw AS PW,\n       m.`key` AS `KEY`, m.value AS VALUE\n  FROM bs_users u\n  LEFT JOIN bs_users_meta m ON m.uid = u.uid AND m.`key` IN ('firstname', 'lastname', 'street', 'zip', 'city', 'phone', 'gender')\n WHERE u.status <> 'placeholder'\n ORDER BY u.uid, m.`key`",
+        "options": {}
+      },
+      "id": "ep3-kunden",
+      "name": "EP3 Kunden",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        520,
+        300
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "EP3_DB",
+          "name": "EP3 MySQL (ep3-bs)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT m.bid AS BID, m.value AS TEXT\n  FROM bs_bookings_meta m\n  JOIN bs_bookings b ON b.bid = m.bid\n WHERE m.`key` = 'notes' AND TRIM(m.value) <> ''",
+        "options": {}
+      },
+      "id": "ep3-texte",
+      "name": "EP3 Texte",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        780,
+        300
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "EP3_DB",
+          "name": "EP3 MySQL (ep3-bs)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Drei Abfragen zu CSV-Texten zusammenbauen, wie sie das Portal erwartet (Trennzeichen ;, UTF-8, Kopfzeile).\nfunction csv(rows) {\n  if (!rows.length) return '';\n  const spalten = Object.keys(rows[0].json);\n  const feld = (v) => {\n    if (v === null || v === undefined) return '';\n    let s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v);\n    s = s.replace(/\\r?\\n/g, ' ');\n    return /[;\"]/.test(s) ? `\"${s.replace(/\"/g, '\"\"')}\"` : s;\n  };\n  return [spalten.join(';'), ...rows.map((r) => spalten.map((c) => feld(r.json[c])).join(';'))].join('\\n') + '\\n';\n}\nconst buchungen = $('EP3 Buchungen').all();\nconst kunden = $('EP3 Kunden').all();\nconst texte = $('EP3 Texte').all();\nreturn [{ json: {\n  bookings_csv: csv(buchungen),\n  kunden_csv: csv(kunden),\n  texte_csv: csv(texte),\n  anzahl: { buchungen: buchungen.length, kunden: kunden.length, texte: texte.length },\n  quelle: $('Webhook').first().json.body?.quelle ?? null,\n} }];"
+      },
+      "id": "csv",
+      "name": "CSV bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ bookings_csv: $json.bookings_csv, kunden_csv: $json.kunden_csv, texte_csv: $json.texte_csv, anzahl: $json.anzahl }) }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Antwort an Portal",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1300,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "EP3 Buchungen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EP3 Buchungen": {
+      "main": [
+        [
+          {
+            "node": "EP3 Kunden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EP3 Kunden": {
+      "main": [
+        [
+          {
+            "node": "EP3 Texte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EP3 Texte": {
+      "main": [
+        [
+          {
+            "node": "CSV bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CSV bauen": {
+      "main": [
+        [
+          {
+            "node": "Antwort an Portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "pinData": {}
+}
