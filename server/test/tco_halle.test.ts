@@ -288,7 +288,7 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.match(r.body.text, /nach Paperless gedruckt \(Dokument 100\)/);
   assert.equal(r.body.link, `http://127.0.0.1:${port}/share/slug100`);
   assert.deepEqual(mock.docs.get(100)!.meta, {
-    title: `Hallenrechnung ${rg}`, correspondent: 7, document_type: 1, storage_path: 2,
+    title: `Hallenrechnung ${rg}`, correspondent: 7, document_type: 1, storage_path: 2, created: new Date().toLocaleDateString('sv-SE'),
     custom_fields: [{ field: 3, value: 'EUR85.00' }, { field: 4, value: rg }],
   });
   [k] = await sql`select status, doknr, gedruckt from tco.rgkopf where rgnr_txt = ${rg}`;

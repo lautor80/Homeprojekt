@@ -239,7 +239,9 @@ export async function kontextAblegen(pl: Paperless, def: KontextDef, modul: stri
   let zuordnung = z;
   if (id) {
     zuordnung = await zuordnen(def, modul, { ...werte, dokid: String(id).padStart(6, '0') }, o.ueberschreiben);
-    warnungen.push(...await nachtragen(pl, id, zuordnung, o.benutzer));
+    // Standardfelder nach dem Upload noch einmal setzen: Paperless-Zuordnungsregeln beim Einlesen
+    // können Korrespondent/Typ/Pfad überschreiben – die Regel des Portals soll gelten
+    warnungen.push(...await nachtragen(pl, id, zuordnung, o.benutzer, true));
   }
   return { id, warnungen, zuordnung };
 }
