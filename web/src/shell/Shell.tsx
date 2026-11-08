@@ -61,10 +61,13 @@ export function Shell() {
                            style={eingerueckt}
                            onClick={() => e.path && navigate(e.path)} />
   );
+  // Stufe-2-Gruppen sind eingeklappt; nur die Gruppe mit der geöffneten Seite klappt automatisch auf.
+  // Der Benutzer kann jede Gruppe selbst auf- und zuklappen (der Zustand bleibt bis zum Seitenwechsel in eine andere Gruppe).
+  const enthaeltAktiv = (e: NavEntry): boolean => !!e.children?.some((c) => isSelected(c.path) || enthaeltAktiv(c));
   const item = (e: NavEntry, einruecken = false) => (
     <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={!e.children && isSelected(e.path)}
                         style={einruecken ? eingerueckt : undefined}
-                        expanded={e.children ? true : undefined} unselectable={!!e.children}
+                        expanded={e.children ? enthaeltAktiv(e) : undefined} unselectable={!!e.children}
                         onClick={() => !e.children && e.path && navigate(e.path)}>
       {e.children?.map(sub)}
     </SideNavigationItem>
