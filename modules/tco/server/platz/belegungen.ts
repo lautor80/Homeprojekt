@@ -115,7 +115,7 @@ export async function ep3EventsImportieren(tx: Db, rows: string[][], idx: (n: st
     if (bisZ === '23:59') bisZ = '00:00';
     if (eintaegig && bisZ !== '00:00' && bisZ <= vonZ) continue;
     const name = condense(i.name >= 0 ? r[i.name] ?? '' : '') || 'Belegung (EP3)';
-    const art = /training|jugend|kurs|ag\b/i.test(name) ? 'TRAINING' : /sperr|gesperrt|wartung|platzpflege|geschlossen/i.test(name) ? 'SPERRE' : 'VERANSTALTUNG';
+    const art = /training|jugend|kurs|ag\b/i.test(name) ? 'TRAINING' : /sperr|gesperrt|wartung|pflege|reinigung|geschlossen|renovier/i.test(name) ? 'SPERRE' : 'VERANSTALTUNG';
     await tx`insert into tco.platzbelegungen (bezeichnung, art, plaetze, wochentage, datum_von, datum_bis, zeit_von, zeit_bis, quelle, ext_id)
              values (${name}, ${art}, ${plaetze}, '1234567', ${m1[1]}, ${m2[1]}, ${vonZ}, ${bisZ}, 'EP3', ${eid})
              on conflict (quelle, ext_id) where ext_id is not null do nothing`;
