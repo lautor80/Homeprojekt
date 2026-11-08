@@ -256,6 +256,13 @@ test('Verzehrbuch, Arbeitsvorrat, Monatsabschluss mit Sammelabrechnungen und Las
   assert.deepEqual([maxZ.betrag, maxZ.zahlart, maxZ.uebertrag, maxZ.posten], [11, 'LASTSCHRIFT', false, 2]);
   assert.ok(!r.body.zeilen.some((z: any) => z.adrnr === PETRA), 'Petras Verzehr ist von heute – nicht im Vormonat');
   assert.equal((await admin('POST', `${V}/abschluss`, { monat: new Date().toISOString().slice(0, 7).replace('-', '') })).status, 400);
+  // Vorschau-PDF (alle und einzeln) legt keine Belege an
+  r = await admin('GET', `${V}/abschluss/pdf?monat=${vormonat()}`);
+  assert.equal(r.status, 200, r.text);
+  assert.match(r.ct, /application\/pdf/);
+  assert.equal((await admin('GET', `${V}/abschluss/pdf?monat=${vormonat()}&adrnr=${MAX}`)).status, 200);
+  assert.equal((await admin('GET', `${V}/abschluss/pdf?monat=${vormonat()}&adrnr=${PETRA}`)).status, 400);
+  assert.equal((await sql`select count(*)::int as n from tco.vz_belege where art = 'SAMMEL'`)[0].n, 0);
   r = await admin('POST', `${V}/abschluss`, { monat: vormonat(), versenden: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.belege.length, 1);

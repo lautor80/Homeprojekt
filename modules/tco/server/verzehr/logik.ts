@@ -341,6 +341,13 @@ export async function abschlussVorschau(db: Db, monat: string): Promise<Abschlus
   }));
 }
 
+/** Positionen, die beim Abschluss des Monats auf die Sammelabrechnung eines Mitglieds kämen */
+export async function abschlussPosten(db: Db, adrnr: string, monat: string): Promise<Posten[]> {
+  const { bis } = monatsgrenzen(monat);
+  const rows = await db`${POSTEN(db)} where adrnr = ${adrnr} and rgnr is null and storniert_am is null and datum <= ${bis} order by datum, zeit, id`;
+  return rows.map(mapPosten);
+}
+
 /** Sammelabrechnungen anlegen: je Mitglied ein Beleg, Positionen werden zugeordnet */
 export async function abschlussErzeugen(tx: Db, monat: string, nur: string[] | null, wer: Erfasser) {
   if (monat >= monatVon(heute())) throw new BusinessError('Der Monat kann erst nach Monatsende abgerechnet werden.');

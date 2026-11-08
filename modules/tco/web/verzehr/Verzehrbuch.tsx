@@ -50,6 +50,7 @@ export function Verzehrbuch() {
     try { await fn(); if (meldung) toast(meldung, 5000); setNeu((n) => n + 1); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   }
   const pdfZeigen = (rgnr: string, titel = `Beleg ${rgnr}`) => (klein() ? pdfOeffnen(`${VZ}/belege/${rgnr}/pdf`, setError) : setPdf({ url: `${VZ}/belege/${rgnr}/pdf`, titel }));
+  const pdfUrl = (url: string, titel: string) => (klein() ? pdfOeffnen(url, setError) : setPdf({ url, titel }));
   const warnen = (w?: string[]) => { if (w?.length) setError(w.join('\n')); };
 
   return (
@@ -64,7 +65,7 @@ export function Verzehrbuch() {
             <Belege admin={admin} busy={busy} neu={neu} aktion={aktion} onPdf={pdfZeigen} warnen={warnen} />
           </Tab>
           <Tab data-key="abschluss" text="Monatsabschluss" icon="sales-order" selected={tab === 'abschluss'}>
-            <Monatsabschluss admin={admin} busy={busy} neu={neu} aktion={aktion} onPdf={pdfZeigen} />
+            <Monatsabschluss admin={admin} busy={busy} neu={neu} aktion={aktion} onPdf={pdfZeigen} onVorschau={pdfUrl} />
           </Tab>
           <Tab data-key="preise" text="Preisliste" icon="tags" selected={tab === 'preise'}>
             <Preise admin={admin} busy={busy} neu={neu} aktion={aktion} />
@@ -250,7 +251,7 @@ function Belege({ admin, busy, neu, aktion, onPdf, warnen }: { admin: boolean; b
 }
 
 // ---------------------------------------------------------------- Monatsabschluss
-function Monatsabschluss({ admin, busy, neu, aktion, onPdf }: { admin: boolean; busy: boolean; neu: number; aktion: Aktion; onPdf: (rgnr: string) => void }) {
+function Monatsabschluss({ admin, busy, neu, aktion, onPdf, onVorschau }: { admin: boolean; busy: boolean; neu: number; aktion: Aktion; onPdf: (rgnr: string) => void; onVorschau: (url: string, titel: string) => void }) {
   const [monat, setMonat] = useState(() => monatVerschieben(aktMonat(), -1));
   const [d, setD] = useState<Abschluss | null>(null);
   const [ohne, setOhne] = useState<Set<string>>(new Set());
@@ -267,6 +268,13 @@ function Monatsabschluss({ admin, busy, neu, aktion, onPdf }: { admin: boolean; 
     { Header: 'Zahlweise', accessor: 'zahlart', width: 120, Cell: ({ value }: Cell) => ZAHLART_TEXT[value as Zahlart] },
     { Header: 'E-Mail', accessor: 'email', width: 200, Cell: ({ value }: Cell) => value || <ObjectStatus state="Critical">keine – Ausdruck</ObjectStatus> },
     { Header: 'Status', id: 'st', width: 220, Cell: ({ row }: Cell) => (row.original.abgerechnet ? <ObjectStatus state="Positive">abgerechnet {row.original.abgerechnet}</ObjectStatus> : row.original.uebertrag ? <ObjectStatus state="None">unter Mindestbetrag → Folgemonat</ObjectStatus> : <ObjectStatus state="Critical">offen</ObjectStatus>) },
+    {
+      Header: 'Vorschau', id: 'pdf', width: 100, disableSortBy: true,
+      Cell: ({ row }: Cell) => (row.original.abgerechnet
+        ? <Button icon="pdf-attachment" design="Transparent" tooltip="Abrechnung" onClick={() => onPdf(row.original.abgerechnet)} />
+        : row.original.uebertrag ? null
+          : <Button icon="show" design="Transparent" tooltip="Vorschau der Sammelabrechnung" onClick={() => onVorschau(`${VZ}/abschluss/pdf?monat=${monat}&adrnr=${row.original.adrnr}`, `Vorschau ${row.original.name} – ${monatsname(monat)}`)} />),
+    },
   ];
   return (
     <>
@@ -275,6 +283,7 @@ function Monatsabschluss({ admin, busy, neu, aktion, onPdf }: { admin: boolean; 
         <DatePicker formatPattern="MMMM yyyy" valueFormat="yyyyMM" value={monat} style={{ width: '11rem' }} onChange={(e) => e.detail.value && setMonat(e.detail.value)} />
         <Button icon="navigation-right-arrow" design="Transparent" onClick={() => setMonat(monatVerschieben(monat, 1))} />
         <span style={{ flex: 1 }} />
+        <Button icon="show" disabled={!offen.length} onClick={() => onVorschau(`${VZ}/abschluss/pdf?monat=${monat}`, `Vorschau Sammelabrechnungen ${monatsname(monat)}`)}>Vorschau-PDF (alle)</Button>
         {admin && (
           <>
             <CheckBox text="Abrechnungen per E-Mail versenden" checked={versenden} onChange={(e) => setVersenden(e.target.checked)} />

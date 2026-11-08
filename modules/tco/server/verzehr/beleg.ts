@@ -36,14 +36,33 @@ export const belegTitel = (b: Beleg) => (b.art === 'GAST' ? 'Verzehrbeleg' : `Ve
 
 export async function belegPdf(v: Verein, b: Beleg, e: Empfaenger, pos: Posten[]): Promise<Buffer> {
   const p = new Pdf({ title: `${belegTitel(b)} ${b.rgnr}`, author: v.name, creator: 'TCO Vereinsportal' });
+  belegZeichnen(p, v, b, e, pos);
+  alleFusszeilen(p, v);
+  return p.render();
+}
+
+/** Monatsabschluss-Vorschau: alle künftigen Sammelabrechnungen in einem PDF, Kennzeichnung „VORSCHAU“ */
+export async function vorschauPdf(v: Verein, teile: { beleg: Beleg; empfaenger: Empfaenger; pos: Posten[] }[]): Promise<Buffer> {
+  const p = new Pdf({ title: `Vorschau Verzehrabrechnung ${teile[0] ? monatsname(teile[0].beleg.monat ?? '') : ''}`, author: v.name, creator: 'TCO Vereinsportal' });
+  for (const t of teile) belegZeichnen(p, v, t.beleg, t.empfaenger, t.pos, true);
+  alleFusszeilen(p, v);
+  return p.render();
+}
+
+/** Ein Beleg ab einer neuen Seite im Vereinslayout (Kopfband, Positionen, Zahlkarte) */
+function belegZeichnen(p: Pdf, v: Verein, b: Beleg, e: Empfaenger, pos: Posten[], vorschau = false) {
   p.newPage();
   const bezahlt = b.status === 'BEZAHLT';
-  const zweck = `Verzehr ${b.rgnr}`;
+  const zweck = vorschau ? `Verzehr ${monatsname(b.monat ?? '')}` : `Verzehr ${b.rgnr}`;
 
   p.rect(0, 0, 210, 46, { fill: C.orange });
   p.text(LEFT, 31, b.art === 'GAST' ? 'BELEG' : 'ABRECHNUNG', { size: 24, color: 'FFFFFF' });
-  p.text(LEFT, 38.5, `${belegTitel(b)} · Nr. ${b.rgnr} · ${dat(b.datum)}`, { size: 10, color: 'FFFFFF' });
+  p.text(LEFT, 38.5, `${belegTitel(b)} · ${vorschau ? 'Vorschau – noch nicht erzeugt' : `Nr. ${b.rgnr}`} · ${dat(b.datum)}`, { size: 10, color: 'FFFFFF' });
   p.image(logoWeiss(v), 137, 5.6, 57, 34.7);
+  if (vorschau) {
+    p.rect(104, 48, 88, 7, { fill: C.orangeSoft, radius: 2 });
+    p.text(148, 53, 'VORSCHAU – Belegnummer wird beim Abschluss vergeben', { size: 7, bold: true, color: C.orangeDk, align: 'C' });
+  }
 
   const grau = { size: 7, color: C.grau };
   const fett = { size: 9.5, bold: true, color: C.ink };
@@ -114,9 +133,6 @@ export async function belegPdf(v: Verein, b: Beleg, e: Empfaenger, pos: Posten[]
   p.text(tx, y + 42, zweck, { size: 9, bold: true, color: C.ink });
   p.text(tx, y + 45.8, 'Verwendungszweck', { size: 7.5, color: C.grau });
   if (!bezahlt && b.zahlart !== 'LASTSCHRIFT') p.text(109, y + 58.5, 'GiroCode – funktioniert mit allen gängigen Banking-Apps', { size: 7, color: C.grau });
-
-  alleFusszeilen(p, v);
-  return p.render();
 }
 
 function tabellenkopf(p: Pdf, y0: number): number {

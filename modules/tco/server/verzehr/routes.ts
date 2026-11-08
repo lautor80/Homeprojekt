@@ -4,14 +4,14 @@ import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { hasPermission } from '../../../../server/src/permissions.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
-import { heute, runden } from '../format.js';
+import { addTage, heute, runden } from '../format.js';
 import { eigeneAdrnr } from '../mitglieder/selbst.js';
 import {
-  abschlussErzeugen, abschlussVorschau, belegBezahlt, belegeLesen, belegLesen, belegPosten, belegStornieren, cfgLesen, cfgSpeichern, gastBuchen,
+  abschlussErzeugen, abschlussPosten, abschlussVorschau, belegBezahlt, belegeLesen, belegLesen, belegPosten, belegStornieren, cfgLesen, cfgSpeichern, gastBuchen,
   gastKassieren, kennzahlen, mitgliedBuchen, mitgliederAuswahl, monatsgrenzen, monatsname, monatVon, offenePosten, postenStornieren,
   preislisteLesen, produktBeenden, produktSpeichern, RUBRIKEN, verzehrbuch, ZAHLART_TEXT, ZAHLARTEN, type Erfasser,
 } from './logik.js';
-import { belegAblegen, belegErzeugen, belegMailen, belegWhatsapp } from './beleg.js';
+import { belegAblegen, belegErzeugen, belegMailen, belegWhatsapp, empfaenger, vorschauPdf } from './beleg.js';
 
 /**
  * Berechtigungsobjekte Clubhaus-Verzehr:
@@ -245,6 +245,26 @@ export async function verzehrRoutes(app: FastifyInstance) {
   app.get('/verzehr/abschluss', display, async (req) => {
     const q = z.object({ monat }).parse(req.query);
     return { monat: q.monat, titel: monatsname(q.monat), zeilen: await abschlussVorschau(DB, q.monat), belege: await belegeLesen(DB, { art: 'SAMMEL', monat: q.monat }), moeglich: q.monat < monatVon(heute()) };
+  });
+
+  /** Vorschau-PDF im Vereinslayout: ein Mitglied oder alle offenen des Monats, ohne Belege anzulegen */
+  app.get('/verzehr/abschluss/pdf', display, async (req, reply) => {
+    const q = z.object({ monat, adrnr: z.string().optional() }).parse(req.query);
+    const cfg = await cfgLesen(DB);
+    const v = await vereinLesen();
+    const zeilen = (await abschlussVorschau(DB, q.monat)).filter((z) => !z.abgerechnet && !z.uebertrag && (!q.adrnr || z.adrnr === q.adrnr));
+    if (!zeilen.length) throw new BusinessError('Für diese Auswahl gibt es keine offenen Positionen über dem Mindestbetrag.');
+    const teile = [];
+    for (const z of zeilen) {
+      const b = {
+        rgnr: `VZM-${q.monat.slice(0, 4)}-${q.monat.slice(4, 6)}-????`, art: 'SAMMEL' as const, adrnr: z.adrnr, gast_name: null, gast_gruppe: null, email: z.email, mobil: null,
+        datum: heute(), monat: q.monat, status: 'GESTELLT' as const, betrag: z.betrag, zahlart: z.zahlart, faellig: addTage(heute(), cfg.zahlungsziel_tage),
+        bezahlt_am: null, doc_id: null, versand_am: null, versand_art: null, laufid: null, erstellt_von: null, bemerkung: null,
+      };
+      teile.push({ beleg: b, empfaenger: await empfaenger(DB, b), pos: await abschlussPosten(DB, z.adrnr, q.monat) });
+    }
+    const pdf = await vorschauPdf(v, teile);
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="Vorschau_Verzehr_${q.monat}.pdf"`).send(pdf);
   });
 
   /** Sammelabrechnungen erzeugen, in Paperless ablegen und (soweit E-Mail vorhanden) versenden */
