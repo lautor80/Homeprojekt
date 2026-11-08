@@ -78,3 +78,17 @@
   .portal-az__zeile > .portal-az__hinweis { grid-column: 2 / -1; }
   .portal-az__leiste-rechts { margin-left: 0; }
 }
+
+/* Hallenabrechnung – Personenliste: jede Rechnung mit Status und offenem Betrag */
+.portal-hp { width: 100%; min-width: 0; padding: 0.5rem 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-hp__kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.portal-hp__name { font-weight: 700; color: var(--sapTextColor); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-hp__summe { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.portal-hp__rg {
+  display: grid; grid-template-columns: 5.75rem 6.75rem minmax(0, 1fr); align-items: center; gap: 0.5rem;
+  font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor);
+}
+.portal-hp__nr { font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
+.portal-hp__nr ui5-icon { width: 0.875rem; height: 0.875rem; color: var(--sapContent_IconColor); }
+.portal-hp__betrag { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
+.portal-hp__buchungen { grid-template-columns: 5.75rem minmax(0, 1fr) auto; color: var(--sapCriticalTextColor, #b44f00); }

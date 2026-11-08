@@ -27,6 +27,7 @@ import {
   bidText,
 } from './util';
 import { AutoDialog } from './AutoZuordnung';
+import './halle.css';
 import { MailDialog, MailtextDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
 /** Filter bleiben beim Wechsel zwischen Seiten erhalten */
@@ -186,7 +187,10 @@ export function Hallenabrechnung() {
       <input ref={fileRef} type="file" accept=".csv,.txt" multiple hidden onChange={(e) => csvImport(e.target.files)} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
+        {/* genau ein Kind: der BusyIndicator legt Kinder sonst als zentrierte Flex-Zeile aus (Liste rückte in die Mitte) */}
+        <div className="portal-busy-inhalt">
         <MasterDetail
+          masterWidth="26rem"
           emptyTitle="Keine Person ausgewählt" emptyText="Links eine Person wählen, um Buchungen und Rechnungen zu bearbeiten."
           onBack={() => { setKunde(null); setRgnr(null); }}
           masterHead={
@@ -206,16 +210,30 @@ export function Hallenabrechnung() {
                 <ListItemGroup key={g} headerText={g}>
                   {personen.filter((p) => p.gruppe === g).map((p) => (
                     <ListItemCustom key={p.kunde} data-kunde={p.kunde} selected={p.kunde === kunde}>
-                      <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ width: '100%', padding: '0.4rem 0' }}>
-                        <FlexBox direction="Column" style={{ minWidth: 0 }}>
-                          <Text style={{ fontWeight: 'bold' }}>{p.name}</Text>
-                          <Text className="portal-small portal-muted">
-                            {p.offeneBuchungen} Buchung(en) · {p.rechnungen.length} Rechnung(en)
-                            {p.rechnungen.length ? ` · ${p.rechnungen.slice(0, 3).map((r) => r.rgnr_txt).join(', ')}${p.rechnungen.length > 3 ? ' …' : ''}` : ''}
-                          </Text>
-                        </FlexBox>
-                        <Text className="portal-nowrap">{eur(p.betrag)}</Text>
-                      </FlexBox>
+                      <div className="portal-hp">
+                        <div className="portal-hp__kopf">
+                          <span className="portal-hp__name">{p.name}</span>
+                          <span className="portal-hp__summe">{eur(p.betrag)}</span>
+                        </div>
+                        {/* jede Rechnung der Person in der Selektion mit Status und offenem Betrag */}
+                        {[...p.rechnungen].sort((a, b) => a.status.localeCompare(b.status) || b.rgnr_txt.localeCompare(a.rgnr_txt)).map((r) => (
+                          <div key={r.rgnr_txt} className="portal-hp__rg">
+                            <span className="portal-hp__nr">{r.rgnr_txt}</span>
+                            <ObjectStatus state={RG_STATE[r.status] ?? 'None'} inverted={r.status !== '1'}>{RG_STATUS[r.status] ?? r.status}</ObjectStatus>
+                            <span className="portal-hp__betrag">
+                              {r.status === '5' ? <>offen {eur(r.offen)} <span className="portal-muted">von {eur(r.betrag)}</span></>
+                                : ['4', '6'].includes(r.status) ? eur(r.betrag) : eur(r.offen)}
+                            </span>
+                          </div>
+                        ))}
+                        {p.offeneBuchungen > 0 && (
+                          <div className="portal-hp__rg portal-hp__buchungen">
+                            <span className="portal-hp__nr"><Icon name="appointment-2" /></span>
+                            <span>{p.offeneBuchungen} Buchung(en) ohne Rechnung</span>
+                            <span className="portal-hp__betrag">{eur(p.betragBuchungen)}</span>
+                          </div>
+                        )}
+                      </div>
                     </ListItemCustom>
                   ))}
                 </ListItemGroup>
@@ -231,6 +249,7 @@ export function Hallenabrechnung() {
             />
           ) : null}
         />
+        </div>
       </BusyIndicator>
 
       <PdfDialog url={pdf ? `${H}/rechnungen/${encodeURIComponent(pdf)}/pdf` : null} title={`Druckvoransicht Rechnung ${pdf ?? ''}`}

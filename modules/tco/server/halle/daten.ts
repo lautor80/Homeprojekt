@@ -57,7 +57,7 @@ export interface Person {
   name: string;
   offeneBuchungen: number;
   betragBuchungen: number;
-  rechnungen: { rgnr_txt: string; status: string }[];
+  rechnungen: { rgnr_txt: string; status: string; betrag: number; offen: number; versendet: string | null }[];
   offenRechnungen: number;
   betrag: number;
   gruppe: string;
@@ -224,7 +224,7 @@ export async function personenLesen(db: Db, v: Verein, sel: Selektion) {
   }
   for (const r of rechnungen) {
     const p = get(r.kunde ?? '');
-    p.rechnungen.push({ rgnr_txt: r.rgnr_txt, status: r.status });
+    p.rechnungen.push({ rgnr_txt: r.rgnr_txt, status: r.status, betrag: r.betrag, offen: r.offen, versendet: r.versendet });
     if (!['4', '6'].includes(r.status)) p.offenRechnungen++;
     p.betrag = runden(p.betrag + r.offen);
   }

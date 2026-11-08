@@ -46,7 +46,7 @@ export interface Buchung {
 }
 export interface Person {
   kunde: string; name: string; offeneBuchungen: number; betragBuchungen: number;
-  rechnungen: { rgnr_txt: string; status: string }[]; offenRechnungen: number; betrag: number; gruppe: string;
+  rechnungen: { rgnr_txt: string; status: string; betrag: number; offen: number; versendet: string | null }[]; offenRechnungen: number; betrag: number; gruppe: string;
 }
 export interface PersonDetail {
   kunde: string; name: string; adrnr: string | null; kontakt: Kontakt | null; kanal: 'E' | 'W' | '';

@@ -157,6 +157,7 @@ export function Konten() {
       <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
         <Tab data-key="konten" text="Konten und Verwendung" icon="list" selected={tab === 'konten'}>
           <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
+            <div className="portal-busy-inhalt">
             <Section title="Konten" count={sichtbar.length} flush
                      status={<span className="portal-muted portal-small">Kein Haken = Konto ist in diesem Jahr nicht in den Kontenlisten der FI-Belege.</span>}>
               <div style={{ overflowX: 'auto' }}>
@@ -188,7 +189,8 @@ export function Konten() {
                 </table>
               </div>
             </Section>
-          </BusyIndicator>
+          </div>
+        </BusyIndicator>
         </Tab>
         <Tab data-key="bestaende" text="Anfangsbestände Geldkonten" icon="wallet" selected={tab === 'bestaende'}>
           {tab === 'bestaende' && d && <Bestaende edit={edit} jahre={jahre} aktJahr={d.aktJahr} />}

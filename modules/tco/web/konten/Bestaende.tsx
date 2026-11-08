@@ -69,6 +69,7 @@ export function Bestaende({ edit, jahre, aktJahr }: { edit: boolean; jahre: numb
                  </Select>
                </>}>
         <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
+          <div className="portal-busy-inhalt">
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
@@ -113,6 +114,7 @@ export function Bestaende({ edit, jahre, aktJahr }: { edit: boolean; jahre: numb
               </tbody>
             </table>
           </div>
+        </div>
         </BusyIndicator>
       </Section>
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
