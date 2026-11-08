@@ -305,5 +305,7 @@ test('Benutzer ↔ Mitglied/EP3: einzeln zuordnen und initiales Mapping', async 
   r = await admin('PUT', `${M}/benutzer/${kai.benutzerId}/zuordnung`, { zuid: null });
   assert.equal(r.status, 200);
   assert.equal((await admin('GET', `${M}/benutzer/${kai.benutzerId}/zuordnung`)).body.ep3, null);
-  assert.equal((await paula('GET', `${M}/benutzer-mapping`)).status, 403);
+  const kim = client();
+  assert.equal((await kim('POST', '/api/auth/login', { username: 'kim.portal', password: 'mein-neues-kennwort' })).status, 200);
+  assert.equal((await kim('GET', `${M}/benutzer-mapping`)).status, 403);
 });
