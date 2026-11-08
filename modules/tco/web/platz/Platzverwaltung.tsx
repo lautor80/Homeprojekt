@@ -90,7 +90,23 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const [plaetze, setPlaetze] = useState<Platz[] | null>(null);
   const [form, setForm] = useState<(Omit<Platz, 'id'> & { id?: number }) | null>(null);
   const [weg, setWeg] = useState(false);
+  const [auswahl, setAuswahl] = useState<number[]>([]);
+  const [massen, setMassen] = useState<{ basis: Omit<Platz, 'id'>; werte: Omit<Platz, 'id'>; geaendert: string[] } | null>(null);
   const laden = () => api.get<{ plaetze: Platz[] }>(`${PA}/plaetze`).then((r) => setPlaetze(r.plaetze));
+  /** Einzelfeld direkt aus der Tabelle (z. B. Raster) über die Massenänderung speichern */
+  const feldSetzen = (id: number, felder: Partial<Platz>) => aktion(() => api.put(`${PA}/plaetze-massen`, { ids: [id], felder }), laden);
+  const kopieren = (p: Omit<Platz, 'id'> & { id?: number }) => {
+    const { id: _id, ...rest } = p;
+    let name = `${p.name} (Kopie)`;
+    for (let i = 2; plaetze?.some((x) => x.name.toLowerCase() === name.toLowerCase()); i++) name = `${p.name} (Kopie ${i})`;
+    setForm({ ...rest, name, aliase: '', sort: (plaetze?.length ?? 0) + 1 });
+  };
+  const massenStarten = () => {
+    const erste = plaetze?.find((p) => auswahl.includes(p.id));
+    if (!erste) return;
+    const { id: _id, ...basis } = erste;
+    setMassen({ basis, werte: basis, geaendert: [] });
+  };
   useEffect(() => { laden(); }, []);
 
   const columns: AnalyticalTableColumnDefinition[] = [
@@ -98,12 +114,34 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
     { Header: 'Art', accessor: 'art', width: 90, Cell: ({ value }: Cell) => (value === 'HALLE' ? 'Halle' : 'Freiplatz') },
     { Header: 'Gültig', id: 'gueltig', width: 190, Cell: ({ row }: Cell) => `${dat(row.original.gueltig_von)} – ${row.original.gueltig_bis === '9999-12-31' ? 'unbegrenzt' : dat(row.original.gueltig_bis)}` },
     { Header: 'Öffnung', id: 'oeffnung', width: 190, Cell: ({ row }: Cell) => `${wtText(row.original.wochentage)} ${row.original.zeit_von}–${row.original.zeit_bis}` },
-    { Header: 'Raster', accessor: 'raster', width: 75, hAlign: 'End', Cell: ({ value }: Cell) => `${value} Min.` },
+    {
+      Header: 'Raster', accessor: 'raster', width: 120,
+      Cell: ({ row }: Cell) => (
+        // eigener Klickbereich: Auswahl im Dropdown öffnet nicht den Bearbeitungsdialog
+        <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} style={{ width: '100%' }}>
+          <Select style={{ width: '100%' }} disabled={busy} accessibleName={`Raster ${row.original.name}`}
+                  onChange={(e) => {
+                    const r = Number((e.detail.selectedOption as HTMLElement).dataset.k);
+                    if (r !== row.original.raster) feldSetzen(row.original.id, { raster: r });
+                  }}>
+            {[15, 30, 60].map((r) => <Option key={r} data-k={r} selected={row.original.raster === r}>{r} Min.</Option>)}
+          </Select>
+        </div>
+      ),
+    },
     { Header: 'Dauer', id: 'dauer', width: 130, Cell: ({ row }: Cell) => `${std(row.original.dauer_min)} – ${std(row.original.dauer_max)}` },
     { Header: 'Vorlauf', id: 'vorlauf', width: 140, Cell: ({ row }: Cell) => `${row.original.vorlauf_min} Std. – ${row.original.vorlauf_max} Tage` },
     { Header: 'Storno bis', accessor: 'storno_frist', width: 100, hAlign: 'End', Cell: ({ value }: Cell) => `${value} Std. vorher` },
     { Header: 'Preis', accessor: 'abrechnen', width: 120, Cell: ({ value }: Cell) => (value ? <ObjectStatus state="Information">Hallenpreise</ObjectStatus> : <ObjectStatus state="Positive">kostenfrei</ObjectStatus>) },
     { Header: 'Status', accessor: 'aktiv', width: 90, Cell: ({ value }: Cell) => (value ? <ObjectStatus state="Positive">aktiv</ObjectStatus> : <ObjectStatus state="None">inaktiv</ObjectStatus>) },
+    {
+      Header: '', id: 'kopie', width: 56, disableSortBy: true,
+      Cell: ({ row }: Cell) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Button design="Transparent" icon="copy" tooltip={`„${row.original.name}“ kopieren`} onClick={() => kopieren(row.original as Platz)} />
+        </div>
+      ),
+    },
   ];
 
   const speichern = () => form && aktion(
@@ -116,9 +154,15 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
       <Toolbar design="Transparent">
         <Title level="H5">Plätze ({plaetze?.length ?? 0})</Title>
         <ToolbarSpacer />
+        <Button icon="edit" disabled={!auswahl.length} onClick={massenStarten}>
+          Massenänderung{auswahl.length ? ` (${auswahl.length})` : ''}
+        </Button>
         <Button icon="add" design="Emphasized" onClick={() => setForm({ ...NEU, sort: (plaetze?.length ?? 0) + 1 })}>Platz anlegen</Button>
       </Toolbar>
       <AnalyticalTable columns={columns} data={plaetze ?? []} loading={!plaetze} visibleRows={Math.max(plaetze?.length ?? 0, 3)}
+                       selectionMode="MultiSelect" selectionBehavior="RowSelector"
+                       reactTableOptions={{ getRowId: (r: Platz) => String(r.id), autoResetSelectedRows: false }}
+                       onRowSelect={(e) => setAuswahl(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number))}
                        noDataText="Noch keine Plätze – z. B. „Halle“ (Hallenpreise) und „Platz 1“ … (kostenfrei) anlegen"
                        onRowClick={(e) => setForm({ ...(e.detail.row.original as Platz) })} />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
@@ -128,12 +172,43 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
 
       {form && createPortal(
         <Dialog open headerText={form.id ? `Platz „${form.name}“` : 'Platz anlegen'} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setForm(null)}
-                footer={<Bar startContent={form.id ? <Button design="Transparent" icon="delete" onClick={() => setWeg(true)}>Löschen</Button> : undefined}
+                footer={<Bar startContent={form.id ? <>
+                               <Button design="Transparent" icon="delete" onClick={() => setWeg(true)}>Löschen</Button>
+                               <Button design="Transparent" icon="copy" onClick={() => kopieren(form)}>Kopieren</Button>
+                             </> : undefined}
                              endContent={<>
                                <Button design="Emphasized" disabled={busy || !form.name.trim()} onClick={speichern}>Speichern</Button>
                                <Button onClick={() => setForm(null)}>Abbrechen</Button>
                              </>} />}>
           <PlatzFormular f={form} setF={(x) => setForm({ ...form, ...x })} />
+        </Dialog>,
+        document.body,
+      )}
+      {massen && createPortal(
+        <Dialog open headerText={`Massenänderung – ${auswahl.length} Platz/Plätze`} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setMassen(null)}
+                footer={<Bar startContent={<Text className="portal-muted">
+                               {massen.geaendert.length ? `Wird gesetzt: ${massen.geaendert.map((k) => FELD_TEXT[k] ?? k).join(', ')}` : 'Noch nichts geändert'}
+                             </Text>}
+                             endContent={<>
+                               <Button design="Emphasized" disabled={busy || !massen.geaendert.length}
+                                       onClick={() => aktion(() => api.put(`${PA}/plaetze-massen`, {
+                                         ids: auswahl,
+                                         felder: Object.fromEntries(massen.geaendert.map((k) => [k, massen.werte[k as keyof typeof massen.werte]])),
+                                       }), async () => { setMassen(null); await laden(); })}>
+                                 Auf {auswahl.length} Platz/Plätze anwenden
+                               </Button>
+                               <Button onClick={() => setMassen(null)}>Abbrechen</Button>
+                             </>} />}>
+          <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
+            Vorbelegt mit den Werten von „{plaetze?.find((p) => auswahl.includes(p.id))?.name}“. Nur die Felder, die Sie hier ändern, werden für
+            {' '}{plaetze?.filter((p) => auswahl.includes(p.id)).map((p) => p.name).join(', ')} übernommen. Bezeichnung, weitere Bezeichnungen und Reihenfolge bleiben je Platz erhalten.
+          </MessageStrip>
+          <PlatzFormular massen f={massen.werte} setF={(x) => {
+            const werte = { ...massen.werte, ...x };
+            const geaendert = (Object.keys(werte) as (keyof typeof werte)[])
+              .filter((k) => MASSEN_FELDER.includes(k as string) && JSON.stringify(werte[k]) !== JSON.stringify(massen.basis[k])) as string[];
+            setMassen({ ...massen, werte, geaendert });
+          }} />
         </Dialog>,
         document.body,
       )}
@@ -154,11 +229,19 @@ function Zahl({ wert, onChange, min: mn = 0, max, schritt = 1, einheit }: { wert
   );
 }
 
-function PlatzFormular({ f, setF }: { f: Omit<Platz, 'id'>; setF: (x: Partial<Platz>) => void }) {
+const MASSEN_FELDER = ['art', 'gueltig_von', 'gueltig_bis', 'wochentage', 'zeit_von', 'zeit_bis', 'raster', 'dauer_min', 'dauer_max',
+  'vorlauf_min', 'vorlauf_max', 'storno_frist', 'max_offen', 'abrechnen', 'aktiv', 'hinweis'];
+const FELD_TEXT: Record<string, string> = {
+  art: 'Art', gueltig_von: 'Gültig ab', gueltig_bis: 'Gültig bis', wochentage: 'Wochentage', zeit_von: 'Öffnung ab', zeit_bis: 'Öffnung bis',
+  raster: 'Raster', dauer_min: 'Mindestdauer', dauer_max: 'Höchstdauer', vorlauf_min: 'Vorlauf', vorlauf_max: 'Im Voraus', storno_frist: 'Stornofrist',
+  max_offen: 'Kommende Buchungen', abrechnen: 'Preise', aktiv: 'Aktiv', hinweis: 'Hinweis',
+};
+
+function PlatzFormular({ f, setF, massen }: { f: Omit<Platz, 'id'>; setF: (x: Partial<Platz>) => void; massen?: boolean }) {
   const uhr = zeiten(f.raster);
   return (
     <FormGrid>
-      <FieldBox label="Bezeichnung" required><Input value={f.name} maxlength={60} onInput={(e) => setF({ name: e.target.value })} placeholder="z. B. Platz 3 oder Halle" /></FieldBox>
+      {!massen && <FieldBox label="Bezeichnung" required><Input value={f.name} maxlength={60} onInput={(e) => setF({ name: e.target.value })} placeholder="z. B. Platz 3 oder Halle" /></FieldBox>}
       <FieldBox label="Art">
         <Select onChange={(e) => { const art = (e.detail.selectedOption as HTMLElement).dataset.k as 'HALLE'; setF({ art, abrechnen: art === 'HALLE' }); }}>
           <Option data-k="FREI" selected={f.art === 'FREI'}>Freiplatz</Option>
@@ -213,8 +296,8 @@ function PlatzFormular({ f, setF }: { f: Omit<Platz, 'id'>; setF: (x: Partial<Pl
         <div className="portal-row"><Switch checked={f.aktiv} onChange={(e) => setF({ aktiv: e.target.checked })} />
           <Text className="portal-muted portal-small">{f.aktiv ? 'im Kalender buchbar' : 'ausgeblendet'}</Text></div>
       </FieldBox>
-      <FieldBox label="Weitere Bezeichnungen (z. B. aus EP3, kommagetrennt)"><Input value={f.aliase} onInput={(e) => setF({ aliase: e.target.value })} /></FieldBox>
-      <FieldBox label="Reihenfolge"><Zahl wert={f.sort} max={999} einheit="" onChange={(n) => setF({ sort: n })} /></FieldBox>
+      {!massen && <FieldBox label="Weitere Bezeichnungen (z. B. aus EP3, kommagetrennt)"><Input value={f.aliase} onInput={(e) => setF({ aliase: e.target.value })} /></FieldBox>}
+      {!massen && <FieldBox label="Reihenfolge"><Zahl wert={f.sort} max={999} einheit="" onChange={(n) => setF({ sort: n })} /></FieldBox>}
       <FieldBox label="Hinweis für Mitglieder" wide><TextArea value={f.hinweis ?? ''} rows={2} maxlength={500} onInput={(e) => setF({ hinweis: e.target.value })} /></FieldBox>
     </FormGrid>
   );

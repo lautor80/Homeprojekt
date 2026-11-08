@@ -102,6 +102,29 @@ export async function platzSpeichern(tx: Db, id: number | null, p: PlatzEingabe)
   return id;
 }
 
+/** Felder, die per Massenänderung für mehrere Plätze gesetzt werden können (nicht: Bezeichnung, Aliase, Reihenfolge) */
+export const MASSEN_FELDER = ['art', 'gueltig_von', 'gueltig_bis', 'wochentage', 'zeit_von', 'zeit_bis', 'raster', 'dauer_min', 'dauer_max',
+  'vorlauf_min', 'vorlauf_max', 'storno_frist', 'max_offen', 'abrechnen', 'aktiv', 'hinweis'] as const;
+
+/** Massenänderung: dieselben Werte für mehrere Plätze – alles oder nichts, jede Kombination wird geprüft */
+export async function massenAendern(tx: Db, ids: number[], felder: Partial<PlatzEingabe>): Promise<string> {
+  const werte = Object.fromEntries(Object.entries(felder).filter(([k, v]) => v !== undefined && (MASSEN_FELDER as readonly string[]).includes(k))) as Partial<PlatzEingabe>;
+  if (!Object.keys(werte).length) throw new BusinessError('Keine Änderung angegeben.');
+  const alle = await plaetzeLesen(tx);
+  const ziele = ids.map((id) => alle.find((p) => p.id === id));
+  if (!ziele.length || ziele.some((p) => !p)) throw new BusinessError('Platz nicht gefunden.', 404);
+  const fehler: string[] = [];
+  for (const p of ziele as Platz[]) {
+    try { platzPruefen({ ...p, ...werte }); } catch (e) { fehler.push(`${p.name}: ${(e as Error).message}`); }
+  }
+  if (fehler.length) throw new BusinessError(`Nicht gespeichert – bitte prüfen:\n${fehler.join('\n')}`);
+  for (const p of ziele as Platz[]) {
+    const { id, ...rest } = p;
+    await platzSpeichern(tx, id, { ...rest, ...werte });
+  }
+  return `${ziele.length} Platz/Plätze geändert (${Object.keys(werte).length} Feld(er)).`;
+}
+
 export async function platzLoeschen(tx: Db, id: number) {
   const p = await platzLesen(tx, id);
   const [b] = await tx`select 1 from tco.bookings where quelle = ${QUELLE} and platz = ${p.name} limit 1`;

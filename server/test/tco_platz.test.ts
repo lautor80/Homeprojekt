@@ -319,3 +319,23 @@ test('Serienbuchung (Hallenwart): Verfügbarkeit, Kombinationen, Abo über mehre
   const [m] = await sql`select status, coalesce(assigned, '') as assigned, kunde from tco.bookings where bid = ${r.body.bids[0]}`;
   assert.deepEqual(m, { status: '1', assigned: 'X', kunde: 'MEDENSPIEL HERREN 40' });
 });
+
+test('Platzverwaltung: Massenänderung und Raster direkt', async () => {
+  const plaetze = (await admin('GET', `${A}/plaetze`)).body.plaetze as { id: number; name: string; art: string; storno_frist: number; raster: number; dauer_min: number }[];
+  const frei = plaetze.filter((p) => p.art === 'FREI').map((p) => p.id);
+  let r = await admin('PUT', `${A}/plaetze-massen`, { ids: frei, felder: { storno_frist: 6, hinweis: 'Nur mit Sandplatzschuhen' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /3 Platz\/Plätze geändert/);
+  const neu = (await admin('GET', `${A}/plaetze`)).body.plaetze.filter((p: { art: string }) => p.art === 'FREI');
+  assert.ok(neu.every((p: { storno_frist: number; hinweis: string }) => p.storno_frist === 6 && p.hinweis === 'Nur mit Sandplatzschuhen'));
+  // Raster 60 passt nicht zur Höchstdauer 90 → nichts gespeichert
+  r = await admin('PUT', `${A}/plaetze-massen`, { ids: [frei[0]], felder: { raster: 60 } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Vielfaches des Zeitrasters/);
+  r = await admin('PUT', `${A}/plaetze-massen`, { ids: [frei[0]], felder: { raster: 15 } });
+  assert.equal(r.status, 200);
+  // Bezeichnung lässt sich nicht per Masse ändern
+  r = await admin('PUT', `${A}/plaetze-massen`, { ids: frei, felder: { name: 'X' } });
+  assert.equal(r.status, 400);
+  assert.equal((await bert('PUT', `${A}/plaetze-massen`, { ids: frei, felder: { aktiv: false } })).status, 403);
+});

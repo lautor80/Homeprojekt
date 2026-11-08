@@ -5,7 +5,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { DB } from '../verein.js';
 import { addTage } from '../format.js';
 import {
-  aboAnlegen, aboBeenden, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, einzelAendern, einzelAnlegen,
+  aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, einzelAendern, einzelAnlegen,
   einzelStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
   tagLesen, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
@@ -135,6 +135,15 @@ export async function platzRoutes(app: FastifyInstance) {
     const p = platz.parse(req.body);
     await change(req, (tx) => platzSpeichern(tx, id, p), { action: 'PLATZ_AENDERN', reason: p.name });
     return { id, text: `Platz „${p.name}“ gespeichert.` };
+  });
+
+  /** Massenänderung (auch Einzelfeld direkt aus der Tabelle, z. B. Raster) */
+  app.put('/platz/admin/plaetze-massen', admin, async (req) => {
+    const e = z.object({
+      ids: z.array(z.coerce.number().int().positive()).min(1, 'Bitte mindestens einen Platz wählen.'),
+      felder: platz.omit({ name: true, aliase: true, sort: true }).partial(),
+    }).parse(req.body);
+    return { text: await change(req, (tx) => massenAendern(tx, e.ids, e.felder), { action: 'PLATZ_MASSEN', reason: Object.keys(e.felder).join(',') }) };
   });
 
   app.delete('/platz/admin/plaetze/:id', admin, async (req) => {
