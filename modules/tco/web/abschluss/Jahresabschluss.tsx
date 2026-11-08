@@ -170,7 +170,7 @@ export function Jahresabschluss() {
   };
 
   return (
-    <AppPage title={`Einnahmen-Ausgaben-Rechnung ${jahr}`} subtitle="Jahresabschluss: Tätigkeitsbereiche, Überschussrechnung mit Vorjahren, Bankbestände und Anlagevermögen" header={header}
+    <AppPage title={`Jahresabschluss ${jahr}`} subtitle="Jahresabschluss: Tätigkeitsbereiche, Überschussrechnung mit Vorjahren, Bankbestände und Anlagevermögen" header={header}
              actions={<>
                <Button icon="pdf-attachment" design="Emphasized" disabled={!d} onClick={() => setAuswahl({ ear: true, steuer: false, anlagen: false })}>PDF erzeugen</Button>
                <Button icon="refresh" design="Transparent" tooltip="Neu berechnen" onClick={() => { setD(null); laden(); }} />

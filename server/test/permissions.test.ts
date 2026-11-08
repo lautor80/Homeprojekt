@@ -49,12 +49,12 @@ test('Katalog: jede Berechtigung genau einmal, mit Bereich/App, Voraussetzungen 
 
   // TC Oberthal: Bereiche in Menü-Reihenfolge
   const tco = katalog.find((g) => g.module === 'tco')!;
-  assert.deepEqual(tco.areas.map((a) => a.name), ['Verein', 'Abrechnungen', 'Finanzen', 'Datenschutz']);
-  const bank = tco.areas[3].apps[0].permissions;
+  assert.deepEqual(tco.areas.map((a) => a.name), ['Vereinsübersicht', 'Einstellungen', 'Mitglieder', 'Jugend', 'Tennishalle', 'Clubhaus', 'Finanzen', 'Datenschutz']);
+  const bank = tco.areas.find((a) => a.name === 'Datenschutz')!.apps[0].permissions;
   assert.deepEqual(bank.find((p) => p.id === 'tco.bankdaten:edit')!.requires.sort(), ['tco.bankdaten:display', 'tco.mitglieder:edit']);
-  const halle = tco.areas[1].apps.find((a) => a.name === 'Hallenabrechnung')!;
+  const halle = tco.areas.find((a) => a.name === 'Tennishalle')!.apps.find((a) => a.name === 'Hallenabrechnung')!;
   assert.deepEqual(halle.permissions.find((p) => p.id === 'tco.halle:versand')!.requires, ['tco.halle:display']);
-  const preise = tco.areas[1].apps.find((a) => a.name === 'Hallenpreise')!;
+  const preise = tco.areas.find((a) => a.name === 'Tennishalle')!.apps.find((a) => a.name === 'Hallenpreise')!;
   assert.deepEqual(preise.permissions[0].requires, ['tco.halle:display']);
 });
 

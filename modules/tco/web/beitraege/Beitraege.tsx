@@ -95,7 +95,7 @@ export function Beitraege() {
   );
 
   return (
-    <AppPage title="Beiträge" subtitle="Beiträge und Beitragshöhen je Zeitraum" header={header}
+    <AppPage title="Mitgliedsbeiträge" subtitle="Beiträge und Beitragshöhen je Zeitraum" header={header}
              actions={<>
                {edit && <Button icon="add" design="Emphasized" disabled={!d || d.leer} onClick={() => setDlg(null)}>Neuer Beitrag</Button>}
                <Button icon="refresh" onClick={() => { setLog([]); setWarnung(null); laden(); }}>Aktualisieren</Button>

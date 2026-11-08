@@ -81,7 +81,7 @@ export function Sollstellung() {
   if (ansicht !== 'liste') return <LaufDetail laufid={ansicht} onZurueck={() => { laden(); setAnsicht('liste'); }} />;
 
   return (
-    <AppPage title="Sollstellung" subtitle="Beitragseinzug per SEPA-Lastschrift – verbucht wird die Gutschrift im Bankimport der FI Belege"
+    <AppPage title="Sollstellungen" subtitle="Beitragseinzug per SEPA-Lastschrift – verbucht wird die Gutschrift im Bankimport der FI Belege"
              actions={edit && <Button design="Emphasized" icon="add" onClick={() => setAnsicht('neu')}>Neue Sollstellung</Button>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}

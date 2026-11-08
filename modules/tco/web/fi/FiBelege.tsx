@@ -249,7 +249,7 @@ export function FiBelege() {
   </>;
 
   return (
-    <AppPage title="FI Belege" subtitle="Kontobewegungen, Belege aus Paperless, Bankimport und Storno" header={header} actions={actions}>
+    <AppPage title="FI-Belege" subtitle="Kontobewegungen, Belege aus Paperless, Bankimport und Storno" header={header} actions={actions}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}
       {warnungen.length > 0 && <MessageStrip design="Critical" onClose={schliessen} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{warnungen.join('\n')}</MessageStrip>}

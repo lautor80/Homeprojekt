@@ -199,43 +199,47 @@ async function routes(app: FastifyInstance) {
 const tco: ServerModule = {
   id: 'tco',
   name: 'TC Oberthal',
-  // Reihenfolge und Gliederung wie die Navigation (modules/tco/web/index.ts): Bereich → App → Aktivität
+  // Reihenfolge und Gliederung wie die Navigation (modules/tco/web/index.ts): Bereich (Stufe 2) → App (Stufe 3) → Aktivität
   permissions: [
-    // ---------------------------------------------------------------- Verein
-    { area: 'Verein', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
-    { area: 'Verein', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
-    { area: 'Verein', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
-    { area: 'Verein', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
-    { area: 'Verein', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
-    { area: 'Verein', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
-    { area: 'Verein', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
-    { area: 'Verein', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
-    { area: 'Verein', app: 'Beiträge', id: P_BEITRAEGE.display, text: 'Beitragsstamm anzeigen' },
-    { area: 'Verein', app: 'Beiträge', id: P_BEITRAEGE.edit, text: 'Beiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
-    { area: 'Verein', app: 'Dokumenten-Upload', id: P_UP.execute, text: 'Belege gesammelt nach Paperless übertragen' },
-    // ---------------------------------------------------------------- Abrechnungen
-    { area: 'Abrechnungen', app: 'Hallenabrechnung', id: P_HALLE.display, text: 'Hallenabrechnung anzeigen' },
-    { area: 'Abrechnungen', app: 'Hallenabrechnung', id: P_HALLE.edit, text: 'Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
-    { area: 'Abrechnungen', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
-    { area: 'Abrechnungen', app: 'Hallenpreise', id: P_HALLE.preise, text: 'Hallenpreise pflegen', requires: [P_HALLE.display] },
-    { area: 'Abrechnungen', app: 'Jugendtraining', id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },
-    { area: 'Abrechnungen', app: 'Jugendtraining', id: P_JT.edit, text: 'Zeiten erfassen und importieren, Zeitnachweise ablegen, als bezahlt kennzeichnen' },
-    { area: 'Abrechnungen', app: 'Jugendtraining', id: P_JT.entgelte, text: 'Trainer und Trainerentgelte pflegen' },
-    { area: 'Abrechnungen', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
-    { area: 'Abrechnungen', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
+    // ---------------------------------------------------------------- Vereinsübersicht
+    { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
+    { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
+    // ---------------------------------------------------------------- Einstellungen
+    { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
+    { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
+    { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
+    { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
+    // ---------------------------------------------------------------- Mitglieder
+    { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
+    { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
+    { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },
+    { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
+    { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
+    // ---------------------------------------------------------------- Jugend
+    { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
+    { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },
+    { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.edit, text: 'Zeiten erfassen und importieren, Zeitnachweise ablegen, als bezahlt kennzeichnen' },
+    { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.entgelte, text: 'Trainer und Trainerentgelte pflegen' },
+    // ---------------------------------------------------------------- Tennishalle
+    { area: 'Tennishalle', app: 'Hallenpreise', id: P_HALLE.preise, text: 'Hallenpreise pflegen', requires: [P_HALLE.display] },
+    { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.display, text: 'Hallenabrechnung anzeigen' },
+    { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.edit, text: 'Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
+    { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
+    // ---------------------------------------------------------------- Clubhaus
+    { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
+    { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
     // ---------------------------------------------------------------- Finanzen
-    { area: 'Finanzen', app: 'Sollstellung', id: P_SOLL.display, text: 'Sollstellung anzeigen' },
-    { area: 'Finanzen', app: 'Sollstellung', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
-    { area: 'Finanzen', app: 'Sollstellung', id: P_SOLL.glaeubiger, text: 'Gläubigerdaten (Vereinskonto, Gläubiger-ID) pflegen' },
+    { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.display, text: 'Sollstellungen anzeigen' },
+    { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
+    { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.glaeubiger, text: 'Gläubigerdaten (Vereinskonto, Gläubiger-ID) pflegen' },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.display, text: 'FI-Belege anzeigen, Notizen erfassen' },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.buchen, text: 'Bankimport und manuelle Buchungen, Belege und Rechnungen zuordnen' },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.storno, text: 'FI-Belege stornieren' },
-    { area: 'Finanzen', app: 'Einnahmen & Ausgaben', id: P_FINANZ.display, text: 'Einnahmen & Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Beitragsforecast', id: P_FORECAST.display, text: 'Beitragsforecast anzeigen' },
+    { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
-    { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
-    { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
+    { area: 'Finanzen', app: 'Dokumenten-Upload', id: P_UP.execute, text: 'Belege gesammelt nach Paperless übertragen' },
     // ---------------------------------------------------------------- Datenschutz (Feldberechtigungen)
     { area: 'Datenschutz', app: 'Bankdaten von Personen', id: P_BANK.display,
       text: 'IBAN, BIC und abweichenden Kontoinhaber im Klartext sehen (sonst maskiert) – auch in Unterlagen, Änderungsbelegen und der SEPA-Datei' },
