@@ -159,14 +159,16 @@ export function MailDialog({ rgnrs, detail, onClose, onDone }: { rgnrs: string[]
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       <BusyIndicator active={busy} style={{ display: 'block' }}>
-        {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
-        <Feld label="An" required><Input value={an} onInput={(e) => setAn(e.target.value)} /></Feld>
-        <Feld label="Cc"><Input value={cc} onInput={(e) => setCc(e.target.value)} /></Feld>
-        <Feld label="Anhänge (offene Rechnungen)"><RechnungsAuswahl detail={detail} auswahl={auswahl} setAuswahl={setAuswahl} /></Feld>
-        <Feld label="Betreff" required><Input value={betreff} onInput={(e) => setBetreff(e.target.value)} /></Feld>
-        <Feld label="Nachricht" required><TextArea rows={10} value={text} onInput={(e) => setText(e.target.value)} /></Feld>
-        <CheckBox checked={neudruck} onChange={(e) => setNeudruck(e.target.checked)} text="Bereits gedruckte Rechnungen vorher neu drucken (neue Version in Paperless)" />
-        <CheckBox checked={entwurf} onChange={(e) => setEntwurf(e.target.checked)} text="Nur als Entwurf im Postfach ablegen (nicht senden)" />
+        <div className="portal-busy-inhalt">
+          {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
+          <Feld label="An" required><Input value={an} onInput={(e) => setAn(e.target.value)} /></Feld>
+          <Feld label="Cc"><Input value={cc} onInput={(e) => setCc(e.target.value)} /></Feld>
+          <Feld label="Anhänge (offene Rechnungen)"><RechnungsAuswahl detail={detail} auswahl={auswahl} setAuswahl={setAuswahl} /></Feld>
+          <Feld label="Betreff" required><Input value={betreff} onInput={(e) => setBetreff(e.target.value)} /></Feld>
+          <Feld label="Nachricht" required><TextArea rows={10} value={text} onInput={(e) => setText(e.target.value)} /></Feld>
+          <CheckBox checked={neudruck} onChange={(e) => setNeudruck(e.target.checked)} text="Bereits gedruckte Rechnungen vorher neu drucken (neue Version in Paperless)" />
+          <CheckBox checked={entwurf} onChange={(e) => setEntwurf(e.target.checked)} text="Nur als Entwurf im Postfach ablegen (nicht senden)" />
+        </div>
       </BusyIndicator>
     </Dialog>,
   );

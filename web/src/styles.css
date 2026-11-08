@@ -536,6 +536,13 @@
 }
 
 /* ---------------------------------------------------------------------------
+   BusyIndicator: Die UI5-Komponente ordnet ihre Kinder intern als Flex-Zeile an.
+   Inhalt mit mehreren Blöcken daher immer in genau EIN Element mit dieser Klasse packen.
+   --------------------------------------------------------------------------- */
+ui5-busy-indicator { max-width: 100%; }
+.portal-busy-inhalt { display: block; width: 100%; min-width: 0; }
+
+/* ---------------------------------------------------------------------------
    Kleinigkeiten
    --------------------------------------------------------------------------- */
 .portal-muted { color: var(--sapContent_LabelColor); }

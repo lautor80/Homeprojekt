@@ -179,6 +179,8 @@ export function Jahresabschluss() {
       {!d && !error && <BusyIndicator active delay={200} style={{ width: '100%', display: 'block', padding: '2rem 0' }} />}
       {d && (
         <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
+          {/* ein einziges Kind: der BusyIndicator legt seine Kinder sonst nebeneinander (Flex-Zeile) */}
+          <div className="portal-busy-inhalt">
           {d.hinweise.map((h) => <MessageStrip key={h} design={d.ear.leer ? 'Critical' : 'Information'} hideCloseButton style={{ marginBottom: '0.5rem' }}>{h}</MessageStrip>)}
 
           <Section title="Jahresergebnis">
@@ -242,6 +244,7 @@ export function Jahresabschluss() {
               und verändert das Ergebnis der Einnahmen-Ausgaben-Rechnung nicht. Zeile anklicken, um ein Objekt zu bearbeiten.
             </MessageStrip>
           </Section>
+          </div>
         </BusyIndicator>
       )}
 
