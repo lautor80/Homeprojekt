@@ -19,7 +19,7 @@ import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '.
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
-import { bankAendern, kontaktSichern, kuendigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST } from './selbst.js';
+import { bankAendern, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST } from './selbst.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -127,11 +127,13 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   });
   app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {
     const k = z.object({
-      art: z.enum(['MITGLIEDSCHAFT', 'VERTRAG']), adrnr: z.string().nullish(), vertragnr: z.string().nullish(), zum: datum, grund: z.string().max(500).nullish(),
+      art: z.enum(['MITGLIEDSCHAFT', 'VERTRAG']), adrnr: z.string().nullish(), vertragnr: z.string().nullish(), grund: z.string().max(500).nullish(),
       bestaetigung: z.literal(true, { errorMap: () => ({ message: 'Bitte die Kündigung bestätigen.' }) }),
     }).parse(req.body);
     const v = await vereinLesen();
-    return { text: await change(req, (tx) => kuendigen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG', reason: k.grund ?? null }) };
+    const r = await change(req, (tx) => kuendigen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG', reason: k.grund ?? null });
+    const b = await kuendigungBestaetigen(DB, v, r, k.grund ?? null);
+    return { ...b, text: `${r.text}${b.gesendet ? ' Die Kündigungsbestätigung wurde per E-Mail gesendet.' : ''}` };
   });
 
   // ---------------------------------------------------------------- Administration → Benutzer: Mitglieder als Benutzer anlegen

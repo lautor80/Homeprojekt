@@ -3,10 +3,13 @@ import { hashPassword } from '../../../../server/src/auth.js';
 import { maskIban } from '../../../../server/src/schutz.js';
 import type { Db, Verein } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
-import { mailSenden } from '../kommunikation.js';
+import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import {
-  austrittSichern, bankSichern, detailLesen, emailGueltig, kopfSichern, leer, mitgliedLesen, notizAnlegen, vertragAendern, verweis,
+  ART_JUGEND, austrittSichern, bankSichern, detailLesen, emailGueltig, kopfSichern, leer, mitgliedLesen, notizAnlegen, vertragAendern, verweis,
 } from './logik.js';
+import { druckdatenLesen, unterlagePdf } from './pdf.js';
+import { mailText, unterlageAblegen } from './dokumente.js';
+import { plAktiv } from '../verein.js';
 import { benutzerAnlegen, freierBenutzername, istBcrypt, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
@@ -26,11 +29,16 @@ export async function eigeneAdrnr(db: Db, benutzerId: string): Promise<string> {
   return a.adrnr as string;
 }
 
-/** mögliche Kündigungstermine: Jahresende des laufenden und des folgenden Jahres */
-export function kuendigungsTermine(h = heute()): string[] {
+/** Mitgliedschaft und normale Verträge enden zum 31.12. des laufenden Jahres */
+export const endeJahr = (h = heute()) => `${h.slice(0, 4)}-12-31`;
+/** Jugendtraining endet zum nächsten 30.09. */
+export function endeJugend(h = heute()): string {
   const jahr = Number(h.slice(0, 4));
-  return [`${jahr}-12-31`, `${jahr + 1}-12-31`];
+  return h <= `${jahr}-09-30` ? `${jahr}-09-30` : `${jahr + 1}-09-30`;
 }
+const istJugend = (v: { art: string }) => leer(v.art) === ART_JUGEND;
+/** Vertragsende bei Kündigung eines einzelnen Vertrags */
+export const vertragsEnde = (v: { art: string }, h = heute()) => (istJugend(v) ? endeJugend(h) : endeJahr(h));
 
 export async function meineLesen(db: Db, benutzerId: string) {
   const adrnr = await eigeneAdrnr(db, benutzerId);
@@ -45,8 +53,8 @@ export async function meineLesen(db: Db, benutzerId: string) {
       mandatsref: d.bank.mandatsref,
     },
     familie: d.familie,
-    vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && (v.eigen || true) })),
-    kuendigungsTermine: kuendigungsTermine(),
+    vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && !v.vertragende, endeBei: vertragsEnde(v) })),
+    kuendigung: { mitgliedschaft: endeJahr(), jugend: endeJugend(), heute: heute() },
     gekuendigt: !!d.mitglied.austritt,
   };
 }
@@ -78,42 +86,69 @@ export async function bankAendern(tx: Db, benutzerId: string, b: { iban: string;
   return 'Bankverbindung gesichert. Der Einzug erfolgt ab der nächsten Sollstellung vom neuen Konto.';
 }
 
-export interface Kuendigung { art: 'MITGLIEDSCHAFT' | 'VERTRAG'; adrnr?: string | null; vertragnr?: string | null; zum: string; grund?: string | null }
+export interface Kuendigung { art: 'MITGLIEDSCHAFT' | 'VERTRAG'; adrnr?: string | null; vertragnr?: string | null; grund?: string | null }
 
-/** Kündigung durch das Mitglied selbst; Verträge auch für Personen, die über das Mitglied zahlen */
-export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Verein, benutzer: string): Promise<string> {
+/**
+ * Kündigung durch das Mitglied selbst. Kündigungsdatum = heute; Mitgliedschaft und Verträge enden zum 31.12. des laufenden
+ * Jahres, Jugendtraining zum nächsten 30.09. (bei Kündigung der Mitgliedschaft spätestens zum Austritt).
+ * Verträge auch für Personen, die über das Mitglied zahlen. Anschließend Kündigungsbestätigung (PDF) erzeugen, in der
+ * Mitgliederakte ablegen (Paperless) und per E-Mail (n8n) an das Mitglied senden; der Vorstand erhält eine Kopie.
+ */
+export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Verein, benutzer: string): Promise<{ text: string; adrnr: string; betroffen: string; ende: string }> {
   const eigene = await eigeneAdrnr(tx, benutzerId);
-  if (!kuendigungsTermine().includes(k.zum)) throw new BusinessError('Eine Kündigung ist nur zum Jahresende möglich.');
+  const h = heute();
   const d = await detailLesen(tx, eigene);
   let text: string;
   let betroffen = eigene;
+  let ende: string;
   if (k.art === 'MITGLIEDSCHAFT') {
     if (d.mitglied.austritt) throw new BusinessError(`Die Mitgliedschaft ist bereits zum ${dat(d.mitglied.austritt)} gekündigt.`);
-    await austrittSichern(tx, eigene, k.zum);
+    ende = endeJahr(h);
+    await austrittSichern(tx, eigene, ende);
+    const teile: string[] = [];
     for (const vt of d.vertraege) {
-      if (vt.eigen && vt.laeuft && (!vt.vertragende || vt.vertragende > k.zum)) await vertragAendern(tx, vt.adrnr, vt.vertragnr, { ende: k.zum });
+      if (!vt.eigen || !vt.laeuft) continue;
+      const bis = istJugend(vt) && endeJugend(h) < ende ? endeJugend(h) : ende;
+      if (!vt.vertragende || vt.vertragende > bis) { await vertragAendern(tx, vt.adrnr, vt.vertragnr, { ende: bis }); teile.push(`${vt.artname || vt.art} bis ${dat(bis)}`); }
     }
-    text = `Mitgliedschaft zum ${dat(k.zum)} gekündigt.`;
+    text = `Mitgliedschaft gekündigt am ${dat(h)} zum ${dat(ende)}${teile.length ? ` (${teile.join(', ')})` : ''}.`;
   } else {
     const vt = d.vertraege.find((x) => x.vertragnr === leer(k.vertragnr) && x.adrnr === leer(k.adrnr ?? eigene));
     if (!vt) throw new BusinessError('Der Vertrag gehört nicht zu Ihrer Mitgliedschaft.');
     if (!vt.laeuft) throw new BusinessError('Der Vertrag ist bereits beendet.');
-    if (vt.vertragende && vt.vertragende <= k.zum) throw new BusinessError(`Der Vertrag endet bereits am ${dat(vt.vertragende)}.`);
-    await vertragAendern(tx, vt.adrnr, vt.vertragnr, { ende: k.zum });
+    ende = vertragsEnde(vt, h);
+    if (vt.vertragende && vt.vertragende <= ende) throw new BusinessError(`Der Vertrag endet bereits am ${dat(vt.vertragende)}.`);
+    await vertragAendern(tx, vt.adrnr, vt.vertragnr, { ende });
     betroffen = vt.adrnr;
-    text = `${vt.artname || 'Vertrag'}${vt.eigen ? '' : ` (${vt.person})`} zum ${dat(k.zum)} gekündigt.`;
+    text = `${vt.artname || 'Vertrag'}${vt.eigen ? '' : ` (${vt.person})`} gekündigt am ${dat(h)} zum ${dat(ende)}.`;
   }
   const grund = condense(k.grund ?? '');
   await notizAnlegen(tx, betroffen, `Kündigung über „Meine Mitgliedschaft“ durch ${benutzer}: ${text}${grund ? ` Grund: ${grund}` : ''}`, 'Portal');
-  // Vorstand informieren (nicht kritisch)
-  if (v.n8n_mail_url && v.email) {
-    mailSenden(v, {
-      modus: 'senden', anwendung: 'Mitglieder', objekt: betroffen, an: v.email, benutzer: 'Portal', anhaenge: [],
-      betreff: `Kündigung über das Portal: ${d.titel}`,
-      text: `${d.titel} (${eigene}) hat über „Meine Mitgliedschaft“ gekündigt:\n\n${text}${grund ? `\nGrund: ${grund}` : ''}\n\nDie Daten wurden bereits im Mitgliederstamm hinterlegt (Austritt/Vertragsende, SEPA-Mandat befristet).`,
-    }).catch(() => undefined);
+  return { text, adrnr: eigene, betroffen, ende };
+}
+
+/** Kündigungsbestätigung drucken, ablegen und versenden (nach der Transaktion; Fehler werden als Hinweise zurückgegeben) */
+export async function kuendigungBestaetigen(db: Db, v: Verein, r: { adrnr: string; betroffen: string; text: string }, grund: string | null) {
+  const hinweise: string[] = [];
+  const d = await druckdatenLesen(db, r.betroffen);
+  const pdf = await unterlagePdf(v, '4', d);
+  const dateiname = `Kuendigungsbestaetigung_${leer(d.m.nachname)}_${leer(d.m.vorname)}.pdf`;
+  if (plAktiv(v)) {
+    await unterlageAblegen(v, '4', d.m, pdf, 'Portal').then((a) => hinweise.push(...a.warnungen)).catch((e) => hinweise.push(`Ablage in Paperless nicht möglich: ${(e as Error).message}`));
+  } else hinweise.push('Paperless ist nicht eingerichtet – die Bestätigung wurde nicht abgelegt.');
+  const k = await kontaktLesen(db, r.adrnr);
+  let gesendet = false;
+  if (!v.n8n_mail_url) hinweise.push('Der Mailversand ist nicht eingerichtet – bitte die Bestätigung herunterladen.');
+  else if (!k?.email) hinweise.push('Keine E-Mail-Adresse hinterlegt – bitte die Bestätigung herunterladen.');
+  else {
+    const { betreff, text } = mailText(v, '4', k.vorname, []);
+    await mailSenden(v, {
+      modus: 'senden', anwendung: 'Mitglieder', objekt: r.betroffen, an: k.email, cc: v.email ?? '', betreff,
+      text: `${text}\n\n---\n${r.text}${grund ? `\nGrund: ${grund}` : ''}`, benutzer: 'Portal',
+      anhaenge: [{ dateiname, mime: 'application/pdf', inhalt: pdf }],
+    }).then(() => { gesendet = true; }).catch((e) => hinweise.push(`E-Mail nicht gesendet: ${(e as Error).message}`));
   }
-  return `${text} Der Vorstand wurde informiert.`;
+  return { pdf: pdf.toString('base64'), dateiname, gesendet, hinweise };
 }
 
 // ---------------------------------------------------------------------------

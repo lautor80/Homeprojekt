@@ -127,27 +127,38 @@ test('Meine Mitgliedschaft: Anmeldung mit Startkennwort, nur eigene Daten, Konta
   assert.match(r.body.message, /andere Person/);
 });
 
-test('Kündigung: Vertrag der über mich zahlenden Person, dann Mitgliedschaft zum Jahresende', async () => {
-  let r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000502', vertragnr: '1', zum: `${jahr}-06-30`, bestaetigung: true });
-  assert.equal(r.status, 400, 'nur Jahresende');
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000502', vertragnr: '1', zum: `${jahr}-12-31`, bestaetigung: true, grund: 'Kim hört auf' });
+test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12., Bestätigung als PDF', async () => {
+  const h = new Date().toLocaleDateString('sv-SE');
+  const jugendEnde = h <= `${jahr}-09-30` ? `${jahr}-09-30` : `${jahr + 1}-09-30`;
+  let r = await paula('GET', `${M}/meine`);
+  assert.equal(r.body.kuendigung.mitgliedschaft, `${jahr}-12-31`);
+  assert.equal(r.body.kuendigung.jugend, jugendEnde);
+  assert.equal(r.body.vertraege.find((v: { adrnr: string }) => v.adrnr === '0000000502').endeBei, jugendEnde, 'Jugendtraining von Kim');
+
+  // Vertrag der über mich zahlenden Person (Jugend) → nächster 30.09.
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000502', vertragnr: '1', bestaetigung: true, grund: 'Kim hört auf' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '1'`)[0].e, `${jahr}-12-31`);
+  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '1'`)[0].e, jugendEnde);
   assert.ok((await sql`select notiz from tco.mgnotiz where adrnr = '0000000502'`).some((n) => String(n.notiz).includes('Kim hört auf')));
+  assert.ok(r.body.pdf && Buffer.from(r.body.pdf, 'base64').subarray(0, 4).toString() === '%PDF', 'Kündigungsbestätigung als PDF');
+  assert.match(r.body.dateiname, /^Kuendigungsbestaetigung_Portal_Kim\.pdf$/);
+  assert.ok(r.body.hinweise.some((x: string) => /Mailversand ist nicht eingerichtet/.test(x)), JSON.stringify(r.body.hinweise));
   // fremder Vertrag (Mitglied 504) nicht erreichbar
   await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, vertragbegin, betrag) values ('0000000504', '1', '10', 'Erwachsene', '2019-05-01', 120)`;
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000504', vertragnr: '1', zum: `${jahr}-12-31`, bestaetigung: true });
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000504', vertragnr: '1', bestaetigung: true });
   assert.equal(r.status, 400);
   assert.equal((await sql`select vertragende from tco.vertraege where adrnr = '0000000504'`)[0].vertragende, null);
 
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', zum: `${jahr + 1}-12-31`, bestaetigung: true });
+  // Mitgliedschaft: Austritt 31.12. des laufenden Jahres, alle eigenen Verträge enden
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', bestaetigung: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Mitgliedschaft gekündigt am .* zum 31\.12\./);
   const [m] = await sql`select austritt::text as a from tco.mitglieder where adrnr = '0000000501'`;
-  assert.equal(m.a, `${jahr + 1}-12-31`);
-  assert.ok((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000501'`).every((v) => v.e === `${jahr + 1}-12-31`));
+  assert.equal(m.a, `${jahr}-12-31`);
+  assert.ok((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000501'`).every((v) => v.e === `${jahr}-12-31`));
+  assert.ok(r.body.pdf);
   r = await paula('GET', `${M}/meine`);
   assert.equal(r.body.gekuendigt, true);
-  assert.equal((await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', zum: `${jahr}-12-31`, bestaetigung: true })).status, 400, 'nur einmal');
-  // Austritt kann das Mitglied nicht selbst zurücknehmen (kein Endpunkt); Verwaltung sieht alles mit Änderungsbeleg
+  assert.equal((await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', bestaetigung: true })).status, 400, 'nur einmal');
   assert.ok((await sql`select count(*)::int as n from core.change_header where object_type = 'MITGLIED' and action = 'KUENDIGUNG'`)[0].n >= 2);
 });
