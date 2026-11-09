@@ -62,6 +62,6 @@ test('Navigation: jede Berechtigung aus Menü/Routen/Kacheln steht im Katalog', 
   const ids = new Set(permissionCatalog().flatMap((g) => g.permissions.map((p) => p.id)));
   for (const datei of ['web/src/pages/HomePage.tsx', 'web/src/shell/Shell.tsx', 'modules/tco/web/index.ts', 'modules/transport/web/index.ts', 'modules/beispiel/web/index.ts']) {
     const text = readFileSync(path.join(APP_ROOT, datei), 'utf8');
-    for (const [, id] of text.matchAll(/permission:\s*'([^']+)'/g)) assert.ok(ids.has(id), `${datei}: ${id} fehlt im Katalog`);
+    for (const [, wert] of text.matchAll(/permission:\s*'([^']+)'/g)) for (const id of wert.split('|')) assert.ok(ids.has(id), `${datei}: ${id} fehlt im Katalog`);
   }
 });
