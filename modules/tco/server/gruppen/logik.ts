@@ -149,6 +149,8 @@ export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: stri
   if (dup) throw new BusinessError(`Die Gruppe „${name}“ gibt es ${parent == null ? '' : 'auf dieser Ebene '}bereits.`);
   if (id) {
     await tx`update tco.kal_gruppen set name = ${name}, beschreibung = ${d.beschreibung?.trim() || null}, aktiv = ${d.aktiv}, parent_id = ${parent} where id = ${id}`;
+    // verschoben: Mitglieder der Gruppe (und ihrer Untergruppen) stehen nicht noch einmal in den neuen Gruppen darüber
+    if (parent !== (alt?.parent_id ?? null)) await hierarchieBereinigen(tx);
     return id;
   }
   const [n] = await tx`insert into tco.kal_gruppen (name, beschreibung, aktiv, parent_id) values (${name}, ${d.beschreibung?.trim() || null}, ${d.aktiv}, ${parent}) returning id`;
@@ -165,27 +167,88 @@ export async function gruppeLoeschen(tx: Db, id: number) {
   return g.name;
 }
 
-export async function gruppenMitgliedSetzen(tx: Db, gruppeId: number, adrnr: string, rolle: string | null) {
-  await gruppeHolen(tx, gruppeId);
-  const [m] = await tx`select 1 from tco.mitglieder where adrnr = ${adrnr}`;
-  if (!m) throw new BusinessError('Mitglied nicht gefunden.');
-  await tx`insert into tco.kal_gruppe_mitglieder (gruppe_id, adrnr, rolle) values (${gruppeId}, ${adrnr}, ${condense(rolle ?? '') || null})
-           on conflict (gruppe_id, adrnr) do update set rolle = excluded.rolle`;
+// ---------------------------------------------------------------- Hierarchieregel
+// Wer in einer Untergruppe ist, gehört zwingend auch zu allen Gruppen darüber. Deshalb wird ein Mitglied entlang
+// einer Linie (Gruppe – Untergruppe – …) nur einmal geführt, und zwar in der untersten Gruppe. In parallelen Gruppen
+// (z. B. Herren 30 und Herren 40) kann es mehrfach stehen.
+
+/** Gruppen über einer Gruppe (ohne sie selbst) */
+async function vorfahren(db: Db, id: number): Promise<number[]> {
+  return (await db`with recursive g as (
+                     select id, parent_id from tco.kal_gruppen where id = ${id}
+                     union
+                     select p.id, p.parent_id from tco.kal_gruppen p join g on g.parent_id = p.id)
+                   select id from g where id <> ${id}`).map((r) => Number(r.id));
 }
 
-/** Mehrere Mitglieder aufnehmen; bereits zugeordnete behalten ihre Rolle. Liefert die Zahl der neu Zugeordneten. */
-export async function gruppenMitgliederAufnehmen(tx: Db, gruppeId: number, adrnrs: string[]): Promise<number> {
+/** Mitglieder, die schon über eine Untergruppe zur Gruppe gehören: Adressnummer → Name der Untergruppe */
+async function ueberUntergruppe(db: Db, gruppeId: number, adrnrs: string[]): Promise<Map<string, string>> {
+  const unter = (await mitUntergruppen(db, [gruppeId])).filter((x) => x !== gruppeId);
+  if (!unter.length || !adrnrs.length) return new Map();
+  const r = await db`select gm.adrnr, k.name from tco.kal_gruppe_mitglieder gm join tco.kal_gruppen k on k.id = gm.gruppe_id
+                      where gm.gruppe_id = any(${unter}) and gm.adrnr = any(${adrnrs}) order by k.name`;
+  return new Map(r.map((x) => [x.adrnr as string, x.name as string]));
+}
+
+/** Zuordnungen in den Gruppen darüber entfernen (das Mitglied steht jetzt in der Untergruppe). Liefert die Zahl der Entfernten. */
+async function ausUebergeordnetenEntfernen(tx: Db, gruppeId: number, adrnrs: string[]): Promise<number> {
+  const ueber = await vorfahren(tx, gruppeId);
+  if (!ueber.length || !adrnrs.length) return 0;
+  return (await tx`delete from tco.kal_gruppe_mitglieder where gruppe_id = any(${ueber}) and adrnr = any(${adrnrs}) returning adrnr`).length;
+}
+
+/**
+ * Alle Gruppen bereinigen: Zuordnungen entfernen, die es in einer Untergruppe noch einmal gibt
+ * (nach dem Verschieben einer Gruppe; dieselbe Anweisung steht in Migration 040).
+ */
+export async function hierarchieBereinigen(tx: Db): Promise<number> {
+  return (await tx`with recursive linie as (
+                     select id as oben, id as unten from tco.kal_gruppen
+                     union
+                     select l.oben, k.id from tco.kal_gruppen k join linie l on k.parent_id = l.unten)
+                   delete from tco.kal_gruppe_mitglieder gm
+                    using linie l, tco.kal_gruppe_mitglieder u
+                    where l.oben = gm.gruppe_id and l.unten <> l.oben and u.gruppe_id = l.unten and u.adrnr = gm.adrnr
+                   returning gm.adrnr`).length;
+}
+
+/**
+ * Mitglied einer Gruppe zuordnen bzw. seine Rolle ändern. Gehört es schon über eine Untergruppe dazu, wird es nicht
+ * noch einmal aufgenommen; stand es bisher in einer Gruppe darüber, wandert es in die Untergruppe.
+ * Liefert, aus wie vielen übergeordneten Gruppen es dabei entfernt wurde.
+ */
+export async function gruppenMitgliedSetzen(tx: Db, gruppeId: number, adrnr: string, rolle: string | null): Promise<number> {
+  const g = await gruppeHolen(tx, gruppeId);
+  const [m] = await tx`select 1 from tco.mitglieder where adrnr = ${adrnr}`;
+  if (!m) throw new BusinessError('Mitglied nicht gefunden.');
+  const [da] = await tx`select 1 from tco.kal_gruppe_mitglieder where gruppe_id = ${gruppeId} and adrnr = ${adrnr}`;
+  if (!da) {
+    const unter = (await ueberUntergruppe(tx, gruppeId, [adrnr])).get(adrnr);
+    if (unter) throw new BusinessError(`Das Mitglied gehört über die Untergruppe „${unter}“ bereits zu „${g.name}“ und wird dort nicht noch einmal aufgenommen.`);
+  }
+  await tx`insert into tco.kal_gruppe_mitglieder (gruppe_id, adrnr, rolle) values (${gruppeId}, ${adrnr}, ${condense(rolle ?? '') || null})
+           on conflict (gruppe_id, adrnr) do update set rolle = excluded.rolle`;
+  return ausUebergeordnetenEntfernen(tx, gruppeId, [adrnr]);
+}
+
+/**
+ * Mehrere Mitglieder aufnehmen; bereits zugeordnete behalten ihre Rolle. Wer über eine Untergruppe schon dazugehört,
+ * wird übersprungen; wer in einer Gruppe darüber stand, wandert in diese Gruppe.
+ */
+export async function gruppenMitgliederAufnehmen(tx: Db, gruppeId: number, adrnrs: string[]): Promise<{ neu: number; ueberUntergruppe: number; ausUebergeordneter: number }> {
   await gruppeHolen(tx, gruppeId);
   const liste = [...new Set(adrnrs)];
   const vorhanden = new Set((await tx`select adrnr from tco.mitglieder where adrnr = any(${liste})`).map((r) => r.adrnr as string));
   const fehlt = liste.filter((a) => !vorhanden.has(a));
   if (fehlt.length) throw new BusinessError(`Mitglied nicht gefunden: ${fehlt.join(', ')}.`);
+  const unter = await ueberUntergruppe(tx, gruppeId, liste);
+  const rest = liste.filter((a) => !unter.has(a));
   let neu = 0;
-  for (const a of liste) {
+  for (const a of rest) {
     const r = await tx`insert into tco.kal_gruppe_mitglieder (gruppe_id, adrnr) values (${gruppeId}, ${a}) on conflict do nothing returning adrnr`;
     neu += r.length;
   }
-  return neu;
+  return { neu, ueberUntergruppe: unter.size, ausUebergeordneter: await ausUebergeordnetenEntfernen(tx, gruppeId, rest) };
 }
 
 export async function gruppenMitgliedEntfernen(tx: Db, gruppeId: number, adrnr: string) {

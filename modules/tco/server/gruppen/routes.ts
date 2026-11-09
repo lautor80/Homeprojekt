@@ -61,7 +61,12 @@ export async function gruppenRoutes(app: FastifyInstance) {
       await change(req, async (tx) => { for (const a of b.adrnrs) await gruppenMitgliedSetzen(tx, gid, a, b.rolle ?? null); }, { action: 'GRUPPE' });
       return { text: 'Gespeichert.' };
     }
-    const neu = await change(req, (tx) => gruppenMitgliederAufnehmen(tx, gid, b.adrnrs), { action: 'GRUPPE' });
-    return { text: neu === 1 ? '1 Mitglied aufgenommen.' : `${neu} Mitglieder aufgenommen.` };
+    const r = await change(req, (tx) => gruppenMitgliederAufnehmen(tx, gid, b.adrnrs), { action: 'GRUPPE' });
+    return {
+      ...r,
+      text: (r.neu === 1 ? '1 Mitglied aufgenommen' : `${r.neu} Mitglieder aufgenommen`)
+        + (r.ueberUntergruppe ? `, ${r.ueberUntergruppe} nicht – bereits über eine Untergruppe enthalten` : '')
+        + (r.ausUebergeordneter ? `, ${r.ausUebergeordneter} Zuordnung${r.ausUebergeordneter === 1 ? '' : 'en'} in übergeordneten Gruppen entfernt` : '') + '.',
+    };
   });
 }

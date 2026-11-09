@@ -124,12 +124,13 @@ export function Gruppen() {
       },
     },
     {
-      Header: 'Mitglieder', id: 'anzahl', width: 150, hAlign: 'End',
+      Header: 'Mitglieder', id: 'anzahl', width: 170, hAlign: 'End',
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
         if (z.m) return '';
         const direkt = z.g.mitglieder.length;
-        return <Text>{z.g.gesamt === direkt ? direkt : `${direkt} · gesamt ${z.g.gesamt}`}</Text>;
+        // maßgeblich ist die Gesamtzahl: Mitglieder der Untergruppen gehören zwingend zur Gruppe
+        return <Text>{z.g.gesamt === direkt ? direkt : `${z.g.gesamt} · davon direkt ${direkt}`}</Text>;
       },
     },
     ...(pflege ? [{
@@ -184,7 +185,7 @@ export function Gruppen() {
       )}
 
       {form && <GruppeDialog form={form} gruppen={gruppen} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
-      {aufnehmen && <AufnehmenDialog gruppe={aufnehmen} onClose={(text) => { setAufnehmen(null); if (text) lauf(async () => ({ text })); }} />}
+      {aufnehmen && <AufnehmenDialog gruppe={aufnehmen} gruppen={gruppen} onClose={(text) => { setAufnehmen(null); if (text) lauf(async () => ({ text })); }} />}
       <ConfirmDialog open={!!weg} title="Gruppe löschen" danger confirmText="Löschen"
                      text={weg ? `Gruppe „${weg.pfad}“ löschen?${weg.mitglieder.length ? ` Die Zuordnung von ${weg.mitglieder.length} Mitglied${weg.mitglieder.length === 1 ? '' : 'ern'} entfällt.` : ''}` : ''}
                      onCancel={() => setWeg(null)}
@@ -235,7 +236,7 @@ const MAX_TREFFER = 150;
 /** leer oder keine Zahl = Grenze nicht gesetzt */
 const zahl = (s: string) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s));
 
-function AufnehmenDialog({ gruppe, onClose }: { gruppe: Gruppe; onClose: (text?: string) => void }) {
+function AufnehmenDialog({ gruppe, gruppen, onClose }: { gruppe: Gruppe; gruppen: Gruppe[]; onClose: (text?: string) => void }) {
   const [alle, setAlle] = useState<AufnahmeMitglied[] | null>(null);
   const [suche, setSuche] = useState('');
   // Filter: Geschlecht, Alter (volle Jahre, heute) und Jahrgang – z. B. männlich und ab 40 Jahre für „Herren 40“
@@ -245,7 +246,10 @@ function AufnehmenDialog({ gruppe, onClose }: { gruppe: Gruppe; onClose: (text?:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { api.get<AufnahmeMitglied[]>(`${GR}/mitglieder`).then(setAlle).catch((e) => setError(e.message)); }, []);
-  const schon = new Set(gruppe.mitglieder.map((m) => m.adrnr));
+  // Nicht zur Auswahl: wer schon in der Gruppe ist – direkt oder über eine Untergruppe (wird nicht noch einmal aufgenommen)
+  const zweig = mitUntergruppen(gruppen, gruppe.id);
+  const schon = new Set(gruppen.filter((g) => zweig.has(g.id)).flatMap((g) => g.mitglieder.map((m) => m.adrnr)));
+  const ueberUnter = schon.size - gruppe.mitglieder.length;
   const such = suche.trim().toLowerCase();
   const alterVon = zahl(grenzen.alterVon), alterBis = zahl(grenzen.alterBis), jgVon = zahl(grenzen.jgVon), jgBis = zahl(grenzen.jgBis);
   const gefiltert = !!geschlecht || alterVon != null || alterBis != null || jgVon != null || jgBis != null;
@@ -278,6 +282,11 @@ function AufnehmenDialog({ gruppe, onClose }: { gruppe: Gruppe; onClose: (text?:
     <Dlg titel={`Mitglieder aufnehmen – ${gruppe.pfad}`} onClose={() => onClose()} breite="min(560px, 95vw)"
          fuss={<Button design="Emphasized" disabled={busy || !wahl.size} onClick={sichern}>{wahl.size ? `${wahl.size} aufnehmen` : 'Aufnehmen'}</Button>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
+      {ueberUnter > 0 && (
+        <MessageStrip hideCloseButton design="Information" style={{ marginBottom: '0.75rem' }}>
+          {ueberUnter === 1 ? '1 Mitglied gehört' : `${ueberUnter} Mitglieder gehören`} bereits über Untergruppen zu „{gruppe.name}“ und {ueberUnter === 1 ? 'steht' : 'stehen'} deshalb nicht zur Auswahl.
+        </MessageStrip>
+      )}
       <Input value={suche} placeholder="Name suchen" showClearIcon style={{ width: '100%' }} onInput={(e) => setSuche(e.target.value)} />
       <FlexBox wrap="Wrap" alignItems="Center" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
         <Select accessibleName="Geschlecht" style={{ width: '10rem' }} onChange={(e) => setGeschlecht(((e.detail.selectedOption as HTMLElement).dataset.g ?? '') as typeof geschlecht)}>

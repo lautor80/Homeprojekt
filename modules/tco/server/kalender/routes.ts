@@ -136,7 +136,7 @@ export async function kalenderRoutes(app: FastifyInstance) {
   app.post('/kalender/pflege/gruppen/:id/mitglieder', pflege, async (req) => {
     const { id: gid } = id.parse(req.params);
     const b = z.object({ adrnr: z.string().min(1), rolle: z.string().max(60).nullish(), entfernen: z.boolean().default(false) }).parse(req.body);
-    await change(req, (tx) => (b.entfernen ? gruppenMitgliedEntfernen(tx, gid, b.adrnr) : gruppenMitgliedSetzen(tx, gid, b.adrnr, b.rolle ?? null)), { action: 'KAL_GRUPPE' });
+    await change(req, async (tx) => { if (b.entfernen) await gruppenMitgliedEntfernen(tx, gid, b.adrnr); else await gruppenMitgliedSetzen(tx, gid, b.adrnr, b.rolle ?? null); }, { action: 'KAL_GRUPPE' });
     return { text: b.entfernen ? 'Aus der Gruppe entfernt.' : 'Gespeichert.' };
   });
 }
