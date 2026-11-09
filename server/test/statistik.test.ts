@@ -50,9 +50,24 @@ test('Anmeldungen und App-Aufrufe werden gezählt', async () => {
   const r = await admin('GET', '/api/statistik?monate=3');
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.monate.length, 3);
-  const monat = r.body.monate[2];
+  const monat = r.body.monate[0];
+  assert.ok(r.body.monate[0] > r.body.monate[2], 'neuester Monat zuerst');
+  assert.equal(monat, new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 7), 'laufender Monat enthalten');
   assert.deepEqual(r.body.anmeldungen.map((a: any) => [a.username, a.gesamt, a.monate[monat]]), [['admin', 2, 2]]);
   assert.deepEqual(r.body.apps.map((a: any) => [a.pfad, a.gesamt, a.benutzer]), [['/tco/halle', 1, 1], ['/tco/kalender', 1, 1]]);
+
+  // Zelle aufschlüsseln: wer hat welche App aufgerufen
+  let d = await admin('GET', `/api/statistik/details?monate=3&monat=${monat}&pfad=/tco/halle`);
+  assert.equal(d.status, 200, JSON.stringify(d.body));
+  assert.deepEqual(d.body.map((x: any) => [x.username, x.pfad, x.anzahl]), [['admin', '/tco/halle', 1]]);
+  d = await admin('GET', `/api/statistik/details?monate=3&user=${r.body.anmeldungen[0].id}`);
+  assert.deepEqual(d.body.map((x: any) => x.pfad).sort(), ['/tco/halle', '/tco/kalender']);
+
+  // Administratoren ausblenden
+  const o = await admin('GET', '/api/statistik?monate=3&ohneAdmin=1');
+  assert.deepEqual([o.body.anmeldungen.length, o.body.apps.length], [0, 0]);
+  d = await admin('GET', '/api/statistik/details?monate=3&ohneAdmin=1');
+  assert.deepEqual(d.body, []);
 });
 
 test('Statistik nur mit Berechtigung', async () => {
@@ -64,6 +79,12 @@ test('Statistik nur mit Berechtigung', async () => {
   await leser('POST', '/api/auth/login', { username: 'leser', password: 'start-passwort' });
   await leser('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' });
   assert.equal((await leser('GET', '/api/statistik')).status, 403);
+  assert.equal((await leser('GET', '/api/statistik/details')).status, 403);
+  // Nicht-Admins bleiben beim Ausblenden sichtbar
+  await leser('POST', '/api/nutzung', { pfad: '/tco/kalender' });
+  const o = await admin('GET', '/api/statistik?ohneAdmin=1');
+  assert.deepEqual(o.body.anmeldungen.map((a: any) => a.username), ['leser']);
+  assert.deepEqual(o.body.apps.map((a: any) => a.pfad), ['/tco/kalender']);
   const r = await admin('GET', '/api/admin/permissions');
   assert.ok(JSON.stringify(r.body).includes('core.statistik:display'));
 });
