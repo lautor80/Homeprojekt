@@ -100,6 +100,21 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
   const summe = Math.round(aktiv.reduce((x, z) => x + (anteile.get(z.id) ?? 0), 0) * 100) / 100;
   const splitFehler = modus === 'SPLIT' && (gesamtCent <= 0 ? 'Bitte den Gesamtbetrag angeben.' : Math.round(summe * 100) !== gesamtCent ? `Die Beträge ergeben ${eur(summe)} statt ${eur(gesamtCent / 100)}.` : null);
   const posOk = !!pos.prod_key && (modus === 'SPLIT' || menge > 0) && (!frei || (pos.beschreibung.trim() && (modus === 'SPLIT' || Number.isFinite(einzel))));
+  const preisFehlt = frei && modus === 'JE' && (!pos.preis.trim() || !Number.isFinite(einzel));
+  const betragFalsch = aktiv.some((z) => z.betrag.trim() !== '' && !manuell(z));
+  const pruefung = aktiv.some((z) => z.rgnr === null && z.wahl !== 'NEU');
+  /** Gründe, warum (noch) nicht gesichert werden kann – stehen sichtbar über der Fußzeile (#29) */
+  const sperren = [
+    !aktiv.length && 'Unter „2 · Personen“ ist noch keine Person ausgewählt.',
+    !pos.prod_key && 'Unter „1 · Rechnungsposition“ fehlt das Produkt (für freie Texte „093 – Sonstiges“).',
+    frei && !pos.beschreibung.trim() && 'Unter „1 · Rechnungsposition“ fehlt der Text auf der Rechnung.',
+    !!pos.prod_key && modus === 'JE' && !(menge > 0) && 'Die Menge muss größer als null sein.',
+    preisFehlt && 'Unter „1 · Rechnungsposition“ fehlt der Preis.',
+    fehlerNeu && 'Bei einem neuen Kunden fehlt der Nachname.',
+    betragFalsch && 'Ein Betrag je Person ist keine Zahl.',
+    splitFehler,
+    pruefung && 'Die Rechnungen der Personen werden noch geprüft …',
+  ].filter((x): x is string => !!x);
   const rgText = (x: PersonRechnung) => `${x.rgnr} · ${RG_STATUS[x.status] ?? x.status} · ${eur(x.betrag)}`;
 
   async function lauf(art: string, fn: () => Promise<void>) {
@@ -141,7 +156,8 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
     <Dialog open headerText="Rechnungen ohne Hallenbuchung" onClose={schliessen} style={{ width: 'min(60rem, 96vw)' }} resizable
             footer={<Bar startContent={<Text>{aktiv.length} Person(en) · {aktiv.filter((z) => z.rgnr && z.rgnr !== 'NEU' && z.wahl !== 'NEU').length} an bestehende Rechnung · zusammen {eur(summe)}</Text>}
                          endContent={<>
-                           <Button design="Emphasized" icon="create" disabled={!!busy || !aktiv.length || !posOk || fehlerNeu || !!splitFehler || aktiv.some((z) => z.rgnr === null && z.wahl !== 'NEU')}
+                           <Button design="Emphasized" icon="create" disabled={!!busy || !posOk || sperren.length > 0}
+                                   tooltip={sperren.length ? sperren.join(' ') : 'Positionen auf neue bzw. die gewählten bestehenden Rechnungen buchen'}
                                    onClick={() => lauf('anlegen', async () => {
                                      const r = await api.post<{ text: string }>(`${H}/sammel`, {
                                        position: { prod_key: pos.prod_key, beschreibung: pos.beschreibung || null, menge: modus === 'SPLIT' ? '1' : pos.menge, preis: frei && modus === 'JE' ? pos.preis : null },
@@ -158,7 +174,7 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
                            <Button onClick={schliessen}>Abbrechen</Button>
                          </>} />}>
       <div className="portal-sr" onPaste={einfuegen}>
-        {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+        {error && <MessageStrip className="portal-sr__fehler" design="Negative" onClose={() => setError(null)} style={{ whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
 
         <section>
           <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.5rem 1rem' }}>
@@ -170,7 +186,7 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
             {modus === 'SPLIT' && <Input value={gesamt} placeholder="Gesamtbetrag €" style={{ width: '9rem' }} onInput={(e) => setGesamt(e.target.value)} valueState={gesamtCent > 0 ? 'None' : 'Critical'} accessibleName="Gesamtbetrag" />}
           </FlexBox>
           <div className="portal-sr__pos">
-            <Select style={{ width: '100%' }} onChange={(e) => {
+            <Select style={{ width: '100%' }} valueState={zeilen.length > 0 && !pos.prod_key ? 'Negative' : 'None'} accessibleName="Produkt" onChange={(e) => {
               const k = (e.detail.selectedOption as HTMLElement).dataset.k!;
               const p = produkte.find((x) => x.prod_key === k);
               setPos({ ...pos, prod_key: k, beschreibung: k === '093' ? pos.beschreibung : p?.text ?? '', preis: p ? String(p.preis).replace('.', ',') : '' });
@@ -178,9 +194,9 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
               <Option data-k="" selected={!pos.prod_key}>Produkt wählen …</Option>
               {produkte.map((p) => <Option key={p.prod_key} data-k={p.prod_key} selected={p.prod_key === pos.prod_key}>{p.prod_key} – {p.text} ({eur(p.preis)})</Option>)}
             </Select>
-            <Input value={pos.beschreibung} maxlength={40} placeholder="Text auf der Rechnung, z. B. Teilnahme Winterhallenrunde 2026/27" onInput={(e) => setPos({ ...pos, beschreibung: e.target.value })} />
+            <Input value={pos.beschreibung} maxlength={40} valueState={zeilen.length > 0 && frei && !pos.beschreibung.trim() ? 'Negative' : 'None'} placeholder="Text auf der Rechnung, z. B. Teilnahme Winterhallenrunde 2026/27" onInput={(e) => setPos({ ...pos, beschreibung: e.target.value })} />
             <Input value={modus === 'SPLIT' ? '1' : pos.menge} readonly={modus === 'SPLIT'} placeholder="Menge" onInput={(e) => setPos({ ...pos, menge: e.target.value })} />
-            <Input value={modus === 'SPLIT' ? '' : pos.preis} readonly={!frei || modus === 'SPLIT'} placeholder={modus === 'SPLIT' ? 'Anteil' : 'Preis €'} onInput={(e) => setPos({ ...pos, preis: e.target.value })} />
+            <Input value={modus === 'SPLIT' ? '' : pos.preis} readonly={!frei || modus === 'SPLIT'} valueState={zeilen.length > 0 && preisFehlt ? 'Negative' : 'None'} placeholder={modus === 'SPLIT' ? 'Anteil' : 'Preis €'} onInput={(e) => setPos({ ...pos, preis: e.target.value })} />
           </div>
           <Text className="portal-muted portal-small">
             {modus === 'SPLIT'
@@ -277,8 +293,12 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
               <Button design="Transparent" onClick={() => setZeilen((l) => l.map((z) => ({ ...z, rgnr: 'NEU' })))}>neue Rechnungen</Button>
               <Button design="Transparent" disabled={!zeilen.some((z) => z.betrag)} onClick={() => setZeilen((l) => l.map((z) => ({ ...z, betrag: '' })))}>Beträge zurücksetzen</Button>
             </FlexBox>
-            {splitFehler && <MessageStrip design="Critical" hideCloseButton>{splitFehler}</MessageStrip>}
           </section>
+        )}
+        {zeilen.length > 0 && sperren.length > 0 && !busy && (
+          <MessageStrip className="portal-sr__sperre" design="Critical" hideCloseButton>
+            Sichern ist noch nicht möglich: {sperren.join(' ')}
+          </MessageStrip>
         )}
       </div>
     </Dialog>,
