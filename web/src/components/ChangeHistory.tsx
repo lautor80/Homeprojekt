@@ -60,7 +60,47 @@ export const changeColumns = (withObject: boolean): AnalyticalTableColumnDefinit
   { Header: 'Begründung', accessor: 'reason' },
 ];
 
-/** Button "Änderungshistorie" für eine Objektseite – zeigt alle Belege eines Objekts. */
+/**
+ * Belege als Baum: zuerst nach Tag, dann nach Benutzer gruppiert (neueste zuerst), darunter die geänderten Felder.
+ * Liefert Daten (subRows) und den aufgeklappten Anfangszustand.
+ */
+export function gruppiertNachTagUndBenutzer(docs: ChangeDoc[]) {
+  const zeilen = flattenDocs(docs).sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+  const tage = new Map<string, Map<string, Row[]>>();
+  for (const z of zeilen) {
+    const tag = new Date(z.changedAt).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const je = tage.get(tag) ?? new Map<string, Row[]>();
+    je.set(z.username, [...(je.get(z.username) ?? []), z]);
+    tage.set(tag, je);
+  }
+  const expanded: Record<string, boolean> = {};
+  const data = [...tage].map(([tag, benutzer], i) => {
+    expanded[String(i)] = true;
+    const n = [...benutzer.values()].reduce((a, l) => a + l.length, 0);
+    return {
+      gruppe: `${tag} – ${n} Änderung${n === 1 ? '' : 'en'}`, ebene: 0,
+      subRows: [...benutzer].map(([user, l], j) => {
+        expanded[`${i}.${j}`] = true;
+        return { gruppe: `${user} (${l.length})`, ebene: 1, subRows: l.map((z) => ({ ...z, gruppe: '', ebene: 2 })) };
+      }),
+    };
+  });
+  return { data, expanded };
+}
+
+const baumSpalten: AnalyticalTableColumnDefinition[] = [
+  {
+    Header: 'Tag / Benutzer', accessor: 'gruppe', width: 230,
+    Cell: ({ row }: CellInstance) => {
+      const o = row.original as { gruppe: string; ebene: number; changedAt?: string };
+      return o.ebene === 2 ? <span className="portal-muted">{new Date(o.changedAt!).toLocaleTimeString('de-DE')}</span>
+        : <span style={{ fontWeight: o.ebene === 0 ? 'bold' : 600 }}>{o.gruppe}</span>;
+    },
+  },
+  ...changeColumns(false).filter((c) => !['changedAt', 'username'].includes(String(c.accessor))),
+];
+
+/** Button "Änderungshistorie" für eine Objektseite – zeigt alle Belege eines Objekts, gruppiert nach Tag und Benutzer. */
 export function ChangeHistoryButton({ objectType, objectKey }: { objectType: string; objectKey: string }) {
   const [open, setOpen] = useState(false);
   const [docs, setDocs] = useState<ChangeDoc[] | null>(null);
@@ -91,14 +131,21 @@ export function ChangeHistoryButton({ objectType, objectKey }: { objectType: str
         footer={<Bar endContent={<Button onClick={() => setOpen(false)}>Schließen</Button>} />}
       >
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
-        <AnalyticalTable minRows={1}
-          columns={changeColumns(false)}
-          data={docs ? flattenDocs(docs) : []}
-          loading={!docs && !error}
-          noDataText="Keine Änderungen vorhanden"
-          visibleRows={12}
-          scaleWidthMode="Smart"
-        />
+        {(() => {
+          const g = docs ? gruppiertNachTagUndBenutzer(docs) : { data: [], expanded: {} };
+          return (
+            <AnalyticalTable minRows={1} key={docs ? 'daten' : 'leer'}
+              columns={baumSpalten}
+              data={g.data}
+              isTreeTable
+              reactTableOptions={{ initialState: { expanded: g.expanded } } as never}
+              loading={!docs && !error}
+              noDataText="Keine Änderungen vorhanden"
+              visibleRows={14}
+              scaleWidthMode="Smart"
+            />
+          );
+        })()}
       </Dialog>, document.body)}
     </>
   );

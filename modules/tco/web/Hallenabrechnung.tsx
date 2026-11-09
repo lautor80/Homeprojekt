@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, BusyIndicator, Button, DateRangePicker, FlexBox, Icon, Input, Link, List, ListItemCustom,
+  AnalyticalTable, Bar, BusyIndicator, Button, DateRangePicker, Dialog, FlexBox, Icon, Input, Label, Link, List, ListItemCustom, Tag,
   ListItemGroup, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Panel, SegmentedButton, SegmentedButtonItem,
   Select, Switch, Text, Title,
 } from '@ui5/webcomponents-react';
@@ -80,6 +80,7 @@ export function Hallenabrechnung() {
   const [auto, setAuto] = useState(false);
   const [sammel, setSammel] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [protokoll, setProtokoll] = useState<Protokoll | null>(null);
 
   Object.assign(merk, { status, von, bis, buchungen: mitBuchungen, suche, sort, kunde });
   const selQs = qs({ status: status.join(','), von, bis, buchungen: mitBuchungen ? '1' : '0' });
@@ -129,22 +130,22 @@ export function Hallenabrechnung() {
   // --------------------------------------------------------------- Import
   async function csvImport(files: FileList | null) {
     if (!files?.length) return;
-    const texte: string[] = [];
+    const zeilen: Protokoll['zeilen'] = [];
     await tun(async () => {
       for (const f of Array.from(files)) {
-        const r = await api.post<{ text: string }>(`${H}/import/datei`, { name: f.name, data: await dateiLesen(f) });
-        texte.push(r.text);
+        try {
+          const r = await api.post<{ text: string }>(`${H}/import/datei`, { name: f.name, data: await dateiLesen(f) });
+          zeilen.push({ quelle: f.name, ok: true, text: r.text });
+        } catch (e) { zeilen.push({ quelle: f.name, ok: false, text: (e as Error).message }); }
       }
-      return { text: texte.join(' · ') };
     });
+    setProtokoll({ titel: 'Protokoll CSV-Import', zeilen });
     if (fileRef.current) fileRef.current.value = '';
   }
 
   const n8nImport = () => tun(async () => {
     const r = await api.post<{ datei: string; ok: boolean; text: string }[]>(`${H}/import/n8n`);
-    const fehler = r.filter((x) => !x.ok);
-    if (fehler.length) throw new Error(r.map((x) => x.text).join(' · '));
-    return { text: r.map((x) => x.text).join(' · ') };
+    setProtokoll({ titel: 'Protokoll EP3-Import', zeilen: r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text })) });
   });
 
   // --------------------------------------------------------------- Personenliste
@@ -206,7 +207,7 @@ export function Hallenabrechnung() {
         {/* genau ein Kind: der BusyIndicator legt Kinder sonst als zentrierte Flex-Zeile aus (Liste rückte in die Mitte) */}
         <div className="portal-busy-inhalt">
         <MasterDetail
-          masterWidth="26rem"
+          masterWidth="26rem" gleicheHoehe
           emptyTitle="Keine Person ausgewählt" emptyText="Links eine Person wählen, um Buchungen und Rechnungen zu bearbeiten."
           onBack={() => { setKunde(null); setRgnr(null); }}
           masterHead={
@@ -302,6 +303,7 @@ export function Hallenabrechnung() {
       <WhatsAppDialog rgnrs={wa} detail={detail} onClose={() => { setWa(null); neuLaden(); }} onDone={(t) => { setWa(null); toast(t, 5000); neuLaden(); }} />
       <MailtextDialog rgnr={mailtext} onClose={() => setMailtext(null)} />
       <ZahlungenDialog rechnung={zahlungen} onClose={() => setZahlungen(null)} />
+      <ProtokollDialog p={protokoll} onClose={() => setProtokoll(null)} />
       <VersionenDialog info={versionen} onClose={() => setVersionen(null)} />
       <AutoDialog open={auto} onClose={() => setAuto(false)} onDone={(t) => { setAuto(false); toast(t, 6000); neuLaden(); }} />
       <SammelDialog open={sammel} onClose={() => setSammel(false)} onDone={(t) => { setSammel(false); toast(t, 6000); neuLaden(); }} />
@@ -398,6 +400,15 @@ function PersonPanel(props: {
         );
       },
     },
+    {
+      Header: 'Zahlungen', id: 'zahlungen', width: 130, disableSortBy: true,
+      Cell: ({ row }: Cell) => ((row.original as Rechnung).gezahlt > 0 ? (
+        <Button icon="money-bills" design="Transparent" tooltip="Teilzahlungen anzeigen"
+                onClick={(e) => { e.stopPropagation(); props.onZahlungen(row.original as Rechnung); }}>
+          {(row.original as Rechnung).status === '4' ? 'Zahlungen' : 'Teilzahlungen'}
+        </Button>
+      ) : null),
+    },
     { Header: 'Erstellt', accessor: 'angelegt_am', width: 95, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Gedruckt', accessor: 'gedruckt', width: 95, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Versendet', accessor: 'versendet', width: 95, Cell: ({ value }: Cell) => dat(value) },
@@ -469,9 +480,7 @@ function PersonPanel(props: {
       Cell: ({ row }: Cell) => (
         <FlexBox direction="Column">
           <Text>{bidText(row.original.bid)}</Text>
-          <ObjectStatus state={row.original.art === 'Abo' ? 'Information' : 'None'}>
-            {row.original.art === 'Abo' ? `Abo · ${row.original.termine} Termin(e)` : 'Einzel'}
-          </ObjectStatus>
+          <BuchungsartLabel b={row.original as Buchung} />
         </FlexBox>
       ),
     },
@@ -609,20 +618,8 @@ function PersonPanel(props: {
           </MessageStrip>}
           <AnalyticalTable minRows={1} columns={posCols} data={pos ?? []} loading={!pos} visibleRows={Math.max(pos?.length ?? 1, 1)}
                            noDataText="Keine Positionen" />
-          {pl && (pl.doknr || pl.fehler) && (
-            <div style={{ padding: '0.75rem 1rem 1rem' }}>
-              {pl.fehler && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>{pl.fehler}</MessageStrip>}
-              <Attributes>
-                {pl.link && <Attribute label="Paperless-Freigabelink (30 Tage)"><Link href={pl.link} target="_blank">{pl.link}</Link></Attribute>}
-                {pl.ansicht && <Attribute label="Paperless-Dokument"><Link href={pl.ansicht} target="_blank">Dokument {pl.doknr} öffnen{pl.versionen.length > 1 ? ` (${pl.versionen.length} Fassungen)` : ''}</Link></Attribute>}
-                {pl.notizen.length > 0 && (
-                  <Attribute label="Paperless-Notizen" wide>
-                    {pl.notizen.slice(0, 6).map((n) => <div key={n.id} className="portal-small">{dat(n.created)} · {n.note}</div>)}
-                  </Attribute>
-                )}
-              </Attributes>
-            </div>
-          )}
+          {rechnung.gezahlt > 0 && <TeilzahlungenTabelle rechnung={rechnung} />}
+          {pl && (pl.doknr || pl.fehler) && <PaperlessBlock pl={pl} />}
         </Section>
       )}
 
@@ -652,6 +649,116 @@ function PersonPanel(props: {
           </FlexBox>
         ))}
       </Panel>
+    </div>
+  );
+}
+
+// ===========================================================================
+// Bausteine: Protokoll, Buchungsart, Teilzahlungen, Paperless
+// ===========================================================================
+
+interface Protokoll { titel: string; zeilen: { quelle: string; ok: boolean; text: string }[] }
+const zelle = { padding: '0.35rem 0.5rem', verticalAlign: 'top', borderTop: '1px solid var(--sapList_BorderColor)' } as const;
+
+/** Protokolle immer als Tabelle: Quelle, Ergebnis, Meldungen (Teilsätze als eigene Zeilen) */
+function ProtokollDialog({ p, onClose }: { p: Protokoll | null; onClose: () => void }) {
+  if (!p) return null;
+  return (
+    <Dialog open headerText={p.titel} style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead><tr>{['Quelle', 'Ergebnis', 'Meldung'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+        <tbody>
+          {p.zeilen.flatMap((z, i) => {
+            const teile = z.text.split(/\s·\s|;\s|\.\s(?=[A-ZÄÖÜ])/).map((t) => t.trim()).filter(Boolean);
+            return teile.map((t, j) => (
+              <tr key={`${i}-${j}`}>
+                <td style={zelle}>{j === 0 && <Text>{z.quelle}</Text>}</td>
+                <td style={zelle}>{j === 0 && <ObjectStatus state={z.ok ? 'Positive' : 'Negative'} showDefaultIcon>{z.ok ? 'ok' : 'Fehler'}</ObjectStatus>}</td>
+                <td style={zelle}><Text>{t}</Text></td>
+              </tr>
+            ));
+          })}
+          {!p.zeilen.length && <tr><td style={zelle} colSpan={3}><Text>Keine Einträge.</Text></td></tr>}
+        </tbody>
+      </table>
+    </Dialog>
+  );
+}
+
+/** Buchungsart als farbiges Label: Abo blau, Einzel grün */
+function BuchungsartLabel({ b }: { b: Buchung }) {
+  const art = b.art === 'Abo' ? { text: `Abo · ${b.termine} Termin(e)`, schema: '6' } : { text: 'Einzel', schema: '8' };
+  return <Tag design="Set2" colorScheme={art.schema} hideStateIcon style={{ width: 'fit-content' }}>{art.text}</Tag>;
+}
+
+/** Teilzahlungen einer Rechnung – fest im Detail, sobald Zahlungen vorliegen */
+function TeilzahlungenTabelle({ rechnung }: { rechnung: Rechnung }) {
+  const [z, setZ] = useState<{ fibeleg: string; betrag: number; datum: string | null; text: string | null }[] | null>(null);
+  useEffect(() => {
+    setZ(null);
+    api.get<typeof z>(`${H}/rechnungen/${encodeURIComponent(rechnung.rgnr_txt)}/zahlungen`).then(setZ).catch(() => setZ([]));
+  }, [rechnung.rgnr_txt, rechnung.gezahlt]);
+  const rest = rechnung.betrag - rechnung.gezahlt;
+  return (
+    <div style={{ padding: '0.75rem 1rem 0.25rem' }}>
+      <Title level="H6" style={{ marginBottom: '0.25rem' }}>{rechnung.status === '4' ? 'Zahlungen' : 'Teilzahlungen'}</Title>
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead><tr>{['Datum', 'FI-Beleg', 'Text', 'Betrag'].map((h, i) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: i === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+        <tbody>
+          {(z ?? []).map((x) => (
+            <tr key={x.fibeleg}>
+              <td style={zelle}><Text>{dat(x.datum)}</Text></td>
+              <td style={zelle}><Text>{x.fibeleg}</Text></td>
+              <td style={zelle}><Text>{x.text ?? ''}</Text></td>
+              <td style={{ ...zelle, textAlign: 'right' }}><Text>{eur(x.betrag)}</Text></td>
+            </tr>
+          ))}
+          <tr>
+            <td style={zelle} colSpan={3}><Text style={{ fontWeight: 'bold' }}>Gezahlt {eur(rechnung.gezahlt)} von {eur(rechnung.betrag)}</Text></td>
+            <td style={{ ...zelle, textAlign: 'right' }}><Text style={{ fontWeight: 'bold', color: rest > 0 ? 'var(--sapCriticalTextColor)' : undefined }}>{rest < 0 ? `überzahlt ${eur(-rest)}` : `offen ${eur(rest)}`}</Text></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Paperless: Dokument, Freigabelink (gekürzt, kopierbar) und Notizen als Tabelle – je eigener Abschnitt */
+function PaperlessBlock({ pl }: { pl: PaperlessInfo }) {
+  const kurz = (u: string) => { try { const x = new URL(u); return `${x.host}/…${x.pathname.slice(-8)}`; } catch { return u.length > 40 ? `${u.slice(0, 28)}…${u.slice(-8)}` : u; } };
+  return (
+    <div style={{ padding: '0.75rem 1rem 1rem', display: 'grid', gap: '0.75rem' }}>
+      {pl.fehler && <MessageStrip design="Critical" hideCloseButton>{pl.fehler}</MessageStrip>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(16rem, 1fr))', gap: '0.5rem 1.5rem' }}>
+        {pl.ansicht && (
+          <div>
+            <Label showColon>Paperless-Dokument</Label><br />
+            <Link href={pl.ansicht} target="_blank">Dokument {pl.doknr} öffnen</Link>
+            {pl.versionen.length > 1 && <Text className="portal-muted"> · {pl.versionen.length} Fassungen</Text>}
+          </div>
+        )}
+        {pl.link && (
+          <div>
+            <Label showColon>Freigabelink (30 Tage gültig)</Label><br />
+            <Link href={pl.link} target="_blank" tooltip={pl.link}>{kurz(pl.link)}</Link>
+            <Button design="Transparent" icon="copy" tooltip="Link kopieren" onClick={() => { navigator.clipboard?.writeText(pl.link!); toast('Freigabelink kopiert'); }} />
+          </div>
+        )}
+      </div>
+      {pl.notizen.length > 0 && (
+        <div>
+          <Label showColon>Paperless-Notizen</Label>
+          <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: '0.25rem' }}>
+            <thead><tr>{['Datum', 'Notiz'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+            <tbody>
+              {pl.notizen.slice(0, 10).map((n) => (
+                <tr key={n.id}><td style={{ ...zelle, whiteSpace: 'nowrap', width: '7rem' }}><Text>{dat(n.created)}</Text></td><td style={zelle}><Text>{n.note}</Text></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

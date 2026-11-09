@@ -15,6 +15,8 @@ interface Props {
   emptyText?: string;
   /** Auf schmalen Bildschirmen: zurück zur Liste */
   onBack?: () => void;
+  /** Liste und Objekt gleich hoch (Bildschirmhöhe), jeweils eigener Bildlauf */
+  gleicheHoehe?: boolean;
 }
 
 /**
@@ -22,10 +24,10 @@ interface Props {
  * Scrollen stehen), Objekt rechts. Auf schmalen Bildschirmen wird nur eine
  * Spalte gezeigt, mit „Zurück“-Knopf im Objektbereich.
  */
-export function MasterDetail({ masterHead, master, detail, masterWidth, emptyTitle = 'Nichts ausgewählt', emptyText = 'Links einen Eintrag wählen.', onBack }: Props) {
+export function MasterDetail({ masterHead, master, detail, masterWidth, emptyTitle = 'Nichts ausgewählt', emptyText = 'Links einen Eintrag wählen.', onBack, gleicheHoehe }: Props) {
   const offen = detail !== null && detail !== undefined;
   return (
-    <div className={`portal-md${offen ? ' portal-md--detail-open' : ''}`} style={masterWidth ? ({ '--portal-md-width': masterWidth } as CSSProperties) : undefined}>
+    <div className={`portal-md${offen ? ' portal-md--detail-open' : ''}${gleicheHoehe ? ' portal-md--gleich' : ''}`} style={masterWidth ? ({ '--portal-md-width': masterWidth } as CSSProperties) : undefined}>
       <aside className="portal-md__master">
         {masterHead && <div className="portal-md__master-head">{masterHead}</div>}
         <div className="portal-md__master-list">{master}</div>
