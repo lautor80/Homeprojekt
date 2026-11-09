@@ -13,7 +13,7 @@ import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { SperrHinweis, useSperre } from '@core/sperre';
-import { MenuButton } from '@core/components/MenuButton';
+import { IconAktionen, iconSpalte } from '@core/components/IconAktionen';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { Section } from '@core/components/Section';
 import { Attribute, Attributes } from '@core/components/Attributes';
@@ -392,22 +392,13 @@ function PersonPanel(props: {
           <FlexBox direction="Column" alignItems="End">
             <Text>{eur(r.betrag)}</Text>
             {r.gezahlt > 0 && (
-              <Link onClick={(e) => { e.stopPropagation(); props.onZahlungen(r); }} style={{ fontSize: 'var(--sapFontSmallSize)' }}>
+              <Text style={{ fontSize: 'var(--sapFontSmallSize)', color: 'var(--sapContent_LabelColor)' }}>
                 {r.status === '4' ? 'vollständig gezahlt' : r.betrag - r.gezahlt < 0 ? `überzahlt ${eur(r.gezahlt - r.betrag)}` : `offen ${eur(r.offen)}`}
-              </Link>
+              </Text>
             )}
           </FlexBox>
         );
       },
-    },
-    {
-      Header: 'Zahlungen', id: 'zahlungen', width: 130, disableSortBy: true,
-      Cell: ({ row }: Cell) => ((row.original as Rechnung).gezahlt > 0 ? (
-        <Button icon="money-bills" design="Transparent" tooltip="Teilzahlungen anzeigen"
-                onClick={(e) => { e.stopPropagation(); props.onZahlungen(row.original as Rechnung); }}>
-          {(row.original as Rechnung).status === '4' ? 'Zahlungen' : 'Teilzahlungen'}
-        </Button>
-      ) : null),
     },
     { Header: 'Erstellt', accessor: 'angelegt_am', width: 95, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Gedruckt', accessor: 'gedruckt', width: 95, Cell: ({ value }: Cell) => dat(value) },
@@ -431,12 +422,16 @@ function PersonPanel(props: {
         </ObjectStatus>
       ),
     },
-    { Header: '', id: 'aktion', width: 60, disableSortBy: true, Cell: ({ row }: Cell) => <MenuButton icon="overflow" design="Transparent" items={rgMenu(row.original)} /> },
+    {
+      Header: 'Aktionen', id: 'aktion', disableSortBy: true,
+      width: iconSpalte(Math.max(1, ...(d.rechnungen ?? []).map((r) => rgMenu(r).filter((x) => !x.hidden).length))),
+      Cell: ({ row }: Cell) => <IconAktionen items={rgMenu(row.original)} />,
+    },
   ];
 
   const posCols: AnalyticalTableColumnDefinition[] = [
     { Header: 'Pos.', accessor: 'rgpos', width: 60 },
-    { Header: 'Art', accessor: 'art', width: 80 },
+    { Header: 'Art', accessor: 'art', width: 100, Cell: ({ value }: Cell) => <ArtLabel art={String(value)} /> },
     {
       Header: 'Beschreibung', accessor: 'beschreibung', minWidth: 200,
       Cell: ({ row, value }: Cell) => (
@@ -525,16 +520,16 @@ function PersonPanel(props: {
       },
     },
     {
-      Header: '', id: 'menu', width: 60, disableSortBy: true,
+      Header: 'Aktionen', id: 'menu', width: iconSpalte(2), disableSortBy: true,
       Cell: ({ row }: Cell) => {
         const b = row.original as Buchung;
         const aktion = (a: string) => tun(post(`${H}/buchungen/aktion`, { bid: b.bid, datum: b.datum, aktion: a }));
         return edit ? (
-          <MenuButton icon="overflow" design="Transparent" items={[
-            { text: 'Abo als Einzelbuchungen abrechnen', hidden: b.art !== 'Abo', onClick: () => aktion('einzel') },
-            { text: 'Wieder als Abo-Serie abrechnen', hidden: b.art !== 'Einzel' || b.status !== '1', onClick: () => aktion('serie') },
+          <IconAktionen items={[
+            { text: 'Abo als Einzelbuchungen abrechnen', icon: 'split', hidden: b.art !== 'Abo', onClick: () => aktion('einzel') },
+            { text: 'Wieder als Abo-Serie abrechnen', icon: 'combine', hidden: b.art !== 'Einzel' || b.status !== '1', onClick: () => aktion('serie') },
             {
-              text: 'Buchung irrelevant setzen', onClick: () => props.onConfirm({
+              text: 'Buchung irrelevant setzen (wird nicht abgerechnet)', icon: 'hide', onClick: () => props.onConfirm({
                 titel: 'Buchung irrelevant setzen', ok: 'Irrelevant',
                 text: `Buchung ${bidText(b.bid)} (${dat(b.datum)}${b.art === 'Abo' ? ', ganze Abo-Serie' : ''}) wird nicht abgerechnet. Unter „Irrelevante Buchungen“ lässt sie sich wieder öffnen.`,
                 run: async () => { const x = await api.post<{ text: string }>(`${H}/buchungen/aktion`, { bid: b.bid, datum: b.datum, aktion: 'irrelevant' }); toast(x.text); },
@@ -618,10 +613,12 @@ function PersonPanel(props: {
           </MessageStrip>}
           <AnalyticalTable minRows={1} columns={posCols} data={pos ?? []} loading={!pos} visibleRows={Math.max(pos?.length ?? 1, 1)}
                            noDataText="Keine Positionen" />
-          {rechnung.gezahlt > 0 && <TeilzahlungenTabelle rechnung={rechnung} />}
           {pl && (pl.doknr || pl.fehler) && <PaperlessBlock pl={pl} />}
         </Section>
       )}
+
+      {/* Teilzahlungen: eigener Abschnitt, sobald zur Rechnung Zahlungen vorliegen */}
+      {rechnung && rechnung.gezahlt > 0 && <TeilzahlungenAbschnitt rechnung={rechnung} />}
 
       {/* Offene Buchungen */}
       <Section title="Offene Buchungen" count={d.buchungen.length} flush
@@ -686,41 +683,50 @@ function ProtokollDialog({ p, onClose }: { p: Protokoll | null; onClose: () => v
   );
 }
 
-/** Buchungsart als farbiges Label: Abo blau, Einzel grün */
+/** Art als farbiges Label: Abo blau, Einzel grün, Manuell grau, sonst neutral */
+const ART_FARBE: Record<string, string> = { Abo: '6', Einzel: '8', Manuell: '10', Buchung: '7' };
+function ArtLabel({ art, text }: { art: string; text?: string }) {
+  return <Tag design="Set2" colorScheme={ART_FARBE[art] ?? '10'} hideStateIcon style={{ width: 'fit-content' }}>{text ?? art}</Tag>;
+}
 function BuchungsartLabel({ b }: { b: Buchung }) {
-  const art = b.art === 'Abo' ? { text: `Abo · ${b.termine} Termin(e)`, schema: '6' } : { text: 'Einzel', schema: '8' };
-  return <Tag design="Set2" colorScheme={art.schema} hideStateIcon style={{ width: 'fit-content' }}>{art.text}</Tag>;
+  return <ArtLabel art={b.art} text={b.art === 'Abo' ? `Abo · ${b.termine} Termin(e)` : 'Einzel'} />;
 }
 
-/** Teilzahlungen einer Rechnung – fest im Detail, sobald Zahlungen vorliegen */
-function TeilzahlungenTabelle({ rechnung }: { rechnung: Rechnung }) {
+/** Teilzahlungen einer Rechnung – eigener Abschnitt im Detail, sobald Zahlungen vorliegen */
+function TeilzahlungenAbschnitt({ rechnung }: { rechnung: Rechnung }) {
   const [z, setZ] = useState<{ fibeleg: string; betrag: number; datum: string | null; text: string | null }[] | null>(null);
   useEffect(() => {
     setZ(null);
     api.get<typeof z>(`${H}/rechnungen/${encodeURIComponent(rechnung.rgnr_txt)}/zahlungen`).then(setZ).catch(() => setZ([]));
   }, [rechnung.rgnr_txt, rechnung.gezahlt]);
   const rest = rechnung.betrag - rechnung.gezahlt;
+  const voll = rechnung.status === '4' || rest === 0;
   return (
-    <div style={{ padding: '0.75rem 1rem 0.25rem' }}>
-      <Title level="H6" style={{ marginBottom: '0.25rem' }}>{rechnung.status === '4' ? 'Zahlungen' : 'Teilzahlungen'}</Title>
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead><tr>{['Datum', 'FI-Beleg', 'Text', 'Betrag'].map((h, i) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: i === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
-        <tbody>
-          {(z ?? []).map((x) => (
-            <tr key={x.fibeleg}>
-              <td style={zelle}><Text>{dat(x.datum)}</Text></td>
-              <td style={zelle}><Text>{x.fibeleg}</Text></td>
-              <td style={zelle}><Text>{x.text ?? ''}</Text></td>
-              <td style={{ ...zelle, textAlign: 'right' }}><Text>{eur(x.betrag)}</Text></td>
+    <Section title={`${voll ? 'Zahlungen' : 'Teilzahlungen'} zu ${rechnung.rgnr_txt}`} count={z?.length ?? 0} flush
+             status={<ObjectStatus state={rest > 0 ? 'Critical' : 'Positive'} inverted>
+               {rest > 0 ? `offen ${eur(rest)}` : rest < 0 ? `überzahlt ${eur(-rest)}` : 'vollständig gezahlt'}
+             </ObjectStatus>}>
+      <div style={{ padding: '0.25rem 1rem 0.75rem' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead><tr>{['Datum', 'FI-Beleg', 'Text', 'Betrag'].map((h, i) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: i === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+          <tbody>
+            {!z && <tr><td style={zelle} colSpan={4}><BusyIndicator active size="S" /></td></tr>}
+            {(z ?? []).map((x) => (
+              <tr key={x.fibeleg}>
+                <td style={{ ...zelle, whiteSpace: 'nowrap' }}><Text>{dat(x.datum)}</Text></td>
+                <td style={zelle}><Text>{x.fibeleg}</Text></td>
+                <td style={zelle}><Text>{x.text ?? ''}</Text></td>
+                <td style={{ ...zelle, textAlign: 'right' }}><Text>{eur(x.betrag)}</Text></td>
+              </tr>
+            ))}
+            <tr>
+              <td style={zelle} colSpan={3}><Text style={{ fontWeight: 'bold' }}>Gezahlt {eur(rechnung.gezahlt)} von {eur(rechnung.betrag)}</Text></td>
+              <td style={{ ...zelle, textAlign: 'right' }}><Text style={{ fontWeight: 'bold', color: rest > 0 ? 'var(--sapCriticalTextColor)' : undefined }}>{rest < 0 ? `überzahlt ${eur(-rest)}` : `offen ${eur(rest)}`}</Text></td>
             </tr>
-          ))}
-          <tr>
-            <td style={zelle} colSpan={3}><Text style={{ fontWeight: 'bold' }}>Gezahlt {eur(rechnung.gezahlt)} von {eur(rechnung.betrag)}</Text></td>
-            <td style={{ ...zelle, textAlign: 'right' }}><Text style={{ fontWeight: 'bold', color: rest > 0 ? 'var(--sapCriticalTextColor)' : undefined }}>{rest < 0 ? `überzahlt ${eur(-rest)}` : `offen ${eur(rest)}`}</Text></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+          </tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
 

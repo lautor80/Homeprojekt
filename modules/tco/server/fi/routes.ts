@@ -3,7 +3,7 @@ import { rechnungAufteilung } from '../halle/daten.js';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
-import { DB, liste, paperless, plAktiv, vereinLesen } from '../verein.js';
+import { DB, liste, paperless, plAktiv, vereinLesen, type Verein } from '../verein.js';
 import { fiDokumentPruefen } from '../dokumentfreigabe.js';
 import { addTage, heute } from '../format.js';
 import {
@@ -19,6 +19,25 @@ import { dateiPruefen, dekodieren } from '../upload/logik.js';
 import { PaperlessError } from '../../../../server/src/lib/paperless.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
+
+/**
+ * Belege, die im Portal schon einer Buchung zugeordnet sind, in Paperless aber noch „SAP“ leer haben
+ * (z. B. Rechnungs-PDF einer im Bankimport zugeordneten Hallenrechnung vor der Korrektur): Kennzeichen nachziehen
+ * und nicht mehr als offen anbieten.
+ */
+async function sapNachziehen(v: Verein, offen: OffenerBeleg[]): Promise<OffenerBeleg[]> {
+  if (!offen.length) return offen;
+  const ids = offen.map((b) => String(b.id));
+  const zu = await DB`select ltrim(doknr, '0') as dok, min(internenr) as internenr from tco.fipapermap
+                       where ltrim(doknr, '0') in ${DB(ids)} group by 1`;
+  if (!zu.length) return offen;
+  const fertig = new Set<number>();
+  for (const z of zu) {
+    const w = await zuordnungMelden(v, [Number(z.dok)], String(z.internenr), true);
+    if (!w.length) fertig.add(Number(z.dok));
+  }
+  return offen.filter((b) => !fertig.has(b.id));
+}
 
 export const P_FI = {
   display: 'tco.fi:display',
@@ -103,7 +122,7 @@ export async function fiRoutes(app: FastifyInstance) {
   app.get('/fi/belege/offen', { preHandler: requireAuth(P_FI.display) }, async () => {
     const v = await vereinLesen();
     if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (TC Oberthal → Stammdaten).');
-    return offeneBelege(v);
+    return sapNachziehen(v, await offeneBelege(v));
   });
 
   app.get('/fi/belege/:id', { preHandler: requireAuth(P_FI.display) }, async (req) => {
@@ -143,7 +162,7 @@ export async function fiRoutes(app: FastifyInstance) {
     let offen: OffenerBeleg[] = [];
     const hinweise: string[] = [];
     if (plAktiv(v)) {
-      try { offen = await offeneBelege(v); } catch (e) { hinweise.push(`Belegvorschlag ohne Paperless: ${(e as Error).message}`); }
+      try { offen = await sapNachziehen(v, await offeneBelege(v)); } catch (e) { hinweise.push(`Belegvorschlag ohne Paperless: ${(e as Error).message}`); }
     }
     const buf = Buffer.from(b.data.replace(/^data:[^,]*,/, ''), 'base64');
     const r = await bankAbgleich(DB, b.konto, buf, offen);

@@ -157,6 +157,7 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     await tx`insert into tco.fibuchungen ${tx(zeilen as never, 'internenr', 'konto', 'posnr', 'jahr', 'monat', 'datum', 'text', 'betrag', 'soll', 'haben', 'belnr', 'gkonto', 'erfasst_von')}`;
 
     const rechnungen: string[] = [];
+    const rgBelege: number[] = [];
     const pn = new Map<string, number>();
     const gruppen = new Map<number, { rgnr: string; betrag: number; zeilen: { konto: string; posnr: number }[] }>();
     for (const p of u.positionen) {
@@ -172,13 +173,15 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     for (const g of gruppen.values()) {
       const [z0] = g.zeilen;
       const allein = g.zeilen.length === u.positionen.length;
-      await rechnungVerknuepfen(tx, {
+      const r = await rechnungVerknuepfen(tx, {
         internenr, konto: z0.konto, posnr: z0.posnr, rgnr: g.rgnr,
         ...(g.zeilen.length > 1 ? { betrag: Math.abs(g.betrag), zeilen: allein ? null : g.zeilen } : {}),
       });
       rechnungen.push(g.rgnr);
+      if (r.beleg) rgBelege.push(r.beleg);
     }
-    const belege = u.belege?.length ? await belegeZuordnen(tx, internenr, u.belege) : [];
+    // Rechnungs-PDFs (über die Rechnungsnummer verknüpft) gehören mit in die Meldung an Paperless (Belegnummer, SAP = X)
+    const belege = [...new Set([...rgBelege, ...(u.belege?.length ? await belegeZuordnen(tx, internenr, u.belege) : [])])];
     if (u.notiz?.trim()) await notizAnlegen(tx, internenr, u.notiz, benutzer);
     if (u.laufid) await laufVerbucht(tx, u.laufid, internenr, u.datum);
     out.push({ internenr, belnr, rechnungen, belege, laufid: u.laufid ?? null });

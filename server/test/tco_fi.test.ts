@@ -123,6 +123,8 @@ test('FI Belege: Bankimport, Buchen, Rechnung, Storno', async () => {
   assert.deepEqual([k.status, k.bezahlt], ['4', '2026-11-03']);
   const [m1] = await sql`select count(*)::int as n from tco.fipapermap where internenr = '0000000102' and ltrim(doknr,'0') = '321'`;
   assert.equal(m1.n, 1);
+  // … und wird an Paperless gemeldet (Belegnummer, SAP = X) – #31
+  assert.deepEqual(g[0].belege, [321]);
   // Teilzahlung → Status 5, rgtz
   [k] = await sql`select status from tco.rgkopf where rgnr_txt = '2026_015'`;
   assert.equal(k.status, '5');
