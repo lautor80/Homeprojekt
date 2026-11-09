@@ -101,9 +101,9 @@ test('Produkte: Berechtigung', async () => {
   const a = client();
   await a('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' });
   assert.equal((await a('POST', '/api/admin/roles', { id: 'PRODLESER', name: 'Produkte lesen', permissions: ['tco.produkte:display'] })).status, 200);
-  assert.equal((await a('POST', '/api/admin/users', { username: 'pl', displayName: 'PL', password: 'start-passwort', roles: ['PRODLESER'] })).status, 200);
+  assert.equal((await a('POST', '/api/admin/users', { username: 'prodleser', displayName: 'PL', password: 'start-passwort', roles: ['PRODLESER'] })).status, 200);
   const l = client();
-  await l('POST', '/api/auth/login', { username: 'pl', password: 'start-passwort' });
+  await l('POST', '/api/auth/login', { username: 'prodleser', password: 'start-passwort' });
   await l('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' });
   assert.equal((await l('GET', P)).status, 200);
   assert.equal((await l('POST', P, { bereich: 'SPEISE', ab: heute(), text: 'X', preis: 1 })).status, 403);

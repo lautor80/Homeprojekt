@@ -206,22 +206,18 @@ test('Dashboard: Buchungen ohne Beleg im laufenden Monat, Abgleich Gewinn/Ergebn
             ('94', '1000', 0, ${J}, ${mon}, ${heute}, 'Storno', 5, '3200', 5, 0, '93'), ('94', '3200', 0, ${J}, ${mon}, ${heute}, 'Storno', 5, '1000', 0, 5, '93'),
             ('95', '8005', 0, ${J}, ${mon}, ${heute}, 'Umbuchung', 50, '1500', 0, 50, null), ('95', '1500', 0, ${J}, ${mon}, ${heute}, 'Umbuchung', 50, '8005', 50, 0, null)`;
   await sql`insert into tco.fipapermap (internenr, konto, doknr) values ('92', '', '000123')`;
-  try {
-    const r = await admin('GET', `${D}?jahr=${J}`);
-    assert.equal(r.status, 200, JSON.stringify(r.body));
-    const kpi = (k: string) => r.body.bereiche.flatMap((b: any) => b.kpis).find((x: any) => x.key === k);
-    // 91 und 95 ohne Beleg; 92 hat Beleg; 93/94 Storno-Paar zählt nicht
-    assert.equal(kpi('FIN_OHNE_BELEG').value, '2');
-    assert.equal(kpi('FIN_OHNE_BELEG').todo, false);
-    assert.equal(kpi('FIN_OHNE_BELEG').state, 'Critical');
-    // Gewinn 450 + 10 + 20 + 50 = 530; die 50 gegen das Darlehen fehlen im Ergebnis der Card
-    assert.equal(kpi('FIN_GEWINN').value, '530,00');
-    assert.match(kpi('FIN_GEWINN').details, /davon ohne Geldkonto 50,00/);
-    assert.equal(r.body.charts.finanzen.ergebnis, 480);
-  } finally {
-    await sql`delete from tco.fipapermap where internenr = '92'`;
-    await sql`delete from tco.fibuchungen where internenr in ('91', '92', '93', '94', '95')`;
-  }
+  // FI-Belege sind unveränderlich (kein Löschen) – die Folgetests prüfen keine Finanzwerte
+  const r = await admin('GET', `${D}?jahr=${J}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const kpi = (k: string) => r.body.bereiche.flatMap((b: any) => b.kpis).find((x: any) => x.key === k);
+  // 91 und 95 ohne Beleg; 92 hat Beleg; 93/94 Storno-Paar zählt nicht
+  assert.equal(kpi('FIN_OHNE_BELEG').value, '2');
+  assert.equal(kpi('FIN_OHNE_BELEG').todo, false);
+  assert.equal(kpi('FIN_OHNE_BELEG').state, 'Critical');
+  // Gewinn 450 + 10 + 20 + 50 = 530; die 50 gegen das Darlehen fehlen im Ergebnis der Card
+  assert.equal(kpi('FIN_GEWINN').value, '530,00');
+  assert.match(kpi('FIN_GEWINN').details, /davon ohne Geldkonto 50,00/);
+  assert.equal(r.body.charts.finanzen.ergebnis, 480);
 });
 
 test('Dashboard: Berechtigung', async () => {
