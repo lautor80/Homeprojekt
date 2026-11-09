@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { belegLesen, belegVerwerfen, bildLesen, kandidaten, namenAbgleichen, sammelRechnungen } from './sammel.js';
+import { belegLesen, belegVerwerfen, bildLesen, kandidaten, namenAbgleichen, rechnungenZuPersonen, sammelRechnungen } from './sammel.js';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -172,6 +172,12 @@ export async function halleRoutes(app: FastifyInstance) {
     return namenAbgleichen(text, await kandidaten(DB));
   });
 
+  /** bestehende Rechnungen der gewählten Personen (zum Anhängen der Position) */
+  app.post('/halle/sammel/rechnungen', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const { keys } = z.object({ keys: z.array(z.string().regex(/^[MK]:\w+$/)).max(300) }).parse(req.body);
+    return rechnungenZuPersonen(DB, keys);
+  });
+
   /** Bild aus der Zwischenablage → in Paperless ablegen (DOKID), Text (OCR) → Namensabgleich */
   app.post('/halle/sammel/bild', { preHandler: requireAuth(P_HALLE.edit), bodyLimit: 15 * 1024 * 1024 }, async (req) => {
     const { bild } = z.object({ bild: z.string().regex(/^data:image\/[\w+.-]+;base64,/, 'Bitte ein Bild einfügen.') }).parse(req.body);
@@ -198,6 +204,8 @@ export async function halleRoutes(app: FastifyInstance) {
     const b = z.object({
       empfaenger: z.array(z.object({
         key: z.string().regex(/^[MK]:\w+$/).nullish(),
+        rgnr: z.string().max(20).nullish(),
+        preis: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte den Betrag je Person als Zahl erfassen' }).nullish()),
         neu: z.object({ vorname: z.string().max(60).default(''), nachname: z.string().max(60), email: z.string().max(120).nullish(), strasse: z.string().max(80).nullish(), plz: z.string().max(10).nullish(), ort: z.string().max(60).nullish() }).nullish(),
       })).min(1, 'Bitte mindestens eine Person auswählen.').max(300),
       position: z.object({
@@ -218,7 +226,7 @@ export async function halleRoutes(app: FastifyInstance) {
     }
     return {
       rechnungen: r,
-      text: `${r.length} Person(en): ${neu} neue Rechnung(en)${r.length - neu ? `, ${r.length - neu}× an offene Rechnung angehängt` : ''}${kunden ? `, ${kunden} Kunde(n) neu angelegt` : ''}.`,
+      text: `${r.length} Person(en): ${neu} neue Rechnung(en)${r.length - neu ? `, ${r.length - neu}× an bestehende Rechnung angehängt` : ''}${kunden ? `, ${kunden} Kunde(n) neu angelegt` : ''} – zusammen ${r.reduce((x, y) => x + y.betrag, 0).toLocaleString('de-DE', { minimumFractionDigits: 2 })} €.`,
     };
   });
 

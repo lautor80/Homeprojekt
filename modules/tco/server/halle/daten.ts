@@ -467,7 +467,8 @@ export async function positionenNummerieren(tx: Db, rgnr: string): Promise<numbe
 }
 
 /** manuelle Position (MANPOS_SAVE) inkl. Schlüsselliste bei 008/009 */
-export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null }) {
+export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null },
+  o: { preisVorgabe?: boolean } = {}) {
   const k = await kopfLesen(tx, rgnr);
   if (!rgAenderbar(k)) throw new BusinessError('Versendete oder bezahlte Rechnungen nehmen keine Positionen mehr auf');
   if (!d.prod_key) throw new BusinessError('Bitte ein Produkt auswählen');
@@ -477,7 +478,8 @@ export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: stri
                          order by valid_from desc limit 1`;
   if (!pr) throw new BusinessError(`Produkt ${d.prod_key} ist heute nicht gültig`);
   const frei = d.prod_key === KEY_SONSTIGES;
-  const preis = frei ? Number(d.preis) : pr.preis;
+  // Preisvorgabe (Splitbuchung der Sammelrechnung): Anteil je Person statt Produktpreis
+  const preis = frei || (o.preisVorgabe && d.preis !== null && d.preis !== undefined) ? Number(d.preis) : pr.preis;
   if (!Number.isFinite(preis)) throw new BusinessError('Bitte einen Preis als Zahl erfassen');
   const text = frei ? (d.beschreibung ?? '').trim() : (d.beschreibung?.trim() || pr.text);
   if (frei && !text) throw new BusinessError('Bitte eine Beschreibung erfassen');

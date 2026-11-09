@@ -545,3 +545,44 @@ test('Sammelrechnung: Screenshot in Paperless, erneut lesen per DOKID, Verknüpf
   await call('POST', `${H}/sammel/verwerfen`, { dokid: 98765 });
   assert.ok(mock.docs.has(98765), 'fremdes Dokument bleibt');
 });
+
+test('Sammelrechnung: bestehende Rechnungen je Person, gezielt anhängen, Splitbuchung', async () => {
+  // Groß hat aus dem vorigen Test eine offene Rechnung (In Bearbeitung)
+  let r = await call('POST', `${H}/sammel/rechnungen`, { keys: ['M:0000000701', 'M:0000000703', 'M:9999999999'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const gross = r.body['M:0000000701'];
+  assert.ok(gross.length >= 1 && gross[0].aenderbar, JSON.stringify(gross));
+  assert.deepEqual(r.body['M:9999999999'], []);
+  const ziel = gross[0].rgnr;
+  const vorher = (await sql`select betrag::float8 as b from tco.rgkopf where rgnr_txt = ${ziel}`)[0].b;
+
+  // fremde Rechnung als Ziel → abgelehnt
+  r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '093', beschreibung: 'Test', menge: '1', preis: '1' }, anhaengen: false,
+    empfaenger: [{ key: 'M:0000000702', rgnr: ziel }],
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /gehört nicht zu Timo Hinsberger/);
+
+  // Splitbuchung 100 € auf drei Personen: Groß an seine Rechnung, die anderen neu; Cent-Rest auf die erste
+  r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '093', beschreibung: 'Hallenmiete Medenspiel', menge: '1', preis: null }, anhaengen: false,
+    empfaenger: [
+      { key: 'M:0000000701', rgnr: ziel, preis: 33.34 },
+      { key: 'M:0000000702', rgnr: 'NEU', preis: 33.33 },
+      { key: 'M:0000000703', rgnr: 'NEU', preis: '33,33' },
+    ],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.rechnungen.map((x: any) => [x.name, x.neu, x.betrag]), [['Alexander Groß', false, 33.34], ['Timo Hinsberger', true, 33.33], ['Benjamin Hartyniuk', true, 33.33]]);
+  assert.equal(r.body.rechnungen[0].rgnr, ziel);
+  assert.match(r.body.text, /2 neue Rechnung\(en\), 1× an bestehende Rechnung angehängt – zusammen 100,00 €/);
+  assert.equal((await sql`select betrag::float8 as b from tco.rgkopf where rgnr_txt = ${ziel}`)[0].b, Math.round((vorher + 33.34) * 100) / 100);
+
+  // Preisvorgabe auch bei festem Produkt (Splitbuchung mit Produktpreis 0)
+  r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '005', menge: '1' }, anhaengen: false, empfaenger: [{ key: 'M:0000000704', rgnr: 'NEU', preis: 7.5 }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.rechnungen[0].betrag, 7.5);
+});

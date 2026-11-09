@@ -159,7 +159,7 @@ export async function kundeAnlegen(tx: Db, n: NonNullable<Empfaenger['neu']>): P
   return { key: `K:${zuid}`, art: 'K', adrnr: adrnrAusZuid(zuid), name, kunde: name.toUpperCase(), vorname, nachname, info: 'Kunde (Portal)' };
 }
 
-async function kandidatLesen(tx: Db, key: string): Promise<Kandidat> {
+export async function kandidatLesen(tx: Db, key: string): Promise<Kandidat> {
   const [art, id] = key.split(':');
   if (art === 'M') {
     const [m] = await tx`select adrnr, vorname, nachname from tco.mitglieder where adrnr = ${id}`;
@@ -180,12 +180,39 @@ async function kandidatLesen(tx: Db, key: string): Promise<Kandidat> {
  * Je Empfänger eine Rechnung mit der Position anlegen – oder an eine noch offene Rechnung
  * („In Bearbeitung“) derselben Person anhängen. Die Rechnung trägt die Adressnummer direkt.
  */
+/** Rechnungen einer Person, denen eine Position zugeordnet werden könnte (änderbar) bzw. die schon existieren */
+export interface PersonRechnung { rgnr: string; status: string; betrag: number; angelegt_am: string | null; versendet: string | null; aenderbar: boolean }
+
+export async function rechnungenZuPersonen(db: Db, keys: string[]): Promise<Record<string, PersonRechnung[]>> {
+  const out: Record<string, PersonRechnung[]> = {};
+  for (const key of [...new Set(keys)].slice(0, 300)) {
+    const k = await kandidatLesen(db, key).catch(() => null);
+    if (!k) { out[key] = []; continue; }
+    const rows = await db`select rgnr_txt, status, betrag::float8 as betrag, angelegt_am::text as angelegt_am, versendet::text as versendet
+                            from tco.rgkopf
+                           where (adrnr = ${k.adrnr} or (adrnr is null and upper(trim(kunde)) = ${k.kunde}))
+                             and status not in ('4', '6')
+                           order by rgnr_txt desc limit 20`;
+    out[key] = rows.map((r) => ({
+      rgnr: r.rgnr_txt as string, status: r.status as string, betrag: Number(r.betrag), angelegt_am: r.angelegt_am as string | null,
+      versendet: r.versendet as string | null, aenderbar: rgAenderbar({ status: r.status as string, versendet: r.versendet as string | null }),
+    }));
+  }
+  return out;
+}
+
+/**
+ * Je Empfänger die Position anlegen – auf eine gewählte bestehende Rechnung der Person (`rgnr`),
+ * auf eine neue Rechnung (`rgnr: 'NEU'`) oder (ohne Angabe) wie bisher je nach `anhaengen`.
+ * `preis` je Empfänger überschreibt den Einzelpreis (Splitbuchung: Gesamtbetrag auf Personen verteilt).
+ */
 export async function sammelRechnungen(tx: Db, d: {
-  empfaenger: Empfaenger[]; position: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null }; anhaengen: boolean;
+  empfaenger: (Empfaenger & { rgnr?: string | null; preis?: number | null })[];
+  position: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null }; anhaengen: boolean;
   belegDocId?: number | null;
 }) {
   if (!d.empfaenger.length) throw new BusinessError('Bitte mindestens eine Person auswählen.');
-  const ergebnis: { name: string; rgnr: string; neu: boolean; kundeNeu: boolean }[] = [];
+  const ergebnis: { name: string; rgnr: string; neu: boolean; kundeNeu: boolean; betrag: number }[] = [];
   const doppelt = new Set<string>();
   for (const e of d.empfaenger) {
     const k = e.key ? await kandidatLesen(tx, e.key) : e.neu ? await kundeAnlegen(tx, e.neu) : null;
@@ -193,7 +220,14 @@ export async function sammelRechnungen(tx: Db, d: {
     if (doppelt.has(k.adrnr)) continue;
     doppelt.add(k.adrnr);
     let rgnr: string | null = null;
-    if (d.anhaengen) {
+    if (e.rgnr && e.rgnr !== 'NEU') {
+      // gewählte Rechnung muss zur Person gehören und noch Positionen aufnehmen
+      const [r] = await tx`select rgnr_txt from tco.rgkopf where rgnr_txt = ${e.rgnr} and (adrnr = ${k.adrnr} or (adrnr is null and upper(trim(kunde)) = ${k.kunde}))`;
+      if (!r) throw new BusinessError(`Rechnung ${e.rgnr} gehört nicht zu ${k.name}.`);
+      if (!rgAenderbar(await kopfLesen(tx, e.rgnr))) throw new BusinessError(`Rechnung ${e.rgnr} (${k.name}) nimmt keine Positionen mehr auf.`);
+      rgnr = e.rgnr;
+      await tx`update tco.rgkopf set adrnr = ${k.adrnr} where rgnr_txt = ${rgnr} and adrnr is null`;
+    } else if (!e.rgnr && d.anhaengen) {
       const [r] = await tx`select rgnr_txt from tco.rgkopf where adrnr = ${k.adrnr} and status = '1' order by rgnr_txt desc limit 1`;
       if (r && rgAenderbar(await kopfLesen(tx, r.rgnr_txt))) rgnr = r.rgnr_txt;
     }
@@ -202,10 +236,10 @@ export async function sammelRechnungen(tx: Db, d: {
       rgnr = await rechnungAnlegen(tx, k.kunde);
       await tx`update tco.rgkopf set adrnr = ${k.adrnr} where rgnr_txt = ${rgnr}`;
     }
-    const p = await manuellePosition(tx, rgnr, d.position);
+    const preisJe = e.preis ?? null;
+    const p = await manuellePosition(tx, rgnr, preisJe !== null ? { ...d.position, preis: preisJe } : d.position, { preisVorgabe: preisJe !== null });
     if (d.belegDocId) await tx`update tco.rgpos set beleg_doc_id = ${d.belegDocId} where rgnr_txt = ${rgnr} and rgpos = ${p.rgpos}`;
-    ergebnis.push({ name: k.name, rgnr, neu, kundeNeu: !e.key });
+    ergebnis.push({ name: k.name, rgnr, neu, kundeNeu: !e.key, betrag: p.betrag });
   }
   return ergebnis;
 }
-
