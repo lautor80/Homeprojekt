@@ -113,9 +113,9 @@ export function TabellenPage() {
     { Header: 'Tabelle', accessor: 'tabelle', width: 220 },
     { Header: 'Art', accessor: 'art', width: 110 },
     { Header: 'Beschreibung', accessor: 'beschreibung' },
-    { Header: 'Zeilen (ca.)', id: 'zeilen', accessor: (t: Tabelle) => Number(t.zeilen), width: 120, hAlign: 'End', Cell: ({ value }: Cell) => zahl(value) },
+    { Header: 'Zeilen (ca.)', id: 'zeilen', accessor: (t: Record<string, any>) => Number((t as Tabelle).zeilen), width: 120, hAlign: 'End', Cell: ({ value }: Cell) => zahl(value) },
     { Header: 'Spalten', accessor: 'spalten', width: 90, hAlign: 'End' },
-    { Header: 'Größe', id: 'bytes', accessor: (t: Tabelle) => Number(t.bytes), width: 100, hAlign: 'End', Cell: ({ value }: Cell) => groesse(value) },
+    { Header: 'Größe', id: 'bytes', accessor: (t: Record<string, any>) => Number((t as Tabelle).bytes), width: 100, hAlign: 'End', Cell: ({ value }: Cell) => groesse(value) },
   ];
 
   // ------------------------------------------------------------------ Struktur der gewählten Tabelle
@@ -132,7 +132,7 @@ export function TabellenPage() {
   // ------------------------------------------------------------------ Ergebnis
   const daten = useMemo(() => (erg?.zeilen ?? []).map((r) => Object.fromEntries(r.map((x, i) => [`c${i}`, x]))), [erg]);
   const ergSpalten: AnalyticalTableColumnDefinition[] = (erg?.spalten ?? []).map((s, i) => ({
-    Header: s.text, accessor: `c${i}`, id: `c${i}`, hAlign: s.numerisch ? 'End' : 'Start',
+    Header: s.text, accessor: `c${i}`, id: `c${i}`, hAlign: s.numerisch ? 'End' : 'Begin',
     minWidth: 90, width: Math.min(320, Math.max(90, s.text.length * 9 + 30)),
     Cell: ({ value }: Cell) => (value === null ? <span className="portal-muted">∅</span> : <span title={String(value).length > 60 ? String(value) : undefined}>{String(value)}</span>),
   }));
