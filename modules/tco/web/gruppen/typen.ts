@@ -14,6 +14,8 @@ export interface Gruppe {
   /** Personen einschließlich aller Untergruppen */
   gesamt: number;
 }
+/** Mitglied im Dialog „Mitglieder aufnehmen“: Geschlecht, Jahrgang und Alter (heute) für die Filter; ohne Geburtsdatum null */
+export interface AufnahmeMitglied { adrnr: string; name: string; geschlecht: 'M' | 'W' | ''; jahrgang: number | null; alter: number | null }
 /** Die Gruppen kommen in Baumreihenfolge (Eltern vor Kindern) */
 export interface GruppenDaten { gruppen: Gruppe[]; pflege: boolean }
 

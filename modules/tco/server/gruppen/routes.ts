@@ -2,8 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { DB } from '../verein.js';
-import { mitgliederAuswahl } from '../kalender/logik.js';
-import { gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppeSpeichern } from './logik.js';
+import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppeSpeichern } from './logik.js';
 
 /**
  * Berechtigungsobjekte Mitgliedergruppen:
@@ -29,8 +28,8 @@ export async function gruppenRoutes(app: FastifyInstance) {
 
   app.get('/gruppen', lesen, async (req) => ({ gruppen: await gruppenLesen(DB), pflege: can(req, P_GR.edit) }));
 
-  /** Mitglieder zur Auswahl (nicht ausgetreten) */
-  app.get('/gruppen/mitglieder', pflege, async () => mitgliederAuswahl(DB));
+  /** Mitglieder zur Auswahl (nicht ausgetreten) mit Geschlecht, Jahrgang und Alter für die Filter */
+  app.get('/gruppen/mitglieder', pflege, async () => aufnahmeMitglieder(DB));
 
   app.post('/gruppen', pflege, async (req) => {
     const b = z.object({

@@ -24,6 +24,25 @@ export interface Gruppe {
 
 export const PFAD_TRENNER = ' › ';
 
+/** Mitglied zur Aufnahme in eine Gruppe; Geschlecht, Jahrgang und Alter (heute, volle Jahre) für die Filter des Dialogs */
+export interface AufnahmeMitglied { adrnr: string; name: string; geschlecht: 'M' | 'W' | ''; jahrgang: number | null; alter: number | null }
+
+/** Mitglieder zur Auswahl (nicht ausgetreten) – ohne Geburtsdatum bleiben Jahrgang und Alter leer */
+export async function aufnahmeMitglieder(db: Db): Promise<AufnahmeMitglied[]> {
+  const r = await db`select adrnr, vorname, nachname, geschlecht,
+                            extract(year from geburtsdatum)::int as jahrgang,
+                            extract(year from age(current_date, geburtsdatum))::int as lebensalter
+                       from tco.mitglieder where austritt is null or austritt >= current_date order by nachname, vorname`;
+  return r.map((x) => {
+    const g = String(x.geschlecht ?? '').trim();
+    return {
+      adrnr: x.adrnr as string, name: condense(`${x.nachname ?? ''}, ${x.vorname ?? ''}`),
+      geschlecht: g === '1' ? 'M' : g === '2' ? 'W' : '',
+      jahrgang: x.jahrgang == null ? null : Number(x.jahrgang), alter: x.lebensalter == null ? null : Number(x.lebensalter),
+    };
+  });
+}
+
 /** Alle Gruppen in Baumreihenfolge (Eltern vor Kindern, je Ebene nach Name) mit den direkt zugeordneten Mitgliedern */
 export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
   const g = await db`select id, parent_id, name, beschreibung, aktiv from tco.kal_gruppen`;

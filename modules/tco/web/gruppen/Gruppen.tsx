@@ -12,7 +12,7 @@ import { Empty } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { Dlg } from '../mitglieder/Dialoge';
-import { GR, mitUntergruppen, type Gruppe, type GruppenDaten, type GruppenMitglied } from './typen';
+import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDaten, type GruppenMitglied } from './typen';
 
 /**
  * Mitgliedergruppen: Mitglieder nach Kategorien gruppieren (z. B. Spielbetrieb → Mannschaftsspieler → Herren 40,
@@ -232,17 +232,36 @@ function GruppeDialog({ form, gruppen, onClose }: { form: Form; gruppen: Gruppe[
 
 // ---------------------------------------------------------------- Mitglieder aufnehmen (Mehrfachauswahl)
 const MAX_TREFFER = 150;
+/** leer oder keine Zahl = Grenze nicht gesetzt */
+const zahl = (s: string) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s));
 
 function AufnehmenDialog({ gruppe, onClose }: { gruppe: Gruppe; onClose: (text?: string) => void }) {
-  const [alle, setAlle] = useState<{ adrnr: string; name: string }[] | null>(null);
+  const [alle, setAlle] = useState<AufnahmeMitglied[] | null>(null);
   const [suche, setSuche] = useState('');
+  // Filter: Geschlecht, Alter (volle Jahre, heute) und Jahrgang – z. B. männlich und ab 40 Jahre für „Herren 40“
+  const [geschlecht, setGeschlecht] = useState<'' | 'M' | 'W' | '-'>('');
+  const [grenzen, setGrenzen] = useState({ alterVon: '', alterBis: '', jgVon: '', jgBis: '' });
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { api.get<{ adrnr: string; name: string }[]>(`${GR}/mitglieder`).then(setAlle).catch((e) => setError(e.message)); }, []);
+  useEffect(() => { api.get<AufnahmeMitglied[]>(`${GR}/mitglieder`).then(setAlle).catch((e) => setError(e.message)); }, []);
   const schon = new Set(gruppe.mitglieder.map((m) => m.adrnr));
   const such = suche.trim().toLowerCase();
-  const treffer = (alle ?? []).filter((m) => !schon.has(m.adrnr) && (!such || m.name.toLowerCase().includes(such)));
+  const alterVon = zahl(grenzen.alterVon), alterBis = zahl(grenzen.alterBis), jgVon = zahl(grenzen.jgVon), jgBis = zahl(grenzen.jgBis);
+  const gefiltert = !!geschlecht || alterVon != null || alterBis != null || jgVon != null || jgBis != null;
+  // Mitglieder ohne Geburtsdatum fallen bei einem Alters- oder Jahrgangsfilter heraus
+  const zwischen = (wert: number | null, von: number | null, bis: number | null) =>
+    (von == null && bis == null) || (wert != null && (von == null || wert >= von) && (bis == null || wert <= bis));
+  const treffer = (alle ?? []).filter((m) => !schon.has(m.adrnr)
+    && (!such || m.name.toLowerCase().includes(such))
+    && (!geschlecht || (geschlecht === '-' ? !m.geschlecht : m.geschlecht === geschlecht))
+    && zwischen(m.alter, alterVon, alterBis) && zwischen(m.jahrgang, jgVon, jgBis));
+  const alleGewaehlt = treffer.length > 0 && treffer.every((m) => wahl.has(m.adrnr));
+  function alleWaehlen() {
+    const s = new Set(wahl);
+    for (const m of treffer) if (alleGewaehlt) s.delete(m.adrnr); else s.add(m.adrnr);
+    setWahl(s);
+  }
   async function sichern() {
     setBusy(true);
     setError(null);
@@ -251,23 +270,45 @@ function AufnehmenDialog({ gruppe, onClose }: { gruppe: Gruppe; onClose: (text?:
       onClose(r.text);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  const grenze = (k: keyof typeof grenzen, placeholder: string) => (
+    <Input type="Number" value={grenzen[k]} placeholder={placeholder} accessibleName={placeholder} style={{ width: '6.5rem', minWidth: '6.5rem' }} data-kein-autofill
+           onInput={(e) => setGrenzen({ ...grenzen, [k]: e.target.value })} />
+  );
   return (
     <Dlg titel={`Mitglieder aufnehmen – ${gruppe.pfad}`} onClose={() => onClose()} breite="min(560px, 95vw)"
          fuss={<Button design="Emphasized" disabled={busy || !wahl.size} onClick={sichern}>{wahl.size ? `${wahl.size} aufnehmen` : 'Aufnehmen'}</Button>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <Input value={suche} placeholder="Name suchen" showClearIcon style={{ width: '100%' }} onInput={(e) => setSuche(e.target.value)} />
+      <FlexBox wrap="Wrap" alignItems="Center" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
+        <Select accessibleName="Geschlecht" style={{ width: '10rem' }} onChange={(e) => setGeschlecht(((e.detail.selectedOption as HTMLElement).dataset.g ?? '') as typeof geschlecht)}>
+          <Option data-g="" selected={geschlecht === ''}>Geschlecht: alle</Option>
+          <Option data-g="M" selected={geschlecht === 'M'}>männlich</Option>
+          <Option data-g="W" selected={geschlecht === 'W'}>weiblich</Option>
+          <Option data-g="-" selected={geschlecht === '-'}>ohne Angabe</Option>
+        </Select>
+        {grenze('alterVon', 'Alter ab')}
+        {grenze('alterBis', 'Alter bis')}
+        {grenze('jgVon', 'Jahrgang ab')}
+        {grenze('jgBis', 'Jahrgang bis')}
+      </FlexBox>
       {!alle ? <BusyIndicator active style={{ display: 'block', padding: '1.5rem 0' }} /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '50vh', overflowY: 'auto', marginTop: '0.5rem' }}>
-          {treffer.slice(0, MAX_TREFFER).map((m) => (
-            <CheckBox key={m.adrnr} text={m.name} checked={wahl.has(m.adrnr)} onChange={(e) => {
-              const s = new Set(wahl);
-              if (e.target.checked) s.add(m.adrnr); else s.delete(m.adrnr);
-              setWahl(s);
-            }} />
-          ))}
-          {!treffer.length && <Empty>{such ? 'Kein Mitglied zu dieser Suche.' : 'Alle Mitglieder sind bereits in dieser Gruppe.'}</Empty>}
-          {treffer.length > MAX_TREFFER && <span className="portal-muted portal-small">{treffer.length - MAX_TREFFER} weitere – bitte die Suche eingrenzen.</span>}
-        </div>
+        <>
+          <FlexBox justifyContent="SpaceBetween" alignItems="Center" style={{ marginTop: '0.5rem' }}>
+            <span className="portal-muted portal-small">{treffer.length} Treffer</span>
+            {treffer.length > 0 && <Link onClick={alleWaehlen}>{alleGewaehlt ? 'Auswahl der Treffer aufheben' : `Alle ${treffer.length} Treffer auswählen`}</Link>}
+          </FlexBox>
+          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '50vh', overflowY: 'auto' }}>
+            {treffer.slice(0, MAX_TREFFER).map((m) => (
+              <CheckBox key={m.adrnr} text={m.jahrgang != null ? `${m.name} · Jg. ${m.jahrgang} (${m.alter} J.)` : m.name} checked={wahl.has(m.adrnr)} onChange={(e) => {
+                const s = new Set(wahl);
+                if (e.target.checked) s.add(m.adrnr); else s.delete(m.adrnr);
+                setWahl(s);
+              }} />
+            ))}
+            {!treffer.length && <Empty>{such || gefiltert ? 'Kein Mitglied zu dieser Suche.' : 'Alle Mitglieder sind bereits in dieser Gruppe.'}</Empty>}
+            {treffer.length > MAX_TREFFER && <span className="portal-muted portal-small">{treffer.length - MAX_TREFFER} weitere – bitte die Suche eingrenzen.</span>}
+          </div>
+        </>
       )}
     </Dlg>
   );
