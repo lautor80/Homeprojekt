@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, BusyIndicator, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
@@ -12,6 +12,7 @@ import { Empty } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { Dlg } from '../mitglieder/Dialoge';
+import './gruppen.css';
 import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDaten, type GruppenMitglied } from './typen';
 
 /**
@@ -25,6 +26,9 @@ interface Form { id: number | null; parent_id: number | null; name: string; besc
 type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void; toggleRowExpanded?: (id: string, v?: boolean) => void };
 
 const zeilenId = (g: Gruppe) => `g${g.id}`;
+/** was gerade gezogen wird: eine Gruppe oder ein Mitglied aus einer Gruppe */
+type Gezogen = { art: 'G'; id: number } | { art: 'M'; adrnr: string; von: number };
+const ZIEL = 'portal-gr__ziel';
 
 export function Gruppen() {
   const can = useCan();
@@ -82,6 +86,42 @@ export function Gruppen() {
   }, [geladen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (such) tabelle.current?.toggleAllRowsExpanded?.(true); }, [such, baum]);
 
+  // ---------------------------------------------------------------- Ziehen und Ablegen
+  // Gruppe auf Gruppe = unterordnen (auf das Feld über dem Baum = oberste Ebene), Mitglied auf Gruppe = verschieben
+  const gezogen = useRef<Gezogen | null>(null);
+  const darfAuf = (ziel: Gruppe | null) => {
+    const z = gezogen.current;
+    if (!z) return false;
+    if (z.art === 'M') return !!ziel && ziel.id !== z.von;
+    const g = gruppen.find((x) => x.id === z.id);
+    if (!g || g.parent_id === (ziel?.id ?? null)) return false;
+    return !ziel || !mitUntergruppen(gruppen, z.id).has(ziel.id);
+  };
+  const ziehStart = (e: DragEvent<HTMLElement>, was: Gezogen, text: string) => {
+    gezogen.current = was;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', text);
+  };
+  const ablage = (ziel: Gruppe | null) => ({
+    onDragOver: (e: DragEvent<HTMLElement>) => { if (darfAuf(ziel)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add(ZIEL); } },
+    onDragLeave: (e: DragEvent<HTMLElement>) => e.currentTarget.classList.remove(ZIEL),
+    onDrop: (e: DragEvent<HTMLElement>) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove(ZIEL);
+      const z = gezogen.current;
+      gezogen.current = null;
+      if (!z) return;
+      if (z.art === 'M') {
+        if (ziel) lauf(() => api.post(`${GR}/${ziel.id}/mitglieder/verschieben`, { adrnr: z.adrnr, von: z.von }));
+      } else {
+        const g = gruppen.find((x) => x.id === z.id);
+        if (g) lauf(() => api.post(GR, { id: g.id, name: g.name, beschreibung: g.beschreibung, aktiv: g.aktiv, parent_id: ziel?.id ?? null }));
+      }
+      if (ziel) tabelle.current?.toggleRowExpanded?.(zeilenId(ziel), true);
+    },
+  });
+  const ziehbar = pflege && !busy;
+
   const personen = useMemo(() => new Set(gruppen.flatMap((g) => g.mitglieder.map((m) => m.adrnr))).size, [gruppen]);
 
   const columns: AnalyticalTableColumnDefinition[] = useMemo(() => [
@@ -92,21 +132,22 @@ export function Gruppen() {
         if (z.m) {
           const m = z.m;
           return (
-            <FlexBox alignItems="Center" style={{ gap: '0.375rem' }}>
+            <div className="portal-gr__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'M', adrnr: m.adrnr, von: z.g.id }, m.name)} onDragEnd={() => { gezogen.current = null; }}>
               <Icon name="employee" />
               {zumMitglied ? <Link onClick={() => navigate(`/tco/mitglieder?adrnr=${encodeURIComponent(m.adrnr)}`)}>{m.name}</Link> : <Text>{m.name}</Text>}
               {m.mitglnrn && <span className="portal-muted portal-small">Nr. {m.mitglnrn}</span>}
               {m.ausgetreten && <ObjectStatus state="Negative">ausgetreten</ObjectStatus>}
-            </FlexBox>
+            </div>
           );
         }
         return (
-          <FlexBox alignItems="Center" style={{ gap: '0.375rem' }}>
+          <div className="portal-gr__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'G', id: z.g.id }, z.g.name)} onDragEnd={() => { gezogen.current = null; }}
+               {...(pflege ? ablage(z.g) : {})}>
             <Icon name={z.g.ebene === 0 ? 'folder' : 'group'} />
             <Text><b>{z.g.name}</b></Text>
             {z.g.beschreibung && <span className="portal-muted portal-small">{z.g.beschreibung}</span>}
             {!z.g.aktiv && <ObjectStatus state="Critical">inaktiv</ObjectStatus>}
-          </FlexBox>
+          </div>
         );
       },
     },
@@ -154,7 +195,7 @@ export function Gruppen() {
         );
       },
     }] : []),
-  ], [pflege, busy, zumMitglied]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [pflege, busy, zumMitglied, gruppen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabellenOptionen = useMemo(() => ({ autoResetExpanded: false, getRowId: (r: Zeile) => r.id }), []);
 
@@ -172,6 +213,11 @@ export function Gruppen() {
             <Button icon="expand-all" design="Transparent" tooltip="Alles aufklappen" onClick={() => tabelle.current?.toggleAllRowsExpanded?.(true)} />
             <Button icon="collapse-all" design="Transparent" tooltip="Alles zuklappen" onClick={() => tabelle.current?.toggleAllRowsExpanded?.(false)} />
           </div>
+          {pflege && gruppen.length > 0 && (
+            <div className="portal-gr__oben" {...ablage(null)}>
+              Ziehen und Ablegen: Gruppe auf eine andere Gruppe ziehen = unterordnen, auf dieses Feld = oberste Ebene. Mitglied auf eine Gruppe ziehen = dorthin verschieben.
+            </div>
+          )}
           {!gruppen.length ? (
             <Empty>
               Noch keine Gruppen. Lege zuerst die Kategorien an – z. B. „Spielbetrieb“ mit den Untergruppen „Mannschaftsspieler“ und

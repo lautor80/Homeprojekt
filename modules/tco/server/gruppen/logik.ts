@@ -27,12 +27,12 @@ export const PFAD_TRENNER = ' › ';
 /** Mitglied zur Aufnahme in eine Gruppe; Geschlecht, Jahrgang und Alter (heute, volle Jahre) für die Filter des Dialogs */
 export interface AufnahmeMitglied { adrnr: string; name: string; geschlecht: 'M' | 'W' | ''; jahrgang: number | null; alter: number | null }
 
-/** Mitglieder zur Auswahl (nicht ausgetreten) – ohne Geburtsdatum bleiben Jahrgang und Alter leer */
+/** Aktive Mitglieder zur Auswahl (mit Eintritt, ohne Austritt – wie „Aktive Mitglieder“ der Mitgliederliste); ohne Geburtsdatum bleiben Jahrgang und Alter leer */
 export async function aufnahmeMitglieder(db: Db): Promise<AufnahmeMitglied[]> {
   const r = await db`select adrnr, vorname, nachname, geschlecht,
                             extract(year from geburtsdatum)::int as jahrgang,
                             extract(year from age(current_date, geburtsdatum))::int as lebensalter
-                       from tco.mitglieder where austritt is null or austritt >= current_date order by nachname, vorname`;
+                       from tco.mitglieder where eintritt is not null and austritt is null order by nachname, vorname`;
   return r.map((x) => {
     const g = String(x.geschlecht ?? '').trim();
     return {
@@ -249,6 +249,20 @@ export async function gruppenMitgliederAufnehmen(tx: Db, gruppeId: number, adrnr
     neu += r.length;
   }
   return { neu, ueberUntergruppe: unter.size, ausUebergeordneter: await ausUebergeordnetenEntfernen(tx, gruppeId, rest) };
+}
+
+/**
+ * Mitglied von einer Gruppe in eine andere verschieben (Ziehen im Baum); die Rolle wandert mit.
+ * Steht es in der Zielgruppe schon, entfällt nur die bisherige Zuordnung. Liefert den Namen der Zielgruppe.
+ */
+export async function gruppenMitgliedVerschieben(tx: Db, von: number, nach: number, adrnr: string): Promise<string> {
+  const ziel = await gruppeHolen(tx, nach);
+  if (von === nach) return ziel.name;
+  const [alt] = await tx`delete from tco.kal_gruppe_mitglieder where gruppe_id = ${von} and adrnr = ${adrnr} returning rolle`;
+  if (!alt) throw new BusinessError('Das Mitglied ist der bisherigen Gruppe nicht mehr zugeordnet – bitte die Ansicht aktualisieren.');
+  const [da] = await tx`select 1 from tco.kal_gruppe_mitglieder where gruppe_id = ${nach} and adrnr = ${adrnr}`;
+  if (!da) await gruppenMitgliedSetzen(tx, nach, adrnr, (alt.rolle as string | null) ?? null);
+  return ziel.name;
 }
 
 export async function gruppenMitgliedEntfernen(tx: Db, gruppeId: number, adrnr: string) {

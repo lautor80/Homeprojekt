@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { DB } from '../verein.js';
-import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppeSpeichern } from './logik.js';
+import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppenMitgliedVerschieben, gruppeSpeichern } from './logik.js';
 
 /**
  * Berechtigungsobjekte Mitgliedergruppen:
@@ -28,7 +28,7 @@ export async function gruppenRoutes(app: FastifyInstance) {
 
   app.get('/gruppen', lesen, async (req) => ({ gruppen: await gruppenLesen(DB), pflege: can(req, P_GR.edit) }));
 
-  /** Mitglieder zur Auswahl (nicht ausgetreten) mit Geschlecht, Jahrgang und Alter für die Filter */
+  /** Aktive Mitglieder zur Auswahl mit Geschlecht, Jahrgang und Alter für die Filter */
   app.get('/gruppen/mitglieder', pflege, async () => aufnahmeMitglieder(DB));
 
   app.post('/gruppen', pflege, async (req) => {
@@ -44,6 +44,14 @@ export async function gruppenRoutes(app: FastifyInstance) {
     const { id: gid } = id.parse(req.params);
     const name = await change(req, (tx) => gruppeLoeschen(tx, gid), { action: 'GRUPPE', reason: 'gelöscht' });
     return { text: `Gruppe „${name}“ gelöscht.` };
+  });
+
+  /** Mitglied aus einer anderen Gruppe hierher verschieben (Ziehen und Ablegen im Baum), die Rolle wandert mit */
+  app.post('/gruppen/:id/mitglieder/verschieben', pflege, async (req) => {
+    const { id: gid } = id.parse(req.params);
+    const b = z.object({ adrnr: z.string().min(1).max(20), von: z.number().int().positive() }).parse(req.body);
+    const name = await change(req, (tx) => gruppenMitgliedVerschieben(tx, b.von, gid, b.adrnr), { action: 'GRUPPE', reason: 'verschoben' });
+    return { text: `Nach „${name}“ verschoben.` };
   });
 
   /** Mitglieder aufnehmen (mehrere), Rolle eines Mitglieds setzen oder Mitglied entfernen */

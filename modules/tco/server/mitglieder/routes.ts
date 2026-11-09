@@ -26,7 +26,7 @@ import {
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
-import { gruppenMitgliedEntfernen, gruppenMitgliedSetzen, personenDerGruppe } from '../gruppen/logik.js';
+import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -163,6 +163,30 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     if (!r.dokumente.some((d) => d.id === id)) throw new BusinessError('Dokument nicht gefunden.', 404);
     const d = await plPruefen(v).download(id);
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
+  });
+
+  /** eigene Gruppen: der Baum der Gruppen (ohne die Mitglieder der Gruppen) und die eigenen Zuordnungen */
+  app.get('/mitglieder/meine/gruppen', selbst, async (req) => {
+    const a = await eigeneAdrnr(DB, benutzerId(req));
+    return {
+      gruppen: (await gruppenLesen(DB)).map(({ id, parent_id, name, ebene, aktiv }) => ({ id, parent_id, name, ebene, aktiv })),
+      meine: await mitgliedGruppen(DB, a),
+    };
+  });
+  /** sich selbst einer Gruppe zuordnen oder daraus austragen; die Rolle (z. B. Mannschaftsführer) vergibt der Verein */
+  app.post('/mitglieder/meine/gruppen', selbst, async (req) => {
+    const b = z.object({ gruppe: z.coerce.number().int().positive(), entfernen: z.boolean().default(false) }).parse(req.body);
+    const a = await eigeneAdrnr(DB, benutzerId(req));
+    const g = (await gruppenLesen(DB)).find((x) => x.id === b.gruppe);
+    if (!g) throw new BusinessError('Gruppe nicht gefunden.', 404);
+    if (b.entfernen) {
+      await change(req, (tx) => gruppenMitgliedEntfernen(tx, b.gruppe, a), { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
+      return { text: `Du bist aus „${g.name}“ ausgetragen.` };
+    }
+    if (!g.aktiv) throw new BusinessError(`Die Gruppe „${g.name}“ ist nicht mehr aktiv.`);
+    // bereits zugeordnet: nichts ändern (die Rolle bleibt)
+    if (!g.mitglieder.some((m) => m.adrnr === a)) await change(req, (tx) => gruppenMitgliedSetzen(tx, b.gruppe, a, null), { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
+    return { text: `Du bist in „${g.name}“ eingetragen.` };
   });
 
   app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {
