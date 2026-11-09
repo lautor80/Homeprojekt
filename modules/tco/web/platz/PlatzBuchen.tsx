@@ -26,7 +26,18 @@ export interface TagPlatz {
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
   geschlossen: string | null; belegt: Belegt[];
 }
-interface Tag { datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[] }
+/** Preisklasse im Tagesverlauf (Einzelbuchung): Zeitraum mit einem Stundenpreis */
+export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number }
+interface Tag { datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[] }
+
+/** Farbe je Preisklasse: aufsteigend nach Stundenpreis (günstig → teuer); gleiche Klasse = gleiche Farbe */
+const ZONEN_FARBEN = 5;
+export function preisklassen(zonen: Preiszone[]): (Pick<Preiszone, 'prodKey' | 'text' | 'stundenpreis'> & { farbe: number })[] {
+  const je = new Map<string, Preiszone>();
+  for (const z of zonen) if (!je.has(z.prodKey)) je.set(z.prodKey, z);
+  return [...je.values()].sort((a, b) => a.stundenpreis - b.stundenpreis || a.prodKey.localeCompare(b.prodKey))
+    .map((z, i) => ({ prodKey: z.prodKey, text: z.text, stundenpreis: z.stundenpreis, farbe: i % ZONEN_FARBEN }));
+}
 interface PreisTeil { text: string; von: string; bis: string; minuten: number; stundenpreis: number; betrag: number }
 interface Preis { betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string; teile?: PreisTeil[] }
 interface Einzel {
@@ -108,6 +119,8 @@ export function PlatzBuchen() {
   const neuLaden = async () => { await Promise.all([tagLaden(), ansicht === 'meine' ? meineLaden() : null]); };
   const arten = new Set((tag?.plaetze ?? []).map((p) => p.art));
   const plaetze = (tag?.plaetze ?? []).filter((p) => filter === 'ALLE' || p.art === filter);
+  // Preisklassen nur zeigen, wenn ein kostenpflichtiger Platz zu sehen ist
+  const zonen = plaetze.some((p) => p.abrechnen && !p.geschlossen) ? tag?.preiszonen ?? [] : [];
 
   if (kein) {
     return (
@@ -156,16 +169,24 @@ export function PlatzBuchen() {
             <div className="portal-pb__legende">
               <span><i className="portal-pb__punkt portal-pb__punkt--frei" />frei – antippen zum Buchen</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--eigen" />meine Buchung</span>
-              <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt</span>
+              <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt / Training / Sperrzeit</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--reserviert" />wird gerade gebucht</span>
-              <span><i className="portal-pb__punkt portal-pb__punkt--training" />Training / Sperrzeit</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--vorbei" />vorbei / nicht buchbar</span>
             </div>
+
+            {zonen.length > 0 && (
+              <div className="portal-pb__legende portal-pb__legende--preise">
+                <span>Preis je Stunde (Strich neben der Uhrzeit):</span>
+                {preisklassen(zonen).map((k) => (
+                  <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-pb__zone--${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>
+                ))}
+              </div>
+            )}
 
             {!tag && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
             {tag && !plaetze.length && <Empty>Es sind noch keine Plätze eingerichtet.</Empty>}
             {tag && plaetze.length > 0 && (
-              <Kalender tag={tag} plaetze={plaetze}
+              <Kalender tag={tag} plaetze={plaetze} preiszonen={zonen}
                         onFrei={(p, von) => setEntwurf({ platz_id: p.id, datum: tag.datum, von, dauer: p.dauer_min, text: '' })}
                         onEigen={(p, b) => b.bid && b.aenderbar && bearbeiten({ bid: b.bid, datum: tag.datum, von: b.von, bis: b.bis, text: b.text ?? null }, p.id)} />
             )}
@@ -267,10 +288,13 @@ export function PlatzBuchen() {
 
 // ---------------------------------------------------------------- Tageskalender: Plätze × Uhrzeit
 const REM_JE_STD = 3.5;
-export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
+export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
   tag: { datum: string; heute?: string; jetzt?: string }; plaetze: TagPlatz[];
   onFrei?: (p: TagPlatz, von: string) => void; onEigen?: (p: TagPlatz, b: Belegt) => void; admin?: boolean;
+  /** Preisklassen im Tagesverlauf: farbiger Strich links neben der Uhrzeit */
+  preiszonen?: Preiszone[];
 }) {
+  const farbe = new Map(preisklassen(preiszonen ?? []).map((k) => [k.prodKey, k.farbe]));
   const offen = plaetze.filter((p) => !p.geschlossen);
   const start = Math.floor(Math.min(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_von))) / 60) * 60;
   const ende = Math.ceil(Math.max(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_bis))) / 60) * 60;
@@ -302,6 +326,14 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
       </div>
       <div className="portal-pb__raster" style={{ gridTemplateColumns: spalten, height: h(ende - start) }}>
         <div className="portal-pb__zeiten">
+          {(preiszonen ?? []).map((z) => {
+            const von = Math.max(min(z.von), start);
+            const bis = Math.min(min(z.bis) || 1440, ende);
+            return bis > von
+              ? <div key={z.von} className={`portal-pb__zone portal-pb__zone--${farbe.get(z.prodKey) ?? 0}`} style={{ top: y(von), height: h(bis - von) }}
+                     title={`${z.von}–${z.bis} Uhr: ${z.text} · ${eur(z.stundenpreis)} je Stunde`} />
+              : null;
+          })}
           {stunden.map((m) => <div key={m} className="portal-pb__stunde" style={{ top: y(m) }}>{hhmm(m)}</div>)}
         </div>
         {plaetze.map((p) => {
@@ -344,7 +376,8 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin }: {
                 const von = Math.max(min(b.von), start);
                 const bis = min(b.bis) || 1440;
                 const alt = bis <= vorbeiBis; // für normale Nutzer: vergangene Stunde grau, nicht änderbar
-                const cls = (b.fest ? `portal-pb__block--training${b.fest.art === 'SPERRE' ? ' portal-pb__block--sperre' : ''}` : b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
+                // Training/Sperrzeit: in „Platz buchen“ grau wie „belegt“ (die Bezeichnung bleibt), in der Platzverwaltung farbig
+                const cls = (b.fest ? (admin ? `portal-pb__block--training${b.fest.art === 'SPERRE' ? ' portal-pb__block--sperre' : ''}` : 'portal-pb__block--belegt') : b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
                   + (alt ? ' portal-pb__block--vorbei' : '');
                 const klickbar = !b.reserviert && !b.fest && ((b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
                 return (
