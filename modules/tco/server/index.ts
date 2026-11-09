@@ -148,7 +148,7 @@ async function routes(app: FastifyInstance) {
   /** Mailprotokoll (letzte Versuche) und Testmail über den n8n-Workflow */
   app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async () => DB`
     select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer
-      from tco.mail_protokoll order by zeit desc limit 50`);
+      from tco.mail_protokoll order by id desc limit 50`);
   app.post('/verein/testmail', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
     const { an } = z.object({ an: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.') }).parse(req.body);
     const v = await vereinLesen();

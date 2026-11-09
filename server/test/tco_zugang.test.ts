@@ -344,7 +344,7 @@ test('Mailprotokoll und Testmail', async () => {
   assert.match(r.body.text, /gesendet/);
   r = await admin('GET', `${T}/verein/mailprotokoll`);
   assert.equal(r.status, 200);
-  assert.equal(r.body[0].an, 'test@example.org');
+  assert.equal(r.body[0].an, 'test@example.org', JSON.stringify(r.body.slice(0, 4)));
   assert.equal(r.body[0].status, 'gesendet');
   assert.ok(r.body.some((p: any) => p.anwendung === 'Registrierung' && p.status === 'gesendet'));
   // ohne Webhook-URL: Versuch wird mit Grund protokolliert
