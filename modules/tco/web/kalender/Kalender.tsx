@@ -259,7 +259,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
   const [r, setR] = useState<{ status: Status; begleitung: string; kommentar: string }>({ status: 'ZUSAGE', begleitung: '0', kommentar: '' });
   const [busy, setBusy] = useState(false);
   const laden = () => api.get<Detail>(`${K}/${id}`).then((v) => { setX(v); setR({ status: v.event.mein_status ?? 'ZUSAGE', begleitung: String(v.event.meine_begleitung ?? 0), kommentar: v.event.mein_kommentar ?? '' }); }).catch((e) => { onError(e.message); onClose(); });
-  useEffect(() => { laden(); if (pflege) api.get<typeof mitglieder>(`${K}/pflege/mitglieder`).then(setMitglieder).catch(() => undefined); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { laden(); if (pflege) api.get<typeof mitglieder>(`${K}/pflege/mitglieder?event=${id}`).then(setMitglieder).catch(() => undefined); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   async function lauf(fn: () => Promise<{ text?: string }>) {
     setBusy(true);
     try { const t = await fn(); if (t?.text) toast(t.text, 4000); await laden(); } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
@@ -337,7 +337,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
                     </div>
                   ))}
                 </>}
-                <AuswahlBox eintraege={mitglieder.map((m) => ({ key: m.adrnr, text: m.name }))} wert="" placeholder="Mitglied eintragen …" style={{ width: '100%', marginTop: '0.5rem' }}
+                <AuswahlBox eintraege={mitglieder.filter((m) => !x.teilnehmer.liste.some((t) => t.adrnr === m.adrnr)).map((m) => ({ key: m.adrnr, text: m.name }))} wert="" placeholder={e.gruppen.length ? 'Mitglied der Gruppe eintragen …' : 'Mitglied eintragen …'} style={{ width: '100%', marginTop: '0.5rem' }}
                             onWaehle={(k) => { if (k) setzeFuer(k, 'ZUSAGE'); }} />
               </div>
             )}

@@ -154,7 +154,11 @@ export async function kalenderRoutes(app: FastifyInstance) {
     return reply.type('text/csv; charset=utf-8').header('content-disposition', `attachment; filename="Teilnehmer_${eid}.csv"`).send(teilnehmerCsv(e, t.liste, t.offen));
   });
 
-  app.get('/kalender/pflege/mitglieder', pflege, async () => mitgliederAuswahl(DB));
+  /** Auswahl zum Eintragen einer Rückmeldung; mit ?event=<id> nur die Mitglieder der Gruppen dieser Veranstaltung */
+  app.get('/kalender/pflege/mitglieder', pflege, async (req) => {
+    const { event } = z.object({ event: z.coerce.number().int().positive().optional() }).parse(req.query);
+    return mitgliederAuswahl(DB, event ? (await eventLesen(DB, event)).gruppen : []);
+  });
   app.get('/kalender/pflege/gruppen', pflege, async () => gruppenLesen(DB));
 
   app.post('/kalender/pflege/gruppen', pflege, async (req) => {

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { DB } from '../verein.js';
+import { regelnAnwenden, regelnLesen, regelnSpeichern } from './regeln.js';
 import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppenMitgliedVerschieben, gruppeSpeichern } from './logik.js';
 
 /**
@@ -30,6 +31,39 @@ export async function gruppenRoutes(app: FastifyInstance) {
 
   /** Aktive Mitglieder zur Auswahl mit Geschlecht, Jahrgang und Alter für die Filter */
   app.get('/gruppen/mitglieder', pflege, async () => aufnahmeMitglieder(DB));
+
+  // ---------------------------------------------------------------- Regelwerk (#16)
+  app.get('/gruppen/regeln', pflege, async () => ({ regeln: await regelnLesen(DB) }));
+
+  /** Regelwerk als Ganzes sichern */
+  app.put('/gruppen/regeln', pflege, async (req) => {
+    const alter = z.number().int().min(0, 'Das Alter darf nicht negativ sein.').max(120, 'Das Alter darf höchstens 120 sein.').nullable();
+    const { regeln } = z.object({
+      regeln: z.array(z.object({
+        gruppe_id: z.number().int().positive(), alter_von: alter, alter_bis: alter,
+        jahrgang: z.boolean().default(false), andere_entfernen: z.boolean().default(false), aktiv: z.boolean().default(true),
+      })).max(200),
+    }).parse(req.body);
+    const n = await change(req, (tx) => regelnSpeichern(tx, regeln), { action: 'GRUPPE', reason: 'Regelwerk' });
+    return { regeln: await regelnLesen(DB), text: n === 1 ? '1 Regel gesichert.' : `${n} Regeln gesichert.` };
+  });
+
+  /**
+   * Regelwerk anwenden – von Hand oder durch einen Job (API-Schlüssel mit tco.gruppen:edit).
+   * simulation = true ermittelt nur, was sich ändern würde.
+   */
+  app.post('/gruppen/regeln/anwenden', pflege, async (req) => {
+    const { simulation } = z.object({ simulation: z.boolean().default(false) }).parse(req.body ?? {});
+    const gruppen = simulation ? await regelnAnwenden(DB, { simulation: true })
+      : await change(req, (tx) => regelnAnwenden(tx, { simulation: false }), { action: 'GRUPPE', reason: 'Regelwerk angewendet' });
+    const auf = gruppen.reduce((s, g) => s + g.aufgenommen.length, 0);
+    const weg = gruppen.reduce((s, g) => s + g.entfernt.length, 0);
+    return {
+      simulation, gruppen, aufgenommen: auf, entfernt: weg,
+      text: !gruppen.length ? 'Es gibt keine aktive Regel.'
+        : `${simulation ? 'Vorschau' : 'Regelwerk angewendet'}: ${auf} ${simulation ? 'würden aufgenommen' : 'aufgenommen'}, ${weg} ${simulation ? 'würden entfernt' : 'entfernt'} (${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'}).`,
+    };
+  });
 
   app.post('/gruppen', pflege, async (req) => {
     const b = z.object({

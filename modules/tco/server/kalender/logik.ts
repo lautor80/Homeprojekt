@@ -114,6 +114,10 @@ export async function rueckmelden(tx: Db, e: Event, adrnr: string, d: { status: 
       throw new BusinessError('Diese Veranstaltung ist nur für Mitglieder bestimmter Gruppen.', 403);
     }
   }
+  // auch Organisatoren tragen Rückmeldungen nur für Mitglieder der Gruppen der Veranstaltung ein
+  if (pflege && e.gruppen.length && !(await meineGruppen(tx, adrnr)).some((g) => e.gruppen.includes(g))) {
+    throw new BusinessError('Dieses Mitglied gehört nicht zu den Gruppen der Veranstaltung – eine Rückmeldung ist nur für deren Mitglieder möglich.');
+  }
   const begleitung = e.begleitung ? Math.max(0, Math.min(20, d.begleitung ?? 0)) : 0;
   if (d.status === 'ZUSAGE' && e.max_teilnehmer) {
     const [s] = await tx`select coalesce(sum(1 + begleitung), 0)::int as n from tco.kal_anmeldungen where event_id = ${e.id} and status = 'ZUSAGE' and adrnr <> ${adrnr}`;
@@ -158,9 +162,16 @@ export async function eventSpeichern(tx: Db, id: number | null, d: EventDaten, w
 // Die Gruppen sind die Mitgliedergruppen (Baum, siehe ../gruppen/logik.ts) – hier nur weitergereicht.
 export { gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern } from '../gruppen/logik.js';
 
-/** Mitglieder zur Auswahl (Pflege) – nur Name und Adressnummer */
-export async function mitgliederAuswahl(db: Db) {
-  return (await db`select adrnr, vorname, nachname from tco.mitglieder where austritt is null or austritt >= current_date order by nachname, vorname`)
+/**
+ * Mitglieder zur Auswahl (Pflege) – nur Name und Adressnummer. Mit `gruppen` (Veranstaltung nur für Gruppen)
+ * nur die Mitglieder dieser Gruppen und ihrer Untergruppen – alle anderen sind in der Auswahl ausgeblendet.
+ */
+export async function mitgliederAuswahl(db: Db, gruppen: number[] = []) {
+  const ids = gruppen.length ? await mitUntergruppen(db, gruppen) : null;
+  return (await db`select adrnr, vorname, nachname from tco.mitglieder m
+                    where (austritt is null or austritt >= current_date)
+                      ${ids ? db`and exists (select 1 from tco.kal_gruppe_mitglieder gm where gm.adrnr = m.adrnr and gm.gruppe_id = any(${ids}))` : db``}
+                    order by nachname, vorname`)
     .map((r) => ({ adrnr: r.adrnr as string, name: condense(`${r.nachname ?? ''}, ${r.vorname ?? ''}`) }));
 }
 
