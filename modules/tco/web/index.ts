@@ -25,6 +25,7 @@ import { Beitritt } from './antrag/Beitritt';
 import { Mitgliedsantraege } from './antrag/Mitgliedsantraege';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
 import { MitgliedRegistrierungen } from './platz/MitgliedRegistrierungen';
+import { MeineDaten } from './platz/MeineDaten';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
@@ -93,6 +94,7 @@ const mod: WebModule = {
             { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
             { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
+            { text: 'Meine Daten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
             { text: 'Platzverwaltung', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
           ],
@@ -126,6 +128,7 @@ const mod: WebModule = {
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
     { path: '/tco/hallenpreise', component: Hallenpreise, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
+    { path: '/tco/meine-daten', component: MeineDaten, permission: 'tco.meinkonto:edit' },
     { path: '/tco/platzverwaltung', component: Platzverwaltung, permission: 'tco.platz:admin' },
     { path: '/tco/serienbuchung', component: Serienbuchung, permission: 'tco.platz:serie' },
     { path: '/tco/sollstellung', component: Sollstellung, permission: 'tco.soll:display' },
@@ -170,6 +173,7 @@ const mod: WebModule = {
     { text: 'Hallenpreise', subtitle: 'Produkte und Preismatrix', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display', kpi: kpiHalle },
     { text: 'Platz buchen', subtitle: 'Freiplätze und Halle – eigene Buchungen mit Preisen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
+    { text: 'Meine Daten', subtitle: 'Anschrift, E-Mail und Telefon pflegen', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
     { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },

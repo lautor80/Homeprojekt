@@ -458,7 +458,7 @@ test('Registrierung: Freigabe mit Mitgliedszuordnung, Rolle Hallennutzer nur Ein
   assert.equal(r.body.registrierung?.pfad, R);
 
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email, eintritt) values ('0000000403', 'Carla', 'Neu', 'carla@example.org', '2024-01-01')`;
-  const eingabe = { vorname: 'Carla', nachname: 'Neu', email: 'Carla@example.org', benutzername: 'carla.neu', passwort: 'ganz-geheim-123', datenschutz: true, nachricht: 'Bin seit 2024 Mitglied' };
+  const eingabe = { anrede: 'Frau', strasse: 'Hauptstr. 3', plz: '66649', ort: 'Oberthal', vorname: 'Carla', nachname: 'Neu', email: 'Carla@example.org', benutzername: 'carla.neu', passwort: 'ganz-geheim-123', datenschutz: true, nachricht: 'Bin seit 2024 Mitglied' };
   assert.equal((await gast('POST', R, { ...eingabe, passwort: 'kurz' })).status, 400);
   assert.equal((await gast('POST', R, { ...eingabe, datenschutz: false })).status, 400);
   assert.equal((await gast('POST', R, { ...eingabe, benutzername: 'anna' })).status, 409, 'vorhandener Benutzer');
@@ -488,10 +488,10 @@ test('Registrierung: Freigabe mit Mitgliedszuordnung, Rolle Hallennutzer nur Ein
   // genau eine Rolle mit genau einer Berechtigung
   const [u] = await sql`select id from core.users where username = 'carla.neu'`;
   assert.deepEqual((await sql`select role_id from core.user_roles where user_id = ${u.id}`).map((x) => x.role_id), ['HALLENNUTZER']);
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.platzbuchung:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.meinkonto:edit', 'tco.platzbuchung:edit']);
   // Systemrolle: Rechte lassen sich in der Rollenpflege nicht erweitern, Rolle nicht löschen
   r = await admin('PUT', '/api/admin/roles/HALLENNUTZER', { name: 'Hallennutzer', permissions: ['tco.platzbuchung:edit', 'tco.platz:admin', 'tco.mitglieder:display'] });
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.platzbuchung:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.meinkonto:edit', 'tco.platzbuchung:edit']);
   assert.equal((await admin('DELETE', '/api/admin/roles/HALLENNUTZER')).status, 400);
 
   // Anmeldung und Zugriff: nur Platz buchen
@@ -500,7 +500,7 @@ test('Registrierung: Freigabe mit Mitgliedszuordnung, Rolle Hallennutzer nur Ein
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await carla('GET', '/api/auth/me');
   assert.equal(r.body.user.mustChangePassword, false);
-  assert.deepEqual(r.body.permissions, ['tco.platzbuchung:edit']);
+  assert.deepEqual([...r.body.permissions].sort(), ['tco.meinkonto:edit', 'tco.platzbuchung:edit']);
   r = await carla('GET', `${P}/tag?datum=${tag(2)}`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.ich.name, 'Carla Neu');
@@ -542,9 +542,9 @@ test('Registrierung mit EP3-Konto: Kennwort wird übernommen, Buchungen zugeordn
   const R = `${P}/registrierung`;
   const gast = client();
   assert.equal((await gast('GET', R)).body.ep3, true);
-  let r = await gast('POST', R, { vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'falsch' });
+  let r = await gast('POST', R, { anrede: 'Herr', strasse: 'Am Weiher 7', plz: '66640', ort: 'Namborn', vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'falsch' });
   assert.equal(r.status, 401, 'falsches EP3-Kennwort');
-  r = await gast('POST', R, { vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'EP3geheim!' });
+  r = await gast('POST', R, { anrede: 'Herr', strasse: 'Am Weiher 7', plz: '66640', ort: 'Namborn', vorname: 'Dennis', nachname: 'Gast', email: 'dennis@example.org', benutzername: 'dennis.gast', datenschutz: true, ep3_konto: 'dennis77', ep3_passwort: 'EP3geheim!' });
   assert.equal(r.status, 409);
   assert.match(r.body.message, /bereits einen Portalzugang/);
 

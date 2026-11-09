@@ -20,13 +20,14 @@ import { sha256 } from '../../../../server/src/auth.js';
  *   Kunde ohne Mitgliedschaft (eigener Kundenstammsatz, Adressnummer 99…).
  */
 export const ROLLE = 'HALLENNUTZER';
-export const ROLLE_RECHTE = ['tco.platzbuchung:edit'];
+/** Hallennutzer: eigene Einzelbuchungen und eigene Kontaktdaten (Meine Daten) */
+export const ROLLE_RECHTE = ['tco.meinkonto:edit', 'tco.platzbuchung:edit'];
 /** Systemrolle für Vereinsmitglieder: eigene Mitgliedsdaten („Meine Mitgliedschaft“) und Einzelbuchung */
 export const ROLLE_MITGLIED = 'MITGLIED';
 export const ROLLE_MITGLIED_RECHTE = ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit'];
 /** feste Systemrollen – Berechtigungen werden bei jedem Start und vor jeder automatischen Anlage erzwungen */
 export const SYSTEMROLLEN: Record<string, { name: string; text: string; rechte: string[] }> = {
-  [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen). Berechtigungen fest vorgegeben.', rechte: ROLLE_RECHTE },
+  [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen) und eigene Kontaktdaten (Meine Daten). Berechtigungen fest vorgegeben.', rechte: ROLLE_RECHTE },
   [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“) und An-/Abmeldung im Vereinskalender. Berechtigungen fest vorgegeben.', rechte: ROLLE_MITGLIED_RECHTE },
 };
 const GESPERRT = ['blocked', 'deleted', 'disabled'];
@@ -67,7 +68,12 @@ export interface RegistrierungEingabe {
   art?: 'EXTERN' | 'MITGLIED';
   /** Nachweis der Mitgliedschaft – nach Wahl des Nutzers Geburtsdatum oder Mitgliedsnummer */
   geburtsdatum?: string | null; mitgliedsnr?: string | null;
+  /** Pflichtangaben: Anrede (Geschlecht) und Anschrift */
+  anrede: 'Herr' | 'Frau' | 'Divers'; strasse: string; plz: string; ort: string;
 }
+
+/** Geschlecht im Kundenstamm (wie EP3/Belege: M/W/D) */
+export const geschlechtVon = (anrede: string | null | undefined) => (anrede === 'Herr' ? 'M' : anrede === 'Frau' ? 'W' : anrede === 'Divers' ? 'D' : null);
 
 /** Gültigkeit des Bestätigungslinks für externe Registrierungen */
 export const EMAIL_STUNDEN = 24;
@@ -134,12 +140,13 @@ export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, 
   const optIn = art === 'EXTERN' && !!o.mail;
   const token = optIn ? randomBytes(32).toString('base64url') : null;
   const [r] = await db`insert into tco.registrierungen (benutzername, anzeigename, vorname, nachname, email, telefon, passwort_hash, ep3_zuid, nachricht, ip,
-                                                        art, geburtsdatum, mitgliedsnr, status, email_token_hash, email_bis)
+                                                        art, geburtsdatum, mitgliedsnr, status, email_token_hash, email_bis, anrede, strasse, plz, ort)
                        values (${e.benutzername}, ${name(e.vorname, e.nachname)}, ${e.vorname}, ${e.nachname}, ${e.email.trim()}, ${e.telefon?.trim() || null},
                                ${hash}, ${zuid}, ${e.nachricht?.trim() || null}, ${ip},
                                ${art}, ${art === 'MITGLIED' ? e.geburtsdatum || null : null}, ${art === 'MITGLIED' ? condense(e.mitgliedsnr ?? '') || null : null},
                                ${optIn ? 'EMAIL' : 'OFFEN'}, ${token ? sha256(token) : null},
-                               ${optIn ? new Date(Date.now() + EMAIL_STUNDEN * 3600_000) : null}) returning id`;
+                               ${optIn ? new Date(Date.now() + EMAIL_STUNDEN * 3600_000) : null},
+                               ${e.anrede}, ${condense(e.strasse)}, ${condense(e.plz)}, ${condense(e.ort)}) returning id`;
   const kennwort = zuid && !e.passwort ? 'Ihrem bisherigen EP3-Kennwort' : 'Ihrem gewählten Kennwort';
   return {
     id: Number(r.id), ep3: !!zuid, token, art,
@@ -168,7 +175,12 @@ export async function emailBestaetigen(tx: Db, token: string) {
 // ---------------------------------------------------------------------------
 export interface Vorschlag { art: 'MITGLIED' | 'EP3'; schluessel: string; name: string; grund: string; info: string }
 
-async function vorschlaege(db: Db, p: { email: string | null; vorname: string | null; nachname: string | null; benutzername?: string | null; geburtsdatum?: string | null; mitgliedsnr?: string | null }): Promise<Vorschlag[]> {
+const normStr = (s: unknown) => condense(String(s ?? '')).toLowerCase().replace(/ß/g, 'ss').replace(/stra(ss)?e\b|str\.?(?=\s|\d|$)/g, 'str').replace(/[^a-z0-9äöü]/g, '');
+/** Anschrift der Registrierung gegen den Stamm: PLZ und Straße (normalisiert) */
+const anschriftText = (p: { strasse?: string | null; plz?: string | null }, m: { strasse?: string | null; plz?: string | null }) =>
+  !p.plz && !p.strasse ? '' : normStr(p.plz) === normStr(m.plz) && normStr(p.strasse) === normStr(m.strasse) ? ' · Anschrift stimmt überein' : ' · Anschrift weicht ab';
+
+async function vorschlaege(db: Db, p: { email: string | null; vorname: string | null; nachname: string | null; benutzername?: string | null; geburtsdatum?: string | null; mitgliedsnr?: string | null; strasse?: string | null; plz?: string | null }): Promise<Vorschlag[]> {
   const out: Vorschlag[] = [];
   const email = (p.email ?? '').trim().toLowerCase();
   const voll = name(p.vorname, p.nachname).toUpperCase();
@@ -176,7 +188,7 @@ async function vorschlaege(db: Db, p: { email: string | null; vorname: string | 
   if (p.geburtsdatum || p.mitgliedsnr) {
     const nr = condense(p.mitgliedsnr ?? '').replace(/^0+/, '');
     for (const m of await db`
-      select m.adrnr, m.vorname, m.nachname, m.austritt::text, m.mitglnrn, a.benutzer_id is not null as hat_benutzer
+      select m.adrnr, m.vorname, m.nachname, m.austritt::text, m.mitglnrn, m.strasse, m.plz, a.benutzer_id is not null as hat_benutzer
         from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
        where m.eintritt is not null
          and ${p.geburtsdatum ? db`m.geburtsdatum = ${p.geburtsdatum}::date` : db`ltrim(coalesce(m.mitglnrn, ''), '0') = ${nr || '§'}`}
@@ -187,7 +199,7 @@ async function vorschlaege(db: Db, p: { email: string | null; vorname: string | 
       out.push({
         art: 'MITGLIED', schluessel: m.adrnr, name: name(m.vorname, m.nachname),
         grund: p.geburtsdatum ? 'Geburtsdatum und Name/E-Mail' : 'Mitgliedsnummer und Name/E-Mail',
-        info: `Mitglied ${m.mitglnrn || m.adrnr}${m.austritt ? ` (ausgetreten ${m.austritt})` : ''}${m.hat_benutzer ? ' · hat bereits einen Benutzer' : ''}`,
+        info: `Mitglied ${m.mitglnrn || m.adrnr}${m.austritt ? ` (ausgetreten ${m.austritt})` : ''}${m.hat_benutzer ? ' · hat bereits einen Benutzer' : ''}${anschriftText(p, m)}`,
       });
     }
   }
@@ -220,7 +232,7 @@ async function vorschlaege(db: Db, p: { email: string | null; vorname: string | 
 export async function registrierungenLesen(db: Db, status: 'OFFEN' | 'ALLE' = 'OFFEN', art?: 'EXTERN' | 'MITGLIED') {
   const rows = await db`
     select r.id, r.benutzername, r.anzeigename, r.vorname, r.nachname, r.email, r.telefon, r.ep3_zuid, r.nachricht, r.status,
-           r.art, to_char(r.geburtsdatum, 'YYYY-MM-DD') as geburtsdatum, r.mitgliedsnr,
+           r.art, to_char(r.geburtsdatum, 'YYYY-MM-DD') as geburtsdatum, r.mitgliedsnr, r.anrede, r.strasse, r.plz, r.ort,
            r.erstellt, r.bearbeitet_am, r.bearbeitet_von, r.bemerkung, k.zalias as ep3_alias,
            nullif(trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '')), '') as ep3_name
       from tco.registrierungen r
@@ -231,7 +243,7 @@ export async function registrierungenLesen(db: Db, status: 'OFFEN' | 'ALLE' = 'O
   for (const r of rows) {
     out.push({
       ...r, id: Number(r.id),
-      vorschlaege: r.status === 'OFFEN' ? await vorschlaege(db, { email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername, geburtsdatum: r.geburtsdatum, mitgliedsnr: r.mitgliedsnr }) : [],
+      vorschlaege: r.status === 'OFFEN' ? await vorschlaege(db, { email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername, geburtsdatum: r.geburtsdatum, mitgliedsnr: r.mitgliedsnr, strasse: r.strasse, plz: r.plz }) : [],
     });
   }
   return out;
@@ -278,11 +290,13 @@ async function kundeZuordnen(tx: Db, benutzerId: string, zuid: string) {
 }
 
 /** neuer Kundenstammsatz für Nutzer ohne Mitgliedschaft (ZUID 9xxxxxxx aus eigenem Nummernkreis, Adressnummer 99…) */
-async function kundeAnlegen(tx: Db, benutzerId: string, p: { benutzername: string; vorname: string | null; nachname: string | null; email: string; telefon: string | null }) {
+async function kundeAnlegen(tx: Db, benutzerId: string, p: { benutzername: string; vorname: string | null; nachname: string | null; email: string; telefon: string | null;
+  anrede?: string | null; strasse?: string | null; plz?: string | null; ort?: string | null }) {
   const [{ n }] = await tx`select core.next_number('TCO_KUNDE', 0)::bigint as n`;
   const zuid = String(90_000_000 + Number(n));
-  await tx`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname, telefonnummer, benutzer_id)
-           values (${zuid}, ${p.benutzername}, 'portal', ${p.email}, ${p.vorname}, ${p.nachname}, ${p.telefon}, ${benutzerId})`;
+  await tx`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname, telefonnummer, benutzer_id, strasse, plz, wohnort, geschlecht)
+           values (${zuid}, ${p.benutzername}, 'portal', ${p.email}, ${p.vorname}, ${p.nachname}, ${p.telefon}, ${benutzerId},
+                   ${p.strasse ?? null}, ${p.plz ?? null}, ${p.ort ?? null}, ${geschlechtVon(p.anrede)})`;
   return zuid;
 }
 
@@ -304,8 +318,15 @@ export async function bestaetigen(tx: Db, id: number, f: Freigabe, bearbeiter: s
     await kundeZuordnen(tx, uid, f.zuordnung.zuid);
     wohin = `EP3-Kunde ${f.zuordnung.zuid}`;
   } else {
-    const zuid = r.ep3_zuid ?? await kundeAnlegen(tx, uid, { benutzername: r.benutzername, vorname: r.vorname, nachname: r.nachname, email: r.email, telefon: r.telefon });
-    if (r.ep3_zuid) await kundeZuordnen(tx, uid, r.ep3_zuid);
+    const zuid = r.ep3_zuid ?? await kundeAnlegen(tx, uid, { benutzername: r.benutzername, vorname: r.vorname, nachname: r.nachname, email: r.email, telefon: r.telefon,
+      anrede: r.anrede, strasse: r.strasse, plz: r.plz, ort: r.ort });
+    if (r.ep3_zuid) {
+      await kundeZuordnen(tx, uid, r.ep3_zuid);
+      // fehlende Angaben des EP3-Kunden aus der Registrierung ergänzen
+      await tx`update tco.kunden set strasse = coalesce(nullif(strasse, ''), ${r.strasse}), plz = coalesce(nullif(plz, ''), ${r.plz}),
+                                     wohnort = coalesce(nullif(wohnort, ''), ${r.ort}), geschlecht = coalesce(nullif(geschlecht, ''), ${geschlechtVon(r.anrede)})
+                where zuid = ${r.ep3_zuid}`;
+    }
     wohin = r.ep3_zuid ? `EP3-Kunde ${zuid}` : `neuer Kunde ${adrnrAusZuid(zuid)}`;
   }
   await tx`update tco.registrierungen set status = 'BESTAETIGT', bearbeitet_am = now(), bearbeitet_von = ${bearbeiter}, bemerkung = ${f.bemerkung ?? null}, benutzer_id = ${uid}

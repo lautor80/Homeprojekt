@@ -26,7 +26,7 @@ import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
 import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
-import { platzRoutes, P_PLATZ, P_REG } from './platz/routes.js';
+import { platzRoutes, P_MEINKONTO, P_PLATZ, P_REG } from './platz/routes.js';
 import { antragRoutes, P_ANTRAG } from './antrag/routes.js';
 import { rolleSicherstellen } from './platz/registrierung.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
@@ -257,6 +257,7 @@ const tco: ServerModule = {
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.display, text: 'Hallenabrechnung anzeigen' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.edit, text: 'Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
+    { area: 'Tennishalle', app: 'Meine Daten', id: P_MEINKONTO, text: 'Eigene Kontaktdaten als externer Hallennutzer ansehen und ändern (Anrede, Name, Anschrift, E-Mail, Telefon – nur der dem Benutzer zugeordnete Kundenstammsatz)' },
     { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.buchen,
       text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
     { area: 'Tennishalle', app: 'Serienbuchung', id: P_PLATZ.serie,

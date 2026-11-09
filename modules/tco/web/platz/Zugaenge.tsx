@@ -24,6 +24,7 @@ interface Vorschlag { art: 'MITGLIED' | 'EP3'; schluessel: string; name: string;
 interface Registrierung {
   id: number; benutzername: string; anzeigename: string; vorname: string | null; nachname: string | null; email: string; telefon: string | null;
   ep3_zuid: string | null; ep3_alias: string | null; ep3_name: string | null; nachricht: string | null; status: 'OFFEN' | 'BESTAETIGT' | 'ABGELEHNT';
+  anrede?: string | null; strasse?: string | null; plz?: string | null; ort?: string | null;
   erstellt: string; bearbeitet_am: string | null; bearbeitet_von: string | null; bemerkung: string | null; vorschlaege: Vorschlag[];
 }
 interface Mitglied { adrnr: string; name: string }
@@ -67,7 +68,11 @@ function Registrierungen({ aktion, onOffen }: { aktion: Aktion; onOffen: (n: num
     { Header: 'Eingegangen', accessor: 'erstellt', width: 150, Cell: ({ value }: Cell) => zeit(value) },
     {
       Header: 'Person', id: 'person', minWidth: 220,
-      Cell: ({ row }: Cell) => { const r = row.original as Registrierung; return <div style={{ lineHeight: 1.3 }}><Text>{r.anzeigename}</Text><br /><Label>{r.email}{r.telefon ? ` · ${r.telefon}` : ''}</Label></div>; },
+      Cell: ({ row }: Cell) => {
+        const r = row.original as Registrierung;
+        const adr = [r.strasse, [r.plz, r.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        return <div style={{ lineHeight: 1.3 }}><Text>{[r.anrede, r.anzeigename].filter(Boolean).join(' ')}</Text><br /><Label>{adr ? `${adr} · ` : ''}{r.email}{r.telefon ? ` · ${r.telefon}` : ''}</Label></div>;
+      },
     },
     { Header: 'Benutzername', accessor: 'benutzername', width: 150 },
     {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, RadioButton, Text, Title } from '@ui5/webcomponents-react';
+import { Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, Option, RadioButton, Select, Text, Title } from '@ui5/webcomponents-react';
 import { api } from '../api';
 
 /** Zentrierte Karte für Anmeldung, Einrichtung und Passwortwechsel (Fiori-Anmeldeseite). */
@@ -59,7 +59,7 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
   }
 
   return (
-    <CenterCard title={orgName} subtitle="Anmelden" logo={logo}>
+    <CenterCard title={orgName} subtitle="Zum Vereinsportal anmelden" logo={logo}>
       <form onSubmit={submit}>
         {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
         <Field label="Benutzer">
@@ -177,7 +177,7 @@ export function KennwortSetzenPage({ orgName, logo, token, onDone }: { orgName: 
  */
 export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: string; logo?: string; info: RegistrierungInfo; onBack: () => void }) {
   const [meta, setMeta] = useState<{ verein: string; ep3: boolean; hinweis: string; mitglied?: boolean } | null>(null);
-  const [f, setF] = useState({ vorname: '', nachname: '', email: '', telefon: '', benutzername: '', passwort: '', passwort2: '', nachricht: '', ep3_konto: '', ep3_passwort: '', datenschutz: false });
+  const [f, setF] = useState({ anrede: '', vorname: '', nachname: '', strasse: '', plz: '', ort: '', email: '', telefon: '', benutzername: '', passwort: '', passwort2: '', nachricht: '', ep3_konto: '', ep3_passwort: '', datenschutz: false });
   /** Mitglied (Prüfung durch den Verein) oder externer Hallennutzer (Freischaltung nach E-Mail-Bestätigung) */
   const [art, setArt] = useState<'MITGLIED' | 'EXTERN' | null>(null);
   const [nachweis, setNachweis] = useState<'GEBURTSDATUM' | 'MITGLIEDSNR'>('GEBURTSDATUM');
@@ -199,7 +199,9 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
   const mismatch = !!f.passwort2 && f.passwort !== f.passwort2;
   const kennwortNoetig = !alt || !!f.passwort;
   const artOk = !meta?.mitglied || art === 'EXTERN' || (art === 'MITGLIED' && (nachweis === 'GEBURTSDATUM' ? !!geburtsdatum : !!mitgliedsnr.trim()));
-  const ok = artOk && f.vorname && f.nachname && f.email && f.benutzername.length >= 3 && !frei && f.datenschutz
+  const plzOk = /^\d{4,5}$/.test(f.plz.trim());
+  const strasseOk = f.strasse.trim().length >= 3 && /\d/.test(f.strasse);
+  const ok = artOk && f.anrede && f.vorname && f.nachname && strasseOk && plzOk && f.ort.trim().length >= 2 && f.email && f.benutzername.length >= 3 && !frei && f.datenschutz
     && (alt ? !!f.ep3_konto && !!f.ep3_passwort : f.passwort.length >= 10) && (!kennwortNoetig || (f.passwort.length >= 10 && !mismatch));
 
   async function submit(e?: FormEvent) {
@@ -207,7 +209,8 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
     setBusy(true); setError(null);
     try {
       const r = await api.post<{ text: string }>(info.pfad, {
-        vorname: f.vorname, nachname: f.nachname, email: f.email, telefon: f.telefon || null, benutzername: f.benutzername, nachricht: f.nachricht || null,
+        anrede: f.anrede, vorname: f.vorname, nachname: f.nachname, strasse: f.strasse, plz: f.plz, ort: f.ort,
+        email: f.email, telefon: f.telefon || null, benutzername: f.benutzername, nachricht: f.nachricht || null,
         passwort: f.passwort || null, ep3_konto: alt ? f.ep3_konto : null, ep3_passwort: alt ? f.ep3_passwort : null, datenschutz: f.datenschutz,
         ...(meta?.mitglied ? {
           art: art ?? 'EXTERN',
@@ -249,9 +252,25 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
               )}
             </div>
           )}
+          <Field label="Anrede" required>
+            <Select style={full} onChange={(e) => setF((x) => ({ ...x, anrede: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' }))}>
+              <Option data-a="" selected={!f.anrede}>bitte wählen</Option>
+              {['Frau', 'Herr', 'Divers'].map((a) => <Option key={a} data-a={a} selected={f.anrede === a}>{a}</Option>)}
+            </Select>
+          </Field>
           <FlexBox style={{ gap: '0.5rem' }}>
             <Field label="Vorname" required><Input style={full} value={f.vorname} onInput={set('vorname')} /></Field>
             <Field label="Nachname" required><Input style={full} value={f.nachname} onInput={set('nachname')} /></Field>
+          </FlexBox>
+          <Field label="Straße und Hausnummer" required>
+            <Input style={full} value={f.strasse} onInput={set('strasse')} valueState={f.strasse && !strasseOk ? 'Negative' : 'None'}
+                   valueStateMessage={<span>Bitte Straße mit Hausnummer angeben</span>} />
+          </Field>
+          <FlexBox style={{ gap: '0.5rem' }}>
+            <Field label="PLZ" required>
+              <Input style={full} value={f.plz} onInput={set('plz')} valueState={f.plz && !plzOk ? 'Negative' : 'None'} valueStateMessage={<span>4 oder 5 Ziffern</span>} />
+            </Field>
+            <Field label="Ort" required><Input style={full} value={f.ort} onInput={set('ort')} /></Field>
           </FlexBox>
           <Field label="E-Mail" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
           <Field label="Telefon (optional)"><Input style={full} type="Tel" value={f.telefon} onInput={set('telefon')} /></Field>

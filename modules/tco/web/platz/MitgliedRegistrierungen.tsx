@@ -21,6 +21,7 @@ interface Vorschlag { art: 'MITGLIED' | 'EP3'; schluessel: string; name: string;
 interface Registrierung {
   id: number; benutzername: string; anzeigename: string; email: string; telefon: string | null; nachricht: string | null;
   geburtsdatum: string | null; mitgliedsnr: string | null; ep3_zuid: string | null; ep3_alias: string | null;
+  anrede: string | null; strasse: string | null; plz: string | null; ort: string | null;
   status: 'OFFEN' | 'BESTAETIGT' | 'ABGELEHNT'; erstellt: string; bearbeitet_am: string | null; bearbeitet_von: string | null; bemerkung: string | null;
   vorschlaege: Vorschlag[];
 }
@@ -68,7 +69,7 @@ export function MitgliedRegistrierungen() {
                     return (
                       <tr key={r.id} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
                         <td style={zelle}><Text>{zeit(r.erstellt)}</Text></td>
-                        <td style={zelle}><Text>{r.anzeigename}</Text><br /><Label>{r.email}{r.telefon ? ` · ${r.telefon}` : ''} · Benutzer {r.benutzername}</Label></td>
+                        <td style={zelle}><Text>{[r.anrede, r.anzeigename].filter(Boolean).join(' ')}</Text><br /><Label>{[r.strasse, [r.plz, r.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</Label><br /><Label>{r.email}{r.telefon ? ` · ${r.telefon}` : ''} · Benutzer {r.benutzername}</Label></td>
                         <td style={zelle}><Text>{r.geburtsdatum ? `Geburtsdatum ${dat(r.geburtsdatum)}` : r.mitgliedsnr ? `Mitgliedsnr. ${r.mitgliedsnr}` : '–'}</Text></td>
                         <td style={zelle}>
                           {r.status !== 'OFFEN' ? <Text className="portal-muted">{r.bemerkung ?? ''}</Text>
@@ -131,6 +132,7 @@ function FreigabeDialog({ r, onClose, onDone }: { r: Registrierung; onClose: () 
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Text>
+          {r.anrede} {r.anzeigename} · {r.strasse}, {r.plz} {r.ort}<br />
           Benutzer <b>{r.benutzername}</b> · {r.email}{r.telefon ? ` · ${r.telefon}` : ''}<br />
           Nachweis: {r.geburtsdatum ? `Geburtsdatum ${dat(r.geburtsdatum)}` : `Mitgliedsnummer ${r.mitgliedsnr ?? '–'}`}
           {r.ep3_zuid && <> · EP3-Konto <b>{r.ep3_alias ?? r.ep3_zuid}</b> nachgewiesen</>}

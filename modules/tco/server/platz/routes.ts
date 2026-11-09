@@ -14,7 +14,7 @@ import {
 import { minuten, preiseLesen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 import {
-  ablehnen, benutzernameFrei, bestaetigen, emailBestaetigen, EMAIL_STUNDEN, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
+  ablehnen, benutzernameFrei, bestaetigen, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
@@ -99,12 +99,18 @@ const registrierung = z.object({
   ep3_passwort: z.string().max(200).nullish(),
   datenschutz: z.literal(true, { errorMap: () => ({ message: 'Bitte der Verarbeitung der Daten zustimmen.' }) }),
   art: z.enum(['EXTERN', 'MITGLIED']).default('EXTERN'),
+  anrede: z.enum(['Herr', 'Frau', 'Divers'], { errorMap: () => ({ message: 'Bitte die Anrede (Geschlecht) wählen.' }) }),
+  strasse: z.string().trim().min(3, 'Bitte Straße und Hausnummer angeben.').max(80).regex(/\d/, 'Bitte die Hausnummer angeben.'),
+  plz: z.string().trim().regex(/^\d{4,5}$/, 'Bitte eine gültige Postleitzahl angeben.'),
+  ort: z.string().trim().min(2, 'Bitte den Ort angeben.').max(60),
   geburtsdatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Geburtsdatum im Format JJJJ-MM-TT').nullish(),
   mitgliedsnr: z.string().trim().max(20).nullish(),
 });
 
 /** Mitglieds-Registrierungen prüfen und freigeben (Kassenwart) */
 export const P_REG = 'tco.registrierung:mitglied';
+/** eigene Kontaktdaten externer Hallennutzer (Systemrolle HALLENNUTZER) */
+export const P_MEINKONTO = 'tco.meinkonto:edit';
 
 /** Benachrichtigung nach der Freischaltung (nicht kritisch) – Rückgabe: Zusatz für die Meldung */
 async function freigabeMail(r: { email: string; anzeigename: string; ep3: boolean; rolle: string }, wer: string): Promise<string> {
@@ -232,6 +238,45 @@ export async function platzRoutes(app: FastifyInstance) {
     const wer = req.user!.displayName || req.user!.username;
     const r = await change(req, (tx) => ablehnen(tx, id, b.bemerkung ?? null, wer, 'EXTERN'), { action: 'REGISTRIERUNG_ABLEHNUNG', reason: String(id) });
     return { text: r.text + await ablehnungMail(r, b.bemerkung ?? null, wer) };
+  });
+
+  // ------------------------------------------------------------------ Meine Daten (externe Hallennutzer, nur der eigene Kundenstammsatz)
+  const meinkonto = { preHandler: requireAuth(P_MEINKONTO) };
+  const eigenerKunde = async (uid: string) => (await DB`select zuid, zalias, vorname, nachname, strasse, plz, wohnort, email, telefonnummer, geschlecht
+                                                          from tco.kunden where benutzer_id = ${uid} order by zalias limit 1`)[0] ?? null;
+  app.get('/meinkonto', meinkonto, async (req) => {
+    const uid = req.user!.id;
+    const k = await eigenerKunde(uid);
+    if (!k) {
+      const [m] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${uid}`;
+      throw new BusinessError(m ? 'Sie sind als Mitglied zugeordnet – Ihre Daten pflegen Sie unter „Meine Mitgliedschaft“ bzw. über den Verein.'
+        : 'Ihrem Benutzer ist kein Kundenstammsatz zugeordnet. Bitte beim Verein melden.', 404);
+    }
+    const g = String(k.geschlecht ?? '').toUpperCase();
+    return {
+      benutzername: req.user!.username, kundennummer: k.zuid,
+      anrede: ['M', '1'].includes(g) ? 'Herr' : ['W', 'F', '2'].includes(g) ? 'Frau' : g === 'D' ? 'Divers' : '',
+      vorname: k.vorname ?? '', nachname: k.nachname ?? '', strasse: k.strasse ?? '', plz: k.plz ?? '', ort: k.wohnort ?? '',
+      email: (k.email ?? req.user!.email ?? '').trim(), telefon: k.telefonnummer ?? '',
+    };
+  });
+  app.put('/meinkonto', meinkonto, async (req) => {
+    const uid = req.user!.id;
+    const d = z.object({
+      anrede: registrierung.shape.anrede, vorname: registrierung.shape.vorname, nachname: registrierung.shape.nachname,
+      strasse: registrierung.shape.strasse, plz: registrierung.shape.plz, ort: registrierung.shape.ort,
+      email: registrierung.shape.email, telefon: z.string().trim().max(40).nullish(),
+    }).parse(req.body);
+    const k = await eigenerKunde(uid);
+    if (!k) throw new BusinessError('Ihrem Benutzer ist kein Kundenstammsatz zugeordnet.', 404);
+    await change(req, async (tx) => {
+      // nur der eigene Kunde (alle EP3-Aliasse derselben Kundennummer) und der eigene Benutzer
+      await tx`update tco.kunden set vorname = ${d.vorname}, nachname = ${d.nachname}, strasse = ${d.strasse}, plz = ${d.plz}, wohnort = ${d.ort},
+                                     email = ${d.email}, telefonnummer = ${d.telefon || null}, geschlecht = ${geschlechtVon(d.anrede)}
+                where zuid = ${k.zuid}`;
+      await tx`update core.users set email = ${d.email}, display_name = ${`${d.vorname} ${d.nachname}`} where id = ${uid}`;
+    }, { action: 'MEINE_DATEN' });
+    return { text: 'Ihre Daten sind gespeichert.' };
   });
 
   // ------------------------------------------------------------------ Mitglieds-Registrierungen (Kassenwart)

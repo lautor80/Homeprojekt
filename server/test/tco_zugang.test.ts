@@ -125,7 +125,11 @@ test('Registrierung extern: E-Mail bestätigen, sofort Hallennutzer', async () =
   s = await admin('PUT', `${T}/verein`, { ...v, mail_absender: [{ anwendung: '*', email: 'kein-mail' }] });
   assert.equal(s.status, 400);
   assert.equal((await gast('GET', R)).body.mitglied, true);
-  let r = await gast('POST', R, { art: 'EXTERN', vorname: 'Erik', nachname: 'Extern', email: 'erik@example.org', benutzername: 'erik', passwort: 'eriks-kennwort-1', datenschutz: true });
+  // Pflichtangaben Anrede und Anschrift
+  const ohne = { art: 'EXTERN', vorname: 'Erik', nachname: 'Extern', email: 'erik@example.org', benutzername: 'erik', passwort: 'eriks-kennwort-1', datenschutz: true };
+  assert.equal((await gast('POST', R, ohne)).status, 400);
+  assert.equal((await gast('POST', R, { ...ohne, anrede: 'Herr', strasse: 'Ringstraße', plz: '66649', ort: 'Oberthal' })).status, 400, 'Hausnummer fehlt');
+  let r = await gast('POST', R, { art: 'EXTERN', anrede: 'Herr', strasse: 'Ringstr. 5', plz: '66649', ort: 'Oberthal', vorname: 'Erik', nachname: 'Extern', email: 'erik@example.org', benutzername: 'erik', passwort: 'eriks-kennwort-1', datenschutz: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /bestätigen/);
   const m = letzteMail('erik@example.org')!;
@@ -135,7 +139,7 @@ test('Registrierung extern: E-Mail bestätigen, sofort Hallennutzer', async () =
   // noch nicht freigeschaltet, nicht im Eingang der Platzverwaltung
   assert.equal((await client()('POST', '/api/auth/login', { username: 'erik', password: 'eriks-kennwort-1' })).status, 401);
   assert.ok(!(await admin('GET', `${T}/platz/admin/registrierungen`)).body.some((x: any) => x.benutzername === 'erik'));
-  assert.equal((await gast('POST', R, { art: 'EXTERN', vorname: 'E', nachname: 'X', email: 'x@example.org', benutzername: 'erik', passwort: 'eriks-kennwort-1', datenschutz: true })).status, 409, 'Name reserviert');
+  assert.equal((await gast('POST', R, { art: 'EXTERN', anrede: 'Herr', strasse: 'Ringstr. 5', plz: '66649', ort: 'Oberthal', vorname: 'E', nachname: 'X', email: 'x@example.org', benutzername: 'erik', passwort: 'eriks-kennwort-1', datenschutz: true })).status, 409, 'Name reserviert');
 
   assert.equal((await gast('POST', `${R}/bestaetigen`, { token: 'x'.repeat(40) })).status, 404);
   r = await gast('POST', `${R}/bestaetigen`, { token: t });
@@ -145,13 +149,29 @@ test('Registrierung extern: E-Mail bestätigen, sofort Hallennutzer', async () =
   assert.deepEqual(u.rollen, ['HALLENNUTZER']);
   const [k] = await sql`select zuid from tco.kunden where benutzer_id = ${u.id}`;
   assert.ok(k, 'eigener Kundenstammsatz');
-  assert.equal((await client()('POST', '/api/auth/login', { username: 'erik', password: 'eriks-kennwort-1' })).status, 200);
   assert.match(letzteMail('erik@example.org')!.betreff, /freigeschaltet/);
+  const [kd] = await sql`select strasse, plz, wohnort, geschlecht from tco.kunden where benutzer_id = ${u.id}`;
+  assert.deepEqual({ ...kd }, { strasse: 'Ringstr. 5', plz: '66649', wohnort: 'Oberthal', geschlecht: 'M' });
+
+  // Meine Daten: nur der eigene Kundenstammsatz
+  const erik = client();
+  assert.equal((await erik('POST', '/api/auth/login', { username: 'erik', password: 'eriks-kennwort-1' })).status, 200);
+  r = await erik('GET', `${T}/meinkonto`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.anrede, r.body.strasse, r.body.ort], ['Herr', 'Ringstr. 5', 'Oberthal']);
+  assert.equal((await erik('PUT', `${T}/meinkonto`, { ...r.body, plz: 'abc' })).status, 400);
+  r = await erik('PUT', `${T}/meinkonto`, { ...r.body, strasse: 'Neue Str. 9', plz: '66640', ort: 'Namborn', email: 'erik.neu@example.org', telefon: '0151 1' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [k2] = await sql`select strasse, plz, wohnort, email, telefonnummer from tco.kunden where benutzer_id = ${u.id}`;
+  assert.deepEqual({ ...k2 }, { strasse: 'Neue Str. 9', plz: '66640', wohnort: 'Namborn', email: 'erik.neu@example.org', telefonnummer: '0151 1' });
+  const [u2] = await sql`select email from core.users where id = ${u.id}`;
+  assert.equal(u2.email, 'erik.neu@example.org');
+  assert.equal((await erik('GET', `${T}/mitglieder/liste`)).status, 403, 'sonst nichts');
 });
 
 test('Registrierung Mitglied: Abgleich, Arbeitsvorrat, Freigabe durch den Kassenwart', async () => {
   const R = `${T}/platz/registrierung`;
-  const basis = { art: 'MITGLIED', vorname: 'Maria', nachname: 'Mitglied', email: 'maria@example.org', passwort: 'marias-kennwort', datenschutz: true };
+  const basis = { art: 'MITGLIED', anrede: 'Frau', strasse: 'Lindenweg 2', plz: '66649', ort: 'Oberthal', vorname: 'Maria', nachname: 'Mitglied', email: 'maria@example.org', passwort: 'marias-kennwort', datenschutz: true };
   assert.equal((await client()('POST', R, { ...basis, benutzername: 'maria' })).status, 400, 'Nachweis fehlt');
   let r = await client()('POST', R, { ...basis, benutzername: 'maria', geburtsdatum: '1980-05-17' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
