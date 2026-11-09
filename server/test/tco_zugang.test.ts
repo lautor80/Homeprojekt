@@ -58,8 +58,8 @@ before(async () => {
             ('0000000501', '501', 'Maria', 'Mitglied', '1980-05-17', 'maria@example.org', '2015-01-01'),
             ('0000000502', '502', 'Otto', 'Ohnemail', '1975-02-02', null, '2015-01-01')`;
   await sql`insert into tco.beitrag (art, bezeichnung, turnus) values ('5', 'Erwachsene', 'jährlich'), ('3', 'Jugendliche', 'jährlich'),
-            ('90', 'Jugendtraining', 'monatlich'), ('95', 'Spende', 'jährlich'), ('8', 'Mitgliedsbeitrag Familien', 'halbjährl.')`;
-  await sql`insert into tco.beitrag_pr (art, gueltig_ab, betrag) values ('5', '2000-01-01', 150), ('3', '2000-01-01', 60), ('90', '2000-01-01', 35), ('95', '2000-01-01', 10), ('8', '2000-01-01', 125)`;
+            ('90', 'Jugendtraining', 'monatlich'), ('95', 'Spende', 'jährlich'), ('8', 'Mitgliedsbeitrag Familien', 'halbjährl.'), ('6', 'Mitgliedsbeitrag Inaktiv', 'halbjährl.')`;
+  await sql`insert into tco.beitrag_pr (art, gueltig_ab, betrag) values ('5', '2000-01-01', 150), ('3', '2000-01-01', 60), ('90', '2000-01-01', 35), ('95', '2000-01-01', 10), ('8', '2000-01-01', 125), ('6', '2000-01-01', 32.5)`;
 });
 after(async () => { await app?.close(); await sql.end(); server.close(); });
 
@@ -226,7 +226,7 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   let r = await gast('GET', `${T}/antrag`);
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.beitragsarten.map((b: any) => [b.art, b.betrag, b.kategorie, b.jugend]),
-    [['3', 60, 'MITGLIEDSCHAFT', true], ['5', 150, 'MITGLIEDSCHAFT', false], ['8', 125, 'MITGLIEDSCHAFT', false], ['90', 35, 'TRAINING', false]], 'Spende nicht im Antrag');
+    [['3', 60, 'MITGLIEDSCHAFT', true], ['5', 150, 'MITGLIEDSCHAFT', false], ['8', 125, 'MITGLIEDSCHAFT', false], ['90', 35, 'TRAINING', false]], 'Spende und Inaktiv nicht im Antrag');
   assert.deepEqual(r.body.beitragsarten.filter((b: any) => b.familie).map((b: any) => b.art), ['8']);
   assert.match(r.body.kuendigung, /4 Wochen zum Jahresende.*30\.09\./);
   const antrag = {
@@ -251,6 +251,8 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.equal(x.status, 400, 'höchstens 2 Trainingseinheiten');
   x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [{ ...antrag.personen[1], art: '90' }] });
   assert.equal(x.status, 400, 'Training ist keine Mitgliedschaft');
+  x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [{ ...fiona, art: '6' }] });
+  assert.equal(x.status, 400, 'Inaktiv wird online nicht angeboten');
   x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [{ ...fiona, art: '5' }, antrag.personen[1]] });
   assert.match(x.body.message, /nur mit dem Familienbeitrag/);
   x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [fiona, { ...antrag.personen[1], art: '3' }] });

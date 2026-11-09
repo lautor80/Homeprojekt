@@ -39,9 +39,11 @@ export const KUENDIGUNG_TEXT = 'Die Vereinsmitgliedschaft kann mit einer Frist v
   + 'die Teilnahme am Training zum 30.09. eines jeden Jahres.';
 
 export type Kategorie = 'MITGLIEDSCHAFT' | 'TRAINING';
-/** Mitgliedschaft: Art < 90; Training: Art 90 oder Bezeichnung mit „Training“ (ab 90); übrige (z. B. Spende) nicht im Antrag */
+/** Mitgliedschaft: Art < 90; Training: Art 90 oder Bezeichnung mit „Training“ (ab 90); übrige (z. B. Spende, „Inaktiv“) nicht im Antrag */
 export function kategorieVon(art: string, name: string): Kategorie | null {
   const n = Number(art);
+  // nicht online angeboten: inaktive Mitgliedschaft (Wechsel nur über den Vorstand)
+  if (/inaktiv/i.test(name)) return null;
   if (/training/i.test(name) || art === '90') return 'TRAINING';
   if (Number.isFinite(n) && n < 90) return 'MITGLIEDSCHAFT';
   return null;
