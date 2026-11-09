@@ -9,6 +9,7 @@ import {
   eventLesen, eventSpeichern, eventsLesen, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
   KATEGORIEN, meineGruppen, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
 } from './logik.js';
+import { gruppeZurLiga, spielplanEvent, spielplanLesen } from './spielplan.js';
 
 /**
  * Berechtigungsobjekte Vereinskalender:
@@ -86,6 +87,37 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const b = eventSchema.parse(req.body);
     const n = await change(req, (tx) => eventSpeichern(tx, null, { ...b, beschreibung: b.beschreibung ?? null, ort: b.ort ?? null, ende: b.ende ?? null, anmeldeschluss: b.anmeldeschluss ?? null, max_teilnehmer: b.max_teilnehmer ?? null }, wer(req)), { action: 'KAL_EVENT' });
     return { id: n, text: `„${b.titel}“ angelegt.` };
+  });
+
+  // ---------------------------------------------------------------- Massenanlage aus eingefügtem Text (#16)
+  /** Eingefügten Spielplan lesen und auf Veranstaltungen abbilden – legt noch nichts an */
+  app.post('/kalender/masse/vorschau', pflege, async (req) => {
+    const b = z.object({ text: z.string().max(200_000), praefix: z.string().trim().max(60).default('Winterhallenrunde') }).parse(req.body);
+    const { zeilen, ignoriert } = spielplanLesen(b.text);
+    if (zeilen.length > 200) throw new BusinessError(`Der Text enthält ${zeilen.length} Termine – höchstens 200 je Lauf.`);
+    const gruppen = (await gruppenLesen(DB)).filter((g) => g.aktiv);
+    return {
+      ignoriert,
+      zeilen: zeilen.map((x) => ({ ...x, ...spielplanEvent(x, b.praefix), gruppe: gruppeZurLiga(x.liga, gruppen)?.id ?? null })),
+    };
+  });
+
+  /** Freigegebene Veranstaltungen anlegen – gleiche Veranstaltung (Titel und Beginn) wird nicht doppelt angelegt; Protokoll je Zeile */
+  app.post('/kalender/masse', pflege, async (req) => {
+    const { events } = z.object({ events: z.array(eventSchema).min(1, 'Bitte mindestens eine Veranstaltung auswählen.').max(200) }).parse(req.body);
+    const zeilen = await change(req, async (tx) => {
+      const out: { quelle: string; ok: boolean; text: string }[] = [];
+      for (const b of events) {
+        const quelle = `${new Date(b.beginn).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Berlin' })} · ${b.titel}`;
+        const [da] = await tx`select id from tco.kal_events where titel = ${b.titel} and beginn = ${b.beginn} limit 1`;
+        if (da) { out.push({ quelle, ok: false, text: 'bereits vorhanden – nicht noch einmal angelegt' }); continue; }
+        await eventSpeichern(tx, null, { ...b, beschreibung: b.beschreibung ?? null, ort: b.ort ?? null, ende: b.ende ?? null, anmeldeschluss: b.anmeldeschluss ?? null, max_teilnehmer: b.max_teilnehmer ?? null }, wer(req));
+        out.push({ quelle, ok: true, text: 'angelegt' });
+      }
+      return out;
+    }, { action: 'KAL_EVENT', reason: 'Massenanlage' });
+    const n = zeilen.filter((x) => x.ok).length;
+    return { zeilen, angelegt: n, text: `${n} Veranstaltung(en) angelegt${zeilen.length - n ? `, ${zeilen.length - n} bereits vorhanden` : ''}.` };
   });
 
   app.put('/kalender/:id', pflege, async (req) => {

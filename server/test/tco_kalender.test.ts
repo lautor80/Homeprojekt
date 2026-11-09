@@ -163,3 +163,63 @@ test('Organisator: offene Rückmeldungen, Pflege, CSV, Absage und Anmeldeschluss
   const [{ n }] = await sql`select count(*)::int as n from core.change_header where object_type in ('KAL_EVENT', 'KAL_ANMELDUNG', 'KAL_GRUPPE')`;
   assert.ok(n >= 6);
 });
+
+test('Massenanlage: Spielplan einfügen, Vorschau mit Mapping und Gruppe, anlegen ohne Doppelte (#16)', async () => {
+  const { spielplanLesen } = await import('../../modules/tco/server/kalender/spielplan.js');
+  const plan = [
+    '<!--StartFragment-->',
+    'Tag | Datum | Uhrzeit | Nr. | Halle | Platz | Liga | Heimmannschaft | Gastmannschaft',
+    '-- | -- | -- | -- | -- | -- | -- | -- | --',
+    'Sa | 05.12.2026 | 17:00 | 164 | Halle Homburg | 1+2 | Herren 40 VL | TC Oberthal 1 | TV Scheidt , Abt. Tennis 1',
+    'So | 14.03.2027 | 14:00 | 10 | Tennisclub TuS 1860 Neunkirchen | 1+2 | Ju U15 | TC Oberthal 1 | SG Heiligenw/LW-Reden 1',
+    'Sa | 31.02.2027 | 17:00 | 1 | Halle | 1 | Damen LL | A | B',
+    'Hinweis ohne Datum',
+    '<!--EndFragment-->',
+  ].join('\n');
+  // reine Textlogik: Tabulator ohne Kopfzeile, zweistelliges Jahr, ohne Uhrzeit = ganztägig
+  const t = spielplanLesen('Sa\t07.11.26\t\t161\tHalle Homburg\t1+2\tHerren 40 VL\tTC Limbach 1\tTC Oberthal 1');
+  assert.deepEqual([t.zeilen[0].datum, t.zeilen[0].uhrzeit, t.zeilen[0].liga, t.zeilen[0].gast, t.zeilen[0].fehler], ['2026-11-07', null, 'Herren 40 VL', 'TC Oberthal 1', null]);
+
+  // Gruppe „Herren 40“ gibt es aus dem Test oben
+  const [{ id: h40 }] = await sql`select id from tco.kal_gruppen where name = 'Herren 40'`;
+  let r;
+
+  // Vorschau: Mapping laut Anforderung, Gruppe zur Liga, fehlerhafte Zeile markiert, nichts angelegt
+  const [{ n: vorher }] = await sql`select count(*)::int as n from tco.kal_events`;
+  r = await admin('POST', `${K}/masse/vorschau`, { text: plan });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.zeilen.length, 3);
+  assert.equal(r.body.ignoriert, 1);
+  const z = r.body.zeilen[0];
+  assert.deepEqual([z.titel, z.kategorie, z.ort, z.beginn_lokal, z.ganztags, z.gruppe, z.fehler],
+    ['Winterhallenrunde Herren 40 VL', 'MANNSCHAFT', 'Halle Homburg | 1+2', '2026-12-05T17:00', false, h40, null]);
+  assert.equal(z.beschreibung, 'TC Oberthal 1 – TV Scheidt , Abt. Tennis 1\nSpiel-Nr. 164');
+  assert.deepEqual([r.body.zeilen[1].titel, r.body.zeilen[1].gruppe], ['Winterhallenrunde Ju U15', null]);
+  assert.match(r.body.zeilen[2].fehler, /gibt es nicht/);
+  assert.equal((await admin('POST', `${K}/masse/vorschau`, { text: plan, praefix: 'Sommerrunde' })).body.zeilen[0].titel, 'Sommerrunde Herren 40 VL');
+  assert.equal((await sql`select count(*)::int as n from tco.kal_events`)[0].n, vorher);
+
+  // Anlegen: zwei Veranstaltungen; erneut → als vorhanden übersprungen
+  const events = r.body.zeilen.slice(0, 2).map((x: any) => ({
+    titel: x.titel, ort: x.ort, kategorie: x.kategorie, beschreibung: x.beschreibung, beginn: new Date(`${x.beginn_lokal}:00+01:00`).toISOString(),
+    ganztags: x.ganztags, anmeldung: true, gruppen: x.gruppe ? [x.gruppe] : [],
+  }));
+  assert.equal((await admin('POST', `${K}/masse`, { events: [] })).status, 400);
+  r = await admin('POST', `${K}/masse`, { events });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.angelegt, 2);
+  assert.match(r.body.text, /2 Veranstaltung\(en\) angelegt\./);
+  assert.deepEqual(r.body.zeilen.map((x: any) => x.ok), [true, true]);
+  const [e] = await sql`select titel, ort, kategorie, gruppen, anmeldung, beschreibung from tco.kal_events where titel = 'Winterhallenrunde Herren 40 VL'`;
+  assert.deepEqual([e.ort, e.kategorie, e.gruppen.map(Number), e.anmeldung], ['Halle Homburg | 1+2', 'MANNSCHAFT', [h40], true]);
+  r = await admin('POST', `${K}/masse`, { events });
+  assert.equal(r.body.angelegt, 0);
+  assert.match(r.body.zeilen[0].text, /bereits vorhanden/);
+  assert.equal((await sql`select count(*)::int as n from tco.kal_events`)[0].n, vorher + 2);
+
+  // nur mit Pflegerecht
+  const anna = client();
+  assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
+  assert.equal((await anna('POST', `${K}/masse/vorschau`, { text: plan })).status, 403);
+  assert.equal((await anna('POST', `${K}/masse`, { events })).status, 403);
+});
