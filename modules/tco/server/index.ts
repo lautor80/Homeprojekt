@@ -145,6 +145,22 @@ async function routes(app: FastifyInstance) {
     reply.type('image/png').header('cache-control', 'max-age=86400').send(asset('logo_weiss.png')));
 
   /** Verbindungstest Paperless (gespeicherte Werte) */
+  /** Mailprotokoll (letzte Versuche) und Testmail über den n8n-Workflow */
+  app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async () => DB`
+    select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer
+      from tco.mail_protokoll order by zeit desc limit 50`);
+  app.post('/verein/testmail', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
+    const { an } = z.object({ an: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.') }).parse(req.body);
+    const v = await vereinLesen();
+    const r = await mailSenden(v, {
+      modus: 'senden', anwendung: 'Test', objekt: 'TESTMAIL', an, benutzer: req.user!.displayName || req.user!.username, anhaenge: [],
+      betreff: `${v.name}: Testmail aus dem Vereinsportal`,
+      text: `Diese Testmail wurde von ${req.user!.displayName || req.user!.username} im Vereinsportal ausgelöst (Stammdaten → Anbindungen).\n\nWenn sie ankommt, funktioniert der Versand über n8n.`,
+    });
+    if (r.status === 'fehler') throw new BusinessError(`n8n meldet einen Fehler: ${r.fehler ?? 'unbekannt'}`);
+    return { text: `Testmail an ${an} übergeben (${r.status}${r.von ? `, Absender ${r.von}` : ''}${r.hinweis ? ` – ${r.hinweis}` : ''}).` };
+  });
+
   app.post('/verein/paperless-test', { preHandler: requireAuth(P.stammdaten) }, async () => verbindungTesten(await vereinLesen(), 'paperless'));
 
   /** Verbindungstest je Endpunkt mit den Werten aus dem Formular (noch nicht gesichert); MASKE = gespeicherter Wert */
@@ -307,7 +323,7 @@ const tco: ServerModule = {
   },
   // ausgewählte, noch nicht gesicherte Platzzeit (Sperre mit Zeitraum, Schlüssel = Platz-ID)
   sperrObjekte: [{ type: 'PLATZZEIT', text: 'Platzzeit', permission: `${P_PLATZ.buchen}|${P_PLATZ.admin}|${P_PLATZ.serie}` }],
-  registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Für die Platzbuchung registrieren', text: 'Zugang zur Buchung von Hallen- und Freiplätzen – nach Freigabe durch den Verein.' },
+  registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Zum Vereinsportal registrieren', text: 'Zugang für Mitglieder und Hallennutzer – Mitglieder nach Prüfung durch den Verein, Hallennutzer nach Bestätigung der E-Mail-Adresse.' },
   auditObjects: [
     { type: 'REGISTRIERUNG', text: 'Registrierung Hallennutzer', permission: P_PLATZ.admin },
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },

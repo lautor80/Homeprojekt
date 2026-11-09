@@ -337,3 +337,23 @@ test('Einladung zum Vereinsportal: QR-Code per Mail/Brief und Schnellweg bei der
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await gast('POST', S, { email: 'sven@example.org', geburtsdatum: '1999-09-09' })).body.treffer, false, 'hat jetzt einen Benutzer');
 });
+
+test('Mailprotokoll und Testmail', async () => {
+  let r = await admin('POST', `${T}/verein/testmail`, { an: 'test@example.org' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /gesendet/);
+  r = await admin('GET', `${T}/verein/mailprotokoll`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body[0].an, 'test@example.org');
+  assert.equal(r.body[0].status, 'gesendet');
+  assert.ok(r.body.some((p: any) => p.anwendung === 'Registrierung' && p.status === 'gesendet'));
+  // ohne Webhook-URL: Versuch wird mit Grund protokolliert
+  const [alt] = await sql`select n8n_mail_url from tco.verein`;
+  await sql`update tco.verein set n8n_mail_url = null`;
+  assert.equal((await admin('POST', `${T}/verein/testmail`, { an: 'test@example.org' })).status >= 400, true);
+  r = await admin('GET', `${T}/verein/mailprotokoll`);
+  assert.equal(r.body[0].status, 'nicht_gesendet');
+  await sql`update tco.verein set n8n_mail_url = ${alt.n8n_mail_url}`;
+  // Anmeldeseite: Registrierung heißt „Zum Vereinsportal registrieren“
+  assert.equal((await client()('GET', '/api/settings/public')).body.registrierung.titel, 'Zum Vereinsportal registrieren');
+});

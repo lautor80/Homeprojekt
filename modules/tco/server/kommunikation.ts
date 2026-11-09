@@ -109,7 +109,7 @@ export interface MailAnhang {
   objekt?: string;
 }
 
-export interface MailErgebnis { status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string; von?: string }
+export interface MailErgebnis { status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string; von?: string; hinweis?: string }
 
 export interface MailAbsender { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }
 
@@ -124,6 +124,18 @@ export function absenderFuer(v: Pick<Verein, 'mail_absender'>, anwendung: string
  * E-Mail über den generischen n8n-Workflow „TCO Mailversand“ (Webhook tco-mailversand, docs/n8n/tco-mailversand.json).
  * Beliebig viele Anhänge; Absender/Antwortadresse je Anwendung aus den Stammdaten (n8n prüft gegen seine Erlaubnisliste).
  */
+/** Versuch protokollieren (eigene Verbindung, damit der Eintrag auch bei zurückgerollter Transaktion bleibt); Fehler hier nie weiterreichen */
+export async function mailProtokoll(e: { anwendung: string; objekt: string; an: string; betreff: string; absender?: string | null; von?: string | null;
+  status: string; fehler?: string | null; benutzer?: string | null }) {
+  try {
+    const { DB } = await import('./verein.js');
+    await DB`insert into tco.mail_protokoll (anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer)
+             values (${e.anwendung}, ${e.objekt}, ${e.an}, ${e.betreff}, ${e.absender ?? null}, ${e.von ?? null}, ${e.status},
+                     ${e.fehler ? String(e.fehler).slice(0, 1000) : null}, ${e.benutzer ?? null})`;
+    await DB`delete from tco.mail_protokoll where zeit < now() - interval '180 days'`;
+  } catch { /* Protokoll ist nur Diagnose */ }
+}
+
 export async function mailSenden(v: Verein, m: {
   modus: 'senden' | 'entwurf';
   anwendung: string;
@@ -142,7 +154,22 @@ export async function mailSenden(v: Verein, m: {
   /** false = nie mit der Adresse des angemeldeten Benutzers senden (z. B. Systemmails) */
   persoenlich?: boolean;
 }): Promise<MailErgebnis> {
-  if (!v.n8n_mail_url) throw new Error('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  const proto = { anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, benutzer: m.benutzer };
+  if (!v.n8n_mail_url) {
+    await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)' });
+    throw new Error('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  }
+  try {
+    const r = await mailSendenIntern(v as Verein & { n8n_mail_url: string }, m);
+    await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null) });
+    return r;
+  } catch (e) {
+    await mailProtokoll({ ...proto, status: 'fehler', fehler: (e as Error).message });
+    throw e;
+  }
+}
+
+async function mailSendenIntern(v: Verein & { n8n_mail_url: string }, m: Parameters<typeof mailSenden>[1]): Promise<MailErgebnis & { absender?: string; hinweis?: string }> {
   const groesse = m.anhaenge.reduce((s, a) => s + a.inhalt.length, 0);
   if (groesse > 10 * 1024 * 1024) throw new Error(`Anhänge zu groß (${(groesse / 1024 / 1024).toFixed(1)} MB, höchstens 10 MB)`);
   // Absender: wer auf „Senden“ drückt (angemeldeter Benutzer mit E-Mail). Darf dessen Adresse in n8n nicht senden
@@ -184,5 +211,5 @@ export async function mailSenden(v: Verein, m: {
     throw new Error(`Unerwartete Antwort von n8n (HTTP ${res.status})`);
   }
   if (!res.ok && !r.status) throw new Error(`Unerwartete Antwort von n8n (HTTP ${res.status})`);
-  return r;
+  return { ...r, absender: abs?.email };
 }

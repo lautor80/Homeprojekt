@@ -77,7 +77,7 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
         </div>
         {registrierung && (
           <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-            <Text className="portal-muted">Noch kein Zugang? </Text>
+            <Text className="portal-muted" style={{ marginRight: '0.3rem' }}>Noch kein Zugang?</Text>
             <Link onClick={() => setReg(true)}>{registrierung.titel}</Link>
           </div>
         )}

@@ -19,7 +19,7 @@ import {
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
-import { mailSenden } from '../kommunikation.js';
+import { mailProtokoll, mailSenden } from '../kommunikation.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle).
@@ -175,6 +175,13 @@ export async function platzRoutes(app: FastifyInstance) {
     const mail = !!v.n8n_mail_url && !!url;
     const r = await registrieren(DB, e, req.ip, { mail });
     req.log.info({ registrierung: r.id, art: r.art, benutzername: e.benutzername, ip: req.ip }, 'Registrierung eingegangen');
+    if (!v.n8n_mail_url || !url) {
+      // sichtbar im Mailprotokoll (Stammdaten → Anbindungen): warum keine Bestätigungsmail kam
+      await mailProtokoll({ anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, betreff: 'Registrierung', status: 'nicht_gesendet',
+        fehler: !v.n8n_mail_url ? 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)'
+          : 'Portal-Adresse fehlt (Administration → Einstellungen) – keine E-Mail-Bestätigung möglich, Registrierung wartet auf manuelle Freigabe',
+        benutzer: 'Registrierung' });
+    }
     let text = r.text;
     try {
       if (r.token) {

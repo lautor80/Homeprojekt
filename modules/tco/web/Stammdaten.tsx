@@ -8,7 +8,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
-import { useCan } from '@core/session';
+import { useCan, useSession } from '@core/session';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { TCO, dateiLesen } from './util';
@@ -90,6 +90,61 @@ function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: boolean;
         </table>
       )}
       {!ro && <Button design="Transparent" icon="add" onClick={() => onChange([...liste, { anwendung: liste.length ? '' : '*', email: '', name: '', antwort_an: '' }])}>Absender hinzufügen</Button>}
+    </div>
+  );
+}
+
+/** Letzte E-Mail-Versuche über n8n und Testmail – zeigt, ob ein Aufruf bei n8n ankam und mit welchem Ergebnis */
+interface Proto { id: number; zeit: string; anwendung: string; objekt: string; an: string; betreff: string; absender: string | null; von: string | null; status: string; fehler: string | null; benutzer: string | null }
+function MailProtokoll() {
+  const { me } = useSession();
+  const [liste, setListe] = useState<Proto[] | null>(null);
+  const [an, setAn] = useState(me.user.email ?? '');
+  const [busy, setBusy] = useState(false);
+  const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null);
+  const laden = () => api.get<Proto[]>(`${TCO}/verein/mailprotokoll`).then(setListe).catch(() => setListe([]));
+  useEffect(() => { laden(); }, []);
+  async function test() {
+    setBusy(true); setMeldung(null);
+    try { const r = await api.post<{ text: string }>(`${TCO}/verein/testmail`, { an }); setMeldung({ ok: true, text: r.text }); }
+    catch (e) { setMeldung({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); laden(); }
+  }
+  const STATUS: Record<string, ['Positive' | 'Negative' | 'Critical' | 'Information', string]> = {
+    gesendet: ['Positive', 'gesendet'], entwurf: ['Information', 'Entwurf'], fehler: ['Negative', 'Fehler'], nicht_gesendet: ['Critical', 'nicht gesendet'],
+  };
+  const zelle = { padding: '0.2rem 0.4rem', verticalAlign: 'top' } as const;
+  return (
+    <div style={{ padding: '0 0 0.75rem' }}>
+      <Title level="H6">Mailprotokoll und Testmail</Title>
+      <div className="portal-row" style={{ gap: '0.5rem', margin: '0.4rem 0' }}>
+        <Input value={an} type="Email" placeholder="Empfänger der Testmail" style={{ width: '18rem' }} onInput={(e) => setAn(e.target.value)} />
+        <Button icon="paper-plane" loading={busy} disabled={!an.includes('@')} onClick={test}>Testmail senden</Button>
+        <Button design="Transparent" icon="refresh" onClick={laden}>Aktualisieren</Button>
+      </div>
+      {meldung && <MessageStrip design={meldung.ok ? 'Positive' : 'Negative'} onClose={() => setMeldung(null)} style={{ marginBottom: '0.4rem' }}>{meldung.text}</MessageStrip>}
+      {!liste?.length ? <Text className="portal-muted">Noch keine Versandversuche protokolliert.</Text> : (
+        <div style={{ maxHeight: '18rem', overflowY: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr>{['Zeit', 'Anwendung', 'An', 'Betreff', 'Absender', 'Status'].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+            <tbody>
+              {liste.map((p) => (
+                <tr key={p.id} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                  <td style={{ ...zelle, whiteSpace: 'nowrap' }}><Text>{p.zeit.slice(8, 10)}.{p.zeit.slice(5, 7)}. {p.zeit.slice(11, 16)}</Text></td>
+                  <td style={zelle}><Text>{p.anwendung} {p.objekt}</Text></td>
+                  <td style={zelle}><Text>{p.an}</Text></td>
+                  <td style={zelle}><Text>{p.betreff}</Text></td>
+                  <td style={zelle}><Text>{p.von ?? p.absender ?? '–'}</Text></td>
+                  <td style={zelle}>
+                    <ObjectStatus state={(STATUS[p.status] ?? ['None', p.status])[0] as 'Positive'}>{(STATUS[p.status] ?? ['None', p.status])[1]}</ObjectStatus>
+                    {p.fehler && <><br /><Text className="portal-muted portal-small">{p.fehler}</Text></>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -186,6 +241,7 @@ function VereinTab() {
         </Endpunkt>
         <MailAbsender liste={(v.mail_absender as unknown as Absender[] | null) ?? []} ro={ro}
                       onChange={(l) => setV({ ...v, mail_absender: l as unknown as string })} />
+        <MailProtokoll />
         {v.n8n_stunden_pw && !v.n8n_stunden_user && (
           <MessageStrip hideCloseButton design="Critical" style={{ marginTop: '0.5rem' }}>
             Für die Rückmeldungen ist noch ein früher direkt eingetragener Authorization-Header hinterlegt. Er gilt weiter, bis Benutzer und Passwort eingetragen werden.
