@@ -5,6 +5,8 @@ import { hashPassword, sha256, validatePassword } from '../../../../server/src/a
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import type { Db, Verein } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
+
+const t = (x: unknown) => condense(String(x ?? ''));
 import { mailSenden } from '../kommunikation.js';
 import { C, kuerzen, LEFT } from '../pdf/layout.js';
 import { Brief } from './pdf.js';
