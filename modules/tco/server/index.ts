@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { change, requireAuth } from '../../../server/src/auth.js';
-import { asset, DB, paperless, plAktiv, vereinLesen, type Verein } from './verein.js';
+import { asset, DB, paperless, plAktiv, vereinLesen, type Db, type Verein } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { entpacken, istZip } from '../../../server/src/lib/zip.js';
 import { BusinessError } from '../../../server/src/errors.js';
@@ -148,11 +148,34 @@ async function routes(app: FastifyInstance) {
 
   /** Verbindungstest Paperless (gespeicherte Werte) */
   /** Mailprotokoll (letzte Versuche) und Testmail über den n8n-Workflow */
-  app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async () => {
+  // Filter: Anwendung, Zeitraum von/bis (Ortszeit, „JJJJ-MM-TTTHH:MM“ oder nur Datum)
+  const protoFilter = z.object({
+    anwendung: z.string().trim().max(60).optional().transform((x) => x || null),
+    von: z.string().regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/, 'Zeitraum „von“ ungültig').optional().transform((x) => x || null),
+    bis: z.string().regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/, 'Zeitraum „bis“ ungültig').optional().transform((x) => x || null),
+  });
+  type ProtoFilter = z.infer<typeof protoFilter>;
+  // „bis“ ohne Uhrzeit = ganzer Tag; mit Uhrzeit einschließlich dieser Minute
+  const bisGrenze = (b: string) => (b.length === 10 ? `${b}T23:59:59.999` : `${b.replace(' ', 'T')}:59.999`);
+  const protoWo = (db: Db, f: ProtoFilter) => db`
+    where true
+      ${f.anwendung ? db`and anwendung = ${f.anwendung}` : db``}
+      ${f.von ? db`and zeit >= (${f.von.replace(' ', 'T')}::timestamp at time zone 'Europe/Berlin')` : db``}
+      ${f.bis ? db`and zeit <= (${bisGrenze(f.bis)}::timestamp at time zone 'Europe/Berlin')` : db``}`;
+  app.get('/verein/mailprotokoll/anwendungen', { preHandler: requireAuth(P.stammdaten) }, async () =>
+    (await DB`select distinct anwendung from tco.mail_protokoll where anwendung is not null order by 1`).map((r) => r.anwendung as string));
+  /** Protokoll leeren – alles oder nur die gefilterten Einträge */
+  app.delete('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
+    const f = protoFilter.parse(req.body ?? {});
+    const r = await change(req, (tx) => tx`delete from tco.mail_protokoll ${protoWo(tx, f)}`, { action: 'MAILPROTOKOLL_LEEREN' });
+    return { anzahl: r.count, text: `${r.count} Protokolleintrag/-einträge gelöscht.` };
+  });
+  app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
+    const f = protoFilter.parse(req.query);
     const rows = await DB`
       select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer,
              nachricht, to_char(erneut_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as erneut_am, erneut_von, erneut_status
-        from tco.mail_protokoll order by id desc limit 50`;
+        from tco.mail_protokoll ${protoWo(DB, f)} order by id desc limit ${f.anwendung || f.von || f.bis ? 500 : 50}`;
     // Inhalt nie ausliefern – nur, ob und warum (nicht) erneut gesendet werden kann
     return rows.map(({ nachricht, ...p }) => {
       const fehlgeschlagen = WIEDERHOLBAR.includes(p.status) && p.erneut_status !== 'gesendet' && p.erneut_status !== 'entwurf';

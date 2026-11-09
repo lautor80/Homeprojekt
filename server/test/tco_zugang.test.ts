@@ -451,3 +451,29 @@ test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
   assert.match(p.erneut_hinweis, /Kennwort-Link/);
   assert.equal((await admin('POST', `${P}/${p.id}/erneut`)).status, 400);
 });
+
+test('Mailprotokoll: Filter nach Anwendung und Zeitraum, Leeren', async () => {
+  const P = `${T}/verein/mailprotokoll`;
+  await sql`insert into tco.mail_protokoll (zeit, anwendung, objekt, an, betreff, status) values
+            ('2026-10-01 08:00+02', 'Hallenrechnung', 'R1', 'a@example.org', 'alt', 'gesendet'),
+            ('2026-10-01 18:30+02', 'Hallenrechnung', 'R2', 'b@example.org', 'abends', 'fehler'),
+            ('2026-10-02 09:00+02', 'Verzehr', 'V1', 'c@example.org', 'verzehr', 'gesendet')`;
+  let r = await admin('GET', `${P}/anwendungen`);
+  assert.ok(r.body.includes('Hallenrechnung') && r.body.includes('Verzehr'), JSON.stringify(r.body));
+  r = await admin('GET', `${P}?anwendung=Hallenrechnung`);
+  assert.deepEqual(r.body.map((x: any) => x.objekt), ['R2', 'R1']);
+  // Tag und Uhrzeit (Ortszeit); „bis“ ohne Uhrzeit = ganzer Tag
+  r = await admin('GET', `${P}?von=2026-10-01T12:00&bis=2026-10-02`);
+  assert.deepEqual(r.body.map((x: any) => x.objekt), ['V1', 'R2']);
+  r = await admin('GET', `${P}?von=2026-10-01&bis=2026-10-01T18:30`);
+  assert.deepEqual(r.body.map((x: any) => x.objekt), ['R2', 'R1']);
+  assert.equal((await admin('GET', `${P}?von=gestern`)).status, 400);
+  // gefiltert löschen, dann alles
+  r = await admin('DELETE', P, { anwendung: 'Hallenrechnung', bis: '2026-10-01T12:00' });
+  assert.equal(r.body.anzahl, 1, JSON.stringify(r.body));
+  r = await admin('GET', `${P}?anwendung=Hallenrechnung`);
+  assert.deepEqual(r.body.map((x: any) => x.objekt), ['R2']);
+  r = await admin('DELETE', P, {});
+  assert.ok(r.body.anzahl >= 2);
+  assert.equal((await admin('GET', P)).body.length, 0);
+});
