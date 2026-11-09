@@ -404,7 +404,7 @@ test('Regelwerk: Mitglieder nach Alter zuordnen, Kalenderjahr zählt, Vorschau, 
   // Anwenden: aufgenommen; ein zweiter Lauf ändert nichts mehr
   r = await admin('POST', `${R}/anwenden`, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.match(r.body.text, /Regelwerk angewendet: 4 aufgenommen, 0 entfernt/);
+  assert.match(r.body.text, /Neu berechnet: 4 aufgenommen, 0 entfernt/);
   assert.deepEqual(await direkt(kleinfeld), [ANNA, K1, K2]);
   assert.deepEqual(await direkt(midfeld), [K2, K3]);
   r = await admin('POST', `${R}/anwenden`, {});
@@ -455,5 +455,58 @@ test('Regelwerk: Mitglieder nach Alter zuordnen, Kalenderjahr zählt, Vorschau, 
   assert.equal((await grleser('POST', '/api/auth/login', { username: 'grleser', password: 'neues-passwort' })).status, 200);
   assert.equal((await grleser('GET', R)).status, 403);
   assert.equal((await grleser('POST', `${R}/anwenden`, {})).status, 403);
+});
+
+test('Position in der Ebene, Regelwerk je Gruppe, Neu berechnen je Knoten (#16)', async () => {
+  const R = `${G}/regeln`;
+  const K2 = '0000000612', K3 = '0000000613';
+  const regel = (x: object) => ({ jahrgang: false, andere_entfernen: false, aktiv: true, alter_von: null, alter_bis: null, ...x });
+  const direkt = async (id: number) => (await baum()).find((g) => g.id === id)!.mitglieder.map((m) => m.adrnr).sort();
+  const wurzel = await neu('Nachwuchs');
+  const alpha = await neu('Alpha', wurzel);
+  const beta = await neu('Beta', wurzel);
+  const gamma = await neu('Gamma', wurzel);
+  const ebene = async () => (await baum()).filter((g) => g.parent_id === wurzel).map((g) => g.name);
+  assert.deepEqual(await ebene(), ['Alpha', 'Beta', 'Gamma'], 'ohne Position nach Name');
+
+  // Position: kleinste zuerst, Gruppen ohne Position danach nach Name
+  assert.equal((await admin('POST', G, { id: gamma, name: 'Gamma', parent_id: wurzel, position: 1 })).status, 200);
+  assert.equal((await admin('POST', G, { id: beta, name: 'Beta', parent_id: wurzel, position: 2 })).status, 200);
+  assert.deepEqual(await ebene(), ['Gamma', 'Beta', 'Alpha']);
+  // ohne Angabe (z. B. Verschieben per Ziehen) bleibt die Position; negativ wird abgewiesen
+  assert.equal((await admin('POST', G, { id: gamma, name: 'Gamma', parent_id: wurzel })).status, 200);
+  assert.equal(((await baum()).find((g) => g.id === gamma) as any).position, 1);
+  assert.equal((await admin('POST', G, { id: gamma, name: 'Gamma', position: -1 })).status, 400);
+  assert.equal((await admin('POST', G, { id: beta, name: 'Beta', parent_id: wurzel, position: null })).status, 200);
+  assert.deepEqual(await ebene(), ['Gamma', 'Alpha', 'Beta']);
+
+  // Regelwerk je Gruppe: ersetzt nur die Regeln dieser Gruppe; die Gruppe zeigt ihre Regel
+  const vorher = (await admin('GET', R)).body.regeln.length;
+  let r = await admin('PUT', R, { gruppe_id: alpha, regeln: [regel({ gruppe_id: alpha, alter_von: 7, alter_bis: 10, jahrgang: true })] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.regeln.length, vorher + 1);
+  assert.equal((await admin('PUT', R, { gruppe_id: alpha, regeln: [regel({ gruppe_id: beta, alter_von: 7 })] })).status, 400, 'Regel einer anderen Gruppe');
+  assert.equal((await admin('PUT', R, { gruppe_id: beta, regeln: [regel({ gruppe_id: beta, alter_von: 7, alter_bis: 10, jahrgang: true, geschlecht: 'M' })] })).status, 200);
+  assert.match(((await baum()).find((g) => g.id === alpha) as any).regel, /7–10 Jahre \(Kalenderjahr zählt\)/);
+  assert.match(((await baum()).find((g) => g.id === beta) as any).regel, /männlich/);
+  assert.equal(((await baum()).find((g) => g.id === gamma) as any).regel, null);
+
+  // Neu berechnen auf einem Knoten: nur diese Gruppe und ihre Untergruppen
+  r = await admin('POST', `${R}/anwenden`, { gruppe_id: alpha });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.gruppen.map((g: any) => g.gruppe_id), [alpha]);
+  assert.match(r.body.text, /Neu berechnet: 2 aufgenommen/);
+  assert.deepEqual([await direkt(alpha), await direkt(beta)], [[K2, K3], []]);
+  r = await admin('POST', `${R}/anwenden`, { gruppe_id: wurzel });
+  assert.deepEqual(r.body.gruppen.map((g: any) => g.gruppe_id).sort(), [alpha, beta].sort());
+  assert.deepEqual(await direkt(beta), [K2, K3]);
+  r = await admin('POST', `${R}/anwenden`, { gruppe_id: gamma });
+  assert.match(r.body.text, /keine aktive Regel/);
+  assert.equal((await admin('POST', `${R}/anwenden`, { gruppe_id: 99999 })).status, 404);
+
+  // Regelwerk der Gruppe leeren: übrige Regeln bleiben
+  r = await admin('PUT', R, { gruppe_id: alpha, regeln: [] });
+  assert.equal(r.body.regeln.length, vorher + 1);
+  assert.ok(!r.body.regeln.some((x: any) => x.gruppe_id === alpha));
 });
 

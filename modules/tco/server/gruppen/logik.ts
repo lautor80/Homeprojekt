@@ -1,6 +1,7 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
+import { regelText, type RegelGeschlecht } from './alter.js';
 
 /**
  * Mitgliedergruppen: Mitglieder werden nach Kategorien gruppiert (z. B. Spielbetrieb → Mannschaftsspieler → Herren 40,
@@ -12,6 +13,10 @@ import { condense } from '../format.js';
 export interface GruppenMitglied { adrnr: string; name: string; mitglnrn: string; rolle: string | null; ausgetreten: boolean }
 export interface Gruppe {
   id: number; parent_id: number | null; name: string; beschreibung: string | null; aktiv: boolean;
+  /** Position innerhalb der Ebene (kleinste zuerst); null = ohne Position, dann nach Name hinter den übrigen */
+  position: number | null;
+  /** aktive Regeln des Regelwerks als Text, z. B. „6–7 Jahre (Kalenderjahr zählt) · weiblich“; null = keine Regel */
+  regel: string | null;
   /** Namen von der obersten Ebene bis zur Gruppe, z. B. „Spielbetrieb › Mannschaften › Herren 40“ */
   pfad: string;
   /** 0 = oberste Ebene */
@@ -45,7 +50,15 @@ export async function aufnahmeMitglieder(db: Db): Promise<AufnahmeMitglied[]> {
 
 /** Alle Gruppen in Baumreihenfolge (Eltern vor Kindern, je Ebene nach Name) mit den direkt zugeordneten Mitgliedern */
 export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
-  const g = await db`select id, parent_id, name, beschreibung, aktiv from tco.kal_gruppen`;
+  const g = await db`select id, parent_id, name, beschreibung, aktiv, position from tco.kal_gruppen`;
+  const regeln = new Map<number, string[]>();
+  for (const r of await db`select gruppe_id, alter_von, alter_bis, jahrgang, geschlecht, andere_entfernen from tco.kal_gruppen_regeln where aktiv order by id`) {
+    const text = regelText({
+      alter_von: r.alter_von == null ? null : Number(r.alter_von), alter_bis: r.alter_bis == null ? null : Number(r.alter_bis),
+      jahrgang: !!r.jahrgang, geschlecht: (['M', 'W'].includes(r.geschlecht) ? r.geschlecht : '') as RegelGeschlecht,
+    });
+    regeln.set(Number(r.gruppe_id), [...(regeln.get(Number(r.gruppe_id)) ?? []), text]);
+  }
   const m = await db`select gm.gruppe_id, gm.adrnr, gm.rolle, coalesce(mi.mitglnrn, '') as mitglnrn,
                             coalesce(nullif(trim(concat_ws(' ', mi.vorname, mi.nachname)), ''), gm.adrnr) as name,
                             (mi.austritt is not null and mi.austritt < current_date) as ausgetreten
@@ -60,6 +73,7 @@ export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
   const alle = g.map((x) => ({
     id: Number(x.id), parent_id: x.parent_id == null ? null : Number(x.parent_id), name: x.name as string,
     beschreibung: (x.beschreibung as string | null) ?? null, aktiv: !!x.aktiv,
+    position: x.position == null ? null : Number(x.position), regel: regeln.get(Number(x.id))?.join(' oder ') ?? null,
   }));
   const ids = new Set(alle.map((x) => x.id));
   const kinder = new Map<number | null, typeof alle>();
@@ -68,7 +82,8 @@ export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
     const p = x.parent_id != null && ids.has(x.parent_id) ? x.parent_id : null;
     kinder.set(p, [...(kinder.get(p) ?? []), x]);
   }
-  for (const l of kinder.values()) l.sort((a, b) => a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }) || a.id - b.id);
+  // je Ebene nach Position, Gruppen ohne Position danach nach Name
+  for (const l of kinder.values()) l.sort((a, b) => ((a.position ?? Infinity) === (b.position ?? Infinity) ? 0 : (a.position ?? Infinity) < (b.position ?? Infinity) ? -1 : 1) || a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }) || a.id - b.id);
   const out: Gruppe[] = [];
   const gesehen = new Set<number>();
   const lauf = (p: number | null, pfad: string, ebene: number): Set<string> => {
@@ -123,20 +138,22 @@ export async function personenDerGruppe(db: Db, id: number): Promise<Set<string>
 }
 
 async function gruppeHolen(tx: Db, id: number) {
-  const [g] = await tx`select id, parent_id, name from tco.kal_gruppen where id = ${id}`;
+  const [g] = await tx`select id, parent_id, name, position from tco.kal_gruppen where id = ${id}`;
   if (!g) throw new BusinessError('Gruppe nicht gefunden.', 404);
-  return { id: Number(g.id), parent_id: g.parent_id == null ? null : Number(g.parent_id), name: g.name as string };
+  return { id: Number(g.id), parent_id: g.parent_id == null ? null : Number(g.parent_id), name: g.name as string, position: g.position == null ? null : Number(g.position) };
 }
 
 /**
  * Gruppe anlegen oder ändern. parent_id: undefined = übergeordnete Gruppe nicht ändern (bei Neuanlage: oberste Ebene),
  * null = oberste Ebene. Eine Gruppe kann nicht unter sich selbst oder eine ihrer Untergruppen gehängt werden.
  */
-export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: string; beschreibung?: string | null; aktiv: boolean; parent_id?: number | null }) {
+export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: string; beschreibung?: string | null; aktiv: boolean; parent_id?: number | null; position?: number | null }) {
   const name = condense(d.name);
   if (!name) throw new BusinessError('Bitte einen Namen angeben.');
   const alt = id ? await gruppeHolen(tx, id) : null;
   const parent = d.parent_id === undefined ? (alt?.parent_id ?? null) : d.parent_id;
+  // Position innerhalb der Ebene: undefined = nicht ändern
+  const position = d.position === undefined ? (alt?.position ?? null) : d.position;
   if (parent != null) {
     const p = await gruppeHolen(tx, parent).catch(() => null);
     if (!p) throw new BusinessError('Die übergeordnete Gruppe gibt es nicht.');
@@ -148,12 +165,12 @@ export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: stri
                           where lower(name) = lower(${name}) and coalesce(parent_id, 0) = ${parent ?? 0} and id <> ${id ?? 0}`;
   if (dup) throw new BusinessError(`Die Gruppe „${name}“ gibt es ${parent == null ? '' : 'auf dieser Ebene '}bereits.`);
   if (id) {
-    await tx`update tco.kal_gruppen set name = ${name}, beschreibung = ${d.beschreibung?.trim() || null}, aktiv = ${d.aktiv}, parent_id = ${parent} where id = ${id}`;
+    await tx`update tco.kal_gruppen set name = ${name}, beschreibung = ${d.beschreibung?.trim() || null}, aktiv = ${d.aktiv}, parent_id = ${parent}, position = ${position} where id = ${id}`;
     // verschoben: Mitglieder der Gruppe (und ihrer Untergruppen) stehen nicht noch einmal in den neuen Gruppen darüber
     if (parent !== (alt?.parent_id ?? null)) await hierarchieBereinigen(tx);
     return id;
   }
-  const [n] = await tx`insert into tco.kal_gruppen (name, beschreibung, aktiv, parent_id) values (${name}, ${d.beschreibung?.trim() || null}, ${d.aktiv}, ${parent}) returning id`;
+  const [n] = await tx`insert into tco.kal_gruppen (name, beschreibung, aktiv, parent_id, position) values (${name}, ${d.beschreibung?.trim() || null}, ${d.aktiv}, ${parent}, ${position}) returning id`;
   return Number(n.id);
 }
 

@@ -2,7 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
 import { passtZurRegel, regelText, type RegelGeschlecht } from './alter.js';
-import { ausUebergeordnetenEntfernen, gruppenLesen, ueberUntergruppe } from './logik.js';
+import { ausUebergeordnetenEntfernen, gruppenLesen, mitUntergruppen, ueberUntergruppe } from './logik.js';
 
 /**
  * Regelwerk der Mitgliedergruppen (#16): Regeln stellen sicher, dass die richtigen Personen in den richtigen Gruppen
@@ -30,16 +30,19 @@ export async function regelnLesen(db: Db): Promise<Regel[]> {
   }));
 }
 
-/** Regelwerk als Ganzes sichern (ersetzt die bisherigen Regeln) */
-export async function regelnSpeichern(tx: Db, regeln: RegelDaten[]): Promise<number> {
+/** Regelwerk sichern: als Ganzes (ersetzt alle Regeln) oder – mit `gruppeId` – nur das Regelwerk dieser einen Gruppe */
+export async function regelnSpeichern(tx: Db, regeln: RegelDaten[], gruppeId?: number): Promise<number> {
   const gruppen = new Map((await tx`select id, name from tco.kal_gruppen`).map((g) => [Number(g.id), g.name as string]));
   regeln.forEach((r, i) => {
     const nr = `Regel ${i + 1}`;
     if (!gruppen.has(r.gruppe_id)) throw new BusinessError(`${nr}: Bitte eine Gruppe wählen.`);
+    if (gruppeId && r.gruppe_id !== gruppeId) throw new BusinessError(`${nr} gehört nicht zum Regelwerk der Gruppe „${gruppen.get(gruppeId) ?? gruppeId}“.`);
     if (r.alter_von == null && r.alter_bis == null) throw new BusinessError(`${nr} („${gruppen.get(r.gruppe_id)}“): Bitte ein Alter von oder bis angeben.`);
     if (r.alter_von != null && r.alter_bis != null && r.alter_von > r.alter_bis) throw new BusinessError(`${nr} („${gruppen.get(r.gruppe_id)}“): „Alter von“ ist größer als „Alter bis“.`);
   });
-  await tx`delete from tco.kal_gruppen_regeln`;
+  if (gruppeId && !gruppen.has(gruppeId)) throw new BusinessError('Gruppe nicht gefunden.', 404);
+  if (gruppeId) await tx`delete from tco.kal_gruppen_regeln where gruppe_id = ${gruppeId}`;
+  else await tx`delete from tco.kal_gruppen_regeln`;
   for (const r of regeln) {
     await tx`insert into tco.kal_gruppen_regeln (gruppe_id, alter_von, alter_bis, jahrgang, geschlecht, andere_entfernen, aktiv)
              values (${r.gruppe_id}, ${r.alter_von}, ${r.alter_bis}, ${r.jahrgang}, ${r.geschlecht}, ${r.andere_entfernen}, ${r.aktiv})`;
@@ -62,9 +65,14 @@ export interface RegelErgebnis {
   mitglieder: number;
 }
 
-/** Regelwerk anwenden; mit `simulation` wird nur ermittelt, was sich ändern würde */
-export async function regelnAnwenden(tx: Db, o: { simulation: boolean; stichtag?: string }): Promise<RegelErgebnis[]> {
-  const regeln = (await regelnLesen(tx)).filter((r) => r.aktiv);
+/**
+ * Regelwerk anwenden („Neu berechnen“); mit `simulation` wird nur ermittelt, was sich ändern würde.
+ * Mit `gruppeId` nur für diesen Knoten: die Gruppe und alle ihre Untergruppen.
+ */
+export async function regelnAnwenden(tx: Db, o: { simulation: boolean; stichtag?: string; gruppeId?: number }): Promise<RegelErgebnis[]> {
+  const knoten = o.gruppeId ? new Set(await mitUntergruppen(tx, [o.gruppeId])) : null;
+  if (knoten && !knoten.size) throw new BusinessError('Gruppe nicht gefunden.', 404);
+  const regeln = (await regelnLesen(tx)).filter((r) => r.aktiv && (!knoten || knoten.has(r.gruppe_id)));
   if (!regeln.length) return [];
   const stichtag = o.stichtag ?? (await tx`select current_date::text as d`)[0].d as string;
   const gruppen = new Map((await gruppenLesen(tx)).map((g) => [g.id, g]));

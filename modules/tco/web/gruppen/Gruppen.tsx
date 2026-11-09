@@ -12,7 +12,7 @@ import { Empty } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { Dlg } from '../mitglieder/Dialoge';
-import { RegelwerkDialog } from './Regelwerk';
+import { BerechnenDialog, RegelwerkDialog } from './Regelwerk';
 import './gruppen.css';
 import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDaten, type GruppenMitglied } from './typen';
 
@@ -23,7 +23,7 @@ import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDa
  * Dieselben Gruppen stehen im Mitgliedsstamm (Reiter „Gruppen“) und im Vereinskalender (Veranstaltung nur für Gruppen).
  */
 interface Zeile { id: string; text: string; g: Gruppe; m?: GruppenMitglied; subRows?: Zeile[] }
-interface Form { id: number | null; parent_id: number | null; name: string; beschreibung: string; aktiv: boolean }
+interface Form { id: number | null; parent_id: number | null; name: string; beschreibung: string; aktiv: boolean; position: string }
 type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void; toggleRowExpanded?: (id: string, v?: boolean) => void };
 
 const zeilenId = (g: Gruppe) => `g${g.id}`;
@@ -43,7 +43,9 @@ export function Gruppen() {
   const [form, setForm] = useState<Form | null>(null);
   const [aufnehmen, setAufnehmen] = useState<Gruppe | null>(null);
   const [weg, setWeg] = useState<Gruppe | null>(null);
-  const [regelwerk, setRegelwerk] = useState(false);
+  // Regelwerk: true = gesamtes Regelwerk, Gruppe = Regelwerk dieser Gruppe; Neu berechnen: 'ALLE' oder ein Knoten
+  const [regelwerk, setRegelwerk] = useState<Gruppe | true | null>(null);
+  const [berechnen, setBerechnen] = useState<Gruppe | 'ALLE' | null>(null);
   const tabelle = useRef<Tabelle | null>(null);
   const pflege = !!d?.pflege;
 
@@ -148,6 +150,7 @@ export function Gruppen() {
             <Icon name={z.g.ebene === 0 ? 'folder' : 'group'} />
             <Text><b>{z.g.name}</b></Text>
             {z.g.beschreibung && <span className="portal-muted portal-small">{z.g.beschreibung}</span>}
+            {z.g.regel && <ObjectStatus state="Information" title={`Regelwerk: Mitglieder werden automatisch abgeleitet – ${z.g.regel}`}>{z.g.regel}</ObjectStatus>}
             {!z.g.aktiv && <ObjectStatus state="Critical">inaktiv</ObjectStatus>}
           </div>
         );
@@ -177,7 +180,7 @@ export function Gruppen() {
       },
     },
     ...(pflege ? [{
-      Header: '', id: 'aktionen', width: 170, hAlign: 'End' as const,
+      Header: '', id: 'aktionen', width: 250, hAlign: 'End' as const,
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
         if (z.m) {
@@ -187,11 +190,13 @@ export function Gruppen() {
         }
         return (
           <FlexBox justifyContent="End">
+            <Button icon="synchronize" design="Transparent" tooltip={`Neu berechnen: Regelwerk auf „${z.g.name}“ und die Untergruppen anwenden`} disabled={busy} onClick={() => setBerechnen(z.g)} />
+            <Button icon="activities" design="Transparent" tooltip="Regelwerk der Gruppe (Mitglieder automatisch ableiten)" disabled={busy} onClick={() => setRegelwerk(z.g)} />
             <Button icon="add-employee" design="Transparent" tooltip="Mitglieder aufnehmen" disabled={busy} onClick={() => setAufnehmen(z.g)} />
             <Button icon="add-folder" design="Transparent" tooltip="Untergruppe anlegen" disabled={busy}
-                    onClick={() => setForm({ id: null, parent_id: z.g.id, name: '', beschreibung: '', aktiv: true })} />
+                    onClick={() => setForm({ id: null, parent_id: z.g.id, name: '', beschreibung: '', aktiv: true, position: '' })} />
             <Button icon="edit" design="Transparent" tooltip="Gruppe ändern oder verschieben" disabled={busy}
-                    onClick={() => setForm({ id: z.g.id, parent_id: z.g.parent_id, name: z.g.name, beschreibung: z.g.beschreibung ?? '', aktiv: z.g.aktiv })} />
+                    onClick={() => setForm({ id: z.g.id, parent_id: z.g.parent_id, name: z.g.name, beschreibung: z.g.beschreibung ?? '', aktiv: z.g.aktiv, position: z.g.position == null ? '' : String(z.g.position) })} />
             <Button icon="delete" design="Transparent" tooltip="Gruppe löschen" disabled={busy} onClick={() => setWeg(z.g)} />
           </FlexBox>
         );
@@ -206,7 +211,8 @@ export function Gruppen() {
              subtitle={d ? `${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'} · ${personen} zugeordnete${personen === 1 ? 's Mitglied' : ' Mitglieder'}` : ''}
              actions={pflege ? <>
                <Button icon="activities" tooltip="Regeln, nach denen Mitglieder ihren Gruppen zugeordnet werden (z. B. nach Alter)" onClick={() => setRegelwerk(true)}>Regelwerk</Button>
-               <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true })}>Neue Gruppe</Button>
+               <Button icon="synchronize" tooltip="Regelwerk auf den gesamten Baum anwenden: Gruppenzuordnung aller Mitglieder nach Alter und Geschlecht neu berechnen" disabled={busy} onClick={() => setBerechnen('ALLE')}>Neu berechnen</Button>
+               <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true, position: '' })}>Neue Gruppe</Button>
              </> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {!d ? (!error && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />) : (
@@ -235,7 +241,8 @@ export function Gruppen() {
         </div>
       )}
 
-      {regelwerk && <RegelwerkDialog gruppen={gruppen} onClose={(geaendert) => { setRegelwerk(false); if (geaendert) lauf(async () => undefined); }} />}
+      {regelwerk && <RegelwerkDialog gruppen={gruppen} gruppe={regelwerk === true ? null : regelwerk} onClose={(geaendert) => { setRegelwerk(null); if (geaendert) lauf(async () => undefined); }} />}
+      {berechnen && <BerechnenDialog gruppe={berechnen === 'ALLE' ? null : berechnen} onClose={() => { setBerechnen(null); lauf(async () => undefined); }} />}
       {form && <GruppeDialog form={form} gruppen={gruppen} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
       {aufnehmen && <AufnehmenDialog gruppe={aufnehmen} gruppen={gruppen} onClose={(text) => { setAufnehmen(null); if (text) lauf(async () => ({ text })); }} />}
       <ConfirmDialog open={!!weg} title="Gruppe löschen" danger confirmText="Löschen"
@@ -254,17 +261,20 @@ function GruppeDialog({ form, gruppen, onClose }: { form: Form; gruppen: Gruppe[
   // Ziel beim Verschieben: nicht die Gruppe selbst und keine ihrer Untergruppen
   const gesperrt = f.id ? mitUntergruppen(gruppen, f.id) : new Set<number>();
   const ziele = gruppen.filter((g) => !gesperrt.has(g.id));
+  const positionFehler = f.position.trim() !== '' && !/^\d{1,4}$/.test(f.position.trim());
   async function sichern() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<{ text: string }>(GR, { id: f.id, parent_id: f.parent_id, name: f.name, beschreibung: f.beschreibung, aktiv: f.aktiv });
+      const r = await api.post<{ text: string }>(GR, {
+        id: f.id, parent_id: f.parent_id, name: f.name, beschreibung: f.beschreibung, aktiv: f.aktiv, position: f.position.trim() === '' ? null : Number(f.position.trim()),
+      });
       onClose(r.text);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return (
     <Dlg titel={f.id ? 'Gruppe ändern' : f.parent_id ? 'Untergruppe anlegen' : 'Gruppe anlegen'} onClose={() => onClose()} breite="min(560px, 95vw)"
-         fuss={<Button design="Emphasized" disabled={busy || !f.name.trim()} onClick={sichern}>Sichern</Button>}>
+         fuss={<Button design="Emphasized" disabled={busy || !f.name.trim() || positionFehler} onClick={sichern}>Sichern</Button>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <FormGrid columns={1}>
         <TextField label="Name" required value={f.name} placeholder="z. B. Mannschaftsspieler, Herren 40, Reine Hallennutzer" onChange={(name) => setF({ ...f, name })} />
@@ -273,6 +283,10 @@ function GruppeDialog({ form, gruppen, onClose }: { form: Form; gruppen: Gruppe[
             <Option data-g="" selected={f.parent_id == null}>– oberste Ebene –</Option>
             {ziele.map((g) => <Option key={g.id} data-g={g.id} selected={g.id === f.parent_id}>{g.pfad}</Option>)}
           </Select>
+        </FieldBox>
+        <FieldBox label="Position in der Ebene">
+          <Input value={f.position} placeholder="z. B. 10 – leer = nach Name hinter den übrigen" valueState={positionFehler ? 'Negative' : 'None'} style={{ width: '100%' }}
+                 onInput={(e) => setF({ ...f, position: e.target.value })} />
         </FieldBox>
         <FieldBox label="Beschreibung">
           <TextArea rows={3} maxlength={500} value={f.beschreibung} onInput={(e) => setF({ ...f, beschreibung: e.target.value })} />

@@ -5,6 +5,10 @@ export const GR = `${TCO}/gruppen`;
 export interface GruppenMitglied { adrnr: string; name: string; mitglnrn: string; rolle: string | null; ausgetreten: boolean }
 export interface Gruppe {
   id: number; parent_id: number | null; name: string; beschreibung: string | null; aktiv: boolean;
+  /** Position innerhalb der Ebene; null = ohne Position (nach Name hinter den übrigen) */
+  position: number | null;
+  /** aktive Regeln des Regelwerks als Text; null = keine Regel */
+  regel: string | null;
   /** „Spielbetrieb › Mannschaften › Herren 40“ */
   pfad: string;
   /** 0 = oberste Ebene */
