@@ -12,8 +12,10 @@ import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
  */
 export interface Person {
   anrede: string; vorname: string; nachname: string; geburtsdatum: string; email?: string | null; telefon?: string | null; mobil?: string | null;
-  /** Beitragsart (tco.beitrag) */
+  /** Mitgliedschaft (Beitragsart < 90) – genau eine */
   art: string;
+  /** Trainingseinheiten (Jugendtraining, Art 90 bzw. „…training“) – bis zu 2, je Einheit ein Vertrag */
+  training?: string[];
 }
 export interface AntragDaten {
   personen: Person[];
@@ -24,12 +26,31 @@ export interface AntragDaten {
   erziehungsberechtigt?: string | null;
   eintritt: string;
   satzung: boolean; datenschutz: boolean; bildrechte: boolean;
+  /** Kündigungsfristen zur Kenntnis genommen (Mitgliedschaft 4 Wochen zum Jahresende, Training zum 30.09.) */
+  kuendigung: boolean;
   bemerkung?: string | null;
 }
+
+export const MAX_TRAINING = 2;
+/** Alter, ab dem kein Jugendbeitrag mehr möglich ist bzw. bis zu dem Jugendtraining angeboten wird (am Eintrittsdatum) */
+export const ALTER_JUGENDBEITRAG_BIS = 17;
+export const ALTER_TRAINING_BIS = 21;
+export const KUENDIGUNG_TEXT = 'Die Vereinsmitgliedschaft kann mit einer Frist von 4 Wochen zum Jahresende gekündigt werden, '
+  + 'die Teilnahme am Training zum 30.09. eines jeden Jahres.';
+
+export type Kategorie = 'MITGLIEDSCHAFT' | 'TRAINING';
+/** Mitgliedschaft: Art < 90; Training: Art 90 oder Bezeichnung mit „Training“ (ab 90); übrige (z. B. Spende) nicht im Antrag */
+export function kategorieVon(art: string, name: string): Kategorie | null {
+  const n = Number(art);
+  if (/training/i.test(name) || art === '90') return 'TRAINING';
+  if (Number.isFinite(n) && n < 90) return 'MITGLIEDSCHAFT';
+  return null;
+}
+export const istJugendbeitrag = (name: string) => /jugend/i.test(name);
 export interface AntragBank { kontoinhaber: string; iban: string; bic?: string | null; bank?: string | null; sepa: boolean }
 
 export const MAX_PERSONEN = 8;
-const alter = (geb: string, stichtag = heute()) => {
+export const alter = (geb: string, stichtag = heute()) => {
   const [j, m, d] = geb.split('-').map(Number);
   const [sj, sm, sd] = stichtag.split('-').map(Number);
   return sj - j - (sm < m || (sm === m && sd < d) ? 1 : 0);
@@ -39,12 +60,15 @@ const alter = (geb: string, stichtag = heute()) => {
 export async function antragInfo(db: Db, v: Verein) {
   const { arten } = await vertragsarten(db, heute());
   return {
-    verein: v.name, maxPersonen: MAX_PERSONEN,
-    beitragsarten: arten.map((a) => ({ art: a.art, name: a.name, betrag: a.betrag, turnus: a.turnus })),
+    verein: v.name, maxPersonen: MAX_PERSONEN, maxTraining: MAX_TRAINING,
+    alterJugendbeitragBis: ALTER_JUGENDBEITRAG_BIS, alterTrainingBis: ALTER_TRAINING_BIS, kuendigung: KUENDIGUNG_TEXT,
+    beitragsarten: arten.map((a) => ({ art: a.art, name: a.name, betrag: a.betrag, turnus: a.turnus, kategorie: kategorieVon(a.art, a.name), jugend: istJugendbeitrag(a.name) }))
+      .filter((a) => a.kategorie),
   };
 }
 
-export function pruefen(d: AntragDaten, b: AntragBank, arten: string[]): void {
+export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string; name: string }[]): void {
+  const arten = new Map(artenListe.map((a) => [a.art, { ...a, kategorie: kategorieVon(a.art, a.name) }]));
   if (!d.personen.length) throw new BusinessError('Bitte mindestens eine Person angeben.');
   if (d.personen.length > MAX_PERSONEN) throw new BusinessError(`Höchstens ${MAX_PERSONEN} Personen je Antrag.`);
   for (const [i, p] of d.personen.entries()) {
@@ -52,7 +76,14 @@ export function pruefen(d: AntragDaten, b: AntragBank, arten: string[]): void {
     if (!['Herr', 'Frau', 'Divers'].includes(p.anrede)) throw new BusinessError(`${wer}Bitte die Anrede wählen.`);
     if (!condense(p.vorname) || !condense(p.nachname)) throw new BusinessError(`${wer}Bitte Vor- und Nachname angeben.`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(p.geburtsdatum) || p.geburtsdatum > heute() || alter(p.geburtsdatum) > 120) throw new BusinessError(`${wer}Bitte ein gültiges Geburtsdatum angeben.`);
-    if (!arten.includes(p.art)) throw new BusinessError(`${wer}Bitte eine Mitgliedschaft (Beitragsart) wählen.`);
+    const m = arten.get(p.art);
+    if (!m || m.kategorie !== 'MITGLIEDSCHAFT') throw new BusinessError(`${wer}Bitte eine Mitgliedschaft wählen.`);
+    const a = /^\d{4}-\d{2}-\d{2}$/.test(d.eintritt) ? alter(p.geburtsdatum, d.eintritt) : alter(p.geburtsdatum);
+    if (istJugendbeitrag(m.name) && a > ALTER_JUGENDBEITRAG_BIS) throw new BusinessError(`${wer}Ab 18 Jahren ist kein Jugendbeitrag möglich – bitte eine andere Mitgliedschaft wählen.`);
+    const tr = p.training ?? [];
+    if (tr.length > MAX_TRAINING) throw new BusinessError(`${wer}Höchstens ${MAX_TRAINING} Trainingseinheiten.`);
+    for (const t of tr) if (arten.get(t)?.kategorie !== 'TRAINING') throw new BusinessError(`${wer}Unbekannte Trainingseinheit.`);
+    if (tr.length && a > ALTER_TRAINING_BIS) throw new BusinessError(`${wer}Jugendtraining gibt es nur bis 21 Jahre.`);
     if (p.email && !emailGueltig(p.email.trim())) throw new BusinessError(`${wer}Die E-Mail-Adresse ist ungültig.`);
   }
   const namen = d.personen.map((p) => `${normName(`${p.vorname} ${p.nachname}`)}|${p.geburtsdatum}`);
@@ -64,6 +95,7 @@ export function pruefen(d: AntragDaten, b: AntragBank, arten: string[]): void {
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.eintritt) || d.eintritt < heute()) throw new BusinessError('Der Eintritt kann frühestens heute sein.');
   if (!d.satzung || !d.datenschutz) throw new BusinessError('Bitte Satzung/Beitragsordnung und Datenschutzhinweise bestätigen.');
+  if (!d.kuendigung) throw new BusinessError('Bitte die Kündigungsfristen bestätigen.');
   if (!b.sepa) throw new BusinessError('Der Beitrag wird per Lastschrift eingezogen – bitte das SEPA-Lastschriftmandat erteilen.');
   if (!condense(b.kontoinhaber)) throw new BusinessError('Bitte den Kontoinhaber angeben.');
   if (!ibanGueltig(normalisieren(b.iban))) throw new BusinessError('Die IBAN ist ungültig (Prüfziffer/Länge).');
@@ -71,7 +103,7 @@ export function pruefen(d: AntragDaten, b: AntragBank, arten: string[]): void {
 
 export async function antragAnlegen(tx: Db, d: AntragDaten, b: AntragBank, ip: string): Promise<{ id: number; nummer: string }> {
   const { arten } = await vertragsarten(tx, heute());
-  pruefen(d, b, arten.map((a) => a.art));
+  pruefen(d, b, arten);
   const jahr = heute().slice(0, 4);
   const [{ n }] = await tx`select core.next_number('TCO_ANTRAG', ${Number(jahr)})::int as n`;
   const nummer = `MA-${jahr}-${String(n).padStart(4, '0')}`;
@@ -137,8 +169,11 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
   let zahler: string | null = null;
   let mandat = '';
   for (const [i, p] of d.personen.entries()) {
-    const art = arten.find((x) => x.art === p.art);
-    if (!art) throw new BusinessError(`Die Beitragsart ${p.art} (${p.vorname} ${p.nachname}) ist nicht mehr aktiv.`);
+    const gewaehlt = [p.art, ...(p.training ?? [])].map((x) => {
+      const a = arten.find((y) => y.art === x);
+      if (!a) throw new BusinessError(`Die Beitragsart ${x} (${p.vorname} ${p.nachname}) ist nicht mehr aktiv.`);
+      return a;
+    });
     const n: Neu = {
       anrede: p.anrede, vorname: p.vorname, nachname: p.nachname, strasse: d.strasse, plz: d.plz, ort: d.ort,
       telefon: (i === 0 ? p.telefon || d.telefon : p.telefon) ?? '', mobil: p.mobil ?? '', email: p.email || d.email,
@@ -146,7 +181,7 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
       zahlungsart: 'L', zahlungsweise: '', iban: a.iban, bic: a.bic ?? '', bank: a.bank ?? '', sepa: true, sepa_datum: sepaDatum,
       zahler_modus: i === 0 ? (kiSelbst ? 'SELBST' : 'NEU') : 'BESTEHEND', zahler_adrnr: i === 0 ? null : zahler,
       z_anrede: '', z_vorname: ki.vorname, z_nachname: ki.nachname, z_strasse: d.strasse, z_plz: d.plz, z_ort: d.ort, z_email: d.email,
-      vertraege: [{ art: art.art, beginn: null, betrag: art.betrag, turnus: art.turnus }],
+      vertraege: gewaehlt.map((a) => ({ art: a.art, beginn: null, betrag: a.betrag, turnus: a.turnus })),
     };
     const r = await mitgliedNeu(tx, n);
     if (i === 0) {

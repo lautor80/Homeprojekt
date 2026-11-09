@@ -11,15 +11,16 @@ import { TCO, eur } from '../util';
  * Öffentlicher Mitgliedsantrag /beitritt (ohne Anmeldung): eine oder mehrere Personen (Familienantrag) mit gemeinsamer
  * Anschrift, Beitragsart je Person, SEPA-Lastschriftmandat online. Der Antrag geht in den Eingang; der Vorstand prüft und übernimmt.
  */
-interface Info { verein: string; maxPersonen: number; beitragsarten: { art: string; name: string; betrag: number; turnus: string }[] }
-interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; telefon: string; art: string }
-const leer = (): Person => ({ anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', telefon: '', art: '' });
+interface Art { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; jugend: boolean }
+interface Info { verein: string; maxPersonen: number; maxTraining: number; alterJugendbeitragBis: number; alterTrainingBis: number; kuendigung: string; beitragsarten: Art[] }
+interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; telefon: string; art: string; training: string[] }
+const leer = (): Person => ({ anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', telefon: '', art: '', training: [] });
 const heute = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
 const full = { width: '100%' };
-const alter = (geb: string) => {
+const alter = (geb: string, stichtag = heute()) => {
   if (!geb) return null;
   const [j, m, d] = geb.split('-').map(Number);
-  const [hj, hm, hd] = heute().split('-').map(Number);
+  const [hj, hm, hd] = stichtag.split('-').map(Number);
   return hj - j - (hm < m || (hm === m && hd < d) ? 1 : 0);
 };
 
@@ -37,7 +38,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   const [personen, setPersonen] = useState<Person[]>([leer()]);
   const [a, setA] = useState({ strasse: '', plz: '', ort: '', email: '', telefon: '', erziehungsberechtigt: '', eintritt: heute(), bemerkung: '', website: '' });
   const [bank, setBank] = useState({ kontoinhaber: '', iban: '', bic: '', bank: '', sepa: false });
-  const [zu, setZu] = useState({ satzung: false, datenschutz: false, bildrechte: false });
+  const [zu, setZu] = useState({ satzung: false, datenschutz: false, bildrechte: false, kuendigung: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fertig, setFertig] = useState<string | null>(null);
@@ -45,10 +46,30 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
 
   const setP = (i: number, p: Partial<Person>) => setPersonen((l) => l.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const minderjaehrig = (alter(personen[0].geburtsdatum) ?? 99) < 18;
-  const summe = personen.reduce((s, p) => s + (info?.beitragsarten.find((b) => b.art === p.art)?.betrag ?? 0), 0);
+  const betrag = (art: string) => info?.beitragsarten.find((b) => b.art === art)?.betrag ?? 0;
+  const summe = personen.reduce((s, p) => s + betrag(p.art) + p.training.reduce((t, x) => t + betrag(x), 0), 0);
+  /** Alter am gewünschten Eintritt: Jugendbeitrag nur unter 18, Jugendtraining nur bis 21 */
+  const alterBeiEintritt = (p: Person) => alter(p.geburtsdatum, a.eintritt || heute());
+  const mitgliedschaften = (p: Person) => (info?.beitragsarten ?? []).filter((b) => b.kategorie === 'MITGLIEDSCHAFT'
+    && (!b.jugend || (alterBeiEintritt(p) ?? 0) <= (info?.alterJugendbeitragBis ?? 17)));
+  const trainings = (p: Person) => ((alterBeiEintritt(p) ?? 99) <= (info?.alterTrainingBis ?? 21) ? (info?.beitragsarten ?? []).filter((b) => b.kategorie === 'TRAINING') : []);
+  // Auswahl bereinigen, wenn das Geburtsdatum/Eintritt eine Option ausschließt
+  useEffect(() => {
+    if (!info) return;
+    setPersonen((l) => {
+      let geaendert = false;
+      const neu = l.map((p) => {
+        const m = mitgliedschaften(p).some((b) => b.art === p.art) ? p.art : '';
+        const t = trainings(p).length ? p.training : [];
+        if (m !== p.art || t !== p.training) { geaendert = true; return { ...p, art: m, training: t }; }
+        return p;
+      });
+      return geaendert ? neu : l;
+    });
+  }, [info, a.eintritt, personen.map((p) => p.geburtsdatum).join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   const ok = personen.every((p) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && p.art)
     && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim())
-    && bank.kontoinhaber.trim() && bank.iban.trim() && bank.sepa && zu.satzung && zu.datenschutz;
+    && bank.kontoinhaber.trim() && bank.iban.trim() && bank.sepa && zu.satzung && zu.datenschutz && zu.kuendigung;
 
   async function absenden() {
     setBusy(true); setError(null);
@@ -104,10 +125,30 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
                 <Feld label="Mitgliedschaft" required>
                   <Select style={full} onChange={(e) => setP(i, { art: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
                     <Option data-a="" selected={!p.art}>bitte wählen</Option>
-                    {info.beitragsarten.map((b) => <Option key={b.art} data-a={b.art} selected={p.art === b.art}>{b.name} – {eur(b.betrag)}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
+                    {mitgliedschaften(p).map((b) => <Option key={b.art} data-a={b.art} selected={p.art === b.art}>{b.name} – {eur(b.betrag)}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
                   </Select>
                 </Feld>
               </FlexBox>
+              {trainings(p).length > 0 && (
+                <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {Array.from({ length: info.maxTraining }, (_, n) => (
+                    <Feld key={n} label={`Trainingseinheit ${n + 1} (optional)`}>
+                      <Select style={full} disabled={n > 0 && !p.training[0]} onChange={(e) => {
+                        const x = (e.detail.selectedOption as HTMLElement).dataset.a ?? '';
+                        const t = [...p.training];
+                        if (x) t[n] = x; else t.splice(n, 1);
+                        setP(i, { training: t.filter(Boolean).slice(0, info.maxTraining) });
+                      }}>
+                        <Option data-a="" selected={!p.training[n]}>keine</Option>
+                        {trainings(p).map((b) => <Option key={b.art} data-a={b.art} selected={p.training[n] === b.art}>{b.name} – {eur(b.betrag)}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
+                      </Select>
+                    </Feld>
+                  ))}
+                </FlexBox>
+              )}
+              {p.geburtsdatum && !trainings(p).length && info.beitragsarten.some((b) => b.kategorie === 'TRAINING') && (
+                <Text className="portal-muted portal-small">Jugendtraining wird bis {info.alterTrainingBis} Jahre angeboten.</Text>
+              )}
               {i > 0 && (
                 <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
                   <Feld label="E-Mail (optional, sonst die des Antragstellers)"><Input style={full} type="Email" value={p.email} onInput={(e) => setP(i, { email: e.target.value })} /></Feld>
@@ -167,6 +208,10 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
                     text="Ich habe die Datenschutzhinweise gelesen und bin mit der Verarbeitung meiner Daten zur Mitgliederverwaltung einverstanden. *" />
           <CheckBox wrappingType="Normal" checked={zu.bildrechte} onChange={(e) => setZu({ ...zu, bildrechte: e.target.checked })} style={{ marginLeft: '-0.5rem' }}
                     text="Fotos von Vereinsveranstaltungen, auf denen ich/wir zu sehen sind, dürfen in Vereinsmedien veröffentlicht werden (freiwillig)." />
+          <Title level="H5" style={{ margin: '0.75rem 0 0.5rem' }}>Kündigungsfristen</Title>
+          <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.4rem' }}>{info.kuendigung}</MessageStrip>
+          <CheckBox wrappingType="Normal" checked={zu.kuendigung} onChange={(e) => setZu({ ...zu, kuendigung: e.target.checked })} style={{ marginLeft: '-0.5rem' }}
+                    text="Ich habe die Kündigungsfristen zur Kenntnis genommen: Vereinsmitgliedschaft 4 Wochen zum Jahresende, Trainingsteilnahme zum 30.09. eines jeden Jahres. *" />
           <Feld label="Mitteilung an den Vorstand (optional)"><TextArea rows={2} value={a.bemerkung} maxlength={1000} onInput={(e) => setA({ ...a, bemerkung: e.target.value })} /></Feld>
           {/* Honigtopf: für Menschen unsichtbar */}
           <input type="text" name="website" tabIndex={-1} autoComplete="off" value={a.website} onChange={(e) => setA({ ...a, website: e.target.value })}

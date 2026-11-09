@@ -22,12 +22,14 @@ const antragSchema = z.object({
     vorname: txt(60).min(1, 'Bitte den Vornamen angeben.'), nachname: txt(60).min(1, 'Bitte den Nachnamen angeben.'),
     geburtsdatum: datum, email: txt(120).nullish(), telefon: txt(40).nullish(), mobil: txt(40).nullish(),
     art: txt(10).min(1, 'Bitte eine Mitgliedschaft wählen.'),
+    training: z.array(txt(10).min(1)).max(2, 'Höchstens 2 Trainingseinheiten je Person.').default([]),
   })).min(1).max(MAX_PERSONEN),
   strasse: txt(80), plz: txt(10), ort: txt(60),
   email: txt(120), telefon: txt(40).nullish(),
   erziehungsberechtigt: txt(120).nullish(),
   eintritt: datum,
   satzung: z.boolean(), datenschutz: z.boolean(), bildrechte: z.boolean().default(false),
+  kuendigung: z.boolean().default(false),
   bemerkung: txt(1000).nullish(),
   bank: z.object({ kontoinhaber: txt(120), iban: txt(40), bic: txt(15).nullish(), bank: txt(80).nullish(), sepa: z.boolean() }),
   /** Honigtopf gegen Bots – muss leer bleiben */
@@ -49,7 +51,7 @@ export async function antragRoutes(app: FastifyInstance) {
   app.get('/antrag', async () => antragInfo(DB, await vereinLesen()));
 
   app.post('/antrag', async (req) => {
-    limit(req.ip, 10);
+    limit(req.ip, 20);
     const b = antragSchema.parse(req.body);
     if (b.website) return { nummer: 'MA', text: 'Vielen Dank für Ihren Antrag.' };   // Bot: still verwerfen
     const { bank, website: _w, ...d } = b;
