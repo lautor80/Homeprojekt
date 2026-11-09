@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BusyIndicator, FlexBox, MessageStrip } from '@ui5/webcomponents-react';
-import { api, ApiError } from './api';
+import { api, ApiError, SITZUNG_PRUEFEN } from './api';
 import { SessionContext, type Me } from './session';
 import { ForcedPasswordPage, KennwortSetzenPage, LoginPage, SetupPage } from './pages/AuthPages';
 import { allModules, enabledModules } from './modules';
@@ -54,6 +54,44 @@ export function App() {
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Berechtigungen aktuell halten: Rollen können sich während einer offenen Sitzung ändern (Administration →
+   * Benutzer/Rollen). Ohne Abgleich zeigte die Seitenleiste weiter Apps, für die der Server längst „Keine
+   * Berechtigung“ meldet. Abgleich still im Hintergrund – bei jeder solchen Meldung, beim Zurückkehren in den
+   * Tab und jede Minute; neu gerendert wird nur bei tatsächlicher Änderung.
+   */
+  const bereit = state.kind === 'ready';
+  useEffect(() => {
+    if (!bereit) return;
+    let zuletzt = 0;
+    let laeuft = false;
+    const pruefen = async () => {
+      if (laeuft || Date.now() - zuletzt < 3000) return;
+      laeuft = true; zuletzt = Date.now();
+      try {
+        const neu = await api.get<Me>('/api/auth/me');
+        setState((s) => {
+          if (s.kind !== 'ready') return s;
+          const schluessel = (m: Me) => JSON.stringify([m.user, [...m.permissions].sort(), m.modules]);
+          return schluessel(s.me) === schluessel(neu) ? s : { kind: 'ready', me: neu };
+        });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) load(); // abgemeldet bzw. gesperrt → Anmeldeseite
+      } finally { laeuft = false; }
+    };
+    const sichtbar = () => { if (document.visibilityState === 'visible') pruefen(); };
+    window.addEventListener(SITZUNG_PRUEFEN, pruefen);
+    window.addEventListener('focus', pruefen);
+    document.addEventListener('visibilitychange', sichtbar);
+    const takt = window.setInterval(() => { if (document.visibilityState === 'visible') pruefen(); }, 60_000);
+    return () => {
+      window.removeEventListener(SITZUNG_PRUEFEN, pruefen);
+      window.removeEventListener('focus', pruefen);
+      document.removeEventListener('visibilitychange', sichtbar);
+      window.clearInterval(takt);
+    };
+  }, [bereit, load]);
 
   switch (state.kind) {
     case 'loading':
