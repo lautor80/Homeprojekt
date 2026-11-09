@@ -185,10 +185,17 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
   const [mitgliedsnr, setMitgliedsnr] = useState('');
   /** Schnellweg für Mitglieder: E-Mail + Geburtsdatum → Link an die hinterlegte Adresse; null = noch nicht geprüft */
   const [schnell, setSchnell] = useState<{ treffer: boolean; text: string } | null>(null);
+  /**
+   * Im Schnellweg (oben) eingegebene E-Mail: gilt fest für die Registrierung. Das untere Feld wird dann nur schreibgeschützt
+   * angezeigt – sonst überschreibt die Autofill-Funktion des Browsers (Anschrift ausfüllen) die Adresse unbemerkt.
+   */
+  const [emailOben, setEmailOben] = useState<string | null>(null);
+  const email = (art === 'MITGLIED' && emailOben ? emailOben : f.email).trim();
   async function schnellPruefen() {
     setBusy(true); setError(null);
     try {
       const r = await api.post<{ treffer: boolean; text: string }>(`${info.pfad}/schnell`, { email: f.email, geburtsdatum });
+      setEmailOben(f.email.trim());
       setSchnell(r);
       if (r.treffer) setFertig(r.text);
       else setNachweis('GEBURTSDATUM');
@@ -212,7 +219,7 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
   const artOk = !meta?.mitglied || art === 'EXTERN' || (art === 'MITGLIED' && (nachweis === 'GEBURTSDATUM' ? !!geburtsdatum : !!mitgliedsnr.trim()));
   const plzOk = /^\d{4,5}$/.test(f.plz.trim());
   const strasseOk = f.strasse.trim().length >= 3 && /\d/.test(f.strasse);
-  const ok = artOk && f.anrede && f.vorname && f.nachname && strasseOk && plzOk && f.ort.trim().length >= 2 && f.email && f.benutzername.length >= 3 && !frei && f.datenschutz
+  const ok = artOk && f.anrede && f.vorname && f.nachname && strasseOk && plzOk && f.ort.trim().length >= 2 && email.includes('@') && f.benutzername.length >= 3 && !frei && f.datenschutz
     && (alt ? !!f.ep3_konto && !!f.ep3_passwort : f.passwort.length >= 10) && (!kennwortNoetig || (f.passwort.length >= 10 && !mismatch));
 
   async function submit(e?: FormEvent) {
@@ -221,7 +228,7 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
     try {
       const r = await api.post<{ text: string }>(info.pfad, {
         anrede: f.anrede, vorname: f.vorname, nachname: f.nachname, strasse: f.strasse, plz: f.plz, ort: f.ort,
-        email: f.email, telefon: f.telefon || null, benutzername: f.benutzername, nachricht: f.nachricht || null,
+        email, telefon: f.telefon || null, benutzername: f.benutzername, nachricht: f.nachricht || null,
         passwort: f.passwort || null, ep3_konto: alt ? f.ep3_konto : null, ep3_passwort: alt ? f.ep3_passwort : null, datenschutz: f.datenschutz,
         ...(meta?.mitglied ? {
           art: art ?? 'EXTERN',
@@ -258,7 +265,7 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
                   <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>
                   <Button design="Emphasized" style={full} loading={busy} disabled={!f.email.includes('@') || !geburtsdatum} onClick={schnellPruefen}>Weiter</Button>
                   <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
-                    <Link onClick={() => setSchnell({ treffer: false, text: '' })}>Ohne Schnellweg vollständig registrieren</Link>
+                    <Link onClick={() => { if (f.email.includes('@')) setEmailOben(f.email.trim()); setSchnell({ treffer: false, text: '' }); }}>Ohne Schnellweg vollständig registrieren</Link>
                   </div>
                 </div>
               )}
@@ -300,7 +307,14 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
             </Field>
             <Field label="Ort" required><Input style={full} value={f.ort} onInput={set('ort')} /></Field>
           </FlexBox>
-          <Field label="E-Mail" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
+          {art === 'MITGLIED' && emailOben ? (
+            <Field label="E-Mail (wie oben angegeben)" required>
+              <Input style={full} type="Email" value={emailOben} readonly />
+              <Link onClick={() => { setF((x) => ({ ...x, email: emailOben })); setEmailOben(null); }}>Andere E-Mail-Adresse verwenden</Link>
+            </Field>
+          ) : (
+            <Field label="E-Mail" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
+          )}
           <Field label="Telefon (optional)"><Input style={full} type="Tel" value={f.telefon} onInput={set('telefon')} /></Field>
           <Field label="Gewünschter Benutzername" required>
             <Input style={full} value={f.benutzername} onInput={set('benutzername')} valueState={frei ? 'Negative' : f.benutzername.length >= 3 ? 'Positive' : 'None'}
