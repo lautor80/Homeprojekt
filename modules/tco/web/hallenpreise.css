@@ -1,0 +1,53 @@
+/* Hallenpreise – Wochenplan: sieben Wochentage nebeneinander, Preise als Blöcke */
+.portal-hp { display: grid; grid-template-columns: 19rem minmax(0, 1fr); gap: 0.75rem; align-items: start; }
+@media (max-width: 1000px) { .portal-hp { grid-template-columns: 1fr; } }
+.portal-hp__leiste { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem 1.5rem; margin-bottom: 0.75rem; }
+.portal-hp__feld { display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-hp__preise { display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-hp__preis {
+  display: flex; align-items: center; gap: 0.625rem; width: 100%; box-sizing: border-box; min-height: 3.25rem; padding: 0.5rem 0.75rem;
+  border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapList_Background, #fff);
+  font: inherit; color: var(--sapTextColor); text-align: left; cursor: pointer;
+}
+.portal-hp__preis--an { border: 2px solid var(--sapSelectedColor, #0064d9); background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+.portal-hp__preis-farbe { flex: none; width: 1.25rem; height: 2rem; border-radius: 0.25rem; background: var(--hf-bg); border: 1px solid var(--hf); }
+.portal-hp__preis-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.portal-hp__preis-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal-hp__preis-wert { font-weight: 600; white-space: nowrap; }
+.portal-hp__plan { overflow-x: auto; }
+.portal-hp__kopf, .portal-hp__raster { display: grid; grid-template-columns: 3.25rem repeat(7, minmax(6.5rem, 1fr)); min-width: min-content; }
+.portal-hp__kopf { border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-hp__tag { padding: 0.5rem 0.25rem; text-align: center; font-weight: 600; border-left: 1px solid var(--sapList_BorderColor); }
+.portal-hp__raster { margin-top: 0.625rem; margin-bottom: 0.5rem; }
+.portal-hp__zeiten, .portal-hp__spalte { position: relative; }
+.portal-hp__spalte { border-left: 1px solid var(--sapList_BorderColor); }
+.portal-hp__spalte--pflege { touch-action: none; cursor: crosshair; }
+.portal-hp__stunde { position: absolute; right: 0.5rem; transform: translateY(-50%); font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-hp__linie { position: absolute; left: 0; right: 0; border-top: 1px solid var(--sapList_BorderColor); opacity: 0.6; pointer-events: none; }
+.portal-hp__luecke {
+  position: absolute; left: 0.25rem; right: 0.25rem; box-sizing: border-box; border: 1px dashed var(--sapNegativeBorderColor, #f53232); border-radius: 0.375rem;
+  background: repeating-linear-gradient(135deg, transparent 0 7px, var(--sapErrorBackground, #ffeaf4) 7px 9px);
+  color: var(--sapNegativeTextColor, #aa0808); font-size: var(--sapFontSmallSize); display: flex; align-items: center; justify-content: center;
+  pointer-events: none; overflow: hidden;
+}
+.portal-hp__block {
+  position: absolute; left: 0.25rem; right: 0.25rem; box-sizing: border-box; overflow: hidden; padding: 0.375rem 0.5rem;
+  border: 1px solid var(--hf); border-radius: 0.375rem; background: var(--hf-bg); color: var(--hf-text);
+  font: inherit; font-size: var(--sapFontSmallSize); text-align: left; display: flex; flex-direction: column; gap: 0.125rem; user-select: none;
+}
+.portal-hp__block--pflege { cursor: grab; }
+.portal-hp__block--an { outline: 2px solid var(--sapSelectedColor, #0064d9); outline-offset: -1px; }
+.portal-hp__block--neu { opacity: 0.75; border-style: dashed; pointer-events: none; }
+.portal-hp__block--kurz { flex-direction: row; gap: 0.5rem; align-items: center; padding-top: 0; padding-bottom: 0; }
+.portal-hp__block b { font-weight: 600; white-space: nowrap; }
+.portal-hp__griff { position: absolute; left: 0; right: 0; height: 0.4375rem; cursor: ns-resize; }
+.portal-hp__griff--oben { top: 0; }
+.portal-hp__griff--unten { bottom: 0; }
+/* Farben je Preis (Fläche, Rand, Text) */
+.portal-hp__f0 { --hf-bg: #dff1e3; --hf: #1e6b34; --hf-text: #14522a; }
+.portal-hp__f1 { --hf-bg: #fde6cf; --hf: #b25a00; --hf-text: #7a3d00; }
+.portal-hp__f2 { --hf-bg: #dbeafe; --hf: #1d5fd1; --hf-text: #12408f; }
+.portal-hp__f3 { --hf-bg: #eadcf8; --hf: #7a3fb8; --hf-text: #54237f; }
+.portal-hp__f4 { --hf-bg: #fbe0e6; --hf: #b3264a; --hf-text: #7d1531; }
+.portal-hp__dialog { display: flex; flex-direction: column; gap: 0.75rem; width: 18rem; max-width: 80vw; }
+.portal-hp__dialog-zeit { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
