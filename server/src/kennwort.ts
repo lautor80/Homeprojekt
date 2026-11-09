@@ -13,7 +13,7 @@ import { BusinessError } from './errors.js';
  */
 export type Zweck = 'RESET' | 'SETZEN';
 export const GUELTIG_STUNDEN: Record<Zweck, number> = { RESET: 1, SETZEN: 48 };
-type Db = typeof sql | Tx;
+type Db = Tx;
 
 /** Öffentliche Adresse des Portals für Links in E-Mails (Einstellungen → „Portal-Adresse“ oder PORTAL_URL) – nie aus dem Request */
 export async function portalUrl(): Promise<string | null> {

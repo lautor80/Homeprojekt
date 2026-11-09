@@ -103,7 +103,7 @@ export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, 
   // nicht bestätigte Registrierungen nach 30 Tagen entfernen
   await db`delete from tco.registrierungen where status = 'EMAIL' and erstellt < now() - interval '30 days'`;
   const art = e.art ?? 'EXTERN';
-  if (art === 'MITGLIED' && !e.geburtsdatum && !condense(e.mitgliedsnr)) {
+  if (art === 'MITGLIED' && !e.geburtsdatum && !condense(e.mitgliedsnr ?? '')) {
     throw new BusinessError('Bitte zum Nachweis der Mitgliedschaft das Geburtsdatum oder die Mitgliedsnummer angeben.');
   }
   const frei = await benutzernameFrei(db, e.benutzername);
@@ -137,7 +137,7 @@ export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, 
                                                         art, geburtsdatum, mitgliedsnr, status, email_token_hash, email_bis)
                        values (${e.benutzername}, ${name(e.vorname, e.nachname)}, ${e.vorname}, ${e.nachname}, ${e.email.trim()}, ${e.telefon?.trim() || null},
                                ${hash}, ${zuid}, ${e.nachricht?.trim() || null}, ${ip},
-                               ${art}, ${art === 'MITGLIED' ? e.geburtsdatum || null : null}, ${art === 'MITGLIED' ? condense(e.mitgliedsnr) || null : null},
+                               ${art}, ${art === 'MITGLIED' ? e.geburtsdatum || null : null}, ${art === 'MITGLIED' ? condense(e.mitgliedsnr ?? '') || null : null},
                                ${optIn ? 'EMAIL' : 'OFFEN'}, ${token ? sha256(token) : null},
                                ${optIn ? new Date(Date.now() + EMAIL_STUNDEN * 3600_000) : null}) returning id`;
   const kennwort = zuid && !e.passwort ? 'Ihrem bisherigen EP3-Kennwort' : 'Ihrem gewählten Kennwort';
@@ -174,14 +174,14 @@ async function vorschlaege(db: Db, p: { email: string | null; vorname: string | 
   const voll = name(p.vorname, p.nachname).toUpperCase();
   // Nachweis der Mitgliedschaft (Geburtsdatum bzw. Mitgliedsnummer) zusammen mit Name oder E-Mail – stärkster Vorschlag zuerst
   if (p.geburtsdatum || p.mitgliedsnr) {
-    const nr = condense(p.mitgliedsnr).replace(/^0+/, '');
+    const nr = condense(p.mitgliedsnr ?? '').replace(/^0+/, '');
     for (const m of await db`
       select m.adrnr, m.vorname, m.nachname, m.austritt::text, m.mitglnrn, a.benutzer_id is not null as hat_benutzer
         from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
        where m.eintritt is not null
          and ${p.geburtsdatum ? db`m.geburtsdatum = ${p.geburtsdatum}::date` : db`ltrim(coalesce(m.mitglnrn, ''), '0') = ${nr || '§'}`}
          and (upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) = ${voll || '§'}
-              or upper(trim(coalesce(m.nachname, ''))) = ${condense(p.nachname).toUpperCase() || '§'}
+              or upper(trim(coalesce(m.nachname, ''))) = ${condense(p.nachname ?? '').toUpperCase() || '§'}
               or (${email} <> '' and lower(trim(coalesce(m.email, ''))) = ${email}))
        order by m.austritt nulls first`) {
       out.push({

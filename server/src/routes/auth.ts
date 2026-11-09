@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { sql, withChange } from '../db.js';
+import { sql, withChange, type Tx } from '../db.js';
 import {
   createSession, destroySession, hashPassword, istAltesHashformat, requireAuth, validatePassword, verifyPassword, changeCtx,
 } from '../auth.js';
@@ -93,7 +93,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
     if (u) {
       try {
-        await kennwortLinkSenden(sql, u.id, 'RESET', req.ip);
+        await kennwortLinkSenden(sql as unknown as Tx, u.id, 'RESET', req.ip);
         req.log.info({ user: u.id }, 'Link zum Zurücksetzen des Kennworts gesendet');
       } catch (e) { req.log.warn({ user: u.id, err: (e as Error).message }, 'Passwort vergessen: kein Link gesendet'); }
     }
@@ -103,7 +103,7 @@ export async function authRoutes(app: FastifyInstance) {
   /** Einmal-Link prüfen (Anzeige der Seite „Kennwort festlegen“) */
   app.get('/api/auth/kennwort-link', async (req) => {
     const { token } = z.object({ token: z.string().max(100) }).parse(req.query);
-    const t = await tokenLesen(sql, token);
+    const t = await tokenLesen(sql as unknown as Tx, token);
     return t ? { gueltig: true, zweck: t.zweck, username: t.username } : { gueltig: false };
   });
 
@@ -111,7 +111,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/api/auth/kennwort-setzen', async (req, reply) => {
     const b = z.object({ token: z.string().max(100), passwort: z.string().max(200) }).parse(req.body);
     if (!vergessenZaehlen(`setzen|${req.ip}`, 20)) return reply.code(429).send({ message: 'Zu viele Versuche. Bitte später erneut versuchen.' });
-    const t = await tokenLesen(sql, b.token);
+    const t = await tokenLesen(sql as unknown as Tx, b.token);
     if (!t) return reply.code(400).send({ message: 'Der Link ist ungültig oder abgelaufen. Bitte fordern Sie über „Passwort vergessen“ einen neuen an.' });
     const err = validatePassword(b.passwort);
     if (err) return reply.code(400).send({ message: err });

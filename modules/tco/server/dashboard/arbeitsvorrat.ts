@@ -104,7 +104,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
   // Registrierungen von Mitgliedern: je Antrag mit Zuordnungsvorschlag (Kassenwart)
   if (can(req, 'tco.registrierung:mitglied')) {
     const { registrierungenLesen } = await import('../platz/registrierung.js');
-    for (const r of await registrierungenLesen(db, 'OFFEN', 'MITGLIED')) {
+    for (const r of (await registrierungenLesen(db, 'OFFEN', 'MITGLIED')) as (Record<string, any> & { vorschlaege: { art: string; name: string; info: string; grund: string }[] })[]) {
       const v = r.vorschlaege.find((x) => x.art === 'MITGLIED');
       out.push({
         key: `REG_MITGLIED:${r.id}`, bereich: 'Mitglieder', icon: 'add-employee', state: v ? 'Information' : 'Critical',

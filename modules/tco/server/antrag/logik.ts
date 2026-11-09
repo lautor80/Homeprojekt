@@ -59,7 +59,7 @@ export function pruefen(d: AntragDaten, b: AntragBank, arten: string[]): void {
   if (new Set(namen).size !== namen.length) throw new BusinessError('Eine Person ist doppelt im Antrag.');
   if (!condense(d.strasse) || !condense(d.plz) || !condense(d.ort)) throw new BusinessError('Bitte die vollständige Anschrift angeben.');
   if (!d.email || !emailGueltig(d.email.trim())) throw new BusinessError('Bitte eine gültige E-Mail-Adresse angeben.');
-  if (alter(d.personen[0].geburtsdatum) < 18 && !condense(d.erziehungsberechtigt)) {
+  if (alter(d.personen[0].geburtsdatum) < 18 && !condense(d.erziehungsberechtigt ?? '')) {
     throw new BusinessError('Für Minderjährige bitte den Namen der/des Erziehungsberechtigten angeben (stellt den Antrag).');
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.eintritt) || d.eintritt < heute()) throw new BusinessError('Der Eintritt kann frühestens heute sein.');
@@ -107,7 +107,7 @@ export async function antraegeLesen(db: Db, status: 'EINGANG' | 'ALLE') {
         }
       }
     }
-    out.push({ ...r, id: Number(r.id), hinweise });
+    out.push({ ...(r as Record<string, any>), id: Number(r.id), hinweise });
   }
   return out;
 }
