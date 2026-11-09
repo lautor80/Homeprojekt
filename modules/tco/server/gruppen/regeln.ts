@@ -1,7 +1,7 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
-import { passtZurRegel, regelText } from './alter.js';
+import { passtZurRegel, regelText, type RegelGeschlecht } from './alter.js';
 import { ausUebergeordnetenEntfernen, gruppenLesen, ueberUntergruppe } from './logik.js';
 
 /**
@@ -10,18 +10,23 @@ import { ausUebergeordnetenEntfernen, gruppenLesen, ueberUntergruppe } from './l
  * oder regelmäßig durch einen Job (POST /gruppen/regeln/anwenden mit API-Schlüssel).
  *
  * Anwenden je Gruppe mit aktiven Regeln:
- *  - aktive Mitglieder, die zu einer Regel passen, werden aufgenommen (Kennzeichen „regel“);
+ *  - aktive Mitglieder, die zu einer Regel passen (Alter und – wenn verlangt – Geschlecht), werden aufgenommen (Kennzeichen „regel“);
  *  - Zuordnungen aus dem Regelwerk, die nicht mehr passen, entfallen;
  *  - mit „andere entfernen“ entfallen auch von Hand Zugeordnete, die nicht passen;
  *  - die Hierarchieregel gilt weiter: wer über eine Untergruppe dazugehört, wird nicht noch einmal aufgenommen.
  */
-export interface Regel { id: number; gruppe_id: number; alter_von: number | null; alter_bis: number | null; jahrgang: boolean; andere_entfernen: boolean; aktiv: boolean }
+export interface Regel {
+  id: number; gruppe_id: number; alter_von: number | null; alter_bis: number | null; jahrgang: boolean;
+  /** '' = alle (gemischte Mannschaften), 'M' = männlich, 'W' = weiblich */
+  geschlecht: RegelGeschlecht;
+  andere_entfernen: boolean; aktiv: boolean;
+}
 export type RegelDaten = Omit<Regel, 'id'>;
 
 export async function regelnLesen(db: Db): Promise<Regel[]> {
-  return (await db`select id, gruppe_id, alter_von, alter_bis, jahrgang, andere_entfernen, aktiv from tco.kal_gruppen_regeln order by id`).map((r) => ({
+  return (await db`select id, gruppe_id, alter_von, alter_bis, jahrgang, geschlecht, andere_entfernen, aktiv from tco.kal_gruppen_regeln order by id`).map((r) => ({
     id: Number(r.id), gruppe_id: Number(r.gruppe_id), alter_von: r.alter_von == null ? null : Number(r.alter_von), alter_bis: r.alter_bis == null ? null : Number(r.alter_bis),
-    jahrgang: !!r.jahrgang, andere_entfernen: !!r.andere_entfernen, aktiv: !!r.aktiv,
+    jahrgang: !!r.jahrgang, geschlecht: (['M', 'W'].includes(r.geschlecht) ? r.geschlecht : '') as RegelGeschlecht, andere_entfernen: !!r.andere_entfernen, aktiv: !!r.aktiv,
   }));
 }
 
@@ -36,8 +41,8 @@ export async function regelnSpeichern(tx: Db, regeln: RegelDaten[]): Promise<num
   });
   await tx`delete from tco.kal_gruppen_regeln`;
   for (const r of regeln) {
-    await tx`insert into tco.kal_gruppen_regeln (gruppe_id, alter_von, alter_bis, jahrgang, andere_entfernen, aktiv)
-             values (${r.gruppe_id}, ${r.alter_von}, ${r.alter_bis}, ${r.jahrgang}, ${r.andere_entfernen}, ${r.aktiv})`;
+    await tx`insert into tco.kal_gruppen_regeln (gruppe_id, alter_von, alter_bis, jahrgang, geschlecht, andere_entfernen, aktiv)
+             values (${r.gruppe_id}, ${r.alter_von}, ${r.alter_bis}, ${r.jahrgang}, ${r.geschlecht}, ${r.andere_entfernen}, ${r.aktiv})`;
   }
   return regeln.length;
 }
@@ -64,9 +69,11 @@ export async function regelnAnwenden(tx: Db, o: { simulation: boolean; stichtag?
   const stichtag = o.stichtag ?? (await tx`select current_date::text as d`)[0].d as string;
   const gruppen = new Map((await gruppenLesen(tx)).map((g) => [g.id, g]));
   // aktive Mitglieder wie in der Mitgliederliste: mit Eintritt, nicht ausgetreten
-  const aktive = await tx`select adrnr, vorname, nachname, geburtsdatum::text as geburtsdatum from tco.mitglieder
+  const aktive = await tx`select adrnr, vorname, nachname, geburtsdatum::text as geburtsdatum, geschlecht from tco.mitglieder
                            where eintritt is not null and (austritt is null or austritt >= ${stichtag}::date)`;
   const namen = new Map((await tx`select adrnr, vorname, nachname from tco.mitglieder`).map((m) => [m.adrnr as string, condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`) || (m.adrnr as string)]));
+  // Mitgliedsstamm: 1 = männlich, 2 = weiblich
+  const geschlecht = (m: { geschlecht?: unknown }): RegelGeschlecht => { const g = String(m.geschlecht ?? '').trim(); return g === '1' ? 'M' : g === '2' ? 'W' : ''; };
   const person = (adrnr: string): RegelPerson => ({ adrnr, name: namen.get(adrnr) ?? adrnr });
   const nachName = (a: RegelPerson, b: RegelPerson) => a.name.localeCompare(b.name, 'de');
 
@@ -76,7 +83,7 @@ export async function regelnAnwenden(tx: Db, o: { simulation: boolean; stichtag?
     if (!g) continue;
     const eigene = regeln.filter((r) => r.gruppe_id === gid);
     const streng = eigene.some((r) => r.andere_entfernen);
-    const passend = new Set(aktive.filter((m) => eigene.some((r) => passtZurRegel(m.geburtsdatum as string | null, r, stichtag))).map((m) => m.adrnr as string));
+    const passend = new Set(aktive.filter((m) => eigene.some((r) => passtZurRegel(m.geburtsdatum as string | null, r, stichtag, geschlecht(m)))).map((m) => m.adrnr as string));
     const aktuell = await tx`select adrnr, regel from tco.kal_gruppe_mitglieder where gruppe_id = ${gid}`;
     const drin = new Set(aktuell.map((x) => x.adrnr as string));
     const unter = await ueberUntergruppe(tx, gid, [...passend].filter((a) => !drin.has(a)));

@@ -6,7 +6,9 @@
  * Es genügt, wenn das Alter irgendwann im Kalenderjahr des Stichtags im Bereich liegt.
  *   Beispiel 6–7 Jahre: Wer im Dezember 6 wird, zählt ab Januar; wer im März 8 wird, zählt noch bis Jahresende.
  */
-export interface AltersRegel { alter_von: number | null; alter_bis: number | null; jahrgang: boolean }
+/** Geschlecht als Kriterium: '' = alle (gemischt), 'M' = männlich, 'W' = weiblich */
+export type RegelGeschlecht = '' | 'M' | 'W';
+export interface AltersRegel { alter_von: number | null; alter_bis: number | null; jahrgang: boolean; geschlecht?: RegelGeschlecht }
 
 const teile = (iso: string) => iso.slice(0, 10).split('-').map(Number) as [number, number, number];
 
@@ -25,7 +27,9 @@ export function alterImJahr(geburtsdatum: string, stichtag: string): [number, nu
   return [gm === 1 && gt === 1 ? max : max - 1, max];
 }
 
-export function passtZurRegel(geburtsdatum: string | null, r: AltersRegel, stichtag: string): boolean {
+/** `geschlecht` der Person: 'M', 'W' oder '' (nicht gepflegt) – wird nur geprüft, wenn die Regel ein Geschlecht verlangt */
+export function passtZurRegel(geburtsdatum: string | null, r: AltersRegel, stichtag: string, geschlecht: RegelGeschlecht = ''): boolean {
+  if (r.geschlecht && r.geschlecht !== geschlecht) return false;
   if (!geburtsdatum) return false;
   const [min, max] = r.jahrgang ? alterImJahr(geburtsdatum, stichtag) : [alterAm(geburtsdatum, stichtag), alterAm(geburtsdatum, stichtag)];
   if (max < 0) return false;
@@ -36,5 +40,6 @@ export function passtZurRegel(geburtsdatum: string | null, r: AltersRegel, stich
 export function regelText(r: AltersRegel): string {
   const a = r.alter_von != null && r.alter_bis != null ? (r.alter_von === r.alter_bis ? `${r.alter_von} Jahre` : `${r.alter_von}–${r.alter_bis} Jahre`)
     : r.alter_von != null ? `ab ${r.alter_von} Jahre` : `bis ${r.alter_bis} Jahre`;
-  return r.jahrgang ? `${a} (Kalenderjahr zählt)` : a;
+  const g = r.geschlecht === 'M' ? ' · männlich' : r.geschlecht === 'W' ? ' · weiblich' : '';
+  return `${r.jahrgang ? `${a} (Kalenderjahr zählt)` : a}${g}`;
 }

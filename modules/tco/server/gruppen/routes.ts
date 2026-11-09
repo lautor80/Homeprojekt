@@ -41,7 +41,7 @@ export async function gruppenRoutes(app: FastifyInstance) {
     const { regeln } = z.object({
       regeln: z.array(z.object({
         gruppe_id: z.number().int().positive(), alter_von: alter, alter_bis: alter,
-        jahrgang: z.boolean().default(false), andere_entfernen: z.boolean().default(false), aktiv: z.boolean().default(true),
+        jahrgang: z.boolean().default(false), geschlecht: z.enum(['', 'M', 'W']).default(''), andere_entfernen: z.boolean().default(false), aktiv: z.boolean().default(true),
       })).max(200),
     }).parse(req.body);
     const n = await change(req, (tx) => regelnSpeichern(tx, regeln), { action: 'GRUPPE', reason: 'Regelwerk' });
