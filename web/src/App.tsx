@@ -110,7 +110,9 @@ export function App() {
       return Seite ? <Seite orgName={orgName} logo={logo} onFertig={fertig} /> : null;
     }
     case 'login':
-      return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined} onDone={load}
+      // nach der Anmeldung immer auf der Startseite landen, nicht auf der zuletzt im Browser offenen Seite
+      return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined}
+                        onDone={() => { window.history.replaceState(null, '', '/'); load(); }}
                         registrierung={(state.settings.registrierung as { pfad: string; titel: string; text: string } | null) ?? null} />;
     case 'ready':
       if (state.me.user.mustChangePassword) return <ForcedPasswordPage onDone={load} onLogout={logout} />;
