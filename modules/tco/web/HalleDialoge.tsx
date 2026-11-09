@@ -5,7 +5,7 @@ import {
   Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
-import { H, RG_STATUS, dat, eur, type PaperlessInfo, type PersonDetail, type Rechnung } from './util';
+import { H, RG_STATUS, dat, eur, type PaperlessInfo, type PersonDetail, type Position, type Rechnung } from './util';
 
 const portal = (el: React.ReactElement) => createPortal(el, document.body);
 
@@ -24,6 +24,44 @@ function Feld({ label, children, required }: { label: string; children: React.Re
 interface Produkt { prod_key: string; valid_from: string; valid_to: string; text: string; preis: number; typ: string | null; erloeskonto: string | null }
 /** Gutschrift-Produkt: Einzelpreis und Konto frei, Betrag mindert die Rechnung */
 const istGutschrift = (p?: Produkt) => /gutschrift/i.test(p?.text ?? '');
+
+/** Text einer manuellen Position ändern */
+export function PositionTextDialog({ rgnr, position, onClose, onSaved }: { rgnr: string | null; position: Position | null; onClose: () => void; onSaved: (t: string) => void }) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setText(position?.beschreibung ?? '');
+    setError(null);
+  }, [position]);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.put<{ text: string }>(`${H}/rechnungen/${encodeURIComponent(rgnr!)}/positionen/${position!.rgpos}`, { beschreibung: text });
+      onSaved(r.text);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return portal(
+    <Dialog open={!!position && !!rgnr} headerText={`Text der Position ${position?.rgpos ?? ''} ändern`} onClose={onClose} style={{ width: 'min(30rem, 95vw)' }}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" loading={busy} onClick={save}>Übernehmen</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
+      <Feld label="Beschreibung (erscheint auf der Rechnung)">
+        <Input value={text} maxlength={40} onInput={(e) => setText(e.target.value)} style={{ width: '100%' }} />
+      </Feld>
+    </Dialog>,
+  );
+}
 
 export function PositionDialog({ open, rgnr, onClose, onSaved }: { open: boolean; rgnr: string | null; onClose: () => void; onSaved: (t: string) => void }) {
   const [produkte, setProdukte] = useState<Produkt[]>([]);

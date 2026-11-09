@@ -645,3 +645,37 @@ test('Gutschrift: Einzelpreis und Konto frei, Betrag mindert die Rechnung, Konto
   const [x] = await sql`select erloeskonto from tco.rgpos where rgnr_txt = '2026_901' and rgpos = ${r.body.rgpos}`;
   assert.equal(x.erloeskonto, null);
 });
+
+test('Manuelle Position: Text änderbar, Buchungsposition und versendete Rechnung nicht', async () => {
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status) values ('2026_902', 2026, 902, 'TEXT TEST', 0, '1')`;
+  let r = await call('POST', `${H}/rechnungen/2026_902/positionen`, { prod_key: '001', menge: 1, beschreibung: 'Alter Text' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const pos = r.body.rgpos;
+  const betrag = r.body.betrag;
+  r = await call('PUT', `${H}/rechnungen/2026_902/positionen/${pos}`, { beschreibung: '  Neuer Text  ' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Text geändert/);
+  r = await call('GET', `${H}/rechnungen/2026_902`);
+  let p = r.body.positionen.find((x: any) => x.rgpos === pos);
+  assert.deepEqual([p.beschreibung, p.betrag, p.manuell], ['Neuer Text', betrag, true]);
+  // leer → Produkttext; über 40 Zeichen und unbekannte Position abgewiesen
+  const [pr] = await sql`select text from tco.produkte where prod_key = '001' order by valid_to desc limit 1`;
+  r = await call('PUT', `${H}/rechnungen/2026_902/positionen/${pos}`, { beschreibung: '' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('GET', `${H}/rechnungen/2026_902`);
+  p = r.body.positionen.find((x: any) => x.rgpos === pos);
+  assert.equal(p.beschreibung, pr.text);
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/${pos}`, { beschreibung: 'x'.repeat(41) })).status, 400);
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/999`, { beschreibung: 'x' })).status, 400);
+  // Sonstiges (093) braucht einen eigenen Text
+  r = await call('POST', `${H}/rechnungen/2026_902/positionen`, { prod_key: '093', menge: 1, preis: 5, beschreibung: 'Sonstiges A' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/${r.body.rgpos}`, { beschreibung: ' ' })).status, 400);
+  // Buchungsposition: Text nicht änderbar
+  await sql`insert into tco.rgpos (rgnr_txt, rgpos, bid, datum, time_start, time_ende, dauer, prod_key, preis)
+            values ('2026_902', 50, '0000009902', '2026-11-02', '16:00', '17:00', '60', '001', 10)`;
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/50`, { beschreibung: 'x' })).status, 400);
+  // versendete Rechnung: keine Änderung
+  await sql`update tco.rgkopf set status = '3' where rgnr_txt = '2026_902'`;
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/${pos}`, { beschreibung: 'Spät' })).status, 400);
+});

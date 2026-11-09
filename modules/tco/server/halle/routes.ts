@@ -9,7 +9,7 @@ import { heute } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
 import {
   aboEinzeln, aboSerie, adrnrErmitteln, autoBuchen, autoVorschau, irrelevant, kanalSichern, manuellePosition,
-  personDetail, personenLesen, positionEntfernen, positionenLesen, positionenNummerieren, rechnungAnlegen,
+  personDetail, personenLesen, positionEntfernen, positionenLesen, positionenNummerieren, positionTextAendern, rechnungAnlegen,
   rechnungenLesen, statusSetzen, zuordnen, type Selektion,
 } from './daten.js';
 import { ep3Importieren, ep3UeberN8n } from './ep3.js';
@@ -262,6 +262,18 @@ export async function halleRoutes(app: FastifyInstance) {
     const [k] = await DB`select doknr, versendet from tco.rgkopf where rgnr_txt = ${rgnr}`;
     if (k?.versendet) await paperlessNotiz(v, k.doknr, `Position ${r.rgpos} hinzugefügt am ${heute()} durch ${benutzer(req)}: ${d.prod_key} ${d.beschreibung ?? ''} × ${d.menge}`);
     return { ...r, text: [`Position ${r.rgpos} hinzugefügt (${r.betrag.toFixed(2).replace('.', ',')} EUR)`, ...r.hinweise].join('. ') };
+  });
+
+  /** Text einer manuellen Position ändern */
+  app.put('/halle/rechnungen/:rgnr/positionen/:pos', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const p = z.object({ rgnr: z.string(), pos: z.coerce.number().int() }).parse(req.params);
+    const { beschreibung } = z.object({ beschreibung: z.string().max(40, 'Die Beschreibung darf höchstens 40 Zeichen lang sein').nullish() }).parse(req.body);
+    const r = await change(req, (tx) => positionTextAendern(tx, p.rgnr, p.pos, beschreibung));
+    if (!r.geaendert) return { text: `Position ${p.pos} unverändert` };
+    if (r.kopf.versendet) {
+      await paperlessNotiz(await vereinLesen(), r.kopf.doknr, `Position ${p.pos} Text geändert am ${heute()} durch ${benutzer(req)}: „${r.alt}“ → „${r.text}“`);
+    }
+    return { text: `Position ${p.pos}: Text geändert` };
   });
 
   app.delete('/halle/rechnungen/:rgnr/positionen/:pos', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {

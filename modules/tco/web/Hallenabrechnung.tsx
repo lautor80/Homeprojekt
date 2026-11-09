@@ -31,7 +31,7 @@ import {
 import { AutoDialog } from './AutoZuordnung';
 import { SammelDialog } from './SammelRechnung';
 import './halle.css';
-import { MailDialog, MailtextDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
+import { MailDialog, MailtextDialog, PositionDialog, PositionTextDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
 /** Filter bleiben beim Wechsel zwischen Seiten erhalten */
 const merk = {
@@ -333,6 +333,7 @@ function PersonPanel(props: {
   const vergangene = d.buchungen.filter((b) => b.vergangen);
   const [pos, setPos] = useState<Position[] | null>(null);
   const [pl, setPl] = useState<PaperlessInfo | null>(null);
+  const [posText, setPosText] = useState<Position | null>(null);
   const [irrelevant, setIrrelevant] = useState<{ bid: string; datum: string; termine: number; time_start: string; time_ende: string }[] | null>(null);
   // gewählte (änderbare) Rechnung gegen gleichzeitige Bearbeitung sperren
   const sperre = useSperre('RECHNUNG', rechnung?.aenderbar ? rechnung.rgnr_txt : null, edit, { bezeichnung: rechnung ? `Hallenrechnung ${rechnung.rgnr_txt}` : undefined });
@@ -454,9 +455,14 @@ function PersonPanel(props: {
       Cell: ({ row }: Cell) => <Text style={{ color: row.original.storno ? 'var(--sapNegativeTextColor)' : undefined }}>{eur(row.original.betrag)}{row.original.storno ? ' (storniert)' : ''}</Text>,
     },
     {
-      Header: '', id: 'weg', width: 60, disableSortBy: true,
+      Header: '', id: 'weg', width: iconSpalte(2), disableSortBy: true,
       Cell: ({ row }: Cell) => (rgEdit && rechnung?.aenderbar ? (
-        <Button icon="delete" design="Transparent" onClick={() => {
+        <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'flex-end', width: '100%' }}>
+        {row.original.manuell && (
+          <Button icon="edit" design="Transparent" tooltip="Text der Position ändern" accessibleName="Text der Position ändern"
+                  onClick={() => setPosText(row.original as Position)} />
+        )}
+        <Button icon="delete" design="Transparent" tooltip="Position entfernen" accessibleName="Position entfernen" onClick={() => {
           const p = row.original as Position;
           const nr = rechnung!.rgnr_txt;
           const loeschen = (grund?: string) => tun(async () => api.del<{ text: string }>(`${rgUrl(nr)}/positionen/${p.rgpos}`, { begruendung: grund }));
@@ -468,6 +474,7 @@ function PersonPanel(props: {
             });
           } else loeschen();
         }} />
+        </div>
       ) : null),
     },
   ];
@@ -649,6 +656,8 @@ function PersonPanel(props: {
           </FlexBox>
         ))}
       </Panel>
+      <PositionTextDialog rgnr={rechnung?.rgnr_txt ?? null} position={posText} onClose={() => setPosText(null)}
+                          onSaved={(t) => { setPosText(null); tun(async () => ({ text: t })); }} />
     </div>
   );
 }
