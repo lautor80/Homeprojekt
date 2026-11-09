@@ -10,8 +10,9 @@ import '../halle.css';
  * (z. B. Kleinfeld 6–7 Jahre). Vorschau zeigt, was sich ändern würde; „Jetzt anwenden“ setzt es um.
  * Ein Job kann dasselbe regelmäßig über POST …/gruppen/regeln/anwenden ausführen.
  */
-interface Regel { gruppe_id: number; alter_von: number | null; alter_bis: number | null; jahrgang: boolean; andere_entfernen: boolean; aktiv: boolean }
-interface Zeile { key: number; gruppe_id: number; von: string; bis: string; jahrgang: boolean; andere_entfernen: boolean; aktiv: boolean }
+type Geschlecht = '' | 'M' | 'W';
+interface Regel { gruppe_id: number; alter_von: number | null; alter_bis: number | null; jahrgang: boolean; geschlecht: Geschlecht; andere_entfernen: boolean; aktiv: boolean }
+interface Zeile { key: number; gruppe_id: number; von: string; bis: string; jahrgang: boolean; geschlecht: Geschlecht; andere_entfernen: boolean; aktiv: boolean }
 interface Ergebnis {
   simulation: boolean; text: string;
   gruppen: { gruppe_id: number; gruppe: string; regel: string; aufgenommen: { adrnr: string; name: string }[]; entfernt: { adrnr: string; name: string }[]; ueberUntergruppe: number; mitglieder: number }[];
@@ -20,11 +21,11 @@ interface Ergebnis {
 let lfd = 0;
 const zeile = (r: Regel): Zeile => ({
   key: ++lfd, gruppe_id: r.gruppe_id, von: r.alter_von == null ? '' : String(r.alter_von), bis: r.alter_bis == null ? '' : String(r.alter_bis),
-  jahrgang: r.jahrgang, andere_entfernen: r.andere_entfernen, aktiv: r.aktiv,
+  jahrgang: r.jahrgang, geschlecht: r.geschlecht ?? '', andere_entfernen: r.andere_entfernen, aktiv: r.aktiv,
 });
 const ganz = (v: string) => (v.trim() === '' ? null : Number(v.trim()));
 const zahlFehler = (v: string) => v.trim() !== '' && !/^\d{1,3}$/.test(v.trim());
-const regel = (z: Zeile): Regel => ({ gruppe_id: z.gruppe_id, alter_von: ganz(z.von), alter_bis: ganz(z.bis), jahrgang: z.jahrgang, andere_entfernen: z.andere_entfernen, aktiv: z.aktiv });
+const regel = (z: Zeile): Regel => ({ gruppe_id: z.gruppe_id, alter_von: ganz(z.von), alter_bis: ganz(z.bis), jahrgang: z.jahrgang, geschlecht: z.geschlecht, andere_entfernen: z.andere_entfernen, aktiv: z.aktiv });
 const klein = () => window.matchMedia?.('(max-width: 700px)').matches ?? false;
 
 export function RegelwerkDialog({ gruppen, onClose }: { gruppen: Gruppe[]; onClose: (geaendert: boolean) => void }) {
@@ -74,7 +75,7 @@ export function RegelwerkDialog({ gruppen, onClose }: { gruppen: Gruppe[]; onClo
       <div className="portal-az">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
         <MessageStrip design="Information" hideCloseButton>
-          Jede Regel ordnet aktive Mitglieder nach ihrem Alter einer Gruppe zu, z. B. Kleinfeld 6–7 Jahre. Beim Anwenden werden passende Mitglieder
+          Jede Regel ordnet aktive Mitglieder nach Alter und Geschlecht einer Gruppe zu, z. B. Kleinfeld 6–7 Jahre oder Juniorinnen U15 weiblich. Beim Anwenden werden passende Mitglieder
           aufgenommen. Zuordnungen aus dem Regelwerk, die nicht mehr passen, entfallen. Von Hand Zugeordnete bleiben, außer bei „Andere entfernen“.
         </MessageStrip>
         {!zeilen && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
@@ -83,7 +84,7 @@ export function RegelwerkDialog({ gruppen, onClose }: { gruppen: Gruppe[]; onClo
             <table className="portal-sv__tabelle">
               <thead>
                 <tr>
-                  <th><Label>Gruppe</Label></th><th><Label>Alter von</Label></th><th><Label>Alter bis</Label></th>
+                  <th><Label>Gruppe</Label></th><th><Label>Geschlecht</Label></th><th><Label>Alter von</Label></th><th><Label>Alter bis</Label></th>
                   <th><Label>Kalenderjahr zählt</Label></th><th><Label>Andere entfernen</Label></th><th><Label>Aktiv</Label></th><th />
                 </tr>
               </thead>
@@ -97,6 +98,13 @@ export function RegelwerkDialog({ gruppen, onClose }: { gruppen: Gruppe[]; onClo
                         {gruppen.map((g) => <Option key={g.id} data-g={g.id} selected={g.id === z.gruppe_id}>{g.pfad}</Option>)}
                       </Select>
                     </td>
+                    <td>
+                      <Select accessibleName="Geschlecht" style={{ width: '11rem' }} onChange={(e) => setze(z.key, { geschlecht: ((e.detail.selectedOption as HTMLElement).dataset.s ?? '') as Geschlecht })}>
+                        <Option data-s="" selected={!z.geschlecht}>alle (gemischt)</Option>
+                        <Option data-s="M" selected={z.geschlecht === 'M'}>männlich</Option>
+                        <Option data-s="W" selected={z.geschlecht === 'W'}>weiblich</Option>
+                      </Select>
+                    </td>
                     <td><Input value={z.von} accessibleName="Alter von" valueState={zahlFehler(z.von) ? 'Negative' : 'None'} style={{ width: '5.5rem' }} onInput={(e) => setze(z.key, { von: e.target.value })} /></td>
                     <td><Input value={z.bis} accessibleName="Alter bis" valueState={zahlFehler(z.bis) ? 'Negative' : 'None'} style={{ width: '5.5rem' }} onInput={(e) => setze(z.key, { bis: e.target.value })} /></td>
                     <td><CheckBox checked={z.jahrgang} accessibleName="Kalenderjahr zählt" onChange={(e) => setze(z.key, { jahrgang: e.target.checked })} /></td>
@@ -105,16 +113,18 @@ export function RegelwerkDialog({ gruppen, onClose }: { gruppen: Gruppe[]; onClo
                     <td><Button icon="delete" design="Transparent" tooltip="Regel löschen" onClick={() => { setZeilen(liste.filter((x) => x.key !== z.key)); setErgebnis(null); }} /></td>
                   </tr>
                 ))}
-                {!liste.length && <tr><td colSpan={7}><Text className="portal-muted">Noch keine Regel – z. B. Gruppe „Kleinfeld“, Alter 6 bis 7.</Text></td></tr>}
+                {!liste.length && <tr><td colSpan={8}><Text className="portal-muted">Noch keine Regel – z. B. Gruppe „Kleinfeld“, Alter 6 bis 7.</Text></td></tr>}
               </tbody>
             </table>
           </div>
         )}
         <div>
           <Button icon="add" design="Transparent" disabled={!zeilen}
-                  onClick={() => { setZeilen([...liste, { key: ++lfd, gruppe_id: 0, von: '', bis: '', jahrgang: false, andere_entfernen: false, aktiv: true }]); setErgebnis(null); }}>Regel hinzufügen</Button>
+                  onClick={() => { setZeilen([...liste, { key: ++lfd, gruppe_id: 0, von: '', bis: '', jahrgang: false, geschlecht: '', andere_entfernen: false, aktiv: true }]); setErgebnis(null); }}>Regel hinzufügen</Button>
         </div>
         <Text className="portal-muted portal-small">
+          <b>Geschlecht:</b> „alle (gemischt)“ nimmt jedes Geschlecht auf, z. B. für gemischte Mannschaften. Bei „männlich“ oder „weiblich“ passen nur Mitglieder,
+          bei denen dieses Geschlecht im Mitgliedsstamm gepflegt ist.{' '}
           <b>Kalenderjahr zählt:</b> Das ganze Jahr zählt, in dem das Alter erreicht wird oder noch erreicht war. Bei 6–7 Jahren: Wer im Dezember 6 wird,
           gehört ab Januar dazu. Wer im März 8 wird, bleibt bis Jahresende. Ohne das Kennzeichen gilt das Alter am Tag der Ausführung.{' '}
           <b>Andere entfernen:</b> Auch von Hand oder selbst Zugeordnete, die nicht zur Regel passen, werden entfernt.{' '}

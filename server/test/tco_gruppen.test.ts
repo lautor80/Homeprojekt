@@ -425,6 +425,31 @@ test('Regelwerk: Mitglieder nach Alter zuordnen, Kalenderjahr zählt, Vorschau, 
   assert.deepEqual(await direkt(kleinfeld), [K2]);
   assert.deepEqual(await direkt(midfeld), [K2, K3]);
 
+  // Geschlecht als Kriterium je Regel: männlich, weiblich oder alle (gemischte Mannschaften)
+  assert.deepEqual([passtZurRegel('2018-06-15', { ...kj, geschlecht: 'W' }, '2026-11-10', 'W'), passtZurRegel('2018-06-15', { ...kj, geschlecht: 'W' }, '2026-11-10', 'M'),
+    passtZurRegel('2018-06-15', { ...kj, geschlecht: 'W' }, '2026-11-10', ''), passtZurRegel('2018-06-15', { ...kj, geschlecht: '' }, '2026-11-10', 'M')], [true, false, false, true]);
+  await sql`update tco.mitglieder set geschlecht = '2' where adrnr = ${K2}`;
+  await sql`update tco.mitglieder set geschlecht = '1' where adrnr = ${K3}`;
+  const maedchen = await neu('Mädchen', jugend);
+  const jungen = await neu('Jungen', jugend);
+  const mixed = await neu('Mixed', jugend);
+  assert.equal((await admin('PUT', R, { regeln: [regel({ gruppe_id: mixed, alter_von: 7, geschlecht: 'X' })] })).status, 400);
+  r = await admin('PUT', R, { regeln: [
+    regel({ gruppe_id: maedchen, alter_von: 7, alter_bis: 10, jahrgang: true, geschlecht: 'W' }),
+    regel({ gruppe_id: jungen, alter_von: 7, alter_bis: 10, jahrgang: true, geschlecht: 'M' }),
+    regel({ gruppe_id: mixed, alter_von: 7, alter_bis: 10, jahrgang: true }),
+  ] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.regeln.map((x: any) => x.geschlecht), ['W', 'M', '']);
+  r = await admin('POST', `${R}/anwenden`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(erg(maedchen).regel, /weiblich/);
+  assert.deepEqual([await direkt(maedchen), await direkt(jungen), await direkt(mixed)], [[K2], [K3], [K2, K3]]);
+  // Geschlecht im Mitgliedsstamm geändert: die Zuordnung aus dem Regelwerk wandert mit
+  await sql`update tco.mitglieder set geschlecht = '1' where adrnr = ${K2}`;
+  r = await admin('POST', `${R}/anwenden`, {});
+  assert.deepEqual([await direkt(maedchen), await direkt(jungen), await direkt(mixed)], [[], [K2, K3], [K2, K3]]);
+
   // nur mit Pflegerecht
   const grleser = client();
   assert.equal((await grleser('POST', '/api/auth/login', { username: 'grleser', password: 'neues-passwort' })).status, 200);
