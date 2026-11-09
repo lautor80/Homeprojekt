@@ -146,21 +146,35 @@ export function zahlungAufteilen(zahlung: number, teile: { konto: string; betrag
  * Ergebnis: 00… Mitglied, 99 + ZUID (8-stellig) EP3-Kunde.
  */
 export async function adrnrErmitteln(db: Db, kunde: string): Promise<string | null> {
-  const name = condense(kunde).toUpperCase();
+  // Großschreibung wie in JS (ß → SS), damit „Groß“ zum EP3-Namen „GROSS“ passt
+  const name = condense(kunde).toUpperCase().replace(/ẞ/g, 'SS');
   if (!name) return null;
   const m = await db`select adrnr from tco.mitglieder
-                      where upper(trim(coalesce(vorname, '') || ' ' || coalesce(nachname, ''))) = ${name}
+                      where replace(upper(trim(coalesce(vorname, '') || ' ' || coalesce(nachname, ''))), 'ß', 'SS') = ${name}
                       order by austritt nulls first, adrnr desc`;
   if (m.length) return m[0].adrnr;
   const k = await db`
     select zuid from tco.kunden
-     where upper(trim(coalesce(vorname, '') || ' ' || coalesce(nachname, ''))) = ${name} or upper(trim(zalias)) = ${name}
+     where replace(upper(trim(coalesce(vorname, '') || ' ' || coalesce(nachname, ''))), 'ß', 'SS') = ${name}
+        or replace(upper(trim(zalias)), 'ß', 'SS') = ${name}
      order by case when coalesce(status, '') in ('blocked', 'deleted', 'disabled') then 1 else 0 end,
               length(zuid) desc, zuid desc
      limit 1`;
   if (!k.length) return null;
   const [mz] = await db`select adrnr from tco.mitgliedera where zuid = ${k[0].zuid} limit 1`;
   return mz?.adrnr ?? adrnrAusZuid(k[0].zuid);
+}
+
+/**
+ * Adressnummer zu einer Person der Hallenabrechnung: Namensabgleich (adrnrErmitteln), sonst die an einer
+ * Rechnung der Person hinterlegte Adressnummer (z. B. Sammelrechnung mit ausgewähltem/neu angelegtem Kunden).
+ */
+export async function adrnrPerson(db: Db, kunde: string): Promise<string | null> {
+  const a = await adrnrErmitteln(db, kunde);
+  if (a) return a;
+  const [r] = await db`select adrnr from tco.rgkopf where kunde = ${kunde} and coalesce(adrnr, '') <> ''
+                        order by (status in ('4', '6')), rgnr_txt desc limit 1`;
+  return r?.adrnr ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +307,7 @@ export async function personenLesen(db: Db, v: Verein, sel: Selektion) {
   for (const p of map.values()) {
     const offen = p.rechnungen.filter((r) => !['4', '6'].includes(r.status)).length;
     if (!p.offeneBuchungen && !offen) continue;
-    const kontakt = await kontaktLesen(db, await adrnrErmitteln(db, p.kunde));
+    const kontakt = await kontaktLesen(db, await adrnrPerson(db, p.kunde));
     p.probleme = problemeErmitteln(p.kunde, kontakt, buchungenJe.get(p.kunde) ?? [], offen);
   }
   const personen = [...map.values()].map((p) => {
@@ -312,7 +326,7 @@ export async function personenLesen(db: Db, v: Verein, sel: Selektion) {
 
 export async function personDetail(db: Db, v: Verein, kunde: string, sel: Selektion) {
   const preise = await preiseLesen(db);
-  const adrnr = await adrnrErmitteln(db, kunde);
+  const adrnr = await adrnrPerson(db, kunde);
   const kontakt = await kontaktLesen(db, adrnr);
   const buchungen = await offeneBuchungen(db, v, preise, kunde);
   const rechnungen = await rechnungenLesen(db, sel, kunde);
@@ -425,7 +439,7 @@ export async function rechnungAnlegen(tx: Db, kunde: string): Promise<string> {
            on conflict (id, year) do update set last_value = greatest(core.number_ranges.last_value, excluded.last_value)`;
   const [{ n }] = await tx`select core.next_number('TCO_HALLE', ${jahr})::int as n`;
   const rgnr = `${jahr}_${String(n).padStart(3, '0')}`;
-  const adrnr = await adrnrErmitteln(tx, kunde);
+  const adrnr = await adrnrPerson(tx, kunde);
   await tx`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, waers, status, angelegt_am, adrnr)
            values (${rgnr}, ${jahr}, ${n}, ${kunde}, 0, 'EUR', '1', ${heute()}, ${adrnr})`;
   return rgnr;

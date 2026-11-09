@@ -586,3 +586,29 @@ test('Sammelrechnung: bestehende Rechnungen je Person, gezielt anhängen, Splitb
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.rechnungen[0].betrag, 7.5);
 });
+
+test('Hallenabrechnung: Hinweise je Laden neu – ß im Namen und Adressnummer der Rechnung', async () => {
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, strasse, plz, ort, email)
+            values ('0000000811', 'Alexander', 'Groß', '2020-01-01', 'Hauptstr. 1', '66649', 'Oberthal', 'ag@example.org')
+            on conflict do nothing`;
+  // Sammelrechnung: EP3-Name in JS-Großschreibung „GROSS“ → Mitglied „Groß“
+  let r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '093', beschreibung: 'Winterhallenrunde', menge: '1', preis: '20' }, anhaengen: false,
+    empfaenger: [{ key: 'M:0000000811' }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const rgnr = r.body.rechnungen[0].rgnr;
+  const [k] = await sql`select kunde from tco.rgkopf where rgnr_txt = ${rgnr}`;
+  assert.equal(k.kunde, 'ALEXANDER GROSS');
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('ALEXANDER GROSS')}`);
+  assert.equal(r.body.adrnr, '0000000811');
+  assert.deepEqual(r.body.probleme, []);
+
+  // Name passt zu niemandem, aber die Rechnung trägt die Adressnummer → kein Kontakt-Fehler
+  await sql`update tco.rgkopf set kunde = 'A. GROSS (LIGA)' where rgnr_txt = ${rgnr}`;
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('A. GROSS (LIGA)')}`);
+  assert.equal(r.body.adrnr, '0000000811');
+  assert.ok(!r.body.probleme.some((x: any) => x.art === 'KONTAKT'), JSON.stringify(r.body.probleme));
+  r = await call('GET', `${H}/personen?status=1`);
+  assert.deepEqual(r.body.personen.find((x: any) => x.kunde === 'A. GROSS (LIGA)').probleme, []);
+});

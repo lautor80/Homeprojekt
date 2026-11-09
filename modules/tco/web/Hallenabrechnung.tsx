@@ -97,6 +97,8 @@ export function Hallenabrechnung() {
     try {
       const d = await api.get<PersonDetail>(`${H}/person${selQs}&kunde=${encodeURIComponent(k)}`);
       setDetail(d);
+      // Hinweise der Liste mit dem frisch ermittelten Stand der Person abgleichen
+      setListe((l) => (l ? { ...l, personen: l.personen.map((p) => (p.kunde === d.kunde ? { ...p, probleme: d.probleme ?? [] } : p)) } : l));
       setRgnr((alt) => (alt && d.rechnungen.some((r) => r.rgnr_txt === alt) ? alt : d.rechnungen.length === 1 ? d.rechnungen[0].rgnr_txt : null));
     } catch (e) {
       setError((e as Error).message);
