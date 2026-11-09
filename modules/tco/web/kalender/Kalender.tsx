@@ -11,6 +11,7 @@ import { Empty, Section } from '@core/components/Section';
 import { download } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
+import { MassenanlageDialog } from './Massenanlage';
 import './kalender.css';
 
 /**
@@ -59,6 +60,7 @@ export function Kalender() {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<Ev> | null>(null);
+  const [masse, setMasse] = useState(false);
   // Filter der Liste: vergangene Veranstaltungen, Gruppe, Art (#33)
   const [vergangene, setVergangene] = useState(false);
   const [fGruppe, setFGruppe] = useState('');
@@ -111,6 +113,7 @@ export function Kalender() {
               <SegmentedButtonItem data-a="MONAT" icon="appointment-2" selected={ansicht === 'MONAT'}>Monat</SegmentedButtonItem>
             </SegmentedButton>
             <span style={{ flex: 1 }} />
+            {d?.pflege && <Button icon="paste" tooltip="Mehrere Veranstaltungen aus eingefügtem Text anlegen (z. B. Spielplan)" onClick={() => setMasse(true)}>Mehrere anlegen</Button>}
             {d?.pflege && <Button design="Emphasized" icon="add" onClick={() => setForm({ kategorie: 'VERANSTALTUNG', anmeldung: true, teilnehmer_sichtbar: true, gruppen: [], ganztags: false, begleitung: false })}>Neue Veranstaltung</Button>}
           </div>
           {d && (
@@ -150,6 +153,8 @@ export function Kalender() {
       </TabContainer>
       {detail !== null && d && <DetailDialog id={detail} pflege={d.pflege} mitglied={d.mitglied} kategorien={d.kategorien} onClose={() => { setDetail(null); laden(); }}
                                              onBearbeiten={(e) => { setDetail(null); setForm(e); }} onKopieren={kopieren} onError={setError} />}
+      {masse && d && <MassenanlageDialog kategorien={d.kategorien} gruppen={d.gruppen} onClose={() => setMasse(false)}
+                                         onDone={(t) => { setMasse(false); if (t) toast(t, 5000); laden(); }} />}
       {form && d && <EventDialog e={form} d={d} onClose={() => setForm(null)} onGespeichert={(t) => { setForm(null); toast(t, 5000); laden(); }} />}
     </AppPage>
   );

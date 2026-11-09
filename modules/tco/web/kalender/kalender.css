@@ -52,3 +52,6 @@
 .portal-kal__zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 @media (max-width: 600px) { .portal-kal__zwei { grid-template-columns: 1fr; } }
 .portal-kal__gruppen { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 0 1rem; align-items: start; }
+/* Massenanlage */
+.portal-kal__masse-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.portal-kal__masse-bearbeiten { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_HeaderBackground, #f5f6f7); }
