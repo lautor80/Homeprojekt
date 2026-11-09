@@ -216,7 +216,7 @@ export async function nachweisAblegen(
   schreiben: (fn: (tx: Db) => Promise<void>) => Promise<void>,
   opts: { anlass?: string } = {},
 ): Promise<{ id: number; text: string; warnungen: string[] }> {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
   const pl = paperless(v);
   const datei = `${k.belegnr}.pdf`;
   let id = alt?.doc_id ?? null;

@@ -1,6 +1,5 @@
 import type { Verein } from './verein.js';
 import { heute } from './format.js';
-import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, webhookFehler } from './kommunikation.js';
 
 /**
  * Verbindungstests für die Anbindungen in den Stammdaten. Lesende Endpunkte werden wirklich aufgerufen
@@ -8,8 +7,8 @@ import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, webhookFehler } from './kommunik
  * ungültigen Aufruf geprüft (Anmeldung ja, Mail nein), damit keine E-Mail entsteht.
  */
 
-/** Paperless wird zentral geprüft (Administration → Anbindungen) */
-export const ENDPUNKTE = ['mail', 'ep3', 'stunden', 'ferien'] as const;
+/** Paperless und Mailversand werden zentral geprüft (Administration → Anbindungen) */
+export const ENDPUNKTE = ['ep3', 'stunden', 'ferien'] as const;
 export type Endpunkt = (typeof ENDPUNKTE)[number];
 export interface TestErgebnis { ok: boolean; text: string; dauer_ms: number }
 
@@ -31,25 +30,6 @@ function httpFehler(status: number, text: string, mitAnmeldung: boolean): string
 
 async function pruefen(v: Verein, e: Endpunkt): Promise<{ ok: boolean; text: string }> {
   switch (e) {
-    case 'mail': {
-      if (!v.n8n_mail_url) return { ok: false, text: 'Webhook-URL fehlt.' };
-      // nur anklopfen: n8n antwortet auf GET bei einem POST-Webhook mit „not registered for GET requests“
-      const { res, text } = await abrufen(v.n8n_mail_url, { method: 'GET', headers: v.n8n_mail_key ? { 'X-TCO-Key': v.n8n_mail_key } : {} }, 10_000);
-      if (!(/not registered for GET/i.test(text) || res.status === 405 || res.ok)) {
-        return { ok: false, text: (res.status !== 404 && webhookFehler(res.status, text, !!v.n8n_mail_key)) || httpFehler(res.status, text, !!v.n8n_mail_key) };
-      }
-      // Schlüssel prüfen, ohne dass eine Mail entsteht: ungültiger Modus ohne Empfänger – n8n prüft erst die Anmeldung,
-      // der Workflow lehnt den Aufruf danach mit HTTP 400 ab
-      const p = await abrufen(v.n8n_mail_url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...(v.n8n_mail_key ? { 'X-TCO-Key': v.n8n_mail_key } : {}) },
-        body: JSON.stringify({ modus: 'pruefen', anwendung: 'Verbindungstest', objekt: 'PRUEFEN', an: '', betreff: '', text: '', anhaenge: [] }),
-      }, 15_000);
-      const abgelehnt = N8N_PLATZHALTER.test(v.n8n_mail_key ?? '') && (p.res.status === 401 || p.res.status === 403)
-        ? N8N_PLATZHALTER_TEXT : webhookFehler(p.res.status, p.text, !!v.n8n_mail_key);
-      if (abgelehnt) return { ok: false, text: `n8n erreichbar, Workflow aktiv – aber: ${abgelehnt}` };
-      if (p.res.status >= 500) return { ok: false, text: `n8n erreichbar, aber der Workflow meldet einen Fehler (HTTP ${p.res.status}): ${p.text.replace(/\s+/g, ' ').slice(0, 150)}` };
-      return { ok: true, text: `n8n erreichbar, Workflow aktiv, ${v.n8n_mail_key ? 'Webhook-Schlüssel akzeptiert' : 'ohne Webhook-Schlüssel angenommen'} (es wurde keine E-Mail versendet).` };
-    }
     case 'ep3': {
       if (!v.n8n_ep3_url) return { ok: false, text: 'Webhook-URL fehlt.' };
       const { res, text } = await abrufen(v.n8n_ep3_url, {

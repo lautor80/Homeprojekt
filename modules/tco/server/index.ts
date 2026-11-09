@@ -1,4 +1,3 @@
-import { mailWiederholen, nichtWiederholbar, WIEDERHOLBAR } from './mailwiederholen.js';
 import path from 'node:path';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -34,7 +33,8 @@ import { ichLesen, QUELLE } from './platz/logik.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
-import { mailSenden, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT } from './kommunikation.js';
+import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT } from './kommunikation.js';
+import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 
 const P = {
@@ -43,7 +43,7 @@ const P = {
 };
 
 const MASKE = '********';
-const GEHEIM = ['n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth'] as const;
+const GEHEIM = ['n8n_ep3_auth', 'n8n_stunden_auth'] as const;
 
 const vereinSchema = z.object({
   name: z.string().trim().min(1, 'Bitte den Vereinsnamen angeben').max(70),
@@ -53,14 +53,6 @@ const vereinSchema = z.object({
   ansprechpartner: z.string().nullish(), email: z.string().nullish(),
   zahlungsziel_tage: z.coerce.number().int().min(0).max(90),
   logo: z.string().nullish(),
-  n8n_mail_url: z.string().nullish(),
-  n8n_mail_key: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
-  mail_absender: z.preprocess((l) => (Array.isArray(l) ? l.filter((x) => x && (String(x.email ?? '').trim() || String(x.anwendung ?? '').trim())) : l), z.array(z.object({
-    anwendung: z.string().trim().min(1, 'Absender: bitte die Anwendung angeben (* = Standard)').max(40),
-    email: z.string().trim().email('Absender: ungültige E-Mail-Adresse'),
-    name: z.string().trim().max(80).nullish(),
-    antwort_an: z.string().trim().email('Absender: ungültige Antwortadresse').or(z.literal('')).nullish(),
-  })).max(30)).optional(),
   n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
   n8n_stunden_url: z.string().nullish(), n8n_ferien_url: z.string().nullish(), n8n_stunden_auth: z.string().nullish(),
   /** Basic Auth für die Webhooks: Benutzer sichtbar, Passwort nur schreibend (MASKE = unverändert) */
@@ -114,6 +106,7 @@ async function routes(app: FastifyInstance) {
     const out: Record<string, unknown> = { ...v };
     for (const g of GEHEIM) out[g] = v[g] ? MASKE : '';
     out.paperless_token = v.paperless_token ? MASKE : ''; // zentral gepflegt, hier nur Stand
+    out.n8n_mail_key = v.n8n_mail_key ? MASKE : '';
     out.n8n_stunden_pw = v.n8n_stunden_auth ? MASKE : '';
     out.n8n_ep3_pw = v.n8n_ep3_auth ? MASKE : '';
     return out;
@@ -129,8 +122,6 @@ async function routes(app: FastifyInstance) {
       update tco.verein set name = ${d.name}, strasse = ${d.strasse ?? null}, plz_ort = ${d.plz_ort ?? null}, iban = ${d.iban},
              bic = ${d.bic ?? null}, bank = ${d.bank ?? null}, steuernr = ${d.steuernr ?? null}, ansprechpartner = ${d.ansprechpartner ?? null},
              email = ${d.email ?? null}, zahlungsziel_tage = ${d.zahlungsziel_tage}, logo = ${d.logo || null},
-             n8n_mail_url = ${d.n8n_mail_url || null}, n8n_mail_key = ${d.n8n_mail_key?.trim() || null},
-             mail_absender = ${tx.json((d.mail_absender ?? alt.mail_absender ?? []) as never)},
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
              n8n_stunden_url = ${d.n8n_stunden_url || null}, n8n_ferien_url = ${d.n8n_ferien_url || null}, n8n_stunden_auth = ${d.n8n_stunden_auth || null},
              n8n_stunden_user = ${d.n8n_stunden_user || null}, n8n_ep3_user = ${d.n8n_ep3_user || null},
@@ -145,63 +136,6 @@ async function routes(app: FastifyInstance) {
   /** Vereinslogo (weiß, für das orange Kopfband) */
   app.get('/logo', { preHandler: requireAuth() }, async (_req, reply) =>
     reply.type('image/png').header('cache-control', 'max-age=86400').send(asset('logo_weiss.png')));
-
-  /** Verbindungstest Paperless (gespeicherte Werte) */
-  /** Mailprotokoll (letzte Versuche) und Testmail über den n8n-Workflow */
-  // Filter: Anwendung, Zeitraum von/bis (Ortszeit, „JJJJ-MM-TTTHH:MM“ oder nur Datum)
-  const protoFilter = z.object({
-    anwendung: z.string().trim().max(60).optional().transform((x) => x || null),
-    von: z.string().regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/, 'Zeitraum „von“ ungültig').optional().transform((x) => x || null),
-    bis: z.string().regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/, 'Zeitraum „bis“ ungültig').optional().transform((x) => x || null),
-  });
-  type ProtoFilter = z.infer<typeof protoFilter>;
-  // „bis“ ohne Uhrzeit = ganzer Tag; mit Uhrzeit einschließlich dieser Minute
-  const bisGrenze = (b: string) => (b.length === 10 ? `${b}T23:59:59.999` : `${b.replace(' ', 'T')}:59.999`);
-  const protoWo = (db: Db, f: ProtoFilter) => db`
-    where true
-      ${f.anwendung ? db`and anwendung = ${f.anwendung}` : db``}
-      ${f.von ? db`and zeit >= (${f.von.replace(' ', 'T')}::timestamp at time zone 'Europe/Berlin')` : db``}
-      ${f.bis ? db`and zeit <= (${bisGrenze(f.bis)}::timestamp at time zone 'Europe/Berlin')` : db``}`;
-  app.get('/verein/mailprotokoll/anwendungen', { preHandler: requireAuth(P.stammdaten) }, async () =>
-    (await DB`select distinct anwendung from tco.mail_protokoll where anwendung is not null order by 1`).map((r) => r.anwendung as string));
-  /** Protokoll leeren – alles oder nur die gefilterten Einträge */
-  app.delete('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
-    const f = protoFilter.parse(req.body ?? {});
-    const r = await change(req, (tx) => tx`delete from tco.mail_protokoll ${protoWo(tx, f)}`, { action: 'MAILPROTOKOLL_LEEREN' });
-    return { anzahl: r.count, text: `${r.count} Protokolleintrag/-einträge gelöscht.` };
-  });
-  app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
-    const f = protoFilter.parse(req.query);
-    const rows = await DB`
-      select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer,
-             nachricht, to_char(erneut_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as erneut_am, erneut_von, erneut_status
-        from tco.mail_protokoll ${protoWo(DB, f)} order by id desc limit ${f.anwendung || f.von || f.bis ? 500 : 50}`;
-    // Inhalt nie ausliefern – nur, ob und warum (nicht) erneut gesendet werden kann
-    return rows.map(({ nachricht, ...p }) => {
-      const fehlgeschlagen = WIEDERHOLBAR.includes(p.status) && p.erneut_status !== 'gesendet' && p.erneut_status !== 'entwurf';
-      const hinweis = fehlgeschlagen ? nichtWiederholbar({ status: p.status, nachricht, erneut_status: p.erneut_status }) : null;
-      const w = (nachricht as { wiederholung?: { art: string } } | null)?.wiederholung?.art;
-      return { ...p, erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis,
-        erneut_neuer_link: w === 'REG_BESTAETIGUNG' || w === 'EINLADUNG' };
-    });
-  });
-  /** fehlgeschlagene E-Mail erneut senden (Zugangslinks werden dabei neu erzeugt) */
-  app.post('/verein/mailprotokoll/:id/erneut', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
-    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
-    const v = await vereinLesen();
-    return change(req, (tx) => mailWiederholen(tx, v, id, req.user!.displayName || req.user!.username), { action: 'MAIL_ERNEUT', reason: `Mailprotokoll ${id}` });
-  });
-  app.post('/verein/testmail', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
-    const { an } = z.object({ an: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.') }).parse(req.body);
-    const v = await vereinLesen();
-    const r = await mailSenden(v, {
-      modus: 'senden', anwendung: 'Test', objekt: 'TESTMAIL', an, benutzer: req.user!.displayName || req.user!.username, anhaenge: [],
-      betreff: `${v.name}: Testmail aus dem Vereinsportal`,
-      text: `Diese Testmail wurde von ${req.user!.displayName || req.user!.username} im Vereinsportal ausgelöst (Stammdaten → Anbindungen).\n\nWenn sie ankommt, funktioniert der Versand über n8n.`,
-    });
-    if (r.status === 'fehler') throw new BusinessError(`n8n meldet einen Fehler: ${r.fehler ?? 'unbekannt'}`);
-    return { text: `Testmail an ${an} übergeben (${r.status}${r.von ? `, Absender ${r.von}` : ''}${r.hinweis ? ` – ${r.hinweis}` : ''}).` };
-  });
 
   /** Verbindungstest je Endpunkt mit den Werten aus dem Formular (noch nicht gesichert); MASKE = gespeicherter Wert */
   app.post('/verein/test/:endpunkt', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
@@ -347,13 +281,7 @@ const tco: ServerModule = {
   ],
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
-  mailer: async (m) => {
-    const v = await vereinLesen();
-    const r = await mailSenden(v, { modus: 'senden', anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, text: m.text, benutzer: 'Portal', anhaenge: [],
-      // enthält einen persönlichen Kennwort-Link: nie speichern, sondern neu auslösen
-      wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Kennwort-Link – bitte neu auslösen: Administration → Benutzer → „Kennwort-Link senden“ bzw. „Passwort vergessen“ auf der Anmeldeseite.' } });
-    if (r.status === 'fehler') throw new Error(r.fehler ?? 'Der Versand ist fehlgeschlagen.');
-  },
+  mailWiederholen, mailFolge,
   // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
   // Benutzer nur löschbar, solange er nichts gebucht hat: Platzbuchungen (eigene Portalbuchungen und – wie in

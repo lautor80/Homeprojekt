@@ -153,9 +153,9 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   // ---- Vereinsdaten mit Paperless- und n8n-Attrappe
   let r = await call('GET', '/api/m/tco/verein');
   const v = r.body;
-  r = await call('PUT', '/api/m/tco/verein', {
-    ...v, n8n_mail_url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, n8n_mail_key: 'k', n8n_ep3_url: `http://127.0.0.1:${port}/webhook/ep3`,
-  });
+  r = await call('PUT', '/api/m/tco/verein', { ...v, n8n_ep3_url: `http://127.0.0.1:${port}/webhook/ep3` });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('PUT', '/api/verbindungen/mail', { url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, auth_art: 'header', header_name: 'X-TCO-Key', geheimnis: 'k' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   // Paperless zentral (Administration → Anbindungen): sichern, maskiert zurück, prüfen
   r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' });

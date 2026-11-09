@@ -17,6 +17,7 @@ import { auditRoutes } from './routes/audit.js';
 import { settingsRoutes } from './routes/settings.js';
 import { paperlessMappingRoutes } from './routes/paperless.js';
 import { verbindungenRoutes } from './routes/verbindungen.js';
+import { mailRoutes } from './routes/mail.js';
 import { backupRoutes } from './routes/backup.js';
 import { statistikRoutes } from './routes/statistik.js';
 import { sperrRoutes } from './routes/sperren.js';
@@ -61,6 +62,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(settingsRoutes);
   await app.register(paperlessMappingRoutes);
   await app.register(verbindungenRoutes);
+  await app.register(mailRoutes);
   await app.register(backupRoutes);
   await app.register(statistikRoutes);
   await app.register(sperrRoutes);

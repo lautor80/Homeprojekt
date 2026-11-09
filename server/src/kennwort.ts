@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { sql, type Tx } from './db.js';
 import { sha256 } from './auth.js';
-import { activeModules } from './modules.js';
+import { mailSenden, mailVerfuegbar as versandEingerichtet } from './lib/mail.js';
 import { BusinessError } from './errors.js';
 
 /**
@@ -22,13 +22,8 @@ export async function portalUrl(): Promise<string | null> {
   return url ? url.replace(/\/+$/, '') : null;
 }
 
-export interface Mail { an: string; betreff: string; text: string; objekt: string; anwendung: string }
-
-/** Mailversand über das erste aktive Fachmodul, das einen Versand anbietet (z. B. n8n beim TCO) */
-export function mailVerfuegbar(): ((m: Mail) => Promise<void>) | null {
-  const m = activeModules().find((x) => x.mailer);
-  return m?.mailer ?? null;
-}
+/** true, wenn der zentrale Mailversand (Administration → Anbindungen → E-Mail-Versand) eingerichtet ist */
+export const mailVerfuegbar = () => versandEingerichtet();
 
 export async function tokenErzeugen(db: Db, userId: string, zweck: Zweck, ip: string | null): Promise<string> {
   const token = crypto.randomBytes(32).toString('base64url');
@@ -60,16 +55,18 @@ export async function unbekanntesKennwort(): Promise<string> {
 export async function kennwortLinkSenden(db: Db, userId: string, zweck: Zweck, ip: string | null, orgName?: string): Promise<string> {
   const url = await portalUrl();
   if (!url) throw new BusinessError('Für Kennwort-Links fehlt die Portal-Adresse (Administration → Einstellungen).');
-  const mailer = mailVerfuegbar();
-  if (!mailer) throw new BusinessError('Der E-Mail-Versand ist nicht eingerichtet.');
+  if (!(await mailVerfuegbar())) throw new BusinessError('Der E-Mail-Versand ist nicht eingerichtet (Administration → Anbindungen).');
   const [u] = await db`select username, display_name, email from core.users where id = ${userId}`;
   if (!u?.email) throw new BusinessError('Für den Benutzer ist keine E-Mail-Adresse hinterlegt.');
   const token = await tokenErzeugen(db, userId, zweck, ip);
   const link = `${url}/?kennwort=${token}`;
   const org = orgName ?? ((await sql`select value from core.settings where key = 'org.name'`)[0]?.value as string | undefined) ?? 'Portal';
   const reset = zweck === 'RESET';
-  await mailer({
+  const r = await mailSenden({
+    modus: 'senden', benutzer: 'Portal', anhaenge: [], organisation: org,
     an: u.email, anwendung: 'Benutzer', objekt: u.username,
+    // enthält einen persönlichen Kennwort-Link: nie speichern, sondern neu auslösen
+    wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Kennwort-Link – bitte neu auslösen: Administration → Benutzer → „Kennwort-Link senden“ bzw. „Passwort vergessen“ auf der Anmeldeseite.' },
     betreff: reset ? `${org}: Kennwort zurücksetzen` : `${org}: Ihr Zugang – bitte Kennwort festlegen`,
     text: reset
       ? `Guten Tag ${u.display_name || u.username},\n\nfür Ihren Zugang (Benutzer ${u.username}) wurde das Zurücksetzen des Kennworts angefordert. `
@@ -79,5 +76,6 @@ export async function kennwortLinkSenden(db: Db, userId: string, zweck: Zweck, i
         + `Bitte legen Sie über diesen Link Ihr eigenes Kennwort fest (gültig ${GUELTIG_STUNDEN.SETZEN} Stunden, nur einmal verwendbar):\n\n${link}\n\n`
         + `Danach melden Sie sich unter ${url} an.\n\nViele Grüße\n${org}`,
   });
+  if (r.status === 'fehler') throw new BusinessError(r.fehler ?? 'Der Versand ist fehlgeschlagen.');
   return u.email as string;
 }

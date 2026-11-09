@@ -135,7 +135,7 @@ export function Upload() {
                <Button icon="delete" design="Transparent" disabled={busy || !dateien.length} onClick={leeren}>Liste zurücksetzen</Button>
              </>}>
       {(error || ladeFehler) && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error ?? ladeFehler}</MessageStrip>}
-      {stamm && !stamm.paperless && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).</MessageStrip>}
+      {stamm && !stamm.paperless && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Paperless ist nicht eingerichtet (Administration → Anbindungen).</MessageStrip>}
       <Section title="Metadaten für alle Dateien"
                actions={<>
                  <Button design="Transparent" icon="download" tooltip="Voreinstellung des Ablagefelds übernehmen"

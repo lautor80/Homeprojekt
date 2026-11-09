@@ -88,7 +88,7 @@ before(async () => {
   app = await buildApp({ logger: false });
   await admin('POST', '/api/setup', { orgName: 'TC Test', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
   await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
-  await sql`update tco.verein set n8n_mail_url = ${`http://127.0.0.1:${port}/webhook/mail`}, n8n_mail_key = 'k'`;
+  await sql`insert into core.verbindungen (id, url, auth_art, header_name, geheimnis) values ('mail', ${`http://127.0.0.1:${port}/webhook/mail`}, 'header', 'X-TCO-Key', 'k') on conflict (id) do update set url = excluded.url, auth_art = 'header', header_name = 'X-TCO-Key', geheimnis = excluded.geheimnis`;
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, email, zahlungsart, iban1, bic1, einzuglastmandliegtvor, strasse, plz, ort) values
     (${MAX}, 'Max', 'Mustermann', '2020-01-01', 'max@example.org', 'L', 'DE02120300000000202051', 'BYLADEM1001', 'J', 'Hauptstr. 1', '66649', 'Oberthal'),
     (${PETRA}, 'Petra', 'Lehmann', '2020-01-01', 'petra@example.org', 'U', null, null, null, '', '', ''),

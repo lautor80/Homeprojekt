@@ -110,7 +110,7 @@ export const BELEG_TITEL = 'Sammelrechnung Namensliste';
  * werden kann; wird die Sammelrechnung verworfen, löscht der Dialog es wieder (belegVerwerfen).
  */
 export async function bildLesen(v: Verein, bild: Buffer, mime: string): Promise<{ text: string; docId: number }> {
-  if (!plAktiv(v)) throw new BusinessError('Für die Texterkennung aus Bildern wird Paperless benötigt (Stammdaten → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Für die Texterkennung aus Bildern wird Paperless benötigt (Administration → Anbindungen).');
   if (!/^image\/(png|jpe?g|webp|gif|tiff)$/.test(mime)) throw new BusinessError('Bitte ein Bild (PNG, JPG, WEBP, GIF, TIFF) einfügen.');
   const pl = paperless(v);
   const endung = mime.split('/')[1].replace('jpeg', 'jpg');
@@ -125,7 +125,7 @@ export async function bildLesen(v: Verein, bild: Buffer, mime: string): Promise<
 
 /** vorhandenen Paperless-Beleg (DOKID) erneut lesen – Text der Texterkennung */
 export async function belegLesen(v: Verein, id: number): Promise<{ text: string; titel: string; docId: number }> {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
   const d = await paperless(v).dokument(id).catch(() => null);
   if (!d) throw new BusinessError(`Paperless-Dokument ${id} nicht gefunden.`, 404);
   const text = String(d.content ?? '');

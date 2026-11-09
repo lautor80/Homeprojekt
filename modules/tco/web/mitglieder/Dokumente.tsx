@@ -75,7 +75,7 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
   ];
 
   if (!d) return <Text>Lade Dokumente aus Paperless …</Text>;
-  if (!d.paperless) return <MessageStrip hideCloseButton design="Critical">Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).</MessageStrip>;
+  if (!d.paperless) return <MessageStrip hideCloseButton design="Critical">Paperless ist nicht eingerichtet (Administration → Anbindungen).</MessageStrip>;
   return (
     <>
       <Toolbar design="Transparent">

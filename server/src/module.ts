@@ -1,5 +1,6 @@
 import type { KontextDef } from './lib/paperless-mapping.js';
 import type { VerbindungDef } from './lib/verbindungen.js';
+import type { MailFolge, Wiederholung } from './lib/mail.js';
 import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
@@ -64,10 +65,12 @@ export interface ServerModule {
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
   sperrObjekte?: AuditObjectDef[];
   /**
-   * E-Mail-Versand des Moduls (z. B. TCO über n8n) – vom Kern genutzt für Kennwort-Links und Benachrichtigungen.
-   * Wirft bei Fehlern.
+   * Mailprotokoll → „Erneut senden“ für Mails mit Zugangslinks (werden nie gespeichert): das Modul erzeugt für seine
+   * Wiederholungsarten einen neuen Link und sendet; null = Art nicht zuständig. Siehe server/src/lib/mail.ts.
    */
-  mailer?: (m: { an: string; betreff: string; text: string; objekt: string; anwendung: string }) => Promise<void>;
+  mailWiederholen?: (tx: Tx, w: Wiederholung, wer: string) => Promise<string | null>;
+  /** nach erfolgreicher Wiederholung nachziehen, was der erste Versand getan hätte (z. B. Rechnung „versendet“); null = nicht zuständig */
+  mailFolge?: (tx: Tx, f: MailFolge) => Promise<string[] | null>;
   /**
    * Angeschlossene Systeme des Moduls (Administration → Anbindungen): Adresse und Zugangsdaten werden zentral
    * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.

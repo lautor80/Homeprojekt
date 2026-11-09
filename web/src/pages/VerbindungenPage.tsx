@@ -7,6 +7,7 @@ import { FieldBox, FormGrid, TextField } from '../components/FormFields';
 import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
+import { MailAbsender, MailProtokoll, type Absender } from './MailVersand';
 
 /**
  * Administration → Anbindungen: angeschlossene Systeme des Kerns (Paperless) und der Module (z. B. n8n-Webhooks)
@@ -80,12 +81,17 @@ function Verbindung({ def, gruppe }: { def: Def; gruppe: Gruppe }) {
         {w.auth_art === 'header' && <TextField label={f.header_name ?? 'Header-Name'} value={w.header_name ?? def.header_name ?? ''} onChange={set('header_name')} readonly={ro} placeholder="X-TCO-Key" />}
         {w.auth_art !== 'keine' && <TextField label={geheimnisLabel} type="Password" value={w.geheimnis} onChange={set('geheimnis')} readonly={ro} />}
       </FormGrid>
+      {def.id === 'mail' && (
+        <MailAbsender liste={((w.einstellungen as { absender?: Absender[] })?.absender) ?? []} ro={ro}
+                      onChange={(l) => { setW({ ...w, einstellungen: { ...w.einstellungen, absender: l } }); setGeaendert(true); }} />
+      )}
       <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
         <Button design="Emphasized" loading={busy} disabled={!geaendert || ro} onClick={sichern}>Sichern</Button>
         {def.pruefbar && <Button icon="connected" disabled={busy} onClick={pruefen}>{busy ? 'Prüfe …' : 'Verbindung prüfen'}</Button>}
         <ChangeHistoryButton objectType="VERBINDUNG" objectKey={def.id} />
         {test && <ObjectStatus state={test.ok ? 'Positive' : 'Negative'} showDefaultIcon>{test.text}{test.dauer_ms != null ? ` (${(test.dauer_ms / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s)` : ''}</ObjectStatus>}
       </FlexBox>
+      {def.id === 'mail' && <MailProtokoll />}
     </Panel>
   );
 }

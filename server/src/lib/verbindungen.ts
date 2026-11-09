@@ -36,6 +36,8 @@ export interface VerbindungDef {
   header_name?: string;
   /** Verbindungstest mit den (gespeicherten oder aus dem Formular übernommenen) Werten – wirft oder liefert ok/text */
   pruefen?: (v: Verbindung) => Promise<{ ok: boolean; text: string }>;
+  /** zusätzliche Einstellungen prüfen und bereinigen (wirft BusinessError); ohne Angabe werden sie unverändert übernommen */
+  einstellungen?: (e: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export interface VerbindungGruppe { modul: string; name: string; verbindungen: VerbindungDef[] }
@@ -105,7 +107,8 @@ export function uebernehmen(def: VerbindungDef, alt: Verbindung, e: VerbindungEi
   if (auth_art === 'basic' && e.auth_user !== undefined && (e.auth_user ?? '').trim() !== (alt.auth_user ?? '') && e.geheimnis === MASKE && alt.geheimnis) {
     throw new BusinessError('Nach dem Ändern des Benutzers bitte das Passwort neu eingeben.');
   }
-  return { id: def.id, url, auth_art, auth_user, header_name, geheimnis: auth_art === 'keine' ? null : geheimnis, einstellungen: e.einstellungen ?? alt.einstellungen ?? {} };
+  const einstellungen = e.einstellungen ? (def.einstellungen ? def.einstellungen(e.einstellungen) : e.einstellungen) : alt.einstellungen ?? {};
+  return { id: def.id, url, auth_art, auth_user, header_name, geheimnis: auth_art === 'keine' ? null : geheimnis, einstellungen };
 }
 
 export async function verbindungSpeichern(tx: Tx, v: Verbindung, benutzer: string): Promise<void> {
