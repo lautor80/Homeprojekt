@@ -99,6 +99,42 @@ export function menge(dauer: string | null): number {
 export const posBetrag = (p: { bid: string | null; preis: number | null; dauer: string | null }) =>
   runden(p.bid ? Number(p.preis ?? 0) : Number(p.preis ?? 0) * menge(p.dauer));
 
+/** Standard-Erlöskonto der Hallenrechnung (Hallenmiete), wenn am Produkt keines gepflegt ist */
+export const ERLOES_STANDARD = '8003';
+
+/**
+ * Aufteilung einer Hallenrechnung auf Erlöskonten: Summe der Positionen je Erlöskonto des Produkts
+ * (Produkt gültig am Positionsdatum, sonst der neueste Stand; ohne Konto → 8003). Summe = Rechnungsbetrag.
+ */
+export async function rechnungAufteilung(db: Db, rgnr: string): Promise<{ konto: string; betrag: number }[]> {
+  const rows = await db`
+    select p.bid, p.preis::float8 as preis, p.dauer,
+           coalesce(nullif(trim((select pr.erloeskonto from tco.produkte pr where pr.prod_key = p.prod_key
+                                  order by (coalesce(p.datum, current_date) between pr.valid_from and pr.valid_to) desc, pr.valid_to desc
+                                  limit 1)), ''), ${ERLOES_STANDARD}) as konto
+      from tco.rgpos p where p.rgnr_txt = ${rgnr}`;
+  const m = new Map<string, number>();
+  for (const r of rows) m.set(r.konto, runden((m.get(r.konto) ?? 0) + posBetrag(r as never)));
+  return [...m].map(([konto, betrag]) => ({ konto, betrag })).filter((x) => x.betrag !== 0)
+    .sort((a, b) => (a.konto === ERLOES_STANDARD ? -1 : b.konto === ERLOES_STANDARD ? 1 : a.konto.localeCompare(b.konto)));
+}
+
+/**
+ * Zahlung auf die Erlöskonten der Rechnung verteilen: anteilig nach Positionen (bei voller Zahlung exakt),
+ * Rundungsdifferenz auf den größten Anteil. Vorzeichen wie die Zahlung.
+ */
+export function zahlungAufteilen(zahlung: number, teile: { konto: string; betrag: number }[]): { konto: string; betrag: number }[] {
+  const summe = runden(teile.reduce((s, t) => s + t.betrag, 0));
+  if (teile.length <= 1 || !summe) return [{ konto: teile[0]?.konto ?? ERLOES_STANDARD, betrag: runden(zahlung) }];
+  const out = teile.map((t) => ({ konto: t.konto, betrag: runden((zahlung * t.betrag) / summe) }));
+  const diff = runden(zahlung - out.reduce((s, t) => s + t.betrag, 0));
+  if (diff) {
+    const gross = out.reduce((g, t, i) => (Math.abs(t.betrag) > Math.abs(out[g].betrag) ? i : g), 0);
+    out[gross].betrag = runden(out[gross].betrag + diff);
+  }
+  return out.filter((t) => t.betrag !== 0);
+}
+
 // ---------------------------------------------------------------------------
 // Adressnummer zu einem EP3-Namen
 // ---------------------------------------------------------------------------

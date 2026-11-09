@@ -366,16 +366,20 @@ export async function halleRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- Hallenpreise
   app.get('/halle/preise', { preHandler: requireAuth(P_HALLE.display) }, async () => {
-    const produkte = await DB`select prod_key, valid_from::text, valid_to::text, text, preis::float8 as preis, typ
+    const produkte = await DB`select prod_key, valid_from::text, valid_to::text, text, preis::float8 as preis, typ, erloeskonto
                                 from tco.produkte where prod_key < '100' order by prod_key, valid_from`;
+    // Erlöskonten zur Auswahl (ohne Bank-/Kassenkonten)
+    const konten = await DB`select konto, coalesce(name, '') as name from tco.fikonten
+                             where coalesce(kennzahl, '') not in ('BA', 'BK') order by konto`;
     const fenster = await DB`select prod_key, valid_from::text, tag, to_char(zeit_von, 'HH24:MI') as zeit_von, to_char(zeit_bis, 'HH24:MI') as zeit_bis
                                from tco.prmatrix where prod_key < '100' order by prod_key, valid_from, tag, zeit_von`;
-    return { produkte, fenster, gruppen: PREISGRUPPEN };
+    return { produkte, fenster, gruppen: PREISGRUPPEN, konten };
   });
 
   const pflegeSchema = z.object({
     produkte: z.array(z.object({
       prod_key: z.string(), valid_from: z.string(), text: z.string(), preis: z.coerce.number(), typ: z.string().nullish(),
+      erloeskonto: z.string().trim().nullish(),
     })),
     fenster: z.array(z.object({ prod_key: z.string(), valid_from: z.string(), tag: z.string(), zeit_von: z.string(), zeit_bis: z.string() })),
   });
@@ -392,15 +396,24 @@ export async function halleRoutes(app: FastifyInstance) {
     if (fehler.length) throw new BusinessError(`Nicht gespeichert: ${fehler.length} Fehler – bitte zuerst „Prüfen“ ausführen.`);
     const bis = gueltigBis(d.produkte);
     const fenster = fensterZusammenfassen(d.fenster as PflegeFenster[]);
+    const konten = [...new Set(d.produkte.map((p) => p.erloeskonto).filter((k): k is string => !!k))];
+    if (konten.length) {
+      const da = new Set((await DB`select konto from tco.fikonten where konto = any(${konten})`).map((r) => r.konto as string));
+      const fehlt = konten.filter((k) => !da.has(k));
+      if (fehlt.length) throw new BusinessError(`Erlöskonto nicht im Kontenstamm: ${fehlt.join(', ')}`);
+    }
     await change(req, async (tx) => {
       const alt = new Map((await tx`select distinct on (prod_key) prod_key, typ from tco.produkte where prod_key < '100' order by prod_key, valid_from desc`)
         .map((r) => [r.prod_key as string, r.typ as string | null]));
+      const altKonto = new Map((await tx`select prod_key, valid_from::text, erloeskonto from tco.produkte where prod_key < '100'`)
+        .map((r) => [`${r.prod_key}|${r.valid_from}`, r.erloeskonto as string | null]));
       await tx`delete from tco.prmatrix where prod_key < '100'`;
       await tx`delete from tco.produkte where prod_key < '100'`;
       for (const p of d.produkte) {
-        await tx`insert into tco.produkte (prod_key, valid_from, valid_to, text, preis, typ)
+        const konto = p.erloeskonto === undefined ? altKonto.get(`${p.prod_key}|${p.valid_from}`) ?? null : p.erloeskonto || null;
+        await tx`insert into tco.produkte (prod_key, valid_from, valid_to, text, preis, typ, erloeskonto)
                  values (${p.prod_key}, ${p.valid_from}, ${bis.get(`${p.prod_key}|${p.valid_from}`)!}, ${p.text}, ${p.preis},
-                         ${p.typ ?? alt.get(p.prod_key) ?? null})`;
+                         ${p.typ ?? alt.get(p.prod_key) ?? null}, ${konto})`;
       }
       for (const f of fenster) {
         await tx`insert into tco.prmatrix (prod_key, valid_from, valid_to, tag, zeit_von, zeit_bis)

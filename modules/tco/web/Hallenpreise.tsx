@@ -11,7 +11,7 @@ import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { H, dat, eur } from './util';
 
-interface Produkt { prod_key: string; valid_from: string; valid_to?: string; text: string; preis: number | string; typ: string | null }
+interface Produkt { prod_key: string; valid_from: string; valid_to?: string; text: string; preis: number | string; typ: string | null; erloeskonto?: string | null }
 interface Fenster { prod_key: string; valid_from: string; tag: string; zeit_von: string; zeit_bis: string }
 interface Gruppe { gruppe: string; text: string; keys: string[] }
 interface Befund { art: 'Fehler' | 'Hinweis'; text: string }
@@ -43,6 +43,7 @@ export function Hallenpreise() {
   const [produkte, setProdukte] = useState<Produkt[]>([]);
   const [fenster, setFenster] = useState<Fenster[]>([]);
   const [gruppen, setGruppen] = useState<Gruppe[]>([]);
+  const [konten, setKonten] = useState<{ konto: string; name: string }[]>([]);
   const [befunde, setBefunde] = useState<Befund[] | null>(null);
   const [geprueft, setGeprueft] = useState<string | null>(null);
   const [filterKey, setFilterKey] = useState('');
@@ -51,8 +52,8 @@ export function Hallenpreise() {
   const [stichtag, setStichtag] = useState(new Date().toISOString().slice(0, 10));
   const [saison, setSaison] = useState<'WINTER' | 'SOMMER'>('WINTER');
 
-  const laden = () => api.get<{ produkte: Produkt[]; fenster: Fenster[]; gruppen: Gruppe[] }>(`${H}/preise`).then((r) => {
-    setProdukte(r.produkte); setFenster(r.fenster); setGruppen(r.gruppen); setBefunde(null); setGeprueft(null);
+  const laden = () => api.get<{ produkte: Produkt[]; fenster: Fenster[]; gruppen: Gruppe[]; konten?: { konto: string; name: string }[] }>(`${H}/preise`).then((r) => {
+    setProdukte(r.produkte); setFenster(r.fenster); setGruppen(r.gruppen); setKonten(r.konten ?? []); setBefunde(null); setGeprueft(null);
   }).catch((e) => setError(e.message));
   useEffect(() => { laden(); }, []);
 
@@ -60,7 +61,7 @@ export function Hallenpreise() {
   const geaendert = () => { setGeprueft(null); };
   const setP = (i: number, f: Partial<Produkt>) => { setProdukte((p) => p.map((x, j) => (j === i ? { ...x, ...f } : x))); geaendert(); };
   const setF = (i: number, f: Partial<Fenster>) => { setFenster((p) => p.map((x, j) => (j === i ? { ...x, ...f } : x))); geaendert(); };
-  const payload = () => ({ produkte: produkte.map((p) => ({ ...p, preis: num(p.preis) })), fenster });
+  const payload = () => ({ produkte: produkte.map((p) => ({ ...p, preis: num(p.preis), erloeskonto: p.erloeskonto ?? '' })), fenster });
 
   async function pruefen() {
     setBusy(true); setError(null);
@@ -153,7 +154,7 @@ export function Hallenpreise() {
         </Toolbar>
       }>
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead><tr>{['Schlüssel', 'Preisgruppe', 'Gültig ab', 'Gültig bis', 'Bezeichnung', 'Typ', 'Preis (EUR/Std. bzw. Stück)', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+          <thead><tr>{['Schlüssel', 'Preisgruppe', 'Gültig ab', 'Gültig bis', 'Bezeichnung', 'Typ', 'Erlöskonto', 'Preis (EUR/Std. bzw. Stück)', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>
             {produkte.map((p, i) => (
               <tr key={i} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
@@ -166,6 +167,12 @@ export function Hallenpreise() {
                 <td style={zelle}>
                   <Select style={{ width: '10rem' }} disabled={!edit} onChange={(e) => setP(i, { typ: (e.detail.selectedOption as HTMLElement).dataset.t! })}>
                     {Object.entries(TYPEN).map(([k, t]) => <Option key={k} data-t={k} selected={p.typ === k}>{t}</Option>)}
+                  </Select>
+                </td>
+                <td style={zelle}>
+                  <Select style={{ width: '13rem' }} disabled={!edit} onChange={(e) => setP(i, { erloeskonto: (e.detail.selectedOption as HTMLElement).dataset.k || null })}>
+                    <Option data-k="" selected={!p.erloeskonto}>Standard (8003 Hallenmiete)</Option>
+                    {konten.map((k) => <Option key={k.konto} data-k={k.konto} selected={p.erloeskonto === k.konto}>{k.konto} {k.name}</Option>)}
                   </Select>
                 </td>
                 <td style={zelle}><Input style={{ width: '7rem', textAlign: 'right' }} value={String(p.preis).replace('.', ',')} readonly={!edit} onChange={(e) => setP(i, { preis: e.target.value })} /></td>

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { rechnungAufteilung } from '../halle/daten.js';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -206,7 +207,13 @@ export async function fiRoutes(app: FastifyInstance) {
     const b = z.object({ internenr: nr, konto: z.string(), posnr: z.coerce.number().int(), rgnr: z.string().min(1) }).parse(req.body);
     const v = await vereinLesen();
     const r = await change(req, (tx) => rechnungVerknuepfen(tx, b), { action: 'RECHNUNG_ZAHLUNG' });
-    const warnungen = r.beleg && plAktiv(v) ? await zuordnungMelden(v, [r.beleg], b.internenr) : [];
+    const warnungen: string[] = r.beleg && plAktiv(v) ? await zuordnungMelden(v, [r.beleg], b.internenr) : [];
+    // Nachträgliche Zuordnung bucht nicht um: bei mehreren Erlöskonten auf die Splitbuchung hinweisen
+    const teile = await rechnungAufteilung(DB, b.rgnr);
+    if (teile.length > 1) {
+      warnungen.push(`Rechnung ${b.rgnr} enthält Positionen auf mehreren Erlöskonten (${teile.map((t) => `${t.konto}: ${t.betrag.toFixed(2).replace('.', ',')} €`).join(', ')}). `
+        + 'Die bestehende Buchung bleibt unverändert – für die Aufteilung die Buchung stornieren und im Bankimport mit Hallenrechnung neu buchen.');
+    }
     return { ...r, statusText: RG_STATUS[r.status], warnungen };
   });
 

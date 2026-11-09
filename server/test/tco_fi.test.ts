@@ -210,3 +210,58 @@ test('FI Belege: Bankimport, Buchen, Rechnung, Storno', async () => {
   const [h] = await sql`select count(*)::int as n from core.change_header where object_type = 'FIBELEG' and action = 'STORNO'`;
   assert.ok(h.n >= 1);
 });
+
+test('FI Splitbuchung: Hallenrechnung nach Erlöskonten der Produkte aufteilen', async () => {
+  // Produkte: 001 Hallenmiete (ohne Konto → 8003), 093 Sonstiges mit Erlöskonto 8005
+  await sql`delete from tco.produkte where prod_key in ('001', '093')`;
+  await sql`insert into tco.produkte (prod_key, valid_from, valid_to, text, preis, typ, erloeskonto) values
+            ('001', '2026-01-01', '9999-12-31', 'Halle', 20, '2', null),
+            ('093', '2026-01-01', '9999-12-31', 'Sonstiges', 0, '4', '8005')`;
+  const rg = async (nr: string, betrag: number) => {
+    await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status) values (${nr}, 2026, ${Number(nr.slice(5))}, 'SPLIT TEST', ${betrag}, '3')`;
+    await sql`insert into tco.rgpos (rgnr_txt, rgpos, bid, datum, dauer, prod_key, preis) values
+              (${nr}, 1, 'B1', '2026-11-02', '60', '001', 60), (${nr}, 2, null, '2026-11-02', '2', '093', 15)`;
+  };
+  await rg('2026_101', 90);
+  await rg('2026_102', 90);
+
+  // Hallenpreise liefern das Erlöskonto, Pflege prüft es gegen den Kontenstamm
+  let r = await call('GET', '/api/m/tco/halle/preise');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.produkte.find((p: any) => p.prod_key === '093').erloeskonto, '8005');
+  assert.ok(r.body.konten.some((k: any) => k.konto === '8005'));
+  assert.ok(!r.body.konten.some((k: any) => k.konto === '1200'));
+
+  // Vollzahlung: 60 → 8003, 30 → 8005; Rechnung bezahlt, alle Zeilen tragen die Rechnung
+  r = await call('POST', `${F}/buchen`, { konto: '1200', umsaetze: [{ datum: '2026-11-10', text: 'Rechnung 2026_101', betrag: 90, positionen: [{ gkonto: '8003', betrag: 90, rgnr: '2026_101' }] }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let nr = r.body.gebucht[0].internenr;
+  let z = await sql`select konto, haben::float8 as haben, soll::float8 as soll, rgnr_txt from tco.fibuchungen where internenr = ${nr} order by konto`;
+  assert.deepEqual(z.map((x) => [x.konto, x.soll, x.haben, x.rgnr_txt]), [['1200', 90, 0, '2026_101'], ['8003', 0, 60, '2026_101'], ['8005', 0, 30, '2026_101']]);
+  let [k] = await sql`select status from tco.rgkopf where rgnr_txt = '2026_101'`;
+  assert.equal(k.status, '4');
+
+  // Teilzahlung 50 zusammen mit einer Spende: anteilig 33,33 / 16,67; Teilzahlung 50 in rgtz, nur Rechnungszeilen verknüpft
+  r = await call('POST', `${F}/buchen`, { konto: '1200', umsaetze: [{ datum: '2026-11-11', text: 'Rechnung 2026_102 Teil + Spende', betrag: 60,
+    positionen: [{ gkonto: '8003', betrag: 50, rgnr: '2026_102' }, { gkonto: '8100', betrag: 10 }] }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  nr = r.body.gebucht[0].internenr;
+  z = await sql`select konto, haben::float8 as haben, rgnr_txt from tco.fibuchungen where internenr = ${nr} and konto <> '1200' order by konto`;
+  assert.deepEqual(z.map((x) => [x.konto, x.haben, x.rgnr_txt]), [['8003', 33.33, '2026_102'], ['8005', 16.67, '2026_102'], ['8100', 10, null]]);
+  [k] = await sql`select status from tco.rgkopf where rgnr_txt = '2026_102'`;
+  assert.equal(k.status, '5');
+  const [tz] = await sql`select betrag::float8 as b from tco.rgtz where rgnr_txt = '2026_102' and fibeleg = ${nr}`;
+  assert.equal(tz.b, 50);
+
+  // Storno löst die Teilzahlung wieder
+  r = await call('POST', `${F}/storno`, { internenr: nr, grund: 'Test' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  [k] = await sql`select status from tco.rgkopf where rgnr_txt = '2026_102'`;
+  assert.equal(k.status, '1');
+
+  // Nachträgliche Zuordnung: Hinweis auf mehrere Erlöskonten
+  r = await call('POST', `${F}/buchen`, { konto: '1000', umsaetze: [{ datum: '2026-11-12', text: 'Bar Halle', betrag: 90, positionen: [{ gkonto: '8003', betrag: 90 }] }] });
+  r = await call('POST', `${F}/rechnung`, { internenr: r.body.gebucht[0].internenr, konto: '8003', posnr: 0, rgnr: '2026_102' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.warnungen.some((w: string) => /mehreren Erlöskonten/.test(w)));
+});

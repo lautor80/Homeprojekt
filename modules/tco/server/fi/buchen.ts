@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { dat, runden } from '../format.js';
 import { laufPositionen, laufVerbucht, laufZuruecksetzen } from '../soll/logik.js';
+import { rechnungAufteilung, zahlungAufteilen } from '../halle/daten.js';
 
 /** Schreibende FI-Logik: Buchen, Storno, Rechnung und Belege zuordnen, Notizen */
 
@@ -9,7 +10,9 @@ export interface Position {
   gkonto: string;
   betrag: number;          // vorzeichenbehaftet wie der Umsatz: + = Eingang auf dem Geldkonto
   text?: string | null;
-  rgnr?: string | null;    // Hallenrechnung (nur Gegenkonto 8003)
+  rgnr?: string | null;    // Hallenrechnung (Erfassung mit Gegenkonto 8003; beim Buchen Aufteilung auf die Erlöskonten der Rechnung)
+  /** intern: Teil einer nach Erlöskonten aufgeteilten Rechnungszahlung (gleiche Nummer = eine Zahlung) */
+  rgTeil?: number;
 }
 
 export interface Umsatz {
@@ -93,6 +96,19 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
   }
   const fehler = umsaetze.flatMap((u, i) => pruefen(u, i + 1));
   if (fehler.length) throw new BusinessError(`Bitte folgende Umsätze prüfen:\n${fehler.join('\n')}`);
+  // Hallenrechnung: Zahlung nach den Erlöskonten der Rechnungspositionen aufteilen (Splitbuchung)
+  let teilNr = 0;
+  for (const u of umsaetze) {
+    const neu: Position[] = [];
+    for (const p of u.positionen) {
+      if (!p.rgnr) { neu.push(p); continue; }
+      const teile = await rechnungAufteilung(tx, p.rgnr);
+      const nr = ++teilNr;
+      if (teile.length <= 1) { neu.push({ ...p, gkonto: teile[0]?.konto ?? p.gkonto, rgTeil: nr }); continue; }
+      for (const t of zahlungAufteilen(p.betrag, teile)) neu.push({ ...p, gkonto: t.konto, betrag: t.betrag, rgTeil: nr });
+    }
+    u.positionen = neu;
+  }
   await sperren(tx);
 
   const [k] = await tx`select count(*)::int as n from tco.fikonten where konto = any(${[...new Set(umsaetze.flatMap((u) => [u.konto, ...u.positionen.map((p) => p.gkonto)]))]})`;
@@ -142,13 +158,25 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
 
     const rechnungen: string[] = [];
     const pn = new Map<string, number>();
+    const gruppen = new Map<number, { rgnr: string; betrag: number; zeilen: { konto: string; posnr: number }[] }>();
     for (const p of u.positionen) {
       const n = pn.get(p.gkonto) ?? 0;
       pn.set(p.gkonto, n + 1);
       if (p.rgnr) {
-        await rechnungVerknuepfen(tx, { internenr, konto: p.gkonto, posnr: n, rgnr: p.rgnr });
-        rechnungen.push(p.rgnr);
+        const g = gruppen.get(p.rgTeil ?? -n) ?? { rgnr: p.rgnr, betrag: 0, zeilen: [] };
+        g.betrag = runden(g.betrag + p.betrag);
+        g.zeilen.push({ konto: p.gkonto, posnr: n });
+        gruppen.set(p.rgTeil ?? -n, g);
       }
+    }
+    for (const g of gruppen.values()) {
+      const [z0] = g.zeilen;
+      const allein = g.zeilen.length === u.positionen.length;
+      await rechnungVerknuepfen(tx, {
+        internenr, konto: z0.konto, posnr: z0.posnr, rgnr: g.rgnr,
+        ...(g.zeilen.length > 1 ? { betrag: Math.abs(g.betrag), zeilen: allein ? null : g.zeilen } : {}),
+      });
+      rechnungen.push(g.rgnr);
     }
     const belege = u.belege?.length ? await belegeZuordnen(tx, internenr, u.belege) : [];
     if (u.notiz?.trim()) await notizAnlegen(tx, internenr, u.notiz, benutzer);
@@ -162,7 +190,11 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
  * Hallenrechnung einer Position zuordnen (RGNR_LINK). Zahlung kleiner Rechnungsbetrag = Teilzahlung (rgtz).
  * Status 4 bei gezahlt ≥ Betrag, sonst 5; Zahldatum = Buchungsdatum; Rechnungs-PDF wird Beleg der Buchung.
  */
-export async function rechnungVerknuepfen(tx: Db, z: { internenr: string; konto: string; posnr: number; rgnr: string }) {
+export async function rechnungVerknuepfen(tx: Db, z: {
+  internenr: string; konto: string; posnr: number; rgnr: string;
+  /** Splitbuchung nach Erlöskonten: Zahlbetrag aller Teilzeilen und die Zeilen (null = ganze Buchung) */
+  betrag?: number; zeilen?: { konto: string; posnr: number }[] | null;
+}) {
   const [rg] = await tx`select rgnr_txt, betrag::float8 as betrag, status, doknr, kunde from tco.rgkopf where rgnr_txt = ${z.rgnr} for update`;
   if (!rg) throw new BusinessError(`Rechnung ${z.rgnr} nicht gefunden`);
   if (rg.status === '4' || rg.status === '6') throw new BusinessError(`Rechnung ${z.rgnr} ist bereits abgeschlossen (${rg.status === '4' ? 'bezahlt' : 'ausgefallen'})`);
@@ -170,8 +202,9 @@ export async function rechnungVerknuepfen(tx: Db, z: { internenr: string; konto:
                         where internenr = ${z.internenr} and konto = ${z.konto} and posnr = ${z.posnr}`;
   if (!b) throw new BusinessError(`Buchung ${z.internenr} nicht gefunden`);
   if (b.rgnr_txt) throw new BusinessError(`Buchung ${z.internenr} ist bereits Rechnung ${b.rgnr_txt} zugeordnet`);
+  if (z.betrag != null) b.betrag = runden(z.betrag);
   const [{ n: anz }] = await tx`select count(*)::int as n from tco.fibuchungen where internenr = ${z.internenr} and konto = ${z.konto}`;
-  const split = anz > 1;
+  const split = z.betrag == null && anz > 1;
 
   let gezahlt: number;
   let teil = false;
@@ -186,7 +219,11 @@ export async function rechnungVerknuepfen(tx: Db, z: { internenr: string; konto:
   }
   const status = gezahlt >= rg.betrag - 0.004 ? '4' : '5';
   await tx`update tco.rgkopf set status = ${status}, bezahlt = ${b.datum} where rgnr_txt = ${z.rgnr}`;
-  if (split) {
+  if (z.zeilen?.length) {
+    for (const x of z.zeilen) {
+      await tx`update tco.fibuchungen set rgnr_txt = ${z.rgnr} where internenr = ${z.internenr} and konto = ${x.konto} and posnr = ${x.posnr}`;
+    }
+  } else if (split) {
     await tx`update tco.fibuchungen set rgnr_txt = ${z.rgnr} where internenr = ${z.internenr} and konto = ${z.konto} and posnr = ${z.posnr}`;
   } else {
     await tx`update tco.fibuchungen set rgnr_txt = ${z.rgnr} where internenr = ${z.internenr}`;
