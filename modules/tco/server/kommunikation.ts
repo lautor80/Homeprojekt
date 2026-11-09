@@ -125,6 +125,14 @@ export function absenderFuer(v: Pick<Verein, 'mail_absender'>, anwendung: string
  * E-Mail über den generischen n8n-Workflow „TCO Mailversand“ (Webhook tco-mailversand, docs/n8n/tco-mailversand.json).
  * Beliebig viele Anhänge; Absender/Antwortadresse je Anwendung aus den Stammdaten (n8n prüft gegen seine Erlaubnisliste).
  */
+/**
+ * n8n zeigt gespeicherte Geheimnisse in Zugangsdaten nie an, sondern den Platzhalter „__n8n_BLANK_VALUE_…“.
+ * Wer ihn kopiert, trägt im Portal nicht den Schlüssel, sondern den Platzhalter ein – n8n lehnt dann jeden Aufruf ab.
+ */
+export const N8N_PLATZHALTER = /^__n8n_BLANK_VALUE_/;
+export const N8N_PLATZHALTER_TEXT = 'Das ist nicht der Schlüssel, sondern der Platzhalter, den n8n statt gespeicherter Geheimnisse anzeigt '
+  + '(„__n8n_BLANK_VALUE_…“). Bitte in n8n im Credential „Header Auth account“ einen neuen Wert eintragen und genau diesen Wert hier hinterlegen.';
+
 /** Klartext für eine Ablehnung des Mail-Webhooks durch n8n (Header-Auth: fehlender und falscher Schlüssel ergeben beide 403) */
 export function webhookFehler(status: number, text: string, mitSchluessel: boolean): string | null {
   if (/No authentication data defined/i.test(text)) {
@@ -257,6 +265,7 @@ async function mailSendenIntern(v: Verein & { n8n_mail_url: string }, m: Paramet
     throw new BusinessError(`n8n nicht erreichbar: ${(e as Error).message}`, 502);
   }
   const t = await res.text();
+  if ((res.status === 401 || res.status === 403) && N8N_PLATZHALTER.test(v.n8n_mail_key ?? '')) throw new BusinessError(N8N_PLATZHALTER_TEXT, 502);
   const ablehnung = webhookFehler(res.status, t, !!v.n8n_mail_key);
   if (ablehnung) throw new BusinessError(ablehnung, 502);
   let r: MailErgebnis;

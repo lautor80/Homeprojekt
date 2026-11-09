@@ -33,7 +33,7 @@ import { rolleSicherstellen } from './platz/registrierung.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
-import { mailSenden } from './kommunikation.js';
+import { mailSenden, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT } from './kommunikation.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 
 const P = {
@@ -53,7 +53,8 @@ const vereinSchema = z.object({
   zahlungsziel_tage: z.coerce.number().int().min(0).max(90),
   logo: z.string().nullish(),
   paperless_url: z.string().nullish(), paperless_token: z.string().nullish(),
-  n8n_mail_url: z.string().nullish(), n8n_mail_key: z.string().nullish(),
+  n8n_mail_url: z.string().nullish(),
+  n8n_mail_key: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
   mail_absender: z.preprocess((l) => (Array.isArray(l) ? l.filter((x) => x && (String(x.email ?? '').trim() || String(x.anwendung ?? '').trim())) : l), z.array(z.object({
     anwendung: z.string().trim().min(1, 'Absender: bitte die Anwendung angeben (* = Standard)').max(40),
     email: z.string().trim().email('Absender: ungültige E-Mail-Adresse'),
@@ -63,8 +64,8 @@ const vereinSchema = z.object({
   n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
   n8n_stunden_url: z.string().nullish(), n8n_ferien_url: z.string().nullish(), n8n_stunden_auth: z.string().nullish(),
   /** Basic Auth für die Webhooks: Benutzer sichtbar, Passwort nur schreibend (MASKE = unverändert) */
-  n8n_stunden_user: z.string().nullish(), n8n_stunden_pw: z.string().nullish(),
-  n8n_ep3_user: z.string().nullish(), n8n_ep3_pw: z.string().nullish(),
+  n8n_stunden_user: z.string().nullish(), n8n_stunden_pw: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
+  n8n_ep3_user: z.string().nullish(), n8n_ep3_pw: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
   halle_stichtag: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   halle_ausschluss: z.string().default(''),
   halle_plaetze: z.string().optional(),

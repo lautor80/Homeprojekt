@@ -1,6 +1,6 @@
 import { paperless, plAktiv, type Verein } from './verein.js';
 import { heute } from './format.js';
-import { webhookFehler } from './kommunikation.js';
+import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, webhookFehler } from './kommunikation.js';
 
 /**
  * Verbindungstests für die Anbindungen in den Stammdaten. Lesende Endpunkte werden wirklich aufgerufen
@@ -50,7 +50,8 @@ async function pruefen(v: Verein, e: Endpunkt): Promise<{ ok: boolean; text: str
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(v.n8n_mail_key ? { 'X-TCO-Key': v.n8n_mail_key } : {}) },
         body: JSON.stringify({ modus: 'pruefen', anwendung: 'Verbindungstest', objekt: 'PRUEFEN', an: '', betreff: '', text: '', anhaenge: [] }),
       }, 15_000);
-      const abgelehnt = webhookFehler(p.res.status, p.text, !!v.n8n_mail_key);
+      const abgelehnt = N8N_PLATZHALTER.test(v.n8n_mail_key ?? '') && (p.res.status === 401 || p.res.status === 403)
+        ? N8N_PLATZHALTER_TEXT : webhookFehler(p.res.status, p.text, !!v.n8n_mail_key);
       if (abgelehnt) return { ok: false, text: `n8n erreichbar, Workflow aktiv – aber: ${abgelehnt}` };
       if (p.res.status >= 500) return { ok: false, text: `n8n erreichbar, aber der Workflow meldet einen Fehler (HTTP ${p.res.status}): ${p.text.replace(/\s+/g, ' ').slice(0, 150)}` };
       return { ok: true, text: `n8n erreichbar, Workflow aktiv, ${v.n8n_mail_key ? 'Webhook-Schlüssel akzeptiert' : 'ohne Webhook-Schlüssel angenommen'} (es wurde keine E-Mail versendet).` };

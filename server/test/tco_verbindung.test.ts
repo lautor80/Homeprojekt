@@ -99,6 +99,11 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: 'falsch' });
   assert.equal(r.body.ok, false, r.body.text);
   assert.match(r.body.text, /Schlüssel abgelehnt.*X-TCO-Key/);
+  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: '__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6' });
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(JSON.stringify(r.body), /Platzhalter/);
+  r = await call('PUT', '/api/m/tco/verein', { ...g, n8n_mail_key: '__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6' });
+  assert.equal(r.status, 400, 'Platzhalter wird nicht gespeichert');
   r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: 'richtig' });
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /Schlüssel akzeptiert/);
