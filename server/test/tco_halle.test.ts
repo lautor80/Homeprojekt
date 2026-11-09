@@ -324,6 +324,14 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.equal(mock.mails[0].anwendung, 'HALLENRECHNUNG');
   assert.equal(mock.mails[0].anhaenge[0].dateiname, `Rechnung_${rg}.pdf`);
   assert.match(mock.docs.get(100)!.notes[0], /E-Mail gesendet/);
+  // Fassung des Neudrucks: eigene Paperless-ID, nur über das Stammdokument der Rechnung zu öffnen (#29)
+  const fassung = mock.docs.get(100)!.versions[0];
+  r = await call('GET', `${H}/rechnungen/${rg}/paperless`);
+  assert.deepEqual(r.body.versionen.map((x: any) => x.id), [100, fassung]);
+  assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf?root=100`)).status, 200, 'Fassung des Neudrucks darf geöffnet werden');
+  assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf`)).status, 404, 'Fassung ohne Stammdokument bleibt gesperrt');
+  assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf?root=99999`)).status, 404, 'fremdes Stammdokument');
+  assert.equal((await call('GET', `${H}/paperless/99998/pdf?root=100`)).status, 404, 'Dokument ist keine Fassung der Rechnung');
   [k] = await sql`select status from tco.rgkopf where rgnr_txt = ${rg}`;
   assert.equal(k.status, '3');
 
