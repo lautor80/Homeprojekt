@@ -48,10 +48,10 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
     const bereiche: Bereich[] = [
       { key: 'MITGLIEDER', title: 'Mitglieder', kpis: await collectMitglieder(DB, gj) },
-      { key: 'CLUBHAUS', title: 'Clubhaus', kpis: await collectClubhaus(DB, gj) },
       { key: 'FINANZEN', title: 'Finanzen', kpis: await collectFinanzen(DB, gj) },
+      { key: 'CLUBHAUS', title: 'Clubhaus', kpis: await collectClubhaus(DB, gj) },
       { key: 'JUGEND', title: 'Jugend', kpis: await collectJugend(DB, gj) },
-      { key: 'HALLE', title: 'Halle', kpis: await collectHalle() },
+      { key: 'HALLE', title: 'Halle', kpis: await collectHalle(DB) },
     ];
 
     // Jahresauswahl der Diagramme (load_cmp_years / fin_auswahl_laden)

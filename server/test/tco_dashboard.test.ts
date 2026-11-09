@@ -83,7 +83,7 @@ test('Dashboard: Bereiche, Kennzahlen und Diagrammdaten', async () => {
   const d = r.body;
   assert.equal(d.jahr, J);
   assert.ok(d.jahre.includes(J));
-  assert.deepEqual(d.bereiche.map((b: any) => b.key), ['MITGLIEDER', 'CLUBHAUS', 'FINANZEN', 'JUGEND', 'HALLE']);
+  assert.deepEqual(d.bereiche.map((b: any) => b.key), ['MITGLIEDER', 'FINANZEN', 'CLUBHAUS', 'JUGEND', 'HALLE']);
   const kpi = (k: string) => d.bereiche.flatMap((b: any) => b.kpis).find((x: any) => x.key === k);
 
   // Mitglieder: 4 mit Eintritt - 1 Austritt = 3; im Jahr J: 1 Eintritt, 1 Austritt, Saldo 0
@@ -124,6 +124,12 @@ test('Dashboard: Bereiche, Kennzahlen und Diagrammdaten', async () => {
 
   // Jugend: 3 Std im Januar + 2 im Februar = 5 im Jahr
   assert.equal(kpi('JUG_TRAINING').details, `5 Std im Jahr ${J}`);
+  // aktive Jugendliche: Jana (unter 18, im Jugendtraining)
+  assert.equal(kpi('JUG_MITGL').value, '1');
+  assert.equal(kpi('JUG_MITGL').todo, false);
+  assert.match(kpi('JUG_MITGL').details, /^1 davon im Jugendtraining · 1 Trainingsteilnehmer gesamt/);
+  assert.equal(kpi('HAL_ABR').todo, false);
+  assert.equal(kpi('HAL_BELEGUNG').value, '–', 'ohne Hallenplätze keine Quote');
   const jug = d.charts.jugend;
   assert.deepEqual(jug.jahreSel, [String(J)]);
   assert.equal(jug.stacks.length, 2);
@@ -218,6 +224,19 @@ test('Dashboard: Buchungen ohne Beleg im laufenden Monat, Abgleich Gewinn/Ergebn
   assert.equal(kpi('FIN_GEWINN').value, '530,00');
   assert.match(kpi('FIN_GEWINN').details, /davon ohne Geldkonto 50,00/);
   assert.equal(r.body.charts.finanzen.ergebnis, 480);
+});
+
+test('Dashboard: Belegungsquote der Halle innerhalb der Buchungszeiten', async () => {
+  const { belegungsquote, hallenSaison } = await import('../../modules/tco/server/dashboard/kpi.js');
+  assert.deepEqual(hallenSaison('2026-11-09'), { von: '2026-10-01', bis: '2026-11-09', laufend: true });
+  assert.deepEqual(hallenSaison('2026-06-15'), { von: '2025-10-01', bis: '2026-04-30', laufend: false });
+  await sql`insert into tco.plaetze (name, art, aliase, wochentage, zeit_von, zeit_bis, gueltig_von) values ('Halle 1', 'HALLE', 'H1', '1234567', '08:00', '22:00', '2020-01-01')`;
+  // 01./02.10.2025: Kapazität 2 × 14 Std; Buchung 10–12 Uhr, eine über das Buchungsende hinaus (21–23 → 1 Std), eine storniert
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values
+            ('Q1', '2025-10-01', '10:00', '12:00', 'A', '1', 'Halle 1'), ('Q2', '2025-10-02', '21:00', '23:00', 'B', '3', 'h1'),
+            ('Q3', '2025-10-02', '14:00', '16:00', 'C', '2', 'Halle 1')`;
+  const q = await belegungsquote(sql as never, '2025-10-02');
+  assert.deepEqual([q.belegt, q.kapazitaet, q.quote], [180, 1680, 10.71]);
 });
 
 test('Dashboard: Berechtigung', async () => {

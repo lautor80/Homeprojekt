@@ -156,7 +156,7 @@ export async function collectJugend(db: Db, jahr: number): Promise<Kpi[]> {
   const stdMonat = (await jugendStundenLesen(db, monatVon, naechster)).reduce((a, s) => a + s.stunden, 0);
   const stdJahr = (await jugendStundenLesen(db, `${jahr}-01-01`, `${jahr}-12-31`)).reduce((a, s) => a + s.stunden, 0);
   return [
-    kpi({ key: 'JUG_MITGL', title: 'Aktive Jugendliche', subtitle: `Stand ${dat(h)}`, value: '0', unit: 'Personen', details: 'noch nicht angebunden', icon: 'study-leave', todo: true }),
+    kpi(await aktiveJugendliche(db, h)),
     kpi({
       key: 'JUG_TRAINING', title: 'Trainingsstunden', subtitle: `laufender Monat (${h.slice(5, 7)}/${h.slice(0, 4)})`, value: stunden(stdMonat), unit: 'Std',
       details: `${stunden(stdJahr)} Std im Jahr ${jahr}`, icon: 'sports-target',
@@ -167,10 +167,104 @@ export async function collectJugend(db: Db, jahr: number): Promise<Kpi[]> {
 
 // ---------------------------------------------------------------- Halle
 
-export async function collectHalle(): Promise<Kpi[]> {
+/**
+ * Aktive Jugendliche: aktive Mitglieder (eingetreten, nicht ausgetreten) unter 18 Jahren am Stichtag;
+ * dazu, wie viele davon bzw. insgesamt am Jugendtraining teilnehmen (laufender Vertrag Art 90).
+ */
+async function aktiveJugendliche(db: Db, h: string) {
+  const grenze = `${Number(h.slice(0, 4)) - 18}${h.slice(4)}`;          // geboren nach diesem Tag = unter 18
+  const [r] = await db`
+    with aktiv as (select m.adrnr, m.geburtsdatum from tco.mitglieder m
+                    where m.eintritt is not null and m.eintritt <= ${h} and (m.austritt is null or m.austritt >= ${h})),
+         training as (select distinct v.adrnr from tco.vertraege v
+                       where trim(coalesce(v.art, '')) = '90' and (v.vertragbegin is null or v.vertragbegin <= ${h}) and (v.vertragende is null or v.vertragende >= ${h}))
+    select count(*) filter (where a.geburtsdatum > ${grenze}::date)::int as jugend,
+           count(*) filter (where a.geburtsdatum > ${grenze}::date and t.adrnr is not null)::int as jugend_training,
+           (select count(*)::int from training) as training,
+           count(*) filter (where a.geburtsdatum is null)::int as ohne_geb
+      from aktiv a left join training t on t.adrnr = a.adrnr`;
+  return {
+    key: 'JUG_MITGL', title: 'Aktive Jugendliche', subtitle: `unter 18 Jahren, Stand ${dat(h)}`, value: ganz(r.jugend), unit: 'Personen',
+    details: `${ganz(r.jugend_training)} davon im Jugendtraining · ${ganz(r.training)} Trainingsteilnehmer gesamt${r.ohne_geb ? ` · ${ganz(r.ohne_geb)} Mitglieder ohne Geburtsdatum` : ''}`,
+    icon: 'study-leave', state: 'Positive' as State,
+  };
+}
+
+/** laufende Hallensaison (01.10.–30.04.); im Sommer die zuletzt abgeschlossene */
+export function hallenSaison(h: string): { von: string; bis: string; laufend: boolean } {
+  const j = Number(h.slice(0, 4)), m = Number(h.slice(5, 7));
+  const start = m >= 10 ? j : j - 1;
+  const von = `${start}-10-01`, ende = `${start + 1}-04-30`;
+  return { von, bis: h < ende ? h : ende, laufend: h <= ende };
+}
+
+const minutenVon = (t: string) => { const [hh, mm] = t.split(':').map(Number); return (hh === 0 && mm === 0 ? 24 : hh) * 60 + mm; };
+
+/**
+ * Belegungsquote der Halle: gebuchte Minuten (Einzel, Abo, Einzel aus Abo; ohne storniert/entfallen) und feste Belegungen
+ * (Training, Veranstaltung) innerhalb der Buchungszeiten der Hallenplätze (Buchungsstart bis -ende, Wochentage, Gültigkeit)
+ * im Verhältnis zur maximal buchbaren Zeit der Saison bis heute.
+ */
+export async function belegungsquote(db: Db, h: string) {
+  const s = hallenSaison(h);
+  const plaetze = await db`select id, name, aliase, wochentage, zeit_von::text as von, zeit_bis::text as bis, gueltig_von::text as gv, gueltig_bis::text as gb
+                             from tco.plaetze where art = 'HALLE' and aktiv`;
+  let kapazitaet = 0;
+  for (let d = s.von; d <= s.bis; d = addTage(d, 1)) {
+    const wt = String(((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
+    for (const p of plaetze) if (d >= p.gv && d <= p.gb && p.wochentage.includes(wt)) kapazitaet += minutenVon(p.bis) - minutenVon(p.von);
+  }
+  if (!plaetze.length || !kapazitaet) return { quote: null as number | null, belegt: 0, kapazitaet: 0, saison: s };
+  const namen = plaetze.flatMap((p) => [p.name, ...String(p.aliase ?? '').split(',')].map((x) => x.trim().toUpperCase()).filter(Boolean)
+    .map((n) => ({ n, von: minutenVon(p.von), bis: minutenVon(p.bis) })));
+  const zeit = new Map(namen.map((x) => [x.n, x]));
+  const buchungen = await db`select upper(trim(platz)) as platz, time_start::text as s, time_ende::text as e from tco.bookings
+                              where datum between ${s.von} and ${s.bis} and status in ('1', '3', '5') and time_start is not null and time_ende is not null
+                                and upper(trim(coalesce(platz, ''))) = any(${[...zeit.keys()]})`;
+  let belegt = 0;
+  for (const b of buchungen) {
+    const z = zeit.get(b.platz)!;
+    belegt += Math.max(0, Math.min(minutenVon(b.e), z.bis) - Math.max(minutenVon(b.s), z.von));
+  }
+  // feste Belegungen (Training, Veranstaltung); leere Platzliste = alle Hallenplätze
+  const fest = await db`select plaetze, wochentage, datum_von::text as dv, datum_bis::text as db, zeit_von::text as von, zeit_bis::text as bis
+                          from tco.platzbelegungen where aktiv and art in ('TRAINING', 'VERANSTALTUNG') and datum_bis >= ${s.von} and datum_von <= ${s.bis}`;
+  for (const f of fest) {
+    const ziel = plaetze.filter((p) => !f.plaetze?.length || f.plaetze.includes(p.id));
+    for (let d = f.dv > s.von ? f.dv : s.von; d <= (f.db < s.bis ? f.db : s.bis); d = addTage(d, 1)) {
+      const wt = String(((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
+      if (!f.wochentage.includes(wt)) continue;
+      for (const p of ziel) {
+        if (d < p.gv || d > p.gb || !p.wochentage.includes(wt)) continue;
+        belegt += Math.max(0, Math.min(minutenVon(f.bis), minutenVon(p.bis)) - Math.max(minutenVon(f.von), minutenVon(p.von)));
+      }
+    }
+  }
+  belegt = Math.min(belegt, kapazitaet);
+  return { quote: runden((belegt / kapazitaet) * 100), belegt, kapazitaet, saison: s };
+}
+
+export async function collectHalle(db: Db): Promise<Kpi[]> {
+  const h = heute();
+  const q = await belegungsquote(db, h);
+  const { vereinLesen } = await import('../verein.js');
+  const { offeneBuchungen } = await import('../halle/daten.js');
+  // nicht abgerechnet: vergangene Hallenbuchungen ohne Rechnung (wie in der Hallenabrechnung „offene Buchungen“)
+  const offen = (await offeneBuchungen(db, await vereinLesen(db))).filter((b) => b.vergangen && !b.fehler);
+  const minuten = offen.reduce((a, b) => a + b.dauer, 0);
+  const betragOffen = runden(offen.reduce((a, b) => a + b.betrag, 0));
+  const zeitraum = `${dat(q.saison.von)}–${dat(q.saison.bis)}`;
   return [
-    kpi({ key: 'HAL_BELEGUNG', title: 'Belegungsquote', subtitle: 'laufende Saison', value: '0', unit: '%', details: 'noch nicht angebunden', icon: 'calendar', todo: true }),
-    kpi({ key: 'HAL_ABR', title: 'Nicht abgerechnet', subtitle: 'Hallenzeiten', value: '0', unit: 'Std', details: 'noch nicht angebunden', icon: 'pending', todo: true }),
+    kpi({
+      key: 'HAL_BELEGUNG', title: 'Belegungsquote', subtitle: q.saison.laufend ? `laufende Saison (${zeitraum})` : `Saison ${zeitraum}`,
+      value: q.quote === null ? '–' : zahl(q.quote, 1), unit: '%',
+      details: q.quote === null ? 'keine Hallenplätze mit Buchungszeiten gepflegt (Platzverwaltung)' : `${stunden(q.belegt / 60)} von ${stunden(q.kapazitaet / 60)} Std der Buchungszeiten belegt`,
+      icon: 'calendar', state: q.quote === null ? 'None' : q.quote >= 60 ? 'Positive' : q.quote >= 30 ? 'Critical' : 'Negative',
+    }),
+    kpi({
+      key: 'HAL_ABR', title: 'Nicht abgerechnet', subtitle: 'vergangene Hallenbuchungen ohne Rechnung', value: stunden(minuten / 60), unit: 'Std',
+      details: `${ganz(offen.length)} Buchungen · ${betrag(betragOffen)} EUR`, icon: 'pending', state: offen.length ? 'Critical' : 'Positive',
+    }),
   ];
 }
 

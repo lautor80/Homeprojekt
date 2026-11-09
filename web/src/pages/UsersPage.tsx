@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
+  AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
   SegmentedButton, SegmentedButtonItem, Switch, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
@@ -44,6 +44,9 @@ export function UsersPage() {
   const [mg, setMg] = useState<'frage' | MgAnlage | null>(null);
   const [mgMail, setMgMail] = useState(true);
   const [filter, setFilter] = useState<'ALLE' | 'AKTIV' | 'GESPERRT'>('AKTIV');
+  /** Freitextsuche (live) und Benutzerart: Mitglieder (Rolle MITGLIED), Hallennutzer (Rolle HALLENNUTZER), übrige */
+  const [suche, setSuche] = useState('');
+  const [art, setArt] = useState<'ALLE' | 'MITGLIED' | 'HALLENNUTZER' | 'SONSTIGE'>('ALLE');
   const [mapping, setMapping] = useState(false);
   const [einzeln, setEinzeln] = useState(false);
   const users = useLoad(() => api.get<User[]>('/api/admin/users'));
@@ -115,8 +118,13 @@ export function UsersPage() {
     } catch (e) { setError((e as Error).message); }
     users.reload();
   }
-  const anzahl = { ALLE: users.data?.length ?? 0, AKTIV: users.data?.filter((u) => u.active).length ?? 0, GESPERRT: users.data?.filter((u) => !u.active).length ?? 0 };
-  const sichtbar = (users.data ?? []).filter((u) => filter === 'ALLE' || (filter === 'AKTIV') === u.active);
+  const artVon = (u: User) => (u.roles.includes('MITGLIED') ? 'MITGLIED' : u.roles.includes('HALLENNUTZER') ? 'HALLENNUTZER' : 'SONSTIGE');
+  const begriffe = suche.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const passt = (u: User) => begriffe.every((b) => `${u.username} ${u.displayName} ${u.email ?? ''} ${u.roles.join(' ')}`.toLowerCase().includes(b));
+  const vorStatus = (users.data ?? []).filter((u) => (art === 'ALLE' || artVon(u) === art) && passt(u));
+  const anzahl = { ALLE: vorStatus.length, AKTIV: vorStatus.filter((u) => u.active).length, GESPERRT: vorStatus.filter((u) => !u.active).length };
+  const anzahlArt = (a: typeof art) => (users.data ?? []).filter((u) => (filter === 'ALLE' || (filter === 'AKTIV') === u.active) && (a === 'ALLE' || artVon(u) === a) && passt(u)).length;
+  const sichtbar = vorStatus.filter((u) => filter === 'ALLE' || (filter === 'AKTIV') === u.active);
 
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Benutzer', accessor: 'username', width: 140 },
@@ -209,11 +217,21 @@ export function UsersPage() {
       )}
       {users.error && <MessageStrip design="Negative">{users.error}</MessageStrip>}
       {error && !edit && !mg && !einzeln && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
-      <SegmentedButton style={{ marginBottom: '0.5rem' }} onSelectionChange={(e) => setFilter((e.detail.selectedItems[0] as HTMLElement).dataset.f as typeof filter)}>
-        <SegmentedButtonItem data-f="ALLE" selected={filter === 'ALLE'}>Alle ({anzahl.ALLE})</SegmentedButtonItem>
-        <SegmentedButtonItem data-f="AKTIV" selected={filter === 'AKTIV'}>Aktiv ({anzahl.AKTIV})</SegmentedButtonItem>
-        <SegmentedButtonItem data-f="GESPERRT" selected={filter === 'GESPERRT'}>Gesperrt ({anzahl.GESPERRT})</SegmentedButtonItem>
-      </SegmentedButton>
+      <div className="portal-row" style={{ gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.5rem', alignItems: 'center' }}>
+        <Input data-kein-autofill icon={<Icon name="search" />} placeholder="Suchen: Name, Benutzer, E-Mail, Rolle" value={suche} style={{ width: '20rem' }}
+               onInput={(e) => setSuche(e.target.value)} showClearIcon />
+        <SegmentedButton onSelectionChange={(e) => setArt((e.detail.selectedItems[0] as HTMLElement).dataset.a as typeof art)}>
+          <SegmentedButtonItem data-a="ALLE" selected={art === 'ALLE'}>Alle ({anzahlArt('ALLE')})</SegmentedButtonItem>
+          <SegmentedButtonItem data-a="MITGLIED" selected={art === 'MITGLIED'}>Mitglieder ({anzahlArt('MITGLIED')})</SegmentedButtonItem>
+          <SegmentedButtonItem data-a="HALLENNUTZER" selected={art === 'HALLENNUTZER'}>Hallennutzer ({anzahlArt('HALLENNUTZER')})</SegmentedButtonItem>
+          <SegmentedButtonItem data-a="SONSTIGE" selected={art === 'SONSTIGE'}>Sonstige ({anzahlArt('SONSTIGE')})</SegmentedButtonItem>
+        </SegmentedButton>
+        <SegmentedButton onSelectionChange={(e) => setFilter((e.detail.selectedItems[0] as HTMLElement).dataset.f as typeof filter)}>
+          <SegmentedButtonItem data-f="ALLE" selected={filter === 'ALLE'}>Alle ({anzahl.ALLE})</SegmentedButtonItem>
+          <SegmentedButtonItem data-f="AKTIV" selected={filter === 'AKTIV'}>Aktiv ({anzahl.AKTIV})</SegmentedButtonItem>
+          <SegmentedButtonItem data-f="GESPERRT" selected={filter === 'GESPERRT'}>Gesperrt ({anzahl.GESPERRT})</SegmentedButtonItem>
+        </SegmentedButton>
+      </div>
       {mapping && <InitialeZuordnung onClose={() => setMapping(false)} onDone={() => users.reload()} />}
       {einzeln && <EinzelAnlage onClose={() => setEinzeln(false)} onDone={() => users.reload()} />}
       <AnalyticalTable
