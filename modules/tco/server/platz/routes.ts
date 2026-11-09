@@ -165,11 +165,13 @@ async function bestaetigungsMail(v: Verein, url: string, r: { id: number; email:
 export async function bestaetigungErneut(tx: Db, v: Verein, id: number): Promise<string> {
   const url = await portalUrl();
   if (!url) throw new BusinessError('Die Portal-Adresse fehlt (Administration → Einstellungen).');
-  const [r] = await tx`select id, status, email, vorname, nachname, benutzername from tco.registrierungen where id = ${id} for update`;
+  const [r] = await tx`select id, status, art, email_bestaetigt_am, email, vorname, nachname, benutzername from tco.registrierungen where id = ${id} for update`;
   if (!r) throw new BusinessError('Die Registrierung gibt es nicht mehr (unbestätigte werden nach 30 Tagen gelöscht).');
-  if (r.status !== 'EMAIL') throw new BusinessError('Die Registrierung wartet nicht mehr auf die Bestätigung der E-Mail-Adresse.');
+  // war der Link nicht zustellbar, wartet die Registrierung auf manuelle Freigabe (OFFEN) – sie geht zurück in die E-Mail-Bestätigung
+  const wartet = r.status === 'EMAIL' || (r.status === 'OFFEN' && r.art === 'EXTERN' && !r.email_bestaetigt_am);
+  if (!wartet) throw new BusinessError('Die Registrierung ist bereits bestätigt, freigegeben oder abgelehnt – ein Bestätigungslink ist nicht mehr nötig.');
   const token = randomBytes(32).toString('base64url');
-  await tx`update tco.registrierungen set email_token_hash = ${sha256(token)}, email_bis = ${new Date(Date.now() + EMAIL_STUNDEN * 3600_000)} where id = ${id}`;
+  await tx`update tco.registrierungen set status = 'EMAIL', email_token_hash = ${sha256(token)}, email_bis = ${new Date(Date.now() + EMAIL_STUNDEN * 3600_000)} where id = ${id}`;
   await bestaetigungsMail(v, url, { id, email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername }, token);
   return `Neuer Bestätigungslink an ${r.email} gesendet (${EMAIL_STUNDEN} Stunden gültig).`;
 }
