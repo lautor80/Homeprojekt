@@ -448,6 +448,7 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const [brief, setBrief] = useState(false);
   const [nurNeue, setNurNeue] = useState(true);
+  const [suche, setSuche] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ergebnis, setErgebnis] = useState<{ text: string; pdf: string | null; fehler: string[] } | null>(null);
@@ -457,7 +458,9 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
       setWahl(new Set(l.filter((k) => !k.eingeladen_am).map((k) => k.adrnr)));
     }).catch((e) => setError(e.message));
   }, []);
-  const sichtbar = (liste ?? []).filter((k) => !nurNeue || !k.eingeladen_am);
+  const begriffe = suche.toLowerCase().split(/\s+/).filter(Boolean);
+  const sichtbar = (liste ?? []).filter((k) => (!nurNeue || !k.eingeladen_am)
+    && begriffe.every((b) => `${k.nachname ?? ''} ${k.vorname ?? ''} ${k.mitglnrn ?? ''} ${k.email ?? ''}`.toLowerCase().includes(b)));
   const umschalten = (a: string) => setWahl((w) => { const n = new Set(w); if (n.has(a)) n.delete(a); else n.add(a); return n; });
   async function los() {
     setBusy(true); setError(null);
@@ -495,11 +498,13 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
             Jedes ausgewählte Mitglied erhält einen persönlichen Link mit QR-Code (30 Tage gültig, einmal verwendbar). Mit E-Mail-Adresse per Mail{brief ? ' – hier: alle als Brief' : ''}, ohne als Brief (PDF zum Drucken).
             Wer den Link einlöst, wählt Benutzername und Kennwort und erhält sofort die Rolle „Mitglied“ – ohne Freigabe.
           </Text>
-          <div className="portal-row" style={{ gap: '1rem', marginBottom: '0.5rem' }}>
+          <div className="portal-row" style={{ gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+            <Input data-kein-autofill icon={<Icon name="search" />} placeholder="Suchen: Name, Nr., E-Mail" value={suche} style={{ width: '16rem' }}
+                   onInput={(e) => setSuche(e.target.value)} showClearIcon />
             <CheckBox text="nur noch nicht eingeladene" checked={nurNeue} onChange={(e) => setNurNeue(e.target.checked)} />
             <CheckBox text="alle als Brief (statt E-Mail)" checked={brief} onChange={(e) => setBrief(e.target.checked)} />
-            <Button design="Transparent" onClick={() => setWahl(new Set(sichtbar.map((k) => k.adrnr)))}>alle wählen</Button>
-            <Button design="Transparent" onClick={() => setWahl(new Set())}>keine</Button>
+            <Button design="Transparent" onClick={() => setWahl((w) => new Set([...(begriffe.length ? w : []), ...sichtbar.map((k) => k.adrnr)]))}>alle wählen</Button>
+            <Button design="Transparent" onClick={() => setWahl((w) => (begriffe.length ? new Set([...w].filter((a) => !sichtbar.some((k) => k.adrnr === a))) : new Set()))}>keine</Button>
           </div>
           <div style={{ maxHeight: '45vh', overflowY: 'auto', border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem' }}>
             {sichtbar.map((k) => (
@@ -509,7 +514,8 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
                 <Label style={{ marginLeft: 'auto' }}>{k.email ?? 'ohne E-Mail → Brief'}{k.eingeladen_am ? ` · eingeladen ${k.eingeladen_am.split('-').reverse().join('.')} (${k.eingeladen_per === 'MAIL' ? 'Mail' : k.eingeladen_per === 'BRIEF' ? 'Brief' : 'Registrierung'})` : ''}</Label>
               </div>
             ))}
-            {!sichtbar.length && <Text style={{ display: 'block', padding: '0.75rem' }}>Alle aktiven Mitglieder haben bereits einen Benutzer bzw. eine Einladung.</Text>}
+            {!sichtbar.length && begriffe.length > 0 && <Text style={{ display: 'block', padding: '0.75rem' }}>Kein Mitglied passt zur Suche „{suche}“.</Text>}
+            {!sichtbar.length && !begriffe.length && <Text style={{ display: 'block', padding: '0.75rem' }}>Alle aktiven Mitglieder haben bereits einen Benutzer bzw. eine Einladung.</Text>}
           </div>
           <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
             {wahl.size} ausgewählt: {brief ? 0 : mitMail} per E-Mail, {brief ? wahl.size : wahl.size - mitMail} als Brief. Eine neue Einladung macht ältere ungültig.
