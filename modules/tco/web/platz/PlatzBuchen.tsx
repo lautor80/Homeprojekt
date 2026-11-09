@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, ToggleButton,
@@ -9,9 +10,12 @@ import { AppPage } from '@core/components/AppPage';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { useSperre } from '@core/sperre';
+import { useCan } from '@core/session';
 import { TCO, dat, eur } from '../util';
 import '../jt/meine.css';
 import './platz.css';
+// Farben der Preise wie im Wochenplan der Hallenpreise (portal-hp__f0 … f4)
+import '../hallenpreise.css';
 
 /**
  * „Platz buchen“ – Freiplätze und Halle, fürs Handy und das Portal.
@@ -27,16 +31,15 @@ export interface TagPlatz {
   geschlossen: string | null; belegt: Belegt[];
 }
 /** Preisklasse im Tagesverlauf (Einzelbuchung): Zeitraum mit einem Stundenpreis */
-export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number }
+export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number; /** Farbe wie in den Hallenpreisen (0–4) */ farbe: number }
 interface Tag { datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[] }
 
-/** Farbe je Preisklasse: aufsteigend nach Stundenpreis (günstig → teuer); gleiche Klasse = gleiche Farbe */
-const ZONEN_FARBEN = 5;
-export function preisklassen(zonen: Preiszone[]): (Pick<Preiszone, 'prodKey' | 'text' | 'stundenpreis'> & { farbe: number })[] {
+/** Preisklassen für die Legende: je Preis einmal, in der Reihenfolge und mit den Farben der Hallenpreise */
+export function preisklassen(zonen: Preiszone[]): Pick<Preiszone, 'prodKey' | 'text' | 'stundenpreis' | 'farbe'>[] {
   const je = new Map<string, Preiszone>();
   for (const z of zonen) if (!je.has(z.prodKey)) je.set(z.prodKey, z);
-  return [...je.values()].sort((a, b) => a.stundenpreis - b.stundenpreis || a.prodKey.localeCompare(b.prodKey))
-    .map((z, i) => ({ prodKey: z.prodKey, text: z.text, stundenpreis: z.stundenpreis, farbe: i % ZONEN_FARBEN }));
+  return [...je.values()].sort((a, b) => a.prodKey.localeCompare(b.prodKey))
+    .map((z) => ({ prodKey: z.prodKey, text: z.text, stundenpreis: z.stundenpreis, farbe: z.farbe }));
 }
 interface PreisTeil { text: string; von: string; bis: string; minuten: number; stundenpreis: number; betrag: number }
 interface Preis { betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string; teile?: PreisTeil[] }
@@ -107,6 +110,7 @@ export function PlatzBuchen() {
   const [entwurf, setEntwurf] = useState<Entwurf | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [kein, setKein] = useState<string | null>(null);
+  const [preisliste, setPreisliste] = useState(false);
 
   const fehler = (e: unknown) => { const x = e as { status?: number; message: string }; if (x.status === 403) setKein(x.message); else setError(x.message); };
   const tagLaden = (d = datum) => api.get<Tag>(`${PB}/tag?datum=${d}`).then(setTag).catch(fehler);
@@ -178,8 +182,9 @@ export function PlatzBuchen() {
               <div className="portal-pb__legende portal-pb__legende--preise">
                 <span>Preis je Stunde (Farbe der Zeitspalte):</span>
                 {preisklassen(zonen).map((k) => (
-                  <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-pb__zone--${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>
+                  <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-hp__f${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>
                 ))}
+                <Button design="Transparent" icon="lead" onClick={() => setPreisliste(true)}>Preisliste</Button>
               </div>
             )}
 
@@ -278,11 +283,77 @@ export function PlatzBuchen() {
         )}
       </div>
 
+      {preisliste && <PreislisteDialog datum={datum} onClose={() => setPreisliste(false)} />}
       {entwurf && (
         <BuchungDialog entwurf={entwurf} onClose={() => { setEntwurf(null); tagLaden(); }}
                        onFertig={async (text) => { toast(text); setEntwurf(null); await neuLaden(); }} />
       )}
     </AppPage>
+  );
+}
+
+// ---------------------------------------------------------------- Preisliste der Woche (nur lesend, Darstellung wie Hallenpreise)
+const WOCHENTAG_KURZ = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+function PreislisteDialog({ datum, onClose }: { datum: string; onClose: () => void }) {
+  const can = useCan();
+  const navigate = useNavigate();
+  const [woche, setWoche] = useState<{ datum: string; zonen: Preiszone[] }[] | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  useEffect(() => { api.get<{ woche: { datum: string; zonen: Preiszone[] }[] }>(`${PB}/preisliste?datum=${datum}`).then((r) => setWoche(r.woche)).catch((e) => setFehler(e.message)); }, [datum]);
+  const alle = (woche ?? []).flatMap((t) => t.zonen);
+  const von0 = Math.min(7 * 60, ...alle.map((z) => Math.floor(min(z.von) / 60) * 60));
+  const bis0 = Math.max(22 * 60, ...alle.map((z) => Math.ceil((min(z.bis) || 1440) / 60) * 60));
+  const REM = 2.25;
+  const y = (m: number) => `${((m - von0) / 60) * REM}rem`;
+  const h = (m: number) => `${(m / 60) * REM}rem`;
+  const stunden: number[] = [];
+  for (let m = von0; m <= bis0; m += 60) stunden.push(m);
+  return createPortal(
+    <Dialog open stretch={klein()} headerText={woche ? `Preisliste Halle – Woche vom ${dat(woche[0].datum)}` : 'Preisliste Halle'} onClose={onClose} style={{ width: 'min(64rem, 96vw)' }}
+            footer={<Bar endContent={<>
+              {can('tco.halle:display') && <Button icon="lead" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise öffnen</Button>}
+              <Button design="Emphasized" onClick={onClose}>Schließen</Button>
+            </>} />}>
+      {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
+      {!woche && !fehler && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
+      {woche && !alle.length && <Empty>Für diese Woche sind keine Hallenpreise hinterlegt.</Empty>}
+      {woche && alle.length > 0 && (
+        <>
+          <div className="portal-pb__legende" style={{ justifyContent: 'flex-start' }}>
+            <span>Einzelbuchung, Preis je Stunde:</span>
+            {preisklassen(alle).map((k) => <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-hp__f${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>)}
+          </div>
+          <div className="portal-hp__plan">
+            <div className="portal-hp__kopf">
+              <div />
+              {woche.map((t, i) => <div key={t.datum} className="portal-hp__tag" style={t.datum === datum ? { color: 'var(--sapSelectedColor, #0064d9)' } : undefined}>{WOCHENTAG_KURZ[i]} {dat(t.datum).slice(0, 6)}</div>)}
+            </div>
+            <div className="portal-hp__raster" style={{ height: h(bis0 - von0) }}>
+              <div className="portal-hp__zeiten">
+                {stunden.map((m) => <div key={m} className="portal-hp__stunde" style={{ top: y(m) }}>{hhmm(m)}</div>)}
+              </div>
+              {woche.map((t) => (
+                <div key={t.datum} className="portal-hp__spalte">
+                  {stunden.slice(0, -1).map((m) => <div key={m} className="portal-hp__linie" style={{ top: y(m) }} />)}
+                  {t.zonen.map((z) => {
+                    const a = min(z.von), b = min(z.bis) || 1440;
+                    return (
+                      <div key={z.von} className={`portal-hp__block portal-hp__f${z.farbe}${b - a <= 60 ? ' portal-hp__block--kurz' : ''}`} style={{ top: y(a), height: h(b - a) }}>
+                        <b>{z.von}–{z.bis}</b>
+                        <b>{z.text}</b>
+                        {b - a > 60 && <span>{eur(z.stundenpreis)} je Stunde</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+          <Text className="portal-muted portal-small">Preise für Einzelbuchungen in der Halle. Freiplätze sind kostenfrei; Zeiten ohne Block haben keinen hinterlegten Preis.</Text>
+        </>
+      )}
+    </Dialog>,
+    document.body,
   );
 }
 
@@ -294,7 +365,6 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
   /** Preisklassen im Tagesverlauf: Zeitspalte farbig hinterlegt, Rand links und rechts der Uhrzeit */
   preiszonen?: Preiszone[];
 }) {
-  const farbe = new Map(preisklassen(preiszonen ?? []).map((k) => [k.prodKey, k.farbe]));
   const offen = plaetze.filter((p) => !p.geschlossen);
   const start = Math.floor(Math.min(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_von))) / 60) * 60;
   const ende = Math.ceil(Math.max(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_bis))) / 60) * 60;
@@ -331,7 +401,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
             const von = Math.max(min(z.von), start);
             const bis = Math.min(min(z.bis) || 1440, ende);
             return bis > von
-              ? <div key={z.von} className={`portal-pb__zone portal-pb__zone--${farbe.get(z.prodKey) ?? 0}`} style={{ top: y(von), height: h(bis - von) }}
+              ? <div key={z.von} className={`portal-pb__zone portal-hp__f${z.farbe}`} style={{ top: y(von), height: h(bis - von) }}
                      title={`${z.von}–${z.bis} Uhr: ${z.text} · ${eur(z.stundenpreis)} je Stunde`} />
               : null;
           })}

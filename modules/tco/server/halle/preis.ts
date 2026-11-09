@@ -1,5 +1,5 @@
 import type { Db } from '../verein.js';
-import { runden, wochentag, WOCHENTAG_TEXT } from '../format.js';
+import { addTage, runden, wochentag, WOCHENTAG_TEXT } from '../format.js';
 
 /**
  * Hallenpreise (Port von ZCL_TCO_RECHNUNGEN=>PREISGRUPPEN / CALC_BOOKING_PRICE).
@@ -135,7 +135,12 @@ export function preisBerechnen(
 }
 
 /** Preisklasse im Tagesverlauf: zusammenhängender Zeitraum mit einem Stundenpreis */
-export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number }
+export interface Preiszone {
+  prodKey: string; text: string; von: string; bis: string; stundenpreis: number;
+  /** Farbe wie im Wochenplan der Hallenpreise: Position des Preises in seiner Preisgruppe (0–4) */
+  farbe: number;
+}
+export const PREIS_FARBEN = 5;
 
 /**
  * Preisklassen einer Einzelbuchung über den Tag (Sommer bzw. Winter nach Datum) – für die farbige Anzeige in
@@ -162,8 +167,14 @@ export function preiszonen(datum: string, p: Preise): Preiszone[] {
   }
   return zonen.map((z) => ({
     prodKey: z.key, text: produkt.get(z.key)!.text?.trim() || `Preis ${z.key}`, von: hhmm(z.von), bis: z.bis === 1440 ? '24:00' : hhmm(z.bis),
-    stundenpreis: produkt.get(z.key)!.preis,
+    stundenpreis: produkt.get(z.key)!.preis, farbe: keys.indexOf(z.key) % PREIS_FARBEN,
   }));
+}
+
+/** Preisliste der Woche (Montag bis Sonntag), in der das Datum liegt: Preisklassen der Einzelbuchung je Tag */
+export function preiswoche(datum: string, p: Preise): { datum: string; zonen: Preiszone[] }[] {
+  const montag = addTage(datum, -((new Date(`${datum}T12:00:00Z`).getUTCDay() + 6) % 7));
+  return [0, 1, 2, 3, 4, 5, 6].map((n) => addTage(montag, n)).map((d) => ({ datum: d, zonen: preiszonen(d, p) }));
 }
 
 // ---------------------------------------------------------------------------
