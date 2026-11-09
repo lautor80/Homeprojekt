@@ -12,7 +12,7 @@ import { halleRoutes, P_HALLE } from './halle/routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
-import { ENDPUNKTE, verbindungTesten } from './verbindung.js';
+import { TCO_VERBINDUNGEN } from './verbindung.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
 import { kontenRoutes, P_KONTEN } from './konten/routes.js';
@@ -33,7 +33,6 @@ import { ichLesen, QUELLE } from './platz/logik.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
-import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT } from './kommunikation.js';
 import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 
@@ -43,7 +42,6 @@ const P = {
 };
 
 const MASKE = '********';
-const GEHEIM = ['n8n_ep3_auth', 'n8n_stunden_auth'] as const;
 
 const vereinSchema = z.object({
   name: z.string().trim().min(1, 'Bitte den Vereinsnamen angeben').max(70),
@@ -53,11 +51,6 @@ const vereinSchema = z.object({
   ansprechpartner: z.string().nullish(), email: z.string().nullish(),
   zahlungsziel_tage: z.coerce.number().int().min(0).max(90),
   logo: z.string().nullish(),
-  n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
-  n8n_stunden_url: z.string().nullish(), n8n_ferien_url: z.string().nullish(), n8n_stunden_auth: z.string().nullish(),
-  /** Basic Auth für die Webhooks: Benutzer sichtbar, Passwort nur schreibend (MASKE = unverändert) */
-  n8n_stunden_user: z.string().nullish(), n8n_stunden_pw: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
-  n8n_ep3_user: z.string().nullish(), n8n_ep3_pw: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
   halle_stichtag: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   halle_ausschluss: z.string().default(''),
   halle_plaetze: z.string().optional(),
@@ -71,60 +64,24 @@ const vereinSchema = z.object({
   mg_ansprechpartner: z.string().optional(),
 });
 
-type VereinEingabe = z.infer<typeof vereinSchema>;
-
-/** Basic-Auth-Header aus Benutzer und Passwort (wie SM59 „Basic Authentication“) */
-export const basicAuth = (user: string, pw: string) => `Basic ${Buffer.from(`${user}:${pw}`, 'utf8').toString('base64')}`;
-
-/**
- * Geheime Felder übernehmen: MASKE = bisheriger Wert. Für die Webhooks wird aus Benutzer und Passwort
- * der Authorization-Header gebildet; ohne Benutzer und Passwort entfällt die Anmeldung.
- */
-function zugangUebernehmen(d: VereinEingabe, alt: Verein) {
-  for (const g of GEHEIM) if (d[g] === MASKE) d[g] = alt[g];
-  for (const [k, auth, userAlt] of [['stunden', 'n8n_stunden_auth', alt.n8n_stunden_user], ['ep3', 'n8n_ep3_auth', alt.n8n_ep3_user]] as const) {
-    if (d[`n8n_${k}_pw`] === undefined && d[`n8n_${k}_user`] === undefined) { d[auth] = alt[auth]; continue; }
-    const user = (d[`n8n_${k}_user`] ?? '').trim();
-    const pw = d[`n8n_${k}_pw`] ?? '';
-    if (pw === MASKE) {
-      // Passwort unverändert: bisherigen Header behalten (auch einen früher direkt eingetragenen)
-      if (user && user !== (userAlt ?? '')) throw new BusinessError('Nach dem Ändern des Benutzers bitte das Passwort neu eingeben.');
-      d[auth] = alt[auth];
-      d[`n8n_${k}_user`] = userAlt ?? null;
-      continue;
-    }
-    if (!user && !pw) { d[auth] = null; d[`n8n_${k}_user`] = null; continue; }
-    if (!user || !pw) throw new BusinessError('Für die Anmeldung am Webhook bitte Benutzer und Passwort angeben.');
-    d[auth] = basicAuth(user, pw);
-    d[`n8n_${k}_user`] = user;
-  }
-}
-
 async function routes(app: FastifyInstance) {
   app.get('/verein', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const v = await vereinLesen();
     const out: Record<string, unknown> = { ...v };
-    for (const g of GEHEIM) out[g] = v[g] ? MASKE : '';
-    out.paperless_token = v.paperless_token ? MASKE : ''; // zentral gepflegt, hier nur Stand
-    out.n8n_mail_key = v.n8n_mail_key ? MASKE : '';
-    out.n8n_stunden_pw = v.n8n_stunden_auth ? MASKE : '';
-    out.n8n_ep3_pw = v.n8n_ep3_auth ? MASKE : '';
+    // Anbindungen werden zentral gepflegt (Administration → Anbindungen); hier nur der Stand, Geheimnisse maskiert
+    for (const g of ['paperless_token', 'n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth', 'n8n_ferien_auth'] as const) out[g] = v[g] ? MASKE : '';
     return out;
   });
 
   app.put('/verein', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
     const d = vereinSchema.parse(req.body);
     const alt = await vereinLesen();
-    zugangUebernehmen(d, alt);
     const FI = ['fi_bankkonten', 'fi_manuell_konten', 'fi_beleg_typen', 'fi_beleg_pfad', 'fi_feld_beleg', 'fi_feld_betrag', 'fi_feld_sap'] as const;
     for (const k of FI) if (d[k] === undefined) d[k] = alt[k];
     await change(req, (tx) => tx`
       update tco.verein set name = ${d.name}, strasse = ${d.strasse ?? null}, plz_ort = ${d.plz_ort ?? null}, iban = ${d.iban},
              bic = ${d.bic ?? null}, bank = ${d.bank ?? null}, steuernr = ${d.steuernr ?? null}, ansprechpartner = ${d.ansprechpartner ?? null},
              email = ${d.email ?? null}, zahlungsziel_tage = ${d.zahlungsziel_tage}, logo = ${d.logo || null},
-             n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
-             n8n_stunden_url = ${d.n8n_stunden_url || null}, n8n_ferien_url = ${d.n8n_ferien_url || null}, n8n_stunden_auth = ${d.n8n_stunden_auth || null},
-             n8n_stunden_user = ${d.n8n_stunden_user || null}, n8n_ep3_user = ${d.n8n_ep3_user || null},
              halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss}, halle_plaetze = ${d.halle_plaetze ?? alt.halle_plaetze},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
@@ -136,17 +93,6 @@ async function routes(app: FastifyInstance) {
   /** Vereinslogo (weiß, für das orange Kopfband) */
   app.get('/logo', { preHandler: requireAuth() }, async (_req, reply) =>
     reply.type('image/png').header('cache-control', 'max-age=86400').send(asset('logo_weiss.png')));
-
-  /** Verbindungstest je Endpunkt mit den Werten aus dem Formular (noch nicht gesichert); MASKE = gespeicherter Wert */
-  app.post('/verein/test/:endpunkt', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
-    const { endpunkt } = z.object({ endpunkt: z.enum(ENDPUNKTE) }).parse(req.params);
-    const alt = await vereinLesen();
-    const d = vereinSchema.partial().parse(req.body ?? {}) as VereinEingabe;
-    zugangUebernehmen(d, alt);
-    const v = { ...alt } as Verein;
-    for (const [k, w] of Object.entries(d)) if (w !== undefined && k in alt) (v as unknown as Record<string, unknown>)[k] = w || null;
-    return verbindungTesten(v, endpunkt);
-  });
 
   // ---------------------------------------------------------------- Übernahme aus SAP
   const importSchema = z.object({
@@ -281,6 +227,7 @@ const tco: ServerModule = {
   ],
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
+  verbindungen: TCO_VERBINDUNGEN,
   mailWiederholen, mailFolge,
   // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },

@@ -153,7 +153,9 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   // ---- Vereinsdaten mit Paperless- und n8n-Attrappe
   let r = await call('GET', '/api/m/tco/verein');
   const v = r.body;
-  r = await call('PUT', '/api/m/tco/verein', { ...v, n8n_ep3_url: `http://127.0.0.1:${port}/webhook/ep3` });
+  r = await call('PUT', '/api/m/tco/verein', v);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('PUT', '/api/verbindungen/tco.ep3', { url: `http://127.0.0.1:${port}/webhook/ep3`, auth_art: 'keine' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await call('PUT', '/api/verbindungen/mail', { url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, auth_art: 'header', header_name: 'X-TCO-Key', geheimnis: 'k' });
   assert.equal(r.status, 200, JSON.stringify(r.body));

@@ -205,7 +205,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
 
 /** EP3-Import über den n8n-Workflow „TCO EP3 Import Hallenrechnungen“ */
 export async function ep3UeberN8n(v: Verein, benutzer: string): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string }> {
-  if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Administration → Anbindungen).');
   let res: Response;
   try {
     res = await fetch(v.n8n_ep3_url, {

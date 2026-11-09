@@ -53,11 +53,14 @@ after(async () => {
 test('Migration: Vereinswerte haben Vorrang, Modulspalten werden geleert', async () => {
   // Übernahme-Migrationen erneut laufen lassen, als läge der Altbestand noch in den Modulen
   await sql`delete from core.verbindungen`;
-  await sql`delete from public.schema_migrations where id in ('transport/004_paperless_zentral.sql', 'tco/036_paperless_zentral.sql', 'tco/037_mail_zentral.sql')`;
+  await sql`delete from public.schema_migrations where id in ('transport/004_paperless_zentral.sql', 'tco/036_paperless_zentral.sql', 'tco/037_mail_zentral.sql', 'tco/038_webhooks_zentral.sql')`;
   await sql`update transport.firma set paperless_url = 'http://transport:8000', paperless_token = 't-transport' where id = 1`;
   await sql`update tco.verein set paperless_url = 'http://verein:8000,http://extern', paperless_token = 't-verein',
                                   n8n_mail_url = 'http://n8n:5678/webhook/tco-mailversand', n8n_mail_key = 'schluessel',
-                                  mail_absender = '[{"anwendung":"*","email":"info@example.org","name":"Verein"}]'::jsonb where id = 1`;
+                                  mail_absender = '[{"anwendung":"*","email":"info@example.org","name":"Verein"}]'::jsonb,
+                                  n8n_stunden_url = 'http://n8n:5678/webhook/TCO_N8N_STUNDEN', n8n_stunden_auth = 'Basic eDp5', n8n_stunden_user = 'x',
+                                  n8n_ferien_url = 'http://n8n:5678/webhook/ferien-saarland',
+                                  n8n_ep3_url = 'http://n8n:5678/webhook/ep3', n8n_ep3_auth = 'Bearer abc' where id = 1`;
   await sql`insert into tco.mail_protokoll (anwendung, objekt, an, betreff, status, fehler) values ('Test', 'ALT', 'alt@example.org', 'alt', 'fehler', 'alt')`;
   await migrate(activeModules(), () => {});
   verbindungenCacheLeeren();
@@ -69,6 +72,13 @@ test('Migration: Vereinswerte haben Vorrang, Modulspalten werden geleert', async
   assert.equal((await sql`select count(*)::int as n from tco.mail_protokoll`)[0].n, 0);
   const [tvm] = await sql`select n8n_mail_url, n8n_mail_key, mail_absender from tco.verein where id = 1`;
   assert.deepEqual([tvm.n8n_mail_url, tvm.n8n_mail_key, tvm.mail_absender], [null, null, []]);
+  // Import-Webhooks: Basic-Header in Benutzer/Passwort zerlegt, Ferien erben die Anmeldung, anderer Header als „Authorization“
+  const w = Object.fromEntries((await sql`select id, url, auth_art, auth_user, header_name, geheimnis from core.verbindungen where id like 'tco.%'`).map((r) => [r.id, r]));
+  assert.deepEqual([w['tco.stunden'].auth_art, w['tco.stunden'].auth_user, w['tco.stunden'].geheimnis], ['basic', 'x', 'y']);
+  assert.deepEqual([w['tco.ferien'].url, w['tco.ferien'].auth_art, w['tco.ferien'].auth_user, w['tco.ferien'].geheimnis], ['http://n8n:5678/webhook/ferien-saarland', 'basic', 'x', 'y']);
+  assert.deepEqual([w['tco.ep3'].auth_art, w['tco.ep3'].header_name, w['tco.ep3'].geheimnis], ['header', 'Authorization', 'Bearer abc']);
+  const [tvw] = await sql`select n8n_stunden_url, n8n_stunden_auth, n8n_ep3_url, n8n_ferien_url from tco.verein where id = 1`;
+  assert.deepEqual([tvw.n8n_stunden_url, tvw.n8n_stunden_auth, tvw.n8n_ep3_url, tvw.n8n_ferien_url], [null, null, null, null]);
   const [v] = await sql`select url, auth_art, geheimnis from core.verbindungen where id = 'paperless'`;
   assert.deepEqual([v.url, v.auth_art, v.geheimnis], ['http://verein:8000,http://extern', 'token', 't-verein']);
   const [t] = await sql`select paperless_url, paperless_token from transport.firma where id = 1`;
@@ -122,6 +132,8 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.equal(r.body.n8n_mail_url, 'http://n8n:5678/webhook/tco-mailversand', 'Verein liest den Mail-Webhook aus der Anbindung');
   assert.equal(r.body.n8n_mail_key, '********');
   assert.equal(r.body.mail_absender[0].email, 'info@example.org');
+  assert.equal(r.body.n8n_stunden_auth, '********');
+  assert.equal(r.body.n8n_ep3_url, 'http://n8n:5678/webhook/ep3');
   assert.ok(kern.verbindungen.some((v: { id: string }) => v.id === 'mail'), 'Mailversand ist zentral angemeldet');
   assert.equal(r.body.paperless_token, '********', 'Token verlässt den Server auch über die Stammdaten nur maskiert');
   r = await call('GET', '/api/m/transport/firma');

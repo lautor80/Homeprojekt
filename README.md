@@ -16,7 +16,7 @@ jede Installation schaltet nur ihre Module ein.
 | Meine Mitgliedschaft | Benutzerpflege: Status direkt in der Tabelle sperren, Filter aktiv/gesperrt, Einzelanlage aus Mitglied/EP3-Kunde; ausgetretene Mitglieder werden nach dem Austrittsdatum automatisch gesperrt. Selbstauskunft für Mitglieder (Systemrolle „Mitglied“: eigene Daten, Bankverbindung, Kündigung zum Jahresende + Einzelbuchung); Administration → Benutzer legt alle aktiven Mitglieder als Benutzer an (Anmeldename = E-Mail, Startkennwort per Mail oder Liste); **„Mitglieder einladen (QR-Code)“** schickt aktiven Mitgliedern ohne Benutzer einen persönlichen Link mit QR-Code (30 Tage, einmal verwendbar, neue Einladung macht ältere ungültig) per E-Mail oder als Brief-PDF – Auswahlliste mit **Livesuche** (Name, Mitgliedsnummer, E-Mail; mehrere Begriffe werden UND-verknüpft), Filter „nur noch nicht eingeladene“, „alle wählen“/„keine“ wirken bei aktiver Suche nur auf die Treffer |
 | Sperren | wie SM12: Objekt beim Öffnen zur Bearbeitung gesperrt (Typ + Schlüssel der Änderungsbelege), Durchsetzung im Datenbank-Trigger, Lebenszeichen, Ablauf nach 2 Min. bzw. 15 Min. Inaktivität, Platzzeiten schon bei Auswahl; Übersicht/Aufheben unter Administration → Sperren |
 | Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Portal-Adresse für Links in E-Mails |
-| Anbindungen | angeschlossene Systeme an einer Stelle (Administration → Anbindungen, Tabelle `core.verbindungen`): Adresse, Anmeldeart (Token, Header, Basic Auth), Zugangsdaten maskiert, Verbindungstest, Änderungsbelege ohne Geheimnis. Der Kern meldet Paperless und den E-Mail-Versand (n8n, mit Ersatzabsendern je Anwendung, Mailprotokoll `core.mail_protokoll`, Testmail und „Erneut senden“) an, Module melden eigene Verbindungen über `ServerModule.verbindungen` und lesen sie mit `verbindungLesen(id)` |
+| Anbindungen | angeschlossene Systeme an einer Stelle (Administration → Anbindungen, Tabelle `core.verbindungen`): Adresse, Anmeldeart (Token, Header, Basic Auth), Zugangsdaten maskiert, Verbindungstest, Änderungsbelege ohne Geheimnis. Der Kern meldet Paperless und den E-Mail-Versand (n8n, mit Ersatzabsendern je Anwendung, Mailprotokoll `core.mail_protokoll`, Testmail und „Erneut senden“) an, Module melden eigene Verbindungen über `ServerModule.verbindungen` (TCO: EP3-Export, Rückmeldungen, Ferien) und lesen sie mit `verbindungLesen(id)` |
 | E-Mail-Versand | ein generischer n8n-Workflow für alle Mails (beliebige Inhalte und Anhänge, an/cc/bcc, Antwortadresse, Entwurf); **Absender ist, wer auf „Senden“ drückt** (Anfragekontext), Rückfall auf Ersatzabsender je Anwendung und Standard – siehe [E-Mail-Versand](#e-mail-versand-n8n) |
 | PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |
 | API-Schlüssel | Zugriff für Fremdsysteme (n8n, Webformulare) per `Authorization: Bearer …` – je Schlüssel genau ein Projekt/Modul mit ausgewählten Rechten |
@@ -72,8 +72,8 @@ Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECUR
 `TRUST_PROXY=true` setzen (dann zählt die Client-IP aus `X-Forwarded-For` für die Anmeldesperren).
 Ohne Proxy bleibt `TRUST_PROXY=false` – sonst ließen sich die Sperren mit gefälschten Headern umgehen.
 
-Nach der Einrichtung: **TC Oberthal → Stammdaten** ausfüllen (Vereinsname, Anschrift, IBAN, Steuernummer,
-n8n-Webhooks für Importe) und **Administration → Anbindungen** (Paperless, E-Mail-Versand). Das Repository enthält keine Vereinsdaten; alles kommt aus den Stammdaten bzw. dem SAP-Import.
+Nach der Einrichtung: **TC Oberthal → Stammdaten** ausfüllen (Vereinsname, Anschrift, IBAN, Steuernummer) und
+**Administration → Anbindungen** (Paperless, E-Mail-Versand, n8n-Webhooks für EP3, Rückmeldungen und Ferien). Das Repository enthält keine Vereinsdaten; alles kommt aus den Stammdaten bzw. dem SAP-Import.
 
 ### Installation über Portainer
 
