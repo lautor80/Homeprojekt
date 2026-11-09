@@ -1,7 +1,7 @@
 # n8n-Workflow „TCO Mailversand“ (generisch)
 
 Ein Webhook für **alle** E-Mails aus dem Portal: Hallenrechnungen, Mitglieder, Verzehr, Registrierung, Mitgliedsanträge,
-Kennwort-Links. Jeder Aufrufer bestimmt Empfänger, Inhalt, Anhänge und den Absender aus den freigegebenen Konten.
+Kennwort-Links. Jeder Aufrufer bestimmt Empfänger, Inhalt und Anhänge. Absender ist, wer im Portal sendet – mit Rückfall auf die freigegebenen Konten.
 Datei: [`tco-mailversand.json`](tco-mailversand.json). Sie basiert auf dem bisherigen Workflow „TCO Mailversand aus SAP“
 mit denselben Knoten und Zugangsdaten und ist abwärtskompatibel.
 
@@ -14,8 +14,10 @@ mit denselben Knoten und Zugangsdaten und ist abwärtskompatibel.
   "modus": "senden",                    // oder "entwurf" (IMAP-Entwurf in INBOX.Drafts)
   "anwendung": "Mitgliedsantrag",       // Herkunft, erscheint im Header X-TCO-Objekt
   "objekt": "MA-2026-0001",
-  "absender": "kassenwart@tc-oberthal.de",   // optional – sonst STANDARD im Workflow
-  "absender_name": "Kassenwart TC Oberthal", // optional
+  "absender": "benjamin.hartyniuk@tc-oberthal.de", // wer sendet (Portal: angemeldeter Benutzer), optional
+  "absender_name": "Benjamin Hartyniuk | TC Oberthal",
+  "absender_ersatz": "torsten.laub@tc-oberthal.de",  // Ersatz je Anwendung, optional
+  "absender_ersatz_name": "Tennisclub Oberthal e.V.",
   "antwort_an": "kassenwart@tc-oberthal.de", // optional (Reply-To)
   "an": "a@example.org, b@example.org",      // Text mit , oder ; – oder Liste ["a@…", "Name <b@…>"]
   "cc": "", "bcc": "",                       // wie "an", optional
@@ -29,10 +31,13 @@ mit denselben Knoten und Zugangsdaten und ist abwärtskompatibel.
 }
 ```
 
-Antwort: `{ "status": "gesendet" | "entwurf" | "fehler", "message_id", "zeitpunkt", "von", "empfaenger", "anhaenge", "fehler" }`.
-Ungültige Aufrufe (kein Empfänger, ungültige Adresse, nicht erlaubter Absender, leerer Anhang) beantwortet der Workflow mit HTTP 400.
+Antwort: `{ "status": "gesendet" | "entwurf" | "fehler", "message_id", "zeitpunkt", "von", "hinweis", "empfaenger", "anhaenge", "fehler" }`.
+Ungültige Aufrufe (kein Empfänger, ungültige Adresse, leerer Anhang) beantwortet der Workflow mit HTTP 400.
 
 ## Absender und SMTP-Konten
+
+**Die Mail kommt von dem, der im Portal auf „Senden“ drückt.** Das Portal schickt die E-Mail-Adresse des angemeldeten Benutzers
+als `absender` (Name: „Anzeigename | Verein“). Den Ersatz aus den Stammdaten schickt es als `absender_ersatz` mit.
 
 Im Knoten **„Mail aufbereiten“** oben:
 
@@ -44,14 +49,22 @@ const KONTEN = {
 };
 ```
 
-- Ohne `absender` geht die Mail über `STANDARD`, also das primäre Konto.
-- Der Knoten **„SMTP-Konto“** leitet nach `konto` auf den passenden SMTP-Knoten. Jeder Knoten hat eigene Zugangsdaten.
-  Beim Import im Knoten „E-Mail senden (SMTP Benjamin)“ die Zugangsdaten **„TCO SMTP Benjamin“** anlegen: SMTP-Server, Benutzer
-  `benjamin.hartyniuk@tc-oberthal.de`, Passwort.
-- Ein Absender, der nicht in `KONTEN` steht, wird abgewiesen (HTTP 400). Für einen weiteren Absender trägt man ihn in `KONTEN` ein und
-  legt bei Bedarf einen weiteren SMTP-Knoten samt Regel im Knoten „SMTP-Konto“ an.
+Der Workflow nimmt die **erste** Adresse mit SMTP-Konto in `KONTEN`:
+
+1. `absender`: wer auf „Senden“ gedrückt hat (bzw. ein fest gewählter Absender)
+2. `absender_ersatz`: Ersatz je Anwendung aus den Portal-Stammdaten
+3. `STANDARD`
+
+Hat der gewünschte Absender kein SMTP-Konto (z. B. die private Adresse eines Vorstandsmitglieds), geht die Mail über den Ersatz bzw.
+Standard. Antworten gehen dann per Reply-To trotzdem an ihn, sofern keine Antwortadresse vorgegeben ist und er nicht selbst Empfänger ist.
+Die Antwort an das Portal meldet das in `von` und `hinweis`.
+
+- Öffentliche Abläufe ohne Anmeldung (Registrierung, Mitgliedsantrag, Passwort vergessen) und Hintergrundläufe senden immer mit
+  dem Ersatz bzw. Standard.
+- Der Knoten **„SMTP-Konto“** leitet nach `konto` auf den passenden SMTP-Knoten. Beim Import im Knoten „E-Mail senden (SMTP Benjamin)“
+  die Zugangsdaten **„TCO SMTP Benjamin“** anlegen (SMTP-Server, Benutzer `benjamin.hartyniuk@tc-oberthal.de`, Passwort).
+- Einen weiteren eigenen Absender ergänzt man so: Eintrag in `KONTEN`, weiterer SMTP-Knoten und eine Regel im Knoten „SMTP-Konto“.
 - Entwürfe (`modus: "entwurf"`) landen immer im IMAP-Postfach des primären Kontos (INBOX.Drafts).
-- Groß-/Kleinschreibung der Adresse spielt keine Rolle.
 
 Im Portal: **Stammdaten → Anbindungen → TCO Mailversand → Absender je Anwendung**.
 - Eine Zeile mit `*` legt den Standard fest.

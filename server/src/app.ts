@@ -6,6 +6,7 @@ import { ZodError } from 'zod';
 import { config } from './config.js';
 import { sql } from './db.js';
 import { registerAuth } from './auth.js';
+import { registerKontext } from './kontext.js';
 import { apiKeyRoutes } from './routes/apikeys.js';
 import { BusinessError } from './errors.js';
 import { activeModules } from './modules.js';
@@ -28,6 +29,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   });
 
   await app.register(cookie);
+  registerKontext(app);
   registerAuth(app);
 
   app.setErrorHandler((err, req, reply) => {

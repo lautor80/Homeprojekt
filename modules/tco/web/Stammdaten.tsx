@@ -63,10 +63,11 @@ function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: boolean;
   const zelle = { padding: '0.2rem 0.4rem' } as const;
   return (
     <div style={{ padding: '0 0 0.75rem' }}>
-      <Title level="H6">Absender je Anwendung</Title>
+      <Title level="H6">Ersatzabsender je Anwendung</Title>
       <Text style={{ display: 'block', margin: '0.15rem 0 0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-        Ohne Eintrag gilt der Standardabsender des n8n-Workflows. „*“ = Standard für alle übrigen Anwendungen. Freigegeben sind die Konten im
-        Workflow (Knoten „Mail aufbereiten“, KONTEN): torsten.laub@tc-oberthal.de und benjamin.hartyniuk@tc-oberthal.de.
+        Gesendet wird mit der Adresse dessen, der auf „Senden“ drückt – sofern es dafür im n8n-Workflow ein SMTP-Konto gibt (KONTEN:
+        torsten.laub@ und benjamin.hartyniuk@tc-oberthal.de). Sonst und bei Mails ohne Anmeldung (Registrierung, Antrag, Passwort vergessen)
+        gilt dieser Ersatz je Anwendung („*“ = alle übrigen), ohne Eintrag der Standard des Workflows. Antworten gehen dann an den Bearbeiter.
       </Text>
       {liste.length > 0 && (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>

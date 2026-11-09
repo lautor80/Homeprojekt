@@ -1,3 +1,4 @@
+import { aktuellerBenutzer } from '../../../server/src/kontext.js';
 import type { Db, Verein } from './verein.js';
 import { condense } from './format.js';
 
@@ -108,7 +109,7 @@ export interface MailAnhang {
   objekt?: string;
 }
 
-export interface MailErgebnis { status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string }
+export interface MailErgebnis { status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string; von?: string }
 
 export interface MailAbsender { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }
 
@@ -136,18 +137,27 @@ export async function mailSenden(v: Verein, m: {
   html?: boolean;
   benutzer: string;
   anhaenge: MailAnhang[];
-  /** abweichender Absender (sonst je Anwendung aus den Stammdaten) */
+  /** fester Absender (sonst: angemeldeter Benutzer, Ersatz je Anwendung aus den Stammdaten) */
   absender?: string; absender_name?: string; antwort_an?: string;
+  /** false = nie mit der Adresse des angemeldeten Benutzers senden (z. B. Systemmails) */
+  persoenlich?: boolean;
 }): Promise<MailErgebnis> {
   if (!v.n8n_mail_url) throw new Error('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
   const groesse = m.anhaenge.reduce((s, a) => s + a.inhalt.length, 0);
   if (groesse > 10 * 1024 * 1024) throw new Error(`Anhänge zu groß (${(groesse / 1024 / 1024).toFixed(1)} MB, höchstens 10 MB)`);
-  const abs = m.absender ? { email: m.absender, name: m.absender_name ?? '', antwort_an: m.antwort_an ?? '' } : absenderFuer(v, m.anwendung);
+  // Absender: wer auf „Senden“ drückt (angemeldeter Benutzer mit E-Mail). Darf dessen Adresse in n8n nicht senden
+  // (KONTEN), nimmt n8n den Ersatz je Anwendung aus den Stammdaten bzw. seinen Standard und setzt die Antwortadresse auf den Benutzer.
+  const ich = m.persoenlich === false || m.absender ? null : aktuellerBenutzer();
+  const ersatz = absenderFuer(v, m.anwendung);
+  const abs = m.absender ? { email: m.absender, name: m.absender_name ?? '' }
+    : ich?.email ? { email: ich.email, name: `${ich.displayName} | ${v.name}` } : ersatz ? { email: ersatz.email, name: ersatz.name ?? '' } : null;
   const body = {
     modus: m.modus, anwendung: m.anwendung, objekt: m.objekt, an: m.an, cc: m.cc ?? '', bcc: m.bcc ?? '', betreff: m.betreff,
     text: m.text, text_format: m.html ? 'html' : 'text', benutzer: m.benutzer, quelle: 'Portal',
     ...(abs ? { absender: abs.email, absender_name: abs.name || '' } : {}),
-    antwort_an: m.antwort_an || abs?.antwort_an || '',
+    ...(ersatz && abs?.email !== ersatz.email ? { absender_ersatz: ersatz.email, absender_ersatz_name: ersatz.name ?? '' } : {}),
+    // feste Antwortadresse der Stammdaten nur, wenn nicht persönlich gesendet wird (sonst antwortet man dem Absender)
+    antwort_an: m.antwort_an || (ich?.email ? '' : ersatz?.antwort_an) || '',
     anhaenge: m.anhaenge.map((a) => ({
       dateiname: a.dateiname, mime: a.mime ?? 'application/pdf', inhalt_base64: a.inhalt.toString('base64'),
       paperless_root_id: a.paperless_root_id ?? null, paperless_version_id: a.paperless_version_id ?? null, objekt: a.objekt ?? m.objekt,

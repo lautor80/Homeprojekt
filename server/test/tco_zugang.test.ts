@@ -30,7 +30,7 @@ function client() {
 }
 const admin = client();
 const T = '/api/m/tco';
-const mails: { an: string; betreff: string; text: string; absender?: string; absender_name?: string; antwort_an?: string }[] = [];
+const mails: { an: string; betreff: string; text: string; absender?: string; absender_name?: string; antwort_an?: string; absender_ersatz?: string }[] = [];
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -182,8 +182,12 @@ test('Registrierung Mitglied: Abgleich, Arbeitsvorrat, Freigabe durch den Kassen
   assert.match(a.text, /Maria Mitglied/);
   assert.equal((await kasse('POST', `${T}/platz/admin/registrierungen/${maria.id}/bestaetigen`, { zuordnung: { art: 'NEU' } })).status, 403);
 
+  // Absender ist, wer auf „Freigeben“ drückt; Ersatz je Anwendung bzw. „*“ geht mit
+  await sql`update core.users set email = 'kai.kasse@tc-oberthal.de' where username = 'kasse'`;
   r = await kasse('POST', `${T}/registrierungen/mitglieder/${maria.id}/freigeben`, { adrnr: '0000000501' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  const fm = letzteMail('maria@example.org')!;
+  assert.deepEqual([fm.absender, fm.absender_name, fm.absender_ersatz, fm.antwort_an], ['kai.kasse@tc-oberthal.de', 'Kassenwart | Verein', 'portal@tc-oberthal.de', '']);
   assert.match(r.body.text, /Rolle Mitglied/);
   const [u] = await sql`select u.id, array_agg(ur.role_id) as rollen from core.users u join core.user_roles ur on ur.user_id = u.id where u.username = 'maria' group by u.id`;
   assert.deepEqual(u.rollen, ['MITGLIED']);
