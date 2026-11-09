@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, FileUploader, Icon, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
+  AnalyticalTable, Button, CheckBox, FileUploader, Icon, Input, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -22,7 +22,11 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
   eingang?: File[]; onEingang?: (f: File[]) => void; onErledigt?: () => void;
 }) {
   const [d, setD] = useState<Antwort | null>(null);
-  const [jahr, setJahr] = useState('');
+  // Standard: nur das laufende Jahr (sonst werden es schnell zu viele Einträge)
+  const aktJahr = String(new Date().getFullYear());
+  const [jahr, setJahr] = useState(aktJahr);
+  const [typ, setTyp] = useState('');
+  const [suche, setSuche] = useState('');
   const [ansicht, setAnsicht] = useState<Dok | null>(null);
   const [notizen, setNotizen] = useState<Dok | null>(null);
   const [upload, setUpload] = useState<{ datei: string; inhalt: string; groesse: number } | null>(null);
@@ -35,8 +39,17 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
     dateiLesen(naechste).then((inhalt) => setUpload({ datei: naechste.name, inhalt, groesse: naechste.size }));
   }, [naechste, upload]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const jahre = useMemo(() => [...new Set((d?.dokumente ?? []).map((x) => x.erstellt.slice(0, 4)).filter(Boolean))].sort().reverse(), [d]);
-  const rows = (d?.dokumente ?? []).filter((x) => !jahr || x.erstellt.startsWith(jahr));
+  const alle = d?.dokumente ?? [];
+  const jahre = useMemo(() => [...new Set([aktJahr, ...alle.map((x) => x.erstellt.slice(0, 4)).filter(Boolean)])].sort().reverse(), [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const typen = useMemo(() => [...new Set(alle.map((x) => x.typ).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de')), [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Freitext: alle Wörter müssen in Titel, Dokumenttyp, Dok-Nr. oder Datum vorkommen
+  const woerter = suche.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const passt = (x: Dok) => {
+    const t = `${x.titel} ${x.typ ?? ''} ${x.id} ${dat(x.erstellt)} ${x.datei ?? ''}`.toLowerCase();
+    return woerter.every((w) => t.includes(w));
+  };
+  const rows = alle.filter((x) => (!jahr || x.erstellt.startsWith(jahr)) && (!typ || x.typ === typ) && passt(x));
+  const gefiltert = rows.length !== alle.length;
   const istPdf = (x: Dok) => x.mime === 'application/pdf' || /\.pdf$/i.test(x.datei) || !x.datei;
   const oeffnen = (x: Dok) => (istPdf(x) ? setAnsicht(x) : download(`${MG}/dokument/${x.id}/datei`, x.datei).catch((e) => onError(e.message)));
   const gesperrt = 'Enthält Bankdaten – Öffnen und Versenden nur mit der Berechtigung „Bankdaten von Personen“';
@@ -66,12 +79,19 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
   return (
     <>
       <Toolbar design="Transparent">
-        <Title level="H5">Dokumente ({rows.length})</Title>
+        <Title level="H5">Dokumente ({gefiltert ? `${rows.length} von ${alle.length}` : alle.length})</Title>
         <Label>Jahr</Label>
         <Select style={{ width: '7rem' }} onChange={(e) => setJahr((e.detail.selectedOption as HTMLElement).dataset.j ?? '')}>
           <Option data-j="" selected={!jahr}>alle</Option>
           {jahre.map((j) => <Option key={j} data-j={j} selected={j === jahr}>{j}</Option>)}
         </Select>
+        <Label>Dokumentart</Label>
+        <Select style={{ width: '12rem' }} onChange={(e) => setTyp((e.detail.selectedOption as HTMLElement).dataset.t ?? '')}>
+          <Option data-t="" selected={!typ}>alle</Option>
+          {typen.map((t) => <Option key={t} data-t={t} selected={t === typ}>{t}</Option>)}
+        </Select>
+        <Input value={suche} placeholder="Titel, Dok-Nr., Datum …" showClearIcon style={{ width: '14rem' }} data-kein-autofill
+               icon={<Icon name="search" />} onInput={(e) => setSuche(e.target.value)} />
         <ToolbarSpacer />
         <Button icon="refresh" design="Transparent" onClick={laden}>Aktualisieren</Button>
         <Button icon="email" disabled={!sel.length} onClick={onKomm}>{sel.length ? `${sel.length} markierte senden` : 'Markierte senden'}</Button>
@@ -85,9 +105,9 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
       {!d.korrespondent && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>In Paperless gibt es noch keinen Korrespondenten „{d.soll}“ – er wird beim ersten Ablegen angelegt.</MessageStrip>}
       {edit && onEingang
         ? <AblageFlaeche ziel={{ titel: 'Dokumente des Mitglieds', annehmen: (f) => onEingang(f) }}>
-            <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine Dokumente in Paperless – Datei hierher ziehen oder Screenshot mit Strg+V einfügen" />
+            <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless – Datei hierher ziehen oder Screenshot mit Strg+V einfügen'} />
           </AblageFlaeche>
-        : <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine Dokumente in Paperless" />}
+        : <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless'} />}
       {edit && onEingang && <Label wrappingType="Normal" style={{ display: 'block', marginTop: '0.25rem' }}>Dateien auf die Liste ziehen oder Screenshot mit Strg+V einfügen – danach Dokumenttyp wählen.</Label>}
       {ansicht && <PdfDialog url={`${MG}/dokument/${ansicht.id}/datei`} title={ansicht.titel} filename={ansicht.datei || `${ansicht.titel}.pdf`} onClose={() => setAnsicht(null)} />}
       {notizen && <NotizDialog dok={notizen} edit={edit} onClose={(neu) => { setNotizen(null); if (neu) laden(); }} />}
