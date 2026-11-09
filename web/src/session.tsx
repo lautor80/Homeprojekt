@@ -31,6 +31,8 @@ export function useSession(): Session {
 /** Gleiche Logik wie im Server (permissions.ts). */
 export function checkPermission(perms: string[], required?: string): boolean {
   if (!required) return true;
+  // „a|b“: eine der Berechtigungen genügt
+  if (required.includes('|')) return required.split('|').some((r) => checkPermission(perms, r.trim()));
   if (perms.includes('*') || perms.includes(required)) return true;
   return perms.includes(`${required.split(':')[0]}:*`);
 }

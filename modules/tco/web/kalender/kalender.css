@@ -1,0 +1,54 @@
+/* Vereinskalender */
+.portal-kal__leiste { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.75rem 0; }
+.portal-kal__monat { min-width: 10rem; text-align: center; }
+.portal-kal__liste { display: flex; flex-direction: column; }
+.portal-kal__ev {
+  display: grid; grid-template-columns: 4rem minmax(0, 1fr) auto; gap: 0.75rem; align-items: center;
+  padding: 0.625rem 1rem; border-bottom: 1px solid var(--sapList_BorderColor); color: var(--sapTextColor);
+}
+.portal-kal__ev:last-child { border-bottom: 0; }
+.portal-kal__ev--abgesagt .portal-kal__titel { text-decoration: line-through; }
+.portal-kal__datum, .portal-kal__inhalt { border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; padding: 0; }
+.portal-kal__datum { display: flex; flex-direction: column; align-items: center; border-radius: 0.5rem; padding: 0.25rem; background: var(--sapList_HeaderBackground, #f5f6f7); line-height: 1.1; }
+.portal-kal__wt, .portal-kal__mon { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); text-transform: uppercase; }
+.portal-kal__tag { font-size: 1.5rem; font-weight: 700; }
+.portal-kal__inhalt { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.portal-kal__titel { font-weight: 700; overflow-wrap: anywhere; }
+.portal-kal__info { display: flex; flex-wrap: wrap; gap: 0.125rem 0.875rem; font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-kal__ico { width: 0.875rem; height: 0.875rem; margin-right: 0.25rem; vertical-align: -0.125rem; color: var(--sapContent_IconColor); }
+.portal-kal__aktion { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+@media (max-width: 700px) {
+  .portal-kal__ev { grid-template-columns: 3.25rem minmax(0, 1fr); }
+  .portal-kal__aktion { grid-column: 1 / -1; align-items: stretch; }
+  .portal-kal__aktion ui5-button { flex: 1; }
+}
+
+.portal-kal__monatsraster { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.25rem; }
+.portal-kal__kopf { text-align: center; font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-kal__zelle { min-height: 6rem; padding: 0.25rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapGroup_ContentBackground, #fff); display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; color: var(--sapTextColor); }
+.portal-kal__zelle--heute { border-color: var(--sapButton_Emphasized_Background, #0070f2); border-width: 2px; }
+.portal-kal__zelle-nr { font-size: var(--sapFontSmallSize); font-weight: 700; }
+.portal-kal__chip {
+  border: 0; border-left: 0.2rem solid var(--sapInformativeColor, #0070f2); border-radius: 0.25rem; padding: 0.125rem 0.25rem;
+  background: var(--sapList_HeaderBackground, #f5f6f7); color: var(--sapTextColor); font: inherit; font-size: 0.75rem; text-align: left; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.portal-kal__chip--ZUSAGE { border-left-color: var(--sapPositiveElementColor, #188918); }
+.portal-kal__chip--ABSAGE { border-left-color: var(--sapNegativeElementColor, #aa0808); }
+.portal-kal__chip--VIELLEICHT { border-left-color: var(--sapCriticalElementColor, #e76500); }
+.portal-kal__chip--abgesagt { text-decoration: line-through; opacity: 0.6; }
+
+.portal-kal__detail, .portal-kal__form { display: flex; flex-direction: column; gap: 0.75rem; color: var(--sapTextColor); }
+.portal-kal__form { gap: 0.375rem; }
+.portal-kal__fakten { display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-kal__beschreibung { white-space: pre-wrap; padding: 0.75rem; border-radius: 0.5rem; background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-kal__rm { display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-kal__rm-felder { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.portal-kal__namen { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.portal-kal__namen span { padding: 0.125rem 0.5rem; border-radius: 1rem; background: var(--sapList_HeaderBackground, #f5f6f7); font-size: var(--sapFontSmallSize); }
+.portal-kal__tabelle { display: flex; flex-direction: column; }
+.portal-kal__tn { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.25rem 0; border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-kal__tn--offen { color: var(--sapContent_LabelColor); }
+.portal-kal__zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+@media (max-width: 600px) { .portal-kal__zwei { grid-template-columns: 1fr; } }
+.portal-kal__gruppen { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: 0 1rem; align-items: start; }

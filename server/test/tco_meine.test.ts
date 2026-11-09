@@ -56,7 +56,7 @@ after(async () => { await app?.close(); await sql.end(); });
 
 let start = '';
 test('Mitglieder als Benutzer anlegen: E-Mail als Anmeldename, Familienadresse, Hochstufung, Rolle MITGLIED fest', async () => {
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
   let r = await admin('POST', `${M}/benutzer-anlegen`, { mail: false });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.hochgestuft, 1, 'Hallennutzer ohne.mail wird Mitglied 504');
@@ -76,7 +76,7 @@ test('Mitglieder als Benutzer anlegen: E-Mail als Anmeldename, Familienadresse, 
   assert.equal(r.body.angelegt.length, 0);
   // Systemrolle nicht erweiterbar
   await admin('PUT', '/api/admin/roles/MITGLIED', { name: 'Mitglied', permissions: ['tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.mitglieder:display'] });
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
   assert.equal((await admin('DELETE', '/api/admin/roles/MITGLIED')).status, 400);
 });
 
@@ -87,7 +87,7 @@ test('Meine Mitgliedschaft: Anmeldung mit Startkennwort, nur eigene Daten, Konta
   assert.equal((await paula('GET', `${M}/meine`)).status, 403, 'erst Kennwort ändern');
   assert.equal((await paula('POST', '/api/auth/password', { current: start, next: 'mein-neues-kennwort' })).status, 200);
   r = await paula('GET', '/api/auth/me');
-  assert.deepEqual([...r.body.permissions].sort(), ['tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
+  assert.deepEqual([...r.body.permissions].sort(), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
 
   r = await paula('GET', `${M}/meine`);
   assert.equal(r.status, 200, JSON.stringify(r.body));

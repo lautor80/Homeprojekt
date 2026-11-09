@@ -21,11 +21,11 @@ export const ROLLE = 'HALLENNUTZER';
 export const ROLLE_RECHTE = ['tco.platzbuchung:edit'];
 /** Systemrolle für Vereinsmitglieder: eigene Mitgliedsdaten („Meine Mitgliedschaft“) und Einzelbuchung */
 export const ROLLE_MITGLIED = 'MITGLIED';
-export const ROLLE_MITGLIED_RECHTE = ['tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit'];
+export const ROLLE_MITGLIED_RECHTE = ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit'];
 /** feste Systemrollen – Berechtigungen werden bei jedem Start und vor jeder automatischen Anlage erzwungen */
 export const SYSTEMROLLEN: Record<string, { name: string; text: string; rechte: string[] }> = {
   [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen). Berechtigungen fest vorgegeben.', rechte: ROLLE_RECHTE },
-  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“). Berechtigungen fest vorgegeben.', rechte: ROLLE_MITGLIED_RECHTE },
+  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“) und An-/Abmeldung im Vereinskalender. Berechtigungen fest vorgegeben.', rechte: ROLLE_MITGLIED_RECHTE },
 };
 const GESPERRT = ['blocked', 'deleted', 'disabled'];
 
