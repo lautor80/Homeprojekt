@@ -563,6 +563,26 @@ export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: stri
   return { rgpos: pos, betrag: runden(preis * d.menge), summe: betrag, hinweise: hinweise.filter(Boolean) };
 }
 
+/** Text einer manuellen Position ändern; Buchungspositionen tragen ihren Text aus der Buchung */
+export async function positionTextAendern(tx: Db, rgnr: string, rgpos: number, beschreibung: string | null | undefined) {
+  const k = await kopfLesen(tx, rgnr);
+  if (!rgAenderbar(k)) throw new BusinessError(`Rechnung ${rgnr} ist bereits versendet oder gezahlt – keine Änderung möglich`);
+  const [p] = await tx`select bid, prod_key, description from tco.rgpos where rgnr_txt = ${rgnr} and rgpos = ${rgpos} for update`;
+  if (!p) throw new BusinessError(`Position ${rgpos} nicht gefunden`);
+  if (p.bid) throw new BusinessError('Nur manuelle Positionen sind im Text änderbar');
+  let text = (beschreibung ?? '').trim();
+  if (!text) {
+    // leer: zurück auf den Produkttext; freie Positionen (Sonstiges, Gutschrift) brauchen einen eigenen Text
+    const [pr] = await tx`select text from tco.produkte where prod_key = ${p.prod_key} order by valid_to desc limit 1`;
+    const prodText: string = pr?.text ?? '';
+    if (p.prod_key === KEY_SONSTIGES || istGutschrift(prodText) || !prodText) throw new BusinessError('Bitte eine Beschreibung erfassen');
+    text = prodText;
+  }
+  const alt: string = p.description ?? '';
+  if (text !== alt) await tx`update tco.rgpos set description = ${text} where rgnr_txt = ${rgnr} and rgpos = ${rgpos}`;
+  return { kopf: k, alt, text, geaendert: text !== alt };
+}
+
 async function schluesselFortschreiben(tx: Db, adrnr: string, key: string, rgnr: string): Promise<string> {
   const [{ datum }] = await tx`select angelegt_am::text as datum from tco.rgkopf where rgnr_txt = ${rgnr}`;
   const [s] = await tx`select counter, ausgabe::text, ruecknahme::text from tco.schluessel where adrnr = ${adrnr}`;
