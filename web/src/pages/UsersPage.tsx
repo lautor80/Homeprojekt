@@ -245,6 +245,7 @@ export function UsersPage() {
               )}
               <FieldBox label="Rollen" wide>
                 <MultiComboBox
+                  data-kein-autofill
                   readonly={!mayEdit}
                   style={{ width: '100%' }}
                   onSelectionChange={(e) => setEdit({ ...edit, roles: e.detail.items.map((i) => i.dataset.id!) })}
@@ -269,7 +270,7 @@ export function UsersPage() {
         )}
       </Dialog>
 
-      <Dialog
+      {pwFor && <Dialog
         open={!!pwFor}
         headerText={`Passwort zurücksetzen: ${pwFor?.username ?? ''}`}
         onClose={() => setPwFor(null)}
@@ -280,7 +281,7 @@ export function UsersPage() {
       >
         {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
         <TextField label="Neues Startpasswort (mind. 10 Zeichen)" type="Password" value={newPw} onChange={setNewPw} />
-      </Dialog>
+      </Dialog>}
     </AppPage>
   );
 }

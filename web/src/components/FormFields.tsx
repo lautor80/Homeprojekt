@@ -42,7 +42,7 @@ export function TextField({ label, value, onChange, required, readonly, type = '
         <TextArea rows={4} value={value ?? ''} readonly={readonly} placeholder={placeholder}
                   onInput={(e) => onChange?.(e.target.value)} />
       ) : (
-        <Input style={{ width: '100%' }} type={type} value={value ?? ''} readonly={readonly} placeholder={placeholder}
+        <Input style={{ width: '100%' }} type={type} value={value ?? ''} readonly={readonly} placeholder={placeholder} data-kein-autofill
                onInput={(e) => onChange?.(e.target.value)} />
       )}
     </FieldBox>

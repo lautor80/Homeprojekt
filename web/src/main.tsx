@@ -8,6 +8,7 @@ import '@ui5/webcomponents-react/dist/Assets.js';
 import '@ui5/webcomponents-icons/dist/AllIcons.js';
 import '@ui5/webcomponents-fiori/dist/illustrations/AllIllustrations.js';
 import { App } from './App';
+import { autofillSperren } from './autofill';
 import { erscheinungInitialisieren } from './theme';
 import './styles.css';
 
@@ -25,3 +26,5 @@ createRoot(document.getElementById('root')!).render(
     </ThemeProvider>
   </StrictMode>,
 );
+
+autofillSperren();

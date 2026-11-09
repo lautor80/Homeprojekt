@@ -229,8 +229,8 @@ export function BackupPage() {
             )}
             {format === 'portal' && <>
             <Label showColon>Passwort (optional, verschlüsselt die Datei)</Label>
-            <Input type="Password" value={pw} placeholder="leer = unverschlüsselt" onInput={(e) => setPw(e.target.value)} valueState={pwFehler && pw.length < 8 ? 'Negative' : 'None'} />
-            {pw && <Input type="Password" value={pw2} placeholder="Passwort wiederholen" onInput={(e) => setPw2(e.target.value)} valueState={pw !== pw2 ? 'Negative' : 'None'} />}
+            <Input type="Password" data-kein-autofill value={pw} placeholder="leer = unverschlüsselt" onInput={(e) => setPw(e.target.value)} valueState={pwFehler && pw.length < 8 ? 'Negative' : 'None'} />
+            {pw && <Input type="Password" data-kein-autofill value={pw2} placeholder="Passwort wiederholen" onInput={(e) => setPw2(e.target.value)} valueState={pw !== pw2 ? 'Negative' : 'None'} />}
             </>}
             {pwFehler && <Text style={{ color: 'var(--sapNegativeTextColor)' }} className="portal-small">Passwort: {pwFehler}</Text>}
             <Text className="portal-muted portal-small">
@@ -331,7 +331,7 @@ function RuecksicherungDialog({ datei, onClose, onDone }: { datei: Datei; onClos
           <>
             <Label showColon>Passwort der Sicherung</Label>
             <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
-              <Input type="Password" value={pw} style={{ flex: 1 }} onInput={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && pruefen()} />
+              <Input type="Password" data-kein-autofill value={pw} style={{ flex: 1 }} onInput={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && pruefen()} />
               <Button disabled={!pw || busy} onClick={pruefen}>Öffnen</Button>
             </div>
           </>
@@ -383,7 +383,7 @@ function XmlDialog({ datei, onClose, laden }: { datei: Datei; onClose: () => voi
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
         <Label showColon>Passwort der Sicherung</Label>
-        <Input type="Password" value={pw} onInput={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && los()} />
+        <Input type="Password" data-kein-autofill value={pw} onInput={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && los()} />
         <MessageStrip design="Critical" hideCloseButton>Die ZIP-Datei ist unverschlüsselt und enthält alle Daten der Sicherung im Klartext.</MessageStrip>
       </div>
     </Dialog>
@@ -428,7 +428,7 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
           <Label showColon required>Benutzer</Label>
           <Input value={c.benutzer} onInput={(e) => set({ benutzer: e.target.value })} />
           <Label showColon required>App-Passwort</Label>
-          <Input type="Password" value={c.passwort} placeholder="Nextcloud → Einstellungen → Sicherheit → App-Passwort" onInput={(e) => set({ passwort: e.target.value })} />
+          <Input type="Password" data-kein-autofill value={c.passwort} placeholder="Nextcloud → Einstellungen → Sicherheit → App-Passwort" onInput={(e) => set({ passwort: e.target.value })} />
           <Label showColon required>Zielordner</Label>
           <Input value={c.ordner} placeholder="/Vorstand/Portal-Sicherungen" onInput={(e) => set({ ordner: e.target.value })} />
         </div>
@@ -442,7 +442,7 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
           </div>
           {c.format === 'portal' ? <>
             <Label showColon>Datei-Passwort (verschlüsselt die Sicherung)</Label>
-            <Input type="Password" value={c.datei_passwort} placeholder="mindestens 8 Zeichen – dringend empfohlen" onInput={(e) => set({ datei_passwort: e.target.value })}
+            <Input type="Password" data-kein-autofill value={c.datei_passwort} placeholder="mindestens 8 Zeichen – dringend empfohlen" onInput={(e) => set({ datei_passwort: e.target.value })}
                    valueState={c.datei_passwort && c.datei_passwort.length < 8 ? 'Negative' : !c.datei_passwort ? 'Critical' : 'None'} />
           </> : <Text style={{ color: 'var(--sapCriticalTextColor)' }} className="portal-small">ZIP/XML ist unverschlüsselt – der Zielordner darf nur dem Vorstand zugänglich sein.</Text>}
           <CheckBox text="Änderungsbelege mitsichern" checked={c.mit_aenderungsbelegen} onChange={(e) => set({ mit_aenderungsbelegen: e.target.checked })} />
