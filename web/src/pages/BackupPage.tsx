@@ -401,7 +401,15 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const laden = () => api.get<Export>('/api/backup/nextcloud').then(setC).catch((e) => onError(e.message));
-  useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    laden();
+    // läuft schon ein Export (z. B. nach Neuladen der Seite oder der tägliche Lauf), dessen Fortschritt anzeigen
+    api.get<{ laufend: Job | null }>('/api/backup').then((r) => {
+      if (r.laufend?.art !== 'nextcloud') return;
+      setBusy(true); setJob(r.laufend);
+      abwarten(r.laufend.id, setJob).then(() => laden()).catch(() => undefined).finally(() => setBusy(false));
+    }).catch(() => undefined);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!c) return null;
   const set = (x: Partial<Export>) => setC({ ...c, ...x });
   const daten = () => ({
