@@ -16,11 +16,13 @@ const dat = (iso: string) => iso.split('-').reverse().join('.');
  * Arbeitsvorrat der Vereinsübersicht: offene Vorgänge (z. B. freigegebene Zeitnachweise der Trainer,
  * Registrierungen). Ein Klick öffnet die App, in der der Vorgang erledigt wird. Ohne Einträge unsichtbar.
  */
-export function Arbeitsvorrat({ neu }: { neu: number }) {
+export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: string }) {
   const [liste, setListe] = useState<Aufgabe[]>([]);
   const navigate = useNavigate();
   useEffect(() => { api.get<Aufgabe[]>(`${DASH}/arbeitsvorrat`).then(setListe).catch(() => setListe([])); }, [neu]);
-  if (!liste.length) return null;
+  if (!liste.length) {
+    return leerText ? <Section title="Arbeitsvorrat" count={0}><span className="portal-muted">{leerText}</span></Section> : null;
+  }
   return (
     <Section title="Arbeitsvorrat" count={liste.length} flush>
       <div className="portal-av">

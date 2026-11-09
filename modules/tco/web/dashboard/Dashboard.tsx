@@ -8,6 +8,8 @@ import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { ComboChart, LineChart, StackedBarChart } from './Chart';
 import { Arbeitsvorrat } from './Arbeitsvorrat';
+import { KpiZeilen } from './KpiZeilen';
+import { useNavigate } from 'react-router-dom';
 import { DetailDialog } from './DetailDialog';
 import { FinCard } from './FinCard';
 import { KpiCard } from './KpiCard';
@@ -35,6 +37,7 @@ function JahreWahl({ jahre, sel, onChange, width = '20rem' }: { jahre: KeyText[]
  */
 export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
   const can = useCan();
+  const navigate = useNavigate();
   const edit = can('tco.dashboard:edit');
   const [jahr, setJahr] = useState<number | null>(new Date().getFullYear());
   const [display, setDisplay] = useState<Display>('TILE');
@@ -131,11 +134,20 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
         </div>
       </div>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
-      <Arbeitsvorrat neu={neu} />
+      {/* zu Beginn: Mitglieder auf einen Blick und Arbeitsvorrat, beide zeilenweise */}
+      <div className="portal-dash__oben">
+        {d && (() => {
+          const b = d.bereiche.find((x) => x.key === 'MITGLIEDER');
+          return b ? <KpiZeilen titel="Mitglieder" kpis={b.kpis} onDetail={setDetail}
+                                onOeffnen={can('tco.mitglieder:display') ? () => navigate('/tco/mitglieder') : undefined} /> : null;
+        })()}
+        <Arbeitsvorrat neu={neu} leerText="Nichts zu erledigen." />
+      </div>
       {!d && laedt && <BusyIndicator active style={{ display: 'block', width: '100%', marginTop: '2rem' }} />}
       {d && d.bereiche.map((b) => (
         <Section key={b.key} title={b.title} status={laedt ? <BusyIndicator active size="S" style={{ display: 'block' }} /> : undefined}>
-          <div className="portal-kpitiles">{b.kpis.map(kpiRender)}</div>
+          {/* Mitglieder-Kennzahlen stehen zeilenweise oben – hier nur die Diagramme */}
+          {b.key !== 'MITGLIEDER' && <div className="portal-kpitiles">{b.kpis.map(kpiRender)}</div>}
           {diagramm(b)}
         </Section>
       ))}

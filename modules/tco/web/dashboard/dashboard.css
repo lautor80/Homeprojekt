@@ -232,3 +232,17 @@
   .portal-av__eintrag { grid-template-columns: auto minmax(0, 1fr) auto; }
   .portal-av__datum { display: none; }
 }
+
+/* Kennzahlen zeilenweise (gleiches Layout wie der Arbeitsvorrat) */
+.portal-av__eintrag--None { border-left-color: var(--sapList_BorderColor); }
+.portal-av__eintrag--kz { cursor: default; }
+button.portal-av__eintrag--kz { cursor: pointer; }
+.portal-kz__wert { display: flex; align-items: baseline; gap: 0.375rem; white-space: nowrap; color: var(--sapTextColor); }
+.portal-kz__zahl { font-size: 1.375rem; font-weight: 300; }
+.portal-kz__delta, .portal-kz__einheit { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
+.portal-kz__wert--Positive .portal-kz__zahl { color: var(--sapPositiveTextColor); }
+.portal-kz__wert--Critical .portal-kz__zahl { color: var(--sapCriticalTextColor); }
+.portal-kz__wert--Negative .portal-kz__zahl { color: var(--sapNegativeTextColor); }
+
+/* Kopf der Vereinsübersicht: Mitglieder und Arbeitsvorrat nebeneinander */
+.portal-dash__oben { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 0 1rem; align-items: start; }
