@@ -10,7 +10,7 @@ import './halle.css';
 
 /**
  * Automatische Zuordnung offener Hallenbuchungen zu Rechnungen.
- * Aufbau: Kennzahlen · Filterleiste · je Kunde eine aufklappbare Karte (Ziel-Rechnung, Summe) mit den Buchungen.
+ * Aufbau: Kennzahlen · Filterleiste · je Tag eine aufklappbare Karte, darin je Person (Ziel-Rechnung, Summe) die Buchungen.
  */
 type AutoBuchung = Buchung & { auswahl: boolean; hinweis: string; ziel?: string; platz?: string | null };
 interface ZielInfo { rgnr: string; status: string; positionen: number }
@@ -33,8 +33,8 @@ export function AutoDialog({ open, onClose, onDone }: { open: boolean; onClose: 
     setDaten(null); setError(null);
     api.get<AutoKunde[]>(`${H}/auto`).then((d) => {
       setDaten(d);
-      // Kunden mit Preisfehlern gleich aufgeklappt – dort ist Handlungsbedarf
-      setOffen(new Set(d.filter((k) => k.buchungen.some((b) => b.fehler && !b.zukunft)).map((k) => k.kunde)));
+      // Tage mit Preisfehlern gleich aufgeklappt – dort ist Handlungsbedarf
+      setOffen(new Set(d.flatMap((k) => k.buchungen.filter((b) => b.fehler && !b.zukunft).map((b) => b.datum))));
     }).catch((e) => setError(e.message));
   };
   useEffect(() => { if (open) laden(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -52,6 +52,25 @@ export function AutoDialog({ open, onClose, onDone }: { open: boolean; onClose: 
     const s = new Set(sichtbar(k).map(key));
     if (!kunden.some((x) => x.kunde === k.kunde)) return k;
     return { ...k, buchungen: k.buchungen.map((b) => (s.has(key(b)) ? { ...b, auswahl: an === 'vorschlag' ? !b.zukunft && !b.fehler : an } : b)) };
+  }));
+  // erste Stufe: Tag, zweite Stufe: Person (Ziel-Rechnung bleibt je Person)
+  const tage = useMemo(() => {
+    const m = new Map<string, { k: AutoKunde; b: AutoBuchung[] }[]>();
+    for (const k of kunden) {
+      for (const b of sichtbar(k)) {
+        const l = m.get(b.datum) ?? [];
+        const e = l.find((x) => x.k.kunde === k.kunde);
+        if (e) e.b.push(b); else l.push({ k, b: [b] });
+        m.set(b.datum, l);
+      }
+    }
+    return [...m].sort(([a], [b]) => a.localeCompare(b))
+      .map(([datum, personen]) => ({ datum, personen: personen.sort((a, b) => a.k.name.localeCompare(b.k.name, 'de')) }));
+  }, [kunden, zukunft, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Auswahl über mehrere Personen (Tageskopf) */
+  const tagSetzen = (personen: { k: AutoKunde; b: AutoBuchung[] }[], an: boolean) => setDaten((d) => d!.map((k) => {
+    const keys = new Set(personen.filter((x) => x.k.kunde === k.kunde).flatMap((x) => x.b.map(key)));
+    return keys.size ? { ...k, buchungen: k.buchungen.map((b) => (keys.has(key(b)) ? { ...b, auswahl: an } : b)) } : k;
   }));
   const umschalten = (kunde: string) => setOffen((o) => { const n = new Set(o); if (n.has(kunde)) n.delete(kunde); else n.add(kunde); return n; });
 
@@ -124,7 +143,7 @@ export function AutoDialog({ open, onClose, onDone }: { open: boolean; onClose: 
             <Button design="Transparent" icon="multiselect-all" onClick={() => alleSetzen(true)}>Alle</Button>
             <Button design="Transparent" icon="multiselect-none" onClick={() => alleSetzen(false)}>Keine</Button>
             <Button design="Transparent" icon={offen.size ? 'collapse-all' : 'expand-all'} tooltip={offen.size ? 'Alle zuklappen' : 'Alle aufklappen'}
-                    onClick={() => setOffen(offen.size ? new Set() : new Set(kunden.map((k) => k.kunde)))} />
+                    onClick={() => setOffen(offen.size ? new Set() : new Set(tage.map((t) => t.datum)))} />
           </div>
         </div>
 
@@ -136,74 +155,94 @@ export function AutoDialog({ open, onClose, onDone }: { open: boolean; onClose: 
           </div>
         )}
 
-        {/* Kunden */}
+        {/* Tage → Personen → Buchungen */}
         <div className="portal-az__liste">
-          {kunden.map((k) => {
-            const s = sichtbar(k);
-            const sk = new Set(s.map(key));
-            const gew = s.filter((b) => b.auswahl);
-            const alleGew = gew.length === s.length;
-            const fehler = s.filter((b) => b.fehler).length;
-            const auf = offen.has(k.kunde);
-            const info = (z: string) => k.zielInfo?.find((x) => x.rgnr === z);
+          {tage.map(({ datum, personen }) => {
+            const alle = personen.flatMap((x) => x.b);
+            const gew = alle.filter((b) => b.auswahl);
+            const alleGew = gew.length === alle.length;
+            const fehler = alle.filter((b) => b.fehler).length;
+            const auf = offen.has(datum);
             return (
-              <section key={k.kunde} className={`portal-az__kunde${gew.length ? ' portal-az__kunde--aktiv' : ''}`}>
-                <div className="portal-az__kopf">
-                  <CheckBox checked={alleGew && s.length > 0} indeterminate={gew.length > 0 && !alleGew}
-                            accessibleName={`${k.name} auswählen`} onChange={(e) => auswahlSetzen(k.kunde, sk, e.target.checked)} />
-                  <button type="button" className="portal-az__name" onClick={() => umschalten(k.kunde)} aria-expanded={auf}>
+              <section key={datum} className={`portal-az__kunde${gew.length ? ' portal-az__kunde--aktiv' : ''}`}>
+                <div className="portal-az__kopf portal-az__kopf--tag">
+                  <CheckBox checked={alleGew && alle.length > 0} indeterminate={gew.length > 0 && !alleGew}
+                            accessibleName={`${dat(datum)} auswählen`} onChange={(e) => tagSetzen(personen, e.target.checked)} />
+                  <button type="button" className="portal-az__name" onClick={() => umschalten(datum)} aria-expanded={auf}>
                     <Icon name={auf ? 'navigation-down-arrow' : 'navigation-right-arrow'} />
                     <span>
-                      <span className="portal-az__name-text">{k.name}</span>
+                      <span className="portal-az__name-text">{wtag(datum)}, {dat(datum)}</span>
                       <span className="portal-az__sub">
-                        {gew.length} von {s.length} gewählt
-                        {s.some((b) => b.art === 'Abo') && ` · ${s.filter((b) => b.art === 'Abo').length} Abo`}
+                        {personen.length} Person(en) · {gew.length} von {alle.length} Buchung(en) gewählt
+                        {alle.some((b) => b.art === 'Abo') && ` · ${alle.filter((b) => b.art === 'Abo').length} Abo`}
                         {fehler > 0 && <ObjectStatus state="Negative" showDefaultIcon>{fehler} Preisfehler</ObjectStatus>}
                       </span>
                     </span>
                   </button>
-                  <div className="portal-az__ziel">
-                    <Select accessibleName="Ziel-Rechnung" onChange={(e) => setK(k.kunde, (x) => ({ ...x, ziel: (e.detail.selectedOption as HTMLElement).dataset.z! }))}>
-                      <Option data-z="NEU" icon="add-document" selected={k.ziel === 'NEU'}>Neue Rechnung</Option>
-                      {k.ziele.map((z) => {
-                        const i = info(z);
-                        return <Option key={z} data-z={z} icon="sales-document" selected={k.ziel === z}>
-                          {z}{i ? ` · ${RG_STATUS[i.status] ?? i.status}, ${i.positionen} Pos.` : ''}
-                        </Option>;
-                      })}
-                    </Select>
-                  </div>
                   <div className="portal-az__summe">{eur(gew.reduce((t, b) => t + b.betrag, 0))}</div>
                 </div>
 
-                {auf && (
-                  <div className="portal-az__buchungen" role="list">
-                    {s.map((b) => (
-                      <div key={key(b)} role="listitem"
-                           onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'UI5-CHECKBOX') auswahlSetzen(k.kunde, new Set([key(b)]), !b.auswahl); }}
-                           className={`portal-az__zeile${b.auswahl ? ' portal-az__zeile--an' : ''}${b.fehler ? ' portal-az__zeile--fehler' : ''}`}>
-                        <CheckBox checked={b.auswahl} accessibleName={`${dat(b.datum)} ${zeit(b.time_start)}`}
-                                  onChange={(e) => auswahlSetzen(k.kunde, new Set([key(b)]), e.target.checked)} />
-                        <span className="portal-az__datum"><b>{wtag(b.datum)}</b> {dat(b.datum)}</span>
-                        <span className="portal-az__zeit">{zeit(b.time_start)}–{zeit(b.time_ende)}</span>
-                        <span className="portal-az__platz">{b.platz || '–'}</span>
-                        <span className="portal-az__art">
-                          <ObjectStatus state={b.art === 'Abo' ? 'Information' : 'None'} inverted={b.art === 'Abo'}>{b.art}</ObjectStatus>
-                          {b.zukunft && <ObjectStatus state="Critical">Zukunft</ObjectStatus>}
+                {auf && personen.map(({ k, b: s }) => {
+                  const sk = new Set(s.map(key));
+                  const pg = s.filter((b) => b.auswahl);
+                  const pAlle = pg.length === s.length;
+                  const info = (z: string) => k.zielInfo?.find((x) => x.rgnr === z);
+                  return (
+                    <div key={k.kunde} className="portal-az__person">
+                      <div className="portal-az__kopf portal-az__kopf--person">
+                        <CheckBox checked={pAlle && s.length > 0} indeterminate={pg.length > 0 && !pAlle}
+                                  accessibleName={`${k.name} am ${dat(datum)} auswählen`} onChange={(e) => auswahlSetzen(k.kunde, sk, e.target.checked)} />
+                        <span className="portal-az__name portal-az__name--person">
+                          <Icon name="person-placeholder" />
+                          <span>
+                            <span className="portal-az__name-text">{k.name}</span>
+                            <span className="portal-az__sub">{pg.length} von {s.length} gewählt</span>
+                          </span>
                         </span>
-                        <span className="portal-az__hinweis" title={b.hinweis}>{b.hinweis || b.text || ''}</span>
-                        <span className="portal-az__betrag">{b.fehler ? '–' : eur(b.betrag)}</span>
+                        <div className="portal-az__ziel">
+                          <Select accessibleName="Ziel-Rechnung (gilt für alle Tage der Person)"
+                                  onChange={(e) => setK(k.kunde, (x) => ({ ...x, ziel: (e.detail.selectedOption as HTMLElement).dataset.z! }))}>
+                            <Option data-z="NEU" icon="add-document" selected={k.ziel === 'NEU'}>Neue Rechnung</Option>
+                            {k.ziele.map((z) => {
+                              const i = info(z);
+                              return <Option key={z} data-z={z} icon="sales-document" selected={k.ziel === z}>
+                                {z}{i ? ` · ${RG_STATUS[i.status] ?? i.status}, ${i.positionen} Pos.` : ''}
+                              </Option>;
+                            })}
+                          </Select>
+                        </div>
+                        <div className="portal-az__summe">{eur(pg.reduce((t, b) => t + b.betrag, 0))}</div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="portal-az__buchungen" role="list">
+                        {s.map((b) => (
+                          <div key={key(b)} role="listitem"
+                               onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'UI5-CHECKBOX') auswahlSetzen(k.kunde, new Set([key(b)]), !b.auswahl); }}
+                               className={`portal-az__zeile${b.auswahl ? ' portal-az__zeile--an' : ''}${b.fehler ? ' portal-az__zeile--fehler' : ''}`}>
+                            <CheckBox checked={b.auswahl} accessibleName={`${dat(b.datum)} ${zeit(b.time_start)}`}
+                                      onChange={(e) => auswahlSetzen(k.kunde, new Set([key(b)]), e.target.checked)} />
+                            <span className="portal-az__datum"><b>{wtag(b.datum)}</b> {dat(b.datum)}</span>
+                            <span className="portal-az__zeit">{zeit(b.time_start)}–{zeit(b.time_ende)}</span>
+                            <span className="portal-az__platz">{b.platz || '–'}</span>
+                            <span className="portal-az__art">
+                              <ObjectStatus state={b.art === 'Abo' ? 'Information' : 'None'} inverted={b.art === 'Abo'}>{b.art}</ObjectStatus>
+                              {b.zukunft && <ObjectStatus state="Critical">Zukunft</ObjectStatus>}
+                            </span>
+                            <span className="portal-az__hinweis" title={b.hinweis}>{b.hinweis || b.text || ''}</span>
+                            <span className="portal-az__betrag">{b.fehler ? '–' : eur(b.betrag)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </section>
             );
           })}
         </div>
 
         <Text className="portal-muted portal-small">
-          Vorschlag: alle Buchungen bis heute ohne Preisfehler. Ziel je Kunde: jüngste Rechnung „In Bearbeitung“, sonst eine neue Rechnung.
+          Gruppiert nach Tag, darin nach Person. Vorschlag: alle Buchungen bis heute ohne Preisfehler. Ziel je Person (gilt für alle Tage):
+          jüngste Rechnung „In Bearbeitung“, sonst eine neue Rechnung.
           Abos werden einmal je Serie abgerechnet.
         </Text>
       </div>
