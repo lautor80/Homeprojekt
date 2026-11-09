@@ -358,3 +358,77 @@ test('Mitglieder zur Aufnahme: Geschlecht, Jahrgang und Alter für die Filter', 
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname) values ('0000000699', 'Zita', 'Zahler')`;
   assert.deepEqual((await admin('GET', `${G}/mitglieder`)).body.map((m: any) => m.adrnr).sort(), [ANNA, BEN, CARL]);
 });
+
+test('Regelwerk: Mitglieder nach Alter zuordnen, Kalenderjahr zählt, Vorschau, andere entfernen (#16)', async () => {
+  const { passtZurRegel } = await import('../../modules/tco/server/gruppen/alter.js');
+  // reine Rechenlogik: 6–7 Jahre am 10.11.2026
+  const k = { alter_von: 6, alter_bis: 7, jahrgang: false }, kj = { ...k, jahrgang: true };
+  assert.deepEqual([passtZurRegel('2020-12-20', k, '2026-11-10'), passtZurRegel('2020-12-20', kj, '2026-11-10')], [false, true], 'wird im Dezember 6');
+  assert.deepEqual([passtZurRegel('2018-03-05', k, '2026-11-10'), passtZurRegel('2018-03-05', kj, '2026-11-10')], [false, true], 'wurde im März 8');
+  assert.deepEqual([passtZurRegel('2017-12-31', kj, '2026-11-10'), passtZurRegel('2021-01-01', kj, '2026-11-10'), passtZurRegel(null, kj, '2026-11-10')], [false, false, false]);
+
+  const R = `${G}/regeln`;
+  const jahr = Number((await sql`select extract(year from current_date)::int as j`)[0].j);
+  const K1 = '0000000611', K2 = '0000000612', K3 = '0000000613';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, geburtsdatum) values
+            (${K1}, 'Kim', 'Klein', '2024-01-01', ${`${jahr - 6}-01-01`}), (${K2}, 'Lea', 'Kurz', '2024-01-01', ${`${jahr - 8}-06-15`}),
+            (${K3}, 'Max', 'Mittel', '2024-01-01', ${`${jahr - 9}-06-15`})`;
+  const jugend = await neu('Jugend');
+  const kleinfeld = await neu('Kleinfeld', jugend);
+  const midfeld = await neu('Midfeld', jugend);
+  const direkt = async (id: number) => (await baum()).find((g) => g.id === id)!.mitglieder.map((m) => m.adrnr).sort();
+
+  // Prüfungen beim Sichern
+  const regel = (x: object) => ({ jahrgang: false, andere_entfernen: false, aktiv: true, alter_von: null, alter_bis: null, ...x });
+  assert.equal((await admin('PUT', R, { regeln: [regel({ gruppe_id: kleinfeld })] })).status, 400, 'ohne Alter');
+  assert.equal((await admin('PUT', R, { regeln: [regel({ gruppe_id: kleinfeld, alter_von: 8, alter_bis: 6 })] })).status, 400);
+  assert.equal((await admin('PUT', R, { regeln: [regel({ gruppe_id: 99999, alter_von: 6 })] })).status, 400);
+  let r = await admin('PUT', R, { regeln: [regel({ gruppe_id: kleinfeld, alter_von: 6, alter_bis: 7, jahrgang: true }), regel({ gruppe_id: midfeld, alter_von: 8, alter_bis: 10, jahrgang: true })] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.regeln.length, 2);
+  assert.equal((await admin('GET', R)).body.regeln[0].gruppe_id, kleinfeld);
+
+  // Anna ist von Hand in Kleinfeld; Vorschau ändert nichts
+  assert.equal((await admin('POST', `${G}/${kleinfeld}/mitglieder`, { adrnrs: [ANNA] })).status, 200);
+  r = await admin('POST', `${R}/anwenden`, { simulation: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const erg = (id: number) => r.body.gruppen.find((g: any) => g.gruppe_id === id);
+  assert.deepEqual(erg(kleinfeld).aufgenommen.map((p: any) => p.adrnr).sort(), [K1, K2], 'Lea wird in diesem Jahr 8 und zählt noch');
+  assert.deepEqual(erg(kleinfeld).entfernt, []);
+  assert.deepEqual(erg(midfeld).aufgenommen.map((p: any) => p.adrnr).sort(), [K2, K3]);
+  assert.equal(erg(kleinfeld).gruppe, 'Jugend › Kleinfeld');
+  assert.match(erg(kleinfeld).regel, /6–7 Jahre \(Kalenderjahr zählt\)/);
+  assert.match(r.body.text, /Vorschau: 4 würden aufgenommen, 0 würden entfernt/);
+  assert.deepEqual(await direkt(kleinfeld), [ANNA]);
+
+  // Anwenden: aufgenommen; ein zweiter Lauf ändert nichts mehr
+  r = await admin('POST', `${R}/anwenden`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Regelwerk angewendet: 4 aufgenommen, 0 entfernt/);
+  assert.deepEqual(await direkt(kleinfeld), [ANNA, K1, K2]);
+  assert.deepEqual(await direkt(midfeld), [K2, K3]);
+  r = await admin('POST', `${R}/anwenden`, {});
+  assert.deepEqual([r.body.aufgenommen, r.body.entfernt], [0, 0]);
+
+  // Kim passt nicht mehr: Zuordnung aus dem Regelwerk entfällt, die von Hand zugeordnete Anna bleibt
+  await sql`update tco.mitglieder set geburtsdatum = ${`${jahr - 12}-01-01`} where adrnr = ${K1}`;
+  r = await admin('POST', `${R}/anwenden`, {});
+  assert.deepEqual(erg(kleinfeld).entfernt.map((p: any) => p.name), ['Kim Klein']);
+  assert.deepEqual(await direkt(kleinfeld), [ANNA, K2]);
+
+  // „Andere entfernen“: auch Anna (ohne passendes Alter) entfällt; inaktive Regel wirkt nicht
+  r = await admin('PUT', R, { regeln: [regel({ gruppe_id: kleinfeld, alter_von: 6, alter_bis: 7, jahrgang: true, andere_entfernen: true }), regel({ gruppe_id: midfeld, alter_von: 30, aktiv: false })] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${R}/anwenden`, {});
+  assert.deepEqual(r.body.gruppen.map((g: any) => g.gruppe_id), [kleinfeld]);
+  assert.deepEqual(erg(kleinfeld).entfernt.map((p: any) => p.adrnr), [ANNA]);
+  assert.deepEqual(await direkt(kleinfeld), [K2]);
+  assert.deepEqual(await direkt(midfeld), [K2, K3]);
+
+  // nur mit Pflegerecht
+  const grleser = client();
+  assert.equal((await grleser('POST', '/api/auth/login', { username: 'grleser', password: 'neues-passwort' })).status, 200);
+  assert.equal((await grleser('GET', R)).status, 403);
+  assert.equal((await grleser('POST', `${R}/anwenden`, {})).status, 403);
+});
+

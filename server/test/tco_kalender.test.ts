@@ -223,3 +223,19 @@ test('Massenanlage: Spielplan einfügen, Vorschau mit Mapping und Gruppe, anlege
   assert.equal((await anna('POST', `${K}/masse/vorschau`, { text: plan })).status, 403);
   assert.equal((await anna('POST', `${K}/masse`, { events })).status, 403);
 });
+
+test('Gruppen-Veranstaltung: Rückmeldungen nur für Mitglieder der Gruppe, Auswahl ohne andere Personen (#16)', async () => {
+  // Auswahl zum Eintragen: bei einer Veranstaltung für „Herren 40“ nur deren Mitglieder
+  let r = await admin('GET', `${K}/pflege/mitglieder?event=${spiel}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((m: any) => m.adrnr).sort(), [BEN, CARL]);
+  r = await admin('GET', `${K}/pflege/mitglieder`);
+  assert.ok(r.body.some((m: any) => m.adrnr === ANNA), 'ohne Veranstaltung alle Mitglieder');
+  // auch der Organisator trägt für Personen außerhalb der Gruppe nichts ein
+  r = await admin('POST', `${K}/${spiel}/teilnehmer`, { adrnr: ANNA, status: 'ZUSAGE' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /gehört nicht zu den Gruppen/);
+  assert.equal((await sql`select count(*)::int as n from tco.kal_anmeldungen where event_id = ${spiel} and adrnr = ${ANNA}`)[0].n, 0);
+  assert.equal((await admin('POST', `${K}/${spiel}/teilnehmer`, { adrnr: CARL, status: 'ZUSAGE' })).status, 200);
+});
+

@@ -182,7 +182,7 @@ async function vorfahren(db: Db, id: number): Promise<number[]> {
 }
 
 /** Mitglieder, die schon über eine Untergruppe zur Gruppe gehören: Adressnummer → Name der Untergruppe */
-async function ueberUntergruppe(db: Db, gruppeId: number, adrnrs: string[]): Promise<Map<string, string>> {
+export async function ueberUntergruppe(db: Db, gruppeId: number, adrnrs: string[]): Promise<Map<string, string>> {
   const unter = (await mitUntergruppen(db, [gruppeId])).filter((x) => x !== gruppeId);
   if (!unter.length || !adrnrs.length) return new Map();
   const r = await db`select gm.adrnr, k.name from tco.kal_gruppe_mitglieder gm join tco.kal_gruppen k on k.id = gm.gruppe_id
@@ -191,7 +191,7 @@ async function ueberUntergruppe(db: Db, gruppeId: number, adrnrs: string[]): Pro
 }
 
 /** Zuordnungen in den Gruppen darüber entfernen (das Mitglied steht jetzt in der Untergruppe). Liefert die Zahl der Entfernten. */
-async function ausUebergeordnetenEntfernen(tx: Db, gruppeId: number, adrnrs: string[]): Promise<number> {
+export async function ausUebergeordnetenEntfernen(tx: Db, gruppeId: number, adrnrs: string[]): Promise<number> {
   const ueber = await vorfahren(tx, gruppeId);
   if (!ueber.length || !adrnrs.length) return 0;
   return (await tx`delete from tco.kal_gruppe_mitglieder where gruppe_id = any(${ueber}) and adrnr = any(${adrnrs}) returning adrnr`).length;

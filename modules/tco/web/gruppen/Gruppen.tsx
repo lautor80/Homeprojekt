@@ -12,6 +12,7 @@ import { Empty } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { Dlg } from '../mitglieder/Dialoge';
+import { RegelwerkDialog } from './Regelwerk';
 import './gruppen.css';
 import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDaten, type GruppenMitglied } from './typen';
 
@@ -42,6 +43,7 @@ export function Gruppen() {
   const [form, setForm] = useState<Form | null>(null);
   const [aufnehmen, setAufnehmen] = useState<Gruppe | null>(null);
   const [weg, setWeg] = useState<Gruppe | null>(null);
+  const [regelwerk, setRegelwerk] = useState(false);
   const tabelle = useRef<Tabelle | null>(null);
   const pflege = !!d?.pflege;
 
@@ -202,7 +204,10 @@ export function Gruppen() {
   return (
     <AppPage title="Mitgliedergruppen"
              subtitle={d ? `${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'} · ${personen} zugeordnete${personen === 1 ? 's Mitglied' : ' Mitglieder'}` : ''}
-             actions={pflege ? <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true })}>Neue Gruppe</Button> : undefined}>
+             actions={pflege ? <>
+               <Button icon="activities" tooltip="Regeln, nach denen Mitglieder ihren Gruppen zugeordnet werden (z. B. nach Alter)" onClick={() => setRegelwerk(true)}>Regelwerk</Button>
+               <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true })}>Neue Gruppe</Button>
+             </> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {!d ? (!error && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />) : (
         <div className="portal-section">
@@ -230,6 +235,7 @@ export function Gruppen() {
         </div>
       )}
 
+      {regelwerk && <RegelwerkDialog gruppen={gruppen} onClose={(geaendert) => { setRegelwerk(false); if (geaendert) lauf(async () => undefined); }} />}
       {form && <GruppeDialog form={form} gruppen={gruppen} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
       {aufnehmen && <AufnehmenDialog gruppe={aufnehmen} gruppen={gruppen} onClose={(text) => { setAufnehmen(null); if (text) lauf(async () => ({ text })); }} />}
       <ConfirmDialog open={!!weg} title="Gruppe löschen" danger confirmText="Löschen"
