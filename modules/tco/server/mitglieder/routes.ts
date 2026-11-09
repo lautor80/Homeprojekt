@@ -15,6 +15,7 @@ import { ART_TEXT, ARTEN, druckdatenLesen, unterlagePdf } from './pdf.js';
 import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, mailText, plPruefen, SPEICHERPFAD, unterlageAblegen } from './dokumente.js';
 import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
 import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
+import { einladen, einladungLesen, einloesen, kandidaten as einladungKandidaten } from './einladung.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
@@ -227,6 +228,47 @@ export async function mitgliederRoutes(app: FastifyInstance) {
         + `${r.gesendet ? `, ${r.gesendet} Startkennwörter per E-Mail gesendet` : ''}${offen ? `, ${offen} Startkennwörter zum Weitergeben (Liste herunterladen)` : ''}`
         + `${r.uebersprungen.length ? `, ${r.uebersprungen.length} übersprungen` : ''}.`,
     };
+  });
+
+  // ---------------------------------------------------------------- Einladung zum Vereinsportal (QR-Code, Sammellauf)
+  app.get('/mitglieder/einladungen', { preHandler: requireAuth('core.users:edit') }, async () => einladungKandidaten(DB));
+  app.post('/mitglieder/einladungen', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const o = z.object({
+      adrnrs: z.array(z.string().min(1)).nullish(), tage: z.coerce.number().int().min(1).max(90).default(30), brief: z.boolean().default(false),
+    }).parse(req.body ?? {});
+    const v = await vereinLesen();
+    const r = await change(req, (tx) => einladen(tx, v, { adrnrs: o.adrnrs ?? null, tage: o.tage, brief: o.brief, wer: benutzer(req) }), { action: 'EINLADUNG' });
+    return {
+      ...r,
+      text: `${r.gesendet} Einladung${r.gesendet === 1 ? '' : 'en'} per E-Mail gesendet${r.briefe ? `, ${r.briefe} Brief${r.briefe === 1 ? '' : 'e'} zum Drucken (PDF)` : ''}`
+        + `${r.fehler.length ? ` – ${r.fehler.length} Mail(s) fehlgeschlagen, stattdessen als Brief` : ''}.`,
+    };
+  });
+  /** öffentlich: Einladung prüfen und einlösen (Benutzer mit Rolle Mitglied) */
+  const einladungVersuche = new Map<string, { n: number; bis: number }>();
+  const einladungLimit = (ip: string) => {
+    const jetzt = Date.now();
+    const x = einladungVersuche.get(ip);
+    const cur = x && x.bis > jetzt ? x : { n: 0, bis: jetzt + 3600_000 };
+    cur.n++;
+    einladungVersuche.set(ip, cur);
+    if (cur.n > 30) throw new BusinessError('Zu viele Versuche. Bitte später erneut versuchen.', 429);
+  };
+  app.get('/einladung', async (req) => {
+    einladungLimit(req.ip);
+    const { token } = z.object({ token: z.string().max(100) }).parse(req.query);
+    return { ...(await einladungLesen(DB, token)), verein: (await vereinLesen()).name };
+  });
+  app.post('/einladung', async (req) => {
+    einladungLimit(req.ip);
+    const b = z.object({
+      token: z.string().max(100),
+      benutzername: z.string().trim().min(3, 'Benutzername: mindestens 3 Zeichen').max(50).regex(/^[a-zA-Z0-9._@+-]+$/, 'Benutzername: nur Buchstaben, Ziffern, . _ - @'),
+      passwort: z.string().max(200),
+      datenschutz: z.literal(true, { errorMap: () => ({ message: 'Bitte der Verarbeitung der Daten zustimmen.' }) }),
+    }).parse(req.body);
+    const r = await withChange({ userId: null, username: 'Einladung', action: 'EINLADUNG_EINGELOEST' }, (tx) => einloesen(tx, b.token, b));
+    return { text: `Willkommen, ${r.name}! Ihr Zugang ist eingerichtet – melden Sie sich jetzt mit „${r.username}“ und Ihrem Kennwort an.` };
   });
 
   // ---------------------------------------------------------------- Liste / Stammdaten der Auswahl

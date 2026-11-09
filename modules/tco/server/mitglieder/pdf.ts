@@ -26,7 +26,7 @@ const datOpt = (d: string | null | undefined) => (d ? dat(d) : '–');
 
 interface Feld { x: number; w: number; label: string; wert: string }
 
-class Brief {
+export class Brief {
   p: Pdf;
   y = 0;
   constructor(readonly v: Verein, titel: string) {

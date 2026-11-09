@@ -39,6 +39,7 @@ export function UsersPage() {
   const can = useCan();
   const { me } = useSession();
   const darfAendern = can('core.users:edit');
+  const [einladen, setEinladen] = useState(false);
   const mitTco = me.modules.includes('tco');
   const [mg, setMg] = useState<'frage' | MgAnlage | null>(null);
   const [mgMail, setMgMail] = useState(true);
@@ -148,11 +149,13 @@ export function UsersPage() {
         {mitTco && <Button icon="chain-link" onClick={() => setMapping(true)}>Initiale Zuordnung</Button>}
         {mitTco && <Button icon="add-employee" onClick={() => { setError(null); setEinzeln(true); }}>Aus Mitglied/EP3 anlegen</Button>}
         {mitTco && <Button icon="group" onClick={() => setMg('frage')}>Mitglieder als Benutzer anlegen</Button>}
+        {mitTco && <Button icon="qr-code" onClick={() => setEinladen(true)}>Mitglieder einladen (QR-Code)</Button>}
         <Button design="Emphasized" icon="add" onClick={() => { setError(null); setEdit({ isNew: true, active: true, roles: [] }); }}>
           Anlegen
         </Button>
       </>)}
     >
+      {einladen && <EinladungDialog onClose={() => setEinladen(false)} />}
       {mg && (
         <Dialog open headerText="Mitglieder als Benutzer anlegen" style={{ width: 'min(52rem, 96vw)' }} onClose={() => setMg(null)}
                 footer={<Bar endContent={mg === 'frage' ? <>
@@ -374,6 +377,88 @@ function EinzelAnlage({ onClose, onDone }: { onClose: () => void; onDone: () => 
           </>
         )}
       </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Einladung zum Vereinsportal: persönlicher Link mit QR-Code für aktive Mitglieder ohne Benutzer – per E-Mail
+ * oder als Brief (PDF). Wer den Link einlöst, erhält sofort einen Benutzer mit Rolle „Mitglied“.
+ */
+interface EinladungKandidat { adrnr: string; mitglnrn: string | null; vorname: string | null; nachname: string | null; email: string | null; eingeladen_am: string | null; eingeladen_per: string | null }
+function EinladungDialog({ onClose }: { onClose: () => void }) {
+  const [liste, setListe] = useState<EinladungKandidat[] | null>(null);
+  const [wahl, setWahl] = useState<Set<string>>(new Set());
+  const [brief, setBrief] = useState(false);
+  const [nurNeue, setNurNeue] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ergebnis, setErgebnis] = useState<{ text: string; pdf: string | null; fehler: string[] } | null>(null);
+  useEffect(() => {
+    api.get<EinladungKandidat[]>('/api/m/tco/mitglieder/einladungen').then((l) => {
+      setListe(l);
+      setWahl(new Set(l.filter((k) => !k.eingeladen_am).map((k) => k.adrnr)));
+    }).catch((e) => setError(e.message));
+  }, []);
+  const sichtbar = (liste ?? []).filter((k) => !nurNeue || !k.eingeladen_am);
+  const umschalten = (a: string) => setWahl((w) => { const n = new Set(w); if (n.has(a)) n.delete(a); else n.add(a); return n; });
+  async function los() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string; pdf: string | null; fehler: string[] }>('/api/m/tco/mitglieder/einladungen', { adrnrs: [...wahl], brief });
+      setErgebnis(r);
+      toast(r.text, 8000);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  function pdfLaden(b64: string) {
+    const a = document.createElement('a');
+    a.href = `data:application/pdf;base64,${b64}`;
+    a.download = `Einladungen_Vereinsportal_${new Date().toISOString().slice(0, 10)}.pdf`;
+    a.click();
+  }
+  const mitMail = [...wahl].filter((a) => liste?.find((k) => k.adrnr === a)?.email).length;
+  return (
+    <Dialog open headerText="Mitglieder zum Vereinsportal einladen" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={ergebnis ? <>
+              {ergebnis.pdf && <Button design="Emphasized" icon="download" onClick={() => pdfLaden(ergebnis.pdf!)}>Briefe (PDF) herunterladen</Button>}
+              <Button onClick={onClose}>Schließen</Button>
+            </> : <>
+              <Button design="Emphasized" icon="qr-code" loading={busy} disabled={!wahl.size} onClick={los}>{wahl.size} einladen</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {ergebnis ? (
+        <>
+          <MessageStrip design="Positive" hideCloseButton>{ergebnis.text}</MessageStrip>
+          {ergebnis.fehler.map((f) => <MessageStrip key={f} design="Critical" hideCloseButton style={{ marginTop: '0.25rem' }}>{f}</MessageStrip>)}
+        </>
+      ) : !liste ? <Text>Lade …</Text> : (
+        <>
+          <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
+            Jedes ausgewählte Mitglied erhält einen persönlichen Link mit QR-Code (30 Tage gültig, einmal verwendbar). Mit E-Mail-Adresse per Mail{brief ? ' – hier: alle als Brief' : ''}, ohne als Brief (PDF zum Drucken).
+            Wer den Link einlöst, wählt Benutzername und Kennwort und erhält sofort die Rolle „Mitglied“ – ohne Freigabe.
+          </Text>
+          <div className="portal-row" style={{ gap: '1rem', marginBottom: '0.5rem' }}>
+            <CheckBox text="nur noch nicht eingeladene" checked={nurNeue} onChange={(e) => setNurNeue(e.target.checked)} />
+            <CheckBox text="alle als Brief (statt E-Mail)" checked={brief} onChange={(e) => setBrief(e.target.checked)} />
+            <Button design="Transparent" onClick={() => setWahl(new Set(sichtbar.map((k) => k.adrnr)))}>alle wählen</Button>
+            <Button design="Transparent" onClick={() => setWahl(new Set())}>keine</Button>
+          </div>
+          <div style={{ maxHeight: '45vh', overflowY: 'auto', border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem' }}>
+            {sichtbar.map((k) => (
+              <div key={k.adrnr} className="portal-row" style={{ padding: '0.15rem 0.5rem', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                <CheckBox checked={wahl.has(k.adrnr)} onChange={() => umschalten(k.adrnr)}
+                          text={`${k.nachname ?? ''}, ${k.vorname ?? ''}${k.mitglnrn ? ` (Nr. ${k.mitglnrn})` : ''}`} />
+                <Label style={{ marginLeft: 'auto' }}>{k.email ?? 'ohne E-Mail → Brief'}{k.eingeladen_am ? ` · eingeladen ${k.eingeladen_am.split('-').reverse().join('.')} (${k.eingeladen_per === 'MAIL' ? 'Mail' : k.eingeladen_per === 'BRIEF' ? 'Brief' : 'Registrierung'})` : ''}</Label>
+              </div>
+            ))}
+            {!sichtbar.length && <Text style={{ display: 'block', padding: '0.75rem' }}>Alle aktiven Mitglieder haben bereits einen Benutzer bzw. eine Einladung.</Text>}
+          </div>
+          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+            {wahl.size} ausgewählt: {brief ? 0 : mitMail} per E-Mail, {brief ? wahl.size : wahl.size - mitMail} als Brief. Eine neue Einladung macht ältere ungültig.
+          </Text>
+        </>
+      )}
     </Dialog>
   );
 }

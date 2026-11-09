@@ -183,6 +183,17 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
   const [nachweis, setNachweis] = useState<'GEBURTSDATUM' | 'MITGLIEDSNR'>('GEBURTSDATUM');
   const [geburtsdatum, setGeburtsdatum] = useState('');
   const [mitgliedsnr, setMitgliedsnr] = useState('');
+  /** Schnellweg für Mitglieder: E-Mail + Geburtsdatum → Link an die hinterlegte Adresse; null = noch nicht geprüft */
+  const [schnell, setSchnell] = useState<{ treffer: boolean; text: string } | null>(null);
+  async function schnellPruefen() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ treffer: boolean; text: string }>(`${info.pfad}/schnell`, { email: f.email, geburtsdatum });
+      setSchnell(r);
+      if (r.treffer) setFertig(r.text);
+      else setNachweis('GEBURTSDATUM');
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
   const [alt, setAlt] = useState(false);
   const [frei, setFrei] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -238,7 +249,23 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
               <Label required showColon>Ich bin</Label>
               <RadioButton name="reg-art" text="Mitglied des Vereins" checked={art === 'MITGLIED'} onChange={() => setArt('MITGLIED')} />
               <RadioButton name="reg-art" text="Externer Hallennutzer (kein Mitglied)" checked={art === 'EXTERN'} onChange={() => setArt('EXTERN')} />
-              {art === 'MITGLIED' && (
+              {art === 'MITGLIED' && !schnell && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'var(--sapList_HeaderBackground, #f5f6f7)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
+                  <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.25rem' }}>
+                    Schnellweg: Mit der beim Verein hinterlegten E-Mail-Adresse und Ihrem Geburtsdatum finden wir Sie direkt – Sie erhalten einen Link und wählen nur noch Benutzername und Kennwort.
+                  </Text>
+                  <Field label="E-Mail (beim Verein hinterlegt)" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
+                  <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>
+                  <Button design="Emphasized" style={full} loading={busy} disabled={!f.email.includes('@') || !geburtsdatum} onClick={schnellPruefen}>Weiter</Button>
+                  <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
+                    <Link onClick={() => setSchnell({ treffer: false, text: '' })}>Ohne Schnellweg vollständig registrieren</Link>
+                  </div>
+                </div>
+              )}
+              {art === 'MITGLIED' && schnell && !schnell.treffer && schnell.text && (
+                <MessageStrip design="Information" hideCloseButton style={{ margin: '0.5rem 0' }}>{schnell.text}</MessageStrip>
+              )}
+              {art === 'MITGLIED' && schnell && (
                 <div style={{ padding: '0.5rem 0.75rem', background: 'var(--sapList_HeaderBackground, #f5f6f7)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
                   <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.25rem' }}>
                     Zum Abgleich mit dem Mitgliederverzeichnis – bitte eine Angabe wählen:
@@ -252,6 +279,7 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
               )}
             </div>
           )}
+          {!(art === 'MITGLIED' && !schnell) && (<>
           <Field label="Anrede" required>
             <Select style={full} onChange={(e) => setF((x) => ({ ...x, anrede: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' }))}>
               <Option data-a="" selected={!f.anrede}>bitte wählen</Option>
@@ -304,6 +332,7 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
           <CheckBox text="Ich bin einverstanden, dass meine Angaben zur Verwaltung und Abrechnung der Platzbuchungen gespeichert werden." checked={f.datenschutz}
                     onChange={(e) => setF((x) => ({ ...x, datenschutz: e.target.checked }))} style={{ marginBottom: '0.75rem', marginLeft: '-0.5rem' }} />
           <Button design="Emphasized" style={full} onClick={() => submit()} loading={busy} disabled={!ok}>Registrierung absenden</Button>
+          </>)}
           <div style={{ marginTop: '0.75rem', textAlign: 'center' }}><Link onClick={onBack}>Zurück zur Anmeldung</Link></div>
         </form>
       )}

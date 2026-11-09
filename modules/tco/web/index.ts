@@ -26,6 +26,7 @@ import { Mitgliedsantraege } from './antrag/Mitgliedsantraege';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
 import { MitgliedRegistrierungen } from './platz/MitgliedRegistrierungen';
 import { MeineDaten } from './platz/MeineDaten';
+import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
@@ -157,6 +158,7 @@ const mod: WebModule = {
   oeffentlich: [
     { pfad: '/beitritt', component: Beitritt },
     { pfad: '/registrierung-bestaetigen', component: RegistrierungBestaetigen },
+    { pfad: '/einladung', component: Einladung },
   ],
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },

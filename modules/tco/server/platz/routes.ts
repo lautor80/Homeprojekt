@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
+import { schnellwegPruefen } from '../mitglieder/einladung.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB } from '../verein.js';
 import { addTage } from '../format.js';
@@ -203,6 +204,19 @@ export async function platzRoutes(app: FastifyInstance) {
       }
     }
     return { id: r.id, ep3: r.ep3, art: r.art, text };
+  });
+  /**
+   * Schnellweg für Mitglieder: E-Mail + Geburtsdatum passen zu genau einem aktiven Mitglied ohne Benutzer → Einladungslink an die
+   * beim Verein hinterlegte E-Mail (24 Std.). Der Besitz des Postfachs ersetzt die Prüfung durch den Kassenwart.
+   */
+  app.post('/platz/registrierung/schnell', async (req) => {
+    regLimit(req.ip, 15);
+    const b = z.object({ email: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.').max(120), geburtsdatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Bitte das Geburtsdatum angeben.') }).parse(req.body);
+    const v = await vereinLesen();
+    const treffer = await withChange({ userId: null, username: 'Registrierung', action: 'EINLADUNG' }, (tx) => schnellwegPruefen(tx, v, b.email, b.geburtsdatum));
+    return treffer
+      ? { treffer: true, text: `Wir haben Sie im Mitgliederverzeichnis gefunden und einen Link an ${b.email} gesendet (24 Stunden gültig). Darüber wählen Sie Benutzername und Kennwort – eine Freigabe durch den Verein ist nicht nötig.` }
+      : { treffer: false, text: 'Zu dieser Kombination aus E-Mail und Geburtsdatum haben wir kein Mitglied ohne Zugang gefunden. Bitte registrieren Sie sich mit den vollständigen Angaben – der Verein prüft dann Ihre Mitgliedschaft.' };
   });
   /** Bestätigungslink aus der E-Mail: externe Registrierung freischalten (Rolle Hallennutzer) */
   app.post('/platz/registrierung/bestaetigen', async (req) => {

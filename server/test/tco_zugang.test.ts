@@ -292,3 +292,48 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(letzteMail('fiona@example.org')!.text, /Bereits Mitglied/);
 });
+
+test('Einladung zum Vereinsportal: QR-Code per Mail/Brief und Schnellweg bei der Registrierung', async () => {
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, vorname, nachname, geburtsdatum, email, eintritt, strasse, plz, ort) values
+            ('0000000601', '601', 'Nina', 'Neu', '1990-06-06', 'nina@example.org', '2020-01-01', 'Weg 1', '66649', 'Oberthal'),
+            ('0000000602', '602', 'Paul', 'Post', '1960-01-01', null, '2020-01-01', 'Gasse 2', '66649', 'Oberthal'),
+            ('0000000603', '603', 'Sven', 'Schnell', '1999-09-09', 'sven@example.org', '2020-01-01', 'Platz 3', '66649', 'Oberthal')`;
+  let r = await admin('GET', `${T}/mitglieder/einladungen`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const adr = r.body.map((k: any) => k.adrnr);
+  assert.ok(adr.includes('0000000601') && adr.includes('0000000602'));
+  assert.ok(!adr.includes('0000000501'), 'Maria hat bereits einen Benutzer');
+
+  r = await admin('POST', `${T}/mitglieder/einladungen`, { adrnrs: ['0000000601', '0000000602'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.gesendet, r.body.briefe], [1, 1]);
+  assert.ok(Buffer.from(r.body.pdf, 'base64').subarray(0, 4).toString() === '%PDF');
+  const m = mails.filter((x) => x.an === 'nina@example.org').pop() as any;
+  assert.match(m.text, /\/einladung\?token=/);
+  assert.equal(m.anhaenge[0].mime, 'image/png');
+  const t = token(m.text, 'token');
+
+  const gast = client();
+  r = await gast('GET', `${T}/einladung?token=${t}`);
+  assert.equal(r.body.gueltig, true);
+  assert.equal(r.body.benutzername, 'nina@example.org');
+  assert.equal((await gast('POST', `${T}/einladung`, { token: t, benutzername: 'nina', passwort: 'kurz', datenschutz: true })).status, 400);
+  r = await gast('POST', `${T}/einladung`, { token: t, benutzername: 'nina', passwort: 'ninas-kennwort', datenschutz: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [u] = await sql`select u.id, array_agg(ur.role_id) as rollen from core.users u join core.user_roles ur on ur.user_id = u.id where u.username = 'nina' group by u.id`;
+  assert.deepEqual(u.rollen, ['MITGLIED']);
+  assert.equal((await sql`select benutzer_id from tco.mitgliedera where adrnr = '0000000601'`)[0].benutzer_id, u.id);
+  assert.equal((await gast('POST', `${T}/einladung`, { token: t, benutzername: 'nina2', passwort: 'ninas-kennwort', datenschutz: true })).status, 410, 'nur einmal');
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'nina', password: 'ninas-kennwort' })).status, 200);
+
+  // Schnellweg: E-Mail + Geburtsdatum
+  const S = `${T}/platz/registrierung/schnell`;
+  r = await gast('POST', S, { email: 'sven@example.org', geburtsdatum: '1999-09-10' });
+  assert.equal(r.body.treffer, false);
+  r = await gast('POST', S, { email: 'Sven@Example.org', geburtsdatum: '1999-09-09' });
+  assert.equal(r.body.treffer, true, JSON.stringify(r.body));
+  const t2 = token(letzteMail('sven@example.org')!.text, 'token');
+  r = await gast('POST', `${T}/einladung`, { token: t2, benutzername: 'sven', passwort: 'svens-kennwort', datenschutz: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await gast('POST', S, { email: 'sven@example.org', geburtsdatum: '1999-09-09' })).body.treffer, false, 'hat jetzt einen Benutzer');
+});
