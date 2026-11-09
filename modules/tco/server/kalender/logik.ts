@@ -1,11 +1,13 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
+import { gruppenMitVorfahren, mitUntergruppen } from '../gruppen/logik.js';
 
 /**
  * Vereinskalender: Veranstaltungen ankündigen und beschreiben, Mitglieder melden sich an bzw. ab.
  * Gruppen (z. B. Mannschaften) schränken Veranstaltungen auf ihre Mitglieder ein und zeigen,
- * wer noch keine Rückmeldung gegeben hat (Mannschaftsplanung).
+ * wer noch keine Rückmeldung gegeben hat (Mannschaftsplanung). Es sind die Mitgliedergruppen (Baum):
+ * eine Veranstaltung für eine Gruppe gilt auch für die Mitglieder ihrer Untergruppen.
  *
  * Sichtbarkeit: Wer pflegen darf, sieht alles. Mitglieder sehen Veranstaltungen ohne Gruppe und die
  * ihrer Gruppen; Namen der Zusagen nur, wenn die Veranstaltung das erlaubt.
@@ -32,10 +34,9 @@ const eventAus = (r: Record<string, unknown>): Event => ({
   ...(r as unknown as Event), beginn: iso(r.beginn)!, ende: iso(r.ende), anmeldeschluss: iso(r.anmeldeschluss), gruppen: (r.gruppen as number[]) ?? [],
 });
 
-/** Gruppen, in denen ein Mitglied ist */
+/** Gruppen, in denen ein Mitglied ist – auch die übergeordneten (wer in „Herren 40“ ist, gehört zu „Mannschaften“) */
 export async function meineGruppen(db: Db, adrnr: string | null): Promise<number[]> {
-  if (!adrnr) return [];
-  return (await db`select gruppe_id from tco.kal_gruppe_mitglieder where adrnr = ${adrnr}`).map((r) => Number(r.gruppe_id));
+  return gruppenMitVorfahren(db, adrnr);
 }
 
 const sichtbar = (e: Event, gruppen: number[], alles: boolean) => alles || !e.gruppen.length || e.gruppen.some((g) => gruppen.includes(g));
@@ -90,7 +91,7 @@ export async function teilnehmer(db: Db, e: Event, o: { alles: boolean }) {
   if (e.gruppen.length && o.alles) {
     offen = (await db`select distinct gm.adrnr, coalesce(nullif(trim(concat_ws(' ', m.vorname, m.nachname)), ''), gm.adrnr) as name, m.nachname, m.vorname
                         from tco.kal_gruppe_mitglieder gm left join tco.mitglieder m on m.adrnr = gm.adrnr
-                       where gm.gruppe_id = any(${e.gruppen}) and not exists (select 1 from tco.kal_anmeldungen a where a.event_id = ${e.id} and a.adrnr = gm.adrnr)
+                       where gm.gruppe_id = any(${await mitUntergruppen(db, e.gruppen)}) and not exists (select 1 from tco.kal_anmeldungen a where a.event_id = ${e.id} and a.adrnr = gm.adrnr)
                        order by m.nachname, m.vorname`).map((r) => ({ adrnr: r.adrnr, name: r.name }));
   }
   const liste = rows.map((r) => ({
@@ -154,42 +155,8 @@ export async function eventSpeichern(tx: Db, id: number | null, d: EventDaten, w
 }
 
 // ---------------------------------------------------------------- Gruppen
-export async function gruppenLesen(db: Db) {
-  const g = await db`select g.id, g.name, g.beschreibung, g.aktiv from tco.kal_gruppen g order by g.name`;
-  const m = await db`select gm.gruppe_id, gm.adrnr, gm.rolle, coalesce(nullif(trim(concat_ws(' ', mi.vorname, mi.nachname)), ''), gm.adrnr) as name
-                       from tco.kal_gruppe_mitglieder gm left join tco.mitglieder mi on mi.adrnr = gm.adrnr order by mi.nachname, mi.vorname`;
-  return g.map((x) => ({
-    id: Number(x.id), name: x.name as string, beschreibung: x.beschreibung as string | null, aktiv: !!x.aktiv,
-    mitglieder: m.filter((y) => Number(y.gruppe_id) === Number(x.id)).map((y) => ({ adrnr: y.adrnr as string, name: y.name as string, rolle: y.rolle as string | null })),
-  }));
-}
-
-export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: string; beschreibung?: string | null; aktiv: boolean }) {
-  const name = condense(d.name);
-  if (!name) throw new BusinessError('Bitte einen Namen angeben.');
-  const [dup] = await tx`select id from tco.kal_gruppen where lower(name) = lower(${name}) and id <> ${id ?? 0}`;
-  if (dup) throw new BusinessError(`Die Gruppe „${name}“ gibt es bereits.`);
-  if (id) { await tx`update tco.kal_gruppen set name = ${name}, beschreibung = ${d.beschreibung?.trim() || null}, aktiv = ${d.aktiv} where id = ${id}`; return id; }
-  const [n] = await tx`insert into tco.kal_gruppen (name, beschreibung, aktiv) values (${name}, ${d.beschreibung?.trim() || null}, ${d.aktiv}) returning id`;
-  return Number(n.id);
-}
-
-export async function gruppeLoeschen(tx: Db, id: number) {
-  const [n] = await tx`select count(*)::int as n from tco.kal_events where ${id} = any(gruppen) and beginn >= now()`;
-  if (Number(n.n)) throw new BusinessError(`Die Gruppe ist noch ${n.n} kommenden Veranstaltung(en) zugeordnet.`);
-  await tx`delete from tco.kal_gruppen where id = ${id}`;
-}
-
-export async function gruppenMitgliedSetzen(tx: Db, gruppeId: number, adrnr: string, rolle: string | null) {
-  const [m] = await tx`select 1 from tco.mitglieder where adrnr = ${adrnr}`;
-  if (!m) throw new BusinessError('Mitglied nicht gefunden.');
-  await tx`insert into tco.kal_gruppe_mitglieder (gruppe_id, adrnr, rolle) values (${gruppeId}, ${adrnr}, ${condense(rolle ?? '') || null})
-           on conflict (gruppe_id, adrnr) do update set rolle = excluded.rolle`;
-}
-
-export async function gruppenMitgliedEntfernen(tx: Db, gruppeId: number, adrnr: string) {
-  await tx`delete from tco.kal_gruppe_mitglieder where gruppe_id = ${gruppeId} and adrnr = ${adrnr}`;
-}
+// Die Gruppen sind die Mitgliedergruppen (Baum, siehe ../gruppen/logik.ts) – hier nur weitergereicht.
+export { gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern } from '../gruppen/logik.js';
 
 /** Mitglieder zur Auswahl (Pflege) – nur Name und Adressnummer */
 export async function mitgliederAuswahl(db: Db) {

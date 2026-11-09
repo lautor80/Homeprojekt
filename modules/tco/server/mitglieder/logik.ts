@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { bicGueltig, ibanGueltig, normalisieren } from '../../../../server/src/lib/sepa.js';
 import type { Db } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
+import { mitgliedGruppen } from '../gruppen/logik.js';
 
 /**
  * Port von Z2UI5_CL_TCO_MITGLIEDER / ZCL_TCO_MITGLIEDER: Mitgliederliste, Objektseite
@@ -58,7 +59,11 @@ export interface ListZeile {
   status_txt: string; state: 'Positive' | 'Negative' | 'Critical'; kunde: boolean; eltern: boolean; zahler: boolean;
 }
 
-export async function listeLesen(db: Db, f: { status: Status; datumTyp?: string; von?: string | null; bis?: string | null; suche?: string | null }) {
+export async function listeLesen(db: Db, f: {
+  status: Status; datumTyp?: string; von?: string | null; bis?: string | null; suche?: string | null;
+  /** nur diese Personen (Filter Mitgliedergruppe) */
+  nur?: Set<string> | null;
+}) {
   const alle = await db`select m.adrnr, m.vorname, m.nachname, m.mitglnrn, m.plz, m.ort, m.eintritt, m.austritt, m.geburtsdatum, m.adrnrkih,
                                coalesce(a.zuid, '') <> '' as kunde,
                                exists (select 1 from tco.mitglieder k where k.adrnr <> m.adrnr and k.adrnrkih = m.adrnr) as eltern
@@ -72,6 +77,7 @@ export async function listeLesen(db: Db, f: { status: Status; datumTyp?: string;
   const zeilen: ListZeile[] = [];
   for (const m of alle) {
     if (!passt(m, f.status)) continue;
+    if (f.nur && !f.nur.has(m.adrnr)) continue;
     if (f.von || f.bis) {
       const pr = f.datumTyp === 'AUSGETRETEN' ? m.austritt : f.datumTyp === 'ERFASST' ? (m.eintritt ?? m.geburtsdatum) : m.eintritt;
       if (!pr || (f.von && pr < f.von) || (f.bis && pr > f.bis)) continue;
@@ -208,6 +214,7 @@ export async function detailLesen(db: Db, adrnr: string) {
     vertraege: await vertraegeLesen(db, m),
     sepa: await sepaLesen(db, m),
     schluessel, notizen,
+    gruppen: await mitgliedGruppen(db, adrnr),
   };
 }
 

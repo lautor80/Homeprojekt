@@ -54,7 +54,7 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const alles = can(req, P_KAL.edit);
     return {
       events: await eventsLesen(DB, q, { adrnr, alles }), kategorien: KATEGORIEN, mitglied: !!adrnr, pflege: alles,
-      gruppen: (await gruppenLesen(DB)).map((g) => ({ id: g.id, name: g.name, aktiv: g.aktiv })),
+      gruppen: (await gruppenLesen(DB)).map((g) => ({ id: g.id, name: g.pfad, aktiv: g.aktiv })),
     };
   });
 
@@ -124,7 +124,7 @@ export async function kalenderRoutes(app: FastifyInstance) {
   app.get('/kalender/pflege/gruppen', pflege, async () => gruppenLesen(DB));
 
   app.post('/kalender/pflege/gruppen', pflege, async (req) => {
-    const b = z.object({ id: z.number().int().nullish(), name: z.string().max(80), beschreibung: z.string().max(500).nullish(), aktiv: z.boolean().default(true) }).parse(req.body);
+    const b = z.object({ id: z.number().int().nullish(), name: z.string().max(80), beschreibung: z.string().max(500).nullish(), aktiv: z.boolean().default(true), parent_id: z.number().int().positive().nullish() }).parse(req.body);
     const n = await change(req, (tx) => gruppeSpeichern(tx, b.id ?? null, b), { action: 'KAL_GRUPPE' });
     return { id: n, text: `Gruppe „${b.name}“ gespeichert.` };
   });

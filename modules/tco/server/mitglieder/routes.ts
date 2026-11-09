@@ -26,6 +26,7 @@ import {
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
+import { gruppenMitgliedEntfernen, gruppenMitgliedSetzen, personenDerGruppe } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -276,8 +277,10 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const q = z.object({
       status: z.enum(STATUS).default('AKTIV'), datumTyp: z.enum(DATUM_TYP).default('EINGETRETEN'),
       von: datumOpt, bis: datumOpt, suche: z.string().nullish(),
+      // Mitgliedergruppe (einschließlich ihrer Untergruppen)
+      gruppe: z.coerce.number().int().positive().optional(),
     }).parse(req.query);
-    return listeLesen(DB, q);
+    return listeLesen(DB, { ...q, nur: q.gruppe ? await personenDerGruppe(DB, q.gruppe) : null });
   });
 
   app.get('/mitglieder/auswahl', lesen, async (req) => {
@@ -331,6 +334,14 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const b = z.object({ trainer: z.boolean() }).parse(req.body);
     await change(req, (tx) => trainerSetzen(tx, a, b.trainer));
     return { text: b.trainer ? 'Als Trainer gekennzeichnet.' : 'Trainer-Kennzeichen entfernt.' };
+  });
+
+  /** Mitgliedergruppen: Mitglied einer Gruppe zuordnen (mit Rolle, z. B. Mannschaftsführer) oder daraus entfernen */
+  app.post('/mitglieder/m/:adrnr/gruppen', schreiben, async (req) => {
+    const { adrnr: a } = pAdr.parse(req.params);
+    const b = z.object({ gruppe: z.coerce.number().int().positive(), rolle: z.string().max(60).nullish(), entfernen: z.boolean().default(false) }).parse(req.body);
+    await change(req, (tx) => (b.entfernen ? gruppenMitgliedEntfernen(tx, b.gruppe, a) : gruppenMitgliedSetzen(tx, b.gruppe, a, b.rolle ?? null)), { action: 'GRUPPE' });
+    return { text: b.entfernen ? 'Aus der Gruppe entfernt.' : 'Gruppenzuordnung gesichert.' };
   });
 
   app.post('/mitglieder/m/:adrnr/kanal', schreiben, async (req) => {

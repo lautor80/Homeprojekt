@@ -15,6 +15,7 @@ import { jtRoutes, P_JT } from './jt/routes.js';
 import { TCO_VERBINDUNGEN } from './verbindung.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
+import { gruppenRoutes, P_GR } from './gruppen/routes.js';
 import { kontenRoutes, P_KONTEN } from './konten/routes.js';
 import { finanzRoutes, P_FINANZ } from './finanz/routes.js';
 import { beitraegeRoutes, P_BEITRAEGE } from './beitraege/routes.js';
@@ -141,6 +142,7 @@ async function routes(app: FastifyInstance) {
   await verzehrRoutes(app);
   await kalenderRoutes(app);
   await mitgliederRoutes(app);
+  await gruppenRoutes(app);
   await kontenRoutes(app);
   await produkteRoutes(app);
   await antragRoutes(app);
@@ -177,7 +179,9 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Gruppen/Mannschaften pflegen' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
-    { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
+    { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Gruppen zuordnen, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
+    { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.display, text: 'Mitgliedergruppen anzeigen: Baum der Kategorien, Gruppen und Mannschaften mit den zugeordneten Mitgliedern' },
+    { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.edit, text: 'Mitgliedergruppen pflegen: Gruppen anlegen, ändern, verschieben und löschen, Mitglieder zuordnen und Rollen vergeben', requires: [P_GR.display] },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
@@ -281,7 +285,7 @@ const tco: ServerModule = {
     { type: 'PLATZBELEGUNG', text: 'Feste Platzbelegung (Training, Sperrzeit)', permission: P_PLATZ.admin },
     { type: 'KAL_EVENT', text: 'Veranstaltung (Vereinskalender)', permission: P_KAL.edit },
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
-    { type: 'KAL_GRUPPE', text: 'Gruppe/Mannschaft (Vereinskalender)', permission: P_KAL.edit },
+    { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
   ],
   migrationsDir: path.join(APP_ROOT, 'modules', 'tco', 'server', 'migrations'),

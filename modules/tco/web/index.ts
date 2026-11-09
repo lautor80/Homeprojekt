@@ -12,6 +12,7 @@ import { Verzehrbuch } from './verzehr/Verzehrbuch';
 import { Kalender } from './kalender/Kalender';
 import { Mitglieder } from './mitglieder/Mitglieder';
 import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
+import { Gruppen } from './gruppen/Gruppen';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Analyse } from './analyse/Analyse';
 import { Teilnehmer } from './teilnehmer/Teilnehmer';
@@ -75,6 +76,7 @@ const mod: WebModule = {
           children: [
             { text: 'Meine Mitgliedschaft', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
+            { text: 'Mitgliedergruppen', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
             { text: 'Mitgliedsanträge', icon: 'personnel-view', path: '/tco/mitgliedsantraege', permission: 'tco.antraege:display' },
             { text: 'Registrierungen', icon: 'add-employee', path: '/tco/registrierungen', permission: 'tco.registrierung:mitglied' },
             { text: 'Mitgliedsbeiträge', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
@@ -126,6 +128,7 @@ const mod: WebModule = {
   routes: [
     { path: '/tco/mitglieder', component: Mitglieder, permission: 'tco.mitglieder:display' },
     { path: '/tco/meine-mitgliedschaft', component: MeineMitgliedschaft, permission: 'tco.meinedaten:edit' },
+    { path: '/tco/gruppen', component: Gruppen, permission: 'tco.gruppen:display' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
     { path: '/tco/hallenpreise', component: Hallenpreise, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
@@ -167,6 +170,7 @@ const mod: WebModule = {
     { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
     { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
+    { text: 'Mitgliedergruppen', subtitle: 'Kategorien, Gruppen und Mannschaften im Baum', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
     { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Nichtmitglieder, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
