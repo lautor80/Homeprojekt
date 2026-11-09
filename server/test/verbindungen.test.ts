@@ -53,11 +53,22 @@ after(async () => {
 test('Migration: Vereinswerte haben Vorrang, Modulspalten werden geleert', async () => {
   // Übernahme-Migrationen erneut laufen lassen, als läge der Altbestand noch in den Modulen
   await sql`delete from core.verbindungen`;
-  await sql`delete from public.schema_migrations where id in ('transport/004_paperless_zentral.sql', 'tco/036_paperless_zentral.sql')`;
+  await sql`delete from public.schema_migrations where id in ('transport/004_paperless_zentral.sql', 'tco/036_paperless_zentral.sql', 'tco/037_mail_zentral.sql')`;
   await sql`update transport.firma set paperless_url = 'http://transport:8000', paperless_token = 't-transport' where id = 1`;
-  await sql`update tco.verein set paperless_url = 'http://verein:8000,http://extern', paperless_token = 't-verein' where id = 1`;
+  await sql`update tco.verein set paperless_url = 'http://verein:8000,http://extern', paperless_token = 't-verein',
+                                  n8n_mail_url = 'http://n8n:5678/webhook/tco-mailversand', n8n_mail_key = 'schluessel',
+                                  mail_absender = '[{"anwendung":"*","email":"info@example.org","name":"Verein"}]'::jsonb where id = 1`;
+  await sql`insert into tco.mail_protokoll (anwendung, objekt, an, betreff, status, fehler) values ('Test', 'ALT', 'alt@example.org', 'alt', 'fehler', 'alt')`;
   await migrate(activeModules(), () => {});
   verbindungenCacheLeeren();
+  // Mailversand: Webhook, Schlüssel (Header) und Ersatzabsender in die Anbindung „mail“, Protokoll in den Kern
+  const [m] = await sql`select url, auth_art, header_name, geheimnis, einstellungen from core.verbindungen where id = 'mail'`;
+  assert.deepEqual([m.url, m.auth_art, m.header_name, m.geheimnis], ['http://n8n:5678/webhook/tco-mailversand', 'header', 'X-TCO-Key', 'schluessel']);
+  assert.equal((m.einstellungen as { absender: { email: string }[] }).absender[0].email, 'info@example.org');
+  assert.equal((await sql`select count(*)::int as n from core.mail_protokoll where objekt = 'ALT'`)[0].n, 1);
+  assert.equal((await sql`select count(*)::int as n from tco.mail_protokoll`)[0].n, 0);
+  const [tvm] = await sql`select n8n_mail_url, n8n_mail_key, mail_absender from tco.verein where id = 1`;
+  assert.deepEqual([tvm.n8n_mail_url, tvm.n8n_mail_key, tvm.mail_absender], [null, null, []]);
   const [v] = await sql`select url, auth_art, geheimnis from core.verbindungen where id = 'paperless'`;
   assert.deepEqual([v.url, v.auth_art, v.geheimnis], ['http://verein:8000,http://extern', 'token', 't-verein']);
   const [t] = await sql`select paperless_url, paperless_token from transport.firma where id = 1`;
@@ -108,6 +119,10 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.equal(await client!.baseUrl(), `http://127.0.0.1:${port}`);
   r = await call('GET', '/api/m/tco/verein');
   assert.equal(r.body.paperless_url, `http://127.0.0.1:${port}`);
+  assert.equal(r.body.n8n_mail_url, 'http://n8n:5678/webhook/tco-mailversand', 'Verein liest den Mail-Webhook aus der Anbindung');
+  assert.equal(r.body.n8n_mail_key, '********');
+  assert.equal(r.body.mail_absender[0].email, 'info@example.org');
+  assert.ok(kern.verbindungen.some((v: { id: string }) => v.id === 'mail'), 'Mailversand ist zentral angemeldet');
   assert.equal(r.body.paperless_token, '********', 'Token verlässt den Server auch über die Stammdaten nur maskiert');
   r = await call('GET', '/api/m/transport/firma');
   assert.equal(r.body.paperless, true);

@@ -61,7 +61,7 @@ export async function adminRoutes(app: FastifyInstance) {
     if (body.einmalLink) {
       if (!body.email) return reply.code(400).send({ message: 'Für den Einmal-Link wird eine E-Mail-Adresse benötigt.' });
       if (!(await portalUrl())) return reply.code(400).send({ message: 'Für Einmal-Links fehlt die Portal-Adresse (Administration → Einstellungen).' });
-      if (!mailVerfuegbar()) return reply.code(400).send({ message: 'Der E-Mail-Versand ist nicht eingerichtet.' });
+      if (!(await mailVerfuegbar())) return reply.code(400).send({ message: 'Der E-Mail-Versand ist nicht eingerichtet.' });
     } else {
       const err = validatePassword(body.password);
       if (err) return reply.code(400).send({ message: err });

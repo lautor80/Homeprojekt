@@ -4,6 +4,7 @@ import { corePermissions, gliedern, type PermissionGroup } from './permissions.j
 import type { SensitiveFieldDef } from './schutz.js';
 import type { KontextDef } from './lib/paperless-mapping.js';
 import { PAPERLESS_DEF, type VerbindungGruppe } from './lib/verbindungen.js';
+import { MAIL_DEF } from './lib/mail.js';
 
 // ---------------------------------------------------------------------------
 // Verfügbare Fachmodule. Neues Modul: hier importieren und eintragen.
@@ -51,7 +52,7 @@ export function paperlessKontexte(): { modul: string; name: string; kontexte: Ko
 /** Anbindungen des Kerns und aller aktiven Module (Administration → Anbindungen) */
 export function verbindungsGruppen(): VerbindungGruppe[] {
   return [
-    { modul: 'core', name: 'Basis', verbindungen: [PAPERLESS_DEF] },
+    { modul: 'core', name: 'Basis', verbindungen: [PAPERLESS_DEF, MAIL_DEF] },
     ...activeModules().filter((m) => m.verbindungen?.length).map((m) => ({ modul: m.id, name: m.name, verbindungen: m.verbindungen! })),
   ];
 }

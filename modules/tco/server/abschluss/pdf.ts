@@ -487,7 +487,7 @@ export async function abschlussPdf(db: Db, v: Verein, jahr: number, t: Teile): P
  * diesem Titel bereits, wird eine neue Version übertragen, sonst ein neues Dokument angelegt.
  */
 export async function abschlussAblegen(v: Verein, jahr: number, titel: string, pdf: Buffer, ergebnis: number, benutzer: string) {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
   const pl = paperless(v);
   let id = Number((await pl.dokumenteSuchen({ title__iexact: titel }).catch(() => []))[0]?.id) || null;
   const neu = !id;

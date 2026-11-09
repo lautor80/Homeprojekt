@@ -55,7 +55,7 @@ before(async () => {
   app = await buildApp({ logger: false });
   await admin('POST', '/api/setup', { orgName: 'TC Test', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
   await admin('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' });
-  await sql`update tco.verein set n8n_mail_url = ${`http://127.0.0.1:${port}/webhook/mail`}, n8n_mail_key = 'k'`;
+  await sql`insert into core.verbindungen (id, url, auth_art, header_name, geheimnis) values ('mail', ${`http://127.0.0.1:${port}/webhook/mail`}, 'header', 'X-TCO-Key', 'k') on conflict (id) do update set url = excluded.url, auth_art = 'header', header_name = 'X-TCO-Key', geheimnis = excluded.geheimnis`;
   await sql`insert into tco.mitglieder (adrnr, mitglnrn, vorname, nachname, geburtsdatum, email, eintritt) values
             ('0000000501', '501', 'Maria', 'Mitglied', '1980-05-17', 'maria@example.org', '2015-01-01'),
             ('0000000502', '502', 'Otto', 'Ohnemail', '1975-02-02', null, '2015-01-01')`;
@@ -117,15 +117,16 @@ test('Passwort vergessen und Einmal-Link', async () => {
 test('Registrierung extern: E-Mail bestätigen, sofort Hallennutzer', async () => {
   const R = `${T}/platz/registrierung`;
   const gast = client();
-  // Absender je Anwendung (Stammdaten); leere Zeilen werden ignoriert
-  const v = (await admin('GET', `${T}/verein`)).body;
-  let s = await admin('PUT', `${T}/verein`, { ...v, mail_absender: [
+  // Absender je Anwendung (Administration → Anbindungen → E-Mail-Versand); leere Zeilen werden ignoriert
+  let s = await admin('PUT', '/api/verbindungen/mail', { einstellungen: { absender: [
     { anwendung: '*', email: 'info@tc-oberthal.de', name: 'TC Oberthal' },
     { anwendung: 'registrierung', email: 'portal@tc-oberthal.de', name: 'TCO Portal', antwort_an: 'platz@tc-oberthal.de' },
     { anwendung: '', email: '' },
-  ] });
+  ] } });
   assert.equal(s.status, 200, JSON.stringify(s.body));
-  s = await admin('PUT', `${T}/verein`, { ...v, mail_absender: [{ anwendung: '*', email: 'kein-mail' }] });
+  assert.equal(s.body.einstellungen.absender.length, 2);
+  assert.equal((await admin('GET', `${T}/verein`)).body.mail_absender.length, 2, 'Verein liest die Absender aus der Anbindung');
+  s = await admin('PUT', '/api/verbindungen/mail', { einstellungen: { absender: [{ anwendung: '*', email: 'kein-mail' }] } });
   assert.equal(s.status, 400);
   assert.equal((await gast('GET', R)).body.mitglied, true);
   // Pflichtangaben Anrede und Anschrift
@@ -372,31 +373,34 @@ test('Einladung zum Vereinsportal: QR-Code per Mail/Brief und Schnellweg bei der
 });
 
 test('Mailprotokoll und Testmail', async () => {
-  let r = await admin('POST', `${T}/verein/testmail`, { an: 'test@example.org' });
+  let r = await admin('POST', '/api/mail/test', { an: 'test@example.org' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /gesendet/);
-  r = await admin('GET', `${T}/verein/mailprotokoll`);
+  r = await admin('GET', '/api/mail/protokoll');
   assert.equal(r.status, 200);
   assert.equal(r.body[0].an, 'test@example.org', JSON.stringify(r.body.slice(0, 4)));
   assert.equal(r.body[0].status, 'gesendet');
   assert.ok(r.body.some((p: any) => p.anwendung === 'Registrierung' && p.status === 'gesendet'));
   // ohne Webhook-URL: Versuch wird mit Grund protokolliert
-  const [alt] = await sql`select n8n_mail_url from tco.verein`;
-  await sql`update tco.verein set n8n_mail_url = null`;
-  assert.equal((await admin('POST', `${T}/verein/testmail`, { an: 'test@example.org' })).status >= 400, true);
-  r = await admin('GET', `${T}/verein/mailprotokoll`);
+  const [alt] = await sql`select url from core.verbindungen where id = 'mail'`;
+  await sql`update core.verbindungen set url = '' where id = 'mail'`;
+  const { verbindungenCacheLeeren } = await import('../src/lib/verbindungen.js');
+  verbindungenCacheLeeren();
+  assert.equal((await admin('POST', '/api/mail/test', { an: 'test@example.org' })).status >= 400, true);
+  r = await admin('GET', '/api/mail/protokoll');
   assert.equal(r.body[0].status, 'nicht_gesendet');
-  await sql`update tco.verein set n8n_mail_url = ${alt.n8n_mail_url}`;
+  await sql`update core.verbindungen set url = ${alt.url} where id = 'mail'`;
+  verbindungenCacheLeeren();
   // Anmeldeseite: Registrierung heißt „Zum Vereinsportal registrieren“
   assert.equal((await client()('GET', '/api/settings/public')).body.registrierung.titel, 'Zum Vereinsportal registrieren');
 });
 
 test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
   const gast = client();
-  const P = `${T}/verein/mailprotokoll`;
+  const P = '/api/mail/protokoll';
   // normale Mail: Inhalt wird beim Fehler gespeichert, aber nie ausgeliefert
   n8nAblehnen = true;
-  let r = await admin('POST', `${T}/verein/testmail`, { an: 'wieder@example.org' });
+  let r = await admin('POST', '/api/mail/test', { an: 'wieder@example.org' });
   assert.equal(r.status, 502, 'Klartext statt „Interner Fehler“');
   assert.match(r.body.message, /X-TCO-Key/);
   r = await admin('GET', P);
@@ -419,7 +423,7 @@ test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
   r = await admin('GET', P);
   p = r.body.find((x: any) => x.id === p.id);
   assert.deepEqual([p.erneut_status, p.erneut, p.erneut_von], ['gesendet', false, 'Admin']);
-  assert.equal((await sql`select nachricht from tco.mail_protokoll where id = ${p.id}`)[0].nachricht, null, 'Inhalt nach Erfolg gelöscht');
+  assert.equal((await sql`select nachricht from core.mail_protokoll where id = ${p.id}`)[0].nachricht, null, 'Inhalt nach Erfolg gelöscht');
   assert.equal((await admin('POST', `${P}/${p.id}/erneut`)).status, 400, 'nur einmal');
 
   // Bestätigungslink der Registrierung: wird nicht gespeichert, sondern neu erzeugt
@@ -431,7 +435,7 @@ test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
   r = await admin('GET', P);
   p = r.body.find((x: any) => x.an === 'wilma@example.org');
   assert.deepEqual([p.status, p.erneut, p.erneut_neuer_link], ['fehler', true, true]);
-  const [gesp] = await sql`select nachricht::text as n from tco.mail_protokoll where id = ${p.id}`;
+  const [gesp] = await sql`select nachricht::text as n from core.mail_protokoll where id = ${p.id}`;
   assert.ok(!/token=|registrierung-bestaetigen/.test(gesp.n), 'kein Link gespeichert');
   r = await admin('POST', `${P}/${p.id}/erneut`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -453,8 +457,8 @@ test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
 });
 
 test('Mailprotokoll: Filter nach Anwendung und Zeitraum, Leeren', async () => {
-  const P = `${T}/verein/mailprotokoll`;
-  await sql`insert into tco.mail_protokoll (zeit, anwendung, objekt, an, betreff, status) values
+  const P = '/api/mail/protokoll';
+  await sql`insert into core.mail_protokoll (zeit, anwendung, objekt, an, betreff, status) values
             ('2026-10-01 08:00+02', 'Hallenrechnung', 'R1', 'a@example.org', 'alt', 'gesendet'),
             ('2026-10-01 18:30+02', 'Hallenrechnung', 'R2', 'b@example.org', 'abends', 'fehler'),
             ('2026-10-02 09:00+02', 'Verzehr', 'V1', 'c@example.org', 'verzehr', 'gesendet')`;

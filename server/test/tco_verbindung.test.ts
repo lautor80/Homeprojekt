@@ -61,7 +61,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   const port = (server.address() as { port: number }).port;
   const B = `http://127.0.0.1:${port}/webhook`;
   let r = await call('GET', '/api/m/tco/verein');
-  const v = { ...r.body, n8n_stunden_url: `${B}/stunden`, n8n_ferien_url: `${B}/ferien`, n8n_mail_url: `${B}/mail`, n8n_stunden_user: 'test.user@example.org', n8n_stunden_pw: 'falsch' };
+  const v = { ...r.body, n8n_stunden_url: `${B}/stunden`, n8n_ferien_url: `${B}/ferien`, n8n_stunden_user: 'test.user@example.org', n8n_stunden_pw: 'falsch' };
 
   // ungesichert prüfen: falsches Passwort → abgelehnt, richtiges → Daten
   r = await call('POST', '/api/m/tco/verein/test/stunden', v);
@@ -89,25 +89,27 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   r = await call('PUT', '/api/m/tco/verein', { ...g, n8n_stunden_user: 'anderer' });
   assert.equal(r.status, 400);
 
-  // Ferien mit gespeicherter Anmeldung, Mailversand nur anklopfen, Paperless (zentral) fehlt, EP3 nicht erreichbar
+  // Ferien mit gespeicherter Anmeldung, Paperless (zentral) fehlt, EP3 nicht erreichbar
   r = await call('POST', '/api/m/tco/verein/test/ferien', g);
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /1 Ferientage/);
-  r = await call('POST', '/api/m/tco/verein/test/mail', g);
+  // Mailversand (zentral): anklopfen, Schlüssel prüfen, Platzhalter abweisen
+  const M = { url: `${B}/mail`, auth_art: 'header', header_name: 'X-TCO-Key' };
+  r = await call('POST', '/api/verbindungen/mail/pruefen', { ...M, auth_art: 'keine' });
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /Workflow aktiv/);
-  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: 'falsch' });
+  r = await call('POST', '/api/verbindungen/mail/pruefen', { ...M, geheimnis: 'falsch' });
   assert.equal(r.body.ok, false, r.body.text);
   assert.match(r.body.text, /Schlüssel abgelehnt.*X-TCO-Key/);
-  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: '__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6' });
+  r = await call('POST', '/api/verbindungen/mail/pruefen', { ...M, geheimnis: '__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6' });
   assert.equal(r.status, 400, JSON.stringify(r.body));
   assert.match(JSON.stringify(r.body), /Platzhalter/);
-  r = await call('PUT', '/api/m/tco/verein', { ...g, n8n_mail_key: '__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6' });
+  r = await call('PUT', '/api/verbindungen/mail', { ...M, geheimnis: '__n8n_BLANK_VALUE_e5362baf-c777-4d57-a609-6eaf1f9e87f6' });
   assert.equal(r.status, 400, 'Platzhalter wird nicht gespeichert');
-  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: 'richtig' });
+  r = await call('POST', '/api/verbindungen/mail/pruefen', { ...M, geheimnis: 'richtig' });
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /Schlüssel akzeptiert/);
-  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_url: `${B}/gibtsnicht` });
+  r = await call('POST', '/api/verbindungen/mail/pruefen', { ...M, url: `${B}/gibtsnicht` });
   assert.match(r.body.text, /Webhook nicht gefunden/);
   r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
   assert.equal(r.body.ok, false);
