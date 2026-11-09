@@ -49,7 +49,7 @@ export async function antragRoutes(app: FastifyInstance) {
   app.get('/antrag', async () => antragInfo(DB, await vereinLesen()));
 
   app.post('/antrag', async (req) => {
-    limit(req.ip, 5);
+    limit(req.ip, 10);
     const b = antragSchema.parse(req.body);
     if (b.website) return { nummer: 'MA', text: 'Vielen Dank für Ihren Antrag.' };   // Bot: still verwerfen
     const { bank, website: _w, ...d } = b;
