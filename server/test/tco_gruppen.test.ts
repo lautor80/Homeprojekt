@@ -224,3 +224,16 @@ test('Änderungsbelege', async () => {
   const [{ n }] = await sql`select count(*)::int as n from core.change_header where object_type = 'KAL_GRUPPE'`;
   assert.ok(n >= 5, `Änderungsbelege zu Gruppen: ${n}`);
 });
+
+test('Mitglieder zur Aufnahme: Geschlecht, Jahrgang und Alter für die Filter', async () => {
+  const jahr = new Date().getFullYear();
+  await sql`update tco.mitglieder set geschlecht = '1', geburtsdatum = ${`${jahr - 45}-01-01`} where adrnr = ${BEN}`;
+  await sql`update tco.mitglieder set geschlecht = '2', geburtsdatum = ${`${jahr - 30}-01-01`} where adrnr = ${ANNA}`;
+  const r = await admin('GET', `${G}/mitglieder`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const je = new Map((r.body as { adrnr: string; name: string; geschlecht: string; jahrgang: number | null; alter: number | null }[]).map((m) => [m.adrnr, m]));
+  assert.deepEqual(je.get(BEN), { adrnr: BEN, name: 'Netz, Ben', geschlecht: 'M', jahrgang: jahr - 45, alter: 45 });
+  assert.deepEqual(je.get(ANNA), { adrnr: ANNA, name: 'Aufschlag, Anna', geschlecht: 'W', jahrgang: jahr - 30, alter: 30 });
+  // ohne Geburtsdatum und Geschlecht: leer statt 0
+  assert.deepEqual(je.get(CARL), { adrnr: CARL, name: 'Linie, Carl', geschlecht: '', jahrgang: null, alter: null });
+});
