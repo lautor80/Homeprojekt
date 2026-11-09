@@ -1,13 +1,13 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Button, CheckBox, FlexBox, Input, Label, Link, MessageStrip, Text, Title } from '@ui5/webcomponents-react';
+import { Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, RadioButton, Text, Title } from '@ui5/webcomponents-react';
 import { api } from '../api';
 
 /** Zentrierte Karte für Anmeldung, Einrichtung und Passwortwechsel (Fiori-Anmeldeseite). */
-function CenterCard({ title, subtitle, logo, children }: { title: string; subtitle?: string; logo?: string; children: ReactNode }) {
+export function CenterCard({ title, subtitle, logo, children, breit }: { title: string; subtitle?: string; logo?: string; children: ReactNode; breit?: boolean }) {
   const kuerzel = title.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('');
   return (
-    <div className="portal-auth">
-      <div className="portal-auth__card">
+    <div className="portal-auth" style={breit ? { placeItems: 'start center', height: '100%', overflowY: 'auto' } : undefined}>
+      <div className="portal-auth__card" style={breit ? { width: 'min(46rem, 96vw)', maxWidth: 'none' } : undefined}>
         <div className="portal-auth__brand">
           {logo ? <img src={logo} alt="" className="portal-auth__logo" /> : <div className="portal-auth__mark" aria-hidden>{kuerzel || 'P'}</div>}
           <div>
@@ -21,7 +21,7 @@ function CenterCard({ title, subtitle, logo, children }: { title: string; subtit
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+export function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <FlexBox direction="Column" style={{ gap: '0.25rem', marginBottom: '0.75rem' }}>
       <Label required={required} showColon>{label}</Label>
@@ -40,7 +40,9 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reg, setReg] = useState(false);
+  const [vergessen, setVergessen] = useState(false);
   if (reg && registrierung) return <RegistrierungPage orgName={orgName} logo={logo} info={registrierung} onBack={() => setReg(false)} />;
+  if (vergessen) return <PasswortVergessenPage orgName={orgName} logo={logo} vorbelegt={username} onBack={() => setVergessen(false)} />;
 
   async function submit(e?: FormEvent) {
     e?.preventDefault();
@@ -70,6 +72,9 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
         <Button design="Emphasized" style={full} onClick={() => submit()} loading={busy} disabled={!username || !password}>
           Anmelden
         </Button>
+        <div style={{ marginTop: '0.75rem', textAlign: 'center' }}>
+          <Link onClick={() => setVergessen(true)}>Passwort vergessen?</Link>
+        </div>
         {registrierung && (
           <div style={{ marginTop: '1rem', textAlign: 'center' }}>
             <Text className="portal-muted">Noch kein Zugang? </Text>
@@ -81,20 +86,110 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
   );
 }
 
+/** „Passwort vergessen“: Link zum Zurücksetzen an die hinterlegte E-Mail-Adresse (Antwort verrät nicht, ob es das Konto gibt) */
+export function PasswortVergessenPage({ orgName, logo, vorbelegt, onBack }: { orgName: string; logo?: string; vorbelegt?: string; onBack: () => void }) {
+  const [konto, setKonto] = useState(vorbelegt ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [fertig, setFertig] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string }>('/api/auth/passwort-vergessen', { konto });
+      setFertig(r.text);
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <CenterCard title={orgName} subtitle="Passwort vergessen" logo={logo}>
+      {fertig ? (
+        <>
+          <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>{fertig}</MessageStrip>
+          <Button design="Emphasized" style={full} onClick={onBack}>Zur Anmeldung</Button>
+        </>
+      ) : (
+        <form onSubmit={submit}>
+          <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
+            Geben Sie Ihren Benutzernamen oder Ihre E-Mail-Adresse ein. Sie erhalten einen Link, über den Sie ein neues Kennwort vergeben.
+          </Text>
+          {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+          <Field label="Benutzer oder E-Mail" required>
+            <Input style={full} value={konto} onInput={(e) => setKonto(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+          </Field>
+          <Button design="Emphasized" style={full} onClick={() => submit()} loading={busy} disabled={!konto.trim()}>Link anfordern</Button>
+          <div style={{ marginTop: '0.75rem', textAlign: 'center' }}><Link onClick={onBack}>Zurück zur Anmeldung</Link></div>
+        </form>
+      )}
+    </CenterCard>
+  );
+}
+
+/** Kennwort über einen Einmal-Link festlegen (Passwort vergessen bzw. neuer Zugang ohne Startkennwort) */
+export function KennwortSetzenPage({ orgName, logo, token, onDone }: { orgName: string; logo?: string; token: string; onDone: () => void }) {
+  const [info, setInfo] = useState<{ gueltig: boolean; zweck?: string; username?: string } | null>(null);
+  const [f, setF] = useState({ next: '', next2: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [fertig, setFertig] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.get<typeof info>(`/api/auth/kennwort-link?token=${encodeURIComponent(token)}`).then(setInfo).catch((e) => setError(e.message)); }, [token]);
+  async function submit() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string }>('/api/auth/kennwort-setzen', { token, passwort: f.next });
+      setFertig(r.text);
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <CenterCard title={orgName} subtitle={info?.zweck === 'SETZEN' ? 'Kennwort festlegen' : 'Neues Kennwort'} logo={logo}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+      {fertig ? (
+        <>
+          <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>{fertig}</MessageStrip>
+          <Button design="Emphasized" style={full} onClick={onDone}>Zur Anmeldung</Button>
+        </>
+      ) : !info ? null : !info.gueltig ? (
+        <>
+          <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '1rem' }}>
+            Der Link ist ungültig, abgelaufen oder wurde bereits verwendet. Fordern Sie auf der Anmeldeseite über „Passwort vergessen?“ einen neuen an.
+          </MessageStrip>
+          <Button design="Emphasized" style={full} onClick={onDone}>Zur Anmeldung</Button>
+        </>
+      ) : (
+        <>
+          <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>Benutzer: <b>{info.username}</b></Text>
+          <Field label="Neues Kennwort (mind. 10 Zeichen)" required>
+            <Input style={full} type="Password" value={f.next} onInput={(e) => setF({ ...f, next: e.target.value })} />
+          </Field>
+          <Field label="Kennwort wiederholen" required>
+            <Input style={full} type="Password" value={f.next2} onInput={(e) => setF({ ...f, next2: e.target.value })}
+                   valueState={f.next2 && f.next !== f.next2 ? 'Negative' : 'None'} />
+          </Field>
+          <Button design="Emphasized" style={full} loading={busy} onClick={submit} disabled={f.next.length < 10 || f.next !== f.next2}>Kennwort speichern</Button>
+        </>
+      )}
+    </CenterCard>
+  );
+}
+
 /**
  * Selbstregistrierung (vom Fachmodul bereitgestellt, z. B. Platzbuchung): Name, E-Mail, Benutzername und Kennwort –
  * oder Nachweis eines bestehenden EP3-Kontos mit dem EP3-Kennwort (das dann weiter gilt). Freigabe durch den Verein.
  */
 export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: string; logo?: string; info: RegistrierungInfo; onBack: () => void }) {
-  const [meta, setMeta] = useState<{ verein: string; ep3: boolean; hinweis: string } | null>(null);
+  const [meta, setMeta] = useState<{ verein: string; ep3: boolean; hinweis: string; mitglied?: boolean } | null>(null);
   const [f, setF] = useState({ vorname: '', nachname: '', email: '', telefon: '', benutzername: '', passwort: '', passwort2: '', nachricht: '', ep3_konto: '', ep3_passwort: '', datenschutz: false });
+  /** Mitglied (Prüfung durch den Verein) oder externer Hallennutzer (Freischaltung nach E-Mail-Bestätigung) */
+  const [art, setArt] = useState<'MITGLIED' | 'EXTERN' | null>(null);
+  const [nachweis, setNachweis] = useState<'GEBURTSDATUM' | 'MITGLIEDSNR'>('GEBURTSDATUM');
+  const [geburtsdatum, setGeburtsdatum] = useState('');
+  const [mitgliedsnr, setMitgliedsnr] = useState('');
   const [alt, setAlt] = useState(false);
   const [frei, setFrei] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fertig, setFertig] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
-  useEffect(() => { api.get<{ verein: string; ep3: boolean; hinweis: string }>(info.pfad).then(setMeta).catch((e) => setError(e.message)); }, [info.pfad]);
+  useEffect(() => { api.get<{ verein: string; ep3: boolean; hinweis: string; mitglied?: boolean }>(info.pfad).then(setMeta).catch((e) => setError(e.message)); }, [info.pfad]);
   useEffect(() => {
     if (f.benutzername.length < 3) { setFrei(null); return; }
     const t = setTimeout(() => api.get<{ frei: string | null }>(`${info.pfad}/frei?benutzername=${encodeURIComponent(f.benutzername)}`).then((r) => setFrei(r.frei)).catch(() => undefined), 300);
@@ -103,7 +198,8 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
 
   const mismatch = !!f.passwort2 && f.passwort !== f.passwort2;
   const kennwortNoetig = !alt || !!f.passwort;
-  const ok = f.vorname && f.nachname && f.email && f.benutzername.length >= 3 && !frei && f.datenschutz
+  const artOk = !meta?.mitglied || art === 'EXTERN' || (art === 'MITGLIED' && (nachweis === 'GEBURTSDATUM' ? !!geburtsdatum : !!mitgliedsnr.trim()));
+  const ok = artOk && f.vorname && f.nachname && f.email && f.benutzername.length >= 3 && !frei && f.datenschutz
     && (alt ? !!f.ep3_konto && !!f.ep3_passwort : f.passwort.length >= 10) && (!kennwortNoetig || (f.passwort.length >= 10 && !mismatch));
 
   async function submit(e?: FormEvent) {
@@ -113,6 +209,11 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
       const r = await api.post<{ text: string }>(info.pfad, {
         vorname: f.vorname, nachname: f.nachname, email: f.email, telefon: f.telefon || null, benutzername: f.benutzername, nachricht: f.nachricht || null,
         passwort: f.passwort || null, ep3_konto: alt ? f.ep3_konto : null, ep3_passwort: alt ? f.ep3_passwort : null, datenschutz: f.datenschutz,
+        ...(meta?.mitglied ? {
+          art: art ?? 'EXTERN',
+          geburtsdatum: art === 'MITGLIED' && nachweis === 'GEBURTSDATUM' ? geburtsdatum || null : null,
+          mitgliedsnr: art === 'MITGLIED' && nachweis === 'MITGLIEDSNR' ? mitgliedsnr.trim() || null : null,
+        } : {}),
       });
       setFertig(r.text);
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
@@ -129,6 +230,25 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
         <form onSubmit={submit}>
           <Text style={{ display: 'block', marginBottom: '0.75rem' }} className="portal-muted">{meta?.hinweis ?? info.text}</Text>
           {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+          {meta?.mitglied && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <Label required showColon>Ich bin</Label>
+              <RadioButton name="reg-art" text="Mitglied des Vereins" checked={art === 'MITGLIED'} onChange={() => setArt('MITGLIED')} />
+              <RadioButton name="reg-art" text="Externer Hallennutzer (kein Mitglied)" checked={art === 'EXTERN'} onChange={() => setArt('EXTERN')} />
+              {art === 'MITGLIED' && (
+                <div style={{ padding: '0.5rem 0.75rem', background: 'var(--sapList_HeaderBackground, #f5f6f7)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
+                  <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.25rem' }}>
+                    Zum Abgleich mit dem Mitgliederverzeichnis – bitte eine Angabe wählen:
+                  </Text>
+                  <RadioButton name="reg-nachweis" text="Geburtsdatum" checked={nachweis === 'GEBURTSDATUM'} onChange={() => setNachweis('GEBURTSDATUM')} />
+                  <RadioButton name="reg-nachweis" text="Mitgliedsnummer" checked={nachweis === 'MITGLIEDSNR'} onChange={() => setNachweis('MITGLIEDSNR')} />
+                  {nachweis === 'GEBURTSDATUM'
+                    ? <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>
+                    : <Field label="Mitgliedsnummer" required><Input style={full} value={mitgliedsnr} onInput={(e) => setMitgliedsnr(e.target.value)} /></Field>}
+                </div>
+              )}
+            </div>
+          )}
           <FlexBox style={{ gap: '0.5rem' }}>
             <Field label="Vorname" required><Input style={full} value={f.vorname} onInput={set('vorname')} /></Field>
             <Field label="Nachname" required><Input style={full} value={f.nachname} onInput={set('nachname')} /></Field>

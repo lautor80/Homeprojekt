@@ -57,6 +57,11 @@ export interface ServerModule {
   nachRuecksicherung?: () => Promise<void>;
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
   sperrObjekte?: AuditObjectDef[];
+  /**
+   * E-Mail-Versand des Moduls (z. B. TCO über n8n) – vom Kern genutzt für Kennwort-Links und Benachrichtigungen.
+   * Wirft bei Fehlern.
+   */
+  mailer?: (m: { an: string; betreff: string; text: string; objekt: string; anwendung: string }) => Promise<void>;
   /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */
   paperlessClient?: () => Promise<Paperless | null>;
 }

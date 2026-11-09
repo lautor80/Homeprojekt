@@ -101,10 +101,38 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
-  // Platzbuchung: Registrierungen neuer Hallennutzer warten auf Bestätigung
+  // Registrierungen von Mitgliedern: je Antrag mit Zuordnungsvorschlag (Kassenwart)
+  if (can(req, 'tco.registrierung:mitglied')) {
+    const { registrierungenLesen } = await import('../platz/registrierung.js');
+    for (const r of await registrierungenLesen(db, 'OFFEN', 'MITGLIED')) {
+      const v = r.vorschlaege.find((x) => x.art === 'MITGLIED');
+      out.push({
+        key: `REG_MITGLIED:${r.id}`, bereich: 'Mitglieder', icon: 'add-employee', state: v ? 'Information' : 'Critical',
+        titel: `Registrierung ${r.anzeigename} als Mitglied`,
+        text: v ? `Vorschlag: ${v.name} – ${v.info} (${v.grund}). Prüfen und freigeben.` : 'Kein passendes Mitglied gefunden – bitte prüfen, zuordnen oder ablehnen.',
+        datum: new Date(r.erstellt).toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10), pfad: `/tco/registrierungen?id=${r.id}`,
+      });
+    }
+  }
+
+  // Mitgliedsanträge (online) warten auf Prüfung und Übernahme
+  if (can(req, 'tco.antraege:edit')) {
+    const [a] = await db`select count(*)::int as n, to_char(min(eingang) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
+                           from tco.mitgliedsantraege where status = 'EINGANG'`;
+    if (a?.n) {
+      out.push({
+        key: 'MITGLIEDSANTRAG', bereich: 'Mitglieder', icon: 'personnel-view', state: 'Critical',
+        titel: `${a.n} Mitgliedsantr${a.n === 1 ? 'ag' : 'äge'} zu prüfen`,
+        text: 'Online eingegangen – prüfen und übernehmen (Mitglied, Vertrag, SEPA-Mandat und Benutzer werden angelegt).',
+        datum: a.seit, pfad: '/tco/mitgliedsantraege',
+      });
+    }
+  }
+
+  // Platzbuchung: Registrierungen externer Hallennutzer warten auf Bestätigung (nur ohne E-Mail-Bestätigung)
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
-                           from tco.registrierungen where status = 'OFFEN'`;
+                           from tco.registrierungen where status = 'OFFEN' and art = 'EXTERN'`;
     if (r?.n) {
       out.push({
         key: 'REGISTRIERUNG', bereich: 'Platzbuchung', icon: 'add-employee', state: 'Critical',

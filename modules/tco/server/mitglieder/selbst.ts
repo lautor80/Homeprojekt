@@ -10,6 +10,7 @@ import {
 import { druckdatenLesen, unterlagePdf } from './pdf.js';
 import { mailText, unterlageAblegen } from './dokumente.js';
 import { plAktiv } from '../verein.js';
+import { kennwortLinkSenden, portalUrl, unbekanntesKennwort } from '../../../../server/src/kennwort.js';
 import { benutzerAnlegen, freierBenutzername, istBcrypt, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
@@ -208,14 +209,28 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
     const username = await freierBenutzername(tx, m.email && !mehrfach.has(m.email) ? m.email : null, alias || `mitglied.${m.adrnr}`, `m${m.adrnr}`);
     let hash: string;
     let start: string | null = null;
+    // Einmal-Link statt Startkennwort, wenn per E-Mail benachrichtigt wird und die Portal-Adresse bekannt ist
+    const link = !(k && istBcrypt(k.pw_hash)) && o.mail && !!v.n8n_mail_url && !!m.email && !!(await portalUrl());
     if (k && istBcrypt(k.pw_hash)) hash = k.pw_hash;
+    else if (link) hash = await unbekanntesKennwort();
     else { start = randomBytes(9).toString('base64url'); hash = await hashPassword(start); }
     try {
       const uid = await benutzerAnlegen(tx, { username, displayName: name, email: m.email || null, passwortHash: hash, mussAendern: !!start, rolle: ROLLE_MITGLIED });
       await tx`insert into tco.mitgliedera (adrnr, benutzer_id, zuid) values (${m.adrnr}, ${uid}, ${k?.zuid ?? null})
                on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id, zuid = coalesce(tco.mitgliedera.zuid, excluded.zuid)`;
       let hinweis = start ? 'Startkennwort' : 'EP3-Kennwort gilt weiter';
-      if (start && o.mail && v.n8n_mail_url && m.email) {
+      if (link) {
+        try {
+          await kennwortLinkSenden(tx, uid, 'SETZEN', null, v.name);
+          hinweis = 'Link zum Festlegen des Kennworts per E-Mail gesendet';
+          r.gesendet++;
+        } catch (e) {
+          // Versand fehlgeschlagen: Startkennwort als Rückfall
+          start = randomBytes(9).toString('base64url');
+          await tx`update core.users set password_hash = ${await hashPassword(start)}, must_change_password = true where id = ${uid}`;
+          hinweis = `E-Mail fehlgeschlagen (${(e as Error).message}) – Startkennwort unten`;
+        }
+      } else if (start && o.mail && v.n8n_mail_url && m.email) {
         try {
           await mailSenden(v, {
             modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an: m.email, benutzer: 'Portal', anhaenge: [],

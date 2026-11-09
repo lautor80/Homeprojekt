@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
+import { withChange } from '../../../../server/src/db.js';
+import { portalUrl } from '../../../../server/src/kennwort.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB } from '../verein.js';
 import { addTage } from '../format.js';
@@ -12,7 +14,7 @@ import {
 import { minuten, preiseLesen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 import {
-  ablehnen, benutzernameFrei, bestaetigen, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
+  ablehnen, benutzernameFrei, bestaetigen, emailBestaetigen, EMAIL_STUNDEN, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
@@ -96,7 +98,46 @@ const registrierung = z.object({
   ep3_konto: z.string().trim().max(120).nullish(),
   ep3_passwort: z.string().max(200).nullish(),
   datenschutz: z.literal(true, { errorMap: () => ({ message: 'Bitte der Verarbeitung der Daten zustimmen.' }) }),
+  art: z.enum(['EXTERN', 'MITGLIED']).default('EXTERN'),
+  geburtsdatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Geburtsdatum im Format JJJJ-MM-TT').nullish(),
+  mitgliedsnr: z.string().trim().max(20).nullish(),
 });
+
+/** Mitglieds-Registrierungen prüfen und freigeben (Kassenwart) */
+export const P_REG = 'tco.registrierung:mitglied';
+
+/** Benachrichtigung nach der Freischaltung (nicht kritisch) – Rückgabe: Zusatz für die Meldung */
+async function freigabeMail(r: { email: string; anzeigename: string; ep3: boolean; rolle: string }, wer: string): Promise<string> {
+  try {
+    const v = await vereinLesen();
+    if (!v.n8n_mail_url || !r.email) return '';
+    const url = await portalUrl();
+    const mitglied = r.rolle === ROLLE_MITGLIED;
+    await mailSenden(v, {
+      modus: 'senden', anwendung: 'Registrierung', objekt: 'REG', an: r.email, benutzer: wer, anhaenge: [],
+      betreff: `${v.name}: Ihr Zugang ist freigeschaltet`,
+      text: `Guten Tag ${r.anzeigename},\n\nIhr Zugang zum Portal ist freigeschaltet. Sie können sich jetzt${url ? ` unter ${url}` : ''} anmelden`
+        + (r.ep3 ? ' – mit Ihrem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort (sofern Sie kein neues gewählt haben).' : ' – mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.')
+        + (mitglied ? '\n\nAls Mitglied sehen Sie unter „Meine Mitgliedschaft“ Ihre Daten, buchen Plätze und erfassen Ihren Clubhaus-Verzehr.' : '\n\nUnter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.')
+        + `\n\nViele Grüße\n${v.name}`,
+    });
+    return ' Benachrichtigung per E-Mail gesendet.';
+  } catch (e) { return ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
+}
+
+async function ablehnungMail(r: { email: string; anzeigename: string }, grund: string | null, wer: string): Promise<string> {
+  try {
+    const v = await vereinLesen();
+    if (!v.n8n_mail_url || !r.email) return '';
+    await mailSenden(v, {
+      modus: 'senden', anwendung: 'Registrierung', objekt: 'REG', an: r.email, benutzer: wer, anhaenge: [],
+      betreff: `${v.name}: Ihre Registrierung`,
+      text: `Guten Tag ${r.anzeigename},\n\nIhre Registrierung konnte leider nicht freigeschaltet werden.`
+        + (grund ? `\n\nBegründung: ${grund}` : '') + `\n\nBei Fragen wenden Sie sich bitte an den Verein.\n\nViele Grüße\n${v.name}`,
+    });
+    return ' Benachrichtigung per E-Mail gesendet.';
+  } catch (e) { return ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
+}
 
 export async function platzRoutes(app: FastifyInstance) {
   const buchen = { preHandler: requireAuth(P_PLATZ.buchen) };
@@ -109,8 +150,9 @@ export async function platzRoutes(app: FastifyInstance) {
     const v = await vereinLesen();
     const [ep3] = await DB`select exists (select 1 from tco.kunden where pw_hash is not null) as ja`;
     return {
-      verein: v.name, ep3: !!ep3?.ja,
-      hinweis: 'Nach der Freigabe durch den Verein können Sie Hallen- und Freiplätze für sich buchen (Einzelbuchungen). Abos vergibt der Hallenwart.',
+      verein: v.name, ep3: !!ep3?.ja, mitglied: true,
+      hinweis: 'Vereinsmitglieder erhalten nach Prüfung durch den Verein Zugang zu Platzbuchung, Mitgliedsdaten und Verzehr. '
+        + 'Externe Hallennutzer bestätigen ihre E-Mail-Adresse und können danach sofort Plätze buchen (Einzelbuchungen).',
     };
   });
   app.get('/platz/registrierung/frei', async (req) => {
@@ -121,15 +163,54 @@ export async function platzRoutes(app: FastifyInstance) {
     regLimit(req.ip, 15);
     const e = registrierung.parse(req.body);
     if (!e.ep3_konto && !e.passwort) throw new BusinessError('Bitte ein Kennwort wählen oder das bestehende EP3-Konto angeben.');
-    const r = await registrieren(DB, e, req.ip);
-    req.log.info({ registrierung: r.id, benutzername: e.benutzername, ip: req.ip }, 'Registrierung eingegangen');
-    return r;
+    const v = await vereinLesen();
+    const url = await portalUrl();
+    const mail = !!v.n8n_mail_url && !!url;
+    const r = await registrieren(DB, e, req.ip, { mail });
+    req.log.info({ registrierung: r.id, art: r.art, benutzername: e.benutzername, ip: req.ip }, 'Registrierung eingegangen');
+    let text = r.text;
+    try {
+      if (r.token) {
+        await mailSenden(v, {
+          modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, benutzer: 'Portal', anhaenge: [],
+          betreff: `${v.name}: Bitte bestätigen Sie Ihre Registrierung`,
+          text: `Guten Tag ${e.vorname} ${e.nachname},\n\nvielen Dank für Ihre Registrierung (Benutzername ${e.benutzername}). `
+            + `Bitte bestätigen Sie Ihre E-Mail-Adresse über diesen Link (${EMAIL_STUNDEN} Stunden gültig):\n\n${url}/registrierung-bestaetigen?token=${r.token}\n\n`
+            + `Danach ist Ihr Zugang sofort freigeschaltet und Sie können Hallen- und Freiplätze buchen.\n\n`
+            + `Haben Sie sich nicht registriert, ignorieren Sie diese E-Mail – ohne Bestätigung wird nichts angelegt.\n\nViele Grüße\n${v.name}`,
+        });
+      } else if (v.n8n_mail_url) {
+        await mailSenden(v, {
+          modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, benutzer: 'Portal', anhaenge: [],
+          betreff: `${v.name}: Ihre Registrierung ist eingegangen`,
+          text: `Guten Tag ${e.vorname} ${e.nachname},\n\nvielen Dank für Ihre Registrierung (Benutzername ${e.benutzername}). `
+            + (r.art === 'MITGLIED' ? 'Wir prüfen Ihre Mitgliedschaft' : 'Wir prüfen Ihre Angaben')
+            + ' und benachrichtigen Sie, sobald Ihr Zugang freigeschaltet ist.\n\nViele Grüße\n' + v.name,
+        });
+      }
+    } catch (err) {
+      req.log.warn({ registrierung: r.id, err: (err as Error).message }, 'Registrierung: E-Mail nicht gesendet');
+      if (r.token) {
+        // Bestätigungslink nicht zustellbar: manuelle Freigabe wie bisher
+        await DB`update tco.registrierungen set status = 'OFFEN', email_token_hash = null, email_bis = null where id = ${r.id}`;
+        text = 'Vielen Dank! Ihre Registrierung wird vom Verein geprüft. Nach der Freigabe können Sie sich anmelden.';
+      }
+    }
+    return { id: r.id, ep3: r.ep3, art: r.art, text };
+  });
+  /** Bestätigungslink aus der E-Mail: externe Registrierung freischalten (Rolle Hallennutzer) */
+  app.post('/platz/registrierung/bestaetigen', async (req) => {
+    regLimit(req.ip, 30);
+    const { token } = z.object({ token: z.string().min(20).max(100) }).parse(req.body);
+    const r = await withChange({ userId: null, username: 'Selbstregistrierung', action: 'REGISTRIERUNG_BESTAETIGT' }, (tx) => emailBestaetigen(tx, token));
+    await freigabeMail(r, 'Selbstregistrierung').catch(() => '');
+    return { text: `Vielen Dank, Ihre E-Mail-Adresse ist bestätigt und Ihr Zugang freigeschaltet. Sie können sich jetzt mit Ihrem Benutzernamen anmelden.` };
   });
 
-  // ------------------------------------------------------------------ Freigabe (Platzverwaltung)
+  // ------------------------------------------------------------------ Freigabe externer Registrierungen (Platzverwaltung)
   app.get('/platz/admin/registrierungen', admin, async (req) => {
     const q = z.object({ status: z.enum(['OFFEN', 'ALLE']).default('OFFEN') }).parse(req.query);
-    return registrierungenLesen(DB, q.status);
+    return registrierungenLesen(DB, q.status, 'EXTERN');
   });
   app.post('/platz/admin/registrierungen/:id/bestaetigen', admin, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
@@ -142,33 +223,50 @@ export async function platzRoutes(app: FastifyInstance) {
       bemerkung: z.string().max(500).nullish(),
     }).parse(req.body);
     const wer = req.user!.displayName || req.user!.username;
-    const r = await change(req, (tx) => bestaetigen(tx, id, b, wer), { action: 'REGISTRIERUNG_FREIGABE', reason: String(id) });
-    // Benachrichtigung, wenn der Mailversand eingerichtet ist (nicht kritisch)
-    let mail = '';
-    try {
-      const v = await vereinLesen();
-      if (v.n8n_mail_url && r.email) {
-        await mailSenden(v, {
-          modus: 'senden', anwendung: 'Platzbuchung', objekt: `REG-${id}`, an: r.email, benutzer: wer, anhaenge: [],
-          betreff: `${v.name}: Ihr Zugang zur Platzbuchung ist freigeschaltet`,
-          text: `Guten Tag ${r.anzeigename},
-
-Ihre Registrierung für die Platzbuchung wurde freigegeben. Sie können sich jetzt im Portal anmelden`
-            + (r.ep3 ? ' – mit Ihrem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort.' : ' – mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.')
-            + `
-
-Viele Grüße
-${v.name}`,
-        });
-        mail = ' Benachrichtigung per E-Mail gesendet.';
-      }
-    } catch (e) { mail = ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
-    return { text: r.text + mail };
+    const r = await change(req, (tx) => bestaetigen(tx, id, b, wer, { art: 'EXTERN' }), { action: 'REGISTRIERUNG_FREIGABE', reason: String(id) });
+    return { text: r.text + await freigabeMail(r, wer) };
   });
   app.post('/platz/admin/registrierungen/:id/ablehnen', admin, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
     const b = z.object({ bemerkung: z.string().max(500).nullish() }).parse(req.body ?? {});
-    return { text: await change(req, (tx) => ablehnen(tx, id, b.bemerkung ?? null, req.user!.displayName || req.user!.username), { action: 'REGISTRIERUNG_ABLEHNUNG', reason: String(id) }) };
+    const wer = req.user!.displayName || req.user!.username;
+    const r = await change(req, (tx) => ablehnen(tx, id, b.bemerkung ?? null, wer, 'EXTERN'), { action: 'REGISTRIERUNG_ABLEHNUNG', reason: String(id) });
+    return { text: r.text + await ablehnungMail(r, b.bemerkung ?? null, wer) };
+  });
+
+  // ------------------------------------------------------------------ Mitglieds-Registrierungen (Kassenwart)
+  const kassenwart = { preHandler: requireAuth(P_REG) };
+  app.get('/registrierungen/mitglieder', kassenwart, async (req) => {
+    const q = z.object({ status: z.enum(['OFFEN', 'ALLE']).default('OFFEN') }).parse(req.query);
+    return registrierungenLesen(DB, q.status, 'MITGLIED');
+  });
+  /** Auswahl: aktive Mitglieder ohne Benutzer */
+  app.get('/registrierungen/mitglieder/kandidaten', kassenwart, async () => DB`
+    select m.adrnr, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.mitglnrn
+      from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
+     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null
+     order by m.nachname, m.vorname`);
+  app.post('/registrierungen/mitglieder/:id/freigeben', kassenwart, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const b = z.object({
+      adrnr: z.string().min(1).nullish(),
+      /** ohne Mitglied: als externer Hallennutzer freischalten */
+      hallennutzer: z.boolean().default(false),
+      bemerkung: z.string().max(500).nullish(),
+    }).parse(req.body ?? {});
+    if (!b.hallennutzer && !b.adrnr) throw new BusinessError('Bitte das Mitglied auswählen.');
+    const wer = req.user!.displayName || req.user!.username;
+    const r = await change(req, (tx) => bestaetigen(tx, id,
+      { zuordnung: b.hallennutzer ? { art: 'NEU' } : { art: 'MITGLIED', adrnr: b.adrnr! }, bemerkung: b.bemerkung ?? null }, wer,
+      { art: 'MITGLIED', rolle: b.hallennutzer ? ROLLE : ROLLE_MITGLIED }), { action: 'REGISTRIERUNG_FREIGABE', reason: String(id) });
+    return { text: r.text + await freigabeMail(r, wer) };
+  });
+  app.post('/registrierungen/mitglieder/:id/ablehnen', kassenwart, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const b = z.object({ bemerkung: z.string().max(500).nullish() }).parse(req.body ?? {});
+    const wer = req.user!.displayName || req.user!.username;
+    const r = await change(req, (tx) => ablehnen(tx, id, b.bemerkung ?? null, wer, 'MITGLIED'), { action: 'REGISTRIERUNG_ABLEHNUNG', reason: String(id) });
+    return { text: r.text + await ablehnungMail(r, b.bemerkung ?? null, wer) };
   });
 
   // ------------------------------------------------------------------ EP3-Abgleich (Platzverwaltung)

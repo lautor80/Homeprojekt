@@ -27,7 +27,7 @@ interface User {
 }
 interface Role { id: string; name: string }
 
-type Edit = Partial<User> & { password?: string; isNew: boolean };
+type Edit = Partial<User> & { password?: string; isNew: boolean; einmalLink?: boolean };
 
 /** Ergebnis der Massenanlage „Mitglieder als Benutzer“ (Fachmodul TC Oberthal) */
 interface MgAnlage {
@@ -61,10 +61,13 @@ export function UsersPage() {
     setError(null);
     try {
       const body = { displayName: edit.displayName, email: edit.email ?? '', roles: edit.roles ?? [], active: edit.active ?? true };
-      if (edit.isNew) await api.post('/api/admin/users', { ...body, username: edit.username, password: edit.password });
-      else await api.put(`/api/admin/users/${edit.id}`, body);
+      let text = 'Benutzer gesichert';
+      if (edit.isNew) {
+        const r = await api.post<{ text?: string }>('/api/admin/users', { ...body, username: edit.username, password: edit.einmalLink ? '' : edit.password, einmalLink: !!edit.einmalLink });
+        if (r.text) text = r.text;
+      } else await api.put(`/api/admin/users/${edit.id}`, body);
       setEdit(null);
-      toast('Benutzer gesichert');
+      toast(text, 6000);
       users.reload();
     } catch (e) {
       setError((e as Error).message);
@@ -81,6 +84,21 @@ export function UsersPage() {
       await api.post(`/api/admin/users/${pwFor.id}/password`, { password: newPw });
       setPwFor(null);
       toast('Passwort zurückgesetzt – muss bei der nächsten Anmeldung geändert werden');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function linkSenden() {
+    if (!pwFor) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.post<{ text: string }>(`/api/admin/users/${pwFor.id}/kennwort-link`);
+      setPwFor(null);
+      toast(r.text, 6000);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -238,8 +256,14 @@ export function UsersPage() {
               <TextField label="E-Mail" type="Email" value={edit.email} readonly={!mayEdit}
                          onChange={(v) => setEdit({ ...edit, email: v })} />
               {edit.isNew ? (
-                <TextField label="Startpasswort (mind. 10 Zeichen)" required type="Password" value={edit.password}
-                           onChange={(v) => setEdit({ ...edit, password: v })} />
+                <>
+                  <CheckField label="Einmal-Link per E-Mail" checked={!!edit.einmalLink}
+                              onChange={(v) => setEdit({ ...edit, einmalLink: v })} />
+                  {!edit.einmalLink && (
+                    <TextField label="Startpasswort (mind. 10 Zeichen)" required type="Password" value={edit.password}
+                               onChange={(v) => setEdit({ ...edit, password: v })} />
+                  )}
+                </>
               ) : (
                 <CheckField label="Aktiv" checked={!!edit.active} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, active: v })} />
               )}
@@ -276,11 +300,17 @@ export function UsersPage() {
         onClose={() => setPwFor(null)}
         footer={<Bar endContent={<>
           <Button design="Emphasized" disabled={newPw.length < 10} loading={busy} onClick={resetPassword}>Zurücksetzen</Button>
+          <Button disabled={!pwFor?.email} loading={busy} onClick={linkSenden}>Einmal-Link senden</Button>
           <Button onClick={() => setPwFor(null)}>Abbrechen</Button>
         </>} />}
       >
         {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
         <TextField label="Neues Startpasswort (mind. 10 Zeichen)" type="Password" value={newPw} onChange={setNewPw} />
+        <p className="portal-muted portal-small" style={{ margin: '0.75rem 0 0' }}>
+          {pwFor?.email
+            ? `Alternativ: „Einmal-Link senden“ – ${pwFor.email} erhält einen Link (48 Std. gültig), über den der Benutzer selbst ein Kennwort festlegt. Kein Kennwort im Klartext.`
+            : 'Für einen Einmal-Link ist beim Benutzer keine E-Mail-Adresse hinterlegt.'}
+        </p>
       </Dialog>}
     </AppPage>
   );

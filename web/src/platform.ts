@@ -66,4 +66,11 @@ export interface WebModule {
    * Auf jeder Seite sichtbar, nur mit der Berechtigung; collapsed = Navigation eingeklappt.
    */
   sideWidgets?: { component: ComponentType<{ collapsed: boolean }>; permission?: string }[];
+  /**
+   * Öffentliche Seiten ohne Anmeldung (z. B. Mitgliedsantrag unter /beitritt). Werden über den Pfad aufgerufen,
+   * auch wenn niemand angemeldet ist; nur für Module, die der Server als aktiv meldet.
+   */
+  oeffentlich?: { pfad: string; component: ComponentType<OeffentlichProps> }[];
 }
+
+export interface OeffentlichProps { orgName: string; logo?: string; onFertig: () => void }

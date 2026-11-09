@@ -12,7 +12,7 @@ import { SperrHinweis, useSperre } from '../sperre';
 
 type S = Record<string, string | null>;
 /** auf dieser Seite gepflegte Einstellungen – je Schlüssel gesperrt (andere Einstellungen bleiben frei) */
-const SCHLUESSEL = ['org.name', 'org.logo', 'org.color', 'org.address', 'integration.paperless.url', 'integration.n8n.url'] as const;
+const SCHLUESSEL = ['org.name', 'org.logo', 'org.color', 'org.address', 'integration.paperless.url', 'integration.n8n.url', 'portal.url'] as const;
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -55,6 +55,7 @@ export function SettingsPage() {
         'org.address': s['org.address'] ?? '',
         'integration.paperless.url': s['integration.paperless.url'] ?? '',
         'integration.n8n.url': s['integration.n8n.url'] ?? '',
+        'portal.url': s['portal.url'] ?? '',
       };
       const saved = await api.put<S>('/api/settings', body);
       setS(saved);
@@ -102,6 +103,7 @@ export function SettingsPage() {
         <FormGrid>
           <TextField label="Paperless-URL" value={s['integration.paperless.url']} onChange={set('integration.paperless.url')} placeholder="https://paperless.example.org" />
           <TextField label="n8n-URL" value={s['integration.n8n.url']} onChange={set('integration.n8n.url')} placeholder="https://n8n.example.org" />
+          <TextField label="Portal-Adresse (für Links in E-Mails)" value={s['portal.url']} onChange={set('portal.url')} placeholder="https://portal.tc-oberthal.de" />
         </FormGrid>
       </Panel>
     </AppPage>

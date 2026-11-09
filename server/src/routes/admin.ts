@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sql, type Tx } from '../db.js';
 import { change, hashPassword, requireAuth, validatePassword } from '../auth.js';
 import { permissionCatalog } from '../modules.js';
+import { GUELTIG_STUNDEN, kennwortLinkSenden, mailVerfuegbar, portalUrl, unbekanntesKennwort } from '../kennwort.js';
 import { BusinessError } from '../errors.js';
 
 
@@ -53,23 +54,40 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/api/admin/users', { preHandler: requireAuth('core.users:edit') }, async (req, reply) => {
     const body = userBase.extend({
       username: z.string().min(3).max(50).regex(/^[a-zA-Z0-9._@+-]+$/, 'Nur Buchstaben, Ziffern, . _ - @'),
-      password: z.string(),
+      password: z.string().default(''),
+      /** statt Startkennwort: Einmal-Link „Kennwort festlegen“ per E-Mail */
+      einmalLink: z.boolean().default(false),
     }).parse(req.body);
-    const err = validatePassword(body.password);
-    if (err) return reply.code(400).send({ message: err });
+    if (body.einmalLink) {
+      if (!body.email) return reply.code(400).send({ message: 'Für den Einmal-Link wird eine E-Mail-Adresse benötigt.' });
+      if (!(await portalUrl())) return reply.code(400).send({ message: 'Für Einmal-Links fehlt die Portal-Adresse (Administration → Einstellungen).' });
+      if (!mailVerfuegbar()) return reply.code(400).send({ message: 'Der E-Mail-Versand ist nicht eingerichtet.' });
+    } else {
+      const err = validatePassword(body.password);
+      if (err) return reply.code(400).send({ message: err });
+    }
     const [exists] = await sql`select 1 from core.users where lower(username) = lower(${body.username})`;
     if (exists) return reply.code(409).send({ message: 'Benutzername ist bereits vergeben.' });
 
-    const h = await hashPassword(body.password);
+    const h = body.einmalLink ? await unbekanntesKennwort() : await hashPassword(body.password);
     const id = await change(req, async (tx) => {
       const [u] = await tx`
         insert into core.users (username, display_name, email, password_hash, must_change_password)
-        values (${body.username}, ${body.displayName}, ${body.email || null}, ${h}, true)
+        values (${body.username}, ${body.displayName}, ${body.email || null}, ${h}, ${!body.einmalLink})
         returning id`;
       await setUserRoles(tx, u.id, body.roles);
+      // Versand in der Transaktion: schlägt er fehl, wird der Benutzer nicht angelegt
+      if (body.einmalLink) await kennwortLinkSenden(tx, u.id, 'SETZEN', req.ip);
       return u.id as string;
     });
-    return { id };
+    return { id, text: body.einmalLink ? `Benutzer angelegt – Link zum Festlegen des Kennworts an ${body.email} gesendet.` : 'Benutzer angelegt.' };
+  });
+
+  /** Einmal-Link „Kennwort festlegen“ an einen bestehenden Benutzer senden (statt neuem Startkennwort) */
+  app.post('/api/admin/users/:id/kennwort-link', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const an = await change(req, (tx) => kennwortLinkSenden(tx, id, 'SETZEN', req.ip), { action: 'KENNWORT_LINK' });
+    return { text: `Link zum Festlegen des Kennworts an ${an} gesendet (${GUELTIG_STUNDEN.SETZEN} Stunden gültig).` };
   });
 
   app.put('/api/admin/users/:id', { preHandler: requireAuth('core.users:edit') }, async (req) => {

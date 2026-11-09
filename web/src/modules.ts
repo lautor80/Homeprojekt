@@ -13,3 +13,6 @@ const available: WebModule[] = [beispiel, transport, tco];
 export function enabledModules(ids: string[]): WebModule[] {
   return available.filter((m) => ids.includes(m.id));
 }
+
+/** alle eingebauten Module (auch inaktive) – z. B. um öffentliche Pfade zu erkennen, bevor der Server gefragt ist */
+export const allModules = (): WebModule[] => available;

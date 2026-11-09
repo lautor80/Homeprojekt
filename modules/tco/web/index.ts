@@ -21,6 +21,10 @@ import { Forecast } from './forecast/Forecast';
 import { Finanz } from './finanz/Finanz';
 import { Konten } from './konten/Konten';
 import { Produkte } from './produkte/Produkte';
+import { Beitritt } from './antrag/Beitritt';
+import { Mitgliedsantraege } from './antrag/Mitgliedsantraege';
+import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
+import { MitgliedRegistrierungen } from './platz/MitgliedRegistrierungen';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
@@ -69,6 +73,8 @@ const mod: WebModule = {
           children: [
             { text: 'Meine Mitgliedschaft', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
+            { text: 'Mitgliedsanträge', icon: 'personnel-view', path: '/tco/mitgliedsantraege', permission: 'tco.antraege:display' },
+            { text: 'Registrierungen', icon: 'add-employee', path: '/tco/registrierungen', permission: 'tco.registrierung:mitglied' },
             { text: 'Mitgliedsbeiträge', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
             { text: 'Mitglieder-Analyse', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
           ],
@@ -140,8 +146,14 @@ const mod: WebModule = {
     { path: '/tco/finanz', component: Finanz, permission: 'tco.finanz:display' },
     { path: '/tco/konten', component: Konten, permission: 'tco.konten:display' },
     { path: '/tco/produkte', component: Produkte, permission: 'tco.produkte:display' },
+    { path: '/tco/mitgliedsantraege', component: Mitgliedsantraege, permission: 'tco.antraege:display' },
+    { path: '/tco/registrierungen', component: MitgliedRegistrierungen, permission: 'tco.registrierung:mitglied' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
+  ],
+  oeffentlich: [
+    { pfad: '/beitritt', component: Beitritt },
+    { pfad: '/registrierung-bestaetigen', component: RegistrierungBestaetigen },
   ],
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },

@@ -17,7 +17,7 @@ export async function getSettings(keys?: readonly string[]): Promise<Record<stri
 export async function getPublicSettings(): Promise<Record<string, unknown>> {
   const s = await getSettings(PUBLIC_KEYS);
   const reg = activeModules().find((m) => m.registrierung)?.registrierung ?? null;
-  return { ...s, registrierung: reg };
+  return { ...s, registrierung: reg, module: activeModules().map((m) => m.id) };
 }
 
 const settingsSchema = z.object({
@@ -28,6 +28,8 @@ const settingsSchema = z.object({
   'org.address': z.string().max(500).optional(),
   'integration.paperless.url': z.string().url().or(z.literal('')).optional(),
   'integration.n8n.url': z.string().url().or(z.literal('')).optional(),
+  /** öffentliche Adresse des Portals für Links in E-Mails (Kennwort festlegen, Registrierung bestätigen) */
+  'portal.url': z.string().url().regex(/^https?:\/\//).or(z.literal('')).optional(),
 });
 
 export async function settingsRoutes(app: FastifyInstance) {

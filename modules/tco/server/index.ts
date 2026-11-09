@@ -26,11 +26,13 @@ import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
 import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
-import { platzRoutes, P_PLATZ } from './platz/routes.js';
+import { platzRoutes, P_PLATZ, P_REG } from './platz/routes.js';
+import { antragRoutes, P_ANTRAG } from './antrag/routes.js';
 import { rolleSicherstellen } from './platz/registrierung.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
+import { mailSenden } from './kommunikation.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 
 const P = {
@@ -198,6 +200,7 @@ async function routes(app: FastifyInstance) {
   await mitgliederRoutes(app);
   await kontenRoutes(app);
   await produkteRoutes(app);
+  await antragRoutes(app);
   await finanzRoutes(app);
   await beitraegeRoutes(app);
   await forecastRoutes(app);
@@ -225,6 +228,9 @@ const tco: ServerModule = {
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
     // ---------------------------------------------------------------- Mitglieder
     { area: 'Mitglieder', app: 'Meine Mitgliedschaft', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
+    { area: 'Mitglieder', app: 'Registrierungen', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
+    { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.display, text: 'Online-Mitgliedsanträge ansehen (Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)' },
+    { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.edit, text: 'Online-Mitgliedsanträge prüfen, ablehnen und übernehmen (legt Mitglieder, Verträge, SEPA-Mandat und Benutzer an)', requires: [P_ANTRAG.display, 'tco.mitglieder:edit'] },
     { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Gruppen/Mannschaften pflegen' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
@@ -277,6 +283,11 @@ const tco: ServerModule = {
   ],
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
+  mailer: async (m) => {
+    const v = await vereinLesen();
+    const r = await mailSenden(v, { modus: 'senden', anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, text: m.text, benutzer: 'Portal', anhaenge: [] });
+    if (r.status === 'fehler') throw new Error(r.fehler ?? 'Der Versand ist fehlgeschlagen.');
+  },
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
   // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },

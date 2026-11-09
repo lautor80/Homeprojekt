@@ -4,6 +4,8 @@ import { compareSync } from '../../../../server/src/vendor/bcryptjs/index.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
 import { adrnrAusZuid } from '../kommunikation.js';
+import { randomBytes } from 'node:crypto';
+import { sha256 } from '../../../../server/src/auth.js';
 
 /**
  * Registrierung neuer Hallennutzer mit Freigabe durch die Platzverwaltung.
@@ -61,12 +63,20 @@ export interface RegistrierungEingabe {
   passwort?: string | null;
   /** bestehendes EP3-Konto: Benutzername oder E-Mail und EP3-Kennwort */
   ep3_konto?: string | null; ep3_passwort?: string | null;
+  /** Mitglied (Freigabe durch den Kassenwart) oder externer Hallennutzer (Freischaltung nach E-Mail-Bestätigung) */
+  art?: 'EXTERN' | 'MITGLIED';
+  /** Nachweis der Mitgliedschaft – nach Wahl des Nutzers Geburtsdatum oder Mitgliedsnummer */
+  geburtsdatum?: string | null; mitgliedsnr?: string | null;
 }
+
+/** Gültigkeit des Bestätigungslinks für externe Registrierungen */
+export const EMAIL_STUNDEN = 24;
 
 export async function benutzernameFrei(db: Db, benutzername: string): Promise<string | null> {
   const [u] = await db`select 1 from core.users where lower(username) = lower(${benutzername})`;
   if (u) return 'Dieser Benutzername ist bereits vergeben.';
-  const [r] = await db`select 1 from tco.registrierungen where lower(benutzername) = lower(${benutzername}) and status = 'OFFEN'`;
+  const [r] = await db`select 1 from tco.registrierungen where lower(benutzername) = lower(${benutzername})
+                         and (status = 'OFFEN' or (status = 'EMAIL' and email_bis > now()))`;
   if (r) return 'Für diesen Benutzernamen liegt bereits eine Registrierung vor.';
   return null;
 }
@@ -85,7 +95,17 @@ export async function ep3Nachweisen(db: Db, konto: string, passwort: string): Pr
   return null;
 }
 
-export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string): Promise<{ id: number; ep3: boolean; text: string }> {
+/**
+ * Registrierung speichern. Externe mit Mailversand: Status EMAIL mit Bestätigungstoken (der Aufrufer sendet den Link);
+ * ohne Mailversand bleibt es bei der manuellen Freigabe (OFFEN). Mitglieder: OFFEN bis zur Freigabe durch den Kassenwart.
+ */
+export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, o: { mail?: boolean } = {}): Promise<{ id: number; ep3: boolean; text: string; token: string | null; art: 'EXTERN' | 'MITGLIED' }> {
+  // nicht bestätigte Registrierungen nach 30 Tagen entfernen
+  await db`delete from tco.registrierungen where status = 'EMAIL' and erstellt < now() - interval '30 days'`;
+  const art = e.art ?? 'EXTERN';
+  if (art === 'MITGLIED' && !e.geburtsdatum && !condense(e.mitgliedsnr)) {
+    throw new BusinessError('Bitte zum Nachweis der Mitgliedschaft das Geburtsdatum oder die Mitgliedsnummer angeben.');
+  }
   const frei = await benutzernameFrei(db, e.benutzername);
   if (frei) throw new BusinessError(frei, 409);
   let hash: string;
@@ -111,15 +131,36 @@ export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string):
     if (f) throw new BusinessError(f);
     hash = await hashPassword(e.passwort!);
   }
-  const [r] = await db`insert into tco.registrierungen (benutzername, anzeigename, vorname, nachname, email, telefon, passwort_hash, ep3_zuid, nachricht, ip)
+  const optIn = art === 'EXTERN' && !!o.mail;
+  const token = optIn ? randomBytes(32).toString('base64url') : null;
+  const [r] = await db`insert into tco.registrierungen (benutzername, anzeigename, vorname, nachname, email, telefon, passwort_hash, ep3_zuid, nachricht, ip,
+                                                        art, geburtsdatum, mitgliedsnr, status, email_token_hash, email_bis)
                        values (${e.benutzername}, ${name(e.vorname, e.nachname)}, ${e.vorname}, ${e.nachname}, ${e.email.trim()}, ${e.telefon?.trim() || null},
-                               ${hash}, ${zuid}, ${e.nachricht?.trim() || null}, ${ip}) returning id`;
+                               ${hash}, ${zuid}, ${e.nachricht?.trim() || null}, ${ip},
+                               ${art}, ${art === 'MITGLIED' ? e.geburtsdatum || null : null}, ${art === 'MITGLIED' ? condense(e.mitgliedsnr) || null : null},
+                               ${optIn ? 'EMAIL' : 'OFFEN'}, ${token ? sha256(token) : null},
+                               ${optIn ? new Date(Date.now() + EMAIL_STUNDEN * 3600_000) : null}) returning id`;
+  const kennwort = zuid && !e.passwort ? 'Ihrem bisherigen EP3-Kennwort' : 'Ihrem gewählten Kennwort';
   return {
-    id: Number(r.id), ep3: !!zuid,
-    text: zuid
-      ? 'Vielen Dank! Ihr EP3-Konto wurde erkannt. Sobald der Verein die Registrierung freigegeben hat, können Sie sich mit dem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort anmelden.'
-      : 'Vielen Dank! Ihre Registrierung wird vom Verein geprüft. Nach der Freigabe erhalten Sie eine E-Mail und können sich anmelden.',
+    id: Number(r.id), ep3: !!zuid, token, art,
+    text: art === 'MITGLIED'
+      ? `Vielen Dank! Der Verein prüft Ihre Mitgliedschaft. Nach der Freigabe erhalten Sie eine E-Mail und melden sich mit dem gewählten Benutzernamen und ${kennwort} an.`
+      : optIn
+        ? `Vielen Dank! Wir haben Ihnen eine E-Mail an ${e.email.trim()} geschickt. Bitte bestätigen Sie Ihre Adresse über den Link darin (${EMAIL_STUNDEN} Stunden gültig) – danach ist Ihr Zugang sofort freigeschaltet.`
+        : zuid
+          ? 'Vielen Dank! Ihr EP3-Konto wurde erkannt. Sobald der Verein die Registrierung freigegeben hat, können Sie sich mit dem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort anmelden.'
+          : 'Vielen Dank! Ihre Registrierung wird vom Verein geprüft. Nach der Freigabe erhalten Sie eine E-Mail und können sich anmelden.',
   };
+}
+
+/** Externe Registrierung über den Link aus der E-Mail bestätigen und sofort als Hallennutzer freischalten */
+export async function emailBestaetigen(tx: Db, token: string) {
+  const [r] = await tx`select id, status, email_bis > now() as gueltig from tco.registrierungen where email_token_hash = ${sha256(token)} for update`;
+  if (!r) throw new BusinessError('Der Bestätigungslink ist ungültig oder wurde bereits verwendet.', 404);
+  if (r.status !== 'EMAIL') throw new BusinessError('Diese Registrierung ist bereits bestätigt.', 409);
+  if (!r.gueltig) throw new BusinessError('Der Bestätigungslink ist abgelaufen. Bitte registrieren Sie sich erneut.', 410);
+  await tx`update tco.registrierungen set status = 'OFFEN', email_bestaetigt_am = now(), email_token_hash = null where id = ${r.id}`;
+  return bestaetigen(tx, Number(r.id), { zuordnung: { art: 'NEU' }, bemerkung: 'automatisch nach E-Mail-Bestätigung' }, 'Selbstregistrierung');
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +168,32 @@ export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string):
 // ---------------------------------------------------------------------------
 export interface Vorschlag { art: 'MITGLIED' | 'EP3'; schluessel: string; name: string; grund: string; info: string }
 
-async function vorschlaege(db: Db, p: { email: string | null; vorname: string | null; nachname: string | null; benutzername?: string | null }): Promise<Vorschlag[]> {
+async function vorschlaege(db: Db, p: { email: string | null; vorname: string | null; nachname: string | null; benutzername?: string | null; geburtsdatum?: string | null; mitgliedsnr?: string | null }): Promise<Vorschlag[]> {
   const out: Vorschlag[] = [];
   const email = (p.email ?? '').trim().toLowerCase();
   const voll = name(p.vorname, p.nachname).toUpperCase();
+  // Nachweis der Mitgliedschaft (Geburtsdatum bzw. Mitgliedsnummer) zusammen mit Name oder E-Mail – stärkster Vorschlag zuerst
+  if (p.geburtsdatum || p.mitgliedsnr) {
+    const nr = condense(p.mitgliedsnr).replace(/^0+/, '');
+    for (const m of await db`
+      select m.adrnr, m.vorname, m.nachname, m.austritt::text, m.mitglnrn, a.benutzer_id is not null as hat_benutzer
+        from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
+       where m.eintritt is not null
+         and ${p.geburtsdatum ? db`m.geburtsdatum = ${p.geburtsdatum}::date` : db`ltrim(coalesce(m.mitglnrn, ''), '0') = ${nr || '§'}`}
+         and (upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) = ${voll || '§'}
+              or upper(trim(coalesce(m.nachname, ''))) = ${condense(p.nachname).toUpperCase() || '§'}
+              or (${email} <> '' and lower(trim(coalesce(m.email, ''))) = ${email}))
+       order by m.austritt nulls first`) {
+      out.push({
+        art: 'MITGLIED', schluessel: m.adrnr, name: name(m.vorname, m.nachname),
+        grund: p.geburtsdatum ? 'Geburtsdatum und Name/E-Mail' : 'Mitgliedsnummer und Name/E-Mail',
+        info: `Mitglied ${m.mitglnrn || m.adrnr}${m.austritt ? ` (ausgetreten ${m.austritt})` : ''}${m.hat_benutzer ? ' · hat bereits einen Benutzer' : ''}`,
+      });
+    }
+  }
   if (email) {
     for (const m of await db`select adrnr, vorname, nachname, austritt::text from tco.mitglieder where lower(trim(coalesce(email, ''))) = ${email} order by austritt nulls first`) {
+      if (out.some((o) => o.art === 'MITGLIED' && o.schluessel === m.adrnr)) continue;
       out.push({ art: 'MITGLIED', schluessel: m.adrnr, name: name(m.vorname, m.nachname), grund: 'gleiche E-Mail', info: `Mitglied ${m.adrnr}${m.austritt ? ` (ausgetreten ${m.austritt})` : ''}` });
     }
   }
@@ -156,20 +217,21 @@ async function vorschlaege(db: Db, p: { email: string | null; vorname: string | 
   return out;
 }
 
-export async function registrierungenLesen(db: Db, status: 'OFFEN' | 'ALLE' = 'OFFEN') {
+export async function registrierungenLesen(db: Db, status: 'OFFEN' | 'ALLE' = 'OFFEN', art?: 'EXTERN' | 'MITGLIED') {
   const rows = await db`
     select r.id, r.benutzername, r.anzeigename, r.vorname, r.nachname, r.email, r.telefon, r.ep3_zuid, r.nachricht, r.status,
+           r.art, to_char(r.geburtsdatum, 'YYYY-MM-DD') as geburtsdatum, r.mitgliedsnr,
            r.erstellt, r.bearbeitet_am, r.bearbeitet_von, r.bemerkung, k.zalias as ep3_alias,
            nullif(trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '')), '') as ep3_name
       from tco.registrierungen r
       left join lateral (select zalias, vorname, nachname from tco.kunden where zuid = r.ep3_zuid order by zalias limit 1) k on true
-     where ${status === 'ALLE' ? db`true` : db`r.status = 'OFFEN'`}
+     where ${status === 'ALLE' ? db`r.status <> 'EMAIL'` : db`r.status = 'OFFEN'`} ${art ? db`and r.art = ${art}` : db``}
      order by r.status = 'OFFEN' desc, r.erstellt desc limit 300`;
   const out = [];
   for (const r of rows) {
     out.push({
       ...r, id: Number(r.id),
-      vorschlaege: r.status === 'OFFEN' ? await vorschlaege(db, { email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername }) : [],
+      vorschlaege: r.status === 'OFFEN' ? await vorschlaege(db, { email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername, geburtsdatum: r.geburtsdatum, mitgliedsnr: r.mitgliedsnr }) : [],
     });
   }
   return out;
@@ -224,11 +286,14 @@ async function kundeAnlegen(tx: Db, benutzerId: string, p: { benutzername: strin
   return zuid;
 }
 
-export async function bestaetigen(tx: Db, id: number, f: Freigabe, bearbeiter: string): Promise<{ benutzerId: string; text: string; email: string; anzeigename: string; ep3: boolean }> {
+export async function bestaetigen(tx: Db, id: number, f: Freigabe, bearbeiter: string, o: { rolle?: string; art?: 'EXTERN' | 'MITGLIED' } = {}): Promise<{ benutzerId: string; text: string; email: string; anzeigename: string; ep3: boolean; rolle: string }> {
   const [r] = await tx`select * from tco.registrierungen where id = ${id} for update`;
   if (!r) throw new BusinessError('Registrierung nicht gefunden.', 404);
-  if (r.status !== 'OFFEN') throw new BusinessError(`Die Registrierung ist bereits ${r.status === 'BESTAETIGT' ? 'freigegeben' : 'abgelehnt'}.`);
-  const uid = await benutzerAnlegen(tx, { username: r.benutzername, displayName: r.anzeigename, email: r.email, passwortHash: r.passwort_hash, mussAendern: false });
+  if (o.art && r.art !== o.art) throw new BusinessError('Registrierung nicht gefunden.', 404);
+  if (r.status !== 'OFFEN') throw new BusinessError(r.status === 'EMAIL' ? 'Die E-Mail-Adresse ist noch nicht bestätigt.' : `Die Registrierung ist bereits ${r.status === 'BESTAETIGT' ? 'freigegeben' : 'abgelehnt'}.`);
+  const rolle = o.rolle ?? ROLLE;
+  if (rolle === ROLLE_MITGLIED && f.zuordnung.art !== 'MITGLIED') throw new BusinessError('Die Rolle Mitglied setzt die Zuordnung zu einem Mitglied voraus.');
+  const uid = await benutzerAnlegen(tx, { username: r.benutzername, displayName: r.anzeigename, email: r.email, passwortHash: r.passwort_hash, mussAendern: false, rolle });
   let wohin: string;
   if (f.zuordnung.art === 'MITGLIED') {
     await mitgliedZuordnen(tx, uid, f.zuordnung.adrnr);
@@ -245,14 +310,14 @@ export async function bestaetigen(tx: Db, id: number, f: Freigabe, bearbeiter: s
   }
   await tx`update tco.registrierungen set status = 'BESTAETIGT', bearbeitet_am = now(), bearbeitet_von = ${bearbeiter}, bemerkung = ${f.bemerkung ?? null}, benutzer_id = ${uid}
            where id = ${id}`;
-  return { benutzerId: uid, email: r.email, anzeigename: r.anzeigename, ep3: !!r.ep3_zuid, text: `${r.anzeigename} freigegeben (Benutzer ${r.benutzername}, Rolle Hallennutzer, ${wohin}).` };
+  return { benutzerId: uid, email: r.email, anzeigename: r.anzeigename, ep3: !!r.ep3_zuid, rolle, text: `${r.anzeigename} freigegeben (Benutzer ${r.benutzername}, Rolle ${SYSTEMROLLEN[rolle].name}, ${wohin}).` };
 }
 
-export async function ablehnen(tx: Db, id: number, bemerkung: string | null, bearbeiter: string): Promise<string> {
+export async function ablehnen(tx: Db, id: number, bemerkung: string | null, bearbeiter: string, art?: 'EXTERN' | 'MITGLIED'): Promise<{ text: string; email: string; anzeigename: string }> {
   const [r] = await tx`update tco.registrierungen set status = 'ABGELEHNT', bearbeitet_am = now(), bearbeitet_von = ${bearbeiter}, bemerkung = ${bemerkung}
-                       where id = ${id} and status = 'OFFEN' returning anzeigename`;
+                       where id = ${id} and status = 'OFFEN' ${art ? tx`and art = ${art}` : tx``} returning anzeigename, email`;
   if (!r) throw new BusinessError('Registrierung nicht gefunden oder bereits bearbeitet.', 404);
-  return `Registrierung von ${r.anzeigename} abgelehnt.`;
+  return { text: `Registrierung von ${r.anzeigename} abgelehnt.`, email: r.email, anzeigename: r.anzeigename };
 }
 
 // ---------------------------------------------------------------------------

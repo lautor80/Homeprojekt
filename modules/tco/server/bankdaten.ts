@@ -19,6 +19,7 @@ export const bankSchutz = (req: FastifyRequest): Feldschutz => feldschutz(req, P
 export const BANK_FELDER: SensitiveFieldDef[] = [
   { table: 'tco.mitglieder', fields: { iban1: 'iban', bic1: 'bic', abwkontoinh: 'text' }, permission: P_BANK.display },
   { table: 'tco.soll_pos', fields: { iban: 'iban', bic: 'bic' }, permission: P_BANK.display },
+  { table: 'tco.mitgliedsantraege', fields: { iban: 'iban', bic: 'bic', kontoinhaber: 'text' }, permission: P_BANK.display },
 ];
 
 /**
