@@ -134,6 +134,38 @@ export function preisBerechnen(
   return r;
 }
 
+/** Preisklasse im Tagesverlauf: zusammenhängender Zeitraum mit einem Stundenpreis */
+export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number }
+
+/**
+ * Preisklassen einer Einzelbuchung über den Tag (Sommer bzw. Winter nach Datum) – für die farbige Anzeige in
+ * „Platz buchen“. Gleiche Regeln wie preisBerechnen: je Minute zählt das erste passende Zeitfenster;
+ * Zeiten ohne Preis fehlen.
+ */
+export function preiszonen(datum: string, p: Preise): Preiszone[] {
+  const keys = PREISGRUPPEN.find((g) => g.gruppe === (istSommer(datum) ? 'EINZEL_SOMMER' : 'EINZEL_WINTER'))!.keys;
+  const tag = wochentag(datum);
+  const produkt = new Map<string, Produkt>();
+  for (const pr of p.produkte) {
+    if (keys.includes(pr.prod_key) && pr.valid_from <= datum && pr.valid_to >= datum) produkt.set(pr.prod_key, pr);
+  }
+  const fenster = p.matrix
+    .filter((f) => keys.includes(f.prod_key) && f.tag === tag && f.valid_from <= datum && f.valid_to >= datum && produkt.has(f.prod_key))
+    .map((f) => ({ key: f.prod_key, von: minuten(f.zeit_von), bis: minuten(f.zeit_bis) }));
+  const zonen: { key: string; von: number; bis: number }[] = [];
+  for (let m = 0; m < 1440; m++) {
+    const f = fenster.find((x) => x.von <= m && x.bis > m);
+    if (!f) continue;
+    const letzte = zonen[zonen.length - 1];
+    if (letzte && letzte.key === f.key && letzte.bis === m) letzte.bis = m + 1;
+    else zonen.push({ key: f.key, von: m, bis: m + 1 });
+  }
+  return zonen.map((z) => ({
+    prodKey: z.key, text: produkt.get(z.key)!.text?.trim() || `Preis ${z.key}`, von: hhmm(z.von), bis: z.bis === 1440 ? '24:00' : hhmm(z.bis),
+    stundenpreis: produkt.get(z.key)!.preis,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Preispflege: Prüfung und Speichern (PRICE_CHECK / PRICE_MAINT_SAVE)
 // ---------------------------------------------------------------------------

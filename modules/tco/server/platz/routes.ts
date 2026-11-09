@@ -13,7 +13,7 @@ import {
   einzelStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
   tagLesen, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
-import { minuten, preiseLesen } from '../halle/preis.js';
+import { minuten, preiseLesen, preiszonen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 import {
   ablehnen, benutzernameFrei, bestaetigen, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
@@ -400,7 +400,11 @@ export async function platzRoutes(app: FastifyInstance) {
     const i = await ich(req);
     const q = z.object({ datum }).parse(req.query);
     const j = jetzt();
-    return { datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung) };
+    return {
+      datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung),
+      // Preisklassen einer Einzelbuchung im Tagesverlauf (farbiger Strich neben der Uhrzeit)
+      preiszonen: preiszonen(q.datum, await preiseLesen(DB)),
+    };
   });
 
   app.get('/platz/meine', buchen, async (req) => {

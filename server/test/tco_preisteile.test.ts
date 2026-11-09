@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.DATABASE_URL ??= process.env.TEST_DATABASE_URL ?? 'postgres://localhost/test';
-const { preisBerechnen } = await import('../../modules/tco/server/halle/preis.js');
+const { preisBerechnen, preiszonen } = await import('../../modules/tco/server/halle/preis.js');
 
 test('Buchung über zwei Preisklassen: Abschnitte mit Dauer, Stundenpreis und Betrag', () => {
   const tage = ['MONTAG', 'DIENSTAG', 'MITTWOCH', 'DONNERSTAG', 'FREITAG', 'SAMSTAG', 'SONNTAG'];
@@ -27,4 +27,38 @@ test('Buchung über zwei Preisklassen: Abschnitte mit Dauer, Stundenpreis und Be
   const e = preisBerechnen({ datum: '2026-11-10', time_start: '18:00', time_ende: '19:30', status: '1' }, preise);
   assert.equal(e.teile!.length, 1);
   assert.equal(e.betrag, 30);
+});
+
+test('Preiszonen im Tagesverlauf: Einzelpreise des Wochentags, Sommer/Winter, Lücken und Gültigkeit', () => {
+  const immer = { valid_from: '2020-01-01', valid_to: '9999-12-31' };
+  const preise = {
+    produkte: [
+      { prod_key: '005', ...immer, text: 'Tagespreis', preis: 15, typ: null, menge: null },
+      { prod_key: '006', ...immer, text: ' Abendpreis ', preis: 20, typ: null, menge: null },
+      { prod_key: '007', valid_from: '2020-01-01', valid_to: '2025-12-31', text: 'Alt', preis: 99, typ: null, menge: null },
+      { prod_key: '010', ...immer, text: null, preis: 8, typ: null, menge: null },
+      { prod_key: '001', ...immer, text: 'Abo', preis: 12, typ: null, menge: null },
+    ],
+    matrix: [
+      // Dienstag: Tagespreis 07–12 und 14–17 (Mittagspause ohne Preis), Abendpreis 17–24
+      { prod_key: '005', ...immer, tag: 'DIENSTAG', zeit_von: '07:00:00', zeit_bis: '12:00:00' },
+      { prod_key: '005', ...immer, tag: 'DIENSTAG', zeit_von: '14:00:00', zeit_bis: '17:00:00' },
+      { prod_key: '006', ...immer, tag: 'DIENSTAG', zeit_von: '17:00:00', zeit_bis: '24:00:00' },
+      { prod_key: '007', valid_from: '2020-01-01', valid_to: '2025-12-31', tag: 'DIENSTAG', zeit_von: '12:00:00', zeit_bis: '14:00:00' },
+      { prod_key: '001', ...immer, tag: 'DIENSTAG', zeit_von: '07:00:00', zeit_bis: '23:00:00' },
+      { prod_key: '006', ...immer, tag: 'MITTWOCH', zeit_von: '07:00:00', zeit_bis: '23:00:00' },
+      { prod_key: '010', ...immer, tag: 'DIENSTAG', zeit_von: '08:00:00', zeit_bis: '22:00:00' },
+    ],
+  };
+  // Winter, Dienstag 10.11.2026: abgelaufenes Produkt und Abo zählen nicht
+  assert.deepEqual(preiszonen('2026-11-10', preise), [
+    { prodKey: '005', text: 'Tagespreis', von: '07:00', bis: '12:00', stundenpreis: 15 },
+    { prodKey: '005', text: 'Tagespreis', von: '14:00', bis: '17:00', stundenpreis: 15 },
+    { prodKey: '006', text: 'Abendpreis', von: '17:00', bis: '24:00', stundenpreis: 20 },
+  ]);
+  assert.deepEqual(preiszonen('2026-11-11', preise), [{ prodKey: '006', text: 'Abendpreis', von: '07:00', bis: '23:00', stundenpreis: 20 }]);
+  // Sommer, Dienstag 16.06.2026: eigener Einzelpreis; ohne Text der Schlüssel
+  assert.deepEqual(preiszonen('2026-06-16', preise), [{ prodKey: '010', text: 'Preis 010', von: '08:00', bis: '22:00', stundenpreis: 8 }]);
+  // Tag ohne Preise
+  assert.deepEqual(preiszonen('2026-11-12', preise), []);
 });

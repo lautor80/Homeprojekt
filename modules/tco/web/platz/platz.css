@@ -38,6 +38,15 @@
   position: absolute; left: 0; right: 0; transform: translateY(-50%);
   font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); text-align: center;
 }
+/* Preisklassen im Tagesverlauf: farbiger Strich links neben der Uhrzeit (günstig → teuer) */
+.portal-pb__zone { position: absolute; left: 0; width: 0.3125rem; border-radius: 0.125rem; }
+.portal-pb__zonenpunkt { display: inline-block; width: 0.3125rem; height: 0.875rem; border-radius: 0.125rem; }
+.portal-pb__zone--0 { background: var(--sapIndicationColor_4, #256f3a); }
+.portal-pb__zone--1 { background: var(--sapIndicationColor_3, #e76500); }
+.portal-pb__zone--2 { background: var(--sapIndicationColor_1, #840606); }
+.portal-pb__zone--3 { background: var(--sapIndicationColor_5, #0070f2); }
+.portal-pb__zone--4 { background: var(--sapIndicationColor_7, #a100c2); }
+.portal-pb__legende--preise { margin-top: -0.25rem; }
 .portal-pb__spalte { position: relative; border-left: 1px solid var(--sapList_BorderColor); min-width: 0; }
 .portal-pb__linie { position: absolute; left: 0; right: 0; border-top: 1px solid var(--sapList_BorderColor); opacity: 0.6; }
 .portal-pb__zu {
