@@ -293,6 +293,15 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.deepEqual(v.map((x) => x.art).sort(), ['8', '8', '90', '90'], 'Familienbeitrag; Felix darüber Mitglied plus 2 Trainingseinheiten');
   const fv = await sql`select art, betrag::float8 as betrag from tco.vertraege where adrnr = ${m[1].adrnr} order by vertragnr`;
   assert.deepEqual(fv.map((x) => [x.art, x.betrag]), [['8', 0], ['90', 35], ['90', 35]]);
+  // Beginn: Mitgliedschaft zum nächsten 1.1./1.7., Training zum nächsten Monatsbeginn
+  const { beginnFuer } = await import('../../modules/tco/server/antrag/logik.js');
+  assert.equal(beginnFuer('2026-11-09', 'MITGLIEDSCHAFT'), '2027-01-01');
+  assert.equal(beginnFuer('2026-03-15', 'MITGLIEDSCHAFT'), '2026-07-01');
+  assert.equal(beginnFuer('2026-07-01', 'MITGLIEDSCHAFT'), '2026-07-01');
+  assert.equal(beginnFuer('2026-11-09', 'TRAINING'), '2026-12-01');
+  assert.equal(beginnFuer('2026-12-09', 'TRAINING'), '2027-01-01');
+  const bg = await sql`select art, vertragbegin::text as b from tco.vertraege where adrnr = ${m[1].adrnr} order by vertragnr`;
+  assert.deepEqual(bg.map((x) => x.b), [beginnFuer(heute(), 'MITGLIEDSCHAFT'), beginnFuer(heute(), 'TRAINING'), beginnFuer(heute(), 'TRAINING')]);
   const [s] = await sql`select mandatsnr from tco.sepa where adrnr = ${m[0].adrnr}`;
   assert.ok(s?.mandatsnr);
   const b = await sql`select u.username, ur.role_id, u.email from core.users u join core.user_roles ur on ur.user_id = u.id

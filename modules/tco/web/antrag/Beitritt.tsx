@@ -46,8 +46,6 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
 
   const setP = (i: number, p: Partial<Person>) => setPersonen((l) => l.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const minderjaehrig = (alter(personen[0].geburtsdatum) ?? 99) < 18;
-  const betrag = (art: string) => info?.beitragsarten.find((b) => b.art === art)?.betrag ?? 0;
-  const summe = personen.reduce((s, p, i) => s + (i === 0 ? betrag(p.art) : 0) + p.training.reduce((t, x) => t + betrag(x), 0), 0);
   /** weitere Personen nur mit Familienbeitrag – sie sind darüber Mitglied (keine eigene Mitgliedschaft) */
   const familie = !!info?.beitragsarten.find((b) => b.art === personen[0].art)?.familie;
   /** Alter am gewünschten Eintritt: Jugendbeitrag nur unter 18, Jugendtraining nur bis 21 */
@@ -203,10 +201,8 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
             <Feld label="Gewünschter Eintritt" required>
               <DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={a.eintritt} onChange={(e) => setA({ ...a, eintritt: e.detail.value })} />
             </Feld>
-            <Feld label="Beitrag gesamt">
-              <Text style={{ paddingTop: '0.5rem' }}>{eur(summe)}</Text>
-            </Feld>
           </FlexBox>
+          <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} />
 
           <Title level="H5" style={{ margin: '0.5rem 0' }}>SEPA-Lastschriftmandat</Title>
           <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -240,5 +236,76 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
         </form>
       )}
     </CenterCard>
+  );
+}
+
+/**
+ * Beginn wie bei der Übernahme (mitglieder/logik.ts → vertragsbeginn): Mitgliedsbeiträge zum nächsten 1.1. bzw. 1.7.,
+ * Jugendtraining zum nächsten Monatsbeginn (jeweils der Eintritt selbst, wenn er auf diesen Tag fällt).
+ */
+export function beginnFuer(eintritt: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'): string {
+  const j = Number(eintritt.slice(0, 4)), m = Number(eintritt.slice(5, 7)), t = eintritt.slice(8, 10);
+  if (kategorie === 'TRAINING') return t === '01' ? eintritt : m === 12 ? `${j + 1}-01-01` : `${j}-${String(m + 1).padStart(2, '0')}-01`;
+  const md = eintritt.slice(5);
+  if (md === '01-01' || md === '07-01') return eintritt;
+  return m <= 6 ? `${j}-07-01` : `${j + 1}-01-01`;
+}
+const datum = (iso: string) => iso.split('-').reverse().join('.');
+
+/** Beitragsübersicht: Mitgliedschaft und Jugendtraining getrennt, je Position Betrag, Turnus und Beginn (erste Fälligkeit) */
+function Beitraege({ info, personen, eintritt }: { info: Info; personen: Person[]; eintritt: string }) {
+  const art = (x: string) => info.beitragsarten.find((b) => b.art === x);
+  const name = (p: Person, i: number) => `${p.vorname || (i === 0 ? 'Antragsteller/in' : `Person ${i + 1}`)} ${p.nachname}`.trim();
+  const mitglied = personen.flatMap((p, i) => {
+    if (i === 0) { const b = art(p.art); return b ? [{ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus }] : []; }
+    return [{ wer: name(p, i), text: 'über den Familienbeitrag', betrag: 0, turnus: '' }];
+  });
+  const training = personen.flatMap((p, i) => p.training.map((x) => art(x)).filter((b): b is Art => !!b)
+    .map((b) => ({ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus })));
+  const zelle = { padding: '0.25rem 0.4rem' } as const;
+  const summe = (l: { betrag: number; turnus: string }[]) => {
+    const je = new Map<string, number>();
+    for (const x of l) if (x.betrag) je.set(x.turnus, (je.get(x.turnus) ?? 0) + x.betrag);
+    return [...je].map(([t, b]) => `${eur(b)}${t ? ` ${t}` : ''}`).join(' + ') || eur(0);
+  };
+  const block = (titel: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAINING', zeilen: { wer: string; text: string; betrag: number; turnus: string }[], hinweis: string) => {
+    const beginn = beginnFuer(eintritt, kategorie);
+    return (
+      <div style={{ marginBottom: '0.75rem' }}>
+        <Title level="H6" style={{ marginBottom: '0.25rem' }}>{titel}</Title>
+        {!zeilen.length ? <Text className="portal-muted">–</Text> : (
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr>{['Person', 'Beitrag', 'Turnus', 'Betrag'].map((h, n) => <th key={h} style={{ ...zelle, textAlign: n === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+            <tbody>
+              {zeilen.map((z, n) => (
+                <tr key={n} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                  <td style={zelle}><Text>{z.wer}</Text></td>
+                  <td style={zelle}><Text>{z.text}</Text></td>
+                  <td style={zelle}><Text>{z.turnus || '–'}</Text></td>
+                  <td style={{ ...zelle, textAlign: 'right' }}><Text>{z.betrag ? eur(z.betrag) : 'inklusive'}</Text></td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                <td style={zelle} colSpan={3}><Text style={{ fontWeight: 'bold' }}>Summe {titel}</Text></td>
+                <td style={{ ...zelle, textAlign: 'right' }}><Text style={{ fontWeight: 'bold' }}>{summe(zeilen)}</Text></td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        {zeilen.length > 0 && (
+          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.2rem' }}>
+            Beginn und erste Fälligkeit: <b>{datum(beginn)}</b> – {hinweis}
+          </Text>
+        )}
+      </div>
+    );
+  };
+  return (
+    <div style={{ padding: '0.75rem', margin: '0.25rem 0 0.75rem', border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
+      <Title level="H5" style={{ marginBottom: '0.5rem' }}>Beiträge und Fälligkeit</Title>
+      {block('Mitgliedschaft', 'MITGLIEDSCHAFT', mitglied, 'Mitgliedsbeiträge beginnen zum nächsten 1.1. bzw. 1.7.')}
+      {block('Jugendtraining', 'TRAINING', training, 'Jugendtraining beginnt zum nächsten Monatsbeginn.')}
+      <Text className="portal-muted portal-small" style={{ display: 'block' }}>Der Einzug erfolgt per SEPA-Lastschrift zur jeweiligen Fälligkeit.</Text>
+    </div>
   );
 }

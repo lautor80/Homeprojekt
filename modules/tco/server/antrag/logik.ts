@@ -49,6 +49,18 @@ export function kategorieVon(art: string, name: string): Kategorie | null {
   return null;
 }
 export const istJugendbeitrag = (name: string) => /jugend/i.test(name);
+
+/**
+ * Vertragsbeginn = erste Fälligkeit: Mitgliedsbeiträge zum nächsten 1.1. bzw. 1.7., Training zum nächsten Monatsbeginn
+ * (jeweils der Eintritt selbst, wenn er auf diesen Tag fällt) – wie im Formular angezeigt.
+ */
+export function beginnFuer(eintritt: string, kategorie: Kategorie): string {
+  const j = Number(eintritt.slice(0, 4)), m = Number(eintritt.slice(5, 7)), t = eintritt.slice(8, 10);
+  if (kategorie === 'TRAINING') return t === '01' ? eintritt : m === 12 ? `${j + 1}-01-01` : `${j}-${String(m + 1).padStart(2, '0')}-01`;
+  const md = eintritt.slice(5);
+  if (md === '01-01' || md === '07-01') return eintritt;
+  return m <= 6 ? `${j}-07-01` : `${j + 1}-01-01`;
+}
 /** Familienbeitrag: deckt die Mitgliedschaft aller weiteren Personen des Antrags ab – nur dann sind weitere Personen möglich */
 export const istFamilienbeitrag = (name: string) => /famil/i.test(name);
 export interface AntragBank { kontoinhaber: string; iban: string; bic?: string | null; bank?: string | null; sepa: boolean }
@@ -191,7 +203,7 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
       zahlungsart: 'L', zahlungsweise: '', iban: a.iban, bic: a.bic ?? '', bank: a.bank ?? '', sepa: true, sepa_datum: sepaDatum,
       zahler_modus: i === 0 ? (kiSelbst ? 'SELBST' : 'NEU') : 'BESTEHEND', zahler_adrnr: i === 0 ? null : zahler,
       z_anrede: '', z_vorname: ki.vorname, z_nachname: ki.nachname, z_strasse: d.strasse, z_plz: d.plz, z_ort: d.ort, z_email: d.email,
-      vertraege: gewaehlt.map((a, j) => ({ art: a.art, beginn: null, betrag: familie && j === 0 ? 0 : a.betrag, turnus: a.turnus })),
+      vertraege: gewaehlt.map((a, j) => ({ art: a.art, beginn: beginnFuer(eintritt, j === 0 ? 'MITGLIEDSCHAFT' : 'TRAINING'), betrag: familie && j === 0 ? 0 : a.betrag, turnus: a.turnus })),
     };
     const r = await mitgliedNeu(tx, n);
     if (i === 0) {
