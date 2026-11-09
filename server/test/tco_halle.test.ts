@@ -679,3 +679,53 @@ test('Manuelle Position: Text änderbar, Buchungsposition und versendete Rechnun
   await sql`update tco.rgkopf set status = '3' where rgnr_txt = '2026_902'`;
   assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/${pos}`, { beschreibung: 'Spät' })).status, 400);
 });
+
+test('Sammelversand: Vorschlag „In Bearbeitung“, E-Mail-Adresse je Empfänger, Druck und Versand je Empfänger (#29)', async () => {
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, strasse, plz, ort, email) values
+            ('0000000951', 'Sven', 'Sammel', '2020-01-01', 'Hauptstr. 5', '66649', 'Oberthal', 'sven@example.org'),
+            ('0000000952', 'Otto', 'Ohnemail', '2020-01-01', 'Hauptstr. 6', '66649', 'Oberthal', null)`;
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, adrnr, betrag, status) values
+            ('2026_951', 2026, 951, 'SVEN SAMMEL', '0000000951', 0, '1'), ('2026_952', 2026, 952, 'SVEN SAMMEL', '0000000951', 0, '1'),
+            ('2026_953', 2026, 953, 'OTTO OHNEMAIL', '0000000952', 0, '1'), ('2026_954', 2026, 954, 'SVEN SAMMEL', '0000000951', 0, '1'),
+            ('2026_955', 2026, 955, 'SVEN SAMMEL', '0000000951', 0, '1')`;
+  for (const [rg, preis] of [['2026_951', 30], ['2026_952', 12], ['2026_953', 20], ['2026_954', 8]] as const) {
+    const p = await call('POST', `${H}/rechnungen/${rg}/positionen`, { prod_key: '093', menge: 1, preis, beschreibung: 'Sammelversand Test' });
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+  }
+  await sql`update tco.rgkopf set status = '3' where rgnr_txt = '2026_954'`;
+
+  // Vorschlag: nur „In Bearbeitung“; E-Mail-Adresse bzw. Hinweis je Rechnung
+  let r = await call('GET', `${H}/sammelversand`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const v = (rg: string) => r.body.find((x: any) => x.rgnr === rg);
+  assert.deepEqual([v('2026_951').name, v('2026_951').email, v('2026_951').betrag, v('2026_951').hinweis], ['Sven Sammel', 'sven@example.org', 30, null]);
+  assert.equal(v('2026_952').betrag, 12);
+  assert.deepEqual([v('2026_953').email, v('2026_953').hinweis], ['', 'Keine E-Mail-Adresse gepflegt']);
+  assert.equal(v('2026_954'), undefined);
+  assert.match(v('2026_955').hinweis, /keine Positionen/);
+
+  // Versand: je Empfänger eine E-Mail mit allen Rechnungen; ohne E-Mail bzw. anderer Status → Fehlerzeile
+  const mails = mock.mails.length;
+  assert.equal((await call('POST', `${H}/sammelversand`, { rgnrs: [] })).status, 400);
+  r = await call('POST', `${H}/sammelversand`, { rgnrs: ['2026_951', '2026_952', '2026_953', '2026_954', '2026_955'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const z = (rg: string) => r.body.zeilen.find((x: any) => x.rgnrs.includes(rg));
+  assert.equal(r.body.zeilen.length, 4, JSON.stringify(r.body));
+  assert.deepEqual([z('2026_951').ok, z('2026_951').rgnrs], [true, ['2026_951', '2026_952']], JSON.stringify(r.body));
+  assert.match(z('2026_951').text, /E-Mail an sven@example\.org versendet/);
+  assert.deepEqual([z('2026_953').ok, z('2026_954').ok, z('2026_955').ok], [false, false, false]);
+  assert.match(z('2026_953').text, /Keine E-Mail-Adresse/);
+  assert.match(z('2026_954').text, /nicht \(mehr\) im Status/);
+  assert.match(r.body.text, /2 Rechnung\(en\) an 1 Empfänger versendet, 3 Fehler/);
+  assert.equal(mock.mails.length, mails + 1);
+  const m = mock.mails[mock.mails.length - 1];
+  assert.deepEqual([m.an, m.modus, m.anwendung, m.anhaenge.length], ['sven@example.org', 'senden', 'HALLENRECHNUNG', 2]);
+  assert.match(m.text, /Hallo Sven/);
+  const st = await sql`select rgnr_txt, status, doknr, gedruckt from tco.rgkopf where rgnr_txt in ('2026_951', '2026_952', '2026_953') order by rgnr_txt`;
+  assert.deepEqual(st.map((x) => x.status), ['3', '3', '1']);
+  assert.ok(st[0].doknr && st[0].gedruckt && st[1].doknr);
+
+  // versendete Rechnungen werden nicht erneut vorgeschlagen
+  r = await call('GET', `${H}/sammelversand`);
+  assert.ok(!r.body.some((x: any) => ['2026_951', '2026_952'].includes(x.rgnr)));
+});

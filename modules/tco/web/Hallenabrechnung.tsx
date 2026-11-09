@@ -30,6 +30,7 @@ import {
 } from './util';
 import { AutoDialog } from './AutoZuordnung';
 import { SammelDialog } from './SammelRechnung';
+import { SammelVersandDialog } from './SammelVersand';
 import './halle.css';
 import { MailDialog, MailtextDialog, PositionDialog, PositionTextDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
@@ -80,6 +81,7 @@ export function Hallenabrechnung() {
   const [versionen, setVersionen] = useState<PaperlessInfo | null>(null);
   const [auto, setAuto] = useState(false);
   const [sammel, setSammel] = useState(false);
+  const [sammelVersand, setSammelVersand] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [protokoll, setProtokoll] = useState<Protokoll | null>(null);
 
@@ -198,6 +200,7 @@ export function Hallenabrechnung() {
         {edit && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
         {edit && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
         {edit && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
+        {versand && <Button icon="paper-plane" tooltip="Rechnungen „In Bearbeitung“ gesammelt drucken und per E-Mail versenden" onClick={() => setSammelVersand(true)}>Sammelversand</Button>}
         <Button icon="lead" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise</Button>
       </>}
     >
@@ -309,6 +312,7 @@ export function Hallenabrechnung() {
       <VersionenDialog info={versionen} onClose={() => setVersionen(null)} />
       <AutoDialog open={auto} onClose={() => setAuto(false)} onDone={(t) => { setAuto(false); toast(t, 6000); neuLaden(); }} />
       <SammelDialog open={sammel} onClose={() => setSammel(false)} onDone={(t) => { setSammel(false); toast(t, 6000); neuLaden(); }} />
+      <SammelVersandDialog open={sammelVersand} onClose={() => setSammelVersand(false)} onDone={(t) => { setSammelVersand(false); toast(t, 6000); neuLaden(); }} />
       <ConfirmDialog open={!!confirm} title={confirm?.titel ?? ''} text={confirm?.text ?? ''} askReason={confirm?.grund}
                      danger={confirm?.danger} confirmText={confirm?.ok}
                      onCancel={() => setConfirm(null)}

@@ -13,6 +13,7 @@ import {
   rechnungenLesen, statusSetzen, zuordnen, type Selektion,
 } from './daten.js';
 import { ep3Importieren, ep3UeberN8n } from './ep3.js';
+import { sammelversand, versandVorschlag } from './sammelversand.js';
 import {
   mailTexte, mailVersand, paperlessNotiz, rechnungDrucken, rechnungPdfErzeugen, whatsappBestaetigen, whatsappText,
   whatsappVorbereiten, type Schreiber,
@@ -375,6 +376,21 @@ export async function halleRoutes(app: FastifyInstance) {
       nummer: z.string(), links: z.array(z.object({ rgnr: z.string(), link: z.string(), docId: z.number() })).min(1),
     }).parse(req.body);
     return whatsappBestaetigen(DB, await vereinLesen(), w(req), { ...d, benutzer: benutzer(req) });
+  });
+
+  // ---------------------------------------------------------------- Sammelversand (nur E-Mail)
+  /** Vorschlag: alle Rechnungen „In Bearbeitung“ mit Empfänger und E-Mail-Adresse */
+  app.get('/halle/sammelversand', { preHandler: requireAuth(P_HALLE.versand) }, async () => versandVorschlag(DB));
+
+  /** freigegebene Rechnungen drucken und per E-Mail versenden – Protokoll je Empfänger */
+  app.post('/halle/sammelversand', { preHandler: requireAuth(P_HALLE.versand) }, async (req) => {
+    const { rgnrs } = z.object({ rgnrs: z.array(z.string().max(20)).min(1, 'Bitte mindestens eine Rechnung auswählen').max(200) }).parse(req.body);
+    const zeilen = await sammelversand(DB, await vereinLesen(), w(req), { rgnrs, benutzer: benutzer(req) });
+    const ok = zeilen.filter((x) => x.ok);
+    return {
+      zeilen,
+      text: `Sammelversand: ${ok.reduce((s, x) => s + x.rgnrs.length, 0)} Rechnung(en) an ${ok.length} Empfänger versendet${zeilen.length - ok.length ? `, ${zeilen.length - ok.length} Fehler` : ''}`,
+    };
   });
 
   // ---------------------------------------------------------------- Hallenpreise
