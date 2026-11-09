@@ -32,7 +32,7 @@ import { AutoDialog } from './AutoZuordnung';
 import { SammelDialog } from './SammelRechnung';
 import { SammelVersandDialog } from './SammelVersand';
 import './halle.css';
-import { MailDialog, MailtextDialog, PositionDialog, PositionTextDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
+import { MailDialog, MailtextDialog, PositionAendernDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
 /** Filter bleiben beim Wechsel zwischen Seiten erhalten */
 const merk = {
@@ -444,13 +444,22 @@ function PersonPanel(props: {
       Cell: ({ row, value }: Cell) => (
         <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
           <Text>{String(value).split('\t').filter(Boolean).join(' · ')}</Text>
-          {row.original.erloeskonto && <Tag design="Set2" colorScheme="10" hideStateIcon title="abweichendes Erlöskonto">Konto {row.original.erloeskonto}</Tag>}
           {row.original.beleg_doc_id && (
             <Button icon="attachment" design="Transparent" tooltip={`Beleg ansehen (DOKID ${String(row.original.beleg_doc_id).padStart(6, '0')})`}
                     onClick={() => window.open(`${H}/paperless/${row.original.beleg_doc_id}/pdf`, '_blank')} />
           )}
         </FlexBox>
       ),
+    },
+    {
+      Header: 'Konto', accessor: 'konto', width: 90,
+      Cell: ({ row }: Cell) => {
+        const p = row.original as Position;
+        const name = p.konto_name ? ` – ${p.konto_name}` : '';
+        return p.erloeskonto
+          ? <Tag design="Set2" colorScheme="10" hideStateIcon title={`Abweichendes Erlöskonto ${p.erloeskonto}${name}`}>{p.erloeskonto}</Tag>
+          : <Text title={`Erlöskonto des Produkts ${p.konto ?? ''}${name}`}>{p.konto ?? ''}</Text>;
+      },
     },
     { Header: 'Menge', accessor: 'anzahl', width: 80, hAlign: 'End', Cell: ({ value }: Cell) => Number(value).toLocaleString('de-DE', { maximumFractionDigits: 2 }) },
     { Header: 'Einzelpreis', accessor: 'ep', width: 110, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
@@ -463,7 +472,7 @@ function PersonPanel(props: {
       Cell: ({ row }: Cell) => (rgEdit && rechnung?.aenderbar ? (
         <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'flex-end', width: '100%' }}>
         {row.original.manuell && (
-          <Button icon="edit" design="Transparent" tooltip="Text der Position ändern" accessibleName="Text der Position ändern"
+          <Button icon="edit" design="Transparent" tooltip="Position ändern (Text, Menge, Einzelpreis, Konto)" accessibleName="Position ändern"
                   onClick={() => setPosText(row.original as Position)} />
         )}
         <Button icon="delete" design="Transparent" tooltip="Position entfernen" accessibleName="Position entfernen" onClick={() => {
@@ -660,7 +669,7 @@ function PersonPanel(props: {
           </FlexBox>
         ))}
       </Panel>
-      <PositionTextDialog rgnr={rechnung?.rgnr_txt ?? null} position={posText} onClose={() => setPosText(null)}
+      <PositionAendernDialog rgnr={rechnung?.rgnr_txt ?? null} position={posText} onClose={() => setPosText(null)}
                           onSaved={(t) => { setPosText(null); tun(async () => ({ text: t })); }} />
     </div>
   );

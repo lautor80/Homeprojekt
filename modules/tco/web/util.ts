@@ -61,8 +61,11 @@ export interface Position {
   art: string; beschreibung: string; anzahl: number; ep: number; betrag: number; storno: boolean; manuell: boolean;
   /** verknüpfter Paperless-Beleg (z. B. Namensliste einer Sammelrechnung) */
   beleg_doc_id?: number | null;
-  /** abweichendes Erlöskonto (Gutschrift, Sonstiges) */
+  /** abweichendes Erlöskonto (manuelle Positionen, Gutschrift) */
   erloeskonto?: string | null;
+  /** Kontierung: Erlöskonto der Position, sonst des Produkts, sonst Hallenmiete */
+  konto?: string;
+  konto_name?: string;
 }
 export interface PaperlessInfo {
   doknr: string | null; link: string | null; notizen: { id: number; note: string; created: string }[];

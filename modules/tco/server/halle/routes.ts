@@ -9,11 +9,11 @@ import { heute } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
 import {
   aboEinzeln, aboSerie, adrnrErmitteln, autoBuchen, autoVorschau, irrelevant, kanalSichern, manuellePosition,
-  personDetail, personenLesen, positionEntfernen, positionenLesen, positionenNummerieren, positionTextAendern, rechnungAnlegen,
+  personDetail, personenLesen, positionEntfernen, positionenLesen, positionenNummerieren, positionAendern, rechnungAnlegen,
   rechnungenLesen, statusSetzen, zuordnen, type Selektion,
 } from './daten.js';
 import { ep3Importieren, ep3UeberN8n } from './ep3.js';
-import { sammelversand, versandVorschlag } from './sammelversand.js';
+import { MAIL_PLATZHALTER, sammelMailVorlage, sammelversand, versandVorschlag } from './sammelversand.js';
 import {
   mailTexte, mailVersand, paperlessNotiz, rechnungDrucken, rechnungPdfErzeugen, whatsappBestaetigen, whatsappText,
   whatsappVorbereiten, type Schreiber,
@@ -267,16 +267,21 @@ export async function halleRoutes(app: FastifyInstance) {
     return { ...r, text: [`Position ${r.rgpos} hinzugefügt (${r.betrag.toFixed(2).replace('.', ',')} EUR)`, ...r.hinweise].join('. ') };
   });
 
-  /** Text einer manuellen Position ändern */
+  /** Manuelle Position ändern: Text, Menge, Einzelpreis, Konto (nur angegebene Felder) */
   app.put('/halle/rechnungen/:rgnr/positionen/:pos', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
     const p = z.object({ rgnr: z.string(), pos: z.coerce.number().int() }).parse(req.params);
-    const { beschreibung } = z.object({ beschreibung: z.string().max(40, 'Die Beschreibung darf höchstens 40 Zeichen lang sein').nullish() }).parse(req.body);
-    const r = await change(req, (tx) => positionTextAendern(tx, p.rgnr, p.pos, beschreibung));
+    const d = z.object({
+      beschreibung: z.string().max(40, 'Die Beschreibung darf höchstens 40 Zeichen lang sein').nullish(),
+      menge: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte eine Menge als Zahl erfassen' }).nullish()),
+      preis: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte einen Preis als Zahl erfassen' }).nullish()),
+      erloeskonto: z.string().trim().max(10).nullish(),
+    }).parse(req.body);
+    const r = await change(req, (tx) => positionAendern(tx, p.rgnr, p.pos, d));
     if (!r.geaendert) return { text: `Position ${p.pos} unverändert` };
     if (r.kopf.versendet) {
-      await paperlessNotiz(await vereinLesen(), r.kopf.doknr, `Position ${p.pos} Text geändert am ${heute()} durch ${benutzer(req)}: „${r.alt}“ → „${r.text}“`);
+      await paperlessNotiz(await vereinLesen(), r.kopf.doknr, `Position ${p.pos} geändert am ${heute()} durch ${benutzer(req)}: ${r.details.join(', ')}`);
     }
-    return { text: `Position ${p.pos}: Text geändert` };
+    return { text: `Position ${p.pos}: ${r.felder.join(', ')} geändert`, betrag: r.betrag };
   });
 
   app.delete('/halle/rechnungen/:rgnr/positionen/:pos', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
@@ -384,10 +389,20 @@ export async function halleRoutes(app: FastifyInstance) {
   /** Vorschlag: alle Rechnungen „In Bearbeitung“ mit Empfänger und E-Mail-Adresse */
   app.get('/halle/sammelversand', { preHandler: requireAuth(P_HALLE.versand) }, async () => versandVorschlag(DB));
 
+  /** Text der Sammel-E-Mail als Vorlage mit Platzhaltern – im Dialog sichtbar und änderbar */
+  app.get('/halle/sammelversand/mailtext', { preHandler: requireAuth(P_HALLE.versand) }, async () => (
+    { ...sammelMailVorlage(await vereinLesen()), platzhalter: Object.values(MAIL_PLATZHALTER) }
+  ));
+
   /** freigegebene Rechnungen drucken und per E-Mail versenden – Protokoll je Empfänger */
   app.post('/halle/sammelversand', { preHandler: requireAuth(P_HALLE.versand) }, async (req) => {
-    const { rgnrs } = z.object({ rgnrs: z.array(z.string().max(20)).min(1, 'Bitte mindestens eine Rechnung auswählen').max(200) }).parse(req.body);
-    const zeilen = await sammelversand(DB, await vereinLesen(), w(req), { rgnrs, benutzer: benutzer(req) });
+    const d = z.object({
+      rgnrs: z.array(z.string().max(20)).min(1, 'Bitte mindestens eine Rechnung auswählen').max(200),
+      // Text der Sammel-E-Mail (Vorlage mit Platzhaltern) – ohne Angabe gilt der Standardtext
+      betreff: z.string().trim().min(1, 'Bitte einen Betreff erfassen').max(200).optional(),
+      text: z.string().max(5000).refine((t) => t.trim() !== '', 'Bitte einen Text für die E-Mail erfassen').optional(),
+    }).parse(req.body);
+    const zeilen = await sammelversand(DB, await vereinLesen(), w(req), { ...d, benutzer: benutzer(req) });
     const ok = zeilen.filter((x) => x.ok);
     return {
       zeilen,

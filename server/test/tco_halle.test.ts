@@ -688,6 +688,61 @@ test('Manuelle Position: Text änderbar, Buchungsposition und versendete Rechnun
   assert.equal((await call('PUT', `${H}/rechnungen/2026_902/positionen/${pos}`, { beschreibung: 'Spät' })).status, 400);
 });
 
+test('Manuelle Position und Gutschrift: Text, Menge, Einzelpreis und Konto änderbar; Kontierung je Position (#29)', async () => {
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status) values ('2026_903', 2026, 903, 'KONTO TEST', 0, '1')`;
+  await sql`insert into tco.fikonten (konto, name) values ('8098', 'Sonstige Erlöse Test') on conflict do nothing`;
+  const { rechnungAufteilung } = await import('../../modules/tco/server/halle/daten.js');
+  let r = await call('POST', `${H}/rechnungen/2026_903/positionen`, { prod_key: '001', menge: 1, beschreibung: 'Manuell A' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const pos = r.body.rgpos;
+  const lesen = async (n: number) => (await call('GET', `${H}/rechnungen/2026_903`)).body.positionen.find((x: any) => x.rgpos === n);
+  // Kontierung: ohne abweichendes Konto das Erlöskonto des Produkts bzw. die Hallenmiete
+  let p = await lesen(pos);
+  const [pr] = await sql`select erloeskonto from tco.produkte where prod_key = '001'
+                          order by (current_date between valid_from and valid_to) desc, valid_to desc limit 1`;
+  assert.deepEqual([p.konto, p.erloeskonto], [pr.erloeskonto?.trim() || '8003', null]);
+
+  // Menge, Einzelpreis und Konto ändern – der Text bleibt, der Rechnungsbetrag folgt
+  r = await call('PUT', `${H}/rechnungen/2026_903/positionen/${pos}`, { menge: '2,5', preis: '8', erloeskonto: '8098' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Menge, Einzelpreis, Konto geändert/);
+  p = await lesen(pos);
+  assert.deepEqual([p.beschreibung, p.anzahl, p.ep, p.betrag, p.erloeskonto, p.konto, p.konto_name], ['Manuell A', 2.5, 8, 20, '8098', '8098', 'Sonstige Erlöse Test']);
+  let [k] = await sql`select betrag::float8 as betrag from tco.rgkopf where rgnr_txt = '2026_903'`;
+  assert.equal(k.betrag, 20);
+  assert.deepEqual(await rechnungAufteilung(sql as never, '2026_903'), [{ konto: '8098', betrag: 20 }]);
+
+  // ohne Änderung: unverändert; Konto leer → zurück auf das Konto des Produkts
+  r = await call('PUT', `${H}/rechnungen/2026_903/positionen/${pos}`, { menge: 2.5, preis: 8 });
+  assert.match(r.body.text, /unverändert/);
+  r = await call('PUT', `${H}/rechnungen/2026_903/positionen/${pos}`, { erloeskonto: null });
+  assert.match(r.body.text, /Konto geändert/);
+  p = await lesen(pos);
+  assert.deepEqual([p.erloeskonto, p.betrag], [null, 20]);
+
+  // abgewiesen: Menge 0, Preis kein Zahlwert, unbekanntes Konto
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_903/positionen/${pos}`, { menge: 0 })).status, 400);
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_903/positionen/${pos}`, { preis: 'abc' })).status, 400);
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_903/positionen/${pos}`, { erloeskonto: '0000' })).status, 400);
+
+  // Gutschrift: Preis ohne Minus erfasst bleibt negativ; Text und Konto änderbar
+  r = await call('POST', `${H}/rechnungen/2026_903/positionen`, { prod_key: '094', menge: 1, preis: 5, beschreibung: 'Gutschrift A' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const gs = r.body.rgpos;
+  r = await call('PUT', `${H}/rechnungen/2026_903/positionen/${gs}`, { beschreibung: 'Gutschrift B', menge: 2, preis: 7.5, erloeskonto: '8098' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Text, Menge, Einzelpreis, Konto geändert/);
+  p = await lesen(gs);
+  assert.deepEqual([p.beschreibung, p.anzahl, p.ep, p.betrag, p.konto], ['Gutschrift B', 2, -7.5, -15, '8098']);
+  [k] = await sql`select betrag::float8 as betrag from tco.rgkopf where rgnr_txt = '2026_903'`;
+  assert.equal(k.betrag, 5);
+
+  // Buchungsposition: nicht änderbar
+  await sql`insert into tco.rgpos (rgnr_txt, rgpos, bid, datum, time_start, time_ende, dauer, prod_key, preis)
+            values ('2026_903', 50, '0000009903', '2026-11-02', '16:00', '17:00', '60', '001', 10)`;
+  assert.equal((await call('PUT', `${H}/rechnungen/2026_903/positionen/50`, { preis: 5 })).status, 400);
+});
+
 test('Sammelversand: Vorschlag „In Bearbeitung“, E-Mail-Adresse je Empfänger, Druck und Versand je Empfänger (#29)', async () => {
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, strasse, plz, ort, email) values
             ('0000000951', 'Sven', 'Sammel', '2020-01-01', 'Hauptstr. 5', '66649', 'Oberthal', 'sven@example.org'),
@@ -732,6 +787,33 @@ test('Sammelversand: Vorschlag „In Bearbeitung“, E-Mail-Adresse je Empfänge
   const st = await sql`select rgnr_txt, status, doknr, gedruckt from tco.rgkopf where rgnr_txt in ('2026_951', '2026_952', '2026_953') order by rgnr_txt`;
   assert.deepEqual(st.map((x) => x.status), ['3', '3', '1']);
   assert.ok(st[0].doknr && st[0].gedruckt && st[1].doknr);
+
+  // Text der Sammel-E-Mail: Vorlage mit Platzhaltern, geändert je Empfänger gefüllt (#29)
+  r = await call('GET', `${H}/sammelversand/mailtext`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.betreff, /\{Rechnungsnummer\}/);
+  assert.match(r.body.text, /^Hallo \{Vorname\},/);
+  assert.deepEqual(r.body.platzhalter, ['{Vorname}', '{Rechnungsnummer}']);
+  const vorlage = r.body;
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, adrnr, betrag, status) values
+            ('2026_956', 2026, 956, 'SVEN SAMMEL', '0000000951', 0, '1'), ('2026_957', 2026, 957, 'SVEN SAMMEL', '0000000951', 0, '1')`;
+  for (const rg of ['2026_956', '2026_957']) {
+    assert.equal((await call('POST', `${H}/rechnungen/${rg}/positionen`, { prod_key: '093', menge: 1, preis: 9, beschreibung: 'Mailtext Test' })).status, 200);
+  }
+  assert.equal((await call('POST', `${H}/sammelversand`, { rgnrs: ['2026_956'], betreff: ' ', text: 'x' })).status, 400);
+  assert.equal((await call('POST', `${H}/sammelversand`, { rgnrs: ['2026_956'], betreff: 'x', text: '  ' })).status, 400);
+  r = await call('POST', `${H}/sammelversand`, { rgnrs: ['2026_956'], betreff: 'Hallenrechnung {Rechnungsnummer}', text: 'Guten Tag {Vorname},\nanbei {Rechnungsnummer}.\nBitte bis Monatsende zahlen.' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.zeilen[0].ok, true, JSON.stringify(r.body));
+  let sm = mock.mails[mock.mails.length - 1];
+  assert.deepEqual([sm.betreff, sm.text], ['Hallenrechnung 2026_956', 'Guten Tag Sven,\nanbei 2026_956.\nBitte bis Monatsende zahlen.']);
+  // unveränderte Vorlage: Standardtext ohne Platzhalter
+  r = await call('POST', `${H}/sammelversand`, { rgnrs: ['2026_957'], betreff: vorlage.betreff, text: vorlage.text });
+  assert.equal(r.body.zeilen[0].ok, true, JSON.stringify(r.body));
+  sm = mock.mails[mock.mails.length - 1];
+  assert.equal(sm.betreff, 'Rechnung des TC Oberthal 2026_957');
+  assert.match(sm.text, /^Hallo Sven,/);
+  assert.doesNotMatch(sm.text, /\{/);
 
   // versendete Rechnungen werden nicht erneut vorgeschlagen
   r = await call('GET', `${H}/sammelversand`);
