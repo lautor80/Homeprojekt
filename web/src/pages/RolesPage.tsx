@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
-import { AnalyticalTable, Bar, Button, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Bar, Button, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
 import { fmtDateTime } from '../components/ChangeHistory';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
-import { FormGrid, TextField } from '../components/FormFields';
+import { FieldBox, FormGrid, TextField } from '../components/FormFields';
 import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useCan } from '../session';
@@ -13,8 +13,27 @@ import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
 import { PermissionEditor, type PermGroup } from '../components/PermissionEditor';
 
-interface Role { id: string; name: string; description: string | null; system: boolean; permissions: string[]; userCount: number }
+interface Role {
+  id: string; name: string; description: string | null; system: boolean; permissions: string[]; userCount: number;
+  /** Deaktivierungszeitraum (JJJJ-MM-TT): von = erster, bis = letzter Tag ohne Wirkung; bis leer = unbefristet */
+  inaktivVon: string | null; inaktivBis: string | null; inaktivGrund: string | null;
+  /** heute deaktiviert (vom Server ermittelt) */
+  inaktiv: boolean;
+}
 type Edit = Partial<Role> & { isNew: boolean };
+/** JJJJ-MM-TT → TT.MM.JJJJ */
+const fmtTag = (d: string) => d.split('-').reverse().join('.');
+const heute = () => new Date().toLocaleDateString('sv-SE');
+
+/** Status einer Rolle bezogen auf ihren Deaktivierungszeitraum */
+function rollenStatus(r: Pick<Role, 'inaktivVon' | 'inaktivBis' | 'inaktiv'>): { state: 'Negative' | 'Critical' | 'Positive'; text: string } {
+  if (r.inaktiv) return { state: 'Negative', text: r.inaktivBis ? `inaktiv bis ${fmtTag(r.inaktivBis)}` : 'inaktiv (unbefristet)' };
+  if (r.inaktivVon && r.inaktivVon > heute()) {
+    return { state: 'Critical', text: `inaktiv ab ${fmtTag(r.inaktivVon)}${r.inaktivBis ? ` bis ${fmtTag(r.inaktivBis)}` : ''}` };
+  }
+  return { state: 'Positive', text: 'aktiv' };
+}
+
 interface RolleBenutzer { id: string; username: string; displayName: string; email: string | null; active: boolean; lastLoginAt: string | null; rollen: number }
 
 export function RolesPage() {
@@ -46,7 +65,10 @@ export function RolesPage() {
     setBusy(true);
     setError(null);
     try {
-      const body = { name: edit.name, description: edit.description ?? null, permissions: edit.permissions ?? [] };
+      const body = {
+        name: edit.name, description: edit.description ?? null, permissions: edit.permissions ?? [],
+        ...(edit.id === 'ADMIN' ? {} : { inaktivVon: edit.inaktivVon || null, inaktivBis: edit.inaktivBis || null, inaktivGrund: edit.inaktivGrund || null }),
+      };
       if (edit.isNew) await api.post('/api/admin/roles', { ...body, id: edit.id });
       else await api.put(`/api/admin/roles/${edit.id}`, body);
       setEdit(null);
@@ -78,6 +100,14 @@ export function RolesPage() {
     { Header: 'Beschreibung', accessor: 'description' },
     { Header: 'Berechtigungen', accessor: (r: Record<string, any>) => umfang(r.permissions), id: 'perms', width: 170 },
     { Header: 'Benutzer', accessor: 'userCount', width: 100 },
+    {
+      Header: 'Status', id: 'status', width: 230, accessor: (r: Record<string, any>) => rollenStatus(r as Role).text,
+      Cell: ({ row }: CellInstance) => {
+        const r = row.original as Role;
+        const st = rollenStatus(r);
+        return <ObjectStatus state={st.state} title={r.inaktivGrund ?? undefined}>{st.text}</ObjectStatus>;
+      },
+    },
     { Header: '', accessor: 'system', width: 90, Cell: ({ value }: CellInstance) => (value ? <Tag hideStateIcon>System</Tag> : null) },
     ...(darfAendern ? [{
       Header: '', id: 'loeschen', width: 60, disableSortBy: true,
@@ -139,6 +169,9 @@ export function RolesPage() {
               <TextField label="Bezeichnung" required value={edit.name} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, name: v })} />
               <TextField label="Beschreibung" wide value={edit.description} readonly={!mayEdit} onChange={(v) => setEdit({ ...edit, description: v })} />
             </FormGrid>
+            {edit.id !== 'ADMIN' && (
+              <RollenDeaktivierung edit={edit} readonly={!mayEdit} onChange={setEdit} />
+            )}
             {!edit.isNew && edit.id && (
               <RollenBenutzer rolle={edit.id} darf={darfEntziehen && sperre.eigen} onChanged={roles.reload} onError={setError} />
             )}
@@ -160,6 +193,46 @@ export function RolesPage() {
         onCancel={() => setConfirmDelete(null)}
       />
     </AppPage>
+  );
+}
+
+/** Zeitraum, in dem die Rolle niemandem Berechtigungen gewährt (Zuordnungen bleiben erhalten) */
+function RollenDeaktivierung({ edit, readonly, onChange }: { edit: Edit; readonly: boolean; onChange: (e: Edit) => void }) {
+  const gesetzt = !!(edit.inaktivVon || edit.inaktivBis);
+  const fehler = edit.inaktivBis && !edit.inaktivVon ? 'Bitte ein Von-Datum angeben.'
+    : edit.inaktivVon && edit.inaktivBis && edit.inaktivBis < edit.inaktivVon ? 'Bis-Datum liegt vor dem Von-Datum.' : null;
+  // Status nach den eingegebenen (noch nicht gesicherten) Daten
+  const h = heute();
+  const st = rollenStatus({ ...edit, inaktivVon: edit.inaktivVon ?? null, inaktivBis: edit.inaktivBis ?? null,
+    inaktiv: !!edit.inaktivVon && edit.inaktivVon <= h && (!edit.inaktivBis || edit.inaktivBis >= h) });
+  return (
+    <div style={{ margin: '0.5rem 0 1rem' }}>
+      <Toolbar design="Transparent">
+        <Title level="H5">Deaktivierung</Title>
+        {gesetzt && <ObjectStatus state={st.state}>{st.text}</ObjectStatus>}
+        <ToolbarSpacer />
+        {!readonly && gesetzt && (
+          <Button design="Transparent" icon="clear-filter" onClick={() => onChange({ ...edit, inaktivVon: null, inaktivBis: null, inaktivGrund: null })}>Zeitraum entfernen</Button>
+        )}
+      </Toolbar>
+      <Label wrappingType="Normal" style={{ display: 'block', marginBottom: '0.5rem' }}>
+        Im angegebenen Zeitraum (jeweils einschließlich) gewährt die Rolle keinem Benutzer Berechtigungen – auch nicht in offenen Sitzungen.
+        Die Zuordnung zu den Benutzern bleibt erhalten; nach Ablauf wirkt die Rolle automatisch wieder. Ohne Bis-Datum bleibt sie deaktiviert, bis der Zeitraum entfernt wird.
+      </Label>
+      {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{fehler}</MessageStrip>}
+      <FormGrid>
+        <FieldBox label="Inaktiv von">
+          <DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" readonly={readonly}
+                      value={edit.inaktivVon ?? ''} onChange={(e) => onChange({ ...edit, inaktivVon: e.detail.value || null })} />
+        </FieldBox>
+        <FieldBox label="Inaktiv bis (leer = unbefristet)">
+          <DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" readonly={readonly}
+                      value={edit.inaktivBis ?? ''} onChange={(e) => onChange({ ...edit, inaktivBis: e.detail.value || null })} />
+        </FieldBox>
+        <TextField label="Grund (optional, z. B. „Winterpause“)" wide value={edit.inaktivGrund} readonly={readonly}
+                   onChange={(v) => onChange({ ...edit, inaktivGrund: v })} />
+      </FormGrid>
+    </div>
   );
 }
 

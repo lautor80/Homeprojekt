@@ -72,11 +72,18 @@ export async function loadUser(userId: string): Promise<AuthUser | null> {
     select id, username, display_name, email, must_change_password
       from core.users where id = ${userId} and active`;
   if (!u) return null;
-  const roles = await sql`select role_id from core.user_roles where user_id = ${userId} order by role_id`;
+  // Rollen, die heute in ihrem Deaktivierungszeitraum liegen, gewähren nichts (Zuordnung bleibt bestehen)
+  const roles = await sql`
+    select ur.role_id
+      from core.user_roles ur join core.roles r on r.id = ur.role_id
+     where ur.user_id = ${userId} and not core.rolle_inaktiv(r.inaktiv_von, r.inaktiv_bis)
+     order by ur.role_id`;
   const perms = await sql`
     select distinct rp.permission
-      from core.user_roles ur join core.role_permissions rp on rp.role_id = ur.role_id
-     where ur.user_id = ${userId}`;
+      from core.user_roles ur
+      join core.roles r on r.id = ur.role_id
+      join core.role_permissions rp on rp.role_id = ur.role_id
+     where ur.user_id = ${userId} and not core.rolle_inaktiv(r.inaktiv_von, r.inaktiv_bis)`;
   return {
     id: u.id,
     username: u.username,
