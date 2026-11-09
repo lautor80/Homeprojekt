@@ -3,7 +3,7 @@ import type { AuditObjectDef, ServerModule } from './module.js';
 import { corePermissions, gliedern, type PermissionGroup } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
 import type { KontextDef } from './lib/paperless-mapping.js';
-import type { Paperless } from './lib/paperless.js';
+import { PAPERLESS_DEF, type VerbindungGruppe } from './lib/verbindungen.js';
 
 // ---------------------------------------------------------------------------
 // Verfügbare Fachmodule. Neues Modul: hier importieren und eintragen.
@@ -35,6 +35,7 @@ const coreAuditObjects: AuditObjectDef[] = [
   { type: 'SETTING', text: 'Einstellung', permission: 'core.settings:edit' },
   { type: 'API_KEY', text: 'API-Schlüssel', permission: 'core.apikeys:display' },
   { type: 'PAPERLESS_MAPPING', text: 'Paperless-Zuordnung', permission: 'core.settings:edit' },
+  { type: 'VERBINDUNG', text: 'Anbindung', permission: 'core.settings:edit' },
   { type: 'BACKUP_EXPORT', text: 'Nextcloud-Export der Sicherung', permission: 'core.backup:create' },
 ];
 
@@ -42,9 +43,25 @@ export function auditObjects(): AuditObjectDef[] {
   return [...coreAuditObjects, ...activeModules().flatMap((m) => m.auditObjects ?? [])];
 }
 
-/** Paperless-Ablagekontexte aller aktiven Module */
-export function paperlessKontexte(): { modul: string; name: string; kontexte: KontextDef[]; client?: () => Promise<Paperless | null> }[] {
-  return activeModules().filter((m) => m.paperlessKontexte?.length).map((m) => ({ modul: m.id, name: m.name, kontexte: m.paperlessKontexte!, client: m.paperlessClient }));
+/** Paperless-Ablagekontexte aller aktiven Module (der Client kommt aus der zentralen Verbindung „paperless“) */
+export function paperlessKontexte(): { modul: string; name: string; kontexte: KontextDef[] }[] {
+  return activeModules().filter((m) => m.paperlessKontexte?.length).map((m) => ({ modul: m.id, name: m.name, kontexte: m.paperlessKontexte! }));
+}
+
+/** Anbindungen des Kerns und aller aktiven Module (Administration → Anbindungen) */
+export function verbindungsGruppen(): VerbindungGruppe[] {
+  return [
+    { modul: 'core', name: 'Basis', verbindungen: [PAPERLESS_DEF] },
+    ...activeModules().filter((m) => m.verbindungen?.length).map((m) => ({ modul: m.id, name: m.name, verbindungen: m.verbindungen! })),
+  ];
+}
+
+export function verbindungDef(id: string) {
+  for (const g of verbindungsGruppen()) {
+    const d = g.verbindungen.find((v) => v.id === id);
+    if (d) return { gruppe: g, def: d };
+  }
+  return null;
 }
 
 /** Geschützte Spalten aller aktiven Module (für die Maskierung der Änderungsbelege) */

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { change, requireAuth } from '../auth.js';
 import { BusinessError } from '../errors.js';
 import { paperlessKontexte } from '../modules.js';
+import { paperlessZentral } from '../lib/verbindungen.js';
 import { eigeneRegelLesen, mappingCacheLeeren, REGEL_FELDER, vorschau, zusammenfuehren, type Regel } from '../lib/paperless-mapping.js';
 
 /** Zentrale Paperless-Zuordnung (Administration → Einstellungen): Regeln je Modul und Ablagekontext */
@@ -37,12 +38,12 @@ export async function paperlessMappingRoutes(app: FastifyInstance) {
     return { module: out, felder: REGEL_FELDER };
   });
 
-  /** Auswahllisten aus Paperless (Dokumenttypen, Speicherpfade, Tags, Korrespondenten, Custom Fields) je Modul */
+  /** Auswahllisten aus Paperless (Dokumenttypen, Speicherpfade, Tags, Korrespondenten, Custom Fields) – zentrale Verbindung */
   app.get('/api/paperless/mapping/:modul/listen', { preHandler: requireAuth(P) }, async (req) => {
     const { modul } = z.object({ modul: z.string() }).parse(req.params);
     const m = paperlessKontexte().find((x) => x.modul === modul);
     if (!m) throw new BusinessError('Modul nicht gefunden.', 404);
-    const pl = await m.client?.().catch(() => null);
+    const pl = await paperlessZentral().catch(() => null);
     if (!pl) return { paperless: false, dokumenttypen: [], speicherpfade: [], tags: [], korrespondenten: [], felder: [] };
     try {
       const felder = (await pl.liste('custom_fields')) as { id: number; name: string; data_type?: string }[];

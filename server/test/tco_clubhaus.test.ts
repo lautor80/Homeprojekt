@@ -82,7 +82,7 @@ before(async () => {
   await migrate(activeModules(), () => {});
   app = await buildApp({ logger: false });
   await call('POST', '/api/setup', { orgName: 'TC Oberthal', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
-  await sql`update tco.verein set paperless_url = ${`http://127.0.0.1:${port}`}, paperless_token = 'geheim'`;
+  await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
 });
 after(async () => {
   await app?.close();

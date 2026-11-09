@@ -527,7 +527,8 @@ async function routes(app: FastifyInstance) {
   // ---- Firmendaten ----
   app.get('/firma', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const f = await firmaLesen();
-    return { ...f, paperless_token: f.paperless_token ? '********' : '' };
+    // Paperless wird zentral gepflegt (Administration → Anbindungen); hier nur der Stand
+    return { ...f, paperless_token: f.paperless_token ? '********' : '', paperless: !!(f.paperless_url && f.paperless_token) };
   });
 
   app.put('/firma', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
@@ -539,16 +540,9 @@ async function routes(app: FastifyInstance) {
       zahlungsziel_tage: z.coerce.number().int().min(0).max(365), ust_satz: z.coerce.number().min(0).max(100),
       rechnung_startnr: z.coerce.number().int().min(1).max(9999),
       logo: z.string().max(600_000).regex(/^data:image\/(png|jpeg);base64,/, 'Logo muss PNG oder JPEG sein').nullish(),
-      paperless_url: z.string().trim().url().or(z.literal('')).default(''),
-      paperless_token: z.string().max(200).optional(),
     }).parse(req.body);
-    const { paperless_token, ...rest } = b;
     await change(req, async (tx) => {
-      await tx`update transport.firma set ${tx({ ...rest, logo: rest.logo ?? null })} where id = 1`;
-      // Token nur ändern, wenn ein neuer eingegeben wurde (Anzeige ist maskiert)
-      if (paperless_token !== undefined && paperless_token !== '********') {
-        await tx`update transport.firma set paperless_token = ${paperless_token} where id = 1`;
-      }
+      await tx`update transport.firma set ${tx({ ...b, logo: b.logo ?? null })} where id = 1`;
     });
     return { ok: true };
   });
@@ -626,7 +620,6 @@ const mod: ServerModule = {
   name: 'Transport',
   migrationsDir: path.join(APP_ROOT, 'modules', 'transport', 'server', 'migrations'),
   paperlessKontexte: TRANSPORT_KONTEXTE,
-  paperlessClient: async () => { const f = await firmaLesen(); return f.paperless_url && f.paperless_token ? paperlessFirma(f) : null; },
   permissions: [
     { area: 'Euroflex', app: 'Aufträge', id: P.display, text: 'Aufträge anzeigen und drucken' },
     { area: 'Euroflex', app: 'Aufträge', id: P.edit, text: 'Aufträge anlegen und ändern' },

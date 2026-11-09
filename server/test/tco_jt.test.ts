@@ -105,8 +105,8 @@ before(async () => {
   await migrate(activeModules(), () => {});
   app = await buildApp({ logger: false });
   await call('POST', '/api/setup', { orgName: 'TC Oberthal', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
-  await sql`update tco.verein set paperless_url = ${`http://127.0.0.1:${port}`}, paperless_token = 'geheim',
-                                  n8n_stunden_url = ${`http://127.0.0.1:${port}/webhook/TCO_N8N_STUNDEN`},
+  await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
+  await sql`update tco.verein set n8n_stunden_url = ${`http://127.0.0.1:${port}/webhook/TCO_N8N_STUNDEN`},
                                   n8n_ferien_url = ${`http://127.0.0.1:${port}/webhook/ferien-saarland`}, n8n_stunden_auth = 'Basic eDp5'`;
 });
 after(async () => {

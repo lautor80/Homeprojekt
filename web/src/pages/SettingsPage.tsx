@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Input, MessageStrip, Panel } from '@ui5/webcomponents-react';
+import { Button, Input, MessageStrip, Panel, Text } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
@@ -13,7 +13,7 @@ import { AblageFlaeche } from '../ablage';
 
 type S = Record<string, string | null>;
 /** auf dieser Seite gepflegte Einstellungen – je Schlüssel gesperrt (andere Einstellungen bleiben frei) */
-const SCHLUESSEL = ['org.name', 'org.logo', 'org.color', 'org.address', 'integration.paperless.url', 'integration.n8n.url', 'portal.url'] as const;
+const SCHLUESSEL = ['org.name', 'org.logo', 'org.color', 'org.address', 'portal.url'] as const;
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -54,8 +54,6 @@ export function SettingsPage() {
         'org.logo': s['org.logo'] || null,
         'org.color': s['org.color'] || undefined,
         'org.address': s['org.address'] ?? '',
-        'integration.paperless.url': s['integration.paperless.url'] ?? '',
-        'integration.n8n.url': s['integration.n8n.url'] ?? '',
         'portal.url': s['portal.url'] ?? '',
       };
       const saved = await api.put<S>('/api/settings', body);
@@ -101,12 +99,13 @@ export function SettingsPage() {
           </FieldBox>
         </FormGrid>
       </Panel>
-      <Panel headerText="Integrationen" fixed style={{ marginTop: '1rem' }}>
+      <Panel headerText="Portal" fixed style={{ marginTop: '1rem' }}>
         <FormGrid>
-          <TextField label="Paperless-URL" value={s['integration.paperless.url']} onChange={set('integration.paperless.url')} placeholder="https://paperless.example.org" />
-          <TextField label="n8n-URL" value={s['integration.n8n.url']} onChange={set('integration.n8n.url')} placeholder="https://n8n.example.org" />
           <TextField label="Portal-Adresse (für Links in E-Mails)" value={s['portal.url']} onChange={set('portal.url')} placeholder="https://portal.tc-oberthal.de" />
         </FormGrid>
+        <Text style={{ display: 'block', marginTop: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
+          Angeschlossene Systeme (Paperless, n8n) werden unter Administration → Anbindungen gepflegt.
+        </Text>
       </Panel>
     </AppPage>
   );

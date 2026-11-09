@@ -154,13 +154,16 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   let r = await call('GET', '/api/m/tco/verein');
   const v = r.body;
   r = await call('PUT', '/api/m/tco/verein', {
-    ...v, paperless_url: `http://127.0.0.1:${port}`, paperless_token: 'geheim',
-    n8n_mail_url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, n8n_mail_key: 'k', n8n_ep3_url: `http://127.0.0.1:${port}/webhook/ep3`,
+    ...v, n8n_mail_url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, n8n_mail_key: 'k', n8n_ep3_url: `http://127.0.0.1:${port}/webhook/ep3`,
   });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Paperless zentral (Administration → Anbindungen): sichern, maskiert zurück, prüfen
+  r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.geheimnis, '********');
   r = await call('GET', '/api/m/tco/verein');
   assert.equal(r.body.paperless_token, '********');
-  r = await call('POST', '/api/m/tco/verein/paperless-test');
+  r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
   assert.equal(r.body.ok, true, r.body.text);
 
   // ---- SAP-Übernahme: Mitglieder (generischer Import)

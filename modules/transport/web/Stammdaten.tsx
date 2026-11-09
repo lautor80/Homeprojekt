@@ -15,7 +15,7 @@ interface Firma {
   name: string; strasse: string; plz: string; ort: string; land: string; ustid: string; steuernr: string; kontakt: string;
   telefon: string; fax: string; email: string; bank: string; iban: string; bic: string;
   zahlungsziel_tage: number; ust_satz: number; rechnung_startnr: number; logo: string | null;
-  paperless_url: string; paperless_token: string;
+  paperless?: boolean;
 }
 interface Produkt { prod_key: string; text: string; preis: number; gueltig_bis: string | null; sort: number }
 interface MailText { art: 'T' | 'L' | 'R'; sprache: 'D' | 'E'; text: string }
@@ -97,12 +97,9 @@ function FirmaTab() {
           </FieldBox>
         </FormGrid>
       </Panel>
-      <Panel headerText="Paperless-ngx" fixed style={{ marginTop: '1rem' }}>
-        <FormGrid>
-          <TextField label="URL" value={f.paperless_url} onChange={s('paperless_url')} placeholder="http://192.168.178.105:8010" />
-          <TextField label="API-Token (Paperless → Profil)" type="Password" value={f.paperless_token} onChange={s('paperless_token')} />
-        </FormGrid>
-      </Panel>
+      <MessageStrip design="Information" hideCloseButton style={{ marginTop: '1rem' }}>
+        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Adresse und API-Token werden zentral unter Administration → Anbindungen gepflegt.
+      </MessageStrip>
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
         <Button design="Emphasized" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>

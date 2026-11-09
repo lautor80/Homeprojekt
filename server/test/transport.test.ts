@@ -46,7 +46,7 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
     name: 'Benjamin Hartyniuk Euroflex', strasse: 'Schwimmbadstraße 28', plz: '66649', ort: 'Oberthal', land: 'DE',
     ustid: 'DE814480003', kontakt: 'Benjamin Hartyniuk', telefon: '+49 6854 909711', fax: '+49 6854 909713',
     email: 'info@euroflex.de', bank: 'Kreissparkasse St. Wendel', iban: 'DE85592510200000015644', bic: 'SALADE51WND',
-    zahlungsziel_tage: 14, ust_satz: 19, rechnung_startnr: 5001, paperless_url: '', paperless_token: '',
+    zahlungsziel_tage: 14, ust_satz: 19, rechnung_startnr: 5001,
     logo: process.env.TEST_LOGO ? `data:image/jpeg;base64,${fs.readFileSync(process.env.TEST_LOGO).toString('base64')}` : null,
   })).status, 200);
 

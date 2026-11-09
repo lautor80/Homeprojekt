@@ -1,4 +1,4 @@
-import { paperless, plAktiv, type Verein } from './verein.js';
+import type { Verein } from './verein.js';
 import { heute } from './format.js';
 import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, webhookFehler } from './kommunikation.js';
 
@@ -8,7 +8,8 @@ import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, webhookFehler } from './kommunik
  * ungültigen Aufruf geprüft (Anmeldung ja, Mail nein), damit keine E-Mail entsteht.
  */
 
-export const ENDPUNKTE = ['paperless', 'mail', 'ep3', 'stunden', 'ferien'] as const;
+/** Paperless wird zentral geprüft (Administration → Anbindungen) */
+export const ENDPUNKTE = ['mail', 'ep3', 'stunden', 'ferien'] as const;
 export type Endpunkt = (typeof ENDPUNKTE)[number];
 export interface TestErgebnis { ok: boolean; text: string; dauer_ms: number }
 
@@ -30,13 +31,6 @@ function httpFehler(status: number, text: string, mitAnmeldung: boolean): string
 
 async function pruefen(v: Verein, e: Endpunkt): Promise<{ ok: boolean; text: string }> {
   switch (e) {
-    case 'paperless': {
-      if (!plAktiv(v)) return { ok: false, text: 'URL und API-Token fehlen.' };
-      const pl = paperless(v);
-      const url = await pl.baseUrl();
-      const k = await pl.korrespondenten();
-      return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten).` };
-    }
     case 'mail': {
       if (!v.n8n_mail_url) return { ok: false, text: 'Webhook-URL fehlt.' };
       // nur anklopfen: n8n antwortet auf GET bei einem POST-Webhook mit „not registered for GET requests“

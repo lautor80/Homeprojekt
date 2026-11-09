@@ -1,4 +1,5 @@
 import { sql, type Tx } from '../../../server/src/db.js';
+import { paperlessZugang } from '../../../server/src/lib/verbindungen.js';
 import { BusinessError } from '../../../server/src/errors.js';
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,7 @@ export interface Firma {
   ust_satz: number;
   rechnung_startnr: number;
   logo: string | null;
+  /** aus core.verbindungen („paperless“), nur lesend */
   paperless_url: string;
   paperless_token: string;
 }
@@ -208,9 +210,14 @@ export function rechnungsbetrag(a: Pick<Auftrag, 'frachtpreis_ek' | 'steuerrelev
 // ---------------------------------------------------------------------------
 // Lesen
 // ---------------------------------------------------------------------------
+/** Firmendaten; Paperless-Zugang kommt aus der zentralen Anbindung (Administration → Anbindungen) */
 export async function firmaLesen(db: Db = DB): Promise<Firma> {
   const [f] = await db`select * from transport.firma where id = 1`;
-  return { ...(f as unknown as Firma), zahlungsziel_tage: Number(f.zahlungsziel_tage), ust_satz: Number(f.ust_satz), rechnung_startnr: Number(f.rechnung_startnr) };
+  const pl = await paperlessZugang(db);
+  return {
+    ...(f as unknown as Firma), zahlungsziel_tage: Number(f.zahlungsziel_tage), ust_satz: Number(f.ust_satz), rechnung_startnr: Number(f.rechnung_startnr),
+    paperless_url: pl.url ?? '', paperless_token: pl.token ?? '',
+  };
 }
 
 export async function adresseLesen(adrnr: number | null, db: Db = DB): Promise<Adresse | null> {

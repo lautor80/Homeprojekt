@@ -26,8 +26,6 @@ const settingsSchema = z.object({
   'org.logo': z.string().max(400_000).regex(/^data:image\/(png|jpeg|svg\+xml);base64,/).nullable().optional(),
   'org.color': z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   'org.address': z.string().max(500).optional(),
-  'integration.paperless.url': z.string().url().or(z.literal('')).optional(),
-  'integration.n8n.url': z.string().url().or(z.literal('')).optional(),
   /** öffentliche Adresse des Portals für Links in E-Mails (Kennwort festlegen, Registrierung bestätigen) */
   'portal.url': z.string().url().regex(/^https?:\/\//).or(z.literal('')).optional(),
 });

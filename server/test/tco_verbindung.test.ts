@@ -89,7 +89,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   r = await call('PUT', '/api/m/tco/verein', { ...g, n8n_stunden_user: 'anderer' });
   assert.equal(r.status, 400);
 
-  // Ferien mit gespeicherter Anmeldung, Mailversand nur anklopfen, Paperless fehlt, EP3 nicht erreichbar
+  // Ferien mit gespeicherter Anmeldung, Mailversand nur anklopfen, Paperless (zentral) fehlt, EP3 nicht erreichbar
   r = await call('POST', '/api/m/tco/verein/test/ferien', g);
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /1 Ferientage/);
@@ -109,8 +109,9 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   assert.match(r.body.text, /Schlüssel akzeptiert/);
   r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_url: `${B}/gibtsnicht` });
   assert.match(r.body.text, /Webhook nicht gefunden/);
-  r = await call('POST', '/api/m/tco/verein/test/paperless', g);
+  r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
   assert.equal(r.body.ok, false);
+  assert.match(r.body.text, /fehlen/);
   r = await call('POST', '/api/m/tco/verein/test/ep3', { ...g, n8n_ep3_url: 'http://127.0.0.1:1/webhook/ep3' });
   assert.equal(r.body.ok, false);
   assert.match(r.body.text, /abgelehnt|erreichbar/);

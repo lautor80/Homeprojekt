@@ -1,5 +1,5 @@
 import type { KontextDef } from './lib/paperless-mapping.js';
-import type { Paperless } from './lib/paperless.js';
+import type { VerbindungDef } from './lib/verbindungen.js';
 import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
@@ -68,6 +68,9 @@ export interface ServerModule {
    * Wirft bei Fehlern.
    */
   mailer?: (m: { an: string; betreff: string; text: string; objekt: string; anwendung: string }) => Promise<void>;
-  /** Paperless-Client des Moduls (für Auswahllisten in der Zuordnungspflege); null = nicht eingerichtet */
-  paperlessClient?: () => Promise<Paperless | null>;
+  /**
+   * Angeschlossene Systeme des Moduls (Administration → Anbindungen): Adresse und Zugangsdaten werden zentral
+   * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.
+   */
+  verbindungen?: VerbindungDef[];
 }
