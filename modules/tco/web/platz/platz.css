@@ -38,26 +38,19 @@
   position: absolute; left: 0; right: 0; transform: translateY(-50%);
   font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); text-align: center;
 }
-/* Preisklassen im Tagesverlauf: die Zeitspalte ist je Preisklasse farbig hinterlegt, mit kräftigem Rand links und rechts
-   der Uhrzeit (günstig → teuer). --zf = Farbe der Klasse */
+/* Preisklassen im Tagesverlauf: die Zeitspalte ist je Preis farbig hinterlegt, mit kräftigem Rand links und rechts der Uhrzeit.
+   Farben wie im Wochenplan der Hallenpreise: Klassen portal-hp__f0 … f4 (--hf-bg Fläche, --hf Rand) aus hallenpreise.css */
 .portal-pb__zone {
-  position: absolute; left: 0; right: 0; box-sizing: border-box;
-  background: color-mix(in srgb, var(--zf) 24%, var(--sapGroup_ContentBackground, #fff));
-  border-left: 0.375rem solid var(--zf); border-right: 0.375rem solid var(--zf);
+  position: absolute; left: 0; right: 0; box-sizing: border-box; background: var(--hf-bg);
+  border-left: 0.375rem solid var(--hf); border-right: 0.375rem solid var(--hf);
   border-bottom: 2px solid var(--sapGroup_ContentBackground, #fff);
 }
 .portal-pb__zeiten--preise .portal-pb__stunde { color: var(--sapTextColor, #1d2d3e); font-weight: 600; }
 .portal-pb__zonenpunkt {
-  display: inline-block; width: 1.25rem; height: 0.875rem; border-radius: 0.125rem; box-sizing: border-box;
-  background: color-mix(in srgb, var(--zf) 24%, var(--sapGroup_ContentBackground, #fff));
-  border-left: 0.3125rem solid var(--zf); border-right: 0.3125rem solid var(--zf);
+  display: inline-block; width: 1.25rem; height: 0.875rem; border-radius: 0.125rem; box-sizing: border-box; background: var(--hf-bg);
+  border-left: 0.3125rem solid var(--hf); border-right: 0.3125rem solid var(--hf);
 }
-.portal-pb__zone--0 { --zf: var(--sapIndicationColor_4, #256f3a); }
-.portal-pb__zone--1 { --zf: var(--sapIndicationColor_3, #e76500); }
-.portal-pb__zone--2 { --zf: var(--sapIndicationColor_1, #840606); }
-.portal-pb__zone--3 { --zf: var(--sapIndicationColor_5, #0070f2); }
-.portal-pb__zone--4 { --zf: var(--sapIndicationColor_7, #a100c2); }
-.portal-pb__legende--preise { margin-top: -0.25rem; }
+.portal-pb__legende--preise { margin-top: -0.25rem; align-items: center; }
 .portal-pb__spalte { position: relative; border-left: 1px solid var(--sapList_BorderColor); min-width: 0; }
 .portal-pb__linie { position: absolute; left: 0; right: 0; border-top: 1px solid var(--sapList_BorderColor); opacity: 0.6; }
 .portal-pb__zu {
