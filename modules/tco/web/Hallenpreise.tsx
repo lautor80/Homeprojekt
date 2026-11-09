@@ -10,10 +10,8 @@ import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { H, dat, eur } from './util';
+import { Wochenplan, type Fenster, type Gruppe, type Produkt } from './HallenpreiseWochenplan';
 
-interface Produkt { prod_key: string; valid_from: string; valid_to?: string; text: string; preis: number | string; typ: string | null; erloeskonto?: string | null }
-interface Fenster { prod_key: string; valid_from: string; tag: string; zeit_von: string; zeit_bis: string }
-interface Gruppe { gruppe: string; text: string; keys: string[] }
 interface Befund { art: 'Fehler' | 'Hinweis'; text: string }
 
 const TAGE = ['MONTAG', 'DIENSTAG', 'MITTWOCH', 'DONNERSTAG', 'FREITAG', 'SAMSTAG', 'SONNTAG'];
@@ -51,6 +49,8 @@ export function Hallenpreise() {
   const [busy, setBusy] = useState(false);
   const [stichtag, setStichtag] = useState(new Date().toISOString().slice(0, 10));
   const [saison, setSaison] = useState<'WINTER' | 'SOMMER'>('WINTER');
+  // Wochenplan (sieben Tage nebeneinander, Preise als Blöcke) oder die Tabellen Produkte / Zeitfenster / Preismatrix
+  const [ansicht, setAnsicht] = useState<'PLAN' | 'TABELLEN'>('PLAN');
 
   const laden = () => api.get<{ produkte: Produkt[]; fenster: Fenster[]; gruppen: Gruppe[]; konten?: { konto: string; name: string }[] }>(`${H}/preise`).then((r) => {
     setProdukte(r.produkte); setFenster(r.fenster); setGruppen(r.gruppen); setKonten(r.konten ?? []); setBefunde(null); setGeprueft(null);
@@ -126,7 +126,7 @@ export function Hallenpreise() {
 
   const fehler = befunde?.filter((b) => b.art === 'Fehler') ?? [];
   return (
-    <AppPage title="Hallenpreise" subtitle="Produkte mit Stundenpreis und Zeitfenstern je Wochentag (Preismatrix)"
+    <AppPage title="Hallenpreise" subtitle="Stundenpreise je Preisgruppe, Zeitraum und Wochentag – als Wochenplan oder in Tabellen"
              actions={<>
                {edit && <Button icon="validate" onClick={pruefen} disabled={busy}>Prüfen</Button>}
                {edit && <Button design="Emphasized" icon="save" disabled={busy || geprueft !== stand} onClick={speichern}>Speichern</Button>}
@@ -146,6 +146,15 @@ export function Hallenpreise() {
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Eingaben geändert – vor dem Speichern erneut prüfen</MessageStrip>
       )}
 
+      <SegmentedButton style={{ marginBottom: '0.75rem' }} onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.a as typeof ansicht)}>
+        <SegmentedButtonItem data-a="PLAN" icon="appointment-2" selected={ansicht === 'PLAN'}>Wochenplan</SegmentedButtonItem>
+        <SegmentedButtonItem data-a="TABELLEN" icon="table-view" selected={ansicht === 'TABELLEN'}>Tabellen</SegmentedButtonItem>
+      </SegmentedButton>
+      {ansicht === 'PLAN' && (
+        <Wochenplan produkte={produkte} fenster={fenster} gruppen={gruppen} edit={edit} setProdukte={setProdukte} setFenster={setFenster}
+                    geaendert={geaendert} onFehler={setError} />
+      )}
+      {ansicht === 'TABELLEN' && <>
       <Panel fixed header={
         <Toolbar design="Transparent" style={{ width: '100%' }}>
           <Title level="H5">Produkte ({produkte.length})</Title>
@@ -274,6 +283,7 @@ export function Hallenpreise() {
       <FlexBox style={{ marginTop: '0.5rem' }}><Text style={{ color: 'var(--sapContent_LabelColor)' }}>
         Gültig-bis wird automatisch abgeleitet (Vortag des nächsten Zeitraums). Angrenzende Fenster eines Produkts werden beim Speichern zusammengefasst.
       </Text></FlexBox>
+      </>}
     </AppPage>
   );
 }
