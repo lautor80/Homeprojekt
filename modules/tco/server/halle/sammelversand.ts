@@ -51,14 +51,28 @@ export async function versandVorschlag(db: Db): Promise<VersandVorschlag[]> {
   return out.sort((a, b) => a.name.localeCompare(b.name, 'de') || a.rgnr.localeCompare(b.rgnr));
 }
 
+/** Platzhalter im Text der Sammel-E-Mail – je Empfänger ersetzt */
+export const MAIL_PLATZHALTER = { vorname: '{Vorname}', nummer: '{Rechnungsnummer}' } as const;
+
+/** Standardtext der Sammel-E-Mail als Vorlage mit Platzhaltern */
+export const sammelMailVorlage = (v: Verein) => mailTexte(v, MAIL_PLATZHALTER.vorname, [MAIL_PLATZHALTER.nummer]);
+
+const fuellen = (s: string, vorname: string, rgnrs: string[]) =>
+  s.replaceAll(MAIL_PLATZHALTER.vorname, vorname || 'zusammen').replaceAll(MAIL_PLATZHALTER.nummer, rgnrs.join(', '));
+const gleich = (a: string, b: string) => a.replace(/\r\n/g, '\n').trim() === b.replace(/\r\n/g, '\n').trim();
+
 export interface VersandZeile { quelle: string; ok: boolean; text: string; rgnrs: string[] }
 
 /**
  * Freigegebene Rechnungen drucken und per E-Mail versenden – je Empfänger eine E-Mail mit allen
  * seinen gewählten Rechnungen. Fehler eines Empfängers halten die übrigen nicht auf; das Ergebnis
- * ist ein Protokoll je Empfänger.
+ * ist ein Protokoll je Empfänger. Betreff und Text kommen als Vorlage mit Platzhaltern aus dem Dialog; unverändert
+ * (oder ohne Angabe) gilt der Standardtext mit Einzahl/Mehrzahl je nach Anzahl der Rechnungen.
  */
-export async function sammelversand(db: Db, v: Verein, w: Schreiber, d: { rgnrs: string[]; benutzer: string }): Promise<VersandZeile[]> {
+export async function sammelversand(db: Db, v: Verein, w: Schreiber, d: { rgnrs: string[]; benutzer: string; betreff?: string; text?: string }): Promise<VersandZeile[]> {
+  const vorlage = sammelMailVorlage(v);
+  const eigen = { betreff: d.betreff ?? vorlage.betreff, text: d.text ?? vorlage.text };
+  const geaendert = !gleich(eigen.betreff, vorlage.betreff) || !gleich(eigen.text, vorlage.text);
   const gewaehlt = [...new Set(d.rgnrs)];
   const vorschlag = new Map((await versandVorschlag(db)).map((x) => [x.rgnr, x]));
   const zeilen: VersandZeile[] = [];
@@ -83,7 +97,9 @@ export async function sammelversand(db: Db, v: Verein, w: Schreiber, d: { rgnrs:
       for (const rgnr of rgnrs) {
         if (!(await positionenLesen(db, rgnr)).length) throw new Error(`Rechnung ${rgnr} hat keine Positionen`);
       }
-      const { betreff, text } = mailTexte(v, vorname, rgnrs);
+      const { betreff, text } = geaendert
+        ? { betreff: fuellen(eigen.betreff, vorname, rgnrs), text: fuellen(eigen.text, vorname, rgnrs) }
+        : mailTexte(v, vorname, rgnrs);
       const r = await mailVersand(db, v, w, { rgnrs, an: email, betreff, text, neudruck: true, entwurf: false, benutzer: d.benutzer });
       zeilen.push({ quelle, ok: r.status === 'gesendet', text: [r.text, ...r.warnungen].join(' · '), rgnrs });
     } catch (e) {

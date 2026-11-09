@@ -25,22 +25,54 @@ interface Produkt { prod_key: string; valid_from: string; valid_to: string; text
 /** Gutschrift-Produkt: Einzelpreis und Konto frei, Betrag mindert die Rechnung */
 const istGutschrift = (p?: Produkt) => /gutschrift/i.test(p?.text ?? '');
 
-/** Text einer manuellen Position ändern */
-export function PositionTextDialog({ rgnr, position, onClose, onSaved }: { rgnr: string | null; position: Position | null; onClose: () => void; onSaved: (t: string) => void }) {
+/** Manuelle Position (auch Gutschrift) ändern: Text, Menge, Einzelpreis und Konto */
+export function PositionAendernDialog({ rgnr, position, onClose, onSaved }: { rgnr: string | null; position: Position | null; onClose: () => void; onSaved: (t: string) => void }) {
   const [text, setText] = useState('');
+  const [menge, setMenge] = useState('1');
+  const [preis, setPreis] = useState('');
+  const [konto, setKonto] = useState('');
+  const [produkte, setProdukte] = useState<Produkt[]>([]);
+  const [konten, setKonten] = useState<{ konto: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const p = produkte.filter((x) => x.prod_key === position?.prod_key).sort((a, b) => b.valid_to.localeCompare(a.valid_to))[0];
+  // Gutschrift: am Produkttext erkennbar; solange die Produkte laden, am negativen Preis
+  const gutschrift = p ? istGutschrift(p) : (position?.ep ?? 0) < 0 && position?.prod_key !== '093';
+  const komma = (n: number) => String(n).replace('.', ',');
+  const zahl = (v: string) => Number(v.trim().replace(',', '.'));
+
   useEffect(() => {
-    setText(position?.beschreibung ?? '');
+    if (!position) return;
+    setText(position.beschreibung ?? '');
+    setMenge(komma(position.anzahl));
+    setPreis(komma(position.ep));
+    setKonto(position.erloeskonto ?? '');
     setError(null);
+    api.get<{ produkte: Produkt[]; konten: { konto: string; name: string }[] }>(`${H}/preise`).then((r) => {
+      setProdukte(r.produkte);
+      setKonten(r.konten ?? []);
+    }).catch(() => undefined);
   }, [position]);
+
+  // Gutschrift: Einzelpreis ohne Minus anzeigen und erfassen
+  useEffect(() => {
+    if (position && gutschrift) setPreis((v) => v.replace(/^\s*-/, ''));
+  }, [position, gutschrift]);
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.put<{ text: string }>(`${H}/rechnungen/${encodeURIComponent(rgnr!)}/positionen/${position!.rgpos}`, { beschreibung: text });
+      // nur geänderte Felder senden – der angezeigte Text kann aus dem Produkt abgeleitet sein
+      const pos = position!;
+      const preisAlt = gutschrift ? Math.abs(pos.ep) : pos.ep;
+      const r = await api.put<{ text: string }>(`${H}/rechnungen/${encodeURIComponent(rgnr!)}/positionen/${pos.rgpos}`, {
+        ...(text.trim() !== (pos.beschreibung ?? '').trim() ? { beschreibung: text } : {}),
+        ...(zahl(menge) !== pos.anzahl ? { menge } : {}),
+        ...(zahl(preis) !== preisAlt ? { preis } : {}),
+        ...((konto || null) !== (pos.erloeskonto ?? null) ? { erloeskonto: konto || null } : {}),
+      });
       onSaved(r.text);
     } catch (e) {
       setError((e as Error).message);
@@ -49,8 +81,13 @@ export function PositionTextDialog({ rgnr, position, onClose, onSaved }: { rgnr:
     }
   }
 
+  const betrag = zahl(menge) * zahl(preis);
+  const standard = p?.erloeskonto || (position?.erloeskonto ? '' : position?.konto) || '';
+  // gespeichertes Konto bleibt wählbar, auch wenn es nicht (mehr) unter den Erlöskonten steht
+  const auswahl = konto && !konten.some((k) => k.konto === konto) ? [{ konto, name: position?.konto_name ?? '' }, ...konten] : konten;
+
   return portal(
-    <Dialog open={!!position && !!rgnr} headerText={`Text der Position ${position?.rgpos ?? ''} ändern`} onClose={onClose} style={{ width: 'min(30rem, 95vw)' }}
+    <Dialog open={!!position && !!rgnr} headerText={`Position ${position?.rgpos ?? ''} ändern`} onClose={onClose} style={{ width: 'min(34rem, 95vw)' }}
             footer={<Bar endContent={<>
               <Button design="Emphasized" loading={busy} onClick={save}>Übernehmen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
@@ -59,6 +96,22 @@ export function PositionTextDialog({ rgnr, position, onClose, onSaved }: { rgnr:
       <Feld label="Beschreibung (erscheint auf der Rechnung)">
         <Input value={text} maxlength={40} onInput={(e) => setText(e.target.value)} style={{ width: '100%' }} />
       </Feld>
+      <FlexBox style={{ gap: '1rem' }}>
+        <Feld label="Menge" required><Input value={menge} onInput={(e) => setMenge(e.target.value)} style={{ width: '8rem' }} /></Feld>
+        <Feld label={gutschrift ? 'Einzelpreis der Gutschrift (EUR)' : 'Einzelpreis (EUR)'} required>
+          <Input value={preis} onInput={(e) => setPreis(e.target.value)} style={{ width: '10rem' }} />
+        </Feld>
+        <Feld label="Betrag"><Text style={{ lineHeight: '2.25rem' }}>{Number.isFinite(betrag) ? eur(gutschrift ? -Math.abs(betrag) : betrag) : '–'}</Text></Feld>
+      </FlexBox>
+      <Feld label="Konto (Erlöskonto)">
+        <Select onChange={(e) => setKonto((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+          <Option data-k="" selected={!konto}>Standard des Produkts{standard ? ` (${standard})` : ''}</Option>
+          {auswahl.map((k) => <Option key={k.konto} data-k={k.konto} selected={konto === k.konto}>{k.konto} {k.name}</Option>)}
+        </Select>
+      </Feld>
+      {gutschrift && (
+        <MessageStrip hideCloseButton>Gutschrift: Einzelpreis ohne Minus erfassen – der Betrag mindert die Rechnung.</MessageStrip>
+      )}
     </Dialog>,
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, Text,
+  Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { H, dat, eur } from './util';
@@ -14,8 +14,9 @@ import './halle.css';
  */
 interface Vorschlag {
   rgnr: string; kunde: string; name: string; adrnr: string | null; betrag: number; positionen: number; angelegt_am: string | null;
-  email: string; wiedereroeffnet: boolean; hinweis: string | null;
+  email: string; vorname: string; wiedereroeffnet: boolean; hinweis: string | null;
 }
+interface Vorlage { betreff: string; text: string; platzhalter: string[] }
 interface Zeile { quelle: string; ok: boolean; text: string; rgnrs: string[] }
 type Phase = 'auswahl' | 'freigabe' | 'versand' | 'protokoll';
 
@@ -31,6 +32,9 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
   const [fortschritt, setFortschritt] = useState({ fertig: 0, gesamt: 0, name: '' });
   const [protokoll, setProtokoll] = useState<Zeile[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [vorlage, setVorlage] = useState<Vorlage | null>(null);
+  const [betreff, setBetreff] = useState('');
+  const [mailtext, setMailtext] = useState('');
 
   /** Vorschlag: alle versendbaren Rechnungen ab der Wertgrenze */
   const vorschlagen = (d: Vorschlag[], ab: string) => {
@@ -41,7 +45,9 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
   useEffect(() => {
     if (!open) return;
     setDaten(null); setError(null); setGrenze(''); setPhase('auswahl'); setProtokoll([]);
+    setVorlage(null); setBetreff(''); setMailtext('');
     api.get<Vorschlag[]>(`${H}/sammelversand`).then((d) => { setDaten(d); vorschlagen(d, ''); }).catch((e) => setError(e.message));
+    api.get<Vorlage>(`${H}/sammelversand/mailtext`).then((t) => { setVorlage(t); setBetreff(t.betreff); setMailtext(t.text); }).catch((e) => setError(e.message));
   }, [open]);
 
   const liste = daten ?? [];
@@ -72,7 +78,7 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
       setFortschritt({ fertig, gesamt: gruppen.size, name: g[0].name });
       const rgnrs = g.map((x) => x.rgnr);
       try {
-        const r = await api.post<{ zeilen: Zeile[] }>(`${H}/sammelversand`, { rgnrs });
+        const r = await api.post<{ zeilen: Zeile[] }>(`${H}/sammelversand`, { rgnrs, betreff, text: mailtext });
         zeilen.push(...r.zeilen);
       } catch (e) {
         zeilen.push({ quelle: `${g[0].name} (${rgnrs.join(', ')})`, ok: false, text: (e as Error).message, rgnrs });
@@ -82,6 +88,16 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
     setProtokoll(zeilen);
     setPhase('protokoll');
   }
+
+  // Text der Sammel-E-Mail: Vorlage mit Platzhaltern, Vorschau für den ersten Empfänger
+  const textGeaendert = !!vorlage && (betreff.trim() !== vorlage.betreff.trim() || mailtext.trim() !== vorlage.text.trim());
+  const textFehlt = !betreff.trim() || !mailtext.trim();
+  const erster = gewaehlt[0];
+  const fuellen = (s: string) => {
+    if (!erster) return s;
+    const nummern = gewaehlt.filter((x) => empfaenger(x) === empfaenger(erster)).map((x) => x.rgnr).join(', ');
+    return s.split('{Vorname}').join(erster.vorname || 'zusammen').split('{Rechnungsnummer}').join(nummern);
+  };
 
   const okZeilen = protokoll.filter((z) => z.ok);
   const versendet = okZeilen.reduce((s, z) => s + z.rgnrs.length, 0);
@@ -99,7 +115,7 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
          </>} />
   ) : phase === 'freigabe' ? (
     <Bar endContent={<>
-      <Button design="Emphasized" icon="accept" onClick={versenden}>Freigeben, drucken und versenden</Button>
+      <Button design="Emphasized" icon="accept" disabled={!vorlage || textFehlt} onClick={versenden}>Freigeben, drucken und versenden</Button>
       <Button onClick={() => setPhase('auswahl')}>Zurück</Button>
     </>} />
   ) : phase === 'protokoll' ? (
@@ -210,6 +226,33 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="portal-sv__mail">
+            <div className="portal-sv__mail-kopf">
+              <Label>Text der E-Mail an die Empfänger</Label>
+              {textGeaendert && <ObjectStatus state="Information">geändert</ObjectStatus>}
+              <Button design="Transparent" icon="reset" disabled={!textGeaendert} tooltip="Standardtext wiederherstellen"
+                      onClick={() => { if (vorlage) { setBetreff(vorlage.betreff); setMailtext(vorlage.text); } }}>Standardtext</Button>
+            </div>
+            {!vorlage && !error && <BusyIndicator active />}
+            {vorlage && <>
+              <Label for="sv-betreff" required showColon>Betreff</Label>
+              <Input id="sv-betreff" value={betreff} maxlength={200} valueState={betreff.trim() ? 'None' : 'Negative'} onInput={(e) => setBetreff(e.target.value)} style={{ width: '100%' }} />
+              <Label for="sv-text" required showColon>Nachricht</Label>
+              <TextArea id="sv-text" rows={9} value={mailtext} maxlength={5000} valueState={mailtext.trim() ? 'None' : 'Negative'} onInput={(e) => setMailtext(e.target.value)} />
+              <Text className="portal-muted portal-small">
+                Platzhalter: <b>{'{Vorname}'}</b> wird je Empfänger durch den Vornamen ersetzt, <b>{'{Rechnungsnummer}'}</b> durch die Rechnungsnummer(n).
+                Die Rechnungen hängen als PDF an.{textGeaendert ? '' : ' Unverändert passt der Standardtext die Formulierung an, wenn ein Empfänger mehrere Rechnungen erhält.'}
+              </Text>
+              {erster && (
+                <div className="portal-sv__vorschau">
+                  <Label>Vorschau für {erster.name}</Label>
+                  <Text className="portal-sv__vorschau-betreff">{fuellen(betreff)}</Text>
+                  <Text className="portal-sv__vorschau-text">{fuellen(mailtext)}</Text>
+                </div>
+              )}
+            </>}
           </div>
         </>}
 
