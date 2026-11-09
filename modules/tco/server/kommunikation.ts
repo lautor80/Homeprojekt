@@ -1,6 +1,7 @@
 import { aktuellerBenutzer } from '../../../server/src/kontext.js';
 import type { Db, Verein } from './verein.js';
 import { condense } from './format.js';
+import { BusinessError } from '../../../server/src/errors.js';
 
 /**
  * Port von ZCL_TCO_KOMMUNIKATION: Kontaktdaten je Adressnummer, Mobilnummer,
@@ -124,6 +125,21 @@ export function absenderFuer(v: Pick<Verein, 'mail_absender'>, anwendung: string
  * E-Mail über den generischen n8n-Workflow „TCO Mailversand“ (Webhook tco-mailversand, docs/n8n/tco-mailversand.json).
  * Beliebig viele Anhänge; Absender/Antwortadresse je Anwendung aus den Stammdaten (n8n prüft gegen seine Erlaubnisliste).
  */
+/** Klartext für eine Ablehnung des Mail-Webhooks durch n8n (Header-Auth: fehlender und falscher Schlüssel ergeben beide 403) */
+export function webhookFehler(status: number, text: string, mitSchluessel: boolean): string | null {
+  if (/No authentication data defined/i.test(text)) {
+    return 'Im n8n-Workflow ist am Webhook-Knoten keine Zugangsdatei ausgewählt (nach dem Import „Header Auth account“ neu wählen und speichern).';
+  }
+  if (status === 401 || status === 403) {
+    return mitSchluessel
+      ? 'n8n hat den Webhook-Schlüssel abgelehnt: Im n8n-Credential „Header Auth account“ muss der Name „X-TCO-Key“ lauten und der Wert '
+        + 'exakt dem Webhook-Schlüssel im Portal entsprechen (Groß-/Kleinschreibung, keine Leerzeichen).'
+      : 'n8n verlangt einen Webhook-Schlüssel – im Portal ist keiner hinterlegt (Stammdaten → Anbindungen → TCO Mailversand).';
+  }
+  if (status === 404) return 'n8n-Workflow "TCO Mailversand" ist nicht aktiv oder die URL stimmt nicht (Webhook 404)';
+  return null;
+}
+
 /**
  * Wie eine fehlgeschlagene Mail erneut gesendet wird (Mailprotokoll → „Erneut senden“):
  * ohne Angabe wird die Nachricht samt Anhängen gespeichert und unverändert wiederholt.
@@ -195,7 +211,7 @@ export async function mailSenden(v: Verein, m: {
   const proto = { anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, benutzer: m.benutzer };
   if (!v.n8n_mail_url) {
     await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)', nachricht: wiederholDaten(m) });
-    throw new Error('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
+    throw new BusinessError('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
   }
   try {
     const r = await mailSendenIntern(v as Verein & { n8n_mail_url: string }, m);
@@ -210,7 +226,7 @@ export async function mailSenden(v: Verein, m: {
 
 async function mailSendenIntern(v: Verein & { n8n_mail_url: string }, m: Parameters<typeof mailSenden>[1]): Promise<MailErgebnis & { absender?: string; hinweis?: string }> {
   const groesse = m.anhaenge.reduce((s, a) => s + a.inhalt.length, 0);
-  if (groesse > 10 * 1024 * 1024) throw new Error(`Anhänge zu groß (${(groesse / 1024 / 1024).toFixed(1)} MB, höchstens 10 MB)`);
+  if (groesse > 10 * 1024 * 1024) throw new BusinessError(`Anhänge zu groß (${(groesse / 1024 / 1024).toFixed(1)} MB, höchstens 10 MB)`);
   // Absender: wer auf „Senden“ drückt (angemeldeter Benutzer mit E-Mail). Darf dessen Adresse in n8n nicht senden
   // (KONTEN), nimmt n8n den Ersatz je Anwendung aus den Stammdaten bzw. seinen Standard und setzt die Antwortadresse auf den Benutzer.
   const ich = m.persoenlich === false || m.absender ? null : aktuellerBenutzer();
@@ -238,17 +254,17 @@ async function mailSendenIntern(v: Verein & { n8n_mail_url: string }, m: Paramet
       signal: AbortSignal.timeout(90_000),
     });
   } catch (e) {
-    throw new Error(`n8n nicht erreichbar: ${(e as Error).message}`);
+    throw new BusinessError(`n8n nicht erreichbar: ${(e as Error).message}`, 502);
   }
-  if (res.status === 401 || res.status === 403) throw new Error('n8n hat den Webhook-Schlüssel abgelehnt');
-  if (res.status === 404) throw new Error('n8n-Workflow "TCO Mailversand" ist nicht aktiv (Webhook 404)');
   const t = await res.text();
+  const ablehnung = webhookFehler(res.status, t, !!v.n8n_mail_key);
+  if (ablehnung) throw new BusinessError(ablehnung, 502);
   let r: MailErgebnis;
   try {
     r = JSON.parse(t);
   } catch {
-    throw new Error(`Unerwartete Antwort von n8n (HTTP ${res.status})`);
+    throw new BusinessError(`Unerwartete Antwort von n8n (HTTP ${res.status}): ${t.replace(/\s+/g, ' ').slice(0, 150)}`, 502);
   }
-  if (!res.ok && !r.status) throw new Error(`Unerwartete Antwort von n8n (HTTP ${res.status})`);
+  if (!res.ok && !r.status) throw new BusinessError(`Unerwartete Antwort von n8n (HTTP ${res.status})`, 502);
   return { ...r, absender: abs?.email };
 }

@@ -396,10 +396,19 @@ test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
   const P = `${T}/verein/mailprotokoll`;
   // normale Mail: Inhalt wird beim Fehler gespeichert, aber nie ausgeliefert
   n8nAblehnen = true;
-  assert.ok((await admin('POST', `${T}/verein/testmail`, { an: 'wieder@example.org' })).status >= 400);
-  n8nAblehnen = false;
-  let r = await admin('GET', P);
+  let r = await admin('POST', `${T}/verein/testmail`, { an: 'wieder@example.org' });
+  assert.equal(r.status, 502, 'Klartext statt „Interner Fehler“');
+  assert.match(r.body.message, /X-TCO-Key/);
+  r = await admin('GET', P);
   let p = r.body[0];
+  // Wiederholung, solange n8n noch ablehnt: verständliche Meldung, Zeile bleibt wiederholbar
+  r = await admin('POST', `${P}/${p.id}/erneut`);
+  assert.equal(r.status, 502, JSON.stringify(r.body));
+  assert.match(r.body.message, /Webhook-Schlüssel abgelehnt/);
+  n8nAblehnen = false;
+  r = await admin('GET', P);
+  p = r.body.find((x: any) => x.id === p.id);
+  assert.equal(p.erneut_status, 'fehler');
   assert.deepEqual([p.an, p.status, p.erneut, p.erneut_neuer_link, p.nachricht], ['wieder@example.org', 'fehler', true, false, undefined]);
   assert.match(p.fehler, /Webhook-Schlüssel abgelehnt/);
   const vorher = mails.length;

@@ -34,7 +34,12 @@ const server = http.createServer((req, res) => {
     return res.end('User ID,User display name,Timestamp,TrainerIn,Datum,Stunden\n1,,x,Jan,2026-10-01,2\n2,,x,Jan,2026-10-02,1\n');
   }
   if (u.startsWith('/webhook/ferien')) return req.headers.authorization === BASIC ? send(200, { ferientage: [{ datum: '2026-10-12' }], feiertage: [] }) : send(403, {});
-  if (u.startsWith('/webhook/mail')) return req.method === 'GET' ? send(404, { code: 404, message: 'This webhook is not registered for GET requests. Did you mean to make a POST request?' }) : send(200, {});
+  if (u.startsWith('/webhook/mail')) {
+    if (req.method === 'GET') return send(404, { code: 404, message: 'This webhook is not registered for GET requests. Did you mean to make a POST request?' });
+    // Header-Auth wie n8n: falscher Schlüssel → 403; Prüfaufruf ohne Empfänger → 400 vom Workflow
+    if (req.headers['x-tco-key'] !== undefined && req.headers['x-tco-key'] !== 'richtig') return send(403, 'Authorization data is wrong!');
+    return send(400, { status: 'fehler', fehler: 'Kein Empfänger angegeben' });
+  }
   send(404, { code: 404, message: 'The requested webhook "x" is not registered.' });
 });
 
@@ -91,6 +96,12 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   r = await call('POST', '/api/m/tco/verein/test/mail', g);
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /Workflow aktiv/);
+  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: 'falsch' });
+  assert.equal(r.body.ok, false, r.body.text);
+  assert.match(r.body.text, /Schlüssel abgelehnt.*X-TCO-Key/);
+  r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_key: 'richtig' });
+  assert.equal(r.body.ok, true, r.body.text);
+  assert.match(r.body.text, /Schlüssel akzeptiert/);
   r = await call('POST', '/api/m/tco/verein/test/mail', { ...g, n8n_mail_url: `${B}/gibtsnicht` });
   assert.match(r.body.text, /Webhook nicht gefunden/);
   r = await call('POST', '/api/m/tco/verein/test/paperless', g);

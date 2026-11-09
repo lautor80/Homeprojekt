@@ -264,7 +264,7 @@ function VereinTab() {
           <TextField label="Passwort" type="Password" value={t('n8n_ep3_pw')} onChange={s('n8n_ep3_pw')} readonly={ro} />
         </Endpunkt>
         <Endpunkt titel="TCO Mailversand" endpunkt="mail" v={v} ro={ro}
-                  hinweis="Der Test prüft nur, ob der Workflow aktiv ist – es wird keine E-Mail versendet.">
+                  hinweis="Der Test prüft Erreichbarkeit, Workflow und Webhook-Schlüssel – es wird keine E-Mail versendet.">
           <TextField label="Webhook-URL" value={t('n8n_mail_url')} onChange={s('n8n_mail_url')} readonly={ro} />
           <TextField label="Webhook-Schlüssel (Header X-TCO-Key)" type="Password" value={t('n8n_mail_key')} onChange={s('n8n_mail_key')} readonly={ro} />
         </Endpunkt>
