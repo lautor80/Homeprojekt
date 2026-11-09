@@ -55,7 +55,7 @@ function Endpunkt({ titel, hinweis, endpunkt, v, ro, children }: { titel: string
   );
 }
 
-/** Absender je Anwendung für den n8n-Mailversand – n8n prüft die Adressen gegen seine Erlaubnisliste (ERLAUBT) */
+/** Absender je Anwendung für den n8n-Mailversand – n8n prüft die Adressen gegen seine Konten (KONTEN) */
 interface Absender { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }
 const ANWENDUNGEN = ['*', 'Benutzer', 'Registrierung', 'Mitgliedsantrag', 'Mitglieder', 'Hallenrechnung', 'Verzehr', 'Platzbuchung'];
 function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: boolean; onChange: (l: Absender[]) => void }) {
@@ -65,8 +65,8 @@ function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: boolean;
     <div style={{ padding: '0 0 0.75rem' }}>
       <Title level="H6">Absender je Anwendung</Title>
       <Text style={{ display: 'block', margin: '0.15rem 0 0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-        Ohne Eintrag gilt der Standardabsender des n8n-Workflows. „*“ = Standard für alle übrigen Anwendungen. Die Adressen müssen im Workflow
-        (Knoten „Mail aufbereiten“, ERLAUBT) freigegeben sein und vom SMTP-Konto versendet werden dürfen.
+        Ohne Eintrag gilt der Standardabsender des n8n-Workflows. „*“ = Standard für alle übrigen Anwendungen. Freigegeben sind die Konten im
+        Workflow (Knoten „Mail aufbereiten“, KONTEN): torsten.laub@tc-oberthal.de und benjamin.hartyniuk@tc-oberthal.de.
       </Text>
       {liste.length > 0 && (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>

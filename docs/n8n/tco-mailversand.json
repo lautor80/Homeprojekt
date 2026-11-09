@@ -26,7 +26,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ===== KONFIGURATION =====================================================\n// Standard-Absender, wenn der Aufrufer keinen mitschickt (muss zum SMTP-Konto passen)\nconst STANDARD = { email: 'torsten.laub@tc-oberthal.de', name: 'Tennisclub Oberthal e.V.' };\n// Erlaubte Absender: ganze Domains ('@tc-oberthal.de') oder einzelne Adressen.\n// Nur diese Adressen darf ein Aufrufer als \"absender\" setzen – das SMTP-Konto muss sie versenden dürfen (Alias).\nconst ERLAUBT = ['@tc-oberthal.de'];\n// ========================================================================\n\nconst b = $input.first().json.body || {};\nconst fehler = [];\n\n// ---- Adressen ----------------------------------------------------------\n// an/cc/bcc: Text (mit Komma/Semikolon getrennt) oder Liste\nfunction liste(v) {\n  const arr = Array.isArray(v) ? v : String(v || '').split(/[;,]/);\n  return arr.map((x) => String(x || '').trim()).filter(Boolean);\n}\nconst MAIL = /^[^@\\s<>\"]+@[^@\\s<>\"]+\\.[^@\\s<>\"]+$/;\nfunction nurAdresse(x) { const m = /<([^>]+)>/.exec(x); return (m ? m[1] : x).trim(); }\nfunction pruefeListe(feld, arr) {\n  for (const x of arr) if (!MAIL.test(nurAdresse(x))) fehler.push('Ungültige Adresse in ' + feld + ': ' + x);\n  return arr.join(', ');\n}\nconst an = pruefeListe('an', liste(b.an));\nconst cc = pruefeListe('cc', liste(b.cc));\nconst bcc = pruefeListe('bcc', liste(b.bcc));\nconst antwortAn = pruefeListe('antwort_an', liste(b.antwort_an));\n\n// Absender: vom Aufrufer (absender/absender_name) oder Standard; nur erlaubte Adressen\nconst absEmail = String(b.absender || STANDARD.email).trim().toLowerCase();\nconst absName = String(b.absender_name || (b.absender ? '' : STANDARD.name)).replace(/[\"<>\\r\\n]/g, '').trim();\nconst erlaubt = ERLAUBT.some((e) => (e.startsWith('@') ? absEmail.endsWith(e.toLowerCase()) : absEmail === e.toLowerCase()));\nif (!MAIL.test(absEmail)) fehler.push('Ungültiger Absender: ' + absEmail);\nelse if (!erlaubt) fehler.push('Absender nicht erlaubt: ' + absEmail + ' (siehe ERLAUBT in \"Mail aufbereiten\")');\nconst ABSENDER = absName ? absName + ' <' + absEmail + '>' : absEmail;\n\nconst modus = (b.modus || 'senden').toLowerCase();\nif (modus !== 'senden' && modus !== 'entwurf') fehler.push('Unbekannter Modus: ' + modus);\nif (!an) fehler.push('Kein Empfänger angegeben');\nif (!b.betreff) fehler.push('Kein Betreff angegeben');\n\nconst anhaenge = Array.isArray(b.anhaenge) ? b.anhaenge : [];\nconst binary = {};\nconst felder = [];\nconst anhInfo = [];\n\nfor (let i = 0; i < anhaenge.length; i++) {\n  const a = anhaenge[i] || {};\n  const name = a.dateiname || ('anhang_' + (i + 1) + '.pdf');\n  const data = String(a.inhalt_base64 || '').replace(/\\s+/g, '');\n  if (!data) {\n    fehler.push('Anhang ' + name + ' ist leer');\n    continue;\n  }\n  const key = 'anhang_' + i;\n  binary[key] = {\n    data: data,\n    mimeType: a.mime || 'application/pdf',\n    fileName: name,\n  };\n  felder.push(key);\n  anhInfo.push({\n    dateiname: name,\n    mime: a.mime || 'application/pdf',\n    objekt: a.objekt || '',\n    paperless_root_id: a.paperless_root_id || null,\n    paperless_version_id: a.paperless_version_id || null,\n    data: data,\n  });\n}\n\n// ---- RFC822-Nachricht fuer Entwurf (IMAP) ------------------------------\nfunction b64utf8(s) {\n  return Buffer.from(String(s || ''), 'utf8').toString('base64');\n}\nfunction encHeader(s) {\n  // nur kodieren, wenn Nicht-ASCII enthalten ist\n  return /^[\\x20-\\x7e]*$/.test(s) ? s : '=?UTF-8?B?' + b64utf8(s) + '?=';\n}\nfunction wrap76(s) {\n  return (s.match(/.{1,76}/g) || []).join('\\r\\n');\n}\nfunction encFileName(n) {\n  return /^[\\x20-\\x7e]*$/.test(n) ? '\"' + n.replace(/\"/g, '') + '\"' : '\"' + encHeader(n) + '\"';\n}\n\nconst isHtml = (b.text_format || 'text').toLowerCase() === 'html';\nconst domain = absEmail.split('@')[1] || 'tc-oberthal.de';\nconst rnd = Date.now().toString(36) + '.' + Math.random().toString(36).slice(2, 10);\nconst messageId = '<sap.' + rnd + '@' + domain + '>';\nconst boundary = '----=_TCO_' + rnd;\n\nconst kopf = [\n  'From: ' + (absName ? encHeader(absName) + ' <' + absEmail + '>' : absEmail),\n  'To: ' + an,\n];\nif (cc) kopf.push('Cc: ' + cc);\nif (bcc) kopf.push('Bcc: ' + bcc);\nif (antwortAn) kopf.push('Reply-To: ' + antwortAn);\nkopf.push(\n  'Subject: ' + encHeader(b.betreff || ''),\n  'Date: ' + new Date().toUTCString().replace('GMT', '+0000'),\n  'Message-ID: ' + messageId,\n  'MIME-Version: 1.0',\n  'X-TCO-Source: ' + (b.quelle || 'Portal-Mailversand'),\n  'X-TCO-Objekt: ' + (b.anwendung || '') + ' ' + (b.objekt || ''),\n  'Content-Type: multipart/mixed; boundary=\"' + boundary + '\"'\n);\n\nconst teile = [];\nteile.push(\n  '--' + boundary + '\\r\\n' +\n  'Content-Type: ' + (isHtml ? 'text/html' : 'text/plain') + '; charset=UTF-8\\r\\n' +\n  'Content-Transfer-Encoding: base64\\r\\n\\r\\n' +\n  wrap76(b64utf8(b.text || '')) + '\\r\\n'\n);\nfor (const a of anhInfo) {\n  teile.push(\n    '--' + boundary + '\\r\\n' +\n    'Content-Type: ' + a.mime + '; name=' + encFileName(a.dateiname) + '\\r\\n' +\n    'Content-Disposition: attachment; filename=' + encFileName(a.dateiname) + '\\r\\n' +\n    'Content-Transfer-Encoding: base64\\r\\n\\r\\n' +\n    wrap76(a.data) + '\\r\\n'\n  );\n}\nconst rfc822 = kopf.join('\\r\\n') + '\\r\\n\\r\\n' + teile.join('') + '--' + boundary + '--\\r\\n';\n\nreturn [{\n  json: {\n    ok: fehler.length === 0,\n    fehler: fehler.join('; '),\n    modus: modus,\n    von: ABSENDER,\n    an: an,\n    cc: cc,\n    bcc: bcc,\n    antwort_an: antwortAn,\n    betreff: b.betreff || '',\n    text: isHtml ? '' : (b.text || ''),\n    html: isHtml ? (b.text || '') : '',\n    format: isHtml ? 'html' : 'text',\n    anwendung: b.anwendung || '',\n    objekt: b.objekt || '',\n    benutzer: b.benutzer || '',\n    anhangFelder: felder.join(','),\n    anhaenge: anhInfo.map(a => ({\n      dateiname: a.dateiname,\n      objekt: a.objekt,\n      paperless_root_id: a.paperless_root_id,\n      paperless_version_id: a.paperless_version_id,\n    })),\n    message_id_entwurf: messageId,\n    rfc822: fehler.length === 0 ? rfc822 : '',\n  },\n  binary: binary,\n}];\n"
+        "jsCode": "// ===== KONFIGURATION =====================================================\n// Standard-Absender, wenn der Aufrufer keinen mitschickt\nconst STANDARD = { email: 'torsten.laub@tc-oberthal.de', name: 'Tennisclub Oberthal e.V.' };\n// Erlaubte Absender und das SMTP-Konto (Knoten), über das sie versenden:\n//   'primaer' → Knoten „E-Mail senden (SMTP)“ (torsten.laub@…)\n//   'zweit'   → Knoten „E-Mail senden (SMTP Benjamin)“ (benjamin.hartyniuk@…)\n// Andere Absender werden abgewiesen.\nconst KONTEN = {\n  'torsten.laub@tc-oberthal.de': 'primaer',\n  'benjamin.hartyniuk@tc-oberthal.de': 'zweit',\n};\n// ========================================================================\n\nconst b = $input.first().json.body || {};\nconst fehler = [];\n\n// ---- Adressen ----------------------------------------------------------\n// an/cc/bcc: Text (mit Komma/Semikolon getrennt) oder Liste\nfunction liste(v) {\n  const arr = Array.isArray(v) ? v : String(v || '').split(/[;,]/);\n  return arr.map((x) => String(x || '').trim()).filter(Boolean);\n}\nconst MAIL = /^[^@\\s<>\"]+@[^@\\s<>\"]+\\.[^@\\s<>\"]+$/;\nfunction nurAdresse(x) { const m = /<([^>]+)>/.exec(x); return (m ? m[1] : x).trim(); }\nfunction pruefeListe(feld, arr) {\n  for (const x of arr) if (!MAIL.test(nurAdresse(x))) fehler.push('Ungültige Adresse in ' + feld + ': ' + x);\n  return arr.join(', ');\n}\nconst an = pruefeListe('an', liste(b.an));\nconst cc = pruefeListe('cc', liste(b.cc));\nconst bcc = pruefeListe('bcc', liste(b.bcc));\nconst antwortAn = pruefeListe('antwort_an', liste(b.antwort_an));\n\n// Absender: vom Aufrufer (absender/absender_name) oder Standard; nur erlaubte Adressen\nconst absEmail = String(b.absender || STANDARD.email).trim().toLowerCase();\nconst absName = String(b.absender_name || (b.absender ? '' : STANDARD.name)).replace(/[\"<>\\r\\n]/g, '').trim();\nconst konto = KONTEN[absEmail] || '';\nif (!MAIL.test(absEmail)) fehler.push('Ungültiger Absender: ' + absEmail);\nelse if (!konto) fehler.push('Absender nicht erlaubt: ' + absEmail + ' (siehe KONTEN in \"Mail aufbereiten\")');\nconst ABSENDER = absName ? absName + ' <' + absEmail + '>' : absEmail;\n\nconst modus = (b.modus || 'senden').toLowerCase();\nif (modus !== 'senden' && modus !== 'entwurf') fehler.push('Unbekannter Modus: ' + modus);\nif (!an) fehler.push('Kein Empfänger angegeben');\nif (!b.betreff) fehler.push('Kein Betreff angegeben');\n\nconst anhaenge = Array.isArray(b.anhaenge) ? b.anhaenge : [];\nconst binary = {};\nconst felder = [];\nconst anhInfo = [];\n\nfor (let i = 0; i < anhaenge.length; i++) {\n  const a = anhaenge[i] || {};\n  const name = a.dateiname || ('anhang_' + (i + 1) + '.pdf');\n  const data = String(a.inhalt_base64 || '').replace(/\\s+/g, '');\n  if (!data) {\n    fehler.push('Anhang ' + name + ' ist leer');\n    continue;\n  }\n  const key = 'anhang_' + i;\n  binary[key] = {\n    data: data,\n    mimeType: a.mime || 'application/pdf',\n    fileName: name,\n  };\n  felder.push(key);\n  anhInfo.push({\n    dateiname: name,\n    mime: a.mime || 'application/pdf',\n    objekt: a.objekt || '',\n    paperless_root_id: a.paperless_root_id || null,\n    paperless_version_id: a.paperless_version_id || null,\n    data: data,\n  });\n}\n\n// ---- RFC822-Nachricht fuer Entwurf (IMAP) ------------------------------\nfunction b64utf8(s) {\n  return Buffer.from(String(s || ''), 'utf8').toString('base64');\n}\nfunction encHeader(s) {\n  // nur kodieren, wenn Nicht-ASCII enthalten ist\n  return /^[\\x20-\\x7e]*$/.test(s) ? s : '=?UTF-8?B?' + b64utf8(s) + '?=';\n}\nfunction wrap76(s) {\n  return (s.match(/.{1,76}/g) || []).join('\\r\\n');\n}\nfunction encFileName(n) {\n  return /^[\\x20-\\x7e]*$/.test(n) ? '\"' + n.replace(/\"/g, '') + '\"' : '\"' + encHeader(n) + '\"';\n}\n\nconst isHtml = (b.text_format || 'text').toLowerCase() === 'html';\nconst domain = absEmail.split('@')[1] || 'tc-oberthal.de';\nconst rnd = Date.now().toString(36) + '.' + Math.random().toString(36).slice(2, 10);\nconst messageId = '<sap.' + rnd + '@' + domain + '>';\nconst boundary = '----=_TCO_' + rnd;\n\nconst kopf = [\n  'From: ' + (absName ? encHeader(absName) + ' <' + absEmail + '>' : absEmail),\n  'To: ' + an,\n];\nif (cc) kopf.push('Cc: ' + cc);\nif (bcc) kopf.push('Bcc: ' + bcc);\nif (antwortAn) kopf.push('Reply-To: ' + antwortAn);\nkopf.push(\n  'Subject: ' + encHeader(b.betreff || ''),\n  'Date: ' + new Date().toUTCString().replace('GMT', '+0000'),\n  'Message-ID: ' + messageId,\n  'MIME-Version: 1.0',\n  'X-TCO-Source: ' + (b.quelle || 'Portal-Mailversand'),\n  'X-TCO-Objekt: ' + (b.anwendung || '') + ' ' + (b.objekt || ''),\n  'Content-Type: multipart/mixed; boundary=\"' + boundary + '\"'\n);\n\nconst teile = [];\nteile.push(\n  '--' + boundary + '\\r\\n' +\n  'Content-Type: ' + (isHtml ? 'text/html' : 'text/plain') + '; charset=UTF-8\\r\\n' +\n  'Content-Transfer-Encoding: base64\\r\\n\\r\\n' +\n  wrap76(b64utf8(b.text || '')) + '\\r\\n'\n);\nfor (const a of anhInfo) {\n  teile.push(\n    '--' + boundary + '\\r\\n' +\n    'Content-Type: ' + a.mime + '; name=' + encFileName(a.dateiname) + '\\r\\n' +\n    'Content-Disposition: attachment; filename=' + encFileName(a.dateiname) + '\\r\\n' +\n    'Content-Transfer-Encoding: base64\\r\\n\\r\\n' +\n    wrap76(a.data) + '\\r\\n'\n  );\n}\nconst rfc822 = kopf.join('\\r\\n') + '\\r\\n\\r\\n' + teile.join('') + '--' + boundary + '--\\r\\n';\n\nreturn [{\n  json: {\n    ok: fehler.length === 0,\n    fehler: fehler.join('; '),\n    modus: modus,\n    von: ABSENDER,\n    konto: konto,\n    an: an,\n    cc: cc,\n    bcc: bcc,\n    antwort_an: antwortAn,\n    betreff: b.betreff || '',\n    text: isHtml ? '' : (b.text || ''),\n    html: isHtml ? (b.text || '') : '',\n    format: isHtml ? 'html' : 'text',\n    anwendung: b.anwendung || '',\n    objekt: b.objekt || '',\n    benutzer: b.benutzer || '',\n    anhangFelder: felder.join(','),\n    anhaenge: anhInfo.map(a => ({\n      dateiname: a.dateiname,\n      objekt: a.objekt,\n      paperless_root_id: a.paperless_root_id,\n      paperless_version_id: a.paperless_version_id,\n    })),\n    message_id_entwurf: messageId,\n    rfc822: fehler.length === 0 ? rfc822 : '',\n  },\n  binary: binary,\n}];\n"
       },
       "id": "a2",
       "name": "Mail aufbereiten",
@@ -155,8 +155,8 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        912,
-        112
+        1136,
+        16
       ],
       "webhookId": "3a346700-b5ec-4252-8bb7-5cdf7c08a7dd",
       "credentials": {
@@ -184,8 +184,8 @@
       "type": "n8n-nodes-imap.imap",
       "typeVersion": 1,
       "position": [
-        912,
-        320
+        1136,
+        368
       ],
       "credentials": {
         "imapApi": {
@@ -206,7 +206,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1152,
+        1376,
         48
       ]
     },
@@ -221,8 +221,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1152,
-        272
+        1376,
+        288
       ]
     },
     {
@@ -236,7 +236,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1152,
+        1376,
         480
       ]
     },
@@ -256,6 +256,82 @@
         672,
         480
       ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.konto }}",
+                    "rightValue": "zweit",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "zweit"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "primaer"
+        }
+      },
+      "id": "a11",
+      "name": "SMTP-Konto",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        896,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.von }}",
+        "toEmail": "={{ $json.an }}",
+        "subject": "={{ $json.betreff }}",
+        "emailFormat": "={{ $json.format }}",
+        "text": "={{ $json.text }}",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false,
+          "attachments": "={{ $json.anhangFelder }}",
+          "ccEmail": "={{ $json.cc }}",
+          "bccEmail": "={{ $json.bcc }}",
+          "replyTo": "={{ $json.antwort_an }}"
+        }
+      },
+      "id": "a12",
+      "name": "E-Mail senden (SMTP Benjamin)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1136,
+        192
+      ],
+      "webhookId": "7c1e2b9d-4f6a-4d3e-8b21-9a5f0e6c3d42",
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "TCO SMTP Benjamin"
+        }
+      },
+      "onError": "continueErrorOutput"
     }
   ],
   "connections": {
@@ -303,7 +379,7 @@
       "main": [
         [
           {
-            "node": "E-Mail senden (SMTP)",
+            "node": "SMTP-Konto",
             "type": "main",
             "index": 0
           }
@@ -340,6 +416,42 @@
         [
           {
             "node": "Antwort Entwurf",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Antwort Fehler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMTP-Konto": {
+      "main": [
+        [
+          {
+            "node": "E-Mail senden (SMTP Benjamin)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-Mail senden (SMTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail senden (SMTP Benjamin)": {
+      "main": [
+        [
+          {
+            "node": "Antwort gesendet",
             "type": "main",
             "index": 0
           }
