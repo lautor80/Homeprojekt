@@ -6,6 +6,7 @@ import { AuditPage } from '../pages/AuditPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { PaperlessMappingPage } from '../pages/PaperlessMappingPage';
 import { BackupPage } from '../pages/BackupPage';
+import { StatistikPage } from '../pages/StatistikPage';
 import { ApiKeysPage } from '../pages/ApiKeysPage';
 import { SperrenPage } from '../pages/SperrenPage';
 
@@ -23,6 +24,7 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
       { text: 'Paperless-Zuordnung', icon: 'attachment', path: '/admin/paperless', permission: 'core.settings:edit' },
       { text: 'Sperren', icon: 'locked', path: '/admin/sperren', permission: 'core.sperren:admin' },
       { text: 'Sicherung', icon: 'database', path: '/admin/sicherung', permission: 'core.backup:create' },
+      { text: 'Statistik', icon: 'line-chart', path: '/admin/statistik', permission: 'core.statistik:display' },
     ],
   },
 };
@@ -37,4 +39,5 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/paperless', component: PaperlessMappingPage, permission: 'core.settings:edit' },
   { path: '/admin/sperren', component: SperrenPage, permission: 'core.sperren:admin' },
   { path: '/admin/sicherung', component: BackupPage, permission: 'core.backup:create' },
+  { path: '/admin/statistik', component: StatistikPage, permission: 'core.statistik:display' },
 ];

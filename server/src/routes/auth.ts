@@ -5,6 +5,7 @@ import {
   createSession, destroySession, hashPassword, istAltesHashformat, requireAuth, validatePassword, verifyPassword, changeCtx,
 } from '../auth.js';
 import { getPublicSettings } from './settings.js';
+import { loginErfassen } from './statistik.js';
 import { activeModuleIds } from '../modules.js';
 
 // einfacher Schutz gegen Passwort-Raten: max. 10 Fehlversuche je Benutzer/IP in 15 Minuten
@@ -38,6 +39,7 @@ export async function authRoutes(app: FastifyInstance) {
     // übernommenes EP3-Kennwort: jetzt im aktuellen Verfahren speichern
     if (istAltesHashformat(u.password_hash)) await sql`update core.users set password_hash = ${await hashPassword(body.password)} where id = ${u.id}`;
     await createSession(req, reply, u.id);
+    await loginErfassen(u.id).catch((e) => req.log.warn(e, 'Nutzungsstatistik'));
     return { ok: true };
   });
 

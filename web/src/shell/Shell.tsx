@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import {
   Avatar, Button, Dialog, IllustratedMessage, NavigationLayout, ShellBar, ShellBarBranding,
@@ -10,6 +10,7 @@ import { enabledModules } from '../modules';
 import type { NavEntry, RouteDef } from '../platform';
 import { ChangePasswordForm } from '../pages/AuthPages';
 import { toast } from '../toast';
+import { api } from '../api';
 import { aktuelleErscheinung, erscheinungSetzen } from '../theme';
 import { AblageProvider } from '../ablage';
 
@@ -121,7 +122,7 @@ export function Shell() {
           <Routes>
             {routes.map((r) => {
               const C = r.component;
-              const el: ReactElement = can(r.permission) ? <C /> : <NoAccess />;
+              const el: ReactElement = can(r.permission) ? <><Nutzung pfad={r.path} /><C /></> : <NoAccess />;
               return <Route key={r.path} path={r.path} element={el} />;
             })}
             <Route path="*" element={<NotFound />} />
@@ -154,4 +155,10 @@ export function Shell() {
       </Dialog>
     </AblageProvider>
   );
+}
+
+/** Aufruf einer App für die Nutzungsstatistik melden (still, Fehler ohne Wirkung) */
+function Nutzung({ pfad }: { pfad: string }) {
+  useEffect(() => { api.post('/api/nutzung', { pfad }).catch(() => undefined); }, [pfad]);
+  return null;
 }
