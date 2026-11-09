@@ -58,7 +58,7 @@ export function Forecast() {
   /** Baum Kategorie → Vertragsart → Mitglied als gruppierte Tabelle (Kategorie = Gruppe, Mitglieder eingerückt) */
   const knotenCols: AnalyticalTableColumnDefinition[] = useMemo(() => [
     {
-      Header: 'Kategorie', accessor: 'kategorie', id: 'kategorie', width: 60, disableGroupBy: false,
+      Header: 'Kategorie', accessor: 'kategorie', id: 'kategorie', width: 150, minWidth: 140, disableGroupBy: false,
       Cell: ({ value }: Cell) => <Text style={{ fontWeight: 'bold' }}>{value || 'Sonstige'}</Text>,
     },
     {
