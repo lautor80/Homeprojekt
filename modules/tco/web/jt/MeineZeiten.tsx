@@ -75,6 +75,7 @@ export function MeineZeiten() {
   const [busy, setBusy] = useState(false);
   const [freigabe, setFreigabe] = useState(false);
   const [oeffnung, setOeffnung] = useState<string | null>(null);
+  const [weg, setWeg] = useState<Zeit | null>(null);
 
   const laden = (mon = monat) => api.get<Monat>(`${MZ}/monat?monat=${mon}`)
     .then((r) => { setM(r); setKein(null); })
@@ -91,11 +92,6 @@ export function MeineZeiten() {
     try { await fn(); if (meldung) toast(meldung); await laden(); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   }
 
-  const neu = () => {
-    if (!m) return;
-    const d = isoHeute() >= m.von && isoHeute() <= m.bis ? isoHeute() : m.von;
-    setForm({ datum: d, trainingsart: 'Jugendtraining', anzahl: '', altArt: null });
-  };
   const bearbeiten = (z: Zeit) => !m?.gesperrt && setForm({ datum: z.datum, trainingsart: z.trainingsart, anzahl: z.anzahl ? String(z.anzahl).replace('.', ',') : '', altArt: z.trainingsart });
 
   const pdfZeigen = (url: string, titel: string) => (klein() ? pdfOeffnen(url, setError) : setPdf({ url, titel }));
@@ -155,8 +151,8 @@ export function MeineZeiten() {
               )}
 
               {!m.gesperrt && (
-                <div className="portal-mz__aktionen">
-                  <Button design="Emphasized" icon="add" onClick={neu}>Zeit erfassen</Button>
+                <div className="portal-mz__aktionen portal-mz__aktionen--eins">
+                  <Text className="portal-muted portal-small">Zeiten erfassen: oben im Kalender auf den Tag tippen.</Text>
                   <Button icon="appointment-2" onClick={() => setTage(true)}>Trainingstage anlegen</Button>
                 </div>
               )}
@@ -167,7 +163,8 @@ export function MeineZeiten() {
                     {m.zeiten.map((z) => {
                       const f = ferien.get(z.datum);
                       return (
-                        <button key={`${z.datum}|${z.trainingsart}`} type="button" onClick={() => bearbeiten(z)}
+                        <div key={`${z.datum}|${z.trainingsart}`} className="portal-mz__zeile">
+                        <button type="button" onClick={() => bearbeiten(z)}
                                 className={`portal-mz__eintrag${z.anzahl ? '' : ' portal-mz__eintrag--offen'}${m.gesperrt ? ' portal-mz__eintrag--gesperrt' : ''}`}>
                           <div className="portal-mz__tag">
                             <span className="portal-mz__tag-nr">{Number(z.datum.slice(8, 10))}</span>
@@ -187,6 +184,11 @@ export function MeineZeiten() {
                               : <ObjectStatus state="Critical">Dauer fehlt</ObjectStatus>}
                           </div>
                         </button>
+                        {!m.gesperrt && (
+                          <Button icon="delete" design="Transparent" className="portal-mz__weg" disabled={busy}
+                                  accessibleName={`${z.trainingsart} am ${dat(z.datum)} löschen`} tooltip="Löschen" onClick={() => setWeg(z)} />
+                        )}
+                        </div>
                       );
                     })}
                   </div>
@@ -291,6 +293,20 @@ export function MeineZeiten() {
             </MessageStrip>
             <Text className="portal-muted portal-small">Nach der Zahlung erhältst du hier den Nachweis mit Zahlvermerk als neue Fassung.</Text>
           </div>
+        </Dialog>,
+        document.body,
+      )}
+      {weg && createPortal(
+        <Dialog open headerText="Zeit löschen" onClose={() => setWeg(null)}
+                footer={<Bar endContent={<>
+                  <Button design="Negative" icon="delete" disabled={busy} onClick={async () => {
+                    const z = weg;
+                    setWeg(null);
+                    await aktion(() => api.post(`${MZ}/zeiten/loeschen`, { datum: z.datum, trainingsart: z.trainingsart }), 'Gelöscht.');
+                  }}>Löschen</Button>
+                  <Button onClick={() => setWeg(null)}>Abbrechen</Button>
+                </>} />}>
+          <Text>{weg.trainingsart} am {dat(weg.datum)}{weg.anzahl ? ` (${zahl(weg.anzahl)} Std.)` : ''} löschen?</Text>
         </Dialog>,
         document.body,
       )}

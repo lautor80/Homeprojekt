@@ -108,3 +108,11 @@
 .portal-mz__kal-punkt--ferien { background: var(--sapIndicationColor_7, #8b47d7); }
 .portal-mz__kal-punkt--feiertag { background: var(--sapIndicationColor_1, #d60000); }
 .portal-mz__kal-liste { display: flex; flex-wrap: wrap; gap: 0.375rem 0.75rem; padding: 0.5rem 0.75rem 0.75rem; border-top: 1px solid var(--sapList_BorderColor); }
+
+/* Trainingszeiten: Zeile mit Löschknopf */
+.portal-mz__zeile { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-mz__zeile:last-child { border-bottom: none; }
+.portal-mz__zeile .portal-mz__eintrag { border-bottom: none; }
+.portal-mz__weg { margin-right: 0.5rem; min-width: 2.75rem; height: 2.75rem; }
+.portal-mz__aktionen--eins { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.portal-mz__aktionen--eins ui5-button { width: auto; }
