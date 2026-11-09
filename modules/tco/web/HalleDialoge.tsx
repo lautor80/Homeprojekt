@@ -369,7 +369,7 @@ export function VersionenDialog({ info, onClose }: { info: PaperlessInfo | null;
             footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       {(info?.versionen ?? []).map((v, i) => (
         <FlexBox key={v.id} justifyContent="SpaceBetween" style={{ padding: '0.25rem 0' }}>
-          <Link onClick={() => window.open(`${H}/paperless/${v.id}/pdf`, '_blank')}>{v.isRoot ? 'Original' : v.label || `Fassung ${i + 1}`}</Link>
+          <Link onClick={() => window.open(`${H}/paperless/${v.id}/pdf${v.isRoot ? '' : `?root=${Number(info?.doknr)}`}`, '_blank')}>{v.isRoot ? 'Original' : v.label || `Fassung ${i + 1}`}</Link>
           <Text>{v.added ? dat(v.added) : ''}{i === (info?.versionen.length ?? 0) - 1 ? ' · aktuell' : ''}</Text>
         </FlexBox>
       ))}

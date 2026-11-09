@@ -86,11 +86,13 @@ export async function halleRoutes(app: FastifyInstance) {
     }
   });
 
-  /** PDF einer Paperless-Fassung durchreichen */
+  /** PDF einer Paperless-Fassung durchreichen (`?root=<Stammdokument>` für Fassungen eines Neudrucks) */
   app.get('/halle/paperless/:id/pdf', { preHandler: requireAuth(P_HALLE.display) }, async (req, reply) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    // root = Stammdokument der Rechnung, wenn eine Fassung (Neudruck) geöffnet wird
+    const { root } = z.object({ root: z.coerce.number().int().positive().optional() }).parse(req.query);
     const v = await vereinLesen();
-    await halleDokumentPruefen(DB, v, id);
+    await halleDokumentPruefen(DB, v, id, root);
     const d = await paperless(v).download(id);
     return reply.type(d.contentType).header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(d.filename)}`).send(d.data);
   });

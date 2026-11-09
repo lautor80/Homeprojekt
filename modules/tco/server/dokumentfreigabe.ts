@@ -10,19 +10,39 @@ import { normName } from './mitglieder/logik.js';
  */
 const verweigert = () => new BusinessError('Dieses Dokument gehört nicht zu diesem Bereich.', 404);
 
-/** Hallenrechnungen: Dokument der Rechnung (oder eine Fassung davon, erkennbar am Titel „Hallenrechnung <Nr>“) */
-export async function halleDokumentPruefen(db: Db, v: Verein, id: number): Promise<void> {
-  const [k] = await db`select 1 from tco.rgkopf where ltrim(doknr, '0') = ${String(id)} limit 1`;
-  if (k) return;
-  const [p] = await db`select 1 from tco.rgpos where beleg_doc_id = ${id} limit 1`;
-  if (p) return;
-  const d = await paperless(v).dokument(id).catch(() => null);
+/**
+ * Hallenrechnungen: Dokument der Rechnung oder eine Fassung davon.
+ * Fassungen (Neudruck = neue Dateiversion) haben in Paperless eine eigene ID, die das Portal nicht speichert.
+ * Sie werden über das Stammdokument geprüft: `root` muss zu einer Hallenrechnung gehören und die Fassung führen.
+ * Ohne `root` hilft der Verweis der Fassung auf ihr Stammdokument bzw. der Titel „Hallenrechnung <Nr>“.
+ */
+export async function halleDokumentPruefen(db: Db, v: Verein, id: number, root?: number): Promise<void> {
+  if (await halleStammdokument(db, id)) return;
+  const pl = paperless(v);
+  if (root && root !== id) {
+    if (!(await halleStammdokument(db, root))) throw verweigert();
+    const fassungen = await pl.versionen(root).catch(() => []);
+    if (!fassungen.some((x) => x.id === id)) throw verweigert();
+    return;
+  }
+  const d = await pl.dokument(id).catch(() => null);
   // gerade erst abgelegte Namensliste einer Sammelrechnung (noch an keiner Position)
   if (String(d?.title ?? '').startsWith('Sammelrechnung Namensliste')) return;
+  // Fassung, die auf ihr Stammdokument verweist
+  const stamm = Number(d?.root_document ?? 0);
+  if (stamm && stamm !== id && await halleStammdokument(db, stamm)) return;
   const nr = /^Hallenrechnung\s+(\S+)/.exec(String(d?.title ?? ''))?.[1];
   if (!nr) throw verweigert();
   const [r] = await db`select 1 from tco.rgkopf where rgnr_txt = ${nr} limit 1`;
   if (!r) throw verweigert();
+}
+
+/** Dokument-ID steht an einer Hallenrechnung (Kopf) oder als Beleg an einer Position */
+async function halleStammdokument(db: Db, id: number): Promise<boolean> {
+  const [k] = await db`select 1 from tco.rgkopf where ltrim(doknr, '0') = ${String(id)} limit 1`;
+  if (k) return true;
+  const [p] = await db`select 1 from tco.rgpos where beleg_doc_id = ${id} limit 1`;
+  return !!p;
 }
 
 /** FI-Belege: zugeordnete Belege oder Dokumente aus den konfigurierten Beleg-Dokumenttypen/-Ablagepfaden */
