@@ -46,7 +46,7 @@ export function FinCard({ kpi, fin, onJahre, onKonten }: Props) {
           <Indikator title={`Anfangsbestand ${fin.anfangsjahr}`} value={betrag(ab)} />
           <Indikator title="Einnahmen" value={betrag(fin.einnahmen)} state="Positive" />
           <Indikator title="Ausgaben" value={betrag(fin.ausgaben)} state="Critical" />
-          <Indikator title="Ergebnis" value={betrag(fin.ergebnis)} state={fin.ergebnis < 0 ? 'Negative' : 'Positive'} />
+          <Indikator title="Ergebnis (Geldkonten)" value={betrag(fin.ergebnis)} state={fin.ergebnis < 0 ? 'Negative' : 'Positive'} />
         </div>
       </div>
       <div className="portal-fincard__body">

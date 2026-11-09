@@ -195,6 +195,35 @@ test('Dashboard: Details und Beitragsstufenwechsel', async () => {
   assert.ok(a.n >= 2, 'Änderungsbelege für Vertragsende und neuen Vertrag');
 });
 
+test('Dashboard: Buchungen ohne Beleg im laufenden Monat, Abgleich Gewinn/Ergebnis (#25)', async () => {
+  const heute = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
+  const mon = Number(heute.slice(5, 7));
+  // laufender Monat: eine Buchung ohne Beleg, eine mit Beleg, ein Paar Buchung/Storno; Erlös gegen Darlehen (kein Geldkonto)
+  await sql`insert into tco.fibuchungen (internenr, konto, posnr, jahr, monat, datum, text, betrag, gkonto, soll, haben, storno_zu) values
+            ('91', '1000', 0, ${J}, ${mon}, ${heute}, 'ohne', 10, '8005', 10, 0, null), ('91', '8005', 0, ${J}, ${mon}, ${heute}, 'ohne', 10, '1000', 0, 10, null),
+            ('92', '1000', 0, ${J}, ${mon}, ${heute}, 'mit', 20, '8005', 20, 0, null), ('92', '8005', 0, ${J}, ${mon}, ${heute}, 'mit', 20, '1000', 0, 20, null),
+            ('93', '1000', 0, ${J}, ${mon}, ${heute}, 'storniert', 5, '3200', 0, 5, null), ('93', '3200', 0, ${J}, ${mon}, ${heute}, 'storniert', 5, '1000', 5, 0, null),
+            ('94', '1000', 0, ${J}, ${mon}, ${heute}, 'Storno', 5, '3200', 5, 0, '93'), ('94', '3200', 0, ${J}, ${mon}, ${heute}, 'Storno', 5, '1000', 0, 5, '93'),
+            ('95', '8005', 0, ${J}, ${mon}, ${heute}, 'Umbuchung', 50, '1500', 0, 50, null), ('95', '1500', 0, ${J}, ${mon}, ${heute}, 'Umbuchung', 50, '8005', 50, 0, null)`;
+  await sql`insert into tco.fipapermap (internenr, konto, doknr) values ('92', '', '000123')`;
+  try {
+    const r = await admin('GET', `${D}?jahr=${J}`);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const kpi = (k: string) => r.body.bereiche.flatMap((b: any) => b.kpis).find((x: any) => x.key === k);
+    // 91 und 95 ohne Beleg; 92 hat Beleg; 93/94 Storno-Paar zählt nicht
+    assert.equal(kpi('FIN_OHNE_BELEG').value, '2');
+    assert.equal(kpi('FIN_OHNE_BELEG').todo, false);
+    assert.equal(kpi('FIN_OHNE_BELEG').state, 'Critical');
+    // Gewinn 450 + 10 + 20 + 50 = 530; die 50 gegen das Darlehen fehlen im Ergebnis der Card
+    assert.equal(kpi('FIN_GEWINN').value, '530,00');
+    assert.match(kpi('FIN_GEWINN').details, /davon ohne Geldkonto 50,00/);
+    assert.equal(r.body.charts.finanzen.ergebnis, 480);
+  } finally {
+    await sql`delete from tco.fipapermap where internenr = '92'`;
+    await sql`delete from tco.fibuchungen where internenr in ('91', '92', '93', '94', '95')`;
+  }
+});
+
 test('Dashboard: Berechtigung', async () => {
   assert.equal((await admin('POST', '/api/admin/roles', { id: 'DASH_LESER', name: 'Übersicht lesen', permissions: ['tco.dashboard:display'] })).status, 200);
   assert.equal((await admin('POST', '/api/admin/users', { username: 'leser', displayName: 'Lea Leser', password: 'start-passwort', roles: ['DASH_LESER'] })).status, 200);

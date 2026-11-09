@@ -20,6 +20,7 @@ import { Beitraege } from './beitraege/Beitraege';
 import { Forecast } from './forecast/Forecast';
 import { Finanz } from './finanz/Finanz';
 import { Konten } from './konten/Konten';
+import { Produkte } from './produkte/Produkte';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
@@ -60,6 +61,7 @@ const mod: WebModule = {
           children: [
             { text: 'Stammdaten', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
             { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
+            { text: 'Produkte', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
           ],
         },
         {
@@ -137,6 +139,7 @@ const mod: WebModule = {
     { path: '/tco/forecast', component: Forecast, permission: 'tco.forecast:display' },
     { path: '/tco/finanz', component: Finanz, permission: 'tco.finanz:display' },
     { path: '/tco/konten', component: Konten, permission: 'tco.konten:display' },
+    { path: '/tco/produkte', component: Produkte, permission: 'tco.produkte:display' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
   ],
@@ -144,6 +147,7 @@ const mod: WebModule = {
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
     { text: 'Stammdaten', subtitle: 'Verein, Anbindungen, SAP-Übernahme', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
+    { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
     { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },

@@ -17,7 +17,11 @@ import { heute, runden } from '../format.js';
 export type Kontoart = 'G' | 'E' | 'A' | '';
 
 export interface Geldkonto { konto: string; name: string; anfangsbestand: number; zugang: number; abgang: number; endbestand: number }
-export interface Ergebnis { jahr: number; einnahmen: number; ausgaben: number; gewinn: number; geld_ab: number; geld_eb: number; geld_delta: number; differenz: number }
+export interface Ergebnis {
+  jahr: number; einnahmen: number; ausgaben: number; gewinn: number; geld_ab: number; geld_eb: number; geld_delta: number; differenz: number;
+  /** Anteil am Gewinn aus Buchungen, deren Gegenkonto kein Geldkonto ist (z. B. Forderungen, Umbuchungen) */
+  ohne_geld: number;
+}
 export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean }
 export interface Liquiditaet { jahr: number; monat: number; geld: number; forderung: number; ford_stand: string | null; kredit: number; liquiditaet: number }
 
@@ -71,27 +75,31 @@ export const geldkonten = (db: Db, jahr: number) => bestandskonten(db, jahr, (k,
 export const kreditkonten = (db: Db, jahr: number) => bestandskonten(db, jahr, (_k, kz) => kz === 'BK');
 
 /** Einnahmen und Ausgaben eines Geschäftsjahres (Summe aller Monate) */
-async function einnahmenAusgaben(db: Db, jahr: number): Promise<{ einnahmen: number; ausgaben: number }> {
-  const rows = await db`select b.konto, k.kennzahl, coalesce(sum(b.soll), 0)::float8 as soll, coalesce(sum(b.haben), 0)::float8 as haben
+async function einnahmenAusgaben(db: Db, jahr: number): Promise<{ einnahmen: number; ausgaben: number; ohne_geld: number }> {
+  const rows = await db`select b.konto, k.kennzahl, b.gkonto, g.kennzahl as gkennzahl,
+                               coalesce(sum(b.soll), 0)::float8 as soll, coalesce(sum(b.haben), 0)::float8 as haben
                           from tco.fibuchungen b left join tco.fikonten k on k.konto = b.konto
-                         where b.jahr = ${jahr} group by b.konto, k.kennzahl`;
-  let einnahmen = 0, ausgaben = 0;
+                          left join tco.fikonten g on g.konto = b.gkonto
+                         where b.jahr = ${jahr} group by b.konto, k.kennzahl, b.gkonto, g.kennzahl`;
+  let einnahmen = 0, ausgaben = 0, ohne_geld = 0;
   for (const r of rows) {
     const art = kontoart(r.konto, r.kennzahl);
+    const w = art === 'E' ? r.haben - r.soll : art === 'A' ? -(r.soll - r.haben) : 0;
     if (art === 'E') einnahmen += r.haben - r.soll;
     else if (art === 'A') ausgaben += r.soll - r.haben;
+    if (art && kontoart(kontoKey(r.gkonto), r.gkennzahl) !== 'G') ohne_geld += w;
   }
-  return { einnahmen: runden(einnahmen), ausgaben: runden(ausgaben) };
+  return { einnahmen: runden(einnahmen), ausgaben: runden(ausgaben), ohne_geld: runden(ohne_geld) };
 }
 
 /** Gewinn und Abgleich mit den Geldbeständen */
 export async function ergebnis(db: Db, jahr: number): Promise<Ergebnis> {
-  const { einnahmen, ausgaben } = await einnahmenAusgaben(db, jahr);
+  const { einnahmen, ausgaben, ohne_geld } = await einnahmenAusgaben(db, jahr);
   let geld_ab = 0, geld_eb = 0;
   for (const g of await geldkonten(db, jahr)) { geld_ab += g.anfangsbestand; geld_eb += g.endbestand; }
   const gewinn = runden(einnahmen - ausgaben);
   const geld_delta = runden(geld_eb - geld_ab);
-  return { jahr, einnahmen, ausgaben, gewinn, geld_ab: runden(geld_ab), geld_eb: runden(geld_eb), geld_delta, differenz: runden(geld_delta - gewinn) };
+  return { jahr, einnahmen, ausgaben, gewinn, geld_ab: runden(geld_ab), geld_eb: runden(geld_eb), geld_delta, differenz: runden(geld_delta - gewinn), ohne_geld };
 }
 
 /**

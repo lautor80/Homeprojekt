@@ -134,15 +134,13 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
         </div>
       </div>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
-      {/* zu Beginn: Mitglieder auf einen Blick und Arbeitsvorrat, beide zeilenweise */}
-      <div className="portal-dash__oben">
-        {d && (() => {
-          const b = d.bereiche.find((x) => x.key === 'MITGLIEDER');
-          return b ? <KpiZeilen titel="Mitglieder" kpis={b.kpis} onDetail={setDetail}
-                                onOeffnen={can('tco.mitglieder:display') ? () => navigate('/tco/mitglieder') : undefined} /> : null;
-        })()}
-        <Arbeitsvorrat neu={neu} leerText="Nichts zu erledigen." />
-      </div>
+      {/* zu Beginn: Arbeitsvorrat über die gesamte Breite, darunter Mitglieder auf einen Blick */}
+      <Arbeitsvorrat neu={neu} leerText="Nichts zu erledigen." />
+      {d && (() => {
+        const b = d.bereiche.find((x) => x.key === 'MITGLIEDER');
+        return b ? <KpiZeilen titel="Mitglieder" kpis={b.kpis} onDetail={setDetail}
+                              onOeffnen={can('tco.mitglieder:display') ? () => navigate('/tco/mitglieder') : undefined} /> : null;
+      })()}
       {!d && laedt && <BusyIndicator active style={{ display: 'block', width: '100%', marginTop: '2rem' }} />}
       {d && d.bereiche.map((b) => (
         <Section key={b.key} title={b.title} status={laedt ? <BusyIndicator active size="S" style={{ display: 'block' }} /> : undefined}>

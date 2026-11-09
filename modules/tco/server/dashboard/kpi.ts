@@ -108,13 +108,36 @@ export async function collectClubhaus(db: Db, jahr: number): Promise<Kpi[]> {
 
 // ---------------------------------------------------------------- Finanzen
 
+/**
+ * Buchungen ohne Beleg: Buchungen (interne Nummer) im Zeitraum ohne zugeordnetes Paperless-Dokument;
+ * Stornos und stornierte Buchungen zählen nicht.
+ */
+export async function ohneBeleg(db: Db, von: string, bis: string): Promise<number> {
+  const [r] = await db`
+    select count(distinct b.internenr)::int as n from tco.fibuchungen b
+     where b.datum between ${von} and ${bis} and b.storno_zu is null
+       and not exists (select 1 from tco.fibuchungen s where s.storno_zu = b.internenr)
+       and not exists (select 1 from tco.fipapermap m where m.internenr = b.internenr)`;
+  return r.n;
+}
+
 export async function collectFinanzen(db: Db, jahr: number): Promise<Kpi[]> {
   const e = await ergebnis(db, jahr);
+  const h = heute();
+  const monatVon = `${h.slice(0, 7)}-01`;
+  const monatBis = addTage(addTage(monatVon, 31).slice(0, 7) + '-01', -1);
+  const ohneMonat = await ohneBeleg(db, monatVon, monatBis);
+  const ohneJahr = await ohneBeleg(db, `${jahr}-01-01`, `${jahr}-12-31`);
+  // Gewinn zählt alle Erlös-/Aufwandsbuchungen; das „Ergebnis“ der Card „Saldo Konten“ nur die mit Geldkonto als Gegenkonto
+  const abgleich = e.ohne_geld ? ` · davon ohne Geldkonto ${betrag(e.ohne_geld)} (nicht im Ergebnis „Saldo Konten“)` : '';
   return [
-    kpi({ key: 'FIN_OHNE_BELEG', title: 'Buchungen ohne Beleg', subtitle: `Jahr ${jahr}`, value: '0', unit: 'Belege', details: 'noch nicht angebunden', icon: 'add-document', todo: true }),
     kpi({
-      key: 'FIN_GEWINN', title: 'Gewinn', subtitle: `Einnahmen - Ausgaben ${jahr}`, value: betrag(e.gewinn), unit: 'EUR',
-      state: e.gewinn < 0 ? 'Negative' : 'Positive', details: `Einnahmen ${betrag(e.einnahmen)} / Ausgaben ${betrag(e.ausgaben)}`, icon: 'loan',
+      key: 'FIN_OHNE_BELEG', title: 'Buchungen ohne Beleg', subtitle: `laufender Monat (${h.slice(5, 7)}/${h.slice(0, 4)})`, value: ganz(ohneMonat), unit: 'Buchungen',
+      state: ohneMonat ? 'Critical' : 'Positive', details: `${ganz(ohneJahr)} ohne Beleg im Jahr ${jahr}`, icon: 'add-document',
+    }),
+    kpi({
+      key: 'FIN_GEWINN', title: 'Gewinn', subtitle: `Einnahmen - Ausgaben ${jahr} (alle Buchungen)`, value: betrag(e.gewinn), unit: 'EUR',
+      state: e.gewinn < 0 ? 'Negative' : 'Positive', details: `Einnahmen ${betrag(e.einnahmen)} / Ausgaben ${betrag(e.ausgaben)}${abgleich}`, icon: 'loan',
     }),
     // wird in der Oberfläche immer als analytische Card mit Diagramm gezeigt (FinCard)
     kpi({

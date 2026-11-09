@@ -31,6 +31,7 @@ import { rolleSicherstellen } from './platz/registrierung.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
+import { P_PROD, produkteRoutes } from './produkte/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -196,6 +197,7 @@ async function routes(app: FastifyInstance) {
   await kalenderRoutes(app);
   await mitgliederRoutes(app);
   await kontenRoutes(app);
+  await produkteRoutes(app);
   await finanzRoutes(app);
   await beitraegeRoutes(app);
   await forecastRoutes(app);
@@ -218,6 +220,8 @@ const tco: ServerModule = {
     { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
+    { area: 'Einstellungen', app: 'Produkte', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
+    { area: 'Einstellungen', app: 'Produkte', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
     // ---------------------------------------------------------------- Mitglieder
     { area: 'Mitglieder', app: 'Meine Mitgliedschaft', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
