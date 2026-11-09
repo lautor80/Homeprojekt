@@ -364,7 +364,7 @@ function ErfassungDialog({ m, f, setF, busy, onClose, onSpeichern, onLoeschen }:
           <div className="portal-mz__stepper">
             <Button icon="less" disabled={n <= 0} accessibleName="eine halbe Stunde weniger" onClick={() => setze(Math.max(0, (Number.isFinite(n) ? n : 0) - 0.5))} />
             <div className="portal-mz__stepper-wert">
-              <Input type="Text" inputMode="Decimal" value={f.anzahl} placeholder="0" style={{ width: '100%', textAlign: 'center' }}
+              <Input type="Text" inputMode="decimal" value={f.anzahl} placeholder="0" style={{ width: '100%', textAlign: 'center' }}
                      valueState={gueltig ? 'None' : 'Negative'} onInput={(e) => setF({ ...f, anzahl: e.target.value })} accessibleName="Dauer in Stunden" />
               <span>Std.</span>
             </div>
