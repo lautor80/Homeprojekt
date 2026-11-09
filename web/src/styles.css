@@ -591,6 +591,10 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-ablagebox:hover, .portal-ablagebox:focus-visible { border-color: var(--sapButton_Emphasized_Background, #0070f2); outline: none; }
 .portal-ablagebox--ueber { border-style: solid; border-color: var(--sapButton_Emphasized_Background, #0070f2); background: var(--sapList_SelectionBackgroundColor, #ebf8ff); color: var(--sapLinkColor); }
 .portal-ablagebox--kompakt { padding: 0.5rem 0.75rem; font-size: var(--sapFontSmallSize); }
+/* Ablagefeld als Illustrated Message: zentriert, Abstand passend zur Größe */
+.portal-ablagebox--illu { display: block; padding: 0.25rem 0.5rem; text-align: center; }
+.portal-ablagebox--illu ui5-illustrated-message { width: 100%; pointer-events: none; }
+.portal-ablagebox--illu.portal-ablagebox--ueber ui5-illustrated-message { transform: scale(1.02); transition: transform 0.15s; }
 .portal-ablagebox--aus { opacity: 0.5; cursor: default; }
 .portal-ablage-meldung {
   position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 1000; max-width: min(40rem, 94vw);

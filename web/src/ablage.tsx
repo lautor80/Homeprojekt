@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { Button, BusyIndicator, Icon } from '@ui5/webcomponents-react';
+import { Bar, Button, BusyIndicator, Dialog, Icon, IllustratedMessage } from '@ui5/webcomponents-react';
+import '@ui5/webcomponents-fiori/dist/illustrations/DragFilesToUpload.js';
 import { toast } from './toast';
 
 /**
@@ -140,17 +141,38 @@ export function useAblageZiel(ziel: AblageZiel | null, ersatz = false) {
 export const dropDateien = (e: DragEvent) => Array.from(e.dataTransfer?.files ?? []);
 const hatDateien = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
 
+/** passt die Datei zu einem accept-Ausdruck („.pdf,.csv,image/*,application/zip“)? */
+export function dateiPasst(f: File, accept?: string): boolean {
+  if (!accept?.trim()) return true;
+  const name = f.name.toLowerCase();
+  const typ = (f.type || '').toLowerCase();
+  return accept.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean).some((a) =>
+    a.startsWith('.') ? name.endsWith(a) : a.endsWith('/*') ? typ.startsWith(a.slice(0, -1)) : typ === a);
+}
+
+export type AblageGroesse = 'Scene' | 'Spot' | 'Dialog' | 'Dot';
+
 /**
  * Fläche zum Hineinziehen bzw. Auswählen von Dateien für ein bestimmtes Ziel.
- * Mit children: der Inhalt selbst wird zur Ablagefläche (Hervorhebung beim Darüberziehen).
+ *  - ohne children: Ablagefeld als Illustrated Message („DragFilesToUpload“) – klicken öffnet die Dateiauswahl
+ *    (kompakt: schmale Leiste mit Symbol, z. B. in der Navigation)
+ *  - mit children: der Inhalt selbst wird zur Ablagefläche (Hervorhebung beim Darüberziehen)
+ *  - accept/multiple wie beim Datei-Input; unpassende Dateien werden mit Hinweis übergangen
  */
-export function AblageFlaeche({ ziel, text, children, kompakt, deaktiviert }: {
-  ziel: AblageZiel; text?: string; children?: ReactNode; kompakt?: boolean; deaktiviert?: boolean;
+export function AblageFlaeche({ ziel, text, titel, children, kompakt, deaktiviert, accept, multiple = true, groesse = 'Spot' }: {
+  ziel: AblageZiel; text?: string; titel?: string; children?: ReactNode; kompakt?: boolean; deaktiviert?: boolean;
+  accept?: string; multiple?: boolean; groesse?: AblageGroesse;
 }) {
   const { ablegen, laeuft } = useAblage();
   const [ueber, setUeber] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const tiefe = useRef(0);
+  const uebergeben = (alle: File[]) => {
+    let files = alle.filter((f) => dateiPasst(f, accept));
+    if (files.length < alle.length) toast(`${alle.length - files.length} Datei(en) übergangen – erlaubt: ${accept}`, 5000);
+    if (!multiple && files.length > 1) { toast('Bitte nur eine Datei ablegen – die erste wird übernommen.', 4000); files = files.slice(0, 1); }
+    if (files.length) ablegen(files, ziel);
+  };
   const props = deaktiviert ? {} : {
     onDragEnter: (e: DragEvent) => { if (hatDateien(e)) { e.preventDefault(); tiefe.current++; setUeber(true); } },
     onDragOver: (e: DragEvent) => { if (hatDateien(e)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; } },
@@ -158,23 +180,47 @@ export function AblageFlaeche({ ziel, text, children, kompakt, deaktiviert }: {
     onDrop: (e: DragEvent) => {
       if (!hatDateien(e)) return;
       e.preventDefault(); e.stopPropagation(); tiefe.current = 0; setUeber(false);
-      ablegen(dropDateien(e), ziel);
+      uebergeben(dropDateien(e));
     },
   };
   if (children) {
     return <div className={`portal-ablageziel${ueber ? ' portal-ablageziel--ueber' : ''}`} data-ziel={ueber ? `Ablegen bei ${ziel.titel}` : undefined} {...props}>{children}</div>;
   }
+  const standardText = `${multiple ? 'Dateien' : 'Datei'} hierher ziehen, klicken zum Auswählen oder Screenshot mit Strg+V einfügen`;
   return (
     <>
-      <input ref={input} type="file" multiple hidden onChange={(e) => { ablegen(Array.from(e.target.files ?? []) as File[], ziel); e.target.value = ''; }} />
-      <div className={`portal-ablagebox${ueber ? ' portal-ablagebox--ueber' : ''}${kompakt ? ' portal-ablagebox--kompakt' : ''}${deaktiviert ? ' portal-ablagebox--aus' : ''}`}
+      <input ref={input} type="file" multiple={multiple} accept={accept} hidden
+             onChange={(e) => { uebergeben(Array.from(e.target.files ?? []) as File[]); e.target.value = ''; }} />
+      <div className={`portal-ablagebox${kompakt ? ' portal-ablagebox--kompakt' : ' portal-ablagebox--illu'}${ueber ? ' portal-ablagebox--ueber' : ''}${deaktiviert ? ' portal-ablagebox--aus' : ''}`}
            role="button" tabIndex={deaktiviert ? -1 : 0} aria-label={`Dateien ablegen bei ${ziel.titel}`}
            onClick={() => !deaktiviert && !laeuft && input.current?.click()}
            onKeyDown={(e) => { if (!deaktiviert && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); input.current?.click(); } }}
            {...props}>
-        <Icon name={ueber ? 'download' : 'upload-to-cloud'} />
-        <span>{ueber ? `Loslassen – ablegen bei ${ziel.titel}` : text ?? 'Dateien hierher ziehen, klicken zum Auswählen oder Screenshot mit Strg+V einfügen'}</span>
+        {kompakt ? (
+          <>
+            <Icon name={ueber ? 'download' : 'upload-to-cloud'} />
+            <span>{ueber ? `Loslassen – ablegen bei ${ziel.titel}` : text ?? standardText}</span>
+          </>
+        ) : (
+          <IllustratedMessage name="DragFilesToUpload" design={groesse}
+                              titleText={ueber ? `Loslassen – ablegen bei ${ziel.titel}` : titel ?? (multiple ? 'Dateien hier ablegen' : 'Datei hier ablegen')}
+                              subtitleText={ueber ? '' : text ?? standardText} />
+        )}
       </div>
     </>
+  );
+}
+
+/** Dialog mit Ablagefeld (z. B. für Importe aus der Kopfzeile): Dateien hineinziehen oder auswählen, danach schließt er sich */
+export function AblageDialog({ open, titel, ziel, accept, multiple = true, text, feldTitel, onClose }: {
+  open: boolean; titel: string; ziel: AblageZiel; accept?: string; multiple?: boolean; text?: string; feldTitel?: string; onClose: () => void;
+}) {
+  if (!open) return null;
+  const z: AblageZiel = { titel: ziel.titel, annehmen: (f) => { onClose(); return ziel.annehmen(f); } };
+  return (
+    <Dialog open headerText={titel} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
+      <AblageFlaeche ziel={z} accept={accept} multiple={multiple} text={text} titel={feldTitel} groesse="Dialog" />
+    </Dialog>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
 } from '@ui5/webcomponents-react';
@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { download } from '../components/PdfDialog';
 import { useCan } from '../session';
 import { toast } from '../toast';
+import { AblageDialog } from '../ablage';
 
 /**
  * Sicherung und Rücksicherung aller Daten und Einstellungen (alle Anwendungen):
@@ -94,7 +95,7 @@ export function BackupPage() {
   const [format, setFormat] = useState<'portal' | 'zip'>('portal');
   const [xml, setXml] = useState<Datei | null>(null);
   const [job, setJob] = useState<Job | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const [ablage, setAblage] = useState(false);
 
   const laden = () => api.get<Uebersicht>('/api/backup').then((r) => { setD(r); setAuswahl((a) => a ?? r.schemas.map((s) => s.schema)); return r; }).catch((e) => { setError(e.message); return null; });
   useEffect(() => {
@@ -129,7 +130,7 @@ export function BackupPage() {
       if (!res.ok) throw new Error(j.message ?? `Fehler ${res.status}`);
       toast(j.text);
       await laden();
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); if (input.current) input.current.value = ''; }
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
   /** vorhandene Sicherung als ZIP mit XML herunterladen (POST, verschlüsselt mit Passwort) */
@@ -183,9 +184,11 @@ export function BackupPage() {
   return (
     <AppPage title="Sicherung" subtitle="Daten und Einstellungen aller Anwendungen sichern und zurücksichern"
              actions={zurueck ? <>
-               <input ref={input} type="file" accept=".portal,.zip" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) hochladen(f); }} />
-               <Button icon="upload" disabled={busy} onClick={() => input.current?.click()}>Sicherung hochladen</Button>
+               <Button icon="upload" disabled={busy} onClick={() => setAblage(true)}>Sicherung hochladen</Button>
              </> : undefined}>
+      <AblageDialog open={ablage} titel="Sicherung hochladen" onClose={() => setAblage(false)} accept=".portal,.zip" multiple={false}
+                    feldTitel="Sicherungsdatei hier ablegen" text=".portal- oder ZIP-Datei hierher ziehen oder klicken zum Auswählen – sie wird geprüft und erscheint in der Liste."
+                    ziel={{ titel: 'Sicherung', annehmen: (f) => { hochladen(f[0]); } }} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {d && !d.dauerhaft && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>

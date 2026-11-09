@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, DatePicker, FileUploader, FlexBox, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
+  AnalyticalTable, Button, DatePicker, FlexBox, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
   ObjectStatus, Option, Select, Tab, TabContainer, Text, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -10,6 +10,7 @@ import { PdfDialog } from '@core/components/PdfDialog';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
+import { AblageFlaeche } from '@core/ablage';
 import { TCO, dat, dateiLesen, eur } from '../util';
 import { Entgelte } from './Entgelte';
 
@@ -347,17 +348,16 @@ function Import({ m, edit, erg, onErg, onError, onAktion }: {
       <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
         Übernommen werden ausschließlich Rückmeldungen mit einem Datum zwischen {dat(m.von)} und {dat(m.bis)}. Für einen anderen Monat zuerst oben den Monat wechseln.
       </MessageStrip>
+      {edit && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <AblageFlaeche ziel={{ titel: `Rückmeldungen ${m.monat}`, annehmen: (fs) => { const f = fs[0]; lauf('csv', async () => api.post(`${J}/import`, { monat: m.monat, csv: await dateiLesen(f) })); } }}
+                         accept=".csv,text/csv" multiple={false} groesse="Dot" deaktiviert={busy === 'csv'}
+                         titel="CSV-Datei mit Rückmeldungen hier ablegen" text="Hierher ziehen oder klicken zum Auswählen – übernommen wird nur der gewählte Monat." />
+        </div>
+      )}
       <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.75rem', marginBottom: '0.75rem' }}>
         {edit && <Button design="Emphasized" icon="download-from-cloud" loading={busy === 'nc'}
                          onClick={() => lauf('nc', () => api.post(`${J}/import/nextcloud`, { monat: m.monat }))}>Aus Nextcloud laden</Button>}
-        {edit && (
-          <FileUploader hideInput accept=".csv,text/csv" onChange={(e) => {
-            const f = e.detail.files?.[0];
-            if (f) lauf('csv', async () => api.post(`${J}/import`, { monat: m.monat, csv: await dateiLesen(f) }));
-          }}>
-            <Button icon="attachment" loading={busy === 'csv'}>CSV-Datei laden</Button>
-          </FileUploader>
-        )}
         {edit && <Button icon="synchronize" onClick={() => onAktion(async () => toast((await api.post<{ text: string }>(`${J}/ferien`, { jahr })).text))}>Ferien synchronisieren</Button>}
         <Text>{m.ferienFehler ? `Schulferien ${jahr}: nicht geladen` : `Schulferien ${jahr}: ${m.ferienJahr.ferien} Ferientage, ${m.ferienJahr.feiertage} Feiertage`}</Text>
       </FlexBox>

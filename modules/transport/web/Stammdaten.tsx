@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Bar, Button, CheckBox, FileUploader, FlexBox, Input, MessageStrip, Panel, Tab, TabContainer, Text, TextArea,
+  Bar, Button, CheckBox, FlexBox, Input, MessageStrip, Panel, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -9,6 +9,7 @@ import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { T, type Werte } from './util';
+import { AblageFlaeche } from '@core/ablage';
 
 interface Firma {
   name: string; strasse: string; plz: string; ort: string; land: string; ustid: string; steuernr: string; kontakt: string;
@@ -33,7 +34,7 @@ function FirmaTab() {
   if (!f) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : null;
   const s = (k: keyof Firma) => (v: string) => setF({ ...f, [k]: v });
 
-  async function logo(files: FileList | null) {
+  async function logo(files: FileList | File[] | null) {
     const file = files?.[0];
     if (!file) return;
     if (file.size > 400_000) return setError('Logo ist zu groß (max. 400 KB).');
@@ -87,9 +88,10 @@ function FirmaTab() {
           <FieldBox label="Logo für Ausdrucke (PNG/JPEG, Seitenverhältnis ca. 6:1)" wide>
             <FlexBox alignItems="Center" style={{ gap: '1rem' }}>
               {f.logo && <img src={f.logo} alt="Logo" style={{ maxHeight: 48, maxWidth: 300 }} />}
-              <FileUploader accept="image/png,image/jpeg" hideInput onChange={(e) => logo(e.detail.files)}>
-                <Button icon="upload">Logo wählen</Button>
-              </FileUploader>
+              <div style={{ flex: 1, maxWidth: '28rem' }}>
+                <AblageFlaeche ziel={{ titel: 'Logo für Ausdrucke', annehmen: (fs) => { logo(fs); } }} accept="image/png,image/jpeg" multiple={false}
+                               groesse="Dot" titel="Logo hier ablegen" text="PNG oder JPEG hierher ziehen oder klicken zum Auswählen" />
+              </div>
               {f.logo && <Button design="Transparent" icon="delete" onClick={() => setF({ ...f, logo: null })}>Entfernen</Button>}
             </FlexBox>
           </FieldBox>

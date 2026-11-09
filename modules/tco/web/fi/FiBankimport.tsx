@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, Button, CheckBox, DatePicker, Dialog, FileUploader, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
+  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
 } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { dat, dateiLesen, eur } from '../util';
@@ -262,16 +262,17 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
             ))}
           </Select>
         </div>
-        {!manuell && konto && (
-          <FileUploader accept=".csv,.txt" hideInput={false} placeholder="Umsatzexport der Bank (CSV) wählen …" style={{ width: '22rem' }}
-                        onChange={(e) => { const f = e.detail.files?.[0]; if (f) dateiLaden(f); }}>
-            <Button icon="upload">Bankdatei</Button>
-          </FileUploader>
-        )}
         {manuell && konto && <Button icon="add" onClick={() => neueZeile()}>Weitere Buchung</Button>}
         {datei && <CheckBox text="Bereits gebuchte Umsätze einblenden" checked={gebuchtZeigen} onChange={(e) => setGebuchtZeigen(e.target.checked)} />}
       </FlexBox>
 
+      {!manuell && konto && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <AblageFlaeche ziel={{ titel: `Bankdatei Konto ${konto}`, annehmen: (fs) => { dateiLaden(fs[0]); } }} accept=".csv,.txt,text/csv,text/plain" multiple={false}
+                         groesse={datei ? 'Dot' : 'Spot'} titel="Bankdatei (CSV) hier ablegen"
+                         text="Umsatzexport der Bank hierher ziehen oder klicken zum Auswählen – danach werden die Umsätze abgeglichen und Belege vorgeschlagen." />
+        </div>
+      )}
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {(datei?.hinweise ?? []).map((h) => <MessageStrip key={h} design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>{h}</MessageStrip>)}
       {!geldkonten.length && (

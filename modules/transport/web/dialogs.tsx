@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, Dialog, FileUploader, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, Select,
+  AnalyticalTable, Bar, Button, Dialog, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, Select,
   Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
+import { AblageFlaeche } from '@core/ablage';
 import { T, download } from './util';
 
 // ---------------------------------------------------------------------------
@@ -208,7 +209,7 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
     api.post<ImpStatus[]>(`${T}/import/pruefen`, { dateien: [] }).then(setStatus).catch((e) => setError(e.message));
   }, [open]);
 
-  async function add(list: FileList | null) {
+  async function add(list: FileList | File[] | null) {
     if (!list?.length) return;
     const neu = [...files];
     for (const f of Array.from(list)) {
@@ -260,10 +261,9 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
         vorhandene bleiben unverändert (leere Adressen werden ergänzt).
       </MessageStrip>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
-      <FlexBox alignItems="Center" style={{ gap: '1rem', marginBottom: '0.75rem' }}>
-        <FileUploader multiple accept=".csv,text/csv" hideInput onChange={(e) => add(e.detail.files)}>
-          <Button icon="add-document">CSV-Dateien wählen</Button>
-        </FileUploader>
+      <AblageFlaeche ziel={{ titel: 'SAP-Import', annehmen: (f) => { add(f); } }} accept=".csv,text/csv" groesse="Dialog"
+                     titel="CSV-Dateien hier ablegen" text="Hierher ziehen oder klicken zum Auswählen – sie werden sofort eingelesen und am Spaltenkopf erkannt." />
+      <FlexBox alignItems="Center" style={{ gap: '1rem', margin: '0.75rem 0' }}>
         <Text>{files.length ? files.map((f) => f.name).join(', ') : 'Noch keine Dateien ausgewählt'}</Text>
       </FlexBox>
       <AnalyticalTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} scaleWidthMode="Smart" />

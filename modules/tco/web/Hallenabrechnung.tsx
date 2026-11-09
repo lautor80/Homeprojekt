@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AblageDialog } from '@core/ablage';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, DateRangePicker, Dialog, FlexBox, Icon, Input, Label, Link, List, ListItemCustom, Tag,
   ListItemGroup, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Panel, SegmentedButton, SegmentedButtonItem,
@@ -67,7 +68,7 @@ export function Hallenabrechnung() {
   const [rgnr, setRgnr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [csvAblage, setCsvAblage] = useState(false);
 
   // Dialoge
   const [pdf, setPdf] = useState<string | null>(null);
@@ -128,7 +129,7 @@ export function Hallenabrechnung() {
   };
 
   // --------------------------------------------------------------- Import
-  async function csvImport(files: FileList | null) {
+  async function csvImport(files: FileList | File[] | null) {
     if (!files?.length) return;
     const zeilen: Protokoll['zeilen'] = [];
     await tun(async () => {
@@ -140,7 +141,6 @@ export function Hallenabrechnung() {
       }
     });
     setProtokoll({ titel: 'Protokoll CSV-Import', zeilen });
-    if (fileRef.current) fileRef.current.value = '';
   }
 
   const n8nImport = () => tun(async () => {
@@ -195,13 +195,15 @@ export function Hallenabrechnung() {
       header={header}
       actions={<>
         {edit && <Button icon="download-from-cloud" onClick={n8nImport}>EP3 importieren</Button>}
-        {edit && <Button icon="upload" onClick={() => fileRef.current?.click()}>CSV-Datei</Button>}
+        {edit && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
         {edit && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
         {edit && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
         <Button icon="lead" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise</Button>
       </>}
     >
-      <input ref={fileRef} type="file" accept=".csv,.txt" multiple hidden onChange={(e) => csvImport(e.target.files)} />
+      <AblageDialog open={csvAblage} titel="EP3-Export einlesen (CSV)" onClose={() => setCsvAblage(false)} accept=".csv,.txt,text/csv,text/plain"
+                    feldTitel="CSV-Dateien hier ablegen" text="Buchungs- und Kundenexport aus EP3 hierher ziehen oder klicken zum Auswählen – das Ergebnis erscheint als Protokoll."
+                    ziel={{ titel: 'Hallenabrechnung (CSV-Import)', annehmen: (f) => { csvImport(f); } }} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
         {/* genau ein Kind: der BusyIndicator legt Kinder sonst als zentrierte Flex-Zeile aus (Liste rückte in die Mitte) */}

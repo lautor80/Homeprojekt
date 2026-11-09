@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  AnalyticalTable, Bar, Button, ComboBox, ComboBoxItem, DatePicker, DateTimePicker, Input, Option, Select, FileUploader, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
+  AnalyticalTable, Bar, Button, ComboBox, ComboBoxItem, DatePicker, DateTimePicker, Input, Option, Select, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
   SegmentedButtonItem, Tab, TabContainer, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -12,6 +12,7 @@ import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { useCan, useSession } from '@core/session';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
+import { AblageFlaeche } from '@core/ablage';
 import { TCO, dateiLesen } from './util';
 
 type Verein = Record<string, string | number | null>;
@@ -277,10 +278,11 @@ function VereinTab() {
               <img alt="Logo" src={(v.logo as string) || '/api/m/tco/logo'} style={{ height: '3rem' }} />
             </FlexBox>
             {!ro && (
-              <FlexBox style={{ gap: '0.5rem' }}>
-                <FileUploader hideInput accept="image/png,image/jpeg" onChange={async (e) => { const f = e.detail.files?.[0]; if (f) setV({ ...v, logo: await dateiLesen(f) }); }}>
-                  <Button icon="upload">Eigenes Logo</Button>
-                </FileUploader>
+              <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+                <div style={{ flex: 1, maxWidth: '24rem' }}>
+                  <AblageFlaeche ziel={{ titel: 'Vereinslogo', annehmen: async (fs) => { setV({ ...v, logo: await dateiLesen(fs[0]) }); } }} accept="image/png,image/jpeg"
+                                 multiple={false} groesse="Dot" titel="Eigenes Logo hier ablegen" text="PNG oder JPEG hierher ziehen oder klicken zum Auswählen" />
+                </div>
                 {v.logo && <Button design="Transparent" icon="reset" onClick={() => setV({ ...v, logo: null })}>Vereinslogo</Button>}
               </FlexBox>
             )}
@@ -377,7 +379,7 @@ function ImportTab() {
   const ladeBestand = () => api.get<typeof bestand>(`${TCO}/import/tabellen`).then(setBestand).catch(() => undefined);
   useEffect(() => { ladeBestand(); }, []);
 
-  async function add(list: FileList | null) {
+  async function add(list: FileList | File[] | null) {
     if (!list?.length) return;
     const neu = [...files];
     for (const f of Array.from(list)) {
@@ -425,10 +427,10 @@ function ImportTab() {
         Die Tabelle ergibt sich aus dem Dateinamen (z. B. ZTCO_RGKOPF.CSV, BANKAB.CSV); erst wird geprüft, dann mit „Übernehmen“ geschrieben. „Nur neue Sätze“ lässt vorhandene Daten unverändert; „Vorhandene aktualisieren“ überschreibt sie mit dem SAP-Stand.
       </MessageStrip>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
-      <FlexBox alignItems="Center" style={{ gap: '1rem', marginBottom: '0.75rem' }}>
-        <FileUploader multiple hideInput accept=".csv,.CSV,.zip,.ZIP,text/csv,application/zip" onChange={(e) => add(e.detail.files)}>
-          <Button icon="add-document">ZIP- oder CSV-Dateien wählen</Button>
-        </FileUploader>
+      <AblageFlaeche ziel={{ titel: 'Übernahme aus SAP', annehmen: (f) => { add(f); } }} accept=".csv,.zip,text/csv,application/zip"
+                     groesse={files.length ? 'Dot' : 'Spot'} titel="ZIP- oder CSV-Dateien hier ablegen"
+                     text="Hierher ziehen oder klicken zum Auswählen – die Dateien werden zuerst geprüft und erst mit „Übernehmen“ geschrieben." />
+      <FlexBox alignItems="Center" style={{ gap: '1rem', margin: '0.75rem 0' }}>
         <SegmentedButton onSelectionChange={(e) => setModus((e.detail.selectedItems[0] as HTMLElement).dataset.m as typeof modus)}>
           <SegmentedButtonItem data-m="neu" selected={modus === 'neu'}>Nur neue Sätze</SegmentedButtonItem>
           <SegmentedButtonItem data-m="aktualisieren" selected={modus === 'aktualisieren'}>Vorhandene aktualisieren</SegmentedButtonItem>

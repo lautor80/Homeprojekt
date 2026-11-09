@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, FileUploader, Input, MessageStrip, Panel } from '@ui5/webcomponents-react';
+import { Button, Input, MessageStrip, Panel } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
@@ -9,6 +9,7 @@ import { useSession } from '../session';
 import { applyBranding } from '../branding';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
+import { AblageFlaeche } from '../ablage';
 
 type S = Record<string, string | null>;
 /** auf dieser Seite gepflegte Einstellungen – je Schlüssel gesperrt (andere Einstellungen bleiben frei) */
@@ -37,7 +38,7 @@ export function SettingsPage() {
 
   const set = (k: string) => (v: string | null) => setS({ ...s, [k]: v });
 
-  async function onLogo(files: FileList | null) {
+  async function onLogo(files: FileList | File[] | null) {
     const file = files?.[0];
     if (!file) return;
     if (file.size > 300_000) return setError('Logo ist zu groß (max. 300 KB).');
@@ -91,9 +92,10 @@ export function SettingsPage() {
           <FieldBox label="Logo (PNG/JPEG/SVG, max. 300 KB)" wide>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               {s['org.logo'] && <img src={s['org.logo']} alt="Logo" style={{ maxHeight: 64, maxWidth: 200 }} />}
-              <FileUploader accept="image/png,image/jpeg,image/svg+xml" hideInput onChange={(e) => onLogo(e.detail.files)}>
-                <Button icon="upload">Logo wählen</Button>
-              </FileUploader>
+              <div style={{ flex: 1, maxWidth: '28rem' }}>
+                <AblageFlaeche ziel={{ titel: 'Logo', annehmen: (f) => { onLogo(f); } }} accept="image/png,image/jpeg,image/svg+xml" multiple={false}
+                               groesse="Dot" titel="Logo hier ablegen" text="PNG, JPEG oder SVG hierher ziehen oder klicken zum Auswählen" />
+              </div>
               {s['org.logo'] && <Button design="Transparent" icon="delete" onClick={() => set('org.logo')(null)}>Entfernen</Button>}
             </div>
           </FieldBox>

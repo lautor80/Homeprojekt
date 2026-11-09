@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, FileUploader, Icon, Input, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
+  AnalyticalTable, Button, CheckBox, Icon, Input, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -95,20 +95,20 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
         <ToolbarSpacer />
         <Button icon="refresh" design="Transparent" onClick={laden}>Aktualisieren</Button>
         <Button icon="email" disabled={!sel.length} onClick={onKomm}>{sel.length ? `${sel.length} markierte senden` : 'Markierte senden'}</Button>
-        {edit && (
-          <FileUploader hideInput onChange={async (e) => {
-            const f = e.detail.files?.[0];
-            if (f) setUpload({ datei: f.name, inhalt: await dateiLesen(f), groesse: f.size });
-          }}><Button icon="upload">Datei ablegen</Button></FileUploader>
-        )}
       </Toolbar>
       {!d.korrespondent && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>In Paperless gibt es noch keinen Korrespondenten „{d.soll}“ – er wird beim ersten Ablegen angelegt.</MessageStrip>}
+      {edit && onEingang && (
+        <div style={{ marginBottom: '0.5rem' }}>
+          <AblageFlaeche ziel={{ titel: 'Dokumente des Mitglieds', annehmen: (f) => onEingang(f) }} groesse={alle.length ? 'Dot' : 'Spot'}
+                         titel="Dokumente hier ablegen"
+                         text="Hierher ziehen, klicken zum Auswählen oder Screenshot mit Strg+V – danach je Datei Titel und Dokumenttyp wählen, abgelegt wird in Paperless beim Mitglied." />
+        </div>
+      )}
       {edit && onEingang
         ? <AblageFlaeche ziel={{ titel: 'Dokumente des Mitglieds', annehmen: (f) => onEingang(f) }}>
             <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless – Datei hierher ziehen oder Screenshot mit Strg+V einfügen'} />
           </AblageFlaeche>
         : <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless'} />}
-      {edit && onEingang && <Label wrappingType="Normal" style={{ display: 'block', marginTop: '0.25rem' }}>Dateien auf die Liste ziehen oder Screenshot mit Strg+V einfügen – danach Dokumenttyp wählen.</Label>}
       {ansicht && <PdfDialog url={`${MG}/dokument/${ansicht.id}/datei`} title={ansicht.titel} filename={ansicht.datei || `${ansicht.titel}.pdf`} onClose={() => setAnsicht(null)} />}
       {notizen && <NotizDialog dok={notizen} edit={edit} onClose={(neu) => { setNotizen(null); if (neu) laden(); }} />}
       {upload && <UploadDialog adrnr={adrnr} f={upload} rest={Math.max(0, eingang.length - 1)}

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, FileUploader, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, Title,
+  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { PdfDialog } from '@core/components/PdfDialog';
+import { AblageFlaeche } from '@core/ablage';
 import { dateiLesen } from '../util';
 import { MG, type Auswahl } from './typen';
 import { Auswahlfeld, Datum, Dlg } from './Dialoge';
@@ -129,11 +130,14 @@ export function NeuDialog({ onClose }: { onClose: (adrnr: string | null, text?: 
                    onKeyDown={(e) => e.key === 'Enter' && docid && antragLaden({ docid: Number(docid) })} />
           </FieldBox>
           <Button disabled={!docid || busy} onClick={() => antragLaden({ docid: Number(docid) })}>Antrag laden</Button>
-          <FileUploader hideInput accept="application/pdf" onChange={async (e) => {
-            const file = e.detail.files?.[0];
-            if (file) antragLaden({ datei: file.name, inhalt: await dateiLesen(file) });
-          }}><Button icon="upload" disabled={busy}>Antrag-PDF hochladen</Button></FileUploader>
         </FlexBox>
+      )}
+      {aw?.paperless && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <AblageFlaeche ziel={{ titel: 'Neues Mitglied – Aufnahmeantrag', annehmen: async (fs) => { antragLaden({ datei: fs[0].name, inhalt: await dateiLesen(fs[0]) }); } }}
+                         accept=".pdf,application/pdf" multiple={false} groesse="Dot" deaktiviert={busy}
+                         titel="Aufnahmeantrag (PDF) hier ablegen" text="Hierher ziehen oder klicken zum Auswählen – die Angaben werden aus dem Antrag übernommen." />
+        </div>
       )}
       {antrag && <MessageStrip design={sperre ? 'Negative' : 'Information'} hideCloseButton style={{ marginBottom: '0.75rem' }}>{antrag.info}</MessageStrip>}
 

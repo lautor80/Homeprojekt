@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AnalyticalTable, Button, DatePicker, FileUploader, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text,
 } from '@ui5/webcomponents-react';
@@ -7,7 +7,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { FieldBox } from '@core/components/FormFields';
 import { useSession } from '@core/session';
-import { useAblageZiel } from '@core/ablage';
+import { AblageFlaeche, useAblageZiel } from '@core/ablage';
 import { LEER, MetaFelder, metaFuerUpload, vorgabeLesen, vorgabeSpeichern, type Stamm, type Vorgabe } from './MetaFelder';
 import './ablage.css';
 import { Section } from '@core/components/Section';
@@ -40,8 +40,6 @@ export function Upload() {
   const [inhalte] = useState(() => new Map<string, string>());
   // Start mit der Voreinstellung des Ablagefelds
   const [meta, setMeta] = useState<Vorgabe & { datum: string }>(() => ({ ...(vorgabeLesen(me.user.id) ?? LEER), datum: '' }));
-  const [ueber, setUeber] = useState(false);
-  const zaehler = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const datumStd = meta.datum || stamm?.heute || new Date().toISOString().slice(0, 10);
@@ -96,12 +94,7 @@ export function Upload() {
 
   // Ablagefeld der Navigation und Strg+V legen auf dieser Seite in die Liste (nicht sofort nach Paperless)
   useAblageZiel(stamm?.paperless ? { titel: 'Dokumenten-Upload (Liste)', annehmen: async (f: File[]) => { await hinzufuegen(f); return `${f.length} Datei(en) zur Liste hinzugefügt – Metadaten prüfen und „Übertragen“.`; } } : null);
-  const dnd = {
-    onDragEnter: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { zaehler.current++; setUeber(true); } },
-    onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } },
-    onDragLeave: () => { zaehler.current = Math.max(0, zaehler.current - 1); if (!zaehler.current) setUeber(false); },
-    onDrop: (e: DragEvent) => { e.preventDefault(); e.stopPropagation(); zaehler.current = 0; setUeber(false); if (!busy && stamm?.paperless) hinzufuegen(Array.from(e.dataTransfer.files)); },
-  };
+
 
   const columns = useMemo<AnalyticalTableColumnDefinition[]>(() => [
     { Header: 'Dateiname', accessor: 'name', minWidth: 200, Cell: ({ row, value }: Cell) => <div style={{ lineHeight: 1.3 }}><Text style={{ fontWeight: 'bold' }}>{value}</Text><br /><Label>{row.original.mime || 'unbekannter Typ'}</Label></div> },
@@ -163,15 +156,11 @@ export function Upload() {
           </div>
         )}
       </Section>
-      <div className={`portal-up__drop${ueber ? ' portal-up__drop--ueber' : ''}`} {...dnd}
-           role="button" tabIndex={0} aria-label="Dateien hierher ziehen oder klicken zum Auswählen"
-           onClick={() => !busy && stamm?.paperless && (document.querySelector('.portal-up__waehlen input[type=file]') as HTMLInputElement | null)?.click()}>
-        <Icon name={ueber ? 'download' : 'upload-to-cloud'} />
-        <div>
-          <b>{ueber ? 'Loslassen zum Hinzufügen' : 'Dateien hierher ziehen'}</b>
-          <span className="portal-muted portal-small"> – oder klicken zum Auswählen, Strg+V für Screenshots, oder ins Ablagefeld links ziehen</span>
-        </div>
-      </div>
+      {stamm?.paperless && (
+        <AblageFlaeche ziel={{ titel: 'Dokumenten-Upload (Liste)', annehmen: (f) => { if (!busy) hinzufuegen(f); } }} accept={akzeptiert}
+                       groesse={dateien.length ? 'Dot' : 'Spot'} titel="Dateien hier ablegen"
+                       text="Hierher ziehen, klicken zum Auswählen oder Screenshot mit Strg+V – die Dateien landen in der Liste und werden erst mit „Übertragen“ an Paperless gegeben." />
+      )}
       <Section title="Dateien" count={dateien.length} flush
                status={fertig ? <Text className="portal-muted">{fertig} übertragen</Text> : undefined}>
         <AnalyticalTable minRows={1} columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 1)} noDataText="Noch keine Dateien – hierher ziehen oder „Dateien wählen“ (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
