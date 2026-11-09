@@ -16,6 +16,7 @@ import { dat, eur } from '../util';
 import { MG, type Auswahl, type Detail } from './typen';
 import { BankDialog, KommDialog, KopfDialog, VertragDialog } from './Dialoge';
 import { Dokumente } from './Dokumente';
+import { GruppenTab } from './GruppenTab';
 import { useAblageZiel } from '@core/ablage';
 import { SperrHinweis, useSperre } from '@core/sperre';
 
@@ -150,6 +151,9 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
         <Tab data-key="fam" text={`Familie & Schlüssel (${d.familie.length - 1})`} selected={tab === 'fam'}>
           <Familie d={d} onOpen={onOpen} />
           <Schluessel d={d} edit={edit} onAktion={aktion} />
+        </Tab>
+        <Tab data-key="grp" text={`Gruppen (${d.gruppen.length})`} selected={tab === 'grp'}>
+          {tab === 'grp' && <GruppenTab d={d} edit={edit} onAktion={aktion} />}
         </Tab>
         <Tab data-key="dok" text="Dokumente" selected={tab === 'dok'}>
           {tab === 'dok' && <Dokumente adrnr={adrnr} edit={edit} sel={docSel} onSel={setDocSel} onError={setError} onKomm={() => setDlg('komm')}

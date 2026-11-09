@@ -35,6 +35,8 @@ export interface Detail {
   familie: Person[]; vertraege: Vertrag[]; sepa: Sepa[];
   schluessel: { counter: string; ausgabe: string | null; ausgabebeleg: string | null; ruecknahme: string | null; ruecknahmebeleg: string | null }[];
   notizen: { notiz_id: string; erstellt_am: string; erstellt_von: string | null; notiz: string }[];
+  /** direkt zugeordnete Mitgliedergruppen */
+  gruppen: { id: number; rolle: string | null }[];
 }
 export interface VertragsArt { art: string; name: string; betrag: number; turnus: string }
 export interface Auswahl {

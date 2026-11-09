@@ -29,7 +29,7 @@ interface Ev {
 interface Daten { events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; gruppen: { id: number; name: string; aktiv: boolean }[] }
 interface Tn { adrnr: string; name: string; status: Status; begleitung: number; kommentar: string | null; geaendert_von: string | null }
 interface Detail { event: Ev; teilnehmer: { zusagen: { name: string; begleitung: number }[]; liste: Tn[]; offen: { adrnr: string; name: string }[] } }
-interface Gruppe { id: number; name: string; beschreibung: string | null; aktiv: boolean; mitglieder: { adrnr: string; name: string; rolle: string | null }[] }
+interface Gruppe { id: number; name: string; pfad: string; beschreibung: string | null; aktiv: boolean; mitglieder: { adrnr: string; name: string; rolle: string | null }[] }
 
 const STATUS_TEXT: Record<Status, string> = { ZUSAGE: 'Zusage', ABSAGE: 'Absage', VIELLEICHT: 'Vielleicht' };
 const STATUS_STATE: Record<Status, 'Positive' | 'Negative' | 'Critical'> = { ZUSAGE: 'Positive', ABSAGE: 'Negative', VIELLEICHT: 'Critical' };
@@ -378,9 +378,10 @@ function Gruppen({ aktiv, onError, onGeaendert }: { aktiv: boolean; onError: (t:
         <Button icon="add" design="Emphasized" disabled={busy || !neu.trim()} onClick={() => lauf(async () => { await api.post(`${K}/pflege/gruppen`, { name: neu }); setNeu(''); })}>Gruppe anlegen</Button>
       </FlexBox>
       {!liste.length && <Empty>Noch keine Gruppen – z. B. Mannschaften für die Mannschaftsplanung anlegen.</Empty>}
+      {liste.length > 0 && <MessageStrip hideCloseButton design="Information" style={{ marginBottom: '0.5rem' }}>Kategorien, Untergruppen und das Verschieben im Baum pflegst du unter Mitglieder → Mitgliedergruppen.</MessageStrip>}
       <div className="portal-kal__gruppen">
         {liste.map((g) => (
-          <Section key={g.id} title={g.name} count={g.mitglieder.length}
+          <Section key={g.id} title={g.pfad} count={g.mitglieder.length}
                    actions={<Button icon="delete" design="Transparent" tooltip="Gruppe löschen" disabled={busy} onClick={() => lauf(() => api.del(`${K}/pflege/gruppen/${g.id}`))} />}>
             {g.mitglieder.map((m) => (
               <div key={m.adrnr} className="portal-kal__tn">
