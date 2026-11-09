@@ -28,9 +28,11 @@ Voraussetzung: Linux-Server (z. B. Debian 12 als Proxmox-LXC oder -VM) mit Inter
 
 ```bash
 git clone <repo-url> portal && cd portal
-./install.sh            # fragt Port, Module und optional eine Domain
+./install.sh            # fragt Port, Module, Domain, Ablageorte, Paperless und n8n
 # oder ohne Rückfragen:
 ./install.sh --yes
+# Paperless-ngx und/oder n8n im selben Stack (auch nachträglich bei bestehender Installation):
+./install.sh --paperless --n8n
 ```
 
 Das Skript installiert bei Bedarf Docker, erzeugt die `.env` mit zufälligem Datenbank-Passwort,
@@ -44,6 +46,24 @@ baut und startet alle Container und gibt die Adresse aus. Beim ersten Aufruf im 
 | `gotenberg` | PDF-Erzeugung |
 | `backup` | täglicher `pg_dump` nach `./data/backups`, Rotation nach `BACKUP_KEEP_DAYS` |
 | `caddy` | optional (`PORTAL_DOMAIN` gesetzt): HTTPS mit automatischem Zertifikat |
+| `paperless`, `paperless-db`, `paperless-redis`, `paperless-tika` | optional (Profil `paperless`): Paperless-ngx mit eigener Datenbank, Port `PAPERLESS_PORT` (8000); die Paperless-Datenbank sichert der `backup`-Container mit (`paperless_<datum>.dump`) |
+| `n8n` | optional (Profil `n8n`): n8n für Mailversand und Importe, Port `N8N_PORT` (5678); Workflows in [`docs/n8n`](docs/n8n) |
+
+**Ablageorte** stehen in der `.env` und werden beim Installieren abgefragt, bei `./update.sh` in ältere
+`.env`-Dateien ergänzt und als Ordner (Besitzer UID 1000) angelegt:
+
+| Einstellung | Inhalt | Standard |
+|---|---|---|
+| `SICHERUNG_PFAD` | Portal-Sicherungen (Administration → Sicherung) | `./data/sicherungen` |
+| `BACKUP_PFAD` | nächtliche Datenbank-Backups (Archiv, Rotation nach `BACKUP_KEEP_DAYS`) | `./data/backups` |
+| `PAPERLESS_PFAD` | Paperless: Datenbank, Dokumente (`media`), Export, Eingang (`consume`) | `./data/paperless` |
+| `N8N_PFAD` | n8n: Workflows, Zugangsdaten | `./data/n8n` |
+
+Absolute Pfade (z. B. ein eingebundenes NAS unter `/mnt/nas/portal/…`) sind möglich. Die optionalen Dienste
+stehen in `COMPOSE_PROFILES` (z. B. `paperless,n8n`); Passwörter und Schlüssel erzeugt `install.sh` zufällig,
+die Paperless-Anmeldung zeigt es am Ende an. Im Portal unter **TC Oberthal → Stammdaten → Anbindungen** dann
+die internen Adressen eintragen: Paperless `http://paperless:8000` (API-Token aus Paperless), Mail-Webhook
+`http://n8n:5678/webhook/tco-mailversand`.
 
 Hinter einem vorhandenen Reverse Proxy (z. B. Nginx Proxy Manager): Domain leer lassen,
 Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECURE_COOKIES=true` und
@@ -60,6 +80,12 @@ Paperless/n8n). Das Repository enthält keine Vereinsdaten; alles kommt aus den 
 3. Unter **Environment variables** `POSTGRES_PASSWORD` mit einem langen Zufallswert setzen
    (optional `PORTAL_PORT`, Standard 8080).
 4. **Deploy the stack** – danach `http://<server>:8080` öffnen und den ersten Administrator anlegen.
+
+Ablageorte: Standard sind die Volumes `portal_sicherungen` und `portal_backups`. Mit den Variablen `SICHERUNG_PFAD`
+und `BACKUP_PFAD` (absoluter Host-Pfad, Besitzer UID 1000) landen Sicherungen und Backups stattdessen in einem
+Ordner auf dem Server. **Mit Paperless-ngx und n8n:** [`portainer-stack-komplett.yml`](portainer-stack-komplett.yml)
+verwenden und zusätzlich `PAPERLESS_SECRET_KEY`, `PAPERLESS_DB_PASSWORD`, `PAPERLESS_ADMIN_PASSWORD` und
+`N8N_ENCRYPTION_KEY` setzen.
 
 Alle Fachmodule sind aktiv (`PORTAL_MODULES=*`). Was jemand im Menü sieht, steuern die Rollen
 (Administration → Rollen): Ein Menüpunkt erscheint nur mit der passenden Berechtigung, eine leere Gruppe

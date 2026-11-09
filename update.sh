@@ -2,10 +2,9 @@
 # Portalbasis – Update: Backup, neuen Stand holen, neu bauen, Migrationen laufen beim Start automatisch.
 set -euo pipefail
 cd "$(dirname "$0")"
-set -a; source .env; set +a
-
-mkdir -p data/sicherungen
-chown 1000:1000 data/sicherungen 2>/dev/null || sudo chown 1000:1000 data/sicherungen 2>/dev/null || chmod 777 data/sicherungen
+source scripts/env.sh
+env_ergaenzen      # neue Einstellungen (Ablageorte, optionale Dienste) in ältere .env übernehmen
+ordner_anlegen
 
 echo "==> Backup vor dem Update"
 docker compose exec -T backup sh /backup.sh now
@@ -15,10 +14,9 @@ if [[ -d .git ]]; then
   git pull --ff-only
 fi
 
-PROFILE=()
-[[ -n "${PORTAL_DOMAIN:-}" ]] && PROFILE=(--profile https)
-echo "==> Neu bauen und starten"
-docker compose "${PROFILE[@]}" up -d --build
+echo "==> Neu bauen und starten${COMPOSE_PROFILES:+ (Zusatzdienste: ${COMPOSE_PROFILES})}"
+docker compose pull --ignore-buildable --quiet 2>/dev/null || true
+docker compose up -d --build
 
 for i in $(seq 1 90); do
   curl -fsS "http://localhost:${PORTAL_PORT}/api/health" >/dev/null 2>&1 && { echo "✔ Update abgeschlossen"; exit 0; }

@@ -1,5 +1,13 @@
 # Portalbasis – komplette Installation (App, Datenbank, PDF-Dienst, Backup)
 # Start: ./install.sh  bzw.  docker compose up -d --build
+#
+# Ablageorte (in der .env, Standard unter ./data):
+#   SICHERUNG_PFAD  Portal-Sicherungen (Administration → Sicherung)
+#   BACKUP_PFAD     nächtliche Datenbank-Backups (pg_dump, Archiv mit Rotation)
+# Optional im selben Stack (COMPOSE_PROFILES in der .env, z. B. "paperless,n8n"):
+#   paperless   Paperless-ngx mit eigener Datenbank und Redis  → http://<server>:${PAPERLESS_PORT:-8000}
+#   n8n         n8n (Mailversand, EP3-Import, …)              → http://<server>:${N8N_PORT:-5678}
+#   https       Caddy mit automatischem Zertifikat (PORTAL_DOMAIN)
 
 services:
   db:
@@ -37,12 +45,15 @@ services:
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SESSION_HOURS: ${SESSION_HOURS:-12}
+      PORTAL_URL: ${PORTAL_URL:-}
+      BACKUP_DIR: /app/data/sicherungen
+      DUMP_DIR: /app/data/backups
       TZ: ${TZ:-Europe/Berlin}
     ports:
       - "${PORTAL_PORT:-8080}:8080"
     volumes:
-      - ./data/sicherungen:/app/data/sicherungen
-      - ./data/backups:/app/data/backups:ro
+      - ${SICHERUNG_PFAD:-./data/sicherungen}:/app/data/sicherungen
+      - ${BACKUP_PFAD:-./data/backups}:/app/data/backups:ro
 
   backup:
     image: postgres:16-alpine
@@ -57,10 +68,12 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       BACKUP_TIME: ${BACKUP_TIME:-02:30}
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      # nur bei Profil paperless wirksam: Paperless-Datenbank wird mitgesichert
+      PAPERLESS_DB_PASSWORD: ${PAPERLESS_DB_PASSWORD:-}
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - ./backup/backup.sh:/backup.sh:ro
-      - ./data/backups:/backups
+      - ${BACKUP_PFAD:-./data/backups}:/backups
     entrypoint: ["sh", "/backup.sh", "loop"]
 
   # Optional: HTTPS mit automatischem Let's-Encrypt-Zertifikat
@@ -77,3 +90,94 @@ services:
     volumes:
       - ./backup/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./data/caddy:/data
+
+  # ---------------------------------------------------------------------------
+  # Optional: Paperless-ngx (Profil "paperless") – Dokumentenablage für Rechnungen, Belege, Unterlagen.
+  # Im Portal (Stammdaten → Anbindungen) als URL http://paperless:8000 eintragen.
+  # ---------------------------------------------------------------------------
+  paperless-db:
+    image: postgres:16-alpine
+    profiles: ["paperless"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD:-paperless}
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ${PAPERLESS_PFAD:-./data/paperless}/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  paperless-redis:
+    image: redis:7-alpine
+    profiles: ["paperless"]
+    restart: unless-stopped
+    volumes:
+      - ${PAPERLESS_PFAD:-./data/paperless}/redis:/data
+
+  paperless-tika:
+    image: apache/tika:latest
+    profiles: ["paperless"]
+    restart: unless-stopped
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    profiles: ["paperless"]
+    restart: unless-stopped
+    depends_on:
+      paperless-db:
+        condition: service_healthy
+      paperless-redis:
+        condition: service_started
+      gotenberg:
+        condition: service_started
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_DBHOST: paperless-db
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD:-paperless}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-bitte-in-der-env-setzen}
+      PAPERLESS_URL: ${PAPERLESS_URL:-}
+      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-admin}
+      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:-}
+      PAPERLESS_TIME_ZONE: ${TZ:-Europe/Berlin}
+      PAPERLESS_OCR_LANGUAGE: deu
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_ENDPOINT: http://paperless-tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+      USERMAP_UID: 1000
+      USERMAP_GID: 1000
+    ports:
+      - "${PAPERLESS_PORT:-8000}:8000"
+    volumes:
+      - ${PAPERLESS_PFAD:-./data/paperless}/data:/usr/src/paperless/data
+      - ${PAPERLESS_PFAD:-./data/paperless}/media:/usr/src/paperless/media
+      - ${PAPERLESS_PFAD:-./data/paperless}/export:/usr/src/paperless/export
+      - ${PAPERLESS_PFAD:-./data/paperless}/consume:/usr/src/paperless/consume
+
+  # ---------------------------------------------------------------------------
+  # Optional: n8n (Profil "n8n") – Mailversand, EP3-Import, Rückmeldungen.
+  # Im Portal als Webhook-URL http://n8n:5678/webhook/tco-mailversand eintragen (Workflows: docs/n8n).
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    profiles: ["n8n"]
+    restart: unless-stopped
+    environment:
+      N8N_PORT: 5678
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      GENERIC_TIMEZONE: ${TZ:-Europe/Berlin}
+      TZ: ${TZ:-Europe/Berlin}
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - ${N8N_PFAD:-./data/n8n}:/home/node/.n8n

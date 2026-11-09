@@ -1,0 +1,190 @@
+# ---------------------------------------------------------------------------
+# Portalbasis KOMPLETT – Portal + Paperless-ngx + n8n in einem Stack für Portainer
+#
+# Nutzt das fertige Image aus der GitHub Container Registry (wird bei jedem
+# Push auf main gebaut) – kein Build auf dem Server nötig.
+# Alle Fachmodule sind aktiv (PORTAL_MODULES=*); was ein Benutzer im Menü
+# sieht, steuern Rollen und Berechtigungen unter Administration → Rollen.
+#
+# In Portainer unter „Environment variables“ mindestens setzen:
+#   POSTGRES_PASSWORD   langes Zufallspasswort (später nicht mehr ändern)
+# Optional: PORTAL_PORT (8080), PORTAL_MODULES (*), SECURE_COOKIES (false),
+#           BACKUP_TIME (02:30), BACKUP_KEEP_DAYS (30), PORTAL_IMAGE, PORTAL_URL
+# Ablageorte: SICHERUNG_PFAD (Portal-Sicherungen) und BACKUP_PFAD (nächtliche Datenbank-Backups).
+#           Standard sind die Volumes portal_sicherungen/portal_backups; ein absoluter Host-Pfad
+#           (z. B. /mnt/nas/portal/sicherungen) bindet stattdessen einen Ordner ein (Besitzer UID 1000).
+#
+# Zusätzlich zu setzen: PAPERLESS_SECRET_KEY, PAPERLESS_DB_PASSWORD, PAPERLESS_ADMIN_PASSWORD, N8N_ENCRYPTION_KEY
+#   (je ein langer Zufallswert). Optional: PAPERLESS_PORT (8000), PAPERLESS_URL (http://<server>:8000),
+#   N8N_PORT (5678), N8N_HOST (<server-ip>), N8N_WEBHOOK_URL (http://<server-ip>:5678/).
+# Im Portal (Stammdaten → Anbindungen): Paperless-URL http://paperless:8000, Mail-Webhook http://n8n:5678/webhook/tco-mailversand
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte POSTGRES_PASSWORD als Umgebungsvariable setzen}
+      TZ: Europe/Berlin
+    volumes:
+      - portal_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command: ["gotenberg", "--chromium-disable-javascript=true"]
+
+  app:
+    image: ${PORTAL_IMAGE:-ghcr.io/lautor80/homeprojekt:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://portal:${POSTGRES_PASSWORD}@db:5432/portal
+      PORTAL_MODULES: ${PORTAL_MODULES:-*}
+      GOTENBERG_URL: http://gotenberg:3000
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+      PORTAL_URL: ${PORTAL_URL:-}
+      BACKUP_DIR: /app/data/sicherungen
+      DUMP_DIR: /app/data/backups
+      TZ: Europe/Berlin
+    ports:
+      - "${PORTAL_PORT:-8080}:8080"
+    volumes:
+      - ${SICHERUNG_PFAD:-portal_sicherungen}:/app/data/sicherungen
+      - ${BACKUP_PFAD:-portal_backups}:/app/data/backups:ro
+
+  # Tägliches Datenbank-Backup (pg_dump) ins Volume portal_backups
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: portal
+      PGUSER: portal
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_TIME: ${BACKUP_TIME:-02:30}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      PAPERLESS_DB_PASSWORD: ${PAPERLESS_DB_PASSWORD}
+      TZ: Europe/Berlin
+    volumes:
+      - ${BACKUP_PFAD:-portal_backups}:/backups
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo "Backup-Dienst aktiv: täglich um $${BACKUP_TIME}, Aufbewahrung $${BACKUP_KEEP_DAYS} Tage"
+        last=""
+        while true; do
+          if [ "$$(date +%H:%M)" = "$${BACKUP_TIME}" ] && [ "$$last" != "$$(date +%F)" ]; then
+            f="/backups/portal_$$(date +%Y-%m-%d_%H%M%S).dump"
+            if pg_dump -Fc -f "$$f.tmp" && mv "$$f.tmp" "$$f"; then echo "$$(date '+%F %T') Backup erstellt: $$f"; else echo "Backup FEHLGESCHLAGEN"; fi
+            p="/backups/paperless_$$(date +%Y-%m-%d_%H%M%S).dump"
+            if PGPASSWORD="$${PAPERLESS_DB_PASSWORD}" pg_dump -Fc -h paperless-db -U paperless -d paperless -f "$$p.tmp" && mv "$$p.tmp" "$$p"; then echo "Paperless-Backup erstellt: $$p"; else rm -f "$$p.tmp"; echo "Paperless-Backup FEHLGESCHLAGEN"; fi
+            find /backups -name '*.dump' -type f -mtime +"$${BACKUP_KEEP_DAYS}" -print -delete
+            last="$$(date +%F)"
+          fi
+          sleep 30
+        done
+
+
+  # ---------------------------------------------------------------- Paperless-ngx
+  paperless-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD:?Bitte PAPERLESS_DB_PASSWORD setzen}
+      TZ: Europe/Berlin
+    volumes:
+      - paperless_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  paperless-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - paperless_redis:/data
+
+  paperless-tika:
+    image: apache/tika:latest
+    restart: unless-stopped
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    depends_on:
+      paperless-db:
+        condition: service_healthy
+      paperless-redis:
+        condition: service_started
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_DBHOST: paperless-db
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:?Bitte PAPERLESS_SECRET_KEY setzen}
+      PAPERLESS_URL: ${PAPERLESS_URL:-}
+      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-admin}
+      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:?Bitte PAPERLESS_ADMIN_PASSWORD setzen}
+      PAPERLESS_TIME_ZONE: Europe/Berlin
+      PAPERLESS_OCR_LANGUAGE: deu
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_ENDPOINT: http://paperless-tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+    ports:
+      - "${PAPERLESS_PORT:-8000}:8000"
+    volumes:
+      - paperless_data:/usr/src/paperless/data
+      - paperless_media:/usr/src/paperless/media
+      - paperless_export:/usr/src/paperless/export
+      - paperless_consume:/usr/src/paperless/consume
+
+  # ---------------------------------------------------------------- n8n
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      N8N_PORT: 5678
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Bitte N8N_ENCRYPTION_KEY setzen}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      GENERIC_TIMEZONE: Europe/Berlin
+      TZ: Europe/Berlin
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_daten:/home/node/.n8n
+
+volumes:
+  portal_db:
+  portal_backups:
+  portal_sicherungen:
+  paperless_db:
+  paperless_redis:
+  paperless_data:
+  paperless_media:
+  paperless_export:
+  paperless_consume:
+  n8n_daten:

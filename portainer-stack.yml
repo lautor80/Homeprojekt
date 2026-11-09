@@ -9,7 +9,11 @@
 # In Portainer unter „Environment variables“ mindestens setzen:
 #   POSTGRES_PASSWORD   langes Zufallspasswort (später nicht mehr ändern)
 # Optional: PORTAL_PORT (8080), PORTAL_MODULES (*), SECURE_COOKIES (false),
-#           BACKUP_TIME (02:30), BACKUP_KEEP_DAYS (30), PORTAL_IMAGE
+#           BACKUP_TIME (02:30), BACKUP_KEEP_DAYS (30), PORTAL_IMAGE, PORTAL_URL
+# Ablageorte: SICHERUNG_PFAD (Portal-Sicherungen) und BACKUP_PFAD (nächtliche Datenbank-Backups).
+#           Standard sind die Volumes portal_sicherungen/portal_backups; ein absoluter Host-Pfad
+#           (z. B. /mnt/nas/portal/sicherungen) bindet stattdessen einen Ordner ein (Besitzer UID 1000).
+# Mit Paperless-ngx und n8n im selben Stack: portainer-stack-komplett.yml
 # ---------------------------------------------------------------------------
 
 services:
@@ -46,12 +50,15 @@ services:
       GOTENBERG_URL: http://gotenberg:3000
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
       SESSION_HOURS: ${SESSION_HOURS:-12}
+      PORTAL_URL: ${PORTAL_URL:-}
+      BACKUP_DIR: /app/data/sicherungen
+      DUMP_DIR: /app/data/backups
       TZ: Europe/Berlin
     ports:
       - "${PORTAL_PORT:-8080}:8080"
     volumes:
-      - portal_sicherungen:/app/data/sicherungen
-      - portal_backups:/app/data/backups:ro
+      - ${SICHERUNG_PFAD:-portal_sicherungen}:/app/data/sicherungen
+      - ${BACKUP_PFAD:-portal_backups}:/app/data/backups:ro
 
   # Tägliches Datenbank-Backup (pg_dump) ins Volume portal_backups
   backup:
@@ -69,7 +76,7 @@ services:
       BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
       TZ: Europe/Berlin
     volumes:
-      - portal_backups:/backups
+      - ${BACKUP_PFAD:-portal_backups}:/backups
     entrypoint:
       - sh
       - -c

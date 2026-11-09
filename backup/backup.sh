@@ -11,6 +11,15 @@ run_backup() {
   file="$DIR/${PGDATABASE}_${ts}.dump"
   pg_dump -Fc -f "$file.tmp" && mv "$file.tmp" "$file"
   echo "$(date '+%F %T') Backup erstellt: $(basename "$file") ($(du -h "$file" | cut -f1))"
+  # Paperless-Datenbank mitsichern, wenn Paperless im selben Stack läuft (Dokumente selbst: Ordner PAPERLESS_PFAD/media)
+  if [ -n "${PAPERLESS_DB_PASSWORD:-}" ] && pg_isready -q -h paperless-db -U paperless -d paperless 2>/dev/null; then
+    pf="$DIR/paperless_${ts}.dump"
+    if PGPASSWORD="$PAPERLESS_DB_PASSWORD" pg_dump -Fc -h paperless-db -U paperless -d paperless -f "$pf.tmp" && mv "$pf.tmp" "$pf"; then
+      echo "$(date '+%F %T') Backup erstellt: $(basename "$pf") ($(du -h "$pf" | cut -f1))"
+    else
+      rm -f "$pf.tmp"; echo "Paperless-Backup FEHLGESCHLAGEN"
+    fi
+  fi
   find "$DIR" -name "*.dump" -type f -mtime +"$KEEP" -print -delete | sed 's/^/gelöscht: /' || true
 }
 

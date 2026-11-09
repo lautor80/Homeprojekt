@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 FILE=${1:-}
 [[ -f "$FILE" ]] || { echo "Aufruf: ./restore.sh <backup-datei>"; ls -1t data/backups/*.dump 2>/dev/null | head -5; exit 1; }
+[[ "$(basename "$FILE")" == paperless_* ]] && { echo "Das ist ein Paperless-Backup – Rücksicherung siehe README (Paperless-ngx)."; exit 1; }
 set -a; source .env; set +a
 
 read -r -p "Datenbank ${POSTGRES_DB} wird durch $(basename "$FILE") ERSETZT. Fortfahren? (ja/nein): " A
