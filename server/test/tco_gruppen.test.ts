@@ -223,6 +223,31 @@ test('Hierarchie: je Linie nur eine Zuordnung, parallele Gruppen mehrfach', asyn
   assert.deepEqual(await direkt(DORA), []);
 });
 
+test('Verschieben (Ziehen und Ablegen): Mitglied wandert mit seiner Rolle', async () => {
+  const in_ = async (id: number) => (await baum()).find((x) => x.id === id)!.mitglieder.map((m) => [m.adrnr, m.rolle]);
+  // Ben (Mannschaftsführer) von „Herren 40“ nach „Ohne Teilnahme“
+  let r = await admin('POST', `${G}/${ohne}/mitglieder/verschieben`, { adrnr: BEN, von: h40 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Ohne Teilnahme am Spielbetrieb/);
+  assert.deepEqual(await in_(h40), [[CARL, null]]);
+  assert.deepEqual(await in_(ohne), [[ANNA, null], [BEN, 'Mannschaftsführer']]);
+  // in eine Gruppe über der bisherigen und wieder zurück in die Untergruppe
+  assert.equal((await admin('POST', `${G}/${h40}/mitglieder/verschieben`, { adrnr: BEN, von: ohne })).status, 200);
+  assert.equal((await admin('POST', `${G}/${mannschaften}/mitglieder/verschieben`, { adrnr: BEN, von: h40 })).status, 200);
+  assert.deepEqual(await in_(mannschaften), [[BEN, 'Mannschaftsführer']]);
+  assert.equal((await admin('POST', `${G}/${h40}/mitglieder/verschieben`, { adrnr: BEN, von: mannschaften })).status, 200);
+  assert.deepEqual(await in_(mannschaften), []);
+  assert.deepEqual(await in_(h40), [[CARL, null], [BEN, 'Mannschaftsführer']]);
+  // nicht zugeordnet, unbekannte Gruppe, ohne Pflegerecht
+  assert.equal((await admin('POST', `${G}/${ohne}/mitglieder/verschieben`, { adrnr: DORA, von: h40 })).status, 400);
+  assert.equal((await admin('POST', `${G}/99999/mitglieder/verschieben`, { adrnr: BEN, von: h40 })).status, 404);
+  // Ziel über einer Gruppe, in der das Mitglied weiter steht: abgewiesen, nichts verändert
+  assert.equal((await admin('POST', `${M}/m/${CARL}/gruppen`, { gruppe: ohne })).status, 200);
+  assert.equal((await admin('POST', `${G}/${spielbetrieb}/mitglieder/verschieben`, { adrnr: CARL, von: ohne })).status, 400);
+  assert.deepEqual(await in_(ohne), [[ANNA, null], [CARL, null]]);
+  assert.equal((await admin('POST', `${M}/m/${CARL}/gruppen`, { gruppe: ohne, entfernen: true })).status, 200);
+});
+
 test('Berechtigungen: Anzeige, Pflege, Zuordnung im Mitgliedsstamm', async () => {
   const grleser = await anmelden('grleser');
   const mgleser = await anmelden('mgleser');
@@ -238,6 +263,7 @@ test('Berechtigungen: Anzeige, Pflege, Zuordnung im Mitgliedsstamm', async () =>
     assert.equal((await c('POST', G, { name: 'x' })).status, 403);
     assert.equal((await c('DELETE', `${G}/${halle}`)).status, 403);
     assert.equal((await c('POST', `${G}/${halle}/mitglieder`, { adrnrs: [ANNA] })).status, 403);
+    assert.equal((await c('POST', `${G}/${halle}/mitglieder/verschieben`, { adrnr: ANNA, von: ohne })).status, 403);
     assert.equal((await c('GET', `${G}/mitglieder`)).status, 403);
   }
   assert.equal((await mgleser('POST', `${M}/m/${ANNA}/gruppen`, { gruppe: halle })).status, 403);
@@ -277,6 +303,40 @@ test('Vereinskalender: Untergruppen gehören zur Gruppe darüber', async () => {
   assert.deepEqual((await admin('GET', `${M}/m/${BEN}`)).body.gruppen.map((x: any) => x.id), [h40]);
 });
 
+test('Meine Mitgliedschaft: eigene Gruppen sehen und ändern, Kalender kennt meine Gruppen', async () => {
+  const anna = client();
+  assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
+  let r = await anna('GET', `${M}/meine/gruppen`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.meine, [{ id: ohne, rolle: null }]);
+  assert.ok(r.body.gruppen.length >= 4 && r.body.gruppen.every((g: any) => !('mitglieder' in g) && !('gesamt' in g)), 'Baum ohne die Mitglieder der Gruppen');
+
+  // sich selbst in eine parallele Gruppe eintragen; eine mitgeschickte Rolle oder fremde Adressnummer zählt nicht
+  r = await anna('POST', `${M}/meine/gruppen`, { gruppe: h40, rolle: 'Mannschaftsführer', adrnr: BEN });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await anna('GET', `${M}/meine/gruppen`);
+  assert.deepEqual(r.body.meine.map((x: any) => [x.id, x.rolle]).sort(), [[h40, null], [ohne, null]].sort());
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: h40 })).status, 200, 'erneut eintragen ändert nichts');
+  // Gruppe darüber: gehört schon über die Untergruppe dazu
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: spielbetrieb })).status, 400);
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: 99999 })).status, 404);
+
+  // Vereinskalender: eigene Gruppen samt den Gruppen darüber (Filter „Nur meine Gruppen“)
+  r = await anna('GET', `${K}?von=${tag(0)}&bis=${tag(30)}`);
+  assert.deepEqual([...r.body.meineGruppen].sort(), [h40, mannschaften, ohne, spielbetrieb].sort());
+  assert.deepEqual((await admin('GET', `${K}?von=${tag(0)}&bis=${tag(30)}`)).body.meineGruppen, [], 'Benutzer ohne Mitglied');
+
+  // austragen
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: h40, entfernen: true })).status, 200);
+  assert.deepEqual((await anna('GET', `${M}/meine/gruppen`)).body.meine, [{ id: ohne, rolle: null }]);
+  // nur für Mitglieder: Benutzer ohne zugeordnetes Mitglied bzw. ohne die Berechtigung
+  assert.equal((await admin('GET', `${M}/meine/gruppen`)).status, 403);
+  const mgleser = client();
+  assert.equal((await mgleser('POST', '/api/auth/login', { username: 'mgleser', password: 'neues-passwort' })).status, 200);
+  assert.equal((await mgleser('GET', `${M}/meine/gruppen`)).status, 403);
+  assert.equal((await mgleser('POST', `${M}/meine/gruppen`, { gruppe: ohne })).status, 403);
+});
+
 test('Änderungsbelege', async () => {
   const [{ n }] = await sql`select count(*)::int as n from core.change_header where object_type = 'KAL_GRUPPE'`;
   assert.ok(n >= 5, `Änderungsbelege zu Gruppen: ${n}`);
@@ -293,4 +353,8 @@ test('Mitglieder zur Aufnahme: Geschlecht, Jahrgang und Alter für die Filter', 
   assert.deepEqual(je.get(ANNA), { adrnr: ANNA, name: 'Aufschlag, Anna', geschlecht: 'W', jahrgang: jahr - 30, alter: 30 });
   // ohne Geburtsdatum und Geschlecht: leer statt 0
   assert.deepEqual(je.get(CARL), { adrnr: CARL, name: 'Linie, Carl', geschlecht: '', jahrgang: null, alter: null });
+  // nur aktive Mitglieder: nicht mit Austritt (auch künftigem) und nicht ohne Eintritt (z. B. Zahler)
+  await sql`update tco.mitglieder set austritt = current_date + 30 where adrnr = ${DORA}`;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname) values ('0000000699', 'Zita', 'Zahler')`;
+  assert.deepEqual((await admin('GET', `${G}/mitglieder`)).body.map((m: any) => m.adrnr).sort(), [ANNA, BEN, CARL]);
 });

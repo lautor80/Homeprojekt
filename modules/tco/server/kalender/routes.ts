@@ -7,7 +7,7 @@ import { DB } from '../verein.js';
 import { addTage } from '../format.js';
 import {
   eventLesen, eventSpeichern, eventsLesen, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
-  KATEGORIEN, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
+  KATEGORIEN, meineGruppen, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
 } from './logik.js';
 
 /**
@@ -54,6 +54,8 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const alles = can(req, P_KAL.edit);
     return {
       events: await eventsLesen(DB, q, { adrnr, alles }), kategorien: KATEGORIEN, mitglied: !!adrnr, pflege: alles,
+      // eigene Gruppen einschließlich der Gruppen darüber – für den Filter „Nur meine Gruppen“
+      meineGruppen: await meineGruppen(DB, adrnr),
       gruppen: (await gruppenLesen(DB)).map((g) => ({ id: g.id, name: g.pfad, aktiv: g.aktiv })),
     };
   });

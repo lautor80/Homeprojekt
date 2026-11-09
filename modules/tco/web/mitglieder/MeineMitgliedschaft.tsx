@@ -15,6 +15,7 @@ import { toast } from '@core/toast';
 import { useSperre, SperrHinweis } from '@core/sperre';
 import { TCO, dat, eur } from '../util';
 import type { Person, Vertrag } from './typen';
+import { GruppenAuswahl, type BaumGruppe } from './GruppenTab';
 
 /**
  * „Meine Mitgliedschaft“: eigene Stammdaten sehen, Kontaktdaten und (bei Lastschrift) die eigene Bankverbindung ändern,
@@ -49,6 +50,18 @@ export function MeineMitgliedschaft() {
   useEffect(() => { api.get<typeof docs>(`${MG}/dokumente`).then(setDocs).catch(() => setDocs({ dokumente: [], hinweis: 'Dokumente konnten nicht geladen werden.' })); }, []);
   const gesperrt = sperre.zustand === 'fremd';
 
+  // eigene Gruppen (Mitgliedergruppen): ansehen, sich selbst ein- und austragen
+  const [gr, setGr] = useState<{ gruppen: BaumGruppe[]; meine: { id: number; rolle: string | null }[] } | null>(null);
+  const [grBusy, setGrBusy] = useState(false);
+  const gruppenLaden = () => api.get<NonNullable<typeof gr>>(`${MG}/gruppen`).then(setGr).catch(() => setGr(null));
+  useEffect(() => { gruppenLaden(); }, []);
+  async function gruppeSetzen(gruppe: number, entfernen: boolean) {
+    setGrBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string }>(`${MG}/gruppen`, { gruppe, entfernen });
+      toast(r.text, 5000);
+    } catch (e) { setError((e as Error).message); } finally { await gruppenLaden(); setGrBusy(false); }
+  }
   const laden = () => api.get<Meine>(MG).then(setD).catch((e) => { const x = e as { status?: number; message: string }; if (x.status === 403) setKein(x.message); else setError(x.message); });
   useEffect(() => { laden(); }, []);
 
@@ -124,6 +137,18 @@ export function MeineMitgliedschaft() {
           Kündigungsdatum ist das Tagesdatum; die Bestätigung wird gedruckt und per E-Mail zugestellt.
         </Text>
       </Section>
+
+      {gr && gr.gruppen.length > 0 && (
+        <Section title="Gruppen" count={gr.meine.length}>
+          <GruppenAuswahl baum={gr.gruppen} zugeordnet={gr.meine} edit={!gesperrt && !grBusy} rolleAenderbar={false} leer="Es gibt noch keine Gruppen."
+                          setzen={(gruppe, body) => gruppeSetzen(gruppe, !!body.entfernen)} />
+          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+            Hier trägst du dich selbst in Gruppen und Mannschaften ein oder aus – auch in mehrere nebeneinander. Mit einer Untergruppe
+            gehörst du automatisch zu den Gruppen darüber. Veranstaltungen deiner Gruppen stehen im Vereinskalender. Eine Rolle
+            (z. B. Mannschaftsführer) vergibt der Verein.
+          </Text>
+        </Section>
+      )}
 
       <Section title="Dokumente" count={docs?.dokumente.length ?? undefined} flush>
         {!docs ? <BusyIndicator active style={{ display: 'block', padding: '1rem' }} />

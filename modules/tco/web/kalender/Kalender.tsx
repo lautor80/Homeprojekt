@@ -26,7 +26,7 @@ interface Ev {
   zusagen: number; begleitpersonen: number; absagen: number; vielleicht: number;
   mein_status: Status | null; meine_begleitung: number; mein_kommentar: string | null; offen: string | null; voll: boolean;
 }
-interface Daten { events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; gruppen: { id: number; name: string; aktiv: boolean }[] }
+interface Daten { events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; /** eigene Gruppen samt den Gruppen darüber */ meineGruppen: number[]; gruppen: { id: number; name: string; aktiv: boolean }[] }
 interface Tn { adrnr: string; name: string; status: Status; begleitung: number; kommentar: string | null; geaendert_von: string | null }
 interface Detail { event: Ev; teilnehmer: { zusagen: { name: string; begleitung: number }[]; liste: Tn[]; offen: { adrnr: string; name: string }[] } }
 interface Gruppe { id: number; name: string; pfad: string; beschreibung: string | null; aktiv: boolean; mitglieder: { adrnr: string; name: string; rolle: string | null }[] }
@@ -63,6 +63,9 @@ export function Kalender() {
   const [vergangene, setVergangene] = useState(false);
   const [fGruppe, setFGruppe] = useState('');
   const [fArt, setFArt] = useState('');
+  // „Nur meine Gruppen“: voreingestellt an, abschaltbar. Wirkt für Benutzer, die alle Veranstaltungen sehen (Pflege) und
+  // selbst Mitglied sind – Mitglieder ohne Pflegerecht sehen ohnehin nur Veranstaltungen ihrer Gruppen und die für alle.
+  const [nurMeine, setNurMeine] = useState(true);
 
   const von = tagIso(new Date(monat.j, monat.m, 1));
   const bis = ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
@@ -82,7 +85,10 @@ export function Kalender() {
   // Gruppe: die gewählte Gruppe und ihre Untergruppen (Pfad „A › B“); „–“ = Veranstaltungen für alle Mitglieder
   const gruppeGewaehlt = d?.gruppen.find((g) => String(g.id) === fGruppe);
   const gruppenIds = gruppeGewaehlt ? new Set(d!.gruppen.filter((g) => g.id === gruppeGewaehlt.id || g.name.startsWith(`${gruppeGewaehlt.name} › `)).map((g) => g.id)) : null;
+  const meineWaehlbar = !!d?.pflege && !!d?.mitglied;
+  const meine = meineWaehlbar && nurMeine ? new Set(d!.meineGruppen) : null;
   const passt = (e: Ev) => (!fArt || e.kategorie === fArt)
+    && (!meine || !e.gruppen.length || e.gruppen.some((g) => meine.has(g)))
     && (fGruppe === '-' ? !e.gruppen.length : !gruppenIds || e.gruppen.some((g) => gruppenIds.has(g)));
   const jetzt = Date.now();
   const gefiltert = d ? { ...d, events: d.events.filter(passt) } : null;
@@ -118,6 +124,7 @@ export function Kalender() {
                 <Option data-k="" selected={!fArt}>Alle Arten</Option>
                 {Object.entries(d.kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={k === fArt}>{t}</Option>)}
               </Select>
+              {meineWaehlbar && <CheckBox text="Nur meine Gruppen" checked={nurMeine} onChange={(e) => setNurMeine(e.target.checked)} />}
               {ansicht === 'LISTE' && <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />}
               {(fGruppe || fArt) && <Button design="Transparent" icon="clear-filter" onClick={() => { setFGruppe(''); setFArt(''); }}>Filter zurücksetzen</Button>}
             </div>
@@ -128,7 +135,8 @@ export function Kalender() {
                 {ansicht === 'LISTE'
                   ? <Liste d={fuerListe} onOeffnen={setDetail} onMelden={melden} onKopieren={kopieren} busy={busy}
                            leer={ausgeblendet ? `${ausgeblendet} vergangene Veranstaltung${ausgeblendet === 1 ? ' ist' : 'en sind'} ausgeblendet – „Vergangene anzeigen“ blendet sie ein.`
-                             : fGruppe || fArt ? 'Keine Veranstaltung passt zu Gruppe und Art in diesem Zeitraum.' : undefined} />
+                             : fGruppe || fArt ? 'Keine Veranstaltung passt zu Gruppe und Art in diesem Zeitraum.'
+                               : meine && d.events.length ? 'In diesem Zeitraum gibt es nur Veranstaltungen anderer Gruppen – „Nur meine Gruppen“ abwählen, um sie zu sehen.' : undefined} />
                   : <Monat d={gefiltert} j={monat.j} m={monat.m} onOeffnen={setDetail} />}
               </div>
             </BusyIndicator>
