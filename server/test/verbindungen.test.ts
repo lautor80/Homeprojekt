@@ -50,10 +50,28 @@ after(async () => {
   server.close();
 });
 
-test('Migration: Vereinswerte haben Vorrang, Modulspalten werden geleert', async () => {
-  // Übernahme-Migrationen erneut laufen lassen, als läge der Altbestand noch in den Modulen
+const ALTSPALTEN = ['paperless_url', 'paperless_token', 'n8n_mail_url', 'n8n_mail_key', 'mail_absender', 'n8n_ep3_url', 'n8n_ep3_auth', 'n8n_ep3_user',
+  'n8n_stunden_url', 'n8n_stunden_auth', 'n8n_stunden_user', 'n8n_ferien_url'];
+const spalten = async (tabelle: string) => (await sql`select column_name from information_schema.columns where table_schema || '.' || table_name = ${tabelle}`)
+  .map((r) => r.column_name as string);
+
+test('Migration: Altbestand wird übernommen (Verein hat Vorrang), danach entfallen Altspalten und alte Protokolltabelle', async () => {
+  // frische Datenbank: die Altspalten gibt es nach allen Migrationen nicht mehr
+  assert.ok(!(await spalten('tco.verein')).some((c) => ALTSPALTEN.includes(c)), 'Altspalten tco.verein entfernt');
+  assert.ok(!(await spalten('transport.firma')).some((c) => c.startsWith('paperless_')), 'Altspalten transport.firma entfernt');
+  assert.equal((await sql`select to_regclass('tco.mail_protokoll') as t`)[0].t, null, 'tco.mail_protokoll entfernt');
+
+  // Altbestand nachstellen (Stand vor der Umstellung) und die Übernahme-Migrationen erneut laufen lassen
   await sql`delete from core.verbindungen`;
-  await sql`delete from public.schema_migrations where id in ('transport/004_paperless_zentral.sql', 'tco/036_paperless_zentral.sql', 'tco/037_mail_zentral.sql', 'tco/038_webhooks_zentral.sql')`;
+  await sql.unsafe(`
+    alter table transport.firma add column paperless_url text not null default '', add column paperless_token text not null default '';
+    alter table tco.verein add column paperless_url text, add column paperless_token text, add column n8n_mail_url text, add column n8n_mail_key text,
+      add column mail_absender jsonb not null default '[]', add column n8n_ep3_url text, add column n8n_ep3_auth text, add column n8n_ep3_user text,
+      add column n8n_stunden_url text, add column n8n_stunden_auth text, add column n8n_stunden_user text, add column n8n_ferien_url text;
+    create table tco.mail_protokoll (id bigserial primary key, zeit timestamptz not null default now(), anwendung text, objekt text, an text, betreff text,
+      absender text, von text, status text not null, fehler text, benutzer text, nachricht jsonb, erneut_am timestamptz, erneut_von text, erneut_status text);`);
+  await sql`delete from public.schema_migrations where id in ('transport/004_paperless_zentral.sql', 'transport/005_altspalten_entfernen.sql',
+            'tco/036_paperless_zentral.sql', 'tco/037_mail_zentral.sql', 'tco/038_webhooks_zentral.sql', 'tco/039_altspalten_entfernen.sql')`;
   await sql`update transport.firma set paperless_url = 'http://transport:8000', paperless_token = 't-transport' where id = 1`;
   await sql`update tco.verein set paperless_url = 'http://verein:8000,http://extern', paperless_token = 't-verein',
                                   n8n_mail_url = 'http://n8n:5678/webhook/tco-mailversand', n8n_mail_key = 'schluessel',
@@ -64,27 +82,28 @@ test('Migration: Vereinswerte haben Vorrang, Modulspalten werden geleert', async
   await sql`insert into tco.mail_protokoll (anwendung, objekt, an, betreff, status, fehler) values ('Test', 'ALT', 'alt@example.org', 'alt', 'fehler', 'alt')`;
   await migrate(activeModules(), () => {});
   verbindungenCacheLeeren();
+
   // Mailversand: Webhook, Schlüssel (Header) und Ersatzabsender in die Anbindung „mail“, Protokoll in den Kern
   const [m] = await sql`select url, auth_art, header_name, geheimnis, einstellungen from core.verbindungen where id = 'mail'`;
   assert.deepEqual([m.url, m.auth_art, m.header_name, m.geheimnis], ['http://n8n:5678/webhook/tco-mailversand', 'header', 'X-TCO-Key', 'schluessel']);
   assert.equal((m.einstellungen as { absender: { email: string }[] }).absender[0].email, 'info@example.org');
-  assert.equal((await sql`select count(*)::int as n from core.mail_protokoll where objekt = 'ALT'`)[0].n, 1);
-  assert.equal((await sql`select count(*)::int as n from tco.mail_protokoll`)[0].n, 0);
-  const [tvm] = await sql`select n8n_mail_url, n8n_mail_key, mail_absender from tco.verein where id = 1`;
-  assert.deepEqual([tvm.n8n_mail_url, tvm.n8n_mail_key, tvm.mail_absender], [null, null, []]);
+  assert.equal((await sql`select count(*)::int as n from core.mail_protokoll where objekt = 'ALT'`)[0].n, 1, 'Protokollzeile genau einmal übernommen');
   // Import-Webhooks: Basic-Header in Benutzer/Passwort zerlegt, Ferien erben die Anmeldung, anderer Header als „Authorization“
   const w = Object.fromEntries((await sql`select id, url, auth_art, auth_user, header_name, geheimnis from core.verbindungen where id like 'tco.%'`).map((r) => [r.id, r]));
   assert.deepEqual([w['tco.stunden'].auth_art, w['tco.stunden'].auth_user, w['tco.stunden'].geheimnis], ['basic', 'x', 'y']);
   assert.deepEqual([w['tco.ferien'].url, w['tco.ferien'].auth_art, w['tco.ferien'].auth_user, w['tco.ferien'].geheimnis], ['http://n8n:5678/webhook/ferien-saarland', 'basic', 'x', 'y']);
   assert.deepEqual([w['tco.ep3'].auth_art, w['tco.ep3'].header_name, w['tco.ep3'].geheimnis], ['header', 'Authorization', 'Bearer abc']);
-  const [tvw] = await sql`select n8n_stunden_url, n8n_stunden_auth, n8n_ep3_url, n8n_ferien_url from tco.verein where id = 1`;
-  assert.deepEqual([tvw.n8n_stunden_url, tvw.n8n_stunden_auth, tvw.n8n_ep3_url, tvw.n8n_ferien_url], [null, null, null, null]);
+  // Paperless: Verein hat Vorrang vor Transport
   const [v] = await sql`select url, auth_art, geheimnis from core.verbindungen where id = 'paperless'`;
   assert.deepEqual([v.url, v.auth_art, v.geheimnis], ['http://verein:8000,http://extern', 'token', 't-verein']);
-  const [t] = await sql`select paperless_url, paperless_token from transport.firma where id = 1`;
-  assert.deepEqual([t.paperless_url, t.paperless_token], ['', '']);
-  const [tv] = await sql`select paperless_url, paperless_token from tco.verein where id = 1`;
-  assert.deepEqual([tv.paperless_url, tv.paperless_token], [null, null]);
+  // Altspalten und alte Protokolltabelle sind wieder weg
+  assert.ok(!(await spalten('tco.verein')).some((c) => ALTSPALTEN.includes(c)));
+  assert.ok(!(await spalten('transport.firma')).some((c) => c.startsWith('paperless_')));
+  assert.equal((await sql`select to_regclass('tco.mail_protokoll') as t`)[0].t, null);
+  // Vereinsdaten lassen sich weiter sichern (Änderungsbeleg ohne entfallene Spalten)
+  const vr = (await call('GET', '/api/m/tco/verein')).body;
+  assert.equal((await call('PUT', '/api/m/tco/verein', { ...vr, ansprechpartner: 'Neu' })).status, 200);
+  assert.equal((await call('PUT', '/api/m/transport/firma', { ...(await call('GET', '/api/m/transport/firma')).body, kontakt: 'Neu' })).status, 200);
 });
 
 test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', async () => {
