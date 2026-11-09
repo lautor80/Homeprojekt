@@ -5,6 +5,9 @@ import {
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { TCO } from '../util';
+import bildSpielplan from './anleitung/schritt1.jpg';
+import bildPrompt from './anleitung/schritt2.jpg';
+import bildTabelle from './anleitung/schritt3.jpg';
 import '../halle.css';
 import './kalender.css';
 
@@ -14,6 +17,51 @@ import './kalender.css';
  */
 const K = `${TCO}/kalender`;
 export const MASSE_HINWEIS = 'Prompt in Claude nach Screenshot bei STB.LIGA.NU => Teile mir diesen Screenshot in Spalten auf';
+const PROMPT = 'Teile mir diesen Screenshot in Spalten auf';
+
+/** Kurze Anleitung zum Vorgehen – als HTML in den Dialog eingebettet, aufklappbar (#16) */
+function Anleitung({ offen }: { offen: boolean }) {
+  const [kopiert, setKopiert] = useState(false);
+  const kopieren = () => navigator.clipboard?.writeText(PROMPT).then(() => { setKopiert(true); window.setTimeout(() => setKopiert(false), 2500); }).catch(() => undefined);
+  return (
+    <details className="portal-kal__anleitung" open={offen}>
+      <summary>Anleitung: vom Spielplan bei STB.LIGA.NU zu den Veranstaltungen im Kalender</summary>
+      <ol>
+        <li>
+          <b>Screenshot bei STB.LIGA.NU erstellen</b>
+          <p>Den Spielplan des Vereins öffnen und die Tabelle mit den Terminen als Bild aufnehmen, z. B. mit Snagit oder dem Snipping Tool.</p>
+          <img src={bildSpielplan} alt="Spielplan bei STB.LIGA.NU mit Datum, Nr., Halle, Platz, Liga, Heim- und Gastmannschaft" loading="lazy" />
+        </li>
+        <li>
+          <b>In Claude einfügen und den Prompt nutzen</b>
+          <p>Den Screenshot in Claude einfügen und dazu schreiben:</p>
+          <p className="portal-kal__anleitung-prompt">
+            <code>{PROMPT}</code>
+            <button type="button" onClick={kopieren}>{kopiert ? 'kopiert' : 'Prompt kopieren'}</button>
+          </p>
+          <img src={bildPrompt} alt="Screenshot des Spielplans in Claude mit dem Prompt „Teile mir diesen Screenshot in Spalten auf“" loading="lazy" />
+        </li>
+        <li>
+          <b>Tabelle kopieren</b>
+          <p>Claude antwortet mit einer Tabelle. Alle Zeilen markieren, am besten mit der Kopfzeile, und mit Strg+C kopieren.</p>
+          <img src={bildTabelle} alt="Von Claude erzeugte Tabelle, alle Zeilen markiert" loading="lazy" />
+        </li>
+        <li>
+          <b>Hier einfügen</b>
+          <p>In das Textfeld unten klicken und mit Strg+V einfügen. Bei Bedarf „Titel beginnt mit“ anpassen, z. B. „Sommerrunde“.</p>
+        </li>
+        <li>
+          <b>Als Tabelle aufbereiten</b>
+          <p>Das Portal zeigt die Termine als Tabelle. Dort prüfen, filtern und für die ausgewählten Zeilen Titel, Ort, Art, Gruppe, Dauer und Anmeldung in einem Schritt setzen. Es wird noch nichts angelegt.</p>
+        </li>
+        <li>
+          <b>Übernehmen</b>
+          <p>„Weiter zur Freigabe“ zeigt die Auswahl. Erst „Freigeben und anlegen“ legt die Veranstaltungen im Kalender an. Termine, die es schon gibt, werden nicht doppelt angelegt.</p>
+        </li>
+      </ol>
+    </details>
+  );
+}
 
 interface Vorschau {
   zeile: number; tag: string; datum: string; uhrzeit: string | null; nr: string; halle: string; platz: string; liga: string; heim: string; gast: string;
@@ -168,6 +216,7 @@ export function MassenanlageDialog({ kategorien, gruppen, onClose, onDone }: {
 
         {phase === 'einfuegen' && <>
           <MessageStrip design="Information" hideCloseButton>{MASSE_HINWEIS}</MessageStrip>
+          <Anleitung offen={!text.trim()} />
           <div className="portal-kal__masse-kopf">
             <Label for="km-praefix" showColon>Titel beginnt mit</Label>
             <Input id="km-praefix" value={praefix} maxlength={60} onInput={(e) => setPraefix(e.target.value)} style={{ width: '16rem' }} />

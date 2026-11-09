@@ -55,3 +55,13 @@
 /* Massenanlage */
 .portal-kal__masse-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .portal-kal__masse-bearbeiten { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0.75rem; border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_HeaderBackground, #f5f6f7); }
+/* Massenanlage: eingebettete Anleitung */
+.portal-kal__anleitung { border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_Background, #fff); color: var(--sapTextColor); }
+.portal-kal__anleitung > summary { cursor: pointer; padding: 0.625rem 0.875rem; font-weight: 700; }
+.portal-kal__anleitung > ol { margin: 0; padding: 0 0.875rem 0.875rem 2.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); gap: 0.75rem 2.25rem; }
+.portal-kal__anleitung li::marker { font-weight: 700; color: var(--sapBrandColor, #0a6ed1); }
+.portal-kal__anleitung p { margin: 0.25rem 0; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); line-height: 1.4; }
+.portal-kal__anleitung img { display: block; max-width: 100%; height: auto; margin-top: 0.375rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.375rem; }
+.portal-kal__anleitung-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.portal-kal__anleitung-prompt code { padding: 0.125rem 0.375rem; border-radius: 0.25rem; background: var(--sapList_HeaderBackground, #f5f6f7); color: var(--sapTextColor); }
+.portal-kal__anleitung-prompt button { border: 1px solid var(--sapButton_BorderColor, #0a6ed1); border-radius: 0.375rem; background: none; color: var(--sapButton_TextColor, #0a6ed1); font: inherit; font-size: var(--sapFontSmallSize); padding: 0.125rem 0.5rem; cursor: pointer; }
