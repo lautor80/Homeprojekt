@@ -39,12 +39,14 @@ export function GruppenTab({ d, edit, onAktion }: { d: Detail; edit: boolean; on
       {!zeilen.length && <Empty>Es sind noch keine Mitgliedergruppen angelegt (Mitglieder → Mitgliedergruppen).</Empty>}
       {zeilen.map((g) => {
         const drin = zugeordnet.has(g.id);
+        // über eine Untergruppe zugehörig: angekreuzt und gesperrt – in der Linie wird das Mitglied nur einmal geführt
+        const geerbt = !drin && ueber.has(g.id);
         return (
           <div key={g.id} className="portal-row" style={{ paddingLeft: `${g.ebene * 1.75}rem`, minHeight: '2.75rem', borderBottom: '1px solid var(--sapList_BorderColor)', flexWrap: 'nowrap' }}>
-            <CheckBox text={g.name} checked={drin} disabled={!edit}
+            <CheckBox text={g.name} checked={drin || geerbt} disabled={!edit || geerbt}
                       onChange={(e) => setzen(g.id, e.target.checked ? {} : { entfernen: true })} />
             {!g.aktiv && <span className="portal-muted portal-small">inaktiv</span>}
-            {!drin && ueber.has(g.id) && <span className="portal-muted portal-small">über Untergruppe</span>}
+            {geerbt && <span className="portal-muted portal-small">über Untergruppe</span>}
             <div style={{ flex: 1 }} />
             {drin && (edit
               ? <Input value={zugeordnet.get(g.id) ?? ''} placeholder="Rolle, z. B. Mannschaftsführer" maxlength={60} style={{ width: 'min(16rem, 45%)' }}
@@ -55,8 +57,9 @@ export function GruppenTab({ d, edit, onAktion }: { d: Detail; edit: boolean; on
       })}
       {zeilen.length > 0 && (
         <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
-          Ein Mitglied kann mehreren Gruppen angehören. Wer in einer Untergruppe ist, zählt auch zu den Gruppen darüber
-          (z. B. im Vereinskalender und im Filter der Mitgliederliste).
+          Ein Mitglied kann mehreren parallelen Gruppen angehören. Wer in einer Untergruppe ist, gehört zwingend auch zu den
+          Gruppen darüber und wird dort nicht noch einmal aufgenommen – beim Ankreuzen einer Untergruppe entfällt deshalb
+          eine direkte Zuordnung zur Gruppe darüber.
         </MessageStrip>
       )}
     </>

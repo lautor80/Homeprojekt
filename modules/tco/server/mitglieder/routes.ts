@@ -340,8 +340,12 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/m/:adrnr/gruppen', schreiben, async (req) => {
     const { adrnr: a } = pAdr.parse(req.params);
     const b = z.object({ gruppe: z.coerce.number().int().positive(), rolle: z.string().max(60).nullish(), entfernen: z.boolean().default(false) }).parse(req.body);
-    await change(req, (tx) => (b.entfernen ? gruppenMitgliedEntfernen(tx, b.gruppe, a) : gruppenMitgliedSetzen(tx, b.gruppe, a, b.rolle ?? null)), { action: 'GRUPPE' });
-    return { text: b.entfernen ? 'Aus der Gruppe entfernt.' : 'Gruppenzuordnung gesichert.' };
+    if (b.entfernen) {
+      await change(req, (tx) => gruppenMitgliedEntfernen(tx, b.gruppe, a), { action: 'GRUPPE' });
+      return { text: 'Aus der Gruppe entfernt.' };
+    }
+    const oben = await change(req, (tx) => gruppenMitgliedSetzen(tx, b.gruppe, a, b.rolle ?? null), { action: 'GRUPPE' });
+    return { text: `Gruppenzuordnung gesichert.${oben ? ' Die Zuordnung zur übergeordneten Gruppe entfällt – das Mitglied gehört über die Untergruppe dazu.' : ''}` };
   });
 
   app.post('/mitglieder/m/:adrnr/kanal', schreiben, async (req) => {

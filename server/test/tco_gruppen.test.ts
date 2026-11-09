@@ -119,7 +119,11 @@ test('Mitglieder zuordnen: mehrere Gruppen je Mitglied, Rolle, Zählung mit Unte
   assert.equal((await admin('POST', `${G}/${h40}/mitglieder`, { adrnrs: [BEN], rolle: 'Mannschaftsführer' })).status, 200);
   r = await admin('POST', `${G}/${h40}/mitglieder`, { adrnrs: [BEN, CARL] });
   assert.match(r.body.text, /0 Mitglieder/);
-  assert.equal((await admin('POST', `${G}/${mannschaften}/mitglieder`, { adrnrs: [BEN, DORA] })).status, 200);
+  // Hierarchie: Ben gehört über „Herren 40“ schon zu den Mannschaftsspielern und wird dort nicht noch einmal aufgenommen
+  r = await admin('POST', `${G}/${mannschaften}/mitglieder`, { adrnrs: [BEN, DORA] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.neu, r.body.ueberUntergruppe, r.body.ausUebergeordneter], [1, 1, 0]);
+  assert.match(r.body.text, /1 Mitglied aufgenommen, 1 nicht – bereits über eine Untergruppe enthalten/);
   assert.equal((await admin('POST', `${G}/${halle}/mitglieder`, { adrnrs: [BEN] })).status, 200);
   assert.equal((await admin('POST', `${G}/${ohne}/mitglieder`, { adrnrs: [ANNA] })).status, 200);
   assert.equal((await admin('POST', `${G}/${halle}/mitglieder`, { adrnrs: ['9999999999'] })).status, 400);
@@ -130,8 +134,8 @@ test('Mitglieder zuordnen: mehrere Gruppen je Mitglied, Rolle, Zählung mit Unte
   const g = (id: number) => b.find((x) => x.id === id)!;
   assert.deepEqual(g(h40).mitglieder.map((m) => [m.adrnr, m.rolle]), [[CARL, null], [BEN, 'Mannschaftsführer']]);
   assert.equal(g(h40).gesamt, 2);
-  assert.equal(g(mannschaften).mitglieder.length, 2);
-  assert.equal(g(mannschaften).gesamt, 3, 'Ben nur einmal gezählt');
+  assert.deepEqual(g(mannschaften).mitglieder.map((m) => m.adrnr), [DORA]);
+  assert.equal(g(mannschaften).gesamt, 3, 'Mitglieder der Untergruppe gehören zur Gruppe darüber');
   assert.equal(g(spielbetrieb).mitglieder.length, 0);
   assert.equal(g(spielbetrieb).gesamt, 4);
 
@@ -144,7 +148,7 @@ test('Mitglieder zuordnen: mehrere Gruppen je Mitglied, Rolle, Zählung mit Unte
 test('Mitgliedsstamm: Gruppen des Mitglieds, Zuordnung und Filter der Liste', async () => {
   let r = await admin('GET', `${M}/m/${BEN}`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.gruppen.map((x: any) => x.id).sort(), [mannschaften, h40, halle].sort());
+  assert.deepEqual(r.body.gruppen.map((x: any) => x.id).sort(), [h40, halle].sort());
   assert.equal(r.body.gruppen.find((x: any) => x.id === h40).rolle, 'Mannschaftsführer');
 
   assert.equal((await admin('POST', `${M}/m/${DORA}/gruppen`, { gruppe: h40, rolle: ' Ersatz ' })).status, 200);
@@ -164,6 +168,59 @@ test('Mitgliedsstamm: Gruppen des Mitglieds, Zuordnung und Filter der Liste', as
   assert.deepEqual(await namen(`&gruppe=${halle}&suche=xyz`), []);
   r = await admin('GET', `${M}/liste?status=ALLE&gruppe=${halle}`);
   assert.equal(r.body.anzahl.ALLE, 4, 'Zähler der Statusauswahl bleiben ungefiltert');
+});
+
+test('Hierarchie: je Linie nur eine Zuordnung, parallele Gruppen mehrfach', async () => {
+  const direkt = async (adrnr: string) => (await admin('GET', `${M}/m/${adrnr}`)).body.gruppen.map((x: any) => x.id).sort();
+  const damen = await neu('Damen', mannschaften);
+  // Ausgangslage: Ben in Herren 40 und (parallel) Reine Hallennutzer, Carl in Herren 40, Anna in „Ohne Teilnahme“
+  assert.deepEqual(await direkt(BEN), [h40, halle].sort());
+
+  // nach oben: nicht noch einmal in einer Gruppe darüber (Mitgliedsstamm und Gruppen-App, auch zwei Ebenen höher)
+  let r = await admin('POST', `${M}/m/${BEN}/gruppen`, { gruppe: mannschaften });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /über die Untergruppe „Herren 40“ bereits zu „Mannschaftsspieler“/);
+  assert.equal((await admin('POST', `${M}/m/${BEN}/gruppen`, { gruppe: spielbetrieb })).status, 400);
+  r = await admin('POST', `${G}/${spielbetrieb}/mitglieder`, { adrnrs: [BEN, CARL, ANNA] });
+  assert.deepEqual([r.body.neu, r.body.ueberUntergruppe], [0, 3]);
+  assert.deepEqual(await direkt(BEN), [h40, halle].sort());
+  // die Rolle in der eigenen Gruppe bleibt änderbar
+  assert.equal((await admin('POST', `${M}/m/${BEN}/gruppen`, { gruppe: h40, rolle: 'Mannschaftsführer' })).status, 200);
+
+  // parallel: Ben zusätzlich in einer Schwestergruppe
+  assert.equal((await admin('POST', `${M}/m/${BEN}/gruppen`, { gruppe: damen })).status, 200);
+  assert.deepEqual(await direkt(BEN), [h40, halle, damen].sort());
+  assert.equal((await admin('POST', `${M}/m/${BEN}/gruppen`, { gruppe: damen, entfernen: true })).status, 200);
+
+  // nach unten: Dora steht in „Mannschaftsspieler“ und kommt in „Damen“ – die Zuordnung darüber entfällt
+  assert.equal((await admin('POST', `${M}/m/${DORA}/gruppen`, { gruppe: mannschaften })).status, 200);
+  r = await admin('POST', `${M}/m/${DORA}/gruppen`, { gruppe: damen });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /übergeordneten Gruppe entfällt/);
+  assert.deepEqual(await direkt(DORA), [damen]);
+  // dasselbe gesammelt in der Gruppen-App
+  assert.equal((await admin('POST', `${G}/${damen}/mitglieder`, { adrnrs: [DORA], entfernen: true })).status, 200);
+  assert.equal((await admin('POST', `${G}/${spielbetrieb}/mitglieder`, { adrnrs: [DORA] })).body.neu, 1);
+  r = await admin('POST', `${G}/${damen}/mitglieder`, { adrnrs: [DORA] });
+  assert.deepEqual([r.body.neu, r.body.ausUebergeordneter], [1, 1]);
+  assert.deepEqual(await direkt(DORA), [damen]);
+  let b = await baum();
+  assert.equal(b.find((x) => x.id === spielbetrieb)!.gesamt, 4, 'Anna, Ben, Carl, Dora – jede Person einmal');
+  assert.equal(b.find((x) => x.id === spielbetrieb)!.mitglieder.length, 0);
+
+  // Verschieben: „Reine Hallennutzer“ (Ben) unter „Herren 40“ – Ben steht danach nur noch in der Untergruppe
+  assert.equal((await admin('POST', G, { id: halle, name: 'Reine Hallennutzer', parent_id: h40 })).status, 200);
+  assert.deepEqual(await direkt(BEN), [halle]);
+  b = await baum();
+  assert.deepEqual(b.find((x) => x.id === h40)!.mitglieder.map((m) => m.adrnr), [CARL]);
+  assert.equal(b.find((x) => x.id === h40)!.gesamt, 2);
+  // zurück auf die oberste Ebene und Ausgangslage wiederherstellen
+  assert.equal((await admin('POST', G, { id: halle, name: 'Reine Hallennutzer', parent_id: null })).status, 200);
+  assert.equal((await admin('POST', `${M}/m/${BEN}/gruppen`, { gruppe: h40, rolle: 'Mannschaftsführer' })).status, 200);
+  assert.equal((await admin('POST', `${G}/${damen}/mitglieder`, { adrnrs: [DORA], entfernen: true })).status, 200);
+  assert.equal((await admin('DELETE', `${G}/${damen}`)).status, 200);
+  assert.deepEqual(await direkt(BEN), [h40, halle].sort());
+  assert.deepEqual(await direkt(DORA), []);
 });
 
 test('Berechtigungen: Anzeige, Pflege, Zuordnung im Mitgliedsstamm', async () => {
@@ -217,7 +274,7 @@ test('Vereinskalender: Untergruppen gehören zur Gruppe darüber', async () => {
   // Gruppe mit kommender Veranstaltung nicht löschbar; Löschen entfernt die Zuordnungen
   assert.equal((await admin('DELETE', `${G}/${h40}`)).status, 400);
   assert.equal((await admin('DELETE', `${G}/${halle}`)).status, 200);
-  assert.deepEqual((await admin('GET', `${M}/m/${BEN}`)).body.gruppen.map((x: any) => x.id).sort(), [mannschaften, h40].sort());
+  assert.deepEqual((await admin('GET', `${M}/m/${BEN}`)).body.gruppen.map((x: any) => x.id), [h40]);
 });
 
 test('Änderungsbelege', async () => {
