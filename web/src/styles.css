@@ -667,3 +667,25 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-bk__fortschritt { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.75rem; }
 .portal-bk__fortschritt-text { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
 .portal-bk__fortschritt-text strong { color: var(--sapTextColor); }
+
+/* Startseite: Stufe 1 der Navigation als eigener Bereich, Stufe 2 als Gruppe darin */
+.portal-bereich {
+  margin-bottom: 1.75rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border-radius: var(--portal-radius, 0.75rem);
+  background: var(--sapGroup_ContentBackground, #fff);
+  border: 1px solid var(--sapGroup_ContentBorderColor, var(--sapList_BorderColor, #d9d9d9));
+  box-shadow: var(--sapContent_Shadow0);
+}
+.portal-bereich__titel {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin: 0 0 1rem; padding-bottom: 0.5rem;
+  font-size: var(--sapFontHeader4Size, 1.125rem); font-weight: 700;
+  color: var(--sapGroup_TitleTextColor, var(--sapTextColor));
+  border-bottom: 2px solid var(--sapButton_Emphasized_Background, #0070f2);
+}
+.portal-bereich__titel ui5-icon { width: 1.125rem; height: 1.125rem; color: var(--sapButton_Emphasized_Background, #0070f2); }
+.portal-bereich > .portal-tiles { margin-bottom: 1.25rem; }
+.portal-bereich__gruppe { padding-top: 0.75rem; }
+.portal-bereich__gruppe + .portal-bereich__gruppe { margin-top: 1rem; border-top: 1px dashed var(--sapList_BorderColor, #d9d9d9); }
+.portal-bereich__gruppe .portal-group__title { border-bottom: 0; padding-bottom: 0; color: var(--sapContent_LabelColor); }

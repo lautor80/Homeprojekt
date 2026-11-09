@@ -5,7 +5,8 @@ import {
   SideNavigation, SideNavigationGroup, SideNavigationItem, SideNavigationSubItem, UserMenu, UserMenuAccount, UserMenuItem,
 } from '@ui5/webcomponents-react';
 import { useSession, useCan } from '../session';
-import { coreNav, coreRoutes } from './core';
+import { coreRoutes } from './core';
+import { navAufbauen } from './nav';
 import { enabledModules } from '../modules';
 import type { NavEntry, RouteDef } from '../platform';
 import { ChangePasswordForm } from '../pages/AuthPages';
@@ -44,15 +45,8 @@ export function Shell() {
     ? `${me.user.displayName} (${me.user.username})` : me.user.username}`;
   const logo = me.settings['org.logo'] as string | undefined;
 
-  // Navigation: Start, Fachmodule, Administration – gefiltert nach Berechtigung
-  const nav = useMemo(() => {
-    const filter = (entries: NavEntry[]): NavEntry[] =>
-      entries
-        .filter((e) => can(e.permission))
-        .map((e) => (e.children ? { ...e, children: filter(e.children) } : e))
-        .filter((e) => !e.children || e.children.length > 0);
-    return filter([coreNav.home, ...modules.flatMap((m) => m.nav), coreNav.admin]);
-  }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Navigation: Start, Fachmodule, Administration – gefiltert nach Berechtigung (gleiche Quelle wie die Startseite)
+  const nav = useMemo(() => navAufbauen(modules, can), [me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const routes: RouteDef[] = [...coreRoutes, ...modules.flatMap((m) => m.routes)];
   const widgets = modules.flatMap((m) => m.sideWidgets ?? []).filter((w) => can(w.permission));
