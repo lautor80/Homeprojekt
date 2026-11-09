@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql, type Tx } from '../db.js';
 import { change, hashPassword, requireAuth, validatePassword } from '../auth.js';
-import { permissionCatalog } from '../modules.js';
+import { activeModules, permissionCatalog } from '../modules.js';
 import { GUELTIG_STUNDEN, kennwortLinkSenden, mailVerfuegbar, portalUrl, unbekanntesKennwort } from '../kennwort.js';
 import { BusinessError } from '../errors.js';
 
@@ -119,7 +119,33 @@ export async function adminRoutes(app: FastifyInstance) {
     return { text: `${u.display_name || u.username} ${aktiv ? 'entsperrt' : 'gesperrt – alle Sitzungen beendet'}.` };
   });
 
-  app.post('/api/admin/users/:id/password', { preHandler: requireAuth('core.users:edit') }, async (req, reply) => {
+  /**
+   * Benutzer löschen – nur solange noch keine Buchungen erfolgt sind (Prüfung durch die Fachmodule),
+   * nie den eigenen Benutzer und nie den letzten aktiven Administrator. Zuordnungen (Mitglied, EP3-Kunde,
+   * Registrierung) werden per Fremdschlüssel gelöst, Sitzungen und Rollen mitgelöscht; der Änderungsbeleg bleibt.
+   */
+  app.delete('/api/admin/users/:id', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    if (id === req.user!.id) throw new BusinessError('Der eigene Benutzer kann nicht gelöscht werden.');
+    const u = await change(req, async (tx) => {
+      const [u] = await tx`select username, display_name from core.users where id = ${id} for update`;
+      if (!u) throw new BusinessError('Benutzer nicht gefunden.', 404);
+      const gruende: string[] = [];
+      for (const m of activeModules()) {
+        const g = await m.benutzerLoeschenSperre?.(tx, id);
+        if (g) gruende.push(g);
+      }
+      if (gruende.length) {
+        throw new BusinessError(`${u.display_name || u.username} kann nicht gelöscht werden: ${gruende.join('; ')}. Bitte stattdessen sperren.`);
+      }
+      await tx`delete from core.users where id = ${id}`;
+      await assertAdminRemains(tx);
+      return u;
+    }, { action: 'LOESCHEN' });
+    return { text: `Benutzer ${u.display_name || u.username} gelöscht.` };
+  });
+
+  app.post('/api/admin/users/:id/password',{ preHandler: requireAuth('core.users:edit') }, async (req, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const { password } = z.object({ password: z.string() }).parse(req.body);
     const err = validatePassword(password);

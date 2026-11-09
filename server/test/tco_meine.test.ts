@@ -309,3 +309,37 @@ test('Benutzer ↔ Mitglied/EP3: einzeln zuordnen und initiales Mapping', async 
   assert.equal((await kim('POST', '/api/auth/login', { username: 'kim.portal', password: 'mein-neues-kennwort' })).status, 200);
   assert.equal((await kim('GET', `${M}/benutzer-mapping`)).status, 403);
 });
+
+test('Benutzer löschen: nur ohne Buchungen, nicht sich selbst; Zuordnung zum EP3-Kunden wird gelöst', async () => {
+  const anlegen = async (username: string) => {
+    assert.equal((await admin('POST', '/api/admin/users', { username, displayName: username, password: 'start-passwort', roles: ['HALLENNUTZER'] })).status, 200);
+    return (await sql`select id::text from core.users where username = ${username}`)[0].id as string;
+  };
+  // ohne Buchungen → löschbar, EP3-Zuordnung wird gelöst
+  const leer = await anlegen('loesch.leer');
+  await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname, benutzer_id) values ('77', 'loesch.leer', 'enabled', 'Lea', 'Leer', ${leer})`;
+  let r = await admin('DELETE', `/api/admin/users/${leer}`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await sql`select count(*)::int as n from core.users where id = ${leer}`)[0].n, 0);
+  assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '77'`)[0].benutzer_id, null);
+
+  // eigene Portalbuchung (auch storniert) → nicht löschbar
+  const portal = await anlegen('loesch.portal');
+  await sql`insert into tco.bookings (bid, datum, status, benutzer_id, quelle) values ('LT1', '2026-01-10', '2', ${portal}, 'PORTAL')`;
+  r = await admin('DELETE', `/api/admin/users/${portal}`, {});
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /1 Platzbuchung vorhanden/);
+
+  // EP3-Buchung des zugeordneten Kunden (über den Namen) → nicht löschbar
+  const ep3 = await anlegen('loesch.ep3');
+  await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname, benutzer_id) values ('78', 'loesch.ep3', 'enabled', 'Eddi', 'Drei', ${ep3})`;
+  await sql`insert into tco.bookings (bid, datum, status, kunde) values ('LT2', '2025-02-01', '1', 'EDDI DREI'), ('LT2', '2025-02-08', '1', 'EDDI DREI')`;
+  r = await admin('DELETE', `/api/admin/users/${ep3}`, {});
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /1 Platzbuchung vorhanden/);
+
+  // nicht sich selbst, nicht ohne Berechtigung, unbekannt → 404
+  const [ad] = await sql`select id::text from core.users where username = 'admin'`;
+  assert.equal((await admin('DELETE', `/api/admin/users/${ad.id}`, {})).status, 400);
+  assert.equal((await admin('DELETE', '/api/admin/users/00000000-0000-0000-0000-000000000000', {})).status, 404);
+});

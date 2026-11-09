@@ -3,6 +3,7 @@ import type { Paperless } from './lib/paperless.js';
 import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
+import type { Tx } from './db.js';
 
 export interface AuditObjectDef {
   type: string;
@@ -53,6 +54,11 @@ export interface ServerModule {
    * (z. B. Mitglied in „Meine Mitgliedschaft“). true = erlaubt.
    */
   sperreErlaubt?: (req: import('fastify').FastifyRequest, objekt: string, schluessel: string) => Promise<boolean>;
+  /**
+   * Vor dem Löschen eines Benutzers (Administration → Benutzer): Grund, warum er nicht gelöscht werden darf
+   * (z. B. „3 Platzbuchungen vorhanden“), sonst null. Läuft in der Lösch-Transaktion.
+   */
+  benutzerLoeschenSperre?: (tx: Tx, benutzerId: string) => Promise<string | null>;
   /** nach einer Rücksicherung (z. B. Systemrollen und feste Berechtigungen wiederherstellen) */
   nachRuecksicherung?: () => Promise<void>;
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */

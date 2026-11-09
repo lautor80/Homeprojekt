@@ -30,6 +30,7 @@ import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
 import { platzRoutes, P_MEINKONTO, P_PLATZ, P_REG } from './platz/routes.js';
 import { antragRoutes, P_ANTRAG } from './antrag/routes.js';
 import { rolleSicherstellen } from './platz/registrierung.js';
+import { ichLesen, QUELLE } from './platz/logik.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
@@ -359,6 +360,20 @@ const tco: ServerModule = {
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
   // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
+  // Benutzer nur löschbar, solange er nichts gebucht hat: Platzbuchungen (eigene Portalbuchungen und – wie in
+  // „Meine Buchungen“ – die EP3-Buchungen des zugeordneten Mitglieds/Kunden, auch stornierte) und Verzehr
+  benutzerLoeschenSperre: async (tx, benutzerId) => {
+    const ich = await ichLesen(tx, benutzerId);
+    const [p] = await tx`
+      select count(distinct bid)::int as n from tco.bookings
+       where benutzer_id = ${benutzerId}
+          or (${ich?.kunde ?? null}::text is not null and quelle is distinct from ${QUELLE} and upper(trim(kunde)) = ${ich?.kunde ?? null}::text)`;
+    const [v] = await tx`select count(*)::int as n from tco.vz_posten where erfasst_benutzer = ${benutzerId}`;
+    const g: string[] = [];
+    if (p.n) g.push(`${p.n} Platzbuchung${p.n === 1 ? '' : 'en'} vorhanden`);
+    if (v.n) g.push(`${v.n} Verzehrposition${v.n === 1 ? '' : 'en'} erfasst`);
+    return g.length ? g.join(', ') : null;
+  },
   // „Meine Mitgliedschaft“: das eigene Mitglied darf gesperrt werden (gegen gleichzeitige Pflege durch den Vorstand)
   sperreErlaubt: async (req, objekt, schluessel) => {
     if (objekt !== 'MITGLIED' || !req.user?.id || !req.user.permissions.has('tco.meinedaten:edit')) return false;

@@ -58,6 +58,25 @@ export function UsersPage() {
   const [newPw, setNewPw] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loeschen, setLoeschen] = useState<User | null>(null);
+
+  /** Benutzer löschen – der Server lehnt ab, sobald Buchungen vorhanden sind */
+  async function benutzerLoeschen() {
+    if (!loeschen) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.del<{ text: string }>(`/api/admin/users/${loeschen.id}`);
+      setLoeschen(null);
+      setEdit(null);
+      toast(r.text);
+      users.reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save() {
     if (!edit) return;
@@ -255,8 +274,11 @@ export function UsersPage() {
             startContent={!edit?.isNew && edit?.username ? <ChangeHistoryButton objectType="USER" objectKey={edit.username} /> : undefined}
             endContent={
               <>
+                {mayEdit && !edit?.isNew && edit?.id !== me.user.id && (
+                  <Button icon="delete" design="Negative" onClick={() => { setError(null); setLoeschen(edit as User); }}>Löschen</Button>
+                )}
                 {mayEdit && !edit?.isNew && (
-                  <Button icon="key" onClick={() => { setNewPw(''); setError(null); setPwFor(edit as User); }}>Passwort zurücksetzen</Button>
+                  <Button icon="key"onClick={() => { setNewPw(''); setError(null); setPwFor(edit as User); }}>Passwort zurücksetzen</Button>
                 )}
                 {mayEdit && <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}
                 <Button onClick={() => setEdit(null)}>{mayEdit ? 'Abbrechen' : 'Schließen'}</Button>
@@ -314,6 +336,23 @@ export function UsersPage() {
           </>
         )}
       </Dialog>
+
+      {loeschen && <Dialog
+        open
+        headerText={`Benutzer löschen: ${loeschen.username}`}
+        state="Negative"
+        onClose={() => setLoeschen(null)}
+        footer={<Bar endContent={<>
+          <Button design="Negative" icon="delete" loading={busy} onClick={benutzerLoeschen}>Endgültig löschen</Button>
+          <Button onClick={() => setLoeschen(null)}>Abbrechen</Button>
+        </>} />}
+      >
+        {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+        <Text>
+          {loeschen.displayName || loeschen.username} wird mit Rollen und Sitzungen gelöscht; die Zuordnung zu Mitglied bzw. EP3-Kunde wird gelöst.
+          Das geht nur, solange über den Benutzer noch keine Buchungen erfolgt sind – sonst bitte sperren. Die Änderungshistorie bleibt erhalten.
+        </Text>
+      </Dialog>}
 
       {pwFor && <Dialog
         open={!!pwFor}
