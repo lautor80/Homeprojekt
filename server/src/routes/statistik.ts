@@ -51,15 +51,15 @@ export async function statistikRoutes(app: FastifyInstance) {
        group by n.pfad, monat`;
     const benutzer = new Map<string, { id: string; username: string; name: string; monate: Record<string, number>; gesamt: number }>();
     for (const r of logins) {
-      const b = benutzer.get(r.id) ?? { id: r.id, username: r.username, name: r.display_name || r.username, monate: {}, gesamt: 0 };
-      b.monate[r.monat] = Number(r.anzahl);
+      const b = benutzer.get(r.id) ?? { id: r.id as string, username: r.username as string, name: (r.display_name || r.username) as string, monate: {} as Record<string, number>, gesamt: 0 };
+      b.monate[r.monat as string] = Number(r.anzahl);
       b.gesamt += Number(r.anzahl);
       benutzer.set(r.id, b);
     }
     const appListe = new Map<string, { pfad: string; monate: Record<string, number>; gesamt: number; benutzer: number }>();
     for (const r of apps) {
-      const a = appListe.get(r.pfad) ?? { pfad: r.pfad, monate: {}, gesamt: 0, benutzer: 0 };
-      a.monate[r.monat] = Number(r.anzahl);
+      const a = appListe.get(r.pfad) ?? { pfad: r.pfad as string, monate: {} as Record<string, number>, gesamt: 0, benutzer: 0 };
+      a.monate[r.monat as string] = Number(r.anzahl);
       a.gesamt += Number(r.anzahl);
       appListe.set(r.pfad, a);
     }
