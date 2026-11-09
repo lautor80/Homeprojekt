@@ -12,8 +12,8 @@ import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
  */
 export interface Person {
   anrede: string; vorname: string; nachname: string; geburtsdatum: string; email?: string | null; telefon?: string | null; mobil?: string | null;
-  /** Mitgliedschaft (Beitragsart < 90) – genau eine */
-  art: string;
+  /** Mitgliedschaft (Beitragsart < 90) – genau eine; bei weiteren Personen eines Familienantrags leer (über den Familienbeitrag) */
+  art?: string | null;
   /** Trainingseinheiten (Jugendtraining, Art 90 bzw. „…training“) – bis zu 2, je Einheit ein Vertrag */
   training?: string[];
 }
@@ -47,6 +47,8 @@ export function kategorieVon(art: string, name: string): Kategorie | null {
   return null;
 }
 export const istJugendbeitrag = (name: string) => /jugend/i.test(name);
+/** Familienbeitrag: deckt die Mitgliedschaft aller weiteren Personen des Antrags ab – nur dann sind weitere Personen möglich */
+export const istFamilienbeitrag = (name: string) => /famil/i.test(name);
 export interface AntragBank { kontoinhaber: string; iban: string; bic?: string | null; bank?: string | null; sepa: boolean }
 
 export const MAX_PERSONEN = 8;
@@ -62,7 +64,8 @@ export async function antragInfo(db: Db, v: Verein) {
   return {
     verein: v.name, maxPersonen: MAX_PERSONEN, maxTraining: MAX_TRAINING,
     alterJugendbeitragBis: ALTER_JUGENDBEITRAG_BIS, alterTrainingBis: ALTER_TRAINING_BIS, kuendigung: KUENDIGUNG_TEXT,
-    beitragsarten: arten.map((a) => ({ art: a.art, name: a.name, betrag: a.betrag, turnus: a.turnus, kategorie: kategorieVon(a.art, a.name), jugend: kategorieVon(a.art, a.name) === 'MITGLIEDSCHAFT' && istJugendbeitrag(a.name) }))
+    beitragsarten: arten.map((a) => ({ art: a.art, name: a.name, betrag: a.betrag, turnus: a.turnus, kategorie: kategorieVon(a.art, a.name), jugend: kategorieVon(a.art, a.name) === 'MITGLIEDSCHAFT' && istJugendbeitrag(a.name),
+      familie: kategorieVon(a.art, a.name) === 'MITGLIEDSCHAFT' && istFamilienbeitrag(a.name) }))
       .filter((a) => a.kategorie),
   };
 }
@@ -76,10 +79,13 @@ export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string
     if (!['Herr', 'Frau', 'Divers'].includes(p.anrede)) throw new BusinessError(`${wer}Bitte die Anrede wählen.`);
     if (!condense(p.vorname) || !condense(p.nachname)) throw new BusinessError(`${wer}Bitte Vor- und Nachname angeben.`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(p.geburtsdatum) || p.geburtsdatum > heute() || alter(p.geburtsdatum) > 120) throw new BusinessError(`${wer}Bitte ein gültiges Geburtsdatum angeben.`);
-    const m = arten.get(p.art);
-    if (!m || m.kategorie !== 'MITGLIEDSCHAFT') throw new BusinessError(`${wer}Bitte eine Mitgliedschaft wählen.`);
     const a = /^\d{4}-\d{2}-\d{2}$/.test(d.eintritt) ? alter(p.geburtsdatum, d.eintritt) : alter(p.geburtsdatum);
-    if (istJugendbeitrag(m.name) && a > ALTER_JUGENDBEITRAG_BIS) throw new BusinessError(`${wer}Ab 18 Jahren ist kein Jugendbeitrag möglich – bitte eine andere Mitgliedschaft wählen.`);
+    if (i === 0) {
+      const m = arten.get(p.art ?? '');
+      if (!m || m.kategorie !== 'MITGLIEDSCHAFT') throw new BusinessError(`${wer}Bitte eine Mitgliedschaft wählen.`);
+      if (istJugendbeitrag(m.name) && a > ALTER_JUGENDBEITRAG_BIS) throw new BusinessError(`${wer}Ab 18 Jahren ist kein Jugendbeitrag möglich – bitte eine andere Mitgliedschaft wählen.`);
+      if (d.personen.length > 1 && !istFamilienbeitrag(m.name)) throw new BusinessError('Weitere Personen sind nur mit dem Familienbeitrag möglich.');
+    } else if (p.art) throw new BusinessError(`${wer}Weitere Personen sind über den Familienbeitrag Mitglied – keine eigene Mitgliedschaft.`);
     const tr = p.training ?? [];
     if (tr.length > MAX_TRAINING) throw new BusinessError(`${wer}Höchstens ${MAX_TRAINING} Trainingseinheiten.`);
     for (const t of tr) if (arten.get(t)?.kategorie !== 'TRAINING') throw new BusinessError(`${wer}Unbekannte Trainingseinheit.`);
@@ -169,7 +175,9 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
   let zahler: string | null = null;
   let mandat = '';
   for (const [i, p] of d.personen.entries()) {
-    const gewaehlt = [p.art, ...(p.training ?? [])].map((x) => {
+    // weitere Personen: Mitgliedschaft über den Familienbeitrag (Vertrag der Familienart ohne Betrag), dazu ihre Trainingseinheiten
+    const familie = i > 0 ? d.personen[0].art! : null;
+    const gewaehlt = [familie ?? p.art!, ...(p.training ?? [])].map((x) => {
       const a = arten.find((y) => y.art === x);
       if (!a) throw new BusinessError(`Die Beitragsart ${x} (${p.vorname} ${p.nachname}) ist nicht mehr aktiv.`);
       return a;
@@ -181,7 +189,7 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
       zahlungsart: 'L', zahlungsweise: '', iban: a.iban, bic: a.bic ?? '', bank: a.bank ?? '', sepa: true, sepa_datum: sepaDatum,
       zahler_modus: i === 0 ? (kiSelbst ? 'SELBST' : 'NEU') : 'BESTEHEND', zahler_adrnr: i === 0 ? null : zahler,
       z_anrede: '', z_vorname: ki.vorname, z_nachname: ki.nachname, z_strasse: d.strasse, z_plz: d.plz, z_ort: d.ort, z_email: d.email,
-      vertraege: gewaehlt.map((a) => ({ art: a.art, beginn: null, betrag: a.betrag, turnus: a.turnus })),
+      vertraege: gewaehlt.map((a, j) => ({ art: a.art, beginn: null, betrag: familie && j === 0 ? 0 : a.betrag, turnus: a.turnus })),
     };
     const r = await mitgliedNeu(tx, n);
     if (i === 0) {

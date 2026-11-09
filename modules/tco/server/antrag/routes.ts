@@ -21,7 +21,7 @@ const antragSchema = z.object({
     anrede: z.enum(['Herr', 'Frau', 'Divers'], { errorMap: () => ({ message: 'Bitte die Anrede wählen.' }) }),
     vorname: txt(60).min(1, 'Bitte den Vornamen angeben.'), nachname: txt(60).min(1, 'Bitte den Nachnamen angeben.'),
     geburtsdatum: datum, email: txt(120).nullish(), telefon: txt(40).nullish(), mobil: txt(40).nullish(),
-    art: txt(10).min(1, 'Bitte eine Mitgliedschaft wählen.'),
+    art: txt(10).nullish().transform((x) => x || null),
     training: z.array(txt(10).min(1)).max(2, 'Höchstens 2 Trainingseinheiten je Person.').default([]),
   })).min(1).max(MAX_PERSONEN),
   strasse: txt(80), plz: txt(10), ort: txt(60),

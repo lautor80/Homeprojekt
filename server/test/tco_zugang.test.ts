@@ -58,8 +58,8 @@ before(async () => {
             ('0000000501', '501', 'Maria', 'Mitglied', '1980-05-17', 'maria@example.org', '2015-01-01'),
             ('0000000502', '502', 'Otto', 'Ohnemail', '1975-02-02', null, '2015-01-01')`;
   await sql`insert into tco.beitrag (art, bezeichnung, turnus) values ('5', 'Erwachsene', 'jährlich'), ('3', 'Jugendliche', 'jährlich'),
-            ('90', 'Jugendtraining', 'monatlich'), ('95', 'Spende', 'jährlich')`;
-  await sql`insert into tco.beitrag_pr (art, gueltig_ab, betrag) values ('5', '2000-01-01', 150), ('3', '2000-01-01', 60), ('90', '2000-01-01', 35), ('95', '2000-01-01', 10)`;
+            ('90', 'Jugendtraining', 'monatlich'), ('95', 'Spende', 'jährlich'), ('8', 'Mitgliedsbeitrag Familien', 'halbjährl.')`;
+  await sql`insert into tco.beitrag_pr (art, gueltig_ab, betrag) values ('5', '2000-01-01', 150), ('3', '2000-01-01', 60), ('90', '2000-01-01', 35), ('95', '2000-01-01', 10), ('8', '2000-01-01', 125)`;
 });
 after(async () => { await app?.close(); await sql.end(); server.close(); });
 
@@ -226,12 +226,13 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   let r = await gast('GET', `${T}/antrag`);
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.beitragsarten.map((b: any) => [b.art, b.betrag, b.kategorie, b.jugend]),
-    [['3', 60, 'MITGLIEDSCHAFT', true], ['5', 150, 'MITGLIEDSCHAFT', false], ['90', 35, 'TRAINING', false]], 'Spende nicht im Antrag');
+    [['3', 60, 'MITGLIEDSCHAFT', true], ['5', 150, 'MITGLIEDSCHAFT', false], ['8', 125, 'MITGLIEDSCHAFT', false], ['90', 35, 'TRAINING', false]], 'Spende nicht im Antrag');
+  assert.deepEqual(r.body.beitragsarten.filter((b: any) => b.familie).map((b: any) => b.art), ['8']);
   assert.match(r.body.kuendigung, /4 Wochen zum Jahresende.*30\.09\./);
   const antrag = {
     personen: [
-      { anrede: 'Frau', vorname: 'Fiona', nachname: 'Familie', geburtsdatum: '1985-03-03', art: '5' },
-      { anrede: 'Herr', vorname: 'Felix', nachname: 'Familie', geburtsdatum: '2012-07-07', art: '3', training: ['90', '90'] },
+      { anrede: 'Frau', vorname: 'Fiona', nachname: 'Familie', geburtsdatum: '1985-03-03', art: '8' } as Record<string, unknown>,
+      { anrede: 'Herr', vorname: 'Felix', nachname: 'Familie', geburtsdatum: '2012-07-07', training: ['90', '90'] } as Record<string, unknown>,
     ],
     strasse: 'Am Platz 1', plz: '66649', ort: 'Oberthal', email: 'fiona@example.org', telefon: '0681 1',
     eintritt: heute(), satzung: true, datenschutz: true, bildrechte: true, kuendigung: true,
@@ -250,6 +251,10 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.equal(x.status, 400, 'höchstens 2 Trainingseinheiten');
   x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [{ ...antrag.personen[1], art: '90' }] });
   assert.equal(x.status, 400, 'Training ist keine Mitgliedschaft');
+  x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [{ ...fiona, art: '5' }, antrag.personen[1]] });
+  assert.match(x.body.message, /nur mit dem Familienbeitrag/);
+  x = await gast('POST', `${T}/antrag`, { ...antrag, personen: [fiona, { ...antrag.personen[1], art: '3' }] });
+  assert.match(x.body.message, /über den Familienbeitrag/);
   r = await gast('POST', `${T}/antrag`, { ...antrag, website: 'spam' });
   assert.equal(r.status, 200);
   r = await gast('POST', `${T}/antrag`, antrag);
@@ -283,7 +288,9 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.equal(m.length, 2);
   assert.equal(m[1].zahler, m[0].adrnr, 'Kind zahlt über die Mutter');
   const v = await sql`select adrnr, art from tco.vertraege where adrnr = any(${m.map((x) => x.adrnr)}) order by adrnr`;
-  assert.deepEqual(v.map((x) => x.art).sort(), ['3', '5', '90', '90'], 'Felix: Jugendbeitrag und 2 Trainingseinheiten');
+  assert.deepEqual(v.map((x) => x.art).sort(), ['8', '8', '90', '90'], 'Familienbeitrag; Felix darüber Mitglied plus 2 Trainingseinheiten');
+  const fv = await sql`select art, betrag::float8 as betrag from tco.vertraege where adrnr = ${m[1].adrnr} order by vertragnr`;
+  assert.deepEqual(fv.map((x) => [x.art, x.betrag]), [['8', 0], ['90', 35], ['90', 35]]);
   const [s] = await sql`select mandatsnr from tco.sepa where adrnr = ${m[0].adrnr}`;
   assert.ok(s?.mandatsnr);
   const b = await sql`select u.username, ur.role_id, u.email from core.users u join core.user_roles ur on ur.user_id = u.id

@@ -11,7 +11,7 @@ import { TCO, eur } from '../util';
  * Öffentlicher Mitgliedsantrag /beitritt (ohne Anmeldung): eine oder mehrere Personen (Familienantrag) mit gemeinsamer
  * Anschrift, Beitragsart je Person, SEPA-Lastschriftmandat online. Der Antrag geht in den Eingang; der Vorstand prüft und übernimmt.
  */
-interface Art { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; jugend: boolean }
+interface Art { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; jugend: boolean; familie: boolean }
 interface Info { verein: string; maxPersonen: number; maxTraining: number; alterJugendbeitragBis: number; alterTrainingBis: number; kuendigung: string; beitragsarten: Art[] }
 interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; telefon: string; art: string; training: string[] }
 const leer = (): Person => ({ anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', telefon: '', art: '', training: [] });
@@ -47,19 +47,22 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   const setP = (i: number, p: Partial<Person>) => setPersonen((l) => l.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const minderjaehrig = (alter(personen[0].geburtsdatum) ?? 99) < 18;
   const betrag = (art: string) => info?.beitragsarten.find((b) => b.art === art)?.betrag ?? 0;
-  const summe = personen.reduce((s, p) => s + betrag(p.art) + p.training.reduce((t, x) => t + betrag(x), 0), 0);
+  const summe = personen.reduce((s, p, i) => s + (i === 0 ? betrag(p.art) : 0) + p.training.reduce((t, x) => t + betrag(x), 0), 0);
+  /** weitere Personen nur mit Familienbeitrag – sie sind darüber Mitglied (keine eigene Mitgliedschaft) */
+  const familie = !!info?.beitragsarten.find((b) => b.art === personen[0].art)?.familie;
   /** Alter am gewünschten Eintritt: Jugendbeitrag nur unter 18, Jugendtraining nur bis 21 */
   const alterBeiEintritt = (p: Person) => alter(p.geburtsdatum, a.eintritt || heute());
   const mitgliedschaften = (p: Person) => (info?.beitragsarten ?? []).filter((b) => b.kategorie === 'MITGLIEDSCHAFT'
     && (!b.jugend || (alterBeiEintritt(p) ?? 0) <= (info?.alterJugendbeitragBis ?? 17)));
-  const trainings = (p: Person) => ((alterBeiEintritt(p) ?? 99) <= (info?.alterTrainingBis ?? 21) ? (info?.beitragsarten ?? []).filter((b) => b.kategorie === 'TRAINING') : []);
+  // Training bis 21 Jahre; ohne Geburtsdatum schon anbieten (Prüfung nach Eingabe)
+  const trainings = (p: Person) => ((alterBeiEintritt(p) ?? 0) <= (info?.alterTrainingBis ?? 21) ? (info?.beitragsarten ?? []).filter((b) => b.kategorie === 'TRAINING') : []);
   // Auswahl bereinigen, wenn das Geburtsdatum/Eintritt eine Option ausschließt
   useEffect(() => {
     if (!info) return;
     setPersonen((l) => {
       let geaendert = false;
-      const neu = l.map((p) => {
-        const m = mitgliedschaften(p).some((b) => b.art === p.art) ? p.art : '';
+      const neu = l.map((p, i) => {
+        const m = i > 0 ? '' : mitgliedschaften(p).some((b) => b.art === p.art) ? p.art : '';
         const t = trainings(p).length ? p.training : [];
         if (m !== p.art || t !== p.training) { geaendert = true; return { ...p, art: m, training: t }; }
         return p;
@@ -67,7 +70,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       return geaendert ? neu : l;
     });
   }, [info, a.eintritt, personen.map((p) => p.geburtsdatum).join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
-  const ok = personen.every((p) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && p.art)
+  const ok = personen.every((p, i) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && (i > 0 || p.art)) && (personen.length === 1 || familie)
     && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim())
     && bank.kontoinhaber.trim() && bank.iban.trim() && bank.sepa && zu.satzung && zu.datenschutz && zu.kuendigung;
 
@@ -75,7 +78,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
     setBusy(true); setError(null);
     try {
       const r = await api.post<{ text: string }>(`${TCO}/antrag`, {
-        personen: personen.map((p, i) => ({ ...p, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
+        personen: personen.map((p, i) => ({ ...p, art: i === 0 ? p.art : null, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
         strasse: a.strasse, plz: a.plz, ort: a.ort, email: a.email, telefon: a.telefon || null,
         erziehungsberechtigt: minderjaehrig ? a.erziehungsberechtigt : null, eintritt: a.eintritt, bemerkung: a.bemerkung || null,
         ...zu, bank, website: a.website,
@@ -98,7 +101,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       {!info ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : (
         <form onSubmit={(e) => { e.preventDefault(); if (ok) absenden(); }}>
           <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
-            Werden Sie Mitglied im {info.verein}. Für Familien können Sie mehrere Personen in einem Antrag aufnehmen; der Beitrag wird per SEPA-Lastschrift vom angegebenen Konto eingezogen.
+            Werden Sie Mitglied im {info.verein}. Mit dem Familienbeitrag nehmen Sie weitere Familienmitglieder in denselben Antrag auf; Jugendliche bis 21 Jahre können bis zu zwei Trainingseinheiten dazubuchen. Der Beitrag wird per SEPA-Lastschrift vom angegebenen Konto eingezogen.
           </Text>
           {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
 
@@ -122,12 +125,18 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
                 <Feld label="Geburtsdatum" required>
                   <DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={p.geburtsdatum} onChange={(e) => setP(i, { geburtsdatum: e.detail.value })} />
                 </Feld>
-                <Feld label="Mitgliedschaft" required>
-                  <Select style={full} onChange={(e) => setP(i, { art: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
-                    <Option data-a="" selected={!p.art}>bitte wählen</Option>
-                    {mitgliedschaften(p).map((b) => <Option key={b.art} data-a={b.art} selected={p.art === b.art}>{b.name} – {eur(b.betrag)}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
-                  </Select>
-                </Feld>
+                {i === 0 ? (
+                  <Feld label="Mitgliedschaft" required>
+                    <Select style={full} onChange={(e) => setP(i, { art: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
+                      <Option data-a="" selected={!p.art}>bitte wählen</Option>
+                      {mitgliedschaften(p).map((b) => <Option key={b.art} data-a={b.art} selected={p.art === b.art}>{b.name} – {eur(b.betrag)}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
+                    </Select>
+                  </Feld>
+                ) : (
+                  <Feld label="Mitgliedschaft">
+                    <Text style={{ paddingTop: '0.5rem' }}>über den Familienbeitrag</Text>
+                  </Feld>
+                )}
               </FlexBox>
               {trainings(p).length > 0 && (
                 <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -157,10 +166,20 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
               )}
             </div>
           ))}
-          {personen.length < info.maxPersonen && (
+          {familie && personen.length < info.maxPersonen && (
             <Button design="Transparent" icon="add-employee" onClick={() => setPersonen((l) => [...l, { ...leer(), nachname: l[0].nachname }])} style={{ marginBottom: '0.75rem' }}>
               Weitere Person (Familie) hinzufügen
             </Button>
+          )}
+          {!familie && personen.length === 1 && info.beitragsarten.some((b) => b.familie) && (
+            <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.75rem' }}>
+              Mehrere Personen (Familie)? Dann beim Antragsteller den Familienbeitrag wählen – weitere Personen sind darüber Mitglied und können Jugendtraining dazubuchen.
+            </Text>
+          )}
+          {!familie && personen.length > 1 && (
+            <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.75rem' }}>
+              Weitere Personen sind nur mit dem Familienbeitrag möglich – bitte beim Antragsteller den Familienbeitrag wählen oder die weiteren Personen entfernen.
+            </MessageStrip>
           )}
 
           <Title level="H5" style={{ margin: '0.5rem 0' }}>Anschrift und Kontakt</Title>

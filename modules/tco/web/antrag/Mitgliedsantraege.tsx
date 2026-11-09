@@ -15,7 +15,7 @@ import { TCO, dat } from '../util';
  * ablehnen mit Begründung oder übernehmen – legt Mitglieder, Verträge, SEPA-Mandat und Portalbenutzer (Rolle Mitglied) an.
  */
 const A = `${TCO}/mitgliedsantraege`;
-interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string | null; telefon: string | null; art: string; training?: string[] }
+interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string | null; telefon: string | null; art: string | null; training?: string[] }
 interface Antrag {
   id: number; nummer: string; status: 'EINGANG' | 'UEBERNOMMEN' | 'ABGELEHNT'; eingang: string;
   daten: { personen: Person[]; strasse: string; plz: string; ort: string; email: string; telefon: string | null; erziehungsberechtigt: string | null;
@@ -74,7 +74,7 @@ export function Mitgliedsantraege() {
             <div>
               <Label>Personen</Label>
               {a.daten.personen.map((p, i) => (
-                <div key={i}><Text>{p.anrede} {p.vorname} {p.nachname}, geb. {dat(p.geburtsdatum)} – {arten[p.art] ?? `Beitragsart ${p.art}`}{p.training?.length ? ` + ${p.training.map((t) => arten[t] ?? t).join(' + ')}` : ''}{p.email && p.email !== a.daten.email ? ` · ${p.email}` : ''}</Text></div>
+                <div key={i}><Text>{p.anrede} {p.vorname} {p.nachname}, geb. {dat(p.geburtsdatum)} – {p.art ? arten[p.art] ?? `Beitragsart ${p.art}` : 'über Familienbeitrag'}{p.training?.length ? ` + ${p.training.map((t) => arten[t] ?? t).join(' + ')}` : ''}{p.email && p.email !== a.daten.email ? ` · ${p.email}` : ''}</Text></div>
               ))}
             </div>
             <div>
