@@ -119,3 +119,14 @@ export async function produktBeenden(tx: Db, key: string, ab: string) {
   if (!r.count) throw new BusinessError('Zum Stichtag ist kein gültiger Zeitraum vorhanden.');
   await tx`delete from tco.produkte where prod_key = ${key} and valid_from >= ${ab}`;
 }
+
+/** Massenpflege: Erlöskonto für alle Produkte eines Bereichs (alle Zeiträume); nurOhne = nur Produkte ohne eigenes Konto */
+export async function bereichKontoSetzen(tx: Db, bereich: Bereich, konto: string | null, nurOhne: boolean): Promise<number> {
+  await kontoPruefen(tx, konto);
+  const b = BEREICHE[bereich];
+  const r = await tx`update tco.produkte set erloeskonto = ${konto}
+                      where prod_key ~ '^[0-9]{3}$' and prod_key::int between ${b.von} and ${b.bis}
+                        ${nurOhne ? tx`and coalesce(erloeskonto, '') = ''` : tx``}
+                      returning prod_key`;
+  return new Set(r.map((x) => x.prod_key as string)).size;
+}

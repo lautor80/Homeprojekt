@@ -92,6 +92,19 @@ test('Produkte: lesen, ändern, neuer Preis, anlegen, beenden', async () => {
   [p] = await sql`select to_char(valid_to, 'YYYY-MM-DD') as bis from tco.produkte where prod_key = '201'`;
   assert.equal(p.bis, heute());
 
+  // Massenpflege: Erlöskonto je Bereich (nurOhne lässt eigene Konten stehen)
+  r = await a('POST', `${P}/bereich-konto`, { bereich: 'GETRAENK', erloeskonto: '8400', nurOhne: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let k = await sql`select to_char(valid_from, 'YYYY-MM-DD') as von, erloeskonto from tco.produkte where prod_key = '101' order by valid_from`;
+  assert.deepEqual(k.map((x) => x.erloeskonto), ['8400', '8005'], 'eigenes Konto 8005 bleibt');
+  r = await a('POST', `${P}/bereich-konto`, { bereich: 'GETRAENK', erloeskonto: '8400' });
+  assert.equal(r.body.anzahl, 1);
+  k = await sql`select distinct erloeskonto from tco.produkte where prod_key = '101'`;
+  assert.deepEqual(k.map((x) => x.erloeskonto), ['8400']);
+  assert.equal((await a('POST', `${P}/bereich-konto`, { bereich: 'SPEISE', erloeskonto: '9999' })).status, 400);
+  r = await a('POST', `${P}/bereich-konto`, { bereich: 'SPEISE', erloeskonto: null });
+  assert.equal((await sql`select count(*)::int as n from tco.produkte where prod_key like '2%' and erloeskonto is not null`)[0].n, 0);
+
   // Änderungsbelege
   const [h] = await sql`select count(*)::int as n from core.change_header where action like 'PRODUKT_%'`;
   assert.ok(h.n >= 4);

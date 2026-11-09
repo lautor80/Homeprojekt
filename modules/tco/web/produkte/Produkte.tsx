@@ -42,6 +42,7 @@ export function Produkte() {
   const [modus, setModus] = useState<Modus | null>(null);
   const [f, setF] = useState<Form>({ text: '', preis: '', preis_gast: '', erloeskonto: '', menge: '', ab: heute() });
   const [busy, setBusy] = useState(false);
+  const [masse, setMasse] = useState(false);
 
   const laden = () => api.get<Daten>(P).then(setD).catch((e) => setError(e.message));
   useEffect(() => { laden(); }, []);
@@ -92,6 +93,7 @@ export function Produkte() {
   return (
     <AppPage title="Produkte" subtitle="Produkte, Preise je Zeitraum und Erlöskonten"
              actions={<>
+               {edit && <Button icon="batch-payments" design="Transparent" onClick={() => setMasse(true)}>Erlöskonto je Bereich</Button>}
                {can('tco.halle:preise') && <Button icon="lead" design="Transparent" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise (Zeitfenster)</Button>}
                {edit && (
                  <Select key={modus ? 'offen' : 'zu'} style={{ width: '14rem' }} onChange={(e) => {
@@ -186,6 +188,71 @@ export function Produkte() {
           </Text>
         </Dialog>
       )}
+      {masse && d && <BereichKonto d={d} onClose={() => setMasse(false)} onDone={() => { setMasse(false); laden(); }} />}
     </AppPage>
+  );
+}
+
+/** Massenpflege: Erlöskonto je Produktbereich (alle Produkte, wahlweise nur die ohne eigenes Konto) */
+function BereichKonto({ d, onClose, onDone }: { d: Daten; onClose: () => void; onDone: () => void }) {
+  const [wahl, setWahl] = useState<Record<string, string>>({});
+  const [nurOhne, setNurOhne] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // aktuelles Konto je Bereich: einheitlich → vorbelegt, sonst „gemischt“
+  const stand = (b: Bereich) => {
+    const k = [...new Set(d.produkte.filter((p) => p.bereich === b).map((p) => p.erloeskonto ?? ''))];
+    return k.length === 1 ? k[0] : k.length ? null : '';
+  };
+  async function speichern() {
+    setBusy(true); setError(null);
+    try {
+      const texte: string[] = [];
+      for (const [bereich, konto] of Object.entries(wahl)) {
+        const r = await api.post<{ text: string }>(`${P}/bereich-konto`, { bereich, erloeskonto: konto || null, nurOhne });
+        texte.push(r.text);
+      }
+      toast(texte.join(' '), 8000);
+      onDone();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open headerText="Erlöskonto je Produktbereich" style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" loading={busy} disabled={!Object.keys(wahl).length} onClick={speichern}>Übernehmen</Button>
+              <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead><tr><th style={kopf}><Label>Bereich</Label></th><th style={kopf}><Label>Produkte</Label></th><th style={kopf}><Label>bisher</Label></th><th style={kopf}><Label>neues Erlöskonto</Label></th></tr></thead>
+        <tbody>
+          {d.bereiche.map((b) => {
+            const anzahl = new Set(d.produkte.filter((p) => p.bereich === b.key).map((p) => p.prod_key)).size;
+            const s = stand(b.key);
+            return (
+              <tr key={b.key} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                <td style={zelle}><Text>{b.text}</Text></td>
+                <td style={zelle}><Text>{anzahl}</Text></td>
+                <td style={zelle}><Text>{s === null ? 'gemischt' : s || 'Standard'}</Text></td>
+                <td style={zelle}>
+                  <Select disabled={!anzahl} style={{ width: '15rem' }} onChange={(e) => {
+                    const k = (e.detail.selectedOption as HTMLElement).dataset.k ?? '~';
+                    setWahl((w) => { const n = { ...w }; if (k === '~') delete n[b.key]; else n[b.key] = k; return n; });
+                  }}>
+                    <Option data-k="~" selected={!(b.key in wahl)}>unverändert</Option>
+                    <Option data-k="" selected={wahl[b.key] === ''}>Standard{b.key === 'HALLE' ? ' (8003 Hallenmiete)' : ''}</Option>
+                    {d.konten.map((k) => <Option key={k.konto} data-k={k.konto} selected={wahl[b.key] === k.konto}>{k.konto} {k.name}</Option>)}
+                  </Select>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <CheckBox text="nur Produkte ohne eigenes Erlöskonto" checked={nurOhne} onChange={(e) => setNurOhne(e.target.checked)} style={{ marginTop: '0.5rem' }} />
+      <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.25rem' }}>
+        Gilt für alle Zeiträume der Produkte. Einzelne Produkte lassen sich danach weiterhin abweichend pflegen.
+      </Text>
+    </Dialog>
   );
 }

@@ -508,6 +508,14 @@ test('Registrierung: Freigabe mit Mitgliedszuordnung, Rolle Hallennutzer nur Ein
   assert.equal((await carla('GET', `${P}/serie/stamm`)).status, 403);
   assert.equal((await carla('POST', `${A}/abos/vorschau`, {})).status, 403);
   assert.equal((await carla('GET', '/api/m/tco/mitglieder/liste?status=AKTIV')).status, 403);
+  // #27: Hallennutzer mit Mitgliedszuordnung pflegt die eigenen Daten im Mitgliedsstamm
+  r = await carla('GET', '/api/m/tco/meinkonto');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.quelle, 'MITGLIED');
+  r = await carla('PUT', '/api/m/tco/meinkonto', { ...r.body, anrede: 'Frau', strasse: 'Neue Str. 1', plz: '66649', ort: 'Oberthal', telefon: '06854 1' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [cm] = await sql`select strasse, ort, telefon, anrede from tco.mitglieder where adrnr = '0000000403'`;
+  assert.deepEqual({ ...cm }, { strasse: 'Neue Str. 1', ort: 'Oberthal', telefon: '06854 1', anrede: 'Frau' });
   assert.equal((await carla('GET', '/api/admin/users')).status, 403);
   assert.equal((await carla('GET', `${A}/registrierungen`)).status, 403);
   r = await carla('POST', `${P}/buchungen`, { platz_id: platz1Id, datum: tag(2), von: '09:00', bis: '10:00' });

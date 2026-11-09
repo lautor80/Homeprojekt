@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { DB } from '../verein.js';
-import { BEREICHE, erloeskontenLesen, neuerPreis, produktAnlegen, produktBeenden, produkteLesen, zeitraumAendern, type Bereich } from './logik.js';
+import { BEREICHE, bereichKontoSetzen, erloeskontenLesen, neuerPreis, produktAnlegen, produktBeenden, produkteLesen, zeitraumAendern, type Bereich } from './logik.js';
 
 export const P_PROD = { display: 'tco.produkte:display', edit: 'tco.produkte:edit' };
 
@@ -41,6 +41,17 @@ export async function produkteRoutes(app: FastifyInstance) {
     const b = eigenschaften.extend({ ab: datum, bereich: z.enum(Object.keys(BEREICHE) as [Bereich, ...Bereich[]]) }).parse(req.body);
     const k = await change(req, (tx) => produktAnlegen(tx, b.bereich, b.ab, b), { action: 'PRODUKT_NEU' });
     return { prod_key: k, text: `Produkt ${k} „${b.text}“ angelegt.` };
+  });
+
+  /** Massenpflege: Erlöskonto je Produktbereich */
+  app.post('/produkte/bereich-konto', { preHandler: requireAuth(P_PROD.edit) }, async (req) => {
+    const b = z.object({
+      bereich: z.enum(Object.keys(BEREICHE) as [Bereich, ...Bereich[]]),
+      erloeskonto: z.string().trim().max(10).nullish().transform((v) => v || null),
+      nurOhne: z.boolean().default(false),
+    }).parse(req.body);
+    const n = await change(req, (tx) => bereichKontoSetzen(tx, b.bereich, b.erloeskonto, b.nurOhne), { action: 'PRODUKT_KONTO_BEREICH', reason: b.bereich });
+    return { anzahl: n, text: `${BEREICHE[b.bereich].text}: Erlöskonto ${b.erloeskonto ?? 'Standard'} für ${n} Produkt${n === 1 ? '' : 'e'} gesetzt.` };
   });
 
   app.post('/produkte/:key/beenden', { preHandler: requireAuth(P_PROD.edit) }, async (req) => {

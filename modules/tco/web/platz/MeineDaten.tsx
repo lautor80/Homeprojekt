@@ -6,8 +6,8 @@ import { Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
 
-/** Meine Daten: externe Hallennutzer pflegen ihre Kontaktdaten selbst (nur der eigene Kundenstammsatz) */
-interface Daten { benutzername: string; kundennummer: string; anrede: string; vorname: string; nachname: string; strasse: string; plz: string; ort: string; email: string; telefon: string }
+/** Meine Daten: Hallennutzer pflegen ihre Kontaktdaten selbst – eigener Kundenstammsatz bzw. zugeordnetes Mitglied (Mitgliedsstamm) */
+interface Daten { quelle?: 'KUNDE' | 'MITGLIED'; benutzername: string; kundennummer: string; anrede: string; vorname: string; nachname: string; strasse: string; plz: string; ort: string; email: string; telefon: string }
 
 export function MeineDaten() {
   const [d, setD] = useState<Daten | null>(null);
@@ -31,7 +31,7 @@ export function MeineDaten() {
     </div>
   );
   return (
-    <AppPage title="Meine Daten" subtitle={d ? `Benutzer ${d.benutzername} · Kundennummer ${d.kundennummer}` : undefined}
+    <AppPage title="Meine Daten" subtitle={d ? `Benutzer ${d.benutzername} · ${d.quelle === 'MITGLIED' ? 'Mitgliedsnummer' : 'Kundennummer'} ${d.kundennummer}` : undefined}
              actions={d ? <Button design="Emphasized" icon="save" loading={busy} onClick={speichern}>Speichern</Button> : undefined}>
       {error && <MessageStrip design={d ? 'Negative' : 'Information'} hideCloseButton={!d} onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!d ? (!error && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />) : (

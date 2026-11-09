@@ -265,20 +265,30 @@ export async function platzRoutes(app: FastifyInstance) {
   const meinkonto = { preHandler: requireAuth(P_MEINKONTO) };
   const eigenerKunde = async (uid: string) => (await DB`select zuid, zalias, vorname, nachname, strasse, plz, wohnort, email, telefonnummer, geschlecht
                                                           from tco.kunden where benutzer_id = ${uid} order by zalias limit 1`)[0] ?? null;
+  /** eigene Stammdaten: Kundenstammsatz (externe) bzw. zugeordnetes Mitglied (Hallennutzer mit Mitgliedszuordnung) */
+  const eigenesMitglied = async (uid: string) => (await DB`select m.adrnr, m.mitglnrn, m.anrede, m.geschlecht, m.vorname, m.nachname, m.strasse, m.plz, m.ort, m.email, m.telefon
+                                                            from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${uid}`)[0] ?? null;
+  const anredeAus = (g: unknown, anrede?: unknown) => {
+    if (['Herr', 'Frau', 'Divers'].includes(String(anrede ?? ''))) return String(anrede);
+    const x = String(g ?? '').toUpperCase();
+    return ['M', '1'].includes(x) ? 'Herr' : ['W', 'F', '2'].includes(x) ? 'Frau' : x === 'D' ? 'Divers' : '';
+  };
   app.get('/meinkonto', meinkonto, async (req) => {
     const uid = req.user!.id;
     const k = await eigenerKunde(uid);
-    if (!k) {
-      const [m] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${uid}`;
-      throw new BusinessError(m ? 'Sie sind als Mitglied zugeordnet – Ihre Daten pflegen Sie unter „Meine Mitgliedschaft“ bzw. über den Verein.'
-        : 'Ihrem Benutzer ist kein Kundenstammsatz zugeordnet. Bitte beim Verein melden.', 404);
+    if (k) {
+      return {
+        quelle: 'KUNDE', benutzername: req.user!.username, kundennummer: k.zuid, anrede: anredeAus(k.geschlecht),
+        vorname: k.vorname ?? '', nachname: k.nachname ?? '', strasse: k.strasse ?? '', plz: k.plz ?? '', ort: k.wohnort ?? '',
+        email: (k.email ?? req.user!.email ?? '').trim(), telefon: k.telefonnummer ?? '',
+      };
     }
-    const g = String(k.geschlecht ?? '').toUpperCase();
+    const m = await eigenesMitglied(uid);
+    if (!m) throw new BusinessError('Ihrem Benutzer ist kein Kunden- oder Mitgliedsstammsatz zugeordnet. Bitte beim Verein melden.', 404);
     return {
-      benutzername: req.user!.username, kundennummer: k.zuid,
-      anrede: ['M', '1'].includes(g) ? 'Herr' : ['W', 'F', '2'].includes(g) ? 'Frau' : g === 'D' ? 'Divers' : '',
-      vorname: k.vorname ?? '', nachname: k.nachname ?? '', strasse: k.strasse ?? '', plz: k.plz ?? '', ort: k.wohnort ?? '',
-      email: (k.email ?? req.user!.email ?? '').trim(), telefon: k.telefonnummer ?? '',
+      quelle: 'MITGLIED', benutzername: req.user!.username, kundennummer: m.mitglnrn || m.adrnr, anrede: anredeAus(m.geschlecht, m.anrede),
+      vorname: m.vorname ?? '', nachname: m.nachname ?? '', strasse: m.strasse ?? '', plz: m.plz ?? '', ort: m.ort ?? '',
+      email: (m.email ?? '').trim(), telefon: m.telefon ?? '',
     };
   });
   app.put('/meinkonto', meinkonto, async (req) => {
@@ -289,12 +299,21 @@ export async function platzRoutes(app: FastifyInstance) {
       email: registrierung.shape.email, telefon: z.string().trim().max(40).nullish(),
     }).parse(req.body);
     const k = await eigenerKunde(uid);
-    if (!k) throw new BusinessError('Ihrem Benutzer ist kein Kundenstammsatz zugeordnet.', 404);
+    const m = k ? null : await eigenesMitglied(uid);
+    if (!k && !m) throw new BusinessError('Ihrem Benutzer ist kein Kunden- oder Mitgliedsstammsatz zugeordnet.', 404);
     await change(req, async (tx) => {
-      // nur der eigene Kunde (alle EP3-Aliasse derselben Kundennummer) und der eigene Benutzer
-      await tx`update tco.kunden set vorname = ${d.vorname}, nachname = ${d.nachname}, strasse = ${d.strasse}, plz = ${d.plz}, wohnort = ${d.ort},
-                                     email = ${d.email}, telefonnummer = ${d.telefon || null}, geschlecht = ${geschlechtVon(d.anrede)}
-                where zuid = ${k.zuid}`;
+      if (k) {
+        // nur der eigene Kunde (alle EP3-Aliasse derselben Kundennummer)
+        await tx`update tco.kunden set vorname = ${d.vorname}, nachname = ${d.nachname}, strasse = ${d.strasse}, plz = ${d.plz}, wohnort = ${d.ort},
+                                       email = ${d.email}, telefonnummer = ${d.telefon || null}, geschlecht = ${geschlechtVon(d.anrede)}
+                  where zuid = ${k.zuid}`;
+      } else {
+        // nur das zugeordnete Mitglied – Kontaktdaten (Bank, Verträge, Kündigung: Meine Mitgliedschaft bzw. Verein)
+        await tx`update tco.mitglieder set anrede = ${d.anrede}, geschlecht = ${d.anrede === 'Herr' ? '1' : d.anrede === 'Frau' ? '2' : null},
+                                           vorname = ${d.vorname}, nachname = ${d.nachname}, strasse = ${d.strasse}, plz = ${d.plz}, ort = ${d.ort},
+                                           email = ${d.email}, telefon = ${d.telefon || null}
+                  where adrnr = ${m!.adrnr}`;
+      }
       await tx`update core.users set email = ${d.email}, display_name = ${`${d.vorname} ${d.nachname}`} where id = ${uid}`;
     }, { action: 'MEINE_DATEN' });
     return { text: 'Ihre Daten sind gespeichert.' };
