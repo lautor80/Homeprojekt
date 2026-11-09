@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, DatePicker, FileUploader, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text,
+  AnalyticalTable, Button, DatePicker, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -30,7 +30,7 @@ const ohneEndung = (n: string) => n.replace(/\.[^.]+$/, '');
  * Dokumenten-Upload (Port von Z2UI5_CL_TCO_UPLOAD_MULTI): mehrere Belege wählen, gemeinsame Metadaten
  * (Dokumenttyp, Korrespondent, Datum, Tags, Speicherpfad) und je Datei Titel/Datum festlegen,
  * nacheinander nach Paperless übertragen; die Statusliste zeigt das Ergebnis je Datei.
- * Dateien per „Dateien wählen“, per Drag & Drop auf die Seite/das Ablagefeld oder Strg+V (Screenshot).
+ * Dateien über das Ablagefeld der Seite (ziehen oder klicken), das Ablagefeld der Navigation oder Strg+V (Screenshot).
  * Metadaten wie im Ablagefeld der Navigation (gemeinsame Voreinstellung; neuer Korrespondent per Eingabe).
  */
 export function Upload() {
@@ -129,9 +129,6 @@ export function Upload() {
   return (
     <AppPage title="Dokumenten-Upload" subtitle="Mehrere Belege mit Metadaten nach Paperless übertragen – auch per Drag & Drop"
              actions={<>
-               <FileUploader className="portal-up__waehlen" multiple hideInput accept={akzeptiert} onChange={(e) => hinzufuegen(e.detail.files)}>
-                 <Button icon="add-document" disabled={busy || !stamm?.paperless}>Dateien wählen</Button>
-               </FileUploader>
                <Button icon="upload-to-cloud" design="Emphasized" loading={busy} disabled={!offen.length || !stamm?.paperless} onClick={uebertragen}>
                  {offen.length ? `${offen.length} Datei(en) übertragen` : 'Übertragen'}
                </Button>
@@ -163,7 +160,7 @@ export function Upload() {
       )}
       <Section title="Dateien" count={dateien.length} flush
                status={fertig ? <Text className="portal-muted">{fertig} übertragen</Text> : undefined}>
-        <AnalyticalTable minRows={1} columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 1)} noDataText="Noch keine Dateien – hierher ziehen oder „Dateien wählen“ (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
+        <AnalyticalTable minRows={1} columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 1)} noDataText="Noch keine Dateien – ins Ablagefeld oben ziehen oder dort klicken (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
                          withRowHighlight highlightField={(r: Record<string, any>) => r.state} />
       </Section>
       <MessageStrip hideCloseButton>
