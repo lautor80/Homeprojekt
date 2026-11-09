@@ -255,6 +255,7 @@ export async function halleRoutes(app: FastifyInstance) {
       beschreibung: z.string().max(40).nullish(),
       menge: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte eine Menge als Zahl erfassen' })),
       preis: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte einen Preis als Zahl erfassen' }).nullish()),
+      erloeskonto: z.string().trim().max(10).nullish(),
     }).parse(req.body);
     const v = await vereinLesen();
     const r = await change(req, (tx) => manuellePosition(tx, rgnr, d));

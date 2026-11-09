@@ -439,6 +439,7 @@ function PersonPanel(props: {
       Cell: ({ row, value }: Cell) => (
         <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
           <Text>{String(value).split('\t').filter(Boolean).join(' · ')}</Text>
+          {row.original.erloeskonto && <Tag design="Set2" colorScheme="10" hideStateIcon title="abweichendes Erlöskonto">Konto {row.original.erloeskonto}</Tag>}
           {row.original.beleg_doc_id && (
             <Button icon="attachment" design="Transparent" tooltip={`Beleg ansehen (DOKID ${String(row.original.beleg_doc_id).padStart(6, '0')})`}
                     onClick={() => window.open(`${H}/paperless/${row.original.beleg_doc_id}/pdf`, '_blank')} />

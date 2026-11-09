@@ -109,7 +109,7 @@ export const ERLOES_STANDARD = '8003';
 export async function rechnungAufteilung(db: Db, rgnr: string): Promise<{ konto: string; betrag: number }[]> {
   const rows = await db`
     select p.bid, p.preis::float8 as preis, p.dauer,
-           coalesce(nullif(trim((select pr.erloeskonto from tco.produkte pr where pr.prod_key = p.prod_key
+           coalesce(nullif(trim(p.erloeskonto), ''), nullif(trim((select pr.erloeskonto from tco.produkte pr where pr.prod_key = p.prod_key
                                   order by (coalesce(p.datum, current_date) between pr.valid_from and pr.valid_to) desc, pr.valid_to desc
                                   limit 1)), ''), ${ERLOES_STANDARD}) as konto
       from tco.rgpos p where p.rgnr_txt = ${rgnr}`;
@@ -366,12 +366,14 @@ export interface DruckPosition {
   manuell: boolean;
   /** verknüpfter Paperless-Beleg (z. B. Namensliste der Sammelrechnung) */
   beleg_doc_id?: number | null;
+  /** abweichendes Erlöskonto der Position (Gutschrift, Sonstiges) */
+  erloeskonto?: string | null;
 }
 
 export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPosition[]> {
   const rows = await db`
     select p.rgpos, p.bid, p.datum::text, p.time_start::text, p.time_ende::text, p.dauer, p.prod_key,
-           p.preis::float8 as preis, p.description, p.beleg_doc_id, b.status as bstatus,
+           p.preis::float8 as preis, p.description, p.beleg_doc_id, p.erloeskonto, b.status as bstatus,
            (select text from tco.produkte pr where pr.prod_key = p.prod_key order by valid_to desc limit 1) as prodtext
       from tco.rgpos p
       left join lateral (select status from tco.bookings b where b.bid = p.bid and (p.datum is null or b.datum = p.datum)
@@ -403,6 +405,7 @@ export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPositi
     return {
       rgpos: p.rgpos, bid: p.bid, datum: p.datum, time_start: p.time_start, time_ende: p.time_ende, prod_key: key,
       art, beschreibung: beschr, anzahl, ep, betrag, storno, manuell, beleg_doc_id: p.beleg_doc_id ?? null,
+      erloeskonto: p.erloeskonto?.trim() || null,
     };
   });
 }
@@ -517,7 +520,10 @@ export async function positionenNummerieren(tx: Db, rgnr: string): Promise<numbe
 }
 
 /** manuelle Position (MANPOS_SAVE) inkl. Schlüsselliste bei 008/009 */
-export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null },
+/** Gutschrift-Produkt (Text „Gutschrift …“): Preis und Erlöskonto frei, Betrag immer negativ */
+export const istGutschrift = (text: string | null | undefined) => /gutschrift/i.test(text ?? '');
+
+export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null; erloeskonto?: string | null },
   o: { preisVorgabe?: boolean } = {}) {
   const k = await kopfLesen(tx, rgnr);
   if (!rgAenderbar(k)) throw new BusinessError('Versendete oder bezahlte Rechnungen nehmen keine Positionen mehr auf');
@@ -527,15 +533,28 @@ export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: stri
                          where prod_key = ${d.prod_key} and valid_from <= current_date and valid_to >= current_date
                          order by valid_from desc limit 1`;
   if (!pr) throw new BusinessError(`Produkt ${d.prod_key} ist heute nicht gültig`);
-  const frei = d.prod_key === KEY_SONSTIGES;
+  const gutschrift = istGutschrift(pr.text);
+  const frei = d.prod_key === KEY_SONSTIGES || gutschrift;
   // Preisvorgabe (Splitbuchung der Sammelrechnung): Anteil je Person statt Produktpreis
-  const preis = frei || (o.preisVorgabe && d.preis !== null && d.preis !== undefined) ? Number(d.preis) : pr.preis;
+  let preis = frei || (o.preisVorgabe && d.preis !== null && d.preis !== undefined) ? Number(d.preis) : pr.preis;
+  if (d.preis === null || d.preis === undefined || !Number.isFinite(preis)) {
+    if (frei) throw new BusinessError('Bitte einen Einzelpreis erfassen');
+    preis = pr.preis;
+  }
   if (!Number.isFinite(preis)) throw new BusinessError('Bitte einen Preis als Zahl erfassen');
+  // Gutschrift mindert die Rechnung – auch wenn der Preis ohne Minus erfasst wurde
+  if (gutschrift) preis = -Math.abs(preis);
+  // abweichendes Erlöskonto nur bei freien Positionen (Gutschrift, Sonstiges)
+  const konto = frei ? (d.erloeskonto ?? '').trim() || null : null;
+  if (konto) {
+    const [kt] = await tx`select 1 from tco.fikonten where konto = ${konto}`;
+    if (!kt) throw new BusinessError(`Konto ${konto} ist nicht im Kontenstamm.`);
+  }
   const text = frei ? (d.beschreibung ?? '').trim() : (d.beschreibung?.trim() || pr.text);
   if (frei && !text) throw new BusinessError('Bitte eine Beschreibung erfassen');
   const pos = await naechstePos(tx, rgnr);
-  await tx`insert into tco.rgpos (rgnr_txt, rgpos, datum, dauer, prod_key, preis, description)
-           values (${rgnr}, ${pos}, ${heute()}, ${String(d.menge)}, ${d.prod_key}, ${preis}, ${text})`;
+  await tx`insert into tco.rgpos (rgnr_txt, rgpos, datum, dauer, prod_key, preis, description, erloeskonto)
+           values (${rgnr}, ${pos}, ${heute()}, ${String(d.menge)}, ${d.prod_key}, ${preis}, ${text}, ${konto})`;
   const betrag = await betragNeu(tx, rgnr);
   const hinweise: string[] = [];
   if ((d.prod_key === KEY_SCHLUESSEL_AUSGABE || d.prod_key === KEY_SCHLUESSEL_RUECKNAHME || pr.typ === '3') && k.adrnr) {

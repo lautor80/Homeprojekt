@@ -21,7 +21,9 @@ function Feld({ label, children, required }: { label: string; children: React.Re
 // ---------------------------------------------------------------------------
 // Manuelle Position
 // ---------------------------------------------------------------------------
-interface Produkt { prod_key: string; valid_from: string; valid_to: string; text: string; preis: number; typ: string | null }
+interface Produkt { prod_key: string; valid_from: string; valid_to: string; text: string; preis: number; typ: string | null; erloeskonto: string | null }
+/** Gutschrift-Produkt: Einzelpreis und Konto frei, Betrag mindert die Rechnung */
+const istGutschrift = (p?: Produkt) => /gutschrift/i.test(p?.text ?? '');
 
 export function PositionDialog({ open, rgnr, onClose, onSaved }: { open: boolean; rgnr: string | null; onClose: () => void; onSaved: (t: string) => void }) {
   const [produkte, setProdukte] = useState<Produkt[]>([]);
@@ -29,25 +31,31 @@ export function PositionDialog({ open, rgnr, onClose, onSaved }: { open: boolean
   const [text, setText] = useState('');
   const [menge, setMenge] = useState('1');
   const [preis, setPreis] = useState('');
+  const [konto, setKonto] = useState('');
+  const [konten, setKonten] = useState<{ konto: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setKey(''); setText(''); setMenge('1'); setPreis(''); setError(null);
+    setKey(''); setText(''); setMenge('1'); setPreis(''); setKonto(''); setError(null);
     const h = new Date().toISOString().slice(0, 10);
-    api.get<{ produkte: Produkt[] }>(`${H}/preise`).then((r) => setProdukte(r.produkte.filter((p) => p.valid_from <= h && p.valid_to >= h)));
+    api.get<{ produkte: Produkt[]; konten: { konto: string; name: string }[] }>(`${H}/preise`).then((r) => {
+      setProdukte(r.produkte.filter((p) => p.valid_from <= h && p.valid_to >= h));
+      setKonten(r.konten ?? []);
+    });
   }, [open]);
 
   const p = produkte.find((x) => x.prod_key === key);
-  const frei = key === '093';
+  const gutschrift = istGutschrift(p);
+  const frei = key === '093' || gutschrift;
 
   async function save() {
     setBusy(true);
     setError(null);
     try {
       const r = await api.post<{ text: string }>(`${H}/rechnungen/${encodeURIComponent(rgnr!)}/positionen`, {
-        prod_key: key, beschreibung: text || null, menge, preis: frei ? preis : null,
+        prod_key: key, beschreibung: text || null, menge, preis: frei ? preis : null, erloeskonto: frei ? konto || null : null,
       });
       onSaved(r.text);
     } catch (e) {
@@ -70,7 +78,8 @@ export function PositionDialog({ open, rgnr, onClose, onSaved }: { open: boolean
           setKey(k);
           const pr = produkte.find((x) => x.prod_key === k);
           setText(k === '093' ? '' : pr?.text ?? '');
-          setPreis(pr ? String(pr.preis).replace('.', ',') : '');
+          setPreis(pr ? String(istGutschrift(pr) ? Math.abs(pr.preis) : pr.preis).replace('.', ',') : '');
+          setKonto(pr?.erloeskonto ?? '');
         }}>
           <Option data-k="" selected={!key}>Produkt wählen …</Option>
           {produkte.map((x) => <Option key={x.prod_key} data-k={x.prod_key} selected={x.prod_key === key}>{x.prod_key} – {x.text} ({eur(x.preis)})</Option>)}
@@ -81,14 +90,27 @@ export function PositionDialog({ open, rgnr, onClose, onSaved }: { open: boolean
       </Feld>
       <FlexBox style={{ gap: '1rem' }}>
         <Feld label="Menge" required><Input value={menge} onInput={(e) => setMenge(e.target.value)} style={{ width: '8rem' }} /></Feld>
-        <Feld label="Einzelpreis (EUR)" required={frei}>
+        <Feld label={gutschrift ? 'Einzelpreis der Gutschrift (EUR)' : 'Einzelpreis (EUR)'} required={frei}>
           <Input value={preis} readonly={!frei} onInput={(e) => setPreis(e.target.value)} style={{ width: '10rem' }} />
         </Feld>
       </FlexBox>
+      {frei && (
+        <Feld label="Konto (Erlöskonto)">
+          <Select onChange={(e) => setKonto((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+            <Option data-k="" selected={!konto}>Standard{p?.erloeskonto ? ` des Produkts (${p.erloeskonto})` : ' (Hallenmiete)'}</Option>
+            {konten.map((k) => <Option key={k.konto} data-k={k.konto} selected={konto === k.konto}>{k.konto} {k.name}</Option>)}
+          </Select>
+        </Feld>
+      )}
+      {gutschrift && (
+        <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Gutschrift: Einzelpreis ohne Minus erfassen – der Betrag ({preis && Number(preis.replace(',', '.')) ? eur(-Math.abs(Number(menge.replace(',', '.') || 1) * Number(preis.replace(',', '.')))) : '–'}) mindert die Rechnung und wird beim Zahlungseingang auf das gewählte Konto gebucht.
+        </MessageStrip>
+      )}
       {p && (p.prod_key === '008' || p.prod_key === '009') && (
         <MessageStrip hideCloseButton>Die Schlüsselliste wird mit dem Anlagedatum der Rechnung fortgeschrieben ({p.prod_key === '008' ? 'Ausgabe' : 'Rücknahme'}).</MessageStrip>
       )}
-      {frei && <MessageStrip hideCloseButton>„Sonstiges“: Text und Preis frei, der Preis darf negativ sein (Gutschrift).</MessageStrip>}
+      {key === '093' && <MessageStrip hideCloseButton>„Sonstiges“: Text, Preis und Konto frei, der Preis darf negativ sein (Gutschrift).</MessageStrip>}
     </Dialog>,
   );
 }

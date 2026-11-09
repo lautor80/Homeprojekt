@@ -612,3 +612,31 @@ test('Hallenabrechnung: Hinweise je Laden neu – ß im Namen und Adressnummer d
   r = await call('GET', `${H}/personen?status=1`);
   assert.deepEqual(r.body.personen.find((x: any) => x.kunde === 'A. GROSS (LIGA)').probleme, []);
 });
+
+test('Gutschrift: Einzelpreis und Konto frei, Betrag mindert die Rechnung, Konto in der Aufteilung', async () => {
+  const { rechnungAufteilung } = await import('../../modules/tco/server/halle/daten.js');
+  await sql`insert into tco.fikonten (konto, name) values ('8099', 'Erlösminderungen') on conflict do nothing`;
+  await sql`insert into tco.produkte (prod_key, valid_from, valid_to, text, preis) values ('094', '2020-01-01', '9999-12-31', 'Gutschrift', 0)
+            on conflict do nothing`;
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status) values ('2026_901', 2026, 901, 'GUTSCHRIFT TEST', 0, '1')`;
+  let r = await call('POST', `${H}/rechnungen/2026_901/positionen`, { prod_key: '001', menge: 2 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const miete = r.body.betrag;
+  // Preis ohne Minus erfasst → wird negativ; Konto frei wählbar
+  r = await call('POST', `${H}/rechnungen/2026_901/positionen`, { prod_key: '094', menge: 1, preis: '12,50', erloeskonto: '8099', beschreibung: 'Gutschrift Ausfall' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.betrag, -12.5);
+  r = await call('GET', `${H}/rechnungen/2026_901`);
+  const g = r.body.positionen.find((p: any) => p.prod_key === '094');
+  assert.deepEqual([g.ep, g.betrag, g.erloeskonto], [-12.5, -12.5, '8099']);
+  const teile = await rechnungAufteilung(sql as never, '2026_901');
+  assert.deepEqual(teile.find((t: any) => t.konto === '8099')?.betrag, -12.5, JSON.stringify(teile));
+  assert.equal(teile.reduce((s: number, t: any) => s + t.betrag, 0), miete - 12.5);
+  // ohne Preis bzw. mit unbekanntem Konto abgewiesen; bei normalen Produkten wird kein Konto gespeichert
+  assert.equal((await call('POST', `${H}/rechnungen/2026_901/positionen`, { prod_key: '094', menge: 1 })).status, 400);
+  assert.equal((await call('POST', `${H}/rechnungen/2026_901/positionen`, { prod_key: '094', menge: 1, preis: 5, erloeskonto: '0000' })).status, 400);
+  r = await call('POST', `${H}/rechnungen/2026_901/positionen`, { prod_key: '001', menge: 1, erloeskonto: '8099' });
+  assert.equal(r.status, 200);
+  const [x] = await sql`select erloeskonto from tco.rgpos where rgnr_txt = '2026_901' and rgpos = ${r.body.rgpos}`;
+  assert.equal(x.erloeskonto, null);
+});
