@@ -176,7 +176,7 @@ export function PlatzBuchen() {
 
             {zonen.length > 0 && (
               <div className="portal-pb__legende portal-pb__legende--preise">
-                <span>Preis je Stunde (Strich neben der Uhrzeit):</span>
+                <span>Preis je Stunde (Farbe der Zeitspalte):</span>
                 {preisklassen(zonen).map((k) => (
                   <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-pb__zone--${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>
                 ))}
@@ -291,7 +291,7 @@ const REM_JE_STD = 3.5;
 export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
   tag: { datum: string; heute?: string; jetzt?: string }; plaetze: TagPlatz[];
   onFrei?: (p: TagPlatz, von: string) => void; onEigen?: (p: TagPlatz, b: Belegt) => void; admin?: boolean;
-  /** Preisklassen im Tagesverlauf: farbiger Strich links neben der Uhrzeit */
+  /** Preisklassen im Tagesverlauf: Zeitspalte farbig hinterlegt, Rand links und rechts der Uhrzeit */
   preiszonen?: Preiszone[];
 }) {
   const farbe = new Map(preisklassen(preiszonen ?? []).map((k) => [k.prodKey, k.farbe]));
@@ -311,7 +311,8 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
   const vorbeiBis = admin || !tag.heute ? -Infinity : tageBis < 0 ? Infinity : tageBis === 0 ? jetztMin : -Infinity;
   const stunden: number[] = [];
   for (let m = start; m < ende; m += 60) stunden.push(m);
-  const spalten = `3rem repeat(${plaetze.length}, minmax(${plaetze.length > 2 ? '7.5rem' : '9rem'}, 1fr))`;
+  // mit Preisklassen ist die Zeitspalte breiter: farbiger Rand links und rechts der Uhrzeit
+  const spalten = `${preiszonen?.length ? '4rem' : '3rem'} repeat(${plaetze.length}, minmax(${plaetze.length > 2 ? '7.5rem' : '9rem'}, 1fr))`;
 
   return (
     <div className="portal-pb__scroll">
@@ -325,7 +326,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
         ))}
       </div>
       <div className="portal-pb__raster" style={{ gridTemplateColumns: spalten, height: h(ende - start) }}>
-        <div className="portal-pb__zeiten">
+        <div className={`portal-pb__zeiten${preiszonen?.length ? ' portal-pb__zeiten--preise' : ''}`}>
           {(preiszonen ?? []).map((z) => {
             const von = Math.max(min(z.von), start);
             const bis = Math.min(min(z.bis) || 1440, ende);
