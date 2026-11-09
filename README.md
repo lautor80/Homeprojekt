@@ -102,6 +102,8 @@ Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db`,
 # Im Portal: Administration → Sicherung – Sicherung je Bereich (Basis, TC Oberthal, Euroflex),
 # optional verschlüsselt, Download/Upload, Prüfung und Rücksicherung mit automatischer Sicherheitskopie.
 # Format wahlweise .portal (kompakt, optional verschlüsselt) oder ZIP mit XML-Dateien (lesbar, bearbeitbar, importierbar).
+# Täglicher Export in die Nextcloud (WebDAV): als eine Datei (.portal/ZIP) oder dateiweise ohne ZIP – je Lauf ein Ordner
+# mit einzelnen XML-Dateien, manifest.xml zuletzt, pruefsummen.sha256; nach jeder Übertragung Prüfung der Vollständigkeit.
 docker compose exec backup sh /backup.sh now  # Backup sofort
 docker compose logs -f app                    # Log ansehen
 ```

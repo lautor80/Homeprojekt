@@ -3,17 +3,22 @@ import { sql, type Tx } from './db.js';
 import { BusinessError } from './errors.js';
 import { dateiAsync, dateiname, schaetzung, sichern, speichern, type Dateiformat } from './backup.js';
 import { laufend, starten, type Job, type Phase } from './backup-job.js';
+import { dateienUebertragen, uebertragungPruefen } from './backup-dateien.js';
 import { WebDav, WebDavFehler } from './lib/webdav.js';
 
 /**
  * Täglicher Export einer vollständigen Portal-Sicherung in einen festen Nextcloud-Ordner (WebDAV).
  * Läuft einmal am Tag ab der eingestellten Uhrzeit (Zeitzone des Servers, Europe/Berlin), löscht
  * danach automatische Sicherungen im Zielordner, die älter als die Aufbewahrungsdauer sind.
+ * Formate: eine Datei (.portal bzw. ZIP mit XML) oder – ohne ZIP – dateiweise: je Lauf ein Ordner mit einzelnen
+ * XML-Dateien (siehe backup-dateien.ts). In jedem Fall wird nach dem Upload geprüft, ob alles vollständig angekommen ist.
  * Ergebnis und Fehler stehen in core.backup_export (Anzeige in Administration → Sicherung und im Arbeitsvorrat).
  */
 
+/** eine Datei (.portal, ZIP mit XML) oder „dateien“ = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */
+export type ExportFormat = Dateiformat | 'dateien';
 export interface ExportCfg {
-  aktiv: boolean; url: string; benutzer: string; passwort: string; ordner: string; uhrzeit: string; format: Dateiformat;
+  aktiv: boolean; url: string; benutzer: string; passwort: string; ordner: string; uhrzeit: string; format: ExportFormat;
   datei_passwort: string; mit_aenderungsbelegen: boolean; aufbewahrung_tage: number;
 }
 export interface ExportStatus { letzter_lauf: string | null; letzter_erfolg: string | null; letzte_meldung: string | null; letzte_datei: string | null; letzte_dauer_s: number | null; letzter_fehler: boolean }
@@ -32,6 +37,7 @@ export function cfgPruefen(c: ExportCfg): string[] {
   if (!c.benutzer.trim()) f.push('Benutzer');
   if (!c.passwort) f.push('App-Passwort');
   if (!c.ordner.trim() || c.ordner.includes('..')) f.push('Zielordner');
+  if (!['portal', 'zip', 'dateien'].includes(c.format)) f.push('Format');
   if (c.format === 'portal' && c.datei_passwort && c.datei_passwort.length < 8) f.push('Datei-Passwort (mindestens 8 Zeichen)');
   return f;
 }
@@ -39,6 +45,12 @@ export function cfgPruefen(c: ExportCfg): string[] {
 const dav = (c: ExportCfg) => new WebDav(c.url, c.benutzer.trim(), c.passwort);
 /** automatisch erzeugte Sicherungen im Zielordner (nur diese werden aufgeräumt) */
 export const AUTO = /^portal_\d{4}-\d{2}-\d{2}_\d{6}_automatisch(?:_\d+)?\.(portal|zip)$/;
+/** automatisch erzeugte Ordner der dateiweisen Übertragung; Zeitpunkt steht im Namen (Serverzeit) */
+export const AUTO_ORDNER = /^portal_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})_automatisch(?:_\d+)?$/;
+const ordnerZeit = (name: string): number | null => {
+  const m = AUTO_ORDNER.exec(name);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : null;
+};
 
 /** Verbindung prüfen: Ordner anlegen (falls nötig) und auflisten */
 export async function verbindungTesten(c: ExportCfg) {
@@ -48,7 +60,7 @@ export async function verbindungTesten(c: ExportCfg) {
   try {
     await d.ordnerAnlegen(c.ordner);
     const l = await d.liste(c.ordner);
-    const auto = l.filter((e) => !e.ordner && AUTO.test(e.name));
+    const auto = l.filter((e) => (e.ordner ? AUTO_ORDNER : AUTO).test(e.name));
     return { text: `Verbunden. Zielordner ${c.ordner} ist erreichbar (${l.length} Einträge, davon ${auto.length} automatische Sicherung(en)).` };
   } catch (e) {
     if (e instanceof WebDavFehler) throw new BusinessError(e.message);
@@ -77,30 +89,52 @@ export async function exportAusfuehren(c: ExportCfg, von: string, setze: (p: Pha
       mitAenderungsbelegen: c.mit_aenderungsbelegen, von, art: 'automatisch', notiz: `Nextcloud-Export nach ${c.ordner}`,
       fortschritt: (f) => setze('lesen', Math.min(0.99, f.zeilen / gesamt), `Tabelle ${f.nr} von ${f.anzahl}: ${f.tabelle}`),
     });
-    setze('packen', 0.1, c.format === 'zip' ? 'ZIP mit XML' : c.datei_passwort ? 'komprimiert und verschlüsselt' : 'komprimiert');
-    const pw = c.format === 'portal' ? c.datei_passwort || null : null;
-    const b = await dateiAsync(inhalt, c.format, pw);
-    const name = dateiname(inhalt.manifest, c.format);
-    setze('hochladen', 0.1, `${name} (${(b.length / 1024 / 1024).toFixed(1)} MB)`);
     const d = dav(c);
-    await d.ordnerAnlegen(c.ordner);
-    await d.hochladen(`${c.ordner}/${name}`, b);
+    const zeilen = inhalt.manifest.tabellen.reduce((s, t) => s + t.zeilen, 0);
+    const pw = c.format === 'portal' ? c.datei_passwort || null : null;
+    let name: string;
+    let groesse: number;
+    let was: string;
+    if (c.format === 'dateien') {
+      // dateiweise, ohne ZIP: je Tabelle eine XML-Datei in einem eigenen Ordner, Manifest zuletzt, danach Prüfung
+      const u = await dateienUebertragen(d, c.ordner, dateiname(inhalt.manifest, 'zip').replace(/\.zip$/, ''), inhalt, {
+        hochladen: (teil, detail) => setze('dateien', teil, detail),
+        pruefen: (teil, detail) => setze('pruefen', teil, detail),
+      });
+      name = u.ordner;
+      groesse = u.bytes;
+      was = `Ordner ${name} nach ${c.ordner} übertragen (${u.dateien} Dateien einzeln, ${(groesse / 1024 / 1024).toFixed(1)} MB, ${zeilen.toLocaleString('de-DE')} Datensätze, Vollständigkeit geprüft`;
+    } else {
+      setze('packen', 0.1, c.format === 'zip' ? 'ZIP mit XML' : pw ? 'komprimiert und verschlüsselt' : 'komprimiert');
+      const b = await dateiAsync(inhalt, c.format, pw);
+      name = dateiname(inhalt.manifest, c.format);
+      groesse = b.length;
+      setze('hochladen', 0.1, `${name} (${(groesse / 1024 / 1024).toFixed(1)} MB)`);
+      await d.ordnerAnlegen(c.ordner);
+      await d.hochladen(`${c.ordner}/${name}`, b);
+      setze('pruefen', 0.2, name);
+      await uebertragungPruefen(d, c.ordner, new Map([[name, groesse]]));
+      was = `${name} nach ${c.ordner} hochgeladen (${(groesse / 1024 / 1024).toFixed(1)} MB, ${zeilen.toLocaleString('de-DE')} Datensätze${pw ? ', verschlüsselt' : ''}, Größe geprüft`;
+    }
     setze('aufraeumen', 0.2);
     let geloescht = 0;
     if (c.aufbewahrung_tage > 0) {
       const grenze = Date.now() - c.aufbewahrung_tage * 86_400_000;
       for (const e of await d.liste(c.ordner)) {
-        if (e.ordner || !AUTO.test(e.name) || e.name === name || !e.geaendert || new Date(e.geaendert).getTime() >= grenze) continue;
-        await d.loeschen(`${c.ordner}/${e.name}`);
+        if (e.name === name) continue;
+        if (e.ordner) {
+          // Ordner der dateiweisen Übertragung: Alter aus dem Namen (das Änderungsdatum eines Ordners ist nicht verlässlich)
+          const z = ordnerZeit(e.name);
+          if (z === null || z >= grenze) continue;
+        } else if (!AUTO.test(e.name) || !e.geaendert || new Date(e.geaendert).getTime() >= grenze) continue;
+        await d.loeschen(`${c.ordner}/${e.name}`, e.ordner);
         geloescht++;
       }
     }
     const dauer = Math.round((Date.now() - start) / 1000);
-    const zeilen = inhalt.manifest.tabellen.reduce((s, t) => s + t.zeilen, 0);
-    const text = `${name} nach ${c.ordner} hochgeladen (${(b.length / 1024 / 1024).toFixed(1)} MB, ${zeilen.toLocaleString('de-DE')} Datensätze${pw ? ', verschlüsselt' : ''}, ${dauer} s)`
-      + (geloescht ? `, ${geloescht} ältere Sicherung(en) gelöscht.` : '.');
+    const text = `${was}, ${dauer} s)` + (geloescht ? `, ${geloescht} ältere Sicherung(en) gelöscht.` : '.');
     await statusSetzen({ letzter_erfolg: new Date().toISOString(), letzte_meldung: text, letzte_datei: name, letzte_dauer_s: dauer, letzter_fehler: false });
-    return { name, groesse: b.length, geloescht, text };
+    return { name, groesse, geloescht, text };
   } catch (e) {
     const text = e instanceof WebDavFehler || e instanceof BusinessError ? e.message : `Unerwarteter Fehler: ${(e as Error).message}`;
     await statusSetzen({ letzte_meldung: text, letzte_dauer_s: Math.round((Date.now() - start) / 1000), letzter_fehler: true }).catch(() => undefined);

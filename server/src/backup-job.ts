@@ -6,18 +6,19 @@ import { BusinessError } from './errors.js';
  *
  * Phasen und ihr Anteil am Fortschrittsbalken:
  *   lesen 0–85 % (nach gelesenen Zeilen im Verhältnis zur PostgreSQL-Schätzung),
- *   packen 85–95 %, speichern bzw. hochladen 95–100 %.
+ *   packen 85–95 %, speichern bzw. hochladen 95–100 %; bei dateiweiser Übertragung in die Nextcloud
+ *   (ohne ZIP) Dateien übertragen 85–97 %, danach Prüfung der Übertragung und Aufräumen.
  * Die Restdauer ergibt sich aus der bisherigen Laufzeit und dem erreichten Anteil (ab 3 %).
  * Es läuft immer höchstens eine Sicherung gleichzeitig; fertige Aufträge bleiben 30 Minuten abrufbar.
  */
 
-export type Phase = 'start' | 'lesen' | 'packen' | 'speichern' | 'hochladen' | 'aufraeumen' | 'fertig' | 'fehler';
+export type Phase = 'start' | 'lesen' | 'packen' | 'speichern' | 'hochladen' | 'dateien' | 'pruefen' | 'aufraeumen' | 'fertig' | 'fehler';
 const PHASE_TEXT: Record<Phase, string> = {
   start: 'Wird vorbereitet …', lesen: 'Daten werden gelesen', packen: 'Datei wird gepackt', speichern: 'Datei wird gespeichert',
-  hochladen: 'Upload in die Nextcloud', aufraeumen: 'Alte Sicherungen werden aufgeräumt', fertig: 'Fertig', fehler: 'Fehler',
+  hochladen: 'Upload in die Nextcloud', dateien: 'Dateien werden einzeln in die Nextcloud übertragen', pruefen: 'Übertragung wird geprüft', aufraeumen: 'Alte Sicherungen werden aufgeräumt', fertig: 'Fertig', fehler: 'Fehler',
 };
 const ANTEIL: Record<Phase, [number, number]> = {
-  start: [0, 0], lesen: [0, 85], packen: [85, 95], speichern: [95, 100], hochladen: [95, 99], aufraeumen: [99, 100], fertig: [100, 100], fehler: [0, 0],
+  start: [0, 0], lesen: [0, 85], packen: [85, 95], speichern: [95, 100], hochladen: [95, 97], dateien: [85, 97], pruefen: [97, 99], aufraeumen: [99, 100], fertig: [100, 100], fehler: [0, 0],
 };
 
 export interface Job {

@@ -166,8 +166,6 @@ export interface XmlManifest {
 }
 interface Inhalt { manifest: XmlManifest; daten: Record<string, string> }
 
-const tabellenDatei = (name: string) => { const [s, t] = name.split('.'); return `daten/${s}/${t}.xml`; };
-
 export function tabelleXml(name: string, spalten: { name: string; typ: string }[], text: string): string {
   const zeilen = copyZeilen(text);
   const teile: string[] = [
@@ -226,6 +224,9 @@ export function manifestXml(m: XmlManifest): string {
   ].join('\n');
 }
 
+/** Pfad der Tabellendatei innerhalb der Sicherung, z. B. daten/tco/mitglieder.xml */
+export const tabellenDatei = (name: string) => { const [s, t] = name.split('.'); return `daten/${s}/${t}.xml`; };
+
 const LIESMICH = `Portal-Sicherung als XML (ZIP)
 
 manifest.xml                  Zeitpunkt, Ersteller, Bereiche, Datenbankstand (Migrationen), Tabellenliste
@@ -238,6 +239,24 @@ Werte stehen in der Textdarstellung von PostgreSQL:
 Import: Administration -> Sicherung -> „Sicherung hochladen“ (diese ZIP-Datei), danach prüfen und zurücksichern.
 Bearbeitete Dateien bleiben importierbar, solange Spaltennamen und Wertformate erhalten bleiben.
 Achtung: Die Datei enthält alle Daten unverschlüsselt (auch Kennwort-Hashes und Bankdaten) – sicher aufbewahren.
+`;
+
+/** LIESMICH für die dateiweise Ablage (Ordner mit einzelnen XML-Dateien, z. B. in der Nextcloud) */
+export const LIESMICH_ORDNER = `Portal-Sicherung als einzelne XML-Dateien (dateiweise übertragen, ohne ZIP)
+
+manifest.xml                  Zeitpunkt, Ersteller, Bereiche, Datenbankstand (Migrationen), Tabellenliste
+                              – wird als LETZTE Datei übertragen: fehlt sie, ist die Sicherung unvollständig.
+pruefsummen.sha256            SHA-256 je Datei (prüfbar mit: sha256sum -c pruefsummen.sha256)
+daten/<bereich>/<tabelle>.xml je Tabelle: Spalten (Name, Datentyp) und Zeilen
+
+Werte stehen in der Textdarstellung von PostgreSQL:
+  Datum JJJJ-MM-TT, Zeitstempel mit Zeitzone, Wahrheitswerte t/f, Zahlen mit Punkt, JSON als Text.
+  null="1" = kein Wert; b64="1" = Base64-kodiert (Steuerzeichen).
+
+Zurücksichern: diesen Ordner als ZIP herunterladen (Nextcloud: Ordner -> „Herunterladen“) und im Portal unter
+Administration -> Sicherung -> „Sicherung hochladen“ einspielen, danach prüfen und zurücksichern.
+Achtung: Die Dateien enthalten alle Daten unverschlüsselt (auch Kennwort-Hashes und Bankdaten) – der Ordner
+darf nur dem Vorstand zugänglich sein.
 `;
 
 export function inhaltZuZip(inhalt: Inhalt): Buffer {
