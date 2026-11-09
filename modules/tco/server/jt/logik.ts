@@ -437,13 +437,16 @@ export interface Doku {
   stunden: number; betrag: number; bezahlt_betrag: number;
   /** Freigabe durch den Trainer (YYYY-MM-DD HH:MI, Europe/Berlin) */
   freigegeben_am: string | null; freigegeben_von: string | null;
+  /** Trainer bittet um Öffnung des freigegebenen Monats */
+  oeffnung_angefragt_am: string | null; oeffnung_grund: string | null;
 }
 
 export async function dokuLesen(db: Db, adrnr: string, monat: string): Promise<Doku | null> {
   const [d] = await db`select adrnr, monat, belegnr, doc_id, to_char(erstellt_am, 'YYYY-MM-DD') as erstellt_am,
                               to_char(bezahlt_am, 'YYYY-MM-DD') as bezahlt_am, coalesce(stunden, 0)::float8 as stunden,
                               coalesce(betrag, 0)::float8 as betrag, coalesce(bezahlt_betrag, 0)::float8 as bezahlt_betrag,
-                              to_char(freigegeben_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as freigegeben_am, freigegeben_von
+                              to_char(freigegeben_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as freigegeben_am, freigegeben_von,
+                              to_char(oeffnung_angefragt_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as oeffnung_angefragt_am, oeffnung_grund
                          from tco.jt_doku where adrnr = ${adrnr} and monat = ${monat}`;
   return (d as unknown as Doku) ?? null;
 }
@@ -462,7 +465,9 @@ export interface AbrZeile {
   status: string; state: 'None' | 'Positive' | 'Critical' | 'Information'; doc_id: number | null; belegnr: string | null;
   bezahlt_am: string | null; bezahlbar: boolean; mobil: boolean;
   /** vom Trainer freigegeben (YYYY-MM-DD HH:MI) */
-  freigegeben_am: string | null;
+  freigegeben_am: string | null; freigegeben_von: string | null;
+  /** Trainer bittet um Öffnung */
+  oeffnung_angefragt_am: string | null; oeffnung_grund: string | null;
 }
 
 const datumDe = (s: string) => s.slice(0, 10).split('-').reverse().join('.');
@@ -485,7 +490,8 @@ export async function abrechnung(db: Db, monat: string, zeiten: Zeit[], trainer:
     const r: AbrZeile = {
       adrnr, trainer: t?.name ?? namen.get(adrnr) ?? adrnr, stunden: std, betrag: eur, satz: t?.satz ?? null,
       status: std > 0 ? 'Nicht gedruckt' : 'Keine Stunden', state: std > 0 ? 'Critical' : 'None',
-      doc_id: d?.doc_id ?? null, belegnr: d?.belegnr ?? null, bezahlt_am: null, bezahlbar: std > 0, mobil: mobil.get(adrnr) ?? false, freigegeben_am: d?.freigegeben_am ?? null,
+      doc_id: d?.doc_id ?? null, belegnr: d?.belegnr ?? null, bezahlt_am: null, bezahlbar: std > 0, mobil: mobil.get(adrnr) ?? false, freigegeben_am: d?.freigegeben_am ?? null, freigegeben_von: d?.freigegeben_von ?? null,
+      oeffnung_angefragt_am: d?.oeffnung_angefragt_am ?? null, oeffnung_grund: d?.oeffnung_grund ?? null,
     };
     if (d?.doc_id) {
       const diff = runden(std - d.stunden);
@@ -495,6 +501,8 @@ export async function abrechnung(db: Db, monat: string, zeiten: Zeit[], trainer:
         r.status = `${jm} Nachmeldung ${diff > 0 ? '+' : ''}${diff.toLocaleString('de-DE')} Std. – bitte neu drucken`; r.state = 'Critical';
       } else if (istBezahlt(d, eur)) {
         r.status = `${jm} abgelegt, bezahlt am ${d.bezahlt_am!.split('-').reverse().join('.')}`;
+      } else if (d.freigegeben_am && gez === 0 && d.oeffnung_angefragt_am) {
+        r.status = `${jm} freigegeben – Trainer bittet um Öffnung`; r.state = 'Critical';
       } else if (d.freigegeben_am && gez === 0) {
         r.status = `${jm} freigegeben am ${datumDe(d.freigegeben_am)} – zur Zahlung`; r.state = 'Information';
       } else if (gez > 0) {

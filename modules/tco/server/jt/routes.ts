@@ -12,6 +12,7 @@ import {
 } from './logik.js';
 import { nachweisAblegen, nachweisDaten, nachweisPdf } from './nachweis.js';
 import { dokuLesen } from './logik.js';
+import { monatFreigeben } from './meine.js';
 
 export const P_JT = {
   display: 'tco.jt:display',
@@ -127,13 +128,20 @@ export async function jtRoutes(app: FastifyInstance) {
     return { ...r, text: `Als bezahlt am ${b.datum.split('-').reverse().join('.')} gekennzeichnet. ${r.text}` };
   });
 
+  /** Kassenwart setzt den Status „freigegeben“ stellvertretend für den Trainer */
+  app.post('/jt/nachweis/freigeben', { preHandler: requireAuth(P_JT.edit) }, async (req) => {
+    const b = nm.parse(req.body);
+    const r = await monatFreigeben(req, b.adrnr, b.monat, 'KASSENWART');
+    return { text: `Zeitnachweis ${monatsname(b.monat)} als freigegeben gekennzeichnet und abgelegt (${r.belegnr}).`, warnungen: r.warnungen };
+  });
+
   /** Freigabe des Trainers zurücknehmen (z. B. für Korrekturen) – nur solange nicht bezahlt */
   app.post('/jt/nachweis/freigabe-aufheben', { preHandler: requireAuth(P_JT.edit) }, async (req) => {
     const b = nm.parse(req.body);
     const d = await dokuLesen(DB, b.adrnr, b.monat);
     if (!d?.freigegeben_am) throw new BusinessError('Dieser Zeitnachweis ist nicht freigegeben.');
     if (d.bezahlt_am) throw new BusinessError('Der Zeitnachweis ist bereits (teilweise) bezahlt – die Freigabe bleibt bestehen.');
-    await change(req, async (tx) => { await tx`update tco.jt_doku set freigegeben_am = null, freigegeben_von = null where adrnr = ${b.adrnr} and monat = ${b.monat}`; },
+    await change(req, async (tx) => { await tx`update tco.jt_doku set freigegeben_am = null, freigegeben_von = null, oeffnung_angefragt_am = null, oeffnung_grund = null where adrnr = ${b.adrnr} and monat = ${b.monat}`; },
       { action: 'JT_FREIGABE', reason: 'Freigabe zurückgenommen' });
     return { text: `Freigabe zurückgenommen – der Trainer kann den ${monatsname(b.monat)} wieder bearbeiten und erneut freigeben.` };
   });

@@ -74,7 +74,8 @@ export async function meineZeitenRoutes(app: FastifyInstance) {
       zeiten, stunden: runden(zeiten.reduce((x, z) => x + z.anzahl, 0)), betrag,
       status: abr ? { text: abr.status.replace(/ · DOKID \d+$/, ''), state: abr.state } : { text: 'Keine Stunden', state: 'None' },
       nachweis: doku?.doc_id ? { belegnr: doku.belegnr, erstellt_am: doku.erstellt_am, bezahlt_am: doku.bezahlt_am } : null,
-      freigabe: doku?.freigegeben_am ? { am: doku.freigegeben_am, von: doku.freigegeben_von } : null,
+      freigabe: doku?.freigegeben_am ? { am: doku.freigegeben_am, von: doku.freigegeben_von, oeffnung_angefragt_am: doku.oeffnung_angefragt_am, oeffnung_grund: doku.oeffnung_grund } : null,
+      vorzeitig: q.monat === aktMonat(),
       freigebbar: freigabeHindernis(q.monat, zeiten, doku, betrag),
       gesperrt: istBezahlt(doku, betrag) || !!doku?.freigegeben_am,
     };
@@ -121,20 +122,21 @@ export async function meineZeitenRoutes(app: FastifyInstance) {
   app.post('/jt/meine/freigeben', recht, async (req) => {
     const t = await meinTrainer(req);
     const b = z.object({ monat }).parse(req.body);
-    const zeiten = (await zeitenLesen(DB, b.monat)).filter((x) => x.adrnr === t.adrnr);
+    const r = await monatFreigeben(req, t.adrnr, b.monat, 'TRAINER');
+    return { text: `Zeitnachweis ${monatsname(b.monat)} freigegeben (${r.belegnr}). Die Jugendleitung wurde informiert – Änderungen sind jetzt nur noch über den Kassenwart möglich.`, warnungen: r.warnungen };
+  });
+
+  /** freigegebenen Monat wieder öffnen lassen: Anfrage an den Kassenwart (Arbeitsvorrat) */
+  app.post('/jt/meine/oeffnung', recht, async (req) => {
+    const t = await meinTrainer(req);
+    const b = z.object({ monat, grund: z.string().trim().max(300).default('') }).parse(req.body);
     const doku = await dokuLesen(DB, t.adrnr, b.monat);
-    const hindernis = freigabeHindernis(b.monat, zeiten, doku, runden(zeiten.reduce((x, y) => x + y.betrag, 0)));
-    if (hindernis !== true) throw new BusinessError(hindernis);
-    const v = await vereinLesen();
-    if (!plAktiv(v)) throw new BusinessError('Die Ablage ist derzeit nicht eingerichtet – bitte bei der Jugendleitung melden.');
-    const { kopf, zeilen, alt } = await nachweisDaten(DB, t.adrnr, b.monat);
-    const pdf = await nachweisPdf(v, kopf, zeilen);
-    const wer = benutzerName(req);
-    const r = await nachweisAblegen(DB, v, kopf, alt, pdf, wer, (fn) => change(req, async (tx) => {
-      await fn(tx);
-      await tx`update tco.jt_doku set freigegeben_am = now(), freigegeben_von = ${wer} where adrnr = ${t.adrnr} and monat = ${b.monat}`;
-    }, { action: 'JT_FREIGABE', reason: `Freigabe Zeitnachweis ${monatsname(b.monat)}` }), { anlass: `Vom Trainer freigegeben (${kopf.stunden.toLocaleString('de-DE')} Std., ${kopf.betrag.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €)` });
-    return { text: `Zeitnachweis ${monatsname(b.monat)} freigegeben (${kopf.belegnr}). Die Jugendleitung wurde informiert.`, warnungen: r.warnungen };
+    if (!doku?.freigegeben_am) throw new BusinessError(`Der ${monatsname(b.monat)} ist nicht freigegeben.`);
+    if (doku.bezahlt_am) throw new BusinessError(`Der ${monatsname(b.monat)} ist bereits bezahlt – bitte direkt beim Kassenwart melden.`);
+    await change(req, async (tx) => {
+      await tx`update tco.jt_doku set oeffnung_angefragt_am = now(), oeffnung_grund = ${b.grund || null} where adrnr = ${t.adrnr} and monat = ${b.monat}`;
+    }, { action: 'JT_OEFFNUNG', reason: b.grund || 'Öffnung angefragt' });
+    return { text: 'Anfrage an den Kassenwart gesendet. Sobald er den Monat öffnet, kannst du wieder ändern.' };
   });
 
   /** Voransicht des Zeitnachweises mit dem aktuellen Stand */
@@ -160,11 +162,35 @@ export async function meineZeitenRoutes(app: FastifyInstance) {
   });
 }
 
-/** true, wenn der Monat freigegeben werden kann – sonst der Grund */
+/**
+ * Monat freigeben (Trainer selbst oder Kassenwart stellvertretend): Zeitnachweis mit Betrag, Stunden und
+ * Belegnummer in Paperless ablegen bzw. neue Version, Monat sperren, eine offene Öffnungsanfrage erledigt sich.
+ */
+export async function monatFreigeben(req: FastifyRequest, adrnr: string, m: string, durch: 'TRAINER' | 'KASSENWART') {
+  const zeiten = (await zeitenLesen(DB, m)).filter((x) => x.adrnr === adrnr);
+  const doku = await dokuLesen(DB, adrnr, m);
+  const hindernis = freigabeHindernis(m, zeiten, doku, runden(zeiten.reduce((x, y) => x + y.betrag, 0)));
+  if (hindernis !== true) throw new BusinessError(hindernis);
+  const v = await vereinLesen();
+  if (!plAktiv(v)) throw new BusinessError('Die Ablage ist derzeit nicht eingerichtet – bitte bei der Jugendleitung melden.');
+  const { kopf, zeilen, alt } = await nachweisDaten(DB, adrnr, m);
+  const pdf = await nachweisPdf(v, kopf, zeilen);
+  const wer = benutzerName(req);
+  const von = durch === 'KASSENWART' ? `${wer} (Kassenwart)` : wer;
+  const r = await nachweisAblegen(DB, v, kopf, alt, pdf, wer, (fn) => change(req, async (tx) => {
+    await fn(tx);
+    await tx`update tco.jt_doku set freigegeben_am = now(), freigegeben_von = ${von}, oeffnung_angefragt_am = null, oeffnung_grund = null
+              where adrnr = ${adrnr} and monat = ${m}`;
+  }, { action: 'JT_FREIGABE', reason: `Freigabe Zeitnachweis ${monatsname(m)}${durch === 'KASSENWART' ? ' durch den Kassenwart' : ''}` }),
+  { anlass: `${durch === 'KASSENWART' ? `Durch den Kassenwart (${wer}) freigegeben` : 'Vom Trainer freigegeben'}${m === aktMonat() ? ' vor Monatsende' : ''} (${kopf.stunden.toLocaleString('de-DE')} Std., ${kopf.betrag.toLocaleString('de-DE', { minimumFractionDigits: 2 })} €)` });
+  return { belegnr: kopf.belegnr, warnungen: r.warnungen };
+}
+
+/** true, wenn der Monat freigegeben werden kann – sonst der Grund. Der laufende Monat darf vorzeitig eingereicht werden. */
 function freigabeHindernis(m: string, zeiten: { anzahl: number }[], doku: Doku | null, betrag: number): true | string {
   if (doku?.freigegeben_am) return `Der ${monatsname(m)} ist bereits freigegeben.`;
   if (istBezahlt(doku, betrag)) return `Der ${monatsname(m)} ist bereits bezahlt.`;
-  if (m >= aktMonat()) return `Der ${monatsname(m)} kann erst nach Monatsende freigegeben werden.`;
+  if (m > aktMonat()) return `Der ${monatsname(m)} hat noch nicht begonnen.`;
   if (!zeiten.some((x) => x.anzahl > 0)) return `Für den ${monatsname(m)} sind keine Stunden erfasst.`;
   const offen = zeiten.filter((x) => !x.anzahl).length;
   if (offen) return `Bei ${offen} Trainingstag(en) fehlt noch die Dauer – bitte eintragen oder löschen.`;

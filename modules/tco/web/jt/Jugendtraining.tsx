@@ -22,7 +22,7 @@ interface Ferientag { datum: string; ferien: string | null; feiertag: string | n
 interface Abr {
   adrnr: string; trainer: string; stunden: number; betrag: number; satz: number | null; status: string; state: State;
   doc_id: number | null; belegnr: string | null; bezahlt_am: string | null; bezahlbar: boolean; mobil: boolean;
-  freigegeben_am: string | null;
+  freigegeben_am: string | null; freigegeben_von: string | null; oeffnung_angefragt_am: string | null; oeffnung_grund: string | null;
 }
 interface Monat {
   monat: string; titel: string; von: string; bis: string; arten: string[]; trainer: Trainer[]; zeiten: Zeit[]; ferien: Ferientag[];
@@ -95,28 +95,36 @@ export function Jugendtraining() {
   const trainerOptionen = m?.abrechnung ?? [];
   return (
     <AppPage title="Abrechnung Jugendtraining"
-             subtitle={abr ? `${abr.trainer} · ${zahl(summe.std)} Stunden · ${eur(summe.eur)}` : 'Trainingszeiten der Honorartrainer erfassen und abrechnen'}
-             actions={<>
-               <Button icon="navigation-left-arrow" design="Transparent" onClick={() => setMonat(monatVerschieben(monat, -1))} />
-               <DatePicker formatPattern="MMMM yyyy" valueFormat="yyyyMM" value={monat} style={{ width: '11rem' }}
-                           onChange={(e) => e.detail.value && setMonat(e.detail.value)} />
-               <Button icon="navigation-right-arrow" design="Transparent" onClick={() => setMonat(monatVerschieben(monat, 1))} />
-             </>}>
-      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
-      {(tab === 'zeiten' || tab === 'woche') && <SperrHinweis s={sperre} />}
-      {m && (
-        <FlexBox wrap="Wrap" alignItems="Start" style={{ gap: '2rem', marginBottom: '1rem' }}>
-          <Kalender m={m} zeiten={zeiten} ferien={ferien} sel={sel} onTag={tagWaehlen} />
-          <Legende />
+             subtitle={abr ? `${abr.trainer} · ${zahl(summe.std)} Stunden · ${eur(summe.eur)}` : 'Trainingszeiten der Honorartrainer erfassen und abrechnen'}>
+      {/* Monat und Trainer links oben – bestimmen alles darunter */}
+      <FlexBox wrap="Wrap" alignItems="End" style={{ gap: '0.5rem 1.5rem', marginBottom: '1rem' }}>
+        <FlexBox direction="Column" style={{ gap: '0.25rem' }}>
+          <Label>Monat</Label>
+          <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
+            <Button icon="navigation-left-arrow" design="Transparent" tooltip="Vormonat" onClick={() => setMonat(monatVerschieben(monat, -1))} />
+            <DatePicker formatPattern="MMMM yyyy" valueFormat="yyyyMM" value={monat} style={{ width: '11rem' }}
+                        onChange={(e) => e.detail.value && setMonat(e.detail.value)} />
+            <Button icon="navigation-right-arrow" design="Transparent" tooltip="Folgemonat" onClick={() => setMonat(monatVerschieben(monat, 1))} />
+          </FlexBox>
+        </FlexBox>
+        {m && (
           <FlexBox direction="Column" style={{ gap: '0.25rem' }}>
             <Label>Trainer</Label>
             <Select style={{ width: '16rem' }} onChange={(e) => setAdrnr((e.detail.selectedOption as HTMLElement).dataset.k!)}>
               {!trainerOptionen.length && <Option data-k="">Kein Trainer angelegt</Option>}
               {trainerOptionen.map((t) => <Option key={t.adrnr} data-k={t.adrnr} selected={t.adrnr === adrnr}>{t.trainer}</Option>)}
             </Select>
-            {abr && abr.satz !== null && <Text style={{ marginTop: '0.5rem' }}>Aktuelles Entgelt {eur(abr.satz)} je Stunde</Text>}
-            {abr && abr.satz === null && m.trainer.some((t) => t.adrnr === adrnr) && <ObjectStatus state="Critical">Kein gültiges Entgelt – siehe „Entgelte“</ObjectStatus>}
           </FlexBox>
+        )}
+        {abr && abr.satz !== null && <Text style={{ paddingBottom: '0.5rem' }}>Aktuelles Entgelt {eur(abr.satz)} je Stunde</Text>}
+        {abr && abr.satz === null && m?.trainer.some((t) => t.adrnr === adrnr) && <ObjectStatus state="Critical" style={{ paddingBottom: '0.5rem' }}>Kein gültiges Entgelt – siehe „Entgelte“</ObjectStatus>}
+      </FlexBox>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+      {(tab === 'zeiten' || tab === 'woche') && <SperrHinweis s={sperre} />}
+      {m && (
+        <FlexBox wrap="Wrap" alignItems="Start" style={{ gap: '2rem', marginBottom: '1rem' }}>
+          <Kalender m={m} zeiten={zeiten} ferien={ferien} sel={sel} onTag={tagWaehlen} />
+          <Legende />
         </FlexBox>
       )}
       {m && (
@@ -391,7 +399,34 @@ function Abrechnung({ m, edit, onAktion, onError }: { m: Monat; edit: boolean; o
     { Header: 'Betrag', accessor: 'betrag', width: 110, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
     { Header: 'Beleg', accessor: 'status', minWidth: 260, Cell: ({ row }: Cell) => <ObjectStatus state={row.original.state}>{row.original.status}</ObjectStatus> },
     {
-      Header: 'Zeitnachweis', id: 'akt', width: 370, disableSortBy: true,
+      Header: 'Freigabe', id: 'frei', width: 230, disableSortBy: true,
+      Cell: ({ row }: Cell) => {
+        const a: Abr = row.original;
+        if (!a.stunden && !a.freigegeben_am) return null;
+        const wert = a.freigegeben_am ? 'FREI' : 'OFFEN';
+        return (
+          <FlexBox direction="Column" style={{ gap: '0.125rem', padding: '0.25rem 0' }}>
+            <Select style={{ width: '13rem' }} disabled={!edit || !!a.bezahlt_am || !m.paperless}
+                    onChange={(e) => {
+                      const neu = (e.detail.selectedOption as HTMLElement).dataset.k;
+                      if (neu === wert) return;
+                      onAktion(async () => {
+                        const r = await api.post<{ text: string; warnungen?: string[] }>(`${J}/nachweis/${neu === 'FREI' ? 'freigeben' : 'freigabe-aufheben'}`, { adrnr: a.adrnr, monat: m.monat });
+                        toast(r.text, 5000);
+                        if (r.warnungen?.length) onError(r.warnungen.join('\n'));
+                      });
+                    }}>
+              <Option data-k="OFFEN" selected={wert === 'OFFEN'}>Offen – Trainer kann ändern</Option>
+              <Option data-k="FREI" selected={wert === 'FREI'}>Freigegeben – gesperrt</Option>
+            </Select>
+            {a.freigegeben_am && <Text className="portal-muted portal-small">{dat(a.freigegeben_am.slice(0, 10))}{a.freigegeben_von ? ` · ${a.freigegeben_von}` : ''}</Text>}
+            {a.oeffnung_angefragt_am && <ObjectStatus state="Critical" showDefaultIcon>Öffnung angefragt{a.oeffnung_grund ? `: ${a.oeffnung_grund}` : ''}</ObjectStatus>}
+          </FlexBox>
+        );
+      },
+    },
+    {
+      Header: 'Zeitnachweis', id: 'akt', width: 330, disableSortBy: true,
       Cell: ({ row }: Cell) => {
         const a: Abr = row.original;
         return (
@@ -399,10 +434,6 @@ function Abrechnung({ m, edit, onAktion, onError }: { m: Monat; edit: boolean; o
             <Button icon="print" design="Transparent" disabled={!a.stunden} onClick={() => setPdf({ url: `${J}/nachweis/pdf?${q(a.adrnr)}`, titel: `Zeitnachweis ${a.trainer} – ${m.titel}`, ablage: a.adrnr })}>Drucken</Button>
             <Button icon="attachment" design="Transparent" disabled={!a.doc_id} onClick={() => setPdf({ url: `${J}/nachweis/dokument?${q(a.adrnr)}`, titel: `${a.belegnr} (abgelegt)` })}>Beleg</Button>
             {edit && <Button icon="discussion" design="Transparent" disabled={!a.doc_id || !a.mobil} onClick={() => whatsapp(a.adrnr)}>WhatsApp</Button>}
-            {edit && a.freigegeben_am && !a.bezahlt_am && (
-              <Button icon="undo" design="Transparent" tooltip="Freigabe des Trainers zurücknehmen – der Monat wird für ihn wieder bearbeitbar"
-                      onClick={() => onAktion(async () => { toast((await api.post<{ text: string }>(`${J}/nachweis/freigabe-aufheben`, { adrnr: a.adrnr, monat: m.monat })).text, 5000); })} />
-            )}
           </FlexBox>
         );
       },

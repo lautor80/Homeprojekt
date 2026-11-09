@@ -263,7 +263,7 @@ test('Freigabe durch den Trainer, Arbeitsvorrat, Zahlung mit neuer Version', asy
   r = await jan('POST', `${MZ}/freigeben`, { monat: '202610' });
   assert.equal(r.status, 400);
   r = await jan('POST', `${MZ}/freigeben`, { monat: '203001' });
-  assert.match(r.body.message, /nach Monatsende/);
+  assert.match(r.body.message, /noch nicht begonnen/);
   for (const datum of ['2026-10-05', '2026-10-19']) {
     assert.equal((await jan('POST', `${MZ}/zeiten`, { datum, trainingsart: 'Jugendtraining', anzahl: 1 })).status, 200);
   }
@@ -301,13 +301,27 @@ test('Freigabe durch den Trainer, Arbeitsvorrat, Zahlung mit neuer Version', asy
   assert.match(av.titel, /Jan Weißing – Oktober 2026 freigegeben/);
   assert.equal((await jan('GET', '/api/m/tco/dashboard/arbeitsvorrat')).status, 403);
 
-  // Freigabe zurücknehmen → Trainer kann korrigieren und erneut freigeben (neue Version)
+  // Trainer bittet um Öffnung → Arbeitsvorrat und Status beim Kassenwart
+  r = await jan('POST', `${MZ}/oeffnung`, { monat: '202610', grund: 'Turnier am 19. war länger' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.match(r.body.find((x: any) => x.key === 'JT:0000000281:202610').titel, /bittet um Öffnung/);
+  r = await call('GET', `${J}/monat?monat=202610`);
+  a = r.body.abrechnung.find((x: any) => x.adrnr === '0000000281');
+  assert.match(a.status, /Trainer bittet um Öffnung/);
+  assert.equal(a.oeffnung_grund, 'Turnier am 19. war länger');
+
+  // Freigabe zurücknehmen → Trainer kann korrigieren, Kassenwart setzt den Status wieder auf freigegeben (neue Version)
   r = await call('POST', `${J}/nachweis/freigabe-aufheben`, { adrnr: '0000000281', monat: '202610' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await jan('POST', `${MZ}/zeiten`, { datum: '2026-10-19', trainingsart: 'Jugendtraining', anzahl: 2 })).status, 200);
-  r = await jan('POST', `${MZ}/freigeben`, { monat: '202610' });
+  r = await call('POST', `${J}/nachweis/freigeben`, { adrnr: '0000000281', monat: '202610' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(doc.versions.length, 1);
+  const [fv] = await sql`select freigegeben_von, oeffnung_angefragt_am from tco.jt_doku where adrnr = '0000000281' and monat = '202610'`;
+  assert.equal(fv.freigegeben_von, 'Admin (Kassenwart)');
+  assert.equal(fv.oeffnung_angefragt_am, null);
+  assert.match(doc.notes.at(-1)!, /Durch den Kassenwart/);
   assert.deepEqual(doc.meta.custom_fields.find((f: any) => f.field === 3), { field: 3, value: 'EUR120.00' });
 
   // Zahlung: neue Version mit Zahlvermerk, verschwindet aus dem Arbeitsvorrat, Trainer sieht „bezahlt“
@@ -321,6 +335,17 @@ test('Freigabe durch den Trainer, Arbeitsvorrat, Zahlung mit neuer Version', asy
   assert.deepEqual(r.body.map((x: any) => [x.monat, x.bezahlt_am, x.betrag]), [['202610', '2026-11-07', 120]]);
   r = await jan('GET', `${MZ}/nachweis/dokument?monat=202610`);
   assert.equal(r.status, 200);
+  // vorzeitig einreichen (laufender Monat) – danach nur noch über den Kassenwart änderbar
+  const heute = new Date().toLocaleDateString('sv-SE');
+  const akt = heute.slice(0, 7).replace('-', '');
+  assert.equal((await jan('POST', `${MZ}/zeiten`, { datum: heute, trainingsart: 'Jugendtraining', anzahl: 6 })).status, 200);
+  r = await jan('GET', `${MZ}/monat?monat=${akt}`);
+  assert.equal(r.body.vorzeitig, true);
+  assert.equal(r.body.freigebbar, true);
+  r = await jan('POST', `${MZ}/freigeben`, { monat: akt });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /nur noch über den Kassenwart/);
+  assert.equal((await jan('POST', `${MZ}/zeiten`, { datum: heute, trainingsart: 'Schnuppertraining', anzahl: 1 })).status, 400);
   const [{ n }] = await sql`select count(*)::int as n from core.change_header where action = 'JT_FREIGABE'`;
   assert.ok(n >= 3);
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Text, ToggleButton,
+  Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Text, TextArea, ToggleButton,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -26,7 +26,9 @@ interface Monat {
   trainer: { name: string; satz: number | null }; zeiten: Zeit[]; stunden: number; betrag: number;
   status: { text: string; state: State }; nachweis: { belegnr: string | null; erstellt_am: string | null; bezahlt_am: string | null } | null; gesperrt: boolean;
   /** Freigabe durch den Trainer (Monatsabschluss) */
-  freigabe: { am: string; von: string | null } | null;
+  freigabe: { am: string; von: string | null; oeffnung_angefragt_am: string | null; oeffnung_grund: string | null } | null;
+  /** laufender Monat – Einreichen vor Monatsende */
+  vorzeitig: boolean;
   /** true = Monat kann freigegeben werden, sonst der Grund */
   freigebbar: true | string;
 }
@@ -35,7 +37,8 @@ interface Erfassung { datum: string; trainingsart: string; anzahl: string; altAr
 
 const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const WT_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-const DAUERN = [0.5, 1, 1.5, 2, 3];
+/** Schnellwahl der Dauer – bis zu ganztägigen Einsätzen (z. B. Camp, Turnierbetreuung) */
+const DAUERN = [1, 1.5, 2, 3, 4, 5, 6, 8];
 const zahl = (v: number) => v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 const isoHeute = () => new Date().toLocaleDateString('sv-SE');
 const wtIdx = (iso: string) => (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7;
@@ -71,6 +74,7 @@ export function MeineZeiten() {
   const [pdf, setPdf] = useState<{ url: string; titel: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [freigabe, setFreigabe] = useState(false);
+  const [oeffnung, setOeffnung] = useState<string | null>(null);
 
   const laden = (mon = monat) => api.get<Monat>(`${MZ}/monat?monat=${mon}`)
     .then((r) => { setM(r); setKein(null); })
@@ -133,11 +137,20 @@ export function MeineZeiten() {
                 </div>
               </div>
 
+              <MonatsKalender m={m} ferien={ferien} onTag={(d) => {
+                if (m.gesperrt) return;
+                const vorhanden = m.zeiten.filter((z) => z.datum === d);
+                if (vorhanden.length === 1) bearbeiten(vorhanden[0]);
+                else setForm({ datum: d, trainingsart: vorhanden.length ? m.arten.find((a) => !vorhanden.some((z) => z.trainingsart === a)) ?? 'Jugendtraining' : 'Jugendtraining', anzahl: '', altArt: null });
+              }} />
+
               {m.gesperrt && (
                 <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.75rem' }}>
                   {m.freigabe && !m.nachweis?.bezahlt_am
-                    ? `Du hast diesen Monat am ${dat(m.freigabe.am.slice(0, 10))} freigegeben. Änderungen bitte über die Jugendleitung.`
-                    : 'Dieser Monat ist abgerechnet und bezahlt. Änderungen bitte über die Jugendleitung.'}
+                    ? m.freigabe.oeffnung_angefragt_am
+                      ? `Freigegeben am ${dat(m.freigabe.am.slice(0, 10))} – deine Anfrage auf Öffnung vom ${dat(m.freigabe.oeffnung_angefragt_am.slice(0, 10))} liegt beim Kassenwart.`
+                      : `Du hast diesen Monat am ${dat(m.freigabe.am.slice(0, 10))} freigegeben. Öffnen kann ihn nur noch der Kassenwart.`
+                    : 'Dieser Monat ist abgerechnet und bezahlt. Änderungen bitte über den Kassenwart.'}
                 </MessageStrip>
               )}
 
@@ -198,7 +211,12 @@ export function MeineZeiten() {
                 )}
                 <div className="portal-mz__aktionen" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
                   {!m.freigabe && !m.gesperrt && (
-                    <Button design="Emphasized" icon="approvals" disabled={m.freigebbar !== true || busy} onClick={() => setFreigabe(true)}>Monat freigeben</Button>
+                    <Button design="Emphasized" icon="approvals" disabled={m.freigebbar !== true || busy} onClick={() => setFreigabe(true)}>
+                      {m.vorzeitig ? 'Vorzeitig einreichen' : 'Monat freigeben'}
+                    </Button>
+                  )}
+                  {m.freigabe && !m.nachweis?.bezahlt_am && !m.freigabe.oeffnung_angefragt_am && (
+                    <Button icon="unlocked" disabled={busy} onClick={() => setOeffnung('')}>Öffnung anfragen</Button>
                   )}
                   <Button icon="show" disabled={!m.stunden} onClick={() => pdfZeigen(`${MZ}/nachweis/pdf?monat=${m.monat}`, `Zeitnachweis ${m.titel} (aktueller Stand)`)}>Voransicht</Button>
                   <Button icon="pdf-attachment" disabled={!m.nachweis} onClick={() => pdfZeigen(`${MZ}/nachweis/dokument?monat=${m.monat}`, `Zeitnachweis ${m.titel}`)}>Abgelegter Nachweis</Button>
@@ -259,15 +277,40 @@ export function MeineZeiten() {
                             });
                             setFreigabe(false);
                             if (ok) { toast(text, 6000); archivLaden(); }
-                          }}>Freigeben</Button>
+                          }}>{m.vorzeitig ? 'Vorzeitig einreichen' : 'Freigeben'}</Button>
                   <Button onClick={() => setFreigabe(false)}>Abbrechen</Button>
                 </>} />}>
           <div className="portal-mz__form" style={{ maxWidth: '26rem' }}>
             <Text>
               Mit der Freigabe bestätigst du {zahl(m.stunden)} Stunden ({eur(m.betrag)}) für {m.titel}. Der Zeitnachweis wird abgelegt und
-              an die Jugendleitung zur Zahlung weitergegeben. Danach kannst du die Zeiten des Monats nicht mehr ändern.
+              an die Jugendleitung zur Zahlung weitergegeben.
             </Text>
+            <MessageStrip design="Critical" hideCloseButton>
+              {m.vorzeitig ? `Du reichst vor Monatsende ein. Trainingszeiten, die im ${m.titel} noch dazukommen, kannst du danach nicht mehr selbst erfassen. ` : ''}
+              Danach kann der Monat nur noch durch den Kassenwart geöffnet werden.
+            </MessageStrip>
             <Text className="portal-muted portal-small">Nach der Zahlung erhältst du hier den Nachweis mit Zahlvermerk als neue Fassung.</Text>
+          </div>
+        </Dialog>,
+        document.body,
+      )}
+      {oeffnung !== null && m && createPortal(
+        <Dialog open headerText={`Öffnung von ${m.titel} anfragen`} onClose={() => setOeffnung(null)}
+                footer={<Bar endContent={<>
+                  <Button design="Emphasized" icon="paper-plane" disabled={busy} onClick={async () => {
+                    let text = '';
+                    const ok = await aktion(async () => { text = (await api.post<{ text: string }>(`${MZ}/oeffnung`, { monat: m.monat, grund: oeffnung })).text; });
+                    setOeffnung(null);
+                    if (ok) toast(text, 6000);
+                  }}>Anfrage senden</Button>
+                  <Button onClick={() => setOeffnung(null)}>Abbrechen</Button>
+                </>} />}>
+          <div className="portal-mz__form" style={{ maxWidth: '26rem' }}>
+            <Text>Der Kassenwart bekommt deine Anfrage im Arbeitsvorrat. Öffnet er den Monat, kannst du wieder Zeiten ändern und neu einreichen.</Text>
+            <div className="portal-mz__feld">
+              <Label>Was möchtest du ändern? (optional)</Label>
+              <TextArea rows={3} value={oeffnung} maxlength={300} onInput={(e) => setOeffnung(e.target.value)} placeholder="z. B. Turnierbetreuung am 28. nachtragen" />
+            </div>
           </div>
         </Dialog>,
         document.body,
@@ -283,6 +326,11 @@ function ErfassungDialog({ m, f, setF, busy, onClose, onSpeichern, onLoeschen }:
   onSpeichern: (anzahl: number) => void; onLoeschen: () => void;
 }) {
   const n = f.anzahl.trim() === '' ? 0 : Number(f.anzahl.replace(',', '.'));
+  const setze = (x: number) => setF({ ...f, anzahl: String(Math.round(x * 4) / 4).replace('.', ',') });
+  const [von, setVon] = useState('');
+  const [bis, setBis] = useState('');
+  const minuten = (t: string) => { const mm = /^(\d{1,2})[:.]?(\d{2})?$/.exec(t.trim()); return mm && Number(mm[1]) < 24 ? Number(mm[1]) * 60 + Number(mm[2] ?? 0) : null; };
+  const vonBis = (() => { const a = minuten(von), b = minuten(bis); return a !== null && b !== null && b > a ? Math.round(((b - a) / 60) * 4) / 4 : null; })();
   const gueltig = Number.isFinite(n) && n >= 0 && n <= 24;
   const fer = m.ferien.find((x) => x.datum === f.datum);
   const imMonat = f.datum >= m.von && f.datum <= m.bis;
@@ -313,13 +361,29 @@ function ErfassungDialog({ m, f, setF, busy, onClose, onSpeichern, onLoeschen }:
         </div>
         <div className="portal-mz__feld">
           <Label required>Dauer in Stunden</Label>
+          <div className="portal-mz__stepper">
+            <Button icon="less" disabled={n <= 0} accessibleName="eine halbe Stunde weniger" onClick={() => setze(Math.max(0, (Number.isFinite(n) ? n : 0) - 0.5))} />
+            <div className="portal-mz__stepper-wert">
+              <Input type="Text" inputMode="Decimal" value={f.anzahl} placeholder="0" style={{ width: '100%', textAlign: 'center' }}
+                     valueState={gueltig ? 'None' : 'Negative'} onInput={(e) => setF({ ...f, anzahl: e.target.value })} accessibleName="Dauer in Stunden" />
+              <span>Std.</span>
+            </div>
+            <Button icon="add" accessibleName="eine halbe Stunde mehr" onClick={() => setze(Math.min(24, (Number.isFinite(n) ? n : 0) + 0.5))} />
+          </div>
           <div className="portal-mz__chips">
             {DAUERN.map((d) => (
-              <ToggleButton key={d} pressed={n === d} onClick={() => setF({ ...f, anzahl: String(d).replace('.', ',') })}>{zahl(d)}</ToggleButton>
+              <ToggleButton key={d} pressed={n === d} onClick={() => setze(d)}>{zahl(d)}</ToggleButton>
             ))}
           </div>
-          <Input type="Text" placeholder="z. B. 1,5" value={f.anzahl} style={{ width: '100%' }}
-                 valueState={gueltig ? 'None' : 'Negative'} onInput={(e) => setF({ ...f, anzahl: e.target.value })} />
+          <details className="portal-mz__vonbis">
+            <summary>Aus Uhrzeit berechnen</summary>
+            <div className="portal-mz__vonbis-felder">
+              <Input type="Text" placeholder="von 09:00" value={von} onInput={(e) => setVon(e.target.value)} style={{ width: '100%' }} accessibleName="Beginn" />
+              <Input type="Text" placeholder="bis 15:00" value={bis} onInput={(e) => setBis(e.target.value)} style={{ width: '100%' }} accessibleName="Ende" />
+              <Button disabled={vonBis === null} onClick={() => vonBis !== null && setze(vonBis)}>Übernehmen{vonBis !== null ? ` (${zahl(vonBis)} Std.)` : ''}</Button>
+            </div>
+            <Text className="portal-muted portal-small">Pausen bitte abziehen – mehrere Einheiten am Tag einfach zusammenzählen oder je Trainingsart erfassen.</Text>
+          </details>
           {gueltig && n > 0 && m.trainer.satz ? <Text className="portal-muted portal-small">≈ {eur(Math.round(n * m.trainer.satz * 100) / 100)} bei {eur(m.trainer.satz)} je Stunde</Text> : null}
           {!gueltig && <Text style={{ color: 'var(--sapNegativeTextColor)' }} className="portal-small">Bitte eine Dauer zwischen 0 und 24 Stunden angeben.</Text>}
         </div>
@@ -361,5 +425,63 @@ function TageDialog({ m, busy, onClose, onAnlegen }: { m: Monat; busy: boolean; 
       </div>
     </Dialog>,
     document.body,
+  );
+}
+
+// ---------------------------------------------------------------- Monatsübersicht mit Ferien und Feiertagen
+function MonatsKalender({ m, ferien, onTag }: { m: Monat; ferien: Map<string, Ferientag>; onTag: (d: string) => void }) {
+  const tage: (string | null)[] = [];
+  for (let i = 0; i < wtIdx(m.von); i++) tage.push(null);
+  for (let d = m.von; d <= m.bis; d = new Date(Date.parse(`${d}T12:00:00Z`) + 864e5).toISOString().slice(0, 10)) tage.push(d);
+  const heute = isoHeute();
+  const std = new Map<string, number>();
+  const offen = new Set<string>();
+  for (const z of m.zeiten) { std.set(z.datum, (std.get(z.datum) ?? 0) + z.anzahl); if (!z.anzahl) offen.add(z.datum); }
+  // Ferienabschnitte und Feiertage des Monats als Liste
+  const abschnitte: { text: string; von: string; bis: string; art: 'ferien' | 'feiertag' }[] = [];
+  for (const f of [...ferien.values()].sort((a, b) => a.datum.localeCompare(b.datum))) {
+    if (f.feiertag) abschnitte.push({ text: f.feiertag, von: f.datum, bis: f.datum, art: 'feiertag' });
+    if (f.ferien) {
+      const l = [...abschnitte].reverse().find((x) => x.art === 'ferien');
+      const vortag = new Date(Date.parse(`${f.datum}T12:00:00Z`) - 864e5).toISOString().slice(0, 10);
+      if (l && l.text === f.ferien && l.bis >= vortag) l.bis = f.datum; else abschnitte.push({ text: f.ferien, von: f.datum, bis: f.datum, art: 'ferien' });
+    }
+  }
+  return (
+    <Section title="Monatsübersicht" flush>
+      <div className="portal-mz__kal">
+        {WT.map((t) => <div key={t} className="portal-mz__kal-kopf">{t}</div>)}
+        {tage.map((d, i) => {
+          if (!d) return <div key={`l${i}`} />;
+          const f = ferien.get(d);
+          const h = std.get(d);
+          const kl = ['portal-mz__kal-tag', f?.feiertag ? 'portal-mz__kal-tag--feiertag' : f?.ferien ? 'portal-mz__kal-tag--ferien' : '',
+            wtIdx(d) >= 5 ? 'portal-mz__kal-tag--we' : '', d === heute ? 'portal-mz__kal-tag--heute' : '',
+            offen.has(d) ? 'portal-mz__kal-tag--offen' : h ? 'portal-mz__kal-tag--erfasst' : ''].filter(Boolean).join(' ');
+          return (
+            <button key={d} type="button" className={kl} onClick={() => onTag(d)}
+                    title={[WT_LANG[wtIdx(d)], f?.feiertag, f?.ferien, h ? `${zahl(h)} Std.` : offen.has(d) ? 'Dauer fehlt' : ''].filter(Boolean).join(' · ')}>
+              <span className="portal-mz__kal-nr">{Number(d.slice(8, 10))}</span>
+              <span className="portal-mz__kal-std">{h ? `${zahl(h)}h` : offen.has(d) ? '?' : ''}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="portal-mz__kal-legende">
+        <span><i className="portal-mz__kal-punkt portal-mz__kal-punkt--erfasst" />Stunden erfasst</span>
+        <span><i className="portal-mz__kal-punkt portal-mz__kal-punkt--offen" />Dauer fehlt</span>
+        <span><i className="portal-mz__kal-punkt portal-mz__kal-punkt--ferien" />Schulferien</span>
+        <span><i className="portal-mz__kal-punkt portal-mz__kal-punkt--feiertag" />Feiertag</span>
+      </div>
+      {abschnitte.length > 0 && (
+        <div className="portal-mz__kal-liste">
+          {abschnitte.map((a) => (
+            <ObjectStatus key={`${a.art}${a.von}`} state={a.art === 'feiertag' ? 'Indication01' : 'Indication07'}>
+              {a.von === a.bis ? dat(a.von) : `${dat(a.von).slice(0, 6)}–${dat(a.bis)}`} {a.text}
+            </ObjectStatus>
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
