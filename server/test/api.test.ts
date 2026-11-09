@@ -104,6 +104,27 @@ test('Einrichtung, Anmeldung, Rechte und Änderungsbelege', async () => {
   assert.equal((await leser('GET', '/api/admin/users')).status, 403);
   assert.equal((await leser('GET', '/api/audit')).status, 403);
 
+  // Rolle zeitraumbezogen deaktiviert: gewährt nichts mehr, auch nicht in der offenen Sitzung
+  const heute = new Date().toLocaleDateString('sv-SE');
+  const morgen = new Date(Date.now() + 86_400_000).toLocaleDateString('sv-SE');
+  const rolle = { name: 'Nur lesen', permissions: ['beispiel.kontakte:display'] };
+  assert.equal((await admin('PUT', '/api/admin/roles/LESER', { ...rolle, inaktivVon: morgen, inaktivBis: heute })).status, 400, 'bis vor von');
+  assert.equal((await admin('PUT', '/api/admin/roles/LESER', { ...rolle, inaktivBis: morgen })).status, 400, 'bis ohne von');
+  assert.equal((await admin('PUT', '/api/admin/roles/ADMIN', { name: 'Administrator', inaktivVon: heute })).status, 400, 'ADMIN nie deaktivierbar');
+  assert.equal((await admin('PUT', '/api/admin/roles/LESER', { ...rolle, inaktivVon: morgen, inaktivGrund: 'Pause' })).status, 200);
+  assert.equal((await leser('GET', '/api/m/beispiel/kontakte')).status, 200, 'geplante Deaktivierung wirkt noch nicht');
+  assert.equal((await admin('PUT', '/api/admin/roles/LESER', { ...rolle, inaktivVon: heute, inaktivBis: morgen, inaktivGrund: 'Pause' })).status, 200);
+  const leserRolle = (await admin('GET', '/api/admin/roles')).body.find((r: { id: string }) => r.id === 'LESER');
+  assert.equal(leserRolle.inaktiv, true);
+  assert.equal(leserRolle.inaktivBis, morgen);
+  assert.equal((await leser('GET', '/api/m/beispiel/kontakte')).status, 403);
+  assert.deepEqual((await leser('GET', '/api/auth/me')).body.permissions, []);
+  // ohne Zeitraumfelder bleibt die Deaktivierung bestehen; mit leeren Feldern wird sie aufgehoben
+  assert.equal((await admin('PUT', '/api/admin/roles/LESER', rolle)).status, 200);
+  assert.equal((await leser('GET', '/api/m/beispiel/kontakte')).status, 403);
+  assert.equal((await admin('PUT', '/api/admin/roles/LESER', { ...rolle, inaktivVon: null, inaktivBis: null })).status, 200);
+  assert.equal((await leser('GET', '/api/m/beispiel/kontakte')).status, 200);
+
   // Objekthistorie mit Anzeige-Recht des Objekts sichtbar
   const hist = await leser('GET', '/api/audit/object/KONTAKT/K000001');
   assert.equal(hist.status, 200);

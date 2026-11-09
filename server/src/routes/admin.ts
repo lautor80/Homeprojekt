@@ -164,38 +164,59 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get('/api/admin/roles', { preHandler: requireAuth('core.roles:display') }, async () => {
     return sql`
       select r.id, r.name, r.description, r.system,
+             to_char(r.inaktiv_von, 'YYYY-MM-DD') as "inaktivVon", to_char(r.inaktiv_bis, 'YYYY-MM-DD') as "inaktivBis",
+             r.inaktiv_grund as "inaktivGrund", core.rolle_inaktiv(r.inaktiv_von, r.inaktiv_bis) as inaktiv,
              coalesce((select array_agg(permission order by permission) from core.role_permissions p where p.role_id = r.id), '{}') as permissions,
              (select count(*)::int from core.user_roles ur where ur.role_id = r.id) as "userCount"
         from core.roles r
        order by r.system desc, r.id`;
   });
 
+  const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT').or(z.literal('')).nullable().optional()
+    .transform((v) => v || null);
   const roleBody = z.object({
     name: z.string().min(1).max(100),
     description: z.string().max(500).nullable().optional(),
     permissions: z.array(z.string()).default([]),
+    /** Deaktivierungszeitraum: von = erster, bis = letzter Tag ohne Wirkung; bis leer = unbefristet */
+    inaktivVon: datum,
+    inaktivBis: datum,
+    inaktivGrund: z.string().max(200).nullable().optional().transform((v) => v?.trim() || null),
+  }).superRefine((b, ctx) => {
+    if (b.inaktivBis && !b.inaktivVon) ctx.addIssue({ code: 'custom', path: ['inaktivVon'], message: 'Für den Deaktivierungszeitraum bitte ein Von-Datum angeben.' });
+    if (b.inaktivVon && b.inaktivBis && b.inaktivBis < b.inaktivVon) ctx.addIssue({ code: 'custom', path: ['inaktivBis'], message: 'Das Bis-Datum der Deaktivierung liegt vor dem Von-Datum.' });
   });
 
   app.post('/api/admin/roles', { preHandler: requireAuth('core.roles:edit') }, async (req, reply) => {
-    const body = roleBody.extend({
+    const { id } = z.object({
       id: z.string().min(2).max(40).regex(/^[A-Z0-9_]+$/, 'Nur Großbuchstaben, Ziffern und _'),
     }).parse(req.body);
-    const [exists] = await sql`select 1 from core.roles where id = ${body.id}`;
+    const body = roleBody.parse(req.body);
+    const [exists] = await sql`select 1 from core.roles where id = ${id}`;
     if (exists) return reply.code(409).send({ message: 'Rolle existiert bereits.' });
     await change(req, async (tx) => {
-      await tx`insert into core.roles (id, name, description) values (${body.id}, ${body.name}, ${body.description ?? null})`;
-      await setRolePermissions(tx, body.id, body.permissions.filter((p) => p !== '*'));
+      await tx`insert into core.roles (id, name, description, inaktiv_von, inaktiv_bis, inaktiv_grund)
+               values (${id}, ${body.name}, ${body.description ?? null}, ${body.inaktivVon}, ${body.inaktivBis}, ${body.inaktivVon ? body.inaktivGrund : null})`;
+      await setRolePermissions(tx, id, body.permissions.filter((p) => p !== '*'));
     });
-    return { id: body.id };
+    return { id };
   });
 
   app.put('/api/admin/roles/:id', { preHandler: requireAuth('core.roles:edit') }, async (req) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const body = roleBody.parse(req.body);
+    const zeitraumMitgeschickt = typeof req.body === 'object' && req.body !== null && 'inaktivVon' in req.body;
     await change(req, async (tx) => {
       const [r] = await tx`select system from core.roles where id = ${id}`;
       if (!r) throw new BusinessError('Rolle nicht gefunden.');
+      if (id === 'ADMIN' && body.inaktivVon) throw new BusinessError('Die Administratorrolle kann nicht deaktiviert werden.');
       await tx`update core.roles set name = ${body.name}, description = ${body.description ?? null} where id = ${id}`;
+      // Deaktivierungszeitraum nur ändern, wenn er mitgeschickt wird (ältere Aufrufer lassen ihn unverändert)
+      if (zeitraumMitgeschickt) {
+        await tx`update core.roles set inaktiv_von = ${body.inaktivVon}, inaktiv_bis = ${body.inaktivBis},
+                        inaktiv_grund = ${body.inaktivVon ? body.inaktivGrund : null}
+                  where id = ${id}`;
+      }
       // Berechtigungen von Systemrollen (ADMIN) sind fest
       if (!r.system) await setRolePermissions(tx, id, body.permissions.filter((p) => p !== '*'));
     });
