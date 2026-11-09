@@ -44,6 +44,8 @@ const zeitText = (e: Ev) => {
   return tagIso(new Date(e.ende)) === tagIso(new Date(e.beginn)) ? `${datum(e.beginn)} · ${uhr(e.beginn)}–${uhr(e.ende)} Uhr` : `${datum(e.beginn)} ${uhr(e.beginn)} – ${datum(e.ende)} ${uhr(e.ende)}`;
 };
 /** ISO → Wert für den DateTimePicker (lokale Zeit) und zurück */
+// DateTimePicker: Anzeige über displayFormat, nicht über das veraltete formatPattern. Mit formatPattern + valueFormat
+// arbeitet der Kalender im Popup im Anzeigeformat, „OK“ liest aber im valueFormat – die Auswahl wurde nicht übernommen (#16).
 const lokal = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60_000).toISOString().slice(0, 16) : '');
 const ausLokal = (v: string) => (v ? new Date(v).toISOString() : null);
 
@@ -331,8 +333,8 @@ function EventDialog({ e, d, onClose, onGespeichert }: { e: Partial<Ev>; d: Date
           <div><Label>Ort</Label><Input value={f.ort} onInput={(x) => setF({ ...f, ort: x.target.value })} style={{ width: '100%' }} placeholder="z. B. Clubhaus" /></div>
         </div>
         <div className="portal-kal__zwei">
-          <div><Label required>Beginn</Label><DateTimePicker value={f.beginn} valueFormat="yyyy-MM-dd'T'HH:mm" formatPattern="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, beginn: x.detail.value })} /></div>
-          <div><Label>Ende</Label><DateTimePicker value={f.ende} valueFormat="yyyy-MM-dd'T'HH:mm" formatPattern="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, ende: x.detail.value })} /></div>
+          <div><Label required>Beginn</Label><DateTimePicker value={f.beginn} valueFormat="yyyy-MM-dd'T'HH:mm" displayFormat="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, beginn: x.detail.value })} /></div>
+          <div><Label>Ende</Label><DateTimePicker value={f.ende} valueFormat="yyyy-MM-dd'T'HH:mm" displayFormat="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, ende: x.detail.value })} /></div>
         </div>
         <CheckBox text="ganztägig" checked={f.ganztags} onChange={(x) => setF({ ...f, ganztags: x.target.checked })} />
         <Label>Beschreibung</Label>
@@ -345,7 +347,7 @@ function EventDialog({ e, d, onClose, onGespeichert }: { e: Partial<Ev>; d: Date
         {f.anmeldung && (
           <>
             <div className="portal-kal__zwei">
-              <div><Label>Anmeldeschluss</Label><DateTimePicker value={f.anmeldeschluss} valueFormat="yyyy-MM-dd'T'HH:mm" formatPattern="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, anmeldeschluss: x.detail.value })} /></div>
+              <div><Label>Anmeldeschluss</Label><DateTimePicker value={f.anmeldeschluss} valueFormat="yyyy-MM-dd'T'HH:mm" displayFormat="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, anmeldeschluss: x.detail.value })} /></div>
               <div><Label>Max. Teilnehmer</Label><Input type="Number" value={f.max} onInput={(x) => setF({ ...f, max: x.target.value })} style={{ width: '100%' }} placeholder="unbegrenzt" /></div>
             </div>
             <CheckBox text="Begleitpersonen erfassen" checked={f.begleitung} onChange={(x) => setF({ ...f, begleitung: x.target.checked })} />

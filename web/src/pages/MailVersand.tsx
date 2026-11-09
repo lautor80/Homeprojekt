@@ -124,13 +124,14 @@ export function MailProtokoll() {
           </Select>
         </div>
         <div>
+          {/* displayFormat statt formatPattern: sonst übernimmt „OK“ im Popup die Auswahl nicht (#16) */}
           <Label>Von (Tag, Uhrzeit)</Label><br />
-          <DateTimePicker value={filter.von} valueFormat="yyyy-MM-dd'T'HH:mm" formatPattern="dd.MM.yyyy HH:mm" style={{ width: '13rem' }}
+          <DateTimePicker value={filter.von} valueFormat="yyyy-MM-dd'T'HH:mm" displayFormat="dd.MM.yyyy HH:mm" style={{ width: '13rem' }}
                           onChange={(e) => setFilter({ ...filter, von: e.detail.value })} />
         </div>
         <div>
           <Label>Bis (Tag, Uhrzeit)</Label><br />
-          <DateTimePicker value={filter.bis} valueFormat="yyyy-MM-dd'T'HH:mm" formatPattern="dd.MM.yyyy HH:mm" style={{ width: '13rem' }}
+          <DateTimePicker value={filter.bis} valueFormat="yyyy-MM-dd'T'HH:mm" displayFormat="dd.MM.yyyy HH:mm" style={{ width: '13rem' }}
                           onChange={(e) => setFilter({ ...filter, bis: e.detail.value })} />
         </div>
         {gefiltert && <Button design="Transparent" icon="clear-filter" onClick={() => setFilter({ anwendung: '', von: '', bis: '' })}>Filter zurücksetzen</Button>}
