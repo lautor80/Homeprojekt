@@ -2,7 +2,9 @@
  * Schlanker WebDAV-Client für die Nextcloud (Dateien hochladen, Ordner anlegen, auflisten, löschen).
  * Basis: https://<server>/remote.php/dav/files/<benutzer>/ – wird aus der Nextcloud-Adresse abgeleitet,
  * eine vollständige WebDAV-Adresse (…/remote.php/…) wird unverändert übernommen.
- * Anmeldung per Benutzer + App-Passwort (Basic Auth).
+ * Auch eine aus dem Browser kopierte Adresse der Dateien-App (…/index.php/apps/files/…?dir=…) wird auf die
+ * Nextcloud-Adresse gekürzt. Anmeldung per Benutzer + App-Passwort (Basic Auth).
+ * Uploads werden bei vorübergehenden Störungen (Netz, 423 gesperrt, 429, 502–504) bis zu dreimal versucht.
  */
 
 export interface DavEintrag { name: string; ordner: boolean; groesse: number; geaendert: string | null }
@@ -12,17 +14,22 @@ export class WebDavFehler extends Error {
 }
 
 export function davBasis(url: string, benutzer: string): string {
-  const u = url.trim().replace(/\/+$/, '');
+  let u = url.trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
   if (/\/remote\.php\//.test(u)) return u;
+  // aus dem Browser kopiert: https://cloud…/index.php/apps/files/… bzw. …/apps/files/… → nur die Nextcloud-Adresse
+  u = u.replace(/\/(index\.php|apps\/files)(\/.*)?$/, '');
   return `${u}/remote.php/dav/files/${encodeURIComponent(benutzer)}`;
 }
 
 const segmente = (pfad: string) => pfad.split('/').map((s) => s.trim()).filter(Boolean);
+/** vorübergehende Störungen, bei denen ein erneuter Versuch sinnvoll ist (0 = Netz/Zeitüberschreitung) */
+const VORUEBERGEHEND = new Set([0, 423, 429, 502, 503, 504]);
+const warten = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 export class WebDav {
   private readonly basis: string;
   private readonly auth: string;
-  constructor(url: string, benutzer: string, passwort: string, private readonly timeoutMs = 10 * 60_000) {
+  constructor(url: string, benutzer: string, passwort: string, private readonly timeoutMs = 10 * 60_000, private readonly pauseMs = 1500) {
     this.basis = davBasis(url, benutzer);
     this.auth = `Basic ${Buffer.from(`${benutzer}:${passwort}`).toString('base64')}`;
   }
@@ -45,20 +52,33 @@ export class WebDav {
     return res;
   }
 
-  /** Ordner (mit allen übergeordneten) anlegen; bestehende bleiben unverändert */
-  async ordnerAnlegen(pfad: string) {
+  /** Ordner (mit allen übergeordneten) anlegen; bestehende bleiben unverändert. Ergebnis: letzter Ordner neu angelegt? */
+  async ordnerAnlegen(pfad: string): Promise<boolean> {
     let akt = '';
+    let neu = false;
     for (const s of segmente(pfad)) {
       akt = `${akt}/${s}`;
       const r = await this.anfrage('MKCOL', akt, { ordner: true });
       if (![201, 405].includes(r.status)) throw new WebDavFehler(`Ordner ${akt} konnte nicht angelegt werden (HTTP ${r.status}).`, r.status);
+      neu = r.status === 201;
     }
+    return neu;
   }
 
-  async hochladen(pfad: string, daten: Buffer) {
-    const r = await this.anfrage('PUT', pfad, { body: daten, headers: { 'Content-Type': 'application/octet-stream' } });
-    if (![200, 201, 204].includes(r.status)) {
-      throw new WebDavFehler(r.status === 507 ? 'Kein Speicherplatz mehr in der Nextcloud (HTTP 507).' : `Upload fehlgeschlagen (HTTP ${r.status}).`, r.status);
+  /** Datei hochladen (ersetzt eine vorhandene); bei vorübergehenden Störungen bis zu `versuche` Anläufe */
+  async hochladen(pfad: string, daten: Buffer, versuche = 3) {
+    for (let v = 1; ; v++) {
+      try {
+        const r = await this.anfrage('PUT', pfad, { body: daten, headers: { 'Content-Type': 'application/octet-stream' } });
+        if ([200, 201, 204].includes(r.status)) return;
+        throw new WebDavFehler(
+          r.status === 507 ? 'Kein Speicherplatz mehr in der Nextcloud (HTTP 507).'
+            : r.status === 413 ? `Die Datei ${segmente(pfad).pop()} (${(daten.length / 1024 / 1024).toFixed(1)} MB) ist für die Nextcloud bzw. den vorgeschalteten Proxy zu groß (HTTP 413).`
+              : `Upload von ${segmente(pfad).pop()} fehlgeschlagen (HTTP ${r.status}).`, r.status);
+      } catch (e) {
+        if (!(e instanceof WebDavFehler) || !VORUEBERGEHEND.has(e.status) || v >= versuche) throw e;
+        await warten(this.pauseMs * v);
+      }
     }
   }
 
@@ -70,8 +90,9 @@ export class WebDav {
     return davAntwort(await r.text(), this.url(pfad));
   }
 
-  async loeschen(pfad: string) {
-    const r = await this.anfrage('DELETE', pfad);
+  /** Datei oder (mit `ordner`) Ordner samt Inhalt löschen */
+  async loeschen(pfad: string, ordner = false) {
+    const r = await this.anfrage('DELETE', pfad, { ordner });
     if (![200, 204, 404].includes(r.status)) throw new WebDavFehler(`${pfad} konnte nicht gelöscht werden (HTTP ${r.status}).`, r.status);
   }
 }

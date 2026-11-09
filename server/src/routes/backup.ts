@@ -85,7 +85,9 @@ export async function backupRoutes(app: FastifyInstance) {
   const cfgSchema = z.object({
     aktiv: z.boolean(), url: z.string().trim().max(300), benutzer: z.string().trim().max(120), passwort: z.string().max(200),
     ordner: z.string().trim().max(300).transform((x) => `/${x.replace(/^\/+|\/+$/g, '')}`),
-    uhrzeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Uhrzeit im Format HH:MM'), format,
+    uhrzeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Uhrzeit im Format HH:MM'),
+    /** dateien = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */
+    format: z.enum(['portal', 'zip', 'dateien']).default('portal'),
     datei_passwort: z.string().max(200), mit_aenderungsbelegen: z.boolean(), aufbewahrung_tage: z.coerce.number().int().min(0).max(3650),
   });
   /** Formularwerte mit gespeicherten Geheimnissen ergänzen (Maske = unverändert) */
@@ -98,7 +100,7 @@ export async function backupRoutes(app: FastifyInstance) {
 
   app.put('/api/backup/nextcloud', erstellen, async (req) => {
     const c = await zusammen(cfgSchema.parse(req.body));
-    if (c.format === 'zip' && c.datei_passwort) c.datei_passwort = '';
+    if (c.format !== 'portal' && c.datei_passwort) c.datei_passwort = '';
     const fehlt = cfgPruefen(c);
     if (c.aktiv && fehlt.length) throw new BusinessError(`Zum Aktivieren bitte ergänzen: ${fehlt.join(', ')}.`);
     await change(req, (tx) => tx`update core.backup_export set aktiv = ${c.aktiv}, url = ${c.url}, benutzer = ${c.benutzer}, passwort = ${c.passwort}, ordner = ${c.ordner},

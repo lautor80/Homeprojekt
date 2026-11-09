@@ -32,7 +32,9 @@ interface Job {
   laufzeitSekunden: number; restSekunden: number | null; fertig: boolean; fehler: string | null; ergebnis: { name?: string; text?: string } | null;
 }
 interface Export {
-  aktiv: boolean; url: string; benutzer: string; passwort: string; ordner: string; uhrzeit: string; format: 'portal' | 'zip'; datei_passwort: string;
+  aktiv: boolean; url: string; benutzer: string; passwort: string; ordner: string; uhrzeit: string;
+  /** dateien = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */
+  format: 'portal' | 'zip' | 'dateien'; datei_passwort: string;
   mit_aenderungsbelegen: boolean; aufbewahrung_tage: number; letzter_lauf: string | null; letzter_erfolg: string | null; letzte_meldung: string | null;
   letzte_datei: string | null; letzte_dauer_s: number | null; letzter_fehler: boolean; fehlt: string[];
 }
@@ -404,7 +406,7 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
   const set = (x: Partial<Export>) => setC({ ...c, ...x });
   const daten = () => ({
     aktiv: c.aktiv, url: c.url, benutzer: c.benutzer, passwort: c.passwort, ordner: c.ordner, uhrzeit: c.uhrzeit, format: c.format,
-    datei_passwort: c.format === 'zip' ? '' : c.datei_passwort, mit_aenderungsbelegen: c.mit_aenderungsbelegen, aufbewahrung_tage: c.aufbewahrung_tage,
+    datei_passwort: c.format === 'portal' ? c.datei_passwort : '', mit_aenderungsbelegen: c.mit_aenderungsbelegen, aufbewahrung_tage: c.aufbewahrung_tage,
   });
   async function lauf(fn: () => Promise<void>) {
     setBusy(true); onError(null);
@@ -423,11 +425,12 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
         <div className="portal-bk__form">
           <Switch checked={c.aktiv} textOn="An" textOff="Aus" onChange={(e) => set({ aktiv: e.target.checked })} />
           <Text className="portal-muted portal-small">
-            Erstellt jeden Tag ab der eingestellten Uhrzeit eine vollständige Sicherung (alle Bereiche) und lädt sie per WebDAV in den Zielordner.
+            Erstellt jeden Tag ab der eingestellten Uhrzeit eine vollständige Sicherung (alle Bereiche) und überträgt sie per WebDAV in den Zielordner –
+            als eine Datei oder dateiweise ohne ZIP. Nach der Übertragung wird geprüft, ob alles vollständig angekommen ist.
             Ältere automatische Sicherungen im Ordner werden nach der Aufbewahrungsdauer gelöscht, andere Dateien bleiben unberührt.
           </Text>
           <Label showColon required>Nextcloud-Adresse</Label>
-          <Input value={c.url} placeholder="https://cloud.beispiel.de" onInput={(e) => set({ url: e.target.value })} />
+          <Input value={c.url} placeholder="https://cloud.beispiel.de (ohne /index.php/apps/…)" onInput={(e) => set({ url: e.target.value })} />
           <Label showColon required>Benutzer</Label>
           <Input value={c.benutzer} onInput={(e) => set({ benutzer: e.target.value })} />
           <Label showColon required>App-Passwort</Label>
@@ -439,15 +442,25 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
           <Label showColon>Uhrzeit</Label>
           <TimePicker formatPattern="HH:mm" value={c.uhrzeit} onChange={(e) => e.detail.value && set({ uhrzeit: e.detail.value })} style={{ width: '8rem' }} />
           <Label showColon>Format</Label>
-          <div className="portal-row">
-            <RadioButton name="nc-format" text=".portal (empfohlen)" checked={c.format === 'portal'} onChange={() => set({ format: 'portal' })} />
-            <RadioButton name="nc-format" text="ZIP mit XML (unverschlüsselt)" checked={c.format === 'zip'} onChange={() => set({ format: 'zip' })} />
+          <div className="portal-row" style={{ flexWrap: 'wrap' }}>
+            <RadioButton name="nc-format" text=".portal (eine Datei, verschlüsselbar)" checked={c.format === 'portal'} onChange={() => set({ format: 'portal' })} />
+            <RadioButton name="nc-format" text="ZIP mit XML (eine Datei, unverschlüsselt)" checked={c.format === 'zip'} onChange={() => set({ format: 'zip' })} />
+            <RadioButton name="nc-format" text="Einzelne XML-Dateien (dateiweise, ohne ZIP, unverschlüsselt)" checked={c.format === 'dateien'} onChange={() => set({ format: 'dateien' })} />
           </div>
           {c.format === 'portal' ? <>
             <Label showColon>Datei-Passwort (verschlüsselt die Sicherung)</Label>
             <Input type="Password" data-kein-autofill value={c.datei_passwort} placeholder="mindestens 8 Zeichen – dringend empfohlen" onInput={(e) => set({ datei_passwort: e.target.value })}
                    valueState={c.datei_passwort && c.datei_passwort.length < 8 ? 'Negative' : !c.datei_passwort ? 'Critical' : 'None'} />
-          </> : <Text style={{ color: 'var(--sapCriticalTextColor)' }} className="portal-small">ZIP/XML ist unverschlüsselt – der Zielordner darf nur dem Vorstand zugänglich sein.</Text>}
+          </> : c.format === 'zip'
+            ? <Text style={{ color: 'var(--sapCriticalTextColor)' }} className="portal-small">ZIP/XML ist unverschlüsselt – der Zielordner darf nur dem Vorstand zugänglich sein.</Text>
+            : <>
+              <Text className="portal-muted portal-small">
+                Je Lauf entsteht im Zielordner ein Ordner „portal_Datum_Uhrzeit_automatisch“ mit je Tabelle einer XML-Datei. Jede Datei wird einzeln übertragen,
+                „manifest.xml“ als letzte – fehlt sie, ist die Sicherung unvollständig. „pruefsummen.sha256“ enthält die Prüfsumme jeder Datei.
+                Zum Zurücksichern den Ordner in der Nextcloud als ZIP herunterladen und hier unter „Sicherung hochladen“ einspielen.
+              </Text>
+              <Text style={{ color: 'var(--sapCriticalTextColor)' }} className="portal-small">Die XML-Dateien sind unverschlüsselt – der Zielordner darf nur dem Vorstand zugänglich sein.</Text>
+            </>}
           <CheckBox text="Änderungsbelege mitsichern" checked={c.mit_aenderungsbelegen} onChange={(e) => set({ mit_aenderungsbelegen: e.target.checked })} />
           <Label showColon>Aufbewahrung (Tage, 0 = nie löschen)</Label>
           <Input type="Number" value={String(c.aufbewahrung_tage)} onInput={(e) => set({ aufbewahrung_tage: Number(e.target.value) || 0 })} style={{ width: '8rem' }} />
