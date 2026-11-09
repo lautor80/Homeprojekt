@@ -59,6 +59,10 @@ export function Kalender() {
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<Ev> | null>(null);
+  // Filter der Liste: vergangene Veranstaltungen, Gruppe, Art (#33)
+  const [vergangene, setVergangene] = useState(false);
+  const [fGruppe, setFGruppe] = useState('');
+  const [fArt, setFArt] = useState('');
 
   const von = tagIso(new Date(monat.j, monat.m, 1));
   const bis = ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
@@ -71,6 +75,19 @@ export function Kalender() {
   }
   const melden = (e: Ev, status: Status) => aktion(() => api.post(`${K}/${e.id}/rueckmeldung`, { status, begleitung: e.meine_begleitung, kommentar: e.mein_kommentar }));
   const schieben = (n: number) => setMonat(({ j, m }) => { const x = new Date(j, m + n, 1); return { j: x.getFullYear(), m: x.getMonth() }; });
+
+  // Kopie als neue Veranstaltung: alle Angaben übernehmen, Termin wird im Dialog angepasst; Rückmeldungen werden nicht kopiert
+  const kopieren = (e: Ev) => { setDetail(null); setForm({ ...e, id: undefined, abgesagt: false }); };
+
+  // Gruppe: die gewählte Gruppe und ihre Untergruppen (Pfad „A › B“); „–“ = Veranstaltungen für alle Mitglieder
+  const gruppeGewaehlt = d?.gruppen.find((g) => String(g.id) === fGruppe);
+  const gruppenIds = gruppeGewaehlt ? new Set(d!.gruppen.filter((g) => g.id === gruppeGewaehlt.id || g.name.startsWith(`${gruppeGewaehlt.name} › `)).map((g) => g.id)) : null;
+  const passt = (e: Ev) => (!fArt || e.kategorie === fArt)
+    && (fGruppe === '-' ? !e.gruppen.length : !gruppenIds || e.gruppen.some((g) => gruppenIds.has(g)));
+  const jetzt = Date.now();
+  const gefiltert = d ? { ...d, events: d.events.filter(passt) } : null;
+  const fuerListe = gefiltert ? { ...gefiltert, events: gefiltert.events.filter((e) => vergangene || new Date(e.ende ?? e.beginn).getTime() >= jetzt) } : null;
+  const ausgeblendet = gefiltert && fuerListe ? gefiltert.events.length - fuerListe.events.length : 0;
 
   return (
     <AppPage title="Vereinskalender" subtitle="Veranstaltungen, Termine und Mannschaften – mit An- und Abmeldung">
@@ -90,12 +107,29 @@ export function Kalender() {
             <span style={{ flex: 1 }} />
             {d?.pflege && <Button design="Emphasized" icon="add" onClick={() => setForm({ kategorie: 'VERANSTALTUNG', anmeldung: true, teilnehmer_sichtbar: true, gruppen: [], ganztags: false, begleitung: false })}>Neue Veranstaltung</Button>}
           </div>
-          {!d ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
+          {d && (
+            <div className="portal-kal__leiste">
+              <Select accessibleName="Gruppe" style={{ width: 'min(20rem, 100%)' }} onChange={(e) => setFGruppe((e.detail.selectedOption as HTMLElement).dataset.g ?? '')}>
+                <Option data-g="" selected={!fGruppe}>Alle Gruppen</Option>
+                <Option data-g="-" selected={fGruppe === '-'}>Ohne Gruppe (alle Mitglieder)</Option>
+                {d.gruppen.map((g) => <Option key={g.id} data-g={g.id} selected={String(g.id) === fGruppe}>{g.name}</Option>)}
+              </Select>
+              <Select accessibleName="Art" style={{ width: 'min(14rem, 100%)' }} onChange={(e) => setFArt((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+                <Option data-k="" selected={!fArt}>Alle Arten</Option>
+                {Object.entries(d.kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={k === fArt}>{t}</Option>)}
+              </Select>
+              {ansicht === 'LISTE' && <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />}
+              {(fGruppe || fArt) && <Button design="Transparent" icon="clear-filter" onClick={() => { setFGruppe(''); setFArt(''); }}>Filter zurücksetzen</Button>}
+            </div>
+          )}
+          {!d || !gefiltert || !fuerListe ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
             <BusyIndicator active={busy} delay={300} style={{ display: 'block', width: '100%' }}>
               <div className="portal-busy-inhalt">
                 {ansicht === 'LISTE'
-                  ? <Liste d={d} onOeffnen={setDetail} onMelden={melden} busy={busy} />
-                  : <Monat d={d} j={monat.j} m={monat.m} onOeffnen={setDetail} />}
+                  ? <Liste d={fuerListe} onOeffnen={setDetail} onMelden={melden} onKopieren={kopieren} busy={busy}
+                           leer={ausgeblendet ? `${ausgeblendet} vergangene Veranstaltung${ausgeblendet === 1 ? ' ist' : 'en sind'} ausgeblendet – „Vergangene anzeigen“ blendet sie ein.`
+                             : fGruppe || fArt ? 'Keine Veranstaltung passt zu Gruppe und Art in diesem Zeitraum.' : undefined} />
+                  : <Monat d={gefiltert} j={monat.j} m={monat.m} onOeffnen={setDetail} />}
               </div>
             </BusyIndicator>
           )}
@@ -107,14 +141,18 @@ export function Kalender() {
         )}
       </TabContainer>
       {detail !== null && d && <DetailDialog id={detail} pflege={d.pflege} mitglied={d.mitglied} kategorien={d.kategorien} onClose={() => { setDetail(null); laden(); }}
-                                             onBearbeiten={(e) => { setDetail(null); setForm(e); }} onError={setError} />}
+                                             onBearbeiten={(e) => { setDetail(null); setForm(e); }} onKopieren={kopieren} onError={setError} />}
       {form && d && <EventDialog e={form} d={d} onClose={() => setForm(null)} onGespeichert={(t) => { setForm(null); toast(t, 5000); laden(); }} />}
     </AppPage>
   );
 }
 
-function Liste({ d, onOeffnen, onMelden, busy }: { d: Daten; onOeffnen: (id: number) => void; onMelden: (e: Ev, s: Status) => void; busy: boolean }) {
-  if (!d.events.length) return <Empty>In diesem Zeitraum sind keine Veranstaltungen eingetragen.</Empty>;
+function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
+  d: Daten; onOeffnen: (id: number) => void; onMelden: (e: Ev, s: Status) => void; onKopieren: (e: Ev) => void; busy: boolean;
+  /** Hinweis, wenn die Liste durch einen Filter leer ist */
+  leer?: string;
+}) {
+  if (!d.events.length) return <Empty>{leer ?? 'In diesem Zeitraum sind keine Veranstaltungen eingetragen.'}</Empty>;
   const gruppen: [string, Ev[]][] = [];
   for (const e of d.events) {
     const k = `${MONATE[new Date(e.beginn).getMonth()]} ${new Date(e.beginn).getFullYear()}`;
@@ -160,6 +198,7 @@ function Liste({ d, onOeffnen, onMelden, busy }: { d: Daten; onOeffnen: (id: num
                       </FlexBox>
                     )}
                     {e.anmeldung && e.offen && !e.abgesagt && <Text className="portal-muted portal-small">{e.offen}</Text>}
+                    {d.pflege && <Button icon="copy" design="Transparent" tooltip="Als neue Veranstaltung kopieren" accessibleName={`${e.titel} kopieren`} disabled={busy} onClick={() => onKopieren(e)} />}
                   </div>
                 </div>
               );
@@ -199,8 +238,8 @@ function Monat({ d, j, m, onOeffnen }: { d: Daten; j: number; m: number; onOeffn
   );
 }
 
-function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten, onError }: {
-  id: number; pflege: boolean; mitglied: boolean; kategorien: Record<string, string>; onClose: () => void; onBearbeiten: (e: Ev) => void; onError: (t: string) => void;
+function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten, onKopieren, onError }: {
+  id: number; pflege: boolean; mitglied: boolean; kategorien: Record<string, string>; onClose: () => void; onBearbeiten: (e: Ev) => void; onKopieren: (e: Ev) => void; onError: (t: string) => void;
 }) {
   const [x, setX] = useState<Detail | null>(null);
   const [mitglieder, setMitglieder] = useState<{ adrnr: string; name: string }[]>([]);
@@ -219,6 +258,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
     <Dialog open headerText={e.titel} onClose={onClose} style={{ width: 'min(46rem, 96vw)' }}
             footer={<Bar startContent={pflege ? <>
                            <Button icon="edit" onClick={() => onBearbeiten(e)}>Bearbeiten</Button>
+                           <Button icon="copy" onClick={() => onKopieren(e)}>Kopieren</Button>
                            <Button icon="excel-attachment" onClick={() => download(`${K}/${id}/csv`, `Teilnehmer_${e.titel.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.csv`)}>Teilnehmerliste</Button>
                            <Button icon="delete" design="Transparent" disabled={busy} onClick={() => lauf(async () => { const t = await api.del<{ text: string }>(`${K}/${id}`); onClose(); return t; })}>Löschen</Button>
                          </> : undefined}
