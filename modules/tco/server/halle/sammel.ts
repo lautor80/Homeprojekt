@@ -55,9 +55,27 @@ export async function kandidaten(db: Db): Promise<Kandidat[]> {
 
 export interface Treffer { zeile: string; vorschlaege: (Kandidat & { punkte: number })[]; vorname: string; nachname: string }
 
+/**
+ * Rohtext (eingefügt oder aus der Texterkennung) in Namenszeilen zerlegen. Typische Aufstellungen wie
+ * „1  Gross, Alexander (1, LK5,3)“ (nuLiga/Meldeliste): Rang vorne, Klammerzusätze (Position, LK) und
+ * LK-Angaben werden entfernt. Enthalten mehrere Zeilen „Nachname, Vorname“, gelten Zeilen ohne Komma
+ * als Überschrift (z. B. „TC Oberthal 1“) und werden übergangen.
+ */
+export function zeilenBereinigen(text: string): string[] {
+  const roh = text.split(/\r?\n|;/)
+    .map((z) => condense(z
+      .replace(/\([^)]*\)?|\[[^\]]*\]?/g, ' ')                   // (1, LK5,3) bzw. abgeschnittene Klammer aus der OCR
+      .replace(/\bLK\s*\d+(?:[.,]\d+)?\b/gi, ' ')                  // LK-Angaben ohne Klammer
+      .replace(/^[\s\d.)\-•*|:]+/, '')                             // Rang/Aufzählung vorne
+      .replace(/[\s\d.,|:]+$/, '')))                                // Reste hinten
+    .filter((z) => tokens(z).length >= 1 && /[a-zäöüß]/i.test(z));
+  const mitKomma = roh.filter((z) => /^[^,]+,\s*\S/.test(z));
+  return mitKomma.length >= 2 ? mitKomma : roh;
+}
+
 /** Zeilen (eine Person je Zeile) gegen Mitglieder/Kunden abgleichen – beste Vorschläge zuerst */
 export function namenAbgleichen(text: string, liste: Kandidat[]): Treffer[] {
-  const zeilen = text.split(/\r?\n|;/).map((z) => condense(z.replace(/^[\s\d.)\-•*]+/, ''))).filter((z) => tokens(z).length >= 1 && /[a-zäöüß]/i.test(z));
+  const zeilen = zeilenBereinigen(text);
   const vorbereitet = liste.map((k) => ({ k, vn: tokens(k.vorname), nn: tokens(k.nachname) }));
   const out: Treffer[] = [];
   const gesehen = new Set<string>();

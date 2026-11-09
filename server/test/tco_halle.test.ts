@@ -471,3 +471,28 @@ test('Rechnungen ohne Hallenbuchung: Namensabgleich, neuer Kunde, je Person eine
   assert.ok(p, JSON.stringify(r.body.personen.map((x: any) => x.kunde)));
   assert.deepEqual(p.probleme.map((x: any) => x.art), ['ANSCHRIFT']);
 });
+
+test('Sammelrechnung: Mannschaftsaufstellung (nuLiga) mit Rang, Position und LK', async () => {
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt) values
+    ('0000000701', 'Alexander', 'Groß', '2015-01-01'), ('0000000702', 'Timo', 'Hinsberger', '2015-01-01'),
+    ('0000000703', 'Benjamin', 'Hartyniuk', '2015-01-01'), ('0000000704', 'Torsten', 'Schläfke', '2015-01-01')`;
+  // so kommt die Aufstellung aus der Zwischenablage bzw. der Texterkennung
+  const text = 'TC Oberthal 1\n1\tGross, Alexander (1, LK5,3)\n2\tHinsberger, Timo (3, LK7,2)\n3 Hartyniuk, Benjamin (9, LK12,7)\n4  Schläfke, Torsten (19, LK20,7)\n';
+  let r = await call('POST', `${H}/sammel/namen`, { text });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((t: any) => [t.zeile, t.vorschlaege[0]?.key, t.vorschlaege[0]?.punkte]), [
+    ['Gross, Alexander', 'M:0000000701', 100],      // „Gross“ = „Groß“
+    ['Hinsberger, Timo', 'M:0000000702', 100],
+    ['Hartyniuk, Benjamin', 'M:0000000703', 100],
+    ['Schläfke, Torsten', 'M:0000000704', 100],
+  ], 'Überschrift „TC Oberthal 1“ übergangen, Rang/Position/LK entfernt');
+  // jeder bekommt eine Position (eigene Rechnung)
+  r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '093', beschreibung: 'Teilnahme Winterhallenrunde', menge: '1', preis: '40' }, anhaengen: false,
+    empfaenger: r.body.map((t: any) => ({ key: t.vorschlaege[0].key })),
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.rechnungen.map((x: any) => x.name), ['Alexander Groß', 'Timo Hinsberger', 'Benjamin Hartyniuk', 'Torsten Schläfke']);
+  const k = await sql`select adrnr, betrag::float8 as betrag from tco.rgkopf where rgnr_txt = any(${r.body.rechnungen.map((x: any) => x.rgnr)}) order by adrnr`;
+  assert.deepEqual(k.map((x) => [x.adrnr, x.betrag]), [['0000000701', 40], ['0000000702', 40], ['0000000703', 40], ['0000000704', 40]]);
+});
