@@ -39,6 +39,9 @@ export function Shell() {
 
   const modules = enabledModules(me.modules);
   const orgName = (me.settings['org.name'] as string) || 'Portal';
+  /** Kopf: Organisation, dahinter der angemeldete Benutzer – „TC Oberthal · Torsten Laub (TorstenLaub)“ */
+  const kopfTitel = `${orgName} · ${me.user.displayName && me.user.displayName !== me.user.username
+    ? `${me.user.displayName} (${me.user.username})` : me.user.username}`;
   const logo = me.settings['org.logo'] as string | undefined;
 
   // Navigation: Start, Fachmodule, Administration – gefiltert nach Berechtigung
@@ -86,10 +89,10 @@ export function Shell() {
         style={{ height: '100%' }}
         header={
           <ShellBar
-            primaryTitle={orgName}
+            primaryTitle={kopfTitel}
             branding={
               <ShellBarBranding onClick={() => navigate('/')} logo={logo ? <img src={logo} alt="" /> : undefined}>
-                {orgName}
+                {kopfTitel}
               </ShellBarBranding>
             }
             startButton={<Button icon="menu2" design="Transparent" tooltip="Navigation ein-/ausblenden" onClick={() => setCollapsed(!collapsed)} />}
