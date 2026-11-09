@@ -8,14 +8,15 @@ jede Installation schaltet nur ihre Module ein.
 | Bereich | Inhalt |
 |---|---|
 | Oberfläche | React + **UI5 Web Components** (SAP Horizon, Open Source), Shell mit Seitennavigation, Startseite mit Kacheln |
-| Anmeldung | Benutzer/Passwort (Argon2), Sitzungen, Sperre nach Fehlversuchen, Passwortwechsel beim ersten Login |
+| Anmeldung | Benutzer/Passwort (Argon2), Sitzungen, Sperre nach Fehlversuchen, Passwortwechsel beim ersten Login; **„Passwort vergessen?“** mit Einmal-Link (60 Min., nur einmal, nur Hash gespeichert, beendet alle Sitzungen); Benutzeranlage wahlweise mit **Einmal-Link „Kennwort festlegen“** (48 Std.) statt Startkennwort – Links nutzen die Portal-Adresse aus den Einstellungen |
 | Berechtigungen | Rollen aus Berechtigungen „Objekt:Aktivität“, Module bringen ihre Berechtigungen selbst mit |
 | Änderungsbelege | wie CDHDR/CDPOS, per Datenbank-Trigger – lückenlos, unveränderlich, mit Benutzer, Aktion und Begründung |
-| Registrierung | Selbstregistrierung für Hallennutzer mit Freigabe durch die Platzverwaltung (Zuordnung zu Mitglied/EP3-Kunde), feste Systemrolle „Hallennutzer“ (nur Einzelbuchung), Übernahme der EP3-Kennwörter (bcrypt aus bs_users.pw, Kundenexport mit Spalte PW); der Kundenimport legt für alle aktiven EP3-Kunden Hallennutzer an (Anmeldename = E-Mail, „Nachname, Vorname“, Zuordnung zu Mitgliedern über ZUID/E-Mail/Name); Anmeldung mit Benutzername oder E-Mail |
+| Registrierung | Auswahl **Mitglied** (Nachweis Geburtsdatum oder Mitgliedsnummer, Freigabe durch den Kassenwart mit Vorschlag im Arbeitsvorrat, Rolle „Mitglied“) oder **externer Hallennutzer** (E-Mail-Bestätigung, danach sofort freigeschaltet; ohne Mailversand Freigabe durch die Platzverwaltung mit Zuordnung zu Mitglied/EP3-Kunde), feste Systemrolle „Hallennutzer“ (nur Einzelbuchung), Übernahme der EP3-Kennwörter (bcrypt aus bs_users.pw, Kundenexport mit Spalte PW); der Kundenimport legt für alle aktiven EP3-Kunden Hallennutzer an (Anmeldename = E-Mail, „Nachname, Vorname“, Zuordnung zu Mitgliedern über ZUID/E-Mail/Name); Anmeldung mit Benutzername oder E-Mail |
 | Feste Platzbelegungen | Jugendtraining, Sperrzeiten, Veranstaltungen (Platzverwaltung → Training & Sperrzeiten, EP3-Events per Import) – im Kalender für alle sichtbar, blockieren Buchungen; Kalender zeigt nur an dem Tag freigegebene Plätze |
 | Meine Mitgliedschaft | Benutzerpflege: Status direkt in der Tabelle sperren, Filter aktiv/gesperrt, Einzelanlage aus Mitglied/EP3-Kunde; ausgetretene Mitglieder werden nach dem Austrittsdatum automatisch gesperrt. Selbstauskunft für Mitglieder (Systemrolle „Mitglied“: eigene Daten, Bankverbindung, Kündigung zum Jahresende + Einzelbuchung); Administration → Benutzer legt alle aktiven Mitglieder als Benutzer an (Anmeldename = E-Mail, Startkennwort per Mail oder Liste) |
 | Sperren | wie SM12: Objekt beim Öffnen zur Bearbeitung gesperrt (Typ + Schlüssel der Änderungsbelege), Durchsetzung im Datenbank-Trigger, Lebenszeichen, Ablauf nach 2 Min. bzw. 15 Min. Inaktivität, Platzzeiten schon bei Auswahl; Übersicht/Aufheben unter Administration → Sperren |
-| Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Integrations-URLs |
+| Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Integrations-URLs, Portal-Adresse für Links in E-Mails |
+| E-Mail-Versand | ein generischer n8n-Workflow für alle Mails (beliebige Inhalte und Anhänge, an/cc/bcc, Antwortadresse, Entwurf); **Absender ist, wer auf „Senden“ drückt** (Anfragekontext), Rückfall auf Ersatzabsender je Anwendung und Standard – siehe [E-Mail-Versand](#e-mail-versand-n8n) |
 | PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |
 | API-Schlüssel | Zugriff für Fremdsysteme (n8n, Webformulare) per `Authorization: Bearer …` – je Schlüssel genau ein Projekt/Modul mit ausgewählten Rechten |
 | Nummernkreise | lückenlose Nummern je Objekt und Jahr (`core.next_number`) |
@@ -192,7 +193,7 @@ Das Datenmodell (Schema `tco`) enthält alle Vereinstabellen aus SAP; alle Apps 
 
 | App | Stand |
 |---|---|
-| Hallenabrechnung | fertig: EP3-Import (n8n-Workflow `docs/n8n/tco-ep3-import.json` oder CSV), Preisfindung je Buchungsminute, Zuordnen einzeln/gesammelt/automatisch, manuelle Positionen inkl. Schlüsselliste, Rechnungs-PDF mit GiroCode, Ablage in Paperless (Neudruck = neue Version, Freigabelink, Metadaten), Versand per E-Mail (n8n-Workflow „TCO Mailversand aus SAP“), WhatsApp und Mailentwurf, Wiedereröffnen versendeter Rechnungen mit Begründung, Hallenpreise mit Prüfung |
+| Hallenabrechnung | fertig: EP3-Import (n8n-Workflow `docs/n8n/tco-ep3-import.json` oder CSV), Preisfindung je Buchungsminute, Zuordnen einzeln/gesammelt/automatisch, manuelle Positionen inkl. Schlüsselliste, Rechnungs-PDF mit GiroCode, Ablage in Paperless (Neudruck = neue Version, Freigabelink, Metadaten), Versand per E-Mail (n8n-Workflow „TCO Mailversand“, Absender = Bearbeiter), Zahlung mit **Splitbuchung nach Erlöskonten** der Produkte, WhatsApp und Mailentwurf, Wiedereröffnen versendeter Rechnungen mit Begründung, Hallenpreise mit Prüfung |
 | FI Belege | fertig: Buchungsliste je Zeitraum/Konto mit Jahresanfang, Tagessaldo und aktuellem Saldo, Bankimport (CSV-Umsatzexport) mit Abgleich, Gegenkonto- und Belegvorschlag, Aufteilung (z. B. SumUp-Gebühren), manuelle Buchung für Kasse/Konten ohne Bankdatei, Hallenrechnung zuordnen (Teilzahlung), Belege aus Paperless zuordnen/entfernen, Beleg einer früheren Zahlung übernehmen, Notizen, **Storno per Gegenbuchung** – FI-Belege sind in der Datenbank gegen Ändern und Löschen gesperrt |
 | Sollstellung | fertig: Gläubigerdaten mit Prüfung (IBAN, Gläubiger-ID), Vorschlag je Sollmonat (Turnus, Laufzeit, Beitragsstamm, Zahler am Vertrag bzw. abweichender Zahler, Mandat, Ausschlussgründe), einzelne Positionen abwählbar, SEPA-Datei pain.008.001.02 im Linear-Layout (je Zahler und Mandat eine Lastschrift), PDF-Protokoll mit Ablage in Paperless, Storno. **Verbucht wird nur in FI Belege:** der Bankimport erkennt die Sammelgutschrift und bucht sie je Position auf die Erlöskonten; ein Storno dort öffnet den Lauf wieder |
 | Jugendtraining | fertig: Trainingszeiten erfassen/importieren (n8n, Nextcloud), Zeitnachweise als PDF mit Ablage in Paperless, Trainer und Trainerentgelte, als bezahlt kennzeichnen |
@@ -204,6 +205,9 @@ Das Datenmodell (Schema `tco`) enthält alle Vereinstabellen aus SAP; alle Apps 
 | Beitragsforecast | fertig: Hochrechnung Basisjahr/Folgejahr je Monat und Vertragsart aus den laufenden Verträgen (Stichtag Monatserster, Januar alle, Juli ohne Spende, übrige Monate Jugendtraining), Vorjahr als Vergleich, Säulendiagramm, Mitglieder als dritte Stufe |
 | Einnahmen & Ausgaben | fertig: Kennzahlen Einnahmen/Ausgaben/Gewinn/Geldbestand, Abgleich mit der Veränderung der Geldbestände, Säulendiagramm je Monat, Monats- und 5-Jahres-Tabelle, Geldkonten mit Anfangsbestand/Zugang/Abgang, Einnahmen und Ausgaben je Konto mit Vorjahr, Liquidität, Monatsverlauf je Geldkonto |
 | Jahresabschluss | fertig: Einnahmen-Ausgaben-Rechnung je Tätigkeitsbereich (A–D, Kennzahl im Kontenstamm), Überschussrechnung mit zwei Vorjahren, Bankbestände, Anlagevermögen mit linearer AfA (Monate im Erstjahr, Spiegel und Wertentwicklung), PDF mit wählbaren Teilen EAR / Steuererklärung (3 Jahre) / Anlagevermögen, Ablage in Paperless |
+| Mitgliedsanträge | fertig: öffentliches Formular `/beitritt` ohne Anmeldung (auch Familien, Beitragsart je Person, SEPA-Lastschriftmandat online, Zustimmungen, Bot-Schutz), Eingangsbestätigung per E-Mail, Arbeitsvorrat für den Kassenwart, Prüfung mit Dublettenhinweis, Ablehnung mit Begründung, **Übernahme** legt Mitglieder, Verträge, gemeinsamen Zahler, SEPA-Mandat und je Person einen Benutzer (Rolle Mitglied, Einmal-Link) an |
+| Registrierungen | fertig: Mitglieds-Registrierungen für den Kassenwart (Abgleich über Geburtsdatum bzw. Mitgliedsnummer, Freigabe als Mitglied oder Hallennutzer, Ablehnung mit Begründung per E-Mail) |
+| Produkte | fertig: alle Produkte (Halle, Getränke, Speisen, Sonstiges) mit Preisen je Zeitraum, Gästepreis und Erlöskonto; neuer Preis ab Stichtag, Anlegen, Beenden; Zeitfenster der Halle weiter in den Hallenpreisen |
 | Kontenstamm | fertig: Konten (Nr., Bezeichnung, Kennzahl, Profit-Center) mit Buchungen und Saldo je Jahr (Fenster 6 Jahre), Kontenverwendung je Geschäftsjahr mit Vorschlag, Filter, Pflege der Jahresanfangs- und Endbestände der Geldkonten mit Abgleich gegen die Saldenrechnung |
 
 Gegenüber SAP behoben: Rechnungsbetrag = Summe der Positionen (manuelle Positionen mit Menge), Status springt beim Neudruck
@@ -213,6 +217,32 @@ eine einzige Saldenrechnung, Paperless-Fehler werden angezeigt, Nummernvergabe m
 
 **Übernahme aus SAP:** Report `ZTCO_ARCHIVE` exportiert die Tabellen als CSV → *TC Oberthal → Stammdaten → Übernahme aus SAP*
 (mehrere Dateien auf einmal, Tabelle aus dem Dateinamen, Prüfung vor dem Schreiben).
+
+## E-Mail-Versand (n8n)
+
+Alle E-Mails des Portals (Rechnungen, Verzehr, Mitglieder, Registrierung, Mitgliedsanträge, Kennwort-Links) laufen über **einen**
+n8n-Workflow: [`docs/n8n/tco-mailversand.json`](docs/n8n/tco-mailversand.json), Anleitung und Aufrufformat in
+[`docs/n8n/MAILVERSAND.md`](docs/n8n/MAILVERSAND.md). Einbindung im Portal: *TC Oberthal → Stammdaten → Anbindungen → TCO Mailversand*
+(Webhook-URL, Schlüssel, Ersatzabsender je Anwendung).
+
+**Absender** – genommen wird die erste Adresse, für die n8n ein SMTP-Konto hat (`KONTEN` im Knoten „Mail aufbereiten“):
+
+1. **der Bearbeiter** – der angemeldete Benutzer, der den Versand auslöst (seine E-Mail aus der Benutzerverwaltung, Name „Anzeigename | Verein“);
+2. **Ersatz je Anwendung** aus den Stammdaten (`*` = alle übrigen Anwendungen);
+3. **Standard** des Workflows.
+
+| Absender | SMTP-Knoten in n8n |
+|---|---|
+| torsten.laub@tc-oberthal.de (Standard) | „E-Mail senden (SMTP)“ |
+| benjamin.hartyniuk@tc-oberthal.de | „E-Mail senden (SMTP Benjamin)“ |
+
+Hat der Bearbeiter kein SMTP-Konto, geht die Mail über Ersatz bzw. Standard und **Antworten gehen per Reply-To an den Bearbeiter**
+(außer bei vorgegebener Antwortadresse oder wenn er selbst Empfänger ist). Ohne Anmeldung (Registrierung, Online-Antrag,
+Passwort vergessen) und in Hintergrundläufen gilt immer Ersatz bzw. Standard. Technisch kennt `mailSenden` den Bearbeiter über den
+Anfragekontext (`server/src/kontext.ts`, AsyncLocalStorage) – Aufrufer müssen nichts durchreichen; `persoenlich: false` schaltet das ab.
+Der Kern nutzt den Versand des Moduls über `ServerModule.mailer` (Kennwort-Links).
+
+Weiterer eigener Absender: Adresse in `KONTEN` eintragen, SMTP-Knoten mit eigenen Zugangsdaten anlegen und im Knoten „SMTP-Konto“ eine Regel ergänzen.
 
 ## API-Schlüssel für Fremdsysteme
 
