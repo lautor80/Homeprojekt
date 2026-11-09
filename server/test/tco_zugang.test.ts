@@ -31,10 +31,12 @@ function client() {
 const admin = client();
 const T = '/api/m/tco';
 const mails: { an: string; betreff: string; text: string; absender?: string; absender_name?: string; antwort_an?: string; absender_ersatz?: string }[] = [];
+let n8nAblehnen = false;
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
   req.on('end', () => {
+    if (n8nAblehnen) { res.writeHead(403); res.end('Authorization data is wrong!'); return; }
     res.writeHead(200, { 'content-type': 'application/json' });
     if ((req.url ?? '').startsWith('/webhook/mail')) mails.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
     res.end(JSON.stringify({ status: 'gesendet', message_id: `m${mails.length}` }));
@@ -387,4 +389,56 @@ test('Mailprotokoll und Testmail', async () => {
   await sql`update tco.verein set n8n_mail_url = ${alt.n8n_mail_url}`;
   // Anmeldeseite: Registrierung heißt „Zum Vereinsportal registrieren“
   assert.equal((await client()('GET', '/api/settings/public')).body.registrierung.titel, 'Zum Vereinsportal registrieren');
+});
+
+test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
+  const gast = client();
+  const P = `${T}/verein/mailprotokoll`;
+  // normale Mail: Inhalt wird beim Fehler gespeichert, aber nie ausgeliefert
+  n8nAblehnen = true;
+  assert.ok((await admin('POST', `${T}/verein/testmail`, { an: 'wieder@example.org' })).status >= 400);
+  n8nAblehnen = false;
+  let r = await admin('GET', P);
+  let p = r.body[0];
+  assert.deepEqual([p.an, p.status, p.erneut, p.erneut_neuer_link, p.nachricht], ['wieder@example.org', 'fehler', true, false, undefined]);
+  assert.match(p.fehler, /Webhook-Schlüssel abgelehnt/);
+  const vorher = mails.length;
+  r = await admin('POST', `${P}/${p.id}/erneut`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(mails.length, vorher + 1);
+  assert.match(letzteMail('wieder@example.org')!.betreff, /Testmail/);
+  r = await admin('GET', P);
+  p = r.body.find((x: any) => x.id === p.id);
+  assert.deepEqual([p.erneut_status, p.erneut, p.erneut_von], ['gesendet', false, 'Admin']);
+  assert.equal((await sql`select nachricht from tco.mail_protokoll where id = ${p.id}`)[0].nachricht, null, 'Inhalt nach Erfolg gelöscht');
+  assert.equal((await admin('POST', `${P}/${p.id}/erneut`)).status, 400, 'nur einmal');
+
+  // Bestätigungslink der Registrierung: wird nicht gespeichert, sondern neu erzeugt
+  n8nAblehnen = true;
+  const R = `${T}/platz/registrierung`;
+  r = await gast('POST', R, { art: 'EXTERN', anrede: 'Frau', strasse: 'Hauptstr. 1', plz: '66649', ort: 'Oberthal', vorname: 'Wilma', nachname: 'Wieder', email: 'wilma@example.org', benutzername: 'wilma', passwort: 'wilmas-kennwort-1', datenschutz: true });
+  n8nAblehnen = false;
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', P);
+  p = r.body.find((x: any) => x.an === 'wilma@example.org');
+  assert.deepEqual([p.status, p.erneut, p.erneut_neuer_link], ['fehler', true, true]);
+  const [gesp] = await sql`select nachricht::text as n from tco.mail_protokoll where id = ${p.id}`;
+  assert.ok(!/token=|registrierung-bestaetigen/.test(gesp.n), 'kein Link gespeichert');
+  r = await admin('POST', `${P}/${p.id}/erneut`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const t = token(letzteMail('wilma@example.org')!.text, 'token');
+  assert.ok(t);
+  r = await gast('POST', `${R}/bestaetigen`, { token: t });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  // Kennwort-Links: nicht wiederholbar, mit Hinweis
+  n8nAblehnen = true;
+  await client()('POST', '/api/auth/passwort-vergessen', { konto: 'wilma' });
+  n8nAblehnen = false;
+  r = await admin('GET', P);
+  p = r.body.find((x: any) => x.an === 'wilma@example.org' && x.status === 'fehler' && !x.erneut_am);
+  assert.ok(p, JSON.stringify(r.body.slice(0, 3)));
+  assert.equal(p.erneut, false);
+  assert.match(p.erneut_hinweis, /Kennwort-Link/);
+  assert.equal((await admin('POST', `${P}/${p.id}/erneut`)).status, 400);
 });

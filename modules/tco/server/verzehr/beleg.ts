@@ -207,6 +207,7 @@ export async function belegMailen(db: Db, v: Verein, rgnr: string, an: string | 
   const erg = await mailSenden(v, {
     modus: 'senden', anwendung: 'VERZEHR', objekt: rgnr, an: ziel, betreff, text, benutzer,
     anhaenge: [{ dateiname: `${rgnr}.pdf`, inhalt: r.pdf, paperless_root_id: r.docId ?? null, objekt: rgnr }],
+    folge: { art: 'VERZEHR', rgnr, an: ziel },
   });
   if (erg.status === 'fehler') throw new BusinessError(`Versand fehlgeschlagen: ${erg.fehler ?? ''}`);
   await w(async (tx) => { await tx`update tco.vz_belege set versand_am = now(), versand_art = 'MAIL', email = coalesce(email, ${ziel}) where rgnr = ${rgnr}`; });

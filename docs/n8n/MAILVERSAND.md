@@ -77,7 +77,24 @@ Im Portal: **Stammdaten → Anbindungen → TCO Mailversand → Absender je Anwe
 1. In n8n den bestehenden Workflow öffnen → Menü → **Import from File** → `tco-mailversand.json`. Alternativ nur den Code des
    Knotens „Mail aufbereiten“ ersetzen.
 2. Zugangsdaten prüfen: *Header Auth account* (Webhook), *TCO SMTP account*, *TCO SMTP Benjamin*, *IMAP Credentials account*.
+   Im *Header Auth account* muss der **Name `X-TCO-Key`** lauten und der **Wert** dem „Webhook-Schlüssel“ im Portal entsprechen –
+   sonst meldet das Portal „n8n hat den Webhook-Schlüssel abgelehnt“ (HTTP 401/403).
 3. Zugangsdaten „TCO SMTP Benjamin“ anlegen, `STANDARD`/`KONTEN` prüfen, speichern, aktivieren.
 4. Im Portal unter Stammdaten → Anbindungen „Testen“ (prüft nur, ob der Workflow aktiv ist) und die Absender pflegen.
 
 Anwendungen im Portal: `Benutzer` (Kennwort-Links), `Registrierung`, `Mitgliedsantrag`, `Mitglieder`, `Hallenrechnung`, `Verzehr`.
+
+## Mailprotokoll und „Erneut senden“
+
+Stammdaten → Anbindungen → TCO Mailversand zeigt die letzten 50 Versuche (Zeit, Anwendung, Empfänger, Betreff, Absender, Status, Fehler)
+und sendet eine Testmail über den kompletten Weg. Fehlgeschlagene Mails (`fehler`, `nicht_gesendet`) haben je Zeile **„Erneut senden“**:
+
+- **Normale Mails** (Rechnungen, Verzehrbelege, Mitgliedermails, Benachrichtigungen): Der Inhalt samt Anhängen wird nur im Fehlerfall
+  gespeichert und unverändert mit dem ursprünglichen Absender erneut übergeben. Danach wird nachgezogen, was der erste Versand getan hätte
+  (Hallenrechnung „versendet“, Verzehrbeleg „per Mail versendet“). Der gespeicherte Inhalt wird nach Erfolg bzw. nach 30 Tagen gelöscht
+  und nie an den Browser ausgeliefert.
+- **Zugangslinks** (Bestätigung der Registrierung, Einladung/Schnellweg): Links werden nie gespeichert. „Erneut senden“ erzeugt einen
+  **neuen Link**, ältere (auch auf gedruckten Briefen) werden ungültig.
+- **Kennwort-Links und Startkennwörter** sind nicht wiederholbar; die Zeile nennt, wo sie neu ausgelöst werden.
+
+Jede Wiederholung steht als eigener Eintrag im Protokoll; die ursprüngliche Zeile zeigt „Erneut gesendet am … von …“.

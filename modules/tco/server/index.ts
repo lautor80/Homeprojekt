@@ -1,3 +1,4 @@
+import { mailWiederholen, nichtWiederholbar, WIEDERHOLBAR } from './mailwiederholen.js';
 import path from 'node:path';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -146,9 +147,26 @@ async function routes(app: FastifyInstance) {
 
   /** Verbindungstest Paperless (gespeicherte Werte) */
   /** Mailprotokoll (letzte Versuche) und Testmail über den n8n-Workflow */
-  app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async () => DB`
-    select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer
-      from tco.mail_protokoll order by id desc limit 50`);
+  app.get('/verein/mailprotokoll', { preHandler: requireAuth(P.stammdaten) }, async () => {
+    const rows = await DB`
+      select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer,
+             nachricht, to_char(erneut_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as erneut_am, erneut_von, erneut_status
+        from tco.mail_protokoll order by id desc limit 50`;
+    // Inhalt nie ausliefern – nur, ob und warum (nicht) erneut gesendet werden kann
+    return rows.map(({ nachricht, ...p }) => {
+      const fehlgeschlagen = WIEDERHOLBAR.includes(p.status) && p.erneut_status !== 'gesendet' && p.erneut_status !== 'entwurf';
+      const hinweis = fehlgeschlagen ? nichtWiederholbar({ status: p.status, nachricht, erneut_status: p.erneut_status }) : null;
+      const w = (nachricht as { wiederholung?: { art: string } } | null)?.wiederholung?.art;
+      return { ...p, erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis,
+        erneut_neuer_link: w === 'REG_BESTAETIGUNG' || w === 'EINLADUNG' };
+    });
+  });
+  /** fehlgeschlagene E-Mail erneut senden (Zugangslinks werden dabei neu erzeugt) */
+  app.post('/verein/mailprotokoll/:id/erneut', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const v = await vereinLesen();
+    return change(req, (tx) => mailWiederholen(tx, v, id, req.user!.displayName || req.user!.username), { action: 'MAIL_ERNEUT', reason: `Mailprotokoll ${id}` });
+  });
   app.post('/verein/testmail', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
     const { an } = z.object({ an: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.') }).parse(req.body);
     const v = await vereinLesen();
@@ -309,7 +327,9 @@ const tco: ServerModule = {
   paperlessKontexte: TCO_KONTEXTE,
   mailer: async (m) => {
     const v = await vereinLesen();
-    const r = await mailSenden(v, { modus: 'senden', anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, text: m.text, benutzer: 'Portal', anhaenge: [] });
+    const r = await mailSenden(v, { modus: 'senden', anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, text: m.text, benutzer: 'Portal', anhaenge: [],
+      // enthält einen persönlichen Kennwort-Link: nie speichern, sondern neu auslösen
+      wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Kennwort-Link – bitte neu auslösen: Administration → Benutzer → „Kennwort-Link senden“ bzw. „Passwort vergessen“ auf der Anmeldeseite.' } });
     if (r.status === 'fehler') throw new Error(r.fehler ?? 'Der Versand ist fehlgeschlagen.');
   },
   paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },

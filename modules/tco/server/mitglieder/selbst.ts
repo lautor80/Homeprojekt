@@ -234,6 +234,7 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
         try {
           await mailSenden(v, {
             modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an: m.email, benutzer: 'Portal', anhaenge: [],
+            wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält ein Startkennwort – bitte unter Administration → Benutzer einen Kennwort-Link senden.' },
             betreff: `${v.name}: Ihr Zugang zum Mitgliederportal`,
             text: `Guten Tag ${leer(m.vorname)} ${leer(m.nachname)},\n\nfür Sie wurde ein Zugang zum Mitgliederportal angelegt.\n\nAnmeldename: ${username}\nStartkennwort: ${start}\n\nBitte melden Sie sich an und vergeben Sie ein eigenes Kennwort. Unter „Meine Mitgliedschaft“ sehen und pflegen Sie Ihre Daten, unter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.\n\nViele Grüße\n${v.name}`,
           });

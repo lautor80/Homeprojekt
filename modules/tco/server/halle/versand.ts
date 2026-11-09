@@ -194,6 +194,7 @@ export async function mailVersand(db: Db, v: Verein, w: Schreiber, d: {
     ergebnis = await mailSenden(v, {
       modus: d.entwurf ? 'entwurf' : 'senden', anwendung: 'HALLENRECHNUNG', objekt: d.rgnrs.join(','),
       an: d.an.trim(), cc: d.cc?.trim(), betreff: d.betreff, text: d.text, benutzer: d.benutzer, anhaenge,
+      folge: d.entwurf ? undefined : { art: 'HALLENRECHNUNG', rgnrs: d.rgnrs },
     });
   } catch (e) {
     throw new BusinessError(`Versand fehlgeschlagen: ${(e as Error).message}${gedruckt.length ? ` (bereits gedruckt: ${gedruckt.join(', ')})` : ''}`);

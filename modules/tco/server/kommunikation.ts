@@ -124,16 +124,51 @@ export function absenderFuer(v: Pick<Verein, 'mail_absender'>, anwendung: string
  * E-Mail über den generischen n8n-Workflow „TCO Mailversand“ (Webhook tco-mailversand, docs/n8n/tco-mailversand.json).
  * Beliebig viele Anhänge; Absender/Antwortadresse je Anwendung aus den Stammdaten (n8n prüft gegen seine Erlaubnisliste).
  */
+/**
+ * Wie eine fehlgeschlagene Mail erneut gesendet wird (Mailprotokoll → „Erneut senden“):
+ * ohne Angabe wird die Nachricht samt Anhängen gespeichert und unverändert wiederholt.
+ * Mails mit Zugangslinks oder Kennwörtern werden nie gespeichert: sie werden neu erzeugt (neuer Link) oder müssen neu ausgelöst werden.
+ */
+export type Wiederholung =
+  | { art: 'REG_BESTAETIGUNG'; id: number }
+  | { art: 'EINLADUNG'; adrnr: string; stunden: number; weg: 'MAIL' | 'REGISTRIERUNG' }
+  | { art: 'NEU_AUSLOESEN'; hinweis: string };
+/** Was nach erfolgreicher Wiederholung nachgezogen wird (wie beim ersten Versand) */
+export type MailFolge = { art: 'HALLENRECHNUNG'; rgnrs: string[] } | { art: 'VERZEHR'; rgnr: string; an: string };
+
 /** Versuch protokollieren (eigene Verbindung, damit der Eintrag auch bei zurückgerollter Transaktion bleibt); Fehler hier nie weiterreichen */
 export async function mailProtokoll(e: { anwendung: string; objekt: string; an: string; betreff: string; absender?: string | null; von?: string | null;
-  status: string; fehler?: string | null; benutzer?: string | null }) {
+  status: string; fehler?: string | null; benutzer?: string | null; nachricht?: unknown }): Promise<number | null> {
   try {
     const { DB } = await import('./verein.js');
-    await DB`insert into tco.mail_protokoll (anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer)
+    const [r] = await DB`insert into tco.mail_protokoll (anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer, nachricht)
              values (${e.anwendung}, ${e.objekt}, ${e.an}, ${e.betreff}, ${e.absender ?? null}, ${e.von ?? null}, ${e.status},
-                     ${e.fehler ? String(e.fehler).slice(0, 1000) : null}, ${e.benutzer ?? null})`;
+                     ${e.fehler ? String(e.fehler).slice(0, 1000) : null}, ${e.benutzer ?? null},
+                     ${e.nachricht ? DB.json(e.nachricht as never) : null}) returning id`;
     await DB`delete from tco.mail_protokoll where zeit < now() - interval '180 days'`;
-  } catch { /* Protokoll ist nur Diagnose */ }
+    // gespeicherte Inhalte (Datenschutz) nur 30 Tage
+    await DB`update tco.mail_protokoll set nachricht = null where nachricht is not null and zeit < now() - interval '30 days'`;
+    return Number(r.id);
+  } catch { return null; /* Protokoll ist nur Diagnose */ }
+}
+
+type MailDaten = Parameters<typeof mailSenden>[1];
+
+/** Was zum erneuten Senden gespeichert wird (nur bei Fehlern) */
+function wiederholDaten(m: MailDaten): unknown {
+  if (m.wiederholung) return { wiederholung: m.wiederholung };
+  const ich = m.persoenlich === false || m.absender ? null : aktuellerBenutzer();
+  return {
+    folge: m.folge ?? null,
+    mail: {
+      modus: m.modus, anwendung: m.anwendung, objekt: m.objekt, an: m.an, cc: m.cc ?? '', bcc: m.bcc ?? '', betreff: m.betreff, text: m.text,
+      html: !!m.html, antwort_an: m.antwort_an ?? '',
+      // Absender wie beim ersten Versuch (wer gesendet hat), nicht wer wiederholt
+      absender: m.absender ?? ich?.email ?? null, absender_name: m.absender ? m.absender_name ?? '' : ich?.email ? ich.displayName : null,
+      persoenlich: m.persoenlich ?? null,
+      anhaenge: m.anhaenge.map((a) => ({ ...a, inhalt: a.inhalt.toString('base64') })),
+    },
+  };
 }
 
 export async function mailSenden(v: Verein, m: {
@@ -153,18 +188,22 @@ export async function mailSenden(v: Verein, m: {
   absender?: string; absender_name?: string; antwort_an?: string;
   /** false = nie mit der Adresse des angemeldeten Benutzers senden (z. B. Systemmails) */
   persoenlich?: boolean;
-}): Promise<MailErgebnis> {
+  /** Erneut senden aus dem Mailprotokoll: Pflicht für Mails mit Zugangslinks/Kennwörtern (siehe Wiederholung) */
+  wiederholung?: Wiederholung;
+  folge?: MailFolge;
+}): Promise<MailErgebnis & { protokoll?: number | null }> {
   const proto = { anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, benutzer: m.benutzer };
   if (!v.n8n_mail_url) {
-    await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)' });
+    await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)', nachricht: wiederholDaten(m) });
     throw new Error('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
   }
   try {
     const r = await mailSendenIntern(v as Verein & { n8n_mail_url: string }, m);
-    await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null) });
-    return r;
+    const protokoll = await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null),
+      nachricht: r.status === 'fehler' ? wiederholDaten(m) : null });
+    return { ...r, protokoll };
   } catch (e) {
-    await mailProtokoll({ ...proto, status: 'fehler', fehler: (e as Error).message });
+    await mailProtokoll({ ...proto, status: 'fehler', fehler: (e as Error).message, nachricht: wiederholDaten(m) });
     throw e;
   }
 }

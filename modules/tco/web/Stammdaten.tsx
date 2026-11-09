@@ -7,6 +7,7 @@ import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Ce
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
+import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { useCan, useSession } from '@core/session';
 import { toast } from '@core/toast';
@@ -95,13 +96,15 @@ function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: boolean;
 }
 
 /** Letzte E-Mail-Versuche über n8n und Testmail – zeigt, ob ein Aufruf bei n8n ankam und mit welchem Ergebnis */
-interface Proto { id: number; zeit: string; anwendung: string; objekt: string; an: string; betreff: string; absender: string | null; von: string | null; status: string; fehler: string | null; benutzer: string | null }
+interface Proto { id: number; zeit: string; anwendung: string; objekt: string; an: string; betreff: string; absender: string | null; von: string | null; status: string; fehler: string | null; benutzer: string | null;
+  erneut: boolean; erneut_hinweis: string | null; erneut_neuer_link: boolean; erneut_am: string | null; erneut_von: string | null; erneut_status: string | null }
 function MailProtokoll() {
   const { me } = useSession();
   const [liste, setListe] = useState<Proto[] | null>(null);
   const [an, setAn] = useState(me.user.email ?? '');
   const [busy, setBusy] = useState(false);
   const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null);
+  const [erneutBusy, setErneutBusy] = useState<number | null>(null);
   const laden = () => api.get<Proto[]>(`${TCO}/verein/mailprotokoll`).then(setListe).catch(() => setListe([]));
   useEffect(() => { laden(); }, []);
   async function test() {
@@ -109,6 +112,16 @@ function MailProtokoll() {
     try { const r = await api.post<{ text: string }>(`${TCO}/verein/testmail`, { an }); setMeldung({ ok: true, text: r.text }); }
     catch (e) { setMeldung({ ok: false, text: (e as Error).message }); }
     finally { setBusy(false); laden(); }
+  }
+  const [frage, setFrage] = useState<Proto | null>(null);
+  async function erneut(p: Proto) {
+    setFrage(null);
+    setErneutBusy(p.id); setMeldung(null);
+    try {
+      const r = await api.post<{ text: string; warnungen: string[] }>(`${TCO}/verein/mailprotokoll/${p.id}/erneut`);
+      setMeldung({ ok: true, text: [r.text, ...r.warnungen].join(' · ') });
+    } catch (e) { setMeldung({ ok: false, text: (e as Error).message }); }
+    finally { setErneutBusy(null); laden(); }
   }
   const STATUS: Record<string, ['Positive' | 'Negative' | 'Critical' | 'Information', string]> = {
     gesendet: ['Positive', 'gesendet'], entwurf: ['Information', 'Entwurf'], fehler: ['Negative', 'Fehler'], nicht_gesendet: ['Critical', 'nicht gesendet'],
@@ -122,11 +135,14 @@ function MailProtokoll() {
         <Button icon="paper-plane" loading={busy} disabled={!an.includes('@')} onClick={test}>Testmail senden</Button>
         <Button design="Transparent" icon="refresh" onClick={laden}>Aktualisieren</Button>
       </div>
+      <ConfirmDialog open={!!frage} title="Neuen Zugangslink senden" confirmText="Erneut senden"
+                     text={`Für ${frage?.an ?? ''} wird ein neuer Zugangslink erzeugt und gesendet. Ältere Links – auch auf bereits gedruckten Briefen – werden ungültig.`}
+                     onConfirm={() => frage && erneut(frage)} onCancel={() => setFrage(null)} />
       {meldung && <MessageStrip design={meldung.ok ? 'Positive' : 'Negative'} onClose={() => setMeldung(null)} style={{ marginBottom: '0.4rem' }}>{meldung.text}</MessageStrip>}
       {!liste?.length ? <Text className="portal-muted">Noch keine Versandversuche protokolliert.</Text> : (
         <div style={{ maxHeight: '18rem', overflowY: 'auto' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead><tr>{['Zeit', 'Anwendung', 'An', 'Betreff', 'Absender', 'Status'].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+            <thead><tr>{['Zeit', 'Anwendung', 'An', 'Betreff', 'Absender', 'Status', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
             <tbody>
               {liste.map((p) => (
                 <tr key={p.id} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
@@ -138,6 +154,19 @@ function MailProtokoll() {
                   <td style={zelle}>
                     <ObjectStatus state={(STATUS[p.status] ?? ['None', p.status])[0] as 'Positive'}>{(STATUS[p.status] ?? ['None', p.status])[1]}</ObjectStatus>
                     {p.fehler && <><br /><Text className="portal-muted portal-small">{p.fehler}</Text></>}
+                    {p.erneut_am && (
+                      <><br /><Text className="portal-small" style={{ color: p.erneut_status === 'fehler' ? 'var(--sapNegativeTextColor)' : 'var(--sapPositiveTextColor)' }}>
+                        {p.erneut_status === 'fehler' ? 'Wiederholung fehlgeschlagen' : 'Erneut gesendet'} am {p.erneut_am.slice(8, 10)}.{p.erneut_am.slice(5, 7)}. {p.erneut_am.slice(11, 16)}{p.erneut_von ? ` von ${p.erneut_von}` : ''}
+                      </Text></>
+                    )}
+                  </td>
+                  <td style={{ ...zelle, whiteSpace: 'nowrap' }}>
+                    {p.erneut && (
+                      <Button icon="redo" design="Transparent" loading={erneutBusy === p.id} disabled={erneutBusy !== null}
+                              tooltip={p.erneut_neuer_link ? 'Neuen Zugangslink erzeugen und senden' : 'Dieselbe E-Mail (mit Anhängen) erneut senden'}
+                              onClick={() => (p.erneut_neuer_link ? setFrage(p) : erneut(p))}>Erneut senden</Button>
+                    )}
+                    {p.erneut_hinweis && <Text className="portal-muted portal-small" style={{ whiteSpace: 'normal', display: 'block', maxWidth: '16rem' }}>{p.erneut_hinweis}</Text>}
                   </td>
                 </tr>
               ))}

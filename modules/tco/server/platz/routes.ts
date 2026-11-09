@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { change, requireAuth } from '../../../../server/src/auth.js';
+import { change, requireAuth, sha256 } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { schnellwegPruefen } from '../mitglieder/einladung.js';
 import { BusinessError } from '../../../../server/src/errors.js';
-import { DB } from '../verein.js';
+import { randomBytes } from 'node:crypto';
+import { DB, type Db, type Verein } from '../verein.js';
 import { addTage } from '../format.js';
 import {
   aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, einzelAendern, einzelAnlegen,
@@ -146,6 +147,33 @@ async function ablehnungMail(r: { email: string; anzeigename: string }, grund: s
   } catch (e) { return ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
 }
 
+/** Bestätigungslink an externe Hallennutzer (Registrierung und „Erneut senden“ im Mailprotokoll) */
+async function bestaetigungsMail(v: Verein, url: string, r: { id: number; email: string; vorname: string; nachname: string; benutzername: string }, token: string) {
+  await mailSenden(v, {
+    modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: r.email, benutzer: 'Portal', anhaenge: [],
+    // der Link wird nie gespeichert: „Erneut senden“ erzeugt einen neuen
+    wiederholung: { art: 'REG_BESTAETIGUNG', id: r.id },
+    betreff: `${v.name}: Bitte bestätigen Sie Ihre Registrierung`,
+    text: `Guten Tag ${r.vorname} ${r.nachname},\n\nvielen Dank für Ihre Registrierung (Benutzername ${r.benutzername}). `
+      + `Bitte bestätigen Sie Ihre E-Mail-Adresse über diesen Link (${EMAIL_STUNDEN} Stunden gültig):\n\n${url}/registrierung-bestaetigen?token=${token}\n\n`
+      + `Danach ist Ihr Zugang sofort freigeschaltet und Sie können Hallen- und Freiplätze buchen.\n\n`
+      + `Haben Sie sich nicht registriert, ignorieren Sie diese E-Mail – ohne Bestätigung wird nichts angelegt.\n\nViele Grüße\n${v.name}`,
+  });
+}
+
+/** Mailprotokoll → „Erneut senden“: neuer Bestätigungslink (der alte wird ungültig), solange die Registrierung auf die Bestätigung wartet */
+export async function bestaetigungErneut(tx: Db, v: Verein, id: number): Promise<string> {
+  const url = await portalUrl();
+  if (!url) throw new BusinessError('Die Portal-Adresse fehlt (Administration → Einstellungen).');
+  const [r] = await tx`select id, status, email, vorname, nachname, benutzername from tco.registrierungen where id = ${id} for update`;
+  if (!r) throw new BusinessError('Die Registrierung gibt es nicht mehr (unbestätigte werden nach 30 Tagen gelöscht).');
+  if (r.status !== 'EMAIL') throw new BusinessError('Die Registrierung wartet nicht mehr auf die Bestätigung der E-Mail-Adresse.');
+  const token = randomBytes(32).toString('base64url');
+  await tx`update tco.registrierungen set email_token_hash = ${sha256(token)}, email_bis = ${new Date(Date.now() + EMAIL_STUNDEN * 3600_000)} where id = ${id}`;
+  await bestaetigungsMail(v, url, { id, email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername }, token);
+  return `Neuer Bestätigungslink an ${r.email} gesendet (${EMAIL_STUNDEN} Stunden gültig).`;
+}
+
 export async function platzRoutes(app: FastifyInstance) {
   const buchen = { preHandler: requireAuth(P_PLATZ.buchen) };
   const admin = { preHandler: requireAuth(P_PLATZ.admin) };
@@ -185,14 +213,7 @@ export async function platzRoutes(app: FastifyInstance) {
     let text = r.text;
     try {
       if (r.token) {
-        await mailSenden(v, {
-          modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, benutzer: 'Portal', anhaenge: [],
-          betreff: `${v.name}: Bitte bestätigen Sie Ihre Registrierung`,
-          text: `Guten Tag ${e.vorname} ${e.nachname},\n\nvielen Dank für Ihre Registrierung (Benutzername ${e.benutzername}). `
-            + `Bitte bestätigen Sie Ihre E-Mail-Adresse über diesen Link (${EMAIL_STUNDEN} Stunden gültig):\n\n${url}/registrierung-bestaetigen?token=${r.token}\n\n`
-            + `Danach ist Ihr Zugang sofort freigeschaltet und Sie können Hallen- und Freiplätze buchen.\n\n`
-            + `Haben Sie sich nicht registriert, ignorieren Sie diese E-Mail – ohne Bestätigung wird nichts angelegt.\n\nViele Grüße\n${v.name}`,
-        });
+        await bestaetigungsMail(v, url!, { id: r.id, email: e.email, vorname: e.vorname, nachname: e.nachname, benutzername: e.benutzername }, r.token);
       } else if (v.n8n_mail_url) {
         await mailSenden(v, {
           modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, benutzer: 'Portal', anhaenge: [],

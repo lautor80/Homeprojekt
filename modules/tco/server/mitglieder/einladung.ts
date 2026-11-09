@@ -7,7 +7,7 @@ import type { Db, Verein } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
 
 const t = (x: unknown) => condense(String(x ?? ''));
-import { mailSenden } from '../kommunikation.js';
+import { mailSenden, type Wiederholung } from '../kommunikation.js';
 import { C, kuerzen, LEFT } from '../pdf/layout.js';
 import { Brief } from './pdf.js';
 import { benutzerAnlegen, freierBenutzername, ROLLE_MITGLIED } from '../platz/registrierung.js';
@@ -109,13 +109,7 @@ export async function einladen(tx: Db, v: Verein, o: { adrnrs: string[] | null; 
     const link = einladungsLink(url, token);
     if (perMail) {
       try {
-        const { betreff, text } = mailText(v, m, link, bis);
-        const png = await QRCode.toBuffer(link, { type: 'png', errorCorrectionLevel: 'M', margin: 2, width: 480 });
-        const e = await mailSenden(v, {
-          modus: 'senden', anwendung: 'Mitglieder', objekt: k.adrnr, an: k.email, betreff, text, benutzer: o.wer,
-          anhaenge: [{ dateiname: 'Zugang-QR-Code.png', mime: 'image/png', inhalt: png, objekt: k.adrnr }],
-        });
-        if (e.status === 'fehler') throw new Error(e.fehler ?? 'Versand fehlgeschlagen');
+        await einladungsMail(v, m, k.email, link, bis, o.wer, { art: 'EINLADUNG', adrnr: k.adrnr, stunden: o.tage * 24, weg: 'MAIL' });
         r.gesendet++;
         continue;
       } catch (e) {
@@ -145,9 +139,37 @@ export async function schnellwegPruefen(tx: Db, v: Verein, email: string, geburt
   const link = einladungsLink(url, token);
   const bis = new Date(Date.now() + 86_400_000).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
   const { betreff, text } = mailText(v, m, link, bis);
-  const e = await mailSenden(v, { modus: 'senden', anwendung: 'Registrierung', objekt: m.adrnr, an: m.email.trim(), betreff, text, benutzer: 'Registrierung', anhaenge: [] });
+  const e = await mailSenden(v, { modus: 'senden', anwendung: 'Registrierung', objekt: m.adrnr, an: m.email.trim(), betreff, text, benutzer: 'Registrierung', anhaenge: [],
+    wiederholung: { art: 'EINLADUNG', adrnr: m.adrnr, stunden: 24, weg: 'REGISTRIERUNG' } });
   if (e.status === 'fehler') throw new BusinessError('Die E-Mail konnte nicht gesendet werden. Bitte später erneut versuchen.');
   return true;
+}
+
+/** Einladungsmail mit Link und QR-Code (Sammellauf und „Erneut senden“ im Mailprotokoll) */
+async function einladungsMail(v: Verein, m: Record<string, any>, an: string, link: string, bis: string, wer: string, w: Wiederholung) {
+  const { betreff, text } = mailText(v, m, link, bis);
+  const png = await QRCode.toBuffer(link, { type: 'png', errorCorrectionLevel: 'M', margin: 2, width: 480 });
+  const e = await mailSenden(v, {
+    modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an, betreff, text, benutzer: wer,
+    anhaenge: [{ dateiname: 'Zugang-QR-Code.png', mime: 'image/png', inhalt: png, objekt: m.adrnr }], wiederholung: w,
+  });
+  if (e.status === 'fehler') throw new Error(e.fehler ?? 'Versand fehlgeschlagen');
+}
+
+/**
+ * Mailprotokoll → „Erneut senden“: neuen Einladungslink erzeugen (ältere werden ungültig, der Link selbst wird nie gespeichert)
+ * und an die beim Verein hinterlegte Adresse senden – nur solange das Mitglied aktiv ist und noch keinen Benutzer hat.
+ */
+export async function einladungErneut(tx: Db, v: Verein, w: { adrnr: string; stunden: number; weg: 'MAIL' | 'REGISTRIERUNG' }, wer: string): Promise<string> {
+  const url = await urlPflicht();
+  const [m] = await tx`select m.* from tco.mitglieder m where m.adrnr = ${w.adrnr} and ${aktivOhneBenutzer(tx)}`;
+  if (!m) throw new BusinessError('Das Mitglied ist nicht mehr aktiv oder hat inzwischen einen Benutzer – eine Einladung ist nicht mehr nötig.');
+  const an = String(m.email ?? '').trim();
+  if (!an) throw new BusinessError('Für das Mitglied ist keine E-Mail-Adresse mehr hinterlegt.');
+  const token = await einladungErzeugen(tx, w.adrnr, w.weg, wer, w.stunden);
+  const bis = new Date(Date.now() + w.stunden * 3600_000).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
+  await einladungsMail(v, m, an, einladungsLink(url, token), bis, wer, { art: 'EINLADUNG', ...w });
+  return `Neuer Einladungslink an ${an} gesendet (gültig bis ${bis}); ältere Links sind ungültig.`;
 }
 
 async function gueltig(db: Db, token: string) {
