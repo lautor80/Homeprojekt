@@ -62,7 +62,7 @@ export async function antragInfo(db: Db, v: Verein) {
   return {
     verein: v.name, maxPersonen: MAX_PERSONEN, maxTraining: MAX_TRAINING,
     alterJugendbeitragBis: ALTER_JUGENDBEITRAG_BIS, alterTrainingBis: ALTER_TRAINING_BIS, kuendigung: KUENDIGUNG_TEXT,
-    beitragsarten: arten.map((a) => ({ art: a.art, name: a.name, betrag: a.betrag, turnus: a.turnus, kategorie: kategorieVon(a.art, a.name), jugend: istJugendbeitrag(a.name) }))
+    beitragsarten: arten.map((a) => ({ art: a.art, name: a.name, betrag: a.betrag, turnus: a.turnus, kategorie: kategorieVon(a.art, a.name), jugend: kategorieVon(a.art, a.name) === 'MITGLIEDSCHAFT' && istJugendbeitrag(a.name) }))
       .filter((a) => a.kategorie),
   };
 }
