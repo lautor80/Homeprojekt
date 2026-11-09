@@ -150,6 +150,11 @@ async function copyTo(db: Tx, tabelle: string, spalten: string[], onZeilen?: (n:
     teile.push(b);
     if (onZeilen) { let n = 0; for (let i = b.indexOf(10); i !== -1; i = b.indexOf(10, i + 1)) n++; if (n) onZeilen(n); }
   }
+  // postgres.js hält die Verbindung an, sobald der Strom voll ist (über 16 KB ungelesen), und setzt sie erst fort,
+  // wenn der Strom neue Daten anfordert. Kommt das Ende der Tabelle im selben Datenblock wie der Rückstau
+  // (z. B. ein großer Einzelwert wie das Logo in core.settings), fordert der beendete Strom nichts mehr an –
+  // die Verbindung bliebe angehalten und die nächste Tabelle käme nie. Deshalb hier ausdrücklich fortsetzen.
+  stream._read(0);
   return Buffer.concat(teile).toString('utf8');
 }
 
