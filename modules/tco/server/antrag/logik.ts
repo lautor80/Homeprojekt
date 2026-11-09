@@ -90,7 +90,7 @@ export async function antraegeLesen(db: Db, status: 'EINGANG' | 'ALLE') {
   const rows = await db`select id, nummer, status, eingang, daten, kontoinhaber, iban, bic, bank, sepa_am, bearbeitet_am, bearbeitet_von, bemerkung, ergebnis
                           from tco.mitgliedsantraege ${status === 'ALLE' ? db`` : db`where status = 'EINGANG'`}
                          order by status = 'EINGANG' desc, eingang desc limit 300`;
-  const out = [];
+  const out: (Record<string, any> & { id: number; hinweise: string[] })[] = [];
   for (const r of rows) {
     const d = r.daten as AntragDaten;
     // Dublettenprüfung: gleicher Name + Geburtsdatum (auch ausgetretene) bzw. gleiche E-Mail
