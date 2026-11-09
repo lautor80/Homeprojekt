@@ -60,37 +60,43 @@ after(async () => {
 test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   const port = (server.address() as { port: number }).port;
   const B = `http://127.0.0.1:${port}/webhook`;
-  let r = await call('GET', '/api/m/tco/verein');
-  const v = { ...r.body, n8n_stunden_url: `${B}/stunden`, n8n_ferien_url: `${B}/ferien`, n8n_stunden_user: 'test.user@example.org', n8n_stunden_pw: 'falsch' };
+  // Modulverbindungen sind angemeldet
+  let r = await call('GET', '/api/verbindungen');
+  const tco = r.body.gruppen.find((g: { modul: string }) => g.modul === 'tco');
+  assert.deepEqual(tco.verbindungen.map((v: { id: string }) => v.id).sort(), ['tco.ep3', 'tco.ferien', 'tco.stunden']);
 
   // ungesichert prüfen: falsches Passwort → abgelehnt, richtiges → Daten
-  r = await call('POST', '/api/m/tco/verein/test/stunden', v);
+  const S = { url: `${B}/stunden`, auth_art: 'basic', auth_user: 'test.user@example.org' };
+  r = await call('POST', '/api/verbindungen/tco.stunden/pruefen', { ...S, geheimnis: 'falsch' });
   assert.equal(r.body.ok, false);
   assert.match(r.body.text, /Anmeldung abgelehnt/);
-  r = await call('POST', '/api/m/tco/verein/test/stunden', { ...v, n8n_stunden_pw: 'geheim' });
+  r = await call('POST', '/api/verbindungen/tco.stunden/pruefen', { ...S, geheimnis: 'geheim' });
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /2 Rückmeldung/);
 
-  // sichern: Header wird gebildet, Passwort maskiert zurück, Benutzer sichtbar
-  r = await call('PUT', '/api/m/tco/verein', { ...v, n8n_stunden_pw: 'geheim' });
+  // sichern: Passwort maskiert zurück, Benutzer sichtbar; der Verein liest den Authorization-Header
+  r = await call('PUT', '/api/verbindungen/tco.stunden', { ...S, geheimnis: 'geheim' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  const [db] = await sql`select n8n_stunden_auth, n8n_stunden_user from tco.verein`;
-  assert.deepEqual([db.n8n_stunden_auth, db.n8n_stunden_user], [BASIC, 'test.user@example.org']);
+  assert.deepEqual([r.body.geheimnis, r.body.auth_user], ['********', 'test.user@example.org']);
+  const [db] = await sql`select auth_user, geheimnis from core.verbindungen where id = 'tco.stunden'`;
+  assert.deepEqual([db.auth_user, db.geheimnis], ['test.user@example.org', 'geheim']);
   r = await call('GET', '/api/m/tco/verein');
-  assert.equal(r.body.n8n_stunden_pw, '********');
   assert.equal(r.body.n8n_stunden_auth, '********');
+  assert.equal(r.body.n8n_stunden_user, 'test.user@example.org');
+  assert.equal(r.body.n8n_stunden_url, `${B}/stunden`);
 
-  // erneut sichern mit Maske → Header bleibt; Benutzer ändern ohne Passwort → Fehler
-  r = await call('PUT', '/api/m/tco/verein', r.body);
+  // erneut sichern mit Maske → Passwort bleibt; Benutzer ändern ohne Passwort → Fehler
+  r = await call('PUT', '/api/verbindungen/tco.stunden', { ...S, geheimnis: '********' });
   assert.equal(r.status, 200);
-  const [db2] = await sql`select n8n_stunden_auth from tco.verein`;
-  assert.equal(db2.n8n_stunden_auth, BASIC);
-  const g = (await call('GET', '/api/m/tco/verein')).body;
-  r = await call('PUT', '/api/m/tco/verein', { ...g, n8n_stunden_user: 'anderer' });
+  const [db2] = await sql`select geheimnis from core.verbindungen where id = 'tco.stunden'`;
+  assert.equal(db2.geheimnis, 'geheim');
+  r = await call('PUT', '/api/verbindungen/tco.stunden', { ...S, auth_user: 'anderer', geheimnis: '********' });
   assert.equal(r.status, 400);
 
-  // Ferien mit gespeicherter Anmeldung, Paperless (zentral) fehlt, EP3 nicht erreichbar
-  r = await call('POST', '/api/m/tco/verein/test/ferien', g);
+  // Ferien mit eigener Anmeldung (gespeichert), Mailversand zentral, Paperless fehlt, EP3 nicht erreichbar
+  r = await call('PUT', '/api/verbindungen/tco.ferien', { url: `${B}/ferien`, auth_art: 'basic', auth_user: 'test.user@example.org', geheimnis: 'geheim' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('POST', '/api/verbindungen/tco.ferien/pruefen', {});
   assert.equal(r.body.ok, true, r.body.text);
   assert.match(r.body.text, /1 Ferientage/);
   // Mailversand (zentral): anklopfen, Schlüssel prüfen, Platzhalter abweisen
@@ -114,7 +120,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
   assert.equal(r.body.ok, false);
   assert.match(r.body.text, /fehlen/);
-  r = await call('POST', '/api/m/tco/verein/test/ep3', { ...g, n8n_ep3_url: 'http://127.0.0.1:1/webhook/ep3' });
+  r = await call('POST', '/api/verbindungen/tco.ep3/pruefen', { url: 'http://127.0.0.1:1/webhook/ep3' });
   assert.equal(r.body.ok, false);
   assert.match(r.body.text, /abgelehnt|erreichbar/);
 });

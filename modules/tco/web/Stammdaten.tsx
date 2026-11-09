@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AnalyticalTable, Bar, Button, DatePicker, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
-  SegmentedButtonItem, Tab, TabContainer, Text, Title,
+  SegmentedButtonItem, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -25,34 +25,6 @@ export function TcoStammdaten() {
         {can('tco.import:execute') ? <Tab text="Übernahme aus SAP"><ImportTab /></Tab> : null}
       </TabContainer>
     </AppPage>
-  );
-}
-
-interface Test { ok: boolean; text: string; dauer_ms?: number }
-
-/** Prüfknopf je Endpunkt: sendet die aktuellen Formularwerte (Geheimnisse maskiert = gespeicherter Wert) */
-function Testen({ endpunkt, v }: { endpunkt: string; v: Verein }) {
-  const [busy, setBusy] = useState(false);
-  const [r, setR] = useState<Test | null>(null);
-  return (
-    <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
-      <Button icon="connected" disabled={busy} onClick={async () => {
-        setBusy(true); setR(null);
-        try { setR(await api.post<Test>(`${TCO}/verein/test/${endpunkt}`, v)); } catch (e) { setR({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
-      }}>{busy ? 'Prüfe …' : 'Verbindung prüfen'}</Button>
-      {r && <ObjectStatus state={r.ok ? 'Positive' : 'Negative'} showDefaultIcon>{r.text}{r.dauer_ms != null ? ` (${(r.dauer_ms / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s)` : ''}</ObjectStatus>}
-    </FlexBox>
-  );
-}
-
-function Endpunkt({ titel, hinweis, endpunkt, v, ro, children }: { titel: string; hinweis: string; endpunkt: string; v: Verein; ro: boolean; children: ReactNode }) {
-  return (
-    <div style={{ borderTop: '1px solid var(--sapGroup_TitleBorderColor)', padding: '0.75rem 0' }}>
-      <Title level="H6">{titel}</Title>
-      <Text style={{ display: 'block', margin: '0.15rem 0 0.5rem', color: 'var(--sapContent_LabelColor)' }}>{hinweis}</Text>
-      <FormGrid>{children}</FormGrid>
-      {!ro && <Testen endpunkt={endpunkt} v={v} />}
-    </div>
   );
 }
 
@@ -112,38 +84,16 @@ function VereinTab() {
         </FormGrid>
       </Panel>
 
-      <MessageStrip design="Information" hideCloseButton style={{ marginTop: '1rem' }}>
-        Paperless-ngx {v.paperless_url ? 'ist eingerichtet' : 'ist nicht eingerichtet'}, E-Mail-Versand (n8n) {v.n8n_mail_url ? 'ist eingerichtet' : 'ist nicht eingerichtet'} –
-        Zugang, Ersatzabsender, Mailprotokoll und Testmail werden zentral unter Administration → Anbindungen gepflegt.
-      </MessageStrip>
-
-      <Panel headerText="n8n-Webhooks" fixed style={{ marginTop: '1rem' }}>
-        <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
-          Zugangsdaten zu Nextcloud, EP3 oder dem Mailserver liegen in den n8n-Workflows, nicht im Portal. Hier wird nur die Anmeldung am
-          jeweiligen Webhook eingetragen – Benutzer und Passwort wie in der SAP-Destination (SM59, „Basic Authentication“), sofern der
-          Webhook in n8n eine Anmeldung verlangt. Die Prüfung nutzt die eingegebenen Werte, auch ungesichert.
-        </MessageStrip>
-        <Endpunkt titel="Rückmeldungen Jugendtraining (SM59: TCO_N8N_STUNDEN)" endpunkt="stunden" v={v} ro={ro}
-                  hinweis="Liest die Stundenrückmeldungen aus Nextcloud. Gilt auch für den Ferien-Webhook.">
-          <TextField label="Webhook-URL" value={t('n8n_stunden_url')} onChange={s('n8n_stunden_url')} readonly={ro} placeholder="http://…:5678/webhook/…" />
-          <TextField label="Benutzer (Basic Auth)" value={t('n8n_stunden_user')} onChange={s('n8n_stunden_user')} readonly={ro} placeholder="z. B. torsten.laub@tc-oberthal.de" />
-          <TextField label="Passwort" type="Password" value={t('n8n_stunden_pw')} onChange={s('n8n_stunden_pw')} readonly={ro} />
-        </Endpunkt>
-        <Endpunkt titel="Schulferien Saarland (ferien-saarland)" endpunkt="ferien" v={v} ro={ro}
-                  hinweis="Anmeldung wie bei den Rückmeldungen.">
-          <TextField label="Webhook-URL" value={t('n8n_ferien_url')} onChange={s('n8n_ferien_url')} readonly={ro} />
-        </Endpunkt>
-        <Endpunkt titel="EP3 Import Hallenrechnungen" endpunkt="ep3" v={v} ro={ro}
-                  hinweis="Der Test ruft den EP3-Export ab, übernimmt aber nichts.">
-          <TextField label="Webhook-URL" value={t('n8n_ep3_url')} onChange={s('n8n_ep3_url')} readonly={ro} />
-          <TextField label="Benutzer (Basic Auth, optional)" value={t('n8n_ep3_user')} onChange={s('n8n_ep3_user')} readonly={ro} />
-          <TextField label="Passwort" type="Password" value={t('n8n_ep3_pw')} onChange={s('n8n_ep3_pw')} readonly={ro} />
-        </Endpunkt>
-        {v.n8n_stunden_pw && !v.n8n_stunden_user && (
-          <MessageStrip hideCloseButton design="Critical" style={{ marginTop: '0.5rem' }}>
-            Für die Rückmeldungen ist noch ein früher direkt eingetragener Authorization-Header hinterlegt. Er gilt weiter, bis Benutzer und Passwort eingetragen werden.
-          </MessageStrip>
-        )}
+      <Panel headerText="Anbindungen" fixed style={{ marginTop: '1rem' }}>
+        <Text style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
+          Zugänge werden zentral unter Administration → Anbindungen gepflegt (Adresse, Anmeldung, Verbindungstest, Mailprotokoll).
+        </Text>
+        <FlexBox wrap="Wrap" style={{ gap: '0.5rem 1.5rem' }}>
+          {([['Paperless-ngx', v.paperless_url], ['E-Mail-Versand (n8n)', v.n8n_mail_url], ['Rückmeldungen Jugendtraining', v.n8n_stunden_url],
+            ['Schulferien', v.n8n_ferien_url], ['EP3-Export', v.n8n_ep3_url]] as [string, unknown][]).map(([name, url]) => (
+            <ObjectStatus key={name} state={url ? 'Positive' : 'None'} showDefaultIcon>{name}: {url ? 'eingerichtet' : 'nicht eingerichtet'}</ObjectStatus>
+          ))}
+        </FlexBox>
       </Panel>
 
       <Panel headerText="Hallenabrechnung" fixed style={{ marginTop: '1rem' }}>

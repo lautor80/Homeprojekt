@@ -3,7 +3,7 @@ import path from 'node:path';
 import { sql, type Tx } from '../../../server/src/db.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { Paperless, paperlessKonfiguriert } from '../../../server/src/lib/paperless.js';
-import { paperlessZugang } from '../../../server/src/lib/verbindungen.js';
+import { authHeader, paperlessZugang, verbindungLesen } from '../../../server/src/lib/verbindungen.js';
 import { absenderListe, mailVerbindung } from '../../../server/src/lib/mail.js';
 
 export type Db = Tx;
@@ -29,11 +29,13 @@ export interface Verein {
   n8n_mail_key: string | null;
   /** Ersatzabsender je Anwendung (Einstellungen der Anbindung „mail“), nur lesend */
   mail_absender: { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }[];
+  /** n8n-Webhooks der Importe aus den zentralen Anbindungen tco.ep3 / tco.stunden / tco.ferien, nur lesend (…_auth = Authorization-Header) */
   n8n_ep3_url: string | null;
   n8n_ep3_auth: string | null;
   n8n_stunden_url: string | null;
   n8n_ferien_url: string | null;
   n8n_stunden_auth: string | null;
+  n8n_ferien_auth: string | null;
   n8n_stunden_user: string | null;
   n8n_ep3_user: string | null;
   halle_stichtag: string;
@@ -63,9 +65,13 @@ export async function vereinLesen(db: Db = DB): Promise<Verein> {
   const [v] = await db`select * from tco.verein where id = 1`;
   const pl = await paperlessZugang(db);
   const mail = await mailVerbindung(db);
+  const [ep3, stunden, ferien] = await Promise.all([verbindungLesen('tco.ep3', db), verbindungLesen('tco.stunden', db), verbindungLesen('tco.ferien', db)]);
   return {
     ...(v as unknown as Verein), paperless_url: pl.url, paperless_token: pl.token,
     n8n_mail_url: mail.url || null, n8n_mail_key: mail.auth_art === 'header' ? mail.geheimnis : null, mail_absender: absenderListe(mail),
+    n8n_ep3_url: ep3.url || null, n8n_ep3_auth: authHeader(ep3).Authorization ?? null, n8n_ep3_user: ep3.auth_user,
+    n8n_stunden_url: stunden.url || null, n8n_stunden_auth: authHeader(stunden).Authorization ?? null, n8n_stunden_user: stunden.auth_user,
+    n8n_ferien_url: ferien.url || null, n8n_ferien_auth: authHeader(ferien).Authorization ?? null,
   };
 }
 

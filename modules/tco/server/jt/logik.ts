@@ -334,14 +334,14 @@ export async function importieren(tx: Db, monat: string, csv: string, ferien: Ma
   return { prot, text, state, ok };
 }
 
-function authHeader(v: Verein): Record<string, string> {
-  const a = v.n8n_stunden_auth?.trim();
+function authHeader(v: Verein, welche: 'stunden' | 'ferien'): Record<string, string> {
+  const a = (welche === 'ferien' ? v.n8n_ferien_auth : v.n8n_stunden_auth)?.trim();
   return a ? { Authorization: a } : {};
 }
 
-async function n8nGet(url: string, v: Verein, was: string): Promise<Response> {
+async function n8nGet(url: string, v: Verein, was: string, welche: 'stunden' | 'ferien' = 'stunden'): Promise<Response> {
   try {
-    return await fetch(url, { headers: authHeader(v), signal: AbortSignal.timeout(30_000) });
+    return await fetch(url, { headers: authHeader(v, welche), signal: AbortSignal.timeout(30_000) });
   } catch (e) {
     throw new BusinessError(`${was}: n8n nicht erreichbar (${(e as Error).message})`);
   }
@@ -349,7 +349,7 @@ async function n8nGet(url: string, v: Verein, was: string): Promise<Response> {
 
 /** Rückmeldungen über den n8n-Webhook TCO_N8N_STUNDEN (CSV oder JSON) */
 export async function rueckmeldungenAbrufen(v: Verein): Promise<{ csv: string; ungueltig: number }> {
-  if (!v.n8n_stunden_url) throw new BusinessError('Der Webhook für die Rückmeldungen ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  if (!v.n8n_stunden_url) throw new BusinessError('Der Webhook für die Rückmeldungen ist nicht eingerichtet (Administration → Anbindungen).');
   const u = new URL(v.n8n_stunden_url);
   u.searchParams.set('format', 'csv');
   const res = await n8nGet(u.toString(), v, 'Nextcloud');
@@ -399,10 +399,10 @@ export async function ferienLesen(db: Db, jahr: number): Promise<Ferientag[]> {
 
 /** Ferien und Feiertage eines Jahres über n8n laden und speichern (je Jahr ersetzt) */
 export async function ferienSynchronisieren(tx: Db, v: Verein, jahr: number, benutzer: string): Promise<{ ferien: number; feiertage: number }> {
-  if (!v.n8n_ferien_url) throw new BusinessError('Der Webhook für die Schulferien ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  if (!v.n8n_ferien_url) throw new BusinessError('Der Webhook für die Schulferien ist nicht eingerichtet (Administration → Anbindungen).');
   const u = new URL(v.n8n_ferien_url);
   u.searchParams.set('jahr', String(jahr));
-  const res = await n8nGet(u.toString(), v, 'Schulferien');
+  const res = await n8nGet(u.toString(), v, 'Schulferien', 'ferien');
   let j: { fehler?: string; ferientage?: { datum: string; ferien: string }[]; feiertage?: { datum: string; name: string }[] };
   try { j = await res.json(); } catch { throw new BusinessError('Ferien-Antwort nicht lesbar.'); }
   if (!res.ok) throw new BusinessError(j?.fehler || `Ferien-Webhook antwortet mit HTTP ${res.status}.`);
