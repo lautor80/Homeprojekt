@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, Dialog, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { Bar, BusyIndicator, Button, Dialog, Icon, Link, MessageStrip, Text, IllustratedMessage } from '@ui5/webcomponents-react';
+import '@ui5/webcomponents-fiori/dist/illustrations/DragFilesToUpload.js';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@core/api';
 import { useSession } from '@core/session';
@@ -113,16 +114,23 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
            onClick={() => !lauf && fileRef.current?.click()}
            onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !lauf) { e.preventDefault(); fileRef.current?.click(); } }}
            {...dnd}>
-        {lauf
-          ? <BusyIndicator active size="S" />
-          : <Icon name={ueber ? 'download' : 'upload-to-cloud'} className="portal-ablage__icon" />}
-        {!collapsed && (
-          <div className="portal-ablage__text">
-            <span className="portal-ablage__titel">
-              {lauf ? `Übertrage ${lauf.fertig + 1 > lauf.gesamt ? lauf.gesamt : lauf.fertig + 1} von ${lauf.gesamt} …` : ueber ? 'Loslassen zum Ablegen' : 'Dateien hier ablegen'}
-            </span>
-            <span className="portal-ablage__info">{seitenZiel ? `→ ${seitenZiel.titel}` : zusammenfassung}</span>
-          </div>
+        {collapsed || lauf ? (
+          <>
+            {lauf
+              ? <BusyIndicator active size="S" />
+              : <Icon name={ueber ? 'download' : 'upload-to-cloud'} className="portal-ablage__icon" />}
+            {!collapsed && (
+              <div className="portal-ablage__text">
+                <span className="portal-ablage__titel">{`Übertrage ${lauf!.fertig + 1 > lauf!.gesamt ? lauf!.gesamt : lauf!.fertig + 1} von ${lauf!.gesamt} …`}</span>
+                <span className="portal-ablage__info">{seitenZiel ? `→ ${seitenZiel.titel}` : zusammenfassung}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          // Illustrated Message wie die Ablagefelder auf den Seiten (klein, passend zur Navigation)
+          <IllustratedMessage name="DragFilesToUpload" design="Dot" className="portal-ablage__illu"
+                              titleText={ueber ? 'Loslassen zum Ablegen' : 'Dateien hier ablegen'}
+                              subtitleText={seitenZiel ? `→ ${seitenZiel.titel}` : zusammenfassung} />
         )}
       </div>
       {!collapsed && (
