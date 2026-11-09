@@ -28,6 +28,7 @@ import {
   bidText,
 } from './util';
 import { AutoDialog } from './AutoZuordnung';
+import { SammelDialog } from './SammelRechnung';
 import './halle.css';
 import { MailDialog, MailtextDialog, PositionDialog, VersionenDialog, WhatsAppDialog, ZahlungenDialog } from './HalleDialoge';
 
@@ -77,6 +78,7 @@ export function Hallenabrechnung() {
   const [zahlungen, setZahlungen] = useState<Rechnung | null>(null);
   const [versionen, setVersionen] = useState<PaperlessInfo | null>(null);
   const [auto, setAuto] = useState(false);
+  const [sammel, setSammel] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
 
   Object.assign(merk, { status, von, bis, buchungen: mitBuchungen, suche, sort, kunde });
@@ -192,6 +194,7 @@ export function Hallenabrechnung() {
         {edit && <Button icon="download-from-cloud" onClick={n8nImport}>EP3 importieren</Button>}
         {edit && <Button icon="upload" onClick={() => fileRef.current?.click()}>CSV-Datei</Button>}
         {edit && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
+        {edit && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
         <Button icon="lead" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise</Button>
       </>}
     >
@@ -299,6 +302,7 @@ export function Hallenabrechnung() {
       <ZahlungenDialog rechnung={zahlungen} onClose={() => setZahlungen(null)} />
       <VersionenDialog info={versionen} onClose={() => setVersionen(null)} />
       <AutoDialog open={auto} onClose={() => setAuto(false)} onDone={(t) => { setAuto(false); toast(t, 6000); neuLaden(); }} />
+      <SammelDialog open={sammel} onClose={() => setSammel(false)} onDone={(t) => { setSammel(false); toast(t, 6000); neuLaden(); }} />
       <ConfirmDialog open={!!confirm} title={confirm?.titel ?? ''} text={confirm?.text ?? ''} askReason={confirm?.grund}
                      danger={confirm?.danger} confirmText={confirm?.ok}
                      onCancel={() => setConfirm(null)}

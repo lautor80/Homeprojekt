@@ -282,6 +282,12 @@ export class Paperless {
     return this.json('GET', `api/documents/${id}/`);
   }
 
+  /** Dokument löschen (Papierkorb) und – soweit möglich – den Papierkorb für dieses Dokument leeren */
+  async loeschen(id: number): Promise<void> {
+    await this.request('DELETE', `api/documents/${id}/`);
+    await this.request('POST', 'api/trash/', { documents: [id], action: 'empty' }, true).catch(() => undefined);
+  }
+
   async existiert(id: number): Promise<boolean> {
     const r = await this.request('GET', `api/documents/${id}/`, undefined, true);
     return r.ok;

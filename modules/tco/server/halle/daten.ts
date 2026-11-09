@@ -359,7 +359,7 @@ export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPositi
 // Schreiben
 // ---------------------------------------------------------------------------
 
-async function kopfLesen(tx: Db, rgnr: string) {
+export async function kopfLesen(tx: Db, rgnr: string) {
   const [k] = await tx`select rgnr_txt, kunde, adrnr, status, versendet::text, gedruckt::text, doknr, betrag::float8 as betrag
                          from tco.rgkopf where rgnr_txt = ${rgnr} for update`;
   if (!k) throw new BusinessError(`Rechnung ${rgnr} nicht gefunden`);

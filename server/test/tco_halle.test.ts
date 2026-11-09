@@ -425,3 +425,49 @@ test('Hallenabrechnung: BID-Format SAP/EP3, Abo als Einzel, Sommer-Abos', async 
   r = await call('GET', `${H}/person?kunde=${encodeURIComponent('YURY KLIMOV')}`);
   assert.deepEqual(r.body.buchungen.map((b: any) => [b.bid, b.datum, b.termine]), [['0000008002', '2026-09-15', 1], ['0000008003', '2026-10-05', 1]]);
 });
+
+test('Rechnungen ohne Hallenbuchung: Namensabgleich, neuer Kunde, je Person eine Rechnung (#18)', async () => {
+  let r = await call('GET', `${H}/sammel/kandidaten`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.some((k: any) => k.key === 'M:0000000012' && k.name === 'Max Meier-Lüdenscheid'));
+  assert.ok(r.body.some((k: any) => k.key === 'K:17' && k.info.startsWith('EP3-Kunde')));
+
+  r = await call('POST', `${H}/sammel/namen`, { text: '1. Meier-Lüdenscheid, Max\nErika Muster\nErka Mustr\nHans Neu\n\nErika Muster' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((t: any) => [t.zeile, t.vorschlaege[0]?.key ?? null, t.vorschlaege[0]?.punkte ?? null]), [
+    ['Meier-Lüdenscheid, Max', 'M:0000000012', 100],
+    ['Erika Muster', 'K:17', 100],
+    ['Erka Mustr', 'K:17', 70],            // Tippfehler aus der Texterkennung → Vorschlag zur Prüfung
+    ['Hans Neu', null, null],
+  ]);
+  assert.deepEqual([r.body[3].vorname, r.body[3].nachname], ['Hans', 'Neu']);
+
+  assert.equal((await call('POST', `${H}/sammel/bild`, { bild: 'data:text/plain;base64,eA==' })).status, 400);
+
+  r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '093', beschreibung: 'Teilnahme Winterhallenrunde', menge: '1', preis: '25' }, anhaengen: false,
+    empfaenger: [{ key: 'M:0000000012' }, { key: 'K:17' }, { neu: { vorname: 'Hans', nachname: 'Neu', email: 'hans@example.org' } }, { key: 'M:0000000012' }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.rechnungen.length, 3, 'doppelte Person nur einmal');
+  assert.match(r.body.text, /3 neue Rechnung\(en\), 1 Kunde\(n\) neu angelegt/);
+  const [kunde] = await sql`select zuid, nachname, email, status from tco.kunden where nachname = 'Neu'`;
+  assert.ok(Number(kunde.zuid) >= 90_000_000);
+  assert.deepEqual([kunde.email, kunde.status], ['hans@example.org', 'portal']);
+  const hans = r.body.rechnungen.find((x: any) => x.name === 'Hans Neu');
+  const [k] = await sql`select kunde, adrnr, betrag::float8 as betrag, status from tco.rgkopf where rgnr_txt = ${hans.rgnr}`;
+  assert.deepEqual({ ...k }, { kunde: 'HANS NEU', adrnr: `99${kunde.zuid}`, betrag: 25, status: '1' });
+
+  // erneut mit „anhängen“: dieselbe Person bekommt die Position auf ihre offene Rechnung
+  r = await call('POST', `${H}/sammel`, { position: { prod_key: '093', beschreibung: 'Ballkauf', menge: '2', preis: '3,50' }, anhaengen: true, empfaenger: [{ key: `K:${kunde.zuid}` }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.rechnungen[0].rgnr, hans.rgnr);
+  assert.equal(r.body.rechnungen[0].neu, false);
+  assert.equal((await sql`select betrag::float8 as b from tco.rgkopf where rgnr_txt = ${hans.rgnr}`)[0].b, 32);
+
+  // Person erscheint in der Liste – mit Anschrift-Hinweis (Kunde ohne Straße)
+  r = await call('GET', `${H}/personen?status=1`);
+  const p = r.body.personen.find((x: any) => x.kunde === 'HANS NEU');
+  assert.ok(p, JSON.stringify(r.body.personen.map((x: any) => x.kunde)));
+  assert.deepEqual(p.probleme.map((x: any) => x.art), ['ANSCHRIFT']);
+});

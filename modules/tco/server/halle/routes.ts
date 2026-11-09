@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { bildLesen, kandidaten, namenAbgleichen, sammelRechnungen } from './sammel.js';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -160,6 +161,45 @@ export async function halleRoutes(app: FastifyInstance) {
     const { kunde } = z.object({ kunde: z.string().min(1) }).parse(req.body);
     const rgnr = await change(req, (tx) => rechnungAnlegen(tx, kunde));
     return { rgnr_txt: rgnr };
+  });
+
+  // ---------------------------------------------------------------- Rechnungen ohne Hallenbuchung (Sammelrechnung)
+  app.get('/halle/sammel/kandidaten', { preHandler: requireAuth(P_HALLE.edit) }, async () => kandidaten(DB));
+
+  /** Namen (eine Person je Zeile) mit Mitgliedern und Kunden abgleichen */
+  app.post('/halle/sammel/namen', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const { text } = z.object({ text: z.string().max(20_000) }).parse(req.body);
+    return namenAbgleichen(text, await kandidaten(DB));
+  });
+
+  /** Bild aus der Zwischenablage → Text (Paperless-OCR) → Namensabgleich */
+  app.post('/halle/sammel/bild', { preHandler: requireAuth(P_HALLE.edit), bodyLimit: 15 * 1024 * 1024 }, async (req) => {
+    const { bild } = z.object({ bild: z.string().regex(/^data:image\/[\w+.-]+;base64,/, 'Bitte ein Bild einfügen.') }).parse(req.body);
+    const mime = bild.slice(5, bild.indexOf(';'));
+    const text = await bildLesen(await vereinLesen(), Buffer.from(bild.slice(bild.indexOf(',') + 1), 'base64'), mime);
+    return { text, treffer: namenAbgleichen(text, await kandidaten(DB)) };
+  });
+
+  app.post('/halle/sammel', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const b = z.object({
+      empfaenger: z.array(z.object({
+        key: z.string().regex(/^[MK]:\w+$/).nullish(),
+        neu: z.object({ vorname: z.string().max(60).default(''), nachname: z.string().max(60), email: z.string().max(120).nullish(), strasse: z.string().max(80).nullish(), plz: z.string().max(10).nullish(), ort: z.string().max(60).nullish() }).nullish(),
+      })).min(1, 'Bitte mindestens eine Person auswählen.').max(300),
+      position: z.object({
+        prod_key: z.string().min(1, 'Bitte ein Produkt auswählen'), beschreibung: z.string().max(40).nullish(),
+        menge: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte eine Menge als Zahl erfassen' })),
+        preis: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte einen Preis als Zahl erfassen' }).nullish()),
+      }),
+      anhaengen: z.boolean().default(true),
+    }).parse(req.body);
+    const r = await change(req, (tx) => sammelRechnungen(tx, b), { action: 'SAMMELRECHNUNG' });
+    const neu = r.filter((x) => x.neu).length;
+    const kunden = r.filter((x) => x.kundeNeu).length;
+    return {
+      rechnungen: r,
+      text: `${r.length} Person(en): ${neu} neue Rechnung(en)${r.length - neu ? `, ${r.length - neu}× an offene Rechnung angehängt` : ''}${kunden ? `, ${kunden} Kunde(n) neu angelegt` : ''}.`,
+    };
   });
 
   app.post('/halle/zuordnen', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
