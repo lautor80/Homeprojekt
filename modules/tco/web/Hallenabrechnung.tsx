@@ -23,7 +23,7 @@ import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import {
-  H, RG_STATE, RG_STATUS, dat, dateiLesen, eur, wtag, zeit,
+  H, PROBLEM_ICON, RG_STATE, RG_STATUS, dat, dateiLesen, eur, wtag, zeit,
   type Buchung, type PaperlessInfo, type Person, type PersonDetail, type Position, type Rechnung,
   bidText,
 } from './util';
@@ -223,9 +223,21 @@ export function Hallenabrechnung() {
                     <ListItemCustom key={p.kunde} data-kunde={p.kunde} selected={p.kunde === kunde}>
                       <div className="portal-hp">
                         <div className="portal-hp__kopf">
-                          <span className="portal-hp__name">{p.name}</span>
+                          <span className="portal-hp__name">
+                            {p.probleme?.length ? <Icon name={p.probleme.some((x) => x.schwere === 'Negative') ? 'message-error' : 'message-warning'}
+                                                         className={`portal-hp__warn portal-hp__warn--${p.probleme.some((x) => x.schwere === 'Negative') ? 'Negative' : 'Critical'}`}
+                                                         accessibleName="Problem bei der Rechnungserstellung" /> : null}
+                            {p.name}
+                          </span>
                           <span className="portal-hp__summe">{eur(p.betrag)}</span>
                         </div>
+                        {/* Probleme direkt in der Liste – ohne die Detailsicht zu öffnen */}
+                        {p.probleme?.map((x) => (
+                          <div key={x.art} className={`portal-hp__problem portal-hp__problem--${x.schwere}`} title={x.text}>
+                            <Icon name={PROBLEM_ICON[x.art]} className="portal-hp__symbol" />
+                            <span>{x.text}</span>
+                          </div>
+                        ))}
                         {/* jede Rechnung der Person in der Selektion mit Status und offenem Betrag */}
                         {/* je Rechnung: Symbol nach Status (ohne Text), Rechnungsnummer, Betrag */}
                         {[...p.rechnungen].sort((a, b) => a.status.localeCompare(b.status) || b.rgnr_txt.localeCompare(a.rgnr_txt)).map((r) => {
@@ -542,9 +554,9 @@ function PersonPanel(props: {
           <Attribute label="Offene Rechnungen">{eur(d.offenRechnungen)}{d.gezahlt ? ` (bereits gezahlt ${eur(d.gezahlt)})` : ''}</Attribute>
           <Attribute label="Gesamtbetrag" strong>{eur(d.offenRechnungen + d.betragBuchungen)}</Attribute>
         </Attributes>
-        {!k && <MessageStrip design="Critical" hideCloseButton style={{ marginTop: '0.75rem' }}>
-          Zum EP3-Namen „{d.kunde}“ gibt es kein Mitglied und keinen EP3-Kunden. Für den Druck braucht die Rechnung eine Anschrift.
-        </MessageStrip>}
+        {(d.probleme ?? []).map((x) => (
+          <MessageStrip key={x.art} design={x.schwere} hideCloseButton style={{ marginTop: '0.75rem' }}>{x.text}</MessageStrip>
+        ))}
       </ObjectHeader>
 
       {/* Rechnungen */}

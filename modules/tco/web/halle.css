@@ -101,3 +101,16 @@
 .portal-hp__nr ui5-icon { width: 0.875rem; height: 0.875rem; color: var(--sapContent_IconColor); }
 .portal-hp__betrag { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
 
+
+/* Probleme bei der Rechnungserstellung direkt in der Personenliste */
+.portal-hp__warn { width: 1rem; height: 1rem; margin-right: 0.375rem; vertical-align: -0.125rem; }
+.portal-hp__warn--Negative { color: var(--sapNegativeElementColor, #aa0808); }
+.portal-hp__warn--Critical { color: var(--sapCriticalElementColor, #e76500); }
+.portal-hp__problem {
+  display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); align-items: start; gap: 0.25rem;
+  margin: 0.125rem 0; padding: 0.25rem 0.375rem; border-radius: 0.375rem;
+  font-size: var(--sapFontSmallSize); white-space: normal; line-height: 1.3;
+}
+.portal-hp__problem--Negative { background: var(--sapErrorBackground, #ffeaf4); color: var(--sapNegativeTextColor, #aa0808); border-left: 0.2rem solid var(--sapNegativeElementColor, #aa0808); }
+.portal-hp__problem--Critical { background: var(--sapWarningBackground, #fff8d6); color: var(--sapCriticalTextColor, #b44f00); border-left: 0.2rem solid var(--sapCriticalElementColor, #e76500); }
+.portal-hp__problem .portal-hp__symbol { color: inherit; margin-top: 0.05rem; }

@@ -210,9 +210,10 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
     '600;05.11.2026;18:00;19:00;Max Meier-Lüdenscheid;;subscription;0\n' +
     '600;12.11.2026;18:00;19:00;Max Meier-Lüdenscheid;;subscription;0\n' +
     '504;06.11.2026;10:00;11:00;Erika Muster;;cancelled;0\n' +
-    '505;01.12.2099;10:00;11:00;Erika Muster;;single;0\n';           // Zukunft
+    '505;01.12.2099;10:00;11:00;Erika Muster;;single;0\n' +          // Zukunft
+    '506;09.11.2026;10:00;11:00;Unbekannt Gast;;single;0\n';          // kein Mitglied, kein EP3-Kunde
   r = await call('POST', `${H}/import/datei`, { name: 'EP3_BOOKINGS.CSV', data: b64(bookings) });
-  assert.match(r.body.text, /Buchungen: 7 gelesen, 7 neu/);
+  assert.match(r.body.text, /Buchungen: 8 gelesen, 8 neu/);
 
   // ---- Übersicht
   r = await call('GET', `${H}/personen?status=1,2,3,5`);
@@ -221,6 +222,15 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.deepEqual([erika.offeneBuchungen, erika.betrag, erika.gruppe], [3, 65, '0 – Ohne Rechnung']);
   const max = r.body.personen.find((p: any) => p.kunde === 'MAX MEIER-LÜDENSCHEID');
   assert.equal(max.offeneBuchungen, 2); // Einzel + Abo (eine Serie)
+  // Probleme direkt in der Personenliste (#20/#18)
+  assert.deepEqual(max.probleme, []);
+  assert.deepEqual(erika.probleme, []);
+  const gast = r.body.personen.find((p: any) => p.kunde === 'UNBEKANNT GAST');
+  assert.deepEqual(gast.probleme.map((x: any) => [x.art, x.schwere]), [['KONTAKT', 'Negative']]);
+  assert.match(gast.probleme[0].text, /kein Mitglied und keinen EP3-Kunden/);
+  r = await call('GET', `${H}/person?kunde=${encodeURIComponent('UNBEKANNT GAST')}`);
+  assert.equal(r.body.probleme[0].art, 'KONTAKT');
+  await sql`delete from tco.bookings where bid = '0000000506'`;
 
   r = await call('GET', `${H}/person?kunde=${encodeURIComponent('MAX MEIER-LÜDENSCHEID')}`);
   assert.equal(r.body.adrnr, '0000000012');

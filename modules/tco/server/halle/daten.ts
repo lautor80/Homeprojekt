@@ -61,6 +61,8 @@ export interface Person {
   offenRechnungen: number;
   betrag: number;
   gruppe: string;
+  /** Hinweise, die Rechnung oder Versand behindern */
+  probleme: Problem[];
 }
 
 export interface Selektion {
@@ -204,6 +206,27 @@ export async function rechnungenLesen(db: Db, sel: Selektion | null, kunde?: str
   });
 }
 
+/** Hinweis, der die Rechnungserstellung bzw. den Versand behindert (Personenliste und Detail) */
+export interface Problem { art: 'KONTAKT' | 'ANSCHRIFT' | 'VERSAND' | 'PREIS'; schwere: 'Negative' | 'Critical'; text: string }
+
+/** Probleme einer Person: fehlende Zuordnung/Anschrift/Versandweg, Buchungen ohne Preis */
+export function problemeErmitteln(kunde: string, kontakt: Kontakt | null, buchungen: Pick<Buchung, 'fehler' | 'datum'>[], offeneRechnungen: number): Problem[] {
+  const out: Problem[] = [];
+  const brauchtRechnung = buchungen.length > 0 || offeneRechnungen > 0;
+  if (!kontakt) {
+    if (brauchtRechnung) out.push({ art: 'KONTAKT', schwere: 'Negative', text: `Zum EP3-Namen „${kunde}“ gibt es kein Mitglied und keinen EP3-Kunden – für den Druck fehlt die Anschrift.` });
+  } else {
+    if (brauchtRechnung && (!kontakt.strasse.trim() || !kontakt.plz.trim() || !kontakt.ort.trim())) out.push({ art: 'ANSCHRIFT', schwere: 'Critical', text: 'Anschrift unvollständig (Straße, PLZ oder Ort fehlt).' });
+    if (brauchtRechnung && !kontakt.email && !kontakt.mobil) out.push({ art: 'VERSAND', schwere: 'Critical', text: 'Weder E-Mail noch Mobilnummer – Versand nur als Ausdruck.' });
+  }
+  const ohnePreis = buchungen.filter((b) => b.fehler);
+  if (ohnePreis.length) {
+    const f = [...new Set(ohnePreis.map((b) => b.fehler))];
+    out.push({ art: 'PREIS', schwere: 'Negative', text: `${ohnePreis.length} Buchung(en) ohne Preis: ${f.slice(0, 2).join('; ')}${f.length > 2 ? ' …' : ''}` });
+  }
+  return out;
+}
+
 export async function personenLesen(db: Db, v: Verein, sel: Selektion) {
   const preise = await preiseLesen(db);
   const buchungen = sel.buchungen ? await offeneBuchungen(db, v, preise) : [];
@@ -212,7 +235,7 @@ export async function personenLesen(db: Db, v: Verein, sel: Selektion) {
   const get = (kunde: string) => {
     let p = map.get(kunde);
     if (!p) {
-      p = { kunde, name: nameSchoen(kunde), offeneBuchungen: 0, betragBuchungen: 0, rechnungen: [], offenRechnungen: 0, betrag: 0, gruppe: '' };
+      p = { kunde, name: nameSchoen(kunde), offeneBuchungen: 0, betragBuchungen: 0, rechnungen: [], offenRechnungen: 0, betrag: 0, gruppe: '', probleme: [] };
       map.set(kunde, p);
     }
     return p;
@@ -227,6 +250,15 @@ export async function personenLesen(db: Db, v: Verein, sel: Selektion) {
     p.rechnungen.push({ rgnr_txt: r.rgnr_txt, status: r.status, betrag: r.betrag, offen: r.offen, versendet: r.versendet });
     if (!['4', '6'].includes(r.status)) p.offenRechnungen++;
     p.betrag = runden(p.betrag + r.offen);
+  }
+  // Probleme je Person (Zuordnung, Anschrift, Versandweg, Preise) – nur wo noch etwas abzurechnen ist
+  const buchungenJe = new Map<string, Buchung[]>();
+  for (const b of buchungen) buchungenJe.set(b.kunde, [...(buchungenJe.get(b.kunde) ?? []), b]);
+  for (const p of map.values()) {
+    const offen = p.rechnungen.filter((r) => !['4', '6'].includes(r.status)).length;
+    if (!p.offeneBuchungen && !offen) continue;
+    const kontakt = await kontaktLesen(db, await adrnrErmitteln(db, p.kunde));
+    p.probleme = problemeErmitteln(p.kunde, kontakt, buchungenJe.get(p.kunde) ?? [], offen);
   }
   const personen = [...map.values()].map((p) => {
     const min = p.rechnungen.map((r) => r.status).sort()[0];
@@ -257,6 +289,7 @@ export async function personDetail(db: Db, v: Verein, kunde: string, sel: Selekt
     rechnungen,
     buchungen,
     offeneRechnungen: rechnungen.filter((r) => !['4', '6'].includes(r.status)).length,
+    probleme: problemeErmitteln(kunde, kontakt, buchungen, rechnungen.filter((r) => !['4', '6'].includes(r.status)).length),
     gezahlt: runden(rechnungen.reduce((s, r) => s + r.gezahlt, 0)),
     offenRechnungen: runden(rechnungen.reduce((s, r) => s + r.offen, 0)),
     betragBuchungen: runden(buchungen.reduce((s, b) => s + b.betrag, 0)),

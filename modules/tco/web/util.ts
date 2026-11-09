@@ -47,10 +47,14 @@ export interface Buchung {
 export interface Person {
   kunde: string; name: string; offeneBuchungen: number; betragBuchungen: number;
   rechnungen: { rgnr_txt: string; status: string; betrag: number; offen: number; versendet: string | null }[]; offenRechnungen: number; betrag: number; gruppe: string;
+  probleme: Problem[];
 }
+/** Hinweis, der Rechnung oder Versand behindert */
+export interface Problem { art: 'KONTAKT' | 'ANSCHRIFT' | 'VERSAND' | 'PREIS'; schwere: 'Negative' | 'Critical'; text: string }
+export const PROBLEM_ICON: Record<Problem['art'], string> = { KONTAKT: 'person-placeholder', ANSCHRIFT: 'addresses', VERSAND: 'email-read', PREIS: 'lead' };
 export interface PersonDetail {
   kunde: string; name: string; adrnr: string | null; kontakt: Kontakt | null; kanal: 'E' | 'W' | '';
-  rechnungen: Rechnung[]; buchungen: Buchung[]; offeneRechnungen: number; gezahlt: number; offenRechnungen: number; betragBuchungen: number;
+  rechnungen: Rechnung[]; buchungen: Buchung[]; offeneRechnungen: number; gezahlt: number; offenRechnungen: number; betragBuchungen: number; probleme: Problem[];
 }
 export interface Position {
   rgpos: number; bid: string | null; datum: string | null; time_start: string | null; time_ende: string | null; prod_key: string | null;
