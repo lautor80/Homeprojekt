@@ -56,7 +56,7 @@ export function Beitraege() {
   const laufend = zeilen.reduce((s, z) => s + z.vertraege, 0);
 
   const columns: AnalyticalTableColumnDefinition[] = useMemo(() => [
-    { Header: 'Turnus', accessor: 'gruppe', id: 'gruppe', width: 60, disableGroupBy: false, Cell: ({ value }: Cell) => <Text>{String(value).replace(/^\d · /, '')}</Text> },
+    { Header: 'Turnus', accessor: 'gruppe', id: 'gruppe', width: 200, minWidth: 200, disableGroupBy: false, Cell: ({ value }: Cell) => <Text>{String(value).replace(/^\d · /, '')}</Text> },
     { Header: 'Art', accessor: 'art', width: 70 },
     { Header: 'Bezeichnung', accessor: 'bezeichnung', minWidth: 180 },
     { Header: 'Turnus', accessor: 'turnus', width: 120 },
