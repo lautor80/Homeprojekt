@@ -23,6 +23,8 @@ export interface Verein {
   paperless_token: string | null;
   n8n_mail_url: string | null;
   n8n_mail_key: string | null;
+  /** Absender je Anwendung für den n8n-Mailversand (anwendung '*' = Standard) */
+  mail_absender: { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }[];
   n8n_ep3_url: string | null;
   n8n_ep3_auth: string | null;
   n8n_stunden_url: string | null;

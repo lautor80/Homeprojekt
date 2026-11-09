@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  AnalyticalTable, Bar, Button, DatePicker, FileUploader, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
+  AnalyticalTable, Bar, Button, ComboBox, ComboBoxItem, DatePicker, Input, FileUploader, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
   SegmentedButtonItem, Tab, TabContainer, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -51,6 +51,44 @@ function Endpunkt({ titel, hinweis, endpunkt, v, ro, children }: { titel: string
       <Text style={{ display: 'block', margin: '0.15rem 0 0.5rem', color: 'var(--sapContent_LabelColor)' }}>{hinweis}</Text>
       <FormGrid>{children}</FormGrid>
       {!ro && <Testen endpunkt={endpunkt} v={v} />}
+    </div>
+  );
+}
+
+/** Absender je Anwendung für den n8n-Mailversand – n8n prüft die Adressen gegen seine Erlaubnisliste (ERLAUBT) */
+interface Absender { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }
+const ANWENDUNGEN = ['*', 'Benutzer', 'Registrierung', 'Mitgliedsantrag', 'Mitglieder', 'Hallenrechnung', 'Verzehr', 'Platzbuchung'];
+function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: boolean; onChange: (l: Absender[]) => void }) {
+  const set = (i: number, p: Partial<Absender>) => onChange(liste.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  const zelle = { padding: '0.2rem 0.4rem' } as const;
+  return (
+    <div style={{ padding: '0 0 0.75rem' }}>
+      <Title level="H6">Absender je Anwendung</Title>
+      <Text style={{ display: 'block', margin: '0.15rem 0 0.5rem', color: 'var(--sapContent_LabelColor)' }}>
+        Ohne Eintrag gilt der Standardabsender des n8n-Workflows. „*“ = Standard für alle übrigen Anwendungen. Die Adressen müssen im Workflow
+        (Knoten „Mail aufbereiten“, ERLAUBT) freigegeben sein und vom SMTP-Konto versendet werden dürfen.
+      </Text>
+      {liste.length > 0 && (
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead><tr>{['Anwendung', 'Absender-E-Mail', 'Absendername', 'Antworten an', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+          <tbody>
+            {liste.map((a, i) => (
+              <tr key={i}>
+                <td style={zelle}>
+                  <ComboBox value={a.anwendung} readonly={ro} style={{ width: '11rem' }} onInput={(e) => set(i, { anwendung: e.target.value })} onChange={(e) => set(i, { anwendung: e.target.value })}>
+                    {ANWENDUNGEN.map((x) => <ComboBoxItem key={x} text={x} />)}
+                  </ComboBox>
+                </td>
+                <td style={zelle}><Input value={a.email} readonly={ro} type="Email" style={{ width: '100%' }} onInput={(e) => set(i, { email: e.target.value })} /></td>
+                <td style={zelle}><Input value={a.name ?? ''} readonly={ro} style={{ width: '100%' }} onInput={(e) => set(i, { name: e.target.value })} /></td>
+                <td style={zelle}><Input value={a.antwort_an ?? ''} readonly={ro} type="Email" style={{ width: '100%' }} onInput={(e) => set(i, { antwort_an: e.target.value })} /></td>
+                <td style={zelle}>{!ro && <Button design="Transparent" icon="delete" tooltip="Entfernen" onClick={() => onChange(liste.filter((_, j) => j !== i))} />}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {!ro && <Button design="Transparent" icon="add" onClick={() => onChange([...liste, { anwendung: liste.length ? '' : '*', email: '', name: '', antwort_an: '' }])}>Absender hinzufügen</Button>}
     </div>
   );
 }
@@ -145,6 +183,8 @@ function VereinTab() {
           <TextField label="Webhook-URL" value={t('n8n_mail_url')} onChange={s('n8n_mail_url')} readonly={ro} />
           <TextField label="Webhook-Schlüssel (Header X-TCO-Key)" type="Password" value={t('n8n_mail_key')} onChange={s('n8n_mail_key')} readonly={ro} />
         </Endpunkt>
+        <MailAbsender liste={(v.mail_absender as unknown as Absender[] | null) ?? []} ro={ro}
+                      onChange={(l) => setV({ ...v, mail_absender: l as unknown as string })} />
         {v.n8n_stunden_pw && !v.n8n_stunden_user && (
           <MessageStrip hideCloseButton design="Critical" style={{ marginTop: '0.5rem' }}>
             Für die Rückmeldungen ist noch ein früher direkt eingetragener Authorization-Header hinterlegt. Er gilt weiter, bis Benutzer und Passwort eingetragen werden.

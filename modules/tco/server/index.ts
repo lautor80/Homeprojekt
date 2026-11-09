@@ -53,6 +53,12 @@ const vereinSchema = z.object({
   logo: z.string().nullish(),
   paperless_url: z.string().nullish(), paperless_token: z.string().nullish(),
   n8n_mail_url: z.string().nullish(), n8n_mail_key: z.string().nullish(),
+  mail_absender: z.preprocess((l) => (Array.isArray(l) ? l.filter((x) => x && (String(x.email ?? '').trim() || String(x.anwendung ?? '').trim())) : l), z.array(z.object({
+    anwendung: z.string().trim().min(1, 'Absender: bitte die Anwendung angeben (* = Standard)').max(40),
+    email: z.string().trim().email('Absender: ungültige E-Mail-Adresse'),
+    name: z.string().trim().max(80).nullish(),
+    antwort_an: z.string().trim().email('Absender: ungültige Antwortadresse').or(z.literal('')).nullish(),
+  })).max(30)).optional(),
   n8n_ep3_url: z.string().nullish(), n8n_ep3_auth: z.string().nullish(),
   n8n_stunden_url: z.string().nullish(), n8n_ferien_url: z.string().nullish(), n8n_stunden_auth: z.string().nullish(),
   /** Basic Auth für die Webhooks: Benutzer sichtbar, Passwort nur schreibend (MASKE = unverändert) */
@@ -122,6 +128,7 @@ async function routes(app: FastifyInstance) {
              email = ${d.email ?? null}, zahlungsziel_tage = ${d.zahlungsziel_tage}, logo = ${d.logo || null},
              paperless_url = ${d.paperless_url || null}, paperless_token = ${d.paperless_token || null},
              n8n_mail_url = ${d.n8n_mail_url || null}, n8n_mail_key = ${d.n8n_mail_key || null},
+             mail_absender = ${tx.json((d.mail_absender ?? alt.mail_absender ?? []) as never)},
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
              n8n_stunden_url = ${d.n8n_stunden_url || null}, n8n_ferien_url = ${d.n8n_ferien_url || null}, n8n_stunden_auth = ${d.n8n_stunden_auth || null},
              n8n_stunden_user = ${d.n8n_stunden_user || null}, n8n_ep3_user = ${d.n8n_ep3_user || null},

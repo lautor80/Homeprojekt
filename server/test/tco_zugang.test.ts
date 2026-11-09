@@ -30,7 +30,7 @@ function client() {
 }
 const admin = client();
 const T = '/api/m/tco';
-const mails: { an: string; betreff: string; text: string }[] = [];
+const mails: { an: string; betreff: string; text: string; absender?: string; absender_name?: string; antwort_an?: string }[] = [];
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -114,12 +114,23 @@ test('Passwort vergessen und Einmal-Link', async () => {
 test('Registrierung extern: E-Mail bestätigen, sofort Hallennutzer', async () => {
   const R = `${T}/platz/registrierung`;
   const gast = client();
+  // Absender je Anwendung (Stammdaten); leere Zeilen werden ignoriert
+  const v = (await admin('GET', `${T}/verein`)).body;
+  let s = await admin('PUT', `${T}/verein`, { ...v, mail_absender: [
+    { anwendung: '*', email: 'info@tc-oberthal.de', name: 'TC Oberthal' },
+    { anwendung: 'registrierung', email: 'portal@tc-oberthal.de', name: 'TCO Portal', antwort_an: 'platz@tc-oberthal.de' },
+    { anwendung: '', email: '' },
+  ] });
+  assert.equal(s.status, 200, JSON.stringify(s.body));
+  s = await admin('PUT', `${T}/verein`, { ...v, mail_absender: [{ anwendung: '*', email: 'kein-mail' }] });
+  assert.equal(s.status, 400);
   assert.equal((await gast('GET', R)).body.mitglied, true);
   let r = await gast('POST', R, { art: 'EXTERN', vorname: 'Erik', nachname: 'Extern', email: 'erik@example.org', benutzername: 'erik', passwort: 'eriks-kennwort-1', datenschutz: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /bestätigen/);
   const m = letzteMail('erik@example.org')!;
   assert.match(m.text, /registrierung-bestaetigen\?token=/);
+  assert.deepEqual([m.absender, m.absender_name, m.antwort_an], ['portal@tc-oberthal.de', 'TCO Portal', 'platz@tc-oberthal.de']);
   const t = token(m.text, 'token');
   // noch nicht freigeschaltet, nicht im Eingang der Platzverwaltung
   assert.equal((await client()('POST', '/api/auth/login', { username: 'erik', password: 'eriks-kennwort-1' })).status, 401);
@@ -208,6 +219,7 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.nummer, /^MA-\d{4}-0001$/);
   assert.match(letzteMail('fiona@example.org')!.betreff, /eingegangen/);
+  assert.equal(letzteMail('fiona@example.org')!.absender, 'info@tc-oberthal.de', 'Standardabsender *');
   const [{ n }] = await sql`select count(*)::int as n from tco.mitgliedsantraege`;
   assert.equal(n, 1, 'Honigtopf verwirft Bot-Anträge');
 

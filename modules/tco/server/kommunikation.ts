@@ -110,24 +110,44 @@ export interface MailAnhang {
 
 export interface MailErgebnis { status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string }
 
-/** E-Mail über den n8n-Workflow „TCO Mailversand aus SAP“ (Webhook tco-mailversand) */
+export interface MailAbsender { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }
+
+/** Absender für eine Anwendung aus den Stammdaten (gleiche Anwendung, sonst „*“); null = Standard des n8n-Workflows */
+export function absenderFuer(v: Pick<Verein, 'mail_absender'>, anwendung: string): MailAbsender | null {
+  const l = Array.isArray(v.mail_absender) ? v.mail_absender : [];
+  const a = anwendung.trim().toLowerCase();
+  return l.find((x) => x.email && x.anwendung.trim().toLowerCase() === a) ?? l.find((x) => x.email && x.anwendung.trim() === '*') ?? null;
+}
+
+/**
+ * E-Mail über den generischen n8n-Workflow „TCO Mailversand“ (Webhook tco-mailversand, docs/n8n/tco-mailversand.json).
+ * Beliebig viele Anhänge; Absender/Antwortadresse je Anwendung aus den Stammdaten (n8n prüft gegen seine Erlaubnisliste).
+ */
 export async function mailSenden(v: Verein, m: {
   modus: 'senden' | 'entwurf';
   anwendung: string;
   objekt: string;
   an: string;
   cc?: string;
+  bcc?: string;
   betreff: string;
   text: string;
+  /** HTML statt Text */
+  html?: boolean;
   benutzer: string;
   anhaenge: MailAnhang[];
+  /** abweichender Absender (sonst je Anwendung aus den Stammdaten) */
+  absender?: string; absender_name?: string; antwort_an?: string;
 }): Promise<MailErgebnis> {
   if (!v.n8n_mail_url) throw new Error('Der n8n-Mailversand ist nicht eingerichtet (Stammdaten → Anbindungen).');
   const groesse = m.anhaenge.reduce((s, a) => s + a.inhalt.length, 0);
   if (groesse > 10 * 1024 * 1024) throw new Error(`Anhänge zu groß (${(groesse / 1024 / 1024).toFixed(1)} MB, höchstens 10 MB)`);
+  const abs = m.absender ? { email: m.absender, name: m.absender_name ?? '', antwort_an: m.antwort_an ?? '' } : absenderFuer(v, m.anwendung);
   const body = {
-    modus: m.modus, anwendung: m.anwendung, objekt: m.objekt, an: m.an, cc: m.cc ?? '', betreff: m.betreff,
-    text: m.text, text_format: 'text', benutzer: m.benutzer,
+    modus: m.modus, anwendung: m.anwendung, objekt: m.objekt, an: m.an, cc: m.cc ?? '', bcc: m.bcc ?? '', betreff: m.betreff,
+    text: m.text, text_format: m.html ? 'html' : 'text', benutzer: m.benutzer, quelle: 'Portal',
+    ...(abs ? { absender: abs.email, absender_name: abs.name || '' } : {}),
+    antwort_an: m.antwort_an || abs?.antwort_an || '',
     anhaenge: m.anhaenge.map((a) => ({
       dateiname: a.dateiname, mime: a.mime ?? 'application/pdf', inhalt_base64: a.inhalt.toString('base64'),
       paperless_root_id: a.paperless_root_id ?? null, paperless_version_id: a.paperless_version_id ?? null, objekt: a.objekt ?? m.objekt,
@@ -145,7 +165,7 @@ export async function mailSenden(v: Verein, m: {
     throw new Error(`n8n nicht erreichbar: ${(e as Error).message}`);
   }
   if (res.status === 401 || res.status === 403) throw new Error('n8n hat den Webhook-Schlüssel abgelehnt');
-  if (res.status === 404) throw new Error('n8n-Workflow "TCO Mailversand aus SAP" ist nicht aktiv (Webhook 404)');
+  if (res.status === 404) throw new Error('n8n-Workflow "TCO Mailversand" ist nicht aktiv (Webhook 404)');
   const t = await res.text();
   let r: MailErgebnis;
   try {
