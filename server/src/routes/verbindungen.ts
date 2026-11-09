@@ -57,7 +57,11 @@ export async function verbindungenRoutes(app: FastifyInstance) {
       const r = await t.def.pruefen(v);
       return { ...r, dauer_ms: Date.now() - start };
     } catch (err) {
-      return { ok: false, text: (err as Error).message || 'Nicht erreichbar.', dauer_ms: Date.now() - start };
+      const e = err as Error & { cause?: { code?: string; message?: string } };
+      // fetch meldet nur „fetch failed“ – die Ursache (ECONNREFUSED, Timeout …) steht in cause
+      const grund = e.cause?.code || e.cause?.message || '';
+      const text = /fetch failed|aborted|timeout/i.test(e.message) ? `Nicht erreichbar${grund ? ` (${grund})` : ''}.` : e.message || 'Nicht erreichbar.';
+      return { ok: false, text, dauer_ms: Date.now() - start };
     }
   });
 }
