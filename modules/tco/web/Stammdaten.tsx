@@ -290,13 +290,9 @@ function VereinTab() {
         </FormGrid>
       </Panel>
 
-      <Panel headerText="Paperless-ngx" fixed style={{ marginTop: '1rem' }}>
-        <FormGrid>
-          <TextField label="URL (mehrere durch Komma: erst LAN, dann Internet)" value={t('paperless_url')} onChange={s('paperless_url')} readonly={ro} />
-          <TextField label="API-Token" type="Password" value={t('paperless_token')} onChange={s('paperless_token')} readonly={ro} />
-        </FormGrid>
-        {!ro && <Testen endpunkt="paperless" v={v} />}
-      </Panel>
+      <MessageStrip design="Information" hideCloseButton style={{ marginTop: '1rem' }}>
+        Paperless-ngx {v.paperless_url ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Adresse und API-Token werden zentral unter Administration → Anbindungen gepflegt.
+      </MessageStrip>
 
       <Panel headerText="n8n-Webhooks" fixed style={{ marginTop: '1rem' }}>
         <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>

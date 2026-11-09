@@ -3,6 +3,7 @@ import path from 'node:path';
 import { sql, type Tx } from '../../../server/src/db.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { Paperless, paperlessKonfiguriert } from '../../../server/src/lib/paperless.js';
+import { paperlessZugang } from '../../../server/src/lib/verbindungen.js';
 
 export type Db = Tx;
 export const DB = sql as unknown as Tx;
@@ -19,6 +20,7 @@ export interface Verein {
   email: string | null;
   zahlungsziel_tage: number;
   logo: string | null;
+  /** aus der zentralen Anbindung „paperless“ (Administration → Anbindungen), nur lesend */
   paperless_url: string | null;
   paperless_token: string | null;
   n8n_mail_url: string | null;
@@ -57,7 +59,8 @@ export const liste = (s: string | null | undefined) => (s ?? '').split(',').map(
 
 export async function vereinLesen(db: Db = DB): Promise<Verein> {
   const [v] = await db`select * from tco.verein where id = 1`;
-  return v as unknown as Verein;
+  const pl = await paperlessZugang(db);
+  return { ...(v as unknown as Verein), paperless_url: pl.url, paperless_token: pl.token };
 }
 
 export const plAktiv = (v: Verein) => paperlessKonfiguriert({ url: v.paperless_url, token: v.paperless_token });

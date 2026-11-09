@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { change, requireAuth } from '../../../server/src/auth.js';
-import { asset, DB, paperless, plAktiv, vereinLesen, type Db, type Verein } from './verein.js';
+import { asset, DB, vereinLesen, type Db, type Verein } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { entpacken, istZip } from '../../../server/src/lib/zip.js';
 import { BusinessError } from '../../../server/src/errors.js';
@@ -43,7 +43,7 @@ const P = {
 };
 
 const MASKE = '********';
-const GEHEIM = ['paperless_token', 'n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth'] as const;
+const GEHEIM = ['n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth'] as const;
 
 const vereinSchema = z.object({
   name: z.string().trim().min(1, 'Bitte den Vereinsnamen angeben').max(70),
@@ -53,7 +53,6 @@ const vereinSchema = z.object({
   ansprechpartner: z.string().nullish(), email: z.string().nullish(),
   zahlungsziel_tage: z.coerce.number().int().min(0).max(90),
   logo: z.string().nullish(),
-  paperless_url: z.string().nullish(), paperless_token: z.string().nullish(),
   n8n_mail_url: z.string().nullish(),
   n8n_mail_key: z.string().nullish().refine((k) => !N8N_PLATZHALTER.test(k?.trim() ?? ''), N8N_PLATZHALTER_TEXT),
   mail_absender: z.preprocess((l) => (Array.isArray(l) ? l.filter((x) => x && (String(x.email ?? '').trim() || String(x.anwendung ?? '').trim())) : l), z.array(z.object({
@@ -114,6 +113,7 @@ async function routes(app: FastifyInstance) {
     const v = await vereinLesen();
     const out: Record<string, unknown> = { ...v };
     for (const g of GEHEIM) out[g] = v[g] ? MASKE : '';
+    out.paperless_token = v.paperless_token ? MASKE : ''; // zentral gepflegt, hier nur Stand
     out.n8n_stunden_pw = v.n8n_stunden_auth ? MASKE : '';
     out.n8n_ep3_pw = v.n8n_ep3_auth ? MASKE : '';
     return out;
@@ -129,7 +129,6 @@ async function routes(app: FastifyInstance) {
       update tco.verein set name = ${d.name}, strasse = ${d.strasse ?? null}, plz_ort = ${d.plz_ort ?? null}, iban = ${d.iban},
              bic = ${d.bic ?? null}, bank = ${d.bank ?? null}, steuernr = ${d.steuernr ?? null}, ansprechpartner = ${d.ansprechpartner ?? null},
              email = ${d.email ?? null}, zahlungsziel_tage = ${d.zahlungsziel_tage}, logo = ${d.logo || null},
-             paperless_url = ${d.paperless_url || null}, paperless_token = ${d.paperless_token || null},
              n8n_mail_url = ${d.n8n_mail_url || null}, n8n_mail_key = ${d.n8n_mail_key?.trim() || null},
              mail_absender = ${tx.json((d.mail_absender ?? alt.mail_absender ?? []) as never)},
              n8n_ep3_url = ${d.n8n_ep3_url || null}, n8n_ep3_auth = ${d.n8n_ep3_auth || null},
@@ -203,8 +202,6 @@ async function routes(app: FastifyInstance) {
     if (r.status === 'fehler') throw new BusinessError(`n8n meldet einen Fehler: ${r.fehler ?? 'unbekannt'}`);
     return { text: `Testmail an ${an} übergeben (${r.status}${r.von ? `, Absender ${r.von}` : ''}${r.hinweis ? ` – ${r.hinweis}` : ''}).` };
   });
-
-  app.post('/verein/paperless-test', { preHandler: requireAuth(P.stammdaten) }, async () => verbindungTesten(await vereinLesen(), 'paperless'));
 
   /** Verbindungstest je Endpunkt mit den Werten aus dem Formular (noch nicht gesichert); MASKE = gespeicherter Wert */
   app.post('/verein/test/:endpunkt', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
@@ -357,7 +354,6 @@ const tco: ServerModule = {
       wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Kennwort-Link – bitte neu auslösen: Administration → Benutzer → „Kennwort-Link senden“ bzw. „Passwort vergessen“ auf der Anmeldeseite.' } });
     if (r.status === 'fehler') throw new Error(r.fehler ?? 'Der Versand ist fehlgeschlagen.');
   },
-  paperlessClient: async () => { const v = await vereinLesen(); return plAktiv(v) ? paperless(v) : null; },
   // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
   // Benutzer nur löschbar, solange er nichts gebucht hat: Platzbuchungen (eigene Portalbuchungen und – wie in

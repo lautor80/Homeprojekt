@@ -15,7 +15,8 @@ jede Installation schaltet nur ihre Module ein.
 | Feste Platzbelegungen | Jugendtraining, Sperrzeiten, Veranstaltungen (Platzverwaltung → Training & Sperrzeiten, EP3-Events per Import) – im Kalender für alle sichtbar, blockieren Buchungen; Kalender zeigt nur an dem Tag freigegebene Plätze |
 | Meine Mitgliedschaft | Benutzerpflege: Status direkt in der Tabelle sperren, Filter aktiv/gesperrt, Einzelanlage aus Mitglied/EP3-Kunde; ausgetretene Mitglieder werden nach dem Austrittsdatum automatisch gesperrt. Selbstauskunft für Mitglieder (Systemrolle „Mitglied“: eigene Daten, Bankverbindung, Kündigung zum Jahresende + Einzelbuchung); Administration → Benutzer legt alle aktiven Mitglieder als Benutzer an (Anmeldename = E-Mail, Startkennwort per Mail oder Liste); **„Mitglieder einladen (QR-Code)“** schickt aktiven Mitgliedern ohne Benutzer einen persönlichen Link mit QR-Code (30 Tage, einmal verwendbar, neue Einladung macht ältere ungültig) per E-Mail oder als Brief-PDF – Auswahlliste mit **Livesuche** (Name, Mitgliedsnummer, E-Mail; mehrere Begriffe werden UND-verknüpft), Filter „nur noch nicht eingeladene“, „alle wählen“/„keine“ wirken bei aktiver Suche nur auf die Treffer |
 | Sperren | wie SM12: Objekt beim Öffnen zur Bearbeitung gesperrt (Typ + Schlüssel der Änderungsbelege), Durchsetzung im Datenbank-Trigger, Lebenszeichen, Ablauf nach 2 Min. bzw. 15 Min. Inaktivität, Platzzeiten schon bei Auswahl; Übersicht/Aufheben unter Administration → Sperren |
-| Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Integrations-URLs, Portal-Adresse für Links in E-Mails |
+| Einstellungen | Organisationsname, Logo, Akzentfarbe, Anschrift, Portal-Adresse für Links in E-Mails |
+| Anbindungen | angeschlossene Systeme an einer Stelle (Administration → Anbindungen, Tabelle `core.verbindungen`): Adresse, Anmeldeart (Token, Header, Basic Auth), Zugangsdaten maskiert, Verbindungstest, Änderungsbelege ohne Geheimnis. Der Kern meldet Paperless an, Module melden eigene Verbindungen über `ServerModule.verbindungen` und lesen sie mit `verbindungLesen(id)` |
 | E-Mail-Versand | ein generischer n8n-Workflow für alle Mails (beliebige Inhalte und Anhänge, an/cc/bcc, Antwortadresse, Entwurf); **Absender ist, wer auf „Senden“ drückt** (Anfragekontext), Rückfall auf Ersatzabsender je Anwendung und Standard – siehe [E-Mail-Versand](#e-mail-versand-n8n) |
 | PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |
 | API-Schlüssel | Zugriff für Fremdsysteme (n8n, Webformulare) per `Authorization: Bearer …` – je Schlüssel genau ein Projekt/Modul mit ausgewählten Rechten |
@@ -62,9 +63,9 @@ baut und startet alle Container und gibt die Adresse aus. Beim ersten Aufruf im 
 
 Absolute Pfade (z. B. ein eingebundenes NAS unter `/mnt/nas/portal/…`) sind möglich. Die optionalen Dienste
 stehen in `COMPOSE_PROFILES` (z. B. `paperless,n8n`); Passwörter und Schlüssel erzeugt `install.sh` zufällig,
-die Paperless-Anmeldung zeigt es am Ende an. Im Portal unter **TC Oberthal → Stammdaten → Anbindungen** dann
-die internen Adressen eintragen: Paperless `http://paperless:8000` (API-Token aus Paperless), Mail-Webhook
-`http://n8n:5678/webhook/tco-mailversand`.
+die Paperless-Anmeldung zeigt es am Ende an. Im Portal dann die internen Adressen eintragen:
+Paperless `http://paperless:8000` mit API-Token unter **Administration → Anbindungen** (gilt für alle Module),
+Mail-Webhook `http://n8n:5678/webhook/tco-mailversand` unter **TC Oberthal → Stammdaten → Anbindungen**.
 
 Hinter einem vorhandenen Reverse Proxy (z. B. Nginx Proxy Manager): Domain leer lassen,
 Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECURE_COOKIES=true` und
@@ -72,7 +73,7 @@ Proxy auf `http://<server>:<PORTAL_PORT>` zeigen lassen und in der `.env` `SECUR
 Ohne Proxy bleibt `TRUST_PROXY=false` – sonst ließen sich die Sperren mit gefälschten Headern umgehen.
 
 Nach der Einrichtung: **TC Oberthal → Stammdaten** ausfüllen (Vereinsname, Anschrift, IBAN, Steuernummer,
-Paperless/n8n). Das Repository enthält keine Vereinsdaten; alles kommt aus den Stammdaten bzw. dem SAP-Import.
+n8n-Webhooks) und **Administration → Anbindungen** (Paperless). Das Repository enthält keine Vereinsdaten; alles kommt aus den Stammdaten bzw. dem SAP-Import.
 
 ### Installation über Portainer
 
@@ -222,7 +223,7 @@ Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt.
 | Aufträge | Fracht- und Holzträgeraufträge, Liste (gruppiert nach Status) oder Baum Art → Kunde → Auftrag mit Saldo, Filter Geschäftsjahr/Fakturadatum/Status/Suche |
 | Objektseite | Beteiligte (Kunde, Unternehmer, abw. Rechnungsempfänger), Auftrags-/Fahrzeugdaten, zwei Stops, Holzträgerpositionen, Besonderheiten, Änderungshistorie |
 | Rechnungen | Einzel- und Sammelrechnungen mit lückenlosen Nummern (Start je Jahr in den Stammdaten), PDF mit EPC-GiroCode, XRechnung 3.0 (UBL) |
-| Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (URL + Token in den Stammdaten) |
+| Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (Zugang unter Administration → Anbindungen) |
 | Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch), E-Mail-Texte |
 | Übernahme aus SAP | „Neu → Import aus SAP-Export …“: CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten). Nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen |
 

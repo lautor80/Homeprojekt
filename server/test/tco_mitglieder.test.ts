@@ -94,7 +94,7 @@ before(async () => {
   await migrate(activeModules(), () => {});
   app = await buildApp({ logger: false });
   await call('POST', '/api/setup', { orgName: 'TC Oberthal', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
-  await sql`update tco.verein set paperless_url = ${`http://127.0.0.1:${port}`}, paperless_token = 'geheim'`;
+  await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
   await sql`insert into tco.mitglieder (adrnr, anrede, vorname, nachname, strasse, plz, ort, email, telefon6, geburtsdatum, eintritt, austritt, mitglnrn, zahlungsart, iban1, bic1, adrnrkih, mandatsrefenz, checkbox1) values
     ('0000000101', 'Herr', 'Hans', 'Müller', 'Hauptstr. 1', '66649', 'Oberthal', 'hans@example.org', '0171 1111111', '1970-05-01', '2020-01-01', null, '101', 'L', ${IBAN}, 'COBADEFFXXX', null, '101101', 'J'),
     ('0000000102', 'Frau', 'Mia', 'Müller', 'Hauptstr. 1', '66649', 'Oberthal', null, null, '2012-02-02', '2025-01-01', null, '102', 'L', null, null, '0000000101', null, 'J'),
