@@ -229,7 +229,7 @@ function Platzhalterliste({ k, onEinfuegen }: { k: Kontext; onEinfuegen: (t: str
       <div className="portal-pm__ph-liste">
         {k.platzhalter.map((p) => (
           <button key={p.name} type="button" className="portal-pm__ph-eintrag" onClick={() => onEinfuegen(`{${p.name}}`)} title={p.text}>
-            <code>{`{${p.name}}`}</code><span>{p.text}</span><small>z. B. {String(p.beispiel)}</small>
+            <code>{`{${p.name}}`}</code><span>{p.text}</span><small>z. B. <b>{String(p.beispiel)}</b></small>
           </button>
         ))}
       </div>
