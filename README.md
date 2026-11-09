@@ -20,6 +20,7 @@ jede Installation schaltet nur ihre Module ein.
 | PDF | HTML → PDF über Gotenberg (Layouts sind HTML-Templates); Module können PDFs auch selbst erzeugen (z. B. `transport`) |
 | API-Schlüssel | Zugriff für Fremdsysteme (n8n, Webformulare) per `Authorization: Bearer …` – je Schlüssel genau ein Projekt/Modul mit ausgewählten Rechten |
 | Nummernkreise | lückenlose Nummern je Objekt und Jahr (`core.next_number`) |
+| Tabellenansicht | wie SE16: alle Tabellen von `core` und den aktiven Modulen mit Struktur und Inhalt, Selektion (Bedingungen, Felder, Sortierung), Gruppierung mit Kennzahlen, CSV – nur lesend, Geheimnisse nie sichtbar, siehe [Tabellenansicht](#tabellenansicht-administration) |
 | Betrieb | Docker Compose, Installationsskript, tägliches Backup, Update- und Restore-Skript |
 
 ## Installation
@@ -164,6 +165,31 @@ serverseitig aus Zahler bzw. Aufnahmeantrag); Änderungsbelege bleiben unveränd
 der Anzeige maskiert (auch für `core.audit:display`); die eigenen Vereinskonten sind keine Personendaten und
 nicht maskiert. Neue geschützte Felder: im Modul `sensitiveFields` (für Änderungsbelege) deklarieren und in den
 Routen `feldschutz(req, permission)` anwenden.
+
+## Tabellenansicht (Administration)
+
+Administration → **Tabellenansicht** (Berechtigung `core.tabellen:display`) zeigt alle Tabellen und Sichten der
+Schemas `core` und der aktiven Module – wie SE16, aber **nur lesend**.
+
+- **Übersicht**: Schema, Tabelle, Art, Beschreibung (Tabellenkommentar), Zeilen (geschätzt), Spalten, Größe – suchbar,
+  filter-, sortier- und gruppierbar; Klick oder Auswahlfeld oben öffnet die Tabelle.
+- **Struktur**: Spalte, Datentyp, Primärschlüssel (Position), Pflichtfeld, Vorschlagswert, Schutz, Spaltenkommentar.
+- **Selektion** (serverseitig, Auswahl je Tabelle für die Sitzung gemerkt; Ausführen auch mit F8/Strg+Enter):
+  - Bedingungen je Spalte, UND-verknüpft: `=`, `≠`, `<`, `≤`, `>`, `≥`, von–bis, enthält/Muster (`*` beliebig, `+` ein
+    Zeichen, ohne Platzhalter „enthält“, Groß-/Kleinschreibung egal), enthält nicht, Liste (`;`-getrennt), leer, nicht leer.
+    Datum als `JJJJ-MM-TT`, Dezimalzahlen mit Punkt; ungültige Eingaben ergeben eine verständliche Meldung.
+  - Feldauswahl, bis zu 5 Sortierfelder (ohne Angabe: Primärschlüssel), max. Trefferzahl 100/500/1.000/5.000 mit „Weitere laden“.
+  - **Gruppierung** nach bis zu 5 Feldern mit Anzahl und Kennzahlen je Gruppe (Summe, Durchschnitt, Minimum, Maximum,
+    Anzahl verschiedene; Summe/Durchschnitt nur über Zahlenfelder).
+- **Ergebnis**: zusätzlich Spaltenfilter, Sortierung und Gruppierung in der Tabelle, Klick auf eine Zeile zeigt alle
+  Felder untereinander, Export als CSV (Excel, Semikolon, UTF-8).
+
+**Schutz**: Spalten mit Kennwort-Hashes, Tokens, Zugangsschlüsseln und Passwörtern (`*hash*`, `*token*`, `passw*`,
+`kennw*`, `*secret*`, `*_auth`, `n8n_*_key`, `core.sperren.sitzung`) kommen immer als `•••` – auch Filter, Sortierung
+und Gruppierung arbeiten auf dem maskierten Wert, damit nichts erraten werden kann. Felder aus `sensitiveFields`
+(Bankdaten) sind ohne die jeweilige Berechtigung maskiert wie im Rest des Portals, auch in `core.change_item`.
+Jede Abfrage läuft in einer lesenden Transaktion mit 20 Sekunden Zeitlimit; Zellen werden nach 2.000 Zeichen gekürzt,
+`bytea` erscheint als `[n Bytes]`. Tabellen- und Spaltennamen werden gegen den Systemkatalog geprüft.
 
 ## Neues Modul anlegen (z. B. `transport`)
 

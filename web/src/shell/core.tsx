@@ -9,6 +9,7 @@ import { BackupPage } from '../pages/BackupPage';
 import { StatistikPage } from '../pages/StatistikPage';
 import { ApiKeysPage } from '../pages/ApiKeysPage';
 import { SperrenPage } from '../pages/SperrenPage';
+import { TabellenPage } from '../pages/TabellenPage';
 
 export const coreNav: { home: NavEntry; admin: NavEntry } = {
   home: { text: 'Start', icon: 'home', path: '/' },
@@ -25,6 +26,7 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
       { text: 'Sperren', icon: 'locked', path: '/admin/sperren', permission: 'core.sperren:admin' },
       { text: 'Sicherung', icon: 'database', path: '/admin/sicherung', permission: 'core.backup:create' },
       { text: 'Statistik', icon: 'line-chart', path: '/admin/statistik', permission: 'core.statistik:display' },
+      { text: 'Tabellenansicht', icon: 'table-view', path: '/admin/tabellen', permission: 'core.tabellen:display' },
     ],
   },
 };
@@ -40,4 +42,5 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/sperren', component: SperrenPage, permission: 'core.sperren:admin' },
   { path: '/admin/sicherung', component: BackupPage, permission: 'core.backup:create' },
   { path: '/admin/statistik', component: StatistikPage, permission: 'core.statistik:display' },
+  { path: '/admin/tabellen', component: TabellenPage, permission: 'core.tabellen:display' },
 ];

@@ -19,6 +19,7 @@ import { paperlessMappingRoutes } from './routes/paperless.js';
 import { backupRoutes } from './routes/backup.js';
 import { statistikRoutes } from './routes/statistik.js';
 import { sperrRoutes } from './routes/sperren.js';
+import { tabellenRoutes } from './routes/tabellen.js';
 import { GesperrtError } from './sperren.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
@@ -61,6 +62,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(backupRoutes);
   await app.register(statistikRoutes);
   await app.register(sperrRoutes);
+  await app.register(tabellenRoutes);
   await app.register(adminRoutes);
   await app.register(auditRoutes);
   await app.register(apiKeyRoutes);
