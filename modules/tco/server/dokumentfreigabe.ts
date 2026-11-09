@@ -14,7 +14,11 @@ const verweigert = () => new BusinessError('Dieses Dokument gehört nicht zu die
 export async function halleDokumentPruefen(db: Db, v: Verein, id: number): Promise<void> {
   const [k] = await db`select 1 from tco.rgkopf where ltrim(doknr, '0') = ${String(id)} limit 1`;
   if (k) return;
+  const [p] = await db`select 1 from tco.rgpos where beleg_doc_id = ${id} limit 1`;
+  if (p) return;
   const d = await paperless(v).dokument(id).catch(() => null);
+  // gerade erst abgelegte Namensliste einer Sammelrechnung (noch an keiner Position)
+  if (String(d?.title ?? '').startsWith('Sammelrechnung Namensliste')) return;
   const nr = /^Hallenrechnung\s+(\S+)/.exec(String(d?.title ?? ''))?.[1];
   if (!nr) throw verweigert();
   const [r] = await db`select 1 from tco.rgkopf where rgnr_txt = ${nr} limit 1`;

@@ -314,12 +314,14 @@ export interface DruckPosition {
   betrag: number;
   storno: boolean;
   manuell: boolean;
+  /** verknüpfter Paperless-Beleg (z. B. Namensliste der Sammelrechnung) */
+  beleg_doc_id?: number | null;
 }
 
 export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPosition[]> {
   const rows = await db`
     select p.rgpos, p.bid, p.datum::text, p.time_start::text, p.time_ende::text, p.dauer, p.prod_key,
-           p.preis::float8 as preis, p.description, b.status as bstatus,
+           p.preis::float8 as preis, p.description, p.beleg_doc_id, b.status as bstatus,
            (select text from tco.produkte pr where pr.prod_key = p.prod_key order by valid_to desc limit 1) as prodtext
       from tco.rgpos p
       left join lateral (select status from tco.bookings b where b.bid = p.bid and (p.datum is null or b.datum = p.datum)
@@ -350,7 +352,7 @@ export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPositi
     const ep = manuell ? p.preis : anzahl > 0 ? runden(betrag / anzahl) : 0;
     return {
       rgpos: p.rgpos, bid: p.bid, datum: p.datum, time_start: p.time_start, time_ende: p.time_ende, prod_key: key,
-      art, beschreibung: beschr, anzahl, ep, betrag, storno, manuell,
+      art, beschreibung: beschr, anzahl, ep, betrag, storno, manuell, beleg_doc_id: p.beleg_doc_id ?? null,
     };
   });
 }

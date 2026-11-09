@@ -102,21 +102,46 @@ export function namenAbgleichen(text: string, liste: Kandidat[]): Treffer[] {
   return out;
 }
 
-/** Text eines Bilds über die Texterkennung (OCR) von Paperless; das Hilfsdokument wird danach gelöscht */
-export async function bildLesen(v: Verein, bild: Buffer, mime: string): Promise<string> {
+export const BELEG_TITEL = 'Sammelrechnung Namensliste';
+
+/**
+ * Bild (z. B. Screenshot einer Mannschaftsaufstellung) in Paperless ablegen und den erkannten Text lesen.
+ * Das Dokument bleibt erhalten (DOKID), damit es erneut gelesen und mit den Rechnungspositionen verknüpft
+ * werden kann; wird die Sammelrechnung verworfen, löscht der Dialog es wieder (belegVerwerfen).
+ */
+export async function bildLesen(v: Verein, bild: Buffer, mime: string): Promise<{ text: string; docId: number }> {
   if (!plAktiv(v)) throw new BusinessError('Für die Texterkennung aus Bildern wird Paperless benötigt (Stammdaten → Anbindungen).');
   if (!/^image\/(png|jpe?g|webp|gif|tiff)$/.test(mime)) throw new BusinessError('Bitte ein Bild (PNG, JPG, WEBP, GIF, TIFF) einfügen.');
   const pl = paperless(v);
   const endung = mime.split('/')[1].replace('jpeg', 'jpg');
-  const task = await pl.upload(bild, `namen-ocr-${Date.now()}.${endung}`, { title: `Portal: Namenserkennung (temporär) ${new Date().toISOString()}`, mime });
+  const jetzt = new Date();
+  const titel = `${BELEG_TITEL} ${jetzt.toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })} ${jetzt.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })}`;
+  const task = await pl.upload(bild, `sammelrechnung-${jetzt.getTime()}.${endung}`, { title: titel, mime });
   const id = await pl.warteAufDokument(task, 60, 1000);
-  if (!id) throw new BusinessError('Die Texterkennung dauert zu lange – bitte in einer Minute erneut versuchen oder die Namen als Text einfügen.');
-  try {
-    const d = await pl.dokument(id);
-    return String(d.content ?? '');
-  } finally {
-    await pl.loeschen(id).catch(() => undefined);
-  }
+  if (!id) throw new BusinessError('Die Texterkennung dauert zu lange – bitte in einer Minute die DOKID des Belegs eingeben und „Lesen“ wählen.');
+  const d = await pl.dokument(id);
+  return { text: String(d.content ?? ''), docId: id };
+}
+
+/** vorhandenen Paperless-Beleg (DOKID) erneut lesen – Text der Texterkennung */
+export async function belegLesen(v: Verein, id: number): Promise<{ text: string; titel: string; docId: number }> {
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Stammdaten → Anbindungen).');
+  const d = await paperless(v).dokument(id).catch(() => null);
+  if (!d) throw new BusinessError(`Paperless-Dokument ${id} nicht gefunden.`, 404);
+  const text = String(d.content ?? '');
+  if (!text.trim()) throw new BusinessError(`Paperless-Dokument ${id} enthält (noch) keinen erkannten Text – die Texterkennung läuft eventuell noch.`);
+  return { text, titel: String(d.title ?? ''), docId: id };
+}
+
+/** nicht verwendeten Beleg wieder löschen – nur eigene Namenslisten, die noch an keiner Position hängen */
+export async function belegVerwerfen(db: Db, v: Verein, id: number) {
+  if (!plAktiv(v)) return;
+  const [verknuepft] = await db`select 1 from tco.rgpos where beleg_doc_id = ${id} limit 1`;
+  if (verknuepft) return;
+  const pl = paperless(v);
+  const d = await pl.dokument(id).catch(() => null);
+  if (!d || !String(d.title ?? '').startsWith(BELEG_TITEL)) return;
+  await pl.loeschen(id);
 }
 
 export interface Empfaenger { key?: string | null; neu?: { vorname: string; nachname: string; email?: string | null; strasse?: string | null; plz?: string | null; ort?: string | null } | null }
@@ -157,6 +182,7 @@ async function kandidatLesen(tx: Db, key: string): Promise<Kandidat> {
  */
 export async function sammelRechnungen(tx: Db, d: {
   empfaenger: Empfaenger[]; position: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null }; anhaengen: boolean;
+  belegDocId?: number | null;
 }) {
   if (!d.empfaenger.length) throw new BusinessError('Bitte mindestens eine Person auswählen.');
   const ergebnis: { name: string; rgnr: string; neu: boolean; kundeNeu: boolean }[] = [];
@@ -176,7 +202,8 @@ export async function sammelRechnungen(tx: Db, d: {
       rgnr = await rechnungAnlegen(tx, k.kunde);
       await tx`update tco.rgkopf set adrnr = ${k.adrnr} where rgnr_txt = ${rgnr}`;
     }
-    await manuellePosition(tx, rgnr, d.position);
+    const p = await manuellePosition(tx, rgnr, d.position);
+    if (d.belegDocId) await tx`update tco.rgpos set beleg_doc_id = ${d.belegDocId} where rgnr_txt = ${rgnr} and rgpos = ${p.rgpos}`;
     ergebnis.push({ name: k.name, rgnr, neu, kundeNeu: !e.key });
   }
   return ergebnis;

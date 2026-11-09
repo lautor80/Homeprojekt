@@ -424,7 +424,18 @@ function PersonPanel(props: {
   const posCols: AnalyticalTableColumnDefinition[] = [
     { Header: 'Pos.', accessor: 'rgpos', width: 60 },
     { Header: 'Art', accessor: 'art', width: 80 },
-    { Header: 'Beschreibung', accessor: 'beschreibung', minWidth: 200, Cell: ({ value }: Cell) => <Text>{String(value).split('\t').filter(Boolean).join(' · ')}</Text> },
+    {
+      Header: 'Beschreibung', accessor: 'beschreibung', minWidth: 200,
+      Cell: ({ row, value }: Cell) => (
+        <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
+          <Text>{String(value).split('\t').filter(Boolean).join(' · ')}</Text>
+          {row.original.beleg_doc_id && (
+            <Button icon="attachment" design="Transparent" tooltip={`Beleg ansehen (DOKID ${String(row.original.beleg_doc_id).padStart(6, '0')})`}
+                    onClick={() => window.open(`${H}/paperless/${row.original.beleg_doc_id}/pdf`, '_blank')} />
+          )}
+        </FlexBox>
+      ),
+    },
     { Header: 'Menge', accessor: 'anzahl', width: 80, hAlign: 'End', Cell: ({ value }: Cell) => Number(value).toLocaleString('de-DE', { maximumFractionDigits: 2 }) },
     { Header: 'Einzelpreis', accessor: 'ep', width: 110, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
     {

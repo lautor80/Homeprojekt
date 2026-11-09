@@ -34,15 +34,22 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState<string | null>(null);
+  /** Paperless-Beleg der Namensliste (Screenshot) – wird beim Sichern mit den Positionen verknüpft */
+  const [beleg, setBeleg] = useState<{ id: number; eigen: boolean; titel?: string } | null>(null);
+  const [dokid, setDokid] = useState('');
 
   useEffect(() => {
     if (!open) return;
-    setZeilen([]); setText(''); setError(null); setOcrText(null); setPos({ prod_key: '', beschreibung: '', menge: '1', preis: '' });
+    setZeilen([]); setText(''); setError(null); setOcrText(null); setPos({ prod_key: '', beschreibung: '', menge: '1', preis: '' }); setBeleg(null); setDokid('');
     const h = new Date().toLocaleDateString('sv-SE');
     api.get<Kandidat[]>(`${H}/sammel/kandidaten`).then(setKand).catch((e) => setError(e.message));
     api.get<{ produkte: Produkt[] }>(`${H}/preise`).then((r) => setProdukte(r.produkte.filter((p) => p.valid_from <= h && p.valid_to >= h))).catch(() => undefined);
   }, [open]);
   if (!open) return null;
+
+  /** eigener, nicht verwendeter Beleg wird beim Verwerfen bzw. Ersetzen in Paperless wieder gelöscht */
+  const verwerfen = (b = beleg) => { if (b?.eigen) api.post(`${H}/sammel/verwerfen`, { dokid: b.id }).catch(() => undefined); };
+  const schliessen = () => { verwerfen(); onClose(); };
 
   const frei = pos.prod_key === '093';
   const produkt = produkte.find((p) => p.prod_key === pos.prod_key);
@@ -67,28 +74,40 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
     e.preventDefault();
     lauf('bild', async () => {
       const daten = await new Promise<string>((ok, fehler) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => fehler(r.error); r.readAsDataURL(bild); });
-      const r = await api.post<{ text: string; treffer: Treffer[] }>(`${H}/sammel/bild`, { bild: daten });
+      const r = await api.post<{ text: string; docId: number; treffer: Treffer[] }>(`${H}/sammel/bild`, { bild: daten });
+      verwerfen();
+      setBeleg({ id: r.docId, eigen: true });
+      setDokid(String(r.docId));
       setOcrText(r.text);
       if (!r.treffer.length) throw new Error('Im Bild wurden keine Namen erkannt.');
       hinzu(r.treffer);
     });
   };
+  const dokidLesen = () => lauf('dokid', async () => {
+    const r = await api.post<{ text: string; titel: string; docId: number; treffer: Treffer[] }>(`${H}/sammel/dokid`, { dokid });
+    if (beleg?.id !== r.docId) verwerfen();
+    setBeleg({ id: r.docId, eigen: beleg?.id === r.docId ? beleg.eigen : false, titel: r.titel });
+    setOcrText(r.text);
+    if (!r.treffer.length) throw new Error('Im Beleg wurden keine Namen erkannt.');
+    setZeilen([]);
+    hinzu(r.treffer);
+  });
   const setze = (id: string, x: Partial<Zeile>) => setZeilen((l) => l.map((z) => (z.id === id ? { ...z, ...x } : z)));
 
   return createPortal(
-    <Dialog open headerText="Rechnungen ohne Hallenbuchung" onClose={onClose} style={{ width: 'min(60rem, 96vw)' }} resizable
+    <Dialog open headerText="Rechnungen ohne Hallenbuchung" onClose={schliessen} style={{ width: 'min(60rem, 96vw)' }} resizable
             footer={<Bar startContent={<Text>{aktiv.length} Rechnung(en) · je {eur(einzel * menge)} · gesamt {eur(einzel * menge * aktiv.length)}</Text>}
                          endContent={<>
                            <Button design="Emphasized" icon="create" disabled={!!busy || !aktiv.length || !posOk || fehlerNeu}
                                    onClick={() => lauf('anlegen', async () => {
                                      const r = await api.post<{ text: string }>(`${H}/sammel`, {
                                        position: { prod_key: pos.prod_key, beschreibung: pos.beschreibung || null, menge: pos.menge, preis: frei ? pos.preis : null },
-                                       anhaengen,
+                                       anhaengen, belegDocId: beleg?.id ?? null,
                                        empfaenger: aktiv.map((z) => (z.wahl === 'NEU' ? { neu: { vorname: z.vorname, nachname: z.nachname, email: z.email || null } } : { key: z.wahl })),
                                      });
                                      onDone(r.text);
                                    })}>{aktiv.length} Rechnung(en) erzeugen</Button>
-                           <Button onClick={onClose}>Abbrechen</Button>
+                           <Button onClick={schliessen}>Abbrechen</Button>
                          </>} />}>
       <div className="portal-sr" onPaste={einfuegen}>
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
@@ -122,7 +141,17 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
             <TextArea rows={3} value={text} placeholder={'Namen einfügen – eine Person je Zeile (auch „Nachname, Vorname“).\nOder ein Bild mit Namen hier mit Strg+V einfügen.'} onInput={(e) => setText(e.target.value)} />
             <Button icon="synchronize" disabled={!text.trim() || !!busy} onClick={abgleichen}>Abgleichen</Button>
           </div>
-          {busy === 'bild' && <BusyIndicator active size="S" text="Texterkennung läuft (Paperless) …" style={{ display: 'block', margin: '0.5rem 0' }} />}
+          <FlexBox wrap="Wrap" alignItems="Center" style={{ gap: '0.5rem' }}>
+            <Label>Paperless-Beleg (DOKID)</Label>
+            <Input value={dokid} style={{ width: '8rem' }} placeholder="z. B. 4711" onInput={(e) => setDokid(e.target.value.replace(/\D/g, ''))}
+                   onKeyDown={(e) => e.key === 'Enter' && dokid && dokidLesen()} />
+            <Button icon="refresh" disabled={!dokid || !!busy} onClick={dokidLesen}>Erneut lesen</Button>
+            {beleg && <>
+              <Button icon="show" design="Transparent" onClick={() => window.open(`${H}/paperless/${beleg.id}/pdf`, '_blank')}>Beleg ansehen</Button>
+              <ObjectStatus state="Information">wird beim Sichern mit den Positionen verknüpft{beleg.titel ? ` · ${beleg.titel}` : ''}</ObjectStatus>
+            </>}
+          </FlexBox>
+          {(busy === 'bild' || busy === 'dokid') && <BusyIndicator active size="S" text={busy === 'bild' ? 'Bild wird in Paperless abgelegt, Texterkennung läuft …' : 'Beleg wird gelesen …'} style={{ display: 'block', margin: '0.5rem 0' }} />}
           {ocrText !== null && <details className="portal-sr__ocr"><summary>Erkannter Text aus dem Bild</summary><pre>{ocrText}</pre></details>}
         </section>
 

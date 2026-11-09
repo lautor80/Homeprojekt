@@ -59,6 +59,8 @@ export interface PersonDetail {
 export interface Position {
   rgpos: number; bid: string | null; datum: string | null; time_start: string | null; time_ende: string | null; prod_key: string | null;
   art: string; beschreibung: string; anzahl: number; ep: number; betrag: number; storno: boolean; manuell: boolean;
+  /** verknüpfter Paperless-Beleg (z. B. Namensliste einer Sammelrechnung) */
+  beleg_doc_id?: number | null;
 }
 export interface PaperlessInfo {
   doknr: string | null; link: string | null; notizen: { id: number; note: string; created: string }[];

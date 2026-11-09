@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { bildLesen, kandidaten, namenAbgleichen, sammelRechnungen } from './sammel.js';
+import { belegLesen, belegVerwerfen, bildLesen, kandidaten, namenAbgleichen, sammelRechnungen } from './sammel.js';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -172,12 +172,26 @@ export async function halleRoutes(app: FastifyInstance) {
     return namenAbgleichen(text, await kandidaten(DB));
   });
 
-  /** Bild aus der Zwischenablage → Text (Paperless-OCR) → Namensabgleich */
+  /** Bild aus der Zwischenablage → in Paperless ablegen (DOKID), Text (OCR) → Namensabgleich */
   app.post('/halle/sammel/bild', { preHandler: requireAuth(P_HALLE.edit), bodyLimit: 15 * 1024 * 1024 }, async (req) => {
     const { bild } = z.object({ bild: z.string().regex(/^data:image\/[\w+.-]+;base64,/, 'Bitte ein Bild einfügen.') }).parse(req.body);
     const mime = bild.slice(5, bild.indexOf(';'));
-    const text = await bildLesen(await vereinLesen(), Buffer.from(bild.slice(bild.indexOf(',') + 1), 'base64'), mime);
-    return { text, treffer: namenAbgleichen(text, await kandidaten(DB)) };
+    const r = await bildLesen(await vereinLesen(), Buffer.from(bild.slice(bild.indexOf(',') + 1), 'base64'), mime);
+    return { ...r, treffer: namenAbgleichen(r.text, await kandidaten(DB)) };
+  });
+
+  /** vorhandenen Paperless-Beleg per DOKID erneut lesen */
+  app.post('/halle/sammel/dokid', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const { dokid } = z.object({ dokid: z.coerce.number().int().positive('Bitte eine DOKID angeben.') }).parse(req.body);
+    const r = await belegLesen(await vereinLesen(), dokid);
+    return { ...r, treffer: namenAbgleichen(r.text, await kandidaten(DB)) };
+  });
+
+  /** Sammelrechnung verworfen: neu abgelegten, nicht verknüpften Beleg wieder löschen */
+  app.post('/halle/sammel/verwerfen', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const { dokid } = z.object({ dokid: z.coerce.number().int().positive() }).parse(req.body);
+    await belegVerwerfen(DB, await vereinLesen(), dokid).catch(() => undefined);
+    return { ok: true };
   });
 
   app.post('/halle/sammel', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
@@ -192,10 +206,16 @@ export async function halleRoutes(app: FastifyInstance) {
         preis: z.preprocess(dezimal, z.number({ invalid_type_error: 'Bitte einen Preis als Zahl erfassen' }).nullish()),
       }),
       anhaengen: z.boolean().default(true),
+      belegDocId: z.coerce.number().int().positive().nullish(),
     }).parse(req.body);
     const r = await change(req, (tx) => sammelRechnungen(tx, b), { action: 'SAMMELRECHNUNG' });
     const neu = r.filter((x) => x.neu).length;
     const kunden = r.filter((x) => x.kundeNeu).length;
+    // Beleg in Paperless: Notiz, für welche Rechnungen er die Grundlage ist
+    if (b.belegDocId && r.length) {
+      const v = await vereinLesen();
+      await paperlessNotiz(v, b.belegDocId, `Grundlage für ${r.length} Rechnung(en) „${b.position.beschreibung || b.position.prod_key}“: ${r.map((x) => `${x.rgnr} (${x.name})`).join(', ')} – Portal ${benutzer(req)}, ${heute()}`);
+    }
     return {
       rechnungen: r,
       text: `${r.length} Person(en): ${neu} neue Rechnung(en)${r.length - neu ? `, ${r.length - neu}× an offene Rechnung angehängt` : ''}${kunden ? `, ${kunden} Kunde(n) neu angelegt` : ''}.`,

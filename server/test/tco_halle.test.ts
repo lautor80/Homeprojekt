@@ -32,7 +32,7 @@ const H = '/api/m/tco/halle';
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 
 // ---------------------------------------------------------------- Paperless/n8n-Attrappe
-const mock = { docs: new Map<number, { versions: number[]; notes: string[]; meta: Record<string, unknown> }>(), next: 100, mails: [] as any[], uploads: 0, versionUploads: 0 };
+const mock = { docs: new Map<number, { versions: number[]; notes: string[]; meta: Record<string, unknown>; title?: string; content?: string }>(), next: 100, mails: [] as any[], uploads: 0, versionUploads: 0, ocr: '' };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -44,7 +44,9 @@ const server = http.createServer((req, res) => {
     let m: RegExpExecArray | null;
     if (u === '/api/documents/post_document/') {
       const id = mock.next++;
-      mock.docs.set(id, { versions: [], notes: [], meta: {} });
+      const titel = /name="title"\r\n\r\n([^\r]*)\r\n/.exec(Buffer.from(body, 'latin1').toString('utf8'))?.[1];
+      const bild = /Content-Type: image\//i.test(body);
+      mock.docs.set(id, { versions: [], notes: [], meta: {}, title: titel, content: bild ? mock.ocr : '' });
       mock.uploads++;
       return send(200, `task-${id}`);
     }
@@ -83,13 +85,15 @@ const server = http.createServer((req, res) => {
       const d = mock.docs.get(id);
       if (!d) return send(404, {});
       if (req.method === 'PATCH') { d.meta = JSON.parse(body); return send(200, {}); }
-      return send(200, { id, custom_fields: [], versions: [{ id }, ...d.versions.map((v) => ({ id: v, version_label: 'Neudruck' }))] });
+      if (req.method === 'DELETE') { mock.docs.delete(id); res.writeHead(204); return res.end(); }
+      return send(200, { id, title: d.title ?? '', content: d.content ?? '', custom_fields: [], versions: [{ id }, ...d.versions.map((v) => ({ id: v, version_label: 'Neudruck' }))] });
     }
     if (u === '/webhook/tco-mailversand') {
       const j = JSON.parse(Buffer.from(body, 'latin1').toString('utf8'));
       mock.mails.push(j);
       return send(200, { status: j.modus === 'entwurf' ? 'entwurf' : 'gesendet', message_id: 'm1' });
     }
+    if (u === '/api/trash/') return send(200, {});
     if (u === '/webhook/ep3') return send(200, { bookings_csv: 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n900;03.11.2026;10:00;11:00;Erika Muster;single\n' });
     send(404, { u });
   });
@@ -495,4 +499,49 @@ test('Sammelrechnung: Mannschaftsaufstellung (nuLiga) mit Rang, Position und LK'
   assert.deepEqual(r.body.rechnungen.map((x: any) => x.name), ['Alexander Groß', 'Timo Hinsberger', 'Benjamin Hartyniuk', 'Torsten Schläfke']);
   const k = await sql`select adrnr, betrag::float8 as betrag from tco.rgkopf where rgnr_txt = any(${r.body.rechnungen.map((x: any) => x.rgnr)}) order by adrnr`;
   assert.deepEqual(k.map((x) => [x.adrnr, x.betrag]), [['0000000701', 40], ['0000000702', 40], ['0000000703', 40], ['0000000704', 40]]);
+});
+
+test('Sammelrechnung: Screenshot in Paperless, erneut lesen per DOKID, Verknüpfung mit den Positionen', async () => {
+  mock.ocr = 'TC Oberthal 1\n1 Gross, Alexander (1, LK5,3)\n2 Hinsberger, Timo (3, LK7,2)\n';
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  let r = await call('POST', `${H}/sammel/bild`, { bild: png });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const docId = r.body.docId;
+  assert.match(String(mock.docs.get(docId)!.title), /^Sammelrechnung Namensliste/);
+  assert.deepEqual(r.body.treffer.map((t: any) => t.vorschlaege[0].key), ['M:0000000701', 'M:0000000702']);
+
+  // erneut lesen per DOKID
+  r = await call('POST', `${H}/sammel/dokid`, { dokid: docId });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.treffer.map((t: any) => t.zeile), ['Gross, Alexander', 'Hinsberger, Timo']);
+  assert.equal((await call('POST', `${H}/sammel/dokid`, { dokid: 99999 })).status, 404);
+  // Dokument ohne erkannten Text
+  mock.docs.set(98765, { versions: [], notes: [], meta: {}, title: 'Leer', content: '' });
+  r = await call('POST', `${H}/sammel/dokid`, { dokid: 98765 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /keinen erkannten Text/);
+
+  // Sichern: Beleg an jeder Position, Notiz im Beleg
+  r = await call('POST', `${H}/sammel`, {
+    position: { prod_key: '093', beschreibung: 'Winterhallenrunde', menge: '1', preis: '40' }, anhaengen: false, belegDocId: docId,
+    empfaenger: [{ key: 'M:0000000701' }, { key: 'M:0000000702' }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const rg = r.body.rechnungen[0].rgnr;
+  const [p] = await sql`select beleg_doc_id from tco.rgpos where rgnr_txt = ${rg}`;
+  assert.equal(p.beleg_doc_id, docId);
+  assert.match(mock.docs.get(docId)!.notes.at(-1)!, new RegExp(`Grundlage für 2 Rechnung\\(en\\) „Winterhallenrunde“: ${rg} \\(Alexander Groß\\)`));
+  r = await call('GET', `${H}/rechnungen/${rg}`);
+  assert.equal(r.body.positionen[0].beleg_doc_id, docId);
+  assert.equal((await call('GET', `${H}/paperless/${docId}/pdf`)).status, 200, 'verknüpfter Beleg darf geöffnet werden');
+
+  // Verwerfen: verknüpfter Beleg bleibt, unbenutzter neuer Beleg wird gelöscht, fremde Dokumente nie
+  await call('POST', `${H}/sammel/verwerfen`, { dokid: docId });
+  assert.ok(mock.docs.has(docId));
+  r = await call('POST', `${H}/sammel/bild`, { bild: png });
+  const neu = r.body.docId;
+  await call('POST', `${H}/sammel/verwerfen`, { dokid: neu });
+  assert.ok(!mock.docs.has(neu), 'unbenutzter Screenshot gelöscht');
+  await call('POST', `${H}/sammel/verwerfen`, { dokid: 98765 });
+  assert.ok(mock.docs.has(98765), 'fremdes Dokument bleibt');
 });
