@@ -29,7 +29,8 @@ export function Dokumenteneingang() {
   const [stamm, setStamm] = useState<Stamm | null>(null);
   const [regeln, setRegeln] = useState<Regel[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ id: number | null; start: RegelEingabe } | null>(null);
+  // nachher: Vorgang, der nach dem Speichern der Regel neu bewertet wird („Regel bearbeiten“ aus der Prüfliste)
+  const [dialog, setDialog] = useState<{ id: number | null; start: RegelEingabe; nachher?: number } | null>(null);
   const [stand, setStand] = useState(0);
 
   const regelnLaden = useCallback(() => api.get<Regel[]>(`${EING}/regeln`).then(setRegeln).catch((e) => setError((e as Error).message)), []);
@@ -52,6 +53,24 @@ export function Dokumenteneingang() {
     setDialog({ id: null, start: r });
   }
 
+  /** zugeordnete Regel aus der Prüfliste heraus anpassen; danach wird der Vorgang neu bewertet */
+  function regelBearbeiten(v: Vorgang, regelId: number) {
+    const r = regeln.find((x) => x.id === regelId);
+    if (!r) { setError('Die Regel gibt es nicht (mehr).'); return; }
+    const { id, version: _v, treffer: _t, letzter: _l, ...start } = r;
+    setDialog({ id, start, nachher: v.id });
+  }
+
+  async function gespeichert(nachher?: number) {
+    setDialog(null);
+    regelnLaden();
+    if (nachher) {
+      try { toast(`Regel gespeichert. ${(await api.post<{ text: string }>(`${EING}/vorgaenge/${nachher}/neu-bewerten`)).text}`, 5000); }
+      catch (e) { setError((e as Error).message); }
+    }
+    setStand((s) => s + 1);
+  }
+
   return (
     <AppPage title="Dokumenteneingang" subtitle="E-Mails und Anhänge nach Regeln in Paperless und der Nextcloud ablegen">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
@@ -59,11 +78,11 @@ export function Dokumenteneingang() {
         <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
           {edit ? (
             <Tab data-key="pruef" text="Prüfliste" icon="inbox" selected={tab === 'pruef'}>
-              {tab === 'pruef' && <Vorgaenge key={`p${stand}`} offen edit regeln={regeln} stamm={stamm} onRegelAus={regelAus} />}
+              {tab === 'pruef' && <Vorgaenge key={`p${stand}`} offen edit regeln={regeln} stamm={stamm} onRegelAus={regelAus} onRegelBearbeiten={regelBearbeiten} />}
             </Tab>
           ) : null}
           <Tab data-key="proto" text="Protokoll" icon="history" selected={tab === 'proto'}>
-            {tab === 'proto' && <Vorgaenge key={`a${stand}`} offen={false} edit={edit} regeln={regeln} stamm={stamm} onRegelAus={regelAus} />}
+            {tab === 'proto' && <Vorgaenge key={`a${stand}`} offen={false} edit={edit} regeln={regeln} stamm={stamm} onRegelAus={regelAus} onRegelBearbeiten={regelBearbeiten} />}
           </Tab>
           <Tab data-key="regeln" text="Regeln" icon="decision" selected={tab === 'regeln'}>
             {tab === 'regeln' && <Regeln regeln={regeln} edit={edit} onOeffnen={(id, start) => setDialog({ id, start })} onGeaendert={regelnLaden} />}
@@ -75,7 +94,7 @@ export function Dokumenteneingang() {
       )}
       {dialog && stamm && (
         <RegelDialog id={dialog.id} start={dialog.start} stamm={stamm} onClose={() => setDialog(null)}
-                     onSaved={() => { setDialog(null); regelnLaden(); setStand((s) => s + 1); }} />
+                     onSaved={() => gespeichert(dialog.nachher)} />
       )}
     </AppPage>
   );
@@ -83,8 +102,9 @@ export function Dokumenteneingang() {
 
 // ---------------------------------------------------------------------------- Prüfliste / Protokoll
 
-function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
+function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }: {
   offen: boolean; edit: boolean; regeln: Regel[]; stamm: Stamm; onRegelAus: (v: Vorgang, d: Dokument | null) => void;
+  onRegelBearbeiten: (v: Vorgang, regelId: number) => void;
 }) {
   const [d, setD] = useState<VorgangListe | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +113,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
   const [busy, setBusy] = useState(false);
   const [ablage, setAblage] = useState<{ v: Vorgang; d: Dokument } | null>(null);
   const [mailtext, setMailtext] = useState<{ v: Vorgang; text: string } | null>(null);
+  const [zuordnen, setZuordnen] = useState<Vorgang | null>(null);
   const [frage, setFrage] = useState<{ v: Vorgang; art: 'schliessen' | 'verwerfen' } | null>(null);
 
   const laden = useCallback(() => api.get<VorgangListe>(`${EING}/vorgaenge${qs({ status, suche })}`).then(setD).catch((e) => setError((e as Error).message)), [status, suche]);
@@ -106,6 +127,12 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
   async function textZeigen(v: Vorgang) {
     try { setMailtext({ v, text: (await api.get<{ text: string }>(`${EING}/vorgaenge/${v.id}/text`)).text }); } catch (e) { setError((e as Error).message); }
   }
+
+  /** Regel, die einem offenen Dokument des Vorgangs zugeordnet ist (sonst einem beliebigen Dokument) */
+  const zugeordnet = (v: Vorgang) => {
+    const d = v.dokumente.find((x) => x.regel_id && ['pruefen', 'fehler', 'neu'].includes(x.status)) ?? v.dokumente.find((x) => x.regel_id);
+    return d ? regeln.find((r) => r.id === d.regel_id) ?? null : null;
+  };
 
   const ziel = (dok: Dokument) => {
     if (dok.paperless_id || dok.nextcloud_pfad) return [dok.paperless_id ? `Paperless ${dok.paperless_id}` : '', dok.nextcloud_pfad ? `Nextcloud ${dok.nextcloud_pfad}` : ''].filter(Boolean).join(' · ');
@@ -145,7 +172,12 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
                      {istOffen && <Button design="Transparent" icon="email-read" disabled={busy} onClick={() => textZeigen(v)}>Mailtext</Button>}
                      {istOffen && <Button design="Transparent" icon="synchronize" disabled={busy} tooltip="Regelwerk erneut auf die offenen Dokumente anwenden"
                                           onClick={() => aktion(() => api.post<{ text: string }>(`${EING}/vorgaenge/${v.id}/neu-bewerten`))}>Neu bewerten</Button>}
-                     {(istOffen || v.status === 'ohne_regel') && <Button design="Transparent" icon="add-document" onClick={() => onRegelAus(v, v.dokumente[0] ?? null)}>Regel erstellen</Button>}
+                     {(istOffen || v.status === 'ohne_regel') && (zugeordnet(v)
+                       ? <Button design="Transparent" icon="edit" tooltip={`Regel „${zugeordnet(v)!.name}“ anpassen; danach wird der Vorgang neu bewertet`}
+                                 onClick={() => onRegelBearbeiten(v, zugeordnet(v)!.id)}>Regel bearbeiten</Button>
+                       : <Button design="Transparent" icon="add-document" onClick={() => onRegelAus(v, v.dokumente[0] ?? null)}>Regel erstellen</Button>)}
+                     {(istOffen || v.status === 'ohne_regel') && <Button design="Transparent" icon="chain-link" disabled={busy} tooltip="Eine bestehende Regel auswählen und anwenden"
+                                                                        onClick={() => setZuordnen(v)}>Regel zuordnen</Button>}
                      {(istOffen || v.status === 'ohne_regel') && <Button design="Transparent" icon="decline" disabled={busy} onClick={() => setFrage({ v, art: 'schliessen' })}>Ohne Ablage schließen</Button>}
                      {v.status !== 'abgelegt' && <Button design="Transparent" icon="delete" disabled={busy} tooltip="Vorgang verwerfen – die E-Mail wird neu eingelesen" onClick={() => setFrage({ v, art: 'verwerfen' })} />}
                    </> : undefined}>
@@ -197,6 +229,8 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
         );
       })}
       {d?.gekuerzt && <Text className="portal-muted portal-small">Es werden nur die neuesten 300 Vorgänge gezeigt – bitte die Suche eingrenzen.</Text>}
+      {zuordnen && <ZuordnenDialog v={zuordnen} onClose={() => setZuordnen(null)} onDone={() => { setZuordnen(null); laden(); }}
+                                   onBearbeiten={(id) => { const v = zuordnen; setZuordnen(null); onRegelBearbeiten(v, id); }} />}
       {ablage && <AblageDialog v={ablage.v} d={ablage.d} regeln={regeln} stamm={stamm} onClose={() => setAblage(null)} onDone={() => { setAblage(null); laden(); }} />}
       {mailtext && (
         <Dialog open headerText={mailtext.v.betreff || 'Mailtext'} style={{ width: 'min(50rem, 96vw)' }} onClose={() => setMailtext(null)}
@@ -221,6 +255,57 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
 }
 
 /** Dokument der Prüfliste ablegen: mit einer Regel oder von Hand */
+/** Bestehende Regel zuordnen: Regeln mit „passt / passt nicht“, Anwenden oder Bedingungen anpassen */
+function ZuordnenDialog({ v, onClose, onDone, onBearbeiten }: { v: Vorgang; onClose: () => void; onDone: () => void; onBearbeiten: (regelId: number) => void }) {
+  const [liste, setListe] = useState<{ id: number; name: string; status: string; gilt_fuer: string; passt: boolean; anwendbar: boolean }[] | null>(null);
+  const [regelId, setRegelId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api.get<NonNullable<typeof liste>>(`${EING}/vorgaenge/${v.id}/regeln`).then((l) => {
+      const sortiert = [...l].sort((a, b) => Number(b.passt) - Number(a.passt) || Number(b.anwendbar) - Number(a.anwendbar) || a.name.localeCompare(b.name, 'de'));
+      setListe(sortiert);
+      setRegelId(String(sortiert.find((r) => r.anwendbar)?.id ?? ''));
+    }).catch((e) => setError((e as Error).message));
+  }, [v.id]);
+  const r = liste?.find((x) => String(x.id) === regelId) ?? null;
+
+  async function anwenden() {
+    if (!r) return;
+    setBusy(true); setError(null);
+    try { toast((await api.post<{ text: string }>(`${EING}/vorgaenge/${v.id}/regel`, { regel_id: r.id })).text, 6000); onDone(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open headerText={`Regel zuordnen – ${v.betreff || '(ohne Betreff)'}`} style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" disabled={busy || !r?.anwendbar} onClick={anwenden}>Zuordnen und anwenden</Button>
+              <Button design="Transparent" icon="edit" disabled={!r} onClick={() => r && onBearbeiten(r.id)}>Regel bearbeiten …</Button>
+              <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {!liste ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : !liste.length ? <Text>Es gibt noch keine Regeln.</Text> : <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.5rem 1rem', alignItems: 'center' }}>
+          <Label>Regel</Label>
+          <Wahl wert={regelId} style={{ width: '100%' }} onChange={setRegelId} optionen={liste.map((x): [string, string] => [String(x.id),
+            `${x.name} – ${x.gilt_fuer === 'mail' ? 'E-Mail' : 'je Anhang'}${x.status === 'testlauf' ? ', Testlauf' : x.status === 'aus' ? ', aus' : ''} · ${x.passt ? 'passt' : 'passt nicht'}`])} />
+        </div>
+        {r && (
+          <MessageStrip design={!r.anwendbar ? 'Negative' : r.passt ? 'Positive' : 'Critical'} hideCloseButton style={{ marginTop: '0.75rem' }}>
+            {!r.anwendbar
+              ? (r.status === 'aus' ? 'Die Regel ist ausgeschaltet.' : 'Die Regel gilt je Anhang, der Vorgang hat aber keine offenen Anhänge.')
+              : r.passt
+                ? 'Die Bedingungen der Regel passen auf diese E-Mail.'
+                : 'Die Bedingungen passen nicht auf diese E-Mail. Die Regel wird trotzdem angewendet – damit sie künftig von selbst greift, „Regel bearbeiten …“ und die Bedingungen anpassen.'}
+            {r.anwendbar && r.status === 'testlauf' ? ' Im Testlauf entsteht nur ein Vorschlag; die E-Mail bleibt unverändert.' : ''}
+          </MessageStrip>
+        )}
+      </>}
+    </Dialog>
+  );
+}
+
 function AblageDialog({ v, d, regeln, stamm, onClose, onDone }: { v: Vorgang; d: Dokument; regeln: Regel[]; stamm: Stamm; onClose: () => void; onDone: () => void }) {
   const waehlbar = regeln.filter((r) => r.gilt_fuer === d.art && r.status !== 'aus' && (r.aktionen.paperless?.aktiv || r.aktionen.nextcloud?.aktiv));
   const vorschlag = d.zuordnung?.zuordnung ?? null;

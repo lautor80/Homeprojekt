@@ -10,7 +10,7 @@ import {
   FELDER, FELD_IDS, OPERATOREN, OPERATOR_IDS, PLATZHALTER, QUELLEN, QUELLE_IDS, bedingungPasst, extrahieren, musterFehler, platzhalter, regelPasst,
 } from './logik.js';
 import {
-  abgleich, ausstehendeAktionen, dokumentAblegen, offeneNeuBewerten, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
+  abgleich, ausstehendeAktionen, dokumentAblegen, offeneNeuBewerten, regelZuordnen, regelnFuerVorgang, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
   zieleAufloesen,
 } from './verarbeitung.js';
 
@@ -298,6 +298,13 @@ export async function eingangRoutes(app: FastifyInstance) {
 
   app.post('/eingang/dokumente/:id/ignorieren', pflegen, async (req) => dokumentIgnorieren(idParam.parse(req.params).id, wer(req)));
   app.post('/eingang/vorgaenge/:id/neu-bewerten', pflegen, async (req) => neuBewerten(idParam.parse(req.params).id, wer(req)));
+  /** Prüfliste: Regeln mit Angabe, ob sie auf den Vorgang passen, und eine bestehende Regel von Hand zuordnen */
+  app.get('/eingang/vorgaenge/:id/regeln', pflegen, async (req) => regelnFuerVorgang(idParam.parse(req.params).id));
+  app.post('/eingang/vorgaenge/:id/regel', pflegen, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const { regel_id } = z.object({ regel_id: z.number().int().positive() }).parse(req.body);
+    return regelZuordnen(id, regel_id, wer(req));
+  });
   app.post('/eingang/vorgaenge/:id/ignorieren', pflegen, async (req) => vorgangIgnorieren(idParam.parse(req.params).id, wer(req)));
 
   /**
