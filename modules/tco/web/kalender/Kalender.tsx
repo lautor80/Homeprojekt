@@ -12,6 +12,7 @@ import { download } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
 import { MassenanlageDialog } from './Massenanlage';
+import { EventTabelle } from './EventTabelle';
 import './kalender.css';
 
 /**
@@ -55,6 +56,8 @@ export function Kalender() {
   const [monat, setMonat] = useState({ j: heute.getFullYear(), m: heute.getMonth() });
   const [ansicht, setAnsicht] = useState<'LISTE' | 'MONAT'>('LISTE');
   const [tab, setTab] = useState('kal');
+  // zählt hoch, wenn Veranstaltungen geladen wurden – die Tabelle lädt dann ebenfalls neu
+  const [version, setVersion] = useState(0);
   const [d, setD] = useState<Daten | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,7 +74,7 @@ export function Kalender() {
 
   const von = tagIso(new Date(monat.j, monat.m, 1));
   const bis = ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
-  const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}`).then(setD).catch((e) => setError(e.message));
+  const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}`).then((x) => { setD(x); setVersion((v) => v + 1); }).catch((e) => setError(e.message));
   useEffect(() => { laden(); }, [von, bis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function aktion(fn: () => Promise<{ text?: string } | void>) {
@@ -145,6 +148,11 @@ export function Kalender() {
             </BusyIndicator>
           )}
         </Tab>
+        {d?.pflege && (
+          <Tab data-key="tabelle" text="Tabelle" icon="table-view" selected={tab === 'tabelle'}>
+            <EventTabelle aktiv={tab === 'tabelle'} version={version} kategorien={d.kategorien} gruppen={d.gruppen} onOeffnen={setDetail} onGeaendert={laden} onError={setError} />
+          </Tab>
+        )}
         {d?.pflege && (
           <Tab data-key="gruppen" text="Gruppen / Mannschaften" icon="group" selected={tab === 'gruppen'}>
             <Gruppen aktiv={tab === 'gruppen'} onError={setError} onGeaendert={laden} />
