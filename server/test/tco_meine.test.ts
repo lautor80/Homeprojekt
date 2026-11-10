@@ -74,10 +74,26 @@ test('Mitglieder als Benutzer anlegen: E-Mail als Anmeldename, Familienadresse, 
   // erneut: nichts doppelt
   r = await admin('POST', `${M}/benutzer-anlegen`, { mail: false });
   assert.equal(r.body.angelegt.length, 0);
-  // Systemrolle nicht erweiterbar
-  await admin('PUT', '/api/admin/roles/MITGLIED', { name: 'Mitglied', permissions: ['tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.mitglieder:display'] });
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
+  // keine Systemrolle mehr: nur ein Administrator ändert die Berechtigungen, keine Administrationsrechte, nicht löschbar
+  const STANDARD = ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit'];
+  const rolle = (await admin('GET', '/api/admin/roles')).body.find((x: { id: string }) => x.id === 'MITGLIED');
+  assert.deepEqual([rolle.system, rolle.nurAdmin], [false, true]);
+  r = await admin('PUT', '/api/admin/roles/MITGLIED', { name: 'Mitglied', permissions: [...STANDARD, 'tco.mitglieder:display'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok((await sql`select 1 from core.role_permissions where role_id = 'MITGLIED' and permission = 'tco.mitglieder:display'`).length === 1);
+  r = await admin('PUT', '/api/admin/roles/MITGLIED', { name: 'Mitglied', permissions: [...STANDARD, 'core.users:edit'] });
+  assert.equal(r.status, 400, 'keine Administrationsrechte');
+  assert.equal((await admin('PUT', '/api/admin/roles/MITGLIED', { name: 'Mitglied', permissions: STANDARD })).status, 200);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), STANDARD);
   assert.equal((await admin('DELETE', '/api/admin/roles/MITGLIED')).status, 400);
+  // Rollenpflege ohne Administratorrolle: andere Rollen ja, Mitglied/Hallennutzer nicht
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'ROLLENPFLEGE', name: 'Rollenpflege', permissions: ['core.roles:display', 'core.roles:edit'] })).status, 200);
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'rollenpfleger', displayName: 'Rollenpfleger', password: 'start-passwort', roles: ['ROLLENPFLEGE'] })).status, 200);
+  await sql`update core.users set must_change_password = false where username = 'rollenpfleger'`;
+  const rp = client();
+  assert.equal((await rp('POST', '/api/auth/login', { username: 'rollenpfleger', password: 'start-passwort' })).status, 200);
+  assert.equal((await rp('PUT', '/api/admin/roles/HALLENNUTZER', { name: 'Hallennutzer', permissions: ['tco.platzbuchung:edit'] })).status, 403);
+  assert.equal((await rp('PUT', '/api/admin/roles/ROLLENPFLEGE', { name: 'Rollenpflege neu', permissions: ['core.roles:display', 'core.roles:edit'] })).status, 200);
 });
 
 const paula = client();

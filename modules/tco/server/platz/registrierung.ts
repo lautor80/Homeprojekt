@@ -11,8 +11,9 @@ import { sha256 } from '../../../../server/src/auth.js';
  * Registrierung neuer Hallennutzer mit Freigabe durch die Platzverwaltung.
  *
  * - Jeder Registrierte wird nach der Freigabe ein Portalbenutzer mit GENAU der Rolle HALLENNUTZER, die nur
- *   „Platz buchen“ (eigene Einzelbuchungen) erlaubt. Die Rolle ist eine Systemrolle; ihre Berechtigungen
- *   werden hier bei jedem Start und vor jeder Freigabe erzwungen (rolleSicherstellen) und nach dem Anlegen geprüft.
+ *   „Platz buchen“ (eigene Einzelbuchungen) erlaubt. Die Rolle ist keine Systemrolle: ihre Berechtigungen pflegt ein
+ *   Administrator (Rolle „nur Admin“); das Portal legt sie nur an, wenn sie fehlt (rolleSicherstellen), und prüft nach dem
+ *   Anlegen, dass der Benutzer genau diese Rolle und keine Administrationsrechte hat.
  * - Bestehende EP3-Nutzer: Beim Registrieren kann das EP3-Konto (Benutzername/E-Mail + EP3-Kennwort) nachgewiesen
  *   werden; das Kennwort wird übernommen (bcrypt-Hash aus bs_users.pw, im Kundenimport Spalte PW). Die Zuordnung
  *   zum EP3-Kunden sorgt dafür, dass die bestehenden EP3-Buchungen als eigene erscheinen und abgerechnet werden.
@@ -22,37 +23,42 @@ import { sha256 } from '../../../../server/src/auth.js';
 export const ROLLE = 'HALLENNUTZER';
 /** Hallennutzer: eigene Einzelbuchungen und eigene Kontaktdaten (Meine Daten) */
 export const ROLLE_RECHTE = ['tco.meinkonto:edit', 'tco.platzbuchung:edit'];
-/** Systemrolle für Vereinsmitglieder: eigene Mitgliedsdaten („Meine Mitgliedschaft“) und Einzelbuchung */
+/** Rolle für Vereinsmitglieder: eigene Mitgliedsdaten („Meine Mitgliedschaft“) und Einzelbuchung */
 export const ROLLE_MITGLIED = 'MITGLIED';
 export const ROLLE_MITGLIED_RECHTE = ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit'];
-/** feste Systemrollen – Berechtigungen werden bei jedem Start und vor jeder automatischen Anlage erzwungen */
+/** vom Portal vergebene Rollen mit ihren Vorgabe-Berechtigungen (nur beim ersten Anlegen; danach pflegt sie ein Administrator) */
 export const SYSTEMROLLEN: Record<string, { name: string; text: string; rechte: string[] }> = {
-  [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen) und eigene Kontaktdaten (Meine Daten). Berechtigungen fest vorgegeben.', rechte: ROLLE_RECHTE },
-  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“) und An-/Abmeldung im Vereinskalender. Berechtigungen fest vorgegeben.', rechte: ROLLE_MITGLIED_RECHTE },
+  [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen) und eigene Kontaktdaten (Meine Daten). Wird bei Registrierung bzw. Benutzeranlage automatisch vergeben; ändern kann sie nur ein Administrator.', rechte: ROLLE_RECHTE },
+  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“) und An-/Abmeldung im Vereinskalender. Wird bei Registrierung bzw. Benutzeranlage automatisch vergeben; ändern kann sie nur ein Administrator.', rechte: ROLLE_MITGLIED_RECHTE },
 };
 const GESPERRT = ['blocked', 'deleted', 'disabled'];
 
 export const istBcrypt = (h: string | null | undefined) => !!h && /^\$2[abxy]?\$\d\d\$/.test(h);
 const name = (v?: string | null, n?: string | null) => condense(`${v ?? ''} ${n ?? ''}`);
 
-/** Systemrollen HALLENNUTZER und MITGLIED: vorhanden, Systemrolle, genau die vorgesehenen Berechtigungen */
+/**
+ * Rollen HALLENNUTZER und MITGLIED vorhanden? Fehlt eine (neue Installation, ältere Sicherung), wird sie mit den
+ * Vorgabe-Berechtigungen angelegt. Bestehende Rollen bleiben unverändert – ihre Berechtigungen pflegt ein Administrator.
+ */
 export async function rolleSicherstellen(db: Db): Promise<void> {
   for (const [id, r] of Object.entries(SYSTEMROLLEN)) {
-    await db`insert into core.roles (id, name, description, system) values (${id}, ${r.name}, ${r.text}, true)
-             on conflict (id) do update set system = true`;
-    await db`delete from core.role_permissions where role_id = ${id} and permission <> all(${r.rechte})`;
-    for (const p of r.rechte) await db`insert into core.role_permissions (role_id, permission) values (${id}, ${p}) on conflict do nothing`;
+    const neu = await db`insert into core.roles (id, name, description, system, nur_admin) values (${id}, ${r.name}, ${r.text}, false, true)
+                         on conflict (id) do update set nur_admin = true returning (xmax = 0) as angelegt`;
+    if (neu[0]?.angelegt) for (const p of r.rechte) await db`insert into core.role_permissions (role_id, permission) values (${id}, ${p}) on conflict do nothing`;
   }
 }
 
-/** Nach dem Anlegen: der Benutzer hat ausschließlich die vorgesehene Systemrolle und damit genau deren Berechtigungen */
+/**
+ * Nach dem automatischen Anlegen: der Benutzer hat ausschließlich die vorgesehene Rolle, und die Rolle enthält keine
+ * Administrationsrechte (core.*, „alle“) – sonst bekäme jeder, der sich selbst registriert, Zugriff auf die Verwaltung.
+ */
 export async function rechtePruefen(db: Db, benutzerId: string, rolle: string = ROLLE) {
-  const soll = SYSTEMROLLEN[rolle].rechte;
   const rollen = (await db`select role_id from core.user_roles where user_id = ${benutzerId}`).map((r) => r.role_id as string);
   const rechte = (await db`select distinct rp.permission from core.user_roles ur join core.role_permissions rp on rp.role_id = ur.role_id
                             where ur.user_id = ${benutzerId} order by 1`).map((r) => r.permission as string);
-  if (rollen.length !== 1 || rollen[0] !== rolle || rechte.join(',') !== [...soll].sort().join(',')) {
-    throw new BusinessError(`Sicherheitsprüfung fehlgeschlagen: Der Benutzer hätte mehr als die Rolle ${SYSTEMROLLEN[rolle].name} erhalten (${rollen.join(', ')} → ${rechte.join(', ')}). Vorgang abgebrochen.`, 500);
+  const admin = rechte.filter((p) => p === '*' || p.startsWith('core.'));
+  if (rollen.length !== 1 || rollen[0] !== rolle || admin.length) {
+    throw new BusinessError(`Sicherheitsprüfung fehlgeschlagen: Der Benutzer hätte mehr als die Rolle ${SYSTEMROLLEN[rolle].name} erhalten (${rollen.join(', ')}${admin.length ? ` → ${admin.join(', ')}` : ''}). Vorgang abgebrochen.`, 500);
   }
 }
 
