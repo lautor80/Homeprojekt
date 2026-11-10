@@ -76,9 +76,22 @@ export const leereRegel = (): RegelEingabe => ({
   automatik: 'immer',
 });
 
+/**
+ * Ordner des Vereinspostfachs für „E-Mail danach → verschieben“: Anzeigename wie in der Nextcloud → IMAP-Pfad für n8n.
+ * Andere Ordner lassen sich frei eingeben.
+ */
+export const MAIL_ORDNER: [pfad: string, name: string][] = [
+  ['INBOX', 'Posteingang'], ['INBOX.Sent', 'Gesendet'], ['INBOX.spambucket', 'Spam'], ['INBOX.Drafts', 'Entwürfe'], ['INBOX.Templates', 'Vorlagen'],
+  ['INBOX.Trash', 'Papierkorb'], ['INBOX.Platzbuchungen', 'Platzbuchungen'], ['INBOX.N8N Löschen', 'N8N Löschen'], ['INBOX.Tennis Nohe', 'Tennis Nohe'],
+  ['INBOX.Christian Kasper', 'Christian Kasper'], ['INBOX.Mitglieder', 'Mitglieder'], ['INBOX.STB_LSVS', 'STB_LSVS'], ['INBOX.JotForm', 'JotForm'],
+  ['INBOX.Archiv', 'Archiv'], ['INBOX.Vorstand', 'Vorstand'], ['INBOX.Belege', 'Belege'], ['INBOX.Belege.Rechnungen', 'Belege › Rechnungen'],
+  ['INBOX.Belege.SumUp', 'Belege › SumUp'], ['INBOX.Nachverarbeitung', 'Nachverarbeitung'],
+];
+export const ordnerText = (pfad: string | undefined) => MAIL_ORDNER.find(([p]) => p === pfad)?.[1] ?? pfad ?? '';
+
 export function mailText(a: MailAktion | null | undefined): string {
   if (!a) return '';
-  const teile = [a.art === 'verschieben' ? `verschieben nach „${a.ordner ?? ''}“` : a.art === 'loeschen' ? 'in den Papierkorb' : '', a.gelesen ? 'als gelesen markieren' : ''].filter(Boolean);
+  const teile = [a.art === 'verschieben' ? `verschieben nach „${ordnerText(a.ordner)}“` : a.art === 'loeschen' ? 'in den Papierkorb' : '', a.gelesen ? 'als gelesen markieren' : ''].filter(Boolean);
   return teile.join(', ') || 'bleibt unverändert';
 }
 

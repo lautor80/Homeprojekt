@@ -10,7 +10,7 @@ import {
   FELDER, FELD_IDS, OPERATOREN, OPERATOR_IDS, PLATZHALTER, QUELLEN, QUELLE_IDS, bedingungPasst, extrahieren, musterFehler, platzhalter, regelPasst,
 } from './logik.js';
 import {
-  abgleich, ausstehendeAktionen, dokumentAblegen, offeneNeuBewerten, regelZuordnen, regelnFuerVorgang, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
+  abgleich, ausstehendeAktionen, dokumentAblegen, mailAktionAendern, offeneNeuBewerten, regelZuordnen, regelnFuerVorgang, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
   zieleAufloesen,
 } from './verarbeitung.js';
 
@@ -304,6 +304,12 @@ export async function eingangRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const { regel_id } = z.object({ regel_id: z.number().int().positive() }).parse(req.body);
     return regelZuordnen(id, regel_id, wer(req));
+  });
+  /** ausstehende Behandlung der E-Mail ändern (null = E-Mail unverändert lassen) */
+  app.put('/eingang/vorgaenge/:id/mail', pflegen, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const { mail } = z.object({ mail: mailAktion.nullable() }).parse(req.body);
+    return mailAktionAendern(id, mail, wer(req));
   });
   app.post('/eingang/vorgaenge/:id/ignorieren', pflegen, async (req) => vorgangIgnorieren(idParam.parse(req.params).id, wer(req)));
 

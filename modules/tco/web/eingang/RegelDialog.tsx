@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Bar, Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
-import { EING, type Aktionen, type Extraktion, type MailArt, type PaperlessZiel, type RegelEingabe, type Stamm, type Zuordnung, type Zusammenfassen } from './typen';
+import { EING, MAIL_ORDNER, type Aktionen, type Extraktion, type MailArt, type PaperlessZiel, type RegelEingabe, type Stamm, type Zuordnung, type Zusammenfassen } from './typen';
 
 /**
  * Regel des Dokumenteneingangs pflegen: Bedingungen, Extraktion per Muster, Ablage (Paperless, Nextcloud),
@@ -29,6 +29,19 @@ export function Vorschlag({ wert, werte, onChange, placeholder, disabled }: { we
               onSelectionChange={(e) => { const t = (e.detail.item as HTMLElement & { text?: string } | null)?.text; if (t) onChange(t); }}>
       {werte.map((w) => <ComboBoxItem key={w} text={w} />)}
     </ComboBox>
+  );
+}
+
+/** Zielordner im Postfach: Auswahl der bekannten Ordner (IMAP-Pfad für n8n) oder freie Eingabe */
+export function Zielordner({ wert, onChange }: { wert: string; onChange: (pfad: string) => void }) {
+  const bekannt = MAIL_ORDNER.some(([p]) => p === wert);
+  const [frei, setFrei] = useState(!!wert && !bekannt);
+  return (
+    <>
+      <Wahl wert={frei ? '*' : wert} style={{ width: '16rem' }} optionen={[['', 'Ordner wählen …'], ...MAIL_ORDNER.map(([p, n]): [string, string] => [p, n]), ['*', 'anderer Ordner …']]}
+            onChange={(k) => { if (k === '*') { setFrei(true); onChange(bekannt ? '' : wert); } else { setFrei(false); onChange(k); } }} />
+      {frei && <Input value={wert} placeholder="IMAP-Pfad, z. B. INBOX.Belege" style={{ width: '14rem' }} onInput={(e) => onChange(e.target.value)} />}
+    </>
   );
 }
 
@@ -250,7 +263,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
         <div style={zeile}>
           <Wahl wert={mail.art} style={{ width: '15rem' }} onChange={(k) => setA({ mail: { ...mail, art: k as MailArt } })}
                 optionen={[['keine', 'im Posteingang lassen'], ['verschieben', 'in einen Ordner verschieben'], ['loeschen', 'in den Papierkorb']]} />
-          {mail.art === 'verschieben' && <Input value={mail.ordner ?? ''} placeholder="Zielordner, z. B. Erledigt" style={{ width: '16rem' }} onInput={(e) => setA({ mail: { ...mail, ordner: e.target.value } })} />}
+          {mail.art === 'verschieben' && <Zielordner wert={mail.ordner ?? ''} onChange={(o) => setA({ mail: { ...mail, ordner: o } })} />}
           <CheckBox text="als gelesen markieren" checked={!!mail.gelesen} onChange={(e) => setA({ mail: { ...mail, gelesen: e.target.checked } })} />
         </div>
       </Block>

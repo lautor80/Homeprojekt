@@ -67,7 +67,7 @@ Zuordnung und Paperless-Nummer.
 | Custom Fields | Feld aus Paperless wählen, Wert oder Vorlage angeben (z. B. `{feld.betrag}`). Das Portal wandelt je Feldtyp um: Betrag `EUR12.50`, Datum `JJJJ-MM-TT` (auch `31.12.2026`), Zahl, Ja/Nein, Auswahl per Option. Ungültige Werte werden als Warnung gemeldet. |
 | Anhänge zusammenfassen | Nur je Anhang: alle Anhänge einer E-Mail, für die die Regel greift (PDFs und Bilder), werden vor der Ablage zu einem PDF zusammengefügt – Reihenfolge wie in der E-Mail oder nach Dateiname, Dateiname als Vorlage (`{anzahl}` = Zahl der Teile). Dublettenprüfung über die Teile. Schlägt das Zusammenfügen fehl (z. B. verschlüsseltes PDF), gehen die Teile einzeln in die Prüfliste. Läuft über Gotenberg. |
 | Nextcloud | Bei neuen Regeln aus; bei Bedarf einschalten. Ordner und Dateiname als Vorlagen, z. B. `Belege/{jahr}` und `{datum}_{kurz}_{datei}` |
-| E-Mail danach | im Posteingang lassen, in einen Ordner verschieben oder in den Papierkorb; optional als gelesen markieren |
+| E-Mail danach | im Posteingang lassen, in einen Ordner verschieben oder in den Papierkorb; optional als gelesen markieren. Zielordner aus der Liste der Ordner des Vereinspostfachs (Anzeige wie in der Nextcloud, gespeichert wird der IMAP-Pfad für n8n, z. B. „Belege › SumUp“ = `INBOX.Belege.SumUp`) oder frei eingegeben; die Liste steht in `modules/tco/web/eingang/typen.ts` (`MAIL_ORDNER`). |
 | Automatik | bei Treffer sofort ablegen oder immer in die Prüfliste |
 
 Platzhalter: `{datei}`, `{betreff}`, `{von}`, `{von_name}`, `{domain}`, `{postfach}`, `{datum}`, `{jahr}`, `{monat}`, `{heute}`,

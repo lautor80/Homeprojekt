@@ -547,6 +547,20 @@ export async function regelZuordnen(vorgangId: number, regelId: number, wer: str
   return { status, text: `Regel „${regel.name}“ zugeordnet: ${was} ${regel.status === 'testlauf' ? 'als Vorschlag (Testlauf)' : 'angewendet'}.` };
 }
 
+/** Ausstehende Behandlung der E-Mail ändern (z. B. falscher Zielordner) – nur solange n8n sie noch nicht ausgeführt hat */
+export async function mailAktionAendern(vorgangId: number, aktion: MailAktion | null, wer: string) {
+  const [v] = await DB`select id, status, mail_aktion, mail_erledigt_am from tco.eing_vorgaenge where id = ${vorgangId}`;
+  if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
+  if (v.mail_erledigt_am) throw new BusinessError('Die Behandlung der E-Mail ist bereits ausgeführt.');
+  const alt = v.mail_aktion as GeplanteMailAktion | null;
+  const neu: GeplanteMailAktion | null = aktion && (aktion.art !== 'keine' || aktion.gelesen)
+    ? { art: aktion.art, ordner: aktion.art === 'verschieben' ? aktion.ordner ?? '' : '', gelesen: !!aktion.gelesen, aufgaben: alt?.aufgaben ?? [] } : null;
+  await DB`update tco.eing_vorgaenge set mail_aktion = ${neu ? DB.json(neu as never) : null} where id = ${vorgangId}`;
+  // ohne Dokumente hängt der Status an der Behandlung (abgelegt ↔ ohne Regel)
+  const status = await abschliessen(vorgangId);
+  return { status, text: neu ? `Behandlung der E-Mail geändert (${wer}).` : 'Die E-Mail bleibt unverändert im Postfach.' };
+}
+
 /** Vorgang ohne Ablage schließen (offene Dokumente werden ignoriert, die E-Mail bleibt unangetastet) */
 export async function vorgangIgnorieren(vorgangId: number, wer: string) {
   const [v] = await DB`select id from tco.eing_vorgaenge where id = ${vorgangId}`;

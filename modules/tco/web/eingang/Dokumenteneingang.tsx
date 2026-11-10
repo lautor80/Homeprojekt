@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, Dialog, Input, Label, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea } from '@ui5/webcomponents-react';
+import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -7,7 +7,7 @@ import { Empty, Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { dat } from '../util';
-import { RegelDialog, Vorschlag, Wahl } from './RegelDialog';
+import { RegelDialog, Vorschlag, Wahl, Zielordner } from './RegelDialog';
 import {
   EING, REGEL_STATUS, STATUS_STATE, STATUS_TEXT, kopf, leereRegel, mailText, zelle,
   type Dokument, type Korrespondent, type MailAktion, type MailArt, type Regel, type RegelEingabe, type Stamm, type Vorgang, type VorgangListe,
@@ -114,6 +114,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
   const [ablage, setAblage] = useState<{ v: Vorgang; d: Dokument } | null>(null);
   const [mailtext, setMailtext] = useState<{ v: Vorgang; text: string } | null>(null);
   const [zuordnen, setZuordnen] = useState<Vorgang | null>(null);
+  const [behandlung, setBehandlung] = useState<Vorgang | null>(null);
   const [frage, setFrage] = useState<{ v: Vorgang; art: 'schliessen' | 'verwerfen' } | null>(null);
 
   const laden = useCallback(() => api.get<VorgangListe>(`${EING}/vorgaenge${qs({ status, suche })}`).then(setD).catch((e) => setError((e as Error).message)), [status, suche]);
@@ -189,6 +190,9 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
               {(v.hinweis || v.mail_aktion) && (
                 <Text className="portal-muted portal-small" style={{ display: 'block' }}>
                   {v.hinweis ?? ''}{v.hinweis && v.mail_aktion ? ' · ' : ''}{v.mail_aktion ? `E-Mail: ${mailText(v.mail_aktion)}${v.mail_erledigt ? ' (erledigt)' : v.status === 'abgelegt' ? ' (steht aus)' : ''}` : ''}
+                  {edit && v.mail_aktion && !v.mail_erledigt && (
+                    <Button design="Transparent" icon="edit" tooltip="Behandlung der E-Mail ändern, solange sie noch nicht ausgeführt ist" onClick={() => setBehandlung(v)}>Behandlung ändern</Button>
+                  )}
                 </Text>
               )}
             </div>
@@ -229,6 +233,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
         );
       })}
       {d?.gekuerzt && <Text className="portal-muted portal-small">Es werden nur die neuesten 300 Vorgänge gezeigt – bitte die Suche eingrenzen.</Text>}
+      {behandlung && <BehandlungDialog v={behandlung} onClose={() => setBehandlung(null)} onDone={() => { setBehandlung(null); laden(); }} />}
       {zuordnen && <ZuordnenDialog v={zuordnen} onClose={() => setZuordnen(null)} onDone={() => { setZuordnen(null); laden(); }}
                                    onBearbeiten={(id) => { const v = zuordnen; setZuordnen(null); onRegelBearbeiten(v, id); }} />}
       {ablage && <AblageDialog v={ablage.v} d={ablage.d} regeln={regeln} stamm={stamm} onClose={() => setAblage(null)} onDone={() => { setAblage(null); laden(); }} />}
@@ -255,6 +260,38 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
 }
 
 /** Dokument der Prüfliste ablegen: mit einer Regel oder von Hand */
+/** Ausstehende Behandlung der E-Mail ändern (z. B. falscher Zielordner) */
+function BehandlungDialog({ v, onClose, onDone }: { v: Vorgang; onClose: () => void; onDone: () => void }) {
+  const [art, setArt] = useState<MailArt>(v.mail_aktion?.art ?? 'keine');
+  const [ordner, setOrdner] = useState(v.mail_aktion?.ordner ?? '');
+  const [gelesen, setGelesen] = useState(!!v.mail_aktion?.gelesen);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function speichern() {
+    setBusy(true); setError(null);
+    try {
+      toast((await api.put<{ text: string }>(`${EING}/vorgaenge/${v.id}/mail`, { mail: { art, ordner: art === 'verschieben' ? ordner : undefined, gelesen } })).text, 5000);
+      onDone();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open headerText={`E-Mail-Behandlung – ${v.betreff || '(ohne Betreff)'}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" disabled={busy || (art === 'verschieben' && !ordner)} onClick={speichern}>Speichern</Button>
+              <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Wahl wert={art} style={{ width: '15rem' }} onChange={(k) => setArt(k as MailArt)}
+              optionen={[['keine', 'im Posteingang lassen'], ['verschieben', 'in einen Ordner verschieben'], ['loeschen', 'in den Papierkorb']]} />
+        {art === 'verschieben' && <Zielordner wert={ordner} onChange={setOrdner} />}
+        <CheckBox text="als gelesen markieren" checked={gelesen} onChange={(e) => setGelesen(e.target.checked)} />
+      </div>
+      <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>n8n führt die Behandlung beim nächsten Lauf (alle 5 Minuten) aus.</Text>
+    </Dialog>
+  );
+}
+
 /** Bestehende Regel zuordnen: Regeln mit „passt / passt nicht“, Anwenden oder Bedingungen anpassen */
 function ZuordnenDialog({ v, onClose, onDone, onBearbeiten }: { v: Vorgang; onClose: () => void; onDone: () => void; onBearbeiten: (regelId: number) => void }) {
   const [liste, setListe] = useState<{ id: number; name: string; status: string; gilt_fuer: string; passt: boolean; anwendbar: boolean }[] | null>(null);
@@ -364,7 +401,7 @@ function AblageDialog({ v, d, regeln, stamm, onClose, onDone }: { v: Vorgang; d:
           <Wahl wert={mail} style={{ width: '15rem' }} onChange={(k) => setMail(k as 'regel' | MailArt)} optionen={[
             ...(hand ? [] : [['regel', 'wie in der Regel'] as [string, string]]),
             ['keine', 'im Posteingang lassen'], ['verschieben', 'in einen Ordner verschieben'], ['loeschen', 'in den Papierkorb']]} />
-          {mail === 'verschieben' && <Input value={ordner} placeholder="Zielordner" style={{ width: '12rem' }} onInput={(e) => setOrdner(e.target.value)} />}
+          {mail === 'verschieben' && <Zielordner wert={ordner} onChange={setOrdner} />}
           {mail !== 'regel' && <Button design={gelesen ? 'Emphasized' : 'Default'} icon="email-read" onClick={() => setGelesen(!gelesen)}>als gelesen markieren</Button>}
         </div>
       </div>
