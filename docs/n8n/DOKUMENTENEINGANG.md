@@ -8,11 +8,22 @@ samt Anhängen an das Portal und führt danach aus, was das Portal für die Mail
 - meldet zurück, ob die Mail verschoben, als gelesen markiert oder in den Papierkorb gelegt werden soll.
 
 ```
-Alle 5 Minuten ─┬─> Posteingang lesen (IMAP) ─> Mail aufbereiten ─> Anhänge? ─┬─> Anhänge laden ─┐
-                │                                                             └──────────────────┴─> Für Portal packen ─> An Portal liefern ─> Gemeldet merken
-                └─> Ausstehende Mailaktionen ─> Mit Vorgang ─> Gelesen markieren? ─> (Als gelesen markieren) ─> Art der Behandlung
-                                                                   ─> E-Mail verschieben | E-Mail in den Papierkorb | – ─> Erledigt melden
+Alle 5 Minuten ─────────────┐
+Alle Mails jetzt ───────────┼─> Modus festlegen ─┬─> Posteingang lesen (IMAP) ─> Mail aufbereiten ─> Anhänge? ─┬─> Anhänge laden ─┐
+Alle Mails jetzt (Webhook) ─┘                    │                                                             └──────────────────┴─> Für Portal packen ─> An Portal liefern ─> Gemeldet merken
+                                                 └─> Ausstehende Mailaktionen ─> Mit Vorgang ─> Gelesen markieren? ─> (Als gelesen markieren) ─> Art der Behandlung
+                                                                                    ─> E-Mail verschieben | E-Mail in den Papierkorb | – ─> Erledigt melden
 ```
+
+**Zwei Betriebsarten** („Modus festlegen“):
+
+| Start | Liest | Liefert |
+|---|---|---|
+| Alle 5 Minuten | E-Mails der letzten 2 Tage, höchstens 50 | nur neue (Merkliste „Gemeldet merken“, nicht älter als 3 Tage) |
+| Alle Mails jetzt (Editor) oder Webhook (Portal: „Posteingang abrufen“) | alle E-Mails im Posteingang, höchstens 500 | alle erneut; das Portal bewertet nur E-Mails „ohne Regel“ neu |
+
+Gelesene E-Mails sind in beiden Fällen dabei (kein Flag-Filter). Verschieben, Markieren und Löschen erledigt der untere Zweig; nach
+einem Sofort-Start greift er für die gerade gelieferten E-Mails beim nächsten 5-Minuten-Lauf.
 
 Alle IMAP-Knoten nutzen den Community-Knoten `n8n-nodes-imap` (wie „TCO Mailversand“), damit die UID der Mail für das spätere
 Verschieben zur Verfügung steht.
@@ -29,7 +40,11 @@ Verschieben zur Verfügung steht.
 5. In „Mail aufbereiten“ unter `POSTFAECHER` den Namen des Postfachs festlegen (z. B. „Verein“). Er ist Teil des Schlüssels im Portal
    und das Bedingungsfeld „Postfach“ der Regeln – **später nicht mehr ändern**, sonst gelten bekannte Mails als neu.
 6. Im Knoten „E-Mail in den Papierkorb“ den Namen des Papierkorbs des Postfachs eintragen (z. B. `Trash`, `Papierkorb`).
-7. Einmal von Hand ausführen und das Ergebnis im Portal unter Dokumenteneingang → Protokoll ansehen, dann aktivieren.
+7. **Sofort-Start aus dem Portal:** Im Knoten „Alle Mails jetzt (Webhook)“ Zugangsdaten „Portal-Abruf (Webhook)“ vom Typ **Header Auth**
+   anlegen (Name `Authorization`, Wert `Bearer <geheimer Wert>` – eigener Wert, nicht der API-Schlüssel des Portals). Im Portal unter
+   **Administration → Anbindungen → Maileingang jetzt abrufen (n8n)** die Production-URL des Webhooks
+   (`…/webhook/tco-dokumenteneingang-alle`) eintragen, Anmeldung „Header“, Name `Authorization`, Wert wie in n8n.
+8. Einmal von Hand ausführen und das Ergebnis im Portal unter Dokumenteneingang → Protokoll ansehen, dann aktivieren.
 
 Der Endpunkt `POST /api/mail/eingang` (Rückmeldungen mit dem Webhook-Schlüssel) wird von diesem Workflow nicht mehr aufgerufen.
 

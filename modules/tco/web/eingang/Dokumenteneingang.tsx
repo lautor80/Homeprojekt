@@ -65,7 +65,7 @@ export function Dokumenteneingang() {
           <Tab data-key="proto" text="Protokoll" icon="history" selected={tab === 'proto'}>
             {tab === 'proto' && <Vorgaenge key={`a${stand}`} offen={false} edit={edit} regeln={regeln} stamm={stamm} onRegelAus={regelAus} />}
           </Tab>
-          <Tab data-key="regeln" text="Regeln" icon="rule" selected={tab === 'regeln'}>
+          <Tab data-key="regeln" text="Regeln" icon="decision" selected={tab === 'regeln'}>
             {tab === 'regeln' && <Regeln regeln={regeln} edit={edit} onOeffnen={(id, start) => setDialog({ id, start })} onGeaendert={regelnLaden} />}
           </Tab>
           <Tab data-key="korr" text="Korrespondenten" icon="group" selected={tab === 'korr'}>
@@ -124,6 +124,14 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
           : [['', 'alle Vorgänge'], ['abgelegt', 'abgelegt'], ['offen', 'zu prüfen und Fehler'], ['ohne_regel', 'ohne Regel'], ['ignoriert', 'nicht abgelegt']]} />
         <Input placeholder="Suchen (Absender, Betreff, Datei)" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '18rem' }} />
         <Button design="Transparent" icon="refresh" tooltip="Aktualisieren" onClick={laden} />
+        {edit && (
+          <Button icon="download" disabled={busy} onClick={() => aktion(() => api.post<{ text: string }>(`${EING}/abruf`))}
+                  tooltip={stamm.abruf.eingerichtet
+                    ? 'Offene Vorgänge neu bewerten und n8n alle E-Mails des Posteingangs erneut liefern lassen (auch gelesene); E-Mails ohne Regel werden neu bewertet'
+                    : 'Offene Vorgänge neu bewerten – für den Abruf aus dem Postfach fehlt die Anbindung „Maileingang jetzt abrufen (n8n)“'}>
+            Posteingang abrufen
+          </Button>
+        )}
         {d && <Text className="portal-muted">{d.offen.pruefen} zu prüfen{d.offen.fehler ? `, ${d.offen.fehler} mit Fehler` : ''}</Text>}
       </div>
       {!d ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : d.vorgaenge.length === 0 ? (
@@ -199,7 +207,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus }: {
       <ConfirmDialog open={!!frage} danger={frage?.art === 'verwerfen'}
                      title={frage?.art === 'verwerfen' ? 'Vorgang verwerfen' : 'Ohne Ablage schließen'}
                      text={frage?.art === 'verwerfen'
-                       ? 'Der Vorgang wird aus dem Portal gelöscht. Liegt die E-Mail noch im Postfach, liest n8n sie beim nächsten Lauf neu ein und das Regelwerk entscheidet erneut.'
+                       ? 'Der Vorgang wird aus dem Portal gelöscht. Liegt die E-Mail noch im Postfach, liest n8n sie mit „Posteingang abrufen“ neu ein und das Regelwerk entscheidet erneut.'
                        : 'Die offenen Dokumente werden nicht abgelegt und im Portal gelöscht. Die E-Mail bleibt unverändert im Postfach.'}
                      confirmText={frage?.art === 'verwerfen' ? 'Verwerfen' : 'Schließen'}
                      onCancel={() => setFrage(null)}

@@ -242,11 +242,21 @@ export async function vorgangAntwort(vorgangId: string | number, neu: boolean) {
   };
 }
 
-/** Eingegangene E-Mail verarbeiten (idempotent je Postfach + Message-ID) */
+/**
+ * Eingegangene E-Mail verarbeiten (idempotent je Postfach + Message-ID).
+ * Ausnahme: Eine E-Mail, die als „ohne Regel“ protokolliert ist (ohne Inhalt gespeichert), wird bei erneuter Lieferung neu
+ * bewertet – z. B. nach „Posteingang abrufen“ im Portal, wenn inzwischen eine Regel passt. Passt weiterhin keine, bleibt der
+ * bisherige Vorgang unverändert.
+ */
 export async function mailVerarbeiten(m: EingangMail) {
   const schluessel = mailSchluessel(m);
-  const [alt] = await DB`select id from tco.eing_vorgaenge where postfach = ${m.postfach} and message_id = ${schluessel}`;
-  if (alt) return vorgangAntwort(alt.id as string, false);
+  const [alt] = await DB`select id, status from tco.eing_vorgaenge where postfach = ${m.postfach} and message_id = ${schluessel}`;
+  const nachbewerten: string | null = alt?.status === 'ohne_regel' ? (alt.id as string) : null;
+  if (alt && !nachbewerten) return vorgangAntwort(alt.id as string, false);
+  // den bisherigen Vorgang „ohne Regel“ ersetzen (er hat keine Dokumente und keinen Inhalt)
+  const altEntfernen = async () => {
+    if (nachbewerten) await DB`delete from tco.eing_vorgaenge where id = ${nachbewerten} and status = 'ohne_regel'`;
+  };
 
   const anhaenge = m.anhaenge
     .map((a) => { const daten = Buffer.from(a.inhalt.replace(/^data:[^,]*,/, ''), 'base64'); return { name: dateinameSicher(a.name, 'anhang'), mime: a.mime, daten, groesse: daten.length, text: a.text }; })
@@ -261,6 +271,7 @@ export async function mailVerarbeiten(m: EingangMail) {
   });
   if (rueck.art !== 'antwort' && (rueck.zugeordnet || !anhaenge.length)) {
     const hinweis = `${rueck.art === 'unzustellbar' ? 'Unzustellbar-Meldung' : 'Abwesenheitsnotiz'}${rueck.zugeordnet ? ' – im E-Mail-Protokoll verbucht' : ''}; nicht abgelegt.`;
+    await altEntfernen();
     const [r] = await DB`
       insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, abgeschlossen_am)
       values (${m.postfach}, ${schluessel}, ${m.ordner}, ${m.uid}, ${ab.adresse || m.von.slice(0, 500)}, ${ab.name || null}, ${m.an.slice(0, 1000)}, ${m.betreff.slice(0, 1000)},
@@ -283,6 +294,10 @@ export async function mailVerarbeiten(m: EingangMail) {
     const html = mailHtml({ von: m.von, an: m.an, betreff: m.betreff, datum: String(werte.datum), text });
     geplant.push({ art: 'mail', datei, mime: 'text/html', daten: Buffer.from(html, 'utf8'), k: { ...kontext, datei, mime: 'application/pdf' }, w: { ...werte, datei }, regel: mailRegel });
   }
+
+  // erneut geliefert und weiterhin ohne passende Regel: bisherigen Vorgang behalten
+  if (nachbewerten && !mailRegel && !geplant.length) return { ...(await vorgangAntwort(nachbewerten, false)), rueckmeldung: rueck };
+  await altEntfernen();
 
   // Behandlung der E-Mail: die Mail-Regel bestimmt; sonst die ranghöchste aktive Anhang-Regel
   const fuehrend = scharf(mailRegel) ? mailRegel
@@ -392,7 +407,18 @@ export async function neuBewerten(vorgangId: number, wer: string) {
   const fuehrend = treffer.sort((x, y) => x.prioritaet - y.prioritaet || x.id - y.id)[0];
   if (fuehrend && v.mail_aktion == null) await DB`update tco.eing_vorgaenge set mail_aktion = ${DB.json(mailAktionVon(fuehrend) as never)} where id = ${vorgangId}`;
   const status = await abschliessen(vorgangId);
-  return { status, text: `${docs.length} Dokument${docs.length === 1 ? '' : 'e'} neu bewertet.` };
+  return { status, anzahl: docs.length, text: `${docs.length} Dokument${docs.length === 1 ? '' : 'e'} neu bewertet.` };
+}
+
+/** Prüfliste: Regelwerk erneut auf alle offenen Vorgänge anwenden (Teil von „Posteingang abrufen“) */
+export async function offeneNeuBewerten(wer: string) {
+  const offen = await DB`
+    select distinct vorgang_id from tco.eing_dokumente where status in ('pruefen', 'fehler', 'neu') order by vorgang_id limit 500`;
+  let dokumente = 0;
+  for (const o of offen) {
+    dokumente += (await neuBewerten(Number(o.vorgang_id), wer)).anzahl;
+  }
+  return { vorgaenge: offen.length, dokumente };
 }
 
 /** Vorgang ohne Ablage schließen (offene Dokumente werden ignoriert, die E-Mail bleibt unangetastet) */

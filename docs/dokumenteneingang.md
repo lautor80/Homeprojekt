@@ -37,6 +37,10 @@ IMAP-Postfach ──> n8n: Mail + Anhänge ──> Portal: Regelwerk ──┬�
    Testlauf oder mit „immer prüfen“, fehlende Pflichtfelder und fehlgeschlagene Ablagen.
 7. Sind alle Dokumente eines Vorgangs erledigt, meldet das Portal n8n die Behandlung der E-Mail. E-Mails ohne Regel und ohne
    Anhang bleiben unangetastet im Postfach (Status „ohne Regel“, ohne gespeicherten Inhalt).
+8. **Posteingang abrufen** (Knopf in Prüfliste und Protokoll): wendet das Regelwerk erneut auf alle offenen Vorgänge an und startet
+   den n8n-Workflow sofort über einen Webhook. n8n liefert dann alle E-Mails des Posteingangs erneut – auch gelesene und ältere.
+   Bekannte E-Mails bleiben unverändert; nur E-Mails „ohne Regel“ werden neu bewertet (z. B. nachdem aus der Prüfliste eine Regel
+   erstellt wurde). Passt weiterhin keine Regel, bleibt der Vorgang wie er ist.
 
 **Dubletten:** Dieselbe Datei (SHA-256) wird nicht zweimal nach Paperless gebracht; der Vorgang verweist auf das vorhandene Dokument.
 **Inhalte:** Mailtext und Dateien liegen nur im Portal, solange ein Vorgang offen ist. Nach dem Abschluss bleiben Metadaten,
@@ -46,7 +50,7 @@ Zuordnung und Paperless-Nummer.
 
 | Reiter | Inhalt |
 |---|---|
-| Prüfliste | Offene Vorgänge: Mailtext und Dokument ansehen, mit einer Regel oder von Hand ablegen, ignorieren, „Regel erstellen“ (Absender und Dateiendung vorbelegt), „Neu bewerten“ nach einer Regeländerung, Vorgang verwerfen (wird neu eingelesen). |
+| Prüfliste | Offene Vorgänge: Mailtext und Dokument ansehen, mit einer Regel oder von Hand ablegen, ignorieren, „Regel erstellen“ (Absender und Dateiendung vorbelegt), „Neu bewerten“ nach einer Regeländerung, Vorgang verwerfen (wird mit „Posteingang abrufen“ neu eingelesen), „Posteingang abrufen“. |
 | Protokoll | Alle Vorgänge mit Regel, Ablageort und Behandlung der E-Mail – ohne Inhalte. |
 | Regeln | Regelwerk nach Priorität, Treffer der letzten 30 Tage, anlegen/ändern/kopieren/löschen, Probe gegen eine Beispiel-E-Mail. |
 | Korrespondenten | Partner mit ihren Adressen und Domains; Regeln prüfen „Korrespondent ist …“. |
@@ -59,8 +63,8 @@ Zuordnung und Paperless-Nummer.
 | Gilt | je Anhang oder für die E-Mail selbst |
 | Bedingungen | UND/ODER; Felder: Absender-Adresse, -Domain, -Name, Empfänger, Postfach, Betreff, Mailtext, Mailtext (HTML), Korrespondent, Absender ist Mitglied, Anzahl Anhänge, Dateiname, Dateityp, Dokumenttext; Operatoren: ist, enthält, beginnt mit, endet mit, Muster, in Liste – jeweils auch verneint |
 | Felder lesen | Name, Quelle, Muster (erste Klammergruppe = Wert), optional Pflicht → Platzhalter `{feld.<name>}` |
-| Paperless | Titel, Korrespondent, Dokumenttyp, Speicherpfad, Tags, Dokumentdatum, Notiz – Vorlagen wie in der Paperless-Zuordnung (`{datei|ohneEndung}`, `{datum|datum}` …); fehlende Korrespondenten und Tags werden angelegt |
-| Nextcloud | Ordner und Dateiname als Vorlagen, z. B. `Belege/{jahr}` und `{datum}_{kurz}_{datei}` |
+| Paperless | Bei neuen Regeln aus; bei Bedarf einschalten. Titel, Korrespondent, Dokumenttyp, Speicherpfad, Tags, Dokumentdatum, Notiz – Vorlagen wie in der Paperless-Zuordnung (`{datei|ohneEndung}`, `{datum|datum}` …); fehlende Korrespondenten und Tags werden angelegt |
+| Nextcloud | Bei neuen Regeln aus; bei Bedarf einschalten. Ordner und Dateiname als Vorlagen, z. B. `Belege/{jahr}` und `{datum}_{kurz}_{datei}` |
 | E-Mail danach | im Posteingang lassen, in einen Ordner verschieben oder in den Papierkorb; optional als gelesen markieren |
 | Automatik | bei Treffer sofort ablegen oder immer in die Prüfliste |
 
@@ -80,6 +84,7 @@ Die Migration legt die Rolle **Dokumenteneingang** mit `display` und `edit` an. 
 ## Einrichten
 
 1. **Administration → Anbindungen:** „Paperless-ngx“ prüfen; bei Bedarf „Nextcloud Dokumentenablage“ (Adresse, Benutzer, App-Passwort) eintragen.
+   Für „Posteingang abrufen“ die Anbindung „Maileingang jetzt abrufen (n8n)“ mit der Production-URL des Webhooks und der Header-Anmeldung eintragen.
 2. **Administration → API-Schlüssel:** Schlüssel für das Modul „TC Oberthal“ mit `tco.eingang:melden` anlegen.
 3. **n8n:** Workflow „TCO Maileingang“ ([`docs/n8n/tco-maileingang.json`](n8n/tco-maileingang.json)) – ein Workflow für Dokumenteneingang und Rückmeldungen, siehe [n8n/DOKUMENTENEINGANG.md](n8n/DOKUMENTENEINGANG.md).
 4. **Rolle „Dokumenteneingang“** den zuständigen Benutzern zuordnen.
