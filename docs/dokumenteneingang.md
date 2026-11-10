@@ -64,6 +64,8 @@ Zuordnung und Paperless-Nummer.
 | Bedingungen | UND/ODER; Felder: Absender-Adresse, -Domain, -Name, Empfänger, Postfach, Betreff, Mailtext, Mailtext (HTML), Korrespondent, Absender ist Mitglied, Anzahl Anhänge, Dateiname, Dateityp, Dokumenttext; Operatoren: ist, enthält, beginnt mit, endet mit, Muster, in Liste – jeweils auch verneint |
 | Felder lesen | Name, Quelle, Muster (erste Klammergruppe = Wert), optional Pflicht → Platzhalter `{feld.<name>}` |
 | Paperless | Bei neuen Regeln aus; bei Bedarf einschalten. Titel, Korrespondent, Dokumenttyp, Speicherpfad, Tags, Dokumentdatum, Notiz – Vorlagen wie in der Paperless-Zuordnung (`{datei|ohneEndung}`, `{datum|datum}` …); fehlende Korrespondenten und Tags werden angelegt |
+| Custom Fields | Feld aus Paperless wählen, Wert oder Vorlage angeben (z. B. `{feld.betrag}`). Das Portal wandelt je Feldtyp um: Betrag `EUR12.50`, Datum `JJJJ-MM-TT` (auch `31.12.2026`), Zahl, Ja/Nein, Auswahl per Option. Ungültige Werte werden als Warnung gemeldet. |
+| Anhänge zusammenfassen | Nur je Anhang: alle Anhänge einer E-Mail, für die die Regel greift (PDFs und Bilder), werden vor der Ablage zu einem PDF zusammengefügt – Reihenfolge wie in der E-Mail oder nach Dateiname, Dateiname als Vorlage (`{anzahl}` = Zahl der Teile). Dublettenprüfung über die Teile. Schlägt das Zusammenfügen fehl (z. B. verschlüsseltes PDF), gehen die Teile einzeln in die Prüfliste. Läuft über Gotenberg. |
 | Nextcloud | Bei neuen Regeln aus; bei Bedarf einschalten. Ordner und Dateiname als Vorlagen, z. B. `Belege/{jahr}` und `{datum}_{kurz}_{datei}` |
 | E-Mail danach | im Posteingang lassen, in einen Ordner verschieben oder in den Papierkorb; optional als gelesen markieren |
 | Automatik | bei Treffer sofort ablegen oder immer in die Prüfliste |
@@ -87,6 +89,7 @@ Die Migration legt die Rolle **Dokumenteneingang** mit `display` und `edit` an. 
    Für „Posteingang abrufen“ die Anbindung „Maileingang jetzt abrufen (n8n)“ mit der Production-URL des Webhooks und der Header-Anmeldung eintragen.
 2. **Administration → API-Schlüssel:** Schlüssel für das Modul „TC Oberthal“ mit `tco.eingang:melden` anlegen.
 3. **n8n:** Workflow „TCO Maileingang“ ([`docs/n8n/tco-maileingang.json`](n8n/tco-maileingang.json)) – ein Workflow für Dokumenteneingang und Rückmeldungen, siehe [n8n/DOKUMENTENEINGANG.md](n8n/DOKUMENTENEINGANG.md).
+   Nach der Ablage ergänzt „TCO Paperless Qualifizierung“ Datum, Betrag und Positionen per Bildanalyse – sofort über einen Paperless-Workflow, siehe [n8n/QUALIFIZIERUNG.md](n8n/QUALIFIZIERUNG.md).
 4. **Rolle „Dokumenteneingang“** den zuständigen Benutzern zuordnen.
 5. Korrespondenten und Regeln anlegen – zunächst im **Testlauf**; aktiv schalten, wenn die Vorschläge in der Prüfliste stimmen.
 

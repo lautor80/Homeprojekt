@@ -1,0 +1,817 @@
+{
+  "name": "TCO Paperless Qualifizierung",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tco-paperless-qualifizieren",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Paperless: Dokument hinzugefügt",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6e3999fb-89aa-486f-9db0-4923fc798028",
+      "webhookId": "9590370b-e67e-4024-8579-55796dd6b600",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless-Workflow (Webhook)"
+        }
+      },
+      "notes": "Aufruf aus dem Paperless-Workflow „Qualifizierung“ (Auslöser: Dokument hinzugefügt, Aktion: Webhook, Body doc_url = {doc_url}). Header Authorization: Bearer <geheimer Wert> – derselbe Wert wie in diesen Zugangsdaten."
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "name": "Alle 30 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "975afb9a-7527-42c4-864d-abc8469e6ca4",
+      "notes": "Auffangnetz: qualifiziert Dokumente ohne DOKID, falls ein Aufruf aus Paperless verloren ging oder die Analyse fehlschlug."
+    },
+    {
+      "parameters": {},
+      "name": "Manuell starten",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "id": "387516f4-b665-4581-b712-62802c2e4c4a"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "099c9a48-3f80-436e-a179-d1294134a81b",
+              "name": "PAPERLESS_URL",
+              "value": "http://paperless:8000",
+              "type": "string"
+            },
+            {
+              "id": "0d61878b-45d0-4987-b45d-b63d3d0c1dc9",
+              "name": "MODELL",
+              "value": "gpt-4o",
+              "type": "string"
+            },
+            {
+              "id": "cf8d7fe6-6830-4006-80ae-c2244bf54c83",
+              "name": "LIMIT",
+              "value": 20,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Konfiguration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        200
+      ],
+      "id": "4b81238c-fb0c-46aa-b242-2db180928f14",
+      "notes": "Adresse von Paperless aus Sicht von n8n, Modell, höchstens LIMIT Dokumente je Lauf nach Zeitplan. Keine Schlüssel hier – die liegen in den Zugangsdaten „Paperless API (Token)“ und „OpenAI“."
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/custom_fields/?page_size=1000",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Custom Fields laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        200
+      ],
+      "id": "275ecc36-9abb-4ff0-b202-c6eb4462201c",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/correspondents/?page_size=1000",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Korrespondenten laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        200
+      ],
+      "id": "bc6c2585-480e-409e-8555-b9e754a80c59",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/document_types/?page_size=1000",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Dokumenttypen laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        200
+      ],
+      "id": "b7e814d5-5a35-433d-8aba-544ba1941f82",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Welche Dokumente qualifizieren?\n//  - Webhook aus dem Paperless-Workflow „Dokument hinzugefügt“: die ID aus doc_url (…/documents/123/details) oder dokument_id\n//  - Zeitplan oder manueller Start: offene Dokumente (DOKID leer) suchen – Auffangnetz, falls ein Aufruf verloren ging\nconst cfg = $('Konfiguration').first().json;\nconst b = typeof cfg.body === 'object' && cfg.body ? cfg.body : {};\nconst q = typeof cfg.query === 'object' && cfg.query ? cfg.query : {};\nconst erneut = [b.erneut, q.erneut].some((x) => x === true || x === 'true' || x === '1');\nfor (const roh of [b.dokument_id, b.doc_id, b.id, q.dokument_id, b.doc_url, b.url]) {\n  if (roh == null || roh === '') continue;\n  const t = String(roh).trim();\n  const m = /documents\\/(\\d+)/.exec(t) || /^(\\d+)$/.exec(t);\n  if (m) return [{ json: { id: Number(m[1]), erneut } }];\n}\nreturn [{ json: { suchen: true } }];\n"
+      },
+      "name": "Dokumente bestimmen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ],
+      "id": "fdea6fc7-4313-4c8a-b826-428edd44700a"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ff3f458c-e697-421a-928d-d7dc731f2140",
+              "leftValue": "={{ $json.suchen === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Suchen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        200
+      ],
+      "id": "dc8f0f4f-f847-4518-a0fc-94e70da11eac"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/documents/?page_size={{ $('Konfiguration').first().json.LIMIT }}&ordering=-added&fields=id&custom_field_query={{ encodeURIComponent('[\"OR\",[[\"DOKID\",\"isnull\",\"true\"],[\"DOKID\",\"exists\",\"false\"]]]') }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Offene Dokumente suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        100
+      ],
+      "id": "51135a91-ac4c-4fb3-a1e6-036cbed581dc",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gefundene offene Dokumente einzeln weitergeben (ohne Treffer endet der Lauf hier)\nreturn ($input.first().json.results ?? []).map((d) => ({ json: { id: d.id, erneut: false } }));\n"
+      },
+      "name": "IDs aus Liste",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        100
+      ],
+      "id": "7bfe6409-6ec2-4e38-b30c-48009a2e552d"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Je Dokument",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2160,
+        300
+      ],
+      "id": "7a6b4da7-18df-4b99-b6ca-eea74e890551"
+    },
+    {
+      "parameters": {},
+      "name": "Fertig",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        100
+      ],
+      "id": "a8af4ec1-a7f7-408c-9b89-0ab981b00bbf"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/documents/{{ $json.id }}/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Dokument laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        300
+      ],
+      "id": "194d0786-6f10-424c-9265-0cb9e8f2d9df",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dokument einordnen und entscheiden, ob es qualifiziert wird (Modus: je Element)\nconst doc = $input.item.json;\nif (doc.error || !doc.id) return { json: { weiter: false, grund: `Dokument nicht lesbar: ${doc.error?.message ?? doc.error ?? 'unbekannt'}` } };\nconst liste = (j) => (Array.isArray(j) ? j : j.results ?? []);\nconst felder = liste($('Custom Fields laden').first().json);\nconst typen = liste($('Dokumenttypen laden').first().json);\nconst feld = (name) => felder.find((f) => String(f.name).trim().toLowerCase() === name.toLowerCase()) ?? null;\nconst dokid = feld('DOKID');\nconst cf = Array.isArray(doc.custom_fields) ? doc.custom_fields : [];\nconst schonQualifiziert = !!dokid && cf.some((x) => x.field === dokid.id && x.value !== null && x.value !== '');\nconst erneut = $('Je Dokument').item.json.erneut === true;\nif (schonQualifiziert && !erneut) return { json: { weiter: false, grund: 'bereits qualifiziert (DOKID gesetzt)' } };\n\n// Art des Dokuments: Halle/Jugend über den Dokumenttyp, Getränke über den Inhalt\nconst typName = doc.document_type ? (typen.find((t) => t.id === doc.document_type)?.name ?? '') : '';\nlet art = 'standard';\nif (typName === 'Hallenrechnung') art = 'halle';\nelse if (typName === 'Abrechnung Jugendtraining') art = 'jugend';\nelse if (/getränke[\\s-]*knapp|getränkebox|getränke[\\s-]*(?:&|und)[\\s-]*freizeitservice/i.test(`${doc.content ?? ''} ${doc.title ?? ''}`)) art = 'getraenke';\nreturn { json: { weiter: true, id: doc.id, art, typName } };\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Vorprüfung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        300
+      ],
+      "id": "687cd420-2496-4734-816f-f20e37b738fe",
+      "notes": "Bereits qualifiziert (DOKID gesetzt)? Art: Halle/Jugend über den Dokumenttyp, Getränke über den Inhalt, sonst Standard."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "1370a8ca-0e37-49c4-9459-58c8d9a4c0f0",
+              "leftValue": "={{ $json.weiter === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Weiter?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        300
+      ],
+      "id": "c706c765-7b46-438b-a2b7-7931dffd8292"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/documents/{{ $json.id }}/download/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": false,
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "name": "Datei laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3120,
+        200
+      ],
+      "id": "3a43ecc3-0fd6-4ec8-aea6-408e2af8b21e",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Archivfassung (PDF mit Texterkennung); Bilder liegen dort als PDF-Seite vor."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Anfrage an OpenAI: das Dokument selbst (PDF als Datei, Bilder als Bild) – die Texterkennung von Paperless nur als Hinweis\nconst cfg = $('Konfiguration').first().json;\nconst doc = $('Dokument laden').item.json;\nconst v = $('Vorprüfung').item.json;\nconst liste = (j) => (Array.isArray(j) ? j : j.results ?? []);\nconst korr = liste($('Korrespondenten laden').first().json).map((c) => `${c.id}: ${c.name}`).join('\\n');\n\nconst teile = [];\nlet datei = '';\nconst bin = $input.item.binary?.data;\nif (bin) {\n  const buf = await this.helpers.getBinaryDataBuffer($itemIndex, 'data');\n  const mime = (bin.mimeType || '').toLowerCase();\n  const name = bin.fileName || doc.original_file_name || `dokument-${doc.id}`;\n  if (buf.length > 20 * 1024 * 1024) datei = 'Datei größer als 20 MB – nur Texterkennung.';\n  else if (mime === 'application/pdf' || /\\.pdf$/i.test(name)) {\n    teile.push({ type: 'file', file: { filename: /\\.pdf$/i.test(name) ? name : `${name}.pdf`, file_data: `data:application/pdf;base64,${buf.toString('base64')}` } });\n  } else if (/^image\\/(png|jpe?g|gif|webp)$/.test(mime)) {\n    teile.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${buf.toString('base64')}`, detail: 'high' } });\n  } else datei = `Dateityp ${mime || 'unbekannt'} wird nicht übergeben – nur Texterkennung.`;\n} else datei = 'Datei nicht geladen – nur Texterkennung.';\n\nconst auftrag = {\n  standard: `1. Titel: kurz und aussagekräftig auf Deutsch (max. 80 Zeichen), z. B. \"Rechnung Strom Januar 2026\".\n   Ausgangsrechnungen des Vereins mit einer Nummer im Format JJJJ_NNN (z. B. 2026_067): Titel \"<Rechnungsnummer>_<Nachname> <Vorname>\" des Rechnungsempfängers.\n2. korrespondent_id: NUR aus der Liste unten; passt keiner eindeutig, null. Nichts erfinden.\n3. ausstellungsdatum (Rechnungs- oder Briefdatum) als JJJJ-MM-TT, betrag = Gesamtbetrag brutto (oder Gutschriftsbetrag), belegnummer.\n4. positionen: leere Liste.`,\n  getraenke: `Getränkerechnung. Titel und Korrespondent werden nicht geändert (titel und korrespondent_id = null).\nLies ausstellungsdatum, betrag (brutto), netto, mwst, belegnummer (Auftrags- bzw. Rechnungsnummer) und ALLE positionen:\nmenge, text, preis (Einzelpreis), gesamt. Pfand- und Leergutrückgaben als eigene Position mit negativem Betrag.`,\n  halle: 'Hallenrechnung. Titel und Korrespondent werden nicht geändert (titel und korrespondent_id = null). Nur ausstellungsdatum, betrag (brutto) und belegnummer; positionen leer.',\n  jugend: 'Abrechnung Jugendtraining. Titel und Korrespondent werden nicht geändert (titel und korrespondent_id = null). Nur ausstellungsdatum, betrag (brutto) und belegnummer; positionen leer.',\n}[v.art];\n\nteile.unshift({ type: 'text', text: `Analysiere das beigefügte Dokument (gescannt oder fotografiert – lies es aus dem Bild, nicht nur aus dem Text).\n${auftrag}\nUnbekannte Werte: null. Beträge als Zahl mit Punkt (123.45).\n\nVERFÜGBARE KORRESPONDENTEN (ID: Name):\n${korr}\n\nAKTUELLER TITEL: ${doc.title ?? ''}\n${datei ? `HINWEIS: ${datei}\\n` : ''}TEXTERKENNUNG VON PAPERLESS (kann fehlerhaft sein):\n${String(doc.content ?? '').slice(0, 4000)}` });\n\nconst zahl = { type: ['number', 'null'] };\nconst schema = {\n  type: 'object', additionalProperties: false,\n  required: ['titel', 'korrespondent_id', 'ausstellungsdatum', 'betrag', 'netto', 'mwst', 'belegnummer', 'positionen'],\n  properties: {\n    titel: { type: ['string', 'null'] }, korrespondent_id: { type: ['integer', 'null'] }, ausstellungsdatum: { type: ['string', 'null'] },\n    betrag: zahl, netto: zahl, mwst: zahl, belegnummer: { type: ['string', 'null'] },\n    positionen: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['menge', 'text', 'preis', 'gesamt'],\n      properties: { menge: zahl, text: { type: 'string' }, preis: zahl, gesamt: zahl } } },\n  },\n};\nreturn { json: { anfrage: {\n  model: cfg.MODELL || 'gpt-4o',\n  temperature: 0,\n  messages: [\n    { role: 'system', content: 'Du bist ein präziser Dokumenten-Analyst für Paperless-ngx eines Tennisvereins. Antworte ausschließlich im vorgegebenen JSON-Schema.' },\n    { role: 'user', content: teile },\n  ],\n  response_format: { type: 'json_schema', json_schema: { name: 'dokument', strict: true, schema } },\n} } };\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Anfrage bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        200
+      ],
+      "id": "044e94e7-3fb6-4db3-a38b-c8d2f640c4ff",
+      "notes": "Dokument als Datei bzw. Bild an das Modell (Bildanalyse); Paperless-Texterkennung nur als Hinweis."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.anfrage) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "name": "OpenAI Analyse",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3600,
+        200
+      ],
+      "id": "d6806f82-387a-4b7f-88c4-2e889421fd36",
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ergebnis in ein PATCH für Paperless übersetzen: nur leere Felder füllen, Vorgaben aus dem Portal bleiben stehen\nconst doc = $('Dokument laden').item.json;\nconst v = $('Vorprüfung').item.json;\nconst antwort = $input.item.json;\nconst liste = (j) => (Array.isArray(j) ? j : j.results ?? []);\nconst felder = liste($('Custom Fields laden').first().json);\nconst korr = liste($('Korrespondenten laden').first().json);\nconst feld = (name) => felder.find((f) => String(f.name).trim().toLowerCase() === name.toLowerCase()) ?? null;\n\nlet ki;\ntry {\n  if (antwort.error) throw new Error(antwort.error.message ?? JSON.stringify(antwort.error));\n  const msg = antwort.choices?.[0]?.message;\n  if (msg?.refusal) throw new Error(`abgelehnt: ${msg.refusal}`);\n  ki = JSON.parse(msg?.content ?? '');\n} catch (e) {\n  // ohne DOKID: der nächste Lauf nach Zeitplan versucht es erneut\n  return { json: { aendern: false, id: doc.id, grund: `Analyse fehlgeschlagen: ${e.message}` } };\n}\n\nconst cf = new Map((Array.isArray(doc.custom_fields) ? doc.custom_fields : []).map((x) => [x.field, x.value]));\nconst leer = (f) => !!f && (!cf.has(f.id) || cf.get(f.id) === null || cf.get(f.id) === '');\nconst gesetzt = [];\nconst setze = (name, wert, immer = false) => {\n  const f = feld(name);\n  if (!f || wert === null || wert === undefined || (!immer && !leer(f))) return;\n  cf.set(f.id, wert);\n  gesetzt.push(name);\n};\n\nconst zahl = (x) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 100) / 100 : null);\nif (/^\\d{4}-\\d{2}-\\d{2}$/.test(ki.ausstellungsdatum ?? '')) setze('Ausstellungsdatum', ki.ausstellungsdatum);\nconst betrag = zahl(ki.betrag);\nif (betrag !== null) {\n  const f = feld('Betrag');\n  setze('Betrag', f?.data_type === 'monetary' ? `EUR${betrag.toFixed(2)}` : String(betrag));\n}\nif (v.art === 'getraenke' && ki.positionen?.length) {\n  setze('JSON', JSON.stringify({\n    auftragsnummer: ki.belegnummer ?? '', datum: ki.ausstellungsdatum, netto: zahl(ki.netto), mwst: zahl(ki.mwst), brutto: betrag,\n    positionen: ki.positionen.map((p, i) => ({ pos: i + 1, menge: p.menge, text: p.text, preis: zahl(p.preis), gesamt: zahl(p.gesamt) })),\n  }));\n}\nsetze('DOKID', doc.id, true);\n\nconst patch = { custom_fields: [...cf].map(([field, value]) => ({ field, value })) };\nif (v.art === 'standard') {\n  // Titel nur ersetzen, wenn er noch dem Dateinamen entspricht (also keine Regel ihn vorgegeben hat)\n  const stamm = String(doc.original_file_name ?? '').replace(/\\.[^.]+$/, '');\n  if (ki.titel && (!doc.title || doc.title === stamm)) { patch.title = String(ki.titel).slice(0, 128); gesetzt.push('Titel'); }\n  if (!doc.correspondent && ki.korrespondent_id && korr.some((c) => c.id === ki.korrespondent_id)) { patch.correspondent = ki.korrespondent_id; gesetzt.push('Korrespondent'); }\n}\nreturn { json: { aendern: true, id: doc.id, patch, gesetzt: gesetzt.join(', ') } };\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Update bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        200
+      ],
+      "id": "b6b816c8-696a-4dd2-9fc6-65e2bc82ea95",
+      "notes": "Nur leere Felder füllen; Titel nur, wenn er noch dem Dateinamen entspricht; Korrespondent nur, wenn leer. DOKID immer – bei Fehlern nicht, dann folgt ein neuer Versuch nach Zeitplan."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a87a9e3b-8797-43e9-a0db-2e8112028655",
+              "leftValue": "={{ $json.aendern === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Ändern?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4080,
+        200
+      ],
+      "id": "c16a0f26-d760-44cf-8397-9468db5e9402"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Konfiguration').first().json.PAPERLESS_URL }}/api/documents/{{ $json.id }}/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "method": "PATCH",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.patch) }}"
+      },
+      "name": "Dokument aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4320,
+        100
+      ],
+      "id": "eb5cf0ff-a3b7-4a42-bb74-0285bd87da4c",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Paperless API (Token)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Paperless: Dokument hinzugefügt": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle 30 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manuell starten": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Konfiguration": {
+      "main": [
+        [
+          {
+            "node": "Custom Fields laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custom Fields laden": {
+      "main": [
+        [
+          {
+            "node": "Korrespondenten laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Korrespondenten laden": {
+      "main": [
+        [
+          {
+            "node": "Dokumenttypen laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dokumenttypen laden": {
+      "main": [
+        [
+          {
+            "node": "Dokumente bestimmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dokumente bestimmen": {
+      "main": [
+        [
+          {
+            "node": "Suchen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suchen?": {
+      "main": [
+        [
+          {
+            "node": "Offene Dokumente suchen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Je Dokument",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offene Dokumente suchen": {
+      "main": [
+        [
+          {
+            "node": "IDs aus Liste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IDs aus Liste": {
+      "main": [
+        [
+          {
+            "node": "Je Dokument",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Je Dokument": {
+      "main": [
+        [
+          {
+            "node": "Fertig",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dokument laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dokument laden": {
+      "main": [
+        [
+          {
+            "node": "Vorprüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorprüfung": {
+      "main": [
+        [
+          {
+            "node": "Weiter?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weiter?": {
+      "main": [
+        [
+          {
+            "node": "Datei laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Je Dokument",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Datei laden": {
+      "main": [
+        [
+          {
+            "node": "Anfrage bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anfrage bauen": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Analyse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Analyse": {
+      "main": [
+        [
+          {
+            "node": "Update bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update bauen": {
+      "main": [
+        [
+          {
+            "node": "Ändern?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ändern?": {
+      "main": [
+        [
+          {
+            "node": "Dokument aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Je Dokument",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dokument aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Je Dokument",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

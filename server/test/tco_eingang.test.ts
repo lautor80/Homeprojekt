@@ -498,7 +498,7 @@ test('Custom Fields: Werte je Feldtyp für Paperless', () => {
 });
 
 test('Zusammenfassen: passende Anhänge als ein PDF ablegen, Custom Fields, Dublette, Fehlerfall', async () => {
-  let r = await admin('POST', `${E}/regeln`, regel({
+  let r: { status: number; body: any } = await admin('POST', `${E}/regeln`, regel({
     name: 'Sammelbelege', prioritaet: 5,
     bedingungen: [bed('domain', 'ist', 'sammel.example')],
     extraktion: [{ name: 'betrag', quelle: 'text', muster: 'Betrag:\\s*([\\d.,]+)' }],
