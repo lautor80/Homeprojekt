@@ -6,16 +6,19 @@ import { AppPage } from '../components/AppPage';
 import { Attribute, Attributes } from '../components/Attributes';
 import { FieldBox } from '../components/FormFields';
 import { useLoad } from '../components/useLoad';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useCan } from '../session';
 
 /**
  * E-Mail-Protokoll (Administration): alle E-Mails des Portals als Tabelle mit Filter – gesammelt je Person, Empfänger oder Vorgang.
  * Zeigt, ob eine E-Mail (z. B. die Bestätigung einer Registrierung) übergeben wurde, mit welchem Absender und mit welchem Fehler.
- * Nur lesend; „Erneut senden“ bleibt unter Administration → Anbindungen → E-Mail-Versand.
+ * Je Zeile „Erneut senden“ (Berechtigung core.mail:edit): dieselbe E-Mail noch einmal an den Empfänger, der Absender erhält eine Kopie (CC).
  */
 interface Eintrag {
   id: number; zeit: string; anwendung: string | null; objekt: string | null; an: string | null; betreff: string | null;
   absender: string | null; von: string | null; status: string; fehler: string | null; benutzer: string | null; person: string;
-  erneut: boolean; erneut_hinweis: string | null; erneut_am: string | null; erneut_von: string | null; erneut_status: string | null;
+  erneut: boolean; erneut_hinweis: string | null; erneut_neuer_link: boolean; cc: string | null;
+  erneut_am: string | null; erneut_von: string | null; erneut_status: string | null;
 }
 interface Antwort { zeilen: Eintrag[]; anwendungen: string[]; gekuerzt: boolean }
 /** Tabellenzeile: nur Texte, damit Spaltenfilter, Sortierung und Gruppierung auf dem Angezeigten arbeiten */
@@ -40,12 +43,21 @@ const vorTagen = (n: number) => tag(new Date(Date.now() - n * 86400_000));
 /** „JJJJ-MM-TT HH:MM:SS“ → „TT.MM.JJJJ HH:MM“ */
 const zeitText = (z: string) => `${z.slice(8, 10)}.${z.slice(5, 7)}.${z.slice(0, 4)} ${z.slice(11, 16)}`;
 
+const fehlgeschlagen = (e: Eintrag) => e.status === 'fehler' || e.status === 'nicht_gesendet';
+
 function erneutText(e: Eintrag): string {
   if (e.erneut_am) {
     return `${e.erneut_status === 'fehler' ? 'Wiederholung fehlgeschlagen' : 'Erneut gesendet'} am ${zeitText(e.erneut_am)}${e.erneut_von ? ` von ${e.erneut_von}` : ''}`;
   }
-  if (e.erneut_hinweis) return e.erneut_hinweis;
-  return e.erneut ? 'Kann unter Administration → Anbindungen → E-Mail-Versand erneut gesendet werden.' : '';
+  // warum eine fehlgeschlagene E-Mail nicht wiederholbar ist; bei gesendeten steht der Grund nur am Knopf
+  return fehlgeschlagen(e) && e.erneut_hinweis ? e.erneut_hinweis : '';
+}
+
+/** Rückfrage vor dem erneuten Senden */
+function frageText(e: Eintrag): string {
+  return `Die E-Mail „${e.betreff ?? ''}“ wird erneut an ${e.an ?? ''} gesendet`
+    + (e.cc ? `, eine Kopie (CC) geht an den Absender ${e.cc}.` : '.')
+    + (e.erneut_neuer_link ? ' Dabei wird ein neuer Zugangslink erzeugt – ältere Links (auch auf gedruckten Briefen) werden ungültig; der neue Link steht auch in der Kopie.' : '');
 }
 
 function zeile(e: Eintrag): Zeile {
@@ -63,9 +75,26 @@ export function MailProtokollPage() {
   const [query, setQuery] = useState(LEER);
   const [gruppe, setGruppe] = useState('');
   const [detail, setDetail] = useState<Eintrag | null>(null);
+  const darfSenden = useCan()('core.mail:edit');
+  const [frage, setFrage] = useState<Eintrag | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null);
   const l = useLoad(() => api.get<Antwort>('/api/mail/uebersicht' + qs(query)), [query]);
   const daten = useMemo(() => (l.data?.zeilen ?? []).map(zeile), [l.data]);
   const suchen = (x = f) => { setF(x); setQuery({ ...x }); };
+  async function erneut(e: Eintrag) {
+    setFrage(null); setBusy(e.id); setMeldung(null);
+    try {
+      const r = await api.post<{ text: string; warnungen: string[] }>(`/api/mail/uebersicht/${e.id}/erneut`);
+      setMeldung({ ok: true, text: [r.text, ...r.warnungen].join(' · ') });
+    } catch (x) { setMeldung({ ok: false, text: (x as Error).message }); }
+    finally { setBusy(null); l.reload(); }
+  }
+  const sendenKnopf = (e: Eintrag) => (
+    <Button design="Transparent" icon="redo" loading={busy === e.id} disabled={!e.erneut || busy !== null}
+            tooltip={e.erneut ? `Erneut an ${e.an ?? ''} senden${e.cc ? `, Kopie (CC) an ${e.cc}` : ''}` : e.erneut_hinweis ?? 'Nicht möglich'}
+            onClick={(x) => { x.stopPropagation(); setDetail(null); setFrage(e); }}>Erneut senden</Button>
+  );
 
   const spalten: AnalyticalTableColumnDefinition[] = [
     { Header: 'Zeit', accessor: 'zeit', width: 150, Cell: ({ value }: Cell) => (value ? zeitText(String(value)) : null) },
@@ -79,11 +108,15 @@ export function MailProtokollPage() {
     { Header: 'Fehler / Hinweis', accessor: 'hinweis', minWidth: 240 },
     { Header: 'Absender', accessor: 'absender', minWidth: 180 },
     { Header: 'Ausgelöst von', accessor: 'benutzer', width: 140 },
+    ...(darfSenden ? [{
+      Header: '', id: 'aktion', width: 170, disableFilters: true, disableSortBy: true, disableGroupBy: true,
+      Cell: ({ row }: Cell) => { const z = row.original as Zeile | undefined; return z?.eintrag ? sendenKnopf(z.eintrag) : null; },
+    }] : []),
   ];
   // gruppiert: nur die Gruppenspalte zeigt in der Gruppenzeile etwas (Wert und Anzahl)
   const columns: AnalyticalTableColumnDefinition[] = gruppe ? spalten.map((c) => (c.accessor === gruppe ? { ...c, disableGroupBy: false } : { ...c, Aggregated: () => null })) : spalten;
 
-  const fehler = daten.filter((z) => z.eintrag.status === 'fehler' || z.eintrag.status === 'nicht_gesendet').length;
+  const fehler = daten.filter((z) => fehlgeschlagen(z.eintrag)).length;
   const filter = (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.75rem', alignItems: 'end', padding: '0.5rem 0' }}>
       <FieldBox label="Suche (Name, Adresse, Vorgang, Betreff)">
@@ -121,6 +154,9 @@ export function MailProtokollPage() {
              subtitle={`Alle E-Mails des Portals je Person, Empfänger oder Vorgang · ${daten.length} Einträge${fehler ? `, davon ${fehler} nicht gesendet` : ''}`}
              header={filter} actions={<Button icon="refresh" onClick={l.reload}>Aktualisieren</Button>}>
       {l.error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{l.error}</MessageStrip>}
+      {meldung && <MessageStrip design={meldung.ok ? 'Positive' : 'Negative'} onClose={() => setMeldung(null)} style={{ marginBottom: '0.5rem' }}>{meldung.text}</MessageStrip>}
+      <ConfirmDialog open={!!frage} title="E-Mail erneut senden" confirmText="Erneut senden" text={frage ? frageText(frage) : ''}
+                     onConfirm={() => frage && erneut(frage)} onCancel={() => setFrage(null)} />
       {l.data?.gekuerzt && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Im Zeitraum gibt es mehr als 2000 E-Mails – durchsucht und angezeigt werden nur die neuesten 2000. Bitte den Zeitraum oder die Anwendung eingrenzen.
@@ -147,6 +183,7 @@ export function MailProtokollPage() {
                   <>
                     {detail?.an && <Button design="Transparent" icon="filter" onClick={() => { const an = detail.an ?? ''; setDetail(null); suchen({ ...f, suche: an }); }}>Alle E-Mails an diese Adresse</Button>}
                     {detail?.objekt && <Button design="Transparent" icon="filter" onClick={() => { const o = detail.objekt ?? ''; setDetail(null); suchen({ ...f, suche: o }); }}>Alle E-Mails zum Vorgang</Button>}
+                    {darfSenden && detail && sendenKnopf(detail)}
                     <Button design="Emphasized" onClick={() => setDetail(null)}>Schließen</Button>
                   </>
                 } />
@@ -161,7 +198,9 @@ export function MailProtokollPage() {
             <Attribute label="Absender">{detail.von ?? detail.absender ?? '–'}{detail.von && detail.absender && detail.von !== detail.absender ? ` (gewünscht: ${detail.absender})` : ''}</Attribute>
             <Attribute label="Ausgelöst von">{detail.benutzer || '–'}</Attribute>
             {detail.fehler && <Attribute label="Fehler / Hinweis" wide><Text style={{ whiteSpace: 'pre-wrap' }}>{detail.fehler}</Text></Attribute>}
-            {erneutText(detail) && <Attribute label="Erneut senden" wide>{erneutText(detail)}</Attribute>}
+            {(erneutText(detail) || (!detail.erneut && detail.erneut_hinweis)) && (
+              <Attribute label="Erneut senden" wide>{[erneutText(detail), !detail.erneut && !fehlgeschlagen(detail) ? detail.erneut_hinweis : null].filter(Boolean).join(' · ')}</Attribute>
+            )}
           </Attributes>
         )}
       </Dialog>

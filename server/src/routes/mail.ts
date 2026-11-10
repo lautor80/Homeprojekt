@@ -6,13 +6,18 @@ import { BusinessError } from '../errors.js';
 import { activeModules } from '../modules.js';
 import { getSettings } from './settings.js';
 import { adressen, passt, personenIndex, personenText, type MailPerson } from '../lib/mailuebersicht.js';
-import { mailSenden, mailWiederholen, nichtWiederholbar, WIEDERHOLBAR, wiederholungsArt, type MailFolge, type Wiederholung } from '../lib/mail.js';
+import { erneutSperre, mailErneutSenden, mailSenden, mailWiederholen, nichtWiederholbar, WIEDERHOLBAR, wiederholungsArt, type MailFolge, type Wiederholung } from '../lib/mail.js';
 
 /** Mailprotokoll, Testmail und „Erneut senden“ (Administration → Anbindungen → E-Mail-Versand) */
 const P = 'core.settings:edit';
 /** App „E-Mail-Protokoll“: nur lesen (Empfänger, Betreff, Status – nie der Inhalt) */
 const P_ANZEIGE = 'core.mail:display';
+/** App „E-Mail-Protokoll“: je Zeile erneut senden (auch bereits gesendete), Kopie an den Absender */
+const P_SENDEN = 'core.mail:edit';
 const UEBERSICHT_MAX = 2000;
+/** Kopie beim erneuten Senden: tatsächlicher Absender der ersten E-Mail, sonst der gewünschte, sonst wer jetzt sendet */
+const kopieAn = (p: { von: string | null; absender: string | null }, eigene: string | null | undefined): string | null =>
+  adressen(p.von)[0] ?? adressen(p.absender)[0] ?? adressen(eigene)[0] ?? null;
 interface UebersichtRoh {
   id: number; zeit: string; anwendung: string | null; objekt: string | null; an: string | null; betreff: string | null; absender: string | null;
   von: string | null; status: string; fehler: string | null; benutzer: string | null; inhalt: boolean; w_art: string | null; w_hinweis: string | null;
@@ -40,9 +45,9 @@ const protoWo = (db: Tx, f: ProtoFilter) => db`
     ${f.bis ? db`and zeit <= (${bisGrenze(f.bis)}::timestamp at time zone 'Europe/Berlin')` : db``}`;
 
 /** Wiederholung mit neuem Link bzw. Nachziehen: das erste zuständige Modul antwortet */
-async function wiederholen(tx: Tx, w: Wiederholung, wer: string): Promise<string | null> {
+async function wiederholen(tx: Tx, w: Wiederholung, wer: string, cc?: string): Promise<string | null> {
   for (const m of activeModules()) {
-    const t = await m.mailWiederholen?.(tx, w, wer);
+    const t = await m.mailWiederholen?.(tx, w, wer, cc);
     if (t != null) return t;
   }
   return null;
@@ -106,14 +111,24 @@ export async function mailRoutes(app: FastifyInstance) {
     }
     const index = personenIndex(personen);
     const zeilen = liste.map(({ inhalt, w_art, w_hinweis, ...p }) => {
-      const fehlgeschlagen = WIEDERHOLBAR.includes(p.status) && p.erneut_status !== 'gesendet' && p.erneut_status !== 'entwurf';
-      // wie im Mailprotokoll der Anbindung: ob (und warum nicht) erneut gesendet werden kann – ohne den gespeicherten Inhalt zu laden
-      const nachricht = inhalt ? (w_art ? { wiederholung: { art: w_art, hinweis: w_hinweis ?? '' } } : { mail: true }) : null;
-      const hinweis = fehlgeschlagen ? nichtWiederholbar({ status: p.status, nachricht, erneut_status: p.erneut_status }) : null;
-      return { ...p, person: personenText(p.an, index), erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis };
+      // ob (und warum nicht) erneut gesendet werden kann – gleich welcher Status, ohne den gespeicherten Inhalt zu laden
+      const sperre = erneutSperre(inhalt ? (w_art ? { wiederholung: { art: w_art, hinweis: w_hinweis ?? '' } } : { mail: true }) : null);
+      return { ...p, person: personenText(p.an, index), erneut: !sperre, erneut_hinweis: sperre, erneut_neuer_link: !!w_art && w_art !== 'NEU_AUSLOESEN',
+               cc: kopieAn(p, req.user!.email) };
     }).filter((z) => passt(f.suche, [z.person, z.an, z.objekt, z.anwendung, z.betreff, z.absender, z.von, z.benutzer, z.fehler]));
     const anwendungen = (await sql`select distinct anwendung from core.mail_protokoll where anwendung is not null order by 1`).map((r) => r.anwendung as string);
     return { zeilen, anwendungen, gekuerzt };
+  });
+
+  /** App „E-Mail-Protokoll“: E-Mail einer Zeile erneut senden (auch bereits gesendete) – der Absender der ersten E-Mail erhält eine Kopie (CC) */
+  app.post('/api/mail/uebersicht/:id/erneut', { preHandler: requireAuth(P_SENDEN) }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const wer = req.user!.displayName || req.user!.username;
+    const [p] = await sql`select von, absender from core.mail_protokoll where id = ${id}`;
+    if (!p) throw new BusinessError('Den Protokolleintrag gibt es nicht (mehr).', 404);
+    const cc = kopieAn({ von: p.von as string | null, absender: p.absender as string | null }, req.user!.email);
+    return change(req, (tx) => mailErneutSenden(tx, id, wer, { wiederholen, folge }, cc),
+      { action: 'MAIL_ERNEUT', reason: `E-Mail-Protokoll ${id}${cc ? `, Kopie an ${cc}` : ''}` });
   });
 
   /** fehlgeschlagene E-Mail erneut senden (Zugangslinks werden dabei neu erzeugt) */
