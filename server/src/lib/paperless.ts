@@ -318,9 +318,9 @@ export class Paperless {
       for (const [name, value] of Object.entries(m.customFields)) {
         const f = await this.feld(name);
         if (!f) { warn.push(`Custom Field „${name}“ fehlt in Paperless`); continue; }
-        let v: unknown = value;
-        if (f.data_type === 'monetary' && typeof value === 'number') v = `EUR${value.toFixed(2)}`;
-        neu.set(f.id, v);
+        const w = customFeldWert(f as CustomFeld, value);
+        if (w.warnung) warn.push(w.warnung);
+        if (w.ok) neu.set(f.id, w.wert);
       }
       patch.custom_fields = [...neu].map(([field, value]) => ({ field, value }));
     }
@@ -393,3 +393,63 @@ export class Paperless {
     return `${await this.baseUrl()}/documents/${id}/details`;
   }
 }
+
+export interface CustomFeld { id: number; name: string; data_type?: string; extra_data?: { select_options?: (string | { id: string; label: string } | null)[] | null } | null }
+
+/** Zahl aus „1.234,56“, „1234.56“, „EUR12,50“, „12,50 €“ */
+function zahl(v: string): number | null {
+  let t = v.replace(/[€\s]|EUR/gi, '');
+  if (/,\d{1,2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
+  else t = t.replace(/,/g, '');
+  const n = Number(t);
+  return t !== '' && Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Wert für ein Custom Field in die Form bringen, die Paperless je Feldtyp erwartet (Geld „EUR12.50“, Datum JJJJ-MM-TT,
+ * Ganzzahl, Kommazahl, Ja/Nein, Auswahl per Options-ID). Unlesbare Werte werden nicht gesetzt (ok: false) und gemeldet.
+ */
+export function customFeldWert(f: CustomFeld, value: string | number | null): { ok: boolean; wert: unknown; warnung?: string } {
+  if (value === null || value === '') return { ok: true, wert: null };
+  const text = String(value).trim();
+  const falsch = (art: string) => ({ ok: false, wert: null, warnung: `Custom Field „${f.name}“: „${text}“ ist kein gültiger Wert (${art}).` });
+  switch (f.data_type) {
+    case 'monetary': {
+      const waehrung = /^([A-Z]{3})/.exec(text)?.[1] ?? 'EUR';
+      const n = typeof value === 'number' ? value : zahl(text);
+      return n === null ? falsch('Betrag') : { ok: true, wert: `${waehrung}${n.toFixed(2)}` };
+    }
+    case 'float': {
+      const n = typeof value === 'number' ? value : zahl(text);
+      return n === null ? falsch('Zahl') : { ok: true, wert: n };
+    }
+    case 'integer': {
+      const n = typeof value === 'number' ? value : zahl(text);
+      return n === null || !Number.isInteger(n) ? falsch('Ganzzahl') : { ok: true, wert: n };
+    }
+    case 'date': {
+      const de = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
+      const iso = de ? `${de[3]}-${de[2].padStart(2, '0')}-${de[1].padStart(2, '0')}` : text.slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? { ok: true, wert: iso } : falsch('Datum');
+    }
+    case 'boolean': {
+      if (/^(ja|true|1|wahr|x)$/i.test(text)) return { ok: true, wert: true };
+      if (/^(nein|false|0|falsch)$/i.test(text)) return { ok: true, wert: false };
+      return falsch('Ja/Nein');
+    }
+    case 'select': {
+      const optionen = f.extra_data?.select_options ?? [];
+      for (let i = 0; i < optionen.length; i++) {
+        const o = optionen[i];
+        if (o == null) continue;
+        const label = typeof o === 'string' ? o : o.label;
+        const id = typeof o === 'string' ? i : o.id;
+        if (label.trim().toLowerCase() === text.toLowerCase() || String(id) === text) return { ok: true, wert: id };
+      }
+      return falsch(`Auswahl: ${optionen.filter((o) => o != null).map((o) => (typeof o === 'string' ? o : o!.label)).join(', ')}`);
+    }
+    default:
+      return { ok: true, wert: typeof value === 'number' ? value : text };
+  }
+}
+

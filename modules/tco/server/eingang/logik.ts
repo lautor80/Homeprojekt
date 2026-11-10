@@ -52,6 +52,8 @@ export interface MailAktion { art: 'keine' | 'verschieben' | 'loeschen'; ordner?
 export interface Aktionen {
   paperless?: PaperlessRegel & { aktiv: boolean };
   nextcloud?: { aktiv: boolean; pfad: string; dateiname: string };
+  /** nur je Anhang: alle Anhänge einer E-Mail, für die die Regel greift, vor der Ablage zu einem PDF zusammenfassen */
+  zusammenfassen?: { aktiv: boolean; dateiname: string; reihenfolge: 'mail' | 'name' };
   mail?: MailAktion;
   /** Folgeaufgabe – wird n8n gemeldet; der Knoten dort ist zunächst deaktiviert */
   aufgabe?: { aktiv: boolean; titel: string; faellig_tage?: number | null };

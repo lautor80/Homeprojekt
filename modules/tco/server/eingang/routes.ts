@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import type { CustomFeld, Paperless } from '../../../../server/src/lib/paperless.js';
 import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { DB } from '../verein.js';
 import { V_MAILABRUF, V_NEXTCLOUD, mailabrufAnstossen } from '../verbindung.js';
@@ -70,6 +71,7 @@ const regelBody = z.object({
   aktionen: z.object({
     paperless: paperlessRegel.extend({ aktiv: z.boolean() }).optional(),
     nextcloud: nextcloud.extend({ aktiv: z.boolean() }).optional(),
+    zusammenfassen: z.object({ aktiv: z.boolean(), dateiname: z.string().max(300).default(''), reihenfolge: z.enum(['mail', 'name']).default('mail') }).optional(),
     mail: mailAktion.optional(),
     aufgabe: z.object({ aktiv: z.boolean(), titel: z.string().max(300), faellig_tage: z.number().int().min(0).max(365).nullish() }).optional(),
   }),
@@ -97,6 +99,17 @@ const probe = z.object({
 });
 
 /** Dateitypen, die der Browser gefahrlos anzeigen darf – alles andere wird als Download geliefert */
+/** Custom Fields aus Paperless für den Regeldialog: Name, Typ und – bei Auswahlfeldern – die Optionen */
+async function customFelder(pl: Paperless) {
+  try {
+    const l = (await pl.liste('custom_fields')) as CustomFeld[];
+    return l.map((f) => ({
+      name: f.name, typ: f.data_type ?? 'string',
+      optionen: (f.extra_data?.select_options ?? []).filter((o) => o != null).map((o) => (typeof o === 'string' ? o : o!.label)),
+    })).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  } catch { return []; }
+}
+
 const ANZEIGBAR = /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/plain)$/i;
 
 export async function eingangRoutes(app: FastifyInstance) {
@@ -115,6 +128,7 @@ export async function eingangRoutes(app: FastifyInstance) {
         eingerichtet: !!pl,
         korrespondenten: pl ? await namen(() => pl.korrespondenten()) : [], dokumenttypen: pl ? await namen(() => pl.dokumenttypen()) : [],
         speicherpfade: pl ? await namen(() => pl.speicherpfade()) : [], tags: pl ? await namen(() => pl.tags()) : [],
+        felder: pl ? await customFelder(pl) : [],
       },
       nextcloud: { eingerichtet: eingerichtet(nc) && !!nc.auth_user && !!nc.geheimnis },
       abruf: { eingerichtet: eingerichtet(abruf) },

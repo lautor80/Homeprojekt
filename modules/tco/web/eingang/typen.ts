@@ -4,12 +4,19 @@ export const EING = `${TCO}/eingang`;
 
 export interface Bedingung { feld: string; op: string; wert: string; nicht?: boolean }
 export interface Extraktion { name: string; quelle: string; muster: string; pflicht?: boolean }
-export interface PaperlessZiel { aktiv: boolean; titel?: string; korrespondent?: string; dokumenttyp?: string; speicherpfad?: string; tags?: string; datum?: string; notiz?: string }
+export interface PaperlessZiel {
+  aktiv: boolean; titel?: string; korrespondent?: string; dokumenttyp?: string; speicherpfad?: string; tags?: string; datum?: string; notiz?: string;
+  /** Custom Fields: Name in Paperless → Wert oder Vorlage */
+  felder?: Record<string, string>;
+}
+export interface Zusammenfassen { aktiv: boolean; dateiname: string; reihenfolge: 'mail' | 'name' }
 export type MailArt = 'keine' | 'verschieben' | 'loeschen';
 export interface MailAktion { art: MailArt; ordner?: string; gelesen?: boolean }
 export interface Aktionen {
   paperless?: PaperlessZiel;
   nextcloud?: { aktiv: boolean; pfad: string; dateiname: string };
+  /** nur je Anhang: alle passenden Anhänge einer E-Mail zu einem PDF zusammenfassen */
+  zusammenfassen?: Zusammenfassen;
   mail?: MailAktion;
   aufgabe?: { aktiv: boolean; titel: string; faellig_tage?: number | null };
 }
@@ -21,12 +28,18 @@ export interface Regel extends RegelEingabe { id: number; version: number; treff
 
 export interface Stamm {
   felder: Record<string, string>; operatoren: Record<string, string>; quellen: Record<string, string>; platzhalter: { name: string; text: string }[];
-  paperless: { eingerichtet: boolean; korrespondenten: string[]; dokumenttypen: string[]; speicherpfade: string[]; tags: string[] };
+  paperless: {
+    eingerichtet: boolean; korrespondenten: string[]; dokumenttypen: string[]; speicherpfade: string[]; tags: string[];
+    felder: { name: string; typ: string; optionen: string[] }[];
+  };
   nextcloud: { eingerichtet: boolean };
   abruf: { eingerichtet: boolean };
 }
 
-export interface Zuordnung { title: string; created?: string; correspondent: string; documentType: string; storagePath: string; tags: string[]; notiz: string }
+export interface Zuordnung {
+  title: string; created?: string; correspondent: string; documentType: string; storagePath: string; tags: string[]; notiz: string;
+  customFields?: Record<string, string | number | null>;
+}
 export interface Dokument {
   id: number; art: 'anhang' | 'mail'; datei: string; mime: string | null; groesse: number; status: string; hinweis: string | null;
   regel_id: number | null; regel_name: string | null;
@@ -56,6 +69,7 @@ export const leereRegel = (): RegelEingabe => ({
     // Ablage in Paperless und Nextcloud ist zunächst aus und wird bei Bedarf in der Regel eingeschaltet
     paperless: { aktiv: false, titel: '{datei|ohneEndung}', korrespondent: '{korrespondent}', dokumenttyp: '', speicherpfad: '', tags: 'Maileingang', datum: '{datum}', notiz: '' },
     nextcloud: { aktiv: false, pfad: '', dateiname: '{datum}_{kurz}_{datei}' },
+    zusammenfassen: { aktiv: false, dateiname: '{datum}_{kurz}_{datei|ohneEndung}', reihenfolge: 'mail' },
     mail: { art: 'keine', ordner: '', gelesen: false },
     aufgabe: { aktiv: false, titel: '', faellig_tage: null },
   },
