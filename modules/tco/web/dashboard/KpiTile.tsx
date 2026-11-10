@@ -1,11 +1,12 @@
 import { Icon } from '@ui5/webcomponents-react';
 import type { Kpi } from './typen';
+import { KpiVarianten } from './KpiVarianten';
 
 /**
  * KPI-Kachel wie sap.m.GenericTile (TwoByOne) mit NumericContent: Titel/Untertitel oben,
  * Wert groß mit Einheit, Veränderung und Trendpfeil, Fußzeile unten (Port von render_tile).
  */
-export function KpiTile({ kpi, onPress }: { kpi: Kpi; onPress?: () => void }) {
+export function KpiTile({ kpi, onPress, onVariante }: { kpi: Kpi; onPress?: () => void; onVariante?: (key: string) => void }) {
   const state = kpi.todo ? 'None' : kpi.state;
   const trend = !kpi.todo && kpi.trend !== 'None' ? kpi.trend : null;
   const press = kpi.hasDetail && onPress ? onPress : undefined;
@@ -22,7 +23,9 @@ export function KpiTile({ kpi, onPress }: { kpi: Kpi; onPress?: () => void }) {
           {kpi.delta && <span className="portal-kpitile__scale">{kpi.delta}</span>}
           {trend && <Icon name={trend === 'Up' ? 'trend-up' : 'trend-down'} className={`portal-kpitile__trend portal-kpitile__trend--${state}`} />}
         </div>
-        {kpi.icon && <Icon name={kpi.icon} className="portal-kpitile__icon" />}
+        {/* mit Auswahl (z. B. Zeitraum) steht sie an der Stelle des Symbols – die Kachel bleibt gleich hoch */}
+        {kpi.varianten?.length && onVariante ? <KpiVarianten kpi={kpi} onVariante={onVariante} />
+          : kpi.icon && <Icon name={kpi.icon} className="portal-kpitile__icon" />}
       </div>
       <div className="portal-kpitile__foot">
         <span className="portal-kpitile__footer" title={kpi.details}>{kpi.todo ? `${kpi.details} (Platzhalter)` : kpi.details}</span>

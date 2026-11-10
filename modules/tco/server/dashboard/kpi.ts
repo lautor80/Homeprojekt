@@ -31,6 +31,9 @@ export interface Kpi {
   hasDetail: boolean;
   /** Platzhalter – Datenquelle noch nicht angebunden */
   todo: boolean;
+  /** Auswahl in der Kachel (z. B. Zeitraum Monat/Saison/Jahr) und die gewählte Variante */
+  varianten?: { key: string; text: string }[];
+  variante?: string;
 }
 
 export interface Bereich { key: string; title: string; kpis: Kpi[] }
@@ -190,73 +193,97 @@ async function aktiveJugendliche(db: Db, h: string) {
   };
 }
 
-/** laufende Hallensaison (01.10.–30.04.); im Sommer die zuletzt abgeschlossene */
+/** laufende Hallensaison (01.09.–30.04.); im Sommer die zuletzt abgeschlossene (#103: Saison ab September) */
 export function hallenSaison(h: string): { von: string; bis: string; laufend: boolean } {
   const j = Number(h.slice(0, 4)), m = Number(h.slice(5, 7));
-  const start = m >= 10 ? j : j - 1;
-  const von = `${start}-10-01`, ende = `${start + 1}-04-30`;
+  const start = m >= 9 ? j : j - 1;
+  const von = `${start}-09-01`, ende = `${start + 1}-04-30`;
   return { von, bis: h < ende ? h : ende, laufend: h <= ende };
 }
 
+/** Zeitraum der Belegungsquote: laufender Monat, Hallensaison oder Kalenderjahr – jeweils bis heute (#103) */
+export const HAL_ZEITRAEUME = { MONAT: 'Monat', SAISON: 'Saison', JAHR: 'Jahr' } as const;
+export type HalZeitraum = keyof typeof HAL_ZEITRAEUME;
+export function hallenZeitraum(h: string, art: HalZeitraum): { von: string; bis: string; text: string } {
+  if (art === 'MONAT') return { von: `${h.slice(0, 7)}-01`, bis: h, text: `laufender Monat (${dat(`${h.slice(0, 7)}-01`)}–${dat(h)})` };
+  if (art === 'JAHR') return { von: `${h.slice(0, 4)}-01-01`, bis: h, text: `Kalenderjahr ${h.slice(0, 4)} (${dat(`${h.slice(0, 4)}-01-01`)}–${dat(h)})` };
+  const s = hallenSaison(h);
+  return { von: s.von, bis: s.bis, text: `${s.laufend ? 'laufende Saison' : 'Saison'} (${dat(s.von)}–${dat(s.bis)})` };
+}
+
 const minutenVon = (t: string) => { const [hh, mm] = t.split(':').map(Number); return (hh === 0 && mm === 0 ? 24 : hh) * 60 + mm; };
+const wochentag = (d: string) => String(((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
 
 /**
  * Belegungsquote der Halle: gebuchte Minuten (Einzel, Abo, Einzel aus Abo; ohne storniert/entfallen) und feste Belegungen
- * (Training, Veranstaltung) innerhalb der Buchungszeiten der Hallenplätze (Buchungsstart bis -ende, Wochentage, Gültigkeit)
- * im Verhältnis zur maximal buchbaren Zeit der Saison bis heute.
+ * (Training, Veranstaltung) innerhalb der Buchungszeiten der Hallenplätze (Buchungsstart bis -ende, Wochentage)
+ * im Verhältnis zur maximal buchbaren Zeit im Zeitraum.
+ *
+ * #103: „gültig ab“ eines Hallenplatzes zählt hier nicht – es ist meist das Anlagedatum in der Platzverwaltung und hat die
+ * Kapazität früherer Zeiträume auf wenige Tage gekürzt. Nur „gültig bis“ (Platz aufgegeben) begrenzt die Kapazität.
+ * Buchungen ohne Platz (aus SAP übernommen – ZTCO_BOOKINGS kennt keinen Platz – oder ältere EP3-Exporte) und mit unbekannter
+ * Platzbezeichnung zählen mit, begrenzt auf die Buchungszeiten der Halle insgesamt; nur Buchungen auf Freiplätzen zählen nicht.
  */
-export async function belegungsquote(db: Db, h: string) {
-  const s = hallenSaison(h);
-  const plaetze = await db`select id, name, aliase, wochentage, zeit_von::text as von, zeit_bis::text as bis, gueltig_von::text as gv, gueltig_bis::text as gb
+export async function belegungsquote(db: Db, z: { von: string; bis: string }) {
+  const plaetze = await db`select id, name, aliase, wochentage, zeit_von::text as von, zeit_bis::text as bis, gueltig_bis::text as gb
                              from tco.plaetze where art = 'HALLE' and aktiv`;
   let kapazitaet = 0;
-  for (let d = s.von; d <= s.bis; d = addTage(d, 1)) {
-    const wt = String(((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
-    for (const p of plaetze) if (d >= p.gv && d <= p.gb && p.wochentage.includes(wt)) kapazitaet += minutenVon(p.bis) - minutenVon(p.von);
+  for (let d = z.von; d <= z.bis; d = addTage(d, 1)) {
+    const wt = wochentag(d);
+    for (const p of plaetze) if (d <= p.gb && p.wochentage.includes(wt)) kapazitaet += minutenVon(p.bis) - minutenVon(p.von);
   }
-  if (!plaetze.length || !kapazitaet) return { quote: null as number | null, belegt: 0, kapazitaet: 0, saison: s };
+  const leer = { quote: null as number | null, belegt: 0, kapazitaet: 0, ohnePlatz: 0 };
+  if (!plaetze.length || !kapazitaet) return leer;
   const namen = plaetze.flatMap((p) => [p.name, ...String(p.aliase ?? '').split(',')].map((x) => x.trim().toUpperCase()).filter(Boolean)
     .map((n) => ({ n, von: minutenVon(p.von), bis: minutenVon(p.bis) })));
   const zeit = new Map(namen.map((x) => [x.n, x]));
-  const buchungen = await db`select upper(trim(platz)) as platz, time_start::text as s, time_ende::text as e from tco.bookings
-                              where datum between ${s.von} and ${s.bis} and status in ('1', '3', '5') and time_start is not null and time_ende is not null
-                                and upper(trim(coalesce(platz, ''))) = any(${[...zeit.keys()]})`;
+  // ohne bekannten Hallenplatz: Buchungszeiten der Halle insgesamt
+  const halle = { von: Math.min(...namen.map((x) => x.von)), bis: Math.max(...namen.map((x) => x.bis)) };
+  const frei = (await db`select name, aliase from tco.plaetze where art = 'FREI'`)
+    .flatMap((p) => [p.name, ...String(p.aliase ?? '').split(',')].map((x: string) => x.trim().toUpperCase()).filter(Boolean));
+  const buchungen = await db`select upper(trim(coalesce(platz, ''))) as platz, time_start::text as s, time_ende::text as e from tco.bookings
+                              where datum between ${z.von} and ${z.bis} and status in ('1', '3', '5') and time_start is not null and time_ende is not null
+                                and not (upper(trim(coalesce(platz, ''))) = any(${frei}))`;
   let belegt = 0;
+  let ohnePlatz = 0;
   for (const b of buchungen) {
-    const z = zeit.get(b.platz)!;
-    belegt += Math.max(0, Math.min(minutenVon(b.e), z.bis) - Math.max(minutenVon(b.s), z.von));
+    const p = zeit.get(b.platz);
+    if (!p) ohnePlatz++;
+    const w = p ?? halle;
+    belegt += Math.max(0, Math.min(minutenVon(b.e), w.bis) - Math.max(minutenVon(b.s), w.von));
   }
   // feste Belegungen (Training, Veranstaltung); leere Platzliste = alle Hallenplätze
   const fest = await db`select plaetze, wochentage, datum_von::text as dv, datum_bis::text as db, zeit_von::text as von, zeit_bis::text as bis
-                          from tco.platzbelegungen where aktiv and art in ('TRAINING', 'VERANSTALTUNG') and datum_bis >= ${s.von} and datum_von <= ${s.bis}`;
+                          from tco.platzbelegungen where aktiv and art in ('TRAINING', 'VERANSTALTUNG') and datum_bis >= ${z.von} and datum_von <= ${z.bis}`;
   for (const f of fest) {
     const ziel = plaetze.filter((p) => !f.plaetze?.length || f.plaetze.includes(p.id));
-    for (let d = f.dv > s.von ? f.dv : s.von; d <= (f.db < s.bis ? f.db : s.bis); d = addTage(d, 1)) {
-      const wt = String(((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
+    for (let d = f.dv > z.von ? f.dv : z.von; d <= (f.db < z.bis ? f.db : z.bis); d = addTage(d, 1)) {
+      const wt = wochentag(d);
       if (!f.wochentage.includes(wt)) continue;
       for (const p of ziel) {
-        if (d < p.gv || d > p.gb || !p.wochentage.includes(wt)) continue;
+        if (d > p.gb || !p.wochentage.includes(wt)) continue;
         belegt += Math.max(0, Math.min(minutenVon(f.bis), minutenVon(p.bis)) - Math.max(minutenVon(f.von), minutenVon(p.von)));
       }
     }
   }
   belegt = Math.min(belegt, kapazitaet);
-  return { quote: runden((belegt / kapazitaet) * 100), belegt, kapazitaet, saison: s };
+  return { quote: runden((belegt / kapazitaet) * 100), belegt, kapazitaet, ohnePlatz };
 }
 
-export async function collectHalle(db: Db): Promise<Kpi[]> {
+export async function collectHalle(db: Db, zeitraum: HalZeitraum = 'SAISON'): Promise<Kpi[]> {
   const h = heute();
-  const q = await belegungsquote(db, h);
+  const z = hallenZeitraum(h, zeitraum);
+  const q = await belegungsquote(db, z);
   const { vereinLesen } = await import('../verein.js');
   const { offeneBuchungen } = await import('../halle/daten.js');
   // nicht abgerechnet: vergangene Hallenbuchungen ohne Rechnung (wie in der Hallenabrechnung „offene Buchungen“)
   const offen = (await offeneBuchungen(db, await vereinLesen(db))).filter((b) => b.vergangen && !b.fehler);
   const minuten = offen.reduce((a, b) => a + b.dauer, 0);
   const betragOffen = runden(offen.reduce((a, b) => a + b.betrag, 0));
-  const zeitraum = `${dat(q.saison.von)}–${dat(q.saison.bis)}`;
   return [
     kpi({
-      key: 'HAL_BELEGUNG', title: 'Belegungsquote', subtitle: q.saison.laufend ? `laufende Saison (${zeitraum})` : `Saison ${zeitraum}`,
+      key: 'HAL_BELEGUNG', title: 'Belegungsquote', subtitle: z.text,
+      varianten: Object.entries(HAL_ZEITRAEUME).map(([key, text]) => ({ key, text })), variante: zeitraum,
       value: q.quote === null ? '–' : zahl(q.quote, 1), unit: '%',
       details: q.quote === null ? 'keine Hallenplätze mit Buchungszeiten gepflegt (Platzverwaltung)' : `${stunden(q.belegt / 60)} von ${stunden(q.kapazitaet / 60)} Std der Buchungszeiten belegt`,
       icon: 'calendar', state: q.quote === null ? 'None' : q.quote >= 60 ? 'Positive' : q.quote >= 30 ? 'Critical' : 'Negative',

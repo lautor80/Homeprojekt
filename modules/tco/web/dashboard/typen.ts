@@ -9,6 +9,8 @@ export type Trend = 'Up' | 'Down' | 'None';
 export interface Kpi {
   key: string; title: string; subtitle: string; value: string; unit: string; delta?: string;
   trend: Trend; state: State; details: string; icon: string; display?: 'TILE' | 'CARD'; hasDetail: boolean; todo: boolean;
+  /** Auswahl in der Kachel (z. B. Zeitraum Monat/Saison/Jahr) und die gewählte Variante */
+  varianten?: KeyText[]; variante?: string;
 }
 export interface Bereich { key: string; title: string; kpis: Kpi[] }
 export interface KeyText { key: string; text: string }
@@ -43,7 +45,7 @@ export interface DetailZeile { cols: string[]; state: State; adrnr?: string; ver
 export interface Detail { title: string; head: string[]; info: string; zeilen: DetailZeile[]; mode?: 'BSW'; stichtag?: string; stufen?: KeyText[] }
 
 /** Auswahl der Diagramme (Jahre, Konten, Ansicht) – wird als Query mitgeschickt */
-export interface Auswahl { jugJahre: string[]; halJahre: string[]; finJahre: string[]; finKonten: string[]; jugAnsicht: 'GESAMT' | 'TRAINER' }
+export interface Auswahl { jugJahre: string[]; halJahre: string[]; finJahre: string[]; finKonten: string[]; jugAnsicht: 'GESAMT' | 'TRAINER'; halZeitraum: 'MONAT' | 'SAISON' | 'JAHR' }
 
 /** Kurzform für Achsen wie conv_short: 1,2k / 3,4M, sonst ganze Zahl */
 export function kurz(v: number): string {

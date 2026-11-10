@@ -1,12 +1,14 @@
 import { Button, Icon } from '@ui5/webcomponents-react';
 import type { Kpi } from './typen';
+import { KpiVarianten } from './KpiVarianten';
 
 /** KPI als Card (sap.f.Card, 19rem): Titel, Untertitel, Wert mit Einheit, Symbol + Zusatztext, Button „Details anzeigen“ (Port von render_card) */
-export function KpiCard({ kpi, onDetail }: { kpi: Kpi; onDetail?: () => void }) {
+export function KpiCard({ kpi, onDetail, onVariante }: { kpi: Kpi; onDetail?: () => void; onVariante?: (key: string) => void }) {
   return (
     <div className="portal-kpicard">
       <h4 className="portal-kpicard__title">{kpi.title}</h4>
       <div className="portal-kpicard__subtitle">{kpi.subtitle}</div>
+      <KpiVarianten kpi={kpi} onVariante={onVariante} />
       <div className="portal-kpicard__number">
         <span className={`portal-kpicard__value portal-kpicard__value--${kpi.state}`}>{kpi.value}{kpi.delta ? ` ${kpi.delta}` : ''}</span>
         {kpi.unit && <span className="portal-muted">{kpi.unit}</span>}

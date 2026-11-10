@@ -19,7 +19,7 @@ import './dashboard.css';
 
 type Display = 'TILE' | 'CARD';
 
-const AUSWAHL_LEER: Auswahl = { jugJahre: [], halJahre: [], finJahre: [], finKonten: [], jugAnsicht: 'TRAINER' };
+const AUSWAHL_LEER: Auswahl = { jugJahre: [], halJahre: [], finJahre: [], finKonten: [], jugAnsicht: 'TRAINER', halZeitraum: 'SAISON' };
 
 /** Mehrfachauswahl der Jahre für ein Diagramm */
 function JahreWahl({ jahre, sel, onChange, width = '20rem' }: { jahre: KeyText[]; sel: string[]; onChange: (s: string[]) => void; width?: string }) {
@@ -52,7 +52,7 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
   const laden = async (j: number | null, a: Auswahl) => {
     setLaedt(true); setError(null);
     try {
-      const q = qs({ jahr: j ?? undefined, jugJahre: a.jugJahre.join(','), halJahre: a.halJahre.join(','), finJahre: a.finJahre.join(','), finKonten: a.finKonten.join(','), jugAnsicht: a.jugAnsicht });
+      const q = qs({ jahr: j ?? undefined, jugJahre: a.jugJahre.join(','), halJahre: a.halJahre.join(','), finJahre: a.finJahre.join(','), finKonten: a.finKonten.join(','), jugAnsicht: a.jugAnsicht, halZeitraum: a.halZeitraum });
       const r = await api.get<Daten>(`${DASH}${q}`);
       setD(r);
       if (r.jahr !== j) setJahr(r.jahr);
@@ -76,7 +76,9 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
                       onJahre={(s) => setAuswahl({ ...auswahl, finJahre: s })} onKonten={(s) => setAuswahl({ ...auswahl, finKonten: s })} />;
     }
     const mode: Display = k.display ?? display;
-    return mode === 'CARD' ? <KpiCard key={k.key} kpi={k} onDetail={onDetail} /> : <KpiTile key={k.key} kpi={k} onPress={onDetail} />;
+    // Zeitraum der Belegungsquote: Monat / Saison / Jahr (#103)
+    const onVariante = k.key === 'HAL_BELEGUNG' ? (v: string) => setAuswahl({ ...auswahl, halZeitraum: v as Auswahl['halZeitraum'] }) : undefined;
+    return mode === 'CARD' ? <KpiCard key={k.key} kpi={k} onDetail={onDetail} onVariante={onVariante} /> : <KpiTile key={k.key} kpi={k} onPress={onDetail} onVariante={onVariante} />;
   };
 
   const diagramm = (b: Bereich) => {
