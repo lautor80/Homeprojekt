@@ -141,6 +141,9 @@ test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   assert.equal(r.body.bank.kontoinhaber, 'Hans Müller');
   assert.deepEqual(r.body.familie.map((p: any) => p.rolle), ['Mitglied', 'Abweichender Zahler']);
   assert.deepEqual(r.body.vertraege.map((v: any) => [v.zahler_adrnr, v.zahler]), [['', 'wie Mitglied (Müller, Hans)'], ['', 'wie Mitglied (Müller, Hans)']]);
+  // Vertragsbaum: alle verknüpften Personen mit ihren Verträgen, Ebene über „zahlt über“
+  assert.deepEqual(r.body.familie.map((p: any) => [p.adrnr, p.zahlt_ueber]), [['0000000102', '0000000101'], ['0000000101', '']]);
+  assert.deepEqual(r.body.vertraegeFamilie.map((v: any) => [v.adrnr, v.vertragnr]), [['0000000102', '1'], ['0000000102', '2'], ['0000000101', '1']]);
   // Detail Hans: Verträge inkl. Mia, SEPA
   r = await call('GET', `${M}/m/0000000101`);
   assert.deepEqual(r.body.vertraege.map((v: any) => [v.person, v.vertragnr]), [['Hans Müller', '1'], ['Mia Müller', '1'], ['Mia Müller', '2']]);

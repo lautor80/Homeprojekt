@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
   TextArea, Title, Toolbar, ToolbarSpacer,
@@ -12,9 +12,10 @@ import { toast } from '@core/toast';
 import { useCan } from '@core/session';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { ObjectHeader } from '@core/components/ObjectHeader';
-import { dat, eur } from '../util';
-import { MG, type Auswahl, type Detail } from './typen';
-import { BankDialog, KommDialog, KopfDialog, VertragDialog } from './Dialoge';
+import { dat } from '../util';
+import { MG, type Auswahl, type Detail, type Vertrag } from './typen';
+import { BankDialog, KommDialog, KopfDialog, VertragDialog, vertragPersonen } from './Dialoge';
+import { VertragsBaum } from './VertragsBaum';
 import { Dokumente } from './Dokumente';
 import { GruppenTab } from './GruppenTab';
 import { useAblageZiel } from '@core/ablage';
@@ -39,6 +40,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
   const [tab, setTab] = useState('stamm');
   const [dlg, setDlg] = useState<'kopf' | 'bank' | 'vertrag' | 'komm' | null>(null);
   const [art, setArt] = useState('2');
+  const [vtFuer, setVtFuer] = useState<string | undefined>();
   const [pdf, setPdf] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [docSel, setDocSel] = useState<number[]>([]);
@@ -148,8 +150,8 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
           </Raster>
           <SepaTabelle d={d} edit={edit} onAktion={aktion} />
         </Tab>
-        <Tab data-key="vt" text={`Verträge (${d.vertraege.filter((v) => v.laeuft).length})`} selected={tab === 'vt'}>
-          <Vertraege d={d} aw={aw} edit={edit} onNeu={() => setDlg('vertrag')} onAktion={aktion} />
+        <Tab data-key="vt" text={`Verträge (${d.vertraegeFamilie.filter((v) => v.laeuft).length})`} selected={tab === 'vt'}>
+          <Vertraege d={d} aw={aw} edit={edit} onNeu={(a) => { setVtFuer(a); setDlg('vertrag'); }} onOpen={onOpen} onAktion={aktion} />
         </Tab>
         <Tab data-key="fam" text={`Familie & Schlüssel (${d.familie.length - 1})`} selected={tab === 'fam'}>
           <Familie d={d} onOpen={onOpen} />
@@ -171,7 +173,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
       {pdf && <PdfDialog url={pdf} title={`Voransicht: ${unterlagen[art]} – ${d.titel}`} filename={`${unterlagen[art]}_${m.nachname}_${m.vorname}.pdf`} onClose={() => setPdf(null)} />}
       {dlg === 'kopf' && <KopfDialog d={d} onClose={(ok) => { setDlg(null); if (ok) aktion(async () => ({ text: 'Stammdaten gesichert.' })); }} />}
       {dlg === 'bank' && aw && <BankDialog d={d} aw={aw} onClose={(ok) => { setDlg(null); if (ok) aktion(async () => ({ text: 'Bankverbindung gesichert.' })); }} />}
-      {dlg === 'vertrag' && aw && <VertragDialog d={d} aw={aw} onClose={(t) => { setDlg(null); if (t) aktion(async () => ({ text: t })); }} />}
+      {dlg === 'vertrag' && aw && <VertragDialog d={d} aw={aw} adrnr={vtFuer} onClose={(t) => { setDlg(null); if (t) aktion(async () => ({ text: t })); }} />}
       {dlg === 'komm' && <KommDialog d={d} art={art} unterlagen={unterlagen} docs={docSel} edit={edit} onClose={(t) => { setDlg(null); if (t) aktion(async () => ({ text: t }), false); }} />}
     </div>
   );
@@ -302,53 +304,44 @@ function SepaTabelle({ d, edit, onAktion }: { d: Detail; edit: boolean; onAktion
   );
 }
 
-// ---------------------------------------------------------------- Verträge
-function Vertraege({ d, aw, edit, onNeu, onAktion }: {
-  d: Detail; aw: Auswahl | null; edit: boolean; onNeu: () => void; onAktion: (fn: () => Promise<{ text?: string } | void>) => void;
+// ---------------------------------------------------------------- Verträge (Baum mit allen verknüpften Personen)
+function Vertraege({ d, aw, edit, onNeu, onOpen, onAktion }: {
+  d: Detail; aw: Auswahl | null; edit: boolean; onNeu: (adrnr?: string) => void; onOpen: (a: string) => void;
+  onAktion: (fn: () => Promise<{ text?: string } | void>) => void;
 }) {
-  const [alle, setAlle] = useState(false);
-  const rows = useMemo(() => d.vertraege.filter((v) => alle || v.laeuft), [d.vertraege, alle]);
-  const mehrere = new Set(d.vertraege.map((v) => v.adrnr)).size > 1;
-  const summe = rows.filter((v) => v.laeuft).reduce((s, v) => s + v.betrag, 0);
-  const put = (v: Detail['vertraege'][number], body: object) => onAktion(() => api.put(`${MG}/vertraege/${v.adrnr}/${encodeURIComponent(v.vertragnr)}`, body));
-  const columns: AnalyticalTableColumnDefinition[] = [
-    ...(mehrere ? [{ Header: 'Für', accessor: 'person', minWidth: 120 }] : []),
-    { Header: 'Nr.', accessor: 'vertragnr', width: 55 },
-    { Header: 'Vertragsart', accessor: 'artname', minWidth: 130, Cell: ({ row, value }: Cell) => <Text>{`${row.original.art} – ${value}`}</Text> },
-    { Header: 'Turnus', accessor: 'sollstellung', width: 115, responsiveMinWidth: 1100 },
-    { Header: 'Beginn', accessor: 'vertragbegin', width: 100, Cell: ({ value }: Cell) => dat(value) },
-    {
-      Header: 'Ende', accessor: 'vertragende', width: edit ? 165 : 100,
-      Cell: ({ row, value }: Cell) => (edit
-        ? <DatePicker style={{ width: '9.5rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={value ?? ''} placeholder="unbefristet"
-                      onChange={(e) => { if ((e.detail.value || null) !== (value || null)) put(row.original, { ende: e.detail.value || null }); }} />
-        : <Text>{value ? dat(value) : 'unbefristet'}</Text>),
-    },
-    { Header: 'Betrag', accessor: 'betrag', width: 95, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
-    {
-      Header: 'Zahler', accessor: 'zahler', minWidth: 150,
-      Cell: ({ row }: Cell) => (edit && aw && row.original.laeuft
-        ? (
-          <Select style={{ width: '100%' }} onChange={(e) => put(row.original, { zahler: (e.detail.selectedOption as HTMLElement).dataset.z || null })}>
-            <Option data-z="" selected={!row.original.zahler_adrnr}>{row.original.zahler_adrnr ? 'wie Mitglied' : row.original.zahler}</Option>
-            {aw.vtZahler.filter((z) => z.adrnr !== row.original.adrnr).map((z) => <Option key={z.adrnr} data-z={z.adrnr} selected={z.adrnr === row.original.zahler_adrnr}>{z.text}</Option>)}
-            {row.original.zahler_adrnr && !aw.vtZahler.some((z) => z.adrnr === row.original.zahler_adrnr) && <Option data-z={row.original.zahler_adrnr} selected>{row.original.zahler} (ohne aktives Mandat)</Option>}
-          </Select>
-        )
-        : <Text>{row.original.zahler}</Text>),
-    },
-  ];
+  // Ändern nur für Verträge, die zu diesem Mitglied gehören (eigene und von Personen, die über das Mitglied zahlen) –
+  // Verträge anderer verknüpfter Personen pflegt man auf deren Seite (Name anklicken)
+  const eigen = new Set(d.vertraege.map((v) => `${v.adrnr}:${v.vertragnr}`));
+  const aenderbar = (v: Vertrag) => edit && eigen.has(`${v.adrnr}:${v.vertragnr}`);
+  const anlegbar = new Set(vertragPersonen(d).map((p) => p.adrnr));
+  const put = (v: Vertrag, body: object) => onAktion(() => api.put(`${MG}/vertraege/${v.adrnr}/${encodeURIComponent(v.vertragnr)}`, body));
   return (
     <>
-      <Toolbar design="Transparent">
-        <Title level="H5">{alle ? 'Alle Verträge' : 'Laufende Verträge'} ({rows.length}) · {eur(summe)}</Title>
-        <ToolbarSpacer />
-        <CheckBox text="Auch beendete" checked={alle} onChange={(e) => setAlle(e.target.checked)} />
-        {edit && <Button icon="add" design="Emphasized" onClick={onNeu}>Vertrag hinzufügen</Button>}
-      </Toolbar>
-      <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine Verträge"
-                       withRowHighlight highlightField={(r: Record<string, any>) => (r.laeuft ? 'Positive' : 'None')} />
-      {mehrere && <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>Enthalten sind auch die Verträge der Familienmitglieder, die über dieses Mitglied zahlen.</MessageStrip>}
+      <VertragsBaum personen={d.familie} vertraege={d.vertraegeFamilie} ich={d.mitglied.adrnr} onPerson={onOpen}
+                    aktionen={edit ? <Button icon="add" design="Emphasized" onClick={() => onNeu()}>Vertrag hinzufügen</Button> : undefined}
+                    endeZelle={(v) => (aenderbar(v)
+                      ? <DatePicker style={{ width: '9.5rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.vertragende ?? ''} placeholder="unbefristet"
+                                    onChange={(e) => { if ((e.detail.value || null) !== (v.vertragende || null)) put(v, { ende: e.detail.value || null }); }} />
+                      : null)}
+                    zahlerZelle={(v) => (aenderbar(v) && aw && v.laeuft
+                      ? (
+                        <Select style={{ width: '100%' }} onChange={(e) => put(v, { zahler: (e.detail.selectedOption as HTMLElement).dataset.z || null })}>
+                          <Option data-z="" selected={!v.zahler_adrnr}>{v.zahler_adrnr ? 'wie Mitglied' : v.zahler}</Option>
+                          {aw.vtZahler.filter((z) => z.adrnr !== v.adrnr).map((z) => <Option key={z.adrnr} data-z={z.adrnr} selected={z.adrnr === v.zahler_adrnr}>{z.text}</Option>)}
+                          {v.zahler_adrnr && !aw.vtZahler.some((z) => z.adrnr === v.zahler_adrnr) && <Option data-z={v.zahler_adrnr} selected>{v.zahler} (ohne aktives Mandat)</Option>}
+                        </Select>
+                      )
+                      : null)}
+                    personAktion={edit ? (p) => (anlegbar.has(p.adrnr)
+                      ? <Button icon="add-document" design="Transparent" tooltip={`Vertrag für ${p.name} hinzufügen`} onClick={() => onNeu(p.adrnr)} />
+                      : <Button icon="action" design="Transparent" tooltip={`${p.name} öffnen – Verträge dort pflegen`} onClick={() => onOpen(p.adrnr)} />) : undefined}
+                    aktionenBreite={80} />
+      {d.familie.length > 1 && (
+        <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
+          Der Baum zeigt alle verknüpften Personen mit ihren Verträgen: Zahler oben, darunter wer über ihn zahlt. Ändern lassen sich hier die Verträge
+          dieses Mitglieds und der Personen, die über dieses Mitglied zahlen; die übrigen auf der Seite der jeweiligen Person.
+        </MessageStrip>
+      )}
     </>
   );
 }

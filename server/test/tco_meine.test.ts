@@ -125,6 +125,15 @@ test('Meine Mitgliedschaft: Anmeldung mit Startkennwort, nur eigene Daten, Konta
   r = await kim('PUT', `${M}/meine/bank`, { iban: 'DE89 3704 0044 0532 0130 00', bic: '', bank: '' });
   assert.equal(r.status, 400);
   assert.match(r.body.message, /andere Person/);
+  // Vertragsbaum: Kim sieht auch Paulas Verträge (Zahlerin), kündbar ist nur der eigene
+  r = await kim('GET', `${M}/meine`);
+  assert.deepEqual(r.body.familie.map((p: any) => [p.adrnr, p.zahlt_ueber]).sort(), [['0000000501', ''], ['0000000502', '0000000501']]);
+  assert.deepEqual(r.body.vertraegeFamilie.map((v: any) => [v.adrnr, v.vertragnr, v.kuendbar]),
+    [['0000000502', '1', true], ['0000000501', '1', false], ['0000000501', '2', false]]);
+  // Paula: eigene Verträge und die von Kim (zahlt über Paula) – alle kündbar
+  r = await paula('GET', `${M}/meine`);
+  assert.equal(r.body.vertraegeFamilie.length, 3);
+  assert.ok(r.body.vertraegeFamilie.every((v: any) => v.kuendbar));
 });
 
 test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12., Bestätigung als PDF', async () => {
