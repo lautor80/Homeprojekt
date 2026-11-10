@@ -12,17 +12,17 @@
           ]
         }
       },
-      "id": "e0",
       "name": "Alle 5 Minuten",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         0,
-        100
+        200
       ]
     },
     {
       "parameters": {
+        "authentication": "imapThisNode",
         "resource": "email",
         "operation": "getEmailsList",
         "mailboxPath": {
@@ -33,13 +33,17 @@
         "emailDateRange": {
           "since": "={{ $now.minus({ days: 2 }).toISO() }}"
         },
+        "emailFlags": {},
+        "emailSearchFilters": {},
+        "limit": 50,
         "includeParts": [
           "textContent",
+          "htmlContent",
+          "attachmentsInfo",
           "headers"
         ],
         "includeAllHeaders": true
       },
-      "id": "e1",
       "name": "Posteingang lesen (IMAP)",
       "type": "n8n-nodes-imap.imap",
       "typeVersion": 1,
@@ -49,14 +53,15 @@
       ],
       "credentials": {
         "imapApi": {
-          "id": "TtTlIIM3mqhI2S7w",
-          "name": "IMAP Credentials account"
+          "id": "",
+          "name": "IMAP Postfach Verein"
         }
       },
-      "notes": "Dieselben Zugangsdaten wie „Entwurf ablegen (IMAP)“ in „TCO Mailversand“ (Postfach des primären Kontos). Liest nur – nichts wird als gelesen markiert oder verschoben. Im Knoten prüfen: Datumsbereich „seit“ = vor 2 Tagen, Teile „Text Content“ und „Headers“."
+      "notes": "Mails der letzten 2 Tage (höchstens 50). Die Mails bleiben unverändert im Postfach, bis das Portal ihre Behandlung meldet (unterer Zweig)."
     },
     {
       "parameters": {
+        "authentication": "imapThisNode",
         "resource": "email",
         "operation": "getEmailsList",
         "mailboxPath": {
@@ -67,13 +72,17 @@
         "emailDateRange": {
           "since": "={{ $now.minus({ days: 2 }).toISO() }}"
         },
+        "emailFlags": {},
+        "emailSearchFilters": {},
+        "limit": 50,
         "includeParts": [
           "textContent",
+          "htmlContent",
+          "attachmentsInfo",
           "headers"
         ],
         "includeAllHeaders": true
       },
-      "id": "e1b",
       "name": "Posteingang lesen (IMAP Benjamin)",
       "type": "n8n-nodes-imap.imap",
       "typeVersion": 1,
@@ -81,76 +90,439 @@
         240,
         200
       ],
-      "credentials": {
-        "imapApi": {
-          "id": "",
-          "name": "TCO IMAP Benjamin"
-        }
-      },
-      "onError": "continueRegularOutput",
-      "notes": "Zweites Absender-Konto wie „E-Mail senden (SMTP Benjamin)“ in „TCO Mailversand“. Braucht den IMAP-Zugang zu Benjamins Postfach (die SMTP-Zugangsdaten kann der IMAP-Knoten nicht verwenden). Ohne zweites Postfach: Knoten löschen."
+      "notes": "Weiteres Postfach: Zugangsdaten wählen, aktivieren und in „Mail aufbereiten“ unter POSTFAECHER benennen. Die IMAP-Knoten zum Laden der Anhänge und im unteren Zweig brauchen je Postfach eine eigene Kopie mit dessen Zugangsdaten.",
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "// Jede Mail aus den Posteingängen für das Portal aufbereiten. Das Portal entscheidet, ob es eine Unzustellbar-Meldung,\n// eine Abwesenheitsnotiz oder eine Antwort auf eine gesendete E-Mail ist – alles andere verwirft es, gespeichert wird kein Inhalt.\n// Bereits gemeldete Mails (Knoten „Gemeldet merken“) und Mails älter als TAGE werden übersprungen.\nconst TAGE = 3;\nconst merk = $getWorkflowStaticData('global');\nconst gemeldet = new Set(merk.gemeldet || []);\n\nconst adressen = (l) => (Array.isArray(l) ? l : l ? [l] : [])\n  .map((x) => (typeof x === 'string' ? x : x.name ? x.name + ' <' + (x.address || '') + '>' : x.address || '')).filter(Boolean).join(', ');\nconst text = (v) => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.map(text).join(' ') : typeof v === 'object' ? (v.text || v.address || '') : String(v));\n\nconst aus = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const env = j.envelope || {};\n  // Kopfzeilen: je nach Version des IMAP-Knotens als Objekt oder als Rohtext\n  let h = j.headers || {};\n  if (typeof h === 'string') {\n    const roh = h.replace(/\\r?\\n[ \\t]+/g, ' ');\n    h = {};\n    for (const z of roh.split(/\\r?\\n/)) { const m = /^([^:\\s]+):\\s*(.*)$/.exec(z); if (m) h[m[1].toLowerCase()] = m[2]; }\n  }\n  const kopf = (n) => text(h[n] ?? h[n.toLowerCase()] ?? Object.entries(h).find(([k]) => k.toLowerCase() === n)?.[1]);\n  const datum = env.date || kopf('date') || '';\n  const zeit = datum ? new Date(datum).getTime() : NaN;\n  if (!Number.isNaN(zeit) && zeit < Date.now() - TAGE * 86400000) continue;\n  const message_id = text(env.messageId) || kopf('message-id');\n  const schluessel = message_id || [j.mailboxPath || 'INBOX', j.uid, datum].join('|');\n  if (gemeldet.has(schluessel)) continue;\n  const html = text(j.htmlContent || j.textHtml).replace(/<style[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');\n  aus.push({ json: {\n    schluessel,\n    postfach: adressen(env.to) || kopf('delivered-to') || kopf('to'),\n    von: adressen(env.from) || kopf('from'),\n    betreff: text(env.subject) || kopf('subject'),\n    datum: datum ? String(datum) : '',\n    message_id,\n    in_reply_to: text(env.inReplyTo) || kopf('in-reply-to'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: (text(j.textContent || j.textPlain) || html).slice(0, 50000),\n  } });\n}\nreturn aus;"
+        "jsCode": "// Neue Mails der Posteingänge für das Portal aufbereiten (Dokumenteneingang und Rückmeldungen zum E-Mail-Protokoll).\n// Das Portal verbucht Unzustellbar-Meldungen, Abwesenheitsnotizen und Antworten im E-Mail-Protokoll und legt Dokumente\n// nach dem Regelwerk ab. Bereits gelieferte Mails (Knoten „Gemeldet merken“) und Mails älter als TAGE werden übersprungen.\nconst TAGE = 3;\n// Name des Postfachs je IMAP-Knoten – Teil des Schlüssels im Portal (Postfach + Message-ID) und Bedingungsfeld „Postfach“\nconst POSTFAECHER = {\n  'Posteingang lesen (IMAP)': 'Verein',\n  'Posteingang lesen (IMAP Benjamin)': 'Benjamin',\n};\nconst postfach = POSTFAECHER[$prevNode.name] || $prevNode.name;\nconst merk = $getWorkflowStaticData('global');\nconst gemeldet = new Set(merk.gemeldet || []);\n\nconst adressen = (l) => (Array.isArray(l) ? l : l ? [l] : [])\n  .map((x) => (typeof x === 'string' ? x : x.name ? x.name + ' <' + (x.address || '') + '>' : x.address || '')).filter(Boolean).join(', ');\nconst text = (v) => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.map(text).join(' ') : typeof v === 'object' ? (v.text || v.address || '') : String(v));\n\nconst aus = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  // ein deaktivierter IMAP-Knoten reicht nur das Auslöser-Item durch – das ist keine Mail\n  if (j.uid == null && !j.envelope) continue;\n  const env = j.envelope || {};\n  // Kopfzeilen: je nach Version des IMAP-Knotens als Objekt oder als Rohtext\n  let h = j.headers || {};\n  if (typeof h === 'string') {\n    const roh = h.replace(/\\r?\\n[ \\t]+/g, ' ');\n    h = {};\n    for (const z of roh.split(/\\r?\\n/)) { const m = /^([^:\\s]+):\\s*(.*)$/.exec(z); if (m) h[m[1].toLowerCase()] = m[2]; }\n  }\n  const kopf = (n) => text(h[n] ?? h[n.toLowerCase()] ?? Object.entries(h).find(([k]) => k.toLowerCase() === n)?.[1]);\n  const datum = env.date || kopf('date') || '';\n  const zeit = datum ? new Date(datum).getTime() : NaN;\n  if (!Number.isNaN(zeit) && zeit < Date.now() - TAGE * 86400000) continue;\n  const message_id = text(env.messageId) || kopf('message-id');\n  const schluessel = postfach + '|' + (message_id || [j.mailboxPath || 'INBOX', j.uid, datum].join('|'));\n  if (gemeldet.has(schluessel)) continue;\n  const anhaenge = (j.attachmentsInfo || []).filter((a) => a && a.partId);\n  aus.push({ json: {\n    schluessel,\n    postfach,\n    ordner: j.mailboxPath || 'INBOX',\n    uid: j.uid,\n    von: adressen(env.from) || kopf('from'),\n    an: adressen(env.to) || kopf('delivered-to') || kopf('to'),\n    betreff: text(env.subject) || kopf('subject'),\n    datum: datum ? String(datum) : '',\n    message_id,\n    in_reply_to: text(env.inReplyTo) || kopf('in-reply-to'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: text(j.textContent || j.textPlain || j.text).slice(0, 200000),\n    html: text(j.htmlContent || j.textHtml || j.html).slice(0, 500000),\n    anhaenge_anzahl: anhaenge.length,\n  } });\n}\nreturn aus;\n"
       },
-      "id": "e2",
       "name": "Mail aufbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         480,
-        100
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.anhaenge_anzahl }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Anhänge?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "imapThisNode",
+        "resource": "email",
+        "operation": "downloadAttachment",
+        "mailboxPath": {
+          "__rl": true,
+          "mode": "path",
+          "value": "={{ $json.ordner }}"
+        },
+        "emailUid": "={{ $json.uid }}",
+        "allAttachments": true,
+        "includeInlineAttachments": false
+      },
+      "name": "Anhänge laden",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        960,
+        -100
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "IMAP Postfach Verein"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mail und – falls vorhanden – die geladenen Anhänge (Base64) zu einer Lieferung an das Portal zusammenfassen.\n// Optional: text je Anhang = Dokumenttext (z. B. aus „Extract from File“), damit Regeln auf den Inhalt prüfen können.\nconst items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  const it = items[i];\n  const geladen = Array.isArray(it.json.attachments);\n  const mail = geladen ? $('Mail aufbereiten').itemMatching(i).json : it.json;\n  const anhaenge = [];\n  if (geladen) {\n    for (const a of it.json.attachments) {\n      const daten = await this.helpers.getBinaryDataBuffer(i, a.binaryFieldName);\n      anhaenge.push({ name: a.filename || a.binaryFieldName, mime: a.contentType || null, inhalt: daten.toString('base64'), text: '' });\n    }\n  }\n  const { anhaenge_anzahl, ...rest } = mail;\n  out.push({ json: { ...rest, anhaenge }, pairedItem: { item: i } });\n}\nreturn out;\n"
+      },
+      "name": "Für Portal packen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://app:8080/api/mail/eingang",
+        "url": "http://app:8080/api/m/tco/eingang/mail",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-portal-request",
-              "value": "1"
-            }
-          ]
+        "options": {
+          "timeout": 300000
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify($json) }}"
       },
-      "id": "e3",
-      "name": "An Portal melden",
+      "name": "An Portal liefern",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        720,
-        100
+        1440,
+        0
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "uWUue5JiSeFsYqNz",
-          "name": "Header Auth account"
+          "id": "",
+          "name": "Portal API-Schlüssel (Bearer)"
         }
       },
-      "notes": "Dieselbe Zugangsdatei wie am Webhook von „TCO Mailversand“ (X-TCO-Key). URL = Adresse des Portals aus Sicht von n8n."
+      "notes": "Ein Aufruf für alles: Das Portal verbucht Rückmeldungen (unzustellbar, Abwesenheit, Antwort) im E-Mail-Protokoll und legt Dokumente nach dem Regelwerk ab. Zugangsdaten „Header Auth“: Name Authorization, Wert „Bearer pk_tco_…“ (API-Schlüssel TC Oberthal mit tco.eingang:melden)."
     },
     {
       "parameters": {
-        "jsCode": "// Nach erfolgreicher Meldung ans Portal: Mails merken, damit sie beim nächsten Abruf nicht erneut gemeldet werden.\n// (Schlägt die Meldung fehl, bleibt nichts gemerkt – der nächste Lauf versucht es wieder; das Portal verbucht nichts doppelt.)\nconst merk = $getWorkflowStaticData('global');\nconst neu = $('Mail aufbereiten').all().map((i) => i.json.schluessel).filter(Boolean);\nmerk.gemeldet = [...new Set([...(merk.gemeldet || []), ...neu])].slice(-3000);\nreturn $input.all();"
+        "jsCode": "// Nach erfolgreicher Lieferung ans Portal: Mails merken, damit sie beim nächsten Abruf nicht erneut geliefert werden.\n// (Schlägt die Lieferung fehl, bleibt nichts gemerkt – der nächste Lauf versucht es wieder; das Portal verarbeitet nichts doppelt.)\nconst merk = $getWorkflowStaticData('global');\nconst neu = $input.all().map((_, i) => $('Für Portal packen').itemMatching(i).json.schluessel).filter(Boolean);\nmerk.gemeldet = [...new Set([...(merk.gemeldet || []), ...neu])].slice(-3000);\nreturn $input.all();\n"
       },
-      "id": "e4",
       "name": "Gemeldet merken",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
-        100
+        1680,
+        0
       ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://app:8080/api/m/tco/eingang/mailaktionen",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "name": "Ausstehende Mailaktionen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        440
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Portal API-Schlüssel (Bearer)"
+        }
+      },
+      "notes": "E-Mails, deren Dokumente abgelegt sind und die das Portal verschieben, markieren oder löschen lassen will. Bei mehreren Postfächern je Postfach mit ?postfach=<Name> abfragen."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.vorgang }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Mit Vorgang",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.gelesen }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Gelesen markieren?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "imapThisNode",
+        "resource": "email",
+        "operation": "setEmailFlags",
+        "mailboxPath": {
+          "__rl": true,
+          "mode": "path",
+          "value": "={{ $json.quelle || 'INBOX' }}"
+        },
+        "emailUid": "={{ $json.uid }}",
+        "flags": {
+          "\\Seen": true
+        }
+      },
+      "name": "Als gelesen markieren",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        960,
+        360
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "IMAP Postfach Verein"
+        }
+      },
+      "notes": "Vor dem Verschieben: Nach dem Verschieben hat die Mail im Zielordner eine andere UID."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Mit Vorgang').item.json.art }}",
+                    "rightValue": "verschieben",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "verschieben"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Mit Vorgang').item.json.art }}",
+                    "rightValue": "loeschen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Papierkorb"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Mit Vorgang').item.json.art }}",
+                    "rightValue": "keine",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "nur markiert"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Art der Behandlung",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1200,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "imapThisNode",
+        "resource": "email",
+        "operation": "moveEmail",
+        "sourceMailbox": {
+          "__rl": true,
+          "mode": "path",
+          "value": "={{ $('Mit Vorgang').item.json.quelle || 'INBOX' }}"
+        },
+        "emailUid": "={{ $('Mit Vorgang').item.json.uid }}",
+        "destinationMailbox": {
+          "__rl": true,
+          "mode": "path",
+          "value": "={{ $('Mit Vorgang').item.json.ordner }}"
+        }
+      },
+      "name": "E-Mail verschieben",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        300
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "IMAP Postfach Verein"
+        }
+      },
+      "notes": "Den Zielordner gibt die Regel im Portal vor; er muss im Postfach existieren."
+    },
+    {
+      "parameters": {
+        "authentication": "imapThisNode",
+        "resource": "email",
+        "operation": "moveEmail",
+        "sourceMailbox": {
+          "__rl": true,
+          "mode": "path",
+          "value": "={{ $('Mit Vorgang').item.json.quelle || 'INBOX' }}"
+        },
+        "emailUid": "={{ $('Mit Vorgang').item.json.uid }}",
+        "destinationMailbox": {
+          "__rl": true,
+          "mode": "path",
+          "value": "Trash"
+        }
+      },
+      "name": "E-Mail in den Papierkorb",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        460
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "IMAP Postfach Verein"
+        }
+      },
+      "notes": "Verschiebt in den Papierkorb statt endgültig zu löschen. Den Ordnernamen an das Postfach anpassen (z. B. Trash, Papierkorb, Gelöschte Elemente)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8080/api/m/tco/eingang/vorgaenge/{{ $('Mit Vorgang').item.json.vorgang }}/mail-erledigt",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}"
+      },
+      "name": "Erledigt melden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        440
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Portal API-Schlüssel (Bearer)"
+        }
+      },
+      "notes": "Erst danach gilt die Behandlung als erledigt; schlägt ein IMAP-Knoten fehl, liefert das Portal sie beim nächsten Lauf erneut."
+    },
+    {
+      "parameters": {},
+      "name": "Aufgabe anlegen (deaktiviert)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        440
+      ],
+      "disabled": true,
+      "notes": "Platzhalter: Regeln können eine Folgeaufgabe melden ({{ $('Mit Vorgang').item.json.aufgaben }} = [{ titel, faellig_tage }]). Hier den bisherigen Knoten „Create a task“ einsetzen und aktivieren, wenn Aufgaben wieder angelegt werden sollen."
     }
   ],
   "connections": {
@@ -164,6 +536,11 @@
           },
           {
             "node": "Posteingang lesen (IMAP Benjamin)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ausstehende Mailaktionen",
             "type": "main",
             "index": 0
           }
@@ -196,14 +573,54 @@
       "main": [
         [
           {
-            "node": "An Portal melden",
+            "node": "Anhänge?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "An Portal melden": {
+    "Anhänge?": {
+      "main": [
+        [
+          {
+            "node": "Anhänge laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Für Portal packen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge laden": {
+      "main": [
+        [
+          {
+            "node": "Für Portal packen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Für Portal packen": {
+      "main": [
+        [
+          {
+            "node": "An Portal liefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "An Portal liefern": {
       "main": [
         [
           {
@@ -213,10 +630,120 @@
           }
         ]
       ]
+    },
+    "Ausstehende Mailaktionen": {
+      "main": [
+        [
+          {
+            "node": "Mit Vorgang",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mit Vorgang": {
+      "main": [
+        [
+          {
+            "node": "Gelesen markieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gelesen markieren?": {
+      "main": [
+        [
+          {
+            "node": "Als gelesen markieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Art der Behandlung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Als gelesen markieren": {
+      "main": [
+        [
+          {
+            "node": "Art der Behandlung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Art der Behandlung": {
+      "main": [
+        [
+          {
+            "node": "E-Mail verschieben",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-Mail in den Papierkorb",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erledigt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail verschieben": {
+      "main": [
+        [
+          {
+            "node": "Erledigt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail in den Papierkorb": {
+      "main": [
+        [
+          {
+            "node": "Erledigt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erledigt melden": {
+      "main": [
+        [
+          {
+            "node": "Aufgabe anlegen (deaktiviert)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   }
 }

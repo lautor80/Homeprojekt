@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { ablegen, anwenden, auswerten, type Regel as PaperlessRegel, type Zuordnung } from '../../../../server/src/lib/paperless-mapping.js';
 import { eingangZeit } from '../../../../server/src/lib/maileingang.js';
+import { eingangVerbuchen } from '../../../../server/src/lib/maileingang-db.js';
 import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { WebDav } from '../../../../server/src/lib/webdav.js';
 import { htmlToPdf } from '../../../../server/src/pdf.js';
@@ -26,6 +27,8 @@ export const SYSTEM = 'Dokumenteneingang';
 export interface EingangMail {
   postfach: string; ordner: string | null; uid: string | null;
   von: string; an: string; betreff: string; datum: string | null; message_id: string; text: string; html: string;
+  /** Kopfzeilen für die Rückmeldungen im E-Mail-Protokoll */
+  in_reply_to: string | null; references: string | null; auto: string | null;
   anhaenge: { name: string; mime: string | null; inhalt: string; text: string }[];
 }
 
@@ -249,6 +252,24 @@ export async function mailVerarbeiten(m: EingangMail) {
     .map((a) => { const daten = Buffer.from(a.inhalt.replace(/^data:[^,]*,/, ''), 'base64'); return { name: dateinameSicher(a.name, 'anhang'), mime: a.mime, daten, groesse: daten.length, text: a.text }; })
     .filter(relevanterAnhang);
   const { ab, korrespondent, mitglied, text, kontext, werte } = await mailKontext(m, anhaenge.length);
+
+  // Rückmeldung zu einer gesendeten E-Mail (unzustellbar, Abwesenheit, Antwort) im E-Mail-Protokoll verbuchen –
+  // ersetzt den eigenen Aufruf von POST /api/mail/eingang. Rückläufer und Abwesenheitsnotizen werden nicht abgelegt.
+  const rueck = await eingangVerbuchen(DB, {
+    postfach: m.an, von: m.von, betreff: m.betreff, datum: m.datum, message_id: m.message_id,
+    in_reply_to: m.in_reply_to, references: m.references, auto: m.auto, text,
+  });
+  if (rueck.art !== 'antwort' && (rueck.zugeordnet || !anhaenge.length)) {
+    const hinweis = `${rueck.art === 'unzustellbar' ? 'Unzustellbar-Meldung' : 'Abwesenheitsnotiz'}${rueck.zugeordnet ? ' – im E-Mail-Protokoll verbucht' : ''}; nicht abgelegt.`;
+    const [r] = await DB`
+      insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, abgeschlossen_am)
+      values (${m.postfach}, ${schluessel}, ${m.ordner}, ${m.uid}, ${ab.adresse || m.von.slice(0, 500)}, ${ab.name || null}, ${m.an.slice(0, 1000)}, ${m.betreff.slice(0, 1000)},
+              ${eingangZeit(m.datum)}, 'ignoriert', ${hinweis}, now())
+      on conflict (postfach, message_id) do nothing
+      returning id`;
+    const [da] = r ? [r] : await DB`select id from tco.eing_vorgaenge where postfach = ${m.postfach} and message_id = ${schluessel}`;
+    return { ...(await vorgangAntwort(da.id as string, !!r)), rueckmeldung: rueck };
+  }
   const regeln = await regelnLesen();
 
   const mailRegel = waehlen(regeln, kontext, 'mail');
@@ -266,7 +287,9 @@ export async function mailVerarbeiten(m: EingangMail) {
   // Behandlung der E-Mail: die Mail-Regel bestimmt; sonst die ranghöchste aktive Anhang-Regel
   const fuehrend = scharf(mailRegel) ? mailRegel
     : geplant.map((g) => g.regel).filter(scharf).sort((x, y) => x.prioritaet - y.prioritaet || x.id - y.id)[0] ?? null;
-  const hinweis = mailRegel?.status === 'testlauf' ? `Testlauf: Regel „${mailRegel.name}“ würde diese E-Mail behandeln.` : !mailRegel && !geplant.length ? 'Keine Regel passt.' : null;
+  const hinweis = [rueck.zugeordnet ? 'Antwort auf eine E-Mail des Portals (im E-Mail-Protokoll verbucht).' : '',
+    mailRegel?.status === 'testlauf' ? `Testlauf: Regel „${mailRegel.name}“ würde diese E-Mail behandeln.` : !mailRegel && !geplant.length ? 'Keine Regel passt.' : '']
+    .filter(Boolean).join(' ') || null;
   // der Mailtext bleibt nur, solange Dokumente offen sein können (abschliessen() löscht ihn)
   const behalten = geplant.length > 0;
 
@@ -279,7 +302,7 @@ export async function mailVerarbeiten(m: EingangMail) {
     returning id`;
   if (!v) {
     const [da] = await DB`select id from tco.eing_vorgaenge where postfach = ${m.postfach} and message_id = ${schluessel}`;
-    return vorgangAntwort(da.id as string, false);
+    return { ...(await vorgangAntwort(da.id as string, false)), rueckmeldung: rueck };
   }
 
   for (const g of geplant) {
@@ -292,7 +315,7 @@ export async function mailVerarbeiten(m: EingangMail) {
     await entscheiden({ id: d.id as string, vorgang_id: v.id as string, art: g.art, datei: g.datei, mime: g.mime, sha256: sha(g.daten), inhalt, kontext: k, status: 'neu' }, g.regel, SYSTEM);
   }
   await abschliessen(v.id as string);
-  return vorgangAntwort(v.id as string, true);
+  return { ...(await vorgangAntwort(v.id as string, true)), rueckmeldung: rueck };
 }
 
 async function dokLesen(id: number): Promise<DokZeile> {

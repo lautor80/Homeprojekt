@@ -32,6 +32,9 @@ const eingang = z.object({
   von: leer(1000), an: leer(4000), betreff: leer(2000),
   datum: z.string().max(100).nullish().transform((x) => x || null),
   message_id: leer(1000),
+  in_reply_to: z.string().max(2000).nullish().transform((x) => x || null),
+  references: z.string().max(20_000).nullish().transform((x) => x || null),
+  auto: z.string().max(200).nullish().transform((x) => x || null),
   text: z.string().nullish().transform((x) => (x ?? '').slice(0, 200_000)),
   html: z.string().nullish().transform((x) => (x ?? '').slice(0, 500_000)),
   anhaenge: z.array(z.object({
