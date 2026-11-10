@@ -15,7 +15,7 @@ IMAP-Postfach ──> n8n: Mail + Anhänge ──> Portal: Regelwerk ──┬�
 |---|---|
 | Wo wird das Regelwerk ausgewertet? | Im Portal, mit eigener Berechtigung. |
 | Wer legt ab? | Das Portal selbst, über die zentrale Anbindung „Paperless-ngx“ (Administration → Anbindungen) und die neue Anbindung „Nextcloud Dokumentenablage“. Abweichung vom ersten Konzept („n8n führt aus“): Der Paperless-Client, die Vorlagen der Paperless-Zuordnung und der WebDAV-Client waren im Portal schon vorhanden. |
-| Paperless-Instanz | Gültig ist `192.168.178.105:8010`. Maßgeblich ist die Anbindung „Paperless-ngx“ im Portal – dort muss diese Adresse stehen; n8n spricht Paperless für den Dokumenteneingang nicht mehr direkt an. |
+| Paperless-Instanz | Gültig ist die Instanz im LAN (nicht die Internet-Adresse). Maßgeblich ist die Anbindung „Paperless-ngx“ im Portal – dort muss sie eingetragen sein; n8n spricht Paperless für den Dokumenteneingang nicht mehr direkt an. |
 | KI | Keine. Felder werden per Muster (regulärer Ausdruck) aus Betreff, Mailtext, HTML oder Dokumenttext gelesen; Inhalte verlassen das Portal nicht. Mitgliederinformationen gehen damit nie an einen KI-Dienst. |
 | Zuordnung über HTML | Der HTML-Teil der E-Mail ist Bedingungsfeld und Quelle für die Extraktion („Mailtext (HTML)“). |
 | Mitgliedsanträge | Laufen über das Portal (Mitglieder → Mitgliedsanträge) und sind kein Fall für den Dokumenteneingang. |
