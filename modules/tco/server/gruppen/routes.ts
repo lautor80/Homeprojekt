@@ -38,13 +38,15 @@ export async function gruppenRoutes(app: FastifyInstance) {
   /** Regelwerk als Ganzes sichern */
   app.put('/gruppen/regeln', pflege, async (req) => {
     const alter = z.number().int().min(0, 'Das Alter darf nicht negativ sein.').max(120, 'Das Alter darf höchstens 120 sein.').nullable();
-    const { regeln } = z.object({
+    const { regeln, gruppe_id } = z.object({
+      // nur das Regelwerk dieser Gruppe ersetzen (sonst das gesamte Regelwerk)
+      gruppe_id: z.number().int().positive().optional(),
       regeln: z.array(z.object({
         gruppe_id: z.number().int().positive(), alter_von: alter, alter_bis: alter,
         jahrgang: z.boolean().default(false), geschlecht: z.enum(['', 'M', 'W']).default(''), andere_entfernen: z.boolean().default(false), aktiv: z.boolean().default(true),
       })).max(200),
     }).parse(req.body);
-    const n = await change(req, (tx) => regelnSpeichern(tx, regeln), { action: 'GRUPPE', reason: 'Regelwerk' });
+    const n = await change(req, (tx) => regelnSpeichern(tx, regeln, gruppe_id), { action: 'GRUPPE', reason: 'Regelwerk' });
     return { regeln: await regelnLesen(DB), text: n === 1 ? '1 Regel gesichert.' : `${n} Regeln gesichert.` };
   });
 
@@ -53,21 +55,24 @@ export async function gruppenRoutes(app: FastifyInstance) {
    * simulation = true ermittelt nur, was sich ändern würde.
    */
   app.post('/gruppen/regeln/anwenden', pflege, async (req) => {
-    const { simulation } = z.object({ simulation: z.boolean().default(false) }).parse(req.body ?? {});
-    const gruppen = simulation ? await regelnAnwenden(DB, { simulation: true })
-      : await change(req, (tx) => regelnAnwenden(tx, { simulation: false }), { action: 'GRUPPE', reason: 'Regelwerk angewendet' });
+    // gruppe_id: nur diesen Knoten neu berechnen (Gruppe und ihre Untergruppen)
+    const { simulation, gruppe_id } = z.object({ simulation: z.boolean().default(false), gruppe_id: z.number().int().positive().optional() }).parse(req.body ?? {});
+    const gruppen = simulation ? await regelnAnwenden(DB, { simulation: true, gruppeId: gruppe_id })
+      : await change(req, (tx) => regelnAnwenden(tx, { simulation: false, gruppeId: gruppe_id }), { action: 'GRUPPE', reason: 'Regelwerk angewendet' });
     const auf = gruppen.reduce((s, g) => s + g.aufgenommen.length, 0);
     const weg = gruppen.reduce((s, g) => s + g.entfernt.length, 0);
     return {
       simulation, gruppen, aufgenommen: auf, entfernt: weg,
-      text: !gruppen.length ? 'Es gibt keine aktive Regel.'
-        : `${simulation ? 'Vorschau' : 'Regelwerk angewendet'}: ${auf} ${simulation ? 'würden aufgenommen' : 'aufgenommen'}, ${weg} ${simulation ? 'würden entfernt' : 'entfernt'} (${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'}).`,
+      text: !gruppen.length ? (gruppe_id ? 'Für diese Gruppe und ihre Untergruppen gibt es keine aktive Regel.' : 'Es gibt keine aktive Regel.')
+        : `${simulation ? 'Vorschau' : 'Neu berechnet'}: ${auf} ${simulation ? 'würden aufgenommen' : 'aufgenommen'}, ${weg} ${simulation ? 'würden entfernt' : 'entfernt'} (${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'}).`,
     };
   });
 
   app.post('/gruppen', pflege, async (req) => {
     const b = z.object({
       id: z.number().int().positive().nullish(), parent_id: z.number().int().positive().nullable().optional(),
+      // Position innerhalb der Ebene; weglassen = nicht ändern
+      position: z.number().int().min(0, 'Die Position darf nicht negativ sein.').max(9999).nullable().optional(),
       name: z.string().max(80), beschreibung: z.string().max(500).nullish(), aktiv: z.boolean().default(true),
     }).parse(req.body);
     const n = await change(req, (tx) => gruppeSpeichern(tx, b.id ?? null, b), { action: 'GRUPPE' });
