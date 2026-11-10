@@ -1,0 +1,25 @@
+/* Rollenmatrix (Administration → Rollen → Matrix, #46) */
+.portal-rm__rahmen { overflow: auto; max-height: calc(100vh - 330px); min-height: 18rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapList_Background, #fff); }
+.portal-rm { border-collapse: separate; border-spacing: 0; font-size: 0.8125rem; }
+.portal-rm th, .portal-rm td { border-bottom: 1px solid var(--sapList_BorderColor); padding: 0.2rem 0.4rem; }
+.portal-rm thead th { position: sticky; top: 0; z-index: 2; background: var(--sapList_HeaderBackground, #f5f6f7); vertical-align: bottom; }
+.portal-rm__ecke, .portal-rm__recht { position: sticky; left: 0; z-index: 1; background: var(--sapList_Background, #fff); min-width: 22rem; max-width: 34rem; text-align: left; }
+.portal-rm thead .portal-rm__ecke { z-index: 3; background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-rm__anz { text-align: right; width: 3.5rem; color: var(--sapContent_LabelColor); }
+.portal-rm__rolle { min-width: 2.4rem; text-align: center; font-weight: 400; }
+.portal-rm__rname { display: block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-weight: 700; margin: 0 auto 0.25rem; max-height: 11rem; overflow: hidden; text-overflow: ellipsis; }
+.portal-rm__rzahl { display: block; font-size: 0.6875rem; color: var(--sapContent_LabelColor); white-space: nowrap; }
+.portal-rm__rolle--neu { box-shadow: inset 0 -3px 0 var(--sapCriticalColor, #e76500); }
+.portal-rm__gruppe td { position: sticky; left: 0; background: var(--sapList_GroupHeaderBackground, #f5f6f7); color: var(--sapContent_LabelColor); padding-top: 0.45rem; }
+.portal-rm__zelle { text-align: center; }
+.portal-rm__zelle--an { background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+.portal-rm__zelle--neu { background: var(--sapWarningBackground, #fff8d6); box-shadow: inset 0 0 0 1px var(--sapCriticalColor, #e76500); }
+.portal-rm__zelle input { width: 1rem; height: 1rem; cursor: pointer; accent-color: var(--sapSelectedColor, #0064d9); }
+.portal-rm__zelle input:disabled { cursor: not-allowed; }
+.portal-rm tbody tr:hover td { filter: brightness(0.97); }
+.portal-rm__zeile--hervor .portal-rm__recht { box-shadow: inset 4px 0 0 var(--sapCriticalColor, #e76500); font-weight: 700; }
+.portal-rm__zaehler { border: 0; background: none; padding: 0.15rem 0.25rem; cursor: pointer; font: inherit; border-radius: 0.25rem; }
+.portal-rm__zaehler:hover { background: var(--sapList_Hover_Background, #f5f6f7); }
+.portal-rm__befunde { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
+.portal-rm__befunde th, .portal-rm__befunde td { text-align: left; vertical-align: top; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-rm__befunde td:nth-child(1), .portal-rm__befunde td:nth-child(2) { white-space: nowrap; }

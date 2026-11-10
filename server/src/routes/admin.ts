@@ -5,6 +5,7 @@ import { change, hashPassword, requireAuth, validatePassword } from '../auth.js'
 import { activeModules, permissionCatalog } from '../modules.js';
 import { GUELTIG_STUNDEN, kennwortLinkSenden, mailVerfuegbar, portalUrl, unbekanntesKennwort } from '../kennwort.js';
 import { BusinessError } from '../errors.js';
+import { befundArtText, coreKonflikte, rollenPruefen } from '../rollenpruefung.js';
 
 
 /** Es muss immer mindestens ein aktiver Administrator übrig bleiben. */
@@ -229,6 +230,62 @@ export async function adminRoutes(app: FastifyInstance) {
       if (!r.system) await setRolePermissions(tx, id, body.permissions.filter((p) => p !== '*'));
     });
     return { ok: true };
+  });
+
+  // ------------------------------------------------------------------ Rollenmatrix und Prüfung (#46)
+  const matrixRolle = z.object({ id: z.string(), permissions: z.array(z.string()).max(1000) });
+
+  /** Prüfungen über alle Rollen; `rollen` = noch nicht gesicherter Stand einzelner Rollen aus der Matrix */
+  app.post('/api/admin/roles/pruefung', { preHandler: requireAuth('core.roles:display') }, async (req) => {
+    const b = z.object({ rollen: z.array(matrixRolle).max(500).default([]) }).parse(req.body ?? {});
+    const entwurf = new Map(b.rollen.map((r) => [r.id, r.permissions]));
+    const rollen = (await sql`
+      select r.id, r.name, r.system,
+             coalesce((select array_agg(permission order by permission) from core.role_permissions p where p.role_id = r.id), '{}') as permissions,
+             (select count(*)::int from core.user_roles ur where ur.role_id = r.id) as "userCount"
+        from core.roles r order by r.id`).map((r) => ({
+      id: r.id as string, name: r.name as string, system: r.system as boolean, userCount: r.userCount as number,
+      permissions: r.system ? (r.permissions as string[]) : entwurf.get(r.id) ?? (r.permissions as string[]),
+    }));
+    const benutzer = (await sql`
+      select coalesce(nullif(u.display_name, ''), u.username) as name, array_agg(ur.role_id order by ur.role_id) as rollen
+        from core.users u join core.user_roles ur on ur.user_id = u.id
+       where u.active group by u.id having count(*) > 1`).map((u) => ({ name: u.name as string, rollen: u.rollen as string[] }));
+    const konflikte = [...coreKonflikte, ...activeModules().flatMap((m) => m.rechteKonflikte ?? [])];
+    const befunde = rollenPruefen(rollen, permissionCatalog(), konflikte, benutzer).map((x) => ({ ...x, artText: befundArtText(x.art) }));
+    const zahl = (s: string) => befunde.filter((x) => x.stufe === s).length;
+    return { befunde, fehler: zahl('FEHLER'), warnungen: zahl('WARNUNG'), hinweise: zahl('HINWEIS') };
+  });
+
+  /** Matrix sichern: Rechte mehrerer Rollen in einer Transaktion; `vorher` = Stand beim Laden (gegen stilles Überschreiben) */
+  app.put('/api/admin/roles/matrix', { preHandler: requireAuth('core.roles:edit') }, async (req) => {
+    const b = z.object({
+      rollen: z.array(matrixRolle.extend({ vorher: z.array(z.string()).max(1000) })).min(1, 'Keine Änderung.').max(500),
+    }).parse(req.body);
+    const katalog = new Set(permissionCatalog().flatMap((g) => g.permissions.map((p) => p.id)));
+    const gleich = (x: string[], y: string[]) => [...x].sort().join('|') === [...y].sort().join('|');
+    await change(req, async (tx) => {
+      for (const m of b.rollen) {
+        const [r] = await tx`select name, system, nur_admin from core.roles where id = ${m.id} for update`;
+        if (!r) throw new BusinessError(`Rolle ${m.id} gibt es nicht mehr.`);
+        if (r.system) throw new BusinessError(`Die Rechte der Systemrolle ${m.id} sind fest.`);
+        const jetzt = (await tx`select permission from core.role_permissions where role_id = ${m.id}`).map((x) => x.permission as string);
+        if (!gleich(jetzt, m.vorher)) {
+          throw new BusinessError(`Die Rolle ${m.id} wurde inzwischen von jemand anderem geändert. Bitte die Matrix neu laden – es wurde nichts gesichert.`, 409);
+        }
+        const neu = [...new Set(m.permissions)].filter((p) => p !== '*');
+        const dazu = neu.filter((p) => !jetzt.includes(p));
+        const unbekannt = dazu.filter((p) => !katalog.has(p));
+        if (unbekannt.length) throw new BusinessError(`Unbekannte Berechtigung in ${m.id}: ${unbekannt.join(', ')}.`);
+        if (r.nur_admin) {
+          if (!req.user?.roles.includes('ADMIN')) throw new BusinessError(`Die Rolle ${m.id} kann nur ein Administrator ändern.`, 403);
+          const admin = neu.filter((p) => p.startsWith('core.'));
+          if (admin.length) throw new BusinessError(`${m.id} erhalten Benutzer automatisch (z. B. bei der Selbstregistrierung) – Administrationsrechte sind nicht erlaubt: ${admin.join(', ')}.`);
+        }
+        await setRolePermissions(tx, m.id, neu);
+      }
+    }, { action: 'ROLLENMATRIX', reason: b.rollen.map((r) => r.id).join(', ') });
+    return { ok: true, text: `${b.rollen.length} Rolle${b.rollen.length === 1 ? '' : 'n'} gesichert.` };
   });
 
   /** Benutzer einer Rolle */

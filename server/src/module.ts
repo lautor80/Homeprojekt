@@ -61,6 +61,8 @@ export interface ServerModule {
    * (z. B. „3 Platzbuchungen vorhanden“), sonst null. Läuft in der Lösch-Transaktion.
    */
   benutzerLoeschenSperre?: (tx: Tx, benutzerId: string) => Promise<string | null>;
+  /** unerwünschte Kombinationen von Rechten in einer Hand (Funktionstrennung) – die Rollenpflege weist darauf hin */
+  rechteKonflikte?: import('./rollenpruefung.js').RechteKonflikt[];
   /** nach einer Rücksicherung (z. B. Systemrollen und feste Berechtigungen wiederherstellen) */
   nachRuecksicherung?: () => Promise<void>;
   /** Sperrbare Objekte ohne Änderungsbeleg (z. B. PLATZZEIT: ausgewählte, noch nicht gesicherte Platzbuchung) */
