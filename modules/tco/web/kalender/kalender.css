@@ -33,6 +33,10 @@
   background: var(--sapList_HeaderBackground, #f5f6f7); color: var(--sapTextColor); font: inherit; font-size: 0.75rem; text-align: left; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Monatsansicht: Veranstaltungen besonders hervorheben – gelber Hintergrund, fett (#16).
+   Feste Farben, damit der Text auch im dunklen Design lesbar bleibt; der farbige Rand links zeigt weiter die eigene Rückmeldung. */
+.portal-kal__monatsraster .portal-kal__chip { background: #ffe45c; color: #1d2d3e; font-weight: 700; border-left-width: 4px; padding-top: 0.125rem; padding-bottom: 0.125rem; }
+.portal-kal__monatsraster .portal-kal__chip:hover { background: #ffd500; }
 .portal-kal__chip--ZUSAGE { border-left-color: var(--sapPositiveElementColor, #188918); }
 .portal-kal__chip--ABSAGE { border-left-color: var(--sapNegativeElementColor, #aa0808); }
 .portal-kal__chip--VIELLEICHT { border-left-color: var(--sapCriticalElementColor, #e76500); }
