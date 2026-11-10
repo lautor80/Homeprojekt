@@ -17,7 +17,7 @@ import { arbeitsvorrat } from './arbeitsvorrat.js';
 import { geldkonten, kontoKey, liquiditaet, monatsverlauf } from './finanzen.js';
 import {
   bswVertragWechseln, collectClubhaus, collectFinanzen, collectHalle, collectJugend, collectMitglieder,
-  detailBeitragswechsel, detailClubhausOp, detailClubhausUmsatz, HAL_ZEITRAEUME, type Bereich, type HalZeitraum,
+  detailBeitragswechsel, detailClubhausOp, detailClubhausUmsatz, detailHalleOffen, HAL_ZEITRAEUME, type Bereich, type HalZeitraum,
 } from './kpi.js';
 
 export const P_DASH = { display: 'tco.dashboard:display', edit: 'tco.dashboard:edit' };
@@ -117,6 +117,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       case 'CLUB_OP': return detailClubhausOp(DB, q.jahr);
       case 'CLUB_UMSATZ': return detailClubhausUmsatz(DB, q.jahr);
       case 'MTG_JUBILAEUM': return detailBeitragswechsel(DB);
+      case 'HAL_ABR': return detailHalleOffen(DB);
       default: return { title: `Details ${key}`, head: ['Hinweis'], zeilen: [], info: 'Für diese Kennzahl ist noch keine Datenquelle angebunden.' };
     }
   });

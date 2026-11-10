@@ -270,16 +270,82 @@ export async function belegungsquote(db: Db, z: { von: string; bis: string }) {
   return { quote: runden((belegt / kapazitaet) * 100), belegt, kapazitaet, ohnePlatz };
 }
 
+/** Belegungen ohne Abrechnung, unabhängig von der Ausschlussliste der Stammdaten (#103) */
+const KEIN_ERLOES = /jugendtraining|hallens(ä|ae)uberung|hallenreinigung|reinigung|sperrung|gesperrt/i;
+const RG_OFFEN: Record<string, string> = { 1: 'in Bearbeitung', 2: 'gedruckt', 3: 'versendet', 5: 'teilbezahlt' };
+
+export interface HalleOffenZeile { bereich: string; text: string; anzahl: number; minuten: number; betrag: number }
+/**
+ * Offene Hallenstunden (#103): alles, was gebucht, aber noch nicht bezahlt ist –
+ *   1. vergangene Buchungen ohne Rechnung, 2. künftige Buchungen ohne Rechnung (jeweils mit dem Preis ihres Termins
+ *   aus den Hallenpreisen), 3. nicht bezahlte Rechnungen mit ihren Positionen (Stunden aus den Buchungspositionen,
+ *   Betrag = offener Rechnungsbetrag abzüglich Teilzahlungen).
+ * Abos zählen mit allen offenen Terminen der Serie in den Stunden und mit dem Abo-Preis im Betrag. Nicht enthalten:
+ * stornierte/entfallene Buchungen, die Ausschlussliste der Stammdaten und Jugendtraining, Hallensäuberung, Sperrungen.
+ */
+export async function halleOffen(db: Db): Promise<{ zeilen: HalleOffenZeile[]; minuten: number; betrag: number; ohnePreis: number }> {
+  const { vereinLesen } = await import('../verein.js');
+  const { offeneBuchungen } = await import('../halle/daten.js');
+  const v = await vereinLesen(db);
+  const ausschluss = v.halle_ausschluss.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const ignoriert = (kunde: string | null, text?: string | null) => KEIN_ERLOES.test(kunde ?? '') || KEIN_ERLOES.test(text ?? '') || ausschluss.includes((kunde ?? '').toUpperCase());
+  const buchungen = (await offeneBuchungen(db, v)).filter((b) => !ignoriert(b.kunde, b.text));
+  const zeile = (bereich: string, text: string, l: typeof buchungen): HalleOffenZeile => ({
+    bereich, text, anzahl: l.length,
+    minuten: l.reduce((a, b) => a + b.dauer * (b.art === 'Abo' ? b.termine : 1), 0),
+    betrag: runden(l.reduce((a, b) => a + (b.fehler ? 0 : b.betrag), 0)),
+  });
+  const zeilen: HalleOffenZeile[] = [
+    zeile('Buchungen ohne Rechnung', 'bereits gespielt', buchungen.filter((b) => b.vergangen)),
+    zeile('Buchungen ohne Rechnung', 'künftige Termine', buchungen.filter((b) => !b.vergangen)),
+  ];
+  // nicht bezahlte Rechnungen: Stunden aus den Buchungspositionen (Abo-Position = alle Termine der Serie)
+  const rg = await db`
+    select k.rgnr_txt, k.status, k.kunde, k.betrag::float8 as betrag,
+           coalesce((select sum(z.betrag)::float8 from tco.rgtz z where z.rgnr_txt = k.rgnr_txt), 0) as gezahlt,
+           coalesce((select sum(
+                       case when p.dauer ~ '^[0-9]+$' then p.dauer::int else 0 end
+                       * case when exists (select 1 from tco.bookings b where b.bid = p.bid and b.datum = p.datum and b.status = '3')
+                                   and not exists (select 1 from tco.bookings_ch c where c.bid = p.bid and c.status_abw = '1')
+                              then greatest((select count(*) from tco.bookings b where b.bid = p.bid and coalesce(b.status, '') not in ('2', '4')), 1)
+                              else 1 end)
+                       from tco.rgpos p where p.rgnr_txt = k.rgnr_txt and p.bid is not null), 0)::int as minuten
+      from tco.rgkopf k where k.status in ('1', '2', '3', '5')`;
+  for (const [st, text] of Object.entries(RG_OFFEN)) {
+    const l = rg.filter((r) => r.status === st && !ignoriert(r.kunde));
+    zeilen.push({ bereich: 'Rechnungen nicht bezahlt', text, anzahl: l.length, minuten: l.reduce((a, r) => a + Number(r.minuten), 0),
+      betrag: runden(l.reduce((a, r) => a + Math.max(0, r.betrag - r.gezahlt), 0)) });
+  }
+  return {
+    zeilen, minuten: zeilen.reduce((a, z) => a + z.minuten, 0), betrag: runden(zeilen.reduce((a, z) => a + z.betrag, 0)),
+    ohnePreis: buchungen.filter((b) => b.fehler).length,
+  };
+}
+
+export async function detailHalleOffen(db: Db): Promise<Detail> {
+  const o = await halleOffen(db);
+  return {
+    title: 'Offene Hallenstunden – gebucht, aber noch nicht bezahlt',
+    head: ['Bereich', 'Stand', 'Anzahl', 'Stunden', 'Betrag EUR'],
+    info: 'Buchungen sind mit dem Preis ihres Termins aus den Hallenpreisen bewertet, Abos mit allen offenen Terminen in den Stunden und dem Abo-Preis im Betrag. '
+      + 'Rechnungen zählen mit dem offenen Betrag (abzüglich Teilzahlungen) und den Stunden ihrer Buchungspositionen. '
+      + 'Nicht enthalten: Stornos, die Ausschlussliste der Stammdaten, Jugendtraining, Hallensäuberung und Sperrungen.'
+      + (o.ohnePreis ? ` ${o.ohnePreis} Buchung(en) ohne gültigen Hallenpreis sind nur mit Stunden enthalten.` : ''),
+    zeilen: [
+      ...o.zeilen.filter((z) => z.anzahl).map((z): DetailZeile => ({ cols: [z.bereich, z.text, ganz(z.anzahl), stunden(z.minuten / 60), betrag(z.betrag)], state: 'None' })),
+      { cols: ['Gesamt', '', ganz(o.zeilen.reduce((a, z) => a + z.anzahl, 0)), stunden(o.minuten / 60), betrag(o.betrag)], state: o.minuten || o.betrag ? 'Critical' : 'Positive' },
+    ],
+  };
+}
+
 export async function collectHalle(db: Db, zeitraum: HalZeitraum = 'SAISON'): Promise<Kpi[]> {
   const h = heute();
   const z = hallenZeitraum(h, zeitraum);
   const q = await belegungsquote(db, z);
-  const { vereinLesen } = await import('../verein.js');
-  const { offeneBuchungen } = await import('../halle/daten.js');
-  // nicht abgerechnet: vergangene Hallenbuchungen ohne Rechnung (wie in der Hallenabrechnung „offene Buchungen“)
-  const offen = (await offeneBuchungen(db, await vereinLesen(db))).filter((b) => b.vergangen && !b.fehler);
-  const minuten = offen.reduce((a, b) => a + b.dauer, 0);
-  const betragOffen = runden(offen.reduce((a, b) => a + b.betrag, 0));
+  const o = await halleOffen(db);
+  const teil = (bereich: string) => o.zeilen.filter((x) => x.bereich === bereich);
+  const [ohne, rg] = [teil('Buchungen ohne Rechnung'), teil('Rechnungen nicht bezahlt')];
+  const std = (l: HalleOffenZeile[]) => stunden(l.reduce((a, x) => a + x.minuten, 0) / 60);
   return [
     kpi({
       key: 'HAL_BELEGUNG', title: 'Belegungsquote', subtitle: z.text,
@@ -289,8 +355,10 @@ export async function collectHalle(db: Db, zeitraum: HalZeitraum = 'SAISON'): Pr
       icon: 'calendar', state: q.quote === null ? 'None' : q.quote >= 60 ? 'Positive' : q.quote >= 30 ? 'Critical' : 'Negative',
     }),
     kpi({
-      key: 'HAL_ABR', title: 'Nicht abgerechnet', subtitle: 'vergangene Hallenbuchungen ohne Rechnung', value: stunden(minuten / 60), unit: 'Std',
-      details: `${ganz(offen.length)} Buchungen · ${betrag(betragOffen)} EUR`, icon: 'pending', state: offen.length ? 'Critical' : 'Positive',
+      key: 'HAL_ABR', title: 'Offene Hallenstunden', subtitle: 'gebucht, noch nicht bezahlt (ohne Rechnung, künftig, Rechnung offen)',
+      value: stunden(o.minuten / 60), unit: 'Std', hasDetail: true,
+      details: `${betrag(o.betrag)} EUR · ohne Rechnung ${std([ohne[0]])} Std, künftig ${std([ohne[1]])} Std, Rechnungen offen ${std(rg)} Std`,
+      icon: 'pending', state: o.minuten || o.betrag ? 'Critical' : 'Positive',
     }),
   ];
 }
