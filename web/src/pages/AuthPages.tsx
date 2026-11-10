@@ -201,6 +201,8 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
   const plzOk = /^\d{4,5}$/.test(f.plz.trim());
   const strasseOk = f.strasse.trim().length >= 3 && /\d/.test(f.strasse);
   const datenOk = !!f.anrede && !!f.vorname.trim() && !!f.nachname.trim() && strasseOk && plzOk && f.ort.trim().length >= 2;
+  // Eingabetaste im Schritt „E-Mail“ löst nur die Suche aus – und nur mit vollständigen Angaben (#10)
+  const kennungOk = /^\S+@\S+\.\S+$/.test(email) && (!mitglied || !!geburtsdatum);
   const mismatch = !!f.passwort2 && f.passwort !== f.passwort2;
   const kennwortOk = f.benutzername.length >= 3 && !frei && f.passwort.length >= 10 && f.passwort === f.passwort2 && f.datenschutz;
   const schritte: RegSchritt[] = treffer ? ['ART', 'KENNUNG', 'KENNWORT', 'FERTIG'] : ['ART', 'KENNUNG', 'DATEN', 'KENNWORT', 'FERTIG'];
@@ -252,14 +254,14 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
       )}
 
       {schritt === 'KENNUNG' && (
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); pruefen(); }}>
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (kennungOk && !busy) pruefen(); }}>
           <Title level="H5" style={{ marginBottom: '0.25rem' }}>{mitglied ? 'Mitglied' : 'Externer Hallennutzer'}</Title>
           <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
             {mitglied ? 'Mit E-Mail-Adresse und Geburtsdatum suchen wir Sie im Mitgliederverzeichnis.' : 'Mit der E-Mail-Adresse prüfen wir, ob wir Sie schon als Hallenkunden kennen.'}
           </Text>
           <Field label="E-Mail" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
           {mitglied && <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>}
-          {fuss(<Button design="Emphasized" style={full} loading={busy} disabled={!/^\S+@\S+\.\S+$/.test(email) || (mitglied && !geburtsdatum)} onClick={pruefen}>Weiter</Button>)}
+          {fuss(<Button design="Emphasized" style={full} loading={busy} disabled={!kennungOk} onClick={pruefen}>Weiter</Button>)}
         </form>
       )}
 
