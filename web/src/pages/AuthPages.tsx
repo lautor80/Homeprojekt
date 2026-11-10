@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, Option, RadioButton, Select, Text, Title } from '@ui5/webcomponents-react';
+import { Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, Option, Select, Text, Title } from '@ui5/webcomponents-react';
 import { api } from '../api';
 
 /** Zentrierte Karte für Anmeldung, Einrichtung und Passwortwechsel (Fiori-Anmeldeseite). */
@@ -172,121 +172,104 @@ export function KennwortSetzenPage({ orgName, logo, token, onDone }: { orgName: 
 }
 
 /**
- * Selbstregistrierung (vom Fachmodul bereitgestellt, z. B. Platzbuchung): Name, E-Mail, Benutzername und Kennwort –
- * oder Nachweis eines bestehenden EP3-Kontos mit dem EP3-Kennwort (das dann weiter gilt). Freigabe durch den Verein.
+ * Selbstregistrierung in Schritten (#10, vom Fachmodul bereitgestellt):
+ *   1 Mitglied oder externer Hallennutzer · 2 E-Mail (Mitglied: + Geburtsdatum) – der Server sucht im Bestand; bei einem
+ *   Treffer entfällt die Eingabe von Name und Anschrift · (2b ohne Treffer: Name und Anschrift) · 3 Benutzername und Kennwort ·
+ *   4 Wie es weitergeht (extern: Bestätigungsmail, Mitglied: Freigabe durch den Vorstand).
  */
+type RegSchritt = 'ART' | 'KENNUNG' | 'DATEN' | 'KENNWORT' | 'FERTIG';
 export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: string; logo?: string; info: RegistrierungInfo; onBack: () => void }) {
-  const [meta, setMeta] = useState<{ verein: string; ep3: boolean; hinweis: string; mitglied?: boolean } | null>(null);
-  const [f, setF] = useState({ anrede: '', vorname: '', nachname: '', strasse: '', plz: '', ort: '', email: '', telefon: '', benutzername: '', passwort: '', passwort2: '', nachricht: '', ep3_konto: '', ep3_passwort: '', datenschutz: false });
-  /** Mitglied (Prüfung durch den Verein) oder externer Hallennutzer (Freischaltung nach E-Mail-Bestätigung) */
-  const [art, setArt] = useState<'MITGLIED' | 'EXTERN' | null>(null);
-  const [nachweis, setNachweis] = useState<'GEBURTSDATUM' | 'MITGLIEDSNR'>('GEBURTSDATUM');
+  const [schritt, setSchritt] = useState<RegSchritt>('ART');
+  const [art, setArt] = useState<'MITGLIED' | 'EXTERN'>('MITGLIED');
+  const [f, setF] = useState({ anrede: '', vorname: '', nachname: '', strasse: '', plz: '', ort: '', email: '', telefon: '', benutzername: '', passwort: '', passwort2: '', datenschutz: false });
   const [geburtsdatum, setGeburtsdatum] = useState('');
-  const [mitgliedsnr, setMitgliedsnr] = useState('');
-  /** Schnellweg für Mitglieder: E-Mail + Geburtsdatum → Link an die hinterlegte Adresse; null = noch nicht geprüft */
-  const [schnell, setSchnell] = useState<{ treffer: boolean; text: string } | null>(null);
-  /**
-   * Im Schnellweg (oben) eingegebene E-Mail: gilt fest für die Registrierung. Das untere Feld wird dann nur schreibgeschützt
-   * angezeigt – sonst überschreibt die Autofill-Funktion des Browsers (Anschrift ausfüllen) die Adresse unbemerkt.
-   */
-  const [emailOben, setEmailOben] = useState<string | null>(null);
-  const email = (art === 'MITGLIED' && emailOben ? emailOben : f.email).trim();
-  async function schnellPruefen() {
-    setBusy(true); setError(null);
-    try {
-      const r = await api.post<{ treffer: boolean; text: string }>(`${info.pfad}/schnell`, { email: f.email, geburtsdatum });
-      setEmailOben(f.email.trim());
-      setSchnell(r);
-      if (r.treffer) setFertig(r.text);
-      else setNachweis('GEBURTSDATUM');
-    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
-  }
-  const [alt, setAlt] = useState(false);
+  /** Ergebnis der Suche im Bestand: Treffer → Name und Anschrift kommen vom Verein */
+  const [treffer, setTreffer] = useState<{ name: string } | null>(null);
   const [frei, setFrei] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fertig, setFertig] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
-  useEffect(() => { api.get<{ verein: string; ep3: boolean; hinweis: string; mitglied?: boolean }>(info.pfad).then(setMeta).catch((e) => setError(e.message)); }, [info.pfad]);
   useEffect(() => {
     if (f.benutzername.length < 3) { setFrei(null); return; }
     const t = setTimeout(() => api.get<{ frei: string | null }>(`${info.pfad}/frei?benutzername=${encodeURIComponent(f.benutzername)}`).then((r) => setFrei(r.frei)).catch(() => undefined), 300);
     return () => clearTimeout(t);
   }, [f.benutzername, info.pfad]);
 
-  const mismatch = !!f.passwort2 && f.passwort !== f.passwort2;
-  const kennwortNoetig = !alt || !!f.passwort;
-  const artOk = !meta?.mitglied || art === 'EXTERN' || (art === 'MITGLIED' && (nachweis === 'GEBURTSDATUM' ? !!geburtsdatum : !!mitgliedsnr.trim()));
+  const mitglied = art === 'MITGLIED';
+  const email = f.email.trim();
   const plzOk = /^\d{4,5}$/.test(f.plz.trim());
   const strasseOk = f.strasse.trim().length >= 3 && /\d/.test(f.strasse);
-  const ok = artOk && f.anrede && f.vorname && f.nachname && strasseOk && plzOk && f.ort.trim().length >= 2 && email.includes('@') && f.benutzername.length >= 3 && !frei && f.datenschutz
-    && (alt ? !!f.ep3_konto && !!f.ep3_passwort : f.passwort.length >= 10) && (!kennwortNoetig || (f.passwort.length >= 10 && !mismatch));
+  const datenOk = !!f.anrede && !!f.vorname.trim() && !!f.nachname.trim() && strasseOk && plzOk && f.ort.trim().length >= 2;
+  const mismatch = !!f.passwort2 && f.passwort !== f.passwort2;
+  const kennwortOk = f.benutzername.length >= 3 && !frei && f.passwort.length >= 10 && f.passwort === f.passwort2 && f.datenschutz;
+  const schritte: RegSchritt[] = treffer ? ['ART', 'KENNUNG', 'KENNWORT', 'FERTIG'] : ['ART', 'KENNUNG', 'DATEN', 'KENNWORT', 'FERTIG'];
+  const nr = schritte.indexOf(schritt) + 1;
 
-  async function submit(e?: FormEvent) {
-    e?.preventDefault();
+  async function pruefen() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ text: string }>(info.pfad, {
-        anrede: f.anrede, vorname: f.vorname, nachname: f.nachname, strasse: f.strasse, plz: f.plz, ort: f.ort,
-        email, telefon: f.telefon || null, benutzername: f.benutzername, nachricht: f.nachricht || null,
-        passwort: f.passwort || null, ep3_konto: alt ? f.ep3_konto : null, ep3_passwort: alt ? f.ep3_passwort : null, datenschutz: f.datenschutz,
-        ...(meta?.mitglied ? {
-          art: art ?? 'EXTERN',
-          geburtsdatum: art === 'MITGLIED' && nachweis === 'GEBURTSDATUM' ? geburtsdatum || null : null,
-          mitgliedsnr: art === 'MITGLIED' && nachweis === 'MITGLIEDSNR' ? mitgliedsnr.trim() || null : null,
-        } : {}),
-      });
-      setFertig(r.text);
+      const r = await api.post<{ treffer: boolean; name?: string; benutzername: string }>(`${info.pfad}/pruefen`, { art, email, geburtsdatum: mitglied ? geburtsdatum : null });
+      setTreffer(r.treffer ? { name: r.name ?? '' } : null);
+      setF((x) => ({ ...x, benutzername: x.benutzername || r.benutzername }));
+      setSchritt(r.treffer ? 'KENNWORT' : 'DATEN');
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
+  async function absenden() {
+    setBusy(true); setError(null);
+    try {
+      const basis = { art, email, benutzername: f.benutzername, passwort: f.passwort, datenschutz: f.datenschutz, geburtsdatum: mitglied ? geburtsdatum || null : null };
+      const r = await api.post<{ text: string }>(info.pfad, treffer ? { ...basis, ausBestand: true }
+        : { ...basis, anrede: f.anrede, vorname: f.vorname, nachname: f.nachname, strasse: f.strasse, plz: f.plz, ort: f.ort, telefon: f.telefon || null });
+      setFertig(r.text);
+      setSchritt('FERTIG');
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  const zurueck = () => { setError(null); setSchritt(schritte[Math.max(0, schritte.indexOf(schritt) - 1)]); };
+  const wahl = (a: 'MITGLIED' | 'EXTERN') => { setArt(a); setTreffer(null); setError(null); setSchritt('KENNUNG'); };
+  const fuss = (weiter: ReactNode) => (
+    <>
+      {weiter}
+      <FlexBox justifyContent="SpaceBetween" style={{ marginTop: '0.75rem' }}>
+        <Link onClick={zurueck}>Zurück</Link>
+        <Link onClick={onBack}>Zur Anmeldung</Link>
+      </FlexBox>
+    </>
+  );
 
   return (
     <CenterCard title={orgName} subtitle={info.titel} logo={logo}>
-      {fertig ? (
+      {schritt !== 'FERTIG' && <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.5rem' }}>Schritt {nr} von {schritte.length - 1}</Text>}
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+
+      {schritt === 'ART' && (
         <>
-          <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>{fertig}</MessageStrip>
-          <Button design="Emphasized" style={full} onClick={onBack}>Zur Anmeldung</Button>
+          <Title level="H5" style={{ marginBottom: '0.75rem' }}>Wer möchte sich registrieren?</Title>
+          <Button design="Emphasized" icon="group" style={{ ...full, marginBottom: '0.5rem' }} onClick={() => wahl('MITGLIED')}>Ich bin Mitglied des Vereins</Button>
+          <Button icon="visits" style={full} onClick={() => wahl('EXTERN')}>Ich bin externer Hallennutzer (kein Mitglied)</Button>
+          <div style={{ marginTop: '0.75rem', textAlign: 'center' }}><Link onClick={onBack}>Zurück zur Anmeldung</Link></div>
         </>
-      ) : (
-        <form onSubmit={submit}>
-          <Text style={{ display: 'block', marginBottom: '0.75rem' }} className="portal-muted">{meta?.hinweis ?? info.text}</Text>
-          {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
-          {meta?.mitglied && (
-            <div style={{ marginBottom: '0.75rem' }}>
-              <Label required showColon>Ich bin</Label>
-              <RadioButton name="reg-art" text="Mitglied des Vereins" checked={art === 'MITGLIED'} onChange={() => setArt('MITGLIED')} />
-              <RadioButton name="reg-art" text="Externer Hallennutzer (kein Mitglied)" checked={art === 'EXTERN'} onChange={() => setArt('EXTERN')} />
-              {art === 'MITGLIED' && !schnell && (
-                <div style={{ padding: '0.5rem 0.75rem', background: 'var(--sapList_HeaderBackground, #f5f6f7)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
-                  <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.25rem' }}>
-                    Schnellweg: Mit der beim Verein hinterlegten E-Mail-Adresse und Ihrem Geburtsdatum finden wir Sie direkt – Sie erhalten einen Link und wählen nur noch Benutzername und Kennwort.
-                  </Text>
-                  <Field label="E-Mail (beim Verein hinterlegt)" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
-                  <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>
-                  <Button design="Emphasized" style={full} loading={busy} disabled={!f.email.includes('@') || !geburtsdatum} onClick={schnellPruefen}>Weiter</Button>
-                  <div style={{ marginTop: '0.5rem', textAlign: 'center' }}>
-                    <Link onClick={() => { if (f.email.includes('@')) setEmailOben(f.email.trim()); setSchnell({ treffer: false, text: '' }); }}>Ohne Schnellweg vollständig registrieren</Link>
-                  </div>
-                </div>
-              )}
-              {art === 'MITGLIED' && schnell && !schnell.treffer && schnell.text && (
-                <MessageStrip design="Information" hideCloseButton style={{ margin: '0.5rem 0' }}>{schnell.text}</MessageStrip>
-              )}
-              {art === 'MITGLIED' && schnell && (
-                <div style={{ padding: '0.5rem 0.75rem', background: 'var(--sapList_HeaderBackground, #f5f6f7)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
-                  <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.25rem' }}>
-                    Zum Abgleich mit dem Mitgliederverzeichnis – bitte eine Angabe wählen:
-                  </Text>
-                  <RadioButton name="reg-nachweis" text="Geburtsdatum" checked={nachweis === 'GEBURTSDATUM'} onChange={() => setNachweis('GEBURTSDATUM')} />
-                  <RadioButton name="reg-nachweis" text="Mitgliedsnummer" checked={nachweis === 'MITGLIEDSNR'} onChange={() => setNachweis('MITGLIEDSNR')} />
-                  {nachweis === 'GEBURTSDATUM'
-                    ? <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>
-                    : <Field label="Mitgliedsnummer" required><Input style={full} value={mitgliedsnr} onInput={(e) => setMitgliedsnr(e.target.value)} /></Field>}
-                </div>
-              )}
-            </div>
-          )}
-          {!(art === 'MITGLIED' && !schnell) && (<>
+      )}
+
+      {schritt === 'KENNUNG' && (
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); pruefen(); }}>
+          <Title level="H5" style={{ marginBottom: '0.25rem' }}>{mitglied ? 'Mitglied' : 'Externer Hallennutzer'}</Title>
+          <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
+            {mitglied ? 'Mit E-Mail-Adresse und Geburtsdatum suchen wir Sie im Mitgliederverzeichnis.' : 'Mit der E-Mail-Adresse prüfen wir, ob wir Sie schon als Hallenkunden kennen.'}
+          </Text>
+          <Field label="E-Mail" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
+          {mitglied && <Field label="Geburtsdatum" required><DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={geburtsdatum} onChange={(e) => setGeburtsdatum(e.detail.value)} /></Field>}
+          {fuss(<Button design="Emphasized" style={full} loading={busy} disabled={!/^\S+@\S+\.\S+$/.test(email) || (mitglied && !geburtsdatum)} onClick={pruefen}>Weiter</Button>)}
+        </form>
+      )}
+
+      {schritt === 'DATEN' && (
+        <>
+          <Title level="H5" style={{ marginBottom: '0.25rem' }}>Ihre Angaben</Title>
+          <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
+            {mitglied ? 'Mit diesen Angaben haben wir kein Mitglied ohne Zugang gefunden. Bitte ergänzen Sie Name und Anschrift – der Vorstand gleicht sie ab.'
+              : 'Bitte ergänzen Sie Name und Anschrift für die Abrechnung der Buchungen.'}
+          </Text>
           <Field label="Anrede" required>
             <Select style={full} onChange={(e) => setF((x) => ({ ...x, anrede: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' }))}>
               <Option data-a="" selected={!f.anrede}>bitte wählen</Option>
@@ -307,48 +290,44 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
             </Field>
             <Field label="Ort" required><Input style={full} value={f.ort} onInput={set('ort')} /></Field>
           </FlexBox>
-          {art === 'MITGLIED' && emailOben ? (
-            <Field label="E-Mail (wie oben angegeben)" required>
-              <Input style={full} type="Email" value={emailOben} readonly />
-              <Link onClick={() => { setF((x) => ({ ...x, email: emailOben })); setEmailOben(null); }}>Andere E-Mail-Adresse verwenden</Link>
-            </Field>
-          ) : (
-            <Field label="E-Mail" required><Input style={full} type="Email" value={f.email} onInput={set('email')} /></Field>
-          )}
           <Field label="Telefon (optional)"><Input style={full} type="Tel" value={f.telefon} onInput={set('telefon')} /></Field>
-          <Field label="Gewünschter Benutzername" required>
+          {fuss(<Button design="Emphasized" style={full} disabled={!datenOk} onClick={() => { setError(null); setSchritt('KENNWORT'); }}>Weiter</Button>)}
+        </>
+      )}
+
+      {schritt === 'KENNWORT' && (
+        <>
+          <Title level="H5" style={{ marginBottom: '0.25rem' }}>Kennwort wählen</Title>
+          {treffer && (
+            <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '0.75rem' }}>
+              Wir haben Sie gefunden{treffer.name ? `: ${treffer.name}` : ''}. Name und Anschrift übernehmen wir aus {mitglied ? 'dem Mitgliederverzeichnis' : 'Ihrem bisherigen Kundenkonto'}.
+            </MessageStrip>
+          )}
+          <Field label="Benutzername (für die Anmeldung)" required>
             <Input style={full} value={f.benutzername} onInput={set('benutzername')} valueState={frei ? 'Negative' : f.benutzername.length >= 3 ? 'Positive' : 'None'}
-                   valueStateMessage={<span>{frei ?? 'Benutzername ist frei'}</span>} placeholder="Buchstaben, Ziffern, . _ -" />
+                   valueStateMessage={<span>{frei ?? 'Benutzername ist frei'}</span>} />
           </Field>
-          {meta?.ep3 && (
-            <div style={{ margin: '0.25rem 0 0.75rem' }}>
-              <CheckBox text="Ich habe bereits ein Konto im bisherigen Buchungssystem (EP3)" checked={alt} onChange={(e) => setAlt(e.target.checked)} />
-              {alt && (
-                <div style={{ padding: '0.5rem 0.75rem', background: 'var(--sapList_HeaderBackground, #f5f6f7)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
-                  <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                    Mit den bisherigen EP3-Zugangsdaten wird Ihr Konto zugeordnet – Ihre Buchungen bleiben erhalten und Ihr EP3-Kennwort gilt auch im Portal weiter.
-                  </Text>
-                  <Field label="EP3-Benutzername oder E-Mail" required><Input style={full} value={f.ep3_konto} onInput={set('ep3_konto')} /></Field>
-                  <Field label="EP3-Kennwort" required><Input style={full} type="Password" value={f.ep3_passwort} onInput={set('ep3_passwort')} /></Field>
-                </div>
-              )}
-            </div>
-          )}
-          <Field label={alt ? 'Neues Kennwort (optional, sonst gilt das EP3-Kennwort)' : 'Kennwort (mindestens 10 Zeichen)'} required={!alt}>
-            <Input style={full} type="Password" value={f.passwort} onInput={set('passwort')} />
+          <Field label="Kennwort (mindestens 10 Zeichen)" required><Input style={full} type="Password" value={f.passwort} onInput={set('passwort')} /></Field>
+          <Field label="Kennwort wiederholen" required>
+            <Input style={full} type="Password" value={f.passwort2} onInput={set('passwort2')} valueState={mismatch ? 'Negative' : 'None'} valueStateMessage={<span>Die Kennwörter stimmen nicht überein</span>} />
           </Field>
-          {(f.passwort || !alt) && (
-            <Field label="Kennwort wiederholen" required={!alt}>
-              <Input style={full} type="Password" value={f.passwort2} onInput={set('passwort2')} valueState={mismatch ? 'Negative' : 'None'} />
-            </Field>
-          )}
-          <Field label="Mitteilung an den Verein (optional)"><Input style={full} value={f.nachricht} onInput={set('nachricht')} maxlength={500} /></Field>
-          <CheckBox text="Ich bin einverstanden, dass meine Angaben zur Verwaltung und Abrechnung der Platzbuchungen gespeichert werden." checked={f.datenschutz}
+          <CheckBox text="Ich bin einverstanden, dass meine Angaben zur Verwaltung und Abrechnung der Platzbuchungen gespeichert werden." checked={f.datenschutz} wrappingType="Normal"
                     onChange={(e) => setF((x) => ({ ...x, datenschutz: e.target.checked }))} style={{ marginBottom: '0.75rem', marginLeft: '-0.5rem' }} />
-          <Button design="Emphasized" style={full} onClick={() => submit()} loading={busy} disabled={!ok}>Registrierung absenden</Button>
-          </>)}
-          <div style={{ marginTop: '0.75rem', textAlign: 'center' }}><Link onClick={onBack}>Zurück zur Anmeldung</Link></div>
-        </form>
+          {fuss(<Button design="Emphasized" style={full} loading={busy} disabled={!kennwortOk} onClick={absenden}>Registrierung absenden</Button>)}
+        </>
+      )}
+
+      {schritt === 'FERTIG' && (
+        <>
+          <Title level="H5" style={{ marginBottom: '0.5rem' }}>Geschafft – so geht es weiter</Title>
+          <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fertig}</MessageStrip>
+          <Text style={{ display: 'block', marginBottom: '1rem' }}>
+            {mitglied
+              ? 'Der Vorstand gleicht Ihre Angaben mit dem Mitgliederverzeichnis ab und gibt den Zugang frei. Bis dahin ist keine Anmeldung möglich.'
+              : 'Bei externen Hallennutzern ist die Registrierung mit dem Link aus der Bestätigungsmail abgeschlossen – danach können Sie sofort Plätze buchen.'}
+          </Text>
+          <Button design="Emphasized" style={full} onClick={onBack}>Zur Anmeldung</Button>
+        </>
       )}
     </CenterCard>
   );

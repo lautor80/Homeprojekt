@@ -16,7 +16,7 @@ import {
 import { minuten, preiseLesen, preiswoche, preiszonen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 import {
-  ablehnen, benutzernameFrei, bestaetigen, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
+  ablehnen, benutzernameFrei, bestaetigen, bestandFinden, freierBenutzername, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
@@ -196,14 +196,50 @@ export async function platzRoutes(app: FastifyInstance) {
     const { benutzername } = z.object({ benutzername: z.string().trim().min(3).max(50) }).parse(req.query);
     return { frei: await benutzernameFrei(DB, benutzername) };
   });
+  /**
+   * Registrierung in Schritten (#10), Schritt 2: Sind E-Mail (+ Geburtsdatum bei Mitgliedern) im Bestand bekannt? Bei einem Treffer
+   * entfällt die Eingabe von Name und Anschrift. Zurück kommen nur Vorname und Anfangsbuchstabe des Nachnamens.
+   */
+  const bestandBody = z.object({
+    art: z.enum(['EXTERN', 'MITGLIED']),
+    email: z.string().trim().email('Bitte eine gültige E-Mail-Adresse angeben.').max(120),
+    geburtsdatum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Bitte das Geburtsdatum angeben.').nullish(),
+  });
+  app.post('/platz/registrierung/pruefen', async (req) => {
+    regLimit(`${req.ip}|pruefen`, 20);   // eigenes Kontingent, damit die Suche die Registrierung nicht blockiert
+    const b = bestandBody.parse(req.body);
+    if (b.art === 'MITGLIED' && !b.geburtsdatum) throw new BusinessError('Bitte das Geburtsdatum angeben.');
+    const t = await bestandFinden(DB, b.art, b.email, b.geburtsdatum);
+    const vorschlag = await freierBenutzername(DB, b.email, b.email.split('@')[0], 'neu');
+    return t
+      ? { treffer: true, name: `${t.vorname} ${t.nachname.slice(0, 1)}.`.trim(), benutzername: vorschlag }
+      : { treffer: false, benutzername: vorschlag };
+  });
   app.post('/platz/registrierung', async (req) => {
     regLimit(req.ip, 15);
-    const e = registrierung.parse(req.body);
+    // „ausBestand“: Name und Anschrift kommen aus dem Mitglieder- bzw. Kundenstamm (Treffer aus /pruefen, hier erneut geprüft)
+    let zuidPerMail: string | null = null;
+    let e: z.infer<typeof registrierung>;
+    if ((req.body as { ausBestand?: unknown } | null)?.ausBestand === true) {
+      const b = bestandBody.extend({
+        benutzername: registrierung.shape.benutzername, passwort: z.string().min(1, 'Bitte ein Kennwort wählen.').max(200),
+        datenschutz: registrierung.shape.datenschutz,
+      }).parse(req.body);
+      const t = await bestandFinden(DB, b.art, b.email, b.geburtsdatum);
+      if (!t) throw new BusinessError('Die Angaben passen nicht mehr zu einem Eintrag im Verzeichnis. Bitte die Registrierung neu beginnen.');
+      if (t.art === 'EXTERN') zuidPerMail = t.schluessel;
+      e = {
+        art: b.art, benutzername: b.benutzername, passwort: b.passwort, datenschutz: true, email: t.email, geburtsdatum: b.geburtsdatum ?? null,
+        anrede: t.anrede as 'Herr', vorname: t.vorname, nachname: t.nachname, strasse: t.strasse, plz: t.plz, ort: t.ort, telefon: t.telefon,
+      };
+    } else {
+      e = registrierung.parse(req.body);
+    }
     if (!e.ep3_konto && !e.passwort) throw new BusinessError('Bitte ein Kennwort wählen oder das bestehende EP3-Konto angeben.');
     const v = await vereinLesen();
     const url = await portalUrl();
     const mail = !!v.n8n_mail_url && !!url;
-    const r = await registrieren(DB, e, req.ip, { mail });
+    const r = await registrieren(DB, e, req.ip, { mail, zuidPerMail });
     req.log.info({ registrierung: r.id, art: r.art, benutzername: e.benutzername, ip: req.ip }, 'Registrierung eingegangen');
     if (!v.n8n_mail_url || !url) {
       // sichtbar im Mailprotokoll (Administration → Anbindungen): warum keine Bestätigungsmail kam
