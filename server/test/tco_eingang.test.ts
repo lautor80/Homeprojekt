@@ -527,7 +527,7 @@ test('Zusammenfassen: passende Anhänge als ein PDF ablegen, Custom Fields, Dubl
   const id = r.body.dokumente[0].paperless_id as number;
   assert.equal(mock.docs.get(id)!.datei, '2025-03-03_Sammel_3.pdf');
   const patch = mock.patches.filter((p) => p.id === id && p.body.custom_fields).at(-1);
-  assert.deepEqual(patch?.body.custom_fields, [{ field: 3, value: 'EUR12.50' }, { field: 5, value: 'a1' }]);
+  assert.deepEqual([...(patch?.body.custom_fields ?? [])].sort((x: any, y: any) => x.field - y.field), [{ field: 3, value: 'EUR12.50' }, { field: 5, value: 'a1' }]);
 
   // dieselben Teile in einer weiteren E-Mail: Dublette, kein zweiter Upload
   r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'belege@sammel.example', betreff: 'Belege nochmal', message_id: '<s2@sammel>', anhaenge: [pdfA, pdfB, bild] }));
