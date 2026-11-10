@@ -489,8 +489,12 @@ test('Registrierung: Freigabe mit Mitgliedszuordnung, Rolle Hallennutzer nur Ein
   const [u] = await sql`select id from core.users where username = 'carla.neu'`;
   assert.deepEqual((await sql`select role_id from core.user_roles where user_id = ${u.id}`).map((x) => x.role_id), ['HALLENNUTZER']);
   assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.meinkonto:edit', 'tco.platzbuchung:edit']);
-  // Systemrolle: Rechte lassen sich in der Rollenpflege nicht erweitern, Rolle nicht löschen
-  r = await admin('PUT', '/api/admin/roles/HALLENNUTZER', { name: 'Hallennutzer', permissions: ['tco.platzbuchung:edit', 'tco.platz:admin', 'tco.mitglieder:display'] });
+  // Rolle „nur Admin“: der Administrator kann die Rechte ändern (aber keine Administrationsrechte), löschen geht nicht
+  r = await admin('PUT', '/api/admin/roles/HALLENNUTZER', { name: 'Hallennutzer', permissions: ['tco.meinkonto:edit', 'tco.platzbuchung:edit', 'tco.mitglieder:display'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.meinkonto:edit', 'tco.mitglieder:display', 'tco.platzbuchung:edit']);
+  assert.equal((await admin('PUT', '/api/admin/roles/HALLENNUTZER', { name: 'Hallennutzer', permissions: ['tco.platzbuchung:edit', 'core.users:display'] })).status, 400);
+  assert.equal((await admin('PUT', '/api/admin/roles/HALLENNUTZER', { name: 'Hallennutzer', permissions: ['tco.meinkonto:edit', 'tco.platzbuchung:edit'] })).status, 200);
   assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'HALLENNUTZER' order by 1`).map((x) => x.permission), ['tco.meinkonto:edit', 'tco.platzbuchung:edit']);
   assert.equal((await admin('DELETE', '/api/admin/roles/HALLENNUTZER')).status, 400);
 
