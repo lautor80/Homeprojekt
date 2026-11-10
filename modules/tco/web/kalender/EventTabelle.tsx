@@ -19,7 +19,7 @@ interface Ev {
   id: number; titel: string; beschreibung: string | null; ort: string | null; kategorie: string; beginn: string; ende: string | null; ganztags: boolean;
   anmeldung: boolean; gruppen: number[]; gruppen_namen: string[]; abgesagt: boolean; zusagen: number; begleitpersonen: number; absagen: number;
 }
-interface Zeile extends Ev { beginn_text: string; art: string; gruppe: string; anmeldung_text: string; begegnung: string; zusagen_gesamt: number }
+interface Zeile extends Ev { beginn_text: string; art: string; gruppe: string; anmeldung_text: string; begegnung: string; zusagen_gesamt: number; status_text: string }
 type GruppeKurz = { id: number; name: string; aktiv: boolean };
 type Cell = { row: { original: Zeile } };
 type SortZeile = { original: Zeile };
@@ -51,7 +51,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
     .filter((e) => vergangene || new Date(e.ende ?? e.beginn).getTime() >= heute)
     .map((e) => ({
       ...e, beginn_text: beginnText(e), art: kategorien[e.kategorie] ?? e.kategorie, gruppe: e.gruppen_namen.join(', ') || 'alle Mitglieder',
-      anmeldung_text: e.anmeldung ? 'ja' : 'nein', begegnung: (e.beschreibung ?? '').split('\n')[0], zusagen_gesamt: e.zusagen + e.begleitpersonen,
+      anmeldung_text: e.anmeldung ? 'ja' : 'nein', begegnung: (e.beschreibung ?? '').split('\n')[0], zusagen_gesamt: e.zusagen + e.begleitpersonen, status_text: e.abgesagt ? 'abgesagt' : '',
     })), [events, vergangene, kategorien, heute]);
   // Auswahl nur für angezeigte Zeilen
   const sichtbar = useMemo(() => new Set(zeilen.map((z) => z.id)), [zeilen]);
@@ -82,7 +82,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
     setZuordnung(r);
   });
 
-  const columns: AnalyticalTableColumnDefinition[] = useMemo(() => [
+  const columns = useMemo((): AnalyticalTableColumnDefinition[] => [
     {
       Header: 'Beginn', accessor: 'beginn_text', width: 190,
       sortType: (a: SortZeile, b: SortZeile) => a.original.beginn.localeCompare(b.original.beginn),
@@ -99,7 +99,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
     { Header: 'Zusagen', accessor: 'zusagen_gesamt', width: 100, hAlign: 'End' },
     { Header: 'Absagen', accessor: 'absagen', width: 100, hAlign: 'End' },
     {
-      Header: 'Status', id: 'status', accessor: (z: Zeile) => (z.abgesagt ? 'abgesagt' : ''), width: 110,
+      Header: 'Status', accessor: 'status_text', width: 110,
       Cell: ({ row }: Cell) => (row.original.abgesagt ? <ObjectStatus state="Negative">abgesagt</ObjectStatus> : ''),
     },
   ], [onOeffnen]);
