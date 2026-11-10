@@ -1,7 +1,7 @@
 import type { PermissionGroup } from './permissions.js';
 
 /**
- * Prüfungen der Rollenpflege (#46, Administration → Rollen → Matrix/Prüfung): Überlappungen zwischen Rollen,
+ * Prüfungen der Rollenpflege (#46, Administration → Benutzerverwaltung → Rollenmatrix): Überlappungen zwischen Rollen,
  * überflüssige Rollenzuordnungen, Funktionstrennung, fehlende Voraussetzungen, unbekannte Rechte.
  * Reine Funktion ohne Datenbank – die Routen liefern Rollen, Katalog und Benutzer.
  */
@@ -145,4 +145,89 @@ export function rollenPruefen(alle: PruefRolle[], katalog: PermissionGroup[], ko
       text: `${frei.length} Recht${frei.length === 1 ? ' steckt' : 'e stecken'} in keiner Rolle und ${frei.length === 1 ? 'ist' : 'sind'} nur für Administratoren erreichbar.` });
   }
   return out.sort((x, y) => REIHENFOLGE.indexOf(x.stufe) - REIHENFOLGE.indexOf(y.stufe));
+}
+
+// ---------------------------------------------------------------------------
+// Verprobung (#46): Was dürfte ein Benutzer mit dem (ggf. noch nicht gesicherten) Stand der Rollen – und optional mit
+// probeweise zugeordneten Rollen – im Vergleich zu heute?
+// ---------------------------------------------------------------------------
+export interface VerprobRolle { id: string; name: string; permissions: string[]; inaktiv?: boolean }
+export interface VerprobBenutzer { id: string; name: string; username: string; aktiv: boolean; rollen: string[] }
+export interface Verprobung {
+  id: string; name: string; username: string; aktiv: boolean;
+  rollenJetzt: string[]; rollenProbe: string[];
+  /** alle Rechte (Rolle mit „*“) */
+  allesJetzt: boolean; allesProbe: boolean;
+  anzahlJetzt: number; anzahlProbe: number;
+  /** Rechte in der Probe mit den Rollen, aus denen sie stammen */
+  rechte: { id: string; text: string; app: string; rollen: string[] }[];
+  dazu: string[]; weg: string[];
+  /** erreichbare Apps („Bereich › App“) in der Probe */
+  apps: string[];
+  befunde: { stufe: Stufe; text: string }[];
+}
+
+export function verproben(
+  jetzt: VerprobRolle[], probe: VerprobRolle[], katalog: PermissionGroup[], konflikte: RechteKonflikt[],
+  benutzer: VerprobBenutzer[], zuordnung: { rollen: string[]; modus: 'ZUSAETZLICH' | 'ERSETZEN' } | null,
+): Verprobung[] {
+  const info = new Map<string, { text: string; app: string }>();
+  for (const g of katalog) for (const a of g.areas) for (const app of a.apps) for (const p of app.permissions) info.set(p.id, { text: p.text, app: `${a.name} › ${app.name}` });
+  const alle = [...info.keys()];
+  const rj = new Map(jetzt.map((r) => [r.id, r]));
+  const rp = new Map(probe.map((r) => [r.id, r]));
+  // wirksame Rechte: deaktivierte Rollen gewähren nichts, „*“ gewährt alles
+  const wirksam = (rollen: string[], stand: Map<string, VerprobRolle>) => {
+    const quelle = new Map<string, string[]>();
+    let alles = false;
+    for (const id of rollen) {
+      const r = stand.get(id);
+      if (!r || r.inaktiv) continue;
+      if (r.permissions.includes('*')) alles = true;
+      for (const p of r.permissions.includes('*') ? alle : r.permissions) quelle.set(p, [...(quelle.get(p) ?? []), id]);
+    }
+    return { quelle, alles };
+  };
+  return benutzer.map((u) => {
+    const rollenProbe = !zuordnung ? u.rollen
+      : [...new Set([...(zuordnung.modus === 'ERSETZEN' ? [] : u.rollen), ...zuordnung.rollen])].filter((r) => rp.has(r)).sort();
+    const a = wirksam(u.rollen, rj);
+    const b = wirksam(rollenProbe, rp);
+    const t = (p: string) => info.get(p)?.text ?? p;
+    const befunde: Verprobung['befunde'] = [];
+    const aktiv = rollenProbe.map((r) => rp.get(r)!).filter((r) => r && !r.inaktiv && !r.permissions.includes('*'));
+    if (!b.alles) {
+      for (const k of konflikte) {
+        if (b.quelle.has(k.a) && b.quelle.has(k.b)) {
+          befunde.push({ stufe: 'WARNUNG', text: `Funktionstrennung: „${t(k.a)}“ (${b.quelle.get(k.a)!.join(', ')}) und „${t(k.b)}“ (${b.quelle.get(k.b)!.join(', ')}) – ${k.text}.` });
+        }
+      }
+      for (const x of aktiv) for (const y of aktiv) {
+        if (x.id === y.id || !x.permissions.length) continue;
+        const in_y = new Set(y.permissions);
+        if (x.permissions.every((p) => in_y.has(p)) && (x.permissions.length < y.permissions.length || x.id < y.id)) {
+          befunde.push({ stufe: 'WARNUNG', text: `Rolle ${x.id} ist überflüssig: alle ihre Rechte stecken auch in ${y.id}.` });
+        }
+      }
+    } else if (rollenProbe.length > 1) {
+      befunde.push({ stufe: 'HINWEIS', text: 'Hat über eine Rolle alle Rechte – die übrigen Rollen ändern nichts.' });
+    }
+    for (const r of rollenProbe) if (rp.get(r)?.inaktiv) befunde.push({ stufe: 'HINWEIS', text: `Rolle ${r} ist derzeit deaktiviert und gewährt nichts.` });
+    const unbekannt = [...b.quelle.keys()].filter((p) => !info.has(p));
+    if (unbekannt.length) befunde.push({ stufe: 'FEHLER', text: `Wirkungslose Kennungen (nicht im Katalog): ${unbekannt.join(', ')}.` });
+    if (!u.aktiv) befunde.push({ stufe: 'HINWEIS', text: 'Benutzer ist gesperrt – die Rechte wirken erst nach dem Entsperren.' });
+    if (!b.quelle.size) befunde.push({ stufe: 'HINWEIS', text: 'Hätte keine Rechte.' });
+    const rechte = [...b.quelle.entries()].filter(([p]) => info.has(p))
+      .map(([id, rollen]) => ({ id, text: info.get(id)!.text, app: info.get(id)!.app, rollen }))
+      .sort((x, y) => alle.indexOf(x.id) - alle.indexOf(y.id));
+    return {
+      id: u.id, name: u.name, username: u.username, aktiv: u.aktiv, rollenJetzt: u.rollen, rollenProbe,
+      allesJetzt: a.alles, allesProbe: b.alles, anzahlJetzt: a.quelle.size, anzahlProbe: b.quelle.size,
+      rechte,
+      dazu: [...b.quelle.keys()].filter((p) => !a.quelle.has(p)).sort((x, y) => alle.indexOf(x) - alle.indexOf(y)),
+      weg: [...a.quelle.keys()].filter((p) => !b.quelle.has(p)).sort((x, y) => alle.indexOf(x) - alle.indexOf(y)),
+      apps: [...new Set(rechte.map((r) => r.app))],
+      befunde,
+    };
+  });
 }

@@ -171,9 +171,10 @@ der Anzeige maskiert (auch für `core.audit:display`); die eigenen Vereinskonten
 nicht maskiert. Neue geschützte Felder: im Modul `sensitiveFields` (für Änderungsbelege) deklarieren und in den
 Routen `feldschutz(req, permission)` anwenden.
 
-## Rollenpflege: Matrix und Prüfung (Administration)
+## Benutzerverwaltung: Rollenmatrix, Prüfung und Verprobung (Administration)
 
-Administration → **Rollen** hat drei Ansichten: **Liste** (Einzelpflege im Dialog wie bisher), **Matrix** und **Prüfung** (#46).
+Die Administration hat den Menüpunkt **Benutzerverwaltung** mit **Benutzer**, **Rollen** (Einzelpflege im Dialog) und
+**Rollenmatrix** (`/admin/rollenmatrix`, Berechtigung `core.roles:display`; #46). Die Rollenmatrix hat drei Ansichten:
 
 - **Matrix:** Zeilen = Berechtigungen (Modul › Bereich › App), Spalten = Rollen (ohne `ADMIN`). Kästchen setzen und entfernen Rechte;
   Voraussetzungen werden wie im Dialog mitgesetzt bzw. abhängige Rechte mit entfernt. Filter: Suche, Rollenauswahl, „nur vergebene“,
@@ -186,7 +187,13 @@ Administration → **Rollen** hat drei Ansichten: **Liste** (Einzelpflege im Dia
   (Warnung; Paare aus `rechteKonflikte` der Module und `coreKonflikte`), fehlende Voraussetzung und unbekannte Kennung (Fehler),
   Rolle leer / ohne Benutzer und Rechte in keiner Rolle (Hinweis). „Vergleichen“ stellt die betroffenen Rollen in der Matrix
   nebeneinander und hebt die betroffenen Rechte hervor. Befunde verhindern das Sichern nicht.
-- Logik: `server/src/rollenpruefung.ts` (reine Funktion), Oberfläche `web/src/pages/RollenMatrix.tsx`, Test `server/test/rollenmatrix.test.ts`.
+- **Verprobung** (`POST /api/admin/roles/verprobung`, `core.roles:display` und `core.users:display`; liest nur): für einen oder mehrere
+  Benutzer (auch „alle Benutzer der Rolle …“, höchstens 200) die wirksamen Rechte mit dem Stand der Matrix einschließlich ungesicherter
+  Änderungen – optional mit probeweise zugeordneten Rollen (zusätzlich oder statt der bisherigen). Je Benutzer: Rollen heute und in der
+  Probe, Anzahl Rechte und Apps, was dazukommt und wegfällt, Herkunft jedes Rechts (Rolle), Befunde (Funktionstrennung, überflüssige
+  Rolle, deaktivierte Rolle, gesperrter Benutzer). „Matrix“ stellt die Rollen der Probe nebeneinander.
+- Logik: `server/src/rollenpruefung.ts` (reine Funktionen), Oberfläche `web/src/pages/RollenmatrixPage.tsx` und `RollenMatrix.tsx`,
+  Test `server/test/rollenmatrix.test.ts`.
 
 ## Tabellenansicht (Administration)
 

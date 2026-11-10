@@ -23,3 +23,12 @@
 .portal-rm__befunde { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 .portal-rm__befunde th, .portal-rm__befunde td { text-align: left; vertical-align: top; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); }
 .portal-rm__befunde td:nth-child(1), .portal-rm__befunde td:nth-child(2) { white-space: nowrap; }
+/* Verprobung */
+.portal-rm__probe { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1rem 1.5rem; margin-bottom: 0.75rem; }
+.portal-rm__detail { background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-rm__detail > div { margin-bottom: 0.4rem; }
+.portal-rm__detail ul { margin: 0.15rem 0 0; padding-left: 1.25rem; }
+.portal-rm__plus { color: var(--sapPositiveTextColor, #256f3a); }
+.portal-rm__minus { color: var(--sapNegativeTextColor, #aa0808); }
+.portal-rm__herkunft { border-collapse: collapse; margin-top: 0.15rem; font-size: 0.8125rem; }
+.portal-rm__herkunft td { border: 0 !important; padding: 0.1rem 0.75rem 0.1rem 0 !important; }

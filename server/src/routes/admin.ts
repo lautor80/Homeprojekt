@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql, type Tx } from '../db.js';
-import { change, hashPassword, requireAuth, validatePassword } from '../auth.js';
+import { can, change, hashPassword, requireAuth, validatePassword } from '../auth.js';
 import { activeModules, permissionCatalog } from '../modules.js';
 import { GUELTIG_STUNDEN, kennwortLinkSenden, mailVerfuegbar, portalUrl, unbekanntesKennwort } from '../kennwort.js';
 import { BusinessError } from '../errors.js';
-import { befundArtText, coreKonflikte, rollenPruefen } from '../rollenpruefung.js';
+import { befundArtText, coreKonflikte, rollenPruefen, verproben } from '../rollenpruefung.js';
 
 
 /** Es muss immer mindestens ein aktiver Administrator übrig bleiben. */
@@ -255,6 +255,34 @@ export async function adminRoutes(app: FastifyInstance) {
     const befunde = rollenPruefen(rollen, permissionCatalog(), konflikte, benutzer).map((x) => ({ ...x, artText: befundArtText(x.art) }));
     const zahl = (s: string) => befunde.filter((x) => x.stufe === s).length;
     return { befunde, fehler: zahl('FEHLER'), warnungen: zahl('WARNUNG'), hinweise: zahl('HINWEIS') };
+  });
+
+  /**
+   * Verprobung: wirksame Rechte ausgewählter Benutzer mit dem Stand der Matrix (`rollen` = ungesicherte Änderungen) und
+   * optional probeweise zugeordneten Rollen, verglichen mit heute. Liest nur – gespeichert wird nichts.
+   */
+  app.post('/api/admin/roles/verprobung', { preHandler: requireAuth('core.roles:display') }, async (req) => {
+    if (!can(req, 'core.users:display')) throw new BusinessError('Für die Verprobung wird zusätzlich „Benutzer anzeigen“ benötigt.', 403);
+    const b = z.object({
+      benutzer: z.array(z.string().uuid()).min(1, 'Bitte mindestens einen Benutzer wählen.').max(200, 'Höchstens 200 Benutzer auf einmal.'),
+      rollen: z.array(matrixRolle).max(500).default([]),
+      zuordnung: z.object({ rollen: z.array(z.string()).max(50), modus: z.enum(['ZUSAETZLICH', 'ERSETZEN']) }).nullish(),
+    }).parse(req.body);
+    const entwurf = new Map(b.rollen.map((r) => [r.id, r.permissions]));
+    const jetzt = (await sql`
+      select r.id, r.name, r.system, core.rolle_inaktiv(r.inaktiv_von, r.inaktiv_bis) as inaktiv,
+             coalesce((select array_agg(permission order by permission) from core.role_permissions p where p.role_id = r.id), '{}') as permissions
+        from core.roles r`).map((r) => ({ id: r.id as string, name: r.name as string, system: r.system as boolean, inaktiv: r.inaktiv as boolean, permissions: r.permissions as string[] }));
+    const probe = jetzt.map((r) => ({ ...r, permissions: r.system ? r.permissions : entwurf.get(r.id) ?? r.permissions }));
+    const benutzer = (await sql`
+      select u.id::text, coalesce(nullif(u.display_name, ''), u.username) as name, u.username, u.active,
+             coalesce(array_agg(ur.role_id order by ur.role_id) filter (where ur.role_id is not null), '{}') as rollen
+        from core.users u left join core.user_roles ur on ur.user_id = u.id
+       where u.id = any(${b.benutzer}::uuid[]) group by u.id order by lower(coalesce(nullif(u.display_name, ''), u.username))`)
+      .map((u) => ({ id: u.id as string, name: u.name as string, username: u.username as string, aktiv: u.active as boolean, rollen: u.rollen as string[] }));
+    const konflikte = [...coreKonflikte, ...activeModules().flatMap((m) => m.rechteKonflikte ?? [])];
+    const zuordnung = b.zuordnung && (b.zuordnung.rollen.length || b.zuordnung.modus === 'ERSETZEN') ? b.zuordnung : null;
+    return verproben(jetzt, probe, permissionCatalog(), konflikte, benutzer, zuordnung);
   });
 
   /** Matrix sichern: Rechte mehrerer Rollen in einer Transaktion; `vorher` = Stand beim Laden (gegen stilles Überschreiben) */

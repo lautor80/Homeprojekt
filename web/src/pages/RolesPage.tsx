@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
-import {
-  AnalyticalTable, Bar, Button, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem, Tag, Title, Toolbar, ToolbarSpacer,
-} from '@ui5/webcomponents-react';
-import { RollenMatrix } from './RollenMatrix';
+import { AnalyticalTable, Bar, Button, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
+import { useNavigate } from 'react-router-dom';
 import { fmtDateTime } from '../components/ChangeHistory';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -48,8 +46,7 @@ export function RolesPage() {
   const roles = useLoad(() => api.get<Role[]>('/api/admin/roles'));
   const catalog = useLoad(() => api.get<PermGroup[]>('/api/admin/permissions'));
   const [edit, setEdit] = useState<Edit | null>(null);
-  /** Liste (Einzelpflege), Matrix (Rechte × Rollen) oder Prüfung (Befunde) – #46 */
-  const [ansicht, setAnsicht] = useState<'LISTE' | 'MATRIX' | 'PRUEFUNG'>('LISTE');
+  const navigate = useNavigate();
   const sperre = useSperre('ROLE', edit && !edit.isNew ? edit.id : null, darfAendern, { bezeichnung: `Rolle ${edit?.id ?? ''}` });
   // Rollen „nur Admin“ (Mitglied, Hallennutzer) ändert nur ein Administrator
   const mayEdit = darfAendern && sperre.eigen && (!edit?.nurAdmin || istAdmin);
@@ -130,34 +127,21 @@ export function RolesPage() {
     <AppPage
       title="Rollen"
       subtitle="Berechtigung = Objekt + Aktivität, z. B. „Kontakte anzeigen“"
-      actions={mayEdit && (
-        <Button design="Emphasized" icon="add" onClick={() => { setError(null); setEdit({ isNew: true, permissions: [] }); }}>Anlegen</Button>
-      )}
+      actions={<>
+        <Button icon="grid" tooltip="Rechte aller Rollen nebeneinander pflegen, prüfen und für Benutzer verproben" onClick={() => navigate('/admin/rollenmatrix')}>Rollenmatrix</Button>
+        {mayEdit && <Button design="Emphasized" icon="add" onClick={() => { setError(null); setEdit({ isNew: true, permissions: [] }); }}>Anlegen</Button>}
+      </>}
     >
       {roles.error && <MessageStrip design="Negative">{roles.error}</MessageStrip>}
-      <SegmentedButton style={{ marginBottom: '0.5rem' }} onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.a as typeof ansicht)}>
-        <SegmentedButtonItem data-a="LISTE" icon="list" selected={ansicht === 'LISTE'}>Liste</SegmentedButtonItem>
-        <SegmentedButtonItem data-a="MATRIX" icon="table-view" selected={ansicht === 'MATRIX'}>Matrix</SegmentedButtonItem>
-        <SegmentedButtonItem data-a="PRUEFUNG" icon="validate" selected={ansicht === 'PRUEFUNG'}>Prüfung</SegmentedButtonItem>
-      </SegmentedButton>
-      {ansicht === 'LISTE' && (
-        <AnalyticalTable
-          columns={columns}
-          data={roles.data ?? []}
-          loading={roles.loading}
-          sortable
-          visibleRowCountMode="Auto"
-          style={{ height: 'calc(100vh - 270px)' }}
-          onRowClick={(e) => { setError(null); setEdit({ ...(e.detail.row.original as Role), isNew: false }); }}
-        />
-      )}
-      {/* bleibt eingehängt, damit ungesicherte Änderungen beim Wechsel zur Liste nicht verloren gehen */}
-      {roles.data && catalog.data && (
-        <div style={{ display: ansicht === 'LISTE' ? 'none' : undefined }}>
-          <RollenMatrix ansicht={ansicht === 'PRUEFUNG' ? 'PRUEFUNG' : 'MATRIX'} onAnsicht={setAnsicht} roles={roles.data} catalog={catalog.data}
-                        darfAendern={darfAendern} istAdmin={istAdmin} onGesichert={roles.reload} />
-        </div>
-      )}
+      <AnalyticalTable
+        columns={columns}
+        data={roles.data ?? []}
+        loading={roles.loading}
+        sortable
+        visibleRowCountMode="Auto"
+        style={{ height: 'calc(100vh - 220px)' }}
+        onRowClick={(e) => { setError(null); setEdit({ ...(e.detail.row.original as Role), isNew: false }); }}
+      />
 
       <Dialog
         open={!!edit}
