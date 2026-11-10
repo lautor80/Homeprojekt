@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import {
   AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
@@ -69,6 +69,10 @@ export function TabellenPage() {
   const liste = useLoad(() => api.get<Tabelle[]>('/api/admin/tabellen'));
   /** markierte Ergebniszeilen (Index) und Sicherheitsabfrage zum Löschen */
   const [markiert, setMarkiert] = useState<number[]>([]);
+  /** zählt bei jeder neuen Selektion hoch – die Ergebnistabelle wird dann neu aufgebaut, alte Markierungen verfallen */
+  const [ergNr, setErgNr] = useState(0);
+  /** Zeitpunkt der letzten Markierung: ein Klick auf das Kästchen soll nicht zusätzlich den Detaildialog öffnen */
+  const letzteMarkierung = useRef(0);
   const [frage, setFrage] = useState(false);
   const [papierkorb, setPapierkorb] = useState(false);
   const [wahl, setWahl] = useState<string | null>(null);
@@ -103,7 +107,7 @@ export function TabellenPage() {
         offset: weitere && erg ? erg.zeilen.length : 0,
       });
       setErg(weitere && erg ? { ...r, zeilen: [...erg.zeilen, ...r.zeilen], schluessel: r.schluessel && erg.schluessel ? [...erg.schluessel, ...r.schluessel] : r.schluessel } : r);
-      if (!weitere) setMarkiert([]);
+      if (!weitere) { setMarkiert([]); setErgNr((n) => n + 1); }
       setAnsicht('DATEN');
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
@@ -148,17 +152,26 @@ export function TabellenPage() {
   const daten = useMemo(() => (erg?.zeilen ?? []).map((r, z) => ({ _i: z, ...Object.fromEntries(r.map((x, i) => [`c${i}`, x])) })), [erg]);
   const zeilenOptionen = useMemo(() => ({ getRowId: (r: { _i: number }) => String(r._i), autoResetSelectedRows: false, autoResetSortBy: false, autoResetFilters: false }), []);
   const loeschbar = darfLoeschen && !!erg?.schluessel;
+  const markiertIds = useMemo(() => Object.fromEntries(markiert.map((i) => [String(i), true])), [markiert]);
 
   async function loeschen(grund: string) {
     if (!struktur || !erg?.schluessel) return;
-    setFrage(false); setBusy(true); setError(null);
+    setFrage(false); setError(null);
+    // nur Schlüssel geladener Zeilen senden; fehlende melden statt den ganzen Vorgang scheitern zu lassen
+    const schluessel = markiert.map((i) => erg.schluessel![i]).filter((k): k is string[] => Array.isArray(k));
+    const fehlen = markiert.length - schluessel.length;
+    if (!schluessel.length) { setError('Die markierten Zeilen sind nicht mehr geladen – bitte erneut ausführen und markieren.'); setMarkiert([]); return; }
+    setBusy(true);
     try {
       const r = await api.post<{ text: string }>(`/api/admin/tabellen/${encodeURIComponent(struktur.schema)}/${encodeURIComponent(struktur.tabelle)}/loeschen`,
-        { schluessel: markiert.map((i) => erg.schluessel![i]), grund });
-      toast(r.text, 8000);
-      setBusy(false);
-      await ausfuehren();
-    } catch (e) { setError((e as Error).message); setBusy(false); }
+        { schluessel, grund });
+      toast(fehlen ? `${r.text} ${fehlen} markierte Zeile(n) waren nicht mehr geladen und wurden übersprungen.` : r.text, 8000);
+    } catch (e) { setError((e as Error).message); }
+    // immer neu laden: Markierung leeren, Treffer und Anzahl aktualisieren
+    setBusy(false);
+    setMarkiert([]);
+    api.get<Struktur>(`/api/admin/tabellen/${encodeURIComponent(struktur.schema)}/${encodeURIComponent(struktur.tabelle)}`).then(setStruktur).catch(() => undefined);
+    await ausfuehren();
   }
   const ergSpalten: AnalyticalTableColumnDefinition[] = (erg?.spalten ?? []).map((s, i) => ({
     Header: s.text, accessor: `c${i}`, id: `c${i}`, hAlign: s.numerisch ? 'End' : 'Begin',
@@ -332,13 +345,25 @@ export function TabellenPage() {
             <AnalyticalTable columns={strukturSpalten} data={spalten} filterable sortable visibleRows={Math.min(Math.max(spalten.length, 1), 25)} minRows={1} />
           )}
           {ansicht === 'DATEN' && (erg ? (
-            <AnalyticalTable columns={ergSpalten} data={daten} loading={busy} filterable sortable groupable minRows={1}
+            <AnalyticalTable key={`erg-${ergNr}`} columns={ergSpalten} data={daten} loading={busy} filterable sortable groupable minRows={1}
                              {...(loeschbar ? { selectionMode: 'Multiple' as const, selectionBehavior: 'RowSelector' as const, reactTableOptions: zeilenOptionen,
-                               onRowSelect: (e: { detail: { selectedRowIds: Record<string, boolean> } }) => setMarkiert(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number)) } : {})}
+                               selectedRowIds: markiertIds,
+                               onRowSelect: (e: { detail: { selectedRowIds: Record<string, boolean> } }) => {
+                                 letzteMarkierung.current = Date.now();
+                                 // nur Zeilen des aktuellen Ergebnisses (veraltete Kennungen fallen weg)
+                                 setMarkiert(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number).filter((i) => i >= 0 && i < daten.length));
+                               } } : {})}
                              visibleRowCountMode="Auto" style={{ height: 'max(20rem, calc(100vh - 520px))' }}
                              onRowClick={(e) => {
                                const row = e.detail.row as unknown as { original?: Record<string, string | null>; isGrouped?: boolean };
-                               if (row.original && !row.isGrouped) setDetail(erg.spalten.map((_, i) => row.original![`c${i}`] ?? null));
+                               if (!row.original || row.isGrouped) return;
+                               const original = row.original;
+                               // Klick auf das Markierungskästchen: nur markieren, keinen Dialog öffnen (Reihenfolge der Ereignisse egal)
+                               const t = Date.now();
+                               setTimeout(() => {
+                                 if (letzteMarkierung.current >= t - 50) return;
+                                 setDetail(erg.spalten.map((_, i) => original[`c${i}`] ?? null));
+                               }, 0);
                              }} />
           ) : (
             <Text className="portal-muted">Selektion festlegen und „Ausführen“ wählen.</Text>
