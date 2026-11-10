@@ -108,9 +108,9 @@ const mail = (m: Record<string, unknown>) => ({
 
 test('Regelwerk: Bedingungen, Auswahl nach Priorität, Extraktion, Korrespondenten', () => {
   assert.deepEqual(L.absender('"SumUp Payments" <No-Reply@sumup.com>'), { adresse: 'no-reply@sumup.com', name: 'SumUp Payments', domain: 'sumup.com' });
-  const korr = [{ id: 1, name: 'SumUp', kurz: 'SUMUP', adressen: 'sumup.com' }, { id: 2, name: 'Kasper', kurz: '', adressen: 'kasper@sumup.com' }];
+  const korr = [{ id: 1, name: 'SumUp', kurz: 'SUMUP', adressen: 'sumup.com' }, { id: 2, name: 'Muster', kurz: '', adressen: 'muster@sumup.com' }];
   assert.equal(L.korrespondentFinden(korr, 'x@mail.sumup.com')?.name, 'SumUp');
-  assert.equal(L.korrespondentFinden(korr, 'kasper@sumup.com')?.name, 'Kasper', 'genaue Adresse schlägt Domain');
+  assert.equal(L.korrespondentFinden(korr, 'muster@sumup.com')?.name, 'Muster', 'genaue Adresse schlägt Domain');
   assert.equal(L.korrespondentFinden(korr, 'a@notsumup.com'), null);
   const k = { korrespondent: 'SumUp', datei: 'Abrechnung_2026-10.pdf', doktext: 'Rechnungsnummer: RE-4711', mitglied: 'nein' };
   const r = {
