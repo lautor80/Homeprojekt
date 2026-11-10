@@ -151,7 +151,7 @@ test('Löschen markierter Sätze mit Papierkorb und Wiederherstellung (#34)', as
   // Wiederherstellen: Satz wieder da, Eintrag aus dem Papierkorb entfernt; zweites Mal nichts mehr zu tun
   r = await admin('POST', `${T}/papierkorb/wiederherstellen`, { ids: [e.id] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.zeilen.map((z: any) => z.ok), [true]);
+  assert.deepEqual(r.body.zeilen.map((z: any) => z.ok), [true], JSON.stringify(r.body));
   const [tom] = await sql`select vorname, eintritt::text, zahlungsart from tco.mitglieder where adrnr = '0000000702'`;
   assert.deepEqual([tom.vorname, tom.eintritt, tom.zahlungsart], ['Tom', '2021-06-01', 'B']);
   assert.equal((await admin('GET', `${T}/papierkorb`)).body.some((x: any) => x.id === e.id), false);
