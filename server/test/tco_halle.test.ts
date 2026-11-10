@@ -32,7 +32,7 @@ const H = '/api/m/tco/halle';
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 
 // ---------------------------------------------------------------- Paperless/n8n-Attrappe
-const mock = { docs: new Map<number, { versions: number[]; notes: string[]; meta: Record<string, unknown>; title?: string; content?: string }>(), next: 100, mails: [] as any[], uploads: 0, versionUploads: 0, ocr: '' };
+const mock = { docs: new Map<number, { versions: number[]; notes: string[]; meta: Record<string, unknown>; title?: string; content?: string }>(), next: 100, mails: [] as any[], uploads: 0, versionUploads: 0, ocr: '', ep3Ab: false };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -94,7 +94,11 @@ const server = http.createServer((req, res) => {
       return send(200, { status: j.modus === 'entwurf' ? 'entwurf' : 'gesendet', message_id: 'm1' });
     }
     if (u === '/api/trash/') return send(200, {});
-    if (u === '/webhook/ep3') return send(200, { bookings_csv: 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n900;03.11.2026;10:00;11:00;Erika Muster;single\n' });
+    if (u === '/webhook/ep3') {
+      // wie der Workflow: ein angefordertes „ab“ nur zurückmelden, wenn es angewendet wird (Attrappe: „mock.ep3Ab“ an/aus)
+      const ab = (JSON.parse(body || '{}').ab as string | undefined) ?? null;
+      return send(200, { bookings_csv: 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n900;03.11.2026;10:00;11:00;Erika Muster;single\n', ab: mock.ep3Ab ? ab : null });
+    }
     send(404, { u });
   });
 });
@@ -401,6 +405,19 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   r = await call('POST', `${H}/import/n8n`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body[0].text, /1 neu/);
+  // #103: gelieferter Zeitraum im Protokoll; „ab“ anfordern – ein älterer Workflow übernimmt es nicht → Hinweis
+  assert.deepEqual([r.body.at(-1).datei, r.body.at(-1).ok], ['Zeitraum', true]);
+  assert.match(r.body.at(-1).text, /Standardzeitraum.*vom 03\.11\.2026 bis 03\.11\.2026/);
+  assert.equal((await call('POST', `${H}/import/n8n`, { ab: '01.01.2025' })).status, 400);
+  r = await call('POST', `${H}/import/n8n`, { ab: '2025-01-01' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.at(-1).ok, /übernimmt den Zeitraum aber nicht/.test(r.body.at(-1).text)], [false, true]);
+  mock.ep3Ab = true;
+  r = await call('POST', `${H}/import/n8n`, { ab: '2025-01-01' });
+  assert.deepEqual([r.body.at(-1).ok, /Angefordert ab 01\.01\.2025/.test(r.body.at(-1).text)], [true, true]);
+  mock.ep3Ab = false;
+  r = await call('GET', `${H}/import/info`);
+  assert.match(r.body.stichtag, /^\d{4}-\d{2}-\d{2}$/);
 });
 
 test('Hallenabrechnung: BID-Format SAP/EP3, Abo als Einzel, Sommer-Abos', async () => {

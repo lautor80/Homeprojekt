@@ -38,6 +38,14 @@ Platzverwaltung unter „Training & Sperrzeiten“ – sie bleiben vom Import un
 
 - Die Kennwort-Hashes sind bcrypt (`$2y$…`, Zend\Crypt in ep3-bs). Das Portal prüft sie bei der Registrierung mit EP3-Konto
   und beim Anmelden und stellt sie nach der ersten erfolgreichen Anmeldung auf das Portalverfahren (argon2) um.
-- Die Buchungsabfrage liefert Termine der letzten 18 Monate; der Zeitraum lässt sich in `EP3 Buchungen` anpassen.
+- Die Buchungsabfrage liefert standardmäßig Termine der letzten 18 Monate. Im Portal kann der Import einmalig **ab einem Datum**
+  angefordert werden (*Hallenabrechnung → EP3 importieren → „Ab Datum nachladen“*): das Portal schickt `ab` (JJJJ-MM-TT) im Webhook,
+  `EP3 Buchungen` verwendet es statt der 18 Monate, `CSV bauen` meldet `ab` zurück. Ältere Workflows ohne diese Anpassung liefern
+  weiter ihren festen Zeitraum – das Portal zeigt das im Protokoll (Zeile „Zeitraum“: angefordert, tatsächlich geliefert).
+- **Zeitraum verlängern – was passiert:** Buchungen, die es im Portal schon gibt (gleiche BID und gleiches Datum), bleiben erhalten;
+  bereits abgerechnete werden nur um den Platz ergänzt. Fehlende Buchungen werden neu angelegt – ohne Rechnung. Liegen sie nach dem
+  Stichtag „Buchungen abrechnen ab“ (Stammdaten), erscheinen sie in der Hallenabrechnung als offen. Wurden sie schon in SAP abgerechnet,
+  zuerst Buchungen und Rechnungen aus SAP übernehmen (Stammdaten → Übernahme aus SAP, „Nur neue Sätze“) und erst dann nachladen.
+  Kunden, Texte und Events haben keinen Zeitraum (Events: ab einem Monat zurück).
 - Spaltennamen sind so gewählt, wie der Portalimport sie erwartet (`BID, DATUM, TIME_START, TIME_ENDE, KUNDE, STATUS, PLATZ`,
   `ZUID, ZALIAS, STATUS, EMAIL, PW, KEY, VALUE`, `BID, TEXT`). Datum `JJJJ-MM-TT`, Uhrzeit `HH:MM`.
