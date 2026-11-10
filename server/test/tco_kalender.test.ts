@@ -242,7 +242,7 @@ test('Gruppen-Veranstaltung: Rückmeldungen nur für Mitglieder der Gruppe, Ausw
 test('Tabelle: Massenbearbeitung und Regelwerk „Text in Spalte => Gruppe“ (#16)', async () => {
   const R = `${K}/regeln`;
   const [{ id: h40 }] = await sql`select id from tco.kal_gruppen where name = 'Herren 40'`;
-  const [{ id: andere }] = await sql`select id from tco.kal_gruppen where name <> 'Herren 40' order by id limit 1`;
+  const [{ id: andere }] = await sql`insert into tco.kal_gruppen (name) values ('Tabellentest') returning id`;
   const neu = async (titel: string, beschreibung: string) => {
     const x = await admin('POST', K, { titel, beschreibung, kategorie: 'MANNSCHAFT', beginn: '2027-05-01T10:00:00.000Z' });
     assert.equal(x.status, 200, JSON.stringify(x.body));
