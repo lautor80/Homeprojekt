@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
@@ -12,7 +12,7 @@ import './kalender.css';
 
 /**
  * Vereinskalender (#16): flache Tabelle aller Veranstaltungen – Filter und Sortierung je Spalte, Mehrfachauswahl,
- * Massenbearbeitung und Regelwerk für die Standardzuordnung zu einer Gruppe („Text abc in Spalte Titel => Gruppe“).
+ * Massenbearbeitung, Massenlöschung und Regelwerk für die Standardzuordnung zu einer Gruppe („Text abc in Spalte Titel => Gruppe“).
  */
 const K = `${TCO}/kalender`;
 interface Ev {
@@ -39,8 +39,29 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
   const [regeln, setRegeln] = useState(false);
   const [ueberschreiben, setUeberschreiben] = useState(false);
   const [zuordnung, setZuordnung] = useState<{ text: string; zeilen: RegelZeile[] } | null>(null);
+  const [loeschen, setLoeschen] = useState(false);
   const leer = { titel: '', ort: '', kategorie: '', gruppe: '', anmeldung: '' };
   const [m, setM] = useState(leer);
+
+  // Nur die Tabelle scrollt: Der Rahmen bekommt genau die Resthöhe des Fensters, die Tabelle (visibleRowCountMode="Auto") füllt ihn aus.
+  // Eine Höhe direkt an der Tabelle macht deren Hülle zum zweiten Scrollbereich, in dem auch die Kopfzeile wegläuft.
+  const kopf = useRef<HTMLDivElement>(null);
+  const rahmen = useRef<HTMLDivElement>(null);
+  const [hoehe, setHoehe] = useState(480);
+  const geladen = events !== null;
+  useLayoutEffect(() => {
+    if (!geladen || !aktiv) return;
+    const UNTEN = 40; // Innenabstände von Reiter und Seite unterhalb der Tabelle
+    const messen = () => {
+      if (!rahmen.current) return;
+      setHoehe(Math.max(320, Math.floor(window.innerHeight - rahmen.current.getBoundingClientRect().top - UNTEN)));
+    };
+    messen();
+    window.addEventListener('resize', messen);
+    const ro = new ResizeObserver(messen); // Leisten brechen je nach Breite um
+    if (kopf.current) ro.observe(kopf.current);
+    return () => { window.removeEventListener('resize', messen); ro.disconnect(); };
+  }, [geladen, aktiv]);
 
   const laden = () => api.get<{ events: Ev[] }>(`${K}?von=2000-01-01&bis=2099-12-31`).then((r) => setEvents(r.events)).catch((e) => onError(e.message));
   useEffect(() => { if (aktiv) laden(); }, [aktiv, version]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -76,6 +97,12 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
     setM(leer);
     return r;
   });
+  const massenLoeschen = () => lauf(async () => {
+    setLoeschen(false);
+    const r = await api.post<{ text: string }>(`${K}/masse/loeschen`, { ids: gewaehlt });
+    setAuswahl([]);
+    return r;
+  });
   const regelnAnwenden = () => lauf(async () => {
     const r = await api.post<{ text: string; zeilen: RegelZeile[] }>(`${K}/regeln/anwenden`, { ...(gewaehlt.length ? { ids: gewaehlt } : {}), ueberschreiben });
     setZuordnung(r);
@@ -107,7 +134,8 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
   if (!events) return <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />;
   return (
     <>
-      <div className="portal-kal__leiste">
+      <div ref={kopf}>
+      <div className="portal-kal__leiste" style={{ marginTop: 0 }}>
         <Text><b>{zeilen.length}</b> Veranstaltung(en){gewaehlt.length ? ` · ${gewaehlt.length} ausgewählt` : ''}</Text>
         <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />
         <span style={{ flex: 1 }} />
@@ -118,7 +146,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
       </div>
       <div className="portal-kal__masse-bearbeiten" style={{ marginBottom: '0.5rem' }}>
         <Label>Massenbearbeitung für {gewaehlt.length} ausgewählte Zeile(n)</Label>
-        <div className="portal-az__leiste">
+        <div className="portal-az__leiste" style={{ position: 'static' }}>
           <Input placeholder="Titel" value={m.titel} maxlength={120} onInput={(e) => setM({ ...m, titel: e.target.value })} style={{ width: '14rem' }} />
           <Input placeholder="Ort" value={m.ort} maxlength={120} onInput={(e) => setM({ ...m, ort: e.target.value })} style={{ width: '12rem' }} />
           <Select accessibleName="Art" style={{ width: '12rem' }} onChange={(e) => setM({ ...m, kategorie: (e.detail.selectedOption as HTMLElement).dataset.k ?? '' })}>
@@ -136,14 +164,38 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
             <Option data-a="aus" selected={m.anmeldung === 'aus'}>ohne Anmeldung</Option>
           </Select>
           <Button icon="multi-select" design="Emphasized" disabled={busy || !gewaehlt.length || !mGesetzt} onClick={massenAendern}>Auf Auswahl anwenden</Button>
+          <Button icon="delete" design="Negative" disabled={busy || !gewaehlt.length} tooltip="Ausgewählte Veranstaltungen löschen" onClick={() => setLoeschen(true)}>
+            Auswahl löschen{gewaehlt.length ? ` (${gewaehlt.length})` : ''}
+          </Button>
         </div>
       </div>
+      </div>
+      <div ref={rahmen} style={{ height: hoehe }}>
       <AnalyticalTable minRows={1} columns={columns} data={zeilen} loading={busy} filterable sortable
                        selectionMode="Multiple" selectionBehavior="RowSelector" selectedRowIds={selectedRowIds} reactTableOptions={tabellenOptionen}
                        onRowSelect={(e) => setAuswahl(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number))}
-                       visibleRowCountMode="Auto" style={{ height: 'calc(100vh - 430px)', minHeight: 320 }}
+                       visibleRowCountMode="Auto"
                        noDataText={vergangene ? 'Noch keine Veranstaltungen.' : 'Keine künftigen Veranstaltungen – „Vergangene anzeigen“ blendet die übrigen ein.'} />
+      </div>
       {regeln && <EventRegelnDialog gruppen={gruppen} onClose={() => setRegeln(false)} />}
+      {loeschen && createPortal(
+        <Dialog open headerText="Veranstaltungen löschen" state="Negative" onClose={() => setLoeschen(false)} style={{ width: 'min(36rem, 96vw)' }}
+                footer={<Bar endContent={<>
+                  <Button design="Negative" icon="delete" disabled={busy || !gewaehlt.length} onClick={massenLoeschen}>{gewaehlt.length} löschen</Button>
+                  <Button onClick={() => setLoeschen(false)}>Abbrechen</Button>
+                </>} />}>
+          <div className="portal-az">
+            <Text>
+              {gewaehlt.length === 1 ? 'Die ausgewählte Veranstaltung' : `Die ${gewaehlt.length} ausgewählten Veranstaltungen`} endgültig löschen?
+              Zu- und Absagen der Mitglieder gehen dabei verloren. Das lässt sich nicht rückgängig machen.
+            </Text>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', maxHeight: '14rem', overflow: 'auto' }}>
+              {zeilen.filter((z) => gewaehlt.includes(z.id)).map((z) => <li key={z.id}><Text>{z.beginn_text} · {z.titel}</Text></li>)}
+            </ul>
+          </div>
+        </Dialog>,
+        document.body,
+      )}
       {zuordnung && createPortal(
         <Dialog open headerText="Regelwerk angewendet" onClose={() => setZuordnung(null)} style={{ width: 'min(60rem, 96vw)' }}
                 footer={<Bar endContent={<Button design="Emphasized" onClick={() => setZuordnung(null)}>Schließen</Button>} />}>

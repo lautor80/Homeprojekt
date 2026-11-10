@@ -300,6 +300,15 @@ test('Tabelle: Massenbearbeitung und Regelwerk „Text in Spalte => Gruppe“ (#
   assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
   assert.equal((await anna('GET', R)).status, 403);
   assert.equal((await anna('POST', `${K}/masse/aendern`, { ids: [a], ort: 'x' })).status, 403);
+
+  // Massenlöschung: nur mit Pflegerecht, nur die gewählten Veranstaltungen
+  assert.equal((await anna('POST', `${K}/masse/loeschen`, { ids: [a] })).status, 403);
+  assert.equal((await admin('POST', `${K}/masse/loeschen`, { ids: [] })).status, 400, 'keine Auswahl');
+  r = await admin('POST', `${K}/masse/loeschen`, { ids: [a] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.geloescht, 1);
+  assert.deepEqual([await ev(a), (await ev(b))?.titel], [undefined, 'Sommerrunde Damen LL']);
+  assert.equal((await admin('POST', `${K}/masse/loeschen`, { ids: [a, b] })).body.geloescht, 1, 'bereits gelöschte zählen nicht');
   assert.equal((await admin('PUT', R, { regeln: [] })).status, 200);
 });
 
