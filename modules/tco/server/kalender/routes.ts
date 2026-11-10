@@ -139,6 +139,15 @@ export async function kalenderRoutes(app: FastifyInstance) {
     return { geaendert: n, text: `${n} Veranstaltung(en) geändert.` };
   });
 
+  /** Massenlöschung: alle gewählten Veranstaltungen samt Rückmeldungen löschen */
+  app.post('/kalender/masse/loeschen', pflege, async (req) => {
+    const { ids } = z.object({
+      ids: z.array(z.number().int().positive()).min(1, 'Bitte mindestens eine Veranstaltung auswählen.').max(2000),
+    }).parse(req.body);
+    const n = await change(req, async (tx) => (await tx`delete from tco.kal_events where id = any(${ids})`).count, { action: 'KAL_EVENT', reason: 'Massenlöschung' });
+    return { geloescht: n, text: `${n} Veranstaltung(en) gelöscht.` };
+  });
+
   /** Regelwerk „Text in Spalte => Gruppe“ */
   app.get('/kalender/regeln', pflege, async () => ({ regeln: await eventRegelnLesen(DB), felder: REGEL_FELDER }));
   app.put('/kalender/regeln', pflege, async (req) => {
