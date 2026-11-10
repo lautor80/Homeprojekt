@@ -44,8 +44,8 @@ type Confirm = { titel: string; text: string; grund?: boolean; danger?: boolean;
 
 /** Symbol je Rechnungsstatus in der Personenliste (Farbe über CSS-Klasse) */
 const RG_SYMBOL: Record<string, { icon: string; klasse: string }> = {
-  '1': { icon: 'collections-insight', klasse: 'offen' },  // in Bearbeitung
-  '2': { icon: 'collections-insight', klasse: 'offen' },  // gedruckt, noch nicht versendet
+  '1': { icon: 'receipt', klasse: 'offen' },  // in Bearbeitung
+  '2': { icon: 'receipt', klasse: 'offen' },  // gedruckt, noch nicht versendet
   '3': { icon: 'email', klasse: 'versendet' },
   '5': { icon: 'money-bills', klasse: 'teil' },
   '4': { icon: 'paid-leave', klasse: 'bezahlt' },
