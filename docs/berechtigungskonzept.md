@@ -49,8 +49,10 @@ feldweise geschützt, Rollenänderungen wirken sofort und sind belegt. Was fehlt
 - **Sofortige Wirkung:** Rechte werden bei jeder Anfrage aus der Datenbank gelesen (`loadUser`).
 - **Feldschutz für Bankdaten** serverseitig, auch in Änderungsbelegen, PDFs und der Tabellenansicht
   (`server/src/schutz.ts`, `modules/tco/server/bankdaten.ts`).
-- **Feste Systemrollen** `MITGLIED` und `HALLENNUTZER`: Rechte werden bei jedem Start erzwungen, und nach jeder
-  automatischen Anlage prüft `rechtePruefen`, dass der Benutzer genau diese eine Rolle hat.
+- **Rollen „nur Admin“** `MITGLIED` und `HALLENNUTZER` (seit 11/2026 keine Systemrollen mehr, Kennzeichen `core.roles.nur_admin`):
+  Berechtigungen ändert nur ein Benutzer mit der Rolle `ADMIN`, Administrationsrechte (`core.*`, `*`) sind darin nicht erlaubt,
+  löschen geht nicht. Das Portal legt sie nur an, wenn sie fehlen; nach jeder automatischen Anlage prüft `rechtePruefen`, dass
+  der Benutzer genau diese eine Rolle und keine Administrationsrechte hat.
 - **Schutz des letzten Administrators**, Änderungsbelege für Rollen und Zuordnungen, Rollen für einen Zeitraum
   deaktivierbar, API-Schlüssel auf ein Modul begrenzt.
 
@@ -216,7 +218,8 @@ Drei Arten:
 
 | Art | Rollen | Eigenschaften |
 |---|---|---|
-| Systemrolle, fest | `ADMIN`, `MITGLIED`, `HALLENNUTZER` | Rechte im Code festgelegt und bei jedem Start erzwungen (wie heute) |
+| Systemrolle, fest | `ADMIN` | Rechte im Code festgelegt |
+| Rolle „nur Admin“ | `MITGLIED`, `HALLENNUTZER` | vom Portal automatisch vergeben; Berechtigungen pflegt nur ein Administrator, keine `core.*`-Rechte, nicht löschbar |
 | Amtsrolle aus Vorlage | siehe unten | vom Modul als **Rollenvorlage** mitgeliefert, per Knopf angelegt, danach frei änderbar; die Rollenpflege zeigt Abweichungen von der Vorlage |
 | Eigene Rolle | nach Bedarf | wie heute |
 

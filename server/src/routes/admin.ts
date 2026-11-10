@@ -163,7 +163,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/api/admin/roles', { preHandler: requireAuth('core.roles:display') }, async () => {
     return sql`
-      select r.id, r.name, r.description, r.system,
+      select r.id, r.name, r.description, r.system, r.nur_admin as "nurAdmin",
              to_char(r.inaktiv_von, 'YYYY-MM-DD') as "inaktivVon", to_char(r.inaktiv_bis, 'YYYY-MM-DD') as "inaktivBis",
              r.inaktiv_grund as "inaktivGrund", core.rolle_inaktiv(r.inaktiv_von, r.inaktiv_bis) as inaktiv,
              coalesce((select array_agg(permission order by permission) from core.role_permissions p where p.role_id = r.id), '{}') as permissions,
@@ -207,9 +207,17 @@ export async function adminRoutes(app: FastifyInstance) {
     const body = roleBody.parse(req.body);
     const zeitraumMitgeschickt = typeof req.body === 'object' && req.body !== null && 'inaktivVon' in req.body;
     await change(req, async (tx) => {
-      const [r] = await tx`select system from core.roles where id = ${id}`;
+      const [r] = await tx`select system, nur_admin from core.roles where id = ${id}`;
       if (!r) throw new BusinessError('Rolle nicht gefunden.');
       if (id === 'ADMIN' && body.inaktivVon) throw new BusinessError('Die Administratorrolle kann nicht deaktiviert werden.');
+      // vom Portal automatisch vergebene Rollen (z. B. Mitglied, Hallennutzer): nur Administratoren, keine Administrationsrechte
+      if (r.nur_admin) {
+        if (!req.user?.roles.includes('ADMIN')) throw new BusinessError('Diese Rolle kann nur ein Administrator ändern.', 403);
+        const admin = body.permissions.filter((p) => p === '*' || p.startsWith('core.'));
+        if (admin.length) {
+          throw new BusinessError(`Diese Rolle erhalten Benutzer automatisch (z. B. bei der Selbstregistrierung) – Administrationsrechte sind nicht erlaubt: ${admin.join(', ')}.`);
+        }
+      }
       await tx`update core.roles set name = ${body.name}, description = ${body.description ?? null} where id = ${id}`;
       // Deaktivierungszeitraum nur ändern, wenn er mitgeschickt wird (ältere Aufrufer lassen ihn unverändert)
       if (zeitraumMitgeschickt) {
@@ -250,9 +258,10 @@ export async function adminRoutes(app: FastifyInstance) {
   app.delete('/api/admin/roles/:id', { preHandler: requireAuth('core.roles:edit') }, async (req) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     return change(req, async (tx) => {
-      const [r] = await tx`select system from core.roles where id = ${id}`;
+      const [r] = await tx`select system, nur_admin from core.roles where id = ${id}`;
       if (!r) throw new BusinessError('Rolle nicht gefunden.');
       if (r.system) throw new BusinessError('Systemrollen können nicht gelöscht werden.');
+      if (r.nur_admin) throw new BusinessError('Diese Rolle vergibt das Portal automatisch (z. B. bei Registrierung oder Benutzeranlage) – sie kann nicht gelöscht werden.');
       await tx`delete from core.role_permissions where role_id = ${id}`;
       const n = (await tx`delete from core.user_roles where role_id = ${id}`).count;
       await tx`delete from core.roles where id = ${id}`;

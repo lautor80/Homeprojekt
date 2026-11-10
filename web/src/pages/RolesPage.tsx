@@ -8,13 +8,15 @@ import { useLoad } from '../components/useLoad';
 import { FieldBox, FormGrid, TextField } from '../components/FormFields';
 import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { useCan } from '../session';
+import { useCan, useSession } from '../session';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
 import { PermissionEditor, type PermGroup } from '../components/PermissionEditor';
 
 interface Role {
   id: string; name: string; description: string | null; system: boolean; permissions: string[]; userCount: number;
+  /** vom Portal automatisch vergeben (z. B. Mitglied, Hallennutzer): nur Administratoren ändern, nicht löschbar */
+  nurAdmin?: boolean;
   /** Deaktivierungszeitraum (JJJJ-MM-TT): von = erster, bis = letzter Tag ohne Wirkung; bis leer = unbefristet */
   inaktivVon: string | null; inaktivBis: string | null; inaktivGrund: string | null;
   /** heute deaktiviert (vom Server ermittelt) */
@@ -38,12 +40,14 @@ interface RolleBenutzer { id: string; username: string; displayName: string; ema
 
 export function RolesPage() {
   const can = useCan();
+  const istAdmin = useSession().me.user.roles.includes('ADMIN');
   const darfAendern = can('core.roles:edit');
   const roles = useLoad(() => api.get<Role[]>('/api/admin/roles'));
   const catalog = useLoad(() => api.get<PermGroup[]>('/api/admin/permissions'));
   const [edit, setEdit] = useState<Edit | null>(null);
   const sperre = useSperre('ROLE', edit && !edit.isNew ? edit.id : null, darfAendern, { bezeichnung: `Rolle ${edit?.id ?? ''}` });
-  const mayEdit = darfAendern && sperre.eigen;
+  // Rollen „nur Admin“ (Mitglied, Hallennutzer) ändert nur ein Administrator
+  const mayEdit = darfAendern && sperre.eigen && (!edit?.nurAdmin || istAdmin);
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
   const darfEntziehen = can('core.users:edit');
   const [error, setError] = useState<string | null>(null);
@@ -108,10 +112,11 @@ export function RolesPage() {
         return <ObjectStatus state={st.state} title={r.inaktivGrund ?? undefined}>{st.text}</ObjectStatus>;
       },
     },
-    { Header: '', accessor: 'system', width: 90, Cell: ({ value }: CellInstance) => (value ? <Tag hideStateIcon>System</Tag> : null) },
+    { Header: '', accessor: 'system', width: 110, Cell: ({ value, row }: CellInstance) => (value ? <Tag hideStateIcon>System</Tag>
+      : (row.original as Role).nurAdmin ? <Tag design="Set2" colorScheme="6" hideStateIcon title="Wird vom Portal automatisch vergeben; ändern kann sie nur ein Administrator">nur Admin</Tag> : null) },
     ...(darfAendern ? [{
       Header: '', id: 'loeschen', width: 60, disableSortBy: true,
-      Cell: ({ row }: CellInstance) => ((row.original as Role).system ? null
+      Cell: ({ row }: CellInstance) => ((row.original as Role).system || (row.original as Role).nurAdmin ? null
         : <Button design="Transparent" icon="delete" tooltip="Rolle löschen" onClick={(e) => { e.stopPropagation(); setError(null); setConfirmDelete(row.original as Role); }} />),
     }] : []),
   ];
@@ -144,7 +149,7 @@ export function RolesPage() {
           <Bar
             startContent={!edit?.isNew && edit?.id ? <ChangeHistoryButton objectType="ROLE" objectKey={edit.id} /> : undefined}
             endContent={<>
-              {mayEdit && !edit?.isNew && !edit?.system && (
+              {mayEdit && !edit?.isNew && !edit?.system && !edit?.nurAdmin && (
                 <Button design="Negative" icon="delete" onClick={() => setConfirmDelete(edit as Role)}>Löschen</Button>
               )}
               {mayEdit && <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}
@@ -157,6 +162,13 @@ export function RolesPage() {
           <>
             <SperrHinweis s={sperre} />
             {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+            {edit.nurAdmin && (
+              <MessageStrip hideCloseButton design={istAdmin ? 'Information' : 'Critical'} style={{ marginBottom: '1rem' }}>
+                Diese Rolle vergibt das Portal automatisch (Registrierung, Einladung, Benutzeranlage) – {istAdmin
+                  ? 'Berechtigungen wirken sofort für alle, die sie haben, auch für sich selbst registrierende Personen. Administrationsrechte sind nicht möglich; löschen geht nicht.'
+                  : 'ändern kann sie nur ein Administrator.'}
+              </MessageStrip>
+            )}
             {edit.system && (
               <MessageStrip hideCloseButton style={{ marginBottom: '1rem' }}>
                 {edit.id === 'ADMIN' ? 'Systemrolle: besitzt alle Berechtigungen, nur Bezeichnung änderbar.'
