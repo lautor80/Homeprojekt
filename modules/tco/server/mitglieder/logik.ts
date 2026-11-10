@@ -136,7 +136,11 @@ export async function mandatsref(db: Db, adrnr: string): Promise<string> {
   return leer(s.find((x) => mandatAktiv(x as never))?.mandatsnr);
 }
 
-export interface Person { adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; eintritt: string | null; austritt: string | null; rolle: string }
+export interface Person {
+  adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; eintritt: string | null; austritt: string | null; rolle: string;
+  /** Adressnummer des abweichenden Zahlers, über den diese Person zahlt ('' = zahlt selbst) – Ebene im Vertragsbaum */
+  zahlt_ueber: string;
+}
 
 /** Mitglied, abweichender Zahler und alle (nicht ausgetretenen) Personen mit demselben Zahler bzw. diesem Mitglied als Zahler */
 export async function familieLesen(db: Db, m: Record<string, any>): Promise<Person[]> {
@@ -146,7 +150,7 @@ export async function familieLesen(db: Db, m: Record<string, any>): Promise<Pers
                             or (austritt is null and (adrnrkih = ${kopf} or adrnrkih = ${m.adrnr}))`;
   const p: Person[] = rows.map((r) => ({
     adrnr: r.adrnr, name: condense(`${leer(r.vorname)} ${leer(r.nachname)}`), mitglnrn: leer(r.mitglnrn), geburtsdatum: r.geburtsdatum,
-    eintritt: r.eintritt, austritt: r.austritt,
+    eintritt: r.eintritt, austritt: r.austritt, zahlt_ueber: verweis(r.adrnrkih) === r.adrnr ? '' : verweis(r.adrnrkih),
     rolle: r.adrnr === m.adrnr ? 'Mitglied' : r.adrnr === verweis(m.adrnrkih) ? 'Abweichender Zahler' : r.adrnrkih === m.adrnr ? 'Zahlt über dieses Mitglied' : 'Familienmitglied',
   }));
   const rang = (x: Person) => (x.adrnr === m.adrnr ? 0 : x.rolle === 'Abweichender Zahler' ? 1 : 2);
@@ -158,14 +162,18 @@ export interface Vertrag {
   vertragende: string | null; betrag: number; zahler_adrnr: string; zahler: string; laeuft: boolean; eigen: boolean;
 }
 
-/** Verträge des Mitglieds und der Personen, die über dieses Mitglied zahlen */
-export async function vertraegeLesen(db: Db, m: Record<string, any>): Promise<Vertrag[]> {
+/**
+ * Verträge des Mitglieds und der Personen, die über dieses Mitglied zahlen.
+ * Mit adrnrs: die Verträge genau dieser Personen (Vertragsbaum mit allen verknüpften Personen).
+ */
+export async function vertraegeLesen(db: Db, m: Record<string, any>, adrnrs?: string[]): Promise<Vertrag[]> {
+  if (adrnrs && !adrnrs.length) return [];
   const rows = await db`select v.*, p.vorname, p.nachname, p.geburtsdatum, z.vorname as z_vorname, z.nachname as z_nachname,
                                k.vorname as k_vorname, k.nachname as k_nachname
                           from tco.vertraege v join tco.mitglieder p on p.adrnr = v.adrnr
                           left join tco.mitglieder z on z.adrnr = v.zahler_adrnr and z.adrnr <> v.adrnr and ltrim(v.zahler_adrnr, '0') <> ''
                           left join tco.mitglieder k on k.adrnr = p.adrnrkih and k.adrnr <> p.adrnr and ltrim(p.adrnrkih, '0') <> ''
-                         where v.adrnr = ${m.adrnr} or (p.adrnrkih = ${m.adrnr} and p.adrnr <> ${m.adrnr})`;
+                         where ${adrnrs ? db`v.adrnr in ${db(adrnrs)}` : db`(v.adrnr = ${m.adrnr} or (p.adrnrkih = ${m.adrnr} and p.adrnr <> ${m.adrnr}))`}`;
   const h = heute();
   return rows.map((v) => ({
     adrnr: v.adrnr, person: condense(`${leer(v.vorname)} ${leer(v.nachname)}`), vertragnr: leer(v.vertragnr), art: leer(v.art),
@@ -200,6 +208,7 @@ export async function detailLesen(db: Db, adrnr: string) {
   const [k] = await db`select kanal from tco.kommpref where adrnr = ${adrnr}`;
   const schluessel = await db`select counter, ausgabe, ausgabebeleg, ruecknahme, ruecknahmebeleg from tco.schluessel where adrnr = ${adrnr} order by counter`;
   const notizen = await db`select notiz_id, erstellt_am, erstellt_von, notiz from tco.mgnotiz where adrnr = ${adrnr} order by erstellt_am desc`;
+  const familie = await familieLesen(db, m);
   return {
     mitglied: {
       adrnr: m.adrnr, anrede: leer(m.anrede), vorname: leer(m.vorname), nachname: leer(m.nachname), strasse: leer(m.strasse), plz: leer(m.plz),
@@ -218,8 +227,10 @@ export async function detailLesen(db: Db, adrnr: string) {
       mandatsref: await mandatsref(db, adrnr),
     },
     trainer: !!a?.trainer, zuid: leer(a?.zuid), kanal: leer(k?.kanal),
-    familie: await familieLesen(db, m),
+    familie,
     vertraege: await vertraegeLesen(db, m),
+    /** Vertragsbaum: Verträge aller verknüpften Personen (Mitglied, abweichender Zahler, Familie) */
+    vertraegeFamilie: await vertraegeLesen(db, m, familie.map((p) => p.adrnr)),
     sepa: await sepaLesen(db, m),
     schluessel, notizen,
     gruppen: await mitgliedGruppen(db, adrnr),

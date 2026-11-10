@@ -21,7 +21,11 @@ export interface Bank {
   abwkontoinh: string; adrnrkih: string; kontoinhaber: string; mandatsref: string;
   zahler: { adrnr: string; name: string; austritt: string | null; iban: string } | null;
 }
-export interface Person { adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; eintritt: string | null; austritt: string | null; rolle: string }
+export interface Person {
+  adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; eintritt: string | null; austritt: string | null; rolle: string;
+  /** zahlt über diese Adressnummer ('' = selbst) – Ebene im Vertragsbaum */
+  zahlt_ueber?: string;
+}
 export interface Vertrag {
   adrnr: string; person: string; vertragnr: string; art: string; artname: string; sollstellung: string; vertragbegin: string | null;
   vertragende: string | null; betrag: number; zahler_adrnr: string; zahler: string; laeuft: boolean; eigen: boolean;
@@ -35,6 +39,8 @@ export interface Detail {
   /** false = Bankdaten kommen maskiert (Berechtigung tco.bankdaten:display fehlt) */
   bankKlar: boolean;
   familie: Person[]; vertraege: Vertrag[]; sepa: Sepa[];
+  /** Vertragsbaum: Verträge aller verknüpften Personen (Mitglied, abweichender Zahler, Familie) */
+  vertraegeFamilie: Vertrag[];
   schluessel: { counter: string; ausgabe: string | null; ausgabebeleg: string | null; ruecknahme: string | null; ruecknahmebeleg: string | null }[];
   notizen: { notiz_id: string; erstellt_am: string; erstellt_von: string | null; notiz: string }[];
   /** direkt zugeordnete Mitgliedergruppen */

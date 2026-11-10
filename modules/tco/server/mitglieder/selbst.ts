@@ -55,6 +55,11 @@ export async function meineLesen(db: Db, benutzerId: string) {
     },
     familie: d.familie,
     vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && !v.vertragende, endeBei: vertragsEnde(v) })),
+    // Vertragsbaum mit allen verknüpften Personen; kündbar sind nur eigene Verträge und die von Personen, die über mich zahlen
+    vertraegeFamilie: d.vertraegeFamilie.map((v) => ({
+      ...v, endeBei: vertragsEnde(v),
+      kuendbar: v.laeuft && !v.vertragende && d.vertraege.some((x) => x.adrnr === v.adrnr && x.vertragnr === v.vertragnr),
+    })),
     kuendigung: { mitgliedschaft: endeJahr(), jugend: endeJugend(), heute: heute() },
     gekuendigt: !!d.mitglied.austritt,
   };

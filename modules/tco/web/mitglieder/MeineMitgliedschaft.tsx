@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, TextArea,
 } from '@ui5/webcomponents-react';
-import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
+import type { AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -13,9 +13,10 @@ import { ObjectHeader } from '@core/components/ObjectHeader';
 import { Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { useSperre, SperrHinweis } from '@core/sperre';
-import { TCO, dat, eur } from '../util';
+import { TCO, dat } from '../util';
 import type { Person, Vertrag } from './typen';
 import { GruppenAuswahl, type BaumGruppe } from './GruppenTab';
+import { VertragsBaum } from './VertragsBaum';
 
 /**
  * „Meine Mitgliedschaft“: eigene Stammdaten sehen, Kontaktdaten und (bei Lastschrift) die eigene Bankverbindung ändern,
@@ -31,7 +32,9 @@ interface Meine {
   };
   titel: string; trainer: boolean; kanal: string;
   bank: { zahlungsart_txt: string; zahlungsweise_txt: string; iban: string; bic: string; bank: string; kontoinhaber: string; zahler: string | null; zahltSelbst: boolean; lastschrift: boolean; mandatsref: string };
-  familie: Person[]; vertraege: (Vertrag & { kuendbar: boolean; endeBei: string })[]; kuendigung: { mitgliedschaft: string; jugend: string; heute: string }; gekuendigt: boolean;
+  familie: Person[]; vertraege: (Vertrag & { kuendbar: boolean; endeBei: string })[];
+  /** Vertragsbaum: Verträge aller verknüpften Personen; kündbar nur eigene und die von Personen, die über mich zahlen */
+  vertraegeFamilie: (Vertrag & { kuendbar: boolean; endeBei: string })[]; kuendigung: { mitgliedschaft: string; jugend: string; heute: string }; gekuendigt: boolean;
 }
 type Kontakt = { strasse: string; plz: string; ort: string; telefon: string; mobil: string; email: string; bildrechte: boolean };
 
@@ -85,10 +88,9 @@ export function MeineMitgliedschaft() {
   if (kein) return <AppPage title="Meine Mitgliedschaft"><MessageStrip design="Information" hideCloseButton>{kein}</MessageStrip></AppPage>;
   if (!d) return <AppPage title="Meine Mitgliedschaft">{error ? <MessageStrip design="Negative">{error}</MessageStrip> : <BusyIndicator active style={{ display: 'block', padding: '2rem' }} />}</AppPage>;
   const m = d.mitglied;
-  // nur laufende Verträge (auch bereits gekündigte, die noch nicht beendet sind)
-  const aktive = d.vertraege.filter((v) => v.laeuft);
-  const eigene = aktive.filter((v) => v.eigen);
-  const fremde = aktive.filter((v) => !v.eigen);
+  // eigene laufende Verträge (auch bereits gekündigte, die noch nicht beendet sind) – enden mit der Mitgliedschaft
+  const eigene = d.vertraege.filter((v) => v.laeuft && v.eigen);
+  const vertraegeBaum = d.vertraegeFamilie ?? d.vertraege;
 
   return (
     <AppPage title="Meine Mitgliedschaft" subtitle="Eigene Daten sehen und pflegen">
@@ -130,9 +132,17 @@ export function MeineMitgliedschaft() {
         </Attributes>
       </Section>
 
-      <Section title="Aktive Verträge" count={aktive.length} flush>
-        <Vertragstabelle vertraege={[...eigene, ...fremde]} onKuendigen={(v) => { setError(null); setKuend({ art: 'VERTRAG', v }); }} />
-        <Text className="portal-muted portal-small" style={{ display: 'block', padding: '0.5rem 1rem' }}>
+      <Section title="Verträge" count={vertraegeBaum.filter((v) => v.laeuft).length}>
+        <VertragsBaum personen={d.familie.length ? d.familie : [{ adrnr: m.adrnr, name: `${m.vorname} ${m.nachname}`, mitglnrn: m.mitglnrn, geburtsdatum: m.geburtsdatum, eintritt: m.eintritt, austritt: m.austritt, rolle: 'Mitglied' }]}
+                      vertraege={vertraegeBaum} ich={m.adrnr} ichText={`${m.vorname} ${m.nachname} (ich)`} aktionenBreite={190}
+                      vertragAktion={(v) => (v.kuendbar && !gesperrt
+                        ? <Button design="Transparent" icon="decline" tooltip={`Kündigung zum ${dat(v.endeBei)}`} onClick={() => { setError(null); setKuend({ art: 'VERTRAG', v }); }}>Vertrag kündigen</Button>
+                        : null)} />
+        <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+          Der Baum zeigt deine Verträge und die der verknüpften Personen (Zahler oben, darunter wer über ihn zahlt). Kündigen kannst du deine
+          eigenen Verträge und die von Personen, die über dich zahlen.
+        </Text>
+        <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.25rem' }}>
           Mitgliedschaft und Verträge enden zum 31.12. des laufenden Jahres ({dat(d.kuendigung.mitgliedschaft)}), Jugendtraining zum nächsten 30.09. ({dat(d.kuendigung.jugend)}).
           Kündigungsdatum ist das Tagesdatum; die Bestätigung wird gedruckt und per E-Mail zugestellt.
         </Text>
@@ -183,29 +193,6 @@ export function MeineMitgliedschaft() {
       {pdf && <PdfDialog url={pdf.url} title={pdf.server ? pdf.name : 'Kündigungsbestätigung'} filename={pdf.name} onClose={() => { if (!pdf.server) URL.revokeObjectURL(pdf.url); setPdf(null); }} />}
     </AppPage>
   );
-}
-
-function Vertragstabelle({ vertraege, onKuendigen }: { vertraege: (Vertrag & { kuendbar: boolean; endeBei: string })[]; onKuendigen: (v: Vertrag & { endeBei: string }) => void }) {
-  const columns: AnalyticalTableColumnDefinition[] = [
-    { Header: 'Vertrag', id: 'art', minWidth: 160, Cell: ({ row }: Cell) => { const v = row.original as Vertrag; return <Text>{v.artname || v.art}</Text>; } },
-    { Header: 'Für', id: 'person', width: 160, Cell: ({ row }: Cell) => { const v = row.original as Vertrag; return <Text>{v.eigen ? 'mich' : v.person}</Text>; } },
-    { Header: 'Beitrag', id: 'betrag', width: 130, hAlign: 'End', Cell: ({ row }: Cell) => { const v = row.original as Vertrag; return <Text>{eur(v.betrag)}{v.sollstellung ? ` ${v.sollstellung}` : ''}</Text>; } },
-    { Header: 'Beginn', accessor: 'vertragbegin', width: 100, Cell: ({ value }: Cell) => dat(value) },
-    { Header: 'Ende', id: 'ende', width: 110, Cell: ({ row }: Cell) => { const v = row.original as Vertrag; return <Text>{v.vertragende ? dat(v.vertragende) : 'unbefristet'}</Text>; } },
-    { Header: 'Zahler', accessor: 'zahler', width: 150 },
-    {
-      Header: 'Status', id: 'status', width: 110,
-      Cell: ({ row }: Cell) => { const v = row.original as Vertrag; return <ObjectStatus state={v.laeuft ? (v.vertragende ? 'Critical' : 'Positive') : 'None'}>{v.laeuft ? (v.vertragende ? 'gekündigt' : 'läuft') : 'beendet'}</ObjectStatus>; },
-    },
-    {
-      Header: '', id: 'aktion', width: 190,
-      Cell: ({ row }: Cell) => {
-        const v = row.original as Vertrag & { kuendbar: boolean; endeBei: string };
-        return v.kuendbar ? <Button design="Transparent" icon="decline" tooltip={`Kündigung zum ${dat(v.endeBei)}`} onClick={() => onKuendigen(v)}>Vertrag kündigen</Button> : null;
-      },
-    },
-  ];
-  return <AnalyticalTable columns={columns} data={vertraege} minRows={1} visibleRows={Math.min(Math.max(vertraege.length, 1), 10)} rowHeight={44} noDataText="Keine Verträge" />;
 }
 
 function KontaktDialog({ start, busy, error, onClose, onSave }: { start: Kontakt; busy: boolean; error: string | null; onClose: () => void; onSave: (k: Kontakt) => void }) {

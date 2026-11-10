@@ -118,9 +118,12 @@ export function BankDialog({ d, aw, onClose }: { d: Detail; aw: Auswahl; onClose
 }
 
 // ---------------------------------------------------------------- Vertrag
-export function VertragDialog({ d, aw, onClose }: { d: Detail; aw: Auswahl; onClose: (text: string | null) => void }) {
-  const personen = d.familie.filter((p) => p.adrnr === d.mitglied.adrnr || (!p.austritt && p.rolle === 'Zahlt über dieses Mitglied'));
-  const [v, setV] = useState({ adrnr: d.mitglied.adrnr, art: '', beginn: '', ende: '', turnus: '', betrag: '', zahler: '' });
+/** Personen, für die auf der Seite des Mitglieds Verträge angelegt werden können: das Mitglied und wer über es zahlt */
+export const vertragPersonen = (d: Detail) => d.familie.filter((p) => p.adrnr === d.mitglied.adrnr || (!p.austritt && p.rolle === 'Zahlt über dieses Mitglied'));
+
+export function VertragDialog({ d, aw, adrnr, onClose }: { d: Detail; aw: Auswahl; /** vorbelegte Person (Vertragsbaum) */ adrnr?: string; onClose: (text: string | null) => void }) {
+  const personen = vertragPersonen(d);
+  const [v, setV] = useState({ adrnr: adrnr && personen.some((p) => p.adrnr === adrnr) ? adrnr : d.mitglied.adrnr, art: '', beginn: '', ende: '', turnus: '', betrag: '', zahler: '' });
   const [stamm, setStamm] = useState(false);
   const person = d.familie.find((p) => p.adrnr === v.adrnr);
   useEffect(() => {
