@@ -7,9 +7,11 @@ hier nicht erzeugt (siehe docs/anleitung/README.md).
 
 Aufruf:  python3 scripts/anleitung.py            (gezeichnete Bilder und PDFs)
          python3 scripts/anleitung.py --pdf      (nur PDFs aus den Markdown-Dateien)
+         python3 scripts/anleitung.py --pdf hallenbuchung   (nur diese Anleitung)
 Benötigt: Python-Paket playwright mit Google Chrome, pandoc.
 """
 import html
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -113,27 +115,66 @@ def seiten():
     return s
 
 
-PDF_CSS = """
-@page{size:A4;margin:18mm 17mm 18mm}
-body{font-family:'Inter',Arial,Helvetica,sans-serif;font-size:11.5pt;line-height:1.5;color:#1d2d3e;max-width:none}
-h1{font-size:23pt;margin:0 0 4pt;color:#1d2d3e}
-h2{font-size:16.5pt;color:#1d2d3e;border-bottom:1.5pt solid #d17e0a;padding-bottom:3pt;margin:0 0 10pt;break-after:avoid}
-.kapitel{break-before:page}.kapitel.erste{break-before:auto;margin-top:18pt}
-h3{font-size:12.5pt;margin:14pt 0 4pt;break-after:avoid}
-p{margin:0 0 7pt}
-img{display:block;margin:6pt auto 12pt;max-width:100%;max-height:165mm;border:.75pt solid #d5dadd;border-radius:5pt}
-.schritt{break-inside:avoid}
-.schritt:has(table){break-inside:auto}
-img+ol,img+ul{break-before:avoid}
-blockquote{margin:8pt 0;padding:7pt 11pt;background:#fdf4e6;border-left:3pt solid #d17e0a;border-radius:3pt;break-inside:avoid}
-blockquote p:last-child{margin:0}
-table{border-collapse:collapse;width:100%;margin:6pt 0 12pt;font-size:10.5pt;break-inside:avoid}
-th,td{border:.75pt solid #c5cdd4;padding:5pt 7pt;text-align:left;vertical-align:top}
-th{background:#eef2f5}
-ul,ol{margin:0 0 8pt;padding-left:18pt}li{margin-bottom:2pt}
-hr{border:0;border-top:.75pt solid #c5cdd4;margin:12pt 0}
-code{font-family:inherit;background:#eef2f5;padding:0 3pt;border-radius:2pt}
+# Vereinslayout wie die PDFs des Portals (modules/tco/server/pdf/layout.ts, z. B. Einnahmen-Ausgaben-Rechnung):
+# orangefarbenes Kopfband mit weißem Logo auf der ersten Seite, Folgekopf mit orangefarbener Linie, Karten mit grauem Rand,
+# Zwischenüberschriften in Großbuchstaben, Fußband mit orangefarbener Linie und Seitenzahl.
+FARBE = dict(orange='#E2701F', orangeDk='#B9561A', orangeSoft='#FDF0E6', ink='#1F1F1F', grau='#6B6B6B', linie='#E3E3E3',
+             rand='#C8C8C8', fuss='#F6F4F2')
+LOGO = Path(__file__).resolve().parent.parent / 'modules' / 'tco' / 'server' / 'assets' / 'logo_weiss.png'
+SCHRIFT = "Helvetica,'Liberation Sans',Arial,sans-serif"
+PDF_CSS = f"""
+@page{{size:A4;margin:24mm 18mm 25mm;
+  @top-left{{content:"__TITEL__";font:700 9pt {SCHRIFT};color:{FARBE['ink']};vertical-align:bottom;padding-bottom:1.5mm;border-bottom:.6mm solid {FARBE['orange']}}}
+  @top-center{{content:"";vertical-align:bottom;padding-bottom:1.5mm;border-bottom:.6mm solid {FARBE['orange']}}}
+  @top-right{{content:"{VEREIN}";font:8pt {SCHRIFT};color:{FARBE['grau']};vertical-align:bottom;padding-bottom:1.5mm;border-bottom:.6mm solid {FARBE['orange']}}}}}
+/* Deckblatt (Seite 1): randlos für das Kopfband, Vorspann mit eigenem Seitenrand */
+@page deckblatt{{margin:0 0 25mm;@top-left{{content:none;border:0}}@top-center{{content:none;border:0}}@top-right{{content:none;border:0}}}}
+.deckblatt{{page:deckblatt}}
+.vorspann{{padding:0 18mm}}
+body{{font-family:{SCHRIFT};font-size:10pt;line-height:1.48;color:{FARBE['ink']};margin:0}}
+.band{{position:relative;width:100%;height:46mm;background:{FARBE['orange']};color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.band .titel{{position:absolute;left:18mm;top:22mm;font-size:22pt;line-height:1.1;max-width:112mm}}
+.band .zeile{{position:absolute;left:18mm;top:35mm;font-size:10pt}}
+.band img{{position:absolute;left:137mm;top:5.6mm;width:57mm;height:34.7mm;border:0;border-radius:0;margin:0;object-fit:contain}}
+.nachband{{height:10mm}}
+h1{{display:none}}
+h2{{font-size:15pt;font-weight:700;color:{FARBE['ink']};border-bottom:.6mm solid {FARBE['orange']};padding-bottom:2.5pt;margin:0 0 9pt;break-after:avoid}}
+.kapitel{{break-before:page}}
+h3{{font-size:8.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.3pt;color:{FARBE['orangeDk']};margin:13pt 0 4pt;break-after:avoid}}
+p{{margin:0 0 6.5pt}}
+strong{{color:{FARBE['ink']}}}
+img{{display:block;box-sizing:border-box;margin:6pt auto 12pt;max-width:100%;max-height:160mm;border:.3mm solid {FARBE['rand']};border-radius:3mm}}
+.schritt{{break-inside:avoid}}
+.schritt:has(table){{break-inside:auto}}
+img+ol,img+ul{{break-before:avoid}}
+blockquote{{margin:8pt 0 10pt;padding:7pt 11pt;background:{FARBE['orangeSoft']};border:.3mm solid {FARBE['rand']};border-radius:3mm;break-inside:avoid;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}}
+blockquote p:last-child,blockquote ul:last-child{{margin-bottom:0}}
+table{{border-collapse:separate;border-spacing:0;width:100%;margin:6pt 0 12pt;font-size:9pt;break-inside:avoid;border:.3mm solid {FARBE['rand']};border-radius:3mm;overflow:hidden}}
+th,td{{padding:5pt 8pt;text-align:left;vertical-align:top;border-bottom:.2mm solid {FARBE['linie']}}}
+tr:last-child td{{border-bottom:0}}
+th{{font-size:7.5pt;font-weight:400;color:{FARBE['grau']};border-bottom:.3mm solid {FARBE['linie']}}}
+ul,ol{{margin:0 0 8pt;padding-left:16pt}}li{{margin-bottom:2pt}}
+ol li::marker{{color:{FARBE['orangeDk']};font-weight:700}}
+hr{{border:0;border-top:.3mm solid {FARBE['linie']};margin:12pt 0}}
+code{{font-family:inherit;background:{FARBE['fuss']};padding:0 3pt;border-radius:2pt}}
 """
+
+
+def kopf_fuss(titel):
+    """Folgekopf (ab Seite 2; auf Seite 1 hat der Rand oben die Höhe 0) und Fußband im Vereinslayout"""
+    f = FARBE
+    stil = '<style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>'
+    kopf = (f'{stil}<div style="width:100%;margin:0 18mm;padding-top:7mm;font-family:{SCHRIFT};display:flex;justify-content:space-between;'
+            f'align-items:flex-end;border-bottom:.6mm solid {f["orange"]};padding-bottom:1.5mm">'
+            f'<span style="font-size:9pt;font-weight:700;color:{f["ink"]}">{e(titel)}</span>'
+            f'<span style="font-size:8pt;color:{f["grau"]}">{e(VEREIN)}</span></div>')
+    fuss = (f'{stil}<div style="width:100%;font-family:{SCHRIFT};margin:0">'
+            f'<div style="text-align:right;font-size:7pt;color:{f["grau"]};padding:0 18mm 2.5mm">Seite <span class="pageNumber"></span> von <span class="totalPages"></span></div>'
+            f'<div style="height:1mm;background:{f["orange"]}"></div>'
+            f'<div style="background:{f["fuss"]};height:14mm;display:flex;justify-content:space-between;align-items:center;padding:0 18mm;font-size:7pt;color:{f["grau"]}">'
+            f'<span>{e(VEREIN)} · Vereinsportal</span><span>{e(titel)}</span></div></div>')
+    return kopf, fuss
 
 
 def bilder(seite):
@@ -144,25 +185,34 @@ def bilder(seite):
         print('Bild', name)
 
 
-def pdfs(browser):
+def pdfs(browser, nur=None):
     for md in sorted(ZIEL.glob('*.md')):
-        if md.name == 'README.md':
+        if md.name == 'README.md' or (nur and md.stem not in nur):
             continue
         body = subprocess.run(['pandoc', '-f', 'gfm', '-t', 'html', str(md)], check=True, capture_output=True, text=True).stdout
+        # Titel (h1 „Titel – Zusatz“) ins Kopfband
+        h1 = re.search(r'<h1[^>]*>(.*?)</h1>', body, re.S)
+        titel_html = h1.group(1) if h1 else md.stem
+        titel_text = ' '.join(html.unescape(re.sub(r'<[^>]+>', '', titel_html)).split())
+        haupt, _, zusatz = titel_text.partition(' – ')
+        band = (f'<div class="band"><img src="{LOGO.as_uri()}" alt=""><div class="titel">{e(haupt)}</div>'
+                f'<div class="zeile">{e(zusatz or "Anleitung")} · {e(VEREIN)}</div></div><div class="nachband"></div>')
+        # Deckblatt: Kopfband, Einleitung, „Gut zu wissen“ und Inhalt; jedes Kapitel beginnt danach auf einer neuen Seite
         # Kapitel (h2) beginnen auf einer neuen Seite; Kapitelanfang und jeder Schritt (h3) bleiben mit Text und Bild zusammen
         kapitel = body.split('<h2')
-        body = kapitel[0]
+        body = f'<div class="deckblatt">{band}<div class="vorspann">{kapitel[0]}</div></div>'
         for i, k in enumerate(kapitel[1:]):
             teile = ('<h2' + k).split('<h3')
             bloecke = [teile[0] + ('<h3' + teile[1] if len(teile) > 1 else '')] + ['<h3' + t for t in teile[2:]]
             body += f'<div class="kapitel{" erste" if i == 0 else ""}">' + ''.join(f'<div class="schritt">{b}</div>' for b in bloecke) + '</div>'
+        _, fuss = kopf_fuss(haupt)
         seite = browser.new_page()
         seite.goto(md.as_uri())
-        seite.set_content(f'<!doctype html><html lang="de"><meta charset="utf-8"><base href="{ZIEL.as_uri()}/"><style>{PDF_CSS}</style><body>{body}</body></html>',
-                          wait_until='networkidle')
-        seite.pdf(path=str(md.with_suffix('.pdf')), format='A4', print_background=True, display_header_footer=True,
-                  header_template='<span></span>',
-                  footer_template='<div style="font-size:8pt;color:#667;width:100%;text-align:center">Seite <span class="pageNumber"></span> von <span class="totalPages"></span></div>')
+        seite.set_content(f'<!doctype html><html lang="de"><meta charset="utf-8"><title>{e(titel_text)}</title><base href="{ZIEL.as_uri()}/">'
+                          f'<style>{PDF_CSS.replace("__TITEL__", haupt.replace(chr(34), ""))}</style>'
+                          f'<body>{body}</body></html>', wait_until='networkidle')
+        seite.pdf(path=str(md.with_suffix('.pdf')), print_background=True, display_header_footer=True, prefer_css_page_size=True,
+                  header_template='<span></span>', footer_template=fuss)
         seite.close()
         print('PDF ', md.with_suffix('.pdf').name)
 
@@ -174,7 +224,8 @@ def main():
             seite = browser.new_page(viewport={'width': 1000, 'height': 800}, device_scale_factor=2)
             bilder(seite)
             seite.close()
-        pdfs(browser)
+        # einzelne Anleitungen: Dateinamen ohne Endung, z. B. „--pdf hallenbuchung“
+        pdfs(browser, [a for a in sys.argv[1:] if not a.startswith('--')] or None)
         browser.close()
 
 

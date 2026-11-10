@@ -29,3 +29,14 @@ python3 scripts/anleitung.py --pdf    # nur PDFs, nach Änderungen am Text
 ```
 
 Ändern sich die Anmeldeseiten, die betroffenen Bildschirmfotos neu aufnehmen (Breite etwa 512 Pixel).
+
+**Vereinslayout der PDFs** (wie die PDFs des Portals, z. B. Einnahmen-Ausgaben-Rechnung, `modules/tco/server/pdf/layout.ts`):
+Deckblatt mit orangefarbenem Kopfband, Titel und weißem Vereinslogo, darunter Einleitung und Inhalt; jedes Kapitel auf einer
+neuen Seite mit Folgekopf (Titel links, Verein rechts, orangefarbene Linie); Zwischenüberschriften in Großbuchstaben;
+Hinweise und Tabellen als Karten mit grauem Rand; Fußband mit orangefarbener Linie und Seitenzahl.
+
+```bash
+python3 scripts/anleitung.py --pdf hallenbuchung   # nur eine Anleitung neu erzeugen
+```
+
+**Anrede:** „Halle buchen“ duzt die Leser (persönliches Du). Die beiden Anmelde-Anleitungen verwenden noch „Sie“.
