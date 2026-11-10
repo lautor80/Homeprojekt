@@ -17,6 +17,10 @@ export const KATEGORIEN = {
   VERANSTALTUNG: 'Veranstaltung', MANNSCHAFT: 'Mannschaft / Spieltag', TRAINING: 'Training', TURNIER: 'Turnier', ARBEITSEINSATZ: 'Arbeitseinsatz', SITZUNG: 'Sitzung',
 } as const;
 export type Kategorie = keyof typeof KATEGORIEN;
+/** Weitere Personen („ich bringe n Personen mit“) sind bei Veranstaltungen und Arbeitseinsätzen immer möglich,
+ *  bei den übrigen Arten nur mit dem Schalter „Begleitpersonen erfassen“ (#16) */
+export const BEGLEITUNG_IMMER: readonly Kategorie[] = ['VERANSTALTUNG', 'ARBEITSEINSATZ'];
+export const begleitungMoeglich = (e: Pick<Event, 'begleitung' | 'kategorie'>) => e.begleitung || BEGLEITUNG_IMMER.includes(e.kategorie);
 export type Status = 'ZUSAGE' | 'ABSAGE' | 'VIELLEICHT';
 
 export interface Event {
@@ -68,7 +72,7 @@ export async function eventsLesen(db: Db, z: Zeitraum, o: { adrnr: string | null
      order by e.beginn, e.id`;
   const namen = new Map((await db`select id, name from tco.kal_gruppen`).map((g) => [Number(g.id), g.name as string]));
   return rows.map((r) => ({ e: eventAus(r), r })).filter(({ e }) => sichtbar(e, gruppen, o.alles)).map(({ e, r }) => ({
-    ...e, gruppen_namen: e.gruppen.map((g) => namen.get(g) ?? `Gruppe ${g}`),
+    ...e, gruppen_namen: e.gruppen.map((g) => namen.get(g) ?? `Gruppe ${g}`), begleitung_moeglich: begleitungMoeglich(e),
     zusagen: Number(r.zusagen), begleitpersonen: Number(r.begleitpersonen), absagen: Number(r.absagen), vielleicht: Number(r.vielleicht),
     mein_status: (r.mein_status as Status | null) ?? null, meine_begleitung: Number(r.meine_begleitung ?? 0), mein_kommentar: (r.mein_kommentar as string | null) ?? null,
     offen: anmeldungOffen(e), voll: !!e.max_teilnehmer && Number(r.zusagen) + Number(r.begleitpersonen) >= e.max_teilnehmer,
@@ -118,7 +122,7 @@ export async function rueckmelden(tx: Db, e: Event, adrnr: string, d: { status: 
   if (pflege && e.gruppen.length && !(await meineGruppen(tx, adrnr)).some((g) => e.gruppen.includes(g))) {
     throw new BusinessError('Dieses Mitglied gehört nicht zu den Gruppen der Veranstaltung – eine Rückmeldung ist nur für deren Mitglieder möglich.');
   }
-  const begleitung = e.begleitung ? Math.max(0, Math.min(20, d.begleitung ?? 0)) : 0;
+  const begleitung = begleitungMoeglich(e) ? Math.max(0, Math.min(20, d.begleitung ?? 0)) : 0;
   if (d.status === 'ZUSAGE' && e.max_teilnehmer) {
     const [s] = await tx`select coalesce(sum(1 + begleitung), 0)::int as n from tco.kal_anmeldungen where event_id = ${e.id} and status = 'ZUSAGE' and adrnr <> ${adrnr}`;
     if (Number(s.n) + 1 + begleitung > e.max_teilnehmer && !pflege) {
