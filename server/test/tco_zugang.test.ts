@@ -464,7 +464,7 @@ test('E-Mail-Protokoll: je Zeile erneut senden (auch gesendete), Absender in Kop
                           values ('Test', 'KOPIE-1', 'kopie@example.org', 'Hallo Kopie', 'wunsch@tc-test.de', 'Kasse | TC Test <kasse@tc-test.de>', 'gesendet', ${sql.json(inhalt as never)}) returning id`;
   let r = await admin('GET', `${U}?suche=kopie-1`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  let p = r.body.zeilen.find((x: any) => x.id === Number(neu.id));
+  let p = r.body.zeilen.find((x: any) => String(x.id) === String(neu.id));
   assert.deepEqual([p.status, p.erneut, p.erneut_hinweis, p.erneut_neuer_link, p.cc], ['gesendet', true, null, false, 'kasse@tc-test.de']);
   assert.deepEqual([p.nachricht, p.inhalt], [undefined, undefined], 'Inhalt wird nie ausgeliefert');
   // gesendete E-Mail erneut: Empfänger wie zuvor, tatsächlicher Absender in Kopie – beliebig oft
@@ -494,7 +494,7 @@ test('E-Mail-Protokoll: je Zeile erneut senden (auch gesendete), Absender in Kop
                            values ('Registrierung', ${`REG-${reg.id}`}, 'karla@example.org', 'Bitte bestätigen', 'portal@tc-test.de', 'gesendet',
                                    ${sql.json({ wiederholung: { art: 'REG_BESTAETIGUNG', id: Number(reg.id) } } as never)}) returning id`;
   r = await admin('GET', `${U}?suche=karla`);
-  p = r.body.zeilen.find((x: any) => x.id === Number(link.id));
+  p = r.body.zeilen.find((x: any) => String(x.id) === String(link.id));
   assert.deepEqual([p.erneut, p.erneut_neuer_link, p.cc], [true, true, 'portal@tc-test.de']);
   assert.match(p.person, /Karla Kopie \(Registrierung\)/);
   vorher = mails.length;
