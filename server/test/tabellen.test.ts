@@ -113,3 +113,56 @@ test('Selektion: Operatoren, Sortierung, Gruppierung mit Kennzahlen, verständli
   assert.equal((await leser('POST', D, { felder: ['adrnr"; drop table core.users; --'] })).status, 400);
   assert.equal(Number((await sql`select count(*)::int as n from core.users`)[0].n), 3);
 });
+
+test('Löschen markierter Sätze mit Papierkorb und Wiederherstellung (#34)', async () => {
+  const D = `${T}/tco/mitglieder/daten`;
+  // Schlüssel je Zeile kommen nur ungruppiert und nur für Tabellen mit verwendbarem Primärschlüssel
+  let r = await admin('POST', D, { felder: ['vorname'], filter: [{ spalte: 'adrnr', op: 'EQ', wert: '0000000702' }] });
+  assert.deepEqual([r.body.schluesselSpalten, r.body.schluessel], [['adrnr'], [['0000000702']]]);
+  assert.deepEqual(r.body.zeilen, [['Tom']], 'Schlüssel nicht in den Anzeigezeilen');
+  r = await admin('POST', `${T}/core/sessions/daten`, { felder: ['user_id'] });
+  assert.equal(r.body.schluessel, null, 'Schlüssel mit Geheimnis (token_hash) – nicht löschbar');
+
+  // nur mit core.tabellen:delete
+  assert.equal((await leser('POST', `${T}/tco/mitglieder/loeschen`, { schluessel: [['0000000702']] })).status, 403);
+  assert.equal((await leser('GET', `${T}/papierkorb`)).status, 403);
+  assert.equal((await admin('POST', `${T}/core/change_item/loeschen`, { schluessel: [['1']] })).status, 400, 'Änderungsbelege nie');
+
+  // abhängige Einträge (ON DELETE CASCADE) werden gemeldet statt still mitgelöscht
+  const [lu] = await sql`select id::text from core.users where username = 'leser'`;
+  r = await admin('POST', `${T}/core/users/loeschen`, { schluessel: [[lu.id]] });
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(r.body.message, /abhängige Einträge: .*core\.user_roles/);
+  assert.equal(Number((await sql`select count(*)::int as n from core.users where username = 'leser'`)[0].n), 1);
+
+  r = await admin('POST', `${T}/tco/mitglieder/loeschen`, { schluessel: [['0000000702'], ['0000009999']], grund: 'Test' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.geloescht, 1);
+  assert.equal((await sql`select 1 from tco.mitglieder where adrnr = '0000000702'`).length, 0);
+
+  r = await admin('GET', `${T}/papierkorb`);
+  const e = r.body.find((x: any) => x.tabelle === 'mitglieder' && x.schluessel.adrnr === '0000000702');
+  assert.ok(e, JSON.stringify(r.body));
+  assert.deepEqual([e.schema, e.geloescht_von, e.grund], ['tco', 'admin', 'Test']);
+  // die gesicherte Zeile ist in der Tabellenansicht maskiert
+  r = await admin('POST', `${T}/core/tabellen_papierkorb/daten`, { felder: ['zeile'] });
+  assert.ok(r.body.zeilen.every((z: string[]) => z[0] === '•••'));
+
+  // Wiederherstellen: Satz wieder da, Eintrag aus dem Papierkorb entfernt; zweites Mal nichts mehr zu tun
+  r = await admin('POST', `${T}/papierkorb/wiederherstellen`, { ids: [e.id] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.zeilen.map((z: any) => z.ok), [true], JSON.stringify(r.body));
+  const [tom] = await sql`select vorname, eintritt::text, zahlungsart from tco.mitglieder where adrnr = '0000000702'`;
+  assert.deepEqual([tom.vorname, tom.eintritt, tom.zahlungsart], ['Tom', '2021-06-01', 'B']);
+  assert.equal((await admin('GET', `${T}/papierkorb`)).body.some((x: any) => x.id === e.id), false);
+
+  // Konflikt: Schlüssel inzwischen wieder vorhanden → Meldung, Eintrag bleibt
+  await admin('POST', `${T}/tco/mitglieder/loeschen`, { schluessel: [['0000000702']] });
+  const id2 = (await admin('GET', `${T}/papierkorb`)).body[0].id;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt) values ('0000000702', 'Tom', 'Neu', '2022-01-01')`;
+  r = await admin('POST', `${T}/papierkorb/wiederherstellen`, { ids: [id2] });
+  assert.deepEqual([r.body.zeilen[0].ok, /bereits vorhanden/.test(r.body.zeilen[0].text)], [false, true]);
+  // nach 7 Tagen verfallen
+  await sql`update core.tabellen_papierkorb set geloescht_am = now() - interval '8 days' where id = ${id2}`;
+  assert.equal((await admin('GET', `${T}/papierkorb`)).body.some((x: any) => x.id === id2), false);
+});

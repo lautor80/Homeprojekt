@@ -174,7 +174,7 @@ Routen `feldschutz(req, permission)` anwenden.
 ## Tabellenansicht (Administration)
 
 Administration → **Tabellenansicht** (Berechtigung `core.tabellen:display`) zeigt alle Tabellen und Sichten der
-Schemas `core` und der aktiven Module – wie SE16, aber **nur lesend**.
+Schemas `core` und der aktiven Module – wie SE16; Löschen nur mit eigener Berechtigung und Papierkorb (siehe unten).
 
 - **Übersicht**: Schema, Tabelle, Art, Beschreibung (Tabellenkommentar), Zeilen (geschätzt), Spalten, Größe – suchbar,
   filter-, sortier- und gruppierbar; Klick oder Auswahlfeld oben öffnet die Tabelle.
@@ -195,6 +195,17 @@ und Gruppierung arbeiten auf dem maskierten Wert, damit nichts erraten werden ka
 (Bankdaten) sind ohne die jeweilige Berechtigung maskiert wie im Rest des Portals, auch in `core.change_item`.
 Jede Abfrage läuft in einer lesenden Transaktion mit 20 Sekunden Zeitlimit; Zellen werden nach 2.000 Zeichen gekürzt,
 `bytea` erscheint als `[n Bytes]`. Tabellen- und Spaltennamen werden gegen den Systemkatalog geprüft.
+
+**Löschen mit Papierkorb** (Berechtigung `core.tabellen:delete`, #34): Im Ergebnis (ungruppiert) lassen sich Zeilen markieren und
+mit „Löschen“ samt Begründung entfernen. Jeder gelöschte Satz wird vorher vollständig in `core.tabellen_papierkorb` gesichert
+(Migration `012_tabellen_papierkorb.sql`) und ist **7 Tage** über **Papierkorb** (oben rechts) wiederherstellbar – genau so, wie er
+gelöscht wurde; danach entfernt das Portal die Einträge automatisch. Grenzen: nur echte Tabellen mit Primärschlüssel (keine Sichten,
+kein Schlüssel mit Geheimnis wie `core.sessions`), nicht `core.change_header`/`core.change_item` und der Papierkorb selbst,
+höchstens 1.000 Sätze je Vorgang. Sätze mit abhängigen Einträgen, die per `ON DELETE CASCADE/SET NULL` still mitgeändert würden,
+werden **nicht** gelöscht – die Meldung nennt die Tabellen. Löschen und Wiederherstellen erzeugen Änderungsbelege
+(`TABELLE_LOESCHEN`, `TABELLE_WIEDERHERSTELLEN`). Die gesicherte Zeile ist in der Tabellenansicht maskiert. Endpunkte:
+`POST /api/admin/tabellen/:schema/:tabelle/loeschen`, `GET /api/admin/tabellen/papierkorb`,
+`POST /api/admin/tabellen/papierkorb/wiederherstellen`, `POST /api/admin/tabellen/papierkorb/entfernen`.
 
 ## Neues Modul anlegen (z. B. `transport`)
 

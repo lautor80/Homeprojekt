@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
+  AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
   SegmentedButton, SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
@@ -9,12 +9,16 @@ import { AppPage } from '../components/AppPage';
 import { Section } from '../components/Section';
 import { useLoad } from '../components/useLoad';
 import { AuswahlBox } from '../components/AuswahlBox';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useCan } from '../session';
+import { toast } from '../toast';
 
 /**
  * Tabellenansicht (Administration → Tabellenansicht, wie SE16): alle Tabellen der Schemas „core“ und der aktiven
  * Module mit Struktur und Inhalt. Selektion mit Bedingungen (=, ≠, <, ≤, >, ≥, Intervall, Muster, Liste, leer),
  * Feldauswahl, Sortierung, Gruppierung mit Kennzahlen (Anzahl, Summe, Durchschnitt, Min, Max) – alles serverseitig;
- * im Ergebnis zusätzlich Spaltenfilter, Sortierung und Gruppierung der Tabelle. Nur lesend, Export als CSV.
+ * im Ergebnis zusätzlich Spaltenfilter, Sortierung und Gruppierung der Tabelle. Export als CSV.
+ * Mit core.tabellen:delete: markierte Sätze löschen – sie landen 7 Tage im Papierkorb und lassen sich wiederherstellen (#34).
  * Geheimnisse (Hashes, Tokens, Passwörter) und Bankdaten ohne Berechtigung kommen maskiert vom Server.
  */
 interface Tabelle { schema: string; tabelle: string; beschreibung: string | null; art: string; zeilen: string; spalten: number; bytes: string }
@@ -23,7 +27,11 @@ interface Spalte {
   schluessel: number | null; schutz: 'GEHEIM' | 'iban' | 'bic' | 'text' | null; numerisch: boolean;
 }
 interface Struktur { schema: string; tabelle: string; zeilen: number; spalten: Spalte[] }
-interface Ergebnis { spalten: { name: string; text: string; numerisch: boolean }[]; zeilen: (string | null)[][]; gesamt: number; mehr: boolean }
+interface Ergebnis {
+  spalten: { name: string; text: string; numerisch: boolean }[]; zeilen: (string | null)[][]; gesamt: number; mehr: boolean;
+  /** Primärschlüssel je Zeile (nur für löschbare Tabellen, ungruppiert) */
+  schluesselSpalten: string[] | null; schluessel: string[][] | null;
+}
 
 type Op = 'EQ' | 'NE' | 'LT' | 'LE' | 'GT' | 'GE' | 'BT' | 'CP' | 'NP' | 'IN' | 'NULL' | 'NNULL';
 const OPS: { op: Op; text: string; hilfe?: string }[] = [
@@ -56,7 +64,13 @@ function merken(key: string, s: Selektion) {
 }
 
 export function TabellenPage() {
+  const can = useCan();
+  const darfLoeschen = can('core.tabellen:delete');
   const liste = useLoad(() => api.get<Tabelle[]>('/api/admin/tabellen'));
+  /** markierte Ergebniszeilen (Index) und Sicherheitsabfrage zum Löschen */
+  const [markiert, setMarkiert] = useState<number[]>([]);
+  const [frage, setFrage] = useState(false);
+  const [papierkorb, setPapierkorb] = useState(false);
   const [wahl, setWahl] = useState<string | null>(null);
   const [struktur, setStruktur] = useState<Struktur | null>(null);
   const [sel, setSel] = useState<Selektion>(LEER);
@@ -68,7 +82,7 @@ export function TabellenPage() {
   const [suche, setSuche] = useState('');
 
   useEffect(() => {
-    setStruktur(null); setErg(null); setError(null); setDetail(null);
+    setStruktur(null); setErg(null); setError(null); setDetail(null); setMarkiert([]);
     if (!wahl) return;
     const [schema, tabelle] = wahl.split('.');
     api.get<Struktur>(`/api/admin/tabellen/${encodeURIComponent(schema)}/${encodeURIComponent(tabelle)}`)
@@ -88,7 +102,8 @@ export function TabellenPage() {
         limit: sel.limit,
         offset: weitere && erg ? erg.zeilen.length : 0,
       });
-      setErg(weitere && erg ? { ...r, zeilen: [...erg.zeilen, ...r.zeilen] } : r);
+      setErg(weitere && erg ? { ...r, zeilen: [...erg.zeilen, ...r.zeilen], schluessel: r.schluessel && erg.schluessel ? [...erg.schluessel, ...r.schluessel] : r.schluessel } : r);
+      if (!weitere) setMarkiert([]);
       setAnsicht('DATEN');
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
@@ -130,7 +145,21 @@ export function TabellenPage() {
   ];
 
   // ------------------------------------------------------------------ Ergebnis
-  const daten = useMemo(() => (erg?.zeilen ?? []).map((r) => Object.fromEntries(r.map((x, i) => [`c${i}`, x]))), [erg]);
+  const daten = useMemo(() => (erg?.zeilen ?? []).map((r, z) => ({ _i: z, ...Object.fromEntries(r.map((x, i) => [`c${i}`, x])) })), [erg]);
+  const zeilenOptionen = useMemo(() => ({ getRowId: (r: { _i: number }) => String(r._i), autoResetSelectedRows: false, autoResetSortBy: false, autoResetFilters: false }), []);
+  const loeschbar = darfLoeschen && !!erg?.schluessel;
+
+  async function loeschen(grund: string) {
+    if (!struktur || !erg?.schluessel) return;
+    setFrage(false); setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string }>(`/api/admin/tabellen/${encodeURIComponent(struktur.schema)}/${encodeURIComponent(struktur.tabelle)}/loeschen`,
+        { schluessel: markiert.map((i) => erg.schluessel![i]), grund });
+      toast(r.text, 8000);
+      setBusy(false);
+      await ausfuehren();
+    } catch (e) { setError((e as Error).message); setBusy(false); }
+  }
   const ergSpalten: AnalyticalTableColumnDefinition[] = (erg?.spalten ?? []).map((s, i) => ({
     Header: s.text, accessor: `c${i}`, id: `c${i}`, hAlign: s.numerisch ? 'End' : 'Begin',
     minWidth: 90, width: Math.min(320, Math.max(90, s.text.length * 9 + 30)),
@@ -154,6 +183,7 @@ export function TabellenPage() {
                     eintraege={(liste.data ?? []).map((t) => ({ key: `${t.schema}.${t.tabelle}`, text: `${t.schema}.${t.tabelle}`, zusatz: t.beschreibung ?? `${zahl(t.zeilen)} Zeilen` }))}
                     onWaehle={(k) => setWahl(k)} />
         {wahl && <Button icon="nav-back" onClick={() => setWahl(null)}>Alle Tabellen</Button>}
+        {darfLoeschen && <Button icon="trash" onClick={() => setPapierkorb(true)}>Papierkorb</Button>}
       </>}
     >
       {liste.error && <MessageStrip design="Negative">{liste.error}</MessageStrip>}
@@ -290,6 +320,8 @@ export function TabellenPage() {
                   {zahl(erg.zeilen.length)} von {zahl(erg.gesamt)} {gruppiert ? 'Gruppen' : 'Treffern'} angezeigt
                 </Text>
                 {erg.mehr && <Button icon="download-from-cloud" loading={busy} onClick={() => ausfuehren(true)}>Weitere {zahl(sel.limit)} laden</Button>}
+                {loeschbar && <Button design="Negative" icon="delete" disabled={!markiert.length || busy} onClick={() => setFrage(true)}
+                                     tooltip="Markierte Sätze löschen – 7 Tage im Papierkorb wiederherstellbar">Löschen{markiert.length ? ` (${markiert.length})` : ''}</Button>}
                 <Button icon="excel-attachment" onClick={csv}>CSV</Button>
                 <Text className="portal-muted portal-small">Spaltenkopf: filtern, sortieren und zusätzlich gruppieren · Zeile anklicken: alle Felder</Text>
               </>
@@ -301,6 +333,8 @@ export function TabellenPage() {
           )}
           {ansicht === 'DATEN' && (erg ? (
             <AnalyticalTable columns={ergSpalten} data={daten} loading={busy} filterable sortable groupable minRows={1}
+                             {...(loeschbar ? { selectionMode: 'Multiple' as const, selectionBehavior: 'RowSelector' as const, reactTableOptions: zeilenOptionen,
+                               onRowSelect: (e: { detail: { selectedRowIds: Record<string, boolean> } }) => setMarkiert(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number)) } : {})}
                              visibleRowCountMode="Auto" style={{ height: 'max(20rem, calc(100vh - 520px))' }}
                              onRowClick={(e) => {
                                const row = e.detail.row as unknown as { original?: Record<string, string | null>; isGrouped?: boolean };
@@ -331,6 +365,82 @@ export function TabellenPage() {
         </>
       )}
       {wahl && !struktur && !error && <Text>Lade …</Text>}
+      {struktur && erg?.schluessel && (
+        <ConfirmDialog open={frage} danger askReason title={`${markiert.length} Satz/Sätze löschen?`} confirmText="Löschen"
+                       text={`Die markierten Sätze werden aus ${struktur.schema}.${struktur.tabelle} gelöscht (Schlüssel: ${erg.schluesselSpalten!.join(', ')}). `
+                         + 'Sie bleiben 7 Tage im Papierkorb und lassen sich dort wiederherstellen. Sätze mit abhängigen Einträgen in anderen Tabellen werden nicht gelöscht. Bitte einen Grund angeben.'}
+                       onConfirm={loeschen} onCancel={() => setFrage(false)} />
+      )}
+      {papierkorb && <PapierkorbDialog tabelle={struktur ? `${struktur.schema}.${struktur.tabelle}` : null}
+                                       onClose={(geaendert) => { setPapierkorb(false); if (geaendert && erg) ausfuehren(); }} />}
     </AppPage>
+  );
+}
+
+/** Papierkorb der Tabellenansicht: gelöschte Sätze der letzten 7 Tage wiederherstellen oder endgültig entfernen (#34) */
+interface Eintrag { id: number; vorgang: string; schema: string; tabelle: string; schluessel: Record<string, unknown>; geloescht_am: string; geloescht_von: string; grund: string | null; verfaellt_am: string }
+function PapierkorbDialog({ tabelle, onClose }: { tabelle: string | null; onClose: (geaendert: boolean) => void }) {
+  const [liste, setListe] = useState<Eintrag[] | null>(null);
+  const [nurDiese, setNurDiese] = useState(!!tabelle);
+  const [wahl, setWahl] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [meldungen, setMeldungen] = useState<{ id: number; ok: boolean; text: string }[]>([]);
+  const [geaendert, setGeaendert] = useState(false);
+  const [endgueltig, setEndgueltig] = useState(false);
+  const laden = () => api.get<Eintrag[]>('/api/admin/tabellen/papierkorb').then((l) => { setListe(l); setWahl(new Set()); }).catch((e) => setError(e.message));
+  useEffect(() => { laden(); }, []);
+  const sichtbar = (liste ?? []).filter((e) => !nurDiese || `${e.schema}.${e.tabelle}` === tabelle);
+  const zeit = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  const umschalten = (id: number) => setWahl((w) => { const n = new Set(w); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function los(art: 'wiederherstellen' | 'entfernen') {
+    setBusy(true); setError(null); setEndgueltig(false);
+    try {
+      const r = await api.post<{ text: string; zeilen?: { id: number; ok: boolean; text: string }[] }>(`/api/admin/tabellen/papierkorb/${art}`, { ids: [...wahl] });
+      toast(r.text, 6000);
+      setMeldungen((r.zeilen ?? []).filter((z) => !z.ok));
+      if (art === 'wiederherstellen') setGeaendert(true);
+      await laden();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  const zelle = { padding: '0.3rem 0.5rem', borderTop: '1px solid var(--sapList_BorderColor)', verticalAlign: 'top' } as const;
+  return (
+    <Dialog open headerText="Papierkorb der Tabellenansicht" style={{ width: 'min(64rem, 96vw)' }} onClose={() => onClose(geaendert)}
+            footer={<Bar startContent={<Button design="Transparent" icon="delete" disabled={!wahl.size || busy} onClick={() => setEndgueltig(true)}>Endgültig entfernen</Button>}
+                         endContent={<>
+                           <Button design="Emphasized" icon="undo" disabled={!wahl.size || busy} onClick={() => los('wiederherstellen')}>{wahl.size} wiederherstellen</Button>
+                           <Button onClick={() => onClose(geaendert)}>Schließen</Button>
+                         </>} />}>
+      <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
+        Gelöschte Sätze bleiben 7 Tage hier und werden danach automatisch entfernt. Wiederhergestellt wird der Satz genau so, wie er gelöscht wurde.
+      </Text>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {meldungen.map((m) => <MessageStrip key={m.id} design="Critical" hideCloseButton style={{ marginBottom: '0.25rem' }}>Eintrag {m.id}: {m.text}</MessageStrip>)}
+      <div className="portal-row" style={{ gap: '1rem', marginBottom: '0.5rem' }}>
+        {tabelle && <CheckBox text={`nur ${tabelle}`} checked={nurDiese} onChange={(e) => setNurDiese(e.target.checked)} />}
+        <Button design="Transparent" onClick={() => setWahl(new Set(sichtbar.map((e) => e.id)))}>alle wählen</Button>
+        <Button design="Transparent" onClick={() => setWahl(new Set())}>keine</Button>
+      </div>
+      {!liste ? <Text>Lade …</Text> : !sichtbar.length ? <Text className="portal-muted">Der Papierkorb ist leer.</Text> : (
+        <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.875rem' }}>
+            <thead><tr>{['', 'Tabelle', 'Schlüssel', 'Gelöscht', 'von', 'Grund', 'verfällt'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+            <tbody>{sichtbar.map((e) => (
+              <tr key={e.id}>
+                <td style={zelle}><CheckBox checked={wahl.has(e.id)} onChange={() => umschalten(e.id)} accessibleName={`Eintrag ${e.id} wählen`} /></td>
+                <td style={zelle}>{e.schema}.{e.tabelle}</td>
+                <td style={zelle}>{Object.entries(e.schluessel).map(([k, v]) => `${k} = ${String(v)}`).join(', ')}</td>
+                <td style={zelle}>{zeit(e.geloescht_am)}</td>
+                <td style={zelle}>{e.geloescht_von}</td>
+                <td style={zelle}>{e.grund ?? ''}</td>
+                <td style={zelle}>{zeit(e.verfaellt_am)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      <ConfirmDialog open={endgueltig} danger title={`${wahl.size} Eintrag/Einträge endgültig entfernen?`} confirmText="Endgültig entfernen"
+                     text="Die gewählten Sätze lassen sich danach nicht mehr wiederherstellen." onConfirm={() => los('entfernen')} onCancel={() => setEndgueltig(false)} />
+    </Dialog>
   );
 }
