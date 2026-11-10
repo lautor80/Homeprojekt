@@ -583,6 +583,17 @@ test('Prüfliste: bestehende Regel zuordnen (je Anhang mit Zusammenfassen, E-Mai
   r = await ext(key, 'GET', `${E}/mailaktionen`);
   assert.deepEqual(r.body.filter((a: any) => a.vorgang === vo).map((a: any) => [a.art, a.ordner, a.uid]), [['verschieben', 'Werbung', '72']]);
 
+  // ausstehende Behandlung ändern (falscher Zielordner), danach ausgeführt: keine Änderung mehr
+  r = await admin('PUT', `${E}/vorgaenge/${vo}/mail`, { mail: { art: 'verschieben', ordner: 'INBOX.Belege.SumUp', gelesen: true } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await ext(key, 'GET', `${E}/mailaktionen`);
+  assert.deepEqual(r.body.filter((a: any) => a.vorgang === vo).map((a: any) => [a.art, a.ordner, a.gelesen]), [['verschieben', 'INBOX.Belege.SumUp', true]]);
+  assert.equal((await admin('PUT', `${E}/vorgaenge/${vo}/mail`, { mail: { art: 'verschieben' } })).status, 400, 'Zielordner fehlt');
+  assert.equal((await ext(key, 'POST', `${E}/vorgaenge/${vo}/mail-erledigt`)).status, 200);
+  r = await admin('PUT', `${E}/vorgaenge/${vo}/mail`, { mail: null });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits ausgeführt/);
+
   // Testlauf-Regel je Anhang auf einen Vorgang ohne Anhang: abgelehnt
   r = await admin('POST', `${E}/vorgaenge/${vo}/regel`, { regel_id: ids.mitglied });
   assert.equal(r.status, 400);

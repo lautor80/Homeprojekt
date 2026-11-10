@@ -383,7 +383,8 @@
           "name": "IMAP Postfach Verein"
         }
       },
-      "notes": "Vor dem Verschieben: Nach dem Verschieben hat die Mail im Zielordner eine andere UID."
+      "notes": "Vor dem Verschieben: Nach dem Verschieben hat die Mail im Zielordner eine andere UID.",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -500,7 +501,8 @@
           "name": "IMAP Postfach Verein"
         }
       },
-      "notes": "Den Zielordner gibt die Regel im Portal vor; er muss im Postfach existieren."
+      "notes": "Den Zielordner gibt die Regel im Portal vor (IMAP-Pfad, z. B. INBOX.Belege.SumUp); er muss im Postfach existieren. Schlägt das Verschieben fehl, bleibt nur diese E-Mail offen (Fehlerausgang) – die übrigen laufen weiter, das Portal liefert sie beim nächsten Lauf erneut.",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -532,7 +534,8 @@
           "name": "IMAP Postfach Verein"
         }
       },
-      "notes": "Verschiebt in den Papierkorb statt endgültig zu löschen. Den Ordnernamen an das Postfach anpassen (z. B. Trash, Papierkorb, Gelöschte Elemente)."
+      "notes": "Verschiebt in den Papierkorb statt endgültig zu löschen. Den Ordnernamen an das Postfach anpassen (z. B. Trash, Papierkorb, Gelöschte Elemente).",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
