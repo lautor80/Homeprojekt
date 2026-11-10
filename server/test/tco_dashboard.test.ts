@@ -250,6 +250,38 @@ test('Dashboard: Belegungsquote der Halle innerhalb der Buchungszeiten', async (
   assert.deepEqual([q2.belegt, q2.kapazitaet, q2.ohnePlatz], [240, 1680, 1]);
 });
 
+test('Dashboard: offene Hallenstunden – ohne Rechnung, künftig, Rechnungen nicht bezahlt (#103)', async () => {
+  const { halleOffen } = await import('../../modules/tco/server/dashboard/kpi.js');
+  const tagRel = (n: number) => new Date(Date.now() + n * 86_400_000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+  await sql`update tco.verein set halle_stichtag = ${tagRel(-20)}, halle_ausschluss = 'Platzwart'`;
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, assigned) values
+            ('O1', ${tagRel(-5)}, '10:00', '11:00', 'ERIKA MUSTER', '1', ''), ('O2', ${tagRel(30)}, '10:00', '12:00', 'ERIKA MUSTER', '1', ''),
+            ('O3', ${tagRel(-4)}, '15:00', '17:00', 'JUGENDTRAINING', '1', ''), ('O4', ${tagRel(-3)}, '08:00', '09:00', 'Hallensäuberung', '1', ''),
+            ('O5', ${tagRel(-3)}, '09:00', '10:00', 'PLATZWART', '1', ''), ('O6', ${tagRel(-2)}, '10:00', '11:00', 'ERIKA MUSTER', '2', ''),
+            ('P1', ${tagRel(-6)}, '18:00', '19:30', 'MAX MEIER', '1', 'Y'),
+            ('A1', ${tagRel(-7)}, '19:00', '20:00', 'ABO KUNDE', '3', 'Y'), ('A1', ${tagRel(0)}, '19:00', '20:00', 'ABO KUNDE', '3', 'Y'), ('A1', ${tagRel(7)}, '19:00', '20:00', 'ABO KUNDE', '3', 'Y')`;
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status) values
+            ('2026_900', 2026, 900, 'MAX MEIER', 50, '5'), ('2026_901', 2026, 901, 'ABO KUNDE', 300, '3'), ('2026_902', 2026, 902, 'MAX MEIER', 80, '4')`;
+  await sql`insert into tco.rgpos (rgnr_txt, rgpos, bid, datum, time_start, time_ende, dauer, prod_key, preis) values
+            ('2026_900', 1, 'P1', ${tagRel(-6)}, '18:00', '19:30', '90', '005', 30), ('2026_900', 2, null, ${tagRel(-6)}, null, null, '2', '093', 10),
+            ('2026_901', 1, 'A1', ${tagRel(-7)}, '19:00', '20:00', '60', '001', 300), ('2026_902', 1, 'P1', ${tagRel(-6)}, '18:00', '19:30', '90', '005', 80)`;
+  await sql`insert into tco.rgtz (rgnr_txt, fibeleg, betrag) values ('2026_900', 'F1', 20)`;
+  const o = await halleOffen(sql as never);
+  const z = (text: string) => { const x = o.zeilen.find((y) => y.text === text)!; return [x.anzahl, x.minuten, x.betrag]; };
+  // ohne Hallenpreise: Stunden zählen, Betrag 0; Jugendtraining, Hallensäuberung, Ausschlussliste und Stornos fehlen
+  assert.deepEqual([z('bereits gespielt'), z('künftige Termine')], [[1, 60, 0], [1, 120, 0]]);
+  assert.equal(o.ohnePreis, 2);
+  // Rechnungen: teilbezahlt 50 − 20 = 30 mit 90 Min aus der Buchungsposition; Abo-Position = 3 Termine × 60 Min; bezahlte Rechnung fehlt
+  assert.deepEqual([z('teilbezahlt'), z('versendet')], [[1, 90, 30], [1, 180, 300]]);
+  assert.deepEqual([o.minuten, o.betrag], [450, 330]);
+  const r = await admin('GET', `${D}?jahr=${J}`);
+  const k = r.body.bereiche.find((b: any) => b.key === 'HALLE').kpis.find((x: any) => x.key === 'HAL_ABR');
+  assert.deepEqual([k.title, k.value, k.hasDetail], ['Offene Hallenstunden', '7,5', true]);
+  const det = await admin('GET', `${D}/detail/HAL_ABR`);
+  assert.equal(det.status, 200, JSON.stringify(det.body));
+  assert.deepEqual(det.body.zeilen.at(-1).cols, ['Gesamt', '', '4', '7,5', '330,00']);
+});
+
 test('Dashboard: Berechtigung', async () => {
   assert.equal((await admin('POST', '/api/admin/roles', { id: 'DASH_LESER', name: 'Übersicht lesen', permissions: ['tco.dashboard:display'] })).status, 200);
   assert.equal((await admin('POST', '/api/admin/users', { username: 'leser', displayName: 'Lea Leser', password: 'start-passwort', roles: ['DASH_LESER'] })).status, 200);
