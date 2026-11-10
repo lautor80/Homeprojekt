@@ -229,6 +229,7 @@ function Monat({ d, j, m, onOeffnen }: { d: Daten; j: number; m: number; onOeffn
   for (let t = 1; t <= new Date(j, m + 1, 0).getDate(); t++) tage.push(new Date(j, m, t));
   const h = tagIso(new Date());
   return (
+    <>
     <div className="portal-kal__monatsraster">
       {WT.map((t) => <div key={t} className="portal-kal__kopf">{t}</div>)}
       {tage.map((t, i) => {
@@ -239,8 +240,8 @@ function Monat({ d, j, m, onOeffnen }: { d: Daten; j: number; m: number; onOeffn
           <div key={iso} className={`portal-kal__zelle${iso === h ? ' portal-kal__zelle--heute' : ''}`}>
             <span className="portal-kal__zelle-nr">{t.getDate()}</span>
             {evs.map((e) => (
-              <button key={e.id} type="button" className={`portal-kal__chip portal-kal__chip--${e.mein_status ?? 'OFFEN'}${e.abgesagt ? ' portal-kal__chip--abgesagt' : ''}`}
-                      onClick={() => onOeffnen(e.id)} title={`${e.titel} · ${zeitText(e)}`}>
+              <button key={e.id} type="button" className={`portal-kal__chip portal-kal__chip--art-${e.kategorie} portal-kal__chip--${e.mein_status ?? 'OFFEN'}${e.abgesagt ? ' portal-kal__chip--abgesagt' : ''}`}
+                      onClick={() => onOeffnen(e.id)} title={`${e.titel} · ${zeitText(e)} · ${d.kategorien[e.kategorie] ?? e.kategorie}${e.mein_status ? ` · ${STATUS_TEXT[e.mein_status]}` : ''}`}>
                 {!e.ganztags && <b>{uhr(e.beginn)}</b>} {e.titel}
               </button>
             ))}
@@ -248,6 +249,13 @@ function Monat({ d, j, m, onOeffnen }: { d: Daten; j: number; m: number; onOeffn
         );
       })}
     </div>
+    <div className="portal-kal__legende">
+      {Object.entries(d.kategorien).map(([k, t]) => <span key={k} className={`portal-kal__legende-art portal-kal__chip--art-${k}`}>{t}</span>)}
+      <span><span className="portal-kal__legende-punkt" style={{ background: '#36a41d' }} />Zusage</span>
+      <span><span className="portal-kal__legende-punkt" style={{ background: '#e76500' }} />Vielleicht</span>
+      <span><span className="portal-kal__legende-punkt" style={{ background: '#d20a0a' }} />Absage</span>
+    </div>
+    </>
   );
 }
 
