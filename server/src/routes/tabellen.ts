@@ -165,7 +165,7 @@ export async function tabellenRoutes(app: FastifyInstance) {
     const ergebnis = await change(req, async (tx) => {
       await tx.unsafe(`set local statement_timeout = '20s'`);
       // jüngste zuerst: wurde erst das Kind, dann der Elternsatz gelöscht, kommt der Elternsatz zuerst zurück
-      const eintraege = await tx`select id::int, schema_name, tabelle, zeile from core.tabellen_papierkorb where id = any(${ids}) order by id desc`;
+      const eintraege = await tx`select id::int, schema_name, tabelle from core.tabellen_papierkorb where id = any(${ids}) order by id desc`;
       const out: { id: number; ok: boolean; text: string }[] = [];
       for (const e of eintraege) {
         try {
@@ -177,8 +177,9 @@ export async function tabellenRoutes(app: FastifyInstance) {
           if (!cols.length) throw new BusinessError('Tabelle gibt es nicht mehr');
           const ziel = `${ident(e.schema_name)}.${ident(e.tabelle)}`;
           await tx.savepoint((sp) => sp.unsafe(
-            `insert into ${ziel} (${cols.join(', ')}) overriding system value select ${cols.join(', ')} from jsonb_populate_record(null::${ziel}, $1::jsonb)`,
-            [JSON.stringify(e.zeile)]));
+            `insert into ${ziel} (${cols.join(', ')}) overriding system value select ${cols.join(', ')}
+               from jsonb_populate_record(null::${ziel}, (select p.zeile from core.tabellen_papierkorb p where p.id = $1))`,
+            [e.id]));
           await tx`delete from core.tabellen_papierkorb where id = ${e.id}`;
           out.push({ id: e.id, ok: true, text: 'wiederhergestellt' });
         } catch (x) {
