@@ -111,7 +111,40 @@ export async function ep3Nachweisen(db: Db, konto: string, passwort: string): Pr
  * Registrierung speichern. Externe mit Mailversand: Status EMAIL mit Bestätigungstoken (der Aufrufer sendet den Link);
  * ohne Mailversand bleibt es bei der manuellen Freigabe (OFFEN). Mitglieder: OFFEN bis zur Freigabe durch den Kassenwart.
  */
-export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, o: { mail?: boolean } = {}): Promise<{ id: number; ep3: boolean; text: string; token: string | null; art: 'EXTERN' | 'MITGLIED' }> {
+/**
+ * Registrierung in Schritten (#10): Person im Bestand finden – Mitglied über E-Mail + Geburtsdatum (genau ein aktives Mitglied
+ * ohne Zugang), externer Hallennutzer über die E-Mail seines bisherigen Kundenkontos (genau ein Kunde ohne Zugang).
+ * Bei einem Treffer übernimmt die Registrierung Name und Anschrift aus dem Bestand; angezeigt wird davon nur der
+ * Vorname mit dem Anfangsbuchstaben des Nachnamens.
+ */
+export interface Bestand { art: 'MITGLIED' | 'EXTERN'; schluessel: string; anrede: string; vorname: string; nachname: string; strasse: string; plz: string; ort: string; telefon: string | null; email: string }
+export async function bestandFinden(db: Db, art: 'MITGLIED' | 'EXTERN', email: string, geburtsdatum?: string | null): Promise<Bestand | null> {
+  const mail = email.trim().toLowerCase();
+  if (!mail) return null;
+  const anrede = (a: unknown, g: unknown) => (['Herr', 'Frau', 'Divers'].includes(String(a ?? '').trim()) ? String(a).trim()
+    : /^m/i.test(String(g ?? '')) ? 'Herr' : /^[wf]/i.test(String(g ?? '')) ? 'Frau' : '');
+  if (art === 'MITGLIED') {
+    if (!geburtsdatum) return null;
+    const t = await db`select m.* from tco.mitglieder m
+                        where lower(trim(coalesce(m.email, ''))) = ${mail} and m.geburtsdatum = ${geburtsdatum}::date
+                          and m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
+                          and not exists (select 1 from tco.mitgliedera a where a.adrnr = m.adrnr and a.benutzer_id is not null)`;
+    if (t.length !== 1) return null;
+    const m = t[0];
+    return { art, schluessel: m.adrnr, anrede: anrede(m.anrede, m.geschlecht), vorname: condense(m.vorname ?? ''), nachname: condense(m.nachname ?? ''),
+      strasse: condense(m.strasse ?? ''), plz: condense(m.plz ?? ''), ort: condense(m.ort ?? ''), telefon: null, email: String(m.email).trim() };
+  }
+  const t = await db`select k.* from tco.kunden k
+                      where lower(trim(coalesce(k.email, ''))) = ${mail} and k.benutzer_id is null
+                        and coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
+                        and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)`;
+  if (t.length !== 1) return null;
+  const k = t[0];
+  return { art, schluessel: k.zuid, anrede: anrede(null, k.geschlecht), vorname: condense(k.vorname ?? ''), nachname: condense(k.nachname ?? '') || condense(k.zalias ?? ''),
+    strasse: condense(k.strasse ?? ''), plz: condense(k.plz ?? ''), ort: condense(k.wohnort ?? ''), telefon: k.telefonnummer ?? null, email: String(k.email).trim() };
+}
+
+export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, o: { mail?: boolean; /** bisheriges Kundenkonto, über die E-Mail gefunden – wird nur mit E-Mail-Bestätigung verknüpft */ zuidPerMail?: string | null } = {}): Promise<{ id: number; ep3: boolean; text: string; token: string | null; art: 'EXTERN' | 'MITGLIED' }> {
   // nicht bestätigte Registrierungen nach 30 Tagen entfernen
   await db`delete from tco.registrierungen where status = 'EMAIL' and erstellt < now() - interval '30 days'`;
   const art = e.art ?? 'EXTERN';
@@ -144,6 +177,12 @@ export async function registrieren(db: Db, e: RegistrierungEingabe, ip: string, 
     hash = await hashPassword(e.passwort!);
   }
   const optIn = art === 'EXTERN' && !!o.mail;
+  // über die E-Mail gefundenes Kundenkonto: erst der Bestätigungslink beweist, dass das Postfach dem Registrierenden gehört
+  if (!zuid && optIn && o.zuidPerMail) {
+    const [offen] = await db`select 1 from tco.registrierungen where ep3_zuid = ${o.zuidPerMail} and (status = 'OFFEN' or (status = 'EMAIL' and email_bis > now()))`;
+    if (offen) throw new BusinessError('Für diese E-Mail-Adresse liegt bereits eine Registrierung vor. Bitte den Bestätigungslink aus der E-Mail verwenden.', 409);
+    zuid = o.zuidPerMail;
+  }
   const token = optIn ? randomBytes(32).toString('base64url') : null;
   const [r] = await db`insert into tco.registrierungen (benutzername, anzeigename, vorname, nachname, email, telefon, passwort_hash, ep3_zuid, nachricht, ip,
                                                         art, geburtsdatum, mitgliedsnr, status, email_token_hash, email_bis, anrede, strasse, plz, ort)

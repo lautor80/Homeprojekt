@@ -475,6 +475,48 @@ test('Einladung zum Vereinsportal: QR-Code per Mail/Brief und Schnellweg bei der
   assert.equal((await gast('POST', S, { email: 'sven@example.org', geburtsdatum: '1999-09-09' })).body.treffer, false, 'hat jetzt einen Benutzer');
 });
 
+test('Registrierung in Schritten: Suche im Bestand, Übernahme von Name und Anschrift (#10)', async () => {
+  const R = `${T}/platz/registrierung`;
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, anrede, vorname, nachname, geburtsdatum, email, eintritt, strasse, plz, ort) values
+            ('0000000801', '801', 'Frau', 'Berta', 'Bestand', '1970-07-07', 'berta@example.org', '2010-01-01', 'Weg 8', '66649', 'Oberthal')`;
+  await sql`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname, strasse, plz, wohnort, geschlecht) values
+            ('801', 'erwin.alt', 'enabled', 'erwin@example.org', 'Erwin', 'Alt', 'Halle 1', '66649', 'Oberthal', 'm')`;
+  // eigene Absenderadresse: das Kontingent je IP (Schutz gegen Massenanmeldungen) haben die Tests davor schon genutzt
+  const gast = async (method: string, path: string, payload?: unknown) => {
+    const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { 'x-portal-request': '1' }, remoteAddress: '10.0.0.8' });
+    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+  };
+  // Mitglied: E-Mail + Geburtsdatum; zurück kommt nur Vorname und Anfangsbuchstabe
+  let r = await gast('POST', `${R}/pruefen`, { art: 'MITGLIED', email: 'Berta@Example.org', geburtsdatum: '1970-07-07' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body, { treffer: true, name: 'Berta B.', benutzername: 'berta@example.org' });
+  assert.equal((await gast('POST', `${R}/pruefen`, { art: 'MITGLIED', email: 'berta@example.org', geburtsdatum: '1970-07-08' })).body.treffer, false);
+  assert.equal((await gast('POST', `${R}/pruefen`, { art: 'MITGLIED', email: 'berta@example.org' })).status, 400);
+  const basis = { benutzername: 'berta@example.org', passwort: 'bertas-kennwort-1', datenschutz: true, ausBestand: true };
+  assert.equal((await gast('POST', R, { ...basis, art: 'MITGLIED', email: 'berta@example.org', geburtsdatum: '1970-07-08' })).status, 400, 'kein Treffer → keine Übernahme');
+  r = await gast('POST', R, { ...basis, art: 'MITGLIED', email: 'berta@example.org', geburtsdatum: '1970-07-07' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /prüft Ihre Mitgliedschaft/);
+  const [rb] = await sql`select art, status, anrede, vorname, nachname, strasse, plz, ort, geburtsdatum::text from tco.registrierungen where benutzername = 'berta@example.org'`;
+  assert.deepEqual({ ...rb }, { art: 'MITGLIED', status: 'OFFEN', anrede: 'Frau', vorname: 'Berta', nachname: 'Bestand', strasse: 'Weg 8', plz: '66649', ort: 'Oberthal', geburtsdatum: '1970-07-07' });
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'berta@example.org', password: 'bertas-kennwort-1' })).status, 401, 'erst nach Freigabe durch den Vorstand');
+
+  // externer Hallennutzer: bisheriges Kundenkonto über die E-Mail; verknüpft wird erst mit dem Bestätigungslink
+  r = await gast('POST', `${R}/pruefen`, { art: 'EXTERN', email: 'erwin@example.org' });
+  assert.deepEqual(r.body, { treffer: true, name: 'Erwin A.', benutzername: 'erwin@example.org' });
+  assert.equal((await gast('POST', `${R}/pruefen`, { art: 'EXTERN', email: 'niemand@example.org' })).body.treffer, false);
+  r = await gast('POST', R, { ...basis, art: 'EXTERN', email: 'erwin@example.org', benutzername: 'erwin@example.org', passwort: 'erwins-kennwort-1' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /bestätigen/);
+  assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '801'`)[0].benutzer_id, null, 'noch nicht verknüpft');
+  r = await gast('POST', `${R}/bestaetigen`, { token: token(letzteMail('erwin@example.org')!.text, 'token') });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [u] = await sql`select u.id, array_agg(ur.role_id) as rollen from core.users u join core.user_roles ur on ur.user_id = u.id where u.username = 'erwin@example.org' group by u.id`;
+  assert.deepEqual(u.rollen, ['HALLENNUTZER']);
+  assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '801'`)[0].benutzer_id, u.id, 'bisheriges Kundenkonto übernommen');
+  assert.equal((await sql`select count(*)::int as n from tco.kunden where lower(email) = 'erwin@example.org'`)[0].n, 1, 'kein zweiter Kundenstammsatz');
+});
+
 test('Mailprotokoll und Testmail', async () => {
   let r = await admin('POST', '/api/mail/test', { an: 'test@example.org' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
