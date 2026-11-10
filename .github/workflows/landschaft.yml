@@ -1,0 +1,56 @@
+name: Landschaft
+
+# System- und Prozesslandschaft (Issue #118): docs/landschaft/ wird aus dem Code erzeugt (scripts/landschaft.mjs).
+# Pull Request: prüft die Verweise in docs/landschaft/prozesse.json gegen den Code (Routen, Rechte, Apps, n8n-Workflows).
+# Push auf main: erzeugt die Seiten neu und committet sie, wenn sich etwas geändert hat.
+
+on:
+  pull_request:
+    paths:
+      - 'modules/**'
+      - 'server/**'
+      - 'docs/n8n/**'
+      - 'docs/landschaft/prozesse.json'
+      - 'docker-compose.yml'
+      - 'scripts/landschaft.mjs'
+  push:
+    branches: [main]
+    paths:
+      - 'modules/**'
+      - 'server/**'
+      - 'docs/n8n/**'
+      - 'docs/landschaft/prozesse.json'
+      - 'docker-compose.yml'
+      - 'scripts/landschaft.mjs'
+  workflow_dispatch:
+
+jobs:
+  pruefen:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/landschaft.mjs --pruefen
+
+  aktualisieren:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/landschaft.mjs
+      - name: Geänderte Seiten committen
+        run: |
+          if git diff --quiet -- docs/landschaft; then echo "Landschaft ist aktuell."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/landschaft
+          git commit -m "docs(landschaft): aus dem Code aktualisiert [skip ci]"
+          git push

@@ -15,7 +15,9 @@
     "build": "npm run build:web && npm run build:server",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "test": "node --test --test-concurrency=1 --import tsx server/test/*.test.ts"
+    "test": "node --test --test-concurrency=1 --import tsx server/test/*.test.ts",
+    "doku:landschaft": "node scripts/landschaft.mjs",
+    "doku:pruefen": "node scripts/landschaft.mjs --pruefen"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
