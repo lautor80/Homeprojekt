@@ -10,6 +10,7 @@ import {
   KATEGORIEN, meineGruppen, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
 } from './logik.js';
 import { gruppeZurLiga, spielplanEvent, spielplanLesen } from './spielplan.js';
+import { eventRegelnAnwenden, eventRegelnLesen, eventRegelnSpeichern, eventsMasseAendern, gruppeNachRegeln, REGEL_FELDER, type RegelFeld } from './zuordnung.js';
 
 /**
  * Berechtigungsobjekte Vereinskalender:
@@ -96,9 +97,14 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const { zeilen, ignoriert } = spielplanLesen(b.text);
     if (zeilen.length > 200) throw new BusinessError(`Der Text enthält ${zeilen.length} Termine – höchstens 200 je Lauf.`);
     const gruppen = (await gruppenLesen(DB)).filter((g) => g.aktiv);
+    // Gruppe: zuerst das Regelwerk („Text in Spalte => Gruppe“), sonst die Gruppe, deren Name in der Liga vorkommt
+    const regeln = await eventRegelnLesen(DB);
     return {
       ignoriert,
-      zeilen: zeilen.map((x) => ({ ...x, ...spielplanEvent(x, b.praefix), gruppe: gruppeZurLiga(x.liga, gruppen)?.id ?? null })),
+      zeilen: zeilen.map((x) => {
+        const e = spielplanEvent(x, b.praefix);
+        return { ...x, ...e, gruppe: gruppeNachRegeln(e, regeln) ?? gruppeZurLiga(x.liga, gruppen)?.id ?? null };
+      }),
     };
   });
 
@@ -118,6 +124,41 @@ export async function kalenderRoutes(app: FastifyInstance) {
     }, { action: 'KAL_EVENT', reason: 'Massenanlage' });
     const n = zeilen.filter((x) => x.ok).length;
     return { zeilen, angelegt: n, text: `${n} Veranstaltung(en) angelegt${zeilen.length - n ? `, ${zeilen.length - n} bereits vorhanden` : ''}.` };
+  });
+
+  // ---------------------------------------------------------------- Tabelle: Massenbearbeitung und Regelwerk (#16)
+  /** Massenbearbeitung: nur die angegebenen Felder bei allen gewählten Veranstaltungen setzen */
+  app.post('/kalender/masse/aendern', pflege, async (req) => {
+    const { ids, ...d } = z.object({
+      ids: z.array(z.number().int().positive()).min(1, 'Bitte mindestens eine Veranstaltung auswählen.').max(2000),
+      titel: z.string().trim().min(1).max(120).optional(), ort: z.string().max(120).nullable().optional(),
+      kategorie: z.enum(Object.keys(KATEGORIEN) as [Kategorie, ...Kategorie[]]).optional(),
+      gruppen: z.array(z.number().int().positive()).optional(), anmeldung: z.boolean().optional(),
+    }).parse(req.body);
+    const n = await change(req, (tx) => eventsMasseAendern(tx, ids, d), { action: 'KAL_EVENT', reason: 'Massenbearbeitung' });
+    return { geaendert: n, text: `${n} Veranstaltung(en) geändert.` };
+  });
+
+  /** Regelwerk „Text in Spalte => Gruppe“ */
+  app.get('/kalender/regeln', pflege, async () => ({ regeln: await eventRegelnLesen(DB), felder: REGEL_FELDER }));
+  app.put('/kalender/regeln', pflege, async (req) => {
+    const { regeln } = z.object({
+      regeln: z.array(z.object({
+        feld: z.enum(Object.keys(REGEL_FELDER) as [RegelFeld, ...RegelFeld[]]), text: z.string().trim().min(1, 'Bitte einen Text angeben.').max(120),
+        gruppe_id: z.number().int().positive(), aktiv: z.boolean().default(true),
+      })).max(200),
+    }).parse(req.body);
+    const n = await change(req, (tx) => eventRegelnSpeichern(tx, regeln), { action: 'KAL_EVENT', reason: 'Regelwerk' });
+    return { regeln: await eventRegelnLesen(DB), text: n === 1 ? '1 Regel gesichert.' : `${n} Regeln gesichert.` };
+  });
+  /** Regelwerk anwenden: Standardzuordnung für Veranstaltungen ohne Gruppe (ueberschreiben = auch bereits zugeordnete) */
+  app.post('/kalender/regeln/anwenden', pflege, async (req) => {
+    const b = z.object({
+      ids: z.array(z.number().int().positive()).max(2000).optional(), ueberschreiben: z.boolean().default(false), simulation: z.boolean().default(false),
+    }).parse(req.body ?? {});
+    const zeilen = b.simulation ? await eventRegelnAnwenden(DB, b)
+      : await change(req, (tx) => eventRegelnAnwenden(tx, b), { action: 'KAL_EVENT', reason: 'Regelwerk angewendet' });
+    return { zeilen, text: `${zeilen.length} Veranstaltung(en) ${b.simulation ? 'würden zugeordnet' : 'einer Gruppe zugeordnet'}.` };
   });
 
   app.put('/kalender/:id', pflege, async (req) => {

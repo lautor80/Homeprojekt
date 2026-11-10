@@ -239,3 +239,67 @@ test('Gruppen-Veranstaltung: Rückmeldungen nur für Mitglieder der Gruppe, Ausw
   assert.equal((await admin('POST', `${K}/${spiel}/teilnehmer`, { adrnr: CARL, status: 'ZUSAGE' })).status, 200);
 });
 
+test('Tabelle: Massenbearbeitung und Regelwerk „Text in Spalte => Gruppe“ (#16)', async () => {
+  const R = `${K}/regeln`;
+  const [{ id: h40 }] = await sql`select id from tco.kal_gruppen where name = 'Herren 40'`;
+  const [{ id: andere }] = await sql`select id from tco.kal_gruppen where name <> 'Herren 40' order by id limit 1`;
+  const neu = async (titel: string, beschreibung: string) => {
+    const x = await admin('POST', K, { titel, beschreibung, kategorie: 'MANNSCHAFT', beginn: '2027-05-01T10:00:00.000Z' });
+    assert.equal(x.status, 200, JSON.stringify(x.body));
+    return x.body.id as number;
+  };
+  const a = await neu('Sommerrunde Herren 40 VL', 'TC Limbach 1 – TC Oberthal 1');
+  const b = await neu('Sommerrunde Damen LL', 'TC Oberthal 1 – SG Niedtal 1');
+  const ev = async (id: number) => (await sql`select titel, ort, kategorie, anmeldung, gruppen from tco.kal_events where id = ${id}`)[0];
+
+  // Regelwerk pflegen
+  assert.equal((await admin('PUT', R, { regeln: [{ feld: 'titel', text: ' ', gruppe_id: h40 }] })).status, 400);
+  assert.equal((await admin('PUT', R, { regeln: [{ feld: 'titel', text: 'x', gruppe_id: 99999 }] })).status, 400);
+  assert.equal((await admin('PUT', R, { regeln: [{ feld: 'spalte', text: 'x', gruppe_id: h40 }] })).status, 400);
+  let r = await admin('PUT', R, { regeln: [{ feld: 'titel', text: 'herren  40', gruppe_id: h40 }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', R);
+  assert.deepEqual([r.body.regeln.length, r.body.regeln[0].text, typeof r.body.felder.titel], [1, 'herren 40', 'string']);
+
+  // Vorschau ändert nichts; Anwenden ordnet Veranstaltungen ohne Gruppe zu (ohne Rücksicht auf Groß-/Kleinschreibung)
+  r = await admin('POST', `${R}/anwenden`, { ids: [a, b], simulation: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.zeilen.map((x: any) => [x.id, x.neu]), [[a, 'Herren 40']]);
+  assert.deepEqual((await ev(a)).gruppen, []);
+  r = await admin('POST', `${R}/anwenden`, { ids: [a, b] });
+  assert.match(r.body.text, /1 Veranstaltung\(en\) einer Gruppe zugeordnet/);
+  assert.deepEqual([(await ev(a)).gruppen.map(Number), (await ev(b)).gruppen], [[h40], []]);
+
+  // erste passende Regel gilt; bereits zugeordnete nur mit „überschreiben“
+  r = await admin('PUT', R, { regeln: [{ feld: 'beschreibung', text: 'TC Limbach', gruppe_id: andere }, { feld: 'titel', text: 'Herren 40', gruppe_id: h40 }, { feld: 'titel', text: 'Damen', gruppe_id: h40, aktiv: false }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${R}/anwenden`, { ids: [a, b] });
+  assert.equal(r.body.zeilen.length, 0, 'a ist schon zugeordnet, die Regel für b ist inaktiv');
+  r = await admin('POST', `${R}/anwenden`, { ids: [a, b], ueberschreiben: true });
+  assert.deepEqual(r.body.zeilen.map((x: any) => [x.id, x.bisher]), [[a, 'Herren 40']]);
+  assert.deepEqual((await ev(a)).gruppen.map(Number), [andere]);
+
+  // „Mehrere anlegen“ schlägt die Gruppe nach dem Regelwerk vor
+  r = await admin('POST', `${K}/masse/vorschau`, { text: 'Sa | 07.11.2026 | 17:00 | 161 | Halle Homburg | 1+2 | Herren 40 VL | TC Limbach 1 | TC Oberthal 1' });
+  assert.equal(r.body.zeilen[0].gruppe, andere, 'Regel auf die Begegnung geht dem Gruppennamen vor');
+
+  // Massenbearbeitung: nur die angegebenen Felder
+  assert.equal((await admin('POST', `${K}/masse/aendern`, { ids: [a] })).status, 400, 'kein Feld');
+  assert.equal((await admin('POST', `${K}/masse/aendern`, { ids: [a], gruppen: [99999] })).status, 400);
+  r = await admin('POST', `${K}/masse/aendern`, { ids: [a, b], ort: 'Halle Illingen', kategorie: 'TRAINING', anmeldung: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.geaendert, 2);
+  const [ea, eb] = [await ev(a), await ev(b)];
+  assert.deepEqual([ea.titel, ea.ort, ea.kategorie, ea.anmeldung, ea.gruppen.map(Number)], ['Sommerrunde Herren 40 VL', 'Halle Illingen', 'TRAINING', false, [andere]]);
+  assert.deepEqual([eb.titel, eb.ort, eb.kategorie], ['Sommerrunde Damen LL', 'Halle Illingen', 'TRAINING']);
+  assert.equal((await admin('POST', `${K}/masse/aendern`, { ids: [a, b], gruppen: [] })).status, 200);
+  assert.deepEqual((await ev(a)).gruppen, []);
+
+  // nur mit Pflegerecht
+  const anna = client();
+  assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
+  assert.equal((await anna('GET', R)).status, 403);
+  assert.equal((await anna('POST', `${K}/masse/aendern`, { ids: [a], ort: 'x' })).status, 403);
+  assert.equal((await admin('PUT', R, { regeln: [] })).status, 200);
+});
+

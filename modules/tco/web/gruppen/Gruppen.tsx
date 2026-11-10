@@ -22,7 +22,7 @@ import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDa
  * Mitglieder aufnehmen (ein Mitglied kann in mehreren Gruppen sein), Rolle je Zuordnung.
  * Dieselben Gruppen stehen im Mitgliedsstamm (Reiter „Gruppen“) und im Vereinskalender (Veranstaltung nur für Gruppen).
  */
-interface Zeile { id: string; text: string; g: Gruppe; m?: GruppenMitglied; subRows?: Zeile[] }
+interface Zeile { id: string; text: string; g: Gruppe; m?: GruppenMitglied; /** Knoten „Direkt zugeordnet“ einer Gruppe mit Untergruppen */ direkt?: boolean; subRows?: Zeile[] }
 interface Form { id: number | null; parent_id: number | null; name: string; beschreibung: string; aktiv: boolean; position: string }
 type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void; toggleRowExpanded?: (id: string, v?: boolean) => void };
 
@@ -76,7 +76,12 @@ export function Gruppen() {
       const blaetter: Zeile[] = mitZeigen || (such && !selbst)
         ? mitglieder.map((m) => ({ id: `${zeilenId(g)}:${m.adrnr}`, text: m.name, g, m }))
         : [];
-      return [{ id: zeilenId(g), text: g.name, g, subRows: [...kinder, ...blaetter] }];
+      // Hat die Gruppe Untergruppen, stehen ihre direkt zugeordneten Mitglieder in einem eigenen Knoten vor den Untergruppen –
+      // sonst sähen sie aus wie Mitglieder der letzten Untergruppe (#16)
+      const eigene: Zeile[] = kinder.length && blaetter.length
+        ? [{ id: `${zeilenId(g)}:direkt`, text: `Direkt in „${g.name}“ (ohne Untergruppe)`, g, direkt: true, subRows: blaetter }]
+        : blaetter;
+      return [{ id: zeilenId(g), text: g.name, g, subRows: kinder.length ? [...eigene, ...kinder] : eigene }];
     });
     return bauen(null, false);
   }, [gruppen, such, mitZeigen]);
@@ -89,6 +94,11 @@ export function Gruppen() {
     for (const g of gruppen) if (gruppen.some((k) => k.parent_id === g.id)) tabelle.current?.toggleRowExpanded?.(zeilenId(g), true);
   }, [geladen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (such) tabelle.current?.toggleAllRowsExpanded?.(true); }, [such, baum]);
+  // Knoten „Direkt zugeordnet“ sind immer aufgeklappt
+  useEffect(() => {
+    const auf = (z: Zeile[]) => z.forEach((x) => { if (x.direkt) tabelle.current?.toggleRowExpanded?.(x.id, true); if (x.subRows) auf(x.subRows); });
+    auf(baum);
+  }, [baum]);
 
   // ---------------------------------------------------------------- Ziehen und Ablegen
   // Gruppe auf Gruppe = unterordnen (auf das Feld über dem Baum = oberste Ebene), Mitglied auf Gruppe = verschieben
@@ -133,6 +143,14 @@ export function Gruppen() {
       Header: 'Gruppe / Mitglied', accessor: 'text', minWidth: 300,
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
+        if (z.direkt) {
+          return (
+            <div className="portal-gr__zelle" {...(pflege ? ablage(z.g) : {})}>
+              <Icon name="employee" />
+              <Text className="portal-muted">{z.text}</Text>
+            </div>
+          );
+        }
         if (z.m) {
           const m = z.m;
           return (
@@ -174,6 +192,7 @@ export function Gruppen() {
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
         if (z.m) return '';
+        if (z.direkt) return <Text className="portal-muted">{z.subRows?.length ?? 0}</Text>;
         const direkt = z.g.mitglieder.length;
         // maßgeblich ist die Gesamtzahl: Mitglieder der Untergruppen gehören zwingend zur Gruppe
         return <Text>{z.g.gesamt === direkt ? direkt : `${z.g.gesamt} · davon direkt ${direkt}`}</Text>;
@@ -183,6 +202,7 @@ export function Gruppen() {
       Header: '', id: 'aktionen', width: 250, hAlign: 'End' as const,
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
+        if (z.direkt) return '';
         if (z.m) {
           const m = z.m;
           return <Button icon="decline" design="Transparent" tooltip={`${m.name} aus „${z.g.name}“ entfernen`} disabled={busy}
