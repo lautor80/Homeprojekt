@@ -46,6 +46,8 @@
   font: inherit;
   color: inherit;
   width: 100%;
+  /* auch als <div> (Abo-Zeile): Innenabstand zählt zur Breite, sonst ragt die Zeile über die Liste hinaus */
+  box-sizing: border-box;
 }
 .portal-mz__eintrag:last-child { border-bottom: none; }
 .portal-mz__eintrag:active { background: var(--sapList_Active_Background, #eaecee); }
