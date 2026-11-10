@@ -3,38 +3,104 @@
   "nodes": [
     {
       "parameters": {
-        "mailbox": "INBOX",
-        "postProcessAction": "nothing",
-        "format": "simple",
-        "options": {}
-      },
-      "id": "e1",
-      "name": "Posteingang (IMAP)",
-      "type": "n8n-nodes-base.emailReadImap",
-      "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ],
-      "credentials": {
-        "imap": {
-          "id": "",
-          "name": "TCO IMAP Standard"
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
         }
       },
-      "notes": "Je Absender-Konto aus dem Workflow „TCO Mailversand“ (STANDARD und KONTEN) diesen Knoten kopieren, die IMAP-Zugangsdaten des Postfachs wählen und ebenfalls mit „Mail aufbereiten“ verbinden. „Action“ bleibt „Nothing“: die Mails bleiben ungelesen im Postfach."
+      "id": "e0",
+      "name": "Alle 5 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        100
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Jede eingegangene Mail für das Portal aufbereiten. Das Portal entscheidet, ob es eine Unzustellbar-Meldung,\n// eine Abwesenheitsnotiz oder eine Antwort auf eine gesendete E-Mail ist – alles andere verwirft es, gespeichert wird kein Inhalt.\nconst text = (v) => {\n  if (v == null) return '';\n  if (typeof v === 'string') return v;\n  if (Array.isArray(v)) return v.map(text).join(' ');\n  if (typeof v === 'object') return v.text || v.address || (Array.isArray(v.value) ? v.value.map((x) => x.address || '').join(', ') : '') || '';\n  return String(v);\n};\nreturn $input.all().map((item) => {\n  const j = item.json || {};\n  // je nach n8n-Version liegen die Kopfzeilen direkt im Objekt, unter metadata oder unter headers\n  const h = Object.assign({}, j.headers || {}, j.metadata || {}, j);\n  const kopf = (...namen) => { for (const n of namen) { const w = text(h[n]); if (w) return w; } return ''; };\n  const html = text(j.textHtml || j.html).replace(/<style[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');\n  return { json: {\n    postfach: kopf('delivered-to', 'x-original-to', 'to'),\n    von: kopf('from'),\n    betreff: kopf('subject'),\n    datum: kopf('date'),\n    message_id: kopf('message-id', 'messageId'),\n    in_reply_to: kopf('in-reply-to', 'inReplyTo'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: (text(j.textPlain || j.text) || html).slice(0, 50000),\n  } };\n});"
+        "resource": "email",
+        "operation": "getEmailsList",
+        "mailboxPath": {
+          "__rl": true,
+          "mode": "path",
+          "value": "INBOX"
+        },
+        "emailDateRange": {
+          "since": "={{ $now.minus({ days: 2 }).toISO() }}"
+        },
+        "includeParts": [
+          "textContent",
+          "headers"
+        ],
+        "includeAllHeaders": true
+      },
+      "id": "e1",
+      "name": "Posteingang lesen (IMAP)",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "TtTlIIM3mqhI2S7w",
+          "name": "IMAP Credentials account"
+        }
+      },
+      "notes": "Dieselben Zugangsdaten wie „Entwurf ablegen (IMAP)“ in „TCO Mailversand“ (Postfach des primären Kontos). Liest nur – nichts wird als gelesen markiert oder verschoben. Im Knoten prüfen: Datumsbereich „seit“ = vor 2 Tagen, Teile „Text Content“ und „Headers“."
+    },
+    {
+      "parameters": {
+        "resource": "email",
+        "operation": "getEmailsList",
+        "mailboxPath": {
+          "__rl": true,
+          "mode": "path",
+          "value": "INBOX"
+        },
+        "emailDateRange": {
+          "since": "={{ $now.minus({ days: 2 }).toISO() }}"
+        },
+        "includeParts": [
+          "textContent",
+          "headers"
+        ],
+        "includeAllHeaders": true
+      },
+      "id": "e1b",
+      "name": "Posteingang lesen (IMAP Benjamin)",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        240,
+        200
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "TCO IMAP Benjamin"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Zweites Absender-Konto wie „E-Mail senden (SMTP Benjamin)“ in „TCO Mailversand“. Braucht den IMAP-Zugang zu Benjamins Postfach (die SMTP-Zugangsdaten kann der IMAP-Knoten nicht verwenden). Ohne zweites Postfach: Knoten löschen."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Jede Mail aus den Posteingängen für das Portal aufbereiten. Das Portal entscheidet, ob es eine Unzustellbar-Meldung,\n// eine Abwesenheitsnotiz oder eine Antwort auf eine gesendete E-Mail ist – alles andere verwirft es, gespeichert wird kein Inhalt.\n// Bereits gemeldete Mails (Knoten „Gemeldet merken“) und Mails älter als TAGE werden übersprungen.\nconst TAGE = 3;\nconst merk = $getWorkflowStaticData('global');\nconst gemeldet = new Set(merk.gemeldet || []);\n\nconst adressen = (l) => (Array.isArray(l) ? l : l ? [l] : [])\n  .map((x) => (typeof x === 'string' ? x : x.name ? x.name + ' <' + (x.address || '') + '>' : x.address || '')).filter(Boolean).join(', ');\nconst text = (v) => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.map(text).join(' ') : typeof v === 'object' ? (v.text || v.address || '') : String(v));\n\nconst aus = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  const env = j.envelope || {};\n  // Kopfzeilen: je nach Version des IMAP-Knotens als Objekt oder als Rohtext\n  let h = j.headers || {};\n  if (typeof h === 'string') {\n    const roh = h.replace(/\\r?\\n[ \\t]+/g, ' ');\n    h = {};\n    for (const z of roh.split(/\\r?\\n/)) { const m = /^([^:\\s]+):\\s*(.*)$/.exec(z); if (m) h[m[1].toLowerCase()] = m[2]; }\n  }\n  const kopf = (n) => text(h[n] ?? h[n.toLowerCase()] ?? Object.entries(h).find(([k]) => k.toLowerCase() === n)?.[1]);\n  const datum = env.date || kopf('date') || '';\n  const zeit = datum ? new Date(datum).getTime() : NaN;\n  if (!Number.isNaN(zeit) && zeit < Date.now() - TAGE * 86400000) continue;\n  const message_id = text(env.messageId) || kopf('message-id');\n  const schluessel = message_id || [j.mailboxPath || 'INBOX', j.uid, datum].join('|');\n  if (gemeldet.has(schluessel)) continue;\n  const html = text(j.htmlContent || j.textHtml).replace(/<style[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');\n  aus.push({ json: {\n    schluessel,\n    postfach: adressen(env.to) || kopf('delivered-to') || kopf('to'),\n    von: adressen(env.from) || kopf('from'),\n    betreff: text(env.subject) || kopf('subject'),\n    datum: datum ? String(datum) : '',\n    message_id,\n    in_reply_to: text(env.inReplyTo) || kopf('in-reply-to'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: (text(j.textContent || j.textPlain) || html).slice(0, 50000),\n  } });\n}\nreturn aus;"
       },
       "id": "e2",
       "name": "Mail aufbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        240,
-        0
+        480,
+        100
       ]
     },
     {
@@ -62,20 +128,60 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        480,
-        0
+        720,
+        100
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "",
+          "id": "uWUue5JiSeFsYqNz",
           "name": "Header Auth account"
         }
       },
-      "notes": "Dieselbe Zugangsdatei wie am Webhook von „TCO Mailversand“ (Name X-TCO-Key, Wert = Webhook-Schlüssel im Portal). URL = Adresse des Portals aus Sicht von n8n."
+      "notes": "Dieselbe Zugangsdatei wie am Webhook von „TCO Mailversand“ (X-TCO-Key). URL = Adresse des Portals aus Sicht von n8n."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nach erfolgreicher Meldung ans Portal: Mails merken, damit sie beim nächsten Abruf nicht erneut gemeldet werden.\n// (Schlägt die Meldung fehl, bleibt nichts gemerkt – der nächste Lauf versucht es wieder; das Portal verbucht nichts doppelt.)\nconst merk = $getWorkflowStaticData('global');\nconst neu = $('Mail aufbereiten').all().map((i) => i.json.schluessel).filter(Boolean);\nmerk.gemeldet = [...new Set([...(merk.gemeldet || []), ...neu])].slice(-3000);\nreturn $input.all();"
+      },
+      "id": "e4",
+      "name": "Gemeldet merken",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        100
+      ]
     }
   ],
   "connections": {
-    "Posteingang (IMAP)": {
+    "Alle 5 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Posteingang lesen (IMAP)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Posteingang lesen (IMAP Benjamin)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posteingang lesen (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Mail aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posteingang lesen (IMAP Benjamin)": {
       "main": [
         [
           {
@@ -91,6 +197,17 @@
         [
           {
             "node": "An Portal melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "An Portal melden": {
+      "main": [
+        [
+          {
+            "node": "Gemeldet merken",
             "type": "main",
             "index": 0
           }

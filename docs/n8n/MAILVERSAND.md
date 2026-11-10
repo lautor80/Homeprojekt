@@ -119,8 +119,8 @@ Nachgezogen (Rechnung „versendet“ …) wird nur, wenn der erste Versand fehl
 ## Rückmeldungen: unzustellbar, Abwesenheit, Antworten (Workflow „TCO Maileingang“)
 
 „gesendet“ heißt nur: an den Mailserver übergeben. Ob die E-Mail ankam, zeigt erst die Rückmeldung im Postfach des Absenders.
-Der Workflow [`tco-maileingang.json`](tco-maileingang.json) liest die Posteingänge der Absender-Konten per IMAP und meldet jede
-eingegangene Mail an `POST /api/mail/eingang`. Das Portal ordnet zu und zeigt das Ergebnis im E-Mail-Protokoll an der gesendeten E-Mail:
+Der Workflow [`tco-maileingang.json`](tco-maileingang.json) liest alle fünf Minuten die Posteingänge der Absender-Konten per IMAP und meldet jede
+neue Mail der letzten Tage an `POST /api/mail/eingang`. Das Portal ordnet zu und zeigt das Ergebnis im E-Mail-Protokoll an der gesendeten E-Mail:
 
 | Art | Erkennung | Zuordnung |
 |---|---|---|
@@ -133,16 +133,27 @@ Im Protokoll wird aus „gesendet“ der Status **„unzustellbar“** (auch als
 Fehlerzeilen – **nie der Inhalt**; Mails ohne Bezug zu einer gesendeten E-Mail verwirft das Portal. Rückmeldungen zu E-Mails von vor dem
 Update werden über Adresse bzw. Betreff zugeordnet (die Message-ID wird erst seitdem festgehalten).
 
+Der Workflow ist wie „TCO Mailversand“ aufgebaut und nutzt **dieselben Zugangsdaten**: den IMAP-Knoten des Community-Pakets
+`n8n-nodes-imap` mit „IMAP Credentials account“ (Postfach des primären Kontos, bisher für Entwürfe) und „Header Auth account“ für den
+Aufruf des Portals. Ablauf: „Alle 5 Minuten“ → „Posteingang lesen (IMAP)“ je Absender-Konto → „Mail aufbereiten“ → „An Portal melden“ →
+„Gemeldet merken“. Gelesen wird nur; nichts wird als gelesen markiert oder verschoben, auch bereits gelesene Mails werden erfasst.
+
 Einrichten:
 
-1. In n8n **Import from File** → `tco-maileingang.json`.
-2. Knoten „Posteingang (IMAP)“: IMAP-Zugangsdaten des Standard-Absenders anlegen und wählen. **Je weiterem Absender-Konto** (`KONTEN` im
-   Workflow „TCO Mailversand“) den Knoten kopieren, dessen IMAP-Zugang wählen und ebenfalls mit „Mail aufbereiten“ verbinden – Rückläufer
-   landen immer im Postfach dessen, der gesendet hat. „Action“ bleibt „Nothing“: n8n markiert nichts als gelesen und verschiebt nichts.
-3. Knoten „An Portal melden“: Zugangsdatei „Header Auth account“ wählen (dieselbe wie am Webhook von „TCO Mailversand“: Name `X-TCO-Key`,
-   Wert = Webhook-Schlüssel der Anbindung). URL = Portal aus Sicht von n8n (im mitgelieferten Stack `http://app:8080/api/mail/eingang`);
-   der Header `x-portal-request: 1` muss bleiben.
-4. Aktivieren. Zum Test eine E-Mail an eine nicht existierende Adresse senden – nach dem Rückläufer steht die Zeile auf „unzustellbar“.
+1. In n8n **Import from File** → `tco-maileingang.json`. „Posteingang lesen (IMAP)“ und „An Portal melden“ finden ihre Zugangsdaten
+   von selbst, wenn der Workflow in dieselbe n8n-Instanz wie „TCO Mailversand“ importiert wird.
+2. Im Knoten „Posteingang lesen (IMAP)“ prüfen (die Feldnamen des Community-Knotens können je Version abweichen): Ordner `INBOX`,
+   Datumsbereich **seit** `{{ $now.minus({ days: 2 }).toISO() }}`, Teile **Text Content** und **Headers**. Ohne „Text Content“ lassen sich
+   Rückläufer nicht zuordnen, ohne Datumsbereich liest n8n bei jedem Lauf den ganzen Posteingang.
+3. **Zweites Absender-Konto** („Posteingang lesen (IMAP Benjamin)“, Gegenstück zu „E-Mail senden (SMTP Benjamin)“): Rückläufer und
+   Antworten landen im Postfach dessen, der gesendet hat – n8n braucht dafür den IMAP-Zugang zu diesem Postfach („TCO IMAP Benjamin“;
+   die SMTP-Zugangsdaten kann ein IMAP-Knoten nicht verwenden). Ohne zweite Zugangsdaten geht es nur, wenn der Mailserver die
+   eingehenden Mails dieses Postfachs als Kopie an das primäre Postfach weiterleitet – dann den Knoten löschen. Solange der Knoten
+   ohne Zugangsdaten bleibt, läuft der Rest trotzdem.
+4. Knoten „An Portal melden“: URL = Portal aus Sicht von n8n (im mitgelieferten Stack `http://app:8080/api/mail/eingang`); der Header
+   `x-portal-request: 1` muss bleiben.
+5. Aktivieren. Zum Test eine E-Mail an eine nicht existierende Adresse senden – spätestens fünf Minuten nach dem Rückläufer steht die
+   Zeile auf „unzustellbar“. „Gemeldet merken“ wirkt nur im aktiven Workflow, nicht bei „Execute workflow“ von Hand.
 
 Der Endpunkt nimmt nur Aufrufe mit dem Webhook-Schlüssel an (ohne hinterlegten Schlüssel gar keine). Aufrufformat (alles optional außer
 dem, was zum Zuordnen nötig ist): `postfach`, `von`, `betreff`, `datum`, `message_id`, `in_reply_to`, `references`, `auto`
