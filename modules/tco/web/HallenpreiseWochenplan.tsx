@@ -74,7 +74,7 @@ export function Wochenplan({ produkte, fenster, gruppen, edit, setProdukte, setF
   const preise = keys.filter((k) => gueltig.has(k)).map((k) => ({ key: k, ...gueltig.get(k)!, farbe: keys.indexOf(k) % FARBEN }));
   const key = preise.some((x) => x.key === keyWahl) ? keyWahl : preise[0]?.key ?? '';
   const gewaehlt = preise.find((x) => x.key === key);
-  const farbe = (k: string) => `portal-hp__f${keys.indexOf(k) % FARBEN}`;
+  const farbe = (k: string) => `portal-hpw__f${keys.indexOf(k) % FARBEN}`;
 
   /** Zeitfenster gehört zum Plan: Preis der Gruppe in der Fassung, die im Zeitraum gilt */
   const imPlan = (f: Fenster) => gueltig.get(f.prod_key)?.p.valid_from === f.valid_from && !Number.isNaN(min(f.zeit_von)) && !Number.isNaN(min(f.zeit_bis));
@@ -260,21 +260,21 @@ export function Wochenplan({ produkte, fenster, gruppen, edit, setProdukte, setF
 
   return (
     <>
-      <div className="portal-hp__leiste">
-        <div className="portal-hp__feld">
+      <div className="portal-hpw__leiste">
+        <div className="portal-hpw__feld">
           <Label>Preisgruppe</Label>
           <SegmentedButton onSelectionChange={(e) => { setGruppe((e.detail.selectedItems[0] as HTMLElement).dataset.g!); setZWahl(null); setSel(null); }}>
             {gruppen.map((g) => <SegmentedButtonItem key={g.gruppe} data-g={g.gruppe} selected={g.gruppe === gruppe}>{g.text}</SegmentedButtonItem>)}
           </SegmentedButton>
         </div>
-        <div className="portal-hp__feld">
+        <div className="portal-hpw__feld">
           <Label>Zeitraum</Label>
           <Select style={{ width: '17rem' }} disabled={!zeitraeume.length} onChange={(e) => { setZWahl((e.detail.selectedOption as HTMLElement).dataset.z!); setSel(null); }}>
             {[...zeitraeume].reverse().map((x) => <Option key={x} data-z={x} selected={x === z}>{`${dat(x)} – ${zBis(x)}${x === standard ? ' (aktuell)' : ''}`}</Option>)}
           </Select>
         </div>
         {edit && (
-          <div className="portal-hp__feld">
+          <div className="portal-hpw__feld">
             <Label>Neuer Zeitraum ab</Label>
             <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
               <DatePicker style={{ width: '9.5rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={ab} onChange={(e) => setNeuAb(e.detail.value)} />
@@ -289,29 +289,29 @@ export function Wochenplan({ produkte, fenster, gruppen, edit, setProdukte, setF
         </MessageStrip>
       )}
 
-      <div className="portal-hp">
+      <div className="portal-hpw">
         <Section title="Preise der Gruppe" count={preise.length}
                  actions={edit && freierSchluessel ? <Button design="Transparent" icon="add" onClick={preisAnlegen}>Preis</Button> : undefined}>
-          <div className="portal-hp__preise">
+          <div className="portal-hpw__preise">
             {!preise.length && <Text className="portal-muted">Für diese Gruppe ist noch kein Preis angelegt.</Text>}
             {preise.map((x) => (
-              <button key={x.key} type="button" className={`portal-hp__preis ${farbe(x.key)}${x.key === key ? ' portal-hp__preis--an' : ''}`} aria-pressed={x.key === key} onClick={() => setKeyWahl(x.key)}>
-                <span className="portal-hp__preis-farbe" aria-hidden="true" />
-                <span className="portal-hp__preis-text">
-                  <span className="portal-hp__preis-name">{x.key} {x.p.text || 'ohne Bezeichnung'}</span>
+              <button key={x.key} type="button" className={`portal-hpw__preis ${farbe(x.key)}${x.key === key ? ' portal-hpw__preis--an' : ''}`} aria-pressed={x.key === key} onClick={() => setKeyWahl(x.key)}>
+                <span className="portal-hpw__preis-farbe" aria-hidden="true" />
+                <span className="portal-hpw__preis-text">
+                  <span className="portal-hpw__preis-name">{x.key} {x.p.text || 'ohne Bezeichnung'}</span>
                   <span className="portal-muted portal-small">{x.key === key ? (edit ? 'ausgewählt – im Plan ziehen' : 'ausgewählt') : 'antippen zum Auswählen'}</span>
                 </span>
-                <span className="portal-hp__preis-wert">{eur(num(x.p.preis))}</span>
+                <span className="portal-hpw__preis-wert">{eur(num(x.p.preis))}</span>
               </button>
             ))}
             {gewaehlt && (
               <>
                 <Title level="H6" style={{ marginTop: '0.5rem' }}>Ausgewählter Preis</Title>
-                <div className="portal-hp__feld">
+                <div className="portal-hpw__feld">
                   <Label>Bezeichnung</Label>
                   <Input style={{ width: '100%' }} value={gewaehlt.p.text} readonly={!edit} onChange={(e) => setPreis(gewaehlt.i, { text: e.target.value })} />
                 </div>
-                <div className="portal-hp__feld">
+                <div className="portal-hpw__feld">
                   <Label>Preis je Stunde (EUR)</Label>
                   <Input style={{ width: '100%' }} value={String(gewaehlt.p.preis).replace('.', ',')} readonly={!edit} onChange={(e) => setPreis(gewaehlt.i, { preis: e.target.value })} />
                 </div>
@@ -331,21 +331,21 @@ export function Wochenplan({ produkte, fenster, gruppen, edit, setProdukte, setF
         </Section>
 
         <Section title="Wochenplan" flush>
-          <div className="portal-hp__plan">
-            <div className="portal-hp__kopf">
+          <div className="portal-hpw__plan">
+            <div className="portal-hpw__kopf">
               <div />
-              {TAGE.map((t) => <div key={t} className="portal-hp__tag">{TAG_TEXT[t]}</div>)}
+              {TAGE.map((t) => <div key={t} className="portal-hpw__tag">{TAG_TEXT[t]}</div>)}
             </div>
-            <div className="portal-hp__raster" style={{ height: h(bis0 - von0) }}>
-              <div className="portal-hp__zeiten">
-                {stunden.map((m) => <div key={m} className="portal-hp__stunde" style={{ top: y(m) }}>{hhmm(m)}</div>)}
+            <div className="portal-hpw__raster" style={{ height: h(bis0 - von0) }}>
+              <div className="portal-hpw__zeiten">
+                {stunden.map((m) => <div key={m} className="portal-hpw__stunde" style={{ top: y(m) }}>{hhmm(m)}</div>)}
               </div>
               {TAGE.map((t) => (
-                <div key={t} className={`portal-hp__spalte${edit ? ' portal-hp__spalte--pflege' : ''}`}
+                <div key={t} className={`portal-hpw__spalte${edit ? ' portal-hpw__spalte--pflege' : ''}`}
                      onPointerDown={runter(t)} onPointerMove={bewegen} onPointerUp={hoch} onPointerCancel={hoch}>
-                  {stunden.slice(0, -1).map((m) => <div key={m} className="portal-hp__linie" style={{ top: y(m) }} />)}
+                  {stunden.slice(0, -1).map((m) => <div key={m} className="portal-hpw__linie" style={{ top: y(m) }} />)}
                   {preise.length > 0 && luecken(t).map(([a, b]) => (
-                    <div key={a} className="portal-hp__luecke" style={{ top: y(a), height: h(b - a) }}>{b - a >= 60 ? 'kein Preis' : ''}</div>
+                    <div key={a} className="portal-hpw__luecke" style={{ top: y(a), height: h(b - a) }}>{b - a >= 60 ? 'kein Preis' : ''}</div>
                   ))}
                   {bloecke.filter((b) => b.f.tag === t).map((b) => {
                     const lauf = vorschau?.f === b.f ? vorschau : null;
@@ -353,18 +353,18 @@ export function Wochenplan({ produkte, fenster, gruppen, edit, setProdukte, setF
                     const bis = lauf ? lauf.bis : b.bis;
                     return (
                       <button key={b.i} id={`hp-block-${b.i}`} type="button" data-b={b.i}
-                              className={`portal-hp__block ${farbe(b.f.prod_key)}${edit ? ' portal-hp__block--pflege' : ''}${sel === b.f ? ' portal-hp__block--an' : ''}${bis - von <= 30 ? ' portal-hp__block--kurz' : ''}`}
+                              className={`portal-hpw__block ${farbe(b.f.prod_key)}${edit ? ' portal-hpw__block--pflege' : ''}${sel === b.f ? ' portal-hpw__block--an' : ''}${bis - von <= 30 ? ' portal-hpw__block--kurz' : ''}`}
                               style={{ top: y(von), height: h(bis - von) }}
                               title={`${TAG_TEXT[t]} ${hhmm(von)}–${hhmm(bis)} Uhr: ${b.f.prod_key} ${gueltig.get(b.f.prod_key)?.p.text ?? ''}`}
                               onClick={() => { if (edit && Date.now() - zuletztGezogen.current > 300) setSel(b.f); }}>
-                        {edit && <span className="portal-hp__griff portal-hp__griff--oben" data-griff="oben" />}
+                        {edit && <span className="portal-hpw__griff portal-hpw__griff--oben" data-griff="oben" />}
                         {blockInhalt(b.f.prod_key, von, bis)}
-                        {edit && <span className="portal-hp__griff portal-hp__griff--unten" data-griff="unten" />}
+                        {edit && <span className="portal-hpw__griff portal-hpw__griff--unten" data-griff="unten" />}
                       </button>
                     );
                   })}
                   {vorschau && !vorschau.f && vorschau.tag === t && (
-                    <div className={`portal-hp__block portal-hp__block--neu ${farbe(key)}`} style={{ top: y(vorschau.von), height: h(vorschau.bis - vorschau.von) }}>
+                    <div className={`portal-hpw__block portal-hpw__block--neu ${farbe(key)}`} style={{ top: y(vorschau.von), height: h(vorschau.bis - vorschau.von) }}>
                       {blockInhalt(key, vorschau.von, vorschau.bis)}
                     </div>
                   )}
@@ -377,18 +377,18 @@ export function Wochenplan({ produkte, fenster, gruppen, edit, setProdukte, setF
 
       {edit && sel && selIndex >= 0 && (
         <Popover open opener={`hp-block-${selIndex}`} placement="End" headerText={`Preiszuordnung · ${TAG_TEXT[sel.tag] ?? sel.tag}`} onClose={() => setSel(null)}>
-          <div className="portal-hp__dialog">
-            <div className="portal-hp__feld">
+          <div className="portal-hpw__dialog">
+            <div className="portal-hpw__feld">
               <Label>Preis</Label>
               <Select style={{ width: '100%' }} onChange={(e) => { const k = (e.detail.selectedOption as HTMLElement).dataset.k!; aendern({ prod_key: k, valid_from: gueltig.get(k)!.p.valid_from }); }}>
                 {preise.map((x) => <Option key={x.key} data-k={x.key} selected={x.key === sel.prod_key}>{`${x.key} ${x.p.text} · ${eur(num(x.p.preis))}`}</Option>)}
               </Select>
             </div>
-            <div className="portal-hp__dialog-zeit">
-              <div className="portal-hp__feld"><Label>Von</Label><Input style={{ width: '100%' }} value={sel.zeit_von} placeholder="HH:MM" onChange={(e) => aendern({ zeit_von: e.target.value.trim() })} /></div>
-              <div className="portal-hp__feld"><Label>Bis</Label><Input style={{ width: '100%' }} value={sel.zeit_bis} placeholder="HH:MM" onChange={(e) => aendern({ zeit_bis: e.target.value.trim() })} /></div>
+            <div className="portal-hpw__dialog-zeit">
+              <div className="portal-hpw__feld"><Label>Von</Label><Input style={{ width: '100%' }} value={sel.zeit_von} placeholder="HH:MM" onChange={(e) => aendern({ zeit_von: e.target.value.trim() })} /></div>
+              <div className="portal-hpw__feld"><Label>Bis</Label><Input style={{ width: '100%' }} value={sel.zeit_bis} placeholder="HH:MM" onChange={(e) => aendern({ zeit_bis: e.target.value.trim() })} /></div>
             </div>
-            <div className="portal-hp__feld">
+            <div className="portal-hpw__feld">
               <Label>Übernehmen auf</Label>
               <div className="portal-row">
                 <Button onClick={() => uebernehmen(WERKTAGE)}>Mo–Fr</Button>

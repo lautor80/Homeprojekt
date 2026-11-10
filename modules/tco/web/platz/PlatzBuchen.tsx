@@ -14,7 +14,7 @@ import { useCan } from '@core/session';
 import { TCO, dat, eur } from '../util';
 import '../jt/meine.css';
 import './platz.css';
-// Farben der Preise wie im Wochenplan der Hallenpreise (portal-hp__f0 … f4)
+// Farben der Preise wie im Wochenplan der Hallenpreise (portal-hpw__f0 … f4)
 import '../hallenpreise.css';
 
 /**
@@ -182,7 +182,7 @@ export function PlatzBuchen() {
               <div className="portal-pb__legende portal-pb__legende--preise">
                 <span>Preis je Stunde (Farbe der Zeitspalte):</span>
                 {preisklassen(zonen).map((k) => (
-                  <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-hp__f${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>
+                  <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-hpw__f${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>
                 ))}
                 <Button design="Transparent" icon="lead" onClick={() => setPreisliste(true)}>Preisliste</Button>
               </div>
@@ -321,24 +321,24 @@ function PreislisteDialog({ datum, onClose }: { datum: string; onClose: () => vo
         <>
           <div className="portal-pb__legende" style={{ justifyContent: 'flex-start' }}>
             <span>Einzelbuchung, Preis je Stunde:</span>
-            {preisklassen(alle).map((k) => <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-hp__f${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>)}
+            {preisklassen(alle).map((k) => <span key={k.prodKey}><i className={`portal-pb__zonenpunkt portal-hpw__f${k.farbe}`} />{k.text} · {eur(k.stundenpreis)}</span>)}
           </div>
-          <div className="portal-hp__plan">
-            <div className="portal-hp__kopf">
+          <div className="portal-hpw__plan">
+            <div className="portal-hpw__kopf">
               <div />
-              {woche.map((t, i) => <div key={t.datum} className="portal-hp__tag" style={t.datum === datum ? { color: 'var(--sapSelectedColor, #0064d9)' } : undefined}>{WOCHENTAG_KURZ[i]} {dat(t.datum).slice(0, 6)}</div>)}
+              {woche.map((t, i) => <div key={t.datum} className="portal-hpw__tag" style={t.datum === datum ? { color: 'var(--sapSelectedColor, #0064d9)' } : undefined}>{WOCHENTAG_KURZ[i]} {dat(t.datum).slice(0, 6)}</div>)}
             </div>
-            <div className="portal-hp__raster" style={{ height: h(bis0 - von0) }}>
-              <div className="portal-hp__zeiten">
-                {stunden.map((m) => <div key={m} className="portal-hp__stunde" style={{ top: y(m) }}>{hhmm(m)}</div>)}
+            <div className="portal-hpw__raster" style={{ height: h(bis0 - von0) }}>
+              <div className="portal-hpw__zeiten">
+                {stunden.map((m) => <div key={m} className="portal-hpw__stunde" style={{ top: y(m) }}>{hhmm(m)}</div>)}
               </div>
               {woche.map((t) => (
-                <div key={t.datum} className="portal-hp__spalte">
-                  {stunden.slice(0, -1).map((m) => <div key={m} className="portal-hp__linie" style={{ top: y(m) }} />)}
+                <div key={t.datum} className="portal-hpw__spalte">
+                  {stunden.slice(0, -1).map((m) => <div key={m} className="portal-hpw__linie" style={{ top: y(m) }} />)}
                   {t.zonen.map((z) => {
                     const a = min(z.von), b = min(z.bis) || 1440;
                     return (
-                      <div key={z.von} className={`portal-hp__block portal-hp__f${z.farbe}${b - a <= 60 ? ' portal-hp__block--kurz' : ''}`} style={{ top: y(a), height: h(b - a) }}>
+                      <div key={z.von} className={`portal-hpw__block portal-hpw__f${z.farbe}${b - a <= 60 ? ' portal-hpw__block--kurz' : ''}`} style={{ top: y(a), height: h(b - a) }}>
                         <b>{z.von}–{z.bis}</b>
                         <b>{z.text}</b>
                         {b - a > 60 && <span>{eur(z.stundenpreis)} je Stunde</span>}
@@ -401,7 +401,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
             const von = Math.max(min(z.von), start);
             const bis = Math.min(min(z.bis) || 1440, ende);
             return bis > von
-              ? <div key={z.von} className={`portal-pb__zone portal-hp__f${z.farbe}`} style={{ top: y(von), height: h(bis - von) }}
+              ? <div key={z.von} className={`portal-pb__zone portal-hpw__f${z.farbe}`} style={{ top: y(von), height: h(bis - von) }}
                      title={`${z.von}–${z.bis} Uhr: ${z.text} · ${eur(z.stundenpreis)} je Stunde`} />
               : null;
           })}
