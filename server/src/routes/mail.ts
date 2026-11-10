@@ -13,6 +13,11 @@ const P = 'core.settings:edit';
 /** App „E-Mail-Protokoll“: nur lesen (Empfänger, Betreff, Status – nie der Inhalt) */
 const P_ANZEIGE = 'core.mail:display';
 const UEBERSICHT_MAX = 2000;
+interface UebersichtRoh {
+  id: number; zeit: string; anwendung: string | null; objekt: string | null; an: string | null; betreff: string | null; absender: string | null;
+  von: string | null; status: string; fehler: string | null; benutzer: string | null; inhalt: boolean; w_art: string | null; w_hinweis: string | null;
+  erneut_am: string | null; erneut_von: string | null; erneut_status: string | null;
+}
 
 // Filter: Anwendung, Zeitraum von/bis (Ortszeit, „JJJJ-MM-TTTHH:MM“ oder nur Datum)
 const protoFilter = z.object({
@@ -91,8 +96,8 @@ export async function mailRoutes(app: FastifyInstance) {
         from core.mail_protokoll ${protoWo(DB, f)} ${f.status ? DB`and status = ${f.status}` : DB``}
        order by id desc limit ${UEBERSICHT_MAX + 1}`;
     const gekuerzt = rows.length > UEBERSICHT_MAX;
-    const liste = rows.slice(0, UEBERSICHT_MAX);
-    const emails: string[] = [...new Set(liste.flatMap((r) => adressen(r.an as string | null)))];
+    const liste = rows.slice(0, UEBERSICHT_MAX) as unknown as UebersichtRoh[];
+    const emails: string[] = [...new Set(liste.flatMap((r) => adressen(r.an)))];
     const personen: MailPerson[] = [];
     if (emails.length) {
       for (const m of activeModules()) personen.push(...((await m.mailPersonen?.(DB, emails)) ?? []));
@@ -105,7 +110,7 @@ export async function mailRoutes(app: FastifyInstance) {
       // wie im Mailprotokoll der Anbindung: ob (und warum nicht) erneut gesendet werden kann – ohne den gespeicherten Inhalt zu laden
       const nachricht = inhalt ? (w_art ? { wiederholung: { art: w_art, hinweis: w_hinweis ?? '' } } : { mail: true }) : null;
       const hinweis = fehlgeschlagen ? nichtWiederholbar({ status: p.status, nachricht, erneut_status: p.erneut_status }) : null;
-      return { ...p, person: personenText(p.an as string | null, index), erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis };
+      return { ...p, person: personenText(p.an, index), erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis };
     }).filter((z) => passt(f.suche, [z.person, z.an, z.objekt, z.anwendung, z.betreff, z.absender, z.von, z.benutzer, z.fehler]));
     const anwendungen = (await sql`select distinct anwendung from core.mail_protokoll where anwendung is not null order by 1`).map((r) => r.anwendung as string);
     return { zeilen, anwendungen, gekuerzt };
