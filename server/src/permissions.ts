@@ -37,10 +37,10 @@ export interface PermissionGroup {
 }
 
 export const corePermissions: PermissionDef[] = [
-  { id: 'core.users:display', text: 'Benutzer anzeigen', area: 'Administration', app: 'Benutzer' },
-  { id: 'core.users:edit', text: 'Benutzer anlegen und ändern', area: 'Administration', app: 'Benutzer' },
-  { id: 'core.roles:display', text: 'Rollen anzeigen', area: 'Administration', app: 'Rollen' },
-  { id: 'core.roles:edit', text: 'Rollen anlegen und ändern', area: 'Administration', app: 'Rollen' },
+  { id: 'core.users:display', text: 'Benutzer anzeigen', area: 'Benutzerverwaltung', app: 'Benutzer' },
+  { id: 'core.users:edit', text: 'Benutzer anlegen und ändern', area: 'Benutzerverwaltung', app: 'Benutzer' },
+  { id: 'core.roles:display', text: 'Rollen anzeigen, Rollenmatrix und Prüfung ansehen (Verprobung für Benutzer zusätzlich mit „Benutzer anzeigen“)', area: 'Benutzerverwaltung', app: 'Rollen und Rollenmatrix' },
+  { id: 'core.roles:edit', text: 'Rollen anlegen und ändern, auch in der Rollenmatrix', area: 'Benutzerverwaltung', app: 'Rollen und Rollenmatrix' },
   { id: 'core.apikeys:display', text: 'API-Schlüssel anzeigen', area: 'Administration', app: 'API-Schlüssel' },
   { id: 'core.apikeys:edit', text: 'API-Schlüssel anlegen, ändern und sperren', area: 'Administration', app: 'API-Schlüssel' },
   { id: 'core.audit:display', text: 'Änderungsbelege anzeigen (alle Objekte)', area: 'Administration', app: 'Änderungsbelege' },

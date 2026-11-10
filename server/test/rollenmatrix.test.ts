@@ -126,3 +126,47 @@ test('Matrix sichern: mehrere Rollen in einem Schritt, Schutzregeln, kein stille
   assert.equal((await ohne('POST', `${R}/pruefung`)).status, 403);
   assert.equal((await ohne('PUT', M, { rollen: [{ id: 'LEER', vorher: ['tco.fi:display'], permissions: [] }] })).status, 403);
 });
+
+test('Verprobung: wirksame Rechte ausgewählter Benutzer mit Matrix-Entwurf und probeweiser Zuordnung', async () => {
+  const V = `${R}/verprobung`;
+  const id = async (u: string) => (await sql`select id::text from core.users where username = ${u}`)[0].id as string;
+  const [trainer, doppelt, adminId] = [await id('trainer'), await id('doppelt'), await id('admin')];
+
+  // heutiger Stand: Rollen, Herkunft der Rechte, Funktionstrennung über zwei Rollen
+  let r = await admin('POST', V, { benutzer: [trainer] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let t = r.body[0];
+  assert.deepEqual([t.rollenJetzt, t.rollenProbe, t.dazu, t.weg], [['JUGEND', 'TRAINER'], ['JUGEND', 'TRAINER'], [], []]);
+  assert.deepEqual(t.rechte.find((x: any) => x.id === 'tco.jt:edit').rollen, ['JUGEND']);
+  assert.ok(t.befunde.some((b: any) => b.stufe === 'WARNUNG' && /Funktionstrennung/.test(b.text)));
+  assert.ok(t.apps.some((a: string) => /Jugend/.test(a)));
+
+  // Entwurf der Matrix: JUGEND ohne „abrechnen“ → Recht fällt weg, Warnung verschwindet; gespeichert wird nichts
+  r = await admin('POST', V, { benutzer: [trainer], rollen: [{ id: 'JUGEND', permissions: ['tco.jt:display'] }] });
+  t = r.body[0];
+  assert.deepEqual(t.weg, ['tco.jt:edit']);
+  assert.equal(t.anzahlProbe, t.anzahlJetzt - 1);
+  assert.ok(!t.befunde.some((b: any) => /Funktionstrennung/.test(b.text)));
+  assert.equal((await rechte('JUGEND')).length, 2);
+
+  // probeweise Zuordnung: zusätzlich bzw. statt der bisherigen Rollen; mehrere Benutzer auf einmal
+  r = await admin('POST', V, { benutzer: [doppelt, trainer], zuordnung: { rollen: ['THEKE'], modus: 'ZUSAETZLICH' } });
+  assert.deepEqual(r.body.map((x: any) => x.username).sort(), ['doppelt', 'trainer']);
+  const d = r.body.find((x: any) => x.username === 'doppelt');
+  assert.deepEqual(d.rollenProbe, ['KASSE', 'LESER', 'THEKE']);
+  assert.ok(d.dazu.includes('tco.verzehr:theke'));
+  assert.ok(d.befunde.some((b: any) => /LESER ist überflüssig/.test(b.text)));
+  r = await admin('POST', V, { benutzer: [doppelt], zuordnung: { rollen: ['LESER'], modus: 'ERSETZEN' } });
+  assert.deepEqual([r.body[0].rollenProbe, r.body[0].weg.includes('tco.fi:buchen'), r.body[0].dazu], [['LESER'], true, []]);
+  assert.deepEqual((await sql`select role_id from core.user_roles where user_id = ${doppelt}::uuid order by 1`).map((x) => x.role_id), ['KASSE', 'LESER'], 'Zuordnung unverändert');
+
+  // Administrator: alle Rechte
+  r = await admin('POST', V, { benutzer: [adminId] });
+  assert.deepEqual([r.body[0].allesJetzt, r.body[0].allesProbe], [true, true]);
+
+  // Berechtigung: Rollen anzeigen UND Benutzer anzeigen
+  const pfleger = client();
+  assert.equal((await pfleger('POST', '/api/auth/login', { username: 'pfleger', password: 'start-passwort' })).status, 200);
+  assert.equal((await pfleger('POST', V, { benutzer: [trainer] })).status, 403);
+  assert.equal((await admin('POST', V, { benutzer: [] })).status, 400);
+});

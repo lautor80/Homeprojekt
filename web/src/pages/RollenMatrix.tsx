@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, CheckBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { toast } from '../toast';
 import type { PermGroup } from '../components/PermissionEditor';
@@ -14,11 +14,21 @@ import './rollenmatrix.css';
 export interface MatrixRolle { id: string; name: string; description: string | null; system: boolean; nurAdmin?: boolean; permissions: string[]; userCount: number }
 interface Befund { art: string; artText: string; stufe: 'FEHLER' | 'WARNUNG' | 'HINWEIS'; text: string; rollen: string[]; rechte: string[]; benutzer?: string[] }
 interface Pruefung { befunde: Befund[]; fehler: number; warnungen: number; hinweise: number }
+export type MatrixAnsicht = 'MATRIX' | 'PRUEFUNG' | 'VERPROBUNG';
+interface Verprobung {
+  id: string; name: string; username: string; aktiv: boolean; rollenJetzt: string[]; rollenProbe: string[];
+  allesJetzt: boolean; allesProbe: boolean; anzahlJetzt: number; anzahlProbe: number;
+  rechte: { id: string; text: string; app: string; rollen: string[] }[]; dazu: string[]; weg: string[]; apps: string[];
+  befunde: { stufe: Befund['stufe']; text: string }[];
+}
+interface Benutzer { id: string; username: string; displayName: string; active: boolean; roles: string[] }
 const STUFE = { FEHLER: { state: 'Negative', text: 'Fehler' }, WARNUNG: { state: 'Critical', text: 'Warnung' }, HINWEIS: { state: 'Information', text: 'Hinweis' } } as const;
 
-export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, istAdmin, onGesichert }: {
-  ansicht: 'MATRIX' | 'PRUEFUNG'; onAnsicht: (a: 'MATRIX' | 'PRUEFUNG') => void;
-  roles: MatrixRolle[]; catalog: PermGroup[]; darfAendern: boolean; istAdmin: boolean; onGesichert: () => void;
+export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, istAdmin, darfBenutzer, onGesichert }: {
+  ansicht: MatrixAnsicht; onAnsicht: (a: MatrixAnsicht) => void;
+  roles: MatrixRolle[]; catalog: PermGroup[]; darfAendern: boolean; istAdmin: boolean;
+  /** „Benutzer anzeigen“ – Voraussetzung für die Verprobung */
+  darfBenutzer: boolean; onGesichert: () => void;
 }) {
   // ADMIN (alle Rechte) steht nicht in der Matrix
   const rollen = useMemo(() => roles.filter((r) => !r.permissions.includes('*')), [roles]);
@@ -41,14 +51,16 @@ export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, 
   const geaendert = Object.keys(entwurf).filter((id) => rollen.some((r) => r.id === id));
 
   // Voraussetzungen und Umkehrung wie im Rollendialog
-  const { benoetigt, abhaengige } = useMemo(() => {
+  const { benoetigt, abhaengige, texte } = useMemo(() => {
+    const texte = new Map<string, string>();
     const benoetigt = new Map<string, string[]>();
     const abhaengige = new Map<string, string[]>();
     for (const g of catalog) for (const a of g.areas) for (const app of a.apps) for (const p of app.permissions) {
       benoetigt.set(p.id, p.requires);
+      texte.set(p.id, `${app.name}: ${p.text}`);
       for (const v of p.requires) abhaengige.set(v, [...(abhaengige.get(v) ?? []), p.id]);
     }
-    return { benoetigt, abhaengige };
+    return { benoetigt, abhaengige, texte };
   }, [catalog]);
   const huelle = (start: string, rel: Map<string, string[]>) => {
     const out = new Set<string>();
@@ -164,6 +176,12 @@ export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, 
         </>
       )}
 
+      {ansicht === 'VERPROBUNG' && (
+        <Verproben rollen={rollen} alleRollen={roles} entwurf={entwurf} geaendert={geaendert} darfBenutzer={darfBenutzer} texte={texte}
+                   onMatrix={(v) => vergleichen({ art: 'VERPROBUNG', artText: `Verprobung ${v.name}`, stufe: 'HINWEIS', rollen: v.rollenProbe, rechte: [...v.dazu, ...v.weg],
+                     text: `Rollen in der Probe: ${v.rollenProbe.join(', ') || 'keine'}. Hervorgehoben sind die Rechte, die sich für ${v.name} ändern würden.` })} />
+      )}
+
       {ansicht === 'MATRIX' && (
         <>
           {fokus && (
@@ -260,6 +278,131 @@ export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, 
             Ankreuzen setzt benötigte Rechte mit (z. B. „ändern“ → „anzeigen“), Entfernen nimmt abhängige Rechte mit heraus. Gelb = geändert, noch nicht gesichert. Bezeichnung, Deaktivierung und Benutzer einer Rolle pflegst du in der Liste.
           </Text>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Verprobung (#46): Was dürften ausgewählte Benutzer mit dem Stand der Matrix (einschließlich ungesicherter Änderungen)
+ * und optional probeweise zugeordneten Rollen – im Vergleich zu heute? Liest nur, gespeichert wird nichts.
+ */
+function Verproben({ rollen, alleRollen, entwurf, geaendert, darfBenutzer, texte, onMatrix }: {
+  rollen: MatrixRolle[]; alleRollen: MatrixRolle[]; entwurf: Record<string, string[]>; geaendert: string[]; darfBenutzer: boolean;
+  texte: Map<string, string>; onMatrix: (v: Verprobung) => void;
+}) {
+  const [benutzer, setBenutzer] = useState<Benutzer[] | null>(null);
+  const [wahl, setWahl] = useState<string[]>([]);
+  const [probeRollen, setProbeRollen] = useState<string[]>([]);
+  const [modus, setModus] = useState<'ZUSAETZLICH' | 'ERSETZEN'>('ZUSAETZLICH');
+  const [erg, setErg] = useState<Verprobung[] | null>(null);
+  const [offen, setOffen] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (darfBenutzer) api.get<Benutzer[]>('/api/admin/users').then(setBenutzer).catch((e) => setError(e.message)); }, [darfBenutzer]);
+
+  const lauf = useRef(0);
+  useEffect(() => {
+    if (!wahl.length) { setErg(null); return; }
+    const nr = ++lauf.current;
+    const t = setTimeout(() => {
+      api.post<Verprobung[]>('/api/admin/roles/verprobung', {
+        benutzer: wahl, rollen: geaendert.map((id) => ({ id, permissions: entwurf[id] })),
+        zuordnung: probeRollen.length || modus === 'ERSETZEN' ? { rollen: probeRollen, modus } : null,
+      }).then((r) => { if (nr === lauf.current) { setErg(r); setError(null); } }).catch((e) => { if (nr === lauf.current) setError(e.message); });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [wahl, probeRollen, modus, entwurf]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!darfBenutzer) return <MessageStrip design="Information" hideCloseButton>Für die Verprobung wird zusätzlich die Berechtigung „Benutzer anzeigen“ benötigt.</MessageStrip>;
+  const t = (p: string) => texte.get(p) ?? p;
+  const umschalten = (id: string) => setOffen((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const hinzu = (ids: string[]) => setWahl((w) => [...new Set([...w, ...ids])].slice(0, 200));
+  const hoechste = (v: Verprobung) => (['FEHLER', 'WARNUNG', 'HINWEIS'] as const).find((s) => v.befunde.some((b) => b.stufe === s));
+  return (
+    <div>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
+        Zeigt für die gewählten Benutzer, was sie mit dem Stand der Matrix dürften{geaendert.length ? <b> – einschließlich der ungesicherten Änderungen an {geaendert.join(', ')}</b> : ''} –
+        und was sich gegenüber heute ändert. Optional mit probeweise zugeordneten Rollen. Es wird nichts gespeichert.
+      </Text>
+      <div className="portal-rm__probe">
+        <div>
+          <Label showColon>1 · Benutzer ({wahl.length})</Label>
+          <MultiComboBox data-kein-autofill placeholder={benutzer ? 'Benutzer wählen (Name oder Anmeldename)' : 'Lade …'} style={{ width: '100%' }}
+                         onSelectionChange={(e) => setWahl(e.detail.items.map((i) => (i as HTMLElement).dataset.u!))}>
+            {(benutzer ?? []).map((u) => <MultiComboBoxItem key={u.id} data-u={u.id} text={u.displayName || u.username} additionalText={`${u.username}${u.active ? '' : ' (gesperrt)'}`} selected={wahl.includes(u.id)} />)}
+          </MultiComboBox>
+          <div className="portal-row" style={{ marginTop: '0.25rem' }}>
+            <Select style={{ width: '16rem' }} onChange={(e) => {
+              const r = (e.detail.selectedOption as HTMLElement).dataset.r;
+              if (r) hinzu((benutzer ?? []).filter((u) => u.roles.includes(r)).map((u) => u.id));
+            }}>
+              <Option data-r="" selected>+ alle Benutzer der Rolle …</Option>
+              {alleRollen.map((r) => <Option key={r.id} data-r={r.id}>{r.id} ({r.userCount})</Option>)}
+            </Select>
+            {wahl.length > 0 && <Button design="Transparent" icon="decline" onClick={() => setWahl([])}>Auswahl leeren</Button>}
+          </div>
+        </div>
+        <div>
+          <Label showColon>2 · Rollen probeweise zuordnen (optional)</Label>
+          <MultiComboBox data-kein-autofill placeholder="keine – nur der Stand der Matrix" style={{ width: '100%' }}
+                         onSelectionChange={(e) => setProbeRollen(e.detail.items.map((i) => (i as HTMLElement).dataset.r!))}>
+            {rollen.map((r) => <MultiComboBoxItem key={r.id} data-r={r.id} text={r.id} additionalText={r.name} selected={probeRollen.includes(r.id)} />)}
+          </MultiComboBox>
+          <div className="portal-row" style={{ marginTop: '0.25rem' }}>
+            <Select style={{ width: '18rem' }} onChange={(e) => setModus((e.detail.selectedOption as HTMLElement).dataset.m as typeof modus)}>
+              <Option data-m="ZUSAETZLICH" selected={modus === 'ZUSAETZLICH'}>zusätzlich zu den bisherigen Rollen</Option>
+              <Option data-m="ERSETZEN" selected={modus === 'ERSETZEN'}>statt der bisherigen Rollen</Option>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      {!wahl.length ? <Text className="portal-muted">Bitte einen oder mehrere Benutzer wählen.</Text> : !erg ? <Text>Verprobung läuft …</Text> : (
+        <table className="portal-rm__befunde">
+          <thead><tr>{['', 'Benutzer', 'Rollen heute', 'Rollen in der Probe', 'Rechte', 'Änderung', 'Befunde', ''].map((h, i) => <th key={i}><Label>{h}</Label></th>)}</tr></thead>
+          <tbody>{erg.map((v) => {
+            const auf = offen.has(v.id);
+            const st = hoechste(v);
+            const rollenGleich = v.rollenJetzt.join() === v.rollenProbe.join();
+            return (
+              <Fragment key={v.id}>
+                <tr>
+                  <td><Button design="Transparent" icon={auf ? 'navigation-down-arrow' : 'navigation-right-arrow'} tooltip="Einzelheiten" onClick={() => umschalten(v.id)} /></td>
+                  <td><b>{v.name}</b><br /><span className="portal-muted portal-small">{v.username}{v.aktiv ? '' : ' · gesperrt'}</span></td>
+                  <td>{v.rollenJetzt.join(', ') || '–'}</td>
+                  <td>{rollenGleich ? <span className="portal-muted">unverändert</span> : v.rollenProbe.join(', ') || '–'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{v.allesProbe ? 'alle' : v.anzahlProbe}{v.anzahlJetzt !== v.anzahlProbe && !v.allesProbe ? <span className="portal-muted"> (heute {v.allesJetzt ? 'alle' : v.anzahlJetzt})</span> : ''} · {v.apps.length} Apps</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {!v.dazu.length && !v.weg.length ? <span className="portal-muted">keine</span> : <>
+                      {v.dazu.length > 0 && <ObjectStatus state="Positive">+{v.dazu.length}</ObjectStatus>}{' '}
+                      {v.weg.length > 0 && <ObjectStatus state="Negative">−{v.weg.length}</ObjectStatus>}
+                    </>}
+                  </td>
+                  <td>{st ? <ObjectStatus state={STUFE[st].state} showDefaultIcon>{v.befunde.length} {v.befunde.length === 1 ? 'Befund' : 'Befunde'}</ObjectStatus> : <span className="portal-muted">keine</span>}</td>
+                  <td><Button design="Transparent" icon="grid" tooltip="Rollen der Probe in der Matrix nebeneinander zeigen" disabled={!v.rollenProbe.length} onClick={() => onMatrix(v)}>Matrix</Button></td>
+                </tr>
+                {auf && (
+                  <tr>
+                    <td />
+                    <td colSpan={7} className="portal-rm__detail">
+                      {v.befunde.map((b, i) => <div key={i}><ObjectStatus state={STUFE[b.stufe].state} showDefaultIcon>{STUFE[b.stufe].text}</ObjectStatus> {b.text}</div>)}
+                      {v.dazu.length > 0 && <div><b>Kommt dazu ({v.dazu.length}):</b><ul>{v.dazu.map((p) => <li key={p} className="portal-rm__plus">{t(p)}</li>)}</ul></div>}
+                      {v.weg.length > 0 && <div><b>Fällt weg ({v.weg.length}):</b><ul>{v.weg.map((p) => <li key={p} className="portal-rm__minus">{t(p)}</li>)}</ul></div>}
+                      <div><b>Rechte in der Probe ({v.allesProbe ? 'alle' : v.rechte.length}) mit Herkunft:</b>
+                        {v.allesProbe ? <span> Administrator – alle Rechte.</span> : !v.rechte.length ? <span> keine</span> : (
+                          <table className="portal-rm__herkunft"><tbody>
+                            {v.rechte.map((r) => <tr key={r.id}><td className="portal-muted">{r.app}</td><td>{r.text}</td><td>{r.rollen.join(', ')}{r.rollen.length > 1 && <span className="portal-muted"> (mehrfach)</span>}</td></tr>)}
+                          </tbody></table>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}</tbody>
+        </table>
       )}
     </div>
   );
