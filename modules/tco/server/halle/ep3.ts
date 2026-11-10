@@ -232,15 +232,36 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   return { typ: 'BUCHUNGEN', ok: true, text, details: begrenzt(details, 'Buchung neu'), personenNeu: [...new Set(neuListe.map((b) => b.kunde))] };
 }
 
-/** EP3-Import über den n8n-Workflow „TCO EP3 Import Hallenrechnungen“ */
-export async function ep3UeberN8n(v: Verein, benutzer: string): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string }> {
+/** frühestes und spätestes Datum der Buchungsdatei (zeigt, welchen Zeitraum der Workflow tatsächlich geliefert hat) */
+export function zeitraumDerBuchungen(csv: string | undefined): { von: string; bis: string } | null {
+  if (!csv) return null;
+  const rows = csvParse(csv);
+  const i = (rows[0] ?? []).map((x) => x.trim().toUpperCase()).indexOf('DATUM');
+  if (i < 0) return null;
+  let von = '', bis = '';
+  for (const r of rows.slice(1)) {
+    let d: string | null = null;
+    try { d = sapDatum((r[i] ?? '').trim().split(/[ T]/)[0]); } catch { d = null; }
+    if (!d) continue;
+    if (!von || d < von) von = d;
+    if (!bis || d > bis) bis = d;
+  }
+  return von ? { von, bis } : null;
+}
+
+/**
+ * EP3-Import über den n8n-Workflow (docs/n8n/tco-ep3-import.json, „TCO EP3 Import Portal“).
+ * `ab` (JJJJ-MM-TT): Buchungen ab diesem Datum anfordern statt des Standardzeitraums des Workflows (18 Monate) – #103.
+ * Der Workflow meldet in `ab` zurück, ob er den Zeitraum übernommen hat (ältere Workflows kennen den Parameter nicht).
+ */
+export async function ep3UeberN8n(v: Verein, benutzer: string, ab: string | null = null): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string; ab?: string | null }> {
   if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Administration → Anbindungen).');
   let res: Response;
   try {
     res = await fetch(v.n8n_ep3_url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(v.n8n_ep3_auth ? { Authorization: v.n8n_ep3_auth } : {}) },
-      body: JSON.stringify({ quelle: 'Portal Hallenabrechnung', user: benutzer }),
+      body: JSON.stringify({ quelle: 'Portal Hallenabrechnung', user: benutzer, ...(ab ? { ab } : {}) }),
       signal: AbortSignal.timeout(120_000),
     });
   } catch (e) {
@@ -248,8 +269,8 @@ export async function ep3UeberN8n(v: Verein, benutzer: string): Promise<{ bookin
   }
   const t = await res.text();
   if (!res.ok) throw new BusinessError(`n8n antwortet mit HTTP ${res.status}: ${t.slice(0, 300)}`);
-  let j: Record<string, string>;
+  let j: Record<string, string | null>;
   try { j = JSON.parse(t); } catch { throw new BusinessError('n8n hat keine gültigen Daten geliefert.'); }
   if (!j.bookings_csv && !j.kunden_csv && !j.texte_csv) throw new BusinessError('n8n hat keine Daten geliefert.');
-  return j;
+  return j as { bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string; ab?: string | null };
 }

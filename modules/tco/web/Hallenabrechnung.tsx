@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AblageDialog } from '@core/ablage';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, DateRangePicker, Dialog, FlexBox, Icon, Input, Label, Link, List, ListItemCustom, Tag,
+  AnalyticalTable, Bar, BusyIndicator, Button, DatePicker, DateRangePicker, Dialog, FlexBox, Icon, Input, Label, Link, List, ListItemCustom, Tag,
   ListItemGroup, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Panel, SegmentedButton, SegmentedButtonItem,
   Select, Switch, Text, Title,
 } from '@ui5/webcomponents-react';
@@ -70,6 +70,8 @@ export function Hallenabrechnung() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [csvAblage, setCsvAblage] = useState(false);
+  /** Dialog vor dem EP3-Import über n8n: Standardzeitraum oder Buchungen ab Datum nachladen (#103) */
+  const [ep3Dlg, setEp3Dlg] = useState(false);
   /** Personen mit Buchungen, die der Import in dieser Sitzung neu ergänzt hat – bewusst nicht in `merk`, entfällt beim Neuladen */
   const [importiert, setImportiert] = useState<Set<string>>(new Set());
 
@@ -148,8 +150,9 @@ export function Hallenabrechnung() {
     neueMerken(zeilen);
   }
 
-  const n8nImport = () => tun(async () => {
-    const r = await api.post<{ datei: string; ok: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }[]>(`${H}/import/n8n`);
+  const n8nImport = (ab: string | null) => tun(async () => {
+    setEp3Dlg(false);
+    const r = await api.post<{ datei: string; ok: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }[]>(`${H}/import/n8n`, ab ? { ab } : {});
     const zeilen = r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text, details: x.details, personenNeu: x.personenNeu }));
     setProtokoll({ titel: 'Protokoll EP3-Import', zeilen });
     neueMerken(zeilen);
@@ -207,7 +210,7 @@ export function Hallenabrechnung() {
       title="Hallenabrechnung"
       header={header}
       actions={<>
-        {edit && <Button icon="download-from-cloud" onClick={n8nImport}>EP3 importieren</Button>}
+        {edit && <Button icon="download-from-cloud" onClick={() => setEp3Dlg(true)}>EP3 importieren</Button>}
         {edit && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
         {edit && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
         {edit && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
@@ -321,6 +324,7 @@ export function Hallenabrechnung() {
       <MailtextDialog rgnr={mailtext} onClose={() => setMailtext(null)} />
       <ZahlungenDialog rechnung={zahlungen} onClose={() => setZahlungen(null)} />
       <ProtokollDialog p={protokoll} onClose={() => setProtokoll(null)} />
+      {ep3Dlg && <Ep3ImportDialog onClose={() => setEp3Dlg(false)} onStart={n8nImport} />}
       <VersionenDialog info={versionen} onClose={() => setVersionen(null)} />
       <AutoDialog open={auto} onClose={() => setAuto(false)} onDone={(t) => { setAuto(false); toast(t, 6000); neuLaden(); }} />
       <SammelDialog open={sammel} onClose={() => setSammel(false)} onDone={(t) => { setSammel(false); toast(t, 6000); neuLaden(); }} />
@@ -813,5 +817,48 @@ function PaperlessBlock({ pl }: { pl: PaperlessInfo }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * EP3-Import über n8n (#103): Standardzeitraum des Workflows (18 Monate) oder einmalig Buchungen ab einem Datum nachladen.
+ * Hinweis: Nachgeladene Buchungen nach dem Stichtag „Buchungen abrechnen ab“ ohne Rechnung im Portal erscheinen als offen.
+ */
+function Ep3ImportDialog({ onClose, onStart }: { onClose: () => void; onStart: (ab: string | null) => void }) {
+  const [modus, setModus] = useState<'STANDARD' | 'AB'>('STANDARD');
+  const [ab, setAb] = useState('');
+  const [stichtag, setStichtag] = useState<string | null>(null);
+  useEffect(() => { api.get<{ stichtag: string }>(`${H}/import/info`).then((x) => setStichtag(x.stichtag)).catch(() => setStichtag(null)); }, []);
+  const abOk = /^\d{4}-\d{2}-\d{2}$/.test(ab);
+  return (
+    <Dialog open headerText="EP3 importieren (n8n)" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="download-from-cloud" disabled={modus === 'AB' && !abOk} onClick={() => onStart(modus === 'AB' ? ab : null)}>Importieren</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <FlexBox direction="Column" style={{ gap: '0.75rem' }}>
+        <SegmentedButton onSelectionChange={(e) => setModus((e.detail.selectedItems[0] as HTMLElement).dataset.m as 'STANDARD' | 'AB')}>
+          <SegmentedButtonItem data-m="STANDARD" selected={modus === 'STANDARD'}>Standard (letzte 18 Monate)</SegmentedButtonItem>
+          <SegmentedButtonItem data-m="AB" selected={modus === 'AB'}>Ab Datum nachladen</SegmentedButtonItem>
+        </SegmentedButton>
+        {modus === 'AB' && (
+          <>
+            <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+              <Label>Buchungen ab</Label>
+              <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={ab} onChange={(e) => setAb(e.detail.value)} />
+            </FlexBox>
+            <MessageStrip design="Critical" hideCloseButton>
+              Vorhandene Buchungen bleiben, wie sie sind (abgerechnete werden nur um den Platz ergänzt). Neu hinzukommende Buchungen
+              {stichtag ? ` nach dem ${dat(stichtag)} („Buchungen abrechnen ab“, Stammdaten)` : ' nach dem Stichtag „Buchungen abrechnen ab“ (Stammdaten)'} ohne
+              Rechnung im Portal erscheinen als offen. Wurden sie bereits in SAP abgerechnet, vorher die Buchungen und Rechnungen aus SAP
+              übernehmen (Stammdaten → Übernahme aus SAP, „Nur neue Sätze“) – sonst droht eine doppelte Abrechnung.
+            </MessageStrip>
+          </>
+        )}
+        <Text className="portal-muted portal-small">
+          Das Protokoll zeigt am Ende, welcher Zeitraum tatsächlich geliefert wurde und ob der n8n-Workflow das Datum übernommen hat.
+        </Text>
+      </FlexBox>
+    </Dialog>
   );
 }

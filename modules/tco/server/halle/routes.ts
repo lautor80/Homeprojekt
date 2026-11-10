@@ -5,14 +5,14 @@ import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, paperless, plAktiv, vereinLesen } from '../verein.js';
 import { halleDokumentPruefen } from '../dokumentfreigabe.js';
-import { heute } from '../format.js';
+import { dat, heute } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
 import {
   aboEinzeln, aboSerie, adrnrErmitteln, autoBuchen, autoVorschau, irrelevant, kanalSichern, manuellePosition,
   personDetail, personenLesen, positionEntfernen, positionenLesen, positionenNummerieren, positionAendern, rechnungAnlegen,
   rechnungenLesen, statusSetzen, zuordnen, type Selektion,
 } from './daten.js';
-import { ep3Importieren, ep3UeberN8n, type ImportDetail } from './ep3.js';
+import { ep3Importieren, ep3UeberN8n, zeitraumDerBuchungen, type ImportDetail } from './ep3.js';
 import { MAIL_PLATZHALTER, sammelMailVorlage, sammelversand, versandVorschlag } from './sammelversand.js';
 import {
   mailTexte, mailVersand, paperlessNotiz, rechnungDrucken, rechnungPdfErzeugen, whatsappBestaetigen, whatsappText,
@@ -143,9 +143,14 @@ export async function halleRoutes(app: FastifyInstance) {
     return { ...r, datei: name };
   });
 
+  /** Stichtag „Buchungen abrechnen ab“ für den Hinweis im Importdialog (#103) */
+  app.get('/halle/import/info', { preHandler: requireAuth(P_HALLE.edit) }, async () => ({ stichtag: (await vereinLesen()).halle_stichtag }));
+
   app.post('/halle/import/n8n', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    // optional: Buchungen ab Datum anfordern (Zeitraum verlängern, #103)
+    const { ab } = z.object({ ab: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT').nullish() }).parse(req.body ?? {});
     const v = await vereinLesen();
-    const j = await ep3UeberN8n(v, benutzer(req));
+    const j = await ep3UeberN8n(v, benutzer(req), ab ?? null);
     const out: { datei: string; ok: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }[] = [];
     for (const [datei, inhalt] of [['Kunden', j.kunden_csv], ['Texte', j.texte_csv], ['Buchungen', j.bookings_csv], ['Events', j.events_csv]] as const) {
       if (!inhalt) continue;
@@ -155,6 +160,14 @@ export async function halleRoutes(app: FastifyInstance) {
       } catch (e) {
         out.push({ datei, ok: false, text: (e as Error).message });
       }
+    }
+    // tatsächlich gelieferter Zeitraum der Buchungen – und ob der Workflow ein angefordertes „ab“ übernommen hat
+    const zr = zeitraumDerBuchungen(j.bookings_csv);
+    const geliefert = zr ? `Buchungen vom ${dat(zr.von)} bis ${dat(zr.bis)} geliefert` : 'keine Buchungen geliefert';
+    if (ab && j.ab !== ab) {
+      out.push({ datei: 'Zeitraum', ok: false, text: `Angefordert ab ${dat(ab)}, der n8n-Workflow übernimmt den Zeitraum aber nicht · ${geliefert} · Bitte den Workflow „TCO EP3 Import Portal“ aus docs/n8n/tco-ep3-import.json übernehmen` });
+    } else {
+      out.push({ datei: 'Zeitraum', ok: true, text: `${ab ? `Angefordert ab ${dat(ab)} · ` : 'Standardzeitraum des Workflows · '}${geliefert}` });
     }
     return out;
   });
