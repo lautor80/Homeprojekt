@@ -85,7 +85,7 @@ export function Mitgliedsantraege() {
             </div>
           </div>
           {a.daten.bemerkung && <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.5rem' }}>Mitteilung: {a.daten.bemerkung}</MessageStrip>}
-          {a.hinweise.map((h) => <MessageStrip key={h} design="Critical" hideCloseButton style={{ marginTop: '0.5rem' }}>{h}</MessageStrip>)}
+          {a.hinweise.map((h) => <MessageStrip key={h} design={h.includes('Schnuppertraining') ? 'Information' : 'Critical'} hideCloseButton style={{ marginTop: '0.5rem' }}>{h}</MessageStrip>)}
           {a.status === 'EINGANG' && edit && (
             <div className="portal-row" style={{ marginTop: '0.75rem' }}>
               <Button design="Emphasized" icon="accept" onClick={() => setOffen(a)}>Übernehmen…</Button>

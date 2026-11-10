@@ -12,7 +12,7 @@ import { GR, type Gruppe, type GruppenDaten } from '../gruppen/typen';
 import { MitgliedDetail } from './Detail';
 import { NeuDialog } from './NeuDialog';
 
-const STATUS_TEXT: Record<Status, string> = { AKTIV: 'Aktive Mitglieder', AUSGETRETEN: 'Ausgetreten', KUNDEN: 'EP3-Kunden', ELTERN: 'Zahler / Eltern', ALLE: 'Alle Personen' };
+const STATUS_TEXT: Record<Status, string> = { AKTIV: 'Aktive Mitglieder', AUSGETRETEN: 'Ausgetreten', SCHNUPPER: 'Schnuppertraining', KUNDEN: 'EP3-Kunden', ELTERN: 'Zahler / Eltern', ALLE: 'Alle Personen' };
 const DATUM_TEXT: Record<string, string> = { EINGETRETEN: 'Eintritt', AUSGETRETEN: 'Austritt', ERFASST: 'Erfasst' };
 
 export function Mitglieder() {
@@ -87,7 +87,7 @@ export function Mitglieder() {
           <List onItemClick={(e) => waehlen((e.detail.item as HTMLElement).dataset.a!)} noDataText="Keine Personen zu dieser Auswahl">
             {liste?.zeilen.map((z) => (
               <ListItemStandard key={z.adrnr} data-a={z.adrnr} type="Active" selected={z.adrnr === adrnr}
-                                icon={z.state === 'Positive' ? 'employee' : z.zahler ? 'employee-rejections' : 'money-bills'}
+                                icon={z.state === 'Positive' ? 'employee' : z.schnupper ? 'physical-activity' : z.zahler ? 'employee-rejections' : 'money-bills'}
                                 description={z.info} additionalText={z.status_txt} additionalTextState={z.state}>{z.name}</ListItemStandard>
             ))}
           </List>

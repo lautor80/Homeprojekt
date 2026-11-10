@@ -9,7 +9,7 @@ import { mitgliedGruppen } from '../gruppen/logik.js';
  * (Kopf, Bank, Familie, Verträge, SEPA, Schlüssel, Notizen) und Neuanlage.
  */
 
-export const STATUS = ['AKTIV', 'AUSGETRETEN', 'KUNDEN', 'ELTERN', 'ALLE'] as const;
+export const STATUS = ['AKTIV', 'AUSGETRETEN', 'SCHNUPPER', 'KUNDEN', 'ELTERN', 'ALLE'] as const;
 export type Status = (typeof STATUS)[number];
 export const DATUM_TYP = ['EINGETRETEN', 'AUSGETRETEN', 'ERFASST'] as const;
 
@@ -56,7 +56,9 @@ const mandatAktiv = (s: { status: string | null; gueltigbis: string | null; manu
 // ---------------------------------------------------------------- Liste
 export interface ListZeile {
   adrnr: string; name: string; mitglnrn: string; info: string; ort: string; eintritt: string | null; austritt: string | null;
-  status_txt: string; state: 'Positive' | 'Negative' | 'Critical'; kunde: boolean; eltern: boolean; zahler: boolean;
+  status_txt: string; state: 'Positive' | 'Negative' | 'Critical' | 'Information'; kunde: boolean; eltern: boolean; zahler: boolean;
+  /** Kategorie Schnuppertraining (#86): offener Schnupperer ohne Eintritt */
+  schnupper: boolean;
 }
 
 export async function listeLesen(db: Db, f: {
@@ -66,13 +68,17 @@ export async function listeLesen(db: Db, f: {
 }) {
   const alle = await db`select m.adrnr, m.vorname, m.nachname, m.mitglnrn, m.plz, m.ort, m.eintritt, m.austritt, m.geburtsdatum, m.adrnrkih,
                                coalesce(a.zuid, '') <> '' as kunde,
-                               exists (select 1 from tco.mitglieder k where k.adrnr <> m.adrnr and k.adrnrkih = m.adrnr) as eltern
+                               exists (select 1 from tco.mitglieder k where k.adrnr <> m.adrnr and k.adrnrkih = m.adrnr) as eltern,
+                               (s.adrnr is not null and m.eintritt is null and s.status not in ('MITGLIED', 'ABGESAGT')) as schnupper,
+                               s.nummer as st_nummer, s.status as st_status
                           from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
+                          left join tco.schnupper s on s.adrnr = m.adrnr
                          order by lower(m.nachname), lower(m.vorname), m.adrnr`;
-  const anzahl: Record<Status, number> = { AKTIV: 0, AUSGETRETEN: 0, KUNDEN: 0, ELTERN: 0, ALLE: alle.length };
+  const anzahl: Record<Status, number> = { AKTIV: 0, AUSGETRETEN: 0, SCHNUPPER: 0, KUNDEN: 0, ELTERN: 0, ALLE: alle.length };
   const passt = (m: (typeof alle)[number], s: Status) =>
-    s === 'AKTIV' ? istAktiv(m as never) : s === 'AUSGETRETEN' ? !!m.austritt : s === 'KUNDEN' ? m.kunde : s === 'ELTERN' ? m.eltern : true;
-  for (const m of alle) for (const s of ['AKTIV', 'AUSGETRETEN', 'KUNDEN', 'ELTERN'] as const) if (passt(m, s)) anzahl[s]++;
+    s === 'AKTIV' ? istAktiv(m as never) : s === 'AUSGETRETEN' ? !!m.austritt : s === 'SCHNUPPER' ? m.schnupper
+      : s === 'KUNDEN' ? m.kunde : s === 'ELTERN' ? m.eltern : true;
+  for (const m of alle) for (const s of ['AKTIV', 'AUSGETRETEN', 'SCHNUPPER', 'KUNDEN', 'ELTERN'] as const) if (passt(m, s)) anzahl[s]++;
   const such = leer(f.suche).toUpperCase();
   const zeilen: ListZeile[] = [];
   for (const m of alle) {
@@ -88,10 +94,12 @@ export async function listeLesen(db: Db, f: {
     const ort = condense(`${leer(m.plz)} ${leer(m.ort)}`);
     zeilen.push({
       adrnr: m.adrnr, name, mitglnrn: leer(m.mitglnrn), ort, eintritt: m.eintritt, austritt: m.austritt, kunde: m.kunde, eltern: m.eltern,
-      zahler: !leer(m.mitglnrn),
-      info: leer(m.mitglnrn) ? (ort ? `${leer(m.mitglnrn)} · ${ort}` : `Mitglied ${leer(m.mitglnrn)}`) : (ort ? `Zahler · ${ort}` : 'Zahler'),
-      status_txt: aktiv ? 'Aktiv' : m.austritt ? `Austritt ${dat(m.austritt)}` : 'Ohne Eintritt',
-      state: aktiv ? 'Positive' : m.austritt ? 'Negative' : 'Critical',
+      zahler: !leer(m.mitglnrn), schnupper: m.schnupper,
+      info: leer(m.mitglnrn) ? (ort ? `${leer(m.mitglnrn)} · ${ort}` : `Mitglied ${leer(m.mitglnrn)}`)
+        : m.st_nummer ? `Schnuppertraining ${m.st_nummer}` : (ort ? `Zahler · ${ort}` : 'Zahler'),
+      status_txt: aktiv ? 'Aktiv' : m.austritt ? `Austritt ${dat(m.austritt)}` : m.schnupper ? 'Schnuppertraining'
+        : m.st_status === 'ABGESAGT' ? 'Schnuppern abgesagt' : 'Ohne Eintritt',
+      state: aktiv ? 'Positive' : m.austritt ? 'Negative' : m.schnupper ? 'Information' : 'Critical',
     });
   }
   return { zeilen, anzahl };
@@ -215,7 +223,16 @@ export async function detailLesen(db: Db, adrnr: string) {
     sepa: await sepaLesen(db, m),
     schluessel, notizen,
     gruppen: await mitgliedGruppen(db, adrnr),
+    schnupper: await schnupperZuPerson(db, adrnr),
   };
+}
+
+/** Angaben zum Schnuppertraining (#86) für die Objektseite des Mitglieds – auch nach dem Beitritt als Historie */
+async function schnupperZuPerson(db: Db, adrnr: string) {
+  const [s] = await db`select nummer, status, eingang, alter_jahre, gespielt, stufe, termine, erziehungsberechtigt, mitteilung,
+                              einheit1::text, einheit2::text, trainer, notiz, antrag
+                         from tco.schnupper where adrnr = ${adrnr}`;
+  return s ? { ...s, alter: s.alter_jahre as number | null } : null;
 }
 
 // ---------------------------------------------------------------- Kopf / Bank / Austritt
@@ -437,6 +454,11 @@ export interface Neu extends Omit<Kopf, 'eintritt'> {
   zahler_modus: 'SELBST' | 'BESTEHEND' | 'NEU'; zahler_adrnr: string | null;
   z_anrede: string; z_vorname: string; z_nachname: string; z_strasse: string; z_plz: string; z_ort: string; z_email: string;
   vertraege: { art: string; beginn: string | null; betrag: number; turnus: string }[];
+  /**
+   * Bestehenden Stammsatz ohne Mitgliedschaft zum Mitglied machen (z. B. Schnupperer, #86): Adressnummer bleibt,
+   * Mitgliedsnummer/Eintritt/Anschrift/Bank werden ergänzt – kein neuer Stammsatz.
+   */
+  bestehend?: string | null;
 }
 
 const adrNummer = (n: number) => String(n).padStart(10, '0');
@@ -493,15 +515,24 @@ export async function mitgliedNeu(tx: Db, n: Neu): Promise<{ adrnr: string; mitg
       throw new BusinessError('Bitte Vor- und Nachname des Zahlers angeben.');
     }
   }
+  const bestehend = leer(n.bestehend);
+  if (bestehend) {
+    const [b] = await tx`select adrnr, mitglnrn, eintritt from tco.mitglieder where adrnr = ${bestehend} for update`;
+    if (!b) throw new BusinessError(`Stammsatz ${nr(bestehend)} nicht gefunden.`);
+    if (leer(b.mitglnrn) || b.eintritt) throw new BusinessError(`${vn} ${nn} (Adressnummer ${nr(bestehend)}) ist bereits Mitglied.`);
+  }
   const [dup] = await tx`select adrnr, mitglnrn from tco.mitglieder where vorname = ${vn} and nachname = ${nn}
-                          and geburtsdatum is not distinct from ${n.geburtsdatum || null}`;
+                          and geburtsdatum is not distinct from ${n.geburtsdatum || null} and adrnr <> ${bestehend}`;
   if (dup) throw new BusinessError(`${vn} ${nn} ist bereits angelegt (Adressnummer ${nr(dup.adrnr)}${leer(dup.mitglnrn) ? `, Mitglied Nr. ${leer(dup.mitglnrn)}` : ''}).`);
 
   // Nummern: höchste Adressnummer + 1 (ohne Kunden-Adressen 99…), höchste Mitgliedsnummer + 1
   const [mx] = await tx`select coalesce(max(adrnr::bigint), 0) as n from tco.mitglieder where adrnr ~ '^[0-9]{1,10}$' and adrnr not like '99%'`;
   const next = Number(mx.n) + 1;
   const [mn] = await tx`select coalesce(max(mitglnrn::int), 0) as n from tco.mitglieder where mitglnrn ~ '^[0-9]{1,9}$'`;
-  const adrnr = adrNummer(next), mitglnrn = String(Number(mn.n) + 1);
+  const adrnr = bestehend || adrNummer(next), mitglnrn = String(Number(mn.n) + 1);
+  /** Basis der Mandatsreferenz (Adressnummer ohne führende Nullen) und nächste freie Adressnummer für einen neuen Zahler */
+  const basisNr = bestehend ? Number(bestehend) || next : next;
+  const naechsteFrei = bestehend ? next : next + 1;
 
   const m: Record<string, unknown> = {
     adrnr, mitglnrn, anrede: n.anrede, geschlecht: n.anrede === 'Herr' ? '1' : n.anrede === 'Frau' ? '2' : null, vorname: vn, nachname: nn,
@@ -513,13 +544,13 @@ export async function mitgliedNeu(tx: Db, n: Neu): Promise<{ adrnr: string; mitg
   };
   let zNeu: Record<string, unknown> | null = null;
   if (ls) {
-    Object.assign(m, { iban1: iban, bic1: bic || null, bank1: condense(n.bank) || null, mandatsrefenz: `${next}${mitglnrn}`, einzuglastmandliegtvor: n.sepa ? 'J' : null });
+    Object.assign(m, { iban1: iban, bic1: bic || null, bank1: condense(n.bank) || null, mandatsrefenz: `${basisNr}${mitglnrn}`, einzuglastmandliegtvor: n.sepa ? 'J' : null });
     if (n.zahler_modus === 'BESTEHEND' && zAlt) {
       Object.assign(m, { adrnrkih: zahler, abwkontoinh: condense(`${leer(zAlt.anrede)} ${leer(zAlt.vorname)} ${leer(zAlt.nachname)}`) });
     } else if (n.zahler_modus === 'NEU') {
       const zn = condense(n.z_nachname);
       zNeu = {
-        adrnr: adrNummer(next + 1), anrede: n.z_anrede || null, geschlecht: n.z_anrede === 'Herr' ? '1' : n.z_anrede === 'Frau' ? '2' : null,
+        adrnr: adrNummer(naechsteFrei), anrede: n.z_anrede || null, geschlecht: n.z_anrede === 'Herr' ? '1' : n.z_anrede === 'Frau' ? '2' : null,
         vorname: condense(n.z_vorname), nachname: zn, alphabet: zn.slice(0, 1).toUpperCase(),
         strasse: condense(n.z_strasse) || m.strasse, plz: condense(n.z_plz) || m.plz, ort: condense(n.z_ort) || m.ort, email: n.z_email.trim() || null,
         iban1: m.iban1, bic1: m.bic1, bank1: m.bank1, zahlungsart: 'L', zahlungsweise: m.zahlungsweise, einzuglastmandliegtvor: m.einzuglastmandliegtvor,
@@ -528,7 +559,10 @@ export async function mitgliedNeu(tx: Db, n: Neu): Promise<{ adrnr: string; mitg
       Object.assign(m, { adrnrkih: zahler, abwkontoinh: condense(`${n.z_anrede} ${zNeu.vorname} ${zn}`) });
     } else zahler = adrnr;
   }
-  await tx`insert into tco.mitglieder ${tx(m)}`;
+  if (bestehend) {
+    const { adrnr: _a, ...felder } = m;
+    await tx`update tco.mitglieder set ${tx(felder)} where adrnr = ${adrnr}`;
+  } else await tx`insert into tco.mitglieder ${tx(m)}`;
   if (zNeu) await tx`insert into tco.mitglieder ${tx(zNeu)}`;
   if (n.zahler_modus === 'BESTEHEND' && ls && zAlt && !leer(zAlt.iban1)) {
     await tx`update tco.mitglieder set iban1 = ${m.iban1 as string}, bic1 = ${m.bic1 as string | null}, bank1 = ${m.bank1 as string | null} where adrnr = ${zahler}`;

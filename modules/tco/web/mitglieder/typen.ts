@@ -2,10 +2,12 @@ import { TCO } from '../util';
 
 export const MG = `${TCO}/mitglieder`;
 
-export type Status = 'AKTIV' | 'AUSGETRETEN' | 'KUNDEN' | 'ELTERN' | 'ALLE';
+export type Status = 'AKTIV' | 'AUSGETRETEN' | 'SCHNUPPER' | 'KUNDEN' | 'ELTERN' | 'ALLE';
 export interface ListZeile {
   adrnr: string; name: string; mitglnrn: string; info: string; ort: string; eintritt: string | null; austritt: string | null;
-  status_txt: string; state: 'Positive' | 'Negative' | 'Critical'; kunde: boolean; eltern: boolean; zahler: boolean;
+  status_txt: string; state: 'Positive' | 'Negative' | 'Critical' | 'Information'; kunde: boolean; eltern: boolean; zahler: boolean;
+  /** Kategorie Schnuppertraining (#86) */
+  schnupper: boolean;
 }
 export interface Liste { zeilen: ListZeile[]; anzahl: Record<Status, number> }
 
@@ -37,6 +39,13 @@ export interface Detail {
   notizen: { notiz_id: string; erstellt_am: string; erstellt_von: string | null; notiz: string }[];
   /** direkt zugeordnete Mitgliedergruppen */
   gruppen: { id: number; rolle: string | null }[];
+  /** Angaben zum Schnuppertraining (#86), auch nach dem Beitritt */
+  schnupper: Schnupper | null;
+}
+export interface Schnupper {
+  nummer: string; status: string; eingang: string; alter: number | null; gespielt: boolean; stufe: string;
+  termine: { tage?: string[]; zeiten?: string[]; text?: string | null }; erziehungsberechtigt: string | null; mitteilung: string | null;
+  einheit1: string | null; einheit2: string | null; trainer: string | null; notiz: string | null; antrag: string | null;
 }
 export interface VertragsArt { art: string; name: string; betrag: number; turnus: string }
 export interface Auswahl {

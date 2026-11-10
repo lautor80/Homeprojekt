@@ -4,6 +4,7 @@ import type { Db, Verein } from '../verein.js';
 import { condense, heute } from '../format.js';
 import { emailGueltig, mitgliedNeu, normName, vertragsarten, type Neu } from '../mitglieder/logik.js';
 import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
+import { adrnrZumToken, alsMitgliedMarkieren, schnupperFuerPerson } from '../schnupper/logik.js';
 
 /**
  * Online-Mitgliedsantrag (#12): öffentliches Formular ohne Anmeldung, auch für Familien (mehrere Personen,
@@ -29,6 +30,9 @@ export interface AntragDaten {
   /** Kündigungsfristen zur Kenntnis genommen (Mitgliedschaft 4 Wochen zum Jahresende, Training zum 30.09.) */
   kuendigung: boolean;
   bemerkung?: string | null;
+  /** Beitrittslink aus dem Schnuppertraining (#86): Token beim Absenden, gespeichert wird der Stammsatz */
+  schnupper?: string | null;
+  schnupper_adrnr?: string | null;
 }
 
 export const MAX_TRAINING = 2;
@@ -127,8 +131,10 @@ export async function antragAnlegen(tx: Db, d: AntragDaten, b: AntragBank, ip: s
   const jahr = heute().slice(0, 4);
   const [{ n }] = await tx`select core.next_number('TCO_ANTRAG', ${Number(jahr)})::int as n`;
   const nummer = `MA-${jahr}-${String(n).padStart(4, '0')}`;
+  const { schnupper: token, ...rest } = d;
   const daten = {
-    ...d,
+    ...rest,
+    schnupper_adrnr: await adrnrZumToken(tx, token),
     personen: d.personen.map((p) => ({ ...p, vorname: condense(p.vorname), nachname: condense(p.nachname), email: p.email?.trim() || null })),
     strasse: condense(d.strasse), plz: condense(d.plz), ort: condense(d.ort), email: d.email.trim(),
   };
@@ -148,12 +154,20 @@ export async function antraegeLesen(db: Db, status: 'EINGANG' | 'ALLE') {
     // Dublettenprüfung: gleicher Name + Geburtsdatum (auch ausgetretene) bzw. gleiche E-Mail
     const hinweise: string[] = [];
     if (r.status === 'EINGANG') {
-      for (const p of d.personen) {
+      const vergeben = new Set<string>();
+      for (const [i, p] of d.personen.entries()) {
+        // Schnupperer (#86): derselbe Stammsatz wird bei der Übernahme Mitglied – keine Dublette
+        const st = await schnupperFuerPerson(db, p, i === 0 ? d.schnupper_adrnr ?? null : null, vergeben);
+        if (st) {
+          vergeben.add(st.adrnr);
+          hinweise.push(`${p.vorname} ${p.nachname}: Schnuppertraining ${st.nummer} – wird bei der Übernahme Mitglied (gleicher Stammsatz, Kategorie wechselt).`);
+        }
         const treffer = await db`select adrnr, mitglnrn, vorname, nachname, austritt::text from tco.mitglieder
-                                  where (lower(vorname) = lower(${p.vorname}) and lower(nachname) = lower(${p.nachname})
-                                         and geburtsdatum is not distinct from ${p.geburtsdatum}::date)
-                                     or (${p.email ?? ''} <> '' and lower(trim(coalesce(email, ''))) = lower(${p.email ?? ''})
-                                         and lower(vorname) = lower(${p.vorname}))`;
+                                  where adrnr <> ${st?.adrnr ?? ''}
+                                    and ((lower(vorname) = lower(${p.vorname}) and lower(nachname) = lower(${p.nachname})
+                                          and geburtsdatum is not distinct from ${p.geburtsdatum}::date)
+                                      or (${p.email ?? ''} <> '' and lower(trim(coalesce(email, ''))) = lower(${p.email ?? ''})
+                                          and lower(vorname) = lower(${p.vorname})))`;
         for (const t of treffer) {
           hinweise.push(`${p.vorname} ${p.nachname}: bereits ${t.austritt ? `ehemaliges Mitglied (Austritt ${t.austritt})` : 'Mitglied'} Nr. ${t.mitglnrn || t.adrnr} – ${t.austritt ? 'Wiedereintritt prüfen' : 'Übernahme gesperrt'}.`);
         }
@@ -188,7 +202,12 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
   const angelegt: { adrnr: string; mitglnrn: string; name: string }[] = [];
   let zahler: string | null = null;
   let mandat = '';
+  const vergeben = new Set<string>();
+  const schnupperer: { adrnr: string; nummer: string }[] = [];
   for (const [i, p] of d.personen.entries()) {
+    // Schnupperer (#86): bestehenden Stammsatz zum Mitglied machen statt neu anlegen
+    const st = await schnupperFuerPerson(tx, p, i === 0 ? d.schnupper_adrnr ?? null : null, vergeben);
+    if (st) vergeben.add(st.adrnr);
     // weitere Personen: Mitgliedschaft über den Familienbeitrag (Vertrag der Familienart ohne Betrag), dazu ihre Trainingseinheiten
     const familie = i > 0 ? d.personen[0].art! : null;
     const gewaehlt = [familie ?? p.art!, ...(p.training ?? [])].map((x) => {
@@ -198,14 +217,19 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
     });
     const n: Neu = {
       anrede: p.anrede, vorname: p.vorname, nachname: p.nachname, strasse: d.strasse, plz: d.plz, ort: d.ort,
-      telefon: (i === 0 ? p.telefon || d.telefon : p.telefon) ?? '', mobil: p.mobil ?? '', email: p.email || d.email,
+      telefon: (i === 0 ? p.telefon || d.telefon : p.telefon) ?? '', mobil: p.mobil || st?.mobil || '', email: p.email || d.email,
       geburtsdatum: p.geburtsdatum, eintritt, datenschutz: d.datenschutz, bildrechte: d.bildrechte,
       zahlungsart: 'L', zahlungsweise: '', iban: a.iban, bic: a.bic ?? '', bank: a.bank ?? '', sepa: true, sepa_datum: sepaDatum,
       zahler_modus: i === 0 ? (kiSelbst ? 'SELBST' : 'NEU') : 'BESTEHEND', zahler_adrnr: i === 0 ? null : zahler,
       z_anrede: '', z_vorname: ki.vorname, z_nachname: ki.nachname, z_strasse: d.strasse, z_plz: d.plz, z_ort: d.ort, z_email: d.email,
       vertraege: gewaehlt.map((a, j) => ({ art: a.art, beginn: beginnFuer(eintritt, j === 0 ? 'MITGLIEDSCHAFT' : 'TRAINING'), betrag: familie && j === 0 ? 0 : a.betrag, turnus: a.turnus })),
+      bestehend: st?.adrnr ?? null,
     };
     const r = await mitgliedNeu(tx, n);
+    if (st) {
+      await alsMitgliedMarkieren(tx, st.adrnr, a.nummer, wer);
+      schnupperer.push(st);
+    }
     if (i === 0) {
       const [m] = await tx`select coalesce(nullif(adrnrkih, ''), adrnr) as zahler from tco.mitglieder where adrnr = ${r.adrnr}`;
       zahler = m.zahler;
@@ -220,7 +244,7 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
     for (const b of r.angelegt) benutzer.push({ name: b.name, username: b.username, hinweis: b.hinweis, startkennwort: b.startkennwort });
     for (const u of r.uebersprungen) benutzer.push({ name: m.name, username: '', hinweis: u, startkennwort: null });
   }
-  const ergebnis = { mitglieder: angelegt, mandat, benutzer: benutzer.map(({ startkennwort: _s, ...b }) => b) };
+  const ergebnis = { mitglieder: angelegt, mandat, benutzer: benutzer.map(({ startkennwort: _s, ...b }) => b), schnupper: schnupperer.map((x) => x.nummer) };
   await tx`update tco.mitgliedsantraege set status = 'UEBERNOMMEN', bearbeitet_am = now(), bearbeitet_von = ${wer}, ergebnis = ${tx.json(ergebnis as never)}
            where id = ${id}`;
   return { nummer: a.nummer as string, email: d.email, name: `${erster.vorname} ${erster.nachname}`, ...ergebnis, startkennwoerter: benutzer.filter((b) => b.startkennwort) };

@@ -42,7 +42,20 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fertig, setFertig] = useState<string | null>(null);
+  /** Beitrittslink aus dem Schnuppertraining (#86): Angaben vorbelegen, bei der Übernahme wird derselbe Stammsatz Mitglied */
+  const [schnupper] = useState(() => new URLSearchParams(window.location.search).get('schnupper'));
+  const [schnupperNr, setSchnupperNr] = useState<string | null>(null);
   useEffect(() => { api.get<Info>(`${TCO}/antrag`).then(setInfo).catch((e) => setError(e.message)); }, []);
+  useEffect(() => {
+    if (!schnupper) return;
+    api.get<{ nummer: string; vorname: string; nachname: string; email: string; mobil: string; erziehungsberechtigt: string }>(`${TCO}/schnupper/beitritt?token=${encodeURIComponent(schnupper)}`)
+      .then((v) => {
+        setSchnupperNr(v.nummer);
+        setPersonen((l) => l.map((p, i) => (i === 0 ? { ...p, vorname: p.vorname || v.vorname, nachname: p.nachname || v.nachname } : p)));
+        setA((x) => ({ ...x, email: x.email || v.email, telefon: x.telefon || v.mobil, erziehungsberechtigt: x.erziehungsberechtigt || v.erziehungsberechtigt }));
+      })
+      .catch((e) => setError(e.message));
+  }, [schnupper]);
 
   const setP = (i: number, p: Partial<Person>) => setPersonen((l) => l.map((x, j) => (j === i ? { ...x, ...p } : x)));
   const minderjaehrig = (alter(personen[0].geburtsdatum) ?? 99) < 18;
@@ -79,7 +92,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
         personen: personen.map((p, i) => ({ ...p, art: i === 0 ? p.art : null, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
         strasse: a.strasse, plz: a.plz, ort: a.ort, email: a.email, telefon: a.telefon || null,
         erziehungsberechtigt: minderjaehrig ? a.erziehungsberechtigt : null, eintritt: a.eintritt, bemerkung: a.bemerkung || null,
-        ...zu, bank, website: a.website,
+        ...zu, bank, website: a.website, schnupper: schnupperNr ? schnupper : null,
       });
       setFertig(r.text);
       window.scrollTo(0, 0);
@@ -102,6 +115,11 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
             Werden Sie Mitglied im {info.verein}. Mit dem Familienbeitrag nehmen Sie weitere Familienmitglieder in denselben Antrag auf; Jugendliche bis 21 Jahre können bis zu zwei Trainingseinheiten dazubuchen. Der Beitrag wird per SEPA-Lastschrift vom angegebenen Konto eingezogen.
           </Text>
           {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+          {schnupperNr && (
+            <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>
+              Schön, dass es dir beim Schnuppertraining gefallen hat! Deine Angaben aus der Anmeldung {schnupperNr} sind bereits eingetragen – bitte ergänzen.
+            </MessageStrip>
+          )}
 
           {personen.map((p, i) => (
             <div key={i} style={{ padding: '0.75rem', marginBottom: '0.75rem', border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
