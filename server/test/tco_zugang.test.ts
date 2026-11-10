@@ -691,3 +691,36 @@ test('Mailprotokoll: Filter nach Anwendung und Zeitraum, Leeren', async () => {
   assert.ok(r.body.anzahl >= 2);
   assert.equal((await admin('GET', P)).body.length, 0);
 });
+
+test('Zugangslinks an Personen aus einer eingefügten Liste: Abgleich, eigener Text, PDF-Anhang (#105)', async () => {
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'simone.w', displayName: 'Wilhelm, Simone', email: 'simone@example.org', password: 'start-passwort', roles: [] })).status, 200);
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, vorname, nachname, email, eintritt) values ('0000000701', '701', 'Karl', 'Kein', 'karl@example.org', '2020-01-01')`;
+  const Z = `${T}/mitglieder/zugang`;
+  let r = await admin('GET', `${Z}/vorlage`);
+  assert.equal(r.status, 200);
+  assert.match(r.body.text, /\{Link\}/);
+
+  // Tabelle aus der Zwischenablage: Kopfzeile, Trennzeile, Anzahl-Spalte, kommagetrennte Namensliste
+  r = await admin('POST', `${Z}/abgleich`, { text: 'User | Anzahl\n-- | --\nSimone Wilhelm | 5\nKarl Kein, Niemand Da |  ' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((x: any) => [x.eingabe, x.treffer.map((t: any) => t.art)]),
+    [['Simone Wilhelm', ['BENUTZER']], ['Karl Kein', ['EINLADUNG']], ['Niemand Da', []]]);
+  const keys = r.body.flatMap((x: any) => x.treffer.map((t: any) => t.key));
+
+  const pdf = { name: 'Anleitung.pdf', data: Buffer.from('%PDF-1.4\n%%EOF\n').toString('base64') };
+  assert.equal((await admin('POST', `${Z}/senden`, { empfaenger: keys, betreff: 'Neustart', text: 'ohne Link', pdf })).status, 400);
+  assert.equal((await admin('POST', `${Z}/senden`, { empfaenger: keys, betreff: 'Neustart', text: 'x {Link}', pdf: { name: 'a.pdf', data: 'aGFsbG8=' } })).status, 400, 'kein PDF');
+  r = await admin('POST', `${Z}/senden`, { empfaenger: keys, betreff: 'Neustart für {Vorname}', text: 'Hallo {Vorname} ({Benutzername}): {Link} bis {GueltigBis}', tage: 7, pdf });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.zeilen.map((z: any) => z.ok), [true, true]);
+  const ms = letzteMail('simone@example.org') as any;
+  assert.equal(ms.betreff, 'Neustart für Simone');
+  assert.match(ms.text, /Hallo Simone \(simone\.w\)/);
+  assert.equal(ms.anhaenge[0].dateiname, 'Anleitung.pdf');
+  const tk = token(ms.text, 'kennwort');
+  assert.equal((await client()('POST', '/api/auth/kennwort-setzen', { token: tk, passwort: 'simones-kennwort-1' })).status, 200);
+  assert.equal((await client()('POST', '/api/auth/login', { username: 'simone.w', password: 'simones-kennwort-1' })).status, 200);
+  const [g] = await sql`select gueltig_bis > now() + interval '6 days' as lang from core.password_tokens where token_hash is not null order by gueltig_bis desc limit 1`;
+  assert.equal(g.lang, true, 'Gültigkeit 7 Tage');
+  assert.match((letzteMail('karl@example.org') as any).text, /\/einladung\?token=/);
+});

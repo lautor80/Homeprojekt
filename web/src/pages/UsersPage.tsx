@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
   AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
-  SegmentedButton, SegmentedButtonItem, Switch, Text,
+  Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Switch, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -39,7 +39,8 @@ export function UsersPage() {
   const can = useCan();
   const { me } = useSession();
   const darfAendern = can('core.users:edit');
-  const [einladen, setEinladen] = useState(false);
+  /** Dialog „Einladen & Zugangslinks“: QR-Einladung für Mitglieder ohne Benutzer oder Zugangslinks an Personen aus einer Liste (#105) */
+  const [einladen, setEinladen] = useState<false | 'QR' | 'LISTE'>(false);
   const mitTco = me.modules.includes('tco');
   const [mg, setMg] = useState<'frage' | MgAnlage | null>(null);
   const [mgMail, setMgMail] = useState(true);
@@ -176,13 +177,14 @@ export function UsersPage() {
         {mitTco && <Button icon="chain-link" onClick={() => setMapping(true)}>Initiale Zuordnung</Button>}
         {mitTco && <Button icon="add-employee" onClick={() => { setError(null); setEinzeln(true); }}>Aus Mitglied/EP3 anlegen</Button>}
         {mitTco && <Button icon="group" onClick={() => setMg('frage')}>Mitglieder als Benutzer anlegen</Button>}
-        {mitTco && <Button icon="qr-code" onClick={() => setEinladen(true)}>Mitglieder einladen (QR-Code)</Button>}
+        {mitTco && <Button icon="qr-code" tooltip="Mitglieder ohne Benutzer einladen (QR-Code) oder ausgewählten Personen einen Link zum Setzen des Kennworts senden" onClick={() => setEinladen('QR')}>Einladen & Zugangslinks</Button>}
         <Button design="Emphasized" icon="add" onClick={() => { setError(null); setEdit({ isNew: true, active: true, roles: [] }); }}>
           Anlegen
         </Button>
       </>)}
     >
-      {einladen && <EinladungDialog onClose={() => setEinladen(false)} />}
+      {einladen === 'QR' && <EinladungDialog onClose={() => setEinladen(false)} onModus={() => setEinladen('LISTE')} />}
+      {einladen === 'LISTE' && <ZugangslinkDialog onClose={() => setEinladen(false)} onModus={() => setEinladen('QR')} />}
       {mg && (
         <Dialog open headerText="Mitglieder als Benutzer anlegen" style={{ width: 'min(52rem, 96vw)' }} onClose={() => setMg(null)}
                 footer={<Bar endContent={mg === 'frage' ? <>
@@ -443,7 +445,7 @@ function EinzelAnlage({ onClose, onDone }: { onClose: () => void; onDone: () => 
  * oder als Brief (PDF). Wer den Link einlöst, erhält sofort einen Benutzer mit Rolle „Mitglied“.
  */
 interface EinladungKandidat { adrnr: string; mitglnrn: string | null; vorname: string | null; nachname: string | null; email: string | null; eingeladen_am: string | null; eingeladen_per: string | null }
-function EinladungDialog({ onClose }: { onClose: () => void }) {
+function EinladungDialog({ onClose, onModus }: { onClose: () => void; onModus: () => void }) {
   const [liste, setListe] = useState<EinladungKandidat[] | null>(null);
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const [brief, setBrief] = useState(false);
@@ -478,7 +480,7 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
   }
   const mitMail = [...wahl].filter((a) => liste?.find((k) => k.adrnr === a)?.email).length;
   return (
-    <Dialog open headerText="Mitglieder zum Vereinsportal einladen" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
+    <Dialog open headerText="Einladen & Zugangslinks" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={ergebnis ? <>
               {ergebnis.pdf && <Button design="Emphasized" icon="download" onClick={() => pdfLaden(ergebnis.pdf!)}>Briefe (PDF) herunterladen</Button>}
               <Button onClick={onClose}>Schließen</Button>
@@ -486,6 +488,7 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
               <Button design="Emphasized" icon="qr-code" loading={busy} disabled={!wahl.size} onClick={los}>{wahl.size} einladen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
+      <ModusWahl modus="QR" onModus={onModus} />
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {ergebnis ? (
         <>
@@ -520,6 +523,149 @@ function EinladungDialog({ onClose }: { onClose: () => void }) {
           <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
             {wahl.size} ausgewählt: {brief ? 0 : mitMail} per E-Mail, {brief ? wahl.size : wahl.size - mitMail} als Brief. Eine neue Einladung macht ältere ungültig.
           </Text>
+        </>
+      )}
+    </Dialog>
+  );
+}
+
+/** Umschalter oben im Dialog „Einladen & Zugangslinks“ */
+function ModusWahl({ modus, onModus }: { modus: 'QR' | 'LISTE'; onModus: () => void }) {
+  return (
+    <SegmentedButton style={{ marginBottom: '0.75rem' }} onSelectionChange={(e) => { if ((e.detail.selectedItems[0] as HTMLElement).dataset.m !== modus) onModus(); }}>
+      <SegmentedButtonItem data-m="QR" icon="qr-code" selected={modus === 'QR'}>Mitglieder ohne Benutzer einladen</SegmentedButtonItem>
+      <SegmentedButtonItem data-m="LISTE" icon="paste" selected={modus === 'LISTE'}>Zugangslink an Personen aus Liste</SegmentedButtonItem>
+    </SegmentedButton>
+  );
+}
+
+/**
+ * Zugangslinks an ausgewählte Personen (#105): Namen einfügen (z. B. Tabelle „User | Anzahl“ oder kommagetrennt), mit Benutzern
+ * und Mitgliedern abgleichen, Text vorgeschlagen und änderbar, optional ein PDF als Anhang. Benutzer erhalten einen
+ * Einmal-Link zum Setzen des Kennworts, Mitglieder ohne Benutzer die Einladung zum Vereinsportal.
+ */
+interface ZEmpf { key: string; art: 'BENUTZER' | 'EINLADUNG'; name: string; benutzername: string | null; email: string | null }
+interface ZZeile { eingabe: string; treffer: ZEmpf[] }
+const Z = '/api/m/tco/mitglieder/zugang';
+function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus: () => void }) {
+  const [eingabe, setEingabe] = useState('');
+  const [zeilen, setZeilen] = useState<ZZeile[] | null>(null);
+  // je Eingabezeile der gewählte Empfänger ('' = nicht senden)
+  const [wahl, setWahl] = useState<Record<string, string>>({});
+  const [betreff, setBetreff] = useState('');
+  const [text, setText] = useState('');
+  const [platzhalter, setPlatzhalter] = useState<string[]>([]);
+  const [tage, setTage] = useState(14);
+  const [pdf, setPdf] = useState<{ name: string; data: string } | null>(null);
+  const datei = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ergebnis, setErgebnis] = useState<{ text: string; zeilen: { key: string; ok: boolean; name: string; an: string; text: string }[] } | null>(null);
+  useEffect(() => {
+    api.get<{ betreff: string; text: string; platzhalter: string[] }>(`${Z}/vorlage`)
+      .then((v) => { setBetreff(v.betreff); setText(v.text); setPlatzhalter(v.platzhalter); }).catch((e) => setError(e.message));
+  }, []);
+  async function abgleichen() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<ZZeile[]>(`${Z}/abgleich`, { text: eingabe });
+      setZeilen(r);
+      // eindeutige Treffer mit E-Mail vorbelegen
+      setWahl(Object.fromEntries(r.map((z) => [z.eingabe, z.treffer.length === 1 && z.treffer[0].email ? z.treffer[0].key : ''])));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  function pdfWaehlen(f: File | undefined) {
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { setError('Die PDF-Datei ist größer als 10 MB.'); return; }
+    const r = new FileReader();
+    r.onload = () => setPdf({ name: f.name, data: String(r.result) });
+    r.readAsDataURL(f);
+  }
+  const empfaenger = [...new Set(Object.values(wahl).filter(Boolean))];
+  async function senden() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<NonNullable<typeof ergebnis>>(`${Z}/senden`, { empfaenger, betreff, text, tage, pdf });
+      setErgebnis(r);
+      toast(r.text, 8000);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  const treffer = (key: string) => zeilen?.flatMap((z) => z.treffer).find((t) => t.key === key);
+  const zelle = { padding: '0.3rem 0.5rem', borderTop: '1px solid var(--sapList_BorderColor)', verticalAlign: 'middle' } as const;
+  return (
+    <Dialog open headerText="Einladen & Zugangslinks" style={{ width: 'min(60rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={ergebnis ? <Button onClick={onClose}>Schließen</Button> : <>
+              <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={!empfaenger.length || !text.includes('{Link}') || !betreff.trim()} onClick={senden}>
+                {empfaenger.length} E-Mail{empfaenger.length === 1 ? '' : 's'} senden
+              </Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <ModusWahl modus="LISTE" onModus={onModus} />
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {ergebnis ? (
+        <>
+          <MessageStrip design={ergebnis.zeilen.every((z) => z.ok) ? 'Positive' : 'Critical'} hideCloseButton style={{ marginBottom: '0.5rem' }}>{ergebnis.text}</MessageStrip>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead><tr>{['Person', 'E-Mail', 'Ergebnis'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+            <tbody>{ergebnis.zeilen.map((z) => (
+              <tr key={z.key}>
+                <td style={zelle}><Text>{z.name || treffer(z.key)?.name || z.key}</Text></td>
+                <td style={zelle}><Text>{z.an || treffer(z.key)?.email || '–'}</Text></td>
+                <td style={zelle}><ObjectStatus state={z.ok ? 'Positive' : 'Negative'} showDefaultIcon>{z.text}</ObjectStatus></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>
+      ) : (
+        <>
+          <Label showColon>1 · Personen einfügen (eine je Zeile, Tabelle aus der Zwischenablage oder kommagetrennt)</Label>
+          <TextArea rows={5} value={eingabe} placeholder={'Simone Wilhelm\nKonstantin Born\nAdrian Schuler, Claus Baltes'} style={{ width: '100%' }}
+                    onInput={(e) => setEingabe(e.target.value)} />
+          <Button icon="synchronize" disabled={!eingabe.trim() || busy} onClick={abgleichen} style={{ margin: '0.25rem 0 0.75rem' }}>Abgleichen</Button>
+          {zeilen && (
+            <div style={{ maxHeight: '30vh', overflowY: 'auto', border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead><tr>{['Eingabe', 'Empfänger', 'E-Mail', 'Link'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+                <tbody>{zeilen.map((z) => {
+                  const t = treffer(wahl[z.eingabe] ?? '');
+                  return (
+                    <tr key={z.eingabe}>
+                      <td style={zelle}><Text>{z.eingabe}</Text></td>
+                      <td style={zelle}>
+                        {!z.treffer.length ? <ObjectStatus state="Negative" showDefaultIcon>nicht gefunden</ObjectStatus> : (
+                          <Select style={{ width: '100%' }} onChange={(e) => setWahl({ ...wahl, [z.eingabe]: (e.detail.selectedOption as HTMLElement).dataset.k ?? '' })}>
+                            <Option data-k="" selected={!wahl[z.eingabe]}>– nicht senden –</Option>
+                            {z.treffer.map((x) => (
+                              <Option key={x.key} data-k={x.key} selected={wahl[z.eingabe] === x.key}>
+                                {x.name}{x.benutzername ? ` (${x.benutzername})` : ' (Mitglied ohne Benutzer)'}
+                              </Option>
+                            ))}
+                          </Select>
+                        )}
+                        {z.treffer.length > 1 && !wahl[z.eingabe] && <Text className="portal-muted portal-small">{z.treffer.length} Treffer – bitte wählen</Text>}
+                      </td>
+                      <td style={zelle}>{t ? (t.email ? <Text>{t.email}</Text> : <ObjectStatus state="Negative">keine E-Mail</ObjectStatus>) : <Text>–</Text>}</td>
+                      <td style={zelle}>{t && <Text>{t.art === 'BENUTZER' ? 'Kennwort setzen' : 'Einladung'}</Text>}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          )}
+          <Label showColon>2 · E-Mail (Vorschlag, frei änderbar)</Label>
+          <Input value={betreff} onInput={(e) => setBetreff(e.target.value)} style={{ width: '100%', margin: '0.25rem 0' }} accessibleName="Betreff" placeholder="Betreff" />
+          <TextArea rows={10} value={text} onInput={(e) => setText(e.target.value)} style={{ width: '100%' }} accessibleName="Text der E-Mail" />
+          <Text className={`portal-small ${text.includes('{Link}') ? 'portal-muted' : ''}`} style={{ display: 'block', margin: '0.25rem 0 0.75rem', color: text.includes('{Link}') ? undefined : 'var(--sapNegativeTextColor)' }}>
+            Platzhalter: {platzhalter.join(' ')} – {'{Link}'} ist Pflicht (persönlicher Link je Empfänger).
+          </Text>
+          <Label showColon>3 · Gültigkeit und Anhang</Label>
+          <div className="portal-row" style={{ gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.25rem' }}>
+            <StepInput value={tage} min={1} max={60} style={{ width: '8rem' }} accessibleName="Gültigkeit in Tagen" onChange={(e) => setTage(Number(e.target.value) || 14)} />
+            <Text>Tage gültig, einmal verwendbar</Text>
+            <input ref={datei} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }} onChange={(e) => { pdfWaehlen(e.target.files?.[0]); e.target.value = ''; }} />
+            <Button icon="pdf-attachment" onClick={() => datei.current?.click()}>{pdf ? 'Anderes PDF' : 'PDF anhängen'}</Button>
+            {pdf && <><Text>{pdf.name}</Text><Button design="Transparent" icon="decline" tooltip="Anhang entfernen" onClick={() => setPdf(null)} /></>}
+          </div>
         </>
       )}
     </Dialog>
