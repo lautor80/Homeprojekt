@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
-  type AnalyticalTableColumnDefinition,
+  type AnalyticalTableColumnDefinition, type AnalyticalTableCellInstance as Cell,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
@@ -21,7 +21,6 @@ interface Ev {
 }
 interface Zeile extends Ev { beginn_text: string; art: string; gruppe: string; anmeldung_text: string; begegnung: string; zusagen_gesamt: number; status_text: string }
 type GruppeKurz = { id: number; name: string; aktiv: boolean };
-type Cell = { row: { original: Zeile } };
 type SortZeile = { original: Zeile };
 interface Regel { feld: string; text: string; gruppe_id: number; aktiv: boolean }
 interface RegelZeile { id: number; titel: string; beginn: string; bisher: string; neu: string }
@@ -100,7 +99,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
     { Header: 'Absagen', accessor: 'absagen', width: 100, hAlign: 'End' },
     {
       Header: 'Status', accessor: 'status_text', width: 110,
-      Cell: ({ row }: Cell) => (row.original.abgesagt ? <ObjectStatus state="Negative">abgesagt</ObjectStatus> : ''),
+      Cell: ({ row }: Cell) => (row.original.abgesagt ? <ObjectStatus state="Negative">abgesagt</ObjectStatus> : <span />),
     },
   ], [onOeffnen]);
   const tabellenOptionen = useMemo(() => ({ getRowId: (r: Zeile) => String(r.id), autoResetSelectedRows: false, autoResetSortBy: false, autoResetFilters: false }), []);
