@@ -16,6 +16,7 @@ import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, mailText, plPrue
 import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
 import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
 import { einladen, einladungLesen, einloesen, kandidaten as einladungKandidaten } from './einladung.js';
+import { abgleichen, namenLesen, vorlage as zugangVorlage, zugangSenden, PLATZHALTER } from './zugangslink.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
@@ -269,6 +270,48 @@ export async function mitgliederRoutes(app: FastifyInstance) {
         + `${r.fehler.length ? ` – ${r.fehler.length} Mail(s) fehlgeschlagen, stattdessen als Brief` : ''}.`,
     };
   });
+  // ---------------------------------------------------------------- Zugangslinks an Personen aus einer Liste (#105)
+  app.get('/mitglieder/zugang/vorlage', { preHandler: requireAuth('core.users:edit') }, async () => ({ ...zugangVorlage(await vereinLesen()), platzhalter: PLATZHALTER }));
+  app.post('/mitglieder/zugang/abgleich', { preHandler: requireAuth('core.users:edit') }, async (req) => {
+    const { text } = z.object({ text: z.string().max(50_000) }).parse(req.body);
+    const namen = namenLesen(text);
+    if (!namen.length) throw new BusinessError('Im eingefügten Text wurden keine Namen gefunden.');
+    if (namen.length > 300) throw new BusinessError('Höchstens 300 Namen auf einmal.');
+    return abgleichen(DB, namen);
+  });
+  app.post('/mitglieder/zugang/senden', { preHandler: requireAuth('core.users:edit'), bodyLimit: 15 * 1024 * 1024 }, async (req) => {
+    const b = z.object({
+      empfaenger: z.array(z.string().regex(/^[UM]:.+$/)).min(1, 'Bitte mindestens einen Empfänger auswählen.').max(300),
+      betreff: z.string().trim().min(1, 'Bitte einen Betreff angeben.').max(200),
+      text: z.string().trim().min(1).max(20_000),
+      tage: z.coerce.number().int().min(1).max(60).default(14),
+      pdf: z.object({ name: z.string().min(1), data: z.string().min(1) }).nullish(),
+    }).parse(req.body);
+    if (!b.text.includes('{Link}')) throw new BusinessError('Der Text muss den Platzhalter {Link} enthalten – dort steht der persönliche Link.');
+    let pdf: { dateiname: string; inhalt: Buffer } | null = null;
+    if (b.pdf) {
+      const inhalt = Buffer.from(b.pdf.data.replace(/^data:[^,]*,/, ''), 'base64');
+      if (inhalt.subarray(0, 4).toString() !== '%PDF') throw new BusinessError('Der Anhang ist keine PDF-Datei.');
+      if (inhalt.length > 10 * 1024 * 1024) throw new BusinessError('Der Anhang ist größer als 10 MB.');
+      pdf = { dateiname: b.pdf.name.replace(/[\\/]/g, '_').replace(/(\.pdf)?$/i, '.pdf'), inhalt };
+    }
+    const v = await vereinLesen();
+    const zeilen: { key: string; ok: boolean; name: string; an: string; art: string; text: string }[] = [];
+    // je Empfänger eigene Transaktion: ein Fehler hält die übrigen nicht auf
+    for (const key of [...new Set(b.empfaenger)]) {
+      try {
+        const r = await change(req, (tx) => zugangSenden(tx, v, key, { betreff: b.betreff, text: b.text, tage: b.tage, pdf, wer: benutzer(req) }),
+          { action: 'ZUGANGSLINK', reason: key });
+        zeilen.push({ key, ok: true, ...r, text: r.art === 'BENUTZER' ? 'Kennwort-Link gesendet' : 'Einladung gesendet (noch kein Benutzer)' });
+      } catch (e) {
+        if (!(e instanceof BusinessError)) throw e;
+        zeilen.push({ key, ok: false, name: '', an: '', art: '', text: e.message });
+      }
+    }
+    const ok = zeilen.filter((x) => x.ok).length;
+    return { zeilen, text: `${ok} von ${zeilen.length} E-Mail(s) gesendet.` };
+  });
+
   /** öffentlich: Einladung prüfen und einlösen (Benutzer mit Rolle Mitglied) */
   const einladungVersuche = new Map<string, { n: number; bis: number }>();
   const einladungLimit = (ip: string) => {

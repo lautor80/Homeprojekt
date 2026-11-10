@@ -25,11 +25,12 @@ export async function portalUrl(): Promise<string | null> {
 /** true, wenn der zentrale Mailversand (Administration → Anbindungen → E-Mail-Versand) eingerichtet ist */
 export const mailVerfuegbar = () => versandEingerichtet();
 
-export async function tokenErzeugen(db: Db, userId: string, zweck: Zweck, ip: string | null): Promise<string> {
+/** `stunden`: abweichende Gültigkeit, z. B. für Zugangslinks aus der Benutzerverwaltung (Tco #105) */
+export async function tokenErzeugen(db: Db, userId: string, zweck: Zweck, ip: string | null, stunden = GUELTIG_STUNDEN[zweck]): Promise<string> {
   const token = crypto.randomBytes(32).toString('base64url');
   await db`delete from core.password_tokens where user_id = ${userId} and zweck = ${zweck} and verwendet_am is null`;
   await db`insert into core.password_tokens (user_id, zweck, token_hash, gueltig_bis, ip)
-           values (${userId}, ${zweck}, ${sha256(token)}, now() + make_interval(hours => ${GUELTIG_STUNDEN[zweck]}), ${ip})`;
+           values (${userId}, ${zweck}, ${sha256(token)}, now() + make_interval(hours => ${stunden}), ${ip})`;
   return token;
 }
 
