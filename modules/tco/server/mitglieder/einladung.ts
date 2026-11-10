@@ -146,11 +146,11 @@ export async function schnellwegPruefen(tx: Db, v: Verein, email: string, geburt
 }
 
 /** Einladungsmail mit Link und QR-Code (Sammellauf und „Erneut senden“ im Mailprotokoll) */
-async function einladungsMail(v: Verein, m: Record<string, any>, an: string, link: string, bis: string, wer: string, w: Wiederholung) {
+async function einladungsMail(v: Verein, m: Record<string, any>, an: string, link: string, bis: string, wer: string, w: Wiederholung, cc?: string) {
   const { betreff, text } = mailText(v, m, link, bis);
   const png = await QRCode.toBuffer(link, { type: 'png', errorCorrectionLevel: 'M', margin: 2, width: 480 });
   const e = await mailSenden(v, {
-    modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an, betreff, text, benutzer: wer,
+    modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an, cc: cc ?? '', betreff, text, benutzer: wer,
     anhaenge: [{ dateiname: 'Zugang-QR-Code.png', mime: 'image/png', inhalt: png, objekt: m.adrnr }], wiederholung: w,
   });
   if (e.status === 'fehler') throw new Error(e.fehler ?? 'Versand fehlgeschlagen');
@@ -160,7 +160,7 @@ async function einladungsMail(v: Verein, m: Record<string, any>, an: string, lin
  * Mailprotokoll → „Erneut senden“: neuen Einladungslink erzeugen (ältere werden ungültig, der Link selbst wird nie gespeichert)
  * und an die beim Verein hinterlegte Adresse senden – nur solange das Mitglied aktiv ist und noch keinen Benutzer hat.
  */
-export async function einladungErneut(tx: Db, v: Verein, w: { adrnr: string; stunden: number; weg: 'MAIL' | 'REGISTRIERUNG' }, wer: string): Promise<string> {
+export async function einladungErneut(tx: Db, v: Verein, w: { adrnr: string; stunden: number; weg: 'MAIL' | 'REGISTRIERUNG' }, wer: string, cc?: string): Promise<string> {
   const url = await urlPflicht();
   const [m] = await tx`select m.* from tco.mitglieder m where m.adrnr = ${w.adrnr} and ${aktivOhneBenutzer(tx)}`;
   if (!m) throw new BusinessError('Das Mitglied ist nicht mehr aktiv oder hat inzwischen einen Benutzer – eine Einladung ist nicht mehr nötig.');
@@ -168,7 +168,7 @@ export async function einladungErneut(tx: Db, v: Verein, w: { adrnr: string; stu
   if (!an) throw new BusinessError('Für das Mitglied ist keine E-Mail-Adresse mehr hinterlegt.');
   const token = await einladungErzeugen(tx, w.adrnr, w.weg, wer, w.stunden);
   const bis = new Date(Date.now() + w.stunden * 3600_000).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
-  await einladungsMail(v, m, an, einladungsLink(url, token), bis, wer, { art: 'EINLADUNG', ...w });
+  await einladungsMail(v, m, an, einladungsLink(url, token), bis, wer, { art: 'EINLADUNG', ...w }, cc);
   return `Neuer Einladungslink an ${an} gesendet (gültig bis ${bis}); ältere Links sind ungültig.`;
 }
 

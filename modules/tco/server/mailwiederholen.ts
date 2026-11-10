@@ -13,10 +13,10 @@ import { statusSetzen } from './halle/daten.js';
 import { bestaetigungErneut } from './platz/routes.js';
 import { einladungErneut } from './mitglieder/einladung.js';
 
-export async function mailWiederholen(tx: Tx, w: Wiederholung, wer: string): Promise<string | null> {
-  if (w.art === 'REG_BESTAETIGUNG') return bestaetigungErneut(tx, await vereinLesen(tx), Number(w.id));
+export async function mailWiederholen(tx: Tx, w: Wiederholung, wer: string, cc?: string): Promise<string | null> {
+  if (w.art === 'REG_BESTAETIGUNG') return bestaetigungErneut(tx, await vereinLesen(tx), Number(w.id), cc);
   if (w.art === 'EINLADUNG') {
-    return einladungErneut(tx, await vereinLesen(tx), { adrnr: String(w.adrnr), stunden: Number(w.stunden), weg: w.weg === 'MAIL' ? 'MAIL' : 'REGISTRIERUNG' }, wer);
+    return einladungErneut(tx, await vereinLesen(tx), { adrnr: String(w.adrnr), stunden: Number(w.stunden), weg: w.weg === 'MAIL' ? 'MAIL' : 'REGISTRIERUNG' }, wer, cc);
   }
   return null;
 }

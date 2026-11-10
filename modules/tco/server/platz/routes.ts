@@ -148,9 +148,9 @@ async function ablehnungMail(r: { email: string; anzeigename: string }, grund: s
 }
 
 /** Bestätigungslink an externe Hallennutzer (Registrierung und „Erneut senden“ im Mailprotokoll) */
-async function bestaetigungsMail(v: Verein, url: string, r: { id: number; email: string; vorname: string; nachname: string; benutzername: string }, token: string) {
+async function bestaetigungsMail(v: Verein, url: string, r: { id: number; email: string; vorname: string; nachname: string; benutzername: string }, token: string, cc?: string) {
   await mailSenden(v, {
-    modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: r.email, benutzer: 'Portal', anhaenge: [],
+    modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: r.email, cc: cc ?? '', benutzer: 'Portal', anhaenge: [],
     // der Link wird nie gespeichert: „Erneut senden“ erzeugt einen neuen
     wiederholung: { art: 'REG_BESTAETIGUNG', id: r.id },
     betreff: `${v.name}: Bitte bestätigen Sie Ihre Registrierung`,
@@ -162,7 +162,7 @@ async function bestaetigungsMail(v: Verein, url: string, r: { id: number; email:
 }
 
 /** Mailprotokoll → „Erneut senden“: neuer Bestätigungslink (der alte wird ungültig), solange die Registrierung auf die Bestätigung wartet */
-export async function bestaetigungErneut(tx: Db, v: Verein, id: number): Promise<string> {
+export async function bestaetigungErneut(tx: Db, v: Verein, id: number, cc?: string): Promise<string> {
   const url = await portalUrl();
   if (!url) throw new BusinessError('Die Portal-Adresse fehlt (Administration → Einstellungen).');
   const [r] = await tx`select id, status, art, email_bestaetigt_am, email, vorname, nachname, benutzername from tco.registrierungen where id = ${id} for update`;
@@ -172,7 +172,7 @@ export async function bestaetigungErneut(tx: Db, v: Verein, id: number): Promise
   if (!wartet) throw new BusinessError('Die Registrierung ist bereits bestätigt, freigegeben oder abgelehnt – ein Bestätigungslink ist nicht mehr nötig.');
   const token = randomBytes(32).toString('base64url');
   await tx`update tco.registrierungen set status = 'EMAIL', email_token_hash = ${sha256(token)}, email_bis = ${new Date(Date.now() + EMAIL_STUNDEN * 3600_000)} where id = ${id}`;
-  await bestaetigungsMail(v, url, { id, email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername }, token);
+  await bestaetigungsMail(v, url, { id, email: r.email, vorname: r.vorname, nachname: r.nachname, benutzername: r.benutzername }, token, cc);
   return `Neuer Bestätigungslink an ${r.email} gesendet (${EMAIL_STUNDEN} Stunden gültig).`;
 }
 

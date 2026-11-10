@@ -67,9 +67,9 @@ export interface ServerModule {
   sperrObjekte?: AuditObjectDef[];
   /**
    * Mailprotokoll → „Erneut senden“ für Mails mit Zugangslinks (werden nie gespeichert): das Modul erzeugt für seine
-   * Wiederholungsarten einen neuen Link und sendet; null = Art nicht zuständig. Siehe server/src/lib/mail.ts.
+   * Wiederholungsarten einen neuen Link und sendet (cc: Kopie an diese Adresse); null = Art nicht zuständig. Siehe server/src/lib/mail.ts.
    */
-  mailWiederholen?: (tx: Tx, w: Wiederholung, wer: string) => Promise<string | null>;
+  mailWiederholen?: (tx: Tx, w: Wiederholung, wer: string, cc?: string) => Promise<string | null>;
   /** nach erfolgreicher Wiederholung nachziehen, was der erste Versand getan hätte (z. B. Rechnung „versendet“); null = nicht zuständig */
   mailFolge?: (tx: Tx, f: MailFolge) => Promise<string[] | null>;
   /**

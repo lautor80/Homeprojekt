@@ -1,5 +1,5 @@
 -- Mailprotokoll des Portals (bisher tco.mail_protokoll): jeder Versuch über den n8n-Mailversand mit Status, Absender und Fehler.
--- nachricht: Inhalt (inkl. Anhänge) bzw. Anleitung zum Neuerzeugen – nur bei Fehlern, nie mit Zugangslinks/Kennwörtern;
+-- nachricht: Inhalt (inkl. Anhänge) bzw. Anleitung zum Neuerzeugen – anfangs nur bei Fehlern, inzwischen bei jeder E-Mail; nie mit Zugangslinks/Kennwörtern;
 -- nach 30 Tagen bzw. erfolgreicher Wiederholung geleert. Aufbewahrung 180 Tage.
 create table if not exists core.mail_protokoll (
   id            bigserial primary key,

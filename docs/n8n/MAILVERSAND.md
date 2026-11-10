@@ -89,7 +89,7 @@ Anwendungen im Portal: `Benutzer` (Kennwort-Links), `Registrierung`, `Mitgliedsa
 Administration → Anbindungen → E-Mail-Versand (n8n) zeigt die letzten 50 Versuche (Zeit, Anwendung, Empfänger, Betreff, Absender, Status, Fehler)
 und sendet eine Testmail über den kompletten Weg. Fehlgeschlagene Mails (`fehler`, `nicht_gesendet`) haben je Zeile **„Erneut senden“**:
 
-- **Normale Mails** (Rechnungen, Verzehrbelege, Mitgliedermails, Benachrichtigungen): Der Inhalt samt Anhängen wird nur im Fehlerfall
+- **Normale Mails** (Rechnungen, Verzehrbelege, Mitgliedermails, Benachrichtigungen): Der Inhalt samt Anhängen wird 30 Tage
   gespeichert und unverändert mit dem ursprünglichen Absender erneut übergeben. Danach wird nachgezogen, was der erste Versand getan hätte
   (Hallenrechnung „versendet“, Verzehrbeleg „per Mail versendet“). Der gespeicherte Inhalt wird nach Erfolg bzw. nach 30 Tagen gelöscht
   und nie an den Browser ausgeliefert.
@@ -107,4 +107,11 @@ und „Sammeln nach“ Person, Empfänger, Vorgang, Anwendung oder Status. Die S
 Benutzer aus dem Kern, Mitglieder (auch Adresse des Zahlers), Hallenkunden und Registrierungen aus dem Modul (`ServerModule.mailPersonen`).
 So findet die Suche nach einem Namen alle E-Mails an dessen Adresse, auch wenn noch kein Benutzer angelegt ist.
 Ein Klick auf eine Zeile zeigt die Einzelheiten (Fehlertext, tatsächlicher Absender, Wiederholung); der Inhalt der E-Mail wird nie angezeigt.
+
+Je Zeile gibt es **„Erneut senden“** (Berechtigung `core.mail:edit`, `POST /api/mail/uebersicht/:id/erneut`): dieselbe E-Mail geht noch einmal an
+den Empfänger, auch wenn sie schon „gesendet“ war und beliebig oft; der **Absender der ersten E-Mail erhält eine Kopie (CC)**. Dafür wird der
+Inhalt (samt Anhängen) jetzt bei **jeder** E-Mail 30 Tage gespeichert, nicht mehr nur im Fehlerfall – weiterhin nie Zugangslinks oder
+Kennwörter: Bestätigungs- und Einladungslinks werden beim erneuten Senden neu erzeugt (ältere ungültig, der neue Link steht auch in der
+Kopie), Kennwort-Links nennt die Zeile nur als „neu auslösen“. E-Mails von vor dem Update oder älter als 30 Tage sind nicht wiederholbar.
+Nachgezogen (Rechnung „versendet“ …) wird nur, wenn der erste Versand fehlgeschlagen war.
 „gesendet“ heißt: von n8n an den Mailserver übergeben – nicht, dass die E-Mail im Postfach angekommen ist (Spam-Ordner, Tippfehler in der Adresse).

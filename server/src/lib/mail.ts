@@ -173,7 +173,7 @@ export async function mailProtokoll(e: { anwendung: string; objekt: string; an: 
   } catch { return null; /* Protokoll ist nur Diagnose */ }
 }
 
-/** Was zum erneuten Senden gespeichert wird (nur bei Fehlern) */
+/** Was zum erneuten Senden gespeichert wird (30 Tage; Zugangslinks und Kennwörter nie – dafür steht die Wiederholungsart) */
 function wiederholDaten(m: MailAuftrag): unknown {
   if (m.wiederholung) return { wiederholung: m.wiederholung };
   const ich = m.persoenlich === false || m.absender ? null : aktuellerBenutzer();
@@ -208,8 +208,9 @@ export async function mailSenden(m: MailAuftrag): Promise<MailErgebnis & { proto
   }
   try {
     const r = await mailSendenIntern(v, m);
+    // Inhalt bzw. Anleitung zum Neuerzeugen auch bei Erfolg festhalten: E-Mail-Protokoll → „Erneut senden“ je Zeile (30 Tage, nie mit Zugangslinks)
     const protokoll = await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null),
-      nachricht: r.status === 'fehler' ? wiederholDaten(m) : null });
+      nachricht: wiederholDaten(m) });
     return { ...r, protokoll };
   } catch (e) {
     await mailProtokoll({ ...proto, status: 'fehler', fehler: (e as Error).message, nachricht: wiederholDaten(m) });
@@ -292,8 +293,8 @@ export function wiederholungsArt(nachricht: unknown): string | null {
 }
 
 export interface WiederholHooks {
-  /** Modul erzeugt eine Mail mit neuem Link; null = Art nicht zuständig */
-  wiederholen: (tx: Tx, w: Wiederholung, wer: string) => Promise<string | null>;
+  /** Modul erzeugt eine Mail mit neuem Link (cc: Kopie an diese Adresse); null = Art nicht zuständig */
+  wiederholen: (tx: Tx, w: Wiederholung, wer: string, cc?: string) => Promise<string | null>;
   /** Modul zieht nach erfolgreicher Wiederholung nach; null = Art nicht zuständig */
   folge: (tx: Tx, f: MailFolge) => Promise<string[] | null>;
 }
@@ -339,4 +340,68 @@ export async function mailWiederholen(tx: Tx, id: number, wer: string, hooks: Wi
   // gespeicherten Inhalt nach Erfolg löschen (Datenschutz); neue Mail steht als eigener Eintrag im Protokoll
   await tx`update core.mail_protokoll set erneut_am = now(), erneut_von = ${wer}, erneut_status = ${status}, nachricht = null where id = ${id}`;
   return { text, warnungen };
+}
+
+// ---------------------------------------------------------------------------
+// Erneut senden je Zeile (App „E-Mail-Protokoll“) – auch bereits gesendete E-Mails, mit Kopie an den Absender
+// ---------------------------------------------------------------------------
+
+/** Warum ein Eintrag (gleich welchen Status) nicht erneut gesendet werden kann; null = kann */
+export function erneutSperre(nachricht: unknown): string | null {
+  const n = nachricht as Nachricht | null;
+  if (!n) return 'Inhalt nicht gespeichert (vor dem Update gesendet oder älter als 30 Tage) – bitte in der Anwendung neu auslösen.';
+  if ('wiederholung' in n && n.wiederholung.art === 'NEU_AUSLOESEN') return (n.wiederholung as { hinweis: string }).hinweis;
+  return null;
+}
+
+/** Adressen zusammenführen (ohne Dubletten, Groß-/Kleinschreibung egal) */
+export function ccMit(vorhanden: string | null | undefined, dazu: string | null | undefined): string {
+  const liste = (vorhanden ?? '').split(/[,;]+/).map((x) => x.trim()).filter(Boolean);
+  const neu = (dazu ?? '').trim();
+  if (neu && !liste.some((x) => x.toLowerCase().includes(neu.toLowerCase()))) liste.push(neu);
+  return liste.join(', ');
+}
+
+/**
+ * E-Mail eines Protokolleintrags erneut senden – auch wenn sie schon gesendet wurde und beliebig oft; cc = Kopie (Absender der ersten E-Mail).
+ * Zugangslinks werden neu erzeugt (ältere ungültig). Nachgezogen (Rechnung „versendet“ …) wird nur, wenn der erste Versand
+ * fehlgeschlagen war und noch nicht erfolgreich wiederholt wurde. Der gespeicherte Inhalt bleibt bis zum Ablauf der 30 Tage.
+ */
+export async function mailErneutSenden(tx: Tx, id: number, wer: string, hooks: WiederholHooks, cc: string | null): Promise<{ text: string; warnungen: string[] }> {
+  const [p] = await tx`select id, status, nachricht, erneut_status from core.mail_protokoll where id = ${id}`;
+  if (!p) throw new BusinessError('Den Protokolleintrag gibt es nicht (mehr).', 404);
+  const grund = erneutSperre(p.nachricht);
+  if (grund) throw new BusinessError(grund);
+  const n = p.nachricht as Nachricht;
+  const offen = WIEDERHOLBAR.includes(p.status) && p.erneut_status !== 'gesendet' && p.erneut_status !== 'entwurf';
+  let text: string;
+  let status = 'gesendet';
+  const warnungen: string[] = [];
+  try {
+    if ('wiederholung' in n) {
+      const t = await hooks.wiederholen(tx, n.wiederholung, wer, cc ?? undefined);
+      if (t === null) throw new BusinessError(`Für diese E-Mail (${n.wiederholung.art}) gibt es keine Wiederholung mehr – bitte in der Anwendung neu auslösen.`);
+      text = t;
+    } else {
+      const m = n.mail;
+      const r = await mailSenden({
+        modus: m.modus, anwendung: m.anwendung, objekt: m.objekt, an: m.an, cc: ccMit(m.cc, cc), bcc: m.bcc, betreff: m.betreff, text: m.text,
+        html: m.html, antwort_an: m.antwort_an || undefined, benutzer: wer, organisation: m.organisation ?? undefined,
+        ...(m.absender ? { absender: m.absender, absender_name: m.absender_name ?? '' } : { persoenlich: false }),
+        anhaenge: m.anhaenge.map((a) => ({ ...a, inhalt: Buffer.from(a.inhalt, 'base64') })),
+        folge: offen ? n.folge ?? undefined : undefined,
+      });
+      if (r.status === 'fehler') throw new Error(r.fehler ?? 'n8n meldet einen Fehler');
+      status = r.status;
+      if (offen && n.folge && r.status === 'gesendet') warnungen.push(...((await hooks.folge(tx, n.folge)) ?? [`Nachziehen für ${n.folge.art} nicht möglich – bitte in der Anwendung prüfen.`]));
+      text = r.status === 'entwurf' ? `Entwurf an ${m.an} im Postfach abgelegt.` : `E-Mail an ${m.an} erneut gesendet${r.von ? ` (Absender ${r.von})` : ''}.`;
+    }
+  } catch (e) {
+    // fehlgeschlagene Wiederholung festhalten (eigene Verbindung – die Transaktion wird zurückgerollt); eine frühere erfolgreiche bleibt stehen
+    await sql`update core.mail_protokoll set erneut_am = now(), erneut_von = ${wer}, erneut_status = 'fehler'
+               where id = ${id} and coalesce(erneut_status, '') not in ('gesendet', 'entwurf')`.catch(() => undefined);
+    throw e;
+  }
+  await tx`update core.mail_protokoll set erneut_am = now(), erneut_von = ${wer}, erneut_status = ${status} where id = ${id}`;
+  return { text: cc ? `${text} Kopie (CC) an ${cc}.` : text, warnungen };
 }

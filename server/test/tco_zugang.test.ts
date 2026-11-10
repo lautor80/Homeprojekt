@@ -456,6 +456,65 @@ test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {
   assert.equal((await admin('POST', `${P}/${p.id}/erneut`)).status, 400);
 });
 
+test('E-Mail-Protokoll: je Zeile erneut senden (auch gesendete), Absender in Kopie', async () => {
+  const U = '/api/mail/uebersicht';
+  const inhalt = { folge: null, mail: { modus: 'senden', anwendung: 'Test', objekt: 'KOPIE-1', an: 'kopie@example.org', cc: '', bcc: '', betreff: 'Hallo Kopie', text: 'Inhalt',
+    html: false, antwort_an: '', absender: null, absender_name: null, persoenlich: false, organisation: null, anhaenge: [] } };
+  const [neu] = await sql`insert into core.mail_protokoll (anwendung, objekt, an, betreff, absender, von, status, nachricht)
+                          values ('Test', 'KOPIE-1', 'kopie@example.org', 'Hallo Kopie', 'wunsch@tc-test.de', 'Kasse | TC Test <kasse@tc-test.de>', 'gesendet', ${sql.json(inhalt as never)}) returning id`;
+  let r = await admin('GET', `${U}?suche=kopie-1`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let p = r.body.zeilen.find((x: any) => x.id === Number(neu.id));
+  assert.deepEqual([p.status, p.erneut, p.erneut_hinweis, p.erneut_neuer_link, p.cc], ['gesendet', true, null, false, 'kasse@tc-test.de']);
+  assert.deepEqual([p.nachricht, p.inhalt], [undefined, undefined], 'Inhalt wird nie ausgeliefert');
+  // gesendete E-Mail erneut: Empfänger wie zuvor, tatsächlicher Absender in Kopie – beliebig oft
+  let vorher = mails.length;
+  r = await admin('POST', `${U}/${p.id}/erneut`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Kopie \(CC\) an kasse@tc-test\.de/);
+  assert.equal(mails.length, vorher + 1);
+  let m = letzteMail('kopie@example.org') as any;
+  assert.deepEqual([m.betreff, m.cc], ['Hallo Kopie', 'kasse@tc-test.de']);
+  assert.equal((await admin('POST', `${U}/${p.id}/erneut`)).status, 200, 'mehrfach möglich');
+  const [alt] = await sql`select erneut_status, erneut_von, nachricht is not null as da from core.mail_protokoll where id = ${p.id}`;
+  assert.deepEqual([alt.erneut_status, alt.erneut_von, alt.da], ['gesendet', 'Admin', true]);
+  // die neuen E-Mails stehen als eigene Zeilen im Protokoll und sind selbst wieder sendbar (Inhalt auch bei Erfolg gespeichert)
+  r = await admin('GET', `${U}?suche=kopie-1`);
+  assert.equal(r.body.zeilen.length, 3, JSON.stringify(r.body.zeilen));
+  assert.ok(r.body.zeilen.every((x: any) => x.erneut === true));
+  // ohne gespeicherten Inhalt (vor dem Update gesendet): Hinweis statt Versand
+  const [leer] = await sql`insert into core.mail_protokoll (anwendung, objekt, an, betreff, status) values ('Test', 'KOPIE-2', 'kopie@example.org', 'alt', 'gesendet') returning id`;
+  r = await admin('POST', `${U}/${leer.id}/erneut`);
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(r.body.message, /nicht gespeichert/);
+  // Bestätigungslink einer Registrierung: neuer Link, auch der geht in Kopie
+  const [reg] = await sql`insert into tco.registrierungen (benutzername, anzeigename, vorname, nachname, email, passwort_hash, status, art)
+                          values ('karla', 'Kopie, Karla', 'Karla', 'Kopie', 'karla@example.org', 'x', 'EMAIL', 'EXTERN') returning id`;
+  const [link] = await sql`insert into core.mail_protokoll (anwendung, objekt, an, betreff, absender, status, nachricht)
+                           values ('Registrierung', ${`REG-${reg.id}`}, 'karla@example.org', 'Bitte bestätigen', 'portal@tc-test.de', 'gesendet',
+                                   ${sql.json({ wiederholung: { art: 'REG_BESTAETIGUNG', id: Number(reg.id) } } as never)}) returning id`;
+  r = await admin('GET', `${U}?suche=karla`);
+  p = r.body.zeilen.find((x: any) => x.id === Number(link.id));
+  assert.deepEqual([p.erneut, p.erneut_neuer_link, p.cc], [true, true, 'portal@tc-test.de']);
+  assert.match(p.person, /Karla Kopie \(Registrierung\)/);
+  vorher = mails.length;
+  r = await admin('POST', `${U}/${link.id}/erneut`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(mails.length, vorher + 1);
+  m = letzteMail('karla@example.org') as any;
+  assert.equal(m.cc, 'portal@tc-test.de');
+  assert.ok(token(m.text, 'token'), 'neuer Bestätigungslink');
+  // ohne die Berechtigung zum Senden: nur lesen
+  await admin('POST', '/api/admin/roles', { id: 'MAIL_LESER', name: 'E-Mail-Protokoll lesen', permissions: ['core.mail:display'] });
+  r = await admin('POST', '/api/admin/users', { username: 'mailleser', displayName: 'Mail Leser', password: 'lesen-lesen-12', roles: ['MAIL_LESER'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  await sql`update core.users set must_change_password = false where username = 'mailleser'`;
+  const leser = client();
+  assert.equal((await leser('POST', '/api/auth/login', { username: 'mailleser', password: 'lesen-lesen-12' })).status, 200);
+  assert.equal((await leser('GET', `${U}?suche=kopie-1`)).status, 200);
+  assert.equal((await leser('POST', `${U}/${neu.id}/erneut`)).status, 403);
+});
+
 test('Mailprotokoll: Filter nach Anwendung und Zeitraum, Leeren', async () => {
   const P = '/api/mail/protokoll';
   await sql`insert into core.mail_protokoll (zeit, anwendung, objekt, an, betreff, status) values
