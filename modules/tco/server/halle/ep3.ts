@@ -1,7 +1,7 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import { csvParse, dekodieren, sapDatum, sapZeit } from '../../../../server/src/lib/sapcsv.js';
 import type { Db, Verein } from '../verein.js';
-import { dat, heute, zeit } from '../format.js';
+import { dat, heute, nameSchoen, zeit } from '../format.js';
 import { ep3BenutzerAnlegen } from '../platz/registrierung.js';
 import { ep3EventsImportieren } from '../platz/belegungen.js';
 
@@ -29,7 +29,16 @@ const PLATZ_SPALTEN = ['PLATZ', 'SQUARE', 'SQUARE_NAME', 'COURT', 'SNAME', 'SID'
 
 const STATUS: Record<string, string> = { single: '1', subscription: '3', cancelled: '2' };
 
-export interface ImportErgebnis { typ: Ep3Typ | null; text: string; ok: boolean }
+/** Einzelne Änderungen für das Importprotokoll (neu angelegte Kunden, neu ergänzte Buchungen) */
+export interface ImportDetail { art: 'Kunde neu' | 'Buchung neu'; text: string }
+export interface ImportErgebnis { typ: Ep3Typ | null; text: string; ok: boolean; details?: ImportDetail[] }
+
+/** Obergrenze je Protokoll, damit ein Erstimport das Protokoll nicht sprengt */
+const MAX_DETAILS = 200;
+function begrenzt(d: ImportDetail[], art: ImportDetail['art']): ImportDetail[] {
+  if (d.length <= MAX_DETAILS) return d;
+  return [...d.slice(0, MAX_DETAILS), { art, text: `… und ${d.length - MAX_DETAILS} weitere` }];
+}
 
 export async function ep3Importieren(tx: Db, inhalt: string | Buffer): Promise<ImportErgebnis> {
   const text = typeof inhalt === 'string' ? inhalt : dekodieren(inhalt);
@@ -75,7 +84,9 @@ async function kundenImportieren(tx: Db, rows: string[][], idx: (n: string) => n
   const zuids = [...kunden.keys()];
   // Portalzuordnung und übernommene Kennwörter überleben den erneuten Import
   const bisher = new Map<string, { benutzer_id: string | null; pw_hash: string | null }>();
+  const vorhanden = new Set<string>();
   if (zuids.length) {
+    for (const r of await tx`select zuid from tco.kunden where zuid = any(${zuids})`) vorhanden.add(r.zuid as string);
     for (const b of await tx`select zuid, benutzer_id::text, pw_hash from tco.kunden where zuid = any(${zuids}) and (benutzer_id is not null or pw_hash is not null)`) {
       bisher.set(b.zuid, { benutzer_id: b.benutzer_id, pw_hash: b.pw_hash });
     }
@@ -89,11 +100,16 @@ async function kundenImportieren(tx: Db, rows: string[][], idx: (n: string) => n
                      ${k.pw_hash ?? alt?.pw_hash ?? null}, ${alt?.benutzer_id ?? null})`;
   }
   const mitPw = [...kunden.values()].filter((k) => k.pw_hash).length;
+  const neuKunden = [...kunden.values()].filter((k) => !vorhanden.has(k.zuid))
+    .map((k) => ({ name: [k.vorname, k.nachname].filter(Boolean).join(' ') || k.zalias || k.zuid, k }))
+    .sort((x, y) => x.name.localeCompare(y.name, 'de'))
+    .map(({ name, k }): ImportDetail => ({ art: 'Kunde neu', text: `${name} (ZUID ${k.zuid}${k.email ? `, ${k.email}` : ''})` }));
   // Portalbenutzer für alle aktiven EP3-Kunden anlegen (Benutzername = E-Mail, Rolle Hallennutzer) und zuordnen
   const b = await ep3BenutzerAnlegen(tx, zuids);
   return {
     typ: 'KUNDEN', ok: true,
-    text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen${mitPw ? `, ${mitPw} Kennwörter übernommen` : ''}`
+    details: begrenzt(neuKunden, 'Kunde neu'),
+    text: `Kunden: ${rows.length} gelesen, ${kunden.size} übertragen, ${neuKunden.length} neu${mitPw ? `, ${mitPw} Kennwörter übernommen` : ''}`
       + (b.angelegt ? `, ${b.angelegt} Benutzer angelegt` : '') + (b.mitglieder ? ` (${b.mitglieder} Mitgliedern zugeordnet)` : '')
       + (b.ohneKennwort ? `, ${b.ohneKennwort} ohne Kennwort (Kennwort über die Benutzerpflege setzen)` : '')
       + (b.ohneBuchung ? `, ${b.ohneBuchung} ohne Buchung in den letzten 12 Monaten nicht übernommen` : ''),
@@ -157,6 +173,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   const aboEinzel = new Set((await tx`select bid from tco.bookings_ch where bid = any(${bids}) and status_abw = '1'`).map((r) => r.bid as string));
 
   let neu = 0;
+  const neuListe: ImpBuchung[] = [];
   let geaendert = 0;
   let abgerechnet = 0;
   let geerbt = 0;
@@ -171,6 +188,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
       await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz)
                values (${b.bid}, ${b.datum}, ${b.time_start}, ${b.time_ende}, ${b.kunde}, ${b.status}, ${desc}, ${b.preis}, ${h}, ${erbe}, ${b.text}, ${b.platz})`;
       neu++;
+      neuListe.push(b);
       continue;
     }
     best.delete(key(b));
@@ -200,7 +218,14 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   if (entfallen) text += `, ${entfallen} entfallen`;
   if (geerbt) text += ` (${geerbt} neue Termine bereits abgerechneter Abos automatisch mitgesperrt)`;
   if (repariert) text += ` (${repariert} offene Termine bereits abgerechneter Abos nachträglich gesperrt)`;
-  return { typ: 'BUCHUNGEN', ok: true, text };
+  const details = neuListe
+    .sort((a, b) => nameSchoen(a.kunde).localeCompare(nameSchoen(b.kunde), 'de') || a.datum.localeCompare(b.datum) || (a.time_start ?? '').localeCompare(b.time_start ?? ''))
+    .map((b): ImportDetail => ({
+      art: 'Buchung neu',
+      text: `${nameSchoen(b.kunde) || 'ohne Namen'} – ${dat(b.datum)}, ${zeit(b.time_start)}–${zeit(b.time_ende)} Uhr`
+        + `${b.platz ? `, ${b.platz}` : ''} (${b.status === '3' ? 'Abo' : 'Einzel'}, Buchung ${b.bid.replace(/^0+/, '')})`,
+    }));
+  return { typ: 'BUCHUNGEN', ok: true, text, details: begrenzt(details, 'Buchung neu') };
 }
 
 /** EP3-Import über den n8n-Workflow „TCO EP3 Import Hallenrechnungen“ */

@@ -137,8 +137,8 @@ export function Hallenabrechnung() {
     await tun(async () => {
       for (const f of Array.from(files)) {
         try {
-          const r = await api.post<{ text: string }>(`${H}/import/datei`, { name: f.name, data: await dateiLesen(f) });
-          zeilen.push({ quelle: f.name, ok: true, text: r.text });
+          const r = await api.post<{ ok?: boolean; text: string; details?: ImportDetail[] }>(`${H}/import/datei`, { name: f.name, data: await dateiLesen(f) });
+          zeilen.push({ quelle: f.name, ok: r.ok ?? true, text: r.text, details: r.details });
         } catch (e) { zeilen.push({ quelle: f.name, ok: false, text: (e as Error).message }); }
       }
     });
@@ -146,8 +146,8 @@ export function Hallenabrechnung() {
   }
 
   const n8nImport = () => tun(async () => {
-    const r = await api.post<{ datei: string; ok: boolean; text: string }[]>(`${H}/import/n8n`);
-    setProtokoll({ titel: 'Protokoll EP3-Import', zeilen: r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text })) });
+    const r = await api.post<{ datei: string; ok: boolean; text: string; details?: ImportDetail[] }[]>(`${H}/import/n8n`);
+    setProtokoll({ titel: 'Protokoll EP3-Import', zeilen: r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text, details: x.details })) });
   });
 
   // --------------------------------------------------------------- Personenliste
@@ -679,7 +679,8 @@ function PersonPanel(props: {
 // Bausteine: Protokoll, Buchungsart, Teilzahlungen, Paperless
 // ===========================================================================
 
-interface Protokoll { titel: string; zeilen: { quelle: string; ok: boolean; text: string }[] }
+interface ImportDetail { art: string; text: string }
+interface Protokoll { titel: string; zeilen: { quelle: string; ok: boolean; text: string; details?: ImportDetail[] }[] }
 const zelle = { padding: '0.35rem 0.5rem', verticalAlign: 'top', borderTop: '1px solid var(--sapList_BorderColor)' } as const;
 
 /** Protokolle immer als Tabelle: Quelle, Ergebnis, Meldungen (Teilsätze als eigene Zeilen) */
@@ -693,13 +694,22 @@ function ProtokollDialog({ p, onClose }: { p: Protokoll | null; onClose: () => v
         <tbody>
           {p.zeilen.flatMap((z, i) => {
             const teile = z.text.split(/\s·\s|;\s|\.\s(?=[A-ZÄÖÜ])/).map((t) => t.trim()).filter(Boolean);
-            return teile.map((t, j) => (
+            const zusammenfassung = teile.map((t, j) => (
               <tr key={`${i}-${j}`}>
                 <td style={zelle}>{j === 0 && <Text>{z.quelle}</Text>}</td>
                 <td style={zelle}>{j === 0 && <ObjectStatus state={z.ok ? 'Positive' : 'Negative'} showDefaultIcon>{z.ok ? 'ok' : 'Fehler'}</ObjectStatus>}</td>
                 <td style={zelle}><Text>{t}</Text></td>
               </tr>
             ));
+            // Einzelnachweis: neu angelegte Kunden bzw. neu ergänzte Buchungen (Person, Tag, Uhrzeit)
+            const einzeln = (z.details ?? []).map((d, j) => (
+              <tr key={`${i}-d${j}`}>
+                <td style={zelle} />
+                <td style={zelle}><ObjectStatus state="Information">{d.art}</ObjectStatus></td>
+                <td style={zelle}><Text>{d.text}</Text></td>
+              </tr>
+            ));
+            return [...zusammenfassung, ...einzeln];
           })}
           {!p.zeilen.length && <tr><td style={zelle} colSpan={3}><Text>Keine Einträge.</Text></td></tr>}
         </tbody>
