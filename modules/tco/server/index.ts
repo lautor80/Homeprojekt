@@ -181,8 +181,6 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Registrierungen', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
     { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.display, text: 'Online-Mitgliedsanträge ansehen (Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)' },
     { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.edit, text: 'Online-Mitgliedsanträge prüfen, ablehnen und übernehmen (legt Mitglieder, Verträge, SEPA-Mandat und Benutzer an)', requires: [P_ANTRAG.display, 'tco.mitglieder:edit'] },
-    { area: 'Mitglieder', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm' },
-    { area: 'Mitglieder', app: 'Schnuppertraining', id: P_SCHNUPPER.edit, text: 'Schnuppertraining betreuen: Status, Termine der Einheiten, Trainer und Notiz pflegen, Beitrittslink (vorbelegter Mitgliedsantrag) senden', requires: [P_SCHNUPPER.display] },
     { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Gruppen/Mannschaften pflegen' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
@@ -194,6 +192,8 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
     // ---------------------------------------------------------------- Jugend
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
+    { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm' },
+    { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.edit, text: 'Schnuppertraining betreuen: Status, Termine der Einheiten, Trainer und Notiz pflegen, Beitrittslink (vorbelegter Mitgliedsantrag) senden', requires: [P_SCHNUPPER.display] },
     { area: 'Jugend', app: 'Meine Trainingszeiten', id: P_JTM.edit,
       text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },

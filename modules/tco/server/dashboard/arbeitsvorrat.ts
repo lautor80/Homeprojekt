@@ -135,7 +135,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
                            from tco.schnupper where status = 'NEU'`;
     if (s?.n) {
       out.push({
-        key: 'SCHNUPPER', bereich: 'Mitglieder', icon: 'physical-activity', state: 'Critical',
+        key: 'SCHNUPPER', bereich: 'Jugendtraining', icon: 'physical-activity', state: 'Critical',
         titel: `${s.n} Anmeldung${s.n === 1 ? '' : 'en'} zum Schnuppertraining`,
         text: 'Online eingegangen – bitte Kontakt aufnehmen und einen Termin vereinbaren.',
         datum: s.seit, pfad: '/tco/schnuppertraining',
