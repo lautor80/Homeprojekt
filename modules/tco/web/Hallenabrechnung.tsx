@@ -70,6 +70,8 @@ export function Hallenabrechnung() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [csvAblage, setCsvAblage] = useState(false);
+  /** Personen mit Buchungen, die der Import in dieser Sitzung neu ergänzt hat – bewusst nicht in `merk`, entfällt beim Neuladen */
+  const [importiert, setImportiert] = useState<Set<string>>(new Set());
 
   // Dialoge
   const [pdf, setPdf] = useState<string | null>(null);
@@ -137,18 +139,27 @@ export function Hallenabrechnung() {
     await tun(async () => {
       for (const f of Array.from(files)) {
         try {
-          const r = await api.post<{ ok?: boolean; text: string; details?: ImportDetail[] }>(`${H}/import/datei`, { name: f.name, data: await dateiLesen(f) });
-          zeilen.push({ quelle: f.name, ok: r.ok ?? true, text: r.text, details: r.details });
+          const r = await api.post<{ ok?: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }>(`${H}/import/datei`, { name: f.name, data: await dateiLesen(f) });
+          zeilen.push({ quelle: f.name, ok: r.ok ?? true, text: r.text, details: r.details, personenNeu: r.personenNeu });
         } catch (e) { zeilen.push({ quelle: f.name, ok: false, text: (e as Error).message }); }
       }
     });
     setProtokoll({ titel: 'Protokoll CSV-Import', zeilen });
+    neueMerken(zeilen);
   }
 
   const n8nImport = () => tun(async () => {
-    const r = await api.post<{ datei: string; ok: boolean; text: string; details?: ImportDetail[] }[]>(`${H}/import/n8n`);
-    setProtokoll({ titel: 'Protokoll EP3-Import', zeilen: r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text, details: x.details })) });
+    const r = await api.post<{ datei: string; ok: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }[]>(`${H}/import/n8n`);
+    const zeilen = r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text, details: x.details, personenNeu: x.personenNeu }));
+    setProtokoll({ titel: 'Protokoll EP3-Import', zeilen });
+    neueMerken(zeilen);
   });
+
+  /** Personen mit neu ergänzten Buchungen aus dem Protokoll übernehmen (Symbol der Zeile „n×“ wird rot) */
+  function neueMerken(zeilen: Protokoll['zeilen']) {
+    // nur der jeweils letzte Import zählt
+    setImportiert(new Set(zeilen.flatMap((z) => z.personenNeu ?? [])));
+  }
 
   // --------------------------------------------------------------- Personenliste
   const personen = useMemo(() => {
@@ -268,7 +279,8 @@ export function Hallenabrechnung() {
                           );
                         })}
                         {p.offeneBuchungen > 0 && (
-                          <div className="portal-hp__rg portal-hp__rg--offen" title={`${p.offeneBuchungen} Buchung(en) ohne Rechnung`}>
+                          <div className={`portal-hp__rg portal-hp__rg--offen${importiert.has(p.kunde) ? ' portal-hp__rg--importiert' : ''}`}
+                               title={`${p.offeneBuchungen} Buchung(en) ohne Rechnung${importiert.has(p.kunde) ? ' – beim letzten Import ergänzt' : ''}`}>
                             <Icon name="collections-insight" className="portal-hp__symbol" />
                             <span className="portal-hp__nr portal-muted">{p.offeneBuchungen}×</span>
                             <span className="portal-hp__betrag">{eur(p.betragBuchungen)}</span>
@@ -680,7 +692,7 @@ function PersonPanel(props: {
 // ===========================================================================
 
 interface ImportDetail { art: string; text: string }
-interface Protokoll { titel: string; zeilen: { quelle: string; ok: boolean; text: string; details?: ImportDetail[] }[] }
+interface Protokoll { titel: string; zeilen: { quelle: string; ok: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }[] }
 const zelle = { padding: '0.35rem 0.5rem', verticalAlign: 'top', borderTop: '1px solid var(--sapList_BorderColor)' } as const;
 
 /** Protokolle immer als Tabelle: Quelle, Ergebnis, Meldungen (Teilsätze als eigene Zeilen) */
