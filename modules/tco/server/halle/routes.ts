@@ -146,12 +146,12 @@ export async function halleRoutes(app: FastifyInstance) {
   app.post('/halle/import/n8n', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
     const v = await vereinLesen();
     const j = await ep3UeberN8n(v, benutzer(req));
-    const out: { datei: string; ok: boolean; text: string; details?: ImportDetail[] }[] = [];
+    const out: { datei: string; ok: boolean; text: string; details?: ImportDetail[]; personenNeu?: string[] }[] = [];
     for (const [datei, inhalt] of [['Kunden', j.kunden_csv], ['Texte', j.texte_csv], ['Buchungen', j.bookings_csv], ['Events', j.events_csv]] as const) {
       if (!inhalt) continue;
       try {
         const r = await change(req, (tx) => ep3Importieren(tx, inhalt), { action: 'EP3_IMPORT', reason: `n8n ${datei}` });
-        out.push({ datei, ok: r.ok, text: r.text, details: r.details });
+        out.push({ datei, ok: r.ok, text: r.text, details: r.details, personenNeu: r.personenNeu });
       } catch (e) {
         out.push({ datei, ok: false, text: (e as Error).message });
       }

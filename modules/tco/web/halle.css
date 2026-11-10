@@ -103,6 +103,8 @@
 .portal-hp__rg--teil .portal-hp__nr { color: var(--sapInformativeColor, #0070f2); }
 .portal-hp__rg--bezahlt .portal-hp__symbol, .portal-hp__rg--bezahlt .portal-hp__nr { color: var(--sapPositiveColor, #256f3a); }
 .portal-hp__rg--ausgefallen .portal-hp__symbol, .portal-hp__rg--ausgefallen .portal-hp__nr { color: var(--sapNegativeColor, #aa0808); }
+/* Buchungen ohne Rechnung, die der letzte Import ergänzt hat (nur bis zum erneuten Laden der Seite) */
+.portal-hp__rg--importiert .portal-hp__symbol { color: var(--sapNegativeColor, #aa0808); }
 .portal-hp__nr { font-variant-numeric: tabular-nums; color: var(--sapTextColor); }
 .portal-hp__nr ui5-icon { width: 0.875rem; height: 0.875rem; color: var(--sapContent_IconColor); }
 .portal-hp__betrag { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--sapTextColor); }

@@ -31,7 +31,11 @@ const STATUS: Record<string, string> = { single: '1', subscription: '3', cancell
 
 /** Einzelne Änderungen für das Importprotokoll (neu angelegte Kunden, neu ergänzte Buchungen) */
 export interface ImportDetail { art: 'Kunde neu' | 'Buchung neu'; text: string }
-export interface ImportErgebnis { typ: Ep3Typ | null; text: string; ok: boolean; details?: ImportDetail[] }
+export interface ImportErgebnis {
+  typ: Ep3Typ | null; text: string; ok: boolean; details?: ImportDetail[];
+  /** EP3-Namen (Schlüssel der Personenliste) mit neu ergänzten Buchungen – vollständig, ohne Obergrenze */
+  personenNeu?: string[];
+}
 
 /** Obergrenze je Protokoll, damit ein Erstimport das Protokoll nicht sprengt */
 const MAX_DETAILS = 200;
@@ -225,7 +229,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
       text: `${nameSchoen(b.kunde) || 'ohne Namen'} – ${dat(b.datum)}, ${zeit(b.time_start)}–${zeit(b.time_ende)} Uhr`
         + `${b.platz ? `, ${b.platz}` : ''} (${b.status === '3' ? 'Abo' : 'Einzel'}, Buchung ${b.bid.replace(/^0+/, '')})`,
     }));
-  return { typ: 'BUCHUNGEN', ok: true, text, details: begrenzt(details, 'Buchung neu') };
+  return { typ: 'BUCHUNGEN', ok: true, text, details: begrenzt(details, 'Buchung neu'), personenNeu: [...new Set(neuListe.map((b) => b.kunde))] };
 }
 
 /** EP3-Import über den n8n-Workflow „TCO EP3 Import Hallenrechnungen“ */
