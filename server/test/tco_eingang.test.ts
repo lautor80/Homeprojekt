@@ -16,6 +16,8 @@ const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
 const L = await import('../../modules/tco/server/eingang/logik.js');
+const { config } = await import('../src/config.js');
+const { customFeldWert } = await import('../src/lib/paperless.js');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 function client() {
@@ -43,6 +45,7 @@ const mock = {
   korr: [] as { id: number; name: string }[], tags: [] as { id: number; name: string }[],
   dav: [] as string[],
   abruf: [] as { auth: string; body: string }[],
+  merge: [] as string[][], mergeKaputt: false, patches: [] as { id: number; body: any }[],
 };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
@@ -51,6 +54,14 @@ const server = http.createServer((req, res) => {
     const body = Buffer.concat(chunks).toString('utf8');
     const send = (code: number, data: unknown) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
     const u = decodeURIComponent(req.url ?? '');
+    // Gotenberg: Bild → PDF und PDFs zusammenfügen (Inhalte werden nur verkettet)
+    if (u === '/forms/chromium/convert/html') { res.writeHead(200, { 'content-type': 'application/pdf' }); return res.end('%PDF Bildseite'); }
+    if (u === '/forms/pdfengines/merge') {
+      if (mock.mergeKaputt) { res.writeHead(400); return res.end('encrypted'); }
+      const teile = [...body.matchAll(/filename="(\d+)\.pdf"\r\nContent-Type: application\/pdf\r\n\r\n([\s\S]*?)\r\n--/g)].sort((a, b) => a[1].localeCompare(b[1])).map((x) => x[2]);
+      mock.merge.push(teile);
+      res.writeHead(200, { 'content-type': 'application/pdf' }); return res.end(teile.join('\n'));
+    }
     if (u === '/webhook/tco-dokumenteneingang-alle') {
       if (req.headers.authorization !== 'Bearer abruf-geheim') return send(403, { message: 'Authorization data is wrong!' });
       mock.abruf.push({ auth: String(req.headers.authorization), body });
@@ -74,13 +85,17 @@ const server = http.createServer((req, res) => {
     if ((m = /^\/api\/tasks\/\?task_id=task-(\d+)/.exec(u))) return send(200, [{ status: 'SUCCESS', related_document: m[1] }]);
     if (/^\/api\/(correspondents|document_types|storage_paths|custom_fields|tags)\//.test(u) && req.method === 'GET') {
       const lists: Record<string, unknown[]> = {
-        correspondents: mock.korr, document_types: [{ id: 9, name: 'Abrechnung' }], storage_paths: [{ id: 2, name: 'Mitglieder' }], custom_fields: [], tags: mock.tags,
+        correspondents: mock.korr, document_types: [{ id: 9, name: 'Abrechnung' }], storage_paths: [{ id: 2, name: 'Mitglieder' }], tags: mock.tags,
+        custom_fields: [{ id: 3, name: 'Betrag', data_type: 'monetary' }, { id: 5, name: 'Art', data_type: 'select', extra_data: { select_options: [{ id: 'a1', label: 'Beleg' }, { id: 'a2', label: 'Vertrag' }] } }],
       };
       return send(200, { results: lists[u.split('/')[2]], next: null });
     }
     if (u === '/api/correspondents/' && req.method === 'POST') { const k = { id: 50 + mock.korr.length, name: JSON.parse(body).name as string }; mock.korr.push(k); return send(201, k); }
     if (u === '/api/tags/' && req.method === 'POST') { const t = { id: 80 + mock.tags.length, name: JSON.parse(body).name as string }; mock.tags.push(t); return send(201, t); }
-    if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) return send(200, { id: Number(m[1]), custom_fields: [] });
+    if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) {
+      if (req.method === 'PATCH') mock.patches.push({ id: Number(m[1]), body: JSON.parse(body) });
+      return send(200, { id: Number(m[1]), custom_fields: [] });
+    }
     send(404, { u });
   });
 });
@@ -99,6 +114,7 @@ before(async () => {
   await admin('POST', '/api/setup', { orgName: 'TC Test', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
   await admin('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' });
   await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
+  config.gotenbergUrl = `http://127.0.0.1:${port}`;
   await sql`insert into core.verbindungen (id, url, auth_art, auth_user, geheimnis) values ('tco.nextcloud', ${`http://127.0.0.1:${port}`}, 'basic', 'nc', 'app-pw')`;
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email) values ('0000000101', 'Hans', 'Müller', 'Hans@Example.org')`;
 });
@@ -465,3 +481,67 @@ test('Posteingang abrufen: offene Vorgänge neu bewerten und n8n anstoßen', asy
   assert.equal(JSON.parse(mock.abruf[0].body).alle, true);
   assert.equal((await admin('GET', `${E}/stamm`)).body.abruf.eingerichtet, true);
 });
+
+test('Custom Fields: Werte je Feldtyp für Paperless', () => {
+  const f = (data_type: string, extra?: object) => ({ id: 1, name: 'F', data_type, extra_data: extra as never });
+  assert.deepEqual(customFeldWert(f('monetary'), '1.234,56 €'), { ok: true, wert: 'EUR1234.56' });
+  assert.deepEqual(customFeldWert(f('monetary'), 12.5), { ok: true, wert: 'EUR12.50' });
+  assert.deepEqual(customFeldWert(f('monetary'), 'EUR12.50'), { ok: true, wert: 'EUR12.50' });
+  assert.deepEqual(customFeldWert(f('date'), '3.11.2026'), { ok: true, wert: '2026-11-03' });
+  assert.deepEqual(customFeldWert(f('boolean'), 'Ja'), { ok: true, wert: true });
+  assert.deepEqual(customFeldWert(f('integer'), '4711'), { ok: true, wert: 4711 });
+  assert.deepEqual(customFeldWert(f('select', { select_options: [{ id: 'x9', label: 'Beleg' }] }), 'beleg'), { ok: true, wert: 'x9' });
+  assert.deepEqual(customFeldWert(f('select', { select_options: ['Alt', 'Neu'] }), 'Neu'), { ok: true, wert: 1 });
+  assert.equal(customFeldWert(f('select', { select_options: ['Alt'] }), 'Fremd').ok, false);
+  assert.equal(customFeldWert(f('date'), 'gestern').ok, false);
+  assert.deepEqual(customFeldWert(f('string'), 'R-1'), { ok: true, wert: 'R-1' });
+});
+
+test('Zusammenfassen: passende Anhänge als ein PDF ablegen, Custom Fields, Dublette, Fehlerfall', async () => {
+  let r = await admin('POST', `${E}/regeln`, regel({
+    name: 'Sammelbelege', prioritaet: 5,
+    bedingungen: [bed('domain', 'ist', 'sammel.example')],
+    extraktion: [{ name: 'betrag', quelle: 'text', muster: 'Betrag:\\s*([\\d.,]+)' }],
+    aktionen: {
+      zusammenfassen: { aktiv: true, dateiname: '{datum}_Sammel_{anzahl}', reihenfolge: 'name' },
+      paperless: { aktiv: true, titel: '{datei|ohneEndung}', felder: { Betrag: '{feld.betrag}', Art: 'Beleg' } },
+      mail: { art: 'verschieben', ordner: 'Belege' },
+    },
+  }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const stamm = await admin('GET', `${E}/stamm`);
+  assert.deepEqual(stamm.body.paperless.felder, [{ name: 'Art', typ: 'select', optionen: ['Beleg', 'Vertrag'] }, { name: 'Betrag', typ: 'monetary', optionen: [] }]);
+
+  const pdfB = { name: 'b.pdf', mime: 'application/pdf', inhalt: b64('%PDF Teil B') };
+  const pdfA = { name: 'a.pdf', mime: 'application/pdf', inhalt: b64('%PDF Teil A') };
+  const bild = { name: 'scan.jpg', mime: 'image/jpeg', inhalt: b64('x'.repeat(40_000)) };
+  const vorher = mock.docs.size;
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'Belege <belege@sammel.example>', betreff: 'Belege', message_id: '<s1@sammel>', text: 'Betrag: 12,50', anhaenge: [pdfB, pdfA, bild] }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'abgelegt', JSON.stringify(r.body));
+  assert.equal(r.body.dokumente.length, 1);
+  assert.equal(r.body.dokumente[0].datei, '2025-03-03_Sammel_3.pdf');
+  assert.match(r.body.dokumente[0].hinweis, /^Zusammengefasst aus 3 Anhängen: a\.pdf, b\.pdf, scan\.jpg\./);
+  assert.deepEqual(mock.merge.at(-1), ['%PDF Teil A', '%PDF Teil B', '%PDF Bildseite'], 'Reihenfolge nach Dateiname, Bild als Seite');
+  assert.equal(mock.docs.size, vorher + 1);
+  const id = r.body.dokumente[0].paperless_id as number;
+  assert.equal(mock.docs.get(id)!.datei, '2025-03-03_Sammel_3.pdf');
+  const patch = mock.patches.filter((p) => p.id === id && p.body.custom_fields).at(-1);
+  assert.deepEqual(patch?.body.custom_fields, [{ field: 3, value: 'EUR12.50' }, { field: 5, value: 'a1' }]);
+
+  // dieselben Teile in einer weiteren E-Mail: Dublette, kein zweiter Upload
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'belege@sammel.example', betreff: 'Belege nochmal', message_id: '<s2@sammel>', anhaenge: [pdfA, pdfB, bild] }));
+  assert.deepEqual(r.body.dokumente.map((d: any) => [d.status, d.paperless_id]), [['dublette', id]]);
+  assert.equal(mock.docs.size, vorher + 1);
+
+  // Zusammenfügen schlägt fehl: Teile einzeln in die Prüfliste, nichts abgelegt
+  mock.mergeKaputt = true;
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'belege@sammel.example', betreff: 'Belege verschlüsselt', message_id: '<s3@sammel>',
+    anhaenge: [{ name: 'c.pdf', mime: 'application/pdf', inhalt: b64('%PDF C') }, { name: 'd.pdf', mime: 'application/pdf', inhalt: b64('%PDF D') }] }));
+  mock.mergeKaputt = false;
+  assert.equal(r.body.status, 'pruefen');
+  assert.deepEqual(r.body.dokumente.map((d: any) => d.status), ['pruefen', 'pruefen']);
+  assert.match(r.body.dokumente[0].hinweis, /Zusammenfassen fehlgeschlagen/);
+  assert.equal(mock.docs.size, vorher + 1);
+});
+

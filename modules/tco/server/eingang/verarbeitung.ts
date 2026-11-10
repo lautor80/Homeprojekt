@@ -13,7 +13,7 @@ import { eingangZeit } from '../../../../server/src/lib/maileingang.js';
 import { eingangVerbuchen } from '../../../../server/src/lib/maileingang-db.js';
 import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { WebDav } from '../../../../server/src/lib/webdav.js';
-import { htmlToPdf } from '../../../../server/src/pdf.js';
+import { BILD_MIME, htmlToPdf, istPdf, pdfsZusammenfuegen } from '../../../../server/src/pdf.js';
 import { heute } from '../format.js';
 import { DB } from '../verein.js';
 import { V_NEXTCLOUD } from '../verbindung.js';
@@ -37,7 +37,50 @@ interface DokZeile {
   id: string; vorgang_id: string; art: 'anhang' | 'mail'; datei: string; mime: string | null; sha256: string | null; inhalt: string | null;
   kontext: DokKontext | null; status: DokStatus;
 }
-interface Geplant { art: 'anhang' | 'mail'; datei: string; mime: string | null; daten: Buffer; k: Kontext; w: Record<string, unknown>; regel: RegelDef | null }
+interface Geplant {
+  art: 'anhang' | 'mail'; datei: string; mime: string | null; daten: Buffer; k: Kontext; w: Record<string, unknown>; regel: RegelDef | null;
+  /** zusammengefasstes Dokument: Schlüssel für die Dublettenprüfung aus den Teilen, Hinweis auf die Teile */
+  sha256?: string; zusatz?: string;
+  /** Zusammenfassen fehlgeschlagen: nicht automatisch ablegen, sondern prüfen */
+  pruefen?: string;
+}
+
+/**
+ * Anhänge je Regel mit „zusammenfassen“ zu einem PDF zusammenfügen (nur PDFs und Bilder, ab zwei Teilen). Schlägt das
+ * Zusammenfügen fehl, gehen die Teile einzeln mit Hinweis in die Prüfliste.
+ */
+async function zusammenfassen(geplant: Geplant[]): Promise<Geplant[]> {
+  const gruppen = new Map<number, Geplant[]>();
+  for (const g of geplant) {
+    if (g.art !== 'anhang' || !g.regel?.aktionen.zusammenfassen?.aktiv) continue;
+    if (!istPdf(g.mime, g.datei) && !BILD_MIME.test(g.mime ?? '')) continue;
+    gruppen.set(g.regel.id, [...(gruppen.get(g.regel.id) ?? []), g]);
+  }
+  const ersetzt = new Map<Geplant, Geplant | null>();
+  for (const teile of gruppen.values()) {
+    if (teile.length < 2) continue;
+    const regel = teile[0].regel!;
+    const z = regel.aktionen.zusammenfassen!;
+    const sortiert = z.reihenfolge === 'name' ? [...teile].sort((a, b) => a.datei.localeCompare(b.datei, 'de', { numeric: true })) : teile;
+    const werte = { ...sortiert[0].w, anzahl: sortiert.length };
+    let datei = dateinameSicher(auswerten(z.dateiname || '{datei|ohneEndung}', werte).text, 'Sammeldokument');
+    if (!/\.pdf$/i.test(datei)) datei += '.pdf';
+    const namen = sortiert.map((t) => t.datei).join(', ');
+    try {
+      const daten = await pdfsZusammenfuegen(sortiert.map((t) => ({ name: t.datei, mime: t.mime, daten: t.daten })));
+      const doktext = sortiert.map((t) => t.k.doktext ?? '').filter(Boolean).join('\n\n').slice(0, 200_000);
+      ersetzt.set(sortiert[0], {
+        art: 'anhang', datei, mime: 'application/pdf', daten, regel,
+        k: { ...sortiert[0].k, datei, mime: 'application/pdf', doktext }, w: { ...werte, datei },
+        sha256: sha(sortiert.map((t) => sha(t.daten)).join('|')), zusatz: `Zusammengefasst aus ${sortiert.length} Anhängen: ${namen}.`,
+      });
+      for (const t of sortiert.slice(1)) ersetzt.set(t, null);
+    } catch (e) {
+      for (const t of sortiert) t.pruefen = `Zusammenfassen fehlgeschlagen (${(e as Error).message}) – bitte prüfen; „Ablegen“ legt einzeln ab.`;
+    }
+  }
+  return geplant.flatMap((g) => (ersetzt.has(g) ? (ersetzt.get(g) ? [ersetzt.get(g)!] : []) : [g]));
+}
 type GeplanteMailAktion = MailAktion & { aufgaben?: { titel: string; faellig_tage: number | null }[] };
 
 export async function regelnLesen(): Promise<(RegelDef & { beschreibung: string })[]> {
@@ -174,7 +217,7 @@ async function dokSetzen(id: string, s: { status: DokStatus; hinweis: string; zu
 }
 
 /** Regel auf ein Dokument anwenden: sofort ablegen, in die Prüfliste stellen oder ignorieren */
-async function entscheiden(d: DokZeile, regel: RegelDef | null, wer: string): Promise<DokStatus> {
+async function entscheiden(d: DokZeile, regel: RegelDef | null, wer: string, zwang?: string): Promise<DokStatus> {
   if (!regel) {
     await dokSetzen(d.id, { status: 'pruefen', hinweis: 'Keine Regel passt.', regel: null, zuordnung: null });
     return 'pruefen';
@@ -182,7 +225,7 @@ async function entscheiden(d: DokZeile, regel: RegelDef | null, wer: string): Pr
   const { felder, fehlend } = extrahieren(regel.extraktion, d.kontext?.k ?? {});
   const ziele = zieleAufloesen(regel.aktionen, platzhalter(d.kontext?.w ?? {}, felder), d.datei);
   const vorschlag = { ...ziele, felder };
-  const pruefen = regel.status === 'testlauf' ? `Testlauf: Regel „${regel.name}“ würde so ablegen.`
+  const pruefen = zwang ? zwang : regel.status === 'testlauf' ? `Testlauf: Regel „${regel.name}“ würde so ablegen.`
     : fehlend.length ? `Regel „${regel.name}“: Pflichtfeld ${fehlend.join(', ')} nicht gefunden.`
       : regel.automatik === 'pruefen' ? `Regel „${regel.name}“ verlangt eine Prüfung.` : '';
   if (pruefen) {
@@ -284,10 +327,10 @@ export async function mailVerarbeiten(m: EingangMail) {
   const regeln = await regelnLesen();
 
   const mailRegel = waehlen(regeln, kontext, 'mail');
-  const geplant: Geplant[] = anhaenge.map((a) => {
+  const geplant: Geplant[] = await zusammenfassen(anhaenge.map((a) => {
     const k: Kontext = { ...kontext, datei: a.name, mime: a.mime ?? '', doktext: a.text.slice(0, 200_000) };
     return { art: 'anhang', datei: a.name, mime: a.mime, daten: a.daten, k, w: { ...werte, datei: a.name }, regel: waehlen(regeln, k, 'anhang') };
-  });
+  }));
   // die E-Mail selbst wird nur dann ein Dokument, wenn eine Mail-Regel sie ablegen will
   if (mailRegel && hatAblage(mailRegel.aktionen)) {
     const datei = `${dateinameSicher(m.betreff, 'E-Mail')}.pdf`;
@@ -323,11 +366,13 @@ export async function mailVerarbeiten(m: EingangMail) {
   for (const g of geplant) {
     const inhalt = g.daten.toString('base64');
     const k: DokKontext = { k: g.k, w: g.w };
+    const hash = g.sha256 ?? sha(g.daten);
     const [d] = await DB`
       insert into tco.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, kontext, status)
-      values (${v.id}, ${g.art}, ${g.datei}, ${g.mime}, ${g.daten.length}, ${sha(g.daten)}, ${inhalt}, ${DB.json(k as never)}, 'neu')
+      values (${v.id}, ${g.art}, ${g.datei}, ${g.mime}, ${g.daten.length}, ${hash}, ${inhalt}, ${DB.json(k as never)}, 'neu')
       returning id`;
-    await entscheiden({ id: d.id as string, vorgang_id: v.id as string, art: g.art, datei: g.datei, mime: g.mime, sha256: sha(g.daten), inhalt, kontext: k, status: 'neu' }, g.regel, SYSTEM);
+    await entscheiden({ id: d.id as string, vorgang_id: v.id as string, art: g.art, datei: g.datei, mime: g.mime, sha256: hash, inhalt, kontext: k, status: 'neu' }, g.regel, SYSTEM, g.pruefen);
+    if (g.zusatz) await DB`update tco.eing_dokumente set hinweis = ${g.zusatz} || coalesce(' ' || hinweis, '') where id = ${d.id}`;
   }
   await abschliessen(v.id as string);
   return { ...(await vorgangAntwort(v.id as string, true)), rueckmeldung: rueck };

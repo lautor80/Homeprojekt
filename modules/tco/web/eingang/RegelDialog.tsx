@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Bar, Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
-import { EING, type Aktionen, type MailArt, type PaperlessZiel, type RegelEingabe, type Stamm, type Zuordnung } from './typen';
+import { EING, type Aktionen, type Extraktion, type MailArt, type PaperlessZiel, type RegelEingabe, type Stamm, type Zuordnung, type Zusammenfassen } from './typen';
 
 /**
  * Regel des Dokumenteneingangs pflegen: Bedingungen, Extraktion per Muster, Ablage (Paperless, Nextcloud),
@@ -45,6 +45,48 @@ function Block({ titel, hinweis, children }: { titel: string; hinweis?: string; 
   );
 }
 
+const TYP_TEXT: Record<string, string> = {
+  string: 'Text', longtext: 'Text', monetary: 'Betrag', date: 'Datum', integer: 'Ganzzahl', float: 'Zahl', boolean: 'Ja/Nein', select: 'Auswahl',
+  url: 'Link', documentlink: 'Dokumentverknüpfung',
+};
+const BEISPIEL: Record<string, string> = {
+  monetary: '{feld.betrag} oder 12,50', date: '{datum} oder 31.12.2026', integer: '{feld.nr}', float: '{feld.wert}', boolean: 'ja oder nein', select: 'Option wählen',
+};
+
+/** Custom Fields in Paperless: Feld wählen und Wert oder Vorlage angeben (z. B. {feld.betrag}) */
+function CustomFelder({ felder, verfuegbar, extraktion, onChange }: {
+  felder: Record<string, string>; verfuegbar: Stamm['paperless']['felder']; extraktion: Extraktion[]; onChange: (f: Record<string, string>) => void;
+}) {
+  const [zeilen, setZeilen] = useState<[string, string][]>(() => Object.entries(felder));
+  const setzen = (z: [string, string][]) => { setZeilen(z); onChange(Object.fromEntries(z.filter(([n]) => n.trim()))); };
+  const vorlagen = [...extraktion.filter((x) => x.name).map((x) => `{feld.${x.name}}`), '{datum}', '{heute}', '{betreff}', '{korrespondent}'];
+  return (
+    <div style={{ gridColumn: '1 / -1' }}>
+      <Label>Benutzerdefinierte Felder</Label>
+      {!verfuegbar.length && <Text className="portal-muted portal-small" style={{ display: 'block' }}>In Paperless sind keine Custom Fields angelegt (oder Paperless ist nicht erreichbar).</Text>}
+      {zeilen.map(([name, wert], i) => {
+        const f = verfuegbar.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
+        const werte = f?.typ === 'select' ? f.optionen : f?.typ === 'boolean' ? ['ja', 'nein'] : vorlagen;
+        return (
+          <div key={i} style={{ ...zeile, marginTop: '0.35rem' }}>
+            <div style={{ width: '14rem' }}>
+              <Vorschlag wert={name} werte={verfuegbar.map((x) => x.name)} placeholder="Feld in Paperless"
+                         onChange={(v) => setzen(zeilen.map((z, j) => (j === i ? [v, z[1]] : z)))} />
+            </div>
+            <div style={{ flex: '1 1 14rem' }}>
+              <Vorschlag wert={wert} werte={werte} placeholder={f ? BEISPIEL[f.typ] ?? '{feld.name}' : 'Wert oder Vorlage'}
+                         onChange={(v) => setzen(zeilen.map((z, j) => (j === i ? [z[0], v] : z)))} />
+            </div>
+            <Text className="portal-muted portal-small" style={{ width: '6rem' }}>{f ? TYP_TEXT[f.typ] ?? f.typ : name ? 'unbekannt' : ''}</Text>
+            <Button design="Transparent" icon="delete" tooltip="Feld entfernen" onClick={() => setzen(zeilen.filter((_, j) => j !== i))} />
+          </div>
+        );
+      })}
+      <Button design="Transparent" icon="add" onClick={() => setZeilen([...zeilen, ['', '']])}>Feld</Button>
+    </div>
+  );
+}
+
 export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
   id: number | null; start: RegelEingabe; stamm: Stamm; onClose: () => void; onSaved: () => void;
 }) {
@@ -62,6 +104,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
   const nc = a.nextcloud ?? { aktiv: false, pfad: '', dateiname: '' };
   const mail = a.mail ?? { art: 'keine' as MailArt, ordner: '', gelesen: false };
   const aufgabe = a.aufgabe ?? { aktiv: false, titel: '', faellig_tage: null };
+  const zus: Zusammenfassen = a.zusammenfassen ?? { aktiv: false, dateiname: '{datum}_{kurz}_{datei|ohneEndung}', reihenfolge: 'mail' };
   const felder = Object.entries(stamm.felder).filter(([k]) => r.gilt_fuer === 'anhang' || !['datei', 'mime', 'doktext'].includes(k));
 
   const fertig = (): RegelEingabe => ({ ...r, prioritaet: Number(prio) || 0 });
@@ -150,6 +193,23 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
         <Button design="Transparent" icon="add" onClick={() => setR({ ...r, extraktion: [...r.extraktion, { name: '', quelle: r.gilt_fuer === 'anhang' ? 'doktext' : 'text', muster: '', pflicht: false }] })}>Feld</Button>
       </Block>
 
+      {r.gilt_fuer === 'anhang' && (
+        <Block titel="Anhänge zusammenfassen"
+               hinweis="Alle Anhänge einer E-Mail, für die diese Regel greift, werden vor der Ablage zu einem PDF zusammengefügt (Bilder als eigene Seiten). Bei nur einem passenden Anhang bleibt er unverändert.">
+          <CheckBox text="Passende Anhänge zu einem PDF zusammenfassen" checked={zus.aktiv} onChange={(e) => setA({ zusammenfassen: { ...zus, aktiv: e.target.checked } })} />
+          {zus.aktiv && (
+            <div style={{ ...raster, marginTop: '0.5rem' }}>
+              <Label>Reihenfolge</Label>
+              <Wahl wert={zus.reihenfolge} style={{ width: '16rem' }} onChange={(k) => setA({ zusammenfassen: { ...zus, reihenfolge: k as Zusammenfassen['reihenfolge'] } })}
+                    optionen={[['mail', 'wie in der E-Mail'], ['name', 'nach Dateiname']]} />
+              <Label>Dateiname</Label>
+              <Input value={zus.dateiname} style={{ width: '100%' }} placeholder="{datum}_{kurz}_{datei|ohneEndung}"
+                     onInput={(e) => setA({ zusammenfassen: { ...zus, dateiname: e.target.value } })} />
+            </div>
+          )}
+        </Block>
+      )}
+
       <Block titel="Ablage in Paperless" hinweis={stamm.paperless.eingerichtet ? undefined : 'Paperless ist noch nicht eingerichtet (Administration → Anbindungen).'}>
         <CheckBox text={r.gilt_fuer === 'mail' ? 'E-Mail als PDF in Paperless ablegen' : 'Anhang in Paperless ablegen'} checked={pl.aktiv} onChange={(e) => setA({ paperless: { ...pl, aktiv: e.target.checked } })} />
         {pl.aktiv && (
@@ -168,6 +228,8 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
             <Input value={pl.datum ?? ''} style={{ width: '14rem' }} placeholder="{datum}" onInput={(e) => setA({ paperless: { ...pl, datum: e.target.value } })} />
             <Label>Notiz</Label>
             <Input value={pl.notiz ?? ''} style={{ width: '100%' }} onInput={(e) => setA({ paperless: { ...pl, notiz: e.target.value } })} />
+            <CustomFelder felder={pl.felder ?? {}} verfuegbar={stamm.paperless.felder} extraktion={r.extraktion}
+                          onChange={(f) => setA({ paperless: { ...pl, felder: f } })} />
           </div>
         )}
       </Block>
@@ -224,7 +286,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
             {test.passt ? 'Die Regel trifft zu.' : 'Die Regel trifft nicht zu.'}
             {test.korrespondent ? ` Korrespondent: ${test.korrespondent}.` : ''}{test.mitglied ? ` Mitglied: ${test.mitglied}.` : ''}
             {test.fehlend.length ? ` Pflichtfeld ohne Treffer: ${test.fehlend.join(', ')} → Prüfliste.` : ''}
-            {test.paperless ? ` Paperless: „${test.paperless.title}“${test.paperless.correspondent ? `, ${test.paperless.correspondent}` : ''}${test.paperless.documentType ? `, ${test.paperless.documentType}` : ''}${test.paperless.storagePath ? `, Pfad ${test.paperless.storagePath}` : ''}${test.paperless.tags.length ? `, Tags ${test.paperless.tags.join('/')}` : ''}${test.paperless.created ? `, ${test.paperless.created}` : ''}.` : ''}
+            {test.paperless ? ` Paperless: „${test.paperless.title}“${test.paperless.correspondent ? `, ${test.paperless.correspondent}` : ''}${test.paperless.documentType ? `, ${test.paperless.documentType}` : ''}${test.paperless.storagePath ? `, Pfad ${test.paperless.storagePath}` : ''}${test.paperless.tags.length ? `, Tags ${test.paperless.tags.join('/')}` : ''}${test.paperless.created ? `, ${test.paperless.created}` : ''}${Object.keys(test.paperless.customFields ?? {}).length ? `, Felder ${Object.entries(test.paperless.customFields ?? {}).map(([k, v]) => `${k} = ${v ?? '–'}`).join(', ')}` : ''}.` : ''}
             {test.nextcloud ? ` Nextcloud: ${[test.nextcloud.pfad, test.nextcloud.dateiname].filter(Boolean).join('/')}.` : ''}
           </MessageStrip>
         )}
