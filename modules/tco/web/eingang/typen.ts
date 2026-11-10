@@ -23,6 +23,7 @@ export interface Stamm {
   felder: Record<string, string>; operatoren: Record<string, string>; quellen: Record<string, string>; platzhalter: { name: string; text: string }[];
   paperless: { eingerichtet: boolean; korrespondenten: string[]; dokumenttypen: string[]; speicherpfade: string[]; tags: string[] };
   nextcloud: { eingerichtet: boolean };
+  abruf: { eingerichtet: boolean };
 }
 
 export interface Zuordnung { title: string; created?: string; correspondent: string; documentType: string; storagePath: string; tags: string[]; notiz: string }
@@ -52,7 +53,8 @@ export const leereRegel = (): RegelEingabe => ({
   name: '', beschreibung: '', status: 'testlauf', prioritaet: 100, gilt_fuer: 'anhang', verknuepfung: 'und',
   bedingungen: [{ feld: 'korrespondent', op: 'ist', wert: '' }], extraktion: [],
   aktionen: {
-    paperless: { aktiv: true, titel: '{datei|ohneEndung}', korrespondent: '{korrespondent}', dokumenttyp: '', speicherpfad: '', tags: 'Maileingang', datum: '{datum}', notiz: '' },
+    // Ablage in Paperless und Nextcloud ist zunächst aus und wird bei Bedarf in der Regel eingeschaltet
+    paperless: { aktiv: false, titel: '{datei|ohneEndung}', korrespondent: '{korrespondent}', dokumenttyp: '', speicherpfad: '', tags: 'Maileingang', datum: '{datum}', notiz: '' },
     nextcloud: { aktiv: false, pfad: '', dateiname: '{datum}_{kurz}_{datei}' },
     mail: { art: 'keine', ordner: '', gelesen: false },
     aufgabe: { aktiv: false, titel: '', faellig_tage: null },

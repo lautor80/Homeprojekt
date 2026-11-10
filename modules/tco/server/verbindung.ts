@@ -13,6 +13,7 @@ export const V_EP3 = 'tco.ep3';
 export const V_STUNDEN = 'tco.stunden';
 export const V_FERIEN = 'tco.ferien';
 export const V_NEXTCLOUD = 'tco.nextcloud';
+export const V_MAILABRUF = 'tco.mailabruf';
 
 async function abrufen(url: string, init: RequestInit, timeout = 30_000): Promise<{ res: Response; text: string }> {
   const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) });
@@ -21,14 +22,26 @@ async function abrufen(url: string, init: RequestInit, timeout = 30_000): Promis
 
 function httpFehler(status: number, text: string, mitAnmeldung: boolean): string {
   if (status === 401 || status === 403) {
-    return mitAnmeldung ? 'Anmeldung abgelehnt – Benutzer/Passwort stimmen nicht mit dem Webhook in n8n überein.'
-      : 'Der Webhook verlangt eine Anmeldung – bitte Benutzer und Passwort eintragen.';
+    return mitAnmeldung ? 'Anmeldung abgelehnt – die Zugangsdaten stimmen nicht mit dem Webhook in n8n überein.'
+      : 'Der Webhook verlangt eine Anmeldung – bitte die Zugangsdaten eintragen.';
   }
   if (status === 404) return 'Webhook nicht gefunden – ist der Workflow in n8n aktiv und die URL (Production-URL, nicht /webhook-test/) richtig?';
   return `HTTP ${status}: ${text.replace(/\s+/g, ' ').slice(0, 200)}`;
 }
 
-const mitAnmeldung = (v: Verbindung) => v.auth_art === 'basic' && !!v.geheimnis;
+const mitAnmeldung = (v: Verbindung) => v.auth_art !== 'keine' && !!v.geheimnis;
+
+/**
+ * Dokumenteneingang: n8n-Workflow „TCO Maileingang“ sofort starten (Webhook „Alle Mails jetzt“). n8n liest dann alle Mails
+ * im Posteingang und liefert sie erneut; der Aufruf kehrt sofort zurück, die Verarbeitung läuft in n8n weiter.
+ */
+export async function mailabrufAnstossen(v: Verbindung, quelle: string): Promise<string> {
+  const { res, text } = await abrufen(v.url, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader(v) }, body: JSON.stringify({ quelle, alle: true }),
+  });
+  if (!res.ok) throw new Error(httpFehler(res.status, text, mitAnmeldung(v)));
+  return 'n8n liest den Posteingang jetzt ein; neue und bisher regellose E-Mails erscheinen in wenigen Minuten.';
+}
 
 export const TCO_VERBINDUNGEN: VerbindungDef[] = [
   {
@@ -93,6 +106,15 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
         };
       } catch { return { ok: false, text: 'Verbunden, aber die Antwort ist kein JSON.' }; }
     },
+  },
+  {
+    id: V_MAILABRUF, text: 'Maileingang jetzt abrufen (n8n)',
+    beschreibung: 'Startet im Dokumenteneingang über „Posteingang abrufen“ den n8n-Workflow „TCO Maileingang“ (Webhook-Knoten „Alle Mails jetzt (Webhook)“, '
+      + 'Production-URL …/webhook/tco-dokumenteneingang-alle). Anmeldung am Webhook per Header, z. B. Name Authorization, Wert „Bearer <geheimer Wert>“ – '
+      + 'derselbe Wert wie in den Header-Auth-Zugangsdaten des Webhook-Knotens. Ohne Verbindungstest, weil jeder Aufruf den Abruf wirklich startet.',
+    auth: ['header', 'basic', 'keine'],
+    header_name: 'Authorization',
+    felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/tco-dokumenteneingang-alle)' },
   },
   {
     id: V_NEXTCLOUD, text: 'Nextcloud Dokumentenablage',

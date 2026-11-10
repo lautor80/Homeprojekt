@@ -42,6 +42,7 @@ const mock = {
   next: 700, kaputt: true,
   korr: [] as { id: number; name: string }[], tags: [] as { id: number; name: string }[],
   dav: [] as string[],
+  abruf: [] as { auth: string; body: string }[],
 };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
@@ -50,6 +51,11 @@ const server = http.createServer((req, res) => {
     const body = Buffer.concat(chunks).toString('utf8');
     const send = (code: number, data: unknown) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
     const u = decodeURIComponent(req.url ?? '');
+    if (u === '/webhook/tco-dokumenteneingang-alle') {
+      if (req.headers.authorization !== 'Bearer abruf-geheim') return send(403, { message: 'Authorization data is wrong!' });
+      mock.abruf.push({ auth: String(req.headers.authorization), body });
+      return send(200, { message: 'Workflow was started' });
+    }
     if (u.startsWith('/remote.php/dav/files/nc')) {
       if (req.headers.authorization !== `Basic ${Buffer.from('nc:app-pw').toString('base64')}`) { res.writeHead(401); return res.end(); }
       if (req.method === 'PUT') mock.dav.push(u.replace('/remote.php/dav/files/nc', ''));
@@ -256,6 +262,27 @@ test('n8n: Abgleich, Ablage in Paperless und Nextcloud, Wiederholung, Dublette, 
   assert.equal(r.body.mail, null);
   const [v4] = await sql`select text, hinweis from tco.eing_vorgaenge where id = ${r.body.vorgang}`;
   assert.deepEqual({ ...v4 }, { text: null, hinweis: 'Keine Regel passt.' }, 'Mailtext ohne Vorgang in der Prüfliste wird nicht gespeichert');
+
+  // erneut geliefert („Posteingang abrufen“), weiterhin ohne Regel: derselbe Vorgang bleibt
+  const v4Id = r.body.vorgang as number;
+  const ohne = mail({ von: 'jemand@privat.example', betreff: 'Frage zum Training', message_id: '<m4@p>', uid: 44 });
+  r = await ext(key, 'POST', `${E}/mail`, ohne);
+  assert.deepEqual([r.body.neu, r.body.vorgang, r.body.status], [false, v4Id, 'ohne_regel']);
+  const vorher = v4Id;
+  // nach einer neuen Regel wird die E-Mail neu bewertet: Behandlung aus der Regel, keine Ablage
+  const nr = await admin('POST', `${E}/regeln`, regel({ name: 'Privat', prioritaet: 90, gilt_fuer: 'mail', bedingungen: [bed('von', 'ist', 'jemand@privat.example')], aktionen: { mail: { art: 'loeschen', gelesen: true } } }));
+  assert.equal(nr.status, 200, JSON.stringify(nr.body));
+  r = await ext(key, 'POST', `${E}/mail`, ohne);
+  assert.equal(r.body.neu, true);
+  assert.equal(r.body.status, 'abgelegt');
+  assert.deepEqual(r.body.mail, { art: 'loeschen', ordner: '', gelesen: true, quelle: 'INBOX', uid: '44' });
+  assert.equal((await sql`select count(*)::int as n from tco.eing_vorgaenge where id = ${vorher}`)[0].n, 0, 'alter Vorgang „ohne Regel“ ersetzt');
+  assert.equal((await sql`select count(*)::int as n from tco.eing_vorgaenge where message_id = 'm4@p'`)[0].n, 1);
+  // bekannte, bereits abgelegte E-Mails bleiben bei erneuter Lieferung unverändert
+  r = await ext(key, 'POST', `${E}/mail`, ohne);
+  assert.equal(r.body.neu, false);
+  assert.equal(await ext(key, 'POST', `${E}/vorgaenge/${r.body.vorgang}/mail-erledigt`).then((x) => x.status), 200);
+  assert.equal((await admin('DELETE', `${E}/regeln/${nr.body.id}`)).status, 200);
 });
 
 test('Prüfliste: Testlauf-Vorschlag, Ablage mit Regel und von Hand, ignorieren, neu bewerten, Fehlerfall', async () => {
@@ -407,4 +434,34 @@ test('Rückmeldungen: Rückläufer wird im E-Mail-Protokoll verbucht und nicht a
   r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'fremd@example.net', betreff: 'Automatische Antwort: Urlaub', message_id: '<ooo-1@example.net>', auto: 'auto-replied' }));
   assert.equal(r.body.status, 'ignoriert');
   assert.equal(r.body.rueckmeldung.zugeordnet, false);
+});
+
+test('Posteingang abrufen: offene Vorgänge neu bewerten und n8n anstoßen', async () => {
+  // ohne Anbindung: nur neu bewerten
+  let r = await admin('POST', `${E}/abruf`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.abruf, false);
+  assert.match(r.body.text, /neu bewertet|Keine offenen Dokumente/);
+  assert.match(r.body.text, /Anbindung „Maileingang jetzt abrufen \(n8n\)“ ist nicht eingerichtet/);
+  assert.equal((await admin('GET', `${E}/stamm`)).body.abruf.eingerichtet, false);
+  assert.equal(mock.abruf.length, 0);
+
+  const port = (server.address() as { port: number }).port;
+  await sql`insert into core.verbindungen (id, url, auth_art, header_name, geheimnis)
+            values ('tco.mailabruf', ${`http://127.0.0.1:${port}/webhook/tco-dokumenteneingang-alle`}, 'header', 'Authorization', 'Bearer falsch')`;
+  const { verbindungenCacheLeeren } = await import('../src/lib/verbindungen.js');
+  verbindungenCacheLeeren();
+  r = await admin('POST', `${E}/abruf`);
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(r.body.message, /Abruf aus dem Postfach fehlgeschlagen: Anmeldung abgelehnt/);
+
+  await sql`update core.verbindungen set geheimnis = 'Bearer abruf-geheim' where id = 'tco.mailabruf'`;
+  verbindungenCacheLeeren();
+  r = await admin('POST', `${E}/abruf`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.abruf, true);
+  assert.match(r.body.text, /n8n liest den Posteingang jetzt ein/);
+  assert.equal(mock.abruf.length, 1);
+  assert.equal(JSON.parse(mock.abruf[0].body).alle, true);
+  assert.equal((await admin('GET', `${E}/stamm`)).body.abruf.eingerichtet, true);
 });

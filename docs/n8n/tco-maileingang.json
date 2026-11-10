@@ -2,6 +2,56 @@
   "name": "TCO Maileingang",
   "nodes": [
     {
+      "parameters": {},
+      "name": "Alle Mails jetzt",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        64
+      ],
+      "id": "5b0c1f6e-3a51-4c2e-9d7a-0e2f4b8c1a01",
+      "notes": "Im Editor „Workflow ausführen“ klicken: liest sofort ALLE Mails im Posteingang (gelesen und ungelesen, ohne Datumsgrenze) und liefert sie erneut ans Portal."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tco-dokumenteneingang-alle",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Alle Mails jetzt (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        352
+      ],
+      "id": "5b0c1f6e-3a51-4c2e-9d7a-0e2f4b8c1a02",
+      "webhookId": "8d6f2c3e-7b14-4f0a-a9c2-3e5d1b7f9a10",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Portal-Abruf (Webhook)"
+        }
+      },
+      "notes": "Von „Posteingang abrufen“ im Portal gestartet (Anbindung „Maileingang jetzt abrufen (n8n)“): POST an die Production-URL …/webhook/tco-dokumenteneingang-alle. Zugangsdaten „Portal-Abruf (Webhook)“ vom Typ Header Auth: Name Authorization, Wert „Bearer <geheimer Wert>“ – denselben Namen und Wert im Portal eintragen. Eigene Zugangsdaten, nicht den API-Schlüssel des Portals. Wirkt nur bei aktivem Workflow."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Legt fest, ob dieser Lauf nur die neuen Mails (Zeitplan) oder alle Mails im Posteingang verarbeitet.\n// alle = true, wenn der Lauf über „Alle Mails jetzt“ oder den Webhook gestartet wurde.\nconst gestartet = (n) => { try { return $(n).isExecuted; } catch (e) { return false; } };\nconst alle = gestartet('Alle Mails jetzt') || gestartet('Alle Mails jetzt (Webhook)');\nreturn [{ json: {\n  alle,\n  // IMAP-Suche: im Modus „alle“ ohne praktische Datumsgrenze\n  seit: alle ? '2000-01-01T00:00:00.000Z' : $now.minus({ days: 2 }).toISO(),\n  limit: alle ? 500 : 50,\n} }];\n"
+      },
+      "name": "Modus festlegen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ],
+      "id": "5b0c1f6e-3a51-4c2e-9d7a-0e2f4b8c1a03"
+    },
+    {
       "parameters": {
         "rule": {
           "interval": [
@@ -16,8 +66,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        0,
-        200
+        -240,
+        208
       ]
     },
     {
@@ -31,11 +81,11 @@
           "value": "INBOX"
         },
         "emailDateRange": {
-          "since": "={{ $now.minus({ days: 2 }).toISO() }}"
+          "since": "={{ $json.seit }}"
         },
         "emailFlags": {},
         "emailSearchFilters": {},
-        "limit": 50,
+        "limit": "={{ $json.limit }}",
         "includeParts": [
           "textContent",
           "htmlContent",
@@ -57,7 +107,7 @@
           "name": "IMAP Postfach Verein"
         }
       },
-      "notes": "Mails der letzten 2 Tage (höchstens 50). Die Mails bleiben unverändert im Postfach, bis das Portal ihre Behandlung meldet (unterer Zweig)."
+      "notes": "Zeitplan: Mails der letzten 2 Tage (höchstens 50). „Alle Mails jetzt“: alle Mails im Posteingang (höchstens 500). Gelesene Mails sind immer dabei (kein Flag-Filter). Die Mails bleiben unverändert im Postfach, bis das Portal ihre Behandlung meldet (unterer Zweig)."
     },
     {
       "parameters": {
@@ -70,11 +120,11 @@
           "value": "INBOX"
         },
         "emailDateRange": {
-          "since": "={{ $now.minus({ days: 2 }).toISO() }}"
+          "since": "={{ $json.seit }}"
         },
         "emailFlags": {},
         "emailSearchFilters": {},
-        "limit": 50,
+        "limit": "={{ $json.limit }}",
         "includeParts": [
           "textContent",
           "htmlContent",
@@ -95,7 +145,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Neue Mails der Posteingänge für das Portal aufbereiten (Dokumenteneingang und Rückmeldungen zum E-Mail-Protokoll).\n// Das Portal verbucht Unzustellbar-Meldungen, Abwesenheitsnotizen und Antworten im E-Mail-Protokoll und legt Dokumente\n// nach dem Regelwerk ab. Bereits gelieferte Mails (Knoten „Gemeldet merken“) und Mails älter als TAGE werden übersprungen.\nconst TAGE = 3;\n// Name des Postfachs je IMAP-Knoten – Teil des Schlüssels im Portal (Postfach + Message-ID) und Bedingungsfeld „Postfach“\nconst POSTFAECHER = {\n  'Posteingang lesen (IMAP)': 'Verein',\n  'Posteingang lesen (IMAP Benjamin)': 'Benjamin',\n};\nconst postfach = POSTFAECHER[$prevNode.name] || $prevNode.name;\nconst merk = $getWorkflowStaticData('global');\nconst gemeldet = new Set(merk.gemeldet || []);\n\nconst adressen = (l) => (Array.isArray(l) ? l : l ? [l] : [])\n  .map((x) => (typeof x === 'string' ? x : x.name ? x.name + ' <' + (x.address || '') + '>' : x.address || '')).filter(Boolean).join(', ');\nconst text = (v) => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.map(text).join(' ') : typeof v === 'object' ? (v.text || v.address || '') : String(v));\n\nconst aus = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  // ein deaktivierter IMAP-Knoten reicht nur das Auslöser-Item durch – das ist keine Mail\n  if (j.uid == null && !j.envelope) continue;\n  const env = j.envelope || {};\n  // Kopfzeilen: je nach Version des IMAP-Knotens als Objekt oder als Rohtext\n  let h = j.headers || {};\n  if (typeof h === 'string') {\n    const roh = h.replace(/\\r?\\n[ \\t]+/g, ' ');\n    h = {};\n    for (const z of roh.split(/\\r?\\n/)) { const m = /^([^:\\s]+):\\s*(.*)$/.exec(z); if (m) h[m[1].toLowerCase()] = m[2]; }\n  }\n  const kopf = (n) => text(h[n] ?? h[n.toLowerCase()] ?? Object.entries(h).find(([k]) => k.toLowerCase() === n)?.[1]);\n  const datum = env.date || kopf('date') || '';\n  const zeit = datum ? new Date(datum).getTime() : NaN;\n  if (!Number.isNaN(zeit) && zeit < Date.now() - TAGE * 86400000) continue;\n  const message_id = text(env.messageId) || kopf('message-id');\n  const schluessel = postfach + '|' + (message_id || [j.mailboxPath || 'INBOX', j.uid, datum].join('|'));\n  if (gemeldet.has(schluessel)) continue;\n  const anhaenge = (j.attachmentsInfo || []).filter((a) => a && a.partId);\n  aus.push({ json: {\n    schluessel,\n    postfach,\n    ordner: j.mailboxPath || 'INBOX',\n    uid: j.uid,\n    von: adressen(env.from) || kopf('from'),\n    an: adressen(env.to) || kopf('delivered-to') || kopf('to'),\n    betreff: text(env.subject) || kopf('subject'),\n    datum: datum ? String(datum) : '',\n    message_id,\n    in_reply_to: text(env.inReplyTo) || kopf('in-reply-to'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: text(j.textContent || j.textPlain || j.text).slice(0, 200000),\n    html: text(j.htmlContent || j.textHtml || j.html).slice(0, 500000),\n    anhaenge_anzahl: anhaenge.length,\n  } });\n}\nreturn aus;\n"
+        "jsCode": "// Neue Mails der Posteingänge für das Portal aufbereiten (Dokumenteneingang und Rückmeldungen zum E-Mail-Protokoll).\n// Das Portal verbucht Unzustellbar-Meldungen, Abwesenheitsnotizen und Antworten im E-Mail-Protokoll und legt Dokumente\n// nach dem Regelwerk ab. Bereits gelieferte Mails (Knoten „Gemeldet merken“) und Mails älter als TAGE werden übersprungen – außer im Modus „alle“.\nconst TAGE = 3;\n// Modus „alle“ (Sofort-Start): keine Altersgrenze und bereits gelieferte Mails erneut liefern\nconst ALLE = $('Modus festlegen').first().json.alle === true;\n// Name des Postfachs je IMAP-Knoten – Teil des Schlüssels im Portal (Postfach + Message-ID) und Bedingungsfeld „Postfach“\nconst POSTFAECHER = {\n  'Posteingang lesen (IMAP)': 'Verein',\n  'Posteingang lesen (IMAP Benjamin)': 'Benjamin',\n};\nconst postfach = POSTFAECHER[$prevNode.name] || $prevNode.name;\nconst merk = $getWorkflowStaticData('global');\nconst gemeldet = new Set(merk.gemeldet || []);\n\nconst adressen = (l) => (Array.isArray(l) ? l : l ? [l] : [])\n  .map((x) => (typeof x === 'string' ? x : x.name ? x.name + ' <' + (x.address || '') + '>' : x.address || '')).filter(Boolean).join(', ');\nconst text = (v) => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.map(text).join(' ') : typeof v === 'object' ? (v.text || v.address || '') : String(v));\n\nconst aus = [];\nfor (const item of $input.all()) {\n  const j = item.json || {};\n  // ein deaktivierter IMAP-Knoten reicht nur das Auslöser-Item durch – das ist keine Mail\n  if (j.uid == null && !j.envelope) continue;\n  const env = j.envelope || {};\n  // Kopfzeilen: je nach Version des IMAP-Knotens als Objekt oder als Rohtext\n  let h = j.headers || {};\n  if (typeof h === 'string') {\n    const roh = h.replace(/\\r?\\n[ \\t]+/g, ' ');\n    h = {};\n    for (const z of roh.split(/\\r?\\n/)) { const m = /^([^:\\s]+):\\s*(.*)$/.exec(z); if (m) h[m[1].toLowerCase()] = m[2]; }\n  }\n  const kopf = (n) => text(h[n] ?? h[n.toLowerCase()] ?? Object.entries(h).find(([k]) => k.toLowerCase() === n)?.[1]);\n  const datum = env.date || kopf('date') || '';\n  const zeit = datum ? new Date(datum).getTime() : NaN;\n  if (!ALLE && !Number.isNaN(zeit) && zeit < Date.now() - TAGE * 86400000) continue;\n  const message_id = text(env.messageId) || kopf('message-id');\n  const schluessel = postfach + '|' + (message_id || [j.mailboxPath || 'INBOX', j.uid, datum].join('|'));\n  if (!ALLE && gemeldet.has(schluessel)) continue;\n  const anhaenge = (j.attachmentsInfo || []).filter((a) => a && a.partId);\n  aus.push({ json: {\n    schluessel,\n    postfach,\n    ordner: j.mailboxPath || 'INBOX',\n    uid: j.uid,\n    von: adressen(env.from) || kopf('from'),\n    an: adressen(env.to) || kopf('delivered-to') || kopf('to'),\n    betreff: text(env.subject) || kopf('subject'),\n    datum: datum ? String(datum) : '',\n    message_id,\n    in_reply_to: text(env.inReplyTo) || kopf('in-reply-to'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: text(j.textContent || j.textPlain || j.text).slice(0, 200000),\n    html: text(j.htmlContent || j.textHtml || j.html).slice(0, 500000),\n    anhaenge_anzahl: anhaenge.length,\n  } });\n}\nreturn aus;\n"
       },
       "name": "Mail aufbereiten",
       "type": "n8n-nodes-base.code",
@@ -530,17 +580,7 @@
       "main": [
         [
           {
-            "node": "Posteingang lesen (IMAP)",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Posteingang lesen (IMAP Benjamin)",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Ausstehende Mailaktionen",
+            "node": "Modus festlegen",
             "type": "main",
             "index": 0
           }
@@ -734,6 +774,49 @@
         [
           {
             "node": "Aufgabe anlegen (deaktiviert)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle Mails jetzt": {
+      "main": [
+        [
+          {
+            "node": "Modus festlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle Mails jetzt (Webhook)": {
+      "main": [
+        [
+          {
+            "node": "Modus festlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modus festlegen": {
+      "main": [
+        [
+          {
+            "node": "Posteingang lesen (IMAP)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Posteingang lesen (IMAP Benjamin)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ausstehende Mailaktionen",
             "type": "main",
             "index": 0
           }

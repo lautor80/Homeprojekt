@@ -63,7 +63,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   // Modulverbindungen sind angemeldet
   let r = await call('GET', '/api/verbindungen');
   const tco = r.body.gruppen.find((g: { modul: string }) => g.modul === 'tco');
-  assert.deepEqual(tco.verbindungen.map((v: { id: string }) => v.id).sort(), ['tco.ep3', 'tco.ferien', 'tco.nextcloud', 'tco.stunden']);
+  assert.deepEqual(tco.verbindungen.map((v: { id: string }) => v.id).sort(), ['tco.ep3', 'tco.ferien', 'tco.mailabruf', 'tco.nextcloud', 'tco.stunden']);
 
   // ungesichert prüfen: falsches Passwort → abgelehnt, richtiges → Daten
   const S = { url: `${B}/stunden`, auth_art: 'basic', auth_user: 'test.user@example.org' };

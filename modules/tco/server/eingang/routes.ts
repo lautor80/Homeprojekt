@@ -4,12 +4,12 @@ import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { DB } from '../verein.js';
-import { V_NEXTCLOUD } from '../verbindung.js';
+import { V_MAILABRUF, V_NEXTCLOUD, mailabrufAnstossen } from '../verbindung.js';
 import {
   FELDER, FELD_IDS, OPERATOREN, OPERATOR_IDS, PLATZHALTER, QUELLEN, QUELLE_IDS, bedingungPasst, extrahieren, musterFehler, platzhalter, regelPasst,
 } from './logik.js';
 import {
-  abgleich, ausstehendeAktionen, dokumentAblegen, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
+  abgleich, ausstehendeAktionen, dokumentAblegen, offeneNeuBewerten, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
   zieleAufloesen,
 } from './verarbeitung.js';
 
@@ -108,7 +108,7 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.get('/eingang/stamm', sehen, async () => {
     const pl = await paperlessZentral();
     const namen = async (f: () => Promise<{ name: string }[]>) => { try { return (await f()).map((x) => x.name).sort((a, b) => a.localeCompare(b, 'de')); } catch { return [] as string[]; } };
-    const nc = await verbindungLesen(V_NEXTCLOUD);
+    const [nc, abruf] = await Promise.all([verbindungLesen(V_NEXTCLOUD), verbindungLesen(V_MAILABRUF)]);
     return {
       felder: FELDER, operatoren: OPERATOREN, quellen: QUELLEN, platzhalter: PLATZHALTER,
       paperless: {
@@ -117,6 +117,7 @@ export async function eingangRoutes(app: FastifyInstance) {
         speicherpfade: pl ? await namen(() => pl.speicherpfade()) : [], tags: pl ? await namen(() => pl.tags()) : [],
       },
       nextcloud: { eingerichtet: eingerichtet(nc) && !!nc.auth_user && !!nc.geheimnis },
+      abruf: { eingerichtet: eingerichtet(abruf) },
     };
   });
 
@@ -285,12 +286,32 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.post('/eingang/vorgaenge/:id/neu-bewerten', pflegen, async (req) => neuBewerten(idParam.parse(req.params).id, wer(req)));
   app.post('/eingang/vorgaenge/:id/ignorieren', pflegen, async (req) => vorgangIgnorieren(idParam.parse(req.params).id, wer(req)));
 
-  /** Vorgang verwerfen: liegt die E-Mail noch im Postfach, liest n8n sie beim nächsten Lauf neu ein (z. B. nach einer neuen Regel) */
+  /**
+   * „Posteingang abrufen“: das Regelwerk erneut auf alle offenen Vorgänge anwenden und n8n anstoßen, alle E-Mails des
+   * Posteingangs erneut zu liefern. Bekannte E-Mails bleiben unverändert, nur solche „ohne Regel“ werden neu bewertet.
+   */
+  app.post('/eingang/abruf', pflegen, async (req) => {
+    const b = await offeneNeuBewerten(wer(req));
+    const bewertet = b.vorgaenge
+      ? `${b.dokumente} offene${b.dokumente === 1 ? 's Dokument' : ' Dokumente'} in ${b.vorgaenge} ${b.vorgaenge === 1 ? 'Vorgang' : 'Vorgängen'} neu bewertet.`
+      : 'Keine offenen Dokumente in der Prüfliste.';
+    const v = await verbindungLesen(V_MAILABRUF);
+    if (!eingerichtet(v)) {
+      return { abruf: false, text: `${bewertet} Kein Abruf aus dem Postfach: Die Anbindung „Maileingang jetzt abrufen (n8n)“ ist nicht eingerichtet (Administration → Anbindungen).` };
+    }
+    try {
+      return { abruf: true, text: `${bewertet} ${await mailabrufAnstossen(v, `Portal (${wer(req)})`)}` };
+    } catch (e) {
+      throw new BusinessError(`${bewertet} Abruf aus dem Postfach fehlgeschlagen: ${(e as Error).message}`);
+    }
+  });
+
+  /** Vorgang verwerfen: liegt die E-Mail noch im Postfach, liest n8n sie beim nächsten „Posteingang abrufen“ neu ein (z. B. nach einer neuen Regel) */
   app.delete('/eingang/vorgaenge/:id', pflegen, async (req) => {
     const { id } = idParam.parse(req.params);
     const n = await DB`delete from tco.eing_vorgaenge where id = ${id}`;
     if (!n.count) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
-    return { text: 'Vorgang verworfen – die E-Mail wird beim nächsten Lauf neu eingelesen, wenn sie noch im Postfach liegt.' };
+    return { text: 'Vorgang verworfen – die E-Mail wird mit „Posteingang abrufen“ neu eingelesen, wenn sie noch im Postfach liegt.' };
   });
 
   // ---------------------------------------------------------------- Schnittstelle für n8n (API-Schlüssel mit tco.eingang:melden)
