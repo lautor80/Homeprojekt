@@ -689,3 +689,26 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-bereich__gruppe { padding-top: 0.75rem; }
 .portal-bereich__gruppe + .portal-bereich__gruppe { margin-top: 1rem; border-top: 1px dashed var(--sapList_BorderColor, #d9d9d9); }
 .portal-bereich__gruppe .portal-group__title { border-bottom: 0; padding-bottom: 0; color: var(--sapContent_LabelColor); }
+
+/* ---------------------------------------------------------------------------
+   Handy (bis 600px): Startseite kompakter, Eingaben ohne Zoom, Anmeldung mit mehr Platz
+   --------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  /* Startseite: flachere Kacheln und weniger Rand – rund ein Drittel weniger Scrollweg */
+  .portal-home { padding: 1rem 0.75rem 2rem; }
+  .portal-home__head { margin-bottom: 1rem; }
+  .portal-bereich { padding: 0.75rem 0.75rem 1rem; margin-bottom: 1rem; }
+  .portal-bereich__titel { margin-bottom: 0.75rem; }
+  .portal-tiles { gap: 0.625rem; }
+  .portal-tile { height: auto; min-height: 6.5rem; padding: 0.75rem; gap: 0.5rem; }
+  .portal-tile__foot { min-height: 1.5rem; }
+  .portal-tile__icon { width: 1.5rem; height: 1.5rem; }
+  .portal-tile__kpi-value { font-size: 1.25rem; }
+
+  /* iPhone: Safari zoomt beim Antippen in Eingabefelder mit Schrift unter 16px hinein */
+  ui5-input, ui5-textarea, ui5-combobox, ui5-multi-combobox { font-size: 1rem; }
+}
+@media (max-width: 480px) {
+  .portal-auth { padding: 1rem; }
+  .portal-auth__card { padding: 1.5rem 1.25rem 1.25rem; }
+}
