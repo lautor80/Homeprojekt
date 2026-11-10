@@ -5,10 +5,14 @@ import { sql, type Tx } from '../db.js';
 import { BusinessError } from '../errors.js';
 import { activeModules } from '../modules.js';
 import { getSettings } from './settings.js';
+import { adressen, passt, personenIndex, personenText, type MailPerson } from '../lib/mailuebersicht.js';
 import { mailSenden, mailWiederholen, nichtWiederholbar, WIEDERHOLBAR, wiederholungsArt, type MailFolge, type Wiederholung } from '../lib/mail.js';
 
 /** Mailprotokoll, Testmail und „Erneut senden“ (Administration → Anbindungen → E-Mail-Versand) */
 const P = 'core.settings:edit';
+/** App „E-Mail-Protokoll“: nur lesen (Empfänger, Betreff, Status – nie der Inhalt) */
+const P_ANZEIGE = 'core.mail:display';
+const UEBERSICHT_MAX = 2000;
 
 // Filter: Anwendung, Zeitraum von/bis (Ortszeit, „JJJJ-MM-TTTHH:MM“ oder nur Datum)
 const protoFilter = z.object({
@@ -17,6 +21,11 @@ const protoFilter = z.object({
   bis: z.string().regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/, 'Zeitraum „bis“ ungültig').optional().transform((x) => x || null),
 });
 type ProtoFilter = z.infer<typeof protoFilter>;
+// App „E-Mail-Protokoll“: zusätzlich Status und Freitext (Person, Empfänger, Vorgang, Betreff, Fehler …)
+const uebersichtFilter = protoFilter.extend({
+  status: z.enum(['gesendet', 'entwurf', 'fehler', 'nicht_gesendet']).or(z.literal('')).optional().transform((x) => x || null),
+  suche: z.string().trim().max(120).optional().transform((x) => x || null),
+});
 // „bis“ ohne Uhrzeit = ganzer Tag; mit Uhrzeit einschließlich dieser Minute
 const bisGrenze = (b: string) => (b.length === 10 ? `${b}T23:59:59.999` : `${b.replace(' ', 'T')}:59.999`);
 const protoWo = (db: Tx, f: ProtoFilter) => db`
@@ -66,6 +75,40 @@ export async function mailRoutes(app: FastifyInstance) {
       const w = wiederholungsArt(nachricht);
       return { ...p, erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis, erneut_neuer_link: !!w && w !== 'NEU_AUSLOESEN' };
     });
+  });
+
+  /**
+   * App „E-Mail-Protokoll“: alle Versandversuche im Zeitraum als Tabelle, je Zeile mit der Person hinter der Empfängeradresse
+   * (Benutzer aus dem Kern, Mitglieder/Kunden/Registrierungen aus den Modulen) – so findet die Suche nach einem Namen
+   * auch die Mails an dessen Adresse. Der Inhalt wird nie ausgeliefert.
+   */
+  app.get('/api/mail/uebersicht', { preHandler: requireAuth(P_ANZEIGE) }, async (req) => {
+    const f = uebersichtFilter.parse(req.query);
+    const rows = await DB`
+      select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer,
+             nachricht is not null as inhalt, nachricht->'wiederholung'->>'art' as w_art, nachricht->'wiederholung'->>'hinweis' as w_hinweis,
+             to_char(erneut_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as erneut_am, erneut_von, erneut_status
+        from core.mail_protokoll ${protoWo(DB, f)} ${f.status ? DB`and status = ${f.status}` : DB``}
+       order by id desc limit ${UEBERSICHT_MAX + 1}`;
+    const gekuerzt = rows.length > UEBERSICHT_MAX;
+    const liste = rows.slice(0, UEBERSICHT_MAX);
+    const emails: string[] = [...new Set(liste.flatMap((r) => adressen(r.an as string | null)))];
+    const personen: MailPerson[] = [];
+    if (emails.length) {
+      for (const m of activeModules()) personen.push(...((await m.mailPersonen?.(DB, emails)) ?? []));
+      const benutzer = await DB`select lower(btrim(email)) as email, display_name as name from core.users where lower(btrim(email)) = any(${emails}::text[])`;
+      personen.push(...benutzer.map((b) => ({ email: b.email as string, name: b.name as string, art: 'Benutzer' })));
+    }
+    const index = personenIndex(personen);
+    const zeilen = liste.map(({ inhalt, w_art, w_hinweis, ...p }) => {
+      const fehlgeschlagen = WIEDERHOLBAR.includes(p.status) && p.erneut_status !== 'gesendet' && p.erneut_status !== 'entwurf';
+      // wie im Mailprotokoll der Anbindung: ob (und warum nicht) erneut gesendet werden kann – ohne den gespeicherten Inhalt zu laden
+      const nachricht = inhalt ? (w_art ? { wiederholung: { art: w_art, hinweis: w_hinweis ?? '' } } : { mail: true }) : null;
+      const hinweis = fehlgeschlagen ? nichtWiederholbar({ status: p.status, nachricht, erneut_status: p.erneut_status }) : null;
+      return { ...p, person: personenText(p.an as string | null, index), erneut: fehlgeschlagen && !hinweis, erneut_hinweis: hinweis };
+    }).filter((z) => passt(f.suche, [z.person, z.an, z.objekt, z.anwendung, z.betreff, z.absender, z.von, z.benutzer, z.fehler]));
+    const anwendungen = (await sql`select distinct anwendung from core.mail_protokoll where anwendung is not null order by 1`).map((r) => r.anwendung as string);
+    return { zeilen, anwendungen, gekuerzt };
   });
 
   /** fehlgeschlagene E-Mail erneut senden (Zugangslinks werden dabei neu erzeugt) */

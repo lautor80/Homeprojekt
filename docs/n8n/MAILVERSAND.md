@@ -98,3 +98,13 @@ und sendet eine Testmail über den kompletten Weg. Fehlgeschlagene Mails (`fehle
 - **Kennwort-Links und Startkennwörter** sind nicht wiederholbar; die Zeile nennt, wo sie neu ausgelöst werden.
 
 Jede Wiederholung steht als eigener Eintrag im Protokoll; die ursprüngliche Zeile zeigt „Erneut gesendet am … von …“.
+
+## App „E-Mail-Protokoll“
+
+Administration → E-Mail-Protokoll (Berechtigung `core.mail:display`, nur lesend) zeigt dasselbe Protokoll als Tabelle mit Filter:
+Suche (Name, Adresse, Vorgang, Betreff, Fehler), Anwendung, Status, Zeitraum (Vorgabe: letzte 30 Tage, höchstens 2000 Einträge je Suche)
+und „Sammeln nach“ Person, Empfänger, Vorgang, Anwendung oder Status. Die Spalte **Person** nennt, wem die Empfängeradresse gehört:
+Benutzer aus dem Kern, Mitglieder (auch Adresse des Zahlers), Hallenkunden und Registrierungen aus dem Modul (`ServerModule.mailPersonen`).
+So findet die Suche nach einem Namen alle E-Mails an dessen Adresse, auch wenn noch kein Benutzer angelegt ist.
+Ein Klick auf eine Zeile zeigt die Einzelheiten (Fehlertext, tatsächlicher Absender, Wiederholung); der Inhalt der E-Mail wird nie angezeigt.
+„gesendet“ heißt: von n8n an den Mailserver übergeben – nicht, dass die E-Mail im Postfach angekommen ist (Spam-Ordner, Tippfehler in der Adresse).
