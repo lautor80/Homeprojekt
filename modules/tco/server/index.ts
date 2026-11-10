@@ -35,6 +35,7 @@ import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
 import { mailFolge, mailWiederholen } from './mailwiederholen.js';
+import { mailPersonen } from './mailpersonen.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 
 const P = {
@@ -232,7 +233,7 @@ const tco: ServerModule = {
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
   verbindungen: TCO_VERBINDUNGEN,
-  mailWiederholen, mailFolge,
+  mailWiederholen, mailFolge, mailPersonen,
   // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
   // Benutzer nur löschbar, solange er nichts gebucht hat: Platzbuchungen (eigene Portalbuchungen und – wie in

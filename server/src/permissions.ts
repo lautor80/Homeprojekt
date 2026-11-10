@@ -44,6 +44,7 @@ export const corePermissions: PermissionDef[] = [
   { id: 'core.apikeys:display', text: 'API-Schlüssel anzeigen', area: 'Administration', app: 'API-Schlüssel' },
   { id: 'core.apikeys:edit', text: 'API-Schlüssel anlegen, ändern und sperren', area: 'Administration', app: 'API-Schlüssel' },
   { id: 'core.audit:display', text: 'Änderungsbelege anzeigen (alle Objekte)', area: 'Administration', app: 'Änderungsbelege' },
+  { id: 'core.mail:display', text: 'E-Mail-Protokoll anzeigen: alle E-Mails des Portals mit Empfänger, Betreff, Status und Fehler (ohne Inhalt), gesammelt je Person oder Vorgang', area: 'Administration', app: 'E-Mail-Protokoll' },
   { id: 'core.settings:edit', text: 'Systemeinstellungen ändern', area: 'Administration', app: 'Einstellungen' },
   { id: 'core.statistik:display', text: 'Nutzungsstatistik anzeigen (Anmeldungen je Benutzer und Monat, Aufrufe je App)', area: 'Administration', app: 'Statistik' },
   { id: 'core.sperren:admin', text: 'Sperreinträge aller Benutzer anzeigen und aufheben', area: 'Administration', app: 'Sperren' },

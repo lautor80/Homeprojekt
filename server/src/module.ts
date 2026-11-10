@@ -1,6 +1,7 @@
 import type { KontextDef } from './lib/paperless-mapping.js';
 import type { VerbindungDef } from './lib/verbindungen.js';
 import type { MailFolge, Wiederholung } from './lib/mail.js';
+import type { MailPerson } from './lib/mailuebersicht.js';
 import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
@@ -71,6 +72,11 @@ export interface ServerModule {
   mailWiederholen?: (tx: Tx, w: Wiederholung, wer: string) => Promise<string | null>;
   /** nach erfolgreicher Wiederholung nachziehen, was der erste Versand getan hätte (z. B. Rechnung „versendet“); null = nicht zuständig */
   mailFolge?: (tx: Tx, f: MailFolge) => Promise<string[] | null>;
+  /**
+   * E-Mail-Protokoll (Administration → E-Mail-Protokoll): wem gehören diese Empfängeradressen (klein geschrieben)?
+   * Das Modul meldet seine Personen (z. B. Mitglied, Hallenkunde, Registrierung); Benutzer ergänzt der Kern.
+   */
+  mailPersonen?: (db: Tx, emails: string[]) => Promise<MailPerson[]>;
   /**
    * Angeschlossene Systeme des Moduls (Administration → Anbindungen): Adresse und Zugangsdaten werden zentral
    * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.
