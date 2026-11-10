@@ -244,7 +244,14 @@ const tco: ServerModule = {
   paperlessKontexte: TCO_KONTEXTE,
   verbindungen: TCO_VERBINDUNGEN,
   mailWiederholen, mailFolge, mailPersonen,
-  // Systemrollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
+  // Funktionstrennung (docs/berechtigungskonzept.md, 4.8) – die Rollenpflege meldet diese Kombinationen
+  rechteKonflikte: [
+    { a: 'tco.jtmeine:edit', b: 'tco.jt:edit', text: 'eigene Trainingszeiten melden und die eigene Abrechnung freigeben bzw. als bezahlt kennzeichnen' },
+    { a: 'tco.jtmeine:edit', b: 'tco.jt:entgelte', text: 'eigene Trainingszeiten melden und das eigene Entgelt festlegen' },
+    { a: 'tco.bankdaten:edit', b: 'tco.soll:edit', text: 'Bankverbindung ändern und Lastschriften einziehen' },
+    { a: 'tco.verzehr:theke', b: 'tco.verzehr:admin', text: 'an der Theke kassieren und Verzehr stornieren bzw. abschließen' },
+  ],
+  // Rollen „Mitglied“/„Hallennutzer“ nach einer Rücksicherung (ältere Sicherung) wieder herstellen
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
   // Benutzer nur löschbar, solange er nichts gebucht hat: Platzbuchungen (eigene Portalbuchungen und – wie in
   // „Meine Buchungen“ – die EP3-Buchungen des zugeordneten Mitglieds/Kunden, auch stornierte) und Verzehr

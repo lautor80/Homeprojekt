@@ -171,6 +171,23 @@ der Anzeige maskiert (auch für `core.audit:display`); die eigenen Vereinskonten
 nicht maskiert. Neue geschützte Felder: im Modul `sensitiveFields` (für Änderungsbelege) deklarieren und in den
 Routen `feldschutz(req, permission)` anwenden.
 
+## Rollenpflege: Matrix und Prüfung (Administration)
+
+Administration → **Rollen** hat drei Ansichten: **Liste** (Einzelpflege im Dialog wie bisher), **Matrix** und **Prüfung** (#46).
+
+- **Matrix:** Zeilen = Berechtigungen (Modul › Bereich › App), Spalten = Rollen (ohne `ADMIN`). Kästchen setzen und entfernen Rechte;
+  Voraussetzungen werden wie im Dialog mitgesetzt bzw. abhängige Rechte mit entfernt. Filter: Suche, Rollenauswahl, „nur vergebene“,
+  „nur Unterschiede“. Änderungen mehrerer Rollen werden gesammelt (gelb markiert) und mit **Sichern** in einer Transaktion geschrieben
+  (`PUT /api/admin/roles/matrix`, `core.roles:edit`). Der Server lehnt ab, wenn eine Rolle inzwischen geändert wurde (409), bei
+  unbekannten Kennungen, Systemrollen und – wie in der Einzelpflege – bei „nur Admin“-Rollen ohne Administrator bzw. mit `core.*`-Rechten.
+- **Prüfung** (`POST /api/admin/roles/pruefung`, `core.roles:display`; läuft auch auf dem ungesicherten Stand der Matrix):
+  Rollen deckungsgleich (Fehler), Rolle vollständig in einer anderen enthalten (Warnung), Überlappung ab 60 % gemeinsamer Rechte
+  (Hinweis), Benutzer mit überflüssiger Rolle (Warnung), Funktionstrennung in einer Rolle oder bei einem Benutzer über mehrere Rollen
+  (Warnung; Paare aus `rechteKonflikte` der Module und `coreKonflikte`), fehlende Voraussetzung und unbekannte Kennung (Fehler),
+  Rolle leer / ohne Benutzer und Rechte in keiner Rolle (Hinweis). „Vergleichen“ stellt die betroffenen Rollen in der Matrix
+  nebeneinander und hebt die betroffenen Rechte hervor. Befunde verhindern das Sichern nicht.
+- Logik: `server/src/rollenpruefung.ts` (reine Funktion), Oberfläche `web/src/pages/RollenMatrix.tsx`, Test `server/test/rollenmatrix.test.ts`.
+
 ## Tabellenansicht (Administration)
 
 Administration → **Tabellenansicht** (Berechtigung `core.tabellen:display`) zeigt alle Tabellen und Sichten der
