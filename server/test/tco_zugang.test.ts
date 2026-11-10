@@ -489,7 +489,7 @@ test('Registrierung in Schritten: Suche im Bestand, Übernahme von Name und Ansc
   // Mitglied: E-Mail + Geburtsdatum; zurück kommt nur Vorname und Anfangsbuchstabe
   let r = await gast('POST', `${R}/pruefen`, { art: 'MITGLIED', email: 'Berta@Example.org', geburtsdatum: '1970-07-07' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body, { treffer: true, name: 'Berta B.', benutzername: 'berta@example.org' });
+  assert.deepEqual(r.body, { treffer: true, name: 'Berta B.' }, 'ohne Vorschlag für den Benutzernamen');
   assert.equal((await gast('POST', `${R}/pruefen`, { art: 'MITGLIED', email: 'berta@example.org', geburtsdatum: '1970-07-08' })).body.treffer, false);
   assert.equal((await gast('POST', `${R}/pruefen`, { art: 'MITGLIED', email: 'berta@example.org' })).status, 400);
   const basis = { benutzername: 'berta@example.org', passwort: 'bertas-kennwort-1', datenschutz: true, ausBestand: true };
@@ -503,7 +503,7 @@ test('Registrierung in Schritten: Suche im Bestand, Übernahme von Name und Ansc
 
   // externer Hallennutzer: bisheriges Kundenkonto über die E-Mail; verknüpft wird erst mit dem Bestätigungslink
   r = await gast('POST', `${R}/pruefen`, { art: 'EXTERN', email: 'erwin@example.org' });
-  assert.deepEqual(r.body, { treffer: true, name: 'Erwin A.', benutzername: 'erwin@example.org' });
+  assert.deepEqual(r.body, { treffer: true, name: 'Erwin A.' });
   assert.equal((await gast('POST', `${R}/pruefen`, { art: 'EXTERN', email: 'niemand@example.org' })).body.treffer, false);
   r = await gast('POST', R, { ...basis, art: 'EXTERN', email: 'erwin@example.org', benutzername: 'erwin@example.org', passwort: 'erwins-kennwort-1' });
   assert.equal(r.status, 200, JSON.stringify(r.body));

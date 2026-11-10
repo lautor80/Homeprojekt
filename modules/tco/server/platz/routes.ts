@@ -16,7 +16,7 @@ import {
 import { minuten, preiseLesen, preiswoche, preiszonen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
 import {
-  ablehnen, benutzernameFrei, bestaetigen, bestandFinden, freierBenutzername, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
+  ablehnen, benutzernameFrei, bestaetigen, bestandFinden, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
@@ -210,10 +210,8 @@ export async function platzRoutes(app: FastifyInstance) {
     const b = bestandBody.parse(req.body);
     if (b.art === 'MITGLIED' && !b.geburtsdatum) throw new BusinessError('Bitte das Geburtsdatum angeben.');
     const t = await bestandFinden(DB, b.art, b.email, b.geburtsdatum);
-    const vorschlag = await freierBenutzername(DB, b.email, b.email.split('@')[0], 'neu');
-    return t
-      ? { treffer: true, name: `${t.vorname} ${t.nachname.slice(0, 1)}.`.trim(), benutzername: vorschlag }
-      : { treffer: false, benutzername: vorschlag };
+    // kein Vorschlag für den Benutzernamen: er wird frei gewählt (und verriete sonst, ob die E-Mail schon als Anmeldename vergeben ist)
+    return t ? { treffer: true, name: `${t.vorname} ${t.nachname.slice(0, 1)}.`.trim() } : { treffer: false };
   });
   app.post('/platz/registrierung', async (req) => {
     regLimit(req.ip, 15);
