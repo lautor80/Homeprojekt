@@ -19,19 +19,25 @@ interface Eintrag {
   absender: string | null; von: string | null; status: string; fehler: string | null; benutzer: string | null; person: string;
   erneut: boolean; erneut_hinweis: string | null; erneut_neuer_link: boolean; cc: string | null;
   erneut_am: string | null; erneut_von: string | null; erneut_status: string | null;
+  antworten: Rueckmeldung[];
 }
+/** Rückmeldung zu einer gesendeten E-Mail: Unzustellbar-Meldung des Mailservers, Abwesenheitsnotiz oder Antwort (ohne Inhalt) */
+interface Rueckmeldung { art: 'unzustellbar' | 'abwesenheit' | 'antwort'; zeit: string; von: string | null; betreff: string | null; grund: string | null }
 interface Antwort { zeilen: Eintrag[]; anwendungen: string[]; gekuerzt: boolean }
 /** Tabellenzeile: nur Texte, damit Spaltenfilter, Sortierung und Gruppierung auf dem Angezeigten arbeiten */
 interface Zeile {
   id: number; zeit: string; person: string; an: string; anwendung: string; objekt: string; betreff: string; statusText: string;
-  hinweis: string; absender: string; benutzer: string; eintrag: Eintrag;
+  rueck: string; hinweis: string; absender: string; benutzer: string; eintrag: Eintrag;
 }
 type State = 'Positive' | 'Negative' | 'Critical' | 'Information' | 'None';
 
 const STATUS: Record<string, { text: string; state: State }> = {
   gesendet: { text: 'gesendet', state: 'Positive' }, entwurf: { text: 'Entwurf', state: 'Information' },
   fehler: { text: 'Fehler', state: 'Negative' }, nicht_gesendet: { text: 'nicht gesendet', state: 'Critical' },
+  // kein Status des Versands, sondern Rückmeldung des Mailservers nach dem Senden
+  unzustellbar: { text: 'unzustellbar', state: 'Negative' },
 };
+const ART: Record<string, string> = { unzustellbar: 'Unzustellbar', abwesenheit: 'Abwesenheitsnotiz', antwort: 'Antwort' };
 const statusState = (text: string): State => Object.values(STATUS).find((s) => s.text === text)?.state ?? 'None';
 const GRUPPEN: { id: string; text: string }[] = [
   { id: '', text: '(keine)' }, { id: 'person', text: 'Person' }, { id: 'an', text: 'Empfänger' }, { id: 'objekt', text: 'Vorgang' },
@@ -44,6 +50,12 @@ const vorTagen = (n: number) => tag(new Date(Date.now() - n * 86400_000));
 const zeitText = (z: string) => `${z.slice(8, 10)}.${z.slice(5, 7)}.${z.slice(0, 4)} ${z.slice(11, 16)}`;
 
 const fehlgeschlagen = (e: Eintrag) => e.status === 'fehler' || e.status === 'nicht_gesendet';
+const unzustellbar = (e: Eintrag) => (e.antworten ?? []).some((a) => a.art === 'unzustellbar');
+/** angezeigter Status: „gesendet“ wird zu „unzustellbar“, sobald der Mailserver die E-Mail zurückgemeldet hat */
+const statusSchluessel = (e: Eintrag) => (e.status === 'gesendet' && unzustellbar(e) ? 'unzustellbar' : e.status);
+const antwortText = (a: Rueckmeldung) => (a.art === 'unzustellbar'
+  ? `Unzustellbar${a.grund ? `: ${a.grund}` : ''}`
+  : `${ART[a.art] ?? a.art}${a.von ? ` von ${a.von}` : ''} (${zeitText(a.zeit)})`);
 
 function erneutText(e: Eintrag): string {
   if (e.erneut_am) {
@@ -63,7 +75,7 @@ function frageText(e: Eintrag): string {
 function zeile(e: Eintrag): Zeile {
   return {
     id: e.id, zeit: e.zeit.slice(0, 16), person: e.person || '(unbekannt)', an: e.an ?? '', anwendung: e.anwendung ?? '', objekt: e.objekt ?? '',
-    betreff: e.betreff ?? '', statusText: STATUS[e.status]?.text ?? e.status, hinweis: [e.fehler, erneutText(e)].filter(Boolean).join(' · '),
+    betreff: e.betreff ?? '', statusText: STATUS[statusSchluessel(e)]?.text ?? e.status, rueck: (e.antworten ?? []).map(antwortText).join(' · '), hinweis: [e.fehler, erneutText(e)].filter(Boolean).join(' · '),
     absender: e.von ?? e.absender ?? '', benutzer: e.benutzer ?? '', eintrag: e,
   };
 }
@@ -105,7 +117,8 @@ export function MailProtokollPage() {
     { Header: 'Betreff', accessor: 'betreff', minWidth: 240 },
     { Header: 'Status', accessor: 'statusText', width: 130,
       Cell: ({ value }: Cell) => (value ? <ObjectStatus state={statusState(String(value))}>{String(value)}</ObjectStatus> : null) },
-    { Header: 'Fehler / Hinweis', accessor: 'hinweis', minWidth: 240 },
+    { Header: 'Rückmeldung', accessor: 'rueck', minWidth: 240 },
+    { Header: 'Fehler / Hinweis', accessor: 'hinweis', minWidth: 200 },
     { Header: 'Absender', accessor: 'absender', minWidth: 180 },
     { Header: 'Ausgelöst von', accessor: 'benutzer', width: 140 },
     ...(darfSenden ? [{
@@ -117,6 +130,7 @@ export function MailProtokollPage() {
   const columns: AnalyticalTableColumnDefinition[] = gruppe ? spalten.map((c) => (c.accessor === gruppe ? { ...c, disableGroupBy: false } : { ...c, Aggregated: () => null })) : spalten;
 
   const fehler = daten.filter((z) => fehlgeschlagen(z.eintrag)).length;
+  const rueck = daten.filter((z) => unzustellbar(z.eintrag)).length;
   const filter = (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.75rem', alignItems: 'end', padding: '0.5rem 0' }}>
       <FieldBox label="Suche (Name, Adresse, Vorgang, Betreff)">
@@ -151,7 +165,7 @@ export function MailProtokollPage() {
 
   return (
     <AppPage title="E-Mail-Protokoll"
-             subtitle={`Alle E-Mails des Portals je Person, Empfänger oder Vorgang · ${daten.length} Einträge${fehler ? `, davon ${fehler} nicht gesendet` : ''}`}
+             subtitle={`Alle E-Mails des Portals je Person, Empfänger oder Vorgang · ${daten.length} Einträge${fehler ? `, davon ${fehler} nicht gesendet` : ''}${rueck ? `, ${rueck} unzustellbar` : ''}`}
              header={filter} actions={<Button icon="refresh" onClick={l.reload}>Aktualisieren</Button>}>
       {l.error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{l.error}</MessageStrip>}
       {meldung && <MessageStrip design={meldung.ok ? 'Positive' : 'Negative'} onClose={() => setMeldung(null)} style={{ marginBottom: '0.5rem' }}>{meldung.text}</MessageStrip>}
@@ -190,13 +204,18 @@ export function MailProtokollPage() {
               }>
         {detail && (
           <Attributes>
-            <Attribute label="Status"><ObjectStatus state={STATUS[detail.status]?.state ?? 'None'}>{STATUS[detail.status]?.text ?? detail.status}</ObjectStatus></Attribute>
+            <Attribute label="Status"><ObjectStatus state={STATUS[statusSchluessel(detail)]?.state ?? 'None'}>{STATUS[statusSchluessel(detail)]?.text ?? detail.status}</ObjectStatus></Attribute>
             <Attribute label="Person" strong>{detail.person || '(unbekannt – Adresse gehört zu keinem Mitglied, Kunden oder Benutzer)'}</Attribute>
             <Attribute label="Empfänger">{detail.an || '–'}</Attribute>
             <Attribute label="Anwendung / Vorgang">{[detail.anwendung, detail.objekt].filter(Boolean).join(' · ') || '–'}</Attribute>
             <Attribute label="Betreff" wide>{detail.betreff || '–'}</Attribute>
             <Attribute label="Absender">{detail.von ?? detail.absender ?? '–'}{detail.von && detail.absender && detail.von !== detail.absender ? ` (gewünscht: ${detail.absender})` : ''}</Attribute>
             <Attribute label="Ausgelöst von">{detail.benutzer || '–'}</Attribute>
+            {(detail.antworten ?? []).map((a, i) => (
+              <Attribute key={i} label={`${ART[a.art] ?? a.art} · ${zeitText(a.zeit)}`} wide>
+                <Text style={{ whiteSpace: 'pre-wrap' }}>{[a.von && `von ${a.von}`, a.betreff && `„${a.betreff}“`, a.grund].filter(Boolean).join('\n')}</Text>
+              </Attribute>
+            ))}
             {detail.fehler && <Attribute label="Fehler / Hinweis" wide><Text style={{ whiteSpace: 'pre-wrap' }}>{detail.fehler}</Text></Attribute>}
             {(erneutText(detail) || (!detail.erneut && detail.erneut_hinweis)) && (
               <Attribute label="Erneut senden" wide>{[erneutText(detail), !detail.erneut && !fehlgeschlagen(detail) ? detail.erneut_hinweis : null].filter(Boolean).join(' · ')}</Attribute>

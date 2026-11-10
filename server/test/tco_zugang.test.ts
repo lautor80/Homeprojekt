@@ -515,6 +515,54 @@ test('E-Mail-Protokoll: je Zeile erneut senden (auch gesendete), Absender in Kop
   assert.equal((await leser('POST', `${U}/${neu.id}/erneut`)).status, 403);
 });
 
+test('E-Mail-Protokoll: Rückläufer, Abwesenheit und Antworten aus den Postfächern zuordnen', async () => {
+  const U = '/api/mail/uebersicht';
+  const eingang = async (body: unknown, key: string | null = 'k') => {
+    const res = await app.inject({ method: 'POST', url: '/api/mail/eingang', payload: body as object, headers: { 'x-portal-request': '1', ...(key ? { 'x-tco-key': key } : {}) } });
+    return { status: res.statusCode, body: JSON.parse(res.body || '{}') };
+  };
+  let r = await admin('POST', '/api/mail/test', { an: 'ruecklauf@example.org' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [p] = await sql`select id, message_id, betreff from core.mail_protokoll where an = 'ruecklauf@example.org' order by id desc limit 1`;
+  assert.equal(p.message_id, `m${mails.length}`, 'Message-ID der gesendeten E-Mail festgehalten');
+  const rueck = { postfach: 'TC Oberthal <info@tc-oberthal.de>', von: 'Mail Delivery System <Mailer-Daemon@mx.example.net>',
+    betreff: 'Mail delivery failed: returning message to sender', datum: new Date().toISOString(), message_id: '<rueck1@mx.example.net>',
+    text: 'The following address(es) failed:\n\n  ruecklauf@example.org\n    host mx00.example.net [192.0.2.1]\n    SMTP error from remote mail server after RCPT TO:<ruecklauf@example.org>:\n    550-Requested action not taken: mailbox unavailable' };
+  // nur mit dem Webhook-Schlüssel der Anbindung
+  assert.equal((await eingang(rueck, null)).status, 403);
+  assert.equal((await eingang(rueck, 'falsch')).status, 403);
+  r = await eingang(rueck);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.zugeordnet, r.body.art, String(r.body.protokoll), r.body.neu], [true, 'unzustellbar', String(p.id), true]);
+  assert.equal((await eingang(rueck)).body.neu, false, 'dieselbe Meldung wird nicht doppelt verbucht');
+  // Übersicht: Rückmeldung an der gesendeten E-Mail, Filter „unzustellbar“, Suche im Grund
+  r = await admin('GET', `${U}?status=unzustellbar`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.zeilen.length, 1, JSON.stringify(r.body.zeilen));
+  assert.deepEqual([String(r.body.zeilen[0].id), r.body.zeilen[0].status, r.body.zeilen[0].antworten.length, r.body.zeilen[0].antworten[0].art],
+    [String(p.id), 'gesendet', 1, 'unzustellbar']);
+  assert.match(r.body.zeilen[0].antworten[0].grund, /550-Requested action not taken: mailbox unavailable/);
+  assert.equal((await admin('GET', `${U}?suche=mailbox%20unavailable`)).body.zeilen.length, 1);
+  // Antwort mit demselben Betreff vom Empfänger; der Text wird nicht gespeichert
+  r = await eingang({ postfach: 'info@tc-oberthal.de', von: 'Rita Rück <ruecklauf@example.org>', betreff: `AW: ${p.betreff}`, message_id: '<antwort1@example.org>', text: 'streng geheim' });
+  assert.deepEqual([r.body.zugeordnet, r.body.art], [true, 'antwort'], JSON.stringify(r.body));
+  // Abwesenheitsnotiz mit beliebigem Betreff
+  r = await eingang({ von: 'ruecklauf@example.org', betreff: 'Bin im Urlaub', auto: 'auto-replied', message_id: '<abwesend1@example.org>' });
+  assert.deepEqual([r.body.zugeordnet, r.body.art], [true, 'abwesenheit'], JSON.stringify(r.body));
+  // Antwort von einer anderen Adresse: Zuordnung über die Message-ID der gesendeten E-Mail
+  await sql`update core.mail_protokoll set message_id = 'abc123@n8n.test' where id = ${p.id}`;
+  r = await eingang({ von: 'Vertretung <anders@example.org>', betreff: 'Ganz anderer Betreff', in_reply_to: '<ABC123@n8n.test>', message_id: '<antwort2@example.org>' });
+  assert.deepEqual([r.body.zugeordnet, r.body.art, String(r.body.protokoll)], [true, 'antwort', String(p.id)], JSON.stringify(r.body));
+  // fremde Mail im Posteingang: wird nicht gespeichert
+  r = await eingang({ von: 'fremd@example.org', betreff: 'Hallo Verein', message_id: '<fremd1@example.org>', text: 'egal' });
+  assert.deepEqual([r.status, r.body.zugeordnet], [200, false]);
+  r = await eingang({ von: 'ruecklauf@example.org', betreff: 'Neue Frage ohne Bezug', message_id: '<fremd2@example.org>' });
+  assert.equal(r.body.zugeordnet, false, 'gleicher Absender, aber anderer Betreff');
+  const a = await sql`select art, grund, betreff from core.mail_antworten where protokoll_id = ${p.id} order by id`;
+  assert.deepEqual(a.map((x) => x.art), ['unzustellbar', 'antwort', 'abwesenheit', 'antwort']);
+  assert.ok(!JSON.stringify(a).includes('geheim'), 'kein Inhalt gespeichert');
+});
+
 test('Mailprotokoll: Filter nach Anwendung und Zeitraum, Leeren', async () => {
   const P = '/api/mail/protokoll';
   await sql`insert into core.mail_protokoll (zeit, anwendung, objekt, an, betreff, status) values

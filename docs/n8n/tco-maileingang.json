@@ -1,0 +1,105 @@
+{
+  "name": "TCO Maileingang",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "nothing",
+        "format": "simple",
+        "options": {}
+      },
+      "id": "e1",
+      "name": "Posteingang (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "imap": {
+          "id": "",
+          "name": "TCO IMAP Standard"
+        }
+      },
+      "notes": "Je Absender-Konto aus dem Workflow „TCO Mailversand“ (STANDARD und KONTEN) diesen Knoten kopieren, die IMAP-Zugangsdaten des Postfachs wählen und ebenfalls mit „Mail aufbereiten“ verbinden. „Action“ bleibt „Nothing“: die Mails bleiben ungelesen im Postfach."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Jede eingegangene Mail für das Portal aufbereiten. Das Portal entscheidet, ob es eine Unzustellbar-Meldung,\n// eine Abwesenheitsnotiz oder eine Antwort auf eine gesendete E-Mail ist – alles andere verwirft es, gespeichert wird kein Inhalt.\nconst text = (v) => {\n  if (v == null) return '';\n  if (typeof v === 'string') return v;\n  if (Array.isArray(v)) return v.map(text).join(' ');\n  if (typeof v === 'object') return v.text || v.address || (Array.isArray(v.value) ? v.value.map((x) => x.address || '').join(', ') : '') || '';\n  return String(v);\n};\nreturn $input.all().map((item) => {\n  const j = item.json || {};\n  // je nach n8n-Version liegen die Kopfzeilen direkt im Objekt, unter metadata oder unter headers\n  const h = Object.assign({}, j.headers || {}, j.metadata || {}, j);\n  const kopf = (...namen) => { for (const n of namen) { const w = text(h[n]); if (w) return w; } return ''; };\n  const html = text(j.textHtml || j.html).replace(/<style[\\s\\S]*?<\\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');\n  return { json: {\n    postfach: kopf('delivered-to', 'x-original-to', 'to'),\n    von: kopf('from'),\n    betreff: kopf('subject'),\n    datum: kopf('date'),\n    message_id: kopf('message-id', 'messageId'),\n    in_reply_to: kopf('in-reply-to', 'inReplyTo'),\n    references: kopf('references'),\n    auto: kopf('auto-submitted'),\n    text: (text(j.textPlain || j.text) || html).slice(0, 50000),\n  } };\n});"
+      },
+      "id": "e2",
+      "name": "Mail aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:8080/api/mail/eingang",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-portal-request",
+              "value": "1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "e3",
+      "name": "An Portal melden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Header Auth account"
+        }
+      },
+      "notes": "Dieselbe Zugangsdatei wie am Webhook von „TCO Mailversand“ (Name X-TCO-Key, Wert = Webhook-Schlüssel im Portal). URL = Adresse des Portals aus Sicht von n8n."
+    }
+  ],
+  "connections": {
+    "Posteingang (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Mail aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "An Portal melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
