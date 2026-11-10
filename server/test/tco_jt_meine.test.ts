@@ -60,8 +60,10 @@ before(async () => {
             values (${ANNA}, '202609', 'JT_2026_09_TRAINERIN', 4711, '2026-10-01', '2026-10-05', 2, 40, 40)`;
 
   assert.equal((await admin('POST', '/api/admin/roles', { id: 'TRAINER', name: 'Trainer', permissions: ['tco.jtmeine:edit'] })).status, 200);
+  // Schnuppertraining betreuen (#21): nur Bert
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'SCHNUPPER', name: 'Schnuppertraining', permissions: ['tco.schnupper:display', 'tco.schnupper:edit'] })).status, 200);
   for (const u of ['anna', 'bert', 'ohne']) {
-    assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: ['TRAINER'] })).status, 200);
+    assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: u === 'bert' ? ['TRAINER', 'SCHNUPPER'] : ['TRAINER'] })).status, 200);
   }
 });
 after(async () => {
@@ -162,4 +164,65 @@ test('Benutzer ohne Trainerzuordnung bzw. ohne Berechtigung', async () => {
   assert.match(r.body.message, /keinem Trainer zugeordnet/);
   assert.equal((await ohne('POST', `${MZ}/zeiten`, { datum: '2026-10-10', trainingsart: 'Jugendtraining', anzahl: 1 })).status, 403);
   assert.equal((await client()('GET', `${MZ}/monat?monat=202610`)).status, 401);
+});
+
+test('Schnuppertraining: Übersicht und Teilnehmer je Einheit nur mit Berechtigung, Anzahl und Abgleich der Schnupper-Angaben (#21)', async () => {
+  const LENA = '0000000401', MAX = '0000000402';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, telefon6) values (${LENA}, 'Lena', 'Ball', '0171 1234567'), (${MAX}, 'Max', 'Netz', null)`;
+  await sql`insert into tco.schnupper (adrnr, nummer, status, alter_jahre, termine, erziehungsberechtigt)
+            values (${LENA}, 'ST-2026-0001', 'NEU', 8, ${sql.json({ tage: ['Mo', 'Mi'], zeiten: ['nachmittags'] } as never)}, 'Eva Ball'),
+                   (${MAX}, 'ST-2026-0002', 'ABGESAGT', 9, '{}', 'Tom Netz')`;
+  const login = async (u: string) => {
+    const c = client();
+    assert.equal((await c('POST', '/api/auth/login', { username: u, password: 'neues-passwort' })).status, 200);
+    return c;
+  };
+  const anna = await login('anna');
+  const bert = await login('bert');
+
+  // ohne Berechtigung: keine Übersicht, keine Teilnehmer
+  let r = await anna('GET', `${MZ}/monat?monat=202610`);
+  assert.equal(r.body.schnupper, null);
+  assert.equal((await anna('GET', `${MZ}/schnupper?monat=202610`)).status, 403);
+  assert.equal((await anna('POST', `${MZ}/zeiten`, { datum: '2026-10-20', trainingsart: 'Schnuppertraining', anzahl: 1, teilnehmer: [LENA] })).status, 403);
+
+  r = await bert('GET', `${MZ}/monat?monat=202610`);
+  assert.deepEqual(r.body.schnupper, { edit: true });
+  r = await bert('GET', `${MZ}/schnupper?monat=202610`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.teilnehmer.map((t: any) => [t.adrnr, t.einheiten, t.termine]), [[LENA, 0, 'Mo, Mi, nachmittags']], 'abgesagte nicht');
+  assert.equal(r.body.kostenlos, 2);
+
+  // 1. Einheit: Status „Termin vereinbart“, 1. Einheit und Trainer gesetzt
+  r = await bert('POST', `${MZ}/zeiten`, { datum: '2026-10-20', trainingsart: 'Schnuppertraining', anzahl: 1, teilnehmer: [LENA] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const lena = async () => (await sql`select status, einheit1::text as e1, einheit2::text as e2, trainer from tco.schnupper where adrnr = ${LENA}`)[0];
+  assert.deepEqual(await lena(), { status: 'TERMIN', e1: '2026-10-20', e2: null, trainer: 'Bert Coach' });
+  // nicht mehr im Schnuppertraining
+  r = await bert('POST', `${MZ}/zeiten`, { datum: '2026-10-20', trainingsart: 'Schnuppertraining', anzahl: 1, teilnehmer: [LENA, MAX] });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Max Netz.*nicht mehr im Schnuppertraining/);
+
+  // 2. Einheit: absolviert
+  assert.equal((await bert('POST', `${MZ}/zeiten`, { datum: '2026-10-22', trainingsart: 'Schnuppertraining', anzahl: 1.5, teilnehmer: [LENA] })).status, 200);
+  assert.deepEqual(await lena(), { status: 'ABSOLVIERT', e1: '2026-10-20', e2: '2026-10-22', trainer: 'Bert Coach' });
+  r = await bert('GET', `${MZ}/schnupper?monat=202610`);
+  assert.equal(r.body.teilnehmer[0].einheiten, 2);
+  assert.deepEqual(r.body.tage, { '2026-10-20': [LENA], '2026-10-22': [LENA] });
+  // ohne teilnehmer bleibt die Einheit unverändert (z. B. nur Dauer geändert)
+  assert.equal((await bert('POST', `${MZ}/zeiten`, { datum: '2026-10-22', trainingsart: 'Schnuppertraining', anzahl: 2, altArt: 'Schnuppertraining' })).status, 200);
+  assert.equal((await bert('GET', `${MZ}/schnupper?monat=202610`)).body.tage['2026-10-22'].length, 1);
+
+  // Zeit löschen: Einheit entfällt, 2. Einheit wieder offen, Status bleibt
+  assert.equal((await bert('POST', `${MZ}/zeiten/loeschen`, { datum: '2026-10-22', trainingsart: 'Schnuppertraining' })).status, 200);
+  assert.deepEqual(await lena(), { status: 'ABSOLVIERT', e1: '2026-10-20', e2: null, trainer: 'Bert Coach' });
+  // Trainingsart geändert: Einheit des Tages entfällt
+  assert.equal((await bert('POST', `${MZ}/zeiten`, { datum: '2026-10-20', trainingsart: 'Jugendtraining', anzahl: 1, altArt: 'Schnuppertraining' })).status, 200);
+  assert.equal((await sql`select count(*)::int as n from tco.schnupper_einheiten where schnupper_adrnr = ${LENA}`)[0].n, 0);
+
+  // Anzahl auch in der App Schnuppertraining
+  assert.equal((await bert('POST', `${MZ}/zeiten`, { datum: '2026-10-21', trainingsart: 'Schnuppertraining', anzahl: 1, teilnehmer: [LENA] })).status, 200);
+  r = await admin('GET', '/api/m/tco/schnuppertraining?filter=ALLE');
+  assert.equal(r.body.zeilen.find((z: any) => z.adrnr === LENA).einheiten, 1);
+  assert.equal(r.body.zeilen.find((z: any) => z.adrnr === MAX).einheiten, 0);
 });
