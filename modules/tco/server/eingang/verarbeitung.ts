@@ -18,7 +18,7 @@ import { heute } from '../format.js';
 import { DB } from '../verein.js';
 import { V_NEXTCLOUD } from '../verbindung.js';
 import {
-  absender, dateinameSicher, extrahieren, htmlText, korrespondentFinden, mailHtml, pfadSicher, platzhalter, relevanterAnhang, vorgangStatus, waehlen,
+  absender, dateinameSicher, extrahieren, htmlText, korrespondentFinden, mailHtml, pfadSicher, platzhalter, regelPasst, relevanterAnhang, vorgangStatus, waehlen,
   type Aktionen, type DokStatus, type Kontext, type Korrespondent, type MailAktion, type RegelDef, type VorgangStatus,
 } from './logik.js';
 
@@ -40,7 +40,7 @@ interface DokZeile {
 interface Geplant {
   art: 'anhang' | 'mail'; datei: string; mime: string | null; daten: Buffer; k: Kontext; w: Record<string, unknown>; regel: RegelDef | null;
   /** zusammengefasstes Dokument: Schlüssel für die Dublettenprüfung aus den Teilen, Hinweis auf die Teile */
-  sha256?: string; zusatz?: string;
+  sha256?: string; zusatz?: string; teile?: Geplant[];
   /** Zusammenfassen fehlgeschlagen: nicht automatisch ablegen, sondern prüfen */
   pruefen?: string;
 }
@@ -72,7 +72,7 @@ async function zusammenfassen(geplant: Geplant[]): Promise<Geplant[]> {
       ersetzt.set(sortiert[0], {
         art: 'anhang', datei, mime: 'application/pdf', daten, regel,
         k: { ...sortiert[0].k, datei, mime: 'application/pdf', doktext }, w: { ...werte, datei },
-        sha256: sha(sortiert.map((t) => sha(t.daten)).join('|')), zusatz: `Zusammengefasst aus ${sortiert.length} Anhängen: ${namen}.`,
+        sha256: sha(sortiert.map((t) => sha(t.daten)).join('|')), zusatz: `Zusammengefasst aus ${sortiert.length} Anhängen: ${namen}.`, teile: sortiert,
       });
       for (const t of sortiert.slice(1)) ersetzt.set(t, null);
     } catch (e) {
@@ -464,6 +464,87 @@ export async function offeneNeuBewerten(wer: string) {
     dokumente += (await neuBewerten(Number(o.vorgang_id), wer)).anzahl;
   }
   return { vorgaenge: offen.length, dokumente };
+}
+
+/** Kontext eines Vorgangs für die Regelauswahl: offene Dokumente mit ihrem gespeicherten Kontext, die E-Mail aus den Metadaten */
+async function vorgangKontext(vorgangId: number) {
+  const [v] = await DB`select id, postfach, von, von_name, an, betreff, datum, text, mail_aktion from tco.eing_vorgaenge where id = ${vorgangId}`;
+  if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
+  const docs = (await DB`
+    select id, vorgang_id, art, datei, mime, sha256, inhalt, kontext, status
+      from tco.eing_dokumente where vorgang_id = ${vorgangId} and status in ('pruefen', 'fehler', 'neu') order by id`) as unknown as DokZeile[];
+  const von = v.von_name ? `${v.von_name as string} <${(v.von as string | null) ?? ''}>` : ((v.von as string | null) ?? '');
+  const m = { postfach: v.postfach as string, von, an: (v.an as string | null) ?? '', betreff: (v.betreff as string | null) ?? '',
+    datum: v.datum ? new Date(v.datum as string).toISOString() : null, text: (v.text as string | null) ?? '', html: '' };
+  const mk = await mailKontext(m, docs.filter((d) => d.art === 'anhang').length);
+  return { v, docs, m, mk };
+}
+
+/** Prüfliste „Regel zuordnen“: alle Regeln mit der Angabe, ob ihre Bedingungen auf den Vorgang passen */
+export async function regelnFuerVorgang(vorgangId: number) {
+  const { docs, mk } = await vorgangKontext(vorgangId);
+  const anhaenge = docs.filter((d) => d.art === 'anhang' && d.kontext);
+  return (await regelnLesen()).map((r) => ({
+    id: r.id, name: r.name, status: r.status, gilt_fuer: r.gilt_fuer,
+    passt: r.gilt_fuer === 'mail' ? regelPasst(r, mk.kontext) : anhaenge.some((d) => regelPasst(r, d.kontext!.k)),
+    anwendbar: r.status !== 'aus' && (r.gilt_fuer === 'mail' || anhaenge.length > 0),
+  }));
+}
+
+/**
+ * Prüfliste: eine bestehende Regel von Hand zuordnen und anwenden – unabhängig davon, ob ihre Bedingungen passen.
+ * Regeln je Anhang wirken auf alle offenen Anhänge (mit Zusammenfassen, falls die Regel es vorsieht), Regeln für die
+ * E-Mail legen die E-Mail als PDF ab (nur solange der Mailtext vorliegt) bzw. setzen ihre Behandlung. Testlauf-Regeln
+ * erzeugen wie beim Eingang nur einen Vorschlag.
+ */
+export async function regelZuordnen(vorgangId: number, regelId: number, wer: string) {
+  const regel = (await regelnLesen()).find((r) => r.id === regelId);
+  if (!regel) throw new BusinessError('Die gewählte Regel gibt es nicht (mehr).', 404);
+  if (regel.status === 'aus') throw new BusinessError(`Die Regel „${regel.name}“ ist ausgeschaltet.`);
+  const { docs, m, mk } = await vorgangKontext(vorgangId);
+  let anzahl = 0;
+  if (regel.gilt_fuer === 'anhang') {
+    const anhaenge = docs.filter((d) => d.art === 'anhang');
+    if (!anhaenge.length) throw new BusinessError('Der Vorgang hat keine offenen Anhänge – die Regel gilt je Anhang.');
+    const geplant = await zusammenfassen(anhaenge.map((d): Geplant & { quelle: DokZeile } => ({
+      quelle: d, art: 'anhang', datei: d.datei, mime: d.mime, daten: Buffer.from(d.inhalt ?? '', 'base64'), k: d.kontext?.k ?? {}, w: d.kontext?.w ?? {}, regel,
+    })));
+    for (const g of geplant as (Geplant & { quelle?: DokZeile })[]) {
+      if (!g.zusatz) { await entscheiden(g.quelle!, regel, wer, g.pruefen); anzahl++; continue; }
+      // zusammengefasst: neues Dokument, die Teile gelten als erledigt
+      const inhalt = g.daten.toString('base64');
+      const k: DokKontext = { k: g.k, w: g.w };
+      const [d] = await DB`
+        insert into tco.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, kontext, status)
+        values (${vorgangId}, 'anhang', ${g.datei}, ${g.mime}, ${g.daten.length}, ${g.sha256!}, ${inhalt}, ${DB.json(k as never)}, 'neu') returning id`;
+      for (const t of (g.teile ?? []) as (Geplant & { quelle: DokZeile })[]) {
+        await dokSetzen(t.quelle.id, { status: 'ignoriert', hinweis: `In „${g.datei}“ zusammengefasst.`, regel, wer });
+      }
+      await entscheiden({ id: d.id as string, vorgang_id: String(vorgangId), art: 'anhang', datei: g.datei, mime: g.mime, sha256: g.sha256!, inhalt, kontext: k, status: 'neu' }, regel, wer);
+      await DB`update tco.eing_dokumente set hinweis = ${g.zusatz} || coalesce(' ' || hinweis, '') where id = ${d.id}`;
+      anzahl++;
+    }
+  } else if (hatAblage(regel.aktionen)) {
+    if (!m.text) throw new BusinessError('Der Mailtext liegt nicht mehr vor – die E-Mail kann nicht als PDF abgelegt werden. Bitte die Regel speichern und „Posteingang abrufen“.');
+    const datei = `${dateinameSicher(m.betreff, 'E-Mail')}.pdf`;
+    const html = mailHtml({ von: m.von, an: m.an, betreff: m.betreff, datum: String(mk.werte.datum), text: m.text });
+    const daten = Buffer.from(html, 'utf8');
+    const k: DokKontext = { k: { ...mk.kontext, datei, mime: 'application/pdf' }, w: { ...mk.werte, datei } };
+    const [d] = await DB`
+      insert into tco.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, kontext, status)
+      values (${vorgangId}, 'mail', ${datei}, 'text/html', ${daten.length}, ${sha(daten)}, ${daten.toString('base64')}, ${DB.json(k as never)}, 'neu') returning id`;
+    await entscheiden({ id: d.id as string, vorgang_id: String(vorgangId), art: 'mail', datei, mime: 'text/html', sha256: sha(daten), inhalt: daten.toString('base64'), kontext: k, status: 'neu' }, regel, wer);
+    anzahl++;
+  }
+  // Behandlung der E-Mail aus der zugeordneten Regel (nur aktive Regeln; im Testlauf bleibt die E-Mail unangetastet)
+  const hinweis = regel.status === 'testlauf' ? `Testlauf: Regel „${regel.name}“ von Hand zugeordnet (${wer}).` : `Regel „${regel.name}“ von Hand zugeordnet (${wer}).`;
+  await DB`
+    update tco.eing_vorgaenge set hinweis = ${hinweis},
+           mail_aktion = ${scharf(regel) ? DB.json(mailAktionVon(regel) as never) : DB`mail_aktion`}
+     where id = ${vorgangId}`;
+  const status = await abschliessen(vorgangId);
+  const was = regel.gilt_fuer === 'anhang' ? `${anzahl} Dokument${anzahl === 1 ? '' : 'e'}` : anzahl ? 'E-Mail als PDF' : 'Behandlung der E-Mail';
+  return { status, text: `Regel „${regel.name}“ zugeordnet: ${was} ${regel.status === 'testlauf' ? 'als Vorschlag (Testlauf)' : 'angewendet'}.` };
 }
 
 /** Vorgang ohne Ablage schließen (offene Dokumente werden ignoriert, die E-Mail bleibt unangetastet) */

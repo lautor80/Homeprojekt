@@ -509,6 +509,7 @@ test('Zusammenfassen: passende Anhänge als ein PDF ablegen, Custom Fields, Dubl
     },
   }));
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  ids.sammel = r.body.id;
   const stamm = await admin('GET', `${E}/stamm`);
   assert.deepEqual(stamm.body.paperless.felder, [{ name: 'Art', typ: 'select', optionen: ['Beleg', 'Vertrag'] }, { name: 'Betrag', typ: 'monetary', optionen: [] }]);
 
@@ -543,5 +544,49 @@ test('Zusammenfassen: passende Anhänge als ein PDF ablegen, Custom Fields, Dubl
   assert.deepEqual(r.body.dokumente.map((d: any) => d.status), ['pruefen', 'pruefen']);
   assert.match(r.body.dokumente[0].hinweis, /Zusammenfassen fehlgeschlagen/);
   assert.equal(mock.docs.size, vorher + 1);
+});
+
+test('Prüfliste: bestehende Regel zuordnen (je Anhang mit Zusammenfassen, E-Mail-Regel, Testlauf, Fehler)', async () => {
+  // zwei Anhänge, keine Regel passt
+  let r: { status: number; body: any } = await ext(key, 'POST', `${E}/mail`, mail({ von: 'kasse@zuordnen.example', betreff: 'Belege Oktober', message_id: '<z1@zu>', uid: 71,
+    anhaenge: [{ name: 'z2.pdf', mime: 'application/pdf', inhalt: b64('%PDF Z2') }, { name: 'z1.pdf', mime: 'application/pdf', inhalt: b64('%PDF Z1') }] }));
+  assert.equal(r.body.status, 'pruefen', JSON.stringify(r.body));
+  const vz = r.body.vorgang as number;
+
+  r = await admin('GET', `${E}/vorgaenge/${vz}/regeln`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const sammel = r.body.find((x: any) => x.id === ids.sammel);
+  assert.deepEqual([sammel.passt, sammel.anwendbar], [false, true], 'Bedingungen passen nicht, anwendbar ist sie trotzdem');
+  assert.equal(r.body.find((x: any) => x.name === 'Werbung').anwendbar, true);
+
+  const vorher = mock.docs.size;
+  r = await admin('POST', `${E}/vorgaenge/${vz}/regel`, { regel_id: ids.sammel });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'abgelegt');
+  assert.match(r.body.text, /Regel „Sammelbelege“ zugeordnet: 1 Dokument angewendet/);
+  assert.deepEqual(mock.merge.at(-1), ['%PDF Z1', '%PDF Z2']);
+  assert.equal(mock.docs.size, vorher + 1);
+  r = await admin('GET', `${E}/vorgaenge?suche=${encodeURIComponent('Belege Oktober')}`);
+  const v = r.body.vorgaenge.find((x: any) => x.id === vz);
+  assert.deepEqual(v.dokumente.map((d: any) => [d.datei, d.status]), [['z2.pdf', 'ignoriert'], ['z1.pdf', 'ignoriert'], ['2025-03-03_Sammel_2.pdf', 'abgelegt']]);
+  assert.deepEqual(v.mail_aktion, { art: 'verschieben', ordner: 'Belege', gelesen: false, aufgaben: [] });
+  assert.match(v.hinweis, /Regel „Sammelbelege“ von Hand zugeordnet \(Admin\)/);
+
+  // E-Mail ohne Regel und ohne Anhang: Behandlung aus einer E-Mail-Regel
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'info@shop.example', betreff: 'Rabatt', message_id: '<z2@zu>', uid: 72 }));
+  assert.equal(r.body.status, 'ohne_regel');
+  const vo = r.body.vorgang as number;
+  const werbung = (await admin('GET', `${E}/regeln`)).body.find((x: any) => x.name === 'Werbung');
+  r = await admin('POST', `${E}/vorgaenge/${vo}/regel`, { regel_id: werbung.id });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'abgelegt');
+  r = await ext(key, 'GET', `${E}/mailaktionen`);
+  assert.deepEqual(r.body.filter((a: any) => a.vorgang === vo).map((a: any) => [a.art, a.ordner, a.uid]), [['verschieben', 'Werbung', '72']]);
+
+  // Testlauf-Regel je Anhang auf einen Vorgang ohne Anhang: abgelehnt
+  r = await admin('POST', `${E}/vorgaenge/${vo}/regel`, { regel_id: ids.mitglied });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /keine offenen Anhänge/);
+  assert.equal((await admin('POST', `${E}/vorgaenge/${vo}/regel`, { regel_id: 99999 })).status, 404);
 });
 
