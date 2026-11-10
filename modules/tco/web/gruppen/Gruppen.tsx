@@ -21,6 +21,7 @@ import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDa
  * reine Hallennutzer, ohne Teilnahme am Spielbetrieb). Pflege im Baum: Gruppen beliebig tief schachteln,
  * Mitglieder aufnehmen (ein Mitglied kann in mehreren Gruppen sein), Rolle je Zuordnung.
  * Dieselben Gruppen stehen im Mitgliedsstamm (Reiter „Gruppen“) und im Vereinskalender (Veranstaltung nur für Gruppen).
+ * Der Vereinskalender zeigt den Baum im Reiter „Gruppen / Mannschaften“ mit demselben Layout (GruppenBaum eingebettet, #16).
  */
 interface Zeile { id: string; text: string; g: Gruppe; m?: GruppenMitglied; /** Knoten „Direkt zugeordnet“ einer Gruppe mit Untergruppen */ direkt?: boolean; subRows?: Zeile[] }
 interface Form { id: number | null; parent_id: number | null; name: string; beschreibung: string; aktiv: boolean; position: string }
@@ -32,6 +33,14 @@ type Gezogen = { art: 'G'; id: number } | { art: 'M'; adrnr: string; von: number
 const ZIEL = 'portal-gr__ziel';
 
 export function Gruppen() {
+  return <GruppenBaum />;
+}
+
+/**
+ * Baum der Mitgliedergruppen. Als eigene Seite (App „Mitgliedergruppen“) oder eingebettet in einen Reiter (Vereinskalender):
+ * eingebettet stehen Anzahl und Aktionen in der Leiste über dem Baum, geladen wird erst, wenn der Reiter aktiv ist.
+ */
+export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: { eingebettet?: boolean; aktiv?: boolean; onGeaendert?: () => void } = {}) {
   const can = useCan();
   const navigate = useNavigate();
   const zumMitglied = can('tco.mitglieder:display');
@@ -48,9 +57,11 @@ export function Gruppen() {
   const [berechnen, setBerechnen] = useState<Gruppe | 'ALLE' | null>(null);
   const tabelle = useRef<Tabelle | null>(null);
   const pflege = !!d?.pflege;
+  // Regelwerk und Neu berechnen nur mit tco.gruppen:edit (im Kalender reicht tco.kalender:edit für die übrige Pflege)
+  const mitRegelwerk = pflege && d?.regelwerk !== false;
 
   const laden = () => api.get<GruppenDaten>(GR).then(setD).catch((e) => setError(e.message));
-  useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (aktiv) laden(); }, [aktiv]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function lauf(fn: () => Promise<{ text?: string } | void>) {
     setError(null);
@@ -59,6 +70,7 @@ export function Gruppen() {
       const r = await fn();
       if (r?.text) toast(r.text, 4000);
       await laden();
+      onGeaendert?.();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -210,8 +222,10 @@ export function Gruppen() {
         }
         return (
           <FlexBox justifyContent="End">
-            <Button icon="synchronize" design="Transparent" tooltip={`Neu berechnen: Regelwerk auf „${z.g.name}“ und die Untergruppen anwenden`} disabled={busy} onClick={() => setBerechnen(z.g)} />
-            <Button icon="activities" design="Transparent" tooltip="Regelwerk der Gruppe (Mitglieder automatisch ableiten)" disabled={busy} onClick={() => setRegelwerk(z.g)} />
+            {mitRegelwerk && <>
+              <Button icon="synchronize" design="Transparent" tooltip={`Neu berechnen: Regelwerk auf „${z.g.name}“ und die Untergruppen anwenden`} disabled={busy} onClick={() => setBerechnen(z.g)} />
+              <Button icon="activities" design="Transparent" tooltip="Regelwerk der Gruppe (Mitglieder automatisch ableiten)" disabled={busy} onClick={() => setRegelwerk(z.g)} />
+            </>}
             <Button icon="add-employee" design="Transparent" tooltip="Mitglieder aufnehmen" disabled={busy} onClick={() => setAufnehmen(z.g)} />
             <Button icon="add-folder" design="Transparent" tooltip="Untergruppe anlegen" disabled={busy}
                     onClick={() => setForm({ id: null, parent_id: z.g.id, name: '', beschreibung: '', aktiv: true, position: '' })} />
@@ -222,18 +236,27 @@ export function Gruppen() {
         );
       },
     }] : []),
-  ], [pflege, busy, zumMitglied, gruppen]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [pflege, mitRegelwerk, busy, zumMitglied, gruppen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabellenOptionen = useMemo(() => ({ autoResetExpanded: false, getRowId: (r: Zeile) => r.id }), []);
 
-  return (
-    <AppPage title="Mitgliedergruppen"
-             subtitle={d ? `${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'} · ${personen} zugeordnete${personen === 1 ? 's Mitglied' : ' Mitglieder'}` : ''}
-             actions={pflege ? <>
-               <Button icon="activities" tooltip="Regeln, nach denen Mitglieder ihren Gruppen zugeordnet werden (z. B. nach Alter)" onClick={() => setRegelwerk(true)}>Regelwerk</Button>
-               <Button icon="synchronize" tooltip="Regelwerk auf den gesamten Baum anwenden: Gruppenzuordnung aller Mitglieder nach Alter und Geschlecht neu berechnen" disabled={busy} onClick={() => setBerechnen('ALLE')}>Neu berechnen</Button>
-               <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true, position: '' })}>Neue Gruppe</Button>
-             </> : undefined}>
+  const anzahlText = d ? `${gruppen.length} Gruppe${gruppen.length === 1 ? '' : 'n'} · ${personen} zugeordnete${personen === 1 ? 's Mitglied' : ' Mitglieder'}` : '';
+  const aktionen = pflege ? <>
+    {mitRegelwerk && <>
+      <Button icon="activities" tooltip="Regeln, nach denen Mitglieder ihren Gruppen zugeordnet werden (z. B. nach Alter)" onClick={() => setRegelwerk(true)}>Regelwerk</Button>
+      <Button icon="synchronize" tooltip="Regelwerk auf den gesamten Baum anwenden: Gruppenzuordnung aller Mitglieder nach Alter und Geschlecht neu berechnen" disabled={busy} onClick={() => setBerechnen('ALLE')}>Neu berechnen</Button>
+    </>}
+    <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true, position: '' })}>Neue Gruppe</Button>
+  </> : undefined;
+
+  const inhalt = <>
+      {eingebettet && (
+        <div className="portal-row portal-gr__kopf">
+          <span className="portal-muted">{anzahlText}{d && ' · dieselben Gruppen wie unter Mitglieder → Mitgliedergruppen'}</span>
+          <div style={{ flex: 1 }} />
+          {aktionen}
+        </div>
+      )}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {!d ? (!error && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />) : (
         <div className="portal-section">
@@ -269,8 +292,10 @@ export function Gruppen() {
                      text={weg ? `Gruppe „${weg.pfad}“ löschen?${weg.mitglieder.length ? ` Die Zuordnung von ${weg.mitglieder.length} Mitglied${weg.mitglieder.length === 1 ? '' : 'ern'} entfällt.` : ''}` : ''}
                      onCancel={() => setWeg(null)}
                      onConfirm={() => { const g = weg!; setWeg(null); lauf(() => api.del<{ text: string }>(`${GR}/${g.id}`)); }} />
-    </AppPage>
-  );
+  </>;
+
+  if (eingebettet) return <div className="portal-gr--eingebettet">{inhalt}</div>;
+  return <AppPage title="Mitgliedergruppen" subtitle={anzahlText} actions={aktionen}>{inhalt}</AppPage>;
 }
 
 // ---------------------------------------------------------------- Gruppe anlegen / ändern / verschieben

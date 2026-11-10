@@ -21,7 +21,13 @@ export interface Gruppe {
 /** Mitglied im Dialog „Mitglieder aufnehmen“: Geschlecht, Jahrgang und Alter (heute) für die Filter; ohne Geburtsdatum null */
 export interface AufnahmeMitglied { adrnr: string; name: string; geschlecht: 'M' | 'W' | ''; jahrgang: number | null; alter: number | null }
 /** Die Gruppen kommen in Baumreihenfolge (Eltern vor Kindern) */
-export interface GruppenDaten { gruppen: Gruppe[]; pflege: boolean }
+export interface GruppenDaten {
+  gruppen: Gruppe[];
+  /** Gruppen und Mitglieder pflegen (tco.gruppen:edit oder tco.kalender:edit) */
+  pflege: boolean;
+  /** Regelwerk pflegen und anwenden (nur tco.gruppen:edit) */
+  regelwerk?: boolean;
+}
 
 /** IDs einer Gruppe und aller ihrer Untergruppen */
 export function mitUntergruppen(gruppen: Gruppe[], id: number): Set<number> {

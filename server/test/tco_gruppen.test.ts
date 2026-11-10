@@ -58,10 +58,11 @@ before(async () => {
               (${ANNA}, 'Anna', 'Aufschlag', '601', '2020-01-01'), (${BEN}, 'Ben', 'Netz', '602', '2020-01-01'),
               (${CARL}, 'Carl', 'Linie', '603', '2020-01-01'), (${DORA}, 'Dora', 'Volley', '604', '2020-01-01')`;
   await sql`insert into tco.mitgliedera (adrnr) values (${ANNA}), (${BEN}), (${CARL}), (${DORA})`;
-  for (const [id, permissions] of [['GRLESER', ['tco.gruppen:display']], ['MGLESER', ['tco.mitglieder:display']], ['MGPFLEGE', ['tco.mitglieder:display', 'tco.mitglieder:edit']]] as const) {
+  for (const [id, permissions] of [['GRLESER', ['tco.gruppen:display']], ['MGLESER', ['tco.mitglieder:display']], ['MGPFLEGE', ['tco.mitglieder:display', 'tco.mitglieder:edit']],
+                                     ['KALPFLEGE', ['tco.kalender:edit']]] as const) {
     assert.equal((await admin('POST', '/api/admin/roles', { id, name: id, permissions })).status, 200);
   }
-  for (const [u, roles] of [['grleser', ['GRLESER']], ['mgleser', ['MGLESER']], ['mgpflege', ['MGPFLEGE']], ['anna', ['MITGLIED']], ['ben', ['MITGLIED']]] as const) {
+  for (const [u, roles] of [['grleser', ['GRLESER']], ['mgleser', ['MGLESER']], ['mgpflege', ['MGPFLEGE']], ['kalpflege', ['KALPFLEGE']], ['anna', ['MITGLIED']], ['ben', ['MITGLIED']]] as const) {
     assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles })).status, 200);
   }
   await sql`update tco.mitgliedera set benutzer_id = (select id from core.users where username = 'anna') where adrnr = ${ANNA}`;
@@ -510,3 +511,34 @@ test('Position in der Ebene, Regelwerk je Gruppe, Neu berechnen je Knoten (#16)'
   assert.ok(!r.body.regeln.some((x: any) => x.gruppe_id === alpha));
 });
 
+
+test('Vereinskalender-Reiter „Gruppen / Mannschaften“: Baum mit tco.kalender:edit pflegen, Regelwerk nur mit tco.gruppen:edit (#16)', async () => {
+  const kal = await anmelden('kalpflege');
+  let r = await kal('GET', G);
+  assert.equal(r.status, 200, 'Baum wie in der App Mitgliedergruppen');
+  assert.equal(r.body.pflege, true);
+  assert.equal(r.body.regelwerk, false);
+  assert.ok(r.body.gruppen.some((g: any) => g.id === h40 && g.pfad && typeof g.gesamt === 'number'), 'vollständige Baumdaten (Pfad, Gesamtzahl)');
+  assert.equal((await admin('GET', G)).body.regelwerk, true);
+
+  // Gruppe unter „Mannschaften“ anlegen, Mitglieder aufnehmen, Rolle setzen, verschieben, entfernen, löschen
+  r = await kal('POST', G, { name: 'Mixed Kalender', parent_id: mannschaften });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const mixed = r.body.id as number;
+  assert.equal((await kal('GET', `${G}/mitglieder`)).status, 200);
+  assert.equal((await kal('POST', `${G}/${mixed}/mitglieder`, { adrnrs: [DORA] })).status, 200);
+  assert.equal((await kal('POST', `${G}/${mixed}/mitglieder`, { adrnrs: [DORA], rolle: 'Mannschaftsführerin' })).status, 200);
+  r = await kal('POST', G, { name: 'Mixed Kalender 2', parent_id: mannschaften });
+  const mixed2 = r.body.id as number;
+  assert.equal((await kal('POST', `${G}/${mixed2}/mitglieder/verschieben`, { adrnr: DORA, von: mixed })).status, 200);
+  const g = (await baum()).find((x) => x.id === mixed2)!;
+  assert.deepEqual(g.mitglieder.map((m) => [m.adrnr, m.rolle]), [[DORA, 'Mannschaftsführerin']]);
+  assert.equal((await kal('POST', `${G}/${mixed2}/mitglieder`, { adrnrs: [DORA], entfernen: true })).status, 200);
+  assert.equal((await kal('DELETE', `${G}/${mixed}`)).status, 200);
+  assert.equal((await kal('DELETE', `${G}/${mixed2}`)).status, 200);
+
+  // Regelwerk bleibt der App Mitgliedergruppen vorbehalten
+  assert.equal((await kal('GET', `${G}/regeln`)).status, 403);
+  assert.equal((await kal('PUT', `${G}/regeln`, { regeln: [] })).status, 403);
+  assert.equal((await kal('POST', `${G}/regeln/anwenden`, { simulation: true })).status, 403);
+});

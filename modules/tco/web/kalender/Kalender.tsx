@@ -13,6 +13,7 @@ import { toast } from '@core/toast';
 import { TCO } from '../util';
 import { MassenanlageDialog } from './Massenanlage';
 import { EventTabelle } from './EventTabelle';
+import { GruppenBaum } from '../gruppen/Gruppen';
 import './kalender.css';
 
 /**
@@ -31,7 +32,6 @@ interface Ev {
 interface Daten { events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; /** eigene Gruppen samt den Gruppen darüber */ meineGruppen: number[]; gruppen: { id: number; name: string; aktiv: boolean }[] }
 interface Tn { adrnr: string; name: string; status: Status; begleitung: number; kommentar: string | null; geaendert_von: string | null }
 interface Detail { event: Ev; teilnehmer: { zusagen: { name: string; begleitung: number }[]; liste: Tn[]; offen: { adrnr: string; name: string }[] } }
-interface Gruppe { id: number; name: string; pfad: string; beschreibung: string | null; aktiv: boolean; mitglieder: { adrnr: string; name: string; rolle: string | null }[] }
 
 const STATUS_TEXT: Record<Status, string> = { ZUSAGE: 'Zusage', ABSAGE: 'Absage', VIELLEICHT: 'Vielleicht' };
 const STATUS_STATE: Record<Status, 'Positive' | 'Negative' | 'Critical'> = { ZUSAGE: 'Positive', ABSAGE: 'Negative', VIELLEICHT: 'Critical' };
@@ -155,7 +155,8 @@ export function Kalender() {
         )}
         {d?.pflege && (
           <Tab data-key="gruppen" text="Gruppen / Mannschaften" icon="group" selected={tab === 'gruppen'}>
-            <Gruppen aktiv={tab === 'gruppen'} onError={setError} onGeaendert={laden} />
+            {/* dasselbe Layout wie die App „Mitgliedergruppen“: Baumtabelle mit Suche, Rollen, Anzahl und Aktionen (#16) */}
+            <GruppenBaum eingebettet aktiv={tab === 'gruppen'} onGeaendert={laden} />
           </Tab>
         )}
       </TabContainer>
@@ -427,48 +428,5 @@ function EventDialog({ e, d, onClose, onGespeichert }: { e: Partial<Ev>; d: Date
       </div>
     </Dialog>,
     document.body,
-  );
-}
-
-function Gruppen({ aktiv, onError, onGeaendert }: { aktiv: boolean; onError: (t: string) => void; onGeaendert: () => void }) {
-  const [liste, setListe] = useState<Gruppe[] | null>(null);
-  const [mitglieder, setMitglieder] = useState<{ adrnr: string; name: string }[]>([]);
-  const [neu, setNeu] = useState('');
-  const [busy, setBusy] = useState(false);
-  const laden = () => api.get<Gruppe[]>(`${K}/pflege/gruppen`).then(setListe).catch((e) => onError(e.message));
-  useEffect(() => { if (aktiv) { laden(); api.get<typeof mitglieder>(`${K}/pflege/mitglieder`).then(setMitglieder).catch(() => undefined); } }, [aktiv]); // eslint-disable-line react-hooks/exhaustive-deps
-  async function lauf(fn: () => Promise<unknown>) {
-    setBusy(true);
-    try { await fn(); await laden(); onGeaendert(); } catch (e) { onError((e as Error).message); } finally { setBusy(false); }
-  }
-  if (!liste) return <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />;
-  return (
-    <>
-      <FlexBox style={{ gap: '0.5rem', margin: '0.75rem 0' }} alignItems="Center">
-        <Input value={neu} placeholder="Neue Gruppe, z. B. Herren 40" onInput={(e) => setNeu(e.target.value)} style={{ width: '18rem' }} />
-        <Button icon="add" design="Emphasized" disabled={busy || !neu.trim()} onClick={() => lauf(async () => { await api.post(`${K}/pflege/gruppen`, { name: neu }); setNeu(''); })}>Gruppe anlegen</Button>
-      </FlexBox>
-      {!liste.length && <Empty>Noch keine Gruppen – z. B. Mannschaften für die Mannschaftsplanung anlegen.</Empty>}
-      {liste.length > 0 && <MessageStrip hideCloseButton design="Information" style={{ marginBottom: '0.5rem' }}>Kategorien, Untergruppen und das Verschieben im Baum pflegst du unter Mitglieder → Mitgliedergruppen.</MessageStrip>}
-      <div className="portal-kal__gruppen">
-        {liste.map((g) => (
-          <Section key={g.id} title={g.pfad} count={g.mitglieder.length}
-                   actions={<Button icon="delete" design="Transparent" tooltip="Gruppe löschen" disabled={busy} onClick={() => lauf(() => api.del(`${K}/pflege/gruppen/${g.id}`))} />}>
-            {g.mitglieder.map((m) => (
-              <div key={m.adrnr} className="portal-kal__tn">
-                <span>{m.name}</span>
-                <FlexBox style={{ gap: '0.25rem' }} alignItems="Center">
-                  <Input value={m.rolle ?? ''} placeholder="Rolle" style={{ width: '9rem' }} onChange={(e) => lauf(() => api.post(`${K}/pflege/gruppen/${g.id}/mitglieder`, { adrnr: m.adrnr, rolle: e.target.value }))} />
-                  <Button icon="decline" design="Transparent" tooltip="Aus der Gruppe entfernen" disabled={busy} onClick={() => lauf(() => api.post(`${K}/pflege/gruppen/${g.id}/mitglieder`, { adrnr: m.adrnr, entfernen: true }))} />
-                </FlexBox>
-              </div>
-            ))}
-            <AuswahlBox eintraege={mitglieder.filter((m) => !g.mitglieder.some((x) => x.adrnr === m.adrnr)).map((m) => ({ key: m.adrnr, text: m.name }))} wert=""
-                        placeholder="Mitglied hinzufügen …" style={{ width: '100%', marginTop: '0.5rem' }}
-                        onWaehle={(k) => { if (k) lauf(() => api.post(`${K}/pflege/gruppen/${g.id}/mitglieder`, { adrnr: k })); }} />
-          </Section>
-        ))}
-      </div>
-    </>
   );
 }
