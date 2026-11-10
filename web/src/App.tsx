@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BusyIndicator, FlexBox, MessageStrip } from '@ui5/webcomponents-react';
 import { api, ApiError, SITZUNG_PRUEFEN } from './api';
 import { SessionContext, type Me } from './session';
@@ -18,6 +19,13 @@ type State =
 
 export function App() {
   const [state, setState] = useState<State>({ kind: 'loading' });
+  const navigate = useNavigate();
+  /**
+   * Nach jeder An- und Abmeldung auf die Startseite – über den Router, nicht über window.history:
+   * Der Router bekommt eine direkte Änderung der Adresse nicht mit und zeigte nach der Anmeldung
+   * weiter die zuletzt offene Seite (Adresse „/“, Inhalt z. B. Mitglieder).
+   */
+  const zurStartseite = useCallback(() => navigate('/', { replace: true }), [navigate]);
 
   const load = useCallback(async () => {
     try {
@@ -49,9 +57,9 @@ export function App() {
 
   const logout = useCallback(async () => {
     await api.post('/api/auth/logout').catch(() => {});
-    window.history.replaceState(null, '', '/');
+    zurStartseite();
     await load();
-  }, [load]);
+  }, [load, zurStartseite]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -103,7 +111,7 @@ export function App() {
     case 'oeffentlich': {
       const orgName = (state.settings['org.name'] as string) ?? 'Portal';
       const logo = state.settings['org.logo'] as string | undefined;
-      const fertig = () => { window.history.replaceState(null, '', '/'); load(); };
+      const fertig = () => { zurStartseite(); load(); };
       const token = new URLSearchParams(window.location.search).get('kennwort');
       if (token) return <KennwortSetzenPage orgName={orgName} logo={logo} token={token} onDone={fertig} />;
       const Seite = oeffentlicheSeite(window.location.pathname, state.settings);
@@ -112,7 +120,7 @@ export function App() {
     case 'login':
       // nach der Anmeldung immer auf der Startseite landen, nicht auf der zuletzt im Browser offenen Seite
       return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined}
-                        onDone={() => { window.history.replaceState(null, '', '/'); load(); }}
+                        onDone={() => { zurStartseite(); load(); }}
                         registrierung={(state.settings.registrierung as { pfad: string; titel: string; text: string } | null) ?? null} />;
     case 'ready':
       if (state.me.user.mustChangePassword) return <ForcedPasswordPage onDone={load} onLogout={logout} />;
