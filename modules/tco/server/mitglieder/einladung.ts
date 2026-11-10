@@ -53,7 +53,18 @@ async function urlPflicht(): Promise<string> {
   return url;
 }
 
-function mailText(v: Verein, m: Record<string, any>, link: string, bis: string) {
+/** Platzhalter der Einladungsmail (Sammellauf): Betreff und Text lassen sich vor dem Versand anpassen (#105) */
+export const EINLADUNG_PLATZHALTER = ['{Vorname}', '{Name}', '{Link}', '{GueltigBis}'];
+export interface MailVorlage { betreff: string; text: string }
+/** Vorschlag für den Sammellauf – entspricht dem festen Text, mit Platzhaltern statt der Werte */
+export function einladungVorlage(v: Verein): MailVorlage {
+  return mailText(v, { vorname: '{Vorname}' }, '{Link}', '{GueltigBis}');
+}
+const fuellen = (s: string, m: Record<string, any>, link: string, bis: string) => s.replace(/\{(Vorname|Name|Link|GueltigBis)\}/g, (_, k: string) =>
+  (k === 'Vorname' ? t(m.vorname) : k === 'Name' ? t(`${m.vorname ?? ''} ${m.nachname ?? ''}`) : k === 'Link' ? link : bis));
+
+function mailText(v: Verein, m: Record<string, any>, link: string, bis: string, vorlage?: MailVorlage | null) {
+  if (vorlage) return { betreff: fuellen(vorlage.betreff, m, link, bis), text: fuellen(vorlage.text, m, link, bis) };
   return {
     betreff: `${v.name}: Ihr Zugang zum Vereinsportal`,
     text: `Hallo ${t(m.vorname)},\n\nim Vereinsportal des ${v.name} sehen und pflegen Sie Ihre Mitgliedsdaten, buchen Hallen- und Freiplätze, `
@@ -94,7 +105,7 @@ async function briefe(v: Verein, liste: { m: Record<string, any>; link: string; 
 }
 
 /** Sammellauf: Mitglieder mit E-Mail per Mail (sofern nicht „brief“), alle übrigen als Brief-PDF */
-export async function einladen(tx: Db, v: Verein, o: { adrnrs: string[] | null; tage: number; brief: boolean; wer: string }) {
+export async function einladen(tx: Db, v: Verein, o: { adrnrs: string[] | null; tage: number; brief: boolean; wer: string; vorlage?: MailVorlage | null; cc?: string | null }) {
   const url = await urlPflicht();
   const alle = await kandidaten(tx);
   const auswahl = o.adrnrs ? alle.filter((k) => o.adrnrs!.includes(k.adrnr)) : alle;
@@ -109,7 +120,7 @@ export async function einladen(tx: Db, v: Verein, o: { adrnrs: string[] | null; 
     const link = einladungsLink(url, token);
     if (perMail) {
       try {
-        await einladungsMail(v, m, k.email, link, bis, o.wer, { art: 'EINLADUNG', adrnr: k.adrnr, stunden: o.tage * 24, weg: 'MAIL' });
+        await einladungsMail(v, m, k.email, link, bis, o.wer, { art: 'EINLADUNG', adrnr: k.adrnr, stunden: o.tage * 24, weg: 'MAIL' }, o.cc ?? undefined, o.vorlage);
         r.gesendet++;
         continue;
       } catch (e) {
@@ -146,8 +157,8 @@ export async function schnellwegPruefen(tx: Db, v: Verein, email: string, geburt
 }
 
 /** Einladungsmail mit Link und QR-Code (Sammellauf und „Erneut senden“ im Mailprotokoll) */
-async function einladungsMail(v: Verein, m: Record<string, any>, an: string, link: string, bis: string, wer: string, w: Wiederholung, cc?: string) {
-  const { betreff, text } = mailText(v, m, link, bis);
+async function einladungsMail(v: Verein, m: Record<string, any>, an: string, link: string, bis: string, wer: string, w: Wiederholung, cc?: string, vorlage?: MailVorlage | null) {
+  const { betreff, text } = mailText(v, m, link, bis, vorlage);
   const png = await QRCode.toBuffer(link, { type: 'png', errorCorrectionLevel: 'M', margin: 2, width: 480 });
   const e = await mailSenden(v, {
     modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an, cc: cc ?? '', betreff, text, benutzer: wer,

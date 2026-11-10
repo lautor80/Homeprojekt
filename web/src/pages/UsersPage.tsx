@@ -450,24 +450,34 @@ function EinladungDialog({ onClose, onModus }: { onClose: () => void; onModus: (
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const [brief, setBrief] = useState(false);
   const [nurNeue, setNurNeue] = useState(true);
+  /** Mitglieder ohne E-Mail-Adresse ausblenden (sie bekämen einen Brief) */
+  const [nurMail, setNurMail] = useState(false);
+  // E-Mail: Vorschlag, vor dem Versand änderbar; Kopie an den Versender (#105)
+  const [betreff, setBetreff] = useState('');
+  const [text, setText] = useState('');
+  const [platzhalter, setPlatzhalter] = useState<string[]>([]);
+  const [mailOffen, setMailOffen] = useState(false);
+  const [cc, setCc] = useState(false);
+  const [ccAdresse, setCcAdresse] = useState<string | null>(null);
   const [suche, setSuche] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ergebnis, setErgebnis] = useState<{ text: string; pdf: string | null; fehler: string[] } | null>(null);
   useEffect(() => {
     api.get<EinladungKandidat[]>('/api/m/tco/mitglieder/einladungen').then((l) => {
-      setListe(l);
-      setWahl(new Set(l.filter((k) => !k.eingeladen_am).map((k) => k.adrnr)));
+      setListe(l);   // bewusst ohne Vorauswahl (#105)
     }).catch((e) => setError(e.message));
+    api.get<{ betreff: string; text: string; platzhalter: string[]; cc: string | null }>('/api/m/tco/mitglieder/einladungen/vorlage')
+      .then((v) => { setBetreff(v.betreff); setText(v.text); setPlatzhalter(v.platzhalter); setCcAdresse(v.cc); }).catch((e) => setError(e.message));
   }, []);
   const begriffe = suche.toLowerCase().split(/\s+/).filter(Boolean);
-  const sichtbar = (liste ?? []).filter((k) => (!nurNeue || !k.eingeladen_am)
+  const sichtbar = (liste ?? []).filter((k) => (!nurNeue || !k.eingeladen_am) && (!nurMail || !!k.email)
     && begriffe.every((b) => `${k.nachname ?? ''} ${k.vorname ?? ''} ${k.mitglnrn ?? ''} ${k.email ?? ''}`.toLowerCase().includes(b)));
   const umschalten = (a: string) => setWahl((w) => { const n = new Set(w); if (n.has(a)) n.delete(a); else n.add(a); return n; });
   async function los() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ text: string; pdf: string | null; fehler: string[] }>('/api/m/tco/mitglieder/einladungen', { adrnrs: [...wahl], brief });
+      const r = await api.post<{ text: string; pdf: string | null; fehler: string[] }>('/api/m/tco/mitglieder/einladungen', { adrnrs: [...wahl], brief, betreff, text, cc: cc && !brief });
       setErgebnis(r);
       toast(r.text, 8000);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -485,7 +495,7 @@ function EinladungDialog({ onClose, onModus }: { onClose: () => void; onModus: (
               {ergebnis.pdf && <Button design="Emphasized" icon="download" onClick={() => pdfLaden(ergebnis.pdf!)}>Briefe (PDF) herunterladen</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </> : <>
-              <Button design="Emphasized" icon="qr-code" loading={busy} disabled={!wahl.size} onClick={los}>{wahl.size} einladen</Button>
+              <Button design="Emphasized" icon="qr-code" loading={busy} disabled={!wahl.size || !betreff.trim() || !text.includes('{Link}')} onClick={los}>{wahl.size} einladen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       <ModusWahl modus="QR" onModus={onModus} />
@@ -505,6 +515,11 @@ function EinladungDialog({ onClose, onModus }: { onClose: () => void; onModus: (
             <Input data-kein-autofill icon={<Icon name="search" />} placeholder="Suchen: Name, Nr., E-Mail" value={suche} style={{ width: '16rem' }}
                    onInput={(e) => setSuche(e.target.value)} showClearIcon />
             <CheckBox text="nur noch nicht eingeladene" checked={nurNeue} onChange={(e) => setNurNeue(e.target.checked)} />
+            <CheckBox text="nur mit E-Mail-Adresse" checked={nurMail} onChange={(e) => {
+              setNurMail(e.target.checked);
+              // ausgeblendete Mitglieder ohne E-Mail nicht versehentlich mit einladen
+              if (e.target.checked) setWahl((w) => new Set([...w].filter((a) => liste?.find((k) => k.adrnr === a)?.email)));
+            }} />
             <CheckBox text="alle als Brief (statt E-Mail)" checked={brief} onChange={(e) => setBrief(e.target.checked)} />
             <Button design="Transparent" onClick={() => setWahl((w) => new Set([...(begriffe.length ? w : []), ...sichtbar.map((k) => k.adrnr)]))}>alle wählen</Button>
             <Button design="Transparent" onClick={() => setWahl((w) => (begriffe.length ? new Set([...w].filter((a) => !sichtbar.some((k) => k.adrnr === a))) : new Set()))}>keine</Button>
@@ -523,6 +538,20 @@ function EinladungDialog({ onClose, onModus }: { onClose: () => void; onModus: (
           <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
             {wahl.size} ausgewählt: {brief ? 0 : mitMail} per E-Mail, {brief ? wahl.size : wahl.size - mitMail} als Brief. Eine neue Einladung macht ältere ungültig.
           </Text>
+          <div className="portal-row" style={{ marginTop: '0.5rem', gap: '1rem' }}>
+            <Button design="Transparent" icon={mailOffen ? 'navigation-down-arrow' : 'navigation-right-arrow'} onClick={() => setMailOffen(!mailOffen)}>E-Mail-Text ansehen und anpassen</Button>
+            <CheckBox text={`Kopie (CC) jeder E-Mail an mich${ccAdresse ? ` – ${ccAdresse}` : ' (keine E-Mail-Adresse bei meinem Benutzer hinterlegt)'}`}
+                      checked={cc && !brief} disabled={!ccAdresse || brief} onChange={(e) => setCc(e.target.checked)} />
+          </div>
+          {mailOffen && (
+            <div style={{ marginTop: '0.25rem' }}>
+              <Input value={betreff} onInput={(e) => setBetreff(e.target.value)} style={{ width: '100%', marginBottom: '0.25rem' }} accessibleName="Betreff" placeholder="Betreff" />
+              <TextArea rows={10} value={text} onInput={(e) => setText(e.target.value)} style={{ width: '100%' }} accessibleName="Text der E-Mail" />
+              <Text className="portal-small" style={{ display: 'block', marginTop: '0.25rem', color: text.includes('{Link}') ? 'var(--sapContent_LabelColor)' : 'var(--sapNegativeTextColor)' }}>
+                Platzhalter: {platzhalter.join(' ')} – {'{Link}'} ist Pflicht (persönlicher Link je Mitglied). Der QR-Code hängt als Bild an. Briefe behalten ihren festen Text.
+              </Text>
+            </div>
+          )}
         </>
       )}
     </Dialog>
@@ -558,12 +587,14 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
   const [tage, setTage] = useState(14);
   const [pdf, setPdf] = useState<{ name: string; data: string } | null>(null);
   const datei = useRef<HTMLInputElement>(null);
+  const [cc, setCc] = useState(false);
+  const [ccAdresse, setCcAdresse] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ergebnis, setErgebnis] = useState<{ text: string; zeilen: { key: string; ok: boolean; name: string; an: string; text: string }[] } | null>(null);
   useEffect(() => {
-    api.get<{ betreff: string; text: string; platzhalter: string[] }>(`${Z}/vorlage`)
-      .then((v) => { setBetreff(v.betreff); setText(v.text); setPlatzhalter(v.platzhalter); }).catch((e) => setError(e.message));
+    api.get<{ betreff: string; text: string; platzhalter: string[]; cc: string | null }>(`${Z}/vorlage`)
+      .then((v) => { setBetreff(v.betreff); setText(v.text); setPlatzhalter(v.platzhalter); setCcAdresse(v.cc); }).catch((e) => setError(e.message));
   }, []);
   async function abgleichen() {
     setBusy(true); setError(null);
@@ -585,7 +616,7 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
   async function senden() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<NonNullable<typeof ergebnis>>(`${Z}/senden`, { empfaenger, betreff, text, tage, pdf });
+      const r = await api.post<NonNullable<typeof ergebnis>>(`${Z}/senden`, { empfaenger, betreff, text, tage, pdf, cc });
       setErgebnis(r);
       toast(r.text, 8000);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -666,6 +697,8 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
             <Button icon="pdf-attachment" onClick={() => datei.current?.click()}>{pdf ? 'Anderes PDF' : 'PDF anhängen'}</Button>
             {pdf && <><Text>{pdf.name}</Text><Button design="Transparent" icon="decline" tooltip="Anhang entfernen" onClick={() => setPdf(null)} /></>}
           </div>
+          <CheckBox text={`Kopie (CC) jeder E-Mail an mich${ccAdresse ? ` – ${ccAdresse}` : ' (keine E-Mail-Adresse bei meinem Benutzer hinterlegt)'}`}
+                    checked={cc} disabled={!ccAdresse} onChange={(e) => setCc(e.target.checked)} style={{ marginTop: '0.25rem' }} />
         </>
       )}
     </Dialog>

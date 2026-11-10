@@ -15,7 +15,7 @@ import { ART_TEXT, ARTEN, druckdatenLesen, unterlagePdf } from './pdf.js';
 import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, mailText, plPruefen, SPEICHERPFAD, unterlageAblegen } from './dokumente.js';
 import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
 import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
-import { einladen, einladungLesen, einloesen, kandidaten as einladungKandidaten } from './einladung.js';
+import { einladen, einladungLesen, einladungVorlage, einloesen, EINLADUNG_PLATZHALTER, kandidaten as einladungKandidaten } from './einladung.js';
 import { abgleichen, namenLesen, vorlage as zugangVorlage, zugangSenden, PLATZHALTER } from './zugangslink.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
 import type { Verein } from '../verein.js';
@@ -258,12 +258,32 @@ export async function mitgliederRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- Einladung zum Vereinsportal (QR-Code, Sammellauf)
   app.get('/mitglieder/einladungen', { preHandler: requireAuth('core.users:edit') }, async () => einladungKandidaten(DB));
+  /** Vorschlag für Betreff und Text der Einladungsmail (im Dialog änderbar) und die Adresse für „Kopie an mich“ */
+  app.get('/mitglieder/einladungen/vorlage', { preHandler: requireAuth('core.users:edit') }, async (req) => (
+    { ...einladungVorlage(await vereinLesen()), platzhalter: EINLADUNG_PLATZHALTER, cc: req.user?.email ?? null }));
+  /** Kopie an den Versender: seine E-Mail-Adresse aus der Benutzerverwaltung */
+  const ccAnMich = (req: FastifyRequest, an: boolean) => {
+    if (!an) return null;
+    const e = (req.user?.email ?? '').trim();
+    if (!e) throw new BusinessError('Für „Kopie an mich“ ist bei deinem Benutzer keine E-Mail-Adresse hinterlegt (Administration → Benutzer).');
+    return e;
+  };
   app.post('/mitglieder/einladungen', { preHandler: requireAuth('core.users:edit') }, async (req) => {
     const o = z.object({
       adrnrs: z.array(z.string().min(1)).nullish(), tage: z.coerce.number().int().min(1).max(90).default(30), brief: z.boolean().default(false),
+      /** angepasster Betreff/Text der E-Mail (Platzhalter {Vorname} {Name} {Link} {GueltigBis}); ohne Angabe der feste Text */
+      betreff: z.string().trim().max(200).nullish(), text: z.string().trim().max(20_000).nullish(),
+      cc: z.boolean().default(false),
     }).parse(req.body ?? {});
+    let vorlage: { betreff: string; text: string } | null = null;
+    if (o.text || o.betreff) {
+      if (!o.betreff || !o.text) throw new BusinessError('Bitte Betreff und Text der E-Mail angeben.');
+      if (!o.text.includes('{Link}')) throw new BusinessError('Der Text muss den Platzhalter {Link} enthalten – dort steht der persönliche Link.');
+      vorlage = { betreff: o.betreff, text: o.text };
+    }
+    const cc = ccAnMich(req, o.cc);
     const v = await vereinLesen();
-    const r = await change(req, (tx) => einladen(tx, v, { adrnrs: o.adrnrs ?? null, tage: o.tage, brief: o.brief, wer: benutzer(req) }), { action: 'EINLADUNG' });
+    const r = await change(req, (tx) => einladen(tx, v, { adrnrs: o.adrnrs ?? null, tage: o.tage, brief: o.brief, wer: benutzer(req), vorlage, cc }), { action: 'EINLADUNG' });
     return {
       ...r,
       text: `${r.gesendet} Einladung${r.gesendet === 1 ? '' : 'en'} per E-Mail gesendet${r.briefe ? `, ${r.briefe} Brief${r.briefe === 1 ? '' : 'e'} zum Drucken (PDF)` : ''}`
@@ -271,7 +291,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     };
   });
   // ---------------------------------------------------------------- Zugangslinks an Personen aus einer Liste (#105)
-  app.get('/mitglieder/zugang/vorlage', { preHandler: requireAuth('core.users:edit') }, async () => ({ ...zugangVorlage(await vereinLesen()), platzhalter: PLATZHALTER }));
+  app.get('/mitglieder/zugang/vorlage', { preHandler: requireAuth('core.users:edit') }, async (req) => ({ ...zugangVorlage(await vereinLesen()), platzhalter: PLATZHALTER, cc: req.user?.email ?? null }));
   app.post('/mitglieder/zugang/abgleich', { preHandler: requireAuth('core.users:edit') }, async (req) => {
     const { text } = z.object({ text: z.string().max(50_000) }).parse(req.body);
     const namen = namenLesen(text);
@@ -286,7 +306,9 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       text: z.string().trim().min(1).max(20_000),
       tage: z.coerce.number().int().min(1).max(60).default(14),
       pdf: z.object({ name: z.string().min(1), data: z.string().min(1) }).nullish(),
+      cc: z.boolean().default(false),
     }).parse(req.body);
+    const cc = ccAnMich(req, b.cc);
     if (!b.text.includes('{Link}')) throw new BusinessError('Der Text muss den Platzhalter {Link} enthalten – dort steht der persönliche Link.');
     let pdf: { dateiname: string; inhalt: Buffer } | null = null;
     if (b.pdf) {
@@ -300,7 +322,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     // je Empfänger eigene Transaktion: ein Fehler hält die übrigen nicht auf
     for (const key of [...new Set(b.empfaenger)]) {
       try {
-        const r = await change(req, (tx) => zugangSenden(tx, v, key, { betreff: b.betreff, text: b.text, tage: b.tage, pdf, wer: benutzer(req) }),
+        const r = await change(req, (tx) => zugangSenden(tx, v, key, { betreff: b.betreff, text: b.text, tage: b.tage, pdf, wer: benutzer(req), cc }),
           { action: 'ZUGANGSLINK', reason: key });
         zeilen.push({ key, ok: true, ...r, text: r.art === 'BENUTZER' ? 'Kennwort-Link gesendet' : 'Einladung gesendet (noch kein Benutzer)' });
       } catch (e) {

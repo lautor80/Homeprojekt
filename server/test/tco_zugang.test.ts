@@ -723,4 +723,28 @@ test('Zugangslinks an Personen aus einer eingefügten Liste: Abgleich, eigener T
   const [g] = await sql`select gueltig_bis > now() + interval '6 days' as lang from core.password_tokens where token_hash is not null order by gueltig_bis desc limit 1`;
   assert.equal(g.lang, true, 'Gültigkeit 7 Tage');
   assert.match((letzteMail('karl@example.org') as any).text, /\/einladung\?token=/);
+
+  // „Mitglieder ohne Benutzer einladen“: Text vorgeschlagen und änderbar, Kopie an den Versender
+  const E = `${T}/mitglieder/einladungen`;
+  r = await admin('GET', `${E}/vorlage`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Hallo \{Vorname\},[\s\S]*\{Link\}[\s\S]*\{GueltigBis\}/);
+  assert.equal(r.body.cc, null, 'Admin ohne E-Mail-Adresse');
+  const eigen = { adrnrs: ['0000000701'], betreff: 'Zugang für {Vorname}', text: 'Hi {Name}: {Link} bis {GueltigBis}' };
+  assert.equal((await admin('POST', E, { ...eigen, text: 'ohne Link' })).status, 400);
+  assert.equal((await admin('POST', E, { ...eigen, cc: true })).status, 400, 'Kopie an mich ohne eigene Adresse');
+  await sql`update core.users set email = 'admin@example.org' where username = 'admin'`;
+  assert.equal((await admin('GET', `${E}/vorlage`)).body.cc, 'admin@example.org');
+  r = await admin('POST', E, { ...eigen, cc: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.gesendet, 1);
+  const mk = letzteMail('karl@example.org') as any;
+  assert.deepEqual([mk.betreff, mk.cc], ['Zugang für Karl', 'admin@example.org']);
+  assert.match(mk.text, /^Hi Karl Kein: \S+\/einladung\?token=\S+ bis \d/);
+  assert.equal(mk.anhaenge[0].mime, 'image/png');
+  // Zugangslink aus Liste: ebenfalls mit Kopie
+  r = await admin('POST', `${Z}/senden`, { empfaenger: [keys[0]], betreff: 'Neustart', text: 'x {Link}', cc: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((letzteMail('simone@example.org') as any).cc, 'admin@example.org');
+  await sql`update core.users set email = null where username = 'admin'`;
 });

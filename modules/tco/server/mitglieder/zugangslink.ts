@@ -108,7 +108,7 @@ export function vorlage(v: Pick<Verein, 'name' | 'ansprechpartner'>) {
 
 const ersetzen = (s: string, w: Record<string, string>) => s.replace(/\{(Vorname|Name|Benutzername|Link|GueltigBis)\}/g, (_, k: string) => w[k] ?? '');
 
-export interface Versand { betreff: string; text: string; tage: number; pdf: { dateiname: string; inhalt: Buffer } | null; wer: string }
+export interface Versand { betreff: string; text: string; tage: number; pdf: { dateiname: string; inhalt: Buffer } | null; wer: string; /** Kopie an den Versender */ cc?: string | null }
 
 /** Einen Empfänger anschreiben: Link erzeugen (Kennwort setzen bzw. Einladung), Platzhalter füllen, Mail senden */
 export async function zugangSenden(tx: Db, v: Verein, key: string, o: Versand): Promise<{ name: string; an: string; art: Empfaenger['art'] }> {
@@ -151,7 +151,7 @@ export async function zugangSenden(tx: Db, v: Verein, key: string, o: Versand): 
     objekt = adrnr;
   } else throw new BusinessError('Unbekannter Empfänger.');
   const e = await mailSenden(v, {
-    modus: 'senden', anwendung: 'Benutzer', objekt, an, betreff: ersetzen(o.betreff, w), text: ersetzen(o.text, w), benutzer: o.wer,
+    modus: 'senden', anwendung: 'Benutzer', objekt, an, cc: o.cc ?? '', betreff: ersetzen(o.betreff, w), text: ersetzen(o.text, w), benutzer: o.wer,
     anhaenge: o.pdf ? [{ dateiname: o.pdf.dateiname, mime: 'application/pdf', inhalt: o.pdf.inhalt, objekt }] : [],
     // enthält einen persönlichen Link: nie speichern, sondern neu auslösen
     wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Zugangslink – bitte neu auslösen: Administration → Benutzer → „Einladen & Zugangslinks“.' },
