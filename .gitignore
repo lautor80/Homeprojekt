@@ -4,3 +4,4 @@ data/
 .env
 *.log
 web/public/fonts/
+__pycache__/
