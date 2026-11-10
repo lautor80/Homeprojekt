@@ -39,7 +39,7 @@
   font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); text-align: center;
 }
 /* Preisklassen im Tagesverlauf: die Zeitspalte ist je Preis farbig hinterlegt, mit kräftigem Rand links und rechts der Uhrzeit.
-   Farben wie im Wochenplan der Hallenpreise: Klassen portal-hp__f0 … f4 (--hf-bg Fläche, --hf Rand) aus hallenpreise.css */
+   Farben wie im Wochenplan der Hallenpreise: Klassen portal-hpw__f0 … f4 (--hf-bg Fläche, --hf Rand) aus hallenpreise.css */
 .portal-pb__zone {
   position: absolute; left: 0; right: 0; box-sizing: border-box; background: var(--hf-bg);
   border-left: 0.375rem solid var(--hf); border-right: 0.375rem solid var(--hf);
