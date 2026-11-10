@@ -34,6 +34,7 @@ import { Ablage } from './upload/Ablage';
 import { PlatzBuchen } from './platz/PlatzBuchen';
 import { Platzverwaltung } from './platz/Platzverwaltung';
 import { Serienbuchung } from './platz/Serienbuchung';
+import { Dokumenteneingang } from './eingang/Dokumenteneingang';
 import { api } from '@core/api';
 import type { TileKpi } from '@core/platform';
 import { H, TCO, eur } from './util';
@@ -42,6 +43,11 @@ import { H, TCO, eur } from './util';
 const kpiMitglieder = async (): Promise<TileKpi> => {
   const l = await api.get<{ anzahl: Record<string, number> }>(`${TCO}/mitglieder/liste?status=AKTIV`);
   return { value: String(l.anzahl.AKTIV ?? 0), label: 'aktive Mitglieder' };
+};
+const kpiEingang = async (): Promise<TileKpi> => {
+  const l = await api.get<{ offen: { pruefen: number; fehler: number } }>(`${TCO}/eingang/vorgaenge?status=fehler`);
+  const n = l.offen.pruefen + l.offen.fehler;
+  return { value: String(n), label: 'zu prüfen', state: l.offen.fehler ? 'Negative' : n ? 'Critical' : 'Positive' };
 };
 const kpiHalle = async (): Promise<TileKpi> => {
   const l = await api.get<{ personen: unknown[]; gesamtOffen: number }>(`${H}/personen?status=1,2,3,5&buchungen=1`);
@@ -122,6 +128,12 @@ const mod: WebModule = {
             { text: 'Dokumenten-Upload', icon: 'upload-to-cloud', path: '/tco/upload', permission: 'tco.upload:execute' },
           ],
         },
+        {
+          text: 'Dokumente', icon: 'documents',
+          children: [
+            { text: 'Dokumenteneingang', icon: 'inbox', path: '/tco/dokumenteneingang', permission: 'tco.eingang:display' },
+          ],
+        },
       ],
     },
   ],
@@ -157,6 +169,7 @@ const mod: WebModule = {
     { path: '/tco/registrierungen', component: MitgliedRegistrierungen, permission: 'tco.registrierung:mitglied' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
+    { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
   ],
   oeffentlich: [
     { pfad: '/beitritt', component: Beitritt },
@@ -193,6 +206,7 @@ const mod: WebModule = {
     { text: 'Einnahmen und Ausgaben', subtitle: 'Jahresübersicht, Geldkonten, Liquidität', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
     { text: 'Jahresabschluss', subtitle: 'EAR, Vermögensübersicht, Anlagevermögen', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
     { text: 'Dokumenten-Upload', subtitle: 'Belege gesammelt nach Paperless', icon: 'upload-to-cloud', path: '/tco/upload', permission: 'tco.upload:execute' },
+    { text: 'Dokumenteneingang', subtitle: 'E-Mails und Anhänge nach Regeln ablegen, Prüfliste', icon: 'inbox', path: '/tco/dokumenteneingang', permission: 'tco.eingang:display', kpi: kpiEingang },
   ],
 };
 

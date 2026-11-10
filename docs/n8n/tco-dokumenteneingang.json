@@ -1,0 +1,496 @@
+{
+  "name": "TCO Dokumenteneingang",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "nothing",
+        "format": "resolved",
+        "dataPropertyAttachmentsPrefixName": "attachment_",
+        "options": {}
+      },
+      "id": "d1",
+      "name": "Posteingang (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "imap": {
+          "id": "",
+          "name": "TCO IMAP Standard"
+        }
+      },
+      "notes": "Je weiteres Postfach diesen Knoten samt „Mail aufbereiten“ kopieren, die IMAP-Zugangsdaten wählen und in „Mail aufbereiten“ POSTFACH anpassen. „Action“ bleibt „Nothing“: Die Mail bleibt unverändert, bis das Portal ihre Behandlung meldet."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Jede neue Mail samt Anhängen für den Dokumenteneingang des Portals aufbereiten.\n// Je Postfach diese beiden Werte anpassen (bei mehreren Postfächern die Kette kopieren).\nconst POSTFACH = 'info@example.org';\nconst ORDNER = 'INBOX';\nconst text = (v) => {\n  if (v == null) return '';\n  if (typeof v === 'string') return v;\n  if (Array.isArray(v)) return v.map(text).join(' ');\n  if (typeof v === 'object') return v.text || v.address || (Array.isArray(v.value) ? v.value.map((x) => (x.name ? x.name + ' <' + x.address + '>' : x.address || '')).join(', ') : '') || '';\n  return String(v);\n};\nconst items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  const j = items[i].json || {};\n  // je nach n8n-Version liegen die Kopfzeilen direkt im Objekt, unter metadata oder unter headers\n  const h = Object.assign({}, j.headers || {}, j.metadata || {}, j);\n  const kopf = (...namen) => { for (const n of namen) { const w = text(h[n]); if (w) return w; } return ''; };\n  const anhaenge = [];\n  for (const [key, b] of Object.entries(items[i].binary || {})) {\n    const daten = await this.helpers.getBinaryDataBuffer(i, key);\n    // optional: text = extrahierter Dokumenttext (z. B. aus „Extract from File“), damit Regeln auf den Inhalt prüfen können\n    anhaenge.push({ name: b.fileName || key, mime: b.mimeType || null, inhalt: daten.toString('base64'), text: '' });\n  }\n  out.push({ json: {\n    postfach: POSTFACH,\n    ordner: ORDNER,\n    uid: (j.attributes && j.attributes.uid) || j.uid || null,\n    von: kopf('from'),\n    an: kopf('to'),\n    betreff: kopf('subject'),\n    datum: kopf('date'),\n    message_id: kopf('message-id', 'messageId'),\n    text: text(j.textPlain || j.text).slice(0, 200000),\n    html: text(j.textHtml || j.html).slice(0, 500000),\n    anhaenge,\n  } });\n}\nreturn out;"
+      },
+      "id": "d2",
+      "name": "Mail aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:8080/api/m/tco/eingang/mail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "d3",
+      "name": "An Portal liefern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Portal Dokumenteneingang (Bearer)"
+        }
+      },
+      "notes": "Zugangsdaten „Header Auth“: Name Authorization, Wert „Bearer pk_tco_…“ (API-Schlüssel des Moduls TC Oberthal mit der Berechtigung tco.eingang:melden). URL = Adresse des Portals aus Sicht von n8n. Das Portal legt ab und antwortet mit Vorgang, Dokumenten und – wenn alles abgelegt ist – der Behandlung der E-Mail; diese holt der zweite Zweig ab."
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "d4",
+      "name": "Alle 5 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://app:8080/api/m/tco/eingang/mailaktionen",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "d5",
+      "name": "Ausstehende Mailaktionen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Portal Dokumenteneingang (Bearer)"
+        }
+      },
+      "notes": "Liefert je E-Mail, deren Dokumente abgelegt sind: vorgang, postfach, message_id, uid, quelle (Ordner), art (keine/verschieben/loeschen), ordner (Ziel), gelesen, aufgaben. Bei mehreren Postfächern je Postfach mit ?postfach=… abfragen und die passenden IMAP-Zugangsdaten verwenden."
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.art }}",
+                    "rightValue": "verschieben",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "verschieben"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.art }}",
+                    "rightValue": "loeschen",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "loeschen"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.art }}",
+                    "rightValue": "keine",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "nur markieren"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d6",
+      "name": "Art der Behandlung",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        480,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "email",
+        "operation": "setEmailFlags",
+        "mailboxPath": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.quelle || 'INBOX' }}"
+        },
+        "emailUid": "={{ $json.uid }}",
+        "flags": {
+          "\\Seen": true
+        }
+      },
+      "id": "d7",
+      "name": "Als gelesen markieren",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        720,
+        480
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "TCO IMAP Standard"
+        }
+      },
+      "notes": "Community-Knoten „n8n-nodes-imap“ (wie im bisherigen Workflow „TCO Maileingang“). Parameter nach dem Import prüfen bzw. den passenden Knoten aus dem bisherigen Workflow hierher kopieren und UID/Ordner wie hier verdrahten. Nur ausführen, wenn gelesen = true (vorgeschalteter Filter)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.gelesen }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d8",
+      "name": "Gelesen markieren?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "email",
+        "operation": "moveEmail",
+        "sourceMailbox": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Ausstehende Mailaktionen').item.json.quelle || 'INBOX' }}"
+        },
+        "emailUid": "={{ $('Ausstehende Mailaktionen').item.json.uid }}",
+        "destinationMailbox": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Ausstehende Mailaktionen').item.json.ordner }}"
+        }
+      },
+      "id": "d9",
+      "name": "E-Mail verschieben",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        960,
+        160
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "TCO IMAP Standard"
+        }
+      },
+      "notes": "Community-Knoten „n8n-nodes-imap“ (wie im bisherigen Workflow „TCO Maileingang“). Parameter nach dem Import prüfen bzw. den passenden Knoten aus dem bisherigen Workflow hierher kopieren und UID/Ordner wie hier verdrahten."
+    },
+    {
+      "parameters": {
+        "resource": "email",
+        "operation": "moveEmail",
+        "sourceMailbox": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Ausstehende Mailaktionen').item.json.quelle || 'INBOX' }}"
+        },
+        "emailUid": "={{ $('Ausstehende Mailaktionen').item.json.uid }}",
+        "destinationMailbox": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Trash"
+        }
+      },
+      "id": "d10",
+      "name": "E-Mail in den Papierkorb",
+      "type": "n8n-nodes-imap.imap",
+      "typeVersion": 1,
+      "position": [
+        960,
+        320
+      ],
+      "credentials": {
+        "imapApi": {
+          "id": "",
+          "name": "TCO IMAP Standard"
+        }
+      },
+      "notes": "Community-Knoten „n8n-nodes-imap“ (wie im bisherigen Workflow „TCO Maileingang“). Parameter nach dem Import prüfen bzw. den passenden Knoten aus dem bisherigen Workflow hierher kopieren und UID/Ordner wie hier verdrahten. Zielordner = Papierkorb des Postfachs (Name je Anbieter, z. B. Trash oder Papierkorb)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8080/api/m/tco/eingang/vorgaenge/{{ $('Ausstehende Mailaktionen').item.json.vorgang }}/mail-erledigt",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}"
+      },
+      "id": "d11",
+      "name": "Erledigt melden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        320
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Portal Dokumenteneingang (Bearer)"
+        }
+      },
+      "notes": "Erst danach gilt die Behandlung als erledigt; schlägt ein IMAP-Knoten fehl, wird sie beim nächsten Lauf erneut geliefert."
+    },
+    {
+      "parameters": {},
+      "id": "d12",
+      "name": "Aufgabe anlegen (deaktiviert)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        560
+      ],
+      "disabled": true,
+      "notes": "Platzhalter: Regeln können eine Folgeaufgabe melden (Feld aufgaben: [{ titel, faellig_tage }]). Hier den bisherigen Knoten „Create a task“ einsetzen und aktivieren, sobald Aufgaben wieder angelegt werden sollen."
+    }
+  ],
+  "connections": {
+    "Posteingang (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Mail aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "An Portal liefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle 5 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Ausstehende Mailaktionen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ausstehende Mailaktionen": {
+      "main": [
+        [
+          {
+            "node": "Art der Behandlung",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gelesen markieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gelesen markieren?": {
+      "main": [
+        [
+          {
+            "node": "Als gelesen markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Art der Behandlung": {
+      "main": [
+        [
+          {
+            "node": "E-Mail verschieben",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-Mail in den Papierkorb",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erledigt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail verschieben": {
+      "main": [
+        [
+          {
+            "node": "Erledigt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mail in den Papierkorb": {
+      "main": [
+        [
+          {
+            "node": "Erledigt melden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erledigt melden": {
+      "main": [
+        [
+          {
+            "node": "Aufgabe anlegen (deaktiviert)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

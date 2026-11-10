@@ -1,0 +1,375 @@
+/**
+ * Dokumenteneingang: Regelwerk (reine Logik), Schnittstelle für n8n (API-Schlüssel), Ablage in Paperless und Nextcloud,
+ * Dubletten, Prüfliste (Regel/von Hand/ignorieren/neu bewerten), Fehlerfall und Berechtigungen.
+ */
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import http from 'node:http';
+
+const url = process.env.TEST_DATABASE_URL;
+if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
+process.env.DATABASE_URL = url;
+process.env.PORTAL_MODULES = 'tco';
+
+const { sql } = await import('../src/db.js');
+const { migrate } = await import('../src/migrate.js');
+const { activeModules } = await import('../src/modules.js');
+const { buildApp } = await import('../src/app.js');
+const L = await import('../../modules/tco/server/eingang/logik.js');
+
+let app: Awaited<ReturnType<typeof buildApp>>;
+function client() {
+  let cookie = '';
+  return async (method: string, path: string, payload?: unknown) => {
+    const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie, 'x-portal-request': '1' } });
+    const set = res.headers['set-cookie'];
+    if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
+    const ct = String(res.headers['content-type'] ?? '');
+    return { status: res.statusCode, body: ct.includes('json') && res.body ? JSON.parse(res.body) : res.body, ct, headers: res.headers };
+  };
+}
+/** Aufruf wie n8n: nur Bearer, kein Cookie, kein CSRF-Header */
+async function ext(key: string, method: string, path: string, payload?: unknown) {
+  const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { authorization: `Bearer ${key}` } });
+  return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+}
+const E = '/api/m/tco/eingang';
+const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
+
+// ---------------------------------------------------------------- Attrappe für Paperless und Nextcloud (WebDAV)
+const mock = {
+  docs: new Map<number, { title: string; datei: string; correspondent: string | null; documentType: string | null; tags: string[] }>(),
+  next: 700, kaputt: true,
+  korr: [] as { id: number; name: string }[], tags: [] as { id: number; name: string }[],
+  dav: [] as string[],
+};
+const server = http.createServer((req, res) => {
+  const chunks: Buffer[] = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    const body = Buffer.concat(chunks).toString('utf8');
+    const send = (code: number, data: unknown) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(data)); };
+    const u = decodeURIComponent(req.url ?? '');
+    if (u.startsWith('/remote.php/dav/files/nc')) {
+      if (req.headers.authorization !== `Basic ${Buffer.from('nc:app-pw').toString('base64')}`) { res.writeHead(401); return res.end(); }
+      if (req.method === 'PUT') mock.dav.push(u.replace('/remote.php/dav/files/nc', ''));
+      res.writeHead(201); return res.end();
+    }
+    if (req.headers.authorization !== 'Token geheim') return send(401, {});
+    let m: RegExpExecArray | null;
+    if (u === '/api/documents/post_document/') {
+      const datei = /filename="([^"]+)"/.exec(body)?.[1] ?? '';
+      if (datei === 'kaputt.pdf' && mock.kaputt) return send(500, { detail: 'Speicher voll' });
+      const feld = (n: string) => new RegExp(`name="${n}"\\r\\n\\r\\n([^\\r]*)`).exec(body)?.[1] ?? null;
+      const id = mock.next++;
+      mock.docs.set(id, { title: feld('title') ?? '', datei, correspondent: feld('correspondent'), documentType: feld('document_type'), tags: [...body.matchAll(/name="tags"\r\n\r\n([^\r]*)/g)].map((x) => x[1]) });
+      return send(200, `task-${id}`);
+    }
+    if ((m = /^\/api\/tasks\/\?task_id=task-(\d+)/.exec(u))) return send(200, [{ status: 'SUCCESS', related_document: m[1] }]);
+    if (/^\/api\/(correspondents|document_types|storage_paths|custom_fields|tags)\//.test(u) && req.method === 'GET') {
+      const lists: Record<string, unknown[]> = {
+        correspondents: mock.korr, document_types: [{ id: 9, name: 'Abrechnung' }], storage_paths: [{ id: 2, name: 'Mitglieder' }], custom_fields: [], tags: mock.tags,
+      };
+      return send(200, { results: lists[u.split('/')[2]], next: null });
+    }
+    if (u === '/api/correspondents/' && req.method === 'POST') { const k = { id: 50 + mock.korr.length, name: JSON.parse(body).name as string }; mock.korr.push(k); return send(201, k); }
+    if (u === '/api/tags/' && req.method === 'POST') { const t = { id: 80 + mock.tags.length, name: JSON.parse(body).name as string }; mock.tags.push(t); return send(201, t); }
+    if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) return send(200, { id: Number(m[1]), custom_fields: [] });
+    send(404, { u });
+  });
+});
+
+const admin = client();
+let key = '';
+const ids: Record<string, number> = {};
+
+before(async () => {
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', () => ok()));
+  const port = (server.address() as { port: number }).port;
+  await sql.unsafe(`drop schema if exists tco cascade; drop schema if exists transport cascade; drop schema if exists beispiel cascade; drop schema if exists core cascade;
+                    drop table if exists public.schema_migrations;`);
+  await migrate(activeModules(), () => {});
+  app = await buildApp({ logger: false });
+  await admin('POST', '/api/setup', { orgName: 'TC Test', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
+  await admin('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' });
+  await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
+  await sql`insert into core.verbindungen (id, url, auth_art, auth_user, geheimnis) values ('tco.nextcloud', ${`http://127.0.0.1:${port}`}, 'basic', 'nc', 'app-pw')`;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email) values ('0000000101', 'Hans', 'Müller', 'Hans@Example.org')`;
+});
+after(async () => { await app?.close(); await sql.end(); server.close(); });
+
+const bed = (feld: string, op: string, wert: string, nicht = false) => ({ feld, op, wert, nicht });
+const regel = (r: Record<string, unknown>) => ({
+  beschreibung: '', status: 'aktiv', prioritaet: 100, gilt_fuer: 'anhang', verknuepfung: 'und', extraktion: [], aktionen: {}, automatik: 'immer', ...r,
+});
+const mail = (m: Record<string, unknown>) => ({
+  postfach: 'info@tc-test.de', ordner: 'INBOX', an: 'info@tc-test.de', datum: '2025-03-03T10:00:00+01:00', text: 'Guten Tag, anbei das Dokument.', anhaenge: [], ...m,
+});
+
+test('Regelwerk: Bedingungen, Auswahl nach Priorität, Extraktion, Korrespondenten', () => {
+  assert.deepEqual(L.absender('"SumUp Payments" <No-Reply@sumup.com>'), { adresse: 'no-reply@sumup.com', name: 'SumUp Payments', domain: 'sumup.com' });
+  const korr = [{ id: 1, name: 'SumUp', kurz: 'SUMUP', adressen: 'sumup.com' }, { id: 2, name: 'Kasper', kurz: '', adressen: 'kasper@sumup.com' }];
+  assert.equal(L.korrespondentFinden(korr, 'x@mail.sumup.com')?.name, 'SumUp');
+  assert.equal(L.korrespondentFinden(korr, 'kasper@sumup.com')?.name, 'Kasper', 'genaue Adresse schlägt Domain');
+  assert.equal(L.korrespondentFinden(korr, 'a@notsumup.com'), null);
+  const k = { korrespondent: 'SumUp', datei: 'Abrechnung_2026-10.pdf', doktext: 'Rechnungsnummer: RE-4711', mitglied: 'nein' };
+  const r = {
+    id: 1, name: 'A', status: 'aktiv' as const, prioritaet: 10, gilt_fuer: 'anhang' as const, verknuepfung: 'und' as const, automatik: 'immer' as const, version: 1, aktionen: {},
+    bedingungen: [{ feld: 'korrespondent' as const, op: 'ist' as const, wert: 'sumup' }, { feld: 'datei' as const, op: 'muster' as const, wert: '^abrechnung_.*\\.pdf$' },
+      { feld: 'mitglied' as const, op: 'ist' as const, wert: 'ja', nicht: true }],
+    extraktion: [{ name: 'rgnr', quelle: 'doktext' as const, muster: 'Rechnungsnummer:\\s*(\\S+)', pflicht: true }, { name: 'x', quelle: 'betreff' as const, muster: 'fehlt', pflicht: true }],
+  };
+  assert.equal(L.regelPasst(r, k), true);
+  assert.equal(L.regelPasst({ ...r, bedingungen: [] }, k), false, 'ohne Bedingungen passt nichts');
+  assert.equal(L.waehlen([{ ...r, id: 2, prioritaet: 5, status: 'aus' }, { ...r, id: 3, prioritaet: 20 }, r], k, 'anhang')?.id, 1);
+  assert.equal(L.waehlen([r], k, 'mail'), null);
+  assert.deepEqual(L.extrahieren(r.extraktion, k), { felder: { rgnr: 'RE-4711', x: '' }, fehlend: ['x'] });
+  assert.equal(L.relevanterAnhang({ name: 'logo.png', mime: 'image/png', groesse: 5000 }), false);
+  assert.equal(L.relevanterAnhang({ name: 'scan.png', mime: 'image/png', groesse: 500_000 }), true);
+  assert.equal(L.pfadSicher('Rechnungen/../2026//SumUp '), 'Rechnungen/2026/SumUp');
+  assert.equal(L.vorgangStatus([], false), 'ohne_regel');
+  assert.equal(L.vorgangStatus(['abgelegt', 'fehler', 'pruefen'], false), 'fehler');
+  assert.equal(L.vorgangStatus(['dublette', 'ignoriert'], false), 'abgelegt');
+});
+
+test('Regeln und Korrespondenten pflegen, Rolle, API-Schlüssel', async () => {
+  const rolle = await sql`select permission from core.role_permissions where role_id = 'DOKUMENTENEINGANG' order by 1`;
+  assert.deepEqual(rolle.map((r) => r.permission), ['tco.eingang:display', 'tco.eingang:edit']);
+
+  let r = await admin('POST', `${E}/korrespondenten`, { name: 'SumUp', kurz: 'SUMUP', adressen: 'sumup.com' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await admin('POST', `${E}/korrespondenten`, { name: 'sumup', adressen: '' })).status, 400, 'Name doppelt');
+
+  r = await admin('POST', `${E}/regeln`, regel({ name: 'kaputt', bedingungen: [bed('von', 'muster', '(')] }));
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Ungültiges Muster/);
+  r = await admin('POST', `${E}/regeln`, regel({ name: 'Mail mit Datei', gilt_fuer: 'mail', bedingungen: [bed('datei', 'endet', '.pdf')] }));
+  assert.equal(r.status, 400);
+  assert.equal((await admin('POST', `${E}/regeln`, regel({ name: 'leer', bedingungen: [] }))).status, 400);
+
+  r = await admin('POST', `${E}/regeln`, regel({
+    name: 'SumUp Abrechnung', prioritaet: 10,
+    bedingungen: [bed('korrespondent', 'ist', 'SumUp'), bed('datei', 'endet', '.pdf')],
+    extraktion: [{ name: 'nr', quelle: 'doktext', muster: 'Abrechnung Nr\\.?\\s*(\\d+)', pflicht: true }],
+    aktionen: {
+      paperless: { aktiv: true, titel: 'SumUp Abrechnung {feld.nr}', korrespondent: '{korrespondent}', dokumenttyp: 'Abrechnung', tags: 'Maileingang', datum: '{datum}' },
+      nextcloud: { aktiv: true, pfad: 'Belege/{jahr}', dateiname: '{datum}_{kurz}_{feld.nr}' },
+      mail: { art: 'verschieben', ordner: 'Erledigt', gelesen: true },
+      aufgabe: { aktiv: false, titel: 'Beleg prüfen' },
+    },
+  }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  ids.sumup = r.body.id;
+  r = await admin('POST', `${E}/regeln`, regel({ name: 'Werbung', prioritaet: 20, gilt_fuer: 'mail', bedingungen: [bed('domain', 'ist', 'werbung.example')], aktionen: { mail: { art: 'verschieben', ordner: 'Werbung' } } }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${E}/regeln`, regel({
+    name: 'Mitglieder-Post', status: 'testlauf', prioritaet: 30, bedingungen: [bed('mitglied', 'ist', 'ja')],
+    aktionen: { paperless: { aktiv: true, titel: '{datei|ohneEndung}', korrespondent: '{mitglied}', speicherpfad: 'Mitglieder' } },
+  }));
+  ids.mitglied = r.body.id;
+  r = await admin('GET', `${E}/regeln`);
+  assert.deepEqual(r.body.map((x: any) => [x.name, x.status, x.version, x.treffer]), [['SumUp Abrechnung', 'aktiv', 1, 0], ['Werbung', 'aktiv', 1, 0], ['Mitglieder-Post', 'testlauf', 1, 0]]);
+  // Mailaktion „verschieben“ verlangt einen Ordner
+  assert.equal((await admin('POST', `${E}/regeln`, regel({ name: 'ohne Ordner', bedingungen: [bed('von', 'ist', 'a@b.de')], aktionen: { mail: { art: 'verschieben' } } }))).status, 400);
+
+  // Probe: Regel gegen eine Beispiel-E-Mail prüfen, nichts wird gespeichert
+  const [db] = await sql`select name, beschreibung, status, prioritaet, gilt_fuer, verknuepfung, bedingungen, extraktion, aktionen, automatik from tco.eing_regeln where id = ${ids.sumup}`;
+  r = await admin('POST', `${E}/regeln/test`, { regel: { ...db }, probe: { von: 'SumUp <noreply@mail.sumup.com>', betreff: 'Abrechnung', datei: 'abr.pdf', doktext: 'Abrechnung Nr. 99' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.passt, true);
+  assert.deepEqual(r.body.bedingungen, [true, true]);
+  assert.equal(r.body.paperless.title, 'SumUp Abrechnung 99');
+  assert.equal(r.body.nextcloud.pfad, `Belege/${new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 4)}`);
+
+  r = await admin('GET', `${E}/stamm`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.paperless.dokumenttypen, ['Abrechnung']);
+  assert.equal(r.body.nextcloud.eingerichtet, true);
+
+  // API-Schlüssel für n8n: nur die Schnittstelle
+  r = await admin('POST', '/api/admin/api-keys', { module: 'tco', name: 'n8n-eingang', permissions: ['tco.eingang:melden'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  key = r.body.key;
+  r = await admin('POST', '/api/admin/api-keys', { module: 'tco', name: 'ohne-rechte', permissions: [] });
+  assert.equal((await ext(r.body.key, 'POST', `${E}/mail`, mail({ von: 'a@b.de', betreff: 'x', message_id: '<x@b>' }))).status, 403);
+  assert.equal((await ext(key, 'GET', `${E}/regeln`)).status, 403, 'Schnittstellen-Schlüssel sieht das Regelwerk nicht');
+});
+
+test('n8n: Abgleich, Ablage in Paperless und Nextcloud, Wiederholung, Dublette, Werbung, ohne Regel', async () => {
+  let r = await ext(key, 'POST', `${E}/abgleich`, { postfach: 'info@tc-test.de', mails: [{ message_id: '<m1@sumup.com>', uid: 11 }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body, { neu: [{ message_id: '<m1@sumup.com>', uid: '11' }], aktionen: [] });
+
+  const pdf = { name: 'Abrechnung_2025-02.pdf', mime: 'application/pdf', inhalt: b64('%PDF-1.4 Abrechnung Februar'), text: 'SumUp Abrechnung Nr. 4711 Summe 120,00' };
+  const logo = { name: 'logo.png', mime: 'image/png', inhalt: b64('klein'), text: '' };
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'SumUp <noreply@sumup.com>', betreff: 'Ihre Abrechnung', message_id: '<m1@sumup.com>', uid: 11, anhaenge: [pdf, logo] }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.neu, true);
+  assert.equal(r.body.status, 'abgelegt');
+  assert.deepEqual(r.body.dokumente.map((d: any) => [d.datei, d.status, d.regel, d.paperless_id, d.nextcloud_pfad]),
+    [['Abrechnung_2025-02.pdf', 'abgelegt', 'SumUp Abrechnung', 700, 'Belege/2025/2025-03-03_SUMUP_4711.pdf']]);
+  assert.deepEqual(r.body.mail, { art: 'verschieben', ordner: 'Erledigt', gelesen: true, quelle: 'INBOX', uid: '11' });
+  assert.deepEqual(r.body.aufgaben, [], 'Aufgabe ist an der Regel deaktiviert');
+  const v1 = r.body.vorgang as number;
+  const doc = mock.docs.get(700)!;
+  assert.equal(doc.title, 'SumUp Abrechnung 4711');
+  assert.equal(doc.documentType, '9');
+  assert.equal(mock.korr.find((k) => String(k.id) === doc.correspondent)?.name, 'SumUp', 'Korrespondent in Paperless angelegt');
+  assert.deepEqual(mock.tags.map((t) => t.name), ['Maileingang']);
+  assert.deepEqual(mock.dav, ['/Belege/2025/2025-03-03_SUMUP_4711.pdf']);
+  // nach der Ablage bleiben keine Inhalte im Portal
+  const [d1] = await sql`select d.inhalt, d.kontext, v.text from tco.eing_dokumente d join tco.eing_vorgaenge v on v.id = d.vorgang_id where v.id = ${v1}`;
+  assert.deepEqual({ ...d1 }, { inhalt: null, kontext: null, text: null });
+
+  // dieselbe E-Mail noch einmal: kein zweiter Vorgang, kein zweiter Upload
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'SumUp <noreply@sumup.com>', betreff: 'Ihre Abrechnung', message_id: '<M1@sumup.com>', uid: 11, anhaenge: [pdf] }));
+  assert.equal(r.body.neu, false);
+  assert.equal(r.body.vorgang, v1);
+  assert.equal(mock.docs.size, 1);
+
+  // Behandlung der E-Mail steht aus, bis n8n sie als erledigt meldet
+  r = await ext(key, 'POST', `${E}/abgleich`, { postfach: 'info@tc-test.de', mails: [{ message_id: '<m1@sumup.com>', uid: 11 }] });
+  assert.deepEqual(r.body.neu, []);
+  assert.deepEqual(r.body.aktionen.map((a: any) => [a.vorgang, a.uid, a.art, a.ordner, a.gelesen]), [[v1, '11', 'verschieben', 'Erledigt', true]]);
+  r = await ext(key, 'GET', `${E}/mailaktionen?postfach=${encodeURIComponent('info@tc-test.de')}`);
+  assert.deepEqual(r.body.map((a: any) => [a.vorgang, a.message_id, a.uid, a.quelle, a.art, a.ordner]), [[v1, 'm1@sumup.com', '11', 'INBOX', 'verschieben', 'Erledigt']]);
+  assert.deepEqual((await ext(key, 'GET', `${E}/mailaktionen?postfach=anderes`)).body, []);
+  assert.equal((await ext(key, 'POST', `${E}/vorgaenge/${v1}/mail-erledigt`)).status, 200);
+  r = await ext(key, 'POST', `${E}/abgleich`, { postfach: 'info@tc-test.de', mails: [{ message_id: '<m1@sumup.com>', uid: 11 }] });
+  assert.deepEqual(r.body, { neu: [], aktionen: [] });
+
+  // gleiche Datei in einer zweiten E-Mail: Dublette, kein Upload
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'noreply@sumup.com', betreff: 'Erinnerung', message_id: '<m2@sumup.com>', anhaenge: [pdf] }));
+  assert.deepEqual(r.body.dokumente.map((d: any) => [d.status, d.paperless_id]), [['dublette', 700]]);
+  assert.equal(r.body.status, 'abgelegt');
+  assert.equal(mock.docs.size, 1);
+
+  // Werbung: Regel für die E-Mail selbst, keine Ablage, nur verschieben
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'news@werbung.example', betreff: 'Angebote', message_id: '<m3@w>' }));
+  assert.equal(r.body.status, 'abgelegt');
+  assert.deepEqual(r.body.dokumente, []);
+  assert.equal(r.body.mail.ordner, 'Werbung');
+
+  // keine Regel, kein Anhang: bleibt unangetastet im Postfach
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'jemand@privat.example', betreff: 'Frage zum Training', message_id: '<m4@p>' }));
+  assert.equal(r.body.status, 'ohne_regel');
+  assert.equal(r.body.mail, null);
+  const [v4] = await sql`select text, hinweis from tco.eing_vorgaenge where id = ${r.body.vorgang}`;
+  assert.deepEqual({ ...v4 }, { text: null, hinweis: 'Keine Regel passt.' }, 'Mailtext ohne Vorgang in der Prüfliste wird nicht gespeichert');
+});
+
+test('Prüfliste: Testlauf-Vorschlag, Ablage mit Regel und von Hand, ignorieren, neu bewerten, Fehlerfall', async () => {
+  // Mitglied schreibt: Regel im Testlauf → Vorschlag in der Prüfliste, nichts abgelegt
+  let r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'Hans Müller <hans@example.org>', betreff: 'Bescheinigung', message_id: '<m5@e>', uid: 15,
+    text: 'Hallo, anbei die Bescheinigung.', anhaenge: [{ name: 'bescheinigung.pdf', mime: 'application/pdf', inhalt: b64('%PDF Bescheinigung') }] }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'pruefen');
+  assert.equal(r.body.mail, null);
+  const v5 = r.body.vorgang as number;
+  const dok5 = r.body.dokumente[0].id as number;
+  const vorher = mock.docs.size;
+
+  r = await admin('GET', `${E}/vorgaenge?status=offen`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.offen, { pruefen: 1, fehler: 0 });
+  const zeile = r.body.vorgaenge[0];
+  assert.equal(zeile.id, v5);
+  assert.equal(zeile.mitglied_adrnr, '0000000101');
+  assert.match(zeile.dokumente[0].hinweis, /Testlauf: Regel „Mitglieder-Post“/);
+  assert.equal(zeile.dokumente[0].zuordnung.zuordnung.correspondent, 'Müller Hans');
+  assert.equal(zeile.dokumente[0].vorhanden, true);
+  assert.equal((await admin('GET', `${E}/vorgaenge/${v5}/text`)).body.text, 'Hallo, anbei die Bescheinigung.');
+  const datei5 = await admin('GET', `${E}/dokumente/${dok5}/datei`);
+  assert.equal(datei5.status, 200);
+  assert.match(datei5.ct, /application\/pdf/);
+  assert.match(String(datei5.headers['content-security-policy']), /sandbox/);
+
+  // Ablage mit der vorgeschlagenen Regel, E-Mail nur als gelesen markieren
+  r = await admin('POST', `${E}/dokumente/${dok5}/ablegen`, { regel_id: ids.mitglied, mail: { art: 'keine', gelesen: true } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'abgelegt');
+  assert.equal(mock.docs.size, vorher + 1);
+  const letzte = [...mock.docs.values()].pop()!;
+  assert.equal(letzte.title, 'bescheinigung');
+  assert.equal(mock.korr.find((k) => String(k.id) === letzte.correspondent)?.name, 'Müller Hans');
+  assert.equal((await admin('POST', `${E}/dokumente/${dok5}/ablegen`, { regel_id: ids.mitglied })).status, 400, 'bereits erledigt');
+  assert.equal((await admin('GET', `${E}/dokumente/${dok5}/datei`)).status, 404, 'Datei liegt nicht mehr im Portal');
+  r = await ext(key, 'POST', `${E}/abgleich`, { postfach: 'info@tc-test.de', mails: [{ message_id: '<m5@e>', uid: 15 }] });
+  assert.deepEqual(r.body.aktionen.map((a: any) => [a.vorgang, a.art, a.gelesen]), [[v5, 'keine', true]]);
+
+  // unbekannter Absender mit Anhang: Prüfliste ohne Vorschlag → von Hand ablegen
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'buero@partner.example', betreff: 'Vertrag', message_id: '<m6@p>', anhaenge: [
+    { name: 'vertrag.pdf', mime: 'application/pdf', inhalt: b64('%PDF Vertrag') }, { name: 'anlage.html', mime: 'text/html', inhalt: b64('<script>alert(1)</script>') }] }));
+  assert.equal(r.body.status, 'pruefen');
+  const [a, b] = r.body.dokumente.map((d: any) => d.id as number);
+  const v6 = r.body.vorgang as number;
+  assert.equal((await admin('POST', `${E}/dokumente/${a}/ablegen`, {})).status, 400, 'ohne Regel und ohne Angaben');
+  r = await admin('POST', `${E}/dokumente/${a}/ablegen`, { paperless: { titel: 'Vertrag {von_name}', dokumenttyp: 'Abrechnung' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'pruefen', 'zweites Dokument noch offen');
+  assert.equal([...mock.docs.values()].pop()!.title, 'Vertrag buero@partner.example');
+  // fremdes HTML wird nie im Browser angezeigt
+  const dateiB = await admin('GET', `${E}/dokumente/${b}/datei`);
+  assert.match(dateiB.ct, /application\/octet-stream/);
+  assert.match(String(dateiB.headers['content-disposition']), /^attachment/);
+  r = await admin('POST', `${E}/dokumente/${b}/ignorieren`);
+  assert.equal(r.body.status, 'abgelegt');
+  const [s6] = await sql`select status, text, mail_aktion from tco.eing_vorgaenge where id = ${v6}`;
+  assert.deepEqual({ ...s6 }, { status: 'abgelegt', text: null, mail_aktion: null });
+
+  // Paperless-Fehler: Vorgang „fehler“, Inhalt bleibt; neue Regel + neu bewerten legt ab
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'buero@partner.example', betreff: 'Nachtrag', message_id: '<m7@p>', uid: 17, anhaenge: [{ name: 'kaputt.pdf', mime: 'application/pdf', inhalt: b64('%PDF Nachtrag') }] }));
+  const v7 = r.body.vorgang as number;
+  assert.equal(r.body.status, 'pruefen');
+  r = await admin('POST', `${E}/regeln`, regel({ name: 'Partner', prioritaet: 40, bedingungen: [bed('domain', 'ist', 'partner.example')],
+    aktionen: { paperless: { aktiv: true, titel: 'Partner {datei|ohneEndung}' }, mail: { art: 'loeschen' } } }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${E}/vorgaenge/${v7}/neu-bewerten`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'fehler');
+  r = await admin('GET', `${E}/vorgaenge?status=fehler`);
+  assert.match(r.body.vorgaenge[0].dokumente[0].hinweis, /HTTP 500/);
+  assert.equal(r.body.vorgaenge[0].dokumente[0].vorhanden, true);
+  assert.equal((await ext(key, 'GET', `${E}/vorgaenge/${v7}`)).body.mail, null, 'keine Mailaktion, solange die Ablage fehlt');
+  mock.kaputt = false;
+  r = await admin('POST', `${E}/vorgaenge/${v7}/neu-bewerten`);
+  assert.equal(r.body.status, 'abgelegt');
+  r = await ext(key, 'GET', `${E}/vorgaenge/${v7}`);
+  assert.deepEqual(r.body.mail, { art: 'loeschen', ordner: '', gelesen: false, quelle: 'INBOX', uid: '17' });
+  assert.equal([...mock.docs.values()].pop()!.title, 'Partner kaputt');
+
+  // Vorgang ohne Ablage schließen; verwerfen = wird neu eingelesen
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'x@unbekannt.example', betreff: 'Flyer', message_id: '<m8@u>', anhaenge: [{ name: 'flyer.pdf', mime: 'application/pdf', inhalt: b64('%PDF Flyer') }] }));
+  const v8 = r.body.vorgang as number;
+  r = await admin('POST', `${E}/vorgaenge/${v8}/ignorieren`);
+  assert.equal(r.body.status, 'ignoriert');
+  assert.equal((await admin('DELETE', `${E}/vorgaenge/${v8}`)).status, 200);
+  r = await ext(key, 'POST', `${E}/abgleich`, { postfach: 'info@tc-test.de', mails: [{ message_id: '<m8@u>' }] });
+  assert.equal(r.body.neu.length, 1);
+
+  // Trefferzahl und Version der Regeln
+  r = await admin('PUT', `${E}/regeln/${ids.mitglied}`, regel({ name: 'Mitglieder-Post', status: 'aktiv', prioritaet: 30, bedingungen: [bed('mitglied', 'ist', 'ja')],
+    aktionen: { paperless: { aktiv: true, titel: '{datei|ohneEndung}', korrespondent: '{mitglied}' } } }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${E}/regeln`);
+  const m = r.body.find((x: any) => x.id === ids.mitglied);
+  assert.deepEqual([m.status, m.version, m.treffer], ['aktiv', 2, 1]);
+  const belege = await sql`select count(*)::int as n from core.change_header where object_type = 'EING_REGEL'`;
+  assert.ok(belege[0].n >= 5, 'Änderungsbelege für Regeln');
+});
+
+test('Berechtigungen: Anzeigen sieht keine Inhalte und pflegt nichts', async () => {
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'EINGLESER', name: 'Eingang lesen', permissions: ['tco.eingang:display'] })).status, 200);
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'leser', displayName: 'Lea Leser', password: 'start-passwort', roles: ['EINGLESER'] })).status, 200);
+  const leser = client();
+  await leser('POST', '/api/auth/login', { username: 'leser', password: 'start-passwort' });
+  assert.equal((await leser('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort-1' })).status, 200);
+  let r = await leser('GET', `${E}/vorgaenge`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.vorgaenge.length >= 6);
+  assert.ok(r.body.vorgaenge.every((v: any) => !('text' in v) && v.dokumente.every((d: any) => !('inhalt' in d))));
+  assert.equal((await leser('GET', `${E}/vorgaenge/${r.body.vorgaenge[0].id}/text`)).status, 403);
+  assert.equal((await leser('POST', `${E}/regeln`, regel({ name: 'x', bedingungen: [bed('von', 'ist', 'a@b.de')] }))).status, 403);
+  assert.equal((await leser('POST', `${E}/vorgaenge/${r.body.vorgaenge[0].id}/ignorieren`)).status, 403);
+  assert.equal((await leser('POST', `${E}/mail`, mail({ von: 'a@b.de', betreff: 'x', message_id: '<z@b>' }))).status, 403);
+});
