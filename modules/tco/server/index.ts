@@ -37,6 +37,7 @@ import { kalenderRoutes, P_KAL } from './kalender/routes.js';
 import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { mailPersonen } from './mailpersonen.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
+import { eingangRoutes, P_EING } from './eingang/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -155,6 +156,7 @@ async function routes(app: FastifyInstance) {
   await analyseRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
+  await eingangRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -224,6 +226,10 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
     { area: 'Finanzen', app: 'Dokumenten-Upload', id: P_UP.execute, text: 'Belege gesammelt nach Paperless übertragen' },
+    // ---------------------------------------------------------------- Dokumente
+    { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.display, text: 'Dokumenteneingang anzeigen: Regelwerk, Korrespondenten und Protokoll der eingegangenen E-Mails mit Ablageort (ohne Inhalte)' },
+    { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.edit, text: 'Regelwerk und Korrespondenten des Dokumenteneingangs pflegen, Prüfliste bearbeiten: Mailtext und Anhänge offener Vorgänge ansehen, ablegen oder ignorieren', requires: [P_EING.display] },
+    { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.melden, text: 'Schnittstelle für n8n (API-Schlüssel): eingegangene E-Mails samt Anhängen an das Portal liefern und deren Behandlung abholen' },
     // ---------------------------------------------------------------- Datenschutz (Feldberechtigungen)
     { area: 'Datenschutz', app: 'Bankdaten von Personen', id: P_BANK.display,
       text: 'IBAN, BIC und abweichenden Kontoinhaber im Klartext sehen (sonst maskiert) – auch in Unterlagen, Änderungsbelegen und der SEPA-Datei' },
@@ -288,6 +294,8 @@ const tco: ServerModule = {
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
+    { type: 'EING_REGEL', text: 'Regel Dokumenteneingang', permission: P_EING.display },
+    { type: 'EING_KORRESPONDENT', text: 'Korrespondent Dokumenteneingang', permission: P_EING.display },
   ],
   migrationsDir: path.join(APP_ROOT, 'modules', 'tco', 'server', 'migrations'),
   routes,
