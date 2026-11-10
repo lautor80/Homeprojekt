@@ -246,3 +246,8 @@ button.portal-av__eintrag--kz { cursor: pointer; }
 
 /* Kopf der Vereinsübersicht: Mitglieder und Arbeitsvorrat nebeneinander */
 .portal-dash__oben { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 0 1rem; align-items: start; }
+
+/* Auswahl in einer Kachel/Card (z. B. Zeitraum der Belegungsquote, #103) */
+.portal-kpi__varianten { margin-top: 0.375rem; }
+.portal-kpitile__content .portal-kpi__varianten { margin-top: 0; align-self: flex-end; }
+.portal-kpi__varianten ui5-segmented-button { font-size: var(--sapFontSmallSize); }

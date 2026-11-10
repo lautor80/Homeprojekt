@@ -227,16 +227,27 @@ test('Dashboard: Buchungen ohne Beleg im laufenden Monat, Abgleich Gewinn/Ergebn
 });
 
 test('Dashboard: Belegungsquote der Halle innerhalb der Buchungszeiten', async () => {
-  const { belegungsquote, hallenSaison } = await import('../../modules/tco/server/dashboard/kpi.js');
-  assert.deepEqual(hallenSaison('2026-11-09'), { von: '2026-10-01', bis: '2026-11-09', laufend: true });
-  assert.deepEqual(hallenSaison('2026-06-15'), { von: '2025-10-01', bis: '2026-04-30', laufend: false });
+  const { belegungsquote, hallenSaison, hallenZeitraum } = await import('../../modules/tco/server/dashboard/kpi.js');
+  assert.deepEqual(hallenSaison('2026-11-09'), { von: '2026-09-01', bis: '2026-11-09', laufend: true });
+  assert.deepEqual(hallenSaison('2026-06-15'), { von: '2025-09-01', bis: '2026-04-30', laufend: false });
+  assert.deepEqual([hallenZeitraum('2026-11-10', 'MONAT').von, hallenZeitraum('2026-11-10', 'JAHR').von, hallenZeitraum('2026-11-10', 'SAISON').von],
+    ['2026-11-01', '2026-01-01', '2026-09-01']);
   await sql`insert into tco.plaetze (name, art, aliase, wochentage, zeit_von, zeit_bis, gueltig_von) values ('Halle 1', 'HALLE', 'H1', '1234567', '08:00', '22:00', '2020-01-01')`;
   // 01./02.10.2025: Kapazität 2 × 14 Std; Buchung 10–12 Uhr, eine über das Buchungsende hinaus (21–23 → 1 Std), eine storniert
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values
             ('Q1', '2025-10-01', '10:00', '12:00', 'A', '1', 'Halle 1'), ('Q2', '2025-10-02', '21:00', '23:00', 'B', '3', 'h1'),
             ('Q3', '2025-10-02', '14:00', '16:00', 'C', '2', 'Halle 1')`;
-  const q = await belegungsquote(sql as never, '2025-10-02');
+  const q = await belegungsquote(sql as never, { von: '2025-10-01', bis: '2025-10-02' });
   assert.deepEqual([q.belegt, q.kapazitaet, q.quote], [180, 1680, 10.71]);
+
+  // #103: Buchungen ohne Platz (SAP) zählen mit – begrenzt auf die Buchungszeiten –, Freiplätze nicht;
+  // „gültig ab“ des Hallenplatzes (Anlagedatum) kürzt die Kapazität früherer Zeiträume nicht
+  await sql`update tco.plaetze set gueltig_von = '2026-11-09' where name = 'Halle 1'`;
+  await sql`insert into tco.plaetze (name, art, wochentage, zeit_von, zeit_bis) values ('Platz 1', 'FREI', '1234567', '08:00', '20:00')`;
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values
+            ('Q4', '2025-10-01', '07:00', '09:00', 'D', '3', null), ('Q5', '2025-10-02', '10:00', '11:00', 'E', '1', 'Platz 1')`;
+  const q2 = await belegungsquote(sql as never, { von: '2025-10-01', bis: '2025-10-02' });
+  assert.deepEqual([q2.belegt, q2.kapazitaet, q2.ohnePlatz], [240, 1680, 1]);
 });
 
 test('Dashboard: Berechtigung', async () => {

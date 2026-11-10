@@ -17,7 +17,7 @@ import { arbeitsvorrat } from './arbeitsvorrat.js';
 import { geldkonten, kontoKey, liquiditaet, monatsverlauf } from './finanzen.js';
 import {
   bswVertragWechseln, collectClubhaus, collectFinanzen, collectHalle, collectJugend, collectMitglieder,
-  detailBeitragswechsel, detailClubhausOp, detailClubhausUmsatz, type Bereich,
+  detailBeitragswechsel, detailClubhausOp, detailClubhausUmsatz, HAL_ZEITRAEUME, type Bereich, type HalZeitraum,
 } from './kpi.js';
 
 export const P_DASH = { display: 'tco.dashboard:display', edit: 'tco.dashboard:edit' };
@@ -40,6 +40,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const q = z.object({
       jahr: jahr.optional(), jugJahre: liste, halJahre: liste, finJahre: liste, finKonten: liste,
       jugAnsicht: z.enum([JUG_GESAMT, JUG_TRAINER]).default(JUG_TRAINER),
+      halZeitraum: z.enum(Object.keys(HAL_ZEITRAEUME) as [HalZeitraum, ...HalZeitraum[]]).default('SAISON'),
     }).parse(req.query);
     const h = heute();
     const hj = Number(h.slice(0, 4));
@@ -51,7 +52,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       { key: 'FINANZEN', title: 'Finanzen', kpis: await collectFinanzen(DB, gj) },
       { key: 'CLUBHAUS', title: 'Clubhaus', kpis: await collectClubhaus(DB, gj) },
       { key: 'JUGEND', title: 'Jugend', kpis: await collectJugend(DB, gj) },
-      { key: 'HALLE', title: 'Halle', kpis: await collectHalle(DB) },
+      { key: 'HALLE', title: 'Halle', kpis: await collectHalle(DB, q.halZeitraum) },
     ];
 
     // Jahresauswahl der Diagramme (load_cmp_years / fin_auswahl_laden)
