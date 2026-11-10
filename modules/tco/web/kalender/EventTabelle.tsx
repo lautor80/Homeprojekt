@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
+  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
   type AnalyticalTableColumnDefinition, type AnalyticalTableCellInstance as Cell,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -36,6 +36,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
   const [auswahl, setAuswahl] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [vergangene, setVergangene] = useState(false);
+  const [suche, setSuche] = useState('');
   const [regeln, setRegeln] = useState(false);
   const [ueberschreiben, setUeberschreiben] = useState(false);
   const [zuordnung, setZuordnung] = useState<{ text: string; zeilen: RegelZeile[] } | null>(null);
@@ -67,12 +68,21 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
   useEffect(() => { if (aktiv) laden(); }, [aktiv, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const heute = useMemo(() => { const h = new Date(); h.setHours(0, 0, 0, 0); return h.getTime(); }, []);
-  const zeilen: Zeile[] = useMemo(() => (events ?? [])
+  const alleZeilen: Zeile[] = useMemo(() => (events ?? [])
     .filter((e) => vergangene || new Date(e.ende ?? e.beginn).getTime() >= heute)
     .map((e) => ({
       ...e, beginn_text: beginnText(e), art: kategorien[e.kategorie] ?? e.kategorie, gruppe: e.gruppen_namen.join(', ') || 'alle Mitglieder',
       anmeldung_text: e.anmeldung ? 'ja' : 'nein', begegnung: (e.beschreibung ?? '').split('\n')[0], zusagen_gesamt: e.zusagen + e.begleitpersonen, status_text: e.abgesagt ? 'abgesagt' : '',
     })), [events, vergangene, kategorien, heute]);
+  // Textsuche über alle Textspalten: jedes Wort muss vorkommen, Groß-/Kleinschreibung egal
+  const zeilen: Zeile[] = useMemo(() => {
+    const worte = suche.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!worte.length) return alleZeilen;
+    return alleZeilen.filter((z) => {
+      const text = [z.beginn_text, z.titel, z.art, z.ort ?? '', z.gruppe, z.begegnung, z.status_text].join(' ').toLowerCase();
+      return worte.every((w) => text.includes(w));
+    });
+  }, [alleZeilen, suche]);
   // Auswahl nur für angezeigte Zeilen
   const sichtbar = useMemo(() => new Set(zeilen.map((z) => z.id)), [zeilen]);
   const gewaehlt = auswahl.filter((id) => sichtbar.has(id));
@@ -136,7 +146,9 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
     <>
       <div ref={kopf}>
       <div className="portal-kal__leiste" style={{ marginTop: 0 }}>
-        <Text><b>{zeilen.length}</b> Veranstaltung(en){gewaehlt.length ? ` · ${gewaehlt.length} ausgewählt` : ''}</Text>
+        <Text><b>{zeilen.length}</b>{zeilen.length !== alleZeilen.length ? ` von ${alleZeilen.length}` : ''} Veranstaltung(en){gewaehlt.length ? ` · ${gewaehlt.length} ausgewählt` : ''}</Text>
+        <Input icon={<Icon name="search" />} placeholder="Suchen (Titel, Ort, Gruppe, Begegnung …)" accessibleName="Tabelle durchsuchen" showClearIcon
+               value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: 'min(22rem, 100%)' }} />
         <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />
         <span style={{ flex: 1 }} />
         <Button icon="activities" tooltip="Regeln „Text in Spalte => Gruppe“ pflegen" onClick={() => setRegeln(true)}>Regelwerk</Button>
@@ -145,10 +157,10 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
                 onClick={regelnAnwenden}>Regelwerk anwenden{gewaehlt.length ? ` (${gewaehlt.length})` : ' (alle)'}</Button>
       </div>
       <div className="portal-kal__masse-bearbeiten" style={{ marginBottom: '0.5rem' }}>
-        <Label>Massenbearbeitung für {gewaehlt.length} ausgewählte Zeile(n)</Label>
+        <Label>Massenbearbeitung für {gewaehlt.length} ausgewählte Zeile(n) – ausgefüllte Felder werden als neue Werte gesetzt</Label>
         <div className="portal-az__leiste" style={{ position: 'static' }}>
-          <Input placeholder="Titel" value={m.titel} maxlength={120} onInput={(e) => setM({ ...m, titel: e.target.value })} style={{ width: '14rem' }} />
-          <Input placeholder="Ort" value={m.ort} maxlength={120} onInput={(e) => setM({ ...m, ort: e.target.value })} style={{ width: '12rem' }} />
+          <Input placeholder="Neuer Titel" accessibleName="Neuer Titel" value={m.titel} maxlength={120} onInput={(e) => setM({ ...m, titel: e.target.value })} style={{ width: '14rem' }} />
+          <Input placeholder="Neuer Ort" accessibleName="Neuer Ort" value={m.ort} maxlength={120} onInput={(e) => setM({ ...m, ort: e.target.value })} style={{ width: '12rem' }} />
           <Select accessibleName="Art" style={{ width: '12rem' }} onChange={(e) => setM({ ...m, kategorie: (e.detail.selectedOption as HTMLElement).dataset.k ?? '' })}>
             <Option data-k="" selected={!m.kategorie}>Art unverändert</Option>
             {Object.entries(kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={m.kategorie === k}>{t}</Option>)}
@@ -175,7 +187,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
                        selectionMode="Multiple" selectionBehavior="RowSelector" selectedRowIds={selectedRowIds} reactTableOptions={tabellenOptionen}
                        onRowSelect={(e) => setAuswahl(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number))}
                        visibleRowCountMode="Auto"
-                       noDataText={vergangene ? 'Noch keine Veranstaltungen.' : 'Keine künftigen Veranstaltungen – „Vergangene anzeigen“ blendet die übrigen ein.'} />
+                       noDataText={suche.trim() ? 'Keine Veranstaltung passt zur Suche.' : vergangene ? 'Noch keine Veranstaltungen.' : 'Keine künftigen Veranstaltungen – „Vergangene anzeigen“ blendet die übrigen ein.'} />
       </div>
       {regeln && <EventRegelnDialog gruppen={gruppen} onClose={() => setRegeln(false)} />}
       {loeschen && createPortal(
