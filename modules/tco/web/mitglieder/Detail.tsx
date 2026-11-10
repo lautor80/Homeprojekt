@@ -74,6 +74,8 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
   if (!d) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : <Text>Lade …</Text>;
   const m = d.mitglied;
   const ausgetreten = !!m.austritt;
+  /** Kategorie Schnuppertraining (#86): noch kein Mitglied */
+  const schnuppert = !!d.schnupper && !m.eintritt && !['MITGLIED', 'ABGESAGT'].includes(d.schnupper.status);
   const unterlagen = aw?.unterlagen ?? {};
 
   const initialen = `${m.vorname?.[0] ?? ''}${m.nachname?.[0] ?? ''}`.toUpperCase() || undefined;
@@ -84,8 +86,9 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
         initials={initialen}
         subtitle={[m.mitglnrn && `Mitglied Nr. ${m.mitglnrn}`, `Adressnummer ${Number(m.adrnr)}`, [m.strasse, `${m.plz} ${m.ort}`.trim()].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
         status={<>
-          <ObjectStatus state={m.aktiv ? 'Positive' : ausgetreten ? 'Negative' : 'Critical'} inverted>
-            {m.aktiv ? 'Aktiv' : ausgetreten ? `Austritt ${dat(m.austritt)}` : m.mitglnrn ? 'Ohne Eintritt' : 'Zahler'}
+          <ObjectStatus state={m.aktiv ? 'Positive' : ausgetreten ? 'Negative' : schnuppert ? 'Information' : 'Critical'} inverted>
+            {m.aktiv ? 'Aktiv' : ausgetreten ? `Austritt ${dat(m.austritt)}` : m.mitglnrn ? 'Ohne Eintritt'
+              : schnuppert ? 'Schnuppertraining' : d.schnupper?.status === 'ABGESAGT' ? 'Schnuppern abgesagt' : 'Zahler'}
           </ObjectStatus>
           {d.trainer && <ObjectStatus state="Information" inverted>Trainer</ObjectStatus>}
           {d.zuid && <ObjectStatus state="Information">EP3-Kunde {d.zuid}</ObjectStatus>}
@@ -224,12 +227,41 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
         </Feld>
         <Feld label="EP3-Kundennummer">{t(d.zuid)}</Feld>
       </Raster>
+      {d.schnupper && <SchnupperAngaben s={d.schnupper} />}
       <ConfirmDialog open={frage} title={austritt ? 'Austritt sichern' : 'Austritt entfernen'}
                      text={austritt
                        ? `Austritt zum ${dat(austritt)} sichern? Das SEPA-Mandat gilt dann bis zu diesem Tag.`
                        : 'Austritt entfernen? Das SEPA-Mandat wird wieder aktiv und unbefristet.'}
                      confirmText="Sichern" onCancel={() => setFrage(false)}
                      onConfirm={() => { setFrage(false); onAktion(() => api.post(`${MG}/m/${m.adrnr}/austritt`, { austritt: austritt || null })); }} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- Schnuppertraining (#86)
+const SCHNUPPER_STATUS: Record<string, string> = {
+  NEU: 'Neu', KONTAKTIERT: 'Kontaktiert', TERMIN: 'Termin vereinbart', ABSOLVIERT: 'Schnuppern absolviert', MITGLIED: 'Mitglied geworden', ABGESAGT: 'Abgesagt',
+};
+const SCHNUPPER_STUFE: Record<string, string> = { NEU: 'Neu (noch nie gespielt)', ANFAENGER: 'Anfänger', FORTGESCHRITTEN: 'Fortgeschritten' };
+function SchnupperAngaben({ s }: { s: NonNullable<Detail['schnupper']> }) {
+  const termine = [[...(s.termine.tage ?? []), ...(s.termine.zeiten ?? [])].join(', '), s.termine.text].filter(Boolean).join(' · ');
+  return (
+    <>
+      <Toolbar design="Transparent"><Title level="H5">Schnuppertraining {s.nummer}</Title><ToolbarSpacer /></Toolbar>
+      <Raster>
+        <Feld label="Status">{t(SCHNUPPER_STATUS[s.status] ?? s.status)}</Feld>
+        <Feld label="Angemeldet am">{t(s.eingang ? new Date(s.eingang).toLocaleDateString('de-DE') : '')}</Feld>
+        <Feld label="Alter bei Anmeldung">{t(s.alter != null ? `${s.alter} Jahre` : '')}</Feld>
+        <Feld label="Schon Tennis gespielt">{t(s.gespielt ? 'Ja' : 'Nein')}</Feld>
+        <Feld label="Spielstärke">{t(SCHNUPPER_STUFE[s.stufe] ?? s.stufe)}</Feld>
+        <Feld label="Mögliche Termine">{t(termine)}</Feld>
+        <Feld label="Erziehungsberechtigt">{t(s.erziehungsberechtigt)}</Feld>
+        <Feld label="1. / 2. Einheit">{t([dat(s.einheit1), dat(s.einheit2)].filter(Boolean).join(' / '))}</Feld>
+        <Feld label="Trainer">{t(s.trainer)}</Feld>
+        <Feld label="Mitteilung">{t(s.mitteilung)}</Feld>
+        <Feld label="Notiz Trainer">{t(s.notiz)}</Feld>
+        <Feld label="Mitgliedsantrag">{t(s.antrag)}</Feld>
+      </Raster>
     </>
   );
 }

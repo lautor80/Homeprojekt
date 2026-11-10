@@ -128,7 +128,7 @@ test('Vertragsbeginn und Namensvergleich', () => {
 test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   let r = await call('GET', `${M}/liste`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.anzahl, { AKTIV: 2, AUSGETRETEN: 1, KUNDEN: 1, ELTERN: 1, ALLE: 4 });
+  assert.deepEqual(r.body.anzahl, { AKTIV: 2, AUSGETRETEN: 1, SCHNUPPER: 0, KUNDEN: 1, ELTERN: 1, ALLE: 4 });
   assert.deepEqual(r.body.zeilen.map((z: any) => z.name), ['Müller, Hans', 'Müller, Mia']);
   r = await call('GET', `${M}/liste?status=ALLE&suche=kr`);
   assert.deepEqual(r.body.zeilen.map((z: any) => [z.name, z.info, z.status_txt]), [['Krämer, Peter', 'Zahler · 66649 Oberthal', 'Ohne Eintritt']]);

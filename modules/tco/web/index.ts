@@ -24,6 +24,8 @@ import { Konten } from './konten/Konten';
 import { Produkte } from './produkte/Produkte';
 import { Beitritt } from './antrag/Beitritt';
 import { Mitgliedsantraege } from './antrag/Mitgliedsantraege';
+import { Schnuppertraining } from './schnupper/Schnuppertraining';
+import { SchnupperVerwaltung } from './schnupper/SchnupperVerwaltung';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
 import { MitgliedRegistrierungen } from './platz/MitgliedRegistrierungen';
 import { MeineDaten } from './platz/MeineDaten';
@@ -84,6 +86,7 @@ const mod: WebModule = {
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
             { text: 'Mitgliedergruppen', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
             { text: 'Mitgliedsanträge', icon: 'personnel-view', path: '/tco/mitgliedsantraege', permission: 'tco.antraege:display' },
+            { text: 'Schnuppertraining', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
             { text: 'Registrierungen', icon: 'add-employee', path: '/tco/registrierungen', permission: 'tco.registrierung:mitglied' },
             { text: 'Mitgliedsbeiträge', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
             { text: 'Mitglieder-Analyse', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
@@ -166,6 +169,7 @@ const mod: WebModule = {
     { path: '/tco/konten', component: Konten, permission: 'tco.konten:display' },
     { path: '/tco/produkte', component: Produkte, permission: 'tco.produkte:display' },
     { path: '/tco/mitgliedsantraege', component: Mitgliedsantraege, permission: 'tco.antraege:display' },
+    { path: '/tco/schnuppertraining', component: SchnupperVerwaltung, permission: 'tco.schnupper:display' },
     { path: '/tco/registrierungen', component: MitgliedRegistrierungen, permission: 'tco.registrierung:mitglied' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
@@ -173,6 +177,7 @@ const mod: WebModule = {
   ],
   oeffentlich: [
     { pfad: '/beitritt', component: Beitritt },
+    { pfad: '/schnuppertraining', component: Schnuppertraining },
     { pfad: '/registrierung-bestaetigen', component: RegistrierungBestaetigen },
     { pfad: '/einladung', component: Einladung },
   ],
@@ -183,6 +188,7 @@ const mod: WebModule = {
     { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
     { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
+    { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Mitgliedergruppen', subtitle: 'Kategorien, Gruppen und Mannschaften im Baum', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },

@@ -129,6 +129,20 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
+  // Schnuppertraining (#86): neue Anmeldungen warten auf Kontaktaufnahme durch einen Trainer
+  if (can(req, 'tco.schnupper:edit')) {
+    const [s] = await db`select count(*)::int as n, to_char(min(eingang) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
+                           from tco.schnupper where status = 'NEU'`;
+    if (s?.n) {
+      out.push({
+        key: 'SCHNUPPER', bereich: 'Mitglieder', icon: 'physical-activity', state: 'Critical',
+        titel: `${s.n} Anmeldung${s.n === 1 ? '' : 'en'} zum Schnuppertraining`,
+        text: 'Online eingegangen – bitte Kontakt aufnehmen und einen Termin vereinbaren.',
+        datum: s.seit, pfad: '/tco/schnuppertraining',
+      });
+    }
+  }
+
   // Platzbuchung: Registrierungen externer Hallennutzer warten auf Bestätigung (nur ohne E-Mail-Bestätigung)
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit

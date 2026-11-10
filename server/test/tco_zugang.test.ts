@@ -327,6 +327,109 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   assert.match(letzteMail('fiona@example.org')!.text, /Bereits Mitglied/);
 });
 
+test('Schnuppertraining (#86): Anmeldung als Kategorie im Mitgliederstamm, Betreuung, Beitritt übernimmt denselben Stammsatz', async () => {
+  const gast = client();
+  let r = await gast('GET', `${T}/schnupper`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.einheiten, 2);
+  assert.match(r.body.text, /kostenlos/);
+  const jahr = Number(heute().slice(0, 4));
+  const lena = {
+    vorname: 'Lena', nachname: 'Lob', alter: 12, gespielt: false, stufe: 'NEU', email: 'lars.lob@example.org', mobil: '0170 1234567',
+    termine: { tage: ['Di', 'Do'], zeiten: ['nachmittags'], text: 'ab 16 Uhr' }, erziehungsberechtigt: 'Lars Lob', einwilligung: true,
+  };
+  assert.match((await gast('POST', `${T}/schnupper`, { ...lena, email: null, mobil: null })).body.message, /E-Mail-Adresse oder Handynummer/);
+  assert.match((await gast('POST', `${T}/schnupper`, { ...lena, erziehungsberechtigt: null })).body.message, /Erziehungsberechtigten/);
+  assert.equal((await gast('POST', `${T}/schnupper`, { ...lena, einwilligung: false })).status, 400);
+  assert.equal((await gast('POST', `${T}/schnupper`, { ...lena, termine: { tage: [], zeiten: [] } })).status, 400, 'mögliche Termine nötig');
+  r = await gast('POST', `${T}/schnupper`, { ...lena, website: 'spam' });
+  assert.equal(r.status, 200);
+  assert.equal((await sql`select count(*)::int as n from tco.schnupper`)[0].n, 0, 'Honigtopf verwirft Bots');
+  r = await gast('POST', `${T}/schnupper`, lena);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.nummer, `ST-${jahr}-0001`);
+  assert.match(letzteMail('lars.lob@example.org')!.betreff, /Schnuppertraining/);
+  assert.match((await gast('POST', `${T}/schnupper`, lena)).body.message, /bereits zum Schnuppertraining angemeldet/, 'keine Doppelanmeldung');
+
+  // Kategorie im Mitgliederstamm: ohne Mitgliedsnummer/Eintritt, zählt nicht als aktives Mitglied
+  const [st] = await sql`select s.adrnr, s.token, m.mitglnrn, m.eintritt, m.telefon6 from tco.schnupper s join tco.mitglieder m using (adrnr)`;
+  assert.equal(st.mitglnrn, null);
+  assert.equal(st.eintritt, null);
+  r = await admin('GET', `${T}/mitglieder/liste?status=SCHNUPPER`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.anzahl.SCHNUPPER, 1);
+  assert.deepEqual(r.body.zeilen.map((z: any) => [z.name, z.status_txt, z.schnupper]), [['Lob, Lena', 'Schnuppertraining', true]]);
+  r = await admin('GET', `${T}/mitglieder/liste?status=AKTIV`);
+  assert.ok(!r.body.zeilen.some((z: any) => z.adrnr === st.adrnr));
+  r = await admin('GET', `${T}/mitglieder/m/${st.adrnr}`);
+  assert.equal(r.body.schnupper.stufe, 'NEU');
+  assert.equal(r.body.schnupper.alter, 12);
+  r = await admin('GET', `${T}/dashboard/arbeitsvorrat`);
+  assert.ok((r.body.aufgaben ?? r.body).some((x: any) => x.key === 'SCHNUPPER'));
+
+  // Trainer: eigene Rechte, kein Zugriff auf den Mitgliederstamm
+  await admin('POST', '/api/admin/roles', { id: 'SCHNUPPER_LESER', name: 'Schnuppern lesen', permissions: ['tco.schnupper:display'] });
+  await admin('POST', '/api/admin/users', { username: 'schnuppertrainer', displayName: 'Trainer', password: 'start-passwort', roles: ['SCHNUPPER_LESER'] });
+  const trainer = client();
+  await trainer('POST', '/api/auth/login', { username: 'schnuppertrainer', password: 'start-passwort' });
+  await trainer('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' });
+  r = await trainer('GET', `${T}/schnuppertraining`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.zeilen[0].vorname, 'Lena');
+  assert.equal(r.body.zeilen[0].whatsapp, '491701234567');
+  assert.deepEqual(r.body.zeilen[0].termine, { tage: ['Di', 'Do'], zeiten: ['nachmittags'], text: 'ab 16 Uhr' });
+  assert.equal((await trainer('PUT', `${T}/schnuppertraining/${st.adrnr}`, { status: 'KONTAKTIERT' })).status, 403);
+  assert.equal((await trainer('GET', `${T}/mitglieder/liste`)).status, 403);
+
+  // Betreuung: beide Einheiten → absolviert; „Mitglied“ nur über den Antrag
+  assert.equal((await admin('PUT', `${T}/schnuppertraining/${st.adrnr}`, { status: 'MITGLIED' })).status, 400);
+  assert.equal((await admin('PUT', `${T}/schnuppertraining/${st.adrnr}`, { status: 'TERMIN', einheit1: '2026-05-05', einheit2: '2026-05-01' })).status, 400);
+  r = await admin('PUT', `${T}/schnuppertraining/${st.adrnr}`, { status: 'TERMIN', einheit1: '2026-05-05', einheit2: '2026-05-12', trainer: 'Tom Trainer', notiz: 'sehr motiviert' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /absolviert/);
+
+  // Beitrittslink: vorbelegter Mitgliedsantrag
+  r = await admin('POST', `${T}/schnuppertraining/${st.adrnr}/beitrittslink`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.link, `https://portal.example.org/beitritt?schnupper=${st.token}`);
+  assert.ok(letzteMail('lars.lob@example.org')!.text.includes(r.body.link));
+  r = await gast('GET', `${T}/schnupper/beitritt?token=${st.token}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.vorname, r.body.nachname, r.body.email, r.body.mobil], ['Lena', 'Lob', 'lars.lob@example.org', '0170 1234567']);
+  assert.equal((await gast('GET', `${T}/schnupper/beitritt?token=${'x'.repeat(32)}`)).status, 404);
+
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Frau', vorname: 'Lena', nachname: 'Lob', geburtsdatum: `${jahr - 12}-01-15`, art: '3' }],
+    strasse: 'Netzweg 2', plz: '66649', ort: 'Oberthal', email: 'lars.lob@example.org', telefon: '0170 1234567', erziehungsberechtigt: 'Lars Lob',
+    eintritt: heute(), satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, schnupper: st.token,
+    bank: { kontoinhaber: 'Lars Lob', iban: 'DE02 1203 0000 0000 2020 51', sepa: true },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${T}/mitgliedsantraege`);
+  const ma = r.body.find((x: any) => x.status === 'EINGANG' && x.daten.personen[0].vorname === 'Lena');
+  assert.ok(ma.hinweise.some((h: string) => /Schnuppertraining ST-/.test(h)), JSON.stringify(ma.hinweise));
+  assert.ok(!ma.hinweise.some((h: string) => /gesperrt/.test(h)), 'Schnupperer ist keine Dublette');
+  r = await admin('POST', `${T}/mitgliedsantraege/${ma.id}/uebernehmen`, { mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.mitglieder[0].adrnr, st.adrnr, 'derselbe Stammsatz wird Mitglied');
+  assert.match(r.body.text, /Schnuppertraining übernommen/);
+  const leni = await sql`select adrnr, mitglnrn, eintritt::text, geburtsdatum::text, strasse, telefon6 from tco.mitglieder where vorname = 'Lena' and nachname = 'Lob'`;
+  assert.equal(leni.length, 1, 'keine Dublette');
+  assert.ok(leni[0].mitglnrn);
+  assert.equal(leni[0].eintritt, heute());
+  assert.equal(leni[0].strasse, 'Netzweg 2');
+  assert.equal(leni[0].telefon6, '0170 1234567', 'Handynummer aus der Schnupper-Anmeldung bleibt');
+  const [s2] = await sql`select status, antrag from tco.schnupper where adrnr = ${st.adrnr}`;
+  assert.deepEqual([s2.status, s2.antrag], ['MITGLIED', ma.nummer]);
+  assert.equal((await sql`select count(*)::int as n from tco.vertraege where adrnr = ${st.adrnr}`)[0].n, 1);
+  r = await admin('GET', `${T}/mitglieder/liste?status=SCHNUPPER`);
+  assert.equal(r.body.anzahl.SCHNUPPER, 0, 'Kategorie gewechselt');
+  r = await admin('GET', `${T}/mitglieder/liste?status=AKTIV`);
+  assert.ok(r.body.zeilen.some((z: any) => z.adrnr === st.adrnr));
+  assert.equal((await gast('GET', `${T}/schnupper/beitritt?token=${st.token}`)).status, 404, 'Link nach dem Beitritt verbraucht');
+  assert.equal((await admin('PUT', `${T}/schnuppertraining/${st.adrnr}`, { status: 'KONTAKTIERT' })).status, 400, 'Mitglied: keine Änderung mehr');
+});
+
 test('Einladung zum Vereinsportal: QR-Code per Mail/Brief und Schnellweg bei der Registrierung', async () => {
   await sql`insert into tco.mitglieder (adrnr, mitglnrn, vorname, nachname, geburtsdatum, email, eintritt, strasse, plz, ort) values
             ('0000000601', '601', 'Nina', 'Neu', '1990-06-06', 'nina@example.org', '2020-01-01', 'Weg 1', '66649', 'Oberthal'),

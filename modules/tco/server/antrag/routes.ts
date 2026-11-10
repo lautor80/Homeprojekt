@@ -31,6 +31,8 @@ const antragSchema = z.object({
   satzung: z.boolean(), datenschutz: z.boolean(), bildrechte: z.boolean().default(false),
   kuendigung: z.boolean().default(false),
   bemerkung: txt(1000).nullish(),
+  /** Beitrittslink aus dem Schnuppertraining (#86) */
+  schnupper: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).nullish(),
   bank: z.object({ kontoinhaber: txt(120), iban: txt(40), bic: txt(15).nullish(), bank: txt(80).nullish(), sepa: z.boolean() }),
   /** Honigtopf gegen Bots – muss leer bleiben */
   website: z.string().max(200).optional(),
@@ -103,7 +105,8 @@ export async function antragRoutes(app: FastifyInstance) {
     return {
       ...r,
       text: `Antrag ${r.nummer} übernommen: ${r.mitglieder.map((m) => `${m.name} (Nr. ${m.mitglnrn})`).join(', ')}`
-        + `${r.mandat ? `, SEPA-Mandat ${r.mandat}` : ''}; ${r.benutzer.filter((x) => x.username).length} Benutzer angelegt.`,
+        + `${r.mandat ? `, SEPA-Mandat ${r.mandat}` : ''}; ${r.benutzer.filter((x) => x.username).length} Benutzer angelegt.`
+        + `${r.schnupper.length ? ` Aus dem Schnuppertraining übernommen: ${r.schnupper.join(', ')}.` : ''}`,
     };
   });
 
