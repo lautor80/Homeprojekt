@@ -373,3 +373,38 @@ test('Berechtigungen: Anzeigen sieht keine Inhalte und pflegt nichts', async () 
   assert.equal((await leser('POST', `${E}/vorgaenge/${r.body.vorgaenge[0].id}/ignorieren`)).status, 403);
   assert.equal((await leser('POST', `${E}/mail`, mail({ von: 'a@b.de', betreff: 'x', message_id: '<z@b>' }))).status, 403);
 });
+
+test('Rückmeldungen: Rückläufer wird im E-Mail-Protokoll verbucht und nicht abgelegt, Antwort mit Anhang geht in die Prüfliste', async () => {
+  const [p] = await sql`insert into core.mail_protokoll (anwendung, objekt, an, betreff, status, message_id)
+                        values ('Test', 'RG-1', 'kunde@example.org', 'Ihre Rechnung 2026_015', 'gesendet', 'gesendet-1@portal.example') returning id`;
+  const vorher = mock.docs.size;
+  let r = await ext(key, 'POST', `${E}/mail`, mail({
+    von: 'Mail Delivery System <MAILER-DAEMON@mx.example>', betreff: 'Undelivered Mail Returned to Sender', message_id: '<bounce-1@mx.example>', uid: 21,
+    text: 'This is the mail system.\n<kunde@example.org>: host mx.example said: 550 5.1.1 User unknown\n\nMessage-ID: <gesendet-1@portal.example>',
+    anhaenge: [{ name: 'original.eml', mime: 'message/rfc822', inhalt: b64('From: portal\r\nSubject: Ihre Rechnung\r\n\r\n'.repeat(5)) }],
+  }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'ignoriert');
+  assert.deepEqual(r.body.dokumente, []);
+  assert.equal(r.body.mail, null);
+  assert.deepEqual({ art: r.body.rueckmeldung.art, zugeordnet: r.body.rueckmeldung.zugeordnet }, { art: 'unzustellbar', zugeordnet: true });
+  assert.match(r.body.hinweis, /Unzustellbar-Meldung – im E-Mail-Protokoll verbucht/);
+
+  r = await ext(key, 'POST', `${E}/mail`, mail({
+    von: 'Kunde <kunde@example.org>', betreff: 'AW: Ihre Rechnung 2026_015', message_id: '<antwort-1@example.org>', uid: 22, in_reply_to: '<gesendet-1@portal.example>',
+    anhaenge: [{ name: 'ueberweisung.pdf', mime: 'application/pdf', inhalt: b64('%PDF Überweisungsbeleg') }],
+  }));
+  assert.equal(r.body.rueckmeldung.art, 'antwort');
+  assert.equal(r.body.status, 'pruefen', 'Anhang einer Antwort wird wie jeder andere behandelt');
+  assert.match(r.body.hinweis, /Antwort auf eine E-Mail des Portals/);
+  assert.equal(mock.docs.size, vorher, 'nichts automatisch abgelegt');
+
+  const antworten = await sql`select art, grund from core.mail_antworten where protokoll_id = ${p.id} order by id`;
+  assert.deepEqual(antworten.map((a) => a.art), ['unzustellbar', 'antwort']);
+  assert.match(antworten[0].grund as string, /550 5\.1\.1/);
+
+  // Abwesenheitsnotiz ohne Anhang: nicht in der Prüfliste, auch wenn sie keiner gesendeten E-Mail zuzuordnen ist
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'fremd@example.net', betreff: 'Automatische Antwort: Urlaub', message_id: '<ooo-1@example.net>', auto: 'auto-replied' }));
+  assert.equal(r.body.status, 'ignoriert');
+  assert.equal(r.body.rueckmeldung.zugeordnet, false);
+});

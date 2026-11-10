@@ -31,9 +31,11 @@ IMAP-Postfach ──> n8n: Mail + Anhänge ──> Portal: Regelwerk ──┬�
 3. Signatur-Logos (Bilder unter 30 KB), Kalender- und Signaturdateien werden übergangen.
 4. Je Anhang gewinnt die erste passende Regel „je Anhang“ (kleinste Priorität zuerst); für die E-Mail selbst die erste passende
    Regel „E-Mail“. Die E-Mail wird nur dann zum Dokument (PDF aus dem Text), wenn eine solche Regel sie ablegen will.
-5. Eindeutige Treffer aktiver Regeln werden sofort abgelegt. In die **Prüfliste** kommen: Anhänge ohne Regel, Treffer von Regeln im
+5. **Rückmeldungen** zu E-Mails des Portals (unzustellbar, Abwesenheit, Antwort) werden im E-Mail-Protokoll verbucht. Rückläufer und
+   Abwesenheitsnotizen legt der Dokumenteneingang nicht ab (Status „nicht abgelegt“); Anhänge einer Antwort laufen normal durchs Regelwerk.
+6. Eindeutige Treffer aktiver Regeln werden sofort abgelegt. In die **Prüfliste** kommen: Anhänge ohne Regel, Treffer von Regeln im
    Testlauf oder mit „immer prüfen“, fehlende Pflichtfelder und fehlgeschlagene Ablagen.
-6. Sind alle Dokumente eines Vorgangs erledigt, meldet das Portal n8n die Behandlung der E-Mail. E-Mails ohne Regel und ohne
+7. Sind alle Dokumente eines Vorgangs erledigt, meldet das Portal n8n die Behandlung der E-Mail. E-Mails ohne Regel und ohne
    Anhang bleiben unangetastet im Postfach (Status „ohne Regel“, ohne gespeicherten Inhalt).
 
 **Dubletten:** Dieselbe Datei (SHA-256) wird nicht zweimal nach Paperless gebracht; der Vorgang verweist auf das vorhandene Dokument.
@@ -79,7 +81,7 @@ Die Migration legt die Rolle **Dokumenteneingang** mit `display` und `edit` an. 
 
 1. **Administration → Anbindungen:** „Paperless-ngx“ prüfen; bei Bedarf „Nextcloud Dokumentenablage“ (Adresse, Benutzer, App-Passwort) eintragen.
 2. **Administration → API-Schlüssel:** Schlüssel für das Modul „TC Oberthal“ mit `tco.eingang:melden` anlegen.
-3. **n8n:** [`docs/n8n/tco-dokumenteneingang.json`](n8n/tco-dokumenteneingang.json) importieren, siehe [n8n/DOKUMENTENEINGANG.md](n8n/DOKUMENTENEINGANG.md).
+3. **n8n:** Workflow „TCO Maileingang“ ([`docs/n8n/tco-maileingang.json`](n8n/tco-maileingang.json)) – ein Workflow für Dokumenteneingang und Rückmeldungen, siehe [n8n/DOKUMENTENEINGANG.md](n8n/DOKUMENTENEINGANG.md).
 4. **Rolle „Dokumenteneingang“** den zuständigen Benutzern zuordnen.
 5. Korrespondenten und Regeln anlegen – zunächst im **Testlauf**; aktiv schalten, wenn die Vorschläge in der Prüfliste stimmen.
 
