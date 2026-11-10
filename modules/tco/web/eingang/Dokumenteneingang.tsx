@@ -7,7 +7,7 @@ import { Empty, Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { dat } from '../util';
-import { RegelDialog, Vorschlag, Wahl } from './RegelDialog';
+import { RegelDialog, Vorschlag, Wahl, Zielordner } from './RegelDialog';
 import {
   EING, REGEL_STATUS, STATUS_STATE, STATUS_TEXT, kopf, leereRegel, mailText, zelle,
   type Dokument, type Korrespondent, type MailAktion, type MailArt, type Regel, type RegelEingabe, type Stamm, type Vorgang, type VorgangListe,
@@ -364,7 +364,7 @@ function AblageDialog({ v, d, regeln, stamm, onClose, onDone }: { v: Vorgang; d:
           <Wahl wert={mail} style={{ width: '15rem' }} onChange={(k) => setMail(k as 'regel' | MailArt)} optionen={[
             ...(hand ? [] : [['regel', 'wie in der Regel'] as [string, string]]),
             ['keine', 'im Posteingang lassen'], ['verschieben', 'in einen Ordner verschieben'], ['loeschen', 'in den Papierkorb']]} />
-          {mail === 'verschieben' && <Input value={ordner} placeholder="Zielordner" style={{ width: '12rem' }} onInput={(e) => setOrdner(e.target.value)} />}
+          {mail === 'verschieben' && <Zielordner wert={ordner} onChange={setOrdner} />}
           {mail !== 'regel' && <Button design={gelesen ? 'Emphasized' : 'Default'} icon="email-read" onClick={() => setGelesen(!gelesen)}>als gelesen markieren</Button>}
         </div>
       </div>
