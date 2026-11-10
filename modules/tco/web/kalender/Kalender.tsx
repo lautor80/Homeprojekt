@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bar, BusyIndicator, Button, CheckBox, DateTimePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
-  ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Tab, TabContainer, Text, TextArea, Title,
+  ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Tab, TabContainer, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -10,6 +10,7 @@ import { AuswahlBox } from '@core/components/AuswahlBox';
 import { Empty, Section } from '@core/components/Section';
 import { download } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
 import { TCO } from '../util';
 import { MassenanlageDialog } from './Massenanlage';
 import { EventTabelle } from './EventTabelle';
@@ -26,6 +27,8 @@ interface Ev {
   id: number; titel: string; beschreibung: string | null; ort: string | null; kategorie: string; beginn: string; ende: string | null; ganztags: boolean;
   anmeldung: boolean; anmeldeschluss: string | null; max_teilnehmer: number | null; begleitung: boolean; teilnehmer_sichtbar: boolean;
   gruppen: number[]; gruppen_namen: string[]; abgesagt: boolean; erstellt_von: string | null;
+  /** weitere Personen anmeldbar (Veranstaltung/Arbeitseinsatz immer, sonst nur mit Schalter „Begleitpersonen erfassen“) */
+  begleitung_moeglich: boolean;
   zusagen: number; begleitpersonen: number; absagen: number; vielleicht: number;
   mein_status: Status | null; meine_begleitung: number; mein_kommentar: string | null; offen: string | null; voll: boolean;
 }
@@ -35,6 +38,10 @@ interface Detail { event: Ev; teilnehmer: { zusagen: { name: string; begleitung:
 
 const STATUS_TEXT: Record<Status, string> = { ZUSAGE: 'Zusage', ABSAGE: 'Absage', VIELLEICHT: 'Vielleicht' };
 const STATUS_STATE: Record<Status, 'Positive' | 'Negative' | 'Critical'> = { ZUSAGE: 'Positive', ABSAGE: 'Negative', VIELLEICHT: 'Critical' };
+/** muss zu BEGLEITUNG_IMMER im Server passen */
+const BEGLEITUNG_IMMER = ['VERANSTALTUNG', 'ARBEITSEINSATZ'];
+/** Teilnehmer gesamt: Zusagen plus mitgebrachte weitere Personen */
+const gesamtText = (e: Ev) => (e.begleitpersonen ? ` (${e.zusagen} Zusage${e.zusagen === 1 ? '' : 'n'} + ${e.begleitpersonen} weitere)` : '');
 const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const tagIso = (d: Date) => d.toLocaleDateString('sv-SE');
@@ -53,6 +60,10 @@ const ausLokal = (v: string) => (v ? new Date(v).toISOString() : null);
 
 export function Kalender() {
   const heute = new Date();
+  const can = useCan();
+  // Nur Anzeige/Anmeldung (ohne Pflegerecht): Reiter, Zeitraum und Filter eingeklappt, Liste der nächsten 12 Monate (#16)
+  const einfach = !can('tco.kalender:edit');
+  const [kompakt, setKompakt] = useState(einfach);
   const [monat, setMonat] = useState({ j: heute.getFullYear(), m: heute.getMonth() });
   const [ansicht, setAnsicht] = useState<'LISTE' | 'MONAT'>('LISTE');
   const [tab, setTab] = useState('kal');
@@ -72,8 +83,9 @@ export function Kalender() {
   // selbst Mitglied sind – Mitglieder ohne Pflegerecht sehen ohnehin nur Veranstaltungen ihrer Gruppen und die für alle.
   const [nurMeine, setNurMeine] = useState(true);
 
-  const von = tagIso(new Date(monat.j, monat.m, 1));
-  const bis = ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
+  const von = kompakt ? tagIso(heute) : tagIso(new Date(monat.j, monat.m, 1));
+  const bis = kompakt ? tagIso(new Date(heute.getFullYear() + 1, heute.getMonth(), heute.getDate()))
+    : ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
   const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}`).then((x) => { setD(x); setVersion((v) => v + 1); }).catch((e) => setError(e.message));
   useEffect(() => { laden(); }, [von, bis]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -81,7 +93,7 @@ export function Kalender() {
     setBusy(true); setError(null);
     try { const r = await fn(); if (r?.text) toast(r.text, 5000); await laden(); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   }
-  const melden = (e: Ev, status: Status) => aktion(() => api.post(`${K}/${e.id}/rueckmeldung`, { status, begleitung: e.meine_begleitung, kommentar: e.mein_kommentar }));
+  const melden = (e: Ev, status: Status, begleitung = e.meine_begleitung) => aktion(() => api.post(`${K}/${e.id}/rueckmeldung`, { status, begleitung, kommentar: e.mein_kommentar }));
   const schieben = (n: number) => setMonat(({ j, m }) => { const x = new Date(j, m + n, 1); return { j: x.getFullYear(), m: x.getMonth() }; });
 
   // Kopie als neue Veranstaltung: alle Angaben übernehmen, Termin wird im Dialog angepasst; Rückmeldungen werden nicht kopiert
@@ -100,53 +112,69 @@ export function Kalender() {
   const fuerListe = gefiltert ? { ...gefiltert, events: gefiltert.events.filter((e) => vergangene || new Date(e.ende ?? e.beginn).getTime() >= jetzt) } : null;
   const ausgeblendet = gefiltert && fuerListe ? gefiltert.events.length - fuerListe.events.length : 0;
 
+  const kalInhalt = (
+    <>
+      {kompakt ? (
+        <div className="portal-kal__leiste">
+          <Title level="H5" className="portal-kal__monat">Die nächsten 12 Monate</Title>
+          <span style={{ flex: 1 }} />
+          <Button design="Transparent" icon="filter" tooltip="Zeitraum, Monatsansicht und Filter einblenden" onClick={() => { setMonat({ j: heute.getFullYear(), m: heute.getMonth() }); setKompakt(false); }}>Ansicht & Filter</Button>
+        </div>
+      ) : <>
+      <div className="portal-kal__leiste">
+        <Button icon="navigation-left-arrow" design="Transparent" tooltip="zurück" onClick={() => schieben(-1)} />
+        <Title level="H5" className="portal-kal__monat">{MONATE[monat.m]} {monat.j}{ansicht === 'LISTE' ? ` – ${MONATE[(monat.m + 2) % 12]}` : ''}</Title>
+        <Button icon="navigation-right-arrow" design="Transparent" tooltip="weiter" onClick={() => schieben(1)} />
+        <Button design="Transparent" onClick={() => setMonat({ j: heute.getFullYear(), m: heute.getMonth() })}>Heute</Button>
+        <SegmentedButton onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.a as 'LISTE' | 'MONAT')}>
+          <SegmentedButtonItem data-a="LISTE" icon="list" selected={ansicht === 'LISTE'}>Liste</SegmentedButtonItem>
+          <SegmentedButtonItem data-a="MONAT" icon="appointment-2" selected={ansicht === 'MONAT'}>Monat</SegmentedButtonItem>
+        </SegmentedButton>
+        <span style={{ flex: 1 }} />
+        {d?.pflege && <Button icon="paste" tooltip="Mehrere Veranstaltungen aus eingefügtem Text anlegen (z. B. Spielplan)" onClick={() => setMasse(true)}>Mehrere anlegen</Button>}
+        {einfach && <Button design="Transparent" icon="collapse-group" tooltip="Zurück zur Liste der nächsten 12 Monate" onClick={() => { setKompakt(true); setAnsicht('LISTE'); setFGruppe(''); setFArt(''); setVergangene(false); }}>Einklappen</Button>}
+        {d?.pflege && <Button design="Emphasized" icon="add" onClick={() => setForm({ kategorie: 'VERANSTALTUNG', anmeldung: true, teilnehmer_sichtbar: true, gruppen: [], ganztags: false, begleitung: false })}>Neue Veranstaltung</Button>}
+      </div>
+      {d && (
+        <div className="portal-kal__leiste">
+          <Select accessibleName="Gruppe" style={{ width: 'min(20rem, 100%)' }} onChange={(e) => setFGruppe((e.detail.selectedOption as HTMLElement).dataset.g ?? '')}>
+            <Option data-g="" selected={!fGruppe}>Alle Gruppen</Option>
+            <Option data-g="-" selected={fGruppe === '-'}>Ohne Gruppe (alle Mitglieder)</Option>
+            {d.gruppen.map((g) => <Option key={g.id} data-g={g.id} selected={String(g.id) === fGruppe}>{g.name}</Option>)}
+          </Select>
+          <Select accessibleName="Art" style={{ width: 'min(14rem, 100%)' }} onChange={(e) => setFArt((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+            <Option data-k="" selected={!fArt}>Alle Arten</Option>
+            {Object.entries(d.kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={k === fArt}>{t}</Option>)}
+          </Select>
+          {meineWaehlbar && <CheckBox text="Nur meine Gruppen" checked={nurMeine} onChange={(e) => setNurMeine(e.target.checked)} />}
+          {ansicht === 'LISTE' && <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />}
+          {(fGruppe || fArt) && <Button design="Transparent" icon="clear-filter" onClick={() => { setFGruppe(''); setFArt(''); }}>Filter zurücksetzen</Button>}
+        </div>
+      )}
+      </>}
+      {!d || !gefiltert || !fuerListe ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
+        <BusyIndicator active={busy} delay={300} style={{ display: 'block', width: '100%' }}>
+          <div className="portal-busy-inhalt">
+            {ansicht === 'LISTE'
+              ? <Liste d={fuerListe} onOeffnen={setDetail} onMelden={melden} onKopieren={kopieren} busy={busy}
+                       leer={ausgeblendet ? `${ausgeblendet} vergangene Veranstaltung${ausgeblendet === 1 ? ' ist' : 'en sind'} ausgeblendet – „Vergangene anzeigen“ blendet sie ein.`
+                         : fGruppe || fArt ? 'Keine Veranstaltung passt zu Gruppe und Art in diesem Zeitraum.'
+                           : meine && d.events.length ? 'In diesem Zeitraum gibt es nur Veranstaltungen anderer Gruppen – „Nur meine Gruppen“ abwählen, um sie zu sehen.' : undefined} />
+              : <Monat d={gefiltert} j={monat.j} m={monat.m} onOeffnen={setDetail} />}
+          </div>
+        </BusyIndicator>
+      )}
+    </>
+  );
+
   return (
     <AppPage title="Vereinskalender" subtitle="Veranstaltungen, Termine und Mannschaften – mit An- und Abmeldung">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {d && !d.mitglied && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Dein Benutzer ist keinem Mitglied zugeordnet – An- und Abmelden ist nur für Mitglieder möglich.</MessageStrip>}
+      {einfach ? kalInhalt : (
       <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
         <Tab data-key="kal" text="Kalender" icon="calendar" selected={tab === 'kal'}>
-          <div className="portal-kal__leiste">
-            <Button icon="navigation-left-arrow" design="Transparent" tooltip="zurück" onClick={() => schieben(-1)} />
-            <Title level="H5" className="portal-kal__monat">{MONATE[monat.m]} {monat.j}{ansicht === 'LISTE' ? ` – ${MONATE[(monat.m + 2) % 12]}` : ''}</Title>
-            <Button icon="navigation-right-arrow" design="Transparent" tooltip="weiter" onClick={() => schieben(1)} />
-            <Button design="Transparent" onClick={() => setMonat({ j: heute.getFullYear(), m: heute.getMonth() })}>Heute</Button>
-            <SegmentedButton onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.a as 'LISTE' | 'MONAT')}>
-              <SegmentedButtonItem data-a="LISTE" icon="list" selected={ansicht === 'LISTE'}>Liste</SegmentedButtonItem>
-              <SegmentedButtonItem data-a="MONAT" icon="appointment-2" selected={ansicht === 'MONAT'}>Monat</SegmentedButtonItem>
-            </SegmentedButton>
-            <span style={{ flex: 1 }} />
-            {d?.pflege && <Button icon="paste" tooltip="Mehrere Veranstaltungen aus eingefügtem Text anlegen (z. B. Spielplan)" onClick={() => setMasse(true)}>Mehrere anlegen</Button>}
-            {d?.pflege && <Button design="Emphasized" icon="add" onClick={() => setForm({ kategorie: 'VERANSTALTUNG', anmeldung: true, teilnehmer_sichtbar: true, gruppen: [], ganztags: false, begleitung: false })}>Neue Veranstaltung</Button>}
-          </div>
-          {d && (
-            <div className="portal-kal__leiste">
-              <Select accessibleName="Gruppe" style={{ width: 'min(20rem, 100%)' }} onChange={(e) => setFGruppe((e.detail.selectedOption as HTMLElement).dataset.g ?? '')}>
-                <Option data-g="" selected={!fGruppe}>Alle Gruppen</Option>
-                <Option data-g="-" selected={fGruppe === '-'}>Ohne Gruppe (alle Mitglieder)</Option>
-                {d.gruppen.map((g) => <Option key={g.id} data-g={g.id} selected={String(g.id) === fGruppe}>{g.name}</Option>)}
-              </Select>
-              <Select accessibleName="Art" style={{ width: 'min(14rem, 100%)' }} onChange={(e) => setFArt((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
-                <Option data-k="" selected={!fArt}>Alle Arten</Option>
-                {Object.entries(d.kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={k === fArt}>{t}</Option>)}
-              </Select>
-              {meineWaehlbar && <CheckBox text="Nur meine Gruppen" checked={nurMeine} onChange={(e) => setNurMeine(e.target.checked)} />}
-              {ansicht === 'LISTE' && <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />}
-              {(fGruppe || fArt) && <Button design="Transparent" icon="clear-filter" onClick={() => { setFGruppe(''); setFArt(''); }}>Filter zurücksetzen</Button>}
-            </div>
-          )}
-          {!d || !gefiltert || !fuerListe ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
-            <BusyIndicator active={busy} delay={300} style={{ display: 'block', width: '100%' }}>
-              <div className="portal-busy-inhalt">
-                {ansicht === 'LISTE'
-                  ? <Liste d={fuerListe} onOeffnen={setDetail} onMelden={melden} onKopieren={kopieren} busy={busy}
-                           leer={ausgeblendet ? `${ausgeblendet} vergangene Veranstaltung${ausgeblendet === 1 ? ' ist' : 'en sind'} ausgeblendet – „Vergangene anzeigen“ blendet sie ein.`
-                             : fGruppe || fArt ? 'Keine Veranstaltung passt zu Gruppe und Art in diesem Zeitraum.'
-                               : meine && d.events.length ? 'In diesem Zeitraum gibt es nur Veranstaltungen anderer Gruppen – „Nur meine Gruppen“ abwählen, um sie zu sehen.' : undefined} />
-                  : <Monat d={gefiltert} j={monat.j} m={monat.m} onOeffnen={setDetail} />}
-              </div>
-            </BusyIndicator>
-          )}
+          {kalInhalt}
         </Tab>
         {d?.pflege && (
           <Tab data-key="tabelle" text="Tabelle" icon="table-view" selected={tab === 'tabelle'}>
@@ -160,6 +188,7 @@ export function Kalender() {
           </Tab>
         )}
       </TabContainer>
+      )}
       {detail !== null && d && <DetailDialog id={detail} pflege={d.pflege} mitglied={d.mitglied} kategorien={d.kategorien} onClose={() => { setDetail(null); laden(); }}
                                              onBearbeiten={(e) => { setDetail(null); setForm(e); }} onKopieren={kopieren} onError={setError} />}
       {masse && d && <MassenanlageDialog kategorien={d.kategorien} gruppen={d.gruppen} onClose={() => setMasse(false)}
@@ -170,7 +199,7 @@ export function Kalender() {
 }
 
 function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
-  d: Daten; onOeffnen: (id: number) => void; onMelden: (e: Ev, s: Status) => void; onKopieren: (e: Ev) => void; busy: boolean;
+  d: Daten; onOeffnen: (id: number) => void; onMelden: (e: Ev, s: Status, begleitung?: number) => void; onKopieren: (e: Ev) => void; busy: boolean;
   /** Hinweis, wenn die Liste durch einen Filter leer ist */
   leer?: string;
 }) {
@@ -205,7 +234,7 @@ function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
                     </span>
                     {e.anmeldung && (
                       <span className="portal-kal__info">
-                        <span><strong>{e.zusagen + e.begleitpersonen}</strong>{e.max_teilnehmer ? ` / ${e.max_teilnehmer}` : ''} Zusagen</span>
+                        <span><strong>{e.zusagen + e.begleitpersonen}</strong>{e.max_teilnehmer ? ` / ${e.max_teilnehmer}` : ''} Teilnehmer{gesamtText(e)}</span>
                         {e.anmeldeschluss && !e.offen && <span>Anmeldung bis {datum(e.anmeldeschluss)}</span>}
                         {e.voll && <ObjectStatus state="Critical">ausgebucht</ObjectStatus>}
                       </span>
@@ -213,12 +242,7 @@ function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
                   </button>
                   <div className="portal-kal__aktion">
                     {e.mein_status && <ObjectStatus state={STATUS_STATE[e.mein_status]} showDefaultIcon>{STATUS_TEXT[e.mein_status]}</ObjectStatus>}
-                    {e.anmeldung && d.mitglied && !e.offen && (
-                      <FlexBox style={{ gap: '0.25rem' }}>
-                        <Button design={e.mein_status === 'ZUSAGE' ? 'Positive' : 'Default'} icon="accept" disabled={busy || (e.voll && e.mein_status !== 'ZUSAGE')} onClick={() => onMelden(e, 'ZUSAGE')}>Dabei</Button>
-                        <Button design={e.mein_status === 'ABSAGE' ? 'Negative' : 'Default'} icon="decline" disabled={busy} onClick={() => onMelden(e, 'ABSAGE')}>Nicht dabei</Button>
-                      </FlexBox>
-                    )}
+                    {e.anmeldung && d.mitglied && !e.offen && <ListeMelden e={e} busy={busy} onMelden={onMelden} />}
                     {e.anmeldung && e.offen && !e.abgesagt && <Text className="portal-muted portal-small">{e.offen}</Text>}
                     {d.pflege && <Button icon="copy" design="Transparent" tooltip="Als neue Veranstaltung kopieren" accessibleName={`${e.titel} kopieren`} disabled={busy} onClick={() => onKopieren(e)} />}
                   </div>
@@ -229,6 +253,31 @@ function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
         </Section>
       ))}
     </>
+  );
+}
+
+/**
+ * Schnell-Anmeldung in der Liste: Dabei / Nicht dabei, bei Veranstaltungen und Arbeitseinsätzen zusätzlich
+ * „+ weitere Personen“, die mitgebracht werden (#16). Bei bestehender Zusage wird eine geänderte Anzahl sofort gespeichert.
+ */
+function ListeMelden({ e, busy, onMelden }: { e: Ev; busy: boolean; onMelden: (e: Ev, s: Status, begleitung?: number) => void }) {
+  const [weitere, setWeitere] = useState(e.meine_begleitung ?? 0);
+  useEffect(() => setWeitere(e.meine_begleitung ?? 0), [e.meine_begleitung]);
+  return (
+    <FlexBox style={{ gap: '0.25rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {e.begleitung_moeglich && (
+        <StepInput value={weitere} min={0} max={20} disabled={busy} style={{ width: '7.5rem' }}
+                   accessibleName="Weitere Personen, die ich mitbringe" title="Weitere Personen, die ich mitbringe"
+                   onChange={(x) => {
+                     const n = Math.max(0, Math.min(20, Number(x.target.value) || 0));
+                     setWeitere(n);
+                     if (e.mein_status === 'ZUSAGE' && n !== e.meine_begleitung) onMelden(e, 'ZUSAGE', n);
+                   }} />
+      )}
+      {e.begleitung_moeglich && <Text className="portal-muted portal-small">weitere</Text>}
+      <Button design={e.mein_status === 'ZUSAGE' ? 'Positive' : 'Default'} icon="accept" disabled={busy || (e.voll && e.mein_status !== 'ZUSAGE')} onClick={() => onMelden(e, 'ZUSAGE', e.begleitung_moeglich ? weitere : 0)}>Dabei</Button>
+      <Button design={e.mein_status === 'ABSAGE' ? 'Negative' : 'Default'} icon="decline" disabled={busy} onClick={() => onMelden(e, 'ABSAGE', 0)}>Nicht dabei</Button>
+    </FlexBox>
   );
 }
 
@@ -313,7 +362,13 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
                   {(['ZUSAGE', 'VIELLEICHT', 'ABSAGE'] as Status[]).map((s) => <SegmentedButtonItem key={s} data-s={s} selected={r.status === s}>{STATUS_TEXT[s]}</SegmentedButtonItem>)}
                 </SegmentedButton>
                 <div className="portal-kal__rm-felder">
-                  {e.begleitung && r.status !== 'ABSAGE' && <Input type="Number" value={r.begleitung} onInput={(ev) => setR({ ...r, begleitung: ev.target.value })} style={{ width: '9rem' }} placeholder="Begleitpersonen" accessibleName="Begleitpersonen" />}
+                  {e.begleitung_moeglich && r.status !== 'ABSAGE' && (
+                    <FlexBox style={{ gap: '0.5rem', alignItems: 'center' }}>
+                      <Label>Weitere Personen, die ich mitbringe</Label>
+                      <StepInput value={Number(r.begleitung) || 0} min={0} max={20} style={{ width: '8rem' }} accessibleName="Weitere Personen, die ich mitbringe"
+                                 onChange={(ev) => setR({ ...r, begleitung: String(ev.target.value ?? 0) })} />
+                    </FlexBox>
+                  )}
                   <Input value={r.kommentar} maxlength={300} onInput={(ev) => setR({ ...r, kommentar: ev.target.value })} placeholder="Kommentar (optional)" style={{ flex: 1 }} />
                   <Button design="Emphasized" disabled={busy || (e.voll && r.status === 'ZUSAGE' && e.mein_status !== 'ZUSAGE')}
                           onClick={() => lauf(() => api.post(`${K}/${id}/rueckmeldung`, { status: r.status, begleitung: Number(r.begleitung) || 0, kommentar: r.kommentar || null }))}>Speichern</Button>
@@ -326,7 +381,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
         {e.anmeldung && (
           <section>
             <Label showColon>
-              {e.zusagen + e.begleitpersonen} Zusage(n){e.max_teilnehmer ? ` von ${e.max_teilnehmer} Plätzen` : ''}{pflege ? ` · ${e.absagen} Absage(n) · ${e.vielleicht} vielleicht` : ''}
+              {e.zusagen + e.begleitpersonen} Teilnehmer{gesamtText(e)}{e.max_teilnehmer ? ` von ${e.max_teilnehmer} Plätzen` : ''}{pflege ? ` · ${e.absagen} Absage(n) · ${e.vielleicht} vielleicht` : ''}
             </Label>
             {!pflege && (x.teilnehmer.zusagen.length
               ? <div className="portal-kal__namen">{x.teilnehmer.zusagen.map((z) => <span key={z.name}>{z.name}{z.begleitung ? ` +${z.begleitung}` : ''}</span>)}</div>
@@ -420,7 +475,9 @@ function EventDialog({ e, d, onClose, onGespeichert }: { e: Partial<Ev>; d: Date
               <div><Label>Anmeldeschluss</Label><DateTimePicker value={f.anmeldeschluss} valueFormat="yyyy-MM-dd'T'HH:mm" displayFormat="dd.MM.yyyy HH:mm" style={{ width: '100%' }} onChange={(x) => setF({ ...f, anmeldeschluss: x.detail.value })} /></div>
               <div><Label>Max. Teilnehmer</Label><Input type="Number" value={f.max} onInput={(x) => setF({ ...f, max: x.target.value })} style={{ width: '100%' }} placeholder="unbegrenzt" /></div>
             </div>
-            <CheckBox text="Begleitpersonen erfassen" checked={f.begleitung} onChange={(x) => setF({ ...f, begleitung: x.target.checked })} />
+            {BEGLEITUNG_IMMER.includes(f.kategorie)
+              ? <CheckBox text="Weitere Personen anmeldbar (bei dieser Art immer)" checked disabled />
+              : <CheckBox text="Weitere Personen anmeldbar (Begleitpersonen)" checked={f.begleitung} onChange={(x) => setF({ ...f, begleitung: x.target.checked })} />}
             <CheckBox text="Mitglieder sehen, wer zugesagt hat" checked={f.sichtbar} onChange={(x) => setF({ ...f, sichtbar: x.target.checked })} />
           </>
         )}

@@ -312,3 +312,25 @@ test('Tabelle: Massenbearbeitung und Regelwerk „Text in Spalte => Gruppe“ (#
   assert.equal((await admin('PUT', R, { regeln: [] })).status, 200);
 });
 
+
+test('Weitere Personen: bei Veranstaltung und Arbeitseinsatz immer, sonst nur mit Schalter; zählen bei der Gesamtzahl mit (#16)', async () => {
+  const anna = client();
+  assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
+  const anlegen = async (kategorie: string, titel: string) => {
+    const r = await admin('POST', K, { titel, kategorie, beginn: tage(200), max_teilnehmer: 4 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.id as number;
+  };
+  const einsatz = await anlegen('ARBEITSEINSATZ', 'Platzaufbau');
+  const training = await anlegen('TRAINING', 'Konditionstraining');
+  assert.equal((await anna('POST', `${K}/${einsatz}/rueckmeldung`, { status: 'ZUSAGE', begleitung: 2 })).status, 200);
+  assert.equal((await anna('POST', `${K}/${training}/rueckmeldung`, { status: 'ZUSAGE', begleitung: 2 })).status, 200);
+  const r = await anna('GET', `${K}?von=${tag(199)}&bis=${tag(201)}`);
+  const je = Object.fromEntries(r.body.events.map((e: any) => [e.titel, [e.begleitung_moeglich, e.zusagen, e.begleitpersonen]]));
+  assert.deepEqual(je, { Platzaufbau: [true, 1, 2], Konditionstraining: [false, 1, 0] });
+  // Gesamtzahl inkl. weiterer Personen gegen die Höchstzahl (4): Anna + 4 weitere = 5
+  const r2 = await anna('POST', `${K}/${einsatz}/rueckmeldung`, { status: 'ZUSAGE', begleitung: 4 });
+  assert.equal(r2.status, 400);
+  assert.match(r2.body.message, /ausgebucht/);
+  await admin('POST', `${K}/masse/loeschen`, { ids: [einsatz, training] });
+});
