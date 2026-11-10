@@ -10,8 +10,12 @@ import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfer
  *  - tco.gruppen:display  Baum der Gruppen mit den zugeordneten Mitgliedern anzeigen
  *  - tco.gruppen:edit     Gruppen anlegen, ändern, verschieben, löschen und Mitglieder zuordnen
  * Die Zuordnung eines einzelnen Mitglieds im Mitgliedsstamm läuft über tco.mitglieder:edit (mitglieder/routes.ts).
+ * Der Vereinskalender zeigt denselben Baum im Reiter „Gruppen / Mannschaften“ (#16): tco.kalender:edit darf ihn anzeigen
+ * und Gruppen sowie Mitglieder pflegen – das Regelwerk (Ableitung nach Alter und Geschlecht) bleibt tco.gruppen:edit vorbehalten.
  */
 export const P_GR = { display: 'tco.gruppen:display', edit: 'tco.gruppen:edit' };
+/** Pflege der Gruppen/Mannschaften im Vereinskalender (P_KAL.edit, hier als Text gegen einen Importzyklus) */
+const P_KAL_EDIT = 'tco.kalender:edit';
 
 const id = z.object({ id: z.coerce.number().int().positive() });
 
@@ -24,19 +28,22 @@ function eine(...perms: string[]) {
 
 export async function gruppenRoutes(app: FastifyInstance) {
   // Der Baum wird auch im Mitgliedsstamm (Reiter Gruppen, Filter der Liste) gebraucht
-  const lesen = { preHandler: eine(P_GR.display, 'tco.mitglieder:display') };
-  const pflege = { preHandler: requireAuth(P_GR.edit) };
+  const lesen = { preHandler: eine(P_GR.display, 'tco.mitglieder:display', P_KAL_EDIT) };
+  const pflege = { preHandler: eine(P_GR.edit, P_KAL_EDIT) };
+  const regelwerk = { preHandler: requireAuth(P_GR.edit) };
 
-  app.get('/gruppen', lesen, async (req) => ({ gruppen: await gruppenLesen(DB), pflege: can(req, P_GR.edit) }));
+  app.get('/gruppen', lesen, async (req) => ({
+    gruppen: await gruppenLesen(DB), pflege: can(req, P_GR.edit) || can(req, P_KAL_EDIT), regelwerk: can(req, P_GR.edit),
+  }));
 
   /** Aktive Mitglieder zur Auswahl mit Geschlecht, Jahrgang und Alter für die Filter */
   app.get('/gruppen/mitglieder', pflege, async () => aufnahmeMitglieder(DB));
 
   // ---------------------------------------------------------------- Regelwerk (#16)
-  app.get('/gruppen/regeln', pflege, async () => ({ regeln: await regelnLesen(DB) }));
+  app.get('/gruppen/regeln', regelwerk, async () => ({ regeln: await regelnLesen(DB) }));
 
   /** Regelwerk als Ganzes sichern */
-  app.put('/gruppen/regeln', pflege, async (req) => {
+  app.put('/gruppen/regeln', regelwerk, async (req) => {
     const alter = z.number().int().min(0, 'Das Alter darf nicht negativ sein.').max(120, 'Das Alter darf höchstens 120 sein.').nullable();
     const { regeln, gruppe_id } = z.object({
       // nur das Regelwerk dieser Gruppe ersetzen (sonst das gesamte Regelwerk)
@@ -54,7 +61,7 @@ export async function gruppenRoutes(app: FastifyInstance) {
    * Regelwerk anwenden – von Hand oder durch einen Job (API-Schlüssel mit tco.gruppen:edit).
    * simulation = true ermittelt nur, was sich ändern würde.
    */
-  app.post('/gruppen/regeln/anwenden', pflege, async (req) => {
+  app.post('/gruppen/regeln/anwenden', regelwerk, async (req) => {
     // gruppe_id: nur diesen Knoten neu berechnen (Gruppe und ihre Untergruppen)
     const { simulation, gruppe_id } = z.object({ simulation: z.boolean().default(false), gruppe_id: z.number().int().positive().optional() }).parse(req.body ?? {});
     const gruppen = simulation ? await regelnAnwenden(DB, { simulation: true, gruppeId: gruppe_id })
