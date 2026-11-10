@@ -21,6 +21,8 @@ interface Zeile {
   termine: { tage: string[]; zeiten: string[]; text?: string | null }; erziehungsberechtigt: string | null; mitteilung: string | null;
   einheit1: string | null; einheit2: string | null; trainer: string | null; notiz: string | null; antrag: string | null;
   bearbeitet_am: string | null; bearbeitet_von: string | null; mitglnrn: string;
+  /** Tage mit Schnuppertraining laut „Meine Trainingszeiten“ (#21) */
+  einheiten: number;
 }
 interface Daten { status: Record<Status, string>; stufen: Record<string, string>; einheiten: number; zeilen: Zeile[] }
 const STATE: Record<Status, 'Critical' | 'Information' | 'Positive' | 'Negative' | 'None'> = {
@@ -82,6 +84,10 @@ export function SchnupperVerwaltung() {
               <div>
                 <Label>Einheiten</Label><br />
                 <Text>{z.einheit1 ? `1. am ${dat(z.einheit1)}` : '1. offen'} · {z.einheit2 ? `2. am ${dat(z.einheit2)}` : '2. offen'}</Text><br />
+                <ObjectStatus state={z.einheiten > daten.einheiten ? 'Critical' : z.einheiten === daten.einheiten ? 'Positive' : z.einheiten ? 'Information' : 'None'}
+                              title="Tage, an denen ein Trainer das Kind in „Meine Trainingszeiten“ eingetragen hat">
+                  {z.einheiten}× geschnuppert{z.einheiten > daten.einheiten ? ` – mehr als ${daten.einheiten} kostenlose Einheiten` : ''}
+                </ObjectStatus><br />
                 <Label>Trainer</Label><br /><Text>{z.trainer || '–'}</Text>
                 {z.antrag && <><br /><Label>Beitritt</Label><br /><Text>Mitgliedsantrag {z.antrag}{z.mitglnrn ? ` · Mitglied Nr. ${z.mitglnrn}` : ''}</Text></>}
               </div>

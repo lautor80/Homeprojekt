@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { change, requireAuth } from '../../../../server/src/auth.js';
+import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, paperless, plAktiv, vereinLesen } from '../verein.js';
 import { heute, runden } from '../format.js';
@@ -9,6 +9,8 @@ import {
   zeitenLesen, zeitLoeschen, zeitSetzen, type Doku, type Trainer,
 } from './logik.js';
 import { nachweisAblegen, nachweisDaten, nachweisPdf } from './nachweis.js';
+import { einheitenSetzen, schnupperFuerTrainer } from '../schnupper/logik.js';
+import { P_SCHNUPPER } from '../schnupper/routes.js';
 
 /**
  * „Meine Trainingszeiten“ – Rückmeldung durch die Trainer selbst (fürs Handy).
@@ -22,6 +24,11 @@ import { nachweisAblegen, nachweisDaten, nachweisPdf } from './nachweis.js';
  * die Jugendleitung sieht die Freigabe in „Abrechnung Jugendtraining“ und im Arbeitsvorrat der Vereinsübersicht.
  */
 export const P_JTM = { edit: 'tco.jtmeine:edit' };
+/**
+ * Schnuppertraining (#21): Übersicht der Kinder mit tco.schnupper:display, Teilnehmer einer Einheit auswählen mit
+ * tco.schnupper:edit. Die Teilnahme wird je Tag und Trainer gespeichert und gleicht die Schnupper-Angaben ab.
+ */
+const SCHNUPPER = 'Schnuppertraining';
 
 const monat = z.string().regex(/^\d{4}(0[1-9]|1[0-2])$/, 'Bitte einen Monat wählen.');
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
@@ -78,7 +85,18 @@ export async function meineZeitenRoutes(app: FastifyInstance) {
       vorzeitig: q.monat === aktMonat(),
       freigebbar: freigabeHindernis(q.monat, zeiten, doku, betrag),
       gesperrt: istBezahlt(doku, betrag) || !!doku?.freigegeben_am,
+      // Schnuppertraining: nur mit Berechtigung (Übersicht der Kinder, Teilnehmer je Einheit)
+      schnupper: can(req, P_SCHNUPPER.display) ? { edit: can(req, P_SCHNUPPER.edit) } : null,
     };
+  });
+
+  /** Kinder im Schnuppertraining mit Anzahl der Einheiten; dazu die eigenen Einheiten des Monats (Tag → Kinder) */
+  app.get('/jt/meine/schnupper', recht, async (req) => {
+    if (!can(req, P_SCHNUPPER.display)) throw new BusinessError(`Keine Berechtigung (${P_SCHNUPPER.display}).`, 403);
+    const t = await meinTrainer(req);
+    const q = z.object({ monat }).parse(req.query);
+    const { von, bis } = grenzen(q.monat);
+    return { ...(await schnupperFuerTrainer(DB, t.adrnr, von, bis)), edit: can(req, P_SCHNUPPER.edit) };
   });
 
   /** Archiv: alle Monate mit abgelegtem Zeitnachweis (nur eigene) */
@@ -93,9 +111,22 @@ export async function meineZeitenRoutes(app: FastifyInstance) {
 
   app.post('/jt/meine/zeiten', recht, async (req) => {
     const t = await meinTrainer(req);
-    const b = z.object({ datum, trainingsart: art, anzahl: z.coerce.number(), altArt: art.nullish() }).parse(req.body);
+    const b = z.object({
+      datum, trainingsart: art, anzahl: z.coerce.number(), altArt: art.nullish(),
+      /** Schnuppertraining: Kinder dieser Einheit (weglassen = unverändert) */
+      teilnehmer: z.array(z.string().regex(/^[0-9]{1,10}$/)).max(60).optional(),
+    }).parse(req.body);
+    const { teilnehmer, ...zeit } = b;
+    const mitTeilnehmern = b.trainingsart === SCHNUPPER && teilnehmer !== undefined;
+    if (mitTeilnehmern && !can(req, P_SCHNUPPER.edit)) throw new BusinessError(`Keine Berechtigung (${P_SCHNUPPER.edit}) – Teilnehmer des Schnuppertrainings können nicht eingetragen werden.`, 403);
     await monatOffen(t.adrnr, b.datum);
-    await change(req, (tx) => zeitSetzen(tx, { adrnr: t.adrnr, ...b }), { action: 'JT_RUECKMELDUNG' });
+    const wer = benutzerName(req);
+    await change(req, async (tx) => {
+      await zeitSetzen(tx, { adrnr: t.adrnr, ...zeit });
+      if (mitTeilnehmern) await einheitenSetzen(tx, t, b.datum, teilnehmer, wer);
+      // Trainingsart von Schnuppertraining auf eine andere geändert: Einheiten des Tages entfallen
+      else if (b.altArt === SCHNUPPER && b.trainingsart !== SCHNUPPER) await einheitenSetzen(tx, t, b.datum, [], wer);
+    }, { action: 'JT_RUECKMELDUNG' });
     return { ok: true };
   });
 
@@ -103,7 +134,10 @@ export async function meineZeitenRoutes(app: FastifyInstance) {
     const t = await meinTrainer(req);
     const b = z.object({ datum, trainingsart: art }).parse(req.body);
     await monatOffen(t.adrnr, b.datum);
-    await change(req, (tx) => zeitLoeschen(tx, t.adrnr, b.datum, b.trainingsart), { action: 'JT_RUECKMELDUNG' });
+    await change(req, async (tx) => {
+      await zeitLoeschen(tx, t.adrnr, b.datum, b.trainingsart);
+      if (b.trainingsart === SCHNUPPER) await einheitenSetzen(tx, t, b.datum, [], benutzerName(req));
+    }, { action: 'JT_RUECKMELDUNG' });
     return { ok: true };
   });
 

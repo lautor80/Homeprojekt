@@ -192,8 +192,8 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
     // ---------------------------------------------------------------- Jugend
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
-    { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm' },
-    { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.edit, text: 'Schnuppertraining betreuen: Status, Termine der Einheiten, Trainer und Notiz pflegen, Beitrittslink (vorbelegter Mitgliedsantrag) senden', requires: [P_SCHNUPPER.display] },
+    { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm; in „Meine Trainingszeiten“ die Übersicht der Kinder im Schnuppertraining' },
+    { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.edit, text: 'Schnuppertraining betreuen: Status, Termine der Einheiten, Trainer und Notiz pflegen, Beitrittslink (vorbelegter Mitgliedsantrag) senden; in „Meine Trainingszeiten“ die Teilnehmer einer Schnuppertraining-Einheit eintragen', requires: [P_SCHNUPPER.display] },
     { area: 'Jugend', app: 'Meine Trainingszeiten', id: P_JTM.edit,
       text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },

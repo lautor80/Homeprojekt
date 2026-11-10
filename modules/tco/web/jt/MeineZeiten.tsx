@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Text, TextArea, ToggleButton,
+  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text, TextArea, ToggleButton,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -31,9 +31,25 @@ interface Monat {
   vorzeitig: boolean;
   /** true = Monat kann freigegeben werden, sonst der Grund */
   freigebbar: true | string;
+  /** Schnuppertraining (#21): null = keine Berechtigung; edit = Teilnehmer je Einheit eintragen */
+  schnupper: { edit: boolean } | null;
 }
+/** Kind im Schnuppertraining mit Anzahl der Tage, an denen es geschnuppert hat (alle Trainer) */
+interface Schnupperer {
+  adrnr: string; nummer: string; name: string; alter: number | null; stufe_txt: string; gespielt: boolean; status: string; status_txt: string;
+  einheiten: number; letzte: string | null; termine: string; erziehungsberechtigt: string | null; mitteilung: string | null; trainer: string | null;
+  email: string; mobil: string; whatsapp: string;
+}
+/** tage: eigene Einheiten des Monats, Datum → Adressnummern der Kinder */
+interface Schnupper { teilnehmer: Schnupperer[]; tage: Record<string, string[]>; kostenlos: number; edit: boolean }
+const SCHNUPPER = 'Schnuppertraining';
+const STATUS_STATE: Record<string, State> = { NEU: 'Critical', KONTAKTIERT: 'Information', TERMIN: 'Information', ABSOLVIERT: 'Positive', MITGLIED: 'Positive', ABGESAGT: 'Negative' };
 interface Nachweis { monat: string; titel: string; belegnr: string | null; erstellt_am: string | null; bezahlt_am: string | null; stunden: number; betrag: number; freigegeben_am: string | null }
-interface Erfassung { datum: string; trainingsart: string; anzahl: string; altArt: string | null }
+interface Erfassung {
+  datum: string; trainingsart: string; anzahl: string; altArt: string | null;
+  /** Kinder der Schnuppertraining-Einheit; undefined = wie gespeichert */
+  teilnehmer?: string[];
+}
 
 const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const WT_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -77,10 +93,12 @@ export function MeineZeiten() {
   const [oeffnung, setOeffnung] = useState<string | null>(null);
   const [weg, setWeg] = useState<Zeit | null>(null);
 
+  const [sch, setSch] = useState<Schnupper | null>(null);
+  const schnupperLaden = (mon = monat) => api.get<Schnupper>(`${MZ}/schnupper?monat=${mon}`).then(setSch).catch(() => setSch(null));
   const laden = (mon = monat) => api.get<Monat>(`${MZ}/monat?monat=${mon}`)
-    .then((r) => { setM(r); setKein(null); })
+    .then((r) => { setM(r); setKein(null); if (r.schnupper) schnupperLaden(mon); else setSch(null); })
     .catch((e) => { if ((e as { status?: number }).status === 403) setKein(e.message); else setError(e.message); });
-  useEffect(() => { setM(null); laden(monat); }, [monat]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setM(null); setSch(null); laden(monat); }, [monat]); // eslint-disable-line react-hooks/exhaustive-deps
   const archivLaden = () => api.get<Nachweis[]>(`${MZ}/nachweise`).then(setArchiv).catch(() => setArchiv([]));
   useEffect(() => { archivLaden(); }, []);
 
@@ -174,6 +192,9 @@ export function MeineZeiten() {
                             <div className="portal-mz__art">{z.trainingsart}</div>
                             <div className="portal-mz__info">
                               <span>{dat(z.datum)}</span>
+                              {z.trainingsart === SCHNUPPER && sch && (
+                                <span>{(sch.tage[z.datum] ?? []).map((a) => sch.teilnehmer.find((x) => x.adrnr === a)?.name ?? a).join(', ') || 'keine Kinder eingetragen'}</span>
+                              )}
                               {f?.ferien && <ObjectStatus state="Indication07">{f.ferien}</ObjectStatus>}
                               {f?.feiertag && <ObjectStatus state="Indication01">{f.feiertag}</ObjectStatus>}
                             </div>
@@ -194,6 +215,8 @@ export function MeineZeiten() {
                   </div>
                 ) : <Empty>Für {m.titel} sind noch keine Zeiten erfasst.</Empty>}
               </Section>
+
+              {m.schnupper && <SchnupperUebersicht sch={sch} />}
 
               <Section title="Zeitnachweis" actions={undefined}>
                 <div className="portal-row" style={{ justifyContent: 'space-between' }}>
@@ -252,9 +275,11 @@ export function MeineZeiten() {
       </div>
 
       {form && m && (
-        <ErfassungDialog m={m} f={form} setF={setForm} busy={busy} onClose={() => setForm(null)}
+        <ErfassungDialog m={m} f={form} setF={setForm} busy={busy} sch={sch} onClose={() => setForm(null)}
                          onSpeichern={async (anzahl) => {
-                           if (await aktion(() => api.post(`${MZ}/zeiten`, { datum: form.datum, trainingsart: form.trainingsart, anzahl, altArt: form.altArt }), 'Gespeichert.')) setForm(null);
+                           // Schnuppertraining: Kinder der Einheit mitsenden (nur mit Berechtigung)
+                           const teilnehmer = form.trainingsart === SCHNUPPER && sch?.edit ? form.teilnehmer ?? sch.tage[form.datum] ?? [] : undefined;
+                           if (await aktion(() => api.post(`${MZ}/zeiten`, { datum: form.datum, trainingsart: form.trainingsart, anzahl, altArt: form.altArt, teilnehmer }), 'Gespeichert.')) setForm(null);
                          }}
                          onLoeschen={async () => {
                            if (form.altArt && await aktion(() => api.post(`${MZ}/zeiten/loeschen`, { datum: form.datum, trainingsart: form.altArt }), 'Gelöscht.')) setForm(null);
@@ -337,8 +362,8 @@ export function MeineZeiten() {
 }
 
 // ---------------------------------------------------------------- Erfassung (Datum, Trainingsart, Dauer)
-function ErfassungDialog({ m, f, setF, busy, onClose, onSpeichern, onLoeschen }: {
-  m: Monat; f: Erfassung; setF: (f: Erfassung) => void; busy: boolean; onClose: () => void;
+function ErfassungDialog({ m, f, setF, busy, sch, onClose, onSpeichern, onLoeschen }: {
+  m: Monat; f: Erfassung; setF: (f: Erfassung) => void; busy: boolean; sch: Schnupper | null; onClose: () => void;
   onSpeichern: (anzahl: number) => void; onLoeschen: () => void;
 }) {
   const n = f.anzahl.trim() === '' ? 0 : Number(f.anzahl.replace(',', '.'));
@@ -403,6 +428,7 @@ function ErfassungDialog({ m, f, setF, busy, onClose, onSpeichern, onLoeschen }:
           {gueltig && n > 0 && m.trainer.satz ? <Text className="portal-muted portal-small">≈ {eur(Math.round(n * m.trainer.satz * 100) / 100)} bei {eur(m.trainer.satz)} je Stunde</Text> : null}
           {!gueltig && <Text style={{ color: 'var(--sapNegativeTextColor)' }} className="portal-small">Bitte eine Dauer zwischen 0 und 24 Stunden angeben.</Text>}
         </div>
+        {f.trainingsart === SCHNUPPER && m.schnupper && <TeilnehmerAuswahl f={f} setF={setF} sch={sch} />}
       </div>
     </Dialog>,
     document.body,
@@ -498,6 +524,102 @@ function MonatsKalender({ m, ferien, onTag }: { m: Monat; ferien: Map<string, Fe
           ))}
         </div>
       )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- Schnuppertraining (#21): Teilnehmer je Einheit
+function TeilnehmerAuswahl({ f, setF, sch }: { f: Erfassung; setF: (f: Erfassung) => void; sch: Schnupper | null }) {
+  const [suche, setSuche] = useState('');
+  if (!sch) return <BusyIndicator active style={{ display: 'block', padding: '0.5rem 0' }} />;
+  const gespeichert = sch.tage[f.datum] ?? [];
+  const wahl = f.teilnehmer ?? gespeichert;
+  const q = suche.trim().toLowerCase();
+  const liste = sch.teilnehmer.filter((t) => !q || t.name.toLowerCase().includes(q) || t.nummer.toLowerCase().includes(q) || wahl.includes(t.adrnr));
+  const umschalten = (a: string) => setF({ ...f, teilnehmer: wahl.includes(a) ? wahl.filter((x) => x !== a) : [...wahl, a] });
+  return (
+    <div className="portal-mz__feld">
+      <Label>Teilnehmer Schnuppertraining{wahl.length ? ` (${wahl.length})` : ''}</Label>
+      {!sch.edit ? (
+        <Text className="portal-muted portal-small">
+          {gespeichert.length ? gespeichert.map((a) => sch.teilnehmer.find((t) => t.adrnr === a)?.name ?? a).join(', ') : 'Keine Kinder eingetragen.'}
+          {' '}Teilnehmer eintragen darf nur, wer das Schnuppertraining betreuen darf.
+        </Text>
+      ) : !sch.teilnehmer.length ? (
+        <Text className="portal-muted portal-small">Zurzeit ist niemand zum Schnuppertraining angemeldet.</Text>
+      ) : (
+        <>
+          {sch.teilnehmer.length > 6 && <Input value={suche} placeholder="Kind suchen" showClearIcon style={{ width: '100%' }} onInput={(e) => setSuche(e.target.value)} />}
+          <div className="portal-mz__tn">
+            {liste.map((t) => {
+              // bisherige Tage ohne diese Einheit, damit die Zahl beim An-/Abwählen stimmt
+              const bisher = t.einheiten - (gespeichert.includes(t.adrnr) ? 1 : 0);
+              const mit = bisher + (wahl.includes(t.adrnr) ? 1 : 0);
+              return (
+                <div key={t.adrnr} className="portal-mz__tn-zeile">
+                  <CheckBox checked={wahl.includes(t.adrnr)} text={`${t.name}${t.alter != null ? ` (${t.alter})` : ''}`} onChange={() => umschalten(t.adrnr)} />
+                  <ObjectStatus state={mit > sch.kostenlos ? 'Critical' : mit === sch.kostenlos ? 'Positive' : 'Information'}>
+                    {mit}. Mal{mit > sch.kostenlos ? ` · über ${sch.kostenlos} kostenlose` : ''}
+                  </ObjectStatus>
+                </div>
+              );
+            })}
+          </div>
+          <Text className="portal-muted portal-small">
+            Die Zahl zählt die Tage, an denen das Kind geschnuppert hat – einschließlich dieser Einheit. {sch.kostenlos} Einheiten sind kostenlos.
+          </Text>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Schnuppertraining (#21): Übersicht der Kinder
+function SchnupperUebersicht({ sch }: { sch: Schnupper | null }) {
+  const [alle, setAlle] = useState(false);
+  if (!sch) return <Section title="Schnuppertraining"><BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /></Section>;
+  const offen = sch.teilnehmer.filter((t) => ['NEU', 'KONTAKTIERT', 'TERMIN', 'ABSOLVIERT'].includes(t.status));
+  const liste = alle ? sch.teilnehmer : offen;
+  return (
+    <Section title="Schnuppertraining" count={offen.length} flush
+             actions={sch.teilnehmer.length > offen.length ? <Button design="Transparent" onClick={() => setAlle(!alle)}>{alle ? 'Nur aktuelle' : 'Auch aus diesem Monat'}</Button> : undefined}>
+      {!liste.length ? <Empty>Zurzeit ist kein Kind zum Schnuppertraining angemeldet.</Empty> : (
+        <div className="portal-mz__liste">
+          {liste.map((t) => (
+            <div key={t.adrnr} className="portal-mz__sch">
+              <div style={{ minWidth: 0 }}>
+                <div className="portal-mz__art">{t.name}{t.alter != null ? ` (${t.alter})` : ''}</div>
+                <div className="portal-mz__info">
+                  <ObjectStatus state={STATUS_STATE[t.status] ?? 'None'}>{t.status_txt}</ObjectStatus>
+                  <span>{t.gespielt ? 'hat schon gespielt' : 'noch nie gespielt'} · {t.stufe_txt}</span>
+                </div>
+                <div className="portal-mz__info">
+                  {t.termine && <span><Icon name="appointment-2" className="portal-mz__ico" />{t.termine}</span>}
+                  {t.letzte && <span>zuletzt {dat(t.letzte)}</span>}
+                  {t.trainer && <span>Trainer: {t.trainer}</span>}
+                </div>
+                {(t.erziehungsberechtigt || t.mobil || t.email) && (
+                  <div className="portal-mz__info">
+                    {t.erziehungsberechtigt && <span>{t.erziehungsberechtigt}</span>}
+                    {t.mobil && <Link href={`tel:${t.mobil}`}>{t.mobil}</Link>}
+                    {t.whatsapp && <Link href={`https://wa.me/${t.whatsapp}`} target="_blank">WhatsApp</Link>}
+                    {t.email && <Link href={`mailto:${t.email}`}>E-Mail</Link>}
+                  </div>
+                )}
+                {t.mitteilung && <div className="portal-mz__info"><span>„{t.mitteilung}“</span></div>}
+              </div>
+              <div className="portal-mz__sch-zahl" title={`${t.einheiten}× geschnuppert, ${sch.kostenlos} Einheiten sind kostenlos`}>
+                <span className={`portal-mz__sch-wert${t.einheiten > sch.kostenlos ? ' portal-mz__sch-wert--ueber' : t.einheiten === sch.kostenlos ? ' portal-mz__sch-wert--voll' : ''}`}>{t.einheiten}×</span>
+                <span className="portal-mz__sch-label">von {sch.kostenlos} kostenlos</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Text className="portal-muted portal-small" style={{ display: 'block', padding: '0.5rem 1rem' }}>
+        Teilnehmer trägst du beim Erfassen einer Zeit mit der Trainingsart „Schnuppertraining“ ein. Daraus ergeben sich die Anzahl, die 1./2. Einheit
+        und der Status in der App Schnuppertraining.
+      </Text>
     </Section>
   );
 }
