@@ -211,9 +211,8 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
   async function pruefen() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ treffer: boolean; name?: string; benutzername: string }>(`${info.pfad}/pruefen`, { art, email, geburtsdatum: mitglied ? geburtsdatum : null });
+      const r = await api.post<{ treffer: boolean; name?: string }>(`${info.pfad}/pruefen`, { art, email, geburtsdatum: mitglied ? geburtsdatum : null });
       setTreffer(r.treffer ? { name: r.name ?? '' } : null);
-      setF((x) => ({ ...x, benutzername: x.benutzername || r.benutzername }));
       setSchritt(r.treffer ? 'KENNWORT' : 'DATEN');
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
@@ -306,8 +305,9 @@ export function RegistrierungPage({ orgName, logo, info, onBack }: { orgName: st
             </MessageStrip>
           )}
           <Field label="Benutzername (für die Anmeldung)" required>
-            <Input style={full} value={f.benutzername} onInput={set('benutzername')} valueState={frei ? 'Negative' : f.benutzername.length >= 3 ? 'Positive' : 'None'}
-                   valueStateMessage={<span>{frei ?? 'Benutzername ist frei'}</span>} />
+            {/* bewusst leer und ohne Vorschlag des Browsers: den Benutzernamen wählt jeder selbst (#10) */}
+            <Input data-kein-autofill style={full} value={f.benutzername} onInput={set('benutzername')} valueState={frei ? 'Negative' : f.benutzername.length >= 3 ? 'Positive' : 'None'}
+                   valueStateMessage={<span>{frei ?? 'Benutzername ist frei'}</span>} placeholder="Buchstaben, Ziffern, . _ - @" />
           </Field>
           <Field label="Kennwort (mindestens 10 Zeichen)" required><Input style={full} type="Password" value={f.passwort} onInput={set('passwort')} /></Field>
           <Field label="Kennwort wiederholen" required>
