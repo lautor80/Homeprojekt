@@ -160,12 +160,14 @@ export async function mailVerfuegbar(db?: Tx): Promise<boolean> {
 
 /** Versuch protokollieren (eigene Verbindung, damit der Eintrag auch bei zurückgerollter Transaktion bleibt); Fehler hier nie weiterreichen */
 export async function mailProtokoll(e: { anwendung: string; objekt: string; an: string; betreff: string; absender?: string | null; von?: string | null;
-  status: string; fehler?: string | null; benutzer?: string | null; nachricht?: unknown }): Promise<number | null> {
+  status: string; fehler?: string | null; benutzer?: string | null; nachricht?: unknown; message_id?: string | null }): Promise<number | null> {
   try {
-    const [r] = await sql`insert into core.mail_protokoll (anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer, nachricht)
+    // Message-ID ohne spitze Klammern, klein: daran werden Rückläufer und Antworten zugeordnet (lib/maileingang-db.ts)
+    const mid = String(e.message_id ?? '').trim().replace(/^<|>$/g, '').toLowerCase() || null;
+    const [r] = await sql`insert into core.mail_protokoll (anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer, nachricht, message_id)
              values (${e.anwendung}, ${e.objekt}, ${e.an}, ${e.betreff}, ${e.absender ?? null}, ${e.von ?? null}, ${e.status},
                      ${e.fehler ? String(e.fehler).slice(0, 1000) : null}, ${e.benutzer ?? null},
-                     ${e.nachricht ? sql.json(e.nachricht as never) : null}) returning id`;
+                     ${e.nachricht ? sql.json(e.nachricht as never) : null}, ${mid}) returning id`;
     await sql`delete from core.mail_protokoll where zeit < now() - interval '180 days'`;
     // gespeicherte Inhalte (Datenschutz) nur 30 Tage
     await sql`update core.mail_protokoll set nachricht = null where nachricht is not null and zeit < now() - interval '30 days'`;
@@ -210,7 +212,7 @@ export async function mailSenden(m: MailAuftrag): Promise<MailErgebnis & { proto
     const r = await mailSendenIntern(v, m);
     // Inhalt bzw. Anleitung zum Neuerzeugen auch bei Erfolg festhalten: E-Mail-Protokoll → „Erneut senden“ je Zeile (30 Tage, nie mit Zugangslinks)
     const protokoll = await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null),
-      nachricht: wiederholDaten(m) });
+      nachricht: wiederholDaten(m), message_id: r.message_id ?? null });
     return { ...r, protokoll };
   } catch (e) {
     await mailProtokoll({ ...proto, status: 'fehler', fehler: (e as Error).message, nachricht: wiederholDaten(m) });

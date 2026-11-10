@@ -115,3 +115,35 @@ Kennwörter: Bestätigungs- und Einladungslinks werden beim erneuten Senden neu 
 Kopie), Kennwort-Links nennt die Zeile nur als „neu auslösen“. E-Mails von vor dem Update oder älter als 30 Tage sind nicht wiederholbar.
 Nachgezogen (Rechnung „versendet“ …) wird nur, wenn der erste Versand fehlgeschlagen war.
 „gesendet“ heißt: von n8n an den Mailserver übergeben – nicht, dass die E-Mail im Postfach angekommen ist (Spam-Ordner, Tippfehler in der Adresse).
+
+## Rückmeldungen: unzustellbar, Abwesenheit, Antworten (Workflow „TCO Maileingang“)
+
+„gesendet“ heißt nur: an den Mailserver übergeben. Ob die E-Mail ankam, zeigt erst die Rückmeldung im Postfach des Absenders.
+Der Workflow [`tco-maileingang.json`](tco-maileingang.json) liest die Posteingänge der Absender-Konten per IMAP und meldet jede
+eingegangene Mail an `POST /api/mail/eingang`. Das Portal ordnet zu und zeigt das Ergebnis im E-Mail-Protokoll an der gesendeten E-Mail:
+
+| Art | Erkennung | Zuordnung |
+|---|---|---|
+| **unzustellbar** | Absender Mailer-Daemon/Postmaster oder Betreff wie „Mail delivery failed“, „Undelivered“ | Message-ID im Text, sonst jüngste gesendete E-Mail der letzten 7 Tage an eine im Text genannte Adresse |
+| **Abwesenheitsnotiz** | Kopfzeile `Auto-Submitted: auto-replied` oder Betreff wie „Automatische Antwort“, „Out of office“ | jüngste gesendete E-Mail der letzten 2 Tage an den Absender |
+| **Antwort** | alles andere | `In-Reply-To`/`References` = Message-ID der gesendeten E-Mail, sonst gleicher Betreff (ohne AW:/Re:) vom Empfänger innerhalb von 30 Tagen |
+
+Im Protokoll wird aus „gesendet“ der Status **„unzustellbar“** (auch als Filter), die Spalte „Rückmeldung“ nennt den Grund des Mailservers
+(z. B. `550 mailbox unavailable`) bzw. „Antwort von … (Zeit)“. Gespeichert werden nur Art, Absender, Betreff, Zeit und bei Rückläufern die
+Fehlerzeilen – **nie der Inhalt**; Mails ohne Bezug zu einer gesendeten E-Mail verwirft das Portal. Rückmeldungen zu E-Mails von vor dem
+Update werden über Adresse bzw. Betreff zugeordnet (die Message-ID wird erst seitdem festgehalten).
+
+Einrichten:
+
+1. In n8n **Import from File** → `tco-maileingang.json`.
+2. Knoten „Posteingang (IMAP)“: IMAP-Zugangsdaten des Standard-Absenders anlegen und wählen. **Je weiterem Absender-Konto** (`KONTEN` im
+   Workflow „TCO Mailversand“) den Knoten kopieren, dessen IMAP-Zugang wählen und ebenfalls mit „Mail aufbereiten“ verbinden – Rückläufer
+   landen immer im Postfach dessen, der gesendet hat. „Action“ bleibt „Nothing“: n8n markiert nichts als gelesen und verschiebt nichts.
+3. Knoten „An Portal melden“: Zugangsdatei „Header Auth account“ wählen (dieselbe wie am Webhook von „TCO Mailversand“: Name `X-TCO-Key`,
+   Wert = Webhook-Schlüssel der Anbindung). URL = Portal aus Sicht von n8n (im mitgelieferten Stack `http://app:8080/api/mail/eingang`);
+   der Header `x-portal-request: 1` muss bleiben.
+4. Aktivieren. Zum Test eine E-Mail an eine nicht existierende Adresse senden – nach dem Rückläufer steht die Zeile auf „unzustellbar“.
+
+Der Endpunkt nimmt nur Aufrufe mit dem Webhook-Schlüssel an (ohne hinterlegten Schlüssel gar keine). Aufrufformat (alles optional außer
+dem, was zum Zuordnen nötig ist): `postfach`, `von`, `betreff`, `datum`, `message_id`, `in_reply_to`, `references`, `auto`
+(Kopfzeile Auto-Submitted), `text` (wird nur ausgewertet). Antwort: `{ zugeordnet, art, protokoll, neu }`.

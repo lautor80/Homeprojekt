@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { change, requireAuth } from '../auth.js';
@@ -5,8 +6,10 @@ import { sql, type Tx } from '../db.js';
 import { BusinessError } from '../errors.js';
 import { activeModules } from '../modules.js';
 import { getSettings } from './settings.js';
+import { eingangVerbuchen } from '../lib/maileingang-db.js';
+import { authHeader } from '../lib/verbindungen.js';
 import { adressen, passt, personenIndex, personenText, type MailPerson } from '../lib/mailuebersicht.js';
-import { erneutSperre, mailErneutSenden, mailSenden, mailWiederholen, nichtWiederholbar, WIEDERHOLBAR, wiederholungsArt, type MailFolge, type Wiederholung } from '../lib/mail.js';
+import { erneutSperre, mailErneutSenden, mailSenden, mailVerbindung, mailWiederholen, nichtWiederholbar, WIEDERHOLBAR, wiederholungsArt, type MailFolge, type Wiederholung } from '../lib/mail.js';
 
 /** Mailprotokoll, Testmail und „Erneut senden“ (Administration → Anbindungen → E-Mail-Versand) */
 const P = 'core.settings:edit';
@@ -18,6 +21,15 @@ const UEBERSICHT_MAX = 2000;
 /** Kopie beim erneuten Senden: tatsächlicher Absender der ersten E-Mail, sonst der gewünschte, sonst wer jetzt sendet */
 const kopieAn = (p: { von: string | null; absender: string | null }, eigene: string | null | undefined): string | null =>
   adressen(p.von)[0] ?? adressen(p.absender)[0] ?? adressen(eigene)[0] ?? null;
+/** eingegangene Mail eines Absender-Postfachs (n8n-Workflow „TCO Maileingang“); der Text wird nur ausgewertet, nie gespeichert */
+const eingang = z.object({
+  postfach: z.string().max(500).nullish(), von: z.string().max(500).nullish(), betreff: z.string().max(1000).nullish(),
+  datum: z.string().max(100).nullish(), message_id: z.string().max(500).nullish(), in_reply_to: z.string().max(2000).nullish(),
+  references: z.string().max(20_000).nullish(), auto: z.string().max(200).nullish(),
+  text: z.string().nullish().transform((x) => (x ?? '').slice(0, 100_000)),
+});
+const gleich = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+
 interface UebersichtRoh {
   id: number; zeit: string; anwendung: string | null; objekt: string | null; an: string | null; betreff: string | null; absender: string | null;
   von: string | null; status: string; fehler: string | null; benutzer: string | null; inhalt: boolean; w_art: string | null; w_hinweis: string | null;
@@ -33,7 +45,7 @@ const protoFilter = z.object({
 type ProtoFilter = z.infer<typeof protoFilter>;
 // App „E-Mail-Protokoll“: zusätzlich Status und Freitext (Person, Empfänger, Vorgang, Betreff, Fehler …)
 const uebersichtFilter = protoFilter.extend({
-  status: z.enum(['gesendet', 'entwurf', 'fehler', 'nicht_gesendet']).or(z.literal('')).optional().transform((x) => x || null),
+  status: z.enum(['gesendet', 'entwurf', 'fehler', 'nicht_gesendet', 'unzustellbar']).or(z.literal('')).optional().transform((x) => x || null),
   suche: z.string().trim().max(120).optional().transform((x) => x || null),
 });
 // „bis“ ohne Uhrzeit = ganzer Tag; mit Uhrzeit einschließlich dieser Minute
@@ -98,7 +110,9 @@ export async function mailRoutes(app: FastifyInstance) {
       select id, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI:SS') as zeit, anwendung, objekt, an, betreff, absender, von, status, fehler, benutzer,
              nachricht is not null as inhalt, nachricht->'wiederholung'->>'art' as w_art, nachricht->'wiederholung'->>'hinweis' as w_hinweis,
              to_char(erneut_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as erneut_am, erneut_von, erneut_status
-        from core.mail_protokoll ${protoWo(DB, f)} ${f.status ? DB`and status = ${f.status}` : DB``}
+        from core.mail_protokoll ${protoWo(DB, f)}
+             ${f.status === 'unzustellbar' ? DB`and exists (select 1 from core.mail_antworten a where a.protokoll_id = core.mail_protokoll.id and a.art = 'unzustellbar')`
+               : f.status ? DB`and status = ${f.status}` : DB``}
        order by id desc limit ${UEBERSICHT_MAX + 1}`;
     const gekuerzt = rows.length > UEBERSICHT_MAX;
     const liste = rows.slice(0, UEBERSICHT_MAX) as unknown as UebersichtRoh[];
@@ -110,14 +124,38 @@ export async function mailRoutes(app: FastifyInstance) {
       personen.push(...benutzer.map((b) => ({ email: b.email as string, name: b.name as string, art: 'Benutzer' })));
     }
     const index = personenIndex(personen);
+    // Rückmeldungen: Unzustellbar-Meldungen, Abwesenheitsnotizen und Antworten je gesendeter E-Mail (ohne Inhalt)
+    const antworten = new Map<string, { art: string; zeit: string; von: string | null; betreff: string | null; grund: string | null }[]>();
+    if (liste.length) {
+      const a = await DB`
+        select protokoll_id, art, to_char(zeit at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as zeit, von, betreff, grund
+          from core.mail_antworten where protokoll_id = any(${liste.map((r) => String(r.id))}::text[]::bigint[]) order by zeit, id`;
+      for (const { protokoll_id, ...x } of a as unknown as ({ protokoll_id: string | number; art: string; zeit: string; von: string | null; betreff: string | null; grund: string | null })[]) {
+        const k = String(protokoll_id);
+        antworten.set(k, [...(antworten.get(k) ?? []), x]);
+      }
+    }
     const zeilen = liste.map(({ inhalt, w_art, w_hinweis, ...p }) => {
       // ob (und warum nicht) erneut gesendet werden kann – gleich welcher Status, ohne den gespeicherten Inhalt zu laden
       const sperre = erneutSperre(inhalt ? (w_art ? { wiederholung: { art: w_art, hinweis: w_hinweis ?? '' } } : { mail: true }) : null);
       return { ...p, person: personenText(p.an, index), erneut: !sperre, erneut_hinweis: sperre, erneut_neuer_link: !!w_art && w_art !== 'NEU_AUSLOESEN',
-               cc: kopieAn(p, req.user!.email) };
-    }).filter((z) => passt(f.suche, [z.person, z.an, z.objekt, z.anwendung, z.betreff, z.absender, z.von, z.benutzer, z.fehler]));
+               cc: kopieAn(p, req.user!.email), antworten: antworten.get(String(p.id)) ?? [] };
+    }).filter((z) => passt(f.suche, [z.person, z.an, z.objekt, z.anwendung, z.betreff, z.absender, z.von, z.benutzer, z.fehler,
+      ...z.antworten.flatMap((a) => [a.art, a.von, a.grund])]));
     const anwendungen = (await sql`select distinct anwendung from core.mail_protokoll where anwendung is not null order by 1`).map((r) => r.anwendung as string);
     return { zeilen, anwendungen, gekuerzt };
+  });
+
+  /**
+   * Rückmeldung zu einer gesendeten E-Mail verbuchen: n8n („TCO Maileingang“) meldet jede eingegangene Mail der Absender-Postfächer.
+   * Ohne Anmeldung, aber nur mit dem Webhook-Schlüssel der Anbindung „E-Mail-Versand“ (derselbe Header wie zum Senden, z. B. X-TCO-Key).
+   */
+  app.post('/api/mail/eingang', async (req, reply) => {
+    const erwartet = Object.entries(authHeader(await mailVerbindung()));
+    if (!erwartet.length) return reply.code(403).send({ message: 'Für den Maileingang muss an der Anbindung „E-Mail-Versand“ ein Webhook-Schlüssel hinterlegt sein.' });
+    const ok = erwartet.every(([name, wert]) => gleich(String(req.headers[name.toLowerCase()] ?? ''), wert));
+    if (!ok) return reply.code(403).send({ message: 'Webhook-Schlüssel fehlt oder ist falsch.' });
+    return eingangVerbuchen(DB, eingang.parse(req.body));
   });
 
   /** App „E-Mail-Protokoll“: E-Mail einer Zeile erneut senden (auch bereits gesendete) – der Absender der ersten E-Mail erhält eine Kopie (CC) */
