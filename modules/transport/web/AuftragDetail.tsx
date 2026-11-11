@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectPage,
+  BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectPage, ObjectStatus,
   ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -294,7 +294,7 @@ export function AuftragDetail() {
 
         <ObjectPageSection id="auftragsdaten" titleText="Auftragsdaten">
           <ObjectPageSubSection id="auftragsdaten-sub" titleText="Auftragsdaten" hideTitleText>
-            <Spalten n={2}>
+            <Spalten n={3}>
               <Spalte titel="Auftrag">
                 <F label="Auftragsnummer"><Text>{isNew ? `${vorschau} (vorläufig)` : nr}</Text></F>
                 <F label="Anlagedatum">
@@ -308,8 +308,6 @@ export function AuftragDetail() {
                 <F label="Auftragsnr. Kunde"><Input style={full} maxlength={40} value={a.ordernummer ?? ''} readonly={!mayEdit} onInput={(e) => set('ordernummer', e.target.value)} /></F>
                 <F label="Frachtpreis EK"><BetragInput value={a.frachtpreis_ek} readonly={!mayEdit} onChange={(v) => set('frachtpreis_ek', v)} /></F>
                 <F label="Frachtpreis VK"><BetragInput value={a.frachtpreis_vk} readonly={!mayEdit} onChange={(v) => set('frachtpreis_vk', v)} /></F>
-                <F label="MwSt berechnen"><CheckBox checked={a.steuerrelevant} readonly={!mayEdit} onChange={(e) => set('steuerrelevant', e.target.checked)} /></F>
-                {!isNew && <F label="Rechnungsbetrag"><Text><b>{betrag(a.rgbetrag)} EUR</b></Text></F>}
               </Spalte>
               <Spalte titel="Fahrzeug und Ladung">
                 <F label="Kennzeichen"><Input style={full} maxlength={20} value={a.kennzeichen ?? ''} readonly={!mayEdit} onInput={(e) => set('kennzeichen', e.target.value)} /></F>
@@ -321,17 +319,17 @@ export function AuftragDetail() {
                 <F label="Ladeweise">{werteSelect('LADEWEISE', 'ladeweise')}</F>
                 <F label="Palettentausch">{werteSelect('PALETTENTAUSCH', 'palettentausch', false)}</F>
               </Spalte>
+              <Spalte titel="Rechnung">
+                <F label="MwSt berechnen"><CheckBox checked={a.steuerrelevant} readonly={!mayEdit} onChange={(e) => set('steuerrelevant', e.target.checked)} /></F>
+                {!isNew && <F label="Rechnungsbetrag"><Text><b>{betrag(a.rgbetrag)} EUR</b></Text></F>}
+                <F label="Faktura">
+                  {a.faktura
+                    ? <ObjectStatus state="Positive">{a.faktura} vom {dat(a.fakturadatum)}</ObjectStatus>
+                    : <ObjectStatus state="Critical">offen</ObjectStatus>}
+                </F>
+                <F label="Dokumente fehlen"><CheckBox checked={a.dok_fehlen} readonly={!mayEdit} onChange={(e) => set('dok_fehlen', e.target.checked)} /></F>
+              </Spalte>
             </Spalten>
-          </ObjectPageSubSection>
-        </ObjectPageSection>
-
-        <ObjectPageSection id="rechnung" titleText="Rechnung">
-          <ObjectPageSubSection id="rechnung-sub" titleText="Rechnung" hideTitleText>
-            <Spalte>
-              <F label="Faktura"><Text>{a.faktura ?? ''}</Text></F>
-              <F label="Datum"><Text>{dat(a.fakturadatum)}</Text></F>
-              <F label="Dokumente fehlen"><CheckBox checked={a.dok_fehlen} readonly={!mayEdit} onChange={(e) => set('dok_fehlen', e.target.checked)} /></F>
-            </Spalte>
           </ObjectPageSubSection>
         </ObjectPageSection>
 
@@ -350,11 +348,14 @@ export function AuftragDetail() {
           <ObjectPageSection id="traeger" titleText="Holzträger">
             <ObjectPageSubSection id="traeger-sub" titleText="Trägerbestellung"
               actions={<FlexBox alignItems="Center" style={{ gap: '0.5rem' }}><Label>Summe:</Label><Text><b>{betrag(traegerSumme)} EUR</b></Text></FlexBox>}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: '40rem', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
-                    <th style={{ padding: '0.5rem', width: '8rem' }}>Menge</th><th>Produkt</th>
-                    <th style={{ width: '11rem', textAlign: 'right' }}>Einzelpreis</th><th style={{ width: '11rem', textAlign: 'right', paddingRight: '0.5rem' }}>Gesamtpreis</th>
+                    <th style={{ padding: '0.5rem', width: '8rem', fontWeight: 'normal', color: 'var(--sapContent_LabelColor)' }}>Menge</th>
+                    <th style={{ fontWeight: 'normal', color: 'var(--sapContent_LabelColor)' }}>Produkt</th>
+                    <th style={{ width: '11rem', textAlign: 'right', fontWeight: 'normal', color: 'var(--sapContent_LabelColor)' }}>Einzelpreis</th>
+                    <th style={{ width: '11rem', textAlign: 'right', paddingRight: '0.5rem', fontWeight: 'normal', color: 'var(--sapContent_LabelColor)' }}>Gesamtpreis</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -371,6 +372,7 @@ export function AuftragDetail() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}

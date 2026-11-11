@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  Bar, Button, CheckBox, FlexBox, Input, MessageStrip, Panel, Tab, TabContainer, Text, TextArea,
+  Bar, Button, CheckBox, DatePicker, FlexBox, Input, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
+import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { T, type Werte } from './util';
@@ -24,6 +25,11 @@ const WERTE_TITEL: Record<keyof Werte, string> = {
   FAHRZEUGTYP: 'Fahrzeugtypen', LADEGUT: 'Ladegut', LADEWEISE: 'Ladeweisen', PALETTENTAUSCH: 'Palettentausch',
 };
 const ART_TITEL = { T: 'Transportauftrag', L: 'Lieferschein', R: 'Rechnung' };
+
+/** Karten nebeneinander, auf schmalen Bildschirmen untereinander */
+const raster = (min: string) => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}, 100%), 1fr))`, gap: '0 1rem', alignItems: 'start' });
+/** Auf sehr breiten Bildschirmen nicht über die ganze Breite ziehen */
+const BREITE = { maxWidth: '96rem' };
 
 function FirmaTab() {
   const [f, setF] = useState<Firma | null>(null);
@@ -58,7 +64,8 @@ function FirmaTab() {
     <>
       <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
-      <Panel headerText="Rechnungssteller" fixed>
+      <div style={raster('30rem')}>
+      <Section title="Rechnungssteller">
         <FormGrid>
           <TextField label="Name" required value={f.name} onChange={s('name')} />
           <TextField label="Ansprechpartner" value={f.kontakt} onChange={s('kontakt')} />
@@ -76,8 +83,8 @@ function FirmaTab() {
           <TextField label="USt-IdNr." value={f.ustid} onChange={s('ustid')} />
           <TextField label="Steuernummer (nur für nicht steuerbare Leistungen)" value={f.steuernr} onChange={s('steuernr')} />
         </FormGrid>
-      </Panel>
-      <Panel headerText="Bank und Rechnung" fixed style={{ marginTop: '1rem' }}>
+      </Section>
+      <Section title="Bank und Rechnung">
         <FormGrid>
           <TextField label="Bank" value={f.bank} onChange={s('bank')} />
           <TextField label="IBAN" value={f.iban} onChange={s('iban')} />
@@ -96,13 +103,14 @@ function FirmaTab() {
             </FlexBox>
           </FieldBox>
         </FormGrid>
-      </Panel>
-      <MessageStrip design="Information" hideCloseButton style={{ marginTop: '1rem' }}>
+      </Section>
+      </div>
+      <MessageStrip design="Information" hideCloseButton>
         Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Adresse und API-Token werden zentral unter Administration → Anbindungen gepflegt.
       </MessageStrip>
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
-        <Button design="Emphasized" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
+        <Button design="Emphasized" icon="save" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
       </>} />
     </>
   );
@@ -124,31 +132,63 @@ function ProdukteTab() {
       setError((e as Error).message);
     }
   }
+  const heute = new Date().toISOString().slice(0, 10);
+  const th = { padding: '0.5rem', fontWeight: 'normal', color: 'var(--sapContent_LabelColor)' } as const;
+  const hinzufuegen = () => setList([...list, { prod_key: '', text: '', preis: 0, gueltig_bis: null, sort: list.length + 1 }]);
   return (
-    <>
+    <div style={{ maxWidth: '68rem' }}>
       <SperrHinweis s={sperre} />
-      {error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
-      <Text>Produkte erscheinen als Vorschlag in der Trägerbestellung neuer Holzträgeraufträge (nur gültige).</Text>
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.75rem' }}>
-        <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
-          <th style={{ padding: '0.5rem', width: '8rem' }}>Schlüssel</th><th>Bezeichnung</th><th style={{ width: '9rem' }}>Preis (EUR)</th><th style={{ width: '10rem' }}>Gültig bis</th><th style={{ width: '3rem' }} />
-        </tr></thead>
-        <tbody>
-          {list.map((p, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
-              <td style={{ padding: '0.25rem 0.5rem' }}><Input style={{ width: '7rem' }} value={p.prod_key} onInput={(e) => set(i, 'prod_key', e.target.value)} /></td>
-              <td><Input style={{ width: '100%' }} value={p.text} onInput={(e) => set(i, 'text', e.target.value)} /></td>
-              <td><Input style={{ width: '8rem' }} value={String(p.preis).replace('.', ',')} onChange={(e) => set(i, 'preis', Number(e.target.value.replace(',', '.')) || 0)} /></td>
-              <td><Input style={{ width: '9rem' }} placeholder="JJJJ-MM-TT" value={p.gueltig_bis ?? ''} onInput={(e) => set(i, 'gueltig_bis', e.target.value || null)} /></td>
-              <td><Button icon="delete" design="Transparent" onClick={() => setList(list.filter((_, j) => j !== i))} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <Bar style={{ marginTop: '1rem' }}
-           startContent={<Button icon="add" onClick={() => setList([...list, { prod_key: '', text: '', preis: 0, gueltig_bis: null, sort: list.length + 1 }])}>Produkt hinzufügen</Button>}
-           endContent={<Button design="Emphasized" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
-    </>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+      <Section title="Produkte" count={list.length}
+               actions={<Button icon="add" design="Transparent" disabled={!sperre.eigen} onClick={hinzufuegen}>Produkt hinzufügen</Button>}
+               flush>
+        <Text className="portal-muted" style={{ display: 'block', padding: '0.75rem 1rem 0' }}>
+          Gültige Produkte erscheinen als Vorschlag in der Trägerbestellung neuer Holzträgeraufträge.
+        </Text>
+        {list.length ? (
+          <div style={{ overflowX: 'auto', padding: '0.5rem 0.5rem 0.75rem' }}>
+            <table style={{ width: '100%', minWidth: '44rem', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                <th style={{ ...th, width: '7.5rem' }}>Schlüssel</th>
+                <th style={th}>Bezeichnung</th>
+                <th style={{ ...th, width: '9.5rem', textAlign: 'right' }}>Preis</th>
+                <th style={{ ...th, width: '10.5rem' }}>Gültig bis</th>
+                <th style={{ ...th, width: '6.5rem' }}>Status</th>
+                <th style={{ width: '2.75rem' }} />
+              </tr></thead>
+              <tbody>
+                {list.map((p, i) => {
+                  const abgelaufen = !!p.gueltig_bis && p.gueltig_bis < heute;
+                  return (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                      <td style={{ padding: '0.25rem 0.5rem' }}><Input style={{ width: '100%' }} value={p.prod_key} readonly={!sperre.eigen} onInput={(e) => set(i, 'prod_key', e.target.value)} /></td>
+                      <td style={{ padding: '0.25rem 0.5rem' }}><Input style={{ width: '100%' }} value={p.text} readonly={!sperre.eigen} onInput={(e) => set(i, 'text', e.target.value)} /></td>
+                      <td style={{ padding: '0.25rem 0.5rem' }}>
+                        <Input style={{ width: '100%', textAlign: 'right' }} value={p.preis.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                               readonly={!sperre.eigen} icon={<Text style={{ padding: '0 0.5rem' }}>EUR</Text>}
+                               onChange={(e) => set(i, 'preis', Number(e.target.value.replace(/\./g, '').replace(',', '.')) || 0)} />
+                      </td>
+                      <td style={{ padding: '0.25rem 0.5rem' }}>
+                        <DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" placeholder="unbegrenzt"
+                                    value={p.gueltig_bis && p.gueltig_bis < '2999' ? p.gueltig_bis : ''} readonly={!sperre.eigen}
+                                    onChange={(e) => set(i, 'gueltig_bis', e.detail.value || null)} />
+                      </td>
+                      <td style={{ padding: '0.25rem 0.5rem' }}>
+                        <ObjectStatus state={abgelaufen ? 'Critical' : 'Positive'}>{abgelaufen ? 'abgelaufen' : 'gültig'}</ObjectStatus>
+                      </td>
+                      <td><Button icon="delete" design="Transparent" tooltip="Produkt entfernen" disabled={!sperre.eigen} onClick={() => setList(list.filter((_, j) => j !== i))} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>Noch keine Produkte – über „Produkt hinzufügen“ anlegen oder mit dem SAP-Import (ZEU_PRODUKTE) übernehmen.</Empty>
+        )}
+      </Section>
+      <Bar endContent={<Button design="Emphasized" icon="save" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
+    </div>
   );
 }
 
@@ -182,9 +222,9 @@ function WerteTab() {
     <>
       <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1rem' }}>
+      <div style={raster('22rem')}>
         {(Object.keys(WERTE_TITEL) as (keyof Werte)[]).map((typ) => (
-          <Panel key={typ} headerText={WERTE_TITEL[typ]} fixed>
+          <Section key={typ} title={WERTE_TITEL[typ]} count={werte[typ].length}>
             {werte[typ].map((w) => (
               <WertZeile key={w.key} gesperrt={!sperre.eigen} schluessel={w.key} text={w.text} aktiv={w.aktiv ?? true} onSave={(t, a) => aendern(typ, w.key, t, a)} />
             ))}
@@ -192,7 +232,7 @@ function WerteTab() {
               <Input style={{ flex: 1 }} placeholder="Neuer Wert" value={neu[typ] ?? ''} onInput={(e) => setNeu({ ...neu, [typ]: e.target.value })} />
               <Button icon="add" disabled={!sperre.eigen || !(neu[typ] ?? '').trim()} onClick={() => anlegen(typ)}>Anlegen</Button>
             </FlexBox>
-          </Panel>
+          </Section>
         ))}
       </div>
     </>
@@ -205,7 +245,7 @@ function WertZeile({ schluessel, text, aktiv, gesperrt, onSave }: { gesperrt: bo
   const geaendert = t !== text || a !== aktiv;
   return (
     <FlexBox alignItems="Center" style={{ gap: '0.5rem', marginBottom: '0.25rem' }}>
-      <Text style={{ width: '2.5rem', color: 'var(--sapContent_LabelColor)' }}>{schluessel}</Text>
+      <Text style={{ width: '2.5rem', flexShrink: 0, color: 'var(--sapContent_LabelColor)' }}>{schluessel}</Text>
       <Input style={{ flex: 1 }} value={t} onInput={(e) => setT(e.target.value)} />
       <CheckBox text="aktiv" checked={a} onChange={(e) => setA(e.target.checked)} />
       <Button icon="save" design="Transparent" disabled={gesperrt || !geaendert} onClick={() => onSave(t, a)} />
@@ -235,15 +275,15 @@ function MailtexteTab() {
         Platzhalter: {'{ANREDE}'} (z. B. „Sehr geehrter Herr Müller“), {'{AUFTRAG}'}, {'{RECHNUNG}'}.
         Deutsch wird verwendet, wenn der Empfänger in Deutschland sitzt, sonst Englisch.
       </MessageStrip>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1rem' }}>
+      <div style={raster('26rem')}>
         {list.map((m, i) => (
-          <Panel key={`${m.art}${m.sprache}`} headerText={`${ART_TITEL[m.art]} – ${m.sprache === 'D' ? 'Deutsch' : 'Englisch'}`} fixed>
-            <TextArea rows={7} style={{ width: '100%' }} value={m.text}
+          <Section key={`${m.art}${m.sprache}`} title={`${ART_TITEL[m.art]} – ${m.sprache === 'D' ? 'Deutsch' : 'Englisch'}`}>
+            <TextArea rows={7} growing style={{ width: '100%' }} value={m.text} readonly={!sperre.eigen}
                       onInput={(e) => setList(list.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
-          </Panel>
+          </Section>
         ))}
       </div>
-      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
+      <Bar endContent={<Button design="Emphasized" icon="save" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
     </>
   );
 }
@@ -258,10 +298,12 @@ export function Stammdaten() {
         <Tab data-key="WERTE" text="Wertelisten" selected={tab === 'WERTE'} />
         <Tab data-key="MAIL" text="E-Mail-Texte" selected={tab === 'MAIL'} />
       </TabContainer>
-      {tab === 'FIRMA' && <FirmaTab />}
-      {tab === 'PROD' && <ProdukteTab />}
-      {tab === 'WERTE' && <WerteTab />}
-      {tab === 'MAIL' && <MailtexteTab />}
+      <div style={BREITE}>
+        {tab === 'FIRMA' && <FirmaTab />}
+        {tab === 'PROD' && <ProdukteTab />}
+        {tab === 'WERTE' && <WerteTab />}
+        {tab === 'MAIL' && <MailtexteTab />}
+      </div>
     </AppPage>
   );
 }
