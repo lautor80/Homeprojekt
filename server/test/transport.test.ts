@@ -260,3 +260,84 @@ test('Kontakte: Liste mit Rollen, Detail mit Aufträgen, Löschen nur ohne Auftr
   r = await call('GET', `${T}/kontakte/${neu.body.adrnr}/dokumente`);
   assert.equal(r.body.paperless, false);
 });
+
+test('Import Neuaufbau (#121): Tabellen leeren, neu anlegen, Nummernkreise aus ZEU_RGNRKREIS', async () => {
+  const adr = 'ADRNR;KUNDENNAME;KUNDENNAME2;ANREDE;NAME;VORNAME;STRASSE;HAUSNUMMER;LAND;PLZ;ORT;TELEFON;FAX;EMAIL;GLN;MARKT\r\n' +
+    '0000000002;EUROTRANS GMBH;;Herr;Holthaus;Luca;;;DE;33;Rietberg;;;lh@example.de;;\r\n' +
+    '0000000003;BLG;;Herr;Finke;Patrick;;;DE;28197;Bremen;;;pf@example.de;;\r\n';
+  const auf = 'RGNR_TXT;RGANLAGDAT;KUNDE;UNTERNEHMER;RE;RGBETRAG;KENNZEICHEN;ART;FRACHTPREIS_EK;FRACHTPREIS_VK;LADENUMMER;LADEGUT;GEWICHT;LADEWEISE;PALETTENTAUSCH;ORDERNUMMER;DATUMLADEN1;DATUMENTLADEN1;BESONDERHEITEN;FAKTURA;FAKTURADATUM;STEUERRELEVANT;DOK_FEHLEN;LEISTUNGSDATUM;LADEMETER\r\n' +
+    '2025_0041;20251103;0000000002;0000000003;0000000000;119.0000 ;SB-OR1412;001;42.0000 ;100.0000 ;;002;18;001;099;OR1;00000000;00000000;;2025_6288;20251110;X;;00000000;13.6\r\n' +
+    '2026_0007;00000000;0000000003;0000000002;0000000000;0.0000 ;;001;0.0000 ;0.0000 ;;;;;;;00000000;00000000;;;00000000;;;00000000;0.0\r\n';
+  const pos = 'MANDT;RGNR_TXT;POS;FIRMA;STRASSE;PLZORT;LAND;LADENUMMER;DATUM;ZEIT;FIRMA_E;STRASSE_E;PLZORT_E;LAND_E;DATUM_E;ZEIT_E\r\n' +
+    '001;;;Ohne Auftrag;;;;;20231125;;;;;;00000000;\r\n' +
+    '001;2025_0041;1;Brauerei;;66386 St. Ingbert;DE;;20251104;;Markt;;66606 St. Wendel;DE;20251105;\r\n' +
+    '001;2026_0007;1;;;;;;00000000;;;;;;00000000;\r\n';
+  const trg = 'RGNR_TXT;RGNR_POS;PRODUKT;MENGE;PREIS;PROD_TXT\r\n2026_0007;01;901;20;4.40 ;\r\n2026_0007;02;902;;7.50 ;\r\n';
+  const nrk = 'CLIENT;GJAHR;TYP;NUMMER\r\n001;2025;A;1369\r\n001;2025;R;6288\r\n001;2026;A;1314\r\n001;2026;R;6194\r\n001;2023;X;0073\r\n';
+  const dossier = 'CLIENT;RGNR_TXT;RGNR_POS;KUNDE;UNTERNEHMER;RGBETRAG;KENNZEICHEN;ART;FRACHTPREIS_EK;FRACHTPREIS_VK;LADENUMMER;GEWICHT;LADEWEISE;PALETTENTAUSCH;ORDERNUMMER;DATUMLADEN1;DATUMENTLADEN1\r\n';
+  const cust = 'APPL;BENUTZER;DRUCKPFAD\r\nZEU1;;C:\\Users\\Downloads\r\n';
+  const alv = 'REPID;SCREEN;ALV_NAME;FIELDNAME;COLTEXT\r\nZEU_AUFTRAGSVERWALTUNG;2000;GRID2;KUNDE;Kunde\r\n';
+  const ladegut = 'IDENT;LADEGUT\r\n';
+  const dateien = [
+    { name: 'Adressen.csv', data: b64(adr, 'latin1') },
+    { name: 'Auftr_ge.csv', data: b64(auf, 'latin1') },
+    { name: 'Auftr_ge_POs.csv', data: b64(pos, 'latin1') },
+    { name: 'ZEU_TRAEGER.csv', data: b64(trg, 'latin1') },
+    { name: 'ZEU_RGNRKREIS.csv', data: b64(nrk) },
+    { name: 'ZEU_DOSSIER.csv', data: b64(dossier) },
+    { name: 'ZGN_CUST.csv', data: b64(cust) },
+    { name: 'ZGN_ALV_FIELDS.csv', data: b64(alv) },
+    { name: 'ZEU_LADEGUT_T.csv', data: b64(ladegut) },
+  ];
+  // Dokumentverknüpfung zu einem Auftrag, der in der Datei wieder vorkommt, und zu einem, der wegfällt
+  const vorher = (await sql`select auftragsnr from transport.auftraege where auftragsnr <> '2025_0041' limit 1`)[0].auftragsnr as string;
+  await sql`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel) values ('2025_0041', 77, 'CMR'), (${vorher}, 78, 'weg')`;
+
+  // ZEU_DOSSIER darf die Aufträge nicht verdrängen (gleiche Felder RGNR_TXT/KUNDE)
+  let r = await call('POST', `${T}/import/pruefen`, { dateien, modus: 'ersetzen' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const st = Object.fromEntries(r.body.filter((s: any) => s.key !== 'IGN').map((s: any) => [s.key, s]));
+  assert.equal(st.AUF.anzahl, 2);
+  assert.match(st.AUF.hinweis, /vorher geleert/);
+  assert.match(st.AUF.hinweis, /gehen verloren/);
+  assert.match(st.POS.hinweis, /1 Zeile\(n\) ohne Schlüssel/);
+  assert.equal(st.NRK.anzahl, 4);
+  assert.match(st.NRK.hinweis, /Typ X wird ignoriert/);
+  const ign = r.body.filter((s: any) => s.key === 'IGN');
+  assert.deepEqual(ign.map((s: any) => s.tabelle).sort(), ['ZEU_DOSSIER', 'ZEU_LADEGUT_T', 'ZGN_ALV_FIELDS', 'ZGN_CUST']);
+  assert.ok(ign.every((s: any) => s.status === 'nicht benötigt'));
+
+  // ohne Begründung bzw. ohne Pflichtdatei kein Neuaufbau
+  r = await call('POST', `${T}/import/ausfuehren`, { dateien, modus: 'ersetzen' });
+  assert.equal(r.status, 400);
+  r = await call('POST', `${T}/import/ausfuehren`, { dateien: dateien.filter((d) => d.name !== 'ZEU_TRAEGER.csv'), modus: 'ersetzen', reason: 'Test' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Träger\.csv/);
+
+  r = await call('POST', `${T}/import/ausfuehren`, { dateien, modus: 'ersetzen', reason: 'Neuaufbau aus SAP' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Neuaufbau: Aufträge, Stops, Adressen, Holzträger wurden geleert/);
+  assert.match(r.body.text, /Neu angelegt: 2 Aufträge, 2 Stops, 2 Adressen, 2 Trägerpositionen/);
+  assert.match(r.body.text, /1 Dokumentverknüpfung\(en\) zu Aufträgen übernommen/);
+  assert.match(r.body.text, /1 Dokumentverknüpfung\(en\) entfallen/);
+
+  assert.deepEqual((await sql`select auftragsnr from transport.auftraege order by 1`).map((x) => x.auftragsnr), ['2025_0041', '2026_0007']);
+  assert.equal((await sql`select count(*)::int as n from transport.adressen`)[0].n, 2);
+  assert.deepEqual((await sql`select doc_id from transport.auftrag_dokumente`).map((x) => x.doc_id), [77]);
+  const a = (await call('GET', `${T}/auftraege/2026_0007`)).body;
+  assert.equal(a.anlagedatum, '2026-01-01');
+  assert.equal(a.traeger.length, 2);
+  // Nummernkreise genau auf SAP-Stand – auch wenn der Portalstand höher war
+  const nr = Object.fromEntries((await sql`select id, year, last_value from core.number_ranges where id like 'TRANSPORT_%'`)
+    .map((x) => [`${x.id}|${x.year}`, Number(x.last_value)]));
+  assert.equal(nr['TRANSPORT_AUFTRAG|2025'], 1369);
+  assert.equal(nr['TRANSPORT_RECHNUNG|2025'], 6288);
+  assert.equal(nr['TRANSPORT_AUFTRAG|2026'], 1314);
+  assert.equal(nr['TRANSPORT_RECHNUNG|2026'], 6194);
+
+  // normaler Import danach: nichts doppelt, Nummernkreise nur hoch
+  r = await call('POST', `${T}/import/ausfuehren`, { dateien });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Neu angelegt: 0 Aufträge/);
+  assert.doesNotMatch(r.body.text, /Nummernkreise/);
+});

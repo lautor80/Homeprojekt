@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, Dialog, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, Select,
+  AnalyticalTable, Bar, Button, CheckBox, Dialog, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, Select,
   Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { AblageFlaeche } from '@core/ablage';
+import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { T, download } from './util';
 
 // ---------------------------------------------------------------------------
@@ -200,14 +201,27 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
   const [status, setStatus] = useState<ImpStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Neuaufbau (#121): Aufträge, Stops, Träger, Adressen (und Produkte/Wertelisten, wenn dabei) vorher leeren
+  const [modus, setModus] = useState<'neu' | 'ersetzen'>('neu');
+  const [frage, setFrage] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setFiles([]);
     setStatus(null);
     setError(null);
+    setModus('neu');
     api.post<ImpStatus[]>(`${T}/import/pruefen`, { dateien: [] }).then(setStatus).catch((e) => setError(e.message));
   }, [open]);
+
+  async function pruefen(dateien: { name: string; data: string }[], m: 'neu' | 'ersetzen') {
+    setError(null);
+    try {
+      setStatus(await api.post<ImpStatus[]>(`${T}/import/pruefen`, { dateien, modus: m }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   async function add(list: FileList | File[] | null) {
     if (!list?.length) return;
@@ -218,19 +232,15 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
       if (i >= 0) neu[i] = e; else neu.push(e);
     }
     setFiles(neu);
-    setError(null);
-    try {
-      setStatus(await api.post<ImpStatus[]>(`${T}/import/pruefen`, { dateien: neu }));
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    await pruefen(neu, modus);
   }
 
-  async function start() {
+  async function start(reason?: string) {
+    setFrage(false);
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<{ text: string }>(`${T}/import/ausfuehren`, { dateien: files });
+      const r = await api.post<{ text: string }>(`${T}/import/ausfuehren`, { dateien: files, modus, reason });
       onDone(r.text);
     } catch (e) {
       setError((e as Error).message);
@@ -252,14 +262,28 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
     <Dialog open={open} headerText="CSV-Import" onClose={onClose} style={{ width: 'min(68rem, 95vw)' }}
             footer={<Bar endContent={<>
               <Button design="Emphasized" icon="upload-to-cloud" loading={busy}
-                      disabled={!status?.some((s) => s.status === 'eingelesen')} onClick={start}>Importieren</Button>
+                      disabled={!status?.some((s) => s.status === 'eingelesen') || (modus === 'ersetzen' && status.some((s) => s.state === 'Negative'))}
+                      onClick={() => (modus === 'ersetzen' ? setFrage(true) : start())}>
+                {modus === 'ersetzen' ? 'Neu aufbauen' : 'Importieren'}
+              </Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
-        Die SAP-Exporte Aufträge, Aufträge_POs und Adressen gemeinsam auswählen (optional Träger, Produkte, Wertelisten) –
-        sie werden sofort eingelesen und am Spaltenkopf erkannt. Beim Import werden nur neue Sätze angelegt,
-        vorhandene bleiben unverändert (leere Adressen werden ergänzt).
+        Die SAP-Exporte Aufträge, Aufträge_POs und Adressen gemeinsam auswählen (optional Träger, Produkte, Wertelisten,
+        ZEU_RGNRKREIS) – sie werden sofort eingelesen und am Spaltenkopf erkannt. Beim Import werden nur neue Sätze angelegt,
+        vorhandene bleiben unverändert (leere Adressen werden ergänzt). SAP-Tabellen ohne Gegenstück im Portal
+        (ZEU_DOSSIER, ZEU_LADEGUT_T, ZGN_ALV_FIELDS, ZGN_CUST) werden erkannt und übersprungen.
       </MessageStrip>
+      <CheckBox text="Neuaufbau: vorhandene Aufträge, Stops, Träger und Adressen vorher löschen (Produkte/Wertelisten nur, wenn ihre Datei dabei ist)"
+                wrappingType="Normal" checked={modus === 'ersetzen'}
+                onChange={(e) => { const m = e.target.checked ? 'ersetzen' : 'neu'; setModus(m); void pruefen(files, m); }} />
+      {modus === 'ersetzen' && (
+        <MessageStrip design="Critical" hideCloseButton style={{ margin: '0.5rem 0' }}>
+          Neuaufbau: Die Tabellen werden geleert und komplett aus den Dateien angelegt – im Portal erfasste Aufträge, die
+          nicht in der Datei stehen, gehen verloren. Erforderlich sind Aufträge, Aufträge_POs, Adressen und ZEU_TRAEGER;
+          mit ZEU_RGNRKREIS werden die Nummernkreise genau auf den SAP-Stand gesetzt.
+        </MessageStrip>
+      )}
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       <AblageFlaeche ziel={{ titel: 'SAP-Import', annehmen: (f) => { add(f); } }} accept=".csv,text/csv" groesse="Dialog"
                      titel="CSV-Dateien hier ablegen" text="Hierher ziehen oder klicken zum Auswählen – sie werden sofort eingelesen und am Spaltenkopf erkannt." />
@@ -267,6 +291,9 @@ export function ImportDialog({ open, onClose, onDone }: { open: boolean; onClose
         <Text>{files.length ? files.map((f) => f.name).join(', ') : 'Noch keine Dateien ausgewählt'}</Text>
       </FlexBox>
       <AnalyticalTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} scaleWidthMode="Smart" />
+      <ConfirmDialog open={frage} danger askReason title="Euroflex-Daten neu aufbauen?" confirmText="Neu aufbauen"
+                     text="Aufträge, Stops, Träger und Adressen (und Produkte/Wertelisten, wenn ihre Datei dabei ist) werden gelöscht und aus den Dateien neu angelegt. Das lässt sich nur über eine Sicherung rückgängig machen."
+                     onConfirm={(r) => { void start(r); }} onCancel={() => setFrage(false)} />
     </Dialog>
   );
 }

@@ -264,10 +264,37 @@ Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt.
 | Rechnungen | Einzel- und Sammelrechnungen mit lückenlosen Nummern (Start je Jahr in den Stammdaten), PDF mit EPC-GiroCode, XRechnung 3.0 (UBL) |
 | Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (Zugang unter Administration → Anbindungen) |
 | Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch), E-Mail-Texte |
-| Übernahme aus SAP | „Neu → Import aus SAP-Export …“: CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten). Nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen |
+| Übernahme aus SAP | „Neu → Import aus SAP-Export …“: CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten, ZEU_RGNRKREIS). Standard: nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen. **Neuaufbau** (#121): Tabellen vorher leeren und komplett neu anlegen – siehe unten |
 
 Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create`, `transport.versand:execute`,
 `transport.kontakte:edit`, `transport.stammdaten:edit`, `transport.import:execute`.
+
+### Übernahme aus SAP: Import und Neuaufbau (#121)
+
+Dialog *Euroflex → Aufträge → Neu → Import aus SAP-Export …*. Alle CSV-Dateien des SAP-Exports auf einmal ablegen;
+jede Datei wird am **Spaltenkopf** erkannt (Dateiname egal, Kodierung UTF-8 oder Windows-1252, Semikolon).
+
+| SAP-Datei | Ziel im Portal | Neuaufbau |
+|---|---|---|
+| `Aufträge.csv` (ZEU_AUFTRAG) | `transport.auftraege` | Pflicht, wird geleert |
+| `Aufträge_POs.csv` (ZEU_AUFTAG_POS) | `transport.stops` | Pflicht, wird geleert |
+| `Adressen.csv` (ZEU_ADRESSEN) | `transport.adressen` | Pflicht, wird geleert |
+| `ZEU_TRAEGER.csv` | `transport.traeger` | Pflicht, wird geleert |
+| `ZEU_PRODUKTE.csv` | `transport.produkte` | optional, wird nur geleert, wenn die Datei dabei ist |
+| Wertelisten (DD07T der Domänen ZEU_LADEART/-GUT/-WEISE/ZEU_PALETTENTAUSCH) | `transport.werte` | optional, wird nur geleert, wenn die Datei dabei ist |
+| `ZEU_RGNRKREIS.csv` (GJAHR, TYP, NUMMER) | `core.number_ranges` (`TRANSPORT_AUFTRAG` = Typ A, `TRANSPORT_RECHNUNG` = Typ R; andere Typen werden ignoriert) | Nummernkreise werden **genau** auf den SAP-Stand gesetzt (mindestens die höchste importierte Nummer) |
+| `ZEU_DOSSIER`, `ZEU_LADEGUT_T`, `ZGN_ALV_FIELDS`, `ZGN_CUST` | – | werden erkannt und als „nicht benötigt“ übersprungen (Altbestand, ALV-Spaltentexte, SAP-GUI-Druckpfade; Ladegut kommt aus der Werteliste) |
+
+- **Import (Standard):** Nur neue Schlüssel werden angelegt, vorhandene Sätze bleiben unverändert (leere Adressen
+  werden ergänzt), Nummernkreise werden nur hochgezogen.
+- **Neuaufbau** (Kästchen im Dialog, Sicherheitsabfrage mit Pflicht-Begründung): In **einer** Transaktion werden die
+  Tabellen per `TRUNCATE` geleert und komplett aus den Dateien angelegt. Schlägt etwas fehl, bleibt alles wie vorher.
+  Die Prüfung zeigt vorher, wie viele Sätze gelöscht werden und wie viele im Portal erfasste Aufträge **nicht** in der
+  Datei stehen (sie gehen verloren). Verknüpfungen Auftrag ↔ Paperless-Dokument bleiben für Aufträge erhalten, die in
+  der Datei wieder vorkommen; die Dokumente selbst bleiben in Paperless. Änderungsbeleg mit Aktion `IMPORT_NEUAUFBAU`.
+  Vorher eine Sicherung ziehen (*Administration → Sicherung*, Bereich Euroflex).
+- API: `POST /api/m/transport/import/pruefen` bzw. `/import/ausfuehren` mit
+  `{ dateien: [{ name, data (Base64) }], modus: 'neu' | 'ersetzen', reason }` (Recht `transport.import:execute`, bis 20 Dateien).
 
 ### Regeln für Buchhaltungs-/Belegobjekte
 
