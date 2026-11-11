@@ -467,9 +467,9 @@ export interface MeinAbo {
   bid: string; platz: string; wochentag: string; von: string; bis: string; erster: string; letzter: string;
   termine: number; kommend: number; naechster: string | null; preis: Preis; text: string | null; quelle: string;
   /** #83: Abo wird je Termin abgerechnet – einzelne Termine storniert der Nutzer selbst */
-  einzelabrechnung: boolean; storniert: number; kommende_termine: AboTermin[];
+  einzelabrechnung: boolean; storniert: number; kommende_termine: MeinAboTermin[];
 }
-export interface AboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
+export interface MeinAboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
 
 /** Stornofrist eines Termins: stornierbar und „bis“-Text (null ohne Frist) */
 function frist(p: Platz | undefined, datum: string, von: number, j = jetzt()) {
@@ -533,7 +533,7 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
     const einzelabrechnung = !!t0.aboeinzel;
     const storno = aboStorno.get(bid) ?? [];
     // kommende Termine (aktive und stornierte) – nur bei Einzelabrechnung, dort einzeln stornierbar
-    const kommendeTermine: AboTermin[] = einzelabrechnung
+    const kommendeTermine: MeinAboTermin[] = einzelabrechnung
       ? [...kommende, ...storno.filter((t) => istKommend(t))].sort((a, b) => String(a.datum).localeCompare(String(b.datum))).map((t) => {
         const f = frist(zuPlatz(t.platz), t.datum, minuten(t.von), j);
         const storniert = t.status === '2';
