@@ -79,7 +79,8 @@ export function OrdnerDateien({ nr, version }: { nr: string; version?: number })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+      {/* eingerückt wie die Dateizeilen darunter (#121) */}
+      <FlexBox alignItems="Center" style={{ gap: '0.75rem', paddingLeft: 'calc(0.75rem + 1px)' }}>
         <Icon name="folder" />
         <Text><b>Ablageordner</b> <span className="portal-muted">{daten ? anzeigePfad(daten.basis, nr) : ''}</span></Text>
         <Button design="Transparent" icon="refresh" tooltip="Neu einlesen" onClick={lade} />

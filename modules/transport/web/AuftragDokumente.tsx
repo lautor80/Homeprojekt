@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useCan } from '@core/session';
+import { MailEntwurfDialog } from './MailEntwurf';
 import { Button, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AblageFlaeche, useAblageZiel, type AblageErgebnis, type AblageZiel } from '@core/ablage';
@@ -30,6 +32,8 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0 }: { nr: string; ed
   const [stand, setStand] = useState(0);
   useEffect(() => { ordnerStatus().then((o) => setOrdner(!!o)).catch(() => setOrdner(false)); }, []);
   const [pdf, setPdf] = useState<Dok | null>(null);
+  const can = useCan();
+  const [mail, setMail] = useState(false);
   const [loesen, setLoesen] = useState<Dok | null>(null);
   const [error, setError] = useState<string | null>(null);
   const laden = () => api.get<{ paperless: boolean; dokumente: Dok[] }>(`${T}/auftraege/${nr}/dokumente`).then(setD).catch((e) => setError(e.message));
@@ -76,6 +80,12 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0 }: { nr: string; ed
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
       {!d.paperless && <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Anbindungen).</MessageStrip>}
+      {can('transport.versand:execute') && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button icon="email" onClick={() => setMail(true)}>E-Mail mit Anhängen…</Button>
+        </div>
+      )}
+      {mail && <MailEntwurfDialog nr={nr} dokumente={d.dokumente} onClose={() => setMail(false)} />}
       {d.dokumente.length > 0 && (
         <div className="portal-ad">
           {d.dokumente.map((x) => (

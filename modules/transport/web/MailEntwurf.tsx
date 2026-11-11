@@ -1,0 +1,177 @@
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { api } from '@core/api';
+import { toast } from '@core/toast';
+import { T } from './util';
+import { dateienImOrdner, dateiLesen } from './ordner';
+
+/**
+ * E-Mail zum Auftrag mit Anhängen (#121): Vorlage (Transportauftrag, Lieferschein, Rechnung – Texte aus den Stammdaten,
+ * Empfänger wie beim Versenden) oder freier Text, anpassbar; Anhänge aus dem Ablageordner des Auftrags und aus Paperless wählen.
+ * „Entwurf öffnen“ erzeugt eine E-Mail-Datei (.eml, als Entwurf gekennzeichnet) mit den Anhängen – sie öffnet sich im
+ * Standard-Mailprogramm (Outlook, Thunderbird, Apple Mail) als neue, noch nicht gesendete Nachricht.
+ * mailto: kann keine Anhänge übergeben; ohne Anhänge geht es auch direkt per mailto.
+ */
+type Art = 'T' | 'L' | 'R' | 'FREI';
+const ARTEN: Record<Art, string> = { T: 'Transportauftrag (an Unternehmer)', L: 'Lieferschein (an Kunde)', R: 'Rechnung (an Kunde)', FREI: 'Freier Text' };
+interface Vorschlag { an: string; betreff: string; text: string; faktura: string | null }
+interface Anhang { key: string; name: string; quelle: 'ORDNER' | 'PAPERLESS'; docId?: number; groesse?: number }
+export interface MailDok { doc_id: number; titel: string | null; datei: string | null }
+
+// ---------------------------------------------------------------- .eml (RFC 5322 / MIME)
+const b64 = (bytes: Uint8Array) => {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/.{1,76}/g, '$&\r\n');
+};
+const utf8 = (s: string) => new TextEncoder().encode(s);
+/** Kopfzeile mit Umlauten: RFC 2047 (UTF-8, Base64) */
+const kopf = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...utf8(s)))}?=`);
+const mime = (name: string) => {
+  const e = name.split('.').pop()?.toLowerCase() ?? '';
+  return ({ pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', xml: 'application/xml',
+    txt: 'text/plain', csv: 'text/csv', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', zip: 'application/zip' } as Record<string, string>)[e]
+    ?? 'application/octet-stream';
+};
+
+export async function emlErzeugen(m: { an: string; betreff: string; text: string; anhaenge: { name: string; daten: Blob }[] }): Promise<Blob> {
+  const grenze = `----=_Euroflex_${Math.random().toString(36).slice(2)}`;
+  const teile: string[] = [
+    `To: ${m.an}`,
+    `Subject: ${kopf(m.betreff)}`,
+    // Outlook öffnet die Datei damit als Entwurf (Senden-Knopf statt Antworten)
+    'X-Unsent: 1',
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${grenze}"`,
+    '',
+    `--${grenze}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64(utf8(m.text.replace(/\r?\n/g, '\r\n'))),
+  ];
+  for (const a of m.anhaenge) {
+    const n = kopf(a.name);
+    teile.push(`--${grenze}`, `Content-Type: ${mime(a.name)}; name="${n}"`, `Content-Disposition: attachment; filename="${n}"`,
+      'Content-Transfer-Encoding: base64', '', b64(new Uint8Array(await a.daten.arrayBuffer())));
+  }
+  teile.push(`--${grenze}--`, '');
+  return new Blob([teile.join('\r\n')], { type: 'message/rfc822' });
+}
+
+const groesse = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
+/** Vorschlag je Vorlage: passende Dateien vorauswählen (Name enthält Transportauftrag/Lieferschein/Rechnung) */
+const passt = (art: Art, name: string) => (art === 'T' ? /transport/i : art === 'L' ? /liefer/i : art === 'R' ? /rechnung/i : /^$/).test(name);
+
+export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; dokumente: MailDok[]; onClose: () => void }) {
+  const [art, setArt] = useState<Art>('T');
+  const [an, setAn] = useState('');
+  const [betreff, setBetreff] = useState('');
+  const [text, setText] = useState('');
+  const [faktura, setFaktura] = useState<string | null>(null);
+  const [ordner, setOrdner] = useState<Anhang[] | null>(null);
+  const [wahl, setWahl] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    dateienImOrdner(nr).then((d) => setOrdner((d?.dateien ?? []).filter((f) => !/\.eml$/i.test(f.name))
+      .map((f) => ({ key: `O:${f.name}`, name: f.name, quelle: 'ORDNER' as const, groesse: f.groesse })))).catch(() => setOrdner([]));
+  }, [nr]);
+  const anhaenge = useMemo<Anhang[]>(() => [
+    ...(ordner ?? []),
+    ...dokumente.map((d) => ({ key: `P:${d.doc_id}`, name: d.datei || d.titel || `Dokument_${d.doc_id}.pdf`, quelle: 'PAPERLESS' as const, docId: d.doc_id })),
+  ], [ordner, dokumente]);
+
+  // Vorlage laden: Empfänger, Betreff, Text wie beim Versenden aus der Auftragsliste
+  useEffect(() => {
+    if (art === 'FREI') { setBetreff(`Auftrag ${nr}`); setText(''); return; }
+    setError(null);
+    api.post<(Vorschlag & { auftragsnr: string })[]>(`${T}/mails`, { art, auftraege: [nr] })
+      .then((r) => {
+        const v = r[0];
+        if (!v) { setError('Zu diesem Auftrag gibt es noch keine Rechnung.'); return; }
+        setAn(v.an); setBetreff(v.betreff); setText(v.text); setFaktura(v.faktura);
+      })
+      .catch((e) => setError((e as Error).message));
+  }, [art, nr]);
+  // passende Dateien vorauswählen, sobald die Liste da ist bzw. die Vorlage wechselt
+  useEffect(() => { setWahl(new Set(anhaenge.filter((x) => passt(art, x.name)).map((x) => x.key))); }, [art, anhaenge]);
+
+  const umschalten = (k: string, an_: boolean) => setWahl((w) => { const n = new Set(w); if (an_) n.add(k); else n.delete(k); return n; });
+
+  async function entwurf() {
+    setBusy(true); setError(null);
+    try {
+      const dateien: { name: string; daten: Blob }[] = [];
+      for (const x of anhaenge.filter((y) => wahl.has(y.key))) {
+        if (x.quelle === 'ORDNER') {
+          const f = await dateiLesen(nr, x.name);
+          if (!f) throw new Error(`${x.name} ist im Ablageordner nicht mehr vorhanden.`);
+          dateien.push({ name: x.name, daten: f });
+        } else {
+          const res = await fetch(`${T}/auftraege/${nr}/dokumente/${x.docId}/datei`, { credentials: 'same-origin' });
+          if (!res.ok) throw new Error(`${x.name} konnte nicht aus Paperless geladen werden (${res.status}).`);
+          dateien.push({ name: x.name, daten: await res.blob() });
+        }
+      }
+      const eml = await emlErzeugen({ an: an.trim(), betreff, text, anhaenge: dateien });
+      const url = URL.createObjectURL(eml);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${betreff.replace(/[\\/:*?"<>|]/g, '_').trim() || `Auftrag_${nr}`}.eml`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      toast(`E-Mail-Entwurf mit ${dateien.length} Anhang/Anhängen erstellt – die Datei öffnet sich im Mailprogramm (sonst in den Downloads anklicken).`, 8000);
+      onClose();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  const mailto = () => {
+    window.location.href = `mailto:${an.trim()}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text.replace(/\r?\n/g, '\r\n'))}`;
+  };
+
+  return createPortal(
+    <Dialog open headerText={`E-Mail zum Auftrag ${nr}`} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="email" loading={busy} disabled={busy || !betreff.trim()} onClick={entwurf}>Entwurf öffnen</Button>
+              <Button design="Transparent" disabled={busy} tooltip="Ohne Anhänge direkt im Mailprogramm" onClick={mailto}>Ohne Anhänge</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+          <div><Label>Vorlage</Label>
+            <Select style={{ width: '100%' }} onChange={(e) => setArt((e.detail.selectedOption as HTMLElement).dataset.a as Art)}>
+              {(Object.keys(ARTEN) as Art[]).map((k) => <Option key={k} data-a={k} selected={art === k}>{ARTEN[k]}</Option>)}
+            </Select>
+          </div>
+          <div><Label>An</Label><Input style={{ width: '100%' }} type="Email" value={an} placeholder="E-Mail-Adresse (auch im Mailprogramm ergänzbar)" onInput={(e) => setAn(e.target.value)} /></div>
+        </div>
+        <div><Label required>Betreff</Label><Input style={{ width: '100%' }} value={betreff} maxlength={200} onInput={(e) => setBetreff(e.target.value)} /></div>
+        <div><Label>Nachricht</Label><TextArea style={{ width: '100%' }} rows={8} value={text} onInput={(e) => setText(e.target.value)} /></div>
+        <Label>Anhänge{faktura && art === 'R' ? ` (Rechnung ${faktura})` : ''}</Label>
+        {ordner === null ? <Text className="portal-muted">Lade Dateien …</Text> : !anhaenge.length ? (
+          <Text className="portal-muted">Keine Dateien im Ablageordner oder in Paperless – zuerst drucken bzw. Dateien ablegen.</Text>
+        ) : (
+          <div className="portal-ad">
+            {anhaenge.map((x) => (
+              <div key={x.key} className="portal-ad__zeile" style={{ gridTemplateColumns: '2rem minmax(0, 1fr) auto' }}>
+                <CheckBox checked={wahl.has(x.key)} onChange={(e) => umschalten(x.key, e.target.checked)} accessibleName={x.name} />
+                <Text style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name}</Text>
+                <Text className="portal-muted portal-small">{x.quelle === 'ORDNER' ? `Ablageordner${x.groesse ? ` · ${groesse(x.groesse)}` : ''}` : `Paperless ${x.docId}`}</Text>
+              </div>
+            ))}
+          </div>
+        )}
+        <Text className="portal-muted portal-small">
+          „Entwurf öffnen“ erstellt eine E-Mail-Datei (.eml) mit den gewählten Anhängen; sie öffnet sich im Standard-Mailprogramm als neuer Entwurf
+          (Outlook: direkt mit „Senden“). Öffnet der Browser sie nicht selbst, die Datei in den Downloads anklicken – in Chrome/Edge lässt sich
+          „Dateien dieses Typs immer öffnen“ einstellen.
+        </Text>
+      </div>
+    </Dialog>,
+    document.body,
+  );
+}
