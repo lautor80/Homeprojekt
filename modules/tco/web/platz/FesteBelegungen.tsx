@@ -12,19 +12,19 @@ import { SperrHinweis, useSperre } from '@core/sperre';
 import { TCO, dat } from '../util';
 
 /**
- * Feste Platzbelegungen ohne Buchung: Jugendtraining, Sperrzeiten (z. B. Platzpflege), Veranstaltungen.
+ * Feste Platzbelegungen ohne Buchung: Jugendtraining, Schnuppertraining, Sperrzeiten (z. B. Platzpflege), Veranstaltungen.
  * Sie erscheinen im Kalender für alle mit Bezeichnung und blockieren Buchungen. Aus EP3 übernommene Events sind nur lesbar.
  */
 const PA = `${TCO}/platz/admin`;
 type Aktion = (fn: () => Promise<unknown>, nachher?: () => unknown) => Promise<boolean>;
-type Art = 'TRAINING' | 'SPERRE' | 'VERANSTALTUNG';
+type Art = 'TRAINING' | 'SCHNUPPER' | 'SPERRE' | 'VERANSTALTUNG';
 interface Fest {
   id: number; bezeichnung: string; art: Art; plaetze: number[]; wochentage: string; datum_von: string; datum_bis: string;
   zeit_von: string; zeit_bis: string; hinweis: string | null; aktiv: boolean; quelle: string; ext_id: string | null;
 }
 type Form = Omit<Fest, 'id' | 'quelle' | 'ext_id'> & { id?: number };
 const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-const ARTEN: Record<Art, string> = { TRAINING: 'Training', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
+const ARTEN: Record<Art, string> = { TRAINING: 'Training', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
 const isoHeute = () => new Date().toLocaleDateString('sv-SE');
 const zeiten = () => { const o: string[] = []; for (let m = 0; m <= 1440; m += 15) o.push(m === 1440 ? '24:00' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`); return o; };
 const wtText = (w: string) => (w === '1234567' ? 'täglich' : [...w].map((x) => WT[Number(x) - 1]).join(', '));
@@ -94,7 +94,12 @@ function FestDialog({ start, plaetze, onClose, onSave }: { start: Form; plaetze:
       <FormGrid>
         <FieldBox label="Bezeichnung" required><Input style={{ width: '100%' }} value={f.bezeichnung} maxlength={80} onInput={(e) => set('bezeichnung', e.target.value)} /></FieldBox>
         <FieldBox label="Art">
-          <Select style={{ width: '100%' }} onChange={(e) => set('art', (e.detail.selectedOption as HTMLElement).dataset.a as Art)}>
+          <Select style={{ width: '100%' }} onChange={(e) => {
+            const a = (e.detail.selectedOption as HTMLElement).dataset.a as Art;
+            // Bezeichnung mitführen, solange sie noch die Vorgabe einer Art ist
+            const vorgabe = ['Jugendtraining', 'Schnuppertraining', 'Sperrzeit', 'Veranstaltung', ''];
+            setF({ ...f, art: a, bezeichnung: vorgabe.includes(f.bezeichnung) ? (a === 'TRAINING' ? 'Jugendtraining' : ARTEN[a]) : f.bezeichnung });
+          }}>
             {(Object.keys(ARTEN) as Art[]).map((a) => <Option key={a} data-a={a} selected={a === f.art}>{ARTEN[a]}</Option>)}
           </Select>
         </FieldBox>

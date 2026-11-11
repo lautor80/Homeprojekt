@@ -12,6 +12,8 @@
 .portal-pb__punkt--eigen { background: var(--sapButton_Emphasized_Background, #0070f2); }
 .portal-pb__punkt--belegt { background: var(--sapNeutralBackground, #eff1f2); border: 1px solid var(--sapNeutralBorderColor, #788fa6); }
 .portal-pb__punkt--training { background: var(--sapIndicationColor_6b, #e0f5ea); border: 1px solid var(--sapIndicationColor_6, #256f3a); }
+.portal-pb__punkt--schnupper { background: var(--sapIndicationColor_8b, #fdf0f7); border: 1px solid var(--sapIndicationColor_8, #c0399f); }
+.portal-pb__punkt--sperre { background: repeating-linear-gradient(135deg, var(--sapNeutralBackground, #eff1f2) 0 3px, var(--sapList_Background, #fff) 3px 6px); border: 1px solid var(--sapNeutralBorderColor, #788fa6); }
 .portal-pb__punkt--reserviert { background: repeating-linear-gradient(135deg, var(--sapCriticalBackground, #fef7f1) 0 3px, var(--sapCriticalColor, #e76500) 3px 4px); border: 1px solid var(--sapCriticalColor, #e76500); }
 
 .portal-pb__scroll {
@@ -106,6 +108,11 @@
 .portal-pb__block--sperre {
   background: repeating-linear-gradient(135deg, var(--sapNeutralBackground, #eff1f2) 0 0.4rem, var(--sapList_Background, #fff) 0.4rem 0.8rem);
   color: var(--sapNeutralTextColor, #475e75); border-left-color: var(--sapNeutralBorderColor, #788fa6);
+}
+/* Schnuppertraining (#11) */
+.portal-pb__block--schnupper {
+  background: var(--sapIndicationColor_8b, #fdf0f7); color: var(--sapIndicationColor_8, #c0399f);
+  border-left-color: var(--sapIndicationColor_8, #c0399f);
 }
 /* gerade von jemand anderem ausgewählt (Sperre, noch nicht gebucht) */
 .portal-pb__block--reserviert {

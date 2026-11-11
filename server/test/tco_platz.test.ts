@@ -707,3 +707,52 @@ test('EP3-Events werden als feste Belegungen übernommen (ersetzen sich beim nä
   r = await admin('GET', `${A}/feste`);
   assert.deepEqual(r.body.liste.filter((x: { quelle: string }) => x.quelle === 'EP3').map((x: { ext_id: string }) => x.ext_id), ['601']);
 });
+
+test('Platz buchen für Admin/Hallenwart (#11): Namen sehen, für andere buchen, Schnuppertraining eintragen', async () => {
+  const CARL = '0000000411';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt) values (${CARL}, 'Carl', 'Wart', '2020-01-01') on conflict do nothing`;
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'HALLENWART_T', name: 'Hallenwart Test', permissions: ['tco.platzbuchung:edit', 'tco.platzbuchung:verwalten'] })).status, 200);
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'hwart11', displayName: 'Hallenwart 11', password: 'start-passwort', roles: ['HALLENWART_T'] })).status, 200);
+  assert.equal((await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('hwart11'), adrnr: CARL })).status, 200);
+  const wart = await anmelden('hwart11');
+  const d = tag(11);
+
+  let r = await bert('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '10:00', bis: '11:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Hallenwart sieht den Namen, Mitglieder weiterhin nur „belegt“
+  r = await wart('GET', `${P}/tag?datum=${d}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.rechte.verwalten, true);
+  let b = r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((x: { von: string }) => x.von === '10:00');
+  assert.equal(b.kunde, 'BERT SPIELER');
+  assert.equal(b.eigen, false);
+  r = await anna('GET', `${P}/tag?datum=${d}`);
+  assert.equal(r.body.rechte.verwalten, false);
+  b = r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((x: { von: string }) => x.von === '10:00');
+  assert.deepEqual(b, { von: '10:00', bis: '11:00', eigen: false });
+
+  // Schnuppertraining direkt im Kalender; Überschneidung abgelehnt; ohne Recht 403
+  r = await wart('POST', `${P}/verwalten/belegung`, { platz_id: halleId, datum: d, von: '15:00', bis: '16:00', art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining', text: 'Trainer Max' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await wart('POST', `${P}/verwalten/belegung`, { platz_id: halleId, datum: d, von: '10:30', bis: '11:30', art: 'TRAINING', bezeichnung: 'Jugendtraining' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits belegt/);
+  assert.equal((await bert('POST', `${P}/verwalten/belegung`, { platz_id: halleId, datum: d, von: '17:00', bis: '18:00', art: 'SPERRE', bezeichnung: 'X' })).status, 403);
+  r = await anna('GET', `${P}/tag?datum=${d}`);
+  b = r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((x: { von: string }) => x.von === '15:00');
+  assert.deepEqual(b.fest, { art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining', hinweis: 'Trainer Max' });
+
+  // Buchung für ein anderes Mitglied – erscheint bei Anna als eigene Buchung
+  assert.equal((await wart('GET', `${P}/verwalten/mitglieder`)).body.some((m: { adrnr: string }) => m.adrnr === ANNA), true);
+  r = await wart('POST', `${P}/verwalten/buchung`, { platz_id: halleId, datum: d, von: '12:00', bis: '13:00', adrnr: ANNA });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await anna('GET', `${P}/tag?datum=${d}`);
+  b = r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((x: { von: string }) => x.von === '12:00');
+  assert.equal(b.eigen, true);
+  // für sich selbst bucht der Hallenwart wie bisher
+  r = await wart('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '13:00', bis: '14:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Platzverwaltung: Schnuppertraining auch dort als Art
+  r = await admin('POST', `${A}/feste`, { bezeichnung: 'Schnuppertraining Kinder', art: 'SCHNUPPER', plaetze: [], wochentage: '6', datum_von: d, datum_bis: tag(40), zeit_von: '09:00', zeit_bis: '10:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+});
