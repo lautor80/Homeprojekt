@@ -61,7 +61,7 @@ Zuordnung und Paperless-Nummer.
 |---|---|
 | Status | `aktiv`, `testlauf` (nichts ablegen, Vorschlag in die Prüfliste) oder `aus` |
 | Gilt | je Anhang oder für die E-Mail selbst |
-| Bedingungen | UND/ODER; Felder: Absender-Adresse, -Domain, -Name, Empfänger, Postfach, Betreff, Mailtext, Mailtext (HTML), Korrespondent, Absender ist Mitglied, Anzahl Anhänge, Dateiname, Dateityp, Dokumenttext; Operatoren: ist, enthält, beginnt mit, endet mit, Muster, in Liste – jeweils auch verneint |
+| Bedingungen | UND/ODER; Felder: Absender-Adresse, -Domain, -Name, Empfänger, Postfach, Betreff, Mailtext, Mailtext (HTML), Korrespondent, Absender ist Mitglied, Anzahl Anhänge, Dateiname, Dateityp, Dokumenttext; Operatoren: ist, enthält, beginnt mit, endet mit, Muster, in Liste – jeweils auch verneint. **Mehrere Werte** je Bedingung (ist/enthält/beginnt/endet) mit `;` oder Zeilenumbruch trennen: trifft zu, wenn einer passt (ODER), verneint, wenn keiner passt – z. B. eine Regel für mehrere Absender, kombinierbar mit UND („(Absender A oder B) und Betreff …“) |
 | Felder lesen | Name, Quelle, Muster (erste Klammergruppe = Wert), optional Pflicht → Platzhalter `{feld.<name>}` |
 | Paperless | Bei neuen Regeln aus; bei Bedarf einschalten. Titel, Korrespondent, Dokumenttyp, Speicherpfad, Tags, Dokumentdatum, Notiz – Vorlagen wie in der Paperless-Zuordnung (`{datei|ohneEndung}`, `{datum|datum}` …); fehlende Korrespondenten und Tags werden angelegt |
 | Custom Fields | Feld aus Paperless wählen, Wert oder Vorlage angeben (z. B. `{feld.betrag}`). Das Portal wandelt je Feldtyp um: Betrag `EUR12.50`, Datum `JJJJ-MM-TT` (auch `31.12.2026`), Zahl, Ja/Nein, Auswahl per Option. Ungültige Werte werden als Warnung gemeldet. |

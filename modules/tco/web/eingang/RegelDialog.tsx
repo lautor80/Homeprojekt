@@ -166,7 +166,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
         Kleinere Priorität wird zuerst geprüft; die erste passende Regel gewinnt. Im Testlauf wird nichts abgelegt – der Vorschlag steht in der Prüfliste.
       </Text>
 
-      <Block titel="Bedingungen">
+      <Block titel="Bedingungen" hinweis="Mehrere Werte in einer Bedingung mit ; trennen – sie trifft zu, wenn einer passt (ODER), z. B. Absender-Adresse enthält „a@firma.de; b@verein.de“. So lässt sich auch „(Absender A oder B) und Betreff …“ mit UND kombinieren.">
         <div style={zeile}>
           <Label>Es müssen</Label>
           <Wahl wert={r.verknuepfung} style={{ width: '16rem' }} onChange={(k) => { setR({ ...r, verknuepfung: k as RegelEingabe['verknuepfung'] }); setTest(null); }}
@@ -179,7 +179,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
               <Wahl wert={b.feld} style={{ width: '15rem' }} optionen={felder} onChange={(k) => setB({ feld: k })} />
               <CheckBox text="nicht" checked={!!b.nicht} onChange={(e) => setB({ nicht: e.target.checked })} />
               <Wahl wert={b.op} style={{ width: '14rem' }} optionen={Object.entries(stamm.operatoren)} onChange={(k) => setB({ op: k })} />
-              <Input value={b.wert} style={{ flex: '1 1 12rem' }} placeholder={b.feld === 'mitglied' ? 'ja oder nein' : 'Wert'} onInput={(e) => setB({ wert: e.target.value })} />
+              <Input value={b.wert} style={{ flex: '1 1 12rem' }} placeholder={b.feld === 'mitglied' ? 'ja oder nein' : b.op === 'muster' ? 'regulärer Ausdruck' : b.op === 'liste' ? 'Werte mit Komma' : 'Wert – mehrere mit ; trennen'} onInput={(e) => setB({ wert: e.target.value })} />
               {test && <ObjectStatus state={test.bedingungen[i] ? 'Positive' : 'Negative'}>{test.bedingungen[i] ? 'trifft zu' : 'trifft nicht zu'}</ObjectStatus>}
               <Button design="Transparent" icon="delete" tooltip="Bedingung entfernen" disabled={r.bedingungen.length < 2}
                       onClick={() => { setR({ ...r, bedingungen: r.bedingungen.filter((_, j) => j !== i) }); setTest(null); }} />
