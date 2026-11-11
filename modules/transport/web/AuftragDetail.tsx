@@ -370,12 +370,14 @@ export function AuftragDetail() {
                   // ohne MwSt: Grund wählen – Text erscheint so auf der Rechnung und in der E-Rechnung (#121)
                   <F label="Ohne MwSt, weil" required>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!mayEdit} checked={a.steuerbefreiung === 'RC'}
+                      {/* auch nach der Faktura korrigierbar – ändert nur den Hinweistext, nicht die Beträge */}
+                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!darfBearbeiten} checked={a.steuerbefreiung === 'RC'}
                                    text="Übergang der Steuerschuld auf den Leistungsempfänger (Reverse Charge)"
-                                   onChange={() => set('steuerbefreiung', 'RC')} />
-                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!mayEdit} checked={a.steuerbefreiung === 'DRITTLAND'}
+                                   onChange={(e) => { if (e.target.checked) set('steuerbefreiung', 'RC'); }} />
+                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!darfBearbeiten} checked={a.steuerbefreiung === 'DRITTLAND'}
                                    text="Umsatzsteuerfreier Transport in ein Drittland gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG"
-                                   onChange={() => set('steuerbefreiung', 'DRITTLAND')} />
+                                   onChange={(e) => { if (e.target.checked) set('steuerbefreiung', 'DRITTLAND'); }} />
+                      {fakturiert && <Text className="portal-muted portal-small">Rechnung {a.faktura}: Änderung des Grunds druckt die Rechnung mit dem neuen Text (Beträge bleiben).</Text>}
                       {!a.steuerbefreiung && <Text className="portal-muted portal-small">Noch nicht gewählt – bisher aus dem Land des Rechnungsempfängers abgeleitet.</Text>}
                     </div>
                   </F>

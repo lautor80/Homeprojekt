@@ -209,6 +209,15 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   assert.match(xr3.xml, /Umsatzsteuerfreier Transport in ein Drittland gem\. § 4 Nr\. 3 Buchst\. a Unterbuchstabe aa UStG/);
   assert.doesNotMatch(xr3.xml, /VATEX-EU-AE/);
   assert.equal((await call('GET', `${T}/pdf/R/${er3.body.fakturen[0]}`)).status, 200);
+  // nach der Faktura korrigierbar: Reverse Charge statt Drittland (nur Text/Kategorie, Beträge bleiben)
+  const a3 = (await call('GET', `${T}/auftraege/${f3.body.auftragsnr}`)).body;
+  const pu = await call('PUT', `${T}/auftraege/${f3.body.auftragsnr}`, { ...a3, typ: 'F', steuerbefreiung: 'RC', frachtpreis_ek: 999 });
+  assert.equal(pu.status, 200, JSON.stringify(pu.body));
+  const a3n = (await call('GET', `${T}/auftraege/${f3.body.auftragsnr}`)).body;
+  assert.deepEqual([a3n.steuerbefreiung, a3n.frachtpreis_ek], ['RC', a3.frachtpreis_ek], 'Grund geändert, Preis gesperrt');
+  const xr3b = (await call('GET', `${T}/xrechnung/${er3.body.fakturen[0]}`)).body;
+  assert.match(xr3b.xml, /VATEX-EU-AE/);
+  assert.match(xr3b.xml, /Übergang der Steuerschuld auf den Leistungsempfänger \(Reverse Charge\)/);
   // mit MwSt wird der Grund verworfen
   const f4 = await call('POST', `${T}/auftraege`, { ...neuF, steuerrelevant: true, kunde: 794, unternehmer: 793, steuerbefreiung: 'RC' });
   assert.equal((await call('GET', `${T}/auftraege/${f4.body.auftragsnr}`)).body.steuerbefreiung, null);

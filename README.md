@@ -330,7 +330,8 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG* (Feld `steuerbefreiung` = `RC` | `DRITTLAND`). Der Text steht wie bisher
   unter dem Rechnungsbetrag (bei gemischten Sammelrechnungen je Grund eine Zeile) und als Befreiungsgrund in XRechnung/ZUGFeRD
   (Kategorie AE bzw. E). Altaufträge ohne Wahl werden wie bisher aus dem Land des Rechnungsempfängers abgeleitet; mit MwSt wird
-  der Grund verworfen.
+  der Grund verworfen. Der Grund bleibt auch **nach der Faktura korrigierbar** (ändert nur Text/Steuerkategorie, nicht die
+  Beträge); Rechnung und E-Rechnung werden beim nächsten Druck/Abruf mit dem neuen Text erzeugt.
 
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
   übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.

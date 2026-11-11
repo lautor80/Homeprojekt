@@ -280,6 +280,10 @@ async function routes(app: FastifyInstance) {
       // Dokumente werden über /auftraege/:nr/dokumente zugeordnet – alle übrigen Felder bleiben, wie sie sind.
       if (alt.faktura) {
         await tx`update transport.auftraege set dok_fehlen = ${body.dok_fehlen}, besonderheiten = ${body.besonderheiten} where auftragsnr = ${nr}`;
+        // Grund ohne MwSt (#121) bleibt korrigierbar: ändert nur den Hinweistext der Rechnung, nicht die Beträge (0 % bleibt 0 %)
+        if (body.steuerbefreiung) {
+          await tx`update transport.auftraege set steuerbefreiung = ${body.steuerbefreiung} where auftragsnr = ${nr} and not steuerrelevant`;
+        }
         return;
       }
       await auftragSchreiben(tx, nr, body, body.typ, false);
