@@ -153,6 +153,8 @@ export function geschlossen(p: Platz, datum: string): string | null {
 export interface Belegung {
   bid: string; datum: string; von: number; bis: number; kunde: string; status: string; platz: string; platzId: number;
   benutzer_id: string | null; quelle: string | null; assigned: string; text: string | null;
+  /** Anlage der Buchung (#11): Zeitpunkt (bzw. nur Datum bei älteren), angelegt von (Benutzername), Benutzer der Buchung, geändert am */
+  angelegt?: { am: string | null; um: string | null; von: string | null; benutzer: string | null; geaendert: string | null };
   /** gerade von einer anderen Sitzung ausgewählt (Sperre PLATZZEIT, noch nicht gebucht) */
   reserviert?: boolean;
   /** feste Belegung (Jugendtraining, Sperrzeit, Veranstaltung) – für alle mit Bezeichnung sichtbar */
@@ -175,9 +177,13 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
   const ohnePlatz = hallen.length === 1 ? plaetze.find((p) => p.name === hallen[0].name) : undefined;
   const rows = await db`
     select b.bid, b.datum::text, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis, b.kunde,
-           b.status, b.platz, b.benutzer_id::text, b.quelle, coalesce(b.assigned, '') as assigned, coalesce(t.text, b.text) as text
+           b.status, b.platz, b.benutzer_id::text, b.quelle, coalesce(b.assigned, '') as assigned, coalesce(t.text, b.text) as text,
+           b.erstellt::text as erstellt, to_char(b.erstellt_um at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as erstellt_um, b.erstellt_von,
+           b.geaendert::text as geaendert,
+           case when u.id is null then null else u.display_name || ' (' || u.username || ')' end as benutzer
       from tco.bookings b
       left join tco.bookingstxt t on t.bid = b.bid
+      left join core.users u on u.id = b.benutzer_id
      where b.datum between ${von} and ${bis}
        and coalesce(b.status, '') not in ('2', '4')
        and b.time_start is not null and b.time_ende is not null
@@ -188,6 +194,7 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
     return {
       bid: r.bid, datum: r.datum, von: minuten(r.von), bis: e, kunde: r.kunde ?? '', status: r.status ?? '', platz: r.platz,
       platzId: (r.platz?.trim() ? zu.get(gross(r.platz)) : ohnePlatz?.id)!, benutzer_id: r.benutzer_id, quelle: r.quelle, assigned: r.assigned, text: r.text,
+      angelegt: { am: r.erstellt ?? null, um: r.erstellt_um ?? null, von: r.erstellt_von ?? null, benutzer: r.benutzer ?? null, geaendert: r.geaendert ?? null },
     };
   });
   const res = await db`
@@ -407,6 +414,8 @@ export interface TagPlatz {
     bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null;
     /** Platzverwaltung: Portalbuchung (änderbar) bzw. bereits abgerechnet */
     portal?: boolean; abgerechnet?: boolean;
+    /** Platzverwaltung (#11): wer/wann gebucht */
+    angelegt?: Belegung['angelegt'];
   }[];
 }
 
@@ -434,7 +443,7 @@ export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitz
       // gerade in Auswahl bei jemand anderem: normale Nutzer ohne Namen
       if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true };
       const art = b.status === '3' ? 'Abo' as const : 'Einzel' as const;
-      if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text, portal: b.quelle === QUELLE, abgerechnet: b.assigned === 'Y' };
+      if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text, portal: b.quelle === QUELLE, abgerechnet: b.assigned === 'Y', angelegt: b.angelegt };
       // fremde Buchung: nur Zeitraum – kein Name, keine Nummer, kein Text
       if (!istEigen(b, sicht)) return namen ? { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text } : { ...zeit, eigen: false };
       return {

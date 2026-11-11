@@ -383,20 +383,22 @@ function Belegung() {
   const bisDatum = daten[daten.length - 1];
   return (
     <>
-      <Toolbar design="Transparent">
-        <Button icon="navigation-left-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage zurück` : 'Vortag'} onClick={() => setDatum(tagPlus(datum, -tage))} />
-        <DatePicker formatPattern="EEEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={datum} style={{ width: '14rem' }}
-                    onChange={(e) => e.detail.valid && e.detail.value && setDatum(e.detail.value)} />
-        <Button icon="navigation-right-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage weiter` : 'Folgetag'} onClick={() => setDatum(tagPlus(datum, tage))} />
-        {datum !== isoHeute() && <Button design="Transparent" onClick={() => setDatum(isoHeute())}>Heute</Button>}
+      {/* umbrechende Leiste statt Toolbar: auf dem Handy bleiben Datum und Tagesauswahl vollständig sichtbar und bedienbar (#11) */}
+      <div className="portal-pv-leiste">
+        <div className="portal-pv-leiste__datum">
+          <Button icon="navigation-left-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage zurück` : 'Vortag'} onClick={() => setDatum(tagPlus(datum, -tage))} />
+          <DatePicker formatPattern="EEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={datum} className="portal-pv-leiste__picker"
+                      onChange={(e) => e.detail.valid && e.detail.value && setDatum(e.detail.value)} />
+          <Button icon="navigation-right-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage weiter` : 'Folgetag'} onClick={() => setDatum(tagPlus(datum, tage))} />
+          {datum !== isoHeute() && <Button design="Transparent" onClick={() => setDatum(isoHeute())}>Heute</Button>}
+        </div>
         <SegmentedButton accessibleName="Anzahl Tage" onSelectionChange={(e) => setTage(Number((e.detail.selectedItems[0] as HTMLElement).dataset.n))}>
           {TAGE_WAHL.map((n) => <SegmentedButtonItem key={n} data-n={n} selected={tage === n}>{n === 1 ? '1 Tag' : `${n} Tage`}</SegmentedButtonItem>)}
         </SegmentedButton>
-        <ToolbarSpacer />
-        <Text className="portal-muted">
+        <Text className="portal-muted portal-pv-leiste__hinweis">
           {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – freie Zeit anklicken zum Eintragen, Termin anklicken zum Ändern/Stornieren, Kopier-Symbol zum Kopieren
         </Text>
-      </Toolbar>
+      </div>
       {spalten && spalten.plaetze.length > 0 && (
         <Kalender admin tag={{ datum }} plaetze={spalten.plaetze}
                   onFrei={(p, von) => { const z = spalten.zuDatum.get(p.id)!; setEintrag({ p: z.p, datum: z.datum, von }); }}
@@ -501,6 +503,22 @@ function EintragDialog({ p, datum, von, onClose, onFertig }: { p: TagPlatz; datu
   );
 }
 
+/** Detail einer Buchung: Benutzer der Buchung, angelegt am/um und von wem, zuletzt geändert (#11) */
+function GebuchtInfo({ b }: { b: Belegt }) {
+  const a = b.angelegt;
+  const d = (s: string | null | undefined) => (s ? s.slice(0, 10).split('-').reverse().join('.') : '');
+  const zeitpunkt = a?.um ? `${d(a.um)} um ${a.um.slice(11, 16)} Uhr` : a?.am ? d(a.am) : 'unbekannt';
+  return (
+    <div className="portal-attr-liste" style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '0.125rem 0.75rem' }}>
+      <Label>Benutzer</Label>
+      <Text>{a?.benutzer ?? (b.portal ? 'vereinsintern (ohne Benutzer)' : 'EP3-Kunde (ohne Portal-Benutzer)')} · {b.kunde || '–'}</Text>
+      <Label>Gebucht</Label>
+      <Text>{zeitpunkt}{a?.von ? ` von ${a.von}` : ''}{!b.portal ? ' (EP3-Import)' : ''}</Text>
+      {a?.geaendert && <><Label>Geändert</Label><Text>{d(a.geaendert)}</Text></>}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Termin ändern / kopieren aus der Belegung (#11)
 /**
  * Angeklickter Termin: Platz, Tag, Uhrzeit und Notiz ändern (Portalbuchungen, einzelne Termine von Training & Co.), stornieren bzw.
@@ -595,6 +613,8 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
           <Text className="portal-muted">
             Bisher: {p.name}, {tagText(datum)}, {b.von}–{b.bis} Uhr{b.fest ? ` (${FEST_ARTEN[b.fest.art]})` : b.art ? ` (${b.art})` : ''}
           </Text>
+          {/* wer hat wann gebucht (#11) */}
+          {!b.fest && b.bid && <GebuchtInfo b={b} />}
           {!kopie && !aenderbar && <MessageStrip hideCloseButton design="Information">{grund} Kopieren ist möglich.</MessageStrip>}
           {kopie && !b.fest && b.art === 'Abo' && <MessageStrip hideCloseButton>Der Abo-Termin wird als Einzelbuchung kopiert.</MessageStrip>}
           <FormGrid>

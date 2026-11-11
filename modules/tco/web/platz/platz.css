@@ -212,3 +212,16 @@
   .portal-pb__aufschl-rechnung { grid-column: 2; grid-row: 2; font-size: 0.75rem; }
   .portal-pb__preis { flex-wrap: wrap; }
 }
+
+/* Platzverwaltung → Belegung: Leiste mit Datum und Tagesauswahl (#11) – bricht auf schmalen Geräten um, nichts ragt links heraus */
+.portal-pv-leiste { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0 0 0.75rem; min-width: 0; }
+.portal-pv-leiste__datum { display: flex; align-items: center; gap: 0.125rem; min-width: 0; }
+.portal-pv-leiste__picker { width: 12rem; min-width: 0; }
+.portal-pv-leiste__hinweis { flex: 1 1 18rem; min-width: 0; }
+@media (max-width: 600px) {
+  .portal-pv-leiste { gap: 0.5rem; }
+  .portal-pv-leiste__datum { width: 100%; }
+  .portal-pv-leiste__picker { flex: 1 1 auto; width: auto; }
+  .portal-pv-leiste ui5-segmented-button { width: 100%; }
+  .portal-pv-leiste__hinweis { display: none; }
+}

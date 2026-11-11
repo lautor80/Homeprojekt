@@ -34,6 +34,8 @@ export interface Belegt {
   bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null;
   /** Platzverwaltung: Portalbuchung (änderbar) bzw. bereits abgerechnet */
   portal?: boolean; abgerechnet?: boolean;
+  /** Platzverwaltung (#11): Anlage der Buchung – Zeitpunkt (ältere nur Datum), angelegt von, Benutzer der Buchung, geändert am */
+  angelegt?: { am: string | null; um: string | null; von: string | null; benutzer: string | null; geaendert: string | null };
 }
 export interface TagPlatz {
   id: number; name: string; art: 'HALLE' | 'FREI'; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
