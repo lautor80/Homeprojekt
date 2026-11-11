@@ -955,4 +955,45 @@ test('Vertragsangebot (#12): aktives Mitglied mit abweichendem Zahler – Bankve
   assert.deepEqual(v.map((x) => x.art), ['3', '90'], 'nur das Training ergänzt');
   const [m] = await sql`select adrnrkih, mitglnrn, iban1 from tco.mitglieder where adrnr = '0000000792'`;
   assert.deepEqual([m.adrnrkih, m.mitglnrn, m.iban1], ['0000000791', '792', null], 'Stamm/Zahler unverändert');
+
+  // Erweiterung ohne Mitgliedschaft (nur Training), Bankverbindung maskiert, E-Mail angepasst
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, anrede, vorname, nachname, geburtsdatum, strasse, plz, ort, email, eintritt, adrnrkih) values
+            ('0000000794', '794', 'Frau', 'Lena', 'Zahlkind', '2012-04-04', 'Ringweg 9', '66649', 'Oberthal', 'gerd@example.org', '2019-01-01', '0000000791')`;
+  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, mitglnr, sollstellung, vertragbegin, betrag) values
+            ('0000000794', '1', '3', 'Jugendliche', '794', 'jährlich', '2019-01-01', 60)`;
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen/0000000794/bank`);
+  assert.deepEqual(r.body.bank, { kontoinhaber: 'Gerd Zahlvater', iban: 'DE02 •••• •••• 2051', zahler: 'Gerd Zahlvater' });
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen?suche=lena`);
+  assert.deepEqual(r.body[0].vertragsnamen, ['Jugendliche']);
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote/mailvorlage`);
+  assert.match(r.body.text, /\{Link\}/);
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000794' }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 400, 'ohne Vertrag');
+  assert.match(r.body.message, /mindestens einen Vertrag/);
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ vorname: 'Neu', nachname: 'Ohne', geburtsdatum: '2012-01-01', training: ['90'] }], eintritt: heute(), email: 'neu@example.org', mail: false });
+  assert.equal(r.status, 400, 'Nichtmitglieder brauchen eine Mitgliedschaft');
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, {
+    personen: [{ adrnr: '0000000794', training: ['90'] }], eintritt: heute(), mail: true,
+    mailBetreff: 'Training für {Name}', mailText: 'Hallo {Name}, bitte bis {GueltigBis} bestätigen: {Link} – {Verein}',
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const ml = letzteMail('gerd@example.org') as any;
+  assert.equal(ml.betreff, 'Training für Lena Zahlkind');
+  assert.match(ml.text, /^Hallo Lena Zahlkind, bitte bis \d{2}\.\d{2}\.\d{4} bestätigen: \S+\/beitritt\?angebot=\S+ – /);
+  const tok2 = token(ml.text, 'angebot');
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok2, geburtsdatum: '2012-04-04' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.daten.vertragsaenderung, true);
+  assert.equal(r.body.daten.personen[0].art, null);
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Frau', vorname: 'Lena', nachname: 'Zahlkind', geburtsdatum: '2012-04-04', art: '', training: ['90'] }],
+    strasse: 'Ringweg 9', plz: '66649', ort: 'Oberthal', email: 'gerd@example.org', eintritt: heute(), erziehungsberechtigt: 'Gerd Zahlvater',
+    satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, angebot: tok2, bank: { sepa: true, ausAngebot: true },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${T}/mitgliedsantraege`);
+  const ma2 = r.body.find((x: any) => x.status === 'EINGANG' && x.daten.personen[0].vorname === 'Lena');
+  r = await admin('POST', `${T}/mitgliedsantraege/${ma2.id}/uebernehmen`, { mail: false, unterlagen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await sql`select art from tco.vertraege where adrnr = '0000000794' order by vertragnr`).map((x) => x.art), ['3', '90'], 'nur Training ergänzt');
 });

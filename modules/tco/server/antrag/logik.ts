@@ -5,7 +5,7 @@ import { condense, heute } from '../format.js';
 import { emailGueltig, mitgliedNeu, normName, vertragNeu, vertragsarten, vertragsZahler, type Neu, type VertragsArt } from '../mitglieder/logik.js';
 import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
 import { adrnrZumToken, alsMitgliedMarkieren, schnupperFuerPerson } from '../schnupper/logik.js';
-import { angebotAnnehmen, angebotBank, bankAusStamm } from './angebot.js';
+import { angebotAnnehmen, angebotDaten, bankAusStamm } from './angebot.js';
 
 /**
  * Online-Mitgliedsantrag (#12): öffentliches Formular ohne Anmeldung, auch für Familien (mehrere Personen,
@@ -94,7 +94,8 @@ export async function antragInfo(db: Db, v: Verein) {
   };
 }
 
-export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string; name: string }[]): void {
+/** erweiterung: Vertragsangebot an aktive Mitglieder (#12) – Mitgliedschaft optional, mindestens ein Vertrag */
+export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string; name: string }[], erweiterung = false): void {
   const arten = new Map(artenListe.map((a) => [a.art, { ...a, kategorie: kategorieVon(a.art, a.name) }]));
   if (!d.personen.length) throw new BusinessError('Bitte mindestens eine Person angeben.');
   if (d.personen.length > MAX_PERSONEN) throw new BusinessError(`Höchstens ${MAX_PERSONEN} Personen je Antrag.`);
@@ -104,11 +105,13 @@ export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string
     if (!condense(p.vorname) || !condense(p.nachname)) throw new BusinessError(`${wer}Bitte Vor- und Nachname angeben.`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(p.geburtsdatum) || p.geburtsdatum > heute() || alter(p.geburtsdatum) > 120) throw new BusinessError(`${wer}Bitte ein gültiges Geburtsdatum angeben.`);
     const a = /^\d{4}-\d{2}-\d{2}$/.test(d.eintritt) ? alter(p.geburtsdatum, d.eintritt) : alter(p.geburtsdatum);
-    if (i === 0) {
+    if (i === 0 && erweiterung && !p.art) {
+      if (!d.personen.some((x) => (x.training ?? []).length)) throw new BusinessError('Bitte mindestens einen Vertrag wählen (Mitgliedschaft oder Trainingseinheit).');
+    } else if (i === 0) {
       const m = arten.get(p.art ?? '');
       if (!m || m.kategorie !== 'MITGLIEDSCHAFT') throw new BusinessError(`${wer}Bitte eine Mitgliedschaft wählen.`);
       if (istJugendbeitrag(m.name) && a > ALTER_JUGENDBEITRAG_BIS) throw new BusinessError(`${wer}Ab 18 Jahren ist kein Jugendbeitrag möglich – bitte eine andere Mitgliedschaft wählen.`);
-      if (d.personen.length > 1 && !istFamilienbeitrag(m.name)) throw new BusinessError('Weitere Personen sind nur mit dem Familienbeitrag möglich.');
+      if (d.personen.length > 1 && !istFamilienbeitrag(m.name) && !erweiterung) throw new BusinessError('Weitere Personen sind nur mit dem Familienbeitrag möglich.');
     } else if (p.art) throw new BusinessError(`${wer}Weitere Personen sind über den Familienbeitrag Mitglied – keine eigene Mitgliedschaft.`);
     const tr = p.training ?? [];
     if (tr.length > MAX_TRAINING) throw new BusinessError(`${wer}Höchstens ${MAX_TRAINING} Trainingseinheiten.`);
@@ -134,13 +137,15 @@ export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string
 export async function antragAnlegen(tx: Db, d: AntragDaten, b0: AntragBank & { ausAngebot?: boolean }, ip: string): Promise<{ id: number; nummer: string }> {
   // Vertragsangebot: Bankverbindung aus dem Angebot (die Person bestätigt nur das Mandat)
   let b: AntragBank = b0;
+  const ad = d.angebot ? await angebotDaten(tx, d.angebot) : null;
   if (b0.ausAngebot) {
-    const ab = d.angebot ? await angebotBank(tx, d.angebot) : null;
+    const ab = ad?.bank;
     if (!ab) throw new BusinessError('Im Angebot ist keine Bankverbindung hinterlegt – bitte IBAN angeben.');
-    b = { ...ab, bank: null, sepa: b0.sepa };
+    b = { kontoinhaber: ab.kontoinhaber, iban: ab.iban, bic: ab.bic, bank: null, sepa: b0.sepa };
   }
   const { arten } = await vertragsarten(tx, heute());
-  pruefen(d, b, arten);
+  // Vertragsänderung (Angebot an aktive Mitglieder): Mitgliedschaft optional – die Erlaubnis kommt nur aus dem gespeicherten Angebot
+  pruefen(d, b, arten, !!ad?.vertragsaenderung);
   const jahr = heute().slice(0, 4);
   const [{ n }] = await tx`select core.next_number('TCO_ANTRAG', ${Number(jahr)})::int as n`;
   const nummer = `MA-${jahr}-${String(n).padStart(4, '0')}`;
@@ -240,7 +245,7 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
     if (bestehend) vergeben.add(bestehend);
     // weitere Personen: Mitgliedschaft über den Familienbeitrag (Vertrag der Familienart ohne Betrag), dazu ihre Trainingseinheiten
     const familie = i > 0 ? d.personen[0].art! : null;
-    const gewaehlt = [familie ?? p.art!, ...(p.training ?? [])].map((x) => {
+    const gewaehlt = [familie ?? p.art, ...(p.training ?? [])].filter((x): x is string => !!x).map((x) => {
       const a = arten.find((y) => y.art === x);
       if (!a) throw new BusinessError(`Die Beitragsart ${x} (${p.vorname} ${p.nachname}) ist nicht mehr aktiv.`);
       return a;
@@ -261,6 +266,7 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
         continue;
       }
     }
+    if (!familie && !p.art) throw new BusinessError(`${p.vorname} ${p.nachname} ist kein aktives Mitglied – ohne Mitgliedschaft ist keine Aufnahme möglich.`);
     const n: Neu = {
       anrede: p.anrede, vorname: p.vorname, nachname: p.nachname, strasse: d.strasse, plz: d.plz, ort: d.ort,
       telefon: (i === 0 ? p.telefon || d.telefon : p.telefon) ?? '', mobil: p.mobil || st?.mobil || '', email: p.email || d.email,
@@ -310,8 +316,8 @@ async function vertragsaenderung(tx: Db, antrag: Record<string, any>, o: { adrnr
   const zAlt = String(laufend.find((v) => String(v.zahler_adrnr ?? '').trim() && v.zahler_adrnr !== o.adrnr)?.zahler_adrnr ?? '').trim();
   const zahler = zAlt && (await vertragsZahler(tx)).some((z) => z.adrnr === zAlt) ? zAlt : null;
   const neu: string[] = [];
-  for (const [j, a] of o.gewaehlt.entries()) {
-    const kat: Kategorie = j === 0 ? 'MITGLIEDSCHAFT' : 'TRAINING';
+  for (const a of o.gewaehlt) {
+    const kat: Kategorie = kategorieVon(a.art, a.name) ?? 'TRAINING';
     if (laufend.some((v) => v.art === a.art)) { out.push(`${o.name}: ${a.name} läuft bereits – unverändert.`); continue; }
     if (kat === 'MITGLIEDSCHAFT') {
       for (const v of laufend.filter((v) => kategorieVon(v.art, v.artname ?? '') === 'MITGLIEDSCHAFT')) {
@@ -319,7 +325,7 @@ async function vertragsaenderung(tx: Db, antrag: Record<string, any>, o: { adrnr
       }
     }
     const turnus = a.turnus || laufend[0]?.sollstellung || o.turnusse[0] || '';
-    const vnr = await vertragNeu(tx, { adrnr: o.adrnr, art: a.art, beginn: beginnFuer(o.eintritt, kat), turnus, betrag: o.familie && j === 0 ? 0 : a.betrag, zahler });
+    const vnr = await vertragNeu(tx, { adrnr: o.adrnr, art: a.art, beginn: beginnFuer(o.eintritt, kat), turnus, betrag: o.familie && kat === 'MITGLIEDSCHAFT' ? 0 : a.betrag, zahler });
     neu.push(`${a.name} (Vertrag ${vnr})`);
   }
   out.unshift(`${o.name}: ${neu.length ? `Verträge ergänzt – ${neu.join(', ')}` : 'keine neuen Verträge'}.`);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
+  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { PdfDialog } from '@core/components/PdfDialog';
@@ -226,8 +226,10 @@ interface Beitragsart { art: string; name: string; betrag: number; turnus: strin
 interface Kandidat {
   adrnr: string; name: string; geburtsdatum: string | null; ort: string; email: string; schnupper: string | null;
   /** aktives Mitglied (Mitgliedsnummer) – Angebot = Vertragsänderung; Zahler, wenn nicht Selbstzahler; laufende Vertragsarten */
-  mitglied: string | null; zahler: string | null; vertraege: string[];
+  mitglied: string | null; zahler: string | null; vertraege: string[]; vertragsnamen: string[];
 }
+/** Bankverbindung aus dem Stamm (bei abweichendem Zahler dessen) – IBAN nur gekürzt */
+interface StammBank { kontoinhaber: string; iban: string; zahler: string | null }
 interface APerson { adrnr: string | null; neu: boolean; anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; art: string; training: string[]; info?: Kandidat }
 const leerePerson = (): APerson => ({ adrnr: null, neu: false, anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', art: '', training: [] });
 const heuteIso = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
@@ -246,7 +248,20 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ergebnis, setErgebnis] = useState<{ nummer: string; link: string; text: string } | null>(null);
+  /** Bankverbindung des Antragstellers aus dem Stamm (maskiert); „andere“ = Vorstand erfasst eine neue */
+  const [stammBank, setStammBank] = useState<StammBank | null>(null);
+  const [andereBank, setAndereBank] = useState(false);
+  /** E-Mail an die Person – Vorlage mit Platzhaltern, anpassbar */
+  const [mailBetreff, setMailBetreff] = useState('');
+  const [mailText, setMailText] = useState('');
   useEffect(() => { api.get<{ beitragsarten: Beitragsart[] }>(`${TCO}/antrag`).then((i) => setArten(i.beitragsarten)).catch((e) => setError(e.message)); }, []);
+  useEffect(() => { api.get<{ betreff: string; text: string }>(`${A}/angebote/mailvorlage`).then((v) => { setMailBetreff(v.betreff); setMailText(v.text); }).catch(() => undefined); }, []);
+  // Antragsteller aus dem Stamm: Bankverbindung (bzw. die des abweichenden Zahlers) maskiert anzeigen
+  const erster = personen[0].neu ? null : personen[0].adrnr;
+  useEffect(() => {
+    setStammBank(null); setAndereBank(false);
+    if (erster) api.get<{ bank: StammBank | null }>(`${A}/angebote/personen/${erster}/bank`).then((r) => setStammBank(r.bank)).catch(() => undefined);
+  }, [erster]);
   // alle Personen (ohne Mitgliedschaft und aktive Mitglieder) einmal laden – gesucht wird im Feld (schnell, ohne Neuladen beim Tippen)
   useEffect(() => { api.get<Kandidat[]>(`${A}/angebote/personen`).then(setKandidaten).catch((e) => setError(e.message)); }, []);
   const setP = (i: number, x: Partial<APerson>) => setPersonen((l) => l.map((p, j) => (j === i ? { ...p, ...x } : p)));
@@ -257,7 +272,11 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const familie = !!arten.find((b) => b.art === personen[0].art)?.familie;
   const mitgliedschaften = arten.filter((b) => b.kategorie === 'MITGLIEDSCHAFT');
   const trainings = arten.filter((b) => b.kategorie === 'TRAINING');
-  const ok = personen.every((p) => (p.neu ? p.vorname.trim() && p.nachname.trim() : p.adrnr)) && !!personen[0].art && (personen.length === 1 || familie)
+  /** Erweiterung aktiver Mitglieder: Mitgliedschaft optional (z. B. nur Training), alle Personen sind Mitglieder */
+  const erweiterung = !personen[0].neu && !!personen[0].info?.mitglied;
+  const nurMitglieder = personen.every((p) => !p.neu && !!p.info?.mitglied);
+  const ok = personen.every((p) => (p.neu ? p.vorname.trim() && p.nachname.trim() : p.adrnr))
+    && (personen[0].art ? personen.length === 1 || familie : erweiterung && nurMitglieder && personen.some((p) => p.training.length > 0))
     && (email.trim() || (!personen[0].neu && personen[0].info?.email) || (personen[0].neu && personen[0].email.trim()));
 
   async function los() {
@@ -268,7 +287,9 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
           ? { anrede: p.anrede || null, vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum || null, email: p.email || null, art: i === 0 ? p.art : null, training: p.training }
           : { adrnr: p.adrnr, art: i === 0 ? p.art : null, training: p.training })),
         eintritt, email: email.trim() || null, erziehungsberechtigt: erz.trim() || null, bemerkung: hinweis.trim() || null, mail,
-        kontoinhaber: kontoinhaber.trim() || null, iban: iban.trim() || null,
+        // ohne eigene Eingabe: Bankverbindung aus dem Stamm (wird serverseitig übernommen, nach außen nur gekürzt)
+        kontoinhaber: stammBank && !andereBank ? null : kontoinhaber.trim() || null, iban: stammBank && !andereBank ? null : iban.trim() || null,
+        mailBetreff: mail ? mailBetreff : null, mailText: mail ? mailText : null,
       });
       setErgebnis(r);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -310,18 +331,24 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
                             eintraege={kandidatenEintraege}
                             onWaehle={(k) => {
                               const info = kandidaten.find((x) => x.adrnr === k);
-                              // aktive Mitglieder: laufende Verträge vorbelegen (Mitgliedschaft beim Antragsteller, Trainingseinheiten)
-                              const lauf = info?.vertraege ?? [];
-                              const ms = i === 0 ? lauf.find((x) => mitgliedschaften.some((b) => b.art === x)) : undefined;
-                              const tr = lauf.filter((x) => trainings.some((b) => b.art === x)).slice(0, 2);
-                              setP(i, { adrnr: k, info, ...(info?.mitglied ? { art: ms ?? personen[i].art, training: tr } : {}) });
+                              // aktive Mitglieder: Mitgliedschaft optional – die laufenden Verträge werden als Vorschlag angezeigt
+                              setP(i, { adrnr: k, info, ...(info?.mitglied ? { art: '', training: [] } : {}) });
                               if (i === 0 && info?.email && !email) setEmail(info.email);
                             }} />
                 {p.info?.mitglied && (
-                  <Text className="portal-muted portal-small" style={{ display: 'block' }}>
-                    Mitglied Nr. {p.info.mitglied} – Vertragsänderung: laufende Verträge sind vorbelegt, bei der Übernahme werden nur neue Verträge ergänzt.
-                    {i === 0 && (p.info.zahler ? ` Bankverbindung vom Zahler ${p.info.zahler} (nicht Selbstzahler).` : ' Bankverbindung aus dem Stamm.')}
-                  </Text>
+                  <div className="portal-row" style={{ alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem 0.5rem', marginTop: '0.25rem' }}>
+                    <Text className="portal-muted portal-small">
+                      Mitglied Nr. {p.info.mitglied} – Erweiterung/Vertragsänderung: Mitgliedschaft optional, bei der Übernahme werden nur neue Verträge ergänzt.
+                      {' '}Aktuelle Verträge: {p.info.vertragsnamen.length ? p.info.vertragsnamen.join(', ') : 'keine'}.
+                    </Text>
+                    {p.info.vertraege.length > 0 && (
+                      <Button design="Transparent" icon="copy" onClick={() => {
+                        const lauf = p.info!.vertraege;
+                        const ms = i === 0 ? lauf.find((x) => mitgliedschaften.some((b) => b.art === x)) ?? '' : '';
+                        setP(i, { art: ms, training: lauf.filter((x) => trainings.some((b) => b.art === x)).slice(0, 2) });
+                      }}>Aktuelle Verträge vorschlagen</Button>
+                    )}
+                  </div>
                 )}
                 {p.info && !p.info.geburtsdatum && <Text className="portal-muted portal-small">Kein Geburtsdatum im Stamm – der Link öffnet dann ohne zweite Abfrage.</Text>}
               </>
@@ -340,8 +367,8 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))', gap: '0.5rem', marginTop: '0.5rem' }}>
-              {i === 0 ? <div><Label required>Mitgliedschaft</Label>{sel(p.art, mitgliedschaften, 'bitte wählen', (x) => setP(i, { art: x }))}</div>
-                : <div><Label>Mitgliedschaft</Label><Text style={{ display: 'block', paddingTop: '0.5rem' }}>über den Familienbeitrag</Text></div>}
+              {i === 0 ? <div><Label required={!erweiterung}>Mitgliedschaft{erweiterung ? ' (optional)' : ''}</Label>{sel(p.art, mitgliedschaften, erweiterung ? 'keine Änderung' : 'bitte wählen', (x) => setP(i, { art: x }))}</div>
+                : <div><Label>Mitgliedschaft</Label><Text style={{ display: 'block', paddingTop: '0.5rem' }}>{!personen[0].art && p.info?.mitglied ? 'unverändert (Mitglied)' : 'über den Familienbeitrag'}</Text></div>}
               {trainings.length > 0 && [0, 1].map((n) => (
                 <div key={n}><Label>Trainingseinheit {n + 1}</Label>
                   {sel(p.training[n] ?? '', trainings, 'keine', (x) => { const t = [...p.training]; if (x) t[n] = x; else t.splice(n, 1); setP(i, { training: t.filter(Boolean).slice(0, 2) }); }, n > 0 && !p.training[0])}
@@ -350,20 +377,46 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
             </div>
           </div>
         ))}
-        {familie && personen.length < 8 && <Button design="Transparent" icon="add-employee" onClick={() => setPersonen((l) => [...l, leerePerson()])}>Weitere Person (Familie)</Button>}
-        {!familie && personen.length > 1 && <MessageStrip design="Critical" hideCloseButton>Weitere Personen nur mit dem Familienbeitrag beim Antragsteller.</MessageStrip>}
+        {(familie || (erweiterung && !personen[0].art)) && personen.length < 8 && <Button design="Transparent" icon="add-employee" onClick={() => setPersonen((l) => [...l, leerePerson()])}>Weitere Person (Familie)</Button>}
+        {!familie && personen.length > 1 && !(erweiterung && !personen[0].art && nurMitglieder) && <MessageStrip design="Critical" hideCloseButton>Weitere Personen nur mit dem Familienbeitrag beim Antragsteller (ohne neue Mitgliedschaft nur bestehende Mitglieder).</MessageStrip>}
+        {erweiterung && !personen[0].art && !personen.some((p) => p.training.length) && <MessageStrip design="Information" hideCloseButton>Für eine Erweiterung bitte mindestens eine Trainingseinheit wählen (oder eine Mitgliedschaft).</MessageStrip>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
           <div><Label required>Eintritt</Label><DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={eintritt} onChange={(e) => setEintritt(e.detail.value)} /></div>
           <div><Label>E-Mail für den Link</Label><Input style={{ width: '100%' }} type="Email" value={email} placeholder="aus dem Stamm" onInput={(e) => setEmail(e.target.value)} /></div>
           <div><Label>Erziehungsberechtigte/r (bei Minderjährigen)</Label><Input style={{ width: '100%' }} value={erz} onInput={(e) => setErz(e.target.value)} /></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
-          <div><Label>Kontoinhaber/in (optional)</Label><Input style={{ width: '100%' }} value={kontoinhaber} onInput={(e) => setKontoinhaber(e.target.value)} /></div>
-          <div><Label>IBAN (optional – sonst aus dem Stamm, bei abweichendem Zahler dessen; bzw. von der Person)</Label><Input style={{ width: '100%' }} value={iban} onInput={(e) => setIban(e.target.value)} /></div>
-        </div>
+        {stammBank && !andereBank ? (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+              <div><Label>Kontoinhaber/in{stammBank.zahler ? ` (Zahler ${stammBank.zahler})` : ' (aus dem Stamm)'}</Label><Input style={{ width: '100%' }} readonly value={stammBank.kontoinhaber} /></div>
+              <div><Label>IBAN (aus dem Stamm, maskiert)</Label><Input style={{ width: '100%' }} readonly value={stammBank.iban} /></div>
+            </div>
+            <div className="portal-row" style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <Text className="portal-muted portal-small">Wird ins Angebot übernommen; die Person sieht die IBAN nur gekürzt und bestätigt das Mandat.</Text>
+              <Button design="Transparent" icon="edit" onClick={() => setAndereBank(true)}>Andere Bankverbindung</Button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+            <div><Label>Kontoinhaber/in (optional)</Label><Input style={{ width: '100%' }} value={kontoinhaber} onInput={(e) => setKontoinhaber(e.target.value)} /></div>
+            <div><Label>IBAN (optional – sonst ergänzt die Person)</Label><Input style={{ width: '100%' }} value={iban} onInput={(e) => setIban(e.target.value)} /></div>
+            {stammBank && <div><Button design="Transparent" icon="undo" onClick={() => { setAndereBank(false); setKontoinhaber(''); setIban(''); }}>Bankverbindung aus dem Stamm</Button></div>}
+          </div>
+        )}
         <Label>Hinweis an die Person (erscheint im Formular)</Label>
         <Input style={{ width: '100%' }} value={hinweis} maxlength={300} placeholder="z. B. Gruppe montags 17 Uhr bei Trainer Tom" onInput={(e) => setHinweis(e.target.value)} />
         <CheckBox text="Link per E-Mail senden (sonst nur anzeigen, z. B. für WhatsApp)" checked={mail} onChange={(e) => setMail(e.target.checked)} />
+        {mail && (
+          <div>
+            <Label>Betreff</Label>
+            <Input style={{ width: '100%' }} value={mailBetreff} maxlength={200} onInput={(e) => setMailBetreff(e.target.value)} />
+            <Label>Nachricht</Label>
+            <TextArea style={{ width: '100%' }} rows={8} value={mailText} maxlength={5000} onInput={(e) => setMailText(e.target.value)} />
+            <Text className="portal-muted portal-small">
+              Platzhalter: {'{Name}'}, {'{Link}'} (persönlicher Link – fehlt er, wird er angehängt), {'{GueltigBis}'}, {'{Verein}'}. Bitte keine Vertrags- oder Bankdaten in die E-Mail schreiben.
+            </Text>
+          </div>
+        )}
       </div>
     </Dialog>
   );
