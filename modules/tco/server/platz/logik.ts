@@ -156,7 +156,7 @@ export interface Belegung {
   /** gerade von einer anderen Sitzung ausgewählt (Sperre PLATZZEIT, noch nicht gebucht) */
   reserviert?: boolean;
   /** feste Belegung (Jugendtraining, Sperrzeit, Veranstaltung) – für alle mit Bezeichnung sichtbar */
-  fest?: { id: number; art: BelegungArt; bezeichnung: string; hinweis: string | null };
+  fest?: { id: number; art: BelegungArt; bezeichnung: string; hinweis: string | null; einmalig?: boolean; portal?: boolean };
 }
 
 /** Sperrobjekt für eine ausgewählte, noch nicht gesicherte Platzzeit (Schlüssel = Platz-ID, Zeitraum von/bis) */
@@ -201,7 +201,7 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
     const p = plaetze.find((x) => x.id === f.platzId)!;
     out.push({
       bid: '', datum: f.datum, von: f.von, bis: f.bis, kunde: f.bezeichnung, status: 'F', platz: p.name, platzId: p.id,
-      benutzer_id: null, quelle: 'FEST', assigned: '', text: f.hinweis, fest: { id: f.id, art: f.art, bezeichnung: f.bezeichnung, hinweis: f.hinweis },
+      benutzer_id: null, quelle: 'FEST', assigned: '', text: f.hinweis, fest: { id: f.id, art: f.art, bezeichnung: f.bezeichnung, hinweis: f.hinweis, einmalig: f.einmalig, portal: f.portal },
     });
   }
   for (const r of res) {
@@ -400,7 +400,14 @@ export interface TagPlatz {
   id: number; name: string; art: string; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
   geschlossen: string | null;
-  belegt: { von: string; bis: string; eigen: boolean; reserviert?: boolean; fest?: { art: BelegungArt; bezeichnung: string; hinweis: string | null }; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }[];
+  belegt: {
+    von: string; bis: string; eigen: boolean; reserviert?: boolean;
+    /** id/einmalig/portal nur in der Platzverwaltung: einzelne Termine ändern, alle kopieren (#11) */
+    fest?: { art: BelegungArt; bezeichnung: string; hinweis: string | null; id?: number; einmalig?: boolean; portal?: boolean };
+    bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null;
+    /** Platzverwaltung: Portalbuchung (änderbar) bzw. bereits abgerechnet */
+    portal?: boolean; abgerechnet?: boolean;
+  }[];
 }
 
 /**
@@ -420,11 +427,14 @@ export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitz
     belegt: bel.filter((b) => b.platzId === p.id).map((b) => {
       const zeit = { von: hhmm(b.von), bis: hhmm(b.bis) };
       // Jugendtraining/Sperrzeit/Veranstaltung: für alle mit Bezeichnung
-      if (b.fest) return { ...zeit, eigen: false, fest: { art: b.fest.art, bezeichnung: b.fest.bezeichnung, hinweis: b.fest.hinweis } };
+      if (b.fest) {
+        const f = { art: b.fest.art, bezeichnung: b.fest.bezeichnung, hinweis: b.fest.hinweis };
+        return { ...zeit, eigen: false, fest: sicht === 'admin' ? { ...f, id: b.fest.id, einmalig: !!b.fest.einmalig, portal: !!b.fest.portal } : f };
+      }
       // gerade in Auswahl bei jemand anderem: normale Nutzer ohne Namen
       if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true };
       const art = b.status === '3' ? 'Abo' as const : 'Einzel' as const;
-      if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text };
+      if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text, portal: b.quelle === QUELLE, abgerechnet: b.assigned === 'Y' };
       // fremde Buchung: nur Zeitraum – kein Name, keine Nummer, kein Text
       if (!istEigen(b, sicht)) return namen ? { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text } : { ...zeit, eigen: false };
       return {
@@ -585,6 +595,61 @@ export async function verwaltungStornieren(tx: Db, bid: string, datum: string): 
   if (!['1', '3'].includes(b.status)) throw new BusinessError('Die Buchung ist bereits storniert.');
   await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum} where bid = ${bid} and datum = ${datum}`;
   return `Buchung ${bid} am ${dat(datum)} storniert.`;
+}
+
+/** Buchung aus der Verwaltung: vereinsintern (ohne Rechnung) bleibt ohne Preis, sonst Preis laut Hallenpreisen */
+const istIntern = (b: { assigned: string; preis: unknown }) => b.assigned === 'X' && Number(b.preis ?? 0) === 0;
+
+async function verwaltungsSlot(tx: Db, e: BuchungEingabe, ohneBid?: string): Promise<Slot> {
+  const s = await slotAus(tx, e);
+  if (s.bis <= s.von) throw new BusinessError('Die Endzeit liegt vor der Startzeit.');
+  if (geschlossen(s.platz, s.datum)) throw new BusinessError(`${s.platz.name} ist am ${dat(s.datum)} nicht geöffnet (${geschlossen(s.platz, s.datum)}).`);
+  await sperren(tx, s.platz.id, s.datum);
+  const f = await konflikt(tx, s, ohneBid);
+  if (f) throw new BusinessError(f);
+  return s;
+}
+
+/**
+ * Verwaltung (#11): einen Portal-Termin (Einzel oder einzelner Abo-Termin) ändern – Platz, Tag, Uhrzeit, Notiz; ohne
+ * Buchungsregeln (Vorlauf, Dauer), aber ohne Überschneidung. Der Preis wird neu berechnet (vereinsintern bleibt ohne Rechnung).
+ */
+export async function verwaltungAendern(tx: Db, bid: string, datumAlt: string, e: BuchungEingabe): Promise<string> {
+  const [b] = await tx`select bid, status, quelle, coalesce(assigned, '') as assigned, preis from tco.bookings where bid = ${bid} and datum = ${datumAlt}`;
+  if (!b) throw new BusinessError('Buchung nicht gefunden.', 404);
+  if (b.quelle !== QUELLE) throw new BusinessError('EP3-Buchungen bitte im EP3-Buchungssystem ändern (der nächste Import überschreibt sie sonst) – kopieren geht.');
+  if (b.assigned === 'Y') throw new BusinessError('Die Buchung ist bereits abgerechnet.');
+  if (!['1', '3'].includes(b.status)) throw new BusinessError('Die Buchung ist storniert.');
+  const s = await verwaltungsSlot(tx, e, bid);
+  if (s.datum !== datumAlt) {
+    // Abo: je Serie und Tag ein Termin (BID + Datum)
+    const [x] = await tx`select 1 from tco.bookings where bid = ${bid} and datum = ${s.datum}`;
+    if (x) throw new BusinessError(`Die Serie hat am ${dat(s.datum)} bereits einen (ggf. stornierten) Termin – bitte stattdessen kopieren.`);
+  }
+  const intern = istIntern(b);
+  const preis = intern ? b.preis : preisVon(s.platz, s.datum, s.von, s.bis, b.status === '3' ? '3' : '1', await preiseLesen(tx)).betrag;
+  await tx`update tco.bookings
+              set datum = ${s.datum}, time_start = ${hhmm(s.von)}, time_ende = ${hhmm(s.bis)}, platz = ${s.platz.name}, description = ${beschreibung(s)},
+                  preis = ${preis}, assigned = ${intern || !s.platz.abrechnen ? 'X' : ''}, text = ${e.text?.trim() || null}, geaendert = ${jetzt().datum}
+            where bid = ${bid} and datum = ${datumAlt}`;
+  return `Termin geändert: ${s.platz.name} am ${beschreibung(s)}.`;
+}
+
+/**
+ * Verwaltung (#11): Termin kopieren – neue Einzelbuchung für dieselbe Person bzw. denselben vereinsinternen Namen
+ * (auch von Abo- und EP3-Terminen) auf Platz, Tag und Uhrzeit des Ziels.
+ */
+export async function verwaltungKopieren(tx: Db, bid: string, datumAlt: string, e: BuchungEingabe): Promise<{ bid: string; text: string }> {
+  const [b] = await tx`select bid, status, kunde, benutzer_id, coalesce(assigned, '') as assigned, preis, text from tco.bookings where bid = ${bid} and datum = ${datumAlt}`;
+  if (!b) throw new BusinessError('Buchung nicht gefunden.', 404);
+  const s = await verwaltungsSlot(tx, e);
+  const intern = istIntern(b);
+  const preis = intern ? 0 : preisVon(s.platz, s.datum, s.von, s.bis, '1', await preiseLesen(tx)).betrag;
+  const neu = await neueBid(tx);
+  await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz, benutzer_id, quelle)
+           values (${neu}, ${s.datum}, ${hhmm(s.von)}, ${hhmm(s.bis)}, ${b.kunde}, '1', ${beschreibung(s)}, ${preis}, ${jetzt().datum},
+                   ${intern || !s.platz.abrechnen ? 'X' : ''}, ${e.text === undefined ? b.text : e.text?.trim() || null}, ${s.platz.name}, ${b.benutzer_id}, ${QUELLE})`;
+  return { bid: neu, text: `Kopie angelegt: ${condense(b.kunde ?? '')} – ${s.platz.name} am ${beschreibung(s)}.` };
 }
 
 /** Verwaltung: Benutzer mit Mitgliedszuordnung und Mitglieder zur Auswahl */

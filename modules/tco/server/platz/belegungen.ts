@@ -31,7 +31,8 @@ export async function festeLesen(db: Db, von?: string, bis?: string, nurAktiv = 
 
 /** Termine der festen Belegungen im Zeitraum je Platz (für die Belegungsprüfung) */
 export function festeTermine(liste: FesteBelegung[], platzIds: number[], von: string, bis: string) {
-  const out: { id: number; platzId: number; datum: string; von: number; bis: number; bezeichnung: string; art: BelegungArt; hinweis: string | null }[] = [];
+  const out: { id: number; platzId: number; datum: string; von: number; bis: number; bezeichnung: string; art: BelegungArt; hinweis: string | null;
+    /** nur dieser eine Tag und dieser eine Platz (z. B. aus der Belegung eingetragen) – einzeln änderbar */ einmalig: boolean; portal: boolean }[] = [];
   for (const f of liste) {
     if (!f.aktiv) continue;
     const ziele = f.plaetze.length ? platzIds.filter((p) => f.plaetze.includes(p)) : platzIds;
@@ -40,7 +41,10 @@ export function festeTermine(liste: FesteBelegung[], platzIds: number[], von: st
     const ende = f.datum_bis < bis ? f.datum_bis : bis;
     for (let d = start; d <= ende; d = addTage(d, 1)) {
       if (!f.wochentage.includes(String(isoWt(d)))) continue;
-      for (const p of ziele) out.push({ id: f.id, platzId: p, datum: d, von: minuten(f.zeit_von), bis: f.zeit_bis === '24:00' ? 1440 : minuten(f.zeit_bis) || 1440, bezeichnung: f.bezeichnung, art: f.art, hinweis: f.hinweis });
+      for (const p of ziele) {
+        out.push({ id: f.id, platzId: p, datum: d, von: minuten(f.zeit_von), bis: f.zeit_bis === '24:00' ? 1440 : minuten(f.zeit_bis) || 1440, bezeichnung: f.bezeichnung, art: f.art,
+          hinweis: f.hinweis, einmalig: f.datum_von === f.datum_bis && f.plaetze.length === 1, portal: f.quelle === 'PORTAL' });
+      }
     }
   }
   return out;
