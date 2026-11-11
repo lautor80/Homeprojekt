@@ -28,6 +28,8 @@ export interface AngebotDaten {
   erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null;
   /** Bankverbindung aus dem Stamm (bei abweichendem Zahler dessen) bzw. vom Vorstand erfasst – die Person bestätigt nur noch das Mandat */
   bank?: { kontoinhaber: string; iban: string; bic: string | null; zahler_adrnr?: string | null } | null;
+  /** Erweiterung bestehender Mitglieder (#12): alle Personen sind aktive Mitglieder, Mitgliedschaft optional (z. B. nur Training) */
+  vertragsaenderung?: boolean;
 }
 export interface AngebotEingabe {
   personen: { adrnr?: string | null; anrede?: string | null; vorname?: string | null; nachname?: string | null; geburtsdatum?: string | null; email?: string | null; art?: string | null; training?: string[] }[];
@@ -68,6 +70,18 @@ export async function bankAusStamm(db: Db, adrnr: string): Promise<(NonNullable<
   return null;
 }
 
+/** Bankverbindung aus dem Stamm für die Anzeige im Angebotsdialog – IBAN nur gekürzt, dazu der Zahler (nicht Selbstzahler) */
+export async function angebotBankAnzeige(db: Db, adrnr: string) {
+  const b = await bankAusStamm(db, adrnr);
+  if (!b) return null;
+  let zahler: string | null = null;
+  if (b.zahler_adrnr) {
+    const [z] = await db`select vorname, nachname from tco.mitglieder where adrnr = ${b.zahler_adrnr}`;
+    zahler = z ? condense(`${leer(z.vorname)} ${leer(z.nachname)}`) : null;
+  }
+  return { kontoinhaber: b.kontoinhaber, iban: ibanKurz(b.iban), zahler };
+}
+
 /**
  * Personen für das Angebot: ohne Mitgliedschaft (Interessenten, Schnupperer) und aktive Mitglieder (Vertragsänderung, z. B.
  * zusätzliches Training) – mit laufenden Verträgen zur Vorbelegung und dem abweichenden Zahler. Ausgetretene nicht (Wiedereintritt
@@ -81,7 +95,9 @@ export async function angebotKandidaten(db: Db, suche: string) {
            case when m.eintritt is not null or coalesce(m.mitglnrn, '') <> '' then coalesce(nullif(m.mitglnrn, ''), m.adrnr) end as mitglied,
            z.vorname as z_vorname, z.nachname as z_nachname,
            coalesce((select array_agg(v.art order by v.art) from tco.vertraege v
-                      where v.adrnr = m.adrnr and (v.vertragende is null or v.vertragende >= current_date)), '{}') as arten
+                      where v.adrnr = m.adrnr and (v.vertragende is null or v.vertragende >= current_date)), '{}') as arten,
+           coalesce((select array_agg(coalesce(nullif(v.artname, ''), v.art) order by v.art) from tco.vertraege v
+                      where v.adrnr = m.adrnr and (v.vertragende is null or v.vertragende >= current_date)), '{}') as artnamen
       from tco.mitglieder m
       left join tco.schnupper s on s.adrnr = m.adrnr and s.status <> 'MITGLIED'
       left join tco.mitglieder z on z.adrnr = nullif(m.adrnrkih, '') and z.adrnr <> m.adrnr
@@ -93,7 +109,7 @@ export async function angebotKandidaten(db: Db, suche: string) {
     adrnr: r.adrnr as string, name: condense(`${leer(r.vorname)} ${leer(r.nachname)}`), anrede: leer(r.anrede), vorname: leer(r.vorname), nachname: leer(r.nachname),
     geburtsdatum: r.geburtsdatum as string | null, ort: leer(r.ort), email: leer(r.email), schnupper: r.schnupper as string | null,
     mitglied: (r.mitglied as string | null) ?? null, zahler: r.z_nachname || r.z_vorname ? condense(`${leer(r.z_vorname)} ${leer(r.z_nachname)}`) : null,
-    vertraege: ((r.arten as string[] | null) ?? []).map(String),
+    vertraege: ((r.arten as string[] | null) ?? []).map(String), vertragsnamen: ((r.artnamen as string[] | null) ?? []).map(String),
   }));
 }
 
@@ -107,7 +123,10 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   const personen: AngebotPerson[] = [];
   let adresse: { strasse: string; plz: string; ort: string; telefon: string | null } = { strasse: '', plz: '', ort: '', telefon: null };
   let bank: AngebotDaten['bank'] = null;
+  /** je Person: aktives Mitglied? (Vertragsänderung – Mitgliedschaft optional) */
+  const mitglied: boolean[] = [];
   for (const [i, x] of e.personen.entries()) {
+    mitglied[i] = false;
     let p: AngebotPerson;
     if (x.adrnr) {
       const [m] = await tx`select adrnr, anrede, vorname, nachname, geburtsdatum::text as geburtsdatum, strasse, plz, ort, email, telefon, telefon6, mitglnrn, eintritt,
@@ -118,6 +137,7 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
       if ((leer(m.mitglnrn) || m.eintritt) && m.austritt && m.austritt < heute()) {
         throw new BusinessError(`${condense(`${leer(m.vorname)} ${leer(m.nachname)}`)} ist ausgetreten (${m.austritt}) – Wiedereintritt bitte über den Mitgliederstamm.`);
       }
+      mitglied[i] = !!(leer(m.mitglnrn) || m.eintritt);
       p = {
         adrnr: m.adrnr, anrede: ['Herr', 'Frau', 'Divers'].includes(leer(m.anrede)) ? leer(m.anrede) : '', vorname: leer(m.vorname), nachname: leer(m.nachname),
         geburtsdatum: m.geburtsdatum ?? null, email: leer(m.email) || null, telefon: leer(m.telefon6) || leer(m.telefon) || null, art: null, training: [],
@@ -137,12 +157,17 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
     // Verträge wie im Online-Antrag: Antragsteller genau eine Mitgliedschaft, weitere Personen über den Familienbeitrag
     const wer2 = e.personen.length > 1 ? `${p.vorname} ${p.nachname}: ` : '';
     const a = p.geburtsdatum ? alter(p.geburtsdatum, e.eintritt) : null;
-    if (i === 0) {
+    if (i === 0 && !x.art && mitglied[0]) {
+      // Erweiterung eines aktiven Mitglieds: Mitgliedschaft bleibt, z. B. nur Training dazu
+      p.art = null;
+    } else if (i === 0) {
       const m = art.get(x.art ?? '');
-      if (!m || m.kategorie !== 'MITGLIEDSCHAFT') throw new BusinessError(`${wer2}Bitte eine Mitgliedschaft wählen.`);
+      if (!m || m.kategorie !== 'MITGLIEDSCHAFT') throw new BusinessError(`${wer2}Bitte eine Mitgliedschaft wählen${mitglied[0] ? '' : ' (bei aktiven Mitgliedern optional)'}.`);
       if (istJugendbeitrag(m.name) && a !== null && a > ALTER_JUGENDBEITRAG_BIS) throw new BusinessError(`${wer2}Ab 18 Jahren ist kein Jugendbeitrag möglich.`);
       if (e.personen.length > 1 && !istFamilienbeitrag(m.name)) throw new BusinessError('Weitere Personen sind nur mit dem Familienbeitrag möglich.');
       p.art = m.art;
+    } else if (!personen[0].art && !mitglied[i]) {
+      throw new BusinessError(`${wer2}Ohne neue Mitgliedschaft (Familienbeitrag) können nur bestehende Mitglieder ergänzt werden.`);
     }
     const tr = (x.training ?? []).filter(Boolean);
     if (tr.length > MAX_TRAINING) throw new BusinessError(`${wer2}Höchstens ${MAX_TRAINING} Trainingseinheiten.`);
@@ -153,6 +178,8 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   }
   const namen = personen.map((p) => normName(`${p.vorname} ${p.nachname}`));
   if (new Set(namen).size !== namen.length) throw new BusinessError('Eine Person ist doppelt im Angebot.');
+  const vertragsaenderung = !personen[0].art;
+  if (vertragsaenderung && !personen.some((p) => p.training.length)) throw new BusinessError('Bitte mindestens einen Vertrag wählen (Mitgliedschaft oder Trainingseinheit).');
   const email = leer(e.email) || personen[0].email || '';
   if (!emailGueltig(email)) throw new BusinessError('Bitte eine gültige E-Mail-Adresse für den Link angeben.');
 
@@ -162,7 +189,7 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
     bank = { kontoinhaber: condense(e.kontoinhaber ?? '') || `${personen[0].vorname} ${personen[0].nachname}`, iban: normalisieren(leer(e.iban)), bic: null, zahler_adrnr: null };
   }
   const daten: AngebotDaten = {
-    bank, personen, ...adresse, email, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || null, eintritt: e.eintritt,
+    bank, personen, ...adresse, email, vertragsaenderung, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || null, eintritt: e.eintritt,
     bemerkung: (e.bemerkung ?? '').trim() || null,
   };
   const jahr = heute().slice(0, 4);
@@ -240,6 +267,11 @@ export async function angebotOeffnen(tx: Db, token: string, geburtsdatum: string
     daten: { ...d, eintritt: d.eintritt < heute() ? heute() : d.eintritt, personen: d.personen.map(({ adrnr: _a, ...p }) => p),
       bank: d.bank ? { kontoinhaber: d.bank.kontoinhaber, iban: ibanKurz(d.bank.iban) } : null },
   };
+}
+
+/** gespeicherte Angaben des Angebots (für die Prüfung des Antrags: Vertragsänderung ohne Mitgliedschaft) */
+export async function angebotDaten(tx: Db, token: string) {
+  return (await zumToken(tx, token)).daten;
 }
 
 /** gespeicherte Bankverbindung des Angebots (für „Bestätigen“ ohne erneute Eingabe der IBAN) */

@@ -57,13 +57,16 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
     geburtsdatumNoetig?: boolean; nummer?: string;
     daten?: { personen: { anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email?: string | null; telefon?: string | null; art?: string | null; training: string[] }[];
       strasse: string; plz: string; ort: string; email: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null;
-      bank: { kontoinhaber: string; iban: string } | null };
+      bank: { kontoinhaber: string; iban: string } | null;
+      /** Erweiterung bestehender Mitglieder: Mitgliedschaft bleibt (optional), z. B. nur Training dazu */
+      vertragsaenderung?: boolean };
   }
   /** Vertragsangebot: Bankverbindung aus dem Angebot (nur gekürzt angezeigt) und Ansicht „nur bestätigen“ */
   const [angebotBank, setAngebotBank] = useState<{ kontoinhaber: string; iban: string } | null>(null);
   const [bankAusAngebot, setBankAusAngebot] = useState(false);
   const [ansicht, setAnsicht] = useState<'bestaetigen' | 'formular'>('bestaetigen');
   const [alles, setAlles] = useState(false);
+  const [aenderung, setAenderung] = useState(false);
   async function angebotOeffnen(geb: string | null) {
     setTorFehler(null);
     try {
@@ -78,6 +81,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       })));
       setA((x) => ({ ...x, strasse: d.strasse, plz: d.plz, ort: d.ort, email: d.email, telefon: d.telefon ?? '', erziehungsberechtigt: d.erziehungsberechtigt ?? '', eintritt: d.eintritt }));
       setAngebotBank(d.bank);
+      setAenderung(!!d.vertragsaenderung);
       setBankAusAngebot(!!d.bank);
       setTor('offen');
     } catch (e) {
@@ -122,12 +126,14 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       return geaendert ? neu : l;
     });
   }, [info, a.eintritt, personen.map((p) => p.geburtsdatum).join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
-  const ok = personen.every((p, i) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && (i > 0 || p.art)) && (personen.length === 1 || familie)
+  /** Vertragsänderung (nur aus dem Angebot): ohne neue Mitgliedschaft mindestens eine Trainingseinheit */
+  const vertragOk = aenderung && !personen[0].art ? personen.some((p) => p.training.length > 0) : !!personen[0].art && (personen.length === 1 || familie || aenderung);
+  const ok = personen.every((p) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum) && vertragOk
     && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim())
     && (bankAusAngebot || (bank.kontoinhaber.trim() && bank.iban.trim())) && bank.sepa && zu.satzung && zu.datenschutz && zu.kuendigung;
   /** Vertragsangebot vollständig vorbereitet → nur noch bestätigen (sonst das Formular zum Ergänzen) */
-  const angebotVollstaendig = personen.every((p, i) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && (i > 0 || p.art))
-    && (personen.length === 1 || familie) && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim());
+  const angebotVollstaendig = personen.every((p) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum)
+    && vertragOk && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim());
 
   async function absenden(bestaetigt = false) {
     setBusy(true); setError(null);
@@ -188,14 +194,14 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
         {personen.map((p, i) => (
           <Text key={i} style={{ display: 'block', marginBottom: '0.25rem' }}>
             <b>{p.anrede} {p.vorname} {p.nachname}</b>, geb. {p.geburtsdatum.split('-').reverse().join('.')} –{' '}
-            {[i === 0 ? art(p.art) : 'über den Familienbeitrag', ...p.training.map(art)].join(' + ')}
+            {[i === 0 ? (p.art ? art(p.art) : 'Mitgliedschaft unverändert') : aenderung && !personen[0].art ? 'Mitgliedschaft unverändert' : 'über den Familienbeitrag', ...p.training.map(art)].join(' + ')}
           </Text>
         ))}
         <Title level="H5" style={{ margin: '0.75rem 0 0.25rem' }}>Anschrift und Kontakt</Title>
         <Text style={{ display: 'block' }}>{a.strasse}, {a.plz} {a.ort} · {a.email}{a.telefon ? ` · ${a.telefon}` : ''}</Text>
         {minderjaehrig && <Text style={{ display: 'block' }}>Erziehungsberechtigte/r: {a.erziehungsberechtigt}</Text>}
         <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Eintritt: {a.eintritt.split('-').reverse().join('.')}</Text>
-        <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} />
+        <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} aenderung={aenderung} />
         <Title level="H5" style={{ margin: '0.5rem 0' }}>Bankverbindung (SEPA-Lastschrift)</Title>
         {angebotBank && bankAusAngebot ? (
           <Text style={{ display: 'block', marginBottom: '0.5rem' }}>{angebotBank.kontoinhaber} · IBAN {angebotBank.iban}</Text>
@@ -256,15 +262,15 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
                   <DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={p.geburtsdatum} onChange={(e) => setP(i, { geburtsdatum: e.detail.value })} />
                 </Feld>
                 {i === 0 ? (
-                  <Feld label="Mitgliedschaft" required>
+                  <Feld label={aenderung ? 'Mitgliedschaft (optional)' : 'Mitgliedschaft'} required={!aenderung}>
                     <Select style={full} onChange={(e) => setP(i, { art: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
-                      <Option data-a="" selected={!p.art}>bitte wählen</Option>
+                      <Option data-a="" selected={!p.art}>{aenderung ? 'keine Änderung' : 'bitte wählen'}</Option>
                       {mitgliedschaften(p).map((b) => <Option key={b.art} data-a={b.art} selected={p.art === b.art}>{b.name} – {eur(b.betrag)}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
                     </Select>
                   </Feld>
                 ) : (
                   <Feld label="Mitgliedschaft">
-                    <Text style={{ paddingTop: '0.5rem' }}>über den Familienbeitrag</Text>
+                    <Text style={{ paddingTop: '0.5rem' }}>{aenderung && !personen[0].art ? 'unverändert' : 'über den Familienbeitrag'}</Text>
                   </Feld>
                 )}
               </FlexBox>
@@ -334,7 +340,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
               <DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={a.eintritt} onChange={(e) => setA({ ...a, eintritt: e.detail.value })} />
             </Feld>
           </FlexBox>
-          <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} />
+          <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} aenderung={aenderung} />
 
           <Title level="H5" style={{ margin: '0.5rem 0' }}>SEPA-Lastschriftmandat</Title>
           {angebotBank && (
@@ -389,11 +395,13 @@ export function beginnFuer(eintritt: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAI
 const datum = (iso: string) => iso.split('-').reverse().join('.');
 
 /** Beitragsübersicht: Mitgliedschaft und Jugendtraining getrennt, je Position Betrag, Turnus und Beginn (erste Fälligkeit) */
-function Beitraege({ info, personen, eintritt }: { info: Info; personen: Person[]; eintritt: string }) {
+function Beitraege({ info, personen, eintritt, aenderung }: { info: Info; personen: Person[]; eintritt: string; aenderung?: boolean }) {
   const art = (x: string) => info.beitragsarten.find((b) => b.art === x);
   const name = (p: Person, i: number) => `${p.vorname || (i === 0 ? 'Antragsteller/in' : `Person ${i + 1}`)} ${p.nachname}`.trim();
   const mitglied = personen.flatMap((p, i) => {
     if (i === 0) { const b = art(p.art); return b ? [{ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus }] : []; }
+    // Vertragsänderung ohne neue Mitgliedschaft: bestehende Mitgliedschaften bleiben – keine Zeile
+    if (aenderung && !personen[0].art) return [];
     return [{ wer: name(p, i), text: 'über den Familienbeitrag', betrag: 0, turnus: '' }];
   });
   const training = personen.flatMap((p, i) => p.training.map((x) => art(x)).filter((b): b is Art => !!b)
