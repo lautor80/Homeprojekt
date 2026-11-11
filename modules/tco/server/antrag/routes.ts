@@ -7,6 +7,9 @@ import { DB, vereinLesen } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
 import { bankSchutz } from '../bankdaten.js';
 import { antragAblehnen, antragAnlegen, antraegeLesen, antragInfo, MAX_PERSONEN, uebernehmen } from './logik.js';
+import { portalUrl } from '../../../../server/src/kennwort.js';
+import type { Verein } from '../verein.js';
+import { ANGEBOT_TAGE, angebotAnlegen, angebotErneuern, angeboteLesen, angebotKandidaten, angebotOeffnen, angebotZurueckziehen } from './angebot.js';
 
 /**
  * Mitgliedsantrag online (#12): öffentlich /api/m/tco/antrag (Formular /beitritt), Verwaltung unter
@@ -33,6 +36,8 @@ const antragSchema = z.object({
   bemerkung: txt(1000).nullish(),
   /** Beitrittslink aus dem Schnuppertraining (#86) */
   schnupper: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).nullish(),
+  /** Vertragsangebot (#12): Link-Schlüssel */
+  angebot: z.string().regex(/^[A-Za-z0-9_-]{30,64}$/).nullish(),
   bank: z.object({ kontoinhaber: txt(120), iban: txt(40), bic: txt(15).nullish(), bank: txt(80).nullish(), sepa: z.boolean() }),
   /** Honigtopf gegen Bots – muss leer bleiben */
   website: z.string().max(200).optional(),
@@ -46,6 +51,29 @@ function limit(ip: string, max: number) {
   cur.n++;
   versuche.set(ip, cur);
   if (cur.n > max) throw new BusinessError('Zu viele Anträge von dieser Verbindung. Bitte später erneut versuchen.', 429);
+}
+
+const tokenSchema = z.string().regex(/^[A-Za-z0-9_-]{30,64}$/, 'Der Link ist ungültig.');
+const datumD = (iso: string) => iso.split('-').reverse().join('.');
+
+/** Link zum Vertragsangebot per E-Mail – ohne persönliche Daten, nur Anrede und Link */
+async function angebotMail(v: Verein, a: { nummer: string; token: string; email: string; name: string; gueltigBis: string }, wer: string, mail: boolean) {
+  const url = await portalUrl();
+  if (!url) throw new BusinessError('Die Portal-Adresse ist nicht eingerichtet (Administration → Einstellungen) – der Link kann nicht erzeugt werden.');
+  const link = `${url}/beitritt?angebot=${a.token}`;
+  if (!mail) return { link, text: `Vertragsangebot ${a.nummer} erstellt – Link bitte selbst weitergeben (gültig bis ${datumD(a.gueltigBis)}).` };
+  if (!v.n8n_mail_url) return { link, text: `Vertragsangebot ${a.nummer} erstellt. Der Mailversand ist nicht eingerichtet – bitte den Link anders weitergeben.` };
+  await mailSenden(v, {
+    modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: a.nummer, an: a.email, benutzer: wer, anhaenge: [],
+    betreff: `${v.name}: Ihr persönlicher Mitgliedsantrag`,
+    text: `Guten Tag ${a.name},\n\nwir haben Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag bereits vorbereitet. `
+      + 'Bitte prüfen Sie die Angaben, ergänzen Sie Ihre Bankverbindung für das SEPA-Lastschriftmandat und bestätigen Sie den Antrag:\n\n'
+      + `${link}\n\n`
+      + `Zum Öffnen geben Sie Ihr Geburtsdatum ein. Der Link ist persönlich, gilt bis ${datumD(a.gueltigBis)} und kann nur einmal verwendet werden. `
+      + 'Ihre Daten stehen nicht in dieser E-Mail; sie werden erst nach der Bestätigung über eine verschlüsselte Verbindung (HTTPS) angezeigt.\n\n'
+      + `Viele Grüße\n${v.name}`,
+  });
+  return { link, text: `Vertragsangebot ${a.nummer} an ${a.email} gesendet (gültig bis ${datumD(a.gueltigBis)}).` };
 }
 
 export async function antragRoutes(app: FastifyInstance) {
@@ -76,6 +104,54 @@ export async function antragRoutes(app: FastifyInstance) {
       }
     } catch (e) { req.log.warn({ antrag: r.nummer, err: (e as Error).message }, 'Mitgliedsantrag: Eingangsbestätigung nicht gesendet'); }
     return { nummer: r.nummer, text: `Vielen Dank! Ihr Antrag ${r.nummer} ist eingegangen. Sie erhalten eine Bestätigung per E-Mail; nach der Prüfung durch den Vorstand folgen Aufnahme und Zugangsdaten.` };
+  });
+
+  /** Vertragsangebot öffnen (öffentlich): Link-Schlüssel + Geburtsdatum → vorbelegte Angaben */
+  app.post('/antrag/angebot', async (req) => {
+    limit(`${req.ip}|angebot`, 30);
+    const b = z.object({ token: tokenSchema, geburtsdatum: datum.nullish() }).parse(req.body);
+    const r = await withChange({ userId: null, username: 'Vertragsangebot', action: 'VERTRAGSANGEBOT_OEFFNEN' }, (tx) => angebotOeffnen(tx, b.token, b.geburtsdatum ?? null));
+    if ('fehler' in r) throw new BusinessError(r.fehler);
+    return r;
+  });
+
+  // ------------------------------------------------------------------ Vertragsangebote (#12)
+  const edit = { preHandler: requireAuth(P_ANTRAG.edit) };
+  app.get('/mitgliedsantraege/angebote', { preHandler: requireAuth(P_ANTRAG.display) }, async (req) => {
+    const q = z.object({ alle: z.string().optional().transform((x) => x === '1' || x === 'true') }).parse(req.query);
+    return { tage: ANGEBOT_TAGE, liste: await angeboteLesen(DB, q.alle) };
+  });
+  app.get('/mitgliedsantraege/angebote/personen', edit, async (req) => {
+    const q = z.object({ suche: z.string().max(100).default('') }).parse(req.query);
+    return angebotKandidaten(DB, q.suche);
+  });
+  app.post('/mitgliedsantraege/angebote', edit, async (req) => {
+    const b = z.object({
+      personen: z.array(z.object({
+        adrnr: txt(20).nullish(), anrede: txt(10).nullish(), vorname: txt(60).nullish(), nachname: txt(60).nullish(), geburtsdatum: datum.nullish(),
+        email: txt(120).nullish(), art: txt(10).nullish(), training: z.array(txt(10)).max(2).default([]),
+      })).min(1).max(MAX_PERSONEN),
+      eintritt: datum, email: txt(120).nullish(), erziehungsberechtigt: txt(120).nullish(), bemerkung: txt(1000).nullish(),
+      mail: z.boolean().default(true),
+    }).parse(req.body);
+    const wer = req.user!.displayName || req.user!.username;
+    const v = await vereinLesen();
+    if (!(await portalUrl())) throw new BusinessError('Die Portal-Adresse ist nicht eingerichtet (Administration → Einstellungen) – der Link kann nicht erzeugt werden.');
+    const a = await change(req, (tx) => angebotAnlegen(tx, b, wer), { action: 'VERTRAGSANGEBOT' });
+    return { nummer: a.nummer, ...(await angebotMail(v, a, wer, b.mail)) };
+  });
+  app.post('/mitgliedsantraege/angebote/:id/erneuern', edit, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const { mail } = z.object({ mail: z.boolean().default(true) }).parse(req.body ?? {});
+    const wer = req.user!.displayName || req.user!.username;
+    const v = await vereinLesen();
+    if (!(await portalUrl())) throw new BusinessError('Die Portal-Adresse ist nicht eingerichtet (Administration → Einstellungen) – der Link kann nicht erzeugt werden.');
+    const a = await change(req, (tx) => angebotErneuern(tx, id), { action: 'VERTRAGSANGEBOT_ERNEUERT', reason: String(id) });
+    return { nummer: a.nummer, ...(await angebotMail(v, a, wer, mail)) };
+  });
+  app.post('/mitgliedsantraege/angebote/:id/zurueckziehen', edit, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    return { text: await change(req, (tx) => angebotZurueckziehen(tx, id), { action: 'VERTRAGSANGEBOT_ZURUECK', reason: String(id) }) };
   });
 
   // ------------------------------------------------------------------ Verwaltung

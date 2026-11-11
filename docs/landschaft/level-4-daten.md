@@ -69,6 +69,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.trentgelt` |  |  |  | ● |  |  |  |  |  |  |  |  |
 | `tco.verein` |  |  |  |  | ● |  |  |  |  |  |  |  |
 | `tco.vertraege` | ● | ● |  |  |  |  |  | ● |  |  | ● |  |
+| `tco.vertragsangebote` | ● |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.vz_belege` |  | ● |  |  | ● |  |  | ● |  |  |  |  |
 | `tco.vz_cfg` |  | ● |  |  | ● |  |  |  |  |  |  |  |
 | `tco.vz_posten` |  |  |  |  | ● |  |  | ● |  |  |  |  |

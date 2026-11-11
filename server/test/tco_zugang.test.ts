@@ -790,3 +790,85 @@ test('Zugangslinks an Personen aus einer eingefügten Liste: Abgleich, eigener T
   assert.equal((letzteMail('simone@example.org') as any).cc, 'admin@example.org');
   await sql`update core.users set email = null where username = 'admin'`;
 });
+
+test('Vertragsangebot (#12): vorbelegter Antrag per Link, Öffnen mit Geburtsdatum, Annahme macht den Stammsatz zum Mitglied', async () => {
+  const gast = client();
+  // Interessentin im Stamm (ohne Mitgliedschaft) und ein aktives Mitglied
+  await sql`insert into tco.mitglieder (adrnr, anrede, vorname, nachname, geburtsdatum, strasse, plz, ort, email, telefon6) values
+            ('0000000777', 'Frau', 'Ines', 'Interessant', '1990-04-04', 'Seeweg 7', '66649', 'Oberthal', 'ines@example.org', '0171 777')`;
+  let r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen?suche=inter`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((k: any) => k.adrnr), ['0000000777']);
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen?suche=maria`);
+  assert.equal(r.body.length, 0, 'aktive Mitglieder nicht auswählbar');
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000501', art: '5' }], eintritt: heute() });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits Mitglied/);
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000777', art: '90' }], eintritt: heute() });
+  assert.match(r.body.message, /Mitgliedschaft wählen/);
+
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000777', art: '5' }], eintritt: heute(), bemerkung: 'Willkommen!' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.nummer, /^VA-\d{4}-0001$/);
+  const mail = letzteMail('ines@example.org')!;
+  const tok = token(mail.text, 'angebot');
+  assert.ok(tok.length >= 40);
+  assert.ok(!mail.text.includes('Seeweg') && !mail.text.includes('1990'), 'keine Daten in der E-Mail');
+  assert.equal(r.body.link, `https://portal.example.org/beitritt?angebot=${tok}`);
+  const [db] = await sql`select token_hash from tco.vertragsangebote`;
+  assert.notEqual(db.token_hash, tok, 'nur der Hash gespeichert');
+
+  // Öffnen: erst Geburtsdatum, falsches zählt
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok });
+  assert.deepEqual(r.body, { geburtsdatumNoetig: true });
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: '1990-01-01' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /noch 4 Versuche/);
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: '1990-04-04' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.daten.personen[0].vorname, 'Ines');
+  assert.equal(r.body.daten.personen[0].art, '5');
+  assert.equal(r.body.daten.personen[0].adrnr, undefined, 'keine Adressnummer nach außen');
+  assert.equal(r.body.daten.strasse, 'Seeweg 7');
+  assert.equal(r.body.daten.bemerkung, 'Willkommen!');
+
+  // Annahme über den normalen Antrag
+  const antrag = {
+    personen: [{ anrede: 'Frau', vorname: 'Ines', nachname: 'Interessant', geburtsdatum: '1990-04-04', art: '5' }],
+    strasse: 'Seeweg 7', plz: '66649', ort: 'Oberthal', email: 'ines@example.org', eintritt: heute(),
+    satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, angebot: tok,
+    bank: { kontoinhaber: 'Ines Interessant', iban: 'DE02 1203 0000 0000 2020 51', sepa: true },
+  };
+  r = await gast('POST', `${T}/antrag`, antrag);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await gast('POST', `${T}/antrag`, antrag)).status, 404, 'Link nur einmal verwendbar');
+  assert.equal((await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: '1990-04-04' })).status, 404);
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote?alle=1`);
+  assert.equal(r.body.liste[0].status, 'ANGENOMMEN');
+  r = await admin('GET', `${T}/mitgliedsantraege`);
+  const ma = r.body.find((x: any) => x.status === 'EINGANG' && x.daten.personen[0].vorname === 'Ines');
+  assert.equal(ma.daten.personen[0].adrnr, '0000000777');
+  assert.ok(ma.hinweise.some((h: string) => /Vertragsangebot VA-/.test(h)), JSON.stringify(ma.hinweise));
+  assert.ok(!ma.hinweise.some((h: string) => /gesperrt/.test(h)));
+  r = await admin('POST', `${T}/mitgliedsantraege/${ma.id}/uebernehmen`, { mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.mitglieder[0].adrnr, '0000000777', 'derselbe Stammsatz wird Mitglied');
+  assert.equal((await sql`select count(*)::int as n from tco.mitglieder where vorname = 'Ines' and nachname = 'Interessant'`)[0].n, 1);
+
+  // neue Person ohne Stamm; Link erneuern macht den alten ungültig; Zurückziehen; Sperre nach 5 Fehlversuchen
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ vorname: 'Nils', nachname: 'Neu', geburtsdatum: '2000-02-02', art: '5' }], eintritt: heute(), email: 'nils@example.org', mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const alt = token(r.body.link, 'angebot');
+  const id = (await admin('GET', `${T}/mitgliedsantraege/angebote`)).body.liste.find((x: any) => x.nummer === r.body.nummer).id;
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote/${id}/erneuern`, { mail: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const neu = token(letzteMail('nils@example.org')!.text, 'angebot');
+  assert.notEqual(neu, alt);
+  assert.equal((await gast('POST', `${T}/antrag/angebot`, { token: alt, geburtsdatum: '2000-02-02' })).status, 404);
+  for (let i = 0; i < 5; i++) await gast('POST', `${T}/antrag/angebot`, { token: neu, geburtsdatum: '2000-01-01' });
+  assert.equal((await gast('POST', `${T}/antrag/angebot`, { token: neu, geburtsdatum: '2000-02-02' })).status, 423, 'gesperrt');
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote/${id}/zurueckziehen`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote`);
+  assert.ok(!r.body.liste.some((x: any) => x.id === id), 'nur offene');
+});

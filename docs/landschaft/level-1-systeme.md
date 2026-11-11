@@ -152,7 +152,7 @@ flowchart LR
 |---|---|
 | abschluss | 9 |
 | analyse | 7 |
-| antrag | 5 |
+| antrag | 11 |
 | beitraege | 8 |
 | clubhaus | 18 |
 | core:admin | 17 |
