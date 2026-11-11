@@ -709,7 +709,7 @@ test('EP3-Events werden als feste Belegungen übernommen (ersetzen sich beim nä
 });
 
 test('Platz buchen für Admin/Hallenwart (#11): Namen sehen, für andere buchen, Schnuppertraining eintragen', async () => {
-  const CARL = '0000000403';
+  const CARL = '0000000411';
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt) values (${CARL}, 'Carl', 'Wart', '2020-01-01') on conflict do nothing`;
   assert.equal((await admin('POST', '/api/admin/roles', { id: 'HALLENWART_T', name: 'Hallenwart Test', permissions: ['tco.platzbuchung:edit', 'tco.platzbuchung:verwalten'] })).status, 200);
   assert.equal((await admin('POST', '/api/admin/users', { username: 'hwart11', displayName: 'Hallenwart 11', password: 'start-passwort', roles: ['HALLENWART_T'] })).status, 200);
