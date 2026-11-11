@@ -232,6 +232,49 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   return { typ: 'BUCHUNGEN', ok: true, text, details: begrenzt(details, 'Buchung neu'), personenNeu: [...new Set(neuListe.map((b) => b.kunde))] };
 }
 
+/**
+ * Abgleich ohne Schreiben (#20): Buchungen, die in den letzten `tage` Tagen in EP3 angelegt wurden (Spalte ERSTELLT; ohne sie:
+ * Buchungsdatum in diesem Zeitraum) und im Portal fehlen (BID + Datum). Stornierte EP3-Buchungen zählen nicht.
+ * Es wird nur gelesen – keine Änderung an der Datenbank.
+ */
+export interface Ep3Abweichung { bid: string; datum: string; kunde: string; von: string | null; bis: string | null; platz: string | null; erstellt: string | null; art: 'Abo' | 'Einzel' }
+export async function ep3Abgleich(db: Db, bookingsCsv: string | null | undefined, stichtag: string, tage = 5): Promise<{ geprueft: number; fehlend: Ep3Abweichung[]; ab: string; mitErstellt: boolean }> {
+  const d = new Date(`${stichtag}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - tage);
+  const ab = d.toISOString().slice(0, 10);
+  const rows = bookingsCsv ? csvParse(bookingsCsv) : [];
+  if (rows.length < 2) return { geprueft: 0, fehlend: [], ab, mitErstellt: false };
+  const kopf = rows[0].map((x) => x.trim().toUpperCase());
+  const idx = (n: string) => kopf.indexOf(n);
+  const i = { bid: idx('BID'), datum: idx('DATUM'), von: idx('TIME_START'), bis: idx('TIME_ENDE'), kunde: idx('KUNDE'), status: idx('STATUS'), erstellt: idx('ERSTELLT'),
+    platz: PLATZ_SPALTEN.map(idx).find((x) => x >= 0) ?? -1 };
+  if (i.bid < 0 || i.datum < 0) throw new BusinessError('EP3-Buchungen: Spalten BID / DATUM nicht gefunden.');
+  const kandidaten: Ep3Abweichung[] = [];
+  for (const r of rows.slice(1)) {
+    const bid = bidNorm(r[i.bid] ?? '');
+    let datum: string | null = null;
+    try { datum = sapDatum((r[i.datum] ?? '').trim().split(/[ T]/)[0]); } catch { datum = null; }
+    if (!bid || !datum) continue;
+    const st = (r[i.status] ?? '').trim().toLowerCase();
+    if ((STATUS[st] ?? st) === '2') continue;
+    let erstellt: string | null = null;
+    if (i.erstellt >= 0) { try { erstellt = sapDatum((r[i.erstellt] ?? '').trim().split(/[ T]/)[0]); } catch { erstellt = null; } }
+    const relevant = i.erstellt >= 0 ? !!erstellt && erstellt >= ab && erstellt <= stichtag : datum >= ab && datum <= stichtag;
+    if (!relevant) continue;
+    let von: string | null = null;
+    let bis: string | null = null;
+    try { von = i.von >= 0 ? sapZeit(r[i.von] ?? '') : null; bis = i.bis >= 0 ? sapZeit(r[i.bis] ?? '') : null; } catch { /* leer */ }
+    kandidaten.push({ bid, datum, kunde: (r[i.kunde] ?? '').trim().toUpperCase(), von, bis, platz: i.platz >= 0 ? (r[i.platz] ?? '').trim() || null : null,
+      erstellt, art: (STATUS[st] ?? st) === '3' ? 'Abo' : 'Einzel' });
+  }
+  if (!kandidaten.length) return { geprueft: 0, fehlend: [], ab, mitErstellt: i.erstellt >= 0 };
+  const bids = [...new Set(kandidaten.map((k) => k.bid))];
+  const vorhanden = new Set((await db`select bid, datum::text as datum from tco.bookings where bid = any(${bids})`).map((r) => `${r.bid}|${r.datum}`));
+  const fehlend = kandidaten.filter((k) => !vorhanden.has(`${k.bid}|${k.datum}`))
+    .sort((a, b) => a.datum.localeCompare(b.datum) || (a.von ?? '').localeCompare(b.von ?? ''));
+  return { geprueft: kandidaten.length, fehlend, ab, mitErstellt: i.erstellt >= 0 };
+}
+
 /** frühestes und spätestes Datum der Buchungsdatei (zeigt, welchen Zeitraum der Workflow tatsächlich geliefert hat) */
 export function zeitraumDerBuchungen(csv: string | undefined): { von: string; bis: string } | null {
   if (!csv) return null;

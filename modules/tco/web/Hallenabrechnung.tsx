@@ -72,6 +72,12 @@ export function Hallenabrechnung() {
   const [csvAblage, setCsvAblage] = useState(false);
   /** Dialog vor dem EP3-Import über n8n: Standardzeitraum oder Buchungen ab Datum nachladen (#103) */
   const [ep3Dlg, setEp3Dlg] = useState(false);
+  /**
+   * EP3-Abgleich (#20): simulierter Import (nichts wird geschrieben) – fehlen im Portal Buchungen, die in den letzten 5 Tagen in EP3
+   * angelegt wurden? Ohne Abweichung sind die Knöpfe „EP3 importieren“ und „CSV-Datei“ ausgeblendet.
+   */
+  const [abgleich, setAbgleich] = useState<Abgleich | null>(null);
+  const [abgleichLaeuft, setAbgleichLaeuft] = useState(false);
   /** Personen mit Buchungen, die der Import in dieser Sitzung neu ergänzt hat – bewusst nicht in `merk`, entfällt beim Neuladen */
   const [importiert, setImportiert] = useState<Set<string>>(new Set());
 
@@ -114,6 +120,16 @@ export function Hallenabrechnung() {
   }, [selQs]);
 
   useEffect(() => { ladeListe(); }, [ladeListe]);
+  const abgleichen = useCallback(async () => {
+    if (!edit) return;
+    setAbgleichLaeuft(true);
+    try { setAbgleich(await api.get<Abgleich>(`${H}/import/abgleich`)); }
+    catch (e) { setAbgleich({ pruefbar: false, text: (e as Error).message, fehlend: [] }); }
+    finally { setAbgleichLaeuft(false); }
+  }, [edit]);
+  useEffect(() => { abgleichen(); }, [abgleichen]);
+  /** Import-Knöpfe nur bei Abweichung oder wenn der Abgleich nicht möglich war */
+  const importNoetig = !!abgleich && (!abgleich.pruefbar || abgleich.fehlend.length > 0);
   useEffect(() => { ladeDetail(kunde); }, [kunde, ladeDetail]);
 
   const neuLaden = async () => { await Promise.all([ladeListe(), ladeDetail(kunde)]); };
@@ -148,6 +164,7 @@ export function Hallenabrechnung() {
     });
     setProtokoll({ titel: 'Protokoll CSV-Import', zeilen });
     neueMerken(zeilen);
+    abgleichen();
   }
 
   const n8nImport = (ab: string | null) => tun(async () => {
@@ -156,6 +173,7 @@ export function Hallenabrechnung() {
     const zeilen = r.map((x) => ({ quelle: x.datei, ok: x.ok, text: x.text, details: x.details, personenNeu: x.personenNeu }));
     setProtokoll({ titel: 'Protokoll EP3-Import', zeilen });
     neueMerken(zeilen);
+    abgleichen();
   });
 
   /** Personen mit neu ergänzten Buchungen aus dem Protokoll übernehmen (Symbol der Zeile „n×“ wird rot) */
@@ -210,8 +228,13 @@ export function Hallenabrechnung() {
       title="Hallenabrechnung"
       header={header}
       actions={<>
-        {edit && <Button icon="download-from-cloud" onClick={() => setEp3Dlg(true)}>EP3 importieren</Button>}
-        {edit && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
+        {edit && abgleichLaeuft && <BusyIndicator active size="S" title="EP3 wird abgeglichen" />}
+        {edit && !abgleichLaeuft && abgleich?.pruefbar && !abgleich.fehlend.length && (
+          <ObjectStatus state="Positive" showDefaultIcon title={abgleich.text}>EP3 abgeglichen</ObjectStatus>
+        )}
+        {edit && <Button icon="synchronize" design="Transparent" disabled={abgleichLaeuft} tooltip={abgleich?.text ?? 'EP3 abgleichen (nur prüfen, nichts wird importiert)'} onClick={abgleichen} />}
+        {edit && importNoetig && <Button icon="download-from-cloud" onClick={() => setEp3Dlg(true)}>EP3 importieren</Button>}
+        {edit && importNoetig && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
         {edit && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
         {edit && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
         {versand && <Button icon="paper-plane" tooltip="Rechnungen „In Bearbeitung“ gesammelt drucken und per E-Mail versenden" onClick={() => setSammelVersand(true)}>Sammelversand</Button>}
@@ -222,6 +245,14 @@ export function Hallenabrechnung() {
                     feldTitel="CSV-Dateien hier ablegen" text="Buchungs- und Kundenexport aus EP3 hierher ziehen oder klicken zum Auswählen – das Ergebnis erscheint als Protokoll."
                     ziel={{ titel: 'Hallenabrechnung (CSV-Import)', annehmen: (f) => { csvImport(f); } }} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {edit && abgleich && importNoetig && (
+        <MessageStrip design={abgleich.pruefbar ? 'Critical' : 'Information'} hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          {abgleich.text}
+          {abgleich.fehlend.length > 0 && ' ' + abgleich.fehlend.slice(0, 8).map((f) =>
+            `${f.kunde || 'ohne Namen'} ${f.datum.split('-').reverse().join('.')} ${f.von ?? ''}${f.bis ? `–${f.bis}` : ''}${f.platz ? ` (${f.platz})` : ''}`).join(' · ')
+            + (abgleich.fehlend.length > 8 ? ` · … und ${abgleich.fehlend.length - 8} weitere` : '')}
+        </MessageStrip>
+      )}
       <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
         {/* genau ein Kind: der BusyIndicator legt Kinder sonst als zentrierte Flex-Zeile aus (Liste rückte in die Mitte) */}
         <div className="portal-busy-inhalt">
@@ -818,6 +849,11 @@ function PaperlessBlock({ pl }: { pl: PaperlessInfo }) {
       )}
     </div>
   );
+}
+
+interface Abgleich {
+  pruefbar: boolean; text: string; geprueft?: number; ab?: string;
+  fehlend: { bid: string; datum: string; kunde: string; von: string | null; bis: string | null; platz: string | null; art: 'Abo' | 'Einzel' }[];
 }
 
 /**

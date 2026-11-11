@@ -12,7 +12,7 @@ import {
   personDetail, personenLesen, positionEntfernen, positionenLesen, positionenNummerieren, positionAendern, rechnungAnlegen,
   rechnungenLesen, statusSetzen, zuordnen, type Selektion,
 } from './daten.js';
-import { ep3Importieren, ep3UeberN8n, zeitraumDerBuchungen, type ImportDetail } from './ep3.js';
+import { ep3Abgleich, ep3Importieren, ep3UeberN8n, zeitraumDerBuchungen, type ImportDetail } from './ep3.js';
 import { MAIL_PLATZHALTER, sammelMailVorlage, sammelversand, versandVorschlag } from './sammelversand.js';
 import {
   mailTexte, mailVersand, paperlessNotiz, rechnungDrucken, rechnungPdfErzeugen, whatsappBestaetigen, whatsappText,
@@ -145,6 +145,30 @@ export async function halleRoutes(app: FastifyInstance) {
 
   /** Stichtag „Buchungen abrechnen ab“ für den Hinweis im Importdialog (#103) */
   app.get('/halle/import/info', { preHandler: requireAuth(P_HALLE.edit) }, async () => ({ stichtag: (await vereinLesen()).halle_stichtag }));
+
+  /**
+   * EP3-Abgleich (#20): simuliert den Import über n8n (nur Buchungen ab heute − 5 Tagen anfordern) und meldet Buchungen, die in den
+   * letzten 5 Tagen in EP3 angelegt wurden und im Portal fehlen – schreibt nichts. Ohne Abweichung blendet die Oberfläche die
+   * Import-Knöpfe aus; nicht eingerichtet/nicht erreichbar → `pruefbar: false` (Knöpfe bleiben).
+   */
+  app.get('/halle/import/abgleich', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
+    const v = await vereinLesen();
+    const h = heute();
+    if (!v.n8n_ep3_url) return { pruefbar: false, text: 'EP3-Import über n8n ist nicht eingerichtet.', fehlend: [] };
+    const ab = (() => { const d = new Date(`${h}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - 5); return d.toISOString().slice(0, 10); })();
+    try {
+      const j = await ep3UeberN8n(v, benutzer(req), ab);
+      const r = await ep3Abgleich(DB, j.bookings_csv, h, 5);
+      return {
+        pruefbar: true, ...r,
+        text: r.fehlend.length
+          ? `${r.fehlend.length} Buchung(en) seit ${dat(r.ab)} in EP3 angelegt, aber nicht im Portal – bitte EP3 importieren.`
+          : `EP3 abgeglichen: keine neuen Buchungen seit ${dat(r.ab)} (${r.geprueft} geprüft).`,
+      };
+    } catch (e) {
+      return { pruefbar: false, text: `EP3-Abgleich nicht möglich: ${(e as Error).message}`, fehlend: [] };
+    }
+  });
 
   app.post('/halle/import/n8n', { preHandler: requireAuth(P_HALLE.edit) }, async (req) => {
     // optional: Buchungen ab Datum anfordern (Zeitraum verlängern, #103)
