@@ -66,21 +66,12 @@ async function angebotMail(v: Verein, a: { nummer: string; token: string; email:
   await mailSenden(v, {
     modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: a.nummer, an: a.email, benutzer: wer, anhaenge: [],
     betreff: `${v.name}: Ihr persönlicher Mitgliedsantrag`,
-    text: `Guten Tag ${a.name},
-
-wir haben Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag bereits vorbereitet. `
-      + 'Bitte prüfen Sie die Angaben, ergänzen Sie Ihre Bankverbindung für das SEPA-Lastschriftmandat und bestätigen Sie den Antrag:
-
-'
-      + `${link}
-
-`
+    text: `Guten Tag ${a.name},\n\nwir haben Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag bereits vorbereitet. `
+      + 'Bitte prüfen Sie die Angaben, ergänzen Sie Ihre Bankverbindung für das SEPA-Lastschriftmandat und bestätigen Sie den Antrag:\n\n'
+      + `${link}\n\n`
       + `Zum Öffnen geben Sie Ihr Geburtsdatum ein. Der Link ist persönlich, gilt bis ${datumD(a.gueltigBis)} und kann nur einmal verwendet werden. `
-      + 'Ihre Daten stehen nicht in dieser E-Mail; sie werden erst nach der Bestätigung über eine verschlüsselte Verbindung (HTTPS) angezeigt.
-
-'
-      + `Viele Grüße
-${v.name}`,
+      + 'Ihre Daten stehen nicht in dieser E-Mail; sie werden erst nach der Bestätigung über eine verschlüsselte Verbindung (HTTPS) angezeigt.\n\n'
+      + `Viele Grüße\n${v.name}`,
   });
   return { link, text: `Vertragsangebot ${a.nummer} an ${a.email} gesendet (gültig bis ${datumD(a.gueltigBis)}).` };
 }
