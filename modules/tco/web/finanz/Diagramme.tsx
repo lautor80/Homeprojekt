@@ -36,12 +36,6 @@ export function BalkenDiagramm({ titel, name1, name2, punkte, schmal = false }: 
           <text x={x(i)} y={y0 + 16} textAnchor="middle" fontSize={10} fill={TEXT}>{schmal ? p.label.slice(0, 1) : p.label}</text>
         </g>
       ))}
-      {mitOffen && (
-        <polyline points={punkte.map((p, i) => (p.zukunft ? null : `${x(i)},${yl(p.bestand + (p.offen ?? 0))}`)).filter(Boolean).join(' ')}
-                  fill="none" stroke={C3} strokeWidth={2} strokeDasharray="6 4" opacity={0.75} strokeLinejoin="round">
-          <title>Kontostand inkl. nicht bezahlter Rechnungen</title>
-        </polyline>
-      )}
       <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TEXT} />
       <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TEXT} />
       {!schmal && <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>{titel}</text>}
@@ -107,6 +101,12 @@ export function VerlaufDiagramm({ punkte, schmal = false }: { punkte: VerlaufPun
           <title>{`Kontostand ${p.label}: ${fmt(p.bestand, 2)} €`}</title>
         </circle>
       ))}
+      {mitOffen && (
+        <polyline points={punkte.map((p, i) => (p.zukunft ? null : `${x(i)},${yl(p.bestand + (p.offen ?? 0))}`)).filter(Boolean).join(' ')}
+                  fill="none" stroke={C3} strokeWidth={2} strokeDasharray="6 4" opacity={0.75} strokeLinejoin="round">
+          <title>Kontostand inkl. nicht bezahlter Rechnungen</title>
+        </polyline>
+      )}
       <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TEXT} />
       <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TEXT} />
       {!schmal && <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>Monatsverlauf Geldkonten</text>}
