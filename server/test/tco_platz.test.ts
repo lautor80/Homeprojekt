@@ -252,6 +252,52 @@ test('Abos nur über die Platzverwaltung', async () => {
   assert.equal(r.body.find((a: { bid: string }) => a.bid === aboBid).termine, 2);
 });
 
+test('#83: Abo mit Einzelabrechnung – Nutzer storniert einzelne Termine selbst, das Abo bleibt', async () => {
+  const body = { platz_id: halleId, adrnr: ANNA, ab: tag(8), bis_datum: tag(36), von: '20:00', bis: '21:00', text: null };
+  let r = await admin('POST', `${A}/abos`, body);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const bid = r.body.bid as string;
+  const [t1, t2] = (await sql`select datum::text as d from tco.bookings where bid = ${bid} order by datum`).map((x) => x.d as string);
+
+  // Abo wird mit dem Abo abgerechnet: kein Einzelstorno
+  r = await anna('DELETE', `${P}/buchungen/${bid}/termine/${t1}`);
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /mit dem Abo abgerechnet/);
+
+  // als Einzelbuchungen abrechnen (Hallenabrechnung)
+  await sql`insert into tco.bookings_ch (bid, status_abw) values (${bid}, '1')`;
+  r = await anna('GET', `${P}/meine`);
+  let abo = r.body.abos.find((a: { bid: string }) => a.bid === bid);
+  assert.equal(abo.einzelabrechnung, true);
+  assert.equal(abo.kommende_termine.length, 5);
+  assert.ok(abo.kommende_termine.every((t: { stornierbar: boolean }) => t.stornierbar));
+  assert.equal(abo.preis.betrag, 20, 'Einzelpreis je Termin');
+
+  // fremde Nutzer: nicht gefunden
+  assert.equal((await bert('DELETE', `${P}/buchungen/${bid}/termine/${t1}`)).status, 404);
+
+  r = await anna('DELETE', `${P}/buchungen/${bid}/termine/${t1}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Abo bleibt bestehen/);
+  const st = await sql`select datum::text as d, status, storno_portal is not null as portal from tco.bookings where bid = ${bid} order by datum`;
+  assert.deepEqual(st.map((x) => x.status), ['2', '3', '3', '3', '3']);
+  assert.equal(st[0].portal, true);
+  assert.equal((await anna('DELETE', `${P}/buchungen/${bid}/termine/${t1}`)).body.message, 'Der Termin ist bereits storniert.');
+
+  // das Abo bleibt mit 4 Terminen, der stornierte Termin steht beim Abo (nicht bei den Einzelbuchungen)
+  r = await anna('GET', `${P}/meine`);
+  abo = r.body.abos.find((a: { bid: string }) => a.bid === bid);
+  assert.equal(abo.termine, 4);
+  assert.equal(abo.storniert, 1);
+  assert.equal(abo.naechster, t2);
+  assert.equal(abo.kommende_termine.find((t: { datum: string }) => t.datum === t1).storniert, true);
+  assert.ok(!r.body.einzel.some((e: { bid: string }) => e.bid === bid));
+  // der Platz ist an dem Tag wieder frei
+  r = await bert('GET', `${P}/tag?datum=${t1}`);
+  assert.ok(!r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.some((b: { von: string }) => b.von === '20:00'));
+  await admin('POST', `${A}/abos/${bid}/beenden`, { ab: tag(0) });
+});
+
 test('EP3-Buchungen belegen den Platz über die Aliase', async () => {
   const d = tag(4);
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values ('0000004711', ${d}, '09:00', '11:00', 'CARLA EXTERN', '1', 'Tennishalle')`;

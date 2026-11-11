@@ -21,7 +21,8 @@ import '../hallenpreise.css';
 /**
  * „Platz buchen“ – Freiplätze und Halle, fürs Handy und das Portal.
  * Kalender: je Platz eine Spalte; eigene Buchungen mit Preis, fremde nur „belegt“.
- * Meine Buchungen: Einzelbuchungen (anlegen, ändern, stornieren) und Abos (nur Anzeige – Anlage über die Platzverwaltung).
+ * Meine Buchungen: Einzelbuchungen (anlegen, ändern, stornieren) und Abos (Anlage über die Platzverwaltung; bei Abos mit
+ * Einzelabrechnung storniert der Nutzer einzelne Termine selbst, #83).
  */
 const PB = `${TCO}/platz`;
 
@@ -66,7 +67,10 @@ interface Einzel {
 interface Abo {
   bid: string; platz: string; wochentag: string; von: string; bis: string; erster: string; letzter: string;
   termine: number; kommend: number; naechster: string | null; preis: Preis; text: string | null; quelle: string;
+  /** #83: Abo mit Einzelabrechnung – kommende Termine einzeln stornierbar */
+  einzelabrechnung: boolean; storniert: number; kommende_termine: AboTermin[];
 }
+interface AboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
 interface Meine { ich: { name: string }; einzel: Einzel[]; abos: Abo[] }
 interface Entwurf { bid?: string; platz_id: number; datum: string; von: string; dauer: number; text: string }
 
@@ -127,6 +131,8 @@ export function PlatzBuchen() {
   const [error, setError] = useState<string | null>(null);
   const [kein, setKein] = useState<string | null>(null);
   const [preisliste, setPreisliste] = useState(false);
+  const [aboOffen, setAboOffen] = useState<string | null>(null);
+  const [aboStorno, setAboStorno] = useState<{ abo: Abo; t: AboTermin } | null>(null);
 
   const fehler = (e: unknown) => { const x = e as { status?: number; message: string }; if (x.status === 403) setKein(x.message); else setError(x.message); };
   const tagLaden = (d = datum) => api.get<Tag>(`${PB}/tag?datum=${d}`).then(setTag).catch(fehler);
@@ -273,12 +279,14 @@ export function PlatzBuchen() {
               <>
                 <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.75rem' }}>
                   Abos legt der Verein im Portal an (Platzverwaltung). Für ein neues Abo oder Änderungen bitte beim Vorstand melden.
+                  Bei Abos mit Einzelabrechnung kannst du einzelne Termine selbst stornieren – das Abo bleibt bestehen.
                 </MessageStrip>
                 <Section title="Abos" count={meine.abos.length} flush>
                   {meine.abos.length ? (
                     <div className="portal-mz__liste">
                       {meine.abos.map((a) => (
-                        <div key={a.bid} className="portal-mz__eintrag portal-mz__eintrag--gesperrt" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
+                        <Fragment key={a.bid}>
+                        <div className="portal-mz__eintrag portal-mz__eintrag--gesperrt" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
                           <div style={{ minWidth: 0 }}>
                             <div className="portal-mz__art">{a.wochentag}s {a.von}–{a.bis} Uhr · {a.platz}</div>
                             <div className="portal-mz__info">
@@ -286,15 +294,44 @@ export function PlatzBuchen() {
                               <span>{a.termine} Termine{a.kommend ? `, ${a.kommend} kommend` : ''}</span>
                               {a.naechster && <ObjectStatus state="Information">nächster {dat(a.naechster)}</ObjectStatus>}
                               {a.quelle === 'EP3' && <ObjectStatus state="Information">aus EP3</ObjectStatus>}
+                              {a.einzelabrechnung && <ObjectStatus state="Information">Einzelabrechnung</ObjectStatus>}
+                              {a.storniert > 0 && <ObjectStatus state="Negative">{a.storniert} storniert</ObjectStatus>}
                               {a.text && <span>„{a.text}“</span>}
                             </div>
                             <PreisAufschluesselung preis={a.preis} kompakt />
+                            {a.einzelabrechnung && a.kommende_termine.length > 0 && (
+                              <Button design="Transparent" icon={aboOffen === a.bid ? 'navigation-up-arrow' : 'navigation-down-arrow'}
+                                      onClick={() => setAboOffen(aboOffen === a.bid ? null : a.bid)}>
+                                {aboOffen === a.bid ? 'Termine ausblenden' : 'Termine anzeigen / einzeln stornieren'}
+                              </Button>
+                            )}
                           </div>
                           <div className="portal-mz__dauer">
                             <div className="portal-mz__dauer-std">{preisText(a.preis)}</div>
-                            <div className="portal-mz__dauer-eur">{a.preis.kostenfrei ? '' : 'Abo-Preis'}</div>
+                            <div className="portal-mz__dauer-eur">{a.preis.kostenfrei ? '' : a.einzelabrechnung ? 'je Termin' : 'Abo-Preis'}</div>
                           </div>
                         </div>
+                        {aboOffen === a.bid && a.kommende_termine.map((t) => (
+                          <div key={t.datum} className={`portal-mz__eintrag portal-pb__abo-termin${t.storniert ? ' portal-pb__storniert' : ''}`}>
+                            <div className="portal-mz__tag">
+                              <span className="portal-mz__tag-nr">{Number(t.datum.slice(8, 10))}</span>
+                              <span className="portal-mz__tag-wt">{tagText(t.datum).slice(0, 2)}</span>
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="portal-mz__art">{dat(t.datum)} · {t.von}–{t.bis} Uhr</div>
+                              <div className="portal-mz__info">
+                                {t.storniert && <ObjectStatus state="Negative">storniert</ObjectStatus>}
+                                {t.abgerechnet && <ObjectStatus state="Positive">abgerechnet</ObjectStatus>}
+                                {t.stornierbar_bis && <span>stornierbar bis {t.stornierbar_bis}</span>}
+                                {!t.storniert && !t.stornierbar && !t.abgerechnet && <span>Stornofrist abgelaufen</span>}
+                              </div>
+                            </div>
+                            <div className="portal-mz__dauer">
+                              {t.stornierbar && <Button design="Transparent" icon="cancel" onClick={() => setAboStorno({ abo: a, t })}>Stornieren</Button>}
+                            </div>
+                          </div>
+                        ))}
+                        </Fragment>
                       ))}
                     </div>
                   ) : <Empty>{zeitraum === 'kommend' ? 'Keine laufenden Abos.' : 'Keine abgelaufenen Abos.'}</Empty>}
@@ -306,11 +343,39 @@ export function PlatzBuchen() {
       </div>
 
       {preisliste && <PreislisteDialog datum={datum} onClose={() => setPreisliste(false)} />}
+      {aboStorno && (
+        <AboTerminStorno abo={aboStorno.abo} termin={aboStorno.t} onClose={() => setAboStorno(null)}
+                         onFertig={async (text) => { toast(text); setAboStorno(null); await neuLaden(); }} />
+      )}
       {entwurf && (
         <BuchungDialog entwurf={entwurf} verwalten={verwalten} onClose={() => { setEntwurf(null); tagLaden(); }}
                        onFertig={async (text) => { toast(text); setEntwurf(null); await neuLaden(); }} />
       )}
     </AppPage>
+  );
+}
+
+// ---------------------------------------------------------------- #83: einzelnen Abo-Termin stornieren (Abo bleibt)
+function AboTerminStorno({ abo, termin, onClose, onFertig }: { abo: Abo; termin: AboTermin; onClose: () => void; onFertig: (text: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const los = async () => {
+    setBusy(true); setFehler(null);
+    try { onFertig((await api.del<{ text: string }>(`${PB}/buchungen/${encodeURIComponent(abo.bid)}/termine/${termin.datum}`)).text); }
+    catch (e) { setFehler((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog open headerText="Abo-Termin stornieren" onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Negative" disabled={busy} onClick={los}>Termin stornieren</Button>
+              <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{fehler}</MessageStrip>}
+      <Text>
+        Termin am {tagText(termin.datum)} von {termin.von} bis {termin.bis} Uhr ({abo.platz}) stornieren?
+        Nur dieser Termin entfällt und wird nicht berechnet – dein Abo {abo.wochentag}s bleibt bestehen.
+      </Text>
+    </Dialog>
   );
 }
 

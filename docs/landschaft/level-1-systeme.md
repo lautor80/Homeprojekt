@@ -181,7 +181,7 @@ flowchart LR
 | kalender | 20 |
 | konten | 5 |
 | mitglieder | 54 |
-| platz | 54 |
+| platz | 55 |
 | praesentation | 11 |
 | produkte | 6 |
 | schnupper | 6 |

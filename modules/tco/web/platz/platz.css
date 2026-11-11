@@ -225,3 +225,6 @@
   .portal-pv-leiste ui5-segmented-button { width: 100%; }
   .portal-pv-leiste__hinweis { display: none; }
 }
+
+/* #83: Termine eines Abos mit Einzelabrechnung – eingerückt unter der Abo-Zeile */
+.portal-pb__abo-termin { margin-left: 1.5rem; width: calc(100% - 1.5rem); cursor: default; }

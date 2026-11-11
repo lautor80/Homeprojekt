@@ -173,10 +173,20 @@ Weitere Hinweise in der Liste:
 
 Ein Abo ist eine feste Zeit, die sich jede Woche wiederholt.
 
-- Abos legt **der Verein** an. Du kannst im Portal kein Abo selbst buchen, ändern oder stornieren.
+- Abos legt **der Verein** an. Du kannst im Portal kein Abo selbst buchen oder ändern.
 - Für ein neues Abo oder eine Änderung melde dich bitte beim Vorstand.
 - Deine Abos siehst du unter **Meine Buchungen → Abo**: Wochentag, Uhrzeit, Zeitraum, Anzahl der Termine, nächster Termin und Abo-Preis.
 - Im Kalender stehen deine Abo-Termine orange mit dem Text „Mein Abo“.
+
+**Abo mit Einzelabrechnung:** Manche Abos rechnet der Verein je Termin ab (Hinweis „Einzelabrechnung“, Preis „je Termin“).
+Hier kannst du **einzelne Termine selbst stornieren** – das Abo bleibt bestehen, nur dieser Termin entfällt und wird nicht berechnet:
+
+1. **Meine Buchungen → Abo** öffnen.
+2. Beim Abo auf **Termine anzeigen / einzeln stornieren** klicken. Die kommenden Termine erscheinen darunter.
+3. Beim gewünschten Termin auf **Stornieren** klicken und mit **Termin stornieren** bestätigen.
+
+Es gilt dieselbe Stornofrist wie bei Einzelbuchungen („stornierbar bis …“). Stornierte Termine stehen durchgestrichen beim
+Abo, der Platz ist zu dieser Zeit wieder frei. Abos, die als Ganzes abgerechnet werden, storniert weiterhin der Verein.
 
 <img src="bilder/hb-abo.png" alt="Liste der Abos mit Wochentag, Zeitraum, Terminen und Abo-Preis" width="700">
 
