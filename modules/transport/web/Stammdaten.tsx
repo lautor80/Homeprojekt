@@ -392,11 +392,11 @@ export function Stammdaten() {
   };
   return (
     <AppPage title="Stammdaten Transport" subtitle={`Firmendaten, Produkte, Wertelisten, E-Mail-Texte${darfImport ? ' und Datenimport aus SAP' : ''}`}>
-      <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)} style={{ marginBottom: '1rem' }}>
-        <Tab data-key="FIRMA" text="Firmendaten" selected={tab === 'FIRMA'} />
-        <Tab data-key="PROD" text="Produkte" selected={tab === 'PROD'} />
-        <Tab data-key="WERTE" text="Wertelisten" selected={tab === 'WERTE'} />
-        <Tab data-key="MAIL" text="E-Mail-Texte" selected={tab === 'MAIL'} />
+      <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)} style={{ marginBottom: '1rem' }}>
+        <Tab data-key="FIRMA" text="Firmendaten" icon="building" selected={tab === 'FIRMA'} />
+        <Tab data-key="PROD" text="Produkte" icon="product" selected={tab === 'PROD'} />
+        <Tab data-key="WERTE" text="Wertelisten" icon="list" selected={tab === 'WERTE'} />
+        <Tab data-key="MAIL" text="E-Mail-Texte" icon="email" selected={tab === 'MAIL'} />
         {darfImport && <Tab data-key="IMPORT" text="Datenimport" icon="upload" selected={tab === 'IMPORT'} />}
       </TabContainer>
       <div style={BREITE}>

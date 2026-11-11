@@ -260,7 +260,7 @@ Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt.
 | Funktion | Inhalt |
 |---|---|
 | Aufträge | Fracht- und Holzträgeraufträge, Liste (gruppiert nach Status) oder Baum Art → Kunde → Auftrag mit Saldo, Filter Geschäftsjahr/Fakturadatum/Status/Suche |
-| Objektseite | Beteiligte (Kunde, Unternehmer, abw. Rechnungsempfänger), Auftrags-/Fahrzeugdaten, zwei Stops, Holzträgerpositionen, Besonderheiten, Änderungshistorie |
+| Objektseite | Beteiligte (Kunde, Unternehmer, abw. Rechnungsempfänger – Auswahl zeigt höchstens 50 Treffer, beim Tippen wird über alle Kontakte gesucht, jedes Wort in Name oder Ort), Auftrags-/Fahrzeugdaten mit Rechnung, zwei Stops, Holzträgerpositionen, Dokumente, Besonderheiten, Änderungshistorie |
 | Rechnungen | Einzel- und Sammelrechnungen mit lückenlosen Nummern (Start je Jahr in den Stammdaten), PDF mit EPC-GiroCode, XRechnung 3.0 (UBL) |
 | Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (Zugang unter Administration → Anbindungen) |
 | Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch – je Liste „Einfügen“: mehrere Werte per Copy & Paste, eine Zeile je Wert, optional `Schlüssel;Text` oder zwei Excel-Spalten; vorhandene werden übersprungen, `POST /werte/masse`), E-Mail-Texte, Datenimport |

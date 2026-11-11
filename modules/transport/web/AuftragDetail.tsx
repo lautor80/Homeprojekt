@@ -27,13 +27,14 @@ function F({ label, required, children }: { label: string; required?: boolean; c
 function Spalte({ titel, children }: { titel?: string; children: ReactNode }) {
   return (
     <div style={{ minWidth: 0 }}>
-      {titel && <Title level="H5" style={{ marginBottom: '0.75rem' }}>{titel}</Title>}
+      {titel && <Title level="H5" style={{ marginBottom: '0.75rem', paddingLeft: '0.25rem' }}>{titel}</Title>}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(8rem, 35%) 1fr', gap: '0.5rem 0.75rem' }}>{children}</div>
     </div>
   );
 }
 function Spalten({ n, children }: { n: number; children: ReactNode }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${n === 3 ? 300 : 380}px, 1fr))`, gap: '1.5rem 2.5rem' }}>{children}</div>;
+  // Einzug, damit Spaltentitel (Auftrag, Absender …) nicht am Kartenrand kleben
+  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${n === 3 ? 300 : 380}px, 1fr))`, gap: '1.5rem 2.5rem', padding: '0.5rem 1rem 0.25rem' }}>{children}</div>;
 }
 
 const full = { width: '100%' };
@@ -186,8 +187,8 @@ export function AuftragDetail() {
     return adrDD.find((d) => d.key === String(n))?.text ?? adr[f]?.kundenname ?? `Kontakt ${n}`;
   };
   const adrCombo = (f: 'kunde' | 'unternehmer' | 'rechnungsempfaenger') => (
-    <AuswahlBox style={full} wert={a[f] ? String(a[f]) : ''} placeholder="Name oder Ort eingeben" readonly={!mayEdit}
-                eintraege={adrDD.length ? adrDD.map((d) => ({ key: d.key, text: d.text, zusatz: d.zusatz })) : a[f] ? [{ key: String(a[f]), text: adrName(f) }] : []}
+    <AuswahlBox style={full} wert={a[f] ? String(a[f]) : ''} placeholder="Name oder Ort eingeben" readonly={!mayEdit} max={50}
+                eintraege={adrDD.length ? adrDD : a[f] ? [{ key: String(a[f]), text: adrName(f) }] : []}
                 onWaehle={(k) => waehleAdresse(f, k ?? undefined)} />
   );
 
