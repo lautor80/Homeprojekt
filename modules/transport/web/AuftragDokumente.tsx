@@ -6,6 +6,8 @@ import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { download, PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { T, dat } from './util';
+import { OrdnerDateien } from './Ablageordner';
+import { ablegen, ordnerStatus } from './ordner';
 
 /**
  * Dokumente zum Auftrag (Paperless): Dateien hineinziehen, auswählen oder Screenshot mit Strg+V einfügen.
@@ -21,8 +23,12 @@ const lesen = (f: File) => new Promise<string>((ok, err) => {
 });
 const istPdf = (d: Dok) => /\.pdf$/i.test(d.datei ?? '');
 
-export function AuftragDokumente({ nr, edit }: { nr: string; edit: boolean }) {
+export function AuftragDokumente({ nr, edit, ordnerStand = 0 }: { nr: string; edit: boolean; ordnerStand?: number }) {
   const [d, setD] = useState<{ paperless: boolean; dokumente: Dok[] } | null>(null);
+  // Ablageordner auf diesem PC (#121): hineingezogene Dateien landen zusätzlich dort
+  const [ordner, setOrdner] = useState(false);
+  const [stand, setStand] = useState(0);
+  useEffect(() => { ordnerStatus().then((o) => setOrdner(!!o)).catch(() => setOrdner(false)); }, []);
   const [pdf, setPdf] = useState<Dok | null>(null);
   const [loesen, setLoesen] = useState<Dok | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,20 +40,30 @@ export function AuftragDokumente({ nr, edit }: { nr: string; edit: boolean }) {
     annehmen: async (files): Promise<AblageErgebnis> => {
       const ids: number[] = [];
       const texte: string[] = [];
+      let lokal = 0;
+      let lokalFehler = '';
       try {
         for (const f of files) {
-          const r = await api.post<{ id: number; text: string }>(`${T}/auftraege/${nr}/dokumente`, { datei: f.name, inhalt: await lesen(f) });
-          ids.push(r.id); texte.push(r.text);
+          if (ordner) {
+            try { if (await ablegen(nr, f.name, f)) lokal++; } catch (e) { lokalFehler = (e as Error).message; }
+          }
+          if (d?.paperless) {
+            const r = await api.post<{ id: number; text: string }>(`${T}/auftraege/${nr}/dokumente`, { datei: f.name, inhalt: await lesen(f) });
+            ids.push(r.id); texte.push(r.text);
+          }
         }
-      } finally { laden(); }
+      } finally { laden(); setStand((v) => v + 1); }
+      const ord = ordner ? (lokal ? ` · ${lokal} im Ablageordner gespeichert` : ` · Ablageordner: ${lokalFehler || 'kein Zugriff (unten „Zugriff erlauben“)'}`) : '';
       return {
-        text: files.length === 1 ? texte[0] : `${ids.length} Datei(en) in Paperless abgelegt und Auftrag ${nr} zugeordnet`,
+        text: (d?.paperless
+          ? (files.length === 1 ? texte[0] : `${ids.length} Datei(en) in Paperless abgelegt und Auftrag ${nr} zugeordnet`)
+          : `${lokal} Datei(en) im Ablageordner von Auftrag ${nr} gespeichert`) + (d?.paperless ? ord : ''),
         rueckgaengig: async () => { for (const id of ids) await api.del(`${T}/auftraege/${nr}/dokumente/${id}`); laden(); },
       };
     },
   };
   // Strg+V und Ablagefeld der Navigation legen beim geöffneten Auftrag ab
-  useAblageZiel(edit && d?.paperless ? ziel : null);
+  useAblageZiel(edit && (d?.paperless || ordner) ? ziel : null);
 
   const oeffnen = (x: Dok) => {
     const url = `${T}/auftraege/${nr}/dokumente/${x.doc_id}/datei`;
@@ -56,10 +72,10 @@ export function AuftragDokumente({ nr, edit }: { nr: string; edit: boolean }) {
   };
 
   if (!d) return <Text>Lade Dokumente …</Text>;
-  if (!d.paperless) return <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Stammdaten → Firmendaten: URL und API-Token).</MessageStrip>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+      {!d.paperless && <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Anbindungen).</MessageStrip>}
       {d.dokumente.length > 0 && (
         <div className="portal-ad">
           {d.dokumente.map((x) => (
@@ -74,8 +90,9 @@ export function AuftragDokumente({ nr, edit }: { nr: string; edit: boolean }) {
           ))}
         </div>
       )}
-      {edit && <AblageFlaeche ziel={ziel} text="Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen" />}
-      {!edit && !d.dokumente.length && <Text className="portal-muted">Keine Dokumente zugeordnet.</Text>}
+      <OrdnerDateien nr={nr} version={ordnerStand + stand} />
+      {edit && (d.paperless || ordner) && <AblageFlaeche ziel={ziel} text={`Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen${ordner ? ' – sie landen auch im Ablageordner' : ''}`} />}
+      {!edit && !d.dokumente.length && d.paperless && <Text className="portal-muted">Keine Dokumente in Paperless zugeordnet.</Text>}
       {pdf && <PdfDialog url={`${T}/auftraege/${nr}/dokumente/${pdf.doc_id}/datei`} title={pdf.titel ?? pdf.datei ?? ''} filename={pdf.datei ?? 'dokument.pdf'} onClose={() => setPdf(null)} />}
       <ConfirmDialog open={!!loesen} title="Zuordnung lösen" confirmText="Lösen"
                      text={`„${loesen?.datei ?? ''}“ vom Auftrag ${nr} lösen? Das Dokument bleibt in Paperless erhalten.`}

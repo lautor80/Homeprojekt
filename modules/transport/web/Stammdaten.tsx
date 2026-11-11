@@ -10,6 +10,7 @@ import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
 import { Datenimport } from './Datenimport';
+import { AblageOrdnerEinstellung } from './Ablageordner';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { T, type Werte } from './util';
 import { AblageFlaeche } from '@core/ablage';
@@ -107,6 +108,7 @@ function FirmaTab() {
         </FormGrid>
       </Section>
       </div>
+      <AblageOrdnerEinstellung />
       <MessageStrip design="Information" hideCloseButton>
         Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Adresse und API-Token werden zentral unter Administration → Anbindungen gepflegt.
       </MessageStrip>

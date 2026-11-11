@@ -14,6 +14,7 @@ import { AuftragDokumente } from './AuftragDokumente';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Stop, type Traeger, type Werte } from './util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
+import { ablegen, auftragsOrdner, ordnerBereit } from './ordner';
 
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
 function F({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
@@ -68,6 +69,7 @@ export function AuftragDetail() {
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [xr, setXr] = useState<XRes | null>(null);
+  const [ordnerStand, setOrdnerStand] = useState(0); // neu einlesen nach Druck/Ablage
   const [kontakt, setKontakt] = useState<'NEU' | 'EDIT' | null>(null);
   const [wertTyp, setWertTyp] = useState<string | null>(null);
 
@@ -147,8 +149,11 @@ export function AuftragDetail() {
     try {
       const body = { ...a, typ };
       if (isNew) {
+        await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
         const r = await api.post<{ auftragsnr: string }>(`${T}/auftraege`, body);
-        toast(`Auftrag ${r.auftragsnr} gespeichert.`);
+        // Auftragsordner im Ablageordner anlegen (#121)
+        const o = await auftragsOrdner(r.auftragsnr).catch(() => null);
+        toast(`Auftrag ${r.auftragsnr} gespeichert.${o ? ` Ordner ${o.basis}/${r.auftragsnr.slice(0, 4)}/${r.auftragsnr} angelegt.` : ''}`);
         navigate(`/transport/auftraege/${r.auftragsnr}`, { replace: true });
       } else {
         await api.put(`${T}/auftraege/${nr}`, body);
@@ -165,9 +170,17 @@ export function AuftragDetail() {
 
   async function drucken(art: 'T' | 'L' | 'R') {
     if (isNew) return toast('Bitte den Auftrag zuerst speichern.');
+    await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
     if (art === 'R') {
       // Rechnung: dieselbe Vorschau wie „Versenden → E-Rechnung“ in der Auftragsliste (#121)
       try {
+        // PDF zusätzlich im Ablageordner des Auftrags speichern
+        const f = a!.faktura!;
+        fetch(`${T}/pdf/R/${encodeURIComponent(f)}`, { credentials: 'same-origin' })
+          .then((res) => (res.ok ? res.blob() : null))
+          .then((b) => (b ? ablegen(nr!, `Rechnung_${f}.pdf`, b) : null))
+          .then((p) => { if (p) { toast(`Gespeichert: ${p}`); setOrdnerStand((v) => v + 1); } })
+          .catch(() => undefined);
         const r = await api.get<XRes>(`${T}/xrechnung/${encodeURIComponent(a!.faktura!)}`);
         if (r.anzahlAuftraege > 1) {
           r.hinweise.unshift(`Rechnung ${r.faktura} ist eine Sammelrechnung über ${r.anzahlAuftraege} Aufträge - die E-Rechnung enthält wie die PDF-Rechnung alle ${r.anzahlAuftraege} Aufträge.`);
@@ -180,7 +193,7 @@ export function AuftragDetail() {
     }
     const id = nr!;
     const name = art === 'T' ? 'Transportauftrag' : art === 'L' ? 'Lieferschein' : 'Rechnung';
-    setDocs([{ url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, filename: `${name}_${id}.pdf` }]);
+    setDocs([{ url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, filename: `${name}_${id}.pdf`, ablage: [nr!] }]);
   }
 
   // Kontakte dieses Auftrags (für "Kontakt bearbeiten")
@@ -413,7 +426,7 @@ export function AuftragDetail() {
         {!isNew && nr ? (
           <ObjectPageSection id="dokumente" titleText="Dokumente" hideTitleText>
             <ObjectPageSubSection id="dokumente-sub" titleText="Dokumente">
-              <AuftragDokumente nr={nr} edit={darfBearbeiten} />
+              <AuftragDokumente nr={nr} edit={darfBearbeiten} ordnerStand={ordnerStand} />
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}
@@ -426,7 +439,7 @@ export function AuftragDetail() {
         </ObjectPageSection>
       </ObjectPage>
 
-      <DocsDialog docs={docs} onClose={() => setDocs(null)} />
+      <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} onClose={() => setKontakt(null)}
                      onSaved={async () => {

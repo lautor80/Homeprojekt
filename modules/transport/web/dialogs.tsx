@@ -7,39 +7,70 @@ import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Ce
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { T, download } from './util';
+import { ablegen, dateiLesen } from './ordner';
 
 // ---------------------------------------------------------------------------
 // PDF-Vorschau für ein oder mehrere Dokumente (wie DOCS_POPUP_DISPLAY)
 // ---------------------------------------------------------------------------
-export interface Doc { url: string; filename: string }
+/**
+ * url: Server-Adresse des PDFs (oder Objekt-URL bei `lokal`);
+ * ablage: Aufträge, in deren Ablageordner das PDF gespeichert wird (#121) – die Vorschau zeigt dann die Datei aus dem Ordner
+ */
+export interface Doc { url: string; filename: string; ablage?: string[]; lokal?: boolean }
 
 export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () => void }) {
   const [idx, setIdx] = useState(0);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [pfade, setPfade] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const doc = docs?.[idx];
 
   useEffect(() => setIdx(0), [docs]);
   useEffect(() => {
     if (!doc) return;
-    let url: string | null = null;
     setBlobUrl(null);
+    setPfade([]);
     setError(null);
-    fetch(doc.url, { credentials: 'same-origin' })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(JSON.parse((await r.text()) || '{}').message ?? `Fehler ${r.status}`);
-        return r.blob();
-      })
-      .then((b) => { url = URL.createObjectURL(b); setBlobUrl(url); })
-      .catch((e) => setError(e.message));
-    return () => { if (url) URL.revokeObjectURL(url); };
+    if (doc.lokal) { setBlobUrl(doc.url); return; }
+    let url: string | null = null;
+    let aus = false;
+    (async () => {
+      const r = await fetch(doc.url, { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(JSON.parse((await r.text()) || '{}').message ?? `Fehler ${r.status}`);
+      let b: Blob = await r.blob();
+      // Ablageordner: speichern und die gespeicherte Datei anzeigen
+      const gespeichert: string[] = [];
+      for (const nr of doc.ablage ?? []) {
+        try {
+          const p = await ablegen(nr, doc.filename, b);
+          if (p) gespeichert.push(p);
+        } catch (e) {
+          if (!aus) setError(`Ablageordner: ${(e as Error).message}`);
+        }
+      }
+      if (gespeichert.length) b = (await dateiLesen(doc.ablage![0], doc.filename)) ?? b;
+      if (aus) return;
+      url = URL.createObjectURL(b);
+      setBlobUrl(url);
+      setPfade(gespeichert);
+    })().catch((e) => { if (!aus) setError(e.message); });
+    return () => { aus = true; if (url) URL.revokeObjectURL(url); };
   }, [doc]);
+
+  const herunterladen = () => {
+    if (!doc) return;
+    if (!doc.lokal) return download(doc.url, doc.filename).catch((e) => setError(e.message));
+    const a = document.createElement('a');
+    a.href = doc.url;
+    a.download = doc.filename;
+    a.click();
+  };
 
   return (
     <Dialog open={!!docs} headerText="PDF-Vorschau" onClose={onClose} resizable
             style={{ width: '80vw', height: '88vh' }}
             footer={<Bar endContent={<>
-              <Button icon="download" disabled={!doc} onClick={() => doc && download(doc.url, doc.filename).catch((e) => setError(e.message))}>Herunterladen</Button>
+              <Button icon="download" disabled={!doc} onClick={herunterladen}>Herunterladen</Button>
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </>} />}>
       <FlexBox alignItems="Center" style={{ gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -50,7 +81,12 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
         <Text>{docs?.length ?? 0} Dokument(e)</Text>
       </FlexBox>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
-      {blobUrl && <iframe title="PDF" src={blobUrl} style={{ width: '100%', height: 'calc(100% - 3rem)', border: 'none' }} />}
+      {pfade.length > 0 && (
+        <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Gespeichert im Ablageordner: {pfade.join(' · ')}
+        </MessageStrip>
+      )}
+      {blobUrl && <iframe title="PDF" src={blobUrl} style={{ width: '100%', height: `calc(100% - ${pfade.length ? 6 : 3}rem)`, border: 'none' }} />}
     </Dialog>
   );
 }

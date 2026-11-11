@@ -296,6 +296,21 @@ jede Datei wird am **Spaltenkopf** erkannt (Dateiname egal, Kodierung UTF-8 oder
 - API: `POST /api/m/transport/import/pruefen` bzw. `/import/ausfuehren` mit
   `{ dateien: [{ name, data (Base64) }], modus: 'neu' | 'ersetzen', reason }` (Recht `transport.import:execute`, bis 20 Dateien).
 
+### Ablageordner auf dem PC (#121)
+
+Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgelegt und von dort geöffnet werden
+(z. B. im OneDrive-Ordner „Aufträge und Co“). Einrichten: *Stammdaten → Firmendaten → Ablageordner auf diesem PC → Ordner wählen*.
+
+- Aufbau: `<Ordner>\<Jahr>\<Auftragsnummer>\` – der Auftragsordner wird bei der **Anlage** des Auftrags erzeugt.
+- **Drucken** (Transportauftrag, Lieferschein, Rechnung – auf der Auftragsseite und in der Liste, auch direkt nach
+  Einzel-/Sammelrechnung) speichert das PDF in den Auftragsordner und zeigt die gespeicherte Datei in der Vorschau;
+  eine Sammelrechnung landet in jedem beteiligten Auftragsordner. Gleichnamige Dateien werden überschrieben.
+- **Drag & Drop / Strg+V** im Abschnitt *Dokumente* des Auftrags legt die Dateien im Auftragsordner ab (und wie bisher
+  in Paperless, wenn eingerichtet). Darunter listet *Ablageordner* alle Dateien des Ordners; ein Klick öffnet sie aus dem Ordner.
+- Technik: File System Access API – nur **Microsoft Edge / Google Chrome**. Der Ordner wird je PC und Browser gemerkt
+  (IndexedDB, nichts auf dem Server). Nach einem Browser-Neustart fragt der Browser beim ersten Druck einmal nach dem Zugriff.
+  Ist kein Ordner gewählt oder der Zugriff verweigert, läuft alles wie bisher (nur Vorschau/Download).
+
 ### Regeln für Buchhaltungs-/Belegobjekte
 
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
