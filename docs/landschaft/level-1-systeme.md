@@ -174,7 +174,7 @@ flowchart LR
 | finanz | 3 |
 | forecast | 1 |
 | gruppen | 9 |
-| halle | 40 |
+| halle | 41 |
 | index | 6 |
 | jt | 30 |
 | kalender | 20 |

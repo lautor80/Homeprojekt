@@ -32,7 +32,7 @@ const H = '/api/m/tco/halle';
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 
 // ---------------------------------------------------------------- Paperless/n8n-Attrappe
-const mock = { docs: new Map<number, { versions: number[]; notes: string[]; meta: Record<string, unknown>; title?: string; content?: string }>(), next: 100, mails: [] as any[], uploads: 0, versionUploads: 0, ocr: '', ep3Ab: false };
+const mock = { docs: new Map<number, { versions: number[]; notes: string[]; meta: Record<string, unknown>; title?: string; content?: string }>(), next: 100, mails: [] as any[], uploads: 0, versionUploads: 0, ocr: '', ep3Ab: false, ep3Csv: '' };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -97,7 +97,7 @@ const server = http.createServer((req, res) => {
     if (u === '/webhook/ep3') {
       // wie der Workflow: ein angefordertes „ab“ nur zurückmelden, wenn es angewendet wird (Attrappe: „mock.ep3Ab“ an/aus)
       const ab = (JSON.parse(body || '{}').ab as string | undefined) ?? null;
-      return send(200, { bookings_csv: 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n900;03.11.2026;10:00;11:00;Erika Muster;single\n', ab: mock.ep3Ab ? ab : null });
+      return send(200, { bookings_csv: mock.ep3Csv || 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS\n900;03.11.2026;10:00;11:00;Erika Muster;single\n', ab: mock.ep3Ab ? ab : null });
     }
     send(404, { u });
   });
@@ -416,6 +416,27 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   r = await call('POST', `${H}/import/n8n`, { ab: '2025-01-01' });
   assert.deepEqual([r.body.at(-1).ok, /Angefordert ab 01\.01\.2025/.test(r.body.at(-1).text)], [true, true]);
   mock.ep3Ab = false;
+
+  // ---- EP3-Abgleich (#20): simuliert, schreibt nichts; nur in den letzten 5 Tagen angelegte, im Portal fehlende Buchungen
+  const tagIso = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const vorher = Number((await sql`select count(*)::int as n from tco.bookings`)[0].n);
+  mock.ep3Csv = 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS;PLATZ;ERSTELLT\n'
+    + `900;2026-11-03;10:00;11:00;Erika Muster;single;Halle;${tagIso(-2)}\n`        // schon im Portal
+    + `901;${tagIso(3)};18:00;19:00;Neu Kunde;single;Halle;${tagIso(-1)}\n`         // fehlt → Abweichung
+    + `902;${tagIso(4)};18:00;19:00;Alt Kunde;single;Halle;${tagIso(-20)}\n`         // vor mehr als 5 Tagen angelegt
+    + `903;${tagIso(5)};18:00;19:00;Storno Kunde;cancelled;Halle;${tagIso(0)}\n`;   // storniert
+  r = await call('GET', `${H}/import/abgleich`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.pruefbar, true);
+  assert.deepEqual(r.body.fehlend.map((f: any) => [f.bid, f.kunde, f.platz]), [['0000000901', 'NEU KUNDE', 'Halle']]);
+  assert.equal(r.body.geprueft, 2);
+  assert.match(r.body.text, /1 Buchung\(en\) seit .* nicht im Portal/);
+  assert.equal(Number((await sql`select count(*)::int as n from tco.bookings`)[0].n), vorher, 'nichts geschrieben');
+  mock.ep3Csv = 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;STATUS;ERSTELLT\n' + `900;2026-11-03;10:00;11:00;Erika Muster;single;${tagIso(-2)}\n`;
+  r = await call('GET', `${H}/import/abgleich`);
+  assert.deepEqual([r.body.pruefbar, r.body.fehlend.length], [true, 0]);
+  assert.match(r.body.text, /keine neuen Buchungen/);
+  mock.ep3Csv = '';
   r = await call('GET', `${H}/import/info`);
   assert.match(r.body.stichtag, /^\d{4}-\d{2}-\d{2}$/);
 });
