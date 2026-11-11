@@ -175,7 +175,18 @@ export async function antragRoutes(app: FastifyInstance) {
     const wer = req.user!.displayName || req.user!.username;
     const r = await change(req, (tx) => uebernehmen(tx, v, id, wer, { eintritt: b.eintritt ?? null, mail: b.mail }), { action: 'MITGLIEDSANTRAG_UEBERNAHME', reason: String(id) });
     // Aufnahmebestätigung an den Antragsteller (Zugangslinks kommen je Person separat)
-    if (b.mail && v.n8n_mail_url) {
+    const nurBestand = r.mitglieder.every((m) => m.bestand);
+    if (b.mail && v.n8n_mail_url && nurBestand) {
+      // Vertragsänderung eines bestehenden Mitglieds: Bestätigung statt Willkommen
+      await mailSenden(v, {
+        modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [],
+        betreff: `${v.name}: Ihre Vertragsänderung ${r.nummer} ist bestätigt`,
+        text: `Guten Tag ${r.name},\n\nvielen Dank – Ihre Vertragsänderung ${r.nummer} wurde übernommen.\n\n`
+          + r.mitglieder.map((m) => `${m.name}: Mitgliedsnummer ${m.mitglnrn}`).join('\n')
+          + (r.mandat ? `\n\nDer Beitrag wird weiterhin per SEPA-Lastschrift eingezogen (Mandatsreferenz ${r.mandat}).` : '')
+          + '\n\nViele Grüße\n' + v.name,
+      }).catch((e) => req.log.warn({ antrag: r.nummer, err: (e as Error).message }, 'Bestätigung Vertragsänderung nicht gesendet'));
+    } else if (b.mail && v.n8n_mail_url) {
       await mailSenden(v, {
         modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [],
         betreff: `${v.name}: Willkommen im Verein – Ihr Antrag ${r.nummer} ist angenommen`,
@@ -204,7 +215,8 @@ export async function antragRoutes(app: FastifyInstance) {
       unterlagen,
       text: `Antrag ${r.nummer} übernommen: ${r.mitglieder.map((m) => `${m.name} (Nr. ${m.mitglnrn})`).join(', ')}`
         + `${r.mandat ? `, SEPA-Mandat ${r.mandat}` : ''}; ${r.benutzer.filter((x) => x.username).length} Benutzer angelegt.`
-        + `${r.schnupper.length ? ` Aus dem Schnuppertraining übernommen: ${r.schnupper.join(', ')}.` : ''}`,
+        + `${r.schnupper.length ? ` Aus dem Schnuppertraining übernommen: ${r.schnupper.join(', ')}.` : ''}`
+        + `${r.hinweise.length ? ` ${r.hinweise.join(' ')}` : ''}`,
     };
   });
 

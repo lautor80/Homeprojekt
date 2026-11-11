@@ -2,10 +2,10 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { ibanGueltig, normalisieren } from '../../../../server/src/lib/sepa.js';
 import type { Db, Verein } from '../verein.js';
 import { condense, heute } from '../format.js';
-import { emailGueltig, mitgliedNeu, normName, vertragsarten, type Neu } from '../mitglieder/logik.js';
+import { emailGueltig, mitgliedNeu, normName, vertragNeu, vertragsarten, vertragsZahler, type Neu, type VertragsArt } from '../mitglieder/logik.js';
 import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
 import { adrnrZumToken, alsMitgliedMarkieren, schnupperFuerPerson } from '../schnupper/logik.js';
-import { angebotAnnehmen, angebotBank } from './angebot.js';
+import { angebotAnnehmen, angebotBank, bankAusStamm } from './angebot.js';
 
 /**
  * Online-Mitgliedsantrag (#12): öffentliches Formular ohne Anmeldung, auch für Familien (mehrere Personen,
@@ -181,7 +181,10 @@ export async function antraegeLesen(db: Db, status: 'EINGANG' | 'ALLE') {
           hinweise.push(`${p.vorname} ${p.nachname}: Schnuppertraining ${st.nummer} – wird bei der Übernahme Mitglied (gleicher Stammsatz, Kategorie wechselt).`);
         } else if (p.adrnr) {
           vergeben.add(p.adrnr);
-          hinweise.push(`${p.vorname} ${p.nachname}: aus Vertragsangebot ${d.angebot_nr ?? ''} – der Stammsatz ${p.adrnr} wird bei der Übernahme Mitglied.`);
+          const [m] = await db`select mitglnrn, eintritt from tco.mitglieder where adrnr = ${p.adrnr}`;
+          hinweise.push(m && (String(m.mitglnrn ?? '').trim() || m.eintritt)
+            ? `${p.vorname} ${p.nachname}: aus Vertragsangebot ${d.angebot_nr ?? ''} – bestehendes Mitglied Nr. ${String(m.mitglnrn ?? '').trim() || p.adrnr}, die Übernahme ergänzt nur die neuen Verträge (Vertragsänderung).`
+            : `${p.vorname} ${p.nachname}: aus Vertragsangebot ${d.angebot_nr ?? ''} – der Stammsatz ${p.adrnr} wird bei der Übernahme Mitglied.`);
         }
         const eigen = st?.adrnr ?? p.adrnr ?? '';
         const treffer = await db`select adrnr, mitglnrn, vorname, nachname, austritt::text from tco.mitglieder
@@ -216,12 +219,13 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
   if (a.status !== 'EINGANG') throw new BusinessError(`Der Antrag ${a.nummer} ist bereits ${a.status === 'UEBERNOMMEN' ? 'übernommen' : 'abgelehnt'}.`);
   const d = a.daten as AntragDaten;
   const eintritt = o.eintritt || d.eintritt;
-  const { arten } = await vertragsarten(tx, eintritt);
+  const { arten, turnusse } = await vertragsarten(tx, eintritt);
   const sepaDatum = new Date(a.sepa_am ?? a.eingang).toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
   const erster = d.personen[0];
   const kiSelbst = normName(a.kontoinhaber) === normName(`${erster.vorname} ${erster.nachname}`);
   const ki = teilen(a.kontoinhaber);
-  const angelegt: { adrnr: string; mitglnrn: string; name: string }[] = [];
+  const angelegt: { adrnr: string; mitglnrn: string; name: string; bestand?: boolean }[] = [];
+  const hinweise: string[] = [];
   let zahler: string | null = null;
   let mandat = '';
   const vergeben = new Set<string>();
@@ -241,6 +245,22 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
       if (!a) throw new BusinessError(`Die Beitragsart ${x} (${p.vorname} ${p.nachname}) ist nicht mehr aktiv.`);
       return a;
     });
+    // Vertragsangebot an ein aktives Mitglied: Vertragsänderung statt Neuaufnahme
+    if (bestehend) {
+      const [b] = await tx`select adrnr, mitglnrn, eintritt, austritt::text as austritt, coalesce(nullif(adrnrkih, ''), adrnr) as zahler, mandatsrefenz
+                             from tco.mitglieder where adrnr = ${bestehend}`;
+      if (b && (String(b.mitglnrn ?? '').trim() || b.eintritt)) {
+        if (b.austritt && b.austritt < heute()) throw new BusinessError(`${p.vorname} ${p.nachname} ist ausgetreten (${b.austritt}) – Wiedereintritt bitte über den Mitgliederstamm.`);
+        hinweise.push(...await vertragsaenderung(tx, a, { adrnr: bestehend, name: `${p.vorname} ${p.nachname}`, gewaehlt, familie: !!familie, eintritt, turnusse }));
+        if (i === 0) {
+          zahler = b.zahler;
+          const [zm] = await tx`select mandatsrefenz from tco.mitglieder where adrnr = ${b.zahler}`;
+          mandat = String(zm?.mandatsrefenz ?? b.mandatsrefenz ?? '').trim();
+        }
+        angelegt.push({ adrnr: bestehend, mitglnrn: String(b.mitglnrn ?? '').trim() || bestehend, name: `${p.vorname} ${p.nachname}`, bestand: true });
+        continue;
+      }
+    }
     const n: Neu = {
       anrede: p.anrede, vorname: p.vorname, nachname: p.nachname, strasse: d.strasse, plz: d.plz, ort: d.ort,
       telefon: (i === 0 ? p.telefon || d.telefon : p.telefon) ?? '', mobil: p.mobil || st?.mobil || '', email: p.email || d.email,
@@ -266,14 +286,49 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
   // Portalbenutzer (Rolle Mitglied) für jede Person
   const benutzer: { name: string; username: string; hinweis: string; startkennwort: string | null }[] = [];
   for (const m of angelegt) {
+    // Vertragsänderung: bestehendes Mitglied – Portalzugang wie bisher (Einladung ggf. über die Zugangsverwaltung)
+    if (m.bestand) continue;
     const r = await mitgliederBenutzerAnlegen(tx, v, { mail: o.mail, adrnr: m.adrnr });
     for (const b of r.angelegt) benutzer.push({ name: b.name, username: b.username, hinweis: b.hinweis, startkennwort: b.startkennwort });
     for (const u of r.uebersprungen) benutzer.push({ name: m.name, username: '', hinweis: u, startkennwort: null });
   }
-  const ergebnis = { mitglieder: angelegt, mandat, benutzer: benutzer.map(({ startkennwort: _s, ...b }) => b), schnupper: schnupperer.map((x) => x.nummer) };
+  const ergebnis = { mitglieder: angelegt, mandat, benutzer: benutzer.map(({ startkennwort: _s, ...b }) => b), schnupper: schnupperer.map((x) => x.nummer), hinweise };
   await tx`update tco.mitgliedsantraege set status = 'UEBERNOMMEN', bearbeitet_am = now(), bearbeitet_von = ${wer}, ergebnis = ${tx.json(ergebnis as never)}
            where id = ${id}`;
   return { nummer: a.nummer as string, email: d.email, name: `${erster.vorname} ${erster.nachname}`, ...ergebnis, startkennwoerter: benutzer.filter((b) => b.startkennwort) };
+}
+
+/**
+ * Vertragsänderung für ein aktives Mitglied (Vertragsangebot #12): gewählte Verträge, die noch nicht laufen, werden ergänzt
+ * (Beginn wie beim Antrag, Zahler wie bei den laufenden Verträgen); laufende bleiben unverändert. Abweichungen, die der Vorstand
+ * im Mitgliederstamm klären muss (zweite Mitgliedschaft, andere Bankverbindung), kommen als Hinweis.
+ */
+async function vertragsaenderung(tx: Db, antrag: Record<string, any>, o: { adrnr: string; name: string; gewaehlt: VertragsArt[]; familie: boolean; eintritt: string; turnusse: string[] }) {
+  const out: string[] = [];
+  const laufend = await tx`select art, artname, vertragnr, sollstellung, zahler_adrnr from tco.vertraege
+                            where adrnr = ${o.adrnr} and (vertragende is null or vertragende >= ${o.eintritt}) order by vertragnr`;
+  const zAlt = String(laufend.find((v) => String(v.zahler_adrnr ?? '').trim() && v.zahler_adrnr !== o.adrnr)?.zahler_adrnr ?? '').trim();
+  const zahler = zAlt && (await vertragsZahler(tx)).some((z) => z.adrnr === zAlt) ? zAlt : null;
+  const neu: string[] = [];
+  for (const [j, a] of o.gewaehlt.entries()) {
+    const kat: Kategorie = j === 0 ? 'MITGLIEDSCHAFT' : 'TRAINING';
+    if (laufend.some((v) => v.art === a.art)) { out.push(`${o.name}: ${a.name} läuft bereits – unverändert.`); continue; }
+    if (kat === 'MITGLIEDSCHAFT') {
+      for (const v of laufend.filter((v) => kategorieVon(v.art, v.artname ?? '') === 'MITGLIEDSCHAFT')) {
+        out.push(`${o.name}: bisherige Mitgliedschaft „${v.artname}“ (Vertrag ${v.vertragnr}) läuft weiter – bitte im Mitgliederstamm beenden.`);
+      }
+    }
+    const turnus = a.turnus || laufend[0]?.sollstellung || o.turnusse[0] || '';
+    const vnr = await vertragNeu(tx, { adrnr: o.adrnr, art: a.art, beginn: beginnFuer(o.eintritt, kat), turnus, betrag: o.familie && j === 0 ? 0 : a.betrag, zahler });
+    neu.push(`${a.name} (Vertrag ${vnr})`);
+  }
+  out.unshift(`${o.name}: ${neu.length ? `Verträge ergänzt – ${neu.join(', ')}` : 'keine neuen Verträge'}.`);
+  // Bankverbindung des Antrags gegen den Stamm (bei abweichendem Zahler dessen) – Mandat wird nicht automatisch geändert
+  const eff = await bankAusStamm(tx, o.adrnr);
+  if (!eff || normalisieren(eff.iban) !== normalisieren(antrag.iban)) {
+    out.push(`${o.name}: Bankverbindung im Antrag (${antrag.kontoinhaber}, IBAN …${normalisieren(antrag.iban).slice(-4)}) weicht vom Stamm ab – bitte Bankverbindung/SEPA-Mandat im Mitgliederstamm prüfen.`);
+  }
+  return out;
 }
 
 export async function antragAblehnen(tx: Db, id: number, wer: string, grund: string | null) {
