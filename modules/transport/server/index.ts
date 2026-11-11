@@ -517,6 +517,41 @@ async function routes(app: FastifyInstance) {
     return { key };
   });
 
+  /**
+   * Mehrere Listenwerte auf einmal (Copy & Paste in den Stammdaten, #121).
+   * Schlüssel optional (sonst höchster + 1, dreistellig); vorhandene Texte oder Schlüssel werden übersprungen.
+   */
+  app.post('/werte/masse', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
+    const b = z.object({
+      typ: z.enum(WERTE_TYPEN as [string, ...string[]]),
+      zeilen: z.array(z.object({
+        key: z.string().trim().max(10).optional(),
+        text: z.string().trim().min(1).max(60, 'Ein Wert ist länger als 60 Zeichen.'),
+      })).min(1, 'Keine Werte erkannt.').max(500),
+    }).parse(req.body);
+    return change(req, async (tx) => {
+      await tx`select pg_advisory_xact_lock(4722)`;
+      const rows = await tx`select schluessel, text, sort from transport.werte where typ = ${b.typ}`;
+      const keys = new Set(rows.map((r) => r.schluessel as string));
+      const texte = new Set(rows.map((r) => String(r.text).toLowerCase()));
+      let max = rows.reduce((m, r) => Math.max(m, /^\d+$/.test(r.schluessel) ? Number(r.schluessel) : 0), 0);
+      let sort = rows.reduce((m, r) => Math.max(m, Number(r.sort)), 0);
+      let neu = 0;
+      let uebersprungen = 0;
+      for (const z of b.zeilen) {
+        if (texte.has(z.text.toLowerCase()) || (z.key && keys.has(z.key))) { uebersprungen++; continue; }
+        let k = z.key || '';
+        while (!k || keys.has(k)) k = String(++max).padStart(3, '0');
+        if (/^\d+$/.test(k)) max = Math.max(max, Number(k));
+        await tx`insert into transport.werte (typ, schluessel, text, sort) values (${b.typ}, ${k}, ${z.text}, ${++sort})`;
+        keys.add(k);
+        texte.add(z.text.toLowerCase());
+        neu++;
+      }
+      return { neu, uebersprungen };
+    });
+  });
+
   app.put('/werte/:typ/:key', { preHandler: requireAuth(P.stammdaten) }, async (req) => {
     const { typ, key } = z.object({ typ: z.string(), key: z.string() }).parse(req.params);
     const b = z.object({ text: z.string().trim().min(1).max(60), aktiv: z.boolean() }).parse(req.body);

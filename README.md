@@ -263,15 +263,15 @@ Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt.
 | Objektseite | Beteiligte (Kunde, Unternehmer, abw. Rechnungsempfänger), Auftrags-/Fahrzeugdaten, zwei Stops, Holzträgerpositionen, Besonderheiten, Änderungshistorie |
 | Rechnungen | Einzel- und Sammelrechnungen mit lückenlosen Nummern (Start je Jahr in den Stammdaten), PDF mit EPC-GiroCode, XRechnung 3.0 (UBL) |
 | Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (Zugang unter Administration → Anbindungen) |
-| Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch), E-Mail-Texte |
-| Übernahme aus SAP | „Neu → Import aus SAP-Export …“: CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten, ZEU_RGNRKREIS). Standard: nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen. **Neuaufbau** (#121): Tabellen vorher leeren und komplett neu anlegen – siehe unten |
+| Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch – je Liste „Einfügen“: mehrere Werte per Copy & Paste, eine Zeile je Wert, optional `Schlüssel;Text` oder zwei Excel-Spalten; vorhandene werden übersprungen, `POST /werte/masse`), E-Mail-Texte, Datenimport |
+| Übernahme aus SAP | *Stammdaten → Datenimport* (`/transport/stammdaten?tab=IMPORT`, Recht `transport.import:execute`): CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten, ZEU_RGNRKREIS). Standard: nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen. **Neuaufbau** (#121): Tabellen vorher leeren und komplett neu anlegen – siehe unten |
 
 Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create`, `transport.versand:execute`,
 `transport.kontakte:edit`, `transport.stammdaten:edit`, `transport.import:execute`.
 
 ### Übernahme aus SAP: Import und Neuaufbau (#121)
 
-Dialog *Euroflex → Aufträge → Neu → Import aus SAP-Export …*. Alle CSV-Dateien des SAP-Exports auf einmal ablegen;
+Reiter *Euroflex → Stammdaten → Datenimport* (direkt: `/transport/stammdaten?tab=IMPORT`). Alle CSV-Dateien des SAP-Exports auf einmal ablegen;
 jede Datei wird am **Spaltenkopf** erkannt (Dateiname egal, Kodierung UTF-8 oder Windows-1252, Semikolon).
 
 | SAP-Datei | Ziel im Portal | Neuaufbau |
@@ -287,7 +287,7 @@ jede Datei wird am **Spaltenkopf** erkannt (Dateiname egal, Kodierung UTF-8 oder
 
 - **Import (Standard):** Nur neue Schlüssel werden angelegt, vorhandene Sätze bleiben unverändert (leere Adressen
   werden ergänzt), Nummernkreise werden nur hochgezogen.
-- **Neuaufbau** (Kästchen im Dialog, Sicherheitsabfrage mit Pflicht-Begründung): In **einer** Transaktion werden die
+- **Neuaufbau** (Kästchen im Reiter, Sicherheitsabfrage mit Pflicht-Begründung): In **einer** Transaktion werden die
   Tabellen per `TRUNCATE` geleert und komplett aus den Dateien angelegt. Schlägt etwas fehl, bleibt alles wie vorher.
   Die Prüfung zeigt vorher, wie viele Sätze gelöscht werden und wie viele im Portal erfasste Aufträge **nicht** in der
   Datei stehen (sie gehen verloren). Verknüpfungen Auftrag ↔ Paperless-Dokument bleiben für Aufträge erhalten, die in
