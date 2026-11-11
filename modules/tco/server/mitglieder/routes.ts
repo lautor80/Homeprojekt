@@ -481,8 +481,10 @@ export async function mitgliederRoutes(app: FastifyInstance) {
 
   app.put('/mitglieder/vertraege/:adrnr/:vertragnr', schreiben, async (req) => {
     const p = z.object({ adrnr, vertragnr: z.string().min(1) }).parse(req.params);
-    const b = z.object({ ende: datumOpt.optional(), zahler: z.string().nullish() }).parse(req.body);
-    return { text: await change(req, (tx) => vertragAendern(tx, p.adrnr, p.vertragnr, { ende: 'ende' in (req.body as object) ? b.ende : undefined, zahler: b.zahler === undefined ? undefined : b.zahler })) };
+    const b = z.object({ beginn: datum.optional(), ende: datumOpt.optional(), zahler: z.string().nullish() }).parse(req.body);
+    return { text: await change(req, (tx) => vertragAendern(tx, p.adrnr, p.vertragnr, {
+      beginn: b.beginn, ende: 'ende' in (req.body as object) ? b.ende : undefined, zahler: b.zahler === undefined ? undefined : b.zahler,
+    })) };
   });
 
   // ---------------------------------------------------------------- Dokumente (Paperless)

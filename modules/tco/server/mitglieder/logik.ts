@@ -435,10 +435,18 @@ export async function vertragNeu(tx: Db, b: { adrnr: string; art: string; beginn
   return vnr;
 }
 
-export async function vertragAendern(tx: Db, adrnr: string, vertragnr: string, b: { ende?: string | null; zahler?: string | null }): Promise<string> {
+export async function vertragAendern(tx: Db, adrnr: string, vertragnr: string, b: { beginn?: string; ende?: string | null; zahler?: string | null }): Promise<string> {
   const [v] = await tx`select * from tco.vertraege where adrnr = ${adrnr} and vertragnr = ${vertragnr}`;
   if (!v) throw new BusinessError(`Vertrag ${vertragnr}: Vertrag nicht mehr vorhanden.`);
   const texte: string[] = [];
+  // Vertragsbeginn (#33): für die Mitgliederpflege immer änderbar – auch bei gekündigten/beendeten Verträgen
+  if (b.beginn !== undefined && b.beginn !== (v.vertragbegin ?? null)) {
+    const ende = b.ende !== undefined ? b.ende : v.vertragende;
+    if (ende && b.beginn > ende) throw new BusinessError(`Vertrag ${vertragnr}: Vertragsbeginn liegt nach dem Laufzeitende ${dat(ende)}.`);
+    await tx`update tco.vertraege set vertragbegin = ${b.beginn} where adrnr = ${adrnr} and vertragnr = ${vertragnr}`;
+    v.vertragbegin = b.beginn;
+    texte.push(`Vertragsbeginn ${dat(b.beginn)} gesichert`);
+  }
   if (b.ende !== undefined && (b.ende || null) !== (v.vertragende ?? null)) {
     if (b.ende && v.vertragbegin && b.ende < v.vertragbegin) throw new BusinessError(`Vertrag ${vertragnr}: Laufzeitende liegt vor dem Vertragsbeginn ${dat(v.vertragbegin)}.`);
     await tx`update tco.vertraege set vertragende = ${b.ende || null} where adrnr = ${adrnr} and vertragnr = ${vertragnr}`;

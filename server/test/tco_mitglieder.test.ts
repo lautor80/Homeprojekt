@@ -181,6 +181,15 @@ test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   assert.match(r.body.text, /Laufzeitende 31\.12\.2026/);
   r = await call('PUT', `${M}/vertraege/0000000102/3`, { zahler: null });
   assert.match(r.body.text, /wie Mitglied/);
+  // Vertragsbeginn (#33): immer änderbar, nicht nach dem Laufzeitende
+  r = await call('PUT', `${M}/vertraege/0000000102/3`, { beginn: '2027-01-01' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /nach dem Laufzeitende/);
+  r = await call('PUT', `${M}/vertraege/0000000102/3`, { beginn: '2026-04-01' });
+  assert.match(r.body.text, /Vertragsbeginn 01\.04\.2026/);
+  assert.equal((await sql`select vertragbegin::text as b from tco.vertraege where adrnr = '0000000102' and vertragnr = '3'`)[0].b, '2026-04-01');
+  r = await call('PUT', `${M}/vertraege/0000000102/3`, { beginn: '2026-07-01' });
+  assert.equal(r.status, 200, 'zurück auf den ursprünglichen Beginn');
 
   // Bank: ungültige IBAN, BIC-Länge
   r = await call('PUT', `${M}/m/0000000102/bank`, { zahlungsart: 'L', iban: 'DE00123', bic: '', bank: '', abwkontoinh: '', adrnrkih: '0000000101' });

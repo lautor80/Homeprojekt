@@ -21,7 +21,7 @@ type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void };
 const status = (v: Vertrag) => (v.laeuft ? (v.vertragende ? 'gekündigt' : 'läuft') : 'beendet');
 
 export function VertragsBaum<V extends Vertrag>({
-  personen, vertraege, ich, ichText, onPerson, endeZelle, zahlerZelle, vertragAktion, personAktion, aktionen, aktionenBreite = 200,
+  personen, vertraege, ich, ichText, onPerson, beginnZelle, endeZelle, zahlerZelle, vertragAktion, personAktion, aktionen, aktionenBreite = 200,
 }: {
   personen: Person[];
   vertraege: V[];
@@ -31,6 +31,8 @@ export function VertragsBaum<V extends Vertrag>({
   ichText?: string;
   /** Klick auf den Namen einer anderen Person (z. B. Mitglied öffnen) */
   onPerson?: (adrnr: string) => void;
+  /** eigene Zelle für Beginn (#33: Mitgliederpflege, immer änderbar); null = Text */
+  beginnZelle?: (v: V) => ReactNode | null;
   /** eigene Zelle für Ende bzw. Zahler (z. B. änderbar); null = Text */
   endeZelle?: (v: V) => ReactNode | null;
   zahlerZelle?: (v: V) => ReactNode | null;
@@ -106,7 +108,10 @@ export function VertragsBaum<V extends Vertrag>({
       },
     },
     { Header: 'Turnus', id: 'turnus', width: 120, responsiveMinWidth: 1000, Cell: ({ row }: Cell) => (row.original as Zeile<V>).v?.sollstellung ?? '' },
-    { Header: 'Beginn', id: 'beginn', width: 105, Cell: ({ row }: Cell) => { const v = (row.original as Zeile<V>).v; return v ? dat(v.vertragbegin) : ''; } },
+    {
+      Header: 'Beginn', id: 'beginn', width: beginnZelle ? 170 : 105,
+      Cell: ({ row }: Cell) => { const v = (row.original as Zeile<V>).v; return v ? beginnZelle?.(v) ?? dat(v.vertragbegin) : ''; },
+    },
     {
       Header: 'Ende', id: 'ende', width: endeZelle ? 170 : 110,
       Cell: ({ row }: Cell) => {
