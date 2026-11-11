@@ -165,7 +165,7 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
 
       <div className="portal-section">
         <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
-          <Tab data-key="stamm" text="Stammdaten" selected={tab === 'stamm'}>
+          <Tab data-key="stamm" text="Stammdaten" icon="customer" selected={tab === 'stamm'}>
             <div style={{ padding: '0.5rem 0' }}>
               <Attributes>
                 <Attribute label="Firma / Name">{t(a.kundenname)}</Attribute>
@@ -183,11 +183,11 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
               </Attributes>
             </div>
           </Tab>
-          <Tab data-key="auf" text={`Aufträge (${d.auftraege.length})`} selected={tab === 'auf'}>
+          <Tab data-key="auf" text={`Aufträge (${d.auftraege.length})`} icon="shipping-status" selected={tab === 'auf'}>
             <AnalyticalTable columns={columns} data={d.auftraege} visibleRows={Math.min(Math.max(d.auftraege.length, 1), 15)} minRows={1}
                              noDataText="Keine Aufträge mit diesem Kontakt" onRowClick={(e) => navigate(`/transport/auftraege/${e.detail.row.original.auftragsnr}`)} />
           </Tab>
-          <Tab data-key="dok" text="Dokumente" selected={tab === 'dok'}>
+          <Tab data-key="dok" text="Dokumente" icon="documents" selected={tab === 'dok'}>
             {tab === 'dok' && <KontaktDokumente adrnr={adrnr} titel={d.titel} edit={edit} />}
           </Tab>
         </TabContainer>
