@@ -5,7 +5,7 @@ import { condense, heute } from '../format.js';
 import { emailGueltig, mitgliedNeu, normName, vertragsarten, type Neu } from '../mitglieder/logik.js';
 import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
 import { adrnrZumToken, alsMitgliedMarkieren, schnupperFuerPerson } from '../schnupper/logik.js';
-import { angebotAnnehmen } from './angebot.js';
+import { angebotAnnehmen, angebotBank } from './angebot.js';
 
 /**
  * Online-Mitgliedsantrag (#12): öffentliches Formular ohne Anmeldung, auch für Familien (mehrere Personen,
@@ -131,7 +131,14 @@ export function pruefen(d: AntragDaten, b: AntragBank, artenListe: { art: string
   if (!ibanGueltig(normalisieren(b.iban))) throw new BusinessError('Die IBAN ist ungültig (Prüfziffer/Länge).');
 }
 
-export async function antragAnlegen(tx: Db, d: AntragDaten, b: AntragBank, ip: string): Promise<{ id: number; nummer: string }> {
+export async function antragAnlegen(tx: Db, d: AntragDaten, b0: AntragBank & { ausAngebot?: boolean }, ip: string): Promise<{ id: number; nummer: string }> {
+  // Vertragsangebot: Bankverbindung aus dem Angebot (die Person bestätigt nur das Mandat)
+  let b: AntragBank = b0;
+  if (b0.ausAngebot) {
+    const ab = d.angebot ? await angebotBank(tx, d.angebot) : null;
+    if (!ab) throw new BusinessError('Im Angebot ist keine Bankverbindung hinterlegt – bitte IBAN angeben.');
+    b = { ...ab, bank: null, sepa: b0.sepa };
+  }
   const { arten } = await vertragsarten(tx, heute());
   pruefen(d, b, arten);
   const jahr = heute().slice(0, 4);

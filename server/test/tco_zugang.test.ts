@@ -872,3 +872,40 @@ test('Vertragsangebot (#12): vorbelegter Antrag per Link, Öffnen mit Geburtsdat
   r = await admin('GET', `${T}/mitgliedsantraege/angebote`);
   assert.ok(!r.body.liste.some((x: any) => x.id === id), 'nur offene');
 });
+
+test('Vertragsangebot (#12): alles übernommen inkl. Bankverbindung, nur bestätigen; Übernahme bietet die Mitgliederinformation an', async () => {
+  const gast = client();
+  await sql`insert into tco.mitglieder (adrnr, anrede, vorname, nachname, geburtsdatum, strasse, plz, ort, email, iban1, bic1) values
+            ('0000000778', 'Herr', 'Bruno', 'Bestand', '1988-08-08', 'Bergweg 8', '66649', 'Oberthal', 'bruno@example.org', 'DE02120300000000202051', 'BYLADEM1001')`;
+  let r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen`);
+  assert.ok(r.body.some((k: any) => k.adrnr === '0000000778'), 'ohne Suche: alle Personen ohne Mitgliedschaft');
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000778', art: '5' }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const tok = token(r.body.link, 'angebot');
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: '1988-08-08' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.daten.bank, { kontoinhaber: 'Bruno Bestand', iban: 'DE02 •••• •••• 2051' }, 'IBAN nur gekürzt');
+  // nur bestätigen: Bankverbindung aus dem Angebot
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Herr', vorname: 'Bruno', nachname: 'Bestand', geburtsdatum: '1988-08-08', art: '5' }],
+    strasse: 'Bergweg 8', plz: '66649', ort: 'Oberthal', email: 'bruno@example.org', eintritt: heute(),
+    satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, angebot: tok, bank: { sepa: true, ausAngebot: true },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [ant] = await sql`select id, iban, kontoinhaber from tco.mitgliedsantraege where daten->>'angebot_nr' is not null and iban = 'DE02120300000000202051' and kontoinhaber = 'Bruno Bestand'`;
+  assert.ok(ant, 'IBAN aus dem Angebot übernommen');
+  r = await admin('POST', `${T}/mitgliedsantraege/${ant.id}/uebernehmen`, { mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.unterlagen.map((u: any) => [u.adrnr, u.url]), [['0000000778', '/api/m/tco/mitglieder/m/0000000778/unterlage/2']]);
+  // ohne hinterlegte Bankverbindung kein „ausAngebot“
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ vorname: 'Olga', nachname: 'Ohnekonto', geburtsdatum: '1999-09-09', art: '5' }], eintritt: heute(), email: 'olga@example.org', mail: false });
+  const tok2 = token(r.body.link, 'angebot');
+  await gast('POST', `${T}/antrag/angebot`, { token: tok2, geburtsdatum: '1999-09-09' });
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Frau', vorname: 'Olga', nachname: 'Ohnekonto', geburtsdatum: '1999-09-09', art: '5' }],
+    strasse: 'Talweg 1', plz: '66649', ort: 'Oberthal', email: 'olga@example.org', eintritt: heute(),
+    satzung: true, datenschutz: true, kuendigung: true, angebot: tok2, bank: { sepa: true, ausAngebot: true },
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /keine Bankverbindung/);
+});

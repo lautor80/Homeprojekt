@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
 import { BusinessError } from '../../../../server/src/errors.js';
-import { DB, vereinLesen } from '../verein.js';
+import { DB, plAktiv, vereinLesen } from '../verein.js';
+import { druckdatenLesen, unterlagePdf } from '../mitglieder/pdf.js';
+import { unterlageAblegen } from '../mitglieder/dokumente.js';
 import { mailSenden } from '../kommunikation.js';
 import { bankSchutz } from '../bankdaten.js';
 import { antragAblehnen, antragAnlegen, antraegeLesen, antragInfo, MAX_PERSONEN, uebernehmen } from './logik.js';
@@ -38,7 +40,11 @@ const antragSchema = z.object({
   schnupper: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).nullish(),
   /** Vertragsangebot (#12): Link-Schlüssel */
   angebot: z.string().regex(/^[A-Za-z0-9_-]{30,64}$/).nullish(),
-  bank: z.object({ kontoinhaber: txt(120), iban: txt(40), bic: txt(15).nullish(), bank: txt(80).nullish(), sepa: z.boolean() }),
+  bank: z.object({
+    kontoinhaber: txt(120).default(''), iban: txt(40).default(''), bic: txt(15).nullish(), bank: txt(80).nullish(), sepa: z.boolean(),
+    /** Vertragsangebot: hinterlegte Bankverbindung verwenden */
+    ausAngebot: z.boolean().default(false),
+  }),
   /** Honigtopf gegen Bots – muss leer bleiben */
   website: z.string().max(200).optional(),
 });
@@ -67,7 +73,7 @@ async function angebotMail(v: Verein, a: { nummer: string; token: string; email:
     modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: a.nummer, an: a.email, benutzer: wer, anhaenge: [],
     betreff: `${v.name}: Ihr persönlicher Mitgliedsantrag`,
     text: `Guten Tag ${a.name},\n\nwir haben Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag bereits vorbereitet. `
-      + 'Bitte prüfen Sie die Angaben, ergänzen Sie Ihre Bankverbindung für das SEPA-Lastschriftmandat und bestätigen Sie den Antrag:\n\n'
+      + 'Alle Angaben sind bereits eingetragen – bitte prüfen und bestätigen (ist noch keine Bankverbindung hinterlegt, ergänzen Sie sie für das SEPA-Lastschriftmandat):\n\n'
       + `${link}\n\n`
       + `Zum Öffnen geben Sie Ihr Geburtsdatum ein. Der Link ist persönlich, gilt bis ${datumD(a.gueltigBis)} und kann nur einmal verwendet werden. `
       + 'Ihre Daten stehen nicht in dieser E-Mail; sie werden erst nach der Bestätigung über eine verschlüsselte Verbindung (HTTPS) angezeigt.\n\n'
@@ -132,6 +138,7 @@ export async function antragRoutes(app: FastifyInstance) {
         email: txt(120).nullish(), art: txt(10).nullish(), training: z.array(txt(10)).max(2).default([]),
       })).min(1).max(MAX_PERSONEN),
       eintritt: datum, email: txt(120).nullish(), erziehungsberechtigt: txt(120).nullish(), bemerkung: txt(1000).nullish(),
+      kontoinhaber: txt(120).nullish(), iban: txt(40).nullish(),
       mail: z.boolean().default(true),
     }).parse(req.body);
     const wer = req.user!.displayName || req.user!.username;
@@ -163,7 +170,7 @@ export async function antragRoutes(app: FastifyInstance) {
 
   app.post('/mitgliedsantraege/:id/uebernehmen', { preHandler: requireAuth(P_ANTRAG.edit) }, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
-    const b = z.object({ eintritt: datum.nullish(), mail: z.boolean().default(true) }).parse(req.body ?? {});
+    const b = z.object({ eintritt: datum.nullish(), mail: z.boolean().default(true), unterlagen: z.boolean().default(true) }).parse(req.body ?? {});
     const v = await vereinLesen();
     const wer = req.user!.displayName || req.user!.username;
     const r = await change(req, (tx) => uebernehmen(tx, v, id, wer, { eintritt: b.eintritt ?? null, mail: b.mail }), { action: 'MITGLIEDSANTRAG_UEBERNAHME', reason: String(id) });
@@ -178,8 +185,23 @@ export async function antragRoutes(app: FastifyInstance) {
           + '\n\nDie Zugänge zum Mitgliederportal erhalten Sie in separaten E-Mails.\n\nViele Grüße\n' + v.name,
       }).catch((e) => req.log.warn({ antrag: r.nummer, err: (e as Error).message }, 'Aufnahmebestätigung nicht gesendet'));
     }
+    // Vertrag festgeschrieben → Mitgliederinformation je neuem Mitglied: in Paperless ablegen (wenn eingerichtet) und zum Druck anbieten
+    const unterlagen: { adrnr: string; name: string; url: string; ablage: string }[] = [];
+    if (b.unterlagen) {
+      for (const m of r.mitglieder) {
+        let ablage = '';
+        if (plAktiv(v)) {
+          try {
+            const dd = await druckdatenLesen(DB, m.adrnr);
+            ablage = (await unterlageAblegen(v, '2', dd.m, await unterlagePdf(v, '2', dd), wer)).text;
+          } catch (e) { ablage = `Paperless: ${(e as Error).message}`; }
+        }
+        unterlagen.push({ adrnr: m.adrnr, name: m.name, url: `/api/m/tco/mitglieder/m/${m.adrnr}/unterlage/2`, ablage });
+      }
+    }
     return {
       ...r,
+      unterlagen,
       text: `Antrag ${r.nummer} übernommen: ${r.mitglieder.map((m) => `${m.name} (Nr. ${m.mitglnrn})`).join(', ')}`
         + `${r.mandat ? `, SEPA-Mandat ${r.mandat}` : ''}; ${r.benutzer.filter((x) => x.username).length} Benutzer angelegt.`
         + `${r.schnupper.length ? ` Aus dem Schnuppertraining übernommen: ${r.schnupper.join(', ')}.` : ''}`,
