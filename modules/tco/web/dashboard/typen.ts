@@ -20,13 +20,15 @@ export interface Combo { label: string; val_line: number; bar_pos: number; bar_n
 export interface StackVal { grp: number; bar: string; stack: string; value: number }
 export interface Legend { key: string; text: string; kurz?: string; color?: string; hatch?: boolean }
 export interface Stacked { groups: string[]; bars: Legend[]; stacks: Legend[]; values: StackVal[]; mainBar: string; title: string; unit: string; emptyText: string }
-export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean }
+/** offen: nicht bezahlte Rechnungen zum Monatsende (#28) */
+export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean; offen?: number }
+export interface OffeneRechnungen { halle: number; verzehr: number; beitraege: number; summe: number; anzahl: number }
 
 export interface Finanzen {
   jahre: KeyText[]; jahreSel: string[]; konten: KeyText[]; kontenSel: string[]; jahreText: string; kontenText: string; mehrjahr: boolean;
   anfangsbestand: number; anfangsjahr: number; einnahmen: number; ausgaben: number; ergebnis: number; kontostand: number; stand: string | null;
   verlauf: Verlauf[];
-  liquiditaet: { jahr: number; monat: number; geld: number; forderung: number; ford_stand: string | null; kredit: number; liquiditaet: number };
+  liquiditaet: { jahr: number; monat: number; geld: number; forderung: number; ford_stand: string | null; kredit: number; liquiditaet: number; rechnungen?: OffeneRechnungen };
 }
 
 export interface Daten {

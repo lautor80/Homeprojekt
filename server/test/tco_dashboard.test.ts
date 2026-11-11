@@ -320,3 +320,39 @@ test('Dashboard: registrierte Benutzer über die Zeit (#30)', async () => {
   assert.match((await admin('GET', `${D}/benutzer?zeitraum=WOCHE`)).body.punkte[0].label, /^KW \d{1,2}\/\d{2}$/);
   assert.equal((await admin('GET', `${D}/benutzer?zeitraum=XYZ`)).status, 400);
 });
+
+test('Dashboard/Finanzen: nicht bezahlte Rechnungen in Saldo Konten und Liquidität (#28)', async () => {
+  const { offeneRechnungen } = await import('../../modules/tco/server/offeneposten.js');
+  const { monatsverlauf } = await import('../../modules/tco/server/dashboard/finanzen.js');
+  const runden = (v: number) => Math.round(v * 100) / 100;
+  // Halle: gedruckt 10.02., bezahlt 20.03. (bis dahin offen); versendet 05.03., offen; In Bearbeitung zählt nicht
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status, gedruckt, bezahlt) values
+            ('2025_950', 2025, 950, 'A', 100, '4', '2025-02-10', '2025-03-20'), ('2025_951', 2025, 951, 'B', 40, '3', '2025-03-05', null),
+            ('2025_952', 2025, 952, 'C', 999, '1', '2025-01-05', null)`;
+  // Verzehr: gestellt 15.02., bezahlt 10.04.; Lastschrift im Beitragslauf zählt nicht doppelt
+  await sql`insert into tco.vz_belege (rgnr, art, adrnr, datum, status, betrag, bezahlt_am, laufid) values
+            ('VZM-T-1', 'SAMMEL', '1', '2025-02-15', 'BEZAHLT', 25, '2025-04-10', null),
+            ('VZM-T-2', 'SAMMEL', '1', '2025-02-15', 'GESTELLT', 7, null, '0000000077')`;
+  // Beitragslauf erstellt 01.03., verbucht 15.03.
+  await sql`insert into tco.soll_kopf (laufid, sollper, erdat, faellig, summe, status, fi_datum) values ('0000000077', '202503', '2025-03-01', '2025-03-10', 500, 'V', '2025-03-15')`;
+  // Bezug: Stand 31.01.2025 (ältere Testdaten ohne Datum zählen überall gleich)
+  const basis = await offeneRechnungen(sql as never, '2025-01-31');
+  const am = async (d: string) => {
+    const o = await offeneRechnungen(sql as never, d);
+    return [runden(o.halle - basis.halle), runden(o.verzehr - basis.verzehr), runden(o.beitraege - basis.beitraege)];
+  };
+  assert.deepEqual(await am('2025-02-28'), [100, 25, 0]);
+  assert.deepEqual(await am('2025-03-10'), [140, 25, 500]);
+  assert.deepEqual(await am('2025-03-31'), [40, 25, 0]);
+  assert.deepEqual(await am('2025-04-30'), [40, 0, 0]);
+  // Verlauf je Monat mit „offen“ (gestrichelte Linie „inkl. offener Rechnungen“)
+  const mv = await monatsverlauf(sql as never, [2025]);
+  const m = (monat: number) => mv.verlauf.find((v) => v.monat === monat)!.offen;
+  assert.deepEqual([runden(m(2) - m(1)), runden(m(3) - m(1)), runden(m(4) - m(1))], [125, 65, 40]);
+  // Liquidität der Vereinsübersicht enthält die offenen Rechnungen
+  const r = await admin('GET', `${D}?jahr=${J}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const l = r.body.charts.finanzen.liquiditaet;
+  assert.ok(l.rechnungen.summe >= 40, JSON.stringify(l));
+  assert.equal(runden(l.liquiditaet), runden(l.geld + l.forderung + l.rechnungen.summe + l.kredit));
+});

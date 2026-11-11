@@ -13,6 +13,7 @@
  */
 import type { Db } from '../verein.js';
 import { heute, runden } from '../format.js';
+import { monatsende, offeneRechnungen, offeneRechnungenJe, type OffeneRechnungen } from '../offeneposten.js';
 
 export type Kontoart = 'G' | 'E' | 'A' | '';
 
@@ -22,8 +23,13 @@ export interface Ergebnis {
   /** Anteil am Gewinn aus Buchungen, deren Gegenkonto kein Geldkonto ist (z. B. Forderungen, Umbuchungen) */
   ohne_geld: number;
 }
-export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean }
-export interface Liquiditaet { jahr: number; monat: number; geld: number; forderung: number; ford_stand: string | null; kredit: number; liquiditaet: number }
+/** offen: noch nicht bezahlte Rechnungen zum Monatsende (#28) – nur für vergangene/laufende Monate */
+export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean; offen: number }
+export interface Liquiditaet {
+  jahr: number; monat: number; geld: number; forderung: number; ford_stand: string | null; kredit: number; liquiditaet: number;
+  /** nicht bezahlte Rechnungen (Halle, Verzehr, Beitragsläufe) – #28 */
+  rechnungen: OffeneRechnungen;
+}
 
 /** Kontonummer ohne Leerzeichen und führende Nullen (ZTCO_KONTO ist CHAR4, GKONTO oft 10-stellig) */
 export const kontoKey = (k: string | null | undefined) => (k ?? '').trim().replace(/^0+(?=\d)/, '');
@@ -123,13 +129,17 @@ export async function monatsverlauf(db: Db, jahre: number[], konten: string[] = 
   const hj = Number(h.slice(0, 4)), hm = Number(h.slice(5, 7));
   const verlauf: Verlauf[] = [];
   let anfangsbestand = 0;
+  // offene Rechnungen je Monatsende (#28)
+  const stichtage = js.flatMap((j) => Array.from({ length: 12 }, (_x, i) => monatsende(j, i + 1, h)));
+  const offen = await offeneRechnungenJe(db, stichtage);
   for (const jahr of js) {
     // Anfangsbestand der gewählten Geldkonten im Jahr
     let bestand = 0;
     for (const g of await geldkonten(db, jahr)) if (sel.includes(kontoKey(g.konto))) bestand += g.anfangsbestand;
     if (jahr === von) anfangsbestand = runden(bestand);
     for (let monat = 1; monat <= 12; monat++) {
-      const v: Verlauf = { jahr, monat, einnahmen: 0, ausgaben: 0, bestand: 0, zukunft: jahr > hj || (jahr === hj && monat > hm) };
+      const zukunft = jahr > hj || (jahr === hj && monat > hm);
+      const v: Verlauf = { jahr, monat, einnahmen: 0, ausgaben: 0, bestand: 0, zukunft, offen: zukunft ? 0 : offen.get(monatsende(jahr, monat, h))?.summe ?? 0 };
       for (const b of bu) {
         if (Number(b.jahr) !== jahr || Number(b.monat) !== monat) continue;
         // Bewegung auf einem gewählten Geldkonto -> Kontostand
@@ -159,11 +169,13 @@ export async function forderungen(db: Db, jahr: number, monat: number): Promise<
   return { betrag: 0, stand: null };
 }
 
-/** Liquidität = Geldkonten + offene Forderungen + Kredite (Darlehenskonten, Saldo negativ = Schuld) */
+/** Liquidität = Geldkonten + offene Forderungen Clubhaus + nicht bezahlte Rechnungen (#28) + Kredite (Darlehenskonten, Saldo negativ = Schuld) */
 export async function liquiditaet(db: Db, jahr: number, monat: number): Promise<Liquiditaet> {
   let geld = 0, kredit = 0;
   for (const g of await geldkonten(db, jahr)) geld += g.endbestand;
   for (const k of await kreditkonten(db, jahr)) kredit += k.endbestand;
   const f = await forderungen(db, jahr, monat);
-  return { jahr, monat, geld: runden(geld), forderung: f.betrag, ford_stand: f.stand, kredit: runden(kredit), liquiditaet: runden(geld + f.betrag + kredit) };
+  const rechnungen = await offeneRechnungen(db, monatsende(jahr, monat, heute()));
+  return { jahr, monat, geld: runden(geld), forderung: f.betrag, ford_stand: f.stand, kredit: runden(kredit), rechnungen,
+    liquiditaet: runden(geld + f.betrag + rechnungen.summe + kredit) };
 }

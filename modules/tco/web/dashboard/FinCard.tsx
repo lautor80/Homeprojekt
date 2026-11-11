@@ -56,6 +56,11 @@ export function FinCard({ kpi, fin, onJahre, onKonten }: Props) {
           <span className="portal-fincard__op">+</span>
           <Indikator title={liq.ford_stand ? `Forderungen Clubhaus ${liq.ford_stand}` : 'Forderungen Clubhaus'} value={betrag(liq.forderung)} state="Information" />
           <span className="portal-fincard__op">+</span>
+          {/* nicht bezahlte Rechnungen aus dem Portal (#28) */}
+          <span title={liq.rechnungen ? `Halle ${betrag(liq.rechnungen.halle)} · Verzehr ${betrag(liq.rechnungen.verzehr)} · Beitragsläufe ${betrag(liq.rechnungen.beitraege)} (${liq.rechnungen.anzahl} offen)` : undefined}>
+            <Indikator title="Offene Rechnungen" value={betrag(liq.rechnungen?.summe ?? 0)} state="Information" />
+          </span>
+          <span className="portal-fincard__op">+</span>
           <Indikator title="Kredite (Darlehen)" value={betrag(liq.kredit)} state={liq.kredit < 0 ? 'Negative' : 'None'} />
           <span className="portal-fincard__op">=</span>
           <Indikator title="Liquidität" value={betrag(liq.liquiditaet)} state={liq.liquiditaet < 0 ? 'Negative' : 'Positive'} strong />

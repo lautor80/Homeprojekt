@@ -253,7 +253,11 @@ export function FinChart({ title, data, mehrjahr }: { title: string; data: Verla
   let bmax = 0, lmin = 0, lmax = 0, first = true;
   for (const p of data) {
     bmax = Math.max(bmax, p.einnahmen, p.ausgaben);
-    if (!p.zukunft) { if (first) { lmin = lmax = p.bestand; first = false; } else { lmin = Math.min(lmin, p.bestand); lmax = Math.max(lmax, p.bestand); } }
+    if (!p.zukunft) {
+      const mit = p.bestand + (p.offen ?? 0);
+      if (first) { lmin = Math.min(p.bestand, mit); lmax = Math.max(p.bestand, mit); first = false; }
+      else { lmin = Math.min(lmin, p.bestand, mit); lmax = Math.max(lmax, p.bestand, mit); }
+    }
   }
   if (bmax <= 0) bmax = 1;
   lmin = Math.min(lmin, 0);                        // Kontostand-Achse ab 0, damit die Linie nicht überzeichnet wirkt
@@ -263,6 +267,8 @@ export function FinChart({ title, data, mehrjahr }: { title: string; data: Verla
   const ly = (v: number) => MT + ((lmax - v) / (lmax - lmin)) * ph;
   const mm = (p: Verlauf) => String(p.monat).padStart(2, '0');
   const ist = data.filter((p) => !p.zukunft);
+  // Kontostand inkl. nicht bezahlter Rechnungen (#28) – nur, wenn es offene Rechnungen gibt
+  const mitOffen = ist.some((p) => (p.offen ?? 0) !== 0);
   return (
     <Frame w={W} h={H} maxWidth={1200}>
       {[0, 1, 2, 3, 4].map((k) => {
@@ -291,6 +297,15 @@ export function FinChart({ title, data, mehrjahr }: { title: string; data: Verla
         <polyline points={data.map((p, i) => (p.zukunft ? null : `${x(i)},${ly(p.bestand)}`)).filter(Boolean).join(' ')} fill="none" stroke={C1} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
         {data.map((p, i) => !p.zukunft && <circle key={i} cx={x(i)} cy={ly(p.bestand)} r={3} fill="#fff" stroke={C1} strokeWidth={2}><title>{`Kontostand Ende ${mm(p)}/${p.jahr}: ${betrag(p.bestand)} EUR`}</title></circle>)}
       </>}
+      {mitOffen && <>
+        <polyline points={data.map((p, i) => (p.zukunft ? null : `${x(i)},${ly(p.bestand + (p.offen ?? 0))}`)).filter(Boolean).join(' ')} fill="none" stroke={C1}
+                  strokeWidth={2} strokeDasharray="6 4" strokeLinejoin="round" strokeLinecap="round" opacity={0.75} />
+        {data.map((p, i) => !p.zukunft && (
+          <circle key={`o${i}`} cx={x(i)} cy={ly(p.bestand + (p.offen ?? 0))} r={2.5} fill={C1} opacity={0.75}>
+            <title>{`Kontostand inkl. offener Rechnungen Ende ${mm(p)}/${p.jahr}: ${betrag(p.bestand + (p.offen ?? 0))} EUR (offen ${betrag(p.offen ?? 0)} EUR)`}</title>
+          </circle>
+        ))}
+      </>}
       <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={DARK}>{title}</text>
       <rect x={ML} y={30} width={14} height={9} fill={GOOD} rx={2} />
       <text x={ML + 20} y={38} fontSize={11} fill={TXT}>Einnahmen (linke Achse)</text>
@@ -299,6 +314,10 @@ export function FinChart({ title, data, mehrjahr }: { title: string; data: Verla
       <line x1={ML + 360} y1={35} x2={ML + 380} y2={35} stroke={C1} strokeWidth={2.5} />
       <circle cx={ML + 370} cy={35} r={3} fill="#fff" stroke={C1} strokeWidth={2} />
       <text x={ML + 386} y={38} fontSize={11} fill={TXT}>Kontostand Monatsende (rechte Achse)</text>
+      {mitOffen && <>
+        <line x1={ML + 620} y1={35} x2={ML + 640} y2={35} stroke={C1} strokeWidth={2} strokeDasharray="6 4" />
+        <text x={ML + 646} y={38} fontSize={11} fill={TXT}>inkl. offener Rechnungen</text>
+      </>}
     </Frame>
   );
 }

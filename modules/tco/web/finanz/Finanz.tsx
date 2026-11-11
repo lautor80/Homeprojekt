@@ -28,13 +28,17 @@ interface Jahr { jahr: number; einnahmen: number; ausgaben: number; ergebnis: nu
 interface KontoWert { art: 'E' | 'A'; konto: string; name: string; wert: number; wert_vj: number }
 interface Geld { konto: string; name: string; anfangsbestand: number; zugang: number; abgang: number; endbestand: number }
 interface Ergebnis { jahr: number; einnahmen: number; ausgaben: number; gewinn: number; geld_ab: number; geld_eb: number; geld_delta: number; differenz: number; letzte_bu: string | null }
-interface Liquiditaet { jahr: number; monat: number; geld: number; forderung: number; ford_stand: string; kredit: number; liquiditaet: number }
+interface Liquiditaet {
+  jahr: number; monat: number; geld: number; forderung: number; ford_stand: string; kredit: number; liquiditaet: number;
+  /** nicht bezahlte Rechnungen (#28) */
+  rechnungen?: { halle: number; verzehr: number; beitraege: number; summe: number; anzahl: number };
+}
 interface Uebersicht {
   jahr: number; monate: Monat[]; ergebnis: Ergebnis; geldkonten: Geld[]; jahre: Jahr[];
   einnahmen: KontoWert[]; ausgaben: KontoWert[]; liquiditaet: Liquiditaet; info: string | null;
 }
 interface Auswahl { jahre: number[]; geldkonten: { konto: string; name: string }[] }
-interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean }
+interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean; offen?: number }
 
 /** Farbe nach Vorzeichen (STATE_OF) */
 const stateOf = (v: number): State => (v < -0.004 ? 'Negative' : v > 0.004 ? 'Positive' : 'None');
@@ -203,6 +207,13 @@ function GeldKarte({ d }: { d: Uebersicht }) {
       </div>
       <div style={{ marginTop: '0.75rem' }}>
         {zeile(l.ford_stand ? `+ Forderungen Clubhaus (${l.ford_stand})` : '+ Forderungen Clubhaus', l.forderung, 'Information')}
+        {/* nicht bezahlte Rechnungen aus dem Portal (#28) */}
+        {zeile(`+ Offene Rechnungen (${l.rechnungen?.anzahl ?? 0})`, l.rechnungen?.summe ?? 0, 'Information')}
+        {l.rechnungen && l.rechnungen.summe !== 0 && (
+          <div className="portal-muted portal-small" style={{ paddingLeft: '0.75rem' }}>
+            Halle {eur(l.rechnungen.halle)} · Verzehr {eur(l.rechnungen.verzehr)} · Beitragsläufe {eur(l.rechnungen.beitraege)}
+          </div>
+        )}
         {zeile('+ Kredite (Darlehen)', l.kredit, l.kredit < 0 ? 'Negative' : 'None')}
       </div>
       <div style={{ borderTop: '1px solid var(--sapList_BorderColor)', marginTop: '0.5rem', paddingTop: '0.5rem' }}>
@@ -228,7 +239,7 @@ function Monatsverlauf({ jahr, auswahl, klein }: { jahr: number; auswahl: Auswah
     const s = new Set<number>([...(auswahl?.jahre ?? []), jahr, jahr - 1]);
     return [...s].sort((a, b) => b - a);
   }, [auswahl, jahr]);
-  const punkte = (v?.verlauf ?? []).map((p) => ({ label: `${String(p.monat).padStart(2, '0')}/${p.jahr}`, einnahmen: p.einnahmen, ausgaben: p.ausgaben, bestand: p.bestand, zukunft: p.zukunft }));
+  const punkte = (v?.verlauf ?? []).map((p) => ({ label: `${String(p.monat).padStart(2, '0')}/${p.jahr}`, einnahmen: p.einnahmen, ausgaben: p.ausgaben, bestand: p.bestand, zukunft: p.zukunft, offen: p.offen ?? 0 }));
   const letzte = [...(v?.verlauf ?? [])].reverse().find((p) => !p.zukunft) ?? v?.verlauf.at(-1);
   const summe = (k: 'einnahmen' | 'ausgaben') => (v?.verlauf ?? []).reduce((s, p) => s + p[k], 0);
   const filter = (
@@ -257,6 +268,9 @@ function Monatsverlauf({ jahr, auswahl, klein }: { jahr: number; auswahl: Auswah
           <Attribute label={letzte ? `Kontostand ${String(letzte.monat).padStart(2, '0')}/${letzte.jahr}` : 'Kontostand'}>
             {letzte ? <ObjectStatus state={letzte.bestand < 0 ? 'Negative' : 'Positive'}>{eur(letzte.bestand)}</ObjectStatus> : null}
           </Attribute>
+          {letzte && (letzte.offen ?? 0) !== 0 && (
+            <Attribute label="inkl. offener Rechnungen">{eur(letzte.bestand + (letzte.offen ?? 0))} <span className="portal-muted">(offen {eur(letzte.offen ?? 0)})</span></Attribute>
+          )}
         </Attributes>
       )}
       {punkte.length ? <VerlaufDiagramm punkte={punkte} schmal={klein} /> : <div className="portal-empty">Bitte mindestens ein Jahr wählen.</div>}
