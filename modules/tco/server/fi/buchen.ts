@@ -3,6 +3,7 @@ import type { Db } from '../verein.js';
 import { dat, runden } from '../format.js';
 import { laufPositionen, laufVerbucht, laufZuruecksetzen } from '../soll/logik.js';
 import { rechnungAufteilung, zahlungAufteilen } from '../halle/daten.js';
+import { periodenPruefen } from './perioden.js';
 
 /** Schreibende FI-Logik: Buchen, Storno, Rechnung und Belege zuordnen, Notizen */
 
@@ -117,6 +118,7 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     const da = new Set((await tx`select konto from tco.fikonten where konto = any(${[...konten]})`).map((r) => r.konto as string));
     throw new BusinessError(`Konto nicht im Kontenstamm: ${[...konten].filter((x) => !da.has(x)).join(', ')}`);
   }
+  await periodenPruefen(tx, umsaetze.map((u) => u.datum), 'buchen');
   // Kontenverwendung je Geschäftsjahr (Kontenstamm): nicht verwendete Konten sind gesperrt
   const jahre = [...new Set(umsaetze.map((u) => Number(u.datum.slice(0, 4))))];
   const gesperrt = await tx`select konto, jahr from tco.fikontojahr where not aktiv and konto = any(${[...konten]}) and jahr = any(${jahre})`;
@@ -268,6 +270,8 @@ export async function stornieren(tx: Db, internenr: string, grund: string, benut
   if (rows.some((r) => r.storno_zu)) throw new BusinessError(`Buchung ${internenr} ist selbst ein Storno und kann nicht storniert werden`);
   const [schon] = await tx`select internenr from tco.fibuchungen where storno_zu = ${internenr} limit 1`;
   if (schon) throw new BusinessError(`Buchung ${internenr} wurde bereits storniert (Storno-Beleg ${schon.internenr})`);
+  // Storno erhält das Datum der Ursprungsbuchung: in einer abgeschlossenen Periode nicht mehr möglich (#3)
+  await periodenPruefen(tx, rows.filter((r) => r.jahr && r.monat).map((r) => `${r.jahr}-${String(r.monat).padStart(2, '0')}`), 'stornieren');
 
   const neu = await naechsteInterne(tx);
   // Belegnummer aus der Folge des Geldkontos der Buchung (nicht der angeklickten Zeile)
