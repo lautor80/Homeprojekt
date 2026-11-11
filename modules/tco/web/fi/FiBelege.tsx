@@ -15,6 +15,7 @@ import {
   BelegeDialog, GegenkontoDialog, KontoBox, NotizenDialog, StornoDialog, ZahlungenDialog, ZuordnenDialog, useWarnungen,
 } from './FiDialoge';
 import { BankimportDialog } from './FiBankimport';
+import { PeriodenDialog } from './FiPerioden';
 import { AblageFlaeche, useAblageZiel } from '@core/ablage';
 import { fiBelegZiel } from './ablage';
 import { F, ZEITRAEUME, betragFarbe, zeitraum, type FiInit, type Liste, type Zeile } from './typen';
@@ -46,6 +47,9 @@ export function FiBelege() {
   const [zahlRg, setZahlRg] = useState<string | null | undefined>(undefined);
   const [bank, setBank] = useState<false | 'bank' | 'manuell'>(false);
   const [ok, setOk] = useState<string | null>(null);
+  const [perioden, setPerioden] = useState(false);
+  /** #3: Datum liegt in einer abgeschlossenen Periode */
+  const gesperrt = (d: string) => !!init?.abgeschlossenBis && d.slice(0, 7) <= init.abgeschlossenBis;
 
   Object.assign(merk, { zr, von, bis, konto, tab });
 
@@ -204,12 +208,15 @@ export function FiBelege() {
             { text: 'Belege anzeigen', icon: 'attachment', onClick: () => setBelege(z.internenr) },
             { text: 'Beleg einer früheren Zahlung übernehmen', icon: 'history', hidden: !buchen || !z.gkonto, onClick: () => setGkZ(z) },
             { text: 'Notizen', icon: 'notes', onClick: () => setNotizZ(z) },
-            { text: 'Stornieren', icon: 'undo', hidden: !storno, disabled: !!z.storniert || !!z.stornoZu, onClick: () => setStornoZ(z) },
+            {
+              text: gesperrt(z.datum) ? 'Stornieren (Periode abgeschlossen)' : 'Stornieren', icon: 'undo', hidden: !storno,
+              disabled: !!z.storniert || !!z.stornoZu || gesperrt(z.datum), onClick: () => setStornoZ(z),
+            },
           ]} />
         );
       },
     },
-  ].map((c) => (c.id === 'datum' || c.Aggregated ? c : { ...c, Aggregated: () => null })) as AnalyticalTableColumnDefinition[], [salden, liste, buchen, storno, geladen, init?.paperless]); // eslint-disable-line react-hooks/exhaustive-deps
+  ].map((c) => (c.id === 'datum' || c.Aggregated ? c : { ...c, Aggregated: () => null })) as AnalyticalTableColumnDefinition[], [salden, liste, buchen, storno, geladen, init?.paperless, init?.abgeschlossenBis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const header = (
     <FlexBox direction="Column" style={{ gap: '0.5rem' }}>
@@ -256,6 +263,7 @@ export function FiBelege() {
     {buchen && <Button icon="upload" onClick={() => setBank('bank')}>Bankimport</Button>}
     {buchen && <Button icon="add" onClick={() => setBank('manuell')}>Manuelle Buchung</Button>}
     <Button icon="lead" onClick={() => setZahlRg(null)}>Teilzahlungen</Button>
+    <Button icon="locked" onClick={() => setPerioden(true)}>Perioden</Button>
     <ChangeHistoryButton objectType="FIBELEG" objectKey={stornoZ?.internenr ?? belege ?? ''} />
   </>;
 
@@ -264,6 +272,7 @@ export function FiBelege() {
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}
       {warnungen.length > 0 && <MessageStrip design="Critical" onClose={schliessen} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{warnungen.join('\n')}</MessageStrip>}
+      {init?.abgeschlossenBis && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Perioden bis {init.abgeschlossenBis.slice(5, 7)}/{init.abgeschlossenBis.slice(0, 4)} sind abgeschlossen – darin keine Buchungen, Stornos oder Änderungen mehr.</MessageStrip>}
       {init && !init.paperless && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Paperless ist nicht eingerichtet – Belege können nicht angezeigt oder zugeordnet werden (TC Oberthal → Stammdaten).</MessageStrip>}
 
       <FlexBox alignItems="Center" justifyContent="SpaceBetween" style={{ margin: '0.25rem 0 0.5rem', gap: '1rem' }} wrap="Wrap">
@@ -308,6 +317,9 @@ export function FiBelege() {
       <StornoDialog zeile={stornoZ} onClose={() => setStornoZ(null)} onDone={(t) => { toast(t); setOk(t); neuLaden(); }} />
       <NotizenDialog zeile={notizZ} onClose={() => setNotizZ(null)} onChanged={neuLaden} />
       <GegenkontoDialog zeile={gkZ} onClose={() => setGkZ(null)} onDone={neuLaden} />
+      <PeriodenDialog open={perioden} jahr={Number(bis.slice(0, 4)) || new Date().getFullYear()} edit={can('tco.fi:periode')}
+                      onClose={() => setPerioden(false)}
+                      onChanged={(bis2) => setInit((i) => (i ? { ...i, abgeschlossenBis: bis2 } : i))} />
       <ZahlungenDialog open={zahlRg !== undefined} rgnr={zahlRg ?? null} onClose={() => setZahlRg(undefined)} />
     </AppPage>
   );

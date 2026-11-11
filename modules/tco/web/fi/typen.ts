@@ -3,7 +3,7 @@ import { TCO } from '../util';
 export const F = `${TCO}/fi`;
 
 export interface Konto { konto: string; name: string; kennzahl: string | null; gruppe: string; aktiv: boolean }
-export interface FiInit { konten: Konto[]; bankkonten: string[]; manuellKonten: string[]; paperless: boolean }
+export interface FiInit { konten: Konto[]; bankkonten: string[]; manuellKonten: string[]; paperless: boolean; /** #3: letzter abgeschlossener Monat JJJJ-MM */ abgeschlossenBis: string | null }
 
 export interface Zeile {
   key: string; internenr: string | null; konto: string; posnr: number; datum: string; text: string; betrag: number;
