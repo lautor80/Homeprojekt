@@ -497,17 +497,20 @@ export async function platzRoutes(app: FastifyInstance) {
   const verwalten = { preHandler: requireAuth(P_PLATZ.verwalten) };
   /** Mitglieder zur Auswahl „Buchung für …“ */
   app.get('/platz/verwalten/mitglieder', verwalten, async () => (await benutzerListe(DB)).mitglieder);
-  /** Einzelbuchung für ein anderes Mitglied oder vereinsintern (ohne Rechnung) – wie die Serienbuchung „einmalig“ */
-  app.post('/platz/verwalten/buchung', verwalten, async (req) => {
+  /**
+   * Einzelbuchung für ein Mitglied oder vereinsintern (ohne Rechnung) – wie die Serienbuchung „einmalig“; dazu Training,
+   * Schnuppertraining, Sperrzeit oder Veranstaltung für einen Termin. Aus „Platz buchen“ (tco.platzbuchung:verwalten) und
+   * aus der Belegung der Platzverwaltung (tco.platz:admin).
+   */
+  const fuerBuchen = (req: FastifyRequest) => {
     const e = buchung.extend({ adrnr: z.string().min(1).nullish(), intern: z.string().trim().max(60).nullish() }).parse(req.body);
     if (!e.adrnr && !e.intern) throw new BusinessError('Bitte ein Mitglied wählen oder einen Namen (vereinsintern) angeben.');
     return change(req, (tx) => serieBuchen(tx, {
       ab: e.datum, von: e.von, bis: e.bis, rhythmus: 'EINMALIG', anzahl: 1, plaetze: [e.platz_id],
       adrnr: e.adrnr ?? null, intern: e.adrnr ? null : e.intern ?? null, text: e.text ?? null, ueberspringen: false,
     }), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis} für ${e.adrnr ?? e.intern}` });
-  });
-  /** Training, Schnuppertraining, Sperrzeit oder Veranstaltung für einen Termin direkt aus dem Kalender */
-  app.post('/platz/verwalten/belegung', verwalten, async (req) => {
+  };
+  const festEintragen = (req: FastifyRequest) => {
     const e = buchung.extend({
       art: z.enum(['TRAINING', 'SCHNUPPER', 'SPERRE', 'VERANSTALTUNG']),
       bezeichnung: z.string().trim().min(1, 'Bitte eine Bezeichnung angeben.').max(80),
@@ -528,7 +531,12 @@ export async function platzRoutes(app: FastifyInstance) {
         zeit_von: e.von, zeit_bis: e.bis, hinweis: e.text?.trim() || null, aktiv: true,
       });
     }, { action: 'PLATZBELEGUNG' });
-  });
+  };
+  app.post('/platz/verwalten/buchung', verwalten, async (req) => fuerBuchen(req));
+  app.post('/platz/verwalten/belegung', verwalten, async (req) => festEintragen(req));
+  // Platzverwaltung → Belegung: freie Zeit anklicken und direkt eintragen (#11)
+  app.post('/platz/admin/buchung', admin, async (req) => fuerBuchen(req));
+  app.post('/platz/admin/belegung', admin, async (req) => festEintragen(req));
 
   // ------------------------------------------------------------------ Platzverwaltung
   app.get('/platz/admin/plaetze', admin, async () => ({ plaetze: await plaetzeLesen(DB), arten: ARTEN }));

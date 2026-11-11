@@ -756,3 +756,27 @@ test('Platz buchen für Admin/Hallenwart (#11): Namen sehen, für andere buchen,
   r = await admin('POST', `${A}/feste`, { bezeichnung: 'Schnuppertraining Kinder', art: 'SCHNUPPER', plaetze: [], wochentage: '6', datum_von: d, datum_bis: tag(40), zeit_von: '09:00', zeit_bis: '10:00' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
 });
+
+test('Platzverwaltung → Belegung: freie Zeit direkt eintragen (#11)', async () => {
+  const d = tag(12);
+  let r = await admin('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '08:00', bis: '10:00', intern: 'Medenspiel Damen' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '10:00', bis: '11:00', adrnr: ANNA, text: 'mit Bert' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${A}/belegung`, { platz_id: halleId, datum: d, von: '14:00', bis: '15:30', art: 'VERANSTALTUNG', bezeichnung: 'Vereinsturnier' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${A}/belegung`, { platz_id: halleId, datum: d, von: '09:00', bis: '09:30', art: 'SPERRE', bezeichnung: 'Sperrzeit' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits belegt/);
+  assert.equal((await bert('POST', `${A}/belegung`, { platz_id: halleId, datum: d, von: '16:00', bis: '17:00', art: 'SPERRE', bezeichnung: 'X' })).status, 403);
+  assert.equal((await bert('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '16:00', bis: '17:00', intern: 'X' })).status, 403);
+  r = await admin('GET', `${A}/tag?datum=${d}`);
+  const halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
+  const zeiten = halle.belegt.map((b: { von: string; kunde?: string; fest?: { bezeichnung: string } }) => `${b.von} ${b.fest?.bezeichnung ?? b.kunde}`);
+  assert.ok(zeiten.includes('08:00 MEDENSPIEL DAMEN'), JSON.stringify(zeiten));
+  assert.ok(zeiten.includes('10:00 ANNA SPIELERIN'), JSON.stringify(zeiten));
+  assert.ok(zeiten.includes('14:00 Vereinsturnier'), JSON.stringify(zeiten));
+  // Anna sieht die für sie angelegte Buchung als eigene
+  r = await anna('GET', `${P}/tag?datum=${d}`);
+  assert.equal(r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((b: { von: string }) => b.von === '10:00').eigen, true);
+});
