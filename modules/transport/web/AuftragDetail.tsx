@@ -9,7 +9,7 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { useCan } from '@core/session';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { toast } from '@core/toast';
-import { DocsDialog, type Doc } from './dialogs';
+import { DocsDialog, XRechnungDialog, type Doc, type XRes } from './dialogs';
 import { AuftragDokumente } from './AuftragDokumente';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Stop, type Traeger, type Werte } from './util';
@@ -67,6 +67,7 @@ export function AuftragDetail() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [docs, setDocs] = useState<Doc[] | null>(null);
+  const [xr, setXr] = useState<XRes | null>(null);
   const [kontakt, setKontakt] = useState<'NEU' | 'EDIT' | null>(null);
   const [wertTyp, setWertTyp] = useState<string | null>(null);
 
@@ -162,9 +163,22 @@ export function AuftragDetail() {
     }
   }
 
-  function drucken(art: 'T' | 'L' | 'R') {
+  async function drucken(art: 'T' | 'L' | 'R') {
     if (isNew) return toast('Bitte den Auftrag zuerst speichern.');
-    const id = art === 'R' ? a!.faktura! : nr!;
+    if (art === 'R') {
+      // Rechnung: dieselbe Vorschau wie „Versenden → E-Rechnung“ in der Auftragsliste (#121)
+      try {
+        const r = await api.get<XRes>(`${T}/xrechnung/${encodeURIComponent(a!.faktura!)}`);
+        if (r.anzahlAuftraege > 1) {
+          r.hinweise.unshift(`Rechnung ${r.faktura} ist eine Sammelrechnung über ${r.anzahlAuftraege} Aufträge - die E-Rechnung enthält wie die PDF-Rechnung alle ${r.anzahlAuftraege} Aufträge.`);
+        }
+        setXr(r);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+      return;
+    }
+    const id = nr!;
     const name = art === 'T' ? 'Transportauftrag' : art === 'L' ? 'Lieferschein' : 'Rechnung';
     setDocs([{ url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, filename: `${name}_${id}.pdf` }]);
   }
@@ -320,9 +334,19 @@ export function AuftragDetail() {
                 <F label="Kennzeichen"><Input style={full} maxlength={20} value={a.kennzeichen ?? ''} readonly={!mayEdit} onInput={(e) => set('kennzeichen', e.target.value)} /></F>
                 <F label="Fahrzeugtyp">{werteSelect('FAHRZEUGTYP', 'fahrzeugtyp')}</F>
                 <F label="Ladegut">{werteSelect('LADEGUT', 'ladegut')}</F>
-                <F label="Gewicht"><Input style={{ width: '8rem' }} maxlength={4} value={a.gewicht ?? ''} readonly={!mayEdit} onInput={(e) => set('gewicht', e.target.value)} /></F>
-                <F label="Lademeter"><Input style={{ width: '8rem' }} value={a.lademeter === null || a.lademeter === undefined ? '' : String(a.lademeter).replace('.', ',')} readonly={!mayEdit}
-                                            onInput={(e) => set('lademeter', e.target.value.trim() ? e.target.value : null)} /></F>
+                <F label="Gewicht">
+                  <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+                    <Input style={{ width: '8rem' }} maxlength={4} value={a.gewicht ?? ''} readonly={!mayEdit} onInput={(e) => set('gewicht', e.target.value)} />
+                    <Text>in T</Text>
+                  </FlexBox>
+                </F>
+                <F label="Lademeter">
+                  <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+                    <Input style={{ width: '8rem' }} value={a.lademeter === null || a.lademeter === undefined ? '' : String(a.lademeter).replace('.', ',')} readonly={!mayEdit}
+                           onInput={(e) => set('lademeter', e.target.value.trim() ? e.target.value : null)} />
+                    <Text>in M</Text>
+                  </FlexBox>
+                </F>
                 <F label="Ladeweise">{werteSelect('LADEWEISE', 'ladeweise')}</F>
                 <F label="Palettentausch">{werteSelect('PALETTENTAUSCH', 'palettentausch', false)}</F>
               </Spalte>
@@ -403,6 +427,7 @@ export function AuftragDetail() {
       </ObjectPage>
 
       <DocsDialog docs={docs} onClose={() => setDocs(null)} />
+      <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} onClose={() => setKontakt(null)}
                      onSaved={async () => {
                        setKontakt(null);
