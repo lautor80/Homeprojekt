@@ -521,6 +521,15 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
   const [plaetze, setPlaetze] = useState<Platz[] | null>(null);
   const [platzId, setPlatzId] = useState(p.id);
   const [tag, setTag] = useState(kopie ? tagPlus(datum, 7) : datum);
+  /** Tag als Text im Feld: wird schon beim Tippen übernommen (nicht erst beim Verlassen), ungültig → Speichern gesperrt */
+  const [tagFehler, setTagFehler] = useState(false);
+  const tagEingabe = (roh: string, endgueltig: boolean) => {
+    const r = roh.trim();
+    const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(r);
+    const x = /^\d{4}-\d{2}-\d{2}$/.test(r) ? r : m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+    const gueltig = !!x && !Number.isNaN(Date.parse(`${x}T12:00:00Z`)) && new Date(`${x}T12:00:00Z`).toISOString().slice(0, 10) === x;
+    if (gueltig) { setTag(x); setTagFehler(false); } else if (endgueltig) setTagFehler(true);
+  };
   const [von, setVon] = useState(b.von);
   const [bis, setBis] = useState(b.bis);
   const [text, setText] = useState((b.fest ? b.fest.hinweis : b.text) ?? '');
@@ -554,7 +563,7 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
     ? !b.fest.portal ? 'Aus EP3 übernommen – bitte in EP3 pflegen.' : 'Wiederkehrende Belegung – bitte unter „Training & Sperrzeiten“ ändern.'
     : !b.portal ? 'EP3-Buchung – bitte im EP3-Buchungssystem ändern.' : b.abgerechnet ? 'Bereits abgerechnet.' : '';
   const ziel = { platz_id: platzId, datum: tag, von, bis, text: text.trim() || null };
-  const ok = !!tag && min(bis) > min(von) && (!b.fest || !!bezeichnung.trim());
+  const ok = !!tag && !tagFehler && min(bis) > min(von) && (!b.fest || !!bezeichnung.trim());
 
   function speichern() {
     return onAktion(() => {
@@ -595,8 +604,16 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
               </Select>
             </FieldBox>
             <FieldBox label="Tag" required>
-              <DatePicker style={{ width: '100%' }} disabled={!kopie && !aenderbar} formatPattern="EEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={tag}
-                          onChange={(e) => e.detail.valid && setTag(e.detail.value)} />
+              <DatePicker style={{ width: '100%' }} disabled={!kopie && !aenderbar} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={tag}
+                          valueState={tagFehler ? 'Negative' : 'None'}
+                          onInput={(e) => tagEingabe(String((e as unknown as { detail?: { value?: string } }).detail?.value ?? (e.target as unknown as { value: string }).value ?? ''), false)}
+                          onChange={(e) => tagEingabe(e.detail.valid ? e.detail.value ?? '' : '', true)} />
+              <div className="portal-row" style={{ alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap' }}>
+                <Text className="portal-muted portal-small">{tagFehler ? 'Datum TT.MM.JJJJ' : tagText(tag)}</Text>
+                {(kopie || aenderbar) && [-1, 1, 7].map((n) => (
+                  <Button key={n} design="Transparent" onClick={() => { setTag(tagPlus(tag, n)); setTagFehler(false); }}>{n > 0 ? `+${n}` : n} Tag{Math.abs(n) > 1 ? 'e' : ''}</Button>
+                ))}
+              </div>
             </FieldBox>
             <FieldBox label="Von" required>
               <Select style={{ width: '100%' }} disabled={!kopie && !aenderbar} onChange={(e) => vonWaehlen((e.detail.selectedOption as HTMLElement).dataset.z!)}>
