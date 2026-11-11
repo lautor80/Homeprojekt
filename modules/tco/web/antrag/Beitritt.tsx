@@ -45,7 +45,40 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   /** Beitrittslink aus dem Schnuppertraining (#86): Angaben vorbelegen, bei der Übernahme wird derselbe Stammsatz Mitglied */
   const [schnupper] = useState(() => new URLSearchParams(window.location.search).get('schnupper'));
   const [schnupperNr, setSchnupperNr] = useState<string | null>(null);
+  /** Vertragsangebot (#12): vom Verein vorbereiteter Antrag – Link mit Schlüssel, Öffnen mit Geburtsdatum */
+  const [angebot] = useState(() => new URLSearchParams(window.location.search).get('angebot'));
+  const [angebotNr, setAngebotNr] = useState<string | null>(null);
+  const [angebotHinweis, setAngebotHinweis] = useState<string | null>(null);
+  const [tor, setTor] = useState<'laden' | 'geburtsdatum' | 'offen' | null>(() => (new URLSearchParams(window.location.search).get('angebot') ? 'laden' : null));
+  const [torGeb, setTorGeb] = useState('');
+  const [torFehler, setTorFehler] = useState<string | null>(null);
   useEffect(() => { api.get<Info>(`${TCO}/antrag`).then(setInfo).catch((e) => setError(e.message)); }, []);
+  interface AngebotAntwort {
+    geburtsdatumNoetig?: boolean; nummer?: string;
+    daten?: { personen: { anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email?: string | null; telefon?: string | null; art?: string | null; training: string[] }[];
+      strasse: string; plz: string; ort: string; email: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null };
+  }
+  async function angebotOeffnen(geb: string | null) {
+    setTorFehler(null);
+    try {
+      const r = await api.post<AngebotAntwort>(`${TCO}/antrag/angebot`, { token: angebot, geburtsdatum: geb });
+      if (r.geburtsdatumNoetig || !r.daten) { setTor('geburtsdatum'); return; }
+      const d = r.daten;
+      setAngebotNr(r.nummer ?? null);
+      setAngebotHinweis(d.bemerkung);
+      setPersonen(d.personen.map((p, i) => ({
+        anrede: p.anrede || '', vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum ?? '',
+        email: i === 0 ? '' : p.email ?? '', telefon: i === 0 ? '' : p.telefon ?? '', art: i === 0 ? p.art ?? '' : '', training: p.training ?? [],
+      })));
+      setA((x) => ({ ...x, strasse: d.strasse, plz: d.plz, ort: d.ort, email: d.email, telefon: d.telefon ?? '', erziehungsberechtigt: d.erziehungsberechtigt ?? '', eintritt: d.eintritt }));
+      setTor('offen');
+    } catch (e) {
+      // falsches Geburtsdatum (Versuche werden gezählt), Link abgelaufen/verwendet/gesperrt
+      setTorFehler((e as Error).message);
+      setTor('geburtsdatum');
+    }
+  }
+  useEffect(() => { if (angebot) angebotOeffnen(null); }, [angebot]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!schnupper) return;
     api.get<{ nummer: string; vorname: string; nachname: string; email: string; mobil: string; erziehungsberechtigt: string }>(`${TCO}/schnupper/beitritt?token=${encodeURIComponent(schnupper)}`)
@@ -92,7 +125,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
         personen: personen.map((p, i) => ({ ...p, art: i === 0 ? p.art : null, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
         strasse: a.strasse, plz: a.plz, ort: a.ort, email: a.email, telefon: a.telefon || null,
         erziehungsberechtigt: minderjaehrig ? a.erziehungsberechtigt : null, eintritt: a.eintritt, bemerkung: a.bemerkung || null,
-        ...zu, bank, website: a.website, schnupper: schnupperNr ? schnupper : null,
+        ...zu, bank, website: a.website, schnupper: schnupperNr ? schnupper : null, angebot: angebotNr ? angebot : null,
       });
       setFertig(r.text);
       window.scrollTo(0, 0);
@@ -107,6 +140,26 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       </CenterCard>
     );
   }
+  // Vertragsangebot: erst nach dem Geburtsdatum werden die vorbereiteten Angaben geladen
+  if (tor === 'laden' || tor === 'geburtsdatum') {
+    return (
+      <CenterCard title={orgName} subtitle="Ihr persönlicher Mitgliedsantrag" logo={logo}>
+        {tor === 'laden' && !torFehler ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : (
+          <form onSubmit={(e) => { e.preventDefault(); if (torGeb) angebotOeffnen(torGeb); }}>
+            <Text style={{ display: 'block', marginBottom: '0.75rem' }}>
+              Der Verein hat Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag vorbereitet. Zum Schutz Ihrer Daten bestätigen Sie bitte Ihr Geburtsdatum
+              {' '}(bei Kindern und Jugendlichen das Geburtsdatum des Kindes, für das der Antrag gestellt wird).
+            </Text>
+            {torFehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{torFehler}</MessageStrip>}
+            <Feld label="Geburtsdatum" required>
+              <DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={torGeb} onChange={(e) => setTorGeb(e.detail.value)} />
+            </Feld>
+            <Button design="Emphasized" style={full} disabled={!torGeb} onClick={() => angebotOeffnen(torGeb)}>Antrag öffnen</Button>
+          </form>
+        )}
+      </CenterCard>
+    );
+  }
   return (
     <CenterCard title={orgName} subtitle="Mitgliedsantrag" logo={logo} breit>
       {!info ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : (
@@ -115,6 +168,12 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
             Werden Sie Mitglied im {info.verein}. Mit dem Familienbeitrag nehmen Sie weitere Familienmitglieder in denselben Antrag auf; Jugendliche bis 21 Jahre können bis zu zwei Trainingseinheiten dazubuchen. Der Beitrag wird per SEPA-Lastschrift vom angegebenen Konto eingezogen.
           </Text>
           {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+          {angebotNr && (
+            <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>
+              Ihr Vertragsangebot {angebotNr}: Personen, Mitgliedschaft und Training sind bereits eingetragen. Bitte prüfen, die Bankverbindung für das
+              {' '}SEPA-Lastschriftmandat ergänzen und unten bestätigen.{angebotHinweis ? ` Hinweis des Vereins: ${angebotHinweis}` : ''}
+            </MessageStrip>
+          )}
           {schnupperNr && (
             <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>
               Schön, dass es dir beim Schnuppertraining gefallen hat! Deine Angaben aus der Anmeldung {schnupperNr} sind bereits eingetragen – bitte ergänzen.

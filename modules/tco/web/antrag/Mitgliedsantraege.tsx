@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
+  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
 } from '@ui5/webcomponents-react';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -38,6 +39,8 @@ export function Mitgliedsantraege() {
   const [weg, setWeg] = useState<Antrag | null>(null);
   const [start, setStart] = useState<Ergebnis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [angebotNeu, setAngebotNeu] = useState(false);
+  const [angebotVersion, setAngebotVersion] = useState(0);
   const laden = () => api.get<Antrag[]>(`${A}?status=${alle ? 'ALLE' : 'EINGANG'}`).then(setListe).catch((e) => setError(e.message));
   useEffect(() => { setListe(null); laden(); }, [alle]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -55,10 +58,12 @@ export function Mitgliedsantraege() {
   return (
     <AppPage title="Mitgliedsanträge" subtitle="Online eingegangene Anträge (Formular /beitritt)"
              actions={<>
+               {edit && <Button design="Emphasized" icon="email" onClick={() => setAngebotNeu(true)}>Vertragsangebot erstellen</Button>}
                <Button design="Transparent" icon="action" onClick={() => window.open('/beitritt', '_blank')}>Antragsformular öffnen</Button>
                <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur Eingang' : 'Auch erledigte'}</Button>
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <Angebote alle={alle} edit={edit} arten={arten} version={angebotVersion} onError={setError} />
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !liste.length ? (
         <MessageStrip hideCloseButton>Keine offenen Anträge. Link zum Formular für Website und Aushang: <b>{window.location.origin}/beitritt</b></MessageStrip>
       ) : liste.map((a) => (
@@ -85,7 +90,7 @@ export function Mitgliedsantraege() {
             </div>
           </div>
           {a.daten.bemerkung && <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.5rem' }}>Mitteilung: {a.daten.bemerkung}</MessageStrip>}
-          {a.hinweise.map((h) => <MessageStrip key={h} design={h.includes('Schnuppertraining') ? 'Information' : 'Critical'} hideCloseButton style={{ marginTop: '0.5rem' }}>{h}</MessageStrip>)}
+          {a.hinweise.map((h) => <MessageStrip key={h} design={h.includes('Schnuppertraining') || h.includes('Vertragsangebot') ? 'Information' : 'Critical'} hideCloseButton style={{ marginTop: '0.5rem' }}>{h}</MessageStrip>)}
           {a.status === 'EINGANG' && edit && (
             <div className="portal-row" style={{ marginTop: '0.75rem' }}>
               <Button design="Emphasized" icon="accept" onClick={() => setOffen(a)}>Übernehmen…</Button>
@@ -101,6 +106,7 @@ export function Mitgliedsantraege() {
           )}
         </Section>
       ))}
+      {angebotNeu && <AngebotDialog onClose={() => setAngebotNeu(false)} onDone={() => { setAngebotNeu(false); setAngebotVersion((v) => v + 1); }} />}
       {offen && <UebernahmeDialog a={offen} onClose={() => setOffen(null)} onDone={(r) => { setOffen(null); toast(r.text, 8000); if (r.startkennwoerter.length) setStart(r); laden(); }} />}
       <ConfirmDialog open={!!weg} danger askReason title="Antrag ablehnen" confirmText="Ablehnen"
                      text={`Antrag ${weg?.nummer ?? ''} ablehnen? Die Begründung wird dem Antragsteller per E-Mail mitgeteilt.`}
@@ -141,6 +147,192 @@ function UebernahmeDialog({ a, onClose, onDone }: { a: Antrag; onClose: () => vo
         <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={eintritt} onChange={(e) => setEintritt(e.detail.value)} />
         <CheckBox text="Per E-Mail benachrichtigen (Aufnahmebestätigung, Link zum Festlegen des Kennworts)" checked={mail} onChange={(e) => setMail(e.target.checked)} />
         {!a.hinweise.every((h) => !h.includes('gesperrt')) && <MessageStrip design="Negative" hideCloseButton>Eine Person ist bereits Mitglied – Übernahme gesperrt. Bitte ablehnen oder den Bestand prüfen.</MessageStrip>}
+      </div>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Vertragsangebote (#12): vorbereiteter Antrag per E-Mail-Link (Zufallsschlüssel, Öffnen mit Geburtsdatum, 30 Tage, einmalig)
+// ---------------------------------------------------------------------------------------------------------------
+interface AngebotZeile {
+  id: number; nummer: string; status: 'OFFEN' | 'ANGENOMMEN' | 'ZURUECKGEZOGEN' | 'ABGELAUFEN'; email: string; gueltig_bis: string;
+  erstellt_am: string; erstellt_von: string | null; geoeffnet_am: string | null; antrag: string | null; eintritt: string;
+  personen: { name: string; stamm: boolean; art: string | null; training: string[] }[];
+}
+const A_STATUS = { OFFEN: ['offen', 'Information'], ANGENOMMEN: ['angenommen', 'Positive'], ZURUECKGEZOGEN: ['zurückgezogen', 'None'], ABGELAUFEN: ['abgelaufen', 'Critical'] } as const;
+
+function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit: boolean; arten: Record<string, string>; version: number; onError: (t: string) => void }) {
+  const [liste, setListe] = useState<AngebotZeile[] | null>(null);
+  const [link, setLink] = useState<{ nummer: string; link: string; text: string } | null>(null);
+  const laden = () => api.get<{ liste: AngebotZeile[] }>(`${A}/angebote?alle=${alle ? '1' : '0'}`).then((r) => setListe(r.liste)).catch((e) => onError(e.message));
+  useEffect(() => { laden(); }, [alle, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const aktion = async (fn: () => Promise<{ text: string; link?: string; nummer?: string }>) => {
+    try { const r = await fn(); toast(r.text, 6000); if (r.link && r.nummer) setLink({ nummer: r.nummer, link: r.link, text: r.text }); laden(); } catch (e) { onError((e as Error).message); }
+  };
+  if (!liste?.length) return null;
+  return (
+    <Section title="Vertragsangebote" count={liste.length}>
+      {liste.map((g) => (
+        <div key={g.id} className="portal-row" style={{ justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+          <div style={{ minWidth: 0 }}>
+            <Text><b>{g.nummer}</b> · {g.personen.map((p) => p.name).join(', ')}</Text><br />
+            <Text className="portal-muted portal-small">
+              {g.personen.map((p) => [p.art ? arten[p.art] ?? p.art : 'über Familienbeitrag', ...p.training.map((t) => arten[t] ?? t)].join(' + ')).join(' · ')}
+              {' '}· Eintritt {dat(g.eintritt)} · an {g.email} · gültig bis {dat(g.gueltig_bis)}
+              {g.geoeffnet_am ? ` · geöffnet ${zeit(g.geoeffnet_am)}` : ' · noch nicht geöffnet'}{g.antrag ? ` · Antrag ${g.antrag}` : ''}
+            </Text>
+          </div>
+          <div className="portal-row">
+            <ObjectStatus state={A_STATUS[g.status][1]} inverted>{A_STATUS[g.status][0]}</ObjectStatus>
+            {edit && (g.status === 'OFFEN' || g.status === 'ABGELAUFEN') && <>
+              <Button design="Transparent" icon="refresh" tooltip="Neuen Link senden (der alte wird ungültig, wieder 30 Tage gültig)"
+                      onClick={() => aktion(() => api.post(`${A}/angebote/${g.id}/erneuern`, { mail: true }))}>Neu senden</Button>
+              <Button design="Transparent" icon="decline" tooltip="Zurückziehen – der Link wird ungültig"
+                      onClick={() => aktion(() => api.post(`${A}/angebote/${g.id}/zurueckziehen`, {}))} />
+            </>}
+          </div>
+        </div>
+      ))}
+      {link && <LinkDialog {...link} onClose={() => setLink(null)} />}
+    </Section>
+  );
+}
+
+function LinkDialog({ nummer, link, text, onClose }: { nummer: string; link: string; text: string; onClose: () => void }) {
+  return (
+    <Dialog open headerText={`Vertragsangebot ${nummer}`} style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button icon="copy" onClick={() => navigator.clipboard?.writeText(link).then(() => toast('Link kopiert'))}>Link kopieren</Button>
+              <Button design="Emphasized" onClick={onClose}>Schließen</Button>
+            </>} />}>
+      <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '0.5rem' }}>{text}</MessageStrip>
+      <Text className="portal-muted portal-small">Persönlicher Link (z. B. für WhatsApp) – nur einmal verwendbar, Öffnen mit dem Geburtsdatum:</Text>
+      <Input readonly value={link} style={{ width: '100%' }} />
+    </Dialog>
+  );
+}
+
+interface Beitragsart { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; familie: boolean }
+interface Kandidat { adrnr: string; name: string; geburtsdatum: string | null; ort: string; email: string; schnupper: string | null }
+interface APerson { adrnr: string | null; neu: boolean; anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; art: string; training: string[]; info?: Kandidat }
+const leerePerson = (): APerson => ({ adrnr: null, neu: false, anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', art: '', training: [] });
+const heuteIso = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
+
+function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [arten, setArten] = useState<Beitragsart[]>([]);
+  const [personen, setPersonen] = useState<APerson[]>([leerePerson()]);
+  const [kandidaten, setKandidaten] = useState<Kandidat[]>([]);
+  const [suche, setSuche] = useState('');
+  const [eintritt, setEintritt] = useState(heuteIso());
+  const [email, setEmail] = useState('');
+  const [erz, setErz] = useState('');
+  const [hinweis, setHinweis] = useState('');
+  const [mail, setMail] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ergebnis, setErgebnis] = useState<{ nummer: string; link: string; text: string } | null>(null);
+  useEffect(() => { api.get<{ beitragsarten: Beitragsart[] }>(`${TCO}/antrag`).then((i) => setArten(i.beitragsarten)).catch((e) => setError(e.message)); }, []);
+  useEffect(() => {
+    const t = setTimeout(() => api.get<Kandidat[]>(`${A}/angebote/personen?suche=${encodeURIComponent(suche)}`).then(setKandidaten).catch((e) => setError(e.message)), 250);
+    return () => clearTimeout(t);
+  }, [suche]);
+  const setP = (i: number, x: Partial<APerson>) => setPersonen((l) => l.map((p, j) => (j === i ? { ...p, ...x } : p)));
+  const familie = !!arten.find((b) => b.art === personen[0].art)?.familie;
+  const mitgliedschaften = arten.filter((b) => b.kategorie === 'MITGLIEDSCHAFT');
+  const trainings = arten.filter((b) => b.kategorie === 'TRAINING');
+  const ok = personen.every((p) => (p.neu ? p.vorname.trim() && p.nachname.trim() : p.adrnr)) && !!personen[0].art && (personen.length === 1 || familie)
+    && (email.trim() || (!personen[0].neu && personen[0].info?.email) || (personen[0].neu && personen[0].email.trim()));
+
+  async function los() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ nummer: string; link: string; text: string }>(`${A}/angebote`, {
+        personen: personen.map((p, i) => (p.neu
+          ? { anrede: p.anrede || null, vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum || null, email: p.email || null, art: i === 0 ? p.art : null, training: p.training }
+          : { adrnr: p.adrnr, art: i === 0 ? p.art : null, training: p.training })),
+        eintritt, email: email.trim() || null, erziehungsberechtigt: erz.trim() || null, bemerkung: hinweis.trim() || null, mail,
+      });
+      setErgebnis(r);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  if (ergebnis) return <LinkDialog {...ergebnis} onClose={onDone} />;
+  const sel = (wert: string, liste: Beitragsart[], leerText: string, onWahl: (x: string) => void, disabled = false) => (
+    <Select style={{ width: '100%' }} disabled={disabled} onChange={(e) => onWahl((e.detail.selectedOption as HTMLElement).dataset.a ?? '')}>
+      <Option data-a="" selected={!wert}>{leerText}</Option>
+      {liste.map((b) => <Option key={b.art} data-a={b.art} selected={wert === b.art}>{b.name} – {b.betrag.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}{b.turnus ? ` (${b.turnus})` : ''}</Option>)}
+    </Select>
+  );
+  return (
+    <Dialog open headerText="Vertragsangebot erstellen" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="email" loading={busy} disabled={!ok} onClick={los}>{mail ? 'Erstellen und per E-Mail senden' : 'Erstellen (Link anzeigen)'}</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <div className="portal-bk__form">
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+        <MessageStrip hideCloseButton>
+          Der Antrag wird vorbereitet und als persönlicher Link verschickt: keine Daten in der E-Mail, Öffnen nur mit dem Geburtsdatum, gültig 30 Tage, einmal verwendbar.
+          Die Person ergänzt IBAN/SEPA-Mandat und bestätigt – der Antrag landet danach wie gewohnt im Eingang. Personen aus dem Stamm (ohne Mitgliedschaft) werden bei der Übernahme Mitglied, ohne Dublette.
+        </MessageStrip>
+        {personen.map((p, i) => (
+          <div key={i} style={{ padding: '0.6rem', border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
+            <div className="portal-row" style={{ justifyContent: 'space-between' }}>
+              <Title level="H6">{i === 0 ? 'Antragsteller/in' : `Weitere Person ${i} (Familie)`}</Title>
+              <div className="portal-row">
+                <CheckBox text="neu erfassen (nicht im Stamm)" checked={p.neu} onChange={(e) => setP(i, { ...leerePerson(), neu: e.target.checked, art: p.art, training: p.training })} />
+                {i > 0 && <Button design="Transparent" icon="delete" onClick={() => setPersonen((l) => l.filter((_, j) => j !== i))} />}
+              </div>
+            </div>
+            {!p.neu ? (
+              <>
+                <Label>Person aus dem Mitgliederstamm (ohne Mitgliedschaft, z. B. Interessent, Schnupperer)</Label>
+                <AuswahlBox wert={p.adrnr ?? ''} filter="None" placeholder="Name, Ort oder E-Mail suchen" style={{ width: '100%' }} onSuche={setSuche}
+                            eintraege={[...(p.info && !kandidaten.some((k) => k.adrnr === p.adrnr) ? [p.info] : []), ...kandidaten]
+                              .map((k) => ({ key: k.adrnr, text: k.name, zusatz: [k.geburtsdatum ? dat(k.geburtsdatum) : '', k.ort, k.schnupper ? `Schnupper ${k.schnupper}` : ''].filter(Boolean).join(' · ') }))}
+                            onWaehle={(k) => {
+                              const info = kandidaten.find((x) => x.adrnr === k);
+                              setP(i, { adrnr: k, info });
+                              if (i === 0 && info?.email && !email) setEmail(info.email);
+                            }} />
+                {p.info && !p.info.geburtsdatum && <Text className="portal-muted portal-small">Kein Geburtsdatum im Stamm – der Link öffnet dann ohne zweite Abfrage.</Text>}
+              </>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.5rem' }}>
+                <div><Label>Anrede</Label>
+                  <Select style={{ width: '100%' }} onChange={(e) => setP(i, { anrede: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
+                    <Option data-a="" selected={!p.anrede}>–</Option>
+                    {['Frau', 'Herr', 'Divers'].map((x) => <Option key={x} data-a={x} selected={p.anrede === x}>{x}</Option>)}
+                  </Select></div>
+                <div><Label required>Vorname</Label><Input style={{ width: '100%' }} value={p.vorname} onInput={(e) => setP(i, { vorname: e.target.value })} /></div>
+                <div><Label required>Nachname</Label><Input style={{ width: '100%' }} value={p.nachname} onInput={(e) => setP(i, { nachname: e.target.value })} /></div>
+                <div><Label>Geburtsdatum (Schutz des Links)</Label>
+                  <DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={p.geburtsdatum} onChange={(e) => setP(i, { geburtsdatum: e.detail.value })} /></div>
+                {i === 0 && <div><Label>E-Mail</Label><Input style={{ width: '100%' }} type="Email" value={p.email} onInput={(e) => setP(i, { email: e.target.value })} /></div>}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))', gap: '0.5rem', marginTop: '0.5rem' }}>
+              {i === 0 ? <div><Label required>Mitgliedschaft</Label>{sel(p.art, mitgliedschaften, 'bitte wählen', (x) => setP(i, { art: x }))}</div>
+                : <div><Label>Mitgliedschaft</Label><Text style={{ display: 'block', paddingTop: '0.5rem' }}>über den Familienbeitrag</Text></div>}
+              {trainings.length > 0 && [0, 1].map((n) => (
+                <div key={n}><Label>Trainingseinheit {n + 1}</Label>
+                  {sel(p.training[n] ?? '', trainings, 'keine', (x) => { const t = [...p.training]; if (x) t[n] = x; else t.splice(n, 1); setP(i, { training: t.filter(Boolean).slice(0, 2) }); }, n > 0 && !p.training[0])}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {familie && personen.length < 8 && <Button design="Transparent" icon="add-employee" onClick={() => setPersonen((l) => [...l, leerePerson()])}>Weitere Person (Familie)</Button>}
+        {!familie && personen.length > 1 && <MessageStrip design="Critical" hideCloseButton>Weitere Personen nur mit dem Familienbeitrag beim Antragsteller.</MessageStrip>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+          <div><Label required>Eintritt</Label><DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={eintritt} onChange={(e) => setEintritt(e.detail.value)} /></div>
+          <div><Label>E-Mail für den Link</Label><Input style={{ width: '100%' }} type="Email" value={email} placeholder="aus dem Stamm" onInput={(e) => setEmail(e.target.value)} /></div>
+          <div><Label>Erziehungsberechtigte/r (bei Minderjährigen)</Label><Input style={{ width: '100%' }} value={erz} onInput={(e) => setErz(e.target.value)} /></div>
+        </div>
+        <Label>Hinweis an die Person (erscheint im Formular)</Label>
+        <Input style={{ width: '100%' }} value={hinweis} maxlength={300} placeholder="z. B. Gruppe montags 17 Uhr bei Trainer Tom" onInput={(e) => setHinweis(e.target.value)} />
+        <CheckBox text="Link per E-Mail senden (sonst nur anzeigen, z. B. für WhatsApp)" checked={mail} onChange={(e) => setMail(e.target.checked)} />
       </div>
     </Dialog>
   );
