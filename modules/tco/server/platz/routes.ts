@@ -10,7 +10,7 @@ import { DB, type Db, type Verein } from '../verein.js';
 import { addTage } from '../format.js';
 import {
   aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, einzelAendern, einzelAnlegen,
-  einzelStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
+  einzelStornieren, aboTerminStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
   tagLesen, verwaltungAendern, verwaltungKopieren, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
 import { minuten, preiseLesen, preiswoche, preiszonen } from '../halle/preis.js';
@@ -491,6 +491,13 @@ export async function platzRoutes(app: FastifyInstance) {
     const i = await ich(req);
     const { bid } = z.object({ bid: z.string().min(1) }).parse(req.params);
     return { text: await change(req, (tx) => einzelStornieren(tx, i, bid), { action: 'PLATZ_STORNO', reason: bid }) };
+  });
+
+  /** #83: einzelnen Termin eines eigenen Abos mit Einzelabrechnung stornieren (Abo bleibt) */
+  app.delete('/platz/buchungen/:bid/termine/:datum', buchen, async (req) => {
+    const i = await ich(req);
+    const { bid, datum } = z.object({ bid: z.string().min(1), datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.params);
+    return { text: await change(req, (tx) => aboTerminStornieren(tx, i, bid, datum), { action: 'PLATZ_STORNO', reason: `Abo ${bid} ${datum}` }) };
   });
 
   // ------------------------------------------------------------------ Platz buchen für Admin/Hallenwart (#11)

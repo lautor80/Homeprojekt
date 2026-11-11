@@ -21,7 +21,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.beitrag` | ● | ● |  |  |  |  |  |  |  |  | ● |  |
 | `tco.beitrag_pr` | ● | ● |  |  |  |  |  |  |  |  | ● |  |
 | `tco.bookings` |  |  | ● |  |  |  |  | ● | ● |  |  | ● |
-| `tco.bookings_ch` |  |  | ● |  |  |  |  | ● |  |  |  | ● |
+| `tco.bookings_ch` |  |  | ● |  |  |  |  | ● | ● |  |  | ● |
 | `tco.bookingstxt` |  |  | ● |  |  |  |  |  | ● |  |  | ● |
 | `tco.eing_dokumente` |  |  |  |  |  | ● |  |  |  |  |  |  |
 | `tco.eing_korrespondenten` |  |  |  |  |  | ● |  |  |  |  |  |  |

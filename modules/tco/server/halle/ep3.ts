@@ -205,7 +205,9 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
     // (z. B. Serie in EP3 auf einen anderen Wochentag verschoben – gleiche BID, neue Daten), erben die Kennzeichnung
     const erbeAlt = b.status === '3' && !aboEinzel.has(b.bid) ? abgerechnetJeBid.get(b.bid) ?? '' : '';
     if (erbeAlt) repariert++;
-    await tx`update tco.bookings set time_start = ${b.time_start}, time_ende = ${b.time_ende}, kunde = ${b.kunde}, status = ${b.status},
+    // #83: im Portal stornierte Abo-Termine bleiben storniert
+    await tx`update tco.bookings set time_start = ${b.time_start}, time_ende = ${b.time_ende}, kunde = ${b.kunde},
+                    status = case when storno_portal is not null and ${b.status}::text = '3' then '2' else ${b.status}::text end,
                     description = ${desc}, preis = ${b.preis}, geaendert = ${h}, text = ${b.text}, platz = coalesce(${b.platz}, platz)
                     ${erbeAlt ? tx`, assigned = ${erbeAlt}` : tx``}
               where bid = ${b.bid} and datum = ${b.datum}`;

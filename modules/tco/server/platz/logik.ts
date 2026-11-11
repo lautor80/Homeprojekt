@@ -466,6 +466,17 @@ export interface MeineEinzel {
 export interface MeinAbo {
   bid: string; platz: string; wochentag: string; von: string; bis: string; erster: string; letzter: string;
   termine: number; kommend: number; naechster: string | null; preis: Preis; text: string | null; quelle: string;
+  /** #83: Abo wird je Termin abgerechnet – einzelne Termine storniert der Nutzer selbst */
+  einzelabrechnung: boolean; storniert: number; kommende_termine: AboTermin[];
+}
+export interface AboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
+
+/** Stornofrist eines Termins: stornierbar und „bis“-Text (null ohne Frist) */
+function frist(p: Platz | undefined, datum: string, von: number, j = jetzt()) {
+  const f = (p?.storno_frist ?? 0) * 60;
+  const ok = minutenBis(datum, von, j) >= f;
+  const ende = new Date(Date.parse(`${datum}T00:00:00Z`) + (von - f) * 60_000);
+  return { ok, bis: ok && f ? `${dat(ende.toISOString().slice(0, 10))} ${ende.toISOString().slice(11, 16)} Uhr` : null };
 }
 
 export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergangen'): Promise<{ einzel: MeineEinzel[]; abos: MeinAbo[] }> {
@@ -474,9 +485,11 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
   const zuPlatz = (name: string | null) => plaetze.find((p) => namenVon(p).includes(gross(name)));
   const rows = await db`
     select b.bid, b.datum::text, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis, b.status, b.platz,
-           b.quelle, coalesce(b.assigned, '') as assigned, coalesce(t.text, b.text) as text, b.benutzer_id::text, b.kunde
+           b.quelle, coalesce(b.assigned, '') as assigned, coalesce(t.text, b.text) as text, b.benutzer_id::text, b.kunde,
+           coalesce(c.status_abw, '') = '1' as aboeinzel
       from tco.bookings b
       left join tco.bookingstxt t on t.bid = b.bid
+      left join tco.bookings_ch c on c.bid = b.bid
      where (b.benutzer_id = ${ich.benutzerId} or (b.quelle is distinct from ${QUELLE} and upper(trim(b.kunde)) = ${ich.kunde}))
        and b.time_start is not null and b.time_ende is not null
        and coalesce(b.status, '') in ('1', '2', '3')
@@ -487,9 +500,13 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
 
   const einzel: MeineEinzel[] = [];
   const aboRows = new Map<string, typeof rows>();
+  // stornierte Termine eines Abos gehören zum Abo, nicht zu den Einzelbuchungen (#83)
+  const aboBids = new Set(rows.filter((r) => r.status === '3').map((r) => r.bid as string));
+  const aboStorno = new Map<string, typeof rows>();
   for (const r of rows) {
     if (!istEigen(r as never, ich)) continue;
     if (r.status === '3') { aboRows.set(r.bid, [...(aboRows.get(r.bid) ?? []), r] as never); continue; }
+    if (r.status === '2' && aboBids.has(r.bid)) { aboStorno.set(r.bid, [...(aboStorno.get(r.bid) ?? []), r] as never); continue; }
     if (istKommend(r) !== (zeitraum === 'kommend')) continue;
     if (r.status === '2' && zeitraum === 'vergangen') continue;
     const p = zuPlatz(r.platz);
@@ -513,14 +530,49 @@ export async function meineLesen(db: Db, ich: Ich, zeitraum: 'kommend' | 'vergan
     if ((zeitraum === 'kommend') !== (kommende.length > 0)) continue;
     const t0 = termine[0];
     const p = zuPlatz(t0.platz);
+    const einzelabrechnung = !!t0.aboeinzel;
+    const storno = aboStorno.get(bid) ?? [];
+    // kommende Termine (aktive und stornierte) – nur bei Einzelabrechnung, dort einzeln stornierbar
+    const kommendeTermine: AboTermin[] = einzelabrechnung
+      ? [...kommende, ...storno.filter((t) => istKommend(t))].sort((a, b) => String(a.datum).localeCompare(String(b.datum))).map((t) => {
+        const f = frist(zuPlatz(t.platz), t.datum, minuten(t.von), j);
+        const storniert = t.status === '2';
+        const stornierbar = !storniert && t.assigned !== 'Y' && f.ok;
+        return { datum: t.datum, von: t.von, bis: t.bis, storniert, stornierbar, stornierbar_bis: stornierbar ? f.bis : null, abgerechnet: t.assigned === 'Y' };
+      })
+      : [];
     abos.push({
       bid, platz: t0.platz ?? '–', wochentag: wochentagText(t0.datum), von: t0.von, bis: t0.bis,
       erster: t0.datum, letzter: termine[termine.length - 1].datum, termine: termine.length, kommend: kommende.length,
-      naechster: kommende[0]?.datum ?? null, preis: preisVon(p, t0.datum, minuten(t0.von), minuten(t0.bis), '3', preise),
+      naechster: kommende[0]?.datum ?? null, preis: preisVon(p, t0.datum, minuten(t0.von), minuten(t0.bis), einzelabrechnung ? '1' : '3', preise),
       text: t0.text, quelle: t0.quelle === QUELLE ? 'Portal' : 'EP3',
+      einzelabrechnung, storniert: storno.length, kommende_termine: kommendeTermine,
     });
   }
   return { einzel, abos };
+}
+
+/**
+ * #83: einen Termin eines eigenen Abos mit Einzelabrechnung stornieren – das Abo bleibt bestehen.
+ * Es gilt die Stornofrist des Platzes; auch Abos aus EP3 (der Import setzt den Termin nicht zurück, storno_portal).
+ */
+export async function aboTerminStornieren(tx: Db, ich: Ich, bid: string, datum: string): Promise<string> {
+  const [b] = await tx`select b.bid, b.datum::text, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis,
+                              b.status, b.platz, b.quelle, b.kunde, b.benutzer_id::text, coalesce(b.assigned, '') as assigned,
+                              coalesce(c.status_abw, '') = '1' as aboeinzel
+                         from tco.bookings b left join tco.bookings_ch c on c.bid = b.bid
+                        where b.bid = ${bid} and b.datum = ${datum}`;
+  if (!b || !istEigen(b as never, ich)) throw new BusinessError('Buchung nicht gefunden.', 404);
+  if (b.status === '2') throw new BusinessError('Der Termin ist bereits storniert.');
+  if (b.status !== '3') throw new BusinessError('Das ist kein Abo-Termin.');
+  if (!b.aboeinzel) throw new BusinessError('Termine dieses Abos werden mit dem Abo abgerechnet – einzelne Termine storniert der Verein (bitte beim Vorstand melden).');
+  if (b.assigned === 'Y') throw new BusinessError('Der Termin ist bereits abgerechnet.');
+  const p = (await plaetzeLesen(tx)).find((x) => namenVon(x).includes(gross(b.platz)));
+  if (!frist(p, b.datum, minuten(b.von)).ok) {
+    throw new BusinessError(p?.storno_frist ? `Stornieren ist nur bis ${p.storno_frist} Stunde(n) vor Beginn möglich.` : 'Der Termin hat bereits begonnen.');
+  }
+  await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now() where bid = ${bid} and datum = ${datum}`;
+  return `Abo-Termin am ${dat(b.datum)} von ${b.von} bis ${b.bis} Uhr storniert – das Abo bleibt bestehen.`;
 }
 
 // ---------------------------------------------------------------------------
