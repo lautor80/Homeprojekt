@@ -36,6 +36,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.fikontojahr` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |
 | `tco.finotiz` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |
 | `tco.fipapermap` |  | ● | ● |  | ● | ● |  | ● |  |  |  |  |
+| `tco.fiperioden` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |
 | `tco.forderungen` |  |  |  |  | ● |  |  | ● |  |  |  |  |
 | `tco.jrueckm` |  |  |  | ● |  |  |  | ● |  |  |  |  |
 | `tco.jt_doku` |  |  |  | ● |  |  |  | ● |  |  |  |  |

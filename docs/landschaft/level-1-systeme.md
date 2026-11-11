@@ -171,7 +171,7 @@ flowchart LR
 | core:verbindungen | 3 |
 | dashboard | 5 |
 | eingang | 27 |
-| fi | 20 |
+| fi | 23 |
 | finanz | 3 |
 | forecast | 1 |
 | gruppen | 9 |

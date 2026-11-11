@@ -44,6 +44,8 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     if (err instanceof BusinessError) return reply.code(err.statusCode).send({ message: err.message });
     const pgCode = (err as { code?: string }).code;
     if (pgCode === 'LK423') return reply.code(423).send({ message: (err as Error).message, code: 'GESPERRT' });
+    // fachliche Sperre aus einem Datenbank-Trigger (z. B. abgeschlossene FI-Periode, #3): Meldung des Triggers anzeigen
+    if (pgCode === 'FP409') return reply.code(409).send({ message: (err as Error).message });
     if (pgCode === '23505') return reply.code(409).send({ message: 'Eintrag existiert bereits.' });
     if (pgCode === '23503') return reply.code(409).send({ message: 'Eintrag wird noch verwendet.' });
     const e = err as { statusCode?: number; message?: string };

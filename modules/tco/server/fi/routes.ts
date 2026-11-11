@@ -13,6 +13,7 @@ import {
   belegEntfernen, belegeZuordnen, notizAnlegen, rechnungVerknuepfen, stornieren, umsaetzeBuchen, type Umsatz,
 } from './buchen.js';
 import { bankAbgleich } from './bank.js';
+import { abgeschlossenBis, abschliessen, oeffnen, periodenLesen } from './perioden.js';
 import { bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
 import { dateiPruefen, dekodieren } from '../upload/logik.js';
@@ -43,6 +44,8 @@ export const P_FI = {
   display: 'tco.fi:display',
   buchen: 'tco.fi:buchen',
   storno: 'tco.fi:storno',
+  /** #3: Perioden abschließen und wieder öffnen */
+  periode: 'tco.fi:periode',
 };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
@@ -73,7 +76,24 @@ export async function fiRoutes(app: FastifyInstance) {
       bankkonten: liste(v.fi_bankkonten),
       manuellKonten: liste(v.fi_manuell_konten),
       paperless: plAktiv(v),
+      /** #3: letzter abgeschlossener Monat (JJJJ-MM) – Buchungen bis dahin sind gesperrt */
+      abgeschlossenBis: await abgeschlossenBis(DB),
     };
+  });
+
+  // ---------------------------------------------------------------- Perioden (#3)
+  app.get('/fi/perioden', { preHandler: requireAuth(P_FI.display) }, async (req) => {
+    const { jahr } = z.object({ jahr: z.coerce.number().int().min(2000).max(2100).default(new Date().getFullYear()) }).parse(req.query);
+    return periodenLesen(DB, jahr);
+  });
+  const periode = z.object({ jahr: z.coerce.number().int().min(2000).max(2100), monat: z.coerce.number().int().min(1).max(12) });
+  app.post('/fi/perioden/abschliessen', { preHandler: requireAuth(P_FI.periode) }, async (req) => {
+    const p = periode.parse(req.body);
+    return { text: await change(req, (tx) => abschliessen(tx, p.jahr, p.monat), { action: 'PERIODE_ABSCHLUSS', reason: `${p.monat}/${p.jahr}` }) };
+  });
+  app.post('/fi/perioden/oeffnen', { preHandler: requireAuth(P_FI.periode) }, async (req) => {
+    const p = periode.extend({ grund: z.string().trim().min(1, 'Bitte einen Grund angeben').max(200) }).parse(req.body);
+    return { text: await change(req, (tx) => oeffnen(tx, p.jahr, p.monat), { action: 'PERIODE_OEFFNEN', reason: p.grund }) };
   });
 
   app.get('/fi/buchungen', { preHandler: requireAuth(P_FI.display) }, async (req) => {
