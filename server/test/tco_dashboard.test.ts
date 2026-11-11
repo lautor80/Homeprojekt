@@ -294,3 +294,29 @@ test('Dashboard: Berechtigung', async () => {
   const niemand = client();
   assert.equal((await niemand('GET', D)).status, 401);
 });
+
+test('Dashboard: registrierte Benutzer über die Zeit (#30)', async () => {
+  const anzahl = Number((await sql`select count(*)::int as n from core.users`)[0].n);
+  const mitglieder = Number((await sql`select count(distinct user_id)::int as n from core.user_roles where role_id = 'MITGLIED'`)[0].n);
+  // ein Benutzer mit älterem Anlagedatum für die Gesamt-/Jahresansicht
+  await sql`update core.users set created_at = now() - interval '400 days' where username = 'leser'`;
+  for (const [z, n] of [['TAG', 30], ['WOCHE', 26], ['MONAT', 24]] as const) {
+    const r = await admin('GET', `${D}/benutzer?zeitraum=${z}`);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.punkte.length, n, z);
+    const letzter = r.body.punkte.at(-1);
+    assert.equal(letzter.gesamt, anzahl, `${z}: letzter Punkt = alle Benutzer`);
+    assert.equal(letzter.mitglieder, mitglieder);
+  }
+  const t = (await admin('GET', `${D}/benutzer?zeitraum=TAG`)).body;
+  assert.equal(t.punkte[0].gesamt, 1, 'vor 30 Tagen nur der ältere Benutzer');
+  assert.match(t.punkte[0].label, /^\d{2}\.\d{2}\.$/);
+  const j = (await admin('GET', `${D}/benutzer?zeitraum=JAHR`)).body;
+  assert.ok(j.punkte.length >= 2 && /^\d{4}$/.test(j.punkte[0].label), JSON.stringify(j.punkte));
+  const g = (await admin('GET', `${D}/benutzer?zeitraum=GESAMT`)).body;
+  assert.equal(g.punkte[0].gesamt, 0, 'Gesamt beginnt vor dem ersten Benutzer');
+  assert.equal(g.punkte.at(-1).gesamt, anzahl);
+  assert.equal(g.gesamt, anzahl);
+  assert.match((await admin('GET', `${D}/benutzer?zeitraum=WOCHE`)).body.punkte[0].label, /^KW \d{1,2}\/\d{2}$/);
+  assert.equal((await admin('GET', `${D}/benutzer?zeitraum=XYZ`)).status, 400);
+});

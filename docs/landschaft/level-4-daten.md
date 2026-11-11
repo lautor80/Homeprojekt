@@ -14,8 +14,8 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `core.sessions` | ● |  |  |  |  |  |  |  | ● | ● | ● |  |
 | `core.settings` |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.sperren` |  |  | ● |  |  |  |  |  | ● |  |  | ● |
-| `core.user_roles` | ● |  | ● |  |  |  |  |  | ● | ● | ● | ● |
-| `core.users` | ● |  | ● | ● |  |  |  |  | ● | ● | ● | ● |
+| `core.user_roles` | ● |  | ● |  |  |  |  | ● | ● | ● | ● | ● |
+| `core.users` | ● |  | ● | ● |  |  |  | ● | ● | ● | ● | ● |
 | `tco.anlagen` |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.antrag_map` | ● |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.beitrag` | ● | ● |  |  |  |  |  |  |  |  | ● |  |

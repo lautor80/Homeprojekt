@@ -8,6 +8,7 @@ import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { ComboChart, LineChart, StackedBarChart } from './Chart';
 import { Arbeitsvorrat } from './Arbeitsvorrat';
+import { BenutzerVerlauf } from './BenutzerVerlauf';
 import { KpiZeilen } from './KpiZeilen';
 import { useNavigate } from 'react-router-dom';
 import { DetailDialog } from './DetailDialog';
@@ -151,6 +152,12 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
           {diagramm(b)}
         </Section>
       ))}
+      {/* registrierte Portal-Benutzer über die Zeit (#30) */}
+      {d && (
+        <Section title="Portal-Benutzer">
+          <BenutzerVerlauf neu={neu} />
+        </Section>
+      )}
       {detail && d && (
         <DetailDialog kpiKey={detail} jahr={d.jahr} edit={edit}
                       onClose={(geaendert) => { setDetail(null); if (geaendert) laden(jahr, auswahl); }} />

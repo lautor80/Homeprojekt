@@ -14,6 +14,7 @@ import {
   jahreAufbauen, jahreAuswahl, jahreText, JUG_GESAMT, JUG_TRAINER, type KeyText,
 } from './charts.js';
 import { arbeitsvorrat } from './arbeitsvorrat.js';
+import { BENUTZER_ZEITRAEUME, benutzerVerlauf, type BenutzerZeitraum } from './benutzer.js';
 import { geldkonten, kontoKey, liquiditaet, monatsverlauf } from './finanzen.js';
 import {
   bswVertragWechseln, collectClubhaus, collectFinanzen, collectHalle, collectJugend, collectMitglieder,
@@ -108,6 +109,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   /** Arbeitsvorrat: offene Vorgänge (je nach Berechtigung des Benutzers) */
   app.get('/dashboard/arbeitsvorrat', { preHandler: requireAuth(P_DASH.display) }, async (req) => arbeitsvorrat(DB, req));
+  /** registrierte Benutzer über die Zeit (#30): TAG (30 Tage), WOCHE (26), MONAT (24), JAHR, GESAMT */
+  app.get('/dashboard/benutzer', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
+    const q = z.object({ zeitraum: z.enum(Object.keys(BENUTZER_ZEITRAEUME) as [BenutzerZeitraum, ...BenutzerZeitraum[]]).default('MONAT') }).parse(req.query);
+    return benutzerVerlauf(DB, q.zeitraum, heute());
+  });
 
   /** Detail-Popup einer Kennzahl */
   app.get('/dashboard/detail/:key', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
