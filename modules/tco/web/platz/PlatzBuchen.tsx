@@ -427,8 +427,10 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen, nam
           const zu = min(p.zeit_bis);
           const ab = grenze(p);
           const slots: number[] = [];
-          if (!p.geschlossen) {
-            for (let m = auf; m + p.dauer_min <= zu; m += p.raster) {
+          // Platzverwaltung (admin mit onFrei): jede freie Rasterzeit anklickbar, ohne Mindestdauer und Vorlauf (#11)
+          const minDauer = admin ? p.raster : p.dauer_min;
+          if (!p.geschlossen && (!admin || onFrei)) {
+            for (let m = auf; m + minDauer <= zu; m += p.raster) {
               const frei = !p.belegt.some((b) => min(b.von) < m + p.raster && (min(b.bis) || 1440) > m);
               if (frei && m >= ab) slots.push(m);
             }
@@ -452,9 +454,9 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen, nam
                       </div>
                     )}
                   </>}
-              {!admin && slots.map((m) => (
+              {slots.map((m) => (
                 <button key={m} type="button" className="portal-pb__frei" style={{ top: y(m), height: h(p.raster) }}
-                        aria-label={`${p.name} ab ${hhmm(m)} Uhr buchen`} onClick={() => onFrei?.(p, hhmm(m))}>
+                        aria-label={`${p.name} ab ${hhmm(m)} Uhr ${admin ? 'eintragen' : 'buchen'}`} onClick={() => onFrei?.(p, hhmm(m))}>
                   <span>{hhmm(m)}</span>
                 </button>
               ))}

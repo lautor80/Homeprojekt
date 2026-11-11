@@ -15,7 +15,7 @@ import { useCan } from '@core/session';
 import { SperrHinweis, sperreSetzen, useSperre } from '@core/sperre';
 import { useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
-import { Kalender, hhmm, min, tagPlus, tagText, type Belegt, type TagPlatz } from './PlatzBuchen';
+import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type Belegt, type FestArt, type TagPlatz } from './PlatzBuchen';
 import { Zugaenge } from './Zugaenge';
 import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
@@ -359,6 +359,7 @@ function Belegung({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const [tage, setTage] = useState<number>(() => Number(localStorage.getItem('tco.platz.belegung.tage')) || 1);
   const [tagListe, setTagListe] = useState<{ datum: string; plaetze: TagPlatz[] }[] | null>(null);
   const [storno, setStorno] = useState<{ p: TagPlatz; b: Belegt; datum: string } | null>(null);
+  const [eintrag, setEintrag] = useState<{ p: TagPlatz; datum: string; von: string } | null>(null);
   const daten = useMemo(() => Array.from({ length: tage }, (_, i) => tagPlus(datum, i)), [datum, tage]);
   const laden = () => Promise.all(daten.map((d) => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${d}`))).then(setTagListe);
   useEffect(() => { setTagListe(null); laden(); }, [daten]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -393,19 +394,110 @@ function Belegung({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         </SegmentedButton>
         <ToolbarSpacer />
         <Text className="portal-muted">
-          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – Portalbuchung anklicken zum Stornieren
+          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – freie Zeit anklicken zum Eintragen, Portalbuchung zum Stornieren
         </Text>
       </Toolbar>
       {spalten && spalten.plaetze.length > 0 && (
         <Kalender admin tag={{ datum }} plaetze={spalten.plaetze}
+                  onFrei={(p, von) => { const z = spalten.zuDatum.get(p.id)!; setEintrag({ p: z.p, datum: z.datum, von }); }}
                   onEigen={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setStorno({ p: z.p, b, datum: z.datum }); }} />
       )}
       {spalten && !spalten.plaetze.length && <MessageStrip hideCloseButton>Keine aktiven Plätze.</MessageStrip>}
+      {eintrag && <EintragDialog {...eintrag} onClose={() => setEintrag(null)}
+                                 onFertig={(text) => { setEintrag(null); toast(text, 5000); laden(); }} />}
       <ConfirmDialog open={!!storno} danger title="Termin stornieren" confirmText="Stornieren"
                      text={storno ? `${storno.p.name}, ${tagText(storno.datum)} ${storno.b.von}–${storno.b.bis} Uhr (${storno.b.art}, ${storno.b.kunde}) stornieren?${storno.b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : ''}` : ''}
                      onCancel={() => setStorno(null)}
                      onConfirm={() => { const s = storno!; setStorno(null); if (!busy) aktion(() => api.post(`${PA}/storno`, { bid: s.b.bid, datum: s.datum }), laden); }} />
     </>
+  );
+}
+
+// ---------------------------------------------------------------- Eintragen aus der Belegung (#11)
+type EintragArt = 'MITGLIED' | FestArt;
+const BEZEICHNUNG_VORGABE: Record<FestArt, string> = { TRAINING: 'Jugendtraining', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
+
+/** Freie Zeit in der Belegung: Buchung für ein Mitglied / vereinsintern oder Training, Schnuppertraining, Sperrzeit, Veranstaltung */
+function EintragDialog({ p, datum, von, onClose, onFertig }: { p: TagPlatz; datum: string; von: string; onClose: () => void; onFertig: (text: string) => void }) {
+  const [art, setArt] = useState<EintragArt>('MITGLIED');
+  const ende = min(p.zeit_bis) || 1440;
+  const bisListe = useMemo(() => { const o: string[] = []; for (let m = min(von) + p.raster; m <= ende; m += p.raster) o.push(m === 1440 ? '24:00' : hhmm(m)); return o; }, [von, p.raster, ende]);
+  const [bis, setBis] = useState(() => bisListe.find((b) => min(b) - min(von) >= 60) ?? bisListe[0] ?? von);
+  const [mitglieder, setMitglieder] = useState<Mitglied[]>([]);
+  const [adrnr, setAdrnr] = useState<string | null>(null);
+  const [intern, setIntern] = useState('');
+  const [bezeichnung, setBezeichnung] = useState('');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.get<{ mitglieder: Mitglied[] }>(`${PA}/benutzer`).then((r) => setMitglieder(r.mitglieder)).catch((e) => setError(e.message)); }, []);
+  const fest = art !== 'MITGLIED';
+  const ok = fest ? !!bezeichnung.trim() : !!adrnr || !!intern.trim();
+  async function speichern() {
+    setBusy(true); setError(null);
+    try {
+      const basis = { platz_id: p.id, datum, von, bis, text: text.trim() || null };
+      const r = fest
+        ? await api.post<{ text: string }>(`${PA}/belegung`, { ...basis, art, bezeichnung: bezeichnung.trim() })
+        : await api.post<{ text: string }>(`${PA}/buchung`, { ...basis, adrnr, intern: adrnr ? null : intern.trim() || null });
+      onFertig(r.text);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return createPortal(
+    <Dialog open headerText={`${p.name} · ${tagText(datum)}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" disabled={busy || !ok} onClick={speichern}>{fest ? 'Eintragen' : 'Buchen'}</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      <div className="portal-mz__form">
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+        <FormGrid>
+          <FieldBox label="Eintragen als" required wide>
+            <Select style={{ width: '100%' }} onChange={(e) => {
+              const a = (e.detail.selectedOption as HTMLElement).dataset.a as EintragArt;
+              setArt(a);
+              if (a !== 'MITGLIED') setBezeichnung(BEZEICHNUNG_VORGABE[a]);
+            }}>
+              <Option data-a="MITGLIED" selected={art === 'MITGLIED'}>Buchung für ein Mitglied / eine Person</Option>
+              {(Object.keys(FEST_ARTEN) as FestArt[]).map((a) => <Option key={a} data-a={a} selected={art === a}>{FEST_ARTEN[a]}</Option>)}
+            </Select>
+          </FieldBox>
+          <FieldBox label="Von"><Text style={{ paddingTop: '0.5rem' }}>{von} Uhr</Text></FieldBox>
+          <FieldBox label="Bis" required>
+            <Select style={{ width: '100%' }} onChange={(e) => setBis((e.detail.selectedOption as HTMLElement).dataset.b!)}>
+              {bisListe.map((b) => <Option key={b} data-b={b} selected={b === bis}>{b} Uhr</Option>)}
+            </Select>
+          </FieldBox>
+          {!fest && (
+            <>
+              <FieldBox label="Mitglied" wide>
+                <AuswahlBox wert={adrnr ?? ''} placeholder="Mitglied suchen" max={50} style={{ width: '100%' }}
+                            eintraege={mitglieder.map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.adrnr }))} onWaehle={(k) => setAdrnr(k)} />
+              </FieldBox>
+              {!adrnr && (
+                <FieldBox label="oder Name (vereinsintern, ohne Rechnung)" wide>
+                  <Input style={{ width: '100%' }} value={intern} maxlength={60} placeholder="z. B. Medenspiel Herren 40, Gastspieler Müller" onInput={(e) => setIntern(e.target.value)} />
+                </FieldBox>
+              )}
+            </>
+          )}
+          {fest && (
+            <FieldBox label="Bezeichnung" required wide>
+              <Input style={{ width: '100%' }} value={bezeichnung} maxlength={80} onInput={(e) => setBezeichnung(e.target.value)} />
+            </FieldBox>
+          )}
+          <FieldBox label={fest ? 'Hinweis im Kalender (z. B. Gruppe, Trainer)' : 'Notiz'} wide>
+            <Input style={{ width: '100%' }} value={text} maxlength={200} onInput={(e) => setText(e.target.value)} />
+          </FieldBox>
+        </FormGrid>
+        <Text className="portal-muted portal-small">
+          {fest
+            ? 'Feste Belegung nur für diesen Termin – für alle mit Bezeichnung sichtbar; wiederkehrende Zeiten unter „Training & Sperrzeiten“.'
+            : 'Einzelbuchung wie die Serienbuchung „einmalig“: Mitglied mit Preis laut Hallenpreisen, vereinsintern ohne Rechnung. Abos über die Serienbuchung.'}
+        </Text>
+      </div>
+    </Dialog>,
+    document.body,
   );
 }
 
