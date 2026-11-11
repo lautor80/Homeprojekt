@@ -325,6 +325,13 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
 
 ### Regeln für Buchhaltungs-/Belegobjekte
 
+- **Ohne MwSt** (#121, Migration `006_steuerbefreiung.sql`): Ist *MwSt berechnen* aus, wählt man den Grund –
+  *Übergang der Steuerschuld auf den Leistungsempfänger (Reverse Charge)* oder *Umsatzsteuerfreier Transport in ein Drittland
+  gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG* (Feld `steuerbefreiung` = `RC` | `DRITTLAND`). Der Text steht wie bisher
+  unter dem Rechnungsbetrag (bei gemischten Sammelrechnungen je Grund eine Zeile) und als Befreiungsgrund in XRechnung/ZUGFeRD
+  (Kategorie AE bzw. E). Altaufträge ohne Wahl werden wie bisher aus dem Land des Rechnungsempfängers abgeleitet; mit MwSt wird
+  der Grund verworfen.
+
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
   übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.
   Dokumente können weiterhin zugeordnet und gelöst werden.

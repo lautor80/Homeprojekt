@@ -5,7 +5,7 @@ import { ciiXml, facturXXmp, FX_DATEI } from '../zugferd.js';
 import { rechnungsdaten } from '../xrechnung.js';
 import { C, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, titel } from './layout.js';
 import { fakturaAuftraege, firmaLesen, kaeufer } from '../data.js';
-import { addTage, condense, dat, eur, heute, kategorie, netto } from '../format.js';
+import { addTage, condense, dat, eur, heute, kategorie, netto, steuerGrund } from '../format.js';
 
 export interface RechnungPdf {
   faktura: string;
@@ -36,6 +36,8 @@ interface Pos {
   info: string;
   netto: number;
   kat: string;
+  /** ohne USt: steuerfreier Transport in ein Drittland (#121) */
+  drittland: boolean;
 }
 
 const ROW_H = 11.5;
@@ -75,7 +77,8 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
       datE: null,
       info: '',
       netto: 0,
-      kat: kategorie(a.steuerrelevant, buyer?.land),
+      kat: kategorie(a.steuerrelevant, buyer?.land, a.steuerbefreiung),
+      drittland: !a.steuerrelevant && a.steuerbefreiung === 'DRITTLAND',
     };
     if (s2.plzort_e) {
       p.nach = condense(`${s2.land_e ?? ''}${s2.land_e ? '-' : ''}${s2.plzort_e}`);
@@ -178,10 +181,9 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
   });
 
   // ---- Summen, Zahlung, Hinweis (bleiben zusammen) ----
-  const nichtS = pos.find((x) => x.kat !== 'S');
-  const katText = !nichtS ? '' :
-    nichtS.kat === 'AE' ? 'Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge)' :
-    nichtS.kat === 'O' ? 'Nicht im Inland steuerbare Leistung' : 'Steuerfreie Leistung';
+  // Grund ohne USt (#121): Reverse Charge bzw. Drittland-Transport – bei gemischter Sammelrechnung alle Gründe
+  const gruende = [...new Set(pos.filter((x) => x.kat !== 'S').map((x) => steuerGrund(x.kat, x.drittland)))];
+  const katText = gruende.join('\n');
 
   if (y + 80 > C.bottom) {
     p.newPage();
@@ -206,8 +208,8 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
   p.text(116, y + 3.4, 'Rechnungsbetrag', { size: 11, bold: true, color: 'FFFFFF' });
   p.text(190, y + 3.4, eur(brutto), { size: 11, bold: true, color: 'FFFFFF', align: 'R' });
   y += 10;
-  if (katText) {
-    p.text(190, y, katText, { size: 7.5, color: C.muted, align: 'R' });
+  for (const g of gruende) {
+    p.text(190, y, g, { size: 7.5, color: C.muted, align: 'R' });
     y += 4;
   }
 

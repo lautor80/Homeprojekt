@@ -42,12 +42,25 @@ export const EU = 'AT BE BG CY CZ DK EE ES FI FR GR HR HU IE IT LT LU LV MT NL P
  *   AE = Reverse Charge (Empfänger in einem anderen EU-Staat)
  *   O  = nicht im Inland steuerbar (Empfänger außerhalb der EU)
  */
-export function kategorie(steuerrelevant: boolean, land: string | null | undefined): 'S' | 'E' | 'AE' | 'O' {
+export function kategorie(steuerrelevant: boolean, land: string | null | undefined, befreiung?: string | null): 'S' | 'E' | 'AE' | 'O' {
   if (steuerrelevant) return 'S';
+  // gewählter Grund (#121) hat Vorrang vor der Ableitung aus dem Land
+  if (befreiung === 'RC') return 'AE';
+  if (befreiung === 'DRITTLAND') return 'E';
   if (!land || land === 'DE') return 'E';
   if (EU.includes(land.toUpperCase())) return 'AE';
   return 'O';
 }
+
+/** Grund ohne MwSt (#121) – Text auf Rechnung und in der E-Rechnung */
+export type Befreiung = 'RC' | 'DRITTLAND';
+export const BEFREIUNG_TEXT: Record<Befreiung, string> = {
+  RC: 'Übergang der Steuerschuld auf den Leistungsempfänger (Reverse Charge)',
+  DRITTLAND: 'Umsatzsteuerfreier Transport in ein Drittland gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG',
+};
+/** Befreiungsgrund je Steuerkategorie; E aus Drittland-Transport mit dem Paragraphen, sonst inländisch steuerfrei */
+export const steuerGrund = (kat: string, drittland = false) =>
+  kat === 'AE' ? BEFREIUNG_TEXT.RC : kat === 'O' ? 'Nicht im Inland steuerbare Leistung' : kat === 'E' ? (drittland ? BEFREIUNG_TEXT.DRITTLAND : 'Steuerfreie Leistung') : '';
 
 export const katText = (kat: string, satz: number) =>
   ({ S: `${String(satz).replace('.', ',')} %`, AE: '0 % (Reverse Charge)', O: 'nicht steuerbar', E: '0 % (steuerfrei)' })[kat] ?? kat;

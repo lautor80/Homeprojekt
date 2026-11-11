@@ -74,6 +74,8 @@ export interface Auftrag {
   faktura: string | null;
   fakturadatum: string | null;
   steuerrelevant: boolean;
+  /** ohne MwSt: RC = Reverse Charge, DRITTLAND = steuerfreier Transport in ein Drittland (#121); null = aus dem Land abgeleitet */
+  steuerbefreiung: 'RC' | 'DRITTLAND' | null;
   dok_fehlen: boolean;
   leistungsdatum: string | null;
 }
@@ -156,6 +158,7 @@ function mapAuftrag(r: Record<string, unknown>): Auftrag {
     faktura: r.faktura as string | null,
     fakturadatum: isoDate(r.fakturadatum),
     steuerrelevant: !!r.steuerrelevant,
+    steuerbefreiung: (r.steuerbefreiung as 'RC' | 'DRITTLAND' | null) ?? null,
     dok_fehlen: !!r.dok_fehlen,
     leistungsdatum: isoDate(r.leistungsdatum),
   };

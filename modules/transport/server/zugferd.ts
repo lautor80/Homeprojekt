@@ -1,4 +1,4 @@
-import { condense } from './format.js';
+import { condense, steuerGrund } from './format.js';
 import { amt, el, esc, formatieren, rechnungsdaten, type Rechnungsdaten } from './xrechnung.js';
 
 /**
@@ -15,16 +15,14 @@ const datum102 = (iso: string) => `<udt:DateTimeString format="102">${iso.replac
 export interface ZugferdXml { xml: string; hinweise: string[]; daten: Rechnungsdaten }
 
 export function ciiXml(d: Rechnungsdaten): string {
-  const { firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, fakturadatum, katSatz } = d;
+  const { firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, fakturadatum, katSatz, drittland } = d;
   const E = 'currencyID="EUR"';
   const steuerXml = (kat: string, mitBetraegen?: { basis: number; steuer: number }) => {
     const x = ['<ram:ApplicableTradeTax>'];
     if (mitBetraegen) x.push(el('ram:CalculatedAmount', amt(mitBetraegen.steuer)));
     x.push(el('ram:TypeCode', 'VAT'));
     if (mitBetraegen) {
-      if (kat === 'AE') x.push(el('ram:ExemptionReason', 'Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge)'));
-      if (kat === 'O') x.push(el('ram:ExemptionReason', 'Nicht im Inland steuerbare Leistung'));
-      if (kat === 'E') x.push(el('ram:ExemptionReason', 'Steuerfreie Leistung'));
+      if (kat !== 'S') x.push(el('ram:ExemptionReason', steuerGrund(kat, drittland)));
       x.push(el('ram:BasisAmount', amt(mitBetraegen.basis)));
     }
     x.push(el('ram:CategoryCode', kat));

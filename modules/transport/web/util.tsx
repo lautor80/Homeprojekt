@@ -22,6 +22,8 @@ export interface Auftrag {
   kunde: number | null; unternehmer: number | null; rechnungsempfaenger: number | null;
   ordernummer: string | null; frachtpreis_ek: number; frachtpreis_vk: number; rgbetrag?: number;
   steuerrelevant: boolean; dok_fehlen: boolean;
+  /** ohne MwSt (#121): RC = Reverse Charge, DRITTLAND = steuerfreier Transport in ein Drittland; null = aus dem Land abgeleitet (Altdaten) */
+  steuerbefreiung?: 'RC' | 'DRITTLAND' | null;
   kennzeichen: string | null; fahrzeugtyp: string | null; ladegut: string | null; gewicht: string | null; lademeter: number | string | null;
   ladeweise: string | null; palettentausch: string | null; ladenummer: string | null; besonderheiten: string | null;
   faktura?: string | null; fakturadatum?: string | null;
