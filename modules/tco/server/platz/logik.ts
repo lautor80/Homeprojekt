@@ -598,7 +598,7 @@ export async function verwaltungStornieren(tx: Db, bid: string, datum: string): 
 }
 
 /** Buchung aus der Verwaltung: vereinsintern (ohne Rechnung) bleibt ohne Preis, sonst Preis laut Hallenpreisen */
-const istIntern = (b: { assigned: string; preis: unknown }) => b.assigned === 'X' && Number(b.preis ?? 0) === 0;
+const istIntern = (b: Record<string, unknown>) => b.assigned === 'X' && Number(b.preis ?? 0) === 0;
 
 async function verwaltungsSlot(tx: Db, e: BuchungEingabe, ohneBid?: string): Promise<Slot> {
   const s = await slotAus(tx, e);
