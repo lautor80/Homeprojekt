@@ -24,7 +24,7 @@ interface Antrag {
     eintritt: string; satzung: boolean; datenschutz: boolean; bildrechte: boolean; kuendigung?: boolean; bemerkung: string | null };
   kontoinhaber: string; iban: string; bic: string | null; bank: string | null; sepa_am: string | null;
   bearbeitet_am: string | null; bearbeitet_von: string | null; bemerkung: string | null; hinweise: string[];
-  ergebnis: { mitglieder: { adrnr: string; mitglnrn: string; name: string }[]; mandat: string; benutzer: { name: string; username: string; hinweis: string }[] } | null;
+  ergebnis: { mitglieder: { adrnr: string; mitglnrn: string; name: string; bestand?: boolean }[]; mandat: string; benutzer: { name: string; username: string; hinweis: string }[]; hinweise?: string[] } | null;
 }
 interface Ergebnis {
   text: string; startkennwoerter: { name: string; username: string; startkennwort: string | null }[];
@@ -106,7 +106,7 @@ export function Mitgliedsantraege() {
           {a.status !== 'EINGANG' && (
             <Text className="portal-muted" style={{ display: 'block', marginTop: '0.5rem' }}>
               {a.status === 'UEBERNOMMEN' && a.ergebnis
-                ? `Übernommen: ${a.ergebnis.mitglieder.map((m) => `${m.name} (Nr. ${m.mitglnrn})`).join(', ')}${a.ergebnis.mandat ? ` · Mandat ${a.ergebnis.mandat}` : ''} · Benutzer: ${a.ergebnis.benutzer.map((b) => b.username || b.hinweis).join(', ')}`
+                ? `Übernommen: ${a.ergebnis.mitglieder.map((m) => `${m.name} (Nr. ${m.mitglnrn}${m.bestand ? ', Vertragsänderung' : ''})`).join(', ')}${a.ergebnis.mandat ? ` · Mandat ${a.ergebnis.mandat}` : ''}${a.ergebnis.benutzer.length ? ` · Benutzer: ${a.ergebnis.benutzer.map((b) => b.username || b.hinweis).join(', ')}` : ''}${a.ergebnis.hinweise?.length ? ` · ${a.ergebnis.hinweise.join(' ')}` : ''}`
                 : `Abgelehnt${a.bemerkung ? `: ${a.bemerkung}` : ''}`} – {a.bearbeitet_von}{a.bearbeitet_am ? `, ${zeit(a.bearbeitet_am)}` : ''}
             </Text>
           )}
@@ -223,7 +223,11 @@ function LinkDialog({ nummer, link, text, onClose }: { nummer: string; link: str
 }
 
 interface Beitragsart { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; familie: boolean }
-interface Kandidat { adrnr: string; name: string; geburtsdatum: string | null; ort: string; email: string; schnupper: string | null }
+interface Kandidat {
+  adrnr: string; name: string; geburtsdatum: string | null; ort: string; email: string; schnupper: string | null;
+  /** aktives Mitglied (Mitgliedsnummer) – Angebot = Vertragsänderung; Zahler, wenn nicht Selbstzahler; laufende Vertragsarten */
+  mitglied: string | null; zahler: string | null; vertraege: string[];
+}
 interface APerson { adrnr: string | null; neu: boolean; anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; art: string; training: string[]; info?: Kandidat }
 const leerePerson = (): APerson => ({ adrnr: null, neu: false, anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', art: '', training: [] });
 const heuteIso = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
@@ -243,11 +247,12 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const [error, setError] = useState<string | null>(null);
   const [ergebnis, setErgebnis] = useState<{ nummer: string; link: string; text: string } | null>(null);
   useEffect(() => { api.get<{ beitragsarten: Beitragsart[] }>(`${TCO}/antrag`).then((i) => setArten(i.beitragsarten)).catch((e) => setError(e.message)); }, []);
-  // alle Personen ohne Mitgliedschaft einmal laden – gesucht wird im Feld (schnell, ohne Neuladen beim Tippen)
+  // alle Personen (ohne Mitgliedschaft und aktive Mitglieder) einmal laden – gesucht wird im Feld (schnell, ohne Neuladen beim Tippen)
   useEffect(() => { api.get<Kandidat[]>(`${A}/angebote/personen`).then(setKandidaten).catch((e) => setError(e.message)); }, []);
   const setP = (i: number, x: Partial<APerson>) => setPersonen((l) => l.map((p, j) => (j === i ? { ...p, ...x } : p)));
   const kandidatenEintraege = useMemo(() => kandidaten.map((k) => ({
-    key: k.adrnr, text: k.name, zusatz: [k.geburtsdatum ? dat(k.geburtsdatum) : '', k.ort, k.schnupper ? `Schnupper ${k.schnupper}` : ''].filter(Boolean).join(' · '),
+    key: k.adrnr, text: k.name,
+    zusatz: [k.geburtsdatum ? dat(k.geburtsdatum) : '', k.ort, k.mitglied ? `Mitglied ${k.mitglied}` : '', k.zahler ? `zahlt: ${k.zahler}` : '', k.schnupper ? `Schnupper ${k.schnupper}` : ''].filter(Boolean).join(' · '),
   })), [kandidaten]);
   const familie = !!arten.find((b) => b.art === personen[0].art)?.familie;
   const mitgliedschaften = arten.filter((b) => b.kategorie === 'MITGLIEDSCHAFT');
@@ -286,7 +291,8 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
         <MessageStrip hideCloseButton>
           Der Antrag wird vorbereitet und als persönlicher Link verschickt: keine Daten in der E-Mail, Öffnen nur mit dem Geburtsdatum, gültig 30 Tage, einmal verwendbar.
-          Die Person ergänzt IBAN/SEPA-Mandat und bestätigt – der Antrag landet danach wie gewohnt im Eingang. Personen aus dem Stamm (ohne Mitgliedschaft) werden bei der Übernahme Mitglied, ohne Dublette.
+          Die Person ergänzt IBAN/SEPA-Mandat und bestätigt – der Antrag landet danach wie gewohnt im Eingang. Personen aus dem Stamm (ohne Mitgliedschaft) werden bei der Übernahme Mitglied, ohne Dublette; bei aktiven Mitgliedern werden nur die neuen Verträge ergänzt.
+          Bankverbindung „aus dem Stamm“: wer nicht selbst zahlt, bekommt die des abweichenden Zahlers (Kontoinhaber = Zahler).
         </MessageStrip>
         {personen.map((p, i) => (
           <div key={i} style={{ padding: '0.6rem', border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
@@ -299,14 +305,24 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
             </div>
             {!p.neu ? (
               <>
-                <Label>Person aus dem Mitgliederstamm (ohne Mitgliedschaft, z. B. Interessent, Schnupperer)</Label>
+                <Label>Person aus dem Mitgliederstamm (Interessent, Schnupperer oder aktives Mitglied)</Label>
                 <AuswahlBox wert={p.adrnr ?? ''} placeholder="Name oder Ort eingeben" style={{ width: '100%' }} max={50}
                             eintraege={kandidatenEintraege}
                             onWaehle={(k) => {
                               const info = kandidaten.find((x) => x.adrnr === k);
-                              setP(i, { adrnr: k, info });
+                              // aktive Mitglieder: laufende Verträge vorbelegen (Mitgliedschaft beim Antragsteller, Trainingseinheiten)
+                              const lauf = info?.vertraege ?? [];
+                              const ms = i === 0 ? lauf.find((x) => mitgliedschaften.some((b) => b.art === x)) : undefined;
+                              const tr = lauf.filter((x) => trainings.some((b) => b.art === x)).slice(0, 2);
+                              setP(i, { adrnr: k, info, ...(info?.mitglied ? { art: ms ?? personen[i].art, training: tr } : {}) });
                               if (i === 0 && info?.email && !email) setEmail(info.email);
                             }} />
+                {p.info?.mitglied && (
+                  <Text className="portal-muted portal-small" style={{ display: 'block' }}>
+                    Mitglied Nr. {p.info.mitglied} – Vertragsänderung: laufende Verträge sind vorbelegt, bei der Übernahme werden nur neue Verträge ergänzt.
+                    {i === 0 && (p.info.zahler ? ` Bankverbindung vom Zahler ${p.info.zahler} (nicht Selbstzahler).` : ' Bankverbindung aus dem Stamm.')}
+                  </Text>
+                )}
                 {p.info && !p.info.geburtsdatum && <Text className="portal-muted portal-small">Kein Geburtsdatum im Stamm – der Link öffnet dann ohne zweite Abfrage.</Text>}
               </>
             ) : (
@@ -343,7 +359,7 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
           <div><Label>Kontoinhaber/in (optional)</Label><Input style={{ width: '100%' }} value={kontoinhaber} onInput={(e) => setKontoinhaber(e.target.value)} /></div>
-          <div><Label>IBAN (optional – sonst aus dem Stamm bzw. von der Person)</Label><Input style={{ width: '100%' }} value={iban} onInput={(e) => setIban(e.target.value)} /></div>
+          <div><Label>IBAN (optional – sonst aus dem Stamm, bei abweichendem Zahler dessen; bzw. von der Person)</Label><Input style={{ width: '100%' }} value={iban} onInput={(e) => setIban(e.target.value)} /></div>
         </div>
         <Label>Hinweis an die Person (erscheint im Formular)</Label>
         <Input style={{ width: '100%' }} value={hinweis} maxlength={300} placeholder="z. B. Gruppe montags 17 Uhr bei Trainer Tom" onInput={(e) => setHinweis(e.target.value)} />

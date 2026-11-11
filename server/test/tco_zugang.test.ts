@@ -19,10 +19,11 @@ const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
-function client() {
+/** remoteAddress: eigene Verbindung (z. B. wegen des Antragslimits je IP) */
+function client(remoteAddress?: string) {
   let cookie = '';
   return async (method: string, path: string, payload?: unknown) => {
-    const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie, 'x-portal-request': '1' } });
+    const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie, 'x-portal-request': '1' }, ...(remoteAddress ? { remoteAddress } : {}) });
     const set = res.headers['set-cookie'];
     if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
     return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
@@ -800,10 +801,7 @@ test('Vertragsangebot (#12): vorbelegter Antrag per Link, Öffnen mit Geburtsdat
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.map((k: any) => k.adrnr), ['0000000777']);
   r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen?suche=maria`);
-  assert.equal(r.body.length, 0, 'aktive Mitglieder nicht auswählbar');
-  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000501', art: '5' }], eintritt: heute() });
-  assert.equal(r.status, 400);
-  assert.match(r.body.message, /bereits Mitglied/);
+  assert.deepEqual(r.body.map((k: any) => [k.adrnr, k.mitglied]), [['0000000501', '501']], 'aktive Mitglieder auswählbar (Vertragsänderung)');
   r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000777', art: '90' }], eintritt: heute() });
   assert.match(r.body.message, /Mitgliedschaft wählen/);
 
@@ -908,4 +906,53 @@ test('Vertragsangebot (#12): alles übernommen inkl. Bankverbindung, nur bestät
   });
   assert.equal(r.status, 400);
   assert.match(r.body.message, /keine Bankverbindung/);
+});
+
+test('Vertragsangebot (#12): aktives Mitglied mit abweichendem Zahler – Bankverbindung vom Zahler, Übernahme ergänzt nur neue Verträge', async () => {
+  const gast = client('10.12.0.1');
+  // Vater zahlt für den Sohn (Sohn kein Selbstzahler, eigene IBAN leer); ein ausgetretenes Mitglied
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, anrede, vorname, nachname, geburtsdatum, strasse, plz, ort, email, eintritt, iban1, bic1, mandatsrefenz) values
+            ('0000000791', '791', 'Herr', 'Gerd', 'Zahlvater', '1970-07-07', 'Ringweg 9', '66649', 'Oberthal', 'gerd@example.org', '2010-01-01', 'DE02120300000000202051', 'BYLADEM1001', '791791')`;
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, anrede, vorname, nachname, geburtsdatum, strasse, plz, ort, email, eintritt, adrnrkih, abwkontoinh) values
+            ('0000000792', '792', 'Herr', 'Paul', 'Zahlkind', '2010-03-03', 'Ringweg 9', '66649', 'Oberthal', 'gerd@example.org', '2018-01-01', '0000000791', 'Herr Gerd Zahlvater')`;
+  await sql`insert into tco.mitglieder (adrnr, mitglnrn, vorname, nachname, eintritt, austritt) values ('0000000793', '793', 'Eva', 'Zahlweg', '2000-01-01', '2020-12-31')`;
+  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, mitglnr, sollstellung, vertragbegin, betrag) values
+            ('0000000792', '1', '3', 'Jugendliche', '792', 'jährlich', '2018-01-01', 60)`;
+  let r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen?suche=zahl`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const paul = r.body.find((k: any) => k.adrnr === '0000000792');
+  assert.deepEqual([paul.mitglied, paul.zahler, paul.vertraege], ['792', 'Gerd Zahlvater', ['3']]);
+  assert.ok(!r.body.some((k: any) => k.adrnr === '0000000793'), 'Ausgetretene nicht');
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000793', art: '5' }], eintritt: heute(), email: 'eva@example.org' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /ausgetreten/);
+
+  // Angebot: Jugendbeitrag bleibt, dazu Jugendtraining – Bankverbindung vom Zahler
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000792', art: '3', training: ['90'] }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const tok = token(r.body.link, 'angebot');
+  const [va] = await sql`select daten from tco.vertragsangebote where nummer = ${r.body.nummer}`;
+  assert.deepEqual(va.daten.bank, { kontoinhaber: 'Gerd Zahlvater', iban: 'DE02120300000000202051', bic: 'BYLADEM1001', zahler_adrnr: '0000000791' });
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: '2010-03-03' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.daten.bank, { kontoinhaber: 'Gerd Zahlvater', iban: 'DE02 •••• •••• 2051' });
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Herr', vorname: 'Paul', nachname: 'Zahlkind', geburtsdatum: '2010-03-03', art: '3', training: ['90'] }],
+    strasse: 'Ringweg 9', plz: '66649', ort: 'Oberthal', email: 'gerd@example.org', eintritt: heute(), erziehungsberechtigt: 'Gerd Zahlvater',
+    satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, angebot: tok, bank: { sepa: true, ausAngebot: true },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${T}/mitgliedsantraege`);
+  const ma = r.body.find((x: any) => x.status === 'EINGANG' && x.daten.personen[0].vorname === 'Paul');
+  assert.ok(ma.hinweise.some((h: string) => /bestehendes Mitglied Nr\. 792/.test(h)), JSON.stringify(ma.hinweise));
+  r = await admin('POST', `${T}/mitgliedsantraege/${ma.id}/uebernehmen`, { mail: false, unterlagen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.mitglieder, [{ adrnr: '0000000792', mitglnrn: '792', name: 'Paul Zahlkind', bestand: true }]);
+  assert.equal(r.body.mandat, '791791', 'Mandat des Zahlers');
+  assert.ok(r.body.hinweise.some((h: string) => /Jugendliche läuft bereits/.test(h)), JSON.stringify(r.body.hinweise));
+  assert.ok(!r.body.hinweise.some((h: string) => /weicht vom Stamm ab/.test(h)), 'gleiche Bankverbindung');
+  const v = await sql`select art from tco.vertraege where adrnr = '0000000792' order by vertragnr`;
+  assert.deepEqual(v.map((x) => x.art), ['3', '90'], 'nur das Training ergänzt');
+  const [m] = await sql`select adrnrkih, mitglnrn, iban1 from tco.mitglieder where adrnr = '0000000792'`;
+  assert.deepEqual([m.adrnrkih, m.mitglnrn, m.iban1], ['0000000791', '792', null], 'Stamm/Zahler unverändert');
 });
