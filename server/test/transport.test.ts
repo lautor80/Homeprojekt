@@ -360,3 +360,26 @@ test('Wertelisten: mehrere Werte per Copy & Paste anlegen (#121)', async () => {
   r = await call('POST', `${T}/werte/masse`, { typ: 'LADEWEISE', zeilen: [{ text: 'x'.repeat(61) }] });
   assert.equal(r.status, 400);
 });
+
+test('Fakturierte Aufträge: nur „Dokumente fehlen“ und Besonderheiten änderbar (#121)', async () => {
+  const a = (await call('GET', `${T}/auftraege/2025_0041`)).body;
+  assert.ok(a.faktura, 'Auftrag ist fakturiert');
+  const r = await call('PUT', `${T}/auftraege/2025_0041`, {
+    ...a, kennzeichen: 'GEÄNDERT', frachtpreis_ek: 999, dok_fehlen: !a.dok_fehlen, besonderheiten: 'CMR fehlt noch',
+    stops: a.stops.map((s: any) => ({ ...s, firma: 'Andere Firma' })),
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const b = (await call('GET', `${T}/auftraege/2025_0041`)).body;
+  assert.equal(b.kennzeichen, a.kennzeichen);
+  assert.equal(b.frachtpreis_ek, a.frachtpreis_ek);
+  assert.equal(b.rgbetrag, a.rgbetrag);
+  assert.equal(b.stops[0].firma, a.stops[0].firma);
+  assert.equal(b.dok_fehlen, !a.dok_fehlen);
+  assert.equal(b.besonderheiten, 'CMR fehlt noch');
+
+  // offener Auftrag bleibt voll änderbar
+  const o = (await call('GET', `${T}/auftraege/2026_0007`)).body;
+  assert.ok(!o.faktura);
+  assert.equal((await call('PUT', `${T}/auftraege/2026_0007`, { ...o, kennzeichen: 'SB-NEU 1' })).status, 200);
+  assert.equal((await call('GET', `${T}/auftraege/2026_0007`)).body.kennzeichen, 'SB-NEU 1');
+});

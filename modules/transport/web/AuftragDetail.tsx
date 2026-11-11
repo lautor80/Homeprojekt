@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectPage, ObjectStatus,
-  ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, Select, Text, TextArea, Title,
+  ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, Select, Switch, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -27,14 +27,15 @@ function F({ label, required, children }: { label: string; required?: boolean; c
 function Spalte({ titel, children }: { titel?: string; children: ReactNode }) {
   return (
     <div style={{ minWidth: 0 }}>
-      {titel && <Title level="H5" style={{ marginBottom: '0.75rem', paddingLeft: '0.25rem' }}>{titel}</Title>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(8rem, 35%) 1fr', gap: '0.5rem 0.75rem' }}>{children}</div>
+      {titel && <Title level="H5" style={{ marginBottom: '0.5rem', paddingLeft: '0.25rem' }}>{titel}</Title>}
+      {/* Beschriftung so breit wie nötig, Feld daneben – auch auf sehr breiten Bildschirmen nah beieinander */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(7rem, max-content) minmax(0, 1fr)', gap: '0.5rem 0.75rem', maxWidth: '36rem' }}>{children}</div>
     </div>
   );
 }
 function Spalten({ n, children }: { n: number; children: ReactNode }) {
   // Einzug, damit Spaltentitel (Auftrag, Absender …) nicht am Kartenrand kleben
-  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${n === 3 ? 300 : 380}px, 1fr))`, gap: '1.5rem 2.5rem', padding: '0.5rem 1rem 0.25rem' }}>{children}</div>;
+  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${n === 3 ? 300 : 380}px, 1fr))`, gap: '1.25rem 2.5rem', padding: '0.25rem 1rem' }}>{children}</div>;
 }
 
 const full = { width: '100%' };
@@ -56,7 +57,7 @@ export function AuftragDetail() {
   const can = useCan();
   const darfAendern = can('transport.auftraege:edit');
   const sperre = useSperre('AUFTRAG', isNew ? null : nr, darfAendern, { bezeichnung: `Auftrag ${nr ?? ''}` });
-  const mayEdit = darfAendern && sperre.eigen;
+  const darfBearbeiten = darfAendern && sperre.eigen;
 
   const [a, setA] = useState<Auftrag | null>(null);
   const [vorschau, setVorschau] = useState<string>('');
@@ -100,6 +101,10 @@ export function AuftragDetail() {
   const traegerSumme = useMemo(() => (a?.traeger ?? []).reduce((s, t) => s + t.menge * t.preis, 0), [a]);
 
   if (!a) return error ? <MessageStrip design="Negative">{error}</MessageStrip> : <BusyIndicator active style={{ margin: '2rem' }} />;
+
+  // Fakturierte Aufträge (#121): gesperrt bis auf „Dokumente fehlen“, Besonderheiten und Dokumente
+  const fakturiert = !isNew && !!a.faktura;
+  const mayEdit = darfBearbeiten && !fakturiert;
 
   const set = <K extends keyof Auftrag>(k: K, v: Auftrag[K]) => setA({ ...a, [k]: v });
   const setStop = (i: number, f: keyof Stop, v: string | null) => {
@@ -259,7 +264,7 @@ export function AuftragDetail() {
             subHeader={<Text>{unter}</Text>}
             actionsBar={
               <FlexBox style={{ gap: '0.5rem' }} alignItems="Center">
-                {mayEdit && <Button design="Emphasized" icon="save" loading={busy} onClick={save}>Speichern</Button>}
+                {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={save}>Speichern</Button>}
                 <MenuButton text="Drucken" icon="print" items={[
                   { text: 'Transportauftrag', onClick: () => drucken('T') },
                   { text: 'Lieferschein', onClick: () => drucken('L') },
@@ -272,8 +277,8 @@ export function AuftragDetail() {
           />
         }
       >
-        <ObjectPageSection id="beteiligte" titleText="Beteiligte">
-          <ObjectPageSubSection id="beteiligte-sub" titleText="Beteiligte" hideTitleText
+        <ObjectPageSection id="beteiligte" titleText="Beteiligte" hideTitleText>
+          <ObjectPageSubSection id="beteiligte-sub" titleText="Beteiligte"
             actions={can('transport.kontakte:edit') ? <>
               <Button icon="add-contact" design="Transparent" onClick={() => setKontakt('NEU')}>Kontakt anlegen</Button>
               <Button icon="edit" design="Transparent" onClick={() => kontakteAuftrag.length ? setKontakt('EDIT') : toast('Diesem Auftrag ist noch kein Kontakt zugeordnet.')}>Kontakt bearbeiten</Button>
@@ -282,7 +287,8 @@ export function AuftragDetail() {
             {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
             {!!a.faktura && (
               <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
-                Der Auftrag ist bereits fakturiert. Änderungen werden in der Änderungshistorie protokolliert.
+                Der Auftrag ist fakturiert ({a.faktura} vom {dat(a.fakturadatum)}) und kann nicht mehr geändert werden –
+                ausgenommen „Dokumente fehlen“, die Besonderheiten und die Zuordnung von Dokumenten.
               </MessageStrip>
             )}
             <Spalten n={3}>
@@ -293,8 +299,8 @@ export function AuftragDetail() {
           </ObjectPageSubSection>
         </ObjectPageSection>
 
-        <ObjectPageSection id="auftragsdaten" titleText="Auftragsdaten">
-          <ObjectPageSubSection id="auftragsdaten-sub" titleText="Auftragsdaten" hideTitleText>
+        <ObjectPageSection id="auftragsdaten" titleText="Auftragsdaten" hideTitleText>
+          <ObjectPageSubSection id="auftragsdaten-sub" titleText="Auftragsdaten">
             <Spalten n={3}>
               <Spalte titel="Auftrag">
                 <F label="Auftragsnummer"><Text>{isNew ? `${vorschau} (vorläufig)` : nr}</Text></F>
@@ -328,14 +334,16 @@ export function AuftragDetail() {
                     ? <ObjectStatus state="Positive">{a.faktura} vom {dat(a.fakturadatum)}</ObjectStatus>
                     : <ObjectStatus state="Critical">offen</ObjectStatus>}
                 </F>
-                <F label="Dokumente fehlen"><CheckBox checked={a.dok_fehlen} readonly={!mayEdit} onChange={(e) => set('dok_fehlen', e.target.checked)} /></F>
+                <F label="Dokumente fehlen">
+                  <Switch textOn="Ja" textOff="Nein" checked={a.dok_fehlen} disabled={!darfBearbeiten} onChange={(e) => set('dok_fehlen', e.target.checked)} />
+                </F>
               </Spalte>
             </Spalten>
           </ObjectPageSubSection>
         </ObjectPageSection>
 
         {showStops ? (
-          <ObjectPageSection id="stops" titleText="Stops">
+          <ObjectPageSection id="stops" titleText="Stops" hideTitleText>
             {[0, 1].map((i) => (
               <ObjectPageSubSection key={i} id={`stop${i + 1}`} titleText={i === 0 ? 'Erster Stop' : 'Zweiter Stop'}
                 actions={mayEdit ? <Button icon="copy" design="Transparent" onClick={() => kundeUebernehmen(i)}>Kundenadresse als Absender übernehmen</Button> : undefined}>
@@ -346,8 +354,8 @@ export function AuftragDetail() {
         ) : <></>}
 
         {showTraeger ? (
-          <ObjectPageSection id="traeger" titleText="Holzträger">
-            <ObjectPageSubSection id="traeger-sub" titleText="Trägerbestellung"
+          <ObjectPageSection id="traeger" titleText="Holzträger" hideTitleText>
+            <ObjectPageSubSection id="traeger-sub" titleText="Holzträger"
               actions={<FlexBox alignItems="Center" style={{ gap: '0.5rem' }}><Label>Summe:</Label><Text><b>{betrag(traegerSumme)} EUR</b></Text></FlexBox>}>
               <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', minWidth: '40rem', borderCollapse: 'collapse' }}>
@@ -379,16 +387,16 @@ export function AuftragDetail() {
         ) : <></>}
 
         {!isNew && nr ? (
-          <ObjectPageSection id="dokumente" titleText="Dokumente">
-            <ObjectPageSubSection id="dokumente-sub" titleText="Dokumente in Paperless" hideTitleText>
-              <AuftragDokumente nr={nr} edit={mayEdit} />
+          <ObjectPageSection id="dokumente" titleText="Dokumente" hideTitleText>
+            <ObjectPageSubSection id="dokumente-sub" titleText="Dokumente">
+              <AuftragDokumente nr={nr} edit={darfBearbeiten} />
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}
 
-        <ObjectPageSection id="besonderheiten" titleText="Besonderheiten">
-          <ObjectPageSubSection id="besonderheiten-sub" titleText="Besonderheiten" hideTitleText>
-            <TextArea rows={8} growing style={full} value={a.besonderheiten ?? ''} readonly={!mayEdit}
+        <ObjectPageSection id="besonderheiten" titleText="Besonderheiten" hideTitleText>
+          <ObjectPageSubSection id="besonderheiten-sub" titleText="Besonderheiten">
+            <TextArea rows={8} growing style={full} value={a.besonderheiten ?? ''} readonly={!darfBearbeiten}
                       onInput={(e) => set('besonderheiten', e.target.value)} />
           </ObjectPageSubSection>
         </ObjectPageSection>
