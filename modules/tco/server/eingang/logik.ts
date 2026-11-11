@@ -107,15 +107,23 @@ export function korrespondentFinden(liste: Korrespondent[], adresse: string): Ko
   return null;
 }
 
+/**
+ * Mehrere Werte je Bedingung (ODER innerhalb der Bedingung): bei ist/enthält/beginnt mit/endet mit mit „;“ oder Zeilenumbruch
+ * getrennt, z. B. Absender-Adresse enthält „a@x.de; b@y.de“ – trifft zu, wenn einer passt; verneint: wenn keiner passt.
+ * So lässt sich „(Absender A oder B) und Betreff …“ mit der UND-Verknüpfung abbilden.
+ */
+export const werteTeilen = (wert: string) => wert.split(/[;\n]+/).map(norm).filter(Boolean);
+
 export function bedingungPasst(b: Bedingung, k: Kontext): boolean {
   const ist = norm(k[b.feld]);
   const soll = norm(b.wert);
+  const alle = werteTeilen(b.wert);
   let ok: boolean;
   switch (b.op) {
-    case 'ist': ok = ist === soll; break;
-    case 'enthaelt': ok = soll !== '' && ist.includes(soll); break;
-    case 'beginnt': ok = soll !== '' && ist.startsWith(soll); break;
-    case 'endet': ok = soll !== '' && ist.endsWith(soll); break;
+    case 'ist': ok = alle.length > 1 ? alle.includes(ist) : ist === soll; break;
+    case 'enthaelt': ok = alle.some((x) => ist.includes(x)); break;
+    case 'beginnt': ok = alle.some((x) => ist.startsWith(x)); break;
+    case 'endet': ok = alle.some((x) => ist.endsWith(x)); break;
     case 'liste': ok = listeTeilen(b.wert).includes(ist); break;
     case 'muster':
       try { ok = b.wert.trim() !== '' && new RegExp(b.wert, 'i').test(k[b.feld] ?? ''); } catch { ok = false; }

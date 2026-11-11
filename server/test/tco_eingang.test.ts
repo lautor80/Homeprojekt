@@ -143,6 +143,14 @@ test('Regelwerk: Bedingungen, Auswahl nach Priorität, Extraktion, Korrespondent
   };
   assert.equal(L.regelPasst(r, k), true);
   assert.equal(L.regelPasst({ ...r, bedingungen: [] }, k), false, 'ohne Bedingungen passt nichts');
+  // mehrere Werte je Bedingung (ODER), kombiniert mit UND
+  const km = { von: 'buchhaltung@firma-b.de', betreff: 'Rechnung 4711' } as Record<string, string>;
+  const mehr = (op: string, wert: string, nicht = false) => ({ ...r, bedingungen: [{ feld: 'von' as const, op: op as 'enthaelt', wert, nicht }, { feld: 'betreff' as const, op: 'beginnt' as const, wert: 'Rechnung' }] });
+  assert.equal(L.regelPasst(mehr('enthaelt', 'firma-a.de; firma-b.de'), km as never), true);
+  assert.equal(L.regelPasst(mehr('ist', 'x@firma-a.de;\nbuchhaltung@firma-b.de'), km as never), true);
+  assert.equal(L.regelPasst(mehr('enthaelt', 'firma-a.de; firma-c.de'), km as never), false);
+  assert.equal(L.regelPasst(mehr('enthaelt', 'firma-a.de; firma-b.de', true), km as never), false, 'verneint: keiner darf passen');
+  assert.equal(L.regelPasst(mehr('endet', '@firma-a.de;@firma-b.de'), km as never), true);
   assert.equal(L.waehlen([{ ...r, id: 2, prioritaet: 5, status: 'aus' }, { ...r, id: 3, prioritaet: 20 }, r], k, 'anhang')?.id, 1);
   assert.equal(L.waehlen([r], k, 'mail'), null);
   assert.deepEqual(L.extrahieren(r.extraktion, k), { felder: { rgnr: 'RE-4711', x: '' }, fehlend: ['x'] });
