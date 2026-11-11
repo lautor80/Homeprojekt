@@ -792,6 +792,10 @@ test('Platzverwaltung → Belegung: Termin ändern und kopieren (#11)', async ()
   let liste = await belegt(d);
   const buchung = liste.find((b) => b.von === '09:00');
   assert.deepEqual([buchung.portal, buchung.abgerechnet, buchung.kunde], [true, false, 'ANNA SPIELERIN']);
+  // Detail (#11): Benutzer der Buchung und Zeitpunkt/angelegt von
+  assert.match(buchung.angelegt.benutzer, /\(anna\)$/, JSON.stringify(buchung.angelegt));
+  assert.match(buchung.angelegt.um, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.equal(buchung.angelegt.von, 'admin');
   const schnupper = liste.find((b) => b.von === '12:00');
   assert.equal(schnupper.fest.einmalig, true);
   assert.equal(schnupper.fest.portal, true);
