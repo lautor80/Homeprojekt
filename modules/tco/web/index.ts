@@ -14,6 +14,7 @@ import { Mitglieder } from './mitglieder/Mitglieder';
 import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
 import { Gruppen } from './gruppen/Gruppen';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
+import { Praesentationen } from './praesentation/Praesentationen';
 import { Analyse } from './analyse/Analyse';
 import { Teilnehmer } from './teilnehmer/Teilnehmer';
 import { Upload } from './upload/Upload';
@@ -70,6 +71,7 @@ const mod: WebModule = {
       text: 'TC Oberthal',
       children: [
         { text: 'Vereinsübersicht', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
+        { text: 'Präsentationen', icon: 'ppt-attachment', path: '/tco/praesentationen', permission: 'tco.praesentation:display' },
         { text: 'Vereinskalender', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
         {
           text: 'Einstellungen', icon: 'action-settings',
@@ -160,6 +162,7 @@ const mod: WebModule = {
     { path: '/tco/fi', component: FiBelege, permission: 'tco.fi:display' },
     { path: '/tco/stammdaten', component: TcoStammdaten, permission: 'tco.stammdaten:edit' },
     { path: '/tco/uebersicht', component: DashboardPage, permission: 'tco.dashboard:display' },
+    { path: '/tco/praesentationen', component: Praesentationen, permission: 'tco.praesentation:display' },
     { path: '/tco/analyse', component: Analyse, permission: 'tco.analyse:display' },
     { path: '/tco/teilnehmer', component: Teilnehmer, permission: 'tco.teilnehmer:display' },
     { path: '/tco/upload', component: Upload, permission: 'tco.upload:execute' },

@@ -12,7 +12,7 @@ flowchart LR
   end
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
-      B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Vereinskalender"]
+      B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
       B_Einstellungen["<b>Einstellungen</b><br/>Stammdaten<br/>Kontenstamm<br/>Produkte"]
       B_Mitglieder["<b>Mitglieder</b><br/>Meine Mitgliedschaft<br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining<br/>Meine Trainingszeiten"]
@@ -70,6 +70,7 @@ flowchart LR
 | Bereich | App | Pfad | Berechtigung | Zweck |
 |---|---|---|---|---|
 | Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle |
+| Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
 | Einstellungen | Stammdaten | `/tco/stammdaten` | `tco.stammdaten:edit` | Verein, Anbindungen, SAP-Übernahme |
 | Einstellungen | Kontenstamm | `/tco/konten` | `tco.konten:display` | Konten, Verwendung je Jahr, Anfangsbestände |
@@ -181,6 +182,7 @@ flowchart LR
 | konten | 5 |
 | mitglieder | 54 |
 | platz | 54 |
+| praesentation | 11 |
 | produkte | 6 |
 | schnupper | 6 |
 | soll | 10 |

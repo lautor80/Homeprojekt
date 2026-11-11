@@ -9,6 +9,7 @@ import { useCan } from '@core/session';
 import { ComboChart, LineChart, StackedBarChart } from './Chart';
 import { Arbeitsvorrat } from './Arbeitsvorrat';
 import { BenutzerVerlauf } from './BenutzerVerlauf';
+import { ZurPraesentation } from '../praesentation/ZurPraesentation';
 import { KpiZeilen } from './KpiZeilen';
 import { useNavigate } from 'react-router-dom';
 import { DetailDialog } from './DetailDialog';
@@ -146,7 +147,8 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
       })()}
       {!d && laedt && <BusyIndicator active style={{ display: 'block', width: '100%', marginTop: '2rem' }} />}
       {d && d.bereiche.map((b) => (
-        <Section key={b.key} title={b.title} status={laedt ? <BusyIndicator active size="S" style={{ display: 'block' }} /> : undefined}>
+        <Section key={b.key} title={b.title} status={laedt ? <BusyIndicator active size="S" style={{ display: 'block' }} /> : undefined}
+                 actions={<ZurPraesentation bereich={b.title} />}>
           {/* Mitglieder-Kennzahlen stehen zeilenweise oben – hier nur die Diagramme */}
           {b.key !== 'MITGLIEDER' && <div className="portal-kpitiles">{b.kpis.map(kpiRender)}</div>}
           {diagramm(b)}
@@ -154,7 +156,7 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
       ))}
       {/* registrierte Portal-Benutzer über die Zeit (#30) */}
       {d && (
-        <Section title="Portal-Benutzer">
+        <Section title="Portal-Benutzer" actions={<ZurPraesentation bereich="Portal" />}>
           <BenutzerVerlauf neu={neu} />
         </Section>
       )}

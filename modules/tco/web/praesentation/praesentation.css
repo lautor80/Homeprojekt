@@ -1,0 +1,27 @@
+/* App „Präsentationen“ (#146) */
+.portal-pr-raster { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .portal-pr-raster { grid-template-columns: minmax(0, 1fr); } }
+.portal-pr-gruppe { margin-bottom: 0.75rem; }
+.portal-pr-gruppe ui5-title { margin: 0.25rem 0; }
+.portal-pr-baustein { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; padding: 0.125rem 0.25rem; border-radius: 0.375rem; }
+.portal-pr-baustein:hover { background: var(--sapList_Hover_Background, #f5f6f7); }
+.portal-pr-baustein ui5-icon { color: var(--sapContent_IconColor); width: 1rem; height: 1rem; }
+.portal-pr-baustein__text { min-width: 0; }
+.portal-pr-kopf { display: grid; grid-template-columns: 8rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem; margin-bottom: 0.75rem; }
+@media (max-width: 600px) { .portal-pr-kopf { grid-template-columns: minmax(0, 1fr); } }
+.portal-pr-korb { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-pr-korb__eintrag { border: 1px solid var(--sapList_BorderColor, #e5e5e5); border-radius: 0.5rem; padding: 0.375rem 0.5rem 0.5rem; background: var(--sapList_Background, #fff); }
+.portal-pr-korb__kopf { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr) auto auto auto; align-items: center; gap: 0.25rem; }
+.portal-pr-korb__kopf > ui5-icon { color: var(--sapContent_IconColor); width: 1rem; height: 1rem; }
+.portal-pr-korb__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal-pr-korb__felder { display: grid; gap: 0.375rem; margin-top: 0.25rem; }
+.portal-pr-korb__felder ui5-input, .portal-pr-korb__felder ui5-textarea { width: 100%; }
+.portal-pr-vorlagen { display: flex; flex-direction: column; gap: 0.375rem; }
+.portal-pr-vorlage { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto auto; align-items: center; gap: 0.5rem; padding: 0.5rem; cursor: pointer;
+  border: 1px solid var(--sapList_BorderColor, #e5e5e5); border-radius: 0.5rem; }
+.portal-pr-vorlage--aktiv { border-color: var(--sapSelectedColor, #0064d9); background: var(--sapList_SelectionBackgroundColor, #ebf8ff); }
+.portal-pr-vorlage__text { display: flex; flex-direction: column; min-width: 0; }
+.portal-pr-platzhalter { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.portal-pr-feld { display: grid; gap: 0.125rem; margin-top: 0.5rem; }
+.portal-pr-feld ui5-textarea { width: 100%; }
+.portal-pr-feld-liste { display: grid; gap: 0.5rem; }
