@@ -341,3 +341,22 @@ test('Import Neuaufbau (#121): Tabellen leeren, neu anlegen, Nummernkreise aus Z
   assert.match(r.body.text, /Neu angelegt: 0 Aufträge/);
   assert.doesNotMatch(r.body.text, /Nummernkreise/);
 });
+
+test('Wertelisten: mehrere Werte per Copy & Paste anlegen (#121)', async () => {
+  const vorher = (await call('GET', `${T}/werte`)).body.LADEWEISE as { key: string; text: string }[];
+  const vorhanden = vorher[0]?.text ?? 'Palette';
+  let r = await call('POST', `${T}/werte/masse`, {
+    typ: 'LADEWEISE',
+    zeilen: [{ text: 'Seitenladung' }, { key: '050', text: 'Hecklader' }, { text: vorhanden.toUpperCase() }, { text: 'Kran' }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.neu, vorher.some((w) => w.text.toLowerCase() === vorhanden.toLowerCase()) ? 3 : 4);
+  const nachher = (await call('GET', `${T}/werte`)).body.LADEWEISE as { key: string; text: string }[];
+  assert.equal(nachher.find((w) => w.text === 'Hecklader')?.key, '050');
+  assert.equal(nachher.find((w) => w.text === 'Kran')?.key, '051', 'fortlaufend nach dem höchsten Schlüssel');
+  // zweites Einfügen: alles schon da
+  r = await call('POST', `${T}/werte/masse`, { typ: 'LADEWEISE', zeilen: [{ text: 'kran' }, { key: '050', text: 'Anders' }] });
+  assert.deepEqual(r.body, { neu: 0, uebersprungen: 2 });
+  r = await call('POST', `${T}/werte/masse`, { typ: 'LADEWEISE', zeilen: [{ text: 'x'.repeat(61) }] });
+  assert.equal(r.status, 400);
+});

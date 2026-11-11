@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Bar, Button, CheckBox, DatePicker, FlexBox, Input, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
+  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -8,6 +8,8 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
+import { Datenimport } from './Datenimport';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { T, type Werte } from './util';
 import { AblageFlaeche } from '@core/ablage';
@@ -195,6 +197,7 @@ function ProdukteTab() {
 function WerteTab() {
   const [werte, setWerte] = useState<Werte | null>(null);
   const [neu, setNeu] = useState<Record<string, string>>({});
+  const [einfuegen, setEinfuegen] = useState<keyof Werte | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sperre = useSperre('WERT', '*', true, { bezeichnung: 'Wertelisten Transport' });
   const lade = () => api.get<Werte>(`${T}/werte`).then(setWerte).catch((e) => setError(e.message));
@@ -224,7 +227,10 @@ function WerteTab() {
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
       <div style={raster('22rem')}>
         {(Object.keys(WERTE_TITEL) as (keyof Werte)[]).map((typ) => (
-          <Section key={typ} title={WERTE_TITEL[typ]} count={werte[typ].length}>
+          <Section key={typ} title={WERTE_TITEL[typ]} count={werte[typ].length}
+                   actions={<Button icon="paste" design="Transparent" disabled={!sperre.eigen} tooltip="Mehrere Werte als Text einfügen (Copy & Paste)"
+                                    onClick={() => setEinfuegen(typ)}>Einfügen</Button>}>
+            {!werte[typ].length && <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.5rem' }}>Noch keine Werte – einzeln anlegen oder über „Einfügen“ mehrere auf einmal.</Text>}
             {werte[typ].map((w) => (
               <WertZeile key={w.key} gesperrt={!sperre.eigen} schluessel={w.key} text={w.text} aktiv={w.aktiv ?? true} onSave={(t, a) => aendern(typ, w.key, t, a)} />
             ))}
@@ -235,7 +241,92 @@ function WerteTab() {
           </Section>
         ))}
       </div>
+      <WerteEinfuegen typ={einfuegen} vorhanden={einfuegen ? werte[einfuegen] : []} onClose={() => setEinfuegen(null)}
+                      onDone={(text) => { setEinfuegen(null); toast(text); lade(); }} />
     </>
+  );
+}
+
+/**
+ * Mehrere Listenwerte per Copy & Paste: eine Zeile je Wert. „Schlüssel;Text“ oder „Schlüssel⇥Text“
+ * (z. B. zwei Spalten aus Excel) übernimmt den Schlüssel, sonst wird er fortlaufend vergeben.
+ */
+export function werteAusText(text: string): { key?: string; text: string }[] {
+  const out: { key?: string; text: string }[] = [];
+  const gesehen = new Set<string>();
+  for (const roh of text.split(/\r?\n/)) {
+    const z = roh.trim();
+    if (!z) continue;
+    const m = /^([^\t;]{1,10})\s*[\t;]\s*(.+)$/.exec(z);
+    const e = m && !/\s/.test(m[1].trim()) ? { key: m[1].trim(), text: m[2].trim() } : { text: z.replace(/\t+/g, ' ') };
+    const k = e.text.toLowerCase();
+    if (gesehen.has(k)) continue;
+    gesehen.add(k);
+    out.push(e);
+  }
+  return out;
+}
+
+function WerteEinfuegen({ typ, vorhanden, onClose, onDone }: {
+  typ: keyof Werte | null; vorhanden: { key: string; text: string }[]; onClose: () => void; onDone: (text: string) => void;
+}) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (typ) { setText(''); setError(null); } }, [typ]);
+  const zeilen = werteAusText(text);
+  const texte = new Set(vorhanden.map((v) => v.text.toLowerCase()));
+  const schluessel = new Set(vorhanden.map((v) => v.key));
+  const doppelt = (z: { key?: string; text: string }) => texte.has(z.text.toLowerCase()) || (!!z.key && schluessel.has(z.key));
+  const zuLang = zeilen.filter((z) => z.text.length > 60).length;
+  const neu = zeilen.filter((z) => !doppelt(z)).length;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.post<{ neu: number; uebersprungen: number }>(`${T}/werte/masse`, { typ, zeilen });
+      onDone(`${r.neu} Wert(e) angelegt${r.uebersprungen ? `, ${r.uebersprungen} bereits vorhanden` : ''}.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!typ} headerText={`${typ ? WERTE_TITEL[typ] : ''}: Werte einfügen`} onClose={onClose} style={{ width: 'min(44rem, 95vw)' }}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="paste" loading={busy} disabled={!neu || zuLang > 0} onClick={save}>{neu ? `${neu} Wert(e) anlegen` : 'Anlegen'}</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
+      <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
+        Eine Zeile je Wert, z. B. aus Excel oder einer E-Mail kopiert. Mit „Schlüssel;Text“ oder zwei Spalten (Tabulator)
+        wird der Schlüssel übernommen, sonst fortlaufend vergeben. Vorhandene Werte werden übersprungen.
+      </Text>
+      <TextArea rows={10} growing growingMaxRows={20} style={{ width: '100%' }} value={text} placeholder={'Sattelzug\nKühlzug\n…'}
+                onInput={(e) => setText(e.target.value)} />
+      {zeilen.length > 0 && (
+        <div style={{ marginTop: '0.75rem', maxHeight: '14rem', overflowY: 'auto', border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              {zeilen.map((z, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                  <td style={{ padding: '0.35rem 0.75rem', width: '6rem', color: 'var(--sapContent_LabelColor)' }}>{z.key ?? 'neu'}</td>
+                  <td style={{ padding: '0.35rem 0.5rem' }}>{z.text}</td>
+                  <td style={{ padding: '0.35rem 0.75rem', width: '9rem', textAlign: 'right' }}>
+                    {z.text.length > 60 ? <ObjectStatus state="Negative">zu lang (max. 60)</ObjectStatus>
+                      : doppelt(z) ? <ObjectStatus state="None">schon vorhanden</ObjectStatus>
+                        : <ObjectStatus state="Positive">wird angelegt</ObjectStatus>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -289,20 +380,31 @@ function MailtexteTab() {
 }
 
 export function Stammdaten() {
-  const [tab, setTab] = useState('FIRMA');
+  const can = useCan();
+  const darfImport = can('transport.import:execute');
+  // Reiter per Adresse aufrufbar, z. B. /transport/stammdaten?tab=IMPORT
+  const [tab, setTabState] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'FIRMA');
+  const setTab = (t: string) => {
+    setTabState(t);
+    const u = new URL(window.location.href);
+    if (t === 'FIRMA') u.searchParams.delete('tab'); else u.searchParams.set('tab', t);
+    window.history.replaceState(null, '', u);
+  };
   return (
-    <AppPage title="Stammdaten Transport" subtitle="Firmendaten, Produkte, Wertelisten und E-Mail-Texte">
+    <AppPage title="Stammdaten Transport" subtitle={`Firmendaten, Produkte, Wertelisten, E-Mail-Texte${darfImport ? ' und Datenimport aus SAP' : ''}`}>
       <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)} style={{ marginBottom: '1rem' }}>
         <Tab data-key="FIRMA" text="Firmendaten" selected={tab === 'FIRMA'} />
         <Tab data-key="PROD" text="Produkte" selected={tab === 'PROD'} />
         <Tab data-key="WERTE" text="Wertelisten" selected={tab === 'WERTE'} />
         <Tab data-key="MAIL" text="E-Mail-Texte" selected={tab === 'MAIL'} />
+        {darfImport && <Tab data-key="IMPORT" text="Datenimport" icon="upload" selected={tab === 'IMPORT'} />}
       </TabContainer>
       <div style={BREITE}>
         {tab === 'FIRMA' && <FirmaTab />}
         {tab === 'PROD' && <ProdukteTab />}
         {tab === 'WERTE' && <WerteTab />}
         {tab === 'MAIL' && <MailtexteTab />}
+        {tab === 'IMPORT' && darfImport && <Datenimport />}
       </div>
     </AppPage>
   );

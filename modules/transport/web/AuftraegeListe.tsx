@@ -10,7 +10,7 @@ import { AppPage } from '@core/components/AppPage';
 import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
-import { DocsDialog, ImportDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
+import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
 
 // Filter und Auswahl bleiben beim Wechsel ins Detail und zurück erhalten
@@ -144,7 +144,6 @@ export function AuftraegeListe() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [mails, setMails] = useState<{ art: 'T' | 'L' | 'R'; rows: MailRow[] } | null>(null);
   const [xr, setXr] = useState<XRes | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [info, setInfo] = useState<{ title: string; text: string } | null>(null);
   const treeRef = useRef<{ toggleAllRowsExpanded?: (v: boolean) => void } | null>(null);
   const rahmen = useRestHoehe([ansicht, firmaFehlt, !!error]);
@@ -409,13 +408,10 @@ export function AuftraegeListe() {
           <Button icon="expand-all" design="Transparent" onClick={() => setBaumEbene('auf')} />
           <Button icon="collapse-all" design="Transparent" onClick={() => setBaumEbene('zu')} />
         </>}
-        {(can('transport.auftraege:edit') || can('transport.import:execute')) && (
+        {can('transport.auftraege:edit') && (
           <MenuButton text="Neu" icon="create" design="Emphasized" items={[
-            ...(can('transport.auftraege:edit') ? [
-              { text: 'Frachtauftrag', icon: 'shipping-status', onClick: () => navigate('/transport/auftraege/neu/F') },
-              { text: 'Holzträgerauftrag', icon: 'product', onClick: () => navigate('/transport/auftraege/neu/H') },
-            ] : []),
-            ...(can('transport.import:execute') ? [{ text: 'Import aus SAP-Export …', icon: 'upload', onClick: () => setImportOpen(true) }] : []),
+            { text: 'Frachtauftrag', icon: 'shipping-status', onClick: () => navigate('/transport/auftraege/neu/F') },
+            { text: 'Holzträgerauftrag', icon: 'product', onClick: () => navigate('/transport/auftraege/neu/H') },
           ]} />
         )}
         {can('transport.rechnungen:create') && <>
@@ -491,8 +487,6 @@ export function AuftraegeListe() {
       <DocsDialog docs={docs} onClose={() => setDocs(null)} />
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
-      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)}
-                    onDone={async (text) => { setImportOpen(false); await ladeInit(); await lade(); setInfo({ title: 'Import abgeschlossen', text }); }} />
       <InfoDialog title={info?.title ?? ''} text={info?.text ?? null} onClose={() => setInfo(null)} />
     </AppPage>
   );
