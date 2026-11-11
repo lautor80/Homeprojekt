@@ -61,6 +61,10 @@ export async function emlErzeugen(m: { an: string; betreff: string; text: string
   return new Blob([teile.join('\r\n')], { type: 'message/rfc822' });
 }
 
+/** Browser öffnet .eml nach dem Download selbst (vom Benutzer bestätigt, je Browser gemerkt) */
+const AUTO = 'euroflex.eml.autoOeffnen';
+const autoOffen = () => { try { return localStorage.getItem(AUTO) === '1'; } catch { return false; } };
+
 const groesse = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
 /** Vorschlag je Vorlage: passende Dateien vorauswählen (Name enthält Transportauftrag/Lieferschein/Rechnung) */
 const passt = (art: Art, name: string) => (art === 'T' ? /transport/i : art === 'L' ? /liefer/i : art === 'R' ? /rechnung/i : /^$/).test(name);
@@ -75,6 +79,11 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [anleitung, setAnleitung] = useState(false);
+  const [eingerichtet, setEingerichtet] = useState(false);
+  // Teilen mit Dateien (Windows-Freigabe → Outlook/Mail) – nur wenn der Browser es kann
+  const teilenMoeglich = typeof navigator !== 'undefined' && !!navigator.canShare
+    && navigator.canShare({ files: [new File(['x'], 'test.pdf', { type: 'application/pdf' })] });
 
   useEffect(() => {
     dateienImOrdner(nr).then((d) => setOrdner((d?.dateien ?? []).filter((f) => !/\.eml$/i.test(f.name))
@@ -102,21 +111,25 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
 
   const umschalten = (k: string, an_: boolean) => setWahl((w) => { const n = new Set(w); if (an_) n.add(k); else n.delete(k); return n; });
 
+  async function dateienLaden() {
+    const dateien: { name: string; daten: Blob }[] = [];
+    for (const x of anhaenge.filter((y) => wahl.has(y.key))) {
+      if (x.quelle === 'ORDNER') {
+        const f = await dateiLesen(nr, x.name);
+        if (!f) throw new Error(`${x.name} ist im Ablageordner nicht mehr vorhanden.`);
+        dateien.push({ name: x.name, daten: f });
+      } else {
+        const res = await fetch(`${T}/auftraege/${nr}/dokumente/${x.docId}/datei`, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error(`${x.name} konnte nicht aus Paperless geladen werden (${res.status}).`);
+        dateien.push({ name: x.name, daten: await res.blob() });
+      }
+    }
+    return dateien;
+  }
   async function entwurf() {
     setBusy(true); setError(null);
     try {
-      const dateien: { name: string; daten: Blob }[] = [];
-      for (const x of anhaenge.filter((y) => wahl.has(y.key))) {
-        if (x.quelle === 'ORDNER') {
-          const f = await dateiLesen(nr, x.name);
-          if (!f) throw new Error(`${x.name} ist im Ablageordner nicht mehr vorhanden.`);
-          dateien.push({ name: x.name, daten: f });
-        } else {
-          const res = await fetch(`${T}/auftraege/${nr}/dokumente/${x.docId}/datei`, { credentials: 'same-origin' });
-          if (!res.ok) throw new Error(`${x.name} konnte nicht aus Paperless geladen werden (${res.status}).`);
-          dateien.push({ name: x.name, daten: await res.blob() });
-        }
-      }
+      const dateien = await dateienLaden();
       const eml = await emlErzeugen({ an: an.trim(), betreff, text, anhaenge: dateien });
       const url = URL.createObjectURL(eml);
       const a = document.createElement('a');
@@ -124,18 +137,54 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
       a.download = `${betreff.replace(/[\\/:*?"<>|]/g, '_').trim() || `Auftrag_${nr}`}.eml`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      toast(`E-Mail-Entwurf mit ${dateien.length} Anhang/Anhängen erstellt – die Datei öffnet sich im Mailprogramm (sonst in den Downloads anklicken).`, 8000);
-      onClose();
+      toast(`E-Mail-Entwurf mit ${dateien.length} Anhang/Anhängen erstellt.`, 5000);
+      // solange der Browser .eml nicht automatisch öffnet: einmal zeigen, wie man das einstellt
+      if (autoOffen()) onClose(); else setAnleitung(true);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  /** Windows-Teilen (Chrome/Edge): Anhänge direkt an Outlook bzw. die Mail-App übergeben – Empfänger kommt in die Zwischenablage */
+  async function teilen() {
+    setBusy(true); setError(null);
+    try {
+      const files = (await dateienLaden()).map((d) => new File([d.daten], d.name, { type: d.daten.type || mime(d.name) }));
+      if (an.trim()) await navigator.clipboard?.writeText(an.trim()).catch(() => undefined);
+      await navigator.share({ title: betreff, text, files });
+      if (an.trim()) toast(`Empfänger ${an.trim()} ist in der Zwischenablage – im Mailprogramm mit Strg+V einfügen.`, 8000);
+      onClose();
+    } catch (e) {
+      if ((e as DOMException).name !== 'AbortError') setError((e as Error).message);
+    } finally { setBusy(false); }
   }
   const mailto = () => {
     window.location.href = `mailto:${an.trim()}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text.replace(/\r?\n/g, '\r\n'))}`;
   };
 
+  if (anleitung) {
+    return createPortal(
+      <Dialog open headerText="E-Mail-Entwurf öffnen" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+              footer={<Bar endContent={<Button design="Emphasized" onClick={() => { if (eingerichtet) { try { localStorage.setItem(AUTO, '1'); } catch { /* egal */ } } onClose(); }}>Fertig</Button>} />}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <Text>
+            Der Entwurf wurde als E-Mail-Datei heruntergeladen. Aus Sicherheitsgründen darf eine Webseite keine Programme auf dem PC starten –
+            der Browser kann die Datei aber <b>automatisch öffnen</b>, wenn Sie das einmal einstellen:
+          </Text>
+          <ol style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <li><Text>Downloads öffnen: <b>Strg+J</b> (oder das Download-Symbol oben rechts).</Text></li>
+            <li><Text>Beim Eintrag der <b>.eml</b>-Datei auf <b>⋯</b> bzw. Rechtsklick.</Text></li>
+            <li><Text><b>„Dateien dieses Typs immer öffnen“</b> wählen (Chrome und Edge).</Text></li>
+          </ol>
+          <Text>Ab dann öffnet sich jeder Entwurf direkt im Mailprogramm (Outlook mit „Senden“). Jetzt einfach die Datei in den Downloads anklicken.</Text>
+          <CheckBox text="Ist eingerichtet – diesen Hinweis nicht mehr anzeigen" checked={eingerichtet} onChange={(e) => setEingerichtet(e.target.checked)} />
+        </div>
+      </Dialog>,
+      document.body,
+    );
+  }
   return createPortal(
     <Dialog open headerText={`E-Mail zum Auftrag ${nr}`} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={<>
               <Button design="Emphasized" icon="email" loading={busy} disabled={busy || !betreff.trim()} onClick={entwurf}>Entwurf öffnen</Button>
+              {teilenMoeglich && <Button icon="share-2" disabled={busy || !betreff.trim()} tooltip="Windows-Teilen: Anhänge direkt an Outlook bzw. Mail übergeben" onClick={teilen}>Teilen…</Button>}
               <Button design="Transparent" disabled={busy} tooltip="Ohne Anhänge direkt im Mailprogramm" onClick={mailto}>Ohne Anhänge</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -166,9 +215,9 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
           </div>
         )}
         <Text className="portal-muted portal-small">
-          „Entwurf öffnen“ erstellt eine E-Mail-Datei (.eml) mit den gewählten Anhängen; sie öffnet sich im Standard-Mailprogramm als neuer Entwurf
-          (Outlook: direkt mit „Senden“). Öffnet der Browser sie nicht selbst, die Datei in den Downloads anklicken – in Chrome/Edge lässt sich
-          „Dateien dieses Typs immer öffnen“ einstellen.
+          „Entwurf öffnen“ erstellt eine E-Mail-Datei (.eml) mit den gewählten Anhängen, die das Standard-Mailprogramm als neuen Entwurf öffnet
+          (Outlook: direkt mit „Senden“) – {autoOffen() ? 'der Browser öffnet sie automatisch.' : 'einmal „Dateien dieses Typs immer öffnen“ einstellen, dann öffnet sie sich direkt.'}
+          {teilenMoeglich ? ' „Teilen…“ übergibt Text und Anhänge über die Windows-Freigabe direkt an Outlook bzw. Mail (Empfänger per Strg+V einfügen).' : ''}
         </Text>
       </div>
     </Dialog>,
