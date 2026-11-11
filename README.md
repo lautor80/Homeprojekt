@@ -280,6 +280,9 @@ Berechtigungen: `transport.auftraege:display|edit`, `transport.rechnungen:create
 
 ## Modul `tco` (TC Oberthal – Vereinsportal)
 
+System- und Prozesslandschaft in vier Ebenen (Systeme, Prozesse, Prozessschritte, Datenbank): [docs/landschaft](docs/landschaft/README.md) –
+wird mit `npm run doku:landschaft` aus dem Code erzeugt und nach jedem Push auf `main` automatisch aktualisiert (#118).
+
 Portierung der abap2UI5-Apps des Vereinsportals. Einschalten mit `PORTAL_MODULES=tco`.
 Das Datenmodell (Schema `tco`) enthält alle Vereinstabellen aus SAP; alle Apps der SAP-Navigation (`Z2UI5_TCO_MAINPAGE_V2`) sind übernommen.
 

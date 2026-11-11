@@ -1,0 +1,225 @@
+{
+  "$hinweis": "Von Hand gepflegte Prozessbeschreibung (Level 2 und 3). Alles andere in docs/landschaft/ erzeugt scripts/landschaft.mjs aus dem Code. Jeder Verweis (route, recht, app, workflow) wird beim Erzeugen gegen den Code geprüft.",
+  "akteure": {
+    "OEF": "Öffentlichkeit (ohne Anmeldung)",
+    "MG": "Mitglied",
+    "HN": "Hallennutzer",
+    "TR": "Trainer",
+    "TD": "Thekendienst",
+    "KW": "Kassenwart",
+    "VS": "Vorstand / Fachverantwortliche",
+    "HW": "Hallenwart",
+    "SYS": "System / zeitgesteuerter Job"
+  },
+  "systeme": {
+    "portal": "Vereinsportal (Modul tco)",
+    "n8n": "n8n-Workflow",
+    "paperless": "Paperless-ngx",
+    "ep3": "EP3-bs Hallenbuchung",
+    "mailserver": "Mailserver (IMAP/SMTP)",
+    "nextcloud": "Nextcloud (WebDAV)",
+    "bank": "Bank (Dateiaustausch)",
+    "openai": "OpenAI API",
+    "liganu": "liga.nu",
+    "person": "manuell / außerhalb des Portals"
+  },
+  "prozesse": [
+    {
+      "id": "P1",
+      "ebene": 2,
+      "name": "Mitglied werden",
+      "bereich": "Mitglieder",
+      "ausloeser": "Online-Antrag oder Schnuppertraining",
+      "ergebnis": "aktives Mitglied mit Vertrag, SEPA-Mandat und Portalzugang",
+      "schritte": [
+        { "text": "Schnuppertraining anmelden (optional)", "akteur": "OEF", "system": "portal", "route": "POST /schnupper", "app": "/schnuppertraining" },
+        { "text": "Trainer betreut, Beitrittslink senden", "akteur": "TR", "system": "portal", "route": "POST /schnuppertraining/:adrnr/beitrittslink", "recht": "tco.schnupper:edit", "app": "/tco/schnuppertraining" },
+        { "text": "Online-Antrag mit SEPA-Mandat", "akteur": "OEF", "system": "portal", "route": "POST /antrag", "app": "/beitritt" },
+        { "text": "Eingangsbestätigung per Mail", "akteur": "SYS", "system": "n8n", "workflow": "TCO Mailversand" },
+        { "text": "Prüfen (Dubletten) und übernehmen", "akteur": "KW", "system": "portal", "route": "POST /mitgliedsantraege/:id/uebernehmen", "recht": "tco.antraege:edit", "app": "/tco/mitgliedsantraege" },
+        { "text": "Gruppen per Regelwerk zuordnen", "akteur": "SYS", "system": "portal", "route": "POST /gruppen/regeln/anwenden", "recht": "tco.gruppen:edit", "app": "/tco/gruppen" },
+        { "text": "Einladung annehmen, eigene Daten pflegen", "akteur": "MG", "system": "portal", "route": "POST /einladung", "app": "/tco/meine-mitgliedschaft", "recht": "tco.meinedaten:edit" }
+      ]
+    },
+    {
+      "id": "P2",
+      "ebene": 2,
+      "name": "Beiträge einziehen",
+      "bereich": "Finanzen",
+      "ausloeser": "Sollmonat (Turnus der Verträge)",
+      "ergebnis": "Beiträge auf den Erlöskonten gebucht",
+      "schritte": [
+        { "text": "Beitragsstamm pflegen", "akteur": "KW", "system": "portal", "route": "POST /beitraege", "recht": "tco.beitraege:edit", "app": "/tco/beitraege" },
+        { "text": "Vorschlag je Sollmonat", "akteur": "KW", "system": "portal", "route": "POST /soll/vorschlag", "recht": "tco.soll:edit", "app": "/tco/sollstellung" },
+        { "text": "Lauf erzeugen: SEPA pain.008", "akteur": "KW", "system": "portal", "route": "POST /soll/laeufe", "recht": "tco.soll:edit" },
+        { "text": "PDF-Protokoll nach Paperless", "akteur": "KW", "system": "paperless", "route": "POST /soll/laeufe/:id/paperless" },
+        { "text": "Datei bei der Bank einreichen", "akteur": "KW", "system": "bank" },
+        { "text": "Bankimport: Sammelgutschrift splitten", "akteur": "KW", "system": "portal", "route": "POST /fi/bank/lesen", "recht": "tco.fi:buchen", "app": "/tco/fi" },
+        { "text": "Buchen auf Erlöskonten", "akteur": "KW", "system": "portal", "route": "POST /fi/buchen", "recht": "tco.fi:buchen" }
+      ]
+    },
+    {
+      "id": "P3",
+      "ebene": 2,
+      "name": "Halle buchen und abrechnen",
+      "bereich": "Tennishalle",
+      "ausloeser": "Buchung im Portal oder in EP3",
+      "ergebnis": "bezahlte Hallenrechnung, Beleg in Paperless",
+      "schritte": [
+        { "text": "Platz buchen", "akteur": "HN", "system": "portal", "route": "POST /platz/buchungen", "recht": "tco.platzbuchung:edit", "app": "/tco/platz-buchen" },
+        { "text": "EP3-Buchungen und Kunden holen", "akteur": "KW", "system": "n8n", "route": "POST /halle/import/n8n", "workflow": "TCO EP3 Import Portal", "recht": "tco.halle:edit" },
+        { "text": "Preisfindung und Zuordnung", "akteur": "KW", "system": "portal", "route": "POST /halle/zuordnen", "recht": "tco.halle:edit", "app": "/tco/halle" },
+        { "text": "Rechnung als PDF mit GiroCode", "akteur": "KW", "system": "portal", "route": "POST /halle/rechnungen/:rgnr/drucken", "recht": "tco.halle:versand" },
+        { "text": "Sammelversand per Mail", "akteur": "KW", "system": "n8n", "route": "POST /halle/sammelversand", "workflow": "TCO Mailversand", "recht": "tco.halle:versand" },
+        { "text": "Zahlung zuordnen (Split je Erlöskonto)", "akteur": "KW", "system": "portal", "route": "POST /fi/rechnung", "recht": "tco.fi:buchen", "app": "/tco/fi" }
+      ]
+    },
+    {
+      "id": "P4",
+      "ebene": 2,
+      "name": "Jugendtraining abrechnen",
+      "bereich": "Jugend",
+      "ausloeser": "Monatsende",
+      "ergebnis": "Zeitnachweis in Paperless, Trainerentgelt bezahlt",
+      "schritte": [
+        { "text": "Trainer meldet Zeiten", "akteur": "TR", "system": "portal", "route": "POST /jt/meine/zeiten", "recht": "tco.jtmeine:edit", "app": "/tco/meine-zeiten" },
+        { "text": "Rückmeldungen aus Nextcloud holen", "akteur": "KW", "system": "n8n", "route": "POST /jt/import/nextcloud", "recht": "tco.jt:edit" },
+        { "text": "Schulferien übernehmen", "akteur": "KW", "system": "n8n", "route": "POST /jt/ferien", "recht": "tco.jt:edit" },
+        { "text": "Zeitnachweis freigeben", "akteur": "KW", "system": "portal", "route": "POST /jt/nachweis/freigeben", "recht": "tco.jt:edit", "app": "/tco/jugendtraining" },
+        { "text": "Nachweis nach Paperless", "akteur": "KW", "system": "paperless", "route": "POST /jt/nachweis/ablegen", "recht": "tco.jt:edit" },
+        { "text": "Als bezahlt kennzeichnen", "akteur": "KW", "system": "portal", "route": "POST /jt/nachweis/bezahlt", "recht": "tco.jt:edit" }
+      ]
+    },
+    {
+      "id": "P5",
+      "ebene": 2,
+      "name": "Clubhaus und Verzehr",
+      "bereich": "Clubhaus",
+      "ausloeser": "Verzehr an der Theke",
+      "ergebnis": "Sammelabrechnung je Mitglied, Zahlung gebucht",
+      "schritte": [
+        { "text": "Gast kassieren / Mitglied anschreiben", "akteur": "TD", "system": "portal", "route": "POST /verzehr/theke/mitglied", "recht": "tco.verzehr:theke", "app": "/tco/theke" },
+        { "text": "Selbst anschreiben", "akteur": "MG", "system": "portal", "route": "POST /verzehr/meine/buchen", "recht": "tco.verzehr:edit", "app": "/tco/verzehr" },
+        { "text": "Monatsabschluss: Sammelabrechnungen", "akteur": "KW", "system": "portal", "route": "POST /verzehr/abschluss", "recht": "tco.verzehr:admin", "app": "/tco/verzehrbuch" },
+        { "text": "Beleg per Mail", "akteur": "KW", "system": "n8n", "route": "POST /verzehr/belege/:rgnr/mail", "workflow": "TCO Mailversand" },
+        { "text": "Getränkerechnungen und Forderungen", "akteur": "KW", "system": "portal", "route": "POST /clubhaus/rechnen", "recht": "tco.clubhaus:edit", "app": "/tco/clubhaus" },
+        { "text": "Bezahlt kennzeichnen", "akteur": "KW", "system": "portal", "route": "POST /verzehr/belege/:rgnr/bezahlt", "recht": "tco.verzehr:admin" }
+      ]
+    },
+    {
+      "id": "P6",
+      "ebene": 2,
+      "name": "Dokumenteneingang",
+      "bereich": "Dokumente",
+      "ausloeser": "E-Mail im Postfach (alle 5 Minuten)",
+      "ergebnis": "Dokument abgelegt und qualifiziert, Mail behandelt",
+      "schritte": [
+        { "text": "Postfach lesen", "akteur": "SYS", "system": "mailserver", "workflow": "TCO Maileingang" },
+        { "text": "Mail und Anhänge ans Portal", "akteur": "SYS", "system": "n8n", "route": "POST /eingang/mail", "workflow": "TCO Maileingang", "recht": "tco.eingang:melden" },
+        { "text": "Regelwerk entscheidet", "akteur": "SYS", "system": "portal", "app": "/tco/dokumenteneingang" },
+        { "text": "Unklares in der Prüfliste ablegen", "akteur": "KW", "system": "portal", "route": "POST /eingang/dokumente/:id/ablegen", "recht": "tco.eingang:edit" },
+        { "text": "Paperless qualifiziert (Datum, Betrag)", "akteur": "SYS", "system": "openai", "workflow": "TCO Paperless Qualifizierung" },
+        { "text": "Mailaktion ausführen (verschieben, löschen)", "akteur": "SYS", "system": "n8n", "route": "GET /eingang/mailaktionen", "workflow": "TCO Maileingang" },
+        { "text": "Beleg in FI zuordnen", "akteur": "KW", "system": "portal", "route": "POST /fi/belege/zuordnen", "recht": "tco.fi:buchen", "app": "/tco/fi" }
+      ]
+    },
+    {
+      "id": "P7",
+      "ebene": 2,
+      "name": "Vereinsleben (Kalender)",
+      "bereich": "Mitglieder",
+      "ausloeser": "Spielplan oder Veranstaltung",
+      "ergebnis": "Termine mit Rückmeldungen je Gruppe",
+      "schritte": [
+        { "text": "Spielplan aus liga.nu als Text", "akteur": "VS", "system": "liganu" },
+        { "text": "Vorschau der Massenanlage", "akteur": "VS", "system": "portal", "route": "POST /kalender/masse/vorschau", "recht": "tco.kalender:edit", "app": "/tco/kalender" },
+        { "text": "Termine anlegen", "akteur": "VS", "system": "portal", "route": "POST /kalender/masse", "recht": "tco.kalender:edit" },
+        { "text": "Gruppen per Regel zuordnen", "akteur": "VS", "system": "portal", "route": "POST /kalender/regeln/anwenden", "recht": "tco.kalender:edit" },
+        { "text": "An- und Abmelden", "akteur": "MG", "system": "portal", "route": "POST /kalender/:id/rueckmeldung", "recht": "tco.kalender:anmelden" }
+      ]
+    },
+    {
+      "id": "P8",
+      "ebene": 2,
+      "name": "Abschluss und Steuerung",
+      "bereich": "Finanzen",
+      "ausloeser": "Monats- und Jahresende",
+      "ergebnis": "Jahresabschluss in Paperless, Kennzahlen aktuell",
+      "schritte": [
+        { "text": "FI-Belege prüfen, Storno per Gegenbuchung", "akteur": "KW", "system": "portal", "route": "POST /fi/storno", "recht": "tco.fi:storno", "app": "/tco/fi" },
+        { "text": "Einnahmen und Ausgaben", "akteur": "VS", "system": "portal", "recht": "tco.finanz:display", "app": "/tco/finanz" },
+        { "text": "Anlagevermögen pflegen", "akteur": "KW", "system": "portal", "route": "POST /abschluss/anlagen", "recht": "tco.abschluss:edit", "app": "/tco/abschluss" },
+        { "text": "Jahresabschluss nach Paperless", "akteur": "KW", "system": "paperless", "route": "POST /abschluss/paperless", "recht": "tco.abschluss:edit" },
+        { "text": "Vereinsübersicht und Forecast", "akteur": "VS", "system": "portal", "route": "GET /dashboard", "recht": "tco.dashboard:display", "app": "/tco/uebersicht" }
+      ]
+    },
+    {
+      "id": "D1",
+      "ebene": 3,
+      "teil_von": "P1",
+      "name": "Registrierung",
+      "bereich": "Mitglieder",
+      "ausloeser": "Person registriert sich auf der Anmeldeseite",
+      "ergebnis": "Benutzer mit Rolle Mitglied oder Hallennutzer",
+      "schritte": [
+        { "text": "Freie Kennung prüfen", "akteur": "OEF", "system": "portal", "route": "GET /platz/registrierung/frei" },
+        { "text": "Abgleich Geburtsdatum, Mitgl.-Nr., EP3-Konto", "akteur": "OEF", "system": "portal", "route": "POST /platz/registrierung/pruefen" },
+        { "text": "Registrierung absenden", "akteur": "OEF", "system": "portal", "route": "POST /platz/registrierung" },
+        { "text": "Bestätigungsmail", "akteur": "SYS", "system": "n8n", "workflow": "TCO Mailversand" },
+        { "text": "Link bestätigen", "akteur": "OEF", "system": "portal", "route": "POST /platz/registrierung/bestaetigen", "app": "/registrierung-bestaetigen" },
+        { "text": "Kassenwart gibt frei", "akteur": "KW", "system": "portal", "route": "POST /registrierungen/mitglieder/:id/freigeben", "recht": "tco.registrierung:mitglied", "app": "/tco/registrierungen" },
+        { "text": "Erste Anmeldung", "akteur": "MG", "system": "portal", "route": "POST /api/auth/login" }
+      ]
+    },
+    {
+      "id": "D2",
+      "ebene": 3,
+      "teil_von": "P1",
+      "name": "Passwort vergessen",
+      "bereich": "Basis",
+      "ausloeser": "Link „Passwort vergessen“",
+      "ergebnis": "neues Kennwort, angemeldet",
+      "schritte": [
+        { "text": "Link anfordern", "akteur": "MG", "system": "portal", "route": "POST /api/auth/passwort-vergessen" },
+        { "text": "Mail mit Kennwort-Link", "akteur": "SYS", "system": "n8n", "workflow": "TCO Mailversand" },
+        { "text": "Link prüfen", "akteur": "MG", "system": "portal", "route": "GET /api/auth/kennwort-link" },
+        { "text": "Neues Kennwort setzen", "akteur": "MG", "system": "portal", "route": "POST /api/auth/kennwort-setzen" },
+        { "text": "Anmelden", "akteur": "MG", "system": "portal", "route": "POST /api/auth/login" }
+      ]
+    },
+    {
+      "id": "D3",
+      "ebene": 3,
+      "teil_von": "P1",
+      "name": "Mitgliederanlage",
+      "bereich": "Mitglieder",
+      "ausloeser": "Online-Antrag oder Neuanlage durch den Kassenwart",
+      "ergebnis": "Mitglied, Vertrag, Zahler, SEPA-Mandat, Benutzer",
+      "schritte": [
+        { "text": "Antrag abschicken", "akteur": "OEF", "system": "portal", "route": "POST /antrag", "app": "/beitritt" },
+        { "text": "Arbeitsvorrat ansehen", "akteur": "KW", "system": "portal", "route": "GET /mitgliedsantraege", "recht": "tco.antraege:display" },
+        { "text": "Übernehmen (oder ablehnen)", "akteur": "KW", "system": "portal", "route": "POST /mitgliedsantraege/:id/uebernehmen", "recht": "tco.antraege:edit" },
+        { "text": "Alternativ: Neuanlage von Hand", "akteur": "KW", "system": "portal", "route": "POST /mitglieder/neu", "recht": "tco.mitglieder:edit", "app": "/tco/mitglieder" },
+        { "text": "Einladungen versenden", "akteur": "KW", "system": "n8n", "route": "POST /mitglieder/einladungen", "workflow": "TCO Mailversand", "recht": "tco.mitglieder:edit" },
+        { "text": "Einladung annehmen", "akteur": "MG", "system": "portal", "route": "POST /einladung", "app": "/einladung" }
+      ]
+    },
+    {
+      "id": "D4",
+      "ebene": 3,
+      "teil_von": "P3",
+      "name": "Hallenbuchung",
+      "bereich": "Tennishalle",
+      "ausloeser": "Hallennutzer wählt einen Platz",
+      "ergebnis": "Buchung, später Rechnung und Zahlung",
+      "schritte": [
+        { "text": "Belegung des Tages ansehen", "akteur": "HN", "system": "portal", "route": "GET /platz/tag", "recht": "tco.platzbuchung:edit", "app": "/tco/platz-buchen" },
+        { "text": "Prüfen: Verfügbarkeit, Vorlauf, Preis", "akteur": "HN", "system": "portal", "route": "POST /platz/pruefen", "recht": "tco.platzbuchung:edit" },
+        { "text": "Buchung speichern", "akteur": "HN", "system": "portal", "route": "POST /platz/buchungen", "recht": "tco.platzbuchung:edit" },
+        { "text": "Ändern oder stornieren", "akteur": "HN", "system": "portal", "route": "DELETE /platz/buchungen/:bid", "recht": "tco.platzbuchung:edit" },
+        { "text": "Abo / Serie durch den Hallenwart", "akteur": "HW", "system": "portal", "route": "POST /platz/admin/abos", "recht": "tco.platz:admin", "app": "/tco/platzverwaltung" },
+        { "text": "Abrechnung in der Hallenabrechnung", "akteur": "KW", "system": "portal", "route": "POST /halle/rechnungen", "recht": "tco.halle:edit", "app": "/tco/halle" }
+      ]
+    }
+  ]
+}
