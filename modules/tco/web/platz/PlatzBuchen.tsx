@@ -12,6 +12,7 @@ import { toast } from '@core/toast';
 import { useSperre } from '@core/sperre';
 import { useCan } from '@core/session';
 import { TCO, dat, eur } from '../util';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 import '../jt/meine.css';
 import './platz.css';
 // Farben der Preise wie im Wochenplan der Hallenpreise (portal-hpw__f0 … f4)
@@ -24,7 +25,9 @@ import '../hallenpreise.css';
  */
 const PB = `${TCO}/platz`;
 
-export interface Belegt { von: string; bis: string; eigen: boolean; reserviert?: boolean; fest?: { art: 'TRAINING' | 'SPERRE' | 'VERANSTALTUNG'; bezeichnung: string; hinweis: string | null }; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
+export type FestArt = 'TRAINING' | 'SCHNUPPER' | 'SPERRE' | 'VERANSTALTUNG';
+export const FEST_ARTEN: Record<FestArt, string> = { TRAINING: 'Training', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
+export interface Belegt { von: string; bis: string; eigen: boolean; reserviert?: boolean; fest?: { art: FestArt; bezeichnung: string; hinweis: string | null }; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
 export interface TagPlatz {
   id: number; name: string; art: 'HALLE' | 'FREI'; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
@@ -32,7 +35,11 @@ export interface TagPlatz {
 }
 /** Preisklasse im Tagesverlauf (Einzelbuchung): Zeitraum mit einem Stundenpreis */
 export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number; /** Farbe wie in den Hallenpreisen (0–4) */ farbe: number }
-interface Tag { datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[] }
+interface Tag {
+  datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[];
+  /** Admin/Hallenwart (tco.platzbuchung:verwalten, #11): Namen sehen, für andere buchen, Training & Co. eintragen */
+  rechte?: { verwalten: boolean };
+}
 
 /** Preisklassen für die Legende: je Preis einmal, in der Reihenfolge und mit den Farben der Hallenpreise */
 export function preisklassen(zonen: Preiszone[]): Pick<Preiszone, 'prodKey' | 'text' | 'stundenpreis' | 'farbe'>[] {
@@ -121,6 +128,7 @@ export function PlatzBuchen() {
   useEffect(() => { if (ansicht === 'meine') { setMeine(null); meineLaden(); } }, [ansicht, zeitraum]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const neuLaden = async () => { await Promise.all([tagLaden(), ansicht === 'meine' ? meineLaden() : null]); };
+  const verwalten = !!tag?.rechte?.verwalten;
   const arten = new Set((tag?.plaetze ?? []).map((p) => p.art));
   const plaetze = (tag?.plaetze ?? []).filter((p) => filter === 'ALLE' || p.art === filter);
   // Preisklassen nur zeigen, wenn ein kostenpflichtiger Platz zu sehen ist
@@ -171,9 +179,14 @@ export function PlatzBuchen() {
             )}
 
             <div className="portal-pb__legende">
-              <span><i className="portal-pb__punkt portal-pb__punkt--frei" />frei – antippen zum Buchen</span>
+              <span><i className="portal-pb__punkt portal-pb__punkt--frei" />frei – antippen zum Buchen{verwalten ? ' oder Training eintragen' : ''}</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--eigen" />meine Buchung</span>
-              <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt / Training / Sperrzeit</span>
+              {verwalten ? <>
+                <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />Buchung (mit Name)</span>
+                <span><i className="portal-pb__punkt portal-pb__punkt--training" />Training / Veranstaltung</span>
+                <span><i className="portal-pb__punkt portal-pb__punkt--schnupper" />Schnuppertraining</span>
+                <span><i className="portal-pb__punkt portal-pb__punkt--sperre" />Sperrzeit</span>
+              </> : <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt / Training / Sperrzeit</span>}
               <span><i className="portal-pb__punkt portal-pb__punkt--reserviert" />wird gerade gebucht</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--vorbei" />vorbei / nicht buchbar</span>
             </div>
@@ -191,7 +204,7 @@ export function PlatzBuchen() {
             {!tag && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
             {tag && !plaetze.length && <Empty>Es sind noch keine Plätze eingerichtet.</Empty>}
             {tag && plaetze.length > 0 && (
-              <Kalender tag={tag} plaetze={plaetze} preiszonen={zonen}
+              <Kalender tag={tag} plaetze={plaetze} preiszonen={zonen} namen={verwalten}
                         onFrei={(p, von) => setEntwurf({ platz_id: p.id, datum: tag.datum, von, dauer: p.dauer_min, text: '' })}
                         onEigen={(p, b) => b.bid && b.aenderbar && bearbeiten({ bid: b.bid, datum: tag.datum, von: b.von, bis: b.bis, text: b.text ?? null }, p.id)} />
             )}
@@ -285,7 +298,7 @@ export function PlatzBuchen() {
 
       {preisliste && <PreislisteDialog datum={datum} onClose={() => setPreisliste(false)} />}
       {entwurf && (
-        <BuchungDialog entwurf={entwurf} onClose={() => { setEntwurf(null); tagLaden(); }}
+        <BuchungDialog entwurf={entwurf} verwalten={verwalten} onClose={() => { setEntwurf(null); tagLaden(); }}
                        onFertig={async (text) => { toast(text); setEntwurf(null); await neuLaden(); }} />
       )}
     </AppPage>
@@ -359,9 +372,11 @@ function PreislisteDialog({ datum, onClose }: { datum: string; onClose: () => vo
 
 // ---------------------------------------------------------------- Tageskalender: Plätze × Uhrzeit
 const REM_JE_STD = 3.5;
-export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
+export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen, namen }: {
   tag: { datum: string; heute?: string; jetzt?: string }; plaetze: TagPlatz[];
   onFrei?: (p: TagPlatz, von: string) => void; onEigen?: (p: TagPlatz, b: Belegt) => void; admin?: boolean;
+  /** Admin/Hallenwart in „Platz buchen“: Namen fremder Buchungen, Training & Co. farbig (#11) */
+  namen?: boolean;
   /** Preisklassen im Tagesverlauf: Zeitspalte farbig hinterlegt, Rand links und rechts der Uhrzeit */
   preiszonen?: Preiszone[];
 }) {
@@ -448,7 +463,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
                 const bis = min(b.bis) || 1440;
                 const alt = bis <= vorbeiBis; // für normale Nutzer: vergangene Stunde grau, nicht änderbar
                 // Training/Sperrzeit: in „Platz buchen“ grau wie „belegt“ (die Bezeichnung bleibt), in der Platzverwaltung farbig
-                const cls = (b.fest ? (admin ? `portal-pb__block--training${b.fest.art === 'SPERRE' ? ' portal-pb__block--sperre' : ''}` : 'portal-pb__block--belegt') : b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
+                const cls = (b.fest ? (admin || namen ? `portal-pb__block--training${b.fest.art === 'SPERRE' ? ' portal-pb__block--sperre' : b.fest.art === 'SCHNUPPER' ? ' portal-pb__block--schnupper' : ''}` : 'portal-pb__block--belegt') : b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
                   + (alt ? ' portal-pb__block--vorbei' : '');
                 const klickbar = !b.reserviert && !b.fest && ((b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
                 return (
@@ -459,9 +474,9 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
                     {b.fest && <span className="portal-pb__block-text" title={b.fest.hinweis ?? undefined}>{b.fest.bezeichnung}</span>}
                     {b.fest?.hinweis && <span className="portal-pb__block-text portal-pb__block-notiz">{b.fest.hinweis}</span>}
                     {b.reserviert && <span className="portal-pb__block-text">Wird gerade gebucht{admin && b.kunde ? ` · ${b.kunde}` : ''}</span>}
-                    {!b.fest && !b.reserviert && !b.eigen && !admin && <span className="portal-pb__block-text">Belegt</span>}
+                    {!b.fest && !b.reserviert && !b.eigen && !admin && <span className="portal-pb__block-text">{b.kunde ? `${b.art === 'Abo' ? 'Abo · ' : ''}${b.kunde}` : 'Belegt'}</span>}
                     {!b.fest && !b.reserviert && admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
-                    {(b.eigen || admin) && b.text && <span className="portal-pb__block-text portal-pb__block-notiz">{b.text}</span>}
+                    {(b.eigen || admin || namen) && b.text && <span className="portal-pb__block-text portal-pb__block-notiz">{b.text}</span>}
                   </button>
                 );
               })}
@@ -474,8 +489,25 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen }: {
 }
 
 // ---------------------------------------------------------------- Buchen / Ändern
-function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClose: () => void; onFertig: (text: string) => void }) {
+/** Admin/Hallenwart (#11): wofür der freie Termin eingetragen wird */
+type Fuer = 'ICH' | 'MITGLIED' | FestArt;
+const FEST_VORGABE: Record<FestArt, string> = { TRAINING: 'Jugendtraining', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
+
+function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Entwurf; verwalten?: boolean; onClose: () => void; onFertig: (text: string) => void }) {
   const [e, setE] = useState<Entwurf>(entwurf);
+  // nur bei neuen Terminen: für mich (wie bisher), für ein Mitglied/vereinsintern oder als Training, Schnuppertraining, Sperrzeit, Veranstaltung
+  const [fuer, setFuer] = useState<Fuer>('ICH');
+  const [adrnr, setAdrnr] = useState<string | null>(null);
+  const [intern, setIntern] = useState('');
+  const [bezeichnung, setBezeichnung] = useState('');
+  const [mitglieder, setMitglieder] = useState<{ adrnr: string; name: string }[]>([]);
+  const ich = fuer === 'ICH';
+  const festArt = !ich && fuer !== 'MITGLIED' ? fuer : null;
+  useEffect(() => {
+    if (verwalten && fuer === 'MITGLIED' && !mitglieder.length) {
+      api.get<{ adrnr: string; name: string }[]>(`${PB}/verwalten/mitglieder`).then(setMitglieder).catch((x) => setMeldung((x as Error).message));
+    }
+  }, [verwalten, fuer]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tag, setTag] = useState<Tag | null>(null);
   const [pruefung, setPruefung] = useState<{ fehler: string | null; preis: Preis } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -489,13 +521,13 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
   const sperre = useSperre('PLATZZEIT', String(e.platz_id), true, { von: `${e.datum}T${e.von}`, bis: `${e.datum}T${bis}`, bezeichnung: p?.name ?? 'Platz' });
   useEffect(() => {
     setPruefung(null);
-    if (!p) return;
+    if (!p || !ich) return;
     const t = setTimeout(() => {
       api.post<{ fehler: string | null; preis: Preis }>(`${PB}/pruefen`, { platz_id: e.platz_id, datum: e.datum, von: e.von, bis, bid: e.bid ?? null })
         .then(setPruefung).catch((x) => setMeldung((x as Error).message));
     }, 200);
     return () => clearTimeout(t);
-  }, [e.platz_id, e.datum, e.von, e.dauer, p?.id, sperre.zustand]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [e.platz_id, e.datum, e.von, e.dauer, p?.id, sperre.zustand, ich]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const beginne = useMemo(() => {
     if (!p) return [] as string[];
@@ -507,22 +539,30 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
   const dauern = useMemo(() => {
     if (!p) return [e.dauer];
     const out: number[] = [];
-    for (let d = p.dauer_min; d <= p.dauer_max; d += p.raster) out.push(d);
-    return out;
-  }, [p, e.dauer]);
+    // für andere bzw. Training & Co.: ohne Mindest-/Höchstdauer, bis zum Ende der Öffnungszeit
+    if (!ich) for (let d = p.raster; min(e.von) + d <= min(p.zeit_bis); d += p.raster) out.push(d);
+    else for (let d = p.dauer_min; d <= p.dauer_max; d += p.raster) out.push(d);
+    return out.length ? out : [e.dauer];
+  }, [p, e.dauer, e.von, ich]);
 
   async function ausfuehren(fn: () => Promise<{ text: string }>) {
     setBusy(true); setMeldung(null);
     try { onFertig((await fn()).text); } catch (x) { setMeldung((x as Error).message); } finally { setBusy(false); }
   }
   const body = { platz_id: e.platz_id, datum: e.datum, von: e.von, bis, text: e.text.trim() || null };
-  const speichern = () => ausfuehren(() => (e.bid ? api.put<{ text: string }>(`${PB}/buchungen/${e.bid}`, body) : api.post<{ text: string }>(`${PB}/buchungen`, body)));
+  const speichern = () => ausfuehren(() => {
+    if (e.bid) return api.put<{ text: string }>(`${PB}/buchungen/${e.bid}`, body);
+    if (fuer === 'MITGLIED') return api.post<{ text: string }>(`${PB}/verwalten/buchung`, { ...body, adrnr, intern: adrnr ? null : intern.trim() || null });
+    if (festArt) return api.post<{ text: string }>(`${PB}/verwalten/belegung`, { ...body, art: festArt, bezeichnung: bezeichnung.trim() });
+    return api.post<{ text: string }>(`${PB}/buchungen`, body);
+  });
+  const bereit = ich ? !!pruefung && !pruefung.fehler : fuer === 'MITGLIED' ? !!adrnr || !!intern.trim() : !!bezeichnung.trim();
 
   return createPortal(
-    <Dialog open stretch={klein()} headerText={e.bid ? 'Buchung ändern' : 'Platz buchen'} onClose={onClose}
+    <Dialog open stretch={klein()} headerText={e.bid ? 'Buchung ändern' : festArt ? `${FEST_ARTEN[festArt]} eintragen` : 'Platz buchen'} onClose={onClose}
             footer={<Bar endContent={<>
               {e.bid && <Button design="Negative" icon="cancel" disabled={busy} onClick={() => setStorno(true)}>Stornieren</Button>}
-              <Button design="Emphasized" disabled={busy || !pruefung || !!pruefung.fehler || sperre.zustand !== 'eigen'} onClick={speichern}>{e.bid ? 'Speichern' : 'Verbindlich buchen'}</Button>
+              <Button design="Emphasized" disabled={busy || !bereit || sperre.zustand !== 'eigen'} onClick={speichern}>{e.bid ? 'Speichern' : festArt ? 'Eintragen' : 'Verbindlich buchen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       <div className="portal-mz__form">
@@ -532,6 +572,41 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
             {sperre.zustand === 'fremd' ? `${sperre.text} Bitte eine andere Zeit oder einen anderen Platz wählen.` : sperre.text}
             {sperre.zustand !== 'fremd' && <> <Button design="Transparent" icon="refresh" onClick={sperre.erneut}>Erneut reservieren</Button></>}
           </MessageStrip>
+        )}
+        {verwalten && !e.bid && (
+          <div className="portal-mz__feld">
+            <Label required>Eintragen als</Label>
+            <Select style={{ width: '100%' }} onChange={(x) => {
+              const f = (x.detail.selectedOption as HTMLElement).dataset.f as Fuer;
+              setFuer(f);
+              if (f !== 'ICH' && f !== 'MITGLIED') setBezeichnung(FEST_VORGABE[f]);
+            }}>
+              <Option data-f="ICH" selected={fuer === 'ICH'}>Buchung für mich</Option>
+              <Option data-f="MITGLIED" selected={fuer === 'MITGLIED'}>Buchung für ein Mitglied / eine Person</Option>
+              {(Object.keys(FEST_ARTEN) as FestArt[]).map((a) => <Option key={a} data-f={a} selected={fuer === a}>{FEST_ARTEN[a]}</Option>)}
+            </Select>
+          </div>
+        )}
+        {verwalten && fuer === 'MITGLIED' && (
+          <>
+            <div className="portal-mz__feld">
+              <Label>Mitglied</Label>
+              <AuswahlBox wert={adrnr ?? ''} placeholder="Mitglied suchen" max={50} style={{ width: '100%' }}
+                          eintraege={mitglieder.map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.adrnr }))} onWaehle={(k) => setAdrnr(k)} />
+            </div>
+            {!adrnr && (
+              <div className="portal-mz__feld">
+                <Label>oder Name (vereinsintern, ohne Rechnung)</Label>
+                <Input value={intern} maxlength={60} style={{ width: '100%' }} placeholder="z. B. Vorstand, Gastspieler Müller" onInput={(x) => setIntern(x.target.value)} />
+              </div>
+            )}
+          </>
+        )}
+        {festArt && (
+          <div className="portal-mz__feld">
+            <Label required>Bezeichnung</Label>
+            <Input value={bezeichnung} maxlength={80} style={{ width: '100%' }} onInput={(x) => setBezeichnung(x.target.value)} />
+          </div>
         )}
         <div className="portal-mz__feld">
           <Label required>Datum</Label>
@@ -568,11 +643,18 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
           <Text className="portal-muted portal-small">{e.von}–{bis} Uhr · {dauerText(e.dauer)}</Text>
         </div>
         <div className="portal-mz__feld">
-          <Label>Notiz (z. B. Spielpartner)</Label>
+          <Label>{festArt ? 'Hinweis im Kalender (z. B. Gruppe, Trainer)' : 'Notiz (z. B. Spielpartner)'}</Label>
           <Input value={e.text} maxlength={200} style={{ width: '100%' }} onInput={(x) => setE({ ...e, text: x.target.value })} />
         </div>
 
-        <div className="portal-pb__preis">
+        {!ich && (
+          <MessageStrip hideCloseButton design="Information">
+            {fuer === 'MITGLIED'
+              ? 'Einzelbuchung wie in der Serienbuchung: für ein Mitglied mit Preis laut Hallenpreisen, vereinsintern ohne Rechnung.'
+              : 'Wird als feste Belegung für diesen Termin angelegt – für alle mit Bezeichnung sichtbar, Pflege unter Platzverwaltung → Training & Sperrzeiten.'}
+          </MessageStrip>
+        )}
+        {ich && <div className="portal-pb__preis">
           {(!pruefung || sperre.zustand === 'laden') && <BusyIndicator active size="S" />}
           {pruefung?.fehler && <ObjectStatus state="Negative" showDefaultIcon>{pruefung.fehler}</ObjectStatus>}
           {pruefung && !pruefung.fehler && (
@@ -587,7 +669,7 @@ function BuchungDialog({ entwurf, onClose, onFertig }: { entwurf: Entwurf; onClo
               </div>
             </>
           )}
-        </div>
+        </div>}
         {p && (
           <Text className="portal-muted portal-small">
             Buchbar {p.vorlauf_min ? `bis ${p.vorlauf_min} Std. vor Beginn, ` : ''}höchstens {p.vorlauf_max} Tage im Voraus.

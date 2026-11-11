@@ -207,6 +207,8 @@ const tco: ServerModule = {
     { area: 'Tennishalle', app: 'Meine Daten', id: P_MEINKONTO, text: 'Eigene Kontaktdaten als externer Hallennutzer ansehen und ändern (Anrede, Name, Anschrift, E-Mail, Telefon – nur der dem Benutzer zugeordnete Kundenstammsatz)' },
     { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.buchen,
       text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
+    { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.verwalten, requires: [P_PLATZ.buchen],
+      text: 'Admin/Hallenwart in „Platz buchen“: Namen der Buchenden sehen, für andere Mitglieder oder vereinsintern buchen, Training, Schnuppertraining, Sperrzeiten und Veranstaltungen im Kalender eintragen' },
     { area: 'Tennishalle', app: 'Serienbuchung', id: P_PLATZ.serie,
       text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,

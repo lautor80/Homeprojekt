@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { change, requireAuth, sha256 } from '../../../../server/src/auth.js';
+import { can, change, requireAuth, sha256 } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { schnellwegPruefen } from '../mitglieder/einladung.js';
@@ -30,8 +30,11 @@ import { mailProtokoll, mailSenden } from '../kommunikation.js';
  * fremde Buchungen erscheinen nur als „belegt“ (ohne Name, Nummer, Text). Abos sind nur lesbar.
  *
  * „Platzverwaltung“ (tco.platz:admin): Plätze und Buchungsregeln, Belegung mit Namen, Abos, Benutzerzuordnung.
+ *
+ * „Platz buchen“ für Admin/Hallenwart (tco.platzbuchung:verwalten, #11): Namen der Buchenden sehen, für ein anderes
+ * Mitglied bzw. vereinsintern buchen und Training, Schnuppertraining, Sperrzeiten, Veranstaltungen direkt im Kalender eintragen.
  */
-export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie' };
+export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
 const uhr = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/, 'Uhrzeit im Format HH:MM');
@@ -434,8 +437,10 @@ export async function platzRoutes(app: FastifyInstance) {
     const i = await ich(req);
     const q = z.object({ datum }).parse(req.query);
     const j = jetzt();
+    const verwalten = can(req, P_PLATZ.verwalten);
     return {
-      datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung),
+      datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung, verwalten),
+      rechte: { verwalten },
       // Preisklassen einer Einzelbuchung im Tagesverlauf (farbiger Strich neben der Uhrzeit)
       preiszonen: preiszonen(q.datum, await preiseLesen(DB)),
     };
@@ -488,6 +493,43 @@ export async function platzRoutes(app: FastifyInstance) {
     return { text: await change(req, (tx) => einzelStornieren(tx, i, bid), { action: 'PLATZ_STORNO', reason: bid }) };
   });
 
+  // ------------------------------------------------------------------ Platz buchen für Admin/Hallenwart (#11)
+  const verwalten = { preHandler: requireAuth(P_PLATZ.verwalten) };
+  /** Mitglieder zur Auswahl „Buchung für …“ */
+  app.get('/platz/verwalten/mitglieder', verwalten, async () => (await benutzerListe(DB)).mitglieder);
+  /** Einzelbuchung für ein anderes Mitglied oder vereinsintern (ohne Rechnung) – wie die Serienbuchung „einmalig“ */
+  app.post('/platz/verwalten/buchung', verwalten, async (req) => {
+    const e = buchung.extend({ adrnr: z.string().min(1).nullish(), intern: z.string().trim().max(60).nullish() }).parse(req.body);
+    if (!e.adrnr && !e.intern) throw new BusinessError('Bitte ein Mitglied wählen oder einen Namen (vereinsintern) angeben.');
+    return change(req, (tx) => serieBuchen(tx, {
+      ab: e.datum, von: e.von, bis: e.bis, rhythmus: 'EINMALIG', anzahl: 1, plaetze: [e.platz_id],
+      adrnr: e.adrnr ?? null, intern: e.adrnr ? null : e.intern ?? null, text: e.text ?? null, ueberspringen: false,
+    }), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis} für ${e.adrnr ?? e.intern}` });
+  });
+  /** Training, Schnuppertraining, Sperrzeit oder Veranstaltung für einen Termin direkt aus dem Kalender */
+  app.post('/platz/verwalten/belegung', verwalten, async (req) => {
+    const e = buchung.extend({
+      art: z.enum(['TRAINING', 'SCHNUPPER', 'SPERRE', 'VERANSTALTUNG']),
+      bezeichnung: z.string().trim().min(1, 'Bitte eine Bezeichnung angeben.').max(80),
+    }).parse(req.body);
+    return change(req, async (tx) => {
+      const p = await platzLesen(tx, e.platz_id);
+      const von = minuten(e.von);
+      const bis = e.bis === '24:00' ? 1440 : minuten(e.bis);
+      if (bis <= von) throw new BusinessError('Die Endzeit liegt vor der Startzeit.');
+      const b = (await belegungLesen(tx, [p], e.datum, e.datum)).find((x) => x.von < bis && x.bis > von);
+      if (b) {
+        throw new BusinessError(`${p.name} ist am ${e.datum.split('-').reverse().join('.')} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt`
+          + `${b.fest ? ` („${b.fest.bezeichnung}“)` : b.reserviert ? ' (wird gerade gebucht)' : ` (${b.kunde || 'Buchung'})`}.`);
+      }
+      const wt = String(((new Date(`${e.datum}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
+      return festeSpeichern(tx, null, {
+        bezeichnung: e.bezeichnung, art: e.art, plaetze: [p.id], wochentage: wt, datum_von: e.datum, datum_bis: e.datum,
+        zeit_von: e.von, zeit_bis: e.bis, hinweis: e.text?.trim() || null, aktiv: true,
+      });
+    }, { action: 'PLATZBELEGUNG' });
+  });
+
   // ------------------------------------------------------------------ Platzverwaltung
   app.get('/platz/admin/plaetze', admin, async () => ({ plaetze: await plaetzeLesen(DB), arten: ARTEN }));
 
@@ -521,7 +563,7 @@ export async function platzRoutes(app: FastifyInstance) {
 
   // ------------------------------------------------------------------ Feste Belegungen (Jugendtraining, Sperrzeiten)
   const fest = z.object({
-    bezeichnung: z.string().max(80), art: z.enum(['TRAINING', 'SPERRE', 'VERANSTALTUNG']),
+    bezeichnung: z.string().max(80), art: z.enum(['TRAINING', 'SCHNUPPER', 'SPERRE', 'VERANSTALTUNG']),
     plaetze: z.array(z.coerce.number().int().positive()).default([]),
     wochentage: z.string().regex(/^[1-7]{1,7}$/, 'Bitte mindestens einen Wochentag wählen.'),
     datum_von: datum, datum_bis: datum, zeit_von: uhr, zeit_bis: uhr, hinweis: z.string().max(300).nullish().transform((x) => x ?? null),

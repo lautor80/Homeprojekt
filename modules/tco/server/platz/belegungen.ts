@@ -4,10 +4,10 @@ import { addTage, condense, dat } from '../format.js';
 import { minuten } from '../halle/preis.js';
 
 /**
- * Feste Platzbelegungen ohne Buchung (Jugendtraining, Sperrzeiten, Veranstaltungen). Sie belegen die Plätze im
+ * Feste Platzbelegungen ohne Buchung (Jugendtraining, Schnuppertraining, Sperrzeiten, Veranstaltungen). Sie belegen die Plätze im
  * Kalender für alle sichtbar – mit Bezeichnung, aber ohne personenbezogene Daten – und verhindern Buchungen.
  */
-export const BELEGUNG_ARTEN = { TRAINING: 'Training', SPERRE: 'Gesperrt', VERANSTALTUNG: 'Veranstaltung' } as const;
+export const BELEGUNG_ARTEN = { TRAINING: 'Training', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Gesperrt', VERANSTALTUNG: 'Veranstaltung' } as const;
 export type BelegungArt = keyof typeof BELEGUNG_ARTEN;
 
 export interface FesteBelegung {

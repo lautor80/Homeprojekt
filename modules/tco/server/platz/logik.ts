@@ -403,7 +403,11 @@ export interface TagPlatz {
   belegt: { von: string; bis: string; eigen: boolean; reserviert?: boolean; fest?: { art: BelegungArt; bezeichnung: string; hinweis: string | null }; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }[];
 }
 
-export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitzung?: string | null): Promise<TagPlatz[]> {
+/**
+ * sicht = 'admin' (Platzverwaltung) oder das Mitglied; `namen` (Recht tco.platzbuchung:verwalten, #11):
+ * in „Platz buchen“ zusätzlich Name, Art und Notiz fremder Buchungen – die eigenen bleiben wie gewohnt änderbar.
+ */
+export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitzung?: string | null, namen = false): Promise<TagPlatz[]> {
   // nur Plätze, die an diesem Tag freigegeben sind (aktiv, im Gültigkeitszeitraum, Wochentag geöffnet)
   const plaetze = (await plaetzeLesen(db, true)).filter((p) => !geschlossen(p, datum));
   const bel = await belegungLesen(db, plaetze, datum, datum, sitzung);
@@ -418,11 +422,11 @@ export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitz
       // Jugendtraining/Sperrzeit/Veranstaltung: für alle mit Bezeichnung
       if (b.fest) return { ...zeit, eigen: false, fest: { art: b.fest.art, bezeichnung: b.fest.bezeichnung, hinweis: b.fest.hinweis } };
       // gerade in Auswahl bei jemand anderem: normale Nutzer ohne Namen
-      if (b.reserviert) return sicht === 'admin' ? { ...zeit, eigen: false, reserviert: true, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true };
+      if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true };
       const art = b.status === '3' ? 'Abo' as const : 'Einzel' as const;
       if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text };
       // fremde Buchung: nur Zeitraum – kein Name, keine Nummer, kein Text
-      if (!istEigen(b, sicht)) return { ...zeit, eigen: false };
+      if (!istEigen(b, sicht)) return namen ? { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text } : { ...zeit, eigen: false };
       return {
         ...zeit, eigen: true, bid: b.bid, art, text: b.text,
         betrag: preisVon(p, b.datum, b.von, b.bis, art === 'Abo' ? '3' : '1', preise).betrag,

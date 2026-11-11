@@ -252,9 +252,9 @@ export async function belegungsquote(db: Db, z: { von: string; bis: string }) {
     const w = p ?? halle;
     belegt += Math.max(0, Math.min(minutenVon(b.e), w.bis) - Math.max(minutenVon(b.s), w.von));
   }
-  // feste Belegungen (Training, Veranstaltung); leere Platzliste = alle Hallenplätze
+  // feste Belegungen (Training, Schnuppertraining, Veranstaltung); leere Platzliste = alle Hallenplätze
   const fest = await db`select plaetze, wochentage, datum_von::text as dv, datum_bis::text as db, zeit_von::text as von, zeit_bis::text as bis
-                          from tco.platzbelegungen where aktiv and art in ('TRAINING', 'VERANSTALTUNG') and datum_bis >= ${z.von} and datum_von <= ${z.bis}`;
+                          from tco.platzbelegungen where aktiv and art in ('TRAINING', 'SCHNUPPER', 'VERANSTALTUNG') and datum_bis >= ${z.von} and datum_von <= ${z.bis}`;
   for (const f of fest) {
     const ziel = plaetze.filter((p) => !f.plaetze?.length || f.plaetze.includes(p.id));
     for (let d = f.dv > z.von ? f.dv : z.von; d <= (f.db < z.bis ? f.db : z.bis); d = addTage(d, 1)) {

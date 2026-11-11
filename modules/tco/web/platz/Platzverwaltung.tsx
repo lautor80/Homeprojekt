@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus,
-  Option, Select, StepInput, Switch, Tab, TabContainer, Text, TextArea, Title, ToggleButton, Toolbar, ToolbarSpacer,
+  Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Switch, Tab, TabContainer, Text, TextArea, Title, ToggleButton, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '@core/api';
@@ -352,31 +352,59 @@ function PlatzFormular({ f, setF, massen }: { f: Omit<Platz, 'id'>; setF: (x: Pa
   );
 }
 
-// ---------------------------------------------------------------- Tagesbelegung (mit Namen)
+// ---------------------------------------------------------------- Belegung (mit Namen), 1 bis 7 Tage nebeneinander (#11)
+const TAGE_WAHL = [1, 3, 5, 7] as const;
 function Belegung({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const [datum, setDatum] = useState(isoHeute);
-  const [tag, setTag] = useState<{ datum: string; plaetze: TagPlatz[] } | null>(null);
-  const [storno, setStorno] = useState<{ p: TagPlatz; b: Belegt } | null>(null);
-  const laden = () => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${datum}`).then(setTag);
-  useEffect(() => { setTag(null); laden(); }, [datum]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [tage, setTage] = useState<number>(() => Number(localStorage.getItem('tco.platz.belegung.tage')) || 1);
+  const [tagListe, setTagListe] = useState<{ datum: string; plaetze: TagPlatz[] }[] | null>(null);
+  const [storno, setStorno] = useState<{ p: TagPlatz; b: Belegt; datum: string } | null>(null);
+  const daten = useMemo(() => Array.from({ length: tage }, (_, i) => tagPlus(datum, i)), [datum, tage]);
+  const laden = () => Promise.all(daten.map((d) => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${d}`))).then(setTagListe);
+  useEffect(() => { setTagListe(null); laden(); }, [daten]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem('tco.platz.belegung.tage', String(tage)); } catch { /* egal */ } }, [tage]);
 
+  // mehrere Tage: je Tag und Platz eine Spalte (Spaltenkopf = Tag, bei mehreren Plätzen zusätzlich der Platz)
+  const spalten = useMemo(() => {
+    if (!tagListe) return null;
+    const mehrerePlaetze = Math.max(...tagListe.map((t) => t.plaetze.length)) > 1;
+    const zuDatum = new Map<number, { datum: string; p: TagPlatz }>();
+    const plaetze: TagPlatz[] = [];
+    tagListe.forEach((t, ti) => t.plaetze.forEach((p, pi) => {
+      const id = ti * 1000 + pi + 1;
+      const kopf = tage === 1 ? p.name : `${tagText(t.datum).slice(0, 2)} ${dat(t.datum).slice(0, 6)}${mehrerePlaetze ? ` · ${p.name}` : ''}`;
+      zuDatum.set(id, { datum: t.datum, p });
+      plaetze.push({ ...p, id, name: kopf });
+    }));
+    return { plaetze, zuDatum };
+  }, [tagListe, tage]);
+
+  const bisDatum = daten[daten.length - 1];
   return (
     <>
       <Toolbar design="Transparent">
-        <Button icon="navigation-left-arrow" design="Transparent" onClick={() => setDatum(tagPlus(datum, -1))} />
+        <Button icon="navigation-left-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage zurück` : 'Vortag'} onClick={() => setDatum(tagPlus(datum, -tage))} />
         <DatePicker formatPattern="EEEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={datum} style={{ width: '14rem' }}
                     onChange={(e) => e.detail.valid && e.detail.value && setDatum(e.detail.value)} />
-        <Button icon="navigation-right-arrow" design="Transparent" onClick={() => setDatum(tagPlus(datum, 1))} />
+        <Button icon="navigation-right-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage weiter` : 'Folgetag'} onClick={() => setDatum(tagPlus(datum, tage))} />
         {datum !== isoHeute() && <Button design="Transparent" onClick={() => setDatum(isoHeute())}>Heute</Button>}
+        <SegmentedButton accessibleName="Anzahl Tage" onSelectionChange={(e) => setTage(Number((e.detail.selectedItems[0] as HTMLElement).dataset.n))}>
+          {TAGE_WAHL.map((n) => <SegmentedButtonItem key={n} data-n={n} selected={tage === n}>{n === 1 ? '1 Tag' : `${n} Tage`}</SegmentedButtonItem>)}
+        </SegmentedButton>
         <ToolbarSpacer />
-        <Text className="portal-muted">Belegung {tagText(datum)} – Portalbuchung anklicken zum Stornieren</Text>
+        <Text className="portal-muted">
+          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – Portalbuchung anklicken zum Stornieren
+        </Text>
       </Toolbar>
-      {tag && tag.plaetze.length > 0 && <Kalender admin tag={tag} plaetze={tag.plaetze} onEigen={(p, b) => setStorno({ p, b })} />}
-      {tag && !tag.plaetze.length && <MessageStrip hideCloseButton>Keine aktiven Plätze.</MessageStrip>}
+      {spalten && spalten.plaetze.length > 0 && (
+        <Kalender admin tag={{ datum }} plaetze={spalten.plaetze}
+                  onEigen={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setStorno({ p: z.p, b, datum: z.datum }); }} />
+      )}
+      {spalten && !spalten.plaetze.length && <MessageStrip hideCloseButton>Keine aktiven Plätze.</MessageStrip>}
       <ConfirmDialog open={!!storno} danger title="Termin stornieren" confirmText="Stornieren"
-                     text={storno ? `${storno.p.name}, ${tagText(datum)} ${storno.b.von}–${storno.b.bis} Uhr (${storno.b.art}, ${storno.b.kunde}) stornieren?${storno.b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : ''}` : ''}
+                     text={storno ? `${storno.p.name}, ${tagText(storno.datum)} ${storno.b.von}–${storno.b.bis} Uhr (${storno.b.art}, ${storno.b.kunde}) stornieren?${storno.b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : ''}` : ''}
                      onCancel={() => setStorno(null)}
-                     onConfirm={() => { const s = storno!; setStorno(null); if (!busy) aktion(() => api.post(`${PA}/storno`, { bid: s.b.bid, datum }), laden); }} />
+                     onConfirm={() => { const s = storno!; setStorno(null); if (!busy) aktion(() => api.post(`${PA}/storno`, { bid: s.b.bid, datum: s.datum }), laden); }} />
     </>
   );
 }
