@@ -11,7 +11,7 @@ import { addTage } from '../format.js';
 import {
   aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, einzelAendern, einzelAnlegen,
   einzelStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
-  tagLesen, verwaltungStornieren, ARTEN, type Ich,
+  tagLesen, verwaltungAendern, verwaltungKopieren, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
 import { minuten, preiseLesen, preiswoche, preiszonen } from '../halle/preis.js';
 import { RHYTHMEN, serieBuchen, verfuegbarkeit } from './serie.js';
@@ -537,6 +537,47 @@ export async function platzRoutes(app: FastifyInstance) {
   // Platzverwaltung → Belegung: freie Zeit anklicken und direkt eintragen (#11)
   app.post('/platz/admin/buchung', admin, async (req) => fuerBuchen(req));
   app.post('/platz/admin/belegung', admin, async (req) => festEintragen(req));
+  // Platzverwaltung → Belegung: Termin ändern bzw. kopieren (#11)
+  const zielTermin = buchung.extend({ alt_datum: datum });
+  app.put('/platz/admin/buchung/:bid', admin, async (req) => {
+    const { bid } = z.object({ bid: z.string().min(1) }).parse(req.params);
+    const e = zielTermin.parse(req.body);
+    return { text: await change(req, (tx) => verwaltungAendern(tx, bid, e.alt_datum, e), { action: 'PLATZ_AENDERN', reason: `${bid} ${e.alt_datum} → ${e.datum} ${e.von}–${e.bis}` }) };
+  });
+  app.post('/platz/admin/buchung/:bid/kopie', admin, async (req) => {
+    const { bid } = z.object({ bid: z.string().min(1) }).parse(req.params);
+    const e = zielTermin.parse(req.body);
+    return change(req, (tx) => verwaltungKopieren(tx, bid, e.alt_datum, e), { action: 'PLATZ_BUCHEN', reason: `Kopie ${bid} ${e.alt_datum} → ${e.datum} ${e.von}–${e.bis}` });
+  });
+  /** feste Belegung eines einzelnen Tages ändern (wiederkehrende unter „Training & Sperrzeiten“) */
+  app.put('/platz/admin/belegung/:id', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const e = buchung.extend({
+      art: z.enum(['TRAINING', 'SCHNUPPER', 'SPERRE', 'VERANSTALTUNG']),
+      bezeichnung: z.string().trim().min(1, 'Bitte eine Bezeichnung angeben.').max(80),
+    }).parse(req.body);
+    return change(req, async (tx) => {
+      const [alt] = (await festeLesen(tx)).filter((f) => f.id === id);
+      if (!alt) throw new BusinessError('Belegung nicht gefunden.', 404);
+      if (alt.datum_von !== alt.datum_bis || alt.plaetze.length !== 1) {
+        throw new BusinessError(`„${alt.bezeichnung}“ ist wiederkehrend bzw. für mehrere Plätze – bitte unter „Training & Sperrzeiten“ ändern (kopieren geht).`);
+      }
+      const p = await platzLesen(tx, e.platz_id);
+      const von = minuten(e.von);
+      const bis = e.bis === '24:00' ? 1440 : minuten(e.bis);
+      if (bis <= von) throw new BusinessError('Die Endzeit liegt vor der Startzeit.');
+      const b = (await belegungLesen(tx, [p], e.datum, e.datum)).find((x) => x.fest?.id !== id && x.von < bis && x.bis > von);
+      if (b) {
+        throw new BusinessError(`${p.name} ist am ${e.datum.split('-').reverse().join('.')} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt`
+          + `${b.fest ? ` („${b.fest.bezeichnung}“)` : b.reserviert ? ' (wird gerade gebucht)' : ` (${b.kunde || 'Buchung'})`}.`);
+      }
+      const wt = String(((new Date(`${e.datum}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
+      return festeSpeichern(tx, id, {
+        bezeichnung: e.bezeichnung, art: e.art, plaetze: [p.id], wochentage: wt, datum_von: e.datum, datum_bis: e.datum,
+        zeit_von: e.von, zeit_bis: e.bis, hinweis: e.text?.trim() || null, aktiv: alt.aktiv,
+      });
+    }, { action: 'PLATZBELEGUNG', reason: String(id) });
+  });
 
   // ------------------------------------------------------------------ Platzverwaltung
   app.get('/platz/admin/plaetze', admin, async () => ({ plaetze: await plaetzeLesen(DB), arten: ARTEN }));

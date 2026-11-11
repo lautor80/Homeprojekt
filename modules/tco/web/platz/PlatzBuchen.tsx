@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -27,7 +27,14 @@ const PB = `${TCO}/platz`;
 
 export type FestArt = 'TRAINING' | 'SCHNUPPER' | 'SPERRE' | 'VERANSTALTUNG';
 export const FEST_ARTEN: Record<FestArt, string> = { TRAINING: 'Training', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
-export interface Belegt { von: string; bis: string; eigen: boolean; reserviert?: boolean; fest?: { art: FestArt; bezeichnung: string; hinweis: string | null }; bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null }
+export interface Belegt {
+  von: string; bis: string; eigen: boolean; reserviert?: boolean;
+  /** id/einmalig/portal nur in der Platzverwaltung (#11): einzelne Termine ändern, alle kopieren */
+  fest?: { art: FestArt; bezeichnung: string; hinweis: string | null; id?: number; einmalig?: boolean; portal?: boolean };
+  bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null;
+  /** Platzverwaltung: Portalbuchung (änderbar) bzw. bereits abgerechnet */
+  portal?: boolean; abgerechnet?: boolean;
+}
 export interface TagPlatz {
   id: number; name: string; art: 'HALLE' | 'FREI'; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
@@ -372,9 +379,11 @@ function PreislisteDialog({ datum, onClose }: { datum: string; onClose: () => vo
 
 // ---------------------------------------------------------------- Tageskalender: Plätze × Uhrzeit
 const REM_JE_STD = 3.5;
-export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen, namen }: {
+export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, preiszonen, namen }: {
   tag: { datum: string; heute?: string; jetzt?: string }; plaetze: TagPlatz[];
   onFrei?: (p: TagPlatz, von: string) => void; onEigen?: (p: TagPlatz, b: Belegt) => void; admin?: boolean;
+  /** Platzverwaltung (#11): Kopier-Knopf je Buchung bzw. Belegung */
+  onKopieren?: (p: TagPlatz, b: Belegt) => void;
   /** Admin/Hallenwart in „Platz buchen“: Namen fremder Buchungen, Training & Co. farbig (#11) */
   namen?: boolean;
   /** Preisklassen im Tagesverlauf: Zeitspalte farbig hinterlegt, Rand links und rechts der Uhrzeit */
@@ -467,9 +476,18 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen, nam
                 // Training/Sperrzeit: in „Platz buchen“ grau wie „belegt“ (die Bezeichnung bleibt), in der Platzverwaltung farbig
                 const cls = (b.fest ? (admin || namen ? `portal-pb__block--training${b.fest.art === 'SPERRE' ? ' portal-pb__block--sperre' : b.fest.art === 'SCHNUPPER' ? ' portal-pb__block--schnupper' : ''}` : 'portal-pb__block--belegt') : b.eigen ? 'portal-pb__block--eigen' : b.reserviert ? 'portal-pb__block--reserviert' : admin ? `portal-pb__block--admin${b.art === 'Abo' ? ' portal-pb__block--abo' : ''}` : 'portal-pb__block--belegt')
                   + (alt ? ' portal-pb__block--vorbei' : '');
-                const klickbar = !b.reserviert && !b.fest && ((b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
+                // Platzverwaltung: Buchungen und Belegungen (Training & Co.) anklickbar – ändern, kopieren, stornieren (#11)
+                const klickbar = !b.reserviert && (b.fest ? admin && !!b.fest.id && !!onEigen : (b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
+                const kopierbar = !!onKopieren && !b.reserviert && (!!b.bid || !!b.fest);
                 return (
-                  <button key={i} type="button" className={`portal-pb__block ${cls}`} disabled={!klickbar}
+                  <Fragment key={i}>
+                  {kopierbar && (
+                    <button type="button" className="portal-pb__kopie" style={{ top: y(von) }} title="Termin kopieren"
+                            aria-label={`${b.fest ? b.fest.bezeichnung : b.kunde ?? 'Termin'} ${b.von}–${b.bis} kopieren`} onClick={() => onKopieren!(p, b)}>
+                      <Icon name="copy" />
+                    </button>
+                  )}
+                  <button type="button" className={`portal-pb__block ${cls}${kopierbar ? ' portal-pb__block--kopierbar' : ''}`} disabled={!klickbar}
                           style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={() => klickbar && onEigen?.(p, b)}>
                     <span className="portal-pb__block-zeit">{b.von}–{b.bis}</span>
                     {b.eigen && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Mein Abo' : 'Meine Buchung'} · {preisText(b)}</span>}
@@ -480,6 +498,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, admin, preiszonen, nam
                     {!b.fest && !b.reserviert && admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
                     {(b.eigen || admin || namen) && b.text && <span className="portal-pb__block-text portal-pb__block-notiz">{b.text}</span>}
                   </button>
+                  </Fragment>
                 );
               })}
             </div>

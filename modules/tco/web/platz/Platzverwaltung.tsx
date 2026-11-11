@@ -74,7 +74,7 @@ export function Platzverwaltung() {
           {tab === 'plaetze' && <Plaetze aktion={aktion} busy={busy} />}
         </Tab>
         <Tab data-key="belegung" text="Belegung" icon="calendar" selected={tab === 'belegung'}>
-          {tab === 'belegung' && <Belegung aktion={aktion} busy={busy} />}
+          {tab === 'belegung' && <Belegung />}
         </Tab>
         <Tab data-key="feste" text="Training & Sperrzeiten" icon="private" selected={tab === 'feste'}>
           {tab === 'feste' && <FesteTab aktion={aktion} />}
@@ -354,11 +354,11 @@ function PlatzFormular({ f, setF, massen }: { f: Omit<Platz, 'id'>; setF: (x: Pa
 
 // ---------------------------------------------------------------- Belegung (mit Namen), 1 bis 7 Tage nebeneinander (#11)
 const TAGE_WAHL = [1, 3, 5, 7] as const;
-function Belegung({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
+function Belegung() {
   const [datum, setDatum] = useState(isoHeute);
   const [tage, setTage] = useState<number>(() => Number(localStorage.getItem('tco.platz.belegung.tage')) || 1);
   const [tagListe, setTagListe] = useState<{ datum: string; plaetze: TagPlatz[] }[] | null>(null);
-  const [storno, setStorno] = useState<{ p: TagPlatz; b: Belegt; datum: string } | null>(null);
+  const [termin, setTermin] = useState<{ p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN' } | null>(null);
   const [eintrag, setEintrag] = useState<{ p: TagPlatz; datum: string; von: string } | null>(null);
   const daten = useMemo(() => Array.from({ length: tage }, (_, i) => tagPlus(datum, i)), [datum, tage]);
   const laden = () => Promise.all(daten.map((d) => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${d}`))).then(setTagListe);
@@ -394,21 +394,21 @@ function Belegung({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         </SegmentedButton>
         <ToolbarSpacer />
         <Text className="portal-muted">
-          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – freie Zeit anklicken zum Eintragen, Portalbuchung zum Stornieren
+          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – freie Zeit anklicken zum Eintragen, Termin anklicken zum Ändern/Stornieren, Kopier-Symbol zum Kopieren
         </Text>
       </Toolbar>
       {spalten && spalten.plaetze.length > 0 && (
         <Kalender admin tag={{ datum }} plaetze={spalten.plaetze}
                   onFrei={(p, von) => { const z = spalten.zuDatum.get(p.id)!; setEintrag({ p: z.p, datum: z.datum, von }); }}
-                  onEigen={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setStorno({ p: z.p, b, datum: z.datum }); }} />
+                  onEigen={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setTermin({ p: z.p, b, datum: z.datum, modus: 'AENDERN' }); }}
+                  onKopieren={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setTermin({ p: z.p, b, datum: z.datum, modus: 'KOPIEREN' }); }} />
       )}
       {spalten && !spalten.plaetze.length && <MessageStrip hideCloseButton>Keine aktiven Plätze.</MessageStrip>}
       {eintrag && <EintragDialog {...eintrag} onClose={() => setEintrag(null)}
                                  onFertig={(text) => { setEintrag(null); toast(text, 5000); laden(); }} />}
-      <ConfirmDialog open={!!storno} danger title="Termin stornieren" confirmText="Stornieren"
-                     text={storno ? `${storno.p.name}, ${tagText(storno.datum)} ${storno.b.von}–${storno.b.bis} Uhr (${storno.b.art}, ${storno.b.kunde}) stornieren?${storno.b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : ''}` : ''}
-                     onCancel={() => setStorno(null)}
-                     onConfirm={() => { const s = storno!; setStorno(null); if (!busy) aktion(() => api.post(`${PA}/storno`, { bid: s.b.bid, datum: s.datum }), laden); }} />
+      {termin && <TerminDialog key={`${termin.b.bid ?? termin.b.fest?.id}-${termin.datum}-${termin.b.von}-${termin.modus}`} {...termin}
+                               onModus={(modus) => setTermin({ ...termin, modus })} onClose={() => setTermin(null)}
+                               onFertig={(text) => { setTermin(null); if (text) toast(text, 5000); laden(); }} />}
     </>
   );
 }
@@ -497,6 +497,144 @@ function EintragDialog({ p, datum, von, onClose, onFertig }: { p: TagPlatz; datu
         </Text>
       </div>
     </Dialog>,
+    document.body,
+  );
+}
+
+// ---------------------------------------------------------------- Termin ändern / kopieren aus der Belegung (#11)
+/**
+ * Angeklickter Termin: Platz, Tag, Uhrzeit und Notiz ändern (Portalbuchungen, einzelne Termine von Training & Co.), stornieren bzw.
+ * löschen; „Kopieren“ legt denselben Termin (gleiche Person/Bezeichnung) auf Platz, Tag und Uhrzeit des Ziels neu an – Vorschlag:
+ * eine Woche später. Abo- und EP3-Termine werden als Einzelbuchung kopiert.
+ */
+function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
+  p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN';
+  onModus: (m: 'AENDERN' | 'KOPIEREN') => void; onClose: () => void; onFertig: (text: string) => void;
+}) {
+  const kopie = modus === 'KOPIEREN';
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function onAktion(fn: () => Promise<unknown>) {
+    setBusy(true); setError(null);
+    try { onFertig((await fn() as { text?: string } | undefined)?.text ?? ''); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  const [plaetze, setPlaetze] = useState<Platz[] | null>(null);
+  const [platzId, setPlatzId] = useState(p.id);
+  const [tag, setTag] = useState(kopie ? tagPlus(datum, 7) : datum);
+  const [von, setVon] = useState(b.von);
+  const [bis, setBis] = useState(b.bis);
+  const [text, setText] = useState((b.fest ? b.fest.hinweis : b.text) ?? '');
+  const [art, setArt] = useState<FestArt>(b.fest?.art ?? 'TRAINING');
+  const [bezeichnung, setBezeichnung] = useState(b.fest?.bezeichnung ?? '');
+  const [weg, setWeg] = useState(false);
+  useEffect(() => { api.get<{ plaetze: Platz[] }>(`${PA}/plaetze`).then((r) => setPlaetze(r.plaetze.filter((x) => x.aktiv || x.id === p.id))).catch(() => setPlaetze([])); }, [p.id]);
+  const pl = plaetze?.find((x) => x.id === platzId) ?? { zeit_von: p.zeit_von, zeit_bis: p.zeit_bis, raster: p.raster };
+  // Uhrzeiten im Raster des Platzes (die bisherigen bleiben wählbar, auch wenn sie nicht im Raster liegen)
+  const raster = Math.max(pl.raster || 30, 5);
+  const ende = min(pl.zeit_bis) || 1440;
+  const vonListe = useMemo(() => {
+    const o = new Set<string>([von]);
+    for (let m = min(pl.zeit_von); m + raster <= ende; m += raster) o.add(hhmm(m));
+    return [...o].sort();
+  }, [pl.zeit_von, raster, ende, von]);
+  const bisListe = useMemo(() => {
+    const o = new Set<string>(min(bis) > min(von) || bis === '24:00' ? [bis] : []);
+    for (let m = min(von) + raster; m <= ende; m += raster) o.add(m === 1440 ? '24:00' : hhmm(m));
+    return [...o].sort();
+  }, [von, raster, ende, bis]);
+  const dauer = (min(b.bis) || 1440) - min(b.von);
+  const vonWaehlen = (v: string) => {
+    setVon(v);
+    // Dauer beibehalten (höchstens bis Öffnungsende)
+    const e = Math.min(min(v) + dauer, ende);
+    setBis(e === 1440 ? '24:00' : hhmm(e > min(v) ? e : min(v) + raster));
+  };
+  const aenderbar = b.fest ? !!b.fest.id && !!b.fest.einmalig && !!b.fest.portal : !!b.bid && !!b.portal && !b.abgerechnet;
+  const grund = b.fest
+    ? !b.fest.portal ? 'Aus EP3 übernommen – bitte in EP3 pflegen.' : 'Wiederkehrende Belegung – bitte unter „Training & Sperrzeiten“ ändern.'
+    : !b.portal ? 'EP3-Buchung – bitte im EP3-Buchungssystem ändern.' : b.abgerechnet ? 'Bereits abgerechnet.' : '';
+  const ziel = { platz_id: platzId, datum: tag, von, bis, text: text.trim() || null };
+  const ok = !!tag && min(bis) > min(von) && (!b.fest || !!bezeichnung.trim());
+
+  function speichern() {
+    return onAktion(() => {
+      if (b.fest) {
+        const f = { ...ziel, art, bezeichnung: bezeichnung.trim() };
+        return kopie ? api.post(`${PA}/belegung`, f) : api.put(`${PA}/belegung/${b.fest.id}`, f);
+      }
+      return kopie ? api.post(`${PA}/buchung/${b.bid}/kopie`, { ...ziel, alt_datum: datum }) : api.put(`${PA}/buchung/${b.bid}`, { ...ziel, alt_datum: datum });
+    });
+  }
+  function entfernen() {
+    setWeg(false);
+    return onAktion(() => (b.fest ? api.del(`${PA}/feste/${b.fest.id}`) : api.post(`${PA}/storno`, { bid: b.bid, datum })));
+  }
+  const titel = b.fest ? b.fest.bezeichnung : `${b.art === 'Abo' ? 'Abo · ' : ''}${b.kunde || 'Buchung'}`;
+  return createPortal(
+    <>
+      <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+              footer={<Bar startContent={!kopie && aenderbar
+                ? <Button design="Transparent" icon="delete" disabled={busy} onClick={() => setWeg(true)}>{b.fest ? 'Löschen' : 'Stornieren'}</Button>
+                : undefined}
+                           endContent={<>
+                {!kopie && <Button icon="copy" onClick={() => onModus('KOPIEREN')}>Kopieren…</Button>}
+                <Button design="Emphasized" disabled={busy || !ok || (!kopie && !aenderbar)} onClick={speichern}>{kopie ? 'Kopie anlegen' : 'Speichern'}</Button>
+                <Button onClick={onClose}>Abbrechen</Button>
+              </>} />}>
+        <div className="portal-mz__form">
+          {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+          <Text className="portal-muted">
+            Bisher: {p.name}, {tagText(datum)}, {b.von}–{b.bis} Uhr{b.fest ? ` (${FEST_ARTEN[b.fest.art]})` : b.art ? ` (${b.art})` : ''}
+          </Text>
+          {!kopie && !aenderbar && <MessageStrip hideCloseButton design="Information">{grund} Kopieren ist möglich.</MessageStrip>}
+          {kopie && !b.fest && b.art === 'Abo' && <MessageStrip hideCloseButton>Der Abo-Termin wird als Einzelbuchung kopiert.</MessageStrip>}
+          <FormGrid>
+            <FieldBox label="Platz" required>
+              <Select style={{ width: '100%' }} disabled={!kopie && !aenderbar} onChange={(e) => setPlatzId(Number((e.detail.selectedOption as HTMLElement).dataset.id))}>
+                {(plaetze ?? [{ id: p.id, name: p.name } as Platz]).map((x) => <Option key={x.id} data-id={x.id} selected={x.id === platzId}>{x.name}</Option>)}
+              </Select>
+            </FieldBox>
+            <FieldBox label="Tag" required>
+              <DatePicker style={{ width: '100%' }} disabled={!kopie && !aenderbar} formatPattern="EEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={tag}
+                          onChange={(e) => e.detail.valid && setTag(e.detail.value)} />
+            </FieldBox>
+            <FieldBox label="Von" required>
+              <Select style={{ width: '100%' }} disabled={!kopie && !aenderbar} onChange={(e) => vonWaehlen((e.detail.selectedOption as HTMLElement).dataset.z!)}>
+                {vonListe.map((z) => <Option key={z} data-z={z} selected={z === von}>{z} Uhr</Option>)}
+              </Select>
+            </FieldBox>
+            <FieldBox label="Bis" required>
+              <Select style={{ width: '100%' }} disabled={!kopie && !aenderbar} onChange={(e) => setBis((e.detail.selectedOption as HTMLElement).dataset.z!)}>
+                {bisListe.map((z) => <Option key={z} data-z={z} selected={z === bis}>{z} Uhr</Option>)}
+              </Select>
+            </FieldBox>
+            {b.fest && (
+              <>
+                <FieldBox label="Art" required>
+                  <Select style={{ width: '100%' }} disabled={!kopie && !aenderbar} onChange={(e) => setArt((e.detail.selectedOption as HTMLElement).dataset.a as FestArt)}>
+                    {(Object.keys(FEST_ARTEN) as FestArt[]).map((a) => <Option key={a} data-a={a} selected={art === a}>{FEST_ARTEN[a]}</Option>)}
+                  </Select>
+                </FieldBox>
+                <FieldBox label="Bezeichnung" required>
+                  <Input style={{ width: '100%' }} disabled={!kopie && !aenderbar} value={bezeichnung} maxlength={80} onInput={(e) => setBezeichnung(e.target.value)} />
+                </FieldBox>
+              </>
+            )}
+            <FieldBox label={b.fest ? 'Hinweis im Kalender' : 'Notiz'} wide>
+              <Input style={{ width: '100%' }} disabled={!kopie && !aenderbar} value={text} maxlength={200} onInput={(e) => setText(e.target.value)} />
+            </FieldBox>
+          </FormGrid>
+          <Text className="portal-muted portal-small">
+            {kopie
+              ? `Neu angelegt wird ${b.fest ? `„${bezeichnung || b.fest.bezeichnung}“ als feste Belegung für diesen Termin` : `eine Einzelbuchung für ${b.kunde || 'dieselbe Person'} (Preis laut Hallenpreisen, vereinsintern ohne Rechnung)`}. Überschneidungen werden abgelehnt.`
+              : 'Ohne Buchungsregeln (Vorlauf, Mindestdauer); Überschneidungen werden abgelehnt, der Preis wird neu berechnet.'}
+          </Text>
+        </div>
+      </Dialog>
+      <ConfirmDialog open={weg} danger title={b.fest ? 'Belegung löschen' : 'Termin stornieren'} confirmText={b.fest ? 'Löschen' : 'Stornieren'}
+                     text={`${p.name}, ${tagText(datum)} ${b.von}–${b.bis} Uhr (${titel}) ${b.fest ? 'löschen' : 'stornieren'}?${b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : ''}`}
+                     onCancel={() => setWeg(false)} onConfirm={entfernen} />
+    </>,
     document.body,
   );
 }

@@ -780,3 +780,60 @@ test('Platzverwaltung → Belegung: freie Zeit direkt eintragen (#11)', async ()
   r = await anna('GET', `${P}/tag?datum=${d}`);
   assert.equal(r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((b: { von: string }) => b.von === '10:00').eigen, true);
 });
+
+test('Platzverwaltung → Belegung: Termin ändern und kopieren (#11)', async () => {
+  const d = tag(13);
+  const d2 = tag(14);
+  let r = await admin('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '09:00', bis: '10:00', adrnr: ANNA, text: 'Einzel' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${A}/belegung`, { platz_id: halleId, datum: d, von: '12:00', bis: '13:00', art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining', text: 'Tom' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const belegt = async (datum: string) => (await admin('GET', `${A}/tag?datum=${datum}`)).body.plaetze.find((p: { id: number }) => p.id === halleId).belegt as any[];
+  let liste = await belegt(d);
+  const buchung = liste.find((b) => b.von === '09:00');
+  assert.deepEqual([buchung.portal, buchung.abgerechnet, buchung.kunde], [true, false, 'ANNA SPIELERIN']);
+  const schnupper = liste.find((b) => b.von === '12:00');
+  assert.equal(schnupper.fest.einmalig, true);
+  assert.equal(schnupper.fest.portal, true);
+  assert.ok(schnupper.fest.id > 0);
+
+  // Buchung verschieben (ohne Buchungsregeln), Überschneidung abgelehnt
+  r = await admin('PUT', `${A}/buchung/${buchung.bid}`, { alt_datum: d, platz_id: halleId, datum: d, von: '12:00', bis: '13:00' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Schnuppertraining/);
+  r = await admin('PUT', `${A}/buchung/${buchung.bid}`, { alt_datum: d, platz_id: halleId, datum: d, von: '10:00', bis: '12:00', text: 'verlegt' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  liste = await belegt(d);
+  assert.ok(liste.some((b) => b.bid === buchung.bid && b.von === '10:00' && b.bis === '12:00' && b.text === 'verlegt'), JSON.stringify(liste));
+  assert.equal((await bert('PUT', `${A}/buchung/${buchung.bid}`, { alt_datum: d, platz_id: halleId, datum: d, von: '08:00', bis: '09:00' })).status, 403);
+
+  // Buchung kopieren: neue Einzelbuchung für dieselbe Person, Anna sieht sie als eigene
+  r = await admin('POST', `${A}/buchung/${buchung.bid}/kopie`, { alt_datum: d, platz_id: halleId, datum: d2, von: '20:00', bis: '21:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.notEqual(r.body.bid, buchung.bid);
+  assert.match(r.body.text, /Kopie angelegt: ANNA SPIELERIN/);
+  r = await admin('POST', `${A}/buchung/${buchung.bid}/kopie`, { alt_datum: d, platz_id: halleId, datum: d2, von: '20:00', bis: '21:00' });
+  assert.equal(r.status, 400, 'Überschneidung');
+  r = await anna('GET', `${P}/tag?datum=${d2}`);
+  const kopie = r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((b: { von: string }) => b.von === '20:00');
+  assert.equal(kopie.eigen, true);
+  assert.equal(kopie.text, 'verlegt');
+
+  // Schnuppertraining ändern (einzelner Tag) und kopieren
+  r = await admin('PUT', `${A}/belegung/${schnupper.fest.id}`, { platz_id: halleId, datum: d, von: '13:00', bis: '14:00', art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining Kinder', text: 'Tom' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('POST', `${A}/belegung`, { platz_id: halleId, datum: d2, von: '13:00', bis: '14:00', art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining Kinder', text: 'Tom' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  liste = await belegt(d);
+  assert.ok(liste.some((b) => b.von === '13:00' && b.fest?.bezeichnung === 'Schnuppertraining Kinder'), JSON.stringify(liste));
+  assert.ok((await belegt(d2)).some((b) => b.von === '13:00' && b.fest?.art === 'SCHNUPPER'));
+
+  // wiederkehrende Belegung: nur unter „Training & Sperrzeiten“ änderbar
+  r = await admin('POST', `${A}/feste`, { bezeichnung: 'Wintertraining', art: 'TRAINING', plaetze: [halleId], wochentage: '1234567', datum_von: tag(40), datum_bis: tag(41), zeit_von: '08:00', zeit_bis: '09:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const fid = r.body.id;
+  r = await admin('PUT', `${A}/belegung/${fid}`, { platz_id: halleId, datum: tag(40), von: '09:00', bis: '10:00', art: 'TRAINING', bezeichnung: 'Wintertraining' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /wiederkehrend/);
+  await admin('DELETE', `${A}/feste/${fid}`);
+});
