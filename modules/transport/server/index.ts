@@ -19,7 +19,7 @@ import { paperlessSenden } from './paperless.js';
 import { dokumentAblegen, paperlessFirma } from './dokumente.js';
 import { kontaktRoutes } from './kontakte.js';
 import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
-import { ausfuehren, dekodieren, parsen, pruefen, type Geparst } from './importer.js';
+import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
 
 export const P = {
   display: 'transport.auftraege:display',
@@ -585,14 +585,21 @@ async function routes(app: FastifyInstance) {
   });
 
   // ---- CSV-Import ----
-  const importBody = z.object({ dateien: z.array(z.object({ name: z.string(), data: z.string() })).max(10) });
+  // modus „neu“: nur neue Sätze anlegen; „ersetzen“: Tabellen leeren und komplett neu aufbauen (#121)
+  const importBody = z.object({
+    dateien: z.array(z.object({ name: z.string(), data: z.string() })).max(20),
+    modus: z.enum(['neu', 'ersetzen']).default('neu'),
+    reason: z.string().optional(),
+  });
   const lesen = (body: unknown) => {
-    const { dateien } = importBody.parse(body);
+    const { dateien, modus, reason } = importBody.parse(body);
     const ok: Geparst[] = [];
+    const ohneZiel: OhneZiel[] = [];
     const fehler: string[] = [];
     for (const d of dateien) {
       const r = parsen(d.name, dekodieren(Buffer.from(d.data.replace(/^data:[^,]*,/, ''), 'base64')));
       if ('fehler' in r) fehler.push(r.fehler);
+      else if ('ohneZiel' in r) ohneZiel.push(r);
       else {
         // gleiche Tabelle mehrfach: letzte Datei gilt
         const i = ok.findIndex((x) => x.art === r.art);
@@ -600,18 +607,19 @@ async function routes(app: FastifyInstance) {
         ok.push(r);
       }
     }
-    return { ok, fehler };
+    return { ok, ohneZiel, fehler, modus, reason };
   };
 
   app.post('/import/pruefen', { preHandler: requireAuth(P.import), bodyLimit: 30 * 1024 * 1024 }, async (req) => {
-    const { ok, fehler } = lesen(req.body);
-    return sql.begin((tx) => pruefen(tx as unknown as Tx, ok, fehler));
+    const { ok, ohneZiel, fehler, modus } = lesen(req.body);
+    return sql.begin((tx) => pruefen(tx as unknown as Tx, ok, fehler, ohneZiel, modus));
   });
 
   app.post('/import/ausfuehren', { preHandler: requireAuth(P.import), bodyLimit: 30 * 1024 * 1024 }, async (req) => {
-    const { ok, fehler } = lesen(req.body);
+    const { ok, fehler, modus, reason } = lesen(req.body);
     if (!ok.length) throw new BusinessError(fehler[0] ?? 'Bitte zuerst die CSV-Dateien einlesen.');
-    return change(req, (tx) => ausfuehren(tx, ok), { action: 'IMPORT' });
+    if (modus === 'ersetzen' && !reason?.trim()) throw new BusinessError('Für den Neuaufbau ist eine Begründung nötig.');
+    return change(req, (tx) => ausfuehren(tx, ok, modus), { action: modus === 'ersetzen' ? 'IMPORT_NEUAUFBAU' : 'IMPORT', reason: reason?.trim() || undefined });
   });
 }
 
