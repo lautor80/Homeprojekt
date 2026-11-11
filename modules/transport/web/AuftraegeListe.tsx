@@ -12,6 +12,7 @@ import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
+import { ordnerBereit } from './ordner';
 
 // Filter und Auswahl bleiben beim Wechsel ins Detail und zurück erhalten
 const merk = {
@@ -212,27 +213,35 @@ export function AuftraegeListe() {
   // ---------------------------------------------------------------- Aktionen
   async function rechnungen(sammel: boolean) {
     try {
+      await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
+      const nrs = sel.filter((s) => !s.faktura).map((s) => s.auftragsnr).sort(); // Server vergibt die Nummern in dieser Reihenfolge
       const r = await api.post<{ fakturen: string[]; ignoriert: number }>(`${T}/rechnungen`, { auftraege: sel.map((s) => s.auftragsnr), sammel });
       setAuswahl(new Set());
       await lade();
       await ladeInit();
       if (r.ignoriert) toast(`Aufgrund bereits bestehender Rechnungen wurden ${r.ignoriert} Aufträge nicht bearbeitet.`);
-      setDocs(r.fakturen.map((f) => ({ url: `${T}/pdf/R/${encodeURIComponent(f)}`, filename: `Rechnung_${f}.pdf` })));
+      // Einzelrechnungen: je Auftrag eine Rechnung (gleiche Reihenfolge), Sammelrechnung: in jeden Auftragsordner
+      setDocs(r.fakturen.map((f, i) => ({ url: `${T}/pdf/R/${encodeURIComponent(f)}`, filename: `Rechnung_${f}.pdf`, ablage: sammel ? nrs : nrs[i] ? [nrs[i]] : [] })));
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
-  function drucken(art: 'T' | 'L' | 'R') {
+  async function drucken(art: 'T' | 'L' | 'R') {
     if (!sel.length) return toast('Bitte mindestens einen Auftrag auswählen.');
+    await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
     if (art === 'R') {
       const f = [...new Set(sel.filter((s) => s.faktura).map((s) => s.faktura!))];
       if (!f.length) return toast('Unter der Auswahl ist kein fakturierter Auftrag.');
-      return setDocs(f.map((x) => ({ url: `${T}/pdf/R/${encodeURIComponent(x)}`, filename: `Rechnung_${x}.pdf` })));
+      return setDocs(f.map((x) => ({
+        url: `${T}/pdf/R/${encodeURIComponent(x)}`, filename: `Rechnung_${x}.pdf`,
+        ablage: sel.filter((s) => s.faktura === x).map((s) => s.auftragsnr),
+      })));
     }
     setDocs(sel.map((s) => ({
       url: `${T}/pdf/${art}/${encodeURIComponent(s.auftragsnr)}`,
       filename: `${art === 'T' ? 'Transportauftrag' : 'Lieferschein'}_${s.auftragsnr}.pdf`,
+      ablage: [s.auftragsnr],
     })));
   }
 
