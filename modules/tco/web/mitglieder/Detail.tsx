@@ -319,6 +319,11 @@ function Vertraege({ d, aw, edit, onNeu, onOpen, onAktion }: {
     <>
       <VertragsBaum personen={d.familie} vertraege={d.vertraegeFamilie} ich={d.mitglied.adrnr} onPerson={onOpen}
                     aktionen={edit ? <Button icon="add" design="Emphasized" onClick={() => onNeu()}>Vertrag hinzufügen</Button> : undefined}
+                    // Vertragsbeginn (#33): für die Mitgliederpflege immer änderbar – alle Verträge im Baum, auch beendete
+                    beginnZelle={edit ? (v) => (
+                      <DatePicker style={{ width: '9.5rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.vertragbegin ?? ''}
+                                  onChange={(e) => { if (e.detail.valid && e.detail.value && e.detail.value !== v.vertragbegin) put(v, { beginn: e.detail.value }); }} />
+                    ) : undefined}
                     endeZelle={(v) => (aenderbar(v)
                       ? <DatePicker style={{ width: '9.5rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.vertragende ?? ''} placeholder="unbefristet"
                                     onChange={(e) => { if ((e.detail.value || null) !== (v.vertragende || null)) put(v, { ende: e.detail.value || null }); }} />
