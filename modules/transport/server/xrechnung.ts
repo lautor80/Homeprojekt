@@ -1,5 +1,5 @@
 import { fakturaAuftraege, firmaLesen, kaeufer } from './data.js';
-import { condense, dat, eur, heute, katText, kategorie } from './format.js';
+import { condense, dat, eur, heute, katText, kategorie, steuerGrund } from './format.js';
 
 export interface XRechnung {
   faktura: string;
@@ -58,6 +58,8 @@ export interface Rechnungsdaten {
   von: string | null;
   bis: string | null;
   hasO: boolean;
+  /** steuerfreier Transport in ein Drittland (#121): Befreiungsgrund der Kategorie E */
+  drittland: boolean;
   anzahl: number;
   zahlungsziel: string;
   faellig: string;
@@ -89,11 +91,13 @@ export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | 
   let bis: string | null = null;
   let soll = 0;
   let hasO = false;
+  let drittland = false;
 
   for (const a of auftraege) {
     const s = a.stops[0];
-    const kat = kategorie(a.steuerrelevant, buyer.land);
+    const kat = kategorie(a.steuerrelevant, buyer.land, a.steuerbefreiung);
     if (kat === 'O') hasO = true;
+    if (kat === 'E' && a.steuerbefreiung === 'DRITTLAND') drittland = true;
 
     order = condense(a.ordernummer);
     if (order.toUpperCase() === 'FOLGT') order = '';
@@ -169,7 +173,7 @@ export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | 
   const faelligD = new Date(`${fakturadatum}T12:00:00Z`);
   faelligD.setUTCDate(faelligD.getUTCDate() + Number(firma.zahlungsziel_tage || 0));
   return {
-    faktura, fakturadatum, firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO,
+    faktura, fakturadatum, firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, drittland,
     anzahl: auftraege.length, zahlungsziel, faellig: faelligD.toISOString().slice(0, 10), katSatz, hinweise,
   };
 }
@@ -182,7 +186,7 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
     return res;
   }
   res.hinweise.push(...d.hinweise);
-  const { firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, fakturadatum, zahlungsziel, katSatz } = d;
+  const { firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, fakturadatum, zahlungsziel, katSatz, drittland } = d;
   const satz = firma.ust_satz;
   const anzahl = d.anzahl;
 
@@ -190,9 +194,9 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
     const x = [`<${tag}>`, el('cbc:ID', kat)];
     if (kat !== 'O') x.push(el('cbc:Percent', amt(katSatz(kat))));
     if (tag === 'cac:TaxCategory') {
-      if (kat === 'AE') x.push(el('cbc:TaxExemptionReasonCode', 'VATEX-EU-AE'), el('cbc:TaxExemptionReason', 'Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge)'));
-      if (kat === 'O') x.push(el('cbc:TaxExemptionReasonCode', 'VATEX-EU-O'), el('cbc:TaxExemptionReason', 'Nicht im Inland steuerbare Leistung'));
-      if (kat === 'E') x.push(el('cbc:TaxExemptionReason', 'Steuerfreie Leistung'));
+      if (kat === 'AE') x.push(el('cbc:TaxExemptionReasonCode', 'VATEX-EU-AE'), el('cbc:TaxExemptionReason', steuerGrund(kat)));
+      if (kat === 'O') x.push(el('cbc:TaxExemptionReasonCode', 'VATEX-EU-O'), el('cbc:TaxExemptionReason', steuerGrund(kat)));
+      if (kat === 'E') x.push(el('cbc:TaxExemptionReason', steuerGrund(kat, drittland)));
     }
     x.push('<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>', `</${tag}>`);
     return x;

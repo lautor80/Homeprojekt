@@ -198,6 +198,21 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   const reihe = ['SpecifiedTradeSettlementPaymentMeans', 'ApplicableTradeTax', 'SpecifiedTradePaymentTerms', 'SpecifiedTradeSettlementHeaderMonetarySummation']
     .map((t) => cii.text.lastIndexOf(`<ram:${t}>`));
   assert.ok(reihe.every((x: number, i: number) => x >= 0 && (i === 0 || x > reihe[i - 1])), 'Elementreihenfolge CII');
+  // ---- Ohne MwSt: Grund wählbar (#121) – Drittland-Transport statt Ableitung aus dem Land ----
+  const f3 = await call('POST', `${T}/auftraege`, { ...neuF, kunde: 794, unternehmer: 793, steuerbefreiung: 'DRITTLAND' });
+  assert.equal(f3.status, 200, JSON.stringify(f3.body));
+  assert.equal((await call('GET', `${T}/auftraege/${f3.body.auftragsnr}`)).body.steuerbefreiung, 'DRITTLAND');
+  const er3 = await call('POST', `${T}/rechnungen`, { auftraege: [f3.body.auftragsnr], sammel: false });
+  assert.equal(er3.status, 200, JSON.stringify(er3.body));
+  const xr3 = (await call('GET', `${T}/xrechnung/${er3.body.fakturen[0]}`)).body;
+  assert.match(xr3.xml, /<cbc:ID>E<\/cbc:ID>/);
+  assert.match(xr3.xml, /Umsatzsteuerfreier Transport in ein Drittland gem\. § 4 Nr\. 3 Buchst\. a Unterbuchstabe aa UStG/);
+  assert.doesNotMatch(xr3.xml, /VATEX-EU-AE/);
+  assert.equal((await call('GET', `${T}/pdf/R/${er3.body.fakturen[0]}`)).status, 200);
+  // mit MwSt wird der Grund verworfen
+  const f4 = await call('POST', `${T}/auftraege`, { ...neuF, steuerrelevant: true, kunde: 794, unternehmer: 793, steuerbefreiung: 'RC' });
+  assert.equal((await call('GET', `${T}/auftraege/${f4.body.auftragsnr}`)).body.steuerbefreiung, null);
+
   // Lieferschein/Transportauftrag bleiben normale PDFs
   assert.doesNotMatch(((await call('GET', `${T}/pdf/L/2025_0041`)).body as Buffer).toString('latin1'), /factur-x/);
 

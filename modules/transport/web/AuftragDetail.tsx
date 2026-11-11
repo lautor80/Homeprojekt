@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectPage, ObjectStatus,
-  ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, Select, Switch, Text, TextArea, Title,
+  ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, RadioButton, Select, Switch, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -364,7 +364,22 @@ export function AuftragDetail() {
                 <F label="Palettentausch">{werteSelect('PALETTENTAUSCH', 'palettentausch', false)}</F>
               </Spalte>
               <Spalte titel="Rechnung">
-                <F label="MwSt berechnen"><CheckBox checked={a.steuerrelevant} readonly={!mayEdit} onChange={(e) => set('steuerrelevant', e.target.checked)} /></F>
+                <F label="MwSt berechnen"><CheckBox checked={a.steuerrelevant} readonly={!mayEdit}
+                  onChange={(e) => setA({ ...a, steuerrelevant: e.target.checked, steuerbefreiung: e.target.checked ? null : a.steuerbefreiung ?? 'RC' })} /></F>
+                {!a.steuerrelevant && (
+                  // ohne MwSt: Grund wählen – Text erscheint so auf der Rechnung und in der E-Rechnung (#121)
+                  <F label="Ohne MwSt, weil" required>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!mayEdit} checked={a.steuerbefreiung === 'RC'}
+                                   text="Übergang der Steuerschuld auf den Leistungsempfänger (Reverse Charge)"
+                                   onChange={() => set('steuerbefreiung', 'RC')} />
+                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!mayEdit} checked={a.steuerbefreiung === 'DRITTLAND'}
+                                   text="Umsatzsteuerfreier Transport in ein Drittland gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG"
+                                   onChange={() => set('steuerbefreiung', 'DRITTLAND')} />
+                      {!a.steuerbefreiung && <Text className="portal-muted portal-small">Noch nicht gewählt – bisher aus dem Land des Rechnungsempfängers abgeleitet.</Text>}
+                    </div>
+                  </F>
+                )}
                 {!isNew && <F label="Rechnungsbetrag"><Text><b>{betrag(a.rgbetrag)} EUR</b></Text></F>}
                 <F label="Faktura">
                   {a.faktura
