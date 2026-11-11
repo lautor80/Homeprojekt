@@ -168,7 +168,7 @@ flowchart LR
 | core:statistik | 3 |
 | core:tabellen | 7 |
 | core:verbindungen | 3 |
-| dashboard | 4 |
+| dashboard | 5 |
 | eingang | 27 |
 | fi | 20 |
 | finanz | 3 |

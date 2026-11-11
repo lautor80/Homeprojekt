@@ -33,10 +33,11 @@ function nice(raw: number): number {
 
 // ---------------------------------------------------------------- Linien (build_chart_svg)
 
-interface LineProps { title: string; name1: string; name2?: string; data: Point[]; values?: boolean; placeholder?: boolean }
+interface LineProps { title: string; name1: string; name2?: string; data: Point[]; values?: boolean; placeholder?: boolean; anzahl?: boolean }
 
 /** Ein oder zwei Linien je Beschriftung; `values` zeigt Werte (Stunden) an den Punkten und nutzt eine runde Skala */
-export function LineChart({ title, name1, name2, data, values, placeholder }: LineProps) {
+/** `anzahl`: Werte sind Stückzahlen (z. B. Benutzer) – ganze Zahlen statt Euro */
+export function LineChart({ title, name1, name2, data, values, placeholder, anzahl }: LineProps) {
   const W = 800, H = 280, ML = 74, MR = 24, MT = 48, MB = 44;
   const n = data.length;
   if (!n) return null;
@@ -47,14 +48,18 @@ export function LineChart({ title, name1, name2, data, values, placeholder }: Li
   if (values) max = min + 4 * nice(((max - min) * 11) / 10 / 4);
   const x = (i: number) => (n > 1 ? ML + (pw * i) / (n - 1) : ML + pw / 2);
   const y = (v: number) => y0 - ((v - min) / (max - min)) * ph;
-  const fmt = (v: number) => (values ? std(v) : kurz(v));
+  const fmt = (v: number) => (values ? std(v) : anzahl && max - min <= 8 ? (Number.isInteger(v) ? String(v) : '') : kurz(v));
+  const wert = (v: number) => (values ? std(v) : anzahl ? Math.round(v).toLocaleString('de-DE') : betrag(v));
+  // bei vielen Punkten nur jede k-te Beschriftung (letzte immer)
+  const step = Math.max(1, Math.ceil(n / 12));
   return (
     <Frame w={W} h={H}>
       {[0, 1, 2, 3, 4].map((k) => {
         const yy = y0 - (ph * k) / 4;
         return <g key={k}><line x1={ML} y1={yy} x2={W - MR} y2={yy} stroke={GRID} /><text x={ML - 8} y={yy + 4} textAnchor="end" fontSize={10} fill={TXT}>{fmt(min + ((max - min) * k) / 4)}</text></g>;
       })}
-      {data.map((p, i) => <text key={i} x={x(i)} y={y0 + 18} textAnchor="middle" fontSize={10} fill={TXT}>{p.label}</text>)}
+      {data.map((p, i) => ((i % step === 0 && (n - 1 - i >= step / 2 || i === n - 1)) || i === n - 1
+        ? <text key={i} x={x(i)} y={y0 + 18} textAnchor={step > 1 && i === n - 1 ? 'end' : 'middle'} fontSize={10} fill={TXT}>{p.label}</text> : null))}
       <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TXT} />
       <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TXT} />
       {placeholder ? (
@@ -68,9 +73,9 @@ export function LineChart({ title, name1, name2, data, values, placeholder }: Li
             const tx = anchor === 'start' ? x(i) + 4 : anchor === 'end' ? x(i) - 4 : x(i);
             return (
               <g key={i}>
-                <circle cx={x(i)} cy={y(p.val1)} r={3} fill={C1}><title>{`${name1} ${p.label}: ${values ? std(p.val1) : betrag(p.val1)}`}</title></circle>
+                <circle cx={x(i)} cy={y(p.val1)} r={3} fill={C1}><title>{`${name1} ${p.label}: ${wert(p.val1)}`}</title></circle>
                 {values && <text x={tx} y={y(p.val1) - 9} textAnchor={anchor} fontSize={10} fontWeight="bold" fill={DARK}>{std(p.val1)}</text>}
-                {two && <circle cx={x(i)} cy={y(p.val2)} r={3} fill={C2}><title>{`${name2} ${p.label}: ${betrag(p.val2)}`}</title></circle>}
+                {two && <circle cx={x(i)} cy={y(p.val2)} r={3} fill={C2}><title>{`${name2} ${p.label}: ${wert(p.val2)}`}</title></circle>}
               </g>
             );
           })}
