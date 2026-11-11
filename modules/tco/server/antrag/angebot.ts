@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { sha256 } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { ibanGueltig, normalisieren } from '../../../../server/src/lib/sepa.js';
 import type { Db } from '../verein.js';
 import { addTage, condense, heute } from '../format.js';
 import { emailGueltig, normName, vertragsarten } from '../mitglieder/logik.js';
@@ -25,11 +26,16 @@ export interface AngebotDaten {
   personen: AngebotPerson[];
   strasse: string; plz: string; ort: string; email: string; telefon: string | null;
   erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null;
+  /** Bankverbindung aus dem Stamm bzw. vom Vorstand erfasst – die Person bestätigt nur noch das Mandat */
+  bank?: { kontoinhaber: string; iban: string; bic: string | null } | null;
 }
 export interface AngebotEingabe {
   personen: { adrnr?: string | null; anrede?: string | null; vorname?: string | null; nachname?: string | null; geburtsdatum?: string | null; email?: string | null; art?: string | null; training?: string[] }[];
   eintritt: string; email?: string | null; erziehungsberechtigt?: string | null; bemerkung?: string | null;
+  kontoinhaber?: string | null; iban?: string | null;
 }
+/** IBAN gekürzt für die Anzeige im Formular: Land, Prüfziffer und die letzten vier Stellen */
+export const ibanKurz = (iban: string) => { const i = normalisieren(iban); return i.length > 8 ? `${i.slice(0, 4)} •••• •••• ${i.slice(-4)}` : '••••'; };
 
 const leer = (x: unknown) => (x === null || x === undefined ? '' : String(x).trim());
 
@@ -42,7 +48,7 @@ export async function angebotKandidaten(db: Db, suche: string) {
       from tco.mitglieder m left join tco.schnupper s on s.adrnr = m.adrnr and s.status <> 'MITGLIED'
      where coalesce(m.mitglnrn, '') = '' and m.eintritt is null
        and (${suche.trim()} = '' or lower(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '') || ' ' || coalesce(m.ort, '') || ' ' || coalesce(m.email, '')) like ${q})
-     order by m.nachname, m.vorname limit 50`;
+     order by m.nachname, m.vorname limit ${suche.trim() ? 50 : 5000}`;
   return rows.map((r) => ({
     adrnr: r.adrnr as string, name: condense(`${leer(r.vorname)} ${leer(r.nachname)}`), anrede: leer(r.anrede), vorname: leer(r.vorname), nachname: leer(r.nachname),
     geburtsdatum: r.geburtsdatum as string | null, ort: leer(r.ort), email: leer(r.email), schnupper: r.schnupper as string | null,
@@ -58,10 +64,12 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   const art = new Map(arten.map((a) => [a.art, { ...a, kategorie: kategorieVon(a.art, a.name) }]));
   const personen: AngebotPerson[] = [];
   let adresse: { strasse: string; plz: string; ort: string; telefon: string | null } = { strasse: '', plz: '', ort: '', telefon: null };
+  let bank: AngebotDaten['bank'] = null;
   for (const [i, x] of e.personen.entries()) {
     let p: AngebotPerson;
     if (x.adrnr) {
-      const [m] = await tx`select adrnr, anrede, vorname, nachname, geburtsdatum::text as geburtsdatum, strasse, plz, ort, email, telefon, telefon6, mitglnrn, eintritt
+      const [m] = await tx`select adrnr, anrede, vorname, nachname, geburtsdatum::text as geburtsdatum, strasse, plz, ort, email, telefon, telefon6, mitglnrn, eintritt,
+                                  iban1, bic1, abwkontoinh
                              from tco.mitglieder where adrnr = ${x.adrnr}`;
       if (!m) throw new BusinessError(`Stammsatz ${x.adrnr} nicht gefunden.`);
       if (leer(m.mitglnrn) || m.eintritt) {
@@ -71,7 +79,13 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
         adrnr: m.adrnr, anrede: ['Herr', 'Frau', 'Divers'].includes(leer(m.anrede)) ? leer(m.anrede) : '', vorname: leer(m.vorname), nachname: leer(m.nachname),
         geburtsdatum: m.geburtsdatum ?? null, email: leer(m.email) || null, telefon: leer(m.telefon6) || leer(m.telefon) || null, art: null, training: [],
       };
-      if (i === 0) adresse = { strasse: leer(m.strasse), plz: leer(m.plz), ort: leer(m.ort), telefon: p.telefon ?? null };
+      if (i === 0) {
+        adresse = { strasse: leer(m.strasse), plz: leer(m.plz), ort: leer(m.ort), telefon: p.telefon ?? null };
+        // „alles übernehmen“: hinterlegte Bankverbindung des Stammsatzes
+        if (ibanGueltig(normalisieren(leer(m.iban1)))) {
+          bank = { kontoinhaber: leer(m.abwkontoinh) || `${p.vorname} ${p.nachname}`, iban: normalisieren(leer(m.iban1)), bic: leer(m.bic1) || null };
+        }
+      }
     } else {
       if (!condense(x.vorname ?? '') || !condense(x.nachname ?? '')) throw new BusinessError(`Person ${i + 1}: Bitte Vor- und Nachname angeben oder eine Person aus dem Stamm wählen.`);
       p = {
@@ -101,8 +115,13 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   const email = leer(e.email) || personen[0].email || '';
   if (!emailGueltig(email)) throw new BusinessError('Bitte eine gültige E-Mail-Adresse für den Link angeben.');
 
+  // vom Vorstand erfasste Bankverbindung hat Vorrang vor dem Stamm
+  if (leer(e.iban)) {
+    if (!ibanGueltig(normalisieren(leer(e.iban)))) throw new BusinessError('Die IBAN ist ungültig (Prüfziffer/Länge).');
+    bank = { kontoinhaber: condense(e.kontoinhaber ?? '') || `${personen[0].vorname} ${personen[0].nachname}`, iban: normalisieren(leer(e.iban)), bic: null };
+  }
   const daten: AngebotDaten = {
-    personen, ...adresse, email, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || null, eintritt: e.eintritt,
+    bank, personen, ...adresse, email, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || null, eintritt: e.eintritt,
     bemerkung: (e.bemerkung ?? '').trim() || null,
   };
   const jahr = heute().slice(0, 4);
@@ -161,7 +180,7 @@ async function zumToken(tx: Db, token: string) {
  * damit die Transaktion den Zähler sichert). Ohne hinterlegtes Geburtsdatum genügt der Link.
  */
 export async function angebotOeffnen(tx: Db, token: string, geburtsdatum: string | null):
-  Promise<{ geburtsdatumNoetig: true } | { fehler: string } | { nummer: string; daten: Omit<AngebotDaten, 'personen'> & { personen: Omit<AngebotPerson, 'adrnr'>[] } }> {
+  Promise<{ geburtsdatumNoetig: true } | { fehler: string } | { nummer: string; daten: Omit<AngebotDaten, 'personen' | 'bank'> & { personen: Omit<AngebotPerson, 'adrnr'>[]; bank: { kontoinhaber: string; iban: string } | null } }> {
   const a = await zumToken(tx, token);
   const soll = a.daten.personen[0].geburtsdatum;
   if (soll) {
@@ -176,8 +195,16 @@ export async function angebotOeffnen(tx: Db, token: string, geburtsdatum: string
   const d = a.daten;
   return {
     nummer: a.nummer,
-    daten: { ...d, eintritt: d.eintritt < heute() ? heute() : d.eintritt, personen: d.personen.map(({ adrnr: _a, ...p }) => p) },
+    // IBAN nur gekürzt nach außen – bei „Bestätigen“ nimmt der Server die gespeicherte
+    daten: { ...d, eintritt: d.eintritt < heute() ? heute() : d.eintritt, personen: d.personen.map(({ adrnr: _a, ...p }) => p),
+      bank: d.bank ? { kontoinhaber: d.bank.kontoinhaber, iban: ibanKurz(d.bank.iban) } : null },
   };
+}
+
+/** gespeicherte Bankverbindung des Angebots (für „Bestätigen“ ohne erneute Eingabe der IBAN) */
+export async function angebotBank(tx: Db, token: string) {
+  const a = await zumToken(tx, token);
+  return a.daten.bank ?? null;
 }
 
 /**

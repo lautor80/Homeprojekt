@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
 } from '@ui5/webcomponents-react';
 import { AuswahlBox } from '@core/components/AuswahlBox';
+import { PdfDialog } from '@core/components/PdfDialog';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -25,7 +26,11 @@ interface Antrag {
   bearbeitet_am: string | null; bearbeitet_von: string | null; bemerkung: string | null; hinweise: string[];
   ergebnis: { mitglieder: { adrnr: string; mitglnrn: string; name: string }[]; mandat: string; benutzer: { name: string; username: string; hinweis: string }[] } | null;
 }
-interface Ergebnis { text: string; startkennwoerter: { name: string; username: string; startkennwort: string | null }[] }
+interface Ergebnis {
+  text: string; startkennwoerter: { name: string; username: string; startkennwort: string | null }[];
+  /** Mitgliederinformation je neuem Mitglied (#12) – zum Drucken, ggf. in Paperless abgelegt */
+  unterlagen?: { adrnr: string; name: string; url: string; ablage: string }[];
+}
 const zeit = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 const STATUS = { EINGANG: ['Eingang', 'Critical'], UEBERNOMMEN: ['übernommen', 'Positive'], ABGELEHNT: ['abgelehnt', 'Negative'] } as const;
 
@@ -38,6 +43,7 @@ export function Mitgliedsantraege() {
   const [offen, setOffen] = useState<Antrag | null>(null);
   const [weg, setWeg] = useState<Antrag | null>(null);
   const [start, setStart] = useState<Ergebnis | null>(null);
+  const [druck, setDruck] = useState<NonNullable<Ergebnis['unterlagen']> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [angebotNeu, setAngebotNeu] = useState(false);
   const [angebotVersion, setAngebotVersion] = useState(0);
@@ -107,7 +113,8 @@ export function Mitgliedsantraege() {
         </Section>
       ))}
       {angebotNeu && <AngebotDialog onClose={() => setAngebotNeu(false)} onDone={() => { setAngebotNeu(false); setAngebotVersion((v) => v + 1); }} />}
-      {offen && <UebernahmeDialog a={offen} onClose={() => setOffen(null)} onDone={(r) => { setOffen(null); toast(r.text, 8000); if (r.startkennwoerter.length) setStart(r); laden(); }} />}
+      {offen && <UebernahmeDialog a={offen} onClose={() => setOffen(null)} onDone={(r) => { setOffen(null); toast(r.text, 8000); if (r.startkennwoerter.length) setStart(r); if (r.unterlagen?.length) setDruck(r.unterlagen); laden(); }} />}
+      {druck && !start && <MitgliederinfoDruck liste={druck} onClose={() => setDruck(null)} />}
       <ConfirmDialog open={!!weg} danger askReason title="Antrag ablehnen" confirmText="Ablehnen"
                      text={`Antrag ${weg?.nummer ?? ''} ablehnen? Die Begründung wird dem Antragsteller per E-Mail mitgeteilt.`}
                      onCancel={() => setWeg(null)} onConfirm={(grund) => { const a = weg!; setWeg(null); ablehnen(a, grund); }} />
@@ -124,11 +131,12 @@ export function Mitgliedsantraege() {
 function UebernahmeDialog({ a, onClose, onDone }: { a: Antrag; onClose: () => void; onDone: (r: Ergebnis) => void }) {
   const [eintritt, setEintritt] = useState(a.daten.eintritt);
   const [mail, setMail] = useState(true);
+  const [unterlagen, setUnterlagen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function los() {
     setBusy(true); setError(null);
-    try { onDone(await api.post<Ergebnis>(`${A}/${a.id}/uebernehmen`, { eintritt, mail })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { onDone(await api.post<Ergebnis>(`${A}/${a.id}/uebernehmen`, { eintritt, mail, unterlagen })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return (
     <Dialog open headerText={`Antrag ${a.nummer} übernehmen`} style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
@@ -146,6 +154,7 @@ function UebernahmeDialog({ a, onClose, onDone }: { a: Antrag; onClose: () => vo
         <Label showColon>Eintritt</Label>
         <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={eintritt} onChange={(e) => setEintritt(e.detail.value)} />
         <CheckBox text="Per E-Mail benachrichtigen (Aufnahmebestätigung, Link zum Festlegen des Kennworts)" checked={mail} onChange={(e) => setMail(e.target.checked)} />
+        <CheckBox text="Mitgliederinformation erzeugen und zum Druck öffnen (mit Paperless: dort ablegen)" checked={unterlagen} onChange={(e) => setUnterlagen(e.target.checked)} />
         {!a.hinweise.every((h) => !h.includes('gesperrt')) && <MessageStrip design="Negative" hideCloseButton>Eine Person ist bereits Mitglied – Übernahme gesperrt. Bitte ablehnen oder den Bestand prüfen.</MessageStrip>}
       </div>
     </Dialog>
@@ -223,7 +232,8 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const [arten, setArten] = useState<Beitragsart[]>([]);
   const [personen, setPersonen] = useState<APerson[]>([leerePerson()]);
   const [kandidaten, setKandidaten] = useState<Kandidat[]>([]);
-  const [suche, setSuche] = useState('');
+  const [kontoinhaber, setKontoinhaber] = useState('');
+  const [iban, setIban] = useState('');
   const [eintritt, setEintritt] = useState(heuteIso());
   const [email, setEmail] = useState('');
   const [erz, setErz] = useState('');
@@ -233,11 +243,12 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const [error, setError] = useState<string | null>(null);
   const [ergebnis, setErgebnis] = useState<{ nummer: string; link: string; text: string } | null>(null);
   useEffect(() => { api.get<{ beitragsarten: Beitragsart[] }>(`${TCO}/antrag`).then((i) => setArten(i.beitragsarten)).catch((e) => setError(e.message)); }, []);
-  useEffect(() => {
-    const t = setTimeout(() => api.get<Kandidat[]>(`${A}/angebote/personen?suche=${encodeURIComponent(suche)}`).then(setKandidaten).catch((e) => setError(e.message)), 250);
-    return () => clearTimeout(t);
-  }, [suche]);
+  // alle Personen ohne Mitgliedschaft einmal laden – gesucht wird im Feld (schnell, ohne Neuladen beim Tippen)
+  useEffect(() => { api.get<Kandidat[]>(`${A}/angebote/personen`).then(setKandidaten).catch((e) => setError(e.message)); }, []);
   const setP = (i: number, x: Partial<APerson>) => setPersonen((l) => l.map((p, j) => (j === i ? { ...p, ...x } : p)));
+  const kandidatenEintraege = useMemo(() => kandidaten.map((k) => ({
+    key: k.adrnr, text: k.name, zusatz: [k.geburtsdatum ? dat(k.geburtsdatum) : '', k.ort, k.schnupper ? `Schnupper ${k.schnupper}` : ''].filter(Boolean).join(' · '),
+  })), [kandidaten]);
   const familie = !!arten.find((b) => b.art === personen[0].art)?.familie;
   const mitgliedschaften = arten.filter((b) => b.kategorie === 'MITGLIEDSCHAFT');
   const trainings = arten.filter((b) => b.kategorie === 'TRAINING');
@@ -252,6 +263,7 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
           ? { anrede: p.anrede || null, vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum || null, email: p.email || null, art: i === 0 ? p.art : null, training: p.training }
           : { adrnr: p.adrnr, art: i === 0 ? p.art : null, training: p.training })),
         eintritt, email: email.trim() || null, erziehungsberechtigt: erz.trim() || null, bemerkung: hinweis.trim() || null, mail,
+        kontoinhaber: kontoinhaber.trim() || null, iban: iban.trim() || null,
       });
       setErgebnis(r);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -288,9 +300,8 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
             {!p.neu ? (
               <>
                 <Label>Person aus dem Mitgliederstamm (ohne Mitgliedschaft, z. B. Interessent, Schnupperer)</Label>
-                <AuswahlBox wert={p.adrnr ?? ''} filter="None" placeholder="Name, Ort oder E-Mail suchen" style={{ width: '100%' }} onSuche={setSuche}
-                            eintraege={[...(p.info && !kandidaten.some((k) => k.adrnr === p.adrnr) ? [p.info] : []), ...kandidaten]
-                              .map((k) => ({ key: k.adrnr, text: k.name, zusatz: [k.geburtsdatum ? dat(k.geburtsdatum) : '', k.ort, k.schnupper ? `Schnupper ${k.schnupper}` : ''].filter(Boolean).join(' · ') }))}
+                <AuswahlBox wert={p.adrnr ?? ''} placeholder="Name oder Ort eingeben" style={{ width: '100%' }} max={50}
+                            eintraege={kandidatenEintraege}
                             onWaehle={(k) => {
                               const info = kandidaten.find((x) => x.adrnr === k);
                               setP(i, { adrnr: k, info });
@@ -330,10 +341,35 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
           <div><Label>E-Mail für den Link</Label><Input style={{ width: '100%' }} type="Email" value={email} placeholder="aus dem Stamm" onInput={(e) => setEmail(e.target.value)} /></div>
           <div><Label>Erziehungsberechtigte/r (bei Minderjährigen)</Label><Input style={{ width: '100%' }} value={erz} onInput={(e) => setErz(e.target.value)} /></div>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+          <div><Label>Kontoinhaber/in (optional)</Label><Input style={{ width: '100%' }} value={kontoinhaber} onInput={(e) => setKontoinhaber(e.target.value)} /></div>
+          <div><Label>IBAN (optional – sonst aus dem Stamm bzw. von der Person)</Label><Input style={{ width: '100%' }} value={iban} onInput={(e) => setIban(e.target.value)} /></div>
+        </div>
         <Label>Hinweis an die Person (erscheint im Formular)</Label>
         <Input style={{ width: '100%' }} value={hinweis} maxlength={300} placeholder="z. B. Gruppe montags 17 Uhr bei Trainer Tom" onInput={(e) => setHinweis(e.target.value)} />
         <CheckBox text="Link per E-Mail senden (sonst nur anzeigen, z. B. für WhatsApp)" checked={mail} onChange={(e) => setMail(e.target.checked)} />
       </div>
     </Dialog>
+  );
+}
+
+/** Nach der Übernahme: Mitgliederinformation je neuem Mitglied zum Drucken (#12) */
+function MitgliederinfoDruck({ liste, onClose }: { liste: NonNullable<Ergebnis['unterlagen']>; onClose: () => void }) {
+  const [offen, setOffen] = useState<number | null>(0);
+  const u = offen !== null ? liste[offen] : null;
+  return (
+    <>
+      <Dialog open={offen === null} headerText="Mitgliederinformation drucken" style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
+              footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Fertig</Button>} />}>
+        {liste.map((x, i) => (
+          <div key={x.adrnr} className="portal-row" style={{ justifyContent: 'space-between', padding: '0.3rem 0' }}>
+            <Text>{x.name}{x.ablage ? <span className="portal-muted portal-small"> · {x.ablage}</span> : null}</Text>
+            <Button icon="print" design="Transparent" onClick={() => setOffen(i)}>Öffnen</Button>
+          </div>
+        ))}
+      </Dialog>
+      {u && <PdfDialog url={u.url} title={`Mitgliederinformation ${u.name}`} filename={`Mitgliederinformation_${u.name.replace(/\s+/g, '_')}.pdf`}
+                       onClose={() => setOffen(offen !== null && offen + 1 < liste.length ? offen + 1 : null)} />}
+    </>
   );
 }

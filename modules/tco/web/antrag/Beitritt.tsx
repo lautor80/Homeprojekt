@@ -56,8 +56,14 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   interface AngebotAntwort {
     geburtsdatumNoetig?: boolean; nummer?: string;
     daten?: { personen: { anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email?: string | null; telefon?: string | null; art?: string | null; training: string[] }[];
-      strasse: string; plz: string; ort: string; email: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null };
+      strasse: string; plz: string; ort: string; email: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null;
+      bank: { kontoinhaber: string; iban: string } | null };
   }
+  /** Vertragsangebot: Bankverbindung aus dem Angebot (nur gekürzt angezeigt) und Ansicht „nur bestätigen“ */
+  const [angebotBank, setAngebotBank] = useState<{ kontoinhaber: string; iban: string } | null>(null);
+  const [bankAusAngebot, setBankAusAngebot] = useState(false);
+  const [ansicht, setAnsicht] = useState<'bestaetigen' | 'formular'>('bestaetigen');
+  const [alles, setAlles] = useState(false);
   async function angebotOeffnen(geb: string | null) {
     setTorFehler(null);
     try {
@@ -71,6 +77,8 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
         email: i === 0 ? '' : p.email ?? '', telefon: i === 0 ? '' : p.telefon ?? '', art: i === 0 ? p.art ?? '' : '', training: p.training ?? [],
       })));
       setA((x) => ({ ...x, strasse: d.strasse, plz: d.plz, ort: d.ort, email: d.email, telefon: d.telefon ?? '', erziehungsberechtigt: d.erziehungsberechtigt ?? '', eintritt: d.eintritt }));
+      setAngebotBank(d.bank);
+      setBankAusAngebot(!!d.bank);
       setTor('offen');
     } catch (e) {
       // falsches Geburtsdatum (Versuche werden gezählt), Link abgelaufen/verwendet/gesperrt
@@ -116,16 +124,22 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   }, [info, a.eintritt, personen.map((p) => p.geburtsdatum).join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
   const ok = personen.every((p, i) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && (i > 0 || p.art)) && (personen.length === 1 || familie)
     && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim())
-    && bank.kontoinhaber.trim() && bank.iban.trim() && bank.sepa && zu.satzung && zu.datenschutz && zu.kuendigung;
+    && (bankAusAngebot || (bank.kontoinhaber.trim() && bank.iban.trim())) && bank.sepa && zu.satzung && zu.datenschutz && zu.kuendigung;
+  /** Vertragsangebot vollständig vorbereitet → nur noch bestätigen (sonst das Formular zum Ergänzen) */
+  const angebotVollstaendig = personen.every((p, i) => p.anrede && p.vorname.trim() && p.nachname.trim() && p.geburtsdatum && (i > 0 || p.art))
+    && (personen.length === 1 || familie) && a.strasse.trim() && a.plz.trim() && a.ort.trim() && a.email.trim() && (!minderjaehrig || a.erziehungsberechtigt.trim());
 
-  async function absenden() {
+  async function absenden(bestaetigt = false) {
     setBusy(true); setError(null);
     try {
+      // „Bestätigen“: ein Haken für Mandat, Satzung, Datenschutz und Kündigungsfristen
+      const z = bestaetigt ? { ...zu, satzung: true, datenschutz: true, kuendigung: true } : zu;
+      const bk = bankAusAngebot ? { sepa: bestaetigt || bank.sepa, ausAngebot: true } : { ...bank, sepa: bestaetigt || bank.sepa };
       const r = await api.post<{ text: string }>(`${TCO}/antrag`, {
         personen: personen.map((p, i) => ({ ...p, art: i === 0 ? p.art : null, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
         strasse: a.strasse, plz: a.plz, ort: a.ort, email: a.email, telefon: a.telefon || null,
         erziehungsberechtigt: minderjaehrig ? a.erziehungsberechtigt : null, eintritt: a.eintritt, bemerkung: a.bemerkung || null,
-        ...zu, bank, website: a.website, schnupper: schnupperNr ? schnupper : null, angebot: angebotNr ? angebot : null,
+        ...z, bank: bk, website: a.website, schnupper: schnupperNr ? schnupper : null, angebot: angebotNr ? angebot : null,
       });
       setFertig(r.text);
       window.scrollTo(0, 0);
@@ -157,6 +171,47 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
             <Button design="Emphasized" style={full} disabled={!torGeb} onClick={() => angebotOeffnen(torGeb)}>Antrag öffnen</Button>
           </form>
         )}
+      </CenterCard>
+    );
+  }
+  // Vertragsangebot: alles ist vorbereitet – Übersicht und ein „Bestätigen“ (#12)
+  if (angebotNr && info && ansicht === 'bestaetigen' && angebotVollstaendig) {
+    const art = (x: string) => info.beitragsarten.find((b) => b.art === x)?.name ?? x;
+    const bankOk = bankAusAngebot || (bank.kontoinhaber.trim() && bank.iban.trim());
+    return (
+      <CenterCard title={orgName} subtitle="Ihr Mitgliedsantrag – bitte bestätigen" logo={logo} breit>
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+        <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '1rem' }}>
+          Ihr Vertragsangebot {angebotNr} ist vollständig vorbereitet. Bitte prüfen und unten bestätigen.{angebotHinweis ? ` Hinweis des Vereins: ${angebotHinweis}` : ''}
+        </MessageStrip>
+        <Title level="H5" style={{ marginBottom: '0.5rem' }}>Personen und Verträge</Title>
+        {personen.map((p, i) => (
+          <Text key={i} style={{ display: 'block', marginBottom: '0.25rem' }}>
+            <b>{p.anrede} {p.vorname} {p.nachname}</b>, geb. {p.geburtsdatum.split('-').reverse().join('.')} –{' '}
+            {[i === 0 ? art(p.art) : 'über den Familienbeitrag', ...p.training.map(art)].join(' + ')}
+          </Text>
+        ))}
+        <Title level="H5" style={{ margin: '0.75rem 0 0.25rem' }}>Anschrift und Kontakt</Title>
+        <Text style={{ display: 'block' }}>{a.strasse}, {a.plz} {a.ort} · {a.email}{a.telefon ? ` · ${a.telefon}` : ''}</Text>
+        {minderjaehrig && <Text style={{ display: 'block' }}>Erziehungsberechtigte/r: {a.erziehungsberechtigt}</Text>}
+        <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Eintritt: {a.eintritt.split('-').reverse().join('.')}</Text>
+        <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} />
+        <Title level="H5" style={{ margin: '0.5rem 0' }}>Bankverbindung (SEPA-Lastschrift)</Title>
+        {angebotBank && bankAusAngebot ? (
+          <Text style={{ display: 'block', marginBottom: '0.5rem' }}>{angebotBank.kontoinhaber} · IBAN {angebotBank.iban}</Text>
+        ) : (
+          <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Feld label="Kontoinhaber/in" required><Input style={full} value={bank.kontoinhaber} placeholder="Vorname Nachname" onInput={(e) => setBank({ ...bank, kontoinhaber: e.target.value })} /></Feld>
+            <Feld label="IBAN" required><Input style={full} value={bank.iban} onInput={(e) => setBank({ ...bank, iban: e.target.value })} /></Feld>
+          </FlexBox>
+        )}
+        <CheckBox wrappingType="Normal" checked={zu.bildrechte} onChange={(e) => setZu({ ...zu, bildrechte: e.target.checked })} style={{ marginLeft: '-0.5rem' }}
+                  text="Fotos von Vereinsveranstaltungen, auf denen ich/wir zu sehen sind, dürfen in Vereinsmedien veröffentlicht werden (freiwillig)." />
+        <MessageStrip design="Information" hideCloseButton style={{ margin: '0.5rem 0' }}>{info.kuendigung}</MessageStrip>
+        <CheckBox wrappingType="Normal" checked={alles} onChange={(e) => setAlles(e.target.checked)} style={{ marginLeft: '-0.5rem' }}
+                  text={`Ich beantrage die Mitgliedschaft wie oben aufgeführt und ermächtige den ${info.verein}, die Beiträge von meinem Konto mittels Lastschrift einzuziehen; zugleich weise ich mein Kreditinstitut an, die Lastschriften einzulösen (Erstattung innerhalb von acht Wochen ab Belastung möglich). Ich erkenne Satzung und Beitragsordnung an, habe die Datenschutzhinweise gelesen und die Kündigungsfristen zur Kenntnis genommen. *`} />
+        <Button design="Emphasized" style={{ ...full, marginTop: '0.75rem' }} loading={busy} disabled={!alles || !bankOk} onClick={() => absenden(true)}>Bestätigen</Button>
+        <Button design="Transparent" style={{ ...full, marginTop: '0.25rem' }} onClick={() => setAnsicht('formular')}>Angaben ändern</Button>
       </CenterCard>
     );
   }
@@ -282,14 +337,18 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
           <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} />
 
           <Title level="H5" style={{ margin: '0.5rem 0' }}>SEPA-Lastschriftmandat</Title>
-          <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+          {angebotBank && (
+            <CheckBox wrappingType="Normal" checked={bankAusAngebot} onChange={(e) => setBankAusAngebot(e.target.checked)} style={{ marginLeft: '-0.5rem' }}
+                      text={`Hinterlegte Bankverbindung verwenden: ${angebotBank.kontoinhaber}, IBAN ${angebotBank.iban}`} />
+          )}
+          {!bankAusAngebot && <><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
             <Feld label="Kontoinhaber/in" required><Input style={full} value={bank.kontoinhaber} placeholder="Vorname Nachname" onInput={(e) => setBank({ ...bank, kontoinhaber: e.target.value })} /></Feld>
             <Feld label="IBAN" required><Input style={full} value={bank.iban} onInput={(e) => setBank({ ...bank, iban: e.target.value })} /></Feld>
           </FlexBox>
           <FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
             <Feld label="BIC (optional)"><Input style={full} value={bank.bic} onInput={(e) => setBank({ ...bank, bic: e.target.value })} /></Feld>
             <Feld label="Bank (optional)"><Input style={full} value={bank.bank} onInput={(e) => setBank({ ...bank, bank: e.target.value })} /></Feld>
-          </FlexBox>
+          </FlexBox></>}
           <CheckBox wrappingType="Normal" checked={bank.sepa} onChange={(e) => setBank({ ...bank, sepa: e.target.checked })} style={{ marginLeft: '-0.5rem' }}
                     text={`Ich ermächtige den ${info.verein}, Zahlungen (Mitgliedsbeiträge) von meinem Konto mittels Lastschrift einzuziehen. Zugleich weise ich mein Kreditinstitut an, die vom Verein auf mein Konto gezogenen Lastschriften einzulösen. Ich kann innerhalb von acht Wochen, beginnend mit dem Belastungsdatum, die Erstattung des belasteten Betrages verlangen. Es gelten dabei die mit meinem Kreditinstitut vereinbarten Bedingungen. Die Mandatsreferenz wird mir mit der Aufnahme mitgeteilt.`} />
 
@@ -308,7 +367,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
           {/* Honigtopf: für Menschen unsichtbar */}
           <input type="text" name="website" tabIndex={-1} autoComplete="off" value={a.website} onChange={(e) => setA({ ...a, website: e.target.value })}
                  style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, opacity: 0 }} aria-hidden />
-          <Button design="Emphasized" style={full} onClick={absenden} loading={busy} disabled={!ok}>Antrag verbindlich absenden</Button>
+          <Button design="Emphasized" style={full} onClick={() => absenden()} loading={busy} disabled={!ok}>Antrag verbindlich absenden</Button>
           <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>* Pflichtangaben. Nach der Prüfung erhalten Sie die Aufnahmebestätigung und Ihre Zugangsdaten zum Mitgliederportal per E-Mail.</Text>
         </form>
       )}

@@ -37,7 +37,10 @@ export function AuswahlBox({ eintraege: eintraege0, wert, onWaehle, onSuche, pla
   const textVon = (k: string | null | undefined) => (k ? eintraege.find((e) => e.key === k)?.text ?? '' : '');
   const [text, setText] = useState(textVon(wert));
   // Anzeige folgt dem gespeicherten Wert (z. B. nach dem Laden oder Speichern)
-  useEffect(() => { setText(textVon(wert)); }, [wert, eintraege.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setText(textVon(wert)); }, [wert]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Einträge kommen später (Laden) oder ändern sich (Suche am Server): nur ein leeres Feld nachziehen –
+  // sonst ginge der gerade getippte Text verloren (#12: Auswahl „springt“ nach dem ersten Buchstaben)
+  useEffect(() => { setText((t) => (t ? t : textVon(wert))); }, [eintraege.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function bestaetigen(t: string) {
     const v = t.trim();
