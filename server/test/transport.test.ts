@@ -206,6 +206,9 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   assert.equal(mails.length, 2);
   assert.match(mails[0].mailto, /^mailto:einkauf@mueller.de\?subject=Rechnung%202025_5012/);
   assert.match(decodeURIComponent(mails[0].mailto), /Sehr geehrter Herr Hans Müller/);
+  // Entwurf mit Anhängen im Auftrag (#121): Empfänger und Text einzeln
+  assert.equal(mails[0].an, 'einkauf@mueller.de');
+  assert.match(mails[0].text, /Sehr geehrter Herr Hans Müller/);
 
   // ---- Kontakte: Dublettenprüfung ----
   const k1 = await call('POST', `${T}/adressen`, { kundenname: 'spedition schmitt', ort: 'Saarbrücken' });

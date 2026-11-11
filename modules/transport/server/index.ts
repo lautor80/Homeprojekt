@@ -386,6 +386,8 @@ async function routes(app: FastifyInstance) {
         art: art === 'T' ? 'Transportauftrag' : art === 'L' ? 'Lieferschein' : `Rechnung ${a.faktura}`,
         empfaenger: condense(`${adr?.kundenname ?? '(kein Empfänger)'} ${email ? `<${email}>` : ''}`),
         betreff,
+        // für den E-Mail-Entwurf mit Anhängen im Auftrag (#121): Empfänger und Text einzeln
+        an: email, text: body,
         mailto: `mailto:${email}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(body.replace(/\n/g, '\r\n'))}`,
         hasEmail: !!email,
       });
