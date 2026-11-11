@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  AnalyticalTable, Bar, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
+import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { DocsDialog, ImportDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
@@ -101,6 +102,27 @@ function baum(list: ListRow[]): { rows: TreeRow[]; saldo: number } {
   return { rows, saldo: gesamt };
 }
 
+/**
+ * Höhe bis zum unteren Fensterrand: Nur die Tabelle scrollt (visibleRowCountMode="Auto"),
+ * Kopf und Spaltenüberschriften bleiben stehen – auch bei mehreren tausend Aufträgen.
+ */
+function useRestHoehe(deps: unknown[]) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [hoehe, setHoehe] = useState(480);
+  useLayoutEffect(() => {
+    const messen = () => {
+      if (!ref.current) return;
+      setHoehe(Math.max(320, Math.floor(window.innerHeight - ref.current.getBoundingClientRect().top - 24)));
+    };
+    messen();
+    window.addEventListener('resize', messen);
+    const ro = new ResizeObserver(messen);
+    if (ref.current?.parentElement) ro.observe(ref.current.parentElement);
+    return () => { window.removeEventListener('resize', messen); ro.disconnect(); };
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  return { ref, hoehe };
+}
+
 const Saldo = ({ v }: { v: number }) => <ObjectStatus state={v < 0 ? 'Negative' : 'Positive'}><b>{betrag(v)} EUR</b></ObjectStatus>;
 
 export function AuftraegeListe() {
@@ -125,6 +147,7 @@ export function AuftraegeListe() {
   const [importOpen, setImportOpen] = useState(false);
   const [info, setInfo] = useState<{ title: string; text: string } | null>(null);
   const treeRef = useRef<{ toggleAllRowsExpanded?: (v: boolean) => void } | null>(null);
+  const rahmen = useRestHoehe([ansicht, firmaFehlt, !!error]);
 
   const setAuswahl = (s: Set<string>) => {
     merk.auswahl = s;
@@ -294,7 +317,6 @@ export function AuftraegeListe() {
     autoResetExpanded: false,
     initialState: { groupBy: ['status'], expanded: { 'status:Offen': true, 'status:Fakturiert': true } },
   }), []);
-  const anzGruppen = new Set(liste.map((r) => r.status)).size;
 
   const treeColumns: AnalyticalTableColumnDefinition[] = useMemo(() => [
     {
@@ -334,50 +356,49 @@ export function AuftraegeListe() {
     getRowId: (r: TreeRow) => r.id,
     initialState: { expanded: { Fracht: true, 'Holzträger': true } },
   }), []);
-  const zeilenBaum = (rows: TreeRow[]): number => rows.reduce((n, r) => n + 1 + (r.subRows ? zeilenBaum(r.subRows) : 0), 0);
 
   // ---------------------------------------------------------------- Kopf
   const header = (
-    <FlexBox wrap="Wrap" alignItems="End" style={{ gap: '1.5rem', padding: '0.25rem 0 0.5rem' }}>
-      <FlexBox direction="Column">
-        <Label>Geschäftsjahr</Label>
-        <Select style={{ width: '12rem' }} onChange={(e) => setJahr(e.detail.selectedOption.dataset.key!)}>
+    <Filters>
+      <Filter label="Geschäftsjahr" width="11rem">
+        <Select style={{ width: '100%' }} onChange={(e) => setJahr(e.detail.selectedOption.dataset.key!)}>
           {jahre.map((j) => <Option key={j.key} data-key={j.key} selected={j.key === jahr}>{j.text}</Option>)}
           {!jahre.some((j) => j.key === jahr) && <Option data-key={jahr} selected>{jahr}</Option>}
         </Select>
-      </FlexBox>
-      <FlexBox direction="Column">
-        <Label>Fakturadatum</Label>
-        <Select style={{ width: '12rem' }} onChange={(e) => setFakt(e.detail.selectedOption.dataset.key!)}>
+      </Filter>
+      <Filter label="Fakturadatum" width="11rem">
+        <Select style={{ width: '100%' }} onChange={(e) => setFakt(e.detail.selectedOption.dataset.key!)}>
           {FAKT.map((f) => <Option key={f.key} data-key={f.key} selected={f.key === fakt}>{f.text}</Option>)}
         </Select>
-      </FlexBox>
-      <FlexBox direction="Column">
-        <Label>Status</Label>
+      </Filter>
+      <Filter label="Status">
         <SegmentedButton onSelectionChange={(e) => setStatus((e.detail.selectedItems[0] as HTMLElement).dataset.key as typeof status)}>
           <SegmentedButtonItem data-key="ALL" selected={status === 'ALL'}>Alle</SegmentedButtonItem>
           <SegmentedButtonItem data-key="OPEN" selected={status === 'OPEN'}>Offen</SegmentedButtonItem>
           <SegmentedButtonItem data-key="DONE" selected={status === 'DONE'}>Fakturiert</SegmentedButtonItem>
         </SegmentedButton>
-      </FlexBox>
-      <FlexBox direction="Column">
-        <Label>Suche</Label>
-        <Input style={{ width: '18rem' }} placeholder="Auftrag, Kunde, Kennzeichen, Ort …" value={suche} showClearIcon
+      </Filter>
+      <Filter label="Suche" width="min(20rem, 100%)">
+        <Input style={{ width: '100%' }} placeholder="Auftrag, Kunde, Kennzeichen, Ort …" value={suche} showClearIcon
                icon={<Icon name="search" />} onInput={(e) => setSuche(e.target.value)} />
-      </FlexBox>
-      <FlexBox style={{ gap: '1.5rem', marginLeft: 'auto' }}>
-        <FlexBox direction="Column"><Label>Frachtpreis EK</Label><Text>{betrag(summe.ek)} EUR</Text></FlexBox>
-        <FlexBox direction="Column"><Label>Frachtpreis VK</Label><Text>{betrag(summe.vk)} EUR</Text></FlexBox>
-        <FlexBox direction="Column"><Label>Rechnungsbetrag</Label><Text><b>{betrag(summe.betrag)} EUR</b></Text></FlexBox>
-        {ansicht === 'TREE' && <FlexBox direction="Column"><Label>Saldo</Label><Saldo v={tree.saldo} /></FlexBox>}
-      </FlexBox>
-    </FlexBox>
+      </Filter>
+      <HeaderKpi label="Frachtpreis EK" value={`${betrag(summe.ek)} €`} />
+      <HeaderKpi label="Frachtpreis VK" value={`${betrag(summe.vk)} €`} />
+      <HeaderKpi label="Rechnungsbetrag" value={`${betrag(summe.betrag)} €`} />
+      {ansicht === 'TREE' && <HeaderKpi label="Saldo" value={`${betrag(tree.saldo)} €`} state={tree.saldo < 0 ? 'Negative' : 'Positive'} />}
+    </Filters>
   );
 
   const toolbar = (
     <Bar
       startContent={<>
-        <Title level="H5">Aufträge ({liste.length})</Title>
+        <Title level="H5">Aufträge ({liste.length.toLocaleString('de-DE')})</Title>
+        {sel.length > 0 && (
+          <span className="portal-muted" style={{ whiteSpace: 'nowrap' }}>
+            · {sel.length} ausgewählt{offen ? `, davon ${offen} offen` : ''}
+            {' '}<Link onClick={() => setAuswahl(new Set())}>Auswahl aufheben</Link>
+          </span>
+        )}
       </>}
       endContent={<>
         <SegmentedButton onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.key as typeof ansicht)}>
@@ -427,6 +448,7 @@ export function AuftraegeListe() {
       )}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {toolbar}
+      <div ref={rahmen.ref} style={{ height: rahmen.hoehe }}>
       {ansicht === 'LIST' ? (
         <AnalyticalTable minRows={1}
           columns={columns}
@@ -448,7 +470,7 @@ export function AuftraegeListe() {
             }
           }}
           rowHeight={52}
-          visibleRows={Math.max(liste.length + anzGruppen, 1)}
+          visibleRowCountMode="Auto"
           noDataText="Keine Aufträge für die Auswahl"
         />
       ) : (
@@ -460,10 +482,11 @@ export function AuftraegeListe() {
           tableInstance={treeRef as never}
           reactTableOptions={treeOptions}
           rowHeight={52}
-          visibleRows={Math.max(zeilenBaum(tree.rows), 1)}
+          visibleRowCountMode="Auto"
           noDataText="Keine Aufträge für die Auswahl"
         />
       )}
+      </div>
 
       <DocsDialog docs={docs} onClose={() => setDocs(null)} />
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
