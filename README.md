@@ -315,6 +315,10 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   vorausgewählt). *Entwurf öffnen* erzeugt eine E-Mail-Datei (`.eml`, Kopf `X-Unsent: 1`) mit den Anhängen, die sich im
   Standard-Mailprogramm als neuer Entwurf öffnet (Outlook mit „Senden“; sonst in den Downloads anklicken – in Chrome/Edge
   „Dateien dieses Typs immer öffnen“). *Ohne Anhänge* öffnet direkt per `mailto:` (Browser können über `mailto:` keine Anhänge übergeben).
+  Direkt öffnen: Eine Webseite darf keine Programme starten – nach dem ersten Download erklärt der Dialog die einmalige Einstellung
+  „Dateien dieses Typs immer öffnen“ (Strg+J → ⋯ beim .eml-Eintrag); danach öffnet sich jeder Entwurf sofort. Zusätzlich übergibt
+  *Teilen…* (Chrome/Edge unter Windows, Web Share API) Text und Anhänge über die Windows-Freigabe direkt an Outlook bzw. Mail;
+  der Empfänger liegt dann in der Zwischenablage.
 - Technik: File System Access API – nur **Microsoft Edge / Google Chrome**. Der Ordner wird je PC und Browser gemerkt
   (IndexedDB, nichts auf dem Server). Nach einem Browser-Neustart fragt der Browser beim ersten Druck einmal nach dem Zugriff.
   Ist kein Ordner gewählt oder der Zugriff verweigert, läuft alles wie bisher (nur Vorschau/Download).
