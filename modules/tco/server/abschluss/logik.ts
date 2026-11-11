@@ -1,6 +1,7 @@
 import { runden } from '../format.js';
 import type { Db } from '../verein.js';
 import { anfangsbestand, kontostand } from '../fi/daten.js';
+import { offeneRechnungen } from '../offeneposten.js';
 import { anlagenLesen, spiegelBerechnen, type Spiegel, type SpiegelSumme } from './anlagen.js';
 
 /**
@@ -188,5 +189,12 @@ export async function abschlussLesen(db: Db, jahr: number): Promise<Abschluss> {
   const ohneKz = [...new Set(werte.filter((w) => w.jahr === jahr && !w.kennzahl && w.wert !== 0).map((w) => w.konto))];
   if (ohneKz.length) hinweise.push(`Konten ohne Kennzahl im Kontenstamm (nicht in der EAR enthalten): ${ohneKz.join(', ')}.`);
   if (ohneStamm.length) hinweise.push(`Buchungen auf Konten ohne Kontenstamm: ${ohneStamm.join(', ')}.`);
+  // nicht bezahlte Rechnungen zum Jahresende (#28): in der EAR richtig nicht enthalten (Zuflussprinzip) – zur Information
+  const op = await offeneRechnungen(db, `${jahr}-12-31`);
+  if (op.summe > 0) {
+    const de = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    hinweise.push(`Zum 31.12.${jahr} nicht bezahlte Rechnungen: ${de(op.summe)} EUR (Halle ${de(op.halle)}, Verzehr ${de(op.verzehr)}, Beitragsläufe ${de(op.beitraege)}) – `
+      + 'in der Einnahmen-Ausgaben-Rechnung nicht enthalten, sie zählen erst mit dem Zahlungseingang.');
+  }
   return { jahr, jahre: await jahreLesen(db), ear, ueberschuss, bank, anlagen: { spiegel, summe, leer: !alle.length }, hinweise };
 }

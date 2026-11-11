@@ -36,6 +36,12 @@ export function BalkenDiagramm({ titel, name1, name2, punkte, schmal = false }: 
           <text x={x(i)} y={y0 + 16} textAnchor="middle" fontSize={10} fill={TEXT}>{schmal ? p.label.slice(0, 1) : p.label}</text>
         </g>
       ))}
+      {mitOffen && (
+        <polyline points={punkte.map((p, i) => (p.zukunft ? null : `${x(i)},${yl(p.bestand + (p.offen ?? 0))}`)).filter(Boolean).join(' ')}
+                  fill="none" stroke={C3} strokeWidth={2} strokeDasharray="6 4" opacity={0.75} strokeLinejoin="round">
+          <title>Kontostand inkl. nicht bezahlter Rechnungen</title>
+        </polyline>
+      )}
       <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TEXT} />
       <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TEXT} />
       {!schmal && <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>{titel}</text>}
@@ -47,7 +53,8 @@ export function BalkenDiagramm({ titel, name1, name2, punkte, schmal = false }: 
   );
 }
 
-export interface VerlaufPunkt { label: string; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean }
+/** offen: nicht bezahlte Rechnungen zum Monatsende (#28) – gestrichelte Linie „inkl. offener Rechnungen“ */
+export interface VerlaufPunkt { label: string; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean; offen?: number }
 
 /**
  * Monatsverlauf über mehrere Jahre: Säulen Einnahmen/Ausgaben (linke Achse) und Linie Kontostand
@@ -58,7 +65,9 @@ export function VerlaufDiagramm({ punkte, schmal = false }: { punkte: VerlaufPun
   const W = schmal ? 420 : 800, H = schmal ? 300 : 320, ML = schmal ? 42 : 66, MR = schmal ? 44 : 70, MT = schmal ? 60 : 52, MB = 44;
   const pw = W - ML - MR, ph = H - MT - MB, y0 = MT + ph;
   const maxB = Math.max(1, ...punkte.flatMap((p) => [p.einnahmen, p.ausgaben]));
-  const bMin = Math.min(0, ...punkte.map((p) => p.bestand)), bMax = Math.max(1, ...punkte.map((p) => p.bestand));
+  const mitOffen = punkte.some((p) => !p.zukunft && (p.offen ?? 0) !== 0);
+  const werte = punkte.flatMap((p) => (mitOffen && !p.zukunft ? [p.bestand, p.bestand + (p.offen ?? 0)] : [p.bestand]));
+  const bMin = Math.min(0, ...werte), bMax = Math.max(1, ...werte);
   const bRange = bMax - bMin || 1;
   const slot = pw / punkte.length, bw = Math.max(2, slot * 0.3);
   const x = (i: number) => ML + slot * i + slot / 2;
@@ -107,6 +116,10 @@ export function VerlaufDiagramm({ punkte, schmal = false }: { punkte: VerlaufPun
       <text x={ML + 130} y={schmal ? 20 : 36} fontSize={11} fill={TEXT}>Ausgaben</text>
       <line x1={schmal ? ML : ML + 220} y1={schmal ? 36 : 32} x2={schmal ? ML + 24 : ML + 244} y2={schmal ? 36 : 32} stroke={C3} strokeWidth={2.5} />
       <text x={schmal ? ML + 30 : ML + 250} y={schmal ? 40 : 36} fontSize={11} fill={TEXT}>{schmal ? 'Kontostand (rechte Achse)' : 'Kontostand Monatsende (rechte Achse)'}</text>
+      {mitOffen && <>
+        <line x1={schmal ? ML + 200 : ML + 470} y1={schmal ? 36 : 32} x2={schmal ? ML + 224 : ML + 494} y2={schmal ? 36 : 32} stroke={C3} strokeWidth={2} strokeDasharray="6 4" />
+        <text x={schmal ? ML + 230 : ML + 500} y={schmal ? 40 : 36} fontSize={11} fill={TEXT}>{schmal ? 'inkl. offen' : 'inkl. offener Rechnungen'}</text>
+      </>}
     </svg>
   );
 }

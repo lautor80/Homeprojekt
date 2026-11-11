@@ -1,6 +1,7 @@
-import { runden } from '../format.js';
+import { heute as heuteText, runden } from '../format.js';
 import type { Db } from '../verein.js';
 import { anfangsbestand } from '../fi/daten.js';
+import { monatsende, offeneRechnungen, offeneRechnungenJe, type OffeneRechnungen } from '../offeneposten.js';
 
 /**
  * Einnahmen & Ausgaben – Port von ZCL_TCO_FINANZEN (Fachlogik) für Z2UI5_CL_TCO_FINANZUEBERSICHT.
@@ -150,14 +151,19 @@ export async function forderungen(db: Db, jahr: number, monat: number): Promise<
   return { betrag: runden(r.op), stand: `${String(r.monat).padStart(2, '0')}/${r.jahr}` };
 }
 
-export interface Liquiditaet { jahr: number; monat: number; geld: number; forderung: number; ford_stand: string; kredit: number; liquiditaet: number }
+export interface Liquiditaet {
+  jahr: number; monat: number; geld: number; forderung: number; ford_stand: string; kredit: number; liquiditaet: number;
+  /** nicht bezahlte Rechnungen (Halle, Verzehr, Beitragsläufe) – #28 */
+  rechnungen: OffeneRechnungen;
+}
 
-/** Liquidität = Geldkonten + offene Forderungen + Kredite (Saldo negativ = Schuld) (LIQUIDITAET) */
+/** Liquidität = Geldkonten + offene Forderungen Clubhaus + nicht bezahlte Rechnungen (#28) + Kredite (Saldo negativ = Schuld) (LIQUIDITAET) */
 export async function liquiditaet(db: Db, jahr: number, monat: number): Promise<Liquiditaet> {
   const geld = runden((await geldkonten(db, jahr)).reduce((s, g) => s + g.endbestand, 0));
   const kredit = runden((await kreditkonten(db, jahr)).reduce((s, g) => s + g.endbestand, 0));
   const f = await forderungen(db, jahr, monat);
-  return { jahr, monat, geld, forderung: f.betrag, ford_stand: f.stand, kredit, liquiditaet: runden(geld + f.betrag + kredit) };
+  const rechnungen = await offeneRechnungen(db, monatsende(jahr, monat, heuteText()));
+  return { jahr, monat, geld, forderung: f.betrag, ford_stand: f.stand, kredit, rechnungen, liquiditaet: runden(geld + f.betrag + rechnungen.summe + kredit) };
 }
 
 export interface Ergebnis {
@@ -179,7 +185,8 @@ export async function ergebnis(db: Db, jahr: number, monate?: Monat[], geld?: Ge
   return { jahr, einnahmen, ausgaben, gewinn, geld_ab, geld_eb, geld_delta, differenz: runden(geld_delta - gewinn), letzte_bu: l?.d ?? null };
 }
 
-export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean }
+/** offen: noch nicht bezahlte Rechnungen zum Monatsende (#28) – nur für vergangene/laufende Monate */
+export interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean; offen: number }
 
 /**
  * Verlauf je Monat für mehrere Geschäftsjahre und eine Auswahl von Geldkonten (leer = alle
@@ -206,13 +213,16 @@ export async function monatsverlauf(db: Db, jahre: number[], konten: string[]): 
   const hj = heute.getFullYear(), hm = heute.getMonth() + 1;
   const verlauf: Verlauf[] = [];
   let anfang = 0;
+  const ht = heuteText();
+  const offen = await offeneRechnungenJe(db, js.flatMap((j) => Array.from({ length: 12 }, (_x, i) => monatsende(j, i + 1, ht))));
   for (const jahr of js) {
     // Anfangsbestand der gewählten Geldkonten im Jahr
     let bestand = 0;
     for (const g of await geldkonten(db, jahr)) if (selSet.has(g.konto)) bestand = runden(bestand + g.anfangsbestand);
     if (jahr === von) anfang = bestand;
     for (let monat = 1; monat <= 12; monat++) {
-      const v: Verlauf = { jahr, monat, einnahmen: 0, ausgaben: 0, bestand: 0, zukunft: jahr > hj || (jahr === hj && monat > hm) };
+      const zukunft = jahr > hj || (jahr === hj && monat > hm);
+      const v: Verlauf = { jahr, monat, einnahmen: 0, ausgaben: 0, bestand: 0, zukunft, offen: zukunft ? 0 : offen.get(monatsende(jahr, monat, ht))?.summe ?? 0 };
       for (const b of bu) {
         if (Number(b.jahr) !== jahr || Number(b.monat) !== monat) continue;
         const konto = String(b.konto).trim();
