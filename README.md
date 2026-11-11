@@ -298,6 +298,10 @@ jede Datei wird am **Spaltenkopf** erkannt (Dateiname egal, Kodierung UTF-8 oder
 
 ### Regeln für Buchhaltungs-/Belegobjekte
 
+- **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
+  übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.
+  Dokumente können weiterhin zugeordnet und gelöst werden.
+
 - Gebuchte Belege nie ändern: **Storno = Gegenbeleg** mit Verweis auf den Originalbeleg, Aktion `STORNO`
   und Pflicht-Begründung (`change(req, fn, { action: 'STORNO', reason })`).
 - Belegnummern über `core.next_number('<id>', <jahr>)` – die Nummer wird nur verbraucht, wenn die

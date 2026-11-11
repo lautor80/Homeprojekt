@@ -270,7 +270,17 @@ async function routes(app: FastifyInstance) {
   app.put('/auftraege/:nr', { preHandler: requireAuth(P.edit) }, async (req) => {
     const { nr } = z.object({ nr: z.string() }).parse(req.params);
     const body = auftragSchema.extend({ typ: z.enum(['F', 'H']) }).parse(req.body);
-    await change(req, (tx) => auftragSchreiben(tx, nr, body, body.typ, false));
+    await change(req, async (tx) => {
+      const [alt] = await tx`select faktura from transport.auftraege where auftragsnr = ${nr} for update`;
+      if (!alt) throw new BusinessError(`Auftrag ${nr} nicht gefunden.`, 404);
+      // Fakturierte Aufträge (#121): nur noch „Dokumente fehlen“ und Besonderheiten änderbar,
+      // Dokumente werden über /auftraege/:nr/dokumente zugeordnet – alle übrigen Felder bleiben, wie sie sind.
+      if (alt.faktura) {
+        await tx`update transport.auftraege set dok_fehlen = ${body.dok_fehlen}, besonderheiten = ${body.besonderheiten} where auftragsnr = ${nr}`;
+        return;
+      }
+      await auftragSchreiben(tx, nr, body, body.typ, false);
+    });
     return { auftragsnr: nr };
   });
 
