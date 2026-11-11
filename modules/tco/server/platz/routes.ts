@@ -572,10 +572,11 @@ export async function platzRoutes(app: FastifyInstance) {
           + `${b.fest ? ` („${b.fest.bezeichnung}“)` : b.reserviert ? ' (wird gerade gebucht)' : ` (${b.kunde || 'Buchung'})`}.`);
       }
       const wt = String(((new Date(`${e.datum}T12:00:00Z`).getUTCDay() + 6) % 7) + 1);
-      return festeSpeichern(tx, id, {
+      const r = await festeSpeichern(tx, id, {
         bezeichnung: e.bezeichnung, art: e.art, plaetze: [p.id], wochentage: wt, datum_von: e.datum, datum_bis: e.datum,
         zeit_von: e.von, zeit_bis: e.bis, hinweis: e.text?.trim() || null, aktiv: alt.aktiv,
       });
+      return { ...r, text: `„${e.bezeichnung}“ geändert: ${p.name} am ${e.datum.split('-').reverse().join('.')} von ${e.von} bis ${e.bis} Uhr.` };
     }, { action: 'PLATZBELEGUNG', reason: String(id) });
   });
 

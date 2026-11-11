@@ -828,6 +828,19 @@ test('Platzverwaltung → Belegung: Termin ändern und kopieren (#11)', async ()
   assert.ok(liste.some((b) => b.von === '13:00' && b.fest?.bezeichnung === 'Schnuppertraining Kinder'), JSON.stringify(liste));
   assert.ok((await belegt(d2)).some((b) => b.von === '13:00' && b.fest?.art === 'SCHNUPPER'));
 
+  // auf einen anderen Tag verschieben (Buchung und Schnuppertraining)
+  const d3 = tag(15);
+  r = await admin('PUT', `${A}/belegung/${schnupper.fest.id}`, { platz_id: halleId, datum: d3, von: '09:00', bis: '10:00', art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining Kinder', text: 'Tom' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, new RegExp(`am ${d3.split('-').reverse().join('\\.')}`));
+  r = await admin('PUT', `${A}/buchung/${buchung.bid}`, { alt_datum: d, platz_id: halleId, datum: d3, von: '10:00', bis: '11:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  liste = await belegt(d);
+  assert.ok(!liste.some((b) => b.bid === buchung.bid || b.fest?.id === schnupper.fest.id), JSON.stringify(liste));
+  const neu = await belegt(d3);
+  assert.ok(neu.some((b) => b.bid === buchung.bid && b.von === '10:00'), JSON.stringify(neu));
+  assert.ok(neu.some((b) => b.fest?.id === schnupper.fest.id && b.von === '09:00'), JSON.stringify(neu));
+
   // wiederkehrende Belegung: nur unter „Training & Sperrzeiten“ änderbar
   r = await admin('POST', `${A}/feste`, { bezeichnung: 'Wintertraining', art: 'TRAINING', plaetze: [halleId], wochentage: '1234567', datum_von: tag(40), datum_bis: tag(41), zeit_von: '08:00', zeit_bis: '09:00' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
