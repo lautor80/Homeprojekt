@@ -22,6 +22,7 @@ import { beitraegeRoutes, P_BEITRAEGE } from './beitraege/routes.js';
 import { forecastRoutes, P_FORECAST } from './forecast/routes.js';
 import { abschlussRoutes, P_ABSCHLUSS } from './abschluss/routes.js';
 import { dashboardRoutes, P_DASH } from './dashboard/routes.js';
+import { praesentationRoutes, P_PRAES } from './praesentation/routes.js';
 import { analyseRoutes, P_AN } from './analyse/routes.js';
 import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
@@ -155,6 +156,7 @@ async function routes(app: FastifyInstance) {
   await forecastRoutes(app);
   await abschlussRoutes(app);
   await dashboardRoutes(app);
+  await praesentationRoutes(app);
   await analyseRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
@@ -169,6 +171,8 @@ const tco: ServerModule = {
     // ---------------------------------------------------------------- Vereinsübersicht
     { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
     { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
+    { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.display, text: 'Präsentationen erstellen: Sammelkorb aus Kennzahlen, Diagrammen und Tabellen, PowerPoint aus den hinterlegten Vorlagen', requires: [P_DASH.display] },
+    { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
     // ---------------------------------------------------------------- Einstellungen
     { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
