@@ -18,9 +18,9 @@ import { portalUrl } from '../../../../server/src/kennwort.js';
 import type { Db } from '../verein.js';
 import { vereinLesen } from '../verein.js';
 import { addTage, dat } from '../format.js';
-import { minuten } from '../halle/preis.js';
+import { minuten, preiseLesen, type Preise } from '../halle/preis.js';
 import { mailSenden } from '../kommunikation.js';
-import { aboAnlegen, hhmm, isoWochentag, jetzt, plaetzeLesen, type Ich, type Platz } from './logik.js';
+import { aboAnlegen, hhmm, isoWochentag, jetzt, plaetzeLesen, preisVon, type Ich, type Platz } from './logik.js';
 import { ADRNR_ZU_BENUTZER } from './schluessel.js';
 
 export const MAX_BEWERBUNGEN = 3;
@@ -28,18 +28,18 @@ const WT = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sams
 /** belegen die Stunde: bestätigt, angeboten, angenommen, freigegeben – und „OFFEN“, solange der Abonnent noch bestätigen kann */
 const BELEGT = ['OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN', 'FREIGEGEBEN'];
 
-export interface Saison { id: number; name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number; erinnert_am: string | null }
+export interface Saison { id: number; name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number; erinnert_am: string | null; mail_pause_bis: string | null }
 export interface Wunsch {
   id: number; saison_id: number; art: 'BESTAETIGUNG' | 'BEWERBUNG'; adrnr: string | null; name: string; mitglied: boolean; benutzer_id: string | null;
   platz_id: number; wochentag: number; von: number; bis: number; status: string; angelegt: string; angeboten_am: string | null; mail_fehler: string | null; abo_bid: string | null;
 }
-export interface SaisonEingabe { name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number }
+export interface SaisonEingabe { name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number; mail_pause_bis?: string | null }
 
 export const zeitText = (w: Pick<Wunsch, 'wochentag' | 'von' | 'bis'>) => `${WT[w.wochentag]} ${hhmm(w.von)}–${hhmm(w.bis)} Uhr`;
 
 export async function saisonLesen(db: Db): Promise<Saison | null> {
   const [s] = await db`select id, name, von::text as von, bis::text as bis, bestaetigen_bis::text as bestaetigen_bis, nachruecken_ab::text as nachruecken_ab,
-                              annahme_tage, erinnert_am::text as erinnert_am from tco.abo_saison where aktiv order by id desc limit 1`;
+                              annahme_tage, erinnert_am::text as erinnert_am, mail_pause_bis::text as mail_pause_bis from tco.abo_saison where aktiv order by id desc limit 1`;
   return (s as Saison | undefined) ?? null;
 }
 
@@ -51,6 +51,34 @@ async function wuensche(db: Db, saisonId: number): Promise<Wunsch[]> {
 }
 const trifft = (a: Pick<Wunsch, 'platz_id' | 'wochentag' | 'von' | 'bis'>, b: Pick<Wunsch, 'platz_id' | 'wochentag' | 'von' | 'bis'>) =>
   a.platz_id === b.platz_id && a.wochentag === b.wochentag && a.von < b.bis && a.bis > b.von;
+
+type Zeit = Pick<Wunsch, 'platz_id' | 'wochentag' | 'von' | 'bis'>;
+/** laufende Abos der Saison (Buchungen, Status 3, ab heute) – diese Stunden sind vergeben, auch ohne Wunsch-Datensatz */
+async function laufendeAbos(db: Db, s: Saison, heute = jetzt().datum): Promise<(Zeit & { kunde: string })[]> {
+  return (await db`
+    select distinct p.id as platz_id, extract(isodow from b.datum)::int as wochentag, upper(trim(coalesce(b.kunde, ''))) as kunde,
+           extract(hour from b.time_start)::int * 60 + extract(minute from b.time_start)::int as von,
+           case when b.time_ende = time '00:00' then 1440 else extract(hour from b.time_ende)::int * 60 + extract(minute from b.time_ende)::int end as bis
+      from tco.bookings b join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
+     where b.status = '3' and b.datum between greatest(${s.von}::date, ${heute}::date) and ${s.bis}::date`) as unknown as (Zeit & { kunde: string })[];
+}
+
+/** erster Termin eines Abos: Saisonbeginn, unterjährig ab heute – jeweils der nächste passende Wochentag */
+function ersterTermin(s: Saison, wochentag: number, heute = jetzt().datum): string {
+  let ab = heute > s.von ? heute : s.von;
+  while (isoWochentag(ab) !== wochentag) ab = addTage(ab, 1);
+  return ab;
+}
+/**
+ * Unterjährig (Saison läuft schon): Einheiten bis zum Saisonende × Einzelpreis der jeweiligen Stunde.
+ * Vor Saisonbeginn gilt der Abo-Preis der Hallenabrechnung – dann null.
+ */
+export function unterjaehrig(s: Saison, w: Zeit, platz: Platz | undefined, preise: Preise, heute = jetzt().datum): { ab: string; einheiten: number; betrag: number; termine: { datum: string; preis: number }[] } | null {
+  if (heute <= s.von) return null;
+  const termine: { datum: string; preis: number }[] = [];
+  for (let d = ersterTermin(s, w.wochentag, heute); d <= s.bis; d = addTage(d, 7)) termine.push({ datum: d, preis: preisVon(platz, d, w.von, w.bis, '1', preise).betrag ?? 0 });
+  return { ab: termine[0]?.datum ?? heute, einheiten: termine.length, betrag: Math.round(termine.reduce((x, t) => x + t.preis, 0) * 100) / 100, termine };
+}
 
 function fristenPruefen(e: SaisonEingabe) {
   if (e.bis <= e.von) throw new BusinessError('Das Saisonende liegt vor dem Beginn.');
@@ -66,7 +94,8 @@ async function emailVon(db: Db, w: Pick<Wunsch, 'adrnr' | 'benutzer_id'>): Promi
 }
 
 /** E-Mail an Abonnent bzw. Interessent; scheitert sie (keine Adresse, Versand nicht möglich), steht der Grund am Wunsch → Arbeitsvorrat */
-async function benachrichtigen(db: Db, w: Wunsch, betreff: string, text: string): Promise<boolean> {
+async function benachrichtigen(db: Db, w: Wunsch, betreff: string, text: string, mail = true): Promise<boolean> {
+  if (!mail) return false; // bewusst ohne E-Mail – keine Ausnahme im Arbeitsvorrat
   let fehler: string | null = null;
   const an = await emailVon(db, w);
   if (!an) fehler = 'keine E-Mail-Adresse gepflegt';
@@ -83,11 +112,16 @@ async function benachrichtigen(db: Db, w: Wunsch, betreff: string, text: string)
 }
 
 /** Saison eröffnen: Abos des Vorjahres (Halle) als offene Bestätigungen vormerken und die Abonnenten anschreiben */
-export async function saisonEroeffnen(tx: Db, e: SaisonEingabe & { vorjahr_von: string; vorjahr_bis: string }): Promise<string> {
+export async function saisonEroeffnen(tx: Db, e: SaisonEingabe & { vorjahr_von?: string | null; vorjahr_bis?: string | null; mail?: boolean }): Promise<string> {
   fristenPruefen(e);
   await tx`update tco.abo_saison set aktiv = false where aktiv`;
-  const [s] = await tx`insert into tco.abo_saison (name, von, bis, bestaetigen_bis, nachruecken_ab, annahme_tage)
-                       values (${e.name}, ${e.von}, ${e.bis}, ${e.bestaetigen_bis}, ${e.nachruecken_ab}, ${e.annahme_tage}) returning id`;
+  const [s] = await tx`insert into tco.abo_saison (name, von, bis, bestaetigen_bis, nachruecken_ab, annahme_tage, mail_pause_bis)
+                       values (${e.name}, ${e.von}, ${e.bis}, ${e.bestaetigen_bis}, ${e.nachruecken_ab}, ${e.annahme_tage}, ${e.mail_pause_bis || null}) returning id`;
+  // Läuft die Saison schon bzw. ist der Nachrück-Termin vorbei, gibt es nichts mehr zu bestätigen: die Abos sind gebucht, freie Stunden
+  // können unterjährig beworben werden. Sonst würden die Vormerkungen beim nächsten Lauf sofort verfallen.
+  if (!e.vorjahr_von || !e.vorjahr_bis || e.nachruecken_ab <= jetzt().datum) {
+    return `Saison ${e.name} eröffnet. Der Nachrück-Termin ist bereits erreicht – es wurden keine Abos zur Bestätigung vorgemerkt; freie Stunden können ab sofort beworben werden.`;
+  }
   const abos = await tx`
     select b.bid, p.id as platz_id, min(b.datum)::text as erster, min(b.kunde) as kunde, (array_agg(b.benutzer_id::text) filter (where b.benutzer_id is not null))[1] as benutzer_id,
            extract(hour from min(b.time_start))::int * 60 + extract(minute from min(b.time_start))::int as von,
@@ -111,25 +145,29 @@ export async function saisonEroeffnen(tx: Db, e: SaisonEingabe & { vorjahr_von: 
     n++;
     const wunsch = (await wuensche(tx, s.id)).find((x) => x.id === w.id)!;
     await benachrichtigen(tx, wunsch, `Hallenabo ${e.name}: bitte bis ${dat(e.bestaetigen_bis)} bestätigen`,
-      `dein Hallenabo ${zeitText(wunsch)} kannst du für die Saison ${e.name} (${dat(e.von)} bis ${dat(e.bis)}) behalten. Bitte bestätige es bis zum ${dat(e.bestaetigen_bis)} im Portal unter „Platz buchen → Abo“. Ohne Bestätigung wird die Stunde ab dem ${dat(e.nachruecken_ab)} dem ersten Interessenten der Warteliste angeboten.`);
+      `dein Hallenabo ${zeitText(wunsch)} kannst du für die Saison ${e.name} (${dat(e.von)} bis ${dat(e.bis)}) behalten. Bitte bestätige es bis zum ${dat(e.bestaetigen_bis)} im Portal unter „Platz buchen → Abo“. Ohne Bestätigung wird die Stunde ab dem ${dat(e.nachruecken_ab)} dem ersten Interessenten der Warteliste angeboten.`, !!e.mail);
   }
-  return `Saison ${e.name} eröffnet: ${n} Abo${n === 1 ? '' : 's'} des Vorjahres zur Bestätigung vorgemerkt.`;
+  return `Saison ${e.name} eröffnet: ${n} Abo${n === 1 ? '' : 's'} des Vorjahres zur Bestätigung vorgemerkt${e.mail ? ' und per E-Mail angeschrieben' : ' (ohne E-Mail)'}.`;
 }
 
 export async function saisonAendern(tx: Db, id: number, e: SaisonEingabe): Promise<string> {
   fristenPruefen(e);
   const r = await tx`update tco.abo_saison set name = ${e.name}, von = ${e.von}, bis = ${e.bis}, bestaetigen_bis = ${e.bestaetigen_bis}, nachruecken_ab = ${e.nachruecken_ab},
-                            annahme_tage = ${e.annahme_tage} where id = ${id} returning id`;
+                            annahme_tage = ${e.annahme_tage}, mail_pause_bis = ${e.mail_pause_bis || null} where id = ${id} returning id`;
   if (!r.length) throw new BusinessError('Saison nicht gefunden.', 404);
   return 'Fristen gespeichert.';
 }
 
 /** Raster für „Platz buchen → Abo“: je Hallenplatz, Wochentag und Stunde der Status aus Sicht des Benutzers */
+const kostenText = (k: ReturnType<typeof unterjaehrig>) => (k ? `ab ${dat(k.ab)}: ${k.einheiten} Einheit${k.einheiten === 1 ? '' : 'en'} zum Einzelpreis = ${k.betrag.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : null);
+
 export async function rasterLesen(db: Db, ich: Ich) {
   const s = await saisonLesen(db);
   const plaetze = (await plaetzeLesen(db, true)).filter((p) => p.art === 'HALLE');
-  if (!s) return { saison: null, plaetze: [], felder: [], meine: [], maxBewerbungen: MAX_BEWERBUNGEN };
+  if (!s) return { saison: null, unterjaehrig: false, plaetze: [], felder: [], meine: [], maxBewerbungen: MAX_BEWERBUNGEN };
   const alle = await wuensche(db, s.id);
+  const abos = await laufendeAbos(db, s);
+  const preise = await preiseLesen(db);
   const felder: { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null }[] = [];
   for (const p of plaetze) {
     for (let wt = 1; wt <= 7; wt++) {
@@ -140,11 +178,12 @@ export async function rasterLesen(db: Db, ich: Ich) {
         const warten = hier.filter((w) => w.status === 'WARTET');
         const mein = hier.find((w) => w.adrnr === ich.adrnr && [...BELEGT, 'WARTET'].includes(w.status));
         const belegt = hier.find((w) => BELEGT.includes(w.status));
+        const abo = abos.find((a) => trifft(a, f));
         felder.push({
           ...f, wartende: warten.length, wunsch_id: mein?.id ?? null,
           position: mein?.status === 'WARTET' ? warten.findIndex((w) => w.id === mein.id) + 1 : null,
           status: mein ? ({ OFFEN: 'offen', BESTAETIGT: 'bestaetigt', FREIGEGEBEN: 'freigegeben', ANGEBOTEN: 'angebot', ANGENOMMEN: 'angenommen', WARTET: 'bewerbung' } as Record<string, string>)[mein.status]
-            : belegt ? 'vergeben' : 'frei',
+            : abo?.kunde === ich.kunde ? 'freigegeben' : belegt || abo ? 'vergeben' : 'frei',
         });
       }
     }
@@ -153,9 +192,10 @@ export async function rasterLesen(db: Db, ich: Ich) {
     const warten = alle.filter((x) => x.status === 'WARTET' && trifft(x, w));
     return { id: w.id, art: w.art, platz: plaetze.find((p) => p.id === w.platz_id)?.name ?? '', platz_id: w.platz_id, wochentag: w.wochentag, von: hhmm(w.von), bis: hhmm(w.bis), status: w.status,
       text: zeitText(w), wartende: warten.length, position: w.status === 'WARTET' ? warten.findIndex((x) => x.id === w.id) + 1 : null,
-      annehmen_bis: w.status === 'ANGEBOTEN' && w.angeboten_am ? addTage(w.angeboten_am, s.annahme_tage) : null };
+      annehmen_bis: w.status === 'ANGEBOTEN' && w.angeboten_am ? addTage(w.angeboten_am, s.annahme_tage) : null,
+      kosten: ['WARTET', 'ANGEBOTEN', 'ANGENOMMEN'].includes(w.status) ? kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise)) : null };
   });
-  return { saison: s, plaetze: plaetze.map((p) => ({ id: p.id, name: p.name })), felder, meine, maxBewerbungen: MAX_BEWERBUNGEN };
+  return { saison: s, unterjaehrig: jetzt().datum > s.von, plaetze: plaetze.map((p) => ({ id: p.id, name: p.name })), felder, meine, maxBewerbungen: MAX_BEWERBUNGEN };
 }
 
 /** Bewerbung auf eine oder mehrere Stunden am Stück – nur Warteliste, keine Buchung */
@@ -179,7 +219,8 @@ export async function bewerben(tx: Db, ich: Ich, e: { platz_id: number; wochenta
            values (${s.id}, 'BEWERBUNG', ${ich.adrnr}, ${ich.name}, ${!!m}, ${ich.benutzerId}, ${p.id}, ${e.wochentag}, ${von}, ${bis}, 'WARTET')`;
   const warten = (await wuensche(tx, s.id)).filter((w) => w.status === 'WARTET' && trifft(w, f));
   const pos = warten.findIndex((w) => w.adrnr === ich.adrnr) + 1;
-  return `Bewerbung für ${zeitText(f)} auf ${p.name} gespeichert – Position ${pos} von ${warten.length}. Ein Abo entsteht erst mit der Freigabe durch den Kassenwart.`;
+  const k = kostenText(unterjaehrig(s, f, p, await preiseLesen(tx)));
+  return `Bewerbung für ${zeitText(f)} auf ${p.name} gespeichert – Position ${pos} von ${warten.length}.${k ? ` Unterjährig ${k}.` : ''} Ein Abo entsteht erst mit der Freigabe durch den Kassenwart.`;
 }
 
 const UEBERGANG: Record<string, { von: string[]; nach: string; art: Wunsch['art']; text: string }> = {
@@ -205,16 +246,19 @@ export async function aktion(tx: Db, ich: Ich, id: number, a: string): Promise<s
  * Fällige Schritte (täglich, beliebig oft wiederholbar): Erinnerung nach der Bestätigungsfrist, ab dem Nachrück-Termin unbestätigte
  * Stunden verfallen lassen, abgelaufene Angebote zurücknehmen und freie Stunden dem Ersten der Warteliste anbieten.
  */
-export async function aboLauf(db: Db, heute = jetzt().datum): Promise<{ erinnert: number; verfallen: number; angeboten: number }> {
+export async function aboLauf(db: Db, heute = jetzt().datum, o: { mail?: boolean; manuell?: boolean } = {}): Promise<{ erinnert: number; verfallen: number; angeboten: number }> {
   const r = { erinnert: 0, verfallen: 0, angeboten: 0 };
+  const mail = o.mail !== false;
   const s = await saisonLesen(db);
   if (!s || heute > s.bis) return r;
+  // E-Mail-Pause: der automatische Lauf ruht bis einschließlich des Datums (sonst liefen Fristen, ohne dass jemand davon erfährt)
+  if (!o.manuell && s.mail_pause_bis && heute <= s.mail_pause_bis) return r;
   if (heute > s.bestaetigen_bis && !s.erinnert_am && heute < s.nachruecken_ab) {
     const [frei] = await db`update tco.abo_saison set erinnert_am = ${heute} where id = ${s.id} and erinnert_am is null returning id`;
     if (frei) {
       for (const w of (await wuensche(db, s.id)).filter((x) => x.art === 'BESTAETIGUNG' && x.status === 'OFFEN')) {
         await benachrichtigen(db, w, `Erinnerung: Hallenabo ${s.name} bitte bestätigen`,
-          `dein Hallenabo ${zeitText(w)} für die Saison ${s.name} ist noch nicht bestätigt. Bitte bestätige es im Portal unter „Platz buchen → Abo“. Ohne Bestätigung wird die Stunde am ${dat(s.nachruecken_ab)} dem ersten Interessenten der Warteliste angeboten.`);
+          `dein Hallenabo ${zeitText(w)} für die Saison ${s.name} ist noch nicht bestätigt. Bitte bestätige es im Portal unter „Platz buchen → Abo“. Ohne Bestätigung wird die Stunde am ${dat(s.nachruecken_ab)} dem ersten Interessenten der Warteliste angeboten.`, mail);
         r.erinnert++;
       }
     }
@@ -224,14 +268,18 @@ export async function aboLauf(db: Db, heute = jetzt().datum): Promise<{ erinnert
                             where saison_id = ${s.id} and ((art = 'BESTAETIGUNG' and status = 'OFFEN')
                                or (status = 'ANGEBOTEN' and angeboten_am + ${s.annahme_tage}::int < ${heute}::date)) returning id`).length;
   const alle = await wuensche(db, s.id);
+  const abos = await laufendeAbos(db, s, heute);
+  const plaetze = await plaetzeLesen(db);
+  const preise = await preiseLesen(db);
   for (const w of alle.filter((x) => x.status === 'WARTET')) {
-    if (alle.some((x) => x.id !== w.id && BELEGT.includes(x.status) && trifft(x, w))) continue;
+    if (alle.some((x) => x.id !== w.id && BELEGT.includes(x.status) && trifft(x, w)) || abos.some((a) => trifft(a, w))) continue;
     const [ok] = await db`update tco.abo_wunsch set status = 'ANGEBOTEN', angeboten_am = ${heute} where id = ${w.id} and status = 'WARTET' returning id`;
     if (!ok) continue;
     w.status = 'ANGEBOTEN';
     r.angeboten++;
+    const k = kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise, heute));
     await benachrichtigen(db, w, `Hallenabo ${s.name}: ${zeitText(w)} ist für dich frei`,
-      `die Stunde ${zeitText(w)} wird dir als Abo für die ganze Saison ${s.name} (${dat(s.von)} bis ${dat(s.bis)}) angeboten. Bitte nimm das Angebot bis zum ${dat(addTage(heute, s.annahme_tage))} im Portal unter „Platz buchen → Abo“ an – sonst geht es an den nächsten Interessenten. Das Abo gilt erst nach der Freigabe durch den Kassenwart.`);
+      `die Stunde ${zeitText(w)} wird dir als Abo ${k ? `für den Rest der Saison ${s.name} angeboten (${k})` : `für die ganze Saison ${s.name} (${dat(s.von)} bis ${dat(s.bis)}) angeboten`}. Bitte nimm das Angebot bis zum ${dat(addTage(heute, s.annahme_tage))} im Portal unter „Platz buchen → Abo“ an – sonst geht es an den nächsten Interessenten. Das Abo gilt erst nach der Freigabe durch den Kassenwart.`, mail);
   }
   return r;
 }
@@ -242,13 +290,15 @@ export async function verwaltungLesen(db: Db) {
   if (!s) return { saison: null, wuensche: [] };
   const plaetze = await plaetzeLesen(db);
   const alle = await wuensche(db, s.id);
+  const preise = await preiseLesen(db);
   return {
     saison: s,
     wuensche: alle.map((w) => {
       const warten = alle.filter((x) => x.status === 'WARTET' && trifft(x, w));
       return { id: w.id, art: w.art, name: w.name, mitglied: w.mitglied, platz: plaetze.find((p) => p.id === w.platz_id)?.name ?? '', wochentag: w.wochentag, von: hhmm(w.von), bis: hhmm(w.bis),
         text: zeitText(w), status: w.status, angelegt: w.angelegt.slice(0, 10), mail_fehler: w.mail_fehler, abo_bid: w.abo_bid, wartende: warten.length,
-        position: w.status === 'WARTET' ? warten.findIndex((x) => x.id === w.id) + 1 : null };
+        position: w.status === 'WARTET' ? warten.findIndex((x) => x.id === w.id) + 1 : null,
+        kosten: ['WARTET', 'ANGEBOTEN', 'ANGENOMMEN'].includes(w.status) ? kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise)) : null };
     }),
   };
 }
@@ -260,11 +310,20 @@ export async function freigeben(tx: Db, id: number): Promise<string> {
   if (!s || !w || w.saison_id !== s.id) throw new BusinessError('Eintrag nicht gefunden.', 404);
   if (!['BESTAETIGT', 'ANGENOMMEN'].includes(w.status)) throw new BusinessError('Freigegeben wird nur, was der Abonnent bestätigt bzw. der Interessent angenommen hat.');
   if (!w.adrnr) throw new BusinessError(`${w.name} ist keinem Mitglied oder Portalnutzer zugeordnet – bitte das Abo in der Platzverwaltung anlegen.`);
-  let ab = s.von;
-  while (isoWochentag(ab) !== w.wochentag) ab = addTage(ab, 1);
+  const ab = ersterTermin(s, w.wochentag);
+  if (ab > s.bis) throw new BusinessError('Bis zum Saisonende gibt es keinen Termin mehr.');
   const r = await aboAnlegen(tx, { platz_id: w.platz_id, adrnr: w.adrnr, kunde: w.name, ab, bis_datum: s.bis, von: hhmm(w.von), bis: hhmm(w.bis), text: `Abo ${s.name}` }, true);
   await tx`update tco.abo_wunsch set status = 'FREIGEGEBEN', entschieden = now(), abo_bid = ${r.bid} where id = ${id}`;
-  return r.text;
+  // unterjährig: jede Einheit bis zum Saisonende zum Einzelpreis der jeweiligen Stunde (Abo mit Einzelabrechnung)
+  const k = unterjaehrig(s, w as unknown as Zeit, (await plaetzeLesen(tx)).find((p) => p.id === w.platz_id), await preiseLesen(tx));
+  if (!k) return r.text;
+  await tx`insert into tco.bookings_ch (bid, status_abw) values (${r.bid}, '1') on conflict (bid) do update set status_abw = '1'`;
+  let summe = 0, n = 0;
+  for (const t of k.termine) {
+    const u = await tx`update tco.bookings set preis = ${t.preis} where bid = ${r.bid} and datum = ${t.datum} returning bid`;
+    if (u.length) { summe += t.preis; n++; }
+  }
+  return `${r.text} Unterjährig: ${n} Einheit${n === 1 ? '' : 'en'} zum Einzelpreis = ${(Math.round(summe * 100) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €.`;
 }
 
 /** Kassenwart lehnt ab (z. B. Bestätigung trotz offener Rechnung) – die Stunde wird wieder frei */

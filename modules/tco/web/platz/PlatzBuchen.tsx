@@ -337,7 +337,7 @@ export function PlatzBuchen() {
             {meine && art === 'abo' && (
               <>
                 <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.75rem' }}>
-                  Abos legt der Verein im Portal an (Platzverwaltung). Für ein neues Abo oder Änderungen bitte beim Vorstand melden.
+                  Ein neues Abo beantragst du unter „Abo-Bewerbung“ – es gilt nach der Freigabe durch den Kassenwart.
                   Bei Abos mit Einzelabrechnung kannst du einzelne Termine selbst stornieren – das Abo bleibt bestehen.
                 </MessageStrip>
                 <Section title="Abos" count={meine.abos.length} flush>

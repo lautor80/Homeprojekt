@@ -1000,9 +1000,13 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   const saison = { name: 'Test 27/28', von: tag(30), bis: tag(90), bestaetigen_bis: tag(10), nachruecken_ab: tag(20), annahme_tage: 7 };
   assert.equal((await anna('POST', `${P}/admin/abosaison`, { ...saison, vorjahr_von: '2026-01-05', vorjahr_bis: '2026-01-20' })).status, 403);
   assert.equal((await admin('POST', `${P}/admin/abosaison`, { ...saison, nachruecken_ab: tag(5), vorjahr_von: '2026-01-05', vorjahr_bis: '2026-01-20' })).status, 400, 'Fristen');
-  let r = await admin('POST', `${P}/admin/abosaison`, { ...saison, vorjahr_von: '2026-01-05', vorjahr_bis: '2026-01-20' });
+  // ohne E-Mail (Rückfrage verneint): keine Ausnahme im Arbeitsvorrat
+  let r = await admin('POST', `${P}/admin/abosaison`, { ...saison, vorjahr_von: '2026-01-05', vorjahr_bis: '2026-01-20', mail: false });
+  assert.match(r.body.text, /ohne E-Mail/);
+  assert.equal((await sql`select count(*)::int as n from tco.abo_wunsch where mail_fehler is not null`)[0].n, 0);
+  r = await admin('POST', `${P}/admin/abosaison`, { ...saison, vorjahr_von: '2026-01-05', vorjahr_bis: '2026-01-20', mail: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.match(r.body.text, /2 Abos des Vorjahres/);
+  assert.match(r.body.text, /2 Abos des Vorjahres zur Bestätigung vorgemerkt und per E-Mail angeschrieben/);
   // Fristen sind einstellbar
   r = await admin('GET', `${P}/admin/abosaison`);
   assert.equal((await admin('PUT', `${P}/admin/abosaison/${r.body.saison.id}`, { ...saison, annahme_tage: 5 })).status, 200);
@@ -1034,6 +1038,11 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
 
   // nach der Frist: Erinnerung genau einmal; vor dem Nachrück-Termin wird nichts angeboten
   assert.deepEqual(await lauf(tag(9)), { erinnert: 0, verfallen: 0, angeboten: 0 });
+  // E-Mail-Pause: der automatische Lauf ruht bis einschließlich des Datums
+  const sid = (await sql`select id from tco.abo_saison where aktiv`)[0].id;
+  assert.equal((await admin('PUT', `${P}/admin/abosaison/${sid}`, { ...saison, annahme_tage: 5, mail_pause_bis: tag(11) })).status, 200);
+  assert.deepEqual(await lauf(tag(11)), { erinnert: 0, verfallen: 0, angeboten: 0 });
+  assert.equal((await admin('PUT', `${P}/admin/abosaison/${sid}`, { ...saison, annahme_tage: 5, mail_pause_bis: null })).status, 200);
   assert.deepEqual(await lauf(tag(11)), { erinnert: 1, verfallen: 0, angeboten: 0 });
   assert.deepEqual(await lauf(tag(12)), { erinnert: 0, verfallen: 0, angeboten: 0 });
   // Ausnahme im Arbeitsvorrat: Erinnerung nicht zustellbar; bestätigtes Abo wartet auf Freigabe
@@ -1065,5 +1074,39 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   // abgelaufenes Angebot verfällt nach der Annahmefrist (hier: der Gast rückt nicht nach, weil die Stunde vergeben ist)
   assert.deepEqual(await lauf(tag(40)), { erinnert: 0, verfallen: 0, angeboten: 0 });
   await sql`delete from tco.bookings where bid in ('9770000001', '9770000002') or (status = '3' and datum >= ${tag(30)} and kunde in ('BERT SPIELER', 'ANNA SPIELERIN'))`;
+  await sql`delete from tco.abo_saison`;
+
+  // ---- unterjährig: Saison läuft bereits – keine Vormerkung, laufende Abos sind vergeben, freie Stunden zum Einzelpreis je Einheit
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, benutzer_id, quelle)
+            select '9770000003', d::date, '10:00', '11:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2026-01-01', '', 'Halle', ${annaId}::uuid, 'PORTAL'
+              from generate_series(${tag(20)}::date, ${tag(41)}::date, interval '7 days') d`;
+  const laeuft = { name: 'Test laufend', von: tag(-30), bis: tag(45), bestaetigen_bis: tag(-60), nachruecken_ab: tag(-50), annahme_tage: 7 };
+  r = await admin('POST', `${P}/admin/abosaison`, { ...laeuft, vorjahr_von: '2026-01-05', vorjahr_bis: '2026-01-20', mail: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /keine Abos zur Bestätigung vorgemerkt/);
+  const wt = ((new Date(`${tag(20)}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
+  r = await bert('GET', `${P}/abowunsch`);
+  assert.equal(r.body.unterjaehrig, true);
+  assert.equal(r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 600).status, 'vergeben', 'laufendes Abo');
+  assert.equal((await anna('GET', `${P}/abowunsch`)).body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 600).status, 'freigegeben');
+  // Bert bewirbt sich auf die freie Stunde danach und – als Warteliste – auf Annas Stunde
+  r = await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: wt, von: '11:00', bis: '12:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Unterjährig ab .* Einheit(en)? zum Einzelpreis = /);
+  assert.equal((await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: wt, von: '10:00', bis: '11:00' })).status, 200);
+  r = await admin('POST', `${P}/admin/abosaison/lauf`, { mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.angeboten, 1, 'nur die freie Stunde – Annas Abo läuft');
+  const frei = (await sql`select id from tco.abo_wunsch where status = 'ANGEBOTEN'`)[0].id as number;
+  assert.equal((await bert('POST', `${P}/abowunsch/${frei}/annehmen`)).status, 200);
+  r = await admin('POST', `${P}/admin/abowunsch/freigeben`, { id: frei });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Unterjährig: \d+ Einheit(en)? zum Einzelpreis = /);
+  const neu = await sql`select b.datum::text as datum, b.preis::float8 as preis, c.status_abw from tco.bookings b left join tco.bookings_ch c on c.bid = b.bid
+                         where b.status = '3' and b.kunde = 'BERT SPIELER' order by b.datum`;
+  assert.ok(neu.length >= 1 && neu.length <= 7, String(neu.length));
+  assert.ok(neu.every((x) => x.preis === 20 && x.status_abw === '1' && x.datum <= tag(45) && x.datum >= tag(0)), JSON.stringify(neu));
+  await sql`delete from tco.bookings_ch where bid in (select bid from tco.bookings where kunde = 'BERT SPIELER' and status = '3')`;
+  await sql`delete from tco.bookings where bid = '9770000003' or (status = '3' and kunde = 'BERT SPIELER')`;
   await sql`delete from tco.abo_saison`;
 });
