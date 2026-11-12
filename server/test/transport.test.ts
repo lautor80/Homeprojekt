@@ -49,6 +49,16 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
     zahlungsziel_tage: 14, ust_satz: 19, rechnung_startnr: 5001,
     logo: process.env.TEST_LOGO ? `data:image/jpeg;base64,${fs.readFileSync(process.env.TEST_LOGO).toString('base64')}` : null,
   })).status, 200);
+  // Auftragsbedingungen (#170): vorbelegt, bleiben ohne Feld erhalten, lassen sich ändern
+  let fi = (await call('GET', `${T}/firma`)).body;
+  assert.match(fi.auftragsbedingungen, /mindestens 18 geeignete Gurte/);
+  assert.match(fi.auftragsbedingungen, /Mindestlohngesetzes \(MiLoG\)/);
+  const agb = fi.auftragsbedingungen;
+  assert.equal((await call('PUT', `${T}/firma`, { ...fi, auftragsbedingungen: 'Absatz 1\r\n\r\nAbsatz 2  ' })).status, 200);
+  assert.equal((await call('GET', `${T}/firma`)).body.auftragsbedingungen, 'Absatz 1\n\nAbsatz 2');
+  assert.equal((await call('PUT', `${T}/firma`, { ...fi, auftragsbedingungen: agb })).status, 200);
+  fi = (await call('GET', `${T}/firma`)).body;
+  assert.equal(fi.auftragsbedingungen, agb);
 
   // ---- Import (Windows-1252, SAP-Formate) ----
   const adr = 'MANDT;ADRNR;KUNDENNAME;KUNDENNAME2;ANREDE;NAME;VORNAME;STRASSE;HAUSNUMMER;LAND;PLZ;ORT;TELEFON;FAX;EMAIL;GLN;MARKT\n' +

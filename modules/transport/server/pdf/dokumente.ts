@@ -2,6 +2,7 @@ import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { C, abschnitt, adressZeilen, anschrift, folgeKopf, fusszeilen, infoBlock, kopf, titel } from './layout.js';
 import { auftragLesen, firmaLesen, wertText, type Stop } from '../data.js';
 import { condense, dat, eur, heute } from '../format.js';
+import { transportauftragAngaben } from './transportauftrag-angaben.js';
 
 /**
  * Lieferschein – Inhalt wie Smartform ZEU_LIEFERSCHEIN:
@@ -94,7 +95,8 @@ export async function lieferscheinPdf(nr: string): Promise<Buffer> {
 
 /**
  * Transportauftrag an den Unternehmer (Frachtführer):
- * Fahrzeug und Ladung, Lade-/Entladestellen, vereinbarter Frachtpreis, Besonderheiten.
+ * Fahrzeug und Ladung, Lade-/Entladestellen, vereinbarter Frachtpreis (VK – Preis des Unternehmers), Besonderheiten,
+ * Auftragsbedingungen aus den Stammdaten (#170).
  * (Das Smartform ZEU_SPEDITIONSAUFTRAG lag nicht im Paket – Inhalt aus den Auftragsdaten.)
  */
 export async function transportauftragPdf(nr: string): Promise<Buffer> {
@@ -104,12 +106,8 @@ export async function transportauftragPdf(nr: string): Promise<Buffer> {
   p.newPage();
   kopf(p, firma);
   anschrift(p, firma, adressZeilen(a.unternehmerAdr));
-  infoBlock(p, [
-    ['Auftrags-Nr.', nr],
-    ['Datum', dat(a.anlagedatum ?? heute())],
-    ['Kennzeichen', a.kennzeichen && a.kennzeichen !== 'Bitte angeben' ? a.kennzeichen : ''],
-    ['Ladenummer', a.ladenummer ?? ''],
-  ]);
+  const angaben = transportauftragAngaben({ auftragsnr: nr, frachtpreis_vk: a.frachtpreis_vk }, dat(a.anlagedatum ?? heute()));
+  infoBlock(p, angaben.info);
   titel(p, 'Transportauftrag', null, 'Transport Order');
   p.text(C.left, 127, 'Sehr geehrte Damen und Herren,');
   p.text(C.left, 131.5, 'hiermit beauftragen wir Sie mit dem folgenden Transport:');
@@ -179,7 +177,7 @@ export async function transportauftragPdf(nr: string): Promise<Buffer> {
   abschnitt(p, y, 'Frachtpreis');
   y += 8;
   p.text(C.left, y, 'Vereinbarter Frachtpreis');
-  p.text(C.right, y, `${eur(a.frachtpreis_ek)} zzgl. USt`, { bold: true, align: 'R' });
+  p.text(C.right, y, `${eur(angaben.frachtpreis)} zzgl. USt`, { bold: true, align: 'R' });
   y += 10;
 
   if (a.besonderheiten) {
@@ -199,6 +197,30 @@ export async function transportauftragPdf(nr: string): Promise<Buffer> {
     y = 24;
   }
   p.text(C.left, y + 4, 'Vielen Dank für die gute Zusammenarbeit!');
+  y += 12;
+
+  // Auftragsbedingungen (Stammdaten → Firma), absatzweise – Seitenumbruch zwischen Absätzen
+  const bed = (firma.auftragsbedingungen ?? '').trim();
+  if (bed) {
+    const o = { size: 7.5 };
+    const absaetze = bed.split(/\n\s*\n/).map((x) => x.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
+    if (y + 12 + p.blockHeight(C.right - C.left, absaetze[0], o) > C.bottom) {
+      p.newPage();
+      folgeKopf(p, `Transportauftrag ${nr}`);
+      y = 24;
+    }
+    abschnitt(p, y, 'Auftragsbedingungen');
+    y += 5;
+    for (const t of absaetze) {
+      const h = p.blockHeight(C.right - C.left, t, o);
+      if (y + h > C.bottom) {
+        p.newPage();
+        folgeKopf(p, `Transportauftrag ${nr}`);
+        y = 24;
+      }
+      y += p.textBlock(C.left, y, C.right - C.left, t, o) + 2;
+    }
+  }
 
   fusszeilen(p, firma);
   return p.render();

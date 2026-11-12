@@ -111,6 +111,8 @@ export interface Firma {
   /** aus core.verbindungen („paperless“), nur lesend */
   paperless_url: string;
   paperless_token: string;
+  /** Auftragsbedingungen (AGB) auf dem Transportauftrag, Absätze durch Leerzeile getrennt */
+  auftragsbedingungen?: string;
 }
 
 export type WerteTyp = 'FAHRZEUGTYP' | 'LADEGUT' | 'LADEWEISE' | 'PALETTENTAUSCH';
