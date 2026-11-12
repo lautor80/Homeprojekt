@@ -300,6 +300,7 @@ test('Freigabe durch den Trainer, Arbeitsvorrat, Zahlung mit neuer Version', asy
   assert.equal(av.pfad, '/tco/jugendtraining?monat=202610&tab=abr');
   assert.equal(av.betrag, 100);
   assert.match(av.titel, /Jan Weißing – Oktober 2026 freigegeben/);
+  assert.equal(av.bereich, 'Kassenwart');
   assert.equal((await jan('GET', '/api/m/tco/dashboard/arbeitsvorrat')).status, 403);
 
   // Trainer bittet um Öffnung → Arbeitsvorrat und Status beim Kassenwart
