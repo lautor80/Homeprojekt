@@ -431,5 +431,8 @@ export async function kennzahlen(db: Db) {
       from tco.ih_meldung where status = any(${STATUS_OFFEN})`;
   const [j] = await db`select count(*)::int as n, coalesce(sum(kosten), 0)::float8 as kosten from tco.ih_meldung
                         where status = 'ERLEDIGT' and erledigt_am >= date_trunc('year', now())`;
-  return { ...r, erledigtJahr: j.n as number, kostenJahr: j.kosten as number, aeltester: r.aeltester ? dat(r.aeltester) : null };
+  return {
+    offen: Number(r.offen), sicher: Number(r.sicher), neu: Number(r.neu), gesperrt: Number(r.gesperrt),
+    erledigtJahr: Number(j.n), kostenJahr: Number(j.kosten), aeltester: r.aeltester ? dat(r.aeltester) : null,
+  };
 }
