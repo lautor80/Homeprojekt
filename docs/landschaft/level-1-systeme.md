@@ -188,7 +188,7 @@ flowchart LR
 | produkte | 6 |
 | schnupper | 6 |
 | soll | 10 |
-| sport | 3 |
+| sport | 4 |
 | teilnehmer | 4 |
 | upload | 2 |
 | verzehr | 29 |
