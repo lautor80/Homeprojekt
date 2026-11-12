@@ -17,6 +17,7 @@ import { TCO, dat } from '../util';
 import type { Person, Vertrag } from './typen';
 import { GruppenAuswahl, type BaumGruppe } from './GruppenTab';
 import { VertragsBaum } from './VertragsBaum';
+import { MEIN_TITEL, MeinVorgangDialog, type MeinTyp } from './MeinVorgang';
 
 /**
  * „Meine Mitgliedschaft“: eigene Stammdaten sehen, Kontaktdaten und (bei Lastschrift) die eigene Bankverbindung ändern,
@@ -47,7 +48,9 @@ export function MeineMitgliedschaft() {
   const [kuend, setKuend] = useState<{ art: 'MITGLIEDSCHAFT' } | { art: 'VERTRAG'; v: Vertrag & { endeBei: string } } | null>(null);
   const [pdf, setPdf] = useState<{ url: string; name: string; server?: boolean } | null>(null);
   // Sperre, solange ein Änderungs- oder Kündigungsdialog offen ist (Vorstand kann dann nicht gleichzeitig pflegen und umgekehrt)
-  const sperre = useSperre('MITGLIED', d?.mitglied.adrnr ?? null, !!dlg || !!kuend,
+  /** geführter Vorgang (#154): Beitrag wechseln, Jugendtraining abschließen, kündigen */
+  const [vorgang, setVorgang] = useState<MeinTyp | null>(null);
+  const sperre = useSperre('MITGLIED', d?.mitglied.adrnr ?? null, !!dlg || !!kuend || !!vorgang,
     { bezeichnung: d ? `Mitglied ${d.mitglied.vorname} ${d.mitglied.nachname} (Meine Mitgliedschaft)` : 'Mitglied' });
   const [docs, setDocs] = useState<{ dokumente: { id: number; titel: string; erstellt: string; typ: string; datei: string }[]; hinweis: string | null } | null>(null);
   useEffect(() => { api.get<typeof docs>(`${MG}/dokumente`).then(setDocs).catch(() => setDocs({ dokumente: [], hinweis: 'Dokumente konnten nicht geladen werden.' })); }, []);
@@ -108,6 +111,17 @@ export function MeineMitgliedschaft() {
           <Attribute label="Bevorzugter Versandweg">{d.kanal === 'W' ? 'WhatsApp' : d.kanal === 'E' ? 'E-Mail' : 'E-Mail/Post'}</Attribute>
         </Attributes>
       </ObjectHeader>
+
+      <Section title="Was möchtest du ändern?">
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <Button icon="switch-classes" onClick={() => { setError(null); setVorgang('BEITRAGSWECHSEL'); }}>{MEIN_TITEL.BEITRAGSWECHSEL}</Button>
+          <Button icon="physical-activity" onClick={() => { setError(null); setVorgang('JUGENDTRAINING'); }}>{MEIN_TITEL.JUGENDTRAINING}</Button>
+          <Button icon="decline" onClick={() => { setError(null); setVorgang('KUENDIGUNG'); }}>{MEIN_TITEL.KUENDIGUNG}</Button>
+        </div>
+        <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+          Schritt für Schritt: Angaben wählen, prüfen, bestätigen – für dich und für Personen, deren Beiträge über dich laufen. Du erhältst eine Bestätigung per E-Mail.
+        </Text>
+      </Section>
 
       <Section title="Kontaktdaten" actions={<Button icon="edit" disabled={gesperrt} onClick={() => { setError(null); setDlg('kontakt'); }}>Ändern</Button>}>
         <Attributes>
@@ -190,6 +204,11 @@ export function MeineMitgliedschaft() {
                                     art: kuend.art, grund: grund || null, bestaetigung: true,
                                     ...(kuend.art === 'VERTRAG' ? { adrnr: kuend.v.adrnr, vertragnr: kuend.v.vertragnr } : {}),
                                   }))} />}
+      {vorgang && (
+        <MeinVorgangDialog typ={vorgang} gesperrt={gesperrt ? sperre.text : null}
+                           kuendigung={{ gekuendigt: d.gekuendigt, ende: d.kuendigung.mitgliedschaft, eigene, kuendbar: vertraegeBaum.filter((v) => v.kuendbar) }}
+                           onClose={(geaendert) => { setVorgang(null); if (geaendert) laden(); }} />
+      )}
       {pdf && <PdfDialog url={pdf.url} title={pdf.server ? pdf.name : 'Kündigungsbestätigung'} filename={pdf.name} onClose={() => { if (!pdf.server) URL.revokeObjectURL(pdf.url); setPdf(null); }} />}
     </AppPage>
   );
