@@ -25,7 +25,7 @@ const LAND_NAME: Record<string, string> = {
 const LAND_KURZ: Record<string, string> = {
   D: 'DE', DE: 'DE', A: 'AT', AT: 'AT', CH: 'CH', F: 'FR', FR: 'FR', L: 'LU', LU: 'LU', B: 'BE', BE: 'BE', NL: 'NL', I: 'IT', IT: 'IT', PL: 'PL',
   CZ: 'CZ', DK: 'DK', E: 'ES', ES: 'ES', H: 'HU', HU: 'HU', SK: 'SK', SI: 'SI', HR: 'HR', RO: 'RO', BG: 'BG', S: 'SE', SE: 'SE', P: 'PT', PT: 'PT', FL: 'LI', LI: 'LI',
-  BG: 'BG', GR: 'GR', LT: 'LT', LV: 'LV', EE: 'EE', FI: 'FI', NO: 'NO', IE: 'IE', GB: 'GB', UK: 'GB', UA: 'UA', RS: 'RS', TR: 'TR', MK: 'MK', AL: 'AL',
+  GR: 'GR', LT: 'LT', LV: 'LV', EE: 'EE', FI: 'FI', NO: 'NO', IE: 'IE', GB: 'GB', UK: 'GB', UA: 'UA', RS: 'RS', TR: 'TR', MK: 'MK', AL: 'AL',
   BA: 'BA', ME: 'ME', MD: 'MD', BY: 'BY', CY: 'CY', MT: 'MT', IS: 'IS', XK: 'XK',
 };
 /** Überschriften aus Profilen und Formularen (z. B. Frachtenbörse): keine Inhalte, aber Hinweis auf die folgende Zeile */
