@@ -2,7 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { csvParse, dekodieren } from '../../../../server/src/lib/sapcsv.js';
 import type { Db } from '../verein.js';
 import { addTage, runden } from '../format.js';
-import { kontenLesen, kontostand } from './daten.js';
+import { kontenLesen, kontostand, offeneRechnungen } from './daten.js';
 import type { Position } from './buchen.js';
 import { laufZuZahlung, offeneLaeufe, type OffenerLauf } from '../soll/logik.js';
 
@@ -66,6 +66,25 @@ export function kurzText(name: string, zweck: string, max = 60): string {
 function musterSchluessel(name: string, zweck: string): string {
   const k = (name.trim() ? name.trim().slice(0, 25) : zweck.trim().slice(0, 14)).toUpperCase();
   return k.length >= 3 ? k : '';
+}
+
+/** Namensteile (mind. 3 Zeichen, ohne Umlaut-/Großschreibungsunterschiede) */
+const namensTeile = (s: string) => s.toUpperCase().replace(/Ä/g, 'AE').replace(/Ö/g, 'OE').replace(/Ü/g, 'UE').replace(/ß/g, 'SS')
+  .split(/[^A-Z0-9]+/).filter((t) => t.length >= 3);
+
+/**
+ * Offene Hallenrechnung zu einer Gutschrift ohne Rechnungsnummer im Text (RGNR_BY_AMOUNT):
+ * offener Betrag = Gutschrift. Gibt es mehrere, gewinnt die einzige, deren Kunde zum Namen des Zahlers passt;
+ * sonst kein Vorschlag.
+ */
+export function rechnungAmBetrag<R extends { rgnr_txt: string; kunde: string; offen: number }>(offene: R[], betrag: number, name: string): (R & { name: boolean }) | null {
+  const kand = offene.filter((r) => runden(r.offen) === runden(betrag));
+  if (!kand.length) return null;
+  const zahler = new Set(namensTeile(name));
+  const mitName = kand.filter((r) => { const t = namensTeile(r.kunde); return t.length > 0 && t.every((x) => zahler.has(x)); });
+  if (mitName.length === 1) return { ...mitName[0], name: true };
+  if (kand.length === 1) return { ...kand[0], name: false };
+  return null;
 }
 
 /** CSV-Umsatzexport der Bank lesen (IF-09) */
@@ -176,6 +195,8 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   const jahr = Number(bis.slice(0, 4));
   const gk = new Set((await kontenLesen(db, jahr)).filter((k) => k.aktiv && k.konto !== konto).map((k) => k.konto));
   const rgnrDa = new Map((await db`select rgnr_txt, status, betrag::float8 as betrag from tco.rgkopf`).map((r) => [r.rgnr_txt as string, r]));
+  const offeneRg = (await offeneRechnungen(db)).filter((r) => r.offen > 0);
+  const rgVergeben = new Set<string>();
   const historie = await db`
     select internenr, upper(coalesce(text, '')) as text, gkonto, datum::text as datum,
            (coalesce(soll, 0) - coalesce(haben, 0))::float8 as betrag
@@ -216,6 +237,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
         const rg = rgnrDa.get(m)!;
         const offen = rg.status !== '4' && rg.status !== '6';
         setze(x, '8003', `Regel: Hallenrechnung ${m} im Text${offen ? '' : ' (bereits abgeschlossen)'}`, 'regel', { rgnr: offen ? m : null });
+        if (offen) rgVergeben.add(m);
         continue;
       }
       if (/sumup/i.test(nz)) {
@@ -232,6 +254,15 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
       continue;
     }
     if (x.buchungstext.includes('RETOURE') && zweckU.includes('JUGENDTR')) { setze(x, '8006', 'Regel: Rücklastschrift Jugendtraining', 'regel'); continue; }
+
+    // Hallenrechnung am Betrag: offener Betrag gleich der Gutschrift – bei mehreren entscheidet der Name des Zahlers
+    if (x.betrag > 0) {
+      const rg = rechnungAmBetrag(offeneRg.filter((r) => !rgVergeben.has(r.rgnr_txt)), x.betrag, x.name);
+      if (rg && setze(x, '8003', `Vorschlag: offene Hallenrechnung ${rg.rgnr_txt} (${rg.kunde}) mit gleichem Betrag${rg.name ? ' und Namen' : ' – bitte prüfen'}`, 'regel', { rgnr: rg.rgnr_txt })) {
+        rgVergeben.add(rg.rgnr_txt);
+        continue;
+      }
+    }
 
     const key = musterSchluessel(x.name, x.zweck);
     if (!key) continue;

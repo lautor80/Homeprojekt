@@ -267,3 +267,38 @@ test('FI Splitbuchung: Hallenrechnung nach Erlöskonten der Produkte aufteilen',
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.ok(r.body.warnungen.some((w: string) => /mehreren Erlöskonten/.test(w)));
 });
+
+test('FI Bankimport: Hallenrechnung am Betrag erkennen, Rechnungs-PDF wird Beleg', async () => {
+  // eigene Rechnungen 2026_3xx; alle früheren Testrechnungen sind bereits bezahlt
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status, doknr) values
+            ('2026_301', 2026, 301, 'PETRA SONNE', 47.5, '3', '000654'),
+            ('2026_302', 2026, 302, 'KLAUS WIND', 62, '3', null),
+            ('2026_303', 2026, 303, 'LISA REGEN', 62, '3', null)`;
+  const csv = 'Bezeichnung Auftragskonto;IBAN Auftragskonto;Bankname Auftragskonto;Buchungstag;Valutadatum;Name Zahlungsbeteiligter;IBAN Zahlungsbeteiligter;Buchungstext;Verwendungszweck;Betrag;Saldo nach Buchung\n' +
+    'Girokonto;DE02120300000000202051;Testbank;09.11.2026;09.11.2026;Petra Sonne;DE66;Gutschrift;Halle Oktober;47,50;\n' +
+    'Girokonto;DE02120300000000202051;Testbank;09.11.2026;09.11.2026;Fremd Person;DE77;Gutschrift;Halle;62,00;\n' +
+    'Girokonto;DE02120300000000202051;Testbank;10.11.2026;10.11.2026;Wind, Klaus;DE88;Gutschrift;Hallenmiete;62,00;\n';
+  let r = await call('POST', `${F}/bank/lesen`, { konto: '1200', data: b64(csv) });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const u = (name: string) => r.body.umsaetze.find((x: any) => x.name === name);
+  // eindeutiger Betrag → Vorschlag mit Rechnung
+  assert.deepEqual([u('Petra Sonne').positionen[0].gkonto, u('Petra Sonne').positionen[0].rgnr], ['8003', '2026_301']);
+  assert.match(u('Petra Sonne').herkunft, /offene Hallenrechnung 2026_301 \(PETRA SONNE\) mit gleichem Betrag und Namen/);
+  // zwei Rechnungen über 62,00: ohne passenden Namen kein Vorschlag, mit Namen die richtige
+  assert.equal(u('Fremd Person').positionen.length, 0);
+  assert.equal(u('Wind, Klaus').positionen[0].rgnr, '2026_302');
+
+  // Buchen: Rechnung bezahlt, Rechnungs-PDF 654 ist Beleg der Buchung
+  const p = u('Petra Sonne');
+  r = await call('POST', `${F}/buchen`, { konto: '1200', umsaetze: [{ datum: p.datum, text: p.buchungsText, betrag: p.betrag, positionen: p.positionen, belege: [] }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.gebucht[0].belege, [654]);
+  const [k] = await sql`select status from tco.rgkopf where rgnr_txt = '2026_301'`;
+  assert.equal(k.status, '4');
+  const [m] = await sql`select count(*)::int as n from tco.fipapermap where internenr = ${r.body.gebucht[0].internenr} and ltrim(doknr, '0') = '654'`;
+  assert.equal(m.n, 1);
+
+  // bezahlte Rechnung wird nicht mehr vorgeschlagen
+  r = await call('POST', `${F}/bank/lesen`, { konto: '1200', data: b64(csv) });
+  assert.equal(r.body.umsaetze.find((x: any) => x.name === 'Petra Sonne').status, 'gebucht');
+});
