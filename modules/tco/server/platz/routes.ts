@@ -35,6 +35,7 @@ import { mailProtokoll, mailSenden } from '../kommunikation.js';
  * Mitglied bzw. vereinsintern buchen und Training, Schnuppertraining, Sperrzeiten, Veranstaltungen direkt im Kalender eintragen.
  */
 import { hatSchluessel, HALLE_HINWEIS } from './schluessel.js';
+import { paperless, plAktiv } from '../verein.js';
 
 export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
@@ -460,6 +461,40 @@ export async function platzRoutes(app: FastifyInstance) {
     const i = await ich(req);
     const q = z.object({ zeitraum: z.enum(['kommend', 'vergangen']).default('kommend') }).parse(req.query);
     return { ich: { name: i.name }, ...(await meineLesen(DB, i, q.zeitraum)) };
+  });
+
+  /**
+   * Meine Hallenrechnungen (Platz buchen → Meine Buchungen → Rechnungen): gestellte Rechnungen (nicht „In Bearbeitung“) des Mitglieds
+   * bzw. EP3-Kunden, jüngste zuerst. Zuordnung wie bei den Buchungen: Adressnummer oder gleicher Kundenname.
+   */
+  const RG_STATUS: Record<string, string> = { '2': 'offen', '3': 'offen', '4': 'bezahlt', '5': 'teilbezahlt', '6': 'ausgebucht' };
+  const meineRechnungen = async (i: { adrnr: string; kunde: string }, rgnr?: string) => DB`
+    select rgnr_txt as rgnr, jahr, betrag::float8 as betrag, status, coalesce(versendet, gedruckt, angelegt_am)::text as datum,
+           bezahlt::text as bezahlt, doknr
+      from tco.rgkopf
+     where status <> '1' and (adrnr = ${i.adrnr} or (${i.kunde} <> '' and upper(trim(kunde)) = ${i.kunde}))
+       ${rgnr ? DB`and rgnr_txt = ${rgnr}` : DB``}
+     order by jahr desc, rgnr desc`;
+  app.get('/platz/rechnungen', buchen, async (req) => {
+    const i = await ich(req);
+    const v = await vereinLesen();
+    return {
+      rechnungen: (await meineRechnungen(i)).map((r) => ({
+        rgnr: r.rgnr as string, jahr: Number(r.jahr), betrag: Number(r.betrag), datum: r.datum as string | null, bezahlt: r.bezahlt as string | null,
+        status: RG_STATUS[r.status as string] ?? 'offen', dokument: !!r.doknr && plAktiv(v),
+      })),
+    };
+  });
+  /** Rechnung als PDF aus Paperless (jüngste Fassung) – nur eigene Rechnungen */
+  app.get('/platz/rechnungen/:rgnr/pdf', buchen, async (req, reply) => {
+    const { rgnr } = z.object({ rgnr: z.string().max(30) }).parse(req.params);
+    const [r] = await meineRechnungen(await ich(req), rgnr);
+    if (!r) throw new BusinessError('Rechnung nicht gefunden.', 404);
+    const v = await vereinLesen();
+    if (!r.doknr || !plAktiv(v)) throw new BusinessError('Zu dieser Rechnung ist kein Dokument abgelegt.', 404);
+    const pl = paperless(v);
+    const d = await pl.download(await pl.neuesteVersion(Number(r.doknr)));
+    return reply.type(d.contentType).header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(`Rechnung_${rgnr}.pdf`)}`).send(d.data);
   });
 
   /** Preis und Regeln vorab prüfen (Buchungsdialog) */

@@ -13,6 +13,7 @@ import { useSperre } from '@core/sperre';
 import { useCan } from '@core/session';
 import { TCO, dat, eur } from '../util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
+import { PdfDialog } from '@core/components/PdfDialog';
 import '../jt/meine.css';
 import './platz.css';
 // Farben der Preise wie im Wochenplan der Hallenpreise (portal-hpw__f0 … f4)
@@ -74,6 +75,7 @@ interface Abo {
 }
 interface AboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
 interface Meine { ich: { name: string }; einzel: Einzel[]; abos: Abo[] }
+interface Rechnung { rgnr: string; jahr: number; betrag: number; datum: string | null; bezahlt: string | null; status: string; dokument: boolean }
 interface Entwurf { bid?: string; platz_id: number; datum: string; von: string; dauer: number; text: string }
 
 export const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -128,7 +130,29 @@ export function PlatzBuchen() {
   const [tag, setTag] = useState<Tag | null>(null);
   const [filter, setFilter] = useState<'ALLE' | 'HALLE' | 'FREI'>('ALLE');
   const [meine, setMeine] = useState<Meine | null>(null);
-  const [art, setArt] = useState<'einzel' | 'abo'>('einzel');
+  const [art, setArt] = useState<'einzel' | 'abo' | 'rechnung'>('einzel');
+  // Meine Rechnungen: jüngste obenan, ältere als Baum nach Jahren
+  const [rechnungen, setRechnungen] = useState<Rechnung[] | null>(null);
+  const [rgPdf, setRgPdf] = useState<Rechnung | null>(null);
+  useEffect(() => {
+    if (ansicht === 'meine' && art === 'rechnung') api.get<{ rechnungen: Rechnung[] }>(`${PB}/rechnungen`).then((r) => setRechnungen(r.rechnungen)).catch(fehler);
+  }, [ansicht, art]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rgZeile = (r: Rechnung) => (
+    <div key={r.rgnr} className="portal-mz__eintrag portal-mz__eintrag--gesperrt portal-pb__rechnung">
+      <Icon name="receipt" />
+      <div style={{ minWidth: 0 }}>
+        <div className="portal-mz__art">Rechnung {r.rgnr}</div>
+        <div className="portal-mz__info">
+          <span>{r.datum ? dat(r.datum) : ''}</span>
+          <ObjectStatus state={r.status === 'bezahlt' ? 'Positive' : r.status === 'ausgebucht' ? 'None' : 'Critical'}>{r.status}{r.bezahlt ? ` am ${dat(r.bezahlt)}` : ''}</ObjectStatus>
+          {r.dokument
+            ? <Button design="Transparent" icon="pdf-attachment" onClick={() => setRgPdf(r)}>Rechnung öffnen</Button>
+            : <span>kein Dokument abgelegt</span>}
+        </div>
+      </div>
+      <div className="portal-mz__dauer"><div className="portal-mz__dauer-min">{eur(r.betrag)}</div></div>
+    </div>
+  );
   const [zeitraum, setZeitraum] = useState<'kommend' | 'vergangen'>('kommend');
   const [entwurf, setEntwurf] = useState<Entwurf | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -240,13 +264,34 @@ export function PlatzBuchen() {
               <SegmentedButton onSelectionChange={(e) => setArt((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'einzel')}>
                 <SegmentedButtonItem data-k="einzel" selected={art === 'einzel'}>Einzelbuchung</SegmentedButtonItem>
                 <SegmentedButtonItem data-k="abo" selected={art === 'abo'}>Abo</SegmentedButtonItem>
+                <SegmentedButtonItem data-k="rechnung" selected={art === 'rechnung'}>Rechnungen</SegmentedButtonItem>
               </SegmentedButton>
-              <SegmentedButton onSelectionChange={(e) => setZeitraum((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'kommend')}>
+              <SegmentedButton style={{ display: art === 'rechnung' ? 'none' : undefined }} onSelectionChange={(e) => setZeitraum((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'kommend')}>
                 <SegmentedButtonItem data-k="kommend" selected={zeitraum === 'kommend'}>Kommend</SegmentedButtonItem>
                 <SegmentedButtonItem data-k="vergangen" selected={zeitraum === 'vergangen'}>Vergangen</SegmentedButtonItem>
               </SegmentedButton>
             </div>
-            {!meine && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
+            {art === 'rechnung' && (!rechnungen ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
+              <>
+                <Section title="Aktuelle Rechnung" flush>
+                  {rechnungen.length ? <div className="portal-mz__liste">{rgZeile(rechnungen[0])}</div> : <Empty>Es gibt noch keine Rechnung.</Empty>}
+                </Section>
+                {rechnungen.length > 1 && (
+                  <Section title="Frühere Rechnungen" count={rechnungen.length - 1} flush>
+                    {[...new Set(rechnungen.slice(1).map((r) => r.jahr))].map((jahr, n) => {
+                      const liste = rechnungen.slice(1).filter((r) => r.jahr === jahr);
+                      return (
+                        <details key={jahr} className="portal-pb__rgjahr" open={n === 0}>
+                          <summary><b>{jahr}</b><span className="portal-muted"> · {liste.length === 1 ? '1 Rechnung' : `${liste.length} Rechnungen`} · {eur(liste.reduce((s, r) => s + r.betrag, 0))}</span></summary>
+                          <div className="portal-mz__liste">{liste.map(rgZeile)}</div>
+                        </details>
+                      );
+                    })}
+                  </Section>
+                )}
+              </>
+            ))}
+            {art !== 'rechnung' && !meine && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
             {meine && art === 'einzel' && (
               <Section title="Einzelbuchungen" count={meine.einzel.length} flush>
                 {meine.einzel.length ? (
@@ -351,6 +396,7 @@ export function PlatzBuchen() {
       </div>
 
       {preisliste && <PreislisteDialog datum={datum} onClose={() => setPreisliste(false)} />}
+      {rgPdf && <PdfDialog url={`${PB}/rechnungen/${encodeURIComponent(rgPdf.rgnr)}/pdf`} title={`Rechnung ${rgPdf.rgnr}`} filename={`Rechnung_${rgPdf.rgnr}.pdf`} onClose={() => setRgPdf(null)} />}
       {aboStorno && (
         <AboTerminStorno abo={aboStorno.abo} termin={aboStorno.t} onClose={() => setAboStorno(null)}
                          onFertig={async (text) => { toast(text); setAboStorno(null); await neuLaden(); }} />

@@ -233,3 +233,10 @@
 
 /* #83: Termine eines Abos mit Einzelabrechnung – eingerückt unter der Abo-Zeile */
 .portal-pb__abo-termin { margin-left: 1.5rem; width: calc(100% - 1.5rem); cursor: default; }
+
+/* Meine Rechnungen: Zeile ohne Klick, ältere Jahre als aufklappbarer Baum */
+.portal-pb__rechnung { cursor: default; opacity: 1; }
+.portal-pb__rgjahr { border-top: 1px solid var(--sapList_BorderColor); }
+.portal-pb__rgjahr:first-child { border-top: 0; }
+.portal-pb__rgjahr > summary { cursor: pointer; padding: 0.625rem 1rem; }
+.portal-pb__rgjahr > .portal-mz__liste { padding-left: 1rem; }

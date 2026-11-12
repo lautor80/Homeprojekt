@@ -963,3 +963,21 @@ test('Halle verschlossen (#11): Hinweis ohne Hallenschlüssel, Arbeitsvorrat fü
   assert.equal((await bert('GET', `${P}/tag?datum=${tag(6)}`)).body.hallenhinweis, null);
   await sql`delete from tco.schluessel where adrnr in (${ANNA}, ${BERT})`;
 });
+
+test('Meine Rechnungen: nur eigene, gestellte Rechnungen – jüngste zuerst; PDF nur für eigene', async () => {
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status, angelegt_am, versendet, bezahlt, adrnr) values
+    ('2025_007', 2025, 7, 'ANNA SPIELERIN', 40, '4', '2025-03-01', '2025-03-02', '2025-03-20', ${ANNA}),
+    ('2026_003', 2026, 3, 'ANNA SPIELERIN', 24, '3', '2026-02-01', '2026-02-02', null, ${ANNA}),
+    ('2026_011', 2026, 11, 'ANNA SPIELERIN', 12, '1', '2026-05-01', null, null, ${ANNA}),
+    ('2026_012', 2026, 12, 'BERT SPIELER', 99, '3', '2026-05-01', '2026-05-02', null, ${BERT})`;
+  let r = await anna('GET', `${P}/rechnungen`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.rechnungen.map((x: any) => [x.rgnr, x.jahr, x.betrag, x.status, x.datum, x.dokument]),
+    [['2026_003', 2026, 24, 'offen', '2026-02-02', false], ['2025_007', 2025, 40, 'bezahlt', '2025-03-02', false]], 'ohne Entwurf, ohne fremde');
+  assert.equal((await anna('GET', `${P}/rechnungen/2026_012/pdf`)).status, 404, 'fremde Rechnung');
+  assert.equal((await anna('GET', `${P}/rechnungen/2026_011/pdf`)).status, 404, 'Entwurf');
+  r = await anna('GET', `${P}/rechnungen/2026_003/pdf`);
+  assert.equal(r.status, 404);
+  assert.match(r.body.message, /kein Dokument abgelegt/);
+  await sql`delete from tco.rgkopf where rgnr_txt in ('2025_007', '2026_003', '2026_011', '2026_012')`;
+});
