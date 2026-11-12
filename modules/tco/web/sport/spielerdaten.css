@@ -5,6 +5,7 @@
   background: var(--sapList_HeaderBackground, #f5f6f7); border-bottom: 1px solid var(--sapList_BorderColor, #e5e5e5); }
 .portal-sd__tabelle td { padding: 0.4rem 0.75rem; vertical-align: middle; border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); }
 .portal-sd__tabelle tbody tr:first-child td { border-top: 0; }
+.portal-sd__filter { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center; margin-bottom: 0.5rem; }
 .portal-sd__zahlen { display: flex; flex-wrap: wrap; gap: 0.4rem 0.5rem; margin-bottom: 0.75rem; }
 .portal-sd__titel { margin: 0.75rem 0 0.4rem; font-size: var(--sapFontHeader6Size, 0.875rem); display: flex; align-items: center; }
 .portal-sd__mehr { margin-top: 0.75rem; }
