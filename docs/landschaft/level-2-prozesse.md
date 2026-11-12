@@ -13,7 +13,7 @@ Kernprozesse von Ende zu Ende. Jeder Verweis ist gegen den Code geprüft (⚠️
 | P6 | [Dokumenteneingang](#p6) | Dokumente | E-Mail im Postfach (alle 5 Minuten) | Dokument abgelegt und qualifiziert, Mail behandelt | 7 |
 | P7 | [Vereinsleben (Kalender)](#p7) | Mitglieder | Spielplan oder Veranstaltung | Termine mit Rückmeldungen je Gruppe | 5 |
 | P8 | [Abschluss und Steuerung](#p8) | Finanzen | Monats- und Jahresende | Jahresabschluss in Paperless, Kennzahlen aktuell | 5 |
-| P9 | [Schäden melden und beheben](#p9) | Instandhaltung | Mitglied entdeckt einen Schaden (QR-Code an der Anlage) | Schaden behoben, Platz wieder freigegeben, Melder informiert | 7 |
+| P9 | [Schäden melden und beheben](#p9) | Instandhaltung | Mitglied entdeckt einen Schaden (QR-Code an der Anlage) | Schaden behoben, Platz wieder freigegeben, Melder informiert | 9 |
 
 <a id="p1"></a>
 ## P1 · Mitglied werden
@@ -300,8 +300,12 @@ flowchart LR
   S3 --> S4
   S5["Sperre aufheben, Melder bei Erledigung per E-Mail informieren<br/><small>Hallenwart · Vereinsportal (Modul tco)</small>"]:::portal
   S4 --> S5
-  S6["Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen<br/><small>System / zeitgesteuerter Job · Mailserver (IMAP/SMTP)</small>"]:::extern
+  S6["Formular (Abschluss / Weitergabe) mit Protokoll und Fotos in Paperless ablegen<br/><small>Hallenwart · Paperless-ngx</small>"]:::extern
   S5 --> S6
+  S7["Stammdaten: Orte, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
+  S6 --> S7
+  S8["Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen<br/><small>System / zeitgesteuerter Job · Mailserver (IMAP/SMTP)</small>"]:::extern
+  S7 --> S8
   classDef portal fill:#ffffff,stroke:#1f5fa8,stroke-width:2px,color:#1f5fa8
   classDef n8n fill:#ffffff,stroke:#2e7d32,stroke-width:2px,color:#2e7d32
   classDef extern fill:#ffffff,stroke:#2a9d8f,stroke-width:2px,color:#1d6f66
@@ -316,7 +320,9 @@ flowchart LR
 | 4 | Platz in der Platzbuchung sperren | Hallenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/instandhaltung/:id/sperre` | `tco.instandhaltung:edit` | `/tco/instandhaltung` |  |
 | 5 | Bearbeiten: Status, Zuständiger, Kosten, Fotos | Hallenwart | Vereinsportal (Modul tco) | `PUT /api/m/tco/instandhaltung/:id` | `tco.instandhaltung:edit` | `/tco/instandhaltung` |  |
 | 6 | Sperre aufheben, Melder bei Erledigung per E-Mail informieren | Hallenwart | Vereinsportal (Modul tco) | `DELETE /api/m/tco/instandhaltung/:id/sperre` | `tco.instandhaltung:edit` |  |  |
-| 7 | Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen | System / zeitgesteuerter Job | Mailserver (IMAP/SMTP) |  |  |  |  |
+| 7 | Formular (Abschluss / Weitergabe) mit Protokoll und Fotos in Paperless ablegen | Hallenwart | Paperless-ngx | `POST /api/m/tco/instandhaltung/:id/formular` | `tco.instandhaltung:edit` | `/tco/instandhaltung` |  |
+| 8 | Stammdaten: Orte, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `PUT /api/m/tco/instandhaltung/stamm/matrix` | `tco.instandhaltung:admin` | `/tco/instandhaltung` |  |
+| 9 | Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen | System / zeitgesteuerter Job | Mailserver (IMAP/SMTP) |  |  |  |  |
 
 ## Prozess × App
 

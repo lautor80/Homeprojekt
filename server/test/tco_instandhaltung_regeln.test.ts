@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aufgabeState, empfaenger, eskalationFaellig, fotoLesen, istOffen, kurz, meldungsNummer, wechselFehler,
+  aufgabeState, empfaenger, eskalationFaellig, feldAenderungen, fotoLesen, istOffen, kurz, meldungsNummer, wechselFehler, zustaendigRang,
 } from '../../modules/tco/server/instandhaltung/regeln.js';
 
 test('Arbeitsvorrat: Farbe nach Auswirkung', () => {
@@ -55,4 +55,19 @@ test('Fotos: nur Bilder in erlaubter Größe', () => {
   assert.equal(fotoLesen(png).mime, 'image/png');
   assert.throws(() => fotoLesen('data:application/pdf;base64,AAAA'), /nur Fotos/);
   assert.throws(() => fotoLesen(`data:image/jpeg;base64,${Buffer.alloc(2000).toString('base64')}`, 1000), /zu groß/);
+});
+
+test('Zuständigkeit: Ort und/oder Kategorie, spezifischer zuerst', () => {
+  assert.equal(zustaendigRang({ anlage_id: 1, kategorie_id: 5 }, 1, 5), 0);
+  assert.equal(zustaendigRang({ anlage_id: null, kategorie_id: 5 }, 1, 5), 1);
+  assert.equal(zustaendigRang({ anlage_id: 1, kategorie_id: null }, 1, 5), 2);
+  assert.equal(zustaendigRang({ anlage_id: 2, kategorie_id: null }, 1, 5), null);
+  assert.equal(zustaendigRang({ anlage_id: 1, kategorie_id: 6 }, 1, 5), null);
+  assert.equal(zustaendigRang({ anlage_id: null, kategorie_id: null }, 1, 5), null);
+});
+
+test('Protokoll: geänderte Felder mit alt → neu', () => {
+  assert.deepEqual(feldAenderungen({ kosten: null, firma: 'A', stunden: '2.00', erledigung: null, paperless: '' }, { kosten: 80, firma: 'A', stunden: 2, erledigung: null, paperless: null }),
+    ['Kosten: – → 80,00 €']);
+  assert.deepEqual(feldAenderungen({ firma: 'A' }, { firma: 'B', stunden: 1.5 }), ['Fremdfirma: A → B', 'Helferstunden: – → 1,5 h']);
 });

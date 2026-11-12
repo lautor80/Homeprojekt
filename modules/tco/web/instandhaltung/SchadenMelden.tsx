@@ -15,7 +15,7 @@ import { AUSWIRKUNG_STATE, FOTO_URL, STATUS_STATE, fotoVerkleinern, zeitpunkt, t
  */
 const S = `${TCO}/schaden`;
 interface Stamm {
-  anlagen: { id: number; kuerzel: string; bezeichnung: string; typ: string }[];
+  anlagen: { id: number; kuerzel: string; bezeichnung: string; gruppe: string; typ: string; kategorien: number[] }[];
   kategorien: { id: number; bezeichnung: string }[];
   auswirkungen: Record<string, string>;
 }
@@ -86,6 +86,10 @@ export function SchadenMelden() {
     if (offen.length) setFrage(true); else senden();
   };
 
+  // Matrix: am gewählten Ort nur die dort zugelassenen Kategorien
+  const ort = stamm?.anlagen.find((a) => a.id === f.anlage);
+  const kategorien = (stamm?.kategorien ?? []).filter((k) => !ort || ort.kategorien.includes(k.id));
+
   return (
     <AppPage title="Schaden melden" subtitle="Etwas kaputt auf der Anlage? Kurz melden – der Platzwart bzw. Vorstand wird informiert.">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
@@ -94,9 +98,13 @@ export function SchadenMelden() {
         <Section title="Neue Meldung">
           <div className="portal-bk__form" style={{ maxWidth: '36rem' }}>
             <Label showColon required>Wo?</Label>
-            <Select onChange={(e) => setF({ ...f, anlage: Number((e.detail.selectedOption as HTMLElement).dataset.id) })}>
+            <Select onChange={(e) => {
+              const anlage = Number((e.detail.selectedOption as HTMLElement).dataset.id);
+              const erlaubt = stamm.anlagen.find((a) => a.id === anlage)?.kategorien ?? [];
+              setF({ ...f, anlage, kategorie: erlaubt.includes(f.kategorie) ? f.kategorie : 0 });
+            }}>
               <Option data-id="0" selected={!f.anlage}>Bitte wählen …</Option>
-              {stamm.anlagen.map((a) => <Option key={a.id} data-id={a.id} selected={f.anlage === a.id}>{a.bezeichnung}</Option>)}
+              {stamm.anlagen.map((a) => <Option key={a.id} data-id={a.id} selected={f.anlage === a.id}>{a.gruppe ? `${a.gruppe} · ${a.bezeichnung}` : a.bezeichnung}</Option>)}
             </Select>
             {offen.length > 0 && (
               <MessageStrip design="Information" hideCloseButton>
@@ -107,7 +115,7 @@ export function SchadenMelden() {
             <Label showColon required>Was?</Label>
             <Select onChange={(e) => setF({ ...f, kategorie: Number((e.detail.selectedOption as HTMLElement).dataset.id) })}>
               <Option data-id="0" selected={!f.kategorie}>Bitte wählen …</Option>
-              {stamm.kategorien.map((k) => <Option key={k.id} data-id={k.id} selected={f.kategorie === k.id}>{k.bezeichnung}</Option>)}
+              {kategorien.map((k) => <Option key={k.id} data-id={k.id} selected={f.kategorie === k.id}>{k.bezeichnung}</Option>)}
             </Select>
             <Label showColon required>Auswirkung</Label>
             <Select onChange={(e) => setF({ ...f, auswirkung: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>

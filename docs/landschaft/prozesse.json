@@ -167,6 +167,8 @@
         { "text": "Platz in der Platzbuchung sperren", "akteur": "HW", "system": "portal", "route": "POST /instandhaltung/:id/sperre", "recht": "tco.instandhaltung:edit", "app": "/tco/instandhaltung" },
         { "text": "Bearbeiten: Status, Zuständiger, Kosten, Fotos", "akteur": "HW", "system": "portal", "route": "PUT /instandhaltung/:id", "recht": "tco.instandhaltung:edit", "app": "/tco/instandhaltung" },
         { "text": "Sperre aufheben, Melder bei Erledigung per E-Mail informieren", "akteur": "HW", "system": "portal", "route": "DELETE /instandhaltung/:id/sperre", "recht": "tco.instandhaltung:edit" },
+        { "text": "Formular (Abschluss / Weitergabe) mit Protokoll und Fotos in Paperless ablegen", "akteur": "HW", "system": "paperless", "route": "POST /instandhaltung/:id/formular", "recht": "tco.instandhaltung:edit", "app": "/tco/instandhaltung" },
+        { "text": "Stammdaten: Orte, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer", "akteur": "VS", "system": "portal", "route": "PUT /instandhaltung/stamm/matrix", "recht": "tco.instandhaltung:admin", "app": "/tco/instandhaltung" },
         { "text": "Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen", "akteur": "SYS", "system": "mailserver" }
       ]
     },

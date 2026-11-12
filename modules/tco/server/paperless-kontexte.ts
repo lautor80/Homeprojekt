@@ -83,6 +83,21 @@ export const K = {
     platzhalter: [{ name: 'titel', text: 'Titel laut Abschluss', beispiel: 'Jahresabschluss 2026' }, { name: 'jahr', text: 'Jahr', beispiel: 2026 }, { name: 'ergebnis', text: 'Ergebnis', beispiel: 4321 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Buchhaltung', datum: '{jahr}-12-31', felder: { Betrag: '{ergebnis}', DOKID: '{dokid}' } },
   },
+  ihMeldung: {
+    id: 'instandhaltung.meldung', text: 'Schadensmeldung (Formular Instandhaltung)',
+    beschreibung: 'Formular einer Schadensmeldung mit Protokoll und Fotos – abgelegt beim Abschluss oder bei der Weitergabe (z. B. an eine Fremdfirma); jede weitere Ablage wird eine neue Version desselben Dokuments.',
+    platzhalter: [{ name: 'nummer', text: 'Meldungsnummer', beispiel: 'SM-2026-0007' }, { name: 'anlage', text: 'Wo (Ort/Anlage)', beispiel: 'Platz 3' },
+      { name: 'gruppe', text: 'Gruppe des Orts', beispiel: 'Außenplätze' }, { name: 'kategorie', text: 'Kategorie', beispiel: 'Netz/Pfosten' },
+      { name: 'auswirkung', text: 'Auswirkung', beispiel: 'Sicherheitsrisiko' }, { name: 'status', text: 'Status beim Ablegen', beispiel: 'Erledigt' },
+      { name: 'anlass', text: 'Abschluss bzw. Weitergabe (mit Empfänger)', beispiel: 'Weitergabe an Sportplatzbau Muster GmbH' }, { name: 'empfaenger', text: 'Empfänger bei Weitergabe', beispiel: 'Sportplatzbau Muster GmbH' },
+      { name: 'melder', text: 'gemeldet von', beispiel: 'Mia Matchball' }, { name: 'zustaendig', text: 'Zuständiger', beispiel: 'Paul Platzwart' },
+      { name: 'kosten', text: 'Kosten (leer, wenn keine)', beispiel: 80 }, { name: 'eingang', text: 'Meldedatum', beispiel: '2026-11-12' },
+      PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: {
+      titel: 'Schadensmeldung {nummer} {anlage} – {kategorie}', korrespondent: '{verein}', dokumenttyp: 'Schadensmeldung', speicherpfad: 'Instandhaltung',
+      tags: 'Instandhaltung', datum: '{heute}', notiz: '{anlass}: {status} ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' },
+    },
+  },
 } satisfies Record<string, KontextDef>;
 
 export const TCO_KONTEXTE: KontextDef[] = Object.values(K);

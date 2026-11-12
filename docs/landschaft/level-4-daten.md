@@ -10,7 +10,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `core.nutzung` |  |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.password_tokens` |  |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.role_permissions` |  |  | ● |  |  |  |  |  | ● | ● |  |  | ● |
-| `core.roles` |  |  | ● |  |  |  |  |  |  | ● |  |  | ● |
+| `core.roles` |  |  | ● |  |  |  |  |  | ● | ● |  |  | ● |
 | `core.sessions` | ● |  |  |  |  |  |  |  |  | ● | ● | ● |  |
 | `core.settings` |  |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.sperren` |  |  | ● |  |  |  |  |  |  | ● |  |  | ● |
@@ -44,10 +44,12 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.halle_geklaert` |  |  |  |  |  |  |  | ● | ● |  |  |  |  |
 | `tco.ih_anhang` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.ih_anlage` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
+| `tco.ih_anlage_kategorie` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.ih_einstellungen` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.ih_kategorie` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.ih_meldung` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.ih_verlauf` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
+| `tco.ih_zustaendig` |  |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.jrueckm` |  |  |  | ● |  |  |  | ● | ● |  |  |  |  |
 | `tco.jt_doku` |  |  |  | ● |  |  |  | ● | ● |  |  |  |  |
 | `tco.kal_anmeldungen` |  |  |  |  |  |  | ● |  |  |  |  |  |  |
