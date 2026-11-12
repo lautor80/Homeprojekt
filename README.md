@@ -348,6 +348,11 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   erhalten); die Meldung nennt die neue Auftragsnummer. Beim Ändern eines bestehenden Auftrags bleibt man im Auftrag.
 - **Empfänger „laut LFS“:** Bei der Auftragsanlage sind *Firma* und *Straße* des Empfängers (erster Stop) mit „laut LFS“
   (laut Lieferschein) vorbelegt; bei Bedarf einfach überschreiben.
+- **Rechnung entfernen** (#170, Recht `transport.rechnungen:delete` „Rechnungen entfernen (Aufträge wieder offen)“, Rollenpflege → Euroflex → Aufträge):
+  Auftragsliste → fakturierte Aufträge auswählen → *Rechnung entfernen*. Der Dialog nennt die betroffenen Rechnungen und Aufträge (bei einer
+  Sammelrechnung werden **alle** ihre Aufträge wieder offen) und verlangt einen Grund; Rechnungsnummer und Fakturadatum werden gelöscht
+  (`POST /rechnungen/entfernen`, Änderungsbeleg `RECHNUNG_ENTFERNT`). Die Nummer wird nicht neu vergeben; versendete oder in Paperless
+  abgelegte Rechnungen bleiben dort bestehen.
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
   übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.
   Dokumente können weiterhin zugeordnet und gelöst werden.
