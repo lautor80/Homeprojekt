@@ -18,6 +18,7 @@ import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/s
 import { einladen, einladungLesen, einladungVorlage, einloesen, EINLADUNG_PLATZHALTER, kandidaten as einladungKandidaten } from './einladung.js';
 import { abgleichen, namenLesen, vorlage as zugangVorlage, zugangSenden, PLATZHALTER } from './zugangslink.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
+import { blzDateiLesen, blzImport, blzStand, ibanPruefen, sepaNeu } from './bank.js';
 import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
@@ -511,6 +512,29 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const b = z.object({ id: z.string().min(1) }).parse(req.body);
     await change(req, (tx) => notizLoeschen(tx, a, b.id));
     return { text: 'Notiz gelöscht.' };
+  });
+
+  // ---------------------------------------------------------------- IBAN prüfen, Bankleitzahlen-Verzeichnis, neues SEPA-Mandat
+  /** IBAN verproben und BIC/Kreditinstitut ermitteln – auf Knopfdruck, speichert nichts */
+  app.post('/mitglieder/bank/pruefen', schreiben, async (req) => {
+    const b = z.object({ iban: z.string().max(60) }).parse(req.body);
+    if (istMaskiert(b.iban)) throw new BusinessError('Eine maskierte IBAN kann nicht geprüft werden – bitte die vollständige IBAN eingeben.');
+    return ibanPruefen(DB, b.iban);
+  });
+  app.get('/mitglieder/bank/blz', lesen, async () => blzStand(DB));
+  /** Bankleitzahlendatei der Bundesbank laden (ersetzt das Verzeichnis) */
+  app.post('/mitglieder/bank/blz', { ...schreiben, bodyLimit: 12 * 1024 * 1024 }, async (req, reply) => {
+    if (!can(req, P_BANK.edit)) return reply.code(403).send({ message: `Keine Berechtigung (${P_BANK.edit}).` });
+    const b = z.object({ datei: z.string().min(1, 'Bitte die Bankleitzahlendatei auswählen.').max(11_000_000) }).parse(req.body);
+    const eintraege = blzDateiLesen(Buffer.from(b.datei, 'base64'));
+    return { text: await change(req, (tx) => blzImport(tx, eintraege), { action: 'BLZ_IMPORT' }), ...(await blzStand(DB)) };
+  });
+  /** neues SEPA-Mandat für den Zahler des Mitglieds */
+  app.post('/mitglieder/m/:adrnr/sepa', schreiben, async (req, reply) => {
+    if (!can(req, P_BANK.edit)) return reply.code(403).send({ message: `Keine Berechtigung (${P_BANK.edit}).` });
+    const { adrnr: a } = pAdr.parse(req.params);
+    const b = z.object({ datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish() }).parse(req.body ?? {});
+    return change(req, (tx) => sepaNeu(tx, a, b.datum ?? null), { action: 'SEPA_NEU' });
   });
 
   app.post('/mitglieder/sepa/:adrnr/manuell', schreiben, async (req) => {

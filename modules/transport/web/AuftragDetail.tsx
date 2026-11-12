@@ -166,7 +166,8 @@ export function AuftragDetail() {
       } else {
         await api.put(`${T}/auftraege/${nr}`, body);
         toast(`Auftrag ${nr} gespeichert.`);
-        await lade();
+        // Speichern schließt den Auftrag: zurück in die Auftragsliste (Filter und Suche bleiben erhalten)
+        navigate('/transport/auftraege');
       }
     } catch (e) {
       setError((e as Error).message);

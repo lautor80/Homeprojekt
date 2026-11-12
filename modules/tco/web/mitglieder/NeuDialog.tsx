@@ -9,7 +9,7 @@ import { PdfDialog } from '@core/components/PdfDialog';
 import { AblageFlaeche } from '@core/ablage';
 import { dateiLesen } from '../util';
 import { MG, type Auswahl } from './typen';
-import { Auswahlfeld, Datum, Dlg } from './Dialoge';
+import { Auswahlfeld, Datum, Dlg, IbanPruefung } from './Dialoge';
 
 const heute = () => new Date().toLocaleDateString('sv-SE');
 
@@ -197,6 +197,9 @@ export function NeuDialog({ onClose }: { onClose: (adrnr: string | null, text?: 
           : <TextField label="IBAN" required value={v.iban} onChange={f('iban')} />)}
         {ls && <TextField label="BIC" value={v.bic} onChange={f('bic')} readonly={v.bic.includes('•')} />}
         {ls && <TextField label="Kreditinstitut" value={v.bank} onChange={f('bank')} />}
+        {ls && !v.iban.includes('•') && (
+          <IbanPruefung iban={v.iban} onErgebnis={(r) => setV((o) => ({ ...o, iban: r.iban, bic: r.bic ?? o.bic, bank: r.bank ?? o.bank }))} />
+        )}
         {ls && <Datum label="Datum SEPA-Mandat" value={v.sepa_datum} onChange={f('sepa_datum')} />}
         {ls && (
           <FieldBox label="SEPA" wide>
