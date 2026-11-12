@@ -936,6 +936,17 @@ test('Halle verschlossen (#11): Hinweis ohne Hallenschlüssel, Arbeitsvorrat fü
   assert.match(kind.titel, /19:00–20:00 Uhr · /);
   assert.equal(kind.pfad, `/tco/platzverwaltung?tab=belegung&datum=${d}`);
   assert.equal(hw.pfad, `/tco/platzverwaltung?tab=belegung&datum=${d}`);
+  // Klärung mit dem Kunden bestätigen: Eintrag verschwindet, bleibt aber bei „heute erfasst“ (Kassenwart)
+  assert.deepEqual(hw.erledigen, { text: 'mit dem Kunden geklärt', url: '/dashboard/arbeitsvorrat/halle-geklaert', body: { bid: ohne, datum: d } });
+  assert.equal((await bert('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', hw.erledigen.body)).status, 403);
+  assert.equal((await admin('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', { bid: 'gibtsnicht', datum: d })).status, 404);
+  r = await admin('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', hw.erledigen.body);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await admin('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', hw.erledigen.body)).status, 200, 'doppelt bestätigen schadet nicht');
+  r = await admin('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.ok(!r.body.some((a: any) => a.key === `HALLENWART:${ohne}:${d}`), 'geklärt: nicht mehr im Arbeitsvorrat');
+  assert.ok(r.body.find((a: any) => a.key === 'HALLE_HEUTE').kinder.some((k: any) => k.key === `HALLE_HEUTE:${ohne}:${d}`));
+  await sql`delete from tco.halle_geklaert where bid = ${ohne}`;
   const rb = await bert('GET', '/api/m/tco/dashboard/arbeitsvorrat');
   assert.ok(rb.status !== 200 || !rb.body.some((a: any) => a.bereich === 'Hallenwart'), 'nur mit Platzverwaltung');
 

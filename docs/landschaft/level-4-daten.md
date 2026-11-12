@@ -39,6 +39,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.fipapermap` |  | ● | ● |  | ● | ● |  | ● |  |  |  |  |
 | `tco.fiperioden` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |
 | `tco.forderungen` |  |  |  |  | ● |  |  | ● |  |  |  |  |
+| `tco.halle_geklaert` |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.jrueckm` |  |  |  | ● |  |  |  | ● |  |  |  |  |
 | `tco.jt_doku` |  |  |  | ● |  |  |  | ● |  |  |  |  |
 | `tco.kal_anmeldungen` |  |  |  |  |  |  | ● |  |  |  |  |  |
