@@ -107,8 +107,8 @@ export async function hochladen(v: Verein, datei: string, inhalt: string, m: Met
   const pl = paperless(v);
   let korr = m.korrespondent;
   if (!korr && m.korrespondentNeu.trim()) korr = await pl.korrespondent(m.korrespondentNeu);
-  const tags = [...m.tags];
-  for (const t of m.tagsNeu) { const id = await pl.tag(t); if (id && !tags.includes(id)) tags.push(id); }
+  // Tags werden beim Upload nie gesetzt – übergebene Werte (z. B. aus alten Voreinstellungen) bleiben unbeachtet
+  const tags: number[] = [];
   try {
     // Titel, Datum, Notiz und Custom Fields laut zentraler Paperless-Zuordnung (Kontext „Dokumenten-Upload“);
     // Dokumenttyp, Korrespondent, Speicherpfad und Tags kommen aus der Auswahl des Benutzers (IDs)

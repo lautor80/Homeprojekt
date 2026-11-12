@@ -89,7 +89,7 @@ export function Upload() {
     setBusy(false);
     toast(`${ok} von ${offen.length} Datei(en), ${groesse(bytes)} insgesamt übertragen`, 5000);
     // neu angelegte Korrespondenten/Tags in die Auswahl übernehmen
-    if (meta.korrespondentNeu.trim() || meta.tagsNeu.trim()) { await stammNeu(); setMeta((m) => ({ ...m, korrespondentNeu: m.korrespondentNeu, tagsNeu: '' })); }
+    if (meta.korrespondentNeu.trim()) { await stammNeu(); setMeta((m) => ({ ...m, korrespondentNeu: m.korrespondentNeu, tagsNeu: '' })); }
   }
 
   // Ablagefeld der Navigation und Strg+V legen auf dieser Seite in die Liste (nicht sofort nach Paperless)
@@ -164,7 +164,7 @@ export function Upload() {
                          withRowHighlight highlightField={(r: Record<string, any>) => r.state} />
       </Section>
       <MessageStrip hideCloseButton>
-        Die Dateien werden im Browser gelesen und einzeln an Paperless übergeben; der Titel ist mit dem Dateinamen vorbelegt. Fehlende Korrespondenten und Tags werden in Paperless angelegt.
+        Die Dateien werden im Browser gelesen und einzeln an Paperless übergeben; der Titel ist mit dem Dateinamen vorbelegt. Fehlende Korrespondenten werden in Paperless angelegt; Tags werden nicht gesetzt.
         Ein Hinweis in der Statusspalte zeigt CSV-Dateien, die eigentlich in eine App gehören (Jugendabrechnung, Mitglieder, Hallen-/Clubhausabrechnung → <Link href="/tco/stammdaten">Übernahme aus SAP</Link>).
       </MessageStrip>
     </AppPage>

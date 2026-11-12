@@ -81,7 +81,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
     }
     setLauf(null);
     // neu angelegte Korrespondenten/Tags erscheinen danach in den Auswahllisten
-    if (v.korrespondentNeu.trim() || v.tagsNeu.trim()) setStamm(null);
+    if (v.korrespondentNeu.trim()) setStamm(null);
     setProtokoll((alt) => [...neu.reverse(), ...alt].slice(0, 30));
     const fehler = files.length - ok;
     return `${ok} von ${files.length} Datei(en) in Paperless abgelegt${fehler ? ` – ${fehler} fehlgeschlagen (Details unter „Fehler“ im Ablagefeld)` : ''}`;

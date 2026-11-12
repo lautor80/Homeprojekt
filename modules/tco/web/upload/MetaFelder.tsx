@@ -1,5 +1,5 @@
 import {
-  ComboBox, ComboBoxItem, Input, Label, MultiComboBox, MultiComboBoxItem, Option, Select, Text,
+  ComboBox, ComboBoxItem, Input, Label, Option, Select, Text,
 } from '@ui5/webcomponents-react';
 
 /**
@@ -32,7 +32,8 @@ export function metaFuerUpload(v: Vorgabe) {
     doktyp: v.doktyp ? Number(v.doktyp) : null,
     korrespondent: v.korrespondent ? Number(v.korrespondent) : null,
     korrespondentNeu: v.korrespondent ? '' : v.korrespondentNeu.trim(),
-    tags: v.tags, tagsNeu: v.tagsNeu.split(',').map((t) => t.trim()).filter(Boolean),
+    // Tags werden beim Upload nie gesetzt (auch nicht aus älteren Voreinstellungen)
+    tags: [], tagsNeu: [],
     speicherpfad: v.speicherpfad ? Number(v.speicherpfad) : null, notiz: v.notiz, folgeaktion: v.folgeaktion.trim(),
   };
 }
@@ -41,10 +42,9 @@ export function metaFuerUpload(v: Vorgabe) {
 export function vorgabeText(v: Vorgabe | null, s: Stamm | null): string {
   if (!v) return 'Noch nicht voreingestellt';
   const name = (l: Eintrag[] | undefined, id: string) => l?.find((x) => String(x.id) === id)?.name;
-  const tags = v.tags.length + v.tagsNeu.split(',').filter((t) => t.trim()).length;
   return [name(s?.dokumenttypen, v.doktyp) ?? (v.doktyp ? 'Dokumenttyp gewählt' : 'ohne Dokumenttyp'),
     name(s?.korrespondenten, v.korrespondent) ?? (v.korrespondentNeu.trim() ? `${v.korrespondentNeu.trim()} (neu)` : null),
-    tags ? `${tags} Tag(s)` : null, v.folgeaktion.trim() ? `→ ${v.folgeaktion.trim()}` : null].filter(Boolean).join(' · ');
+    v.folgeaktion.trim() ? `→ ${v.folgeaktion.trim()}` : null].filter(Boolean).join(' · ');
 }
 
 export function MetaFelder({ stamm, v, onChange, pflichtDoktyp = false, kompakt = false }: {
@@ -96,13 +96,6 @@ export function MetaFelder({ stamm, v, onChange, pflichtDoktyp = false, kompakt 
           {stamm.korrespondenten.map((k) => <ComboBoxItem key={k.id} data-k={String(k.id)} text={k.name} />)}
         </ComboBox>
       ), false, neuKorr ? 'Neuer Korrespondent – wird beim ersten Ablegen angelegt.' : undefined)}
-      {feld('Tags', (
-        <MultiComboBox style={{ width: '100%' }} placeholder="keine"
-                       onSelectionChange={(e) => onChange({ ...v, tags: e.detail.items.map((i) => Number((i as HTMLElement).dataset.id)) })}>
-          {stamm.tags.map((t) => <MultiComboBoxItem key={t.id} data-id={t.id} text={t.name} selected={v.tags.includes(t.id)} />)}
-        </MultiComboBox>
-      ))}
-      {feld('Neue Tags (durch Komma getrennt)', <Input style={{ width: '100%' }} value={v.tagsNeu} placeholder="z. B. Beleg 2026, Clubhaus" onInput={(e) => onChange({ ...v, tagsNeu: e.target.value })} />)}
       {feld('Speicherpfad', auswahl('speicherpfad', stamm.speicherpfade, '– Standard von Paperless –'))}
       {feld('Notiz (an jedes Dokument)', <Input style={{ width: '100%' }} value={v.notiz} maxlength={500} onInput={(e) => onChange({ ...v, notiz: e.target.value })} />)}
     </>

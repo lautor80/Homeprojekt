@@ -181,7 +181,7 @@ flowchart LR
 | halle | 41 |
 | index | 6 |
 | jt | 30 |
-| kalender | 20 |
+| kalender | 21 |
 | konten | 5 |
 | mitglieder | 64 |
 | platz | 67 |

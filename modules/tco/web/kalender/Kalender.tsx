@@ -31,9 +31,12 @@ interface Ev {
   /** weitere Personen anmeldbar (Veranstaltung/Arbeitseinsatz immer, sonst nur mit Schalter „Begleitpersonen erfassen“) */
   begleitung_moeglich: boolean;
   zusagen: number; begleitpersonen: number; absagen: number; vielleicht: number;
+  /** Familiensicht: Personen der Familie, für die die Veranstaltung gilt, mit ihrer Rückmeldung */
+  familie?: FamPerson[];
   mein_status: Status | null; meine_begleitung: number; mein_kommentar: string | null; offen: string | null; voll: boolean;
 }
-interface Daten { events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; /** eigene Gruppen samt den Gruppen darüber */ meineGruppen: number[]; gruppen: { id: number; name: string; aktiv: boolean }[] }
+interface FamPerson { adrnr: string; name: string; status?: Status | null }
+interface Daten { familie?: FamPerson[]; familiensicht?: boolean; events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; /** eigene Gruppen samt den Gruppen darüber */ meineGruppen: number[]; gruppen: { id: number; name: string; aktiv: boolean }[] }
 interface Tn { adrnr: string; name: string; status: Status; begleitung: number; kommentar: string | null; geaendert_von: string | null }
 interface Detail { event: Ev; teilnehmer: { zusagen: { name: string; begleitung: number }[]; liste: Tn[]; offen: { adrnr: string; name: string }[] } }
 
@@ -87,13 +90,16 @@ export function Kalender() {
   const von = kompakt ? tagIso(heute) : tagIso(new Date(monat.j, monat.m, 1));
   const bis = kompakt ? tagIso(new Date(heute.getFullYear() + 1, heute.getMonth(), heute.getDate()))
     : ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
-  const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}`).then((x) => { setD(x); setVersion((v) => v + 1); }).catch((e) => setError(e.message));
-  useEffect(() => { laden(); }, [von, bis]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Familiensicht: Veranstaltungen aller verknüpften Personen, Anmeldung je Person
+  const [familie, setFamilie] = useState(false);
+  const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}${familie ? '&familie=1' : ''}`).then((x) => { setD(x); setVersion((v) => v + 1); }).catch((e) => setError(e.message));
+  useEffect(() => { laden(); }, [von, bis, familie]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function aktion(fn: () => Promise<{ text?: string } | void>) {
     setBusy(true); setError(null);
     try { const r = await fn(); if (r?.text) toast(r.text, 5000); await laden(); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   }
+  const meldenFamilie = (e: Ev, dabei: string[]) => aktion(() => api.post(`${K}/${e.id}/rueckmeldung-familie`, { dabei }));
   const melden = (e: Ev, status: Status, begleitung = e.meine_begleitung) => aktion(() => api.post(`${K}/${e.id}/rueckmeldung`, { status, begleitung, kommentar: e.mein_kommentar }));
   const schieben = (n: number) => setMonat(({ j, m }) => { const x = new Date(j, m + n, 1); return { j: x.getFullYear(), m: x.getMonth() }; });
 
@@ -148,6 +154,7 @@ export function Kalender() {
             {Object.entries(d.kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={k === fArt}>{t}</Option>)}
           </Select>
           {meineWaehlbar && <CheckBox text="Nur meine Gruppen" checked={nurMeine} onChange={(e) => setNurMeine(e.target.checked)} />}
+          {(d?.familie?.length ?? 0) > 1 && <CheckBox text="Familiensicht" checked={familie} onChange={(e) => setFamilie(e.target.checked)} />}
           {ansicht === 'LISTE' && <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />}
           {(fGruppe || fArt) && <Button design="Transparent" icon="clear-filter" onClick={() => { setFGruppe(''); setFArt(''); }}>Filter zurücksetzen</Button>}
         </div>
@@ -157,7 +164,7 @@ export function Kalender() {
         <BusyIndicator active={busy} delay={300} style={{ display: 'block', width: '100%' }}>
           <div className="portal-busy-inhalt">
             {ansicht === 'LISTE'
-              ? <Liste d={fuerListe} onOeffnen={setDetail} onMelden={melden} onKopieren={kopieren} busy={busy}
+              ? <Liste d={fuerListe} onOeffnen={setDetail} onMelden={melden} onFamilie={meldenFamilie} onKopieren={kopieren} busy={busy}
                        leer={ausgeblendet ? `${ausgeblendet} vergangene Veranstaltung${ausgeblendet === 1 ? ' ist' : 'en sind'} ausgeblendet – „Vergangene anzeigen“ blendet sie ein.`
                          : fGruppe || fArt ? 'Keine Veranstaltung passt zu Gruppe und Art in diesem Zeitraum.'
                            : meine && d.events.length ? 'In diesem Zeitraum gibt es nur Veranstaltungen anderer Gruppen – „Nur meine Gruppen“ abwählen, um sie zu sehen.' : undefined} />
@@ -199,8 +206,8 @@ export function Kalender() {
   );
 }
 
-function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
-  d: Daten; onOeffnen: (id: number) => void; onMelden: (e: Ev, s: Status, begleitung?: number) => void; onKopieren: (e: Ev) => void; busy: boolean;
+function Liste({ d, onOeffnen, onMelden, onFamilie, onKopieren, busy, leer }: {
+  d: Daten; onOeffnen: (id: number) => void; onMelden: (e: Ev, s: Status, begleitung?: number) => void; onFamilie: (e: Ev, dabei: string[]) => void; onKopieren: (e: Ev) => void; busy: boolean;
   /** Hinweis, wenn die Liste durch einen Filter leer ist */
   leer?: string;
 }) {
@@ -242,8 +249,13 @@ function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
                     )}
                   </button>
                   <div className="portal-kal__aktion">
-                    {e.mein_status && <ObjectStatus state={STATUS_STATE[e.mein_status]} showDefaultIcon>{STATUS_TEXT[e.mein_status]}</ObjectStatus>}
-                    {e.anmeldung && d.mitglied && !e.offen && <ListeMelden e={e} busy={busy} onMelden={onMelden} />}
+                    {!d.familiensicht && e.mein_status && <ObjectStatus state={STATUS_STATE[e.mein_status]} showDefaultIcon>{STATUS_TEXT[e.mein_status]}</ObjectStatus>}
+                    {d.familiensicht && (e.familie ?? []).some((f) => f.status === 'ZUSAGE') && (
+                      <ObjectStatus state="Positive" showDefaultIcon>{(e.familie ?? []).filter((f) => f.status === 'ZUSAGE').map((f) => f.name.split(' ')[0]).join(', ')}</ObjectStatus>
+                    )}
+                    {e.anmeldung && d.mitglied && !e.offen && (d.familiensicht && (e.familie ?? []).length
+                      ? <FamilieMelden e={e} busy={busy} onFamilie={onFamilie} />
+                      : <ListeMelden e={e} busy={busy} onMelden={onMelden} />)}
                     {e.anmeldung && e.offen && !e.abgesagt && <Text className="portal-muted portal-small">{e.offen}</Text>}
                     {d.pflege && <Button icon="copy" design="Transparent" tooltip="Als neue Veranstaltung kopieren" accessibleName={`${e.titel} kopieren`} disabled={busy} onClick={() => onKopieren(e)} />}
                   </div>
@@ -261,6 +273,28 @@ function Liste({ d, onOeffnen, onMelden, onKopieren, busy, leer }: {
  * Schnell-Anmeldung in der Liste: Dabei / Nicht dabei, bei Veranstaltungen und Arbeitseinsätzen zusätzlich
  * „+ weitere Personen“, die mitgebracht werden (#16). Bei bestehender Zusage wird eine geänderte Anzahl sofort gespeichert.
  */
+/**
+ * Familiensicht: statt „Dabei / Nicht dabei“ eine Mehrfachauswahl der Personen, für die die Veranstaltung gilt –
+ * mit „Alle“ und „Keiner“. Die Auswahl wird sofort gespeichert: Gewählte sagen zu, die übrigen ab.
+ */
+function FamilieMelden({ e, busy, onFamilie }: { e: Ev; busy: boolean; onFamilie: (e: Ev, dabei: string[]) => void }) {
+  const fam = e.familie ?? [];
+  const dabei = fam.filter((f) => f.status === 'ZUSAGE').map((f) => f.adrnr);
+  const offen = fam.some((f) => !f.status);
+  return (
+    <MultiComboBox style={{ width: '16rem' }} disabled={busy} noTypeahead accessibleName="Wer ist dabei?"
+                   placeholder={offen ? 'Wer ist dabei?' : dabei.length ? undefined : 'Keiner dabei'}
+                   onSelectionChange={(x) => {
+                     const ids = (x.detail.items as unknown as HTMLElement[]).map((i) => i.dataset.a ?? '');
+                     onFamilie(e, ids.includes('*') ? fam.map((f) => f.adrnr) : ids.includes('-') ? [] : ids.filter(Boolean));
+                   }}>
+      <MultiComboBoxItem data-a="*" text="Alle" />
+      <MultiComboBoxItem data-a="-" text="Keiner" />
+      {fam.map((f) => <MultiComboBoxItem key={f.adrnr} data-a={f.adrnr} text={f.name} selected={f.status === 'ZUSAGE'} />)}
+    </MultiComboBox>
+  );
+}
+
 function ListeMelden({ e, busy, onMelden }: { e: Ev; busy: boolean; onMelden: (e: Ev, s: Status, begleitung?: number) => void }) {
   const [weitere, setWeitere] = useState(e.meine_begleitung ?? 0);
   useEffect(() => setWeitere(e.meine_begleitung ?? 0), [e.meine_begleitung]);
