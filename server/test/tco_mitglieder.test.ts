@@ -309,8 +309,8 @@ test('Bankverbindung: IBAN prüfen, BIC/Kreditinstitut ermitteln, neues SEPA-Man
   assert.match(r.body.text, /Prüfziffer passt nicht/);
   r = await call('POST', P, { iban: 'DE8937040044053201300' });
   assert.match(r.body.text, /22 Stellen, eingegeben sind 21/);
-  r = await call('POST', P, { iban: 'de02 1203 0000 0000 2020 51' });
-  assert.deepEqual([r.body.gueltig, r.body.iban, r.body.anzeige, r.body.blz, r.body.bic, r.body.verzeichnis], [true, 'DE02120300000000202051', 'DE02 1203 0000 0000 2020 51', '12030000', null, 0]);
+  r = await call('POST', P, { iban: 'de75 5121 0800 1245 1261 99' });
+  assert.deepEqual([r.body.gueltig, r.body.iban, r.body.anzeige, r.body.blz, r.body.bic, r.body.verzeichnis], [true, 'DE75512108001245126199', 'DE75 5121 0800 1245 1261 99', '51210800', null, 0]);
   assert.match(r.body.text, /Verzeichnis ist noch nicht geladen/);
 
   // ersatzweise aus dem eigenen Bestand: gleiche Bankleitzahl bei einer anderen Person
