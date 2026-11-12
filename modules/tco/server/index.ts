@@ -173,8 +173,6 @@ const tco: ServerModule = {
     // ---------------------------------------------------------------- Vereinsübersicht
     { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
     { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
-    { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.display, text: 'Spielerdaten anzeigen: ID-Nr. und LK der Mitglieder' },
-    { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.edit, text: 'nuLiga-Mitgliederdaten ablegen und ID-Nr./LK in die Mitglieder übernehmen', requires: [P_SPORT.display] },
     { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.display, text: 'Präsentationen erstellen: Sammelkorb aus Kennzahlen, Diagrammen und Tabellen, PowerPoint aus den hinterlegten Vorlagen', requires: [P_DASH.display] },
     { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
     // ---------------------------------------------------------------- Einstellungen
@@ -199,6 +197,8 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
     // ---------------------------------------------------------------- Jugend
+    { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.display, text: 'Spielerdaten anzeigen: ID-Nr. und LK der Mitglieder' },
+    { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.edit, text: 'nuLiga-Mitgliederdaten ablegen und ID-Nr./LK in die Mitglieder übernehmen', requires: [P_SPORT.display] },
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm; in „Meine Trainingszeiten“ die Übersicht der Kinder im Schnuppertraining' },
     { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.edit, text: 'Schnuppertraining betreuen: Status, Termine der Einheiten, Trainer und Notiz pflegen, Beitrittslink (vorbelegter Mitgliedsantrag) senden; in „Meine Trainingszeiten“ die Teilnehmer einer Schnuppertraining-Einheit eintragen', requires: [P_SCHNUPPER.display] },
