@@ -66,6 +66,8 @@ export interface WebModule {
    * Auf jeder Seite sichtbar, nur mit der Berechtigung; collapsed = Navigation eingeklappt.
    */
   sideWidgets?: { component: ComponentType<{ collapsed: boolean }>; permission?: string }[];
+  /** unsichtbare Begleiter, solange jemand angemeldet ist (z. B. Hinweise an Menüeinträgen über `setNavHinweis`) – nur mit der Berechtigung */
+  waechter?: { component: ComponentType; permission?: string }[];
   /**
    * Öffentliche Seiten ohne Anmeldung (z. B. Mitgliedsantrag unter /beitritt). Werden über den Pfad aufgerufen,
    * auch wenn niemand angemeldet ist; nur für Module, die der Server als aktiv meldet.
