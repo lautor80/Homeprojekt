@@ -1001,6 +1001,9 @@ test('Vertragsangebot (#12): aktives Mitglied mit abweichendem Zahler – Bankve
   r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000794', training: ['90', '90'] }], eintritt: heute(), mail: false });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const tok3 = token(r.body.link, 'angebot');
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok3, geburtsdatum: '2012-04-04' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.daten.personen[0].training, ['90', '90']);
   r = await gast('POST', `${T}/antrag`, {
     personen: [{ anrede: 'Frau', vorname: 'Lena', nachname: 'Zahlkind', geburtsdatum: '2012-04-04', art: '', training: ['90', '90'] }],
     strasse: 'Ringweg 9', plz: '66649', ort: 'Oberthal', email: 'gerd@example.org', eintritt: heute(), erziehungsberechtigt: 'Gerd Zahlvater',
