@@ -65,9 +65,11 @@ baut und startet alle Container und gibt die Adresse aus. Beim ersten Aufruf im 
 | `SICHERUNG_PFAD` | Portal-Sicherungen (Administration → Sicherung) | `./data/sicherungen` |
 | `BACKUP_PFAD` | nächtliche Datenbank-Backups (Archiv, Rotation nach `BACKUP_KEEP_DAYS`) | `./data/backups` |
 | `PAPERLESS_PFAD` | Paperless: Datenbank, Dokumente (`media`), Export, Eingang (`consume`) | `./data/paperless` |
+| `PAPERLESS_ABLAGE_PFAD` | optional: Paperless-Dokumente (`media`, `export`, `consume`) getrennt von Datenbank und Index, z. B. auf einem Windows-Laufwerk | leer = unter `PAPERLESS_PFAD` |
+| `PAPERLESS_CONSUMER_POLLING` | Eingangsordner alle N Sekunden abfragen (Windows-Laufwerk, Netzfreigabe); `0` = Dateisystem-Ereignisse | `0` |
 | `N8N_PFAD` | n8n: Workflows, Zugangsdaten | `./data/n8n` |
 
-Absolute Pfade (z. B. ein eingebundenes NAS unter `/mnt/nas/portal/…`) sind möglich. Die optionalen Dienste
+Absolute Pfade (z. B. ein eingebundenes NAS unter `/mnt/nas/portal/…`) sind möglich. **Windows:** Betrieb mit Docker Desktop (WSL 2), Windows-Ordner als Ablageorte und lokale Paperless-Anbindung beschreibt [`docs/windows-docker.md`](docs/windows-docker.md). Die optionalen Dienste
 stehen in `COMPOSE_PROFILES` (z. B. `paperless,n8n`); Passwörter und Schlüssel erzeugt `install.sh` zufällig,
 die Paperless-Anmeldung zeigt es am Ende an. Im Portal dann die internen Adressen eintragen:
 Paperless `http://paperless:8000` mit API-Token und den Mail-Webhook `http://n8n:5678/webhook/tco-mailversand` mit Webhook-Schlüssel

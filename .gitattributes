@@ -1,0 +1,8 @@
+# Shell-Skripte und Konfiguration, die im Linux-Container bzw. in WSL laufen: immer LF,
+# auch wenn das Repository unter Windows mit core.autocrlf=true ausgecheckt wird (docs/windows-docker.md)
+*.sh text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.env.example text eol=lf
+Dockerfile text eol=lf
