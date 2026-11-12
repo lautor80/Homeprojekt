@@ -41,6 +41,7 @@ import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { mailPersonen } from './mailpersonen.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 import { eingangRoutes, P_EING } from './eingang/routes.js';
+import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -163,6 +164,7 @@ async function routes(app: FastifyInstance) {
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
   await eingangRoutes(app);
+  await instandhaltungRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -228,6 +230,11 @@ const tco: ServerModule = {
     { area: 'Clubhaus', app: 'Theke', id: P_VZ.theke, text: 'Thekendienst: Gastbelege erfassen und kassieren, Verzehr für Mitglieder anschreiben, Belege drucken und per E-Mail/WhatsApp senden, heutige Positionen stornieren' },
     { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.display, text: 'Verzehrbuch anzeigen: alle Positionen, Belege, Kennzahlen, Monatsabschluss-Vorschau' },
     { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.admin, text: 'Verzehr verwalten: Preisliste Speisen/Sonstiges und Gästepreise, Stornos, Monatsabschluss (Sammelabrechnungen), Belege bezahlen/stornieren, Einstellungen', requires: [P_VZ.display] },
+    // ---------------------------------------------------------------- Instandhaltung (#205)
+    { area: 'Instandhaltung', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
+    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat der Vereinsübersicht' },
+    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben', requires: [P_IH.display] },
+    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Anlagen, Kategorien mit Zuständigen, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
     // ---------------------------------------------------------------- Finanzen
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.display, text: 'Sollstellungen anzeigen' },
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
@@ -317,6 +324,10 @@ const tco: ServerModule = {
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
+    { type: 'SCHADEN', text: 'Schadensmeldung', permission: P_IH.display },
+    { type: 'IH_ANLAGE', text: 'Anlage (Instandhaltung)', permission: P_IH.display },
+    { type: 'IH_KATEGORIE', text: 'Kategorie (Instandhaltung)', permission: P_IH.display },
+    { type: 'IH_CFG', text: 'Einstellungen Instandhaltung', permission: P_IH.display },
     { type: 'EING_REGEL', text: 'Regel Dokumenteneingang', permission: P_EING.display },
     { type: 'EING_KORRESPONDENT', text: 'Korrespondent Dokumenteneingang', permission: P_EING.display },
   ],

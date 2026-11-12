@@ -13,6 +13,7 @@ Kernprozesse von Ende zu Ende. Jeder Verweis ist gegen den Code geprüft (⚠️
 | P6 | [Dokumenteneingang](#p6) | Dokumente | E-Mail im Postfach (alle 5 Minuten) | Dokument abgelegt und qualifiziert, Mail behandelt | 7 |
 | P7 | [Vereinsleben (Kalender)](#p7) | Mitglieder | Spielplan oder Veranstaltung | Termine mit Rückmeldungen je Gruppe | 5 |
 | P8 | [Abschluss und Steuerung](#p8) | Finanzen | Monats- und Jahresende | Jahresabschluss in Paperless, Kennzahlen aktuell | 5 |
+| P9 | [Schäden melden und beheben](#p9) | Instandhaltung | Mitglied entdeckt einen Schaden (QR-Code an der Anlage) | Schaden behoben, Platz wieder freigegeben, Melder informiert | 7 |
 
 <a id="p1"></a>
 ## P1 · Mitglied werden
@@ -281,29 +282,67 @@ flowchart LR
 | 4 | Jahresabschluss nach Paperless | Kassenwart | Paperless-ngx | `POST /api/m/tco/abschluss/paperless` | `tco.abschluss:edit` |  |  |
 | 5 | Vereinsübersicht und Forecast | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `GET /api/m/tco/dashboard` | `tco.dashboard:display` | `/tco/uebersicht` |  |
 
+<a id="p9"></a>
+## P9 · Schäden melden und beheben
+
+**Auslöser:** Mitglied entdeckt einen Schaden (QR-Code an der Anlage) · **Ergebnis:** Schaden behoben, Platz wieder freigegeben, Melder informiert
+
+```mermaid
+flowchart LR
+  S0["Schaden mit Ort, Kategorie, Auswirkung und Fotos melden<br/><small>Mitglied · Vereinsportal (Modul tco)</small>"]:::portal
+  S1["Zuständigen (bei Sicherheitsrisiko auch Vorstand) per E-Mail informieren<br/><small>System / zeitgesteuerter Job · Mailserver (IMAP/SMTP)</small>"]:::extern
+  S0 --> S1
+  S2["Neue Meldung im Arbeitsvorrat der Vereinsübersicht<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
+  S1 --> S2
+  S3["Platz in der Platzbuchung sperren<br/><small>Hallenwart · Vereinsportal (Modul tco)</small>"]:::portal
+  S2 --> S3
+  S4["Bearbeiten: Status, Zuständiger, Kosten, Fotos<br/><small>Hallenwart · Vereinsportal (Modul tco)</small>"]:::portal
+  S3 --> S4
+  S5["Sperre aufheben, Melder bei Erledigung per E-Mail informieren<br/><small>Hallenwart · Vereinsportal (Modul tco)</small>"]:::portal
+  S4 --> S5
+  S6["Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen<br/><small>System / zeitgesteuerter Job · Mailserver (IMAP/SMTP)</small>"]:::extern
+  S5 --> S6
+  classDef portal fill:#ffffff,stroke:#1f5fa8,stroke-width:2px,color:#1f5fa8
+  classDef n8n fill:#ffffff,stroke:#2e7d32,stroke-width:2px,color:#2e7d32
+  classDef extern fill:#ffffff,stroke:#2a9d8f,stroke-width:2px,color:#1d6f66
+  classDef person fill:#ffffff,stroke:#7f7f7f,stroke-width:2px,stroke-dasharray:4 3,color:#404040
+```
+
+| # | Schritt | Akteur | System | Route | Recht | App | Workflow |
+|---|---|---|---|---|---|---|---|
+| 1 | Schaden mit Ort, Kategorie, Auswirkung und Fotos melden | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/schaden` | `tco.schaden:melden` | `/tco/schaden` |  |
+| 2 | Zuständigen (bei Sicherheitsrisiko auch Vorstand) per E-Mail informieren | System / zeitgesteuerter Job | Mailserver (IMAP/SMTP) | `POST /api/m/tco/schaden` | `tco.schaden:melden` |  |  |
+| 3 | Neue Meldung im Arbeitsvorrat der Vereinsübersicht | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `GET /api/m/tco/dashboard/arbeitsvorrat` | `tco.instandhaltung:display` | `/tco/uebersicht` |  |
+| 4 | Platz in der Platzbuchung sperren | Hallenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/instandhaltung/:id/sperre` | `tco.instandhaltung:edit` | `/tco/instandhaltung` |  |
+| 5 | Bearbeiten: Status, Zuständiger, Kosten, Fotos | Hallenwart | Vereinsportal (Modul tco) | `PUT /api/m/tco/instandhaltung/:id` | `tco.instandhaltung:edit` | `/tco/instandhaltung` |  |
+| 6 | Sperre aufheben, Melder bei Erledigung per E-Mail informieren | Hallenwart | Vereinsportal (Modul tco) | `DELETE /api/m/tco/instandhaltung/:id/sperre` | `tco.instandhaltung:edit` |  |  |
+| 7 | Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen | System / zeitgesteuerter Job | Mailserver (IMAP/SMTP) |  |  |  |  |
+
 ## Prozess × App
 
-| App | P1 | P2 | P3 | P4 | P5 | P6 | P7 | P8 |
-|---|---|---|---|---|---|---|---|---|
-| /beitritt | ● |  |  |  |  |  |  |  |
-| /schnuppertraining | ● |  |  |  |  |  |  |  |
-| Jahresabschluss |  |  |  |  |  |  |  | ● |
-| Mitgliedsbeiträge |  | ● |  |  |  |  |  |  |
-| Clubhausabrechnung |  |  |  |  | ● |  |  |  |
-| Dokumenteneingang |  |  |  |  |  | ● |  |  |
-| FI-Belege |  | ● | ● |  |  | ● |  | ● |
-| Einnahmen und Ausgaben |  |  |  |  |  |  |  | ● |
-| Mitgliedergruppen | ● |  |  |  |  |  |  |  |
-| Hallenabrechnung |  |  | ● |  |  |  |  |  |
-| Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |
-| Vereinskalender |  |  |  |  |  |  | ● |  |
-| Meine Mitgliedschaft | ● |  |  |  |  |  |  |  |
-| Meine Trainingszeiten |  |  |  | ● |  |  |  |  |
-| Mitgliedsanträge | ● |  |  |  |  |  |  |  |
-| Platz buchen |  |  | ● |  |  |  |  |  |
-| Schnuppertraining | ● |  |  |  |  |  |  |  |
-| Sollstellungen |  | ● |  |  |  |  |  |  |
-| Theke |  |  |  |  | ● |  |  |  |
-| Vereinsübersicht |  |  |  |  |  |  |  | ● |
-| Mein Verzehr |  |  |  |  | ● |  |  |  |
-| Verzehrbuch |  |  |  |  | ● |  |  |  |
+| App | P1 | P2 | P3 | P4 | P5 | P6 | P7 | P8 | P9 |
+|---|---|---|---|---|---|---|---|---|---|
+| /beitritt | ● |  |  |  |  |  |  |  |  |
+| /schnuppertraining | ● |  |  |  |  |  |  |  |  |
+| Jahresabschluss |  |  |  |  |  |  |  | ● |  |
+| Mitgliedsbeiträge |  | ● |  |  |  |  |  |  |  |
+| Clubhausabrechnung |  |  |  |  | ● |  |  |  |  |
+| Dokumenteneingang |  |  |  |  |  | ● |  |  |  |
+| FI-Belege |  | ● | ● |  |  | ● |  | ● |  |
+| Einnahmen und Ausgaben |  |  |  |  |  |  |  | ● |  |
+| Mitgliedergruppen | ● |  |  |  |  |  |  |  |  |
+| Hallenabrechnung |  |  | ● |  |  |  |  |  |  |
+| Instandhaltung |  |  |  |  |  |  |  |  | ● |
+| Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |  |
+| Vereinskalender |  |  |  |  |  |  | ● |  |  |
+| Meine Mitgliedschaft | ● |  |  |  |  |  |  |  |  |
+| Meine Trainingszeiten |  |  |  | ● |  |  |  |  |  |
+| Mitgliedsanträge | ● |  |  |  |  |  |  |  |  |
+| Platz buchen |  |  | ● |  |  |  |  |  |  |
+| Schaden melden |  |  |  |  |  |  |  |  | ● |
+| Schnuppertraining | ● |  |  |  |  |  |  |  |  |
+| Sollstellungen |  | ● |  |  |  |  |  |  |  |
+| Theke |  |  |  |  | ● |  |  |  |  |
+| Vereinsübersicht |  |  |  |  |  |  |  | ● | ● |
+| Mein Verzehr |  |  |  |  | ● |  |  |  |  |
+| Verzehrbuch |  |  |  |  | ● |  |  |  |  |

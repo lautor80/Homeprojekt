@@ -110,7 +110,7 @@ before(async () => {
 after(async () => { await app?.close(); await sql.end(); server.close(); });
 
 test('Systemrolle MITGLIED enthält Mein Verzehr; Berechtigungsobjekte vorhanden', async () => {
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.schaden:melden', 'tco.verzehr:edit']);
   const r = await admin('GET', '/api/admin/permissions');
   const ids = JSON.stringify(r.body);
   for (const p of ['tco.verzehr:edit', 'tco.verzehr:theke', 'tco.verzehr:display', 'tco.verzehr:admin']) assert.ok(ids.includes(p), p);

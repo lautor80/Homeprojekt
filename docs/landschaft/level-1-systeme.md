@@ -19,6 +19,7 @@ flowchart LR
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining<br/>Meine Trainingszeiten"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Platz buchen<br/>Meine Daten<br/>Serienbuchung<br/>Platzverwaltung"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Mein Verzehr<br/>Theke<br/>Verzehrbuch"]
+      B_Instandhaltung["<b>Instandhaltung</b><br/>Schaden melden<br/>Instandhaltung"]
       B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Dokumenten-Upload"]
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang"]
     end
@@ -70,7 +71,7 @@ flowchart LR
 
 | Bereich | App | Pfad | Berechtigung | Zweck |
 |---|---|---|---|---|
-| Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle |
+| Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung |
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
 | Einstellungen | Stammdaten | `/tco/stammdaten` | `tco.stammdaten:edit` | Verein, Anbindungen, SAP-Übernahme |
@@ -98,6 +99,8 @@ flowchart LR
 | Clubhaus | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
 | Clubhaus | Theke | `/tco/theke` | `tco.verzehr:theke` | Gäste kassieren, Belege senden, Mitglieder anschreiben |
 | Clubhaus | Verzehrbuch | `/tco/verzehrbuch` | `tco.verzehr:display` | Alle Positionen, Belege, Monatsabschluss, Preisliste |
+| Instandhaltung | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
+| Instandhaltung | Instandhaltung | `/tco/instandhaltung` | `tco.instandhaltung:display` | Schadensmeldungen bearbeiten, Plätze sperren |
 | Finanzen | Sollstellungen | `/tco/sollstellung` | `tco.soll:display` | Beitragseinzug per SEPA-Lastschrift |
 | Finanzen | FI-Belege | `/tco/fi` | `tco.fi:display` | Bankimport, Belege, Storno |
 | Finanzen | Beitragsforecast | `/tco/forecast` | `tco.forecast:display` | Hochrechnung der Beitragseinnahmen |
@@ -180,6 +183,7 @@ flowchart LR
 | gruppen | 9 |
 | halle | 41 |
 | index | 6 |
+| instandhaltung | 20 |
 | jt | 30 |
 | kalender | 21 |
 | konten | 5 |

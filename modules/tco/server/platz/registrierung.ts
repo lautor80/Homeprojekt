@@ -25,11 +25,11 @@ export const ROLLE = 'HALLENNUTZER';
 export const ROLLE_RECHTE = ['tco.meinkonto:edit', 'tco.platzbuchung:edit'];
 /** Rolle für Vereinsmitglieder: eigene Mitgliedsdaten („Meine Mitgliedschaft“) und Einzelbuchung */
 export const ROLLE_MITGLIED = 'MITGLIED';
-export const ROLLE_MITGLIED_RECHTE = ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit'];
+export const ROLLE_MITGLIED_RECHTE = ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.schaden:melden', 'tco.verzehr:edit'];
 /** vom Portal vergebene Rollen mit ihren Vorgabe-Berechtigungen (nur beim ersten Anlegen; danach pflegt sie ein Administrator) */
 export const SYSTEMROLLEN: Record<string, { name: string; text: string; rechte: string[] }> = {
   [ROLLE]: { name: 'Hallennutzer', text: 'Selbst registrierte Hallennutzer: nur eigene Einzelbuchungen (Platz buchen) und eigene Kontaktdaten (Meine Daten). Wird bei Registrierung bzw. Benutzeranlage automatisch vergeben; ändern kann sie nur ein Administrator.', rechte: ROLLE_RECHTE },
-  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“) und An-/Abmeldung im Vereinskalender. Wird bei Registrierung bzw. Benutzeranlage automatisch vergeben; ändern kann sie nur ein Administrator.', rechte: ROLLE_MITGLIED_RECHTE },
+  [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“), An-/Abmeldung im Vereinskalender und Schäden melden. Wird bei Registrierung bzw. Benutzeranlage automatisch vergeben; ändern kann sie nur ein Administrator.', rechte: ROLLE_MITGLIED_RECHTE },
 };
 const GESPERRT = ['blocked', 'deleted', 'disabled'];
 

@@ -83,7 +83,7 @@ test('Dashboard: Bereiche, Kennzahlen und Diagrammdaten', async () => {
   const d = r.body;
   assert.equal(d.jahr, J);
   assert.ok(d.jahre.includes(J));
-  assert.deepEqual(d.bereiche.map((b: any) => b.key), ['MITGLIEDER', 'FINANZEN', 'CLUBHAUS', 'JUGEND', 'HALLE']);
+  assert.deepEqual(d.bereiche.map((b: any) => b.key), ['MITGLIEDER', 'FINANZEN', 'CLUBHAUS', 'JUGEND', 'HALLE', 'INSTANDHALTUNG']);
   const kpi = (k: string) => d.bereiche.flatMap((b: any) => b.kpis).find((x: any) => x.key === k);
 
   // Mitglieder: 4 mit Eintritt - 1 Austritt = 3; im Jahr J: 1 Eintritt, 1 Austritt, Saldo 0

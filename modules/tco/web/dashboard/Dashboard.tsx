@@ -171,7 +171,7 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
 /** Eigene Route /tco/uebersicht: Vereinsübersicht im Seitenrahmen */
 export function DashboardPage() {
   return (
-    <AppPage title="Vereinsübersicht" subtitle="Kennzahlen zu Mitgliedern, Clubhaus, Finanzen, Jugend und Halle">
+    <AppPage title="Vereinsübersicht" subtitle="Kennzahlen zu Mitgliedern, Clubhaus, Finanzen, Jugend, Halle und Instandhaltung">
       <Dashboard ohneTitel />
     </AppPage>
   );

@@ -14,6 +14,7 @@ import {
   jahreAufbauen, jahreAuswahl, jahreText, JUG_GESAMT, JUG_TRAINER, type KeyText,
 } from './charts.js';
 import { arbeitsvorrat } from './arbeitsvorrat.js';
+import { collectInstandhaltung } from './instandhaltung.js';
 import { BENUTZER_ZEITRAEUME, benutzerVerlauf, type BenutzerZeitraum } from './benutzer.js';
 import { geldkonten, kontoKey, liquiditaet, monatsverlauf } from './finanzen.js';
 import {
@@ -54,6 +55,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       { key: 'CLUBHAUS', title: 'Clubhaus', kpis: await collectClubhaus(DB, gj) },
       { key: 'JUGEND', title: 'Jugend', kpis: await collectJugend(DB, gj) },
       { key: 'HALLE', title: 'Halle', kpis: await collectHalle(DB, q.halZeitraum) },
+      { key: 'INSTANDHALTUNG', title: 'Instandhaltung', kpis: await collectInstandhaltung(DB) },
     ];
 
     // Jahresauswahl der Diagramme (load_cmp_years / fin_auswahl_laden)
