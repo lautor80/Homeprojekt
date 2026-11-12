@@ -251,7 +251,12 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
     { k: 'hinweis', titel: 'Hinweis', text: (w) => [w.kosten, w.mail_fehler].filter(Boolean).join(' · ') || '–' },
   ];
   const basis = istWarte ? warte : abos;
-  const passt = (w: VWunsch) => spalten.every((sp) => { const f = (filter[sp.k] ?? '').trim().toLowerCase(); return !f || sp.text(w).toLowerCase().includes(f); });
+  // Filter je Spalte: Auswahlliste mit den in der Tabelle vorkommenden Werten (in der Reihenfolge der Spalte)
+  const passt = (w: VWunsch) => spalten.every((sp) => !filter[sp.k] || sp.text(w) === filter[sp.k]);
+  const werte = (x: Spalte) => [...new Map([...basis].sort((a, b) => {
+    const va = (x.ordnung ?? x.text)(a), vb = (x.ordnung ?? x.text)(b);
+    return typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'de', { numeric: true });
+  }).map((w) => [x.text(w), true])).keys()];
   const sp = sort ? spalten.find((x) => x.k === sort.k) : undefined;
   const wert = (w: VWunsch) => (sp ? (sp.ordnung ?? sp.text)(w) : 0);
   const zeilen = basis.filter(passt).sort((x, y) => {
@@ -308,7 +313,7 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
               <SegmentedButtonItem data-k="abos" selected={!istWarte}>Abos des Vorjahres ({abos.length})</SegmentedButtonItem>
               <SegmentedButtonItem data-k="warte" selected={istWarte}>Warteliste ({warte.length})</SegmentedButtonItem>
             </SegmentedButton>
-            {(sort || Object.values(filter).some((x) => x.trim())) && <Button design="Transparent" icon="clear-filter" onClick={() => { setSort(null); setFilter({}); }}>Filter und Sortierung zurücksetzen</Button>}
+            {(sort || Object.values(filter).some(Boolean)) && <Button design="Transparent" icon="clear-filter" onClick={() => { setSort(null); setFilter({}); }}>Filter und Sortierung zurücksetzen</Button>}
             {zeilen.length !== basis.length && <Text className="portal-muted">{zeilen.length} von {basis.length}</Text>}
           </span>
           {basis.length ? (
@@ -326,8 +331,11 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
                   <tr>
                     {spalten.map((x) => (
                       <th key={x.k} style={{ padding: '0.2rem 0.4rem' }}>
-                        <Input value={filter[x.k] ?? ''} placeholder="Filter" accessibleName={`${x.titel} filtern`} style={{ width: '100%', minWidth: '5rem' }}
-                               onInput={(e) => setFilter({ ...filter, [x.k]: (e.target as unknown as { value: string }).value })} />
+                        <Select accessibleName={`${x.titel} filtern`} style={{ width: '100%', minWidth: '6rem' }}
+                                onChange={(e) => setFilter({ ...filter, [x.k]: (e.detail.selectedOption as HTMLElement).dataset.w ?? '' })}>
+                          <Option data-w="" selected={!filter[x.k]}>Alle</Option>
+                          {werte(x).map((w) => <Option key={w} data-w={w} selected={filter[x.k] === w}>{w}</Option>)}
+                        </Select>
                       </th>
                     ))}
                     <th />

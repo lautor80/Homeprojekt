@@ -99,10 +99,27 @@ function ersterTermin(s: Saison, wochentag: number, heute = jetzt().datum): stri
  * Unterjährig (Saison läuft schon): Einheiten bis zum Saisonende × Einzelpreis der jeweiligen Stunde.
  * Vor Saisonbeginn gilt der Abo-Preis der Hallenabrechnung – dann null.
  */
-export function unterjaehrig(s: Saison, w: Zeit, platz: Platz | undefined, preise: Preise, heute = jetzt().datum): { ab: string; einheiten: number; betrag: number; termine: { datum: string; preis: number }[] } | null {
+type Einzel = { platzId: number; datum: string; von: number; bis: number }[];
+/** Einzelbuchungen der Halle im Rest der Saison – ein Abo beginnt erst in der Woche nach der letzten Einzelbuchung auf seiner Zeit */
+async function einzelLesen(db: Db, s: Saison, heute = jetzt().datum): Promise<Einzel> {
+  const hallen = (await plaetzeLesen(db)).filter((p) => p.art === 'HALLE');
+  const ab = heute > s.von ? heute : s.von;
+  if (!hallen.length || ab > s.bis) return [];
+  return (await belegungLesen(db, hallen, ab, s.bis)).filter((b) => b.status === '1' && !b.fest && !b.reserviert)
+    .map((b) => ({ platzId: b.platzId, datum: b.datum, von: b.von, bis: b.bis }));
+}
+/** Beginn des Abos: nächster passender Wochentag – liegen auf der Zeit noch Einzelbuchungen, die Woche nach der letzten */
+function beginn(s: Saison, w: Zeit, einzel: Einzel, heute = jetzt().datum): { ab: string; letzte: string | null } {
+  const ab = ersterTermin(s, w.wochentag, heute);
+  const letzte = einzel.filter((e) => e.platzId === w.platz_id && e.datum >= ab && isoWochentag(e.datum) === w.wochentag && e.von < w.bis && e.bis > w.von)
+    .map((e) => e.datum).sort().pop() ?? null;
+  return { ab: letzte ? addTage(letzte, 7) : ab, letzte };
+}
+
+export function unterjaehrig(s: Saison, w: Zeit, platz: Platz | undefined, preise: Preise, heute = jetzt().datum, einzel: Einzel = []): { ab: string; einheiten: number; betrag: number; termine: { datum: string; preis: number }[] } | null {
   if (heute <= s.von) return null;
   const termine: { datum: string; preis: number }[] = [];
-  for (let d = ersterTermin(s, w.wochentag, heute); d <= s.bis; d = addTage(d, 7)) termine.push({ datum: d, preis: preisVon(platz, d, w.von, w.bis, '1', preise).betrag ?? 0 });
+  for (let d = beginn(s, w, einzel, heute).ab; d <= s.bis; d = addTage(d, 7)) termine.push({ datum: d, preis: preisVon(platz, d, w.von, w.bis, '1', preise).betrag ?? 0 });
   return { ab: termine[0]?.datum ?? heute, einheiten: termine.length, betrag: Math.round(termine.reduce((x, t) => x + t.preis, 0) * 100) / 100, termine };
 }
 
@@ -194,6 +211,7 @@ export async function rasterLesen(db: Db, ich: Ich) {
   if (!s) return { saison: null, unterjaehrig: false, plaetze: [], felder: [], meine: [], maxBewerbungen: MAX_BEWERBUNGEN };
   const alle = await wuensche(db, s.id);
   const abos = await laufendeAbos(db, s);
+  const einzel = await einzelLesen(db, s);
   const preise = await preiseLesen(db);
   const block = await geblockt(db, s, plaetze);
   const unterj = jetzt().datum > s.von;
@@ -213,7 +231,7 @@ export async function rasterLesen(db: Db, ich: Ich) {
         const preis = preisVon(p, ersterTermin(s, wt), von, von + 60, unterj ? '1' : '3', preise);
         // Gesamtwert: Einheiten bis zum Saisonende × Preis der jeweiligen Stunde (unterjährig Einzelpreis, vor der Saison Abo-Preis)
         let einheiten = 0, gesamt = 0;
-        for (let d = ersterTermin(s, wt); d <= s.bis; d = addTage(d, 7)) { einheiten++; gesamt += preisVon(p, d, von, von + 60, unterj ? '1' : '3', preise).betrag ?? 0; }
+        for (let d = beginn(s, f, einzel).ab; d <= s.bis; d = addTage(d, 7)) { einheiten++; gesamt += preisVon(p, d, von, von + 60, unterj ? '1' : '3', preise).betrag ?? 0; }
         felder.push({
           ...f, einheiten, gesamt: Math.round(gesamt * 100) / 100, wartende: warten.length, wunsch_id: mein?.id ?? null, preis: preis.kostenfrei ? 0 : preis.betrag, hinweis: !mein && sperre ? sperre : null,
           position: mein?.status === 'WARTET' ? warten.findIndex((w) => w.id === mein.id) + 1 : null,
@@ -228,7 +246,7 @@ export async function rasterLesen(db: Db, ich: Ich) {
     return { id: w.id, art: w.art, platz: plaetze.find((p) => p.id === w.platz_id)?.name ?? '', platz_id: w.platz_id, wochentag: w.wochentag, von: hhmm(w.von), bis: hhmm(w.bis), status: w.status,
       text: zeitText(w), wartende: warten.length, position: w.status === 'WARTET' ? warten.findIndex((x) => x.id === w.id) + 1 : null,
       annehmen_bis: w.status === 'ANGEBOTEN' && w.angeboten_am ? addTage(w.angeboten_am, s.annahme_tage) : null,
-      kosten: ['WARTET', 'ANGEBOTEN', 'ANGENOMMEN'].includes(w.status) ? kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise)) : null };
+      kosten: ['WARTET', 'ANGEBOTEN', 'ANGENOMMEN'].includes(w.status) ? kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise, undefined, einzel)) : null };
   });
   return { saison: s, unterjaehrig: jetzt().datum > s.von, plaetze: plaetze.map((p) => ({ id: p.id, name: p.name })), felder, meine, maxBewerbungen: MAX_BEWERBUNGEN };
 }
@@ -256,7 +274,7 @@ export async function bewerben(tx: Db, ich: Ich, e: { platz_id: number; wochenta
            values (${s.id}, 'BEWERBUNG', ${ich.adrnr}, ${ich.name}, ${!!m}, ${ich.benutzerId}, ${p.id}, ${e.wochentag}, ${von}, ${bis}, 'WARTET')`;
   const warten = (await wuensche(tx, s.id)).filter((w) => w.status === 'WARTET' && trifft(w, f));
   const pos = warten.findIndex((w) => w.adrnr === ich.adrnr) + 1;
-  const k = kostenText(unterjaehrig(s, f, p, await preiseLesen(tx)));
+  const k = kostenText(unterjaehrig(s, f, p, await preiseLesen(tx), undefined, await einzelLesen(tx, s)));
   return `Bewerbung für ${zeitText(f)} auf ${p.name} gespeichert – Position ${pos} von ${warten.length}.${k ? ` Unterjährig ${k}.` : ''} Ein Abo entsteht erst mit der Freigabe durch den Kassenwart.`;
 }
 
@@ -306,6 +324,7 @@ export async function aboLauf(db: Db, heute = jetzt().datum, o: { mail?: boolean
                                or (status = 'ANGEBOTEN' and angeboten_am + ${s.annahme_tage}::int < ${heute}::date)) returning id`).length;
   const alle = await wuensche(db, s.id);
   const abos = await laufendeAbos(db, s, heute);
+  const einzel = await einzelLesen(db, s, heute);
   const plaetze = await plaetzeLesen(db);
   const preise = await preiseLesen(db);
   for (const w of alle.filter((x) => x.status === 'WARTET')) {
@@ -314,7 +333,7 @@ export async function aboLauf(db: Db, heute = jetzt().datum, o: { mail?: boolean
     if (!ok) continue;
     w.status = 'ANGEBOTEN';
     r.angeboten++;
-    const k = kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise, heute));
+    const k = kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise, heute, einzel));
     await benachrichtigen(db, w, `Hallenabo ${s.name}: ${zeitText(w)} ist für dich frei`,
       `die Stunde ${zeitText(w)} wird dir als Abo ${k ? `für den Rest der Saison ${s.name} angeboten (${k})` : `für die ganze Saison ${s.name} (${dat(s.von)} bis ${dat(s.bis)}) angeboten`}. Bitte nimm das Angebot bis zum ${dat(addTage(heute, s.annahme_tage))} im Portal unter „Platz buchen → Abo“ an – sonst geht es an den nächsten Interessenten. Das Abo gilt erst nach der Freigabe durch den Kassenwart.`, mail);
   }
@@ -328,6 +347,7 @@ export async function verwaltungLesen(db: Db) {
   const plaetze = await plaetzeLesen(db);
   const alle = await wuensche(db, s.id);
   const preise = await preiseLesen(db);
+  const einzel = await einzelLesen(db, s);
   return {
     saison: s,
     wuensche: alle.map((w) => {
@@ -335,7 +355,7 @@ export async function verwaltungLesen(db: Db) {
       return { id: w.id, art: w.art, name: w.name, mitglied: w.mitglied, platz: plaetze.find((p) => p.id === w.platz_id)?.name ?? '', wochentag: w.wochentag, von: hhmm(w.von), bis: hhmm(w.bis),
         text: zeitText(w), status: w.status, angelegt: w.angelegt.slice(0, 10), mail_fehler: w.mail_fehler, abo_bid: w.abo_bid, wartende: warten.length,
         position: w.status === 'WARTET' ? warten.findIndex((x) => x.id === w.id) + 1 : null,
-        kosten: ['WARTET', 'ANGEBOTEN', 'ANGENOMMEN'].includes(w.status) ? kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise)) : null };
+        kosten: ['WARTET', 'ANGEBOTEN', 'ANGENOMMEN'].includes(w.status) ? kostenText(unterjaehrig(s, w, plaetze.find((p) => p.id === w.platz_id), preise, undefined, einzel)) : null };
     }),
   };
 }

@@ -152,13 +152,18 @@ services:
       PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
       USERMAP_UID: 1000
       USERMAP_GID: 1000
+      # Eingangsordner (consume) per Abfrage alle N Sekunden statt Dateisystem-Ereignissen – nötig, wenn PAPERLESS_PFAD
+      # auf einem Windows-Laufwerk (Docker Desktop) oder einer Netzfreigabe liegt; 0 = Ereignisse (Linux-Standard)
+      PAPERLESS_CONSUMER_POLLING: ${PAPERLESS_CONSUMER_POLLING:-0}
     ports:
       - "${PAPERLESS_PORT:-8000}:8000"
+    # Dokumente (media, export, consume) optional getrennt von Datenbank/Index, z. B. auf einem Windows-Laufwerk:
+    # PAPERLESS_ABLAGE_PFAD – Datenbank und Redis bleiben unter PAPERLESS_PFAD (Linux-Dateisystem)
     volumes:
       - ${PAPERLESS_PFAD:-./data/paperless}/data:/usr/src/paperless/data
-      - ${PAPERLESS_PFAD:-./data/paperless}/media:/usr/src/paperless/media
-      - ${PAPERLESS_PFAD:-./data/paperless}/export:/usr/src/paperless/export
-      - ${PAPERLESS_PFAD:-./data/paperless}/consume:/usr/src/paperless/consume
+      - ${PAPERLESS_ABLAGE_PFAD:-${PAPERLESS_PFAD:-./data/paperless}}/media:/usr/src/paperless/media
+      - ${PAPERLESS_ABLAGE_PFAD:-${PAPERLESS_PFAD:-./data/paperless}}/export:/usr/src/paperless/export
+      - ${PAPERLESS_ABLAGE_PFAD:-${PAPERLESS_PFAD:-./data/paperless}}/consume:/usr/src/paperless/consume
 
   # ---------------------------------------------------------------------------
   # Optional: n8n (Profil "n8n") – Mailversand, EP3-Import, Rückmeldungen.
