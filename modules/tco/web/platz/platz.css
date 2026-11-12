@@ -240,3 +240,20 @@
 .portal-pb__rgjahr:first-child { border-top: 0; }
 .portal-pb__rgjahr > summary { cursor: pointer; padding: 0.625rem 1rem; }
 .portal-pb__rgjahr > .portal-mz__liste { padding-left: 1rem; }
+
+/* Abo-Bewerbung (#11): Wochenraster der Halle */
+.portal-abo__raster { display: grid; grid-template-columns: 3rem repeat(7, minmax(0, 1fr)); gap: 3px; padding: 0.5rem 0.75rem 0.75rem; overflow-x: auto; }
+.portal-abo__kopf { text-align: center; font-weight: 600; padding: 0.25rem 0; color: var(--sapContent_LabelColor); }
+.portal-abo__zeit { text-align: right; padding: 0.4rem 0.3rem 0 0; font-size: 0.8rem; color: var(--sapContent_LabelColor); }
+.portal-abo__feld { min-height: 2.75rem; min-width: 4.5rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.375rem; padding: 0.25rem 0.4rem; text-align: left; font: inherit; font-size: 0.75rem; line-height: 1.25; cursor: pointer; display: flex; flex-direction: column; color: var(--sapTextColor); }
+.portal-abo__feld b { font-weight: 600; }
+.portal-abo__feld--wahl { outline: 2px solid var(--sapContent_FocusColor, #0064d9); outline-offset: 1px; }
+.portal-abo__f--frei { background: var(--sapList_Background, #fff); }
+.portal-abo__f--vergeben { background: var(--sapNeutralBackground, #f4f4f4); color: var(--sapContent_LabelColor); }
+.portal-abo__f--mein { background: var(--sapSuccessBackground, #f1fdf6); border-color: var(--sapSuccessBorderColor, #36a41d); }
+.portal-abo__f--offen { background: var(--sapWarningBackground, #fef7f1); border-color: var(--sapWarningBorderColor, #e76500); }
+.portal-abo__f--bewerbung { background: var(--sapInformationBackground, #f5faff); border-color: var(--sapInformationBorderColor, #0070f2); }
+.portal-abo__legende { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0.5rem 0.75rem 0; font-size: 0.8rem; color: var(--sapContent_LabelColor); }
+.portal-abo__legende span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.portal-abo__legende i { width: 0.8rem; height: 0.8rem; border-radius: 0.2rem; border: 1px solid var(--sapList_BorderColor); display: inline-block; }
+.portal-abo__detail { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border-top: 1px solid var(--sapList_BorderColor); }

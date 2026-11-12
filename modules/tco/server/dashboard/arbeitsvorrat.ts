@@ -223,6 +223,33 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
+  // Kassenwart (#11): Abo-Bewerbung – bestätigte Abos und angenommene Angebote freigeben; Ausnahmen, wenn eine E-Mail nicht zugestellt werden konnte
+  if (can(req, 'tco.platz:admin')) {
+    const rows = await db`
+      select w.id, w.art, w.name, w.status, w.wochentag, w.von, w.bis, w.mail_fehler, coalesce(p.name, '') as platz,
+             to_char(coalesce(w.entschieden, w.angelegt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am, s.name as saison
+        from tco.abo_wunsch w join tco.abo_saison s on s.id = w.saison_id and s.aktiv left join tco.plaetze p on p.id = w.platz_id
+       where w.status in ('BESTAETIGT', 'ANGENOMMEN') or (w.mail_fehler is not null and w.status in ('OFFEN', 'ANGEBOTEN'))
+       order by w.wochentag, w.von, w.id`;
+    const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    for (const r of rows) {
+      const zeit = `${WT[r.wochentag]} ${hm(r.von)}–${hm(r.bis)} Uhr ${r.platz}`.trim();
+      out.push(r.mail_fehler && ['OFFEN', 'ANGEBOTEN'].includes(r.status) ? {
+        key: `ABO_MAIL:${r.id}`, bereich: 'Kassenwart', icon: 'email', state: 'Negative',
+        titel: `Hallenabo ${r.saison}: ${r.name} nicht per E-Mail erreichbar`,
+        text: `${zeit} · ${r.status === 'OFFEN' ? 'Bestätigung des Abos steht aus' : 'Angebot aus der Warteliste wartet auf Annahme'} – ${r.mail_fehler}. Bitte persönlich ansprechen.`,
+        datum: r.am, pfad: '/tco/platz-buchen?ansicht=abo',
+      } : {
+        key: `ABO_FREIGABE:${r.id}`, bereich: 'Kassenwart', icon: 'approvals', state: 'Critical',
+        titel: `Hallenabo ${r.saison} freigeben: ${r.name}`,
+        text: `${zeit} · ${r.art === 'BESTAETIGUNG' ? 'vom bisherigen Abonnenten bestätigt' : 'Angebot aus der Warteliste angenommen'} – erst die Freigabe legt das Abo an.`,
+        datum: r.am, pfad: '/tco/platz-buchen?ansicht=abo',
+        erledigen: { text: 'freigeben', url: '/platz/admin/abowunsch/freigeben', body: { id: r.id } },
+      });
+    }
+  }
+
   // Vorstand: Registrierungen externer Hallennutzer warten auf Bestätigung (nur ohne E-Mail-Bestätigung)
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit

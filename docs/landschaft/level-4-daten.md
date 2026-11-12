@@ -16,6 +16,8 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `core.sperren` |  |  | ● |  |  |  |  |  | ● |  |  | ● |
 | `core.user_roles` | ● |  | ● |  |  |  |  | ● | ● | ● | ● | ● |
 | `core.users` | ● |  | ● | ● |  |  |  | ● | ● | ● | ● | ● |
+| `tco.abo_saison` |  |  | ● |  |  |  |  | ● | ● |  |  | ● |
+| `tco.abo_wunsch` |  |  | ● |  |  |  |  | ● | ● |  |  | ● |
 | `tco.anlagen` |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.antrag_map` | ● |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.bankleitzahlen` | ● |  |  |  |  |  |  |  |  |  | ● |  |

@@ -21,6 +21,7 @@ import {
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
 import { mailProtokoll, mailSenden } from '../kommunikation.js';
+import { abweisen, aboLauf, aktion, bewerben, freigeben, rasterLesen, saisonAendern, saisonEroeffnen, verwaltungLesen } from './abowunsch.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle).
@@ -498,6 +499,52 @@ export async function platzRoutes(app: FastifyInstance) {
     const d = await pl.download(await pl.neuesteVersion(Number(r.doknr)));
     return reply.type(d.contentType).header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(`Rechnung_${rgnr}.pdf`)}`).send(d.data);
   });
+
+  // ---- Abo-Bewerbung (#11): Bestätigung, Warteliste, Angebot – ändert nie eine Buchung; das Abo entsteht erst mit der Freigabe
+  app.get('/platz/abowunsch', buchen, async (req) => rasterLesen(DB, await ich(req)));
+  app.post('/platz/abowunsch', buchen, async (req) => {
+    const i = await ich(req);
+    const e = z.object({ platz_id: z.coerce.number().int().positive(), wochentag: z.coerce.number().int().min(1).max(7), von: uhr, bis: uhr }).parse(req.body);
+    return { text: await change(req, (tx) => bewerben(tx, i, e), { action: 'ABO_BEWERBUNG', reason: `${e.wochentag} ${e.von}–${e.bis}` }) };
+  });
+  app.post('/platz/abowunsch/:id/:aktion', buchen, async (req) => {
+    const i = await ich(req);
+    const p = z.object({ id: z.coerce.number().int().positive(), aktion: z.enum(['bestaetigen', 'abgeben', 'zurueckziehen', 'annehmen', 'ablehnen']) }).parse(req.params);
+    return { text: await change(req, (tx) => aktion(tx, i, p.id, p.aktion), { action: `ABO_${p.aktion.toUpperCase()}`, reason: String(p.id) }) };
+  });
+  const saison = z.object({
+    name: z.string().trim().min(1, 'Bitte einen Namen für die Saison angeben.').max(60), von: datum, bis: datum, bestaetigen_bis: datum, nachruecken_ab: datum,
+    annahme_tage: z.coerce.number().int().min(1).max(60).default(7),
+  });
+  app.get('/platz/admin/abosaison', admin, async () => verwaltungLesen(DB));
+  app.post('/platz/admin/abosaison', admin, async (req) => {
+    const e = saison.extend({ vorjahr_von: datum, vorjahr_bis: datum }).parse(req.body);
+    return { text: await change(req, (tx) => saisonEroeffnen(tx, e), { action: 'ABO_SAISON', reason: e.name }) };
+  });
+  app.put('/platz/admin/abosaison/:id', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const e = saison.parse(req.body);
+    return { text: await change(req, (tx) => saisonAendern(tx, id, e), { action: 'ABO_SAISON', reason: e.name }) };
+  });
+  /** fällige Schritte sofort ausführen (läuft sonst stündlich von selbst) */
+  app.post('/platz/admin/abosaison/lauf', admin, async (req) => {
+    const r = await change(req, (tx) => aboLauf(tx), { action: 'ABO_LAUF' });
+    return { ...r, text: `${r.erinnert} erinnert, ${r.verfallen} verfallen, ${r.angeboten} angeboten.` };
+  });
+  app.post('/platz/admin/abowunsch/freigeben', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.body);
+    return { text: await change(req, (tx) => freigeben(tx, id), { action: 'PLATZ_ABO', reason: `Abo-Wunsch ${id}` }) };
+  });
+  app.post('/platz/admin/abowunsch/abweisen', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.body);
+    return { text: await change(req, (tx) => abweisen(tx, id), { action: 'ABO_ABGELEHNT', reason: String(id) }) };
+  });
+  // stündlich von selbst (nicht in Tests): Erinnerung, Verfall, Angebote
+  if (!process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test') {
+    setInterval(() => {
+      withChange({ userId: null, username: 'system (Abo-Bewerbung)', action: 'ABO_LAUF' }, (tx) => aboLauf(tx)).catch((e) => app.log.warn(e, 'Abo-Lauf fehlgeschlagen'));
+    }, 3_600_000).unref();
+  }
 
   /** Preis und Regeln vorab prüfen (Buchungsdialog) */
   app.post('/platz/pruefen', buchen, async (req) => {
