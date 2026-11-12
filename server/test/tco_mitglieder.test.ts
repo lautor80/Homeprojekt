@@ -315,9 +315,9 @@ test('Bankverbindung: IBAN prüfen, BIC/Kreditinstitut ermitteln, neues SEPA-Man
 
   // ersatzweise aus dem eigenen Bestand: gleiche Bankleitzahl bei einer anderen Person
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, mitglnrn, zahlungsart, iban1, bic1, bank1)
-            values ('0000000901', 'Berta', 'Bestand', '2020-01-01', '901', 'L', 'DE02370400440000000001', 'COBADEFFXXX', 'Commerzbank Köln')`;
-  r = await call('POST', P, { iban: 'DE89370400440532013000' });
-  assert.deepEqual([r.body.bic, r.body.quelle], ['COBADEFFXXX', 'BESTAND'], JSON.stringify(r.body));
+            values ('0000000901', 'Berta', 'Bestand', '2020-01-01', '901', 'L', 'DE44500105175407324931', 'INGDDEFFXXX', 'ING-DiBa')`;
+  r = await call('POST', P, { iban: 'DE44 5001 0517 5407 3249 31' });
+  assert.deepEqual([r.body.bic, r.body.bank, r.body.quelle], ['INGDDEFFXXX', 'ING-DiBa', 'BESTAND'], JSON.stringify(r.body));
   assert.ok(r.body.bank);
 
   // Verzeichnis laden: geht vor
