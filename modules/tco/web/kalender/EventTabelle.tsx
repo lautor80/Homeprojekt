@@ -199,7 +199,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
           <div className="portal-az">
             <Text>
               {gewaehlt.length === 1 ? 'Die ausgewählte Veranstaltung' : `Die ${gewaehlt.length} ausgewählten Veranstaltungen`} endgültig löschen?
-              Zu- und Absagen der Mitglieder gehen dabei verloren. Das lässt sich nicht rückgängig machen.
+              Veranstaltungen mit Anmeldungen (Zusage oder „vielleicht“) bleiben stehen. Das Löschen lässt sich nicht rückgängig machen.
             </Text>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', maxHeight: '14rem', overflow: 'auto' }}>
               {zeilen.filter((z) => gewaehlt.includes(z.id)).map((z) => <li key={z.id}><Text>{z.beginn_text} · {z.titel}</Text></li>)}
