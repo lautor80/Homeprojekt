@@ -98,7 +98,7 @@ test('Jugendtraining: Nichtmitglied mit Hinweis, kein zweiter laufender Vertrag'
   assert.deepEqual((await vertraege('0000000204')).map((x) => [x.art, x.beginn, x.ende, x.betrag, x.sollstellung]), [['90', beginn, null, 35, 'monatlich']]);
   r = await call('POST', `${M}/vorgang/pruefen`, g);
   assert.equal(r.status, 400);
-  assert.match(r.body.message, /bereits einen Vertrag „Jugendtraining“/);
+  assert.match(r.body.message, /bereits ein Vertrag „Jugendtraining“/);
 });
 
 test('Kündigung: einzelner Vertrag mit Fristhinweis, Mitgliedschaft mit Austritt und Kündigungsbestätigung', async () => {
