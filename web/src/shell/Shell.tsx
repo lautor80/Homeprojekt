@@ -74,7 +74,8 @@ export function Shell() {
   // Hinweise an Menüeinträgen („3 neu“) – am Eintrag selbst und, solange eingeklappt, an der Gruppe darüber
   const hinweise = useNavHinweise();
   const neu = (e: NavEntry): number => (e.path ? hinweise[e.path] ?? 0 : 0) + (e.children ?? []).reduce((n, c) => n + neu(c), 0);
-  const mitHinweis = (e: NavEntry) => { const n = neu(e); return n ? `${e.text} · ${n} neu` : e.text; };
+  // roter Tag am Eintrag (CSS: [data-neu]::after); Tooltip nennt die Anzahl
+  const tag = (e: NavEntry) => { const n = neu(e); return n ? { 'data-neu': n > 99 ? '99+' : String(n), tooltip: `${e.text} – ${n} neue Aufgabe${n === 1 ? '' : 'n'}` } : {}; };
 
   /** Auf dem Handy liegt die Navigation über dem Inhalt: nach der Auswahl wieder einklappen */
   const gehe = (path: string) => { navigate(path); if (window.innerWidth < 600) setCollapsed(true); };
@@ -85,7 +86,7 @@ export function Shell() {
   // Stufe 2: Eintrag (direkt aufrufbar oder mit Stufe 3 aufklappbar), Stufe 3: Untereintrag
   const eingerueckt = collapsed ? undefined : { display: 'block', marginInlineStart: '1.5rem' };
   const sub = (e: NavEntry) => (
-    <SideNavigationSubItem key={e.path ?? e.text} text={mitHinweis(e)} icon={e.icon} selected={isSelected(e.path)}
+    <SideNavigationSubItem key={e.path ?? e.text} text={e.text} icon={e.icon} {...tag(e)} selected={isSelected(e.path)}
                            style={eingerueckt}
                            onClick={() => e.path && gehe(e.path)} />
   );
@@ -93,7 +94,7 @@ export function Shell() {
   // Der Benutzer kann jede Gruppe selbst auf- und zuklappen (der Zustand bleibt bis zum Seitenwechsel in eine andere Gruppe).
   const enthaeltAktiv = (e: NavEntry): boolean => !!e.children?.some((c) => isSelected(c.path) || enthaeltAktiv(c));
   const item = (e: NavEntry, einruecken = false) => (
-    <SideNavigationItem key={e.path ?? e.text} text={mitHinweis(e)} icon={e.icon} selected={!e.children && isSelected(e.path)}
+    <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} {...tag(e)} selected={!e.children && isSelected(e.path)}
                         style={einruecken ? eingerueckt : undefined}
                         expanded={e.children ? enthaeltAktiv(e) : undefined} unselectable={!!e.children}
                         onClick={() => !e.children && e.path && gehe(e.path)}>
@@ -121,7 +122,7 @@ export function Shell() {
           />
         }
         sideContent={
-          <div className="portal-side">
+          <div className={`portal-side${collapsed ? ' portal-side--eingeklappt' : ''}`}>
           <SideNavigation collapsed={collapsed} className="portal-side__nav">
             {nav.map((e) =>
               e.children ? (
