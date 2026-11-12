@@ -327,7 +327,7 @@ async function routes(app: FastifyInstance) {
    */
   app.post('/rechnungen/entfernen', { preHandler: requireAuth(P.rechnungEntfernen) }, async (req) => {
     const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), pruefen: z.boolean().default(false), grund: z.string().max(500).default('') }).parse(req.body);
-    const lesen = async (db: Tx | typeof sql) => {
+    const lesen = async (db: Tx) => {
       const fakturen = (await db`select distinct faktura from transport.auftraege where auftragsnr = any(${b.auftraege}) and faktura is not null`).map((r) => r.faktura as string);
       const betroffen = fakturen.length
         ? await db`select auftragsnr, faktura from transport.auftraege where faktura = any(${fakturen}) order by faktura, auftragsnr`
@@ -337,7 +337,7 @@ async function routes(app: FastifyInstance) {
         zusaetzlich: betroffen.map((r) => r.auftragsnr as string).filter((n) => !b.auftraege.includes(n)),
       };
     };
-    if (b.pruefen) return lesen(sql);
+    if (b.pruefen) return lesen(sql as unknown as Tx);
     if (!b.grund.trim()) throw new BusinessError('Bitte einen Grund angeben – er steht im Änderungsbeleg.');
     return change(req, async (tx) => {
       const r = await lesen(tx);
