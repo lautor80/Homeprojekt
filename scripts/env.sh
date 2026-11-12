@@ -58,8 +58,9 @@ ordner_anlegen() {
   besitz "$s"
   if hat_profil paperless; then
     local p=${PAPERLESS_PFAD:-./data/paperless}
-    mkdir -p "$p"/{db,redis,data,media,export,consume}
-    besitz "$p/data"; besitz "$p/media"; besitz "$p/export"; besitz "$p/consume"
+    local a=${PAPERLESS_ABLAGE_PFAD:-$p}
+    mkdir -p "$p"/{db,redis,data} "$a"/{media,export,consume}
+    besitz "$p/data"; besitz "$a/media"; besitz "$a/export"; besitz "$a/consume"
   fi
   if hat_profil n8n; then
     local n=${N8N_PFAD:-./data/n8n}

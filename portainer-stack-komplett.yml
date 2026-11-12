@@ -16,7 +16,8 @@
 #
 # Zusätzlich zu setzen: PAPERLESS_SECRET_KEY, PAPERLESS_DB_PASSWORD, PAPERLESS_ADMIN_PASSWORD, N8N_ENCRYPTION_KEY
 #   (je ein langer Zufallswert). Optional: PAPERLESS_PORT (8000), PAPERLESS_URL (http://<server>:8000),
-#   N8N_PORT (5678), N8N_HOST (<server-ip>), N8N_WEBHOOK_URL (http://<server-ip>:5678/).
+#   N8N_PORT (5678), N8N_HOST (<server-ip>), N8N_WEBHOOK_URL (http://<server-ip>:5678/),
+#   PAPERLESS_CONSUMER_POLLING (Sekunden; z. B. 30 unter Docker Desktop für Windows, siehe docs/windows-docker.md).
 # Im Portal (Stammdaten → Anbindungen): Paperless-URL http://paperless:8000, Mail-Webhook http://n8n:5678/webhook/tco-mailversand
 # ---------------------------------------------------------------------------
 
@@ -144,6 +145,7 @@ services:
       PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD}
       PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:?Bitte PAPERLESS_SECRET_KEY setzen}
       PAPERLESS_URL: ${PAPERLESS_URL:-}
+      PAPERLESS_CONSUMER_POLLING: ${PAPERLESS_CONSUMER_POLLING:-0}
       PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-admin}
       PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:?Bitte PAPERLESS_ADMIN_PASSWORD setzen}
       PAPERLESS_TIME_ZONE: Europe/Berlin
