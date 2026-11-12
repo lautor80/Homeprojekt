@@ -220,13 +220,13 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
       benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true,
     });
   }
-  // Abo-Reservierung (#11): Stunden, für die in der laufenden Abo-Saison eine Bestätigung aussteht bzw. ein Angebot läuft oder angenommen ist
+  // Abo-Reservierung (#11): Stunden, für die in der laufenden Abo-Saison eine Bestätigung aussteht, eine Bewerbung wartet bzw. ein Angebot läuft oder angenommen ist
   // (noch nicht freigegeben), sind für Einzelbuchungen gesperrt – ab heute bzw. Saisonbeginn bis Saisonende. Bestehende Buchungen bleiben.
   const heute = jetzt().datum;
   const wuensche = await db`
     select w.platz_id, w.wochentag, w.von, w.bis, w.name, s.von::text as s_von, s.bis::text as s_bis
       from tco.abo_wunsch w join tco.abo_saison s on s.id = w.saison_id and s.aktiv
-     where w.status in ('OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN') and w.platz_id = any(${plaetze.map((p) => p.id)}::int[])
+     where w.status in ('OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN', 'WARTET') and w.platz_id = any(${plaetze.map((p) => p.id)}::int[])
        and s.bis >= ${von}::date and s.von <= ${bis}::date`;
   for (const w of wuensche) {
     const p = plaetze.find((x) => x.id === w.platz_id)!;
@@ -619,7 +619,8 @@ export async function aboVorschau(db: Db, e: AboEingabe) {
   const termine: AboTermin[] = daten.map((d) => {
     const f = regelnPruefen({ platz, datum: d, von, bis }, true);
     if (f) return { datum: d, konflikt: f };
-    const b = bel.find((x) => x.datum === d && x.von < bis && x.bis > von);
+    // Abo-Reservierungen (Bewerbungen, Angebote) stehen der Anlage eines Abos nicht im Weg – sie sperren nur Einzelbuchungen
+    const b = bel.find((x) => !x.abo && x.datum === d && x.von < bis && x.bis > von);
     return { datum: d, konflikt: b ? `belegt ${hhmm(b.von)}–${hhmm(b.bis)} Uhr (${b.fest ? b.fest.bezeichnung : b.reserviert ? 'gerade in Auswahl' : b.status === '3' ? 'Abo' : 'Einzel'}${b.fest ? '' : `, ${b.kunde || 'ohne Namen'}`})` : null };
   });
   const preis = preisVon(platz, e.ab, von, bis, '3', await preiseLesen(db));

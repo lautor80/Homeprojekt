@@ -1115,6 +1115,9 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   r = await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: wt, von: '11:00', bis: '12:00' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /Unterjährig ab .* Einheit(en)? zum Einzelpreis = /);
+  // schon die wartende Bewerbung reserviert die Stunde: keine Einzelbuchung mehr, Anzeige „reserviert“
+  const naechster = [1, 2, 3, 4, 5, 6, 7].map((n) => tag(n)).find((d) => ((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) + 1 === wt)!;
+  assert.match((await anna('POST', `${P}/pruefen`, { platz_id: halleId, datum: naechster, von: '11:00', bis: '12:00' })).body.fehler, /für ein Abo reserviert/, 'Warteliste reserviert');
   assert.equal((await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: wt, von: '10:00', bis: '11:00' })).status, 200);
   r = await admin('POST', `${P}/admin/abosaison/lauf`, { mail: false });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -1132,6 +1135,10 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   // eine bestehende Einzelbuchung in der Folgewoche: das Abo beginnt erst in der Woche danach
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, quelle)
             values ('9770000009', ${termine[0]}, '11:00', '12:00', 'CARLA EINZEL', '1', 'Einzel', 20, '2026-01-01', '', 'Halle', 'PORTAL')`;
+  // der Restwert rechnet ab der Woche nach der Einzelbuchung
+  const de = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+  r = await admin('GET', `${P}/admin/abosaison`);
+  assert.ok(String(r.body.wuensche.find((x: any) => x.id === frei).kosten).startsWith(`ab ${de(termine[1])}: `), JSON.stringify(r.body.wuensche.find((x: any) => x.id === frei)));
   r = await admin('POST', `${P}/admin/abowunsch/freigeben`, { id: frei });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /Beginn erst am .* weil bis .* noch Einzelbuchungen bestehen/);
