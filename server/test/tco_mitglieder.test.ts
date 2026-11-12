@@ -281,3 +281,82 @@ test('Mitglieder: Neuanlage, Aufnahmeantrag, Unterlagen, Ablage, Kommunikation',
   assert.match(r.body.text, /^Deine Mitgliederinformation\n\nHallo Hans,/);
   assert.match(r.body.text, /\/share\/s\d+/);
 });
+
+test('Bankverbindung: IBAN prüfen, BIC/Kreditinstitut ermitteln, neues SEPA-Mandat', async () => {
+  const { blzDateiLesen } = await import('../../modules/tco/server/mitglieder/bank.js');
+  // Bankleitzahlendatei der Bundesbank: feste Spalten (168 Zeichen) und CSV
+  const zeile = (blz: string, merkmal: string, name: string, ort: string, bic: string, loeschung = '0') =>
+    `${blz}${merkmal}${name.padEnd(58)}50667${ort.padEnd(35)}${name.slice(0, 27).padEnd(27)}12345${bic.padEnd(11)}13000001U${loeschung}00000000`;
+  const txt = [
+    zeile('37040044', '1', 'Commerzbank', 'Köln', 'COBADEFFXXX'),
+    zeile('37040044', '2', 'Commerzbank Filiale', 'Brühl', ''),
+    zeile('59190000', '1', 'Bank 1 Saar', 'Saarbrücken', 'SABADE5SXXX'),
+    zeile('11111111', '1', 'Gelöschte Bank', 'Nirgendwo', 'GELODEFFXXX', '1'),
+  ].join('\r\n');
+  assert.equal(txt.split('\r\n')[0].length, 168);
+  const e = blzDateiLesen(Buffer.from(txt, 'latin1'));
+  assert.deepEqual(e.map((x: any) => [x.blz, x.bic, x.name, x.ort]), [['37040044', 'COBADEFFXXX', 'Commerzbank', 'Köln'], ['59190000', 'SABADE5SXXX', 'Bank 1 Saar', 'Saarbrücken']]);
+  const csvDatei = 'Bankleitzahl;Merkmal;Bezeichnung;PLZ;Ort;Kurzbezeichnung;PAN;BIC;Prüfzifferberechnungsmethode;Datensatznummer;Änderungskennzeichen;Bankleitzahllöschung;Nachfolge-Bankleitzahl\r\n'
+    + '"37040044";"1";"Commerzbank";"50447";"Köln";"Commerzbank Köln";"24100";"COBADEFFXXX";"13";"000001";"U";"0";"00000000"\r\n';
+  assert.deepEqual(blzDateiLesen(Buffer.from(csvDatei, 'utf8')).map((x: any) => [x.blz, x.bic, x.ort]), [['37040044', 'COBADEFFXXX', 'Köln']]);
+  assert.throws(() => blzDateiLesen(Buffer.from('irgendein Text')), /keine Bankleitzahlen/);
+
+  // IBAN verproben: ungültig mit Grund, gültig ohne Verzeichnis
+  const P = `${M}/bank/pruefen`;
+  let r = await call('POST', P, { iban: 'DE89 3704 0044 0532 0130 01' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.gueltig, r.body.bic], [false, null]);
+  assert.match(r.body.text, /Prüfziffer passt nicht/);
+  r = await call('POST', P, { iban: 'DE8937040044053201300' });
+  assert.match(r.body.text, /22 Stellen, eingegeben sind 21/);
+  r = await call('POST', P, { iban: 'de02 1203 0000 0000 2020 51' });
+  assert.deepEqual([r.body.gueltig, r.body.iban, r.body.anzeige, r.body.blz, r.body.bic, r.body.verzeichnis], [true, 'DE02120300000000202051', 'DE02 1203 0000 0000 2020 51', '12030000', null, 0]);
+  assert.match(r.body.text, /Verzeichnis ist noch nicht geladen/);
+
+  // ersatzweise aus dem eigenen Bestand: gleiche Bankleitzahl bei einer anderen Person
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, mitglnrn, zahlungsart, iban1, bic1, bank1)
+            values ('0000000901', 'Berta', 'Bestand', '2020-01-01', '901', 'L', 'DE02370400440000000001', 'COBADEFFXXX', 'Commerzbank Köln')`;
+  r = await call('POST', P, { iban: 'DE89370400440532013000' });
+  assert.deepEqual([r.body.bic, r.body.quelle], ['COBADEFFXXX', 'BESTAND'], JSON.stringify(r.body));
+  assert.ok(r.body.bank);
+
+  // Verzeichnis laden: geht vor
+  r = await call('POST', `${M}/bank/blz`, { datei: Buffer.from(txt, 'latin1').toString('base64') });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /2 Kreditinstitute, 2 mit BIC/);
+  assert.equal(r.body.anzahl, 2);
+  r = await call('POST', P, { iban: 'DE89370400440532013000' });
+  assert.deepEqual([r.body.bic, r.body.bank, r.body.quelle], ['COBADEFFXXX', 'Commerzbank, Köln', 'VERZEICHNIS']);
+  // ausländische IBAN: gültig, ohne Ermittlung
+  r = await call('POST', P, { iban: 'FR14 2004 1010 0505 0001 3M02 606' });
+  assert.deepEqual([r.body.gueltig, r.body.bic], [true, null]);
+  assert.equal((await call('POST', `${M}/bank/blz`, { datei: Buffer.from('x').toString('base64') })).status, 400);
+
+  // Neues SEPA-Mandat: Lastschrift mit IBAN, kein aktives Mandat
+  r = await call('POST', `${M}/m/0000000901/sepa`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.mandat, '90190111');
+  assert.match(r.body.text, /SEPA-Mandat 90190111 für Berta Bestand/);
+  let [s] = await sql`select mandatsnr, mandkey, status, gueltigbis, lastschriftart from tco.sepa where adrnr = '0000000901'`;
+  assert.deepEqual([s.mandatsnr, s.mandkey, s.status, s.gueltigbis, s.lastschriftart], ['90190111', '9019011', 'X', null, 'Basis']);
+  r = await call('GET', `${M}/m/0000000901`);
+  assert.equal(r.body.sepa[0].aktiv, true);
+  assert.equal(r.body.bank.mandatsref, '901901');
+  // ein aktives Mandat wird nicht ersetzt
+  r = await call('POST', `${M}/m/0000000901/sepa`, {});
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits ein aktives SEPA-Mandat \(90190111\)/);
+  // ohne Lastschrift bzw. ohne IBAN kein Mandat
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, mitglnrn, zahlungsart) values ('0000000902', 'Udo', 'Überweiser', '2020-01-01', '902', 'U')`;
+  r = await call('POST', `${M}/m/0000000902/sepa`, {});
+  assert.match(r.body.message, /nur bei Zahlungsart Lastschrift/);
+  await sql`update tco.mitglieder set zahlungsart = 'L' where adrnr = '0000000902'`;
+  r = await call('POST', `${M}/m/0000000902/sepa`, {});
+  assert.match(r.body.message, /fehlt die IBAN/);
+  // abweichender Zahler: das Mandat entsteht beim Zahler – der hat schon eines
+  await sql`update tco.mitglieder set adrnrkih = '0000000901' where adrnr = '0000000902'`;
+  r = await call('POST', `${M}/m/0000000902/sepa`, {});
+  assert.match(r.body.message, /Für Berta Bestand besteht bereits ein aktives SEPA-Mandat/);
+  await sql`delete from tco.sepa where adrnr = '0000000901'`;
+  await sql`delete from tco.mitglieder where adrnr in ('0000000901', '0000000902')`;
+});

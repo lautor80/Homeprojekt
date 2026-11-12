@@ -159,7 +159,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
               {d.bank.zahler ? <Link onClick={() => onOpen(d.bank.zahler!.adrnr)}>{d.bank.zahler.name}{d.bank.zahler.austritt ? ` (Austritt ${dat(d.bank.zahler.austritt)})` : ''}</Link> : null}
             </Feld>
           </Raster>
-          <SepaTabelle d={d} edit={edit} onAktion={aktion} />
+          <SepaTabelle d={d} edit={edit} bankEdit={edit && can('tco.bankdaten:edit')} onAktion={aktion} />
         </Tab>
         <Tab data-key="vt" text={`Verträge (${d.vertraegeFamilie.filter((v) => v.laeuft).length})`} selected={tab === 'vt'}>
           <Vertraege d={d} aw={aw} edit={edit} onNeu={(a) => { setVtFuer(a); setDlg('vertrag'); }} onOpen={onOpen} onAktion={aktion} />
@@ -294,7 +294,9 @@ function SchnupperAngaben({ s }: { s: NonNullable<Detail['schnupper']> }) {
 }
 
 // ---------------------------------------------------------------- SEPA
-function SepaTabelle({ d, edit, onAktion }: { d: Detail; edit: boolean; onAktion: (fn: () => Promise<{ text?: string } | void>) => void }) {
+function SepaTabelle({ d, edit, bankEdit, onAktion }: { d: Detail; edit: boolean; bankEdit: boolean; onAktion: (fn: () => Promise<{ text?: string } | void>) => void }) {
+  // neues Mandat: nur bei Lastschrift und solange kein aktives Mandat besteht
+  const neuMoeglich = bankEdit && d.bank.zahlungsart === 'L' && !d.sepa.some((s) => s.aktiv);
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Kontoinhaber', accessor: 'inhaber', minWidth: 140, Cell: ({ row, value }: Cell) => <Text>{value}{row.original.eigen ? '' : ' (Zahler)'}</Text> },
     { Header: 'Mandatsnummer', accessor: 'mandatsnr', minWidth: 120 },
@@ -318,7 +320,17 @@ function SepaTabelle({ d, edit, onAktion }: { d: Detail; edit: boolean; onAktion
   ];
   return (
     <>
-      <Toolbar design="Transparent"><Title level="H5">SEPA-Lastschriftmandate ({d.sepa.length})</Title><ToolbarSpacer /></Toolbar>
+      <Toolbar design="Transparent">
+        <Title level="H5">SEPA-Lastschriftmandate ({d.sepa.length})</Title>
+        <ToolbarSpacer />
+        {neuMoeglich && (
+          <Button icon="add" tooltip="SEPA-Mandat für den Zahler anlegen; das Formular zur Unterschrift gibt es über Unterlage „SEPA-Lastschriftmandat“"
+                  onClick={() => onAktion(() => api.post<{ text: string }>(`${MG}/m/${d.mitglied.adrnr}/sepa`, {}))}>Neues SEPA-Mandat</Button>
+        )}
+      </Toolbar>
+      {bankEdit && d.bank.zahlungsart === 'L' && !d.bank.iban && (
+        <MessageStrip hideCloseButton design="Critical" style={{ marginBottom: '0.5rem' }}>Für ein SEPA-Mandat fehlt die IBAN – bitte zuerst die Bankverbindung erfassen.</MessageStrip>
+      )}
       <AnalyticalTable columns={columns} data={d.sepa} visibleRows={Math.max(d.sepa.length, 1)} minRows={1} noDataText="Kein SEPA-Mandat hinterlegt" />
       {d.sepa.some((s) => !s.aktiv && s.austritt) && (
         <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>

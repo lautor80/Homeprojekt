@@ -5,7 +5,7 @@ import {
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
-import { eur } from '../util';
+import { dateiLesen, eur } from '../util';
 import { MG, type Auswahl, type Detail } from './typen';
 
 export function Dlg({ titel, children, onClose, fuss, breite = 'min(760px, 95vw)' }: { titel: string; children: ReactNode; onClose: () => void; fuss: ReactNode; breite?: string }) {
@@ -87,6 +87,55 @@ export function KopfDialog({ d, onClose }: { d: Detail; onClose: (ok: boolean) =
 }
 
 // ---------------------------------------------------------------- Bank
+interface IbanErgebnis { gueltig: boolean; iban: string; anzeige: string; blz: string | null; bic: string | null; bank: string | null; quelle: string | null; text: string; verzeichnis: number }
+
+/**
+ * „IBAN prüfen“: verprobt die IBAN auf dem Server (Länge, Prüfziffer) und übernimmt BIC und Kreditinstitut,
+ * soweit sie sich ermitteln lassen. Fehlt das Bankleitzahlen-Verzeichnis, lässt es sich hier laden.
+ */
+export function IbanPruefung({ iban, onErgebnis, ladenErlaubt = true }: { iban: string; onErgebnis: (r: { iban: string; bic: string | null; bank: string | null }) => void; ladenErlaubt?: boolean }) {
+  const [r, setR] = useState<IbanErgebnis | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [geladen, setGeladen] = useState<string | null>(null);
+  useEffect(() => { setR(null); setFehler(null); }, [iban]);
+  async function pruefen() {
+    setBusy(true); setFehler(null);
+    try {
+      const e = await api.post<IbanErgebnis>(`${MG}/bank/pruefen`, { iban });
+      setR(e);
+      if (e.gueltig) onErgebnis({ iban: e.anzeige, bic: e.bic, bank: e.bank });
+    } catch (e) { setFehler((e as Error).message); } finally { setBusy(false); }
+  }
+  async function laden(f: File | undefined) {
+    if (!f) return;
+    setBusy(true); setFehler(null);
+    try {
+      const d = await api.post<{ text: string }>(`${MG}/bank/blz`, { datei: (await dateiLesen(f)).replace(/^data:[^,]*,/, '') });
+      setGeladen(d.text);
+      if (iban.trim()) await pruefen();
+    } catch (e) { setFehler((e as Error).message); } finally { setBusy(false); }
+  }
+  const ohneBank = r?.gueltig && !r.bic && !!r.blz;
+  return (
+    <div style={{ gridColumn: '1 / -1' }}>
+      <Button icon="validate" disabled={busy || !iban.trim() || iban.includes('•')} onClick={pruefen}>IBAN prüfen</Button>
+      {r && <MessageStrip design={!r.gueltig ? 'Negative' : r.bic ? 'Positive' : 'Critical'} hideCloseButton style={{ marginTop: '0.5rem' }}>{r.text}</MessageStrip>}
+      {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginTop: '0.5rem' }}>{fehler}</MessageStrip>}
+      {geladen && <MessageStrip design="Positive" hideCloseButton style={{ marginTop: '0.5rem' }}>{geladen}</MessageStrip>}
+      {ladenErlaubt && (ohneBank || (r && r.verzeichnis === 0)) && (
+        <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+          Für BIC und Banknamen die Bankleitzahlendatei der Deutschen Bundesbank (bundesbank.de → „Bankleitzahlen“ → Download, Text oder CSV) einmalig laden:{' '}
+          <label style={{ color: 'var(--sapLinkColor)', cursor: 'pointer' }}>
+            Datei auswählen
+            <input type="file" hidden accept=".txt,.csv,text/plain,text/csv" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; laden(f); }} />
+          </label>
+        </Text>
+      )}
+    </div>
+  );
+}
+
 export function BankDialog({ d, aw, onClose }: { d: Detail; aw: Auswahl; onClose: (ok: boolean) => void }) {
   const b = d.bank;
   const [v, setV] = useState({ zahlungsart: b.zahlungsart || 'L', zahlungsweise: b.zahlungsweise, iban: b.iban, bic: b.bic, bank: b.bank, abwkontoinh: b.abwkontoinh, adrnrkih: b.adrnrkih });
@@ -103,6 +152,7 @@ export function BankDialog({ d, aw, onClose }: { d: Detail; aw: Auswahl; onClose
         <TextField label="IBAN" required={v.zahlungsart === 'L'} value={v.iban} onChange={f('iban')} />
         <TextField label="BIC" value={v.bic} onChange={f('bic')} />
         <TextField label="Kreditinstitut" value={v.bank} onChange={f('bank')} wide />
+        <IbanPruefung iban={v.iban} onErgebnis={(r) => setV((o) => ({ ...o, iban: r.iban, bic: r.bic ?? o.bic, bank: r.bank ?? o.bank }))} />
         <Auswahlfeld label="Abweichender Zahler" wide value={v.adrnrkih}
                      optionen={[['', '– kein abweichender Zahler –'], ...aw.zahler.map((z) => [z.adrnr, z.text] as [string, string]),
                        ...(b.zahler && !aw.zahler.some((z) => z.adrnr === b.zahler!.adrnr) ? [[b.zahler.adrnr, `${b.zahler.name} (ausgetreten)`] as [string, string]] : [])]}
