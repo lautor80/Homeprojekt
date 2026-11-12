@@ -515,10 +515,11 @@ export async function platzRoutes(app: FastifyInstance) {
   const saison = z.object({
     name: z.string().trim().min(1, 'Bitte einen Namen für die Saison angeben.').max(60), von: datum, bis: datum, bestaetigen_bis: datum, nachruecken_ab: datum,
     annahme_tage: z.coerce.number().int().min(1).max(60).default(7),
+    mail_pause_bis: datum.nullish().or(z.literal('').transform(() => null)),
   });
   app.get('/platz/admin/abosaison', admin, async () => verwaltungLesen(DB));
   app.post('/platz/admin/abosaison', admin, async (req) => {
-    const e = saison.extend({ vorjahr_von: datum, vorjahr_bis: datum }).parse(req.body);
+    const e = saison.extend({ vorjahr_von: datum.nullish(), vorjahr_bis: datum.nullish(), mail: z.boolean().default(false) }).parse(req.body);
     return { text: await change(req, (tx) => saisonEroeffnen(tx, e), { action: 'ABO_SAISON', reason: e.name }) };
   });
   app.put('/platz/admin/abosaison/:id', admin, async (req) => {
@@ -528,8 +529,9 @@ export async function platzRoutes(app: FastifyInstance) {
   });
   /** fällige Schritte sofort ausführen (läuft sonst stündlich von selbst) */
   app.post('/platz/admin/abosaison/lauf', admin, async (req) => {
-    const r = await change(req, (tx) => aboLauf(tx), { action: 'ABO_LAUF' });
-    return { ...r, text: `${r.erinnert} erinnert, ${r.verfallen} verfallen, ${r.angeboten} angeboten.` };
+    const o = z.object({ mail: z.boolean().default(false) }).parse(req.body ?? {});
+    const r = await change(req, (tx) => aboLauf(tx, undefined, { mail: o.mail, manuell: true }), { action: 'ABO_LAUF' });
+    return { ...r, text: `${r.erinnert} erinnert, ${r.verfallen} verfallen, ${r.angeboten} angeboten${o.mail ? '' : ' – ohne E-Mail'}.` };
   });
   app.post('/platz/admin/abowunsch/freigeben', admin, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.body);

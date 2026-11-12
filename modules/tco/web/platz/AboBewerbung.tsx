@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BusyIndicator, Button, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import type { ReactNode } from 'react';
+import '../sport/spielerdaten.css';
 import { api } from '@core/api';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
@@ -15,11 +17,11 @@ const PB = `${TCO}/platz`;
 const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
-interface Saison { id: number; name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number }
+interface Saison { id: number; name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number; mail_pause_bis: string | null }
 interface Feld { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null }
-interface Mein { id: number; art: string; platz: string; platz_id: number; wochentag: number; von: string; bis: string; status: string; text: string; wartende: number; position: number | null; annehmen_bis: string | null }
-interface Raster { saison: Saison | null; plaetze: { id: number; name: string }[]; felder: Feld[]; meine: Mein[]; maxBewerbungen: number }
-interface VWunsch { id: number; art: string; name: string; mitglied: boolean; platz: string; text: string; status: string; angelegt: string; mail_fehler: string | null; wartende: number; position: number | null }
+interface Mein { id: number; art: string; platz: string; platz_id: number; wochentag: number; von: string; bis: string; status: string; text: string; wartende: number; position: number | null; annehmen_bis: string | null; kosten: string | null }
+interface Raster { saison: Saison | null; unterjaehrig: boolean; plaetze: { id: number; name: string }[]; felder: Feld[]; meine: Mein[]; maxBewerbungen: number }
+interface VWunsch { id: number; art: string; name: string; mitglied: boolean; platz: string; text: string; status: string; angelegt: string; mail_fehler: string | null; wartende: number; position: number | null; wochentag: number; von: string; kosten: string | null }
 interface Verwaltung { saison: Saison | null; wuensche: VWunsch[] }
 
 const FELD: Record<string, { titel: string; klasse: string }> = {
@@ -31,6 +33,14 @@ const STATUS: Record<string, string> = {
   OFFEN: 'Bestätigung offen', BESTAETIGT: 'bestätigt – wartet auf Freigabe', ABGEGEBEN: 'abgegeben', VERFALLEN: 'verfallen', WARTET: 'auf der Warteliste',
   ANGEBOTEN: 'angeboten', ANGENOMMEN: 'angenommen – wartet auf Freigabe', ABGELEHNT: 'abgelehnt', ZURUECKGEZOGEN: 'zurückgezogen', FREIGEGEBEN: 'freigegeben',
 };
+
+function Tabelle({ kopf, children }: { kopf: string[]; children: ReactNode }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="portal-sd__tabelle"><thead><tr>{kopf.map((k, i) => <th key={i}>{k}</th>)}</tr></thead><tbody>{children}</tbody></table>
+    </div>
+  );
+}
 
 export function AboBewerbung() {
   const can = useCan();
@@ -86,6 +96,7 @@ export function AboBewerbung() {
           <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
             Saison {s.name} ({dat(s.von)} bis {dat(s.bis)}): Bisherige Abonnenten bestätigen bis {dat(s.bestaetigen_bis)}. Ab {dat(s.nachruecken_ab)} werden freie Stunden der Warteliste angeboten –
             Mitglieder zuerst, sonst nach Eingang. Eine Bewerbung bucht nichts; das Abo gilt erst nach der Freigabe durch den Kassenwart.
+            {r.unterjaehrig ? ` Die Saison läuft bereits: Freie Stunden können weiterhin als Abo beworben werden – berechnet werden die Einheiten bis ${dat(s.bis)} zum Einzelpreis der jeweiligen Stunde.` : ''}
           </MessageStrip>
           {r.meine.length > 0 && (
             <Section title="Meine Abos und Bewerbungen" count={r.meine.length} flush>
@@ -99,6 +110,7 @@ export function AboBewerbung() {
                         {m.position != null && <span>Position {m.position} von {m.wartende}</span>}
                         {m.art === 'BESTAETIGUNG' && m.wartende > 0 && <span>{m.wartende} Interessent{m.wartende === 1 ? '' : 'en'} auf der Warteliste</span>}
                         {m.annehmen_bis && <span>annehmen bis {dat(m.annehmen_bis)}</span>}
+                        {m.kosten && <span>{m.kosten}</span>}
                       </div>
                     </div>
                     {zeigeAktionen(m)}
@@ -139,7 +151,7 @@ export function AboBewerbung() {
             {wahl && (
               <div className="portal-abo__detail">
                 <b>{WT[wahl.wochentag]} {hm(wahl.von)}–{hm(bis ?? wahl.bis)} Uhr</b>
-                {mein ? (
+                {wahl.status === 'freigegeben' && !mein ? <Text>Das ist Ihr laufendes Abo.</Text> : mein ? (
                   <>
                     <Text>{mein.text}: {STATUS[mein.status] ?? mein.status}{mein.position != null ? ` – Position ${mein.position} von ${mein.wartende}` : ''}.</Text>
                     {zeigeAktionen(mein)}
@@ -173,28 +185,61 @@ export function AboBewerbung() {
   );
 }
 
-/** Kassenwart: Saison eröffnen, Fristen einstellen, Übersicht mit Freigabe */
+/**
+ * Kassenwart: Saison eröffnen (immer aktuelles Jahr / Folgejahr), Fristen und E-Mail-Pause einstellen, Übersicht als Tabellen:
+ * Abos des Vorjahres (Bestätigung) und Warteliste in ihrer Reihenfolge – jeweils mit Freigabe.
+ */
 function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (fn: () => Promise<{ text?: string }>) => Promise<void> }) {
   const j = new Date().getFullYear();
   const s = v.saison;
-  const [f, setF] = useState(() => (s ? { name: s.name, von: s.von, bis: s.bis, bestaetigen_bis: s.bestaetigen_bis, nachruecken_ab: s.nachruecken_ab, annahme_tage: String(s.annahme_tage) }
-    : { name: `${j}/${String(j + 1).slice(2)}`, von: `${j}-09-15`, bis: `${j + 1}-04-30`, bestaetigen_bis: `${j}-07-30`, nachruecken_ab: `${j}-08-15`, annahme_tage: '7' }));
+  const NEU = { name: `${j}/${j + 1}`, von: `${j}-09-15`, bis: `${j + 1}-04-30`, bestaetigen_bis: `${j}-07-30`, nachruecken_ab: `${j}-08-15`, annahme_tage: '7', mail_pause_bis: '' };
   const [neu, setNeu] = useState(!s);
+  const [f, setF] = useState(() => (s ? { name: s.name, von: s.von, bis: s.bis, bestaetigen_bis: s.bestaetigen_bis, nachruecken_ab: s.nachruecken_ab, annahme_tage: String(s.annahme_tage), mail_pause_bis: s.mail_pause_bis ?? '' } : NEU));
   const [vj, setVj] = useState({ von: `${j - 1}-09-15`, bis: `${j}-04-30` });
-  const feld = (k: keyof typeof f, label: string, breite = '9.5rem') => (
+  // vor jedem Schritt, der E-Mails auslöst: nachfragen
+  const [frage, setFrage] = useState<null | 'eroeffnen' | 'lauf'>(null);
+  const feld = (k: keyof typeof f, label: string, breite = '9.5rem', fest = false) => (
     <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
       <Label>{label}</Label>
-      <Input type={k === 'name' ? 'Text' : k === 'annahme_tage' ? 'Number' : 'Text'} placeholder={k === 'name' || k === 'annahme_tage' ? undefined : 'JJJJ-MM-TT'} value={f[k]} style={{ width: breite }}
+      <Input readonly={fest} placeholder={k === 'name' || k === 'annahme_tage' ? undefined : 'JJJJ-MM-TT'} value={f[k]} style={{ width: breite }}
              onInput={(e) => setF({ ...f, [k]: (e.target as unknown as { value: string }).value })} />
     </span>
   );
-  const daten = { ...f, annahme_tage: Number(f.annahme_tage) || 7 };
-  const offen = v.wuensche.filter((w) => !['ZURUECKGEZOGEN', 'ABGELEHNT', 'VERFALLEN', 'ABGEGEBEN'].includes(w.status));
+  const daten = { ...f, annahme_tage: Number(f.annahme_tage) || 7, mail_pause_bis: f.mail_pause_bis || null };
+  const ausfuehren = (mail: boolean) => {
+    const was = frage;
+    setFrage(null);
+    if (was === 'eroeffnen') return tun(async () => { const x = await api.post<{ text: string }>(`${PB}/admin/abosaison`, { ...daten, vorjahr_von: vj.von, vorjahr_bis: vj.bis, mail }); setNeu(false); return x; });
+    return tun(() => api.post<{ text?: string }>(`${PB}/admin/abosaison/lauf`, { mail }));
+  };
+  const lebt = (w: VWunsch) => !['ZURUECKGEZOGEN', 'ABGELEHNT', 'VERFALLEN', 'ABGEGEBEN'].includes(w.status);
+  const zeit = (a: VWunsch, b: VWunsch) => a.platz.localeCompare(b.platz) || a.wochentag - b.wochentag || a.von.localeCompare(b.von) || (a.position ?? 0) - (b.position ?? 0);
+  const abos = v.wuensche.filter((w) => w.art === 'BESTAETIGUNG' && lebt(w)).sort(zeit);
+  const warte = v.wuensche.filter((w) => w.art === 'BEWERBUNG' && lebt(w)).sort(zeit);
+  const zeile = (w: VWunsch, warteliste: boolean) => (
+    <tr key={w.id}>
+      <td>{w.text}</td><td>{w.platz}</td>
+      {warteliste && <td>{w.position != null ? `${w.position} von ${w.wartende}` : '–'}</td>}
+      <td>{w.name}</td><td>{w.mitglied ? 'Mitglied' : 'kein Mitglied'}</td>
+      <td><ObjectStatus state={['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) ? 'Critical' : w.status === 'FREIGEGEBEN' ? 'Positive' : 'None'}>{STATUS[w.status] ?? w.status}</ObjectStatus></td>
+      <td>{warteliste ? dat(w.angelegt) : w.wartende ? `${w.wartende} wartend` : '–'}</td>
+      <td>{[w.kosten, w.mail_fehler].filter(Boolean).join(' · ') || '–'}</td>
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) && <Button design="Emphasized" disabled={busy} onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/freigeben`, { id: w.id }))}>Freigeben</Button>}
+        {w.status !== 'FREIGEGEBEN' && (
+          <Button design="Transparent" disabled={busy} tooltip={warteliste ? 'Bewerbung ablehnen: Sie verlässt die Warteliste, die Nächsten rücken auf. Es wird nichts gebucht oder storniert.'
+            : 'Abo für diese Saison nicht verlängern: Die Stunde wird frei und geht an die Warteliste. Es wird nichts storniert.'}
+                  onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/abweisen`, { id: w.id }))}>Ablehnen</Button>
+        )}
+      </td>
+    </tr>
+  );
   return (
-    <Section title="Abo-Saison verwalten (Kassenwart)" flush actions={s && !neu ? <Button design="Transparent" onClick={() => setNeu(true)}>Neue Saison eröffnen</Button> : undefined}>
+    <Section title="Abo-Saison verwalten (Kassenwart)" flush actions={s && !neu ? <Button design="Transparent" onClick={() => { setF(NEU); setNeu(true); }}>Neue Saison eröffnen</Button> : undefined}>
       <div className="portal-abo__detail">
         <span style={{ display: 'inline-flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          {feld('name', 'Saison', '8rem')}{feld('von', 'Beginn')}{feld('bis', 'Ende')}{feld('bestaetigen_bis', 'Bestätigen bis')}{feld('nachruecken_ab', 'Nachrücken ab')}{feld('annahme_tage', 'Annahmefrist (Tage)', '8rem')}
+          {feld('name', 'Saison', '8rem', true)}{feld('von', 'Beginn')}{feld('bis', 'Ende')}{feld('bestaetigen_bis', 'Bestätigen bis')}{feld('nachruecken_ab', 'Nachrücken ab')}{feld('annahme_tage', 'Annahmefrist (Tage)', '8rem')}
+          {feld('mail_pause_bis', 'E-Mail-Pause bis')}
           {neu && (
             <>
               <span style={{ display: 'inline-flex', flexDirection: 'column' }}><Label>Abos des Vorjahres von</Label>
@@ -204,35 +249,37 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
             </>
           )}
           {neu
-            ? <Button design="Emphasized" disabled={busy} onClick={() => tun(async () => { const x = await api.post<{ text: string }>(`${PB}/admin/abosaison`, { ...daten, vorjahr_von: vj.von, vorjahr_bis: vj.bis }); setNeu(false); return x; })}>Saison eröffnen</Button>
+            ? <Button design="Emphasized" disabled={busy} onClick={() => setFrage('eroeffnen')}>Saison eröffnen</Button>
             : <Button disabled={busy} onClick={() => tun(() => api.put<{ text?: string }>(`${PB}/admin/abosaison/${s!.id}`, daten))}>Fristen speichern</Button>}
-          {s && !neu && <Button design="Transparent" disabled={busy} onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abosaison/lauf`, {}))}>Fällige Schritte jetzt ausführen</Button>}
-          {neu && s && <Button design="Transparent" onClick={() => setNeu(false)}>Abbrechen</Button>}
+          {s && !neu && <Button design="Transparent" disabled={busy} onClick={() => setFrage('lauf')}>Fällige Schritte jetzt ausführen</Button>}
+          {neu && s && <Button design="Transparent" onClick={() => { setF({ name: s.name, von: s.von, bis: s.bis, bestaetigen_bis: s.bestaetigen_bis, nachruecken_ab: s.nachruecken_ab, annahme_tage: String(s.annahme_tage), mail_pause_bis: s.mail_pause_bis ?? '' }); setNeu(false); }}>Abbrechen</Button>}
         </span>
-        {neu && <Text className="portal-muted portal-small">Beim Eröffnen werden die Hallenabos des Vorjahres zur Bestätigung vorgemerkt und die Abonnenten per E-Mail angeschrieben. Es wird nichts gebucht.</Text>}
+        {frage && (
+          <MessageStrip design="Critical" hideCloseButton>
+            {frage === 'eroeffnen' ? 'Sollen die bisherigen Abonnenten per E-Mail gebeten werden, ihr Abo zu bestätigen?' : 'Sollen die Betroffenen (Erinnerung, Angebote aus der Warteliste) per E-Mail informiert werden?'}{' '}
+            <Button design="Emphasized" disabled={busy} onClick={() => ausfuehren(true)}>Ja, E-Mails senden</Button>{' '}
+            <Button disabled={busy} onClick={() => ausfuehren(false)}>Ohne E-Mail ausführen</Button>{' '}
+            <Button design="Transparent" onClick={() => setFrage(null)}>Abbrechen</Button>
+          </MessageStrip>
+        )}
+        <Text className="portal-muted portal-small">
+          {neu ? 'Beim Eröffnen werden die Hallenabos des Vorjahres zur Bestätigung vorgemerkt – es wird nichts gebucht. Ist der Nachrück-Termin schon vorbei (laufende Saison), entfällt die Vormerkung; freie Stunden können dann sofort beworben werden. '
+            : ''}
+          E-Mail-Pause: Bis einschließlich dieses Datums ruht der automatische Lauf (keine Erinnerung, kein Verfall, keine Angebote, keine E-Mails). „Ablehnen“ nimmt einen Eintrag aus dem Verfahren – die Stunde wird frei bzw. die Warteliste rückt auf; gebucht oder storniert wird dabei nichts.
+        </Text>
       </div>
-      {s && (offen.length ? (
-        <div className="portal-mz__liste">
-          {offen.map((w) => (
-            <div key={w.id} className="portal-mz__eintrag portal-mz__eintrag--gesperrt">
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="portal-mz__art">{w.name}{w.mitglied ? '' : ' (kein Mitglied)'} · {w.text} · {w.platz}</div>
-                <div className="portal-mz__info">
-                  <ObjectStatus state={['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) ? 'Critical' : w.status === 'FREIGEGEBEN' ? 'Positive' : 'None'}>{STATUS[w.status] ?? w.status}</ObjectStatus>
-                  <span>{w.art === 'BEWERBUNG' ? `Bewerbung vom ${dat(w.angelegt)}` : 'Abo des Vorjahres'}</span>
-                  {w.position != null && <span>Position {w.position} von {w.wartende}</span>}
-                  {w.art === 'BESTAETIGUNG' && w.wartende > 0 && <span>{w.wartende} wartend</span>}
-                  {w.mail_fehler && <ObjectStatus state="Negative">{w.mail_fehler}</ObjectStatus>}
-                </div>
-              </div>
-              <span style={{ display: 'inline-flex', gap: '0.5rem' }}>
-                {['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) && <Button design="Emphasized" disabled={busy} onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/freigeben`, { id: w.id }))}>Freigeben</Button>}
-                {w.status !== 'FREIGEGEBEN' && <Button design="Transparent" disabled={busy} onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/abweisen`, { id: w.id }))}>Ablehnen</Button>}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : <Empty>Noch keine Bestätigungen oder Bewerbungen.</Empty>)}
+      {s && (
+        <>
+          <div className="portal-abo__detail">
+            <b>Abos des Vorjahres ({abos.length})</b>
+            {abos.length ? <Tabelle kopf={['Zeit', 'Platz', 'Abonnent', '', 'Stand', 'Warteliste', 'Hinweis', '']}>{abos.map((w) => zeile(w, false))}</Tabelle> : <Text className="portal-muted">Keine Abos zur Bestätigung vorgemerkt.</Text>}
+          </div>
+          <div className="portal-abo__detail">
+            <b>Warteliste ({warte.length})</b>
+            {warte.length ? <Tabelle kopf={['Zeit', 'Platz', 'Position', 'Interessent', '', 'Stand', 'Beworben am', 'Hinweis', '']}>{warte.map((w) => zeile(w, true))}</Tabelle> : <Text className="portal-muted">Noch keine Bewerbungen.</Text>}
+          </div>
+        </>
+      )}
     </Section>
   );
 }
