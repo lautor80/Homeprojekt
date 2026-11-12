@@ -24,6 +24,8 @@ export interface Verein {
   /** aus der zentralen Anbindung „paperless“ (Administration → Anbindungen), nur lesend */
   paperless_url: string | null;
   paperless_token: string | null;
+  /** Adresse für Freigabelinks (Einstellung der Anbindung „paperless“), nur lesend */
+  paperless_freigabe_url: string | null;
   /** aus der zentralen Anbindung „mail“ (Administration → Anbindungen), nur lesend */
   n8n_mail_url: string | null;
   n8n_mail_key: string | null;
@@ -67,7 +69,7 @@ export async function vereinLesen(db: Db = DB): Promise<Verein> {
   const mail = await mailVerbindung(db);
   const [ep3, stunden, ferien] = await Promise.all([verbindungLesen('tco.ep3', db), verbindungLesen('tco.stunden', db), verbindungLesen('tco.ferien', db)]);
   return {
-    ...(v as unknown as Verein), paperless_url: pl.url, paperless_token: pl.token,
+    ...(v as unknown as Verein), paperless_url: pl.url, paperless_token: pl.token, paperless_freigabe_url: pl.freigabeUrl,
     n8n_mail_url: mail.url || null, n8n_mail_key: mail.auth_art === 'header' ? mail.geheimnis : null, mail_absender: absenderListe(mail),
     n8n_ep3_url: ep3.url || null, n8n_ep3_auth: authHeader(ep3).Authorization ?? null, n8n_ep3_user: ep3.auth_user,
     n8n_stunden_url: stunden.url || null, n8n_stunden_auth: authHeader(stunden).Authorization ?? null, n8n_stunden_user: stunden.auth_user,
@@ -78,7 +80,7 @@ export async function vereinLesen(db: Db = DB): Promise<Verein> {
 export const plAktiv = (v: Verein) => paperlessKonfiguriert({ url: v.paperless_url, token: v.paperless_token });
 
 export function paperless(v: Verein): Paperless {
-  return new Paperless({ url: v.paperless_url, token: v.paperless_token });
+  return new Paperless({ url: v.paperless_url, token: v.paperless_token, freigabeUrl: v.paperless_freigabe_url });
 }
 
 const ASSETS = path.join(APP_ROOT, 'modules', 'tco', 'server', 'assets');

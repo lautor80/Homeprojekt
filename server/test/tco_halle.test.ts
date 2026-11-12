@@ -332,6 +332,18 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   const fassung = mock.docs.get(100)!.versions[0];
   r = await call('GET', `${H}/rechnungen/${rg}/paperless`);
   assert.deepEqual(r.body.versionen.map((x: any) => x.id), [100, fassung]);
+  // Freigabelink: Empfänger sitzen nicht im Heimnetz – mit der Adresse für Freigabelinks statt der LAN-Adresse des Servers
+  assert.match(r.body.link, new RegExp(`^http://127\\.0\\.0\\.1:${port}/share/slug\\d+$`));
+  assert.equal((await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: 'dokumente.example.org' } })).status, 400);
+  r = await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: 'https://dokumente.example.org/' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.einstellungen.freigabe_url, 'https://dokumente.example.org');
+  r = await call('GET', `${H}/rechnungen/${rg}/paperless`);
+  assert.match(r.body.link, /^https:\/\/dokumente\.example\.org\/share\/slug\d+$/);
+  r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
+  assert.match(r.body.text, /Freigabelinks: https:\/\/dokumente\.example\.org\./);
+  r = await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: '' } });
+  assert.deepEqual(r.body.einstellungen, {});
   assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf?root=100`)).status, 200, 'Fassung des Neudrucks darf geöffnet werden');
   assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf`)).status, 404, 'Fassung ohne Stammdokument bleibt gesperrt');
   assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf?root=99999`)).status, 404, 'fremdes Stammdokument');

@@ -1,6 +1,6 @@
 import { sql, type Tx } from '../db.js';
 import { BusinessError } from '../errors.js';
-import { Paperless, paperlessKonfiguriert } from './paperless.js';
+import { nurIntern, Paperless, paperlessKonfiguriert } from './paperless.js';
 
 /**
  * Zentrale Anbindungen (Administration → Anbindungen), Tabelle core.verbindungen.
@@ -36,6 +36,8 @@ export interface VerbindungDef {
   header_name?: string;
   /** Verbindungstest mit den (gespeicherten oder aus dem Formular übernommenen) Werten – wirft oder liefert ok/text */
   pruefen?: (v: Verbindung) => Promise<{ ok: boolean; text: string }>;
+  /** zusätzliche Textfelder der Oberfläche, gespeichert in einstellungen[key] */
+  zusatz?: { key: string; text: string; platzhalter?: string }[];
   /** zusätzliche Einstellungen prüfen und bereinigen (wirft BusinessError); ohne Angabe werden sie unverändert übernommen */
   einstellungen?: (e: Record<string, unknown>) => Record<string, unknown>;
 }
@@ -129,23 +131,36 @@ export const PAPERLESS_DEF: VerbindungDef = {
   beschreibung: 'Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: erst LAN, dann Internet – die erste erreichbare wird genutzt.',
   auth: ['token'],
   felder: { url: 'URL (mehrere durch Komma: erst LAN, dann Internet)', geheimnis: 'API-Token (Paperless → Profil)' },
+  zusatz: [{ key: 'freigabe_url', text: 'Adresse für Freigabelinks (aus dem Internet erreichbar)', platzhalter: 'https://dokumente.example.org' }],
+  einstellungen: (e) => {
+    const f = String(e.freigabe_url ?? '').trim().replace(/\/+$/, '');
+    if (f && !/^https?:\/\/[^\s,]+$/i.test(f)) throw new BusinessError('Adresse für Freigabelinks: bitte genau eine Adresse mit http:// oder https:// angeben (z. B. https://dokumente.example.org).');
+    return f ? { freigabe_url: f } : {};
+  },
   pruefen: async (v) => {
     if (!paperlessKonfiguriert({ url: v.url, token: v.geheimnis })) return { ok: false, text: 'URL und API-Token fehlen.' };
-    const pl = new Paperless({ url: v.url, token: v.geheimnis });
+    const pl = new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) });
     const url = await pl.baseUrl();
     const k = await pl.korrespondenten();
-    return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten).` };
+    const fb = await pl.freigabeBasis();
+    const hinweis = nurIntern(fb)
+      ? ` Achtung: Freigabelinks zeigen auf ${fb} und sind nur im eigenen Netz erreichbar – bitte die Adresse für Freigabelinks eintragen.`
+      : ` Freigabelinks: ${fb}.`;
+    return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten).${hinweis}` };
   },
 };
+
+/** eingestellte Adresse für Freigabelinks der Anbindung „paperless“ */
+const freigabeUrl = (v: Verbindung): string | null => String(v.einstellungen?.freigabe_url ?? '').trim() || null;
 
 /** Paperless-Client aus der zentralen Verbindung; null, wenn nicht eingerichtet */
 export async function paperlessZentral(db?: Tx): Promise<Paperless | null> {
   const v = await verbindungLesen('paperless', db);
-  return paperlessKonfiguriert({ url: v.url, token: v.geheimnis }) ? new Paperless({ url: v.url, token: v.geheimnis }) : null;
+  return paperlessKonfiguriert({ url: v.url, token: v.geheimnis }) ? new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) }) : null;
 }
 
 /** Zugangsdaten für Module, die den Client selbst bauen (z. B. mit anderem Zeitlimit) */
-export async function paperlessZugang(db?: Tx): Promise<{ url: string | null; token: string | null }> {
+export async function paperlessZugang(db?: Tx): Promise<{ url: string | null; token: string | null; freigabeUrl: string | null }> {
   const v = await verbindungLesen('paperless', db);
-  return eingerichtet(v) ? { url: v.url, token: v.geheimnis } : { url: null, token: null };
+  return eingerichtet(v) ? { url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) } : { url: null, token: null, freigabeUrl: null };
 }

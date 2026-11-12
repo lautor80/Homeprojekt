@@ -9,6 +9,11 @@
  *
  * Mehrere Basis-URLs (z. B. LAN und Internet) werden der Reihe nach probiert;
  * die erste erreichbare wird 60 s lang gemerkt (wie DETERMINE_BASE_URL).
+ *
+ * Freigabelinks gehen an Empfänger außerhalb des eigenen Netzes: Sie werden mit der
+ * Adresse für Freigabelinks gebildet (freigabeUrl), sonst mit der ersten Basis-URL,
+ * die nicht nur im eigenen Netz gilt – erst danach mit der Adresse, über die der Server
+ * Paperless erreicht.
  */
 
 export interface PaperlessConfig {
@@ -17,6 +22,21 @@ export interface PaperlessConfig {
   token: string | null | undefined;
   /** Zeitlimit je Anfrage in ms (Standard 30 s) */
   timeoutMs?: number;
+  /** aus dem Internet erreichbare Adresse für Freigabelinks (z. B. https://dokumente.example.org) */
+  freigabeUrl?: string | null;
+}
+
+/** Adresse gilt nur im eigenen Netz: LAN-/Loopback-IP, localhost, Rechner- oder Containername ohne Domain */
+export function nurIntern(url: string): boolean {
+  let h: string;
+  try { h = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch { return true; }
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+    const [a, b] = h.split('.').map(Number);
+    return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+  }
+  if (h.includes(':')) return h === '::1' || /^f[cd]/.test(h) || h.startsWith('fe80');
+  if (!h.includes('.') || h === 'localhost') return true;
+  return /\.(localhost|local|lan|internal|intranet|home|box|home\.arpa)$/.test(h);
 }
 
 export class PaperlessError extends Error {
@@ -48,6 +68,7 @@ export class Paperless {
   private readonly urls: string[];
   private readonly token: string;
   private readonly timeout: number;
+  private readonly freigabe: string | null;
 
   constructor(cfg: PaperlessConfig) {
     if (!paperlessKonfiguriert(cfg)) {
@@ -56,6 +77,7 @@ export class Paperless {
     this.urls = cfg.url!.split(',').map((u) => u.trim().replace(/\/+$/, '')).filter(Boolean);
     this.token = cfg.token!.trim().replace(/^Token\s+/i, '');
     this.timeout = cfg.timeoutMs ?? 30_000;
+    this.freigabe = (cfg.freigabeUrl ?? '').trim().replace(/\/+$/, '') || null;
   }
 
   // -------------------------------------------------------------------------
@@ -337,9 +359,17 @@ export class Paperless {
     await this.json('POST', `api/documents/${id}/notes/`, { note: text });
   }
 
+  /**
+   * Adresse, mit der Freigabelinks gebildet werden: die eingestellte Adresse für Freigabelinks,
+   * sonst die erste Basis-URL, die auch außerhalb des eigenen Netzes gilt, sonst die Basis-URL des Servers.
+   */
+  async freigabeBasis(): Promise<string> {
+    return this.freigabe ?? this.urls.find((u) => !nurIntern(u)) ?? this.baseUrl();
+  }
+
   /** Freigabelinks eines Dokuments, jüngster zuerst; abgelaufene werden ausgelassen */
   async freigabelinks(id: number): Promise<string[]> {
-    const base = await this.baseUrl();
+    const base = await this.freigabeBasis();
     const r = await this.json<{ slug: string; expiration: string | null; created: string }[]>('GET', `api/documents/${id}/share_links/`);
     const now = Date.now();
     return (r ?? [])
@@ -349,7 +379,7 @@ export class Paperless {
   }
 
   async freigabelinkAnlegen(id: number, tage = 30): Promise<string> {
-    const base = await this.baseUrl();
+    const base = await this.freigabeBasis();
     const ablauf = new Date(Date.now() + tage * 86_400_000).toISOString().slice(0, 10);
     const r = await this.json<{ slug: string }>('POST', 'api/share_links/', {
       document: id, expiration: `${ablauf}T23:59:59`, file_version: 'original',
