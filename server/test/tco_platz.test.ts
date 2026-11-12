@@ -1050,6 +1050,16 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const keys = JSON.stringify(r.body);
   assert.ok(keys.includes(`ABO_MAIL:${di}`) && keys.includes(`ABO_FREIGABE:${mi}`), keys.slice(0, 400));
+  // Bewerbungen stehen als Gruppe im Arbeitsvorrat (Bert und der Gast)
+  const bew = r.body.find((a: any) => a.key === 'ABO_BEWERBUNG');
+  assert.equal(bew.kinder.length, 2);
+  assert.match(bew.kinder.find((k: any) => /Bert/.test(k.titel)).text, /Position 1/);
+  assert.match(bew.kinder.find((k: any) => /Gabi/.test(k.titel)).text, /Position 2/);
+  // Ausnahme erledigen: Fehler gelöscht und für diesen Eintrag nicht mehr angezeigt – auch nicht nach einem weiteren Versandversuch
+  assert.equal((await anna('POST', `${P}/admin/abowunsch/mail-erledigt`, { id: di })).status, 403);
+  assert.equal((await admin('POST', `${P}/admin/abowunsch/mail-erledigt`, { id: di })).status, 200);
+  assert.ok(!JSON.stringify((await admin('GET', '/api/m/tco/dashboard/arbeitsvorrat')).body).includes('ABO_MAIL'));
+  assert.deepEqual((await sql`select mail_fehler, mail_ignorieren from tco.abo_wunsch where id = ${di}`)[0], { mail_fehler: null, mail_ignorieren: true });
 
   // Nachrück-Termin: Annas unbestätigter Dienstag verfällt, Bert (Mitglied) bekommt das Angebot, der Gast wartet weiter
   assert.deepEqual(await lauf(tag(20)), { erinnert: 0, verfallen: 1, angeboten: 1 });
