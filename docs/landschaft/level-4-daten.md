@@ -59,7 +59,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.prmatrix` |  |  | ● |  |  |  |  |  |  |  |  | ● |
 | `tco.produkte` |  |  | ● |  | ● |  |  |  |  |  |  | ● |
 | `tco.registrierungen` |  |  | ● |  |  |  |  | ● | ● |  |  | ● |
-| `tco.rgkopf` |  | ● | ● |  |  | ● |  | ● |  |  |  | ● |
+| `tco.rgkopf` |  | ● | ● |  |  | ● |  | ● | ● |  |  | ● |
 | `tco.rgpos` |  |  | ● |  |  |  |  | ● |  |  |  | ● |
 | `tco.rgtz` |  | ● | ● |  |  | ● |  | ● |  |  |  | ● |
 | `tco.schluessel` | ● |  | ● |  |  |  |  | ● | ● |  | ● | ● |
