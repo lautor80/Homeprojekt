@@ -879,7 +879,8 @@ test('Platzverwaltung → Belegung: Termin ändern und kopieren (#11)', async ()
   assert.ok((await belegt(d2)).some((b) => b.von === '13:00' && b.fest?.art === 'SCHNUPPER'));
 
   // auf einen anderen Tag verschieben (Buchung und Schnuppertraining)
-  const d3 = tag(15);
+  // nicht auf einen Samstag (wiederkehrendes Schnuppertraining 09:00–10:00)
+  const d3 = [15, 16].map(tag).find((x) => new Date(`${x}T12:00:00Z`).getUTCDay() !== 6)!;
   r = await admin('PUT', `${A}/belegung/${schnupper.fest.id}`, { platz_id: halleId, datum: d3, von: '09:00', bis: '10:00', art: 'SCHNUPPER', bezeichnung: 'Schnuppertraining Kinder', text: 'Tom' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, new RegExp(`am ${d3.split('-').reverse().join('\\.')}`));
@@ -925,7 +926,7 @@ test('Halle verschlossen (#11): Hinweis ohne Hallenschlüssel, Arbeitsvorrat fü
   assert.equal(hw.bereich, 'Hallenwart');
   assert.match(hw.titel, /Halle aufsperren: .* 19:00–20:00 Uhr/);
   const heute = r.body.find((a: any) => a.key === 'HALLE_HEUTE');
-  const [{ n }] = await sql`select count(*)::int as n from tco.bookings where status = '1' and erstellt = current_date and platz = 'Halle'`;
+  const [{ n }] = await sql`select count(*)::int as n from tco.bookings where status = '1' and erstellt = ${tag(0)} and platz = 'Halle'`;
   assert.ok(n >= 1);
   assert.match(heute.titel, new RegExp(`^Heute ${n} Hallenbuchung`));
   // Kassenwart: die einzelnen Buchungen als Unterpunkte mit Absprung in die Buchungsmaske
