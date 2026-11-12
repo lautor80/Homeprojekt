@@ -76,6 +76,9 @@
 }
 .portal-pb__frei:active { background: var(--sapList_Active_Background, #dee2e5); }
 @media (hover: none) { .portal-pb__frei { color: var(--sapContent_LabelColor); } }
+/* freie Zeit: immer „Frei“ beschriften (Uhrzeit davor erscheint wie bisher beim Darüberfahren) */
+.portal-pb__frei { gap: 0.375rem; }
+.portal-pb__frei-text { color: var(--sapContent_LabelColor); }
 
 .portal-pb__block {
   position: absolute; left: 0.1875rem; right: 0.1875rem; z-index: 1;

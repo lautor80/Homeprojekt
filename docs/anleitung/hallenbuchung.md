@@ -50,11 +50,11 @@ Der Kalender zeigt immer **einen Tag**. Jeder Platz hat eine eigene Spalte. Link
 4. **Farben im Kalender:** siehe Tabelle unten.
 5. **Preis je Stunde:** Die Farbe neben der Uhrzeit zeigt, welcher Preis zu welcher Zeit gilt.
 6. **Preisliste:** zeigt die Preise der ganzen Woche (siehe Kapitel 4).
-7. **Weiße Fläche:** Hier ist der Platz frei. Ein Klick darauf startet die Buchung.
+7. **Weiße Fläche mit „Frei“:** Hier ist der Platz frei. Ein Klick darauf startet die Buchung.
 
 | So sieht es aus | Das bedeutet es |
 |---|---|
-| weiß | Der Platz ist frei. Antippen zum Buchen. |
+| weiß, „Frei“ | Der Platz ist frei. Antippen zum Buchen. |
 | orange, „Meine Buchung“ | Deine eigene Buchung. Antippen zum Ändern oder Stornieren. |
 | grau, „Belegt“ | Jemand anderes hat gebucht. Wer das ist, siehst du nicht. |
 | grau, mit Bezeichnung (zum Beispiel „Jugendtraining“) | Training, Veranstaltung oder Sperrzeit des Vereins. |
