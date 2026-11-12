@@ -334,6 +334,9 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   (Kategorie AE bzw. E). Altaufträge ohne Wahl werden wie bisher aus dem Land des Rechnungsempfängers abgeleitet; mit MwSt wird
   der Grund verworfen. Der Grund bleibt auch **nach der Faktura korrigierbar** (ändert nur Text/Steuerkategorie, nicht die
   Beträge); Rechnung und E-Rechnung werden beim nächsten Druck/Abruf mit dem neuen Text erzeugt.
+  Auf der Objektseite stehen die beiden Gründe als zwei Schaltflächen nebeneinander (**Reverse Charge** | **Drittland**),
+  darunter der vollständige Text der Rechnung. Die Datumsfelder der Stops (Zeitvorgabe Laden/Entladen) haben eine feste
+  Breite und zeigen das Datum vollständig; das Zeitfeld nimmt den Rest der Zeile bzw. rückt bei wenig Platz darunter.
 
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
   übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.
