@@ -305,7 +305,8 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
 }
 
 /**
- * Vertragsänderung für ein aktives Mitglied (Vertragsangebot #12): gewählte Verträge, die noch nicht laufen, werden ergänzt
+ * Vertragsänderung für ein aktives Mitglied (Vertragsangebot #12): gewählte Verträge, die noch nicht laufen, werden ergänzt –
+ * gezählt je Beitragsart (zweimal Jugendtraining gewählt, einmal laufend ⇒ eines ergänzt)
  * (Beginn wie beim Antrag, Zahler wie bei den laufenden Verträgen); laufende bleiben unverändert. Abweichungen, die der Vorstand
  * im Mitgliederstamm klären muss (zweite Mitgliedschaft, andere Bankverbindung), kommen als Hinweis.
  */
@@ -316,9 +317,17 @@ async function vertragsaenderung(tx: Db, antrag: Record<string, any>, o: { adrnr
   const zAlt = String(laufend.find((v) => String(v.zahler_adrnr ?? '').trim() && v.zahler_adrnr !== o.adrnr)?.zahler_adrnr ?? '').trim();
   const zahler = zAlt && (await vertragsZahler(tx)).some((z) => z.adrnr === zAlt) ? zAlt : null;
   const neu: string[] = [];
+  // Die Auswahl im Angebot ist der Soll-Stand (aktuelle Verträge werden vorgeschlagen): je Beitragsart deckt jeder laufende Vertrag
+  // genau eine gewählte Einheit ab – 1 × Jugendtraining laufend + 2 × gewählt ⇒ ein zweites Jugendtraining wird ergänzt (#12).
+  const frei = [...laufend];
   for (const a of o.gewaehlt) {
     const kat: Kategorie = kategorieVon(a.art, a.name) ?? 'TRAINING';
-    if (laufend.some((v) => v.art === a.art)) { out.push(`${o.name}: ${a.name} läuft bereits – unverändert.`); continue; }
+    const i = frei.findIndex((v) => v.art === a.art);
+    if (i >= 0) {
+      out.push(`${o.name}: ${a.name} (Vertrag ${frei[i].vertragnr}) läuft bereits – unverändert.`);
+      frei.splice(i, 1);
+      continue;
+    }
     if (kat === 'MITGLIEDSCHAFT') {
       for (const v of laufend.filter((v) => kategorieVon(v.art, v.artname ?? '') === 'MITGLIEDSCHAFT')) {
         out.push(`${o.name}: bisherige Mitgliedschaft „${v.artname}“ (Vertrag ${v.vertragnr}) läuft weiter – bitte im Mitgliederstamm beenden.`);
