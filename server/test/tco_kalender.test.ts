@@ -343,3 +343,49 @@ test('Weitere Personen: bei Veranstaltung und Arbeitseinsatz immer, sonst nur mi
   assert.match(r2.body.message, /ausgebucht/);
   await sql`delete from tco.kal_events where id in (${einsatz}, ${training})`;
 });
+
+test('Familiensicht: Veranstaltungen aller verknüpften Personen, Rückmeldung per Mehrfachauswahl (alle / keiner)', async () => {
+  const KIM = '0000000511', LEO = '0000000512';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, adrnrkih, geburtsdatum) values
+    (${KIM}, 'Kim', 'Netz', '2022-01-01', ${BEN}, '2014-03-03'), (${LEO}, 'Leo', 'Netz', '2022-01-01', ${BEN}, '2016-04-04')`;
+  let r = await admin('POST', `${K}/pflege/gruppen`, { name: 'Jugend U12 Familie' });
+  const u12 = r.body.id as number;
+  assert.equal((await admin('POST', `${K}/pflege/gruppen/${u12}/mitglieder`, { adrnr: KIM })).status, 200);
+  r = await admin('POST', K, { titel: 'Jugendturnier U12', kategorie: 'MANNSCHAFT', beginn: tage(40), gruppen: [u12] });
+  const turnier = r.body.id as number;
+  r = await admin('POST', K, { titel: 'Familientag', beginn: tage(41) });
+  const familientag = r.body.id as number;
+  const ben = client();
+  assert.equal((await ben('POST', '/api/auth/login', { username: 'ben', password: 'neues-passwort' })).status, 200);
+  const Z = `von=${tag(39)}&bis=${tag(42)}`;
+  // ohne Familiensicht: das Turnier der Tochter ist für Ben nicht sichtbar – die Familie wird aber angeboten
+  r = await ben('GET', `${K}?${Z}`);
+  assert.deepEqual(r.body.events.map((e: any) => e.titel), ['Familientag']);
+  assert.deepEqual(r.body.familie.map((f: any) => f.name), ['Ben Netz', 'Kim Netz', 'Leo Netz']);
+  assert.equal(r.body.familiensicht, false);
+  // mit Familiensicht: beide Veranstaltungen; je Veranstaltung nur die Personen, für die sie gilt
+  r = await ben('GET', `${K}?${Z}&familie=1`);
+  assert.equal(r.body.familiensicht, true);
+  assert.deepEqual(r.body.events.map((e: any) => [e.titel, e.familie.map((f: any) => f.name)]),
+    [['Jugendturnier U12', ['Kim Netz']], ['Familientag', ['Ben Netz', 'Kim Netz', 'Leo Netz']]]);
+  // Mehrfachauswahl: Gewählte sagen zu, die übrigen ab
+  r = await ben('POST', `${K}/${familientag}/rueckmeldung-familie`, { dabei: [BEN, LEO] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /angemeldet: Ben Netz, Leo Netz/);
+  const stand = async (id: number) => Object.fromEntries((await sql`select adrnr, status from tco.kal_anmeldungen where event_id = ${id}`).map((x) => [x.adrnr, x.status]));
+  assert.deepEqual(await stand(familientag), { [BEN]: 'ZUSAGE', [KIM]: 'ABSAGE', [LEO]: 'ZUSAGE' });
+  // alle / keiner
+  assert.equal((await ben('POST', `${K}/${familientag}/rueckmeldung-familie`, { dabei: [BEN, KIM, LEO] })).status, 200);
+  assert.deepEqual(await stand(familientag), { [BEN]: 'ZUSAGE', [KIM]: 'ZUSAGE', [LEO]: 'ZUSAGE' });
+  assert.equal((await ben('POST', `${K}/${familientag}/rueckmeldung-familie`, { dabei: [] })).status, 200);
+  assert.deepEqual(await stand(familientag), { [BEN]: 'ABSAGE', [KIM]: 'ABSAGE', [LEO]: 'ABSAGE' });
+  // Gruppenveranstaltung: nur für Kim; Ben selbst oder Fremde lassen sich nicht anmelden
+  assert.equal((await ben('POST', `${K}/${turnier}/rueckmeldung-familie`, { dabei: [KIM] })).status, 200);
+  assert.deepEqual(await stand(turnier), { [KIM]: 'ZUSAGE' });
+  assert.equal((await ben('POST', `${K}/${turnier}/rueckmeldung-familie`, { dabei: [BEN] })).status, 400, 'nicht in der Gruppe');
+  assert.equal((await ben('POST', `${K}/${familientag}/rueckmeldung-familie`, { dabei: [CARL] })).status, 403, 'nicht in der Familie');
+  r = await ben('GET', `${K}?${Z}&familie=1`);
+  assert.deepEqual(r.body.events[0].familie, [{ adrnr: KIM, name: 'Kim Netz', status: 'ZUSAGE' }]);
+  await sql`delete from tco.kal_events where id in (${turnier}, ${familientag})`;
+  await sql`delete from tco.mitglieder where adrnr in (${KIM}, ${LEO})`;
+});

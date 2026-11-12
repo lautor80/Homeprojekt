@@ -6,7 +6,7 @@ import { hasPermission } from '../../../../server/src/permissions.js';
 import { DB, type Db } from '../verein.js';
 import { addTage } from '../format.js';
 import {
-  eventLesen, eventSpeichern, eventsLesen, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
+  eventLesen, eventSpeichern, eventsLesen, familieLesen, familieRueckmelden, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
   KATEGORIEN, meineGruppen, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
 } from './logik.js';
 import { gruppeZurLiga, spielplanEvent, spielplanLesen } from './spielplan.js';
@@ -51,13 +51,18 @@ export async function kalenderRoutes(app: FastifyInstance) {
   const pflege = { preHandler: requireAuth(P_KAL.edit) };
 
   app.get('/kalender', lesen, async (req) => {
-    const q = z.object({ von: datum, bis: datum }).parse(req.query);
+    const q = z.object({ von: datum, bis: datum, familie: z.enum(['0', '1']).default('0') }).parse(req.query);
     const adrnr = await eigeneAdrnr(req);
     const alles = can(req, P_KAL.edit);
+    // Familiensicht: Veranstaltungen aller verknüpften Personen (die über das Mitglied zahlen)
+    const familie = await familieLesen(DB, adrnr);
+    const fam = q.familie === '1' && familie.length > 1 ? familie : undefined;
+    const gruppenFam = fam ? [...new Set((await Promise.all(fam.map((f) => meineGruppen(DB, f.adrnr)))).flat())] : null;
     return {
-      events: await eventsLesen(DB, q, { adrnr, alles }), kategorien: KATEGORIEN, mitglied: !!adrnr, pflege: alles,
-      // eigene Gruppen einschließlich der Gruppen darüber – für den Filter „Nur meine Gruppen“
-      meineGruppen: await meineGruppen(DB, adrnr),
+      events: await eventsLesen(DB, q, { adrnr, alles, familie: fam }), kategorien: KATEGORIEN, mitglied: !!adrnr, pflege: alles,
+      familie, familiensicht: !!fam,
+      // eigene Gruppen einschließlich der Gruppen darüber – für den Filter „Nur meine Gruppen“ (Familiensicht: die der ganzen Familie)
+      meineGruppen: gruppenFam ?? await meineGruppen(DB, adrnr),
       gruppen: (await gruppenLesen(DB)).map((g) => ({ id: g.id, name: g.pfad, aktiv: g.aktiv })),
     };
   });
@@ -81,6 +86,16 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const e = await eventLesen(DB, eid);
     await change(req, (tx) => rueckmelden(tx, e, adrnr, b, wer(req), false), { action: 'KAL_RUECKMELDUNG' });
     return { text: b.status === 'ZUSAGE' ? `Du bist für „${e.titel}“ angemeldet.` : b.status === 'ABSAGE' ? `Du hast für „${e.titel}“ abgesagt.` : `Rückmeldung „vielleicht“ für „${e.titel}“ gespeichert.` };
+  });
+
+  /** Familiensicht: Rückmeldung für mehrere Personen der Familie – `dabei` sagt zu, die übrigen sagen ab (leer = keiner) */
+  app.post('/kalender/:id/rueckmeldung-familie', lesen, async (req) => {
+    const { id: eid } = id.parse(req.params);
+    const b = z.object({ dabei: z.array(z.string().min(1).max(20)).max(30) }).parse(req.body);
+    const familie = await familieLesen(DB, await eigeneAdrnr(req));
+    if (!familie.length) throw new BusinessError('Dein Benutzer ist keinem Mitglied zugeordnet – An- und Abmelden ist nur für Mitglieder möglich.', 403);
+    const e = await eventLesen(DB, eid);
+    return { text: await change(req, (tx) => familieRueckmelden(tx, e, familie, b.dabei, wer(req)), { action: 'KAL_RUECKMELDUNG', reason: 'Familie' }) };
   });
 
   // ---------------------------------------------------------------- Pflege

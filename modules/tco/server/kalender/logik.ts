@@ -57,8 +57,48 @@ export function anmeldungOffen(e: Event, jetzt = new Date()): string | null {
 export interface Zeitraum { von: string; bis: string }
 
 /** Veranstaltungen im Zeitraum mit Zahlen und eigener Rückmeldung */
-export async function eventsLesen(db: Db, z: Zeitraum, o: { adrnr: string | null; alles: boolean }) {
-  const gruppen = await meineGruppen(db, o.adrnr);
+export interface FamilienPerson { adrnr: string; name: string }
+
+/** Familie: das Mitglied selbst und die Personen, die über es zahlen (aktive Mitglieder) – für die Familiensicht */
+export async function familieLesen(db: Db, adrnr: string | null): Promise<FamilienPerson[]> {
+  if (!adrnr) return [];
+  const rows = await db`select adrnr, coalesce(nullif(trim(concat_ws(' ', vorname, nachname)), ''), adrnr) as name
+                          from tco.mitglieder
+                         where adrnr = ${adrnr} or (adrnrkih = ${adrnr} and (austritt is null or austritt >= current_date))
+                         order by (adrnr = ${adrnr}) desc, geburtsdatum nulls last, adrnr`;
+  return rows.map((r) => ({ adrnr: r.adrnr as string, name: r.name as string }));
+}
+
+/**
+ * Rückmeldung für die Familie: wer in `dabei` steht, sagt zu, alle anderen Familienmitglieder, für die die Veranstaltung gilt, sagen ab.
+ * Weitere Personen und Kommentar einer bestehenden Zusage bleiben erhalten.
+ */
+export async function familieRueckmelden(tx: Db, e: Event, familie: FamilienPerson[], dabei: string[], wer: string): Promise<string> {
+  const fremd = dabei.filter((a) => !familie.some((f) => f.adrnr === a));
+  if (fremd.length) throw new BusinessError('Die Auswahl enthält Personen, die nicht zu deiner Familie gehören.', 403);
+  const namen: string[] = [];
+  let betroffen = 0;
+  for (const f of familie) {
+    if (e.gruppen.length && !(await meineGruppen(tx, f.adrnr)).some((g) => e.gruppen.includes(g))) {
+      if (dabei.includes(f.adrnr)) throw new BusinessError(`${f.name} gehört nicht zu den Gruppen dieser Veranstaltung.`);
+      continue;
+    }
+    betroffen++;
+    const [alt] = await tx`select status, begleitung, kommentar from tco.kal_anmeldungen where event_id = ${e.id} and adrnr = ${f.adrnr}`;
+    const status: Status = dabei.includes(f.adrnr) ? 'ZUSAGE' : 'ABSAGE';
+    if (status === 'ZUSAGE') namen.push(f.name);
+    if (alt?.status === status) continue;
+    await rueckmelden(tx, e, f.adrnr, { status, begleitung: status === 'ZUSAGE' ? Number(alt?.begleitung ?? 0) : 0, kommentar: alt?.kommentar ?? null }, wer, false);
+  }
+  if (!betroffen) throw new BusinessError('Diese Veranstaltung ist nur für Mitglieder bestimmter Gruppen.', 403);
+  return namen.length ? `Für „${e.titel}“ angemeldet: ${namen.join(', ')}.` : `Für „${e.titel}“ ist niemand aus der Familie angemeldet.`;
+}
+
+export async function eventsLesen(db: Db, z: Zeitraum, o: { adrnr: string | null; alles: boolean; familie?: FamilienPerson[] }) {
+  // Familiensicht: sichtbar ist, was für mindestens eine Person der Familie gilt
+  const jeGruppen = new Map<string, number[]>();
+  for (const f of o.familie ?? []) jeGruppen.set(f.adrnr, await meineGruppen(db, f.adrnr));
+  const gruppen = o.familie?.length ? [...new Set([...jeGruppen.values()].flat())] : await meineGruppen(db, o.adrnr);
   const rows = await db`select ${EVENT_FELDER(db)},
            (select count(*) from tco.kal_anmeldungen a where a.event_id = e.id and a.status = 'ZUSAGE')::int as zusagen,
            (select coalesce(sum(a.begleitung), 0) from tco.kal_anmeldungen a where a.event_id = e.id and a.status = 'ZUSAGE')::int as begleitpersonen,
@@ -71,8 +111,14 @@ export async function eventsLesen(db: Db, z: Zeitraum, o: { adrnr: string | null
      where coalesce(e.ende, e.beginn) >= ${z.von}::date and e.beginn < (${z.bis}::date + 1)
      order by e.beginn, e.id`;
   const namen = new Map((await db`select id, name from tco.kal_gruppen`).map((g) => [Number(g.id), g.name as string]));
+  const fam = o.familie?.length
+    ? await db`select event_id, adrnr, status from tco.kal_anmeldungen where adrnr = any(${o.familie.map((f) => f.adrnr)}) and event_id = any(${rows.map((r) => Number(r.id))}::int[])`
+    : [];
   return rows.map((r) => ({ e: eventAus(r), r })).filter(({ e }) => sichtbar(e, gruppen, o.alles)).map(({ e, r }) => ({
-    ...e, gruppen_namen: e.gruppen.map((g) => namen.get(g) ?? `Gruppe ${g}`), begleitung_moeglich: begleitungMoeglich(e),
+    ...e,
+    // je Person der Familie, für die die Veranstaltung gilt: ihre Rückmeldung
+    familie: (o.familie ?? []).filter((f) => !e.gruppen.length || e.gruppen.some((g) => jeGruppen.get(f.adrnr)!.includes(g)))
+      .map((f) => ({ ...f, status: (fam.find((a) => Number(a.event_id) === e.id && a.adrnr === f.adrnr)?.status as Status | undefined) ?? null })), gruppen_namen: e.gruppen.map((g) => namen.get(g) ?? `Gruppe ${g}`), begleitung_moeglich: begleitungMoeglich(e),
     zusagen: Number(r.zusagen), begleitpersonen: Number(r.begleitpersonen), absagen: Number(r.absagen), vielleicht: Number(r.vielleicht),
     mein_status: (r.mein_status as Status | null) ?? null, meine_begleitung: Number(r.meine_begleitung ?? 0), mein_kommentar: (r.mein_kommentar as string | null) ?? null,
     offen: anmeldungOffen(e), voll: !!e.max_teilnehmer && Number(r.zusagen) + Number(r.begleitpersonen) >= e.max_teilnehmer,
