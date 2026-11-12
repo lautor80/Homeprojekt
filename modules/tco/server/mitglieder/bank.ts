@@ -53,7 +53,9 @@ export function blzDateiLesen(datei: Buffer): Blz[] {
 export async function blzImport(tx: Db, eintraege: Blz[]): Promise<string> {
   await tx`delete from tco.bankleitzahlen`;
   for (let i = 0; i < eintraege.length; i += 1000) {
-    await tx`insert into tco.bankleitzahlen ${tx(eintraege.slice(i, i + 1000) as never[], 'blz', 'bic', 'name', 'ort')}`;
+    const t = eintraege.slice(i, i + 1000);
+    await tx`insert into tco.bankleitzahlen (blz, bic, name, ort)
+             select * from unnest(${t.map((e) => e.blz)}::text[], ${t.map((e) => e.bic)}::text[], ${t.map((e) => e.name)}::text[], ${t.map((e) => e.ort)}::text[])`;
   }
   return `Bankleitzahlen-Verzeichnis geladen: ${eintraege.length} Kreditinstitute, ${eintraege.filter((e) => e.bic).length} mit BIC.`;
 }
