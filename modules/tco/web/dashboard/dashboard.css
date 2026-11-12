@@ -228,6 +228,16 @@
 .portal-av__text { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); overflow-wrap: anywhere; }
 .portal-av__datum { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); white-space: nowrap; }
 .portal-av__pfeil { color: var(--sapContent_IconColor); width: 0.875rem; }
+/* Baumdarstellung: Gruppe je Rolle/Bereich mit Anzahl, Einträge eingerückt */
+.portal-av > [role='treeitem'] { border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-av > [role='treeitem']:last-child { border-bottom: 0; }
+.portal-av__gruppe { border-bottom: 0; }
+.portal-av__gruppe .portal-av__titel { font-size: var(--sapFontLargeSize, 1rem); }
+.portal-av__anzahl {
+  min-width: 1.5rem; padding: 0 0.5rem; border-radius: 0.75rem; text-align: center; font-weight: bold; font-size: var(--sapFontSmallSize);
+  background: var(--sapNeutralBackground, #eff1f2); color: var(--sapTextColor); line-height: 1.5rem;
+}
+.portal-av__eintrag--kind { padding-left: 2.25rem; border-bottom: 0; border-top: 1px solid var(--sapList_BorderColor); }
 @media (max-width: 600px) {
   .portal-av__eintrag { grid-template-columns: auto minmax(0, 1fr) auto; }
   .portal-av__datum { display: none; }
