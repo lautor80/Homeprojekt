@@ -949,7 +949,7 @@ test('Vertragsangebot (#12): aktives Mitglied mit abweichendem Zahler – Bankve
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.mitglieder, [{ adrnr: '0000000792', mitglnrn: '792', name: 'Paul Zahlkind', bestand: true }]);
   assert.equal(r.body.mandat, '791791', 'Mandat des Zahlers');
-  assert.ok(r.body.hinweise.some((h: string) => /Jugendliche läuft bereits/.test(h)), JSON.stringify(r.body.hinweise));
+  assert.ok(r.body.hinweise.some((h: string) => /Jugendliche \(Vertrag 1\) läuft bereits/.test(h)), JSON.stringify(r.body.hinweise));
   assert.ok(!r.body.hinweise.some((h: string) => /weicht vom Stamm ab/.test(h)), 'gleiche Bankverbindung');
   const v = await sql`select art from tco.vertraege where adrnr = '0000000792' order by vertragnr`;
   assert.deepEqual(v.map((x) => x.art), ['3', '90'], 'nur das Training ergänzt');
