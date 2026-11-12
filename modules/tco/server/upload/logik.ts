@@ -1,7 +1,7 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import { PaperlessError } from '../../../../server/src/lib/paperless.js';
 import { heute } from '../format.js';
-import { paperless, plAktiv, type Verein } from '../verein.js';
+import { paperless, plAktiv, type Db, type Verein } from '../verein.js';
 import { nachtragen, zuordnen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
 
@@ -152,4 +152,20 @@ async function folgeaktionSetzen(pl: ReturnType<typeof paperless>, id: number, w
   } catch (e) {
     return [`Folgeaktion nicht gesetzt: ${(e as Error).message}`];
   }
+}
+
+/** Folgeaktion, die beim Kassenwart im Arbeitsvorrat erscheint */
+export const istUeberweisungEinreicher = (folgeaktion: string) => /überweisung\s+an\s+einreicher/i.test(folgeaktion);
+
+/** Upload mit Folgeaktion merken (für den Arbeitsvorrat) – das Dokument liegt in Paperless */
+export async function uploadMerken(tx: Db, e: { dok_id: number | null; titel: string; datei: string; folgeaktion: string; einreicher: string }): Promise<void> {
+  if (!e.folgeaktion.trim()) return;
+  await tx`insert into tco.upload_folge (dok_id, titel, datei, folgeaktion, einreicher) values (${e.dok_id}, ${e.titel.trim() || e.datei}, ${e.datei}, ${e.folgeaktion.trim()}, ${e.einreicher})`;
+}
+
+export async function uploadErledigen(tx: Db, id: number | null, wer: string): Promise<string> {
+  const r = await tx`update tco.upload_folge set erledigt_am = now(), erledigt_von = ${wer}
+                      where erledigt_am is null and folgeaktion ~* 'überweisung[[:space:]]+an[[:space:]]+einreicher' and (${id}::int is null or id = ${id}::int) returning id`;
+  if (!r.length) throw new BusinessError('Der Eintrag ist bereits erledigt – bitte die Übersicht aktualisieren.', 404);
+  return r.length === 1 ? 'Überweisung als erledigt gekennzeichnet.' : `${r.length} Überweisungen als erledigt gekennzeichnet.`;
 }

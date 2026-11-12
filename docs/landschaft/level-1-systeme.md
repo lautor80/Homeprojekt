@@ -172,7 +172,7 @@ flowchart LR
 | core:tabellen | 7 |
 | core:verbindungen | 3 |
 | core:weltenwandler | 2 |
-| dashboard | 6 |
+| dashboard | 7 |
 | eingang | 27 |
 | fi | 23 |
 | finanz | 3 |

@@ -109,6 +109,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   /** Arbeitsvorrat: offene Vorgänge (je nach Berechtigung des Benutzers) */
   app.get('/dashboard/arbeitsvorrat', { preHandler: requireAuth(P_DASH.display) }, async (req) => arbeitsvorrat(DB, req));
+  /** Kassenwart: Überweisung an den Einreicher eines hochgeladenen Dokuments erledigt (id leer = alle) */
+  app.post('/dashboard/arbeitsvorrat/upload-erledigt', { preHandler: requireAuth('tco.fi:buchen') }, async (req) => {
+    const b = z.object({ id: z.coerce.number().int().positive().nullish() }).parse(req.body ?? {});
+    const { uploadErledigen } = await import('../upload/logik.js');
+    return { text: await change(req, (tx) => uploadErledigen(tx, b.id ?? null, req.user!.displayName), { action: 'UPLOAD_ERLEDIGT', reason: b.id ? String(b.id) : 'alle' }) };
+  });
   /** Hallenwart: Klärung mit dem Kunden zu einer Hallenbuchung ohne Schlüssel bestätigen – der Eintrag verschwindet aus dem Arbeitsvorrat */
   app.post('/dashboard/arbeitsvorrat/halle-geklaert', { preHandler: requireAuth('tco.platzbuchung:verwalten') }, async (req) => {
     const b = z.object({ bid: z.string().min(1).max(30), datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);

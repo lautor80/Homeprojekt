@@ -287,6 +287,30 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
+  // Kassenwart: über den Dokumenten-Upload nach Paperless geladene Dokumente mit Folgeaktion „Überweisung an Einreicher“ –
+  // als Gruppe mit den einzelnen Dokumenten darunter; einzeln oder alle als überwiesen kennzeichnen
+  if (can(req, 'tco.fi:buchen')) {
+    const rows = await db`
+      select id, dok_id, titel, einreicher, to_char(am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am
+        from tco.upload_folge where erledigt_am is null and folgeaktion ~* 'überweisung[[:space:]]+an[[:space:]]+einreicher' order by am, id`;
+    if (rows.length) {
+      const kinder: Aufgabe[] = rows.map((r) => ({
+        key: `UPLOAD_UEBERWEISUNG:${r.id}`, bereich: 'Kassenwart', icon: 'money-bills', state: 'Critical' as const,
+        titel: `Überweisung an ${r.einreicher}: ${r.titel}`,
+        text: `Über den Dokumenten-Upload nach Paperless geladen${r.dok_id ? ` · Dokument ${r.dok_id}` : ' · wird in Paperless noch verarbeitet'} · Folgeaktion „Überweisung an Einreicher“.`,
+        datum: r.am, pfad: '/tco/upload',
+        erledigen: { text: 'überwiesen', url: '/dashboard/arbeitsvorrat/upload-erledigt', body: { id: r.id } },
+      }));
+      out.push({
+        key: 'UPLOAD_UEBERWEISUNG', bereich: 'Kassenwart', icon: 'upload-to-cloud', state: 'Critical',
+        titel: `${rows.length} neue${rows.length === 1 ? 's Dokument' : ' Dokumente'}: Überweisung an Einreicher`,
+        text: 'Über die Uploadfunktion nach Paperless geladene Belege, die dem Einreicher zu erstatten sind.',
+        datum: rows[0].am, pfad: '/tco/upload', kinder,
+        erledigen: { text: 'alle überwiesen', url: '/dashboard/arbeitsvorrat/upload-erledigt', body: {} },
+      });
+    }
+  }
+
   // Vorstand: Registrierungen externer Hallennutzer warten auf Bestätigung (nur ohne E-Mail-Bestätigung)
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit

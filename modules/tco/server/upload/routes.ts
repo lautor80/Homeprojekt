@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { requireAuth } from '../../../../server/src/auth.js';
+import { change, requireAuth } from '../../../../server/src/auth.js';
 import { vereinLesen } from '../verein.js';
-import { DATEITYPEN, groesseText, hochladen, stammLesen, zielBereich } from './logik.js';
+import { DATEITYPEN, groesseText, hochladen, stammLesen, uploadMerken, zielBereich } from './logik.js';
 
 export const P_UP = { execute: 'tco.upload:execute' };
 
@@ -27,6 +27,10 @@ export async function uploadRoutes(app: FastifyInstance) {
     const b = z.object({ datei: z.string().min(1), inhalt: z.string().min(1, 'Die Datei ist leer.'), meta: metaSchema }).parse(req.body);
     const r = await hochladen(await vereinLesen(), b.datei, b.inhalt, b.meta, benutzer(req));
     const bytes = Buffer.byteLength(b.inhalt.replace(/^data:[^,]*,/, ''), 'base64');
+    // Uploads mit Folgeaktion merken – „Überweisung an Einreicher“ erscheint beim Kassenwart im Arbeitsvorrat
+    if (r.state !== 'Negative' && b.meta.folgeaktion) {
+      await change(req, (tx) => uploadMerken(tx, { dok_id: r.id, titel: b.meta.titel, datei: b.datei, folgeaktion: b.meta.folgeaktion, einreicher: benutzer(req) }), { action: 'UPLOAD', reason: b.meta.folgeaktion });
+    }
     return { ...r, datei: b.datei, groesse: groesseText(bytes), bereich: zielBereich(b.datei) };
   });
 }
