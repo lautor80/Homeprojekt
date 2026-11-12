@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BusyIndicator, Button, DatePicker, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text } from '@ui5/webcomponents-react';
 import type { ReactNode } from 'react';
 import '../sport/spielerdaten.css';
 import { api } from '@core/api';
@@ -21,7 +21,7 @@ interface Saison { id: number; name: string; von: string; bis: string; bestaetig
 interface Feld { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; einheiten: number; gesamt: number; hinweis: string | null }
 interface Mein { id: number; art: string; platz: string; platz_id: number; wochentag: number; von: string; bis: string; status: string; text: string; wartende: number; position: number | null; annehmen_bis: string | null; kosten: string | null }
 interface Raster { saison: Saison | null; unterjaehrig: boolean; plaetze: { id: number; name: string }[]; felder: Feld[]; meine: Mein[]; maxBewerbungen: number }
-interface VWunsch { id: number; art: string; name: string; mitglied: boolean; platz: string; text: string; status: string; angelegt: string; mail_fehler: string | null; wartende: number; position: number | null; wochentag: number; von: string; kosten: string | null }
+interface VWunsch { id: number; art: string; name: string; mitglied: boolean; platz: string; text: string; status: string; angelegt: string; mail_fehler: string | null; wartende: number; position: number | null; wochentag: number; von: string; bis: string; kosten: string | null }
 interface Verwaltung { saison: Saison | null; wuensche: VWunsch[] }
 
 const FELD: Record<string, { titel: string; klasse: string }> = {
@@ -226,23 +226,49 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
   const zeit = (a: VWunsch, b: VWunsch) => a.platz.localeCompare(b.platz) || a.wochentag - b.wochentag || a.von.localeCompare(b.von) || (a.position ?? 0) - (b.position ?? 0);
   const abos = v.wuensche.filter((w) => w.art === 'BESTAETIGUNG' && lebt(w)).sort(zeit);
   const warte = v.wuensche.filter((w) => w.art === 'BEWERBUNG' && lebt(w)).sort(zeit);
-  const zeile = (w: VWunsch, warteliste: boolean) => (
-    <tr key={w.id}>
-      <td>{w.text}</td><td>{w.platz}</td>
-      {warteliste && <td>{w.position != null ? `${w.position} von ${w.wartende}` : '–'}</td>}
-      <td>{w.name}</td><td>{w.mitglied ? 'Mitglied' : 'kein Mitglied'}</td>
-      <td><ObjectStatus state={['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) ? 'Critical' : w.status === 'FREIGEGEBEN' ? 'Positive' : 'None'}>{STATUS[w.status] ?? w.status}</ObjectStatus></td>
-      <td>{warteliste ? dat(w.angelegt) : w.wartende ? `${w.wartende} wartend` : '–'}</td>
-      <td>{[w.kosten, w.mail_fehler].filter(Boolean).join(' · ') || '–'}</td>
-      <td style={{ whiteSpace: 'nowrap' }}>
-        {['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) && <Button design="Emphasized" disabled={busy} onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/freigeben`, { id: w.id }))}>Freigeben</Button>}
-        {w.status !== 'FREIGEGEBEN' && (
-          <Button design="Transparent" disabled={busy} tooltip={warteliste ? 'Bewerbung ablehnen: Sie verlässt die Warteliste, die Nächsten rücken auf. Es wird nichts gebucht oder storniert.'
-            : 'Abo für diese Saison nicht verlängern: Die Stunde wird frei und geht an die Warteliste. Es wird nichts storniert.'}
-                  onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/abweisen`, { id: w.id }))}>Ablehnen</Button>
-        )}
-      </td>
-    </tr>
+  // eine Tabelle, Umschalter im Kopf; jede Spalte filter- und sortierbar
+  const [sicht, setSicht] = useState<'abos' | 'warte'>('abos');
+  const [sort, setSort] = useState<{ k: string; ab: boolean } | null>(null);
+  const [filter, setFilter] = useState<Record<string, string>>({});
+  const [liste, setListe] = useState<VWunsch | null>(null);
+  /** Warteliste zu einer Stunde: wartende Bewerbungen auf demselben Platz und Tag, deren Zeit sich überschneidet */
+  const wartelisteZu = (w: VWunsch) => warte.filter((x) => x.status === 'WARTET' && x.platz === w.platz && x.wochentag === w.wochentag && x.von < w.bis && x.bis > w.von)
+    .sort((x, y) => (x.position ?? 0) - (y.position ?? 0));
+  const istWarte = sicht === 'warte';
+  interface Spalte { k: string; titel: string; text: (w: VWunsch) => string; ordnung?: (w: VWunsch) => string | number; zelle?: (w: VWunsch) => ReactNode }
+  const spalten: Spalte[] = [
+    { k: 'zeit', titel: 'Zeit', text: (w) => w.text, ordnung: (w) => `${w.wochentag}${w.von}` },
+    { k: 'platz', titel: 'Platz', text: (w) => w.platz },
+    ...(istWarte ? [{ k: 'position', titel: 'Position', text: (w: VWunsch) => (w.position != null ? `${w.position} von ${w.wartende}` : '–'), ordnung: (w: VWunsch) => w.position ?? 999 }] : []),
+    { k: 'name', titel: istWarte ? 'Interessent' : 'Abonnent', text: (w) => w.name },
+    { k: 'mitglied', titel: 'Mitglied', text: (w) => (w.mitglied ? 'Mitglied' : 'kein Mitglied') },
+    { k: 'stand', titel: 'Stand', text: (w) => STATUS[w.status] ?? w.status,
+      zelle: (w) => <ObjectStatus state={['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) ? 'Critical' : w.status === 'FREIGEGEBEN' ? 'Positive' : 'None'}>{STATUS[w.status] ?? w.status}</ObjectStatus> },
+    istWarte
+      ? { k: 'angelegt', titel: 'Beworben am', text: (w) => dat(w.angelegt), ordnung: (w) => w.angelegt }
+      : { k: 'warteliste', titel: 'Warteliste', text: (w) => String(wartelisteZu(w).length), ordnung: (w) => wartelisteZu(w).length,
+        zelle: (w) => { const n = wartelisteZu(w).length; return n ? <Button design="Transparent" icon="group" tooltip="Warteliste zu dieser Stunde anzeigen" onClick={() => setListe(w)}>{n}</Button> : '–'; } },
+    { k: 'hinweis', titel: 'Hinweis', text: (w) => [w.kosten, w.mail_fehler].filter(Boolean).join(' · ') || '–' },
+  ];
+  const basis = istWarte ? warte : abos;
+  const passt = (w: VWunsch) => spalten.every((sp) => { const f = (filter[sp.k] ?? '').trim().toLowerCase(); return !f || sp.text(w).toLowerCase().includes(f); });
+  const sp = sort ? spalten.find((x) => x.k === sort.k) : undefined;
+  const wert = (w: VWunsch) => (sp ? (sp.ordnung ?? sp.text)(w) : 0);
+  const zeilen = basis.filter(passt).sort((x, y) => {
+    if (!sp) return 0;
+    const a = wert(x), b = wert(y);
+    const c = typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'de', { numeric: true });
+    return sort!.ab ? c : -c;
+  });
+  const aktionen = (w: VWunsch) => (
+    <td style={{ whiteSpace: 'nowrap' }}>
+      {['BESTAETIGT', 'ANGENOMMEN'].includes(w.status) && <Button design="Emphasized" disabled={busy} onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/freigeben`, { id: w.id }))}>Freigeben</Button>}
+      {w.status !== 'FREIGEGEBEN' && (
+        <Button design="Transparent" disabled={busy} tooltip={w.art === 'BEWERBUNG' ? 'Bewerbung ablehnen: Sie verlässt die Warteliste, die Nächsten rücken auf. Es wird nichts gebucht oder storniert.'
+          : 'Abo für diese Saison nicht verlängern: Die Stunde wird frei und geht an die Warteliste. Es wird nichts storniert.'}
+                onClick={() => tun(() => api.post<{ text?: string }>(`${PB}/admin/abowunsch/abweisen`, { id: w.id }))}>Ablehnen</Button>
+      )}
+    </td>
   );
   return (
     <Section title="Abo-Saison verwalten (Kassenwart)" flush actions={s && !neu ? <Button design="Transparent" onClick={() => { setF(NEU); setNeu(true); }}>Neue Saison eröffnen</Button> : undefined}>
@@ -276,16 +302,54 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
         </Text>
       </div>
       {s && (
-        <>
-          <div className="portal-abo__detail">
-            <b>Abos des Vorjahres ({abos.length})</b>
-            {abos.length ? <Tabelle kopf={['Zeit', 'Platz', 'Abonnent', '', 'Stand', 'Warteliste', 'Hinweis', '']}>{abos.map((w) => zeile(w, false))}</Tabelle> : <Text className="portal-muted">Keine Abos zur Bestätigung vorgemerkt.</Text>}
-          </div>
-          <div className="portal-abo__detail">
-            <b>Warteliste ({warte.length})</b>
-            {warte.length ? <Tabelle kopf={['Zeit', 'Platz', 'Position', 'Interessent', '', 'Stand', 'Beworben am', 'Hinweis', '']}>{warte.map((w) => zeile(w, true))}</Tabelle> : <Text className="portal-muted">Noch keine Bewerbungen.</Text>}
-          </div>
-        </>
+        <div className="portal-abo__detail">
+          <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <SegmentedButton onSelectionChange={(e) => { setSicht((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'abos'); setSort(null); setFilter({}); }}>
+              <SegmentedButtonItem data-k="abos" selected={!istWarte}>Abos des Vorjahres ({abos.length})</SegmentedButtonItem>
+              <SegmentedButtonItem data-k="warte" selected={istWarte}>Warteliste ({warte.length})</SegmentedButtonItem>
+            </SegmentedButton>
+            {(sort || Object.values(filter).some((x) => x.trim())) && <Button design="Transparent" icon="clear-filter" onClick={() => { setSort(null); setFilter({}); }}>Filter und Sortierung zurücksetzen</Button>}
+            {zeilen.length !== basis.length && <Text className="portal-muted">{zeilen.length} von {basis.length}</Text>}
+          </span>
+          {basis.length ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="portal-sd__tabelle">
+                <thead>
+                  <tr>
+                    {spalten.map((x) => (
+                      <th key={x.k} style={{ cursor: 'pointer', userSelect: 'none' }} title="Sortieren" onClick={() => setSort(sort?.k === x.k ? (sort.ab ? { k: x.k, ab: false } : null) : { k: x.k, ab: true })}>
+                        {x.titel}{sort?.k === x.k && <Icon name={sort.ab ? 'sort-ascending' : 'sort-descending'} style={{ marginInlineStart: '0.25rem', width: '0.8rem', height: '0.8rem' }} />}
+                      </th>
+                    ))}
+                    <th />
+                  </tr>
+                  <tr>
+                    {spalten.map((x) => (
+                      <th key={x.k} style={{ padding: '0.2rem 0.4rem' }}>
+                        <Input value={filter[x.k] ?? ''} placeholder="Filter" accessibleName={`${x.titel} filtern`} style={{ width: '100%', minWidth: '5rem' }}
+                               onInput={(e) => setFilter({ ...filter, [x.k]: (e.target as unknown as { value: string }).value })} />
+                      </th>
+                    ))}
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeilen.map((w) => <tr key={w.id}>{spalten.map((x) => <td key={x.k}>{x.zelle ? x.zelle(w) : x.text(w)}</td>)}{aktionen(w)}</tr>)}
+                </tbody>
+              </table>
+              {!zeilen.length && <Text className="portal-muted" style={{ display: 'block', padding: '0.75rem' }}>Kein Eintrag passt zum Filter.</Text>}
+            </div>
+          ) : <Text className="portal-muted">{istWarte ? 'Noch keine Bewerbungen.' : 'Keine Abos zur Bestätigung vorgemerkt.'}</Text>}
+        </div>
+      )}
+      {liste && (
+        <Dialog open headerText={`Warteliste: ${liste.text} · ${liste.platz}`} onClose={() => setListe(null)} style={{ width: 'min(44rem, 96vw)' }}
+                footer={<Bar endContent={<Button onClick={() => setListe(null)}>Schließen</Button>} />}>
+          <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Abo von {liste.name} ({STATUS[liste.status] ?? liste.status}). Reihenfolge: Mitglieder zuerst, sonst nach Eingang.</Text>
+          <Tabelle kopf={['Position', 'Interessent', '', 'Gewünschte Zeit', 'Beworben am']}>
+            {wartelisteZu(liste).map((x) => <tr key={x.id}><td>{x.position ?? '–'}</td><td>{x.name}</td><td>{x.mitglied ? 'Mitglied' : 'kein Mitglied'}</td><td>{x.text}</td><td>{dat(x.angelegt)}</td></tr>)}
+          </Tabelle>
+        </Dialog>
       )}
     </Section>
   );
