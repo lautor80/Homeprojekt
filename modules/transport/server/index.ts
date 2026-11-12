@@ -19,6 +19,7 @@ import { paperlessSenden } from './paperless.js';
 import { dokumentAblegen, paperlessFirma } from './dokumente.js';
 import { kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
+import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
 import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
 
@@ -483,10 +484,22 @@ async function routes(app: FastifyInstance) {
     return a;
   });
 
-  /** #158: eingefügten/abgelegten Text analysieren und Feldvorschläge liefern – speichert nichts */
-  app.post('/adressen/erkennen', { preHandler: requireAuth(P.kontakte), bodyLimit: 200 * 1024 }, async (req) => {
-    const { text } = z.object({ text: z.string().min(1, 'Bitte Text einfügen.').max(100_000) }).parse(req.body);
-    return kontaktErkennen(text);
+  /**
+   * #158: eingefügte/abgelegte Informationen analysieren und Feldvorschläge liefern – speichert nichts.
+   * text: kopierter Text · bild: Screenshot/Foto (PNG oder JPEG, Base64) → Texterkennung · pdf: PDF mit Textebene (Base64)
+   */
+  app.post('/adressen/erkennen', { preHandler: requireAuth(P.kontakte), bodyLimit: 16 * 1024 * 1024 }, async (req) => {
+    const b = z.object({ text: z.string().max(100_000).nullish(), bild: z.string().max(15_000_000).nullish(), pdf: z.string().max(15_000_000).nullish() })
+      .refine((x) => [x.text, x.bild, x.pdf].filter((v) => v && v.trim()).length === 1, 'Bitte Text, ein Bild oder ein PDF einfügen.').parse(req.body);
+    const base64 = (s: string) => Buffer.from(s.replace(/^data:[^,]*,/, ''), 'base64');
+    const quelle = b.bild ? 'bild' : b.pdf ? 'pdf' : 'text';
+    const text = b.bild ? await bildText(base64(b.bild)) : b.pdf ? await pdfText(base64(b.pdf)) : b.text!;
+    if (!text.trim()) {
+      throw new BusinessError(quelle === 'bild' ? 'Im Bild wurde kein Text erkannt – bitte einen schärferen oder größeren Ausschnitt einfügen.'
+        : quelle === 'pdf' ? 'Das PDF enthält keinen lesbaren Text (vermutlich ein Scan) – bitte einen Screenshot der Seite einfügen.' : 'Bitte Text einfügen.');
+    }
+    // gelesener Text zur Kontrolle (nur bei Bild/PDF)
+    return { ...kontaktErkennen(text), quelle, gelesen: quelle === 'text' ? null : text.replace(/[ \t]{3,}/g, '   ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 3000) };
   });
 
   app.post('/adressen', { preHandler: requireAuth(P.kontakte) }, async (req, reply) => {

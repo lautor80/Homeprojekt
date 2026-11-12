@@ -3,7 +3,13 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { kontaktErkennen, strasseTeilen } from '../../modules/transport/server/kontakterkennung.js';
+import { bildart, bildText, pdfText } from '../src/lib/texterkennung.js';
+
+/** Texterkennung nur prüfen, wo tesseract installiert ist (im Container; in der CI ohne tesseract übersprungen) */
+const tesseract = (() => { try { execFileSync('tesseract', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 test('E-Mail-Signatur: Firma, Ansprechpartner, Anschrift, Telefon/Fax, USt-IdNr.', () => {
   const r = kontaktErkennen(`Mit freundlichen Grüßen
@@ -93,4 +99,39 @@ test('Straße teilen und Feldlängen', () => {
   assert.deepEqual(strasseTeilen('Industriegebiet Nord'), { strasse: 'Industriegebiet Nord' });
   const f = kontaktErkennen(`${'Sehr lange Firma '.repeat(6)}GmbH\nWeg 1\n54321 Ort`).felder;
   assert.equal(f.kundenname!.length, 60);
+});
+
+test('Unternehmensprofil aus einem Screenshot (Text wie von der Texterkennung, zweispaltig mit Symbolen)', () => {
+  const r = kontaktErkennen(`TIMOCOM
+
+Unternehmensprofil Details
+
+Unternehmen                                                         TC ID: 123456         USt-IdNr.: BG123456789
+Unternehmen                                                 @ www.balkansped.example
+Balkan Sped Trans OOD                                     @ office@balkansped.example
+
+@ +359880000000
+B ST     Hausanschrift               ®-
+
+blvd. Primerna 12
+BG, 1220 Sofia`);
+  assert.deepEqual(r.felder, {
+    kundenname: 'Balkan Sped Trans OOD', strasse: 'blvd. Primerna', hausnummer: '12', plz: '1220', ort: 'Sofia', land: 'BG',
+    ustid: 'BG123456789', email: 'office@balkansped.example', telefon: '+359880000000',
+  });
+  assert.ok(r.unklar.includes('TC ID: 123456'));
+});
+
+test('Bildart und PDF-Prüfung', async () => {
+  assert.equal(bildart(readFileSync(new URL('./fixtures/kontakt-profil.png', import.meta.url))), 'png');
+  assert.equal(bildart(Buffer.from('kein Bild')), null);
+  await assert.rejects(bildText(Buffer.from('kein Bild')), /PNG oder JPEG/);
+  await assert.rejects(pdfText(Buffer.from('kein PDF')), /kein PDF/);
+});
+
+test('Screenshot lesen: Texterkennung und Vorschlag der Felder', { skip: tesseract ? false : 'tesseract ist hier nicht installiert' }, async () => {
+  const text = await bildText(readFileSync(new URL('./fixtures/kontakt-profil.png', import.meta.url)));
+  const f = kontaktErkennen(text).felder;
+  assert.deepEqual([f.kundenname, f.plz, f.ort, f.land, f.hausnummer, f.ustid, f.email, f.telefon],
+    ['Balkan Sped Trans OOD', '1220', 'Sofia', 'BG', '12', 'BG123456789', 'office@balkansped.example', '+359880000000']);
 });

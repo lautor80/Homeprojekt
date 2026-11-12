@@ -12,6 +12,9 @@ ENV NODE_ENV=production \
     APP_ROOT=/app \
     PORT=8080
 WORKDIR /app
+# Texterkennung für eingefügte Screenshots und PDFs (Euroflex: Kontaktdaten einfügen, #158) – läuft lokal im Container
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
