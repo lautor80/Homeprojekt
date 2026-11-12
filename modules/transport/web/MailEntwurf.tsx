@@ -36,6 +36,16 @@ const mime = (name: string) => {
     ?? 'application/octet-stream';
 };
 
+/** .eml-Datei herunterladen – der Browser öffnet sie (nach einmaliger Einstellung) im Standard-Mailprogramm als Entwurf */
+export function emlHerunterladen(eml: Blob, name: string) {
+  const url = URL.createObjectURL(eml);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'E-Mail'}.eml`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function emlErzeugen(m: { an: string; betreff: string; text: string; anhaenge: { name: string; daten: Blob }[] }): Promise<Blob> {
   const grenze = `----=_Euroflex_${Math.random().toString(36).slice(2)}`;
   const teile: string[] = [
@@ -62,8 +72,8 @@ export async function emlErzeugen(m: { an: string; betreff: string; text: string
 }
 
 /** Browser öffnet .eml nach dem Download selbst (vom Benutzer bestätigt, je Browser gemerkt) */
-const AUTO = 'euroflex.eml.autoOeffnen';
-const autoOffen = () => { try { return localStorage.getItem(AUTO) === '1'; } catch { return false; } };
+export const AUTO = 'euroflex.eml.autoOeffnen';
+export const autoOffen = () => { try { return localStorage.getItem(AUTO) === '1'; } catch { return false; } };
 
 const groesse = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
 /** Vorschlag je Vorlage: passende Dateien vorauswählen (Name enthält Transportauftrag/Lieferschein/Rechnung) */
@@ -131,12 +141,7 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
     try {
       const dateien = await dateienLaden();
       const eml = await emlErzeugen({ an: an.trim(), betreff, text, anhaenge: dateien });
-      const url = URL.createObjectURL(eml);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${betreff.replace(/[\\/:*?"<>|]/g, '_').trim() || `Auftrag_${nr}`}.eml`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      emlHerunterladen(eml, betreff || `Auftrag_${nr}`);
       toast(`E-Mail-Entwurf mit ${dateien.length} Anhang/Anhängen erstellt.`, 5000);
       // solange der Browser .eml nicht automatisch öffnet: einmal zeigen, wie man das einstellt
       if (autoOffen()) onClose(); else setAnleitung(true);

@@ -8,6 +8,7 @@ import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { T, download } from './util';
 import { ablegen, dateiLesen } from './ordner';
+import { AUTO, autoOffen, emlErzeugen, emlHerunterladen } from './MailEntwurf';
 
 // ---------------------------------------------------------------------------
 // PDF-Vorschau für ein oder mehrere Dokumente (wie DOCS_POPUP_DISPLAY)
@@ -92,29 +93,51 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
 }
 
 // ---------------------------------------------------------------------------
-// Versenden: E-Mail-Entwürfe (mailto) + PDF/XML zum Anhängen
+// Versenden: E-Mail-Entwurf mit PDF im Anhang (.eml – mailto: kann keine Anhänge übergeben) + PDF/XML einzeln
 // ---------------------------------------------------------------------------
 export interface MailRow {
   auftragsnr: string; faktura: string | null; art: string; empfaenger: string; betreff: string; mailto: string; hasEmail: boolean;
+  an: string; text: string;
 }
 
 export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mails: MailRow[] | null; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
-  const pdf = (m: MailRow) => {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [hinweis, setHinweis] = useState(false);
+  const datei = (m: MailRow) => {
     const id = art === 'R' ? m.faktura! : m.auftragsnr;
-    const name = art === 'T' ? `Transportauftrag_${id}.pdf` : art === 'L' ? `Lieferschein_${id}.pdf` : `Rechnung_${id}.pdf`;
-    download(`${T}/pdf/${art}/${encodeURIComponent(id)}`, name).catch((e) => setError(e.message));
+    return { id, url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, name: art === 'T' ? `Transportauftrag_${id}.pdf` : art === 'L' ? `Lieferschein_${id}.pdf` : `Rechnung_${id}.pdf` };
   };
+  const pdf = (m: MailRow) => { const d = datei(m); download(d.url, d.name).catch((e) => setError(e.message)); };
+  /** E-Mail-Entwurf mit dem PDF als Anhang (bei Rechnungen die ZUGFeRD-Rechnung) – öffnet sich im Mailprogramm mit „Senden“ */
+  async function entwurf(m: MailRow) {
+    setBusy(m.auftragsnr); setError(null);
+    try {
+      const d = datei(m);
+      const res = await fetch(d.url, { credentials: 'same-origin' });
+      if (!res.ok) { const t = await res.text(); throw new Error(JSON.parse(t || '{}').message ?? `PDF konnte nicht erzeugt werden (${res.status}).`); }
+      const eml = await emlErzeugen({ an: m.an, betreff: m.betreff, text: m.text, anhaenge: [{ name: d.name, daten: await res.blob() }] });
+      emlHerunterladen(eml, m.betreff);
+      toast(`E-Mail-Entwurf „${m.betreff}“ mit ${d.name} erstellt.`, 5000);
+      if (!autoOffen()) setHinweis(true);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  }
   const xml = (m: MailRow) => download(`${T}/xrechnung/${encodeURIComponent(m.faktura!)}/datei`, `XRechnung_${m.faktura}.xml`).catch((e) => setError(e.message));
 
   return (
     <Dialog open={!!mails} headerText="Versenden" onClose={onClose} style={{ width: 'min(64rem, 95vw)' }}
             footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
-        „E-Mail öffnen“ startet dein Mailprogramm mit Empfänger, Betreff und Standardtext. Das PDF lädst du daneben herunter und hängst es an.
-        Bei Rechnungen ist das PDF bereits die E-Rechnung (ZUGFeRD 2.3, EN 16931) – die XRechnung-XML ist nur für Behördenportale nötig.
+        „E-Mail öffnen“ erstellt einen E-Mail-Entwurf mit Empfänger, Betreff, Standardtext und dem PDF als Anhang; er öffnet sich im
+        Mailprogramm (Outlook mit „Senden“). „ohne Anhang“ öffnet das Mailprogramm direkt, ohne PDF. Bei Rechnungen ist das PDF bereits die E-Rechnung (ZUGFeRD 2.3, EN 16931) – die XRechnung-XML ist nur für Behördenportale nötig.
       </MessageStrip>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
+      {hinweis && (
+        <MessageStrip design="Information" onClose={() => { try { localStorage.setItem(AUTO, '1'); } catch { /* egal */ } setHinweis(false); }} style={{ marginBottom: '0.5rem' }}>
+          Der Entwurf liegt als E-Mail-Datei (.eml) in den Downloads – anklicken, dann öffnet er sich im Mailprogramm. Damit das künftig automatisch passiert:
+          Downloads öffnen (Strg+J), bei der .eml-Datei auf ⋯ bzw. Rechtsklick → „Dateien dieses Typs immer öffnen“. Danach diesen Hinweis schließen.
+        </MessageStrip>
+      )}
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
@@ -126,7 +149,13 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
             <tr key={m.auftragsnr} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
               <td style={{ padding: '0.5rem' }}><b>{m.auftragsnr}</b><br /><Text>{m.art}</Text></td>
               <td><b>{m.empfaenger}</b><br /><Text>{m.betreff}</Text></td>
-              <td><Link href={m.mailto} disabled={!m.hasEmail}>E-Mail öffnen</Link></td>
+              <td>
+                <FlexBox direction="Column" style={{ gap: '0.25rem', padding: '0.25rem 0' }}>
+                  <Button design="Emphasized" icon="email" disabled={!!busy || !m.hasEmail} onClick={() => entwurf(m)}
+                          tooltip="E-Mail-Entwurf mit dem PDF als Anhang">{busy === m.auftragsnr ? 'Erstelle …' : 'E-Mail öffnen'}</Button>
+                  <Link href={m.mailto} disabled={!m.hasEmail} style={{ fontSize: 'var(--sapFontSmallSize)' }}>ohne Anhang</Link>
+                </FlexBox>
+              </td>
               <td>
                 <FlexBox direction="Column" style={{ gap: '0.25rem', padding: '0.25rem 0' }}>
                   <Button icon="download" onClick={() => pdf(m)}>PDF herunterladen</Button>
