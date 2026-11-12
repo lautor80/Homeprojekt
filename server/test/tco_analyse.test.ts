@@ -271,7 +271,7 @@ test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () =>
   assert.equal(doc.created, '2026-10-07');
   assert.equal(doc.type, '9');
   assert.equal(doc.corr, '6', 'neuer Korrespondent angelegt');
-  assert.deepEqual(doc.tags, ['1', '2'], 'vorhandener und neu angelegter Tag');
+  assert.deepEqual(doc.tags, [], 'Tags werden beim Upload nie gesetzt – auch wenn welche übergeben werden');
   assert.match(doc.notes[0], /^per Upload \(Admin, Vereinsportal\)$/);
   assert.deepEqual(doc.custom_fields, [], 'ohne Folgeaktion kein Feld');
 
