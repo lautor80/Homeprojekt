@@ -141,7 +141,7 @@ export function AboBewerbung() {
                               disabled={f.status === 'gesperrt'} onClick={() => { setWahl(f); setBis(null); }}>
                         <b>{a.titel}</b>
                         <span>{f.status === 'gesperrt' ? f.hinweis : f.position != null ? `Platz ${f.position} von ${f.wartende}` : f.wartende ? `${f.wartende} warte${f.wartende === 1 ? 't' : 'n'}` : f.status === 'frei' ? 'bewerben' : ''}</span>
-                        {f.status !== 'gesperrt' && f.preis != null && (
+                        {f.status === 'frei' && f.preis != null && (
                           <span className="portal-abo__preis" title={f.preis ? `${f.einheiten} Einheiten × ${eur(f.preis)} (${r.unterjaehrig ? 'Einzelpreis' : 'Abo-Preis'})` : undefined}>
                             {f.preis ? <>{eur(f.gesamt)}<small> · {f.einheiten} × {eur(f.preis)}</small></> : 'kostenfrei'}
                           </span>
