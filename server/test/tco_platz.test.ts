@@ -1120,9 +1120,23 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.angeboten, 1, 'nur die freie Stunde – Annas Abo läuft');
   const frei = (await sql`select id from tco.abo_wunsch where status = 'ANGEBOTEN'`)[0].id as number;
+  // während der Reservierung (Angebot läuft / angenommen): keine Einzelbuchung auf dieser Zeit, Anzeige „reserviert“
+  const termine: string[] = [];
+  for (let n = 1; n <= 45; n++) if (((new Date(`${tag(n)}T12:00:00Z`).getUTCDay() + 6) % 7) + 1 === wt) termine.push(tag(n));
+  r = await anna('POST', `${P}/pruefen`, { platz_id: halleId, datum: termine[0], von: '11:00', bis: '12:00' });
+  assert.match(r.body.fehler, /für ein Abo reserviert/);
+  assert.equal((await anna('POST', `${P}/buchungen`, { platz_id: halleId, datum: termine[0], von: '11:00', bis: '12:00' })).status, 400, 'reserviert');
+  r = await anna('GET', `${P}/tag?datum=${termine[0]}`);
+  assert.ok(JSON.stringify(r.body).includes('"abo":true'), 'Anzeige als reserviert');
   assert.equal((await bert('POST', `${P}/abowunsch/${frei}/annehmen`)).status, 200);
+  // eine bestehende Einzelbuchung in der Folgewoche: das Abo beginnt erst in der Woche danach
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, quelle)
+            values ('9770000009', ${termine[0]}, '11:00', '12:00', 'CARLA EINZEL', '1', 'Einzel', 20, '2026-01-01', '', 'Halle', 'PORTAL')`;
   r = await admin('POST', `${P}/admin/abowunsch/freigeben`, { id: frei });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Beginn erst am .* weil bis .* noch Einzelbuchungen bestehen/);
+  assert.equal((await sql`select min(datum)::text as d from tco.bookings where status = '3' and kunde = 'BERT SPIELER'`)[0].d, termine[1], 'Beginn in der Woche nach der Einzelbuchung');
+  await sql`delete from tco.bookings where bid = '9770000009'`;
   assert.match(r.body.text, /Unterjährig: \d+ Einheit(en)? zum Einzelpreis = /);
   const neu = await sql`select b.datum::text as datum, b.preis::float8 as preis, c.status_abw from tco.bookings b left join tco.bookings_ch c on c.bid = b.bid
                          where b.status = '3' and b.kunde = 'BERT SPIELER' order by b.datum`;

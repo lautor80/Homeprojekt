@@ -20,7 +20,7 @@ import { vereinLesen } from '../verein.js';
 import { addTage, dat } from '../format.js';
 import { minuten, preiseLesen, type Preise } from '../halle/preis.js';
 import { mailSenden } from '../kommunikation.js';
-import { aboAnlegen, hhmm, isoWochentag, jetzt, plaetzeLesen, preisVon, type Ich, type Platz } from './logik.js';
+import { aboAnlegen, belegungLesen, hhmm, isoWochentag, jetzt, plaetzeLesen, preisVon, type Ich, type Platz } from './logik.js';
 import { ADRNR_ZU_BENUTZER } from './schluessel.js';
 import { festeLesen, festeTermine } from './belegungen.js';
 
@@ -347,10 +347,22 @@ export async function freigeben(tx: Db, id: number): Promise<string> {
   if (!s || !w || w.saison_id !== s.id) throw new BusinessError('Eintrag nicht gefunden.', 404);
   if (!['BESTAETIGT', 'ANGENOMMEN'].includes(w.status)) throw new BusinessError('Freigegeben wird nur, was der Abonnent bestätigt bzw. der Interessent angenommen hat.');
   if (!w.adrnr) throw new BusinessError(`${w.name} ist keinem Mitglied oder Portalnutzer zugeordnet – bitte das Abo in der Platzverwaltung anlegen.`);
-  const ab = ersterTermin(s, w.wochentag);
-  if (ab > s.bis) throw new BusinessError('Bis zum Saisonende gibt es keinen Termin mehr.');
-  const r = await aboAnlegen(tx, { platz_id: w.platz_id, adrnr: w.adrnr, kunde: w.name, ab, bis_datum: s.bis, von: hhmm(w.von), bis: hhmm(w.bis), text: `Abo ${s.name}` }, true);
-  await tx`update tco.abo_wunsch set status = 'FREIGEGEBEN', entschieden = now(), abo_bid = ${r.bid} where id = ${id}`;
+  let ab = ersterTermin(s, w.wochentag);
+  // Reservierung dieses Wunsches aufheben, bevor das Abo die Termine belegt
+  await tx`update tco.abo_wunsch set status = 'FREIGEGEBEN', entschieden = now() where id = ${id}`;
+  // Im Abozeitraum darf kein Termin durch eine Einzelbuchung blockiert sein: Das Abo beginnt in der Woche nach der letzten Einzelbuchung
+  // auf dieser Zeit (neue kommen nicht hinzu – die Stunde war reserviert).
+  const platz = (await plaetzeLesen(tx)).find((p) => p.id === w.platz_id);
+  if (!platz) throw new BusinessError('Der Platz ist nicht mehr vorhanden.');
+  const einzel = (await belegungLesen(tx, [platz], ab, s.bis))
+    .filter((b) => b.status === '1' && !b.fest && !b.reserviert && isoWochentag(b.datum) === w.wochentag && b.von < w.bis && b.bis > w.von).map((b) => b.datum).sort();
+  const erster = ab;
+  if (einzel.length) ab = addTage(einzel[einzel.length - 1], 7);
+  if (ab > s.bis) throw new BusinessError(einzel.length ? `Bis zum Saisonende ist die Zeit durch Einzelbuchungen belegt (zuletzt am ${dat(einzel[einzel.length - 1])}).` : 'Bis zum Saisonende gibt es keinen Termin mehr.');
+  const spaeter = ab !== erster ? ` Beginn erst am ${dat(ab)}, weil bis ${dat(einzel[einzel.length - 1])} noch Einzelbuchungen bestehen.` : '';
+  const r0 = await aboAnlegen(tx, { platz_id: w.platz_id, adrnr: w.adrnr, kunde: w.name, ab, bis_datum: s.bis, von: hhmm(w.von), bis: hhmm(w.bis), text: `Abo ${s.name}` }, true);
+  const r = { ...r0, text: r0.text + spaeter };
+  await tx`update tco.abo_wunsch set abo_bid = ${r.bid} where id = ${id}`;
   // unterjährig: jede Einheit bis zum Saisonende zum Einzelpreis der jeweiligen Stunde (Abo mit Einzelabrechnung)
   const k = unterjaehrig(s, w as unknown as Zeit, (await plaetzeLesen(tx)).find((p) => p.id === w.platz_id), await preiseLesen(tx));
   if (!k) return r.text;

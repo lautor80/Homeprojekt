@@ -563,7 +563,7 @@ export async function platzRoutes(app: FastifyInstance) {
     let fehler = regelnPruefen({ platz: p, datum: e.datum, von, bis }, false);
     if (!fehler) {
       const b = (await belegungLesen(DB, [p], e.datum, e.datum, req.sitzung)).find((x) => (x.reserviert || x.bid !== e.bid) && x.von < bis && x.bis > von);
-      if (b) fehler = b.fest ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr: ${b.fest.bezeichnung}.` : b.reserviert ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht.` : `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
+      if (b) fehler = b.fest ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr: ${b.fest.bezeichnung}.` : b.abo ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr für ein Abo reserviert.` : b.reserviert ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht.` : `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
     }
     return { fehler, preis: preisVon(p, e.datum, von, bis, '1', await preiseLesen(DB)) };
   });

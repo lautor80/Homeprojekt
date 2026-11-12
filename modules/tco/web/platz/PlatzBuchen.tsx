@@ -31,7 +31,7 @@ const PB = `${TCO}/platz`;
 export type FestArt = 'TRAINING' | 'SCHNUPPER' | 'SPERRE' | 'VERANSTALTUNG';
 export const FEST_ARTEN: Record<FestArt, string> = { TRAINING: 'Training', SCHNUPPER: 'Schnuppertraining', SPERRE: 'Sperrzeit', VERANSTALTUNG: 'Veranstaltung' };
 export interface Belegt {
-  von: string; bis: string; eigen: boolean; reserviert?: boolean;
+  von: string; bis: string; eigen: boolean; reserviert?: boolean; abo?: boolean;
   /** id/einmalig/portal nur in der Platzverwaltung (#11): einzelne Termine ändern, alle kopieren */
   fest?: { art: FestArt; bezeichnung: string; hinweis: string | null; id?: number; einmalig?: boolean; portal?: boolean };
   bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null;
@@ -236,7 +236,7 @@ export function PlatzBuchen() {
                 <span><i className="portal-pb__punkt portal-pb__punkt--schnupper" />Schnuppertraining</span>
                 <span><i className="portal-pb__punkt portal-pb__punkt--sperre" />Sperrzeit</span>
               </> : <span><i className="portal-pb__punkt portal-pb__punkt--belegt" />belegt / Training / Sperrzeit</span>}
-              <span><i className="portal-pb__punkt portal-pb__punkt--reserviert" />wird gerade gebucht</span>
+              <span><i className="portal-pb__punkt portal-pb__punkt--reserviert" />reserviert / wird gerade gebucht</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--vorbei" />vorbei / nicht buchbar</span>
             </div>
 
@@ -625,7 +625,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, pre
                     {b.eigen && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Mein Abo' : 'Meine Buchung'} · {preisText(b)}</span>}
                     {b.fest && <span className="portal-pb__block-text" title={b.fest.hinweis ?? undefined}>{b.fest.bezeichnung}</span>}
                     {b.fest?.hinweis && <span className="portal-pb__block-text portal-pb__block-notiz">{b.fest.hinweis}</span>}
-                    {b.reserviert && <span className="portal-pb__block-text">Wird gerade gebucht{admin && b.kunde ? ` · ${b.kunde}` : ''}</span>}
+                    {b.reserviert && <span className="portal-pb__block-text">{b.abo ? 'Reserviert' : 'Wird gerade gebucht'}{admin && b.kunde ? ` · ${b.abo ? 'Abo ' : ''}${b.kunde}` : ''}</span>}
                     {!b.fest && !b.reserviert && !b.eigen && !admin && <span className="portal-pb__block-text">{b.kunde ? `${b.art === 'Abo' ? 'Abo · ' : ''}${b.kunde}` : 'Belegt'}</span>}
                     {!b.fest && !b.reserviert && admin && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Abo · ' : ''}{b.kunde || '–'}</span>}
                     {(b.eigen || admin || namen) && b.text && <span className="portal-pb__block-text portal-pb__block-notiz">{b.text}</span>}
