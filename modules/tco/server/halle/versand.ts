@@ -222,6 +222,7 @@ export async function whatsappVorbereiten(db: Db, v: Verein, w: Schreiber, d: { 
   if (!d.rgnrs.length) throw new BusinessError('Bitte mindestens eine Rechnung auswählen');
   if (!plAktiv(v)) throw new BusinessError('Für den WhatsApp-Versand wird Paperless (Freigabelinks) benötigt.');
   const pl = paperless(v);
+  pl.freigabeExternPflicht(); // ausgehend: nie mit interner Adresse – vor dem Drucken prüfen
   const zeilen: string[] = [];
   const links: { rgnr: string; link: string; docId: number }[] = [];
   for (const rgnr of d.rgnrs) {
@@ -242,7 +243,7 @@ export async function whatsappVorbereiten(db: Db, v: Verein, w: Schreiber, d: { 
     links.push({ rgnr, link, docId });
   }
   const nachricht = d.text.includes('[LINKS]') ? d.text.replace('[LINKS]', zeilen.join('\n')) : `${d.text}\n\n${zeilen.join('\n')}`;
-  return { url: whatsappLink(nr, nachricht), links, nachricht };
+  return { url: whatsappLink(nr, pl.ausgehend(nachricht)), links, nachricht: pl.ausgehend(nachricht) };
 }
 
 export async function whatsappBestaetigen(db: Db, v: Verein, w: Schreiber, d: { links: { rgnr: string; link: string; docId: number }[]; nummer: string; benutzer: string }) {

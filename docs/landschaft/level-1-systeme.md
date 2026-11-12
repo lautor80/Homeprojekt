@@ -129,7 +129,7 @@ flowchart LR
 | `tco.ep3` | EP3-Export Hallenbuchungen (n8n) | TCO EP3 Import Portal | Übernahme der Hallenbuchungen und Kunden aus dem EP3-Buchungssystem über n8n. Der Test ruft den Export ab, übernimmt aber nichts. | `modules/tco/server/verbindung.ts` |
 | `tco.mailabruf` | Maileingang jetzt abrufen (n8n) | TCO Maileingang | Startet im Dokumenteneingang über „Posteingang abrufen“ den n8n-Workflow „TCO Maileingang“ (Webhook-Knoten „Alle Mails jetzt (Webhook)“,  | `modules/tco/server/verbindung.ts` |
 | `tco.nextcloud` | Nextcloud Dokumentenablage |  | Arbeitsablage des Dokumenteneingangs: Regeln können Dokumente zusätzlich zu Paperless in einen Ordner der Nextcloud legen (WebDAV). Anmeldung mit Benutzer und App-Passwort (Nextcloud → Einstellungen → Sicherheit). | `modules/tco/server/verbindung.ts` |
-| `paperless` | Paperless-ngx |  | Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: erst LAN, dann Internet – die erste erreichbare wird genutzt. | `server/src/lib/verbindungen.ts` |
+| `paperless` | Paperless-ngx |  | Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst.  | `server/src/lib/verbindungen.ts` |
 | `mail` | E-Mail-Versand (n8n) | TCO Mailversand | Generischer n8n-Workflow „TCO Mailversand“ für alle E-Mails des Portals (Kennwort-Links, Registrierung, Rechnungen, Mitglieder …).  | `server/src/lib/mail.ts` |
 
 > Hinweis: Zu „Rückmeldungen Jugendtraining (n8n)“, „Schulferien Saarland (n8n)“ liegt kein Workflow-Export in `docs/n8n` – die Workflows existieren nur in der n8n-Instanz.

@@ -164,7 +164,7 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   r = await call('PUT', '/api/verbindungen/mail', { url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, auth_art: 'header', header_name: 'X-TCO-Key', geheimnis: 'k' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   // Paperless zentral (Administration → Anbindungen): sichern, maskiert zurück, prüfen
-  r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' });
+  r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim', einstellungen: { freigabe_url: `http://127.0.0.1:${port}` } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.geheimnis, '********');
   r = await call('GET', '/api/m/tco/verein');
@@ -332,8 +332,10 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   const fassung = mock.docs.get(100)!.versions[0];
   r = await call('GET', `${H}/rechnungen/${rg}/paperless`);
   assert.deepEqual(r.body.versionen.map((x: any) => x.id), [100, fassung]);
-  // Freigabelink: Empfänger sitzen nicht im Heimnetz – mit der Adresse für Freigabelinks statt der LAN-Adresse des Servers
-  assert.match(r.body.link, new RegExp(`^http://127\\.0\\.0\\.1:${port}/share/slug\\d+$`));
+  // Ausgehend immer mit der externen Adresse: die Adresse für Freigabelinks ersetzt die LAN-Adresse des Servers,
+  // auch in Links, die früher mit der LAN-Adresse erzeugt oder in den Mailtext kopiert wurden
+  const lan = `http://127.0.0.1:${port}`;
+  assert.match(r.body.link, new RegExp(`^${lan.replace(/\./g, '\\.')}/share/slug\\d+$`));
   assert.equal((await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: 'dokumente.example.org' } })).status, 400);
   r = await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: 'https://dokumente.example.org/' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -342,8 +344,25 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.match(r.body.link, /^https:\/\/dokumente\.example\.org\/share\/slug\d+$/);
   r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
   assert.match(r.body.text, /Freigabelinks: https:\/\/dokumente\.example\.org\./);
+  const mailsVorher = mock.mails.length;
+  r = await call('POST', `${H}/mail`, { rgnrs: [rg], an: 'erika@example.org', betreff: 'Link', text: `Hallo,\n${lan}/share/slug100\nGruß`, neudruck: false, entwurf: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(mock.mails.at(-1).text, /\nhttps:\/\/dokumente\.example\.org\/share\/slug100\n/);
+  assert.ok(!mock.mails.at(-1).text.includes('127.0.0.1'), 'keine interne Adresse im Mailtext');
+  // ohne externe Adresse: nichts geht mit internem Link hinaus
   r = await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: '' } });
   assert.deepEqual(r.body.einstellungen, {});
+  r = await call('POST', '/api/verbindungen/paperless/pruefen', {});
+  assert.match(r.body.text, /keine aus dem Internet erreichbare Adresse/);
+  r = await call('POST', `${H}/mail`, { rgnrs: [rg], an: 'erika@example.org', betreff: 'Link', text: `Hallo,\n${lan}/share/slug100\nGruß`, neudruck: false, entwurf: false });
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(r.body.message, /Adresse für Freigabelinks/);
+  assert.equal(mock.mails.length, mailsVorher + 1, 'Mail mit internem Link wird nicht gesendet');
+  // Ablage und Anzeige bleiben davon unberührt
+  r = await call('GET', `${H}/rechnungen/${rg}/paperless`);
+  assert.match(r.body.link, new RegExp(`^${lan.replace(/\./g, '\\.')}/share/slug\\d+$`));
+  r = await call('PUT', '/api/verbindungen/paperless', { einstellungen: { freigabe_url: lan } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf?root=100`)).status, 200, 'Fassung des Neudrucks darf geöffnet werden');
   assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf`)).status, 404, 'Fassung ohne Stammdokument bleibt gesperrt');
   assert.equal((await call('GET', `${H}/paperless/${fassung}/pdf?root=99999`)).status, 404, 'fremdes Stammdokument');

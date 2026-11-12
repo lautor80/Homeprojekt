@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { nurIntern, Paperless } from '../src/lib/paperless.js';
+import { FREIGABE_ADRESSE_FEHLT, nurIntern, Paperless } from '../src/lib/paperless.js';
 
 /**
  * Freigabelinks gehen an Empfänger außerhalb des eigenen Netzes (Rechnungsversand per E-Mail/WhatsApp):
@@ -44,14 +44,43 @@ test('Freigabelink: eingestellte Adresse, sonst erste öffentliche Basis-URL, so
     assert.equal(await pl.freigabelink(7), 'https://dokumente.example.org/share/alt');
     assert.equal(await pl.freigabelinkAnlegen(8), 'https://dokumente.example.org/share/neu8');
     assert.deepEqual(await pl.freigabelinks(7), ['https://dokumente.example.org/share/alt']);
-    // ohne Einstellung: „erst LAN, dann Internet“ – der Link nimmt die Internet-Adresse, die API die erreichbare LAN-Adresse
+    // ohne Einstellung: der Link nimmt die Internet-Adresse, die Ablage die interne – unabhängig von der Reihenfolge der Eingabe
     pl = new Paperless({ url: `${lan},https://extern.example.org`, token: 't' });
     assert.equal(await pl.baseUrl(), lan);
     assert.equal(await pl.freigabelink(7), 'https://extern.example.org/share/alt');
+    pl = new Paperless({ url: `https://extern.example.org, ${lan}/`, token: 't2' });
+    assert.equal(await pl.baseUrl(), lan, 'Ablage: intern zuerst');
+    assert.equal(pl.freigabeExtern(), 'https://extern.example.org');
     // die Einstellung geht vor
     pl = new Paperless({ url: `${lan},https://extern.example.org`, token: 't', freigabeUrl: 'https://dokumente.example.org' });
     assert.equal(await pl.freigabelink(8), 'https://dokumente.example.org/share/neu8');
   } finally {
     srv.close();
   }
+});
+
+test('Ausgehende Texte: Freigabelinks immer mit der externen Adresse, sonst Ablehnung', () => {
+  const lan = 'http://192.168.178.105:8010';
+  const text = `Hallo Tina,\n\nRechnung 2026_090 (12,00 €): ${lan}/share/e1gl4DDqIQPmEYizYQwMl6xb\n\nViele Grüße`;
+  // Adresse für Freigabelinks eingetragen: Link wird umgeschrieben, der Rest bleibt
+  let pl = new Paperless({ url: lan, token: 't', freigabeUrl: 'https://dokumente.example.org' });
+  assert.equal(pl.ausgehend(text), text.replace(lan, 'https://dokumente.example.org'));
+  assert.equal(pl.ausgehend(pl.ausgehend(text)), pl.ausgehend(text), 'bereits externe Links bleiben');
+  // HTML, mehrere Links, andere interne Adresse (früherer Stand der Anbindung), fremde öffentliche Links bleiben
+  const html = `<a href="${lan}/share/abc_1-2">Rechnung</a> (http://paperless:8000/share/xyz) https://cloud.example.com/share/fremd ${lan}/documents/5/details`;
+  assert.equal(pl.ausgehend(html),
+    `<a href="https://dokumente.example.org/share/abc_1-2">Rechnung</a> (https://dokumente.example.org/share/xyz) https://cloud.example.com/share/fremd ${lan}/documents/5/details`);
+  // zweite, öffentliche Basis-URL ohne eigene Einstellung
+  pl = new Paperless({ url: `${lan},https://extern.example.org`, token: 't' });
+  assert.equal(pl.ausgehend(`${lan}/share/a1`), 'https://extern.example.org/share/a1');
+  assert.equal(pl.freigabeExternPflicht(), 'https://extern.example.org');
+  // nur interne Adresse: nichts geht mit internem Link hinaus; Texte ohne Freigabelink sind nicht betroffen
+  pl = new Paperless({ url: lan, token: 't' });
+  assert.equal(pl.freigabeExtern(), null);
+  assert.throws(() => pl.ausgehend(text), (e: Error) => e.message === FREIGABE_ADRESSE_FEHLT);
+  assert.throws(() => pl.freigabeExternPflicht(), /Adresse für Freigabelinks/);
+  assert.equal(pl.ausgehend('Hallo, bitte überweise den Betrag.'), 'Hallo, bitte überweise den Betrag.');
+  // reiner LAN-Betrieb: interne Adresse bewusst als Adresse für Freigabelinks eingetragen
+  pl = new Paperless({ url: 'http://paperless:8000', token: 't', freigabeUrl: lan });
+  assert.equal(pl.ausgehend(`http://paperless:8000/share/a1 ${lan}/share/a2`), `${lan}/share/a1 ${lan}/share/a2`);
 });

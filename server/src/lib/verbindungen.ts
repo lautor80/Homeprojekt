@@ -128,9 +128,10 @@ export async function verbindungSpeichern(tx: Tx, v: Verbindung, benutzer: strin
 
 export const PAPERLESS_DEF: VerbindungDef = {
   id: 'paperless', text: 'Paperless-ngx',
-  beschreibung: 'Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: erst LAN, dann Internet – die erste erreichbare wird genutzt.',
+  beschreibung: 'Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst. '
+    + 'Alles Ausgehende (Freigabelinks in E-Mails und WhatsApp-Nachrichten) bekommt immer die Adresse für Freigabelinks – ohne Eintrag die erste Adresse, die aus dem Internet erreichbar ist.',
   auth: ['token'],
-  felder: { url: 'URL (mehrere durch Komma: erst LAN, dann Internet)', geheimnis: 'API-Token (Paperless → Profil)' },
+  felder: { url: 'URL für die Ablage (mehrere durch Komma, z. B. LAN und Internet)', geheimnis: 'API-Token (Paperless → Profil)' },
   zusatz: [{ key: 'freigabe_url', text: 'Adresse für Freigabelinks (aus dem Internet erreichbar)', platzhalter: 'https://dokumente.example.org' }],
   einstellungen: (e) => {
     const f = String(e.freigabe_url ?? '').trim().replace(/\/+$/, '');
@@ -142,10 +143,10 @@ export const PAPERLESS_DEF: VerbindungDef = {
     const pl = new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) });
     const url = await pl.baseUrl();
     const k = await pl.korrespondenten();
-    const fb = await pl.freigabeBasis();
-    const hinweis = nurIntern(fb)
-      ? ` Achtung: Freigabelinks zeigen auf ${fb} und sind nur im eigenen Netz erreichbar – bitte die Adresse für Freigabelinks eintragen.`
-      : ` Freigabelinks: ${fb}.`;
+    const fb = pl.freigabeExtern();
+    const hinweis = !fb ? ' Achtung: Es ist keine aus dem Internet erreichbare Adresse bekannt – E-Mails und WhatsApp-Nachrichten mit Freigabelink werden abgelehnt, bis die Adresse für Freigabelinks eingetragen ist.'
+      : nurIntern(fb) ? ` Freigabelinks: ${fb} (nur im eigenen Netz erreichbar).`
+        : ` Freigabelinks: ${fb}.`;
     return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten).${hinweis}` };
   },
 };
