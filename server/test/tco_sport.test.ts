@@ -94,7 +94,7 @@ test('Abgleich: sichere Treffer, Prüffälle, ohne Treffer – übernommen wird 
 
   // Anzeige: Stand der App und Stammsatz des Mitglieds
   r = await call('GET', S);
-  assert.deepEqual(r.body.anzahl, { mitglieder: 6, mitId: 3, ohneId: 3, mitLk: 3 });
+  assert.deepEqual(r.body.anzahl, { mitglieder: 6, mitId: 3, ohneId: 3, irrelevant: 0, mitLk: 3 });
   r = await call('GET', '/api/m/tco/mitglieder/m/0000000301');
   assert.deepEqual([r.body.spieler.id_nr, r.body.spieler.lk], ['10204675', 22.1]);
 });
@@ -120,12 +120,67 @@ test('Folgejahr: LK ändert sich, Treffer über die gespeicherte ID-Nr., fehlend
   assert.deepEqual(m.verlauf.map((v: any) => v.lk), [21.3, 22.1], 'Verlauf je Jahr');
   // Übersicht: alle aktiven Mitglieder, getrennt nach mit/ohne ID-Nr.; Name und Vorname einzeln für Spalten und Suche
   assert.ok(m.nachname && m.vorname && m.name === `${m.nachname}, ${m.vorname}`);
-  assert.equal(r.body.anzahl.mitId + r.body.anzahl.ohneId, r.body.anzahl.mitglieder);
+  assert.equal(r.body.anzahl.mitId + r.body.anzahl.ohneId + r.body.anzahl.irrelevant, r.body.anzahl.mitglieder);
   assert.equal(r.body.zeilen.length, r.body.anzahl.mitglieder);
-  assert.equal(r.body.zeilen.filter((x: any) => !x.id_nr).length, r.body.anzahl.ohneId);
+  assert.equal(r.body.zeilen.filter((x: any) => !x.id_nr && x.irrelevant !== true).length, r.body.anzahl.ohneId);
   assert.ok(r.body.anzahl.ohneId > 0 && r.body.anzahl.mitId > 0);
   // doppelte ID-Nr. wird auch bei ausdrücklicher Auswahl nicht gespeichert
   r = await call('POST', `${S}/uebernehmen`, { datei: neu, auswahl: [{ adrnr: '0000000306', zeile: 4 }] });
   assert.equal(r.status, 400);
   assert.match(r.body.message, /bereits bei einem anderen Mitglied/);
+});
+
+test('Übersicht: Eintritt absteigend, Kennzeichen „Für Meldung irrelevant“ gesammelt pflegen', async () => {
+  await sql`update tco.mitglieder set eintritt = '2024-03-01' where adrnr = '0000000303'`;
+  let r = await call('GET', S);
+  const z = r.body.zeilen as any[];
+  assert.equal(z[0].adrnr, '0000000303', 'jüngster Eintritt zuerst');
+  assert.equal(z[0].eintritt, '2024-03-01');
+  assert.deepEqual(z.map((x) => x.eintritt), [...z.map((x) => x.eintritt)].sort().reverse());
+  // mit ID-Nr.: Kennzeichen automatisch „nicht gesetzt“ (false), ohne ID-Nr.: leer (null)
+  assert.ok(z.every((x) => (x.id_nr ? x.irrelevant === false : x.irrelevant === null)), JSON.stringify(z.map((x) => [x.id_nr, x.irrelevant])));
+  const ohne = z.filter((x) => !x.id_nr).map((x) => x.adrnr);
+  const mit = z.find((x) => x.id_nr).adrnr;
+
+  // Mitglied mit ID-Nr. lässt sich nicht kennzeichnen – auch nicht in einer Sammelauswahl
+  r = await call('POST', `${S}/irrelevant`, { adrnrs: [ohne[0], mit], irrelevant: true });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /mit ID-Nr\. sind gemeldet/);
+  assert.equal((await call('POST', `${S}/irrelevant`, { adrnrs: ['unbekannt'], irrelevant: true })).status, 400);
+  assert.equal((await call('POST', `${S}/irrelevant`, { adrnrs: [], irrelevant: true })).status, 400);
+
+  // gesammelt setzen
+  r = await call('POST', `${S}/irrelevant`, { adrnrs: ohne.slice(0, 2), irrelevant: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /2 Mitglieder als „Für Meldung irrelevant“ gekennzeichnet/);
+  r = await call('GET', S);
+  assert.equal(r.body.anzahl.irrelevant, 2);
+  assert.equal(r.body.anzahl.ohneId, ohne.length - 2);
+  assert.equal(r.body.zeilen.find((x: any) => x.adrnr === ohne[0]).irrelevant, true);
+  r = await call('GET', `/api/m/tco/mitglieder/m/${ohne[0]}`);
+  assert.equal(r.body.spieler.irrelevant, true, 'Anzeige in den Erweiterungen des Mitglieds');
+  assert.equal((await call('GET', `/api/m/tco/mitglieder/m/${mit}`)).body.spieler.irrelevant, false);
+
+  // gekennzeichnete Mitglieder werden im Abgleich nicht mehr als „ohne Treffer“ selektiert
+  r = await call('POST', `${S}/abgleich`, { datei: csv(['Fremd;Gast;;01.01.2000;GER;LK20,0;19999999;männlich;Weg 1']) });
+  assert.ok(!r.body.ohneTreffer.some((m: any) => ohne.slice(0, 2).includes(m.adrnr)));
+  assert.ok(r.body.ohneTreffer.some((m: any) => m.adrnr === mit));
+
+  // bekommt ein gekennzeichnetes Mitglied doch eine ID-Nr., fällt das Kennzeichen automatisch weg
+  const [p] = await sql`select vorname, nachname, to_char(geburtsdatum, 'DD.MM.YYYY') as geb from tco.mitglieder where adrnr = ${ohne[0]}`;
+  const datei = csv([`${p.nachname};${p.vorname};;${p.geb ?? ''};GER;LK23,0;18888888;männlich;Weg 3`]);
+  r = await call('POST', `${S}/abgleich`, { datei });
+  const t = r.body.treffer.find((x: any) => x.adrnr === ohne[0]);
+  assert.ok(t, 'gekennzeichnetes Mitglied wird weiter abgeglichen');
+  r = await call('POST', `${S}/uebernehmen`, { datei, auswahl: [{ adrnr: ohne[0], zeile: t.zeile }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [a] = await sql`select id_nr, meldung_irrelevant from tco.mitgliedera where adrnr = ${ohne[0]}`;
+  assert.deepEqual([a.id_nr, a.meldung_irrelevant], ['18888888', false]);
+
+  // zurücknehmen: wieder offen (leer)
+  r = await call('POST', `${S}/irrelevant`, { adrnrs: [ohne[1]], irrelevant: false });
+  assert.match(r.body.text, /Kennzeichen bei 1 Mitglied entfernt/);
+  const [b] = await sql`select meldung_irrelevant from tco.mitgliedera where adrnr = ${ohne[1]}`;
+  assert.equal(b.meldung_irrelevant, null);
+  assert.equal((await call('GET', S)).body.anzahl.irrelevant, 0);
 });
