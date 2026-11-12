@@ -534,6 +534,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, pre
                 <button key={m} type="button" className="portal-pb__frei" style={{ top: y(m), height: h(p.raster) }}
                         aria-label={`${p.name} ab ${hhmm(m)} Uhr ${admin ? 'eintragen' : 'buchen'}`} onClick={() => onFrei?.(p, hhmm(m))}>
                   <span>{hhmm(m)}</span>
+                  <span className="portal-pb__frei-text">Frei</span>
                 </button>
               ))}
               {p.belegt.map((b, i) => {
