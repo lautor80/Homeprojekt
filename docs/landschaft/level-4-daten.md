@@ -18,6 +18,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `core.users` | ● |  | ● | ● |  |  |  | ● | ● | ● | ● | ● |
 | `tco.anlagen` |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.antrag_map` | ● |  |  |  |  |  |  |  |  |  | ● |  |
+| `tco.bankleitzahlen` | ● |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.beitrag` | ● | ● |  |  |  |  |  |  |  |  | ● |  |
 | `tco.beitrag_pr` | ● | ● |  |  |  |  |  |  |  |  | ● |  |
 | `tco.bookings` |  |  | ● |  |  |  |  | ● | ● |  |  | ● |
