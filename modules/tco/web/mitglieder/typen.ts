@@ -37,7 +37,7 @@ export interface Sepa {
 export interface Detail {
   mitglied: Mitglied; titel: string; bank: Bank; trainer: boolean; zuid: string; kanal: string;
   /** Spielerdaten aus nuLiga (#162) */
-  spieler?: { id_nr: string; lk: number | null; lk_stand: string | null };
+  spieler?: { id_nr: string; lk: number | null; lk_stand: string | null; irrelevant?: boolean | null };
   /** false = Bankdaten kommen maskiert (Berechtigung tco.bankdaten:display fehlt) */
   bankKlar: boolean;
   familie: Person[]; vertraege: Vertrag[]; sepa: Sepa[];

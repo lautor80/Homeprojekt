@@ -72,17 +72,24 @@ export interface Treffer {
   /** ID-Nr. oder LK würden sich ändern */
   aenderung: boolean;
 }
-interface Mitglied { adrnr: string; vorname: string; nachname: string; geburtsdatum: string | null; mitglnrn: string; id_nr: string | null; lk: number | null; lk_stand: string | null }
+interface Mitglied {
+  adrnr: string; vorname: string; nachname: string; geburtsdatum: string | null; mitglnrn: string; id_nr: string | null; lk: number | null; lk_stand: string | null;
+  eintritt?: string | null;
+  /** „Für Meldung irrelevant“: null = offen, true = gesetzt, false = hat eine ID-Nr. */
+  irrelevant?: boolean | null;
+}
 
 export async function mitgliederLesen(db: Db): Promise<Mitglied[]> {
   const rows = await db`
-    select m.adrnr, m.vorname, m.nachname, m.geburtsdatum::text as geburtsdatum, m.mitglnrn, a.id_nr, a.lk::float8 as lk, a.lk_stand::text as lk_stand
+    select m.adrnr, m.vorname, m.nachname, m.geburtsdatum::text as geburtsdatum, m.mitglnrn, a.id_nr, a.lk::float8 as lk, a.lk_stand::text as lk_stand,
+           m.eintritt::text as eintritt, a.meldung_irrelevant
       from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
      where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
      order by lower(m.nachname), lower(m.vorname), m.adrnr`;
   return rows.map((r) => ({
     adrnr: r.adrnr, vorname: leer(r.vorname), nachname: leer(r.nachname), geburtsdatum: r.geburtsdatum, mitglnrn: leer(r.mitglnrn),
     id_nr: leer(r.id_nr) || null, lk: r.lk == null ? null : Number(r.lk), lk_stand: r.lk_stand,
+    eintritt: r.eintritt, irrelevant: leer(r.id_nr) ? false : r.meldung_irrelevant === true ? true : null,
   }));
 }
 
@@ -134,7 +141,8 @@ export function abgleichen(mitglieder: Mitglied[], personen: NuPerson[]) {
   treffer.sort((a, b) => Number(a.sicher) - Number(b.sicher) || a.name.localeCompare(b.name, 'de'));
   return {
     treffer,
-    ohneTreffer: [...mFrei.values()].map((m) => ({ adrnr: m.adrnr, name: condense(`${m.nachname}, ${m.vorname}`), geburtsdatum: m.geburtsdatum, id_nr: m.id_nr, lk: m.lk })),
+    // „Für Meldung irrelevant“ gekennzeichnete Mitglieder werden nicht mehr als fehlend aufgeführt
+    ohneTreffer: [...mFrei.values()].filter((m) => m.irrelevant !== true).map((m) => ({ adrnr: m.adrnr, name: condense(`${m.nachname}, ${m.vorname}`), geburtsdatum: m.geburtsdatum, id_nr: m.id_nr, lk: m.lk })),
     nurDatei: [...pFrei.values()].map((p) => ({ zeile: p.zeile, name: condense(`${p.nachname}, ${p.vorname}`), geburtsdatum: p.geburtsdatum, id_nr: p.id_nr, lk: p.lk })),
   };
 }
@@ -169,8 +177,11 @@ export async function uebernehmen(tx: Db, datei: Buffer, auswahl: { adrnr: strin
       idNeu++;
     }
     if (t.lk_neu !== t.lk_alt) lkNeu++;
-    await tx`insert into tco.mitgliedera (adrnr, id_nr, lk, lk_stand) values (${t.adrnr}, ${t.id_neu}, ${t.lk_neu}, ${h})
-             on conflict (adrnr) do update set id_nr = excluded.id_nr, lk = excluded.lk, lk_stand = excluded.lk_stand`;
+    // mit ID-Nr. ist das Mitglied gemeldet: Kennzeichen „Für Meldung irrelevant“ automatisch auf „nicht gesetzt“
+    const irr = t.id_neu ? false : null;
+    await tx`insert into tco.mitgliedera (adrnr, id_nr, lk, lk_stand, meldung_irrelevant) values (${t.adrnr}, ${t.id_neu}, ${t.lk_neu}, ${h}, ${irr})
+             on conflict (adrnr) do update set id_nr = excluded.id_nr, lk = excluded.lk, lk_stand = excluded.lk_stand,
+               meldung_irrelevant = case when excluded.id_nr is not null then false else tco.mitgliedera.meldung_irrelevant end`;
     if (t.lk_neu != null) {
       await tx`insert into tco.mitglieder_lk (adrnr, jahr, lk, stand) values (${t.adrnr}, ${jahr}, ${t.lk_neu}, ${h})
                on conflict (adrnr, jahr) do update set lk = excluded.lk, stand = excluded.stand`;
@@ -180,17 +191,44 @@ export async function uebernehmen(tx: Db, datei: Buffer, auswahl: { adrnr: strin
   return `${n} Mitglied${n === 1 ? '' : 'er'} abgeglichen: ${idNeu} ID-Nr. und ${lkNeu} LK neu oder geändert (Stand ${dat(h)}).`;
 }
 
-/** Aktueller Stand für die App: aktive Mitglieder mit ID-Nr., LK und Verlauf der letzten Jahre */
+/**
+ * Aktueller Stand für die App: alle aktiven Mitglieder mit Eintritt, ID-Nr., LK, Verlauf der letzten Jahre und dem Kennzeichen
+ * „Für Meldung irrelevant“ – jüngster Eintritt zuerst.
+ */
 export async function standLesen(db: Db) {
   const m = await mitgliederLesen(db);
   const verlauf = await db`select adrnr, jahr, lk::float8 as lk from tco.mitglieder_lk where jahr >= ${Number(heute().slice(0, 4)) - 3} order by jahr desc`;
   const [letzter] = await db`select max(lk_stand)::text as d from tco.mitgliedera`;
+  const sortiert = [...m].sort((a, b) => (b.eintritt ?? '').localeCompare(a.eintritt ?? '') || a.nachname.localeCompare(b.nachname, 'de') || a.vorname.localeCompare(b.vorname, 'de'));
   return {
-    zeilen: m.map((x) => ({
-      adrnr: x.adrnr, name: condense(`${x.nachname}, ${x.vorname}`), nachname: x.nachname, vorname: x.vorname, mitglnrn: x.mitglnrn, geburtsdatum: x.geburtsdatum, id_nr: x.id_nr, lk: x.lk, lk_stand: x.lk_stand,
+    zeilen: sortiert.map((x) => ({
+      adrnr: x.adrnr, name: condense(`${x.nachname}, ${x.vorname}`), nachname: x.nachname, vorname: x.vorname, mitglnrn: x.mitglnrn, geburtsdatum: x.geburtsdatum,
+      eintritt: x.eintritt ?? null, id_nr: x.id_nr, lk: x.lk, lk_stand: x.lk_stand, irrelevant: x.irrelevant ?? null,
       verlauf: verlauf.filter((v) => v.adrnr === x.adrnr).map((v) => ({ jahr: Number(v.jahr), lk: Number(v.lk) })),
     })),
-    anzahl: { mitglieder: m.length, mitId: m.filter((x) => x.id_nr).length, ohneId: m.filter((x) => !x.id_nr).length, mitLk: m.filter((x) => x.lk != null).length },
+    anzahl: {
+      mitglieder: m.length, mitId: m.filter((x) => x.id_nr).length, ohneId: m.filter((x) => !x.id_nr && x.irrelevant !== true).length,
+      irrelevant: m.filter((x) => x.irrelevant === true).length, mitLk: m.filter((x) => x.lk != null).length,
+    },
     letzterAbgleich: letzter?.d ?? null,
   };
+}
+
+/**
+ * Kennzeichen „Für Meldung irrelevant“ gesammelt setzen oder zurücknehmen (zurückgenommen = wieder offen).
+ * Mitglieder mit ID-Nr. sind gemeldet – für sie lässt sich das Kennzeichen nicht setzen.
+ */
+export async function irrelevantSetzen(tx: Db, adrnrs: string[], irrelevant: boolean): Promise<string> {
+  const ids = [...new Set(adrnrs)];
+  const rows = await tx`select m.adrnr, m.vorname, m.nachname, a.id_nr from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr where m.adrnr = any(${ids})`;
+  if (rows.length !== ids.length) throw new BusinessError('Mindestens ein Mitglied wurde nicht gefunden – bitte die Liste aktualisieren.');
+  const mitId = rows.filter((r) => leer(r.id_nr));
+  if (irrelevant && mitId.length) {
+    throw new BusinessError(`${condense(`${mitId[0].nachname}, ${mitId[0].vorname}`)}${mitId.length > 1 ? ` und ${mitId.length - 1} weitere` : ''}: Mitglieder mit ID-Nr. sind gemeldet und können nicht als „Für Meldung irrelevant“ gekennzeichnet werden.`);
+  }
+  for (const r of rows) {
+    const wert = leer(r.id_nr) ? false : irrelevant ? true : null;
+    await tx`insert into tco.mitgliedera (adrnr, meldung_irrelevant) values (${r.adrnr}, ${wert}) on conflict (adrnr) do update set meldung_irrelevant = excluded.meldung_irrelevant`;
+  }
+  return irrelevant ? `${rows.length} Mitglied${rows.length === 1 ? '' : 'er'} als „Für Meldung irrelevant“ gekennzeichnet.` : `Kennzeichen bei ${rows.length} Mitglied${rows.length === 1 ? '' : 'ern'} entfernt.`;
 }

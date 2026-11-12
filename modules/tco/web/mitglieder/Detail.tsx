@@ -12,7 +12,7 @@ import { toast } from '@core/toast';
 import { useCan } from '@core/session';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { ObjectHeader } from '@core/components/ObjectHeader';
-import { dat } from '../util';
+import { TCO, dat } from '../util';
 import { MG, type Auswahl, type Detail, type Vertrag } from './typen';
 import { BankDialog, KommDialog, KopfDialog, VertragDialog, vertragPersonen } from './Dialoge';
 import { VertragsBaum } from './VertragsBaum';
@@ -198,6 +198,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
 
 // ---------------------------------------------------------------- Stammdaten
 function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; onEdit: () => void; onAktion: (fn: () => Promise<{ text?: string } | void>) => void }) {
+  const can = useCan();
   const m = d.mitglied;
   const [austritt, setAustritt] = useState(m.austritt ?? '');
   useEffect(() => setAustritt(m.austritt ?? ''), [m.austritt]);
@@ -240,6 +241,11 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
         <Feld label="Trainer">
           <CheckBox checked={d.trainer} disabled={!edit} text="Trainer im Jugendtraining"
                     onChange={(e) => onAktion(() => api.post(`${MG}/m/${m.adrnr}/trainer`, { trainer: e.target.checked }))} />
+        </Feld>
+        <Feld label="Meldung (nuLiga)">
+          <CheckBox checked={d.spieler?.irrelevant === true} disabled={!can('tco.sport:edit') || !!d.spieler?.id_nr} text="Für Meldung irrelevant"
+                    onChange={(e) => onAktion(() => api.post(`${TCO}/sport/spielerdaten/irrelevant`, { adrnrs: [m.adrnr], irrelevant: e.target.checked }))} />
+          {d.spieler?.id_nr && <Text className="portal-muted portal-small" style={{ display: 'block' }}>nicht gesetzt – das Mitglied hat eine ID-Nr.</Text>}
         </Feld>
         <Feld label="Bevorzugter Versandweg">
           <Select style={{ width: '11rem' }} disabled={!edit} onChange={(e) => onAktion(() => api.post(`${MG}/m/${m.adrnr}/kanal`, { kanal: (e.detail.selectedOption as HTMLElement).dataset.k }))}>

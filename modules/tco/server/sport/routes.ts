@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { DB } from '../verein.js';
-import { abgleich, standLesen, uebernehmen } from './nuliga.js';
+import { abgleich, irrelevantSetzen, standLesen, uebernehmen } from './nuliga.js';
 
 /** Sport (#162): Spielerdaten aus nuLiga – ID-Nr. und LK mit den Mitgliedern abgleichen */
 export const P_SPORT = { display: 'tco.sport:display', edit: 'tco.sport:edit' };
@@ -18,5 +18,10 @@ export async function sportRoutes(app: FastifyInstance) {
   app.post('/sport/spielerdaten/uebernehmen', { preHandler: requireAuth(P_SPORT.edit), bodyLimit: 8 * 1024 * 1024 }, async (req) => {
     const b = z.object({ datei, name: z.string().max(200).default(''), auswahl: z.array(z.object({ adrnr: z.string().min(1), zeile: z.number().int().min(2) })).min(1, 'Bitte mindestens einen Treffer auswählen.').max(5000) }).parse(req.body);
     return { text: await change(req, (tx) => uebernehmen(tx, b.datei, b.auswahl), { action: 'NULIGA_ABGLEICH', reason: b.name || 'nuLiga-Mitgliederdaten' }) };
+  });
+  /** Kennzeichen „Für Meldung irrelevant“ gesammelt setzen/zurücknehmen */
+  app.post('/sport/spielerdaten/irrelevant', { preHandler: requireAuth(P_SPORT.edit) }, async (req) => {
+    const b = z.object({ adrnrs: z.array(z.string().min(1).max(20)).min(1, 'Bitte mindestens ein Mitglied auswählen.').max(5000), irrelevant: z.boolean() }).parse(req.body);
+    return { text: await change(req, (tx) => irrelevantSetzen(tx, b.adrnrs, b.irrelevant), { action: 'MELDUNG_IRRELEVANT' }) };
   });
 }
