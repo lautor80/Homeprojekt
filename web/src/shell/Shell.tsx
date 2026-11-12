@@ -37,6 +37,25 @@ export function Shell() {
   const [pwOpen, setPwOpen] = useState(false);
   const [dunkel, setDunkel] = useState(aktuelleErscheinung() === 'dunkel');
   const profileRef = useRef<HTMLElement | null>(null);
+  // Weltenwandler: ohne neue Anmeldung zu anderen Benutzern mit dieser Rolle wechseln (Berechtigungstests)
+  const [welten, setWelten] = useState<{ id: string; username: string; name: string; rollen: string; ursprung: boolean }[]>([]);
+  const wandler = me.user.roles.includes('WELTENWANDLER');
+  useEffect(() => {
+    if (!wandler) { setWelten([]); return; }
+    api.get<{ benutzer: typeof welten }>('/api/auth/weltenwandler').then((r) => setWelten(r.benutzer)).catch(() => setWelten([]));
+  }, [wandler, me.user.id]);
+  async function wechseln(id: string) {
+    setMenuOpen(false);
+    try {
+      const r = await api.post<{ name: string }>('/api/auth/weltenwandler', { userId: id });
+      sessionStorage.setItem('weltenwandler.meldung', `Gewechselt zu ${r.name}.`);
+      window.location.assign('/');
+    } catch (e) { toast((e as Error).message, 6000); }
+  }
+  useEffect(() => {
+    const m = sessionStorage.getItem('weltenwandler.meldung');
+    if (m) { sessionStorage.removeItem('weltenwandler.meldung'); toast(m, 4000); }
+  }, []);
 
   const modules = enabledModules(me.modules);
   const orgName = (me.settings['org.name'] as string) || 'Portal';
@@ -132,6 +151,7 @@ export function Shell() {
         opener={profileRef.current}
         onClose={() => setMenuOpen(false)}
         onSignOutClick={() => { setMenuOpen(false); logout(); }}
+        onItemClick={(e) => { const id = (e.detail.item as HTMLElement | undefined)?.dataset?.wechsel; if (id) wechseln(id); }}
         accounts={
           <UserMenuAccount
             titleText={me.user.displayName}
@@ -142,6 +162,14 @@ export function Shell() {
           />
         }
       >
+        {wandler && welten.some((w) => w.id !== me.user.id) && (
+          <UserMenuItem icon="switch-views" text="Benutzer wechseln (Weltenwandler)">
+            {welten.filter((w) => w.id !== me.user.id).map((w) => (
+              <UserMenuItem key={w.id} icon={w.ursprung ? 'home' : 'person-placeholder'} text={`${w.name}${w.ursprung ? ' (Anmeldung)' : ''}`}
+                            additionalText={w.rollen || w.username} data-wechsel={w.id} />
+            ))}
+          </UserMenuItem>
+        )}
         <UserMenuItem icon="key" text="Passwort ändern" onClick={() => { setMenuOpen(false); setPwOpen(true); }} />
         <UserMenuItem icon={dunkel ? 'light-mode' : 'dark-mode'} text={dunkel ? 'Helles Design' : 'Dunkles Design'}
                       onClick={() => { const d = !dunkel; setDunkel(d); erscheinungSetzen(d ? 'dunkel' : 'hell'); setMenuOpen(false); }} />

@@ -12,6 +12,7 @@ import { BusinessError } from './errors.js';
 import { activeModules } from './modules.js';
 import { setupRoutes } from './routes/setup.js';
 import { authRoutes } from './routes/auth.js';
+import { weltenwandlerRoutes } from './routes/weltenwandler.js';
 import { adminRoutes } from './routes/admin.js';
 import { auditRoutes } from './routes/audit.js';
 import { settingsRoutes } from './routes/settings.js';
@@ -61,6 +62,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   await app.register(setupRoutes);
   await app.register(authRoutes);
+  await app.register(weltenwandlerRoutes);
   await app.register(settingsRoutes);
   await app.register(paperlessMappingRoutes);
   await app.register(verbindungenRoutes);

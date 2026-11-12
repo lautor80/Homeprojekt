@@ -175,6 +175,16 @@ der Anzeige maskiert (auch für `core.audit:display`); die eigenen Vereinskonten
 nicht maskiert. Neue geschützte Felder: im Modul `sensitiveFields` (für Änderungsbelege) deklarieren und in den
 Routen `feldschutz(req, permission)` anwenden.
 
+## Weltenwandler: Benutzer wechseln ohne neue Anmeldung (Berechtigungstests)
+
+Benutzer mit der Rolle **Weltenwandler** (`WELTENWANDLER`, Migration `014_weltenwandler.sql`; gewährt selbst keine Rechte, nur ein
+Administrator darf sie ändern) finden im Benutzermenü (Avatar oben rechts) **Benutzer wechseln (Weltenwandler)** mit allen aktiven
+Benutzern, die diese Rolle ebenfalls haben. Ein Klick wechselt den Benutzer der laufenden Sitzung – ohne Kennwort, die Seite lädt mit
+dessen Rechten neu. Der angemeldete Benutzer ist mit „(Anmeldung)“ markiert und bleibt als Rückweg erreichbar.
+Schranken: Ziel muss aktiv sein, die Rolle haben und keinen offenen Kennwortwechsel; zu einem Administrator (Rolle `ADMIN`) nur, wenn
+die Sitzung von einem Administrator begonnen wurde (`core.sessions.ursprung_user_id`). API: `GET/POST /api/auth/weltenwandler`;
+jeder Wechsel steht im Server-Protokoll.
+
 ## Benutzerverwaltung: Rollenmatrix, Prüfung und Verprobung (Administration)
 
 Die Administration hat den Menüpunkt **Benutzerverwaltung** mit **Benutzer**, **Rollen** (Einzelpflege im Dialog) und
