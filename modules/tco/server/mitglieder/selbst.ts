@@ -46,7 +46,7 @@ export async function meineLesen(db: Db, benutzerId: string) {
   const d = await detailLesen(db, adrnr);
   const zahltSelbst = !d.bank.adrnrkih;
   return {
-    mitglied: d.mitglied, titel: d.titel, trainer: d.trainer, kanal: d.kanal,
+    mitglied: d.mitglied, titel: d.titel, trainer: d.trainer, kanal: d.kanal, spieler: d.spieler,
     bank: {
       zahlungsart_txt: d.bank.zahlungsart_txt, zahlungsweise_txt: d.bank.zahlungsweise_txt,
       iban: maskIban(d.bank.iban), bic: d.bank.bic ? `${d.bank.bic.slice(0, 4)}…` : '', bank: d.bank.bank,
