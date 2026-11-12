@@ -8,6 +8,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { Empty, Section } from '@core/components/Section';
+import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { download } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
@@ -324,6 +325,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
   const [mitglieder, setMitglieder] = useState<{ adrnr: string; name: string }[]>([]);
   const [r, setR] = useState<{ status: Status; begleitung: string; kommentar: string }>({ status: 'ZUSAGE', begleitung: '0', kommentar: '' });
   const [busy, setBusy] = useState(false);
+  const [loeschen, setLoeschen] = useState(false);
   const laden = () => api.get<Detail>(`${K}/${id}`).then((v) => { setX(v); setR({ status: v.event.mein_status ?? 'ZUSAGE', begleitung: String(v.event.meine_begleitung ?? 0), kommentar: v.event.mein_kommentar ?? '' }); }).catch((e) => { onError(e.message); onClose(); });
   useEffect(() => { laden(); if (pflege) api.get<typeof mitglieder>(`${K}/pflege/mitglieder?event=${id}`).then(setMitglieder).catch(() => undefined); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   async function lauf(fn: () => Promise<{ text?: string }>) {
@@ -339,9 +341,13 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
                            <Button icon="edit" onClick={() => onBearbeiten(e)}>Bearbeiten</Button>
                            <Button icon="copy" onClick={() => onKopieren(e)}>Kopieren</Button>
                            <Button icon="excel-attachment" onClick={() => download(`${K}/${id}/csv`, `Teilnehmer_${e.titel.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.csv`)}>Teilnehmerliste</Button>
-                           <Button icon="delete" design="Transparent" disabled={busy} onClick={() => lauf(async () => { const t = await api.del<{ text: string }>(`${K}/${id}`); onClose(); return t; })}>Löschen</Button>
+                           <Button icon="delete" design="Transparent" disabled={busy} onClick={() => setLoeschen(true)}>Löschen</Button>
                          </> : undefined}
                          endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+      <ConfirmDialog open={loeschen} danger title="Veranstaltung löschen" confirmText="Löschen"
+                     text={`„${e.titel}“ endgültig löschen? Das geht nur, solange niemand angemeldet ist, und lässt sich nicht rückgängig machen.`}
+                     onCancel={() => setLoeschen(false)}
+                     onConfirm={() => { setLoeschen(false); lauf(async () => { const t = await api.del<{ text: string }>(`${K}/${id}`); onClose(); return t; }); }} />
       <div className="portal-kal__detail">
         {e.abgesagt && <MessageStrip design="Negative" hideCloseButton>Diese Veranstaltung ist abgesagt.</MessageStrip>}
         <div className="portal-kal__fakten">

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { hasPermission } from '../../../../server/src/permissions.js';
-import { DB } from '../verein.js';
+import { DB, type Db } from '../verein.js';
 import { addTage } from '../format.js';
 import {
   eventLesen, eventSpeichern, eventsLesen, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
@@ -140,12 +140,20 @@ export async function kalenderRoutes(app: FastifyInstance) {
   });
 
   /** Massenlöschung: alle gewählten Veranstaltungen samt Rückmeldungen löschen */
+  /** angemeldet = Zusage oder „vielleicht“; Absagen zählen nicht */
+  const ANGEMELDET = (tx: Db) => tx`exists (select 1 from tco.kal_anmeldungen a where a.event_id = e.id and a.status in ('ZUSAGE', 'VIELLEICHT'))`;
   app.post('/kalender/masse/loeschen', pflege, async (req) => {
     const { ids } = z.object({
       ids: z.array(z.number().int().positive()).min(1, 'Bitte mindestens eine Veranstaltung auswählen.').max(2000),
     }).parse(req.body);
-    const n = await change(req, async (tx) => (await tx`delete from tco.kal_events where id = any(${ids})`).count, { action: 'KAL_EVENT', reason: 'Massenlöschung' });
-    return { geloescht: n, text: `${n} Veranstaltung(en) gelöscht.` };
+    // gelöscht wird nur, wozu niemand angemeldet ist (Zusage oder „vielleicht“) – die übrigen bleiben stehen und werden genannt
+    const r = await change(req, async (tx) => {
+      const belegt = await tx`select e.id, e.titel from tco.kal_events e where e.id = any(${ids}) and ${ANGEMELDET(tx)} order by e.beginn`;
+      const n = (await tx`delete from tco.kal_events e where e.id = any(${ids}) and not ${ANGEMELDET(tx)}`).count;
+      return { n, belegt: belegt.map((x) => x.titel as string) };
+    }, { action: 'KAL_EVENT', reason: 'Massenlöschung' });
+    return { geloescht: r.n, nicht_geloescht: r.belegt.length,
+      text: `${r.n} Veranstaltung(en) gelöscht.${r.belegt.length ? ` ${r.belegt.length} nicht gelöscht, weil Anmeldungen vorliegen: ${r.belegt.slice(0, 5).map((t) => `„${t}“`).join(', ')}${r.belegt.length > 5 ? ' …' : ''}.` : ''}` };
   });
 
   /** Regelwerk „Text in Spalte => Gruppe“ */
@@ -180,7 +188,11 @@ export async function kalenderRoutes(app: FastifyInstance) {
   app.delete('/kalender/:id', pflege, async (req) => {
     const { id: eid } = id.parse(req.params);
     const e = await eventLesen(DB, eid);
-    await change(req, async (tx) => { await tx`delete from tco.kal_events where id = ${eid}`; }, { action: 'KAL_EVENT', reason: 'gelöscht' });
+    await change(req, async (tx) => {
+      const [a] = await tx`select count(*)::int as n from tco.kal_anmeldungen where event_id = ${eid} and status in ('ZUSAGE', 'VIELLEICHT')`;
+      if (a.n) throw new BusinessError(`„${e.titel}“ kann nicht gelöscht werden: ${a.n} Anmeldung${a.n === 1 ? '' : 'en'} (Zusage oder „vielleicht“). Bitte die Veranstaltung absagen oder die Anmeldungen zuerst entfernen.`);
+      await tx`delete from tco.kal_events where id = ${eid}`;
+    }, { action: 'KAL_EVENT', reason: 'gelöscht' });
     return { text: `„${e.titel}“ gelöscht.` };
   });
 

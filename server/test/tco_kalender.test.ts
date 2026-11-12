@@ -157,6 +157,15 @@ test('Organisator: offene Rückmeldungen, Pflege, CSV, Absage und Anmeldeschluss
   assert.match(r.body.text, /abgesagt/);
   r = await ben('POST', `${K}/${fest}/rueckmeldung`, { status: 'ABSAGE' });
   assert.match(r.body.message, /abgesagt/);
+  // Löschen nur, wenn niemand angemeldet ist (Zusage oder „vielleicht“) – Absagen stehen dem nicht im Weg
+  await sql`insert into tco.kal_anmeldungen (event_id, adrnr, status) values (${fest}, '0000000999', 'VIELLEICHT') on conflict do nothing`;
+  r = await admin('DELETE', `${K}/${fest}`);
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /kann nicht gelöscht werden: \d+ Anmeldung/);
+  r = await admin('POST', `${K}/masse/loeschen`, { ids: [fest] });
+  assert.deepEqual([r.body.geloescht, r.body.nicht_geloescht], [0, 1]);
+  assert.match(r.body.text, /nicht gelöscht, weil Anmeldungen vorliegen/);
+  await sql`update tco.kal_anmeldungen set status = 'ABSAGE' where event_id = ${fest}`;
   r = await admin('DELETE', `${K}/${fest}`);
   assert.equal(r.status, 200);
   assert.equal((await sql`select count(*)::int as n from tco.kal_anmeldungen where event_id = ${fest}`)[0].n, 0);
@@ -332,5 +341,5 @@ test('Weitere Personen: bei Veranstaltung und Arbeitseinsatz immer, sonst nur mi
   const r2 = await anna('POST', `${K}/${einsatz}/rueckmeldung`, { status: 'ZUSAGE', begleitung: 4 });
   assert.equal(r2.status, 400);
   assert.match(r2.body.message, /ausgebucht/);
-  await admin('POST', `${K}/masse/loeschen`, { ids: [einsatz, training] });
+  await sql`delete from tco.kal_events where id in (${einsatz}, ${training})`;
 });
