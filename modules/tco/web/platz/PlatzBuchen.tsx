@@ -47,6 +47,8 @@ export interface TagPlatz {
 export interface Preiszone { prodKey: string; text: string; von: string; bis: string; stundenpreis: number; /** Farbe wie in den Hallenpreisen (0–4) */ farbe: number }
 interface Tag {
   datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[];
+  /** Halle verschlossen (#11): Hinweis, solange am Tag kein Hallenschlüssel ausgegeben ist */
+  hallenhinweis?: string | null;
   /** Admin/Hallenwart (tco.platzbuchung:verwalten, #11): Namen sehen, für andere buchen, Training & Co. eintragen */
   rechte?: { verwalten: boolean };
 }
@@ -193,6 +195,11 @@ export function PlatzBuchen() {
               </div>
             )}
 
+            {tag?.hallenhinweis && plaetze.some((p) => p.art === 'HALLE') && (
+              <MessageStrip design="Critical" hideCloseButton className="portal-pb__hallenhinweis" style={{ marginBottom: '0.75rem' }}>
+                <b>Halle verschlossen:</b> {tag.hallenhinweis}
+              </MessageStrip>
+            )}
             <div className="portal-pb__legende">
               <span><i className="portal-pb__punkt portal-pb__punkt--frei" />frei – antippen zum Buchen{verwalten ? ' oder Training eintragen' : ''}</span>
               <span><i className="portal-pb__punkt portal-pb__punkt--eigen" />meine Buchung</span>
@@ -349,7 +356,7 @@ export function PlatzBuchen() {
       )}
       {entwurf && (
         <BuchungDialog entwurf={entwurf} verwalten={verwalten} onClose={() => { setEntwurf(null); tagLaden(); }}
-                       onFertig={async (text) => { toast(text); setEntwurf(null); await neuLaden(); }} />
+                       onFertig={async (text) => { toast(text, text.includes('verschlossen') ? 12000 : 3000); setEntwurf(null); await neuLaden(); }} />
       )}
     </AppPage>
   );
@@ -634,16 +641,16 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
     return out.length ? out : [e.dauer];
   }, [p, e.dauer, e.von, ich]);
 
-  async function ausfuehren(fn: () => Promise<{ text: string }>) {
+  async function ausfuehren(fn: () => Promise<{ text: string; hinweis?: string }>) {
     setBusy(true); setMeldung(null);
-    try { onFertig((await fn()).text); } catch (x) { setMeldung((x as Error).message); } finally { setBusy(false); }
+    try { const r = await fn(); onFertig(r.hinweis ? `${r.text} ${r.hinweis}` : r.text); } catch (x) { setMeldung((x as Error).message); } finally { setBusy(false); }
   }
   const body = { platz_id: e.platz_id, datum: e.datum, von: e.von, bis, text: e.text.trim() || null };
   const speichern = () => ausfuehren(() => {
     if (e.bid) return api.put<{ text: string }>(`${PB}/buchungen/${e.bid}`, body);
     if (fuer === 'MITGLIED') return api.post<{ text: string }>(`${PB}/verwalten/buchung`, { ...body, adrnr, intern: adrnr ? null : intern.trim() || null });
     if (festArt) return api.post<{ text: string }>(`${PB}/verwalten/belegung`, { ...body, art: festArt, bezeichnung: bezeichnung.trim() });
-    return api.post<{ text: string }>(`${PB}/buchungen`, body);
+    return api.post<{ text: string; hinweis?: string }>(`${PB}/buchungen`, body);
   });
   const bereit = ich ? !!pruefung && !pruefung.fehler : fuer === 'MITGLIED' ? !!adrnr || !!intern.trim() : !!bezeichnung.trim();
 
@@ -656,6 +663,9 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
             </>} />}>
       <div className="portal-mz__form">
         {meldung && <MessageStrip design="Negative" onClose={() => setMeldung(null)}>{meldung}</MessageStrip>}
+        {ich && !e.bid && p?.art === 'HALLE' && tag?.hallenhinweis && (
+          <MessageStrip design="Critical" hideCloseButton><b>Halle verschlossen:</b> {tag.hallenhinweis}</MessageStrip>
+        )}
         {(sperre.zustand === 'fremd' || sperre.zustand === 'fehler' || sperre.zustand === 'inaktiv') && (
           <MessageStrip design="Critical" hideCloseButton>
             {sperre.zustand === 'fremd' ? `${sperre.text} Bitte eine andere Zeit oder einen anderen Platz wählen.` : sperre.text}

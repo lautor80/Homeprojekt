@@ -67,6 +67,8 @@ Der Kalender lädt sich alle 30 Sekunden selbst neu. Du musst die Seite nicht ak
 
 ## 3. Einen Platz buchen
 
+> **Die Halle ist grundsätzlich verschlossen.** Hast du keinen Hallenschlüssel, zeigt das Portal einen gelben Hinweis: Ruf vor deinem Termin Ben Hartyniuk (+49 1512 1594305) an, damit die Halle aufgesperrt wird. Mit Hallenschlüssel entfällt der Hinweis.
+
 ### Schritt 1: Tag wählen und freie Zeit anklicken
 
 Wähle im Kalender den gewünschten Tag. Klicke dann auf eine **weiße Fläche** zur gewünschten Uhrzeit. Es öffnet sich das Fenster „Platz buchen“.

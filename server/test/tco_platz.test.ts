@@ -900,3 +900,47 @@ test('Platzverwaltung → Belegung: Termin ändern und kopieren (#11)', async ()
   assert.match(r.body.message, /wiederkehrend/);
   await admin('DELETE', `${A}/feste/${fid}`);
 });
+
+test('Halle verschlossen (#11): Hinweis ohne Hallenschlüssel, Arbeitsvorrat für den Hallenwart, Einzelbuchungen heute', async () => {
+  await sql`delete from tco.schluessel where adrnr in (${ANNA}, ${BERT})`;
+  const d = tag(5);
+  // ohne Schlüssel: Hinweis im Kalender und bei der Buchungsbestätigung
+  let r = await anna('GET', `${P}/tag?datum=${d}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.hallenhinweis, /grundsätzlich verschlossen.*Ben Hartyniuk \(\+49 1512 1594305\)/);
+  r = await anna('POST', `${P}/buchungen`, { platz_id: halleId, datum: d, von: '19:00', bis: '20:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const ohne = r.body.bid;
+  assert.match(r.body.hinweis, /verschlossen/);
+  // Freiplatz: kein Hinweis
+  r = await anna('POST', `${P}/buchungen`, { platz_id: platz1Id, datum: d, von: '19:00', bis: '20:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.hinweis, undefined);
+
+  // Arbeitsvorrat: Tag „Hallenwart“ für die Buchung ohne Schlüssel, Zahl der heute erfassten Hallen-Einzelbuchungen
+  r = await admin('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const hw = r.body.find((a: any) => a.key === `HALLENWART:${ohne}:${d}`);
+  assert.ok(hw, JSON.stringify(r.body.map((a: any) => a.key)));
+  assert.equal(hw.bereich, 'Hallenwart');
+  assert.match(hw.titel, /Halle aufsperren: .* 19:00–20:00 Uhr/);
+  const heute = r.body.find((a: any) => a.key === 'HALLE_HEUTE');
+  const [{ n }] = await sql`select count(*)::int as n from tco.bookings where status = '1' and erstellt = current_date and platz = 'Halle'`;
+  assert.ok(n >= 1);
+  assert.match(heute.titel, new RegExp(`^Heute ${n} Hallenbuchung`));
+  const rb = await bert('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.ok(rb.status !== 200 || !rb.body.some((a: any) => a.bereich === 'Hallenwart'), 'nur mit Platzverwaltung');
+
+  // Schlüssel ausgegeben: kein Hinweis, kein Arbeitsvorrat-Eintrag; zurückgenommen bzw. erst später ausgegeben: wieder Hinweis
+  await sql`insert into tco.schluessel (adrnr, counter, ausgabe) values (${ANNA}, 'H1', ${tag(0)})`;
+  r = await anna('GET', `${P}/tag?datum=${d}`);
+  assert.equal(r.body.hallenhinweis, null);
+  r = await admin('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.ok(!r.body.some((a: any) => a.key === `HALLENWART:${ohne}:${d}`));
+  await sql`update tco.schluessel set ruecknahme = ${tag(4)} where adrnr = ${ANNA}`;
+  assert.match((await anna('GET', `${P}/tag?datum=${d}`)).body.hallenhinweis, /verschlossen/);
+  await sql`insert into tco.schluessel (adrnr, counter, ausgabe) values (${BERT}, 'H2', ${tag(6)})`;
+  assert.match((await bert('GET', `${P}/tag?datum=${d}`)).body.hallenhinweis, /verschlossen/);
+  assert.equal((await bert('GET', `${P}/tag?datum=${tag(6)}`)).body.hallenhinweis, null);
+  await sql`delete from tco.schluessel where adrnr in (${ANNA}, ${BERT})`;
+});
