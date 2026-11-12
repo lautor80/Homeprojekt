@@ -579,13 +579,14 @@ export async function aboTerminStornieren(tx: Db, ich: Ich, bid: string, datum: 
 // Abos (nur Platzverwaltung im Portal)
 // ---------------------------------------------------------------------------
 
-export interface AboEingabe { platz_id: number; adrnr: string; ab: string; bis_datum: string; von: string; bis: string; text?: string | null }
+/** kunde: Name für Portalnutzer, die kein Mitglied sind (Freigabe einer Abo-Bewerbung, #11) */
+export interface AboEingabe { platz_id: number; adrnr: string; ab: string; bis_datum: string; von: string; bis: string; text?: string | null; kunde?: string | null }
 export interface AboTermin { datum: string; konflikt: string | null }
 
 export async function aboVorschau(db: Db, e: AboEingabe) {
   const platz = await platzLesen(db, e.platz_id);
   const [m] = await db`select vorname, nachname from tco.mitglieder where adrnr = ${e.adrnr}`;
-  if (!m) throw new BusinessError('Mitglied nicht gefunden.');
+  if (!m && !e.kunde?.trim()) throw new BusinessError('Mitglied nicht gefunden.');
   if (e.bis_datum < e.ab) throw new BusinessError('Das Ende der Serie liegt vor dem Beginn.');
   if (tageZwischen(e.ab, e.bis_datum) > 366) throw new BusinessError('Ein Abo umfasst höchstens ein Jahr.');
   const von = minuten(e.von);
@@ -600,7 +601,7 @@ export async function aboVorschau(db: Db, e: AboEingabe) {
     return { datum: d, konflikt: b ? `belegt ${hhmm(b.von)}–${hhmm(b.bis)} Uhr (${b.fest ? b.fest.bezeichnung : b.reserviert ? 'gerade in Auswahl' : b.status === '3' ? 'Abo' : 'Einzel'}${b.fest ? '' : `, ${b.kunde || 'ohne Namen'}`})` : null };
   });
   const preis = preisVon(platz, e.ab, von, bis, '3', await preiseLesen(db));
-  return { platz: platz.name, kunde: condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`), wochentag: wochentagText(e.ab), termine, preis };
+  return { platz: platz.name, kunde: m ? condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`) : condense(e.kunde ?? ''), wochentag: wochentagText(e.ab), termine, preis };
 }
 
 export async function aboAnlegen(tx: Db, e: AboEingabe, ueberspringen: boolean): Promise<{ bid: string; text: string }> {

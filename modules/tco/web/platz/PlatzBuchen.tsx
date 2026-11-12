@@ -16,6 +16,7 @@ import { AuswahlBox } from '@core/components/AuswahlBox';
 import { PdfDialog } from '@core/components/PdfDialog';
 import '../jt/meine.css';
 import './platz.css';
+import { AboBewerbung } from './AboBewerbung';
 // Farben der Preise wie im Wochenplan der Hallenpreise (portal-hpw__f0 … f4)
 import '../hallenpreise.css';
 
@@ -124,7 +125,7 @@ export function PreisAufschluesselung({ preis, kompakt = false }: { preis: Preis
 const dauerText = (m: number) => (m % 60 ? `${Math.floor(m / 60) ? `${Math.floor(m / 60)} Std. ` : ''}${m % 60} Min.` : `${m / 60} Std.`);
 
 export function PlatzBuchen() {
-  const [ansicht, setAnsicht] = useState<'kalender' | 'meine'>('kalender');
+  const [ansicht, setAnsicht] = useState<'kalender' | 'meine' | 'abo'>(() => (new URLSearchParams(window.location.search).get('ansicht') === 'abo' ? 'abo' : 'kalender'));
   // Absprung aus dem Arbeitsvorrat: ?datum=JJJJ-MM-TT
   const [datum, setDatum] = useState(() => { const d = new URLSearchParams(window.location.search).get('datum'); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : isoHeute(); });
   const [tag, setTag] = useState<Tag | null>(null);
@@ -193,6 +194,7 @@ export function PlatzBuchen() {
         <SegmentedButton className="portal-pb__umschalter" onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'kalender')}>
           <SegmentedButtonItem data-k="kalender" icon="calendar" selected={ansicht === 'kalender'}>Kalender</SegmentedButtonItem>
           <SegmentedButtonItem data-k="meine" icon="customer" selected={ansicht === 'meine'}>Meine Buchungen</SegmentedButtonItem>
+          <SegmentedButtonItem data-k="abo" icon="repost" selected={ansicht === 'abo'}>Abo-Bewerbung</SegmentedButtonItem>
         </SegmentedButton>
 
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
@@ -257,6 +259,8 @@ export function PlatzBuchen() {
             )}
           </>
         )}
+
+        {ansicht === 'abo' && <AboBewerbung />}
 
         {ansicht === 'meine' && (
           <>
