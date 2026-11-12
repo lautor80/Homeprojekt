@@ -62,6 +62,21 @@ export async function rechtePruefen(db: Db, benutzerId: string, rolle: string = 
   }
 }
 
+/**
+ * Mitglieder haben immer das Recht für Hallenbuchungen: Die Rolle Mitglied enthält „Platz buchen“ im Standard. Hat der Verein
+ * es dort entfernt (Rollenpflege), bekommt der Benutzer zusätzlich die Rolle Hallennutzer. Liefert true, wenn sie ergänzt wurde.
+ */
+export async function buchungsrechtSichern(db: Db, benutzerId: string): Promise<boolean> {
+  const [m] = await db`select 1 from core.user_roles where user_id = ${benutzerId} and role_id = ${ROLLE_MITGLIED}`;
+  if (!m) return false;
+  const [hat] = await db`select 1 from core.user_roles ur join core.role_permissions rp on rp.role_id = ur.role_id
+                          where ur.user_id = ${benutzerId} and rp.permission in ('tco.platzbuchung:edit', '*')`;
+  if (hat) return false;
+  await rolleSicherstellen(db);
+  const r = await db`insert into core.user_roles (user_id, role_id) values (${benutzerId}, ${ROLLE}) on conflict do nothing`;
+  return r.count > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Registrieren (öffentlich)
 // ---------------------------------------------------------------------------
@@ -312,6 +327,7 @@ export async function benutzerAnlegen(tx: Db, b: { username: string; displayName
                        values (${b.username}, ${b.displayName}, ${b.email}, ${b.passwortHash}, ${b.mussAendern}) returning id`;
   await tx`insert into core.user_roles (user_id, role_id) values (${u.id}, ${rolle})`;
   await rechtePruefen(tx, u.id, rolle);
+  if (rolle === ROLLE_MITGLIED) await buchungsrechtSichern(tx, u.id);
   return u.id as string;
 }
 

@@ -11,7 +11,7 @@ import { druckdatenLesen, unterlagePdf } from './pdf.js';
 import { mailText, unterlageAblegen } from './dokumente.js';
 import { plAktiv } from '../verein.js';
 import { kennwortLinkSenden, portalUrl, unbekanntesKennwort } from '../../../../server/src/kennwort.js';
-import { benutzerAnlegen, freierBenutzername, istBcrypt, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
+import { benutzerAnlegen, buchungsrechtSichern, freierBenutzername, istBcrypt, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
  * „Meine Mitgliedschaft“ – Selbstauskunft und -pflege für Mitglieder (Berechtigung tco.meinedaten:edit).
@@ -236,6 +236,7 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
                on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id, zuid = coalesce(tco.mitgliedera.zuid, excluded.zuid)`;
       await tx`update tco.kunden set benutzer_id = null where zuid = ${k.zuid}`;
       await tx`update core.user_roles set role_id = ${ROLLE_MITGLIED} where user_id = ${k.benutzer_id} and role_id = ${ROLLE}`;
+      await buchungsrechtSichern(tx, k.benutzer_id);
       r.hochgestuft++;
       continue;
     }
