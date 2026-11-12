@@ -20,7 +20,7 @@ interface Art { art: string; name: string; betrag: number; turnus: string }
 interface SPerson {
   adrnr: string; name: string; ich: boolean; alter: number | null; vertraege: Vertrag[];
   wechsel: { vertragnr: string; artname: string; betrag: number; turnus: string; arten: Art[] } | null; wechselHinweis: string | null;
-  training: Art[]; trainingHinweis: string | null; trainingAlter?: boolean;
+  training: Art[]; trainingHinweis: string | null; trainingAlter?: boolean; trainingLaufend?: number;
 }
 interface Kontext { personen: SPerson[]; ab: string; trainingAb: string; maxTraining: number }
 interface Unterlage { pdf: string; dateiname: string; titel: string; gesendet: boolean; hinweise: string[] }
@@ -154,7 +154,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
             <MessageStrip hideCloseButton style={{ marginTop: '0.75rem' }}>
               {typ === 'BEITRAGSWECHSEL'
                 ? `Der Wechsel gilt ab dem nächsten Halbjahr (${dat(k.ab)}); bis dahin läuft „${person?.wechsel?.artname}“ weiter.${gewaehlt ? ` Neuer Beitrag: ${eur(gewaehlt.betrag)} ${gewaehlt.turnus}.` : ''} Familienbeitrag und ruhende Mitgliedschaft bitte über den Vorstand.`
-                : `Das Training beginnt am ${dat(k.trainingAb)} und läuft unbefristet; kündbar zum 30.09. eines Jahres.${gewaehlt ? ` Beitrag: ${eur(gewaehlt.betrag)} ${gewaehlt.turnus}, Einzug per SEPA-Lastschrift.` : ''} Je Person sind bis zu ${k.maxTraining} Einheiten möglich.`}
+                : `Das Training beginnt am ${dat(k.trainingAb)} und läuft unbefristet; kündbar zum 30.09. eines Jahres.${gewaehlt ? ` Beitrag: ${eur(gewaehlt.betrag)} ${gewaehlt.turnus}, Einzug per SEPA-Lastschrift.` : ''} Gedacht sind ${k.maxTraining} Einheiten je Person${person?.trainingLaufend ? ` – ${person.name} hat bereits ${person.trainingLaufend}` : ''}; weitere sind möglich.`}
             </MessageStrip>
           )}
         </>

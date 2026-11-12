@@ -84,7 +84,7 @@ export async function vorgangKontext(db: Db, adrnr: string, v: Verein) {
 
 // ---------------------------------------------------------------- Angaben je Vorgang
 export interface Beitragswechsel { typ: 'BEITRAGSWECHSEL'; adrnr: string; vertragnr: string; art: string; ab: string; turnus?: string | null; betrag?: number | null; notiz?: string | null; unterlage?: boolean }
-export interface Jugendtraining { typ: 'JUGENDTRAINING'; adrnr: string; art?: string | null; beginn: string; turnus?: string | null; betrag?: number | null; zahler?: string | null; notiz?: string | null; unterlage?: boolean }
+export interface Jugendtraining { typ: 'JUGENDTRAINING'; adrnr: string; art?: string | null; beginn: string; turnus?: string | null; betrag?: number | null; zahler?: string | null; notiz?: string | null; unterlage?: boolean; /** dieselbe Einheit darf mehrfach laufen (Selbstbuchung in „Meine Mitgliedschaft“) */ mehrfach?: boolean }
 export interface Kuendigung { typ: 'KUENDIGUNG'; adrnr: string; umfang: 'MITGLIEDSCHAFT' | 'VERTRAG'; vertragnr?: string | null; eingang: string; ende: string; grund?: string | null; unterlage?: boolean }
 export type Vorgang = Beitragswechsel | Jugendtraining | Kuendigung;
 
@@ -157,7 +157,7 @@ async function jugend(tx: Db, g: Jugendtraining, m: Record<string, any>, eigene:
   if (!art) throw new BusinessError(`Die Vertragsart ${artNr} (Jugendtraining) ist nicht aktiv – bitte im Beitragsstamm prüfen.`);
   if (m.austritt && m.austritt < g.beginn) throw new BusinessError(`Die Person ist zum ${dat(m.austritt)} ausgetreten.`);
   const laufend = eigene.find((x) => x.art === art.art && (!x.vertragende || x.vertragende >= g.beginn));
-  if (laufend) throw new BusinessError(`Es besteht bereits ein Vertrag „${laufend.artname}“ ab ${dat(laufend.vertragbegin)}${laufend.vertragende ? ` bis ${dat(laufend.vertragende)}` : ''}.`);
+  if (laufend && !g.mehrfach) throw new BusinessError(`Es besteht bereits ein Vertrag „${laufend.artname}“ ab ${dat(laufend.vertragbegin)}${laufend.vertragende ? ` bis ${dat(laufend.vertragende)}` : ''}.`);
   const betrag = g.betrag ?? (await betragAm(tx, art.art, g.beginn)) ?? art.betrag;
   const turnus = leer(g.turnus) || art.turnus;
   const zahler = leer(g.zahler);

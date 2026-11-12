@@ -27,6 +27,8 @@ export interface SelbstPerson {
   trainingHinweis: string | null;
   /** noch keine 21 Jahre alt – nur diese Personen stehen bei „Jugendtraining abschließen“ zur Auswahl */
   trainingAlter: boolean;
+  /** Anzahl laufender Trainingseinheiten (nur Hinweis, keine Obergrenze) */
+  trainingLaufend: number;
 }
 export type SelbstEingabe = { typ: 'BEITRAGSWECHSEL' | 'JUGENDTRAINING'; adrnr: string; art: string };
 
@@ -51,7 +53,7 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     const vertraege = alleVertraege.filter((v) => v.adrnr === adrnr);
     const p: SelbstPerson = {
       adrnr, name: condense(`${leer(m.vorname)} ${leer(m.nachname)}`), ich: adrnr === eigene, alter: m.geburtsdatum ? alter(m.geburtsdatum, h) : null,
-      vertraege, wechsel: null, wechselHinweis: null, training: [], trainingHinweis: null, trainingAlter: false,
+      vertraege, wechsel: null, wechselHinweis: null, training: [], trainingHinweis: null, trainingAlter: false, trainingLaufend: 0,
     };
     // ---- Beitragswechsel
     const beitrag = vertraege.find((v) => kategorieVon(v.art, v.artname) === 'MITGLIEDSCHAFT' && !v.vertragende);
@@ -66,14 +68,15 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     }
     // ---- Jugendtraining
     const laufend = vertraege.filter((v) => kategorieVon(v.art, v.artname) === 'TRAINING' && (!v.vertragende || v.vertragende >= trainingAb));
+    p.trainingLaufend = laufend.length;
     p.trainingAlter = !!m.geburtsdatum && alter(m.geburtsdatum, trainingAb) < ALTER_TRAINING_BIS;
     if (m.austritt && m.austritt < trainingAb) p.trainingHinweis = `Austritt zum ${dat(m.austritt)}.`;
     else if (!p.trainingAlter) p.trainingHinweis = `Jugendtraining kann nur abschließen, wer noch keine ${ALTER_TRAINING_BIS} Jahre alt ist.`;
-    else if (laufend.length >= MAX_TRAINING) p.trainingHinweis = `Es laufen bereits ${MAX_TRAINING} Trainingseinheiten.`;
     else if (!lastschrift) p.trainingHinweis = 'Für neue Verträge wird eine Bankverbindung mit SEPA-Lastschrift benötigt – bitte beim Vorstand melden.';
     else {
-      p.training = artenTraining.filter((a) => !laufend.some((v) => v.art === a.art));
-      if (!p.training.length) p.trainingHinweis = 'Alle angebotenen Trainingseinheiten sind bereits gebucht.';
+      // keine Obergrenze: jede angebotene Einheit ist buchbar, auch mehrfach (gedacht sind zwei je Person)
+      p.training = artenTraining;
+      if (!p.training.length) p.trainingHinweis = 'Derzeit wird kein Jugendtraining angeboten.';
     }
     personen.push(p);
   }
@@ -95,6 +98,6 @@ export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe
   }
   const a = p.training.find((x) => x.art === e.art);
   if (!a) throw new BusinessError(p.trainingHinweis ?? 'Diese Trainingseinheit kann nicht gebucht werden.');
-  const plan = await vorgang(tx, { typ: 'JUGENDTRAINING', adrnr: p.adrnr, art: a.art, beginn: k.trainingAb }, ausfuehren, wer, 'Portal');
+  const plan = await vorgang(tx, { typ: 'JUGENDTRAINING', adrnr: p.adrnr, art: a.art, beginn: k.trainingAb, mehrfach: true }, ausfuehren, wer, 'Portal');
   return { ...plan, eigene: k.eigene };
 }
