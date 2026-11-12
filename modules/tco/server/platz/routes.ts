@@ -464,24 +464,26 @@ export async function platzRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Meine Hallenrechnungen (Platz buchen → Meine Buchungen → Rechnungen): gestellte Rechnungen (nicht „In Bearbeitung“) des Mitglieds
-   * bzw. EP3-Kunden, jüngste zuerst. Zuordnung wie bei den Buchungen: Adressnummer oder gleicher Kundenname.
+   * Meine Hallenrechnungen (Platz buchen → Meine Buchungen → Rechnungen): Rechnungen des Mitglieds bzw. EP3-Kunden, jüngste zuerst.
+   * Zuordnung wie bei den Buchungen: Adressnummer oder gleicher Kundenname. „Aktuell“ ist, was noch läuft: die noch nicht versendete
+   * Rechnung („In Bearbeitung“) und offene; bezahlte und ausgebuchte sind „frühere“. Das PDF gibt es erst für gestellte Rechnungen.
    */
-  const RG_STATUS: Record<string, string> = { '2': 'offen', '3': 'offen', '4': 'bezahlt', '5': 'teilbezahlt', '6': 'ausgebucht' };
-  const meineRechnungen = async (i: { adrnr: string; kunde: string }, rgnr?: string) => DB`
+  const RG_STATUS: Record<string, string> = { '1': 'noch nicht versendet', '2': 'offen', '3': 'offen', '4': 'bezahlt', '5': 'teilbezahlt', '6': 'ausgebucht' };
+  const meineRechnungen = async (i: { adrnr: string; kunde: string }, rgnr?: string, entwurf = false) => DB`
     select rgnr_txt as rgnr, jahr, betrag::float8 as betrag, status, coalesce(versendet, gedruckt, angelegt_am)::text as datum,
            bezahlt::text as bezahlt, doknr
       from tco.rgkopf
-     where status <> '1' and (adrnr = ${i.adrnr} or (${i.kunde} <> '' and upper(trim(kunde)) = ${i.kunde}))
+     where (${entwurf} or status <> '1') and (adrnr = ${i.adrnr} or (${i.kunde} <> '' and upper(trim(kunde)) = ${i.kunde}))
        ${rgnr ? DB`and rgnr_txt = ${rgnr}` : DB``}
      order by jahr desc, rgnr desc`;
   app.get('/platz/rechnungen', buchen, async (req) => {
     const i = await ich(req);
     const v = await vereinLesen();
     return {
-      rechnungen: (await meineRechnungen(i)).map((r) => ({
+      rechnungen: (await meineRechnungen(i, undefined, true)).map((r) => ({
         rgnr: r.rgnr as string, jahr: Number(r.jahr), betrag: Number(r.betrag), datum: r.datum as string | null, bezahlt: r.bezahlt as string | null,
-        status: RG_STATUS[r.status as string] ?? 'offen', dokument: !!r.doknr && plAktiv(v),
+        status: RG_STATUS[r.status as string] ?? 'offen', dokument: r.status !== '1' && !!r.doknr && plAktiv(v),
+        aktuell: !['4', '6'].includes(r.status as string), entwurf: r.status === '1',
       })),
     };
   });
