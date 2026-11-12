@@ -1099,7 +1099,9 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   const wt = ((new Date(`${tag(20)}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
   r = await bert('GET', `${P}/abowunsch`);
   assert.equal(r.body.unterjaehrig, true);
-  assert.equal(r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 660).preis, 20, 'unterjährig: Einzelpreis');
+  const zelle = r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 660);
+  assert.equal(zelle.preis, 20, 'unterjährig: Einzelpreis');
+  assert.ok(zelle.einheiten >= 1 && zelle.einheiten <= 7 && zelle.gesamt === zelle.einheiten * 20, `Gesamtwert = Einheiten × Einzelpreis: ${JSON.stringify(zelle)}`);
   // feste Belegung (Jugendtraining) über die ganze Saison: Stunde ist gesperrt und nicht bewerbbar; Training wird nicht vorgemerkt
   await sql`insert into tco.platzbelegungen (bezeichnung, art, plaetze, wochentage, datum_von, datum_bis, zeit_von, zeit_bis, aktiv, quelle)
             values ('Jugendtraining Abo-Test', 'TRAINING', ${[halleId]}, ${String(wt)}, ${tag(-30)}, ${tag(45)}, '15:00', '17:00', true, 'PORTAL')`;

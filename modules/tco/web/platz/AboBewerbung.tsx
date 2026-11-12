@@ -18,7 +18,7 @@ const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 interface Saison { id: number; name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number; mail_pause_bis: string | null }
-interface Feld { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; hinweis: string | null }
+interface Feld { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; einheiten: number; gesamt: number; hinweis: string | null }
 interface Mein { id: number; art: string; platz: string; platz_id: number; wochentag: number; von: string; bis: string; status: string; text: string; wartende: number; position: number | null; annehmen_bis: string | null; kosten: string | null }
 interface Raster { saison: Saison | null; unterjaehrig: boolean; plaetze: { id: number; name: string }[]; felder: Feld[]; meine: Mein[]; maxBewerbungen: number }
 interface VWunsch { id: number; art: string; name: string; mitglied: boolean; platz: string; text: string; status: string; angelegt: string; mail_fehler: string | null; wartende: number; position: number | null; wochentag: number; von: string; kosten: string | null }
@@ -124,7 +124,7 @@ export function AboBewerbung() {
             <div className="portal-abo__legende">
               <span><i className="portal-abo__f--mein" />Mein Abo</span><span><i className="portal-abo__f--offen" />Bestätigung/Angebot offen</span>
               <span><i className="portal-abo__f--bewerbung" />Meine Bewerbung</span><span><i className="portal-abo__f--vergeben" />Vergeben</span><span><i className="portal-abo__f--frei" />Frei</span>
-              <span>Preis je Einheit: {r.unterjaehrig ? 'Einzelpreis' : 'Abo-Preis'}</span>
+              <span>Betrag je Stunde: Gesamtwert bis {dat(s.bis)} = Anzahl Einheiten × {r.unterjaehrig ? 'Einzelpreis' : 'Abo-Preis'}</span>
             </div>
             <div className="portal-abo__raster">
               <div />
@@ -141,7 +141,11 @@ export function AboBewerbung() {
                               disabled={f.status === 'gesperrt'} onClick={() => { setWahl(f); setBis(null); }}>
                         <b>{a.titel}</b>
                         <span>{f.status === 'gesperrt' ? f.hinweis : f.position != null ? `Platz ${f.position} von ${f.wartende}` : f.wartende ? `${f.wartende} warte${f.wartende === 1 ? 't' : 'n'}` : f.status === 'frei' ? 'bewerben' : ''}</span>
-                        {f.status !== 'gesperrt' && f.preis != null && <span className="portal-abo__preis">{f.preis ? eur(f.preis) : 'kostenfrei'}</span>}
+                        {f.status !== 'gesperrt' && f.preis != null && (
+                          <span className="portal-abo__preis" title={f.preis ? `${f.einheiten} Einheiten × ${eur(f.preis)} (${r.unterjaehrig ? 'Einzelpreis' : 'Abo-Preis'})` : undefined}>
+                            {f.preis ? <>{eur(f.gesamt)}<small> · {f.einheiten} × {eur(f.preis)}</small></> : 'kostenfrei'}
+                          </span>
+                        )}
                       </button>
                     );
                   })]
