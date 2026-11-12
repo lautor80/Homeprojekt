@@ -197,7 +197,7 @@ export async function rasterLesen(db: Db, ich: Ich) {
   const preise = await preiseLesen(db);
   const block = await geblockt(db, s, plaetze);
   const unterj = jetzt().datum > s.von;
-  const felder: { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; hinweis: string | null }[] = [];
+  const felder: { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; einheiten: number; gesamt: number; hinweis: string | null }[] = [];
   for (const p of plaetze) {
     for (let wt = 1; wt <= 7; wt++) {
       if (!p.wochentage.includes(String(wt))) continue;
@@ -211,8 +211,11 @@ export async function rasterLesen(db: Db, ich: Ich) {
         const sperre = istGeblockt(block, f);
         // Preis je Einheit: vor der Saison der Abo-Preis, unterjährig der Einzelpreis der Stunde
         const preis = preisVon(p, ersterTermin(s, wt), von, von + 60, unterj ? '1' : '3', preise);
+        // Gesamtwert: Einheiten bis zum Saisonende × Preis der jeweiligen Stunde (unterjährig Einzelpreis, vor der Saison Abo-Preis)
+        let einheiten = 0, gesamt = 0;
+        for (let d = ersterTermin(s, wt); d <= s.bis; d = addTage(d, 7)) { einheiten++; gesamt += preisVon(p, d, von, von + 60, unterj ? '1' : '3', preise).betrag ?? 0; }
         felder.push({
-          ...f, wartende: warten.length, wunsch_id: mein?.id ?? null, preis: preis.kostenfrei ? 0 : preis.betrag, hinweis: !mein && sperre ? sperre : null,
+          ...f, einheiten, gesamt: Math.round(gesamt * 100) / 100, wartende: warten.length, wunsch_id: mein?.id ?? null, preis: preis.kostenfrei ? 0 : preis.betrag, hinweis: !mein && sperre ? sperre : null,
           position: mein?.status === 'WARTET' ? warten.findIndex((w) => w.id === mein.id) + 1 : null,
           status: mein ? ({ OFFEN: 'offen', BESTAETIGT: 'bestaetigt', FREIGEGEBEN: 'freigegeben', ANGEBOTEN: 'angebot', ANGENOMMEN: 'angenommen', WARTET: 'bewerbung' } as Record<string, string>)[mein.status]
             : sperre ? 'gesperrt' : abo?.kunde === ich.kunde ? 'freigegeben' : belegt || abo ? 'vergeben' : 'frei',
