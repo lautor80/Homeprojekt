@@ -466,8 +466,12 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, pre
   const offen = plaetze.filter((p) => !p.geschlossen);
   const start = Math.floor(Math.min(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_von))) / 60) * 60;
   const ende = Math.ceil(Math.max(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_bis))) / 60) * 60;
-  const y = (m: number) => `${((m - start) / 60) * REM_JE_STD}rem`;
-  const h = (m: number) => `${(m / 60) * REM_JE_STD}rem`;
+  // Maßstab (#11): jedes Rasterfeld mindestens 1,5rem hoch, damit „Frei“ hineinpasst und kein Feld ein anderes verdeckt
+  // (15-Minuten-Raster ⇒ 6rem je Stunde, 30 Minuten und mehr ⇒ 3,5rem wie bisher)
+  const kleinstesRaster = Math.min(60, ...offen.map((p) => p.raster).filter((r) => r > 0));
+  const remJeStd = Math.max(REM_JE_STD, (1.5 * 60) / kleinstesRaster);
+  const y = (m: number) => `${((m - start) / 60) * remJeStd}rem`;
+  const h = (m: number) => `${(m / 60) * remJeStd}rem`;
   // Minuten seit Tagesbeginn, ab denen gebucht werden kann (vorbei + Mindestvorlauf); −∞/∞ für ganze Tage
   const tageBis = tag.heute ? Math.round((Date.parse(`${tag.datum}T12:00:00Z`) - Date.parse(`${tag.heute}T12:00:00Z`)) / 86_400_000) : 0;
   const jetztMin = min(tag.jetzt ?? '00:00');
