@@ -103,7 +103,7 @@ export interface Plan {
  * Prüft einen Vorgang und führt ihn aus (ausfuehren = true, innerhalb einer Transaktion) bzw. beschreibt nur die
  * geplanten Änderungen (ausfuehren = false). Fehler als BusinessError.
  */
-export async function vorgang(tx: Db, g: Vorgang, ausfuehren: boolean, benutzer: string): Promise<Plan> {
+export async function vorgang(tx: Db, g: Vorgang, ausfuehren: boolean, benutzer: string, autor = benutzer): Promise<Plan> {
   const m = await mitgliedLesen(tx, g.adrnr);
   const name = condense(`${leer(m.vorname)} ${leer(m.nachname)}`);
   const eigene = (await vertraegeLesen(tx, m)).filter((x) => x.eigen);
@@ -112,7 +112,7 @@ export async function vorgang(tx: Db, g: Vorgang, ausfuehren: boolean, benutzer:
       : await kuendigung(tx, g, m, eigene, ausfuehren);
   const notiz = condense(('notiz' in g ? g.notiz : g.typ === 'KUENDIGUNG' ? g.grund : '') ?? '');
   p.schritte.push(`Notiz am Mitglied ${name}: „${VORGANG_TEXT[g.typ]}: ${p.text}“`);
-  if (ausfuehren) await notizAnlegen(tx, g.adrnr, `${VORGANG_TEXT[g.typ]} (geführter Vorgang) durch ${benutzer}: ${p.text}${notiz ? ` ${g.typ === 'KUENDIGUNG' ? 'Grund' : 'Notiz'}: ${notiz}` : ''}`, benutzer);
+  if (ausfuehren) await notizAnlegen(tx, g.adrnr, `${VORGANG_TEXT[g.typ]} (geführter Vorgang) durch ${benutzer}: ${p.text}${notiz ? ` ${g.typ === 'KUENDIGUNG' ? 'Grund' : 'Notiz'}: ${notiz}` : ''}`, autor);
   if (g.unterlage) p.schritte.push(`${ART_TEXT[p.unterlage]} erzeugen, in der Mitgliederakte ablegen und per E-Mail senden`);
   return p;
 }
@@ -230,7 +230,7 @@ async function kuendigung(tx: Db, g: Kuendigung, m: Record<string, any>, eigene:
  * Unterlage nach dem Vorgang: PDF erzeugen, in Paperless ablegen und per E-Mail (n8n) an die Person senden,
  * Kopie an den Verein. Fehler werden als Hinweise zurückgegeben (der Vorgang selbst ist bereits gesichert).
  */
-export async function unterlageVersenden(db: Db, v: Verein, adrnr: string, art: Art, zusatz: string, benutzer: string) {
+export async function unterlageVersenden(db: Db, v: Verein, adrnr: string, art: Art, zusatz: string, benutzer: string, mailAdrnr = adrnr) {
   const hinweise: string[] = [];
   const d = await druckdatenLesen(db, adrnr);
   const pdf = await unterlagePdf(v, art, d);
@@ -240,7 +240,8 @@ export async function unterlageVersenden(db: Db, v: Verein, adrnr: string, art: 
     await unterlageAblegen(v, art, d.m, pdf, benutzer).then((a) => { abgelegt = true; hinweise.push(...a.warnungen); })
       .catch((e) => hinweise.push(`Ablage in Paperless nicht möglich: ${(e as Error).message}`));
   } else hinweise.push('Paperless ist nicht eingerichtet – die Unterlage wurde nicht abgelegt.');
-  const k = await kontaktLesen(db, adrnr);
+  // E-Mail an die Person selbst bzw. (Selbstbedienung für Kinder) an das angemeldete Mitglied
+  const k = await kontaktLesen(db, mailAdrnr);
   let gesendet = false;
   if (!v.n8n_mail_url) hinweise.push('Der Mailversand ist nicht eingerichtet – bitte die Unterlage herunterladen.');
   else if (!k?.email) hinweise.push('Keine E-Mail-Adresse hinterlegt – bitte die Unterlage herunterladen.');
