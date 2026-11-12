@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectPage, ObjectStatus,
-  ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, RadioButton, Select, Switch, Text, TextArea, Title,
+  ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, SegmentedButton, SegmentedButtonItem, Select, Switch, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -17,10 +17,11 @@ import { AuswahlBox } from '@core/components/AuswahlBox';
 import { ablegen, auftragsOrdner, ordnerBereit } from './ordner';
 
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
-function F({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+/** oben: Beschriftung an der ersten Zeile ausrichten (Felder mit mehreren Zeilen) */
+function F({ label, required, oben, children }: { label: string; required?: boolean; oben?: boolean; children: ReactNode }) {
   return (
     <>
-      <Label showColon required={required} style={{ alignSelf: 'center', justifySelf: 'end', textAlign: 'right' }}>{label}</Label>
+      <Label showColon required={required} style={{ alignSelf: oben ? 'start' : 'center', justifySelf: 'end', textAlign: 'right', ...(oben ? { paddingTop: '0.5rem' } : {}) }}>{label}</Label>
       <div style={{ minWidth: 0 }}>{children}</div>
     </>
   );
@@ -256,9 +257,14 @@ export function AuftragDetail() {
       <Input style={{ width: w ?? '100%' }} maxlength={max} value={(s[f] as string) ?? ''} readonly={!mayEdit} placeholder={ph}
              onInput={(e) => setStop(i, f, e.target.value)} />
     );
+    // Datum mit fester Breite (schrumpft nicht neben dem Zeitfeld – sonst ist es abgeschnitten, #121); das Zeitfeld nimmt den Rest
     const datum = (f: 'datum' | 'datum_e') => (
-      <DatePicker style={{ width: '10rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={s[f] ?? ''} readonly={!mayEdit}
+      <DatePicker style={{ flex: '0 0 9.75rem', width: '9.75rem', minWidth: '9.75rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={s[f] ?? ''} readonly={!mayEdit}
                   onChange={(e) => setStop(i, f, e.detail.value)} />
+    );
+    const zeit = (f: 'zeit' | 'zeit_e') => (
+      <Input style={{ flex: '1 1 9rem', minWidth: '9rem' }} maxlength={30} value={s[f] ?? ''} readonly={!mayEdit} placeholder="Uhrzeit / Zeitfenster"
+             onInput={(e) => setStop(i, f, e.target.value)} />
     );
     return (
       <Spalten n={2}>
@@ -267,13 +273,13 @@ export function AuftragDetail() {
           <F label="Straße">{inp('strasse', 30)}</F>
           <F label="Land / PLZ Ort"><FlexBox style={{ gap: '0.5rem' }}>{inp('land', 3, '4rem')}{inp('plzort', 30)}</FlexBox></F>
           <F label="Ladenummer">{inp('ladenummer', 30)}</F>
-          <F label="Zeitvorgabe Laden"><FlexBox style={{ gap: '0.5rem' }}>{datum('datum')}{inp('zeit', 30, undefined, 'Uhrzeit / Zeitfenster')}</FlexBox></F>
+          <F label="Zeitvorgabe Laden"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum')}{zeit('zeit')}</FlexBox></F>
         </Spalte>
         <Spalte titel="Empfänger">
           <F label="Firma">{inp('firma_e', 30)}</F>
           <F label="Straße">{inp('strasse_e', 30)}</F>
           <F label="Land / PLZ Ort" required={!!s.firma_e}><FlexBox style={{ gap: '0.5rem' }}>{inp('land_e', 3, '4rem')}{inp('plzort_e', 30)}</FlexBox></F>
-          <F label="Zeitvorgabe Entladen"><FlexBox style={{ gap: '0.5rem' }}>{datum('datum_e')}{inp('zeit_e', 30, undefined, 'Uhrzeit / Zeitfenster')}</FlexBox></F>
+          <F label="Zeitvorgabe Entladen"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum_e')}{zeit('zeit_e')}</FlexBox></F>
         </Spalte>
       </Spalten>
     );
@@ -368,17 +374,27 @@ export function AuftragDetail() {
                   onChange={(e) => setA({ ...a, steuerrelevant: e.target.checked, steuerbefreiung: e.target.checked ? null : a.steuerbefreiung ?? 'RC' })} /></F>
                 {!a.steuerrelevant && (
                   // ohne MwSt: Grund wählen – Text erscheint so auf der Rechnung und in der E-Rechnung (#121)
-                  <F label="Ohne MwSt, weil" required>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {/* auch nach der Faktura korrigierbar – ändert nur den Hinweistext, nicht die Beträge */}
-                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!darfBearbeiten} checked={a.steuerbefreiung === 'RC'}
-                                   text="Übergang der Steuerschuld auf den Leistungsempfänger (Reverse Charge)"
-                                   onChange={(e) => { if (e.target.checked) set('steuerbefreiung', 'RC'); }} />
-                      <RadioButton name={`befreiung-${a.auftragsnr ?? 'neu'}`} wrappingType="Normal" disabled={!darfBearbeiten} checked={a.steuerbefreiung === 'DRITTLAND'}
-                                   text="Umsatzsteuerfreier Transport in ein Drittland gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG"
-                                   onChange={(e) => { if (e.target.checked) set('steuerbefreiung', 'DRITTLAND'); }} />
-                      {fakturiert && <Text className="portal-muted portal-small">Rechnung {a.faktura}: Änderung des Grunds druckt die Rechnung mit dem neuen Text (Beträge bleiben).</Text>}
+                  <F label="Ohne MwSt, weil" required oben>
+                    <div style={{ display: 'grid', gap: '0.35rem' }}>
+                      {/* zwei kurze Schaltflächen nebeneinander, darunter der Text der Rechnung (#121);
+                          auch nach der Faktura korrigierbar – ändert nur den Hinweistext, nicht die Beträge */}
+                      <SegmentedButton style={{ width: '100%' }} accessibleName="Grund ohne Mehrwertsteuer"
+                                       onSelectionChange={(e) => {
+                                         const g = (e.detail.selectedItems[0] as HTMLElement | undefined)?.dataset.g as 'RC' | 'DRITTLAND' | undefined;
+                                         if (g && g !== a.steuerbefreiung) set('steuerbefreiung', g);
+                                       }}>
+                        <SegmentedButtonItem data-g="RC" selected={a.steuerbefreiung === 'RC'} disabled={!darfBearbeiten}>Reverse Charge</SegmentedButtonItem>
+                        <SegmentedButtonItem data-g="DRITTLAND" selected={a.steuerbefreiung === 'DRITTLAND'} disabled={!darfBearbeiten}>Drittland</SegmentedButtonItem>
+                      </SegmentedButton>
+                      {a.steuerbefreiung && (
+                        <Text className="portal-small">
+                          <span className="portal-muted">Auf der Rechnung: </span>
+                          {a.steuerbefreiung === 'RC' ? 'Übergang der Steuerschuld auf den Leistungsempfänger (Reverse Charge)'
+                            : 'Umsatzsteuerfreier Transport in ein Drittland gem. § 4 Nr. 3 Buchst. a Unterbuchstabe aa UStG'}
+                        </Text>
+                      )}
                       {!a.steuerbefreiung && <Text className="portal-muted portal-small">Noch nicht gewählt – bisher aus dem Land des Rechnungsempfängers abgeleitet.</Text>}
+                      {fakturiert && <Text className="portal-muted portal-small">Rechnung {a.faktura}: Eine Änderung druckt die Rechnung mit dem neuen Text (Beträge bleiben).</Text>}
                     </div>
                   </F>
                 )}
