@@ -158,7 +158,8 @@ test('Meine Mitgliedschaft: Beitrag wechseln und Jugendtraining selbst abschlie�
   // Erwachsene: Wechsel in „Passive Mitglieder“ möglich, nicht in den Jugendbeitrag; kein Jugendtraining
   assert.deepEqual(ich.wechsel.arten.map((a: { art: string }) => a.art), ['7']);
   assert.equal(ich.training.length, 0);
-  assert.match(ich.trainingHinweis, /bis 21 Jahre/);
+  assert.match(ich.trainingHinweis, /noch keine 21 Jahre alt/);
+  assert.deepEqual([ich.trainingAlter, kim.trainingAlter], [false, true]);
   assert.deepEqual(kim.training.map((a: { art: string }) => a.art), ['90', '91']);
 
   assert.equal((await call('POST', `${S}/pruefen`, { typ: 'BEITRAGSWECHSEL', adrnr: '0000000205', art: '3' })).status, 400, 'Jugendbeitrag für Erwachsene');
