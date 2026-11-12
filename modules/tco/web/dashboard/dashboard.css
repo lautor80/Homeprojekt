@@ -228,16 +228,20 @@
 .portal-av__text { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); overflow-wrap: anywhere; }
 .portal-av__datum { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); white-space: nowrap; }
 .portal-av__pfeil { color: var(--sapContent_IconColor); width: 0.875rem; }
-/* Baumdarstellung: Gruppe je Rolle/Bereich mit Anzahl, Einträge eingerückt */
-.portal-av > [role='treeitem'] { border-bottom: 1px solid var(--sapList_BorderColor); }
+/* Baumdarstellung: Gruppe je Rolle mit Anzahl, Einträge eingerückt über die ganze Breite */
+.portal-av > [role='treeitem'] { border-bottom: 1px solid var(--sapList_BorderColor); display: block; width: 100%; }
 .portal-av > [role='treeitem']:last-child { border-bottom: 0; }
-.portal-av__gruppe { border-bottom: 0; }
+.portal-av > [role='treeitem'] > [role='group'] { display: flex; flex-direction: column; width: 100%; }
+.portal-av__gruppe { border-bottom: 0; width: 100%; box-sizing: border-box; grid-template-columns: auto auto minmax(0, 1fr); }
 .portal-av__gruppe .portal-av__titel { font-size: var(--sapFontLargeSize, 1rem); }
 .portal-av__anzahl {
   min-width: 1.5rem; padding: 0 0.5rem; border-radius: 0.75rem; text-align: center; font-weight: bold; font-size: var(--sapFontSmallSize);
-  background: var(--sapNeutralBackground, #eff1f2); color: var(--sapTextColor); line-height: 1.5rem;
+  background: var(--sapNeutralBackground, #eff1f2); color: var(--sapTextColor); line-height: 1.5rem; justify-self: start;
 }
-.portal-av__eintrag--kind { padding-left: 2.25rem; border-bottom: 0; border-top: 1px solid var(--sapList_BorderColor); }
+.portal-av__eintrag--kind { width: 100%; box-sizing: border-box; border-bottom: 0; border-top: 1px solid var(--sapList_BorderColor); cursor: default; }
+.portal-av__sprung { border: 0; background: transparent; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; width: 100%; }
+.portal-av__auf { border: 0; background: transparent; color: var(--sapContent_IconColor); padding: 0.25rem; cursor: pointer; display: flex; align-items: center; }
+.portal-av__auf:hover, .portal-av__sprung:hover .portal-av__titel { color: var(--sapLinkColor); }
 @media (max-width: 600px) {
   .portal-av__eintrag { grid-template-columns: auto minmax(0, 1fr) auto; }
   .portal-av__datum { display: none; }

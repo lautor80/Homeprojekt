@@ -123,7 +123,8 @@ const dauerText = (m: number) => (m % 60 ? `${Math.floor(m / 60) ? `${Math.floor
 
 export function PlatzBuchen() {
   const [ansicht, setAnsicht] = useState<'kalender' | 'meine'>('kalender');
-  const [datum, setDatum] = useState(isoHeute);
+  // Absprung aus dem Arbeitsvorrat: ?datum=JJJJ-MM-TT
+  const [datum, setDatum] = useState(() => { const d = new URLSearchParams(window.location.search).get('datum'); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : isoHeute(); });
   const [tag, setTag] = useState<Tag | null>(null);
   const [filter, setFilter] = useState<'ALLE' | 'HALLE' | 'FREI'>('ALLE');
   const [meine, setMeine] = useState<Meine | null>(null);

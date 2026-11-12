@@ -1,6 +1,14 @@
 /**
  * Arbeitsvorrat der Vereinsübersicht: offene Vorgänge, die jemand im Verein erledigen muss.
  * Jeder Eintrag erscheint nur, wenn der Benutzer die zugehörige App bedienen darf.
+ *
+ * Gruppierung (bereich) nach Zuständigkeit im Verein:
+ *  - Jugendwart:  alles rund um das Schnuppertraining – jede neue Anmeldung einzeln
+ *  - Kassenwart:  heute erfasste Hallenbuchungen (mit den einzelnen Buchungen darunter), freigegebene Zeitnachweise der Trainer,
+ *                 neue Mitgliedsanträge und Vertragswechsel – je Antrag
+ *  - Vorstand:    neue Registrierungen und deren Freigabe
+ *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
+ *  - Clubhaus, Administration: wie bisher
  */
 import type { FastifyRequest } from 'fastify';
 import { can } from '../../../../server/src/auth.js';
@@ -20,6 +28,8 @@ export interface Aufgabe {
   /** Portalpfad zum Bearbeiten */
   pfad: string;
   betrag?: number;
+  /** Unterpunkte (z. B. die einzelnen Buchungen zu „Heute n Hallenbuchungen“) */
+  kinder?: Aufgabe[];
 }
 
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,7 +37,7 @@ const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2,
 export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgabe[]> {
   const out: Aufgabe[] = [];
 
-  // Jugendtraining: vom Trainer freigegebene, noch nicht (vollständig) bezahlte Zeitnachweise
+  // Kassenwart: vom Trainer freigegebene, noch nicht (vollständig) bezahlte Zeitnachweise
   if (can(req, 'tco.jt:display')) {
     const rows = await db`
       select d.adrnr, d.monat, d.belegnr, coalesce(d.stunden, 0)::float8 as stunden, coalesce(d.betrag, 0)::float8 as betrag,
@@ -41,12 +51,12 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     for (const r of rows) {
       const offen = Math.max(0, Number(r.betrag) - Number(r.bezahlt_betrag));
       out.push(r.oeffnung ? {
-        key: `JT:${r.adrnr}:${r.monat}`, bereich: 'Jugendtraining', icon: 'unlocked', state: 'Critical',
+        key: `JT:${r.adrnr}:${r.monat}`, bereich: 'Kassenwart', icon: 'unlocked', state: 'Critical',
         titel: `${r.name} bittet um Öffnung von ${monatsname(r.monat)}`,
         text: r.oeffnung_grund ? `Grund: ${r.oeffnung_grund}` : 'Freigabe zurücknehmen, damit der Trainer korrigieren kann.',
         datum: r.am, pfad: `/tco/jugendtraining?monat=${r.monat}&tab=abr`, betrag: offen,
       } : {
-        key: `JT:${r.adrnr}:${r.monat}`, bereich: 'Jugendtraining', icon: 'family-care', state: 'Information',
+        key: `JT:${r.adrnr}:${r.monat}`, bereich: 'Kassenwart', icon: 'family-care', state: 'Information',
         titel: `Zeitnachweis ${r.name} – ${monatsname(r.monat)} freigegeben`,
         text: `${Number(r.stunden).toLocaleString('de-DE')} Std., ${eur(offen)} € zur Zahlung${r.belegnr ? ` · ${r.belegnr}` : ''}`,
         datum: r.am, pfad: `/tco/jugendtraining?monat=${r.monat}&tab=abr`, betrag: offen,
@@ -102,13 +112,13 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
-  // Registrierungen von Mitgliedern: je Antrag mit Zuordnungsvorschlag (Kassenwart)
+  // Vorstand: Registrierungen von Mitgliedern – je Antrag mit Zuordnungsvorschlag, prüfen und freigeben
   if (can(req, 'tco.registrierung:mitglied')) {
     const { registrierungenLesen } = await import('../platz/registrierung.js');
     for (const r of (await registrierungenLesen(db, 'OFFEN', 'MITGLIED')) as (Record<string, any> & { vorschlaege: { art: string; name: string; info: string; grund: string }[] })[]) {
       const v = r.vorschlaege.find((x) => x.art === 'MITGLIED');
       out.push({
-        key: `REG_MITGLIED:${r.id}`, bereich: 'Mitglieder', icon: 'add-employee', state: v ? 'Information' : 'Critical',
+        key: `REG_MITGLIED:${r.id}`, bereich: 'Vorstand', icon: 'add-employee', state: v ? 'Information' : 'Critical',
         titel: `Registrierung ${r.anzeigename} als Mitglied`,
         text: v ? `Vorschlag: ${v.name} – ${v.info} (${v.grund}). Prüfen und freigeben.` : 'Kein passendes Mitglied gefunden – bitte prüfen, zuordnen oder ablehnen.',
         datum: new Date(r.erstellt).toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10), pfad: `/tco/registrierungen?id=${r.id}`,
@@ -116,30 +126,40 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
-  // Mitgliedsanträge (online) warten auf Prüfung und Übernahme
+  // Kassenwart: Mitgliedsanträge und Vertragswechsel (bestätigte Vertragsangebote) – je Antrag, warten auf Prüfung und Übernahme
   if (can(req, 'tco.antraege:edit')) {
-    const [a] = await db`select count(*)::int as n, to_char(min(eingang) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
-                           from tco.mitgliedsantraege where status = 'EINGANG'`;
-    if (a?.n) {
+    const rows = await db`
+      select a.id, a.nummer, to_char(a.eingang at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am, a.daten,
+             coalesce((select (v.daten->>'vertragsaenderung')::boolean from tco.vertragsangebote v where v.nummer = a.daten->>'angebot_nr'), false) as wechsel
+        from tco.mitgliedsantraege a where a.status = 'EINGANG' order by a.eingang`;
+    for (const r of rows) {
+      const pers = ((r.daten?.personen ?? []) as { vorname?: string; nachname?: string }[]).map((p) => `${p.vorname ?? ''} ${p.nachname ?? ''}`.trim()).filter(Boolean);
+      const name = pers.length > 1 ? `${pers[0]} und ${pers.length - 1} weitere` : pers[0] ?? r.nummer;
       out.push({
-        key: 'MITGLIEDSANTRAG', bereich: 'Mitglieder', icon: 'personnel-view', state: 'Critical',
-        titel: `${a.n} Mitgliedsantr${a.n === 1 ? 'ag' : 'äge'} zu prüfen`,
-        text: 'Online eingegangen – prüfen und übernehmen (Mitglied, Vertrag, SEPA-Mandat und Benutzer werden angelegt).',
-        datum: a.seit, pfad: '/tco/mitgliedsantraege',
+        key: `MITGLIEDSANTRAG:${r.id}`, bereich: 'Kassenwart', icon: r.wechsel ? 'request' : 'personnel-view', state: 'Critical',
+        titel: r.wechsel ? `Vertragswechsel ${name}` : `Mitgliedsantrag ${name}`,
+        text: r.wechsel ? `${r.nummer} · Vertragsangebot bestätigt – prüfen und übernehmen (Verträge werden ergänzt).`
+          : `${r.nummer} · online eingegangen – prüfen und übernehmen (Mitglied, Vertrag, SEPA-Mandat und Benutzer werden angelegt).`,
+        datum: r.am, pfad: '/tco/mitgliedsantraege',
       });
     }
   }
 
-  // Schnuppertraining (#86): neue Anmeldungen warten auf Kontaktaufnahme durch einen Trainer
+  // Jugendwart: Schnuppertraining (#86) – jede neue Anmeldung wartet auf Kontaktaufnahme
   if (can(req, 'tco.schnupper:edit')) {
-    const [s] = await db`select count(*)::int as n, to_char(min(eingang) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
-                           from tco.schnupper where status = 'NEU'`;
-    if (s?.n) {
+    const rows = await db`
+      select s.adrnr, s.nummer, to_char(s.eingang at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am, s.alter_jahre, s.stufe, s.mitteilung,
+             coalesce(nullif(trim(concat_ws(' ', m.vorname, m.nachname)), ''), s.nummer) as name
+        from tco.schnupper s left join tco.mitglieder m on m.adrnr = s.adrnr
+       where s.status = 'NEU' order by s.eingang`;
+    const STUFE: Record<string, string> = { NEU: 'neu im Tennis', ANFAENGER: 'Anfänger', FORTGESCHRITTEN: 'fortgeschritten' };
+    for (const r of rows) {
       out.push({
-        key: 'SCHNUPPER', bereich: 'Jugendtraining', icon: 'physical-activity', state: 'Critical',
-        titel: `${s.n} Anmeldung${s.n === 1 ? '' : 'en'} zum Schnuppertraining`,
-        text: 'Online eingegangen – bitte Kontakt aufnehmen und einen Termin vereinbaren.',
-        datum: s.seit, pfad: '/tco/schnuppertraining',
+        key: `SCHNUPPER:${r.adrnr}`, bereich: 'Jugendwart', icon: 'physical-activity', state: 'Critical',
+        titel: `Anmeldung zum Schnuppertraining: ${r.name}`,
+        text: [r.nummer, r.alter_jahre != null ? `${r.alter_jahre} Jahre` : '', STUFE[r.stufe] ?? '', r.mitteilung ? `„${String(r.mitteilung).slice(0, 120)}“` : '',
+          'bitte Kontakt aufnehmen und einen Termin vereinbaren'].filter(Boolean).join(' · '),
+        datum: r.am, pfad: '/tco/schnuppertraining',
       });
     }
   }
@@ -164,31 +184,48 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         key: `HALLENWART:${r.bid}:${r.datum}`, bereich: 'Hallenwart', icon: 'locked', state: 'Information',
         titel: `Halle aufsperren: ${t}.${m}.${j} ${r.von}–${r.bis} Uhr`,
         text: `${r.name} hat keinen Hallenschlüssel – meldet sich bei ${HALLENWART.name}.`,
-        datum: r.datum, pfad: `/tco/platzverwaltung?datum=${r.datum}`,
-      });
-    }
-    // heute über Einzelbuchungen erfasste Hallenbuchungen
-    const [h] = await db`
-      select count(*)::int as n from tco.bookings b
-        join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
-       where b.status = '1' and b.erstellt = current_date`;
-    if (h?.n) {
-      out.push({
-        key: 'HALLE_HEUTE', bereich: 'Platzbuchung', icon: 'appointment-2', state: 'Information',
-        titel: `Heute ${h.n} Hallenbuchung${h.n === 1 ? '' : 'en'} als Einzelbuchung erfasst`,
-        text: 'Neu angelegte Einzelbuchungen der Halle (Portal und EP3) mit Erfassungsdatum heute.',
-        datum: null, pfad: '/tco/platzverwaltung',
+        datum: r.datum, pfad: can(req, 'tco.platz:admin') ? `/tco/platzverwaltung?tab=belegung&datum=${r.datum}` : `/tco/platz-buchen?datum=${r.datum}`,
       });
     }
   }
 
-  // Platzbuchung: Registrierungen externer Hallennutzer warten auf Bestätigung (nur ohne E-Mail-Bestätigung)
+  // Kassenwart: heute über Einzelbuchungen erfasste Hallenbuchungen – darunter die einzelnen Buchungen mit Absprung in die Buchungsmaske
+  if (can(req, 'tco.halle:display') || can(req, 'tco.platzbuchung:verwalten')) {
+    const maske = can(req, 'tco.platz:admin') ? (d: string) => `/tco/platzverwaltung?tab=belegung&datum=${d}`
+      : can(req, 'tco.platzbuchung:verwalten') ? (d: string) => `/tco/platz-buchen?datum=${d}` : () => '/tco/halle';
+    const rows = await db`
+      select b.bid, b.datum::text as datum, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis,
+             coalesce(nullif(trim(u.display_name), ''), initcap(b.kunde), '–') as name, b.preis::float8 as preis, coalesce(b.quelle, 'EP3') as quelle
+        from tco.bookings b
+        join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
+        left join core.users u on u.id = b.benutzer_id
+       where b.status = '1' and b.erstellt = current_date
+       order by b.datum, b.time_start`;
+    if (rows.length) {
+      const tm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+      const summe = rows.reduce((x, r) => x + Number(r.preis ?? 0), 0);
+      out.push({
+        key: 'HALLE_HEUTE', bereich: 'Kassenwart', icon: 'appointment-2', state: 'Information',
+        titel: `Heute ${rows.length} Hallenbuchung${rows.length === 1 ? '' : 'en'} als Einzelbuchung erfasst`,
+        text: `Neu angelegte Einzelbuchungen der Halle (Portal und EP3) mit Erfassungsdatum heute · ${eur(summe)} €`,
+        datum: null, pfad: maske(rows[0].datum), betrag: summe,
+        kinder: rows.map((r) => ({
+          key: `HALLE_HEUTE:${r.bid}:${r.datum}`, bereich: 'Kassenwart', icon: 'appointment', state: 'Information' as const,
+          titel: `${tm(r.datum)} ${r.von}–${r.bis} Uhr · ${r.name}`,
+          text: `${r.preis != null ? `${eur(Number(r.preis))} €` : 'ohne Preis'} · ${r.quelle === 'PORTAL' ? 'Portal' : 'EP3'}`,
+          datum: r.datum, pfad: maske(r.datum), betrag: Number(r.preis ?? 0),
+        })),
+      });
+    }
+  }
+
+  // Vorstand: Registrierungen externer Hallennutzer warten auf Bestätigung (nur ohne E-Mail-Bestätigung)
   if (can(req, 'tco.platz:admin')) {
     const [r] = await db`select count(*)::int as n, to_char(min(erstellt) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
                            from tco.registrierungen where status = 'OFFEN' and art = 'EXTERN'`;
     if (r?.n) {
       out.push({
-        key: 'REGISTRIERUNG', bereich: 'Platzbuchung', icon: 'add-employee', state: 'Critical',
+        key: 'REGISTRIERUNG', bereich: 'Vorstand', icon: 'add-employee', state: 'Critical',
         titel: `${r.n} Registrierung${r.n === 1 ? '' : 'en'} zu bestätigen`,
         text: 'Neue Hallennutzer warten auf Freigabe in der Platzverwaltung.',
         datum: r.seit, pfad: '/tco/platzverwaltung',

@@ -50,7 +50,8 @@ const wtText = (w: string) => (w === '1234567' ? 'täglich' : [...w].map((x) => 
 const std = (m: number) => (m % 60 ? `${m} Min.` : `${m / 60} Std.`);
 
 export function Platzverwaltung() {
-  const [tab, setTab] = useState('plaetze');
+  // Absprung aus dem Arbeitsvorrat: ?tab=belegung&datum=JJJJ-MM-TT
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'plaetze');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -355,7 +356,7 @@ function PlatzFormular({ f, setF, massen }: { f: Omit<Platz, 'id'>; setF: (x: Pa
 // ---------------------------------------------------------------- Belegung (mit Namen), 1 bis 7 Tage nebeneinander (#11)
 const TAGE_WAHL = [1, 3, 5, 7] as const;
 function Belegung() {
-  const [datum, setDatum] = useState(isoHeute);
+  const [datum, setDatum] = useState(() => { const d = new URLSearchParams(window.location.search).get('datum'); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : isoHeute(); });
   const [tage, setTage] = useState<number>(() => Number(localStorage.getItem('tco.platz.belegung.tage')) || 1);
   const [tagListe, setTagListe] = useState<{ datum: string; plaetze: TagPlatz[] }[] | null>(null);
   const [termin, setTermin] = useState<{ p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN' } | null>(null);

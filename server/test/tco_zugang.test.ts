@@ -285,7 +285,7 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   r = await admin('GET', `${T}/mitgliedsantraege`);
   assert.equal(r.body[0].iban, 'DE02120300000000202051');
   r = await admin('GET', `${T}/dashboard/arbeitsvorrat`);
-  assert.ok((r.body.aufgaben ?? r.body).some((x: any) => x.key === 'MITGLIEDSANTRAG'));
+  assert.ok((r.body.aufgaben ?? r.body).some((x: any) => String(x.key).startsWith('MITGLIEDSANTRAG:') && x.bereich === 'Kassenwart'));
 
   r = await admin('POST', `${T}/mitgliedsantraege/${id}/uebernehmen`, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -366,7 +366,7 @@ test('Schnuppertraining (#86): Anmeldung als Kategorie im Mitgliederstamm, Betre
   assert.equal(r.body.schnupper.stufe, 'NEU');
   assert.equal(r.body.schnupper.alter, 12);
   r = await admin('GET', `${T}/dashboard/arbeitsvorrat`);
-  assert.ok((r.body.aufgaben ?? r.body).some((x: any) => x.key === 'SCHNUPPER'));
+  assert.ok((r.body.aufgaben ?? r.body).some((x: any) => String(x.key).startsWith('SCHNUPPER:') && x.bereich === 'Jugendwart' && /^Anmeldung zum Schnuppertraining: /.test(x.titel)));
 
   // Trainer: eigene Rechte, kein Zugriff auf den Mitgliederstamm
   await admin('POST', '/api/admin/roles', { id: 'SCHNUPPER_LESER', name: 'Schnuppern lesen', permissions: ['tco.schnupper:display'] });

@@ -8,6 +8,8 @@ import { DASH } from './typen';
 export interface Aufgabe {
   key: string; bereich: string; titel: string; text: string; datum: string | null; icon: string;
   state: 'Information' | 'Critical' | 'Negative'; pfad: string; betrag?: number;
+  /** Unterpunkte, z. B. die einzelnen Buchungen */
+  kinder?: Aufgabe[];
 }
 
 const dat = (iso: string) => iso.split('-').reverse().join('.');
@@ -20,8 +22,9 @@ function offenLesen(): string[] | null {
 /**
  * Arbeitsvorrat der Vereinsübersicht: offene Vorgänge (z. B. freigegebene Zeitnachweise der Trainer,
  * Registrierungen). Ein Klick öffnet die App, in der der Vorgang erledigt wird. Ohne Einträge unsichtbar.
- * Baumdarstellung: oberste Ebene je Rolle/Bereich (Hallenwart, Jugendtraining, …) mit Anzahl, aufklappbar; der Zustand
- * (auf/zu) bleibt im Browser gespeichert.
+ * Baumdarstellung: oberste Ebene je Rolle (Jugendwart, Kassenwart, Vorstand, Hallenwart, …) mit Anzahl, aufklappbar; der Zustand
+ * (auf/zu) bleibt im Browser gespeichert. Einträge mit Unterpunkten (z. B. die einzelnen Hallenbuchungen von heute) klappen ihre
+ * Details auf; der Pfeil rechts springt in die App, aus der der Hinweis stammt.
  */
 export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: string }) {
   const [liste, setListe] = useState<Aufgabe[]>([]);
@@ -33,17 +36,28 @@ export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: strin
   return <Baum liste={liste} onOeffnen={(a) => navigate(a.pfad)} />;
 }
 
-function Eintrag({ a, onOeffnen }: { a: Aufgabe; onOeffnen: (a: Aufgabe) => void }) {
+function Eintrag({ a, onOeffnen, ebene = 1 }: { a: Aufgabe; onOeffnen: (a: Aufgabe) => void; ebene?: number }) {
+  const [auf, setAuf] = useState(false);
+  const kinder = a.kinder ?? [];
   return (
-    <button type="button" className={`portal-av__eintrag portal-av__eintrag--kind portal-av__eintrag--${a.state}`} onClick={() => onOeffnen(a)}>
-      <Icon name={a.icon} className="portal-av__icon" />
-      <div className="portal-av__inhalt">
-        <div className="portal-av__titel">{a.titel}</div>
-        <div className="portal-av__text">{a.text}</div>
+    <>
+      <div className={`portal-av__eintrag portal-av__eintrag--kind portal-av__eintrag--${a.state}`} style={{ paddingLeft: `${1 + ebene * 1.25}rem` }}>
+        {kinder.length
+          ? <button type="button" className="portal-av__auf" aria-label={auf ? 'Details einklappen' : 'Details aufklappen'} aria-expanded={auf} onClick={() => setAuf(!auf)}>
+              <Icon name={auf ? 'navigation-down-arrow' : 'navigation-right-arrow'} />
+            </button>
+          : <Icon name={a.icon} className="portal-av__icon" />}
+        <button type="button" className="portal-av__inhalt portal-av__sprung" onClick={() => (kinder.length ? setAuf(!auf) : onOeffnen(a))}>
+          <div className="portal-av__titel">{a.titel}</div>
+          <div className="portal-av__text">{a.text}</div>
+        </button>
+        <div className="portal-av__datum">{a.datum ? dat(a.datum) : ''}</div>
+        <button type="button" className="portal-av__auf" aria-label="App öffnen" title="App öffnen" onClick={() => onOeffnen(a)}>
+          <Icon name="navigation-right-arrow" className="portal-av__pfeil" />
+        </button>
       </div>
-      <div className="portal-av__datum">{a.datum ? dat(a.datum) : ''}</div>
-      <Icon name="navigation-right-arrow" className="portal-av__pfeil" />
-    </button>
+      {auf && kinder.map((k) => <Eintrag key={k.key} a={k} onOeffnen={onOeffnen} ebene={ebene + 1} />)}
+    </>
   );
 }
 
@@ -75,7 +89,6 @@ function Baum({ liste, onOeffnen }: { liste: Aufgabe[]; onOeffnen: (a: Aufgabe) 
               <Icon name={auf(g.bereich) ? 'navigation-down-arrow' : 'navigation-right-arrow'} className="portal-av__icon" />
               <div className="portal-av__inhalt"><div className="portal-av__titel">{g.bereich}</div></div>
               <span className="portal-av__anzahl">{g.eintraege.length}</span>
-              <span />
             </button>
             {auf(g.bereich) && <div role="group">{g.eintraege.map((a) => <Eintrag key={a.key} a={a} onOeffnen={onOeffnen} />)}</div>}
           </div>

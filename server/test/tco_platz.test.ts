@@ -928,6 +928,14 @@ test('Halle verschlossen (#11): Hinweis ohne Hallenschlüssel, Arbeitsvorrat fü
   const [{ n }] = await sql`select count(*)::int as n from tco.bookings where status = '1' and erstellt = current_date and platz = 'Halle'`;
   assert.ok(n >= 1);
   assert.match(heute.titel, new RegExp(`^Heute ${n} Hallenbuchung`));
+  // Kassenwart: die einzelnen Buchungen als Unterpunkte mit Absprung in die Buchungsmaske
+  assert.equal(heute.bereich, 'Kassenwart');
+  assert.equal(heute.kinder.length, n);
+  const kind = heute.kinder.find((k: any) => k.key === `HALLE_HEUTE:${ohne}:${d}`);
+  assert.ok(kind, JSON.stringify(heute.kinder));
+  assert.match(kind.titel, /19:00–20:00 Uhr · /);
+  assert.equal(kind.pfad, `/tco/platzverwaltung?tab=belegung&datum=${d}`);
+  assert.equal(hw.pfad, `/tco/platzverwaltung?tab=belegung&datum=${d}`);
   const rb = await bert('GET', '/api/m/tco/dashboard/arbeitsvorrat');
   assert.ok(rb.status !== 200 || !rb.body.some((a: any) => a.bereich === 'Hallenwart'), 'nur mit Platzverwaltung');
 
