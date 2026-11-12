@@ -187,10 +187,10 @@ export async function standLesen(db: Db) {
   const [letzter] = await db`select max(lk_stand)::text as d from tco.mitgliedera`;
   return {
     zeilen: m.map((x) => ({
-      adrnr: x.adrnr, name: condense(`${x.nachname}, ${x.vorname}`), mitglnrn: x.mitglnrn, geburtsdatum: x.geburtsdatum, id_nr: x.id_nr, lk: x.lk, lk_stand: x.lk_stand,
+      adrnr: x.adrnr, name: condense(`${x.nachname}, ${x.vorname}`), nachname: x.nachname, vorname: x.vorname, mitglnrn: x.mitglnrn, geburtsdatum: x.geburtsdatum, id_nr: x.id_nr, lk: x.lk, lk_stand: x.lk_stand,
       verlauf: verlauf.filter((v) => v.adrnr === x.adrnr).map((v) => ({ jahr: Number(v.jahr), lk: Number(v.lk) })),
     })),
-    anzahl: { mitglieder: m.length, mitId: m.filter((x) => x.id_nr).length, mitLk: m.filter((x) => x.lk != null).length },
+    anzahl: { mitglieder: m.length, mitId: m.filter((x) => x.id_nr).length, ohneId: m.filter((x) => !x.id_nr).length, mitLk: m.filter((x) => x.lk != null).length },
     letzterAbgleich: letzter?.d ?? null,
   };
 }

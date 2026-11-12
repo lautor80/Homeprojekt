@@ -118,6 +118,12 @@ test('Folgejahr: LK ändert sich, Treffer über die gespeicherte ID-Nr., fehlend
   const m = r.body.zeilen.find((x: any) => x.adrnr === '0000000301');
   assert.equal(m.lk, 21.3);
   assert.deepEqual(m.verlauf.map((v: any) => v.lk), [21.3, 22.1], 'Verlauf je Jahr');
+  // Übersicht: alle aktiven Mitglieder, getrennt nach mit/ohne ID-Nr.; Name und Vorname einzeln für Spalten und Suche
+  assert.ok(m.nachname && m.vorname && m.name === `${m.nachname}, ${m.vorname}`);
+  assert.equal(r.body.anzahl.mitId + r.body.anzahl.ohneId, r.body.anzahl.mitglieder);
+  assert.equal(r.body.zeilen.length, r.body.anzahl.mitglieder);
+  assert.equal(r.body.zeilen.filter((x: any) => !x.id_nr).length, r.body.anzahl.ohneId);
+  assert.ok(r.body.anzahl.ohneId > 0 && r.body.anzahl.mitId > 0);
   // doppelte ID-Nr. wird auch bei ausdrücklicher Auswahl nicht gespeichert
   r = await call('POST', `${S}/uebernehmen`, { datei: neu, auswahl: [{ adrnr: '0000000306', zeile: 4 }] });
   assert.equal(r.status, 400);

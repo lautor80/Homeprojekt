@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { BusyIndicator, Button, CheckBox, Icon, Input, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, CheckBox, Icon, Input, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { useAblageZiel } from '@core/ablage';
 import { AppPage } from '@core/components/AppPage';
@@ -13,12 +13,15 @@ import './spielerdaten.css';
  * Spielerdaten aus nuLiga (#162, Sportwart): Die im Verbandsportal heruntergeladene Datei „Mitgliederdaten“ (CSV) wird per
  * Drag & Drop abgelegt und mit den aktiven Mitgliedern abgeglichen. Die Vorschau zeigt Treffer mit ID-Nr. und LK (alt → neu),
  * unsichere Treffer zum Prüfen sowie Mitglieder bzw. Personen ohne Gegenstück; übernommen wird erst mit „Übernehmen“.
+ *
+ * Übersicht: alle aktiven Mitglieder, getrennt nach „Mit ID-Nr.“ und „Ohne ID-Nr.“ (Reiter), mit Suche über Name, Vorname,
+ * ID-Nr. und Mitgliedsnummer; der Abgleich hat einen eigenen Reiter.
  */
 const S = `${TCO}/sport/spielerdaten`;
 const lk = (v: number | null | undefined) => (v == null ? '–' : `LK ${v.toFixed(1).replace('.', ',')}`);
 
-interface Zeile { adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; id_nr: string | null; lk: number | null; lk_stand: string | null; verlauf: { jahr: number; lk: number }[] }
-interface Stand { zeilen: Zeile[]; anzahl: { mitglieder: number; mitId: number; mitLk: number }; letzterAbgleich: string | null }
+interface Zeile { adrnr: string; name: string; nachname: string; vorname: string; mitglnrn: string; geburtsdatum: string | null; id_nr: string | null; lk: number | null; lk_stand: string | null; verlauf: { jahr: number; lk: number }[] }
+interface Stand { zeilen: Zeile[]; anzahl: { mitglieder: number; mitId: number; ohneId: number; mitLk: number }; letzterAbgleich: string | null }
 interface Treffer {
   adrnr: string; zeile: number; name: string; mitglnrn: string; geburtsdatum: string | null; inDatei: string; art: string; sicher: boolean; hinweis: string | null;
   id_alt: string | null; id_neu: string | null; lk_alt: number | null; lk_neu: number | null; aenderung: boolean;
@@ -54,7 +57,8 @@ export function Spielerdaten() {
   const [error, setError] = useState<string | null>(null);
   const [ueber, setUeber] = useState(false);
   const [suche, setSuche] = useState('');
-  const [alle, setAlle] = useState(false);
+  const [tab, setTab] = useState<'mit' | 'ohne' | 'abgleich'>('mit');
+  const [lkWahl, setLkWahl] = useState('');
   const eingabe = useRef<HTMLInputElement>(null);
 
   const laden = () => api.get<Stand>(S).then(setStand).catch((e) => setError(e.message));
@@ -63,6 +67,7 @@ export function Spielerdaten() {
   async function ablegen(f: File | undefined) {
     if (!f || !edit) return;
     setError(null);
+    setTab('abgleich');
     if (!/\.(csv|txt)$/i.test(f.name)) { setError('Bitte die CSV-Datei aus nuLiga ablegen (Mitglieder → „Download Mitgliederdaten (Excel, csv)“). Eine Excel-Datei bitte als CSV speichern.'); return; }
     if (f.size > 5_000_000) { setError('Die Datei ist zu groß.'); return; }
     setBusy(true);
@@ -87,6 +92,7 @@ export function Spielerdaten() {
       toast(r.text, 8000);
       setA(null); setDatei(null); setWahl(new Set());
       await laden();
+      setTab('mit');
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const drop = (ev: DragEvent) => { ev.preventDefault(); ev.stopPropagation(); setUeber(false); ablegen(ev.dataTransfer.files[0]); };
@@ -94,8 +100,62 @@ export function Spielerdaten() {
 
   const mitAenderung = a?.treffer.filter((t) => t.sicher && t.aenderung) ?? [];
   const pruefen = a?.treffer.filter((t) => !t.sicher) ?? [];
-  const s = suche.trim().toLowerCase();
-  const zeilen = (stand?.zeilen ?? []).filter((z) => (alle || z.id_nr || z.lk != null) && (!s || `${z.name} ${z.id_nr ?? ''} ${z.mitglnrn}`.toLowerCase().includes(s)));
+  // Suche: jedes Wort muss vorkommen – in Name, Vorname, ID-Nr. oder Mitgliedsnummer („nils alt“ findet „Alt, Nils“)
+  const worte = suche.toLowerCase().split(/[\s,;]+/).filter(Boolean);
+  const gefunden = (stand?.zeilen ?? []).filter((z) => {
+    const t = `${z.nachname} ${z.vorname} ${z.id_nr ?? ''} ${z.mitglnrn}`.toLowerCase();
+    return worte.every((w) => t.includes(w));
+  });
+  const mitLk = (z: Zeile) => !lkWahl || (lkWahl === 'mit') === (z.lk != null);
+  const mitId = gefunden.filter((z) => z.id_nr);
+  const ohneId = gefunden.filter((z) => !z.id_nr);
+  const jahr = new Date().getFullYear();
+
+  /** Filterzeile wie im Dokumenteneingang: Auswahl, Suche, Aktualisieren */
+  const filter = (mit: boolean) => (
+    <div className="portal-sd__filter">
+      {mit && (
+        <Select style={{ width: '11rem' }} accessibleName="Auswahl nach LK" onChange={(e) => setLkWahl((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+          {[['', 'alle mit ID-Nr.'], ['mit', 'mit LK'], ['ohne', 'ohne LK']].map(([k, t]) => <Option key={k} data-k={k} selected={k === lkWahl}>{t}</Option>)}
+        </Select>
+      )}
+      <Input placeholder="Suchen (Name, Vorname, ID-Nr.)" value={suche} showClearIcon style={{ width: '18rem' }} onInput={(e) => setSuche(e.target.value)} />
+      <Button design="Transparent" icon="refresh" tooltip="Aktualisieren" onClick={laden} />
+      {stand && (
+        <Text className="portal-muted portal-small">
+          {mit ? `${stand.anzahl.mitId} von ${stand.anzahl.mitglieder} aktiven Mitgliedern mit ID-Nr., ${stand.anzahl.mitLk} mit LK` : `${stand.anzahl.ohneId} von ${stand.anzahl.mitglieder} aktiven Mitgliedern ohne ID-Nr.`}
+          {stand.letzterAbgleich ? ` · letzter Abgleich ${dat(stand.letzterAbgleich)}` : ''}
+        </Text>
+      )}
+    </div>
+  );
+  const liste = (mit: boolean) => {
+    const zeilen = mit ? mitId.filter(mitLk) : ohneId;
+    const leer = zeilen.length ? undefined
+      : worte.length || (mit && lkWahl) ? 'Keine Mitglieder zu dieser Suche.'
+        : mit ? 'Noch keine Spielerdaten – bitte die Datei aus nuLiga im Reiter „Abgleich mit nuLiga“ ablegen.' : 'Alle aktiven Mitglieder haben eine ID-Nr.';
+    return (
+      <div style={{ paddingTop: '0.5rem' }}>
+        {filter(mit)}
+        <Tabelle kopf={mit ? ['Name', 'Vorname', 'Geburtsdatum', 'Mitgl.-Nr.', 'ID-Nr.', 'LK', 'Stand', 'Vorjahre'] : ['Name', 'Vorname', 'Geburtsdatum', 'Mitgl.-Nr.', 'LK']} leer={leer}>
+          {zeilen.map((z) => (
+            <tr key={z.adrnr}>
+              <td><b>{z.nachname}</b></td><td>{z.vorname}</td><td>{dat(z.geburtsdatum)}</td><td className="portal-muted">{z.mitglnrn || '–'}</td>
+              {mit && <td>{z.id_nr}</td>}
+              <td>{mit ? <b>{lk(z.lk)}</b> : lk(z.lk)}</td>
+              {mit && <td>{dat(z.lk_stand)}</td>}
+              {mit && <td className="portal-muted">{z.verlauf.filter((v) => v.jahr < jahr).map((v) => `${v.jahr}: ${lk(v.lk)}`).join(' · ')}</td>}
+            </tr>
+          ))}
+        </Tabelle>
+        {!mit && zeilen.length > 0 && (
+          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+            Ohne ID-Nr.: in nuLiga nicht gemeldet oder beim Abgleich nicht zugeordnet (anderer Name oder anderes Geburtsdatum).
+          </Text>
+        )}
+      </div>
+    );
+  };
 
   const trefferZeile = (t: Treffer) => (
     <tr key={schluessel(t)}>
@@ -111,7 +171,18 @@ export function Spielerdaten() {
     <AppPage title="Spielerdaten (nuLiga)" subtitle="ID-Nr. und Leistungsklasse (LK) der Mitglieder mit der Verbandsliste abgleichen">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
 
-      {edit && (
+      {!stand ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
+        <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key as typeof tab)}>
+          <Tab data-key="mit" text="Mit ID-Nr." icon="employee-approvals" additionalText={String(mitId.length)} selected={tab === 'mit'}>
+            {tab === 'mit' && liste(true)}
+          </Tab>
+          <Tab data-key="ohne" text="Ohne ID-Nr." icon="employee-rejections" additionalText={String(ohneId.length)} selected={tab === 'ohne'}>
+            {tab === 'ohne' && liste(false)}
+          </Tab>
+          {edit ? (
+            <Tab data-key="abgleich" text="Abgleich mit nuLiga" icon="upload" selected={tab === 'abgleich'}>
+              {tab === 'abgleich' && (
+                <div style={{ paddingTop: '0.5rem' }}>
         <Section title="Abgleich mit nuLiga">
           <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.5rem' }}>
             1. In nuLiga (stb.liga.nu) unter <b>Mitglieder</b> auf <b>Download Mitgliederdaten (Excel, csv)</b> klicken und die Datei speichern.
@@ -129,7 +200,6 @@ export function Spielerdaten() {
           </div>
           <input ref={eingabe} type="file" hidden accept=".csv,.txt,text/csv" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; ablegen(f); }} />
         </Section>
-      )}
 
       {a && (
         <Section title="Vorschau" actions={<>
@@ -177,26 +247,12 @@ export function Spielerdaten() {
           </details>
         </Section>
       )}
-
-      <Section title="Aktueller Stand" count={stand ? zeilen.length : undefined}
-               status={stand && <Text className="portal-muted portal-small">{stand.anzahl.mitId} von {stand.anzahl.mitglieder} aktiven Mitgliedern mit ID-Nr., {stand.anzahl.mitLk} mit LK{stand.letzterAbgleich ? ` · letzter Abgleich ${dat(stand.letzterAbgleich)}` : ''}</Text>}
-               actions={<>
-                 <Input placeholder="Name oder ID-Nr." value={suche} showClearIcon style={{ width: '14rem' }} onInput={(e) => setSuche(e.target.value)} />
-                 <CheckBox text="auch ohne ID-Nr./LK" checked={alle} onChange={(e) => setAlle(e.target.checked)} />
-               </>}>
-        {!stand ? <BusyIndicator active style={{ display: 'block', padding: '1rem' }} /> : (
-          <Tabelle kopf={['Mitglied', 'Geburtsdatum', 'ID-Nr.', 'LK', 'Stand', 'Vorjahre']}
-                   leer={zeilen.length ? undefined : stand.anzahl.mitId || stand.anzahl.mitLk ? 'Keine Mitglieder zu dieser Suche.' : 'Noch keine Spielerdaten – bitte die Datei aus nuLiga ablegen.'}>
-            {zeilen.map((z) => (
-              <tr key={z.adrnr}>
-                <td>{z.name}{z.mitglnrn && <span className="portal-muted portal-small"> · Nr. {z.mitglnrn}</span>}</td>
-                <td>{dat(z.geburtsdatum)}</td><td>{z.id_nr ?? '–'}</td><td><b>{lk(z.lk)}</b></td><td>{dat(z.lk_stand)}</td>
-                <td className="portal-muted">{z.verlauf.filter((v) => v.jahr < new Date().getFullYear()).map((v) => `${v.jahr}: ${lk(v.lk)}`).join(' · ')}</td>
-              </tr>
-            ))}
-          </Tabelle>
-        )}
-      </Section>
+                </div>
+              )}
+            </Tab>
+          ) : null}
+        </TabContainer>
+      )}
     </AppPage>
   );
 }
