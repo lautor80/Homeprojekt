@@ -75,7 +75,7 @@ interface Abo {
 }
 interface AboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
 interface Meine { ich: { name: string }; einzel: Einzel[]; abos: Abo[] }
-interface Rechnung { rgnr: string; jahr: number; betrag: number; datum: string | null; bezahlt: string | null; status: string; dokument: boolean }
+interface Rechnung { rgnr: string; jahr: number; betrag: number; datum: string | null; bezahlt: string | null; status: string; dokument: boolean; aktuell: boolean; entwurf: boolean }
 interface Entwurf { bid?: string; platz_id: number; datum: string; von: string; dauer: number; text: string }
 
 export const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -147,7 +147,7 @@ export function PlatzBuchen() {
           <ObjectStatus state={r.status === 'bezahlt' ? 'Positive' : r.status === 'ausgebucht' ? 'None' : 'Critical'}>{r.status}{r.bezahlt ? ` am ${dat(r.bezahlt)}` : ''}</ObjectStatus>
           {r.dokument
             ? <Button design="Transparent" icon="pdf-attachment" onClick={() => setRgPdf(r)}>Rechnung öffnen</Button>
-            : <span>kein Dokument abgelegt</span>}
+            : <span>{r.entwurf ? 'Dokument folgt mit dem Versand' : 'kein Dokument abgelegt'}</span>}
         </div>
       </div>
       <div className="portal-mz__dauer"><div className="portal-mz__dauer-min">{eur(r.betrag)}</div></div>
@@ -274,12 +274,14 @@ export function PlatzBuchen() {
             {art === 'rechnung' && (!rechnungen ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
               <>
                 <Section title="Aktuelle Rechnung" flush>
-                  {rechnungen.length ? <div className="portal-mz__liste">{rgZeile(rechnungen[0])}</div> : <Empty>Es gibt noch keine Rechnung.</Empty>}
+                  {rechnungen.some((r) => r.aktuell)
+                    ? <div className="portal-mz__liste">{rechnungen.filter((r) => r.aktuell).map(rgZeile)}</div>
+                    : <Empty>{rechnungen.length ? 'Derzeit ist keine Rechnung offen.' : 'Es gibt noch keine Rechnung.'}</Empty>}
                 </Section>
-                {rechnungen.length > 1 && (
-                  <Section title="Frühere Rechnungen" count={rechnungen.length - 1} flush>
-                    {[...new Set(rechnungen.slice(1).map((r) => r.jahr))].map((jahr, n) => {
-                      const liste = rechnungen.slice(1).filter((r) => r.jahr === jahr);
+                {rechnungen.some((r) => !r.aktuell) && (
+                  <Section title="Frühere Rechnungen" count={rechnungen.filter((r) => !r.aktuell).length} flush>
+                    {[...new Set(rechnungen.filter((r) => !r.aktuell).map((r) => r.jahr))].map((jahr, n) => {
+                      const liste = rechnungen.filter((r) => !r.aktuell && r.jahr === jahr);
                       return (
                         <details key={jahr} className="portal-pb__rgjahr" open={n === 0}>
                           <summary><b>{jahr}</b><span className="portal-muted"> · {liste.length === 1 ? '1 Rechnung' : `${liste.length} Rechnungen`} · {eur(liste.reduce((s, r) => s + r.betrag, 0))}</span></summary>
