@@ -233,8 +233,8 @@ const tco: ServerModule = {
     // ---------------------------------------------------------------- Instandhaltung (#205)
     { area: 'Instandhaltung', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
     { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat der Vereinsübersicht' },
-    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben', requires: [P_IH.display] },
-    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Anlagen, Kategorien mit Zuständigen, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
+    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben, Formular in Paperless ablegen – wer dieses Recht über eine Rolle hat, kann als Zuständiger eingetragen werden', requires: [P_IH.display] },
+    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Orte („Wo?“), Kategorien, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
     // ---------------------------------------------------------------- Finanzen
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.display, text: 'Sollstellungen anzeigen' },
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
@@ -328,6 +328,8 @@ const tco: ServerModule = {
     { type: 'IH_ANLAGE', text: 'Anlage (Instandhaltung)', permission: P_IH.display },
     { type: 'IH_KATEGORIE', text: 'Kategorie (Instandhaltung)', permission: P_IH.display },
     { type: 'IH_CFG', text: 'Einstellungen Instandhaltung', permission: P_IH.display },
+    { type: 'IH_MATRIX', text: 'Matrix Kategorie × Ort (Instandhaltung)', permission: P_IH.display },
+    { type: 'IH_ZUSTAENDIG', text: 'Zuständigkeit (Instandhaltung)', permission: P_IH.display },
     { type: 'EING_REGEL', text: 'Regel Dokumenteneingang', permission: P_EING.display },
     { type: 'EING_KORRESPONDENT', text: 'Korrespondent Dokumenteneingang', permission: P_EING.display },
   ],

@@ -77,3 +77,43 @@ export function fotoLesen(dataUrl: string, maxBytes = 1_500_000): { mime: string
   if (daten.length > maxBytes) throw new Error(`Das Foto ist zu groß (${(daten.length / 1024 / 1024).toFixed(1)} MB, höchstens ${(maxBytes / 1024 / 1024).toFixed(1)} MB).`);
   return { mime: m[1], daten };
 }
+
+/**
+ * Zuständigkeit (#205): Eintrag passt, wenn Ort und Kategorie leer oder gleich sind. Rang: 0 = Ort und Kategorie,
+ * 1 = nur Kategorie, 2 = nur Ort; null = passt nicht. Der kleinste Rang ist der Hauptzuständige der Meldung.
+ */
+export function zustaendigRang(e: { anlage_id: number | null; kategorie_id: number | null }, anlageId: number, kategorieId: number): number | null {
+  if (e.anlage_id != null && e.anlage_id !== anlageId) return null;
+  if (e.kategorie_id != null && e.kategorie_id !== kategorieId) return null;
+  if (e.anlage_id == null && e.kategorie_id == null) return null;
+  return e.anlage_id != null && e.kategorie_id != null ? 0 : e.kategorie_id != null ? 1 : 2;
+}
+
+export const FELDER = {
+  erledigung: 'Erledigung', kosten: 'Kosten', firma: 'Fremdfirma', paperless: 'Paperless-Verweis', stunden: 'Helferstunden',
+} as const;
+type Feld = keyof typeof FELDER;
+
+const anzeige = (k: Feld, v: unknown) => {
+  if (v === null || v === undefined || v === '') return '–';
+  if (k === 'kosten') return `${Number(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  if (k === 'stunden') return `${Number(v).toLocaleString('de-DE')} h`;
+  return String(v);
+};
+const norm = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim());
+const gleich = (a: unknown, b: unknown) => norm(a) === norm(b);
+
+/** Protokolltexte für geänderte Felder, z. B. „Kosten: – → 80,00 €“ */
+export function feldAenderungen(alt: Record<string, unknown>, neu: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const k of Object.keys(FELDER) as Feld[]) {
+    const a = k === 'kosten' || k === 'stunden' ? (alt[k] == null ? null : Number(alt[k])) : alt[k];
+    const n = k === 'kosten' || k === 'stunden' ? (neu[k] == null ? null : Number(neu[k])) : neu[k];
+    if (gleich(a, n)) continue;
+    out.push(`${FELDER[k]}: ${anzeige(k, a)} → ${anzeige(k, n)}`);
+  }
+  return out;
+}
+
+export const ANLASS = { ABSCHLUSS: 'Abschluss', WEITERGABE: 'Weitergabe' } as const;
+export type Anlass = keyof typeof ANLASS;

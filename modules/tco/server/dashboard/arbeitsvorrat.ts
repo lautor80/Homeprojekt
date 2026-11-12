@@ -180,7 +180,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
         left join core.users u on u.id = b.benutzer_id
        where b.status = '1' and b.benutzer_id is not null
-         and b.datum between current_date and current_date + 7
+         and b.datum between (now() at time zone 'Europe/Berlin')::date and (now() at time zone 'Europe/Berlin')::date + 7
          and not exists (select 1 from tco.schluessel s
                           where s.adrnr = ${db.unsafe(ADRNR_ZU_BENUTZER('b.benutzer_id'))} and s.ausgabe is not null and s.ausgabe <= b.datum
                             and (s.ruecknahme is null or s.ruecknahme > b.datum))
@@ -208,7 +208,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         from tco.bookings b
         join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
         left join core.users u on u.id = b.benutzer_id
-       where b.status = '1' and b.erstellt = current_date
+       where b.status = '1' and b.erstellt = (now() at time zone 'Europe/Berlin')::date
        order by b.datum, b.time_start`;
     if (rows.length) {
       const tm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
