@@ -15,6 +15,7 @@ flowchart LR
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
       B_Einstellungen["<b>Einstellungen</b><br/>Stammdaten<br/>Kontenstamm<br/>Produkte"]
       B_Mitglieder["<b>Mitglieder</b><br/>Meine Mitgliedschaft<br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
+      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining<br/>Meine Trainingszeiten"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Platz buchen<br/>Meine Daten<br/>Serienbuchung<br/>Platzverwaltung"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Mein Verzehr<br/>Theke<br/>Verzehrbuch"]
@@ -82,6 +83,7 @@ flowchart LR
 | Mitglieder | Registrierungen | `/tco/registrierungen` | `tco.registrierung:mitglied` |  |
 | Mitglieder | Mitgliedsbeiträge | `/tco/beitraege` | `tco.beitraege:display` | Beitragsarten und Beträge je Zeitraum |
 | Mitglieder | Mitglieder-Analyse | `/tco/analyse` | `tco.analyse:display` | Altersstruktur, Ein-/Austritte, Beiträge, Varianten |
+| Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Nichtmitglieder, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
@@ -186,6 +188,7 @@ flowchart LR
 | produkte | 6 |
 | schnupper | 6 |
 | soll | 10 |
+| sport | 3 |
 | teilnehmer | 4 |
 | upload | 2 |
 | verzehr | 29 |

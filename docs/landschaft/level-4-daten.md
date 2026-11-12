@@ -79,6 +79,6 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 
 **P1** Mitglied werden · **P2** Beiträge einziehen · **P3** Halle buchen und abrechnen · **P4** Jugendtraining abrechnen · **P5** Clubhaus und Verzehr · **P6** Dokumenteneingang · **P7** Vereinsleben (Kalender) · **P8** Abschluss und Steuerung · **D1** Registrierung · **D2** Passwort vergessen · **D3** Mitgliederanlage · **D4** Hallenbuchung
 
-## Weitere Tabellen (18, von keinem beschriebenen Prozess berührt)
+## Weitere Tabellen (19, von keinem beschriebenen Prozess berührt)
 
-`core.api_keys`, `core.change_header`, `core.change_item`, `core.mail_antworten`, `core.mail_protokoll`, `core.paperless_mapping`, `core.tabellen_papierkorb`, `core.verbindungen`, `tco.ford`, `tco.mail_protokoll`, `tco.paperless`, `tco.praesentation_korb`, `tco.praesentation_vorlagen`, `tco.projekte`, `tco.rpt_variant`, `tco.tfrei`, `tco.tplan`, `tco.werg_pl`
+`core.api_keys`, `core.change_header`, `core.change_item`, `core.mail_antworten`, `core.mail_protokoll`, `core.paperless_mapping`, `core.tabellen_papierkorb`, `core.verbindungen`, `tco.ford`, `tco.mail_protokoll`, `tco.mitglieder_lk`, `tco.paperless`, `tco.praesentation_korb`, `tco.praesentation_vorlagen`, `tco.projekte`, `tco.rpt_variant`, `tco.tfrei`, `tco.tplan`, `tco.werg_pl`

@@ -220,6 +220,8 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
         <Feld label="Mobil">{m.mobil ? <Link href={`tel:${m.mobil}`}>{m.mobil}</Link> : null}</Feld>
         <Feld label="E-Mail">{m.email ? <Link href={`mailto:${m.email}`}>{m.email}</Link> : null}</Feld>
         <Feld label="Geschlecht">{t(m.geschlecht_txt)}</Feld>
+        {d.spieler?.id_nr && <Feld label="ID-Nr. (nuLiga)">{t(d.spieler.id_nr)}</Feld>}
+        {d.spieler?.lk != null && <Feld label="Leistungsklasse">{t(`LK ${d.spieler.lk.toFixed(1).replace('.', ',')}${d.spieler.lk_stand ? ` (Stand ${dat(d.spieler.lk_stand)})` : ''}`)}</Feld>}
         <Feld label="Datenverarbeitung">{t(m.datenschutz ? 'Ja' : 'Nein')}</Feld>
         <Feld label="Verwendung Bild/Name">{t(m.bildrechte ? 'Ja' : 'Nein')}</Feld>
       </Raster>

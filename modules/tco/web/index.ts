@@ -15,6 +15,7 @@ import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
 import { Gruppen } from './gruppen/Gruppen';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Praesentationen } from './praesentation/Praesentationen';
+import { Spielerdaten } from './sport/Spielerdaten';
 import { Analyse } from './analyse/Analyse';
 import { Teilnehmer } from './teilnehmer/Teilnehmer';
 import { Upload } from './upload/Upload';
@@ -94,6 +95,12 @@ const mod: WebModule = {
           ],
         },
         {
+          text: 'Sport', icon: 'competitor',
+          children: [
+            { text: 'Spielerdaten (nuLiga)', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
+          ],
+        },
+        {
           text: 'Jugend', icon: 'family-care',
           children: [
             { text: 'Teilnehmer Jugendtraining', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
@@ -163,6 +170,7 @@ const mod: WebModule = {
     { path: '/tco/stammdaten', component: TcoStammdaten, permission: 'tco.stammdaten:edit' },
     { path: '/tco/uebersicht', component: DashboardPage, permission: 'tco.dashboard:display' },
     { path: '/tco/praesentationen', component: Praesentationen, permission: 'tco.praesentation:display' },
+    { path: '/tco/spielerdaten', component: Spielerdaten, permission: 'tco.sport:display' },
     { path: '/tco/analyse', component: Analyse, permission: 'tco.analyse:display' },
     { path: '/tco/teilnehmer', component: Teilnehmer, permission: 'tco.teilnehmer:display' },
     { path: '/tco/upload', component: Upload, permission: 'tco.upload:execute' },
@@ -194,6 +202,7 @@ const mod: WebModule = {
     { text: 'Mitgliedergruppen', subtitle: 'Kategorien, Gruppen und Mannschaften im Baum', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
+    { text: 'Spielerdaten (nuLiga)', subtitle: 'ID-Nr. und LK aus der Verbandsliste abgleichen', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
     { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Nichtmitglieder, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },

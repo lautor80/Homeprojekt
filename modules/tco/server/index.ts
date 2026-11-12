@@ -23,6 +23,7 @@ import { forecastRoutes, P_FORECAST } from './forecast/routes.js';
 import { abschlussRoutes, P_ABSCHLUSS } from './abschluss/routes.js';
 import { dashboardRoutes, P_DASH } from './dashboard/routes.js';
 import { praesentationRoutes, P_PRAES } from './praesentation/routes.js';
+import { sportRoutes, P_SPORT } from './sport/routes.js';
 import { analyseRoutes, P_AN } from './analyse/routes.js';
 import { P_TN, teilnehmerRoutes } from './teilnehmer/routes.js';
 import { P_UP, uploadRoutes } from './upload/routes.js';
@@ -157,6 +158,7 @@ async function routes(app: FastifyInstance) {
   await abschlussRoutes(app);
   await dashboardRoutes(app);
   await praesentationRoutes(app);
+  await sportRoutes(app);
   await analyseRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
@@ -171,6 +173,8 @@ const tco: ServerModule = {
     // ---------------------------------------------------------------- Vereinsübersicht
     { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
     { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
+    { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.display, text: 'Spielerdaten anzeigen: ID-Nr. und LK der Mitglieder' },
+    { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.edit, text: 'nuLiga-Mitgliederdaten ablegen und ID-Nr./LK in die Mitglieder übernehmen', requires: [P_SPORT.display] },
     { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.display, text: 'Präsentationen erstellen: Sammelkorb aus Kennzahlen, Diagrammen und Tabellen, PowerPoint aus den hinterlegten Vorlagen', requires: [P_DASH.display] },
     { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
     // ---------------------------------------------------------------- Einstellungen

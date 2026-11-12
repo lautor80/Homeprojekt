@@ -32,6 +32,8 @@ interface Meine {
     geburtsdatum: string | null; eintritt: string | null; austritt: string | null; mitglnrn: string; datenschutz: boolean; bildrechte: boolean; aktiv: boolean;
   };
   titel: string; trainer: boolean; kanal: string;
+  /** Spielerdaten aus nuLiga (#162) */
+  spieler?: { id_nr: string; lk: number | null; lk_stand: string | null };
   bank: { zahlungsart_txt: string; zahlungsweise_txt: string; iban: string; bic: string; bank: string; kontoinhaber: string; zahler: string | null; zahltSelbst: boolean; lastschrift: boolean; mandatsref: string };
   familie: Person[]; vertraege: (Vertrag & { kuendbar: boolean; endeBei: string })[];
   /** Vertragsbaum: Verträge aller verknüpften Personen; kündbar nur eigene und die von Personen, die über mich zahlen */
@@ -108,6 +110,8 @@ export function MeineMitgliedschaft() {
           <Attribute label="Eintritt">{dat(m.eintritt)}</Attribute>
           <Attribute label="Geburtsdatum">{dat(m.geburtsdatum)}</Attribute>
           {d.trainer && <Attribute label="Funktion">Trainer im Jugendtraining</Attribute>}
+          {d.spieler?.lk != null && <Attribute label="Leistungsklasse">LK {d.spieler.lk.toFixed(1).replace('.', ',')}{d.spieler.lk_stand ? ` (Stand ${dat(d.spieler.lk_stand)})` : ''}</Attribute>}
+          {d.spieler?.id_nr && <Attribute label="ID-Nr. (nuLiga)">{d.spieler.id_nr}</Attribute>}
           <Attribute label="Bevorzugter Versandweg">{d.kanal === 'W' ? 'WhatsApp' : d.kanal === 'E' ? 'E-Mail' : 'E-Mail/Post'}</Attribute>
         </Attributes>
       </ObjectHeader>

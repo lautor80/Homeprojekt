@@ -203,7 +203,7 @@ export async function sepaLesen(db: Db, m: Record<string, any>) {
 
 export async function detailLesen(db: Db, adrnr: string) {
   const m = await mitgliedLesen(db, adrnr);
-  const [a] = await db`select trainer, zuid, steuernummer from tco.mitgliedera where adrnr = ${adrnr}`;
+  const [a] = await db`select trainer, zuid, steuernummer, id_nr, lk::float8 as lk, lk_stand::text as lk_stand from tco.mitgliedera where adrnr = ${adrnr}`;
   const [z] = verweis(m.adrnrkih) ? await db`select adrnr, vorname, nachname, austritt, iban1 from tco.mitglieder where adrnr = ${m.adrnrkih}` : [];
   const [k] = await db`select kanal from tco.kommpref where adrnr = ${adrnr}`;
   const schluessel = await db`select counter, ausgabe, ausgabebeleg, ruecknahme, ruecknahmebeleg from tco.schluessel where adrnr = ${adrnr} order by counter`;
@@ -227,6 +227,8 @@ export async function detailLesen(db: Db, adrnr: string) {
       mandatsref: await mandatsref(db, adrnr),
     },
     trainer: !!a?.trainer, zuid: leer(a?.zuid), kanal: leer(k?.kanal),
+    /** Spielerdaten aus nuLiga (#162): ID-Nr. und Leistungsklasse */
+    spieler: { id_nr: leer(a?.id_nr), lk: a?.lk == null ? null : Number(a.lk), lk_stand: (a?.lk_stand ?? null) as string | null },
     familie,
     vertraege: await vertraegeLesen(db, m),
     /** Vertragsbaum: Verträge aller verknüpften Personen (Mitglied, abweichender Zahler, Familie) */
