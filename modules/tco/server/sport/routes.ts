@@ -16,7 +16,7 @@ export async function sportRoutes(app: FastifyInstance) {
     return abgleich(DB, b.datei);
   });
   app.post('/sport/spielerdaten/uebernehmen', { preHandler: requireAuth(P_SPORT.edit), bodyLimit: 8 * 1024 * 1024 }, async (req) => {
-    const b = z.object({ datei, name: z.string().max(200).default(''), auswahl: z.array(z.object({ adrnr: z.string().min(1), zeile: z.number().int().min(2) })).min(1, 'Bitte mindestens einen Treffer auswählen.').max(5000) }).parse(req.body);
+    const b = z.object({ datei, name: z.string().max(200).default(''), auswahl: z.array(z.object({ adrnr: z.string().min(1), zeile: z.number().int().min(2), manuell: z.boolean().optional() })).min(1, 'Bitte mindestens einen Treffer auswählen.').max(5000) }).parse(req.body);
     return { text: await change(req, (tx) => uebernehmen(tx, b.datei, b.auswahl), { action: 'NULIGA_ABGLEICH', reason: b.name || 'nuLiga-Mitgliederdaten' }) };
   });
   /** Kennzeichen „Für Meldung irrelevant“ gesammelt setzen/zurücknehmen */

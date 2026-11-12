@@ -34,6 +34,16 @@ interface Abgleich {
   anzahl: { aenderungen: number; unveraendert: number; pruefen: number; ohneTreffer: number; nurDatei: number };
 }
 const schluessel = (t: { adrnr: string; zeile: number }) => `${t.adrnr}|${t.zeile}`;
+/** nach Anfangsbuchstaben gruppieren (Ä → A, Sonstiges unter #), aufsteigend */
+function buchstaben<T extends { name: string }>(liste: T[]): [string, T[]][] {
+  const m = new Map<string, T[]>();
+  for (const x of [...liste].sort((a, b) => a.name.localeCompare(b.name, 'de'))) {
+    const c = x.name.trim().charAt(0).normalize('NFD').charAt(0).toUpperCase();
+    const k = /[A-Z]/.test(c) ? c : '#';
+    m.set(k, [...(m.get(k) ?? []), x]);
+  }
+  return [...m.entries()].sort(([a], [b]) => (a === '#' ? 1 : b === '#' ? -1 : a.localeCompare(b)));
+}
 
 function Tabelle({ kopf, children, leer }: { kopf: ReactNode[]; children: ReactNode; leer?: string }) {
   return (
@@ -57,6 +67,8 @@ export function Spielerdaten() {
   const [a, setA] = useState<Abgleich | null>(null);
   const [datei, setDatei] = useState<{ name: string; inhalt: string } | null>(null);
   const [wahl, setWahl] = useState<Set<string>>(new Set());
+  /** von Hand zugeordnet: Mitglied ohne Treffer (adrnr) → Zeile der nuLiga-Datei */
+  const [hand, setHand] = useState<Map<string, number>>(new Map());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ueber, setUeber] = useState(false);
@@ -82,6 +94,7 @@ export function Spielerdaten() {
       const r = await api.post<Abgleich>(`${S}/abgleich`, { datei: inhalt });
       setDatei({ name: f.name, inhalt });
       setA(r);
+      setHand(new Map());
       // vorausgewählt: sichere Treffer mit Änderung; unsichere müssen bewusst angehakt werden
       setWahl(new Set(r.treffer.filter((t) => t.sicher && t.aenderung).map(schluessel)));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -93,12 +106,18 @@ export function Spielerdaten() {
     if (!a || !datei) return;
     setBusy(true); setError(null);
     try {
-      const auswahl = a.treffer.filter((t) => wahl.has(schluessel(t))).map((t) => ({ adrnr: t.adrnr, zeile: t.zeile }));
+      const auswahl = [
+        ...a.treffer.filter((t) => wahl.has(schluessel(t))).map((t) => ({ adrnr: t.adrnr, zeile: t.zeile })),
+        ...[...hand].map(([adrnr, zeile]) => ({ adrnr, zeile, manuell: true })),
+      ];
       const r = await api.post<{ text: string }>(`${S}/uebernehmen`, { datei: datei.inhalt, name: datei.name, auswahl });
       toast(r.text, 8000);
-      setA(null); setDatei(null); setWahl(new Set());
+      // weiter prüfen: mit derselben Datei neu abgleichen – erledigte Fälle verschwinden, offene bleiben stehen
+      const neu = await api.post<Abgleich>(`${S}/abgleich`, { datei: datei.inhalt });
+      setA(neu);
+      setWahl(new Set(neu.treffer.filter((t) => t.sicher && t.aenderung).map(schluessel)));
+      setHand(new Map());
       await laden();
-      setTab('alle');
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const drop = (ev: DragEvent) => { ev.preventDefault(); ev.stopPropagation(); setUeber(false); ablegen(ev.dataTransfer.files[0]); };
@@ -248,8 +267,8 @@ export function Spielerdaten() {
 
       {a && (
         <Section title="Vorschau" actions={<>
-          <Button design="Emphasized" icon="accept" disabled={busy || !wahl.size} onClick={uebernehmen}>{wahl.size} übernehmen</Button>
-          <Button design="Transparent" disabled={busy} onClick={() => { setA(null); setDatei(null); }}>Verwerfen</Button>
+          <Button design="Emphasized" icon="accept" disabled={busy || !(wahl.size + hand.size)} onClick={uebernehmen}>{wahl.size + hand.size} übernehmen</Button>
+          <Button design="Transparent" disabled={busy} onClick={() => { setA(null); setDatei(null); setHand(new Map()); }}>Schließen</Button>
         </>}>
           <div className="portal-sd__zahlen">
             <ObjectStatus state="Information" inverted>{a.personen} Personen in der Datei</ObjectStatus>
@@ -278,17 +297,41 @@ export function Spielerdaten() {
             {mitAenderung.map(trefferZeile)}
           </Tabelle>
 
-          <details className="portal-sd__mehr">
-            <summary>Mitglieder ohne Treffer in nuLiga ({a.ohneTreffer.length})</summary>
-            <Tabelle kopf={['Mitglied', 'Geburtsdatum', 'ID-Nr. (gespeichert)', 'LK (gespeichert)']}>
-              {a.ohneTreffer.map((m) => <tr key={m.adrnr}><td>{m.name}</td><td>{dat(m.geburtsdatum)}</td><td>{m.id_nr ?? '–'}</td><td>{lk(m.lk)}</td></tr>)}
+          <details className="portal-sd__mehr" open={a.ohneTreffer.length > 0}>
+            <summary>Mitglieder ohne Treffer in nuLiga ({a.ohneTreffer.length}){hand.size > 0 ? ` – ${hand.size} von Hand zugeordnet` : ''}</summary>
+            <Tabelle kopf={['Mitglied', 'Geburtsdatum', 'ID-Nr. (gespeichert)', 'LK (gespeichert)', 'Von Hand zuordnen (nuLiga)']}>
+              {a.ohneTreffer.map((m) => (
+                <tr key={m.adrnr}>
+                  <td>{m.name}</td><td>{dat(m.geburtsdatum)}</td><td>{m.id_nr ?? '–'}</td><td>{lk(m.lk)}</td>
+                  <td>
+                    <select className="portal-sd__zuordnen" disabled={busy} value={hand.get(m.adrnr) ?? ''} aria-label={`${m.name} einer Person aus nuLiga zuordnen`}
+                            onChange={(e) => { const n = new Map(hand); if (e.target.value) n.set(m.adrnr, Number(e.target.value)); else n.delete(m.adrnr); setHand(n); }}>
+                      <option value="">– nicht zuordnen –</option>
+                      {a.nurDatei.filter((p) => hand.get(m.adrnr) === p.zeile || ![...hand.values()].includes(p.zeile)).map((p) => (
+                        <option key={p.zeile} value={p.zeile}>{p.name}{p.geburtsdatum ? ` · ${dat(p.geburtsdatum)}` : ''} · {p.id_nr ? `ID ${p.id_nr}` : 'ohne ID-Nr.'}{p.lk != null ? ` · ${lk(p.lk)}` : ''}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
             </Tabelle>
+            {a.ohneTreffer.length > 0 && (
+              <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.4rem' }}>
+                Zur Auswahl stehen alle Personen der Datei, die noch keinem Mitglied zugeordnet sind. Die Zuordnung wird mit „übernehmen“ gespeichert; danach wird neu abgeglichen.
+              </Text>
+            )}
           </details>
           <details className="portal-sd__mehr">
             <summary>Nur in nuLiga, kein aktives Mitglied im Portal ({a.nurDatei.length})</summary>
-            <Tabelle kopf={['Person', 'Geburtsdatum', 'ID-Nr.', 'LK']}>
-              {a.nurDatei.map((p) => <tr key={p.zeile}><td>{p.name}</td><td>{dat(p.geburtsdatum)}</td><td>{p.id_nr ?? '–'}</td><td>{lk(p.lk)}</td></tr>)}
-            </Tabelle>
+            {/* lange Liste: Baum nach Anfangsbuchstaben, aufsteigend */}
+            {buchstaben(a.nurDatei).map(([b, liste]) => (
+              <details key={b} className="portal-sd__buchstabe">
+                <summary><b>{b}</b> <span className="portal-muted">({liste.length})</span></summary>
+                <Tabelle kopf={['Person', 'Geburtsdatum', 'ID-Nr.', 'LK']}>
+                  {liste.map((p) => <tr key={p.zeile}><td>{p.name}</td><td>{dat(p.geburtsdatum)}</td><td>{p.id_nr ?? '–'}</td><td>{lk(p.lk)}</td></tr>)}
+                </Tabelle>
+              </details>
+            ))}
           </details>
         </Section>
       )}

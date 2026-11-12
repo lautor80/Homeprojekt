@@ -184,3 +184,46 @@ test('Übersicht: Eintritt absteigend, Kennzeichen „Für Meldung irrelevant“
   assert.equal(b.meldung_irrelevant, null);
   assert.equal((await call('GET', S)).body.anzahl.irrelevant, 0);
 });
+
+test('Ähnliche Namen als Prüffall, verlorene Sonderzeichen, Zuordnung von Hand', async () => {
+  const { abgleichen, nameGleich, abstand } = await import('../../modules/tco/server/sport/nuliga.js');
+  assert.equal(nameGleich('Timo Sch?n', 'Timo Schön'), true);
+  assert.equal(nameGleich('Phalestina R?ghioui', "Phalestina R'ghioui"), true);
+  assert.equal(nameGleich('Timo Sch?n', 'Timo Schmidt'), false);
+  assert.equal(abstand('mateo', 'matteo'), 1);
+  const m = (adrnr: string, vorname: string, nachname: string, geburtsdatum: string | null) => ({ adrnr, vorname, nachname, geburtsdatum, mitglnrn: adrnr, id_nr: null, lk: null, lk_stand: null });
+  const p = (zeile: number, vorname: string, nachname: string, geburtsdatum: string | null, id_nr: string) => ({ zeile, vorname, nachname, geburtsdatum, lk: 20, id_nr });
+  const mitglieder = [m('1', 'Matteo', 'Gebauer', '2013-05-09'), m('2', 'Timo', 'Schön', '2010-01-01'), m('3', 'Lisa', 'Gerber', '1990-08-21'), m('4', 'Karl', 'Unbekannt', '1980-01-01')];
+  const personen = [p(2, 'Mateo', 'Gebauer', '2013-04-30', '11311005'), p(3, 'Timo', 'Sch?n', '2010-01-01', '10000001'), p(4, 'Fremd', 'Person', '1970-01-01', '10000002'), p(5, 'Carl', 'Anders', '1980-02-02', '10000003')];
+  let r = abgleichen(mitglieder, personen);
+  const t = (adrnr: string): any => r.treffer.find((x: any) => x.adrnr === adrnr);
+  // Matteo/Mateo mit abweichendem Geburtsdatum: Prüffall statt „nur in nuLiga“
+  assert.deepEqual([t('1').zeile, t('1').sicher, t('1').art], [2, false, 'PRUEFEN']);
+  assert.match(t('1').hinweis, /Ähnlicher Name: Portal „Matteo Gebauer“, nuLiga „Mateo Gebauer“\. Geburtsdatum weicht ab/);
+  // „Sch?n“ + gleiches Geburtsdatum: sicherer Treffer
+  assert.deepEqual([t('2').zeile, t('2').sicher, t('2').art], [3, true, 'NAME_GEB']);
+  assert.deepEqual(r.ohneTreffer.map((x: any) => x.adrnr), ['3', '4']);
+  assert.deepEqual(r.nurDatei.map((x: any) => x.zeile), [4, 5]);
+  // von Hand: Karl Unbekannt ↔ Carl Anders
+  r = abgleichen(mitglieder, personen, [{ adrnr: '4', zeile: 5 }]);
+  assert.deepEqual([t('4').zeile, t('4').sicher, t('4').art, t('4').id_neu], [5, true, 'MANUELL', '10000003']);
+
+  // über die Schnittstelle: Zuordnung von Hand wird übernommen, sichere Treffer lassen sich nicht umbiegen
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, geburtsdatum, eintritt, mitglnrn) values ('0000000391', 'Karl', 'Handarbeit', '1980-01-01', '2020-01-01', '391'), ('0000000392', 'Vera', 'Sicher', '1985-05-05', '2020-01-01', '392')`;
+  const datei = csv(['Anders;Carl;;02.02.1980;GER;LK19,5;17777777;männlich;Weg 1', 'Sicher;Vera;;05.05.1985;GER;LK12,0;17777778;weiblich;Weg 2']);
+  let a = await call('POST', `${S}/abgleich`, { datei });
+  assert.ok(a.body.ohneTreffer.some((x: any) => x.adrnr === '0000000391'));
+  const zeile = a.body.nurDatei.find((x: any) => x.name === 'Anders, Carl').zeile;
+  const vera = a.body.treffer.find((x: any) => x.adrnr === '0000000392');
+  assert.equal((await call('POST', `${S}/uebernehmen`, { datei, auswahl: [{ adrnr: '0000000391', zeile: vera.zeile, manuell: true }] })).status, 400, 'Person ist sicher zugeordnet');
+  assert.equal((await call('POST', `${S}/uebernehmen`, { datei, auswahl: [{ adrnr: '0000000391', zeile }] })).status, 400, 'ohne „manuell“ kein Treffer');
+  a = await call('POST', `${S}/uebernehmen`, { datei, auswahl: [{ adrnr: '0000000391', zeile, manuell: true }] });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  const [k] = await sql`select id_nr, lk::float8 as lk, meldung_irrelevant from tco.mitgliedera where adrnr = '0000000391'`;
+  assert.deepEqual([k.id_nr, k.lk, k.meldung_irrelevant], ['17777777', 19.5, false]);
+  // danach findet der Abgleich das Mitglied über die gespeicherte ID-Nr.
+  a = await call('POST', `${S}/abgleich`, { datei });
+  assert.equal(a.body.treffer.find((x: any) => x.adrnr === '0000000391').art, 'ID');
+  await sql`delete from tco.mitgliedera where adrnr in ('0000000391', '0000000392')`;
+  await sql`delete from tco.mitglieder where adrnr in ('0000000391', '0000000392')`;
+});

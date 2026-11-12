@@ -5,6 +5,10 @@
  * Abgleich in dieser Reihenfolge: bereits gespeicherte ID-Nr. · Name + Geburtsdatum · eindeutiger Name (Geburtsdatum fehlt
  * auf einer Seite). Unsichere Treffer (Geburtsdatum weicht ab, Vorname weicht ab, ID-Nr. schon bei einem anderen Mitglied)
  * werden nur als Vorschlag angezeigt und erst nach ausdrücklicher Auswahl übernommen.
+ *
+ * Ähnliche Namen (Schreibweise „Matteo“/„Mateo“, vertauschte oder fehlende Buchstaben, in der Datei durch „?“ ersetzte
+ * Sonderzeichen wie „Sch?n“) werden als Prüffall vorgeschlagen. Was der Abgleich nicht findet, ordnet der Benutzer von Hand zu
+ * (manuell: Mitglied ohne Treffer ↔ noch nicht zugeordnete Person der Datei).
  */
 import { BusinessError } from '../../../../server/src/errors.js';
 import { csvParse, dekodieren } from '../../../../server/src/lib/sapcsv.js';
@@ -65,9 +69,28 @@ export function nuligaLesen(datei: Buffer): NuPerson[] {
   return personen;
 }
 
+/** in der Datei verlorene Sonderzeichen: „?“ bzw. Ersatzzeichen stehen für 0–2 beliebige Buchstaben („Sch?n“ = Schön, „R?ghioui“ = R'ghioui) */
+const WILD = /[?\uFFFD]+/;
+export function nameGleich(ausDatei: string, imPortal: string): boolean {
+  if (!WILD.test(ausDatei)) return normName(ausDatei) === normName(imPortal);
+  const teile = ausDatei.split(WILD).map((t) => normName(t).replace(/[^a-z ]/g, ''));
+  return new RegExp(`^${teile.join('[a-z ]{0,3}')}$`).test(normName(imPortal));
+}
+/** Editierdistanz (Levenshtein), abgebrochen bei mehr als `max` */
+export function abstand(a: string, b: string, max = 3): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let v = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const n = [i];
+    for (let j = 1; j <= b.length; j++) n[j] = Math.min(v[j] + 1, n[j - 1] + 1, v[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    v = n;
+  }
+  return v[b.length];
+}
+
 export interface Treffer {
   adrnr: string; zeile: number; name: string; mitglnrn: string; geburtsdatum: string | null; inDatei: string;
-  art: 'ID' | 'NAME_GEB' | 'NAME' | 'PRUEFEN'; sicher: boolean; hinweis: string | null;
+  art: 'ID' | 'NAME_GEB' | 'NAME' | 'PRUEFEN' | 'MANUELL'; sicher: boolean; hinweis: string | null;
   id_alt: string | null; id_neu: string | null; lk_alt: number | null; lk_neu: number | null;
   /** ID-Nr. oder LK würden sich ändern */
   aenderung: boolean;
@@ -93,7 +116,7 @@ export async function mitgliederLesen(db: Db): Promise<Mitglied[]> {
   }));
 }
 
-export function abgleichen(mitglieder: Mitglied[], personen: NuPerson[]) {
+export function abgleichen(mitglieder: Mitglied[], personen: NuPerson[], manuell: { adrnr: string; zeile: number }[] = []) {
   const treffer: Treffer[] = [];
   const mFrei = new Map(mitglieder.map((m) => [m.adrnr, m]));
   const pFrei = new Map(personen.map((p) => [p.zeile, p]));
@@ -112,20 +135,27 @@ export function abgleichen(mitglieder: Mitglied[], personen: NuPerson[]) {
     });
     mFrei.delete(m.adrnr); pFrei.delete(p.zeile);
   };
+  // gleicher Name – in der Datei verlorene Sonderzeichen („?“) zählen als Platzhalter
+  const gleich = (p: NuPerson, m: Mitglied) => nameGleich(`${p.vorname} ${p.nachname}`, `${m.vorname} ${m.nachname}`);
+  // 0. von Hand zugeordnet
+  for (const z of manuell) {
+    const m = mFrei.get(z.adrnr), p = pFrei.get(z.zeile);
+    if (m && p) paar(m, p, 'MANUELL', true, 'von Hand zugeordnet');
+  }
   // 1. gespeicherte ID-Nr.
   for (const p of personen) {
     const m = p.id_nr ? [...mFrei.values()].find((x) => x.id_nr === p.id_nr) : null;
-    if (m) paar(m, p, 'ID', true, nm(m.vorname, m.nachname) === nm(p.vorname, p.nachname) ? null : 'Name weicht ab – Treffer über die gespeicherte ID-Nr.');
+    if (m) paar(m, p, 'ID', true, gleich(p, m) ? null : 'Name weicht ab – Treffer über die gespeicherte ID-Nr.');
   }
   // 2. Name und Geburtsdatum
   for (const p of [...pFrei.values()]) {
     if (!p.geburtsdatum) continue;
-    const ms = [...mFrei.values()].filter((m) => m.geburtsdatum === p.geburtsdatum && nm(m.vorname, m.nachname) === nm(p.vorname, p.nachname));
+    const ms = [...mFrei.values()].filter((m) => m.geburtsdatum === p.geburtsdatum && gleich(p, m));
     if (ms.length === 1) paar(ms[0], p, 'NAME_GEB', true, null);
   }
   // 3. gleicher Name: eindeutig → Treffer; Geburtsdatum abweichend → prüfen
   for (const p of [...pFrei.values()]) {
-    const ms = [...mFrei.values()].filter((m) => nm(m.vorname, m.nachname) === nm(p.vorname, p.nachname));
+    const ms = [...mFrei.values()].filter((m) => gleich(p, m));
     const ps = [...pFrei.values()].filter((x) => nm(x.vorname, x.nachname) === nm(p.vorname, p.nachname));
     if (ms.length !== 1 || ps.length !== 1) continue;
     const m = ms[0];
@@ -135,8 +165,31 @@ export function abgleichen(mitglieder: Mitglied[], personen: NuPerson[]) {
   // 4. gleicher Nachname und gleiches Geburtsdatum, Vorname weicht ab (Rufname, Doppelname): prüfen
   for (const p of [...pFrei.values()]) {
     if (!p.geburtsdatum) continue;
-    const ms = [...mFrei.values()].filter((m) => m.geburtsdatum === p.geburtsdatum && normName(m.nachname) === normName(p.nachname));
+    const ms = [...mFrei.values()].filter((m) => m.geburtsdatum === p.geburtsdatum && nameGleich(p.nachname, m.nachname));
     if (ms.length === 1) paar(ms[0], p, 'PRUEFEN', false, `Vorname weicht ab: Portal „${ms[0].vorname}“, nuLiga „${p.vorname}“.`);
+  }
+  // 5. ähnliche Namen (Schreibweise, Tippfehler): bester Kandidat je Person als Prüffall
+  const kandidaten: { m: Mitglied; p: NuPerson; d: number }[] = [];
+  for (const p of pFrei.values()) {
+    const pv = normName(p.vorname.replace(WILD, '')), pn = normName(p.nachname.replace(WILD, ''));
+    for (const m of mFrei.values()) {
+      const mv = normName(m.vorname), mn = normName(m.nachname);
+      const gebGleich = !!p.geburtsdatum && p.geburtsdatum === m.geburtsdatum;
+      const nachGleich = nameGleich(p.nachname, m.nachname), vorGleich = nameGleich(p.vorname, m.vorname);
+      const dv = vorGleich ? 0 : abstand(pv, mv, 2), dn = nachGleich ? 0 : abstand(pn, mn, 2);
+      const vorTeil = pv.length >= 3 && mv.length >= 3 && (pv.startsWith(mv) || mv.startsWith(pv) || pv.split(' ').some((t) => t.length >= 3 && mv.split(' ').includes(t)));
+      const passt = (nachGleich && (vorTeil || (dv <= 2 && Math.min(pv.length, mv.length) >= 4) || (dv <= 1 && gebGleich)))
+        || (vorGleich && dn <= (gebGleich ? 2 : 1) && Math.min(pn.length, mn.length) >= 4)
+        || (gebGleich && dv + dn <= 3);
+      if (passt) kandidaten.push({ m, p, d: dv + dn + (gebGleich ? 0 : 1) + (vorTeil && !vorGleich ? 1 : 0) });
+    }
+  }
+  kandidaten.sort((x, y) => x.d - y.d || x.p.zeile - y.p.zeile);
+  for (const k of kandidaten) {
+    if (!mFrei.has(k.m.adrnr) || !pFrei.has(k.p.zeile)) continue;
+    const geb = k.m.geburtsdatum && k.p.geburtsdatum && k.m.geburtsdatum !== k.p.geburtsdatum
+      ? ` Geburtsdatum weicht ab: Portal ${dat(k.m.geburtsdatum)}, nuLiga ${dat(k.p.geburtsdatum)}.` : '';
+    paar(k.m, k.p, 'PRUEFEN', false, `Ähnlicher Name: Portal „${condense(`${k.m.vorname} ${k.m.nachname}`)}“, nuLiga „${condense(`${k.p.vorname} ${k.p.nachname}`)}“.${geb}`);
   }
   treffer.sort((a, b) => Number(a.sicher) - Number(b.sicher) || a.name.localeCompare(b.name, 'de'));
   return {
@@ -161,10 +214,25 @@ export async function abgleich(db: Db, datei: Buffer) {
 
 /**
  * Ausgewählte Treffer übernehmen. Die Werte kommen aus der erneut gelesenen Datei, nicht aus der Anfrage; übernommen werden
- * nur Paare (Mitglied, Zeile), die der Abgleich selbst gefunden hat.
+ * nur Paare (Mitglied, Zeile), die der Abgleich selbst gefunden hat, sowie ausdrücklich von Hand zugeordnete Paare.
  */
-export async function uebernehmen(tx: Db, datei: Buffer, auswahl: { adrnr: string; zeile: number }[]): Promise<string> {
-  const r = abgleichen(await mitgliederLesen(tx), nuligaLesen(datei));
+export async function uebernehmen(tx: Db, datei: Buffer, auswahl: { adrnr: string; zeile: number; manuell?: boolean }[]): Promise<string> {
+  const mitglieder = await mitgliederLesen(tx);
+  const personen = nuligaLesen(datei);
+  // von Hand zugeordnet: nur Mitglieder und Personen, für die der Abgleich keinen sicheren Treffer hat
+  const hand = auswahl.filter((x) => x.manuell);
+  if (hand.length) {
+    const auto = abgleichen(mitglieder, personen);
+    for (const z of hand) {
+      const m = mitglieder.find((x) => x.adrnr === z.adrnr), p = personen.find((x) => x.zeile === z.zeile);
+      if (!m || !p) throw new BusinessError('Die Zuordnung passt nicht mehr zur Datei – bitte die Datei erneut ablegen.');
+      if (auto.treffer.some((t) => t.sicher && (t.adrnr === z.adrnr || t.zeile === z.zeile))) {
+        throw new BusinessError(`${condense(`${m.nachname}, ${m.vorname}`)} ↔ ${condense(`${p.nachname}, ${p.vorname}`)}: Mitglied oder Person ist bereits sicher zugeordnet.`);
+      }
+    }
+    if (new Set(hand.map((z) => z.adrnr)).size !== hand.length || new Set(hand.map((z) => z.zeile)).size !== hand.length) throw new BusinessError('Eine Person oder ein Mitglied ist mehrfach zugeordnet.');
+  }
+  const r = abgleichen(mitglieder, personen, hand);
   const h = heute();
   const jahr = Number(h.slice(0, 4));
   let n = 0, lkNeu = 0, idNeu = 0;
