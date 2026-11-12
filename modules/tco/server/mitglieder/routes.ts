@@ -28,6 +28,7 @@ import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
+import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
@@ -189,6 +190,19 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     // bereits zugeordnet: nichts ändern (die Rolle bleibt)
     if (!g.mitglieder.some((m) => m.adrnr === a)) await change(req, (tx) => gruppenMitgliedSetzen(tx, b.gruppe, a, null), { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
     return { text: `Du bist in „${g.name}“ eingetragen.` };
+  });
+
+  // Geführte Vorgänge (#154): Beitragswechsel und Jugendtraining selbst abschließen – auch für Personen, die über mich zahlen
+  const selbstSchema = z.object({ typ: z.enum(['BEITRAGSWECHSEL', 'JUGENDTRAINING']), adrnr, art: z.string().trim().min(1, 'Bitte eine Beitragsart wählen') });
+  app.get('/mitglieder/meine/vorgang', selbst, async (req) => selbstKontext(DB, benutzerId(req)));
+  app.post('/mitglieder/meine/vorgang/pruefen', selbst, async (req) => selbstVorgang(DB, benutzerId(req), selbstSchema.parse(req.body), false, benutzer(req)));
+  app.post('/mitglieder/meine/vorgang', selbst, async (req) => {
+    const e = selbstSchema.parse(req.body);
+    const id = benutzerId(req);
+    const p = await change(req, (tx) => selbstVorgang(tx, id, e, true, benutzer(req)), { action: e.typ, reason: `${VORGANG_TEXT[e.typ]} über „Meine Mitgliedschaft“` });
+    // Mitgliederinformation mit den neuen Verträgen: ablegen und an das angemeldete Mitglied senden (Kopie an den Verein)
+    const unterlage = await unterlageVersenden(DB, await vereinLesen(), e.adrnr, p.unterlage, p.text, 'Portal', p.eigene);
+    return { ...p, text: `${VORGANG_TEXT[e.typ]} ausgeführt: ${p.text}`, unterlage };
   });
 
   app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {
