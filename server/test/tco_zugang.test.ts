@@ -996,4 +996,25 @@ test('Vertragsangebot (#12): aktives Mitglied mit abweichendem Zahler – Bankve
   r = await admin('POST', `${T}/mitgliedsantraege/${ma2.id}/uebernehmen`, { mail: false, unterlagen: false });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual((await sql`select art from tco.vertraege where adrnr = '0000000794' order by vertragnr`).map((x) => x.art), ['3', '90'], 'nur Training ergänzt');
+
+  // zweites Jugendtraining: 1 × laufend, 2 × gewählt ⇒ ein weiteres Training ab dem nächsten Monatsersten (Rückmeldung 12.11.)
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr: '0000000794', training: ['90', '90'] }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const tok3 = token(r.body.link, 'angebot');
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Frau', vorname: 'Lena', nachname: 'Zahlkind', geburtsdatum: '2012-04-04', art: '', training: ['90', '90'] }],
+    strasse: 'Ringweg 9', plz: '66649', ort: 'Oberthal', email: 'gerd@example.org', eintritt: heute(), erziehungsberechtigt: 'Gerd Zahlvater',
+    satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, angebot: tok3, bank: { sepa: true, ausAngebot: true },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${T}/mitgliedsantraege`);
+  const ma3 = r.body.find((x: any) => x.status === 'EINGANG' && x.daten.personen[0].vorname === 'Lena');
+  r = await admin('POST', `${T}/mitgliedsantraege/${ma3.id}/uebernehmen`, { mail: false, unterlagen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.hinweise.some((h: string) => /Jugendtraining.*läuft bereits/.test(h)), JSON.stringify(r.body.hinweise));
+  assert.ok(r.body.hinweise.some((h: string) => /Verträge ergänzt – .*Vertrag \d+/.test(h)), JSON.stringify(r.body.hinweise));
+  const vt = await sql`select art, vertragbegin::text as beginn from tco.vertraege where adrnr = '0000000794' order by vertragnr`;
+  assert.deepEqual(vt.map((x) => x.art), ['3', '90', '90'], 'zweites Jugendtraining ergänzt');
+  const naechster = (() => { const d = new Date(`${heute()}T12:00:00Z`); return d.getUTCDate() === 1 ? heute() : new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().slice(0, 10); })();
+  assert.equal(vt[2].beginn, naechster, 'Beginn zum nächsten Monatsersten');
 });
