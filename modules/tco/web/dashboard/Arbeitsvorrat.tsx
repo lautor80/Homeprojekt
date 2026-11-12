@@ -6,6 +6,7 @@ import { TCO } from '../util';
 import { api } from '@core/api';
 import { Section } from '@core/components/Section';
 import { DASH } from './typen';
+import { aufgabenGesehen } from './AufgabenWaechter';
 
 export interface Aufgabe {
   key: string; bereich: string; titel: string; text: string; datum: string | null; icon: string;
@@ -33,7 +34,8 @@ function offenLesen(): string[] | null {
 export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: string }) {
   const [liste, setListe] = useState<Aufgabe[]>([]);
   const navigate = useNavigate();
-  const laden = useCallback(() => api.get<Aufgabe[]>(`${DASH}/arbeitsvorrat`).then(setListe).catch(() => setListe([])), []);
+  // was hier angezeigt wird, gilt als gesehen – der Hinweis „n neu“ am Menüeintrag verschwindet
+  const laden = useCallback(() => api.get<Aufgabe[]>(`${DASH}/arbeitsvorrat`).then((l) => { setListe(l); aufgabenGesehen(l); }).catch(() => setListe([])), []);
   // immer aktuell: beim Öffnen, nach jeder Bestätigung, jede Minute und wenn das Fenster wieder nach vorn kommt
   useEffect(() => {
     laden();

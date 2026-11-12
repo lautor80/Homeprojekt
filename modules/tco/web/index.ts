@@ -35,6 +35,7 @@ import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
+import { AufgabenWaechter } from './dashboard/AufgabenWaechter';
 import { PlatzBuchen } from './platz/PlatzBuchen';
 import { Platzverwaltung } from './platz/Platzverwaltung';
 import { Serienbuchung } from './platz/Serienbuchung';
@@ -66,6 +67,8 @@ const mod: WebModule = {
   home: { component: Dashboard, permission: 'tco.dashboard:display' },
   // Ablagefeld unten in der Navigation: Dateien hineinziehen → Paperless (mit Voreinstellung)
   sideWidgets: [{ component: Ablage, permission: 'tco.upload:execute' }],
+  // neue Aufgaben im Arbeitsvorrat am Menüeintrag „Vereinsübersicht“
+  waechter: [{ component: AufgabenWaechter, permission: 'tco.dashboard:display' }],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps (Gliederung wie die Rollenpflege)
   nav: [
     {

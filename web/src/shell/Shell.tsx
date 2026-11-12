@@ -6,6 +6,7 @@ import {
 } from '@ui5/webcomponents-react';
 import { useSession, useCan } from '../session';
 import { coreRoutes } from './core';
+import { useNavHinweise } from '../navhinweis';
 import { navAufbauen } from './nav';
 import { enabledModules } from '../modules';
 import type { NavEntry, RouteDef } from '../platform';
@@ -69,6 +70,11 @@ export function Shell() {
 
   const routes: RouteDef[] = [...coreRoutes, ...modules.flatMap((m) => m.routes)];
   const widgets = modules.flatMap((m) => m.sideWidgets ?? []).filter((w) => can(w.permission));
+  const waechter = modules.flatMap((m) => m.waechter ?? []).filter((w) => can(w.permission));
+  // Hinweise an Menüeinträgen („3 neu“) – am Eintrag selbst und, solange eingeklappt, an der Gruppe darüber
+  const hinweise = useNavHinweise();
+  const neu = (e: NavEntry): number => (e.path ? hinweise[e.path] ?? 0 : 0) + (e.children ?? []).reduce((n, c) => n + neu(c), 0);
+  const mitHinweis = (e: NavEntry) => { const n = neu(e); return n ? `${e.text} · ${n} neu` : e.text; };
 
   /** Auf dem Handy liegt die Navigation über dem Inhalt: nach der Auswahl wieder einklappen */
   const gehe = (path: string) => { navigate(path); if (window.innerWidth < 600) setCollapsed(true); };
@@ -79,7 +85,7 @@ export function Shell() {
   // Stufe 2: Eintrag (direkt aufrufbar oder mit Stufe 3 aufklappbar), Stufe 3: Untereintrag
   const eingerueckt = collapsed ? undefined : { display: 'block', marginInlineStart: '1.5rem' };
   const sub = (e: NavEntry) => (
-    <SideNavigationSubItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={isSelected(e.path)}
+    <SideNavigationSubItem key={e.path ?? e.text} text={mitHinweis(e)} icon={e.icon} selected={isSelected(e.path)}
                            style={eingerueckt}
                            onClick={() => e.path && gehe(e.path)} />
   );
@@ -87,7 +93,7 @@ export function Shell() {
   // Der Benutzer kann jede Gruppe selbst auf- und zuklappen (der Zustand bleibt bis zum Seitenwechsel in eine andere Gruppe).
   const enthaeltAktiv = (e: NavEntry): boolean => !!e.children?.some((c) => isSelected(c.path) || enthaeltAktiv(c));
   const item = (e: NavEntry, einruecken = false) => (
-    <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} selected={!e.children && isSelected(e.path)}
+    <SideNavigationItem key={e.path ?? e.text} text={mitHinweis(e)} icon={e.icon} selected={!e.children && isSelected(e.path)}
                         style={einruecken ? eingerueckt : undefined}
                         expanded={e.children ? enthaeltAktiv(e) : undefined} unselectable={!!e.children}
                         onClick={() => !e.children && e.path && gehe(e.path)}>
@@ -97,6 +103,7 @@ export function Shell() {
 
   return (
     <AblageProvider>
+      {waechter.map((w, i) => <w.component key={i} />)}
       <NavigationLayout
         mode={collapsed ? 'Collapsed' : 'Expanded'}
         style={{ height: '100%' }}
