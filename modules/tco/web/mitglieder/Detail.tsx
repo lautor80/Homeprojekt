@@ -18,6 +18,8 @@ import { BankDialog, KommDialog, KopfDialog, VertragDialog, vertragPersonen } fr
 import { VertragsBaum } from './VertragsBaum';
 import { Dokumente } from './Dokumente';
 import { GruppenTab } from './GruppenTab';
+import { VorgangDialog, type VorgangTyp } from './VorgangDialog';
+import { MenuButton } from '@core/components/MenuButton';
 import { useAblageZiel } from '@core/ablage';
 import { SperrHinweis, useSperre } from '@core/sperre';
 
@@ -45,6 +47,8 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
   const [busy, setBusy] = useState(false);
   const [docSel, setDocSel] = useState<number[]>([]);
   const [eingang, setEingang] = useState<File[]>([]);
+  /** geführter Vorgang (#154) */
+  const [vorgang, setVorgang] = useState<VorgangTyp | null>(null);
   // Sperre gegen gleichzeitige Bearbeitung: nur mit eigener Sperre bearbeitbar
   const sperre = useSperre('MITGLIED', adrnr, darf, { bezeichnung: d ? `Mitglied ${d.titel}` : undefined });
   const edit = darf && sperre.eigen;
@@ -97,6 +101,13 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
           {m.eintritt && <span className="portal-muted portal-small">Eintritt {dat(m.eintritt)}</span>}
         </>}
         actions={<>
+          {edit && (
+            <MenuButton text="Vorgang" icon="process" design="Emphasized" items={[
+              { text: 'Beitragswechsel', icon: 'switch-classes', hidden: !d.vertraege.some((v) => v.eigen && v.laeuft), onClick: () => setVorgang('BEITRAGSWECHSEL') },
+              { text: 'Jugendtraining abschließen', icon: 'physical-activity', hidden: ausgetreten, onClick: () => setVorgang('JUGENDTRAINING') },
+              { text: 'Kündigung erfassen', icon: 'cancel', hidden: !d.vertraege.some((v) => v.eigen && v.laeuft && !v.vertragende) && !(m.eintritt && !ausgetreten), onClick: () => setVorgang('KUENDIGUNG') },
+            ]} />
+          )}
           <Button icon="email" design="Transparent" onClick={() => setDlg('komm')}>Kommunikation</Button>
           <ChangeHistoryButton objectType="MITGLIED" objectKey={adrnr} />
         </>}
@@ -174,6 +185,12 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
       {dlg === 'kopf' && <KopfDialog d={d} onClose={(ok) => { setDlg(null); if (ok) aktion(async () => ({ text: 'Stammdaten gesichert.' })); }} />}
       {dlg === 'bank' && aw && <BankDialog d={d} aw={aw} onClose={(ok) => { setDlg(null); if (ok) aktion(async () => ({ text: 'Bankverbindung gesichert.' })); }} />}
       {dlg === 'vertrag' && aw && <VertragDialog d={d} aw={aw} adrnr={vtFuer} onClose={(t) => { setDlg(null); if (t) aktion(async () => ({ text: t })); }} />}
+      {vorgang && (
+        <VorgangDialog adrnr={adrnr} typ={vorgang} onClose={(geaendert) => {
+          setVorgang(null);
+          if (geaendert) { laden(); onChanged(); }
+        }} />
+      )}
       {dlg === 'komm' && <KommDialog d={d} art={art} unterlagen={unterlagen} docs={docSel} edit={edit} onClose={(t) => { setDlg(null); if (t) aktion(async () => ({ text: t }), false); }} />}
     </div>
   );

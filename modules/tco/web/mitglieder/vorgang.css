@@ -1,0 +1,11 @@
+/* Geführte Vorgänge (#154): Schrittanzeige und Ablauf */
+.portal-vg__schritte { display: flex; gap: 0.5rem; list-style: none; margin: 0 0 1rem; padding: 0; flex-wrap: wrap; }
+.portal-vg__schritte li { display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem 0.3rem 0.3rem; border-radius: 1rem;
+  background: var(--sapNeutralBackground, #f2f2f2); color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); }
+.portal-vg__schritte li.aktiv { background: var(--sapButton_Emphasized_Background); color: var(--sapButton_Emphasized_TextColor); font-weight: bold; }
+.portal-vg__schritte li.fertig { background: var(--sapSuccessBackground); color: var(--sapPositiveTextColor); }
+.portal-vg__nr { display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; border-radius: 50%;
+  background: var(--sapBackgroundColor); color: var(--sapTextColor); font-weight: bold; }
+.portal-vg__person { margin-bottom: 0.75rem; }
+.portal-vg__vertraege { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; margin-top: 0.35rem; }
+.portal-vg__liste { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.35rem; }

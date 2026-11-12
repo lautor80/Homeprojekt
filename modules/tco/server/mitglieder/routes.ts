@@ -27,6 +27,7 @@ import {
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
+import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
@@ -416,6 +417,39 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       const s = await ausgetreteneSperren(tx, a);
       return t + (s.gesperrt.length ? ` Benutzer ${s.gesperrt.join(', ')} gesperrt.` : '') + (s.rolleEntzogen.length ? ` Rolle Mitglied entzogen (${s.rolleEntzogen.join(', ')}).` : '');
     }, { action: 'AUSTRITT' }) };
+  });
+
+  // ---------------------------------------------------------------- Geführte Vorgänge (#154)
+  const vorgangSchema = z.discriminatedUnion('typ', [
+    z.object({
+      typ: z.literal('BEITRAGSWECHSEL'), adrnr, vertragnr: z.string().min(1, 'Bitte den bisherigen Vertrag wählen'), art: z.string().trim().min(1, 'Bitte die neue Beitragsart wählen'),
+      ab: datum, turnus: z.string().nullish(), betrag: z.number().min(0).nullish(), notiz: z.string().max(500).nullish(), unterlage: z.boolean().default(false),
+    }),
+    z.object({
+      typ: z.literal('JUGENDTRAINING'), adrnr, art: z.string().nullish(), beginn: datum, turnus: z.string().nullish(), betrag: z.number().min(0).nullish(),
+      zahler: z.string().nullish(), notiz: z.string().max(500).nullish(), unterlage: z.boolean().default(false),
+    }),
+    z.object({
+      typ: z.literal('KUENDIGUNG'), adrnr, umfang: z.enum(['MITGLIEDSCHAFT', 'VERTRAG']), vertragnr: z.string().nullish(), eingang: datum, ende: datum,
+      grund: z.string().max(500).nullish(), unterlage: z.boolean().default(false),
+    }),
+  ]);
+  app.get('/mitglieder/m/:adrnr/vorgang', schreiben, async (req) => vorgangKontext(DB, pAdr.parse(req.params).adrnr, await vereinLesen()));
+  /** prüfen: dieselbe Logik ohne Schreiben – geplante Änderungen und Hinweise */
+  app.post('/mitglieder/vorgang/pruefen', schreiben, async (req) => vorgang(DB, vorgangSchema.parse(req.body) as Vorgang, false, benutzer(req)));
+  app.post('/mitglieder/vorgang', schreiben, async (req) => {
+    const g = vorgangSchema.parse(req.body) as Vorgang;
+    const p = await change(req, async (tx) => {
+      const r = await vorgang(tx, g, true, benutzer(req));
+      // Austritt in der Vergangenheit: Benutzer sofort sperren (sonst übernimmt das der tägliche Lauf)
+      if (g.typ === 'KUENDIGUNG' && g.umfang === 'MITGLIEDSCHAFT') {
+        const s = await ausgetreteneSperren(tx, g.adrnr);
+        if (s.gesperrt.length) r.schritte.push(`Benutzer ${s.gesperrt.join(', ')} gesperrt`);
+      }
+      return r;
+    }, { action: g.typ, reason: VORGANG_TEXT[g.typ] });
+    const unterlage = g.unterlage ? await unterlageVersenden(DB, await vereinLesen(), g.adrnr, p.unterlage, p.text, benutzer(req)) : null;
+    return { ...p, text: `${VORGANG_TEXT[g.typ]} ausgeführt: ${p.text}`, unterlage };
   });
 
   app.post('/mitglieder/m/:adrnr/trainer', schreiben, async (req) => {
