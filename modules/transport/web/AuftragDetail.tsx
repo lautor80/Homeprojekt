@@ -52,6 +52,9 @@ function adrText(a: Adresse | null | undefined) {
 }
 
 /** Objektseite Auftrag – Fracht- oder Holzträgerauftrag (wie VIEW_DETAIL) */
+/** Vorbelegung für Firma und Straße des Empfängers bei der Auftragsanlage */
+const LAUT_LFS = 'laut LFS';
+
 export function AuftragDetail() {
   const { nr, typ: neuTyp } = useParams();
   const isNew = !!neuTyp;
@@ -83,7 +86,10 @@ export function AuftragDetail() {
       if (isNew) {
         const v = await api.get<Auftrag & { nummerVorschau: string }>(`${T}/neu/${neuTyp}`);
         setVorschau(v.nummerVorschau);
-        setA({ ...v, kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
+        // Empfänger des ersten Stops: Firma und Straße mit „laut LFS“ (laut Lieferschein) vorbelegt – bei Bedarf überschreiben.
+        // Nur Frachtaufträge (Holzträgeraufträge haben keine Stops) und nur der erste Stop: ein vorbelegter zweiter würde immer mitgespeichert.
+        const stops = v.stops.map((st, i) => (i === 0 && neuTyp === 'F' ? { ...st, firma_e: st.firma_e || LAUT_LFS, strasse_e: st.strasse_e || LAUT_LFS } : st));
+        setA({ ...v, stops, kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
           gewicht: null, lademeter: null, ladenummer: null, besonderheiten: null });
         setAdr({ kunde: null, unternehmer: null, rechnungsempfaenger: null });
       } else {

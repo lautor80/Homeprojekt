@@ -341,6 +341,8 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
 
 - **Auftragsanlage:** Nach *Sichern* eines neuen Auftrags springt das Portal zurück in die Auftragsliste (Filter und Suche bleiben
   erhalten); die Meldung nennt die neue Auftragsnummer. Beim Ändern eines bestehenden Auftrags bleibt man im Auftrag.
+- **Empfänger „laut LFS“:** Bei der Auftragsanlage sind *Firma* und *Straße* des Empfängers (erster Stop) mit „laut LFS“
+  (laut Lieferschein) vorbelegt; bei Bedarf einfach überschreiben.
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
   übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.
   Dokumente können weiterhin zugeordnet und gelöst werden.
