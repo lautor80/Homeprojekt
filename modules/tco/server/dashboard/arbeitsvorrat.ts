@@ -233,19 +233,56 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
        order by w.wochentag, w.von, w.id`;
     const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
     const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const zeit = (r: Record<string, any>) => `${WT[r.wochentag]} ${hm(r.von)}–${hm(r.bis)} Uhr ${r.platz}`.trim();
+    const pfad = '/tco/platz-buchen?ansicht=abo';
+    const mails: Aufgabe[] = [];
     for (const r of rows) {
-      const zeit = `${WT[r.wochentag]} ${hm(r.von)}–${hm(r.bis)} Uhr ${r.platz}`.trim();
-      out.push(r.mail_fehler && ['OFFEN', 'ANGEBOTEN'].includes(r.status) ? {
-        key: `ABO_MAIL:${r.id}`, bereich: 'Kassenwart', icon: 'email', state: 'Negative',
-        titel: `Hallenabo ${r.saison}: ${r.name} nicht per E-Mail erreichbar`,
-        text: `${zeit} · ${r.status === 'OFFEN' ? 'Bestätigung des Abos steht aus' : 'Angebot aus der Warteliste wartet auf Annahme'} – ${r.mail_fehler}. Bitte persönlich ansprechen.`,
-        datum: r.am, pfad: '/tco/platz-buchen?ansicht=abo',
-      } : {
-        key: `ABO_FREIGABE:${r.id}`, bereich: 'Kassenwart', icon: 'approvals', state: 'Critical',
-        titel: `Hallenabo ${r.saison} freigeben: ${r.name}`,
-        text: `${zeit} · ${r.art === 'BESTAETIGUNG' ? 'vom bisherigen Abonnenten bestätigt' : 'Angebot aus der Warteliste angenommen'} – erst die Freigabe legt das Abo an.`,
-        datum: r.am, pfad: '/tco/platz-buchen?ansicht=abo',
-        erledigen: { text: 'freigeben', url: '/platz/admin/abowunsch/freigeben', body: { id: r.id } },
+      if (r.mail_fehler && ['OFFEN', 'ANGEBOTEN'].includes(r.status)) {
+        mails.push({
+          key: `ABO_MAIL:${r.id}`, bereich: 'Kassenwart', icon: 'email', state: 'Negative',
+          titel: `${r.name} nicht per E-Mail erreichbar`,
+          text: `${zeit(r)} · ${r.status === 'OFFEN' ? 'Bestätigung des Abos steht aus' : 'Angebot aus der Warteliste wartet auf Annahme'} – ${r.mail_fehler}. Bitte persönlich ansprechen.`,
+          datum: r.am, pfad,
+          erledigen: { text: 'erledigt – nicht mehr anzeigen', url: '/platz/admin/abowunsch/mail-erledigt', body: { id: r.id } },
+        });
+      } else {
+        out.push({
+          key: `ABO_FREIGABE:${r.id}`, bereich: 'Kassenwart', icon: 'approvals', state: 'Critical',
+          titel: `Hallenabo ${r.saison} freigeben: ${r.name}`,
+          text: `${zeit(r)} · ${r.art === 'BESTAETIGUNG' ? 'vom bisherigen Abonnenten bestätigt' : 'Angebot aus der Warteliste angenommen'} – erst die Freigabe legt das Abo an.`,
+          datum: r.am, pfad,
+          erledigen: { text: 'freigeben', url: '/platz/admin/abowunsch/freigeben', body: { id: r.id } },
+        });
+      }
+    }
+    // Ausnahmen gesammelt: ein Eintrag mit den einzelnen darunter – einzeln oder alle auf einmal erledigen
+    if (mails.length) {
+      out.push({
+        key: 'ABO_MAIL', bereich: 'Kassenwart', icon: 'email', state: 'Negative',
+        titel: `Hallenabo ${rows[0].saison}: ${mails.length} Abonnent${mails.length === 1 ? '' : 'en'} bzw. Interessent${mails.length === 1 ? '' : 'en'} nicht per E-Mail erreichbar`,
+        text: 'Keine E-Mail-Adresse gepflegt oder Versand gescheitert – bitte persönlich ansprechen. Erledigte Hinweise werden nicht mehr angezeigt.',
+        datum: mails[0].datum, pfad, kinder: mails,
+        erledigen: { text: 'alle erledigt – nicht mehr anzeigen', url: '/platz/admin/abowunsch/mail-erledigt', body: {} },
+      });
+    }
+    // neue Bewerbungen um ein Hallenabo (Warteliste) – zur Kenntnis, je Bewerbung mit Position
+    const warten = await db`
+      select w.id, w.name, w.mitglied, w.wochentag, w.von, w.bis, coalesce(p.name, '') as platz, s.name as saison,
+             to_char(w.angelegt at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am,
+             (select count(*)::int from tco.abo_wunsch x where x.saison_id = w.saison_id and x.status = 'WARTET' and x.platz_id = w.platz_id and x.wochentag = w.wochentag
+                 and x.von < w.bis and x.bis > w.von and (x.mitglied::int, -extract(epoch from x.angelegt), -x.id) > (w.mitglied::int, -extract(epoch from w.angelegt), -w.id)) + 1 as position
+        from tco.abo_wunsch w join tco.abo_saison s on s.id = w.saison_id and s.aktiv left join tco.plaetze p on p.id = w.platz_id
+       where w.status = 'WARTET' order by w.wochentag, w.von, w.id`;
+    if (warten.length) {
+      out.push({
+        key: 'ABO_BEWERBUNG', bereich: 'Kassenwart', icon: 'waiver', state: 'Information',
+        titel: `${warten.length} Bewerbung${warten.length === 1 ? '' : 'en'} um ein Hallenabo ${warten[0].saison}`,
+        text: 'Warteliste – freie Stunden werden ab dem Nachrück-Termin angeboten; gebucht wird erst mit der Freigabe.',
+        datum: warten.map((r) => r.am as string).sort().pop() ?? null, pfad,
+        kinder: warten.map((r) => ({
+          key: `ABO_BEWERBUNG:${r.id}`, bereich: 'Kassenwart', icon: 'waiver', state: 'Information' as const,
+          titel: `${r.name}${r.mitglied ? '' : ' (kein Mitglied)'}: ${zeit(r)}`, text: `Position ${r.position} auf der Warteliste`, datum: r.am, pfad,
+        })),
       });
     }
   }

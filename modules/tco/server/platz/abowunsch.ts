@@ -107,7 +107,8 @@ async function benachrichtigen(db: Db, w: Wunsch, betreff: string, text: string,
         text: `Hallo ${w.name},\n\n${text}\n\n${url ? `Zum Portal: ${url}/tco/platz-buchen?ansicht=abo\n\n` : ''}Sportliche Grüße\n${v.name}` });
     } catch (e) { fehler = `E-Mail nicht versendet: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300); }
   }
-  await db`update tco.abo_wunsch set mail_fehler = ${fehler} where id = ${w.id}`;
+  // als erledigt gekennzeichnete Einträge melden keine Ausnahme mehr
+  await db`update tco.abo_wunsch set mail_fehler = case when mail_ignorieren then null else ${fehler}::text end where id = ${w.id}`;
   return !fehler;
 }
 
@@ -331,4 +332,11 @@ export async function abweisen(tx: Db, id: number): Promise<string> {
   const r = await tx`update tco.abo_wunsch set status = 'ABGELEHNT', entschieden = now() where id = ${id} and status in ('OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN', 'WARTET') returning name`;
   if (!r.length) throw new BusinessError('Das ist in diesem Stand nicht (mehr) möglich.');
   return `${r[0].name}: abgelehnt.`;
+}
+
+/** Ausnahme „nicht per E-Mail erreichbar“ erledigen: Fehler löschen und für diese Einträge künftig nicht mehr anzeigen (id leer = alle) */
+export async function mailFehlerErledigen(tx: Db, id: number | null): Promise<string> {
+  const r = await tx`update tco.abo_wunsch set mail_fehler = null, mail_ignorieren = true
+                      where mail_fehler is not null and (${id}::int is null or id = ${id}::int) returning id`;
+  return r.length === 1 ? 'Hinweis erledigt – wird nicht mehr angezeigt.' : `${r.length} Hinweise erledigt – sie werden nicht mehr angezeigt.`;
 }

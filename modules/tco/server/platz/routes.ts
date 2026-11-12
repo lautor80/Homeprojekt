@@ -21,7 +21,7 @@ import {
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
 import { mailProtokoll, mailSenden } from '../kommunikation.js';
-import { abweisen, aboLauf, aktion, bewerben, freigeben, rasterLesen, saisonAendern, saisonEroeffnen, verwaltungLesen } from './abowunsch.js';
+import { mailFehlerErledigen, abweisen, aboLauf, aktion, bewerben, freigeben, rasterLesen, saisonAendern, saisonEroeffnen, verwaltungLesen } from './abowunsch.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle).
@@ -540,6 +540,10 @@ export async function platzRoutes(app: FastifyInstance) {
   app.post('/platz/admin/abowunsch/abweisen', admin, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.body);
     return { text: await change(req, (tx) => abweisen(tx, id), { action: 'ABO_ABGELEHNT', reason: String(id) }) };
+  });
+  app.post('/platz/admin/abowunsch/mail-erledigt', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive().nullish() }).parse(req.body ?? {});
+    return { text: await change(req, (tx) => mailFehlerErledigen(tx, id ?? null), { action: 'ABO_MAIL_ERLEDIGT', reason: id ? String(id) : 'alle' }) };
   });
   // stündlich von selbst (nicht in Tests): Erinnerung, Verfall, Angebote
   if (!process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test') {
