@@ -61,7 +61,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.rgkopf` |  | ● | ● |  |  | ● |  | ● |  |  |  | ● |
 | `tco.rgpos` |  |  | ● |  |  |  |  | ● |  |  |  | ● |
 | `tco.rgtz` |  | ● | ● |  |  | ● |  | ● |  |  |  | ● |
-| `tco.schluessel` | ● |  | ● |  |  |  |  |  |  |  | ● | ● |
+| `tco.schluessel` | ● |  | ● |  |  |  |  | ● | ● |  | ● | ● |
 | `tco.schnupper` | ● |  |  | ● |  |  |  | ● |  |  | ● |  |
 | `tco.schnupper_einheiten` | ● |  |  |  |  |  |  |  |  |  |  |  |
 | `tco.sepa` | ● | ● |  |  |  |  |  |  |  |  | ● |  |

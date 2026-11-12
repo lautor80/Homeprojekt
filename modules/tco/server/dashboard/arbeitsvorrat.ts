@@ -6,6 +6,7 @@ import type { FastifyRequest } from 'fastify';
 import { can } from '../../../../server/src/auth.js';
 import type { Db } from '../verein.js';
 import { monatsname } from '../jt/logik.js';
+import { ADRNR_ZU_BENUTZER, HALLENWART } from '../platz/schluessel.js';
 
 export interface Aufgabe {
   key: string;
@@ -139,6 +140,44 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         titel: `${s.n} Anmeldung${s.n === 1 ? '' : 'en'} zum Schnuppertraining`,
         text: 'Online eingegangen – bitte Kontakt aufnehmen und einen Termin vereinbaren.',
         datum: s.seit, pfad: '/tco/schnuppertraining',
+      });
+    }
+  }
+
+  // Hallenwart (#11): kommende Hallen-Einzelbuchungen (heute + 7 Tage) von Personen ohne Hallenschlüssel am Buchungstag – aufsperren
+  if (can(req, 'tco.platzbuchung:verwalten')) {
+    const rows = await db`
+      select b.bid, b.datum::text as datum, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis,
+             coalesce(nullif(trim(u.display_name), ''), initcap(b.kunde)) as name
+        from tco.bookings b
+        join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
+        left join core.users u on u.id = b.benutzer_id
+       where b.status = '1' and b.benutzer_id is not null
+         and b.datum between current_date and current_date + 7
+         and not exists (select 1 from tco.schluessel s
+                          where s.adrnr = ${db.unsafe(ADRNR_ZU_BENUTZER('b.benutzer_id'))} and s.ausgabe is not null and s.ausgabe <= b.datum
+                            and (s.ruecknahme is null or s.ruecknahme > b.datum))
+       order by b.datum, b.time_start`;
+    for (const r of rows) {
+      const [j, m, t] = [r.datum.slice(0, 4), r.datum.slice(5, 7), r.datum.slice(8, 10)];
+      out.push({
+        key: `HALLENWART:${r.bid}:${r.datum}`, bereich: 'Hallenwart', icon: 'locked', state: 'Information',
+        titel: `Halle aufsperren: ${t}.${m}.${j} ${r.von}–${r.bis} Uhr`,
+        text: `${r.name} hat keinen Hallenschlüssel – meldet sich bei ${HALLENWART.name}.`,
+        datum: r.datum, pfad: `/tco/platzverwaltung?datum=${r.datum}`,
+      });
+    }
+    // heute über Einzelbuchungen erfasste Hallenbuchungen
+    const [h] = await db`
+      select count(*)::int as n from tco.bookings b
+        join tco.plaetze p on upper(trim(p.name)) = upper(trim(b.platz)) and p.art = 'HALLE'
+       where b.status = '1' and b.erstellt = current_date`;
+    if (h?.n) {
+      out.push({
+        key: 'HALLE_HEUTE', bereich: 'Platzbuchung', icon: 'appointment-2', state: 'Information',
+        titel: `Heute ${h.n} Hallenbuchung${h.n === 1 ? '' : 'en'} als Einzelbuchung erfasst`,
+        text: 'Neu angelegte Einzelbuchungen der Halle (Portal und EP3) mit Erfassungsdatum heute.',
+        datum: null, pfad: '/tco/platzverwaltung',
       });
     }
   }

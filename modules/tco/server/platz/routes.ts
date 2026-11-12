@@ -34,6 +34,8 @@ import { mailProtokoll, mailSenden } from '../kommunikation.js';
  * „Platz buchen“ für Admin/Hallenwart (tco.platzbuchung:verwalten, #11): Namen der Buchenden sehen, für ein anderes
  * Mitglied bzw. vereinsintern buchen und Training, Schnuppertraining, Sperrzeiten, Veranstaltungen direkt im Kalender eintragen.
  */
+import { hatSchluessel, HALLE_HINWEIS } from './schluessel.js';
+
 export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
@@ -441,6 +443,8 @@ export async function platzRoutes(app: FastifyInstance) {
     return {
       datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung, verwalten),
       rechte: { verwalten },
+      // Halle verschlossen (#11): Hinweis, wenn am Tag kein Hallenschlüssel ausgegeben ist
+      hallenhinweis: (await hatSchluessel(DB, i.adrnr, q.datum)) ? null : HALLE_HINWEIS,
       // Preisklassen einer Einzelbuchung im Tagesverlauf (farbiger Strich neben der Uhrzeit)
       preiszonen: preiszonen(q.datum, await preiseLesen(DB)),
     };
@@ -477,7 +481,11 @@ export async function platzRoutes(app: FastifyInstance) {
   app.post('/platz/buchungen', buchen, async (req) => {
     const i = await ich(req);
     const e = buchung.parse(req.body);
-    return change(req, (tx) => einzelAnlegen(tx, i, e), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis}` });
+    const r = await change(req, (tx) => einzelAnlegen(tx, i, e), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis}` });
+    // Halle verschlossen (#11): ohne Hallenschlüssel am Tag den Hinweis an die Bestätigung hängen
+    const [pl] = await DB`select art from tco.plaetze where id = ${e.platz_id}`;
+    if (pl?.art === 'HALLE' && !(await hatSchluessel(DB, i.adrnr, e.datum))) return { ...r, hinweis: HALLE_HINWEIS };
+    return r;
   });
 
   app.put('/platz/buchungen/:bid', buchen, async (req) => {
