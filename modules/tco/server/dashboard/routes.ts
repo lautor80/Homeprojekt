@@ -109,6 +109,16 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   /** Arbeitsvorrat: offene Vorgänge (je nach Berechtigung des Benutzers) */
   app.get('/dashboard/arbeitsvorrat', { preHandler: requireAuth(P_DASH.display) }, async (req) => arbeitsvorrat(DB, req));
+  /** Hallenwart: Klärung mit dem Kunden zu einer Hallenbuchung ohne Schlüssel bestätigen – der Eintrag verschwindet aus dem Arbeitsvorrat */
+  app.post('/dashboard/arbeitsvorrat/halle-geklaert', { preHandler: requireAuth('tco.platzbuchung:verwalten') }, async (req) => {
+    const b = z.object({ bid: z.string().min(1).max(30), datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
+    await change(req, async (tx) => {
+      const [bu] = await tx`select 1 from tco.bookings where bid = ${b.bid} and datum = ${b.datum}`;
+      if (!bu) throw new BusinessError('Die Buchung gibt es nicht mehr – bitte die Übersicht aktualisieren.', 404);
+      await tx`insert into tco.halle_geklaert (bid, datum, von) values (${b.bid}, ${b.datum}, ${req.user!.displayName}) on conflict do nothing`;
+    }, { action: 'HALLE_GEKLAERT', reason: `${b.datum}` });
+    return { text: 'Klärung bestätigt.' };
+  });
   /** registrierte Benutzer über die Zeit (#30): TAG (30 Tage), WOCHE (26), MONAT (24), JAHR, GESAMT */
   app.get('/dashboard/benutzer', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
     const q = z.object({ zeitraum: z.enum(Object.keys(BENUTZER_ZEITRAEUME) as [BenutzerZeitraum, ...BenutzerZeitraum[]]).default('MONAT') }).parse(req.query);

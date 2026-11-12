@@ -246,6 +246,8 @@
   .portal-av__eintrag { grid-template-columns: auto minmax(0, 1fr) auto; }
   .portal-av__datum { display: none; }
 }
+/* Kästchen „geklärt“ bleibt auch auf dem Handy sichtbar */
+@media (max-width: 600px) { .portal-av__datum:has(ui5-checkbox) { display: block; grid-column: 2 / -1; } }
 
 /* Kennzahlen zeilenweise (gleiches Layout wie der Arbeitsvorrat) */
 .portal-av__eintrag--None { border-left-color: var(--sapList_BorderColor); }

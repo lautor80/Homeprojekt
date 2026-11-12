@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Icon } from '@ui5/webcomponents-react';
+import { CheckBox, Icon } from '@ui5/webcomponents-react';
+import { toast } from '@core/toast';
+import { TCO } from '../util';
 import { api } from '@core/api';
 import { Section } from '@core/components/Section';
 import { DASH } from './typen';
@@ -8,6 +10,8 @@ import { DASH } from './typen';
 export interface Aufgabe {
   key: string; bereich: string; titel: string; text: string; datum: string | null; icon: string;
   state: 'Information' | 'Critical' | 'Negative'; pfad: string; betrag?: number;
+  /** Kästchen: Erledigung bestätigen, danach verschwindet der Eintrag */
+  erledigen?: { text: string; url: string; body: Record<string, unknown> };
   /** Unterpunkte, z. B. die einzelnen Buchungen */
   kinder?: Aufgabe[];
 }
@@ -29,14 +33,29 @@ function offenLesen(): string[] | null {
 export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: string }) {
   const [liste, setListe] = useState<Aufgabe[]>([]);
   const navigate = useNavigate();
-  useEffect(() => { api.get<Aufgabe[]>(`${DASH}/arbeitsvorrat`).then(setListe).catch(() => setListe([])); }, [neu]);
+  const laden = useCallback(() => api.get<Aufgabe[]>(`${DASH}/arbeitsvorrat`).then(setListe).catch(() => setListe([])), []);
+  // immer aktuell: beim Öffnen, nach jeder Bestätigung, jede Minute und wenn das Fenster wieder nach vorn kommt
+  useEffect(() => {
+    laden();
+    const t = setInterval(laden, 60_000);
+    const sichtbar = () => { if (document.visibilityState === 'visible') laden(); };
+    document.addEventListener('visibilitychange', sichtbar);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', sichtbar); };
+  }, [neu, laden]);
+  /** Kästchen am Eintrag: Erledigung bestätigen und die Übersicht sofort neu aufbauen */
+  const erledigen = async (a: Aufgabe) => {
+    if (!a.erledigen) return;
+    setListe((l) => l.filter((x) => x.key !== a.key)); // sofort ausblenden, dann vom Server neu lesen
+    try { const r = await api.post<{ text?: string }>(`${TCO}${a.erledigen.url}`, a.erledigen.body); toast(r.text ?? 'Erledigt.'); } catch (e) { toast((e as Error).message, 6000); }
+    await laden();
+  };
   if (!liste.length) {
     return leerText ? <Section title="Arbeitsvorrat" count={0}><span className="portal-muted">{leerText}</span></Section> : null;
   }
-  return <Baum liste={liste} onOeffnen={(a) => navigate(a.pfad)} />;
+  return <Baum liste={liste} onOeffnen={(a) => navigate(a.pfad)} onErledigen={erledigen} />;
 }
 
-function Eintrag({ a, onOeffnen, ebene = 1 }: { a: Aufgabe; onOeffnen: (a: Aufgabe) => void; ebene?: number }) {
+function Eintrag({ a, onOeffnen, onErledigen, ebene = 1 }: { a: Aufgabe; onOeffnen: (a: Aufgabe) => void; onErledigen: (a: Aufgabe) => void; ebene?: number }) {
   const [auf, setAuf] = useState(false);
   const kinder = a.kinder ?? [];
   return (
@@ -51,17 +70,19 @@ function Eintrag({ a, onOeffnen, ebene = 1 }: { a: Aufgabe; onOeffnen: (a: Aufga
           <div className="portal-av__titel">{a.titel}</div>
           <div className="portal-av__text">{a.text}</div>
         </button>
-        <div className="portal-av__datum">{a.datum ? dat(a.datum) : ''}</div>
+        <div className="portal-av__datum">
+          {a.erledigen ? <CheckBox text={a.erledigen.text} onChange={(e) => { if (e.target.checked) onErledigen(a); }} /> : a.datum ? dat(a.datum) : ''}
+        </div>
         <button type="button" className="portal-av__auf" aria-label="App öffnen" title="App öffnen" onClick={() => onOeffnen(a)}>
           <Icon name="navigation-right-arrow" className="portal-av__pfeil" />
         </button>
       </div>
-      {auf && kinder.map((k) => <Eintrag key={k.key} a={k} onOeffnen={onOeffnen} ebene={ebene + 1} />)}
+      {auf && kinder.map((k) => <Eintrag key={k.key} a={k} onOeffnen={onOeffnen} onErledigen={onErledigen} ebene={ebene + 1} />)}
     </>
   );
 }
 
-function Baum({ liste, onOeffnen }: { liste: Aufgabe[]; onOeffnen: (a: Aufgabe) => void }) {
+function Baum({ liste, onOeffnen, onErledigen }: { liste: Aufgabe[]; onOeffnen: (a: Aufgabe) => void; onErledigen: (a: Aufgabe) => void }) {
   // Gruppen in der Reihenfolge des ersten Auftretens; Farbe = dringendster Eintrag
   const gruppen = useMemo(() => {
     const m = new Map<string, Aufgabe[]>();
@@ -90,7 +111,7 @@ function Baum({ liste, onOeffnen }: { liste: Aufgabe[]; onOeffnen: (a: Aufgabe) 
               <div className="portal-av__inhalt"><div className="portal-av__titel">{g.bereich}</div></div>
               <span className="portal-av__anzahl">{g.eintraege.length}</span>
             </button>
-            {auf(g.bereich) && <div role="group">{g.eintraege.map((a) => <Eintrag key={a.key} a={a} onOeffnen={onOeffnen} />)}</div>}
+            {auf(g.bereich) && <div role="group">{g.eintraege.map((a) => <Eintrag key={a.key} a={a} onOeffnen={onOeffnen} onErledigen={onErledigen} />)}</div>}
           </div>
         ))}
       </div>

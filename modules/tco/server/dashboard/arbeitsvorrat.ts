@@ -28,6 +28,8 @@ export interface Aufgabe {
   /** Portalpfad zum Bearbeiten */
   pfad: string;
   betrag?: number;
+  /** Kästchen am Eintrag: bestätigt die Erledigung (POST auf url mit body), der Eintrag verschwindet danach */
+  erledigen?: { text: string; url: string; body: Record<string, unknown> };
   /** Unterpunkte (z. B. die einzelnen Buchungen zu „Heute n Hallenbuchungen“) */
   kinder?: Aufgabe[];
 }
@@ -177,6 +179,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
          and not exists (select 1 from tco.schluessel s
                           where s.adrnr = ${db.unsafe(ADRNR_ZU_BENUTZER('b.benutzer_id'))} and s.ausgabe is not null and s.ausgabe <= b.datum
                             and (s.ruecknahme is null or s.ruecknahme > b.datum))
+         and not exists (select 1 from tco.halle_geklaert g where g.bid = b.bid and g.datum = b.datum)
        order by b.datum, b.time_start`;
     for (const r of rows) {
       const [j, m, t] = [r.datum.slice(0, 4), r.datum.slice(5, 7), r.datum.slice(8, 10)];
@@ -185,6 +188,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         titel: `Halle aufsperren: ${t}.${m}.${j} ${r.von}–${r.bis} Uhr`,
         text: `${r.name} hat keinen Hallenschlüssel – meldet sich bei ${HALLENWART.name}.`,
         datum: r.datum, pfad: can(req, 'tco.platz:admin') ? `/tco/platzverwaltung?tab=belegung&datum=${r.datum}` : `/tco/platz-buchen?datum=${r.datum}`,
+        erledigen: { text: 'mit dem Kunden geklärt', url: '/dashboard/arbeitsvorrat/halle-geklaert', body: { bid: r.bid, datum: r.datum } },
       });
     }
   }
