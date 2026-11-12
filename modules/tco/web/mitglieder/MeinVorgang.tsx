@@ -20,7 +20,7 @@ interface Art { art: string; name: string; betrag: number; turnus: string }
 interface SPerson {
   adrnr: string; name: string; ich: boolean; alter: number | null; vertraege: Vertrag[];
   wechsel: { vertragnr: string; artname: string; betrag: number; turnus: string; arten: Art[] } | null; wechselHinweis: string | null;
-  training: Art[]; trainingHinweis: string | null;
+  training: Art[]; trainingHinweis: string | null; trainingAlter?: boolean;
 }
 interface Kontext { personen: SPerson[]; ab: string; trainingAb: string; maxTraining: number }
 interface Unterlage { pdf: string; dateiname: string; titel: string; gesendet: boolean; hinweise: string[] }
@@ -53,7 +53,10 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
   const moeglich = (p: SPerson) => (typ === 'BEITRAGSWECHSEL' ? !!p.wechsel : p.training.length > 0);
   useEffect(() => {
     if (typ === 'KUENDIGUNG') return;
-    api.get<Kontext>(`${MG}/vorgang`).then((r) => { setK(r); setAdrnr((r.personen.find(moeglich) ?? r.personen[0])?.adrnr ?? ''); }).catch((e) => setError(e.message));
+    api.get<Kontext>(`${MG}/vorgang`).then((roh) => {
+      // Jugendtraining: nur Personen, die noch keine 21 Jahre alt sind
+      const r = typ === 'JUGENDTRAINING' ? { ...roh, personen: roh.personen.filter((p) => p.trainingAlter) } : roh;
+      setK(r); setAdrnr((r.personen.find(moeglich) ?? r.personen[0])?.adrnr ?? ''); }).catch((e) => setError(e.message));
   }, [typ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const person = k?.personen.find((p) => p.adrnr === adrnr);
@@ -109,7 +112,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
             {typ === 'KUENDIGUNG' ? 'Verbindlich kündigen' : typ === 'JUGENDTRAINING' ? 'Verbindlich abschließen' : 'Verbindlich wechseln'}</Button></>
       : <Button design="Emphasized" onClick={() => onClose(true)}>Fertig</Button>;
 
-  const personenWahl = k && k.personen.length > 1
+  const personenWahl = k && (k.personen.length > 1 || (typ === 'JUGENDTRAINING' && k.personen.length === 1 && !k.personen[0].ich))
     ? <Auswahlfeld label="Für wen?" required wide value={adrnr} optionen={k.personen.map((p) => [p.adrnr, `${p.name}${p.ich ? ' (ich)' : ''}${p.alter != null ? `, ${p.alter} Jahre` : ''}`] as [string, string])} onChange={setAdrnr} />
     : null;
 
@@ -125,6 +128,9 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
       {(gesperrt || error) && <MessageStrip design="Negative" hideCloseButton={!!gesperrt} onClose={() => setError(null)} style={{ marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{gesperrt || error}</MessageStrip>}
       {typ !== 'KUENDIGUNG' && !k && !error && <Text>Lade …</Text>}
 
+      {schritt === 0 && typ === 'JUGENDTRAINING' && k && k.personen.length === 0 && (
+        <MessageStrip design="Information" hideCloseButton>Jugendtraining kann nur abschließen, wer noch keine 21 Jahre alt ist – in deiner Mitgliedschaft gibt es dafür niemanden.</MessageStrip>
+      )}
       {schritt === 0 && typ !== 'KUENDIGUNG' && k && (
         <>
           <FormGrid>

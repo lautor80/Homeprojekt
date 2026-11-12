@@ -5,7 +5,7 @@
  * festen Regeln statt freier Eingaben:
  *  - Beitragswechsel nur zwischen Mitgliedsbeiträgen, zum nächsten Halbjahr, Betrag laut Beitragsstamm; Jugendbeitrag nur
  *    bis 17 Jahre; Familienbeitrag und inaktive Mitgliedschaft nur über den Vorstand.
- *  - Jugendtraining bis 21 Jahre, höchstens zwei Einheiten, Beginn zum nächsten Monatsersten, nur bei Lastschrift mit IBAN.
+ *  - Jugendtraining nur für Personen, die zum Trainingsbeginn noch keine 21 Jahre alt sind, höchstens zwei Einheiten, Beginn zum nächsten Monatsersten, nur bei Lastschrift mit IBAN.
  * Der Vorstand wird über Notiz und Kopie der E-Mail informiert.
  */
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -25,6 +25,8 @@ export interface SelbstPerson {
   /** buchbare Trainingseinheiten */
   training: VertragsArt[];
   trainingHinweis: string | null;
+  /** noch keine 21 Jahre alt – nur diese Personen stehen bei „Jugendtraining abschließen“ zur Auswahl */
+  trainingAlter: boolean;
 }
 export type SelbstEingabe = { typ: 'BEITRAGSWECHSEL' | 'JUGENDTRAINING'; adrnr: string; art: string };
 
@@ -49,7 +51,7 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     const vertraege = alleVertraege.filter((v) => v.adrnr === adrnr);
     const p: SelbstPerson = {
       adrnr, name: condense(`${leer(m.vorname)} ${leer(m.nachname)}`), ich: adrnr === eigene, alter: m.geburtsdatum ? alter(m.geburtsdatum, h) : null,
-      vertraege, wechsel: null, wechselHinweis: null, training: [], trainingHinweis: null,
+      vertraege, wechsel: null, wechselHinweis: null, training: [], trainingHinweis: null, trainingAlter: false,
     };
     // ---- Beitragswechsel
     const beitrag = vertraege.find((v) => kategorieVon(v.art, v.artname) === 'MITGLIEDSCHAFT' && !v.vertragende);
@@ -64,8 +66,9 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     }
     // ---- Jugendtraining
     const laufend = vertraege.filter((v) => kategorieVon(v.art, v.artname) === 'TRAINING' && (!v.vertragende || v.vertragende >= trainingAb));
+    p.trainingAlter = !!m.geburtsdatum && alter(m.geburtsdatum, trainingAb) < ALTER_TRAINING_BIS;
     if (m.austritt && m.austritt < trainingAb) p.trainingHinweis = `Austritt zum ${dat(m.austritt)}.`;
-    else if (!m.geburtsdatum || alter(m.geburtsdatum, trainingAb) > ALTER_TRAINING_BIS) p.trainingHinweis = `Jugendtraining gibt es bis ${ALTER_TRAINING_BIS} Jahre.`;
+    else if (!p.trainingAlter) p.trainingHinweis = `Jugendtraining kann nur abschließen, wer noch keine ${ALTER_TRAINING_BIS} Jahre alt ist.`;
     else if (laufend.length >= MAX_TRAINING) p.trainingHinweis = `Es laufen bereits ${MAX_TRAINING} Trainingseinheiten.`;
     else if (!lastschrift) p.trainingHinweis = 'Für neue Verträge wird eine Bankverbindung mit SEPA-Lastschrift benötigt – bitte beim Vorstand melden.';
     else {
