@@ -94,7 +94,7 @@ test('Abgleich: sichere Treffer, Prüffälle, ohne Treffer – übernommen wird 
 
   // Anzeige: Stand der App und Stammsatz des Mitglieds
   r = await call('GET', S);
-  assert.deepEqual(r.body.anzahl, { mitglieder: 6, mitId: 3, mitLk: 3 });
+  assert.deepEqual(r.body.anzahl, { mitglieder: 6, mitId: 3, ohneId: 3, mitLk: 3 });
   r = await call('GET', '/api/m/tco/mitglieder/m/0000000301');
   assert.deepEqual([r.body.spieler.id_nr, r.body.spieler.lk], ['10204675', 22.1]);
 });
