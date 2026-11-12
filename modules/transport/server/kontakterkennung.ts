@@ -1,6 +1,7 @@
 /**
- * Kontakterkennung (#158): eingefügten oder abgelegten Text (E-Mail-Signatur, Impressum, Briefkopf, Visitenkarte .vcf)
- * analysieren und als Vorschlag auf die Felder des Kontakts verteilen. Reine Textanalyse ohne Fremddienste –
+ * Kontakterkennung (#158): eingefügten oder abgelegten Text (E-Mail-Signatur, Impressum, Briefkopf, Visitenkarte .vcf,
+ * Text aus einem Screenshot oder PDF, z. B. Unternehmensprofil einer Frachtenbörse) analysieren und als Vorschlag auf die
+ * Felder des Kontakts verteilen. Reine Textanalyse ohne Fremddienste –
  * nichts wird gespeichert; der Anwender prüft die Vorschläge und übernimmt sie in den Dialog.
  */
 export interface KontaktFelder {
@@ -24,11 +25,16 @@ const LAND_NAME: Record<string, string> = {
 const LAND_KURZ: Record<string, string> = {
   D: 'DE', DE: 'DE', A: 'AT', AT: 'AT', CH: 'CH', F: 'FR', FR: 'FR', L: 'LU', LU: 'LU', B: 'BE', BE: 'BE', NL: 'NL', I: 'IT', IT: 'IT', PL: 'PL',
   CZ: 'CZ', DK: 'DK', E: 'ES', ES: 'ES', H: 'HU', HU: 'HU', SK: 'SK', SI: 'SI', HR: 'HR', RO: 'RO', BG: 'BG', S: 'SE', SE: 'SE', P: 'PT', PT: 'PT', FL: 'LI', LI: 'LI',
+  BG: 'BG', GR: 'GR', LT: 'LT', LV: 'LV', EE: 'EE', FI: 'FI', NO: 'NO', IE: 'IE', GB: 'GB', UK: 'GB', UA: 'UA', RS: 'RS', TR: 'TR', MK: 'MK', AL: 'AL',
+  BA: 'BA', ME: 'ME', MD: 'MD', BY: 'BY', CY: 'CY', MT: 'MT', IS: 'IS', XK: 'XK',
 };
-const FIRMA = /\b(gmbh|mbh|ag|kg|ohg|ug|gbr|se|e\.\s?k\.|e\.\s?v\.|eg|kgaa|ltd\.?|limited|inc\.?|llc|b\.\s?v\.|n\.\s?v\.|s\.\s?a\.|s\.\s?a\.\s?r\.\s?l\.|sarl|sas|s\.\s?r\.\s?l\.|s\.\s?p\.\s?a\.|sp\.\s?z\s?o\.\s?o\.|s\.\s?r\.\s?o\.|a\.\s?s\.|aps|a\/s|ab|oy|d\.\s?o\.\s?o\.)(?=$|[\s,.)&])/i;
+/** Überschriften aus Profilen und Formularen (z. B. Frachtenbörse): keine Inhalte, aber Hinweis auf die folgende Zeile */
+const KOPF = /^(timocom|unternehmensprofil(\s+details)?|firmenprofil|profil|details|kontakt(daten|informationen)?|contact|anschrift|hausanschrift|postanschrift|rechnungsanschrift|lieferanschrift|adresse|address|erreichbarkeit|stammdaten)$/i;
+const KOPF_FIRMA = /^(unternehmen|firma|firmenname|company|unternehmensname|name des unternehmens)$/i;
+const FIRMA = /\b(gmbh|mbh|ag|kg|ohg|ug|gbr|se|e\.\s?k\.|e\.\s?v\.|eg|kgaa|ltd\.?|limited|inc\.?|llc|b\.\s?v\.|n\.\s?v\.|s\.\s?a\.|s\.\s?a\.\s?r\.\s?l\.|sarl|sas|s\.\s?r\.\s?l\.|s\.\s?p\.\s?a\.|sp\.\s?z\s?o\.\s?o\.|s\.\s?r\.\s?o\.|a\.\s?s\.|aps|a\/s|ab|oy|d\.\s?o\.\s?o\.|e?ood|ead|kft|zrt|srl|sia|uab|oü|bvba|nv|s\.\s?l\.|lda|k\.\s?s\.|j\.\s?d\.\s?o\.\s?o\.|doo|ltda?)(?=$|[\s,.)&])/i;
 const FIRMA_WORT = /(spedition|transporte?\b|logisti[kc]s?|trucking|fracht|cargo|handel|handels|service|group|gruppe|holding|\bbau\b|technik|systems?|solutions|werke?\b|zentrum|center|verein|\bclub\b|express|trans\b|gesellschaft|company|\bco\.)/i;
 const GRUSS = /^(mit\s+(freundliche[nm]|beste[nm]|herzliche[nm])|freundliche|viele|beste|liebe|herzliche|sonnige|sportliche)\s+gr[üu](ß|ss)e?n?\b|^(best|kind|warm)\s+regards|^regards\b|^mfg\b|^vg\b|^lg\b|^--+\s*$|^_{3,}$|^i\.\s?[av]\.\s*$|^(sehr geehrte|hallo|guten (tag|morgen)|dear)\b/i;
-const FUSS = /^(gesch[äa]ftsf[üu]hr|amtsgericht|registergericht|handelsregister|hrb?\b|hra\b|sitz\b|steuer-?n|st\.?-?nr|iban|bic|swift|bank|sparkasse|volksbank|www\.|https?:|web\b|internet\b|homepage\b|vorstand|aufsichtsrat|inhaber|pers[öo]nlich haftend)/i;
+const FUSS = /^(gesch[äa]ftsf[üu]hr|amtsgericht|registergericht|handelsregister|hrb?\b|hra\b|sitz\b|steuer-?n|st\.?-?nr|iban|bic|swift|bank|sparkasse|volksbank|www[\s.]|https?:|web\b|internet\b|homepage\b|vorstand|aufsichtsrat|inhaber|pers[öo]nlich haftend)/i;
 const POSITION = /(gesch[äa]ftsf|disponent|disposition|vertrieb|verkauf|einkauf|sales|manager|leiter|leitung|assisten|sachbearbeit|buchhaltung|prokurist|director|head of|\bceo\b|\bcfo\b|\bcoo\b|\bteam\b|abteilung|kundenservice|customer|account|fuhrpark|lager\b|projekt)/i;
 const TITEL = /\b(dr|prof|dipl|ing|mag|med|rer|nat|jur|phil|h\.\s?c|b\.\s?a|m\.\s?a|b\.\s?sc|m\.\s?sc|mba|kfm|betriebsw|wirt)\b[.-]*(\s?\([a-z]+\))?/gi;
 const PARTIKEL = /^(von|van|de|der|den|del|della|di|du|la|le|zu|zur|vom|ten|ter)$/i;
@@ -73,7 +79,8 @@ function person(z: string): Pick<KontaktFelder, 'anrede' | 'vorname' | 'name'> |
 const namensartig = (z: string) => {
   const w = sauber(z.replace(TITEL, ' ')).split(' ').filter(Boolean);
   return w.length >= 2 && w.length <= 4 && !/\d|@|:/.test(z) && !FIRMA.test(z) && !FIRMA_WORT.test(z) && !POSITION.test(z) && !STRASSE.test(z)
-    && w.every((x) => /^[A-ZÀ-Þ][\p{L}'’.-]*$/u.test(x) || PARTIKEL.test(x));
+    // Wörter wie Namen: groß begonnen mit Kleinbuchstaben, Initiale („J.“) oder Großschrift ab drei Buchstaben – keine Logo-Reste wie „B ST“
+    && w.every((x) => /^[A-ZÀ-Þ]\p{Ll}[\p{L}'’.-]*$/u.test(x) || /^[A-ZÀ-Þ]\.$/u.test(x) || /^[A-ZÀ-Þ]{3,}$/u.test(x) || PARTIKEL.test(x));
 };
 
 function vcard(text: string): Erkennung {
@@ -146,12 +153,25 @@ function frei(text: string): Erkennung {
   const f: KontaktFelder = {};
   // Zeilen: Trenner | • · und Tabulator, mehrere Angaben je Zeile (Tel … Fax …), Anschrift mit Kommas
   let zeilen = text.split('\n').flatMap((z) => z.split(/\s+[|•·▪●]\s+|\t+|\s{4,}/))
-    .flatMap((z) => z.split(/\s+(?=(?:t[eé]l(?:[eé]phone|efon)?|fon|phone|fax|telefax|mobil|mobile|handy|e-?mail|ust\.?-?id)[\s.:-])/i))
+    .flatMap((z) => z.split(/\s+(?=(?:t[eé]l(?:[eé]phone|efon)?|fon|phone|fax|telefax|mobil|mobile|handy|e-?mail|ust\.?-?\s?id\w*\.?|vat\b)[\s.:-])/i))
     .map(sauber).filter(Boolean);
   zeilen = zeilen.flatMap((z) => {
     const teile = z.split(/\s*,\s*/);
     return teile.length > 1 && teile.some((t) => PLZ_ORT.test(t)) ? teile : [z];
   }).filter((z) => !GRUSS.test(z));
+  // Texterkennung: Symbole vor Angaben (Telefon-/Brief-Icon als „@“, „®“, „&“ gelesen) und leere Reste entfernen
+  zeilen = zeilen.map((z) => sauber(z.replace(/^(?:[^\p{L}\p{N}+(]+|[^\p{L}\p{N}\s]\s+|[a-z]\s+(?=\+?\d[\d\s()\/.-]{6,}$))+/u, ''))).filter((z) => /[\p{L}\p{N}]/u.test(z));
+  // Überschriften (Unternehmen, Hausanschrift …) entfernen; die Zeile nach „Unternehmen“/„Firma“ ist der Firmenname
+  let nachFirma = false;
+  let iHinweis = -1;
+  const ohneKopf: string[] = [];
+  for (const z of zeilen) {
+    if (KOPF_FIRMA.test(z)) { nachFirma = true; continue; }
+    if (KOPF.test(z)) continue;
+    if (nachFirma && iHinweis < 0 && !FUSS.test(z) && !/@|^\+?[\d\s()\/.-]{7,}$/.test(z) && !/^(tc\s?id|ust|vat|uid|tel|fax|mobil)/i.test(z)) iHinweis = ohneKopf.length;
+    ohneKopf.push(z);
+  }
+  zeilen = ohneKopf;
   // „Ansprechpartner: Frau Dr. Probe“, „z. Hd. …“, „t.a.v. …“: Beschriftung entfernen, Zeile als Person vormerken
   const AN = /^(?:ihre?\s+)?(?:ansprechpartner(?:in)?|kontaktperson|kontakt|contact|z\.\s?hd\.?|zu\s+h[äa]nden(?:\s+von)?|t\.\s?a\.\s?v\.|attn\.?|att\.|c\/o)\s*[:.]?\s+(?=\S)/i;
   const anPerson = new Set<number>();
@@ -162,6 +182,8 @@ function frei(text: string): Erkennung {
 
   // 1. E-Mail, beschriftete Angaben, USt-IdNr.
   zeilen.forEach((z, i) => {
+    // Texterkennung verliert gelegentlich den Punkt vor der Endung („name@firma com“)
+    z = zeilen[i] = z.replace(/([\w.+-]+@[\w-]+(?:\.[\w-]+)*) (com|de|net|org|eu|info|biz|at|ch|fr|nl|be|lu|pl|it|es|cz|bg|ro|hu|dk)$/i, '$1.$2');
     const mail = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.exec(z);
     if (mail) {
       f.email ??= mail[0];
@@ -192,8 +214,8 @@ function frei(text: string): Erkennung {
   let iPlz = -1;
   zeilen.forEach((z, i) => {
     if (!frei[i]) return;
-    const l = LAND_NAME[z.toLowerCase()];
-    if (l) { f.land ??= l; nimm(i); return; }
+    const l = LAND_NAME[z.toLowerCase()] ?? (/^[A-Z]{2}$/.test(z) ? LAND_KURZ[z] : undefined);
+    if (l) { if (/^[A-Z]{2}$/.test(z)) f.land = l; else f.land ??= l; nimm(i); return; }
     const m = PLZ_ORT.exec(z);
     if (m && iPlz < 0 && !STRASSE.test(m[3].split(' ')[0] + ' ')) {
       iPlz = i;
@@ -210,7 +232,9 @@ function frei(text: string): Erkennung {
   });
 
   // 3. Straße: die Zeile vor PLZ/Ort, sonst eine Zeile, die wie eine Straße aussieht
-  let iStr = iPlz > 0 && frei[iPlz - 1] && !FIRMA.test(zeilen[iPlz - 1]) && (/\d/.test(zeilen[iPlz - 1]) || STRASSE.test(zeilen[iPlz - 1])) ? iPlz - 1 : -1;
+  let vor = iPlz - 1;
+  while (vor >= 0 && vor >= iPlz - 2 && !frei[vor]) vor--;
+  let iStr = vor >= 0 && vor >= iPlz - 2 && iPlz >= 0 && frei[vor] && !FIRMA.test(zeilen[vor]) && vor !== iHinweis && (/\d/.test(zeilen[vor]) || STRASSE.test(zeilen[vor])) ? vor : -1;
   if (iStr < 0) iStr = zeilen.findIndex((z, i) => frei[i] && STRASSE.test(z) && /\d/.test(z) && !FIRMA.test(z) && !FUSS.test(z));
   if (iStr >= 0) { Object.assign(f, strasseTeilen(zeilen[iStr])); nimm(iStr); }
 
@@ -218,8 +242,10 @@ function frei(text: string): Erkennung {
   const rest = (i: number) => frei[i] && !FUSS.test(zeilen[i]);
   const firmaOk = (i: number) => rest(i) && !anPerson.has(i);
   // 5. Firma: Zeile mit Rechtsform, sonst mit typischem Firmenwort
+  // Firma: Zeile mit Rechtsform, sonst die Zeile nach der Überschrift „Unternehmen“/„Firma“, sonst ein typisches Firmenwort
   let iFirma = zeilen.findIndex((z, i) => firmaOk(i) && FIRMA.test(z) && !POSITION.test(z.replace(FIRMA, '')));
   if (iFirma < 0) iFirma = zeilen.findIndex((z, i) => firmaOk(i) && FIRMA.test(z));
+  if (iFirma < 0 && iHinweis >= 0 && firmaOk(iHinweis)) iFirma = iHinweis;
   if (iFirma < 0) iFirma = zeilen.findIndex((z, i) => firmaOk(i) && FIRMA_WORT.test(z) && !POSITION.test(z) && !/\d{3}/.test(z));
   if (iFirma >= 0) { f.kundenname = zeilen[iFirma]; nimm(iFirma); }
 
