@@ -181,12 +181,16 @@ test('Meine Mitgliedschaft: Beitrag wechseln und Jugendtraining selbst abschlie�
   const [n] = await sql`select notiz, erstellt_von from tco.mgnotiz where adrnr = '0000000206'`;
   assert.equal(n.erstellt_von, 'Portal');
   assert.match(n.notiz, /Admin über „Meine Mitgliedschaft“/);
-  // dieselbe Einheit nicht doppelt, die zweite Einheit schon – danach ist Schluss (höchstens zwei)
-  assert.equal((await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '90' })).status, 400);
+  // keine Obergrenze: dieselbe Einheit ein zweites Mal, eine weitere Einheit – und danach ist immer noch alles buchbar
+  r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '90' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '91' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await vertraege('0000000206')).map((x) => x.art), ['3', '90', '90', '91']);
   r = await call('GET', S);
-  assert.match(r.body.personen[1].trainingHinweis, /bereits 2 Trainingseinheiten/);
+  assert.equal(r.body.personen[1].trainingHinweis, null);
+  assert.equal(r.body.personen[1].trainingLaufend, 3);
+  assert.deepEqual(r.body.personen[1].training.map((x: any) => x.art).sort(), ['90', '91']);
 
   // Beitragswechsel zum nächsten Halbjahr
   const ab = r.body.ab as string;
