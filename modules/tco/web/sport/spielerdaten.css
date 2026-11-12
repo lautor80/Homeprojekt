@@ -11,3 +11,8 @@
 .portal-sd__mehr { margin-top: 0.75rem; }
 .portal-sd__mehr summary { cursor: pointer; font-weight: 600; padding: 0.25rem 0; }
 .portal-sd__mehr .portal-sd__rahmen { margin-top: 0.4rem; }
+
+/* manuelle Zuordnung und Buchstaben-Baum */
+.portal-sd__zuordnen { max-width: 26rem; width: 100%; font: inherit; padding: 0.25rem; border: 1px solid var(--sapField_BorderColor, #89919a); border-radius: 0.25rem; background: var(--sapField_Background, #fff); color: var(--sapTextColor); }
+.portal-sd__buchstabe { margin: 0.25rem 0 0.25rem 1rem; }
+.portal-sd__buchstabe > summary { cursor: pointer; padding: 0.2rem 0; font-weight: normal; }
