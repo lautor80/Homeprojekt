@@ -1132,3 +1132,30 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   await sql`delete from tco.bookings where bid = '9770000003' or (status = '3' and kunde = 'BERT SPIELER')`;
   await sql`delete from tco.abo_saison`;
 });
+
+test('Arbeitsvorrat Kassenwart: Upload mit Folgeaktion „Überweisung an Einreicher“ – Gruppe mit Dokumenten, erledigen', async () => {
+  const { withChange } = await import('../src/db.js');
+  const { uploadMerken, istUeberweisungEinreicher } = await import('../../modules/tco/server/upload/logik.js');
+  assert.deepEqual([istUeberweisungEinreicher('Überweisung an Einreicher'), istUeberweisungEinreicher('Bezahlen')], [true, false]);
+  await withChange({ userId: null, username: 'test', action: 'UPLOAD' }, async (tx) => {
+    await uploadMerken(tx, { dok_id: 4711, titel: 'Bälle Sport Müller', datei: 'baelle.pdf', folgeaktion: 'Überweisung an Einreicher', einreicher: 'Anna Spielerin' });
+    await uploadMerken(tx, { dok_id: null, titel: '', datei: 'netz.pdf', folgeaktion: 'Überweisung an Einreicher', einreicher: 'Bert Spieler' });
+    await uploadMerken(tx, { dok_id: 4712, titel: 'Stromrechnung', datei: 'strom.pdf', folgeaktion: 'Bezahlen', einreicher: 'Bert Spieler' });
+    await uploadMerken(tx, { dok_id: 4713, titel: 'Ablage', datei: 'x.pdf', folgeaktion: '', einreicher: 'Bert Spieler' });
+  });
+  const A = '/api/m/tco/dashboard/arbeitsvorrat';
+  let r = await admin('GET', A);
+  const g = r.body.find((a: any) => a.key === 'UPLOAD_UEBERWEISUNG');
+  assert.equal(g.bereich, 'Kassenwart');
+  assert.match(g.titel, /^2 neue Dokumente: Überweisung an Einreicher/);
+  assert.deepEqual(g.kinder.map((k: any) => k.titel), ['Überweisung an Anna Spielerin: Bälle Sport Müller', 'Überweisung an Bert Spieler: netz.pdf']);
+  assert.match(g.kinder[0].text, /Dokument 4711/);
+  assert.equal((await anna('POST', `${A}/upload-erledigt`, g.kinder[0].erledigen.body)).status, 403);
+  assert.equal((await admin('POST', `${A}/upload-erledigt`, g.kinder[0].erledigen.body)).status, 200);
+  r = await admin('GET', A);
+  assert.match(r.body.find((a: any) => a.key === 'UPLOAD_UEBERWEISUNG').titel, /^1 neues Dokument/);
+  assert.equal((await admin('POST', `${A}/upload-erledigt`, {})).status, 200);
+  assert.ok(!(await admin('GET', A)).body.some((a: any) => a.key === 'UPLOAD_UEBERWEISUNG'));
+  assert.equal((await sql`select count(*)::int as n from tco.upload_folge where erledigt_am is null`)[0].n, 1, 'andere Folgeaktionen bleiben unberührt');
+  await sql`delete from tco.upload_folge`;
+});
