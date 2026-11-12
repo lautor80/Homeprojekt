@@ -263,3 +263,14 @@
 .portal-abo__karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; padding: 0.75rem; }
 .portal-abo__karte { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapList_Background, #fff); }
 .portal-abo__karte-aktionen { margin-top: auto; padding-top: 0.5rem; }
+
+/* Dunkelmodus (#11): In der Zeitachse von „Platz buchen“ stand die helle Uhrzeit auf den hellen Pastellflächen der Preiszonen.
+   Im dunklen Design erhalten die Zonen gedeckte, dunkle Flächen mit hellen Rändern (gleiche Farbtöne), die Uhrzeit bleibt hell.
+   Im hellen Modus bleibt alles unverändert. */
+[data-portal-theme='dunkel'] :is(.portal-pb__zeiten, .portal-pb__legende--preise) .portal-hpw__f0 { --hf-bg: #1d3a26; --hf: #56b870; }
+[data-portal-theme='dunkel'] :is(.portal-pb__zeiten, .portal-pb__legende--preise) .portal-hpw__f1 { --hf-bg: #45290c; --hf: #e8913a; }
+[data-portal-theme='dunkel'] :is(.portal-pb__zeiten, .portal-pb__legende--preise) .portal-hpw__f2 { --hf-bg: #182f52; --hf: #6aa5ff; }
+[data-portal-theme='dunkel'] :is(.portal-pb__zeiten, .portal-pb__legende--preise) .portal-hpw__f3 { --hf-bg: #33224a; --hf: #b78cec; }
+[data-portal-theme='dunkel'] :is(.portal-pb__zeiten, .portal-pb__legende--preise) .portal-hpw__f4 { --hf-bg: #461b27; --hf: #f07592; }
+[data-portal-theme='dunkel'] .portal-pb__zeiten--preise .portal-pb__stunde { color: #f5f6f7; text-shadow: 0 0 2px rgba(0, 0, 0, 0.6); }
+[data-portal-theme='dunkel'] .portal-pb__zone { border-bottom-color: var(--sapGroup_ContentBackground, #1d232a); }
