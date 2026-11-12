@@ -157,6 +157,8 @@ export interface Belegung {
   angelegt?: { am: string | null; um: string | null; von: string | null; benutzer: string | null; geaendert: string | null };
   /** gerade von einer anderen Sitzung ausgewählt (Sperre PLATZZEIT, noch nicht gebucht) */
   reserviert?: boolean;
+  /** für ein Abo reserviert (#11): Bestätigung/Angebot läuft, das Abo ist noch nicht freigegeben – keine Einzelbuchung möglich */
+  abo?: boolean;
   /** feste Belegung (Jugendtraining, Sperrzeit, Veranstaltung) – für alle mit Bezeichnung sichtbar */
   fest?: { id: number; art: BelegungArt; bezeichnung: string; hinweis: string | null; einmalig?: boolean; portal?: boolean };
 }
@@ -217,6 +219,25 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
       bid: '', datum: r.datum, von: minuten(r.von), bis: minuten(r.bis) || 1440, kunde: r.benutzer, status: 'R', platz: p.name, platzId: p.id,
       benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true,
     });
+  }
+  // Abo-Reservierung (#11): Stunden, für die in der laufenden Abo-Saison eine Bestätigung aussteht bzw. ein Angebot läuft oder angenommen ist
+  // (noch nicht freigegeben), sind für Einzelbuchungen gesperrt – ab heute bzw. Saisonbeginn bis Saisonende. Bestehende Buchungen bleiben.
+  const heute = jetzt().datum;
+  const wuensche = await db`
+    select w.platz_id, w.wochentag, w.von, w.bis, w.name, s.von::text as s_von, s.bis::text as s_bis
+      from tco.abo_wunsch w join tco.abo_saison s on s.id = w.saison_id and s.aktiv
+     where w.status in ('OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN') and w.platz_id = any(${plaetze.map((p) => p.id)}::int[])
+       and s.bis >= ${von}::date and s.von <= ${bis}::date`;
+  for (const w of wuensche) {
+    const p = plaetze.find((x) => x.id === w.platz_id)!;
+    const start = [von, w.s_von as string, heute].sort().pop()!;
+    const ende = bis < w.s_bis ? bis : (w.s_bis as string);
+    for (let d = start; d <= ende; d = addTage(d, 1)) {
+      if (isoWochentag(d) !== w.wochentag) continue;
+      if (out.some((x) => x.platzId === p.id && x.datum === d && x.von < w.bis && x.bis > w.von)) continue;
+      out.push({ bid: '', datum: d, von: w.von, bis: w.bis, kunde: w.name, status: 'R', platz: p.name, platzId: p.id,
+        benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true, abo: true });
+    }
   }
   return out;
 }
@@ -321,6 +342,7 @@ async function konflikt(tx: Db, s: Slot, ohneBid?: string): Promise<string | nul
   const b = (await belegungLesen(tx, [s.platz], s.datum, s.datum))
     .find((x) => (x.reserviert || x.bid !== ohneBid) && x.von < s.bis && x.bis > s.von);
   if (b?.fest) return `${s.platz.name} ist am ${dat(s.datum)} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr durch „${b.fest.bezeichnung}“ belegt.`;
+  if (b?.abo) return `${s.platz.name} ist am ${dat(s.datum)} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr für ein Abo reserviert. Bitte eine andere Zeit wählen.`;
   if (b?.reserviert) return `${s.platz.name} am ${dat(s.datum)} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht. Bitte eine andere Zeit wählen.`;
   return b ? `${s.platz.name} ist am ${dat(s.datum)} von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.` : null;
 }
@@ -408,7 +430,7 @@ export interface TagPlatz {
   dauer_min: number; dauer_max: number; vorlauf_min: number; vorlauf_max: number; storno_frist: number; abrechnen: boolean;
   geschlossen: string | null;
   belegt: {
-    von: string; bis: string; eigen: boolean; reserviert?: boolean;
+    von: string; bis: string; eigen: boolean; reserviert?: boolean; abo?: boolean;
     /** id/einmalig/portal nur in der Platzverwaltung: einzelne Termine ändern, alle kopieren (#11) */
     fest?: { art: BelegungArt; bezeichnung: string; hinweis: string | null; id?: number; einmalig?: boolean; portal?: boolean };
     bid?: string; art?: 'Einzel' | 'Abo'; betrag?: number | null; aenderbar?: boolean; kunde?: string; text?: string | null;
@@ -441,7 +463,7 @@ export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitz
         return { ...zeit, eigen: false, fest: sicht === 'admin' ? { ...f, id: b.fest.id, einmalig: !!b.fest.einmalig, portal: !!b.fest.portal } : f };
       }
       // gerade in Auswahl bei jemand anderem: normale Nutzer ohne Namen
-      if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true };
+      if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, abo: b.abo, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true, abo: b.abo };
       const art = b.status === '3' ? 'Abo' as const : 'Einzel' as const;
       if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text, portal: b.quelle === QUELLE, abgerechnet: b.assigned === 'Y', angelegt: b.angelegt };
       // fremde Buchung: nur Zeitraum – kein Name, keine Nummer, kein Text
