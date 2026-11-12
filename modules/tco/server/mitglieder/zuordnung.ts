@@ -2,7 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
 import { benutzerZuordnen } from '../platz/logik.js';
-import { rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
+import { buchungsrechtSichern, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
  * Zuordnung vorhandener Benutzer zu Mitglied und EP3-Kunde (Administration → Benutzer).
@@ -52,6 +52,7 @@ export async function zuordnungSetzen(tx: Db, benutzerId: string, z: { adrnr?: s
       await tx`delete from core.user_roles where user_id = ${benutzerId} and role_id = ${ROLLE}`;
       const r = await tx`insert into core.user_roles (user_id, role_id) values (${benutzerId}, ${ROLLE_MITGLIED}) on conflict do nothing`;
       if (r.count) texte.push('Rolle Mitglied ergänzt');
+      if (await buchungsrechtSichern(tx, benutzerId)) texte.push('Rolle Hallennutzer für Hallenbuchungen ergänzt');
     }
   }
   if (z.zuid !== undefined) {

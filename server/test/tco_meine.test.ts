@@ -387,3 +387,20 @@ test('Benutzer löschen: nur ohne Buchungen, nicht sich selbst; Zuordnung zum EP
   assert.equal((await admin('DELETE', `/api/admin/users/${ad.id}`, {})).status, 400);
   assert.equal((await admin('DELETE', '/api/admin/users/00000000-0000-0000-0000-000000000000', {})).status, 404);
 });
+
+test('Mitglieder-Benutzer haben immer das Recht für Hallenbuchungen', async () => {
+  const rollen = async (adrnr: string) => (await sql`select ur.role_id from tco.mitgliedera a join core.user_roles ur on ur.user_id = a.benutzer_id where a.adrnr = ${adrnr} order by 1`).map((x) => x.role_id);
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email, eintritt, mitglnrn) values
+    ('0000000591', 'Hanna', 'Halle', 'hanna.halle@example.org', '2024-01-01', '591'), ('0000000592', 'Hugo', 'Halle', 'hugo.halle@example.org', '2024-01-01', '592')`;
+  // Standard: die Rolle Mitglied enthält „Platz buchen“ – keine weitere Rolle nötig
+  let r = await admin('POST', `${M}/benutzer-einzeln`, { art: 'MITGLIED', schluessel: '0000000591', mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await rollen('0000000591'), ['MITGLIED']);
+  // Recht aus der Rolle Mitglied entfernt: neue Mitglieder-Benutzer bekommen zusätzlich die Rolle Hallennutzer
+  await sql`delete from core.role_permissions where role_id = 'MITGLIED' and permission = 'tco.platzbuchung:edit'`;
+  r = await admin('POST', `${M}/benutzer-einzeln`, { art: 'MITGLIED', schluessel: '0000000592', mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await rollen('0000000592'), ['HALLENNUTZER', 'MITGLIED']);
+  assert.ok((await sql`select 1 from core.role_permissions where role_id = 'HALLENNUTZER' and permission = 'tco.platzbuchung:edit'`).length === 1);
+  await sql`insert into core.role_permissions (role_id, permission) values ('MITGLIED', 'tco.platzbuchung:edit') on conflict do nothing`;
+});
