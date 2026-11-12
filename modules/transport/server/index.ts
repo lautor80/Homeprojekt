@@ -18,6 +18,7 @@ import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
 import { dokumentAblegen, paperlessFirma } from './dokumente.js';
 import { kontaktRoutes } from './kontakte.js';
+import { kontaktErkennen } from './kontakterkennung.js';
 import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
 
@@ -480,6 +481,12 @@ async function routes(app: FastifyInstance) {
     const a = await adresseLesen(nr);
     if (!a) throw new BusinessError('Kontakt nicht gefunden.', 404);
     return a;
+  });
+
+  /** #158: eingefügten/abgelegten Text analysieren und Feldvorschläge liefern – speichert nichts */
+  app.post('/adressen/erkennen', { preHandler: requireAuth(P.kontakte), bodyLimit: 200 * 1024 }, async (req) => {
+    const { text } = z.object({ text: z.string().min(1, 'Bitte Text einfügen.').max(100_000) }).parse(req.body);
+    return kontaktErkennen(text);
   });
 
   app.post('/adressen', { preHandler: requireAuth(P.kontakte) }, async (req, reply) => {
