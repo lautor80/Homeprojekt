@@ -3,7 +3,8 @@ import { Button, CheckBox, MessageStrip, ObjectStatus, Text, Title } from '@ui5/
 import { api } from '@core/api';
 import { FormGrid, TextField } from '@core/components/FormFields';
 import { TCO, dat, eur } from '../util';
-import type { Vertrag } from './typen';
+import type { Person, Vertrag } from './typen';
+import { VertragsBaum } from './VertragsBaum';
 import { Auswahlfeld, Dlg } from './Dialoge';
 import './vorgang.css';
 
@@ -26,7 +27,11 @@ interface Unterlage { pdf: string; dateiname: string; titel: string; gesendet: b
 interface Ergebnis { text: string; schritte: string[]; unterlage: Unterlage | null }
 export type KVertrag = Vertrag & { kuendbar: boolean; endeBei: string; /** eigener Mitgliedsbeitrag: Kündigung = Austritt */ mitgliedsbeitrag?: boolean };
 /** Angaben für die Kündigung aus der Seite „Meine Mitgliedschaft“ */
-export interface KuendigungDaten { gekuendigt: boolean; ende: string; eigene: KVertrag[]; kuendbar: KVertrag[] }
+export interface KuendigungDaten {
+  gekuendigt: boolean; ende: string; eigene: KVertrag[]; kuendbar: KVertrag[];
+  /** für den Baum wie in „Verträge“: verknüpfte Personen und die eigene Adressnummer */
+  personen: Person[]; ich: string; ichText: string;
+}
 
 const SCHRITTE = ['Angaben', 'Prüfen', 'Ergebnis'];
 
@@ -58,6 +63,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
   useEffect(() => { setArt(arten.length === 1 ? arten[0].art : ''); }, [adrnr, k]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const kkey = (v: KVertrag) => `${v.adrnr}|${v.vertragnr}`;
+  const mitVertrag = (adrnr: string) => kuendigung.kuendbar.some((v) => v.adrnr === adrnr);
   const gewaehlte = kuendigung.kuendbar.filter((v) => wahl.has(kkey(v)));
   // eigener Mitgliedsbeitrag gewählt ⇒ die Mitgliedschaft endet (Austritt), alle eigenen Verträge enden mit
   const austritt = !kuendigung.gekuendigt && gewaehlte.some((v) => v.eigen && v.mitgliedsbeitrag);
@@ -108,7 +114,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     : null;
 
   return (
-    <Dlg titel={MEIN_TITEL[typ]} breite="min(760px, 96vw)" onClose={() => onClose(schritt === 2)} fuss={fuss}>
+    <Dlg titel={MEIN_TITEL[typ]} breite={typ === 'KUENDIGUNG' ? 'min(980px, 96vw)' : 'min(760px, 96vw)'} onClose={() => onClose(schritt === 2)} fuss={fuss}>
       <ol className="portal-vg__schritte" aria-label="Schritte">
         {SCHRITTE.map((s, i) => (
           <li key={s} className={i === schritt ? 'aktiv' : i < schritt ? 'fertig' : ''} aria-current={i === schritt ? 'step' : undefined}>
@@ -154,13 +160,13 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
           {kuendigung.kuendbar.length === 0
             ? <MessageStrip design="Information" hideCloseButton>Es gibt keinen laufenden Vertrag, der noch gekündigt werden kann.</MessageStrip>
             : (
-              <div className="portal-vg__wahl" role="group" aria-label="Verträge">
-                {kuendigung.kuendbar.map((v) => (
-                  <CheckBox key={kkey(v)} wrappingType="Normal" checked={wahl.has(kkey(v))}
-                            text={`${v.artname || v.art}${v.eigen ? '' : ` – ${v.person}`} · ${eur(v.betrag)} ${v.sollstellung} · endet zum ${dat(v.endeBei)}`}
-                            onChange={(e) => { const n = new Set(wahl); if (e.target.checked) n.add(kkey(v)); else n.delete(kkey(v)); setWahl(n); }} />
-                ))}
-              </div>
+              <VertragsBaum kompakt endeTitel="Vertragsende" ich={kuendigung.ich} ichText={kuendigung.ichText} vertraege={kuendigung.kuendbar}
+                            personen={kuendigung.personen.filter((p) => mitVertrag(p.adrnr) || kuendigung.personen.some((k) => k.zahlt_ueber === p.adrnr && k.adrnr !== p.adrnr && mitVertrag(k.adrnr)))}
+                            endeZelle={(v) => <Text>{dat(v.endeBei)}</Text>}
+                            vertragVorne={(v) => (
+                              <CheckBox checked={wahl.has(kkey(v))} accessibleName={`${v.artname || v.art} ${v.person} kündigen`}
+                                        onChange={(e) => { const n = new Set(wahl); if (e.target.checked) n.add(kkey(v)); else n.delete(kkey(v)); setWahl(n); }} />
+                            )} />
             )}
           {austritt && (
             <MessageStrip design="Critical" hideCloseButton style={{ margin: '0.5rem 0' }}>

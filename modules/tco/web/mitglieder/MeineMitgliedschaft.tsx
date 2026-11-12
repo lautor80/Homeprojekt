@@ -208,7 +208,10 @@ export function MeineMitgliedschaft() {
                                   }))} />}
       {vorgang && (
         <MeinVorgangDialog typ={vorgang} gesperrt={gesperrt ? sperre.text : null}
-                           kuendigung={{ gekuendigt: d.gekuendigt, ende: d.kuendigung.mitgliedschaft, eigene, kuendbar: vertraegeBaum.filter((v) => v.kuendbar) }}
+                           kuendigung={{
+                             gekuendigt: d.gekuendigt, ende: d.kuendigung.mitgliedschaft, eigene, kuendbar: vertraegeBaum.filter((v) => v.kuendbar), ich: m.adrnr, ichText: `${m.vorname} ${m.nachname} (ich)`,
+                             personen: d.familie.length ? d.familie : [{ adrnr: m.adrnr, name: `${m.vorname} ${m.nachname}`, mitglnrn: m.mitglnrn, geburtsdatum: m.geburtsdatum, eintritt: m.eintritt, austritt: m.austritt, rolle: 'Mitglied' }],
+                           }}
                            onClose={(geaendert) => { setVorgang(null); if (geaendert) laden(); }} />
       )}
       {pdf && <PdfDialog url={pdf.url} title={pdf.server ? pdf.name : 'Kündigungsbestätigung'} filename={pdf.name} onClose={() => { if (!pdf.server) URL.revokeObjectURL(pdf.url); setPdf(null); }} />}

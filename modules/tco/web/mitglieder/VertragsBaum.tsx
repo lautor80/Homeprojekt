@@ -22,7 +22,13 @@ const status = (v: Vertrag) => (v.laeuft ? (v.vertragende ? 'gekündigt' : 'läu
 
 export function VertragsBaum<V extends Vertrag>({
   personen, vertraege, ich, ichText, onPerson, beginnZelle, endeZelle, zahlerZelle, vertragAktion, personAktion, aktionen, aktionenBreite = 200,
+  vertragVorne, kompakt, endeTitel = 'Ende',
 }: {
+  /** Element vor dem Vertrag (z. B. Kästchen zur Auswahl im Kündigungsdialog) */
+  vertragVorne?: (v: V) => ReactNode;
+  /** Auswahl-Ansicht im Dialog: ohne Leiste, ohne Zahler- und Statusspalte */
+  kompakt?: boolean;
+  endeTitel?: string;
   personen: Person[];
   vertraege: V[];
   /** Adressnummer der Person, deren Seite das ist */
@@ -88,6 +94,7 @@ export function VertragsBaum<V extends Vertrag>({
           const v = z.v;
           return (
             <div className="portal-gr__zelle">
+              {vertragVorne?.(v)}
               <Icon name="document-text" />
               <Text>{v.artname ? `${v.art} – ${v.artname}` : v.art}</Text>
               <span className="portal-muted portal-small">Nr. {v.vertragnr}</span>
@@ -113,7 +120,7 @@ export function VertragsBaum<V extends Vertrag>({
       Cell: ({ row }: Cell) => { const v = (row.original as Zeile<V>).v; return v ? beginnZelle?.(v) ?? dat(v.vertragbegin) : ''; },
     },
     {
-      Header: 'Ende', id: 'ende', width: endeZelle ? 170 : 110,
+      Header: endeTitel, id: 'ende', width: endeZelle ? 170 : 110,
       Cell: ({ row }: Cell) => {
         const v = (row.original as Zeile<V>).v;
         if (!v) return '';
@@ -129,7 +136,7 @@ export function VertragsBaum<V extends Vertrag>({
         return <Text title="Summe der laufenden Verträge">{z.summe === z.eigene ? eur(z.summe) : `${eur(z.summe)} · davon eigene ${eur(z.eigene)}`}</Text>;
       },
     },
-    {
+    ...(kompakt ? [] : [{
       Header: 'Zahler', id: 'zahler', minWidth: 170,
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile<V>;
@@ -146,7 +153,7 @@ export function VertragsBaum<V extends Vertrag>({
         const v = z.v;
         return <ObjectStatus state={v.laeuft ? (v.vertragende ? 'Critical' : 'Positive') : 'None'}>{status(v)}</ObjectStatus>;
       },
-    },
+    }] as AnalyticalTableColumnDefinition[]),
     ...(vertragAktion || personAktion ? [{
       Header: '', id: 'aktionen', width: aktionenBreite, hAlign: 'End' as const,
       Cell: ({ row }: Cell) => {
@@ -160,7 +167,7 @@ export function VertragsBaum<V extends Vertrag>({
 
   return (
     <div className="portal-section">
-      <div className="portal-row" style={{ marginBottom: '0.5rem' }}>
+      <div className="portal-row" style={{ marginBottom: '0.5rem', display: kompakt ? 'none' : undefined }}>
         <Input value={suche} placeholder="Person, Vertrag oder Zahler suchen" showClearIcon style={{ width: 'min(22rem, 100%)' }} onInput={(e) => setSuche(e.target.value)} />
         <CheckBox text="Auch beendete" checked={alle} onChange={(e) => setAlle(e.target.checked)} />
         <span className="portal-muted">
