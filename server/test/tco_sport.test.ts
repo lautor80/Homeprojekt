@@ -196,7 +196,7 @@ test('Ähnliche Namen als Prüffall, verlorene Sonderzeichen, Zuordnung von Hand
   const mitglieder = [m('1', 'Matteo', 'Gebauer', '2013-05-09'), m('2', 'Timo', 'Schön', '2010-01-01'), m('3', 'Lisa', 'Gerber', '1990-08-21'), m('4', 'Karl', 'Unbekannt', '1980-01-01')];
   const personen = [p(2, 'Mateo', 'Gebauer', '2013-04-30', '11311005'), p(3, 'Timo', 'Sch?n', '2010-01-01', '10000001'), p(4, 'Fremd', 'Person', '1970-01-01', '10000002'), p(5, 'Carl', 'Anders', '1980-02-02', '10000003')];
   let r = abgleichen(mitglieder, personen);
-  const t = (adrnr: string) => r.treffer.find((x: any) => x.adrnr === adrnr);
+  const t = (adrnr: string): any => r.treffer.find((x: any) => x.adrnr === adrnr);
   // Matteo/Mateo mit abweichendem Geburtsdatum: Prüffall statt „nur in nuLiga“
   assert.deepEqual([t('1').zeile, t('1').sicher, t('1').art], [2, false, 'PRUEFEN']);
   assert.match(t('1').hinweis, /Ähnlicher Name: Portal „Matteo Gebauer“, nuLiga „Mateo Gebauer“\. Geburtsdatum weicht ab/);
