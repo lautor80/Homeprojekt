@@ -166,3 +166,53 @@ test('Einrichtung, Anmeldung, Rechte und Änderungsbelege', async () => {
   assert.equal((await admin('POST', '/api/auth/logout')).status, 200);
   assert.equal((await admin('GET', '/api/auth/me')).status, 401);
 });
+
+test('Weltenwandler: ohne neue Anmeldung zwischen Benutzern mit der Rolle wechseln', async () => {
+  const admin = client();
+  assert.equal((await admin('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' })).status, 200);
+  const rolle = (await admin('GET', '/api/admin/roles')).body.find((r: any) => r.id === 'WELTENWANDLER');
+  assert.ok(rolle, 'Rolle angelegt');
+  assert.equal(rolle.name, 'Weltenwandler');
+  for (const [username, roles] of [['wandler1', ['WELTENWANDLER', 'LESER']], ['wandler2', ['WELTENWANDLER']], ['normal', ['LESER']], ['chef', ['WELTENWANDLER', 'ADMIN']]] as const) {
+    const r = await admin('POST', '/api/admin/users', { username, displayName: username.toUpperCase(), password: 'start-passwort', roles });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await sql`update core.users set must_change_password = false where username = ${username}`;
+  }
+  const id = async (n: string) => (await sql`select id::text from core.users where username = ${n}`)[0].id as string;
+  const w = client();
+  assert.equal((await w('POST', '/api/auth/login', { username: 'wandler1', password: 'start-passwort' })).status, 200);
+
+  // Auswahl: nur Benutzer mit der Rolle, Administratoren nicht (Sitzung nicht von einem Administrator begonnen)
+  let r = await w('GET', '/api/auth/weltenwandler');
+  assert.equal(r.body.aktiv, true);
+  assert.deepEqual(r.body.benutzer.map((b: any) => b.username).sort(), ['wandler1', 'wandler2']);
+  assert.equal((await w('POST', '/api/auth/weltenwandler', { userId: await id('normal') })).status, 400, 'ohne Rolle');
+  assert.equal((await w('POST', '/api/auth/weltenwandler', { userId: await id('chef') })).status, 400, 'nicht zum Administrator');
+
+  // Wechsel: gleiche Sitzung, anderer Benutzer mit dessen Rechten; Rückweg zum angemeldeten Benutzer
+  r = await w('POST', '/api/auth/weltenwandler', { userId: await id('wandler2') });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await w('GET', '/api/auth/me');
+  assert.equal(r.body.user.username, 'wandler2');
+  assert.equal((await w('GET', '/api/m/beispiel/kontakte')).status, 403, 'Rechte des neuen Benutzers');
+  r = await w('GET', '/api/auth/weltenwandler');
+  assert.ok(r.body.benutzer.find((b: any) => b.username === 'wandler1').ursprung);
+  assert.equal((await w('POST', '/api/auth/weltenwandler', { userId: await id('wandler1') })).status, 200);
+  assert.equal((await w('GET', '/api/auth/me')).body.user.username, 'wandler1');
+  assert.equal((await w('GET', '/api/m/beispiel/kontakte')).status, 200);
+
+  // ohne Rolle: kein Wechsel
+  const n = client();
+  assert.equal((await n('POST', '/api/auth/login', { username: 'normal', password: 'start-passwort' })).status, 200);
+  assert.deepEqual((await n('GET', '/api/auth/weltenwandler')).body, { aktiv: false, benutzer: [] });
+  assert.equal((await n('POST', '/api/auth/weltenwandler', { userId: await id('wandler1') })).status, 403);
+
+  // von einem Administrator begonnen: auch zum Administrator zurück bzw. hin
+  const c = client();
+  assert.equal((await c('POST', '/api/auth/login', { username: 'chef', password: 'start-passwort' })).status, 200);
+  assert.equal((await c('POST', '/api/auth/weltenwandler', { userId: await id('wandler2') })).status, 200);
+  assert.equal((await c('GET', '/api/auth/me')).body.user.username, 'wandler2');
+  assert.ok((await c('GET', '/api/auth/weltenwandler')).body.benutzer.some((b: any) => b.username === 'chef'));
+  assert.equal((await c('POST', '/api/auth/weltenwandler', { userId: await id('chef') })).status, 200);
+  assert.equal((await c('GET', '/api/auth/me')).body.user.username, 'chef');
+});
