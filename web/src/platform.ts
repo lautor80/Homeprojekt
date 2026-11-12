@@ -73,6 +73,11 @@ export interface WebModule {
    * auch wenn niemand angemeldet ist; nur für Module, die der Server als aktiv meldet.
    */
   oeffentlich?: { pfad: string; component: ComponentType<OeffentlichProps> }[];
+  /**
+   * Pfade, die nach der Anmeldung erhalten bleiben (sonst landet man immer auf der Startseite) – z. B. Links aus
+   * QR-Codes an der Anlage (/tco/schaden?anlage=…). Vergleich mit dem Pfad ohne Query-String.
+   */
+  nachAnmeldung?: string[];
 }
 
 export interface OeffentlichProps { orgName: string; logo?: string; onFertig: () => void }

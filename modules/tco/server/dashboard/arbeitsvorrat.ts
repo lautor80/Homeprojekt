@@ -8,6 +8,7 @@
  *                 neue Mitgliedsanträge und Vertragswechsel – je Antrag
  *  - Vorstand:    neue Registrierungen und deren Freigabe
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
+ *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung
  *  - Clubhaus, Administration: wie bisher
  */
 import type { FastifyRequest } from 'fastify';
@@ -15,6 +16,7 @@ import { can } from '../../../../server/src/auth.js';
 import type { Db } from '../verein.js';
 import { monatsname } from '../jt/logik.js';
 import { ADRNR_ZU_BENUTZER, HALLENWART } from '../platz/schluessel.js';
+import { aufgaben as ihAufgaben, P_IH } from '../instandhaltung/logik.js';
 
 export interface Aufgabe {
   key: string;
@@ -38,6 +40,9 @@ const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2,
 
 export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgabe[]> {
   const out: Aufgabe[] = [];
+
+  // Instandhaltung (#205): jede offene Schadensmeldung sofort und einzeln – Sicherheitsrisiko rot, unbespielbar orange
+  if (can(req, P_IH.display)) out.push(...await ihAufgaben(db));
 
   // Kassenwart: vom Trainer freigegebene, noch nicht (vollständig) bezahlte Zeitnachweise
   if (can(req, 'tco.jt:display')) {

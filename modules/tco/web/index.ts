@@ -40,6 +40,8 @@ import { PlatzBuchen } from './platz/PlatzBuchen';
 import { Platzverwaltung } from './platz/Platzverwaltung';
 import { Serienbuchung } from './platz/Serienbuchung';
 import { Dokumenteneingang } from './eingang/Dokumenteneingang';
+import { SchadenMelden } from './instandhaltung/SchadenMelden';
+import { Instandhaltung } from './instandhaltung/Instandhaltung';
 import { api } from '@core/api';
 import type { TileKpi } from '@core/platform';
 import { H, TCO, eur } from './util';
@@ -53,6 +55,11 @@ const kpiEingang = async (): Promise<TileKpi> => {
   const l = await api.get<{ offen: { pruefen: number; fehler: number } }>(`${TCO}/eingang/vorgaenge?status=fehler`);
   const n = l.offen.pruefen + l.offen.fehler;
   return { value: String(n), label: 'zu prüfen', state: l.offen.fehler ? 'Negative' : n ? 'Critical' : 'Positive' };
+};
+const kpiSchaden = async (): Promise<TileKpi> => {
+  const l = await api.get<{ zeilen: { auswirkung: string }[] }>(`${TCO}/instandhaltung?filter=OFFEN`);
+  const sicher = l.zeilen.some((z) => z.auswirkung === 'SICHERHEIT');
+  return { value: String(l.zeilen.length), label: 'offen', state: sicher ? 'Negative' : l.zeilen.length ? 'Critical' : 'Positive' };
 };
 const kpiHalle = async (): Promise<TileKpi> => {
   const l = await api.get<{ personen: unknown[]; gesamtOffen: number }>(`${H}/personen?status=1,2,3,5&buchungen=1`);
@@ -133,6 +140,13 @@ const mod: WebModule = {
           ],
         },
         {
+          text: 'Instandhaltung', icon: 'technical-object',
+          children: [
+            { text: 'Schaden melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
+            { text: 'Instandhaltung', icon: 'technical-object', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display' },
+          ],
+        },
+        {
           text: 'Finanzen', icon: 'loan',
           children: [
             { text: 'Sollstellungen', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
@@ -188,7 +202,11 @@ const mod: WebModule = {
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
+    { path: '/tco/schaden', component: SchadenMelden, permission: 'tco.schaden:melden' },
+    { path: '/tco/instandhaltung', component: Instandhaltung, permission: 'tco.instandhaltung:display' },
   ],
+  // QR-Code an der Anlage: nach der Anmeldung direkt zum vorbelegten Formular
+  nachAnmeldung: ['/tco/schaden'],
   oeffentlich: [
     { pfad: '/beitritt', component: Beitritt },
     { pfad: '/schnuppertraining', component: Schnuppertraining },
@@ -196,7 +214,7 @@ const mod: WebModule = {
     { pfad: '/einladung', component: Einladung },
   ],
   tiles: [
-    { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
+    { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
     { text: 'Stammdaten', subtitle: 'Verein, Anbindungen, SAP-Übernahme', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
     { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
@@ -221,6 +239,8 @@ const mod: WebModule = {
     { text: 'Mein Verzehr', subtitle: 'Verzehr im Clubhaus auf das eigene Konto anschreiben', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
     { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
     { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'sales-order', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
+    { text: 'Schaden melden', subtitle: 'Etwas kaputt auf der Anlage? Mit Foto melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
+    { text: 'Instandhaltung', subtitle: 'Schadensmeldungen bearbeiten, Plätze sperren', icon: 'technical-object', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display', kpi: kpiSchaden },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
     { text: 'FI-Belege', subtitle: 'Bankimport, Belege, Storno', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
     { text: 'Beitragsforecast', subtitle: 'Hochrechnung der Beitragseinnahmen', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },

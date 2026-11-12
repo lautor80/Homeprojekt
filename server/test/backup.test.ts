@@ -282,5 +282,5 @@ test('Rücksicherung eines Bereichs: Verweise auf inzwischen gelöschte Benutzer
   assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '88'`)[0].benutzer_id, null);
   assert.equal(Number((await sql`select count(*)::int as n from tco.platzbelegungen`)[0].n), 1);
   // Systemrollen sind nach der Rücksicherung vorhanden
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.verzehr:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.schaden:melden', 'tco.verzehr:edit']);
 });

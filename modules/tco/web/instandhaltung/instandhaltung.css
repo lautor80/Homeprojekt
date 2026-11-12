@@ -1,0 +1,7 @@
+/* Instandhaltung (#205): Stammdaten-Tabellen */
+.portal-ih__rahmen { overflow-x: auto; }
+.portal-ih__tabelle { border-collapse: collapse; width: 100%; }
+.portal-ih__tabelle th, .portal-ih__tabelle td { padding: 0.375rem 0.625rem; text-align: left; vertical-align: middle; }
+.portal-ih__tabelle th { background: var(--sapList_HeaderBackground, #f5f6f7); white-space: nowrap; }
+.portal-ih__tabelle td { border-top: 1px solid var(--sapList_BorderColor); }
+.portal-ih__tabelle tr.portal-ih__inaktiv td { color: var(--sapContent_LabelColor); }

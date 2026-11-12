@@ -154,6 +154,23 @@
       ]
     },
     {
+      "id": "P9",
+      "ebene": 2,
+      "name": "Schäden melden und beheben",
+      "bereich": "Instandhaltung",
+      "ausloeser": "Mitglied entdeckt einen Schaden (QR-Code an der Anlage)",
+      "ergebnis": "Schaden behoben, Platz wieder freigegeben, Melder informiert",
+      "schritte": [
+        { "text": "Schaden mit Ort, Kategorie, Auswirkung und Fotos melden", "akteur": "MG", "system": "portal", "route": "POST /schaden", "recht": "tco.schaden:melden", "app": "/tco/schaden" },
+        { "text": "Zuständigen (bei Sicherheitsrisiko auch Vorstand) per E-Mail informieren", "akteur": "SYS", "system": "mailserver", "route": "POST /schaden", "recht": "tco.schaden:melden" },
+        { "text": "Neue Meldung im Arbeitsvorrat der Vereinsübersicht", "akteur": "VS", "system": "portal", "route": "GET /dashboard/arbeitsvorrat", "recht": "tco.instandhaltung:display", "app": "/tco/uebersicht" },
+        { "text": "Platz in der Platzbuchung sperren", "akteur": "HW", "system": "portal", "route": "POST /instandhaltung/:id/sperre", "recht": "tco.instandhaltung:edit", "app": "/tco/instandhaltung" },
+        { "text": "Bearbeiten: Status, Zuständiger, Kosten, Fotos", "akteur": "HW", "system": "portal", "route": "PUT /instandhaltung/:id", "recht": "tco.instandhaltung:edit", "app": "/tco/instandhaltung" },
+        { "text": "Sperre aufheben, Melder bei Erledigung per E-Mail informieren", "akteur": "HW", "system": "portal", "route": "DELETE /instandhaltung/:id/sperre", "recht": "tco.instandhaltung:edit" },
+        { "text": "Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen", "akteur": "SYS", "system": "mailserver" }
+      ]
+    },
+    {
       "id": "D1",
       "ebene": 3,
       "teil_von": "P1",
