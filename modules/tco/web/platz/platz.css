@@ -257,3 +257,9 @@
 .portal-abo__legende span { display: inline-flex; align-items: center; gap: 0.35rem; }
 .portal-abo__legende i { width: 0.8rem; height: 0.8rem; border-radius: 0.2rem; border: 1px solid var(--sapList_BorderColor); display: inline-block; }
 .portal-abo__detail { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border-top: 1px solid var(--sapList_BorderColor); }
+
+.portal-abo__f--gesperrt { background: repeating-linear-gradient(135deg, var(--sapNeutralBackground, #f4f4f4) 0 6px, transparent 6px 12px); color: var(--sapContent_LabelColor); cursor: default; }
+.portal-abo__preis { margin-top: auto; font-variant-numeric: tabular-nums; color: var(--sapContent_LabelColor); }
+.portal-abo__karten { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; padding: 0.75rem; }
+.portal-abo__karte { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapList_Background, #fff); }
+.portal-abo__karte-aktionen { margin-top: auto; padding-top: 0.5rem; }

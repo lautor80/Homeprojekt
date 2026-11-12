@@ -994,7 +994,8 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, benutzer_id, quelle) values
     ('9770000001', '2026-01-06', '18:00', '19:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2025-09-01', '', 'Halle', ${annaId}, 'PORTAL'),
     ('9770000001', '2026-01-13', '18:00', '19:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2025-09-01', '', 'Halle', ${annaId}, 'PORTAL'),
-    ('9770000002', '2026-01-07', '18:00', '19:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2025-09-01', '', 'Halle', ${annaId}, 'PORTAL')`;
+    ('9770000002', '2026-01-07', '18:00', '19:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2025-09-01', '', 'Halle', ${annaId}, 'PORTAL'),
+    ('9770000009', '2026-01-08', '15:00', '17:00', 'JUGENDTRAINING', '3', 'Abo', 0, '2025-09-01', '', 'Halle', null, 'PORTAL')`;
   assert.equal((await anna('GET', `${P}/abowunsch`)).body.saison, null);
   assert.equal((await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: 2, von: '18:00', bis: '20:00' })).status, 400, 'keine Saison');
   const saison = { name: 'Test 27/28', von: tag(30), bis: tag(90), bestaetigen_bis: tag(10), nachruecken_ab: tag(20), annahme_tage: 7 };
@@ -1015,7 +1016,8 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   r = await anna('GET', `${P}/abowunsch`);
   assert.deepEqual(r.body.meine.map((m: any) => [m.text, m.status]), [['Dienstag 18:00–19:00 Uhr', 'OFFEN'], ['Mittwoch 18:00–19:00 Uhr', 'OFFEN']]);
   const [di, mi] = r.body.meine.map((m: any) => m.id as number);
-  assert.equal(r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === 2 && f.von === 1080).status, 'offen');
+  const fo = r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === 2 && f.von === 1080);
+  assert.deepEqual([fo.status, fo.preis], ['offen', 18], 'vor der Saison: Abo-Preis je Einheit');
   assert.equal((await sql`select count(*)::int as n from tco.abo_wunsch where mail_fehler is not null`)[0].n, 2);
   assert.equal((await anna('POST', `${P}/abowunsch/${mi}/bestaetigen`)).status, 200);
   assert.equal((await bert('POST', `${P}/abowunsch/${mi}/abgeben`)).status, 404, 'fremder Eintrag');
@@ -1083,7 +1085,7 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   assert.equal((await admin('POST', `${P}/admin/abowunsch/freigeben`, { id: mi })).status, 400, 'nicht doppelt');
   // abgelaufenes Angebot verfällt nach der Annahmefrist (hier: der Gast rückt nicht nach, weil die Stunde vergeben ist)
   assert.deepEqual(await lauf(tag(40)), { erinnert: 0, verfallen: 0, angeboten: 0 });
-  await sql`delete from tco.bookings where bid in ('9770000001', '9770000002') or (status = '3' and datum >= ${tag(30)} and kunde in ('BERT SPIELER', 'ANNA SPIELERIN'))`;
+  await sql`delete from tco.bookings where bid in ('9770000001', '9770000002', '9770000009') or (status = '3' and datum >= ${tag(30)} and kunde in ('BERT SPIELER', 'ANNA SPIELERIN'))`;
   await sql`delete from tco.abo_saison`;
 
   // ---- unterjährig: Saison läuft bereits – keine Vormerkung, laufende Abos sind vergeben, freie Stunden zum Einzelpreis je Einheit
@@ -1097,6 +1099,14 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   const wt = ((new Date(`${tag(20)}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
   r = await bert('GET', `${P}/abowunsch`);
   assert.equal(r.body.unterjaehrig, true);
+  assert.equal(r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 660).preis, 20, 'unterjährig: Einzelpreis');
+  // feste Belegung (Jugendtraining) über die ganze Saison: Stunde ist gesperrt und nicht bewerbbar; Training wird nicht vorgemerkt
+  await sql`insert into tco.platzbelegungen (bezeichnung, art, plaetze, wochentage, datum_von, datum_bis, zeit_von, zeit_bis, aktiv, quelle)
+            values ('Jugendtraining Abo-Test', 'TRAINING', ${[halleId]}, ${String(wt)}, ${tag(-30)}, ${tag(45)}, '15:00', '17:00', true, 'PORTAL')`;
+  const g = (await bert('GET', `${P}/abowunsch`)).body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 900);
+  assert.deepEqual([g.status, g.hinweis], ['gesperrt', 'Jugendtraining Abo-Test']);
+  assert.equal((await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: wt, von: '16:00', bis: '18:00' })).status, 400, 'fest belegt');
+  await sql`delete from tco.platzbelegungen where bezeichnung = 'Jugendtraining Abo-Test'`;
   assert.equal(r.body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 600).status, 'vergeben', 'laufendes Abo');
   assert.equal((await anna('GET', `${P}/abowunsch`)).body.felder.find((f: any) => f.platz_id === halleId && f.wochentag === wt && f.von === 600).status, 'freigegeben');
   // Bert bewirbt sich auf die freie Stunde danach und – als Warteliste – auf Annas Stunde

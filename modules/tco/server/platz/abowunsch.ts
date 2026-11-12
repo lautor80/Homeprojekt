@@ -22,6 +22,32 @@ import { minuten, preiseLesen, type Preise } from '../halle/preis.js';
 import { mailSenden } from '../kommunikation.js';
 import { aboAnlegen, hhmm, isoWochentag, jetzt, plaetzeLesen, preisVon, type Ich, type Platz } from './logik.js';
 import { ADRNR_ZU_BENUTZER } from './schluessel.js';
+import { festeLesen, festeTermine } from './belegungen.js';
+
+/**
+ * Feste Belegungen der Platzverwaltung (Jugendtraining, Sperren …) in der Saison: Stunden, die an mindestens der Hälfte der
+ * Wochen geblockt sind, stehen für Abos nicht zur Verfügung. Schlüssel „platz|wochentag|stunde(min)“ → Bezeichnung.
+ */
+async function geblockt(db: Db, s: Saison, plaetze: Platz[], heute = jetzt().datum): Promise<Map<string, string>> {
+  const von = heute > s.von ? heute : s.von;
+  const out = new Map<string, string>();
+  if (von > s.bis) return out;
+  const wochen = Math.max(1, Math.floor((Date.parse(`${s.bis}T12:00:00Z`) - Date.parse(`${von}T12:00:00Z`)) / 604_800_000));
+  const n = new Map<string, { n: number; text: string }>();
+  for (const t of festeTermine(await festeLesen(db, von, s.bis, true), plaetze.map((p) => p.id), von, s.bis)) {
+    for (let h = Math.floor(t.von / 60) * 60; h < t.bis; h += 60) {
+      const k = `${t.platzId}|${isoWochentag(t.datum)}|${h}`;
+      const e = n.get(k) ?? { n: 0, text: t.bezeichnung };
+      e.n++;
+      n.set(k, e);
+    }
+  }
+  for (const [k, e] of n) if (e.n * 2 >= wochen) out.set(k, e.text);
+  return out;
+}
+const istGeblockt = (g: Map<string, string>, f: Zeit) => { for (let h = Math.floor(f.von / 60) * 60; h < f.bis; h += 60) { const t = g.get(`${f.platz_id}|${f.wochentag}|${h}`); if (t) return t; } return null; };
+/** Training wird nicht abgefragt – es steht als feste Belegung in der Platzverwaltung */
+const istTraining = (name: string) => /training/i.test(name);
 
 export const MAX_BEWERBUNGEN = 3;
 const WT = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -132,7 +158,7 @@ export async function saisonEroeffnen(tx: Db, e: SaisonEingabe & { vorjahr_von?:
      group by b.bid, p.id order by min(b.datum), b.bid`;
   let n = 0;
   for (const a of abos) {
-    if (!(Number(a.bis) > Number(a.von))) continue;
+    if (!(Number(a.bis) > Number(a.von)) || istTraining(String(a.kunde ?? ''))) continue;
     // Zuordnung: über den buchenden Benutzer, sonst über den Namen des Mitglieds
     const [ub] = a.benutzer_id ? await tx`select ${tx.unsafe(ADRNR_ZU_BENUTZER('u.id'))} as adrnr from core.users u where u.id::text = ${a.benutzer_id}` : [];
     const [un] = ub?.adrnr ? [] : await tx`select m.adrnr from tco.mitglieder m where upper(trim(concat_ws(' ', m.vorname, m.nachname))) = ${String(a.kunde ?? '').trim().toUpperCase()} order by m.adrnr limit 1`;
@@ -169,7 +195,9 @@ export async function rasterLesen(db: Db, ich: Ich) {
   const alle = await wuensche(db, s.id);
   const abos = await laufendeAbos(db, s);
   const preise = await preiseLesen(db);
-  const felder: { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null }[] = [];
+  const block = await geblockt(db, s, plaetze);
+  const unterj = jetzt().datum > s.von;
+  const felder: { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; hinweis: string | null }[] = [];
   for (const p of plaetze) {
     for (let wt = 1; wt <= 7; wt++) {
       if (!p.wochentage.includes(String(wt))) continue;
@@ -180,11 +208,14 @@ export async function rasterLesen(db: Db, ich: Ich) {
         const mein = hier.find((w) => w.adrnr === ich.adrnr && [...BELEGT, 'WARTET'].includes(w.status));
         const belegt = hier.find((w) => BELEGT.includes(w.status));
         const abo = abos.find((a) => trifft(a, f));
+        const sperre = istGeblockt(block, f);
+        // Preis je Einheit: vor der Saison der Abo-Preis, unterjährig der Einzelpreis der Stunde
+        const preis = preisVon(p, ersterTermin(s, wt), von, von + 60, unterj ? '1' : '3', preise);
         felder.push({
-          ...f, wartende: warten.length, wunsch_id: mein?.id ?? null,
+          ...f, wartende: warten.length, wunsch_id: mein?.id ?? null, preis: preis.kostenfrei ? 0 : preis.betrag, hinweis: !mein && sperre ? sperre : null,
           position: mein?.status === 'WARTET' ? warten.findIndex((w) => w.id === mein.id) + 1 : null,
           status: mein ? ({ OFFEN: 'offen', BESTAETIGT: 'bestaetigt', FREIGEGEBEN: 'freigegeben', ANGEBOTEN: 'angebot', ANGENOMMEN: 'angenommen', WARTET: 'bewerbung' } as Record<string, string>)[mein.status]
-            : abo?.kunde === ich.kunde ? 'freigegeben' : belegt || abo ? 'vergeben' : 'frei',
+            : sperre ? 'gesperrt' : abo?.kunde === ich.kunde ? 'freigegeben' : belegt || abo ? 'vergeben' : 'frei',
         });
       }
     }
@@ -213,6 +244,8 @@ export async function bewerben(tx: Db, ich: Ich, e: { platz_id: number; wochenta
   const alle = await wuensche(tx, s.id);
   const meine = alle.filter((w) => w.adrnr === ich.adrnr && [...BELEGT, 'WARTET'].includes(w.status));
   const f = { platz_id: p.id, wochentag: e.wochentag, von, bis };
+  const sperre = istGeblockt(await geblockt(tx, s, [p]), f);
+  if (sperre) throw new BusinessError(`Diese Zeit ist fest belegt (${sperre}) und steht nicht für Abos zur Verfügung.`);
   if (meine.some((w) => trifft(w, f))) throw new BusinessError('Für diese Zeit haben Sie bereits ein Abo oder eine Bewerbung.');
   if (meine.filter((w) => w.status === 'WARTET').length >= MAX_BEWERBUNGEN) throw new BusinessError(`Es sind höchstens ${MAX_BEWERBUNGEN} offene Bewerbungen möglich.`);
   const [m] = await tx`select 1 from tco.mitglieder where adrnr = ${ich.adrnr} and eintritt is not null and (austritt is null or austritt >= current_date)`;

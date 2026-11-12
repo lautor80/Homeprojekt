@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { BusyIndicator, Button, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, DatePicker, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
 import type { ReactNode } from 'react';
 import '../sport/spielerdaten.css';
 import { api } from '@core/api';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
-import { TCO, dat } from '../util';
+import { TCO, dat, eur } from '../util';
 
 /**
  * Abo-Bewerbung für die Halle (#11): sieben Tage auf einen Blick, je Stunde der Stand aus Sicht des Benutzers.
@@ -18,7 +18,7 @@ const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 interface Saison { id: number; name: string; von: string; bis: string; bestaetigen_bis: string; nachruecken_ab: string; annahme_tage: number; mail_pause_bis: string | null }
-interface Feld { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null }
+interface Feld { platz_id: number; wochentag: number; von: number; bis: number; status: string; wartende: number; position: number | null; wunsch_id: number | null; preis: number | null; hinweis: string | null }
 interface Mein { id: number; art: string; platz: string; platz_id: number; wochentag: number; von: string; bis: string; status: string; text: string; wartende: number; position: number | null; annehmen_bis: string | null; kosten: string | null }
 interface Raster { saison: Saison | null; unterjaehrig: boolean; plaetze: { id: number; name: string }[]; felder: Feld[]; meine: Mein[]; maxBewerbungen: number }
 interface VWunsch { id: number; art: string; name: string; mitglied: boolean; platz: string; text: string; status: string; angelegt: string; mail_fehler: string | null; wartende: number; position: number | null; wochentag: number; von: string; kosten: string | null }
@@ -27,7 +27,7 @@ interface Verwaltung { saison: Saison | null; wuensche: VWunsch[] }
 const FELD: Record<string, { titel: string; klasse: string }> = {
   frei: { titel: 'Frei', klasse: 'frei' }, vergeben: { titel: 'Vergeben', klasse: 'vergeben' }, offen: { titel: 'Mein Abo', klasse: 'offen' },
   bestaetigt: { titel: 'Mein Abo', klasse: 'mein' }, freigegeben: { titel: 'Mein Abo', klasse: 'mein' }, bewerbung: { titel: 'Beworben', klasse: 'bewerbung' },
-  angebot: { titel: 'Angebot', klasse: 'offen' }, angenommen: { titel: 'Angenommen', klasse: 'mein' },
+  angebot: { titel: 'Angebot', klasse: 'offen' }, angenommen: { titel: 'Angenommen', klasse: 'mein' }, gesperrt: { titel: 'Belegt', klasse: 'gesperrt' },
 };
 const STATUS: Record<string, string> = {
   OFFEN: 'Bestätigung offen', BESTAETIGT: 'bestätigt – wartet auf Freigabe', ABGEGEBEN: 'abgegeben', VERFALLEN: 'verfallen', WARTET: 'auf der Warteliste',
@@ -76,7 +76,7 @@ export function AboBewerbung() {
   const zeiten = [...new Set(felder.map((f) => f.von))].sort((a, b) => a - b);
   // mehrere Stunden am Stück: ab der gewählten Stunde, solange der Tag weitergeht
   const enden = wahl ? felder.filter((f) => f.wochentag === wahl.wochentag && f.von >= wahl.von).sort((a, b) => a.von - b.von)
-    .filter((f, i, l) => i === 0 || l[i - 1].bis === f.von).map((f) => f.bis) : [];
+    .filter((f, i, l) => i === 0 || l[i - 1].bis === f.von).filter((f, i, l) => l.slice(0, i + 1).every((x) => x.status !== 'gesperrt')).map((f) => f.bis) : [];
   const mein = wahl?.wunsch_id ? r.meine.find((m) => m.id === wahl.wunsch_id) ?? null : null;
   const zeigeAktionen = (m: Mein) => (
     <span style={{ display: 'inline-flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -100,20 +100,17 @@ export function AboBewerbung() {
           </MessageStrip>
           {r.meine.length > 0 && (
             <Section title="Meine Abos und Bewerbungen" count={r.meine.length} flush>
-              <div className="portal-mz__liste">
+              <div className="portal-abo__karten">
                 {r.meine.map((m) => (
-                  <div key={m.id} className="portal-mz__eintrag portal-mz__eintrag--gesperrt">
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div className="portal-mz__art">{m.text} · {m.platz}</div>
-                      <div className="portal-mz__info">
-                        <ObjectStatus state={['BESTAETIGT', 'ANGENOMMEN', 'FREIGEGEBEN'].includes(m.status) ? 'Positive' : ['OFFEN', 'ANGEBOTEN'].includes(m.status) ? 'Critical' : 'None'}>{STATUS[m.status] ?? m.status}</ObjectStatus>
-                        {m.position != null && <span>Position {m.position} von {m.wartende}</span>}
-                        {m.art === 'BESTAETIGUNG' && m.wartende > 0 && <span>{m.wartende} Interessent{m.wartende === 1 ? '' : 'en'} auf der Warteliste</span>}
-                        {m.annehmen_bis && <span>annehmen bis {dat(m.annehmen_bis)}</span>}
-                        {m.kosten && <span>{m.kosten}</span>}
-                      </div>
-                    </div>
-                    {zeigeAktionen(m)}
+                  <div key={m.id} className="portal-abo__karte">
+                    <b>{m.text}</b>
+                    <span className="portal-muted">{m.platz} · {m.art === 'BESTAETIGUNG' ? 'Abo des Vorjahres' : 'Bewerbung'}</span>
+                    <ObjectStatus state={['BESTAETIGT', 'ANGENOMMEN', 'FREIGEGEBEN'].includes(m.status) ? 'Positive' : ['OFFEN', 'ANGEBOTEN'].includes(m.status) ? 'Critical' : 'None'}>{STATUS[m.status] ?? m.status}</ObjectStatus>
+                    {m.position != null && <span>Position {m.position} von {m.wartende}</span>}
+                    {m.art === 'BESTAETIGUNG' && m.wartende > 0 && <span>{m.wartende} Interessent{m.wartende === 1 ? '' : 'en'} auf der Warteliste</span>}
+                    {m.annehmen_bis && <span>annehmen bis {dat(m.annehmen_bis)}</span>}
+                    {m.kosten && <span>{m.kosten}</span>}
+                    <div className="portal-abo__karte-aktionen">{zeigeAktionen(m)}</div>
                   </div>
                 ))}
               </div>
@@ -127,6 +124,7 @@ export function AboBewerbung() {
             <div className="portal-abo__legende">
               <span><i className="portal-abo__f--mein" />Mein Abo</span><span><i className="portal-abo__f--offen" />Bestätigung/Angebot offen</span>
               <span><i className="portal-abo__f--bewerbung" />Meine Bewerbung</span><span><i className="portal-abo__f--vergeben" />Vergeben</span><span><i className="portal-abo__f--frei" />Frei</span>
+              <span>Preis je Einheit: {r.unterjaehrig ? 'Einzelpreis' : 'Abo-Preis'}</span>
             </div>
             <div className="portal-abo__raster">
               <div />
@@ -140,9 +138,10 @@ export function AboBewerbung() {
                     const gewaehlt = wahl && wahl.wochentag === t && z >= wahl.von && z < (bis ?? wahl.bis);
                     return (
                       <button key={`${t}|${z}`} type="button" className={`portal-abo__feld portal-abo__f--${a.klasse}${gewaehlt ? ' portal-abo__feld--wahl' : ''}`}
-                              onClick={() => { setWahl(f); setBis(null); }}>
+                              disabled={f.status === 'gesperrt'} onClick={() => { setWahl(f); setBis(null); }}>
                         <b>{a.titel}</b>
-                        <span>{f.position != null ? `Platz ${f.position} von ${f.wartende}` : f.wartende ? `${f.wartende} warte${f.wartende === 1 ? 't' : 'n'}` : f.status === 'frei' ? 'bewerben' : ''}</span>
+                        <span>{f.status === 'gesperrt' ? f.hinweis : f.position != null ? `Platz ${f.position} von ${f.wartende}` : f.wartende ? `${f.wartende} warte${f.wartende === 1 ? 't' : 'n'}` : f.status === 'frei' ? 'bewerben' : ''}</span>
+                        {f.status !== 'gesperrt' && f.preis != null && <span className="portal-abo__preis">{f.preis ? eur(f.preis) : 'kostenfrei'}</span>}
                       </button>
                     );
                   })]
@@ -201,9 +200,16 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
   const feld = (k: keyof typeof f, label: string, breite = '9.5rem', fest = false) => (
     <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
       <Label>{label}</Label>
-      <Input readonly={fest} placeholder={k === 'name' || k === 'annahme_tage' ? undefined : 'JJJJ-MM-TT'} value={f[k]} style={{ width: breite }}
-             onInput={(e) => setF({ ...f, [k]: (e.target as unknown as { value: string }).value })} />
+      {k === 'name' || k === 'annahme_tage'
+        ? <Input readonly={fest} value={f[k]} style={{ width: breite }} onInput={(e) => setF({ ...f, [k]: (e.target as unknown as { value: string }).value })} />
+        : <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={f[k]} style={{ width: breite }}
+                      onChange={(e) => (e.detail.valid || !e.detail.value) && setF({ ...f, [k]: e.detail.value ?? '' })} />}
     </span>
+  );
+  const vjFeld = (k: 'von' | 'bis', label: string) => (
+    <span style={{ display: 'inline-flex', flexDirection: 'column' }}><Label>{label}</Label>
+      <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={vj[k]} style={{ width: '9.5rem' }}
+                  onChange={(e) => e.detail.valid && e.detail.value && setVj({ ...vj, [k]: e.detail.value })} /></span>
   );
   const daten = { ...f, annahme_tage: Number(f.annahme_tage) || 7, mail_pause_bis: f.mail_pause_bis || null };
   const ausfuehren = (mail: boolean) => {
@@ -242,10 +248,7 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
           {feld('mail_pause_bis', 'E-Mail-Pause bis')}
           {neu && (
             <>
-              <span style={{ display: 'inline-flex', flexDirection: 'column' }}><Label>Abos des Vorjahres von</Label>
-                <Input value={vj.von} style={{ width: '9.5rem' }} onInput={(e) => setVj({ ...vj, von: (e.target as unknown as { value: string }).value })} /></span>
-              <span style={{ display: 'inline-flex', flexDirection: 'column' }}><Label>bis</Label>
-                <Input value={vj.bis} style={{ width: '9.5rem' }} onInput={(e) => setVj({ ...vj, bis: (e.target as unknown as { value: string }).value })} /></span>
+              {vjFeld('von', 'Abos des Vorjahres von')}{vjFeld('bis', 'bis')}
             </>
           )}
           {neu
@@ -263,7 +266,7 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
           </MessageStrip>
         )}
         <Text className="portal-muted portal-small">
-          {neu ? 'Beim Eröffnen werden die Hallenabos des Vorjahres zur Bestätigung vorgemerkt – es wird nichts gebucht. Ist der Nachrück-Termin schon vorbei (laufende Saison), entfällt die Vormerkung; freie Stunden können dann sofort beworben werden. '
+          {neu ? 'Beim Eröffnen werden die Hallenabos des Vorjahres zur Bestätigung vorgemerkt – es wird nichts gebucht. Training wird nicht abgefragt; es wird über die festen Belegungen der Platzverwaltung geblockt. Ist der Nachrück-Termin schon vorbei (laufende Saison), entfällt die Vormerkung; freie Stunden können dann sofort beworben werden. '
             : ''}
           E-Mail-Pause: Bis einschließlich dieses Datums ruht der automatische Lauf (keine Erinnerung, kein Verfall, keine Angebote, keine E-Mails). „Ablehnen“ nimmt einen Eintrag aus dem Verfahren – die Stunde wird frei bzw. die Warteliste rückt auf; gebucht oder storniert wird dabei nichts.
         </Text>
