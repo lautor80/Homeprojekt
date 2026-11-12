@@ -7,6 +7,7 @@ import { SperrHinweis, useSperre } from '@core/sperre';
 import { LAENDER } from './laender';
 import { T, type Adresse, type AdrDD } from './util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
+import { KontaktEinfuegen } from './KontaktEinfuegen';
 
 const leer: Adresse = {
   kundenname: '', kundenname2: null, anrede: null, name: null, vorname: null, strasse: null, hausnummer: null, land: 'DE',
@@ -90,6 +91,10 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
             <AuswahlBox wert={nr} leerErlaubt={false} eintraege={auswahl.map((a) => ({ key: a.key, text: a.text, zusatz: a.zusatz }))} onWaehle={(k) => setNr(k ?? '')} />
           </FieldBox>
         </>
+      )}
+      {/* #158: Kontaktdaten aus abgelegtem oder eingefügtem Text vorschlagen */}
+      {(!edit || sperre.eigen) && (
+        <KontaktEinfuegen aktiv={!!modus} k={k} onUebernehmen={(f) => { setK((alt) => ({ ...alt, ...f })); setForce(false); setHinweis(null); toast('Vorschlag übernommen – bitte prüfen und speichern.'); }} />
       )}
       <Title level="H5" style={{ margin: '1rem 0 0.5rem' }}>Firma und Anschrift</Title>
       <FormGrid>
