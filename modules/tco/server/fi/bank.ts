@@ -195,7 +195,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   const jahr = Number(bis.slice(0, 4));
   const gk = new Set((await kontenLesen(db, jahr)).filter((k) => k.aktiv && k.konto !== konto).map((k) => k.konto));
   const rgnrDa = new Map((await db`select rgnr_txt, status, betrag::float8 as betrag from tco.rgkopf`).map((r) => [r.rgnr_txt as string, r]));
-  const offeneRg = (await offeneRechnungen(db)).filter((r) => r.offen > 0);
+  const offeneRg = (await offeneRechnungen(db) as unknown as { rgnr_txt: string; kunde: string; offen: number }[]).filter((r) => r.offen > 0);
   const rgVergeben = new Set<string>();
   const historie = await db`
     select internenr, upper(coalesce(text, '')) as text, gkonto, datum::text as datum,
