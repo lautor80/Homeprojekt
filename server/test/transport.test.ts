@@ -259,6 +259,23 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   const hist = (await call('GET', `/api/audit/object/AUFTRAG/${h.body.auftragsnr}`)).body;
   assert.ok(hist.some((d: { tableName: string }) => d.tableName === 'transport.traeger'));
   assert.ok(hist.some((d: { action: string }) => d.action === 'SAMMELRECHNUNG'));
+
+  // ---- Rechnung entfernen (#170): ganze Rechnung, bei Sammelrechnung alle Aufträge; Nummer wird nicht neu vergeben ----
+  let re = await call('POST', `${T}/rechnungen/entfernen`, { auftraege: [h.body.auftragsnr], pruefen: true });
+  assert.equal(re.status, 200, JSON.stringify(re.body));
+  assert.deepEqual(re.body, { rechnungen: [{ faktura: `${jahr}_5001`, auftraege: [h.body.auftragsnr, f2.body.auftragsnr].sort() }], zusaetzlich: [f2.body.auftragsnr] });
+  assert.equal((await call('POST', `${T}/rechnungen/entfernen`, { auftraege: [h.body.auftragsnr] })).status, 400, 'ohne Grund');
+  assert.equal((await call('POST', `${T}/rechnungen/entfernen`, { auftraege: ['2099_0001'], grund: 'x' })).status, 400, 'nichts fakturiert');
+  re = await call('POST', `${T}/rechnungen/entfernen`, { auftraege: [h.body.auftragsnr, '2025_0042'], grund: 'Testrechnungen' });
+  assert.equal(re.status, 200, JSON.stringify(re.body));
+  assert.deepEqual(re.body.rechnungen.map((x: any) => x.faktura), [`${jahr}_5001`, `${jahr}_5002`]);
+  const offenJetzt = await sql`select auftragsnr, faktura, fakturadatum from transport.auftraege where auftragsnr = any(${[h.body.auftragsnr, f2.body.auftragsnr, '2025_0042']})`;
+  assert.ok(offenJetzt.every((r) => r.faktura === null && r.fakturadatum === null), JSON.stringify(offenJetzt));
+  const hist2 = (await call('GET', `/api/audit/object/AUFTRAG/${h.body.auftragsnr}`)).body;
+  assert.ok(hist2.some((d: { action: string; reason?: string }) => d.action === 'RECHNUNG_ENTFERNT'), JSON.stringify(hist2.map((d: any) => d.action)));
+  const neuR = await call('POST', `${T}/rechnungen`, { auftraege: ['2025_0042'], sammel: false });
+  assert.equal(neuR.status, 200, JSON.stringify(neuR.body));
+  assert.notDeepEqual(neuR.body.fakturen, [`${jahr}_5002`], 'Nummer wird nicht neu vergeben');
 });
 
 test('Dokumente zum Auftrag: ohne Paperless Hinweis statt Fehler beim Lesen', async () => {

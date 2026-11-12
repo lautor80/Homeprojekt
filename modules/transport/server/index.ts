@@ -27,6 +27,8 @@ export const P = {
   display: 'transport.auftraege:display',
   edit: 'transport.auftraege:edit',
   rechnung: 'transport.rechnungen:create',
+  /** Rechnungen entfernen (#170): Rechnungsnummer und Fakturadatum löschen, Aufträge wieder offen */
+  rechnungEntfernen: 'transport.rechnungen:delete',
   versand: 'transport.versand:execute',
   kontakte: 'transport.kontakte:edit',
   stammdaten: 'transport.stammdaten:edit',
@@ -316,6 +318,33 @@ async function routes(app: FastifyInstance) {
       }
       return { fakturen, ignoriert };
     }, { action: sammel ? 'SAMMELRECHNUNG' : 'RECHNUNG' });
+  });
+
+  /**
+   * Rechnungen entfernen (#170): Die Rechnung wird als Ganzes entfernt – bei einer Sammelrechnung alle ihre Aufträge.
+   * pruefen = true liefert nur, welche Rechnungen und Aufträge betroffen sind. Die Rechnungsnummer wird nicht neu vergeben;
+   * der Vorgang steht im Änderungsbeleg (RECHNUNG_ENTFERNT, mit Grund).
+   */
+  app.post('/rechnungen/entfernen', { preHandler: requireAuth(P.rechnungEntfernen) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), pruefen: z.boolean().default(false), grund: z.string().max(500).default('') }).parse(req.body);
+    const lesen = async (db: Tx | typeof sql) => {
+      const fakturen = (await db`select distinct faktura from transport.auftraege where auftragsnr = any(${b.auftraege}) and faktura is not null`).map((r) => r.faktura as string);
+      const betroffen = fakturen.length
+        ? await db`select auftragsnr, faktura from transport.auftraege where faktura = any(${fakturen}) order by faktura, auftragsnr`
+        : [];
+      return {
+        rechnungen: fakturen.sort().map((f) => ({ faktura: f, auftraege: betroffen.filter((r) => r.faktura === f).map((r) => r.auftragsnr as string) })),
+        zusaetzlich: betroffen.map((r) => r.auftragsnr as string).filter((n) => !b.auftraege.includes(n)),
+      };
+    };
+    if (b.pruefen) return lesen(sql);
+    if (!b.grund.trim()) throw new BusinessError('Bitte einen Grund angeben – er steht im Änderungsbeleg.');
+    return change(req, async (tx) => {
+      const r = await lesen(tx);
+      if (!r.rechnungen.length) throw new BusinessError('Unter der Auswahl ist kein fakturierter Auftrag.');
+      await tx`update transport.auftraege set faktura = null, fakturadatum = null where faktura = any(${r.rechnungen.map((x) => x.faktura)})`;
+      return r;
+    }, { action: 'RECHNUNG_ENTFERNT', reason: b.grund.trim() });
   });
 
   // ---- Dokumente (PDF) ----
@@ -710,6 +739,7 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.display, text: 'Aufträge anzeigen und drucken' },
     { area: 'Euroflex', app: 'Aufträge', id: P.edit, text: 'Aufträge anlegen und ändern' },
     { area: 'Euroflex', app: 'Aufträge', id: P.rechnung, text: 'Rechnungen erstellen', requires: [P.display] },
+    { area: 'Euroflex', app: 'Aufträge', id: P.rechnungEntfernen, text: 'Rechnungen entfernen (Aufträge wieder offen)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.kontakte, text: 'Kontakte anlegen und ändern', requires: [P.display] },
     { area: 'Euroflex', app: 'Stammdaten', id: P.stammdaten, text: 'Stammdaten pflegen (Firmendaten, Produkte, Wertelisten, Texte)' },

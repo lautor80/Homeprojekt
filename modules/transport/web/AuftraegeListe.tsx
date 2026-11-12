@@ -9,6 +9,7 @@ import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { useCan } from '@core/session';
+import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
 import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
@@ -227,6 +228,33 @@ export function AuftraegeListe() {
     }
   }
 
+  // Rechnungen entfernen (#170, Recht transport.rechnungen:delete): erst prüfen, was betroffen ist, dann mit Grund bestätigen
+  const [entfernen, setEntfernen] = useState<{ text: string; nrs: string[] } | null>(null);
+  async function entfernenPruefen() {
+    try {
+      const nrs = sel.map((s) => s.auftragsnr);
+      const r = await api.post<{ rechnungen: { faktura: string; auftraege: string[] }[]; zusaetzlich: string[] }>(`${T}/rechnungen/entfernen`, { auftraege: nrs, pruefen: true });
+      if (!r.rechnungen.length) return toast('Unter der Auswahl ist kein fakturierter Auftrag.');
+      const liste = r.rechnungen.map((x) => `${x.faktura} (Auftrag ${x.auftraege.join(', ')})`).join('; ');
+      setEntfernen({
+        nrs,
+        text: `${r.rechnungen.length === 1 ? 'Rechnung' : `${r.rechnungen.length} Rechnungen`} ${liste} werden aus der Datenbank entfernt; die Aufträge sind danach wieder offen.`
+          + (r.zusaetzlich.length ? ` Achtung: Sammelrechnung – auch Auftrag ${r.zusaetzlich.join(', ')} wird wieder offen.` : '')
+          + ' Die Rechnungsnummer wird nicht neu vergeben. Bereits versendete oder in Paperless abgelegte Rechnungen bleiben dort bestehen.',
+      });
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function entfernenAusfuehren(grund: string) {
+    const nrs = entfernen?.nrs ?? [];
+    setEntfernen(null);
+    try {
+      const r = await api.post<{ rechnungen: { faktura: string }[] }>(`${T}/rechnungen/entfernen`, { auftraege: nrs, grund });
+      setAuswahl(new Set());
+      await lade();
+      toast(`Rechnung ${r.rechnungen.map((x) => x.faktura).join(', ')} entfernt – Aufträge wieder offen.`, 6000);
+    } catch (e) { setError((e as Error).message); }
+  }
+
   async function drucken(art: 'T' | 'L' | 'R') {
     if (!sel.length) return toast('Bitte mindestens einen Auftrag auswählen.');
     await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
@@ -427,6 +455,9 @@ export function AuftraegeListe() {
           <Button icon="lead" disabled={offen < 1} onClick={() => rechnungen(false)}>Einzelrechnungen</Button>
           <Button icon="collections-insight" disabled={offen < 2} onClick={() => rechnungen(true)}>Sammelrechnung</Button>
         </>}
+        {can('transport.rechnungen:delete') && (
+          <Button icon="delete" design="Transparent" disabled={sel.length - offen < 1} onClick={entfernenPruefen} tooltip="Rechnung der ausgewählten Aufträge entfernen">Rechnung entfernen</Button>
+        )}
         <MenuButton text="Drucken" icon="print" disabled={!sel.length} items={[
           { text: 'Transportauftrag', icon: 'shipping-status', onClick: () => drucken('T') },
           { text: 'Lieferschein', icon: 'document-text', onClick: () => drucken('L') },
@@ -497,6 +528,8 @@ export function AuftraegeListe() {
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <InfoDialog title={info?.title ?? ''} text={info?.text ?? null} onClose={() => setInfo(null)} />
+      <ConfirmDialog open={!!entfernen} title="Rechnung entfernen" text={entfernen?.text ?? ''} confirmText="Entfernen" askReason danger
+                     onConfirm={entfernenAusfuehren} onCancel={() => setEntfernen(null)} />
     </AppPage>
   );
 }
