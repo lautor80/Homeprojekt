@@ -155,7 +155,8 @@ export function AuftragDetail() {
         // Auftragsordner im Ablageordner anlegen (#121)
         const o = await auftragsOrdner(r.auftragsnr).catch(() => null);
         toast(`Auftrag ${r.auftragsnr} gespeichert.${o ? ` Ordner ${o.basis}/${r.auftragsnr.slice(0, 4)}/${r.auftragsnr} angelegt.` : ''}`);
-        navigate(`/transport/auftraege/${r.auftragsnr}`, { replace: true });
+        // nach der Anlage zurück in die Auftragsliste (Filter und Suche der Liste bleiben erhalten)
+        navigate('/transport/auftraege', { replace: true });
       } else {
         await api.put(`${T}/auftraege/${nr}`, body);
         toast(`Auftrag ${nr} gespeichert.`);
