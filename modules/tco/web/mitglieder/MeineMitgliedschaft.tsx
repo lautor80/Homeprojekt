@@ -103,9 +103,7 @@ export function MeineMitgliedschaft() {
       <SperrHinweis s={sperre} />
       <ObjectHeader title={`${m.vorname} ${m.nachname}`} subtitle={`Mitgliedsnummer ${m.mitglnrn || m.adrnr}`}
                     status={m.austritt ? <ObjectStatus state="Critical" inverted>Austritt zum {dat(m.austritt)}</ObjectStatus> : <ObjectStatus state="Positive" inverted>aktives Mitglied</ObjectStatus>}
-                    actions={<>
-                      {!d.gekuendigt && <Button design="Negative" icon="decline" disabled={gesperrt} onClick={() => { setError(null); setKuend({ art: 'MITGLIEDSCHAFT' }); }}>Mitgliedschaft kündigen</Button>}
-                    </>}>
+>
         <Attributes>
           <Attribute label="Eintritt">{dat(m.eintritt)}</Attribute>
           <Attribute label="Geburtsdatum">{dat(m.geburtsdatum)}</Attribute>

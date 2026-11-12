@@ -24,7 +24,7 @@ interface SPerson {
 interface Kontext { personen: SPerson[]; ab: string; trainingAb: string; maxTraining: number }
 interface Unterlage { pdf: string; dateiname: string; titel: string; gesendet: boolean; hinweise: string[] }
 interface Ergebnis { text: string; schritte: string[]; unterlage: Unterlage | null }
-export type KVertrag = Vertrag & { kuendbar: boolean; endeBei: string };
+export type KVertrag = Vertrag & { kuendbar: boolean; endeBei: string; /** eigener Mitgliedsbeitrag: Kündigung = Austritt */ mitgliedsbeitrag?: boolean };
 /** Angaben für die Kündigung aus der Seite „Meine Mitgliedschaft“ */
 export interface KuendigungDaten { gekuendigt: boolean; ende: string; eigene: KVertrag[]; kuendbar: KVertrag[] }
 
@@ -41,13 +41,13 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
   const [busy, setBusy] = useState(false);
   const [adrnr, setAdrnr] = useState('');
   const [art, setArt] = useState('');
-  const [was, setWas] = useState('');        // Kündigung: 'M' = Mitgliedschaft, sonst adrnr|vertragnr
+  const [wahl, setWahl] = useState<Set<string>>(new Set()); // Kündigung: gewählte Verträge (adrnr|vertragnr), Mehrfachauswahl
   const [grund, setGrund] = useState('');
   const [ok, setOk] = useState(false);
 
   const moeglich = (p: SPerson) => (typ === 'BEITRAGSWECHSEL' ? !!p.wechsel : p.training.length > 0);
   useEffect(() => {
-    if (typ === 'KUENDIGUNG') { setWas(!kuendigung.gekuendigt ? '' : kuendigung.kuendbar[0] ? `${kuendigung.kuendbar[0].adrnr}|${kuendigung.kuendbar[0].vertragnr}` : ''); return; }
+    if (typ === 'KUENDIGUNG') return;
     api.get<Kontext>(`${MG}/vorgang`).then((r) => { setK(r); setAdrnr((r.personen.find(moeglich) ?? r.personen[0])?.adrnr ?? ''); }).catch((e) => setError(e.message));
   }, [typ]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -57,16 +57,22 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
   const hinweis = person ? (typ === 'BEITRAGSWECHSEL' ? person.wechselHinweis : person.trainingHinweis) : null;
   useEffect(() => { setArt(arten.length === 1 ? arten[0].art : ''); }, [adrnr, k]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const kv = kuendigung.kuendbar.find((v) => `${v.adrnr}|${v.vertragnr}` === was);
+  const kkey = (v: KVertrag) => `${v.adrnr}|${v.vertragnr}`;
+  const gewaehlte = kuendigung.kuendbar.filter((v) => wahl.has(kkey(v)));
+  // eigener Mitgliedsbeitrag gewählt ⇒ die Mitgliedschaft endet (Austritt), alle eigenen Verträge enden mit
+  const austritt = !kuendigung.gekuendigt && gewaehlte.some((v) => v.eigen && v.mitgliedsbeitrag);
   /** Kündigung: was beim Ausführen passiert (wie der Server rechnet) */
   function kuendigungsPlan() {
-    if (was === 'M') {
-      return [`Die Mitgliedschaft endet am ${dat(kuendigung.ende)} (Austritt)`,
-        ...kuendigung.eigene.filter((v) => v.laeuft && !v.vertragende).map((v) => `Vertrag „${v.artname || v.art}“ endet am ${dat(v.endeBei < kuendigung.ende ? v.endeBei : kuendigung.ende)}`),
-        'Kündigungsbestätigung wird erzeugt und per E-Mail gesendet; der Vorstand erhält eine Kopie'];
+    const out: string[] = [];
+    if (austritt) {
+      out.push(`Die Mitgliedschaft endet am ${dat(kuendigung.ende)} (Austritt)`,
+        ...kuendigung.eigene.filter((v) => v.laeuft && !v.vertragende).map((v) => `Vertrag „${v.artname || v.art}“ endet am ${dat(v.endeBei < kuendigung.ende ? v.endeBei : kuendigung.ende)}`));
     }
-    return kv ? [`Vertrag „${kv.artname || kv.art}“${kv.eigen ? '' : ` von ${kv.person}`} endet am ${dat(kv.endeBei)}`,
-      'Kündigungsbestätigung wird erzeugt und per E-Mail gesendet; der Vorstand erhält eine Kopie'] : [];
+    for (const v of gewaehlte) {
+      if (austritt && v.eigen) continue;
+      out.push(`Vertrag „${v.artname || v.art}“${v.eigen ? '' : ` von ${v.person}`} endet am ${dat(v.endeBei)}`);
+    }
+    return [...out, 'Kündigungsbestätigung wird erzeugt und per E-Mail gesendet; der Vorstand erhält eine Kopie'];
   }
 
   async function pruefen() {
@@ -80,7 +86,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     try {
       if (typ === 'KUENDIGUNG') {
         const r = await api.post<{ text: string; pdf: string; dateiname: string; gesendet: boolean; hinweise: string[] }>(`${MG}/kuendigung`, {
-          art: was === 'M' ? 'MITGLIEDSCHAFT' : 'VERTRAG', grund: grund || null, bestaetigung: true, ...(kv ? { adrnr: kv.adrnr, vertragnr: kv.vertragnr } : {}),
+          art: 'VERTRAG', grund: grund || null, bestaetigung: true, vertraege: gewaehlte.map((v) => ({ adrnr: v.adrnr, vertragnr: v.vertragnr })),
         });
         setErgebnis({ text: r.text, schritte: plan?.schritte.slice(0, -1) ?? [], unterlage: { pdf: r.pdf, dateiname: r.dateiname, titel: 'Kündigungsbestätigung', gesendet: r.gesendet, hinweise: r.hinweise } });
       } else setErgebnis(await api.post<Ergebnis>(`${MG}/vorgang`, { typ, adrnr, art }));
@@ -88,7 +94,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
-  const vollstaendig = typ === 'KUENDIGUNG' ? !!was : !!(adrnr && art);
+  const vollstaendig = typ === 'KUENDIGUNG' ? gewaehlte.length > 0 : !!(adrnr && art);
   const fuss = schritt === 0
     ? <Button design="Emphasized" disabled={busy || !!gesperrt || !vollstaendig} onClick={pruefen}>Weiter: Prüfen</Button>
     : schritt === 1
@@ -144,10 +150,24 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
 
       {schritt === 0 && typ === 'KUENDIGUNG' && (
         <>
+          <Title level="H5" style={{ marginBottom: '0.25rem' }}>Was möchtest du kündigen?</Title>
+          {kuendigung.kuendbar.length === 0
+            ? <MessageStrip design="Information" hideCloseButton>Es gibt keinen laufenden Vertrag, der noch gekündigt werden kann.</MessageStrip>
+            : (
+              <div className="portal-vg__wahl" role="group" aria-label="Verträge">
+                {kuendigung.kuendbar.map((v) => (
+                  <CheckBox key={kkey(v)} wrappingType="Normal" checked={wahl.has(kkey(v))}
+                            text={`${v.artname || v.art}${v.eigen ? '' : ` – ${v.person}`} · ${eur(v.betrag)} ${v.sollstellung} · endet zum ${dat(v.endeBei)}`}
+                            onChange={(e) => { const n = new Set(wahl); if (e.target.checked) n.add(kkey(v)); else n.delete(kkey(v)); setWahl(n); }} />
+                ))}
+              </div>
+            )}
+          {austritt && (
+            <MessageStrip design="Critical" hideCloseButton style={{ margin: '0.5rem 0' }}>
+              Mit deinem Mitgliedsbeitrag kündigst du die Mitgliedschaft: Austritt zum {dat(kuendigung.ende)}, alle deine Verträge enden.
+            </MessageStrip>
+          )}
           <FormGrid>
-            <Auswahlfeld label="Was möchtest du kündigen?" required wide value={was} onChange={setWas}
-                         optionen={[['', '– bitte wählen –'], ...(!kuendigung.gekuendigt ? [['M', `die ganze Mitgliedschaft (zum ${dat(kuendigung.ende)})`] as [string, string]] : []),
-                           ...kuendigung.kuendbar.map((v) => [`${v.adrnr}|${v.vertragnr}`, `${v.artname || v.art}${v.eigen ? '' : ` – ${v.person}`} (zum ${dat(v.endeBei)})`] as [string, string])]} />
             <TextField label="Grund (freiwillig)" wide value={grund} onChange={setGrund} />
           </FormGrid>
           <MessageStrip hideCloseButton style={{ marginTop: '0.75rem' }}>

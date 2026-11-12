@@ -23,7 +23,7 @@ import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
 import {
-  ausgetreteneSperren, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
+  ausgetreteneSperren, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigenMehrere, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
 } from './selbst.js';
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
@@ -209,10 +209,13 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {
     const k = z.object({
       art: z.enum(['MITGLIEDSCHAFT', 'VERTRAG']), adrnr: z.string().nullish(), vertragnr: z.string().nullish(), grund: z.string().max(500).nullish(),
+      /** Mehrfachauswahl im Dialog „Kündigen“ */
+      vertraege: z.array(z.object({ adrnr: z.string().min(1).max(20), vertragnr: z.string().min(1).max(20) })).min(1, 'Bitte mindestens einen Vertrag wählen.').max(30).optional(),
       bestaetigung: z.literal(true, { errorMap: () => ({ message: 'Bitte die Kündigung bestätigen.' }) }),
     }).parse(req.body);
     const v = await vereinLesen();
-    const r = await change(req, (tx) => kuendigen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG', reason: k.grund ?? null });
+    const r = await change(req, (tx) => (k.vertraege ? kuendigenMehrere(tx, benutzerId(req), k.vertraege, k.grund ?? null, v, benutzer(req)) : kuendigen(tx, benutzerId(req), k, v, benutzer(req))),
+      { action: 'KUENDIGUNG', reason: k.grund ?? null });
     const b = await kuendigungBestaetigen(DB, v, r, k.grund ?? null);
     return { ...b, text: `${r.text}${b.gesendet ? ' Die Kündigungsbestätigung wurde per E-Mail gesendet.' : ''}` };
   });
