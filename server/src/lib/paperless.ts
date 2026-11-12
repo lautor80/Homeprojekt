@@ -9,7 +9,16 @@
  *
  * Mehrere Basis-URLs (z. B. LAN und Internet) werden der Reihe nach probiert;
  * die erste erreichbare wird 60 s lang gemerkt (wie DETERMINE_BASE_URL).
+ *
+ * Zwei Rollen der Adressen:
+ *  - Ablage (API, Upload, Download, Link in die Paperless-Oberfläche): interne Adressen zuerst,
+ *    unabhängig von der Reihenfolge der Eingabe – baseUrl().
+ *  - Ausgehend (Freigabelinks in E-Mail, WhatsApp, mailto): immer die externe Adresse –
+ *    die „Adresse für Freigabelinks“ (freigabeUrl), sonst die erste Basis-URL, die nicht nur im
+ *    eigenen Netz gilt. ausgehend() schreibt Links in fertigen Texten um und lehnt ab, wenn keine
+ *    externe Adresse bekannt ist; freigabeExternPflicht() prüft das vor dem Erzeugen.
  */
+import { BusinessError } from '../errors.js';
 
 export interface PaperlessConfig {
   /** eine oder mehrere Basis-URLs, durch Komma getrennt */
@@ -17,6 +26,21 @@ export interface PaperlessConfig {
   token: string | null | undefined;
   /** Zeitlimit je Anfrage in ms (Standard 30 s) */
   timeoutMs?: number;
+  /** aus dem Internet erreichbare Adresse für Freigabelinks (z. B. https://dokumente.example.org) */
+  freigabeUrl?: string | null;
+}
+
+/** Adresse gilt nur im eigenen Netz: LAN-/Loopback-IP, localhost, Rechner- oder Containername ohne Domain */
+export function nurIntern(url: string): boolean {
+  let h: string;
+  try { h = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch { return true; }
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+    const [a, b] = h.split('.').map(Number);
+    return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+  }
+  if (h.includes(':')) return h === '::1' || /^f[cd]/.test(h) || h.startsWith('fe80');
+  if (!h.includes('.') || h === 'localhost') return true;
+  return /\.(localhost|local|lan|internal|intranet|home|box|home\.arpa)$/.test(h);
 }
 
 export class PaperlessError extends Error {
@@ -44,10 +68,14 @@ export function paperlessKonfiguriert(c: PaperlessConfig): boolean {
   return !!(c.url && c.url.trim() && c.token && c.token.trim());
 }
 
+export const FREIGABE_ADRESSE_FEHLT = 'Für Freigabelinks ist keine aus dem Internet erreichbare Paperless-Adresse eingetragen – der Link wäre nur im eigenen Netz zu öffnen. '
+  + 'Bitte unter Administration → Anbindungen → Paperless-ngx die „Adresse für Freigabelinks“ eintragen (z. B. https://dokumente.example.org).';
+
 export class Paperless {
   private readonly urls: string[];
   private readonly token: string;
   private readonly timeout: number;
+  private readonly freigabe: string | null;
 
   constructor(cfg: PaperlessConfig) {
     if (!paperlessKonfiguriert(cfg)) {
@@ -56,6 +84,7 @@ export class Paperless {
     this.urls = cfg.url!.split(',').map((u) => u.trim().replace(/\/+$/, '')).filter(Boolean);
     this.token = cfg.token!.trim().replace(/^Token\s+/i, '');
     this.timeout = cfg.timeoutMs ?? 30_000;
+    this.freigabe = (cfg.freigabeUrl ?? '').trim().replace(/\/+$/, '') || null;
   }
 
   // -------------------------------------------------------------------------
@@ -67,7 +96,9 @@ export class Paperless {
     const key = this.urls.join(',');
     const c = cache.get(key);
     if (c && c.until > Date.now()) return c.url;
-    for (const u of this.urls) {
+    // Ablage: interne Adressen zuerst (kurzer Weg, kein Umweg über das Internet), in der eingegebenen Reihenfolge
+    const kandidaten = [...this.urls.filter((u) => nurIntern(u)), ...this.urls.filter((u) => !nurIntern(u))];
+    for (const u of kandidaten) {
       try {
         const r = await fetch(`${u}/api/`, { headers: this.headers(), signal: AbortSignal.timeout(2000) });
         if (r.status < 500) {
@@ -337,9 +368,47 @@ export class Paperless {
     await this.json('POST', `api/documents/${id}/notes/`, { note: text });
   }
 
+  /**
+   * Externe Adresse für alles, was das Haus verlässt: die eingestellte Adresse für Freigabelinks
+   * (bewusste Angabe – gilt auch, wenn sie intern ist, z. B. reiner LAN-Betrieb), sonst die erste Basis-URL,
+   * die auch außerhalb des eigenen Netzes gilt. null = keine bekannt.
+   */
+  freigabeExtern(): string | null {
+    return this.freigabe ?? this.urls.find((u) => !nurIntern(u)) ?? null;
+  }
+
+  /** vor dem Erzeugen ausgehender Nachrichten: ohne externe Adresse abbrechen, bevor etwas abgelegt oder versendet wird */
+  freigabeExternPflicht(): string {
+    const e = this.freigabeExtern();
+    if (!e) throw new BusinessError(FREIGABE_ADRESSE_FEHLT);
+    return e;
+  }
+
+  /** Adresse, mit der Freigabelinks gebildet werden: die externe, ersatzweise (nur für die Ablage/Anzeige) die des Servers */
+  async freigabeBasis(): Promise<string> {
+    return this.freigabeExtern() ?? this.baseUrl();
+  }
+
+  /**
+   * Text, der das Haus verlässt (E-Mail, WhatsApp, mailto): Freigabelinks tragen immer die externe Adresse.
+   * Links auf eine der eigenen oder eine nur intern erreichbare Adresse werden umgeschrieben (auch in früher
+   * erzeugten oder von Hand bearbeiteten Texten); ohne externe Adresse wird der Text abgelehnt.
+   */
+  ausgehend(text: string): string {
+    const extern = this.freigabeExtern();
+    return text.replace(/\bhttps?:\/\/[^\s<>"'()]+?\/share\/[A-Za-z0-9_-]+/g, (link) => {
+      const i = link.lastIndexOf('/share/');
+      const basis = link.slice(0, i);
+      if (basis === extern) return link;
+      if (!this.urls.includes(basis) && !nurIntern(basis)) return link; // fremder, öffentlich erreichbarer Link
+      if (!extern) throw new BusinessError(FREIGABE_ADRESSE_FEHLT);
+      return extern + link.slice(i);
+    });
+  }
+
   /** Freigabelinks eines Dokuments, jüngster zuerst; abgelaufene werden ausgelassen */
   async freigabelinks(id: number): Promise<string[]> {
-    const base = await this.baseUrl();
+    const base = await this.freigabeBasis();
     const r = await this.json<{ slug: string; expiration: string | null; created: string }[]>('GET', `api/documents/${id}/share_links/`);
     const now = Date.now();
     return (r ?? [])
@@ -349,7 +418,7 @@ export class Paperless {
   }
 
   async freigabelinkAnlegen(id: number, tage = 30): Promise<string> {
-    const base = await this.baseUrl();
+    const base = await this.freigabeBasis();
     const ablauf = new Date(Date.now() + tage * 86_400_000).toISOString().slice(0, 10);
     const r = await this.json<{ slug: string }>('POST', 'api/share_links/', {
       document: id, expiration: `${ablauf}T23:59:59`, file_version: 'original',

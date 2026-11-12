@@ -19,6 +19,7 @@ interface Werte { url: string; auth_art: AuthArt; auth_user: string | null; head
 interface Def {
   id: string; text: string; beschreibung: string; auth: AuthArt[]; pruefbar: boolean; header_name?: string;
   felder?: { url?: string; geheimnis?: string; auth_user?: string; header_name?: string };
+  zusatz?: { key: string; text: string; platzhalter?: string }[];
   werte: Werte;
 }
 interface Gruppe { modul: string; name: string; verbindungen: Def[] }
@@ -80,6 +81,10 @@ function Verbindung({ def, gruppe }: { def: Def; gruppe: Gruppe }) {
         {w.auth_art === 'basic' && <TextField label={f.auth_user ?? 'Benutzer'} value={w.auth_user} onChange={set('auth_user')} readonly={ro} />}
         {w.auth_art === 'header' && <TextField label={f.header_name ?? 'Header-Name'} value={w.header_name ?? def.header_name ?? ''} onChange={set('header_name')} readonly={ro} placeholder="X-TCO-Key" />}
         {w.auth_art !== 'keine' && <TextField label={geheimnisLabel} type="Password" value={w.geheimnis} onChange={set('geheimnis')} readonly={ro} />}
+        {def.zusatz?.map((z) => (
+          <TextField key={z.key} label={z.text} wide value={String(w.einstellungen?.[z.key] ?? '')} readonly={ro} placeholder={z.platzhalter}
+                     onChange={(x) => { setW({ ...w, einstellungen: { ...w.einstellungen, [z.key]: x } }); setGeaendert(true); }} />
+        ))}
       </FormGrid>
       {def.id === 'mail' && (
         <MailAbsender liste={((w.einstellungen as { absender?: Absender[] })?.absender) ?? []} ro={ro}

@@ -163,6 +163,7 @@ export async function jtRoutes(app: FastifyInstance) {
     if (!k?.mobil) throw new BusinessError('Für diesen Trainer ist keine Mobilnummer hinterlegt.');
     const v = await vereinLesen();
     const pl = paperless(v);
+    pl.freigabeExternPflicht(); // ausgehend: nie mit interner Adresse
     const link = await pl.freigabelink(await pl.neuesteVersion(d.doc_id), 30);
     const text = `Hallo ${k.vorname},\n\nhier ist dein Zeitnachweis Jugendtraining ${monatsname(b.monat)}:\n${link}\n\nViele Grüße\n${v.name.replace(/ e\.V\.$/, '')}`;
     await pl.notizAnlegen(d.doc_id, `WhatsApp-Link an +${k.mobil} geöffnet – Portal ${benutzer(req)}, ${new Date().toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}, Link ${link}`).catch(() => undefined);

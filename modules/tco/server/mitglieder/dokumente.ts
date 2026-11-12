@@ -108,6 +108,7 @@ export const mitgliedWerte = (m: Record<string, any>) => ({
 
 export async function freigabelinks(v: Verein, ids: number[]): Promise<{ id: number; titel: string; link: string }[]> {
   const pl = plPruefen(v);
+  pl.freigabeExternPflicht(); // die Links gehen an das Mitglied (E-Mail, WhatsApp, mailto): nie mit interner Adresse
   const out: { id: number; titel: string; link: string }[] = [];
   for (const id of ids) {
     const d = await pl.dokument(id);

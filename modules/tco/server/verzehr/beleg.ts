@@ -217,6 +217,7 @@ export async function belegMailen(db: Db, v: Verein, rgnr: string, an: string | 
 /** WhatsApp: Freigabelink aus Paperless (30 Tage) */
 export async function belegWhatsapp(db: Db, v: Verein, rgnr: string, mobil: string | null, benutzer: string, w: Schreiber) {
   if (!plAktiv(v)) throw new BusinessError('Für den WhatsApp-Versand wird Paperless benötigt (Freigabelink).');
+  paperless(v).freigabeExternPflicht(); // ausgehend: nie mit interner Adresse – vor dem Ablegen prüfen
   const r = await belegAblegen(db, v, rgnr, benutzer, w);
   const nr = mobilnummer(mobil) || r.empfaenger.mobil;
   if (!nr) throw new BusinessError('Keine Mobilnummer vorhanden.');
