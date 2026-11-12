@@ -174,8 +174,27 @@ test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12.,
   assert.equal(r.status, 400);
   assert.equal((await sql`select vertragende from tco.vertraege where adrnr = '0000000504'`)[0].vertragende, null);
 
-  // Mitgliedschaft: Austritt 31.12. des laufenden Jahres, alle eigenen Verträge enden
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', bestaetigung: true });
+  // Mehrfachauswahl: nur gültige (laufende, ungekündigte) Verträge; mehrere in einem Schritt
+  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, sollstellung, vertragbegin, betrag) values ('0000000502', '2', '90', 'Jugendtraining 2', 'monatlich', '2024-01-01', 30)`;
+  r = await paula('GET', `${M}/meine`);
+  const kb = r.body.vertraegeFamilie.filter((v: any) => v.kuendbar).map((v: any) => `${v.adrnr}|${v.vertragnr}|${v.mitgliedsbeitrag}`).sort();
+  assert.deepEqual(kb, ['0000000501|1|true', '0000000501|2|false', '0000000502|2|false'], 'gekündigter Vertrag von Kim nicht mehr wählbar');
+  assert.equal((await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [] })).status, 400);
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000502', vertragnr: '1' }] });
+  assert.equal(r.status, 400, 'bereits gekündigt');
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '2' }, { adrnr: '0000000504', vertragnr: '1' }] });
+  assert.equal(r.status, 400, 'fremder Vertrag');
+  assert.equal((await sql`select vertragende from tco.vertraege where adrnr = '0000000501' and vertragnr = '2'`)[0].vertragende, null, 'nichts halb ausgeführt');
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '2' }, { adrnr: '0000000502', vertragnr: '2' }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Schließfach gekündigt am .* zum 31\.12\..*Jugendtraining 2 \(.*Kim.*\) gekündigt/);
+  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000501' and vertragnr = '2'`)[0].e, `${jahr}-12-31`);
+  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '2'`)[0].e, jugendEnde);
+  assert.equal((await sql`select austritt from tco.mitglieder where adrnr = '0000000501'`)[0].austritt, null, 'kein Austritt ohne Mitgliedsbeitrag');
+  assert.match(r.body.dateiname, /^Kuendigungsbestaetigung_Portal_Paula\.pdf$/);
+
+  // eigener Mitgliedsbeitrag in der Auswahl = Mitgliedschaft: Austritt 31.12. des laufenden Jahres, alle eigenen Verträge enden
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '1' }] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /Mitgliedschaft gekündigt am .* zum 31\.12\./);
   const [m] = await sql`select austritt::text as a from tco.mitglieder where adrnr = '0000000501'`;

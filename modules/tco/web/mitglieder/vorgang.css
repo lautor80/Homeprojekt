@@ -9,3 +9,6 @@
 .portal-vg__person { margin-bottom: 0.75rem; }
 .portal-vg__vertraege { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; margin-top: 0.35rem; }
 .portal-vg__liste { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.35rem; }
+
+/* Kündigen: Mehrfachauswahl der laufenden Verträge */
+.portal-vg__wahl { display: flex; flex-direction: column; margin-left: -0.5rem; }

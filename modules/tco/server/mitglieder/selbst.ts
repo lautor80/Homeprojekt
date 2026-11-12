@@ -39,6 +39,9 @@ export function endeJugend(h = heute()): string {
 }
 const istJugend = (v: { art: string }) => leer(v.art) === ART_JUGEND;
 /** Vertragsende bei Kündigung eines einzelnen Vertrags */
+/** Mitgliedsbeitrag (kein Training, Schließfach, Spende …): mit dem eigenen Beitrag endet die Mitgliedschaft */
+export const istMitgliedsbeitrag = (v: { art: string; artname?: string | null }) =>
+  Number(leer(v.art)) < 90 && /mitglied|erwachsene|jugendliche|familie|aktiv|passiv/i.test(v.artname ?? '');
 export const vertragsEnde = (v: { art: string }, h = heute()) => (istJugend(v) ? endeJugend(h) : endeJahr(h));
 
 export async function meineLesen(db: Db, benutzerId: string) {
@@ -54,10 +57,10 @@ export async function meineLesen(db: Db, benutzerId: string) {
       mandatsref: d.bank.mandatsref,
     },
     familie: d.familie,
-    vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && !v.vertragende, endeBei: vertragsEnde(v) })),
+    vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && !v.vertragende, endeBei: vertragsEnde(v), mitgliedsbeitrag: istMitgliedsbeitrag(v) })),
     // Vertragsbaum mit allen verknüpften Personen; kündbar sind nur eigene Verträge und die von Personen, die über mich zahlen
     vertraegeFamilie: d.vertraegeFamilie.map((v) => ({
-      ...v, endeBei: vertragsEnde(v),
+      ...v, endeBei: vertragsEnde(v), mitgliedsbeitrag: istMitgliedsbeitrag(v),
       kuendbar: v.laeuft && !v.vertragende && d.vertraege.some((x) => x.adrnr === v.adrnr && x.vertragnr === v.vertragnr),
     })),
     kuendigung: { mitgliedschaft: endeJahr(), jugend: endeJugend(), heute: heute() },
@@ -131,6 +134,33 @@ export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Ve
   const grund = condense(k.grund ?? '');
   await notizAnlegen(tx, betroffen, `Kündigung über „Meine Mitgliedschaft“ durch ${benutzer}: ${text}${grund ? ` Grund: ${grund}` : ''}`, 'Portal');
   return { text, adrnr: eigene, betroffen, ende };
+}
+
+/**
+ * Mehrere Verträge in einem Schritt kündigen (Dialog „Kündigen“ mit Mehrfachauswahl). Ist der eigene Mitgliedsbeitrag dabei,
+ * endet die Mitgliedschaft (Austritt, alle eigenen Verträge enden); Verträge anderer Personen werden einzeln beendet.
+ */
+export async function kuendigenMehrere(tx: Db, benutzerId: string, liste: { adrnr: string; vertragnr: string }[], grund: string | null, v: Verein, benutzer: string) {
+  const eigene = await eigeneAdrnr(tx, benutzerId);
+  const d = await detailLesen(tx, eigene);
+  const wahl = [...new Map(liste.map((x) => [`${leer(x.adrnr)}|${leer(x.vertragnr)}`, x])).values()].map((x) => {
+    const vt = d.vertraege.find((y) => y.adrnr === leer(x.adrnr) && y.vertragnr === leer(x.vertragnr));
+    if (!vt) throw new BusinessError('Ein gewählter Vertrag gehört nicht zu Ihrer Mitgliedschaft.');
+    if (!vt.laeuft || vt.vertragende) throw new BusinessError(`${vt.artname || 'Der Vertrag'} ist bereits beendet oder gekündigt.`);
+    return vt;
+  });
+  const austritt = !d.mitglied.austritt && wahl.some((vt) => vt.eigen && istMitgliedsbeitrag(vt));
+  const ergebnisse: Awaited<ReturnType<typeof kuendigen>>[] = [];
+  if (austritt) ergebnisse.push(await kuendigen(tx, benutzerId, { art: 'MITGLIEDSCHAFT', grund }, v, benutzer));
+  for (const vt of wahl) {
+    if (austritt && vt.eigen) continue; // endet mit der Mitgliedschaft
+    ergebnisse.push(await kuendigen(tx, benutzerId, { art: 'VERTRAG', adrnr: vt.adrnr, vertragnr: vt.vertragnr, grund }, v, benutzer));
+  }
+  const personen = new Set(ergebnisse.map((r) => r.betroffen));
+  return {
+    text: ergebnisse.map((r) => r.text).join(' '), adrnr: eigene, betroffen: personen.size === 1 ? [...personen][0] : eigene,
+    ende: ergebnisse.map((r) => r.ende).sort().at(-1)!,
+  };
 }
 
 /** Kündigungsbestätigung drucken, ablegen und versenden (nach der Transaktion; Fehler werden als Hinweise zurückgegeben) */
