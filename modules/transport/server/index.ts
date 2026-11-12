@@ -613,10 +613,14 @@ async function routes(app: FastifyInstance) {
       bank: s(100), iban: s(40), bic: s(15),
       zahlungsziel_tage: z.coerce.number().int().min(0).max(365), ust_satz: z.coerce.number().min(0).max(100),
       rechnung_startnr: z.coerce.number().int().min(1).max(9999),
+      // fehlt das Feld (ältere Oberfläche/Import), bleiben die gespeicherten Bedingungen erhalten
+      auftragsbedingungen: z.string().max(10_000).optional(),
       logo: z.string().max(600_000).regex(/^data:image\/(png|jpeg);base64,/, 'Logo muss PNG oder JPEG sein').nullish(),
     }).parse(req.body);
     await change(req, async (tx) => {
-      await tx`update transport.firma set ${tx({ ...b, logo: b.logo ?? null })} where id = 1`;
+      const { auftragsbedingungen, ...rest } = b;
+      await tx`update transport.firma set ${tx({ ...rest, logo: b.logo ?? null })} where id = 1`;
+      if (auftragsbedingungen !== undefined) await tx`update transport.firma set auftragsbedingungen = ${auftragsbedingungen.replace(/\r\n/g, '\n').trim()} where id = 1`;
     });
     return { ok: true };
   });

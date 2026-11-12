@@ -259,7 +259,7 @@ Vorlage ist `modules/beispiel` (Kontakte mit Liste, Objektseite, Löschen mit Be
 
 Portierung der abap2UI5-App `Z2UI5_CL_EU_AUFTRAG` mit der Logik aus `ZCL_EU_AUFTRAG`.
 Einschalten mit `PORTAL_MODULES=transport` in der `.env`. Gotenberg wird dafür **nicht** gebraucht:
-Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt.
+Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt. **Transportauftrag** (#170): im Kopf Auftrags-Nr. mit dem Hinweis „Bitte immer auf der Rechnung angeben“ und Datum (Kennzeichen und Ladenummer entfallen – die Ladenummer steht weiter bei der Beladestelle); Frachtpreis ist der **Frachtpreis VK** (Preis des Unternehmers; *EK* ist der Preis des Kunden und geht in die Rechnung); am Ende die **Auftragsbedingungen** aus *Stammdaten → Firma* (Absätze durch Leerzeile, Migration 007 belegt sie mit den Euroflex-AGB vor).
 
 | Funktion | Inhalt |
 |---|---|

@@ -19,6 +19,7 @@ interface Firma {
   name: string; strasse: string; plz: string; ort: string; land: string; ustid: string; steuernr: string; kontakt: string;
   telefon: string; fax: string; email: string; bank: string; iban: string; bic: string;
   zahlungsziel_tage: number; ust_satz: number; rechnung_startnr: number; logo: string | null;
+  auftragsbedingungen?: string;
   paperless?: boolean;
 }
 interface Produkt { prod_key: string; text: string; preis: number; gueltig_bis: string | null; sort: number }
@@ -106,6 +107,13 @@ function FirmaTab() {
             </FlexBox>
           </FieldBox>
         </FormGrid>
+      </Section>
+      <Section title="Auftragsbedingungen (Transportauftrag)">
+        <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.5rem' }}>
+          Stehen am Ende jedes Transportauftrags an den Unternehmer. Absätze durch eine Leerzeile trennen.
+        </Text>
+        <TextArea rows={14} style={{ width: '100%' }} value={f.auftragsbedingungen ?? ''} maxlength={10000}
+                  onInput={(e) => setF({ ...f, auftragsbedingungen: e.target.value })} />
       </Section>
       </div>
       <AblageOrdnerEinstellung />
