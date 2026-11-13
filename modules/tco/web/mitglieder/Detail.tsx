@@ -166,7 +166,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
         </Tab>
         <Tab data-key="fam" text={`Familie & Schlüssel (${d.familie.length - 1})`} selected={tab === 'fam'}>
           <Familie d={d} onOpen={onOpen} />
-          <Schluessel d={d} edit={edit} onAktion={aktion} />
+          <Schluessel d={d} />
         </Tab>
         <Tab data-key="grp" text={`Gruppen (${d.gruppen.length})`} selected={tab === 'grp'}>
           {tab === 'grp' && <GruppenTab d={d} edit={edit} onAktion={aktion} />}
@@ -407,28 +407,26 @@ function Familie({ d, onOpen }: { d: Detail; onOpen: (a: string) => void }) {
   );
 }
 
-function Schluessel({ d, edit, onAktion }: { d: Detail; edit: boolean; onAktion: (fn: () => Promise<{ text?: string } | void>) => void }) {
+/** Hallenschlüssel am Mitglied: nur Anzeige des aktuellen Stands – gepflegt wird ausschließlich in der App „Hallenschlüssel“ */
+function Schluessel({ d }: { d: Detail }) {
   const s = d.schluessel[0];
-  const [v, setV] = useState({ ausgabe: s?.ausgabe ?? '', ausgabebeleg: s?.ausgabebeleg ?? '', ruecknahme: s?.ruecknahme ?? '', ruecknahmebeleg: s?.ruecknahmebeleg ?? '' });
-  const geaendert = (v.ausgabe || null) !== (s?.ausgabe ?? null) || (v.ruecknahme || null) !== (s?.ruecknahme ?? null)
-    || v.ausgabebeleg !== (s?.ausgabebeleg ?? '') || v.ruecknahmebeleg !== (s?.ruecknahmebeleg ?? '');
+  const datum = (w: string | null | undefined) => (w ? w.slice(0, 10).split('-').reverse().join('.') : '');
   return (
     <>
       <Toolbar design="Transparent">
         <Title level="H5">Hallenschlüssel</Title>
         {s && <ObjectStatus state={s.ausgabe && !s.ruecknahme ? 'Critical' : 'None'}>{s.ausgabe && !s.ruecknahme ? 'ausgegeben' : s.ruecknahme ? 'zurückgegeben' : ''}</ObjectStatus>}
         <ToolbarSpacer />
-        {edit && geaendert && <Button icon="save" onClick={() => onAktion(() => api.post(`${MG}/m/${d.mitglied.adrnr}/schluessel`, v))}>Sichern</Button>}
         <Button design="Transparent" icon="key" onClick={() => { window.location.href = '/tco/hallenschluessel'; }}>App Hallenschlüssel</Button>
       </Toolbar>
       <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
-        Ausgabe und Rückgabe werden in der App „Hallenschlüssel“ erfasst (mit Quittung, Beleg und Rechnung) – hier steht der aktuelle Stand. Bitte nur im Ausnahmefall direkt ändern.
+        Ausgabe und Rückgabe werden in der App „Hallenschlüssel“ erfasst (mit Quittung, Beleg und Rechnung) – hier steht nur der aktuelle Stand.
       </MessageStrip>
       <Raster>
-        <Feld label="Ausgabe am"><DatePicker style={{ width: '100%' }} readonly={!edit} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.ausgabe} onChange={(e) => setV({ ...v, ausgabe: e.detail.value })} /></Feld>
-        <Feld label="Beleg Ausgabe"><InputText readonly={!edit} value={v.ausgabebeleg} onChange={(x) => setV({ ...v, ausgabebeleg: x })} /></Feld>
-        <Feld label="Rückgabe am"><DatePicker style={{ width: '100%' }} readonly={!edit} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.ruecknahme} onChange={(e) => setV({ ...v, ruecknahme: e.detail.value })} /></Feld>
-        <Feld label="Beleg Rückgabe"><InputText readonly={!edit} value={v.ruecknahmebeleg} onChange={(x) => setV({ ...v, ruecknahmebeleg: x })} /></Feld>
+        <Feld label="Ausgabe am"><InputText readonly value={datum(s?.ausgabe)} onChange={() => undefined} /></Feld>
+        <Feld label="Beleg Ausgabe"><InputText readonly value={s?.ausgabebeleg ?? ''} onChange={() => undefined} /></Feld>
+        <Feld label="Rückgabe am"><InputText readonly value={datum(s?.ruecknahme)} onChange={() => undefined} /></Feld>
+        <Feld label="Beleg Rückgabe"><InputText readonly value={s?.ruecknahmebeleg ?? ''} onChange={() => undefined} /></Feld>
       </Raster>
     </>
   );
