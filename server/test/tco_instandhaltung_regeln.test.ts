@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aufgabeState, empfaenger, eskalationFaellig, feldAenderungen, fotoLesen, istOffen, kurz, meldungsNummer, wechselFehler, zustaendigRang,
+  aufgabeState, empfaenger, eskalationFaellig, feldAenderungen, fotoLesen, prioritaetVorschlag, ueberfaellig, istOffen, kurz, meldungsNummer, wechselFehler, zustaendigRang,
 } from '../../modules/tco/server/instandhaltung/regeln.js';
 
 test('Arbeitsvorrat: Farbe nach Auswirkung', () => {
@@ -68,6 +68,16 @@ test('Zuständigkeit: Ort und/oder Kategorie, spezifischer zuerst', () => {
 
 test('Protokoll: geänderte Felder mit alt → neu', () => {
   assert.deepEqual(feldAenderungen({ kosten: null, firma: 'A', stunden: '2.00', erledigung: null, paperless: '' }, { kosten: 80, firma: 'A', stunden: 2, erledigung: null, paperless: null }),
-    ['Kosten: – → 80,00 €']);
+    ['Istkosten: – → 80,00 €']);
   assert.deepEqual(feldAenderungen({ firma: 'A' }, { firma: 'B', stunden: 1.5 }), ['Fremdfirma: A → B', 'Helferstunden: – → 1,5 h']);
+});
+
+test('Priorität, Termine und Überfälligkeit', () => {
+  assert.equal(prioritaetVorschlag('SICHERHEIT'), 'SEHR_HOCH');
+  assert.equal(prioritaetVorschlag('OPTISCH'), 'MITTEL');
+  assert.deepEqual(feldAenderungen({ prioritaet: 'MITTEL', geplant_bis: null, ende_ist: null }, { prioritaet: 'HOCH', geplant_bis: '2026-11-20', ende_ist: null }),
+    ['Priorität: Mittel → Hoch', 'Geplantes Ende: – → 20.11.2026']);
+  assert.equal(ueberfaellig({ status: 'IN_ARBEIT', geplant_bis: '2026-11-10' }, '2026-11-13'), true);
+  assert.equal(ueberfaellig({ status: 'ERLEDIGT', geplant_bis: '2026-11-10' }, '2026-11-13'), false);
+  assert.equal(ueberfaellig({ status: 'NEU', geplant_bis: '2026-11-13' }, '2026-11-13'), false);
 });

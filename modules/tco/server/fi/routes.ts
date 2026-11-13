@@ -118,7 +118,16 @@ export async function fiRoutes(app: FastifyInstance) {
     const belege = await DB`select ltrim(doknr, '0') as doknr from tco.fipapermap where internenr = ${p.nr} order by 1`;
     const notizen = await DB`select notiz_id as id, notiz, erstellt_von, erstellt_am from tco.finotiz where internenr = ${p.nr} order by erstellt_am desc`;
     const [storno] = await DB`select internenr from tco.fibuchungen where storno_zu = ${p.nr} limit 1`;
-    return { internenr: p.nr, zeilen, belege: belege.map((b) => Number(b.doknr)).filter(Boolean), notizen, storniertDurch: storno?.internenr ?? null };
+    // verknüpfte Objekte über dieselben Paperless-Dokumente (z. B. Rechnung einer Schadensmeldung, #205)
+    const ids = belege.map((b) => Number(b.doknr)).filter(Boolean);
+    const objekte = ids.length ? (await DB`
+      select distinct m.id, m.nummer, a.bezeichnung as anlage, k.bezeichnung as kategorie, d.doc_id
+        from tco.ih_dokument d join tco.ih_meldung m on m.id = d.meldung_id
+        join tco.ih_anlage a on a.id = m.anlage_id join tco.ih_kategorie k on k.id = m.kategorie_id
+       where d.doc_id = any(${ids}) order by m.nummer`).map((o) => ({
+      art: 'Schadensmeldung', nummer: o.nummer as string, text: `${o.anlage} – ${o.kategorie}`, doc_id: o.doc_id as number, pfad: `/tco/instandhaltung?id=${o.id}`,
+    })) : [];
+    return { internenr: p.nr, zeilen, belege: ids, notizen, storniertDurch: storno?.internenr ?? null, objekte };
   });
 
   app.get('/fi/zahlungen', { preHandler: requireAuth(P_FI.display) }, async (req) => {

@@ -14,8 +14,9 @@ import type { Db } from '../verein.js';
 import { addTage, dat, heute } from '../format.js';
 import { festeLoeschen, festeSpeichern } from '../platz/belegungen.js';
 import {
-  ANLAGE_TYPEN, AUSWIRKUNG, aufgabeState, empfaenger, eskalationFaellig, feldAenderungen, fotoLesen, istOffen, kurz, meldungsNummer, STATUS,
-  STATUS_OFFEN, wechselFehler, zustaendigRang, type AnlageTyp, type Auswirkung, type Status,
+  ANLAGE_TYPEN, AUSWIRKUNG, aufgabeState, DOK_ARTEN, empfaenger, eskalationFaellig, feldAenderungen, fotoLesen, istOffen, kurz, meldungsNummer,
+  PRIORITAET, prioritaetVorschlag, STATUS, STATUS_OFFEN, ueberfaellig, wechselFehler, zustaendigRang,
+  type AnlageTyp, type Auswirkung, type DokArt, type Prioritaet, type Status,
 } from './regeln.js';
 
 export const P_IH = {
@@ -31,7 +32,7 @@ export interface Ich { id: string | null; name: string }
 
 export const AKTIONEN = {
   ANGELEGT: 'Gemeldet', STATUS: 'Status', ZUSTAENDIG: 'Zuständigkeit', FELD: 'Änderung', KOMMENTAR: 'Kommentar', FOTO: 'Foto',
-  FOTO_GELOESCHT: 'Foto gelöscht', SPERRE: 'Platzsperre', SPERRE_AUF: 'Sperre aufgehoben', MAIL: 'E-Mail', FORMULAR: 'Formular',
+  FOTO_GELOESCHT: 'Foto gelöscht', DOKUMENT: 'Dokument verknüpft', DOKUMENT_GELOEST: 'Dokument gelöst', SPERRE: 'Platzsperre', SPERRE_AUF: 'Sperre aufgehoben', MAIL: 'E-Mail', FORMULAR: 'Formular',
   ERINNERUNG: 'Erinnerung', FOTOFRIST: 'Fotos gelöscht (Frist)',
 } as const;
 export type Aktion = keyof typeof AKTIONEN;
@@ -79,9 +80,13 @@ export async function matrixSichern(tx: Db, paare: [number, number][]): Promise<
   return `Matrix gesichert (${uniq.length} Kombination${uniq.length === 1 ? '' : 'en'}).`;
 }
 
-export async function einstellungenLesen(db: Db): Promise<{ vorstand_email: string; foto_frist_monate: number }> {
-  const [e] = await db`select vorstand_email, foto_frist_monate from tco.ih_einstellungen where id = 1`;
-  return { vorstand_email: e?.vorstand_email ?? '', foto_frist_monate: Number(e?.foto_frist_monate ?? 24) };
+export interface Einstellungen { vorstand_email: string; foto_frist_monate: number; paperless_typen: string; paperless_pfade: string }
+export async function einstellungenLesen(db: Db): Promise<Einstellungen> {
+  const [e] = await db`select vorstand_email, foto_frist_monate, paperless_typen, paperless_pfade from tco.ih_einstellungen where id = 1`;
+  return {
+    vorstand_email: e?.vorstand_email ?? '', foto_frist_monate: Number(e?.foto_frist_monate ?? 24),
+    paperless_typen: e?.paperless_typen ?? '', paperless_pfade: e?.paperless_pfade ?? '',
+  };
 }
 
 export interface Bearbeiter { id: string; name: string; email: string | null; rollen: string[] }
@@ -190,10 +195,13 @@ export async function kategorieSichern(tx: Db, id: number | null, e: KategorieEi
   return { id: r.id, text: `Kategorie „${bezeichnung}“ angelegt – an allen Orten zugelassen (Matrix).` };
 }
 
-export async function einstellungenSichern(tx: Db, e: { vorstand_email: string; foto_frist_monate: number }): Promise<string> {
+export async function einstellungenSichern(tx: Db, e: { vorstand_email: string; foto_frist_monate: number; paperless_typen?: string; paperless_pfade?: string }): Promise<string> {
   const liste = e.vorstand_email.split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
   if (liste.some((x) => !empfaenger(x).length)) throw new BusinessError('Bitte gültige E-Mail-Adressen angeben (mehrere mit Komma trennen).');
-  await tx`update tco.ih_einstellungen set vorstand_email = ${empfaenger(e.vorstand_email).join(', ')}, foto_frist_monate = ${e.foto_frist_monate} where id = 1`;
+  const alt = await einstellungenLesen(tx);
+  const norm = (x: string | undefined, a: string) => (x === undefined ? a : x.split(',').map((t) => t.trim()).filter(Boolean).join(', '));
+  await tx`update tco.ih_einstellungen set vorstand_email = ${empfaenger(e.vorstand_email).join(', ')}, foto_frist_monate = ${e.foto_frist_monate},
+                  paperless_typen = ${norm(e.paperless_typen, alt.paperless_typen)}, paperless_pfade = ${norm(e.paperless_pfade, alt.paperless_pfade)} where id = 1`;
   return 'Einstellungen gesichert.';
 }
 
@@ -215,8 +223,9 @@ export async function meldungAnlegen(tx: Db, d: MeldungEingabe, ich: Ich): Promi
   });
   const zust = (await zustaendigeFuer(tx, a.id, k.id))[0] ?? null;
   const [r] = await tx`
-    insert into tco.ih_meldung (nummer, anlage_id, kategorie_id, beschreibung, auswirkung, melder_id, melder_name, zustaendig)
-    values ('neu-' || gen_random_uuid()::text, ${a.id}, ${k.id}, ${d.beschreibung.trim()}, ${d.auswirkung}, ${ich.id}, ${ich.name}, ${zust?.id ?? null})
+    insert into tco.ih_meldung (nummer, anlage_id, kategorie_id, beschreibung, auswirkung, prioritaet, melder_id, melder_name, zustaendig)
+    values ('neu-' || gen_random_uuid()::text, ${a.id}, ${k.id}, ${d.beschreibung.trim()}, ${d.auswirkung}, ${prioritaetVorschlag(d.auswirkung)},
+            ${ich.id}, ${ich.name}, ${zust?.id ?? null})
     returning id, extract(year from eingang at time zone 'Europe/Berlin')::int as jahr`;
   const nummer = meldungsNummer(r.jahr, r.id);
   await tx`update tco.ih_meldung set nummer = ${nummer} where id = ${r.id}`;
@@ -262,12 +271,14 @@ export async function meineLesen(db: Db, userId: string) {
 
 const KOPF = (db: Db) => db`
   select m.id, m.nummer, m.anlage_id, a.bezeichnung as anlage, a.gruppe, a.platz_id, p.name as platz, m.kategorie_id, k.bezeichnung as kategorie,
-         m.beschreibung, m.auswirkung, m.status, m.eingang, m.melder_id, m.melder_name, mu.email as melder_email,
+         m.beschreibung, m.auswirkung, m.prioritaet, m.geplant_bis::text as geplant_bis, m.ende_ist::text as ende_ist,
+         m.status, m.eingang, m.melder_id, m.melder_name, mu.email as melder_email,
          m.zustaendig, zu.display_name as zustaendig_name, zu.email as zustaendig_email,
          m.duplikat_von, d.nummer as duplikat_nummer, m.erledigung, m.kosten::float8 as kosten, m.firma, m.paperless, m.stunden::float8 as stunden,
          m.sperre_id, s.datum_von::text as sperre_von, s.datum_bis::text as sperre_bis,
          m.status_am, m.erinnert_am, m.erledigt_am, m.geaendert_am, m.geaendert_von, m.formular_doc_id, m.formular_am,
-         (select count(*)::int from tco.ih_anhang x where x.meldung_id = m.id) as fotos
+         (select count(*)::int from tco.ih_anhang x where x.meldung_id = m.id) as fotos,
+         (select count(*)::int from tco.ih_dokument x where x.meldung_id = m.id) as dokumente
     from tco.ih_meldung m
     join tco.ih_anlage a on a.id = m.anlage_id
     join tco.ih_kategorie k on k.id = m.kategorie_id
@@ -279,13 +290,16 @@ const KOPF = (db: Db) => db`
 
 const mitTexten = <T extends Record<string, unknown>>(z: T) => ({
   ...z, status_txt: STATUS[z.status as Status], auswirkung_txt: AUSWIRKUNG[z.auswirkung as Auswirkung], offen: istOffen(String(z.status)),
+  prioritaet_txt: PRIORITAET[z.prioritaet as Prioritaet] ?? String(z.prioritaet ?? ''),
+  ueberfaellig: ueberfaellig({ status: String(z.status), geplant_bis: (z.geplant_bis as string | null) ?? null }, heute()),
 });
+const PRIO_ORDER = (db: Db) => db`case m.prioritaet when 'SEHR_HOCH' then 0 when 'HOCH' then 1 when 'MITTEL' then 2 else 3 end`;
 
 export async function listeLesen(db: Db, filter: 'OFFEN' | 'ALLE') {
   const rows = await db`${KOPF(db)}
     where ${filter === 'ALLE'} or m.status = any(${STATUS_OFFEN})
-    order by case m.auswirkung when 'SICHERHEIT' then 0 when 'UNBESPIELBAR' then 1 else 2 end, m.eingang desc
-    limit 500`;
+    order by ${PRIO_ORDER(db)}, m.eingang desc
+    limit 2000`;
   return rows.map(mitTexten);
 }
 
@@ -312,13 +326,14 @@ export async function detailLesen(db: Db, id: number) {
      where upper(b.platz) = upper(${m.platz}) and b.datum >= ${heute()} and coalesce(b.status, '') not in ('2', '4')
      order by 1, 2 limit 50` : [];
   return {
-    ...m, protokoll: await protokollLesen(db, id), fotos, buchungen,
+    ...m, protokoll: await protokollLesen(db, id), fotos, buchungen, dokumente: await dokumenteLesen(db, id),
     zustaendige: await zustaendigeFuer(db, m.anlage_id as number, m.kategorie_id as number),
   };
 }
 
 export interface BearbeitenEingabe {
-  status: Status; zustaendig: string | null; duplikat_von: number | null; erledigung: string | null;
+  /** nicht angegeben (undefined) = unverändert */
+  status: Status; prioritaet?: Prioritaet; geplant_bis?: string | null; ende_ist?: string | null; zustaendig: string | null; duplikat_von: number | null; erledigung: string | null;
   kosten: number | null; firma: string | null; paperless: string | null; stunden: number | null;
   /** Kommentar (eigener Protokolleintrag) */
   kommentar: string | null; fuer_melder: boolean;
@@ -326,7 +341,8 @@ export interface BearbeitenEingabe {
 
 /** Bearbeiten: Status, Zuständiger, Kosten … – jede Änderung als eigener Protokolleintrag. Liefert die Mails. */
 export async function bearbeiten(tx: Db, id: number, e: BearbeitenEingabe, ich: Ich): Promise<{ text: string; mails: Mail[] }> {
-  const [alt] = await tx`select m.*, d.nummer as duplikat_nummer, u.display_name as zustaendig_name from tco.ih_meldung m
+  const [alt] = await tx`select m.*, m.geplant_bis::text as geplant_bis, m.ende_ist::text as ende_ist, d.nummer as duplikat_nummer,
+                                 u.display_name as zustaendig_name from tco.ih_meldung m
                            left join tco.ih_meldung d on d.id = m.duplikat_von left join core.users u on u.id = m.zustaendig
                           where m.id = ${id} for update of m`;
   if (!alt) throw new BusinessError('Meldung nicht gefunden.', 404);
@@ -347,11 +363,17 @@ export async function bearbeiten(tx: Db, id: number, e: BearbeitenEingabe, ich: 
   if (e.status === 'ZUGEWIESEN' && !e.zustaendig) throw new BusinessError('Bitte einen Zuständigen wählen.');
   const statusNeu = alt.status !== e.status;
   const ende = !istOffen(e.status);
+  if (e.prioritaet !== undefined && !(e.prioritaet in PRIORITAET)) throw new BusinessError('Unbekannte Priorität.');
+  if (e.ende_ist && !ende) throw new BusinessError('Das tatsächliche Enddatum gibt es erst beim Abschluss (Erledigt, Abgelehnt oder Duplikat).');
+  if (e.ende_ist && e.ende_ist > heute()) throw new BusinessError('Das tatsächliche Enddatum liegt in der Zukunft.');
   const neu = {
+    prioritaet: e.prioritaet ?? alt.prioritaet, geplant_bis: e.geplant_bis === undefined ? alt.geplant_bis : e.geplant_bis,
+    ende_ist: ende ? (e.ende_ist || alt.ende_ist || heute()) : null,
     erledigung: e.erledigung?.trim() || null, kosten: e.kosten, firma: e.firma?.trim() || null, paperless: e.paperless?.trim() || null, stunden: e.stunden,
   };
   await tx`
     update tco.ih_meldung set status = ${e.status}, zustaendig = ${e.zustaendig}, duplikat_von = ${e.status === 'DUPLIKAT' ? e.duplikat_von : null},
+           prioritaet = ${neu.prioritaet}, geplant_bis = ${neu.geplant_bis}, ende_ist = ${neu.ende_ist},
            erledigung = ${neu.erledigung}, kosten = ${neu.kosten}, firma = ${neu.firma}, paperless = ${neu.paperless}, stunden = ${neu.stunden},
            status_am = case when ${statusNeu} then now() else status_am end,
            erledigt_am = case when ${ende} then coalesce(case when ${statusNeu} then null else erledigt_am end, now()) else null end,
@@ -428,6 +450,46 @@ export async function fotoLesenDb(db: Db, fotoId: number, darfAlle: boolean, use
 export async function fotosMitDaten(db: Db, id: number) {
   return (await db`select id, art, name, mime, daten, am, von from tco.ih_anhang where meldung_id = ${id} order by art desc, id`)
     .map((f) => ({ id: f.id as number, art: f.art as string, name: f.name as string, mime: f.mime as string, daten: f.daten as Buffer, am: f.am as Date, von: f.von as string }));
+}
+
+// ---------------------------------------------------------------- Paperless-Dokumente
+
+export interface DokumentInfo { doc_id: number; titel: string; korrespondent: string; datum: string | null }
+
+/** Dokumente einer Meldung, je mit den FI-Buchungen, denen dasselbe Paperless-Dokument zugeordnet ist */
+export async function dokumenteLesen(db: Db, id: number) {
+  return db`
+    select d.doc_id, d.art, d.titel, d.korrespondent, d.datum::text as datum, d.am, d.von,
+           coalesce((select array_agg(distinct p.internenr order by p.internenr) from tco.fipapermap p where ltrim(p.doknr, '0') = d.doc_id::text), '{}') as fi
+      from tco.ih_dokument d where d.meldung_id = ${id} order by d.am, d.doc_id`;
+}
+
+/** Ist das Dokument mit einer Meldung verknüpft (Voraussetzung für die Anzeige über die Instandhaltung)? */
+export async function dokumentVerknuepft(db: Db, docId: number): Promise<boolean> {
+  const [r] = await db`select 1 from tco.ih_dokument where doc_id = ${docId} limit 1`;
+  return !!r;
+}
+
+export async function dokumenteVerknuepfen(tx: Db, id: number, docs: DokumentInfo[], art: DokArt, ich: Ich): Promise<string> {
+  const [m] = await tx`select nummer from tco.ih_meldung where id = ${id}`;
+  if (!m) throw new BusinessError('Meldung nicht gefunden.', 404);
+  if (!(art in DOK_ARTEN)) throw new BusinessError('Unbekannte Dokumentart.');
+  let n = 0;
+  for (const d of docs) {
+    const r = await tx`insert into tco.ih_dokument (meldung_id, doc_id, art, titel, korrespondent, datum, von)
+                       values (${id}, ${d.doc_id}, ${art}, ${d.titel}, ${d.korrespondent}, ${d.datum}, ${ich.name})
+                       on conflict (meldung_id, doc_id) do update set art = excluded.art, titel = excluded.titel, korrespondent = excluded.korrespondent`;
+    if (r.count) n++;
+    await protokoll(tx, id, ich, 'DOKUMENT', `Paperless ${String(d.doc_id).padStart(6, '0')} (${DOK_ARTEN[art]}): ${d.titel || '–'}${d.korrespondent ? ` · ${d.korrespondent}` : ''}`);
+  }
+  return `${n} Dokument${n === 1 ? '' : 'e'} mit ${m.nummer} verknüpft.`;
+}
+
+export async function dokumentLoesen(tx: Db, id: number, docId: number, ich: Ich): Promise<string> {
+  const [r] = await tx`delete from tco.ih_dokument where meldung_id = ${id} and doc_id = ${docId} returning titel`;
+  if (!r) throw new BusinessError('Dokument ist nicht verknüpft.', 404);
+  await protokoll(tx, id, ich, 'DOKUMENT_GELOEST', `Paperless ${String(docId).padStart(6, '0')}: ${r.titel || '–'}`);
+  return `Verknüpfung zu Dokument ${docId} gelöst.`;
 }
 
 // ---------------------------------------------------------------- Platzsperre
@@ -525,15 +587,18 @@ export async function lauf(tx: Db, jetzt = new Date()): Promise<{ mails: Mail[];
 /** Einträge für den Arbeitsvorrat (Bereich „Instandhaltung“): jede offene Meldung einzeln */
 export async function aufgaben(db: Db) {
   const rows = await db`${KOPF(db)} where m.status = any(${STATUS_OFFEN})
-    order by case m.auswirkung when 'SICHERHEIT' then 0 when 'UNBESPIELBAR' then 1 else 2 end, m.eingang`;
+    order by case m.auswirkung when 'SICHERHEIT' then 0 else 1 end, ${PRIO_ORDER(db)}, m.eingang`;
+  const h = heute();
   return rows.map((m) => {
-    const teile = [kurz(String(m.beschreibung), 100), `gemeldet von ${m.melder_name}`, STATUS[m.status as Status]];
+    const spaet = ueberfaellig({ status: m.status, geplant_bis: m.geplant_bis }, h);
+    const teile = [kurz(String(m.beschreibung), 100), `Priorität ${PRIORITAET[m.prioritaet as Prioritaet] ?? m.prioritaet}`, `gemeldet von ${m.melder_name}`, STATUS[m.status as Status]];
+    if (m.geplant_bis) teile.push(`${spaet ? 'überfällig seit' : 'geplant bis'} ${dat(m.geplant_bis)}`);
     if (m.zustaendig_name) teile.push(`zuständig: ${m.zustaendig_name}`);
     if (m.sperre_id) teile.push(`${m.platz} gesperrt`);
     return {
       key: `SCHADEN:${m.id}`, bereich: 'Instandhaltung',
       icon: m.auswirkung === 'SICHERHEIT' ? 'alert' : m.sperre_id ? 'locked' : 'technical-object',
-      state: aufgabeState(String(m.auswirkung)),
+      state: spaet && aufgabeState(String(m.auswirkung)) === 'Information' ? 'Critical' as const : aufgabeState(String(m.auswirkung)),
       titel: `${m.auswirkung === 'SICHERHEIT' ? 'Sicherheitsrisiko' : 'Schaden'}: ${m.anlage} – ${m.kategorie}`,
       text: teile.join(' · '),
       datum: new Date(m.eingang as string).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }),
@@ -549,12 +614,13 @@ export async function kennzahlen(db: Db) {
            count(*) filter (where auswirkung = 'SICHERHEIT')::int as sicher,
            count(*) filter (where status = 'NEU')::int as neu,
            count(distinct sperre_id)::int as gesperrt,
+           count(*) filter (where geplant_bis < (now() at time zone 'Europe/Berlin')::date)::int as ueberfaellig,
            to_char(min(eingang) at time zone 'Europe/Berlin', 'YYYY-MM-DD') as aeltester
       from tco.ih_meldung where status = any(${STATUS_OFFEN})`;
   const [j] = await db`select count(*)::int as n, coalesce(sum(kosten), 0)::float8 as kosten from tco.ih_meldung
                         where status = 'ERLEDIGT' and erledigt_am >= date_trunc('year', now())`;
   return {
-    offen: Number(r.offen), sicher: Number(r.sicher), neu: Number(r.neu), gesperrt: Number(r.gesperrt),
+    offen: Number(r.offen), sicher: Number(r.sicher), neu: Number(r.neu), gesperrt: Number(r.gesperrt), ueberfaellig: Number(r.ueberfaellig),
     erledigtJahr: Number(j.n), kostenJahr: Number(j.kosten), aeltester: r.aeltester ? dat(r.aeltester) : null,
   };
 }

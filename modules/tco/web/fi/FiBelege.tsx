@@ -39,7 +39,8 @@ export function FiBelege() {
   const [loading, setLoading] = useState(false);
   const { warnungen, schliessen } = useWarnungen();
 
-  const [belege, setBelege] = useState<string | null>(null);
+  // Absprung aus verknüpften Objekten (z. B. Schadensmeldung): /tco/fi?buchung=<interne Nummer> öffnet die Belege der Buchung
+  const [belege, setBelege] = useState<string | null>(() => new URLSearchParams(window.location.search).get('buchung'));
   const [zuordnen, setZuordnen] = useState<string[] | null>(null);
   const [stornoZ, setStornoZ] = useState<Zeile | null>(null);
   const [notizZ, setNotizZ] = useState<Zeile | null>(null);

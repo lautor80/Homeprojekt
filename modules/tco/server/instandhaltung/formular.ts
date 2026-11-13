@@ -10,10 +10,14 @@ import { logoWeiss, paperless, plAktiv, type Verein } from '../verein.js';
 import { dat, heute } from '../format.js';
 import { alleFusszeilen, betragText, C, kuerzen, LEFT, RIGHT, umbruch } from '../pdf/layout.js';
 import { K } from '../paperless-kontexte.js';
-import { ANLASS, type Anlass } from './regeln.js';
+import { ANLASS, DOK_ARTEN, type Anlass } from './regeln.js';
+
+const DOK_TEXT: Record<string, string> = DOK_ARTEN;
 
 export interface FormularDaten {
   nummer: string; anlage: string; gruppe: string; kategorie: string; auswirkung_txt: string; status_txt: string;
+  prioritaet_txt: string; geplant_bis: string | null; ende_ist: string | null;
+  dokumente: { doc_id: number; art: string; titel: string; korrespondent: string; fi: string[] }[];
   beschreibung: string; melder_name: string; eingang: Date | string; zustaendig_name: string | null;
   erledigung: string | null; kosten: number | null; firma: string | null; paperless: string | null; stunden: number | null;
   platz: string | null; sperre_id: number | null; sperre_von: string | null; duplikat_nummer: string | null; erledigt_am: Date | string | null;
@@ -49,10 +53,13 @@ export async function formularPdf(v: Verein, m: FormularDaten, fotos: FormularFo
     ['WO', m.gruppe ? `${m.gruppe} · ${m.anlage}` : m.anlage],
     ['KATEGORIE', m.kategorie],
     ['AUSWIRKUNG', m.auswirkung_txt],
+    ['PRIORITÄT', m.prioritaet_txt],
     ['STATUS', `${m.status_txt}${m.duplikat_nummer ? ` (Duplikat von ${m.duplikat_nummer})` : ''}${m.erledigt_am ? ` am ${zeitpunkt(m.erledigt_am)}` : ''}`],
     ['GEMELDET', `${zeitpunkt(m.eingang)} von ${m.melder_name}`],
     ['ZUSTÄNDIG', m.zustaendig_name ?? '–'],
     ['PLATZSPERRE', m.sperre_id ? `${m.platz} gesperrt seit ${dat(m.sperre_von)}` : m.platz ? `${m.platz} nicht gesperrt` : '–'],
+    ['GEPLANTES ENDE', m.geplant_bis ? dat(m.geplant_bis) : '–'],
+    ['TATSÄCHLICHES ENDE', m.ende_ist ? dat(m.ende_ist) : '–'],
     ['ANLASS', `${ANLASS[a.anlass]}${a.anlass === 'WEITERGABE' && a.an ? ` an ${a.an}` : ''}`],
   ];
   const zeilen = Math.ceil(felder.length / 2);
@@ -83,9 +90,12 @@ export async function formularPdf(v: Verein, m: FormularDaten, fotos: FormularFo
   abschnitt('BEARBEITUNG');
   const bearb: [string, string][] = [
     ['Erledigung / Ergebnis', m.erledigung || '–'],
-    ['Kosten', m.kosten != null ? betragText(m.kosten) : '–'],
+    ['Istkosten', m.kosten != null ? betragText(m.kosten) : '–'],
     ['Fremdfirma', m.firma || '–'],
-    ['Angebot / Rechnung (Paperless)', m.paperless || '–'],
+    ...(m.paperless ? [['Verweis', m.paperless] as [string, string]] : []),
+    ['Paperless-Dokumente', m.dokumente.length
+      ? m.dokumente.map((d) => `${String(d.doc_id).padStart(6, '0')} ${DOK_TEXT[d.art] ?? d.art}: ${d.titel || '–'}${d.korrespondent ? ` (${d.korrespondent})` : ''}${d.fi.length ? ` – FI ${d.fi.join(', ')}` : ''}`).join(' · ')
+      : '–'],
     ['Helferstunden', m.stunden != null ? `${m.stunden.toLocaleString('de-DE')} h` : '–'],
   ];
   for (const [l, w] of bearb) {
@@ -166,6 +176,7 @@ export async function formularAblegen(v: Verein, m: FormularDaten & { formular_d
   const werte = {
     nummer: m.nummer, anlage: m.anlage, gruppe: m.gruppe, kategorie: m.kategorie, auswirkung: m.auswirkung_txt, status: m.status_txt,
     anlass: `${ANLASS[a.anlass]}${a.anlass === 'WEITERGABE' && a.an ? ` an ${a.an}` : ''}`, empfaenger: a.an ?? '', melder: m.melder_name, zustaendig: m.zustaendig_name ?? '', kosten: m.kosten ?? '',
+    prioritaet: m.prioritaet_txt, geplant_bis: m.geplant_bis ?? '', ende_ist: m.ende_ist ?? '',
     eingang: new Date(m.eingang).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }), heute: heute(), benutzer: a.benutzer, verein: v.name,
   };
   const warnungen: string[] = [];

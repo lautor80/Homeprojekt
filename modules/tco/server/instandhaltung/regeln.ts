@@ -89,8 +89,21 @@ export function zustaendigRang(e: { anlage_id: number | null; kategorie_id: numb
   return e.anlage_id != null && e.kategorie_id != null ? 0 : e.kategorie_id != null ? 1 : 2;
 }
 
+export const PRIORITAET = { SEHR_HOCH: 'Sehr hoch', HOCH: 'Hoch', MITTEL: 'Mittel', NIEDRIG: 'Niedrig' } as const;
+export type Prioritaet = keyof typeof PRIORITAET;
+/** Vorschlag beim Melden: aus der Auswirkung */
+export const prioritaetVorschlag = (a: string): Prioritaet => (a === 'SICHERHEIT' ? 'SEHR_HOCH' : a === 'UNBESPIELBAR' ? 'HOCH' : 'MITTEL');
+export const PRIO_RANG: Record<string, number> = { SEHR_HOCH: 0, HOCH: 1, MITTEL: 2, NIEDRIG: 3 };
+
+export const DOK_ARTEN = { ANGEBOT: 'Angebot', RECHNUNG: 'Rechnung', FORMULAR: 'Formular', FOTO: 'Foto/Bild', SONSTIGES: 'Sonstiges' } as const;
+export type DokArt = keyof typeof DOK_ARTEN;
+
+/** offen und das geplante Enddatum liegt vor heute */
+export const ueberfaellig = (m: { status: string; geplant_bis: string | null }, heute: string) => istOffen(m.status) && !!m.geplant_bis && m.geplant_bis < heute;
+
 export const FELDER = {
-  erledigung: 'Erledigung', kosten: 'Kosten', firma: 'Fremdfirma', paperless: 'Paperless-Verweis', stunden: 'Helferstunden',
+  prioritaet: 'Priorität', geplant_bis: 'Geplantes Ende', ende_ist: 'Tatsächliches Ende', erledigung: 'Erledigung', kosten: 'Istkosten',
+  firma: 'Fremdfirma', paperless: 'Verweis', stunden: 'Helferstunden',
 } as const;
 type Feld = keyof typeof FELDER;
 
@@ -98,6 +111,8 @@ const anzeige = (k: Feld, v: unknown) => {
   if (v === null || v === undefined || v === '') return '–';
   if (k === 'kosten') return `${Number(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
   if (k === 'stunden') return `${Number(v).toLocaleString('de-DE')} h`;
+  if (k === 'prioritaet') return PRIORITAET[v as Prioritaet] ?? String(v);
+  if ((k === 'geplant_bis' || k === 'ende_ist') && /^\d{4}-\d{2}-\d{2}/.test(String(v))) { const d = String(v); return `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`; }
   return String(v);
 };
 const norm = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : String(v).trim());

@@ -294,6 +294,13 @@ export class Paperless {
     return this.alle<Record<string, any>>(`api/documents/?${q}`);
   }
 
+  /** Nur die erste Seite einer Dokumentsuche (höchstens `anzahl` Treffer) – für Auswahldialoge */
+  async dokumenteErsteSeite(filter: Record<string, string>, anzahl = 50): Promise<Record<string, any>[]> {
+    const q = new URLSearchParams({ ...filter, page_size: String(anzahl) }).toString();
+    const r = await this.json<{ results?: Record<string, any>[] } | null>('GET', `api/documents/?${q}`);
+    return r?.results ?? [];
+  }
+
   /** IDs zu Namen (Dokumenttypen, Speicherpfade …); unbekannte Namen entfallen */
   async ids(art: 'correspondents' | 'document_types' | 'storage_paths' | 'tags', namen: string[]): Promise<number[]> {
     const out: number[] = [];
