@@ -418,8 +418,12 @@ function Schluessel({ d, edit, onAktion }: { d: Detail; edit: boolean; onAktion:
         <Title level="H5">Hallenschlüssel</Title>
         {s && <ObjectStatus state={s.ausgabe && !s.ruecknahme ? 'Critical' : 'None'}>{s.ausgabe && !s.ruecknahme ? 'ausgegeben' : s.ruecknahme ? 'zurückgegeben' : ''}</ObjectStatus>}
         <ToolbarSpacer />
-        {edit && <Button icon="save" disabled={!geaendert} onClick={() => onAktion(() => api.post(`${MG}/m/${d.mitglied.adrnr}/schluessel`, v))}>Sichern</Button>}
+        {edit && geaendert && <Button icon="save" onClick={() => onAktion(() => api.post(`${MG}/m/${d.mitglied.adrnr}/schluessel`, v))}>Sichern</Button>}
+        <Button design="Transparent" icon="key" onClick={() => { window.location.href = '/tco/hallenschluessel'; }}>App Hallenschlüssel</Button>
       </Toolbar>
+      <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+        Ausgabe und Rückgabe werden in der App „Hallenschlüssel“ erfasst (mit Quittung, Beleg und Rechnung) – hier steht der aktuelle Stand. Bitte nur im Ausnahmefall direkt ändern.
+      </MessageStrip>
       <Raster>
         <Feld label="Ausgabe am"><DatePicker style={{ width: '100%' }} readonly={!edit} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.ausgabe} onChange={(e) => setV({ ...v, ausgabe: e.detail.value })} /></Feld>
         <Feld label="Beleg Ausgabe"><InputText readonly={!edit} value={v.ausgabebeleg} onChange={(x) => setV({ ...v, ausgabebeleg: x })} /></Feld>

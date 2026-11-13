@@ -42,6 +42,7 @@ import { mailPersonen } from './mailpersonen.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
+import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -165,6 +166,7 @@ async function routes(app: FastifyInstance) {
   await uploadRoutes(app);
   await eingangRoutes(app);
   await instandhaltungRoutes(app);
+  await schluesselRoutes(app);
 }
 
 const tco: ServerModule = {
@@ -223,6 +225,11 @@ const tco: ServerModule = {
       text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
       text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
+    { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.display, text: 'Hallenschlüssel: Ausgaben und Rückgaben mit Quittung, Beleg und Protokoll ansehen; offene Quittungen im Arbeitsvorrat' },
+    { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.edit, requires: [P_SCHL.display],
+      text: 'Hallenschlüssel ausgeben und zurücknehmen (Rechnungsposition bzw. Gutschrift in der Hallenabrechnung), Empfang bestätigen, Quittungslink senden, Beleg in Paperless ablegen, stornieren' },
+    { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.admin, requires: [P_SCHL.display],
+      text: 'Hallenschlüssel verwalten: Altdaten einfügen (mit Buchung auf das Kassenkonto), Spielregeln, Fristen und Kassenkonto pflegen' },
     // ---------------------------------------------------------------- Clubhaus
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
@@ -301,6 +308,8 @@ const tco: ServerModule = {
     { type: 'HALLENPREIS', text: 'Hallenpreis', permission: P_HALLE.display },
     { type: 'KOMMPREF', text: 'Bevorzugter Versandweg', permission: P_HALLE.display },
     { type: 'SCHLUESSEL', text: 'Hallenschlüssel', permission: P_HALLE.display },
+    { type: 'SCHLUESSELVORGANG', text: 'Hallenschlüssel: Ausgabe/Rückgabe', permission: P_SCHL.display },
+    { type: 'SCHLUESSELCFG', text: 'Einstellungen Hallenschlüssel', permission: P_SCHL.display },
     { type: 'FIBELEG', text: 'FI-Beleg', permission: P_FI.display },
     { type: 'FIPERIODE', text: 'FI-Periode', permission: P_FI.display },
     { type: 'FIKONTO', text: 'FI-Konto', permission: P_FI.display },

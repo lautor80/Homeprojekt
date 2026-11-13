@@ -14,6 +14,7 @@ Kernprozesse von Ende zu Ende. Jeder Verweis ist gegen den Code geprüft (⚠️
 | P7 | [Vereinsleben (Kalender)](#p7) | Mitglieder | Spielplan oder Veranstaltung | Termine mit Rückmeldungen je Gruppe | 5 |
 | P8 | [Abschluss und Steuerung](#p8) | Finanzen | Monats- und Jahresende | Jahresabschluss in Paperless, Kennzahlen aktuell | 5 |
 | P9 | [Schäden melden und beheben](#p9) | Instandhaltung | Mitglied entdeckt einen Schaden (QR-Code an der Anlage) | Schaden behoben, Platz wieder freigegeben, Melder informiert | 9 |
+| P10 | [Hallenschlüssel ausgeben und zurücknehmen](#p10) | Tennishalle | Mitglied oder Kunde braucht einen Hallenschlüssel | Schlüssel dokumentiert, quittiert, Pfand berechnet bzw. gutgeschrieben, Belege in Paperless | 6 |
 
 <a id="p1"></a>
 ## P1 · Mitglied werden
@@ -324,31 +325,65 @@ flowchart LR
 | 8 | Stammdaten: Orte, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `PUT /api/m/tco/instandhaltung/stamm/matrix` | `tco.instandhaltung:admin` | `/tco/instandhaltung` |  |
 | 9 | Erinnerung bei Sicherheitsrisiko nach 24 Stunden, Fotos nach Frist löschen | System / zeitgesteuerter Job | Mailserver (IMAP/SMTP) |  |  |  |  |
 
+<a id="p10"></a>
+## P10 · Hallenschlüssel ausgeben und zurücknehmen
+
+**Auslöser:** Mitglied oder Kunde braucht einen Hallenschlüssel · **Ergebnis:** Schlüssel dokumentiert, quittiert, Pfand berechnet bzw. gutgeschrieben, Belege in Paperless
+
+```mermaid
+flowchart LR
+  S0["Ausgabe erfassen: Person, ausgegeben von, Pfand als Rechnungsposition<br/><small>Hallenwart · Vereinsportal (Modul tco)</small>"]:::portal
+  S1["Beleg in Paperless ablegen, Quittungslink per E-Mail senden<br/><small>System / zeitgesteuerter Job · Paperless-ngx</small>"]:::extern
+  S0 --> S1
+  S2["Erhalt online quittieren (Link oder Meine Mitgliedschaft)<br/><small>Mitglied · Vereinsportal (Modul tco)</small>"]:::portal
+  S1 --> S2
+  S3["Rückgabe erfassen: Zustand, empfangen von, Gutschrift mit negativem Betrag<br/><small>Hallenwart · Vereinsportal (Modul tco)</small>"]:::portal
+  S2 --> S3
+  S4["Empfang bestätigen, Rückgabebeleg in Paperless<br/><small>Hallenwart · Paperless-ngx</small>"]:::extern
+  S3 --> S4
+  S5["Altdaten einfügen und auf das Kassenkonto buchen<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
+  S4 --> S5
+  classDef portal fill:#ffffff,stroke:#1f5fa8,stroke-width:2px,color:#1f5fa8
+  classDef n8n fill:#ffffff,stroke:#2e7d32,stroke-width:2px,color:#2e7d32
+  classDef extern fill:#ffffff,stroke:#2a9d8f,stroke-width:2px,color:#1d6f66
+  classDef person fill:#ffffff,stroke:#7f7f7f,stroke-width:2px,stroke-dasharray:4 3,color:#404040
+```
+
+| # | Schritt | Akteur | System | Route | Recht | App | Workflow |
+|---|---|---|---|---|---|---|---|
+| 1 | Ausgabe erfassen: Person, ausgegeben von, Pfand als Rechnungsposition | Hallenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/ausgabe` | `tco.schluessel:edit` | `/tco/hallenschluessel` |  |
+| 2 | Beleg in Paperless ablegen, Quittungslink per E-Mail senden | System / zeitgesteuerter Job | Paperless-ngx | `POST /api/m/tco/schluessel/ausgabe` | `tco.schluessel:edit` |  |  |
+| 3 | Erhalt online quittieren (Link oder Meine Mitgliedschaft) | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/quittung` |  |  |  |
+| 4 | Rückgabe erfassen: Zustand, empfangen von, Gutschrift mit negativem Betrag | Hallenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/rueckgabe` | `tco.schluessel:edit` | `/tco/hallenschluessel` |  |
+| 5 | Empfang bestätigen, Rückgabebeleg in Paperless | Hallenwart | Paperless-ngx | `POST /api/m/tco/schluessel/:id/empfang` | `tco.schluessel:edit` |  |  |
+| 6 | Altdaten einfügen und auf das Kassenkonto buchen | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/altdaten` | `tco.schluessel:admin` | `/tco/hallenschluessel` |  |
+
 ## Prozess × App
 
-| App | P1 | P2 | P3 | P4 | P5 | P6 | P7 | P8 | P9 |
-|---|---|---|---|---|---|---|---|---|---|
-| /beitritt | ● |  |  |  |  |  |  |  |  |
-| /schnuppertraining | ● |  |  |  |  |  |  |  |  |
-| Jahresabschluss |  |  |  |  |  |  |  | ● |  |
-| Mitgliedsbeiträge |  | ● |  |  |  |  |  |  |  |
-| Clubhausabrechnung |  |  |  |  | ● |  |  |  |  |
-| Dokumenteneingang |  |  |  |  |  | ● |  |  |  |
-| FI-Belege |  | ● | ● |  |  | ● |  | ● |  |
-| Einnahmen und Ausgaben |  |  |  |  |  |  |  | ● |  |
-| Mitgliedergruppen | ● |  |  |  |  |  |  |  |  |
-| Hallenabrechnung |  |  | ● |  |  |  |  |  |  |
-| Instandhaltung |  |  |  |  |  |  |  |  | ● |
-| Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |  |
-| Vereinskalender |  |  |  |  |  |  | ● |  |  |
-| Meine Mitgliedschaft | ● |  |  |  |  |  |  |  |  |
-| Meine Trainingszeiten |  |  |  | ● |  |  |  |  |  |
-| Mitgliedsanträge | ● |  |  |  |  |  |  |  |  |
-| Platz buchen |  |  | ● |  |  |  |  |  |  |
-| Schaden melden |  |  |  |  |  |  |  |  | ● |
-| Schnuppertraining | ● |  |  |  |  |  |  |  |  |
-| Sollstellungen |  | ● |  |  |  |  |  |  |  |
-| Theke |  |  |  |  | ● |  |  |  |  |
-| Vereinsübersicht |  |  |  |  |  |  |  | ● | ● |
-| Mein Verzehr |  |  |  |  | ● |  |  |  |  |
-| Verzehrbuch |  |  |  |  | ● |  |  |  |  |
+| App | P1 | P2 | P3 | P4 | P5 | P6 | P7 | P8 | P9 | P10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| /beitritt | ● |  |  |  |  |  |  |  |  |  |
+| /schnuppertraining | ● |  |  |  |  |  |  |  |  |  |
+| Jahresabschluss |  |  |  |  |  |  |  | ● |  |  |
+| Mitgliedsbeiträge |  | ● |  |  |  |  |  |  |  |  |
+| Clubhausabrechnung |  |  |  |  | ● |  |  |  |  |  |
+| Dokumenteneingang |  |  |  |  |  | ● |  |  |  |  |
+| FI-Belege |  | ● | ● |  |  | ● |  | ● |  |  |
+| Einnahmen und Ausgaben |  |  |  |  |  |  |  | ● |  |  |
+| Mitgliedergruppen | ● |  |  |  |  |  |  |  |  |  |
+| Hallenabrechnung |  |  | ● |  |  |  |  |  |  |  |
+| Hallenschlüssel |  |  |  |  |  |  |  |  |  | ● |
+| Instandhaltung |  |  |  |  |  |  |  |  | ● |  |
+| Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |  |  |
+| Vereinskalender |  |  |  |  |  |  | ● |  |  |  |
+| Meine Mitgliedschaft | ● |  |  |  |  |  |  |  |  |  |
+| Meine Trainingszeiten |  |  |  | ● |  |  |  |  |  |  |
+| Mitgliedsanträge | ● |  |  |  |  |  |  |  |  |  |
+| Platz buchen |  |  | ● |  |  |  |  |  |  |  |
+| Schaden melden |  |  |  |  |  |  |  |  | ● |  |
+| Schnuppertraining | ● |  |  |  |  |  |  |  |  |  |
+| Sollstellungen |  | ● |  |  |  |  |  |  |  |  |
+| Theke |  |  |  |  | ● |  |  |  |  |  |
+| Vereinsübersicht |  |  |  |  |  |  |  | ● | ● |  |
+| Mein Verzehr |  |  |  |  | ● |  |  |  |  |  |
+| Verzehrbuch |  |  |  |  | ● |  |  |  |  |  |

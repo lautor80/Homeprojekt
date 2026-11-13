@@ -17,6 +17,7 @@ import type { Db } from '../verein.js';
 import { monatsname } from '../jt/logik.js';
 import { ADRNR_ZU_BENUTZER, HALLENWART } from '../platz/schluessel.js';
 import { aufgaben as ihAufgaben, P_IH } from '../instandhaltung/logik.js';
+import { aufgaben as schluesselAufgaben, P_SCHL } from '../schluessel/logik.js';
 
 export interface Aufgabe {
   key: string;
@@ -43,6 +44,9 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
 
   // Instandhaltung (#205): jede offene Schadensmeldung sofort und einzeln – Sicherheitsrisiko rot, unbespielbar orange
   if (can(req, P_IH.display)) out.push(...await ihAufgaben(db));
+
+  // Hallenschlüssel (#215): Ausgaben ohne Quittung nach der Frist, unbestätigte Rückgaben, Ausgetretene mit Schlüssel
+  if (can(req, P_SCHL.display)) out.push(...await schluesselAufgaben(db));
 
   // Kassenwart: vom Trainer freigegebene, noch nicht (vollständig) bezahlte Zeitnachweise
   if (can(req, 'tco.jt:display')) {

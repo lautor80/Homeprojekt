@@ -47,6 +47,9 @@ export function MeineMitgliedschaft() {
   const [kein, setKein] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dlg, setDlg] = useState<'kontakt' | 'bank' | null>(null);
+  // Hallenschlüssel (#215): offene Online-Quittung
+  const [schluessel, setSchluessel] = useState<{ nummer: string; datum: string; token: string }[]>([]);
+  useEffect(() => { api.get<typeof schluessel>(`${TCO}/schluessel/meine`).then(setSchluessel).catch(() => undefined); }, []);
   const [kuend, setKuend] = useState<{ art: 'MITGLIEDSCHAFT' } | { art: 'VERTRAG'; v: Vertrag & { endeBei: string } } | null>(null);
   const [pdf, setPdf] = useState<{ url: string; name: string; server?: boolean } | null>(null);
   // Sperre, solange ein Änderungs- oder Kündigungsdialog offen ist (Vorstand kann dann nicht gleichzeitig pflegen und umgekehrt)
@@ -101,6 +104,12 @@ export function MeineMitgliedschaft() {
     <AppPage title="Meine Mitgliedschaft" subtitle="Eigene Daten sehen und pflegen">
       {error && !dlg && !kuend && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <SperrHinweis s={sperre} />
+      {schluessel.map((q) => (
+        <MessageStrip key={q.token} design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Du hast am {dat(q.datum)} einen Hallenschlüssel bekommen – bitte quittiere kurz den Erhalt.{' '}
+          <Button design="Emphasized" onClick={() => { window.location.href = `/schluessel-quittung?token=${q.token}`; }}>Erhalt quittieren</Button>
+        </MessageStrip>
+      ))}
       <ObjectHeader title={`${m.vorname} ${m.nachname}`} subtitle={`Mitgliedsnummer ${m.mitglnrn || m.adrnr}`}
                     status={m.austritt ? <ObjectStatus state="Critical" inverted>Austritt zum {dat(m.austritt)}</ObjectStatus> : <ObjectStatus state="Positive" inverted>aktives Mitglied</ObjectStatus>}
 >

@@ -42,6 +42,8 @@ import { Serienbuchung } from './platz/Serienbuchung';
 import { Dokumenteneingang } from './eingang/Dokumenteneingang';
 import { SchadenMelden } from './instandhaltung/SchadenMelden';
 import { Instandhaltung } from './instandhaltung/Instandhaltung';
+import { Hallenschluessel } from './schluessel/Hallenschluessel';
+import { SchluesselQuittung } from './schluessel/SchluesselQuittung';
 import { api } from '@core/api';
 import type { TileKpi } from '@core/platform';
 import { H, TCO, eur } from './util';
@@ -124,6 +126,7 @@ const mod: WebModule = {
           children: [
             { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
+            { text: 'Hallenschlüssel', icon: 'key', path: '/tco/hallenschluessel', permission: 'tco.schluessel:display' },
             { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
             { text: 'Meine Daten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
@@ -204,6 +207,7 @@ const mod: WebModule = {
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
     { path: '/tco/schaden', component: SchadenMelden, permission: 'tco.schaden:melden' },
     { path: '/tco/instandhaltung', component: Instandhaltung, permission: 'tco.instandhaltung:display' },
+    { path: '/tco/hallenschluessel', component: Hallenschluessel, permission: 'tco.schluessel:display' },
   ],
   // QR-Code an der Anlage: nach der Anmeldung direkt zum vorbelegten Formular
   nachAnmeldung: ['/tco/schaden'],
@@ -212,6 +216,7 @@ const mod: WebModule = {
     { pfad: '/schnuppertraining', component: Schnuppertraining },
     { pfad: '/registrierung-bestaetigen', component: RegistrierungBestaetigen },
     { pfad: '/einladung', component: Einladung },
+    { pfad: '/schluessel-quittung', component: SchluesselQuittung },
   ],
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
