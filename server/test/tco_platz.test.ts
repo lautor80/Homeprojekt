@@ -1203,7 +1203,30 @@ test('Arbeitsvorrat Kassenwart: Upload mit Folgeaktion „Überweisung an Einrei
   z = await admin('GET', `${A}/upload-zahlung/${vf.id}`);
   assert.deepEqual([z.body.qr, z.body.empfaenger], [null, 'Vera Vorstand']);
   assert.match(z.body.hinweis, /IBAN im Mitgliederstamm ist ungültig/);
-  await sql`delete from tco.upload_folge where dok_id = 4720`;
+  // Einreicher ohne Portal-Benutzer: über den Namen des Mitglieds; sonst von Hand gewähltes Mitglied (Live-Suche)
+  await sql`update tco.mitglieder set iban1 = 'DE89370400440532013000' where adrnr = '0000009901'`;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, iban1) values ('0000009902', 'Karl', 'Kasse', '2010-01-01', 'DE02120300000000202051')`;
+  await withChange({ userId: null, username: 'test', action: 'UPLOAD' }, async (tx) => {
+    await uploadMerken(tx, { dok_id: 4721, titel: 'Netze', datei: 'netze.pdf', folgeaktion: 'Überweisung an Einreicher', einreicher: 'Kasse, Karl' });
+    await uploadMerken(tx, { dok_id: 4722, titel: 'Linien', datei: 'linien.pdf', folgeaktion: 'Überweisung an Einreicher', einreicher: 'Niemand Bekannt' });
+  });
+  const [kf] = await sql`select id from tco.upload_folge where dok_id = 4721`;
+  const [nf] = await sql`select id from tco.upload_folge where dok_id = 4722`;
+  z = await admin('GET', `${A}/upload-zahlung/${kf.id}`);
+  assert.deepEqual([z.body.empfaenger, z.body.adrnr, z.body.iban], ['Karl Kasse', '0000009902', 'DE02120300000000202051'], 'Name des Mitglieds genügt');
+  z = await admin('GET', `${A}/upload-zahlung/${nf.id}`);
+  assert.deepEqual([z.body.empfaenger, z.body.qr], [null, null]);
+  assert.match(z.body.hinweis, /keinem Mitglied eindeutig zuordnen – bitte das Mitglied wählen/);
+  z = await admin('GET', `${A}/upload-zahlung/${nf.id}?adrnr=0000009901`);
+  assert.deepEqual([z.body.empfaenger, z.body.adrnr, z.body.einreicher], ['Vera Vorstand', '0000009901', 'Niemand Bekannt']);
+  assert.match(z.body.qr, /^data:image\/png;base64,/);
+  assert.equal((await admin('GET', `${A}/upload-zahlung/${nf.id}?adrnr=0000000000`)).status, 404);
+  const suche = await admin('GET', '/api/m/tco/fi/ueberweisungen/mitglieder?q=kas%20karl');
+  assert.equal(suche.status, 200, JSON.stringify(suche.body));
+  assert.deepEqual(suche.body.map((m: any) => [m.adrnr, m.name]), [['0000009902', 'Karl Kasse']]);
+  assert.deepEqual((await admin('GET', '/api/m/tco/fi/ueberweisungen/mitglieder?q=')).body, []);
+  assert.equal((await anna('GET', '/api/m/tco/fi/ueberweisungen/mitglieder?q=karl')).status, 403);
+  await sql`delete from tco.upload_folge where dok_id in (4720, 4721, 4722)`;
   assert.equal((await anna('POST', `${A}/upload-erledigt`, g.kinder[0].erledigen.body)).status, 403);
   assert.equal((await admin('POST', `${A}/upload-erledigt`, g.kinder[0].erledigen.body)).status, 200);
   r = await admin('GET', A);

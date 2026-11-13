@@ -177,9 +177,17 @@ export async function fiRoutes(app: FastifyInstance) {
       betrag: z.string().trim().max(20).optional().transform((s) => (s ? Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s) : null))
         .refine((n) => n === null || (Number.isFinite(n) && n >= 0.01 && n <= 999_999_999.99), 'Bitte einen gültigen Betrag angeben.'),
       zweck: z.string().trim().max(140).optional(),
+      // von Hand gewähltes Mitglied, wenn sich der Einreicher nicht zuordnen lässt
+      adrnr: z.string().trim().max(20).optional(),
     }).parse(req.query);
     if (!can(req, P_BANK.display)) throw new BusinessError('Für die Zahlungsdaten ist die Berechtigung „Bankdaten anzeigen“ nötig (tco.bankdaten:display).', 403);
-    return ueberweisungZahlung(await vereinLesen(), DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck ?? null);
+    return ueberweisungZahlung(await vereinLesen(), DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck ?? null, q.adrnr || null);
+  });
+  /** Live-Suche für die Auswahl des Empfängers: Mitglieder nach Name oder Mitgliedsnummer */
+  app.get('/fi/ueberweisungen/mitglieder', { preHandler: requireAuth(P_FI.display) }, async (req) => {
+    const { q } = z.object({ q: z.string().trim().max(80).default('') }).parse(req.query);
+    const { mitgliederSuchen } = await import('../upload/zahlung.js');
+    return mitgliederSuchen(DB, q);
   });
 
   app.get('/fi/belege/:id', { preHandler: requireAuth(P_FI.display) }, async (req) => {

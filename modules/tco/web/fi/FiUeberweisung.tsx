@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bar, BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Text } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 import { usePdf } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { dat, eur } from '../util';
@@ -14,9 +15,29 @@ import '../instandhaltung/instandhaltung.css';
  */
 interface Beleg { id: number; titel: string; korrespondent: string; datum: string | null; betrag: number | null; einreicher: string | null; hochgeladen: string | null; erledigt: boolean }
 interface Zahlung {
-  titel: string; einreicher: string; empfaenger: string | null; iban: string | null; iban_text: string | null; bic: string | null; bank: string | null;
+  titel: string; einreicher: string; adrnr: string | null; empfaenger: string | null; iban: string | null; iban_text: string | null; bic: string | null; bank: string | null;
   betrag: number | null; zweck: string; qr: string | null; hinweis: string | null; inhalt: { label: string; wert: string }[];
 }
+interface Mitglied { adrnr: string; name: string; info: string }
+
+/**
+ * Empfänger von Hand wählen, wenn sich der Einreicher keinem Mitglied zuordnen lässt: Auswahlliste mit Live-Suche
+ * (Name oder Mitgliedsnummer, gesucht wird am Server).
+ */
+export function MitgliedWahl({ wert, name, onWaehle, disabled }: { wert: string | null; name?: string | null; onWaehle: (adrnr: string | null) => void; disabled?: boolean }) {
+  const [treffer, setTreffer] = useState<Mitglied[]>([]);
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    if (q.trim().length < 2) return undefined;
+    const t = setTimeout(() => api.get<Mitglied[]>(`${F}/ueberweisungen/mitglieder?q=${encodeURIComponent(q.trim())}`).then(setTreffer).catch(() => undefined), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  // das gewählte Mitglied bleibt in der Liste, auch wenn die Suche es nicht (mehr) liefert
+  const eintraege = [...(wert && name && !treffer.some((m) => m.adrnr === wert) ? [{ key: wert, text: name, zusatz: '' }] : []), ...treffer.map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.info }))];
+  return <AuswahlBox eintraege={eintraege} wert={wert ?? ''} filter="None" onSuche={setQ} onWaehle={onWaehle} disabled={disabled} leerErlaubt
+                     placeholder="Mitglied suchen (Name oder Mitgliedsnummer)" style={{ width: '100%' }} />;
+}
+
 const zahl = (n: number | null) => (n != null ? n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 
 export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
@@ -26,23 +47,27 @@ export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
   const [betrag, setBetrag] = useState('');
   const [zweck, setZweck] = useState('');
   const [geaendert, setGeaendert] = useState(false);
+  // von Hand gewähltes Mitglied (wenn „Eingereicht durch“ sich nicht zuordnen lässt oder ein anderes Konto gemeint ist)
+  const [adrnr, setAdrnr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { blobUrl, error: pdfFehler } = usePdf(wahl ? `${F}/ueberweisungen/${wahl.id}/pdf` : null);
   useEffect(() => { api.get<Beleg[]>(`${F}/ueberweisungen`).then(setListe).catch((e) => setError((e as Error).message)); }, []);
 
   /** QR-Code erzeugen: ohne Angaben mit dem Betrag des Belegs und dem vorgeschlagenen Verwendungszweck */
-  async function erzeugen(b: Beleg, mit?: { betrag: string; zweck: string }) {
+  async function erzeugen(b: Beleg, mit?: { betrag: string; zweck: string }, mitglied: string | null = adrnr) {
     setBusy(true); setError(null);
     try {
       const q = new URLSearchParams();
       if (mit?.betrag.trim()) q.set('betrag', mit.betrag.trim());
       if (mit) q.set('zweck', mit.zweck);
+      if (mitglied) q.set('adrnr', mitglied);
       const r = await api.get<Zahlung>(`${F}/ueberweisungen/${b.id}/zahlung${q.size ? `?${q}` : ''}`);
       setZ(r); setBetrag(zahl(r.betrag)); setZweck(r.zweck); setGeaendert(false);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  function waehlen(b: Beleg) { setWahl(b); setZ(null); erzeugen(b); }
+  function waehlen(b: Beleg) { setWahl(b); setZ(null); setAdrnr(null); erzeugen(b, undefined, null); }
+  function mitgliedWaehlen(a: string | null) { setAdrnr(a); if (wahl) erzeugen(wahl, z ? { betrag, zweck } : undefined, a); }
   const kopieren = (text: string, was: string) => navigator.clipboard?.writeText(text).then(() => toast(`${was} kopiert.`)).catch(() => undefined);
 
   return (
@@ -54,7 +79,7 @@ export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
       {!wahl && (
         <>
           <Text className="portal-muted portal-small">
-            Belege aus Paperless mit Folgeaktion „Überweisung an Einreicher“, deren Feld „SAP“ leer ist (noch keiner Buchung zugeordnet). Beleg wählen für Vorschau und QR-Code.
+            Belege aus Paperless mit Folgeaktion „Überweisung an Einreicher“, deren Feld „SAP“ leer ist (noch keiner Buchung zugeordnet). Der Einreicher steht im Feld „Eingereicht durch“. Beleg wählen für Vorschau und QR-Code.
           </Text>
           {!liste ? (error ? null : <BusyIndicator active style={{ display: 'block', margin: '1rem 0' }} />) : (
             <div className="portal-ih__rahmen" style={{ marginTop: '0.5rem', maxHeight: '60vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
@@ -87,6 +112,8 @@ export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.25rem 0.75rem', alignItems: 'center' }}>
                   <Label showColon>Einreicher</Label><Text>{z.einreicher || '–'}</Text>
+                  <Label showColon>Mitglied</Label>
+                  <MitgliedWahl wert={adrnr ?? z.adrnr} name={z.empfaenger} disabled={busy} onWaehle={mitgliedWaehlen} />
                   <Label showColon>Empfänger</Label><Text>{z.empfaenger ?? '–'}</Text>
                   <Label showColon>IBAN</Label>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
