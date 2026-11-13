@@ -16,7 +16,7 @@ export async function collectInstandhaltung(db: Db): Promise<Kpi[]> {
       ...basis, key: 'IH_OFFEN', title: 'Offene Schäden', subtitle: k.neu ? `davon ${k.neu} neu` : 'gemeldet, noch nicht erledigt',
       value: String(k.offen), unit: 'Meldungen', icon: 'technical-object',
       state: k.sicher ? 'Negative' : k.offen ? 'Critical' : 'Positive',
-      details: k.offen ? `${k.sicher} Sicherheitsrisiko · ${k.gesperrt} Platz/Plätze gesperrt${k.aeltester ? ` · älteste vom ${k.aeltester}` : ''}` : 'Alles in Ordnung',
+      details: k.offen ? `${k.sicher} Sicherheitsrisiko · ${k.ueberfaellig} überfällig · ${k.gesperrt} Platz/Plätze gesperrt${k.aeltester ? ` · älteste vom ${k.aeltester}` : ''}` : 'Alles in Ordnung',
     },
     {
       ...basis, key: 'IH_SICHER', title: 'Sicherheitsrisiken', subtitle: 'offen', value: String(k.sicher), unit: 'Meldungen', icon: 'alert',

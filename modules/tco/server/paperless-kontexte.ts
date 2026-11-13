@@ -91,7 +91,8 @@ export const K = {
       { name: 'auswirkung', text: 'Auswirkung', beispiel: 'Sicherheitsrisiko' }, { name: 'status', text: 'Status beim Ablegen', beispiel: 'Erledigt' },
       { name: 'anlass', text: 'Abschluss bzw. Weitergabe (mit Empfänger)', beispiel: 'Weitergabe an Sportplatzbau Muster GmbH' }, { name: 'empfaenger', text: 'Empfänger bei Weitergabe', beispiel: 'Sportplatzbau Muster GmbH' },
       { name: 'melder', text: 'gemeldet von', beispiel: 'Mia Matchball' }, { name: 'zustaendig', text: 'Zuständiger', beispiel: 'Paul Platzwart' },
-      { name: 'kosten', text: 'Kosten (leer, wenn keine)', beispiel: 80 }, { name: 'eingang', text: 'Meldedatum', beispiel: '2026-11-12' },
+      { name: 'kosten', text: 'Istkosten (leer, wenn keine)', beispiel: 80 }, { name: 'prioritaet', text: 'Priorität', beispiel: 'Hoch' },
+      { name: 'geplant_bis', text: 'geplantes Enddatum', beispiel: '2026-11-20' }, { name: 'ende_ist', text: 'tatsächliches Enddatum', beispiel: '2026-11-19' }, { name: 'eingang', text: 'Meldedatum', beispiel: '2026-11-12' },
       PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: {
       titel: 'Schadensmeldung {nummer} {anlage} – {kategorie}', korrespondent: '{verein}', dokumenttyp: 'Schadensmeldung', speicherpfad: 'Instandhaltung',

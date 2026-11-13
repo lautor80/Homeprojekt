@@ -37,7 +37,11 @@ const FOTO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ
 
 // Paperless und Mail-Webhook (n8n) als Attrappe
 const mails: { an: string; betreff: string; text: string }[] = [];
-const mock = { docs: new Map<number, { versions: number[]; meta: Record<string, unknown> }>(), next: 700, uploads: [] as string[] };
+const mock = { docs: new Map<number, { versions: number[]; meta: Record<string, unknown>; title?: string; typ?: number; pfad?: number }>(), next: 700, uploads: [] as string[] };
+// vorhandene Paperless-Dokumente: FI-Eingangsrechnung, Angebot (Instandhaltung), Aufnahmeantrag (darf nicht verknüpft werden)
+mock.docs.set(501, { versions: [], meta: {}, title: 'Rechnung Netzbau GmbH 4711', typ: 3 });
+mock.docs.set(503, { versions: [], meta: {}, title: 'Angebot Netzbau GmbH', typ: 5 });
+mock.docs.set(502, { versions: [], meta: {}, title: 'Aufnahmeantrag Max Muster', typ: 99 });
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -52,22 +56,32 @@ const server = http.createServer((req, res) => {
     if (u === '/api/documents/post_document/') { mock.uploads.push(roh.toString('latin1')); const id = mock.next++; mock.docs.set(id, { versions: [], meta: {} }); return send(200, `task-${id}`); }
     if ((m = /^\/api\/documents\/(\d+)\/update_version\/$/.exec(u))) { const d = mock.docs.get(Number(m[1])); if (!d) return send(404, {}); const vid = mock.next++; d.versions.push(vid); return send(200, `task-${vid}`); }
     if ((m = /^\/api\/tasks\/\?task_id=task-(\d+)/.exec(u))) return send(200, [{ status: 'SUCCESS', related_document: m[1] }]);
-    if (u.startsWith('/api/documents/?')) return send(200, { results: [], next: null });
+    if (u.startsWith('/api/documents/?')) {
+      const q = new URLSearchParams(u.split('?')[1]);
+      const typen = (q.get('document_type__id__in') ?? '').split(',').filter(Boolean).map(Number);
+      const pfade = (q.get('storage_path__id__in') ?? '').split(',').filter(Boolean).map(Number);
+      const t = (q.get('title_content') ?? '').toLowerCase();
+      const results = [...mock.docs.entries()].filter(([, d]) => d.title && ((d.typ && typen.includes(d.typ)) || (d.pfad && pfade.includes(d.pfad))) && d.title.toLowerCase().includes(t))
+        .map(([id, d]) => ({ id, title: d.title, document_type: d.typ, created: '2026-11-10', custom_fields: [] }));
+      return send(200, { results, next: null });
+    }
     if (/^\/api\/(correspondents|document_types|storage_paths|custom_fields|tags)\//.test(u) && req.method === 'GET') {
       const art = u.split('/')[2];
       const lists: Record<string, unknown[]> = {
-        correspondents: [], document_types: [{ id: 1, name: 'Schadensmeldung' }], storage_paths: [{ id: 2, name: 'Instandhaltung' }],
+        correspondents: [], document_types: [{ id: 1, name: 'Schadensmeldung' }, { id: 3, name: 'Eingangsrechnung' }, { id: 5, name: 'Angebot' }],
+        storage_paths: [{ id: 2, name: 'Instandhaltung' }],
         custom_fields: [{ id: 4, name: 'DOKID', data_type: 'string' }], tags: [],
       };
       return send(200, { results: lists[art], next: null });
     }
     if ((u === '/api/correspondents/' || u === '/api/tags/') && req.method === 'POST') return send(201, { id: 9, name: JSON.parse(body).name });
     if ((m = /^\/api\/documents\/(\d+)\/notes\/$/.exec(u))) return send(200, []);
+    if ((m = /^\/api\/documents\/(\d+)\/download\//.exec(u))) { res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': 'inline; filename="beleg.pdf"' }); return res.end('%PDF-1.4 test'); }
     if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) {
       const id = Number(m[1]); const d = mock.docs.get(id);
       if (!d) return send(404, {});
       if (req.method === 'PATCH') { d.meta = { ...d.meta, ...JSON.parse(body) }; return send(200, {}); }
-      return send(200, { id, custom_fields: [], versions: [{ id }, ...d.versions.map((v) => ({ id: v }))] });
+      return send(200, { id, title: d.title ?? '', document_type: d.typ ?? null, storage_path: d.pfad ?? null, created: '2026-11-10', custom_fields: [], versions: [{ id }, ...d.versions.map((v) => ({ id: v }))] });
     }
     send(404, { u });
   });
@@ -224,7 +238,7 @@ test('Bearbeiten: jede Änderung im Protokoll, Zuständiger nur mit Berechtigung
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const neu = (await protokollVon(m1)).slice(vorher);
   assert.deepEqual(neu.map((x) => [x.aktion, x.text]), [
-    ['STATUS', 'Neu → In Arbeit'], ['FELD', 'Kosten: – → 80,00 €'], ['FELD', 'Fremdfirma: – → Netzbau GmbH'], ['KOMMENTAR', 'Pfosten abgesperrt'],
+    ['STATUS', 'Neu → In Arbeit'], ['FELD', 'Istkosten: – → 80,00 €'], ['FELD', 'Fremdfirma: – → Netzbau GmbH'], ['KOMMENTAR', 'Pfosten abgesperrt'],
   ]);
   assert.ok(neu.every((x) => x.benutzer_id === adminId && x.von === 'Admin'));
 
@@ -241,6 +255,74 @@ test('Bearbeiten: jede Änderung im Protokoll, Zuständiger nur mit Berechtigung
   assert.equal((await sql`select count(*)::int as n from tco.platzbelegungen`)[0].n, 0);
   assert.equal((await admin('POST', `${P}/fotos`, { fotos: [{ name: 'neu.png', data: FOTO }] })).status, 200);
   assert.equal((await admin('POST', `${P}/kommentar`, { text: 'Ersatzteil bestellt', fuer_melder: false })).status, 200);
+});
+
+test('Priorität, geplantes Ende (überfällig), Paperless-Dokumente mit FI-Verknüpfung', async () => {
+  const P = `${T}/instandhaltung/${m1}`;
+  assert.equal((await sql`select prioritaet from tco.ih_meldung where id = ${m1}`)[0].prioritaet, 'SEHR_HOCH', 'aus der Auswirkung vorbelegt');
+  const vorher = (await protokollVon(m1)).length;
+  let r = await admin('PUT', P, { status: 'IN_ARBEIT', zustaendig: hansId, kosten: 80, firma: 'Netzbau GmbH', prioritaet: 'HOCH', geplant_bis: '2020-01-01' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await protokollVon(m1)).slice(vorher).map((x) => x.text), ['Priorität: Sehr hoch → Hoch', 'Geplantes Ende: – → 01.01.2020']);
+  assert.equal((await admin('PUT', P, { status: 'IN_ARBEIT', zustaendig: hansId, ende_ist: '2020-01-02' })).status, 400, 'Enddatum erst beim Abschluss');
+  r = await admin('GET', `${T}/dashboard/arbeitsvorrat`);
+  assert.match(r.body.find((a: { key: string }) => a.key === `SCHADEN:${m1}`).text, /Priorität Hoch.*überfällig seit 01\.01\.2020/);
+  r = await admin('GET', `${T}/instandhaltung`);
+  const z = r.body.zeilen.find((x: { id: number }) => x.id === m1);
+  assert.deepEqual([z.prioritaet_txt, z.geplant_bis, z.ueberfaellig], ['Hoch', '2020-01-01', true]);
+
+  // Auswahldialog: nur Dokumente der Instandhaltung und FI-Belege
+  r = await admin('GET', `${T}/instandhaltung/paperless/suche?q=netzbau`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((d: { id: number }) => d.id).sort(), [501, 503]);
+  assert.equal((await admin('GET', `${T}/instandhaltung/paperless/502`)).status, 404, 'Aufnahmeantrag gehört nicht dazu');
+  assert.equal((await admin('POST', `${P}/dokumente`, { doc_ids: [502] })).status, 404);
+  assert.equal((await mia('GET', `${T}/instandhaltung/paperless/suche`)).status, 403);
+  // Rechnung ist zugleich einer FI-Buchung zugeordnet
+  await sql`insert into tco.fibuchungen (internenr, konto, posnr, jahr, monat, datum, text, betrag, soll, haben) values ('0000000777', '1000', 0, 2026, 11, '2026-11-12', 'Netzbau GmbH Rechnung 4711', 80, 0, 80)`;
+  await sql`insert into tco.fipapermap (internenr, konto, doknr) values ('0000000777', '', '000501')`;
+  r = await admin('POST', `${P}/dokumente`, { doc_ids: [501, 503, 501], art: 'RECHNUNG' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', P);
+  const doks = r.body.dokumente;
+  assert.deepEqual(doks.map((d: { doc_id: number }) => d.doc_id), [501, 503]);
+  assert.deepEqual(doks.find((d: { doc_id: number }) => d.doc_id === 501).fi, ['0000000777']);
+  assert.equal(doks[0].titel, 'Rechnung Netzbau GmbH 4711');
+  assert.ok(r.body.protokoll.some((x: { aktion: string; text: string }) => x.aktion === 'DOKUMENT' && /000501 \(Rechnung\)/.test(x.text)));
+  // FI-Beleg zeigt die Meldung als verknüpftes Objekt mit Absprung
+  r = await admin('GET', `${T}/fi/buchung/0000000777`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.objekte.map((o: { nummer: string; pfad: string }) => [o.nummer, o.pfad]), [[nr1, `/tco/instandhaltung?id=${m1}`]]);
+  // Anzeige nur verknüpfter Dokumente
+  r = await admin('GET', `${T}/instandhaltung/dokument/503/pdf`);
+  assert.equal(r.status, 200, String(r.body));
+  assert.equal((await admin('GET', `${T}/instandhaltung/dokument/502/pdf`)).status, 404);
+  // lösen
+  assert.equal((await admin('DELETE', `${P}/dokumente/503`)).status, 200);
+  assert.deepEqual((await admin('GET', P)).body.dokumente.map((d: { doc_id: number }) => d.doc_id), [501]);
+});
+
+test('Listenvarianten je Benutzer: sichern, Standard, laden, global nur mit Stammdatenrecht', async () => {
+  const hans = await anmelden('hans');
+  const ansicht = { alle: true, suche: 'netz', filter: { prioritaet: 'Hoch' }, sort: { k: 'geplant', ab: true } };
+  let r = await hans('POST', `${T}/instandhaltung/varianten`, { name: 'Meine Plätze', standard: true, ansicht });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await hans('POST', `${T}/instandhaltung/varianten`, { name: 'Für alle', global: true, ansicht })).status, 403);
+  r = await hans('POST', `${T}/instandhaltung/varianten`, { name: 'Zweite', standard: true, ansicht: { ...ansicht, alle: false } });
+  assert.equal(r.status, 200);
+  r = await hans('GET', `${T}/instandhaltung/varianten`);
+  assert.deepEqual(r.body.varianten.map((v: { name: string; standard: boolean }) => [v.name, v.standard]), [['Meine Plätze', false], ['Zweite', true]]);
+  assert.equal(r.body.standard.name, 'Zweite');
+  assert.deepEqual(r.body.varianten[0].ansicht, ansicht);
+  // andere Benutzer sehen die Varianten nicht, globale Varianten (Admin) schon
+  assert.equal((await admin('GET', `${T}/instandhaltung/varianten`)).body.varianten.length, 0);
+  assert.equal((await admin('POST', `${T}/instandhaltung/varianten`, { name: 'Alle offenen', global: true, standard: true, ansicht })).status, 200);
+  r = await hans('GET', `${T}/instandhaltung/varianten`);
+  assert.equal(r.body.varianten.length, 3);
+  assert.equal(r.body.standard.name, 'Zweite', 'eigene Standardvariante vor globaler');
+  assert.equal((await hans('DELETE', `${T}/instandhaltung/varianten`, { key: '*/Alle offenen' })).status, 403);
+  assert.equal((await hans('DELETE', `${T}/instandhaltung/varianten`, { key: 'hans/Zweite' })).status, 200);
+  assert.equal((await hans('GET', `${T}/instandhaltung/varianten`)).body.standard.name, 'Alle offenen');
 });
 
 test('Formular: PDF im TCO-Design mit Fotos, Weitergabe und Abschluss in Paperless (neue Version)', async () => {

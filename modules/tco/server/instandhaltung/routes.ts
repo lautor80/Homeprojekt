@@ -6,16 +6,20 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
 import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
-import { DB, vereinLesen } from '../verein.js';
+import { DB, liste, paperless, vereinLesen, type Verein } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
 import {
   anlageSichern, anlagenLesen, bearbeiten, bearbeiterLesen, detailLesen, einstellungenLesen, einstellungenSichern, fotoLesenDb, fotoLoeschen,
   fotosAnhaengen, fotosMitDaten, kategorieSichern, kategorienLesen, kommentieren, kopfLesen, lauf, listeLesen, mailsNeu, matrixLesen, matrixSichern,
   meineLesen, meldungAnlegen, offeneZurAnlage, P_IH, protokoll, protokollLesen, sperreAufheben, sperreSetzen, zustaendigkeitAnlegen,
-  zustaendigkeitenLesen, zustaendigkeitLoeschen, type Ich, type Mail,
+  zustaendigkeitenLesen, zustaendigkeitLoeschen, dokumenteLesen, dokumenteVerknuepfen, dokumentLoesen, dokumentVerknuepft,
+  type DokumentInfo, type Einstellungen, type Ich, type Mail,
 } from './logik.js';
 import { formularAblegen, formularPdf, type FormularAngaben, type FormularDaten } from './formular.js';
-import { ANLAGE_TYPEN, ANLASS, AUSWIRKUNG, STATUS, type AnlageTyp, type Anlass, type Auswirkung, type Status } from './regeln.js';
+import {
+  ANLAGE_TYPEN, ANLASS, AUSWIRKUNG, DOK_ARTEN, PRIORITAET, STATUS, type AnlageTyp, type Anlass, type Auswirkung, type DokArt, type Prioritaet, type Status,
+} from './regeln.js';
+import { variantenLesen, varianteLoeschen, varianteSichern, varianteStandard, type Ansicht } from './varianten.js';
 
 export { P_IH };
 
@@ -27,6 +31,8 @@ export { P_IH };
 const txt = (max: number) => z.string().trim().max(max);
 const foto = z.object({ name: z.string().max(200).default('foto'), data: z.string().max(3_000_000) });
 const pId = z.object({ id: z.coerce.number().int().positive() });
+const datumOpt = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT'), z.literal(''), z.null()]).optional()
+  .transform((v) => (v === undefined ? undefined : v || null));
 const geld = z.coerce.number().min(0).max(1_000_000).nullish().transform((v) => v ?? null);
 const optId = z.coerce.number().int().positive().nullish().transform((v) => v ?? null);
 
@@ -71,9 +77,30 @@ const formularSchema = z.object({
 async function formularErzeugen(id: number, a: FormularAngaben) {
   if (a.anlass === 'WEITERGABE' && !a.an) throw new BusinessError('Bitte angeben, an wen die Meldung weitergegeben wird.');
   const kopf = await kopfLesen(DB, id);
-  const daten = { ...kopf, protokoll: await protokollLesen(DB, id) } as unknown as FormularDaten & { formular_doc_id: number | null };
+  const daten = { ...kopf, protokoll: await protokollLesen(DB, id), dokumente: await dokumenteLesen(DB, id) } as unknown as FormularDaten & { formular_doc_id: number | null };
   const pdf = await formularPdf(await vereinLesen(), daten, await fotosMitDaten(DB, id), a);
   return { daten, pdf };
+}
+
+/**
+ * Paperless-Dokumente, die mit einer Meldung verknüpft werden dürfen (Zugriffsschutz wie bei den FI-Belegen): Dokumenttyp oder
+ * Speicherpfad aus den Einstellungen der Instandhaltung bzw. der FI-Belege, oder das Dokument ist bereits einer FI-Buchung oder
+ * einer Meldung zugeordnet. So lassen sich keine beliebigen Dokumente (z. B. Aufnahmeanträge mit Bankdaten) durchreichen.
+ */
+async function bereich(v: Verein, cfg: Einstellungen) {
+  const pl = paperless(v);
+  const typen = await pl.ids('document_types', [...new Set([...liste(cfg.paperless_typen), ...liste(v.fi_beleg_typen)])]);
+  const pfade = await pl.ids('storage_paths', [...new Set([...liste(cfg.paperless_pfade), ...liste(v.fi_beleg_pfad)])]);
+  return { pl, typen, pfade };
+}
+async function dokumentImBereich(v: Verein, cfg: Einstellungen, id: number): Promise<DokumentInfo> {
+  const { pl, typen, pfade } = await bereich(v, cfg);
+  let d: Record<string, any>;
+  try { d = await pl.dokument(id); } catch { throw new BusinessError(`Dokument ${id} wurde in Paperless nicht gefunden.`, 404); }
+  const [fi] = await DB`select 1 from tco.fipapermap where ltrim(doknr, '0') = ${String(id)} limit 1`;
+  const ok = fi || await dokumentVerknuepft(DB, id) || (d.document_type && typen.includes(Number(d.document_type))) || (d.storage_path && pfade.includes(Number(d.storage_path)));
+  if (!ok) throw new BusinessError(`Dokument ${id} gehört nicht zur Instandhaltung oder zu den FI-Belegen (Dokumenttypen/Speicherpfade in den Stammdaten der Instandhaltung).`, 404);
+  return { doc_id: id, titel: String(d.title ?? ''), korrespondent: await pl.korrespondentName(d.correspondent), datum: String(d.created_date ?? d.created ?? '').slice(0, 10) || null };
 }
 
 export async function instandhaltungRoutes(app: FastifyInstance) {
@@ -144,7 +171,7 @@ export async function instandhaltungRoutes(app: FastifyInstance) {
   app.get('/instandhaltung', lesen, async (req) => {
     const q = z.object({ filter: z.enum(['OFFEN', 'ALLE']).default('OFFEN') }).parse(req.query);
     return {
-      status: STATUS, auswirkungen: AUSWIRKUNG, typen: ANLAGE_TYPEN, anlaesse: ANLASS,
+      status: STATUS, auswirkungen: AUSWIRKUNG, typen: ANLAGE_TYPEN, anlaesse: ANLASS, prioritaeten: PRIORITAET, dokarten: DOK_ARTEN,
       anlagen: await anlagenLesen(DB), kategorien: await kategorienLesen(DB),
       bearbeiter: can(req, P_IH.edit) || can(req, P_IH.admin) ? (await bearbeiterLesen(DB)).map(({ id, name, rollen }) => ({ id, name, rollen })) : [],
       zeilen: await listeLesen(DB, q.filter),
@@ -157,6 +184,9 @@ export async function instandhaltungRoutes(app: FastifyInstance) {
     const { id } = pId.parse(req.params);
     const b = z.object({
       status: z.enum(Object.keys(STATUS) as [Status, ...Status[]]),
+      // nicht angegeben = unverändert; leer/null = löschen
+      prioritaet: z.enum(Object.keys(PRIORITAET) as [Prioritaet, ...Prioritaet[]]).optional(),
+      geplant_bis: datumOpt, ende_ist: datumOpt,
       zustaendig: z.string().uuid().nullish().transform((v) => v ?? null),
       duplikat_von: optId,
       erledigung: txt(2000).nullish().transform((v) => v ?? null),
@@ -216,9 +246,85 @@ export async function instandhaltungRoutes(app: FastifyInstance) {
     const dokid = String(r.id).padStart(6, '0');
     await change(req, async (tx) => {
       await tx`update tco.ih_meldung set formular_doc_id = ${r.id}, formular_am = now() where id = ${id}`;
+      await tx`insert into tco.ih_dokument (meldung_id, doc_id, art, titel, von) values (${id}, ${r.id}, 'FORMULAR', ${`Schadensmeldung ${daten.nummer}`}, ${wer.name})
+               on conflict (meldung_id, doc_id) do nothing`;
       await protokoll(tx, id, wer, 'FORMULAR', `Formular (${ANLASS[a.anlass]}${a.anlass === 'WEITERGABE' && a.an ? ` an ${a.an}` : ''}) in Paperless abgelegt – DOKID ${dokid}${r.neu ? '' : ', neue Version'}`);
     }, { action: 'SCHADEN_FORMULAR', reason: String(id) });
     return { text: `Formular in Paperless abgelegt (DOKID ${dokid}${r.neu ? '' : ', neue Version'}).`, dokid, warnungen: r.warnungen };
+  });
+
+  // ------------------------------------------------------------------ Paperless-Dokumente (Auswahldialog, per ID, Anzeige)
+  /** Suche für den Auswahldialog: erste Treffer je Dokumenttyp/Speicherpfad der Instandhaltung und der FI-Belege */
+  app.get('/instandhaltung/paperless/suche', schreiben, async (req) => {
+    const { q } = z.object({ q: txt(100).default('') }).parse(req.query);
+    const v = await vereinLesen();
+    const { pl, typen, pfade } = await bereich(v, await einstellungenLesen(DB));
+    const basis: Record<string, string> = { ordering: '-created', ...(q ? { title_content: q } : {}) };
+    const treffer = new Map<number, Record<string, any>>();
+    if (typen.length) for (const d of await pl.dokumenteErsteSeite({ ...basis, document_type__id__in: typen.join(',') })) treffer.set(Number(d.id), d);
+    if (pfade.length) for (const d of await pl.dokumenteErsteSeite({ ...basis, storage_path__id__in: pfade.join(',') })) treffer.set(Number(d.id), d);
+    const out = [];
+    for (const d of treffer.values()) {
+      out.push({ id: Number(d.id), titel: String(d.title ?? ''), korrespondent: await pl.korrespondentName(d.correspondent), datum: String(d.created_date ?? d.created ?? '').slice(0, 10) || null });
+    }
+    return out.sort((a, b) => (b.datum ?? '').localeCompare(a.datum ?? '') || b.id - a.id).slice(0, 80);
+  });
+
+  /** Ein Dokument per Paperless-ID prüfen (für den Dialog) */
+  app.get('/instandhaltung/paperless/:id', schreiben, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive().max(99_999_999) }).parse(req.params);
+    return dokumentImBereich(await vereinLesen(), await einstellungenLesen(DB), id);
+  });
+
+  /** mehrere Dokumente mit der Meldung verknüpfen (Auswahldialog oder Paperless-ID) */
+  app.post('/instandhaltung/:id/dokumente', schreiben, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({
+      doc_ids: z.array(z.coerce.number().int().positive().max(99_999_999)).min(1, 'Bitte mindestens ein Dokument wählen.').max(30),
+      art: z.enum(Object.keys(DOK_ARTEN) as [DokArt, ...DokArt[]]).default('SONSTIGES'),
+    }).parse(req.body);
+    const v = await vereinLesen();
+    const cfg = await einstellungenLesen(DB);
+    const docs: DokumentInfo[] = [];
+    for (const d of [...new Set<number>(b.doc_ids)]) docs.push(await dokumentImBereich(v, cfg, d));
+    return { text: await change(req, (tx) => dokumenteVerknuepfen(tx, id, docs, b.art, ich(req)), { action: 'SCHADEN_DOKUMENT', reason: String(id) }) };
+  });
+
+  app.delete('/instandhaltung/:id/dokumente/:doc', schreiben, async (req) => {
+    const { id, doc } = z.object({ id: z.coerce.number().int().positive(), doc: z.coerce.number().int().positive() }).parse(req.params);
+    return { text: await change(req, (tx) => dokumentLoesen(tx, id, doc, ich(req)), { action: 'SCHADEN_DOKUMENT', reason: String(id) }) };
+  });
+
+  /** Anzeige eines verknüpften Dokuments (nur Dokumente, die an einer Meldung hängen) */
+  app.get('/instandhaltung/dokument/:doc/pdf', lesen, async (req, reply) => {
+    const { doc } = z.object({ doc: z.coerce.number().int().positive() }).parse(req.params);
+    if (!(await dokumentVerknuepft(DB, doc))) throw new BusinessError('Dieses Dokument ist mit keiner Schadensmeldung verknüpft.', 404);
+    const d = await paperless(await vereinLesen()).download(doc);
+    return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
+  });
+
+  // ------------------------------------------------------------------ Listenvarianten je Benutzer (Filter, Sortierung, Standard)
+  const benutzer = (req: FastifyRequest) => req.user!.username;
+  app.get('/instandhaltung/varianten', lesen, async (req) => ({
+    varianten: await variantenLesen(DB, benutzer(req)), standard: await varianteStandard(DB, benutzer(req)),
+  }));
+  app.post('/instandhaltung/varianten', lesen, async (req) => {
+    const b = z.object({
+      name: txt(30).min(1, 'Bitte einen Namen für die Variante angeben.'), standard: z.boolean().default(false), global: z.boolean().default(false),
+      ansicht: z.object({
+        alle: z.boolean().default(false), suche: txt(100).default(''),
+        filter: z.record(z.string().max(40), z.string().max(200)).default({}),
+        sort: z.object({ k: z.string().max(40), ab: z.boolean() }).nullable().default(null),
+      }),
+    }).parse(req.body);
+    if (b.global && !can(req, P_IH.admin)) throw new BusinessError('Globale Varianten darf nur anlegen, wer die Stammdaten der Instandhaltung pflegt.', 403);
+    const v = await change(req, (tx) => varianteSichern(tx, benutzer(req), b, b.ansicht as Ansicht), { action: 'IH_VARIANTE' });
+    return { text: `Variante „${v.name}“ gesichert${b.standard ? ' (Standard)' : ''}.`, variante: v };
+  });
+  app.delete('/instandhaltung/varianten', lesen, async (req) => {
+    const { key } = z.object({ key: z.string().min(3).max(100) }).parse(req.body);
+    if (key.startsWith('*/') && !can(req, P_IH.admin)) throw new BusinessError('Globale Varianten darf nur löschen, wer die Stammdaten der Instandhaltung pflegt.', 403);
+    return { text: `Variante „${await change(req, (tx) => varianteLoeschen(tx, benutzer(req), key), { action: 'IH_VARIANTE' })}“ gelöscht.` };
   });
 
   // ------------------------------------------------------------------ Stammdaten
@@ -274,7 +380,10 @@ export async function instandhaltungRoutes(app: FastifyInstance) {
   });
 
   app.put('/instandhaltung/stamm/einstellungen', admin, async (req) => {
-    const b = z.object({ vorstand_email: txt(500).default(''), foto_frist_monate: z.coerce.number().int().min(1).max(120) }).parse(req.body);
+    const b = z.object({
+      vorstand_email: txt(500).default(''), foto_frist_monate: z.coerce.number().int().min(1).max(120),
+      paperless_typen: txt(500).optional(), paperless_pfade: txt(500).optional(),
+    }).parse(req.body);
     return { text: await change(req, (tx) => einstellungenSichern(tx, b), { action: 'IH_CFG' }) };
   });
 

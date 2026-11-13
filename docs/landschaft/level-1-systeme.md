@@ -183,7 +183,7 @@ flowchart LR
 | gruppen | 9 |
 | halle | 41 |
 | index | 6 |
-| instandhaltung | 25 |
+| instandhaltung | 33 |
 | jt | 30 |
 | kalender | 21 |
 | konten | 5 |

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Tab,
-  TabContainer, Text, TextArea, Title,
+  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
+  Select, Tab, TabContainer, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -28,15 +28,17 @@ interface Zeile {
   melder_name: string; zustaendig: string | null; zustaendig_name: string | null; duplikat_von: number | null; duplikat_nummer: string | null;
   erledigung: string | null; kosten: number | null; firma: string | null; paperless: string | null; stunden: number | null;
   sperre_id: number | null; sperre_von: string | null; fotos: number; formular_doc_id: number | null; formular_am: string | null;
+  prioritaet: string; prioritaet_txt: string; geplant_bis: string | null; ende_ist: string | null; ueberfaellig: boolean; dokumente: number;
 }
-interface Detail extends Omit<Zeile, 'fotos'> {
+interface Detail extends Omit<Zeile, 'fotos' | 'dokumente'> {
   fotos: { id: number; art: string; name: string; am: string; von: string }[];
   protokoll: { id: number; am: string; von: string; username: string | null; aktion: string; aktion_txt: string; status_txt: string | null; text: string | null; fuer_melder: boolean }[];
   buchungen: { datum: string; von: string; bis: string; kunde: string }[];
   zustaendige: { id: string; name: string; rang: number }[];
+  dokumente: { doc_id: number; art: string; titel: string; korrespondent: string; datum: string | null; am: string; von: string; fi: string[] }[];
 }
 interface Bearbeiter { id: string; name: string; rollen: string[] }
-interface Daten { status: Texte; auswirkungen: Texte; typen: Texte; anlaesse: Texte; bearbeiter: Bearbeiter[]; zeilen: Zeile[] }
+interface Daten { status: Texte; auswirkungen: Texte; typen: Texte; anlaesse: Texte; prioritaeten: Texte; dokarten: Texte; bearbeiter: Bearbeiter[]; zeilen: Zeile[] }
 const zeitGenau = (iso: string) => new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 export function Instandhaltung() {
@@ -55,42 +57,157 @@ export function Instandhaltung() {
   );
 }
 
+// ---------------------------------------------------------------- Meldungsliste: Tabelle mit Filter, Sortierung und Varianten
+interface Ansicht { alle: boolean; suche: string; filter: Record<string, string>; sort: { k: string; ab: boolean } | null }
+interface Variante { key: string; name: string; global: boolean; standard: boolean; ansicht: Ansicht }
+const LEER: Ansicht = { alle: false, suche: '', filter: {}, sort: null };
+interface Spalte { k: string; titel: string; text: (z: Zeile) => string; ordnung?: (z: Zeile) => string | number; zelle?: (z: Zeile) => ReactNode; filter?: boolean }
+const PRIO_RANG: Record<string, number> = { SEHR_HOCH: 0, HOCH: 1, MITTEL: 2, NIEDRIG: 3 };
+const PRIO_STATE: Record<string, 'Negative' | 'Critical' | 'Information' | 'None'> = { SEHR_HOCH: 'Negative', HOCH: 'Critical', MITTEL: 'Information', NIEDRIG: 'None' };
+
+const SPALTEN: Spalte[] = [
+  { k: 'nummer', titel: 'Nummer', text: (z) => z.nummer, filter: false },
+  { k: 'prioritaet', titel: 'Priorität', text: (z) => z.prioritaet_txt, ordnung: (z) => PRIO_RANG[z.prioritaet] ?? 9,
+    zelle: (z) => <ObjectStatus state={PRIO_STATE[z.prioritaet]}>{z.prioritaet_txt}</ObjectStatus> },
+  { k: 'auswirkung', titel: 'Auswirkung', text: (z) => z.auswirkung_txt, zelle: (z) => <ObjectStatus state={AUSWIRKUNG_STATE[z.auswirkung]}>{z.auswirkung_txt}</ObjectStatus> },
+  { k: 'status', titel: 'Status', text: (z) => z.status_txt, zelle: (z) => <ObjectStatus state={STATUS_STATE[z.status]} inverted>{z.status_txt}</ObjectStatus> },
+  { k: 'gruppe', titel: 'Gruppe', text: (z) => z.gruppe || '–' },
+  { k: 'wo', titel: 'Wo', text: (z) => z.anlage },
+  { k: 'kategorie', titel: 'Kategorie', text: (z) => z.kategorie },
+  { k: 'beschreibung', titel: 'Beschreibung', text: (z) => z.beschreibung, filter: false,
+    zelle: (z) => <span title={z.beschreibung}>{z.beschreibung.length > 70 ? `${z.beschreibung.slice(0, 69)}…` : z.beschreibung}</span> },
+  { k: 'eingang', titel: 'Gemeldet', text: (z) => dat(z.eingang.slice(0, 10)), ordnung: (z) => z.eingang, filter: false },
+  { k: 'melder', titel: 'Melder', text: (z) => z.melder_name },
+  { k: 'zustaendig', titel: 'Zuständig', text: (z) => z.zustaendig_name ?? '–' },
+  { k: 'geplant', titel: 'Geplantes Ende', text: (z) => (z.geplant_bis ? dat(z.geplant_bis) : '–'), ordnung: (z) => z.geplant_bis ?? '9999',
+    zelle: (z) => (z.geplant_bis ? <span style={z.ueberfaellig ? { color: 'var(--sapNegativeTextColor)', fontWeight: 600 } : undefined}>{dat(z.geplant_bis)}{z.ueberfaellig ? ' (überfällig)' : ''}</span> : '–') },
+  { k: 'ende', titel: 'Tatsächl. Ende', text: (z) => (z.ende_ist ? dat(z.ende_ist) : '–'), ordnung: (z) => z.ende_ist ?? '9999', filter: false },
+  { k: 'kosten', titel: 'Istkosten', text: (z) => (z.kosten != null ? eur(z.kosten) : '–'), ordnung: (z) => z.kosten ?? -1, filter: false },
+];
+
 function Meldungen({ onError }: { onError: (e: string) => void }) {
   const can = useCan();
   const navigate = useNavigate();
   const [daten, setDaten] = useState<Daten | null>(null);
-  const [alle, setAlle] = useState(false);
+  const [ansicht, setAnsicht] = useState<Ansicht | null>(null);
+  const [varianten, setVarianten] = useState<Variante[]>([]);
+  const [aktiv, setAktiv] = useState<string>('');
+  const [sichern, setSichern] = useState(false);
   const [offen, setOffen] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('id')) || null);
-  const laden = () => api.get<Daten>(`${I}?filter=${alle ? 'ALLE' : 'OFFEN'}`).then(setDaten).catch((e) => onError(e.message));
-  useEffect(() => { laden(); }, [alle]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Varianten laden; die Standardvariante bestimmt die erste Ansicht
+  useEffect(() => {
+    api.get<{ varianten: Variante[]; standard: Variante | null }>(`${I}/varianten`).then((r) => {
+      setVarianten(r.varianten);
+      if (r.standard) { setAktiv(r.standard.key); setAnsicht(r.standard.ansicht); } else setAnsicht(LEER);
+    }).catch(() => setAnsicht(LEER));
+  }, []);
+  const laden = () => ansicht && api.get<Daten>(`${I}?filter=${ansicht.alle ? 'ALLE' : 'OFFEN'}`).then(setDaten).catch((e) => onError(e.message));
+  useEffect(() => { laden(); }, [ansicht?.alle]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!ansicht) return <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />;
+  const a = ansicht;
+  const setA = (x: Partial<Ansicht>) => setAnsicht({ ...a, ...x });
+  const basis = daten?.zeilen ?? [];
+  const such = a.suche.trim().toLowerCase();
+  const zeilen = basis
+    .filter((z) => SPALTEN.every((sp) => !a.filter[sp.k] || sp.text(z) === a.filter[sp.k]))
+    .filter((z) => !such || `${z.nummer} ${z.beschreibung} ${z.anlage} ${z.kategorie} ${z.melder_name} ${z.zustaendig_name ?? ''} ${z.firma ?? ''}`.toLowerCase().includes(such));
+  const sp = a.sort ? SPALTEN.find((x) => x.k === a.sort!.k) : undefined;
+  if (sp) {
+    const w = (z: Zeile) => (sp.ordnung ?? sp.text)(z);
+    zeilen.sort((x, y) => {
+      const p = w(x), q = w(y);
+      const c = typeof p === 'number' && typeof q === 'number' ? p - q : String(p).localeCompare(String(q), 'de', { numeric: true });
+      return a.sort!.ab ? c : -c;
+    });
+  }
+  const werte = (x: Spalte) => [...new Map([...basis].sort((p, q) => {
+    const vp = (x.ordnung ?? x.text)(p), vq = (x.ordnung ?? x.text)(q);
+    return typeof vp === 'number' && typeof vq === 'number' ? vp - vq : String(vp).localeCompare(String(vq), 'de', { numeric: true });
+  }).map((z) => [x.text(z), true])).keys()];
+  const variante = varianten.find((v) => v.key === aktiv);
+  async function loeschen() {
+    if (!variante) return;
+    try {
+      const r = await api.del<{ text: string }>(`${I}/varianten`, { key: variante.key });
+      toast(r.text); setVarianten(varianten.filter((v) => v.key !== variante.key)); setAktiv('');
+    } catch (e) { onError((e as Error).message); }
+  }
 
   return (
     <>
-      <div className="portal-row" style={{ justifyContent: 'flex-end', marginBottom: '0.5rem', gap: '0.5rem' }}>
-        {can('tco.schaden:melden') && <Button design="Transparent" icon="add" onClick={() => navigate('/tco/schaden')}>Schaden melden</Button>}
-        <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur offene' : 'Auch erledigte'}</Button>
-        <Button design="Transparent" icon="refresh" tooltip="Neu laden" onClick={laden} />
+      <div className="portal-row" style={{ justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem' }}>
+        <div className="portal-row" style={{ gap: '0.5rem' }}>
+          <Label showColon>Variante</Label>
+          <Select style={{ minWidth: '12rem' }} accessibleName="Variante"
+                  onChange={(e) => {
+                    const key = (e.detail.selectedOption as HTMLElement).dataset.v ?? '';
+                    setAktiv(key);
+                    setAnsicht(varianten.find((v) => v.key === key)?.ansicht ?? LEER);
+                  }}>
+            <Option data-v="" selected={!aktiv}>Standardansicht</Option>
+            {varianten.map((v) => <Option key={v.key} data-v={v.key} selected={aktiv === v.key}>{v.name}{v.standard ? ' ★' : ''}{v.global ? ' (für alle)' : ''}</Option>)}
+          </Select>
+          <Button design="Transparent" icon="save" onClick={() => setSichern(true)}>Variante sichern …</Button>
+          {variante && (!variante.global || can('tco.instandhaltung:admin')) && <Button design="Transparent" icon="delete" tooltip="Variante löschen" onClick={loeschen} />}
+        </div>
+        <div className="portal-row" style={{ gap: '0.5rem' }}>
+          <Input placeholder="Suchen …" value={a.suche} style={{ width: '14rem' }} onInput={(e) => setA({ suche: e.target.value })} />
+          <SegmentedButton accessibleName="Umfang" onSelectionChange={(e) => setA({ alle: (e.detail.selectedItems[0] as HTMLElement).dataset.u === 'alle' })}>
+            <SegmentedButtonItem data-u="offen" selected={!a.alle}>Offene</SegmentedButtonItem>
+            <SegmentedButtonItem data-u="alle" selected={a.alle}>Alle</SegmentedButtonItem>
+          </SegmentedButton>
+          {(a.sort || a.suche || Object.values(a.filter).some(Boolean)) && (
+            <Button design="Transparent" icon="clear-filter" onClick={() => setA({ sort: null, suche: '', filter: {} })}>Zurücksetzen</Button>
+          )}
+          {can('tco.schaden:melden') && <Button design="Transparent" icon="add" onClick={() => navigate('/tco/schaden')}>Schaden melden</Button>}
+          <Button design="Transparent" icon="refresh" tooltip="Neu laden" onClick={laden} />
+        </div>
       </div>
-      {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !daten.zeilen.length ? (
-        <MessageStrip hideCloseButton design="Positive">{alle ? 'Noch keine Schadensmeldungen.' : 'Keine offenen Schadensmeldungen – alles in Ordnung.'}</MessageStrip>
-      ) : daten.zeilen.map((z) => (
-        <Section key={z.id} title={`${z.nummer} · ${z.anlage} · ${z.kategorie}`}
-                 status={<span>
-                   <ObjectStatus state={AUSWIRKUNG_STATE[z.auswirkung]}>{z.auswirkung_txt}</ObjectStatus>{' '}
-                   <ObjectStatus state={STATUS_STATE[z.status]} inverted>{z.status_txt}</ObjectStatus>
-                 </span>}
-                 actions={<Button design="Emphasized" icon="detail-view" onClick={() => setOffen(z.id)}>Öffnen</Button>}>
-          <Text style={{ display: 'block', whiteSpace: 'pre-line' }}>{z.beschreibung}</Text>
-          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.35rem' }}>
-            Gemeldet {zeitpunkt(z.eingang)} von {z.melder_name}
-            {z.zustaendig_name ? ` · zuständig: ${z.zustaendig_name}` : ' · noch niemand zuständig'}
-            {z.fotos ? ` · ${z.fotos} Foto${z.fotos === 1 ? '' : 's'}` : ''}
-            {z.sperre_id ? ` · ${z.platz} gesperrt` : ''}
-            {z.duplikat_nummer ? ` · Duplikat von ${z.duplikat_nummer}` : ''}
-            {z.formular_doc_id ? ` · Formular in Paperless (DOKID ${String(z.formular_doc_id).padStart(6, '0')})` : ''}
-          </Text>
-        </Section>
-      ))}
+      {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
+        <div className="portal-ih__rahmen">
+          <table className="portal-ih__tabelle portal-ih__liste">
+            <thead>
+              <tr>
+                {SPALTEN.map((x) => (
+                  <th key={x.k} style={{ cursor: 'pointer', userSelect: 'none' }} title="Sortieren"
+                      onClick={() => setA({ sort: a.sort?.k === x.k ? (a.sort.ab ? { k: x.k, ab: false } : null) : { k: x.k, ab: true } })}>
+                    {x.titel}{a.sort?.k === x.k && <Icon name={a.sort.ab ? 'sort-ascending' : 'sort-descending'} style={{ marginInlineStart: '0.25rem', width: '0.8rem', height: '0.8rem' }} />}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {SPALTEN.map((x) => (
+                  <th key={x.k}>
+                    {x.filter !== false && (
+                      <Select accessibleName={`${x.titel} filtern`} style={{ width: '100%', minWidth: '6rem' }}
+                              onChange={(e) => setA({ filter: { ...a.filter, [x.k]: (e.detail.selectedOption as HTMLElement).dataset.w ?? '' } })}>
+                        <Option data-w="" selected={!a.filter[x.k]}>Alle</Option>
+                        {werte(x).map((w) => <Option key={w} data-w={w} selected={a.filter[x.k] === w}>{w}</Option>)}
+                      </Select>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {zeilen.map((z) => (
+                <tr key={z.id} className="portal-ih__zeile" onClick={() => setOffen(z.id)} title="Meldung öffnen">
+                  {SPALTEN.map((x) => <td key={x.k}>{x.zelle ? x.zelle(z) : x.text(z)}</td>)}
+                </tr>
+              ))}
+              {!zeilen.length && <tr><td colSpan={SPALTEN.length} className="portal-muted">{basis.length ? 'Keine Meldung passt zu den Filtern.' : a.alle ? 'Noch keine Schadensmeldungen.' : 'Keine offenen Schadensmeldungen – alles in Ordnung.'}</td></tr>}
+            </tbody>
+          </table>
+          <Text className="portal-muted portal-small">{zeilen.length} von {basis.length} Meldung(en)</Text>
+        </div>
+      )}
+      {sichern && (
+        <VarianteDialog ansicht={a} vorschlag={variante} admin={can('tco.instandhaltung:admin')} onClose={(v) => {
+          setSichern(false);
+          if (v) { setVarianten([...varianten.filter((x) => x.key !== v.key).map((x) => (v.standard && x.global === v.global ? { ...x, standard: false } : x)), v]); setAktiv(v.key); }
+        }} />
+      )}
       {offen && daten && (
         <DetailDialog id={offen} daten={daten} onClose={(neu) => {
           setOffen(null);
@@ -102,13 +219,42 @@ function Meldungen({ onError }: { onError: (e: string) => void }) {
   );
 }
 
+function VarianteDialog({ ansicht, vorschlag, admin, onClose }: { ansicht: Ansicht; vorschlag?: Variante; admin: boolean; onClose: (v: Variante | null) => void }) {
+  const [name, setName] = useState(vorschlag?.name ?? '');
+  const [standard, setStandard] = useState(vorschlag?.standard ?? false);
+  const [global, setGlobal] = useState(vorschlag?.global ?? false);
+  const [error, setError] = useState<string | null>(null);
+  async function sichern() {
+    try {
+      const r = await api.post<{ text: string; variante: Omit<Variante, 'ansicht'> }>(`${I}/varianten`, { name, standard, global, ansicht });
+      toast(r.text); onClose({ ...r.variante, ansicht });
+    } catch (e) { setError((e as Error).message); }
+  }
+  return (
+    <Dialog open headerText="Variante sichern" style={{ width: 'min(26rem, 96vw)' }} onClose={() => onClose(null)}
+            footer={<Bar endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
+      <div className="portal-bk__form">
+        {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
+        <Label showColon required>Name</Label>
+        <Input value={name} maxlength={30} placeholder="z. B. Meine offenen Plätze" onInput={(e) => setName(e.target.value)} />
+        <CheckBox text="Als Standard beim Öffnen laden" checked={standard} onChange={(e) => setStandard(e.target.checked)} />
+        {admin && <CheckBox text="Für alle Benutzer (globale Variante)" checked={global} onChange={(e) => setGlobal(e.target.checked)} />}
+        <Text className="portal-muted portal-small">Gespeichert werden Filter, Suche, Sortierung und „Offene/Alle“. Ein gleichnamige Variante wird überschrieben.</Text>
+      </div>
+    </Dialog>
+  );
+}
+
 function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Daten; onClose: (neu: boolean) => void; onError: (e: string) => void }) {
   const can = useCan();
   const edit = can('tco.instandhaltung:edit');
   const [d, setD] = useState<Detail | null>(null);
   const [f, setF] = useState({
-    status: '', zustaendig: '', duplikat_von: '', erledigung: '', kosten: '', firma: '', paperless: '', stunden: '', kommentar: '', fuer_melder: false,
+    status: '', prioritaet: 'MITTEL', geplant_bis: '', ende_ist: '',
+    zustaendig: '', duplikat_von: '', erledigung: '', kosten: '', firma: '', paperless: '', stunden: '', kommentar: '', fuer_melder: false,
   });
+  const [dokWahl, setDokWahl] = useState(false);
+  const [pdf, setPdf] = useState<{ url: string; titel: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geaendert, setGeaendert] = useState(false);
@@ -117,7 +263,7 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
   const laden = () => api.get<Detail>(`${I}/${id}`).then((x) => {
     setD(x);
     setF({
-      status: x.status, zustaendig: x.zustaendig ?? '', duplikat_von: x.duplikat_von ? String(x.duplikat_von) : '', erledigung: x.erledigung ?? '',
+      status: x.status, prioritaet: x.prioritaet, geplant_bis: x.geplant_bis ?? '', ende_ist: x.ende_ist ?? '', zustaendig: x.zustaendig ?? '', duplikat_von: x.duplikat_von ? String(x.duplikat_von) : '', erledigung: x.erledigung ?? '',
       kosten: x.kosten != null ? String(x.kosten) : '', firma: x.firma ?? '', paperless: x.paperless ?? '', stunden: x.stunden != null ? String(x.stunden) : '',
       kommentar: '', fuer_melder: false,
     });
@@ -130,7 +276,7 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
     try { const r = await fn(); toast(r.text, 5000); setGeaendert(true); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const sichern = () => aktion(() => api.put<{ text: string }>(`${I}/${id}`, {
-    status: f.status, zustaendig: f.zustaendig || null, duplikat_von: f.duplikat_von ? Number(f.duplikat_von) : null, erledigung: f.erledigung || null,
+    status: f.status, prioritaet: f.prioritaet, geplant_bis: f.geplant_bis || null, ende_ist: ende ? f.ende_ist || null : null, zustaendig: f.zustaendig || null, duplikat_von: f.duplikat_von ? Number(f.duplikat_von) : null, erledigung: f.erledigung || null,
     kosten: zahl(f.kosten), firma: f.firma || null, paperless: f.paperless || null, stunden: zahl(f.stunden), kommentar: f.kommentar || null, fuer_melder: f.fuer_melder,
   }));
   async function fotos(liste: FileList | null) {
@@ -199,6 +345,28 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
             </Section>
           )}
 
+          <Section title={`Paperless-Dokumente (${d.dokumente.length})`} plain
+                   actions={edit ? <Button design="Transparent" icon="attachment" onClick={() => setDokWahl(true)}>Dokumente verknüpfen …</Button> : undefined}>
+            {!d.dokumente.length ? <Text className="portal-muted">Noch keine Dokumente – Angebot, Rechnung o. Ä. über „Dokumente verknüpfen …“ aus Paperless wählen oder per ID angeben.</Text> : (
+              <div className="portal-ih__rahmen"><table className="portal-ih__tabelle">
+                <thead><tr><th>ID</th><th>Art</th><th>Titel</th><th>Korrespondent</th><th>FI-Beleg</th><th /></tr></thead>
+                <tbody>
+                  {d.dokumente.map((x) => (
+                    <tr key={x.doc_id}>
+                      <td><Link onClick={() => setPdf({ url: `${I}/dokument/${x.doc_id}/pdf`, titel: `Dokument ${x.doc_id}` })}>{String(x.doc_id).padStart(6, '0')}</Link></td>
+                      <td>{daten.dokarten[x.art] ?? x.art}</td><td>{x.titel || '–'}</td><td>{x.korrespondent || '–'}</td>
+                      <td>{x.fi.length ? x.fi.map((nr) => <span key={nr}><Link href={`/tco/fi?buchung=${encodeURIComponent(nr)}`}>{nr}</Link>{' '}</span>) : '–'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {edit && <Button design="Transparent" icon="decline" tooltip="Verknüpfung lösen" disabled={busy}
+                                         onClick={() => aktion(() => api.del<{ text: string }>(`${I}/${id}/dokumente/${x.doc_id}`))} />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            )}
+          </Section>
+
           {edit && (
             <>
               <Title level="H6">Bearbeitung</Title>
@@ -207,6 +375,10 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
                   <Label showColon>Status</Label>
                   <Select onChange={(e) => setF({ ...f, status: (e.detail.selectedOption as HTMLElement).dataset.s ?? '' })}>
                     {Object.entries(daten.status).map(([k, t]) => <Option key={k} data-s={k} selected={f.status === k}>{t}</Option>)}
+                  </Select>
+                  <Label showColon>Priorität</Label>
+                  <Select onChange={(e) => setF({ ...f, prioritaet: (e.detail.selectedOption as HTMLElement).dataset.p ?? 'MITTEL' })}>
+                    {Object.entries(daten.prioritaeten).map(([k, t]) => <Option key={k} data-p={k} selected={f.prioritaet === k}>{t}</Option>)}
                   </Select>
                   <Label showColon>Zuständig</Label>
                   <Select onChange={(e) => setF({ ...f, zustaendig: (e.detail.selectedOption as HTMLElement).dataset.u ?? '' })}>
@@ -231,12 +403,17 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
                   <TextArea rows={2} maxlength={2000} value={f.erledigung} onInput={(e) => setF({ ...f, erledigung: e.target.value })} />
                 </div>
                 <div className="portal-bk__form">
-                  <Label showColon>Kosten (€)</Label>
+                  <Label showColon>Geplantes Enddatum</Label>
+                  <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={f.geplant_bis} onChange={(e) => setF({ ...f, geplant_bis: e.detail.value })} />
+                  <Label showColon>Tatsächliches Enddatum</Label>
+                  <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={ende ? f.ende_ist : ''} disabled={!ende}
+                              placeholder={ende ? 'leer = heute' : 'erst beim Abschluss'} onChange={(e) => setF({ ...f, ende_ist: e.detail.value })} />
+                  <Label showColon>Istkosten (€)</Label>
                   <Input type="Number" value={f.kosten} onInput={(e) => setF({ ...f, kosten: e.target.value })} />
                   <Label showColon>Fremdfirma</Label>
                   <Input value={f.firma} maxlength={200} onInput={(e) => setF({ ...f, firma: e.target.value })} />
-                  <Label showColon>Angebot/Rechnung (Paperless)</Label>
-                  <Input value={f.paperless} maxlength={300} placeholder="Dokumentnummer oder Link" onInput={(e) => setF({ ...f, paperless: e.target.value })} />
+                  <Label showColon>Verweis (Freitext)</Label>
+                  <Input value={f.paperless} maxlength={300} placeholder="z. B. Auftragsnummer der Firma" onInput={(e) => setF({ ...f, paperless: e.target.value })} />
                   <Label showColon>Helferstunden</Label>
                   <Input type="Number" value={f.stunden} onInput={(e) => setF({ ...f, stunden: e.target.value })} />
                 </div>
@@ -251,7 +428,7 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
             </>
           )}
           {!edit && (d.erledigung || d.kosten != null) && (
-            <Text>{d.erledigung}{d.kosten != null ? ` · Kosten ${eur(d.kosten)}` : ''}{d.firma ? ` · ${d.firma}` : ''}</Text>
+            <Text>{d.erledigung}{d.kosten != null ? ` · Istkosten ${eur(d.kosten)}` : ''}{d.firma ? ` · ${d.firma}` : ''}</Text>
           )}
 
           <Title level="H6">Protokoll</Title>
@@ -272,7 +449,83 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
           </div>
         </div>
       )}
+      {dokWahl && d && <DokumenteDialog id={d.id} arten={daten.dokarten} vorhanden={d.dokumente.map((x) => x.doc_id)}
+                                         onClose={(neu) => { setDokWahl(false); if (neu) { setGeaendert(true); laden(); } }} />}
+      <PdfDialog url={pdf?.url ?? null} title={pdf?.titel ?? ''} filename={`${pdf?.titel ?? 'Dokument'}.pdf`} onClose={() => setPdf(null)} />
       {formular && d && <FormularDialog d={d} anlaesse={daten.anlaesse} darfAblegen={edit} onClose={(neu) => { setFormular(false); if (neu) { setGeaendert(true); laden(); } }} />}
+    </Dialog>
+  );
+}
+
+/** Paperless-Dokumente wählen: Suche (Instandhaltung und FI-Belege), Mehrfachauswahl, Paperless-ID direkt angeben */
+function DokumenteDialog({ id, arten, vorhanden, onClose }: { id: number; arten: Texte; vorhanden: number[]; onClose: (neu: boolean) => void }) {
+  interface Treffer { id: number; titel: string; korrespondent: string; datum: string | null }
+  const [q, setQ] = useState('');
+  const [liste, setListe] = useState<Treffer[] | null>(null);
+  const [sel, setSel] = useState<Map<number, Treffer>>(new Map());
+  const [idEingabe, setIdEingabe] = useState('');
+  const [art, setArt] = useState('RECHNUNG');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const suchen = (text: string) => api.get<Treffer[]>(`${I}/paperless/suche?q=${encodeURIComponent(text)}`).then(setListe).catch((e) => { setError(e.message); setListe([]); });
+  useEffect(() => { suchen(''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const umschalten = (t: Treffer) => { const m = new Map(sel); if (m.has(t.id)) m.delete(t.id); else m.set(t.id, t); setSel(m); };
+  async function perId() {
+    const n = Number(idEingabe.replace(/\D/g, ''));
+    if (!n) { setError('Bitte eine Paperless-ID eingeben.'); return; }
+    setError(null);
+    try {
+      const d = await api.get<{ doc_id: number; titel: string; korrespondent: string; datum: string | null }>(`${I}/paperless/${n}`);
+      const t = { id: d.doc_id, titel: d.titel, korrespondent: d.korrespondent, datum: d.datum };
+      setListe((l) => (l?.some((x) => x.id === t.id) ? l : [t, ...(l ?? [])]));
+      setSel((m) => new Map(m).set(t.id, t)); setIdEingabe('');
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function verknuepfen() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string }>(`${I}/${id}/dokumente`, { doc_ids: [...sel.keys()], art });
+      toast(r.text, 5000); onClose(true);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open headerText="Paperless-Dokumente verknüpfen" style={{ width: 'min(60rem, 98vw)' }} onClose={() => onClose(false)}
+            footer={<Bar startContent={<Text>{sel.size} ausgewählt</Text>} endContent={<>
+              <Select accessibleName="Art" onChange={(e) => setArt((e.detail.selectedOption as HTMLElement).dataset.a ?? 'SONSTIGES')}>
+                {Object.entries(arten).filter(([k]) => k !== 'FORMULAR').map(([k, t]) => <Option key={k} data-a={k} selected={art === k}>{t}</Option>)}
+              </Select>
+              <Button design="Emphasized" icon="chain-link" disabled={!sel.size} loading={busy} onClick={verknuepfen}>Verknüpfen</Button>
+              <Button onClick={() => onClose(false)}>Abbrechen</Button>
+            </>} />}>
+      <div className="portal-bk__form">
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+        <div className="portal-row">
+          <Input placeholder="Titel oder Inhalt suchen …" value={q} style={{ width: '18rem' }} onInput={(e) => setQ(e.target.value)} onChange={() => suchen(q)} />
+          <Button icon="search" onClick={() => suchen(q)}>Suchen</Button>
+          <Input placeholder="Paperless-ID" value={idEingabe} style={{ width: '9rem' }} onInput={(e) => setIdEingabe(e.target.value)} onChange={() => idEingabe && perId()} />
+          <Button icon="add" onClick={perId}>Per ID hinzufügen</Button>
+        </div>
+        {!liste ? <BusyIndicator active /> : (
+          <div className="portal-ih__rahmen" style={{ maxHeight: '45vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+            <thead><tr><th /><th>ID</th><th>Titel</th><th>Korrespondent</th><th>Datum</th></tr></thead>
+            <tbody>
+              {liste.map((t) => (
+                <tr key={t.id} className="portal-ih__zeile" onClick={() => !vorhanden.includes(t.id) && umschalten(t)}>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <CheckBox checked={sel.has(t.id) || vorhanden.includes(t.id)} disabled={vorhanden.includes(t.id)} accessibleName={`Dokument ${t.id} wählen`} onChange={() => umschalten(t)} />
+                  </td>
+                  <td>{String(t.id).padStart(6, '0')}</td><td>{t.titel || '–'}</td><td>{t.korrespondent || '–'}</td><td>{t.datum ? dat(t.datum) : '–'}</td>
+                </tr>
+              ))}
+              {!liste.length && <tr><td colSpan={5} className="portal-muted">Keine Dokumente gefunden – Suchbegriff ändern oder die Paperless-ID angeben.</td></tr>}
+            </tbody>
+          </table></div>
+        )}
+        <Text className="portal-muted portal-small">
+          Zur Auswahl stehen Dokumente der Instandhaltung (Dokumenttypen/Speicherpfade in den Stammdaten) und FI-Belege. Ist eine Rechnung zugleich einem FI-Beleg zugeordnet,
+          zeigt der FI-Beleg die Schadensmeldung als verknüpftes Objekt – und die Meldung den FI-Beleg.
+        </Text>
+      </div>
     </Dialog>
   );
 }
@@ -335,7 +588,7 @@ interface StammDaten {
   kategorien: { id: number; bezeichnung: string; sort: number; aktiv: boolean }[];
   matrix: [number, number][];
   zustaendigkeiten: { id: number; benutzer_id: string; name: string; anlage_id: number | null; anlage: string | null; kategorie_id: number | null; kategorie: string | null; berechtigt: boolean }[];
-  einstellungen: { vorstand_email: string; foto_frist_monate: number };
+  einstellungen: { vorstand_email: string; foto_frist_monate: number; paperless_typen: string; paperless_pfade: string };
   bearbeiter: { id: string; name: string; email: string | null; rollen: string[] }[];
   typen: Texte;
   plaetze: { id: number; name: string }[];
@@ -345,7 +598,7 @@ type KatForm = { id: number | null; bezeichnung: string; sort: string; aktiv: bo
 
 function Stammdaten({ onError }: { onError: (e: string) => void }) {
   const [s, setS] = useState<StammDaten | null>(null);
-  const [cfg, setCfg] = useState({ vorstand_email: '', foto_frist_monate: '24' });
+  const [cfg, setCfg] = useState({ vorstand_email: '', foto_frist_monate: '24', paperless_typen: '', paperless_pfade: '' });
   const [anlage, setAnlage] = useState<AnlageForm | null>(null);
   const [kat, setKat] = useState<KatForm | null>(null);
   const [zust, setZust] = useState(false);
@@ -353,7 +606,8 @@ function Stammdaten({ onError }: { onError: (e: string) => void }) {
   const [matrix, setMatrix] = useState<Set<string>>(new Set());
   const [matrixGeaendert, setMatrixGeaendert] = useState(false);
   const laden = () => api.get<StammDaten>(`${I}/stamm/daten`).then((x) => {
-    setS(x); setCfg({ vorstand_email: x.einstellungen.vorstand_email, foto_frist_monate: String(x.einstellungen.foto_frist_monate) });
+    setS(x); setCfg({ vorstand_email: x.einstellungen.vorstand_email, foto_frist_monate: String(x.einstellungen.foto_frist_monate),
+                      paperless_typen: x.einstellungen.paperless_typen, paperless_pfade: x.einstellungen.paperless_pfade });
     setMatrix(new Set(x.matrix.map(([a, k]) => `${a}:${k}`))); setMatrixGeaendert(false);
   }).catch((e) => onError(e.message));
   useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -465,9 +719,14 @@ function Stammdaten({ onError }: { onError: (e: string) => void }) {
           <Text className="portal-muted portal-small">Erhält jedes Sicherheitsrisiko (und nach 24 h ohne Reaktion eine Erinnerung) sowie Meldungen ohne passende Zuständigkeit.</Text>
           <Label showColon>Fotos erledigter Meldungen löschen nach (Monaten)</Label>
           <Input type="Number" value={cfg.foto_frist_monate} onInput={(e) => setCfg({ ...cfg, foto_frist_monate: e.target.value })} />
+          <Label showColon>Paperless: Dokumenttypen zur Auswahl</Label>
+          <Input value={cfg.paperless_typen} placeholder="z. B. Schadensmeldung, Angebot, Rechnung" onInput={(e) => setCfg({ ...cfg, paperless_typen: e.target.value })} />
+          <Label showColon>Paperless: Speicherpfade zur Auswahl</Label>
+          <Input value={cfg.paperless_pfade} placeholder="z. B. Instandhaltung" onInput={(e) => setCfg({ ...cfg, paperless_pfade: e.target.value })} />
+          <Text className="portal-muted portal-small">Im Dialog „Dokumente verknüpfen“ stehen Dokumente mit diesen Typen oder Pfaden sowie die FI-Belege zur Auswahl (mehrere mit Komma).</Text>
           <div className="portal-row">
             <Button design="Emphasized" icon="save"
-                    onClick={() => ausfuehren(() => api.put<{ text: string }>(`${I}/stamm/einstellungen`, { vorstand_email: cfg.vorstand_email, foto_frist_monate: Number(cfg.foto_frist_monate) }))}>Sichern</Button>
+                    onClick={() => ausfuehren(() => api.put<{ text: string }>(`${I}/stamm/einstellungen`, { ...cfg, foto_frist_monate: Number(cfg.foto_frist_monate) }))}>Sichern</Button>
           </div>
         </div>
       </Section>

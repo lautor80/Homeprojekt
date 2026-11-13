@@ -190,6 +190,8 @@ interface BuchungInfo {
   internenr: string; belege: number[]; storniertDurch: string | null;
   zeilen: { konto: string; konto_name: string; posnr: number; datum: string; text: string; betrag: number; gkonto: string; belnr: string; rgnr_txt: string | null }[];
   notizen: { id: string; notiz: string; erstellt_von: string; erstellt_am: string }[];
+  /** über dieselben Paperless-Dokumente verknüpfte Objekte (z. B. Schadensmeldung) */
+  objekte?: { art: string; nummer: string; text: string; doc_id: number; pfad: string }[];
 }
 
 export function BelegeDialog({ internenr, edit: darf, onClose, onChanged }: {
@@ -242,6 +244,17 @@ export function BelegeDialog({ internenr, edit: darf, onClose, onChanged }: {
             ))}
           </List>
           {edit && akt && <Button design="Transparent" icon="delete" style={{ marginTop: '0.5rem' }} onClick={() => setEntfernen(akt)}>Beleg {akt} von der Buchung entfernen</Button>}
+          {!!b?.objekte?.length && (
+            <div style={{ marginTop: '1rem' }}>
+              <Title level="H6">Verknüpfte Objekte</Title>
+              {b.objekte.map((o) => (
+                <div key={`${o.nummer}-${o.doc_id}`} style={{ padding: '0.25rem 0' }}>
+                  <Link href={o.pfad}>{o.art} {o.nummer}</Link><br />
+                  <Label>{o.text} · über Dokument {o.doc_id}</Label>
+                </div>
+              ))}
+            </div>
+          )}
           {notizen && (
             <div style={{ marginTop: '1rem' }}>
               <FlexBox justifyContent="SpaceBetween" alignItems="Center">

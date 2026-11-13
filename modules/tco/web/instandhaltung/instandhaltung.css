@@ -9,3 +9,8 @@
 .portal-ih__matrix th:not(:first-child) { white-space: normal; min-width: 4.5rem; font-size: var(--sapFontSmallSize, 0.75rem); text-align: center; }
 .portal-ih__matrix th:first-child, .portal-ih__matrix td:first-child { position: sticky; left: 0; background: var(--sapList_Background, #fff); z-index: 1; white-space: nowrap; }
 .portal-ih__matrix td { padding: 0.125rem 0.25rem; }
+/* Meldungsliste: Zeilen anklickbar, Filterzeile kompakt */
+.portal-ih__zeile { cursor: pointer; }
+.portal-ih__zeile:hover td { background: var(--sapList_Hover_Background, #eaecee); }
+.portal-ih__liste thead tr:nth-child(2) th { padding-top: 0; font-weight: normal; }
+.portal-ih__liste td { vertical-align: top; }
