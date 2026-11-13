@@ -139,10 +139,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
       betrag: z.string().trim().max(20).optional().transform((s) => (s ? Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s) : null))
         .refine((n) => n === null || (Number.isFinite(n) && n >= 0.01 && n <= 999_999_999.99), 'Bitte einen gültigen Betrag angeben.'),
       zweck: z.string().trim().max(140).optional(),
+      adrnr: z.string().trim().max(20).optional(),
     }).parse(req.query);
     if (!can(req, P_BANK.display)) throw new BusinessError('Für die Zahlungsdaten ist die Berechtigung „Bankdaten anzeigen“ nötig (tco.bankdaten:display).', 403);
     const { zahlungLesen } = await import('../upload/zahlung.js');
-    return zahlungLesen(DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck || null);
+    return zahlungLesen(DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck || null, q.adrnr || null);
   });
   /** registrierte Benutzer über die Zeit (#30): TAG (30 Tage), WOCHE (26), MONAT (24), JAHR, GESAMT */
   app.get('/dashboard/benutzer', { preHandler: requireAuth(P_DASH.display) }, async (req) => {

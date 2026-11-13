@@ -1,8 +1,8 @@
 /**
  * FI-Belege: Paperless-Belege, die dem Einreicher zu erstatten sind – Custom Field „Folgeaktion“ = „Überweisung an
  * Einreicher“ und Feld „SAP“ leer (noch keiner Buchung zugeordnet). Je Beleg Vorschau und QR-Code für die Überweisung
- * (upload/zahlung.ts): Empfänger und IBAN kommen über den Einreicher (Dokumenten-Upload des Portals, tco.upload_folge)
- * aus dem Mitgliederstamm, der Betrag aus dem Betragsfeld des Belegs.
+ * (upload/zahlung.ts): Der Einreicher steht im Paperless-Feld „Eingereicht durch“ (sonst: Benutzer des Dokumenten-Uploads);
+ * Empfänger und IBAN kommen über ihn aus dem Mitgliederstamm – lässt er sich nicht zuordnen, wird das Mitglied gewählt –, der Betrag aus dem Betragsfeld des Belegs.
  */
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db, Verein } from '../verein.js';
@@ -14,6 +14,17 @@ import { belegAus, type OffenerBeleg } from './belege.js';
 import { folgeText, sapLeer } from './ueberweisung-regeln.js';
 
 export { folgeText, sapLeer };
+
+/** Custom Field in Paperless mit dem Einreicher des Belegs */
+export const EINREICHER_FELD = 'Eingereicht durch';
+
+/** Einreicher aus dem Feld „Eingereicht durch“ des Dokuments (Text oder Auswahl); leer, wenn das Feld fehlt oder nicht gefüllt ist */
+async function eingereichtDurch(v: Verein, d: Record<string, any>): Promise<string> {
+  const pl = paperless(v);
+  const f = await pl.feldDetails(EINREICHER_FELD);
+  if (!f) return '';
+  return folgeText(await pl.feldWert(d, String(f.id)), f.extra_data?.select_options ?? []).trim();
+}
 
 export interface UeberweisungBeleg extends OffenerBeleg { einreicher: string | null; hochgeladen: string | null; erledigt: boolean }
 
@@ -41,21 +52,23 @@ export async function ueberweisungsBelege(v: Verein, db: Db): Promise<Ueberweisu
   const out: UeberweisungBeleg[] = [];
   for (const d of treffer) {
     const u = up.filter((x) => Number(x.dok_id) === Number(d.id)).at(-1);
-    out.push({ ...(await belegAus(v, d)), einreicher: (u?.einreicher as string | undefined) ?? null, hochgeladen: (u?.am as string | undefined) ?? null, erledigt: !!u?.erledigt_am });
+    out.push({ ...(await belegAus(v, d)), einreicher: (await eingereichtDurch(v, d)) || (u?.einreicher as string | undefined) || null, hochgeladen: (u?.am as string | undefined) ?? null, erledigt: !!u?.erledigt_am });
   }
   return out;
 }
 
 /** Zahlungsdaten und QR-Code zu einem dieser Belege; ohne Angabe gilt der Betrag aus dem Betragsfeld des Belegs */
-export async function ueberweisungZahlung(v: Verein, db: Db, id: number, betrag: number | null, zweck: string | null): Promise<ZahlungDaten> {
+export async function ueberweisungZahlung(v: Verein, db: Db, id: number, betrag: number | null, zweck: string | null, adrnr: string | null = null): Promise<ZahlungDaten> {
   const d = await ueberweisungDokument(v, id);
   const b = await belegAus(v, d);
   const [u] = await db`select einreicher, benutzer_id, to_char(am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am from tco.upload_folge where dok_id = ${id} order by id desc limit 1`;
   const wert = betrag ?? (b.betrag != null && Math.abs(b.betrag) >= 0.01 ? Math.round(Math.abs(b.betrag) * 100) / 100 : null);
+  // der Einreicher steht im Paperless-Feld „Eingereicht durch“; fehlt es, gilt der Benutzer des Dokumenten-Uploads
+  const feld = await eingereichtDurch(v, d);
   return zahlungBauen(db, {
-    id, titel: b.titel || `Beleg ${id}`, einreicher: (u?.einreicher as string | undefined) ?? '', benutzer_id: (u?.benutzer_id as string | undefined) ?? null,
+    id, titel: b.titel || `Beleg ${id}`, einreicher: feld || ((u?.einreicher as string | undefined) ?? ''), benutzer_id: feld ? null : (u?.benutzer_id as string | undefined) ?? null,
     dok_id: id, am: (u?.am as string | undefined) ?? b.datum ?? '',
-  }, wert, zweck);
+  }, wert, zweck, adrnr);
 }
 
 /** Dokument lesen und prüfen, dass es zu dieser Liste gehört (Folgeaktion „Überweisung an Einreicher“) – Schutz für Vorschau und QR-Code */

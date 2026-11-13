@@ -7,6 +7,7 @@ import { api } from '@core/api';
 import { Section } from '@core/components/Section';
 import { DASH } from './typen';
 import { aufgabenGesehen } from './AufgabenWaechter';
+import { MitgliedWahl } from '../fi/FiUeberweisung';
 
 export interface Aufgabe {
   key: string; bereich: string; titel: string; text: string; datum: string | null; icon: string;
@@ -90,7 +91,7 @@ function Eintrag({ a, onOeffnen, onErledigen, ebene = 1 }: { a: Aufgabe; onOeffn
 }
 
 interface Zahlung {
-  id: number; titel: string; einreicher: string; dok_id: number | null; am: string; empfaenger: string | null; iban: string | null; iban_text: string | null;
+  id: number; titel: string; einreicher: string; dok_id: number | null; am: string; adrnr: string | null; empfaenger: string | null; iban: string | null; iban_text: string | null;
   bic: string | null; bank: string | null; betrag: number | null; zweck: string; qr: string | null; epc: string | null; hinweis: string | null;
 }
 
@@ -102,6 +103,7 @@ function ZahlungDialog({ id, onClose, onUeberwiesen }: { id: number; onClose: ()
   const [d, setD] = useState<Zahlung | null>(null);
   const [betrag, setBetrag] = useState('');
   const [zweck, setZweck] = useState<string | null>(null);
+  const [adrnr, setAdrnr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Betrag und Verwendungszweck gehen in den QR-Code: kurz nach der Eingabe neu erzeugen
   useEffect(() => {
@@ -109,10 +111,11 @@ function ZahlungDialog({ id, onClose, onUeberwiesen }: { id: number; onClose: ()
       const q = new URLSearchParams();
       if (betrag.trim()) q.set('betrag', betrag.trim());
       if (zweck !== null) q.set('zweck', zweck);
+      if (adrnr) q.set('adrnr', adrnr);
       api.get<Zahlung>(`${DASH}/arbeitsvorrat/upload-zahlung/${id}${q.size ? `?${q}` : ''}`).then((r) => { setD(r); setError(null); }).catch((e) => setError((e as Error).message));
     }, d ? 400 : 0);
     return () => clearTimeout(t);
-  }, [id, betrag, zweck]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, betrag, zweck, adrnr]); // eslint-disable-line react-hooks/exhaustive-deps
   const kopieren = (text: string, was: string) => navigator.clipboard?.writeText(text).then(() => toast(`${was} kopiert.`)).catch(() => undefined);
   const zeile = (label: string, wert: string | null, kopie?: string) => (
     <>
@@ -134,6 +137,8 @@ function ZahlungDialog({ id, onClose, onUeberwiesen }: { id: number; onClose: ()
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <Text>{d.titel} · eingereicht von {d.einreicher} am {dat(d.am)}{d.dok_id ? ` · Paperless-Dokument ${d.dok_id}` : ''}</Text>
           <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.25rem 0.75rem', alignItems: 'center' }}>
+            <Label showColon>Mitglied</Label>
+            <MitgliedWahl wert={adrnr ?? d.adrnr} name={d.empfaenger} onWaehle={setAdrnr} />
             {zeile('Empfänger', d.empfaenger)}
             {zeile('IBAN', d.iban_text, d.iban ?? undefined)}
             {zeile('BIC', d.bic)}
