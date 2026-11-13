@@ -203,7 +203,11 @@ test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   r = await call('POST', `${M}/m/0000000102/notizen`, { text: 'Rückruf wegen Training' });
   assert.equal(r.status, 200);
   r = await call('POST', `${M}/m/0000000102/trainer`, { trainer: true });
+  // Schlüsseldaten sind im Mitgliederstamm nur Anzeige – gepflegt wird in der App „Hallenschlüssel“
   r = await call('POST', `${M}/m/0000000102/schluessel`, { ausgabe: '2026-03-01', ausgabebeleg: 'K12', ruecknahme: null, ruecknahmebeleg: '' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /App „Hallenschlüssel“/);
+  await sql`insert into tco.schluessel (adrnr, ausgabe, ausgabebeleg) values ('0000000102', '2026-03-01', 'K12')`;
   r = await call('GET', `${M}/m/0000000102`);
   assert.equal(r.body.notizen.length, 1);
   assert.equal(r.body.trainer, true);

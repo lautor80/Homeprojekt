@@ -8,7 +8,7 @@ import { condense, heute } from '../format.js';
 import { kontaktLesen, mailSenden, whatsappLink } from '../kommunikation.js';
 import {
   austrittSichern, bankSichern, betragAm, DATUM_TYP, detailLesen, kanalSetzen, kopfSichern, leer, listeLesen, mitgliedLesen, mitgliedNeu,
-  normName, notizAnlegen, notizLoeschen, schluesselSetzen, sepaManuell, STATUS, trainerSetzen, vertragAendern, vertragNeu, vertragsarten,
+  normName, notizAnlegen, notizLoeschen, sepaManuell, STATUS, trainerSetzen, vertragAendern, vertragNeu, vertragsarten,
   vertragsbeginn, vertragsZahler, zahlerAuswahl, zahlerVorschlag, ZAHLUNGSARTEN, ZAHLUNGSWEISEN,
 } from './logik.js';
 import { ART_TEXT, ARTEN, druckdatenLesen, unterlagePdf } from './pdf.js';
@@ -496,11 +496,10 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return { text: b.kanal === 'E' ? 'Versandweg E-Mail gesichert.' : b.kanal === 'W' ? 'Versandweg WhatsApp gesichert.' : 'Versandweg zurückgesetzt.' };
   });
 
-  app.post('/mitglieder/m/:adrnr/schluessel', schreiben, async (req) => {
+  app.post('/mitglieder/m/:adrnr/schluessel', schreiben, async (req): Promise<never> => {
     const { adrnr: a } = pAdr.parse(req.params);
-    const b = z.object({ ausgabe: datumOpt, ausgabebeleg: txt, ruecknahme: datumOpt, ruecknahmebeleg: txt }).parse(req.body);
-    await change(req, (tx) => schluesselSetzen(tx, a, b));
-    return { text: 'Schlüssel gesichert.' };
+    // Die Schlüsseldaten im Mitgliederstamm sind reine Anzeige: Ausgabe und Rückgabe pflegt nur die App „Hallenschlüssel“ (#215)
+    throw new BusinessError(`Die Schlüsseldaten von ${a} lassen sich im Mitgliederstamm nicht ändern – bitte die App „Hallenschlüssel“ verwenden.`);
   });
 
   app.post('/mitglieder/m/:adrnr/notizen', schreiben, async (req) => {
