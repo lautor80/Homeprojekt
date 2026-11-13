@@ -63,7 +63,7 @@ export function Hallenschluessel() {
   const [error, setError] = useState<string | null>(null);
   const [hinweise, setHinweise] = useState<string[]>([]);
   const [offen, setOffen] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('id')) || null);
-  const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'cfg' | 'variante'>(null);
+  const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'abgleich' | 'cfg' | 'variante'>(null);
   const [rueck, setRueck] = useState<Zeile | null>(null);
   const laden = () => api.get<Daten>(S).then(setDaten).catch((e) => setError((e as Error).message));
   useEffect(() => {
@@ -134,6 +134,7 @@ export function Hallenschluessel() {
           </SegmentedButton>
           {daten.darf.edit && <Button design="Emphasized" icon="add" onClick={() => setDlg('ausgabe')}>Schlüssel ausgeben</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="paste" onClick={() => setDlg('altdaten')}>Altdaten einfügen</Button>}
+          {daten.darf.admin && <Button design="Transparent" icon="compare" onClick={() => setDlg('abgleich')}>FI-Abgleich</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="action-settings" tooltip="Einstellungen" onClick={() => setDlg('cfg')} />}
           <Button design="Transparent" icon="refresh" tooltip="Neu laden" onClick={laden} />
         </div>
@@ -183,6 +184,7 @@ export function Hallenschluessel() {
       {dlg === 'ausgabe' && <AusgabeDialog daten={daten} onClose={fertig} />}
       {rueck && <RueckgabeDialog z={rueck} daten={daten} onClose={fertig} />}
       {dlg === 'altdaten' && <AltdatenDialog onClose={fertig} />}
+      {dlg === 'abgleich' && <AbgleichDialog onClose={() => { setDlg(null); laden(); }} />}
       {dlg === 'cfg' && <EinstellungenDialog onClose={fertig} />}
       {dlg === 'variante' && (
         <VarianteDialog ansicht={a} vorschlag={variante} admin={daten.darf.admin} onClose={(v) => {
@@ -427,6 +429,132 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
                 ))}
               </tbody>
             </table></div>
+          </>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Abgleich mit früheren Kontobewegungen: Buchungen der FI-Belege auf zwei wählbaren Konten gegen die Schlüsselvorgänge.
+ * Vorschläge (Rechnung, Name im Buchungstext, Betrag, Datum) lassen sich gesammelt übernehmen; es wird nichts gebucht.
+ */
+function AbgleichDialog({ onClose }: { onClose: () => void }) {
+  interface Kand { id: number; nummer: string; person: string; datum: string; art_txt: string; grund?: string }
+  interface AZeile {
+    internenr: string; konto: string; konto_name: string; datum: string; text: string; betrag: number; richtung: string; richtung_txt: string; rgnr: string | null; belege: number[];
+    status: 'VERKNUEPFT' | 'VORSCHLAG' | 'MEHRDEUTIG' | 'OFFEN'; vorgang: Kand | null; kandidaten: Kand[]; grund: string; person: { adrnr: string; name: string; info: string } | null;
+  }
+  interface A { konto1: string; konto2: string; namen: Texte; zeilen: AZeile[]; ohneBuchung: Kand[]; summe: { buchungen: number; verknuepft: number; vorschlag: number; mehrdeutig: number; offen: number } }
+  interface P { adrnr: string; name: string; info: string }
+  const [a, setA] = useState<A | null>(null);
+  const [konten, setKonten] = useState({ konto1: '', konto2: '' });
+  const [wahl, setWahl] = useState<Record<string, number>>({});
+  const [nurOffen, setNurOffen] = useState(true);
+  const [neu, setNeu] = useState<AZeile | null>(null);
+  const [personen, setPersonen] = useState<P[] | null>(null);
+  const [q, setQ] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const key = (z: AZeile) => `${z.internenr}:${z.richtung}`;
+  async function laden() {
+    try {
+      const d = await api.get<A>(`${S}/abgleich/daten`);
+      setA(d); setKonten({ konto1: d.konto1, konto2: d.konto2 });
+      setWahl(Object.fromEntries(d.zeilen.filter((z) => z.status === 'VORSCHLAG' && z.vorgang).map((z) => [key(z), z.vorgang!.id])));
+    } catch (e) { setError((e as Error).message); }
+  }
+  useEffect(() => { laden(); }, []);
+  async function tun(fn: () => Promise<{ text: string }>) {
+    setBusy(true); setError(null);
+    try { toast((await fn()).text, 6000); setNeu(null); setQ(''); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  const paare = (a?.zeilen ?? []).filter((z) => z.status !== 'VERKNUEPFT' && wahl[key(z)]).map((z) => ({ internenr: z.internenr, vorgang_id: wahl[key(z)] }));
+  const zeilen = (a?.zeilen ?? []).filter((z) => !nurOffen || z.status !== 'VERKNUEPFT');
+  function anlegen(z: AZeile) {
+    if (z.person) { tun(() => api.post(`${S}/abgleich/anlegen`, { internenr: z.internenr, richtung: z.richtung, adrnr: z.person!.adrnr })); return; }
+    setNeu(z); setQ('');
+    if (!personen) api.get<P[]>(`${S}/personen`).then(setPersonen).catch((e) => setError((e as Error).message));
+  }
+  const such = q.trim().toLowerCase();
+  const treffer = such.length < 2 ? [] : (personen ?? []).filter((p) => p.name.toLowerCase().includes(such)).slice(0, 12);
+  const STAT: Record<AZeile['status'], { t: string; s: 'Positive' | 'Information' | 'Critical' | 'None' }> = {
+    VERKNUEPFT: { t: 'verknüpft', s: 'Positive' }, VORSCHLAG: { t: 'Vorschlag', s: 'Information' }, MEHRDEUTIG: { t: 'mehrdeutig', s: 'Critical' }, OFFEN: { t: 'kein Vorgang', s: 'None' },
+  };
+  return (
+    <Dialog open headerText="Abgleich mit Kontobewegungen (FI-Belege)" style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose()}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="accept" loading={busy} disabled={!paare.length} onClick={() => tun(() => api.post(`${S}/abgleich/verknuepfen`, { paare }))}>{paare.length} Verknüpfung(en) übernehmen</Button>
+              <Button onClick={() => onClose()}>Schließen</Button>
+            </>} />}>
+      <div className="portal-bk__form">
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}><span style={{ whiteSpace: 'pre-line' }}>{error}</span></MessageStrip>}
+        <Text className="portal-muted portal-small">
+          Alle nicht stornierten Buchungen auf den beiden Konten werden den Schlüsselvorgängen gegenübergestellt (Rechnung, Name im Buchungstext, Betrag, Datum).
+          Verknüpfen trägt die FI-Buchung am Vorgang ein und hängt dessen Beleg an die Buchung – es wird nichts gebucht.
+        </Text>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'end', flexWrap: 'wrap' }}>
+          <div><Label showColon>Konto 1</Label><br /><Input style={{ width: '8rem' }} maxlength={10} value={konten.konto1} onInput={(e) => setKonten({ ...konten, konto1: e.target.value.trim() })} /></div>
+          <div><Label showColon>Konto 2</Label><br /><Input style={{ width: '8rem' }} maxlength={10} value={konten.konto2} onInput={(e) => setKonten({ ...konten, konto2: e.target.value.trim() })} /></div>
+          <Button icon="synchronize" disabled={busy || !a || (konten.konto1 === a.konto1 && konten.konto2 === a.konto2)} onClick={() => tun(() => api.put(`${S}/abgleich/konten`, konten))}>Konten übernehmen</Button>
+          {a && <Text className="portal-muted portal-small">{[a.konto1, a.konto2].map((k) => `${k} ${a.namen[k] ?? ''}`.trim()).join(' · ')}</Text>}
+          <CheckBox text="nur nicht verknüpfte" checked={nurOffen} onChange={(e) => setNurOffen(e.target.checked)} />
+        </div>
+        {!a ? <BusyIndicator active /> : (
+          <>
+            <MessageStrip design="Information" hideCloseButton>
+              {a.summe.buchungen} Buchung(en): {a.summe.verknuepft} verknüpft, {a.summe.vorschlag} mit Vorschlag, {a.summe.mehrdeutig} mehrdeutig, {a.summe.offen} ohne Vorgang
+              {a.ohneBuchung.length ? ` · ${a.ohneBuchung.length} Vorgang/Vorgänge mit Pfand ohne Buchung` : ''}
+            </MessageStrip>
+            <div className="portal-ih__rahmen" style={{ maxHeight: '46vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+              <thead><tr><th>Datum</th><th>Buchung</th><th>Konto</th><th>Art</th><th style={{ textAlign: 'right' }}>Betrag</th><th>Buchungstext</th><th>Status</th><th>Schlüsselvorgang</th><th /></tr></thead>
+              <tbody>
+                {!zeilen.length && <tr><td colSpan={9} className="portal-muted">Keine Buchungen.</td></tr>}
+                {zeilen.map((z) => (
+                  <tr key={key(z)} className={z.status === 'VERKNUEPFT' ? 'portal-ih__inaktiv' : undefined}>
+                    <td>{dat(z.datum)}</td>
+                    <td><Link href={`/tco/fi?buchung=${encodeURIComponent(z.internenr)}`} target="_blank">{z.internenr}</Link></td>
+                    <td title={z.konto_name}>{z.konto}</td><td>{z.richtung_txt}</td><td style={{ textAlign: 'right' }}>{eur(z.betrag)}</td>
+                    <td>{z.text}{z.rgnr ? <span className="portal-muted"> · Rg. {z.rgnr}</span> : null}</td>
+                    <td><ObjectStatus state={STAT[z.status].s}>{STAT[z.status].t}</ObjectStatus></td>
+                    <td>
+                      {z.status === 'VERKNUEPFT' && z.vorgang && <>{z.vorgang.nummer} · {z.vorgang.person}</>}
+                      {(z.status === 'VORSCHLAG' || z.status === 'MEHRDEUTIG') && (
+                        <>
+                          <select value={wahl[key(z)] ?? ''} onChange={(e) => setWahl({ ...wahl, [key(z)]: Number(e.target.value) })}>
+                            <option value="">– nicht verknüpfen –</option>
+                            {z.kandidaten.map((k) => <option key={k.id} value={k.id}>{k.nummer} · {k.person} · {dat(k.datum)}</option>)}
+                          </select>
+                          <div className="portal-muted portal-small">{z.kandidaten.find((k) => k.id === wahl[key(z)])?.grund ?? z.grund}</div>
+                        </>
+                      )}
+                      {z.status === 'OFFEN' && (z.person ? <span className="portal-muted">{z.person.name} · {z.person.info}</span> : <span className="portal-muted">Person nicht erkannt</span>)}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {z.status === 'VERKNUEPFT' && z.vorgang && <Button design="Transparent" icon="disconnected" tooltip="Verknüpfung lösen" disabled={busy} onClick={() => tun(() => api.post(`${S}/abgleich/loesen`, { vorgang_id: z.vorgang!.id }))} />}
+                      {z.status === 'OFFEN' && <Button design="Transparent" icon="add" disabled={busy} tooltip="Altfall-Vorgang aus dieser Buchung anlegen" onClick={() => anlegen(z)}>Vorgang anlegen</Button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+            {neu && (
+              <div className="portal-ih__rahmen" style={{ padding: '0.5rem' }}>
+                <Label showColon>{neu.richtung_txt} vom {dat(neu.datum)} ({eur(neu.betrag)}, „{neu.text}“) – Person wählen</Label>
+                <Input style={{ width: '100%' }} placeholder="Name suchen (mind. 2 Zeichen)" value={q} onInput={(e) => setQ(e.target.value)} />
+                {!personen && <BusyIndicator active />}
+                {treffer.map((p) => (
+                  <div key={p.adrnr} className="portal-ih__zeile" style={{ padding: '0.25rem 0.5rem' }} onClick={() => tun(() => api.post(`${S}/abgleich/anlegen`, { internenr: neu.internenr, richtung: neu.richtung, adrnr: p.adrnr }))}>
+                    {p.name} <span className="portal-muted">· {p.info}</span>
+                  </div>
+                ))}
+                <Button design="Transparent" onClick={() => setNeu(null)}>Abbrechen</Button>
+              </div>
+            )}
+            {a.ohneBuchung.length > 0 && (
+              <Text className="portal-muted portal-small">Vorgänge mit Pfand ohne FI-Buchung und ohne Hallenrechnung: {a.ohneBuchung.map((v) => `${v.nummer} ${v.person} (${v.art_txt} ${dat(v.datum)})`).join(' · ')}</Text>
+            )}
           </>
         )}
       </div>

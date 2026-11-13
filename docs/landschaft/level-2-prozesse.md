@@ -14,7 +14,7 @@ Kernprozesse von Ende zu Ende. Jeder Verweis ist gegen den Code geprüft (⚠️
 | P7 | [Vereinsleben (Kalender)](#p7) | Mitglieder | Spielplan oder Veranstaltung | Termine mit Rückmeldungen je Gruppe | 5 |
 | P8 | [Abschluss und Steuerung](#p8) | Finanzen | Monats- und Jahresende | Jahresabschluss in Paperless, Kennzahlen aktuell | 5 |
 | P9 | [Schäden melden und beheben](#p9) | Instandhaltung | Mitglied entdeckt einen Schaden (QR-Code an der Anlage) | Schaden behoben, Platz wieder freigegeben, Melder informiert | 9 |
-| P10 | [Hallenschlüssel ausgeben und zurücknehmen](#p10) | Tennishalle | Mitglied oder Kunde braucht einen Hallenschlüssel | Schlüssel dokumentiert, quittiert, Pfand berechnet bzw. gutgeschrieben, Belege in Paperless | 6 |
+| P10 | [Hallenschlüssel ausgeben und zurücknehmen](#p10) | Tennishalle | Mitglied oder Kunde braucht einen Hallenschlüssel | Schlüssel dokumentiert, quittiert, Pfand berechnet bzw. gutgeschrieben, Belege in Paperless | 7 |
 
 <a id="p1"></a>
 ## P1 · Mitglied werden
@@ -343,6 +343,8 @@ flowchart LR
   S3 --> S4
   S5["Altdaten einfügen und auf das Kassenkonto buchen<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
   S4 --> S5
+  S6["Frühere Kontobewegungen (FI-Belege) auf zwei Konten mit den Vorgängen abgleichen und verknüpfen<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
+  S5 --> S6
   classDef portal fill:#ffffff,stroke:#1f5fa8,stroke-width:2px,color:#1f5fa8
   classDef n8n fill:#ffffff,stroke:#2e7d32,stroke-width:2px,color:#2e7d32
   classDef extern fill:#ffffff,stroke:#2a9d8f,stroke-width:2px,color:#1d6f66
@@ -357,6 +359,7 @@ flowchart LR
 | 4 | Rückgabe erfassen: Zustand, empfangen von, Gutschrift mit negativem Betrag | Hallenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/rueckgabe` | `tco.schluessel:edit` | `/tco/hallenschluessel` |  |
 | 5 | Empfang bestätigen, Rückgabebeleg in Paperless | Hallenwart | Paperless-ngx | `POST /api/m/tco/schluessel/:id/empfang` | `tco.schluessel:edit` |  |  |
 | 6 | Altdaten einfügen und auf das Kassenkonto buchen | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/altdaten` | `tco.schluessel:admin` | `/tco/hallenschluessel` |  |
+| 7 | Frühere Kontobewegungen (FI-Belege) auf zwei Konten mit den Vorgängen abgleichen und verknüpfen | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/abgleich/verknuepfen` | `tco.schluessel:admin` | `/tco/hallenschluessel` |  |
 
 ## Prozess × App
 

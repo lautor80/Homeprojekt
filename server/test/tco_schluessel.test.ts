@@ -1,7 +1,8 @@
 /**
  * Integrationstest Hallenschlüssel (#215): Ausgabe mit Rechnungsposition, Beleg in Paperless und Quittungslink; Online-Quittung
  * des Kunden; Rückgabe mit Gutschrift (negativer Betrag) und Empfangsbestätigung des TCO; Storno; Vorgang aus der Hallenabrechnung;
- * Altdaten per Copy & Paste mit Buchung auf das Kassenkonto und Belegverknüpfung; Arbeitsvorrat; Berechtigungen.
+ * Altdaten per Copy & Paste mit Buchung auf das Kassenkonto und Belegverknüpfung; Arbeitsvorrat; Berechtigungen;
+ * Abgleich mit früheren Kontobewegungen (FI-Belege) auf zwei Konten.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -290,4 +291,71 @@ test('Einstellungen und Varianten', async () => {
   assert.equal(r.body.standard.name, 'Alle Ausgaben');
   assert.equal((await admin('GET', `${T}/instandhaltung/varianten`)).body.varianten.length, 0, 'getrennt von der Instandhaltung');
   assert.ok((await sql`select 1 from core.change_header where object_type = 'SCHLUESSELVORGANG' limit 1`).length === 1);
+});
+
+test('FI-Abgleich: Buchungen auf zwei Konten, Vorschlag über Name/Betrag/Datum, verknüpfen, lösen, Altfall aus Buchung', async () => {
+  const UDO = '0000000304';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, ort) values (${UDO}, 'Udo', 'Unterschnitt', '2018-01-01', 'Oberthal'), ('0000000305', 'Vera', 'Volley', '2018-01-01', 'Oberthal')`;
+  let r = await admin('POST', `${S}/altdaten`, { text: 'Udo Unterschnitt\t05.05.2021\tBen H.\t25,00\t\t\t611', buchen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [udo] = await sql`select id, internenr from tco.schluessel_vorgang where adrnr = ${UDO}`;
+  assert.equal(udo.internenr, null);
+  // frühere Kontobewegungen: Kasse (Eingang im Soll) und Pfandkonto (Haben), eine davon storniert
+  await sql`insert into tco.fibuchungen (internenr, konto, posnr, jahr, monat, datum, text, betrag, soll, haben, gkonto) values
+    ('0000009001', '1000', 0, 2021, 5, '2021-05-06', 'Pfand Hallenschlüssel Udo Unterschnitt', 25, 25, 0, '1590'),
+    ('0000009001', '1590', 0, 2021, 5, '2021-05-06', 'Pfand Hallenschlüssel Udo Unterschnitt', 25, 0, 25, '1000'),
+    ('0000009002', '1590', 0, 2018, 3, '2018-03-03', 'Schlüssel Volley, Vera', 25, 0, 25, '1000'),
+    ('0000009003', '1590', 0, 2018, 4, '2018-04-04', 'Schlüsselpfand Fehlbuchung', 25, 0, 25, '1000'),
+    ('0000009005', '1590', 0, 2017, 1, '2017-01-10', 'Pfand unbekannt', 25, 0, 25, '1000')`;
+  await sql`insert into tco.fibuchungen (internenr, konto, posnr, jahr, monat, datum, text, betrag, soll, haben, gkonto, storno_zu) values
+    ('0000009004', '1590', 0, 2018, 4, '2018-04-04', 'Storno Schlüsselpfand Fehlbuchung', 25, 25, 0, '1000', '0000009003')`;
+  assert.equal((await mia('GET', `${S}/abgleich/daten`)).status, 403);
+  r = await admin('GET', `${S}/abgleich/daten`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Vorgabe: Konto des Hallenprodukts und (weil 008 und 009 dasselbe Konto haben) das Kassenkonto
+  assert.deepEqual([r.body.konto1, r.body.konto2], ['1590', '1000']);
+  type Z = { internenr: string; status: string; richtung: string; konto: string; vorgang: { id: number } | null; person: { adrnr: string } | null; grund: string };
+  const z = (nr: string) => (r.body.zeilen as Z[]).filter((x) => x.internenr === nr);
+  assert.deepEqual(z('0000009001').map((x) => [x.status, x.richtung, x.konto, x.vorgang?.id]), [['VORSCHLAG', 'AUSGABE', '1590', udo.id]], 'je Buchung eine Zeile');
+  assert.match(z('0000009001')[0].grund, /Name im Buchungstext.*Betrag = Pfand.*Datum passt/);
+  assert.deepEqual(z('0000009002').map((x) => [x.status, x.person?.adrnr]), [['OFFEN', '0000000305']], 'Person aus dem Buchungstext');
+  assert.deepEqual(z('0000009005').map((x) => [x.status, x.person]), [['OFFEN', null]]);
+  assert.equal(z('0000009003').length + z('0000009004').length, 0, 'stornierte Buchungen bleiben außen vor');
+  // die Altdaten-Buchungen von Lea sind bereits verknüpft
+  assert.equal((r.body.zeilen as Z[]).filter((x) => x.status === 'VERKNUEPFT').length, 2);
+  assert.ok(r.body.ohneBuchung.every((v: { id: number }) => v.id !== udo.id), 'Vorgang mit Vorschlag zählt nicht als „ohne Buchung“');
+
+  // Konten: nur aus dem Kontenstamm
+  assert.equal((await admin('PUT', `${S}/abgleich/konten`, { konto1: '1590', konto2: '9999' })).status, 400);
+  assert.equal((await admin('PUT', `${S}/abgleich/konten`, { konto1: '1000', konto2: '1590' })).status, 200);
+  r = await admin('GET', `${S}/abgleich/daten`);
+  assert.deepEqual([r.body.konto1, z('0000009001')[0].konto, z('0000009001')[0].richtung], ['1000', '1000', 'AUSGABE'], 'Kasse: Eingang im Soll = Ausgabe');
+
+  // verknüpfen: FI-Buchung am Vorgang, Beleg des Vorgangs an der Buchung, nichts neu gebucht
+  const vorher = (await sql`select count(*)::int as n from tco.fibuchungen`)[0].n;
+  assert.equal((await mia('POST', `${S}/abgleich/verknuepfen`, { paare: [{ internenr: '0000009001', vorgang_id: udo.id }] })).status, 403);
+  assert.equal((await admin('POST', `${S}/abgleich/verknuepfen`, { paare: [{ internenr: '0000009003', vorgang_id: udo.id }] })).status, 400, 'stornierte Buchung');
+  r = await admin('POST', `${S}/abgleich/verknuepfen`, { paare: [{ internenr: '0000009001', vorgang_id: udo.id }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await vorgang(udo.id)).internenr, '0000009001');
+  assert.ok((await protokollVon(udo.id)).includes('BUCHUNG'));
+  assert.deepEqual((await sql`select doknr from tco.fipapermap where internenr = '0000009001'`).map((x) => Number(x.doknr)), [611]);
+  assert.equal((await sql`select count(*)::int as n from tco.fibuchungen`)[0].n, vorher);
+  assert.equal((await admin('POST', `${S}/abgleich/verknuepfen`, { paare: [{ internenr: '0000009002', vorgang_id: udo.id }] })).status, 400, 'bereits verknüpft');
+  r = await admin('GET', `${S}/abgleich/daten`);
+  assert.deepEqual(z('0000009001').map((x) => [x.status, x.vorgang?.id]), [['VERKNUEPFT', udo.id]]);
+  // lösen und erneut als Vorschlag
+  assert.equal((await admin('POST', `${S}/abgleich/loesen`, { vorgang_id: udo.id })).status, 200);
+  assert.equal((await vorgang(udo.id)).internenr, null);
+  r = await admin('GET', `${S}/abgleich/daten`);
+  assert.equal(z('0000009001')[0].status, 'VORSCHLAG');
+
+  // Buchung ohne Vorgang: Altfall anlegen (Datum und Pfand aus der Buchung), Bestand fortgeschrieben
+  r = await admin('POST', `${S}/abgleich/anlegen`, { internenr: '0000009002', richtung: 'AUSGABE', adrnr: '0000000305' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [vera] = await sql`select art, datum::text as datum, pfand::float8 as pfand, status, quittiert_art, quelle, internenr from tco.schluessel_vorgang where adrnr = '0000000305'`;
+  assert.deepEqual([vera.art, vera.datum, vera.pfand, vera.status, vera.quittiert_art, vera.quelle, vera.internenr], ['AUSGABE', '2018-03-03', 25, 'QUITTIERT', 'ALTFALL', 'IMPORT', '0000009002']);
+  assert.equal((await bestand('0000000305'))?.ausgabe, '2018-03-03');
+  assert.equal((await admin('POST', `${S}/abgleich/anlegen`, { internenr: '0000009002', richtung: 'AUSGABE', adrnr: '0000000305' })).status, 400, 'nicht doppelt');
+  assert.equal((await admin('POST', `${S}/abgleich/anlegen`, { internenr: '0000009005', richtung: 'RUECKGABE', adrnr: '0000000305' })).status, 400, 'Richtung passt nicht');
 });

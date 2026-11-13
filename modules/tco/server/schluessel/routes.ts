@@ -10,6 +10,7 @@ import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import { kandidaten } from '../halle/sammel.js';
 import { ADRNR_ZU_BENUTZER } from '../platz/schluessel.js';
 import { variantenLesen, varianteLoeschen, varianteSichern, varianteStandard, type Ansicht } from '../instandhaltung/varianten.js';
+import { abgleichAnlegen, abgleichKontenSichern, abgleichLesen, abgleichLoesen, abgleichVerknuepfen } from './abgleich.js';
 import { belegAblegen, belegPdf, type BelegDaten } from './beleg.js';
 import {
   P_SCHL, altdatenPruefen, altdatenUebernehmen, ausgabe, bestandAbleiten, cfgLesen, cfgSichern, detailLesen, empfangBestaetigen, linkErneuern, listeLesen,
@@ -232,6 +233,26 @@ export async function schluesselRoutes(app: FastifyInstance) {
   app.post('/schluessel/altdaten', admin, async (req) => {
     const b = z.object({ text: z.string().min(1, 'Bitte die Altdaten einfügen.').max(500_000), buchen: z.boolean().default(true) }).parse(req.body);
     return change(req, (tx) => altdatenUebernehmen(tx, b.text, { buchen: b.buchen }, ich(req)), { action: 'SCHLUESSEL_ALTDATEN' });
+  });
+
+  // ------------------------------------------------------------------ Abgleich mit früheren Kontobewegungen (FI-Belege)
+  app.get('/schluessel/abgleich/daten', admin, async () => abgleichLesen(DB));
+  /** die beiden Konten festlegen, deren Buchungen abgeglichen werden */
+  app.put('/schluessel/abgleich/konten', admin, async (req) => {
+    const b = z.object({ konto1: txt(10).min(1, 'Bitte beide Konten angeben.'), konto2: txt(10).min(1, 'Bitte beide Konten angeben.') }).parse(req.body);
+    return { text: await change(req, (tx) => abgleichKontenSichern(tx, b.konto1, b.konto2), { action: 'SCHLUESSEL_CFG' }) };
+  });
+  app.post('/schluessel/abgleich/verknuepfen', admin, async (req) => {
+    const b = z.object({ paare: z.array(z.object({ internenr: z.string().min(1).max(20), vorgang_id: z.number().int().positive() })).min(1, 'Bitte mindestens eine Zeile wählen.').max(500) }).parse(req.body);
+    return { text: await change(req, (tx) => abgleichVerknuepfen(tx, b.paare, ich(req)), { action: 'SCHLUESSEL_ABGLEICH' }) };
+  });
+  app.post('/schluessel/abgleich/anlegen', admin, async (req) => {
+    const b = z.object({ internenr: z.string().min(1).max(20), richtung: z.enum(['AUSGABE', 'RUECKGABE']), adrnr: z.string().min(1).max(20) }).parse(req.body);
+    return { text: await change(req, (tx) => abgleichAnlegen(tx, b.internenr, b.richtung, b.adrnr, ich(req)), { action: 'SCHLUESSEL_ABGLEICH' }) };
+  });
+  app.post('/schluessel/abgleich/loesen', admin, async (req) => {
+    const b = z.object({ vorgang_id: z.number().int().positive() }).parse(req.body);
+    return { text: await change(req, (tx) => abgleichLoesen(tx, b.vorgang_id, ich(req)), { action: 'SCHLUESSEL_ABGLEICH' }) };
   });
 
   // ------------------------------------------------------------------ Einstellungen

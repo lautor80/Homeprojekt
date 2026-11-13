@@ -128,3 +128,52 @@ export function quittungUeberfaellig(v: { art: string; status: string; datum: st
   if (v.art !== 'AUSGABE' || v.status !== 'WARTET') return false;
   return (new Date(`${heute}T00:00:00Z`).getTime() - new Date(`${v.datum}T00:00:00Z`).getTime()) / 86_400_000 > tage;
 }
+
+// ---------------------------------------------------------------- Abgleich mit FI-Buchungen
+
+/** Namen und Buchungstexte vergleichbar machen: Großschreibung, Umlaute/ß aufgelöst, nur Buchstaben und Ziffern */
+export const normText = (s: string | null | undefined) => (s ?? '').toUpperCase()
+  .replace(/Ä/g, 'AE').replace(/Ö/g, 'OE').replace(/Ü/g, 'UE').replace(/ß|ẞ/g, 'SS').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^A-Z0-9]+/g, ' ').trim();
+
+/** kommt die Person (Vor- und Nachname als ganze Wörter) im Text vor? 2 = Vor- und Nachname, 1 = nur Nachname, 0 = nein */
+export function nameImText(person: string, text: string): 0 | 1 | 2 {
+  const t = ` ${normText(text)} `;
+  const teile = normText(person).split(' ').filter(Boolean);
+  if (!teile.length) return 0;
+  const nach = teile[teile.length - 1];
+  if (nach.length < 3 || !t.includes(` ${nach} `)) return 0;
+  return teile.length > 1 && t.includes(` ${teile[0]} `) ? 2 : 1;
+}
+
+export interface AbgleichBuchung { datum: string; betrag: number; richtung: Art; text: string; rgnr: string | null }
+export interface AbgleichVorgang { id: number; art: string; person: string; datum: string; pfand: number | null; rgnr: string | null }
+export interface AbgleichTreffer { id: number; punkte: number; grund: string }
+
+const tageDiff = (a: string, b: string) => Math.abs(new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime()) / 86_400_000;
+
+/**
+ * Vorgänge, die zu einer Buchung passen, bester zuerst. Gleiche Richtung ist Pflicht; gewertet werden die Hallenrechnung
+ * (sicher), der Name im Buchungstext, der Betrag (= Pfand) und der zeitliche Abstand. Ab 60 Punkten gilt ein Vorgang als Treffer.
+ */
+export function abgleichTreffer(b: AbgleichBuchung, vorgaenge: AbgleichVorgang[], tage = 60): AbgleichTreffer[] {
+  const out: AbgleichTreffer[] = [];
+  for (const v of vorgaenge) {
+    if (v.art !== b.richtung) continue;
+    let punkte = 0;
+    const grund: string[] = [];
+    if (b.rgnr && v.rgnr && b.rgnr === v.rgnr) { punkte += 100; grund.push(`Rechnung ${v.rgnr}`); }
+    const n = nameImText(v.person, b.text);
+    if (n) { punkte += n === 2 ? 60 : 45; grund.push(n === 2 ? 'Name im Buchungstext' : 'Nachname im Buchungstext'); }
+    if (v.pfand != null) {
+      if (Math.abs(v.pfand - Math.abs(b.betrag)) < 0.005) { punkte += 15; grund.push('Betrag = Pfand'); } else punkte -= 30;
+    }
+    const d = tageDiff(b.datum, v.datum);
+    if (d <= 3) { punkte += 20; grund.push('Datum passt'); } else if (d <= tage) { punkte += 10; grund.push(`${Math.round(d)} Tage Abstand`); } else punkte -= 25;
+    if (punkte >= 60) out.push({ id: v.id, punkte, grund: grund.join(', ') });
+  }
+  return out.sort((x, y) => y.punkte - x.punkte || x.id - y.id);
+}
+
+/** eindeutig: genau ein Treffer oder der beste liegt klar vor dem zweiten */
+export const abgleichEindeutig = (t: AbgleichTreffer[]) => t.length === 1 || (t.length > 1 && t[0].punkte - t[1].punkte >= 20);

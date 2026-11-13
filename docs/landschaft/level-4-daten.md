@@ -34,11 +34,11 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.ferien` |  |  |  | ● |  |  |  |  |  |  |  |  |  |  |
 | `tco.fibankab` |  | ● | ● |  |  | ● |  | ● | ● |  |  |  |  |  |
 | `tco.fibankiban` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |  |  |
-| `tco.fibuchungen` |  | ● | ● |  | ● | ● |  | ● | ● |  |  |  |  | ● |
+| `tco.fibuchungen` |  | ● | ● |  | ● | ● |  | ● | ● | ● |  |  |  | ● |
 | `tco.fikonten` |  | ● | ● |  |  | ● |  | ● | ● | ● |  |  |  | ● |
 | `tco.fikontojahr` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |  |  |
 | `tco.finotiz` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |  |  |
-| `tco.fipapermap` |  | ● | ● |  | ● | ● |  | ● | ● |  |  |  |  |  |
+| `tco.fipapermap` |  | ● | ● |  | ● | ● |  | ● | ● | ● |  |  |  |  |
 | `tco.fiperioden` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |  |  |
 | `tco.forderungen` |  |  |  |  | ● |  |  | ● | ● |  |  |  |  |  |
 | `tco.halle_geklaert` |  |  |  |  |  |  |  | ● | ● |  |  |  |  |  |
