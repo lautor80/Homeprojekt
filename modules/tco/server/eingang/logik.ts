@@ -235,14 +235,14 @@ export function vorgangStatus(dokumente: DokStatus[], mailRegel: boolean): Vorga
 }
 
 /** E-Mail als einfaches HTML-Dokument (nur Text – keine fremden Bilder, Skripte oder Nachladen) */
-export function mailHtml(m: { von: string; an: string; betreff: string; datum: string; text: string }): string {
+export function mailHtml(m: { von: string; an: string; betreff: string; datum: string; text: string; anhaenge?: string[] }): string {
   const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
   const zeile = (t: string, w: string) => `<tr><th>${t}</th><td>${esc(w)}</td></tr>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{font-family:Arial,Helvetica,sans-serif;font-size:10.5pt;color:#111}
     table{border-collapse:collapse;margin-bottom:14pt} th{text-align:left;padding:2pt 10pt 2pt 0;color:#555;font-weight:normal;vertical-align:top}
     td{padding:2pt 0} pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:inherit;border-top:1px solid #ccc;padding-top:10pt}
-  </style></head><body><table>${zeile('Von', m.von)}${zeile('An', m.an)}${zeile('Datum', m.datum)}${zeile('Betreff', m.betreff)}</table><pre>${esc(m.text)}</pre></body></html>`;
+  </style></head><body><table>${zeile('Von', m.von)}${zeile('An', m.an)}${zeile('Datum', m.datum)}${zeile('Betreff', m.betreff)}${m.anhaenge?.length ? zeile('Anhänge', m.anhaenge.join(', ')) : ''}</table><pre>${esc(m.text)}</pre></body></html>`;
 }
 
 /** HTML grob in Text wandeln (für Mails ohne Textteil) */

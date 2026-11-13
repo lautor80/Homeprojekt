@@ -246,7 +246,7 @@ async function entscheiden(d: DokZeile, regel: RegelDef | null, wer: string, zwa
   }
 }
 
-/** Status des Vorgangs aus den Dokumenten neu bestimmen; nach dem Abschluss den Mailtext löschen */
+/** Status des Vorgangs aus den Dokumenten neu bestimmen (der Mailtext bleibt für Anzeige und PDF erhalten) */
 export async function abschliessen(vorgangId: string | number): Promise<VorgangStatus> {
   const docs = await DB`select status from tco.eing_dokumente where vorgang_id = ${vorgangId}`;
   const [v] = await DB`select status, mail_aktion from tco.eing_vorgaenge where id = ${vorgangId}`;
@@ -256,7 +256,6 @@ export async function abschliessen(vorgangId: string | number): Promise<VorgangS
   const fertig = status === 'abgelegt' || status === 'ignoriert';
   await DB`
     update tco.eing_vorgaenge set status = ${status},
-           text = ${fertig || status === 'ohne_regel' ? null : DB`text`},
            abgeschlossen_am = ${fertig ? DB`coalesce(abgeschlossen_am, now())` : null}
      where id = ${vorgangId}`;
   return status;
@@ -316,9 +315,9 @@ export async function mailVerarbeiten(m: EingangMail) {
     const hinweis = `${rueck.art === 'unzustellbar' ? 'Unzustellbar-Meldung' : 'Abwesenheitsnotiz'}${rueck.zugeordnet ? ' – im E-Mail-Protokoll verbucht' : ''}; nicht abgelegt.`;
     await altEntfernen();
     const [r] = await DB`
-      insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, abgeschlossen_am)
+      insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, text, abgeschlossen_am)
       values (${m.postfach}, ${schluessel}, ${m.ordner}, ${m.uid}, ${ab.adresse || m.von.slice(0, 500)}, ${ab.name || null}, ${m.an.slice(0, 1000)}, ${m.betreff.slice(0, 1000)},
-              ${eingangZeit(m.datum)}, 'ignoriert', ${hinweis}, now())
+              ${eingangZeit(m.datum)}, 'ignoriert', ${hinweis}, ${text.slice(0, MAX_TEXT) || null}, now())
       on conflict (postfach, message_id) do nothing
       returning id`;
     const [da] = r ? [r] : await DB`select id from tco.eing_vorgaenge where postfach = ${m.postfach} and message_id = ${schluessel}`;
@@ -348,13 +347,12 @@ export async function mailVerarbeiten(m: EingangMail) {
   const hinweis = [rueck.zugeordnet ? 'Antwort auf eine E-Mail des Portals (im E-Mail-Protokoll verbucht).' : '',
     mailRegel?.status === 'testlauf' ? `Testlauf: Regel „${mailRegel.name}“ würde diese E-Mail behandeln.` : !mailRegel && !geplant.length ? 'Keine Regel passt.' : '']
     .filter(Boolean).join(' ') || null;
-  // der Mailtext bleibt nur, solange Dokumente offen sein können (abschliessen() löscht ihn)
-  const behalten = geplant.length > 0;
+  // der Mailtext bleibt am Vorgang: Er lässt sich zu jeder E-Mail anzeigen und als PDF nach Paperless ablegen
 
   const [v] = await DB`
     insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, mitglied_adrnr, korrespondent, text, mail_aktion)
     values (${m.postfach}, ${schluessel}, ${m.ordner}, ${m.uid}, ${ab.adresse || m.von.slice(0, 500)}, ${ab.name || null}, ${m.an.slice(0, 1000)}, ${m.betreff.slice(0, 1000)},
-            ${eingangZeit(m.datum)}, 'neu', ${hinweis}, ${mitglied?.adrnr ?? null}, ${korrespondent?.name ?? null}, ${behalten ? text.slice(0, 20_000) : null},
+            ${eingangZeit(m.datum)}, 'neu', ${hinweis}, ${mitglied?.adrnr ?? null}, ${korrespondent?.name ?? null}, ${text.slice(0, MAX_TEXT) || null},
             ${fuehrend ? DB.json(mailAktionVon(fuehrend) as never) : null})
     on conflict (postfach, message_id) do nothing
     returning id`;
@@ -376,6 +374,64 @@ export async function mailVerarbeiten(m: EingangMail) {
   }
   await abschliessen(v.id as string);
   return { ...(await vorgangAntwort(v.id as string, true)), rueckmeldung: rueck };
+}
+
+// ---------------------------------------------------------------- die E-Mail selbst: Text, PDF-Vorschau, Ablage als PDF
+
+/** höchstens so viel Mailtext wird je Vorgang aufbewahrt */
+const MAX_TEXT = 200_000;
+
+/** E-Mail eines Vorgangs für die Anzeige: Kopfdaten, Text, Anhänge und – falls schon abgelegt – das Paperless-Dokument der E-Mail */
+export async function mailLesen(vorgangId: number) {
+  const { v, m } = await vorgangKontext(vorgangId);
+  const docs = await DB`select art, datei, status, paperless_id from tco.eing_dokumente where vorgang_id = ${vorgangId} order by id`;
+  const mail = docs.filter((d) => d.art === 'mail');
+  return {
+    von: m.von, an: m.an, betreff: m.betreff, datum: (v.datum as string | null) ?? null, text: m.text,
+    anhaenge: docs.filter((d) => d.art === 'anhang').map((d) => d.datei as string),
+    paperless_id: (mail.find((d) => d.paperless_id)?.paperless_id as number | undefined) ?? null,
+    offen: mail.some((d) => ['pruefen', 'fehler', 'neu'].includes(d.status as string)),
+  };
+}
+
+async function mailAlsHtml(vorgangId: number) {
+  const { m, mk } = await vorgangKontext(vorgangId);
+  if (!m.text.trim()) throw new BusinessError('Der Text dieser E-Mail liegt nicht (mehr) vor – er wird erst seit dieser Funktion zu jeder E-Mail aufbewahrt. Vorgang verwerfen und die E-Mail neu einlesen.');
+  const anhaenge = (await DB`select datei from tco.eing_dokumente where vorgang_id = ${vorgangId} and art = 'anhang' order by id`).map((d) => d.datei as string);
+  const datei = `${dateinameSicher(m.betreff, 'E-Mail')}.pdf`;
+  return { m, mk, datei, html: mailHtml({ von: m.von, an: m.an, betreff: m.betreff, datum: String(mk.werte.datum), text: m.text, anhaenge }) };
+}
+
+/** Gesamte E-Mail (Kopf, Text, Liste der Anhänge) als PDF – Vorschau; so wird sie auch abgelegt */
+export async function mailPdf(vorgangId: number): Promise<{ datei: string; pdf: Buffer }> {
+  const { datei, html } = await mailAlsHtml(vorgangId);
+  return { datei, pdf: await htmlToPdf(html) };
+}
+
+/**
+ * Die E-Mail von Hand als Dokument in die Prüfliste stellen (auch bei abgeschlossenen Vorgängen): Von dort wird sie wie jedes
+ * Dokument mit Regel oder von Hand als PDF in Paperless abgelegt. Ein offenes E-Mail-Dokument wird wiederverwendet.
+ */
+export async function mailDokumentAnlegen(vorgangId: number) {
+  const zeile = (id: unknown, datei: string, groesse: number, hinweis: string | null) => ({
+    id: Number(id), art: 'mail' as const, datei, mime: 'text/html', groesse, status: 'pruefen', hinweis, regel_id: null, regel_name: null, zuordnung: null,
+    paperless_id: null, nextcloud_pfad: null, vorhanden: true, bearbeitet_am: null, bearbeitet_von: null,
+  });
+  const vorhanden = await DB`select id, datei, groesse, status, hinweis, paperless_id from tco.eing_dokumente where vorgang_id = ${vorgangId} and art = 'mail' order by id desc`;
+  const offenes = vorhanden.find((d) => ['pruefen', 'fehler', 'neu'].includes(d.status as string));
+  if (offenes) return { dokument: zeile(offenes.id, offenes.datei as string, Number(offenes.groesse), offenes.hinweis as string | null), text: 'Die E-Mail steht bereits zur Ablage bereit.' };
+  const abgelegt = vorhanden.find((d) => d.paperless_id);
+  if (abgelegt) throw new BusinessError(`Die E-Mail ist bereits in Paperless abgelegt (Dokument ${abgelegt.paperless_id}).`);
+  const { mk, datei, html } = await mailAlsHtml(vorgangId);
+  const daten = Buffer.from(html, 'utf8');
+  const k: DokKontext = { k: { ...mk.kontext, datei, mime: 'application/pdf' }, w: { ...mk.werte, datei } };
+  const hinweis = 'Von Hand zur Ablage als PDF vorgemerkt.';
+  const [d] = await DB`
+    insert into tco.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, kontext, status, hinweis)
+    values (${vorgangId}, 'mail', ${datei}, 'text/html', ${daten.length}, ${sha(daten)}, ${daten.toString('base64')}, ${DB.json(k as never)}, 'pruefen', ${hinweis})
+    returning id`;
+  await abschliessen(vorgangId);
+  return { dokument: zeile(d.id, datei, daten.length, hinweis), text: 'Die E-Mail steht als PDF zur Ablage bereit.' };
 }
 
 async function dokLesen(id: number): Promise<DokZeile> {
