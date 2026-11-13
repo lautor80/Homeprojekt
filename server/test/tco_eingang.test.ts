@@ -247,9 +247,9 @@ test('n8n: Abgleich, Ablage in Paperless und Nextcloud, Wiederholung, Dublette, 
   assert.equal(mock.korr.find((k) => String(k.id) === doc.correspondent)?.name, 'SumUp', 'Korrespondent in Paperless angelegt');
   assert.deepEqual(mock.tags.map((t) => t.name), ['Maileingang']);
   assert.deepEqual(mock.dav, ['/Belege/2025/2025-03-03_SUMUP_4711.pdf']);
-  // nach der Ablage bleiben keine Inhalte im Portal
+  // nach der Ablage bleiben keine Dateien im Portal – der Mailtext bleibt für Anzeige und PDF
   const [d1] = await sql`select d.inhalt, d.kontext, v.text from tco.eing_dokumente d join tco.eing_vorgaenge v on v.id = d.vorgang_id where v.id = ${v1}`;
-  assert.deepEqual({ ...d1 }, { inhalt: null, kontext: null, text: null });
+  assert.deepEqual({ ...d1 }, { inhalt: null, kontext: null, text: 'Guten Tag, anbei das Dokument.' });
 
   // dieselbe E-Mail noch einmal: kein zweiter Vorgang, kein zweiter Upload
   r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'SumUp <noreply@sumup.com>', betreff: 'Ihre Abrechnung', message_id: '<M1@sumup.com>', uid: 11, anhaenge: [pdf] }));
@@ -285,7 +285,7 @@ test('n8n: Abgleich, Ablage in Paperless und Nextcloud, Wiederholung, Dublette, 
   assert.equal(r.body.status, 'ohne_regel');
   assert.equal(r.body.mail, null);
   const [v4] = await sql`select text, hinweis from tco.eing_vorgaenge where id = ${r.body.vorgang}`;
-  assert.deepEqual({ ...v4 }, { text: null, hinweis: 'Keine Regel passt.' }, 'Mailtext ohne Vorgang in der Prüfliste wird nicht gespeichert');
+  assert.deepEqual({ ...v4 }, { text: 'Guten Tag, anbei das Dokument.', hinweis: 'Keine Regel passt.' }, 'der Mailtext bleibt zu jeder E-Mail erhalten');
 
   // erneut geliefert („Posteingang abrufen“), weiterhin ohne Regel: derselbe Vorgang bleibt
   const v4Id = r.body.vorgang as number;
@@ -609,3 +609,51 @@ test('Prüfliste: bestehende Regel zuordnen (je Anhang mit Zusammenfassen, E-Mai
   assert.equal((await admin('POST', `${E}/vorgaenge/${vo}/regel`, { regel_id: 99999 })).status, 404);
 });
 
+
+test('E-Mail ansehen: Text zu jeder E-Mail, gesamter Inhalt als PDF, als PDF in Paperless ablegen', async () => {
+  // E-Mail ohne Regel und ohne Anhang – früher ohne Text, jetzt mit
+  let r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'Petra Platz <petra@privat.example>', betreff: 'Frage: Platz/Reservierung?', message_id: '<p1@privat>', uid: 91, text: 'Hallo,\nist Platz 3 am Samstag frei?\nGruß Petra' }));
+  assert.equal(r.body.status, 'ohne_regel');
+  const vo = r.body.vorgang as number;
+  r = await admin('GET', `${E}/vorgaenge/${vo}/text`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.von, r.body.an, r.body.betreff, r.body.text, r.body.anhaenge, r.body.paperless_id, r.body.offen],
+    ['Petra Platz <petra@privat.example>', 'info@tc-test.de', 'Frage: Platz/Reservierung?', 'Hallo,\nist Platz 3 am Samstag frei?\nGruß Petra', [], null, false]);
+  // PDF-Vorschau des gesamten Inhalts (Gotenberg-Attrappe)
+  const pdf = await admin('GET', `${E}/vorgaenge/${vo}/mail.pdf`);
+  assert.equal(pdf.status, 200);
+  assert.match(String(pdf.body), /^%PDF/);
+  // als Dokument in die Prüfliste stellen; ein zweiter Aufruf liefert dasselbe Dokument
+  r = await admin('POST', `${E}/vorgaenge/${vo}/mail-dokument`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const dok = r.body.dokument;
+  assert.deepEqual([dok.art, dok.status], ['mail', 'pruefen']);
+  assert.match(dok.datei, /\.pdf$/);
+  assert.equal((await admin('POST', `${E}/vorgaenge/${vo}/mail-dokument`)).body.dokument.id, dok.id);
+  r = await admin('GET', `${E}/vorgaenge?status=offen`);
+  const v = r.body.vorgaenge.find((x: any) => x.id === vo);
+  assert.deepEqual([v.status, v.dokumente.map((d: any) => [d.art, d.status])], ['pruefen', [['mail', 'pruefen']]]);
+  assert.equal((await admin('GET', `${E}/vorgaenge/${vo}/text`)).body.offen, true);
+  // von Hand ablegen: als PDF in Paperless
+  const vorher = mock.docs.size;
+  r = await admin('POST', `${E}/dokumente/${dok.id}/ablegen`, { paperless: { titel: 'Anfrage {von_name}', dokumenttyp: 'Abrechnung' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'abgelegt');
+  assert.equal(mock.docs.size, vorher + 1);
+  const neu = [...mock.docs.values()].at(-1)!;
+  assert.equal(neu.title, 'Anfrage Petra Platz');
+  r = await admin('GET', `${E}/vorgaenge/${vo}/text`);
+  assert.ok(r.body.paperless_id > 0, 'abgelegte E-Mail kennt ihr Paperless-Dokument');
+  assert.equal(r.body.text, 'Hallo,\nist Platz 3 am Samstag frei?\nGruß Petra', 'der Text bleibt auch nach dem Abschluss');
+  r = await admin('POST', `${E}/vorgaenge/${vo}/mail-dokument`);
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits in Paperless abgelegt/);
+  // alte Vorgänge ohne Text: keine PDF, verständliche Meldung
+  await sql`update tco.eing_vorgaenge set text = null where id = ${vo}`;
+  await sql`delete from tco.eing_dokumente where vorgang_id = ${vo}`;
+  r = await admin('POST', `${E}/vorgaenge/${vo}/mail-dokument`);
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /liegt nicht \(mehr\) vor/);
+  assert.equal((await admin('GET', `${E}/vorgaenge/${vo}/mail.pdf`)).status, 400);
+  assert.equal((await admin('GET', `${E}/vorgaenge/999999/text`)).status, 404);
+});

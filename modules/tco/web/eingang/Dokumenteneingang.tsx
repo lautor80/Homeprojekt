@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { PdfDialog } from '@core/components/PdfDialog';
 import { Varianten, feld } from '@core/components/Varianten';
 import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
@@ -113,7 +114,9 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
   const [suche, setSuche] = useState('');
   const [busy, setBusy] = useState(false);
   const [ablage, setAblage] = useState<{ v: Vorgang; d: Dokument } | null>(null);
-  const [mailtext, setMailtext] = useState<{ v: Vorgang; text: string } | null>(null);
+  interface Mail { von: string; an: string; betreff: string; datum: string | null; text: string; anhaenge: string[]; paperless_id: number | null; offen: boolean }
+  const [mailtext, setMailtext] = useState<{ v: Vorgang; m: Mail } | null>(null);
+  const [mailPdf, setMailPdf] = useState<Vorgang | null>(null);
   const [zuordnen, setZuordnen] = useState<Vorgang | null>(null);
   const [behandlung, setBehandlung] = useState<Vorgang | null>(null);
   const [frage, setFrage] = useState<{ v: Vorgang; art: 'schliessen' | 'verwerfen' } | null>(null);
@@ -127,7 +130,17 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
   }
   const dateiOeffnen = (dok: Dokument) => window.open(`${EING}/dokumente/${dok.id}/datei`, '_blank', 'noopener');
   async function textZeigen(v: Vorgang) {
-    try { setMailtext({ v, text: (await api.get<{ text: string }>(`${EING}/vorgaenge/${v.id}/text`)).text }); } catch (e) { setError((e as Error).message); }
+    try { setMailtext({ v, m: await api.get<Mail>(`${EING}/vorgaenge/${v.id}/text`) }); } catch (e) { setError((e as Error).message); }
+  }
+  /** die E-Mail als PDF-Dokument in die Prüfliste stellen und gleich den Ablagedialog öffnen */
+  async function mailAblegen(v: Vorgang) {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ dokument: Dokument; text: string }>(`${EING}/vorgaenge/${v.id}/mail-dokument`);
+      setMailtext(null); setMailPdf(null);
+      setAblage({ v, d: r.dokument });
+      await laden();
+    } catch (e) { setError((e as Error).message); setMailtext(null); setMailPdf(null); } finally { setBusy(false); }
   }
 
   /** Regel, die einem offenen Dokument des Vorgangs zugeordnet ist (sonst einem beliebigen Dokument) */
@@ -172,7 +185,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
           <Section key={v.id} title={v.betreff || '(ohne Betreff)'} flush
                    status={<ObjectStatus state={STATUS_STATE[v.status] ?? 'None'}>{STATUS_TEXT[v.status] ?? v.status}</ObjectStatus>}
                    actions={edit ? <>
-                     {istOffen && <Button design="Transparent" icon="email-read" disabled={busy} onClick={() => textZeigen(v)}>Mailtext</Button>}
+                     <Button design="Transparent" icon="email-read" disabled={busy} tooltip="Text der E-Mail anzeigen, als PDF ansehen und in Paperless ablegen" onClick={() => textZeigen(v)}>Mailtext</Button>
                      {istOffen && <Button design="Transparent" icon="synchronize" disabled={busy} tooltip="Regelwerk erneut auf die offenen Dokumente anwenden"
                                           onClick={() => aktion(() => api.post<{ text: string }>(`${EING}/vorgaenge/${v.id}/neu-bewerten`))}>Neu bewerten</Button>}
                      {(istOffen || v.status === 'ohne_regel') && (zugeordnet(v)
@@ -239,10 +252,24 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
       {zuordnen && <ZuordnenDialog v={zuordnen} onClose={() => setZuordnen(null)} onDone={() => { setZuordnen(null); laden(); }}
                                    onBearbeiten={(id) => { const v = zuordnen; setZuordnen(null); onRegelBearbeiten(v, id); }} />}
       {ablage && <AblageDialog v={ablage.v} d={ablage.d} regeln={regeln} stamm={stamm} onClose={() => setAblage(null)} onDone={() => { setAblage(null); laden(); }} />}
+      {mailPdf && (
+        <PdfDialog url={`${EING}/vorgaenge/${mailPdf.id}/mail.pdf`} title={mailPdf.betreff || 'E-Mail'} filename={`${(mailPdf.betreff || 'E-Mail').replace(/[^\wäöüÄÖÜß .-]+/g, '_')}.pdf`}
+                   actions={mailtext && !mailtext.m.paperless_id ? <Button design="Emphasized" icon="upload-to-cloud" disabled={busy} onClick={() => mailAblegen(mailPdf)}>Als PDF in Paperless ablegen</Button> : undefined}
+                   onClose={() => setMailPdf(null)} />
+      )}
       {mailtext && (
         <Dialog open headerText={mailtext.v.betreff || 'Mailtext'} style={{ width: 'min(50rem, 96vw)' }} onClose={() => setMailtext(null)}
-                footer={<Bar endContent={<Button design="Transparent" onClick={() => setMailtext(null)}>Schließen</Button>} />}>
-          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', margin: 0 }}>{mailtext.text || 'Der Mailtext liegt nicht (mehr) vor.'}</pre>
+                footer={<Bar endContent={<>
+                  {mailtext.m.text && <Button icon="pdf-attachment" onClick={() => setMailPdf(mailtext.v)}>PDF-Vorschau</Button>}
+                  {mailtext.m.text && !mailtext.m.paperless_id && <Button design="Emphasized" icon="upload-to-cloud" disabled={busy} onClick={() => mailAblegen(mailtext.v)}>Als PDF in Paperless ablegen</Button>}
+                  <Button design="Transparent" onClick={() => setMailtext(null)}>Schließen</Button>
+                </>} />}>
+          <div className="portal-muted portal-small" style={{ marginBottom: '0.5rem' }}>
+            Von: {mailtext.m.von || '–'}<br />An: {mailtext.m.an || '–'}<br />Datum: {mailtext.m.datum ? new Date(mailtext.m.datum).toLocaleString('de-DE') : '–'}
+            {mailtext.m.anhaenge.length ? <><br />Anhänge: {mailtext.m.anhaenge.join(', ')}</> : null}
+            {mailtext.m.paperless_id ? <><br />Die E-Mail ist in Paperless abgelegt (Dokument {mailtext.m.paperless_id}).</> : null}
+          </div>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit', margin: 0 }}>{mailtext.m.text || 'Der Text dieser E-Mail liegt nicht (mehr) vor – er wird erst für neu eingelesene E-Mails aufbewahrt.'}</pre>
         </Dialog>
       )}
       <ConfirmDialog open={!!frage} danger={frage?.art === 'verwerfen'}
