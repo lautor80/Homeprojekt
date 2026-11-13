@@ -223,7 +223,3 @@ test('Werte ändern: Recht, Schutz (Schlüssel, Geheimnisse, Bankdaten, Benutzer
   assert.equal((await sql`select standard from core.varianten where repid = 'tco.test'`)[0].standard, true);
   assert.equal(await belege(), stand);
 });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  const [vb] = await sql`select h.object_type, h.object_key, i.field, i.old_value, i.new_value from core.change_header h join core.change_item i on i.header_id = h.id where h.table_name = 'core.varianten'`;
-  assert.deepEqual({ ...vb }, { object_type: 'TABELLE', object_key: 'tco.test/admin/Probe', field: 'standard', old_value: 'false', new_value: 'true' });
-});
