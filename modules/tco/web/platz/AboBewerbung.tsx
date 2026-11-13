@@ -7,6 +7,7 @@ import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
 import { TCO, dat, eur } from '../util';
+import { uhrzeitOrdnung, uhrzeitText, wochentagText } from './abospalten';
 
 /**
  * Abo-Bewerbung für die Halle (#11): sieben Tage auf einen Blick, je Stunde der Stand aus Sicht des Benutzers.
@@ -237,7 +238,9 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
   const istWarte = sicht === 'warte';
   interface Spalte { k: string; titel: string; text: (w: VWunsch) => string; ordnung?: (w: VWunsch) => string | number; zelle?: (w: VWunsch) => ReactNode }
   const spalten: Spalte[] = [
-    { k: 'zeit', titel: 'Zeit', text: (w) => w.text, ordnung: (w) => `${w.wochentag}${w.von}` },
+    // Wochentag und Uhrzeit getrennt – je eigene Spalte zum Filtern und Sortieren (#11)
+    { k: 'tag', titel: 'Wochentag', text: (w) => wochentagText(w.wochentag), ordnung: (w) => w.wochentag },
+    { k: 'uhrzeit', titel: 'Uhrzeit', text: (w) => uhrzeitText(w.von, w.bis), ordnung: (w) => uhrzeitOrdnung(w.von, w.bis) },
     { k: 'platz', titel: 'Platz', text: (w) => w.platz },
     ...(istWarte ? [{ k: 'position', titel: 'Position', text: (w: VWunsch) => (w.position != null ? `${w.position} von ${w.wartende}` : '–'), ordnung: (w: VWunsch) => w.position ?? 999 }] : []),
     { k: 'name', titel: istWarte ? 'Interessent' : 'Abonnent', text: (w) => w.name },
