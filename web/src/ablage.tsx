@@ -2,13 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Bar, Button, BusyIndicator, Dialog, Icon, IllustratedMessage } from '@ui5/webcomponents-react';
 import '@ui5/webcomponents-fiori/dist/illustrations/DragFilesToUpload.js';
 import { toast } from './toast';
+import { einfuegenAblegen, imEingabefeld } from './ablage-regel';
 
 /**
  * Ablage von Dateien zum gerade geöffneten Objekt (Buchung, Mitglied, Auftrag …).
  *
  *  - Seiten melden ihr Ziel mit useAblageZiel() an; das zuletzt angemeldete gilt (Dialoge vor Seiten).
  *  - Ohne Seitenziel gilt das Ersatzziel (z. B. das Ablagefeld der Navigation mit Voreinstellung).
- *  - Strg+V mit Bild/Datei in der Zwischenablage (Screenshot) legt beim aktuellen Ziel ab.
+ *  - Strg+V mit Bild/Datei in der Zwischenablage (Screenshot) legt beim aktuellen Ziel ab – nicht aber, wenn Text in ein
+ *    Eingabefeld eingefügt wird (aus Excel kopierte Zellen bringen neben dem Text ein Bild mit).
  *  - <AblageFlaeche> ist eine Fläche zum Hineinziehen/Auswählen für ein bestimmtes Ziel.
  *  - Nach dem Ablegen erscheint eine Meldung mit dem Ziel und – falls möglich – „Rückgängig“.
  */
@@ -86,7 +88,8 @@ export function AblageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const paste = (e: ClipboardEvent) => {
       const files = Array.from(e.clipboardData?.files ?? []);
-      if (!files.length) return;
+      const imFeld = imEingabefeld(e.composedPath().filter((x): x is HTMLElement => x instanceof HTMLElement));
+      if (!einfuegenAblegen(files.length, e.clipboardData?.getData('text/plain') ?? '', imFeld)) return;
       if (!aktuell(seiten.current) && !aktuell(ersatz.current)) return;
       e.preventDefault();
       ablegen(files.map(screenshotName));

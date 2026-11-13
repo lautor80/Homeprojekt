@@ -8,6 +8,7 @@ import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import { kandidaten } from '../halle/sammel.js';
+import { belegeZuordnen } from '../fi/buchen.js';
 import { ADRNR_ZU_BENUTZER } from '../platz/schluessel.js';
 import { variantenLesen, varianteLoeschen, varianteSichern, varianteStandard, type Ansicht } from '../instandhaltung/varianten.js';
 import { abgleichAnlegen, abgleichKontenSichern, abgleichLesen, abgleichLoesen, abgleichVerknuepfen } from './abgleich.js';
@@ -223,6 +224,33 @@ export async function schluesselRoutes(app: FastifyInstance) {
     const [v] = await DB`select doc_id from tco.schluessel_vorgang where id = ${id}`;
     if (!v?.doc_id) throw new BusinessError(hinweise[0] ?? 'Der Beleg konnte nicht abgelegt werden.');
     return { text: `Beleg in Paperless abgelegt (DOKID ${String(v.doc_id).padStart(6, '0')}).`, hinweise };
+  });
+
+  /**
+   * Eigenes Dokument zum Vorgang in Paperless ablegen (z. B. der Scan des alten Belegs nach der Übernahme der Altdaten):
+   * Kontext wie der erzeugte Beleg; hat der Vorgang schon ein Dokument, wird es eine neue Version. Ist der Vorgang mit einer
+   * FI-Buchung verknüpft, wird das Dokument auch deren Beleg.
+   */
+  app.post('/schluessel/:id/dokument', { ...schreiben, bodyLimit: 30 * 1024 * 1024 }, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ datei: z.string().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.') }).parse(req.body);
+    const v = await vereinLesen();
+    if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
+    const daten = { ...(await vorgangLesen(DB, id)), protokoll: [] } as unknown as BelegDaten;
+    if (daten.status === 'STORNIERT') throw new BusinessError('Der Vorgang ist storniert.');
+    const inhalt = Buffer.from(b.inhalt.replace(/^data:[^,]*;base64,/, ''), 'base64');
+    if (!inhalt.length) throw new BusinessError('Die Datei ist leer.');
+    const datei = b.datei.split(/[\\/]/).pop()!;
+    const wer = ich(req);
+    const r = await belegAblegen(v, daten, inhalt, wer.name, datei);
+    const dokid = String(r.id).padStart(6, '0');
+    await change(req, async (tx) => {
+      await tx`update tco.schluessel_vorgang set doc_id = ${r.id} where id = ${id}`;
+      await protokoll(tx, id, wer, 'BELEG', `Dokument „${datei}“ in Paperless abgelegt – DOKID ${dokid}${r.neu ? '' : ', neue Version'}`);
+      if (daten.internenr) await belegeZuordnen(tx, daten.internenr, [r.id]);
+      await bestandAbleiten(tx, daten.adrnr);
+    }, { action: 'SCHLUESSEL_BELEG', reason: String(id) });
+    return { text: `${datei} bei ${daten.nummer} abgelegt (DOKID ${dokid}).`, doc_id: r.id, hinweise: r.warnungen };
   });
 
   // ------------------------------------------------------------------ Altdaten (Copy & Paste)

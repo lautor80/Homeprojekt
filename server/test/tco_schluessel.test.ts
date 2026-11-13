@@ -396,3 +396,34 @@ test('Altdaten-Vorschau: lesen ohne zu speichern, Person von Hand zuweisen, Zeil
   r = await admin('POST', `${S}/altdaten`, { text: 'Nora Netzroller\t04.04.2019\tBen H.\t25,00' });
   assert.deepEqual([r.status, r.body.uebernommen, r.body.buchungen.length], [200, 1, 0]);
 });
+
+test('Altdaten: nach dem Speichern die Dokumente je Vorgang ablegen (Paperless, Beleg der FI-Buchung)', async () => {
+  let r = await admin('POST', `${S}/altdaten`, { text: 'Nils Netzroller\t05.05.2018\tBen H.\t25,00\nNora Netzroller\t06.06.2018\tBen H.\t25,00', buchen_zeilen: [1] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  type V = { id: number; nummer: string; person: string; doc_id: number | null; internenr: string | null };
+  const vs = r.body.vorgaenge as V[];
+  assert.deepEqual(vs.map((v) => [v.person, v.doc_id, !!v.internenr]), [['Nils Netzroller', null, true], ['Nora Netzroller', null, false]]);
+  const inhalt = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 alter Beleg').toString('base64')}`;
+  assert.equal((await mia('POST', `${S}/${vs[0].id}/dokument`, { datei: 'Beleg_1998.pdf', inhalt })).status, 403);
+  assert.equal((await admin('POST', `${S}/${vs[0].id}/dokument`, { datei: 'Beleg_1998.pdf', inhalt: '' })).status, 400);
+  const uploads = mock.uploads.length;
+  r = await admin('POST', `${S}/${vs[0].id}/dokument`, { datei: 'C:\\Scans\\Beleg_1998.pdf', inhalt });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(mock.uploads.length, uploads + 1);
+  assert.match(mock.uploads.at(-1)!, /Beleg_1998\.pdf/);
+  assert.match(mock.uploads.at(-1)!, /alter Beleg/);
+  const v = await vorgang(vs[0].id);
+  assert.equal(v.doc_id, r.body.doc_id);
+  assert.ok((await protokollVon(vs[0].id)).includes('BELEG'));
+  // mit FI-Buchung verknüpft: das Dokument ist auch Beleg der Buchung
+  assert.deepEqual((await sql`select doknr from tco.fipapermap where internenr = ${vs[0].internenr}`).map((x) => Number(x.doknr)), [r.body.doc_id]);
+  // erneut: neue Version desselben Dokuments
+  const r2 = await admin('POST', `${S}/${vs[0].id}/dokument`, { datei: 'Beleg_1998_Seite2.pdf', inhalt });
+  assert.equal(r2.status, 200, JSON.stringify(r2.body));
+  assert.equal(r2.body.doc_id, r.body.doc_id);
+  assert.equal(mock.docs.get(r.body.doc_id)!.versions.length, 1);
+  // ohne Buchung: nur am Vorgang
+  r = await admin('POST', `${S}/${vs[1].id}/dokument`, { datei: 'foto.jpg', inhalt: `data:image/jpeg;base64,${Buffer.from('JFIF').toString('base64')}` });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await vorgang(vs[1].id)).doc_id, r.body.doc_id);
+});

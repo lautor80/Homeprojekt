@@ -341,7 +341,7 @@ flowchart LR
   S2 --> S3
   S4["Empfang bestätigen, Rückgabebeleg in Paperless<br/><small>Hallenwart · Paperless-ngx</small>"]:::extern
   S3 --> S4
-  S5["Altdaten einfügen, in der Vorschau prüfen und Personen zuweisen, übernehmen (Kassenbuchung optional je Zeile)<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
+  S5["Altdaten einfügen, in der Vorschau prüfen und Personen zuweisen, speichern (Kassenbuchung optional je Zeile), danach Dokumente je Vorgang ablegen<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
   S4 --> S5
   S6["Frühere Kontobewegungen (FI-Belege) auf zwei Konten mit den Vorgängen abgleichen und verknüpfen<br/><small>Vorstand / Fachverantwortliche · Vereinsportal (Modul tco)</small>"]:::portal
   S5 --> S6
@@ -358,7 +358,7 @@ flowchart LR
 | 3 | Erhalt online quittieren (Link oder Meine Mitgliedschaft) | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/quittung` |  |  |  |
 | 4 | Rückgabe erfassen: Zustand, empfangen von, Gutschrift mit negativem Betrag | Hallenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/rueckgabe` | `tco.schluessel:edit` | `/tco/hallenschluessel` |  |
 | 5 | Empfang bestätigen, Rückgabebeleg in Paperless | Hallenwart | Paperless-ngx | `POST /api/m/tco/schluessel/:id/empfang` | `tco.schluessel:edit` |  |  |
-| 6 | Altdaten einfügen, in der Vorschau prüfen und Personen zuweisen, übernehmen (Kassenbuchung optional je Zeile) | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/altdaten` | `tco.schluessel:admin` | `/tco/hallenschluessel` |  |
+| 6 | Altdaten einfügen, in der Vorschau prüfen und Personen zuweisen, speichern (Kassenbuchung optional je Zeile), danach Dokumente je Vorgang ablegen | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/altdaten` | `tco.schluessel:admin` | `/tco/hallenschluessel` |  |
 | 7 | Frühere Kontobewegungen (FI-Belege) auf zwei Konten mit den Vorgängen abgleichen und verknüpfen | Vorstand / Fachverantwortliche | Vereinsportal (Modul tco) | `POST /api/m/tco/schluessel/abgleich/verknuepfen` | `tco.schluessel:admin` | `/tco/hallenschluessel` |  |
 
 ## Prozess × App

@@ -401,7 +401,7 @@ export interface AltOptionen {
   /** Zeile → Adressnummer: von Hand zugewiesene Personen */
   zuordnung?: Record<string, string>;
 }
-export async function altdatenUebernehmen(tx: Db, text: string, o: AltOptionen, ich: Ich): Promise<{ text: string; uebernommen: number; buchungen: string[]; uebersprungen: number }> {
+export async function altdatenUebernehmen(tx: Db, text: string, o: AltOptionen, ich: Ich): Promise<{ text: string; uebernommen: number; buchungen: string[]; uebersprungen: number; vorgaenge: { id: number; nummer: string; art_txt: string; person: string; datum: string; doc_id: number | null; internenr: string | null }[] }> {
   const gelesen = await altdatenPruefen(tx, text, o.zuordnung ?? {});
   const zeilen = o.zeilen ? gelesen.filter((z) => o.zeilen!.includes(z.zeile)) : gelesen;
   if (!zeilen.length) throw new BusinessError('Bitte mindestens eine Zeile wählen.');
@@ -410,6 +410,7 @@ export async function altdatenUebernehmen(tx: Db, text: string, o: AltOptionen, 
   if (fehler.length) throw new BusinessError(`Bitte zuerst die Fehler beheben:\n${fehler.slice(0, 10).map((z) => `Zeile ${z.zeile}: ${z.fehler.join('; ')}`).join('\n')}`);
   const cfg = await cfgLesen(tx);
   const buchungen: string[] = [];
+  const ids: number[] = [];
   let n = 0;
   const betroffene = new Set<string>();
   async function einer(z: AltPruefung, art: Art, datum: string, tcoName: string, doc: number | null) {
@@ -443,6 +444,7 @@ export async function altdatenUebernehmen(tx: Db, text: string, o: AltOptionen, 
     }
     await protokoll(tx, id, ich, 'IMPORT', `Altfall übernommen: ${ART[art]} am ${dat(datum)}${tcoName ? ` (${art === 'AUSGABE' ? 'ausgegeben' : 'empfangen'} von ${tcoName})` : ''}${doc ? ` · Beleg ${String(doc).padStart(6, '0')}` : ''}`);
     if (internenr) await protokoll(tx, id, ich, 'BUCHUNG', `Pfand ${runden(pfand).toFixed(2).replace('.', ',')} € ${art === 'AUSGABE' ? 'Eingang' : 'Auszahlung'} Kasse ${cfg.kassenkonto}, FI-Buchung ${internenr}`);
+    ids.push(id);
     n++;
   }
   for (const z of zeilen) {
@@ -453,8 +455,11 @@ export async function altdatenUebernehmen(tx: Db, text: string, o: AltOptionen, 
   }
   for (const a of betroffene) await bestandAbleiten(tx, a);
   const uebersprungen = zeilen.filter((z) => z.vorhanden).length;
+  // die übernommenen Vorgänge – zu ihnen lassen sich danach die Dokumente ablegen
+  const vorgaenge = (await tx`select id, nummer, art, person, datum::text as datum, doc_id, internenr from tco.schluessel_vorgang where id = any(${ids}) order by person, datum, id`)
+    .map((v) => ({ id: v.id as number, nummer: v.nummer as string, art_txt: ART[v.art as Art], person: v.person as string, datum: v.datum as string, doc_id: v.doc_id as number | null, internenr: v.internenr as string | null }));
   return {
-    uebernommen: n, buchungen, uebersprungen,
+    uebernommen: n, buchungen, uebersprungen, vorgaenge,
     text: `${n} Vorgang/Vorgänge übernommen${buchungen.length ? `, ${buchungen.length} Kassenbuchung(en) angelegt` : ''}${uebersprungen ? `, ${uebersprungen} Zeile(n) übersprungen` : ''}.`,
   };
 }
