@@ -6,7 +6,8 @@
  *  - Neue Vorgänge laufen über die Hallenabrechnung: Ausgabe = Rechnungsposition 008, Rückgabe = Gutschrift 009 (negativer Betrag);
  *    Pfandhöhe und Konto kommen aus dem Hallenprodukt. Zahlung/Erstattung über die Bankbewegungen wie bei jeder Hallenrechnung.
  *  - Der Kunde quittiert die Ausgabe online (Link mit Token), der TCO bestätigt den Empfang bei der Rückgabe.
- *  - Altfälle kommen per Copy & Paste (regeln.ts → altdatenLesen) und werden direkt auf das Kassenkonto gebucht, Beleg verknüpft.
+ *  - Altfälle kommen per Copy & Paste (regeln.ts → altdatenLesen): erst Vorschau (lesen, Person zuweisen), dann Übernahme;
+ *    die Buchung direkt auf das Kassenkonto (Beleg verknüpft) ist je Zeile wählbar.
  */
 import { randomBytes } from 'node:crypto';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -15,10 +16,10 @@ import { dat, heute, runden } from '../format.js';
 import { kontaktLesen, zuidAusAdrnr } from '../kommunikation.js';
 import { ERLOES_STANDARD, adrnrErmitteln, kopfLesen, manuellePosition, positionEntfernen, rechnungAnlegen, rgAenderbar } from '../halle/daten.js';
 import { KEY_SCHLUESSEL_AUSGABE, KEY_SCHLUESSEL_RUECKNAHME } from '../halle/preis.js';
-import { kandidatLesen } from '../halle/sammel.js';
+import { kandidatLesen, kandidaten } from '../halle/sammel.js';
 import { umsaetzeBuchen } from '../fi/buchen.js';
 import {
-  ART, BEDINGUNGEN_STANDARD, QUITTUNG, STATUS, ZUSTAND, altdatenLesen, quittungUeberfaellig, type AltZeile, type Art, type Status, type Zustand,
+  ART, BEDINGUNGEN_STANDARD, QUITTUNG, STATUS, ZUSTAND, altdatenLesen, nameImText, quittungUeberfaellig, type AltZeile, type Art, type Status, type Zustand,
 } from './regeln.js';
 import { protokoll, vorgangAnlegen, type Ich } from './vorgang.js';
 
@@ -334,16 +335,31 @@ export async function mailRueckgabe(db: Db, id: number): Promise<Mail[]> {
 
 // ---------------------------------------------------------------- Altdaten (Copy & Paste)
 
-export interface AltPruefung extends AltZeile { adrnr: string | null; name: string | null; hinweise: string[]; vorhanden: boolean }
+export interface AltPruefung extends AltZeile {
+  adrnr: string | null; name: string | null; hinweise: string[]; vorhanden: boolean;
+  /** Person von Hand zugewiesen (Vorschau) */
+  zugewiesen: boolean;
+  /** Person nicht erkannt: ähnliche Mitglieder/Kunden (Nachname im eingefügten Text) */
+  vorschlaege: { adrnr: string; name: string; info: string }[];
+}
 
-/** Einfügetext prüfen: Person finden (Mitgliedsnummer/Adressnummer oder Name), Dubletten erkennen */
-export async function altdatenPruefen(db: Db, text: string): Promise<AltPruefung[]> {
+/**
+ * Einfügetext prüfen (Vorschau, ändert nichts): Person finden (Mitgliedsnummer/Adressnummer oder Name), Dubletten erkennen.
+ * `zuordnung` (Zeile → Adressnummer) weist eine Zeile von Hand einem Mitglied/Kunden zu und geht der Erkennung vor.
+ */
+export async function altdatenPruefen(db: Db, text: string, zuordnung: Record<string, string> = {}): Promise<AltPruefung[]> {
   const out: AltPruefung[] = [];
+  let alle: Awaited<ReturnType<typeof kandidaten>> | null = null;
   for (const z of altdatenLesen(text).slice(0, 1000)) {
-    const p: AltPruefung = { ...z, fehler: [...z.fehler], adrnr: null, name: null, hinweise: [], vorhanden: false };
-    if (z.person) {
+    const p: AltPruefung = { ...z, fehler: [...z.fehler], adrnr: null, name: null, hinweise: [], vorhanden: false, zugewiesen: false, vorschlaege: [] };
+    const hand = zuordnung[String(z.zeile)];
+    if (z.person || hand) {
       let adrnr: string | null = null;
-      if (/^\d+$/.test(z.person)) {
+      if (hand) {
+        const k = await kandidatLesen(db, personKey(hand)).catch(() => null);
+        if (!k) p.fehler.push(`Zugewiesene Person ${hand} nicht gefunden`);
+        else { adrnr = k.adrnr; p.zugewiesen = true; p.fehler = p.fehler.filter((f) => f !== 'Person fehlt'); }
+      } else if (/^\d+$/.test(z.person)) {
         const nr = z.person.padStart(10, '0');
         const [m] = await db`select m.adrnr from tco.mitglieder m
                               where m.adrnr = ${nr} or ltrim(coalesce(m.mitglnrn, ''), '0') = ${String(Number(z.person))} order by (m.adrnr = ${nr}) desc limit 1`;
@@ -352,8 +368,11 @@ export async function altdatenPruefen(db: Db, text: string): Promise<AltPruefung
         const name = z.person.includes(',') ? z.person.split(',').map((t) => t.trim()).reverse().join(' ') : z.person;
         adrnr = await adrnrErmitteln(db, name);
       }
-      if (!adrnr) p.fehler.push(`Person „${z.person}“ nicht gefunden (Mitgliedsnummer oder „Vorname Nachname“)`);
-      else {
+      if (!adrnr && !hand) {
+        p.fehler.push(`Person „${z.person}“ nicht gefunden – bitte zuweisen`);
+        alle ??= await kandidaten(db);
+        p.vorschlaege = alle.filter((k) => nameImText(k.name, z.person) > 0).slice(0, 6).map((k) => ({ adrnr: k.adrnr, name: k.name, info: k.info }));
+      } else if (adrnr) {
         p.adrnr = adrnr;
         p.name = (await kandidatLesen(db, personKey(adrnr)).catch(() => null))?.name ?? z.person;
         const da = await db`select art, datum::text as datum, quelle, internenr from tco.schluessel_vorgang where adrnr = ${adrnr} and status <> 'STORNIERT'`;
@@ -372,8 +391,21 @@ export async function altdatenPruefen(db: Db, text: string): Promise<AltPruefung
  * Altdaten übernehmen: Vorgänge als abgeschlossene Altfälle; mit `buchen` je Ausgabe/Rückgabe mit Pfand eine FI-Buchung direkt
  * auf dem Kassenkonto (Gegenkonto = Erlöskonto des Hallenprodukts), der Paperless-Beleg wird mit der Buchung verknüpft.
  */
-export async function altdatenUebernehmen(tx: Db, text: string, o: { buchen: boolean }, ich: Ich): Promise<{ text: string; uebernommen: number; buchungen: string[]; uebersprungen: number }> {
-  const zeilen = await altdatenPruefen(tx, text);
+export interface AltOptionen {
+  /** alle Zeilen mit Pfand buchen (sonst nur `buchenZeilen`) */
+  buchen: boolean;
+  /** Zeilen, deren Pfand auf das Kassenkonto gebucht wird */
+  buchenZeilen?: number[];
+  /** nur diese Zeilen übernehmen (Auswahl aus der Vorschau); ohne Angabe alle */
+  zeilen?: number[];
+  /** Zeile → Adressnummer: von Hand zugewiesene Personen */
+  zuordnung?: Record<string, string>;
+}
+export async function altdatenUebernehmen(tx: Db, text: string, o: AltOptionen, ich: Ich): Promise<{ text: string; uebernommen: number; buchungen: string[]; uebersprungen: number }> {
+  const gelesen = await altdatenPruefen(tx, text, o.zuordnung ?? {});
+  const zeilen = o.zeilen ? gelesen.filter((z) => o.zeilen!.includes(z.zeile)) : gelesen;
+  if (!zeilen.length) throw new BusinessError('Bitte mindestens eine Zeile wählen.');
+  const mitBuchung = new Set(o.buchenZeilen ?? []);
   const fehler = zeilen.filter((z) => z.fehler.length);
   if (fehler.length) throw new BusinessError(`Bitte zuerst die Fehler beheben:\n${fehler.slice(0, 10).map((z) => `Zeile ${z.zeile}: ${z.fehler.join('; ')}`).join('\n')}`);
   const cfg = await cfgLesen(tx);
@@ -384,7 +416,7 @@ export async function altdatenUebernehmen(tx: Db, text: string, o: { buchen: boo
     const adrnr = z.adrnr!;
     const pfand = z.pfand ?? 0;
     let internenr: string | null = null;
-    if (o.buchen && pfand > 0) {
+    if ((o.buchen || mitBuchung.has(z.zeile)) && pfand > 0) {
       const konten = await pfandLesen(tx, datum);
       const betrag = art === 'AUSGABE' ? pfand : -pfand;
       const [g] = await umsaetzeBuchen(tx, [{

@@ -382,53 +382,128 @@ function DetailDialog({ id, darf, onClose, onRueckgabe }: { id: number; darf: Da
   );
 }
 
+/**
+ * Altdaten per Copy & Paste in zwei Schritten: einfügen → **Vorschau** (gelesene Daten ansehen, Zeilen an- und abwählen,
+ * nicht erkannte oder falsch erkannte Personen von Hand einem Mitglied/Kunden zuweisen) → übernehmen.
+ * Gebucht wird erst bei der Übernahme und nur für die Zeilen mit Haken „buchen“ (Vorgabe: keine).
+ */
 function AltdatenDialog({ onClose }: { onClose: Fertig }) {
-  interface Pruef { zeile: number; person: string; name: string | null; ausgabe: string | null; ausgegeben_von: string; pfand: number | null; rueckgabe: string | null; empfangen_von: string; doc_ausgabe: number | null; doc_rueckgabe: number | null; fehler: string[]; hinweise: string[]; vorhanden: boolean }
+  interface P { adrnr: string; name: string; info: string }
+  interface Pruef {
+    zeile: number; person: string; adrnr: string | null; name: string | null; ausgabe: string | null; ausgegeben_von: string; pfand: number | null; rueckgabe: string | null; empfangen_von: string;
+    doc_ausgabe: number | null; doc_rueckgabe: number | null; schluessel_nr: string; bemerkung: string; fehler: string[]; hinweise: string[]; vorhanden: boolean; zugewiesen: boolean; vorschlaege: P[];
+  }
   const [text, setText] = useState('');
   const [p, setP] = useState<{ spalten: string[]; zeilen: Pruef[]; kassenkonto: string } | null>(null);
-  const [buchen, setBuchen] = useState(true);
+  const [zuordnung, setZuordnung] = useState<Record<string, string>>({});
+  const [ab, setAb] = useState<Set<number>>(new Set());
+  const [buchen, setBuchen] = useState<Set<number>>(new Set());
+  const [zuweisen, setZuweisen] = useState<Pruef | null>(null);
+  const [personen, setPersonen] = useState<P[] | null>(null);
+  const [q, setQ] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  async function pruefen() {
+  async function vorschau(z: Record<string, string> = zuordnung) {
     setBusy(true); setError(null);
-    try { setP(await api.post(`${S}/altdaten/pruefen`, { text })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { setP(await api.post(`${S}/altdaten/pruefen`, { text, zuordnung: z })); setZuordnung(z); setZuweisen(null); setQ(''); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  function zurueck() { setP(null); setZuordnung({}); setAb(new Set()); setBuchen(new Set()); setZuweisen(null); }
+  function waehlen(z: Pruef) {
+    setZuweisen(z); setQ('');
+    if (!personen) api.get<P[]>(`${S}/personen`).then(setPersonen).catch((e) => setError((e as Error).message));
+  }
+  const umschalten = (set: Set<number>, n: number, an: boolean) => { const s = new Set(set); if (an) s.add(n); else s.delete(n); return s; };
+  // übernommen werden gewählte Zeilen ohne Fehler, die es noch nicht gibt
+  const moeglich = (z: Pruef) => !z.fehler.length && !z.vorhanden;
+  const gewaehlt = (p?.zeilen ?? []).filter((z) => moeglich(z) && !ab.has(z.zeile));
+  const mitBuchung = gewaehlt.filter((z) => buchen.has(z.zeile) && (z.pfand ?? 0) > 0);
+  const buchbar = gewaehlt.filter((z) => (z.pfand ?? 0) > 0);
+  const offen = (p?.zeilen ?? []).filter((z) => z.fehler.length).length;
   async function uebernehmen() {
     setBusy(true); setError(null);
-    try { onClose(await api.post<{ text: string }>(`${S}/altdaten`, { text, buchen })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try {
+      onClose(await api.post<{ text: string }>(`${S}/altdaten`, { text, zuordnung, zeilen: gewaehlt.map((z) => z.zeile), buchen: false, buchen_zeilen: mitBuchung.map((z) => z.zeile) }));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  const fehler = p?.zeilen.filter((z) => z.fehler.length).length ?? 0;
-  const neu = p?.zeilen.filter((z) => !z.fehler.length && !z.vorhanden).length ?? 0;
+  const such = q.trim().toLowerCase();
+  const treffer = such.length < 2 ? [] : (personen ?? []).filter((x) => x.name.toLowerCase().includes(such)).slice(0, 12);
   return (
-    <Dialog open headerText="Altdaten einfügen (Copy & Paste)" style={{ width: 'min(70rem, 98vw)' }} onClose={() => onClose()}
+    <Dialog open headerText={p ? 'Altdaten – Vorschau' : 'Altdaten einfügen (Copy & Paste)'} style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose()}
             footer={<Bar endContent={<>
-              <Button icon="synchronize" loading={busy && !p} disabled={!text.trim()} onClick={pruefen}>Prüfen</Button>
-              <Button design="Emphasized" icon="accept" loading={busy && !!p} disabled={!p || fehler > 0 || !neu} onClick={uebernehmen}>{neu} Zeile(n) übernehmen</Button>
+              {!p && <Button design="Emphasized" icon="show" loading={busy} disabled={!text.trim()} onClick={() => vorschau({})}>Vorschau</Button>}
+              {p && <Button icon="nav-back" disabled={busy} onClick={zurueck}>Zurück zum Einfügen</Button>}
+              {p && <Button design="Emphasized" icon="accept" loading={busy} disabled={!gewaehlt.length} onClick={uebernehmen}>
+                {gewaehlt.length} Zeile(n) übernehmen{mitBuchung.length ? ` · ${mitBuchung.length} mit Kassenbuchung` : ' · ohne Buchung'}
+              </Button>}
               <Button onClick={() => onClose()}>Abbrechen</Button>
             </>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}><span style={{ whiteSpace: 'pre-line' }}>{error}</span></MessageStrip>}
-        <Text className="portal-muted portal-small">
-          Zeilen aus Excel kopieren und hier einfügen. Spalten in dieser Reihenfolge – oder mit Kopfzeile in beliebiger Reihenfolge:<br />
-          Person (Mitgliedsnr. oder „Vorname Nachname“) · Ausgabe am · ausgegeben von · Pfand · Rückgabe am · empfangen von · Paperless-ID Beleg Ausgabe · Paperless-ID Beleg Rückgabe · Schlüsselnr. · Bemerkung
-        </Text>
-        <TextArea rows={7} value={text} placeholder={'Max Muster\t01.10.2019\tBen H.\t25,00\t15.03.2022\tAnna V.\t501\t502'} onInput={(e) => { setText(e.target.value); setP(null); }} />
-        <CheckBox wrappingType="Normal" text={`Pfand direkt auf das Kassenkonto${p ? ` ${p.kassenkonto}` : ''} buchen (FI-Beleg mit verknüpftem Paperless-Beleg); ohne Haken nur dokumentieren`} checked={buchen} onChange={(e) => setBuchen(e.target.checked)} />
+        {!p && (
+          <>
+            <Text className="portal-muted portal-small">
+              Zeilen aus Excel kopieren und hier einfügen. Spalten in dieser Reihenfolge – oder mit Kopfzeile in beliebiger Reihenfolge:<br />
+              Person (Mitgliedsnr. oder „Vorname Nachname“) · Ausgabe am · ausgegeben von · Pfand · Rückgabe am · empfangen von · Paperless-ID Beleg Ausgabe · Paperless-ID Beleg Rückgabe · Schlüsselnr. · Bemerkung
+            </Text>
+            <TextArea rows={10} value={text} placeholder={'Max Muster\t01.10.2019\tBen H.\t25,00\t15.03.2022\tAnna V.\t501\t502'} onInput={(e) => setText(e.target.value)} />
+            <Text className="portal-muted portal-small">Mit „Vorschau“ wird noch nichts gespeichert oder gebucht: Du siehst zuerst, was gelesen wurde, und kannst Personen zuweisen.</Text>
+          </>
+        )}
         {p && (
           <>
-            <MessageStrip design={fehler ? 'Negative' : 'Positive'} hideCloseButton>{p.zeilen.length} Zeile(n): {neu} neu, {p.zeilen.filter((z) => z.vorhanden).length} bereits vorhanden, {fehler} mit Fehlern</MessageStrip>
-            <div className="portal-ih__rahmen" style={{ maxHeight: '40vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
-              <thead><tr><th>Zeile</th><th>Person</th><th>Ausgabe</th><th>von</th><th>Pfand</th><th>Rückgabe</th><th>von</th><th>Belege</th><th>Prüfung</th></tr></thead>
+            <MessageStrip design={offen ? 'Critical' : 'Information'} hideCloseButton>
+              {p.zeilen.length} Zeile(n) gelesen – noch nichts gespeichert. {gewaehlt.length} zur Übernahme gewählt, {p.zeilen.filter((z) => z.vorhanden).length} bereits vorhanden
+              {offen ? `, ${offen} noch zu klären (Person zuweisen) – sie werden sonst nicht übernommen` : ''}.
+            </MessageStrip>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <Text className="portal-muted portal-small">Buchung auf das Kassenkonto {p.kassenkonto} (FI-Beleg mit verknüpftem Paperless-Beleg) nur für Zeilen mit Haken „buchen“:</Text>
+              <Button design="Transparent" disabled={!buchbar.length} onClick={() => setBuchen(new Set(buchbar.map((z) => z.zeile)))}>alle buchen</Button>
+              <Button design="Transparent" disabled={!buchen.size} onClick={() => setBuchen(new Set())}>keine buchen</Button>
+            </div>
+            <div className="portal-ih__rahmen" style={{ maxHeight: '46vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+              <thead><tr><th title="übernehmen">✓</th><th>Zeile</th><th>Eingefügt</th><th>Mitglied / Kunde</th><th>Ausgabe</th><th>von</th><th style={{ textAlign: 'right' }}>Pfand</th><th>Rückgabe</th><th>von</th><th>Belege</th><th>Bemerkung</th><th>buchen</th><th>Prüfung</th></tr></thead>
               <tbody>
-                {p.zeilen.map((z) => (
-                  <tr key={z.zeile} className={z.vorhanden ? 'portal-ih__inaktiv' : undefined}>
-                    <td>{z.zeile}</td><td>{z.name ?? z.person}</td><td>{dat(z.ausgabe)}</td><td>{z.ausgegeben_von}</td><td>{z.pfand != null ? eur(z.pfand) : ''}</td>
-                    <td>{dat(z.rueckgabe)}</td><td>{z.empfangen_von}</td><td>{[z.doc_ausgabe, z.doc_rueckgabe].filter(Boolean).join(' / ')}</td>
-                    <td>{z.fehler.length ? <ObjectStatus state="Negative">{z.fehler.join('; ')}</ObjectStatus> : z.hinweise.length ? z.hinweise.join('; ') : <ObjectStatus state="Positive">in Ordnung</ObjectStatus>}</td>
-                  </tr>
-                ))}
+                {p.zeilen.map((z) => {
+                  const an = moeglich(z) && !ab.has(z.zeile);
+                  const nurPerson = z.fehler.length > 0 && z.fehler.every((f) => /nicht gefunden|Person fehlt/.test(f));
+                  return (
+                    <tr key={z.zeile} className={z.vorhanden || ab.has(z.zeile) ? 'portal-ih__inaktiv' : undefined}>
+                      <td><CheckBox checked={an} disabled={!moeglich(z)} onChange={(e) => setAb(umschalten(ab, z.zeile, !e.target.checked))} /></td>
+                      <td>{z.zeile}</td><td>{z.person}</td>
+                      <td>
+                        {z.name ? <>{z.name}{z.zugewiesen ? <span className="portal-muted"> · zugewiesen</span> : null}</> : <ObjectStatus state="Critical">nicht erkannt</ObjectStatus>}
+                        {' '}<Button design="Transparent" icon="edit" tooltip="Mitglied/Kunden zuweisen" disabled={busy || z.vorhanden} onClick={() => waehlen(z)} />
+                      </td>
+                      <td>{dat(z.ausgabe)}</td><td>{z.ausgegeben_von}</td><td style={{ textAlign: 'right' }}>{z.pfand != null ? eur(z.pfand) : ''}</td>
+                      <td>{dat(z.rueckgabe)}</td><td>{z.empfangen_von}</td><td>{[z.doc_ausgabe, z.doc_rueckgabe].filter(Boolean).join(' / ')}</td>
+                      <td>{[z.schluessel_nr ? `Nr. ${z.schluessel_nr}` : '', z.bemerkung].filter(Boolean).join(' · ')}</td>
+                      <td>{(z.pfand ?? 0) > 0 && <CheckBox checked={an && buchen.has(z.zeile)} disabled={!an} onChange={(e) => setBuchen(umschalten(buchen, z.zeile, e.target.checked))} />}</td>
+                      <td>{z.fehler.length ? <ObjectStatus state={nurPerson ? 'Critical' : 'Negative'}>{z.fehler.join('; ')}</ObjectStatus> : z.hinweise.length ? z.hinweise.join('; ') : <ObjectStatus state="Positive">in Ordnung</ObjectStatus>}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table></div>
+            {zuweisen && (
+              <div className="portal-ih__rahmen" style={{ padding: '0.5rem' }}>
+                <Label showColon>Zeile {zuweisen.zeile} „{zuweisen.person}“ – Mitglied oder Kunden zuweisen</Label>
+                {zuweisen.vorschlaege.map((x) => (
+                  <div key={x.adrnr} className="portal-ih__zeile" style={{ padding: '0.25rem 0.5rem' }} onClick={() => vorschau({ ...zuordnung, [zuweisen.zeile]: x.adrnr })}>
+                    {x.name} <span className="portal-muted">· {x.info} · Vorschlag</span>
+                  </div>
+                ))}
+                <Input style={{ width: '100%' }} placeholder="Name suchen (mind. 2 Zeichen)" value={q} onInput={(e) => setQ(e.target.value)} />
+                {!personen && <BusyIndicator active />}
+                {treffer.map((x) => (
+                  <div key={x.adrnr} className="portal-ih__zeile" style={{ padding: '0.25rem 0.5rem' }} onClick={() => vorschau({ ...zuordnung, [zuweisen.zeile]: x.adrnr })}>
+                    {x.name} <span className="portal-muted">· {x.info}</span>
+                  </div>
+                ))}
+                {zuordnung[zuweisen.zeile] && <Button design="Transparent" onClick={() => { const z = { ...zuordnung }; delete z[zuweisen.zeile]; vorschau(z); }}>Zuweisung aufheben</Button>}
+                <Button design="Transparent" onClick={() => setZuweisen(null)}>Abbrechen</Button>
+              </div>
+            )}
           </>
         )}
       </div>
