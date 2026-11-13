@@ -18,6 +18,7 @@ import {
 import { BankimportDialog } from './FiBankimport';
 import { PeriodenDialog } from './FiPerioden';
 import { UeberweisungDialog } from './FiUeberweisung';
+import { GeldkontoDialog } from './FiGeldkonto';
 import { AblageFlaeche, useAblageZiel } from '@core/ablage';
 import { fiBelegZiel } from './ablage';
 import { F, ZEITRAEUME, betragFarbe, zeitraum, type FiInit, type Liste, type Zeile } from './typen';
@@ -52,6 +53,7 @@ export function FiBelege() {
   const [ok, setOk] = useState<string | null>(null);
   const [perioden, setPerioden] = useState(false);
   const [ueberweisung, setUeberweisung] = useState(false);
+  const [geldkonto, setGeldkonto] = useState(false);
   /** #3: Datum liegt in einer abgeschlossenen Periode */
   const gesperrt = (d: string) => !!init?.abgeschlossenBis && d.slice(0, 7) <= init.abgeschlossenBis;
 
@@ -268,6 +270,7 @@ export function FiBelege() {
     {buchen && <Button icon="add" onClick={() => setBank('manuell')}>Manuelle Buchung</Button>}
     <Button icon="lead" onClick={() => setZahlRg(null)}>Teilzahlungen</Button>
     {init?.paperless && <Button icon="qr-code" tooltip="Paperless-Belege mit Folgeaktion „Überweisung an Einreicher“: Vorschau und QR-Code zur Überweisung" onClick={() => setUeberweisung(true)}>Überweisung an Einreicher</Button>}
+    {can('tco.fi:geldkonto') && <Button icon="journey-change" tooltip="Markierte Belege auf ein anderes Geldkonto umkontieren" onClick={() => setGeldkonto(true)}>Geldkonto tauschen</Button>}
     <Button icon="locked" onClick={() => setPerioden(true)}>Perioden</Button>
     <ChangeHistoryButton objectType="FIBELEG" objectKey={stornoZ?.internenr ?? belege ?? ''} />
   </>;
@@ -275,6 +278,7 @@ export function FiBelege() {
   return (
     <AppPage varianten={{ repid: 'tco.fi', ansicht: { zr, von, bis, konto, tab }, onAnwenden: (a) => { setZr(feld(a, 'zr', zr)); setVon(feld(a, 'von', von)); setBis(feld(a, 'bis', bis)); setKonto(feld(a, 'konto', konto)); setTab(feld(a, 'tab', tab)); } }} title="FI-Belege" subtitle="Kontobewegungen, Belege aus Paperless, Bankimport und Storno" header={header} actions={actions}>
       {ueberweisung && <UeberweisungDialog onClose={() => setUeberweisung(false)} />}
+      {geldkonto && <GeldkontoDialog onClose={(g) => { setGeldkonto(false); if (g) laden(); }} />}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}
       {warnungen.length > 0 && <MessageStrip design="Critical" onClose={schliessen} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{warnungen.join('\n')}</MessageStrip>}

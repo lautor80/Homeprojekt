@@ -100,3 +100,52 @@ test('FI-Perioden: abschließen, Sperre für Buchen/Storno/Ändern, wieder öffn
   const [n] = await sql`select count(*)::int as n from core.change_header where object_type = 'FIPERIODE'`;
   assert.ok(n.n >= 2);
 });
+
+test('Geldkonto gebuchter Belege austauschen: markierte Belege umkontieren, ohne Änderungsbeleg, Periodenschutz bleibt', async () => {
+  await sql`insert into tco.fikonten (konto, name, kennzahl) values ('1001', 'Bank', 'BA')`;
+  let r = await call('POST', `${F}/buchen`, { konto: '1000', modus: 'manuell', umsaetze: [kasse('2025-03-10', 40), kasse('2025-03-20', 60), kasse('2025-06-05', 15)] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [a, b, c] = r.body.gebucht.map((g: { internenr: string }) => g.internenr);
+  // Auswahl: Konto 1000 mit Gegenkonto 8100 im Jahr 2025
+  r = await call('GET', `${F}/geldkonto/kandidaten?konto=1000&gkonto=8100&von=2025-01-01&bis=2025-12-31`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.zeilen.map((z: any) => [z.internenr, z.betrag, z.gkonten, z.geschlossen]), [[a, 40, ['8100'], false], [b, 60, ['8100'], false], [c, 15, ['8100'], false]]);
+  assert.equal(r.body.summe, 115);
+  assert.equal((await call('GET', `${F}/geldkonto/kandidaten?konto=1000&gkonto=9999&von=2025-01-01&bis=2025-12-31`)).body.zeilen.length, 0);
+  assert.equal((await call('GET', `${F}/geldkonto/kandidaten?konto=7777`)).status, 400);
+  // Eingaben
+  assert.equal((await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [a], von: '1000', nach: '8100' })).status, 400, 'kein Geldkonto');
+  assert.equal((await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [a], von: '1000', nach: '1000' })).status, 400);
+  assert.equal((await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [], von: '1000', nach: '1001' })).status, 400);
+  // umkontieren: Geldzeile auf 1001, Gegenzeile verweist auf 1001; nicht markierte Belege unverändert; kein Änderungsbeleg
+  const belege = async () => (await sql`select count(*)::int as n from core.change_header`)[0].n;
+  const vorher = await belege();
+  r = await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [a, b], von: '1000', nach: '1001' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.belege, 2);
+  const zeilen = async (nr: string) => (await sql`select konto, gkonto, soll::float8 as soll, haben::float8 as haben from tco.fibuchungen where internenr = ${nr} order by konto`).map((x) => [x.konto, x.gkonto, x.soll, x.haben]);
+  assert.deepEqual(await zeilen(a), [['1001', '8100', 40, 0], ['8100', '1001', 0, 40]]);
+  assert.deepEqual(await zeilen(c), [['1000', '8100', 15, 0], ['8100', '1000', 0, 15]]);
+  assert.equal(await belege(), vorher);
+  // nochmals: nicht mehr auf 1000 gebucht
+  assert.equal((await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [a], von: '1000', nach: '1001' })).status, 409);
+  // der Änderungsschutz der Belege gilt danach unverändert
+  await assert.rejects(sql`update tco.fibuchungen set text = 'x' where internenr = ${c}`, /können nicht geändert werden/);
+  // abgeschlossene Periode: gekennzeichnet und geschützt
+  await sql`insert into tco.fiperioden (jahr, monat) values (2025, 6)`;
+  r = await call('GET', `${F}/geldkonto/kandidaten?konto=1000&von=2025-06-01&bis=2025-06-30`);
+  assert.deepEqual(r.body.zeilen.map((z: any) => [z.internenr, z.geschlossen]), [[c, true]]);
+  r = await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [c], von: '1000', nach: '1001' });
+  assert.equal(r.status, 409, JSON.stringify(r.body));
+  assert.match(r.body.message, /Periode 06\/2025 ist abgeschlossen/);
+  assert.deepEqual(await zeilen(c), [['1000', '8100', 15, 0], ['8100', '1000', 0, 15]]);
+  await sql`delete from tco.fiperioden where jahr = 2025 and monat = 6`;
+  // Storno: das Gegenstück wird mit getauscht
+  r = await call('POST', `${F}/storno`, { internenr: c, grund: 'Test Geldkonto' });
+  if (r.status === 200) {
+    r = await call('POST', `${F}/geldkonto/tauschen`, { internenrn: [c], von: '1000', nach: '1001' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.belege, 2);
+    assert.equal((await sql`select count(*)::int as n from tco.fibuchungen where konto = '1000' and (internenr = ${c} or storno_zu = ${c})`)[0].n, 0);
+  }
+});
