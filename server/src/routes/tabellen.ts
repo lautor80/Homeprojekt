@@ -14,7 +14,7 @@ import type { Schutzart } from '../schutz.js';
  *   GET  /api/admin/tabellen/:schema/:tabelle         Spalten (Typ, Pflicht, Vorschlagswert, Schlüssel, Schutz)
  *   POST /api/admin/tabellen/:schema/:tabelle/daten   Selektion: Felder, Filter, Sortierung, Gruppierung mit Summen
  *   POST /api/admin/tabellen/:schema/:tabelle/loeschen   markierte Sätze löschen → Papierkorb (core.tabellen:delete, #34)
- *   POST /api/admin/tabellen/:schema/:tabelle/aendern    Werte eines Satzes ändern (core.tabellen:edit) – mit Begründung und Änderungsbeleg
+ *   POST /api/admin/tabellen/:schema/:tabelle/aendern    Werte eines Satzes ändern (core.tabellen:edit) – ohne Änderungsbeleg
  *   GET  /api/admin/tabellen/papierkorb                  gelöschte Sätze der letzten 7 Tage
  *   POST /api/admin/tabellen/papierkorb/wiederherstellen Sätze zurückschreiben; …/papierkorb/entfernen endgültig löschen
  *
@@ -286,9 +286,9 @@ export async function tabellenRoutes(app: FastifyInstance) {
   /**
    * Einzelne Werte eines Satzes ändern – für Korrekturen, die keine App anbietet. Regeln: echte Tabelle mit Primärschlüssel,
    * nicht Papierkorb/Änderungsbelege/Benutzer- und Rechtetabellen; nie Schlüsselspalten, Geheimnisse (Hashes, Tokens,
-   * Passwörter) oder Binärdaten; Bankdaten nur mit der Bankdaten-Berechtigung. Begründung ist Pflicht. Jede Änderung
-   * erzeugt einen Änderungsbeleg (über den Trigger der Tabelle, sonst hier). `alt` (angezeigter bisheriger Wert je Spalte)
-   * schützt vor dem Überschreiben einer zwischenzeitlichen Änderung. Fachliche Prüfungen der Apps greifen hier nicht.
+   * Passwörter) oder Binärdaten; Bankdaten nur mit der Bankdaten-Berechtigung. Es wird **kein Änderungsbeleg** geschrieben
+   * (so gewünscht) – nur eine Zeile im Server-Protokoll (Tabelle, Schlüssel, Felder, Benutzer; ohne Werte). `alt` (angezeigter
+   * bisheriger Wert je Spalte) schützt vor dem Überschreiben einer zwischenzeitlichen Änderung. Fachliche Prüfungen der Apps greifen hier nicht.
    */
   app.post('/api/admin/tabellen/:schema/:tabelle/aendern', { preHandler: requireAuth(P_TABELLEN_AENDERN) }, async (req) => {
     const { schema, tabelle } = z.object({ schema: z.string(), tabelle: z.string() }).parse(req.params);
@@ -296,7 +296,6 @@ export async function tabellenRoutes(app: FastifyInstance) {
       schluessel: z.array(z.string()).min(1),
       werte: z.record(z.string(), z.string().max(100_000).nullable()),
       alt: z.record(z.string(), z.string().nullable()).default({}),
-      grund: z.string().trim().min(5, 'Bitte eine Begründung angeben (mindestens 5 Zeichen).').max(300),
     }).parse(req.body);
     const spalten = await spaltenLesen(schema, tabelle);
     const name = `${schema}.${tabelle}`;
@@ -340,19 +339,17 @@ export async function tabellenRoutes(app: FastifyInstance) {
         if (!geaendert.length) return { geaendert: 0, text: 'Die Werte sind unverändert.' };
         const p2: unknown[] = geaendert.map((g) => g.neu);
         const set = geaendert.map((g, i) => `${ident(g.feld)} = $${i + 1}::text::${g.typ}`).join(', ');
-        const r = await tx.unsafe(`update ${ziel} t set ${set} where ${pkBedingung(pk, [b.schluessel], p2)} returning 1`, p2 as never[]);
-        if (r.length !== 1) throw new BusinessError('Der Satz ließ sich nicht eindeutig ändern.');
-        // Tabellen ohne eigenen Änderungsbeleg-Trigger: Beleg hier schreiben, damit keine Änderung unbelegt bleibt
+        // Änderungen über diese Funktion schreiben keinen Änderungsbeleg: den Beleg-Trigger der Tabelle nur für diese
+        // Transaktion abschalten (andere Sitzungen sehen davon nichts) und danach wieder einschalten
         const [trigger] = await tx`select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid join pg_namespace n on n.oid = c.relnamespace
                                     where n.nspname = ${schema} and c.relname = ${tabelle} and g.tgname = 'zz_audit' and not g.tgisinternal`;
-        if (!trigger) {
-          const [h] = await tx`insert into core.change_header (object_type, object_key, table_name, change_ind, action, reason, user_id, username, tx_id)
-                               values ('TABELLE', ${b.schluessel.join('/')}, ${name}, 'U', 'TABELLE_AENDERN', ${b.grund}, ${req.user?.id || null}, ${req.user?.username ?? 'unbekannt'}, txid_current())
-                               returning id`;
-          for (const g of geaendert) await tx`insert into core.change_item (header_id, field, old_value, new_value) values (${h.id}, ${g.feld}, ${g.alt}, ${g.neu})`;
-        }
+        if (trigger) await tx.unsafe(`alter table ${ziel} disable trigger zz_audit`);
+        const r = await tx.unsafe(`update ${ziel} t set ${set} where ${pkBedingung(pk, [b.schluessel], p2)} returning 1`, p2 as never[]);
+        if (trigger) await tx.unsafe(`alter table ${ziel} enable trigger zz_audit`);
+        req.log.info({ tabelle: name, schluessel: b.schluessel, felder: geaendert.map((g) => g.feld), benutzer: req.user?.username }, 'Tabellenansicht: Werte geändert (ohne Änderungsbeleg)');
+        if (r.length !== 1) throw new BusinessError('Der Satz ließ sich nicht eindeutig ändern.');
         return { geaendert: geaendert.length, text: `${geaendert.length} Wert(e) in ${name} geändert (${geaendert.map((g) => g.feld).join(', ')}).` };
-      }, { action: 'TABELLE_AENDERN', reason: `${name}: ${b.grund}` });
+      }, { action: 'TABELLE_AENDERN', reason: name });
     } catch (e) {
       if (e instanceof BusinessError) throw e;
       const code = (e as { code?: string }).code ?? '';

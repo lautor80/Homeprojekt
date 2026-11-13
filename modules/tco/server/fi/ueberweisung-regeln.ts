@@ -14,3 +14,13 @@ export function folgeText(wert: unknown, optionen: Option[] = []): string {
 }
 /** Feld „SAP“ leer: nicht gesetzt, leer oder (Ja/Nein-Feld) nicht angehakt */
 export const sapLeer = (v: unknown): boolean => v === null || v === undefined || v === false || String(v).trim() === '' || String(v).toLowerCase() === 'false';
+
+/** Wert, der für eine Auswahl-Option ins Dokument geschrieben wird (Kennung der Option, bei alten Feldern ihr Index); null, wenn es sie nicht gibt */
+export function optionWert(optionen: Option[], label: string): string | number | null {
+  const i = optionen.findIndex((o) => (typeof o === 'string' ? o : o.label).trim().toLowerCase() === label.trim().toLowerCase());
+  if (i < 0) return null;
+  const o = optionen[i];
+  return typeof o === 'string' ? i : o.id;
+}
+/** Status „Offen“ (Groß-/Kleinschreibung egal) */
+export const statusOffen = (text: string): boolean => text.trim().toLowerCase() === 'offen';

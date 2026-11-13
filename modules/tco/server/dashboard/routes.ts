@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { P_BANK } from '../bankdaten.js';
 import { BusinessError } from '../../../../server/src/errors.js';
-import { DB } from '../verein.js';
+import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { addTage, dat, heute, runden } from '../format.js';
 import {
   auswahlBereinigen, chartClubhaus, chartHalle, chartHalleJahre, chartJugend, chartMtgJahre, chartMtgMonate, datenJahre,
@@ -117,7 +117,21 @@ export async function dashboardRoutes(app: FastifyInstance) {
   app.post('/dashboard/arbeitsvorrat/upload-erledigt', { preHandler: requireAuth('tco.fi:buchen') }, async (req) => {
     const b = z.object({ id: z.coerce.number().int().positive().nullish() }).parse(req.body ?? {});
     const { uploadErledigen } = await import('../upload/logik.js');
-    return { text: await change(req, (tx) => uploadErledigen(tx, b.id ?? null, req.user!.displayName), { action: 'UPLOAD_ERLEDIGT', reason: b.id ? String(b.id) : 'alle' }) };
+    // dieselben Belege in Paperless: Status „gezahlt“ (wie die Bestätigung in den FI-Belegen); Fehler dort halten das Abhaken nicht auf
+    const doks = (await DB`select dok_id from tco.upload_folge where erledigt_am is null and dok_id is not null
+                            and folgeaktion ~* 'überweisung[[:space:]]+an[[:space:]]+einreicher' and (${b.id ?? null}::int is null or id = ${b.id ?? null}::int)`).map((r) => Number(r.dok_id));
+    const text = await change(req, (tx) => uploadErledigen(tx, b.id ?? null, req.user!.displayName), { action: 'UPLOAD_ERLEDIGT', reason: b.id ? String(b.id) : 'alle' });
+    const hinweise: string[] = [];
+    if (doks.length) {
+      const v = await vereinLesen();
+      if (plAktiv(v)) {
+        const { statusGezahltSetzen } = await import('../fi/ueberweisung.js');
+        for (const d of doks) {
+          try { hinweise.push(...(await statusGezahltSetzen(v, d)).map((w) => `Beleg ${d}: ${w}`)); } catch (e) { hinweise.push(`Beleg ${d}: Status in Paperless nicht gesetzt (${(e as Error).message})`); }
+        }
+      }
+    }
+    return { text: hinweise.length ? `${text} ${hinweise.join(' · ')}` : text };
   });
   /** Hallenwart: Klärung mit dem Kunden zu einer Hallenbuchung ohne Schlüssel bestätigen – der Eintrag verschwindet aus dem Arbeitsvorrat */
   app.post('/dashboard/arbeitsvorrat/halle-geklaert', { preHandler: requireAuth('tco.platzbuchung:verwalten') }, async (req) => {

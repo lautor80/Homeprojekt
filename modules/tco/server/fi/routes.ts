@@ -16,7 +16,7 @@ import { bankAbgleich } from './bank.js';
 import { abgeschlossenBis, abschliessen, oeffnen, periodenLesen } from './perioden.js';
 import { P_BANK, bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
-import { ueberweisungDokument, ueberweisungZahlung, ueberweisungsBelege } from './ueberweisung.js';
+import { ueberweisungBestaetigen, ueberweisungDokument, ueberweisungZahlung, ueberweisungsBelege } from './ueberweisung.js';
 import { dateiPruefen, dekodieren } from '../upload/logik.js';
 import { PaperlessError } from '../../../../server/src/lib/paperless.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
@@ -182,6 +182,12 @@ export async function fiRoutes(app: FastifyInstance) {
     }).parse(req.query);
     if (!can(req, P_BANK.display)) throw new BusinessError('Für die Zahlungsdaten ist die Berechtigung „Bankdaten anzeigen“ nötig (tco.bankdaten:display).', 403);
     return ueberweisungZahlung(await vereinLesen(), DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck ?? null, q.adrnr || null);
+  });
+  /** Überweisung bestätigen: Custom Field „Status“ des Belegs in Paperless auf „gezahlt“ setzen */
+  app.post('/fi/ueberweisungen/:id/gezahlt', { preHandler: requireAuth(P_FI.buchen) }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const v = await vereinLesen();
+    return change(req, (tx) => ueberweisungBestaetigen(v, tx, id, req.user!.displayName), { action: 'UPLOAD_ERLEDIGT', reason: String(id) });
   });
   /** Live-Suche für die Auswahl des Empfängers: Mitglieder nach Name oder Mitgliedsnummer */
   app.get('/fi/ueberweisungen/mitglieder', { preHandler: requireAuth(P_FI.display) }, async (req) => {
