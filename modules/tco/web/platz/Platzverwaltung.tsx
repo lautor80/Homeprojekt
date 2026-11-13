@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
   AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus,
@@ -67,7 +68,7 @@ export function Platzverwaltung() {
   }
 
   return (
-    <AppPage title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos"
+    <AppPage varianten={{ repid: 'tco.platzverwaltung', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos"
              actions={<ChangeHistoryButton objectType="PLATZ" objectKey="" />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>

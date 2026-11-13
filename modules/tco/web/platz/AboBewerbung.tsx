@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Varianten, feld } from '@core/components/Varianten';
 import { Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text } from '@ui5/webcomponents-react';
 import type { ReactNode } from 'react';
 import '../sport/spielerdaten.css';
@@ -312,6 +313,7 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
       {s && (
         <div className="portal-abo__detail">
           <span style={{ display: 'inline-flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+<Varianten repid="tco.abo.verwaltung" ansicht={{ sicht, sort, filter }} onAnwenden={(a) => { setSicht(feld(a, 'sicht', sicht)); setSort(feld(a, 'sort', sort)); setFilter(feld(a, 'filter', filter)); }} />
             <SegmentedButton onSelectionChange={(e) => { setSicht((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'abos'); setSort(null); setFilter({}); }}>
               <SegmentedButtonItem data-k="abos" selected={!istWarte}>Abos des Vorjahres ({abos.length})</SegmentedButtonItem>
               <SegmentedButtonItem data-k="warte" selected={istWarte}>Warteliste ({warte.length})</SegmentedButtonItem>

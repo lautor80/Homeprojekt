@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import { AblageDialog } from '@core/ablage';
 import {
@@ -224,7 +225,7 @@ export function Hallenabrechnung() {
   );
 
   return (
-    <AppPage
+    <AppPage varianten={{ repid: 'tco.halle', ansicht: { status, von, bis, mitBuchungen, suche, sort }, onAnwenden: (a) => { setStatus(feld(a, 'status', status)); setVon(feld(a, 'von', von)); setBis(feld(a, 'bis', bis)); setMitBuchungen(feld(a, 'mitBuchungen', mitBuchungen)); setSuche(feld(a, 'suche', suche)); setSort(feld(a, 'sort', sort)); } }}
       title="Hallenabrechnung"
       header={header}
       actions={<>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Varianten, feld } from '@core/components/Varianten';
 import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -72,7 +73,7 @@ export function Dokumenteneingang() {
   }
 
   return (
-    <AppPage title="Dokumenteneingang" subtitle="E-Mails und Anhänge nach Regeln in Paperless und der Nextcloud ablegen">
+    <AppPage varianten={{ repid: 'tco.eingang', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Dokumenteneingang" subtitle="E-Mails und Anhänge nach Regeln in Paperless und der Nextcloud ablegen">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!stamm ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
         <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
@@ -150,6 +151,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
         <Wahl wert={status} style={{ width: '14rem' }} onChange={setStatus} optionen={offen
           ? [['offen', 'zu prüfen und Fehler'], ['pruefen', 'nur zu prüfen'], ['fehler', 'nur Fehler']]
           : [['', 'alle Vorgänge'], ['abgelegt', 'abgelegt'], ['offen', 'zu prüfen und Fehler'], ['ohne_regel', 'ohne Regel'], ['ignoriert', 'nicht abgelegt']]} />
+<Varianten repid="tco.eingang.liste" ansicht={{ status, suche }} onAnwenden={(a) => { setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); }} />
         <Input placeholder="Suchen (Absender, Betreff, Datei)" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '18rem' }} />
         <Button design="Transparent" icon="refresh" tooltip="Aktualisieren" onClick={laden} />
         {edit && (

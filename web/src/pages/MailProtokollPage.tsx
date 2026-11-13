@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { feld } from '../components/Varianten';
 import { AnalyticalTable, Bar, Button, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '../api';
@@ -164,7 +165,7 @@ export function MailProtokollPage() {
   );
 
   return (
-    <AppPage title="E-Mail-Protokoll"
+    <AppPage varianten={{ repid: 'core.mail', ansicht: { f, query, gruppe }, onAnwenden: (a) => { setF(feld(a, 'f', f)); setQuery(feld(a, 'query', query)); setGruppe(feld(a, 'gruppe', gruppe)); } }} title="E-Mail-Protokoll"
              subtitle={`Alle E-Mails des Portals je Person, Empfänger oder Vorgang · ${daten.length} Einträge${fehler ? `, davon ${fehler} nicht gesendet` : ''}${rueck ? `, ${rueck} unzustellbar` : ''}`}
              header={filter} actions={<Button icon="refresh" onClick={l.reload}>Aktualisieren</Button>}>
       {l.error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{l.error}</MessageStrip>}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   Button, DatePicker, FlexBox, Input, List, ListItemStandard, MessageStrip, Option, Select, Title,
 } from '@ui5/webcomponents-react';
@@ -46,7 +47,7 @@ export function Mitglieder() {
   };
 
   return (
-    <AppPage title="Mitglieder" subtitle={liste ? `${liste.anzahl.AKTIV} aktive Mitglieder · ${liste.anzahl.ALLE} Personen` : ''}
+    <AppPage varianten={{ repid: 'tco.mitglieder', ansicht: { status, suche, datumTyp, von, bis, gruppe }, onAnwenden: (a) => { setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setDatumTyp(feld(a, 'datumTyp', datumTyp)); setVon(feld(a, 'von', von)); setBis(feld(a, 'bis', bis)); setGruppe(feld(a, 'gruppe', gruppe)); } }} title="Mitglieder" subtitle={liste ? `${liste.anzahl.AKTIV} aktive Mitglieder · ${liste.anzahl.ALLE} Personen` : ''}
              actions={edit ? <Button icon="add-employee" design="Emphasized" onClick={() => setNeu(true)}>Neues Mitglied</Button> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       <MasterDetail

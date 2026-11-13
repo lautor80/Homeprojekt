@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, BusyIndicator, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
@@ -295,7 +296,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
   </>;
 
   if (eingebettet) return <div className="portal-gr--eingebettet">{inhalt}</div>;
-  return <AppPage title="Mitgliedergruppen" subtitle={anzahlText} actions={aktionen}>{inhalt}</AppPage>;
+  return <AppPage varianten={{ repid: 'tco.gruppen', ansicht: { suche, mitZeigen }, onAnwenden: (a) => { setSuche(feld(a, 'suche', suche)); setMitZeigen(feld(a, 'mitZeigen', mitZeigen)); } }} title="Mitgliedergruppen" subtitle={anzahlText} actions={aktionen}>{inhalt}</AppPage>;
 }
 
 // ---------------------------------------------------------------- Gruppe anlegen / ändern / verschieben

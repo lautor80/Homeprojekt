@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   Bar, Button, BusyIndicator, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
@@ -51,7 +52,7 @@ export function SchnupperVerwaltung() {
   }
 
   return (
-    <AppPage title="Schnuppertraining" subtitle={daten ? `${daten.einheiten} kostenlose Einheiten · Anmeldungen über das Formular /schnuppertraining` : ''}
+    <AppPage varianten={{ repid: 'tco.schnupper', ansicht: { alle }, onAnwenden: (a) => { setAlle(feld(a, 'alle', alle)); } }} title="Schnuppertraining" subtitle={daten ? `${daten.einheiten} kostenlose Einheiten · Anmeldungen über das Formular /schnuppertraining` : ''}
              actions={<>
                <Button design="Transparent" icon="action" onClick={() => window.open('/schnuppertraining', '_blank')}>Anmeldeformular öffnen</Button>
                <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur offene' : 'Auch erledigte'}</Button>

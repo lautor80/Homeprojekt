@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   Button, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Panel, SegmentedButton, SegmentedButtonItem,
   Select, Text, Title, Toolbar, ToolbarButton, ToolbarSpacer,
@@ -126,7 +127,7 @@ export function Hallenpreise() {
 
   const fehler = befunde?.filter((b) => b.art === 'Fehler') ?? [];
   return (
-    <AppPage title="Hallenpreise" subtitle="Stundenpreise je Preisgruppe, Zeitraum und Wochentag – als Wochenplan oder in Tabellen"
+    <AppPage varianten={{ repid: 'tco.hallenpreise', ansicht: { filterKey, stichtag, saison, ansicht }, onAnwenden: (a) => { setFilterKey(feld(a, 'filterKey', filterKey)); setStichtag(feld(a, 'stichtag', stichtag)); setSaison(feld(a, 'saison', saison)); setAnsicht(feld(a, 'ansicht', ansicht)); } }} title="Hallenpreise" subtitle="Stundenpreise je Preisgruppe, Zeitraum und Wochentag – als Wochenplan oder in Tabellen"
              actions={<>
                {edit && <Button icon="validate" onClick={pruefen} disabled={busy}>Prüfen</Button>}
                {edit && <Button design="Emphasized" icon="save" disabled={busy || geprueft !== stand} onClick={speichern}>Speichern</Button>}

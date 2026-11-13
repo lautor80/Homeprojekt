@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, Button, DatePicker, FlexBox, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
   ObjectStatus, Option, Select, Tab, TabContainer, Text, Title, Toolbar, ToolbarSpacer,
@@ -95,7 +96,7 @@ export function Jugendtraining() {
 
   const trainerOptionen = m?.abrechnung ?? [];
   return (
-    <AppPage title="Abrechnung Jugendtraining"
+    <AppPage varianten={{ repid: 'tco.jt', ansicht: { monat, adrnr, tab }, onAnwenden: (a) => { setMonat(feld(a, 'monat', monat)); setAdrnr(feld(a, 'adrnr', adrnr)); setTab(feld(a, 'tab', tab)); } }} title="Abrechnung Jugendtraining"
              subtitle={abr ? `${abr.trainer} · ${zahl(summe.std)} Stunden · ${eur(summe.eur)}` : 'Trainingszeiten der Honorartrainer erfassen und abrechnen'}>
       {/* Monat und Trainer links oben – bestimmen alles darunter */}
       <FlexBox wrap="Wrap" alignItems="End" style={{ gap: '0.5rem 1.5rem', marginBottom: '1rem' }}>

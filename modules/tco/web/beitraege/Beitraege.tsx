@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, BusyIndicator, Button, Input, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text,
 } from '@ui5/webcomponents-react';
@@ -95,7 +96,7 @@ export function Beitraege() {
   );
 
   return (
-    <AppPage title="Mitgliedsbeiträge" subtitle="Beiträge und Beitragshöhen je Zeitraum" header={header}
+    <AppPage varianten={{ repid: 'tco.beitraege', ansicht: { suche, filter }, onAnwenden: (a) => { setSuche(feld(a, 'suche', suche)); setFilter(feld(a, 'filter', filter)); } }} title="Mitgliedsbeiträge" subtitle="Beiträge und Beitragshöhen je Zeitraum" header={header}
              actions={<>
                {edit && <Button icon="add" design="Emphasized" disabled={!d || d.leer} onClick={() => setDlg(null)}>Neuer Beitrag</Button>}
                <Button icon="refresh" onClick={() => { setLog([]); setWarnung(null); laden(); }}>Aktualisieren</Button>

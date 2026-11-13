@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   Bar, Button, BusyIndicator, Dialog, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea,
 } from '@ui5/webcomponents-react';
@@ -54,7 +55,7 @@ export function MitgliedRegistrierungen() {
   }
 
   return (
-    <AppPage title="Registrierungen" subtitle="Mitglieder, die einen Zugang zum Portal beantragt haben"
+    <AppPage varianten={{ repid: 'tco.registrierungen', ansicht: { alle }, onAnwenden: (a) => { setAlle(feld(a, 'alle', alle)); } }} title="Registrierungen" subtitle="Mitglieder, die einen Zugang zum Portal beantragt haben"
              actions={<Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur offene' : 'Auch erledigte'}</Button>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (

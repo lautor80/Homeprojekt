@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   BusyIndicator, Button, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select, Text,
 } from '@ui5/webcomponents-react';
@@ -111,7 +112,7 @@ export function Finanz() {
 
   const kpiFarbe = (v: number): State => (v < 0 ? 'Negative' : 'Positive');
   return (
-    <AppPage title={`Einnahmen und Ausgaben ${jahr}`} subtitle={stand}
+    <AppPage varianten={{ repid: 'tco.finanz', ansicht: { jahr }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); } }} title={`Einnahmen und Ausgaben ${jahr}`} subtitle={stand}
              actions={<>
                {!klein && <Label>Geschäftsjahr</Label>}
                <Select style={{ width: '7rem' }} onChange={(ev) => setJahr(Number((ev.detail.selectedOption as HTMLElement).dataset.j))}>

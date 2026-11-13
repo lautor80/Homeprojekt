@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, Bar, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
@@ -475,7 +476,7 @@ export function AuftraegeListe() {
   );
 
   return (
-    <AppPage title="Auftragsverwaltung" header={header}>
+    <AppPage varianten={{ repid: 'transport.auftraege', ansicht: { jahr, fakt, status, suche, ansicht }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setFakt(feld(a, 'fakt', fakt)); setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setAnsicht(feld(a, 'ansicht', ansicht)); } }} title="Auftragsverwaltung" header={header}>
       {firmaFehlt && can('transport.stammdaten:edit') && (
         <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Firmendaten (Name, Bank) fehlen noch – sie werden für Rechnungen und E-Rechnungen benötigt:

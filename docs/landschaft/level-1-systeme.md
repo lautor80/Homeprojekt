@@ -174,6 +174,7 @@ flowchart LR
 | core:sperren | 5 |
 | core:statistik | 3 |
 | core:tabellen | 7 |
+| core:varianten | 3 |
 | core:verbindungen | 3 |
 | core:weltenwandler | 2 |
 | dashboard | 8 |

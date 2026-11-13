@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { feld } from '../components/Varianten';
 import { AnalyticalTable, Button, DatePicker, Input, MessageStrip, Option, Select } from '@ui5/webcomponents-react';
 import { api, qs } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -37,7 +38,7 @@ export function AuditPage() {
   );
 
   return (
-    <AppPage title="Änderungsbelege" subtitle="Wer hat was wann geändert (max. 500 Belege je Suche)" header={filter}>
+    <AppPage varianten={{ repid: 'core.audit', ansicht: { f, query }, onAnwenden: (a) => { setF(feld(a, 'f', f)); setQuery(feld(a, 'query', query)); } }} title="Änderungsbelege" subtitle="Wer hat was wann geändert (max. 500 Belege je Suche)" header={filter}>
       {docs.error && <MessageStrip design="Negative">{docs.error}</MessageStrip>}
       <AnalyticalTable
         columns={changeColumns(true)}

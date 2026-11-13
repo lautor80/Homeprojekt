@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   BusyIndicator, Button, CheckBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Switch, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
@@ -148,7 +149,7 @@ export function Konten() {
   );
 
   return (
-    <AppPage title="Kontenstamm" subtitle="Kontenstamm und Kontenverwendung je Geschäftsjahr" header={header}
+    <AppPage varianten={{ repid: 'tco.konten', ansicht: { suche, nurBebucht, nurAktuell, tab }, onAnwenden: (a) => { setSuche(feld(a, 'suche', suche)); setNurBebucht(feld(a, 'nurBebucht', nurBebucht)); setNurAktuell(feld(a, 'nurAktuell', nurAktuell)); setTab(feld(a, 'tab', tab)); } }} title="Kontenstamm" subtitle="Kontenstamm und Kontenverwendung je Geschäftsjahr" header={header}
              actions={<>
                <Button icon="navigation-left-arrow" design="Transparent" tooltip="Ein Jahr zurück" disabled={!d || busy} onClick={() => blaettern(-1)} />
                <Text style={{ whiteSpace: 'nowrap' }}>{d ? `${d.von} – ${d.bis}` : ''}</Text>

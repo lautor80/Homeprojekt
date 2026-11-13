@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '../components/Varianten';
 import { AnalyticalTable, Bar, Button, BusyIndicator, CheckBox, Dialog, Link, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
@@ -87,7 +88,7 @@ export function StatistikPage() {
   const summe = (l: { gesamt: number }[]) => l.reduce((s, x) => s + x.gesamt, 0);
 
   return (
-    <AppPage title="Statistik" subtitle="Anmeldungen je Benutzer und Monat, Aufrufe je App"
+    <AppPage varianten={{ repid: 'core.statistik', ansicht: { monate, ohneAdmin }, onAnwenden: (a) => { setMonate(feld(a, 'monate', monate)); setOhneAdmin(feld(a, 'ohneAdmin', ohneAdmin)); } }} title="Statistik" subtitle="Anmeldungen je Benutzer und Monat, Aufrufe je App"
              actions={<>
                <CheckBox text="Administratoren ausblenden" checked={ohneAdmin} onChange={(e) => setOhneAdmin(e.target.checked)} />
                <Select style={{ width: '11rem' }} onChange={(e) => setMonate(Number((e.detail.selectedOption as HTMLElement).dataset.m))}>

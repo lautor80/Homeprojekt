@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { feld } from '../components/Varianten';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import {
   AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
@@ -188,7 +189,7 @@ export function TabellenPage() {
   const gruppiert = sel.nach.length > 0 || sel.summen.length > 0;
 
   return (
-    <AppPage
+    <AppPage varianten={{ repid: 'core.tabellen', ansicht: { wahl, ansicht, suche }, onAnwenden: (a) => { setWahl(feld(a, 'wahl', wahl)); setAnsicht(feld(a, 'ansicht', ansicht)); setSuche(feld(a, 'suche', suche)); } }}
       title={struktur ? `Tabellenansicht: ${struktur.schema}.${struktur.tabelle}` : 'Tabellenansicht'}
       subtitle={struktur ? `${zahl(struktur.zeilen)} Einträge · ${spalten.length} Spalten` : liste.data ? `${liste.data.length} Tabellen` : undefined}
       actions={<>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import { useNavigate } from 'react-router-dom';
 import { AnalyticalTable, Button, Input, Icon, MessageStrip, ObjectStatus } from '@ui5/webcomponents-react';
@@ -39,7 +40,7 @@ export function KontakteList() {
   ];
 
   return (
-    <AppPage
+    <AppPage varianten={{ repid: 'beispiel.kontakte', ansicht: { search, q }, onAnwenden: (a) => { setSearch(feld(a, 'search', search)); setQ(feld(a, 'q', q)); } }}
       title="Kontakte"
       subtitle={list.data ? `${list.data.length} Einträge` : undefined}
       actions={<>

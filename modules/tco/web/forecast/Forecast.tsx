@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, BusyIndicator, Button, Label, MessageStrip, ObjectStatus, Option, Select, Switch, Text,
 } from '@ui5/webcomponents-react';
@@ -98,7 +99,7 @@ export function Forecast() {
   );
 
   return (
-    <AppPage title={`Beitragsforecast ${j1} / ${j2}`} subtitle="Hochrechnung der Beitragseinnahmen aus den laufenden Verträgen" header={header}
+    <AppPage varianten={{ repid: 'tco.forecast', ansicht: { jahr, mitglieder }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setMitglieder(feld(a, 'mitglieder', mitglieder)); } }} title={`Beitragsforecast ${j1} / ${j2}`} subtitle="Hochrechnung der Beitragseinnahmen aus den laufenden Verträgen" header={header}
              actions={<Button icon="refresh" tooltip="Neu berechnen" disabled={busy} onClick={laden}>Neu berechnen</Button>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {d?.info && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>{d.info}</MessageStrip>}

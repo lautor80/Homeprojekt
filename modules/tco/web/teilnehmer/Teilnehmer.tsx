@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem, Text,
@@ -105,7 +106,7 @@ export function Teilnehmer() {
   );
 
   return (
-    <AppPage title={`Teilnehmer Jugendtraining (${rows.length})`} subtitle={`${einheiten} Einheiten – Personen mit laufendem Jugendtraining-Vertrag`} header={header}
+    <AppPage varianten={{ repid: 'tco.teilnehmer', ansicht: { filter, suche }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); } }} title={`Teilnehmer Jugendtraining (${rows.length})`} subtitle={`${einheiten} Einheiten – Personen mit laufendem Jugendtraining-Vertrag`} header={header}
              actions={<>
                <Button icon="pdf-attachment" disabled={!rows.length} onClick={() => setPdf(pdfUrl())}
                        tooltip="Teilnehmerliste als PDF im Vereinslayout (aktuelle Auswahl bzw. markierte Teilnehmer)">
