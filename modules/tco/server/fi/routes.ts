@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { rechnungAufteilung } from '../halle/daten.js';
 import { z } from 'zod';
-import { change, requireAuth } from '../../../../server/src/auth.js';
+import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, liste, paperless, plAktiv, vereinLesen, type Verein } from '../verein.js';
 import { fiDokumentPruefen } from '../dokumentfreigabe.js';
@@ -14,8 +14,9 @@ import {
 } from './buchen.js';
 import { bankAbgleich } from './bank.js';
 import { abgeschlossenBis, abschliessen, oeffnen, periodenLesen } from './perioden.js';
-import { bankSchutz } from '../bankdaten.js';
+import { P_BANK, bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
+import { ueberweisungDokument, ueberweisungZahlung, ueberweisungsBelege } from './ueberweisung.js';
 import { dateiPruefen, dekodieren } from '../upload/logik.js';
 import { PaperlessError } from '../../../../server/src/lib/paperless.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
@@ -152,6 +153,33 @@ export async function fiRoutes(app: FastifyInstance) {
     const v = await vereinLesen();
     if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (TC Oberthal → Stammdaten).');
     return sapNachziehen(v, await offeneBelege(v));
+  });
+
+  /**
+   * Belege mit Folgeaktion „Überweisung an Einreicher“ und leerem Feld „SAP“ – Liste, Vorschau und QR-Code zur Überweisung.
+   * Die Zahlungsdaten (IBAN des Einreichers aus dem Mitgliederstamm) verlangen zusätzlich „Bankdaten anzeigen“.
+   */
+  app.get('/fi/ueberweisungen', { preHandler: requireAuth(P_FI.display) }, async () => {
+    const v = await vereinLesen();
+    if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (TC Oberthal → Stammdaten).');
+    return ueberweisungsBelege(v, DB);
+  });
+  app.get('/fi/ueberweisungen/:id/pdf', { preHandler: requireAuth(P_FI.display) }, async (req, reply) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const v = await vereinLesen();
+    await ueberweisungDokument(v, id);
+    const d = await paperless(v).download(id);
+    return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
+  });
+  app.get('/fi/ueberweisungen/:id/zahlung', { preHandler: requireAuth(P_FI.display) }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const q = z.object({
+      betrag: z.string().trim().max(20).optional().transform((s) => (s ? Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s) : null))
+        .refine((n) => n === null || (Number.isFinite(n) && n >= 0.01 && n <= 999_999_999.99), 'Bitte einen gültigen Betrag angeben.'),
+      zweck: z.string().trim().max(140).optional(),
+    }).parse(req.query);
+    if (!can(req, P_BANK.display)) throw new BusinessError('Für die Zahlungsdaten ist die Berechtigung „Bankdaten anzeigen“ nötig (tco.bankdaten:display).', 403);
+    return ueberweisungZahlung(await vereinLesen(), DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck ?? null);
   });
 
   app.get('/fi/belege/:id', { preHandler: requireAuth(P_FI.display) }, async (req) => {
