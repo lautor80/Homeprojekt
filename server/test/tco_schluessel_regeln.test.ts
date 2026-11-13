@@ -1,7 +1,7 @@
 /** Hallenschlüssel (#215): Regeln ohne Datenbank – Altdaten aus der Zwischenablage, Datum/Betrag, Fristen */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { altdatenLesen, betragLesen, datumLesen, dokLesen, quittungUeberfaellig, vorgangsNummer } from '../../modules/tco/server/schluessel/regeln.js';
+import { abgleichEindeutig, abgleichTreffer, altdatenLesen, betragLesen, datumLesen, dokLesen, nameImText, normText, quittungUeberfaellig, vorgangsNummer } from '../../modules/tco/server/schluessel/regeln.js';
 
 test('Datum, Betrag, Dokumentnummer, Vorgangsnummer', () => {
   assert.equal(datumLesen('03.11.2019'), '2019-11-03');
@@ -43,4 +43,26 @@ test('Quittung überfällig erst nach der Frist', () => {
   assert.equal(quittungUeberfaellig(v, '2026-11-09', 7), true);
   assert.equal(quittungUeberfaellig({ ...v, status: 'QUITTIERT' }, '2026-12-01', 7), false);
   assert.equal(quittungUeberfaellig({ ...v, art: 'RUECKGABE' }, '2026-12-01', 7), false);
+});
+
+test('FI-Abgleich: Name im Buchungstext, Betrag, Datum, Rechnung', () => {
+  assert.equal(normText('Jörg Groß-Müller'), 'JOERG GROSS MUELLER');
+  assert.equal(nameImText('Lea Lob', 'Schluesselpfand LOB, LEA bar'), 2);
+  assert.equal(nameImText('Lea Lob', 'Pfand Lob'), 1);
+  assert.equal(nameImText('Lea Lob', 'Pfand Lobinger'), 0, 'nur ganze Wörter');
+  const vorgaenge = [
+    { id: 1, art: 'AUSGABE', person: 'Lea Lob', datum: '2019-10-01', pfand: 25, rgnr: null },
+    { id: 2, art: 'RUECKGABE', person: 'Lea Lob', datum: '2022-03-15', pfand: 25, rgnr: null },
+    { id: 3, art: 'AUSGABE', person: 'Tom Lob', datum: '2019-10-02', pfand: 25, rgnr: '2019_007' },
+  ];
+  let t = abgleichTreffer({ datum: '2019-10-03', betrag: 25, richtung: 'AUSGABE', text: 'Schlüsselpfand Lea Lob', rgnr: null }, vorgaenge);
+  assert.deepEqual(t.map((x) => x.id), [1, 3], 'voller Name vor nur Nachname');
+  assert.equal(abgleichEindeutig(t), false, 'gleicher Nachname, ähnliches Datum: bitte wählen');
+  t = abgleichTreffer({ datum: '2022-03-20', betrag: 25, richtung: 'RUECKGABE', text: 'Pfand zurück Lob', rgnr: null }, vorgaenge);
+  assert.deepEqual(t.map((x) => x.id), [2]);
+  assert.equal(abgleichEindeutig(t), true);
+  t = abgleichTreffer({ datum: '2019-11-20', betrag: 25, richtung: 'AUSGABE', text: 'Zahlung Rechnung', rgnr: '2019_007' }, vorgaenge);
+  assert.deepEqual(t.map((x) => x.id), [3], 'über die Rechnung auch ohne Namen');
+  assert.deepEqual(abgleichTreffer({ datum: '2019-10-01', betrag: 40, richtung: 'AUSGABE', text: 'Hallenmiete Lob', rgnr: null }, vorgaenge), [], 'anderer Betrag, nur Nachname');
+  assert.deepEqual(abgleichTreffer({ datum: '2019-10-01', betrag: 25, richtung: 'AUSGABE', text: 'Pfand bar', rgnr: null }, vorgaenge), [], 'ohne Namen kein Vorschlag');
 });

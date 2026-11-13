@@ -192,7 +192,7 @@ flowchart LR
 | platz | 67 |
 | praesentation | 11 |
 | produkte | 6 |
-| schluessel | 20 |
+| schluessel | 25 |
 | schnupper | 6 |
 | soll | 10 |
 | sport | 4 |
