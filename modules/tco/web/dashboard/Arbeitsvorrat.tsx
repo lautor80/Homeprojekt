@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckBox, Icon } from '@ui5/webcomponents-react';
+import { Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, Text } from '@ui5/webcomponents-react';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
 import { api } from '@core/api';
@@ -13,6 +13,8 @@ export interface Aufgabe {
   state: 'Information' | 'Critical' | 'Negative'; pfad: string; betrag?: number;
   /** Kästchen: Erledigung bestätigen, danach verschwindet der Eintrag */
   erledigen?: { text: string; url: string; body: Record<string, unknown> };
+  /** Upload „Überweisung an Einreicher“: Zahlungsdaten und QR-Code im Popup */
+  zahlung?: { id: number };
   /** Unterpunkte, z. B. die einzelnen Buchungen */
   kinder?: Aufgabe[];
 }
@@ -59,6 +61,7 @@ export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: strin
 
 function Eintrag({ a, onOeffnen, onErledigen, ebene = 1 }: { a: Aufgabe; onOeffnen: (a: Aufgabe) => void; onErledigen: (a: Aufgabe) => void; ebene?: number }) {
   const [auf, setAuf] = useState(false);
+  const [zahlung, setZahlung] = useState(false);
   const kinder = a.kinder ?? [];
   return (
     <>
@@ -73,14 +76,83 @@ function Eintrag({ a, onOeffnen, onErledigen, ebene = 1 }: { a: Aufgabe; onOeffn
           <div className="portal-av__text">{a.text}</div>
         </button>
         <div className="portal-av__datum">
+          {a.zahlung && <Button design="Transparent" icon="qr-code" tooltip="Zahlungsdaten und QR-Code für die Banking-App" onClick={() => setZahlung(true)}>Zahlungsdaten</Button>}
           {a.erledigen ? <CheckBox text={a.erledigen.text} onChange={(e) => { if (e.target.checked) onErledigen(a); }} /> : a.datum ? dat(a.datum) : ''}
         </div>
         <button type="button" className="portal-av__auf" aria-label="App öffnen" title="App öffnen" onClick={() => onOeffnen(a)}>
           <Icon name="navigation-right-arrow" className="portal-av__pfeil" />
         </button>
       </div>
+      {zahlung && a.zahlung && <ZahlungDialog id={a.zahlung.id} onClose={() => setZahlung(false)} onUeberwiesen={a.erledigen ? () => { setZahlung(false); onErledigen(a); } : undefined} />}
       {auf && kinder.map((k) => <Eintrag key={k.key} a={k} onOeffnen={onOeffnen} onErledigen={onErledigen} ebene={ebene + 1} />)}
     </>
+  );
+}
+
+interface Zahlung {
+  id: number; titel: string; einreicher: string; dok_id: number | null; am: string; empfaenger: string | null; iban: string | null; iban_text: string | null;
+  bic: string | null; bank: string | null; betrag: number | null; zweck: string; qr: string | null; epc: string | null; hinweis: string | null;
+}
+
+/**
+ * Zahlungsdaten zu einem Beleg „Überweisung an Einreicher“: Empfänger und Bankverbindung aus dem Mitgliederstamm, Betrag und
+ * Verwendungszweck zum Eintragen, dazu der QR-Code (GiroCode) zum Scannen mit der Banking-App.
+ */
+function ZahlungDialog({ id, onClose, onUeberwiesen }: { id: number; onClose: () => void; onUeberwiesen?: () => void }) {
+  const [d, setD] = useState<Zahlung | null>(null);
+  const [betrag, setBetrag] = useState('');
+  const [zweck, setZweck] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Betrag und Verwendungszweck gehen in den QR-Code: kurz nach der Eingabe neu erzeugen
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const q = new URLSearchParams();
+      if (betrag.trim()) q.set('betrag', betrag.trim());
+      if (zweck !== null) q.set('zweck', zweck);
+      api.get<Zahlung>(`${DASH}/arbeitsvorrat/upload-zahlung/${id}${q.size ? `?${q}` : ''}`).then((r) => { setD(r); setError(null); }).catch((e) => setError((e as Error).message));
+    }, d ? 400 : 0);
+    return () => clearTimeout(t);
+  }, [id, betrag, zweck]); // eslint-disable-line react-hooks/exhaustive-deps
+  const kopieren = (text: string, was: string) => navigator.clipboard?.writeText(text).then(() => toast(`${was} kopiert.`)).catch(() => undefined);
+  const zeile = (label: string, wert: string | null, kopie?: string) => (
+    <>
+      <Label showColon>{label}</Label>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', minWidth: 0 }}>
+        <Text style={{ wordBreak: 'break-word' }}>{wert || '–'}</Text>
+        {wert && <Button design="Transparent" icon="copy" tooltip={`${label} kopieren`} onClick={() => kopieren(kopie ?? wert, label)} />}
+      </span>
+    </>
+  );
+  return (
+    <Dialog open headerText="Zahlungsdaten" style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
+            footer={<Bar endContent={<>
+              {onUeberwiesen && <Button design="Emphasized" icon="accept" onClick={onUeberwiesen}>Überwiesen</Button>}
+              <Button onClick={onClose}>Schließen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {!d ? (error ? null : <BusyIndicator active style={{ display: 'block' }} />) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <Text>{d.titel} · eingereicht von {d.einreicher} am {dat(d.am)}{d.dok_id ? ` · Paperless-Dokument ${d.dok_id}` : ''}</Text>
+          <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.25rem 0.75rem', alignItems: 'center' }}>
+            {zeile('Empfänger', d.empfaenger)}
+            {zeile('IBAN', d.iban_text, d.iban ?? undefined)}
+            {zeile('BIC', d.bic)}
+            {d.bank ? zeile('Bank', d.bank) : null}
+            <Label showColon>Betrag (Euro)</Label>
+            <Input style={{ width: '10rem' }} placeholder="z. B. 49,90" value={betrag} onInput={(e) => setBetrag(e.target.value)} />
+            <Label showColon>Verwendungszweck</Label>
+            <Input maxlength={140} value={zweck ?? d.zweck} onInput={(e) => setZweck(e.target.value)} />
+          </div>
+          {d.hinweis && <MessageStrip design={d.qr ? 'Information' : 'Critical'} hideCloseButton>{d.hinweis}</MessageStrip>}
+          {d.qr && (
+            <div style={{ textAlign: 'center' }}>
+              <img src={d.qr} alt="QR-Code für die Überweisung (GiroCode)" style={{ width: 'min(16rem, 70vw)', height: 'auto', background: '#fff', padding: '0.5rem', borderRadius: '0.5rem' }} />
+              <div className="portal-muted portal-small">In der Banking-App „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen – Empfänger, IBAN{d.betrag != null ? ', Betrag' : ''} und Verwendungszweck werden übernommen.</div>
+            </div>
+          )}
+        </div>
+      )}
+    </Dialog>
   );
 }
 

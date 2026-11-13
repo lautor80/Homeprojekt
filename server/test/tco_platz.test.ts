@@ -1172,6 +1172,38 @@ test('Arbeitsvorrat Kassenwart: Upload mit Folgeaktion „Überweisung an Einrei
   assert.match(g.titel, /^2 neue Dokumente: Überweisung an Einreicher/);
   assert.deepEqual(g.kinder.map((k: any) => k.titel), ['Überweisung an Anna Spielerin: Bälle Sport Müller', 'Überweisung an Bert Spieler: netz.pdf']);
   assert.match(g.kinder[0].text, /Dokument 4711/);
+  // Zahlungsdaten und QR-Code: Bankverbindung des Einreichers aus dem Mitgliederstamm
+  assert.deepEqual(g.kinder.map((k: any) => typeof k.zahlung?.id), ['number', 'number']);
+  const Z = `${A}/upload-zahlung/${g.kinder[0].zahlung.id}`;
+  assert.equal((await anna('GET', Z)).status, 403);
+  let z = await admin('GET', Z);
+  assert.equal(z.status, 200, JSON.stringify(z.body));
+  assert.ok('qr' in z.body && 'empfaenger' in z.body && z.body.titel === 'Bälle Sport Müller');
+  // Einreicher mit Benutzer und Bankverbindung im Mitgliederstamm
+  const [einreicher] = await sql`insert into core.users (username, display_name, password_hash) values ('vera.vorstand', 'Vera Vorstand', 'x') returning id`;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, iban1, bic1, bank1) values ('0000009901', 'Vera', 'Vorstand', '2010-01-01', 'DE89 3704 0044 0532 0130 00', 'COBADEFFXXX', 'Commerzbank')`;
+  await sql`insert into tco.mitgliedera (adrnr, benutzer_id) values ('0000009901', ${einreicher.id}) on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  await withChange({ userId: null, username: 'test', action: 'UPLOAD' }, async (tx) => {
+    await uploadMerken(tx, { dok_id: 4720, titel: 'Pokale Sporthaus', datei: 'pokale.pdf', folgeaktion: 'Überweisung an Einreicher', einreicher: 'Vera Vorstand', benutzer_id: einreicher.id });
+  });
+  const [vf] = await sql`select id from tco.upload_folge where dok_id = 4720`;
+  z = await admin('GET', `${A}/upload-zahlung/${vf.id}`);
+  assert.equal(z.status, 200, JSON.stringify(z.body));
+  assert.deepEqual([z.body.empfaenger, z.body.iban, z.body.iban_text, z.body.bic, z.body.betrag, z.body.zweck],
+    ['Vera Vorstand', 'DE89370400440532013000', 'DE89 3704 0044 0532 0130 00', 'COBADEFFXXX', null, 'Erstattung Pokale Sporthaus']);
+  assert.equal(z.body.epc, 'BCD\n002\n1\nSCT\nCOBADEFFXXX\nVera Vorstand\nDE89370400440532013000\n\n\n\nErstattung Pokale Sporthaus');
+  assert.match(z.body.qr, /^data:image\/png;base64,/);
+  z = await admin('GET', `${A}/upload-zahlung/${vf.id}?betrag=1.249,90&zweck=${encodeURIComponent('Pokale Vereinsmeisterschaft')}`);
+  assert.deepEqual([z.body.betrag, z.body.hinweis], [1249.9, null]);
+  assert.equal(z.body.epc, 'BCD\n002\n1\nSCT\nCOBADEFFXXX\nVera Vorstand\nDE89370400440532013000\nEUR1249.90\n\n\nPokale Vereinsmeisterschaft');
+  assert.equal((await admin('GET', `${A}/upload-zahlung/${vf.id}?betrag=abc`)).status, 400);
+  assert.equal((await admin('GET', `${A}/upload-zahlung/999999`)).status, 404);
+  // ungültige IBAN: Daten ja, QR-Code nein
+  await sql`update tco.mitglieder set iban1 = 'DE00123' where adrnr = '0000009901'`;
+  z = await admin('GET', `${A}/upload-zahlung/${vf.id}`);
+  assert.deepEqual([z.body.qr, z.body.empfaenger], [null, 'Vera Vorstand']);
+  assert.match(z.body.hinweis, /IBAN im Mitgliederstamm ist ungültig/);
+  await sql`delete from tco.upload_folge where dok_id = 4720`;
   assert.equal((await anna('POST', `${A}/upload-erledigt`, g.kinder[0].erledigen.body)).status, 403);
   assert.equal((await admin('POST', `${A}/upload-erledigt`, g.kinder[0].erledigen.body)).status, 200);
   r = await admin('GET', A);

@@ -33,6 +33,8 @@ export interface Aufgabe {
   betrag?: number;
   /** Kästchen am Eintrag: bestätigt die Erledigung (POST auf url mit body), der Eintrag verschwindet danach */
   erledigen?: { text: string; url: string; body: Record<string, unknown> };
+  /** Upload „Überweisung an Einreicher“: Zahlungsdaten und QR-Code im Popup (GET /dashboard/arbeitsvorrat/upload-zahlung/:id) */
+  zahlung?: { id: number };
   /** Unterpunkte (z. B. die einzelnen Buchungen zu „Heute n Hallenbuchungen“) */
   kinder?: Aufgabe[];
 }
@@ -309,6 +311,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         text: `Über den Dokumenten-Upload nach Paperless geladen${r.dok_id ? ` · Dokument ${r.dok_id}` : ' · wird in Paperless noch verarbeitet'} · Folgeaktion „Überweisung an Einreicher“.`,
         datum: r.am, pfad: '/tco/upload',
         erledigen: { text: 'überwiesen', url: '/dashboard/arbeitsvorrat/upload-erledigt', body: { id: r.id } },
+        zahlung: { id: Number(r.id) },
       }));
       out.push({
         key: 'UPLOAD_UEBERWEISUNG', bereich: 'Kassenwart', icon: 'upload-to-cloud', state: 'Critical',
