@@ -11,7 +11,7 @@ import {
 } from './logik.js';
 import {
   abgleich, ausstehendeAktionen, dokumentAblegen, mailAktionAendern, offeneNeuBewerten, regelZuordnen, regelnFuerVorgang, dokumentIgnorieren, mailKontext, mailVerarbeiten, neuBewerten, regelnLesen, korrespondentenLesen, vorgangAntwort, vorgangIgnorieren,
-  zieleAufloesen,
+  zieleAufloesen, mailDokumentAnlegen, mailLesen, mailPdf,
 } from './verarbeitung.js';
 
 /**
@@ -259,13 +259,17 @@ export async function eingangRoutes(app: FastifyInstance) {
     };
   });
 
-  /** Mailtext eines offenen Vorgangs (wird nach dem Abschluss gelöscht) – nur für die Bearbeitung der Prüfliste */
-  app.get('/eingang/vorgaenge/:id/text', pflegen, async (req) => {
-    const { id } = idParam.parse(req.params);
-    const [v] = await DB`select text from tco.eing_vorgaenge where id = ${id}`;
-    if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
-    return { text: (v.text as string | null) ?? '' };
+  /** Die E-Mail eines Vorgangs: Kopfdaten, Text, Anhänge – zu jeder E-Mail, auch nach dem Abschluss */
+  app.get('/eingang/vorgaenge/:id/text', pflegen, async (req) => mailLesen(idParam.parse(req.params).id));
+
+  /** Gesamter Inhalt der E-Mail als PDF (Vorschau) – in dieser Form wird sie auch in Paperless abgelegt */
+  app.get('/eingang/vorgaenge/:id/mail.pdf', pflegen, async (req, reply) => {
+    const { datei, pdf } = await mailPdf(idParam.parse(req.params).id);
+    return reply.type('application/pdf').header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(datei)}`).send(pdf);
   });
+
+  /** Die E-Mail als PDF-Dokument in die Prüfliste stellen; abgelegt wird sie dort über POST /eingang/dokumente/:id/ablegen */
+  app.post('/eingang/vorgaenge/:id/mail-dokument', pflegen, async (req) => mailDokumentAnlegen(idParam.parse(req.params).id));
 
   /** Datei eines offenen Dokuments ansehen (nach der Ablage liegt sie nur noch in Paperless) */
   app.get('/eingang/dokumente/:id/datei', pflegen, async (req, reply) => {

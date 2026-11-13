@@ -178,7 +178,7 @@ flowchart LR
 | core:verbindungen | 3 |
 | core:weltenwandler | 2 |
 | dashboard | 8 |
-| eingang | 27 |
+| eingang | 29 |
 | fi | 23 |
 | finanz | 3 |
 | forecast | 1 |
