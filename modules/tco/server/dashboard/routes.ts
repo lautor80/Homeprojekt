@@ -16,6 +16,7 @@ import {
 import { arbeitsvorrat } from './arbeitsvorrat.js';
 import { collectInstandhaltung } from './instandhaltung.js';
 import { BENUTZER_ZEITRAEUME, benutzerVerlauf, type BenutzerZeitraum } from './benutzer.js';
+import { EINZEL_RASTER, einzelDiagramm, type EinzelRaster } from './halle-einzel.js';
 import { geldkonten, kontoKey, liquiditaet, monatsverlauf } from './finanzen.js';
 import {
   bswVertragWechseln, collectClubhaus, collectFinanzen, collectHalle, collectJugend, collectMitglieder,
@@ -131,6 +132,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
   app.get('/dashboard/benutzer', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
     const q = z.object({ zeitraum: z.enum(Object.keys(BENUTZER_ZEITRAEUME) as [BenutzerZeitraum, ...BenutzerZeitraum[]]).default('MONAT') }).parse(req.query);
     return benutzerVerlauf(DB, q.zeitraum, heute());
+  });
+  /** Halle: Einzelbuchungen als Balken – je Tag, Woche oder Monat des gewählten Jahres bzw. je Jahr */
+  app.get('/dashboard/halle-einzel', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
+    const q = z.object({ raster: z.enum(Object.keys(EINZEL_RASTER) as [EinzelRaster, ...EinzelRaster[]]).default('TAG'), jahr: jahr.optional() }).parse(req.query);
+    return einzelDiagramm(DB, q.raster, q.jahr ?? null, heute());
   });
 
   /** Detail-Popup einer Kennzahl */

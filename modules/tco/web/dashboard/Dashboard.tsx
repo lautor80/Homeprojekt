@@ -9,6 +9,7 @@ import { useCan } from '@core/session';
 import { ComboChart, LineChart, StackedBarChart } from './Chart';
 import { Arbeitsvorrat } from './Arbeitsvorrat';
 import { BenutzerVerlauf } from './BenutzerVerlauf';
+import { HalleEinzel } from './HalleEinzel';
 import { ZurPraesentation } from '../praesentation/ZurPraesentation';
 import { KpiZeilen } from './KpiZeilen';
 import { useNavigate } from 'react-router-dom';
@@ -114,6 +115,7 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
             </div>
             <StackedBarChart {...c.halle} />
             <LineChart title={c.halle.jahreVerlauf.title} name1={c.halle.jahreVerlauf.name1} data={c.halle.jahreVerlauf.data} values />
+            <HalleEinzel neu={neu} jahr={d.jahr} />
           </div>
         );
       default:

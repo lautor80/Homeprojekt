@@ -92,6 +92,57 @@ export function LineChart({ title, name1, name2, data, values, placeholder, anza
   );
 }
 
+// ---------------------------------------------------------------- Balken (Stückzahlen)
+
+export interface Balken { key: string; label: string; titel: string; wert: number; zusatz?: string; blass?: boolean; hervor?: boolean }
+
+/**
+ * Einfache Balken für Stückzahlen (z. B. Einzelbuchungen je Tag/Woche/Monat/Jahr). Viele Balken (365 Tage) werden schmal
+ * ohne Abstand gezeichnet, beschriftet wird dann nur der Monatsanfang bzw. jede k-te Säule; Werte über den Balken bis 31 Säulen.
+ * `blass`: zukünftig (schraffiert-hell), `hervor`: betonte Säule.
+ */
+export function BarChart({ title, name, data, achse }: { title: string; name: string; data: Balken[]; achse?: (b: Balken, i: number) => string | null }) {
+  const W = 800, H = 280, ML = 46, MR = 16, MT = 48, MB = 44;
+  const n = data.length;
+  if (!n) return null;
+  const pw = W - ML - MR, ph = H - MT - MB, y0 = MT + ph;
+  const roh = Math.max(1, ...data.map((b) => b.wert));
+  const max = roh <= 4 ? 4 : 4 * nice((roh * 11) / 10 / 4);
+  const bw = pw / n, luecke = n > 120 ? 0 : Math.min(6, bw * 0.2);
+  const step = Math.max(1, Math.ceil(n / 14));
+  return (
+    <Frame w={W} h={H}>
+      {[0, 1, 2, 3, 4].map((k) => {
+        const yy = y0 - (ph * k) / 4, v = (max * k) / 4;
+        return <g key={k}><line x1={ML} y1={yy} x2={W - MR} y2={yy} stroke={GRID} /><text x={ML - 8} y={yy + 4} textAnchor="end" fontSize={10} fill={TXT}>{Number.isInteger(v) ? v.toLocaleString('de-DE') : ''}</text></g>;
+      })}
+      {data.map((b, i) => {
+        const h = (b.wert / max) * ph, x = ML + i * bw + luecke / 2;
+        const t = achse ? achse(b, i) : i % step === 0 ? b.label : null;
+        return (
+          <g key={b.key}>
+            {/* ganze Spalte als Fläche für den Tooltip, auch bei 0 */}
+            <rect x={ML + i * bw} y={MT} width={bw} height={ph} fill="transparent"><title>{`${b.titel}: ${b.wert.toLocaleString('de-DE')} ${name}${b.zusatz ? ` · ${b.zusatz}` : ''}`}</title></rect>
+            {b.wert > 0 && <rect x={x} y={y0 - h} width={Math.max(0.6, bw - luecke)} height={h} fill={b.hervor ? C2 : C1} opacity={b.blass ? 0.45 : 1} rx={n > 60 ? 0 : 2} pointerEvents="none" />}
+            {n <= 31 && b.wert > 0 && <text x={x + (bw - luecke) / 2} y={y0 - h - 4} textAnchor="middle" fontSize={10} fontWeight="bold" fill={DARK} pointerEvents="none">{b.wert.toLocaleString('de-DE')}</text>}
+            {t && <text x={achse ? ML + i * bw : x + (bw - luecke) / 2} y={y0 + 18} textAnchor={achse ? 'start' : 'middle'} fontSize={10} fill={TXT}>{t}</text>}
+            {achse && t && <line x1={ML + i * bw} y1={y0} x2={ML + i * bw} y2={y0 + 5} stroke={TXT} />}
+          </g>
+        );
+      })}
+      <line x1={ML} y1={y0} x2={W - MR} y2={y0} stroke={TXT} />
+      <line x1={ML} y1={MT} x2={ML} y2={y0} stroke={TXT} />
+      <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={DARK}>{title}</text>
+      <rect x={ML} y={27} width={12} height={10} fill={C1} rx={2} />
+      <text x={ML + 18} y={36} fontSize={11} fill={TXT}>{name}</text>
+      {data.some((b) => b.blass) && <>
+        <rect x={ML + 190} y={27} width={12} height={10} fill={C1} opacity={0.45} rx={2} />
+        <text x={ML + 208} y={36} fontSize={11} fill={TXT}>gebucht, noch nicht gespielt</text>
+      </>}
+    </Frame>
+  );
+}
+
 // ---------------------------------------------------------------- Kombi (build_combo_svg)
 
 interface ComboProps { title: string; nameLine: string; namePos: string; nameNeg: string; data: Combo[] }

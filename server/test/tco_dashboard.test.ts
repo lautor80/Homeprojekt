@@ -356,3 +356,30 @@ test('Dashboard/Finanzen: nicht bezahlte Rechnungen in Saldo Konten und Liquidit
   assert.ok(l.rechnungen.summe >= 40, JSON.stringify(l));
   assert.equal(runden(l.liquiditaet), runden(l.geld + l.forderung + l.rechnungen.summe + l.kredit));
 });
+
+test('Dashboard/Halle: Einzelbuchungen als Balken je Tag, Woche, Monat und Jahr', async () => {
+  // eigenes Jahr 2011: zwei Einzel am 03.01., ein Abo zur Einzelabrechnung am 04.01., Abo und Storno zählen nicht; eine im Mai
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, status) values
+            ('E1', '2011-01-03', '18:00', '19:00', '1'), ('E2', '2011-01-03', '19:00', '20:30', '5'), ('E3', '2011-01-04', '18:00', '19:00', '3'),
+            ('E4', '2011-01-04', '19:00', '20:00', '3'), ('E5', '2011-01-05', '18:00', '19:00', '2'), ('E6', '2011-05-20', '10:00', '11:00', '1')`;
+  await sql`insert into tco.bookings_ch (bid, status_abw) values ('E3', '1')`;
+  type P = { key: string; label: string; anzahl: number; stunden: number; zukunft: boolean };
+  let r = await admin('GET', `${D}/halle-einzel?raster=TAG&jahr=2011`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.punkte.length, 365);
+  assert.deepEqual((r.body.punkte as P[]).filter((p) => p.anzahl).map((p) => [p.key, p.anzahl, p.stunden]), [['2011-01-03', 2, 2.5], ['2011-01-04', 1, 1], ['2011-05-20', 1, 1]]);
+  assert.deepEqual(r.body.summe, { anzahl: 4, stunden: 4.5, zukunft: 0 });
+  assert.equal(r.body.max.anzahl, 2);
+  assert.ok(r.body.jahre.includes(2011) && r.body.jahre.includes(J) && r.body.jahre[0] >= r.body.jahre[1], 'Jahre absteigend');
+  r = await admin('GET', `${D}/halle-einzel?raster=WOCHE&jahr=2011`);
+  assert.deepEqual((r.body.punkte as P[]).filter((p) => p.anzahl).map((p) => [p.label, p.anzahl]), [['KW 1', 3], ['KW 20', 1]]);
+  r = await admin('GET', `${D}/halle-einzel?raster=MONAT&jahr=2011`);
+  assert.deepEqual((r.body.punkte as P[]).map((p) => p.anzahl), [3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+  r = await admin('GET', `${D}/halle-einzel?raster=JAHR&jahr=2011`);
+  const j2011 = (r.body.punkte as P[]).find((p) => p.key === '2011');
+  assert.deepEqual([j2011?.anzahl, j2011?.stunden], [4, 4.5]);
+  assert.equal(r.body.punkte.length, r.body.jahre.length);
+  // unbekanntes Jahr: das laufende; ungültiges Raster: 400
+  assert.equal((await admin('GET', `${D}/halle-einzel?raster=TAG&jahr=2003`)).body.jahr, new Date().getFullYear());
+  assert.equal((await admin('GET', `${D}/halle-einzel?raster=XYZ`)).status, 400);
+});
