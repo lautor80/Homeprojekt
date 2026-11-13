@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
   Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
@@ -54,7 +55,7 @@ export function Verzehrbuch() {
   const warnen = (w?: string[]) => { if (w?.length) setError(w.join('\n')); };
 
   return (
-    <AppPage title="Verzehrbuch" subtitle="Clubhaus-Verzehr: Positionen, Belege, Monatsabschluss, Preisliste">
+    <AppPage varianten={{ repid: 'tco.verzehrbuch', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Verzehrbuch" subtitle="Clubhaus-Verzehr: Positionen, Belege, Monatsabschluss, Preisliste">
       <div className="portal-vz portal-vz--breit">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
         <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
@@ -115,6 +116,7 @@ function Buch({ admin, busy, neu, aktion, onPdf }: { admin: boolean; busy: boole
         <Button icon="navigation-left-arrow" design="Transparent" onClick={() => setMonat(monatVerschieben(monat, -1))} />
         <DatePicker formatPattern="MMMM yyyy" valueFormat="yyyyMM" value={monat} style={{ width: '11rem' }} onChange={(e) => e.detail.value && setMonat(e.detail.value)} />
         <Button icon="navigation-right-arrow" design="Transparent" onClick={() => setMonat(monatVerschieben(monat, 1))} />
+<Varianten repid="tco.verzehrbuch.buch" ansicht={{ monat, f }} onAnwenden={(a) => { setMonat(feld(a, 'monat', monat)); setF(feld(a, 'f', f)); }} />
         <AuswahlBox eintraege={(d?.mitglieder ?? []).map((m) => ({ key: m.adrnr, text: m.name }))} wert={f.adrnr} onWaehle={(k2) => setF({ ...f, adrnr: k2 ?? '' })} placeholder="Mitglied" style={{ width: '14rem' }} />
         <Select style={{ width: '11rem' }} onChange={(e) => setF({ ...f, art: (e.detail.selectedOption as HTMLElement).dataset.v ?? '' })}>
           <Option data-v="" selected={f.art === ''}>Mitglieder + Gäste</Option><Option data-v="MITGLIED" selected={f.art === 'MITGLIED'}>Mitglieder</Option><Option data-v="GAST" selected={f.art === 'GAST'}>Gäste</Option>

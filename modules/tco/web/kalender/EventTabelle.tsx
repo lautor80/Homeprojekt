@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
@@ -149,6 +150,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
         <Text><b>{zeilen.length}</b>{zeilen.length !== alleZeilen.length ? ` von ${alleZeilen.length}` : ''} Veranstaltung(en){gewaehlt.length ? ` · ${gewaehlt.length} ausgewählt` : ''}</Text>
         <Input icon={<Icon name="search" />} placeholder="Suchen (Titel, Ort, Gruppe, Begegnung …)" accessibleName="Tabelle durchsuchen" showClearIcon
                value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: 'min(22rem, 100%)' }} />
+<Varianten repid="tco.kalender.tabelle" ansicht={{ suche, vergangene }} onAnwenden={(a) => { setSuche(feld(a, 'suche', suche)); setVergangene(feld(a, 'vergangene', vergangene)); }} />
         <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />
         <span style={{ flex: 1 }} />
         <Button icon="activities" tooltip="Regeln „Text in Spalte => Gruppe“ pflegen" onClick={() => setRegeln(true)}>Regelwerk</Button>

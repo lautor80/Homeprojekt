@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { feld } from '../components/Varianten';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
   AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
@@ -170,7 +171,7 @@ export function UsersPage() {
   ];
 
   return (
-    <AppPage
+    <AppPage varianten={{ repid: 'core.users', ansicht: { filter, suche, art }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); setArt(feld(a, 'art', art)); } }}
       title="Benutzer"
       subtitle={users.data ? `${users.data.length} Benutzer` : undefined}
       actions={mayEdit && (<>

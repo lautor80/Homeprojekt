@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text,
 } from '@ui5/webcomponents-react';
@@ -91,7 +92,7 @@ export function Produkte() {
   const halle = !!modus && modus.art !== 'neu' && modus.z.bereich === 'HALLE';
 
   return (
-    <AppPage title="Produkte" subtitle="Produkte, Preise je Zeitraum und Erlöskonten"
+    <AppPage varianten={{ repid: 'tco.produkte', ansicht: { bereich, suche, nurAktuell }, onAnwenden: (a) => { setBereich(feld(a, 'bereich', bereich)); setSuche(feld(a, 'suche', suche)); setNurAktuell(feld(a, 'nurAktuell', nurAktuell)); } }} title="Produkte" subtitle="Produkte, Preise je Zeitraum und Erlöskonten"
              actions={<>
                {edit && <Button icon="batch-payments" design="Transparent" onClick={() => setMasse(true)}>Erlöskonto je Bereich</Button>}
                {can('tco.halle:preise') && <Button icon="lead" design="Transparent" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise (Zeitfenster)</Button>}

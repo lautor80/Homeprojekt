@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
   Bar, BusyIndicator, Button, CheckBox, DateTimePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
@@ -176,7 +177,7 @@ export function Kalender() {
   );
 
   return (
-    <AppPage title="Vereinskalender" subtitle="Veranstaltungen, Termine und Mannschaften – mit An- und Abmeldung">
+    <AppPage varianten={{ repid: 'tco.kalender', ansicht: { kompakt, ansicht, tab, vergangene, fGruppe, fArt, nurMeine, familie }, onAnwenden: (a) => { setKompakt(feld(a, 'kompakt', kompakt)); setAnsicht(feld(a, 'ansicht', ansicht)); setTab(feld(a, 'tab', tab)); setVergangene(feld(a, 'vergangene', vergangene)); setFGruppe(feld(a, 'fGruppe', fGruppe)); setFArt(feld(a, 'fArt', fArt)); setNurMeine(feld(a, 'nurMeine', nurMeine)); setFamilie(feld(a, 'familie', familie)); } }} title="Vereinskalender" subtitle="Veranstaltungen, Termine und Mannschaften – mit An- und Abmeldung">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {d && !d.mitglied && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Dein Benutzer ist keinem Mitglied zugeordnet – An- und Abmelden ist nur für Mitglieder möglich.</MessageStrip>}
       {einfach ? kalInhalt : (

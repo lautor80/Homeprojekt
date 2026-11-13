@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, Button, DateRangePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, Title,
@@ -269,7 +270,7 @@ export function FiBelege() {
   </>;
 
   return (
-    <AppPage title="FI-Belege" subtitle="Kontobewegungen, Belege aus Paperless, Bankimport und Storno" header={header} actions={actions}>
+    <AppPage varianten={{ repid: 'tco.fi', ansicht: { zr, von, bis, konto, tab }, onAnwenden: (a) => { setZr(feld(a, 'zr', zr)); setVon(feld(a, 'von', von)); setBis(feld(a, 'bis', bis)); setKonto(feld(a, 'konto', konto)); setTab(feld(a, 'tab', tab)); } }} title="FI-Belege" subtitle="Kontobewegungen, Belege aus Paperless, Bankimport und Storno" header={header} actions={actions}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}
       {warnungen.length > 0 && <MessageStrip design="Critical" onClose={schliessen} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{warnungen.join('\n')}</MessageStrip>}

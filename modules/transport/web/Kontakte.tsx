@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, Button, FlexBox, Icon, Input, Link, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, Title,
@@ -61,7 +62,7 @@ export function Kontakte() {
   };
 
   return (
-    <AppPage title="Kontakte" subtitle={liste ? `${liste.anzahl.ALLE} Kontakte · ${liste.anzahl.KUNDEN} Kunden · ${liste.anzahl.UNTERNEHMER} Unternehmer` : ''}
+    <AppPage varianten={{ repid: 'transport.kontakte', ansicht: { filter, suche }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); } }} title="Kontakte" subtitle={liste ? `${liste.anzahl.ALLE} Kontakte · ${liste.anzahl.KUNDEN} Kunden · ${liste.anzahl.UNTERNEHMER} Unternehmer` : ''}
              actions={edit ? <Button icon="add-contact" design="Emphasized" onClick={() => setNeu(true)}>Neuer Kontakt</Button> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <MasterDetail

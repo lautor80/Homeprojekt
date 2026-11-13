@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { feld } from '@core/components/Varianten';
 import { BusyIndicator, Button, CheckBox, Icon, Input, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { useAblageZiel } from '@core/ablage';
@@ -226,7 +227,7 @@ export function Spielerdaten() {
   );
 
   return (
-    <AppPage title="Spielerdaten (nuLiga)" subtitle="ID-Nr. und Leistungsklasse (LK) der Mitglieder mit der Verbandsliste abgleichen">
+    <AppPage varianten={{ repid: 'tco.spielerdaten', ansicht: { suche, tab }, onAnwenden: (a) => { setSuche(feld(a, 'suche', suche)); setTab(feld(a, 'tab', tab)); } }} title="Spielerdaten (nuLiga)" subtitle="ID-Nr. und Leistungsklasse (LK) der Mitglieder mit der Verbandsliste abgleichen">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
 
       {!stand ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (

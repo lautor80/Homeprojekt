@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { feld } from '../components/Varianten';
 import { Button, MessageStrip, SegmentedButton, SegmentedButtonItem, Text } from '@ui5/webcomponents-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
@@ -20,7 +21,7 @@ export function RollenmatrixPage() {
   const catalog = useLoad(() => api.get<PermGroup[]>('/api/admin/permissions'));
   const [ansicht, setAnsicht] = useState<MatrixAnsicht>('MATRIX');
   return (
-    <AppPage title="Rollenmatrix" subtitle="Rechte aller Rollen nebeneinander pflegen, prüfen und für Benutzer verproben"
+    <AppPage varianten={{ repid: 'core.rollenmatrix', ansicht: { ansicht }, onAnwenden: (a) => { setAnsicht(feld(a, 'ansicht', ansicht)); } }} title="Rollenmatrix" subtitle="Rechte aller Rollen nebeneinander pflegen, prüfen und für Benutzer verproben"
              actions={<Button icon="role" onClick={() => navigate('/admin/rollen')}>Rollen (Liste)</Button>}>
       {(roles.error || catalog.error) && <MessageStrip design="Negative">{roles.error ?? catalog.error}</MessageStrip>}
       <SegmentedButton style={{ marginBottom: '0.5rem' }} onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.a as MatrixAnsicht)}>

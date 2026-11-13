@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
@@ -62,7 +63,7 @@ export function Mitgliedsantraege() {
   }
 
   return (
-    <AppPage title="Mitgliedsanträge" subtitle="Online eingegangene Anträge (Formular /beitritt)"
+    <AppPage varianten={{ repid: 'tco.antraege', ansicht: { alle }, onAnwenden: (a) => { setAlle(feld(a, 'alle', alle)); } }} title="Mitgliedsanträge" subtitle="Online eingegangene Anträge (Formular /beitritt)"
              actions={<>
                {edit && <Button design="Emphasized" icon="email" onClick={() => setAngebotNeu(true)}>Vertragsangebot erstellen</Button>}
                <Button design="Transparent" icon="action" onClick={() => window.open('/beitritt', '_blank')}>Antragsformular öffnen</Button>

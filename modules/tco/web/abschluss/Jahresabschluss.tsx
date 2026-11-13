@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text,
@@ -192,7 +193,7 @@ export function Jahresabschluss() {
   };
 
   return (
-    <AppPage title={`Jahresabschluss ${jahr}`} subtitle="Jahresabschluss: Tätigkeitsbereiche, Überschussrechnung mit Vorjahren, Bankbestände und Anlagevermögen" header={header}
+    <AppPage varianten={{ repid: 'tco.abschluss', ansicht: { jahr, baum }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setBaum(feld(a, 'baum', baum)); } }} title={`Jahresabschluss ${jahr}`} subtitle="Jahresabschluss: Tätigkeitsbereiche, Überschussrechnung mit Vorjahren, Bankbestände und Anlagevermögen" header={header}
              actions={<>
                <Button icon="pdf-attachment" design="Emphasized" disabled={!d} onClick={() => setAuswahl({ ear: true, steuer: false, anlagen: false })}>PDF erzeugen</Button>
                <Button icon="refresh" design="Transparent" tooltip="Neu berechnen" onClick={() => { setD(null); laden(); }} />

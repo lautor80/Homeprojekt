@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, Button, FlexBox, Label, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Panel, SegmentedButton,
   SegmentedButtonItem, Select, Tab, TabContainer, Text, Title, Toolbar, ToolbarSpacer,
@@ -44,7 +45,7 @@ export function Clubhaus() {
 
   const offen = d?.rechnungen.filter((r) => !r.belege.length).length ?? 0;
   return (
-    <AppPage title={`Clubhausabrechnung ${jahr}`} subtitle={d ? `Getränkerechnungen, Forderungsliste gegenüber ${d.cfg.wirt} und Getränkeabsatz` : ''}
+    <AppPage varianten={{ repid: 'tco.clubhaus', ansicht: { jahr, tab }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setTab(feld(a, 'tab', tab)); } }} title={`Clubhausabrechnung ${jahr}`} subtitle={d ? `Getränkerechnungen, Forderungsliste gegenüber ${d.cfg.wirt} und Getränkeabsatz` : ''}
              actions={<>
                <Label>Jahr</Label>
                <Select style={{ width: '7rem' }} onChange={(e) => setJahr(Number((e.detail.selectedOption as HTMLElement).dataset.j))}>
