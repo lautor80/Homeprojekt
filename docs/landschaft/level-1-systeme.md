@@ -177,7 +177,7 @@ flowchart LR
 | core:varianten | 3 |
 | core:verbindungen | 3 |
 | core:weltenwandler | 2 |
-| dashboard | 8 |
+| dashboard | 9 |
 | eingang | 27 |
 | fi | 23 |
 | finanz | 3 |

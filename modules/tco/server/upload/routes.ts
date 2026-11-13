@@ -29,7 +29,7 @@ export async function uploadRoutes(app: FastifyInstance) {
     const bytes = Buffer.byteLength(b.inhalt.replace(/^data:[^,]*,/, ''), 'base64');
     // Uploads mit Folgeaktion merken – „Überweisung an Einreicher“ erscheint beim Kassenwart im Arbeitsvorrat
     if (r.state !== 'Negative' && b.meta.folgeaktion) {
-      await change(req, (tx) => uploadMerken(tx, { dok_id: r.id, titel: b.meta.titel, datei: b.datei, folgeaktion: b.meta.folgeaktion, einreicher: benutzer(req) }), { action: 'UPLOAD', reason: b.meta.folgeaktion });
+      await change(req, (tx) => uploadMerken(tx, { dok_id: r.id, titel: b.meta.titel, datei: b.datei, folgeaktion: b.meta.folgeaktion, einreicher: benutzer(req), benutzer_id: req.user?.id || null }), { action: 'UPLOAD', reason: b.meta.folgeaktion });
     }
     return { ...r, datei: b.datei, groesse: groesseText(bytes), bereich: zielBereich(b.datei) };
   });

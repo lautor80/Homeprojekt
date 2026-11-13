@@ -158,9 +158,9 @@ async function folgeaktionSetzen(pl: ReturnType<typeof paperless>, id: number, w
 export const istUeberweisungEinreicher = (folgeaktion: string) => /überweisung\s+an\s+einreicher/i.test(folgeaktion);
 
 /** Upload mit Folgeaktion merken (für den Arbeitsvorrat) – das Dokument liegt in Paperless */
-export async function uploadMerken(tx: Db, e: { dok_id: number | null; titel: string; datei: string; folgeaktion: string; einreicher: string }): Promise<void> {
+export async function uploadMerken(tx: Db, e: { dok_id: number | null; titel: string; datei: string; folgeaktion: string; einreicher: string; benutzer_id?: string | null }): Promise<void> {
   if (!e.folgeaktion.trim()) return;
-  await tx`insert into tco.upload_folge (dok_id, titel, datei, folgeaktion, einreicher) values (${e.dok_id}, ${e.titel.trim() || e.datei}, ${e.datei}, ${e.folgeaktion.trim()}, ${e.einreicher})`;
+  await tx`insert into tco.upload_folge (dok_id, titel, datei, folgeaktion, einreicher, benutzer_id) values (${e.dok_id}, ${e.titel.trim() || e.datei}, ${e.datei}, ${e.folgeaktion.trim()}, ${e.einreicher}, ${e.benutzer_id || null})`;
 }
 
 export async function uploadErledigen(tx: Db, id: number | null, wer: string): Promise<string> {

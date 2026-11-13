@@ -5,7 +5,8 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { change, requireAuth } from '../../../../server/src/auth.js';
+import { can, change, requireAuth } from '../../../../server/src/auth.js';
+import { P_BANK } from '../bankdaten.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB } from '../verein.js';
 import { addTage, dat, heute, runden } from '../format.js';
@@ -127,6 +128,21 @@ export async function dashboardRoutes(app: FastifyInstance) {
       await tx`insert into tco.halle_geklaert (bid, datum, von) values (${b.bid}, ${b.datum}, ${req.user!.displayName}) on conflict do nothing`;
     }, { action: 'HALLE_GEKLAERT', reason: `${b.datum}` });
     return { text: 'Klärung bestätigt.' };
+  });
+  /**
+   * Kassenwart: Zahlungsdaten zu einem Upload „Überweisung an Einreicher“ – Empfänger und Bankverbindung des Einreichers aus dem
+   * Mitgliederstamm, QR-Code für die Banking-App (EPC/GiroCode). Betrag und Verwendungszweck kommen aus dem Popup.
+   */
+  app.get('/dashboard/arbeitsvorrat/upload-zahlung/:id', { preHandler: requireAuth('tco.fi:buchen') }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const q = z.object({
+      betrag: z.string().trim().max(20).optional().transform((s) => (s ? Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s) : null))
+        .refine((n) => n === null || (Number.isFinite(n) && n >= 0.01 && n <= 999_999_999.99), 'Bitte einen gültigen Betrag angeben.'),
+      zweck: z.string().trim().max(140).optional(),
+    }).parse(req.query);
+    if (!can(req, P_BANK.display)) throw new BusinessError('Für die Zahlungsdaten ist die Berechtigung „Bankdaten anzeigen“ nötig (tco.bankdaten:display).', 403);
+    const { zahlungLesen } = await import('../upload/zahlung.js');
+    return zahlungLesen(DB, id, q.betrag === null ? null : Math.round(q.betrag * 100) / 100, q.zweck || null);
   });
   /** registrierte Benutzer über die Zeit (#30): TAG (30 Tage), WOCHE (26), MONAT (24), JAHR, GESAMT */
   app.get('/dashboard/benutzer', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
