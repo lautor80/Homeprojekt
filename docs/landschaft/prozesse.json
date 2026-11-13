@@ -173,6 +173,22 @@
       ]
     },
     {
+      "id": "P10",
+      "ebene": 2,
+      "name": "Hallenschlüssel ausgeben und zurücknehmen",
+      "bereich": "Tennishalle",
+      "ausloeser": "Mitglied oder Kunde braucht einen Hallenschlüssel",
+      "ergebnis": "Schlüssel dokumentiert, quittiert, Pfand berechnet bzw. gutgeschrieben, Belege in Paperless",
+      "schritte": [
+        { "text": "Ausgabe erfassen: Person, ausgegeben von, Pfand als Rechnungsposition", "akteur": "HW", "system": "portal", "route": "POST /schluessel/ausgabe", "recht": "tco.schluessel:edit", "app": "/tco/hallenschluessel" },
+        { "text": "Beleg in Paperless ablegen, Quittungslink per E-Mail senden", "akteur": "SYS", "system": "paperless", "route": "POST /schluessel/ausgabe", "recht": "tco.schluessel:edit" },
+        { "text": "Erhalt online quittieren (Link oder Meine Mitgliedschaft)", "akteur": "MG", "system": "portal", "route": "POST /schluessel/quittung" },
+        { "text": "Rückgabe erfassen: Zustand, empfangen von, Gutschrift mit negativem Betrag", "akteur": "HW", "system": "portal", "route": "POST /schluessel/rueckgabe", "recht": "tco.schluessel:edit", "app": "/tco/hallenschluessel" },
+        { "text": "Empfang bestätigen, Rückgabebeleg in Paperless", "akteur": "HW", "system": "paperless", "route": "POST /schluessel/:id/empfang", "recht": "tco.schluessel:edit" },
+        { "text": "Altdaten einfügen und auf das Kassenkonto buchen", "akteur": "VS", "system": "portal", "route": "POST /schluessel/altdaten", "recht": "tco.schluessel:admin", "app": "/tco/hallenschluessel" }
+      ]
+    },
+    {
       "id": "D1",
       "ebene": 3,
       "teil_von": "P1",

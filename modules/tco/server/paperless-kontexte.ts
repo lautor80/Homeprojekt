@@ -99,6 +99,34 @@ export const K = {
       tags: 'Instandhaltung', datum: '{heute}', notiz: '{anlass}: {status} ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' },
     },
   },
+  schluesselAusgabe: {
+    id: 'schluessel.ausgabe', text: 'Schlüsselausgabe (Hallenschlüssel)',
+    beschreibung: 'Beleg zur Ausgabe eines Hallenschlüssels mit der Online-Quittung des Empfängers; nach der Quittung wird derselbe Beleg als neue Version abgelegt.',
+    platzhalter: [{ name: 'nummer', text: 'Vorgangsnummer', beispiel: 'SV-2026-0007' }, { name: 'person', text: 'Person „Nachname Vorname“ (Korrespondent)', beispiel: 'Muster Max' },
+      { name: 'name', text: 'Person „Vorname Nachname“', beispiel: 'Max Muster' }, { name: 'adrnr', text: 'Adressnummer', beispiel: '0000000042' },
+      { name: 'datum', text: 'Datum der Übergabe', beispiel: '2026-11-13' }, { name: 'pfand', text: 'Pfand (leer, wenn keines)', beispiel: 25 },
+      { name: 'tco', text: 'ausgegeben bzw. empfangen von (TCO)', beispiel: 'Ben Hartyniuk' }, { name: 'status', text: 'Status beim Ablegen', beispiel: 'Quittiert' },
+      { name: 'rgnr', text: 'Hallenrechnung', beispiel: '2026_123' }, { name: 'schluessel_nr', text: 'Schlüsselnummer (optional)', beispiel: '' },
+      PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: {
+      titel: 'Hallenschlüssel Ausgabe {nummer} {name}', korrespondent: '{person}', dokumenttyp: 'Hallenschlüssel', speicherpfad: 'Tennishalle',
+      tags: 'Hallenschlüssel', datum: '{datum}', notiz: 'Ausgabe durch {tco}: {status} ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' },
+    },
+  },
+  schluesselRueckgabe: {
+    id: 'schluessel.rueckgabe', text: 'Schlüsselrückgabe (Hallenschlüssel)',
+    beschreibung: 'Beleg zur Rückgabe eines Hallenschlüssels mit der Empfangsbestätigung des TCO.',
+    platzhalter: [{ name: 'nummer', text: 'Vorgangsnummer', beispiel: 'SV-2026-0007' }, { name: 'person', text: 'Person „Nachname Vorname“ (Korrespondent)', beispiel: 'Muster Max' },
+      { name: 'name', text: 'Person „Vorname Nachname“', beispiel: 'Max Muster' }, { name: 'adrnr', text: 'Adressnummer', beispiel: '0000000042' },
+      { name: 'datum', text: 'Datum der Übergabe', beispiel: '2026-11-13' }, { name: 'pfand', text: 'Pfand (leer, wenn keines)', beispiel: 25 },
+      { name: 'tco', text: 'ausgegeben bzw. empfangen von (TCO)', beispiel: 'Ben Hartyniuk' }, { name: 'status', text: 'Status beim Ablegen', beispiel: 'Quittiert' },
+      { name: 'rgnr', text: 'Hallenrechnung', beispiel: '2026_123' }, { name: 'schluessel_nr', text: 'Schlüsselnummer (optional)', beispiel: '' },
+      PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: {
+      titel: 'Hallenschlüssel Rückgabe {nummer} {name}', korrespondent: '{person}', dokumenttyp: 'Hallenschlüssel', speicherpfad: 'Tennishalle',
+      tags: 'Hallenschlüssel', datum: '{datum}', notiz: 'Rückgabe an {tco}: {status} ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' },
+    },
+  },
 } satisfies Record<string, KontextDef>;
 
 export const TCO_KONTEXTE: KontextDef[] = Object.values(K);

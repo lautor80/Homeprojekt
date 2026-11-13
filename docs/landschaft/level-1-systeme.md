@@ -8,7 +8,7 @@ flowchart LR
   subgraph CLIENT["Endnutzer · Client-Zugang"]
     BROWSER["Browser"]
     PHONE["Smartphone"]
-    OEFF["Öffentliche Seiten<br/>/beitritt · /schnuppertraining · /registrierung-bestaetigen · /einladung"]
+    OEFF["Öffentliche Seiten<br/>/beitritt · /schnuppertraining · /registrierung-bestaetigen · /einladung · /schluessel-quittung"]
   end
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
@@ -17,7 +17,7 @@ flowchart LR
       B_Mitglieder["<b>Mitglieder</b><br/>Meine Mitgliedschaft<br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining<br/>Meine Trainingszeiten"]
-      B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Platz buchen<br/>Meine Daten<br/>Serienbuchung<br/>Platzverwaltung"]
+      B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Platz buchen<br/>Meine Daten<br/>Serienbuchung<br/>Platzverwaltung"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Mein Verzehr<br/>Theke<br/>Verzehrbuch"]
       B_Instandhaltung["<b>Instandhaltung</b><br/>Schaden melden<br/>Instandhaltung"]
       B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Dokumenten-Upload"]
@@ -91,6 +91,7 @@ flowchart LR
 | Jugend | Meine Trainingszeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit` | Eigene Zeiten zurückmelden, Zeitnachweise ansehen |
 | Tennishalle | Hallenpreise | `/tco/hallenpreise` | `tco.halle:display` | Produkte und Preismatrix |
 | Tennishalle | Hallenabrechnung | `/tco/halle` | `tco.halle:display` | EP3-Buchungen abrechnen |
+| Tennishalle | Hallenschlüssel | `/tco/hallenschluessel` | `tco.schluessel:display` |  |
 | Tennishalle | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
 | Tennishalle | Meine Daten | `/tco/meine-daten` | `tco.meinkonto:edit` | Anschrift, E-Mail und Telefon pflegen |
 | Tennishalle | Serienbuchung | `/tco/serienbuchung` | `tco.platz:serie` | Hallenwart: mehrere Plätze, Stunden, Abos |
@@ -109,7 +110,7 @@ flowchart LR
 | Finanzen | Dokumenten-Upload | `/tco/upload` | `tco.upload:execute` | Belege gesammelt nach Paperless |
 | Dokumente | Dokumenteneingang | `/tco/dokumenteneingang` | `tco.eingang:display` | E-Mails und Anhänge nach Regeln ablegen, Prüfliste |
 
-**Öffentliche Seiten (ohne Anmeldung):** `/beitritt`, `/schnuppertraining`, `/registrierung-bestaetigen`, `/einladung`
+**Öffentliche Seiten (ohne Anmeldung):** `/beitritt`, `/schnuppertraining`, `/registrierung-bestaetigen`, `/einladung`, `/schluessel-quittung`
 
 ## Schnittstellen (n8n-Workflows)
 
@@ -191,6 +192,7 @@ flowchart LR
 | platz | 67 |
 | praesentation | 11 |
 | produkte | 6 |
+| schluessel | 20 |
 | schnupper | 6 |
 | soll | 10 |
 | sport | 4 |

@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db, Verein } from '../verein.js';
 import { condense, dat, heute, nameSchoen, runden, wochentag, WOCHENTAG_TEXT, zeit } from '../format.js';
 import { adrnrAusZuid, kanalLesen, kontaktLesen, type Kontakt } from '../kommunikation.js';
+import { protokoll, vorgangAnlegen } from '../schluessel/vorgang.js';
 import {
   KEY_ABO, KEY_EINZEL, KEY_SCHLUESSEL_AUSGABE, KEY_SCHLUESSEL_RUECKNAHME, KEY_SONSTIGES,
   preisBerechnen, preiseLesen, type Preise,
@@ -533,7 +534,7 @@ export async function positionenNummerieren(tx: Db, rgnr: string): Promise<numbe
 export const istGutschrift = (text: string | null | undefined) => /gutschrift/i.test(text ?? '');
 
 export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: string; beschreibung?: string | null; menge: number; preis?: number | null; erloeskonto?: string | null },
-  o: { preisVorgabe?: boolean } = {}) {
+  o: { preisVorgabe?: boolean; /** Aufruf aus der App Hallenschlüssel: Bestand und Vorgang schreibt die App selbst */ ohneSchluessel?: boolean } = {}) {
   const k = await kopfLesen(tx, rgnr);
   if (!rgAenderbar(k)) throw new BusinessError('Versendete oder bezahlte Rechnungen nehmen keine Positionen mehr auf');
   if (!d.prod_key) throw new BusinessError('Bitte ein Produkt auswählen');
@@ -566,8 +567,8 @@ export async function manuellePosition(tx: Db, rgnr: string, d: { prod_key: stri
            values (${rgnr}, ${pos}, ${heute()}, ${String(d.menge)}, ${d.prod_key}, ${preis}, ${text}, ${konto})`;
   const betrag = await betragNeu(tx, rgnr);
   const hinweise: string[] = [];
-  if ((d.prod_key === KEY_SCHLUESSEL_AUSGABE || d.prod_key === KEY_SCHLUESSEL_RUECKNAHME || pr.typ === '3') && k.adrnr) {
-    hinweise.push(await schluesselFortschreiben(tx, k.adrnr, d.prod_key, rgnr));
+  if (!o.ohneSchluessel && (d.prod_key === KEY_SCHLUESSEL_AUSGABE || d.prod_key === KEY_SCHLUESSEL_RUECKNAHME || pr.typ === '3') && k.adrnr) {
+    hinweise.push(await schluesselFortschreiben(tx, k.adrnr, d.prod_key, rgnr, { kunde: k.kunde, rgpos: pos, pfand: Math.abs(preis) }));
   }
   return { rgpos: pos, betrag: runden(preis * d.menge), summe: betrag, hinweise: hinweise.filter(Boolean) };
 }
@@ -639,12 +640,21 @@ export async function positionAendern(tx: Db, rgnr: string, rgpos: number,
   return { kopf: k, alt, text, felder, details, geaendert: felder.length > 0, betrag: runden(preis * mengeNeu) };
 }
 
-async function schluesselFortschreiben(tx: Db, adrnr: string, key: string, rgnr: string): Promise<string> {
+/**
+ * Schlüsselposition direkt in der Hallenabrechnung erfasst: Bestand fortschreiben und einen Vorgang der App „Hallenschlüssel“
+ * anlegen (#215) – die Ausgabe wartet dort auf die Quittung des Kunden, die Rückgabe auf die Empfangsbestätigung des TCO.
+ */
+async function schluesselFortschreiben(tx: Db, adrnr: string, key: string, rgnr: string, p: { kunde: string; rgpos: number; pfand: number }): Promise<string> {
+  const vorgang = (art: 'AUSGABE' | 'RUECKGABE', datum: string) => vorgangAnlegen(tx, {
+    art, adrnr, person: nameSchoen(p.kunde) || p.kunde, datum, pfand: p.pfand, rgnr, rgpos: p.rgpos, quelle: 'RECHNUNG', mitToken: art === 'AUSGABE',
+    angelegt_von: 'Hallenabrechnung',
+  }).then((v) => protokoll(tx, v.id, { id: null, name: 'Hallenabrechnung' }, 'ANGELEGT', `${art === 'AUSGABE' ? 'Ausgabe' : 'Rückgabe'} über Rechnung ${rgnr} erfasst`));
   const [{ datum }] = await tx`select angelegt_am::text as datum from tco.rgkopf where rgnr_txt = ${rgnr}`;
   const [s] = await tx`select counter, ausgabe::text, ruecknahme::text from tco.schluessel where adrnr = ${adrnr}`;
   if (key === KEY_SCHLUESSEL_RUECKNAHME) {
     if (!s?.ausgabe || s.ruecknahme) return 'Zu dieser Person ist kein ausgegebener Schlüssel erfasst';
     await tx`update tco.schluessel set ruecknahme = ${datum} where adrnr = ${adrnr}`;
+    await vorgang('RUECKGABE', datum);
     return `Schlüsselrückgabe zum ${dat(datum)} dokumentiert`;
   }
   if (s?.ausgabe && !s.ruecknahme) return `Achtung: seit ${dat(s.ausgabe)} ist bereits ein Schlüssel ausgegeben, die Schlüsselliste wurde nicht geändert`;
@@ -652,6 +662,7 @@ async function schluesselFortschreiben(tx: Db, adrnr: string, key: string, rgnr:
   await tx`insert into tco.schluessel (adrnr, counter, ausgabe, ruecknahme) values (${adrnr}, ${counter}, ${datum}, null)
            on conflict (adrnr) do update set counter = excluded.counter, ausgabe = excluded.ausgabe, ruecknahme = null,
                                              ausgabebeleg = null, ruecknahmebeleg = null`;
+  await vorgang('AUSGABE', datum);
   return `Schlüsselausgabe zum ${dat(datum)} dokumentiert`;
 }
 
