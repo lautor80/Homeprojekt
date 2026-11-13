@@ -366,7 +366,7 @@ test('Prüfliste: Testlauf-Vorschlag, Ablage mit Regel und von Hand, ignorieren,
   r = await admin('POST', `${E}/dokumente/${b}/ignorieren`);
   assert.equal(r.body.status, 'abgelegt');
   const [s6] = await sql`select status, text, mail_aktion from tco.eing_vorgaenge where id = ${v6}`;
-  assert.deepEqual({ ...s6 }, { status: 'abgelegt', text: null, mail_aktion: null });
+  assert.deepEqual({ ...s6 }, { status: 'abgelegt', text: 'Guten Tag, anbei das Dokument.', mail_aktion: null }, 'der Mailtext bleibt nach dem Abschluss');
 
   // Paperless-Fehler: Vorgang „fehler“, Inhalt bleibt; neue Regel + neu bewerten legt ab
   r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'buero@partner.example', betreff: 'Nachtrag', message_id: '<m7@p>', uid: 17, anhaenge: [{ name: 'kaputt.pdf', mime: 'application/pdf', inhalt: b64('%PDF Nachtrag') }] }));
