@@ -11,7 +11,7 @@ import { kandidaten } from '../halle/sammel.js';
 import { belegeZuordnen } from '../fi/buchen.js';
 import { ADRNR_ZU_BENUTZER } from '../platz/schluessel.js';
 import { variantenLesen, varianteLoeschen, varianteSichern, varianteStandard, type Ansicht } from '../instandhaltung/varianten.js';
-import { abgleichAnlegen, abgleichKontenSichern, abgleichLesen, abgleichLoesen, abgleichVerknuepfen } from './abgleich.js';
+import { abgleichAnlegen, abgleichKontenSichern, abgleichLesen, abgleichLoesen, abgleichVerknuepfen, nachbuchen, nachbuchenLesen } from './abgleich.js';
 import { belegAblegen, belegPdf, type BelegDaten } from './beleg.js';
 import {
   P_SCHL, altdatenPruefen, altdatenUebernehmen, ausgabe, bestandAbleiten, cfgLesen, cfgSichern, detailLesen, empfangBestaetigen, linkErneuern, listeLesen,
@@ -289,6 +289,18 @@ export async function schluesselRoutes(app: FastifyInstance) {
   app.post('/schluessel/abgleich/loesen', admin, async (req) => {
     const b = z.object({ vorgang_id: z.number().int().positive() }).parse(req.body);
     return { text: await change(req, (tx) => abgleichLoesen(tx, b.vorgang_id, ich(req)), { action: 'SCHLUESSEL_ABGLEICH' }) };
+  });
+
+  // ------------------------------------------------------------------ historische Ausgaben (ohne Rechnung) nachbuchen
+  /** Vorschau: Ausgaben ohne Hallenrechnung mit Stand der FI-Buchung; `konto` = Geldkonto der Buchung (Vorgabe 1200) */
+  app.get('/schluessel/nachbuchen/daten', admin, async (req) => nachbuchenLesen(DB, z.object({ konto: txt(10).default('1200') }).parse(req.query).konto || '1200'));
+  /** „ausgegeben von“ überschreiben, Wert setzen, je Ausgabe ohne Buchung eine FI-Buchung erzeugen und zuordnen */
+  app.post('/schluessel/nachbuchen', admin, async (req) => {
+    const b = z.object({
+      ids: z.array(z.number().int().positive()).min(1, 'Bitte mindestens eine Ausgabe wählen.').max(2000),
+      ausgegeben_von: txt(80).min(1, 'Bitte angeben, wer die Schlüssel ausgegeben hat.'), wert: z.number().positive().max(10_000), konto: txt(10).min(1),
+    }).parse(req.body);
+    return change(req, (tx) => nachbuchen(tx, b, ich(req)), { action: 'SCHLUESSEL_NACHBUCHEN' });
   });
 
   // ------------------------------------------------------------------ Einstellungen

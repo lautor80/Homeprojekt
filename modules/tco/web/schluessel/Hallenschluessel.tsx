@@ -64,7 +64,7 @@ export function Hallenschluessel() {
   const [error, setError] = useState<string | null>(null);
   const [hinweise, setHinweise] = useState<string[]>([]);
   const [offen, setOffen] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('id')) || null);
-  const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'abgleich' | 'cfg' | 'variante'>(null);
+  const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'abgleich' | 'nachbuchen' | 'cfg' | 'variante'>(null);
   const [rueck, setRueck] = useState<Zeile | null>(null);
   const laden = () => api.get<Daten>(S).then(setDaten).catch((e) => setError((e as Error).message));
   useEffect(() => {
@@ -136,6 +136,7 @@ export function Hallenschluessel() {
           {daten.darf.edit && <Button design="Emphasized" icon="add" onClick={() => setDlg('ausgabe')}>Schlüssel ausgeben</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="paste" onClick={() => setDlg('altdaten')}>Altdaten einfügen</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="compare" onClick={() => setDlg('abgleich')}>FI-Abgleich</Button>}
+          {daten.darf.admin && <Button design="Transparent" icon="lead" tooltip="Historische Ausgaben ohne Rechnung: Ausgeber und Wert setzen, FI-Buchungen erzeugen" onClick={() => setDlg('nachbuchen')}>Altfälle buchen</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="action-settings" tooltip="Einstellungen" onClick={() => setDlg('cfg')} />}
           <Button design="Transparent" icon="refresh" tooltip="Neu laden" onClick={laden} />
         </div>
@@ -186,6 +187,7 @@ export function Hallenschluessel() {
       {rueck && <RueckgabeDialog z={rueck} daten={daten} onClose={fertig} />}
       {dlg === 'altdaten' && <AltdatenDialog onClose={fertig} />}
       {dlg === 'abgleich' && <AbgleichDialog onClose={() => { setDlg(null); laden(); }} />}
+      {dlg === 'nachbuchen' && <NachbuchenDialog onClose={fertig} />}
       {dlg === 'cfg' && <EinstellungenDialog onClose={fertig} />}
       {dlg === 'variante' && (
         <VarianteDialog ansicht={a} vorschlag={variante} admin={daten.darf.admin} onClose={(v) => {
@@ -253,6 +255,8 @@ function AusgabeDialog({ daten, onClose }: { daten: Daten; onClose: Fertig }) {
         <Input value={f.schluessel_nr} maxlength={30} placeholder="Schlüssel sind nicht nummeriert – nur falls vorhanden" onInput={(e) => setF({ ...f, schluessel_nr: e.target.value })} />
         <Label showColon>Bemerkung</Label>
         <TextArea rows={2} maxlength={500} value={f.bemerkung} onInput={(e) => setF({ ...f, bemerkung: e.target.value })} />
+        <Label showColon>Wert des Schlüssels (Pfand)</Label>
+        <Text style={{ fontWeight: 'bold', fontSize: '1.125rem' }}>{eur(daten.pfand.ausgabe)}</Text>
         <CheckBox wrappingType="Normal" text={`Pfand ${eur(daten.pfand.ausgabe)} als Position in die Hallenrechnung der Person`} checked={f.mit_rechnung} onChange={(e) => setF({ ...f, mit_rechnung: e.target.checked })} />
         <Text className="portal-muted portal-small">Nach dem Erfassen bekommt die Person per E-Mail einen Link, um den Erhalt online zu quittieren. Der Beleg wird in Paperless abgelegt.</Text>
       </div>
@@ -667,6 +671,80 @@ function AbgleichDialog({ onClose }: { onClose: () => void }) {
             {a.ohneBuchung.length > 0 && (
               <Text className="portal-muted portal-small">Vorgänge mit Pfand ohne FI-Buchung und ohne Hallenrechnung: {a.ohneBuchung.map((v) => `${v.nummer} ${v.person} (${v.art_txt} ${dat(v.datum)})`).join(' · ')}</Text>
             )}
+          </>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Historische Ausgaben ohne Hallenrechnung fortschreiben: „ausgegeben von“ überschreiben, Wert setzen und je Ausgabe ohne
+ * FI-Buchung eine Buchung auf dem Geldkonto gegen das Konto der Schlüsselausgabe erzeugen und zuordnen. Erst Vorschau, dann ausführen.
+ */
+function NachbuchenDialog({ onClose }: { onClose: Fertig }) {
+  interface NZeile { id: number; nummer: string; person: string; datum: string; tco_name: string; pfand: number | null; internenr: string | null; offen: boolean; gegenkonto: string }
+  interface N { konto: string; konto_name: string | null; konto_fehlt: boolean; zeilen: NZeile[]; mit_rechnung: number }
+  const [d, setD] = useState<N | null>(null);
+  const [f, setF] = useState({ ausgegeben_von: 'Benjamin Hartyniuk', wert: '20,00', konto: '1200' });
+  const [ab, setAb] = useState<Set<number>>(new Set());
+  const [bestaetigt, setBestaetigt] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => api.get<N>(`${S}/nachbuchen/daten?konto=${encodeURIComponent(f.konto.trim() || '1200')}`).then(setD).catch((e) => setError((e as Error).message)), d ? 400 : 0);
+    return () => clearTimeout(t);
+  }, [f.konto]); // eslint-disable-line react-hooks/exhaustive-deps
+  const wert = Number(f.wert.replace(/\./g, '').replace(',', '.'));
+  const gewaehlt = (d?.zeilen ?? []).filter((z) => !ab.has(z.id));
+  const neu = gewaehlt.filter((z) => z.offen);
+  async function ausfuehren() {
+    setBusy(true); setError(null);
+    try { onClose(await api.post<{ text: string }>(`${S}/nachbuchen`, { ids: gewaehlt.map((z) => z.id), ausgegeben_von: f.ausgegeben_von, wert, konto: f.konto.trim() })); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  const ok = !!d && !d.konto_fehlt && gewaehlt.length > 0 && wert > 0 && !!f.ausgegeben_von.trim() && bestaetigt;
+  return (
+    <Dialog open headerText="Historische Ausgaben buchen" style={{ width: 'min(70rem, 98vw)' }} onClose={() => onClose()}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="accept" loading={busy} disabled={!ok} onClick={ausfuehren}>{gewaehlt.length} Ausgabe(n) fortschreiben · {neu.length} FI-Buchung(en) erzeugen</Button>
+              <Button onClick={() => onClose()}>Abbrechen</Button>
+            </>} />}>
+      <div className="portal-bk__form">
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)}><span style={{ whiteSpace: 'pre-line' }}>{error}</span></MessageStrip>}
+        <Text className="portal-muted portal-small">
+          Für Ausgaben ohne Hallenrechnung (Altfälle): „ausgegeben von“ wird überschrieben, der Wert gesetzt und je Ausgabe ohne FI-Buchung eine Buchung
+          zum Ausgabedatum auf dem Konto unten gegen das Konto der Schlüsselausgabe erzeugt und zugeordnet. Bereits gebuchte Ausgaben werden nicht erneut gebucht.
+        </Text>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'end', flexWrap: 'wrap' }}>
+          <div><Label showColon>Ausgegeben von</Label><br /><Input style={{ width: '16rem' }} maxlength={80} value={f.ausgegeben_von} onInput={(e) => setF({ ...f, ausgegeben_von: e.target.value })} /></div>
+          <div><Label showColon>Wert je Schlüssel (Euro)</Label><br /><Input style={{ width: '8rem' }} value={f.wert} onInput={(e) => setF({ ...f, wert: e.target.value })} /></div>
+          <div><Label showColon>Konto der Buchung</Label><br /><Input style={{ width: '8rem' }} maxlength={10} value={f.konto} onInput={(e) => setF({ ...f, konto: e.target.value })} /></div>
+          {d && <Text className="portal-muted portal-small">{d.konto_fehlt ? `Konto ${d.konto} ist nicht im Kontenstamm.` : `${d.konto} ${d.konto_name ?? ''}`}</Text>}
+        </div>
+        {!d ? <BusyIndicator active /> : (
+          <>
+            <MessageStrip design="Critical" hideCloseButton>
+              FI-Buchungen lassen sich nur per Storno zurücknehmen. Bitte vorher im FI-Abgleich prüfen, ob die Zahlungen nicht schon über den Bankimport gebucht sind – sonst entstehen sie doppelt.
+              Buchungen in abgeschlossenen Perioden lehnt die FI ab; dann wird nichts geändert.
+            </MessageStrip>
+            <div className="portal-ih__rahmen" style={{ maxHeight: '44vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+              <thead><tr><th>✓</th><th>Vorgang</th><th>Person</th><th>Ausgabe am</th><th>bisher ausgegeben von</th><th style={{ textAlign: 'right' }}>bisheriger Wert</th><th>Gegenkonto</th><th>FI-Buchung</th></tr></thead>
+              <tbody>
+                {!d.zeilen.length && <tr><td colSpan={8} className="portal-muted">Keine Ausgaben ohne Hallenrechnung.</td></tr>}
+                {d.zeilen.map((z) => (
+                  <tr key={z.id} className={ab.has(z.id) ? 'portal-ih__inaktiv' : undefined}>
+                    <td><CheckBox checked={!ab.has(z.id)} onChange={(e) => { const n = new Set(ab); if (e.target.checked) n.delete(z.id); else n.add(z.id); setAb(n); }} /></td>
+                    <td>{z.nummer}</td><td>{z.person}</td><td>{dat(z.datum)}</td><td>{z.tco_name || '–'}</td>
+                    <td style={{ textAlign: 'right' }}>{z.pfand != null ? eur(z.pfand) : '–'}</td><td>{z.gegenkonto}</td>
+                    <td>{z.internenr ? <span className="portal-muted">vorhanden ({z.internenr})</span> : <ObjectStatus state="Information">wird erzeugt</ObjectStatus>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+            {d.mit_rechnung > 0 && <Text className="portal-muted portal-small">{d.mit_rechnung} Ausgabe(n) mit Hallenrechnung bleiben unberührt.</Text>}
+            <CheckBox wrappingType="Normal" checked={bestaetigt} onChange={(e) => setBestaetigt(e.target.checked)}
+                      text={`Ich habe die Liste geprüft: ${neu.length} FI-Buchung(en) über je ${wert > 0 ? eur(wert) : '?'} auf Konto ${f.konto} sollen erzeugt werden.`} />
           </>
         )}
       </div>

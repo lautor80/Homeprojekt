@@ -452,3 +452,46 @@ test('Zuweisung: Auswahl aller Personen – Mitglieder jedes Status und Kunden',
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.vorgaenge.map((v: { person: string }) => v.person).sort(), ['Alma Altmitglied', 'Gustav Gastspieler']);
 });
+
+test('Historische Ausgaben: Ausgeber überschreiben, Wert setzen, FI-Buchung auf 1200 gegen das Konto der Schlüsselausgabe', async () => {
+  await sql`insert into tco.fikonten (konto, name, kennzahl) values ('1200', 'Bank', 'BA') on conflict do nothing`;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, ort) values ('0000000310', 'Hugo', 'Historie', '2010-01-01', 'Oberthal')`;
+  let r = await admin('POST', `${S}/altdaten`, { text: 'Hugo Historie\t10.10.2016\tAlt Wart' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const hugo = r.body.vorgaenge[0].id as number;
+  assert.equal((await mia('GET', `${S}/nachbuchen/daten`)).status, 403);
+  r = await admin('GET', `${S}/nachbuchen/daten`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.konto, r.body.konto_fehlt], ['1200', false]);
+  type Z = { id: number; tco_name: string; pfand: number | null; offen: boolean; gegenkonto: string; internenr: string | null };
+  const z = (r.body.zeilen as Z[]).find((x) => x.id === hugo)!;
+  assert.deepEqual([z.tco_name, z.pfand, z.offen, z.gegenkonto], ['Alt Wart', null, true, '1590']);
+  assert.ok((r.body.zeilen as Z[]).every((x) => x.offen === !x.internenr));
+  assert.equal((await admin('GET', `${S}/nachbuchen/daten?konto=9999`)).body.konto_fehlt, true);
+  // Eingaben und Rechte
+  const e = { ids: [hugo], ausgegeben_von: 'Benjamin Hartyniuk', wert: 20, konto: '1200' };
+  assert.equal((await mia('POST', `${S}/nachbuchen`, e)).status, 403);
+  assert.equal((await admin('POST', `${S}/nachbuchen`, { ...e, konto: '9999' })).status, 400);
+  assert.equal((await admin('POST', `${S}/nachbuchen`, { ...e, wert: 0 })).status, 400);
+  assert.equal((await admin('POST', `${S}/nachbuchen`, { ...e, ids: [] })).status, 400);
+  // ausführen: Ausgeber, Wert, FI-Buchung zum Ausgabedatum, am Vorgang zugeordnet
+  r = await admin('POST', `${S}/nachbuchen`, e);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.geaendert, r.body.buchungen.length], [1, 1]);
+  const v = await vorgang(hugo);
+  assert.deepEqual([v.tco_name, Number(v.pfand), v.internenr], ['Benjamin Hartyniuk', 20, r.body.buchungen[0]]);
+  const fi = await sql`select konto, soll::float8 as soll, haben::float8 as haben, datum::text as datum from tco.fibuchungen where internenr = ${v.internenr} order by konto`;
+  assert.deepEqual(fi.map((x) => [x.konto, x.soll, x.haben, x.datum]), [['1200', 20, 0, '2016-10-10'], ['1590', 0, 20, '2016-10-10']]);
+  assert.ok((await protokollVon(hugo)).includes('BUCHUNG'));
+  // erneut: nichts mehr zu tun, keine zweite Buchung
+  r = await admin('POST', `${S}/nachbuchen`, e);
+  assert.deepEqual([r.status, r.body.geaendert, r.body.buchungen.length], [200, 0, 0]);
+  // bereits gebuchte Ausgabe (Altdaten mit Kassenbuchung): nur der Ausgeber, Wert und Buchung bleiben
+  const [lea] = await sql`select id, pfand::float8 as pfand, internenr from tco.schluessel_vorgang where adrnr = ${LEA} and art = 'AUSGABE' and internenr is not null and rgnr is null limit 1`;
+  const anzahl = (await sql`select count(*)::int as n from tco.fibuchungen`)[0].n;
+  r = await admin('POST', `${S}/nachbuchen`, { ...e, ids: [lea.id] });
+  assert.deepEqual([r.status, r.body.geaendert, r.body.buchungen.length], [200, 1, 0]);
+  const l = await vorgang(lea.id);
+  assert.deepEqual([l.tco_name, Number(l.pfand), l.internenr], ['Benjamin Hartyniuk', lea.pfand, lea.internenr]);
+  assert.equal((await sql`select count(*)::int as n from tco.fibuchungen`)[0].n, anzahl);
+});
