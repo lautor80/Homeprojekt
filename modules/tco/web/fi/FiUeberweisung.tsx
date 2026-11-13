@@ -68,18 +68,32 @@ export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
   }
   function waehlen(b: Beleg) { setWahl(b); setZ(null); setAdrnr(null); erzeugen(b, undefined, null); }
   function mitgliedWaehlen(a: string | null) { setAdrnr(a); if (wahl) erzeugen(wahl, z ? { betrag, zweck } : undefined, a); }
+  /** Überweisung bestätigen: Status des Belegs in Paperless = „gezahlt“; er verschwindet aus der Liste */
+  async function bestaetigen(b: Beleg) {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text: string; hinweise: string[] }>(`${F}/ueberweisungen/${b.id}/gezahlt`);
+      toast(r.hinweise.length ? `${r.text} ${r.hinweise.join(' · ')}` : r.text, 6000);
+      setWahl(null); setZ(null);
+      setListe(await api.get<Beleg[]>(`${F}/ueberweisungen`));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
   const kopieren = (text: string, was: string) => navigator.clipboard?.writeText(text).then(() => toast(`${was} kopiert.`)).catch(() => undefined);
 
   return (
     <Dialog open headerText={wahl ? `Überweisung an Einreicher – ${wahl.titel || `Beleg ${wahl.id}`}` : 'Überweisungen an Einreicher'} resizable
             style={{ width: 'min(84rem, 98vw)', height: wahl ? '92vh' : undefined }} onClose={onClose}
             footer={<Bar startContent={wahl ? <Button icon="nav-back" onClick={() => { setWahl(null); setZ(null); }}>Zur Liste</Button> : undefined}
-                         endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+                         endContent={<>
+                           {wahl && <Button design="Emphasized" icon="accept" disabled={busy} tooltip="Setzt in Paperless das Feld „Status“ des Belegs auf „gezahlt“"
+                                            onClick={() => bestaetigen(wahl)}>Überweisung bestätigen</Button>}
+                           <Button onClick={onClose}>Schließen</Button>
+                         </>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!wahl && (
         <>
           <Text className="portal-muted portal-small">
-            Belege aus Paperless mit Folgeaktion „Überweisung an Einreicher“, deren Feld „SAP“ leer ist (noch keiner Buchung zugeordnet). Der Einreicher steht im Feld „Eingereicht durch“. Beleg wählen für Vorschau und QR-Code.
+            Belege aus Paperless mit Folgeaktion „Überweisung an Einreicher“, Status „Offen“ und leerem Feld „SAP“ (noch keiner Buchung zugeordnet). „Überweisung bestätigen“ setzt den Status auf „gezahlt“. Der Einreicher steht im Feld „Eingereicht durch“. Beleg wählen für Vorschau und QR-Code.
           </Text>
           {!liste ? (error ? null : <BusyIndicator active style={{ display: 'block', margin: '1rem 0' }} />) : (
             <div className="portal-ih__rahmen" style={{ marginTop: '0.5rem', maxHeight: '60vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">

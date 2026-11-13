@@ -19,7 +19,7 @@ import { toast } from '../toast';
  * Module mit Struktur und Inhalt. Selektion mit Bedingungen (=, ≠, <, ≤, >, ≥, Intervall, Muster, Liste, leer),
  * Feldauswahl, Sortierung, Gruppierung mit Kennzahlen (Anzahl, Summe, Durchschnitt, Min, Max) – alles serverseitig;
  * im Ergebnis zusätzlich Spaltenfilter, Sortierung und Gruppierung der Tabelle. Export als CSV.
- * Mit core.tabellen:edit: im Eintrag „Werte ändern“ – einzelne Werte eines Satzes mit Begründung ändern (Änderungsbeleg).
+ * Mit core.tabellen:edit: im Eintrag „Werte ändern“ – einzelne Werte eines Satzes ändern (ohne Änderungsbeleg).
  * Mit core.tabellen:delete: markierte Sätze löschen – sie landen 7 Tage im Papierkorb und lassen sich wiederherstellen (#34).
  * Geheimnisse (Hashes, Tokens, Passwörter) und Bankdaten ohne Berechtigung kommen maskiert vom Server.
  */
@@ -88,7 +88,6 @@ export function TabellenPage() {
   /** Zeile des geöffneten Eintrags (für den Schlüssel beim Ändern) und Bearbeitungsstand: Spalte → neuer Wert (null = leer/NULL) */
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
   const [bearbeiten, setBearbeiten] = useState<Record<string, string | null> | null>(null);
-  const [grund, setGrund] = useState('');
   const [aendernFehler, setAendernFehler] = useState<string | null>(null);
   const [speichert, setSpeichert] = useState(false);
   const [suche, setSuche] = useState('');
@@ -115,7 +114,7 @@ export function TabellenPage() {
     setSpeichert(true); setAendernFehler(null);
     try {
       const alt = Object.fromEntries(Object.keys(bearbeiten).map((k) => [k, detail[erg.spalten.findIndex((s) => s.name === k)] ?? null]));
-      const r = await api.post<{ text: string }>(`/api/admin/tabellen/${struktur.schema}/${struktur.tabelle}/aendern`, { schluessel: detailSchluessel, werte: bearbeiten, alt, grund });
+      const r = await api.post<{ text: string }>(`/api/admin/tabellen/${struktur.schema}/${struktur.tabelle}/aendern`, { schluessel: detailSchluessel, werte: bearbeiten, alt });
       toast(r.text, 6000);
       setDetail(null); setBearbeiten(null);
       await ausfuehren();
@@ -393,7 +392,7 @@ export function TabellenPage() {
                                  if (letzteMarkierung.current >= t - 50) return;
                                  setDetail(erg.spalten.map((_, i) => original[`c${i}`] ?? null));
                                  setDetailIdx(typeof (original as { _i?: unknown })._i === 'number' ? (original as unknown as { _i: number })._i : null);
-                                 setBearbeiten(null); setGrund(''); setAendernFehler(null);
+                                 setBearbeiten(null); setAendernFehler(null);
                                }, 0);
                              }} />
           ) : (
@@ -404,7 +403,7 @@ export function TabellenPage() {
             <Dialog open headerText={`Eintrag aus ${struktur.schema}.${struktur.tabelle}${bearbeiten ? ' ändern' : ''}`} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setDetail(null)}
                     footer={<Bar endContent={<>
                       {!bearbeiten && detailSchluessel && aenderbareSpalten.length > 0 && <Button icon="edit" onClick={() => { setBearbeiten({}); setAendernFehler(null); }}>Werte ändern</Button>}
-                      {bearbeiten && <Button design="Emphasized" icon="save" loading={speichert} disabled={speichert || !Object.keys(bearbeiten).length || grund.trim().length < 5} onClick={aendern}>Speichern</Button>}
+                      {bearbeiten && <Button design="Emphasized" icon="save" loading={speichert} disabled={speichert || !Object.keys(bearbeiten).length} onClick={aendern}>Speichern</Button>}
                       {bearbeiten && <Button disabled={speichert} onClick={() => setBearbeiten(null)}>Abbrechen</Button>}
                       {!bearbeiten && <Button design="Emphasized" onClick={() => setDetail(null)}>Schließen</Button>}
                     </>} />}>
@@ -412,10 +411,8 @@ export function TabellenPage() {
               {bearbeiten && (
                 <>
                   <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
-                    Direkte Änderung in der Datenbank: Die fachlichen Prüfungen der Apps greifen hier nicht. Jede Änderung wird mit Begründung als Änderungsbeleg festgehalten.
+                    Direkte Änderung in der Datenbank: Die fachlichen Prüfungen der Apps greifen hier nicht, und es wird kein Änderungsbeleg geschrieben.
                   </MessageStrip>
-                  <Label showColon required>Begründung (mindestens 5 Zeichen)</Label>
-                  <Input style={{ width: '100%', marginBottom: '0.5rem' }} maxlength={300} value={grund} onInput={(e) => setGrund(e.target.value)} />
                 </>
               )}
               <table className="portal-tabelle" style={{ width: '100%', fontSize: '0.875rem' }}>
