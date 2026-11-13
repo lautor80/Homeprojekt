@@ -146,11 +146,12 @@ export async function schluesselRoutes(app: FastifyInstance) {
   });
 
   app.get('/schluessel/:id', lesen, async (req) => {
-    const d = await detailLesen(DB, pId.parse(req.params).id);
+    const { id } = pId.parse(req.params);
+    const d = await detailLesen(DB, id);
     // Quittungslink nur für Bearbeiter (zum Weitergeben, wenn keine E-Mail-Adresse hinterlegt ist)
     let link: string | null = null;
-    if (d.link_offen && can(req, P_SCHL.edit)) {
-      const [t] = await DB`select token from tco.schluessel_vorgang where id = ${d.id as number}`;
+    if ((d as { link_offen?: boolean }).link_offen && can(req, P_SCHL.edit)) {
+      const [t] = await DB`select token from tco.schluessel_vorgang where id = ${id}`;
       link = t?.token ? `${(await portalUrl()) ?? ''}/schluessel-quittung?token=${t.token}` : null;
     }
     return { ...d, link };
