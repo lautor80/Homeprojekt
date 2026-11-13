@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
   Select, Text, TextArea, Title,
@@ -7,7 +7,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
-import { TCO, dat, eur } from '../util';
+import { TCO, dat, dateiLesen, eur } from '../util';
 import '../instandhaltung/instandhaltung.css';
 
 /**
@@ -345,6 +345,7 @@ function DetailDialog({ id, darf, onClose, onRueckgabe }: { id: number; darf: Da
               {d.art === 'RUECKGABE' && d.status === 'WARTET' && <Button design="Emphasized" icon="accept" disabled={busy} onClick={() => aktion(() => api.post<{ text: string; hinweise: string[] }>(`${S}/${id}/empfang`))}>Empfang bestätigen</Button>}
               {d.ausgegeben && <Button icon="undo" disabled={busy} onClick={() => onRueckgabe(d)}>Rückgabe erfassen</Button>}
               <Button icon="upload-to-cloud" disabled={busy} onClick={() => aktion(() => api.post<{ text: string; hinweise: string[] }>(`${S}/${id}/beleg`))}>Beleg in Paperless ablegen</Button>
+              <DokumentKnopf id={id} disabled={busy} text="Eigenes Dokument ablegen" onFertig={() => { setGeaendert(true); laden(); }} onFehler={setError} />
               {d.aktuell && <Button design="Negative" icon="cancel" disabled={busy} onClick={() => setStorno('')}>Stornieren</Button>}
             </div>
           )}
@@ -382,10 +383,33 @@ function DetailDialog({ id, darf, onClose, onRueckgabe }: { id: number; darf: Da
   );
 }
 
+/** Datei wählen und als Dokument zum Vorgang in Paperless ablegen (z. B. Scan eines alten Belegs) */
+function DokumentKnopf({ id, text, disabled, onFertig, onFehler }: { id: number; text: string; disabled?: boolean; onFertig: (docId: number) => void; onFehler: (m: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  async function ablegen(f: File | undefined) {
+    if (!f) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ text: string; doc_id: number; hinweise: string[] }>(`${S}/${id}/dokument`, { datei: f.name, inhalt: await dateiLesen(f) });
+      toast(r.text, 5000);
+      if (r.hinweise.length) onFehler(r.hinweise.join(' · '));
+      onFertig(r.doc_id);
+    } catch (e) { onFehler((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <input ref={input} type="file" accept=".pdf,image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; ablegen(f); }} />
+      <Button icon="attachment" loading={busy} disabled={disabled || busy} onClick={() => input.current?.click()}>{text}</Button>
+    </>
+  );
+}
+
 /**
- * Altdaten per Copy & Paste in zwei Schritten: einfügen → **Vorschau** (gelesene Daten ansehen, Zeilen an- und abwählen,
- * nicht erkannte oder falsch erkannte Personen von Hand einem Mitglied/Kunden zuweisen) → übernehmen.
- * Gebucht wird erst bei der Übernahme und nur für die Zeilen mit Haken „buchen“ (Vorgabe: keine).
+ * Altdaten per Copy & Paste in vier Schritten: 1) einfügen → 2) **Vorschau** (gelesene Daten ansehen, Zeilen an- und abwählen,
+ * nicht erkannte oder falsch erkannte Personen von Hand einem Mitglied/Kunden zuweisen) → 3) speichern → 4) danach je Vorgang
+ * die Dokumente in Paperless ablegen. Gebucht wird erst beim Speichern und nur für die Zeilen mit Haken „buchen“ (Vorgabe: keine).
+ * Strg+V fügt überall im Dialog den Text ein – das Bild, das Excel mitkopiert, wird nicht als Dokument abgelegt.
  */
 function AltdatenDialog({ onClose }: { onClose: Fertig }) {
   interface P { adrnr: string; name: string; info: string }
@@ -401,8 +425,24 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
   const [zuweisen, setZuweisen] = useState<Pruef | null>(null);
   const [personen, setPersonen] = useState<P[] | null>(null);
   const [q, setQ] = useState('');
+  interface Neu { id: number; nummer: string; art_txt: string; person: string; datum: string; doc_id: number | null; internenr: string | null }
+  const [fertig, setFertig] = useState<{ text: string; vorgaenge: Neu[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Schritt 1: Strg+V überall im Dialog fügt den Text ein; die Ablage (Bild aus Excel) bleibt außen vor
+  const schritt1 = !p && !fertig;
+  useEffect(() => {
+    if (!schritt1) return undefined;
+    const paste = (ev: ClipboardEvent) => {
+      const t = ev.clipboardData?.getData('text/plain') ?? '';
+      if (!t.trim()) return;
+      ev.stopPropagation();
+      const imFeld = ev.composedPath().some((x) => x instanceof HTMLElement && /^(TEXTAREA|INPUT|UI5-TEXTAREA|UI5-INPUT)$/.test(x.tagName));
+      if (!imFeld) { ev.preventDefault(); setText(t); }
+    };
+    document.addEventListener('paste', paste, true);
+    return () => document.removeEventListener('paste', paste, true);
+  }, [schritt1]);
   async function vorschau(z: Record<string, string> = zuordnung) {
     setBusy(true); setError(null);
     try { setP(await api.post(`${S}/altdaten/pruefen`, { text, zuordnung: z })); setZuordnung(z); setZuweisen(null); setQ(''); }
@@ -423,31 +463,51 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
   async function uebernehmen() {
     setBusy(true); setError(null);
     try {
-      onClose(await api.post<{ text: string }>(`${S}/altdaten`, { text, zuordnung, zeilen: gewaehlt.map((z) => z.zeile), buchen: false, buchen_zeilen: mitBuchung.map((z) => z.zeile) }));
+      const r = await api.post<{ text: string; vorgaenge: Neu[] }>(`${S}/altdaten`, { text, zuordnung, zeilen: gewaehlt.map((z) => z.zeile), buchen: false, buchen_zeilen: mitBuchung.map((z) => z.zeile) });
+      toast(r.text, 6000); setFertig(r); setP(null);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   const such = q.trim().toLowerCase();
   const treffer = such.length < 2 ? [] : (personen ?? []).filter((x) => x.name.toLowerCase().includes(such)).slice(0, 12);
   return (
-    <Dialog open headerText={p ? 'Altdaten – Vorschau' : 'Altdaten einfügen (Copy & Paste)'} style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose()}
-            footer={<Bar endContent={<>
+    <Dialog open headerText={fertig ? 'Altdaten – Dokumente ablegen' : p ? 'Altdaten – Vorschau' : 'Altdaten einfügen (Copy & Paste)'} style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose(fertig ? {} : undefined)}
+            footer={fertig ? <Bar endContent={<Button design="Emphasized" onClick={() => onClose({})}>Fertig</Button>} /> : <Bar endContent={<>
               {!p && <Button design="Emphasized" icon="show" loading={busy} disabled={!text.trim()} onClick={() => vorschau({})}>Vorschau</Button>}
               {p && <Button icon="nav-back" disabled={busy} onClick={zurueck}>Zurück zum Einfügen</Button>}
               {p && <Button design="Emphasized" icon="accept" loading={busy} disabled={!gewaehlt.length} onClick={uebernehmen}>
-                {gewaehlt.length} Zeile(n) übernehmen{mitBuchung.length ? ` · ${mitBuchung.length} mit Kassenbuchung` : ' · ohne Buchung'}
+                {gewaehlt.length} Zeile(n) speichern{mitBuchung.length ? ` · ${mitBuchung.length} mit Kassenbuchung` : ' · ohne Buchung'}
               </Button>}
               <Button onClick={() => onClose()}>Abbrechen</Button>
             </>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}><span style={{ whiteSpace: 'pre-line' }}>{error}</span></MessageStrip>}
-        {!p && (
+        {fertig && (
+          <>
+            <MessageStrip design="Positive" hideCloseButton>{fertig.text} Jetzt kannst du zu jedem Vorgang das Dokument (PDF oder Foto des alten Belegs) in Paperless ablegen – oder später im Vorgang.</MessageStrip>
+            <div className="portal-ih__rahmen" style={{ maxHeight: '52vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+              <thead><tr><th>Vorgang</th><th>Art</th><th>Person</th><th>Datum</th><th>FI-Buchung</th><th>Dokument in Paperless</th><th /></tr></thead>
+              <tbody>
+                {fertig.vorgaenge.map((v) => (
+                  <tr key={v.id}>
+                    <td>{v.nummer}</td><td>{v.art_txt}</td><td>{v.person}</td><td>{dat(v.datum)}</td><td>{v.internenr ?? '–'}</td>
+                    <td>{v.doc_id ? <ObjectStatus state="Positive">DOKID {dokid(v.doc_id)}</ObjectStatus> : <span className="portal-muted">noch keins</span>}</td>
+                    <td><DokumentKnopf id={v.id} text={v.doc_id ? 'Neue Version' : 'Dokument ablegen'} onFehler={setError}
+                                       onFertig={(doc) => setFertig({ ...fertig, vorgaenge: fertig.vorgaenge.map((x) => (x.id === v.id ? { ...x, doc_id: doc } : x)) })} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table></div>
+          </>
+        )}
+        {!p && !fertig && (
           <>
             <Text className="portal-muted portal-small">
-              Zeilen aus Excel kopieren und hier einfügen. Spalten in dieser Reihenfolge – oder mit Kopfzeile in beliebiger Reihenfolge:<br />
-              Person (Mitgliedsnr. oder „Vorname Nachname“) · Ausgabe am · ausgegeben von · Pfand · Rückgabe am · empfangen von · Paperless-ID Beleg Ausgabe · Paperless-ID Beleg Rückgabe · Schlüsselnr. · Bemerkung
+              Zeilen aus Excel kopieren und hier einfügen (Strg+V). Spalten in dieser Reihenfolge – oder mit Kopfzeile in beliebiger Reihenfolge:<br />
+              Person (Mitgliedsnr. oder „Vorname Nachname“) · Ausgabe am · ausgegeben von · Pfand · Rückgabe am · empfangen von · [Paperless-ID Beleg Ausgabe] · [Paperless-ID Beleg Rückgabe] · Schlüsselnr. · Bemerkung<br />
+              Dokumente werden hier nicht abgefragt – die beiden Paperless-Spalten dürfen leer bleiben oder fehlen. Du legst die Dokumente nach dem Speichern je Vorgang ab.
             </Text>
             <TextArea rows={10} value={text} placeholder={'Max Muster\t01.10.2019\tBen H.\t25,00\t15.03.2022\tAnna V.\t501\t502'} onInput={(e) => setText(e.target.value)} />
-            <Text className="portal-muted portal-small">Mit „Vorschau“ wird noch nichts gespeichert oder gebucht: Du siehst zuerst, was gelesen wurde, und kannst Personen zuweisen.</Text>
+            <Text className="portal-muted portal-small">Ablauf: 1) einfügen · 2) Vorschau – gelesene Daten ansehen und Mitglieder zuweisen · 3) speichern · 4) Dokumente ablegen. Mit „Vorschau“ wird noch nichts gespeichert oder gebucht.</Text>
           </>
         )}
         {p && (

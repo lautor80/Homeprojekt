@@ -105,11 +105,12 @@ export async function belegPdf(v: Verein, m: BelegDaten, adresse: { strasse: str
 }
 
 /** Beleg in Paperless ablegen: beim ersten Mal über den Kontext, danach als neue Version desselben Dokuments */
-export async function belegAblegen(v: Verein, m: BelegDaten, pdf: Buffer, benutzer: string): Promise<{ id: number; warnungen: string[]; neu: boolean }> {
+export async function belegAblegen(v: Verein, m: BelegDaten, pdf: Buffer, benutzer: string, dateiname?: string): Promise<{ id: number; warnungen: string[]; neu: boolean }> {
   if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
   const pl = paperless(v);
   const def = m.art === 'AUSGABE' ? K.schluesselAusgabe : K.schluesselRueckgabe;
-  const datei = `${belegTitel(m).replace(/\s+/g, '_')}.pdf`;
+  // eigenes Dokument (Scan eines alten Belegs): der Dateiname bleibt, sonst der erzeugte Beleg
+  const datei = dateiname || `${belegTitel(m).replace(/\s+/g, '_')}.pdf`;
   const [vorname, ...rest] = m.person.split(' ');
   const werte = {
     nummer: m.nummer, person: rest.length ? `${rest.join(' ')} ${vorname}` : m.person, name: m.person, adrnr: m.adrnr, datum: m.datum, pfand: m.pfand ?? '',
@@ -117,7 +118,7 @@ export async function belegAblegen(v: Verein, m: BelegDaten, pdf: Buffer, benutz
   };
   const warnungen: string[] = [];
   if (m.doc_id) {
-    const task = await pl.uploadVersion(m.doc_id, pdf, datei, `${m.status_txt} ${dat(heute())}`);
+    const task = await pl.uploadVersion(m.doc_id, pdf, datei, dateiname ? `Dokument ${dat(heute())}` : `${m.status_txt} ${dat(heute())}`);
     await pl.warteAufDokument(task, 15).catch(() => null);
     warnungen.push(...(await kontextAktualisieren(pl, def, 'tco', m.doc_id, werte, { benutzer, ohneNotiz: true })).warnungen);
     return { id: m.doc_id, warnungen, neu: false };

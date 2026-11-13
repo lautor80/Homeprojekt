@@ -66,3 +66,14 @@ test('FI-Abgleich: Name im Buchungstext, Betrag, Datum, Rechnung', () => {
   assert.deepEqual(abgleichTreffer({ datum: '2019-10-01', betrag: 40, richtung: 'AUSGABE', text: 'Hallenmiete Lob', rgnr: null }, vorgaenge), [], 'anderer Betrag, nur Nachname');
   assert.deepEqual(abgleichTreffer({ datum: '2019-10-01', betrag: 25, richtung: 'AUSGABE', text: 'Pfand bar', rgnr: null }, vorgaenge), [], 'ohne Namen kein Vorschlag');
 });
+
+test('Strg+V: Text in ein Eingabefeld einfügen legt das von Excel mitkopierte Bild nicht ab', async () => {
+  const { einfuegenAblegen, imEingabefeld } = await import('../../web/src/ablage-regel.js');
+  assert.equal(imEingabefeld([{ tagName: 'TEXTAREA' }, { tagName: 'UI5-TEXTAREA' }, { tagName: 'DIV' }]), true);
+  assert.equal(imEingabefeld([{ tagName: 'DIV', isContentEditable: true }]), true);
+  assert.equal(imEingabefeld([{ tagName: 'DIV' }, { tagName: 'BODY' }]), false);
+  assert.equal(einfuegenAblegen(1, 'Max Muster\t01.10.2019', true), false, 'Excel-Zellen ins Textfeld: nur der Text');
+  assert.equal(einfuegenAblegen(1, '', true), true, 'Screenshot (ohne Text) wird abgelegt, auch aus einem Feld heraus');
+  assert.equal(einfuegenAblegen(1, 'Text', false), true, 'außerhalb eines Feldes wie bisher');
+  assert.equal(einfuegenAblegen(0, 'Text', true), false);
+});

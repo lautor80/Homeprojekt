@@ -185,7 +185,7 @@
         { "text": "Erhalt online quittieren (Link oder Meine Mitgliedschaft)", "akteur": "MG", "system": "portal", "route": "POST /schluessel/quittung" },
         { "text": "Rückgabe erfassen: Zustand, empfangen von, Gutschrift mit negativem Betrag", "akteur": "HW", "system": "portal", "route": "POST /schluessel/rueckgabe", "recht": "tco.schluessel:edit", "app": "/tco/hallenschluessel" },
         { "text": "Empfang bestätigen, Rückgabebeleg in Paperless", "akteur": "HW", "system": "paperless", "route": "POST /schluessel/:id/empfang", "recht": "tco.schluessel:edit" },
-        { "text": "Altdaten einfügen, in der Vorschau prüfen und Personen zuweisen, übernehmen (Kassenbuchung optional je Zeile)", "akteur": "VS", "system": "portal", "route": "POST /schluessel/altdaten", "recht": "tco.schluessel:admin", "app": "/tco/hallenschluessel" },
+        { "text": "Altdaten einfügen, in der Vorschau prüfen und Personen zuweisen, speichern (Kassenbuchung optional je Zeile), danach Dokumente je Vorgang ablegen", "akteur": "VS", "system": "portal", "route": "POST /schluessel/altdaten", "recht": "tco.schluessel:admin", "app": "/tco/hallenschluessel" },
         { "text": "Frühere Kontobewegungen (FI-Belege) auf zwei Konten mit den Vorgängen abgleichen und verknüpfen", "akteur": "VS", "system": "portal", "route": "POST /schluessel/abgleich/verknuepfen", "recht": "tco.schluessel:admin", "app": "/tco/hallenschluessel" }
       ]
     },
