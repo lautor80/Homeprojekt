@@ -12,11 +12,11 @@
 import { randomBytes } from 'node:crypto';
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
-import { dat, heute, runden } from '../format.js';
-import { kontaktLesen, zuidAusAdrnr } from '../kommunikation.js';
+import { condense, dat, heute, runden } from '../format.js';
+import { adrnrAusZuid, kontaktLesen, zuidAusAdrnr } from '../kommunikation.js';
 import { ERLOES_STANDARD, adrnrErmitteln, kopfLesen, manuellePosition, positionEntfernen, rechnungAnlegen, rgAenderbar } from '../halle/daten.js';
 import { KEY_SCHLUESSEL_AUSGABE, KEY_SCHLUESSEL_RUECKNAHME } from '../halle/preis.js';
-import { kandidatLesen, kandidaten } from '../halle/sammel.js';
+import { kandidatLesen } from '../halle/sammel.js';
 import { umsaetzeBuchen } from '../fi/buchen.js';
 import {
   ART, BEDINGUNGEN_STANDARD, QUITTUNG, STATUS, ZUSTAND, altdatenLesen, nameImText, quittungUeberfaellig, type AltZeile, type Art, type Status, type Zustand,
@@ -335,6 +335,32 @@ export async function mailRueckgabe(db: Db, id: number): Promise<Mail[]> {
 
 // ---------------------------------------------------------------- Altdaten (Copy & Paste)
 
+export interface Person { adrnr: string; name: string; info: string }
+/**
+ * Alle Personen für die Zuweisung von Altfällen: **jedes** Mitglied unabhängig vom Status (auch lange ausgetretene) und jeder
+ * Kunde ohne Mitgliedschaft (EP3 und Portal, auch gesperrte/gelöschte – Altfälle können sie betreffen). Die Auswahl für eine
+ * neue Ausgabe (halle/sammel.ts → kandidaten) bleibt enger.
+ */
+export async function personenAlle(db: Db): Promise<Person[]> {
+  const name = (v: string | null, n: string | null) => condense(`${v ?? ''} ${n ?? ''}`);
+  const m = await db`select adrnr, vorname, nachname, ort, eintritt::text as eintritt, austritt::text as austritt, (austritt is not null and austritt < current_date) as weg
+                       from tco.mitglieder order by nachname, vorname, adrnr`;
+  const k = await db`select distinct on (zuid) zuid, vorname, nachname, wohnort, email, coalesce(status, '') as status from tco.kunden
+                      where zuid is not null and zuid not in (select zuid from tco.mitgliedera where zuid is not null) order by zuid, zalias`;
+  const KSTATUS: Record<string, string> = { deleted: 'gelöscht', blocked: 'gesperrt', disabled: 'deaktiviert' };
+  const out: Person[] = [
+    ...m.map((x) => ({
+      adrnr: x.adrnr as string, name: name(x.vorname, x.nachname),
+      info: ['Mitglied', x.weg ? `ausgetreten ${dat(x.austritt)}` : x.austritt ? `Austritt zum ${dat(x.austritt)}` : '', x.ort ?? ''].filter(Boolean).join(' · '),
+    })),
+    ...k.map((x) => ({
+      adrnr: adrnrAusZuid(x.zuid), name: name(x.vorname, x.nachname),
+      info: [Number(x.zuid) >= 90_000_000 ? 'Kunde (Portal)' : 'EP3-Kunde', KSTATUS[x.status as string] ?? '', x.wohnort || x.email || ''].filter(Boolean).join(' · '),
+    })),
+  ];
+  return out.filter((p) => p.name).sort((a, b) => a.name.localeCompare(b.name, 'de') || a.adrnr.localeCompare(b.adrnr));
+}
+
 export interface AltPruefung extends AltZeile {
   adrnr: string | null; name: string | null; hinweise: string[]; vorhanden: boolean;
   /** Person von Hand zugewiesen (Vorschau) */
@@ -349,7 +375,7 @@ export interface AltPruefung extends AltZeile {
  */
 export async function altdatenPruefen(db: Db, text: string, zuordnung: Record<string, string> = {}): Promise<AltPruefung[]> {
   const out: AltPruefung[] = [];
-  let alle: Awaited<ReturnType<typeof kandidaten>> | null = null;
+  let alle: Person[] | null = null;
   for (const z of altdatenLesen(text).slice(0, 1000)) {
     const p: AltPruefung = { ...z, fehler: [...z.fehler], adrnr: null, name: null, hinweise: [], vorhanden: false, zugewiesen: false, vorschlaege: [] };
     const hand = zuordnung[String(z.zeile)];
@@ -370,7 +396,7 @@ export async function altdatenPruefen(db: Db, text: string, zuordnung: Record<st
       }
       if (!adrnr && !hand) {
         p.fehler.push(`Person „${z.person}“ nicht gefunden – bitte zuweisen`);
-        alle ??= await kandidaten(db);
+        alle ??= await personenAlle(db);
         p.vorschlaege = alle.filter((k) => nameImText(k.name, z.person) > 0).slice(0, 6).map((k) => ({ adrnr: k.adrnr, name: k.name, info: k.info }));
       } else if (adrnr) {
         p.adrnr = adrnr;

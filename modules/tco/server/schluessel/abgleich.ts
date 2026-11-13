@@ -11,8 +11,8 @@ import type { Db } from '../verein.js';
 import { dat } from '../format.js';
 import { zuidAusAdrnr } from '../kommunikation.js';
 import { belegeZuordnen } from '../fi/buchen.js';
-import { kandidaten, kandidatLesen } from '../halle/sammel.js';
-import { bestandAbleiten, cfgLesen, pfandLesen } from './logik.js';
+import { kandidatLesen } from '../halle/sammel.js';
+import { bestandAbleiten, cfgLesen, personenAlle, pfandLesen } from './logik.js';
 import { ART, abgleichEindeutig, abgleichTreffer, nameImText, type Art } from './regeln.js';
 import { protokoll, vorgangAnlegen, type Ich } from './vorgang.js';
 
@@ -69,7 +69,7 @@ export async function abgleichLesen(db: Db) {
   const vorgaenge = (await db`select id, nummer, art, adrnr, person, datum::text as datum, pfand::float8 as pfand, rgnr, internenr, doc_id
                                 from tco.schluessel_vorgang where status <> 'STORNIERT' order by datum, id`) as unknown as
     { id: number; nummer: string; art: string; adrnr: string; person: string; datum: string; pfand: number | null; rgnr: string | null; internenr: string | null; doc_id: number | null }[];
-  const personen = await kandidaten(db);
+  const personen = await personenAlle(db);
   const kurz = (v: typeof vorgaenge[number]) => ({ id: v.id, nummer: v.nummer, person: v.person, datum: v.datum, art_txt: ART[v.art as Art] });
   const frei = vorgaenge.filter((v) => !v.internenr);
   const zeilen = buchungen.map((b) => {

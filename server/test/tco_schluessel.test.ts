@@ -427,3 +427,28 @@ test('Altdaten: nach dem Speichern die Dokumente je Vorgang ablegen (Paperless, 
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await vorgang(vs[1].id)).doc_id, r.body.doc_id);
 });
+
+test('Zuweisung: Auswahl aller Personen – Mitglieder jedes Status und Kunden', async () => {
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, austritt, ort) values ('0000000308', 'Alma', 'Altmitglied', '1990-01-01', '2005-12-31', 'Oberthal')`;
+  await sql`insert into tco.kunden (zuid, zalias, status, vorname, nachname, wohnort) values ('4711', 'gast-4711', 'deleted', 'Gustav', 'Gastspieler', 'Tholey')`;
+  assert.equal((await mia('GET', `${S}/personen?alle=1`)).status, 403);
+  let r = await admin('GET', `${S}/personen?alle=1`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  type P = { adrnr: string; name: string; info: string };
+  const alle = r.body as P[];
+  const alma = alle.find((x) => x.adrnr === '0000000308');
+  assert.match(alma?.info ?? '', /Mitglied · ausgetreten 31\.12\.2005/);
+  const gustav = alle.find((x) => x.name === 'Gustav Gastspieler');
+  assert.match(gustav?.info ?? '', /EP3-Kunde · gelöscht/);
+  assert.ok(alle.some((x) => x.adrnr === MIA));
+  // die Auswahl für eine neue Ausgabe bleibt enger
+  const neu = (await admin('GET', `${S}/personen`)).body as P[];
+  assert.ok(!neu.some((x) => x.adrnr === '0000000308') && !neu.some((x) => x.name === 'Gustav Gastspieler'));
+  // Altfall auf das lange ausgetretene Mitglied und auf den Kunden zuweisen
+  const text = 'Altmitglid A.\t01.07.1999\tBen H.\t20,00\nG. Gastspieler\t01.08.2010\tBen H.\t25,00';
+  r = await admin('POST', `${S}/altdaten/pruefen`, { text });
+  assert.deepEqual(r.body.zeilen.map((x: { adrnr: string | null; vorschlaege: P[] }) => [x.adrnr, x.vorschlaege.map((v) => v.name)]), [[null, []], [null, ['Gustav Gastspieler']]]);
+  r = await admin('POST', `${S}/altdaten`, { text, zuordnung: { 1: '0000000308', 2: gustav!.adrnr } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.vorgaenge.map((v: { person: string }) => v.person).sort(), ['Alma Altmitglied', 'Gustav Gastspieler']);
+});

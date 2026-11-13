@@ -15,7 +15,7 @@ import { abgleichAnlegen, abgleichKontenSichern, abgleichLesen, abgleichLoesen, 
 import { belegAblegen, belegPdf, type BelegDaten } from './beleg.js';
 import {
   P_SCHL, altdatenPruefen, altdatenUebernehmen, ausgabe, bestandAbleiten, cfgLesen, cfgSichern, detailLesen, empfangBestaetigen, linkErneuern, listeLesen,
-  mailQuittung, mailRueckgabe, meineOffenen, pfandLesen, protokollLesen, quittieren, quittungInfo, rueckgabe, stornieren, vorgangLesen, type Mail,
+  mailQuittung, mailRueckgabe, meineOffenen, personenAlle, pfandLesen, protokollLesen, quittieren, quittungInfo, rueckgabe, stornieren, vorgangLesen, type Mail,
 } from './logik.js';
 import { ART, SPALTEN_TEXT, STATUS, ZUSTAND, type Zustand } from './regeln.js';
 import { protokoll, type Ich } from './vorgang.js';
@@ -142,7 +142,9 @@ export async function schluesselRoutes(app: FastifyInstance) {
   }));
 
   /** Personen für die Ausgabe: Mitglieder und Kunden, mit Kennzeichen „hat Schlüssel“ */
-  app.get('/schluessel/personen', schreiben, async () => {
+  /** Auswahl für eine neue Ausgabe; mit `?alle=1` alle Personen (Mitglieder jedes Status, alle Kunden) für die Zuweisung von Altfällen */
+  app.get('/schluessel/personen', schreiben, async (req) => {
+    if (z.object({ alle: z.string().optional() }).parse(req.query).alle) return personenAlle(DB);
     const mit = new Set((await DB`select adrnr from tco.schluessel where ausgabe is not null and ruecknahme is null`).map((r) => r.adrnr as string));
     return (await kandidaten(DB)).map((k) => ({ adrnr: k.adrnr, name: k.name, info: k.info, hat: mit.has(k.adrnr) }));
   });

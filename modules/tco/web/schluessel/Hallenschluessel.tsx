@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
   Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
+import { AuswahlBox } from '@core/components/AuswahlBox';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { TCO, dat, dateiLesen, eur } from '../util';
@@ -407,7 +408,7 @@ function DokumentKnopf({ id, text, disabled, onFertig, onFehler }: { id: number;
 
 /**
  * Altdaten per Copy & Paste in vier Schritten: 1) einfügen → 2) **Vorschau** (gelesene Daten ansehen, Zeilen an- und abwählen,
- * nicht erkannte oder falsch erkannte Personen von Hand einem Mitglied/Kunden zuweisen) → 3) speichern → 4) danach je Vorgang
+ * je Zeile eine Auswahlliste aller Personen – Mitglieder jedes Status und Kunden – zum Zuweisen von Hand) → 3) speichern → 4) danach je Vorgang
  * die Dokumente in Paperless ablegen. Gebucht wird erst beim Speichern und nur für die Zeilen mit Haken „buchen“ (Vorgabe: keine).
  * Strg+V fügt überall im Dialog den Text ein – das Bild, das Excel mitkopiert, wird nicht als Dokument abgelegt.
  */
@@ -422,9 +423,9 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
   const [zuordnung, setZuordnung] = useState<Record<string, string>>({});
   const [ab, setAb] = useState<Set<number>>(new Set());
   const [buchen, setBuchen] = useState<Set<number>>(new Set());
-  const [zuweisen, setZuweisen] = useState<Pruef | null>(null);
+  // alle Personen für die Zuweisung: Mitglieder jedes Status und Kunden
   const [personen, setPersonen] = useState<P[] | null>(null);
-  const [q, setQ] = useState('');
+  const auswahl = useMemo(() => (personen ?? []).map((x) => ({ key: x.adrnr, text: x.name, zusatz: x.info })), [personen]);
   interface Neu { id: number; nummer: string; art_txt: string; person: string; datum: string; doc_id: number | null; internenr: string | null }
   const [fertig, setFertig] = useState<{ text: string; vorgaenge: Neu[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -445,14 +446,11 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
   }, [schritt1]);
   async function vorschau(z: Record<string, string> = zuordnung) {
     setBusy(true); setError(null);
-    try { setP(await api.post(`${S}/altdaten/pruefen`, { text, zuordnung: z })); setZuordnung(z); setZuweisen(null); setQ(''); }
+    if (!personen) api.get<P[]>(`${S}/personen?alle=1`).then(setPersonen).catch((e) => setError((e as Error).message));
+    try { setP(await api.post(`${S}/altdaten/pruefen`, { text, zuordnung: z })); setZuordnung(z); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  function zurueck() { setP(null); setZuordnung({}); setAb(new Set()); setBuchen(new Set()); setZuweisen(null); }
-  function waehlen(z: Pruef) {
-    setZuweisen(z); setQ('');
-    if (!personen) api.get<P[]>(`${S}/personen`).then(setPersonen).catch((e) => setError((e as Error).message));
-  }
+  function zurueck() { setP(null); setZuordnung({}); setAb(new Set()); setBuchen(new Set()); }
   const umschalten = (set: Set<number>, n: number, an: boolean) => { const s = new Set(set); if (an) s.add(n); else s.delete(n); return s; };
   // übernommen werden gewählte Zeilen ohne Fehler, die es noch nicht gibt
   const moeglich = (z: Pruef) => !z.fehler.length && !z.vorhanden;
@@ -467,8 +465,6 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
       toast(r.text, 6000); setFertig(r); setP(null);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  const such = q.trim().toLowerCase();
-  const treffer = such.length < 2 ? [] : (personen ?? []).filter((x) => x.name.toLowerCase().includes(such)).slice(0, 12);
   return (
     <Dialog open headerText={fertig ? 'Altdaten – Dokumente ablegen' : p ? 'Altdaten – Vorschau' : 'Altdaten einfügen (Copy & Paste)'} style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose(fertig ? {} : undefined)}
             footer={fertig ? <Bar endContent={<Button design="Emphasized" onClick={() => onClose({})}>Fertig</Button>} /> : <Bar endContent={<>
@@ -514,7 +510,7 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
           <>
             <MessageStrip design={offen ? 'Critical' : 'Information'} hideCloseButton>
               {p.zeilen.length} Zeile(n) gelesen – noch nichts gespeichert. {gewaehlt.length} zur Übernahme gewählt, {p.zeilen.filter((z) => z.vorhanden).length} bereits vorhanden
-              {offen ? `, ${offen} noch zu klären (Person zuweisen) – sie werden sonst nicht übernommen` : ''}.
+              {offen ? `, ${offen} noch zu klären (Person in der Auswahlliste zuweisen) – sie werden sonst nicht übernommen` : ''}.
             </MessageStrip>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <Text className="portal-muted portal-small">Buchung auf das Kassenkonto {p.kassenkonto} (FI-Beleg mit verknüpftem Paperless-Beleg) nur für Zeilen mit Haken „buchen“:</Text>
@@ -532,8 +528,13 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
                       <td><CheckBox checked={an} disabled={!moeglich(z)} onChange={(e) => setAb(umschalten(ab, z.zeile, !e.target.checked))} /></td>
                       <td>{z.zeile}</td><td>{z.person}</td>
                       <td>
-                        {z.name ? <>{z.name}{z.zugewiesen ? <span className="portal-muted"> · zugewiesen</span> : null}</> : <ObjectStatus state="Critical">nicht erkannt</ObjectStatus>}
-                        {' '}<Button design="Transparent" icon="edit" tooltip="Mitglied/Kunden zuweisen" disabled={busy || z.vorhanden} onClick={() => waehlen(z)} />
+                        <AuswahlBox eintraege={auswahl} wert={z.adrnr ?? ''} max={30} disabled={busy || z.vorhanden || !personen} style={{ width: '100%', minWidth: '15rem' }}
+                                    placeholder={personen ? 'Person wählen (Name tippen)' : 'Personen werden geladen …'} leerErlaubt={!!zuordnung[z.zeile]}
+                                    onWaehle={(k) => { const n = { ...zuordnung }; if (k) n[z.zeile] = k; else delete n[z.zeile]; vorschau(n); }} />
+                        <div className="portal-muted portal-small">
+                          {z.adrnr ? `${personen?.find((x) => x.adrnr === z.adrnr)?.info ?? ''}${z.zugewiesen ? ' · von Hand zugewiesen' : ''}` : null}
+                          {!z.adrnr && z.vorschlaege.map((x) => <Link key={x.adrnr} style={{ marginRight: '0.5rem' }} onClick={() => vorschau({ ...zuordnung, [z.zeile]: x.adrnr })}>{x.name}?</Link>)}
+                        </div>
                       </td>
                       <td>{dat(z.ausgabe)}</td><td>{z.ausgegeben_von}</td><td style={{ textAlign: 'right' }}>{z.pfand != null ? eur(z.pfand) : ''}</td>
                       <td>{dat(z.rueckgabe)}</td><td>{z.empfangen_von}</td><td>{[z.doc_ausgabe, z.doc_rueckgabe].filter(Boolean).join(' / ')}</td>
@@ -545,25 +546,6 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
                 })}
               </tbody>
             </table></div>
-            {zuweisen && (
-              <div className="portal-ih__rahmen" style={{ padding: '0.5rem' }}>
-                <Label showColon>Zeile {zuweisen.zeile} „{zuweisen.person}“ – Mitglied oder Kunden zuweisen</Label>
-                {zuweisen.vorschlaege.map((x) => (
-                  <div key={x.adrnr} className="portal-ih__zeile" style={{ padding: '0.25rem 0.5rem' }} onClick={() => vorschau({ ...zuordnung, [zuweisen.zeile]: x.adrnr })}>
-                    {x.name} <span className="portal-muted">· {x.info} · Vorschlag</span>
-                  </div>
-                ))}
-                <Input style={{ width: '100%' }} placeholder="Name suchen (mind. 2 Zeichen)" value={q} onInput={(e) => setQ(e.target.value)} />
-                {!personen && <BusyIndicator active />}
-                {treffer.map((x) => (
-                  <div key={x.adrnr} className="portal-ih__zeile" style={{ padding: '0.25rem 0.5rem' }} onClick={() => vorschau({ ...zuordnung, [zuweisen.zeile]: x.adrnr })}>
-                    {x.name} <span className="portal-muted">· {x.info}</span>
-                  </div>
-                ))}
-                {zuordnung[zuweisen.zeile] && <Button design="Transparent" onClick={() => { const z = { ...zuordnung }; delete z[zuweisen.zeile]; vorschau(z); }}>Zuweisung aufheben</Button>}
-                <Button design="Transparent" onClick={() => setZuweisen(null)}>Abbrechen</Button>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -610,10 +592,9 @@ function AbgleichDialog({ onClose }: { onClose: () => void }) {
   function anlegen(z: AZeile) {
     if (z.person) { tun(() => api.post(`${S}/abgleich/anlegen`, { internenr: z.internenr, richtung: z.richtung, adrnr: z.person!.adrnr })); return; }
     setNeu(z); setQ('');
-    if (!personen) api.get<P[]>(`${S}/personen`).then(setPersonen).catch((e) => setError((e as Error).message));
+    if (!personen) api.get<P[]>(`${S}/personen?alle=1`).then(setPersonen).catch((e) => setError((e as Error).message));
   }
-  const such = q.trim().toLowerCase();
-  const treffer = such.length < 2 ? [] : (personen ?? []).filter((p) => p.name.toLowerCase().includes(such)).slice(0, 12);
+  const auswahl = useMemo(() => (personen ?? []).map((x) => ({ key: x.adrnr, text: x.name, zusatz: x.info })), [personen]);
   const STAT: Record<AZeile['status'], { t: string; s: 'Positive' | 'Information' | 'Critical' | 'None' }> = {
     VERKNUEPFT: { t: 'verknüpft', s: 'Positive' }, VORSCHLAG: { t: 'Vorschlag', s: 'Information' }, MEHRDEUTIG: { t: 'mehrdeutig', s: 'Critical' }, OFFEN: { t: 'kein Vorgang', s: 'None' },
   };
@@ -677,13 +658,9 @@ function AbgleichDialog({ onClose }: { onClose: () => void }) {
             {neu && (
               <div className="portal-ih__rahmen" style={{ padding: '0.5rem' }}>
                 <Label showColon>{neu.richtung_txt} vom {dat(neu.datum)} ({eur(neu.betrag)}, „{neu.text}“) – Person wählen</Label>
-                <Input style={{ width: '100%' }} placeholder="Name suchen (mind. 2 Zeichen)" value={q} onInput={(e) => setQ(e.target.value)} />
-                {!personen && <BusyIndicator active />}
-                {treffer.map((p) => (
-                  <div key={p.adrnr} className="portal-ih__zeile" style={{ padding: '0.25rem 0.5rem' }} onClick={() => tun(() => api.post(`${S}/abgleich/anlegen`, { internenr: neu.internenr, richtung: neu.richtung, adrnr: p.adrnr }))}>
-                    {p.name} <span className="portal-muted">· {p.info}</span>
-                  </div>
-                ))}
+                <AuswahlBox eintraege={auswahl} wert={q} max={30} disabled={!personen} leerErlaubt style={{ width: '100%' }}
+                            placeholder={personen ? 'Mitglied (jeder Status) oder Kunde – Name tippen' : 'Personen werden geladen …'} onWaehle={(k) => setQ(k ?? '')} />
+                <Button design="Emphasized" disabled={!q || busy} onClick={() => tun(() => api.post(`${S}/abgleich/anlegen`, { internenr: neu.internenr, richtung: neu.richtung, adrnr: q }))}>Vorgang anlegen</Button>
                 <Button design="Transparent" onClick={() => setNeu(null)}>Abbrechen</Button>
               </div>
             )}
