@@ -10,7 +10,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { dat } from '../format.js';
 import { zuidAusAdrnr } from '../kommunikation.js';
-import { belegeZuordnen } from '../fi/buchen.js';
+import { belegeZuordnen, umsaetzeBuchen } from '../fi/buchen.js';
 import { kandidatLesen } from '../halle/sammel.js';
 import { bestandAbleiten, cfgLesen, personenAlle, pfandLesen } from './logik.js';
 import { ART, abgleichEindeutig, abgleichTreffer, nameImText, type Art } from './regeln.js';
@@ -152,4 +152,75 @@ export async function abgleichAnlegen(tx: Db, internenr: string, richtung: Art, 
   await protokoll(tx, v.id, ich, 'IMPORT', `Altfall aus FI-Buchung ${internenr} vom ${dat(b.datum)} angelegt (Konto ${b.konto}: ${b.text})`);
   await bestandAbleiten(tx, adrnr);
   return `${ART[richtung]} ${v.nummer} für ${k.name} aus der FI-Buchung ${internenr} angelegt.`;
+}
+
+// ---------------------------------------------------------------- historische Ausgaben nachbuchen
+
+export interface NachbuchenEingabe { ids: number[]; ausgegeben_von: string; wert: number; konto: string }
+
+/**
+ * Historische Ausgaben ohne Hallenrechnung (Altfälle, Bestand aus dem Mitgliederstamm): Kandidaten für das Nachbuchen.
+ * `offen` = noch ohne FI-Buchung – dafür entsteht je Ausgabe eine Buchung auf dem Geldkonto mit dem Gegenkonto der
+ * Schlüsselausgabe (Hallenprodukt 008, zum Ausgabedatum). Bereits gebuchte bzw. verknüpfte Ausgaben werden nicht erneut gebucht.
+ */
+export async function nachbuchenLesen(db: Db, konto: string) {
+  const [k] = await db`select konto, name from tco.fikonten where konto = ${konto}`;
+  const rows = await db`select id, nummer, person, datum::text as datum, tco_name, pfand::float8 as pfand, internenr, quelle
+                          from tco.schluessel_vorgang where art = 'AUSGABE' and status <> 'STORNIERT' and rgnr is null order by datum, id`;
+  const zeilen = [];
+  for (const r of rows) {
+    zeilen.push({
+      id: Number(r.id), nummer: r.nummer as string, person: r.person as string, datum: r.datum as string, tco_name: (r.tco_name as string | null) ?? '',
+      pfand: (r.pfand as number | null) ?? null, internenr: (r.internenr as string | null) ?? null, offen: !r.internenr,
+      gegenkonto: (await pfandLesen(db, r.datum as string)).kontoAusgabe,
+    });
+  }
+  return {
+    konto, konto_name: (k?.name as string | undefined) ?? null, konto_fehlt: !k, zeilen,
+    mit_rechnung: (await db`select count(*)::int as n from tco.schluessel_vorgang where art = 'AUSGABE' and status <> 'STORNIERT' and rgnr is not null`)[0].n as number,
+  };
+}
+
+/**
+ * Gewählte historische Ausgaben fortschreiben: „ausgegeben von“ überschreiben, Wert (Pfand) setzen und – soweit noch ohne
+ * FI-Buchung – je Ausgabe eine FI-Buchung zum Ausgabedatum auf `konto` gegen das Konto der Schlüsselausgabe erzeugen und am
+ * Vorgang eintragen (Beleg des Vorgangs wird Beleg der Buchung). Alles oder nichts; abgeschlossene Perioden lehnt die FI ab.
+ */
+export async function nachbuchen(tx: Db, e: NachbuchenEingabe, ich: Ich): Promise<{ text: string; geaendert: number; buchungen: string[] }> {
+  const name = e.ausgegeben_von.trim();
+  if (!name) throw new BusinessError('Bitte angeben, wer die Schlüssel ausgegeben hat.');
+  if (!(e.wert > 0)) throw new BusinessError('Bitte den Wert des Schlüssels angeben.');
+  const [k] = await tx`select 1 from tco.fikonten where konto = ${e.konto}`;
+  if (!k) throw new BusinessError(`Konto ${e.konto} ist nicht im Kontenstamm.`);
+  const buchungen: string[] = [];
+  let n = 0;
+  for (const id of [...new Set(e.ids)]) {
+    const [v] = await tx`select id, nummer, art, status, rgnr, person, datum::text as datum, tco_name, pfand::float8 as pfand, internenr, doc_id
+                           from tco.schluessel_vorgang where id = ${id} for update`;
+    if (!v) throw new BusinessError('Vorgang nicht gefunden.', 404);
+    if (v.art !== 'AUSGABE' || v.status === 'STORNIERT') throw new BusinessError(`${v.nummer} ist keine gültige Ausgabe.`);
+    if (v.rgnr) throw new BusinessError(`${v.nummer} läuft über die Hallenrechnung ${v.rgnr} und wird nicht direkt gebucht.`);
+    let internenr = (v.internenr as string | null) ?? null;
+    const aenderungen: string[] = [];
+    if (((v.tco_name as string | null) ?? '') !== name) aenderungen.push(`ausgegeben von ${name}${v.tco_name ? ` (bisher ${v.tco_name})` : ''}`);
+    // bereits gebuchte Ausgaben behalten ihren Wert (er gehört zur vorhandenen Buchung), nur ein fehlender wird ergänzt
+    const wert = internenr && v.pfand != null ? Number(v.pfand) : e.wert;
+    if (v.pfand == null || Number(v.pfand) !== wert) aenderungen.push(`Wert ${wert.toFixed(2).replace('.', ',')} €`);
+    if (!internenr) {
+      const gkonto = (await pfandLesen(tx, v.datum as string)).kontoAusgabe;
+      const [g] = await umsaetzeBuchen(tx, [{
+        konto: e.konto, datum: v.datum as string, text: `Hallenschlüssel Pfand Ausgabe ${v.person}`.slice(0, 60), betrag: wert,
+        positionen: [{ gkonto, betrag: wert, text: null, rgnr: null }],
+        belege: v.doc_id ? [v.doc_id as number] : [], notiz: `Historische Schlüsselausgabe ${v.nummer} nachgebucht (${ich.name})`,
+      }], ich.name);
+      internenr = g.internenr;
+      buchungen.push(g.internenr);
+      aenderungen.push(`FI-Buchung ${g.internenr} (Konto ${e.konto} an ${gkonto})`);
+    }
+    if (!aenderungen.length) continue;
+    await tx`update tco.schluessel_vorgang set tco_name = ${name}, tco_benutzer_id = null, pfand = ${wert}, internenr = ${internenr} where id = ${id}`;
+    await protokoll(tx, id, ich, 'BUCHUNG', `Historische Ausgabe fortgeschrieben: ${aenderungen.join(', ')}`);
+    n++;
+  }
+  return { geaendert: n, buchungen, text: `${n} Ausgabe(n) fortgeschrieben${buchungen.length ? `, ${buchungen.length} FI-Buchung(en) auf Konto ${e.konto} angelegt und zugeordnet` : ''}.` };
 }
