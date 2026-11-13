@@ -14,6 +14,7 @@ import type { Schutzart } from '../schutz.js';
  *   GET  /api/admin/tabellen/:schema/:tabelle         Spalten (Typ, Pflicht, Vorschlagswert, Schlüssel, Schutz)
  *   POST /api/admin/tabellen/:schema/:tabelle/daten   Selektion: Felder, Filter, Sortierung, Gruppierung mit Summen
  *   POST /api/admin/tabellen/:schema/:tabelle/loeschen   markierte Sätze löschen → Papierkorb (core.tabellen:delete, #34)
+ *   POST /api/admin/tabellen/:schema/:tabelle/aendern    Werte eines Satzes ändern (core.tabellen:edit) – mit Begründung und Änderungsbeleg
  *   GET  /api/admin/tabellen/papierkorb                  gelöschte Sätze der letzten 7 Tage
  *   POST /api/admin/tabellen/papierkorb/wiederherstellen Sätze zurückschreiben; …/papierkorb/entfernen endgültig löschen
  *
@@ -24,10 +25,18 @@ import type { Schutzart } from '../schutz.js';
  */
 export const P_TABELLEN = 'core.tabellen:display';
 export const P_TABELLEN_LOESCHEN = 'core.tabellen:delete';
+export const P_TABELLEN_AENDERN = 'core.tabellen:edit';
 /** Papierkorb: so lange lassen sich gelöschte Sätze wiederherstellen */
 export const AUFBEWAHRUNG_TAGE = 7;
 /** nie über die Tabellenansicht löschbar: Papierkorb selbst und Änderungsbelege (Nachvollziehbarkeit) */
 const NICHT_LOESCHBAR = new Set(['core.tabellen_papierkorb', 'core.change_header', 'core.change_item']);
+/**
+ * Hier nicht änderbar: Papierkorb und Änderungsbelege sowie alles, worüber sich Zugänge und Rechte verschaffen ließen
+ * (Benutzer, Rollen, Sitzungen, API-Schlüssel, Kennwort-Tokens, Sperren) – dafür gibt es die eigenen Apps mit ihren Regeln.
+ */
+const NICHT_AENDERBAR = new Set([...NICHT_LOESCHBAR, 'core.users', 'core.roles', 'core.role_permissions', 'core.user_roles', 'core.sessions', 'core.api_keys',
+  'core.password_tokens', 'core.sperren']);
+const TEXTTYPEN = new Set(['text', 'varchar', 'bpchar', 'name', 'citext']);
 
 const MAX_ZEILEN = 5000;
 const MAX_ZELLE = 2000;
@@ -127,6 +136,15 @@ async function loeschbar(schema: string, tabelle: string, spalten: Spalte[]): Pr
   if (!pk.length || pk.some((s) => s.schutz === 'GEHEIM')) return false;
   const [r] = await sql`select c.relkind from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = ${schema} and c.relname = ${tabelle}`;
   return r?.relkind === 'r' || r?.relkind === 'p';
+}
+
+/** Ändern erlaubt? wie Löschen, zusätzlich nicht die Benutzer- und Rechtetabellen */
+const aenderbar = async (schema: string, tabelle: string, spalten: Spalte[]) => !NICHT_AENDERBAR.has(`${schema}.${tabelle}`) && loeschbar(schema, tabelle, spalten);
+
+/** Spalten, die der Benutzer ändern darf: keine Schlüssel, Geheimnisse, Binärdaten; geschützte Felder (Bankdaten) nur mit deren Berechtigung */
+function aenderbareSpalten(req: FastifyRequest, schema: string, tabelle: string, spalten: Spalte[]): string[] {
+  const perm = sensitiveFields().find((f) => f.table === `${schema}.${tabelle}`)?.permission;
+  return spalten.filter((s) => !s.schluessel && s.schutz !== 'GEHEIM' && s.basistyp !== 'bytea' && (!s.schutz || (!!perm && can(req, perm)))).map((s) => s.name);
 }
 
 /** abgelaufene Papierkorb-Einträge entfernen (bei jedem Zugriff auf Papierkorb oder Löschen) */
@@ -264,6 +282,88 @@ export async function tabellenRoutes(app: FastifyInstance) {
     }
   });
 
+  // ---------------------------------------------------------------- Werte eines Satzes ändern
+  /**
+   * Einzelne Werte eines Satzes ändern – für Korrekturen, die keine App anbietet. Regeln: echte Tabelle mit Primärschlüssel,
+   * nicht Papierkorb/Änderungsbelege/Benutzer- und Rechtetabellen; nie Schlüsselspalten, Geheimnisse (Hashes, Tokens,
+   * Passwörter) oder Binärdaten; Bankdaten nur mit der Bankdaten-Berechtigung. Begründung ist Pflicht. Jede Änderung
+   * erzeugt einen Änderungsbeleg (über den Trigger der Tabelle, sonst hier). `alt` (angezeigter bisheriger Wert je Spalte)
+   * schützt vor dem Überschreiben einer zwischenzeitlichen Änderung. Fachliche Prüfungen der Apps greifen hier nicht.
+   */
+  app.post('/api/admin/tabellen/:schema/:tabelle/aendern', { preHandler: requireAuth(P_TABELLEN_AENDERN) }, async (req) => {
+    const { schema, tabelle } = z.object({ schema: z.string(), tabelle: z.string() }).parse(req.params);
+    const b = z.object({
+      schluessel: z.array(z.string()).min(1),
+      werte: z.record(z.string(), z.string().max(100_000).nullable()),
+      alt: z.record(z.string(), z.string().nullable()).default({}),
+      grund: z.string().trim().min(5, 'Bitte eine Begründung angeben (mindestens 5 Zeichen).').max(300),
+    }).parse(req.body);
+    const spalten = await spaltenLesen(schema, tabelle);
+    const name = `${schema}.${tabelle}`;
+    if (!(await aenderbar(schema, tabelle, spalten))) {
+      throw new BusinessError(NICHT_AENDERBAR.has(name) ? `${name} lässt sich hier nicht ändern – bitte die zuständige App verwenden.`
+        : `${name} hat keinen verwendbaren Primärschlüssel oder ist eine Sicht – Ändern ist nicht möglich.`);
+    }
+    const pk = pkSpalten(spalten);
+    if (b.schluessel.length !== pk.length) throw new BusinessError('Schlüssel passt nicht zur Tabelle.');
+    const erlaubt = new Set(aenderbareSpalten(req, schema, tabelle, spalten));
+    const felder = Object.keys(b.werte);
+    if (!felder.length) throw new BusinessError('Es wurde kein Wert geändert.');
+    for (const f of felder) {
+      const s = spalten.find((x) => x.name === f);
+      if (!s) throw new BusinessError(`Spalte ${f} gibt es in ${name} nicht.`);
+      if (!erlaubt.has(f)) {
+        throw new BusinessError(s.schluessel ? `${f} ist Teil des Schlüssels und lässt sich nicht ändern.`
+          : s.schutz === 'GEHEIM' ? `${f} ist ein Geheimnis und lässt sich hier nicht ändern.`
+            : s.schutz ? `${f} ist geschützt – zum Ändern fehlt die Berechtigung für diese Daten.` : `${f} lässt sich hier nicht ändern.`, s.schutz && s.schutz !== 'GEHEIM' ? 403 : 400);
+      }
+    }
+    const ziel = `${ident(schema)}.${ident(tabelle)}`;
+    const wert = (s: Spalte, v: string | null) => (v === null || (v === '' && !TEXTTYPEN.has(s.basistyp)) ? null : v);
+    try {
+      return await change(req, async (tx) => {
+        await tx.unsafe(`set local statement_timeout = '20s'`);
+        const p1: unknown[] = [];
+        const bed = pkBedingung(pk, [b.schluessel], p1);
+        const vorher = await tx.unsafe(
+          `select ${felder.map((f, i) => `t.${ident(f)}::text as a${i}, length(t.${ident(f)}::text) as l${i}`).join(', ')} from ${ziel} t where ${bed} for update`, p1 as never[]);
+        if (vorher.length !== 1) throw new BusinessError('Der Satz ist nicht (mehr) vorhanden – bitte neu selektieren.', 404);
+        const geaendert: { feld: string; alt: string | null; neu: string | null; typ: string }[] = [];
+        felder.forEach((f, i) => {
+          const s = spalten.find((x) => x.name === f)!;
+          const alt = vorher[0][`a${i}`] as string | null;
+          if (Number(vorher[0][`l${i}`] ?? 0) > MAX_ZELLE) throw new BusinessError(`${f} ist länger als ${MAX_ZELLE} Zeichen und wird hier nur gekürzt angezeigt – Ändern ist nicht möglich.`);
+          if (f in b.alt && (b.alt[f] ?? null) !== alt) throw new BusinessError(`${f} wurde inzwischen geändert (jetzt: ${alt ?? 'leer'}) – bitte neu selektieren.`, 409);
+          const neu = wert(s, b.werte[f]);
+          if (neu !== alt) geaendert.push({ feld: f, alt, neu, typ: s.typ });
+        });
+        if (!geaendert.length) return { geaendert: 0, text: 'Die Werte sind unverändert.' };
+        const p2: unknown[] = geaendert.map((g) => g.neu);
+        const set = geaendert.map((g, i) => `${ident(g.feld)} = $${i + 1}::text::${g.typ}`).join(', ');
+        const r = await tx.unsafe(`update ${ziel} t set ${set} where ${pkBedingung(pk, [b.schluessel], p2)} returning 1`, p2 as never[]);
+        if (r.length !== 1) throw new BusinessError('Der Satz ließ sich nicht eindeutig ändern.');
+        // Tabellen ohne eigenen Änderungsbeleg-Trigger: Beleg hier schreiben, damit keine Änderung unbelegt bleibt
+        const [trigger] = await tx`select 1 from pg_trigger g join pg_class c on c.oid = g.tgrelid join pg_namespace n on n.oid = c.relnamespace
+                                    where n.nspname = ${schema} and c.relname = ${tabelle} and g.tgname = 'zz_audit' and not g.tgisinternal`;
+        if (!trigger) {
+          const [h] = await tx`insert into core.change_header (object_type, object_key, table_name, change_ind, action, reason, user_id, username, tx_id)
+                               values ('TABELLE', ${b.schluessel.join('/')}, ${name}, 'U', 'TABELLE_AENDERN', ${b.grund}, ${req.user?.id || null}, ${req.user?.username ?? 'unbekannt'}, txid_current())
+                               returning id`;
+          for (const g of geaendert) await tx`insert into core.change_item (header_id, field, old_value, new_value) values (${h.id}, ${g.feld}, ${g.alt}, ${g.neu})`;
+        }
+        return { geaendert: geaendert.length, text: `${geaendert.length} Wert(e) in ${name} geändert (${geaendert.map((g) => g.feld).join(', ')}).` };
+      }, { action: 'TABELLE_AENDERN', reason: `${name}: ${b.grund}` });
+    } catch (e) {
+      if (e instanceof BusinessError) throw e;
+      const code = (e as { code?: string }).code ?? '';
+      if (code === '23502') throw new BusinessError('Nicht geändert: Das Feld ist ein Pflichtfeld und darf nicht leer sein.');
+      if (code === '23514') throw new BusinessError(`Nicht geändert: Der Wert verletzt eine Prüfregel der Tabelle (${(e as Error).message}).`);
+      if (/^22/.test(code)) throw new BusinessError(`Nicht geändert: Der Wert passt nicht zum Typ der Spalte (${(e as Error).message}).`);
+      if (code) throw new BusinessError(fehlerText(e, 'Nicht geändert'));
+      throw e;
+    }
+  });
+
   const darf = { preHandler: requireAuth(P_TABELLEN) };
 
   app.get('/api/admin/tabellen', darf, async () => {
@@ -282,7 +382,9 @@ export async function tabellenRoutes(app: FastifyInstance) {
     const { schema, tabelle } = z.object({ schema: z.string(), tabelle: z.string() }).parse(req.params);
     const spalten = await spaltenLesen(schema, tabelle);
     const [{ n }] = await sql.unsafe(`select count(*)::bigint as n from ${ident(schema)}.${ident(tabelle)}`);
-    return { schema, tabelle, zeilen: Number(n), spalten };
+    // Spalten, die dieser Benutzer hier ändern darf (leer: Tabelle nicht änderbar oder Recht fehlt)
+    const aendern = can(req, P_TABELLEN_AENDERN) && await aenderbar(schema, tabelle, spalten) ? aenderbareSpalten(req, schema, tabelle, spalten) : [];
+    return { schema, tabelle, zeilen: Number(n), spalten, aenderbar: aendern };
   });
 
   app.post('/api/admin/tabellen/:schema/:tabelle/daten', darf, async (req) => {

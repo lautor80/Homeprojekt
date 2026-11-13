@@ -166,3 +166,58 @@ test('Löschen markierter Sätze mit Papierkorb und Wiederherstellung (#34)', as
   await sql`update core.tabellen_papierkorb set geloescht_am = now() - interval '8 days' where id = ${id2}`;
   assert.equal((await admin('GET', `${T}/papierkorb`)).body.some((x: any) => x.id === id2), false);
 });
+
+test('Werte ändern: Recht, Begründung, Schutz (Schlüssel, Geheimnisse, Bankdaten, Benutzertabellen), Änderungsbeleg', async () => {
+  const A = `${T}/tco/mitglieder/aendern`;
+  const e = { schluessel: ['0000000701'], werte: { ort: 'Oberthal' }, grund: 'Ort nachgetragen' };
+  // nur mit core.tabellen:edit; die Struktur nennt die änderbaren Spalten nur dann
+  assert.equal((await leser('POST', A, e)).status, 403);
+  assert.deepEqual((await leser('GET', `${T}/tco/mitglieder`)).body.aenderbar, []);
+  let r = await admin('GET', `${T}/tco/mitglieder`);
+  assert.ok(r.body.aenderbar.includes('ort') && r.body.aenderbar.includes('iban1') && !r.body.aenderbar.includes('adrnr'), 'Schlüssel nicht änderbar');
+  assert.deepEqual((await admin('GET', `${T}/core/users`)).body.aenderbar, [], 'Benutzertabelle hier nie');
+  // Eingaben
+  assert.equal((await admin('POST', A, { ...e, grund: 'x' })).status, 400, 'Begründung fehlt');
+  assert.equal((await admin('POST', A, { ...e, werte: {} })).status, 400);
+  assert.equal((await admin('POST', A, { ...e, werte: { adrnr: '0000000799' } })).status, 400, 'Schlüsselspalte');
+  assert.equal((await admin('POST', A, { ...e, werte: { gibtsnicht: 'x' } })).status, 400);
+  assert.equal((await admin('POST', A, { ...e, schluessel: ['0000000999'] })).status, 404);
+  assert.equal((await admin('POST', `${T}/core/users/aendern`, { schluessel: ['x'], werte: { display_name: 'Root' }, grund: 'Versuch über die Tabelle' })).status, 400);
+  assert.equal((await admin('POST', `${T}/core/change_item/aendern`, { schluessel: ['1'], werte: { new_value: 'x' }, grund: 'Beleg umschreiben' })).status, 400);
+  // ändern: Text, Datum, leer (NULL); Änderungsbeleg mit Begründung
+  r = await admin('POST', A, { ...e, werte: { ort: 'Oberthal', eintritt: '2019-05-01', mitglnrn: null }, alt: { ort: null, eintritt: '2020-01-01', mitglnrn: '701' } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.geaendert, 3);
+  const [m] = await sql`select ort, eintritt::text as eintritt, mitglnrn from tco.mitglieder where adrnr = '0000000701'`;
+  assert.deepEqual([m.ort, m.eintritt, m.mitglnrn], ['Oberthal', '2019-05-01', null]);
+  const beleg = await sql`select h.action, h.reason, h.username, i.field, i.old_value, i.new_value from core.change_header h join core.change_item i on i.header_id = h.id
+                           where h.table_name = 'tco.mitglieder' and h.action = 'TABELLE_AENDERN' order by i.field`;
+  assert.deepEqual(beleg.map((x) => [x.field, x.old_value, x.new_value]), [['eintritt', '2020-01-01', '2019-05-01'], ['mitglnrn', '701', null], ['ort', null, 'Oberthal']]);
+  assert.ok(beleg.every((x) => x.username === 'admin' && /Ort nachgetragen/.test(x.reason)));
+  // unverändert: nichts zu tun; veralteter Stand: abgelehnt
+  r = await admin('POST', A, e);
+  assert.deepEqual([r.status, r.body.geaendert], [200, 0]);
+  r = await admin('POST', A, { ...e, werte: { ort: 'Tholey' }, alt: { ort: 'Namborn' } });
+  assert.equal(r.status, 409);
+  assert.match(r.body.message, /inzwischen geändert/);
+  // Typfehler verständlich
+  r = await admin('POST', A, { ...e, werte: { eintritt: 'gestern' } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /passt nicht zum Typ/);
+  // Bankdaten nur mit der Bankdaten-Berechtigung
+  await admin('POST', '/api/admin/roles', { id: 'TAB_AENDERN', name: 'Tabellen ändern', permissions: ['core.tabellen:display', 'core.tabellen:edit'] });
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'aenderer', displayName: 'aenderer', password: 'start-passwort', roles: ['TAB_AENDERN'] })).status, 200);
+  await sql`update core.users set must_change_password = false where username = 'aenderer'`;
+  const aenderer = client();
+  assert.equal((await aenderer('POST', '/api/auth/login', { username: 'aenderer', password: 'start-passwort' })).status, 200);
+  assert.ok(!(await aenderer('GET', `${T}/tco/mitglieder`)).body.aenderbar.includes('iban1'));
+  assert.equal((await aenderer('POST', A, { ...e, werte: { iban1: 'DE89370400440532013000' } })).status, 403);
+  assert.equal((await aenderer('POST', A, { ...e, werte: { ort: 'Tholey' } })).status, 200);
+  assert.equal((await admin('POST', A, { ...e, werte: { iban1: 'DE89370400440532013000' } })).status, 200);
+  // Tabelle ohne eigenen Beleg-Trigger: der Beleg wird hier geschrieben
+  await sql`insert into core.varianten (repid, uname, name, inhalt) values ('tco.test', 'admin', 'Probe', '{}')`;
+  r = await admin('POST', `${T}/core/varianten/aendern`, { schluessel: ['tco.test', 'admin', 'Probe'], werte: { standard: 'true' }, grund: 'Standard gesetzt' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [vb] = await sql`select h.object_type, h.object_key, i.field, i.old_value, i.new_value from core.change_header h join core.change_item i on i.header_id = h.id where h.table_name = 'core.varianten'`;
+  assert.deepEqual({ ...vb }, { object_type: 'TABELLE', object_key: 'tco.test/admin/Probe', field: 'standard', old_value: 'false', new_value: 'true' });
+});
