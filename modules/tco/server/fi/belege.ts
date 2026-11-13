@@ -17,7 +17,7 @@ function betragAus(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function belegAus(v: Verein, d: Record<string, any>): Promise<OffenerBeleg> {
+export async function belegAus(v: Verein, d: Record<string, any>): Promise<OffenerBeleg> {
   const pl = paperless(v);
   return {
     id: d.id,

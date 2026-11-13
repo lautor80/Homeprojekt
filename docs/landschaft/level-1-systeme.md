@@ -179,7 +179,7 @@ flowchart LR
 | core:weltenwandler | 2 |
 | dashboard | 9 |
 | eingang | 29 |
-| fi | 23 |
+| fi | 26 |
 | finanz | 3 |
 | forecast | 1 |
 | gruppen | 9 |

@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { epcText } from '../../modules/tco/server/upload/epc.js';
+import { folgeText, sapLeer } from '../../modules/tco/server/fi/ueberweisung-regeln.js';
 
 test('EPC-QR-Code: Aufbau, Betrag, optionale Felder, Längen', () => {
   const z = { empfaenger: 'Vera Vorstand', iban: 'DE89 3704 0044 0532 0130 00', bic: 'cobadeffxxx', betrag: 49.9, zweck: 'Erstattung Bälle' };
@@ -17,4 +18,14 @@ test('EPC-QR-Code: Aufbau, Betrag, optionale Felder, Längen', () => {
   assert.throws(() => epcText({ ...z, iban: 'DE00 1234' }), /IBAN/);
   assert.throws(() => epcText({ ...z, betrag: 0 }), /Betrag/);
   assert.throws(() => epcText({ ...z, empfaenger: '  ' }), /Name/);
+});
+
+test('FI-Belege „Überweisung an Einreicher“: Text der Folgeaktion (Auswahlfeld), Feld SAP leer', () => {
+  const neu = [{ id: 'a1', label: 'Bezahlen' }, { id: 'b2', label: 'Überweisung an Einreicher' }];
+  assert.equal(folgeText('b2', neu), 'Überweisung an Einreicher');
+  assert.equal(folgeText('Überweisung an Einreicher', neu), 'Überweisung an Einreicher', 'Textfeld: der Wert selbst');
+  assert.equal(folgeText(1, ['Bezahlen', 'Überweisung an Einreicher']), 'Überweisung an Einreicher', 'ältere Auswahlfelder: Index');
+  assert.deepEqual([folgeText(null), folgeText(undefined, neu), folgeText('zz', neu)], ['', '', 'zz']);
+  assert.deepEqual([null, undefined, '', ' ', false, 'false'].map(sapLeer), [true, true, true, true, true, true]);
+  assert.deepEqual([true, 'X', 'true', 1].map(sapLeer), [false, false, false, false]);
 });
