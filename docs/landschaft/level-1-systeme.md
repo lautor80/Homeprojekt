@@ -173,7 +173,7 @@ flowchart LR
 | core:setup | 2 |
 | core:sperren | 5 |
 | core:statistik | 3 |
-| core:tabellen | 7 |
+| core:tabellen | 8 |
 | core:varianten | 3 |
 | core:verbindungen | 3 |
 | core:weltenwandler | 2 |

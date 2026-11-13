@@ -19,6 +19,7 @@ import { toast } from '../toast';
  * Module mit Struktur und Inhalt. Selektion mit Bedingungen (=, ≠, <, ≤, >, ≥, Intervall, Muster, Liste, leer),
  * Feldauswahl, Sortierung, Gruppierung mit Kennzahlen (Anzahl, Summe, Durchschnitt, Min, Max) – alles serverseitig;
  * im Ergebnis zusätzlich Spaltenfilter, Sortierung und Gruppierung der Tabelle. Export als CSV.
+ * Mit core.tabellen:edit: im Eintrag „Werte ändern“ – einzelne Werte eines Satzes mit Begründung ändern (Änderungsbeleg).
  * Mit core.tabellen:delete: markierte Sätze löschen – sie landen 7 Tage im Papierkorb und lassen sich wiederherstellen (#34).
  * Geheimnisse (Hashes, Tokens, Passwörter) und Bankdaten ohne Berechtigung kommen maskiert vom Server.
  */
@@ -27,7 +28,7 @@ interface Spalte {
   name: string; typ: string; basistyp: string; pflicht: boolean; vorschlag: string | null; beschreibung: string | null;
   schluessel: number | null; schutz: 'GEHEIM' | 'iban' | 'bic' | 'text' | null; numerisch: boolean;
 }
-interface Struktur { schema: string; tabelle: string; zeilen: number; spalten: Spalte[] }
+interface Struktur { schema: string; tabelle: string; zeilen: number; spalten: Spalte[]; /** Spalten, die der Benutzer hier ändern darf */ aenderbar?: string[] }
 interface Ergebnis {
   spalten: { name: string; text: string; numerisch: boolean }[]; zeilen: (string | null)[][]; gesamt: number; mehr: boolean;
   /** Primärschlüssel je Zeile (nur für löschbare Tabellen, ungruppiert) */
@@ -84,6 +85,12 @@ export function TabellenPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<(string | null)[] | null>(null);
+  /** Zeile des geöffneten Eintrags (für den Schlüssel beim Ändern) und Bearbeitungsstand: Spalte → neuer Wert (null = leer/NULL) */
+  const [detailIdx, setDetailIdx] = useState<number | null>(null);
+  const [bearbeiten, setBearbeiten] = useState<Record<string, string | null> | null>(null);
+  const [grund, setGrund] = useState('');
+  const [aendernFehler, setAendernFehler] = useState<string | null>(null);
+  const [speichert, setSpeichert] = useState(false);
   const [suche, setSuche] = useState('');
 
   useEffect(() => {
@@ -93,6 +100,27 @@ export function TabellenPage() {
     api.get<Struktur>(`/api/admin/tabellen/${encodeURIComponent(schema)}/${encodeURIComponent(tabelle)}`)
       .then((s) => { setStruktur(s); setSel(gemerkt(wahl) ?? LEER); }).catch((e) => setError(e.message));
   }, [wahl]);
+
+  // Ändern einzelner Werte (core.tabellen:edit): nur ungruppiert, mit Schlüssel der Zeile und für die vom Server freigegebenen Spalten
+  const aenderbareSpalten = struktur?.aenderbar ?? [];
+  const detailSchluessel = detailIdx !== null ? erg?.schluessel?.[detailIdx] ?? null : null;
+  /** Wert einer Spalte vormerken; entspricht er wieder dem bisherigen, entfällt die Änderung */
+  function setze1(spalte: string, neu: string | null, alt: string | null) {
+    const n = { ...(bearbeiten ?? {}) };
+    if (neu === alt) delete n[spalte]; else n[spalte] = neu;
+    setBearbeiten(n);
+  }
+  async function aendern() {
+    if (!struktur || !erg || !detail || !bearbeiten || !detailSchluessel) return;
+    setSpeichert(true); setAendernFehler(null);
+    try {
+      const alt = Object.fromEntries(Object.keys(bearbeiten).map((k) => [k, detail[erg.spalten.findIndex((s) => s.name === k)] ?? null]));
+      const r = await api.post<{ text: string }>(`/api/admin/tabellen/${struktur.schema}/${struktur.tabelle}/aendern`, { schluessel: detailSchluessel, werte: bearbeiten, alt, grund });
+      toast(r.text, 6000);
+      setDetail(null); setBearbeiten(null);
+      await ausfuehren();
+    } catch (e) { setAendernFehler((e as Error).message); } finally { setSpeichert(false); }
+  }
 
   async function ausfuehren(weitere = false) {
     if (!struktur) return;
@@ -364,6 +392,8 @@ export function TabellenPage() {
                                setTimeout(() => {
                                  if (letzteMarkierung.current >= t - 50) return;
                                  setDetail(erg.spalten.map((_, i) => original[`c${i}`] ?? null));
+                                 setDetailIdx(typeof (original as { _i?: unknown })._i === 'number' ? (original as unknown as { _i: number })._i : null);
+                                 setBearbeiten(null); setGrund(''); setAendernFehler(null);
                                }, 0);
                              }} />
           ) : (
@@ -371,8 +401,23 @@ export function TabellenPage() {
           ))}
 
           {detail && erg && (
-            <Dialog open headerText={`Eintrag aus ${struktur.schema}.${struktur.tabelle}`} style={{ width: 'min(48rem, 96vw)' }} onClose={() => setDetail(null)}
-                    footer={<Bar endContent={<Button design="Emphasized" onClick={() => setDetail(null)}>Schließen</Button>} />}>
+            <Dialog open headerText={`Eintrag aus ${struktur.schema}.${struktur.tabelle}${bearbeiten ? ' ändern' : ''}`} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setDetail(null)}
+                    footer={<Bar endContent={<>
+                      {!bearbeiten && detailSchluessel && aenderbareSpalten.length > 0 && <Button icon="edit" onClick={() => { setBearbeiten({}); setAendernFehler(null); }}>Werte ändern</Button>}
+                      {bearbeiten && <Button design="Emphasized" icon="save" loading={speichert} disabled={speichert || !Object.keys(bearbeiten).length || grund.trim().length < 5} onClick={aendern}>Speichern</Button>}
+                      {bearbeiten && <Button disabled={speichert} onClick={() => setBearbeiten(null)}>Abbrechen</Button>}
+                      {!bearbeiten && <Button design="Emphasized" onClick={() => setDetail(null)}>Schließen</Button>}
+                    </>} />}>
+              {aendernFehler && <MessageStrip design="Negative" onClose={() => setAendernFehler(null)} style={{ marginBottom: '0.5rem' }}>{aendernFehler}</MessageStrip>}
+              {bearbeiten && (
+                <>
+                  <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+                    Direkte Änderung in der Datenbank: Die fachlichen Prüfungen der Apps greifen hier nicht. Jede Änderung wird mit Begründung als Änderungsbeleg festgehalten.
+                  </MessageStrip>
+                  <Label showColon required>Begründung (mindestens 5 Zeichen)</Label>
+                  <Input style={{ width: '100%', marginBottom: '0.5rem' }} maxlength={300} value={grund} onInput={(e) => setGrund(e.target.value)} />
+                </>
+              )}
               <table className="portal-tabelle" style={{ width: '100%', fontSize: '0.875rem' }}>
                 <tbody>
                   {erg.spalten.map((s, i) => {
@@ -380,7 +425,19 @@ export function TabellenPage() {
                     return (
                       <tr key={s.name}>
                         <td style={{ verticalAlign: 'top', whiteSpace: 'nowrap', paddingRight: '1rem' }}><b>{s.name}</b><br /><Label>{def?.typ}</Label></td>
-                        <td style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{detail[i] === null ? <span className="portal-muted">∅ (null)</span> : detail[i]}</td>
+                        <td style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {bearbeiten && aenderbareSpalten.includes(s.name) && (detail[i] ?? '').length < 2000 ? (
+                            <span style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <Input style={{ flex: 1 }} disabled={bearbeiten[s.name] === null && s.name in bearbeiten}
+                                     value={s.name in bearbeiten ? bearbeiten[s.name] ?? '' : detail[i] ?? ''}
+                                     valueState={s.name in bearbeiten ? 'Information' : 'None'}
+                                     onInput={(e) => setze1(s.name, e.target.value, detail[i])} />
+                              {!def?.pflicht && <CheckBox text="leer (NULL)" checked={s.name in bearbeiten ? bearbeiten[s.name] === null : detail[i] === null}
+                                                          onChange={(e) => setze1(s.name, e.target.checked ? null : '', detail[i])} />}
+                            </span>
+                          ) : detail[i] === null ? <span className="portal-muted">∅ (null)</span> : detail[i]}
+                          {bearbeiten && !aenderbareSpalten.includes(s.name) && <span className="portal-muted portal-small"> · {def?.schluessel ? 'Schlüssel' : def?.schutz ? 'geschützt' : 'nicht änderbar'}</span>}
+                        </td>
                       </tr>
                     );
                   })}
