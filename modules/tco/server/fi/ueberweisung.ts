@@ -63,7 +63,6 @@ export async function ueberweisungZahlung(v: Verein, db: Db, id: number, betrag:
   const b = await belegAus(v, d);
   const [u] = await db`select einreicher, benutzer_id, to_char(am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as am from tco.upload_folge where dok_id = ${id} order by id desc limit 1`;
   const wert = betrag ?? (b.betrag != null && Math.abs(b.betrag) >= 0.01 ? Math.round(Math.abs(b.betrag) * 100) / 100 : null);
-  return zahlungBauen(db, {
   // der Einreicher steht im Paperless-Feld „Eingereicht durch“; fehlt es, gilt der Benutzer des Dokumenten-Uploads
   const feld = await eingereichtDurch(v, d);
   return zahlungBauen(db, {
