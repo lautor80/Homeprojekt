@@ -359,3 +359,40 @@ test('FI-Abgleich: Buchungen auf zwei Konten, Vorschlag über Name/Betrag/Datum,
   assert.equal((await admin('POST', `${S}/abgleich/anlegen`, { internenr: '0000009002', richtung: 'AUSGABE', adrnr: '0000000305' })).status, 400, 'nicht doppelt');
   assert.equal((await admin('POST', `${S}/abgleich/anlegen`, { internenr: '0000009005', richtung: 'RUECKGABE', adrnr: '0000000305' })).status, 400, 'Richtung passt nicht');
 });
+
+test('Altdaten-Vorschau: lesen ohne zu speichern, Person von Hand zuweisen, Zeilen wählen, Buchung nur auf Wunsch', async () => {
+  const NILS = '0000000306';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, ort) values (${NILS}, 'Nils', 'Netzroller', '2016-01-01', 'Oberthal'), ('0000000307', 'Nora', 'Netzroller', '2016-01-01', 'Oberthal')`;
+  const text = 'Netzroller, N.\t02.02.2017\tBen H.\t25,00\t\t\t621\nNie Mand\t01.01.2020\tBen H.\t25,00\nNora Netzroller\t03.03.2017\tBen H.\t25,00';
+  const stand = async () => [(await sql`select count(*)::int as n from tco.schluessel_vorgang`)[0].n, (await sql`select count(*)::int as n from tco.fibuchungen`)[0].n];
+  const vorher = await stand();
+  // Vorschau: nichts gespeichert; nicht erkannte Person mit Vorschlägen aus dem Nachnamen
+  let r = await admin('POST', `${S}/altdaten/pruefen`, { text });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  type Z = { zeile: number; adrnr: string | null; name: string | null; fehler: string[]; zugewiesen: boolean; vorschlaege: { adrnr: string }[] };
+  let z = r.body.zeilen as Z[];
+  assert.deepEqual(z.map((x) => [x.zeile, x.adrnr, x.fehler.length]), [[1, null, 1], [2, null, 1], [3, '0000000307', 0]]);
+  assert.match(z[0].fehler[0], /bitte zuweisen/);
+  assert.deepEqual(z[0].vorschlaege.map((v) => v.adrnr).sort(), [NILS, '0000000307']);
+  assert.deepEqual(await stand(), vorher);
+  // von Hand zuweisen: Zeile 1 → Nils
+  r = await admin('POST', `${S}/altdaten/pruefen`, { text, zuordnung: { 1: NILS } });
+  z = r.body.zeilen as Z[];
+  assert.deepEqual([z[0].adrnr, z[0].name, z[0].zugewiesen, z[0].fehler.length], [NILS, 'Nils Netzroller', true, 0]);
+  assert.equal((await admin('POST', `${S}/altdaten/pruefen`, { text, zuordnung: { 1: '0000000999' } })).body.zeilen[0].fehler.length, 1, 'unbekannte Adressnummer');
+  // ohne Auswahl blockiert die ungeklärte Zeile 2; mit Auswahl der Zeilen 1 und 3 nicht
+  assert.equal((await admin('POST', `${S}/altdaten`, { text, zuordnung: { 1: NILS } })).status, 400);
+  assert.equal((await admin('POST', `${S}/altdaten`, { text, zeilen: [1, 2], zuordnung: { 1: NILS } })).status, 400, 'gewählte Zeile mit Fehler');
+  assert.equal((await admin('POST', `${S}/altdaten`, { text, zeilen: [9], zuordnung: {} })).status, 400, 'keine Zeile');
+  // Vorgabe: nicht buchen; gebucht wird nur Zeile 1
+  r = await admin('POST', `${S}/altdaten`, { text, zeilen: [1, 3], zuordnung: { 1: NILS }, buchen_zeilen: [1] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.uebernommen, r.body.buchungen.length], [2, 1]);
+  const vs = await sql`select adrnr, person, datum::text as datum, internenr, doc_id from tco.schluessel_vorgang where adrnr in (${NILS}, '0000000307') order by datum`;
+  assert.deepEqual(vs.map((v) => [v.adrnr, v.person, v.datum, !!v.internenr, v.doc_id]), [[NILS, 'Nils Netzroller', '2017-02-02', true, 621], ['0000000307', 'Nora Netzroller', '2017-03-03', false, null]]);
+  assert.deepEqual((await sql`select doknr from tco.fipapermap where internenr = ${vs[0].internenr}`).map((x) => x.doknr), ['621']);
+  assert.deepEqual(await stand(), [vorher[0] + 2, vorher[1] + 2], 'eine Kassenbuchung (zwei Zeilen)');
+  // ohne Angabe wird nichts gebucht
+  r = await admin('POST', `${S}/altdaten`, { text: 'Nora Netzroller\t04.04.2019\tBen H.\t25,00' });
+  assert.deepEqual([r.status, r.body.uebernommen, r.body.buchungen.length], [200, 1, 0]);
+});

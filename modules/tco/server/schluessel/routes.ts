@@ -226,13 +226,19 @@ export async function schluesselRoutes(app: FastifyInstance) {
   });
 
   // ------------------------------------------------------------------ Altdaten (Copy & Paste)
+  /** Zeile → Adressnummer: in der Vorschau von Hand zugewiesene Mitglieder/Kunden */
+  const zZuordnung = z.record(z.string().regex(/^\d+$/), z.string().min(1).max(20)).default({});
   app.post('/schluessel/altdaten/pruefen', admin, async (req) => {
-    const b = z.object({ text: z.string().max(500_000) }).parse(req.body);
-    return { spalten: Object.values(SPALTEN_TEXT), zeilen: await altdatenPruefen(DB, b.text), kassenkonto: (await cfgLesen(DB)).kassenkonto };
+    const b = z.object({ text: z.string().max(500_000), zuordnung: zZuordnung }).parse(req.body);
+    return { spalten: Object.values(SPALTEN_TEXT), zeilen: await altdatenPruefen(DB, b.text, b.zuordnung), kassenkonto: (await cfgLesen(DB)).kassenkonto };
   });
   app.post('/schluessel/altdaten', admin, async (req) => {
-    const b = z.object({ text: z.string().min(1, 'Bitte die Altdaten einfügen.').max(500_000), buchen: z.boolean().default(true) }).parse(req.body);
-    return change(req, (tx) => altdatenUebernehmen(tx, b.text, { buchen: b.buchen }, ich(req)), { action: 'SCHLUESSEL_ALTDATEN' });
+    // gebucht wird nur auf ausdrücklichen Wunsch: alle Zeilen (`buchen`) oder einzelne (`buchen_zeilen`)
+    const nr = z.array(z.number().int().positive()).max(1000);
+    const b = z.object({
+      text: z.string().min(1, 'Bitte die Altdaten einfügen.').max(500_000), buchen: z.boolean().default(false), buchen_zeilen: nr.optional(), zeilen: nr.optional(), zuordnung: zZuordnung,
+    }).parse(req.body);
+    return change(req, (tx) => altdatenUebernehmen(tx, b.text, { buchen: b.buchen, buchenZeilen: b.buchen_zeilen, zeilen: b.zeilen, zuordnung: b.zuordnung }, ich(req)), { action: 'SCHLUESSEL_ALTDATEN' });
   });
 
   // ------------------------------------------------------------------ Abgleich mit früheren Kontobewegungen (FI-Belege)
