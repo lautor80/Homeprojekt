@@ -249,6 +249,7 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.display, text: 'FI-Belege anzeigen, Notizen erfassen' },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.buchen, text: 'Bankimport und manuelle Buchungen, Belege und Rechnungen zuordnen' },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.storno, text: 'FI-Belege stornieren' },
+    { area: 'Finanzen', app: 'FI-Belege', id: P_FI.geldkonto, text: 'Geldkonto bereits gebuchter FI-Belege austauschen (Umkontierung ohne Storno und ohne Änderungsbeleg; nicht in abgeschlossenen Perioden)', requires: [P_FI.display] },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.periode, text: 'FI-Perioden (Monate) abschließen und wieder öffnen – danach keine Buchungen, Stornos oder Änderungen darin', requires: [P_FI.display] },
     { area: 'Finanzen', app: 'Beitragsforecast', id: P_FORECAST.display, text: 'Beitragsforecast anzeigen' },
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },

@@ -16,6 +16,7 @@ import { bankAbgleich } from './bank.js';
 import { abgeschlossenBis, abschliessen, oeffnen, periodenLesen } from './perioden.js';
 import { P_BANK, bankSchutz } from '../bankdaten.js';
 import { belegLesen, offeneBelege, zuordnungLoesen, zuordnungMelden, type OffenerBeleg } from './belege.js';
+import { geldkontoTauschen, tauschKandidaten } from './geldkonto.js';
 import { ueberweisungBestaetigen, ueberweisungDokument, ueberweisungZahlung, ueberweisungsBelege } from './ueberweisung.js';
 import { dateiPruefen, dekodieren } from '../upload/logik.js';
 import { PaperlessError } from '../../../../server/src/lib/paperless.js';
@@ -47,6 +48,8 @@ export const P_FI = {
   storno: 'tco.fi:storno',
   /** #3: Perioden abschließen und wieder öffnen */
   periode: 'tco.fi:periode',
+  /** Geldkonto gebuchter Belege austauschen (Ausnahme vom Änderungsschutz, ohne Änderungsbeleg) */
+  geldkonto: 'tco.fi:geldkonto',
 };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
@@ -146,6 +149,23 @@ export async function fiRoutes(app: FastifyInstance) {
   app.get('/fi/gegenkonto', { preHandler: requireAuth(P_FI.display) }, async (req) => {
     const q = z.object({ gkonto: z.string().min(1), internenr: nr }).parse(req.query);
     return gegenkontoHistorie(DB, q.gkonto, q.internenr, addTage(heute(), -366));
+  });
+
+  // ---------------------------------------------------------------- Geldkonto gebuchter Belege austauschen
+  /** Belege auf einem Konto (optional mit Gegenkonto und Zeitraum) zum Markieren */
+  app.get('/fi/geldkonto/kandidaten', { preHandler: requireAuth(P_FI.geldkonto) }, async (req) => {
+    const leer = (s: string | undefined) => s || null;
+    const q = z.object({ konto: z.string().trim().min(1, 'Bitte das bisherige Konto angeben.').max(10), gkonto: z.string().trim().max(10).optional(), von: datum.or(z.literal('')).optional(), bis: datum.or(z.literal('')).optional() }).parse(req.query);
+    return tauschKandidaten(DB, { konto: q.konto, gkonto: leer(q.gkonto), von: leer(q.von), bis: leer(q.bis) });
+  });
+  /** markierte Belege umkontieren: Geldkonto `von` → `nach`; ohne Änderungsbeleg, Periodenschutz bleibt */
+  app.post('/fi/geldkonto/tauschen', { preHandler: requireAuth(P_FI.geldkonto) }, async (req) => {
+    const b = z.object({
+      internenrn: z.array(nr).min(1, 'Bitte mindestens einen Beleg markieren.').max(5000), von: z.string().trim().min(1).max(10), nach: z.string().trim().min(1, 'Bitte das neue Konto angeben.').max(10),
+    }).parse(req.body);
+    const r = await change(req, (tx) => geldkontoTauschen(tx, b), { action: 'FI_GELDKONTO', reason: `${b.von} → ${b.nach}` });
+    req.log.info({ von: b.von, nach: b.nach, belege: r.belege, benutzer: req.user?.username }, 'FI-Belege: Geldkonto getauscht (ohne Änderungsbeleg)');
+    return r;
   });
 
   // ---------------------------------------------------------------- Paperless-Belege
