@@ -674,15 +674,24 @@ export async function aboBeenden(tx: Db, bid: string, ab: string): Promise<strin
 /**
  * Verwaltung: einzelnen Termin stornieren – ohne Fristen, auch nachträglich und auch aus EP3 übernommene Buchungen
  * (storno_portal: der EP3-Import setzt sie nicht zurück). Storniert zählt nicht mehr in Statistiken und Abrechnung.
- * Bereits abgerechnete Termine bleiben – sonst stimmte die Rechnung nicht mehr.
+ * Auch abgerechnete Termine (in einer Hallenrechnung enthalten) – dann nur mit Kommentar; die Rechnung selbst bleibt
+ * unverändert und muss bei Bedarf in der Hallenabrechnung korrigiert werden (Gutschrift). Der Kommentar steht an der
+ * Buchung (storno_grund).
  */
-export async function verwaltungStornieren(tx: Db, bid: string, datum: string): Promise<string> {
+export async function verwaltungStornieren(tx: Db, bid: string, datum: string, grund?: string | null): Promise<string> {
   const [b] = await tx`select quelle, status, coalesce(assigned, '') as assigned from tco.bookings where bid = ${bid} and datum = ${datum}`;
   if (!b) throw new BusinessError('Buchung nicht gefunden.', 404);
-  if (b.assigned === 'Y') throw new BusinessError('Die Buchung ist bereits abgerechnet – bitte zuerst aus der Hallenrechnung entfernen.');
   if (!['1', '3', '5'].includes(b.status)) throw new BusinessError('Die Buchung ist bereits storniert.');
-  await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now() where bid = ${bid} and datum = ${datum}`;
-  return `Buchung ${bid} am ${dat(datum)} storniert${b.quelle !== QUELLE ? ' – bleibt auch beim nächsten EP3-Import storniert' : ''}.`;
+  const [rg] = await tx`select rgnr_txt from tco.rgpos where bid = ${bid} and (datum = ${datum} or datum is null) order by rgnr_txt desc limit 1`;
+  const abgerechnet = b.assigned === 'Y' || !!rg;
+  const kommentar = grund?.trim() || null;
+  if (abgerechnet && !kommentar) {
+    throw new BusinessError(`Die Buchung ist ${rg ? `in der Rechnung ${rg.rgnr_txt}` : 'bereits abgerechnet'} enthalten – zum Stornieren bitte einen Kommentar angeben.`);
+  }
+  await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now(), storno_grund = ${kommentar}
+            where bid = ${bid} and datum = ${datum}`;
+  return `Buchung ${bid} am ${dat(datum)} storniert${b.quelle !== QUELLE ? ' – bleibt auch beim nächsten EP3-Import storniert' : ''}.`
+    + (abgerechnet ? ` Sie ist ${rg ? `in der Rechnung ${rg.rgnr_txt}` : 'bereits abgerechnet'} – die Rechnung bitte in der Hallenabrechnung prüfen.` : '');
 }
 
 /** Buchung aus der Verwaltung: vereinsintern (ohne Rechnung) bleibt ohne Preis, sonst Preis laut Hallenpreisen */

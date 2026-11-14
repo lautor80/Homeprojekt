@@ -577,9 +577,11 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
   const aenderbar = b.fest ? !!b.fest.id && !!b.fest.einmalig : !!b.bid && !b.abgerechnet;
   // wiederkehrende Belegung: nur dieser eine Termin wird abgesagt (Platz frei, zählt nicht mehr als belegt)
   const absagbar = !!b.fest?.id && !b.fest.einmalig;
+  // Buchungen lassen sich immer stornieren – abgerechnete (in einer Hallenrechnung) nur mit Kommentar
+  const stornierbar = !b.fest && !!b.bid;
   const grund = b.fest
     ? 'Wiederkehrende Belegung – Zeiten unter „Training & Sperrzeiten“ ändern; diesen einen Termin kannst du hier absagen.'
-    : b.abgerechnet ? 'Bereits abgerechnet – zum Stornieren zuerst aus der Hallenrechnung entfernen.' : '';
+    : b.abgerechnet ? 'Bereits abgerechnet – ändern ist nicht möglich, stornieren nur mit Kommentar.' : '';
   const ziel = { platz_id: platzId, datum: tag, von, bis, text: text.trim() || null };
   const ok = !!tag && !tagFehler && min(bis) > min(von) && (!b.fest || !!bezeichnung.trim());
 
@@ -592,16 +594,16 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
       return kopie ? api.post(`${PA}/buchung/${b.bid}/kopie`, { ...ziel, alt_datum: datum }) : api.put(`${PA}/buchung/${b.bid}`, { ...ziel, alt_datum: datum });
     });
   }
-  function entfernen() {
+  function entfernen(kommentar?: string) {
     setWeg(false);
     return onAktion(() => (absagbar ? api.post(`${PA}/feste/${b.fest!.id}/ausfall`, { platz_id: p.id, datum })
-      : b.fest ? api.del(`${PA}/feste/${b.fest.id}`) : api.post(`${PA}/storno`, { bid: b.bid, datum })));
+      : b.fest ? api.del(`${PA}/feste/${b.fest.id}`) : api.post(`${PA}/storno`, { bid: b.bid, datum, grund: kommentar || null })));
   }
   const titel = b.fest ? b.fest.bezeichnung : `${b.art === 'Abo' ? 'Abo · ' : ''}${b.kunde || 'Buchung'}`;
   return createPortal(
     <>
       <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-              footer={<Bar startContent={!kopie && (aenderbar || absagbar)
+              footer={<Bar startContent={!kopie && (aenderbar || absagbar || stornierbar)
                 ? <Button design="Transparent" icon="delete" disabled={busy} onClick={() => setWeg(true)}>{absagbar ? 'Diesen Termin absagen' : b.fest ? 'Löschen' : 'Stornieren'}</Button>
                 : undefined}
                            endContent={<>
@@ -670,9 +672,11 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
         </div>
       </Dialog>
       <ConfirmDialog open={weg} danger title={absagbar ? 'Termin absagen' : b.fest ? 'Belegung löschen' : 'Termin stornieren'} confirmText={absagbar ? 'Absagen' : b.fest ? 'Löschen' : 'Stornieren'}
+                     askReason={!b.fest && !!b.abgerechnet}
                      text={`${p.name}, ${tagText(datum)} ${b.von}–${b.bis} Uhr (${titel}) ${absagbar ? 'absagen' : b.fest ? 'löschen' : 'stornieren'}?`
                        + (absagbar ? ' Nur dieser Termin – die übrigen Termine der Belegung bleiben.' : b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : '')
-                       + ' Die Zeit ist danach frei und zählt in den Statistiken nicht mehr als belegt.'}
+                       + ' Die Zeit ist danach frei und zählt in den Statistiken nicht mehr als belegt.'
+                       + (!b.fest && b.abgerechnet ? ' Die Buchung ist bereits abgerechnet: bitte einen Kommentar angeben und die Rechnung in der Hallenabrechnung prüfen.' : '')}
                      onCancel={() => setWeg(false)} onConfirm={entfernen} />
     </>,
     document.body,

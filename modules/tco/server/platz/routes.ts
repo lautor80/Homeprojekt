@@ -763,8 +763,8 @@ export async function platzRoutes(app: FastifyInstance) {
   });
 
   app.post('/platz/admin/storno', admin, async (req) => {
-    const e = z.object({ bid: z.string().min(1), datum }).parse(req.body);
-    return { text: await change(req, (tx) => verwaltungStornieren(tx, e.bid, e.datum), { action: 'PLATZ_STORNO', reason: e.bid }) };
+    const e = z.object({ bid: z.string().min(1), datum, grund: z.string().trim().max(500).nullish() }).parse(req.body);
+    return { text: await change(req, (tx) => verwaltungStornieren(tx, e.bid, e.datum, e.grund), { action: 'PLATZ_STORNO', reason: e.grund ? `${e.bid}: ${e.grund}` : e.bid }) };
   });
 
   app.get('/platz/admin/abos', admin, async () => abosLesen(DB));

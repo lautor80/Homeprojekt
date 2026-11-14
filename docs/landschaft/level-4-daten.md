@@ -74,7 +74,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.produkte` |  |  | ● |  | ● |  |  |  |  | ● |  |  |  | ● |
 | `tco.registrierungen` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.rgkopf` |  | ● | ● |  |  | ● |  | ● | ● | ● | ● |  |  | ● |
-| `tco.rgpos` |  |  | ● |  |  |  |  | ● | ● |  |  |  |  | ● |
+| `tco.rgpos` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.rgtz` |  | ● | ● |  |  | ● |  | ● | ● |  |  |  |  | ● |
 | `tco.rpt_variant` |  |  |  |  |  |  |  |  | ● |  |  |  |  |  |
 | `tco.schluessel` | ● |  | ● |  |  |  |  | ● | ● | ● | ● |  | ● | ● |

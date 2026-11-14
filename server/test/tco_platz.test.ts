@@ -341,11 +341,18 @@ test('EP3-Buchungen in der Platzverwaltung ändern und stornieren – auch nacht
   const [a, b] = await sql`select status, time_start::text as s from tco.bookings where bid in ('0000004721', '0000004722') order by bid`;
   assert.deepEqual([a.status, b.status, b.s.slice(0, 5)], ['2', '1', '14:00']);
 
-  // abgerechnete Buchungen bleiben gesperrt
+  // abgerechnete Buchungen: nur mit Kommentar – der steht an der Buchung (storno_grund)
   await sql`update tco.bookings set assigned = 'Y' where bid = '0000004722'`;
   r = await admin('POST', `${A}/storno`, { bid: '0000004722', datum: d2 });
   assert.equal(r.status, 400);
-  assert.match(r.body.message, /bereits abgerechnet/);
+  assert.match(r.body.message, /bereits abgerechnet enthalten – zum Stornieren bitte einen Kommentar angeben/);
+  assert.equal((await admin('POST', `${A}/storno`, { bid: '0000004722', datum: d2, grund: '   ' })).status, 400, 'leerer Kommentar zählt nicht');
+  r = await admin('POST', `${A}/storno`, { bid: '0000004722', datum: d2, grund: 'Halle wegen Wasserschaden gesperrt' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /bereits abgerechnet – die Rechnung bitte in der Hallenabrechnung prüfen/);
+  const [g] = await sql`select status, storno_grund from tco.bookings where bid = '0000004722'`;
+  assert.deepEqual([g.status, g.storno_grund], ['2', 'Halle wegen Wasserschaden gesperrt']);
+  assert.ok(!(await belegtAm(d2)).includes('14:00 0000004722'), 'Stunde wieder frei');
 });
 
 test('EP3-Buchungen ohne Platzangabe belegen den einzigen Hallenplatz', async () => {
