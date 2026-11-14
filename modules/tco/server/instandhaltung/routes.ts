@@ -384,9 +384,12 @@ export async function instandhaltungRoutes(app: FastifyInstance) {
     return { text: await change(req, (tx) => zustaendigkeitLoeschen(tx, id), { action: 'IH_ZUSTAENDIG' }) };
   });
 
+  /** für das Kapitel „Instandhaltung“ der Einstellungen und den Abschnitt im Reiter „Paperless“ der Schnittstellen */
+  app.get('/instandhaltung/stamm/einstellungen', admin, async () => einstellungenLesen(DB));
+
   app.put('/instandhaltung/stamm/einstellungen', admin, async (req) => {
     const b = z.object({
-      vorstand_email: txt(500).default(''), foto_frist_monate: z.coerce.number().int().min(1).max(120),
+      vorstand_email: txt(500).optional(), foto_frist_monate: z.coerce.number().int().min(1).max(120).optional(),
       paperless_typen: txt(500).optional(), paperless_pfade: txt(500).optional(),
     }).parse(req.body);
     return { text: await change(req, (tx) => einstellungenSichern(tx, b), { action: 'IH_CFG' }) };

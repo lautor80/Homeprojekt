@@ -190,7 +190,7 @@ flowchart LR
 | gruppen | 9 |
 | halle | 41 |
 | index | 6 |
-| instandhaltung | 33 |
+| instandhaltung | 34 |
 | jt | 30 |
 | kalender | 23 |
 | konten | 5 |
@@ -200,7 +200,7 @@ flowchart LR
 | produkte | 6 |
 | schluessel | 28 |
 | schnupper | 6 |
-| soll | 10 |
+| soll | 11 |
 | sport | 4 |
 | teilnehmer | 4 |
 | upload | 2 |

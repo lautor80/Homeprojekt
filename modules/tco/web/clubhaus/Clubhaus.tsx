@@ -244,6 +244,37 @@ export function ClubhausKapitel() {
   return <Einstellungen cfg={cfg} edit={can('tco.clubhaus:edit')} onSaved={laden} />;
 }
 
+/**
+ * Abschnitt im Reiter „Paperless“ der App Schnittstellen (#232): das Feld, aus dem die Clubhausabrechnung gelesen wird.
+ * Gesichert wird die ganze Konfiguration des Clubhauses – die übrigen Angaben bleiben, wie sie geladen wurden.
+ */
+export function ClubhausPaperless() {
+  const can = useCan();
+  const edit = can('tco.clubhaus:edit');
+  const [cfg, setCfg] = useState<Cfg | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const laden = () => api.get<Init>(`${CH}/init?jahr=${new Date().getFullYear()}`).then((d) => setCfg(d.cfg)).catch((e) => setError((e as Error).message));
+  useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!cfg) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : null;
+  async function sichern(c: Cfg) {
+    setBusy(true); setError(null);
+    try {
+      toast((await api.put<{ text: string }>(`${CH}/cfg`, { ...c, reinigung: Number(String(c.reinigung).replace(',', '.')), provision: Number(String(c.provision).replace(',', '.')) })).text, 5000);
+      await laden();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <FormGrid>
+        <TextField label="Custom Field „JSON“ der Clubhausabrechnung (Name oder ID)" value={cfg.feld_json} onChange={(v) => setCfg({ ...cfg, feld_json: v })} readonly={!edit} />
+      </FormGrid>
+      {edit && <Toolbar design="Transparent"><ToolbarSpacer /><Button design="Emphasized" disabled={busy} onClick={() => sichern(cfg)}>Speichern</Button></Toolbar>}
+    </>
+  );
+}
+
 function Einstellungen({ cfg, edit, onSaved }: { cfg: Cfg; edit: boolean; onSaved: () => void }) {
   const [c, setC] = useState(cfg);
   const [error, setError] = useState<string | null>(null);
@@ -258,7 +289,6 @@ function Einstellungen({ cfg, edit, onSaved }: { cfg: Cfg; edit: boolean; onSave
         <TextField label="FI-Konto Getränke-Wareneingang" value={c.konto_ware} onChange={s('konto_ware')} readonly={!edit} />
         <TextField label="Reinigungspauschale je Montag (€)" value={String(c.reinigung)} onChange={s('reinigung')} readonly={!edit} />
         <TextField label="Provision (% vom VK)" value={String(c.provision)} onChange={s('provision')} readonly={!edit} />
-        <TextField label="Paperless Custom Field „JSON“ (Name oder ID)" value={c.feld_json} onChange={s('feld_json')} readonly={!edit} />
       </FormGrid>
       {edit && <Toolbar design="Transparent"><ToolbarSpacer />
         <Button design="Emphasized" onClick={async () => {

@@ -13,6 +13,7 @@ import { FormGrid, TextField } from '@core/components/FormFields';
 import { PdfDialog, download } from '@core/components/PdfDialog';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { einstellungLink } from '@core/einstellungen';
 import { TCO, dat, eur } from '../util';
 
 const S = `${TCO}/soll`;
@@ -63,6 +64,7 @@ export function Sollstellung() {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const laden = () => api.get<Init>(`${S}/init`).then(setInit).catch((e) => setError(e.message));
+  const zuGlaeubiger = () => { window.location.assign(einstellungLink('tco', 'beitragseinzug')); };
   useEffect(() => { laden(); }, []);
 
   const laufColumns: AnalyticalTableColumnDefinition[] = [
@@ -83,10 +85,18 @@ export function Sollstellung() {
 
   return (
     <AppPage title="Sollstellungen" subtitle="Beitragseinzug per SEPA-Lastschrift – verbucht wird die Gutschrift im Bankimport der FI Belege"
-             actions={edit && <Button design="Emphasized" icon="add" onClick={() => setAnsicht('neu')}>Neue Sollstellung</Button>}>
+             actions={<>
+               {can('tco.soll:glaeubiger') && <Button design="Transparent" icon="action-settings" tooltip="Gläubigerdaten (Administration → Einstellungen → TC Oberthal → Beitragseinzug)" onClick={zuGlaeubiger} />}
+               {edit && <Button design="Emphasized" icon="add" onClick={() => setAnsicht('neu')}>Neue Sollstellung</Button>}
+             </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {ok && <MessageStrip design="Positive" onClose={() => setOk(null)} style={{ marginBottom: '0.5rem' }}>{ok}</MessageStrip>}
-      {init && <Glaeubiger init={init} onSaved={laden} />}
+      {init && init.fehlt.length > 0 && (
+        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Gläubigerdaten unvollständig: {init.fehlt.join(', ')}. Ohne diese Angaben kann keine Lastschriftdatei erzeugt werden –{' '}
+          <Link onClick={zuGlaeubiger}>Administration → Einstellungen → TC Oberthal → Beitragseinzug</Link>.
+        </MessageStrip>
+      )}
       <Title level="H5" style={{ margin: '1rem 0 0.5rem' }}>Lastschriftläufe ({init?.laeufe.length ?? 0})</Title>
       <AnalyticalTable minRows={1} columns={laufColumns} data={init?.laeufe ?? []} loading={!init} sortable
                        visibleRows={Math.max(init?.laeufe.length ?? 0, 1)} noDataText="Noch keine Lastschriftläufe"
@@ -96,26 +106,31 @@ export function Sollstellung() {
 }
 
 // ---------------------------------------------------------------- Gläubigerdaten
-function Glaeubiger({ init, onSaved }: { init: Init; onSaved: () => void }) {
+/**
+ * Kapitel „Beitragseinzug“ der App Einstellungen (#232): Gläubigerdaten des Vereins für die SEPA-Lastschrift.
+ * Bisher ein aufklappbarer Bereich über der Liste der Lastschriftläufe.
+ */
+export function GlaeubigerKapitel() {
   const can = useCan();
-  // Sperre nur, solange der Bereich aufgeklappt ist
-  const [offen, setOffen] = useState(!!init.fehlt.length);
-  const sperre = useSperre('SOLL_CFG', 'TCO', offen && can('tco.soll:glaeubiger'), { bezeichnung: 'Gläubigerdaten' });
+  const sperre = useSperre('SOLL_CFG', 'TCO', can('tco.soll:glaeubiger'), { bezeichnung: 'Gläubigerdaten' });
   const ro = !can('tco.soll:glaeubiger') || !sperre.eigen;
-  const [c, setC] = useState(init.cfg);
+  const [c, setC] = useState<Cfg | null>(null);
+  const [fehlt, setFehlt] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const laden = () => api.get<{ cfg: Cfg; fehlt: string[] }>(`${S}/cfg`).then((x) => { setC(x.cfg); setFehlt(x.fehlt); }).catch((e) => setError((e as Error).message));
+  useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!c) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : null;
   const s = (k: keyof Cfg) => (v: string) => setC({ ...c, [k]: k === 'vorlauf' ? Number(v) || 0 : v });
   async function save() {
     setBusy(true); setError(null);
-    try { toast((await api.put<{ text: string }>(`${S}/cfg`, c)).text); onSaved(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { toast((await api.put<{ text: string }>(`${S}/cfg`, c)).text); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return (
-    <Panel headerText="Gläubigerdaten (Verein)" collapsed={!init.fehlt.length}
-           onToggle={(e) => setOffen(!(e.target as unknown as { collapsed: boolean }).collapsed)}>
+    <>
       <SperrHinweis s={sperre} />
-      {init.fehlt.length > 0 && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
-        Gläubigerdaten unvollständig: {init.fehlt.join(', ')}. Ohne diese Angaben kann keine Lastschriftdatei erzeugt werden.</MessageStrip>}
+      {fehlt.length > 0 && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+        Gläubigerdaten unvollständig: {fehlt.join(', ')}. Ohne diese Angaben kann keine Lastschriftdatei erzeugt werden.</MessageStrip>}
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <FormGrid>
         <TextField label="Name Gläubiger" required value={c.gl_name} onChange={s('gl_name')} readonly={ro} />
@@ -129,7 +144,7 @@ function Glaeubiger({ init, onSaved }: { init: Init; onSaved: () => void }) {
         <ChangeHistoryButton objectType="SOLL_CFG" objectKey="TCO" />
         {!ro && <Button design="Emphasized" loading={busy} onClick={save}>Speichern</Button>}
       </>} />
-    </Panel>
+    </>
   );
 }
 
