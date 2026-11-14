@@ -7,7 +7,7 @@ import { mailtextFuellen, unterlagenMail } from '../mailtexte.js';
 import { condense, dat, heute } from '../format.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import {
-  ART_JUGEND, austrittSichern, bankSichern, detailLesen, emailGueltig, kopfSichern, leer, mitgliedLesen, notizAnlegen, vertragAendern, verweis,
+  ART_JUGEND, saisonEnde, austrittSichern, bankSichern, detailLesen, emailGueltig, kopfSichern, leer, mitgliedLesen, notizAnlegen, vertragAendern, verweis,
 } from './logik.js';
 import { druckdatenLesen, unterlagePdf } from './pdf.js';
 import { unterlageAblegen } from './dokumente.js';
@@ -35,10 +35,7 @@ export async function eigeneAdrnr(db: Db, benutzerId: string): Promise<string> {
 /** Mitgliedschaft und normale Verträge enden zum 31.12. des laufenden Jahres */
 export const endeJahr = (h = heute()) => `${h.slice(0, 4)}-12-31`;
 /** Jugendtraining endet zum nächsten 30.09. */
-export function endeJugend(h = heute()): string {
-  const jahr = Number(h.slice(0, 4));
-  return h <= `${jahr}-09-30` ? `${jahr}-09-30` : `${jahr + 1}-09-30`;
-}
+export const endeJugend = (h = heute()): string => saisonEnde(h);
 const istJugend = (v: { art: string }) => leer(v.art) === ART_JUGEND;
 /** Vertragsende bei Kündigung eines einzelnen Vertrags */
 /** Mitgliedsbeitrag (kein Training, Schließfach, Spende …): mit dem eigenen Beitrag endet die Mitgliedschaft */
@@ -134,7 +131,8 @@ export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Ve
     const teile: string[] = [];
     for (const vt of d.vertraege) {
       if (!vt.eigen || !vt.laeuft) continue;
-      const bis = istJugend(vt) && endeJugend(h) < ende ? endeJugend(h) : ende;
+      // Jugendtraining endet immer am 30.09. – auch nach dem Austritt (Saison 01.10.–30.09.)
+      const bis = istJugend(vt) ? endeJugend(h) : ende;
       if (!vt.vertragende || vt.vertragende > bis) { await vertragAendern(tx, vt.adrnr, vt.vertragnr, { ende: bis }); teile.push(`${vt.artname || vt.art} bis ${dat(bis)}`); }
     }
     text = `Mitgliedschaft gekündigt am ${dat(h)} zum ${dat(ende)}${teile.length ? ` (${teile.join(', ')})` : ''}.`;

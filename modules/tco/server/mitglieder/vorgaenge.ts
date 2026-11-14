@@ -189,17 +189,19 @@ async function kuendigung(tx: Db, g: Kuendigung, m: Record<string, any>, eigene:
     if (m.eintritt > g.ende) throw new BusinessError(`Das Ende liegt vor dem Eintritt am ${dat(m.eintritt)}.`);
     const frist = fristEnde(g.eingang, false);
     if (g.ende < frist) warnungen.push(`Fristgerecht wäre der ${dat(frist)} (4 Wochen zum Jahresende) – abweichendes Ende ${dat(g.ende)}.`);
-    schritte.push(`Austritt zum ${dat(g.ende)} – SEPA-Mandat gilt bis dahin; der Portal-Benutzer wird nach dem Austritt gesperrt`);
     const teile: string[] = [];
+    let mandatBis = g.ende;
     for (const vt of eigene.filter((x) => x.laeuft)) {
-      if (vt.vertragbegin && vt.vertragbegin > g.ende) { warnungen.push(`Vertrag „${vt.artname}“ beginnt erst am ${dat(vt.vertragbegin)} – bitte prüfen.`); continue; }
-      const jf = fristEnde(g.eingang, true);
-      const bis = istJugend(vt.art) && jf < g.ende ? jf : g.ende;
+      // Jugendtraining endet immer am 30.09. (Saison 01.10.–30.09.) – auch nach dem Austritt
+      const bis = istJugend(vt.art) ? fristEnde(g.eingang, true) : g.ende;
+      if (vt.vertragbegin && vt.vertragbegin > bis) { warnungen.push(`Vertrag „${vt.artname}“ beginnt erst am ${dat(vt.vertragbegin)} – bitte prüfen.`); continue; }
+      if (bis > mandatBis) mandatBis = bis;
       if (vt.vertragende && vt.vertragende <= bis) continue;
       schritte.push(`Vertrag „${vt.artname}“ (Nr. ${vt.vertragnr}) endet am ${dat(bis)}`);
       teile.push(`${vt.artname} bis ${dat(bis)}`);
       if (aus) await vertragAendern(tx, g.adrnr, vt.vertragnr, { ende: bis });
     }
+    schritte.unshift(`Austritt zum ${dat(g.ende)} – SEPA-Mandat gilt bis ${mandatBis > g.ende ? `zum Ende des letzten Vertrags am ${dat(mandatBis)}` : 'dahin'}; der Portal-Benutzer wird nach dem Austritt gesperrt`);
     if (aus) await austrittSichern(tx, g.adrnr, g.ende);
     const zahlende = await tx`select vorname, nachname from tco.mitglieder where adrnrkih = ${g.adrnr} and adrnr <> ${g.adrnr}
                                and (austritt is null or austritt > ${g.ende})`;
