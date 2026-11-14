@@ -24,7 +24,7 @@ import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
 import {
-  ausgetreteneSperren, ausgetreteneSperrenMelden, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigenMehrere, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
+  ausgetreteneSperren, ausgetreteneSperrenMelden, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
 } from './selbst.js';
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
@@ -32,6 +32,7 @@ import { withChange } from '../../../../server/src/db.js';
 import { funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
+import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
@@ -248,14 +249,43 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       vertraege: z.array(z.object({ adrnr: z.string().min(1).max(20), vertragnr: z.string().min(1).max(20) })).min(1, 'Bitte mindestens einen Vertrag wählen.').max(30).optional(),
       bestaetigung: z.literal(true, { errorMap: () => ({ message: 'Bitte die Kündigung bestätigen.' }) }),
     }).parse(req.body);
+    // Freigabe durch den Vorstand (#232): hier wird nur eingereicht – ausgeführt wird die Kündigung mit der Freigabe (kuendigung.ts)
     const v = await vereinLesen();
-    const r = await change(req, async (tx) => {
-      const x = await (k.vertraege ? kuendigenMehrere(tx, benutzerId(req), k.vertraege, k.grund ?? null, v, benutzer(req)) : kuendigen(tx, benutzerId(req), k, v, benutzer(req)));
-      await selbstHinweis(tx, req, { quelle: 'MG_KUENDIGUNG', art: 'Kündigung durch das Mitglied', state: 'Critical', text: `${x.text}${k.grund ? ` Grund: ${k.grund}` : ''}` });
-      return x;
-    }, { action: 'KUENDIGUNG', reason: k.grund ?? null });
-    const b = await kuendigungBestaetigen(DB, v, r, k.grund ?? null);
-    return { ...b, text: `${r.text}${b.gesendet ? ' Die Kündigungsbestätigung wurde per E-Mail gesendet.' : ''}` };
+    const r = await change(req, (tx) => einreichen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG_EINGEREICHT', reason: k.grund ?? null });
+    return { id: r.id, eingereicht: true, text: `Deine Kündigung ist eingegangen und wird vom Vorstand freigegeben. Danach erhältst du die Kündigungsbestätigung per E-Mail. Eingereicht: ${r.text}` };
+  });
+
+  // ---------------------------------------------------------------- Kündigungen freigeben (Vorstand, #232) – aus dem Arbeitsvorrat
+  const kid = (req: FastifyRequest) => z.object({ id: z.coerce.number().int().positive() }).parse(req.params).id;
+  app.get('/mitglieder/kuendigungen/:id', schreiben, async (req) => kuendigungLesen(DB, kid(req)));
+  /** Freigabe: Die Kündigung wird ausgeführt (Kündigungsdatum = Tag des Eingangs); danach zeigt die Oberfläche die Bestätigung zur Prüfung */
+  app.post('/mitglieder/kuendigungen/:id/freigeben', schreiben, async (req) => {
+    const id = kid(req);
+    const v = await vereinLesen();
+    const r = await change(req, (tx) => freigeben(tx, id, v, benutzer(req)), { action: 'KUENDIGUNG', reason: `Freigabe Kündigung ${id}` });
+    return { text: `Freigegeben: ${r.text} Bitte die Kündigungsbestätigung prüfen und senden.` };
+  });
+  app.get('/mitglieder/kuendigungen/:id/pdf', schreiben, async (req, reply) => {
+    const d = await bestaetigungPdf(DB, kid(req), await vereinLesen());
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="${encodeURIComponent(d.dateiname)}"`).send(d.pdf);
+  });
+  /** Bestätigung ablegen und an das Mitglied senden – oder ohne E-Mail abschließen (dann selbst zustellen) */
+  app.post('/mitglieder/kuendigungen/:id/senden', schreiben, async (req) => {
+    const id = kid(req);
+    const { ohneMail } = z.object({ ohneMail: z.boolean().default(false) }).parse(req.body ?? {});
+    const r = await bestaetigungSenden(DB, id, await vereinLesen(), benutzer(req), ohneMail);
+    await change(req, (tx) => abschliessen(tx, id, r), { action: 'KUENDIGUNG_BESTAETIGUNG', reason: r.fertig ? (r.gesendet ? 'gesendet' : 'ohne E-Mail abgeschlossen') : 'E-Mail nicht gesendet' });
+    return {
+      fertig: r.fertig, gesendet: r.gesendet, hinweise: r.hinweise,
+      text: r.gesendet ? 'Die Kündigungsbestätigung wurde an das Mitglied gesendet.' : r.fertig ? 'Ohne E-Mail abgeschlossen – bitte die Bestätigung selbst zustellen.' : 'Die Kündigungsbestätigung wurde nicht gesendet.',
+    };
+  });
+  app.post('/mitglieder/kuendigungen/:id/ablehnen', schreiben, async (req) => {
+    const id = kid(req);
+    const { grund } = z.object({ grund: z.string().trim().min(3, 'Bitte einen Grund angeben – das Mitglied erhält ihn per E-Mail.').max(500) }).parse(req.body);
+    const k = await change(req, (tx) => ablehnen(tx, id, grund, benutzer(req)), { action: 'KUENDIGUNG_ABGELEHNT', reason: grund });
+    const hinweise = await ablehnungMitteilen(DB, await vereinLesen(), k, grund, benutzer(req));
+    return { hinweise, text: `Kündigung abgelehnt.${hinweise.length ? '' : ' Das Mitglied wurde per E-Mail unterrichtet.'}` };
   });
 
   // ---------------------------------------------------------------- Administration → Benutzer und Rechte → Benutzer: einzelner Benutzer aus Mitglied/EP3-Kunde

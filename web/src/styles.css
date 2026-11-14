@@ -761,4 +761,5 @@ ui5-busy-indicator { max-width: 100%; }
   .portal-av__datum { display: none; }
 }
 /* Kästchen „geklärt“ bleibt auch auf dem Handy sichtbar */
-@media (max-width: 600px) { .portal-av__datum:has(ui5-checkbox) { display: block; grid-column: 2 / -1; } }
+/* schmal: Datum entfällt – Kästchen („erledigt“, „gesehen“) und Knöpfe (Zahlungsdaten, Kündigung bearbeiten) bleiben, in eigener Zeile */
+@media (max-width: 600px) { .portal-av__datum:has(ui5-checkbox), .portal-av__datum:has(ui5-button) { display: block; grid-column: 2 / -1; } }

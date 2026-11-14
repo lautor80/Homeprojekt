@@ -81,7 +81,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
       if (austritt && v.eigen) continue;
       out.push(`Vertrag „${v.artname || v.art}“${v.eigen ? '' : ` von ${v.person}`} endet am ${dat(v.endeBei)}`);
     }
-    return [...out, 'Kündigungsbestätigung wird erzeugt und per E-Mail gesendet; der Vorstand erhält eine Kopie'];
+    return [...out, 'Der Vorstand gibt die Kündigung frei – erst dann gilt sie; danach kommt die Kündigungsbestätigung per E-Mail'];
   }
 
   async function pruefen() {
@@ -94,10 +94,11 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     setBusy(true); setError(null);
     try {
       if (typ === 'KUENDIGUNG') {
-        const r = await api.post<{ text: string; pdf: string; dateiname: string; gesendet: boolean; hinweise: string[] }>(`${MG}/kuendigung`, {
+        // Freigabe durch den Vorstand (#232): eingereicht – die Kündigungsbestätigung kommt nach der Freigabe per E-Mail
+        const r = await api.post<{ text: string }>(`${MG}/kuendigung`, {
           art: 'VERTRAG', grund: grund || null, bestaetigung: true, vertraege: gewaehlte.map((v) => ({ adrnr: v.adrnr, vertragnr: v.vertragnr })),
         });
-        setErgebnis({ text: r.text, schritte: plan?.schritte.slice(0, -1) ?? [], unterlage: { pdf: r.pdf, dateiname: r.dateiname, titel: 'Kündigungsbestätigung', gesendet: r.gesendet, hinweise: r.hinweise } });
+        setErgebnis({ text: r.text, schritte: (plan?.schritte.slice(0, -1) ?? []).map((s) => `Nach der Freigabe: ${s}`), unterlage: null });
       } else setErgebnis(await api.post<Ergebnis>(`${MG}/vorgang`, { typ, adrnr, art }));
       setSchritt(2);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -109,7 +110,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     : schritt === 1
       ? <><Button disabled={busy} onClick={() => setSchritt(0)}>Zurück</Button>
           <Button design={typ === 'KUENDIGUNG' ? 'Negative' : 'Emphasized'} disabled={busy || !!gesperrt || !ok} onClick={ausfuehren}>
-            {typ === 'KUENDIGUNG' ? 'Verbindlich kündigen' : typ === 'JUGENDTRAINING' ? 'Verbindlich abschließen' : 'Verbindlich wechseln'}</Button></>
+            {typ === 'KUENDIGUNG' ? 'Kündigung einreichen' : typ === 'JUGENDTRAINING' ? 'Verbindlich abschließen' : 'Verbindlich wechseln'}</Button></>
       : <Button design="Emphasized" onClick={() => onClose(true)}>Fertig</Button>;
 
   const personenWahl = k && (k.personen.length > 1 || (typ === 'JUGENDTRAINING' && k.personen.length === 1 && !k.personen[0].ich))

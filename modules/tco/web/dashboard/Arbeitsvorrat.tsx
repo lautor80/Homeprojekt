@@ -9,6 +9,7 @@ import { DASH } from './typen';
 import { aufgabenGesehen } from '@core/arbeitsvorratGesehen';
 import { ArbeitsvorratBaum, type Aufgabe, type AufgabenZusatz } from '@core/components/Arbeitsvorrat';
 import { MitgliedWahl } from '../fi/FiUeberweisung';
+import { KuendigungKnopf } from '../mitglieder/KuendigungFreigabe';
 
 const dat = (iso: string) => iso.split('-').reverse().join('.');
 
@@ -42,7 +43,7 @@ export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: strin
   if (!liste.length) {
     return leerText ? <Section title="Arbeitsvorrat" count={0}><span className="portal-muted">{leerText}</span></Section> : null;
   }
-  return <ArbeitsvorratBaum liste={liste} onOeffnen={(a) => navigate(a.pfad)} onErledigen={erledigen} zusatz={zahlungZusatz} />;
+  return <ArbeitsvorratBaum liste={liste} onOeffnen={(a) => navigate(a.pfad)} onErledigen={erledigen} onNeuLaden={laden} zusatz={tcoZusatz} />;
 }
 
 /** Knopf „Zahlungsdaten“ am Eintrag „Überweisung an Einreicher“ – auch auf der Startseite (WebModule.arbeitsvorratZusatz) */
@@ -55,7 +56,11 @@ function ZahlungKnopf({ id, onUeberwiesen }: { id: number; onUeberwiesen?: () =>
     </>
   );
 }
-export const zahlungZusatz: AufgabenZusatz = (a, erledigt) => (a.zahlung ? <ZahlungKnopf id={a.zahlung.id} onUeberwiesen={a.erledigen ? erledigt : undefined} /> : null);
+/** Zusätze des Vereins an Einträgen des Arbeitsvorrats: Zahlungsdaten (Überweisung an Einreicher), Kündigung bearbeiten (#232) */
+export const tcoZusatz: AufgabenZusatz = (a, erledigt, neuLaden) => (
+  a.zahlung ? <ZahlungKnopf id={a.zahlung.id} onUeberwiesen={a.erledigen ? erledigt : undefined} />
+    : a.aktion?.art === 'KUENDIGUNG' ? <KuendigungKnopf id={a.aktion.id} onFertig={neuLaden} /> : null
+);
 
 interface Zahlung {
   id: number; titel: string; einreicher: string; dok_id: number | null; am: string; adrnr: string | null; empfaenger: string | null; iban: string | null; iban_text: string | null;

@@ -465,7 +465,7 @@ Hinweis hoch statt ihn zu doppeln; mehrere Hinweise einer Art stehen gesammelt u
 |---|---|---|
 | Mitglied ändert Kontaktdaten (*Meine Mitgliedschaft*, *Mein Konto*) | Kassenwart | Mitglied |
 | Mitglied ändert Bankverbindung | Kassenwart (gelb, IBAN maskiert) | Mitglied |
-| Kündigung durch das Mitglied | Kassenwart (gelb, mit Grund) | Mitglied |
+| Kündigung durch das Mitglied | seit der Freigabe-Logik (siehe unten): Aufgabe beim Vorstand; nach der Freigabe Hinweis beim Kassenwart | Mitglied |
 | Beitragswechsel, Jugendtraining durch das Mitglied | Kassenwart | Mitglied |
 | Mitglied trägt sich in eine Gruppe ein oder aus | Kassenwart | Mitglied |
 | Mitglied richtet über die Einladung seinen Zugang ein | Kassenwart | Mitglieder |
@@ -1119,6 +1119,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | V2 | Arbeitsvorrat auf der Startseite für alle Anwendungen (`GET /api/arbeitsvorrat`, `ServerModule.arbeitsvorrat`); roter Zähler am Menüeintrag *Start*; die Vereinsübersicht zeigt weiter den Ausschnitt TC Oberthal | umgesetzt 14.11.2026 – Quellen für Euroflex folgen mit V1 |
 | V1 (Teil 1) | Hinweise im Arbeitsvorrat (`core.hinweise`, „gesehen“); Selbstbedienung der Mitglieder und Hallennutzer, Einladung, Sperre nach Austritt melden sich | umgesetzt 14.11.2026 |
 | V1 (Teil 2) | Störungen von Paperless und der Vereins-Schnittstellen (überwachte Aufrufe, schließen sich von selbst), nicht gesendete E-Mails, Rückläufer und Antworten, Dokumenteneingang; Block „Euroflex“ | umgesetzt 14.11.2026 – kein offener Punkt mehr |
+| Kündigung | Vorgabe vom 14.11.2026: Kündigungen der Mitglieder werden eingereicht und stehen im Arbeitsvorrat des Vorstands; erst die Freigabe führt sie aus (Kündigungsdatum = Eingang), dann wird die Kündigungsbestätigung erzeugt, zur Prüfung angezeigt und an das Mitglied gesendet; Ablehnung mit Grund | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

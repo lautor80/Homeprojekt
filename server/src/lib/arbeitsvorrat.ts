@@ -32,6 +32,8 @@ export interface Aufgabe {
   erledigen?: { text: string; url: string; body: Record<string, unknown> };
   /** Upload „Überweisung an Einreicher“ (TC Oberthal): Zahlungsdaten und QR-Code im Popup */
   zahlung?: { id: number };
+  /** Bearbeitung direkt am Eintrag: Das Modul zeigt dazu einen Knopf mit Dialog (WebModule.arbeitsvorratZusatz), z. B. art KUENDIGUNG */
+  aktion?: { art: string; id: number };
   /** Unterpunkte (z. B. die einzelnen Buchungen zu „Heute n Hallenbuchungen“) */
   kinder?: Aufgabe[];
 }

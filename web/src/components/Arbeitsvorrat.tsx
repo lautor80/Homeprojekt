@@ -15,14 +15,16 @@ export interface Aufgabe {
   erledigen?: { text: string; url: string; body: Record<string, unknown> };
   /** Upload „Überweisung an Einreicher“ (TC Oberthal): Zahlungsdaten und QR-Code im Popup */
   zahlung?: { id: number };
+  /** Bearbeitung direkt am Eintrag: Das Modul zeigt dazu einen Knopf mit Dialog (z. B. art KUENDIGUNG) */
+  aktion?: { art: string; id: number };
   /** Unterpunkte, z. B. die einzelnen Buchungen */
   kinder?: Aufgabe[];
 }
 
-/** Zusatz eines Moduls am Eintrag (z. B. Knopf „Zahlungsdaten“) – erledigt() bestätigt den Eintrag */
-export type AufgabenZusatz = (a: Aufgabe, erledigt: () => void) => ReactNode;
+/** Zusatz eines Moduls am Eintrag (z. B. Knopf „Zahlungsdaten“) – erledigt() bestätigt den Eintrag, neuLaden() liest den Arbeitsvorrat neu */
+export type AufgabenZusatz = (a: Aufgabe, erledigt: () => void, neuLaden: () => void) => ReactNode;
 
-interface Aktionen { onOeffnen: (a: Aufgabe) => void; onErledigen: (a: Aufgabe) => void; zusatz?: AufgabenZusatz }
+interface Aktionen { onOeffnen: (a: Aufgabe) => void; onErledigen: (a: Aufgabe) => void; onNeuLaden?: () => void; zusatz?: AufgabenZusatz }
 
 const dat = (iso: string) => iso.split('-').reverse().join('.');
 const RANG = { Negative: 3, Critical: 2, Information: 1 } as const;
@@ -46,7 +48,7 @@ function Eintrag({ a, ebene = 1, ...akt }: { a: Aufgabe; ebene?: number } & Akti
           <div className="portal-av__text">{a.text}</div>
         </button>
         <div className="portal-av__datum">
-          {akt.zusatz?.(a, () => akt.onErledigen(a))}
+          {akt.zusatz?.(a, () => akt.onErledigen(a), () => akt.onNeuLaden?.())}
           {a.erledigen ? <CheckBox text={a.erledigen.text} onChange={(e) => { if (e.target.checked) akt.onErledigen(a); }} /> : a.datum ? dat(a.datum) : ''}
         </div>
         <button type="button" className="portal-av__auf" aria-label="App öffnen" title="App öffnen" onClick={() => akt.onOeffnen(a)}>
