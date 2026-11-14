@@ -3,6 +3,7 @@ import { Button, BusyIndicator, CheckBox, Input, Label, MessageStrip, Text } fro
 import { api } from '@core/api';
 import { CenterCard } from '@core/pages/AuthPages';
 import type { OeffentlichProps } from '@core/platform';
+import { NichtVerfuegbar, istAbgeschaltet } from '@core/components/NichtVerfuegbar';
 import { TCO, dat, eur } from '../util';
 
 /**
@@ -22,9 +23,11 @@ export function SchluesselQuittung({ orgName, logo, onFertig }: OeffentlichProps
   const [ok, setOk] = useState(false);
   const [fertig, setFertig] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Funktionsschalter (#232, F1): Die App „Hallenschlüssel“ ist abgeschaltet */
+  const [aus, setAus] = useState(false);
   useEffect(() => {
     api.get<Info>(`${TCO}/schluessel/quittung?token=${encodeURIComponent(token)}`).then((i) => { setInfo(i); setName(i.person); })
-      .catch((e) => setError((e as Error).message));
+      .catch((e) => (istAbgeschaltet(e) ? setAus(true) : setError((e as Error).message)));
   }, [token]);
   async function quittieren() {
     setBusy(true); setError(null);
@@ -33,6 +36,7 @@ export function SchluesselQuittung({ orgName, logo, onFertig }: OeffentlichProps
       setFertig(r.text);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  if (aus) return <NichtVerfuegbar orgName={orgName} logo={logo} titel="Hallenschlüssel" onFertig={onFertig} />;
   return (
     <CenterCard title={orgName} subtitle="Hallenschlüssel – Erhalt quittieren" logo={logo} breit>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}

@@ -5,6 +5,7 @@ import {
 import { api } from '@core/api';
 import { CenterCard } from '@core/pages/AuthPages';
 import type { OeffentlichProps } from '@core/platform';
+import { NichtVerfuegbar, istAbgeschaltet } from '@core/components/NichtVerfuegbar';
 import { TCO } from '../util';
 
 /**
@@ -36,7 +37,9 @@ export function Schnuppertraining({ orgName, logo, onFertig }: OeffentlichProps)
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fertig, setFertig] = useState<string | null>(null);
-  useEffect(() => { api.get<Info>(`${TCO}/schnupper`).then(setInfo).catch((e) => setError(e.message)); }, []);
+  /** Funktionsschalter (#232, F1): Das Anmeldeformular ist abgeschaltet – Hinweis statt Formular */
+  const [aus, setAus] = useState(false);
+  useEffect(() => { api.get<Info>(`${TCO}/schnupper`).then(setInfo).catch((e) => (istAbgeschaltet(e) ? setAus(true) : setError(e.message))); }, []);
 
   const alter = /^\d{1,2}$/.test(p.alter.trim()) ? Number(p.alter.trim()) : null;
   const minderjaehrig = alter != null && alter < (info?.volljaehrig ?? 18);
@@ -59,6 +62,7 @@ export function Schnuppertraining({ orgName, logo, onFertig }: OeffentlichProps)
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
+  if (aus) return <NichtVerfuegbar orgName={orgName} logo={logo} titel="Schnuppertraining" onFertig={onFertig} />;
   if (fertig) {
     return (
       <CenterCard title={orgName} subtitle="Schnuppertraining" logo={logo}>

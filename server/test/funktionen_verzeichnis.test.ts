@@ -5,7 +5,8 @@
  *    (sie sind die Id der App im Verzeichnis und im Menü).
  *  - Ihre Rechte und Routen gibt es im Quelltext des Moduls – eine umbenannte Route fällt hier auf.
  *  - Jede Funktion wirkt auch wirklich: über ein Recht, eine Route oder eine Abfrage funktionAktiv() im Server.
- *  - Abgeschaltetes wird nicht angezeigt: Funktionen ohne eigenes Recht fragt die Oberfläche mit useFunktion() ab.
+ *  - Abgeschaltetes wird nicht angezeigt: Funktionen ohne eigenes Recht fragt die Oberfläche mit useFunktion() ab;
+ *    öffentliche Seiten (ohne Sitzung) zeigen den Hinweis „nicht verfügbar“, wenn der Server „abgeschaltet“ meldet.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,13 +31,21 @@ function quelltext(rel: string, endung: RegExp): string {
   }).join('\n');
 }
 
-interface Modul { id: string; funktionen: FunktionDef[]; katalog: string; server: string; web: string }
+interface Modul { id: string; funktionen: FunktionDef[]; katalog: string; server: string; web: string; webIndex?: string }
 const MODULE: Modul[] = [
   { id: 'core', funktionen: KERN_FUNKTIONEN, katalog: lesen('server/src/permissions.ts'), server: quelltext('server/src', /\.ts$/), web: quelltext('web/src', /\.tsx?$/) },
-  { id: 'tco', funktionen: TCO_FUNKTIONEN, katalog: lesen('modules/tco/server/index.ts'), server: quelltext('modules/tco/server', /\.ts$/), web: quelltext('modules/tco/web', /\.tsx?$/) },
+  { id: 'tco', funktionen: TCO_FUNKTIONEN, katalog: lesen('modules/tco/server/index.ts'), server: quelltext('modules/tco/server', /\.ts$/), web: quelltext('modules/tco/web', /\.tsx?$/), webIndex: 'modules/tco/web/index.ts' },
   { id: 'transport', funktionen: TRANSPORT_FUNKTIONEN, katalog: lesen('modules/transport/server/index.ts'), server: quelltext('modules/transport/server', /\.ts$/), web: quelltext('modules/transport/web', /\.tsx?$/) },
 ];
 const regexSicher = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Datei der öffentlichen Seite zu einem Pfad – aus WebModule.oeffentlich und den Importen des Moduls */
+function oeffentlicheSeite(m: Modul, pfad: string): string | null {
+  if (!m.webIndex) return null;
+  const index = lesen(m.webIndex);
+  const komponente = new RegExp(`\\{ pfad: '${regexSicher(pfad)}', component: (\\w+)`).exec(index)?.[1];
+  const von = komponente && new RegExp(`import \\{[^}]*\\b${komponente}\\b[^}]*\\} from '(\\.[^']+)'`).exec(index)?.[1];
+  return von ? path.posix.normalize(`${path.posix.dirname(m.webIndex)}/${von}.tsx`) : null;
+}
 
 for (const m of MODULE) {
   /** (Bereich, App) aus dem Rechtekatalog */
@@ -77,8 +86,18 @@ for (const m of MODULE) {
       const konstante = new RegExp(`const (\\w+) = '${regexSicher(f.id)}'`).exec(m.server)?.[1];
       const imHandler = m.server.includes('funktionAktiv(') && [f.id, konstante].some((n) => n && new RegExp(`\\b${regexSicher(n)}\\b[^\\n]*\\n?[^\\n]*funktionAktiv\\(|funktionAktiv\\([^)]*${regexSicher(n)}`).test(m.server));
       assert.ok(perRecht || perRoute || imHandler, `${f.id}: wirkt nirgends – braucht ein Recht, eine Route oder eine Abfrage funktionAktiv() im Handler`);
-      // Ein eigenes Recht blendet überall aus, wo es geprüft wird. Alles andere muss die Oberfläche selbst abfragen.
-      if (!perRecht) assert.ok(m.web.includes(`'${f.id}'`), `${f.id}: Die Oberfläche fragt die Funktion nicht ab (useFunktion) – sie würde weiter angezeigt`);
+      if (f.seite) {
+        // öffentliche Seite: braucht eine Route (ohne Anmeldung gibt es kein Recht) und zeigt bei „abgeschaltet“ den Hinweis
+        assert.ok(perRoute, `${f.id}: eine öffentliche Seite braucht Routen, die abgewiesen werden`);
+        const datei = oeffentlicheSeite(m, f.seite);
+        assert.ok(datei, `${f.id}: Seite ${f.seite} ist in ${m.webIndex} nicht als öffentliche Seite angemeldet`);
+        const quelle = lesen(datei);
+        assert.ok(quelle.includes('istAbgeschaltet(') && quelle.includes('<NichtVerfuegbar'), `${f.id}: ${datei} zeigt keinen Hinweis, wenn die Funktion abgeschaltet ist`);
+      } else if (!perRecht) {
+        // Ein eigenes Recht blendet überall aus, wo es geprüft wird. Alles andere muss die Oberfläche selbst abfragen.
+        assert.ok(m.web.includes(`'${f.id}'`), `${f.id}: Die Oberfläche fragt die Funktion nicht ab (useFunktion) – sie würde weiter angezeigt`);
+      }
+      if (f.nurMitApp) assert.ok(!perRecht, `${f.id}: „nur mit der App“ ist für Seiten hinter verschickten Links gedacht, nicht für Rechte`);
     }
   });
 }

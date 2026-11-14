@@ -620,6 +620,18 @@ Einzelne Funktionen der ersten Lieferung:
 | Stammdaten (TC Oberthal) | Übernahme aus SAP | Recht |
 | Stammdaten (Euroflex) | Datenimport aus SAP | Recht |
 | Tabellenansicht | Werte ändern · Datensätze löschen | je ein Recht |
+| Mitgliedsanträge | Online-Mitgliedsantrag (`/beitritt`) | Routen, Seite zeigt Hinweis |
+| Schnuppertraining | Anmeldeformular (`/schnuppertraining`) | Routen, Seite zeigt Hinweis |
+| Registrierungen | Registrierung auf der Anmeldeseite (mit Bestätigungslink) | Routen, Knopf verschwindet |
+| Mitglieder | Einladung annehmen (`/einladung`) | Routen – **kein eigener Schalter**, nur mit der App |
+| Hallenschlüssel | Online-Quittung (`/schluessel-quittung`) | Routen – **kein eigener Schalter**, nur mit der App |
+
+Öffentliche Formulare (seit 14.11.2026): Sie hängen an keinem Recht und liefen deshalb weiter, auch wenn ihre App
+aus war. Jetzt sind sie als Funktionen angemeldet: Der Server nimmt nichts mehr an, die Seite zeigt statt des
+Formulars „Dieses Angebot steht zurzeit nicht zur Verfügung“, auf der Anmeldeseite verschwindet „Registrieren“.
+Einladung und Schlüssel-Quittung haben keinen eigenen Schalter, damit bereits verschickte Links gültig bleiben,
+solange es die App gibt. In der App *Mitgliedsanträge* steht ein Hinweis, wenn das Formular aus ist; neue
+Vertragsangebote lassen sich dann nicht erstellen (sie könnten nicht bestätigt werden).
 
 So wirkt „Aus“:
 
@@ -643,8 +655,6 @@ Oberfläche abgefragt).
 
 - weitere Funktionen aus der Liste oben (Sammelrechnung, Sammelversand, WhatsApp, nuLiga-Abgleich, Lastschriftlauf,
   Altdaten Hallenschlüssel, Theke-Funktionen …) – je Funktion ein Eintrag und eine Abfrage in der Oberfläche;
-- **öffentliche Formulare** (Online-Mitgliedsantrag, Schnuppertraining, Registrierung, Schlüssel-Quittung): Sie
-  hängen an keinem Recht und laufen deshalb weiter, auch wenn ihre App aus ist – als Nächstes anzumelden;
 - Kapitel der Einstellungen (E1), Reiter der Schnittstellen (S1) und der Arbeitsvorrat im Kern (V2) fragen den
   Schalter ab, sobald es sie gibt;
 - Apps, die Daten einer abgeschalteten App nur anzeigen, ohne deren Recht ausdrücklich vorauszusetzen, zeigen
@@ -1052,7 +1062,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | N6 | Rollenpflege in der Reihenfolge des Menüs; lose Apps im Bereich „Allgemein“; Test `server/test/menue_rollenpflege.test.ts` | umgesetzt 14.11.2026 |
 | S3 | Anbindungen zeigen Testmail und die letzten 5 Versuche; „Protokoll leeren“ steht in der App E-Mail-Protokoll | umgesetzt 14.11.2026 |
 | B4 | Zahnrad nur für Einstellungen, je App ein eigenes Icon (Test) | umgesetzt 14.11.2026 |
-| F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 11 einzelne Funktionen | Rahmen umgesetzt 14.11.2026 – weitere Funktionen und öffentliche Formulare offen |
+| F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 16 einzelne Funktionen einschließlich der öffentlichen Formulare | Rahmen umgesetzt 14.11.2026 – weitere Funktionen innerhalb der Apps offen |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und
 *Schnittstellen* eine Gruppe mit den drei bisherigen Apps:

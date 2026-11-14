@@ -57,6 +57,7 @@ export function baum(): Knoten[] {
         rechte: app.permissions.map((p) => p.id), routen: [],
         kinder: defs.filter((d) => d.modul === g.module && d.def.app === app.name).map(({ def }): Knoten => ({
           id: def.id, art: 'funktion', text: def.text, beschreibung: def.beschreibung, hinweis: def.hinweis,
+          fest: def.nurMitApp ? `Geht nur zusammen mit der App „${app.name}“ aus – bereits verschickte Links bleiben sonst gültig.` : undefined,
           rechte: def.permissions ?? [], routen: (def.routen ?? []).map((r) => routenSchluessel(g.module, r)), kinder: [],
         })),
       })),
@@ -78,7 +79,8 @@ export function berechnen(aus: ReadonlySet<string>, wurzeln: Knoten[] = baum()):
   const rechte = new Set<string>();
   const routen = new Map<string, string>();
   const gehen = (k: Knoten, obenAus: boolean): void => {
-    const istAus = !k.fest && (obenAus || aus.has(k.id));
+    // Feste Knoten haben keinen eigenen Schalter, gehen aber mit dem Knoten darüber aus (in der Administration ist auch der fest)
+    const istAus = obenAus || (!k.fest && aus.has(k.id));
     if (istAus) {
       ids.add(k.id);
       for (const r of k.rechte) rechte.add(r);

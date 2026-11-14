@@ -9,7 +9,7 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { Section } from '@core/components/Section';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { TCO, dat } from '../util';
 
@@ -37,6 +37,8 @@ const STATUS = { EINGANG: ['Eingang', 'Critical'], UEBERNOMMEN: ['übernommen', 
 
 export function Mitgliedsantraege() {
   const can = useCan();
+  /** Funktionsschalter (#232, F1): das öffentliche Antragsformular lässt sich abschalten */
+  const formularAn = useFunktion()('tco.antrag.formular');
   const edit = can('tco.antraege:edit');
   const [liste, setListe] = useState<Antrag[] | null>(null);
   const [arten, setArten] = useState<Record<string, string>>({});
@@ -65,14 +67,21 @@ export function Mitgliedsantraege() {
   return (
     <AppPage varianten={{ repid: 'tco.antraege', ansicht: { alle }, onAnwenden: (a) => { setAlle(feld(a, 'alle', alle)); } }} title="Mitgliedsanträge" subtitle="Online eingegangene Anträge (Formular /beitritt)"
              actions={<>
-               {edit && <Button design="Emphasized" icon="email" onClick={() => setAngebotNeu(true)}>Vertragsangebot erstellen</Button>}
-               <Button design="Transparent" icon="action" onClick={() => window.open('/beitritt', '_blank')}>Antragsformular öffnen</Button>
+               {edit && <Button design="Emphasized" icon="email" disabled={!formularAn} onClick={() => setAngebotNeu(true)}
+                                tooltip={formularAn ? undefined : 'Der Online-Mitgliedsantrag ist abgeschaltet – ein Vertragsangebot ließe sich nicht bestätigen'}>Vertragsangebot erstellen</Button>}
+               {formularAn && <Button design="Transparent" icon="action" onClick={() => window.open('/beitritt', '_blank')}>Antragsformular öffnen</Button>}
                <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur Eingang' : 'Auch erledigte'}</Button>
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {!formularAn && (
+        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Der Online-Mitgliedsantrag ist abgeschaltet (Administration → Einstellungen → Funktionen): Das Formular /beitritt nimmt keine Anträge an,
+          offene Vertragsangebote lassen sich nicht bestätigen. Eingegangene Anträge können weiter bearbeitet werden.
+        </MessageStrip>
+      )}
       <Angebote alle={alle} edit={edit} arten={arten} version={angebotVersion} onError={setError} />
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !liste.length ? (
-        <MessageStrip hideCloseButton>Keine offenen Anträge. Link zum Formular für Website und Aushang: <b>{window.location.origin}/beitritt</b></MessageStrip>
+        <MessageStrip hideCloseButton>Keine offenen Anträge.{formularAn && <> Link zum Formular für Website und Aushang: <b>{window.location.origin}/beitritt</b></>}</MessageStrip>
       ) : liste.map((a) => (
         <Section key={a.id} title={`${a.nummer} · ${a.daten.personen.map((p) => `${p.vorname} ${p.nachname}`).join(', ')}`}
                  status={<ObjectStatus state={STATUS[a.status][1]} inverted>{STATUS[a.status][0]}</ObjectStatus>}>
