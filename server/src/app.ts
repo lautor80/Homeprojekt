@@ -65,7 +65,8 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   app.get('/api/health', async () => {
     await sql`select 1`;
-    return { status: 'ok' };
+    // aktive Version (Uhrzeit und Kurzkennung des Commits) – zum Prüfen nach einem Update, auch ohne Anmeldung
+    return { status: 'ok', version: { zeit: process.env.PORTAL_VERSION_ZEIT || null, sha: (process.env.PORTAL_VERSION_SHA || '').slice(0, 7) || null } };
   });
 
   await app.register(setupRoutes);

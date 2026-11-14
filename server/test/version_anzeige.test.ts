@@ -40,3 +40,8 @@ test('Neu laden: Knopf am Logo, index.html ohne Zwischenspeicher', () => {
   assert.match(app, /if \(ohneCache\(p\)\) res\.setHeader\('Cache-Control', 'no-cache, must-revalidate'\)/, 'index.html bei direktem Aufruf');
   assert.match(app, /reply\.header\('Cache-Control', 'no-cache, must-revalidate'\);\n\s*return reply\.sendFile\('index\.html'\)/, 'index.html für alle App-Pfade');
 });
+
+test('Version auch in /api/health und im Benutzermenü', () => {
+  assert.match(lies('server/src/app.ts'), /return \{ status: 'ok', version: \{ zeit: process\.env\.PORTAL_VERSION_ZEIT \|\| null, sha: /);
+  assert.match(lies('web/src/shell/Shell.tsx'), /\{version && <UserMenuItem icon="history" text=\{version\.text\}/);
+});
