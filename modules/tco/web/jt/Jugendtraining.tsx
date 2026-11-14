@@ -7,6 +7,7 @@ import {
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
+import { ImportDialog, ImportKnopf } from '@core/components/ImportDialog';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
@@ -55,6 +56,7 @@ export function Jugendtraining() {
   const edit = can('tco.jt:edit');
   /** Funktionsschalter (#232, F1): der Import der Trainerstunden lässt sich abschalten */
   const importAn = useFunktion()('tco.jt.import');
+  const [impDlg, setImpDlg] = useState(false);
   // Einsprung aus dem Arbeitsvorrat: ?monat=JJJJMM&tab=abr
   const [start] = useState(() => new URLSearchParams(window.location.search));
   const [monat, setMonat] = useState(() => (/^\d{6}$/.test(start.get('monat') ?? '') ? start.get('monat')! : aktMonat()));
@@ -98,7 +100,8 @@ export function Jugendtraining() {
 
   const trainerOptionen = m?.abrechnung ?? [];
   return (
-    <AppPage varianten={{ repid: 'tco.jt', ansicht: { monat, adrnr, tab }, onAnwenden: (a) => { setMonat(feld(a, 'monat', monat)); setAdrnr(feld(a, 'adrnr', adrnr)); setTab(feld(a, 'tab', tab)); } }} title="Abrechnung Jugendtraining"
+    <AppPage varianten={{ repid: 'tco.jt', ansicht: { monat, adrnr, tab }, onAnwenden: (a) => { setMonat(feld(a, 'monat', monat)); setAdrnr(feld(a, 'adrnr', adrnr)); const t = feld(a, 'tab', tab); if (t === 'import') setImpDlg(true); else setTab(t); } }}
+             actions={importAn ? <ImportKnopf tooltip="Rückmeldungen der Trainer einlesen: CSV-Datei oder Nextcloud" disabled={!m} onClick={() => setImpDlg(true)} /> : undefined} title="Abrechnung Jugendtraining"
              subtitle={abr ? `${abr.trainer} · ${zahl(summe.std)} Stunden · ${eur(summe.eur)}` : 'Trainingszeiten der Honorartrainer erfassen und abrechnen'}>
       {/* Monat und Trainer links oben – bestimmen alles darunter */}
       <FlexBox wrap="Wrap" alignItems="End" style={{ gap: '0.5rem 1.5rem', marginBottom: '1rem' }}>
@@ -140,11 +143,6 @@ export function Jugendtraining() {
           <Tab data-key="woche" text="Wochenraster" icon="grid" selected={tab === 'woche'}>
             <Woche m={m} zeiten={zeiten} ferien={ferien} edit={zeitEdit} adrnr={adrnr} onSetzen={setzen} onLoeschen={loeschen} onAktion={aktion} />
           </Tab>
-          {importAn ? (
-            <Tab data-key="import" text="Import" icon="upload" selected={tab === 'import'}>
-              <Import m={m} edit={edit} erg={imp} onErg={(r) => { setImp(r); laden(); }} onError={setError} onAktion={aktion} />
-            </Tab>
-          ) : null}
           <Tab data-key="abr" text="Abrechnung" icon="receipt" selected={tab === 'abr'}>
             <Abrechnung m={m} edit={edit} onAktion={aktion} onError={setError} />
           </Tab>
@@ -155,6 +153,12 @@ export function Jugendtraining() {
             <Entgelte teil="trainer" onChanged={() => laden()} aktiv={tab === 'trainer'} />
           </Tab>
         </TabContainer>
+      )}
+      {/* Import (#232, S4): Knopf „Importieren“ oben rechts, gemeinsamer Dialog – bisher ein eigener Reiter */}
+      {m && importAn && (
+        <ImportDialog open={impDlg} was={`Rückmeldungen der Trainer ${m.monat}`} schritt={imp ? 4 : 1} breit onClose={() => setImpDlg(false)}>
+          <Import m={m} edit={edit} erg={imp} onErg={(r) => { setImp(r); laden(); }} onError={(t) => { setImpDlg(false); setError(t); }} onAktion={aktion} />
+        </ImportDialog>
       )}
     </AppPage>
   );

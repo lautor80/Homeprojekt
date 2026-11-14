@@ -4,6 +4,7 @@ import { BusyIndicator, Button, CheckBox, Icon, Input, MessageStrip, ObjectStatu
 import { api } from '@core/api';
 import { useAblageZiel } from '@core/ablage';
 import { AppPage } from '@core/components/AppPage';
+import { ImportDialog, ImportKnopf } from '@core/components/ImportDialog';
 import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
@@ -75,6 +76,8 @@ export function Spielerdaten() {
   const [ueber, setUeber] = useState(false);
   const [suche, setSuche] = useState('');
   const [tab, setTabRoh] = useState<Reiter>('alle');
+  /** Dialog „Importieren“ (Abgleich mit nuLiga) offen */
+  const [imp, setImp] = useState(false);
   const [marke, setMarke] = useState<Set<string>>(new Set());
   const setTab = (t: Reiter) => { setTabRoh(t); setMarke(new Set()); };
   const [lkWahl, setLkWahl] = useState('');
@@ -86,7 +89,7 @@ export function Spielerdaten() {
   async function ablegen(f: File | undefined) {
     if (!f || !edit) return;
     setError(null);
-    setTab('abgleich');
+    setImp(true);
     if (!/\.(csv|txt)$/i.test(f.name)) { setError('Bitte die CSV-Datei aus nuLiga ablegen (Mitglieder → „Download Mitgliederdaten (Excel, csv)“). Eine Excel-Datei bitte als CSV speichern.'); return; }
     if (f.size > 5_000_000) { setError('Die Datei ist zu groß.'); return; }
     setBusy(true);
@@ -227,7 +230,9 @@ export function Spielerdaten() {
   );
 
   return (
-    <AppPage varianten={{ repid: 'tco.spielerdaten', ansicht: { suche, tab }, onAnwenden: (a) => { setSuche(feld(a, 'suche', suche)); setTab(feld(a, 'tab', tab)); } }} title="Spielerdaten (nuLiga)" subtitle="ID-Nr. und Leistungsklasse (LK) der Mitglieder mit der Verbandsliste abgleichen">
+    <AppPage varianten={{ repid: 'tco.spielerdaten', ansicht: { suche, tab }, onAnwenden: (a) => { setSuche(feld(a, 'suche', suche)); const t = feld(a, 'tab', tab) as string; if (t === 'abgleich') setImp(true); else setTab(t as Reiter); } }} title="Spielerdaten (nuLiga)"
+             actions={edit ? <ImportKnopf tooltip="Abgleich mit nuLiga: Mitgliederdaten (CSV) einlesen, ID-Nr. und LK übernehmen" onClick={() => setImp(true)} /> : undefined}
+             subtitle="ID-Nr. und Leistungsklasse (LK) der Mitglieder mit der Verbandsliste abgleichen">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
 
       {!stand ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
@@ -244,10 +249,12 @@ export function Spielerdaten() {
           <Tab data-key="irrelevant" text="Für Meldung irrelevant" icon="decline" additionalText={String(gruppe.irrelevant.length)} selected={tab === 'irrelevant'}>
             {tab === 'irrelevant' && liste('irrelevant')}
           </Tab>
-          {edit ? (
-            <Tab data-key="abgleich" text="Abgleich mit nuLiga" icon="upload" selected={tab === 'abgleich'}>
-              {tab === 'abgleich' && (
-                <div style={{ paddingTop: '0.5rem' }}>
+        </TabContainer>
+      )}
+      {/* Abgleich mit nuLiga (#232, S4): Knopf „Importieren“ oben rechts, gemeinsamer Dialog – bisher ein eigener Reiter */}
+      <ImportDialog open={edit && imp} was="Spielerdaten aus nuLiga (ID-Nr. und LK)" schritt={a ? 2 : 1} breit onClose={() => setImp(false)}>
+        {/* die Meldung der Seite läge hinter dem Dialog */}
+        {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
         <Section title="Abgleich mit nuLiga">
           <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.5rem' }}>
             1. In nuLiga (stb.liga.nu) unter <b>Mitglieder</b> auf <b>Download Mitgliederdaten (Excel, csv)</b> klicken und die Datei speichern.
@@ -336,12 +343,7 @@ export function Spielerdaten() {
           </details>
         </Section>
       )}
-                </div>
-              )}
-            </Tab>
-          ) : null}
-        </TabContainer>
-      )}
+      </ImportDialog>
     </AppPage>
   );
 }
