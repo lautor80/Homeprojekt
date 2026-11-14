@@ -153,6 +153,27 @@ von beiden Seiten, gepflegt wird sie an einer.
 *Aufwand:* groß, aber in Stufen: (1) Rahmen mit Kapiteln und Portal/Euroflex, (2) TC Oberthal Verein und Bank,
 (3) je Fachbereich ein Schritt. Nach jeder Stufe ist das Portal benutzbar.
 
+**Umgesetzt, Stufe 1 und 2 (14.11.2026).**
+
+```
+Administration → Einstellungen
+  Portal        Allgemein · Erscheinungsbild
+  TC Oberthal   Verein und Bank            (bisher Stammdaten → „Verein und Anbindungen“)
+  Euroflex      Firma und Bank             (bisher Stammdaten → „Firmendaten“)
+                E-Mail-Texte               (bisher Stammdaten → „E-Mail-Texte“)
+```
+
+- Jedes Modul meldet seine Kapitel an (`WebModule.einstellungen`); das Kapitel steht in der Adresse
+  (`/admin/einstellungen?kapitel=tco.verein`), Fach-Apps springen mit `einstellungLink` hinein.
+- Die App erscheint im Menü, sobald man mindestens ein Kapitel sehen darf – der Kassenwart mit dem Recht
+  *Stammdaten* sieht sie ohne Administratorrolle, mit genau seinen Kapiteln.
+- In *TC Oberthal → Stammdaten* bleibt vorerst nur die Übernahme aus SAP (zieht mit S4 zu den Schnittstellen), in
+  *Euroflex → Stammdaten* bleiben Produkte, Wertelisten und der Datenimport. Alte Adressen springen ins Kapitel.
+- **Noch an alter Stelle (Stufe 3):** Clubhausabrechnung und Verzehrbuch (Reiter „Einstellungen“), Hallenschlüssel
+  (Zahnrad-Dialog), Instandhaltung (Stammdaten), Gläubigerdaten der Sollstellungen, Nextcloud-Export der Sicherung,
+  Ersatzabsender. „Verein und Bank“ enthält noch die Abschnitte Hallenabrechnung und FI-Belege, die in die Kapitel
+  *Tennishalle* und *Finanzen* gehören.
+
 #### E2 Kapitel „Erscheinungsbild“: alle Logos an einer Stelle
 
 **Befund.** Logo der Oberfläche in *Administration → Einstellungen*, Logo des Kopfbands in *TC Oberthal →
@@ -1088,7 +1109,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Kürzel | Empfehlung | Aufwand | Entscheidung |
 |---|---|---|---|
-| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ☐ |
+| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Stufe 1 und 2 umgesetzt (Rahmen, Portal, Verein und Bank, Euroflex) |
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ☐ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ☐ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |
@@ -1148,6 +1169,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | Kündigung | Vorgabe vom 14.11.2026: Kündigungen der Mitglieder werden eingereicht und stehen im Arbeitsvorrat des Vorstands; erst die Freigabe führt sie aus (Kündigungsdatum = Eingang), dann wird die Kündigungsbestätigung erzeugt, zur Prüfung angezeigt und an das Mitglied gesendet; Ablehnung mit Grund | umgesetzt 14.11.2026 |
 | S5 | Paperless je Bereich: TC Oberthal behält den bisherigen Zugang, Euroflex hat `transport.paperless`; gleiche Adresse abgelehnt; Zuordnungslisten und Freigabelinks je Bereich | umgesetzt 14.11.2026 – Übergang: Euroflex nutzt das bisherige Paperless weiter, bis sein eigenes eingetragen ist (Aufgabe im Arbeitsvorrat) |
 | N1 | Gruppe *Mein Bereich* im Menü, auf der Startseite und in der Rollenpflege: Meine Mitgliedschaft, Meine Daten, Platz buchen, Mein Verzehr, Meine Trainingszeiten, Schaden melden (Pfade und Rechte unverändert) | umgesetzt 14.11.2026 |
+| E1 (Stufe 1–2) | App *Administration → Einstellungen* mit Kapiteln je Anwendung: Portal (Allgemein, Erscheinungsbild), TC Oberthal (Verein und Bank), Euroflex (Firma und Bank, E-Mail-Texte). Die Reiter in den Stammdaten-Apps sind entfallen, dort steht ein Absprung. Sichtbar, sobald man ein Kapitel sehen darf | umgesetzt 14.11.2026 – offen: Kapitel Tennishalle, Clubhaus, Finanzen, Instandhaltung (Stufe 3), Logos an einer Stelle (E2) |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

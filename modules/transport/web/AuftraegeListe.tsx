@@ -9,6 +9,7 @@ import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Ce
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
+import { einstellungLink } from '@core/einstellungen';
 import { useCan } from '@core/session';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
@@ -480,7 +481,7 @@ export function AuftraegeListe() {
       {firmaFehlt && can('transport.stammdaten:edit') && (
         <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Firmendaten (Name, Bank) fehlen noch – sie werden für Rechnungen und E-Rechnungen benötigt:
-          {' '}<Link onClick={() => navigate('/transport/stammdaten')}>Stammdaten öffnen</Link>
+          {' '}<Link onClick={() => navigate(einstellungLink('transport', 'firma'))}>Einstellungen öffnen</Link>
         </MessageStrip>
       )}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}

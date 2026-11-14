@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
@@ -9,6 +10,7 @@ import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
+import { einstellungLink } from '@core/einstellungen';
 import { Datenimport } from './Datenimport';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { SperrHinweis, useSperre } from '@core/sperre';
@@ -37,7 +39,8 @@ const raster = (min: string) => ({ display: 'grid', gridTemplateColumns: `repeat
 /** Auf sehr breiten Bildschirmen nicht über die ganze Breite ziehen */
 const BREITE = { maxWidth: '96rem' };
 
-function FirmaTab() {
+/** Kapitel „Firma und Bank“ der App Einstellungen (#232, E1) – bisher Reiter „Firmendaten“ der Stammdaten */
+export function FirmaTab() {
   const [f, setF] = useState<Firma | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -361,7 +364,8 @@ function WertZeile({ schluessel, text, aktiv, gesperrt, onSave }: { gesperrt: bo
   );
 }
 
-function MailtexteTab() {
+/** Kapitel „E-Mail-Texte“ der App Einstellungen (#232, E1) – bisher Reiter der Stammdaten */
+export function MailtexteTab() {
   const [list, setList] = useState<MailText[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sperre = useSperre('MAILTEXT', '*', true, { bezeichnung: 'E-Mail-Texte Transport' });
@@ -400,27 +404,30 @@ export function Stammdaten() {
   const can = useCan();
   const darfImport = can('transport.import:execute');
   // Reiter per Adresse aufrufbar, z. B. /transport/stammdaten?tab=IMPORT
-  const [tab, setTabState] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'FIRMA');
+  const navigate = useNavigate();
+  const aufruf = new URLSearchParams(window.location.search).get('tab');
+  // #232, E1: Firmendaten und E-Mail-Texte sind Kapitel der App Einstellungen – alte Adressen (?tab=FIRMA, ?tab=MAIL) springen dorthin
+  const umgezogen = aufruf === 'FIRMA' ? einstellungLink('transport', 'firma') : aufruf === 'MAIL' ? einstellungLink('transport', 'mailtexte') : null;
+  useEffect(() => { if (umgezogen) navigate(umgezogen, { replace: true }); }, [umgezogen, navigate]);
+  const [tab, setTabState] = useState(() => (aufruf && !umgezogen ? aufruf : 'PROD'));
   const setTab = (t: string) => {
     setTabState(t);
     const u = new URL(window.location.href);
-    if (t === 'FIRMA') u.searchParams.delete('tab'); else u.searchParams.set('tab', t);
+    if (t === 'PROD') u.searchParams.delete('tab'); else u.searchParams.set('tab', t);
     window.history.replaceState(null, '', u);
   };
   return (
-    <AppPage title="Stammdaten Transport" subtitle={`Firmendaten, Produkte, Wertelisten, E-Mail-Texte${darfImport ? ' und Datenimport aus SAP' : ''}`}>
+    <AppPage title="Stammdaten Transport" subtitle={`Produkte und Wertelisten${darfImport ? ', Datenimport aus SAP' : ''} – Firmendaten und E-Mail-Texte stehen unter Administration → Einstellungen`}
+             actions={<Button design="Transparent" icon="action-settings" tooltip="Firmendaten, Bank, Logo, Auftragsbedingungen und E-Mail-Texte: Administration → Einstellungen → Euroflex"
+                              onClick={() => navigate(einstellungLink('transport', 'firma'))}>Einstellungen</Button>}>
       <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)} style={{ marginBottom: '1rem' }}>
-        <Tab data-key="FIRMA" text="Firmendaten" icon="building" selected={tab === 'FIRMA'} />
         <Tab data-key="PROD" text="Produkte" icon="product" selected={tab === 'PROD'} />
         <Tab data-key="WERTE" text="Wertelisten" icon="list" selected={tab === 'WERTE'} />
-        <Tab data-key="MAIL" text="E-Mail-Texte" icon="email" selected={tab === 'MAIL'} />
         {darfImport && <Tab data-key="IMPORT" text="Datenimport" icon="upload" selected={tab === 'IMPORT'} />}
       </TabContainer>
       <div style={BREITE}>
-        {tab === 'FIRMA' && <FirmaTab />}
         {tab === 'PROD' && <ProdukteTab />}
         {tab === 'WERTE' && <WerteTab />}
-        {tab === 'MAIL' && <MailtexteTab />}
         {tab === 'IMPORT' && darfImport && <Datenimport />}
       </div>
     </AppPage>

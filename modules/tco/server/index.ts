@@ -195,7 +195,7 @@ const tco: ServerModule = {
     { area: 'Mein Bereich', app: 'Meine Trainingszeiten', id: P_JTM.edit,
       text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
     { area: 'Mein Bereich', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
-    { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Einstellungen des Vereins pflegen (Rechnungssteller, Bank, Logo, Hallenabrechnung, FI-Belege)' },
+    { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Einstellungen des Vereins pflegen (Rechnungssteller, Bank, Logo, Hallenabrechnung, FI-Belege) – Administration → Einstellungen → TC Oberthal' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },

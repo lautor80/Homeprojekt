@@ -4,7 +4,7 @@ import { UsersPage } from '../pages/UsersPage';
 import { RolesPage } from '../pages/RolesPage';
 import { RollenmatrixPage } from '../pages/RollenmatrixPage';
 import { AuditPage } from '../pages/AuditPage';
-import { SettingsPage } from '../pages/SettingsPage';
+import { EinstellungenPage } from '../pages/EinstellungenPage';
 import { PaperlessMappingPage } from '../pages/PaperlessMappingPage';
 import { VerbindungenPage } from '../pages/VerbindungenPage';
 import { BackupPage } from '../pages/BackupPage';
@@ -74,7 +74,8 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/api-schluessel', component: ApiKeysPage, permission: 'core.apikeys:display' },
   { path: '/admin/aenderungsbelege', component: AuditPage, permission: 'core.audit:display' },
   { path: '/admin/mailprotokoll', component: MailProtokollPage, permission: 'core.mail:display' },
-  { path: '/admin/einstellungen', component: SettingsPage, permission: 'core.settings:edit' },
+  // ohne eigenes Recht: Die App zeigt die Kapitel, die der Benutzer sehen darf (#232, E1 – web/src/einstellungen.ts)
+  { path: '/admin/einstellungen', component: EinstellungenPage },
   { path: '/admin/funktionen', component: FunktionenPage, permission: 'core.funktionen:edit' },
   { path: '/admin/anbindungen', component: VerbindungenPage, permission: 'core.settings:edit' },
   { path: '/admin/paperless', component: PaperlessMappingPage, permission: 'core.settings:edit' },

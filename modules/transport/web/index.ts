@@ -1,7 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { AuftraegeListe } from './AuftraegeListe';
 import { AuftragDetail } from './AuftragDetail';
-import { Stammdaten } from './Stammdaten';
+import { FirmaTab, MailtexteTab, Stammdaten } from './Stammdaten';
 import { Kontakte } from './Kontakte';
 
 /** Transportmodul (Euroflex Auftragsverwaltung) */
@@ -18,6 +18,11 @@ const mod: WebModule = {
         { text: 'Stammdaten', icon: 'database', path: '/transport/stammdaten', permission: 'transport.stammdaten:edit' },
       ],
     },
+  ],
+  // Kapitel „Euroflex“ der App Einstellungen (Administration → Einstellungen, #232 E1)
+  einstellungen: [
+    { id: 'firma', text: 'Firma und Bank', icon: 'building', permission: 'transport.stammdaten:edit', component: FirmaTab },
+    { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'transport.stammdaten:edit', component: MailtexteTab },
   ],
   routes: [
     { path: '/transport/auftraege', component: AuftraegeListe, permission: 'transport.auftraege:display' },

@@ -763,3 +763,19 @@ ui5-busy-indicator { max-width: 100%; }
 /* Kästchen „geklärt“ bleibt auch auf dem Handy sichtbar */
 /* schmal: Datum entfällt – Kästchen („erledigt“, „gesehen“) und Knöpfe (Zahlungsdaten, Kündigung bearbeiten) bleiben, in eigener Zeile */
 @media (max-width: 600px) { .portal-av__datum:has(ui5-checkbox), .portal-av__datum:has(ui5-button) { display: block; grid-column: 2 / -1; } }
+
+/* App „Einstellungen“ (#232, E1): links die Kapitel je Anwendung, rechts der Inhalt; schmal: Kapitel als Leiste darüber */
+.portal-einst { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 1rem; align-items: start; }
+.portal-einst__kapitel { position: sticky; top: 0; background: var(--sapGroup_ContentBackground); border: 1px solid var(--sapGroup_ContentBorderColor); border-radius: 0.5rem; padding: 0.5rem; }
+.portal-einst__gruppe { padding: 0.5rem 0.5rem 0.25rem; font-size: var(--sapFontSmallSize); font-weight: bold; color: var(--sapContent_LabelColor); text-transform: uppercase; letter-spacing: 0.03em; }
+.portal-einst__eintrag { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.5rem; border: 0; border-radius: 0.375rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.portal-einst__eintrag:hover { background: var(--sapList_Hover_Background); }
+.portal-einst__eintrag--aktiv { background: var(--sapList_SelectionBackgroundColor); font-weight: bold; box-shadow: inset 3px 0 0 var(--sapSelectedColor); }
+.portal-einst__inhalt { min-width: 0; }
+@media (max-width: 800px) {
+  .portal-einst { grid-template-columns: minmax(0, 1fr); }
+  .portal-einst__kapitel { position: static; }
+  .portal-einst__block { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+  .portal-einst__gruppe { width: 100%; }
+  .portal-einst__eintrag { width: auto; }
+}
