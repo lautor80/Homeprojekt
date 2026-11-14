@@ -2,7 +2,7 @@ import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
 import { Hallenpreise } from './Hallenpreise';
 import { MailtexteKapitel } from './einstellungen/Mailtexte';
-import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
+import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinLogo, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
 import { GlaeubigerKapitel, Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
@@ -90,6 +90,7 @@ const mod: WebModule = {
     { reiter: 'Paperless', id: 'instandhaltung', text: 'Instandhaltung: Dokumente zur Auswahl', permission: 'tco.instandhaltung:admin', component: InstandhaltungPaperless },
     { reiter: 'SAP', id: 'sap', text: 'Übernahme aus SAP', permission: 'tco.import:execute', component: ImportTab },
   ],
+  logos: [{ id: 'kopfband', text: 'Kopfband (weiß auf Orange)', permission: 'tco.stammdaten:edit', component: VereinLogo }],
   einstellungen: [
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
     { id: 'tennishalle', text: 'Tennishalle', icon: 'building', permission: 'tco.stammdaten:edit', component: VereinHalle },

@@ -101,3 +101,26 @@ test('Schnittstellen: Abschnitte der Module angemeldet, Absprünge treffen einen
   assert.match(lesen('web/src/shell/core.tsx'), /\{ path: '\/admin\/schnittstellen', component: SchnittstellenPage \}/, 'Route ohne permission');
   assert.match(lesen('web/src/shell/nav.ts'), /e\.path === SCHNITTSTELLEN_PFAD \? schnittstellenSichtbar\(modules, can\)/, 'Menüeintrag hängt an Reitern und Abschnitten');
 });
+
+test('Logos: alle an einer Stelle – Module melden ihr Logo an, das Kapitel „Erscheinungsbild“ zeigt sie (#232, E2)', () => {
+  const logos = Object.fromEntries(MODULE.map((m) => {
+    const text = lesen(`modules/${m}/web/index.ts`);
+    return [m, [...text.matchAll(/\blogos: \[\{ id: '([^']+)', text: '([^']+)', permission: '([^']+)'/g)].map(([, id, t, permission]) => ({ id, text: t, permission }))];
+  }));
+  assert.deepEqual(logos.tco?.map((l) => l.id), ['kopfband'], 'TC Oberthal meldet das Logo des Kopfbands an');
+  assert.deepEqual(logos.transport?.map((l) => l.id), ['ausdrucke'], 'Euroflex meldet das Logo der Ausdrucke an');
+  for (const [modul, liste] of Object.entries(logos)) {
+    for (const l of liste) assert.ok(RECHTE.has(l.permission), `${modul}.${l.id}: Recht ${l.permission} gibt es im Server nicht`);
+  }
+  // das Kapitel zeigt die angemeldeten Logos und ist auch ohne Administratorrecht sichtbar, wenn man eines pflegen darf
+  const portal = lesen('web/src/pages/einstellungen/Portal.tsx');
+  assert.match(portal, /logoVerwendungen\(enabledModules\(me\.modules\), can\)/);
+  assert.match(lesen('web/src/einstellungen.ts'), /id: 'erscheinungsbild'[^}]*auch: \(modules, can\) => logoVerwendungen\(modules, can\)\.length > 0/s);
+  assert.match(lesen('web/src/einstellungen.ts'), /can\(k\.permission\) \|\| !!k\.auch\?\.\(modules, can\)/);
+  // in den Fach-Formularen steht kein zweites Feld zum Ablegen mehr, nur der Verweis
+  for (const d of ['modules/tco/web/Stammdaten.tsx', 'modules/transport/web/Stammdaten.tsx']) {
+    const t = lesen(d);
+    assert.equal([...t.matchAll(/<AblageFlaeche ziel=\{\{ titel: '(?:Vereinslogo|Logo für Ausdrucke)'/g)].length, 1, `${d}: genau ein Feld zum Ablegen des Logos`);
+    assert.match(t, /einstellungLink\('core', 'erscheinungsbild'\)/, `${d}: Verweis auf das Kapitel Erscheinungsbild`);
+  }
+});

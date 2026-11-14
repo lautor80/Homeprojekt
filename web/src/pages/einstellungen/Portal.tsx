@@ -4,7 +4,9 @@ import { api } from '../../api';
 import { useLoad } from '../../components/useLoad';
 import { FieldBox, FormGrid, TextField } from '../../components/FormFields';
 import { ChangeHistoryButton } from '../../components/ChangeHistory';
-import { useSession } from '../../session';
+import { useCan, useSession } from '../../session';
+import { enabledModules } from '../../modules';
+import { logoVerwendungen } from '../../einstellungen';
 import { applyBranding } from '../../branding';
 import { toast } from '../../toast';
 import { SperrHinweis, useSperre } from '../../sperre';
@@ -95,8 +97,26 @@ export function PortalAllgemein() {
   );
 }
 
-/** Portal › Erscheinungsbild */
+/**
+ * Portal › Erscheinungsbild: Akzentfarbe und alle Logos an einer Stelle (#232, E2) – das Logo der Oberfläche und die Logos
+ * der Anwendungen (WebModule.logos). Jeder Block sichert für sich; man sieht die Blöcke, die man pflegen darf.
+ */
 export function PortalErscheinungsbild() {
+  const { me } = useSession();
+  const can = useCan();
+  const logos = logoVerwendungen(enabledModules(me.modules), can);
+  return (
+    <>
+      {can('core.settings:edit') && <PortalOberflaeche />}
+      {logos.map(({ modul, name, logo }) => {
+        const Formular = logo.component;
+        return <Panel key={`${modul}.${logo.id}`} headerText={`Logo ${name}: ${logo.text}`} fixed style={{ marginTop: '1rem' }}><Formular /></Panel>;
+      })}
+    </>
+  );
+}
+
+function PortalOberflaeche() {
   const e = useEinstellungen(['org.color', 'org.logo'], (s) => ({ 'org.color': s['org.color'] || undefined, 'org.logo': s['org.logo'] || null }));
   async function onLogo(files: FileList | File[] | null) {
     const file = files?.[0];
@@ -127,9 +147,6 @@ export function PortalErscheinungsbild() {
             </div>
           </FieldBox>
         </FormGrid>
-        <Text style={{ display: 'block', marginTop: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-          Die Logos der Anwendungen (Kopfband des Vereins, Ausdrucke von Euroflex) stehen vorerst im Kapitel der jeweiligen Anwendung.
-        </Text>
       </Panel>
       {e.fuss('org.color')}
     </>

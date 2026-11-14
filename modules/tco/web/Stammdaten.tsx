@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, DatePicker, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
+  AnalyticalTable, Bar, Button, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, SegmentedButton,
   SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -32,11 +32,13 @@ export function ZuVereinEinstellungen() { return <Navigate to={einstellungLink('
  *   fipaperless  Schnittstellen → Paperless → TC Oberthal (offene Belege: Dokumenttypen, Speicherpfad, Custom Fields)
  * Jeder Teil lädt und sichert den ganzen Datensatz und hält dieselbe Sperre – es kann immer nur einer gleichzeitig pflegen.
  */
-type Teil = 'verein' | 'halle' | 'fikonten' | 'fipaperless';
+type Teil = 'verein' | 'logo' | 'halle' | 'fikonten' | 'fipaperless';
 export function VereinTab() { return <VereinFormular teile={['verein']} />; }
 export function VereinHalle() { return <VereinFormular teile={['halle']} />; }
 export function VereinFinanzen() { return <VereinFormular teile={['fikonten']} />; }
 export function VereinFiPaperless() { return <VereinFormular teile={['fipaperless']} />; }
+/** Logo des Kopfbands – gepflegt im Kapitel Portal → Erscheinungsbild (#232, E2: alle Logos an einer Stelle) */
+export function VereinLogo() { return <VereinFormular teile={['logo']} />; }
 
 function VereinFormular({ teile }: { teile: Teil[] }) {
   const mit = (t: Teil) => teile.includes(t);
@@ -79,6 +81,15 @@ function VereinFormular({ teile }: { teile: Teil[] }) {
           <TextField label="Zahlungsziel Hallenrechnung (Tage)" type="Number" value={String(v.zahlungsziel_tage ?? 8)} onChange={s('zahlungsziel_tage')} readonly={ro} />
           <TextField label="Ansprechpartner in Mitglieder-Mails (eine Zeile je Person: Name – Aufgabe – Telefon)" multiline wide
                      value={t('mg_ansprechpartner')} onChange={s('mg_ansprechpartner')} readonly={ro} />
+          <FieldBox label="Logo für das Kopfband">
+            <Link onClick={() => { window.location.assign(einstellungLink('core', 'erscheinungsbild')); }}>Einstellungen → Portal → Erscheinungsbild</Link>
+          </FieldBox>
+        </FormGrid>
+      </Panel>
+
+      )}
+      {mit('logo') && (
+        <FormGrid>
           <FieldBox label="Logo für das Kopfband (weiß auf Orange)">
             <FlexBox alignItems="Center" style={{ gap: '0.75rem', background: '#E2701F', padding: '0.5rem', borderRadius: '0.5rem', width: 'fit-content' }}>
               <img alt="Logo" src={(v.logo as string) || '/api/m/tco/logo'} style={{ height: '3rem' }} />
@@ -94,8 +105,6 @@ function VereinFormular({ teile }: { teile: Teil[] }) {
             )}
           </FieldBox>
         </FormGrid>
-      </Panel>
-
       )}
 
       {mit('halle') && (
