@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ComboBox, ComboBoxItem } from '@ui5/webcomponents-react';
+import { eintragZuText } from './auswahlSuche';
 
 /**
  * Suchbare Auswahl (ComboBox) ohne „Autovervollständigen beim Tippen“:
@@ -45,8 +46,7 @@ export function AuswahlBox({ eintraege: eintraege0, wert, onWaehle, onSuche, pla
   function bestaetigen(t: string) {
     const v = t.trim();
     if (!v) { if (leerErlaubt && wert) onWaehle(null); else setText(textVon(wert)); return; }
-    const treffer = eintraege.filter((e) => e.text === v);
-    const k = treffer.length === 1 ? treffer[0].key : eintraege.find((e) => e.text.toLowerCase() === v.toLowerCase())?.key;
+    const k = eintragZuText(eintraege, v);
     if (k) { if (k !== wert) onWaehle(k); setText(textVon(k) || v); }
     else setText(textVon(wert)); // kein eindeutiger Eintrag: alten Wert wieder anzeigen
   }

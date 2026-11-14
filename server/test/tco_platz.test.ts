@@ -111,6 +111,20 @@ test('Platzverwaltung: Plätze mit Regeln anlegen, Prüfungen, Benutzer zuordnen
   r = await admin('GET', `${A}/benutzer`);
   assert.equal(r.body.benutzer.find((b: { username: string }) => b.username === 'anna').adrnr, ANNA);
 
+  // Zuordnung eines deaktivierten Benutzers (Altkonto) blockiert nicht, sondern wird übernommen
+  const INA = '0000000491';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt) values (${INA}, 'Ina', 'Altkonto', '2020-01-01')`;
+  for (const u of ['ina_alt', 'ina_neu']) {
+    assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: ['SPIELER'] })).status, 200);
+  }
+  assert.equal((await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ina_alt'), adrnr: INA })).status, 200);
+  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ina_neu'), adrnr: INA });
+  assert.match(r.body.message, /bereits dem Benutzer ina_alt zugeordnet/, 'aktiver Inhaber blockiert weiterhin');
+  await sql`update core.users set active = false where username = 'ina_alt'`;
+  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ina_neu'), adrnr: INA });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await sql`select benutzer_id::text as b from tco.mitgliedera where adrnr = ${INA}`)[0].b, await userId('ina_neu'));
+
   // ohne Verwaltungsrecht keine Verwaltung
   assert.equal((await bert('GET', `${A}/plaetze`)).status, 403);
   assert.equal((await bert('GET', `${A}/tag?datum=${tag(1)}`)).status, 403);

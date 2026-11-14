@@ -757,7 +757,15 @@ export function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
   const [suche, setSuche] = useState('');
   const laden = () => api.get<{ benutzer: Benutzer[]; mitglieder: Mitglied[] }>(`${PA}/benutzer`).then(setD);
   useEffect(() => { laden(); }, []);
+  const [stand, setStand] = useState(0);
   const liste = (d?.benutzer ?? []).filter((b) => !suche || `${b.name} ${b.username} ${b.mitglied ?? ''}`.toLowerCase().includes(suche.toLowerCase()));
+  // Im Dropdown sehen, wem ein Mitglied schon gehört – sonst scheitert die Auswahl scheinbar wortlos (Fehler steht oben)
+  const inhaber = new Map((d?.benutzer ?? []).filter((b) => b.adrnr).map((b) => [b.adrnr!, b.name]));
+  const eintraege = (d?.mitglieder ?? []).map((m) => ({ key: m.adrnr, text: m.name, zusatz: inhaber.has(m.adrnr) ? `${m.adrnr} · ${inhaber.get(m.adrnr)}` : m.adrnr }));
+  const zuordnen = async (benutzerId: string, adrnr: string | null) => {
+    const ok = await aktion(() => api.put(`${PA}/benutzer`, { benutzer_id: benutzerId, adrnr }), laden);
+    if (!ok) setStand((n) => n + 1); // Auswahl zurücksetzen, damit nicht ein nicht gespeichertes Mitglied angezeigt wird
+  };
 
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Benutzer', accessor: 'name', minWidth: 160 },
@@ -766,11 +774,11 @@ export function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
       Header: 'Mitglied (bucht in „Platz buchen“ als …)', id: 'mitglied', minWidth: 300,
       Cell: ({ row }: Cell) => (
         <div className="portal-row" style={{ flexWrap: 'nowrap', width: '100%' }}>
-          <AuswahlBox wert={row.original.adrnr} placeholder="Mitglied suchen" style={{ width: '16rem' }} leerErlaubt={false}
-                      eintraege={(d?.mitglieder ?? []).map((m) => ({ key: m.adrnr, text: m.name, zusatz: m.adrnr }))}
-                      onWaehle={(adrnr) => { if (adrnr && adrnr !== row.original.adrnr) aktion(() => api.put(`${PA}/benutzer`, { benutzer_id: row.original.id, adrnr }), laden); }} />
+          <AuswahlBox key={`${row.original.id}-${stand}`} wert={row.original.adrnr} placeholder="Mitglied suchen" style={{ width: '16rem' }} leerErlaubt={false}
+                      eintraege={eintraege}
+                      onWaehle={(adrnr) => { if (adrnr && adrnr !== row.original.adrnr) zuordnen(row.original.id, adrnr); }} />
           {row.original.adrnr && <Button design="Transparent" icon="decline" tooltip="Zuordnung entfernen"
-                                         onClick={() => aktion(() => api.put(`${PA}/benutzer`, { benutzer_id: row.original.id, adrnr: null }), laden)} />}
+                                         onClick={() => zuordnen(row.original.id, null)} />}
         </div>
       ),
     },

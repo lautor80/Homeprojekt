@@ -293,8 +293,9 @@ export async function benutzerZuordnen(tx: Db, benutzerId: string, adrnr: string
   if (adrnr) {
     const [m] = await tx`select vorname, nachname from tco.mitglieder where adrnr = ${adrnr}`;
     if (!m) throw new BusinessError('Mitglied nicht gefunden.');
+    // Nur ein aktiver Benutzer hält die Zuordnung fest; die eines deaktivierten (Altkonto) wird übernommen
     const [belegt] = await tx`select u.display_name from tco.mitgliedera a join core.users u on u.id = a.benutzer_id
-                               where a.adrnr = ${adrnr} and a.benutzer_id <> ${benutzerId}`;
+                               where a.adrnr = ${adrnr} and a.benutzer_id <> ${benutzerId} and u.active`;
     if (belegt) throw new BusinessError(`${condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`)} ist bereits dem Benutzer ${belegt.display_name} zugeordnet.`);
   }
   await tx`update tco.mitgliedera set benutzer_id = null where benutzer_id = ${benutzerId}`;
