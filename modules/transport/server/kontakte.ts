@@ -1,7 +1,9 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../../../server/src/db.js';
 import { change, requireAuth } from '../../../server/src/auth.js';
+import { hasPermission } from '../../../server/src/permissions.js';
+import { rechtAbgeschaltet } from '../../../server/src/funktionsschalter.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import { PaperlessError } from '../../../server/src/lib/paperless.js';
 import { adresseLesen, firmaLesen, isoDate } from './data.js';
@@ -15,7 +17,7 @@ import { K } from './paperless-kontexte.js';
  * Detail mit Stammdaten, Aufträgen (als Kunde, Unternehmer, Rechnungsempfänger) und
  * Dokumenten in Paperless (Korrespondent = Kontakt).
  */
-type P = { display: string; kontakte: string };
+type P = { display: string; kontakte: string; kontakteDisplay: string };
 export const FILTER = { ALLE: 'Alle Kontakte', KUNDEN: 'Kunden', UNTERNEHMER: 'Unternehmer', RE: 'Rechnungsempfänger', OHNE: 'Ohne Aufträge' } as const;
 type Filter = keyof typeof FILTER;
 
@@ -24,7 +26,13 @@ const name = (a: { kundenname?: string | null; kundenname2?: string | null }) =>
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';
 
 export async function kontaktRoutes(app: FastifyInstance, P: P) {
-  const lesen = { preHandler: requireAuth(P.display) };
+  // lesen darf, wer Aufträge sieht (Auswahl im Auftrag) oder die App „Kontakte“ öffnen darf (#232, N7)
+  const lesen = {
+    preHandler: async (req: FastifyRequest, reply: FastifyReply) => {
+      const darf = req.user && [P.display, P.kontakteDisplay].some((r) => hasPermission(req.user!.permissions, r) && !rechtAbgeschaltet(r));
+      return requireAuth(darf ? undefined : P.kontakteDisplay)(req, reply);
+    },
+  };
 
   app.get('/kontakte/liste', lesen, async (req) => {
     const q = z.object({ filter: z.enum(Object.keys(FILTER) as [Filter, ...Filter[]]).default('ALLE'), suche: z.string().max(100).default('') }).parse(req.query);

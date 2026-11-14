@@ -1151,7 +1151,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ✔ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ✔ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |
-| E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ☐ |
+| E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ✔ |
 | S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ◐ Stufe 1–3 umgesetzt (Reiter, Paperless je Bereich, Zuordnung und API-Schlüssel darin) |
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☑ umgesetzt |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
@@ -1168,10 +1168,10 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | N4 | Preise an einem Ort – Variante A oder B | mittel / klein | ✔ A |
 | N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☑ umgesetzt |
 | N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☑ umgesetzt |
-| N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ☐ |
+| N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ✔ |
 | B1 | Varianten: eine Bauart | mittel | ☐ |
 | B2 | Reiter für Teile, Umschalter für Sichten | klein | ☐ |
-| B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ☐ |
+| B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ✔ (mit E1: kein Reiter „Einstellungen“ mehr in einer Fach-App) |
 | B4 | Icons eindeutig | klein | ☑ umgesetzt |
 | K1–K5 | Texte berichtigen | klein | ☑ umgesetzt |
 
@@ -1216,6 +1216,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | E3 | IBAN und BIC nur noch unter *Verein und Bank*: Die Gläubigerdaten (Kapitel *Beitragseinzug*) zeigen sie zur Kontrolle und pflegen nur Name, Gläubiger-ID, Bankkonto FI und Vorlauf. Migration `073_iban_eine_stelle.sql` ohne Verlust: fehlende IBAN/BIC des Vereins kommen aus den Gläubigerdaten, gleiche IBAN entfällt dort; **weicht sie ab, gilt sie weiter für die Lastschrift**, bis der Kassenwart entscheidet (Aufgabe `SOLL_KONTO` im Arbeitsvorrat, Knopf *Vereinskonto verwenden*, `POST /soll/cfg/vereinskonto`) – oder die IBAN beim Verein angleicht. Die Sollstellung prüft die IBAN des Vereins auf Gültigkeit. Das Feld *Anschrift (für Ausdrucke)* der Administration ist entfallen (kein Ausdruck las es; der Wert bleibt in `core.settings`) | umgesetzt 14.11.2026 |
 | N4 (A) | App **Produkte und Preise** (bisher *Produkte*) mit vier Sichten: *Alle Produkte*, *Hallenpreise (Wochenplan)* (bisher eigene App), *Getränke* (bisher Clubhausabrechnung), *Speisen und Gästepreise* (bisher Verzehrbuch). Jede Sicht behält ihr bisheriges Recht – niemand verliert die Pflege, die App sieht, wer eine Sicht sehen darf. Clubhausabrechnung und Verzehrbuch zeigen die Preise nur noch an und verweisen auf ihre Sicht; `/tco/hallenpreise` führt in die Sicht. Das Recht *Hallenpreise pflegen* bleibt in der Rollenpflege (Ausnahme im Menütest); ein gesetzter Funktionsschalter der App zieht mit (Migration 074) | umgesetzt 14.11.2026 |
 | S4 (2. Teil) | Importe: gleiche Stelle, gleicher Knopf. Gemeinsamer Rahmen im Kern (`web/src/components/ImportDialog.tsx`: `ImportKnopf`, `ImportDialog`, `ImportSchritte` – Quelle wählen → Prüfen → Übernehmen → Protokoll). *Jugendtraining* (bisher Reiter „Import“) und *Spielerdaten* (bisher Reiter „Abgleich mit nuLiga“) haben den Knopf **Importieren** oben rechts und den gemeinsamen Dialog; *Hallenabrechnung* (EP3) und *FI Belege* (Bankimport) denselben Knopf, die Kopfzeile „Importieren: …“ und die Schrittleiste in ihren bestehenden Dialogen. Gespeicherte Ansichten mit dem früheren Reiter öffnen den Dialog | umgesetzt 14.11.2026 |
+| E5, N7 | Im Fachbaum steht kein „Einstellungen“ mehr: *Kontenstamm* ist die letzte App von *Finanzen*, *Produkte und Preise* die letzte von *Tennishalle* (Menü und Rollenpflege); der Bereich *Einstellungen* der Rollenpflege enthält nur noch die Rechte für die Kapitel des Vereins. Euroflex: *Kontakte* mit eigenem Recht `transport.kontakte:display` (Migration gibt es jeder Rolle, die Aufträge sieht; lesen darf weiter auch, wer Aufträge sieht), App *Stammdaten* heißt *Produkte und Wertelisten* | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

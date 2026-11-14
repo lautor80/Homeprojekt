@@ -280,8 +280,8 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
       {!geldkonten.length && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           {manuell
-            ? 'Es ist kein Konto für manuelle Buchungen hinterlegt. Bitte unter TC Oberthal → Einstellungen → Stammdaten bei „Kasse und Konten ohne Bankdatei“ eintragen (z. B. Kasse, Sparkasse).'
-            : 'Es ist kein Konto mit Bankdatei hinterlegt. Bitte unter TC Oberthal → Einstellungen → Stammdaten bei „Konten mit Bankdatei“ eintragen.'}
+            ? 'Es ist kein Konto für manuelle Buchungen hinterlegt. Bitte unter Administration → Einstellungen → TC Oberthal → Finanzen bei „Kasse und Konten ohne Bankdatei“ eintragen (z. B. Kasse, Sparkasse).'
+            : 'Es ist kein Konto mit Bankdatei hinterlegt. Bitte unter Administration → Einstellungen → TC Oberthal → Finanzen bei „Konten mit Bankdatei“ eintragen.'}
         </MessageStrip>
       )}
       {ungueltig.length > 0 && (

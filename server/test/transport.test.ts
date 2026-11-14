@@ -315,6 +315,40 @@ test('Kontakte: Liste mit Rollen, Detail mit Aufträgen, Löschen nur ohne Auftr
   assert.equal(r.body.paperless, false);
 });
 
+test('Kontakte: eigenes Recht für die App (#232, N7) – lesen darf, wer Kontakte oder Aufträge sieht', async () => {
+  const anmelden = async (rolle: string, rechte: string[]) => {
+    assert.equal((await call('POST', '/api/admin/roles', { id: rolle, name: rolle, permissions: rechte })).status, 200);
+    assert.equal((await call('POST', '/api/admin/users', { username: rolle.toLowerCase(), displayName: rolle, password: 'start-passwort', roles: [rolle] })).status, 200);
+    let cookie = '';
+    const als = async (method: string, path: string, payload?: unknown) => {
+      const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie, 'x-portal-request': '1' } });
+      const set = res.headers['set-cookie'];
+      if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
+      return res.statusCode;
+    };
+    assert.equal(await als('POST', '/api/auth/login', { username: rolle.toLowerCase(), password: 'start-passwort' }), 200);
+    assert.equal(await als('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort-1' }), 200);
+    return als;
+  };
+  // nur Kontakte: die App lässt sich lesen, Aufträge nicht, ändern auch nicht
+  const kontakte = await anmelden('NURKONTAKTE', ['transport.kontakte:display']);
+  assert.equal(await kontakte('GET', `${T}/kontakte/liste`), 200);
+  assert.equal(await kontakte('GET', `${T}/auftraege`), 403);
+  assert.equal(await kontakte('POST', `${T}/adressen`, {}), 403);
+  // nur Aufträge: Kontakte bleiben lesbar (Auswahl im Auftrag) – wie bisher
+  const auftraege = await anmelden('NURAUFTRAEGE', ['transport.auftraege:display']);
+  assert.equal(await auftraege('GET', `${T}/kontakte/liste`), 200);
+  // ohne beides: kein Zugriff
+  const nichts = await anmelden('NURSTAMM', ['transport.stammdaten:edit']);
+  assert.equal(await nichts('GET', `${T}/kontakte/liste`), 403);
+  // Rollenpflege: App „Kontakte“ mit beiden Rechten, „Produkte und Wertelisten“ statt „Stammdaten“
+  const { permissionCatalog } = await import('../src/modules.js');
+  const katalog = permissionCatalog();
+  const apps = katalog.find((g) => g.module === 'transport')!.areas.flatMap((a) => a.apps);
+  assert.deepEqual(apps.map((a) => a.name), ['Aufträge', 'Kontakte', 'Produkte und Wertelisten']);
+  assert.deepEqual(apps.find((a) => a.name === 'Kontakte')!.permissions.map((p) => p.id), ['transport.kontakte:display', 'transport.kontakte:edit']);
+});
+
 test('Import Neuaufbau (#121): Tabellen leeren, neu anlegen, Nummernkreise aus ZEU_RGNRKREIS', async () => {
   const adr = 'ADRNR;KUNDENNAME;KUNDENNAME2;ANREDE;NAME;VORNAME;STRASSE;HAUSNUMMER;LAND;PLZ;ORT;TELEFON;FAX;EMAIL;GLN;MARKT\r\n' +
     '0000000002;EUROTRANS GMBH;;Herr;Holthaus;Luca;;;DE;33;Rietberg;;;lh@example.de;;\r\n' +

@@ -79,7 +79,8 @@ const MODULE: Modul[] = [
   },
   {
     name: 'TC Oberthal', menue: menue('modules/tco/web/index.ts', 'nav: ['), katalog: katalog('modules/tco/server/index.ts'),
-    nurKatalogBereiche: ['Datenschutz'],
+    // Einstellungen: Rechte für die Kapitel des Vereins in Administration → Einstellungen – im Fachbaum steht keine Gruppe mehr (E5)
+    nurKatalogBereiche: ['Datenschutz', 'Einstellungen'],
     // „Stammdaten“ ist keine App im Menü mehr (#232, E1/S4): Mit ihren Rechten sieht man das Kapitel „Verein und Bank“ der Einstellungen
     // und den Abschnitt „Übernahme aus SAP“ der Schnittstellen – die Rechte bleiben in der Rollenpflege stehen
     // Hallenpreise: Pflege ist eine Sicht von „Produkte und Preise“ (N4) – das Recht „Hallenpreise pflegen“ bleibt in der Rollenpflege
@@ -87,7 +88,6 @@ const MODULE: Modul[] = [
   },
   {
     name: 'Euroflex', menue: menue('modules/transport/web/index.ts', 'nav: ['), katalog: katalog('modules/transport/server/index.ts'),
-    ohneKatalogApp: { Kontakte: 'hat noch kein eigenes Recht (sichtbar mit „Aufträge anzeigen“) – N7' },
   },
 ];
 
