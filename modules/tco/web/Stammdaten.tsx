@@ -24,8 +24,22 @@ type Verein = Record<string, string | number | null>;
  */
 export function ZuVereinEinstellungen() { return <Navigate to={einstellungLink('tco', 'verein')} replace />; }
 
-/** Kapitel „Verein und Bank“ der App Einstellungen (#232, E1) – bisher Reiter „Verein und Anbindungen“ der Stammdaten */
-export function VereinTab() {
+/**
+ * Einstellungen des Vereins (tco.verein) – ein Datensatz, gepflegt in Teilen an der Stelle, an die sie gehören (#232, E1/S1):
+ *   verein       Einstellungen → TC Oberthal → Verein und Bank
+ *   halle        Einstellungen → TC Oberthal → Tennishalle
+ *   fikonten     Einstellungen → TC Oberthal → Finanzen
+ *   fipaperless  Schnittstellen → Paperless → TC Oberthal (offene Belege: Dokumenttypen, Speicherpfad, Custom Fields)
+ * Jeder Teil lädt und sichert den ganzen Datensatz und hält dieselbe Sperre – es kann immer nur einer gleichzeitig pflegen.
+ */
+type Teil = 'verein' | 'halle' | 'fikonten' | 'fipaperless';
+export function VereinTab() { return <VereinFormular teile={['verein']} />; }
+export function VereinHalle() { return <VereinFormular teile={['halle']} />; }
+export function VereinFinanzen() { return <VereinFormular teile={['fikonten']} />; }
+export function VereinFiPaperless() { return <VereinFormular teile={['fipaperless']} />; }
+
+function VereinFormular({ teile }: { teile: Teil[] }) {
+  const mit = (t: Teil) => teile.includes(t);
   const can = useCan();
   const sperre = useSperre('TCO_VEREIN', '1', can('tco.stammdaten:edit'), { bezeichnung: 'Vereinsdaten' });
   const ro = !can('tco.stammdaten:edit') || !sperre.eigen;
@@ -50,6 +64,7 @@ export function VereinTab() {
     <>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <SperrHinweis s={sperre} />
+      {mit('verein') && (
       <Panel headerText="Verein (Rechnungssteller)" fixed>
         <FormGrid>
           <TextField label="Name (auch Empfänger im GiroCode)" required value={t('name')} onChange={s('name')} readonly={ro} />
@@ -81,19 +96,10 @@ export function VereinTab() {
         </FormGrid>
       </Panel>
 
-      <Panel headerText="Anbindungen" fixed style={{ marginTop: '1rem' }}>
-        <Text style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-          Zugänge werden zentral unter Administration → Schnittstellen gepflegt (Adresse, Anmeldung, Verbindungstest, Mailprotokoll).
-        </Text>
-        <FlexBox wrap="Wrap" style={{ gap: '0.5rem 1.5rem' }}>
-          {([['Paperless-ngx', v.paperless_url], ['E-Mail-Versand (n8n)', v.n8n_mail_url], ['Rückmeldungen Jugendtraining', v.n8n_stunden_url],
-            ['Schulferien', v.n8n_ferien_url], ['EP3-Export', v.n8n_ep3_url]] as [string, unknown][]).map(([name, url]) => (
-            <ObjectStatus key={name} state={url ? 'Positive' : 'None'} showDefaultIcon>{name}: {url ? 'eingerichtet' : 'nicht eingerichtet'}</ObjectStatus>
-          ))}
-        </FlexBox>
-      </Panel>
+      )}
 
-      <Panel headerText="Hallenabrechnung" fixed style={{ marginTop: '1rem' }}>
+      {mit('halle') && (
+      <Panel headerText="Hallenabrechnung" fixed>
         <FormGrid>
           <FieldBox label="Buchungen abrechnen ab (Datum nach)">
             <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={t('halle_stichtag')} readonly={ro} onChange={(e) => setV({ ...v, halle_stichtag: e.detail.value })} />
@@ -103,10 +109,20 @@ export function VereinTab() {
         </FormGrid>
       </Panel>
 
-      <Panel headerText="FI Belege" fixed style={{ marginTop: '1rem' }}>
+      )}
+
+      {mit('fikonten') && (
+      <Panel headerText="FI-Belege: Konten" fixed>
         <FormGrid>
           <TextField label="Konten mit Bankdatei (CSV-Umsatzexport)" value={t('fi_bankkonten')} onChange={s('fi_bankkonten')} readonly={ro} placeholder="1200,654" />
           <TextField label="Kasse und Konten ohne Bankdatei (manuelle Buchung)" value={t('fi_manuell_konten')} onChange={s('fi_manuell_konten')} readonly={ro} placeholder="1000,1210,1220" />
+        </FormGrid>
+      </Panel>
+      )}
+
+      {mit('fipaperless') && (
+      <Panel headerText="FI-Belege: offene Belege in Paperless" fixed>
+        <FormGrid>
           <TextField label="Paperless-Dokumenttypen offener Belege" value={t('fi_beleg_typen')} onChange={s('fi_beleg_typen')} readonly={ro} />
           <TextField label="Paperless-Speicherpfad offener Belege" value={t('fi_beleg_pfad')} onChange={s('fi_beleg_pfad')} readonly={ro} />
           <TextField label="Custom Field interne Belegnummer (Name oder ID)" value={t('fi_feld_beleg')} onChange={s('fi_feld_beleg')} readonly={ro} />
@@ -114,6 +130,7 @@ export function VereinTab() {
           <TextField label="Custom Field Betrag (Name oder ID)" value={t('fi_feld_betrag')} onChange={s('fi_feld_betrag')} readonly={ro} />
         </FormGrid>
       </Panel>
+      )}
 
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="TCO_VEREIN" objectKey="1" />

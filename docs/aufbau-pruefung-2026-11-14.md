@@ -357,8 +357,11 @@ Reiter „Paperless“                    Reiter „E-Mail“
   Arbeitsvorrat (V1). Neuer Reiter **SAP** mit je einem Abschnitt für TC Oberthal und Euroflex (S4); Module melden
   solche Abschnitte mit `WebModule.schnittstellen` an. Die App erscheint, sobald man einen Reiter sehen darf.
   Die App *TC Oberthal → Stammdaten* ist damit aufgelöst (Vereinsdaten: Einstellungen, SAP: Schnittstellen).
-- **Noch offen:** verstreute Paperless-Felder aus den Fach-Apps (FI-Felder, Clubhaus, Instandhaltung), ein Zugang
-  für Nextcloud (S2), laufende Importe einheitlich (S4, zweiter Teil). Die E-Mail-Texte von Euroflex bleiben ein
+- **Stufe 4, Teil 2 (14.11.2026):** ein Zugang für Nextcloud (S2). Die Paperless-Felder der FI-Belege (Dokumenttypen,
+  Speicherpfad, Custom Fields) stehen im Reiter *Paperless* im Block TC Oberthal. Das Vereinsformular ist dafür in
+  Teile gegliedert: *Verein und Bank*, *Tennishalle* und *Finanzen* sind Kapitel der Einstellungen.
+- **Noch offen:** die Paperless-Felder von Clubhaus und Instandhaltung (ziehen mit deren Kapiteln um), laufende
+  Importe einheitlich (S4, zweiter Teil). Die E-Mail-Texte von Euroflex bleiben ein
   Kapitel der Einstellungen (Inhalt, nicht Zugang).
 
 #### S2 Nextcloud: ein Zugang statt zwei
@@ -1144,7 +1147,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Kürzel | Empfehlung | Aufwand | Entscheidung |
 |---|---|---|---|
-| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Stufe 1 und 2 umgesetzt (Rahmen, Portal, Verein und Bank, Euroflex) |
+| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Rahmen, Portal, Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen – offen: Clubhaus, Verzehr, Hallenschlüssel, Instandhaltung |
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ☐ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ☐ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |
