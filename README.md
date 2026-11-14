@@ -378,7 +378,7 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
 - Vier-Augen-Prinzip später: getrennte Berechtigungen (z. B. `:erzeugen` / `:freigeben`) anlegen und
   über Rollen trennen – kein Umbau nötig.
 
-**Aufbau der Apps, Einstellungen und Schnittstellen (#232):** Prüfung aller 54 Apps auf stimmige Anordnung mit Empfehlungen, Skizzen und Entscheidungsliste (eine App „Einstellungen“ mit Kapiteln je Anwendung, Bereich „Schnittstellen“ mit einem Reiter je Schnittstelle, doppelt gepflegte Angaben) – [docs/aufbau-pruefung-2026-11-14.md](docs/aufbau-pruefung-2026-11-14.md). Reine Analyse, am Programm ist dafür nichts geändert. Vorgaben für den Umbau: Paperless mit eigenem Zugang je Bereich (S5), jedes Ereignis im Arbeitsvorrat (V1–V3). **Sicherungspunkt vor dem Umbau:** Branch `sicherung/2026-11-14`, Sichern der Daten und Zurücksetzen in [docs/sicherungspunkt-2026-11-14.md](docs/sicherungspunkt-2026-11-14.md).
+**Aufbau der Apps, Einstellungen und Schnittstellen (#232):** Prüfung aller 54 Apps auf stimmige Anordnung mit Empfehlungen, Skizzen und Entscheidungsliste (eine App „Einstellungen“ mit Kapiteln je Anwendung, Bereich „Schnittstellen“ mit einem Reiter je Schnittstelle, doppelt gepflegte Angaben) – [docs/aufbau-pruefung-2026-11-14.md](docs/aufbau-pruefung-2026-11-14.md). Reine Analyse, am Programm ist dafür nichts geändert. Vorgaben für den Umbau: Paperless mit eigenem Zugang je Bereich (S5), jedes Ereignis im Arbeitsvorrat (V1–V3), jede Funktion vom Administrator abschaltbar (F1). **Sicherungspunkt vor dem Umbau:** Branch `sicherung/2026-11-14`, Sichern der Daten und Zurücksetzen in [docs/sicherungspunkt-2026-11-14.md](docs/sicherungspunkt-2026-11-14.md).
 
 ## Modul `tco` (TC Oberthal – Vereinsportal)
 
