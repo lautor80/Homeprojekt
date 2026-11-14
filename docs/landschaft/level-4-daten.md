@@ -61,6 +61,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.kommpref` | ● |  | ● |  |  |  |  |  |  |  |  |  | ● | ● |
 | `tco.kuendigungen` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.kunden` | ● |  | ● |  |  |  |  |  |  | ● | ● |  | ● | ● |
+| `tco.mailtexte` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.mgnotiz` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.mitglieder` | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  | ● | ● |
 | `tco.mitgliedera` | ● |  | ● | ● |  |  | ● |  |  | ● | ● |  | ● | ● |

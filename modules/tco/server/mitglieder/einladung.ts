@@ -63,6 +63,12 @@ export function einladungVorlage(v: Verein): MailVorlage {
 const fuellen = (s: string, m: Record<string, any>, link: string, bis: string) => s.replace(/\{(Vorname|Name|Link|GueltigBis)\}/g, (_, k: string) =>
   (k === 'Vorname' ? t(m.vorname) : k === 'Name' ? t(`${m.vorname ?? ''} ${m.nachname ?? ''}`) : k === 'Link' ? link : bis));
 
+/** unter Einstellungen → E-Mail-Texte festgelegter Einladungstext (#232); direkt gelesen, damit diese Datei nicht am Verzeichnis hängt */
+async function eigeneEinladung(db: Db): Promise<MailVorlage | null> {
+  const [r] = await db`select betreff, text from tco.mailtexte where schluessel = 'mitglied.einladung'`;
+  return r ? { betreff: r.betreff as string, text: r.text as string } : null;
+}
+
 function mailText(v: Verein, m: Record<string, any>, link: string, bis: string, vorlage?: MailVorlage | null) {
   if (vorlage) return { betreff: fuellen(vorlage.betreff, m, link, bis), text: fuellen(vorlage.text, m, link, bis) };
   return {
@@ -149,7 +155,8 @@ export async function schnellwegPruefen(tx: Db, v: Verein, email: string, geburt
   const token = await einladungErzeugen(tx, m.adrnr, 'REGISTRIERUNG', 'Registrierung', 24);
   const link = einladungsLink(url, token);
   const bis = new Date(Date.now() + 86_400_000).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' });
-  const { betreff, text } = mailText(v, m, link, bis);
+  // eigener Text des Vereins (Einstellungen → E-Mail-Texte), sonst der Standardtext
+  const { betreff, text } = mailText(v, m, link, bis, await eigeneEinladung(tx));
   const e = await mailSenden(v, { modus: 'senden', anwendung: 'Registrierung', objekt: m.adrnr, an: m.email.trim(), betreff, text, benutzer: 'Registrierung', anhaenge: [],
     wiederholung: { art: 'EINLADUNG', adrnr: m.adrnr, stunden: 24, weg: 'REGISTRIERUNG' } });
   if (e.status === 'fehler') throw new BusinessError('Die E-Mail konnte nicht gesendet werden. Bitte später erneut versuchen.');

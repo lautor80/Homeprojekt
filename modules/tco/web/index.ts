@@ -1,6 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
 import { Hallenpreise } from './Hallenpreise';
+import { MailtexteKapitel } from './einstellungen/Mailtexte';
 import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
 import { Sollstellung } from './soll/Sollstellung';
@@ -91,6 +92,7 @@ const mod: WebModule = {
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
     { id: 'tennishalle', text: 'Tennishalle', icon: 'building', permission: 'tco.stammdaten:edit', component: VereinHalle },
     { id: 'finanzen', text: 'Finanzen', icon: 'loan', permission: 'tco.stammdaten:edit', component: VereinFinanzen },
+    { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'tco.stammdaten:edit', component: MailtexteKapitel },
   ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
   // modules/tco/server/index.ts; lose Apps der Stufe 2 stehen dort im Bereich „Allgemein“), geprüft in

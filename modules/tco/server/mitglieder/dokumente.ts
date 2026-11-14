@@ -130,7 +130,14 @@ const INTRO: Record<string, string> = {
 };
 
 /** Mailtext wie MAIL_BUILD_TEXT (Nur-Text, Unterlagen als Freigabelinks) */
-export function mailText(v: Verein, art: Art | '', vorname: string, links: { titel: string; link: string }[]) {
+/** Linkliste der Unterlagen in der E-Mail – auch der Wert des Platzhalters {Unterlagen} eigener Texte */
+export const unterlagenZeilen = (links: { titel: string; link: string }[]): string[] => (links.length
+  ? [links.length === 1 ? 'Deine Unterlage kannst du hier abrufen:' : 'Deine Unterlagen kannst du hier abrufen:', ...links.flatMap((l) => [l.titel, l.link])] : []);
+
+/**
+ * unterlagenBlock: für die Vorlage der Einstellungen (#232, E-Mail-Texte) – steht dann anstelle der Linkliste, z. B. „{Unterlagen}“.
+ */
+export function mailText(v: Verein, art: Art | '', vorname: string, links: { titel: string; link: string }[], unterlagenBlock?: string) {
   const a = art || '0';
   const teile = [KOPF[a] ?? 'Deine Unterlagen vom TC Oberthal', '', `Hallo ${vorname || 'zusammen'},`, '',
     INTRO[a] ?? 'anbei erhältst du Unterlagen zu deiner Mitgliedschaft im TC Oberthal.'];
@@ -138,10 +145,8 @@ export function mailText(v: Verein, art: Art | '', vorname: string, links: { tit
     teile.push('', 'Damit du keine Neuigkeiten rund um den TC Oberthal verpasst, kannst du gerne unserer Community beitreten:', WA_COMMUNITY, '',
       'Und wenn du über die Jugendarbeit oder Trainingszeiten auf dem Laufenden bleiben möchtest,', 'tritt einfach unserer Jugendgruppe bei:', WA_JUGEND);
   }
-  if (links.length) {
-    teile.push('', links.length === 1 ? 'Deine Unterlage kannst du hier abrufen:' : 'Deine Unterlagen kannst du hier abrufen:');
-    for (const l of links) teile.push(l.titel, l.link);
-  }
+  if (unterlagenBlock) teile.push('', unterlagenBlock);
+  else if (links.length) teile.push('', ...unterlagenZeilen(links));
   const ansprechpartner = (v.mg_ansprechpartner ?? '').split('\n').map((z) => z.trim()).filter(Boolean);
   if (a !== '4' && ansprechpartner.length) {
     teile.push('', 'Bei Fragen rund um Training, Mitgliedschaft oder unseren Verein stehen dir folgende Ansprechpartner gerne zur Verfügung:', ...ansprechpartner);

@@ -14,6 +14,7 @@ import type { Db, Verein } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import { tcoHinweis } from '../hinweise.js';
+import { fuellen, mailtextVorlage } from '../mailtexte.js';
 import { leer, notizAnlegen } from './logik.js';
 import { druckdatenLesen, unterlagePdf } from './pdf.js';
 import { eigeneAdrnr, kuendigen, kuendigenMehrere, kuendigungBestaetigen, type Kuendigung } from './selbst.js';
@@ -154,10 +155,12 @@ export async function ablehnungMitteilen(db: Db, v: Verein, k: Zeile, grund: str
   if (!v.n8n_mail_url) return ['Der Mailversand ist nicht eingerichtet – bitte das Mitglied selbst unterrichten.'];
   if (!kontakt?.email) return ['Keine E-Mail-Adresse hinterlegt – bitte das Mitglied selbst unterrichten.'];
   try {
+    // Text: unter Einstellungen → E-Mail-Texte festgelegt, sonst der Standardtext (#232)
+    const werte = { Vorname: kontakt.vorname ?? '', Eingang: dat(k.eingang), Eingereicht: k.text, Grund: grund };
+    const vorlage = await mailtextVorlage(db, v, 'mitglied.kuendigung.abgelehnt');
     await mailSenden(v, {
       modus: 'senden', anwendung: 'Mitglieder', objekt: k.betroffen, an: kontakt.email, cc: v.email ?? '', benutzer: wer, anhaenge: [],
-      betreff: `${v.name}: Ihre Kündigung vom ${dat(k.eingang)}`,
-      text: `Hallo ${kontakt.vorname ?? ''},\n\nIhre Kündigung vom ${dat(k.eingang)} konnten wir nicht freigeben.\n\nEingereicht: ${k.text}\nGrund: ${grund}\n\nBei Fragen melden Sie sich bitte beim Vorstand.\n\n${v.name}`,
+      betreff: fuellen(vorlage.betreff, werte), text: fuellen(vorlage.text, werte),
     });
     return [];
   } catch (e) { return [`E-Mail an das Mitglied nicht gesendet: ${(e as Error).message}`]; }
