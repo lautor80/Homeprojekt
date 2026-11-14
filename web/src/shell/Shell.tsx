@@ -120,13 +120,16 @@ export function Shell() {
           <ShellBar
             primaryTitle={kopfTitel}
             branding={
-              <ShellBarBranding onClick={() => navigate('/')} logo={logo || version ? (
+              <ShellBarBranding onClick={() => navigate('/')} logo={(
                 // Logo und aktive Version (Uhrzeit des Codes) – am Logo, weil das Handy den Titel daneben ausblendet
                 <span className="portal-kopf__logo" title={version?.titel}>
                   {logo && <img src={logo} alt="" />}
                   {version && <small className="portal-kopf__version">{version.text}</small>}
+                  {/* Seite neu laden (z. B. nach einem Update) – eigener Klick, nicht „zur Startseite“ des Logos */}
+                  <Button icon="refresh" design="Transparent" tooltip="Seite neu laden" accessibleName="Seite neu laden" className="portal-kopf__neu"
+                          onClick={(e) => { e.stopPropagation(); window.location.reload(); }} />
                 </span>
-              ) : undefined}>
+              )}>
                 {kopfTitel}
               </ShellBarBranding>
             }
