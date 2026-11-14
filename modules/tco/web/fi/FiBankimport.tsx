@@ -4,6 +4,7 @@ import {
   Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
 } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
+import { ImportSchritte } from '@core/components/ImportDialog';
 import { dat, dateiLesen, eur } from '../util';
 import { KontoBox, ZuordnenDialog } from './FiDialoge';
 import { AblageFlaeche } from '@core/ablage';
@@ -246,13 +247,14 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
 
   return createPortal(<>
     <Dialog open={open} resizable onClose={onClose} style={{ width: '96vw', height: '94vh' }}
-            headerText={manuell ? 'Manuelle Buchung – Kasse und Konten ohne Bankdatei' : 'Bankimport – neue Umsätze kontieren'}
+            headerText={manuell ? 'Manuelle Buchung – Kasse und Konten ohne Bankdatei' : 'Importieren: Bankumsätze kontieren (Bankimport)'}
             footer={<Bar startContent={<Text>{ausgewaehlt.length} Umsatz/Umsätze ausgewählt · {eur(summeNeu)}</Text>} endContent={<>
               <Button design="Emphasized" disabled={!ausgewaehlt.length} loading={busy} onClick={buchen}>
                 {manuell ? 'Erfasste Buchungen buchen' : 'Ausgewählte Umsätze buchen'}
               </Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
+      {!manuell && <ImportSchritte schritt={!datei ? 1 : ausgewaehlt.length ? 3 : 2} />}
       <FlexBox style={{ gap: '1rem', marginBottom: '0.75rem' }} alignItems="End" wrap="Wrap">
         <div>
           <Label>Konto (FI)</Label><br />

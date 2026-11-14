@@ -12,6 +12,7 @@ import '@ui5/webcomponents-fiori/dist/illustrations/NoData.js';
 import '@ui5/webcomponents-fiori/dist/illustrations/SimpleEmptyList.js';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
+import { ImportKnopf, ImportSchritte } from '@core/components/ImportDialog';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { SperrHinweis, useSperre } from '@core/sperre';
@@ -237,7 +238,7 @@ export function Hallenabrechnung() {
           <ObjectStatus state="Positive" showDefaultIcon title={abgleich.text}>EP3 abgeglichen</ObjectStatus>
         )}
         {edit && <Button icon="synchronize" design="Transparent" disabled={abgleichLaeuft} tooltip={abgleich?.text ?? 'EP3 abgleichen (nur prüfen, nichts wird importiert)'} onClick={abgleichen} />}
-        {edit && importNoetig && <Button icon="download-from-cloud" onClick={() => setEp3Dlg(true)}>EP3 importieren</Button>}
+        {edit && importNoetig && <ImportKnopf tooltip="EP3-Buchungen über n8n importieren" onClick={() => setEp3Dlg(true)} />}
         {edit && importNoetig && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
         {edit && an('tco.halle.auto') && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
         {edit && an('tco.halle.sammelrechnung') && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
@@ -873,11 +874,13 @@ function Ep3ImportDialog({ onClose, onStart }: { onClose: () => void; onStart: (
   useEffect(() => { api.get<{ stichtag: string }>(`${H}/import/info`).then((x) => setStichtag(x.stichtag)).catch(() => setStichtag(null)); }, []);
   const abOk = /^\d{4}-\d{2}-\d{2}$/.test(ab);
   return (
-    <Dialog open headerText="EP3 importieren (n8n)" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
+    <Dialog open headerText="Importieren: EP3-Buchungen (n8n)" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={<>
               <Button design="Emphasized" icon="download-from-cloud" disabled={modus === 'AB' && !abOk} onClick={() => onStart(modus === 'AB' ? ab : null)}>Importieren</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
+      {/* Quelle ist n8n; geprüft wird vorab beim EP3-Abgleich, das Protokoll folgt nach dem Lauf */}
+      <ImportSchritte schritt={1} />
       <FlexBox direction="Column" style={{ gap: '0.75rem' }}>
         <SegmentedButton onSelectionChange={(e) => setModus((e.detail.selectedItems[0] as HTMLElement).dataset.m as 'STANDARD' | 'AB')}>
           <SegmentedButtonItem data-m="STANDARD" selected={modus === 'STANDARD'}>Standard (letzte 18 Monate)</SegmentedButtonItem>

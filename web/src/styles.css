@@ -785,3 +785,12 @@ ui5-busy-indicator { max-width: 100%; }
 /* App „Schnittstellen“: je Bereich ein Block innerhalb eines Reiters */
 .portal-schnitt__bereich { margin: 1.25rem 0 0.5rem; padding-bottom: 0.25rem; border-bottom: 2px solid var(--sapGroup_TitleBorderColor); font-weight: bold; color: var(--sapGroup_TitleTextColor); }
 .portal-schnitt__bereich:first-child { margin-top: 0; }
+
+/* Importe (#232, S4): gemeinsamer Dialog mit Schrittleiste – components/ImportDialog.tsx */
+.portal-import__schritte { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; margin: 0 0 0.75rem; padding: 0 0 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-import__schritt { display: flex; align-items: center; gap: 0.4rem; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize); }
+.portal-import__nr { display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 1px solid var(--sapContent_LabelColor); font-weight: bold; }
+.portal-import__schritt--aktiv { color: var(--sapTextColor); font-weight: bold; }
+.portal-import__schritt--aktiv .portal-import__nr { background: var(--sapBrandColor); border-color: var(--sapBrandColor); color: var(--sapContent_ContrastTextColor, #fff); }
+.portal-import__schritt--fertig .portal-import__nr { border-color: var(--sapPositiveColor); color: var(--sapPositiveColor); }
+.portal-import__inhalt { color: var(--sapTextColor); }

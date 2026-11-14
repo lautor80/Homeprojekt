@@ -7,6 +7,7 @@ import {
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
+import { ImportKnopf } from '@core/components/ImportDialog';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { MenuButton } from '@core/components/MenuButton';
 import { useCan, useFunktion } from '@core/session';
@@ -268,7 +269,7 @@ export function FiBelege() {
   );
 
   const actions = <>
-    {buchen && an('tco.fi.bankimport') && <Button icon="upload" onClick={() => setBank('bank')}>Bankimport</Button>}
+    {buchen && an('tco.fi.bankimport') && <ImportKnopf tooltip="Bankimport: Kontoauszug einlesen und neue Umsätze kontieren" onClick={() => setBank('bank')} />}
     {buchen && an('tco.fi.manuell') && <Button icon="add" onClick={() => setBank('manuell')}>Manuelle Buchung</Button>}
     <Button icon="lead" onClick={() => setZahlRg(null)}>Teilzahlungen</Button>
     {init?.paperless && <Button icon="qr-code" tooltip="Paperless-Belege mit Folgeaktion „Überweisung an Einreicher“: Vorschau und QR-Code zur Überweisung" onClick={() => setUeberweisung(true)}>Überweisung an Einreicher</Button>}
