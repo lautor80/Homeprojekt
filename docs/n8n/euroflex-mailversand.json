@@ -1,0 +1,592 @@
+{
+  "name": "Euroflex Mailversand",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Euroflex Mailversand (Outlook 365)\n\nAufruf nur aus dem Portal (Euroflex → Auftrag → Dokumente → „E-Mail mit Anhängen…“).\nEin Aufruf = ein Vorgang mit gemeinsamem Anhang-Vorrat und einer Liste von E-Mails.\nGesendet wird über Microsoft Graph **aus dem Postfach des Benutzers** (`absender`).\n\n**Nach dem Import eintragen**\n1. Knoten *Webhook Portal*: Zugangsdatei „Header Auth“ (Name `X-Euroflex-Key`).\n2. Knoten *Postfach prüfen*, *Entwurf anlegen*, *Senden*: Zugangsdatei „OAuth2 API“ (Client Credentials) für Microsoft Graph.\n3. Workflow aktivieren.\n\nAnleitung: `docs/n8n/EUROFLEX-MAILVERSAND.md` im Portal-Repository.",
+        "height": 420,
+        "width": 520
+      },
+      "id": "e0",
+      "name": "Hinweis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "euroflex-mailversand",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e1",
+      "name": "Webhook Portal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "7c1e5b2a-9f40-4d63-8a17-2b6e0c4d9f35",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Euroflex Webhook-Schlüssel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aufruf des Portals prüfen und aufbereiten (einmal für alle Elemente).\n// Der Workflow kennt keine Postfächer und keine festen Adressen: Absender-Postfach, Empfänger und Anhänge bestimmt das Portal.\nconst b = $input.first().json.body ?? {};\nconst EMAIL = /^[^\\s@<>,;]+@[^\\s@<>,;]+\\.[^\\s@<>,;]+$/;\nconst fehler = [];\n\nconst modus = String(b.modus ?? 'senden').trim();\nif (!['senden', 'entwurf', 'pruefen'].includes(modus)) fehler.push(`Unbekannter Modus „${modus}“ (erlaubt: senden, entwurf, pruefen).`);\nconst absender = String(b.absender ?? '').trim();\nif (absender && !EMAIL.test(absender)) fehler.push(`Absender-Postfach „${absender}“ ist keine gültige Adresse.`);\nif (!absender && modus !== 'pruefen') fehler.push('Absender-Postfach fehlt.');\n\n/** „a@b, Name <c@d>“ oder Liste → Empfänger im Format von Microsoft Graph */\nfunction empfaenger(roh, feld, nr) {\n  const teile = (Array.isArray(roh) ? roh : String(roh ?? '').split(/[,;]/)).map((x) => String(x ?? '').trim()).filter(Boolean);\n  const liste = [];\n  for (const t of teile) {\n    const m = /^(.*)<([^<>]+)>$/.exec(t);\n    const address = (m ? m[2] : t).trim();\n    const name = m ? m[1].trim().replace(/^\"|\"$/g, '') : '';\n    if (!EMAIL.test(address)) { fehler.push(`E-Mail ${nr}: ungültige Adresse „${t}“ im Feld „${feld}“.`); continue; }\n    liste.push({ emailAddress: name ? { address, name } : { address } });\n  }\n  return liste;\n}\n\n// Anhang-Vorrat: jede Datei einmal im Aufruf, die E-Mails nennen nur die Kennungen\nconst vorrat = new Map();\nlet bytes = 0;\n(Array.isArray(b.anhaenge) ? b.anhaenge : []).forEach((a, i) => {\n  const id = String(a?.id ?? '').trim();\n  const dateiname = String(a?.dateiname ?? '').trim();\n  const inhalt = String(a?.inhalt_base64 ?? '');\n  if (!id) { fehler.push(`Anhang ${i + 1}: Kennung fehlt.`); return; }\n  if (vorrat.has(id)) { fehler.push(`Anhang-Kennung „${id}“ ist doppelt.`); return; }\n  if (!dateiname) { fehler.push(`Anhang „${id}“: Dateiname fehlt.`); return; }\n  if (!inhalt.trim()) { fehler.push(`Anhang „${dateiname}“ ist leer.`); return; }\n  const groesse = Math.floor(inhalt.length * 3 / 4);\n  bytes += groesse;\n  vorrat.set(id, { id, dateiname, mime: String(a?.mime ?? '').trim() || 'application/octet-stream', groesse });\n});\n\nconst mails = [];\n(Array.isArray(b.mails) ? b.mails : []).forEach((m, i) => {\n  const nr = Number.isInteger(m?.nr) ? m.nr : i + 1;\n  const an = empfaenger(m?.an, 'an', nr);\n  const cc = empfaenger(m?.cc, 'cc', nr);\n  const bcc = empfaenger(m?.bcc, 'bcc', nr);\n  const antwort_an = empfaenger(m?.antwort_an, 'antwort_an', nr);\n  if (!an.length) fehler.push(`E-Mail ${nr}: kein Empfänger.`);\n  const betreff = String(m?.betreff ?? '').trim();\n  if (!betreff) fehler.push(`E-Mail ${nr}: Betreff fehlt.`);\n  const ids = Array.isArray(m?.anhaenge) ? m.anhaenge.map((x) => String(x)) : [];\n  for (const id of ids) if (!vorrat.has(id)) fehler.push(`E-Mail ${nr}: unbekannter Anhang „${id}“.`);\n  mails.push({ nr, rolle: String(m?.rolle ?? ''), an, cc, bcc, antwort_an, betreff, text: String(m?.text ?? ''), html: m?.text_format === 'html', anhaenge: ids });\n});\nif (modus !== 'pruefen' && !mails.length) fehler.push('Der Aufruf enthält keine E-Mail.');\nif (mails.length > 20) fehler.push('Höchstens 20 E-Mails je Aufruf.');\nif (new Set(mails.map((m) => m.nr)).size !== mails.length) fehler.push('Die Nummern der E-Mails sind nicht eindeutig.');\n\nreturn [{ json: {\n  ok: !fehler.length, fehler: fehler.join(' '), modus, absender,\n  postfach_pruefen: modus === 'pruefen' && !!absender,\n  anwendung: String(b.anwendung ?? ''), objekt: String(b.objekt ?? ''), benutzer: String(b.benutzer ?? ''),\n  mails, anhaenge: [...vorrat.values()], anhang_bytes: bytes,\n} }];"
+      },
+      "id": "e2",
+      "name": "Aufruf prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e3-c",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e3",
+      "name": "Gültig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'fehler', fehler: $json.fehler, zeitpunkt: $now.toISO() }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "e4",
+      "name": "Antwort ungültig",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e5-c",
+              "leftValue": "={{ $json.modus === 'pruefen' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e5",
+      "name": "Nur prüfen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e6-c",
+              "leftValue": "={{ $json.postfach_pruefen === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e6",
+      "name": "Postfach angegeben?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.absender) }}/mailFolders/drafts?$select=displayName,totalItemCount",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "e7",
+      "name": "Postfach prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: $json.statusCode === 200 ? 'ok' : 'fehler', postfach: $('Aufruf prüfen').first().json.absender, http: $json.statusCode ?? null, fehler: $json.statusCode === 200 ? '' : String(($json.body && $json.body.error && (($json.body.error.code || '') + ': ' + ($json.body.error.message || ''))) || ($json.error && ($json.error.message || $json.error)) || 'Postfach nicht erreichbar'), zeitpunkt: $now.toISO() }) }}",
+        "options": {}
+      },
+      "id": "e8",
+      "name": "Antwort Prüfung",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', postfach: null, hinweis: 'Workflow aktiv, Schlüssel akzeptiert. Kein Postfach angegeben – die Anmeldung an Microsoft 365 wurde nicht geprüft.', zeitpunkt: $now.toISO() }) }}",
+        "options": {}
+      },
+      "id": "e9",
+      "name": "Antwort Prüfung ohne Postfach",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Je E-Mail ein Element mit der fertigen Nachricht für Microsoft Graph (Anhänge aus dem gemeinsamen Vorrat).\nconst p = $('Aufruf prüfen').first().json;\nconst roh = $('Webhook Portal').first().json.body.anhaenge ?? [];\nconst inhalt = new Map(roh.map((a) => [String(a.id ?? '').trim(), String(a.inhalt_base64 ?? '').replace(/^data:[^,]*,/, '').replace(/\\s+/g, '')]));\nconst meta = new Map(p.anhaenge.map((a) => [a.id, a]));\n\nreturn p.mails.map((m) => ({ json: {\n  nr: m.nr, rolle: m.rolle, absender: p.absender,\n  an: m.an.map((e) => e.emailAddress.address).join(', '),\n  nachricht: {\n    subject: m.betreff,\n    body: { contentType: m.html ? 'HTML' : 'Text', content: m.text },\n    toRecipients: m.an, ccRecipients: m.cc, bccRecipients: m.bcc,\n    ...(m.antwort_an.length ? { replyTo: m.antwort_an } : {}),\n    attachments: m.anhaenge.map((id) => ({\n      '@odata.type': '#microsoft.graph.fileAttachment',\n      name: meta.get(id).dateiname, contentType: meta.get(id).mime, contentBytes: inhalt.get(id),\n    })),\n  },\n} }));"
+      },
+      "id": "e10",
+      "name": "E-Mails aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.absender) }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.nachricht) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "e11",
+      "name": "Entwurf anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ergebnis von „Entwurf anlegen“ je E-Mail auswerten. Liefert genau EIN Element, damit der Versand danach nur einmal läuft.\nconst p = $('Aufruf prüfen').first().json;\nconst mails = $('E-Mails aufteilen').all();\nconst antworten = $input.all();\n\n/** Klartext für eine Ablehnung durch Microsoft Graph */\nfunction graphFehler(a, schritt) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  let hinweis = '';\n  if (s === 401) hinweis = ' Die Zugangsdatei „Euroflex Microsoft Graph“ in n8n ist ungültig oder der Clientschlüssel abgelaufen.';\n  else if (s === 403) hinweis = ' Die App darf dieses Postfach nicht verwenden (Berechtigung Mail.ReadWrite/Mail.Send bzw. Bereich in Exchange prüfen).';\n  else if (s === 404) hinweis = ' Das Postfach gibt es in Microsoft 365 nicht oder es liegt außerhalb des erlaubten Bereichs.';\n  else if (s === 413) hinweis = ' Die Anhänge sind zu groß für einen Aufruf.';\n  return `${schritt} fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh}${hinweis}`;\n}\n\nconst stand = mails.map((m, i) => {\n  const a = (antworten[i] && antworten[i].json) || {};\n  const ok = a.statusCode === 201 && a.body && a.body.id;\n  return {\n    nr: m.json.nr, rolle: m.json.rolle, an: m.json.an,\n    entwurf_id: ok ? a.body.id : null,\n    message_id: ok ? a.body.internetMessageId ?? '' : '',\n    fehler: ok ? '' : graphFehler(a, 'Entwurf anlegen'),\n  };\n});\n\nreturn [{ json: {\n  modus: p.modus, absender: p.absender, mails: stand,\n  sendbar: p.modus === 'senden' ? stand.filter((s) => s.entwurf_id).length : 0,\n} }];"
+      },
+      "id": "e12",
+      "name": "Entwürfe auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "e13-c",
+              "leftValue": "={{ $json.sendbar > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e13",
+      "name": "Etwas zu senden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Je angelegtem Entwurf ein Element für „Senden“.\nconst s = $input.first().json;\nreturn s.mails.filter((m) => m.entwurf_id).map((m) => ({ json: { nr: m.nr, absender: s.absender, entwurf_id: m.entwurf_id } }));"
+      },
+      "id": "e14",
+      "name": "Sendbare aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.absender) }}/messages/{{ encodeURIComponent($json.entwurf_id) }}/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Length",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "e15",
+      "name": "Senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        300
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Antwort an das Portal: Status je E-Mail und Gesamtstatus.\nconst st = $('Entwürfe auswerten').first().json;\nlet auftraege = [];\nlet gesendet = [];\nif (st.sendbar > 0) {\n  auftraege = $('Sendbare aufteilen').all();\n  gesendet = $('Senden').all();\n}\nconst zeitpunkt = new Date().toISOString();\n\nfunction sendeFehler(a) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  return `Senden fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh} Der Entwurf liegt im Postfach unter „Entwürfe“.`;\n}\n\nconst mails = st.mails.map((m) => {\n  const basis = { nr: m.nr, rolle: m.rolle, an: m.an };\n  if (!m.entwurf_id) return { ...basis, status: 'fehler', fehler: m.fehler };\n  if (st.modus !== 'senden') return { ...basis, status: 'entwurf', message_id: m.message_id, zeitpunkt };\n  const i = auftraege.findIndex((a) => a.json.nr === m.nr);\n  const a = (i >= 0 && gesendet[i] && gesendet[i].json) || {};\n  if (a.statusCode === 202) return { ...basis, status: 'gesendet', message_id: m.message_id, zeitpunkt };\n  return { ...basis, status: 'fehler', fehler: sendeFehler(a), entwurf_im_postfach: true };\n});\n\nconst gut = mails.filter((m) => m.status !== 'fehler').length;\nconst status = gut === mails.length ? (st.modus === 'senden' ? 'gesendet' : 'entwurf') : gut ? 'teilweise' : 'fehler';\nreturn [{ json: { antwort: {\n  status, postfach: st.absender, zeitpunkt, mails,\n  fehler: mails.filter((m) => m.status === 'fehler').map((m) => `E-Mail ${m.nr}: ${m.fehler}`).join(' '),\n} } }];"
+      },
+      "id": "e16",
+      "name": "Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.antwort) }}",
+        "options": {}
+      },
+      "id": "e17",
+      "name": "Antwort",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Portal": {
+      "main": [
+        [
+          {
+            "node": "Aufruf prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aufruf prüfen": {
+      "main": [
+        [
+          {
+            "node": "Gültig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gültig?": {
+      "main": [
+        [
+          {
+            "node": "Nur prüfen?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Antwort ungültig",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur prüfen?": {
+      "main": [
+        [
+          {
+            "node": "Postfach angegeben?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "E-Mails aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postfach angegeben?": {
+      "main": [
+        [
+          {
+            "node": "Postfach prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Antwort Prüfung ohne Postfach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postfach prüfen": {
+      "main": [
+        [
+          {
+            "node": "Antwort Prüfung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-Mails aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Entwurf anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwurf anlegen": {
+      "main": [
+        [
+          {
+            "node": "Entwürfe auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entwürfe auswerten": {
+      "main": [
+        [
+          {
+            "node": "Etwas zu senden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etwas zu senden?": {
+      "main": [
+        [
+          {
+            "node": "Sendbare aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sendbare aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Senden": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis": {
+      "main": [
+        [
+          {
+            "node": "Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

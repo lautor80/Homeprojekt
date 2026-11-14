@@ -16,7 +16,8 @@ import { lieferscheinPdf, transportauftragPdf } from './pdf/dokumente.js';
 import { xrechnungErzeugen } from './xrechnung.js';
 import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
-import { dokumentAblegen, paperlessFirma } from './dokumente.js';
+import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
+import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
 import { kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
@@ -476,6 +477,58 @@ async function routes(app: FastifyInstance) {
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
 
+  // ---- E-Mail zum Auftrag über Outlook 365 (#235, n8n-Workflow „Euroflex Mailversand“) ----
+  app.get('/mail/info', { preHandler: requireAuth(P.versand) }, async () => mailInfo());
+
+  /**
+   * Ausgewählte Dokumente des Auftrags senden: eine E-Mail an den Empfänger und parallel eine eigene E-Mail an die feste zweite
+   * Adresse der Anbindung. `dateien` kommen aus dem Ablageordner des Benutzers (Browser), `dokumente` sind Paperless-Dokumente,
+   * die dem Auftrag zugeordnet sind. `modus: 'entwurf'` legt die E-Mails nur als Entwürfe im Postfach ab.
+   */
+  app.post('/auftraege/:nr/mail', { preHandler: requireAuth(P.versand), bodyLimit: 40 * 1024 * 1024 }, async (req) => {
+    const { nr } = z.object({ nr: z.string() }).parse(req.params);
+    const b = z.object({
+      modus: z.enum(['senden', 'entwurf']).default('senden'),
+      an: z.string().trim().min(1, 'Bitte einen Empfänger angeben.').max(500),
+      cc: z.string().trim().max(500).default(''),
+      betreff: z.string().trim().min(1, 'Bitte einen Betreff angeben.').max(200),
+      text: z.string().max(20_000).default(''),
+      dateien: z.array(z.object({ name: z.string().trim().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.') })).max(30).default([]),
+      dokumente: z.array(z.coerce.number().int().positive()).max(30).default([]),
+      nur: z.array(z.enum(['kunde', 'kopie'])).min(1).optional(),
+    }).parse(req.body);
+    await auftragLesen(nr);
+    // Einrichtung, Postfach und Adressen zuerst – erst danach Dateien entpacken und Dokumente aus Paperless holen
+    await versandBereit();
+    adressenPruefen(b.an, 'Empfänger');
+    adressenPruefen(b.cc, 'CC');
+    const erlaubt = [...DATEITYPEN, 'xml', 'zip'];
+    const dateien: VersandDatei[] = b.dateien.map((d) => {
+      const name = d.name.split(/[\\/]/).pop()!.trim();
+      if (!erlaubt.includes(endung(name))) throw new BusinessError(`„${name}“: Dateityp wird als Anhang nicht unterstützt (erlaubt: ${erlaubt.join(', ')}).`);
+      const daten = Buffer.from(d.inhalt.replace(/^data:[^,]*,/, ''), 'base64');
+      if (!daten.length) throw new BusinessError(`„${name}“ ist leer.`);
+      return { name, daten, mime: mimeTyp(name) };
+    });
+    const ids = [...new Set(b.dokumente)];
+    if (ids.length) {
+      // nur Dokumente, die diesem Auftrag zugeordnet sind (wie beim Herunterladen)
+      const rows = await sql`select doc_id, titel, datei from transport.auftrag_dokumente where auftragsnr = ${nr} and doc_id = any(${ids}::int[])`;
+      const fehlt = ids.filter((id) => !rows.some((r) => r.doc_id === id));
+      if (fehlt.length) throw new BusinessError(`Dokument ${fehlt.join(', ')} ist dem Auftrag ${nr} nicht zugeordnet.`);
+      const pl = paperlessFirma(await firmaLesen());
+      for (const id of ids) {
+        const row = rows.find((r) => r.doc_id === id)!;
+        const d = await pl.download(id);
+        // Paperless liefert die archivierte Fassung (meist PDF): passt die Endung des abgelegten Namens nicht dazu, gilt der Name von Paperless
+        const pdf = /pdf/i.test(d.contentType);
+        const name = row.datei && (!pdf || /\.pdf$/i.test(row.datei)) ? row.datei : d.filename;
+        dateien.push({ name, daten: d.data, mime: pdf ? 'application/pdf' : d.contentType.split(';')[0].trim() || mimeTyp(name) });
+      }
+    }
+    return euroflexMailSenden({ nr, modus: b.modus, an: b.an, cc: b.cc, betreff: b.betreff, text: b.text, dateien, nur: b.nur, benutzer: benutzerName(req) });
+  });
+
   // ---- Paperless ----
   app.post('/paperless', { preHandler: requireAuth(P.versand) }, async (req) => {
     const { fakturen } = z.object({ fakturen: z.array(z.string()).min(1) }).parse(req.body);
@@ -735,6 +788,13 @@ const mod: ServerModule = {
   name: 'Transport',
   migrationsDir: path.join(APP_ROOT, 'modules', 'transport', 'server', 'migrations'),
   paperlessKontexte: TRANSPORT_KONTEXTE,
+  verbindungen: TRANSPORT_VERBINDUNGEN,
+  // E-Mail-Protokoll: Empfängeradressen den Kontakten zuordnen
+  mailPersonen: async (db, emails) => {
+    if (!emails.length) return [];
+    const rows = await db`select lower(email) as email, kundenname, kundenname2 from transport.adressen where lower(email) = any(${emails}::text[])`;
+    return rows.map((r) => ({ email: r.email, name: condense(`${r.kundenname ?? ''} ${r.kundenname2 ?? ''}`), art: 'Kontakt Euroflex' }));
+  },
   permissions: [
     { area: 'Euroflex', app: 'Aufträge', id: P.display, text: 'Aufträge anzeigen und drucken' },
     { area: 'Euroflex', app: 'Aufträge', id: P.edit, text: 'Aufträge anlegen und ändern' },
