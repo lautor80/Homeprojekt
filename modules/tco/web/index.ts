@@ -1,7 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
 import { Hallenpreise } from './Hallenpreise';
-import { TcoStammdaten } from './Stammdaten';
+import { TcoStammdaten, VereinTab } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
 import { Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
@@ -79,6 +79,11 @@ const mod: WebModule = {
   // Arbeitsvorrat der Startseite (#232, V2): Knopf „Zahlungsdaten“ an Einträgen „Überweisung an Einreicher“, „Bearbeiten“ an Kündigungen.
   // Den Hinweis „n neu“ zeigt der Kern am Menüeintrag „Start“ (web/src/arbeitsvorrat.tsx).
   arbeitsvorratZusatz: tcoZusatz,
+  // Kapitel „TC Oberthal“ der App Einstellungen (Administration → Einstellungen, #232 E1) – weitere Kapitel (Tennishalle, Clubhaus,
+  // Finanzen, Instandhaltung) folgen je Fachbereich
+  einstellungen: [
+    { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
+  ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
   // modules/tco/server/index.ts; lose Apps der Stufe 2 stehen dort im Bereich „Allgemein“), geprüft in
   // server/test/menue_rollenpflege.test.ts (#232, N6). Das Zahnrad steht nur für Einstellungen (B4).

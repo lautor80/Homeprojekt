@@ -48,6 +48,17 @@ export interface HomeTile {
   kpi?: () => Promise<TileKpi>;
 }
 
+/** Kapitel der App „Einstellungen“ (#232, E1): Ein Modul meldet seine Einstellungen als Kapitel an, statt eine eigene App dafür zu führen */
+export interface EinstellungsKapitel {
+  /** eindeutig im Modul – steht als ?kapitel=<modul>.<id> in der Adresse */
+  id: string;
+  text: string;
+  icon?: string;
+  /** Recht, mit dem man das Kapitel sieht und pflegt (mehrere mit „|“ = eines davon genügt) */
+  permission: string;
+  component: ComponentType;
+}
+
 export interface WebModule {
   id: string;
   name: string;
@@ -78,6 +89,8 @@ export interface WebModule {
    * QR-Codes an der Anlage (/tco/schaden?anlage=…). Vergleich mit dem Pfad ohne Query-String.
    */
   nachAnmeldung?: string[];
+  /** Kapitel dieser Anwendung in der App „Einstellungen“ (Administration → Einstellungen, #232 E1), in der Reihenfolge der Anzeige */
+  einstellungen?: EinstellungsKapitel[];
   /** Arbeitsvorrat der Startseite: Zusatz des Moduls am Eintrag (z. B. Knopf „Zahlungsdaten“), siehe components/Arbeitsvorrat.tsx */
   arbeitsvorratZusatz?: import('./components/Arbeitsvorrat').AufgabenZusatz;
 }

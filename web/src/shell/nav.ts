@@ -2,6 +2,7 @@ import type { NavEntry } from '../platform';
 import type { WebModule } from '../platform';
 import { appId } from '../session';
 import { coreNav } from './core';
+import { EINSTELLUNGEN_PFAD, kapitelGruppen } from '../einstellungen';
 
 /**
  * Navigation (Seitenleiste und Startseite aus derselben Quelle): Start, Fachmodule, Administration –
@@ -13,7 +14,8 @@ import { coreNav } from './core';
 export function navAufbauen(modules: WebModule[], can: (p?: string) => boolean, an: (id: string) => boolean = () => true): NavEntry[] {
   const filter = (entries: NavEntry[], modul: string): NavEntry[] =>
     entries
-      .filter((e) => can(e.permission) && (!e.path || an(appId(modul, e.text))))
+      // App „Einstellungen“ (#232, E1): sichtbar, sobald man eines ihrer Kapitel sehen darf – nicht nur mit dem Recht des Portals
+      .filter((e) => (e.path === EINSTELLUNGEN_PFAD ? kapitelGruppen(modules, can).length > 0 : can(e.permission)) && (!e.path || an(appId(modul, e.text))))
       .map((e) => (e.children ? { ...e, children: filter(e.children, modul) } : e))
       .filter((e) => !e.children || e.children.length > 0);
   return [...filter([coreNav.home], 'core'), ...modules.flatMap((m) => filter(m.nav, m.id)), ...filter([coreNav.admin], 'core')];

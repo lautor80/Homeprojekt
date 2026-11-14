@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, Bar, Button, DatePicker, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
   SegmentedButtonItem, Tab, TabContainer, Text,
@@ -9,6 +10,7 @@ import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { useCan } from '@core/session';
+import { einstellungLink } from '@core/einstellungen';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { AblageFlaeche } from '@core/ablage';
@@ -18,17 +20,25 @@ type Verein = Record<string, string | number | null>;
 
 export function TcoStammdaten() {
   const can = useCan();
+  const navigate = useNavigate();
   return (
-    <AppPage title="Stammdaten TC Oberthal" subtitle="Vereinsdaten für Ausdrucke, Einstellungen der Hallenabrechnung und der FI-Belege, Übernahme aus SAP">
-      <TabContainer contentBackgroundDesign="Transparent">
-        <Tab text="Verein und Anbindungen" selected><VereinTab /></Tab>
-        {can('tco.import:execute') ? <Tab text="Übernahme aus SAP"><ImportTab /></Tab> : null}
-      </TabContainer>
+    <AppPage title="Stammdaten TC Oberthal" subtitle="Übernahme aus SAP – die Einstellungen des Vereins stehen unter Administration → Einstellungen">
+      {/* #232, E1: Vereinsdaten, Hallenabrechnung und FI-Belege werden an einer Stelle gepflegt – hier nur der Absprung */}
+      <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
+        Vereinsdaten, Bankverbindung, Logo und die Einstellungen der Hallenabrechnung und der FI-Belege stehen jetzt unter Administration → Einstellungen → TC Oberthal.{' '}
+        <Button design="Transparent" icon="action-settings" onClick={() => navigate(einstellungLink('tco', 'verein'))}>Zu den Einstellungen</Button>
+      </MessageStrip>
+      {can('tco.import:execute') ? (
+        <TabContainer contentBackgroundDesign="Transparent">
+          <Tab text="Übernahme aus SAP" selected><ImportTab /></Tab>
+        </TabContainer>
+      ) : null}
     </AppPage>
   );
 }
 
-function VereinTab() {
+/** Kapitel „Verein und Bank“ der App Einstellungen (#232, E1) – bisher Reiter „Verein und Anbindungen“ der Stammdaten */
+export function VereinTab() {
   const can = useCan();
   const sperre = useSperre('TCO_VEREIN', '1', can('tco.stammdaten:edit'), { bezeichnung: 'Vereinsdaten' });
   const ro = !can('tco.stammdaten:edit') || !sperre.eigen;

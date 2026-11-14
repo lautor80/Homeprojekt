@@ -154,8 +154,8 @@ export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | 
   if (Math.abs(brutto - soll) > 0.02) {
     res.hinweise.push(`Endbetrag ${amt(brutto)} EUR weicht vom gespeicherten Rechnungsbetrag ${amt(soll)} EUR ab.`);
   }
-  if (!firma.email) res.hinweise.push('Eigene E-Mail-Adresse fehlt (Pflichtangabe BT-34/BT-43) – bitte unter Transport → Stammdaten → Firmendaten pflegen.');
-  if (!firma.name || !firma.iban) res.hinweise.push('Firmendaten unvollständig (Name/IBAN) – bitte unter Stammdaten → Firmendaten pflegen.');
+  if (!firma.email) res.hinweise.push('Eigene E-Mail-Adresse fehlt (Pflichtangabe BT-34/BT-43) – bitte unter Administration → Einstellungen → Euroflex → Firma und Bank pflegen.');
+  if (!firma.name || !firma.iban) res.hinweise.push('Firmendaten unvollständig (Name/IBAN) – bitte unter Administration → Einstellungen → Euroflex → Firma und Bank pflegen.');
   if (!buyer.email) res.hinweise.push(`E-Mail-Adresse des Rechnungsempfängers ${buyer.kundenname ?? ''} fehlt (BT-49, Pflicht).`);
   if (!buyer.land) {
     buyer.land = 'DE';
@@ -163,7 +163,7 @@ export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | 
   }
   const ustid = condense(buyer.ustid).replace(/\s/g, '');
   if (tax.has('AE') && !ustid) res.hinweise.push('Reverse Charge: USt-IdNr. des Empfängers fehlt (BT-48, Pflicht bei Kategorie AE).');
-  if (hasO && !firma.steuernr) res.hinweise.push('Nicht steuerbare Leistung: eigene Steuernummer fehlt (BT-32) - unter Firmendaten pflegen.');
+  if (hasO && !firma.steuernr) res.hinweise.push('Nicht steuerbare Leistung: eigene Steuernummer fehlt (BT-32) - unter Administration → Einstellungen → Euroflex → Firma und Bank pflegen.');
   if (hasO && tax.size > 1) res.hinweise.push('Nicht steuerbare und steuerbare Aufträge in einer Rechnung sind in der XRechnung nicht zulässig.');
   if (!ref) ref = auftraege[0].auftragsnr;
 

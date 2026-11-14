@@ -9,7 +9,7 @@ import {
   type OrdnerDatei,
 } from './ordner';
 
-/** Stammdaten → Firmendaten: Ablageordner auf diesem PC festlegen (#121) */
+/** Einstellungen → Euroflex → Firma und Bank (bisher Stammdaten → Firmendaten): Ablageordner auf diesem PC festlegen (#121) */
 export function AblageOrdnerEinstellung() {
   const [st, setSt] = useState<{ name: string; zugriff: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -819,7 +819,7 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.rechnungEntfernen, text: 'Rechnungen entfernen (Aufträge wieder offen)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.kontakte, text: 'Kontakte anlegen und ändern', requires: [P.display] },
-    { area: 'Euroflex', app: 'Stammdaten', id: P.stammdaten, text: 'Stammdaten pflegen (Firmendaten, Produkte, Wertelisten, Texte)' },
+    { area: 'Euroflex', app: 'Stammdaten', id: P.stammdaten, text: 'Stammdaten pflegen (Produkte, Wertelisten) und die Einstellungen von Euroflex: Firma und Bank, Auftragsbedingungen, E-Mail-Texte (Administration → Einstellungen → Euroflex)' },
     { area: 'Euroflex', app: 'Stammdaten', id: P.import, text: 'CSV-Import aus SAP', requires: [P.stammdaten] },
   ],
   auditObjects: [
