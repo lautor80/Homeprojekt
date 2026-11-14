@@ -191,7 +191,7 @@ flowchart LR
 | jt | 30 |
 | kalender | 23 |
 | konten | 5 |
-| mitglieder | 74 |
+| mitglieder | 75 |
 | platz | 68 |
 | praesentation | 11 |
 | produkte | 6 |

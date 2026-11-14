@@ -478,3 +478,30 @@ test('Rollenabgleich: Mitglieder „Mitglied“ + „Hallennutzer“, Nichtmitgl
   await sql`update tco.mitgliedera set benutzer_id = ${vorher[0]?.benutzer_id ?? null} where adrnr = '0000000101'`;
   await sql`delete from core.users where username like 'rg.%'`;
 });
+
+test('Ausdruck „Verträge der Familie“: alle Verträge mit Zahler je Vertrag, Summe je Zahler, als PDF', async () => {
+  const { familienVertraege } = await import('../../modules/tco/server/mitglieder/vertraege-pdf.js');
+  // Mia zahlt über Hans: ihre Verträge zeigen Hans als Zahler, Hans' eigener Vertrag „selbst“
+  const d = await familienVertraege(sql as never, '0000000101');
+  const zeilen = d.vertraege.map((v) => `${v.person} ${v.vertragnr} → ${v.zahlerAdrnr === v.adrnr ? 'selbst' : v.zahlerName}`);
+  assert.ok(zeilen.includes('Hans Müller 1 → selbst'), zeilen.join(' | '));
+  assert.ok(zeilen.includes('Mia Müller 1 → Hans Müller'), zeilen.join(' | '));
+  assert.ok(zeilen.includes('Mia Müller 2 → Hans Müller'), 'SAP-Initialwert 0000000000 = kein abweichender Zahler');
+  assert.ok(d.vertraege.every((v) => v.laeuft), 'ohne „Auch beendete“ nur laufende');
+  const hans = d.zahler.find((z) => z.adrnr === '0000000101')!;
+  assert.ok(hans.anzahl >= 3);
+  assert.match(hans.summe, /€\/(Halbjahr|Monat)/);
+  assert.match(hans.zahlweg, /^Lastschrift DE/);
+  assert.ok(!hans.zahlweg.includes(IBAN), 'IBAN nur gekürzt');
+  // gleiche Familie, von Mia aus geöffnet: dieselben Zahler
+  const vonMia = await familienVertraege(sql as never, '0000000102');
+  assert.deepEqual(vonMia.vertraege.filter((v) => v.adrnr === '0000000102').map((v) => v.zahlerName), d.vertraege.filter((v) => v.adrnr === '0000000102').map((v) => v.zahlerName));
+
+  let r = await app.inject({ method: 'GET', url: `${M}/m/0000000101/vertraege-pdf`, headers: { cookie } });
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.headers['content-type'], 'application/pdf');
+  assert.match(String(r.headers['content-disposition']), /Vertraege_Familie_M%C3%BCller_Hans\.pdf/);
+  assert.equal(r.rawPayload.subarray(0, 4).toString(), '%PDF');
+  r = await app.inject({ method: 'GET', url: `${M}/m/0000000101/vertraege-pdf?beendete=1`, headers: { cookie } });
+  assert.equal(r.statusCode, 200);
+});

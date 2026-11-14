@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { rollenAbgleich, rollenText } from './rollen.js';
+import { familienVertraegePdf } from './vertraege-pdf.js';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen, type Db } from '../verein.js';
@@ -522,6 +523,14 @@ export async function mitgliederRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- Objektseite
   app.get('/mitglieder/m/:adrnr', lesen, async (req) => detailSchuetzen(await detailLesen(DB, pAdr.parse(req.params).adrnr), bankSchutz(req)));
+
+  /** Ausdruck „Verträge der Familie“ mit Zahler je Vertrag (Verträge → Drucken); ?beendete=1 auch beendete Verträge */
+  app.get('/mitglieder/m/:adrnr/vertraege-pdf', lesen, async (req, reply) => {
+    const { adrnr: a } = pAdr.parse(req.params);
+    const { beendete } = z.object({ beendete: z.enum(['0', '1']).default('0') }).parse(req.query);
+    const d = await familienVertraegePdf(DB, await vereinLesen(), a, { beendete: beendete === '1' });
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="${encodeURIComponent(d.dateiname)}"`).send(d.pdf);
+  });
 
   app.put('/mitglieder/m/:adrnr/kopf', schreiben, async (req) => {
     const { adrnr: a } = pAdr.parse(req.params);
