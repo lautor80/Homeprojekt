@@ -102,9 +102,9 @@ export function FunktionenPage() {
             <div className="portal-row" style={{ gap: '0.5rem' }}>
               <Text style={{ fontWeight: gruppe ? 'bold' : 'normal', opacity: an ? 1 : 0.6 }}>{k.text}</Text>
               <Text className="portal-muted portal-small">{ART[k.art]}</Text>
-              {k.fest && <ObjectStatus state="Information">nicht abschaltbar</ObjectStatus>}
+              {k.fest && <ObjectStatus state="Information">{k.art === 'funktion' ? 'kein eigener Schalter' : 'nicht abschaltbar'}</ObjectStatus>}
               {!k.fest && !k.aktiv && <ObjectStatus state="Negative">abgeschaltet</ObjectStatus>}
-              {!k.fest && k.aktiv && obenAus && <ObjectStatus state="Critical">aus durch „{obenAus}“</ObjectStatus>}
+              {k.aktiv && obenAus && <ObjectStatus state="Critical">aus durch „{obenAus}“</ObjectStatus>}
               {an && k.betroffen && <ObjectStatus state="Critical">{k.betroffen === 'ganz' ? 'nicht nutzbar' : 'teilweise nicht nutzbar'} – setzt Abgeschaltetes voraus</ObjectStatus>}
             </div>
             {k.beschreibung && <Text className="portal-muted portal-small" style={{ display: 'block' }}>{k.beschreibung}</Text>}

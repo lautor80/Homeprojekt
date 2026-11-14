@@ -16,7 +16,7 @@ export function registerFunktionen(app: FastifyInstance): void {
     const muster = req.routeOptions?.url;
     if (!muster) return;
     const funktion = routeAbgeschaltet(req.method, muster);
-    if (funktion) return reply.code(403).send({ message: funktionAusText(funktion), code: FUNKTION_AUS });
+    if (funktion) return reply.code(403).send({ message: funktionAusText(funktion, !!req.user), code: FUNKTION_AUS });
   });
 }
 

@@ -27,6 +27,16 @@ export interface FunktionDef {
   routen?: string[];
   /** Hinweis in der Pflege, was sonst noch davon abhängt */
   hinweis?: string;
+  /**
+   * Kein eigener Schalter: Die Funktion geht nur zusammen mit ihrer App aus. Für Seiten hinter bereits verschickten
+   * Links (Einladung, Schlüssel-Quittung) – sie sollen gültig bleiben, solange es die App gibt.
+   */
+  nurMitApp?: boolean;
+  /**
+   * Öffentliche Seite der Funktion (Pfad wie in WebModule.oeffentlich, z. B. „/beitritt“). Sie zeigt statt des
+   * Formulars einen Hinweis, wenn der Server „abgeschaltet“ meldet (web/src/components/NichtVerfuegbar.tsx).
+   */
+  seite?: string;
 }
 
 export interface SchalterZustand {
@@ -57,5 +67,6 @@ export const bereichId = (modul: string, bereich: string) => `b:${modul}:${berei
 export const appId = (modul: string, app: string) => `a:${modul}:${app}`;
 
 export const FUNKTION_AUS = 'FUNKTION_AUS';
-export const funktionAusText = (name?: string | null) =>
-  `${name ? `Die Funktion „${name}“` : 'Diese Funktion'} ist abgeschaltet (Administration → Einstellungen → Funktionen).`;
+/** Meldung für abgewiesene Aufrufe – der Hinweis auf die Pflege nur für angemeldete Benutzer, nicht auf öffentlichen Seiten */
+export const funktionAusText = (name?: string | null, mitHinweis = true) =>
+  `${name ? `Die Funktion „${name}“` : 'Diese Funktion'} ist abgeschaltet${mitHinweis ? ' (Administration → Einstellungen → Funktionen)' : ''}.`;

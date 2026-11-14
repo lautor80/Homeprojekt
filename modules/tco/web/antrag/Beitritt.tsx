@@ -5,6 +5,7 @@ import {
 import { api } from '@core/api';
 import { CenterCard } from '@core/pages/AuthPages';
 import type { OeffentlichProps } from '@core/platform';
+import { NichtVerfuegbar, istAbgeschaltet } from '@core/components/NichtVerfuegbar';
 import { TCO, eur } from '../util';
 
 /**
@@ -52,7 +53,9 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   const [tor, setTor] = useState<'laden' | 'geburtsdatum' | 'offen' | null>(() => (new URLSearchParams(window.location.search).get('angebot') ? 'laden' : null));
   const [torGeb, setTorGeb] = useState('');
   const [torFehler, setTorFehler] = useState<string | null>(null);
-  useEffect(() => { api.get<Info>(`${TCO}/antrag`).then(setInfo).catch((e) => setError(e.message)); }, []);
+  /** Funktionsschalter (#232, F1): Der Online-Mitgliedsantrag ist abgeschaltet – Hinweis statt Formular */
+  const [aus, setAus] = useState(false);
+  useEffect(() => { api.get<Info>(`${TCO}/antrag`).then(setInfo).catch((e) => (istAbgeschaltet(e) ? setAus(true) : setError(e.message))); }, []);
   interface AngebotAntwort {
     geburtsdatumNoetig?: boolean; nummer?: string;
     daten?: { personen: { anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email?: string | null; telefon?: string | null; art?: string | null; training: string[] }[];
@@ -152,6 +155,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
+  if (aus) return <NichtVerfuegbar orgName={orgName} logo={logo} titel="Mitgliedsantrag" onFertig={onFertig} />;
   if (fertig) {
     return (
       <CenterCard title={orgName} subtitle="Mitgliedsantrag" logo={logo}>

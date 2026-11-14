@@ -16,6 +16,38 @@ export const F_MANUELL = 'tco.fi.manuell';
 export const F_JT_IMPORT = 'tco.jt.import';
 
 export const TCO_FUNKTIONEN: FunktionDef[] = [
+  // ---------------------------------------------------------------- öffentliche Formulare (ohne Anmeldung, also ohne Recht)
+  {
+    id: 'tco.antrag.formular', app: 'Mitgliedsanträge', text: 'Online-Mitgliedsantrag', seite: '/beitritt',
+    beschreibung: 'Öffentliches Antragsformular /beitritt samt der Bestätigung eines Vertragsangebots. Abgeschaltet zeigt die Seite einen Hinweis.',
+    routen: ['GET /antrag', 'POST /antrag', 'POST /antrag/angebot'],
+    hinweis: 'Links und QR-Codes auf Website, Aushang und in bereits verschickten Vertragsangeboten führen dann auf den Hinweis. Eingegangene Anträge bleiben.',
+  },
+  {
+    id: 'tco.mitglieder.einladung', app: 'Mitglieder', text: 'Einladung annehmen', seite: '/einladung', nurMitApp: true,
+    beschreibung: 'Öffentliche Seite /einladung: Ein eingeladenes Mitglied wählt Benutzername und Kennwort.',
+    routen: ['GET /einladung', 'POST /einladung'],
+  },
+  {
+    id: 'tco.registrierung.formular', app: 'Registrierungen', text: 'Registrierung auf der Anmeldeseite', seite: '/registrierung-bestaetigen',
+    beschreibung: 'Knopf „Registrieren“ auf der Anmeldeseite samt Bestätigungslink per E-Mail. Abgeschaltet verschwindet der Knopf.',
+    routen: ['GET /platz/registrierung', 'GET /platz/registrierung/frei', 'POST /platz/registrierung/pruefen', 'POST /platz/registrierung',
+      'POST /platz/registrierung/schnell', 'POST /platz/registrierung/bestaetigen'],
+    hinweis: 'Über dasselbe Formular registrieren sich auch externe Hallennutzer. Noch nicht bestätigte Registrierungen lassen sich dann nicht mehr bestätigen; eingegangene bleiben.',
+  },
+  {
+    id: 'tco.schnupper.formular', app: 'Schnuppertraining', text: 'Anmeldeformular Schnuppertraining', seite: '/schnuppertraining',
+    beschreibung: 'Öffentliches Anmeldeformular /schnuppertraining. Abgeschaltet zeigt die Seite einen Hinweis.',
+    routen: ['GET /schnupper', 'POST /schnupper'],
+    hinweis: 'Links und QR-Codes auf Website und Aushang führen dann auf den Hinweis. Eingegangene Anmeldungen bleiben.',
+  },
+  {
+    id: 'tco.schluessel.quittung', app: 'Hallenschlüssel', text: 'Online-Quittung', seite: '/schluessel-quittung', nurMitApp: true,
+    beschreibung: 'Öffentliche Seite /schluessel-quittung: Empfang eines Hallenschlüssels über den zugesandten Link bestätigen.',
+    routen: ['GET /schluessel/quittung', 'POST /schluessel/quittung'],
+  },
+
+  // ---------------------------------------------------------------- Funktionen innerhalb der Apps
   {
     id: 'tco.stammdaten.sap', app: 'Stammdaten', text: 'Übernahme aus SAP',
     beschreibung: 'Reiter „Übernahme aus SAP“ in den Stammdaten: SAP-Tabellen als CSV einlesen.',

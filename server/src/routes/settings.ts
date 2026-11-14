@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { activeModules } from '../modules.js';
+import { routeAbgeschaltet } from '../funktionsschalter.js';
 import { sql } from '../db.js';
 import { change, requireAuth } from '../auth.js';
 
@@ -16,7 +17,9 @@ export async function getSettings(keys?: readonly string[]): Promise<Record<stri
 
 export async function getPublicSettings(): Promise<Record<string, unknown>> {
   const s = await getSettings(PUBLIC_KEYS);
-  const reg = activeModules().find((m) => m.registrierung)?.registrierung ?? null;
+  const angemeldet = activeModules().find((m) => m.registrierung)?.registrierung ?? null;
+  // Funktionsschalter (#232, F1): ist die Registrierung abgeschaltet, bietet die Anmeldeseite sie nicht mehr an
+  const reg = angemeldet && !routeAbgeschaltet('GET', angemeldet.pfad) ? angemeldet : null;
   return { ...s, registrierung: reg, module: activeModules().map((m) => m.id) };
 }
 

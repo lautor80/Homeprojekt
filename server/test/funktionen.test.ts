@@ -219,6 +219,60 @@ test('Schutz: Administration, unbekannte und verwaiste Einträge', async () => {
   assert.deepEqual(r.body.verwaist, []);
 });
 
+test('Öffentliche Formulare: eigener Schalter für Antrag, Schnuppertraining und Registrierung – Einladung und Quittung nur mit ihrer App', async () => {
+  const offen = (m: string, p: string, payload?: unknown) => call(m, p, payload, true); // ohne Anmeldung
+  const ANTRAG = '/api/m/tco/antrag';
+  assert.notEqual((await offen('GET', ANTRAG)).status, 403, 'vorher erreichbar');
+  assert.ok((await offen('GET', '/api/settings/public')).body.registrierung, 'die Anmeldeseite bietet die Registrierung an');
+
+  // Online-Mitgliedsantrag: alle drei Routen, ohne Anmeldung – und ohne Hinweis auf die Administration
+  await schalten('tco.antrag.formular', false);
+  for (const [m, p] of [['GET', ANTRAG], ['POST', ANTRAG], ['POST', `${ANTRAG}/angebot`]]) {
+    const r = await offen(m, p, m === 'POST' ? {} : undefined);
+    assert.equal(r.status, 403, `${m} ${p}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.code, 'FUNKTION_AUS');
+    assert.equal(r.body.message, 'Die Funktion „Online-Mitgliedsantrag“ ist abgeschaltet.');
+  }
+  assert.match((await call('GET', ANTRAG)).body.message, /Administration → Einstellungen → Funktionen/, 'angemeldet mit Hinweis auf die Pflege');
+  assert.notEqual((await offen('GET', '/api/m/tco/schnupper')).status, 403, 'die anderen Formulare laufen weiter');
+  assert.notEqual((await call('GET', '/api/m/tco/mitgliedsantraege')).status, 403, 'die App Mitgliedsanträge bleibt');
+  await schalten('tco.antrag.formular', true);
+  assert.notEqual((await offen('GET', ANTRAG)).status, 403);
+
+  // Registrierung: Routen zu, der Knopf auf der Anmeldeseite verschwindet
+  await schalten('tco.registrierung.formular', false);
+  assert.equal((await offen('GET', '/api/m/tco/platz/registrierung')).status, 403);
+  assert.equal((await offen('POST', '/api/m/tco/platz/registrierung/bestaetigen', {})).status, 403);
+  assert.equal((await offen('GET', '/api/settings/public')).body.registrierung, null);
+  await schalten('tco.registrierung.formular', true);
+  assert.ok((await offen('GET', '/api/settings/public')).body.registrierung);
+
+  // Formular geht mit seiner App aus
+  await schalten(appId('tco', 'Schnuppertraining'), false);
+  assert.equal((await offen('GET', '/api/m/tco/schnupper')).status, 403);
+  await schalten(appId('tco', 'Schnuppertraining'), true);
+  assert.notEqual((await offen('GET', '/api/m/tco/schnupper')).status, 403);
+
+  // Einladung und Schlüssel-Quittung: kein eigener Schalter – verschickte Links bleiben gültig, solange es die App gibt
+  const QUITTUNG = '/api/m/tco/schluessel/quittung?token=gibt-es-nicht';
+  for (const id of ['tco.schluessel.quittung', 'tco.mitglieder.einladung']) {
+    const r = await schalten(id, false);
+    assert.equal(r.status, 400, `${id}: ${JSON.stringify(r.body)}`);
+    assert.match(r.body.message, /lässt sich nicht abschalten: Geht nur zusammen mit der App/);
+    assert.ok((await knoten(id)).fest);
+  }
+  assert.notEqual((await offen('GET', QUITTUNG)).status, 403);
+  await schalten(appId('tco', 'Hallenschlüssel'), false);
+  const zu = await offen('GET', QUITTUNG);
+  assert.equal(zu.status, 403, JSON.stringify(zu.body));
+  assert.equal(zu.body.code, 'FUNKTION_AUS');
+  const q = await knoten('tco.schluessel.quittung');
+  assert.deepEqual([q.aktiv, q.wirksam], [true, false], 'geht mit der App aus');
+  await schalten(appId('tco', 'Hallenschlüssel'), true);
+  assert.notEqual((await offen('GET', QUITTUNG)).status, 403);
+  assert.deepEqual((await ich()).aus, { rechte: [], ids: [] });
+});
+
 test('Berechnung ohne Datenbank: Hülle über vorausgesetzte Rechte, Routenschlüssel, Folgen', () => {
   const wurzeln = baum();
   const alle = alleKnoten(wurzeln);
@@ -234,6 +288,9 @@ test('Berechnung ohne Datenbank: Hülle über vorausgesetzte Rechte, Routenschl�
   // feste Knoten lassen sich auch rechnerisch nicht abschalten
   const fest = berechnen(new Set([modulId('core'), appId('core', 'Benutzer')]), wurzeln);
   assert.deepEqual([fest.ids.size, fest.rechte.size, fest.routen.size], [0, 0, 0]);
+  // … Funktionen ohne eigenen Schalter ebenfalls nicht, sie gehen aber mit ihrer App aus
+  assert.equal(berechnen(new Set(['tco.schluessel.quittung']), wurzeln).ids.size, 0);
+  assert.equal(berechnen(new Set([appId('tco', 'Hallenschlüssel')]), wurzeln).routen.get('GET /api/m/tco/schluessel/quittung'), 'Online-Quittung');
   // Folgen nennen nur Apps außerhalb des Knotens
   const mitglieder = alle.find((k) => k.id === appId('tco', 'Mitglieder'))!;
   assert.ok(!folgen(mitglieder, wurzeln).some((f) => f.startsWith('Mitglieder ') || f === 'Mitglieder'));

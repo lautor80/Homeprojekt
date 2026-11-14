@@ -3,6 +3,7 @@ import { BusyIndicator, Button, CheckBox, FlexBox, Input, Label, MessageStrip, T
 import { api } from '@core/api';
 import { CenterCard } from '@core/pages/AuthPages';
 import type { OeffentlichProps } from '@core/platform';
+import { NichtVerfuegbar, istAbgeschaltet } from '@core/components/NichtVerfuegbar';
 import { TCO } from '../util';
 
 /** Öffentliche Seite /einladung?token=…: persönlichen Zugang (Link/QR-Code) einlösen – Benutzername und Kennwort wählen */
@@ -13,10 +14,12 @@ export function Einladung({ orgName, logo, onFertig }: OeffentlichProps) {
   const [error, setError] = useState<string | null>(null);
   const [fertig, setFertig] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Funktionsschalter (#232, F1): Die App „Mitglieder“ ist abgeschaltet */
+  const [aus, setAus] = useState(false);
   useEffect(() => {
     api.get<typeof info>(`${TCO}/einladung?token=${encodeURIComponent(token)}`)
       .then((r) => { setInfo(r); if (r?.benutzername) setF((x) => ({ ...x, benutzername: r.benutzername! })); })
-      .catch((e) => setError(e.message));
+      .catch((e) => (istAbgeschaltet(e) ? setAus(true) : setError(e.message)));
   }, [token]);
   const full = { width: '100%' };
   const ok = f.benutzername.trim().length >= 3 && f.passwort.length >= 10 && f.passwort === f.passwort2 && f.datenschutz;
@@ -34,6 +37,7 @@ export function Einladung({ orgName, logo, onFertig }: OeffentlichProps) {
              valueState={k === 'passwort2' && f.passwort2 && f.passwort !== f.passwort2 ? 'Negative' : 'None'} />
     </FlexBox>
   );
+  if (aus) return <NichtVerfuegbar orgName={orgName} logo={logo} titel="Zugang zum Vereinsportal" onFertig={onFertig} />;
   return (
     <CenterCard title={orgName} subtitle="Zugang zum Vereinsportal einrichten" logo={logo}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
