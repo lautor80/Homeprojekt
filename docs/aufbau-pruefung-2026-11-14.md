@@ -1147,7 +1147,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Kürzel | Empfehlung | Aufwand | Entscheidung |
 |---|---|---|---|
-| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Rahmen, Portal, Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen – offen: Clubhaus, Verzehr, Hallenschlüssel, Instandhaltung |
+| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Rahmen, Portal, Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen, Hallenschlüssel, Clubhaus, Verzehr, E-Mail-Texte – offen: Instandhaltung, Gläubigerdaten |
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ☐ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ☐ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |

@@ -6,10 +6,10 @@ import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinTab, Z
 import { FiBelege } from './fi/FiBelege';
 import { Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
-import { Clubhaus } from './clubhaus/Clubhaus';
+import { Clubhaus, ClubhausKapitel } from './clubhaus/Clubhaus';
 import { MeinVerzehr } from './verzehr/MeinVerzehr';
 import { Theke } from './verzehr/Theke';
-import { Verzehrbuch } from './verzehr/Verzehrbuch';
+import { Verzehrbuch, VerzehrKapitel } from './verzehr/Verzehrbuch';
 import { Kalender } from './kalender/Kalender';
 import { Mitglieder } from './mitglieder/Mitglieder';
 import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
@@ -43,7 +43,7 @@ import { Serienbuchung } from './platz/Serienbuchung';
 import { Dokumenteneingang } from './eingang/Dokumenteneingang';
 import { SchadenMelden } from './instandhaltung/SchadenMelden';
 import { Instandhaltung } from './instandhaltung/Instandhaltung';
-import { Hallenschluessel } from './schluessel/Hallenschluessel';
+import { Hallenschluessel, SchluesselKapitel } from './schluessel/Hallenschluessel';
 import { SchluesselQuittung } from './schluessel/SchluesselQuittung';
 import { api } from '@core/api';
 import type { TileKpi } from '@core/platform';
@@ -92,6 +92,9 @@ const mod: WebModule = {
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
     { id: 'tennishalle', text: 'Tennishalle', icon: 'building', permission: 'tco.stammdaten:edit', component: VereinHalle },
     { id: 'finanzen', text: 'Finanzen', icon: 'loan', permission: 'tco.stammdaten:edit', component: VereinFinanzen },
+    { id: 'hallenschluessel', text: 'Hallenschlüssel', icon: 'key', permission: 'tco.schluessel:admin', component: SchluesselKapitel },
+    { id: 'clubhaus', text: 'Clubhaus', icon: 'meal', permission: 'tco.clubhaus:edit', component: ClubhausKapitel },
+    { id: 'verzehr', text: 'Verzehr', icon: 'cart', permission: 'tco.verzehr:admin', component: VerzehrKapitel },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'tco.stammdaten:edit', component: MailtexteKapitel },
   ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in

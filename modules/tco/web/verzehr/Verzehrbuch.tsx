@@ -12,6 +12,7 @@ import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { Section } from '@core/components/Section';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
+import { einstellungLink } from '@core/einstellungen';
 import { useCan } from '@core/session';
 import { dat, eur } from '../util';
 import {
@@ -55,7 +56,8 @@ export function Verzehrbuch() {
   const warnen = (w?: string[]) => { if (w?.length) setError(w.join('\n')); };
 
   return (
-    <AppPage varianten={{ repid: 'tco.verzehrbuch', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Verzehrbuch" subtitle="Clubhaus-Verzehr: Positionen, Belege, Monatsabschluss, Preisliste">
+    <AppPage actions={admin ? <Button design="Transparent" icon="action-settings" tooltip="Einstellungen (Administration → Einstellungen → TC Oberthal → Verzehr)" onClick={() => { window.location.assign(einstellungLink('tco', 'verzehr')); }} /> : undefined}
+             varianten={{ repid: 'tco.verzehrbuch', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Verzehrbuch" subtitle="Clubhaus-Verzehr: Positionen, Belege, Monatsabschluss, Preisliste">
       <div className="portal-vz portal-vz--breit">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
         <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
@@ -70,9 +72,6 @@ export function Verzehrbuch() {
           </Tab>
           <Tab data-key="preise" text="Preisliste" icon="tags" selected={tab === 'preise'}>
             <Preise admin={admin} busy={busy} neu={neu} aktion={aktion} />
-          </Tab>
-          <Tab data-key="cfg" text="Einstellungen" icon="action-settings" selected={tab === 'cfg'}>
-            <Einstellungen admin={admin} busy={busy} aktion={aktion} />
           </Tab>
         </TabContainer>
       </div>
@@ -445,6 +444,23 @@ function Preise({ admin, busy, neu, aktion }: { admin: boolean; busy: boolean; n
 }
 
 // ---------------------------------------------------------------- Einstellungen
+/** Kapitel „Verzehr“ der App Einstellungen (#232, E1) – bisher Reiter „Einstellungen“ im Verzehrbuch */
+export function VerzehrKapitel() {
+  const can = useCan();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const aktion: Aktion = async (fn, meldung) => {
+    setBusy(true); setError(null);
+    try { await fn(); toast(meldung ?? 'Gespeichert.'); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
+  };
+  return (
+    <>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <Einstellungen admin={can('tco.verzehr:admin')} busy={busy} aktion={aktion} />
+    </>
+  );
+}
+
 function Einstellungen({ admin, busy, aktion }: { admin: boolean; busy: boolean; aktion: Aktion }) {
   const [c, setC] = useState<Cfg | null>(null);
   useEffect(() => { api.get<Cfg>(`${VZ}/cfg`).then(setC).catch(() => setC(null)); }, []);
