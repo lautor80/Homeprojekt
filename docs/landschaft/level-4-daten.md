@@ -53,6 +53,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.jrueckm` |  |  |  | ● |  |  |  | ● | ● |  |  |  |  |  |
 | `tco.jt_doku` |  |  |  | ● |  |  |  | ● | ● |  |  |  |  |  |
 | `tco.kal_anmeldungen` |  |  |  |  |  |  | ● |  |  |  |  |  |  |  |
+| `tco.kal_einladungen` |  |  |  |  |  |  | ● |  |  |  |  |  |  |  |
 | `tco.kal_event_regeln` |  |  |  |  |  |  | ● |  |  |  |  |  |  |  |
 | `tco.kal_events` | ● |  |  |  |  |  | ● |  |  |  |  |  |  |  |
 | `tco.kal_gruppe_mitglieder` | ● |  |  |  |  |  | ● |  |  |  |  |  |  |  |

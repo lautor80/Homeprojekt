@@ -237,7 +237,8 @@ const mod: WebModule = {
     { path: '/tco/hallenschluessel', component: Hallenschluessel, permission: 'tco.schluessel:display' },
   ],
   // QR-Code an der Anlage: nach der Anmeldung direkt zum vorbelegten Formular
-  nachAnmeldung: ['/tco/schaden'],
+  // Einladungslink einer Veranstaltung (/tco/kalender?veranstaltung=…): nach der Anmeldung direkt dorthin
+  nachAnmeldung: ['/tco/schaden', '/tco/kalender'],
   oeffentlich: [
     { pfad: '/beitritt', component: Beitritt },
     { pfad: '/schnuppertraining', component: Schnuppertraining },

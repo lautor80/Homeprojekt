@@ -389,3 +389,139 @@ test('Familiensicht: Veranstaltungen aller verknüpften Personen, Rückmeldung p
   await sql`delete from tco.kal_events where id in (${turnier}, ${familientag})`;
   await sql`delete from tco.mitglieder where adrnr in (${KIM}, ${LEO})`;
 });
+
+test('Einladungslink: Vorschau, Versand je E-Mail-Adresse, Hinweis für Empfänger ohne Zugang, Verlauf', async () => {
+  const http = await import('node:http');
+  const { verbindungenCacheLeeren } = await import('../src/lib/verbindungen.js');
+  const mails: { an: string; betreff: string; text: string }[] = [];
+  const server = http.createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      mails.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ status: 'gesendet', message_id: `kal${mails.length}` }));
+    });
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', () => ok()));
+  const port = (server.address() as { port: number }).port;
+  const mailAn = (an: string) => mails.filter((m) => m.an.toLowerCase() === an);
+  try {
+    // Anna hat einen Zugang, Carl nicht; Dora und Emil teilen sich eine Adresse (Familie), Finn hat keine
+    const DORA = '0000000571', EMIL = '0000000572', FINN = '0000000573';
+    await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email, eintritt) values
+              (${DORA}, 'Dora', 'Volley', 'familie@example.org', '2020-01-01'), (${EMIL}, 'Emil', 'Volley', 'Familie@Example.org', '2020-01-01'), (${FINN}, 'Finn', 'Ohnemail', null, '2020-01-01')`;
+    await sql`insert into tco.mitgliedera (adrnr) values (${DORA}), (${EMIL}), (${FINN})`;
+    await sql`update tco.mitglieder set email = 'anna@example.org' where adrnr = ${ANNA}`;
+    await sql`update tco.mitglieder set email = 'carl@example.org' where adrnr = ${CARL}`;
+    let r = await admin('POST', `${K}/pflege/gruppen`, { name: 'Einladungsrunde' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const g = r.body.id;
+    for (const a of [ANNA, CARL, DORA, EMIL, FINN]) assert.equal((await admin('POST', `${K}/pflege/gruppen/${g}/mitglieder`, { adrnr: a })).status, 200);
+    r = await admin('POST', K, { titel: 'Saisoneröffnung', ort: 'Clubhaus', beginn: tage(20), gruppen: [g], anmeldeschluss: tage(15) });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const ev = r.body.id;
+    const E = `${K}/${ev}/einladung`;
+
+    // nur mit Pflegerecht
+    const anna = client();
+    assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
+    assert.equal((await anna('GET', E)).status, 403);
+    assert.equal((await anna('POST', E, { an: 'ALLE', betreff: 'x', text: 'y' })).status, 403);
+
+    // ohne Portal-Adresse: kein Link, kein Versand
+    delete process.env.PORTAL_URL;
+    await sql`delete from core.settings where key = 'portal.url'`;
+    r = await admin('GET', E);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.link, null);
+    assert.equal(r.body.senden, false);
+    assert.match(r.body.grund, /Portal-Adresse/);
+    assert.equal((await admin('POST', E, { an: 'ALLE', betreff: 'x', text: 'y' })).status, 400);
+
+    // mit Portal-Adresse, aber ohne Mailversand: Link zum Kopieren, Versand gesperrt
+    assert.equal((await admin('PUT', '/api/settings', { 'portal.url': 'https://portal.example.org' })).status, 200);
+    await sql`update core.verbindungen set url = '' where id = 'mail'`;
+    verbindungenCacheLeeren();
+    const link = `https://portal.example.org/tco/kalender?veranstaltung=${ev}`;
+    r = await admin('GET', E);
+    assert.equal(r.body.link, link);
+    assert.equal(r.body.senden, false);
+    assert.match(r.body.grund, /Mailversand/);
+    assert.equal((await admin('POST', E, { an: 'ALLE', betreff: 'x', text: link })).status, 400);
+
+    await sql`insert into core.verbindungen (id, url, auth_art, header_name, geheimnis) values ('mail', ${`http://127.0.0.1:${port}/webhook/mail`}, 'header', 'X-TCO-Key', 'k')
+              on conflict (id) do update set url = excluded.url, auth_art = 'header', header_name = 'X-TCO-Key', geheimnis = excluded.geheimnis`;
+    verbindungenCacheLeeren();
+    r = await admin('GET', E);
+    assert.equal(r.body.senden, true, JSON.stringify(r.body.grund));
+    assert.match(r.body.betreff, /Einladung – Saisoneröffnung/);
+    for (const teil of [link, 'Saisoneröffnung', 'Ort: Clubhaus', 'Bitte melden Sie sich bis', '{Vorname}', '{Zugang}']) assert.ok(r.body.text.includes(teil), `Vorbelegung enthält „${teil}“`);
+    assert.deepEqual(r.body.personen, [
+      { name: 'Anna Aufschlag', mail: true, zugang: true, offen: true }, { name: 'Carl Linie', mail: true, zugang: false, offen: true },
+      { name: 'Finn Ohnemail', mail: false, zugang: false, offen: true }, { name: 'Dora Volley', mail: true, zugang: false, offen: true },
+      { name: 'Emil Volley', mail: true, zugang: false, offen: true },
+    ]);
+    assert.deepEqual(r.body.verlauf, []);
+    const vorlage = { betreff: r.body.betreff as string, text: r.body.text as string };
+
+    // „ohne Rückmeldung“: Anna hat zugesagt und bekommt nichts; die Familie eine Nachricht; ohne Zugang mit Hinweis auf die Registrierung
+    assert.equal((await anna('POST', `${K}/${ev}/rueckmeldung`, { status: 'ZUSAGE' })).status, 200);
+    r = await admin('POST', E, { an: 'OFFEN', ...vorlage });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.gesendet, 2);
+    assert.deepEqual(r.body.fehler, []);
+    assert.deepEqual(r.body.ohneMail, ['Finn Ohnemail']);
+    assert.equal(r.body.text, '2 Einladungen gesendet, 1 ohne E-Mail-Adresse.');
+    assert.equal(mails.length, 2);
+    assert.equal(mailAn('anna@example.org').length, 0);
+    const carl = mailAn('carl@example.org')[0];
+    assert.match(carl.text, /^Hallo Carl,/);
+    assert.ok(carl.text.includes(link));
+    assert.match(carl.text, /Noch kein Zugang zum Vereinsportal\?.*registrieren/s);
+    assert.doesNotMatch(carl.text, /\{[A-Za-z]+\}/, 'kein Platzhalter bleibt stehen');
+    assert.match(mailAn('familie@example.org')[0].text, /^Hallo Dora und Emil,/);
+
+    // der Link muss im Text stehen
+    r = await admin('POST', E, { an: 'ALLE', betreff: 'Einladung', text: 'Hallo {Vorname}, kommt alle!' });
+    assert.equal(r.status, 400);
+    assert.match(r.body.message, /fehlt der Link/);
+    assert.equal(mails.length, 2);
+
+    // „alle“ mit eigenem Text: Anna (mit Zugang) ohne den Hinweis
+    r = await admin('POST', E, { an: 'ALLE', betreff: 'Erinnerung: {Titel}', text: 'Hallo {Vorname}, bitte hier an- oder abmelden: {Link}\n\n{Zugang}' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.gesendet, 3);
+    const an = mailAn('anna@example.org')[0];
+    assert.equal(an.betreff, 'Erinnerung: Saisoneröffnung');
+    assert.equal(an.text, `Hallo Anna, bitte hier an- oder abmelden: ${link}`);
+    assert.match(mailAn('carl@example.org')[1].text, /registrieren/);
+
+    r = await admin('GET', E);
+    assert.deepEqual(r.body.verlauf.map((x: any) => [x.an, x.gesendet, x.fehler, x.von]), [['ALLE', 3, 0, 'Admin'], ['OFFEN', 2, 0, 'Admin']]);
+    assert.equal(r.body.personen.find((p: any) => p.name === 'Anna Aufschlag').offen, false);
+
+    // abgesagt: keine Einladung mehr
+    await sql`update tco.kal_events set abgesagt = true where id = ${ev}`;
+    r = await admin('GET', E);
+    assert.equal(r.body.senden, false);
+    assert.match(r.body.grund, /abgesagt/);
+    assert.equal((await admin('POST', E, { an: 'ALLE', ...vorlage })).status, 400);
+    assert.equal(mails.length, 5);
+
+    // der Text lässt sich unter Einstellungen → E-Mail-Texte vorbelegen
+    await sql`update tco.kal_events set abgesagt = false where id = ${ev}`;
+    r = await admin('PUT', '/api/m/tco/mailtexte/kalender.einladung', { betreff: 'Komm zu {Titel}', text: 'Hallo {Vorname},\n\n{Termin}\n\n{Link}' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    r = await admin('GET', E);
+    assert.equal(r.body.betreff, 'Komm zu Saisoneröffnung');
+    assert.match(r.body.text, new RegExp(`^Hallo \\{Vorname\\},\\n\\n.+ Uhr\\n\\n${link.replace(/[.?]/g, '\\$&')}$`));
+    assert.equal((await admin('PUT', '/api/m/tco/mailtexte/kalender.einladung', { betreff: 'x', text: 'ohne Link' })).status, 400, 'der Link ist Pflicht');
+
+    await sql`delete from tco.kal_events where id = ${ev}`;
+    assert.equal(Number((await sql`select count(*)::int as n from tco.kal_einladungen where event_id = ${ev}`)[0].n), 0, 'Verlauf geht mit der Veranstaltung');
+    await sql`delete from tco.mitglieder where adrnr in (${DORA}, ${EMIL}, ${FINN})`;
+  } finally {
+    await new Promise<void>((ok) => server.close(() => ok()));
+  }
+});

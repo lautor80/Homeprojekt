@@ -182,7 +182,7 @@ const tco: ServerModule = {
     { area: 'Allgemein', app: 'Präsentationen', id: P_PRAES.display, text: 'Präsentationen erstellen: Sammelkorb aus Kennzahlen, Diagrammen und Tabellen, PowerPoint aus den hinterlegten Vorlagen', requires: [P_DASH.display] },
     { area: 'Allgemein', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
     { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
-    { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Gruppen/Mannschaften pflegen' },
+    { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Einladungen per E-Mail versenden, Gruppen/Mannschaften pflegen' },
 
     // Mein Bereich (#232, N1): was ein Mitglied, Hallennutzer oder Trainer für sich selbst tut – im Menü an einer Stelle
     { area: 'Mein Bereich', app: 'Meine Mitgliedschaft', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
@@ -340,6 +340,7 @@ const tco: ServerModule = {
     { type: 'KAL_EVENT', text: 'Veranstaltung (Vereinskalender)', permission: P_KAL.edit },
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
+    { type: 'KAL_EINLADUNG', text: 'Einladung zu einer Veranstaltung (Versand)', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
     { type: 'KUENDIGUNG', text: 'Kündigung durch das Mitglied (Freigabe)', permission: P_MG.display },
     { type: 'TCO_MAILTEXT', text: 'E-Mail-Text des Vereins', permission: P.stammdaten },

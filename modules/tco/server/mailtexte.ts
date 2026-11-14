@@ -36,6 +36,14 @@ export const kuendigungAbgelehntVorlage = (v: Verein): MailVorlage => ({
   text: `Hallo {Vorname},\n\nIhre Kündigung vom {Eingang} konnten wir nicht freigeben.\n\nEingereicht: {Eingereicht}\nGrund: {Grund}\n\nBei Fragen melden Sie sich bitte beim Vorstand.\n\n${v.name}`,
 });
 
+/** Standardtext der Einladung zu einer Veranstaltung (Vereinskalender → Veranstaltung → Einladen) – mit Platzhaltern */
+export const kalenderEinladungVorlage = (v: Verein): MailVorlage => ({
+  betreff: `${v.name}: Einladung – {Titel}`,
+  text: 'Hallo {Vorname},\n\nwir laden herzlich ein:\n\n{Titel}\n{Termin}\n{Ort}\n\n{Anmeldeschluss}\n\n'
+    + 'Über diesen Link melden Sie sich im Vereinsportal an oder ab:\n\n{Link}\n\n{Zugang}\n\n'
+    + `Viele Grüße\n${v.ansprechpartner || v.name}`,
+});
+
 const UNTERLAGE = { Vorname: 'Vorname des Mitglieds', Unterlagen: 'Liste der Unterlagen mit ihren Links (leer, wenn die Unterlage als Anhang mitgeht)' };
 const unterlage = (art: '' | '1' | '2' | '3' | '4' | '5', name: string, wann: string): MailtextDef => ({
   schluessel: `mitglied.unterlage.${art || '0'}`, bereich: 'Mitglieder', name, wann, platzhalter: UNTERLAGE,
@@ -66,6 +74,16 @@ export const MAILTEXTE: MailtextDef[] = [
     wann: 'Mitglieder → Zugangslinks senden (Vorbelegung im Dialog, dort noch änderbar)',
     platzhalter: { Vorname: 'Vorname', Name: 'Vor- und Nachname', Benutzername: 'Benutzername im Portal', Link: 'persönlicher Link', GueltigBis: 'Ende der Gültigkeit' },
     pflicht: ['Link'], standard: (v) => zugangVorlage(v),
+  },
+  {
+    schluessel: 'kalender.einladung', bereich: 'Vereinskalender', name: 'Einladung zu einer Veranstaltung',
+    wann: 'Vereinskalender → Veranstaltung → Einladen (Vorbelegung im Dialog, dort noch änderbar)',
+    platzhalter: {
+      Vorname: 'Vorname (bei gemeinsamer E-Mail-Adresse einer Familie alle Vornamen)', Titel: 'Titel der Veranstaltung', Termin: 'Wochentag, Datum und Uhrzeit',
+      Ort: 'Zeile „Ort: …“ (leer ohne Ort)', Anmeldeschluss: 'Satz mit dem Anmeldeschluss (leer ohne Anmeldeschluss)', Link: 'Link zur Veranstaltung im Portal',
+      Zugang: 'Hinweis auf die Registrierung – nur für Empfänger ohne Zugang zum Portal, sonst leer',
+    },
+    pflicht: ['Link'], standard: (v) => kalenderEinladungVorlage(v),
   },
 ];
 
