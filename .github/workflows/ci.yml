@@ -55,7 +55,13 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
+      # aktive Version im Portal (Kopfzeile neben dem Logo): Uhrzeit und Kennung des Commits
+      - id: version
+        run: echo "zeit=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
+            BUILD_ZEIT=${{ steps.version.outputs.zeit }}

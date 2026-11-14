@@ -5,6 +5,7 @@ import {
   SideNavigation, SideNavigationGroup, SideNavigationItem, SideNavigationSubItem, UserMenu, UserMenuAccount, UserMenuItem,
 } from '@ui5/webcomponents-react';
 import { useSession, useCan, useFunktion } from '../session';
+import { versionText } from '../version';
 import { coreRoutes } from './core';
 import { useNavHinweise } from '../navhinweis';
 import { abgeschaltetePfade, navAufbauen, pfadAbgeschaltet } from './nav';
@@ -66,6 +67,7 @@ export function Shell() {
   const kopfTitel = `${orgName} · ${me.user.displayName && me.user.displayName !== me.user.username
     ? `${me.user.displayName} (${me.user.username})` : me.user.username}`;
   const logo = me.settings['org.logo'] as string | undefined;
+  const version = versionText(me.version);
 
   // Navigation: Start, Fachmodule, Administration – gefiltert nach Berechtigung (gleiche Quelle wie die Startseite)
   const nav = useMemo(() => navAufbauen(modules, can, an), [me]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,7 +120,13 @@ export function Shell() {
           <ShellBar
             primaryTitle={kopfTitel}
             branding={
-              <ShellBarBranding onClick={() => navigate('/')} logo={logo ? <img src={logo} alt="" /> : undefined}>
+              <ShellBarBranding onClick={() => navigate('/')} logo={logo || version ? (
+                // Logo und aktive Version (Uhrzeit des Codes) – am Logo, weil das Handy den Titel daneben ausblendet
+                <span className="portal-kopf__logo" title={version?.titel}>
+                  {logo && <img src={logo} alt="" />}
+                  {version && <small className="portal-kopf__version">{version.text}</small>}
+                </span>
+              ) : undefined}>
                 {kopfTitel}
               </ShellBarBranding>
             }
