@@ -95,15 +95,15 @@ export function MeineMitgliedschaft() {
     } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   }
 
-  if (kein) return <AppPage title="Meine Mitgliedschaft"><MessageStrip design="Information" hideCloseButton>{kein}</MessageStrip></AppPage>;
-  if (!d) return <AppPage title="Meine Mitgliedschaft">{error ? <MessageStrip design="Negative">{error}</MessageStrip> : <BusyIndicator active style={{ display: 'block', padding: '2rem' }} />}</AppPage>;
+  if (kein) return <AppPage title="Meine Daten"><MessageStrip design="Information" hideCloseButton>{kein}</MessageStrip></AppPage>;
+  if (!d) return <AppPage title="Meine Daten">{error ? <MessageStrip design="Negative">{error}</MessageStrip> : <BusyIndicator active style={{ display: 'block', padding: '2rem' }} />}</AppPage>;
   const m = d.mitglied;
   // eigene laufende Verträge (auch bereits gekündigte, die noch nicht beendet sind) – enden mit der Mitgliedschaft
   const eigene = d.vertraege.filter((v) => v.laeuft && v.eigen);
   const vertraegeBaum = d.vertraegeFamilie ?? d.vertraege;
 
   return (
-    <AppPage title="Meine Mitgliedschaft" subtitle="Eigene Daten sehen und pflegen">
+    <AppPage title="Meine Daten" subtitle="Meine Mitgliedschaft: Kontakt, Bankverbindung, Verträge und Änderungen">
       {error && !dlg && !kuend && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <SperrHinweis s={sperre} />
       {schluessel.map((q) => (

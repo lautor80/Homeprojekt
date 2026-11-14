@@ -4,10 +4,20 @@ import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Section } from '@core/components/Section';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
+import { MeineMitgliedschaft } from '../mitglieder/MeineMitgliedschaft';
 import { TCO } from '../util';
 
 /** Meine Daten: Hallennutzer pflegen ihre Kontaktdaten selbst – eigener Kundenstammsatz bzw. zugeordnetes Mitglied (Mitgliedsstamm) */
 interface Daten { quelle?: 'KUNDE' | 'MITGLIED'; benutzername: string; kundennummer: string; anrede: string; vorname: string; nachname: string; strasse: string; plz: string; ort: string; email: string; telefon: string }
+
+/**
+ * Eine App „Meine Daten“ (#232, N2): Mitglieder sehen alles zu ihrer Mitgliedschaft (Kontakt, Bank, Verträge, Änderungen),
+ * externe Hallennutzer ihre Kontaktdaten. Bisher zwei Apps mit überschneidendem Inhalt.
+ */
+export function MeineDatenApp() {
+  return useCan()('tco.meinedaten:edit') ? <MeineMitgliedschaft /> : <MeineDaten />;
+}
 
 export function MeineDaten() {
   const [d, setD] = useState<Daten | null>(null);

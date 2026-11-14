@@ -186,7 +186,8 @@ test('Bereich und Anwendung abschalten: gilt für alles darunter', async () => {
   assert.equal(appAktiv('tco', 'Mein Verzehr'), true);
   await schalten(bereichId('tco', 'Mein Bereich'), false);
   me = await ich();
-  for (const a of ['Meine Mitgliedschaft', 'Meine Daten', 'Platz buchen', 'Mein Verzehr', 'Meine Trainingszeiten', 'Schaden melden']) {
+  // „Meine Mitgliedschaft“ und „Meine Daten“ sind eine App (#232, N2)
+  for (const a of ['Meine Daten', 'Platz buchen', 'Mein Verzehr', 'Meine Trainingszeiten', 'Schaden melden']) {
     assert.ok(me.aus.ids.includes(appId('tco', a)), `${a} ist mit „Mein Bereich“ aus`);
   }
   await schalten(bereichId('tco', 'Mein Bereich'), true);

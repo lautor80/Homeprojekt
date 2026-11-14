@@ -1,6 +1,8 @@
 /* „Platz buchen“ – Tageskalender Plätze × Uhrzeit, fürs Handy optimiert (Spalten horizontal wischbar) */
 .portal-pb { max-width: 72rem; margin: 0 auto; }
 .portal-pb__umschalter { display: flex; width: 100%; max-width: 28rem; margin: 0 auto 0.75rem; }
+/* Reiter der App (#232, B2): nur die Leiste, der Inhalt steht darunter */
+.portal-pb__reiter { margin-bottom: 0.75rem; }
 
 .portal-pb__legende {
   display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 1rem;
