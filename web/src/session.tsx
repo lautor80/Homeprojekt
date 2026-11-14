@@ -5,6 +5,8 @@ export interface Me {
     id: string;
     username: string;
     displayName: string;
+    /** Vorname für die Begrüßung (aus dem zugeordneten Mitglied bzw. Hallenkunden, sonst erstes Wort des Anzeigenamens) */
+    vorname?: string;
     email: string | null;
     mustChangePassword: boolean;
     roles: string[];

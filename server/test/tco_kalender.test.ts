@@ -358,14 +358,16 @@ test('Familiensicht: Veranstaltungen aller verknüpften Personen, Rückmeldung p
   const ben = client();
   assert.equal((await ben('POST', '/api/auth/login', { username: 'ben', password: 'neues-passwort' })).status, 200);
   const Z = `von=${tag(39)}&bis=${tag(42)}`;
-  // ohne Familiensicht: das Turnier der Tochter ist für Ben nicht sichtbar – die Familie wird aber angeboten
+  // Begrüßung „Hallo <Vorname>“: der Vorname kommt aus dem zugeordneten Mitglied, nicht aus dem Anzeigenamen
+  await sql`update core.users set display_name = 'Netz, B. (Vater)' where lower(username) = 'ben'`;
+  assert.equal((await ben('GET', '/api/auth/me')).body.user.vorname, 'Ben');
+  assert.equal((await admin('GET', '/api/auth/me')).body.user.vorname, 'Admin', 'ohne Mitglied: erstes Wort des Anzeigenamens');
+  // Familientermine sind immer dabei: auch das Turnier der Tochter, ohne dass Ben etwas einschaltet;
+  // je Veranstaltung nur die Personen, für die sie gilt (der frühere Parameter familie=0 ändert daran nichts)
   r = await ben('GET', `${K}?${Z}`);
-  assert.deepEqual(r.body.events.map((e: any) => e.titel), ['Familientag']);
   assert.deepEqual(r.body.familie.map((f: any) => f.name), ['Ben Netz', 'Kim Netz', 'Leo Netz']);
-  assert.equal(r.body.familiensicht, false);
-  // mit Familiensicht: beide Veranstaltungen; je Veranstaltung nur die Personen, für die sie gilt
-  r = await ben('GET', `${K}?${Z}&familie=1`);
   assert.equal(r.body.familiensicht, true);
+  assert.equal((await ben('GET', `${K}?${Z}&familie=0`)).body.familiensicht, true);
   assert.deepEqual(r.body.events.map((e: any) => [e.titel, e.familie.map((f: any) => f.name)]),
     [['Jugendturnier U12', ['Kim Netz']], ['Familientag', ['Ben Netz', 'Kim Netz', 'Leo Netz']]]);
   // Mehrfachauswahl: Gewählte sagen zu, die übrigen ab

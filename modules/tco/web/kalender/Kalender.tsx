@@ -41,7 +41,7 @@ interface Ev {
 interface FamPerson { adrnr: string; name: string; status?: Status | null }
 interface Daten { familie?: FamPerson[]; familiensicht?: boolean; events: Ev[]; kategorien: Record<string, string>; mitglied: boolean; pflege: boolean; /** eigene Gruppen samt den Gruppen darüber */ meineGruppen: number[]; gruppen: { id: number; name: string; aktiv: boolean }[] }
 interface Tn { adrnr: string; name: string; status: Status; begleitung: number; kommentar: string | null; geaendert_von: string | null }
-interface Detail { event: Ev; teilnehmer: { zusagen: { name: string; begleitung: number }[]; liste: Tn[]; offen: { adrnr: string; name: string }[] } }
+interface Detail { /** Adressnummer des angemeldeten Mitglieds – Familienauswahl, sobald die Veranstaltung für weitere Personen gilt */ ich?: string | null; event: Ev; teilnehmer: { zusagen: { name: string; begleitung: number }[]; liste: Tn[]; offen: { adrnr: string; name: string }[] } }
 
 const STATUS_TEXT: Record<Status, string> = { ZUSAGE: 'Zusage', ABSAGE: 'Absage', VIELLEICHT: 'Vielleicht' };
 const STATUS_STATE: Record<Status, 'Positive' | 'Negative' | 'Critical'> = { ZUSAGE: 'Positive', ABSAGE: 'Negative', VIELLEICHT: 'Critical' };
@@ -101,9 +101,9 @@ export function Kalender() {
   const bis = kompakt ? tagIso(new Date(heute.getFullYear() + 1, heute.getMonth(), heute.getDate()))
     : ansicht === 'MONAT' ? tagIso(new Date(monat.j, monat.m + 1, 0)) : tagIso(new Date(monat.j, monat.m + 3, 0));
   // Familiensicht: Veranstaltungen aller verknüpften Personen, Anmeldung je Person
-  const [familie, setFamilie] = useState(false);
-  const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}${familie ? '&familie=1' : ''}`).then((x) => { setD(x); setVersion((v) => v + 1); }).catch((e) => setError(e.message));
-  useEffect(() => { laden(); }, [von, bis, familie]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Familientermine sind immer dabei (Personen, die über das Mitglied zahlen) – der Server liefert die Familiensicht
+  const laden = () => api.get<Daten>(`${K}?von=${von}&bis=${bis}`).then((x) => { setD(x); setVersion((v) => v + 1); }).catch((e) => setError(e.message));
+  useEffect(() => { laden(); }, [von, bis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function aktion(fn: () => Promise<{ text?: string } | void>) {
     setBusy(true); setError(null);
@@ -164,7 +164,6 @@ export function Kalender() {
             {Object.entries(d.kategorien).map(([k, t]) => <Option key={k} data-k={k} selected={k === fArt}>{t}</Option>)}
           </Select>
           {meineWaehlbar && <CheckBox text="Nur meine Gruppen" checked={nurMeine} onChange={(e) => setNurMeine(e.target.checked)} />}
-          {(d?.familie?.length ?? 0) > 1 && <CheckBox text="Familiensicht" checked={familie} onChange={(e) => setFamilie(e.target.checked)} />}
           {ansicht === 'LISTE' && <CheckBox text="Vergangene anzeigen" checked={vergangene} onChange={(e) => setVergangene(e.target.checked)} />}
           {(fGruppe || fArt) && <Button design="Transparent" icon="clear-filter" onClick={() => { setFGruppe(''); setFArt(''); }}>Filter zurücksetzen</Button>}
         </div>
@@ -186,7 +185,7 @@ export function Kalender() {
   );
 
   return (
-    <AppPage varianten={{ repid: 'tco.kalender', ansicht: { kompakt, ansicht, tab, vergangene, fGruppe, fArt, nurMeine, familie }, onAnwenden: (a) => { setKompakt(feld(a, 'kompakt', kompakt)); setAnsicht(feld(a, 'ansicht', ansicht)); setTab(feld(a, 'tab', tab)); setVergangene(feld(a, 'vergangene', vergangene)); setFGruppe(feld(a, 'fGruppe', fGruppe)); setFArt(feld(a, 'fArt', fArt)); setNurMeine(feld(a, 'nurMeine', nurMeine)); setFamilie(feld(a, 'familie', familie)); } }} title="Vereinskalender" subtitle="Veranstaltungen, Termine und Mannschaften – mit An- und Abmeldung">
+    <AppPage varianten={{ repid: 'tco.kalender', ansicht: { kompakt, ansicht, tab, vergangene, fGruppe, fArt, nurMeine }, onAnwenden: (a) => { setKompakt(feld(a, 'kompakt', kompakt)); setAnsicht(feld(a, 'ansicht', ansicht)); setTab(feld(a, 'tab', tab)); setVergangene(feld(a, 'vergangene', vergangene)); setFGruppe(feld(a, 'fGruppe', fGruppe)); setFArt(feld(a, 'fArt', fArt)); setNurMeine(feld(a, 'nurMeine', nurMeine)); } }} title="Vereinskalender" subtitle="Veranstaltungen, Termine und Mannschaften – mit An- und Abmeldung">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       {d && !d.mitglied && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Dein Benutzer ist keinem Mitglied zugeordnet – An- und Abmelden ist nur für Mitglieder möglich.</MessageStrip>}
       {einfach ? kalInhalt : (
@@ -379,6 +378,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
   }
   if (!x) return null;
   const e = x.event;
+  const familieMelden = (e.familie ?? []).some((f) => f.adrnr !== x.ich);
   const setzeFuer = (adrnr: string, status: Status | null) => lauf(() => api.post(`${K}/${id}/teilnehmer`, { adrnr, status }));
   return createPortal(
     <Dialog open headerText={e.titel} onClose={onClose} style={{ width: 'min(46rem, 96vw)' }}
@@ -409,7 +409,19 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
           <div><Button icon="email" tooltip="Einladungslink kopieren, teilen oder per E-Mail an die Mitglieder senden" onClick={() => setEinladen(true)}>Einladen</Button></div>
         )}
 
-        {e.anmeldung && mitglied && (
+        {/* Familie: gilt die Veranstaltung (auch) für Personen, die über mich zahlen (z. B. Kinder), melde ich sie hier an oder ab */}
+        {e.anmeldung && mitglied && familieMelden && (
+          <section className="portal-kal__rm">
+            <Label showColon>Wer ist dabei?</Label>
+            {e.offen ? <Text className="portal-muted">{e.offen}</Text> : (
+              <FlexBox style={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <FamilieMelden e={e} busy={busy} onFamilie={(_, dabei) => lauf(() => api.post(`${K}/${id}/rueckmeldung-familie`, { dabei }))} />
+                <Text className="portal-muted portal-small">Ausgewählte sagen zu, alle anderen ab.</Text>
+              </FlexBox>
+            )}
+          </section>
+        )}
+        {e.anmeldung && mitglied && !familieMelden && (
           <section className="portal-kal__rm">
             <Label showColon>Meine Rückmeldung</Label>
             {e.offen ? <Text className="portal-muted">{e.offen}{e.mein_status ? ` Deine Rückmeldung: ${STATUS_TEXT[e.mein_status]}.` : ''}</Text> : (

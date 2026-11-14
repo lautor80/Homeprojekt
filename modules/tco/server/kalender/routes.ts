@@ -52,12 +52,13 @@ export async function kalenderRoutes(app: FastifyInstance) {
   const pflege = { preHandler: requireAuth(P_KAL.edit) };
 
   app.get('/kalender', lesen, async (req) => {
-    const q = z.object({ von: datum, bis: datum, familie: z.enum(['0', '1']).default('0') }).parse(req.query);
+    // `familie` wird noch angenommen (alte Lesezeichen), wirkt aber nicht mehr: die Familie ist immer dabei
+    const q = z.object({ von: datum, bis: datum, familie: z.enum(['0', '1']).optional() }).parse(req.query);
     const adrnr = await eigeneAdrnr(req);
     const alles = can(req, P_KAL.edit);
-    // Familiensicht: Veranstaltungen aller verknüpften Personen (die über das Mitglied zahlen)
+    // Familiensicht – immer: Veranstaltungen aller verknüpften Personen (die über das Mitglied zahlen), nicht nur die eigenen
     const familie = await familieLesen(DB, adrnr);
-    const fam = q.familie === '1' && familie.length > 1 ? familie : undefined;
+    const fam = familie.length > 1 ? familie : undefined;
     const gruppenFam = fam ? [...new Set((await Promise.all(fam.map((f) => meineGruppen(DB, f.adrnr)))).flat())] : null;
     return {
       events: await eventsLesen(DB, q, { adrnr, alles, familie: fam }), kategorien: KATEGORIEN, mitglied: !!adrnr, pflege: alles,
@@ -73,9 +74,13 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const adrnr = await eigeneAdrnr(req);
     const alles = can(req, P_KAL.edit);
     const e = await eventLesen(DB, eid);
-    const sichtbar = (await eventsLesen(DB, { von: addTage(e.beginn.slice(0, 10), -1), bis: addTage((e.ende ?? e.beginn).slice(0, 10), 1) }, { adrnr, alles })).find((x) => x.id === eid);
+    // Familie (Personen, die über das Mitglied zahlen): Eltern öffnen den Einladungslink auch für Veranstaltungen, die nur
+    // für ihre Kinder gelten, und melden sie im Detail an oder ab
+    const familie = await familieLesen(DB, adrnr);
+    const fam = familie.length > 1 ? familie : undefined;
+    const sichtbar = (await eventsLesen(DB, { von: addTage(e.beginn.slice(0, 10), -1), bis: addTage((e.ende ?? e.beginn).slice(0, 10), 1) }, { adrnr, alles, familie: fam })).find((x) => x.id === eid);
     if (!sichtbar) throw new BusinessError('Veranstaltung nicht gefunden.', 404);
-    return { event: sichtbar, teilnehmer: await teilnehmer(DB, e, { alles }) };
+    return { event: sichtbar, teilnehmer: await teilnehmer(DB, e, { alles }), ich: adrnr };
   });
 
   /** eigene Rückmeldung (nur für das dem Benutzer zugeordnete Mitglied) */
