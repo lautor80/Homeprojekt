@@ -16,7 +16,7 @@ export const WA_JUGEND = 'https://chat.whatsapp.com/LIjvLYmD0DAEuqaGlH8PM9';
 export const korrName = (m: { nachname?: string | null; vorname?: string | null }) => condense(`${leer(m.nachname)} ${leer(m.vorname)}`);
 
 export function plPruefen(v: Verein): Paperless {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen).');
   return paperless(v);
 }
 

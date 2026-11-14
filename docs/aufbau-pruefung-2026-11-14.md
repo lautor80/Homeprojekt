@@ -331,6 +331,31 @@ Anzeigen.
 *Aufwand:* groß, in Stufen: (1) Reiter statt langer Seite für die heutigen Anbindungen, (2) Paperless je Bereich
 (S5), (3) Paperless-Zuordnung und API-Schlüssel hinein, (4) verstreute Paperless-Felder aus den Fach-Apps.
 
+**Umgesetzt, Stufe 1 bis 3 (14.11.2026).**
+
+```
+Administration → Schnittstellen
+[Paperless][E-Mail][EP3][Trainerstunden][Schulferien][Nextcloud][API-Schlüssel]
+
+Reiter „Paperless“                    Reiter „E-Mail“
+  ═ TC Oberthal ═                       ═ Portal ═
+  Zugang · Freigabeadresse · Prüfen     Versand · Ersatzabsender · Testmail · letzte 5
+  ═ Euroflex ═                          ═ Euroflex ═
+  Zugang · Freigabeadresse · Prüfen     Versand über Outlook 365
+  ═ Ablageregeln je Bereich ═           ═ TC Oberthal ═
+  (bisher Paperless-Zuordnung)          Maileingang jetzt abrufen
+```
+
+- Die Apps *Anbindungen*, *Paperless-Zuordnung* und *API-Schlüssel* sind in dieser einen App aufgegangen; ihre alten
+  Adressen springen in den passenden Reiter. Der Reiter steht in der Adresse (`?tab=paperless`).
+- Welche Anbindung in welchen Reiter gehört, meldet der Server (`VerbindungDef.reiter`) – eine neue Schnittstelle ist
+  ein neuer Reiter, ohne dass die Oberfläche geändert wird.
+- Rechte unverändert: Zugänge und Ablageregeln mit *Systemeinstellungen ändern*, der Reiter *API-Schlüssel* mit
+  seinem eigenen Recht.
+- **Noch offen (Stufe 4):** die Zeile „Stand“ je Bereich (heute nur bei E-Mail), E-Mail-Texte von Euroflex im Reiter
+  E-Mail, verstreute Paperless-Felder aus den Fach-Apps (FI-Felder, Clubhaus, Instandhaltung), SAP-Übernahme und
+  Dateiimporte (S4), ein Zugang für Nextcloud (S2).
+
 #### S2 Nextcloud: ein Zugang statt zwei
 
 **Befund.** *Sicherung* fragt Adresse, Benutzer und App-Passwort der Nextcloud selbst ab; unter *Anbindungen*
@@ -1114,7 +1139,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ☐ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |
 | E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ☐ |
-| S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ☐ |
+| S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ◐ Stufe 1–3 umgesetzt (Reiter, Paperless je Bereich, Zuordnung und API-Schlüssel darin) |
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☐ |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
@@ -1170,6 +1195,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | S5 | Paperless je Bereich: TC Oberthal behält den bisherigen Zugang, Euroflex hat `transport.paperless`; gleiche Adresse abgelehnt; Zuordnungslisten und Freigabelinks je Bereich | umgesetzt 14.11.2026 – Übergang: Euroflex nutzt das bisherige Paperless weiter, bis sein eigenes eingetragen ist (Aufgabe im Arbeitsvorrat) |
 | N1 | Gruppe *Mein Bereich* im Menü, auf der Startseite und in der Rollenpflege: Meine Mitgliedschaft, Meine Daten, Platz buchen, Mein Verzehr, Meine Trainingszeiten, Schaden melden (Pfade und Rechte unverändert) | umgesetzt 14.11.2026 |
 | E1 (Stufe 1–2) | App *Administration → Einstellungen* mit Kapiteln je Anwendung: Portal (Allgemein, Erscheinungsbild), TC Oberthal (Verein und Bank), Euroflex (Firma und Bank, E-Mail-Texte). Die Reiter in den Stammdaten-Apps sind entfallen, dort steht ein Absprung. Sichtbar, sobald man ein Kapitel sehen darf | umgesetzt 14.11.2026 – offen: Kapitel Tennishalle, Clubhaus, Finanzen, Instandhaltung (Stufe 3), Logos an einer Stelle (E2) |
+| S1 (Stufe 1–3) | App *Administration → Schnittstellen*: ein Reiter je Schnittstelle, darin je Bereich der Zugang; Paperless mit den Ablageregeln; Reiter API-Schlüssel. Anbindungen, Paperless-Zuordnung und API-Schlüssel sind keine eigenen Apps mehr | umgesetzt 14.11.2026 – offen: „Stand“ je Bereich, verstreute Paperless-Felder, S2, S4 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

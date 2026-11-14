@@ -1,5 +1,5 @@
 /**
- * Integrationstest zentrale Anbindungen (Administration → Schnittstellen → Anbindungen): Liste, Sichern mit Maske, Prüfen,
+ * Integrationstest zentrale Anbindungen (Administration → Schnittstellen): Liste, Sichern mit Maske, Prüfen,
  * Übernahme der Paperless-Werte aus den Modul-Stammdaten durch die Migration, Lesen in den Modulen.
  */
 import { test, before, after } from 'node:test';
@@ -114,6 +114,12 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   // Paperless je Bereich (#232, S5): der bisherige gemeinsame Zugang gehört TC Oberthal, Euroflex hat einen eigenen (noch leer)
   assert.ok(!kern.verbindungen.some((v: { id: string }) => /paperless/.test(v.id)), 'der Kern hat keinen gemeinsamen Zugang mehr');
   const gruppe = (modul: string) => r.body.gruppen.find((g: { modul: string }) => g.modul === modul).verbindungen as { id: string; text: string; pruefbar: boolean; werte: { url: string; geheimnis: string } }[];
+  // App „Schnittstellen“ (#232, S1): jede Anbindung nennt den Reiter ihrer Schnittstelle – gleiche Schnittstelle, gleicher Reiter, je Bereich ein Block
+  const reiter = (r.body.gruppen as { modul: string; verbindungen: { id: string; reiter: string }[] }[]).flatMap((g) => g.verbindungen.map((v) => `${v.reiter}: ${g.modul}/${v.id}`)).sort();
+  assert.deepEqual(reiter, [
+    'E-Mail: core/mail', 'E-Mail: tco/tco.mailabruf', 'E-Mail: transport/transport.mail', 'EP3: tco/tco.ep3', 'Nextcloud: tco/tco.nextcloud',
+    'Paperless: tco/paperless', 'Paperless: transport/transport.paperless', 'Schulferien: tco/tco.ferien', 'Trainerstunden: tco/tco.stunden',
+  ]);
   const pl = gruppe('tco').find((v) => v.id === 'paperless')!;
   assert.ok(pl && pl.pruefbar, 'Paperless des Vereins');
   assert.equal(pl.text, 'Paperless-ngx TC Oberthal');
@@ -176,7 +182,7 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.deepEqual([r.body.paperless, r.body.paperless_uebergang, r.body.paperless_token], [true, true, '********']);
   r = await call('GET', '/api/paperless/mapping/transport/listen');
   assert.deepEqual([r.body.paperless, r.body.korrespondenten], [true, ['A', 'B']]);
-  assert.deepEqual(await uebergangImVorrat(), [{ ...(await uebergangImVorrat())[0], bereich: 'Administration', state: 'Critical', pfad: '/admin/anbindungen', titel: 'Euroflex nutzt noch das Paperless von TC Oberthal' }]);
+  assert.deepEqual(await uebergangImVorrat(), [{ ...(await uebergangImVorrat())[0], bereich: 'Administration', state: 'Critical', pfad: '/admin/schnittstellen', titel: 'Euroflex nutzt noch das Paperless von TC Oberthal' }]);
   // dieselbe Adresse wie der Verein wird abgelehnt – beim Sichern und beim Verbindungstest, auch mit anderer Schreibweise
   r = await call('PUT', '/api/verbindungen/transport.paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'anders' });
   assert.equal(r.status, 400, JSON.stringify(r.body));

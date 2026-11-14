@@ -351,7 +351,7 @@ async function n8nGet(url: string, v: Verein, was: string, welche: 'stunden' | '
 
 /** Rückmeldungen über den n8n-Webhook TCO_N8N_STUNDEN (CSV oder JSON) */
 export async function rueckmeldungenAbrufen(v: Verein): Promise<{ csv: string; ungueltig: number }> {
-  if (!v.n8n_stunden_url) throw new BusinessError('Der Webhook für die Rückmeldungen ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
+  if (!v.n8n_stunden_url) throw new BusinessError('Der Webhook für die Rückmeldungen ist nicht eingerichtet (Administration → Schnittstellen).');
   // Abruf überwacht (#232, V1): Scheitert er, steht die Störung im Arbeitsvorrat, bis der nächste Abruf klappt
   const stundenUrl = v.n8n_stunden_url;
   const res = await tcoSchnittstelle(V_STUNDEN, 'Rückmeldungen Jugendtraining (n8n)', async () => {
@@ -406,7 +406,7 @@ export async function ferienLesen(db: Db, jahr: number): Promise<Ferientag[]> {
 
 /** Ferien und Feiertage eines Jahres über n8n laden und speichern (je Jahr ersetzt) */
 export async function ferienSynchronisieren(tx: Db, v: Verein, jahr: number, benutzer: string): Promise<{ ferien: number; feiertage: number }> {
-  if (!v.n8n_ferien_url) throw new BusinessError('Der Webhook für die Schulferien ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
+  if (!v.n8n_ferien_url) throw new BusinessError('Der Webhook für die Schulferien ist nicht eingerichtet (Administration → Schnittstellen).');
   // Abruf überwacht (#232, V1) – außerhalb der Transaktion gemeldet, damit die Störung auch bei Abbruch stehen bleibt
   const ferienUrl = v.n8n_ferien_url;
   const j = await tcoSchnittstelle(V_FERIEN, 'Schulferien Saarland (n8n)', async () => {

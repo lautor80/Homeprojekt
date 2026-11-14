@@ -150,7 +150,7 @@ function workflows() {
   return liste;
 }
 
-// ------------------------------------------------------------------ Anbindungen (Administration → Schnittstellen → Anbindungen)
+// ------------------------------------------------------------------ Anbindungen (Administration → Schnittstellen)
 function anbindungen() {
   const liste = [];
   const quellen = [`${MOD}/server/verbindung.ts`, 'server/src/lib/verbindungen.ts', 'server/src/lib/mail.ts', 'server/src/lib/webdav.ts', 'modules/transport/server/mailversand.ts'];

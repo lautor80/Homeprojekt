@@ -75,8 +75,6 @@ const MODULE: Modul[] = [
     ohneKatalogApp: {
       Rollen: 'Rollen und Rollenmatrix teilen sich die Rechte core.roles:* (App „Rollen und Rollenmatrix“)',
       Rollenmatrix: 'Rollen und Rollenmatrix teilen sich die Rechte core.roles:* (App „Rollen und Rollenmatrix“)',
-      Anbindungen: 'nutzt bis zur App „Schnittstellen“ (S1) das Recht der Einstellungen (core.settings:edit)',
-      'Paperless-Zuordnung': 'nutzt bis zur App „Schnittstellen“ (S1) das Recht der Einstellungen (core.settings:edit)',
     },
   },
   {

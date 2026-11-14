@@ -5,7 +5,7 @@ import { api } from '../api';
 import { useCan, useSession } from '../session';
 
 /**
- * Zusätze der Anbindung „E-Mail-Versand (n8n)“ (Administration → Schnittstellen → Anbindungen): Ersatzabsender je Anwendung
+ * Zusätze der Anbindung „E-Mail-Versand (n8n)“ (Administration → Schnittstellen): Ersatzabsender je Anwendung
  * (Einstellungen der Anbindung), Testmail und die letzten Versandversuche als Stand der Anbindung. Das Protokoll selbst
  * gibt es nur einmal – in der App „E-Mail-Protokoll“ mit Filter, „Erneut senden“ und „Protokoll leeren“ (#232, S3).
  */

@@ -686,7 +686,7 @@ async function routes(app: FastifyInstance) {
   // ---- Firmendaten ----
   app.get('/firma', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const f = await firmaLesen();
-    // Paperless wird zentral gepflegt (Administration → Schnittstellen → Anbindungen); hier nur der Stand
+    // Paperless wird zentral gepflegt (Administration → Schnittstellen); hier nur der Stand
     return { ...f, paperless_token: f.paperless_token ? '********' : '', paperless: !!(f.paperless_url && f.paperless_token) };
   });
 
@@ -799,7 +799,7 @@ const mod: ServerModule = {
     // Übergang (#232, S5): Solange Euroflex kein eigenes Paperless hat, steht das als Aufgabe bei der Administration
     if (can(req, 'core.settings:edit') && await paperlessUebergang('transport')) {
       out.unshift({
-        key: 'PAPERLESS_UEBERGANG', bereich: 'Administration', icon: 'attachment', state: 'Critical', datum: null, pfad: '/admin/anbindungen',
+        key: 'PAPERLESS_UEBERGANG', bereich: 'Administration', icon: 'attachment', state: 'Critical', datum: null, pfad: '/admin/schnittstellen',
         titel: 'Euroflex nutzt noch das Paperless von TC Oberthal',
         text: 'Jeder Bereich braucht sein eigenes Paperless. Bitte unter Anbindungen „Paperless-ngx Euroflex“ Adresse und API-Token eintragen – bis dahin legt Euroflex weiter im bisherigen Paperless ab.',
       });

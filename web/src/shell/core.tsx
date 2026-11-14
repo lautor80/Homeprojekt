@@ -5,11 +5,9 @@ import { RolesPage } from '../pages/RolesPage';
 import { RollenmatrixPage } from '../pages/RollenmatrixPage';
 import { AuditPage } from '../pages/AuditPage';
 import { EinstellungenPage } from '../pages/EinstellungenPage';
-import { PaperlessMappingPage } from '../pages/PaperlessMappingPage';
-import { VerbindungenPage } from '../pages/VerbindungenPage';
+import { SchnittstellenPage, ZuAnbindungen, ZuApiSchluessel, ZuPaperlessZuordnung } from '../pages/SchnittstellenPage';
 import { BackupPage } from '../pages/BackupPage';
 import { StatistikPage } from '../pages/StatistikPage';
-import { ApiKeysPage } from '../pages/ApiKeysPage';
 import { SperrenPage } from '../pages/SperrenPage';
 import { TabellenPage } from '../pages/TabellenPage';
 import { MailProtokollPage } from '../pages/MailProtokollPage';
@@ -41,9 +39,8 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
       {
         text: 'Schnittstellen', icon: 'connected',
         children: [
-          { text: 'Anbindungen', icon: 'connected', path: '/admin/anbindungen', permission: 'core.settings:edit' },
-          { text: 'Paperless-Zuordnung', icon: 'attachment', path: '/admin/paperless', permission: 'core.settings:edit' },
-          { text: 'API-Schlüssel', icon: 'key-user-settings', path: '/admin/api-schluessel', permission: 'core.apikeys:display' },
+          // eine App, ein Reiter je Schnittstelle (#232, S1) – Anbindungen, Paperless-Zuordnung und API-Schlüssel sind darin aufgegangen
+          { text: 'Schnittstellen', icon: 'connected', path: '/admin/schnittstellen', permission: 'core.settings:edit|core.apikeys:display' },
         ],
       },
       {
@@ -71,14 +68,16 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/benutzer', component: UsersPage, permission: 'core.users:display' },
   { path: '/admin/rollen', component: RolesPage, permission: 'core.roles:display' },
   { path: '/admin/rollenmatrix', component: RollenmatrixPage, permission: 'core.roles:display' },
-  { path: '/admin/api-schluessel', component: ApiKeysPage, permission: 'core.apikeys:display' },
+  { path: '/admin/api-schluessel', component: ZuApiSchluessel, permission: 'core.apikeys:display' },
   { path: '/admin/aenderungsbelege', component: AuditPage, permission: 'core.audit:display' },
   { path: '/admin/mailprotokoll', component: MailProtokollPage, permission: 'core.mail:display' },
   // ohne eigenes Recht: Die App zeigt die Kapitel, die der Benutzer sehen darf (#232, E1 – web/src/einstellungen.ts)
   { path: '/admin/einstellungen', component: EinstellungenPage },
   { path: '/admin/funktionen', component: FunktionenPage, permission: 'core.funktionen:edit' },
-  { path: '/admin/anbindungen', component: VerbindungenPage, permission: 'core.settings:edit' },
-  { path: '/admin/paperless', component: PaperlessMappingPage, permission: 'core.settings:edit' },
+  // App „Schnittstellen“ (#232, S1); die bisherigen Adressen springen in den passenden Reiter
+  { path: '/admin/schnittstellen', component: SchnittstellenPage, permission: 'core.settings:edit|core.apikeys:display' },
+  { path: '/admin/anbindungen', component: ZuAnbindungen, permission: 'core.settings:edit' },
+  { path: '/admin/paperless', component: ZuPaperlessZuordnung, permission: 'core.settings:edit' },
   { path: '/admin/sperren', component: SperrenPage, permission: 'core.sperren:admin' },
   { path: '/admin/sicherung', component: BackupPage, permission: 'core.backup:create' },
   { path: '/admin/statistik', component: StatistikPage, permission: 'core.statistik:display' },

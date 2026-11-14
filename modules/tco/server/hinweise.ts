@@ -14,5 +14,5 @@ export const tcoHinweis = (db: Db, h: Omit<HinweisNeu, 'modul'>): Promise<void> 
  * „Nicht eingerichtet“ ist keine Störung – diese Prüfung gehört vor den Aufruf.
  */
 export const tcoSchnittstelle = <T>(id: string, name: string, fn: () => Promise<T>): Promise<T> => ueberwacht({
-  modul: 'tco', quelle: 'SCHNITTSTELLE', objekt: id, bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört', titel: name, pfad: '/admin/anbindungen',
+  modul: 'tco', quelle: 'SCHNITTSTELLE', objekt: id, bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört', titel: name, pfad: '/admin/schnittstellen',
 }, fn);

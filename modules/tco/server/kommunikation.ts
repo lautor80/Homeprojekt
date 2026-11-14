@@ -100,7 +100,7 @@ export async function kanalLesen(db: Db, k: Kontakt | null): Promise<'E' | 'W' |
 }
 
 // ---------------------------------------------------------------------------
-// E-Mail-Versand: zentral im Kern (server/src/lib/mail.ts, Anbindung „mail“ unter Administration → Schnittstellen → Anbindungen).
+// E-Mail-Versand: zentral im Kern (server/src/lib/mail.ts, Anbindung „mail“ unter Administration → Schnittstellen).
 // Hier bleiben nur die bisherigen Einstiege mit dem Verein als erstem Parameter, damit die Aufrufer unverändert bleiben.
 // ---------------------------------------------------------------------------
 import {

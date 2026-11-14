@@ -41,7 +41,7 @@ const block = async (c: ReturnType<typeof client>, modul: string): Promise<Aufga
 };
 const anbindung = (objekt: string, text = 'Verbindung abgelehnt') => ({
   modul: 'core', quelle: 'TEST_STOERUNG', objekt, bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört',
-  titel: `Anbindung ${objekt}`, text, pfad: '/admin/anbindungen',
+  titel: `Anbindung ${objekt}`, text, pfad: '/admin/schnittstellen',
 });
 
 before(async () => {
@@ -65,7 +65,7 @@ test('Hinweis melden: steht im Block der Anwendung, Wiederholung zählt hoch, �
   assert.deepEqual(rest, []);
   const [{ id }] = await sql`select id::int as id from core.hinweise where objekt = 'A'`;
   assert.deepEqual(h, {
-    key: `HINWEIS:TEST_STOERUNG:${id}`, bereich: 'Administration', icon: 'message-information', state: 'Information', pfad: '/admin/anbindungen',
+    key: `HINWEIS:TEST_STOERUNG:${id}`, bereich: 'Administration', icon: 'message-information', state: 'Information', pfad: '/admin/schnittstellen',
     datum: h.datum, titel: 'Schnittstelle gestört: Anbindung A', text: 'Verbindung abgelehnt',
     erledigen: { text: 'gesehen', url: HINWEIS_GESEHEN, body: { id } },
   });
@@ -150,7 +150,7 @@ test('Störung: rot gemeldet, nach dem nächsten Erfolg von selbst behoben; Meld
 });
 
 test('Überwachter Aufruf einer Schnittstelle: Fehler geht weiter und steht im Arbeitsvorrat, der nächste Erfolg schließt ihn', async () => {
-  const h = { modul: 'core', quelle: 'TEST_ABRUF', objekt: 'x', bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört', titel: 'Probe-Webhook', pfad: '/admin/anbindungen' };
+  const h = { modul: 'core', quelle: 'TEST_ABRUF', objekt: 'x', bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört', titel: 'Probe-Webhook', pfad: '/admin/schnittstellen' };
   await assert.rejects(() => ueberwacht(h, async () => { throw new Error('n8n antwortet\nmit HTTP 502'); }), /HTTP 502/);
   let [a] = await block(admin, 'core');
   assert.deepEqual([a.titel, a.text, a.state, a.icon], ['Schnittstelle gestört: Probe-Webhook', 'n8n antwortet mit HTTP 502', 'Negative', 'error']);
@@ -196,7 +196,7 @@ test('Paperless: Störung je Zugang im Arbeitsvorrat, nach der nächsten Antwort
     antworten.push(503);
     await assert.rejects(() => pl.dokument(7), /HTTP 503/);
     let [a] = await block(admin, 'core');
-    assert.deepEqual([a.titel, a.bereich, a.state, a.pfad], [`Paperless gestört: 127.0.0.1:${port}`, 'Administration', 'Negative', '/admin/anbindungen']);
+    assert.deepEqual([a.titel, a.bereich, a.state, a.pfad], [`Paperless gestört: 127.0.0.1:${port}`, 'Administration', 'Negative', '/admin/schnittstellen']);
     assert.match(a.text, /Paperless-Fehler HTTP 503/);
     antworten.push(401);
     await assert.rejects(() => pl.dokument(7), /lehnt die Anmeldung ab/);

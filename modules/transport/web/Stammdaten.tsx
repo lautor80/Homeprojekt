@@ -124,11 +124,11 @@ export function FirmaTab() {
       <AblageOrdnerEinstellung />
       {f.paperless_uebergang && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
-          Übergang: Euroflex nutzt noch das Paperless von TC Oberthal. Bitte unter Administration → Schnittstellen → Anbindungen bei „Paperless-ngx Euroflex“ das eigene Paperless eintragen.
+          Übergang: Euroflex nutzt noch das Paperless von TC Oberthal. Bitte unter Administration → Schnittstellen bei „Paperless-ngx Euroflex“ das eigene Paperless eintragen.
         </MessageStrip>
       )}
       <MessageStrip design="Information" hideCloseButton>
-        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Euroflex hat ein eigenes Paperless: Adresse und API-Token stehen unter Administration → Schnittstellen → Anbindungen bei „Paperless-ngx Euroflex“.
+        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Euroflex hat ein eigenes Paperless: Adresse und API-Token stehen unter Administration → Schnittstellen bei „Paperless-ngx Euroflex“.
       </MessageStrip>
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="FIRMA" objectKey="1" />

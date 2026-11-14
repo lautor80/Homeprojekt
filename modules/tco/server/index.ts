@@ -78,7 +78,7 @@ async function routes(app: FastifyInstance) {
   app.get('/verein', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const v = await vereinLesen();
     const out: Record<string, unknown> = { ...v };
-    // Anbindungen werden zentral gepflegt (Administration → Schnittstellen → Anbindungen); hier nur der Stand, Geheimnisse maskiert
+    // Anbindungen werden zentral gepflegt (Administration → Schnittstellen); hier nur der Stand, Geheimnisse maskiert
     for (const g of ['paperless_token', 'n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth', 'n8n_ferien_auth'] as const) out[g] = v[g] ? MASKE : '';
     return out;
   });
