@@ -6,7 +6,7 @@ import {
 } from '../auth.js';
 import { getPublicSettings } from './settings.js';
 import { loginErfassen } from './statistik.js';
-import { activeModuleIds } from '../modules.js';
+import { activeModuleIds, activeModules } from '../modules.js';
 import { schalterZustand } from '../funktionsschalter.js';
 import { kennwortLinkSenden, tokenLesen } from '../kennwort.js';
 
@@ -63,11 +63,18 @@ export async function authRoutes(app: FastifyInstance) {
   /** Alles, was die Oberfläche nach dem Login braucht. */
   app.get('/api/auth/me', { preHandler: requireAuth() }, async (req) => {
     const u = req.user!;
+    // Vorname für die Begrüßung: aus einem Modul (Mitglied, Hallenkunde), sonst das erste Wort des Anzeigenamens
+    let vorname: string | null = null;
+    for (const m of activeModules()) {
+      if (vorname || !m.vorname) continue;
+      vorname = await m.vorname(u.id).catch(() => null);
+    }
     return {
       user: {
         id: u.id,
         username: u.username,
         displayName: u.displayName,
+        vorname: vorname || u.displayName.split(/[\s,(]+/).filter(Boolean)[0] || u.displayName,
         email: u.email,
         mustChangePassword: u.mustChangePassword,
         roles: u.roles,

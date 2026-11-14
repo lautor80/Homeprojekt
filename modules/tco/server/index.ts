@@ -288,6 +288,13 @@ const tco: ServerModule = {
   nachRuecksicherung: async () => { await rolleSicherstellen(DB); },
   // Benutzer nur löschbar, solange er nichts gebucht hat: Platzbuchungen (eigene Portalbuchungen und – wie in
   // „Meine Buchungen“ – die EP3-Buchungen des zugeordneten Mitglieds/Kunden, auch stornierte) und Verzehr
+  // Begrüßung „Hallo <Vorname>“: Vorname des zugeordneten Mitglieds, sonst des Hallenkunden
+  vorname: async (benutzerId) => {
+    const [r] = await DB`select coalesce(
+        (select nullif(trim(m.vorname), '') from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzerId} limit 1),
+        (select nullif(trim(k.vorname), '') from tco.kunden k where k.benutzer_id = ${benutzerId} limit 1)) as vorname`;
+    return (r?.vorname as string | null) ?? null;
+  },
   benutzerLoeschenSperre: async (tx, benutzerId) => {
     const ich = await ichLesen(tx, benutzerId);
     const [p] = await tx`

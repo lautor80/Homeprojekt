@@ -7,13 +7,6 @@ import { Tile } from '../components/Tile';
 import { navAufbauen } from '../shell/nav';
 import { StartArbeitsvorrat } from '../arbeitsvorrat';
 
-function gruss(): string {
-  const h = new Date().getHours();
-  if (h < 5) return 'Gute Nacht';
-  if (h < 11) return 'Guten Morgen';
-  if (h < 18) return 'Guten Tag';
-  return 'Guten Abend';
-}
 
 /**
  * Startseite im Stil des Fiori Launchpad: oben der Arbeitsvorrat aller Anwendungen, darunter Kacheln mit Absprung –
@@ -44,7 +37,7 @@ export function HomePage() {
   ];
 
   const heute = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const vorname = me.user.displayName.split(/\s+/)[0] ?? me.user.displayName;
+  const vorname = me.user.vorname || me.user.displayName.split(/\s+/)[0] || me.user.displayName;
   const kacheln = (l: NavEntry[]) => (
     <div className="portal-tiles">
       {l.map((e) => <Tile key={e.path} tile={kachel(e)} onOpen={() => navigate(e.path!)} />)}
@@ -54,7 +47,7 @@ export function HomePage() {
   return (
     <div className="portal-home">
       <div className="portal-home__head">
-        <h1 className="portal-home__greeting">{gruss()}, {vorname}</h1>
+        <h1 className="portal-home__greeting">Hallo {vorname}</h1>
         <div className="portal-home__meta">{me.settings['org.name'] as string} · {heute}</div>
       </div>
 

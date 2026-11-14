@@ -73,6 +73,8 @@ export interface ServerModule {
    * Wiederholungsarten einen neuen Link und sendet (cc: Kopie an diese Adresse); null = Art nicht zuständig. Siehe server/src/lib/mail.ts.
    */
   mailWiederholen?: (tx: Tx, w: Wiederholung, wer: string, cc?: string) => Promise<string | null>;
+  /** Vorname des Benutzers für die Begrüßung „Hallo <Vorname>“ (z. B. aus dem zugeordneten Mitglied); null = unbekannt */
+  vorname?: (benutzerId: string) => Promise<string | null>;
   /** nach erfolgreicher Wiederholung nachziehen, was der erste Versand getan hätte (z. B. Rechnung „versendet“); null = nicht zuständig */
   mailFolge?: (tx: Tx, f: MailFolge) => Promise<string[] | null>;
   /**
