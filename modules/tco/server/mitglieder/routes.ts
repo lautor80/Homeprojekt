@@ -4,6 +4,7 @@ import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen, type Db } from '../verein.js';
 import { tcoHinweis } from '../hinweise.js';
+import { mailtexteLesen, mailtextLoeschen, mailtextSichern, mailtextVorlage, unterlagenMail } from '../mailtexte.js';
 import { mitgliedDokumentPruefen } from '../dokumentfreigabe.js';
 import { condense, heute } from '../format.js';
 import { kontaktLesen, mailSenden, whatsappLink } from '../kommunikation.js';
@@ -13,11 +14,11 @@ import {
   vertragsbeginn, vertragsZahler, zahlerAuswahl, zahlerVorschlag, ZAHLUNGSARTEN, ZAHLUNGSWEISEN,
 } from './logik.js';
 import { ART_TEXT, ARTEN, druckdatenLesen, unterlagePdf } from './pdf.js';
-import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, mailText, plPruefen, SPEICHERPFAD, unterlageAblegen } from './dokumente.js';
+import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, plPruefen, SPEICHERPFAD, unterlageAblegen } from './dokumente.js';
 import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
 import { istMaskiert, maskIban, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
-import { einladen, einladungLesen, einladungVorlage, einloesen, EINLADUNG_PLATZHALTER, kandidaten as einladungKandidaten } from './einladung.js';
-import { abgleichen, namenLesen, vorlage as zugangVorlage, zugangSenden, PLATZHALTER } from './zugangslink.js';
+import { einladen, einladungLesen, einloesen, EINLADUNG_PLATZHALTER, kandidaten as einladungKandidaten } from './einladung.js';
+import { abgleichen, namenLesen, zugangSenden, PLATZHALTER } from './zugangslink.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
 import { blzDateiLesen, blzImport, blzStand, ibanPruefen, sepaNeu } from './bank.js';
 import type { Verein } from '../verein.js';
@@ -343,11 +344,28 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     };
   });
 
+  // ---------------------------------------------------------------- E-Mail-Texte des Vereins vorbelegen (#232) – Einstellungen → TC Oberthal → E-Mail-Texte
+  const texte = { preHandler: requireAuth('tco.stammdaten:edit') };
+  app.get('/mailtexte', texte, async () => mailtexteLesen(DB, await vereinLesen()));
+  app.put('/mailtexte/:schluessel', texte, async (req) => {
+    const { schluessel } = z.object({ schluessel: z.string().max(80) }).parse(req.params);
+    const t = z.object({ betreff: z.string().max(200), text: z.string().max(20_000) }).parse(req.body);
+    await change(req, (tx) => mailtextSichern(tx, schluessel, t, benutzer(req)), { action: 'MAILTEXT' });
+    return { text: 'E-Mail-Text gesichert – er gilt ab der nächsten E-Mail.' };
+  });
+  /** zurück zum Standardtext */
+  app.delete('/mailtexte/:schluessel', texte, async (req) => {
+    const { schluessel } = z.object({ schluessel: z.string().max(80) }).parse(req.params);
+    await change(req, (tx) => mailtextLoeschen(tx, schluessel), { action: 'MAILTEXT', reason: 'zurück zum Standardtext' });
+    return { text: 'Es gilt wieder der Standardtext.' };
+  });
+
   // ---------------------------------------------------------------- Einladung zum Vereinsportal (QR-Code, Sammellauf)
   app.get('/mitglieder/einladungen', { preHandler: requireAuth('core.users:edit') }, async () => einladungKandidaten(DB));
   /** Vorschlag für Betreff und Text der Einladungsmail (im Dialog änderbar) und die Adresse für „Kopie an mich“ */
   app.get('/mitglieder/einladungen/vorlage', { preHandler: requireAuth('core.users:edit') }, async (req) => (
-    { ...einladungVorlage(await vereinLesen()), platzhalter: EINLADUNG_PLATZHALTER, cc: req.user?.email ?? null }));
+    // Vorbelegung: der unter Einstellungen → E-Mail-Texte festgelegte Text, sonst der Standardtext (#232)
+    { ...(await mailtextVorlage(DB, await vereinLesen(), 'mitglied.einladung')), platzhalter: EINLADUNG_PLATZHALTER, cc: req.user?.email ?? null }));
   /** Kopie an den Versender: seine E-Mail-Adresse aus der Benutzerverwaltung */
   const ccAnMich = (req: FastifyRequest, an: boolean) => {
     if (!an) return null;
@@ -378,7 +396,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     };
   });
   // ---------------------------------------------------------------- Zugangslinks an Personen aus einer Liste (#105)
-  app.get('/mitglieder/zugang/vorlage', { preHandler: requireAuth('core.users:edit') }, async (req) => ({ ...zugangVorlage(await vereinLesen()), platzhalter: PLATZHALTER, cc: req.user?.email ?? null }));
+  app.get('/mitglieder/zugang/vorlage', { preHandler: requireAuth('core.users:edit') }, async (req) => ({ ...(await mailtextVorlage(DB, await vereinLesen(), 'mitglied.zugangslink')), platzhalter: PLATZHALTER, cc: req.user?.email ?? null }));
   app.post('/mitglieder/zugang/abgleich', { preHandler: requireAuth('core.users:edit') }, async (req) => {
     const { text } = z.object({ text: z.string().max(50_000) }).parse(req.body);
     const namen = namenLesen(text);
@@ -723,7 +741,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     if (!k) throw new BusinessError('Mitglied nicht gefunden.');
     for (const id of b.ids) await dokFreigeben(req, v, id);
     const links = b.ids.length ? await freigabelinks(v, b.ids) : [];
-    const { betreff, text } = mailText(v, b.art, k.vorname, links);
+    const { betreff, text } = await unterlagenMail(DB, v, b.art, k.vorname, links);
     const [p] = await DB`select kanal from tco.kommpref where adrnr = ${a}`;
     return {
       an: k.email, mobil: k.mobil, kanal: leer(p?.kanal) || (k.email ? 'E' : k.mobil ? 'W' : ''), betreff, text, links,

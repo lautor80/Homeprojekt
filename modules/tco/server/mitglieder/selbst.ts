@@ -3,13 +3,14 @@ import { hashPassword } from '../../../../server/src/auth.js';
 import { maskIban } from '../../../../server/src/schutz.js';
 import type { Db, Verein } from '../verein.js';
 import { tcoHinweis } from '../hinweise.js';
+import { unterlagenMail } from '../mailtexte.js';
 import { condense, dat, heute } from '../format.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import {
   ART_JUGEND, austrittSichern, bankSichern, detailLesen, emailGueltig, kopfSichern, leer, mitgliedLesen, notizAnlegen, vertragAendern, verweis,
 } from './logik.js';
 import { druckdatenLesen, unterlagePdf } from './pdf.js';
-import { mailText, unterlageAblegen } from './dokumente.js';
+import { unterlageAblegen } from './dokumente.js';
 import { plAktiv } from '../verein.js';
 import { kennwortLinkSenden, portalUrl, unbekanntesKennwort } from '../../../../server/src/kennwort.js';
 import { benutzerAnlegen, buchungsrechtSichern, freierBenutzername, istBcrypt, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
@@ -198,7 +199,7 @@ export async function kuendigungBestaetigen(db: Db, v: Verein, r: { adrnr: strin
   if (!v.n8n_mail_url) hinweise.push('Der Mailversand ist nicht eingerichtet – bitte die Bestätigung herunterladen.');
   else if (!k?.email) hinweise.push('Keine E-Mail-Adresse hinterlegt – bitte die Bestätigung herunterladen.');
   else {
-    const { betreff, text } = mailText(v, '4', k.vorname, []);
+    const { betreff, text } = await unterlagenMail(db, v, '4', k.vorname, []);
     await mailSenden(v, {
       modus: 'senden', anwendung: 'Mitglieder', objekt: r.betroffen, an: k.email, cc: v.email ?? '', betreff,
       text: `${text}\n\n---\n${r.text}${grund ? `\nGrund: ${grund}` : ''}`, benutzer: o.wer ?? 'Portal',

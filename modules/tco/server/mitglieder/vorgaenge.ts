@@ -16,7 +16,8 @@ import {
   vertragsbeginn, vertragsZahler, verweis, type Vertrag,
 } from './logik.js';
 import { ART_TEXT, druckdatenLesen, unterlagePdf, type Art } from './pdf.js';
-import { mailText, unterlageAblegen } from './dokumente.js';
+import { unterlageAblegen } from './dokumente.js';
+import { unterlagenMail } from '../mailtexte.js';
 
 export const VORGAENGE = ['BEITRAGSWECHSEL', 'JUGENDTRAINING', 'KUENDIGUNG'] as const;
 export type VorgangTyp = (typeof VORGAENGE)[number];
@@ -246,7 +247,7 @@ export async function unterlageVersenden(db: Db, v: Verein, adrnr: string, art: 
   if (!v.n8n_mail_url) hinweise.push('Der Mailversand ist nicht eingerichtet – bitte die Unterlage herunterladen.');
   else if (!k?.email) hinweise.push('Keine E-Mail-Adresse hinterlegt – bitte die Unterlage herunterladen.');
   else {
-    const { betreff, text } = mailText(v, art, k.vorname, []);
+    const { betreff, text } = await unterlagenMail(db, v, art, k.vorname, []);
     await mailSenden(v, {
       modus: 'senden', anwendung: 'Mitglieder', objekt: adrnr, an: k.email, cc: v.email ?? '', betreff,
       text: `${text}\n\n---\n${zusatz}`, benutzer, anhaenge: [{ dateiname, mime: 'application/pdf', inhalt: pdf }],
