@@ -23,8 +23,10 @@ const status = (v: Vertrag) => (v.laeuft ? (v.vertragende ? 'gekündigt' : 'läu
 
 export function VertragsBaum<V extends Vertrag>({
   personen, vertraege, ich, ichText, onPerson, beginnZelle, endeZelle, zahlerZelle, vertragAktion, personAktion, aktionen, aktionenBreite = 200,
-  vertragVorne, kompakt, endeTitel = 'Ende',
+  vertragVorne, kompakt, endeTitel = 'Ende', onAlle,
 }: {
+  /** „Auch beendete“ geändert – z. B. damit der Ausdruck dieselbe Auswahl zeigt */
+  onAlle?: (alle: boolean) => void;
   /** Element vor dem Vertrag (z. B. Kästchen zur Auswahl im Kündigungsdialog) */
   vertragVorne?: (v: V) => ReactNode;
   /** Auswahl-Ansicht im Dialog: ohne Leiste, ohne Zahler- und Statusspalte */
@@ -171,7 +173,7 @@ export function VertragsBaum<V extends Vertrag>({
       <div className="portal-row" style={{ marginBottom: '0.5rem', display: kompakt ? 'none' : undefined }}>
 <Varianten repid="tco.mitglieder.vertraege" ansicht={{ suche, alle }} onAnwenden={(a) => { setSuche(feld(a, 'suche', suche)); setAlle(feld(a, 'alle', alle)); }} />
         <Input value={suche} placeholder="Person, Vertrag oder Zahler suchen" showClearIcon style={{ width: 'min(22rem, 100%)' }} onInput={(e) => setSuche(e.target.value)} />
-        <CheckBox text="Auch beendete" checked={alle} onChange={(e) => setAlle(e.target.checked)} />
+        <CheckBox text="Auch beendete" checked={alle} onChange={(e) => { setAlle(e.target.checked); onAlle?.(e.target.checked); }} />
         <span className="portal-muted">
           {personen.length === 1 ? '1 Person' : `${personen.length} Personen`} · {laufende.length === 1 ? '1 laufender Vertrag' : `${laufende.length} laufende Verträge`} · {eur(summe)}
         </span>

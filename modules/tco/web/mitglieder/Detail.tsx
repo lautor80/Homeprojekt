@@ -352,10 +352,19 @@ function Vertraege({ d, aw, edit, onNeu, onOpen, onAktion }: {
   const aenderbar = (v: Vertrag) => edit && eigen.has(`${v.adrnr}:${v.vertragnr}`);
   const anlegbar = new Set(vertragPersonen(d).map((p) => p.adrnr));
   const put = (v: Vertrag, body: object) => onAktion(() => api.put(`${MG}/vertraege/${v.adrnr}/${encodeURIComponent(v.vertragnr)}`, body));
+  // Ausdruck „Verträge der Familie“ mit Zahler – folgt dem Haken „Auch beendete“
+  const [beendete, setBeendete] = useState(false);
+  const [druck, setDruck] = useState(false);
+  const m = d.mitglied;
   return (
     <>
-      <VertragsBaum personen={d.familie} vertraege={d.vertraegeFamilie} ich={d.mitglied.adrnr} onPerson={onOpen}
-                    aktionen={edit ? <Button icon="add" design="Emphasized" onClick={() => onNeu()}>Vertrag hinzufügen</Button> : undefined}
+      {druck && <PdfDialog url={`${MG}/m/${m.adrnr}/vertraege-pdf?beendete=${beendete ? 1 : 0}`} title={`Verträge der Familie – ${m.vorname} ${m.nachname}`}
+                           filename={`Vertraege_Familie_${m.nachname}_${m.vorname}.pdf`} onClose={() => setDruck(false)} />}
+      <VertragsBaum personen={d.familie} vertraege={d.vertraegeFamilie} ich={d.mitglied.adrnr} onPerson={onOpen} onAlle={setBeendete}
+                    aktionen={<>
+                      <Button icon="print" tooltip="Alle Verträge der Familie mit Zahler als PDF" onClick={() => setDruck(true)}>Drucken</Button>
+                      {edit && <Button icon="add" design="Emphasized" onClick={() => onNeu()}>Vertrag hinzufügen</Button>}
+                    </>}
                     // Vertragsbeginn (#33): für die Mitgliederpflege immer änderbar – alle Verträge im Baum, auch beendete
                     beginnZelle={edit ? (v) => (
                       <DatePicker style={{ width: '9.5rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={v.vertragbegin ?? ''}
