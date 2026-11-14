@@ -3,7 +3,7 @@ import { BusinessError } from '../errors.js';
 import { nurIntern, Paperless, paperlessKonfiguriert } from './paperless.js';
 
 /**
- * Zentrale Anbindungen (Administration → Schnittstellen → Anbindungen), Tabelle core.verbindungen.
+ * Zentrale Anbindungen (Administration → Schnittstellen), Tabelle core.verbindungen.
  *
  * Der Kern meldet den E-Mail-Versand an; Module melden ihre Verbindungen über ServerModule.verbindungen
  * (n8n-Webhooks, ihr Paperless – je Bereich ein eigenes, siehe paperlessDef) und lesen die Werte mit verbindungLesen().
@@ -27,6 +27,11 @@ export interface VerbindungDef {
   /** eindeutig; Modulverbindungen mit Präfix „<modul>.“ (z. B. tco.ep3) */
   id: string;
   text: string;
+  /**
+   * Schnittstelle, zu der die Anbindung gehört – ihr Reiter in Administration → Schnittstellen (#232, S1), z. B. „Paperless“,
+   * „E-Mail“, „EP3“. Anbindungen mit demselben Reiter stehen dort zusammen, je Bereich ein Block. Ein neuer Name ist ein neuer Reiter.
+   */
+  reiter: string;
   beschreibung: string;
   /** zulässige Anmeldearten, die erste ist Standard */
   auth: AuthArt[];
@@ -150,7 +155,7 @@ const uebergangsModule = new Set<string>();
 export function paperlessDef(modul: string, bereich: string, o: { uebergang?: boolean } = {}): VerbindungDef {
   if (o.uebergang && paperlessId(modul) !== 'paperless') uebergangsModule.add(modul);
   return {
-    id: paperlessId(modul), text: `Paperless-ngx ${bereich}`,
+    id: paperlessId(modul), text: `Paperless-ngx ${bereich}`, reiter: 'Paperless',
     beschreibung: `Dokumentenablage für ${bereich} – ein eigenes Paperless je Bereich, nie dieselbe Adresse wie ein anderer Bereich. Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst. `
       + 'Alles Ausgehende (Freigabelinks in E-Mails und WhatsApp-Nachrichten) bekommt immer die Adresse für Freigabelinks – ohne Eintrag die erste Adresse, die aus dem Internet erreichbar ist.',
     auth: ['token'],

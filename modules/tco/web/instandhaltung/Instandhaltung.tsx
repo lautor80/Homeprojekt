@@ -573,7 +573,7 @@ function FormularDialog({ d, anlaesse, darfAblegen, onClose }: { d: Detail; anla
         <TextArea rows={3} maxlength={2000} value={bemerkung} onInput={(e) => setBemerkung(e.target.value)} />
         <Text className="portal-muted portal-small">
           Das Formular enthält Eckdaten, Beschreibung, Bearbeitung, Unterschriftsfelder, das vollständige Protokoll und die Fotos.
-          Titel, Dokumenttyp, Speicherpfad und Tags in Paperless stehen unter Administration → Schnittstellen → Paperless-Zuordnung („Schadensmeldung“).
+          Titel, Dokumenttyp, Speicherpfad und Tags in Paperless stehen unter Administration → Schnittstellen → Paperless („Schadensmeldung“).
         </Text>
       </div>
       <PdfDialog url={pdf} title={`Formular ${d.nummer}`} filename={`Schadensmeldung_${d.nummer}.pdf`} onClose={() => setPdf(null)} />

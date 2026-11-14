@@ -79,7 +79,7 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0 }: { nr: string; ed
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
-      {!d.paperless && <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen → „Paperless-ngx Euroflex“).</MessageStrip>}
+      {!d.paperless && <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Schnittstellen → „Paperless-ngx Euroflex“).</MessageStrip>}
       {can('transport.versand:execute') && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <Button icon="email" onClick={() => setMail(true)}>E-Mail mit Anhängen…</Button>

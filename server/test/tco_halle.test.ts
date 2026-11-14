@@ -163,7 +163,7 @@ test('Hallenabrechnung: Import, Zuordnung, Rechnung, Druck, Versand', async () =
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await call('PUT', '/api/verbindungen/mail', { url: `http://127.0.0.1:${port}/webhook/tco-mailversand`, auth_art: 'header', header_name: 'X-TCO-Key', geheimnis: 'k' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  // Paperless zentral (Administration → Schnittstellen → Anbindungen): sichern, maskiert zurück, prüfen
+  // Paperless zentral (Administration → Schnittstellen): sichern, maskiert zurück, prüfen
   r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim', einstellungen: { freigabe_url: `http://127.0.0.1:${port}` } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.geheimnis, '********');

@@ -3,7 +3,7 @@ import { authHeader, paperlessDef, type Verbindung, type VerbindungDef } from '.
 import { WebDav } from '../../../server/src/lib/webdav.js';
 
 /**
- * Anbindungen des Vereinsmoduls (Administration → Schnittstellen → Anbindungen): n8n-Webhooks für Importe. Zugangsdaten zu Nextcloud oder
+ * Anbindungen des Vereinsmoduls (Administration → Schnittstellen): n8n-Webhooks für Importe. Zugangsdaten zu Nextcloud oder
  * EP3 liegen in den n8n-Workflows; hier steht nur die Anmeldung am jeweiligen Webhook (Basic Auth wie in SM59).
  * Die Verbindungstests rufen die lesenden Endpunkte wirklich auf, übernehmen aber nichts.
  * Dazu das Paperless des Vereins (je Bereich ein eigenes, #232 S5). Den Mailversand meldet der Kern.
@@ -47,7 +47,7 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
   // eigener Paperless-Zugang des Vereins (#232, S5) – der bisherige gemeinsame Zugang „paperless“ bleibt hier bestehen
   paperlessDef('tco', 'TC Oberthal'),
   {
-    id: V_STUNDEN, text: 'Rückmeldungen Jugendtraining (n8n)',
+    id: V_STUNDEN, text: 'Rückmeldungen Jugendtraining (n8n)', reiter: 'Trainerstunden',
     beschreibung: 'Liest die Stundenrückmeldungen der Trainer aus Nextcloud über den n8n-Webhook TCO_N8N_STUNDEN. Anmeldung am Webhook mit Benutzer und Passwort, sofern n8n sie verlangt.',
     auth: ['basic', 'header', 'keine'],
     felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/TCO_N8N_STUNDEN)' },
@@ -65,7 +65,7 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
     },
   },
   {
-    id: V_FERIEN, text: 'Schulferien Saarland (n8n)',
+    id: V_FERIEN, text: 'Schulferien Saarland (n8n)', reiter: 'Schulferien',
     beschreibung: 'Ferien und Feiertage je Jahr über den n8n-Webhook ferien-saarland. Anmeldung wie bei den Rückmeldungen.',
     auth: ['basic', 'header', 'keine'],
     felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/ferien-saarland)' },
@@ -84,7 +84,7 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
     },
   },
   {
-    id: V_EP3, text: 'EP3-Export Hallenbuchungen (n8n)',
+    id: V_EP3, text: 'EP3-Export Hallenbuchungen (n8n)', reiter: 'EP3',
     beschreibung: 'Übernahme der Hallenbuchungen und Kunden aus dem EP3-Buchungssystem über n8n. Der Test ruft den Export ab, übernimmt aber nichts.',
     auth: ['keine', 'basic', 'header'],
     felder: { url: 'Webhook-URL' },
@@ -110,7 +110,7 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
     },
   },
   {
-    id: V_MAILABRUF, text: 'Maileingang jetzt abrufen (n8n)',
+    id: V_MAILABRUF, text: 'Maileingang jetzt abrufen (n8n)', reiter: 'E-Mail',
     beschreibung: 'Startet im Dokumenteneingang über „Posteingang abrufen“ den n8n-Workflow „TCO Maileingang“ (Webhook-Knoten „Alle Mails jetzt (Webhook)“, '
       + 'Production-URL …/webhook/tco-dokumenteneingang-alle). Anmeldung am Webhook per Header, z. B. Name Authorization, Wert „Bearer <geheimer Wert>“ – '
       + 'derselbe Wert wie in den Header-Auth-Zugangsdaten des Webhook-Knotens. Ohne Verbindungstest, weil jeder Aufruf den Abruf wirklich startet.',
@@ -119,7 +119,7 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
     felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/tco-dokumenteneingang-alle)' },
   },
   {
-    id: V_NEXTCLOUD, text: 'Nextcloud Dokumentenablage',
+    id: V_NEXTCLOUD, text: 'Nextcloud Dokumentenablage', reiter: 'Nextcloud',
     beschreibung: 'Arbeitsablage des Dokumenteneingangs: Regeln können Dokumente zusätzlich zu Paperless in einen Ordner der Nextcloud legen (WebDAV). Anmeldung mit Benutzer und App-Passwort (Nextcloud → Einstellungen → Sicherheit).',
     auth: ['basic'],
     felder: { url: 'Adresse der Nextcloud (z. B. https://cloud.example.org)', auth_user: 'Benutzer', geheimnis: 'App-Passwort' },

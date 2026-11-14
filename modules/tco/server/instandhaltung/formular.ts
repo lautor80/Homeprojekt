@@ -1,7 +1,7 @@
 /**
  * Formular Schadensmeldung (#205) im TCO-Druckformat: Kopfband mit Logo, Anlass (Abschluss / Weitergabe), Eckdaten,
  * Beschreibung, Bearbeitung, Unterschriftsfelder, vollständiges Protokoll und die Fotos als Anlage.
- * Ablage in Paperless über den Kontext „Schadensmeldung“ (Vorgabewerte: Administration → Schnittstellen → Paperless-Zuordnung).
+ * Ablage in Paperless über den Kontext „Schadensmeldung“ (Vorgabewerte: Administration → Schnittstellen → Paperless).
  */
 import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -170,7 +170,7 @@ export async function formularPdf(v: Verein, m: FormularDaten, fotos: FormularFo
  */
 export async function formularAblegen(v: Verein, m: FormularDaten & { formular_doc_id: number | null }, pdf: Buffer, a: FormularAngaben)
   : Promise<{ id: number; warnungen: string[]; neu: boolean }> {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen).');
   const pl = paperless(v);
   const datei = `${formularTitel(m.nummer).replace(/\s+/g, '_')}.pdf`;
   const werte = {

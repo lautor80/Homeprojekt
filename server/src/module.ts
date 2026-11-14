@@ -81,7 +81,7 @@ export interface ServerModule {
    */
   mailPersonen?: (db: Tx, emails: string[]) => Promise<MailPerson[]>;
   /**
-   * Angeschlossene Systeme des Moduls (Administration → Schnittstellen → Anbindungen): Adresse und Zugangsdaten werden zentral
+   * Angeschlossene Systeme des Moduls (Administration → Schnittstellen): Adresse und Zugangsdaten werden zentral
    * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.
    */
   verbindungen?: VerbindungDef[];

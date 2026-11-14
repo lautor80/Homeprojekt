@@ -21,12 +21,12 @@ export interface Verein {
   email: string | null;
   zahlungsziel_tage: number;
   logo: string | null;
-  /** aus der zentralen Anbindung „paperless“ (Administration → Schnittstellen → Anbindungen), nur lesend */
+  /** aus der zentralen Anbindung „paperless“ (Administration → Schnittstellen), nur lesend */
   paperless_url: string | null;
   paperless_token: string | null;
   /** Adresse für Freigabelinks (Einstellung der Anbindung „paperless“), nur lesend */
   paperless_freigabe_url: string | null;
-  /** aus der zentralen Anbindung „mail“ (Administration → Schnittstellen → Anbindungen), nur lesend */
+  /** aus der zentralen Anbindung „mail“ (Administration → Schnittstellen), nur lesend */
   n8n_mail_url: string | null;
   n8n_mail_key: string | null;
   /** Ersatzabsender je Anwendung (Einstellungen der Anbindung „mail“), nur lesend */

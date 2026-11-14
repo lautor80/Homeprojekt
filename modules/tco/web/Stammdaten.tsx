@@ -96,7 +96,7 @@ export function VereinTab() {
 
       <Panel headerText="Anbindungen" fixed style={{ marginTop: '1rem' }}>
         <Text style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-          Zugänge werden zentral unter Administration → Schnittstellen → Anbindungen gepflegt (Adresse, Anmeldung, Verbindungstest, Mailprotokoll).
+          Zugänge werden zentral unter Administration → Schnittstellen gepflegt (Adresse, Anmeldung, Verbindungstest, Mailprotokoll).
         </Text>
         <FlexBox wrap="Wrap" style={{ gap: '0.5rem 1.5rem' }}>
           {([['Paperless-ngx', v.paperless_url], ['E-Mail-Versand (n8n)', v.n8n_mail_url], ['Rückmeldungen Jugendtraining', v.n8n_stunden_url],

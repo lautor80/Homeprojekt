@@ -56,7 +56,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
     if (!files.length) return;
     let s: Stamm;
     try { s = await stammLaden(); } catch (e) { toast((e as Error).message, 6000); return; }
-    if (!s.paperless) { toast('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).', 6000); return; }
+    if (!s.paperless) { toast('Paperless ist nicht eingerichtet (Administration → Schnittstellen).', 6000); return; }
     setLauf({ fertig: 0, gesamt: files.length });
     let ok = 0;
     const neu: Protokoll[] = [];
@@ -190,7 +190,7 @@ function VorgabeDialog({ stamm, vorgabe, wartend, onClose, onSpeichern }: {
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       {!stamm && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
-      {stamm && !stamm.paperless && <MessageStrip design="Critical" hideCloseButton>Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).</MessageStrip>}
+      {stamm && !stamm.paperless && <MessageStrip design="Critical" hideCloseButton>Paperless ist nicht eingerichtet (Administration → Schnittstellen).</MessageStrip>}
       {stamm?.paperless && (
         <div className="portal-ablage__form">
           {wartend > 0 && <MessageStrip design="Information" hideCloseButton>Bitte zuerst festlegen, wie die {wartend} Datei(en) abgelegt werden sollen.</MessageStrip>}

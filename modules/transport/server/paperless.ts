@@ -18,7 +18,7 @@ export interface PaperlessErgebnis {
  */
 export async function paperlessSenden(firma: Firma, r: RechnungPdf, benutzer: string): Promise<PaperlessErgebnis> {
   if (!firma.paperless_url || !firma.paperless_token) {
-    return { ok: false, message: 'Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen: Adresse und API-Token).' };
+    return { ok: false, message: 'Paperless ist nicht eingerichtet (Administration → Schnittstellen: Adresse und API-Token).' };
   }
   try {
     const pl = paperlessFirma(firma);

@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { Children, Fragment, isValidElement } from 'react';
+import { Children, createContext, Fragment, isValidElement, useContext } from 'react';
 import { Varianten, type VariantenProps } from './Varianten';
 import { DynamicPage, DynamicPageHeader, DynamicPageTitle, Title, Text, Bar, Toolbar, ToolbarItem } from '@ui5/webcomponents-react';
 
@@ -26,9 +26,33 @@ function toolbarItems(actions: ReactNode) {
   return flat.filter(Boolean).map((c, i) => <ToolbarItem key={i}>{c}</ToolbarItem>);
 }
 
+/**
+ * Eingebettet (#232, S1): Eine App, die als Reiter in einer anderen App steht (z. B. API-Schlüssel in „Schnittstellen“), zeigt
+ * statt des eigenen Seitenrahmens nur Untertitel, Buttons, Inhalt und Fußleiste – Titel und Rahmen gehören der äußeren App.
+ */
+const EingebettetContext = createContext(false);
+export function Eingebettet({ children }: { children: ReactNode }) {
+  return <EingebettetContext.Provider value>{children}</EingebettetContext.Provider>;
+}
+
 /** Standard-Seitenrahmen im Fiori-Stil (DynamicPage). */
 export function AppPage({ title, subtitle, actions: actions0, varianten, header, footer, children }: Props) {
   const actions = varianten ? <><Varianten {...varianten} />{actions0}</> : actions0;
+  if (useContext(EingebettetContext)) {
+    return (
+      <div className="portal-eingebettet">
+        {(subtitle || actions) && (
+          <div className="portal-eingebettet__kopf">
+            <Text className="portal-muted">{subtitle ?? ''}</Text>
+            {actions ? <Toolbar design="Transparent" style={{ width: 'auto' }}>{toolbarItems(actions)}</Toolbar> : null}
+          </div>
+        )}
+        {header}
+        {children}
+        {footer ? <Bar style={{ marginTop: '1rem' }} endContent={<>{footer}</>} /> : null}
+      </div>
+    );
+  }
   return (
     <DynamicPage
       style={{ height: '100%' }}

@@ -7,7 +7,7 @@ import { authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperl
 
 /**
  * E-Mail-Versand des Portals über den generischen n8n-Workflow „TCO Mailversand“ (Webhook, docs/n8n/tco-mailversand.json).
- * Zugang: zentrale Anbindung „mail“ (Administration → Schnittstellen → Anbindungen) – URL und Webhook-Schlüssel (Header X-TCO-Key);
+ * Zugang: zentrale Anbindung „mail“ (Administration → Schnittstellen) – URL und Webhook-Schlüssel (Header X-TCO-Key);
  * in deren Einstellungen die Ersatzabsender je Anwendung. Jeder Versuch landet im Mailprotokoll core.mail_protokoll.
  *
  * Absender ist, wer auf „Senden“ drückt (Anfragekontext). Darf dessen Adresse in n8n nicht senden (KONTEN), nimmt n8n den
@@ -85,7 +85,7 @@ export function webhookFehler(status: number, text: string, mitSchluessel: boole
     return mitSchluessel
       ? 'n8n hat den Webhook-Schlüssel abgelehnt: Im n8n-Credential „Header Auth account“ muss der Name „X-TCO-Key“ lauten und der Wert '
         + 'exakt dem Webhook-Schlüssel im Portal entsprechen (Groß-/Kleinschreibung, keine Leerzeichen).'
-      : 'n8n verlangt einen Webhook-Schlüssel – im Portal ist keiner hinterlegt (Administration → Schnittstellen → Anbindungen → Mailversand).';
+      : 'n8n verlangt einen Webhook-Schlüssel – im Portal ist keiner hinterlegt (Administration → Schnittstellen → Mailversand).';
   }
   if (status === 404) return 'n8n-Workflow "TCO Mailversand" ist nicht aktiv oder die URL stimmt nicht (Webhook 404)';
   return null;
@@ -96,9 +96,9 @@ function httpFehler(status: number, text: string, mitSchluessel: boolean): strin
   return webhookFehler(status, text, mitSchluessel) ?? `HTTP ${status}: ${text.replace(/\s+/g, ' ').slice(0, 200)}`;
 }
 
-/** Anbindung „mail“ (Administration → Schnittstellen → Anbindungen) */
+/** Anbindung „mail“ (Administration → Schnittstellen) */
 export const MAIL_DEF: VerbindungDef = {
-  id: MAIL_ID, text: 'E-Mail-Versand (n8n)',
+  id: MAIL_ID, text: 'E-Mail-Versand (n8n)', reiter: 'E-Mail',
   beschreibung: 'Generischer n8n-Workflow „TCO Mailversand“ für alle E-Mails des Portals (Kennwort-Links, Registrierung, Rechnungen, Mitglieder …). '
     + 'Der Webhook-Schlüssel muss dem Wert im n8n-Credential „Header Auth account“ (Name X-TCO-Key) entsprechen. Der Test prüft Erreichbarkeit, Workflow und Schlüssel, ohne eine E-Mail zu senden.',
   auth: ['header', 'keine'],
@@ -215,7 +215,7 @@ export async function mailSenden(m: MailAuftrag): Promise<MailErgebnis & { proto
   const v = await mailVerbindung();
   if (!eingerichtet(v)) {
     await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)', nachricht: wiederholDaten(m) });
-    throw new BusinessError('Der n8n-Mailversand ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
+    throw new BusinessError('Der n8n-Mailversand ist nicht eingerichtet (Administration → Schnittstellen).');
   }
   try {
     // Ausgehend: Freigabelinks immer mit der externen Paperless-Adresse (auch in bearbeiteten oder erneut gesendeten Texten) –

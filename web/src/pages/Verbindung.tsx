@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, FlexBox, MessageStrip, ObjectStatus, Option, Panel, Select, Text } from '@ui5/webcomponents-react';
 import { api } from '../api';
-import { AppPage } from '../components/AppPage';
-import { useLoad } from '../components/useLoad';
 import { FieldBox, FormGrid, TextField } from '../components/FormFields';
 import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { toast } from '../toast';
@@ -10,34 +8,26 @@ import { SperrHinweis, useSperre } from '../sperre';
 import { MailAbsender, MailStand, type Absender } from './MailVersand';
 
 /**
- * Administration → Schnittstellen → Anbindungen: angeschlossene Systeme des Kerns (Paperless) und der Module (z. B. n8n-Webhooks)
- * an einer Stelle – Adresse, Anmeldeart, Zugangsdaten, Verbindungstest. Geheimnisse kommen maskiert vom Server;
- * die Maske beim Sichern bedeutet „unverändert“.
+ * Zugang zu einem angeschlossenen System (Paperless, n8n-Webhooks, Nextcloud): Adresse, Anmeldeart, Zugangsdaten,
+ * Verbindungstest. Geheimnisse kommen maskiert vom Server; die Maske beim Sichern bedeutet „unverändert“.
+ * Steht seit #232 (S1) in der App „Schnittstellen“ im Reiter seiner Schnittstelle (SchnittstellenPage.tsx).
  */
 type AuthArt = 'keine' | 'token' | 'header' | 'basic';
 interface Werte { url: string; auth_art: AuthArt; auth_user: string | null; header_name: string | null; geheimnis: string; einstellungen: Record<string, unknown> }
-interface Def {
+export interface Def {
+  /** Reiter der Schnittstelle in Administration → Schnittstellen, z. B. „Paperless“ */
+  reiter: string;
   id: string; text: string; beschreibung: string; auth: AuthArt[]; pruefbar: boolean; header_name?: string;
   felder?: { url?: string; geheimnis?: string; auth_user?: string; header_name?: string };
   zusatz?: { key: string; text: string; platzhalter?: string }[];
   werte: Werte;
 }
-interface Gruppe { modul: string; name: string; verbindungen: Def[] }
+export interface Gruppe { modul: string; name: string; verbindungen: Def[] }
 interface Test { ok: boolean; text: string; dauer_ms?: number }
 
 const AUTH_TEXT: Record<AuthArt, string> = { keine: 'keine Anmeldung', token: 'API-Token (Authorization: Token …)', header: 'Schlüssel im eigenen Header', basic: 'Benutzer und Passwort (Basic Auth)' };
 
-export function VerbindungenPage() {
-  const loaded = useLoad(() => api.get<{ gruppen: Gruppe[] }>('/api/verbindungen'));
-  return (
-    <AppPage title="Anbindungen" subtitle="Angeschlossene Systeme: Adresse und Zugangsdaten an einer Stelle für alle Module">
-      {loaded.error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{loaded.error}</MessageStrip>}
-      {loaded.data?.gruppen.map((g) => g.verbindungen.map((d) => <Verbindung key={d.id} def={d} gruppe={g} />))}
-    </AppPage>
-  );
-}
-
-function Verbindung({ def, gruppe }: { def: Def; gruppe: Gruppe }) {
+export function Verbindung({ def }: { def: Def }) {
   const [w, setW] = useState<Werte>(def.werte);
   const [geaendert, setGeaendert] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -65,7 +55,7 @@ function Verbindung({ def, gruppe }: { def: Def; gruppe: Gruppe }) {
   }
 
   return (
-    <Panel headerText={gruppe.modul === 'core' ? def.text : `${def.text} (${gruppe.name})`} fixed style={{ marginBottom: '1rem' }}>
+    <Panel headerText={def.text} fixed style={{ marginBottom: '1rem' }}>
       <Text style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--sapContent_LabelColor)' }}>{def.beschreibung}</Text>
       <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}

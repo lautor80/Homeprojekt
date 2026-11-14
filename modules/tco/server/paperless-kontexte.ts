@@ -1,7 +1,7 @@
 import { PH, PH_DOKID, type KontextDef } from '../../../server/src/lib/paperless-mapping.js';
 
 /**
- * Ablagekontexte des Vereins für die zentrale Paperless-Zuordnung (Administration → Schnittstellen → Paperless-Zuordnung).
+ * Ablagekontexte des Vereins für die zentrale Paperless-Zuordnung (Administration → Schnittstellen → Paperless).
  * Die Standardregeln entsprechen dem bisherigen Verhalten der Apps.
  */
 const mitglied = [

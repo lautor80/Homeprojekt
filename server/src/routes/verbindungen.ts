@@ -5,7 +5,7 @@ import { BusinessError } from '../errors.js';
 import { verbindungDef, verbindungsGruppen } from '../modules.js';
 import { istPaperlessId, maskieren, paperlessEindeutig, uebernehmen, verbindungLesen, verbindungSpeichern, type AuthArt } from '../lib/verbindungen.js';
 
-/** Zentrale Anbindungen (Administration → Schnittstellen → Anbindungen): angeschlossene Systeme des Kerns und der Module */
+/** Zentrale Anbindungen (Administration → Schnittstellen): angeschlossene Systeme des Kerns und der Module */
 const P = 'core.settings:edit';
 
 const eingabe = z.object({

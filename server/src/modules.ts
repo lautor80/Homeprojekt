@@ -52,7 +52,7 @@ export function paperlessKontexte(): { modul: string; name: string; kontexte: Ko
   return activeModules().filter((m) => m.paperlessKontexte?.length).map((m) => ({ modul: m.id, name: m.name, kontexte: m.paperlessKontexte! }));
 }
 
-/** Anbindungen des Kerns und aller aktiven Module (Administration → Schnittstellen → Anbindungen) */
+/** Anbindungen des Kerns und aller aktiven Module (Administration → Schnittstellen) */
 export function verbindungsGruppen(): VerbindungGruppe[] {
   return [
     // Paperless meldet jeder Bereich selbst an (#232, S5: eigener Zugang je Bereich) – der Kern hat keinen gemeinsamen mehr

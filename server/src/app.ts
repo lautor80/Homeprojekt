@@ -85,7 +85,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   paperlessMelder({
     stoerung: (wo, text) => stoerungMelden({
       modul: 'core', quelle: 'PAPERLESS', objekt: wo, bereich: 'Administration', recht: 'core.settings:edit', art: 'Paperless gestört',
-      titel: wo, text: text.replace(/\s+/g, ' ').slice(0, 300), pfad: '/admin/anbindungen',
+      titel: wo, text: text.replace(/\s+/g, ' ').slice(0, 300), pfad: '/admin/schnittstellen',
     }, { warn: (e, t) => app.log.warn(e as Error, t) }),
     laeuft: (wo) => laeuft('core', 'PAPERLESS', wo),
   });

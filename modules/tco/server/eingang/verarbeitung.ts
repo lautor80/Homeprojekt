@@ -177,7 +177,7 @@ async function ausfuehren(d: DokZeile, ziele: ReturnType<typeof zieleAufloesen>,
       hinweise.push(`Bereits abgelegt (Paperless ${paperlessId}).`);
     } else {
       const pl = await paperlessFuer('tco');
-      if (!pl) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
+      if (!pl) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen).');
       try {
         const r = await ablegen(pl, ziele.zuordnung, daten, datei, { mime, benutzer: wer });
         paperlessId = r.id;
@@ -193,7 +193,7 @@ async function ausfuehren(d: DokZeile, ziele: ReturnType<typeof zieleAufloesen>,
   let nextcloudPfad: string | null = null;
   if (ziele.nextcloud && !dublette) {
     const v = await verbindungLesen(V_NEXTCLOUD);
-    if (!eingerichtet(v) || !v.auth_user || !v.geheimnis) throw new BusinessError('Die Nextcloud ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen → Nextcloud Dokumentenablage).');
+    if (!eingerichtet(v) || !v.auth_user || !v.geheimnis) throw new BusinessError('Die Nextcloud ist nicht eingerichtet (Administration → Schnittstellen → Nextcloud Dokumentenablage).');
     const dav = new WebDav(v.url, v.auth_user, v.geheimnis, 120_000);
     const ziel = ziele.nextcloud;
     const pfad = [ziel.pfad, ziel.dateiname].filter(Boolean).join('/');

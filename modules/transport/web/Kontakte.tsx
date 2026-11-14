@@ -242,7 +242,7 @@ function KontaktDokumente({ adrnr, titel, edit }: { adrnr: number; titel: string
   ];
 
   if (!d) return <Text>Lade Dokumente aus Paperless …</Text>;
-  if (!d.paperless) return <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen: Adresse und API-Token).</MessageStrip>;
+  if (!d.paperless) return <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Schnittstellen: Adresse und API-Token).</MessageStrip>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '0.5rem' }}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}

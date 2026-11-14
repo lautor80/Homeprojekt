@@ -87,7 +87,7 @@ export function PortalAllgemein() {
           <TextField label="Portal-Adresse (für Links in E-Mails)" value={e.s['portal.url']} onChange={e.set('portal.url')} placeholder="https://portal.tc-oberthal.de" />
         </FormGrid>
         <Text style={{ display: 'block', marginTop: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-          Angeschlossene Systeme (Paperless, n8n) werden unter Administration → Schnittstellen → Anbindungen gepflegt.
+          Angeschlossene Systeme (Paperless, n8n) werden unter Administration → Schnittstellen gepflegt.
         </Text>
       </Panel>
       {e.fuss('org.name')}
