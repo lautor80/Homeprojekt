@@ -147,8 +147,21 @@ test('Nextcloud-Export: Einrichtung, Test, Export, Aufbewahrung, Fehler', async 
   // Maske lässt Geheimnisse unverändert; Änderungsbeleg ohne Klartext
   r = await call('PUT', `${B}/nextcloud`, { ...cfg, passwort: '********', datei_passwort: '********', uhrzeit: '03:15' });
   assert.equal(r.status, 200);
-  const [g] = await sql`select passwort, datei_passwort, uhrzeit from core.backup_export`;
-  assert.deepEqual({ ...g }, { passwort: 'app-pw', datei_passwort: 'sehr-geheim', uhrzeit: '03:15' });
+  const [g] = await sql`select datei_passwort, uhrzeit from core.backup_export`;
+  assert.deepEqual({ ...g }, { datei_passwort: 'sehr-geheim', uhrzeit: '03:15' });
+  // Nextcloud: ein Zugang (#232, S2) – Adresse, Benutzer und App-Passwort stehen in der Anbindung „nextcloud“, nicht mehr bei der Sicherung
+  const zugang = async () => ({ ...(await sql`select url, auth_art, auth_user, geheimnis from core.verbindungen where id = 'nextcloud'`)[0] });
+  assert.deepEqual(await zugang(), { url: basis, auth_art: 'basic', auth_user: 'vorstand', geheimnis: 'app-pw' });
+  assert.deepEqual({ ...(await sql`select url, benutzer, passwort from core.backup_export`)[0] }, { url: '', benutzer: '', passwort: '' }, 'bei der Sicherung steht kein Zugang mehr');
+  // die Seite „Sicherung“ schickt den Zugang nicht mehr mit: er bleibt, wie er ist
+  r = await call('PUT', `${B}/nextcloud`, { aktiv: true, ordner: cfg.ordner, uhrzeit: '03:15', format: cfg.format, datei_passwort: '********', mit_aenderungsbelegen: cfg.mit_aenderungsbelegen, aufbewahrung_tage: cfg.aufbewahrung_tage });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.url, r.body.benutzer, r.body.passwort], [basis, 'vorstand', '********']);
+  assert.deepEqual(await zugang(), { url: basis, auth_art: 'basic', auth_user: 'vorstand', geheimnis: 'app-pw' });
+  // unter Schnittstellen → Nextcloud geändert: die Sicherung liest sofort den neuen Zugang
+  assert.equal((await call('PUT', '/api/verbindungen/nextcloud', { auth_user: 'anderer', geheimnis: 'neu-pw' })).status, 200);
+  assert.deepEqual([(await call('GET', `${B}/nextcloud`)).body.benutzer, (await zugang()).geheimnis], ['anderer', 'neu-pw']);
+  assert.equal((await call('PUT', '/api/verbindungen/nextcloud', { auth_user: 'vorstand', geheimnis: 'app-pw' })).status, 200);
   const belege = await sql`select field, old_value, new_value from core.change_item i join core.change_header h on h.id = i.header_id where h.object_type = 'BACKUP_EXPORT'`;
   assert.ok(belege.length > 0);
   assert.ok(!JSON.stringify(belege).includes('app-pw') && !JSON.stringify(belege).includes('sehr-geheim'), 'Geheimnisse nicht im Änderungsbeleg');

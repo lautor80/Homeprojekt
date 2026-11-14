@@ -193,7 +193,7 @@ async function ausfuehren(d: DokZeile, ziele: ReturnType<typeof zieleAufloesen>,
   let nextcloudPfad: string | null = null;
   if (ziele.nextcloud && !dublette) {
     const v = await verbindungLesen(V_NEXTCLOUD);
-    if (!eingerichtet(v) || !v.auth_user || !v.geheimnis) throw new BusinessError('Die Nextcloud ist nicht eingerichtet (Administration → Schnittstellen → Nextcloud Dokumentenablage).');
+    if (!eingerichtet(v) || !v.auth_user || !v.geheimnis) throw new BusinessError('Die Nextcloud ist nicht eingerichtet (Administration → Schnittstellen → Nextcloud).');
     const dav = new WebDav(v.url, v.auth_user, v.geheimnis, 120_000);
     const ziel = ziele.nextcloud;
     const pfad = [ziel.pfad, ziel.dateiname].filter(Boolean).join('/');

@@ -41,7 +41,8 @@ export async function verbindungenRoutes(app: FastifyInstance) {
         const s = !eingerichtet(roh) ? null
           : istPaperlessId(d.id) ? stoerungen.get(stoerungSchluessel('core', 'PAPERLESS', rechner(roh.url)))
             : d.id === 'mail' ? stoerungen.get(stoerungSchluessel('core', 'MAIL_FEHLER'))
-              : stoerungen.get(stoerungSchluessel(g.modul, 'SCHNITTSTELLE', d.id));
+              // überwachte Aufrufe melden mit der Id der Anbindung – gleich aus welchem Modul (die Nextcloud des Portals nutzt der Verein)
+              : [...stoerungen].find(([k]) => k.endsWith(`\nSCHNITTSTELLE\n${d.id}`))?.[1];
         const stand = !eingerichtet(roh) ? { eingerichtet: false, gestoert: false, text: 'nicht eingerichtet', seit: null, anzahl: 0 }
           : s ? { eingerichtet: true, gestoert: true, ...s } : { eingerichtet: true, gestoert: false, text: 'keine Störung gemeldet', seit: null, anzahl: 0 };
         verbindungen.push({ ...def, pruefbar: !!pruefen, stand, werte: { ...v, auth_art: v.url || v.geheimnis ? v.auth_art : (d.auth[0] as AuthArt) } });

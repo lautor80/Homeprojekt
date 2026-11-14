@@ -64,7 +64,7 @@ test('Anbindungen: Benutzer/Passwort, Masken, Verbindungstests', async () => {
   let r = await call('GET', '/api/verbindungen');
   const tco = r.body.gruppen.find((g: { modul: string }) => g.modul === 'tco');
   // einschließlich des eigenen Paperless-Zugangs des Vereins (#232, S5 – Id weiter „paperless“)
-  assert.deepEqual(tco.verbindungen.map((v: { id: string }) => v.id).sort(), ['paperless', 'tco.ep3', 'tco.ferien', 'tco.mailabruf', 'tco.nextcloud', 'tco.stunden']);
+  assert.deepEqual(tco.verbindungen.map((v: { id: string }) => v.id).sort(), ['paperless', 'tco.ep3', 'tco.ferien', 'tco.mailabruf', 'tco.stunden']);
 
   // ungesichert prüfen: falsches Passwort → abgelehnt, richtiges → Daten
   const S = { url: `${B}/stunden`, auth_art: 'basic', auth_user: 'test.user@example.org' };

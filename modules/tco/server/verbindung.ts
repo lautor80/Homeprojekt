@@ -1,6 +1,5 @@
 import { heute } from './format.js';
 import { authHeader, paperlessDef, type Verbindung, type VerbindungDef } from '../../../server/src/lib/verbindungen.js';
-import { WebDav } from '../../../server/src/lib/webdav.js';
 
 /**
  * Anbindungen des Vereinsmoduls (Administration → Schnittstellen): n8n-Webhooks für Importe. Zugangsdaten zu Nextcloud oder
@@ -12,7 +11,8 @@ import { WebDav } from '../../../server/src/lib/webdav.js';
 export const V_EP3 = 'tco.ep3';
 export const V_STUNDEN = 'tco.stunden';
 export const V_FERIEN = 'tco.ferien';
-export const V_NEXTCLOUD = 'tco.nextcloud';
+// der eine Zugang des Portals zur Nextcloud (#232, S2 – server/src/lib/nextcloud.ts); bisher eigene Anbindung „tco.nextcloud“
+export const V_NEXTCLOUD = 'nextcloud';
 export const V_MAILABRUF = 'tco.mailabruf';
 
 async function abrufen(url: string, init: RequestInit, timeout = 30_000): Promise<{ res: Response; text: string }> {
@@ -117,16 +117,5 @@ export const TCO_VERBINDUNGEN: VerbindungDef[] = [
     auth: ['header', 'basic', 'keine'],
     header_name: 'Authorization',
     felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/tco-dokumenteneingang-alle)' },
-  },
-  {
-    id: V_NEXTCLOUD, text: 'Nextcloud Dokumentenablage', reiter: 'Nextcloud',
-    beschreibung: 'Arbeitsablage des Dokumenteneingangs: Regeln können Dokumente zusätzlich zu Paperless in einen Ordner der Nextcloud legen (WebDAV). Anmeldung mit Benutzer und App-Passwort (Nextcloud → Einstellungen → Sicherheit).',
-    auth: ['basic'],
-    felder: { url: 'Adresse der Nextcloud (z. B. https://cloud.example.org)', auth_user: 'Benutzer', geheimnis: 'App-Passwort' },
-    pruefen: async (v) => {
-      if (!v.url || !v.auth_user || !v.geheimnis) return { ok: false, text: 'Adresse, Benutzer und App-Passwort fehlen.' };
-      const eintraege = await new WebDav(v.url, v.auth_user, v.geheimnis, 20_000).liste('');
-      return { ok: true, text: `Verbunden: ${eintraege.length} Einträge im Hauptordner von ${v.auth_user}.` };
-    },
   },
 ];
