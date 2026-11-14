@@ -157,6 +157,17 @@ test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   assert.match(r.body.text, /gültig bis 30\.06\.2025/);
   let [s] = await sql`select status, gueltigbis from tco.sepa where adrnr = '0000000101'`;
   assert.deepEqual([s.status, s.gueltigbis], [null, '2025-06-30']);
+  // die eigenen Verträge enden mit dem Austritt – wie bei der Kündigung; Verträge von Mia (zahlt über Hans) bleiben
+  const enden = async () => (await sql`select adrnr, vertragnr, vertragende from tco.vertraege where adrnr in ('0000000101', '0000000102') order by adrnr, vertragnr`)
+    .map((v) => `${v.adrnr.slice(-3)}/${v.vertragnr}:${v.vertragende ?? '-'}`);
+  assert.match(r.body.text, /Verträge enden am 30\.06\.2025: Erwachsene\./);
+  assert.deepEqual(await enden(), ['101/1:2025-06-30', '102/1:-', '102/2:-']);
+  // Austritt verschieben: der Vertrag zieht mit
+  r = await call('POST', `${M}/m/0000000101/austritt`, { austritt: '2025-12-31' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await enden(), ['101/1:2025-12-31', '102/1:-', '102/2:-']);
+  r = await call('POST', `${M}/m/0000000101/austritt`, { austritt: '2025-06-30' });
+  assert.deepEqual(await enden(), ['101/1:2025-06-30', '102/1:-', '102/2:-']);
   // manuell aktivieren (Kinder zahlen weiter)
   r = await call('POST', `${M}/sepa/0000000101/manuell`, { aktiv: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -168,6 +179,9 @@ test('Mitglieder: Liste, Detail, Austritt/SEPA, Verträge, Bank', async () => {
   r = await call('POST', `${M}/m/0000000101/austritt`, { austritt: null });
   [s] = await sql`select status, gueltigbis from tco.sepa where adrnr = '0000000101'`;
   assert.deepEqual([s.status, s.gueltigbis], ['X', null]);
+  // Austritt entfernt: der vom Austritt beendete Vertrag läuft wieder unbefristet
+  assert.match(r.body.text, /Wieder unbefristet: Erwachsene\./);
+  assert.deepEqual(await enden(), ['101/1:-', '102/1:-', '102/2:-']);
 
   // Verträge: neuer Vertrag, Ende vor Beginn abgelehnt, Zahler nur mit aktivem Mandat
   r = await call('POST', `${M}/m/0000000102/vertraege`, { art: '5', beginn: '2026-07-01', turnus: 'halbjährlich', betrag: 60, zahler: '0000000103' });

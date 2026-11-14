@@ -320,13 +320,50 @@ export async function sepaEndeSetzen(tx: Db, adrnr: string, austrittAlt: string 
   return null;
 }
 
+/**
+ * Austritt setzen, verschieben oder entfernen – für jeden Weg gleich (Feld „Austritt“ der Mitgliederpflege, Vorgang
+ * „Kündigung“, Kündigung in „Meine Daten“). Die eigenen Verträge der Person folgen dem Austritt:
+ *  - Austritt gesetzt: jeder Vertrag ohne Ende oder mit späterem Ende endet am Austritt. Ein Vertrag, der erst nach dem
+ *    Austritt beginnt, bleibt stehen und wird gemeldet. Frühere Enden (z. B. Jugendtraining zum 30.09.) bleiben.
+ *  - Austritt verschoben oder entfernt: Verträge, die am bisherigen Austritt endeten, enden am neuen bzw. laufen wieder
+ *    unbefristet – wie das SEPA-Mandat.
+ * Verträge anderer Personen, die über dieses Mitglied zahlen, bleiben unberührt (eigene Mitgliedschaft).
+ */
 export async function austrittSichern(tx: Db, adrnr: string, austritt: string | null): Promise<string> {
   const m = await mitgliedLesen(tx, adrnr);
-  if ((m.austritt ?? null) === (austritt ?? null)) return 'Keine Änderung.';
+  const alt: string | null = m.austritt ?? null;
+  if (alt === (austritt ?? null)) return 'Keine Änderung.';
   if (austritt && m.eintritt && austritt < m.eintritt) throw new BusinessError(`Der Austritt liegt vor dem Eintritt am ${dat(m.eintritt)}.`);
   await tx`update tco.mitglieder set austritt = ${austritt} where adrnr = ${adrnr}`;
-  const ende = await sepaEndeSetzen(tx, adrnr, m.austritt);
-  return austritt ? `Austritt ${dat(austritt)} gesichert – SEPA-Mandat gültig bis ${dat(ende)}.` : 'Austritt entfernt – SEPA-Mandat wieder aktiv und unbefristet.';
+  const vt = await vertraegeAmAustritt(tx, adrnr, alt, austritt);
+  const ende = await sepaEndeSetzen(tx, adrnr, alt);
+  return (austritt ? `Austritt ${dat(austritt)} gesichert – SEPA-Mandat gültig bis ${dat(ende)}.` : 'Austritt entfernt – SEPA-Mandat wieder aktiv und unbefristet.') + vt;
+}
+
+/** Laufzeitende der eigenen Verträge an den Austritt anpassen (siehe austrittSichern); liefert den Zusatz für die Meldung */
+async function vertraegeAmAustritt(tx: Db, adrnr: string, alt: string | null, neu: string | null): Promise<string> {
+  const rows = await tx`select vertragnr, artname, art, vertragbegin, vertragende from tco.vertraege where adrnr = ${adrnr} order by vertragnr`;
+  const name = (v: Record<string, any>) => leer(v.artname) || leer(v.art) || `Nr. ${v.vertragnr}`;
+  const beendet: string[] = [];
+  const offen: string[] = [];
+  const spaeter: string[] = [];
+  for (const v of rows) {
+    const bisher: string | null = v.vertragende ?? null;
+    let soll = bisher;
+    // vom bisherigen Austritt beendet: folgt dem neuen (oder läuft wieder unbefristet)
+    if (alt && bisher === alt) soll = neu;
+    // läuft über den Austritt hinaus: endet am Austritt
+    if (neu && (!soll || soll > neu)) {
+      if (v.vertragbegin && v.vertragbegin > neu) { spaeter.push(name(v)); continue; }
+      soll = neu;
+    }
+    if (soll === bisher) continue;
+    await tx`update tco.vertraege set vertragende = ${soll} where adrnr = ${adrnr} and vertragnr = ${v.vertragnr}`;
+    (soll ? beendet : offen).push(name(v));
+  }
+  return (beendet.length ? ` Verträge enden am ${dat(neu)}: ${beendet.join(', ')}.` : '')
+    + (offen.length ? ` Wieder unbefristet: ${offen.join(', ')}.` : '')
+    + (spaeter.length ? ` Bitte prüfen – beginnt erst nach dem Austritt: ${spaeter.join(', ')}.` : '');
 }
 
 /** Mandat eines ausgetretenen Zahlers manuell wieder aktivieren (z. B. Kinder zahlen weiter über ihn) bzw. zurücksetzen */
