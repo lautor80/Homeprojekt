@@ -12,12 +12,26 @@ import { dateienImOrdner, dateiLesen } from './ordner';
  * „Entwurf öffnen“ erzeugt eine E-Mail-Datei (.eml, als Entwurf gekennzeichnet) mit den Anhängen – sie öffnet sich im
  * Standard-Mailprogramm (Outlook, Thunderbird, Apple Mail) als neue, noch nicht gesendete Nachricht.
  * mailto: kann keine Anhänge übergeben; ohne Anhänge geht es auch direkt per mailto.
+ *
+ * Ist die Anbindung „Euroflex E-Mail-Versand“ eingerichtet (#235), sendet „Senden“ die E-Mail über Outlook 365 aus dem Postfach
+ * des Benutzers: eine E-Mail an den Empfänger und parallel eine eigene E-Mail an die feste zweite Adresse der Anbindung.
+ * „Entwurf in Outlook“ legt dieselben E-Mails nur als Entwürfe im Postfach ab.
  */
 type Art = 'T' | 'L' | 'R' | 'FREI';
 const ARTEN: Record<Art, string> = { T: 'Transportauftrag (an Unternehmer)', L: 'Lieferschein (an Kunde)', R: 'Rechnung (an Kunde)', FREI: 'Freier Text' };
 interface Vorschlag { an: string; betreff: string; text: string; faktura: string | null }
 interface Anhang { key: string; name: string; quelle: 'ORDNER' | 'PAPERLESS'; docId?: number; groesse?: number }
 export interface MailDok { doc_id: number; titel: string | null; datei: string | null }
+/** Versand über Outlook 365 (Anbindung „Euroflex E-Mail-Versand“) */
+interface VersandInfo { eingerichtet: boolean; postfach: string | null; kopieAn: string; maxMb: number }
+type Rolle = 'kunde' | 'kopie';
+interface VersandErgebnis { status: 'gesendet' | 'entwurf' | 'teilweise' | 'fehler'; text: string; mails: { rolle: Rolle; an: string; status: string; fehler?: string }[] }
+const datenUrl = (f: Blob) => new Promise<string>((ok, err) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result));
+  r.onerror = () => err(r.error);
+  r.readAsDataURL(f);
+});
 
 // ---------------------------------------------------------------- .eml (RFC 5322 / MIME)
 const b64 = (bytes: Uint8Array) => {
@@ -82,6 +96,10 @@ const passt = (art: Art, name: string) => (art === 'T' ? /transport/i : art === 
 export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; dokumente: MailDok[]; onClose: () => void }) {
   const [art, setArt] = useState<Art>('T');
   const [an, setAn] = useState('');
+  const [cc, setCc] = useState('');
+  const [info, setInfo] = useState<VersandInfo | null>(null);
+  // nach einem Teilerfolg: nur noch die fehlgeschlagene E-Mail senden, damit niemand etwas doppelt bekommt
+  const [offen, setOffen] = useState<Rolle[] | null>(null);
   const [betreff, setBetreff] = useState('');
   const [text, setText] = useState('');
   const [faktura, setFaktura] = useState<string | null>(null);
@@ -95,6 +113,7 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
   const teilenMoeglich = typeof navigator !== 'undefined' && !!navigator.canShare
     && navigator.canShare({ files: [new File(['x'], 'test.pdf', { type: 'application/pdf' })] });
 
+  useEffect(() => { api.get<VersandInfo>(`${T}/mail/info`).then(setInfo).catch(() => setInfo(null)); }, []);
   useEffect(() => {
     dateienImOrdner(nr).then((d) => setOrdner((d?.dateien ?? []).filter((f) => !/\.eml$/i.test(f.name))
       .map((f) => ({ key: `O:${f.name}`, name: f.name, quelle: 'ORDNER' as const, groesse: f.groesse })))).catch(() => setOrdner([]));
@@ -147,6 +166,30 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
       if (autoOffen()) onClose(); else setAnleitung(true);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  /** Versand über Outlook 365 (n8n): Ordnerdateien lädt der Browser hoch, Paperless-Dokumente holt der Server selbst */
+  async function senden(modus: 'senden' | 'entwurf') {
+    setBusy(true); setError(null);
+    try {
+      const dateien: { name: string; inhalt: string }[] = [];
+      const dokumenteIds: number[] = [];
+      let bytes = 0;
+      for (const x of anhaenge.filter((y) => wahl.has(y.key))) {
+        if (x.quelle === 'PAPERLESS') { dokumenteIds.push(x.docId!); continue; }
+        const f = await dateiLesen(nr, x.name);
+        if (!f) throw new Error(`${x.name} ist im Ablageordner nicht mehr vorhanden.`);
+        bytes += f.size;
+        if (info && bytes > info.maxMb * 1024 * 1024) throw new Error(`Die Anhänge sind zusammen größer als ${info.maxMb} MB – bitte weniger Dateien wählen.`);
+        dateien.push({ name: x.name, inhalt: await datenUrl(f) });
+      }
+      const r = await api.post<VersandErgebnis>(`${T}/auftraege/${nr}/mail`, {
+        modus, an: an.trim(), cc: cc.trim(), betreff, text, dateien, dokumente: dokumenteIds, ...(offen ? { nur: offen } : {}),
+      });
+      if (r.status === 'gesendet' || r.status === 'entwurf') { toast(r.text, 8000); onClose(); return; }
+      const fehlgeschlagen = r.mails.filter((m) => m.status === 'fehler').map((m) => m.rolle);
+      if (r.status === 'teilweise') setOffen(fehlgeschlagen);
+      setError(r.text);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
   /** Windows-Teilen (Chrome/Edge): Anhänge direkt an Outlook bzw. die Mail-App übergeben – Empfänger kommt in die Zwischenablage */
   async function teilen() {
     setBusy(true); setError(null);
@@ -164,6 +207,7 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
     window.location.href = `mailto:${an.trim()}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text.replace(/\r?\n/g, '\r\n'))}`;
   };
 
+  const outlook = !!info?.eingerichtet;
   if (anleitung) {
     return createPortal(
       <Dialog open headerText="E-Mail-Entwurf öffnen" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
@@ -188,7 +232,12 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
   return createPortal(
     <Dialog open headerText={`E-Mail zum Auftrag ${nr}`} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={<>
-              <Button design="Emphasized" icon="email" loading={busy} disabled={busy || !betreff.trim()} onClick={entwurf}>Entwurf öffnen</Button>
+              {outlook && <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={busy || !betreff.trim() || !an.trim() || !info?.postfach}
+                                  tooltip={`Über Outlook 365 aus dem Postfach ${info?.postfach ?? '–'} senden`} onClick={() => senden('senden')}>{offen ? 'Rest senden' : 'Senden'}</Button>}
+              {outlook && <Button icon="write-new" disabled={busy || !betreff.trim() || !an.trim() || !info?.postfach}
+                                  tooltip="Als Entwurf im Outlook-Postfach ablegen und dort prüfen und senden" onClick={() => senden('entwurf')}>Entwurf in Outlook</Button>}
+              <Button design={outlook ? 'Default' : 'Emphasized'} icon="email" loading={!outlook && busy} disabled={busy || !betreff.trim()}
+                      tooltip="E-Mail-Datei (.eml) für das Mailprogramm auf diesem PC" onClick={entwurf}>{outlook ? 'E-Mail-Datei' : 'Entwurf öffnen'}</Button>
               {teilenMoeglich && <Button icon="share-2" disabled={busy || !betreff.trim()} tooltip="Windows-Teilen: Anhänge direkt an Outlook bzw. Mail übergeben" onClick={teilen}>Teilen…</Button>}
               <Button design="Transparent" disabled={busy} tooltip="Ohne Anhänge direkt im Mailprogramm" onClick={mailto}>Ohne Anhänge</Button>
               <Button onClick={onClose}>Abbrechen</Button>
@@ -203,6 +252,7 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
           </div>
           <div><Label>An</Label><Input style={{ width: '100%' }} type="Email" value={an} placeholder="E-Mail-Adresse (auch im Mailprogramm ergänzbar)" onInput={(e) => setAn(e.target.value)} /></div>
         </div>
+        {outlook && <div><Label>CC</Label><Input style={{ width: '100%' }} value={cc} placeholder="weitere Empfänger, durch Komma getrennt" onInput={(e) => setCc(e.target.value)} /></div>}
         <div><Label required>Betreff</Label><Input style={{ width: '100%' }} value={betreff} maxlength={200} onInput={(e) => setBetreff(e.target.value)} /></div>
         <div><Label>Nachricht</Label><TextArea style={{ width: '100%' }} rows={8} value={text} onInput={(e) => setText(e.target.value)} /></div>
         <Label>Anhänge{faktura && art === 'R' ? ` (Rechnung ${faktura})` : ''}</Label>
@@ -219,8 +269,19 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
             ))}
           </div>
         )}
+        {outlook && (info?.postfach ? (
+          <MessageStrip design={offen ? 'Critical' : 'Information'} hideCloseButton>
+            {offen
+              ? `Es fehlt noch: ${offen.map((r) => (r === 'kunde' ? `E-Mail an ${an.trim()}` : `E-Mail an die feste zweite Adresse ${info.kopieAn}`)).join(', ')}. „Rest senden“ sendet nur diese.`
+              : `„Senden“ verschickt über Outlook 365 aus dem Postfach ${info.postfach}.${info.kopieAn ? ` Parallel geht dieselbe E-Mail mit denselben Anhängen als eigene E-Mail an ${info.kopieAn}.` : ' Eine feste zweite Adresse ist nicht eingetragen.'}`}
+          </MessageStrip>
+        ) : (
+          <MessageStrip design="Critical" hideCloseButton>
+            Für Ihren Benutzer ist kein Postfach hinterlegt – „Senden“ ist deshalb gesperrt (Administration → Anbindungen → Euroflex E-Mail-Versand, „Postfach je Benutzer“).
+          </MessageStrip>
+        ))}
         <Text className="portal-muted portal-small">
-          „Entwurf öffnen“ erstellt eine E-Mail-Datei (.eml) mit den gewählten Anhängen, die das Standard-Mailprogramm als neuen Entwurf öffnet
+          „{outlook ? 'E-Mail-Datei' : 'Entwurf öffnen'}“ erstellt eine E-Mail-Datei (.eml) mit den gewählten Anhängen, die das Standard-Mailprogramm als neuen Entwurf öffnet
           (Outlook: direkt mit „Senden“) – {autoOffen() ? 'der Browser öffnet sie automatisch.' : 'einmal „Dateien dieses Typs immer öffnen“ einstellen, dann öffnet sie sich direkt.'}
           {teilenMoeglich ? ' „Teilen…“ übergibt Text und Anhänge über die Windows-Freigabe direkt an Outlook bzw. Mail (Empfänger per Strg+V einfügen).' : ''}
         </Text>

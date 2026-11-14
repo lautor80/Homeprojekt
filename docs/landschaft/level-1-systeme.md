@@ -24,9 +24,9 @@ flowchart LR
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang"]
     end
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
-    ANB["2 · Anbindungen<br/>Rückmeldungen Jugendtraining (n8n)<br/>Schulferien Saarland (n8n)<br/>EP3-Export Hallenbuchungen (n8n)<br/>Maileingang jetzt abrufen (n8n)<br/>Nextcloud Dokumentenablage<br/>Paperless-ngx<br/>E-Mail-Versand (n8n)"]
+    ANB["2 · Anbindungen<br/>Rückmeldungen Jugendtraining (n8n)<br/>Schulferien Saarland (n8n)<br/>EP3-Export Hallenbuchungen (n8n)<br/>Maileingang jetzt abrufen (n8n)<br/>Nextcloud Dokumentenablage<br/>Paperless-ngx<br/>E-Mail-Versand (n8n)<br/>Euroflex E-Mail-Versand (Outlook 365, n8n)"]
     RT["5 · Laufzeit<br/>db · gotenberg · backup · caddy · paperless-db · paperless-redis · paperless-tika · paperless · n8n"]
-    N8N["n8n<br/>TCO EP3 Import Portal<br/>TCO Maileingang<br/>TCO Mailversand<br/>TCO Paperless Qualifizierung"]
+    N8N["n8n<br/>Euroflex Mailversand<br/>TCO EP3 Import Portal<br/>TCO Maileingang<br/>TCO Mailversand<br/>TCO Paperless Qualifizierung"]
     PL[("Paperless-ngx")]
   end
   subgraph EXT["4 · Vereinssysteme"]
@@ -116,6 +116,7 @@ flowchart LR
 
 | Workflow | Auslöser | Ziel | Art | Knoten | Detail |
 |---|---|---|---|---|---|
+| Euroflex Mailversand | Webhook /webhook/euroflex-mailversand | extern | HTTP | Postfach prüfen, Entwurf anlegen, Senden | https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent |
 | TCO EP3 Import Portal | Webhook /webhook/tco-ep3-import | EP3-bs Hallenbuchung | MySQL (lesend) | EP3 Buchungen, EP3 Kunden, EP3 Texte, EP3 Events |  |
 | TCO Maileingang | manuell (Editor), Webhook /webhook/tco-dokumenteneingang-alle, Zeitplan alle 5 Min. | Mailserver (IMAP/SMTP) | IMAP | Posteingang lesen (IMAP), Posteingang lesen (IMAP Benjamin), Anhänge laden, Als gelesen markieren, E-Mail verschieben, E-Mail in den Papierkorb |  |
 | TCO Maileingang | manuell (Editor), Webhook /webhook/tco-dokumenteneingang-alle, Zeitplan alle 5 Min. | Vereinsportal (Modul tco) | HTTP | An Portal liefern, Ausstehende Mailaktionen, Erledigt melden | /api/m/tco/eingang/mail, /api/m/tco/eingang/mailaktionen, /api/m/tco/eingang/vorgaenge/ |
@@ -135,6 +136,7 @@ flowchart LR
 | `tco.nextcloud` | Nextcloud Dokumentenablage |  | Arbeitsablage des Dokumenteneingangs: Regeln können Dokumente zusätzlich zu Paperless in einen Ordner der Nextcloud legen (WebDAV). Anmeldung mit Benutzer und App-Passwort (Nextcloud → Einstellungen → Sicherheit). | `modules/tco/server/verbindung.ts` |
 | `paperless` | Paperless-ngx |  | Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst.  | `server/src/lib/verbindungen.ts` |
 | `mail` | E-Mail-Versand (n8n) | TCO Mailversand | Generischer n8n-Workflow „TCO Mailversand“ für alle E-Mails des Portals (Kennwort-Links, Registrierung, Rechnungen, Mitglieder …).  | `server/src/lib/mail.ts` |
+| `transport.mail` | Euroflex E-Mail-Versand (Outlook 365, n8n) | Euroflex Mailversand | n8n-Workflow „Euroflex Mailversand“: E-Mails zum Auftrag mit ausgewählten Anhängen über Outlook 365, aus dem Postfach des angemeldeten Benutzers.  | `modules/transport/server/mailversand.ts` |
 
 > Hinweis: Zu „Rückmeldungen Jugendtraining (n8n)“, „Schulferien Saarland (n8n)“ liegt kein Workflow-Export in `docs/n8n` – die Workflows existieren nur in der n8n-Instanz.
 

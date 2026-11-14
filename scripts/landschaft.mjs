@@ -153,7 +153,7 @@ function workflows() {
 // ------------------------------------------------------------------ Anbindungen (Administration → Anbindungen)
 function anbindungen() {
   const liste = [];
-  const quellen = [`${MOD}/server/verbindung.ts`, 'server/src/lib/verbindungen.ts', 'server/src/lib/mail.ts', 'server/src/lib/webdav.ts'];
+  const quellen = [`${MOD}/server/verbindung.ts`, 'server/src/lib/verbindungen.ts', 'server/src/lib/mail.ts', 'server/src/lib/webdav.ts', 'modules/transport/server/mailversand.ts'];
   for (const f of quellen.filter(gibt)) {
     const t = lesen(f);
     const konst = Object.fromEntries([...t.matchAll(/(?:export )?const (\w+) = '([^']+)'/g)].map((m) => [m[1], m[2]]));

@@ -16,7 +16,9 @@ const MIME: Record<string, string> = {
   doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
-const endung = (n: string) => (/\.([a-z0-9]+)$/i.exec(n)?.[1] ?? '').toLowerCase();
+export const endung = (n: string) => (/\.([a-z0-9]+)$/i.exec(n)?.[1] ?? '').toLowerCase();
+/** MIME-Typ nach Dateiendung (E-Mail-Anhänge, Ablage) */
+export const mimeTyp = (n: string) => MIME[endung(n)] ?? ({ xml: 'application/xml', zip: 'application/zip' } as Record<string, string>)[endung(n)] ?? 'application/octet-stream';
 
 export function paperlessFirma(f: Firma): Paperless {
   if (!paperlessKonfiguriert({ url: f.paperless_url, token: f.paperless_token })) {
