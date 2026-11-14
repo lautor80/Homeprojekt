@@ -18,7 +18,7 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     permissions: ['transport.versand:execute'],
   },
   {
-    id: 'transport.import', app: 'Stammdaten', text: 'Datenimport aus SAP',
+    id: 'transport.import', app: 'Produkte und Wertelisten', text: 'Datenimport aus SAP',
     beschreibung: 'Reiter „Datenimport“ in den Stammdaten: Kontakte, Produkte und Aufträge als CSV aus SAP einlesen.',
     permissions: ['transport.import:execute'],
   },

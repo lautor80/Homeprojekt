@@ -279,10 +279,10 @@ export async function fiRoutes(app: FastifyInstance) {
     const funktion = TCO_FUNKTIONEN.find((f) => f.id === (modus === 'bank' ? F_BANKIMPORT : F_MANUELL))!;
     if (!funktionAktiv(funktion.id)) throw new BusinessError(funktionAusText(funktion.text), 403);
     if (modus === 'bank' && !bank.includes(b.konto)) {
-      throw new BusinessError(`Konto ${b.konto} ist in den Stammdaten nicht als Konto mit Bankdatei hinterlegt (TC Oberthal → Einstellungen → Stammdaten → FI-Belege).`);
+      throw new BusinessError(`Konto ${b.konto} ist nicht als Konto mit Bankdatei hinterlegt (Administration → Einstellungen → TC Oberthal → Finanzen).`);
     }
     if (modus === 'manuell' && !manuellKonten.includes(b.konto)) {
-      throw new BusinessError(`Konto ${b.konto} ist in den Stammdaten nicht für manuelle Buchungen hinterlegt (TC Oberthal → Einstellungen → Stammdaten → FI-Belege).`);
+      throw new BusinessError(`Konto ${b.konto} ist nicht für manuelle Buchungen hinterlegt (Administration → Einstellungen → TC Oberthal → Finanzen).`);
     }
     const umsaetze: Umsatz[] = b.umsaetze.map((u) => ({
       konto: b.konto, ...u,

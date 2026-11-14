@@ -15,8 +15,9 @@ const mod: WebModule = {
       text: 'Euroflex',
       children: [
         { text: 'Aufträge', icon: 'shipping-status', path: '/transport/auftraege', permission: 'transport.auftraege:display' },
-        { text: 'Kontakte', icon: 'contacts', path: '/transport/kontakte', permission: 'transport.auftraege:display' },
-        { text: 'Stammdaten', icon: 'database', path: '/transport/stammdaten', permission: 'transport.stammdaten:edit' },
+        { text: 'Kontakte', icon: 'contacts', path: '/transport/kontakte', permission: 'transport.kontakte:display' },
+        // fachliche Listen heißen „Stammdaten“ nur noch als Begriff (#232, E5/N7): Firma, Bank und Texte stehen in den Einstellungen
+        { text: 'Produkte und Wertelisten', icon: 'database', path: '/transport/stammdaten', permission: 'transport.stammdaten:edit' },
       ],
     },
   ],
@@ -35,12 +36,12 @@ const mod: WebModule = {
     { path: '/transport/auftraege/neu/:typ', component: AuftragDetail, permission: 'transport.auftraege:edit' },
     { path: '/transport/auftraege/:nr', component: AuftragDetail, permission: 'transport.auftraege:display' },
     { path: '/transport/stammdaten', component: Stammdaten, permission: 'transport.stammdaten:edit' },
-    { path: '/transport/kontakte', component: Kontakte, permission: 'transport.auftraege:display' },
+    { path: '/transport/kontakte', component: Kontakte, permission: 'transport.kontakte:display' },
   ],
   tiles: [
     { text: 'Auftragsverwaltung', subtitle: 'Fracht- und Holzträgeraufträge', icon: 'shipping-status', path: '/transport/auftraege', permission: 'transport.auftraege:display' },
-    { text: 'Kontakte', subtitle: 'Kunden, Unternehmer, Rechnungsempfänger', icon: 'contacts', path: '/transport/kontakte', permission: 'transport.auftraege:display' },
-    { text: 'Stammdaten', subtitle: 'Firma, Produkte, Wertelisten, Texte', icon: 'database', path: '/transport/stammdaten', permission: 'transport.stammdaten:edit' },
+    { text: 'Kontakte', subtitle: 'Kunden, Unternehmer, Rechnungsempfänger', icon: 'contacts', path: '/transport/kontakte', permission: 'transport.kontakte:display' },
+    { text: 'Produkte und Wertelisten', subtitle: 'Produkte, Fahrzeugtypen, Ladegut, Ladeweisen', icon: 'database', path: '/transport/stammdaten', permission: 'transport.stammdaten:edit' },
   ],
 };
 

@@ -124,14 +124,6 @@ const mod: WebModule = {
           ],
         },
         {
-          text: 'Einstellungen', icon: 'action-settings',
-          children: [
-            { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
-            // alle Preise an einer Stelle (#232, N4): sichtbar für alle, die eine der Sichten sehen dürfen
-            { text: 'Produkte und Preise', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
-          ],
-        },
-        {
           text: 'Mitglieder', icon: 'group',
           children: [
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
@@ -163,6 +155,9 @@ const mod: WebModule = {
             { text: 'Hallenschlüssel', icon: 'key', path: '/tco/hallenschluessel', permission: 'tco.schluessel:display' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
             { text: 'Platzverwaltung', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
+            // Stammdaten stehen als letzte App ihres Fachbereichs (#232, E5) – eine Menügruppe „Einstellungen“ gibt es im Fachbaum nicht mehr
+            // alle Preise an einer Stelle (#232, N4): sichtbar für alle, die eine der Sichten sehen dürfen
+            { text: 'Produkte und Preise', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
           ],
         },
         {
@@ -187,6 +182,7 @@ const mod: WebModule = {
             { text: 'Beitragsforecast', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },
             { text: 'Einnahmen und Ausgaben', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
             { text: 'Jahresabschluss', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
+            { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
           ],
         },
         {

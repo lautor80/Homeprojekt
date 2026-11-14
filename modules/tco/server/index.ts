@@ -197,10 +197,6 @@ const tco: ServerModule = {
     { area: 'Mein Bereich', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Einstellungen des Vereins pflegen (Rechnungssteller, Bank, Logo, Hallenabrechnung, FI-Belege) – Administration → Einstellungen → TC Oberthal' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
-    { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
-    { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
-    { area: 'Einstellungen', app: 'Produkte und Preise', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
-    { area: 'Einstellungen', app: 'Produkte und Preise', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
 
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Gruppen zuordnen, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
@@ -236,6 +232,8 @@ const tco: ServerModule = {
       text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
       text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
+    { area: 'Tennishalle', app: 'Produkte und Preise', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
+    { area: 'Tennishalle', app: 'Produkte und Preise', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
 
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
@@ -259,6 +257,8 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
+    { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
+    { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
 
     { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.display, text: 'Dokumenteneingang anzeigen: Regelwerk, Korrespondenten und Protokoll der eingegangenen E-Mails mit Ablageort (ohne Inhalte)' },
     { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.edit, text: 'Regelwerk und Korrespondenten des Dokumenteneingangs pflegen, Prüfliste bearbeiten: Mailtext und Anhänge offener Vorgänge ansehen, ablegen oder ignorieren', requires: [P_EING.display] },

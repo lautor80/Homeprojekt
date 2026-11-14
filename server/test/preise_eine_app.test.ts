@@ -21,7 +21,7 @@ test('Produkte und Preise: vier Sichten, jede mit einem Recht aus dem Katalog; d
   const rechte = sichten.map((s) => s.recht).join('|');
   assert.ok(modul.includes(`{ text: 'Produkte und Preise', icon: 'product', path: '/tco/produkte', permission: '${rechte}' }`), 'Menüeintrag mit den Rechten aller Sichten');
   assert.ok(modul.includes(`{ path: '/tco/produkte', component: Produkte, permission: '${rechte}' }`), 'Route mit den Rechten aller Sichten');
-  assert.match(katalog, /area: 'Einstellungen', app: 'Produkte und Preise'/, 'Rollenpflege nennt die App wie das Menü');
+  assert.match(katalog, /area: 'Tennishalle', app: 'Produkte und Preise'/, 'Rollenpflege nennt die App wie das Menü – als Stammdaten im Fachbereich (E5)');
 });
 
 test('Fach-Apps: Preise nur noch zur Anzeige, mit Verweis auf eine vorhandene Sicht; Hallenpreise ist eine Sicht', () => {
