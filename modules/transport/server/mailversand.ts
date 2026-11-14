@@ -174,8 +174,8 @@ export interface VersandErgebnis { status: 'gesendet' | 'entwurf' | 'teilweise' 
 
 const ROLLE_TEXT: Record<Rolle, string> = { kunde: 'E-Mail an den Empfänger', kopie: 'E-Mail an die feste zweite Adresse' };
 
-/** E-Mails zum Auftrag über den n8n-Workflow senden bzw. als Entwürfe im Postfach ablegen; jede E-Mail steht im E-Mail-Protokoll */
-export async function euroflexMailSenden(a: VersandAuftrag): Promise<VersandErgebnis> {
+/** Anbindung eingerichtet und Postfach für den angemeldeten Benutzer vorhanden? Wirft sonst – vor dem Laden der Anhänge prüfen */
+export async function versandBereit(): Promise<{ v: Verbindung; e: MailEinstellungen; postfach: string }> {
   const v = await verbindungLesen(V_MAIL);
   if (!eingerichtet(v)) throw new BusinessError('Der E-Mail-Versand über Outlook 365 ist nicht eingerichtet (Administration → Anbindungen → Euroflex E-Mail-Versand).');
   const e = einstellungenLesen(v);
@@ -183,6 +183,12 @@ export async function euroflexMailSenden(a: VersandAuftrag): Promise<VersandErge
   if (!postfach) {
     throw new BusinessError('Für Ihren Benutzer ist kein Postfach hinterlegt: E-Mail-Adresse am Benutzer eintragen oder das Postfach in der Anbindung „Euroflex E-Mail-Versand“ zuordnen.');
   }
+  return { v, e, postfach };
+}
+
+/** E-Mails zum Auftrag über den n8n-Workflow senden bzw. als Entwürfe im Postfach ablegen; jede E-Mail steht im E-Mail-Protokoll */
+export async function euroflexMailSenden(a: VersandAuftrag): Promise<VersandErgebnis> {
+  const { v, e, postfach } = await versandBereit();
   const an = adressenPruefen(a.an, 'Empfänger');
   const cc = adressenPruefen(a.cc, 'CC');
   if (!an.length) throw new BusinessError('Bitte einen Empfänger angeben.');

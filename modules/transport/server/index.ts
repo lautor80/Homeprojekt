@@ -17,7 +17,7 @@ import { xrechnungErzeugen } from './xrechnung.js';
 import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
 import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
-import { euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, type VersandDatei } from './mailversand.js';
+import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
 import { kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
@@ -498,6 +498,10 @@ async function routes(app: FastifyInstance) {
       nur: z.array(z.enum(['kunde', 'kopie'])).min(1).optional(),
     }).parse(req.body);
     await auftragLesen(nr);
+    // Einrichtung, Postfach und Adressen zuerst – erst danach Dateien entpacken und Dokumente aus Paperless holen
+    await versandBereit();
+    adressenPruefen(b.an, 'Empfänger');
+    adressenPruefen(b.cc, 'CC');
     const erlaubt = [...DATEITYPEN, 'xml', 'zip'];
     const dateien: VersandDatei[] = b.dateien.map((d) => {
       const name = d.name.split(/[\\/]/).pop()!.trim();

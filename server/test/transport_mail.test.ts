@@ -112,7 +112,7 @@ test('Ohne Anbindung: Dialog zeigt nur den bisherigen Entwurf, Senden wird abgel
   assert.deepEqual(r.body, { eingerichtet: false, postfach: null, kopieAn: '', maxMb: 10 });
   r = await call('POST', `${T}/auftraege/${NR}/mail`, mail());
   assert.equal(r.status, 400);
-  assert.match(r.body.message, /nicht eingerichtet/);
+  assert.match(r.body.message, /E-Mail-Versand über Outlook 365 ist nicht eingerichtet/);
 });
 
 test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Verbindungstest', async () => {
