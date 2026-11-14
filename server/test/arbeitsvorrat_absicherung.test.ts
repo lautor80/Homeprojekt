@@ -112,6 +112,8 @@ function ereignisquellen(): Map<string, string> {
         out.set(`schnittstelle:${id}`, datei);
       }
     }
+    // Paperless je Bereich (#232, S5): paperlessDef('<modul>', …) – TC Oberthal behält die Id „paperless“
+    for (const [, m] of text.matchAll(/\bpaperlessDef\('([a-z]+)'/g)) out.set(`schnittstelle:${m === 'tco' ? 'paperless' : `${m}.paperless`}`, datei);
     // automatische Läufe
     const laeufe = text.match(/\bsetInterval\(/g)?.length ?? 0;
     for (let i = 0; i < laeufe; i++) out.set(`lauf:${datei}${i ? `#${i + 1}` : ''}`, datei);

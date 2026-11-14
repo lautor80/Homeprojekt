@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { change, requireAuth } from '../auth.js';
 import { BusinessError } from '../errors.js';
 import { verbindungDef, verbindungsGruppen } from '../modules.js';
-import { maskieren, uebernehmen, verbindungLesen, verbindungSpeichern, type AuthArt } from '../lib/verbindungen.js';
+import { istPaperlessId, maskieren, paperlessEindeutig, uebernehmen, verbindungLesen, verbindungSpeichern, type AuthArt } from '../lib/verbindungen.js';
 
 /** Zentrale Anbindungen (Administration → Schnittstellen → Anbindungen): angeschlossene Systeme des Kerns und der Module */
 const P = 'core.settings:edit';
@@ -40,6 +40,8 @@ export async function verbindungenRoutes(app: FastifyInstance) {
     const e = eingabe.parse(req.body);
     const alt = await verbindungLesen(id);
     const neu = uebernehmen(t.def, alt, e);
+    // Paperless je Bereich (#232, S5): nie dieselbe Adresse wie ein anderer Bereich
+    if (istPaperlessId(id)) await paperlessEindeutig(neu);
     await change(req, (tx) => verbindungSpeichern(tx, neu, req.user?.username ?? 'system'));
     return maskieren(await verbindungLesen(id));
   });

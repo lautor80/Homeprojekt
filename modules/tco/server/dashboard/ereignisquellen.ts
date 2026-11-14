@@ -29,7 +29,9 @@ const VERLAUF = 'reiner Verlauf – steht in Statistik bzw. Änderungsbelegen';
 
 export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   // ---------------------------------------------------------------- Schnittstellen
+  // Paperless je Bereich (#232, S5): Störungen meldet der Client je Zugang (Rechnername), gleich welcher Bereich
   'schnittstelle:paperless': { hinweis: 'PAPERLESS' },
+  'schnittstelle:transport.paperless': { hinweis: 'PAPERLESS' },
   'schnittstelle:mail': { hinweis: 'MAIL_FEHLER' },
   'schnittstelle:tco.ep3': { ueberwacht: 'V_EP3' },
   'schnittstelle:tco.stunden': { ueberwacht: 'V_STUNDEN' },

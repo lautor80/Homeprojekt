@@ -21,6 +21,8 @@ interface Firma {
   zahlungsziel_tage: number; ust_satz: number; rechnung_startnr: number; logo: string | null;
   auftragsbedingungen?: string;
   paperless?: boolean;
+  /** Übergang (#232, S5): noch kein eigenes Paperless – es läuft weiter über das von TC Oberthal */
+  paperless_uebergang?: boolean;
 }
 interface Produkt { prod_key: string; text: string; preis: number; gueltig_bis: string | null; sort: number }
 interface MailText { art: 'T' | 'L' | 'R'; sprache: 'D' | 'E'; text: string }
@@ -117,8 +119,13 @@ function FirmaTab() {
       </Section>
       </div>
       <AblageOrdnerEinstellung />
+      {f.paperless_uebergang && (
+        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Übergang: Euroflex nutzt noch das Paperless von TC Oberthal. Bitte unter Administration → Schnittstellen → Anbindungen bei „Paperless-ngx Euroflex“ das eigene Paperless eintragen.
+        </MessageStrip>
+      )}
       <MessageStrip design="Information" hideCloseButton>
-        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Adresse und API-Token werden zentral unter Administration → Schnittstellen → Anbindungen gepflegt.
+        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Euroflex hat ein eigenes Paperless: Adresse und API-Token stehen unter Administration → Schnittstellen → Anbindungen bei „Paperless-ngx Euroflex“.
       </MessageStrip>
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
