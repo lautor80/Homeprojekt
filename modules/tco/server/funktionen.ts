@@ -102,6 +102,12 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     routen: ['POST /schluessel/altdaten/pruefen', 'POST /schluessel/altdaten'],
   },
   {
+    id: 'tco.benutzer.rollenabgleich', app: 'Zugänge', text: 'Rollenabgleich der Vereinsbenutzer',
+    beschreibung: 'Prüft regelmäßig (alle 6 Stunden) und auf Knopfdruck in der Benutzerverwaltung: Mitglieder haben die Rollen „Mitglied“ und „Hallennutzer“, Nichtmitglieder nur „Hallennutzer“.',
+    routen: ['GET /benutzer/rollenabgleich', 'POST /benutzer/rollenabgleich'],
+    hinweis: 'Abgeschaltet ruhen der regelmäßige Lauf und der Knopf „Rollen prüfen“; Rollen vergibt dann nur noch der Administrator.',
+  },
+  {
     id: 'tco.platz.ep3abgleich', app: 'Platzverwaltung', text: 'EP3-Abgleich',
     beschreibung: 'Reiter „Zugänge“: EP3-Kunden mit Benutzern verknüpfen bzw. als Hallennutzer anlegen.',
     routen: ['GET /platz/admin/ep3', 'POST /platz/admin/ep3/:zuid/verknuepfen', 'POST /platz/admin/ep3/anlegen-alle', 'POST /platz/admin/ep3/:zuid/anlegen'],

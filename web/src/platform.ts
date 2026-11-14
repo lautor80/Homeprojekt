@@ -118,6 +118,8 @@ export interface WebModule {
   nachAnmeldung?: string[];
   /** Kapitel dieser Anwendung in der App „Einstellungen“ (Administration → Einstellungen, #232 E1), in der Reihenfolge der Anzeige */
   einstellungen?: EinstellungsKapitel[];
+  /** Knöpfe in der Benutzerverwaltung (Kopfzeile), z. B. „Rollen prüfen“ – nur mit der Berechtigung */
+  benutzerAktionen?: { component: ComponentType<{ onGeaendert: () => void }>; permission?: string }[];
   /** Logos dieser Anwendung – erscheinen im Kapitel „Erscheinungsbild“ (#232, E2) */
   logos?: LogoVerwendung[];
   /** Abschnitte dieser Anwendung in der App „Schnittstellen“ (Administration → Schnittstellen, #232 S1): Importe, Regeln, Felder je Schnittstelle */

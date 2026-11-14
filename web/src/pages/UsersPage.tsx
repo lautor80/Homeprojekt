@@ -11,6 +11,7 @@ import { useLoad } from '../components/useLoad';
 import { CheckField, FieldBox, FormGrid, TextField } from '../components/FormFields';
 import { ChangeHistoryButton, fmtDateTime } from '../components/ChangeHistory';
 import { useCan, useSession } from '../session';
+import { enabledModules } from '../modules';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
 import { InitialeZuordnung, ZuordnungFelder } from './BenutzerZuordnung';
@@ -43,6 +44,8 @@ export function UsersPage() {
   /** Dialog „Einladen & Zugangslinks“: QR-Einladung für Mitglieder ohne Benutzer oder Zugangslinks an Personen aus einer Liste (#105) */
   const [einladen, setEinladen] = useState<false | 'QR' | 'LISTE'>(false);
   const mitTco = me.modules.includes('tco');
+  // Knöpfe der Anwendungen für die Benutzerverwaltung (WebModule.benutzerAktionen), z. B. „Rollen prüfen“ des Vereins
+  const modulAktionen = enabledModules(me.modules).flatMap((m) => m.benutzerAktionen ?? []).filter((a) => can(a.permission));
   const [mg, setMg] = useState<'frage' | MgAnlage | null>(null);
   const [mgMail, setMgMail] = useState(true);
   const [filter, setFilter] = useState<'ALLE' | 'AKTIV' | 'GESPERRT'>('AKTIV');
@@ -175,6 +178,7 @@ export function UsersPage() {
       title="Benutzer"
       subtitle={users.data ? `${users.data.length} Benutzer` : undefined}
       actions={mayEdit && (<>
+        {modulAktionen.map(({ component: Aktion }, i) => <Aktion key={i} onGeaendert={() => users.reload()} />)}
         {mitTco && <Button icon="chain-link" onClick={() => setMapping(true)}>Initiale Zuordnung</Button>}
         {mitTco && <Button icon="add-employee" onClick={() => { setError(null); setEinzeln(true); }}>Aus Mitglied/EP3 anlegen</Button>}
         {mitTco && <Button icon="group" onClick={() => setMg('frage')}>Mitglieder als Benutzer anlegen</Button>}
