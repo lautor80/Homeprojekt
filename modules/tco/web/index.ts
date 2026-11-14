@@ -30,6 +30,7 @@ import { Schnuppertraining } from './schnupper/Schnuppertraining';
 import { SchnupperVerwaltung } from './schnupper/SchnupperVerwaltung';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
 import { ZugaengeApp } from './platz/ZugaengeApp';
+import { RollenabgleichKnopf } from './benutzer/Rollenabgleich';
 import { MeineDatenApp } from './platz/MeineDaten';
 import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
@@ -89,6 +90,7 @@ const mod: WebModule = {
     { reiter: 'Paperless', id: 'instandhaltung', text: 'Instandhaltung: Dokumente zur Auswahl', permission: 'tco.instandhaltung:admin', component: InstandhaltungPaperless },
     { reiter: 'SAP', id: 'sap', text: 'Übernahme aus SAP', permission: 'tco.import:execute', component: ImportTab },
   ],
+  benutzerAktionen: [{ component: RollenabgleichKnopf, permission: 'core.users:edit' }],
   logos: [{ id: 'kopfband', text: 'Kopfband (weiß auf Orange)', permission: 'tco.stammdaten:edit', component: VereinLogo }],
   einstellungen: [
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },

@@ -421,3 +421,60 @@ test('Austritt mit Jugendtraining: Training läuft bis zum Saisonende (30.09.), 
   await sql`delete from tco.sepa where adrnr = ${A}`;
   await sql`delete from tco.mitglieder where adrnr = ${A}`;
 });
+
+test('Rollenabgleich: Mitglieder „Mitglied“ + „Hallennutzer“, Nichtmitglieder nur „Hallennutzer“, weitere Rollen bleiben', async () => {
+  const benutzer = async (username: string, rollen: string[]) => {
+    const [u] = await sql`insert into core.users (username, display_name, password_hash) values (${username}, ${username}, 'x') returning id`;
+    for (const r of rollen) await sql`insert into core.user_roles (user_id, role_id) values (${u.id}, ${r})`;
+    return u.id as string;
+  };
+  await call('POST', '/api/m/tco/benutzer/rollenabgleich'); // legt die Systemrollen an, falls sie fehlen
+  // Hans und Mia: Mitglieder; Eva: ausgetreten (mit Administratorrolle); Peter: ohne Eintritt; Kai: EP3-Kunde; Olga: ohne Zuordnung
+  const hans = await benutzer('rg.hans', []);
+  const mia = await benutzer('rg.mia', ['MITGLIED']);
+  const eva = await benutzer('rg.eva', ['MITGLIED', 'ADMIN']);
+  const peter = await benutzer('rg.peter', ['MITGLIED', 'HALLENNUTZER']);
+  const kai = await benutzer('rg.kai', []);
+  const olga = await benutzer('rg.olga', []);
+  const gesperrt = await benutzer('rg.gesperrt', []);
+  await sql`update core.users set active = false where id = ${gesperrt}`;
+  const vorher = await sql`select adrnr, benutzer_id from tco.mitgliedera where adrnr = '0000000101'`;
+  for (const [adrnr, id] of [['0000000101', hans], ['0000000102', mia], ['0000000103', eva], ['0000000104', peter]] as const) {
+    await sql`insert into tco.mitgliedera (adrnr, benutzer_id) values (${adrnr}, ${id}) on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  }
+  await sql`insert into tco.kunden (zuid, zalias, benutzer_id) values ('rg-1', 'Kai', ${kai}), ('rg-2', 'Gesperrt', ${gesperrt})`;
+  const rollen = async (id: string) => (await sql`select role_id from core.user_roles where user_id = ${id} order by role_id`).map((r) => r.role_id as string);
+
+  // Vorschau ändert nichts
+  let r = await call('GET', '/api/m/tco/benutzer/rollenabgleich');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const plan = Object.fromEntries((r.body.aenderungen as { username: string; ergaenzt: string[]; entzogen: string[] }[])
+    .filter((a) => a.username.startsWith('rg.')).map((a) => [a.username, [a.ergaenzt.join('+'), a.entzogen.join('+')]]));
+  assert.deepEqual(plan, {
+    'rg.eva': ['Hallennutzer', 'Mitglied'], 'rg.hans': ['Mitglied+Hallennutzer', ''], 'rg.kai': ['Hallennutzer', ''],
+    'rg.mia': ['Hallennutzer', ''], 'rg.peter': ['', 'Mitglied'],
+  });
+  assert.match(r.body.text, /Benutzer erhalten fehlende Rollen, \d+ Nichtmitglieder verlieren die Rolle „Mitglied“\./);
+  assert.deepEqual(await rollen(hans), []);
+
+  // Ausführen
+  r = await call('POST', '/api/m/tco/benutzer/rollenabgleich');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await rollen(hans), ['HALLENNUTZER', 'MITGLIED']);
+  assert.deepEqual(await rollen(mia), ['HALLENNUTZER', 'MITGLIED']);
+  assert.deepEqual(await rollen(eva), ['ADMIN', 'HALLENNUTZER'], 'ausgetreten: nur Hallennutzer – die Administratorrolle bleibt');
+  assert.deepEqual(await rollen(peter), ['HALLENNUTZER']);
+  assert.deepEqual(await rollen(kai), ['HALLENNUTZER']);
+  assert.deepEqual(await rollen(olga), [], 'ohne Zuordnung unberührt');
+  assert.deepEqual(await rollen(gesperrt), [], 'gesperrte Benutzer unberührt');
+  // zweiter Lauf: nichts mehr zu tun
+  r = await call('GET', '/api/m/tco/benutzer/rollenabgleich');
+  assert.deepEqual(r.body.aenderungen, []);
+  assert.match(r.body.text, /Alle Rollen stimmen/);
+
+  // aufräumen
+  await sql`delete from tco.kunden where zuid in ('rg-1', 'rg-2')`;
+  await sql`update tco.mitgliedera set benutzer_id = null where adrnr in ('0000000102', '0000000103', '0000000104')`;
+  await sql`update tco.mitgliedera set benutzer_id = ${vorher[0]?.benutzer_id ?? null} where adrnr = '0000000101'`;
+  await sql`delete from core.users where username like 'rg.%'`;
+});

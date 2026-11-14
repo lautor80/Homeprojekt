@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { rollenAbgleich, rollenText } from './rollen.js';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen, type Db } from '../verein.js';
@@ -120,7 +121,7 @@ async function maskierteBankdatenAufloesen(n: z.infer<typeof neuSchema>): Promis
   if (istMaskiert(n.bic)) n.bic = quelle.bic;
 }
 
-/** täglicher Lauf: Benutzer ausgetretener Mitglieder sperren */
+/** regelmäßiger Lauf (alle 6 Stunden): Benutzer ausgetretener Mitglieder sperren, danach Rollen abgleichen */
 let austrittLauf: ReturnType<typeof setInterval> | null = null;
 async function austrittSperrenLauf(log: FastifyInstance['log']) {
   // Funktionsschalter (#232, F1): Der Lauf ruht nur, wenn das ganze Vereinsmodul abgeschaltet ist – ist allein die App
@@ -130,9 +131,28 @@ async function austrittSperrenLauf(log: FastifyInstance['log']) {
     const r = await withChange({ userId: null, username: 'system', action: 'AUSTRITT_SPERRE' }, (tx) => ausgetreteneSperrenMelden(tx));
     if (r.gesperrt.length || r.rolleEntzogen.length) log.info(r, 'Benutzer ausgetretener Mitglieder gesperrt');
   } catch (e) { log.warn(e, 'Sperre ausgetretener Mitglieder fehlgeschlagen'); }
+  // Rollenabgleich: Mitglieder „Mitglied“ + „Hallennutzer“, Nichtmitglieder nur „Hallennutzer“ (abschaltbar)
+  if (!funktionAktiv(ROLLENABGLEICH)) return;
+  try {
+    const l = await withChange({ userId: null, username: 'system', action: 'ROLLENABGLEICH' }, (tx) => rollenAbgleich(tx, { ausfuehren: true }));
+    if (l.length) log.info({ benutzer: l.map((x) => x.username) }, rollenText(l, true));
+  } catch (e) { log.warn(e, 'Rollenabgleich fehlgeschlagen'); }
 }
 
+/** Funktionsschalter des Rollenabgleichs (funktionen.ts) */
+const ROLLENABGLEICH = 'tco.benutzer.rollenabgleich';
+
 export async function mitgliederRoutes(app: FastifyInstance) {
+  // Rollenabgleich (Benutzerverwaltung → „Rollen prüfen“): Vorschau und Ausführen
+  const benutzerPflege = { preHandler: requireAuth('core.users:edit') };
+  app.get('/benutzer/rollenabgleich', benutzerPflege, async () => {
+    const l = await rollenAbgleich(DB, { ausfuehren: false });
+    return { aenderungen: l, text: rollenText(l, false), lauf: funktionAktiv(ROLLENABGLEICH) };
+  });
+  app.post('/benutzer/rollenabgleich', benutzerPflege, async (req) => {
+    const l = await change(req, (tx) => rollenAbgleich(tx, { ausfuehren: true }), { action: 'ROLLENABGLEICH' });
+    return { aenderungen: l, text: rollenText(l, true) };
+  });
   if (!austrittLauf && process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
     setTimeout(() => austrittSperrenLauf(app.log), 15_000).unref();
     austrittLauf = setInterval(() => austrittSperrenLauf(app.log), 6 * 3600_000);
