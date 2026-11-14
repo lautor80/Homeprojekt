@@ -3,7 +3,7 @@ import { hashPassword } from '../../../../server/src/auth.js';
 import { maskIban } from '../../../../server/src/schutz.js';
 import type { Db, Verein } from '../verein.js';
 import { tcoHinweis } from '../hinweise.js';
-import { unterlagenMail } from '../mailtexte.js';
+import { mailtextFuellen, unterlagenMail } from '../mailtexte.js';
 import { condense, dat, heute } from '../format.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import {
@@ -290,11 +290,12 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
         }
       } else if (start && o.mail && v.n8n_mail_url && m.email) {
         try {
+          // Text: Einstellungen → E-Mail-Texte, sonst der Standardtext aus dem Verzeichnis (mailtexte.ts, #232)
+          const t = await mailtextFuellen(tx, v, 'mitglied.startkennwort', { Name: `${leer(m.vorname)} ${leer(m.nachname)}`, Benutzername: username, Kennwort: start ?? '' });
           await mailSenden(v, {
             modus: 'senden', anwendung: 'Mitglieder', objekt: m.adrnr, an: m.email, benutzer: 'Portal', anhaenge: [],
             wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält ein Startkennwort – bitte unter Administration → Benutzer und Rechte → Benutzer einen Kennwort-Link senden.' },
-            betreff: `${v.name}: Ihr Zugang zum Mitgliederportal`,
-            text: `Guten Tag ${leer(m.vorname)} ${leer(m.nachname)},\n\nfür Sie wurde ein Zugang zum Mitgliederportal angelegt.\n\nAnmeldename: ${username}\nStartkennwort: ${start}\n\nBitte melden Sie sich an und vergeben Sie ein eigenes Kennwort. Unter „Meine Mitgliedschaft“ sehen und pflegen Sie Ihre Daten, unter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.\n\nViele Grüße\n${v.name}`,
+            betreff: t.betreff, text: t.text,
           });
           hinweis = 'Startkennwort per E-Mail gesendet';
           start = null;

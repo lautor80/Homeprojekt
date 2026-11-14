@@ -20,6 +20,7 @@ import { vereinLesen } from '../verein.js';
 import { addTage, dat } from '../format.js';
 import { minuten, preiseLesen, type Preise } from '../halle/preis.js';
 import { mailSenden } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import { aboAnlegen, belegungLesen, hhmm, isoWochentag, jetzt, plaetzeLesen, preisVon, type Ich, type Platz } from './logik.js';
 import { ADRNR_ZU_BENUTZER } from './schluessel.js';
 import { festeLesen, festeTermine } from './belegungen.js';
@@ -146,8 +147,9 @@ async function benachrichtigen(db: Db, w: Wunsch, betreff: string, text: string,
     try {
       const v = await vereinLesen();
       const url = await portalUrl().catch(() => null);
-      await mailSenden(v, { modus: 'senden', anwendung: 'Abo-Bewerbung', objekt: String(w.id), an, benutzer: 'system', anhaenge: [], betreff,
-        text: `Hallo ${w.name},\n\n${text}\n\n${url ? `Zum Portal: ${url}/tco/platz-buchen?ansicht=abo\n\n` : ''}Sportliche Grüße\n${v.name}` });
+      // Anrede und Gruß: Einstellungen → E-Mail-Texte (Rahmen), sonst wie bisher; die Nachricht gibt der Vorgang vor (#232)
+      const t = await mailtextFuellen(db, v, 'halle.abo', { Betreff: betreff, Name: w.name, Nachricht: text, Portal: url ? `Zum Portal: ${url}/tco/platz-buchen?ansicht=abo` : '' });
+      await mailSenden(v, { modus: 'senden', anwendung: 'Abo-Bewerbung', objekt: String(w.id), an, benutzer: 'system', anhaenge: [], betreff: t.betreff, text: t.text });
     } catch (e) { fehler = `E-Mail nicht versendet: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300); }
   }
   // als erledigt gekennzeichnete Einträge melden keine Ausnahme mehr

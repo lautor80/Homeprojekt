@@ -13,7 +13,8 @@ import {
   rechnungenLesen, statusSetzen, zuordnen, type Selektion,
 } from './daten.js';
 import { ep3Abgleich, ep3Importieren, ep3UeberN8n, zeitraumDerBuchungen, type ImportDetail } from './ep3.js';
-import { MAIL_PLATZHALTER, sammelMailVorlage, sammelversand, versandVorschlag } from './sammelversand.js';
+import { MAIL_PLATZHALTER, sammelMailVorlageLesen, sammelversand, versandVorschlag } from './sammelversand.js';
+import { rechnungMailText } from './mailtext.js';
 import {
   mailTexte, mailVersand, paperlessNotiz, rechnungDrucken, rechnungPdfErzeugen, whatsappBestaetigen, whatsappText,
   whatsappVorbereiten, type Schreiber,
@@ -130,7 +131,7 @@ export async function halleRoutes(app: FastifyInstance) {
       an: kontakt?.email ?? '',
       mobil: kontakt?.mobil ?? '',
       link,
-      ...mailTexte(v, kontakt?.vorname ?? '', rgnrs, rgnrs.length === 1 ? link : null),
+      ...(await rechnungMailText(DB, v, kontakt?.vorname ?? '', rgnrs, rgnrs.length === 1 ? link : null)),
       whatsapp: whatsappText(v, kontakt?.vorname ?? ''),
     };
   });
@@ -428,7 +429,7 @@ export async function halleRoutes(app: FastifyInstance) {
 
   /** Text der Sammel-E-Mail als Vorlage mit Platzhaltern – im Dialog sichtbar und änderbar */
   app.get('/halle/sammelversand/mailtext', { preHandler: requireAuth(P_HALLE.versand) }, async () => (
-    { ...sammelMailVorlage(await vereinLesen()), platzhalter: Object.values(MAIL_PLATZHALTER) }
+    { ...(await sammelMailVorlageLesen(DB, await vereinLesen())), platzhalter: Object.values(MAIL_PLATZHALTER) }
   ));
 
   /** freigegebene Rechnungen drucken und per E-Mail versenden – Protokoll je Empfänger */

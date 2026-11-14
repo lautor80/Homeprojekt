@@ -3,6 +3,7 @@ import { condense } from '../format.js';
 import { kontaktLesen, type Kontakt } from '../kommunikation.js';
 import { adrnrErmitteln, positionenLesen, rechnungenLesen } from './daten.js';
 import { mailTexte, mailVersand, type Schreiber } from './versand.js';
+import { sammelVorlageEigen } from './mailtext.js';
 
 /**
  * Sammelversand von Hallenrechnungen (#29): alle Rechnungen „In Bearbeitung“ werden vorgeschlagen,
@@ -56,6 +57,8 @@ export const MAIL_PLATZHALTER = { vorname: '{Vorname}', nummer: '{Rechnungsnumme
 
 /** Standardtext der Sammel-E-Mail als Vorlage mit Platzhaltern */
 export const sammelMailVorlage = (v: Verein) => mailTexte(v, MAIL_PLATZHALTER.vorname, [MAIL_PLATZHALTER.nummer]);
+/** Vorlage für den Dialog: der unter Einstellungen → E-Mail-Texte festgelegte Text des Vereins, sonst der Standardtext */
+export const sammelMailVorlageLesen = async (db: Db, v: Verein) => (await sammelVorlageEigen(db)) ?? sammelMailVorlage(v);
 
 const fuellen = (s: string, vorname: string, rgnrs: string[]) =>
   s.replaceAll(MAIL_PLATZHALTER.vorname, vorname || 'zusammen').replaceAll(MAIL_PLATZHALTER.nummer, rgnrs.join(', '));
@@ -70,9 +73,11 @@ export interface VersandZeile { quelle: string; ok: boolean; text: string; rgnrs
  * (oder ohne Angabe) gilt der Standardtext mit Einzahl/Mehrzahl je nach Anzahl der Rechnungen.
  */
 export async function sammelversand(db: Db, v: Verein, w: Schreiber, d: { rgnrs: string[]; benutzer: string; betreff?: string; text?: string }): Promise<VersandZeile[]> {
-  const vorlage = sammelMailVorlage(v);
+  // Text des Vereins (Einstellungen → E-Mail-Texte) gilt wie ein im Dialog geänderter Text: je Empfänger gefüllt, ohne Einzahl/Mehrzahl
+  const vereinstext = await sammelVorlageEigen(db);
+  const vorlage = vereinstext ?? sammelMailVorlage(v);
   const eigen = { betreff: d.betreff ?? vorlage.betreff, text: d.text ?? vorlage.text };
-  const geaendert = !gleich(eigen.betreff, vorlage.betreff) || !gleich(eigen.text, vorlage.text);
+  const geaendert = !!vereinstext || !gleich(eigen.betreff, vorlage.betreff) || !gleich(eigen.text, vorlage.text);
   const gewaehlt = [...new Set(d.rgnrs)];
   const vorschlag = new Map((await versandVorschlag(db)).map((x) => [x.rgnr, x]));
   const zeilen: VersandZeile[] = [];

@@ -7,6 +7,7 @@ import { portalUrl } from '../../../../server/src/kennwort.js';
 import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import { kandidaten } from '../halle/sammel.js';
 import { belegeZuordnen } from '../fi/buchen.js';
 import { ADRNR_ZU_BENUTZER } from '../platz/schluessel.js';
@@ -57,9 +58,11 @@ async function mailsSenden(mails: Mail[], wer: Ich, log: FastifyBaseLogger): Pro
     for (const m of mails) {
       let ergebnis: string;
       try {
+        // Betreff und Gruß: Einstellungen → E-Mail-Texte (Rahmen), sonst wie bisher; die Nachricht gibt der Vorgang vor (#232)
+        const t = await mailtextFuellen(DB, v, 'schluessel.rahmen', { Betreff: m.betreff, Nachricht: m.text.replaceAll('{portal}', url) });
         await mailSenden(v, {
           modus: 'senden', anwendung: 'Hallenschlüssel', objekt: m.objekt, an: m.an, benutzer: wer.name, anhaenge: [], persoenlich: false,
-          betreff: `${v.name}: ${m.betreff}`, text: `${m.text.replaceAll('{portal}', url)}\n\nViele Grüße\n${v.name}`,
+          betreff: t.betreff, text: t.text,
         });
         n++;
         ergebnis = `an ${m.an}: ${m.betreff}`;
