@@ -6,6 +6,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { DB, vereinLesen } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import {
   anmeldungAnlegen, beitrittVorbelegung, EINHEITEN_KOSTENLOS, schnupperInfo, schnupperLesen, schnupperSichern, STATUS, STUFEN, TAGE, ZEITEN,
   type SchnupperStatus, type Stufe,
@@ -66,15 +67,11 @@ export async function schnupperRoutes(app: FastifyInstance) {
       try {
         const v = await vereinLesen();
         if (v.n8n_mail_url) {
-          await mailSenden(v, {
-            modus: 'senden', anwendung: 'Schnuppertraining', objekt: r.nummer, an: d.email, benutzer: 'Online-Schnuppertraining', anhaenge: [],
-            betreff: `${v.name}: Deine Anmeldung zum Schnuppertraining (${r.nummer})`,
-            text: `Hallo ${d.erziehungsberechtigt || d.vorname},\n\nvielen Dank für die Anmeldung${d.erziehungsberechtigt ? ` von ${d.vorname} ${d.nachname}` : ''} zum Schnuppertraining.\n\n`
-              + `Wir bieten ${EINHEITEN_KOSTENLOS} Einheiten Schnuppertraining kostenlos an. Einer unserer Vereinstrainer meldet sich in den nächsten Tagen, `
-              + 'um einen Termin abzustimmen. Danach bieten wir gerne an, einer Trainingsgruppe beizutreten.\n\n'
-              + 'Die Kontaktdaten nutzen wir nur für die Kontaktaufnahme zum Schnuppertraining.\n\n'
-              + `Viele Grüße\n${v.name}`,
+          // Texte: Einstellungen → E-Mail-Texte, sonst der Standardtext aus dem Verzeichnis (mailtexte.ts, #232)
+          const t = await mailtextFuellen(DB, v, 'schnupper.eingang', {
+            Name: d.erziehungsberechtigt || d.vorname, Kind: d.erziehungsberechtigt ? ` von ${d.vorname} ${d.nachname}` : '', Einheiten: String(EINHEITEN_KOSTENLOS), Nummer: r.nummer,
           });
+          await mailSenden(v, { modus: 'senden', anwendung: 'Schnuppertraining', objekt: r.nummer, an: d.email, benutzer: 'Online-Schnuppertraining', anhaenge: [], betreff: t.betreff, text: t.text });
         }
       } catch (e) { req.log.warn({ schnupper: r.nummer, err: (e as Error).message }, 'Schnuppertraining: Eingangsbestätigung nicht gesendet'); }
     }
@@ -124,13 +121,11 @@ export async function schnupperRoutes(app: FastifyInstance) {
     if (!s.email) return { link, text: 'Keine E-Mail-Adresse hinterlegt – bitte den Link anders weitergeben (z. B. WhatsApp).' };
     const v = await vereinLesen();
     if (!v.n8n_mail_url) return { link, text: 'Der Mailversand ist nicht eingerichtet – bitte den Link anders weitergeben.' };
-    await mailSenden(v, {
-      modus: 'senden', anwendung: 'Schnuppertraining', objekt: s.nummer, an: s.email, benutzer: wer, anhaenge: [],
-      betreff: `${v.name}: Jetzt Mitglied werden`,
-      text: `Hallo ${s.erziehungsberechtigt || s.vorname},\n\nschön, dass ${s.erziehungsberechtigt ? `${s.vorname}` : 'du'} beim Schnuppertraining dabei ${s.erziehungsberechtigt ? 'war' : 'warst'}! `
-        + 'Wenn es gefallen hat, geht die Anmeldung als Mitglied (und zu einer Trainingsgruppe) ganz einfach – die bekannten Angaben sind schon eingetragen:\n\n'
-        + `${link}\n\nViele Grüße\n${v.name}`,
+    const t = await mailtextFuellen(DB, v, 'schnupper.beitritt', {
+      Name: s.erziehungsberechtigt || s.vorname, Link: link,
+      Dabei: s.erziehungsberechtigt ? `${s.vorname} beim Schnuppertraining dabei war` : 'du beim Schnuppertraining dabei warst',
     });
+    await mailSenden(v, { modus: 'senden', anwendung: 'Schnuppertraining', objekt: s.nummer, an: s.email, benutzer: wer, anhaenge: [], betreff: t.betreff, text: t.text });
     return { link, text: `Beitrittslink an ${s.email} gesendet.` };
   });
 }

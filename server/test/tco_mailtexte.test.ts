@@ -109,3 +109,42 @@ test('Vorbelegung in Dialogen: Einladung und Zugangslink zeigen den Text des Ver
   assert.equal((await call('DELETE', `${T}/mitglied.einladung`)).status, 200);
   assert.equal((await call('GET', '/api/m/tco/mitglieder/einladungen/vorlage')).body.text, std.text);
 });
+
+test('Automatische E-Mails aus dem Verzeichnis: Standardtext unverändert, bedingte Teile ohne Lücke, eigener Text gilt', async () => {
+  const { mailtextFuellen } = await import('../../modules/tco/server/mailtexte.js');
+  const v = await vereinLesen();
+  // Antrag abgelehnt: mit und ohne Begründung
+  let t = await mailtextFuellen(db, v, 'antrag.abgelehnt', { Name: 'Eva Lob', Nummer: 'MA-7', Begruendung: 'Begründung: Aufnahmestopp' });
+  assert.equal(t.betreff, `${v.name}: Ihr Mitgliedsantrag MA-7`);
+  assert.equal(t.text, `Guten Tag Eva Lob,\n\nIhr Mitgliedsantrag MA-7 konnte leider nicht angenommen werden.\n\nBegründung: Aufnahmestopp\n\nBei Fragen wenden Sie sich bitte an den Vorstand.\n\nViele Grüße\n${v.name}`);
+  t = await mailtextFuellen(db, v, 'antrag.abgelehnt', { Name: 'Eva Lob', Nummer: 'MA-7', Begruendung: '' });
+  assert.equal(t.text, `Guten Tag Eva Lob,\n\nIhr Mitgliedsantrag MA-7 konnte leider nicht angenommen werden.\n\nBei Fragen wenden Sie sich bitte an den Vorstand.\n\nViele Grüße\n${v.name}`);
+  // Willkommen: Zeile je Mitglied, Mandat nur wenn vorhanden
+  t = await mailtextFuellen(db, v, 'antrag.willkommen', { Name: 'Eva Lob', Nummer: 'MA-7', Mitglieder: 'Eva Lob: Mitgliedsnummer 801\nTom Lob: Mitgliedsnummer 802', Mandat: '' });
+  assert.equal(t.text, 'Guten Tag Eva Lob,\n\nherzlich willkommen! Ihr Mitgliedsantrag MA-7 wurde angenommen.\n\nEva Lob: Mitgliedsnummer 801\nTom Lob: Mitgliedsnummer 802\n\n'
+    + `Die Zugänge zum Mitgliederportal erhalten Sie in separaten E-Mails.\n\nViele Grüße\n${v.name}`);
+  // Freischaltung: Satzteile der Sendestelle fügen sich in den Satz
+  t = await mailtextFuellen(db, v, 'registrierung.freigeschaltet', { Name: 'Tom Lob', Adresse: ' unter https://portal.example.org', Kennwort: 'mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.', Hinweis: 'Unter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.' });
+  assert.equal(t.text, 'Guten Tag Tom Lob,\n\nIhr Zugang zum Portal ist freigeschaltet. Sie können sich jetzt unter https://portal.example.org anmelden – '
+    + `mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.\n\nUnter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.\n\nViele Grüße\n${v.name}`);
+  t = await mailtextFuellen(db, v, 'registrierung.eingegangen', { Name: 'Tom Lob', Benutzername: 'tom', Pruefung: 'Wir prüfen Ihre Angaben' });
+  assert.match(t.text, /\(Benutzername tom\)\. Wir prüfen Ihre Angaben und benachrichtigen Sie, sobald Ihr Zugang freigeschaltet ist\.\n\nViele Grüße/);
+  t = await mailtextFuellen(db, v, 'schnupper.beitritt', { Name: 'Mia', Dabei: 'du beim Schnuppertraining dabei warst', Link: 'https://portal.example.org/beitritt?schnupper=abc' });
+  assert.match(t.text, /^Hallo Mia,\n\nschön, dass du beim Schnuppertraining dabei warst! Wenn es gefallen hat/);
+  assert.match(t.text, /\n\nhttps:\/\/portal\.example\.org\/beitritt\?schnupper=abc\n\nViele Grüße/);
+  t = await mailtextFuellen(db, v, 'schnupper.eingang', { Name: 'Frau Lob', Kind: ' von Mia Lob', Einheiten: '3', Nummer: 'ST-4' });
+  assert.match(t.betreff, /Schnuppertraining \(ST-4\)$/);
+  assert.match(t.text, /vielen Dank für die Anmeldung von Mia Lob zum Schnuppertraining\.\n\nWir bieten 3 Einheiten/);
+
+  // eigener Text des Vereins gilt; der Link bleibt Pflicht
+  let r = await call('PUT', `${T}/registrierung.bestaetigen`, { betreff: 'Bitte bestätigen', text: 'Hallo {Name}, ohne Link' });
+  assert.equal(r.status, 400);
+  r = await call('PUT', `${T}/registrierung.bestaetigen`, { betreff: 'Bitte bestätigen, {Name}', text: 'Hallo {Name},\n\nhier bestätigen ({Stunden} h): {Link}' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  t = await mailtextFuellen(db, v, 'registrierung.bestaetigen', { Name: 'Tom Lob', Benutzername: 'tom', Stunden: '48', Link: 'https://portal.example.org/registrierung-bestaetigen?token=abc' });
+  assert.deepEqual(t, { betreff: 'Bitte bestätigen, Tom Lob', text: 'Hallo Tom Lob,\n\nhier bestätigen (48 h): https://portal.example.org/registrierung-bestaetigen?token=abc' });
+  assert.equal((await call('DELETE', `${T}/registrierung.bestaetigen`)).status, 200);
+  t = await mailtextFuellen(db, v, 'registrierung.bestaetigen', { Name: 'Tom Lob', Benutzername: 'tom', Stunden: '48', Link: 'https://x.example/t' });
+  assert.match(t.text, /über diesen Link \(48 Stunden gültig\):\n\nhttps:\/\/x\.example\/t\n\nDanach ist Ihr Zugang sofort freigeschaltet/);
+  await assert.rejects(() => mailtextFuellen(db, v, 'gibt.es.nicht', {}), /gibt es nicht/);
+});
