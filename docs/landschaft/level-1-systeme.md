@@ -13,7 +13,7 @@ flowchart LR
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
-      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Mitgliedschaft<br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
+      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
@@ -74,8 +74,7 @@ flowchart LR
 | Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung |
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
-| Mein Bereich | Meine Mitgliedschaft | `/tco/meine-mitgliedschaft` | `tco.meinedaten:edit` | Eigene Daten, Bankverbindung, Verträge, Kündigung |
-| Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinkonto:edit` | Anschrift, E-Mail und Telefon pflegen |
+| Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinedaten:edit\|tco.meinkonto:edit` | Kontakt, Bankverbindung, Verträge, Kündigung |
 | Mein Bereich | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
 | Mein Bereich | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
 | Mein Bereich | Meine Trainingszeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit` | Eigene Zeiten zurückmelden, Zeitnachweise ansehen |

@@ -1163,14 +1163,14 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ Rahmen, Apps und erste Funktionen umgesetzt |
 | A1 | Administration in fünf Gruppen | klein | ☑ umgesetzt |
 | N1 | Gruppe „Mein Bereich“ | klein | ☑ umgesetzt |
-| N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
+| N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ✔ |
 | N3 | App „Zugänge“ (Registrierungen, Zuordnung, EP3-Abgleich) | mittel | ✔ |
 | N4 | Preise an einem Ort – Variante A oder B | mittel / klein | ✔ A |
 | N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☑ umgesetzt |
 | N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☑ umgesetzt |
 | N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ✔ |
 | B1 | Varianten: eine Bauart | mittel | ☐ |
-| B2 | Reiter für Teile, Umschalter für Sichten | klein | ☐ |
+| B2 | Reiter für Teile, Umschalter für Sichten | klein | ✔ |
 | B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ✔ (mit E1: kein Reiter „Einstellungen“ mehr in einer Fach-App) |
 | B4 | Icons eindeutig | klein | ☑ umgesetzt |
 | K1–K5 | Texte berichtigen | klein | ☑ umgesetzt |
@@ -1218,6 +1218,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | S4 (2. Teil) | Importe: gleiche Stelle, gleicher Knopf. Gemeinsamer Rahmen im Kern (`web/src/components/ImportDialog.tsx`: `ImportKnopf`, `ImportDialog`, `ImportSchritte` – Quelle wählen → Prüfen → Übernehmen → Protokoll). *Jugendtraining* (bisher Reiter „Import“) und *Spielerdaten* (bisher Reiter „Abgleich mit nuLiga“) haben den Knopf **Importieren** oben rechts und den gemeinsamen Dialog; *Hallenabrechnung* (EP3) und *FI Belege* (Bankimport) denselben Knopf, die Kopfzeile „Importieren: …“ und die Schrittleiste in ihren bestehenden Dialogen. Gespeicherte Ansichten mit dem früheren Reiter öffnen den Dialog | umgesetzt 14.11.2026 |
 | E5, N7 | Im Fachbaum steht kein „Einstellungen“ mehr: *Kontenstamm* ist die letzte App von *Finanzen*, *Produkte und Preise* die letzte von *Tennishalle* (Menü und Rollenpflege); der Bereich *Einstellungen* der Rollenpflege enthält nur noch die Rechte für die Kapitel des Vereins. Euroflex: *Kontakte* mit eigenem Recht `transport.kontakte:display` (Migration gibt es jeder Rolle, die Aufträge sieht; lesen darf weiter auch, wer Aufträge sieht), App *Stammdaten* heißt *Produkte und Wertelisten* | umgesetzt 14.11.2026 |
 | N3 | App **Zugänge** (*Mitglieder → Zugänge*, `/tco/zugaenge`) mit den Reitern *Registrierungen* (Umschalter Mitglieder/Hallennutzer), *Zuordnung* und *EP3-Abgleich* – jeder mit seinem bisherigen Recht. Die Platzverwaltung behält Plätze, Belegung, Training und Abos; `/tco/registrierungen` und gespeicherte Ansichten der Platzverwaltung führen in die neue App. In der Rollenpflege heißt die App ebenfalls *Zugänge* (Funktionsschalter zieht mit, Migration 075) | umgesetzt 14.11.2026 |
+| N2, B2 | **Meine Daten** ist eine App (`/tco/meine-daten`, Rechte `tco.meinedaten:edit` oder `tco.meinkonto:edit`): Mitglieder sehen Kontakt, Bank, Verträge und Änderungen, externe Hallennutzer ihre Kontaktdaten; `/tco/meine-mitgliedschaft` bleibt gültig, in der Rollenpflege stehen beide Rechte unter der einen App (Migration 076 führt den Funktionsschalter zusammen). **Platz buchen** schaltet Kalender, Meine Buchungen und Abo-Bewerbung mit Reitern | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

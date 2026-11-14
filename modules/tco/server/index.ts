@@ -185,7 +185,7 @@ const tco: ServerModule = {
     { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Einladungen per E-Mail versenden, Gruppen/Mannschaften pflegen' },
 
     // Mein Bereich (#232, N1): was ein Mitglied, Hallennutzer oder Trainer für sich selbst tut – im Menü an einer Stelle
-    { area: 'Mein Bereich', app: 'Meine Mitgliedschaft', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
+    { area: 'Mein Bereich', app: 'Meine Daten', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Mein Bereich', app: 'Meine Daten', id: P_MEINKONTO, text: 'Eigene Kontaktdaten als externer Hallennutzer ansehen und ändern (Anrede, Name, Anschrift, E-Mail, Telefon – nur der dem Benutzer zugeordnete Kundenstammsatz)' },
     { area: 'Mein Bereich', app: 'Platz buchen', id: P_PLATZ.buchen,
       text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },

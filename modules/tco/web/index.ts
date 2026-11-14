@@ -11,7 +11,6 @@ import { Theke } from './verzehr/Theke';
 import { Verzehrbuch, VerzehrKapitel } from './verzehr/Verzehrbuch';
 import { Kalender } from './kalender/Kalender';
 import { Mitglieder } from './mitglieder/Mitglieder';
-import { MeineMitgliedschaft } from './mitglieder/MeineMitgliedschaft';
 import { Gruppen } from './gruppen/Gruppen';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Praesentationen } from './praesentation/Praesentationen';
@@ -30,7 +29,7 @@ import { Schnuppertraining } from './schnupper/Schnuppertraining';
 import { SchnupperVerwaltung } from './schnupper/SchnupperVerwaltung';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
 import { ZugaengeApp } from './platz/ZugaengeApp';
-import { MeineDaten } from './platz/MeineDaten';
+import { MeineDatenApp } from './platz/MeineDaten';
 import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
@@ -115,8 +114,8 @@ const mod: WebModule = {
         {
           text: 'Mein Bereich', icon: 'person-placeholder',
           children: [
-            { text: 'Meine Mitgliedschaft', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
-            { text: 'Meine Daten', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
+            // eine App für Mitglieder und Hallennutzer (#232, N2) – der Inhalt richtet sich danach, was man ist
+            { text: 'Meine Daten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
             { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
             { text: 'Mein Verzehr', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
             { text: 'Meine Trainingszeiten', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit' },
@@ -198,13 +197,14 @@ const mod: WebModule = {
   ],
   routes: [
     { path: '/tco/mitglieder', component: Mitglieder, permission: 'tco.mitglieder:display' },
-    { path: '/tco/meine-mitgliedschaft', component: MeineMitgliedschaft, permission: 'tco.meinedaten:edit' },
+    // alte Adresse (E-Mails, Lesezeichen): dieselbe App
+    { path: '/tco/meine-mitgliedschaft', component: MeineDatenApp, permission: 'tco.meinedaten:edit' },
     { path: '/tco/gruppen', component: Gruppen, permission: 'tco.gruppen:display' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
     // bisherige App „Hallenpreise“: jetzt die Sicht „Hallenpreise (Wochenplan)“ von „Produkte und Preise“ – alte Adresse bleibt gültig
     { path: '/tco/hallenpreise', component: ZuHallenpreisen, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
-    { path: '/tco/meine-daten', component: MeineDaten, permission: 'tco.meinkonto:edit' },
+    { path: '/tco/meine-daten', component: MeineDatenApp, permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
     { path: '/tco/platzverwaltung', component: Platzverwaltung, permission: 'tco.platz:admin' },
     { path: '/tco/serienbuchung', component: Serienbuchung, permission: 'tco.platz:serie' },
     { path: '/tco/sollstellung', component: Sollstellung, permission: 'tco.soll:display' },
@@ -254,7 +254,6 @@ const mod: WebModule = {
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
     { text: 'Produkte und Preise', subtitle: 'Alle Preise: Halle, Getränke, Speisen – je Zeitraum, mit Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
-    { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
     { text: 'Mitgliedergruppen', subtitle: 'Kategorien, Gruppen und Mannschaften im Baum', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
@@ -266,7 +265,7 @@ const mod: WebModule = {
     { text: 'Meine Trainingszeiten', subtitle: 'Eigene Zeiten zurückmelden, Zeitnachweise ansehen', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display', kpi: kpiHalle },
     { text: 'Platz buchen', subtitle: 'Freiplätze und Halle – eigene Buchungen mit Preisen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
-    { text: 'Meine Daten', subtitle: 'Anschrift, E-Mail und Telefon pflegen', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
+    { text: 'Meine Daten', subtitle: 'Kontakt, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
     { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },

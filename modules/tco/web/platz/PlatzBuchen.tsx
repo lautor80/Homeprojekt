@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton,
-  SegmentedButtonItem, Select, Text, ToggleButton,
+  SegmentedButtonItem, Select, Tab, TabContainer, Text, ToggleButton,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -191,11 +191,12 @@ export function PlatzBuchen() {
   return (
     <AppPage title="Platz buchen" subtitle={tag ? `${tag.ich.name} · Freiplätze und Halle` : undefined}>
       <div className="portal-pb">
-        <SegmentedButton className="portal-pb__umschalter" onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.k as 'kalender')}>
-          <SegmentedButtonItem data-k="kalender" icon="calendar" selected={ansicht === 'kalender'}>Kalender</SegmentedButtonItem>
-          <SegmentedButtonItem data-k="meine" icon="customer" selected={ansicht === 'meine'}>Meine Buchungen</SegmentedButtonItem>
-          <SegmentedButtonItem data-k="abo" icon="repost" selected={ansicht === 'abo'}>Abo-Bewerbung</SegmentedButtonItem>
-        </SegmentedButton>
+        {/* Reiter für die Teile der App, Umschalter nur für Sichten derselben Daten (#232, B2); der Inhalt steht darunter */}
+        <TabContainer className="portal-pb__reiter" collapsed tabLayout="Inline" onTabSelect={(e) => setAnsicht((e.detail.tab as HTMLElement).dataset.k as 'kalender')}>
+          <Tab data-k="kalender" icon="calendar" text="Kalender" selected={ansicht === 'kalender'} />
+          <Tab data-k="meine" icon="customer" text="Meine Buchungen" selected={ansicht === 'meine'} />
+          <Tab data-k="abo" icon="repost" text="Abo-Bewerbung" selected={ansicht === 'abo'} />
+        </TabContainer>
 
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
 

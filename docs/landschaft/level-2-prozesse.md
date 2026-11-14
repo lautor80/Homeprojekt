@@ -50,7 +50,7 @@ flowchart LR
 | 4 | Eingangsbestätigung per Mail | System / zeitgesteuerter Job | n8n-Workflow |  |  |  | TCO Mailversand |
 | 5 | Prüfen (Dubletten) und übernehmen | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/mitgliedsantraege/:id/uebernehmen` | `tco.antraege:edit` | `/tco/mitgliedsantraege` |  |
 | 6 | Gruppen per Regelwerk zuordnen | System / zeitgesteuerter Job | Vereinsportal (Modul tco) | `POST /api/m/tco/gruppen/regeln/anwenden` | `tco.gruppen:edit` | `/tco/gruppen` |  |
-| 7 | Einladung annehmen, eigene Daten pflegen | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/einladung` | `tco.meinedaten:edit` | `/tco/meine-mitgliedschaft` |  |
+| 7 | Einladung annehmen, eigene Daten pflegen | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/einladung` | `tco.meinedaten:edit` | `/tco/meine-daten` |  |
 
 <a id="p2"></a>
 ## P2 · Beiträge einziehen
@@ -379,7 +379,7 @@ flowchart LR
 | Schadensmeldungen |  |  |  |  |  |  |  |  | ● |  |
 | Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |  |  |
 | Vereinskalender |  |  |  |  |  |  | ● |  |  |  |
-| Meine Mitgliedschaft | ● |  |  |  |  |  |  |  |  |  |
+| Meine Daten | ● |  |  |  |  |  |  |  |  |  |
 | Meine Trainingszeiten |  |  |  | ● |  |  |  |  |  |  |
 | Mitgliedsanträge | ● |  |  |  |  |  |  |  |  |  |
 | Platz buchen |  |  | ● |  |  |  |  |  |  |  |

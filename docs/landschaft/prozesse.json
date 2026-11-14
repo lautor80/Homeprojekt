@@ -38,7 +38,7 @@
         { "text": "Eingangsbestätigung per Mail", "akteur": "SYS", "system": "n8n", "workflow": "TCO Mailversand" },
         { "text": "Prüfen (Dubletten) und übernehmen", "akteur": "KW", "system": "portal", "route": "POST /mitgliedsantraege/:id/uebernehmen", "recht": "tco.antraege:edit", "app": "/tco/mitgliedsantraege" },
         { "text": "Gruppen per Regelwerk zuordnen", "akteur": "SYS", "system": "portal", "route": "POST /gruppen/regeln/anwenden", "recht": "tco.gruppen:edit", "app": "/tco/gruppen" },
-        { "text": "Einladung annehmen, eigene Daten pflegen", "akteur": "MG", "system": "portal", "route": "POST /einladung", "app": "/tco/meine-mitgliedschaft", "recht": "tco.meinedaten:edit" }
+        { "text": "Einladung annehmen, eigene Daten pflegen", "akteur": "MG", "system": "portal", "route": "POST /einladung", "app": "/tco/meine-daten", "recht": "tco.meinedaten:edit" }
       ]
     },
     {
