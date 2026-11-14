@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Bar, BusyIndicator, Button, CheckBox, DateTimePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
   ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Tab, TabContainer, Text, TextArea, Title,
@@ -16,6 +17,7 @@ import { useCan } from '@core/session';
 import { TCO } from '../util';
 import { MassenanlageDialog } from './Massenanlage';
 import { EventTabelle } from './EventTabelle';
+import { EinladungDialog, VERANSTALTUNG_PARAM } from './Einladung';
 import { GruppenBaum } from '../gruppen/Gruppen';
 import './kalender.css';
 
@@ -77,7 +79,14 @@ export function Kalender() {
   const [d, setD] = useState<Daten | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [detail, setDetail] = useState<number | null>(null);
+  // Einladungslink (?veranstaltung=<id>): die Veranstaltung öffnet sich sofort; beim Schließen verschwindet der Zusatz aus der Adresse
+  const [params, setParams] = useSearchParams();
+  const ausLink = Number(params.get(VERANSTALTUNG_PARAM));
+  const [detail, setDetail] = useState<number | null>(Number.isInteger(ausLink) && ausLink > 0 ? ausLink : null);
+  const detailZu = () => {
+    setDetail(null);
+    if (params.has(VERANSTALTUNG_PARAM)) { const p = new URLSearchParams(params); p.delete(VERANSTALTUNG_PARAM); setParams(p, { replace: true }); }
+  };
   const [form, setForm] = useState<Partial<Ev> | null>(null);
   const [masse, setMasse] = useState(false);
   // Filter der Liste: vergangene Veranstaltungen, Gruppe, Art (#33)
@@ -105,7 +114,7 @@ export function Kalender() {
   const schieben = (n: number) => setMonat(({ j, m }) => { const x = new Date(j, m + n, 1); return { j: x.getFullYear(), m: x.getMonth() }; });
 
   // Kopie als neue Veranstaltung: alle Angaben übernehmen, Termin wird im Dialog angepasst; Rückmeldungen werden nicht kopiert
-  const kopieren = (e: Ev) => { setDetail(null); setForm({ ...e, id: undefined, abgesagt: false }); };
+  const kopieren = (e: Ev) => { detailZu(); setForm({ ...e, id: undefined, abgesagt: false }); };
 
   // Gruppe: die gewählte Gruppe und ihre Untergruppen (Pfad „A › B“); „–“ = Veranstaltungen für alle Mitglieder
   const gruppeGewaehlt = d?.gruppen.find((g) => String(g.id) === fGruppe);
@@ -198,8 +207,8 @@ export function Kalender() {
         )}
       </TabContainer>
       )}
-      {detail !== null && d && <DetailDialog id={detail} pflege={d.pflege} mitglied={d.mitglied} kategorien={d.kategorien} onClose={() => { setDetail(null); laden(); }}
-                                             onBearbeiten={(e) => { setDetail(null); setForm(e); }} onKopieren={kopieren} onError={setError} />}
+      {detail !== null && d && <DetailDialog id={detail} pflege={d.pflege} mitglied={d.mitglied} kategorien={d.kategorien} onClose={() => { detailZu(); laden(); }}
+                                             onBearbeiten={(e) => { detailZu(); setForm(e); }} onKopieren={kopieren} onError={setError} />}
       {masse && d && <MassenanlageDialog kategorien={d.kategorien} gruppen={d.gruppen} onClose={() => setMasse(false)}
                                          onDone={(t) => { setMasse(false); if (t) toast(t, 5000); laden(); }} />}
       {form && d && <EventDialog e={form} d={d} onClose={() => setForm(null)} onGespeichert={(t) => { setForm(null); toast(t, 5000); laden(); }} />}
@@ -361,6 +370,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
   const [r, setR] = useState<{ status: Status; begleitung: string; kommentar: string }>({ status: 'ZUSAGE', begleitung: '0', kommentar: '' });
   const [busy, setBusy] = useState(false);
   const [loeschen, setLoeschen] = useState(false);
+  const [einladen, setEinladen] = useState(false);
   const laden = () => api.get<Detail>(`${K}/${id}`).then((v) => { setX(v); setR({ status: v.event.mein_status ?? 'ZUSAGE', begleitung: String(v.event.meine_begleitung ?? 0), kommentar: v.event.mein_kommentar ?? '' }); }).catch((e) => { onError(e.message); onClose(); });
   useEffect(() => { laden(); if (pflege) api.get<typeof mitglieder>(`${K}/pflege/mitglieder?event=${id}`).then(setMitglieder).catch(() => undefined); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   async function lauf(fn: () => Promise<{ text?: string }>) {
@@ -379,6 +389,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
                            <Button icon="delete" design="Transparent" disabled={busy} onClick={() => setLoeschen(true)}>Löschen</Button>
                          </> : undefined}
                          endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+      {einladen && <EinladungDialog id={id} titel={e.titel} onClose={() => setEinladen(false)} />}
       <ConfirmDialog open={loeschen} danger title="Veranstaltung löschen" confirmText="Löschen"
                      text={`„${e.titel}“ endgültig löschen? Das geht nur, solange niemand angemeldet ist, und lässt sich nicht rückgängig machen.`}
                      onCancel={() => setLoeschen(false)}
@@ -393,6 +404,10 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
           {e.anmeldeschluss && <span><Icon name="lateness" className="portal-kal__ico" />Anmeldeschluss {datum(e.anmeldeschluss)} {uhr(e.anmeldeschluss)}</span>}
         </div>
         {e.beschreibung && <div className="portal-kal__beschreibung">{e.beschreibung}</div>}
+        {/* im Inhalt statt in der Fußleiste: dort ist auf dem Handy kein Platz für einen weiteren Knopf */}
+        {pflege && !e.abgesagt && (
+          <div><Button icon="email" tooltip="Einladungslink kopieren, teilen oder per E-Mail an die Mitglieder senden" onClick={() => setEinladen(true)}>Einladen</Button></div>
+        )}
 
         {e.anmeldung && mitglied && (
           <section className="portal-kal__rm">

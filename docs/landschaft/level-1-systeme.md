@@ -192,7 +192,7 @@ flowchart LR
 | index | 6 |
 | instandhaltung | 33 |
 | jt | 30 |
-| kalender | 21 |
+| kalender | 23 |
 | konten | 5 |
 | mitglieder | 72 |
 | platz | 67 |

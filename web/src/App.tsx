@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BusyIndicator, FlexBox, MessageStrip } from '@ui5/webcomponents-react';
 import { api, ApiError, SITZUNG_PRUEFEN } from './api';
@@ -7,6 +7,7 @@ import { ForcedPasswordPage, KennwortSetzenPage, LoginPage, SetupPage } from './
 import { allModules, enabledModules } from './modules';
 import { Shell } from './shell/Shell';
 import { applyBranding } from './branding';
+import { zielAbholen, zielMerken, zielVergessen } from './anmeldeziel';
 
 type State =
   | { kind: 'loading' }
@@ -26,6 +27,9 @@ export function App() {
    * weiter die zuletzt offene Seite (Adresse „/“, Inhalt z. B. Mitglieder).
    */
   const zurStartseite = useCallback(() => navigate('/', { replace: true }), [navigate]);
+  // load() bleibt stabil (sonst liefe es bei jedem Seitenwechsel neu) – der Router wird deshalb über eine Referenz erreicht
+  const navRef = useRef(navigate);
+  navRef.current = navigate;
 
   const load = useCallback(async () => {
     try {
@@ -42,6 +46,11 @@ export function App() {
       try {
         const me = await api.get<Me>('/api/auth/me');
         applyBranding(me.settings);
+        // nach der Registrierung über einen Einladungslink: die erste Anmeldung führt einmal zum gemerkten Ziel (anmeldeziel.ts)
+        if (window.location.pathname === '/') {
+          const ziel = zielAbholen(allModules().flatMap((m) => m.nachAnmeldung ?? []));
+          if (ziel) navRef.current(ziel, { replace: true });
+        }
         setState({ kind: 'ready', me });
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
@@ -124,7 +133,9 @@ export function App() {
       const ids = (state.settings.module as string[] | undefined) ?? [];
       const bleiben = enabledModules(ids).some((m) => m.nachAnmeldung?.includes(pfad));
       return <LoginPage orgName={(state.settings['org.name'] as string) ?? 'Portal'} logo={state.settings['org.logo'] as string | undefined}
-                        onDone={() => { if (!bleiben) zurStartseite(); load(); }}
+                        hinweis={bleiben ? 'Nach der Anmeldung geht es direkt zur aufgerufenen Seite weiter.' : undefined}
+                        onRegistrierung={bleiben ? () => zielMerken(`${pfad}${window.location.search}`) : undefined}
+                        onDone={() => { if (bleiben) zielVergessen(); else zurStartseite(); load(); }}
                         registrierung={(state.settings.registrierung as { pfad: string; titel: string; text: string } | null) ?? null} />;
     }
     case 'ready':

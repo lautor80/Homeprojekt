@@ -34,7 +34,13 @@ const full = { width: '100%' };
 
 export interface RegistrierungInfo { pfad: string; titel: string; text: string }
 
-export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: string; logo?: string; onDone: () => void; registrierung?: RegistrierungInfo | null }) {
+export function LoginPage({ orgName, logo, onDone, registrierung, hinweis, onRegistrierung }: {
+  orgName: string; logo?: string; onDone: () => void; registrierung?: RegistrierungInfo | null;
+  /** Hinweis über dem Formular, z. B. wenn ein Link (Einladung zu einer Veranstaltung) erst nach der Anmeldung weiterführt */
+  hinweis?: string;
+  /** wird beim Wechsel zur Registrierung gerufen (merkt sich das Ziel des Links für die erste Anmeldung) */
+  onRegistrierung?: () => void;
+}) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +67,11 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
   return (
     <CenterCard title={orgName} subtitle="Zum Vereinsportal anmelden" logo={logo}>
       <form onSubmit={submit}>
+        {hinweis && !error && (
+          <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
+            {hinweis}{registrierung ? ` Noch kein Zugang? Dann zuerst unten „${registrierung.titel}“ wählen.` : ''}
+          </MessageStrip>
+        )}
         {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
         <Field label="Benutzer">
           <Input style={full} value={username} onInput={(e) => setUsername(e.target.value)} name="username" />
@@ -78,7 +89,7 @@ export function LoginPage({ orgName, logo, onDone, registrierung }: { orgName: s
         {registrierung && (
           <div style={{ marginTop: '1rem', textAlign: 'center' }}>
             <Text className="portal-muted" style={{ marginRight: '0.3rem' }}>Noch kein Zugang?</Text>
-            <Link onClick={() => setReg(true)}>{registrierung.titel}</Link>
+            <Link onClick={() => { onRegistrierung?.(); setReg(true); }}>{registrierung.titel}</Link>
           </div>
         )}
       </form>

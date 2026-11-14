@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { hasPermission } from '../../../../server/src/permissions.js';
-import { DB, type Db } from '../verein.js';
+import { DB, vereinLesen, type Db } from '../verein.js';
 import { addTage } from '../format.js';
 import {
   eventLesen, eventSpeichern, eventsLesen, familieLesen, familieRueckmelden, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
   KATEGORIEN, meineGruppen, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
 } from './logik.js';
+import { einladungSenden, einladungVermerken, einladungVorschau } from './einladung.js';
 import { gruppeZurLiga, spielplanEvent, spielplanLesen } from './spielplan.js';
 import { eventRegelnAnwenden, eventRegelnLesen, eventRegelnSpeichern, eventsMasseAendern, gruppeNachRegeln, REGEL_FELDER, type RegelFeld } from './zuordnung.js';
 
@@ -229,6 +230,26 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const e = await eventLesen(DB, eid);
     const t = await teilnehmer(DB, e, { alles: true });
     return reply.type('text/csv; charset=utf-8').header('content-disposition', `attachment; filename="Teilnehmer_${eid}.csv"`).send(teilnehmerCsv(e, t.liste, t.offen));
+  });
+
+  // ---------------------------------------------------------------- Einladungslink (siehe einladung.ts)
+  /** Link, vorbelegter Text und Empfänger – noch nichts gesendet */
+  app.get('/kalender/:id/einladung', pflege, async (req) => {
+    const { id: eid } = id.parse(req.params);
+    return einladungVorschau(DB, await vereinLesen(), await eventLesen(DB, eid));
+  });
+
+  /** Einladung per E-Mail an die Mitglieder, für die die Veranstaltung gilt – alle oder nur die ohne Rückmeldung */
+  app.post('/kalender/:id/einladung', pflege, async (req) => {
+    const { id: eid } = id.parse(req.params);
+    const b = z.object({ an: z.enum(['OFFEN', 'ALLE']).default('OFFEN'), betreff: z.string().trim().min(1, 'Bitte einen Betreff angeben.').max(200), text: z.string().trim().min(1, 'Bitte einen Text angeben.').max(10_000) }).parse(req.body);
+    const e = await eventLesen(DB, eid);
+    const r = await einladungSenden(DB, await vereinLesen(), e, { ...b, wer: wer(req) });
+    await change(req, (tx) => einladungVermerken(tx, e, b.an, r, wer(req)), { action: 'KAL_EINLADUNG' });
+    const teile = [`${r.gesendet} ${r.gesendet === 1 ? 'Einladung' : 'Einladungen'} gesendet`];
+    if (r.ohneMail.length) teile.push(`${r.ohneMail.length} ohne E-Mail-Adresse`);
+    if (r.fehler.length) teile.push(`${r.fehler.length} nicht zugestellt`);
+    return { ...r, text: `${teile.join(', ')}.` };
   });
 
   /** Auswahl zum Eintragen einer Rückmeldung; mit ?event=<id> nur die Mitglieder der Gruppen dieser Veranstaltung */
