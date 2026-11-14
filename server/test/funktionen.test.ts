@@ -178,10 +178,19 @@ test('App abschalten: alle Rechte der App, alles darunter und was ihre Rechte vo
 test('Bereich und Anwendung abschalten: gilt für alles darunter', async () => {
   await schalten(bereichId('tco', 'Clubhaus'), false);
   let me = await ich();
-  for (const a of ['Clubhausabrechnung', 'Mein Verzehr', 'Theke', 'Verzehrbuch']) {
+  for (const a of ['Clubhausabrechnung', 'Theke', 'Verzehrbuch']) {
     assert.ok(me.aus.ids.includes(appId('tco', a)), `${a} ist mit aus`);
     assert.equal(appAktiv('tco', a), false);
   }
+  // „Mein Verzehr“ gehört seit #232 (N1) zum Bereich „Mein Bereich“ – das Abschalten des Clubhauses lässt es an
+  assert.equal(appAktiv('tco', 'Mein Verzehr'), true);
+  await schalten(bereichId('tco', 'Mein Bereich'), false);
+  me = await ich();
+  for (const a of ['Meine Mitgliedschaft', 'Meine Daten', 'Platz buchen', 'Mein Verzehr', 'Meine Trainingszeiten', 'Schaden melden']) {
+    assert.ok(me.aus.ids.includes(appId('tco', a)), `${a} ist mit „Mein Bereich“ aus`);
+  }
+  await schalten(bereichId('tco', 'Mein Bereich'), true);
+  assert.equal(appAktiv('tco', 'Mein Verzehr'), true);
   assert.equal(appAktiv('tco', 'Mitglieder'), true);
   await schalten(bereichId('tco', 'Clubhaus'), true);
 

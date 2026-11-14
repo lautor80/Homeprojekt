@@ -13,13 +13,14 @@ flowchart LR
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
+      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Mitgliedschaft<br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
       B_Einstellungen["<b>Einstellungen</b><br/>Stammdaten<br/>Kontenstamm<br/>Produkte"]
-      B_Mitglieder["<b>Mitglieder</b><br/>Meine Mitgliedschaft<br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
+      B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
-      B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining<br/>Meine Trainingszeiten"]
-      B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Platz buchen<br/>Meine Daten<br/>Serienbuchung<br/>Platzverwaltung"]
-      B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Mein Verzehr<br/>Theke<br/>Verzehrbuch"]
-      B_Instandhaltung["<b>Instandhaltung</b><br/>Schaden melden<br/>Schadensmeldungen"]
+      B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
+      B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung"]
+      B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
+      B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen"]
       B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss"]
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
@@ -74,10 +75,15 @@ flowchart LR
 | Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung |
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
+| Mein Bereich | Meine Mitgliedschaft | `/tco/meine-mitgliedschaft` | `tco.meinedaten:edit` | Eigene Daten, Bankverbindung, Verträge, Kündigung |
+| Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinkonto:edit` | Anschrift, E-Mail und Telefon pflegen |
+| Mein Bereich | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
+| Mein Bereich | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
+| Mein Bereich | Meine Trainingszeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit` | Eigene Zeiten zurückmelden, Zeitnachweise ansehen |
+| Mein Bereich | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
 | Einstellungen | Stammdaten | `/tco/stammdaten` | `tco.stammdaten:edit` | Verein, Bank, Logo, Hallenabrechnung, SAP-Übernahme |
 | Einstellungen | Kontenstamm | `/tco/konten` | `tco.konten:display` | Konten, Verwendung je Jahr, Anfangsbestände |
 | Einstellungen | Produkte | `/tco/produkte` | `tco.produkte:display` | Produkte, Preise je Zeitraum, Erlöskonten |
-| Mitglieder | Meine Mitgliedschaft | `/tco/meine-mitgliedschaft` | `tco.meinedaten:edit` | Eigene Daten, Bankverbindung, Verträge, Kündigung |
 | Mitglieder | Mitglieder | `/tco/mitglieder` | `tco.mitglieder:display` | Stammdaten, Verträge, SEPA, Unterlagen |
 | Mitglieder | Mitgliedergruppen | `/tco/gruppen` | `tco.gruppen:display` | Kategorien, Gruppen und Mannschaften im Baum |
 | Mitglieder | Mitgliedsanträge | `/tco/mitgliedsantraege` | `tco.antraege:display` |  |
@@ -88,19 +94,14 @@ flowchart LR
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Nichtmitglieder, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
-| Jugend | Meine Trainingszeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit` | Eigene Zeiten zurückmelden, Zeitnachweise ansehen |
 | Tennishalle | Hallenpreise | `/tco/hallenpreise` | `tco.halle:display` | Produkte und Preismatrix |
 | Tennishalle | Hallenabrechnung | `/tco/halle` | `tco.halle:display` | EP3-Buchungen abrechnen |
 | Tennishalle | Hallenschlüssel | `/tco/hallenschluessel` | `tco.schluessel:display` |  |
-| Tennishalle | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
-| Tennishalle | Meine Daten | `/tco/meine-daten` | `tco.meinkonto:edit` | Anschrift, E-Mail und Telefon pflegen |
 | Tennishalle | Serienbuchung | `/tco/serienbuchung` | `tco.platz:serie` | Hallenwart: mehrere Plätze, Stunden, Abos |
 | Tennishalle | Platzverwaltung | `/tco/platzverwaltung` | `tco.platz:admin` | Plätze, Buchungsregeln, Belegung, Abos |
 | Clubhaus | Clubhausabrechnung | `/tco/clubhaus` | `tco.clubhaus:display` | Getränkerechnungen, Forderungsliste, Absatz |
-| Clubhaus | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
 | Clubhaus | Theke | `/tco/theke` | `tco.verzehr:theke` | Gäste kassieren, Belege senden, Mitglieder anschreiben |
 | Clubhaus | Verzehrbuch | `/tco/verzehrbuch` | `tco.verzehr:display` | Alle Positionen, Belege, Monatsabschluss, Preisliste |
-| Instandhaltung | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
 | Instandhaltung | Schadensmeldungen | `/tco/instandhaltung` | `tco.instandhaltung:display` | Meldungen bearbeiten, Plätze sperren |
 | Finanzen | Sollstellungen | `/tco/sollstellung` | `tco.soll:display` | Beitragseinzug per SEPA-Lastschrift |
 | Finanzen | FI-Belege | `/tco/fi` | `tco.fi:display` | Bankimport, Belege, Storno |
