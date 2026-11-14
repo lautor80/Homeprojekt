@@ -2,6 +2,7 @@ import type { WebModule } from '@core/platform';
 import { AuftraegeListe } from './AuftraegeListe';
 import { AuftragDetail } from './AuftragDetail';
 import { FirmaTab, MailtexteTab, Stammdaten } from './Stammdaten';
+import { Datenimport } from './Datenimport';
 import { Kontakte } from './Kontakte';
 
 /** Transportmodul (Euroflex Auftragsverwaltung) */
@@ -20,6 +21,10 @@ const mod: WebModule = {
     },
   ],
   // Kapitel „Euroflex“ der App Einstellungen (Administration → Einstellungen, #232 E1)
+  // Abschnitte in der App Schnittstellen (Administration → Schnittstellen, #232 S1/S4)
+  schnittstellen: [
+    { reiter: 'SAP', id: 'sap', text: 'Datenimport aus SAP', permission: 'transport.import:execute', component: Datenimport },
+  ],
   einstellungen: [
     { id: 'firma', text: 'Firma und Bank', icon: 'building', permission: 'transport.stammdaten:edit', component: FirmaTab },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'transport.stammdaten:edit', component: MailtexteTab },

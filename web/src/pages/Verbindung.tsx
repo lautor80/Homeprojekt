@@ -21,6 +21,8 @@ export interface Def {
   felder?: { url?: string; geheimnis?: string; auth_user?: string; header_name?: string };
   zusatz?: { key: string; text: string; platzhalter?: string }[];
   werte: Werte;
+  /** Stand aus dem Arbeitsvorrat: offene Störung dieser Anbindung (dieselbe Quelle, zweite Anzeige) */
+  stand?: { eingerichtet: boolean; gestoert: boolean; text: string; seit: string | null; anzahl: number };
 }
 export interface Gruppe { modul: string; name: string; verbindungen: Def[] }
 interface Test { ok: boolean; text: string; dauer_ms?: number }
@@ -57,6 +59,15 @@ export function Verbindung({ def }: { def: Def }) {
   return (
     <Panel headerText={def.text} fixed style={{ marginBottom: '1rem' }}>
       <Text style={{ display: 'block', marginBottom: '0.75rem', color: 'var(--sapContent_LabelColor)' }}>{def.beschreibung}</Text>
+      {def.stand && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <ObjectStatus state={def.stand.gestoert ? 'Negative' : def.stand.eingerichtet ? 'Positive' : 'None'} showDefaultIcon={def.stand.eingerichtet}>
+            Stand: {def.stand.gestoert
+              ? `Störung seit ${def.stand.seit ? def.stand.seit.split('-').reverse().join('.') : '?'}${def.stand.anzahl > 1 ? ` (${def.stand.anzahl}×)` : ''} – ${def.stand.text} (steht auch im Arbeitsvorrat)`
+              : def.stand.text}
+          </ObjectStatus>
+        </div>
+      )}
       <SperrHinweis s={sperre} />
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <FormGrid>

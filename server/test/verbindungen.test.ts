@@ -113,7 +113,7 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   const kern = r.body.gruppen.find((g: { modul: string }) => g.modul === 'core');
   // Paperless je Bereich (#232, S5): der bisherige gemeinsame Zugang gehört TC Oberthal, Euroflex hat einen eigenen (noch leer)
   assert.ok(!kern.verbindungen.some((v: { id: string }) => /paperless/.test(v.id)), 'der Kern hat keinen gemeinsamen Zugang mehr');
-  const gruppe = (modul: string) => r.body.gruppen.find((g: { modul: string }) => g.modul === modul).verbindungen as { id: string; text: string; pruefbar: boolean; werte: { url: string; geheimnis: string } }[];
+  const gruppe = (modul: string) => r.body.gruppen.find((g: { modul: string }) => g.modul === modul).verbindungen as { id: string; text: string; pruefbar: boolean; werte: { url: string; geheimnis: string }; stand: { eingerichtet: boolean; gestoert: boolean; text: string } }[];
   // App „Schnittstellen“ (#232, S1): jede Anbindung nennt den Reiter ihrer Schnittstelle – gleiche Schnittstelle, gleicher Reiter, je Bereich ein Block
   const reiter = (r.body.gruppen as { modul: string; verbindungen: { id: string; reiter: string }[] }[]).flatMap((g) => g.verbindungen.map((v) => `${v.reiter}: ${g.modul}/${v.id}`)).sort();
   assert.deepEqual(reiter, [
@@ -125,6 +125,9 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.equal(pl.text, 'Paperless-ngx TC Oberthal');
   const plEuroflex = gruppe('transport').find((v) => v.id === 'transport.paperless')!;
   assert.deepEqual([plEuroflex.text, plEuroflex.pruefbar, plEuroflex.werte.url, plEuroflex.werte.geheimnis], ['Paperless-ngx Euroflex', true, '', '']);
+  // Zeile „Stand“ (S1): eingerichtet und ohne offene Störung bzw. nicht eingerichtet
+  assert.deepEqual(pl.stand, { eingerichtet: true, gestoert: false, text: 'keine Störung gemeldet', seit: null, anzahl: 0 });
+  assert.deepEqual([plEuroflex.stand.eingerichtet, plEuroflex.stand.gestoert, plEuroflex.stand.text], [false, false, 'nicht eingerichtet']);
   assert.equal(pl.werte.geheimnis, '********', 'Geheimnis kommt maskiert');
   assert.equal(pl.werte.url, 'http://verein:8000,http://extern');
 

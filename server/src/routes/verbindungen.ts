@@ -3,7 +3,14 @@ import { z } from 'zod';
 import { change, requireAuth } from '../auth.js';
 import { BusinessError } from '../errors.js';
 import { verbindungDef, verbindungsGruppen } from '../modules.js';
-import { istPaperlessId, maskieren, paperlessEindeutig, uebernehmen, verbindungLesen, verbindungSpeichern, type AuthArt } from '../lib/verbindungen.js';
+import { eingerichtet, istPaperlessId, maskieren, paperlessEindeutig, uebernehmen, verbindungLesen, verbindungSpeichern, type AuthArt } from '../lib/verbindungen.js';
+import { offeneStoerungen, stoerungSchluessel } from '../lib/hinweise.js';
+
+/** Rechnername der ersten Adresse – so benennt der Paperless-Client seinen Zugang in Störungsmeldungen (lib/paperless.ts, wo()) */
+function rechner(url: string): string {
+  const erste = url.split(',')[0].trim().replace(/\/+$/, '');
+  try { return new URL(erste).host; } catch { return erste; }
+}
 
 /** Zentrale Anbindungen (Administration → Schnittstellen): angeschlossene Systeme des Kerns und der Module */
 const P = 'core.settings:edit';
@@ -21,12 +28,23 @@ export async function verbindungenRoutes(app: FastifyInstance) {
   /** alle Anbindungen mit Definition und gespeicherten (maskierten) Werten */
   app.get('/api/verbindungen', { preHandler: requireAuth(P) }, async () => {
     const gruppen = [];
+    // Zeile „Stand“ (#232, S1): offene Störungen aus dem Arbeitsvorrat – eine Quelle, zwei Anzeigen
+    const stoerungen = await offeneStoerungen(['SCHNITTSTELLE', 'PAPERLESS', 'MAIL_FEHLER']);
     for (const g of verbindungsGruppen()) {
       const verbindungen = [];
       for (const d of g.verbindungen) {
-        const v = maskieren(await verbindungLesen(d.id));
+        const roh = await verbindungLesen(d.id);
+        const v = maskieren(roh);
         const { pruefen, ...def } = d;
-        verbindungen.push({ ...def, pruefbar: !!pruefen, werte: { ...v, auth_art: v.url || v.geheimnis ? v.auth_art : (d.auth[0] as AuthArt) } });
+        // Paperless meldet je Zugang (Rechnername der ersten Adresse), der E-Mail-Versand des Portals jede nicht gesendete E-Mail,
+        // alle anderen Anbindungen der Module melden mit ihrer Id (tcoSchnittstelle)
+        const s = !eingerichtet(roh) ? null
+          : istPaperlessId(d.id) ? stoerungen.get(stoerungSchluessel('core', 'PAPERLESS', rechner(roh.url)))
+            : d.id === 'mail' ? stoerungen.get(stoerungSchluessel('core', 'MAIL_FEHLER'))
+              : stoerungen.get(stoerungSchluessel(g.modul, 'SCHNITTSTELLE', d.id));
+        const stand = !eingerichtet(roh) ? { eingerichtet: false, gestoert: false, text: 'nicht eingerichtet', seit: null, anzahl: 0 }
+          : s ? { eingerichtet: true, gestoert: true, ...s } : { eingerichtet: true, gestoert: false, text: 'keine Störung gemeldet', seit: null, anzahl: 0 };
+        verbindungen.push({ ...def, pruefbar: !!pruefen, stand, werte: { ...v, auth_art: v.url || v.geheimnis ? v.auth_art : (d.auth[0] as AuthArt) } });
       }
       gruppen.push({ modul: g.modul, name: g.name, verbindungen });
     }

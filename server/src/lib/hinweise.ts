@@ -98,6 +98,18 @@ export async function hinweisBeheben(modul: string, quelle: string, objekt?: str
   } catch { /* der Hinweis bleibt stehen, bis ihn jemand bestätigt */ }
 }
 
+/**
+ * Offene Störungen für die Zeile „Stand“ der App Schnittstellen (#232, S1) – dieselbe Quelle wie der Arbeitsvorrat:
+ * was dort rot steht, steht auch am Zugang. Schlüssel: „<modul>\n<quelle>\n<objekt>“.
+ */
+export interface Stoerung { text: string; seit: string; anzahl: number }
+export async function offeneStoerungen(quellen: string[]): Promise<Map<string, Stoerung>> {
+  const rows = await sql`select modul, quelle, objekt, text, anzahl, to_char(erstellt_am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as seit
+                           from core.hinweise where erledigt_am is null and quelle = any(${quellen})`;
+  return new Map(rows.map((r) => [merker(r.modul as string, r.quelle as string, r.objekt as string), { text: r.text as string, seit: r.seit as string, anzahl: Number(r.anzahl) }]));
+}
+export const stoerungSchluessel = (modul: string, quelle: string, objekt?: string | number | null): string => merker(modul, quelle, objekt);
+
 interface Zeile { id: number; quelle: string; bereich: string; recht: string; art: string; titel: string; text: string; icon: string; state: Aufgabe['state']; pfad: string; anzahl: number; datum: string }
 const RANG = { Negative: 3, Critical: 2, Information: 1 } as const;
 export const HINWEIS_GESEHEN = '/api/arbeitsvorrat/hinweis-gesehen';

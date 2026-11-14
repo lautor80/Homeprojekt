@@ -69,5 +69,35 @@ test('Einstellungen: jeder Absprung aus einer Fach-App führt auf ein angemeldet
 test('Einstellungen: die App zeigt die Kapitel, die man sehen darf – Route ohne eigenes Recht, Menü über die Kapitel', () => {
   const core = lesen('web/src/shell/core.tsx');
   assert.match(core, /\{ path: '\/admin\/einstellungen', component: EinstellungenPage \}/, 'Route ohne permission');
-  assert.match(lesen('web/src/shell/nav.ts'), /e\.path === EINSTELLUNGEN_PFAD \? kapitelGruppen\(modules, can\)\.length > 0 : can\(e\.permission\)/, 'Menüeintrag hängt an den Kapiteln');
+  assert.match(lesen('web/src/shell/nav.ts'), /e\.path === EINSTELLUNGEN_PFAD \? kapitelGruppen\(modules, can\)\.length > 0 : /, 'Menüeintrag hängt an den Kapiteln');
+});
+
+test('Schnittstellen: Abschnitte der Module angemeldet, Absprünge treffen einen vorhandenen Reiter, Route ohne eigenes Recht', () => {
+  const abschnitte = Object.fromEntries(MODULE.map((m) => {
+    const text = lesen(`modules/${m}/web/index.ts`);
+    const start = text.search(/\bschnittstellen: \[/);
+    const liste = start < 0 ? [] : [...text.slice(start, text.indexOf('],', start)).matchAll(/\{ reiter: '([^']+)', id: '([^']+)', text: '([^']+)', permission: '([^']+)'/g)]
+      .map(([, reiter, id, t, permission]) => ({ reiter, id, text: t, permission }));
+    return [m, liste];
+  }));
+  assert.ok(abschnitte.tco?.some((a) => a.reiter === 'SAP'), 'TC Oberthal: Übernahme aus SAP im Reiter „SAP“');
+  assert.ok(abschnitte.transport?.some((a) => a.reiter === 'SAP'), 'Euroflex: Datenimport im Reiter „SAP“');
+  for (const [modul, liste] of Object.entries(abschnitte)) {
+    assert.equal(new Set(liste.map((a) => a.id)).size, liste.length, `${modul}: Abschnitts-Ids doppelt`);
+    for (const a of liste) for (const r of a.permission.split('|')) assert.ok(RECHTE.has(r), `${modul}.${a.id}: Recht ${r} gibt es im Server nicht`);
+  }
+  // Reiter: von Anbindungen (Server: reiter: '…') oder von Abschnitten
+  const server = [...dateien('server/src', /\.ts$/), ...MODULE.flatMap((m) => dateien(`modules/${m}/server`, /\.ts$/))];
+  const reiter = new Set([...server.flatMap((d) => [...lesen(d).matchAll(/\breiter: '([^']+)'/g)].map(([, r]) => r)), ...Object.values(abschnitte).flat().map((a) => a.reiter)]);
+  for (const r of ['Paperless', 'E-Mail', 'EP3', 'Nextcloud', 'SAP']) assert.ok(reiter.has(r), `Reiter „${r}“ nicht gefunden – Erkennung prüfen`);
+  let geprueft = 0;
+  for (const d of [...dateien('web/src', /\.tsx?$/), ...MODULE.flatMap((m) => dateien(`modules/${m}/web`, /\.tsx?$/))]) {
+    for (const [, r] of lesen(d).matchAll(/\bschnittstelleLink\('([^']+)'\)/g)) {
+      assert.ok(reiter.has(r), `${d}: schnittstelleLink('${r}') – diesen Reiter gibt es nicht (mehr)`);
+      geprueft++;
+    }
+  }
+  assert.ok(geprueft >= 2, `nur ${geprueft} Absprünge gefunden – Erkennung prüfen`);
+  assert.match(lesen('web/src/shell/core.tsx'), /\{ path: '\/admin\/schnittstellen', component: SchnittstellenPage \}/, 'Route ohne permission');
+  assert.match(lesen('web/src/shell/nav.ts'), /e\.path === SCHNITTSTELLEN_PFAD \? schnittstellenSichtbar\(modules, can\)/, 'Menüeintrag hängt an Reitern und Abschnitten');
 });

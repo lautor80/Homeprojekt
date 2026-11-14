@@ -59,6 +59,19 @@ export interface EinstellungsKapitel {
   component: ComponentType;
 }
 
+/** Abschnitt eines Moduls in einem Reiter der App „Schnittstellen“ (#232, S1) – steht im Block seines Bereichs unter dem Zugang */
+export interface SchnittstellenAbschnitt {
+  /** Name des Reiters, z. B. „SAP“, „Paperless“ – ein neuer Name ist ein neuer Reiter */
+  reiter: string;
+  /** eindeutig im Modul */
+  id: string;
+  /** Überschrift des Abschnitts, z. B. „Übernahme aus SAP“ */
+  text: string;
+  /** Recht, mit dem man den Abschnitt sieht (mehrere mit „|“ = eines davon genügt) */
+  permission: string;
+  component: ComponentType;
+}
+
 export interface WebModule {
   id: string;
   name: string;
@@ -91,6 +104,8 @@ export interface WebModule {
   nachAnmeldung?: string[];
   /** Kapitel dieser Anwendung in der App „Einstellungen“ (Administration → Einstellungen, #232 E1), in der Reihenfolge der Anzeige */
   einstellungen?: EinstellungsKapitel[];
+  /** Abschnitte dieser Anwendung in der App „Schnittstellen“ (Administration → Schnittstellen, #232 S1): Importe, Regeln, Felder je Schnittstelle */
+  schnittstellen?: SchnittstellenAbschnitt[];
   /** Arbeitsvorrat der Startseite: Zusatz des Moduls am Eintrag (z. B. Knopf „Zahlungsdaten“), siehe components/Arbeitsvorrat.tsx */
   arbeitsvorratZusatz?: import('./components/Arbeitsvorrat').AufgabenZusatz;
 }
