@@ -99,7 +99,7 @@ export async function stammLesen(v: Verein) {
 
 /** Eine Datei nach Paperless übertragen; neue Korrespondenten/Tags werden angelegt */
 export async function hochladen(v: Verein, datei: string, inhalt: string, m: Meta, benutzer: string): Promise<UploadErgebnis> {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
   const name = datei.split(/[\\/]/).pop()!.trim();
   const { daten, mime } = dekodieren(name, inhalt);
   dateiPruefen(name, daten.length);

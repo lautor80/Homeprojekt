@@ -11,7 +11,7 @@ import { coreNav } from '../shell/core';
 import type { NavEntry } from '../platform';
 
 /**
- * Nutzungsstatistik (Administration → Statistik): Anmeldungen je Benutzer und Monat, Aufrufe je App.
+ * Nutzungsstatistik (Administration → Protokolle → Statistik): Anmeldungen je Benutzer und Monat, Aufrufe je App.
  * Apps werden über die Navigation benannt (Pfad → Menütext). Neuester Monat zuerst; Administratoren
  * lassen sich ausblenden. Klick auf eine Zahl zeigt, welche Benutzer welche App aufgerufen haben.
  */

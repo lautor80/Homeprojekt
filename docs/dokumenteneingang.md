@@ -14,7 +14,7 @@ IMAP-Postfach ──> n8n: Mail + Anhänge ──> Portal: Regelwerk ──┬�
 | Frage | Entscheidung |
 |---|---|
 | Wo wird das Regelwerk ausgewertet? | Im Portal, mit eigener Berechtigung. |
-| Wer legt ab? | Das Portal selbst, über die zentrale Anbindung „Paperless-ngx“ (Administration → Anbindungen) und die neue Anbindung „Nextcloud Dokumentenablage“. Abweichung vom ersten Konzept („n8n führt aus“): Der Paperless-Client, die Vorlagen der Paperless-Zuordnung und der WebDAV-Client waren im Portal schon vorhanden. |
+| Wer legt ab? | Das Portal selbst, über die zentrale Anbindung „Paperless-ngx“ (Administration → Schnittstellen → Anbindungen) und die neue Anbindung „Nextcloud Dokumentenablage“. Abweichung vom ersten Konzept („n8n führt aus“): Der Paperless-Client, die Vorlagen der Paperless-Zuordnung und der WebDAV-Client waren im Portal schon vorhanden. |
 | Paperless-Instanz | Gültig ist die Instanz im LAN (nicht die Internet-Adresse). Maßgeblich ist die Anbindung „Paperless-ngx“ im Portal – dort muss sie eingetragen sein; n8n spricht Paperless für den Dokumenteneingang nicht mehr direkt an. |
 | KI | Keine. Felder werden per Muster (regulärer Ausdruck) aus Betreff, Mailtext, HTML oder Dokumenttext gelesen; Inhalte verlassen das Portal nicht. Mitgliederinformationen gehen damit nie an einen KI-Dienst. |
 | Zuordnung über HTML | Der HTML-Teil der E-Mail ist Bedingungsfeld und Quelle für die Extraktion („Mailtext (HTML)“). |
@@ -85,9 +85,9 @@ Die Migration legt die Rolle **Dokumenteneingang** mit `display` und `edit` an. 
 
 ## Einrichten
 
-1. **Administration → Anbindungen:** „Paperless-ngx“ prüfen; bei Bedarf „Nextcloud Dokumentenablage“ (Adresse, Benutzer, App-Passwort) eintragen.
+1. **Administration → Schnittstellen → Anbindungen:** „Paperless-ngx“ prüfen; bei Bedarf „Nextcloud Dokumentenablage“ (Adresse, Benutzer, App-Passwort) eintragen.
    Für „Posteingang abrufen“ die Anbindung „Maileingang jetzt abrufen (n8n)“ mit der Production-URL des Webhooks und der Header-Anmeldung eintragen.
-2. **Administration → API-Schlüssel:** Schlüssel für das Modul „TC Oberthal“ mit `tco.eingang:melden` anlegen.
+2. **Administration → Schnittstellen → API-Schlüssel:** Schlüssel für das Modul „TC Oberthal“ mit `tco.eingang:melden` anlegen.
 3. **n8n:** Workflow „TCO Maileingang“ ([`docs/n8n/tco-maileingang.json`](n8n/tco-maileingang.json)) – ein Workflow für Dokumenteneingang und Rückmeldungen, siehe [n8n/DOKUMENTENEINGANG.md](n8n/DOKUMENTENEINGANG.md).
    Nach der Ablage ergänzt „TCO Paperless Qualifizierung“ Datum, Betrag und Positionen per Bildanalyse – sofort über einen Paperless-Workflow, siehe [n8n/QUALIFIZIERUNG.md](n8n/QUALIFIZIERUNG.md).
 4. **Rolle „Dokumenteneingang“** den zuständigen Benutzern zuordnen.

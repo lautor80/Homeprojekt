@@ -78,7 +78,9 @@ const mod: WebModule = {
   sideWidgets: [{ component: Ablage, permission: 'tco.upload:execute' }],
   // neue Aufgaben im Arbeitsvorrat am Menüeintrag „Vereinsübersicht“
   waechter: [{ component: AufgabenWaechter, permission: 'tco.dashboard:display' }],
-  // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps (Gliederung wie die Rollenpflege)
+  // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
+  // modules/tco/server/index.ts; lose Apps der Stufe 2 stehen dort im Bereich „Allgemein“), geprüft in
+  // server/test/menue_rollenpflege.test.ts (#232, N6). Das Zahnrad steht nur für Einstellungen (B4).
   nav: [
     {
       text: 'TC Oberthal',
@@ -128,9 +130,9 @@ const mod: WebModule = {
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
             { text: 'Hallenschlüssel', icon: 'key', path: '/tco/hallenschluessel', permission: 'tco.schluessel:display' },
             { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
-            { text: 'Meine Daten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
+            { text: 'Meine Daten', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
-            { text: 'Platzverwaltung', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
+            { text: 'Platzverwaltung', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
           ],
         },
         {
@@ -139,14 +141,14 @@ const mod: WebModule = {
             { text: 'Clubhausabrechnung', icon: 'receipt', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
             { text: 'Mein Verzehr', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
             { text: 'Theke', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
-            { text: 'Verzehrbuch', icon: 'sales-order', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
+            { text: 'Verzehrbuch', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
           ],
         },
         {
           text: 'Instandhaltung', icon: 'technical-object',
           children: [
             { text: 'Schaden melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
-            { text: 'Instandhaltung', icon: 'technical-object', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display' },
+            { text: 'Schadensmeldungen', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display' },
           ],
         },
         {
@@ -157,13 +159,13 @@ const mod: WebModule = {
             { text: 'Beitragsforecast', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },
             { text: 'Einnahmen und Ausgaben', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
             { text: 'Jahresabschluss', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
-            { text: 'Dokumenten-Upload', icon: 'upload-to-cloud', path: '/tco/upload', permission: 'tco.upload:execute' },
           ],
         },
         {
           text: 'Dokumente', icon: 'documents',
           children: [
             { text: 'Dokumenteneingang', icon: 'inbox', path: '/tco/dokumenteneingang', permission: 'tco.eingang:display' },
+            { text: 'Dokumenten-Upload', icon: 'upload-to-cloud', path: '/tco/upload', permission: 'tco.upload:execute' },
           ],
         },
       ],
@@ -220,7 +222,7 @@ const mod: WebModule = {
   ],
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
-    { text: 'Stammdaten', subtitle: 'Verein, Anbindungen, SAP-Übernahme', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
+    { text: 'Stammdaten', subtitle: 'Verein, Bank, Logo, Hallenabrechnung, SAP-Übernahme', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
     { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
     { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
@@ -236,16 +238,16 @@ const mod: WebModule = {
     { text: 'Hallenpreise', subtitle: 'Produkte und Preismatrix', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display', kpi: kpiHalle },
     { text: 'Platz buchen', subtitle: 'Freiplätze und Halle – eigene Buchungen mit Preisen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
-    { text: 'Meine Daten', subtitle: 'Anschrift, E-Mail und Telefon pflegen', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
+    { text: 'Meine Daten', subtitle: 'Anschrift, E-Mail und Telefon pflegen', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
     { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
-    { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'action-settings', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
+    { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
     { text: 'Vereinskalender', subtitle: 'Veranstaltungen, Mannschaften, An- und Abmeldung', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
     { text: 'Mein Verzehr', subtitle: 'Verzehr im Clubhaus auf das eigene Konto anschreiben', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
     { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
-    { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'sales-order', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
+    { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
     { text: 'Schaden melden', subtitle: 'Etwas kaputt auf der Anlage? Mit Foto melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
-    { text: 'Instandhaltung', subtitle: 'Schadensmeldungen bearbeiten, Plätze sperren', icon: 'technical-object', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display', kpi: kpiSchaden },
+    { text: 'Schadensmeldungen', subtitle: 'Meldungen bearbeiten, Plätze sperren', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display', kpi: kpiSchaden },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
     { text: 'FI-Belege', subtitle: 'Bankimport, Belege, Storno', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
     { text: 'Beitragsforecast', subtitle: 'Hochrechnung der Beitragseinnahmen', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },

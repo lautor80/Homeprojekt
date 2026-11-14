@@ -1,5 +1,5 @@
 /**
- * Mitglieder als Benutzer (Administration → Benutzer), Rolle MITGLIED, „Meine Mitgliedschaft“:
+ * Mitglieder als Benutzer (Administration → Benutzer und Rechte → Benutzer), Rolle MITGLIED, „Meine Mitgliedschaft“:
  * eigene Daten lesen/ändern, Bankverbindung, Kündigung – und nichts darüber hinaus.
  */
 import { test, before, after } from 'node:test';

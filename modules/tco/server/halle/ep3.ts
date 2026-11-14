@@ -300,7 +300,7 @@ export function zeitraumDerBuchungen(csv: string | undefined): { von: string; bi
  * Der Workflow meldet in `ab` zurück, ob er den Zeitraum übernommen hat (ältere Workflows kennen den Parameter nicht).
  */
 export async function ep3UeberN8n(v: Verein, benutzer: string, ab: string | null = null): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string; ab?: string | null }> {
-  if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Administration → Anbindungen).');
+  if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
   let res: Response;
   try {
     res = await fetch(v.n8n_ep3_url, {

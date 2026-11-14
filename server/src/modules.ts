@@ -49,7 +49,7 @@ export function paperlessKontexte(): { modul: string; name: string; kontexte: Ko
   return activeModules().filter((m) => m.paperlessKontexte?.length).map((m) => ({ modul: m.id, name: m.name, kontexte: m.paperlessKontexte! }));
 }
 
-/** Anbindungen des Kerns und aller aktiven Module (Administration → Anbindungen) */
+/** Anbindungen des Kerns und aller aktiven Module (Administration → Schnittstellen → Anbindungen) */
 export function verbindungsGruppen(): VerbindungGruppe[] {
   return [
     { modul: 'core', name: 'Basis', verbindungen: [PAPERLESS_DEF, MAIL_DEF] },

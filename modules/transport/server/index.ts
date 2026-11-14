@@ -630,7 +630,7 @@ async function routes(app: FastifyInstance) {
   // ---- Firmendaten ----
   app.get('/firma', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const f = await firmaLesen();
-    // Paperless wird zentral gepflegt (Administration → Anbindungen); hier nur der Stand
+    // Paperless wird zentral gepflegt (Administration → Schnittstellen → Anbindungen); hier nur der Stand
     return { ...f, paperless_token: f.paperless_token ? '********' : '', paperless: !!(f.paperless_url && f.paperless_token) };
   });
 

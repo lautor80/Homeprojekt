@@ -221,7 +221,7 @@ export async function schluesselRoutes(app: FastifyInstance) {
   /** Beleg (erneut) in Paperless ablegen */
   app.post('/schluessel/:id/beleg', schreiben, async (req) => {
     const { id } = pId.parse(req.params);
-    if (!plAktiv(await vereinLesen())) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
+    if (!plAktiv(await vereinLesen())) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
     const hinweise = await belegInPaperless(id, ich(req), req.log);
     const [v] = await DB`select doc_id from tco.schluessel_vorgang where id = ${id}`;
     if (!v?.doc_id) throw new BusinessError(hinweise[0] ?? 'Der Beleg konnte nicht abgelegt werden.');
@@ -237,7 +237,7 @@ export async function schluesselRoutes(app: FastifyInstance) {
     const { id } = pId.parse(req.params);
     const b = z.object({ datei: z.string().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.') }).parse(req.body);
     const v = await vereinLesen();
-    if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
+    if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
     const daten = { ...(await vorgangLesen(DB, id)), protokoll: [] } as unknown as BelegDaten;
     if (daten.status === 'STORNIERT') throw new BusinessError('Der Vorgang ist storniert.');
     const inhalt = Buffer.from(b.inhalt.replace(/^data:[^,]*;base64,/, ''), 'base64');

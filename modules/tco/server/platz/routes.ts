@@ -247,7 +247,7 @@ export async function platzRoutes(app: FastifyInstance) {
     const r = await registrieren(DB, e, req.ip, { mail, zuidPerMail });
     req.log.info({ registrierung: r.id, art: r.art, benutzername: e.benutzername, ip: req.ip }, 'Registrierung eingegangen');
     if (!v.n8n_mail_url || !url) {
-      // sichtbar im Mailprotokoll (Administration → Anbindungen): warum keine Bestätigungsmail kam
+      // sichtbar im Mailprotokoll (Administration → Schnittstellen → Anbindungen): warum keine Bestätigungsmail kam
       await mailProtokoll({ anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, betreff: 'Registrierung', status: 'nicht_gesendet',
         fehler: !v.n8n_mail_url ? 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)'
           : 'Portal-Adresse fehlt (Administration → Einstellungen) – keine E-Mail-Bestätigung möglich, Registrierung wartet auf manuelle Freigabe',

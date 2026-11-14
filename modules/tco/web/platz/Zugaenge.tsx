@@ -225,7 +225,7 @@ function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
       </Toolbar>
       <AnalyticalTable minRows={1} columns={columns} data={zeilen} loading={!liste} visibleRows={Math.min(Math.max(zeilen.length, 1), 20)} rowHeight={52} noDataText="Keine EP3-Kunden ohne Zuordnung" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
-        Der Kundenimport legt für alle EP3-Kunden mit mindestens einer Buchung in den letzten 12 Monaten automatisch Hallennutzer an (sichtbar unter Administration → Benutzer): Anmeldename = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“,
+        Der Kundenimport legt für alle EP3-Kunden mit mindestens einer Buchung in den letzten 12 Monaten automatisch Hallennutzer an (sichtbar unter Administration → Benutzer und Rechte → Benutzer): Anmeldename = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“,
         Rolle Hallennutzer; Mitglieder werden über ZUID, E-Mail oder Name zugeordnet. Wurde das EP3-Kennwort importiert (Spalte PW), gilt es weiter – sonst muss es in der
         Benutzerpflege gesetzt werden. Hier bleiben nur Sonderfälle: Vorschläge zum Verknüpfen mit vorhandenen Benutzern/Mitgliedern oder einzelnes Anlegen.
       </MessageStrip>

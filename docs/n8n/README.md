@@ -14,7 +14,7 @@ das Format, das `Hallenabrechnung → EP3-Import (n8n)` erwartet:
    - Node *EP3 Buchungen / EP3 Kunden / EP3 Texte*: MySQL-Zugang zur ep3-bs-Datenbank (nur Lesen genügt).
    - Node *Webhook*: Header-Auth (`Authorization`-Header mit frei gewähltem Geheimnis).
 3. Workflow aktivieren. Die Produktions-URL des Webhooks (`…/webhook/tco-ep3-import`) und das Geheimnis im Portal unter
-   **Administration → Anbindungen → EP3-Export Hallenbuchungen (n8n)** eintragen (Anmeldung „Schlüssel im eigenen Header“,
+   **Administration → Schnittstellen → Anbindungen → EP3-Export Hallenbuchungen (n8n)** eintragen (Anmeldung „Schlüssel im eigenen Header“,
    Header-Name `Authorization`, Wert = derselbe Header-Wert; bei Basic Auth stattdessen Benutzer und Passwort).
 4. Im Portal **Hallenabrechnung → EP3-Import** ausführen. Die Meldung „Kunden: … Kennwörter übernommen“ zeigt, dass die Spalte PW ankommt.
 

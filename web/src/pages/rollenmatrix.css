@@ -1,4 +1,4 @@
-/* Rollenmatrix (Administration → Rollen → Matrix, #46) */
+/* Rollenmatrix (Administration → Benutzer und Rechte → Rollen → Matrix, #46) */
 .portal-rm__rahmen { overflow: auto; max-height: calc(100vh - 330px); min-height: 18rem; border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapList_Background, #fff); }
 .portal-rm { border-collapse: separate; border-spacing: 0; font-size: 0.8125rem; }
 .portal-rm th, .portal-rm td { border-bottom: 1px solid var(--sapList_BorderColor); padding: 0.2rem 0.4rem; }

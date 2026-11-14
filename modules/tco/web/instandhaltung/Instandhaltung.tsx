@@ -45,7 +45,7 @@ export function Instandhaltung() {
   const can = useCan();
   const [error, setError] = useState<string | null>(null);
   return (
-    <AppPage title="Instandhaltung" subtitle="Schadensmeldungen bearbeiten – offene Meldungen stehen auch im Arbeitsvorrat der Vereinsübersicht">
+    <AppPage title="Schadensmeldungen" subtitle="Meldungen bearbeiten, Plätze sperren – offene Meldungen stehen auch im Arbeitsvorrat der Vereinsübersicht">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {can('tco.instandhaltung:admin') ? (
         <TabContainer contentBackgroundDesign="Transparent">
@@ -573,7 +573,7 @@ function FormularDialog({ d, anlaesse, darfAblegen, onClose }: { d: Detail; anla
         <TextArea rows={3} maxlength={2000} value={bemerkung} onInput={(e) => setBemerkung(e.target.value)} />
         <Text className="portal-muted portal-small">
           Das Formular enthält Eckdaten, Beschreibung, Bearbeitung, Unterschriftsfelder, das vollständige Protokoll und die Fotos.
-          Titel, Dokumenttyp, Speicherpfad und Tags in Paperless stehen unter Administration → Paperless-Zuordnung („Schadensmeldung“).
+          Titel, Dokumenttyp, Speicherpfad und Tags in Paperless stehen unter Administration → Schnittstellen → Paperless-Zuordnung („Schadensmeldung“).
         </Text>
       </div>
       <PdfDialog url={pdf} title={`Formular ${d.nummer}`} filename={`Schadensmeldung_${d.nummer}.pdf`} onClose={() => setPdf(null)} />
@@ -688,7 +688,7 @@ function Stammdaten({ onError }: { onError: (e: string) => void }) {
       <Section title="Zuständigkeiten" count={s.zustaendigkeiten.length}
                actions={<Button design="Transparent" icon="add" disabled={!s.bearbeiter.length} onClick={() => setZust(true)}>Zuständigkeit anlegen</Button>}>
         {!s.bearbeiter.length && (
-          <MessageStrip design="Critical" hideCloseButton>Noch niemand hat die Berechtigung „Schadensmeldungen bearbeiten“. Bitte zuerst in Administration → Rollen einer Rolle zuordnen und die Rolle den Personen geben.</MessageStrip>
+          <MessageStrip design="Critical" hideCloseButton>Noch niemand hat die Berechtigung „Schadensmeldungen bearbeiten“. Bitte zuerst in Administration → Benutzer und Rechte → Rollen einer Rolle zuordnen und die Rolle den Personen geben.</MessageStrip>
         )}
         <div className="portal-ih__rahmen"><table className="portal-ih__tabelle">
           <thead><tr><th>Person</th><th>Wo</th><th>Kategorie</th><th /></tr></thead>

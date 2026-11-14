@@ -14,7 +14,7 @@ import { benutzerAnlegen, freierBenutzername, ROLLE_MITGLIED } from '../platz/re
 
 /**
  * Einladung zum Vereinsportal (#10): persönlicher Link mit QR-Code für aktive Mitglieder ohne Benutzer.
- *  - Sammellauf (Administration → Benutzer): per E-Mail (Link + QR-Code als Bild) oder als Brief (PDF, ein Blatt je Mitglied)
+ *  - Sammellauf (Administration → Benutzer und Rechte → Benutzer): per E-Mail (Link + QR-Code als Bild) oder als Brief (PDF, ein Blatt je Mitglied)
  *  - Schnellweg bei der Registrierung: E-Mail + Geburtsdatum passen zu genau einem Mitglied → Link an dessen hinterlegte E-Mail
  * Einlösen (öffentliche Seite /einladung): Benutzername und Kennwort wählen → sofort Benutzer mit Rolle MITGLIED, verknüpft
  * mit dem Mitglied. Der Link gilt einmal; gespeichert ist nur der Hash.

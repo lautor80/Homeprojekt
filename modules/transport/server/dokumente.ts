@@ -20,7 +20,7 @@ const endung = (n: string) => (/\.([a-z0-9]+)$/i.exec(n)?.[1] ?? '').toLowerCase
 
 export function paperlessFirma(f: Firma): Paperless {
   if (!paperlessKonfiguriert({ url: f.paperless_url, token: f.paperless_token })) {
-    throw new BusinessError('Paperless ist nicht eingerichtet (Stammdaten → Firmendaten: URL und API-Token).');
+    throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen: Adresse und API-Token).');
   }
   return new Paperless({ url: f.paperless_url, token: f.paperless_token });
 }

@@ -117,7 +117,7 @@ export function Datenimport({ onDone }: { onDone?: () => void }) {
             Neuaufbau: Die Tabellen werden geleert und komplett aus den Dateien angelegt – im Portal erfasste Aufträge, die
             nicht in der Datei stehen, gehen verloren. Erforderlich sind Aufträge, Aufträge_POs, Adressen und ZEU_TRAEGER;
             mit ZEU_RGNRKREIS werden die Nummernkreise genau auf den SAP-Stand gesetzt. Vorher eine Sicherung ziehen
-            (Administration → Sicherung, Bereich Euroflex).
+            (Administration → System → Sicherung, Bereich Euroflex).
           </MessageStrip>
         ) : (
           <Text className="portal-muted" style={{ display: 'block', marginTop: '0.25rem' }}>

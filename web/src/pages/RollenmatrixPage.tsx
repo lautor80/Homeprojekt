@@ -10,7 +10,7 @@ import { useCan, useSession } from '../session';
 import { RollenMatrix, type MatrixAnsicht, type MatrixRolle } from './RollenMatrix';
 
 /**
- * Administration → Benutzerverwaltung → Rollenmatrix (#46): Rechte aller Rollen in einer Matrix pflegen, mit Prüfungen
+ * Administration → Benutzer und Rechte → Rollenmatrix (#46): Rechte aller Rollen in einer Matrix pflegen, mit Prüfungen
  * (Überlappungen, Funktionstrennung …) und Verprobung für einzelne oder mehrere Benutzer.
  */
 export function RollenmatrixPage() {

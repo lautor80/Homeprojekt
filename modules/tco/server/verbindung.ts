@@ -3,7 +3,7 @@ import { authHeader, type Verbindung, type VerbindungDef } from '../../../server
 import { WebDav } from '../../../server/src/lib/webdav.js';
 
 /**
- * Anbindungen des Vereinsmoduls (Administration → Anbindungen): n8n-Webhooks für Importe. Zugangsdaten zu Nextcloud oder
+ * Anbindungen des Vereinsmoduls (Administration → Schnittstellen → Anbindungen): n8n-Webhooks für Importe. Zugangsdaten zu Nextcloud oder
  * EP3 liegen in den n8n-Workflows; hier steht nur die Anmeldung am jeweiligen Webhook (Basic Auth wie in SM59).
  * Die Verbindungstests rufen die lesenden Endpunkte wirklich auf, übernehmen aber nichts.
  * Paperless und Mailversand meldet der Kern.

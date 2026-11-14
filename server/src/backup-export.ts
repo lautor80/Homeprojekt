@@ -12,7 +12,7 @@ import { WebDav, WebDavFehler } from './lib/webdav.js';
  * danach automatische Sicherungen im Zielordner, die älter als die Aufbewahrungsdauer sind.
  * Formate: eine Datei (.portal bzw. ZIP mit XML) oder – ohne ZIP – dateiweise: je Lauf ein Ordner mit einzelnen
  * XML-Dateien (siehe backup-dateien.ts). In jedem Fall wird nach dem Upload geprüft, ob alles vollständig angekommen ist.
- * Ergebnis und Fehler stehen in core.backup_export (Anzeige in Administration → Sicherung und im Arbeitsvorrat).
+ * Ergebnis und Fehler stehen in core.backup_export (Anzeige in Administration → System → Sicherung und im Arbeitsvorrat).
  */
 
 /** eine Datei (.portal, ZIP mit XML) oder „dateien“ = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */

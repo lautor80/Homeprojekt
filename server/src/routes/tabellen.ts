@@ -7,7 +7,7 @@ import { activeModules, sensitiveFields } from '../modules.js';
 import type { Schutzart } from '../schutz.js';
 
 /**
- * Tabellenansicht (Administration → Tabellenansicht, wie SE16): alle Tabellen und Sichten der Schemas
+ * Tabellenansicht (Administration → System → Tabellenansicht, wie SE16): alle Tabellen und Sichten der Schemas
  * „core“ und der aktiven Module mit Struktur und Inhalt – nur lesend.
  *
  *   GET  /api/admin/tabellen                         Tabellen mit Beschreibung, Zeilen (geschätzt), Spaltenzahl

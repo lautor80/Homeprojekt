@@ -19,25 +19,42 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
   admin: {
     text: 'Administration',
     einruecken: true,
+    // Fünf Gruppen (#232, A1) – dieselbe Gliederung wie die Rollenpflege (server/src/permissions.ts),
+    // geprüft in server/test/menue_rollenpflege.test.ts. Das Zahnrad steht nur für Einstellungen (B4).
     children: [
       {
-        text: 'Benutzerverwaltung', icon: 'user-settings',
+        text: 'Benutzer und Rechte', icon: 'user-settings',
         children: [
           { text: 'Benutzer', icon: 'group', path: '/admin/benutzer', permission: 'core.users:display' },
           { text: 'Rollen', icon: 'role', path: '/admin/rollen', permission: 'core.roles:display' },
           { text: 'Rollenmatrix', icon: 'grid', path: '/admin/rollenmatrix', permission: 'core.roles:display' },
         ],
       },
-      { text: 'API-Schlüssel', icon: 'key', path: '/admin/api-schluessel', permission: 'core.apikeys:display' },
-      { text: 'Änderungsbelege', icon: 'history', path: '/admin/aenderungsbelege', permission: 'core.audit:display' },
-      { text: 'E-Mail-Protokoll', icon: 'email', path: '/admin/mailprotokoll', permission: 'core.mail:display' },
       { text: 'Einstellungen', icon: 'action-settings', path: '/admin/einstellungen', permission: 'core.settings:edit' },
-      { text: 'Anbindungen', icon: 'connected', path: '/admin/anbindungen', permission: 'core.settings:edit' },
-      { text: 'Paperless-Zuordnung', icon: 'attachment', path: '/admin/paperless', permission: 'core.settings:edit' },
-      { text: 'Sperren', icon: 'locked', path: '/admin/sperren', permission: 'core.sperren:admin' },
-      { text: 'Sicherung', icon: 'database', path: '/admin/sicherung', permission: 'core.backup:create' },
-      { text: 'Statistik', icon: 'line-chart', path: '/admin/statistik', permission: 'core.statistik:display' },
-      { text: 'Tabellenansicht', icon: 'table-view', path: '/admin/tabellen', permission: 'core.tabellen:display' },
+      {
+        text: 'Schnittstellen', icon: 'connected',
+        children: [
+          { text: 'Anbindungen', icon: 'connected', path: '/admin/anbindungen', permission: 'core.settings:edit' },
+          { text: 'Paperless-Zuordnung', icon: 'attachment', path: '/admin/paperless', permission: 'core.settings:edit' },
+          { text: 'API-Schlüssel', icon: 'key-user-settings', path: '/admin/api-schluessel', permission: 'core.apikeys:display' },
+        ],
+      },
+      {
+        text: 'Protokolle', icon: 'history',
+        children: [
+          { text: 'Änderungsbelege', icon: 'history', path: '/admin/aenderungsbelege', permission: 'core.audit:display' },
+          { text: 'E-Mail-Protokoll', icon: 'email', path: '/admin/mailprotokoll', permission: 'core.mail:display' },
+          { text: 'Statistik', icon: 'line-chart', path: '/admin/statistik', permission: 'core.statistik:display' },
+        ],
+      },
+      {
+        text: 'System', icon: 'it-system',
+        children: [
+          { text: 'Sicherung', icon: 'shield', path: '/admin/sicherung', permission: 'core.backup:create' },
+          { text: 'Sperren', icon: 'locked', path: '/admin/sperren', permission: 'core.sperren:admin' },
+          { text: 'Tabellenansicht', icon: 'table-view', path: '/admin/tabellen', permission: 'core.tabellen:display' },
+        ],
+      },
     ],
   },
 };

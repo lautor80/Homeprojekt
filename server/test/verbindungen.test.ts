@@ -1,5 +1,5 @@
 /**
- * Integrationstest zentrale Anbindungen (Administration → Anbindungen): Liste, Sichern mit Maske, Prüfen,
+ * Integrationstest zentrale Anbindungen (Administration → Schnittstellen → Anbindungen): Liste, Sichern mit Maske, Prüfen,
  * Übernahme der Paperless-Werte aus den Modul-Stammdaten durch die Migration, Lesen in den Modulen.
  */
 import { test, before, after } from 'node:test';

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { BusinessError } from './errors.js';
 
 /**
- * Laufende Sicherungen mit Fortschritt und geschätzter Restdauer (Administration → Sicherung).
+ * Laufende Sicherungen mit Fortschritt und geschätzter Restdauer (Administration → System → Sicherung).
  *
  * Phasen und ihr Anteil am Fortschrittsbalken:
  *   lesen 0–85 % (nach gelesenen Zeilen im Verhältnis zur PostgreSQL-Schätzung),

@@ -1,5 +1,5 @@
 /**
- * E-Mail-Protokoll (Administration → E-Mail-Protokoll): Personen des Vereinsmoduls zu Empfängeradressen –
+ * E-Mail-Protokoll (Administration → Protokolle → E-Mail-Protokoll): Personen des Vereinsmoduls zu Empfängeradressen –
  * Mitglieder (eigene Adresse und die des abweichenden Zahlers), Hallenkunden (EP3) und Registrierungen.
  */
 import type { Tx } from '../../../server/src/db.js';

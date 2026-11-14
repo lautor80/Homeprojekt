@@ -6,7 +6,7 @@ import { mailSenden } from '../kommunikation.js';
 import { einladungErzeugen, einladungsLink } from './einladung.js';
 
 /**
- * Zugangslinks an ausgewählte Personen (#105, Administration → Benutzer → „Einladen & Zugangslinks“):
+ * Zugangslinks an ausgewählte Personen (#105, Administration → Benutzer und Rechte → Benutzer → „Einladen & Zugangslinks“):
  *  - Namen per Kopieren & Einfügen (eine Person je Zeile, Tabellen mit „|“ oder Tabulator, kommagetrennte Namenslisten)
  *  - Abgleich mit Benutzern (Anzeigename, Benutzername, verknüpftes Mitglied bzw. EP3-Kunde); wer keinen Benutzer hat, aber
  *    aktives Mitglied ist, erhält statt des Kennwort-Links die Einladung zum Vereinsportal
@@ -154,7 +154,7 @@ export async function zugangSenden(tx: Db, v: Verein, key: string, o: Versand): 
     modus: 'senden', anwendung: 'Benutzer', objekt, an, cc: o.cc ?? '', betreff: ersetzen(o.betreff, w), text: ersetzen(o.text, w), benutzer: o.wer,
     anhaenge: o.pdf ? [{ dateiname: o.pdf.dateiname, mime: 'application/pdf', inhalt: o.pdf.inhalt, objekt }] : [],
     // enthält einen persönlichen Link: nie speichern, sondern neu auslösen
-    wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Zugangslink – bitte neu auslösen: Administration → Benutzer → „Einladen & Zugangslinks“.' },
+    wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Zugangslink – bitte neu auslösen: Administration → Benutzer und Rechte → Benutzer → „Einladen & Zugangslinks“.' },
   });
   if (e.status === 'fehler') throw new BusinessError(e.fehler ?? 'Versand fehlgeschlagen');
   return { name: w.Name, an, art };

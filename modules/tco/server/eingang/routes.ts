@@ -328,7 +328,7 @@ export async function eingangRoutes(app: FastifyInstance) {
       : 'Keine offenen Dokumente in der Prüfliste.';
     const v = await verbindungLesen(V_MAILABRUF);
     if (!eingerichtet(v)) {
-      return { abruf: false, text: `${bewertet} Kein Abruf aus dem Postfach: Die Anbindung „Maileingang jetzt abrufen (n8n)“ ist nicht eingerichtet (Administration → Anbindungen).` };
+      return { abruf: false, text: `${bewertet} Kein Abruf aus dem Postfach: Die Anbindung „Maileingang jetzt abrufen (n8n)“ ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).` };
     }
     try {
       return { abruf: true, text: `${bewertet} ${await mailabrufAnstossen(v, `Portal (${wer(req)})`)}` };

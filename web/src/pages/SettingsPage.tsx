@@ -104,7 +104,7 @@ export function SettingsPage() {
           <TextField label="Portal-Adresse (für Links in E-Mails)" value={s['portal.url']} onChange={set('portal.url')} placeholder="https://portal.tc-oberthal.de" />
         </FormGrid>
         <Text style={{ display: 'block', marginTop: '0.5rem', color: 'var(--sapContent_LabelColor)' }}>
-          Angeschlossene Systeme (Paperless, n8n) werden unter Administration → Anbindungen gepflegt.
+          Angeschlossene Systeme (Paperless, n8n) werden unter Administration → Schnittstellen → Anbindungen gepflegt.
         </Text>
       </Panel>
     </AppPage>

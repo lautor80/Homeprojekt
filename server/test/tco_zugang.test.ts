@@ -118,7 +118,7 @@ test('Passwort vergessen und Einmal-Link', async () => {
 test('Registrierung extern: E-Mail bestätigen, sofort Hallennutzer', async () => {
   const R = `${T}/platz/registrierung`;
   const gast = client();
-  // Absender je Anwendung (Administration → Anbindungen → E-Mail-Versand); leere Zeilen werden ignoriert
+  // Absender je Anwendung (Administration → Schnittstellen → Anbindungen → E-Mail-Versand); leere Zeilen werden ignoriert
   let s = await admin('PUT', '/api/verbindungen/mail', { einstellungen: { absender: [
     { anwendung: '*', email: 'info@tc-oberthal.de', name: 'TC Oberthal' },
     { anwendung: 'registrierung', email: 'portal@tc-oberthal.de', name: 'TCO Portal', antwort_an: 'platz@tc-oberthal.de' },

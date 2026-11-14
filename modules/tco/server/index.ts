@@ -76,7 +76,7 @@ async function routes(app: FastifyInstance) {
   app.get('/verein', { preHandler: requireAuth(P.stammdaten) }, async () => {
     const v = await vereinLesen();
     const out: Record<string, unknown> = { ...v };
-    // Anbindungen werden zentral gepflegt (Administration → Anbindungen); hier nur der Stand, Geheimnisse maskiert
+    // Anbindungen werden zentral gepflegt (Administration → Schnittstellen → Anbindungen); hier nur der Stand, Geheimnisse maskiert
     for (const g of ['paperless_token', 'n8n_mail_key', 'n8n_ep3_auth', 'n8n_stunden_auth', 'n8n_ferien_auth'] as const) out[g] = v[g] ? MASKE : '';
     return out;
   });
@@ -174,75 +174,76 @@ const tco: ServerModule = {
   name: 'TC Oberthal',
   // Reihenfolge und Gliederung wie die Navigation (modules/tco/web/index.ts): Bereich (Stufe 2) → App (Stufe 3) → Aktivität
   permissions: [
-    // ---------------------------------------------------------------- Vereinsübersicht
-    { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
-    { area: 'Vereinsübersicht', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
-    { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.display, text: 'Präsentationen erstellen: Sammelkorb aus Kennzahlen, Diagrammen und Tabellen, PowerPoint aus den hinterlegten Vorlagen', requires: [P_DASH.display] },
-    { area: 'Vereinsübersicht', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
-    // ---------------------------------------------------------------- Einstellungen
-    { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Anbindungen pflegen' },
+    // Bereiche und Apps in der Reihenfolge des Menüs (modules/tco/web/index.ts) – geprüft in server/test/menue_rollenpflege.test.ts (#232, N6)
+    { area: 'Allgemein', app: 'Vereinsübersicht', id: P_DASH.display, text: 'Vereinsübersicht (Dashboard) anzeigen' },
+    { area: 'Allgemein', app: 'Vereinsübersicht', id: P_DASH.edit, text: 'Beitragsstufenwechsel Jugendliche → Erwachsene ausführen' },
+    { area: 'Allgemein', app: 'Präsentationen', id: P_PRAES.display, text: 'Präsentationen erstellen: Sammelkorb aus Kennzahlen, Diagrammen und Tabellen, PowerPoint aus den hinterlegten Vorlagen', requires: [P_DASH.display] },
+    { area: 'Allgemein', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
+    { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
+    { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Gruppen/Mannschaften pflegen' },
+
+    { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Einstellungen des Vereins pflegen (Rechnungssteller, Bank, Logo, Hallenabrechnung, FI-Belege)' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
+    { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
     { area: 'Einstellungen', app: 'Produkte', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
     { area: 'Einstellungen', app: 'Produkte', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
-    { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
-    // ---------------------------------------------------------------- Mitglieder
+
     { area: 'Mitglieder', app: 'Meine Mitgliedschaft', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
-    { area: 'Mitglieder', app: 'Registrierungen', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
-    { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.display, text: 'Online-Mitgliedsanträge ansehen (Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)' },
-    { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.edit, text: 'Online-Mitgliedsanträge prüfen, ablehnen und übernehmen (legt Mitglieder, Verträge, SEPA-Mandat und Benutzer an)', requires: [P_ANTRAG.display, 'tco.mitglieder:edit'] },
-    { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
-    { area: 'Mitglieder', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Gruppen/Mannschaften pflegen' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Gruppen zuordnen, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
     { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.display, text: 'Mitgliedergruppen anzeigen: Baum der Kategorien, Gruppen und Mannschaften mit den zugeordneten Mitgliedern' },
     { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.edit, text: 'Mitgliedergruppen pflegen: Gruppen anlegen, ändern, verschieben und löschen, Mitglieder zuordnen und Rollen vergeben', requires: [P_GR.display] },
+    { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.display, text: 'Online-Mitgliedsanträge ansehen (Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)' },
+    { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.edit, text: 'Online-Mitgliedsanträge prüfen, ablehnen und übernehmen (legt Mitglieder, Verträge, SEPA-Mandat und Benutzer an)', requires: [P_ANTRAG.display, 'tco.mitglieder:edit'] },
+    { area: 'Mitglieder', app: 'Registrierungen', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
-    // ---------------------------------------------------------------- Jugend
+
     { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.display, text: 'Spielerdaten anzeigen: ID-Nr. und LK der Mitglieder' },
     { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.edit, text: 'nuLiga-Mitgliederdaten ablegen und ID-Nr./LK in die Mitglieder übernehmen', requires: [P_SPORT.display] },
+
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm; in „Meine Trainingszeiten“ die Übersicht der Kinder im Schnuppertraining' },
     { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.edit, text: 'Schnuppertraining betreuen: Status, Termine der Einheiten, Trainer und Notiz pflegen, Beitrittslink (vorbelegter Mitgliedsantrag) senden; in „Meine Trainingszeiten“ die Teilnehmer einer Schnuppertraining-Einheit eintragen', requires: [P_SCHNUPPER.display] },
-    { area: 'Jugend', app: 'Meine Trainingszeiten', id: P_JTM.edit,
-      text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.display, text: 'Abrechnung Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.edit, text: 'Zeiten erfassen und importieren, Zeitnachweise ablegen, als bezahlt kennzeichnen' },
     { area: 'Jugend', app: 'Abrechnung Jugendtraining', id: P_JT.entgelte, text: 'Trainer und Trainerentgelte pflegen' },
-    // ---------------------------------------------------------------- Tennishalle
+    { area: 'Jugend', app: 'Meine Trainingszeiten', id: P_JTM.edit,
+      text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
+
     { area: 'Tennishalle', app: 'Hallenpreise', id: P_HALLE.preise, text: 'Hallenpreise pflegen', requires: [P_HALLE.display] },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.display, text: 'Hallenabrechnung anzeigen' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.edit, text: 'Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
-    { area: 'Tennishalle', app: 'Meine Daten', id: P_MEINKONTO, text: 'Eigene Kontaktdaten als externer Hallennutzer ansehen und ändern (Anrede, Name, Anschrift, E-Mail, Telefon – nur der dem Benutzer zugeordnete Kundenstammsatz)' },
-    { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.buchen,
-      text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
-    { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.verwalten, requires: [P_PLATZ.buchen],
-      text: 'Admin/Hallenwart in „Platz buchen“: Namen der Buchenden sehen, für andere Mitglieder oder vereinsintern buchen, Training, Schnuppertraining, Sperrzeiten und Veranstaltungen im Kalender eintragen' },
-    { area: 'Tennishalle', app: 'Serienbuchung', id: P_PLATZ.serie,
-      text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
-    { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
-      text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
     { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.display, text: 'Hallenschlüssel: Ausgaben und Rückgaben mit Quittung, Beleg und Protokoll ansehen; offene Quittungen im Arbeitsvorrat' },
     { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.edit, requires: [P_SCHL.display],
       text: 'Hallenschlüssel ausgeben und zurücknehmen (Rechnungsposition bzw. Gutschrift in der Hallenabrechnung), Empfang bestätigen, Quittungslink senden, Beleg in Paperless ablegen, stornieren' },
     { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.admin, requires: [P_SCHL.display],
       text: 'Hallenschlüssel verwalten: Altdaten einfügen (mit Buchung auf das Kassenkonto), Spielregeln, Fristen und Kassenkonto pflegen' },
-    // ---------------------------------------------------------------- Clubhaus
+    { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.buchen,
+      text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
+    { area: 'Tennishalle', app: 'Platz buchen', id: P_PLATZ.verwalten, requires: [P_PLATZ.buchen],
+      text: 'Admin/Hallenwart in „Platz buchen“: Namen der Buchenden sehen, für andere Mitglieder oder vereinsintern buchen, Training, Schnuppertraining, Sperrzeiten und Veranstaltungen im Kalender eintragen' },
+    { area: 'Tennishalle', app: 'Meine Daten', id: P_MEINKONTO, text: 'Eigene Kontaktdaten als externer Hallennutzer ansehen und ändern (Anrede, Name, Anschrift, E-Mail, Telefon – nur der dem Benutzer zugeordnete Kundenstammsatz)' },
+    { area: 'Tennishalle', app: 'Serienbuchung', id: P_PLATZ.serie,
+      text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
+    { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
+      text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
+
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.display, text: 'Clubhausabrechnung anzeigen' },
     { area: 'Clubhaus', app: 'Clubhausabrechnung', id: P_CH.edit, text: 'Getränkerechnungen erfassen, Belege zuordnen, Forderungsliste berechnen und ablegen, Getränkepreise pflegen' },
     { area: 'Clubhaus', app: 'Mein Verzehr', id: P_VZ.edit, text: 'Eigenen Verzehr auf das eigene Mitgliedskonto anschreiben, eigene Positionen und Abrechnungen sehen, eigene Einträge in der Frist stornieren (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Clubhaus', app: 'Theke', id: P_VZ.theke, text: 'Thekendienst: Gastbelege erfassen und kassieren, Verzehr für Mitglieder anschreiben, Belege drucken und per E-Mail/WhatsApp senden, heutige Positionen stornieren' },
     { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.display, text: 'Verzehrbuch anzeigen: alle Positionen, Belege, Kennzahlen, Monatsabschluss-Vorschau' },
     { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.admin, text: 'Verzehr verwalten: Preisliste Speisen/Sonstiges und Gästepreise, Stornos, Monatsabschluss (Sammelabrechnungen), Belege bezahlen/stornieren, Einstellungen', requires: [P_VZ.display] },
-    // ---------------------------------------------------------------- Instandhaltung (#205)
+
     { area: 'Instandhaltung', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
-    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat der Vereinsübersicht' },
-    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben, Formular in Paperless ablegen – wer dieses Recht über eine Rolle hat, kann als Zuständiger eingetragen werden', requires: [P_IH.display] },
-    { area: 'Instandhaltung', app: 'Instandhaltung', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Orte („Wo?“), Kategorien, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
-    // ---------------------------------------------------------------- Finanzen
+    { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat der Vereinsübersicht' },
+    { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben, Formular in Paperless ablegen – wer dieses Recht über eine Rolle hat, kann als Zuständiger eingetragen werden', requires: [P_IH.display] },
+    { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Orte („Wo?“), Kategorien, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
+
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.display, text: 'Sollstellungen anzeigen' },
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.glaeubiger, text: 'Gläubigerdaten (Vereinskonto, Gläubiger-ID) pflegen' },
@@ -255,12 +256,12 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
-    { area: 'Finanzen', app: 'Dokumenten-Upload', id: P_UP.execute, text: 'Belege gesammelt nach Paperless übertragen' },
-    // ---------------------------------------------------------------- Dokumente
+
     { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.display, text: 'Dokumenteneingang anzeigen: Regelwerk, Korrespondenten und Protokoll der eingegangenen E-Mails mit Ablageort (ohne Inhalte)' },
     { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.edit, text: 'Regelwerk und Korrespondenten des Dokumenteneingangs pflegen, Prüfliste bearbeiten: Mailtext und Anhänge offener Vorgänge ansehen, ablegen oder ignorieren', requires: [P_EING.display] },
     { area: 'Dokumente', app: 'Dokumenteneingang', id: P_EING.melden, text: 'Schnittstelle für n8n (API-Schlüssel): eingegangene E-Mails samt Anhängen an das Portal liefern und deren Behandlung abholen' },
-    // ---------------------------------------------------------------- Datenschutz (Feldberechtigungen)
+    { area: 'Dokumente', app: 'Dokumenten-Upload', id: P_UP.execute, text: 'Belege gesammelt nach Paperless übertragen' },
+
     { area: 'Datenschutz', app: 'Bankdaten von Personen', id: P_BANK.display,
       text: 'IBAN, BIC und abweichenden Kontoinhaber im Klartext sehen (sonst maskiert) – auch in Unterlagen, Änderungsbelegen und der SEPA-Datei' },
     { area: 'Datenschutz', app: 'Bankdaten von Personen', id: P_BANK.edit,

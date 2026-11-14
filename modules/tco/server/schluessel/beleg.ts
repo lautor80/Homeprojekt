@@ -1,6 +1,6 @@
 /**
  * Hallenschlüssel (#215): Beleg „Ausgabe“ bzw. „Rückgabe“ im TCO-Druckformat mit Quittungsvermerk und Protokoll;
- * Ablage in Paperless über die Kontexte „Schlüsselausgabe“ / „Schlüsselrückgabe“ (Vorgaben: Administration → Paperless-Zuordnung).
+ * Ablage in Paperless über die Kontexte „Schlüsselausgabe“ / „Schlüsselrückgabe“ (Vorgaben: Administration → Schnittstellen → Paperless-Zuordnung).
  * Nach der Quittung wird derselbe Beleg als neue Version abgelegt.
  */
 import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
@@ -106,7 +106,7 @@ export async function belegPdf(v: Verein, m: BelegDaten, adresse: { strasse: str
 
 /** Beleg in Paperless ablegen: beim ersten Mal über den Kontext, danach als neue Version desselben Dokuments */
 export async function belegAblegen(v: Verein, m: BelegDaten, pdf: Buffer, benutzer: string, dateiname?: string): Promise<{ id: number; warnungen: string[]; neu: boolean }> {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
   const pl = paperless(v);
   const def = m.art === 'AUSGABE' ? K.schluesselAusgabe : K.schluesselRueckgabe;
   // eigenes Dokument (Scan eines alten Belegs): der Dateiname bleibt, sonst der erzeugte Beleg

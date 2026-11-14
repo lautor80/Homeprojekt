@@ -53,6 +53,8 @@ drei Muster schlage ich für den Rest vor.
 
 ## 2 Ist-Stand
 
+Stand vor dem Umbau (14.11.2026). Was inzwischen umgesetzt ist, steht in [Abschnitt 7](#7-umsetzungsstand).
+
 ```
 Start
 Euroflex
@@ -950,26 +952,26 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ☐ |
 | S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ☐ |
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☐ |
-| S3 | E-Mail-Protokoll nur einmal | klein | ☐ |
+| S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☐ |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ vorgegeben |
-| A1 | Administration in fünf Gruppen | klein | ☐ |
+| A1 | Administration in fünf Gruppen | klein | ☑ umgesetzt |
 | N1 | Gruppe „Mein Bereich“ | klein | ☐ |
 | N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
 | N3 | App „Zugänge“ (Registrierungen, Zuordnung, EP3-Abgleich) | mittel | ☐ |
 | N4 | Preise an einem Ort – Variante A oder B | mittel / klein | ☐ A ☐ B |
-| N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☐ |
-| N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☐ |
+| N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☑ umgesetzt |
+| N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☑ umgesetzt |
 | N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ☐ |
 | B1 | Varianten: eine Bauart | mittel | ☐ |
 | B2 | Reiter für Teile, Umschalter für Sichten | klein | ☐ |
 | B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ☐ |
-| B4 | Icons eindeutig | klein | ☐ |
-| K1–K5 | Texte berichtigen | klein | ☐ |
+| B4 | Icons eindeutig | klein | ☑ umgesetzt |
+| K1–K5 | Texte berichtigen | klein | ☑ umgesetzt |
 
 ### Offene Fragen
 
@@ -985,3 +987,44 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien, ggf. eine Migration ·
 *groß* = neuer Rahmen im Kern, Umsetzung in mehreren Schritten.
+
+## 7 Umsetzungsstand
+
+| Schritt | Inhalt | Stand |
+|---|---|---|
+| V3 | Prüfungen für den Arbeitsvorrat (`server/test/arbeitsvorrat_absicherung.test.ts`) | umgesetzt 14.11.2026 |
+| K1–K5 | Kachel, Recht und Untertitel der Stammdaten ohne „Anbindungen“; Hinweis „Paperless nicht eingerichtet“ in Euroflex nennt die Anbindungen; App „Instandhaltung“ heißt „Schadensmeldungen“ (Pfad und Rechte unverändert) | umgesetzt 14.11.2026 |
+| A1 | Administration in fünf Gruppen | umgesetzt 14.11.2026 – Zwischenstand, siehe unten |
+| N5 | Dokumenten-Upload steht unter „Dokumente“ | umgesetzt 14.11.2026 |
+| N6 | Rollenpflege in der Reihenfolge des Menüs; lose Apps im Bereich „Allgemein“; Test `server/test/menue_rollenpflege.test.ts` | umgesetzt 14.11.2026 |
+| S3 | Anbindungen zeigen Testmail und die letzten 5 Versuche; „Protokoll leeren“ steht in der App E-Mail-Protokoll | umgesetzt 14.11.2026 |
+| B4 | Zahnrad nur für Einstellungen, je App ein eigenes Icon (Test) | umgesetzt 14.11.2026 |
+
+Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und
+*Schnittstellen* eine Gruppe mit den drei bisherigen Apps:
+
+```
+Administration
+  Benutzer und Rechte
+    Benutzer · Rollen · Rollenmatrix
+  Einstellungen
+  Schnittstellen
+    Anbindungen · Paperless-Zuordnung
+    API-Schlüssel
+  Protokolle
+    Änderungsbelege · E-Mail-Protokoll
+    Statistik
+  System
+    Sicherung · Sperren · Tabellenansicht
+```
+
+Alle Hinweistexte, Meldungen und die Dokumentation nennen die neuen Wege (z. B. „Administration →
+Schnittstellen → Anbindungen“). Pfade der Seiten und Namen der Rechte sind unverändert; Rollen, Lesezeichen und
+Varianten passen weiter.
+
+Neue Icons: Platzverwaltung (Karte), Meine Daten (Visitenkarte), Verzehrbuch (Buch), Schadensmeldungen
+(Schraubenschlüssel), API-Schlüssel (Schlüssel mit Zahnrad), Sicherung (Schild).
+
+**Nicht im Browser geprüft:** Aussehen des Menüs und der neuen Icons, die Anzeige der letzten Versuche in den
+Anbindungen und der Knopf „Protokoll leeren“ im E-Mail-Protokoll. Geprüft sind Typen, Tests und Build in der CI.
+

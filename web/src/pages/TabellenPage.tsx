@@ -15,7 +15,7 @@ import { useCan } from '../session';
 import { toast } from '../toast';
 
 /**
- * Tabellenansicht (Administration → Tabellenansicht, wie SE16): alle Tabellen der Schemas „core“ und der aktiven
+ * Tabellenansicht (Administration → System → Tabellenansicht, wie SE16): alle Tabellen der Schemas „core“ und der aktiven
  * Module mit Struktur und Inhalt. Selektion mit Bedingungen (=, ≠, <, ≤, >, ≥, Intervall, Muster, Liste, leer),
  * Feldauswahl, Sortierung, Gruppierung mit Kennzahlen (Anzahl, Summe, Durchschnitt, Min, Max) – alles serverseitig;
  * im Ergebnis zusätzlich Spaltenfilter, Sortierung und Gruppierung der Tabelle. Export als CSV.

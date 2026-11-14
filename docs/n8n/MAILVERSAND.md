@@ -7,7 +7,7 @@ mit denselben Knoten und Zugangsdaten und ist abwärtskompatibel.
 
 ## Aufruf
 
-`POST …/webhook/tco-mailversand`, Header-Auth (im Portal: Administration → Anbindungen → E-Mail-Versand (n8n), „Webhook-Schlüssel“).
+`POST …/webhook/tco-mailversand`, Header-Auth (im Portal: Administration → Schnittstellen → Anbindungen → E-Mail-Versand (n8n), „Webhook-Schlüssel“).
 
 ```json
 {
@@ -66,7 +66,7 @@ Die Antwort an das Portal meldet das in `von` und `hinweis`.
 - Einen weiteren eigenen Absender ergänzt man so: Eintrag in `KONTEN`, weiterer SMTP-Knoten und eine Regel im Knoten „SMTP-Konto“.
 - Entwürfe (`modus: "entwurf"`) landen immer im IMAP-Postfach des primären Kontos (INBOX.Drafts).
 
-Im Portal: **Administration → Anbindungen → E-Mail-Versand (n8n) → Ersatzabsender je Anwendung**.
+Im Portal: **Administration → Schnittstellen → Anbindungen → E-Mail-Versand (n8n) → Ersatzabsender je Anwendung**.
 - Eine Zeile mit `*` legt den Standard fest.
 - Weitere Zeilen gelten je Anwendung, z. B. `Hallenrechnung → benjamin.hartyniuk@tc-oberthal.de`.
 - Groß-/Kleinschreibung der Anwendung spielt keine Rolle.
@@ -80,13 +80,13 @@ Im Portal: **Administration → Anbindungen → E-Mail-Versand (n8n) → Ersatza
    Im *Header Auth account* muss der **Name `X-TCO-Key`** lauten und der **Wert** dem „Webhook-Schlüssel“ im Portal entsprechen –
    sonst meldet das Portal „n8n hat den Webhook-Schlüssel abgelehnt“ (HTTP 401/403).
 3. Zugangsdaten „TCO SMTP Benjamin“ anlegen, `STANDARD`/`KONTEN` prüfen, speichern, aktivieren.
-4. Im Portal unter Administration → Anbindungen „Verbindung prüfen“ (prüft nur, ob der Workflow aktiv ist) und die Absender pflegen.
+4. Im Portal unter Administration → Schnittstellen → Anbindungen „Verbindung prüfen“ (prüft nur, ob der Workflow aktiv ist) und die Absender pflegen.
 
 Anwendungen im Portal: `Benutzer` (Kennwort-Links), `Registrierung`, `Mitgliedsantrag`, `Mitglieder`, `Hallenrechnung`, `Verzehr`.
 
 ## Mailprotokoll und „Erneut senden“
 
-Administration → Anbindungen → E-Mail-Versand (n8n) zeigt die letzten 50 Versuche (Zeit, Anwendung, Empfänger, Betreff, Absender, Status, Fehler)
+Administration → Schnittstellen → Anbindungen → E-Mail-Versand (n8n) zeigt die letzten 50 Versuche (Zeit, Anwendung, Empfänger, Betreff, Absender, Status, Fehler)
 und sendet eine Testmail über den kompletten Weg. Fehlgeschlagene Mails (`fehler`, `nicht_gesendet`) haben je Zeile **„Erneut senden“**:
 
 - **Normale Mails** (Rechnungen, Verzehrbelege, Mitgliedermails, Benachrichtigungen): Der Inhalt samt Anhängen wird 30 Tage
@@ -101,7 +101,7 @@ Jede Wiederholung steht als eigener Eintrag im Protokoll; die ursprüngliche Zei
 
 ## App „E-Mail-Protokoll“
 
-Administration → E-Mail-Protokoll (Berechtigung `core.mail:display`, nur lesend) zeigt dasselbe Protokoll als Tabelle mit Filter:
+Administration → Protokolle → E-Mail-Protokoll (Berechtigung `core.mail:display`, nur lesend) zeigt dasselbe Protokoll als Tabelle mit Filter:
 Suche (Name, Adresse, Vorgang, Betreff, Fehler), Anwendung, Status, Zeitraum (Vorgabe: letzte 30 Tage, höchstens 2000 Einträge je Suche)
 und „Sammeln nach“ Person, Empfänger, Vorgang, Anwendung oder Status. Die Spalte **Person** nennt, wem die Empfängeradresse gehört:
 Benutzer aus dem Kern, Mitglieder (auch Adresse des Zahlers), Hallenkunden und Registrierungen aus dem Modul (`ServerModule.mailPersonen`).

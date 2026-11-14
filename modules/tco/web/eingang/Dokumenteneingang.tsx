@@ -406,7 +406,7 @@ function AblageDialog({ v, d, regeln, stamm, onClose, onDone }: { v: Vorgang; d:
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
-      {!stamm.paperless.eingerichtet && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Paperless ist nicht eingerichtet (Administration → Anbindungen).</MessageStrip>}
+      {!stamm.paperless.eingerichtet && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).</MessageStrip>}
       <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.5rem 1rem', alignItems: 'center' }}>
         <Label>Ablage nach</Label>
         <Wahl wert={regelId} style={{ width: '100%' }} onChange={(k) => { setRegelId(k); setMail(k ? 'regel' : 'keine'); }}
