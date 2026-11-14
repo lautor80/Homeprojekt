@@ -17,6 +17,7 @@ import { BILD_MIME, htmlToPdf, istPdf, pdfsZusammenfuegen } from '../../../../se
 import { heute } from '../format.js';
 import { DB } from '../verein.js';
 import { V_NEXTCLOUD } from '../verbindung.js';
+import { tcoSchnittstelle } from '../hinweise.js';
 import {
   absender, dateinameSicher, extrahieren, htmlText, korrespondentFinden, mailHtml, pfadSicher, platzhalter, regelPasst, relevanterAnhang, vorgangStatus, waehlen,
   type Aktionen, type DokStatus, type Kontext, type Korrespondent, type MailAktion, type RegelDef, type VorgangStatus,
@@ -194,9 +195,14 @@ async function ausfuehren(d: DokZeile, ziele: ReturnType<typeof zieleAufloesen>,
     const v = await verbindungLesen(V_NEXTCLOUD);
     if (!eingerichtet(v) || !v.auth_user || !v.geheimnis) throw new BusinessError('Die Nextcloud ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen → Nextcloud Dokumentenablage).');
     const dav = new WebDav(v.url, v.auth_user, v.geheimnis, 120_000);
-    await dav.ordnerAnlegen(ziele.nextcloud.pfad);
-    nextcloudPfad = [ziele.nextcloud.pfad, ziele.nextcloud.dateiname].filter(Boolean).join('/');
-    await dav.hochladen(nextcloudPfad, daten);
+    const ziel = ziele.nextcloud;
+    const pfad = [ziel.pfad, ziel.dateiname].filter(Boolean).join('/');
+    // überwacht (#232, V1): Scheitert die Ablage, steht die Störung im Arbeitsvorrat, bis die nächste klappt
+    await tcoSchnittstelle(V_NEXTCLOUD, 'Nextcloud Dokumentenablage', async () => {
+      await dav.ordnerAnlegen(ziel.pfad);
+      await dav.hochladen(pfad, daten);
+    });
+    nextcloudPfad = pfad;
   }
   return { status: dublette ? 'dublette' : 'abgelegt', hinweis: hinweise.join(' '), paperless_id: paperlessId, nextcloud_pfad: nextcloudPfad };
 }

@@ -28,7 +28,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.eing_dokumente` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
 | `tco.eing_korrespondenten` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
 | `tco.eing_regeln` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
-| `tco.eing_vorgaenge` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
+| `tco.eing_vorgaenge` |  |  |  |  |  | ● |  | ● | ● |  |  |  |  |  |
 | `tco.einladungen` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.ferien` |  |  |  | ● |  |  |  |  |  |  |  |  |  |  |
 | `tco.fibankab` |  | ● | ● |  |  | ● |  | ● | ● |  |  |  |  |  |

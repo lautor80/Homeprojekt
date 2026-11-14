@@ -1,6 +1,7 @@
 import { sql, type Tx } from '../db.js';
 import { BusinessError } from '../errors.js';
 import { aktuellerBenutzer } from '../kontext.js';
+import { stoerungMelden } from './hinweise.js';
 import { authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperlessZentral, verbindungLesen, type Verbindung, type VerbindungDef } from './verbindungen.js';
 
 /**
@@ -168,6 +169,13 @@ export async function mailProtokoll(e: { anwendung: string; objekt: string; an: 
              values (${e.anwendung}, ${e.objekt}, ${e.an}, ${e.betreff}, ${e.absender ?? null}, ${e.von ?? null}, ${e.status},
                      ${e.fehler ? String(e.fehler).slice(0, 1000) : null}, ${e.benutzer ?? null},
                      ${e.nachricht ? sql.json(e.nachricht as never) : null}, ${mid}) returning id`;
+    // Arbeitsvorrat (#232, V1): Eine E-Mail, die nicht hinausging, steht unter „Administration“, bis jemand „gesehen“ bestätigt
+    if (e.status === 'fehler' || e.status === 'nicht_gesendet') {
+      await stoerungMelden({
+        modul: 'core', quelle: 'MAIL_FEHLER', bereich: 'Administration', recht: 'core.mail:display', art: 'E-Mail nicht gesendet', icon: 'email',
+        titel: `an ${e.an || '(ohne Empfänger)'}`.slice(0, 200), text: `${e.betreff} – ${e.fehler ?? 'ohne Fehlermeldung'}`.replace(/\s+/g, ' ').slice(0, 300), pfad: '/admin/mailprotokoll',
+      });
+    }
     await sql`delete from core.mail_protokoll where zeit < now() - interval '180 days'`;
     // gespeicherte Inhalte (Datenschutz) nur 30 Tage
     await sql`update core.mail_protokoll set nachricht = null where nachricht is not null and zeit < now() - interval '30 days'`;

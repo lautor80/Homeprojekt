@@ -26,6 +26,8 @@ import { tabellenRoutes } from './routes/tabellen.js';
 import { variantenRoutes } from './routes/varianten.js';
 import { funktionenRoutes, registerFunktionen } from './routes/funktionen.js';
 import { arbeitsvorratRoutes } from './routes/arbeitsvorrat.js';
+import { laeuft, stoerungMelden } from './lib/hinweise.js';
+import { paperlessMelder } from './lib/paperless.js';
 import { schalterLaden } from './lib/funktionen.js';
 import { GesperrtError } from './sperren.js';
 
@@ -79,6 +81,14 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(variantenRoutes);
   await app.register(funktionenRoutes);
   await app.register(arbeitsvorratRoutes);
+  // Arbeitsvorrat (#232, V1): Störungen von Paperless melden – je Zugang (Rechnername) ein Hinweis, der sich nach dem nächsten Erfolg schließt
+  paperlessMelder({
+    stoerung: (wo, text) => stoerungMelden({
+      modul: 'core', quelle: 'PAPERLESS', objekt: wo, bereich: 'Administration', recht: 'core.settings:edit', art: 'Paperless gestört',
+      titel: wo, text: text.replace(/\s+/g, ' ').slice(0, 300), pfad: '/admin/anbindungen',
+    }, { warn: (e, t) => app.log.warn(e as Error, t) }),
+    laeuft: (wo) => laeuft('core', 'PAPERLESS', wo),
+  });
   await app.register(adminRoutes);
   await app.register(auditRoutes);
   await app.register(apiKeyRoutes);

@@ -473,9 +473,24 @@ Hinweis hoch statt ihn zu doppeln; mehrere Hinweise einer Art stehen gesammelt u
 | Externer Hallennutzer schaltet sich per E-Mail-Bestätigung frei | Vorstand | Platzverwaltung |
 | Lauf sperrt den Benutzer eines ausgetretenen Mitglieds | Administration | Benutzer |
 
-Damit sind 9 der 18 Lücken zu. **Noch offen (9):** Störungen der Schnittstellen (Paperless, E-Mail, EP3,
-Trainerstunden, Schulferien, Mailabruf, Nextcloud), Rückläufer und Antworten auf E-Mails, Dokumenteneingang –
-dazu die Quellen aus Euroflex. Die Zahl steht als Sperrklinke im Test und kann nur sinken.
+**Umgesetzt, Teil 2 (14.11.2026) – Störungen der Schnittstellen, E-Mail, Dokumenteneingang.**
+
+| Ereignis | Im Arbeitsvorrat | Verschwindet |
+|---|---|---|
+| Paperless nicht erreichbar, Anmeldung abgelehnt, Serverfehler | Administration, rot – je Zugang (Rechnername) ein Hinweis | sobald Paperless wieder antwortet, oder „gesehen“ |
+| EP3-Abruf, Trainerstunden, Schulferien, Mailabruf, Nextcloud-Ablage scheitert | Administration (Block TC Oberthal), rot, mit Fehlermeldung | beim nächsten erfolgreichen Aufruf, oder „gesehen“ |
+| E-Mail nicht gesendet (jede Anwendung) | Administration, rot, zählt hoch | „gesehen“ |
+| E-Mail unzustellbar, Abwesenheitsnotiz, Antwort | Administration, je Art ein Hinweis | „gesehen“ |
+| Dokumenteneingang: Vorgänge mit Fehler / zu prüfen | Dokumente, rot / gelb, mit Anzahl | wenn die Prüfliste leer ist |
+
+Damit ist keine der 18 Lücken mehr offen. Der Test lässt keinen offenen Punkt mehr zu: Eine neue Schnittstelle, ein
+neuer Lauf oder ein neues Formular braucht einen Eintrag, einen Hinweis oder eine Begründung, sonst scheitert die CI.
+Euroflex hat einen eigenen Block auf der Startseite; eigene Ereignisse meldet es an, sobald es welche gibt (der
+Mailversand aus Euroflex läuft schon über „E-Mail nicht gesendet“, Paperless über „Paperless gestört“).
+
+**Grenze.** „Nicht eingerichtet“ gilt nicht als Störung einer Schnittstelle (Ausnahme E-Mail: jeder nicht gesendete
+Versuch zählt). Reiner Verlauf – Anmeldungen, einzelne gesendete E-Mails, Feldänderungen – bleibt in Statistik,
+E-Mail-Protokoll und Änderungsbelegen.
 
 #### V2 Arbeitsvorrat in den Kern, für alle Bereiche
 
@@ -1057,7 +1072,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
-| V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben – Teil 1 umgesetzt (9 von 18 Lücken zu) |
+| V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ umgesetzt (alle 18 Lücken zu) |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☑ umgesetzt |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ Rahmen, Apps und erste Funktionen umgesetzt |
@@ -1102,7 +1117,8 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | S3 | Anbindungen zeigen Testmail und die letzten 5 Versuche; „Protokoll leeren“ steht in der App E-Mail-Protokoll | umgesetzt 14.11.2026 |
 | B4 | Zahnrad nur für Einstellungen, je App ein eigenes Icon (Test) | umgesetzt 14.11.2026 |
 | V2 | Arbeitsvorrat auf der Startseite für alle Anwendungen (`GET /api/arbeitsvorrat`, `ServerModule.arbeitsvorrat`); roter Zähler am Menüeintrag *Start*; die Vereinsübersicht zeigt weiter den Ausschnitt TC Oberthal | umgesetzt 14.11.2026 – Quellen für Euroflex folgen mit V1 |
-| V1 (Teil 1) | Hinweise im Arbeitsvorrat (`core.hinweise`, „gesehen“); Selbstbedienung der Mitglieder und Hallennutzer, Einladung, Sperre nach Austritt melden sich | umgesetzt 14.11.2026 – offen: Störungen der Schnittstellen, E-Mail-Rückläufer, Dokumenteneingang, Euroflex |
+| V1 (Teil 1) | Hinweise im Arbeitsvorrat (`core.hinweise`, „gesehen“); Selbstbedienung der Mitglieder und Hallennutzer, Einladung, Sperre nach Austritt melden sich | umgesetzt 14.11.2026 |
+| V1 (Teil 2) | Störungen von Paperless und der Vereins-Schnittstellen (überwachte Aufrufe, schließen sich von selbst), nicht gesendete E-Mails, Rückläufer und Antworten, Dokumenteneingang; Block „Euroflex“ | umgesetzt 14.11.2026 – kein offener Punkt mehr |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

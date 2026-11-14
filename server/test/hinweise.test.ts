@@ -1,9 +1,11 @@
 /**
  * Hinweise im Arbeitsvorrat (#232, V1): melden, zusammenfassen, „gesehen“ einzeln und für alle einer Art,
- * Sichtbarkeit und Bestätigung nur mit dem Recht der zugehörigen App, Störungen schließen sich nach dem nächsten Erfolg.
+ * Sichtbarkeit und Bestätigung nur mit dem Recht der zugehörigen App, Störungen schließen sich nach dem nächsten Erfolg;
+ * überwachte Schnittstellen, nicht gesendete E-Mails, Paperless.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
@@ -14,7 +16,8 @@ const { sql } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
-const { HINWEIS_DB, HINWEIS_GESEHEN, hinweisBeheben, hinweisMelden, stoerungMelden } = await import('../src/lib/hinweise.js');
+const { HINWEIS_DB, HINWEIS_GESEHEN, hinweisBeheben, hinweisMelden, stoerungMelden, ueberwacht } = await import('../src/lib/hinweise.js');
+const { Paperless } = await import('../src/lib/paperless.js');
 
 interface Aufgabe { key: string; bereich: string; titel: string; text: string; datum: string | null; state: string; pfad: string; icon: string; erledigen?: { text: string; url: string; body: Record<string, unknown> }; kinder?: Aufgabe[] }
 
@@ -144,4 +147,73 @@ test('Störung: rot gemeldet, nach dem nächsten Erfolg von selbst behoben; Meld
   await stoerungMelden({ ...anbindung('F'), state: 'Lila' as never }, { warn: (_e, text) => { log.push(text); } });
   assert.deepEqual(log, ['Hinweis core/TEST_STOERUNG nicht gespeichert']);
   assert.deepEqual(await block(admin, 'core'), []);
+});
+
+test('Überwachter Aufruf einer Schnittstelle: Fehler geht weiter und steht im Arbeitsvorrat, der nächste Erfolg schließt ihn', async () => {
+  const h = { modul: 'core', quelle: 'TEST_ABRUF', objekt: 'x', bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört', titel: 'Probe-Webhook', pfad: '/admin/anbindungen' };
+  await assert.rejects(() => ueberwacht(h, async () => { throw new Error('n8n antwortet\nmit HTTP 502'); }), /HTTP 502/);
+  let [a] = await block(admin, 'core');
+  assert.deepEqual([a.titel, a.text, a.state, a.icon], ['Schnittstelle gestört: Probe-Webhook', 'n8n antwortet mit HTTP 502', 'Negative', 'error']);
+  await assert.rejects(() => ueberwacht(h, async () => { throw new Error('Zeitüberschreitung'); }), /Zeitüberschreitung/);
+  [a] = await block(admin, 'core');
+  assert.deepEqual([a.titel, a.text], ['Schnittstelle gestört: Probe-Webhook (2×)', 'Zeitüberschreitung']);
+  assert.equal(await ueberwacht(h, async () => 42), 42, 'das Ergebnis des Aufrufs kommt unverändert zurück');
+  assert.deepEqual(await block(admin, 'core'), [], 'behoben');
+  // weitere Erfolge fragen die Datenbank nicht mehr: ein von Hand offener Hinweis bleibt stehen, bis wieder eine Störung kam
+  await hinweisMelden(HINWEIS_DB, h);
+  await ueberwacht(h, async () => 1);
+  assert.equal((await block(admin, 'core')).length, 1);
+  await assert.rejects(() => ueberwacht(h, async () => { throw new Error('wieder gestört'); }));
+  await ueberwacht(h, async () => 1);
+  assert.deepEqual(await block(admin, 'core'), []);
+});
+
+test('E-Mail nicht gesendet: steht unter „Administration“, zählt hoch, bleibt bis „gesehen“', async () => {
+  // Mailversand ist nicht eingerichtet – jeder Versuch scheitert und wird protokolliert
+  assert.equal((await admin('POST', '/api/mail/test', { an: 'niemand@example.org' })).status, 400);
+  let [a] = await block(admin, 'core');
+  assert.deepEqual([a.titel, a.bereich, a.state, a.icon, a.pfad], ['E-Mail nicht gesendet: an niemand@example.org', 'Administration', 'Negative', 'email', '/admin/mailprotokoll']);
+  assert.match(a.text, /Testmail aus dem Portal – .*nicht eingerichtet/);
+  assert.equal((await admin('POST', '/api/mail/test', { an: 'zweite@example.org' })).status, 400);
+  [a] = await block(admin, 'core');
+  assert.equal(a.titel, 'E-Mail nicht gesendet: an zweite@example.org (2×)');
+  assert.deepEqual(await block(leser, 'core'), [], 'ohne Recht für das E-Mail-Protokoll unsichtbar');
+  assert.equal((await admin('POST', a.erledigen!.url, a.erledigen!.body)).status, 200);
+  assert.deepEqual(await block(admin, 'core'), []);
+});
+
+test('Paperless: Störung je Zugang im Arbeitsvorrat, nach der nächsten Antwort behoben; 4xx ist keine Störung', async () => {
+  const antworten: number[] = [];
+  const server = http.createServer((req, res) => {
+    const status = antworten.shift() ?? 200;
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.end(status === 200 ? JSON.stringify({ id: 7, title: 'Probe' }) : JSON.stringify({ detail: 'nein' }));
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const pl = new Paperless({ url: `http://127.0.0.1:${port}`, token: 'geheim' });
+    antworten.push(503);
+    await assert.rejects(() => pl.dokument(7), /HTTP 503/);
+    let [a] = await block(admin, 'core');
+    assert.deepEqual([a.titel, a.bereich, a.state, a.pfad], [`Paperless gestört: 127.0.0.1:${port}`, 'Administration', 'Negative', '/admin/anbindungen']);
+    assert.match(a.text, /Paperless-Fehler HTTP 503/);
+    antworten.push(401);
+    await assert.rejects(() => pl.dokument(7), /lehnt die Anmeldung ab/);
+    [a] = await block(admin, 'core');
+    assert.match(a.titel, /\(2×\)$/);
+    assert.match(a.text, /API-Token prüfen/);
+    // Paperless antwortet wieder: Hinweis weg
+    assert.equal((await pl.dokument(7)).title, 'Probe');
+    assert.deepEqual(await block(admin, 'core'), []);
+    // 404 betrifft nur diese Anfrage – keine Störung
+    antworten.push(404);
+    await assert.rejects(() => pl.dokument(8), /HTTP 404/);
+    assert.deepEqual(await block(admin, 'core'), []);
+    // nicht erreichbar: eigener Hinweis je Zugang
+    const weg = new Paperless({ url: 'http://127.0.0.1:1', token: 'geheim', timeoutMs: 2000 });
+    await assert.rejects(() => weg.dokument(1), /nicht erreichbar/);
+    [a] = await block(admin, 'core');
+    assert.equal(a.titel, 'Paperless gestört: 127.0.0.1:1');
+  } finally { server.close(); }
 });

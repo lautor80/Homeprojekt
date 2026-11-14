@@ -15,25 +15,27 @@
  *   aufgabe  Schlüssel(anfang) des Eintrags im Arbeitsvorrat, der das Ereignis zeigt (aus dem aktuellen Stand berechnet),
  *   hinweis  Quelle des Hinweises, den die Stelle beim Ereignis meldet (hinweisMelden, server/src/lib/hinweise.ts) –
  *            er steht im Arbeitsvorrat, bis jemand „gesehen“ bestätigt,
- *   offen    erscheint heute nicht; wird mit V1 (#232) geschlossen. Die Zahl der offenen Punkte darf nur sinken,
+ *   ueberwacht  Schnittstelle, deren Aufruf überwacht ist (tcoSchnittstelle(<Konstante der Anbindung>, …)): Scheitert er,
+ *            steht die Störung im Arbeitsvorrat, bis der nächste Aufruf klappt,
+ *   offen    erscheint nicht – seit V1 (#232) gibt es keinen offenen Punkt mehr, und der Test lässt keinen neuen zu,
  *   ohne     braucht keinen Eintrag – mit Begründung.
  *
  * Reine Daten ohne Importe, damit der Test ohne Datenbank läuft. Mit V2 (Arbeitsvorrat im Kern) wandert das Verzeichnis
  * zu den Modulen, die ihre Quellen dann selbst anmelden.
  */
-export type Abdeckung = { aufgabe: string | string[] } | { hinweis: string | string[] } | { offen: string } | { ohne: string };
+export type Abdeckung = { aufgabe: string | string[] } | { hinweis: string | string[] } | { ueberwacht: string } | { offen: string } | { ohne: string };
 
 const VERLAUF = 'reiner Verlauf – steht in Statistik bzw. Änderungsbelegen';
 
 export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   // ---------------------------------------------------------------- Schnittstellen
-  'schnittstelle:paperless': { offen: 'Paperless nicht erreichbar oder Ablage gescheitert: heute nur Fehlermeldung beim Ablegen' },
-  'schnittstelle:mail': { offen: 'nicht gesendete E-Mails stehen nur im E-Mail-Protokoll (Ausnahme: Hallenabo, ABO_MAIL)' },
-  'schnittstelle:tco.ep3': { offen: 'gescheiterter EP3-Abruf: heute nur Meldung in der Hallenabrechnung' },
-  'schnittstelle:tco.stunden': { offen: 'gescheiterter Abruf der Trainerstunden: kein Eintrag im Arbeitsvorrat' },
-  'schnittstelle:tco.ferien': { offen: 'gescheiterter Abruf der Schulferien: heute nur Hinweis in der Abrechnung Jugendtraining' },
-  'schnittstelle:tco.mailabruf': { offen: 'gescheiterter Abruf des Maileingangs: kein Eintrag im Arbeitsvorrat' },
-  'schnittstelle:tco.nextcloud': { offen: 'gescheiterte Ablage in die Nextcloud: kein Eintrag im Arbeitsvorrat' },
+  'schnittstelle:paperless': { hinweis: 'PAPERLESS' },
+  'schnittstelle:mail': { hinweis: 'MAIL_FEHLER' },
+  'schnittstelle:tco.ep3': { ueberwacht: 'V_EP3' },
+  'schnittstelle:tco.stunden': { ueberwacht: 'V_STUNDEN' },
+  'schnittstelle:tco.ferien': { ueberwacht: 'V_FERIEN' },
+  'schnittstelle:tco.mailabruf': { ueberwacht: 'V_MAILABRUF' },
+  'schnittstelle:tco.nextcloud': { ueberwacht: 'V_NEXTCLOUD' },
   'schnittstelle:transport.mail': { ohne: 'Euroflex sendet nur aus dem Dialog am Auftrag (#235): das Ergebnis sieht der Absender sofort und wiederholt dort; kein Hintergrundlauf, jede E-Mail steht im E-Mail-Protokoll' },
 
   // ---------------------------------------------------------------- automatische Läufe
@@ -48,7 +50,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'eingang:core POST /api/auth/passwort-vergessen': { ohne: VERLAUF },
   'eingang:core POST /api/auth/kennwort-setzen': { ohne: VERLAUF },
   'eingang:core POST /api/setup': { ohne: 'einmalige Einrichtung des Portals durch den ersten Administrator' },
-  'eingang:core POST /api/mail/eingang': { offen: 'Unzustellbar-Meldungen, Abwesenheitsnotizen und Antworten stehen nur im E-Mail-Protokoll' },
+  'eingang:core POST /api/mail/eingang': { hinweis: 'MAIL_RUECKLAUF' },
 
   // ---------------------------------------------------------------- Eingänge ohne Anmeldung: TC Oberthal
   'eingang:tco POST /antrag': { aufgabe: 'MITGLIEDSANTRAG' },
@@ -63,7 +65,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
 
   // ---------------------------------------------------------------- Meldungen
   'meldung:tco POST /schaden': { aufgabe: 'SCHADEN' },
-  'meldung:tco POST /eingang/mail': { offen: 'Dokumenteneingang: zu prüfende und fehlerhafte Vorgänge stehen nur in der Prüfliste und als Kachelzahl' },
+  'meldung:tco POST /eingang/mail': { aufgabe: ['EINGANG_PRUEFEN', 'EINGANG_FEHLER'] },
   'meldung:tco POST /eingang/abgleich': { ohne: 'technischer Abgleich mit n8n, welche E-Mails schon geliefert sind' },
   'meldung:tco POST /eingang/vorgaenge/:id/mail-erledigt': { ohne: 'Quittung von n8n, dass die E-Mail im Postfach behandelt ist' },
 

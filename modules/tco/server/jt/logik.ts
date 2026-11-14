@@ -1,6 +1,8 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import { addTage, condense, heute, runden } from '../format.js';
 import type { Db, Verein } from '../verein.js';
+import { tcoSchnittstelle } from '../hinweise.js';
+import { V_FERIEN, V_STUNDEN } from '../verbindung.js';
 
 /**
  * Abrechnung Jugendtraining – Port von Z2UI5_CL_TCO_JUGEND_V3.
@@ -350,12 +352,17 @@ async function n8nGet(url: string, v: Verein, was: string, welche: 'stunden' | '
 /** Rückmeldungen über den n8n-Webhook TCO_N8N_STUNDEN (CSV oder JSON) */
 export async function rueckmeldungenAbrufen(v: Verein): Promise<{ csv: string; ungueltig: number }> {
   if (!v.n8n_stunden_url) throw new BusinessError('Der Webhook für die Rückmeldungen ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
-  const u = new URL(v.n8n_stunden_url);
-  u.searchParams.set('format', 'csv');
-  const res = await n8nGet(u.toString(), v, 'Nextcloud');
-  if (res.status === 401 || res.status === 403) throw new BusinessError('Anmeldung am n8n-Webhook abgelehnt – Authorization in den Stammdaten prüfen.');
-  if (res.status === 404) throw new BusinessError('n8n-Webhook nicht gefunden – ist der Workflow aktiv?');
-  if (!res.ok) throw new BusinessError(`n8n antwortet mit HTTP ${res.status}.`);
+  // Abruf überwacht (#232, V1): Scheitert er, steht die Störung im Arbeitsvorrat, bis der nächste Abruf klappt
+  const stundenUrl = v.n8n_stunden_url;
+  const res = await tcoSchnittstelle(V_STUNDEN, 'Rückmeldungen Jugendtraining (n8n)', async () => {
+    const u = new URL(stundenUrl);
+    u.searchParams.set('format', 'csv');
+    const r = await n8nGet(u.toString(), v, 'Nextcloud');
+    if (r.status === 401 || r.status === 403) throw new BusinessError('Anmeldung am n8n-Webhook abgelehnt – Authorization in den Stammdaten prüfen.');
+    if (r.status === 404) throw new BusinessError('n8n-Webhook nicht gefunden – ist der Workflow aktiv?');
+    if (!r.ok) throw new BusinessError(`n8n antwortet mit HTTP ${r.status}.`);
+    return r;
+  });
   const t = (await res.text()).replace(/\r/g, '');
   const hdr = Number(res.headers.get('x-tco-ungueltig') ?? 0) || 0;
   if (!/^\s*\{/.test(t)) return { csv: t, ungueltig: hdr };
@@ -400,12 +407,17 @@ export async function ferienLesen(db: Db, jahr: number): Promise<Ferientag[]> {
 /** Ferien und Feiertage eines Jahres über n8n laden und speichern (je Jahr ersetzt) */
 export async function ferienSynchronisieren(tx: Db, v: Verein, jahr: number, benutzer: string): Promise<{ ferien: number; feiertage: number }> {
   if (!v.n8n_ferien_url) throw new BusinessError('Der Webhook für die Schulferien ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
-  const u = new URL(v.n8n_ferien_url);
-  u.searchParams.set('jahr', String(jahr));
-  const res = await n8nGet(u.toString(), v, 'Schulferien', 'ferien');
-  let j: { fehler?: string; ferientage?: { datum: string; ferien: string }[]; feiertage?: { datum: string; name: string }[] };
-  try { j = await res.json(); } catch { throw new BusinessError('Ferien-Antwort nicht lesbar.'); }
-  if (!res.ok) throw new BusinessError(j?.fehler || `Ferien-Webhook antwortet mit HTTP ${res.status}.`);
+  // Abruf überwacht (#232, V1) – außerhalb der Transaktion gemeldet, damit die Störung auch bei Abbruch stehen bleibt
+  const ferienUrl = v.n8n_ferien_url;
+  const j = await tcoSchnittstelle(V_FERIEN, 'Schulferien Saarland (n8n)', async () => {
+    const u = new URL(ferienUrl);
+    u.searchParams.set('jahr', String(jahr));
+    const res = await n8nGet(u.toString(), v, 'Schulferien', 'ferien');
+    let x: { fehler?: string; ferientage?: { datum: string; ferien: string }[]; feiertage?: { datum: string; name: string }[] };
+    try { x = await res.json(); } catch { throw new BusinessError('Ferien-Antwort nicht lesbar.'); }
+    if (!res.ok) throw new BusinessError(x?.fehler || `Ferien-Webhook antwortet mit HTTP ${res.status}.`);
+    return x;
+  });
   const tage = new Map<string, Ferientag>();
   for (const f of j.ferientage ?? []) {
     const d = String(f.datum ?? '').slice(0, 10);

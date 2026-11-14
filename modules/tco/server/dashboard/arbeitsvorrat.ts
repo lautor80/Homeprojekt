@@ -10,6 +10,7 @@
  *  - Vorstand:    neue Registrierungen und deren Freigabe
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
  *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung
+ *  - Dokumente:   Dokumenteneingang – Vorgänge mit Fehler und zu prüfende
  *  - Clubhaus: wie bisher (Einträge der Administration liefert der Kern)
  *  - dazu gemeldete Ereignisse (Hinweise, server/src/lib/hinweise.ts) unter der Zuständigkeit, die die meldende Stelle nennt
  */
@@ -308,6 +309,29 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         titel: `${r.n} Registrierung${r.n === 1 ? '' : 'en'} zu bestätigen`,
         text: 'Neue Hallennutzer warten auf Freigabe in der Platzverwaltung.',
         datum: r.seit, pfad: '/tco/platzverwaltung',
+      });
+    }
+  }
+  // Dokumenteneingang (#232, V1): Vorgänge, deren Ablage gescheitert ist oder die auf eine Prüfung warten
+  if (can(req, 'tco.eingang:display')) {
+    const [e] = await db`select count(*) filter (where status = 'fehler')::int as fehler, count(*) filter (where status = 'pruefen')::int as pruefen,
+                                to_char(min(eingang_am) filter (where status = 'fehler') at time zone 'Europe/Berlin', 'YYYY-MM-DD') as fehler_seit,
+                                to_char(min(eingang_am) filter (where status = 'pruefen') at time zone 'Europe/Berlin', 'YYYY-MM-DD') as pruefen_seit
+                           from tco.eing_vorgaenge where status in ('fehler', 'pruefen')`;
+    if (e?.fehler) {
+      out.push({
+        key: 'EINGANG_FEHLER', bereich: 'Dokumente', icon: 'inbox', state: 'Negative',
+        titel: `Dokumenteneingang: ${e.fehler} ${e.fehler === 1 ? 'Vorgang' : 'Vorgänge'} mit Fehler`,
+        text: 'Die Ablage ist gescheitert – in der Prüfliste nachsehen und erneut ablegen.',
+        datum: e.fehler_seit, pfad: '/tco/dokumenteneingang',
+      });
+    }
+    if (e?.pruefen) {
+      out.push({
+        key: 'EINGANG_PRUEFEN', bereich: 'Dokumente', icon: 'inbox', state: 'Critical',
+        titel: `Dokumenteneingang: ${e.pruefen} ${e.pruefen === 1 ? 'Vorgang' : 'Vorgänge'} zu prüfen`,
+        text: 'E-Mails und Anhänge warten in der Prüfliste auf Zuordnung und Ablage.',
+        datum: e.pruefen_seit, pfad: '/tco/dokumenteneingang',
       });
     }
   }

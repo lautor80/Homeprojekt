@@ -6,6 +6,7 @@ import type { CustomFeld, Paperless } from '../../../../server/src/lib/paperless
 import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { DB } from '../verein.js';
 import { V_MAILABRUF, V_NEXTCLOUD, mailabrufAnstossen } from '../verbindung.js';
+import { tcoSchnittstelle } from '../hinweise.js';
 import {
   FELDER, FELD_IDS, OPERATOREN, OPERATOR_IDS, PLATZHALTER, QUELLEN, QUELLE_IDS, bedingungPasst, extrahieren, musterFehler, platzhalter, regelPasst,
 } from './logik.js';
@@ -331,7 +332,9 @@ export async function eingangRoutes(app: FastifyInstance) {
       return { abruf: false, text: `${bewertet} Kein Abruf aus dem Postfach: Die Anbindung „Maileingang jetzt abrufen (n8n)“ ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).` };
     }
     try {
-      return { abruf: true, text: `${bewertet} ${await mailabrufAnstossen(v, `Portal (${wer(req)})`)}` };
+      // überwacht (#232, V1): Scheitert der Anstoß, steht die Störung im Arbeitsvorrat, bis der nächste klappt
+      const text = await tcoSchnittstelle(V_MAILABRUF, 'Maileingang jetzt abrufen (n8n)', () => mailabrufAnstossen(v, `Portal (${wer(req)})`));
+      return { abruf: true, text: `${bewertet} ${text}` };
     } catch (e) {
       throw new BusinessError(`${bewertet} Abruf aus dem Postfach fehlgeschlagen: ${(e as Error).message}`);
     }

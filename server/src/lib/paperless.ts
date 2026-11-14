@@ -43,6 +43,15 @@ export function nurIntern(url: string): boolean {
   return /\.(localhost|local|lan|internal|intranet|home|box|home\.arpa)$/.test(h);
 }
 
+/**
+ * Meldestelle für Störungen (#232, V1): Der Server hängt hier den Arbeitsvorrat ein (app.ts). Ohne Meldestelle – Tests
+ * ohne Datenbank, Skripte – passiert nichts; dieser Baustein selbst kennt keine Datenbank.
+ * wo = Rechnername der ersten eingetragenen Adresse (je Paperless-Zugang einer).
+ */
+export interface PaperlessMelder { stoerung: (wo: string, text: string) => Promise<void>; laeuft: (wo: string) => Promise<void> }
+let melder: PaperlessMelder | null = null;
+export function paperlessMelder(m: PaperlessMelder | null): void { melder = m; }
+
 export class PaperlessError extends Error {
   constructor(message: string, public status?: number) {
     super(message);
@@ -91,6 +100,11 @@ export class Paperless {
   // Basis-URL und HTTP
   // -------------------------------------------------------------------------
 
+  /** Kennung dieses Zugangs für Störungsmeldungen: Rechnername der ersten eingetragenen Adresse */
+  private wo(): string {
+    try { return new URL(this.urls[0]).host; } catch { return this.urls[0]; }
+  }
+
   async baseUrl(): Promise<string> {
     if (this.urls.length === 1) return this.urls[0];
     const key = this.urls.join(',');
@@ -126,16 +140,24 @@ export class Paperless {
         signal: AbortSignal.timeout(this.timeout),
       });
     } catch (e) {
-      throw new PaperlessError(`Paperless nicht erreichbar: ${(e as Error).message}`);
+      const f = new PaperlessError(`Paperless nicht erreichbar: ${(e as Error).message}`);
+      await melder?.stoerung(this.wo(), f.message);
+      throw f;
     }
     if (raw) return res;
     if (res.status === 401 || res.status === 403) {
-      throw new PaperlessError(`Paperless lehnt die Anmeldung ab (HTTP ${res.status}) – API-Token prüfen.`, res.status);
+      const f = new PaperlessError(`Paperless lehnt die Anmeldung ab (HTTP ${res.status}) – API-Token prüfen.`, res.status);
+      await melder?.stoerung(this.wo(), f.message);
+      throw f;
     }
     if (!res.ok) {
       const t = (await res.text()).slice(0, 300);
-      throw new PaperlessError(`Paperless-Fehler HTTP ${res.status}: ${t}`, res.status);
+      const f = new PaperlessError(`Paperless-Fehler HTTP ${res.status}: ${t}`, res.status);
+      // Störung ist, was am Server liegt (5xx); 4xx betrifft die einzelne Anfrage (Dublette, unbekanntes Dokument …)
+      if (res.status >= 500) await melder?.stoerung(this.wo(), f.message);
+      throw f;
     }
+    await melder?.laeuft(this.wo());
     return res;
   }
 
