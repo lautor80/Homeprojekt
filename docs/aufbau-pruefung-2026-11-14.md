@@ -8,6 +8,10 @@ Berechtigungskatalog (`modules/*/server/index.ts`) und alle 54 Apps (13 Administ
 Kommentar im Issue, z. B. „E1 ja, S1 ja, N1 nein, N4 Variante B“. Die Liste zum Abhaken steht in
 [Abschnitt 6](#6-entscheidungsliste).
 
+**Überarbeitet am 14.11.2026** nach dem Kommentar im Issue: Paperless hat je Bereich einen eigenen Zugang (neu
+**S5**, S1 angepasst), alle Ereignisse landen im Arbeitsvorrat (neu **V1–V3**), und vor dem Umbau gibt es einen
+Sicherungspunkt mit beschriebenem Rückweg: [sicherungspunkt-2026-11-14.md](sicherungspunkt-2026-11-14.md).
+
 ## 1 Kurzfassung
 
 1. **Einstellungen liegen an 12 Stellen in 4 Bauarten** – eigene App, Reiter, Zahnrad-Dialog, Feldgruppe in
@@ -21,6 +25,21 @@ Kommentar im Issue, z. B. „E1 ja, S1 ja, N1 nein, N4 Variante B“. Die Liste 
    Dokumenteneingang). → **S1**
 5. **Eigene Funktionen der Mitglieder stehen zwischen den Verwaltungs-Apps**, verteilt auf fünf Gruppen mit je
    ein bis zwei Apps. → **N1**
+6. **Paperless ist heute genau eine Verbindung für alle Bereiche.** Euroflex und TC Oberthal legen damit
+   zwangsläufig im selben Paperless ab. → **S5**
+7. **Der Arbeitsvorrat gehört zum Modul TC Oberthal und kennt nicht alle Ereignisse:** Es fehlen unter anderem der
+   Dokumenteneingang, unzustellbare E-Mails, Kündigungen und Beitragswechsel der Mitglieder, Fehler der
+   Schnittstellen und alles aus Euroflex. → **V1–V3**
+
+### Vorgaben für den Umbau
+
+Diese drei Punkte sind entschieden (Kommentar vom 14.11.2026) und gelten für jede Empfehlung unten:
+
+| Vorgabe | Bedeutung |
+|---|---|
+| **Paperless je Bereich** | Jeder Bereich (TC Oberthal, Euroflex, künftige) hat seinen eigenen Paperless-Zugang. Zwei Bereiche zeigen nie auf dieselbe Adresse. |
+| **Alles in den Arbeitsvorrat** | Jedes Ereignis, das jemand erledigen oder wissen muss, erscheint im Arbeitsvorrat – auch nach jedem Umzug einer Funktion. |
+| **Sicherungspunkt** | Vor dem Start ein fester Stand von Programm und Daten; jeder Umbauschritt einzeln zurücknehmbar. |
 
 Was heute schon gut ist und als Vorbild dient: Zugänge zu Fremdsystemen sind bereits zentral
 (`core.verbindungen`, Module melden ihre Verbindungen selbst an); Menü und Startseite kommen aus derselben
@@ -226,7 +245,7 @@ Fachbaum steht mehr „Einstellungen“. *Aufwand:* mittel (Menü, Rechtekatalog
 
 | Schnittstelle | Zugang | Regeln und Felder | Auslösen | Protokoll |
 |---|---|---|---|---|
-| Paperless | Anbindungen | Paperless-Zuordnung · Stammdaten (FI-Felder) · Clubhaus · Instandhaltung · Dokumenteneingang | je App, Upload, Ablagefeld | – |
+| Paperless | Anbindungen – **eine** Verbindung für alle Bereiche | Paperless-Zuordnung · Stammdaten (FI-Felder) · Clubhaus · Instandhaltung · Dokumenteneingang | je App, Upload, Ablagefeld | – |
 | E-Mail-Versand | Anbindungen | Ersatzabsender (Anbindungen) · Texte (Euroflex-Stammdaten) | je App | E-Mail-Protokoll **und** Anbindungen |
 | E-Mail-Eingang | API-Schlüssel · Anbindungen („jetzt abrufen“) | Dokumenteneingang → Regeln | Dokumenteneingang | Dokumenteneingang |
 | EP3 | Anbindungen | – | Hallenabrechnung (Knopf) | Dialog |
@@ -238,7 +257,8 @@ Fachbaum steht mehr „Einstellungen“. *Aufwand:* mittel (Menü, Rechtekatalog
 | Zugriff von außen | API-Schlüssel | – | – | – |
 
 **Empfehlung.** Eine App *Administration → Schnittstellen* mit einem Reiter je Schnittstelle. In jedem Reiter
-dieselbe Reihenfolge: **Zugang – dann je Bereich die Funktionen – Stand**.
+steht **je Bereich ein Block**, immer in derselben Reihenfolge: **Zugang – Funktionen – Stand**. Der Zugang gehört
+zum Bereich, nicht zum Portal (S5); nur was wirklich für alle gilt, steht in einem Block „Portal“.
 
 ```
 Administration → Schnittstellen
@@ -246,16 +266,20 @@ Administration → Schnittstellen
 [Ferien][Nextcloud][SAP][API-Schlüssel]
 
 Reiter „Paperless“
+  ═ TC Oberthal ════════════════════════
   Zugang          Adresse · Token · [Prüfen]
-  ─ Portal ─────────────────────────────
-  Ablageregeln    (heute Paperless-Zuordnung)
-  ─ TC Oberthal ────────────────────────
+                  Adresse für Freigabelinks
+  Ablageregeln    FI-Beleg, Mitglied, Halle …
   Finanzen        Belegtypen, Pfad, Felder
   Clubhaus        Feld „JSON“
   Instandhaltung  Dokumenttypen, Pfade
   Dokumente       Regeln → Dokumenteneingang
-  ─ Euroflex ───────────────────────────
-  Aufträge        Auftrag, Kontakt, Rechnung
+  Stand           erreichbar · letzte Ablage
+  ═ Euroflex ═══════════════════════════
+  Zugang          eigene Adresse · Token
+                  Adresse für Freigabelinks
+  Ablageregeln    Auftrag, Kontakt, Rechnung
+  Stand           erreichbar · letzte Ablage
 
 Reiter „E-Mail“
   Versand         Webhook · [Testmail]
@@ -264,6 +288,7 @@ Reiter „E-Mail“
   ─ Euroflex ───────────────────────────
   Texte           (heute in den Stammdaten)
   Stand           letzte 5 → E-Mail-Protokoll
+                  Fehler → Arbeitsvorrat (V1)
 ```
 
 *Anbindungen*, *Paperless-Zuordnung* und *API-Schlüssel* gehen in dieser App auf. Module melden Reiter-Abschnitte
@@ -272,8 +297,11 @@ an, wie heute ihre Verbindungen; eine neue Schnittstelle ist ein neuer Reiter.
 Abgrenzung zu E1: Was festlegt, **wie mit einem Fremdsystem gesprochen und was dort abgelegt wird**, gehört zur
 Schnittstelle. Alles andere ist Einstellung.
 
-*Aufwand:* groß, in Stufen: (1) Reiter statt langer Seite für die heutigen Anbindungen, (2) Paperless-Zuordnung
-und API-Schlüssel hinein, (3) verstreute Paperless-Felder aus den Fach-Apps.
+Die Zeile „Stand“ zeigt dasselbe, was bei einem Fehler im Arbeitsvorrat steht (V1) – eine Quelle, zwei
+Anzeigen.
+
+*Aufwand:* groß, in Stufen: (1) Reiter statt langer Seite für die heutigen Anbindungen, (2) Paperless je Bereich
+(S5), (3) Paperless-Zuordnung und API-Schlüssel hinein, (4) verstreute Paperless-Felder aus den Fach-Apps.
 
 #### S2 Nextcloud: ein Zugang statt zwei
 
@@ -285,7 +313,7 @@ zwei Stellen nachgezogen werden.
 Schnittstellen › Nextcloud
   Zugang        Adresse · Benutzer · Passwort
   ─ Portal ──────────────────────────
-  Sicherung     Ordner · Uhrzeit · Aufbewahrung
+  Sicherung     Ordner · Uhrzeit · Dauer
   ─ TC Oberthal ─────────────────────
   Dokumente     Ordner der Arbeitsablage
 ```
@@ -319,6 +347,156 @@ Abrechnung Jugendtraining      [Importieren ▾]
 ```
 
 *Aufwand:* mittel (gemeinsamer Import-Dialog im Kern, dann App für App).
+
+#### S5 Paperless: eigener Zugang je Bereich
+
+**Befund.** Im Kern gibt es genau eine Verbindung `paperless` – im Quelltext ausdrücklich „eine Verbindung für
+Kern und alle Module“. TC Oberthal (`modules/tco/server/verein.ts`) und Euroflex
+(`modules/transport/server/data.ts`) lesen beide diesen einen Zugang. Auch zwei Funktionen des Kerns hängen daran:
+die Auswahllisten der Paperless-Zuordnung und das Umschreiben der Freigabelinks beim E-Mail-Versand.
+
+**Vorgabe.** Je Bereich ein eigener Zugang; zwei Bereiche zeigen nie auf dieselbe Adresse.
+
+```
+Heute                    Vorgabe
+Paperless (eine)         Paperless TC Oberthal
+  ↑        ↑               ↑
+ TCO   Euroflex           TCO
+                         Paperless Euroflex
+                           ↑
+                          Euroflex
+```
+
+Was sich dadurch ändert:
+
+| Teil | Heute | Künftig |
+|---|---|---|
+| Zugang | `paperless` im Kern | je Bereich: `tco.paperless`, `transport.paperless`; ein neues Modul bringt seinen mit |
+| Adresse für Freigabelinks | eine | je Bereich |
+| Paperless-Zuordnung | Auswahllisten aus dem einen Paperless | je Ablagekontext aus dem Paperless seines Bereichs (die Kontexte gehören schon heute zu einem Modul) |
+| E-Mail-Versand | schreibt Freigabelinks mit der einen Adresse um | nimmt die Adresse des Bereichs, aus dem die E-Mail kommt |
+| Ablagefeld, Dokumenten-Upload, Dokumenteneingang | TC Oberthal | TC Oberthal (unverändert, nur anderer Zugang) |
+| Prüfung beim Sichern | – | dieselbe Adresse in zwei Bereichen wird abgelehnt |
+| Sicherung | `backup.sh` sichert das Paperless im Stack | ein zweites Paperless braucht seine eigene Sicherung |
+
+Dokumenttypen, Korrespondenten, Speicherpfade und Custom Fields sind je Paperless verschieden. Deshalb stehen
+im Reiter „Paperless“ (S1) alle Regeln und Felder unter dem Bereich, zu dem sie gehören – nie darüber.
+
+**Umzug der heutigen Werte.** Der vorhandene Zugang wird beim Update auf einen Bereich übertragen; der andere
+ist danach „nicht eingerichtet“, bis seine Adresse eingetragen ist. Der alte Eintrag bleibt stehen, bis der
+Schritt abgenommen ist. **Offen:** Welcher Bereich behält das heutige Paperless – TC Oberthal (Annahme) oder
+Euroflex? Und liegen dort heute schon Dokumente des anderen Bereichs, die umziehen müssen?
+
+Dasselbe Muster (Zugang je Bereich) trägt der Rahmen aus S1 auch für E-Mail und Nextcloud, falls das später
+gewünscht ist; vorgegeben ist es nur für Paperless.
+
+*Aufwand:* mittel (Kern: Verbindung je Modul, zwei Kernfunktionen mit Bereich; Migration; Tests). Lässt sich vor
+S1 umsetzen – dann als zwei Einträge in den heutigen Anbindungen.
+
+### V – Arbeitsvorrat
+
+#### V1 Jedes Ereignis landet im Arbeitsvorrat
+
+**Befund.** Der Arbeitsvorrat wird bei jedem Aufruf aus dem aktuellen Stand berechnet
+(`modules/tco/server/dashboard/arbeitsvorrat.ts`). Was dort keine eigene Abfrage hat, erscheint nicht.
+
+| Ereignis | Im Arbeitsvorrat? | Heute sichtbar |
+|---|---|---|
+| Schadensmeldung, Hallenschlüssel ohne Quittung | ja | – |
+| Registrierung, Mitgliedsantrag, Vertragswechsel | ja | – |
+| Schnuppertraining, Zeitnachweis Trainer | ja | – |
+| Hallenbuchungen heute, Halle aufsperren, Hallenabo | ja | – |
+| Verzehr: Gastbelege, überfällig, Monatsabschluss | ja | – |
+| Upload „Überweisung an Einreicher“ | ja | – |
+| Nextcloud-Export der Sicherung fehlgeschlagen | ja | – |
+| Dokumenteneingang: zu prüfen, Fehler | **nein** | Kachelzahl, Prüfliste |
+| E-Mail nicht gesendet, unzustellbar, Antwort | **nein** (nur beim Hallenabo) | E-Mail-Protokoll |
+| Kündigung, Beitragswechsel, Jugendtraining durch das Mitglied | **nein** | Notiz am Mitglied, E-Mail-Kopie |
+| EP3-Import, Trainerstunden, Schulferien: Abruf scheitert | **nein** | Meldung in der App, solange sie offen ist |
+| Paperless eines Bereichs nicht erreichbar | **nein** | Fehlermeldung beim Ablegen |
+| Alles aus Euroflex | **nein** | – |
+
+Die Zeilen mit „nein“ sind am Quelltext geprüft. Bei der Umsetzung kommt jede App noch einmal an die Reihe
+(z. B. Preisfehler in der Hallenabrechnung, Bankimport, ablaufende API-Schlüssel).
+
+**Empfehlung.** Eine Regel und zwei Arten von Einträgen:
+
+| Art | Bedeutung | Verschwindet, wenn |
+|---|---|---|
+| **Aufgabe** | jemand muss etwas tun (prüfen, freigeben, zahlen) | der Vorgang erledigt ist |
+| **Hinweis** | jemand muss etwas wissen (Kündigung ausgeführt, Import gescheitert) | abgehakt („gesehen“) oder die Ursache behoben ist |
+
+```
+Arbeitsvorrat
+ Kassenwart (5)
+  ● Mitgliedsantrag …
+  ● 3 Dokumente im Eingang zu prüfen     neu
+  ○ Kündigung zum 31.12. ausgeführt  ☐   neu
+ Administration (2)
+  ▲ EP3-Abruf gescheitert                neu
+  ▲ 2 E-Mails unzustellbar               neu
+ Euroflex (1)
+  ▲ Paperless Euroflex nicht erreichbar  neu
+
+ ● Aufgabe   ○ Hinweis   ▲ Fehler
+```
+
+Nicht in den Arbeitsvorrat gehört, was nur Verlauf ist: jede einzelne gesendete E-Mail, jede Anmeldung, jede
+Feldänderung. Dafür gibt es E-Mail-Protokoll, Statistik und Änderungsbelege. **Offen:** Reicht diese Grenze,
+oder soll wirklich jedes Ereignis als Hinweis erscheinen?
+
+*Aufwand:* mittel (je Lücke eine Quelle; Fehler der Schnittstellen müssen dafür festgehalten werden, statt nur
+in der App zu erscheinen).
+
+#### V2 Arbeitsvorrat in den Kern, für alle Bereiche
+
+**Befund.** Der Arbeitsvorrat ist Teil der *Vereinsübersicht* und verlangt deren Recht
+(`tco.dashboard:display`). Wer nur Euroflex bedient oder dieses Recht nicht hat, hat keinen. Ereignisse der
+Administration (Sicherung) stehen in einer Liste des Vereinsmoduls.
+
+**Empfehlung.** Der Arbeitsvorrat wird eine Funktion des Kerns auf der Startseite. Jedes Modul meldet seine
+Quellen an (`ServerModule.aufgaben`), so wie heute Anbindungen und künftig Einstellungen. Jeder sieht die
+Einträge, deren App er bedienen darf – ein eigenes Recht braucht es nicht.
+
+```
+Start
+┌ Arbeitsvorrat ───────────────────────┐
+│ Portal │ TC Oberthal │ Euroflex      │
+│ ▲ …      ● …           ● …           │
+└──────────────────────────────────────┘
+  Kacheln …
+
+Kern        Administration, Schnittstellen
+TC Oberthal Quellen wie heute + Lücken (V1)
+Euroflex    neu
+```
+
+Die Vereinsübersicht zeigt weiter ihren Ausschnitt (TC Oberthal). Der rote Zähler am Menüeintrag wandert zu
+*Start*. *Aufwand:* mittel.
+
+#### V3 Absichern, dass beim Umbau nichts verloren geht
+
+**Befund.** Jeder Eintrag verweist fest auf eine App, teils auf einen Reiter (`/tco/platzverwaltung`,
+`/tco/verzehrbuch?tab=belege`, `/admin/sicherung`). Zieht eine Funktion um (E1, S1, N3), zeigt der Eintrag ins
+Leere, ohne dass es jemand merkt.
+
+**Empfehlung.** Drei Prüfungen, die bei jedem Umbauschritt automatisch laufen:
+
+| Prüfung | Schützt vor |
+|---|---|
+| Jeder Pfad eines Eintrags ist eine vorhandene Seite | toten Verweisen nach einem Umzug |
+| Jede Schnittstelle und jeder automatische Lauf hat eine Quelle im Arbeitsvorrat | stillen Fehlern |
+| Jeder Eingang von außen (Formular, Registrierung, E-Mail, Selbstvorgang) hat eine Quelle | vergessenen Vorgängen |
+
+```
+Umbauschritt ─► CI
+   ├─ Pfade der Einträge vorhanden?
+   ├─ Schnittstelle ohne Quelle?
+   └─ Eingang ohne Quelle?
+ rot ─► kein Merge
+```
+
+*Aufwand:* klein bis mittel. **Gehört an den Anfang**, vor E1, S1 und N3.
 
 ### A – Administration
 
@@ -559,10 +737,10 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 | Rollenmatrix | passt | – |
 | API-Schlüssel | ist eine Schnittstelle (Zugriff von außen), steht getrennt von den Anbindungen | S1 |
 | Änderungsbelege | passt; mit E-Mail-Protokoll und Statistik als „Protokolle“ gruppieren | A1 |
-| E-Mail-Protokoll | passt; zweite Fassung in Anbindungen | S3 |
+| E-Mail-Protokoll | passt; zweite Fassung in Anbindungen; Fehler und Unzustellbares nicht im Arbeitsvorrat | S3, V1 |
 | Einstellungen | nur Portal; Anschrift wird nirgends verwendet; Logo nur eines von dreien | E1, E2, E3 |
-| Anbindungen | eine lange Seite, alle Systeme untereinander; enthält Ersatzabsender und Mailprotokoll | S1, S3 |
-| Paperless-Zuordnung | gehört zur Schnittstelle Paperless | S1 |
+| Anbindungen | eine lange Seite, alle Systeme untereinander; enthält Ersatzabsender und Mailprotokoll; Paperless nur einmal für alle Bereiche | S1, S3, S5 |
+| Paperless-Zuordnung | gehört zur Schnittstelle Paperless; Auswahllisten aus dem einen Paperless | S1, S5 |
 | Sperren | passt | A1 |
 | Sicherung | enthält eigenen Nextcloud-Zugang | S2 |
 | Statistik | passt | A1 |
@@ -572,13 +750,13 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 
 | App | Befund | Kürzel |
 |---|---|---|
-| Vereinsübersicht | passt; der Arbeitsvorrat ist die richtige zentrale Stelle für offene Aufgaben | – |
+| Vereinsübersicht | der Arbeitsvorrat ist die richtige zentrale Stelle, gehört aber nur zu TC Oberthal und hat Lücken | V1, V2, V3 |
 | Präsentationen | passt; Gliederung weicht von der Rollenpflege ab | N6 |
 | Vereinskalender | Reiter „Gruppen / Mannschaften“ zeigt die App Mitgliedergruppen eingebettet – bewusst (#16), in Ordnung; Gliederung weicht von der Rollenpflege ab | N6 |
 | Stammdaten | mischt Verein, Logo, Hallenabrechnung, FI-Belege, Paperless-Felder und SAP-Übernahme | E1, E2, E4, S1, S4 |
 | Kontenstamm | fachliche Liste, gehört zu Finanzen | E5 |
 | Produkte | einer von vier Pflegeorten für Preise | N4, E5 |
-| Meine Mitgliedschaft | überschneidet sich mit „Meine Daten“ | N1, N2 |
+| Meine Mitgliedschaft | überschneidet sich mit „Meine Daten“; Kündigung und Beitragswechsel erscheinen nicht im Arbeitsvorrat | N1, N2, V1 |
 | Mitglieder | passt; Hallenschlüssel nur Anzeige – gutes Muster | – |
 | Mitgliedergruppen | passt | – |
 | Mitgliedsanträge | passt | – |
@@ -588,10 +766,10 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 | Spielerdaten (nuLiga) | Import als Reiter | S4 |
 | Teilnehmer Jugendtraining | passt | – |
 | Schnuppertraining | passt | – |
-| Abrechnung Jugendtraining | Reiter Trainer und Entgelte sind Stammdaten; Import als Reiter | E5, S4 |
+| Abrechnung Jugendtraining | Reiter Trainer und Entgelte sind Stammdaten; Import als Reiter; Fehler beim Abruf (Stunden, Ferien) nur in der App | E5, S4, V1 |
 | Meine Trainingszeiten | eigene Funktion zwischen Verwaltungs-Apps | N1 |
 | Hallenpreise | zweiter Pflegeort für Hallenprodukte | N4 |
-| Hallenabrechnung | EP3-Import als Knopf – gutes Muster; Einstellungen dazu liegen in den Stammdaten | E1, S4 |
+| Hallenabrechnung | EP3-Import als Knopf – gutes Muster; Einstellungen dazu liegen in den Stammdaten; gescheiterter Abruf nicht im Arbeitsvorrat | E1, S4, V1 |
 | Hallenschlüssel | Einstellungen im Zahnrad-Dialog; eigene Varianten; Altdaten-Import | E1, B1, S4 |
 | Platz buchen | Hauptteile per Umschalter statt Reiter | N1, B2 |
 | Meine Daten | überschneidet sich mit „Meine Mitgliedschaft“ | N2 |
@@ -609,23 +787,28 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 | Einnahmen und Ausgaben | passt | – |
 | Jahresabschluss | passt | – |
 | Dokumenten-Upload | steht unter Finanzen | N5 |
-| Dokumenteneingang | passt; Regeln sind Teil der Schnittstellen E-Mail-Eingang und Paperless (Verweis genügt) | S1 |
+| Dokumenteneingang | passt; Regeln sind Teil der Schnittstellen E-Mail-Eingang und Paperless (Verweis genügt); Prüfliste und Fehler nicht im Arbeitsvorrat | S1, V1 |
 
 ### Euroflex
 
 | App | Befund | Kürzel |
 |---|---|---|
-| Aufträge | passt | – |
+| Aufträge | passt; kein Arbeitsvorrat; teilt sich Paperless mit TC Oberthal | V2, S5 |
 | Kontakte | kein eigenes Recht, fehlt im Rechtekatalog | N7 |
 | Stammdaten | mischt Einstellungen, fachliche Listen und Datenimport | E1, E2, E5, S4, N7 |
 
 ## 5 Abhängigkeiten und Reihenfolge
 
 ```
+Sicherungspunkt ─ vor allem anderen
+V3 Prüfungen ──── vor E1, S1, N3
 K1–K5 ─┐
 A1 ────┼─ sofort, unabhängig
 N5 N6 ─┘
 S2 S3 ──── unabhängig, klein
+S5 ─────── vor oder mit S1
+V2 Kern ──┬─ V1 Lücken schließen
+          └─ Stand-Zeile in S1
 
 E1 Rahmen ──┬─ E2 Logos
             ├─ E3 Verein und Bank
@@ -641,14 +824,19 @@ B1 B2 B4 ───── unabhängig
 
 Vorschlag für die Reihenfolge:
 
-1. **Aufräumen ohne Umbau:** K1–K5, A1, N5, N6, S3, B4 – ein kleiner Schritt, sofort sichtbar.
-2. **Menü für Mitglieder:** N1, danach N2.
-3. **Einstellungen:** E1 Rahmen mit Portal und Euroflex, E2, dann TC Oberthal Kapitel für Kapitel (E3, E4).
-4. **Schnittstellen:** S1 Rahmen, S2, danach die verstreuten Paperless-Felder, S4.
-5. **Fachliche Bereinigung:** E5, N4, N3, N7, B1, B2.
+0. **Sicherungspunkt:** Daten auf dem Server sichern ([Anleitung](sicherungspunkt-2026-11-14.md)).
+1. **Absichern:** V3 – die Prüfungen, die jeden weiteren Schritt bewachen.
+2. **Aufräumen ohne Umbau:** K1–K5, A1, N5, N6, S3, B4 – ein kleiner Schritt, sofort sichtbar.
+3. **Arbeitsvorrat:** V2 in den Kern, danach V1 Lücke für Lücke.
+4. **Paperless je Bereich:** S5.
+5. **Menü für Mitglieder:** N1, danach N2.
+6. **Einstellungen:** E1 Rahmen mit Portal und Euroflex, E2, dann TC Oberthal Kapitel für Kapitel (E3, E4).
+7. **Schnittstellen:** S1 Rahmen, S2, danach die verstreuten Paperless-Felder, S4.
+8. **Fachliche Bereinigung:** E5, N4, N3, N7, B1, B2.
 
 Bei jedem Umzug gilt: Pfade der Apps und Namen der Rechte bleiben, damit Rollen, Lesezeichen, Varianten und
-Änderungsbelege weiter passen. Verschoben wird nur, wo etwas angezeigt und gepflegt wird.
+Änderungsbelege weiter passen. Verschoben wird nur, wo etwas angezeigt und gepflegt wird. Jeder Schritt ist ein
+eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr Eintrag im Arbeitsvorrat mit (V3).
 
 ## 6 Entscheidungsliste
 
@@ -663,6 +851,10 @@ Bei jedem Umzug gilt: Pfade der Apps und Namen der Rechte bleiben, damit Rollen,
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☐ |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☐ |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
+| S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
+| V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
+| V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☐ |
+| V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☐ |
 | A1 | Administration in fünf Gruppen | klein | ☐ |
 | N1 | Gruppe „Mein Bereich“ | klein | ☐ |
 | N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
@@ -676,6 +868,16 @@ Bei jedem Umzug gilt: Pfade der Apps und Namen der Rechte bleiben, damit Rollen,
 | B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ☐ |
 | B4 | Icons eindeutig | klein | ☐ |
 | K1–K5 | Texte berichtigen | klein | ☐ |
+
+### Offene Fragen
+
+| Zu | Frage |
+|---|---|
+| S5 | Welcher Bereich behält das heutige Paperless – TC Oberthal oder Euroflex? Liegen dort Dokumente des anderen Bereichs? |
+| S5 | Dieselbe Adresse in zwei Bereichen: ablehnen (Annahme) oder nur warnen? |
+| V1 | Aufgaben und Hinweise wie beschrieben – oder wirklich jedes Ereignis, auch reiner Verlauf? |
+| E3 | Dürfen Rechnungskonto und Lastschriftkonto des Vereins verschieden sein? |
+| N4 | Variante A oder B? |
 
 Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien, ggf. eine Migration ·
 *groß* = neuer Rahmen im Kern, Umsetzung in mehreren Schritten.
