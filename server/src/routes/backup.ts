@@ -1,3 +1,4 @@
+import { nextcloudZugangSpeichern } from '../lib/nextcloud.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -83,7 +84,8 @@ export async function backupRoutes(app: FastifyInstance) {
     return { ...c, passwort: c.passwort ? MASKE : '', datei_passwort: c.datei_passwort ? MASKE : '', fehlt: cfgPruefen(c) };
   };
   const cfgSchema = z.object({
-    aktiv: z.boolean(), url: z.string().trim().max(300), benutzer: z.string().trim().max(120), passwort: z.string().max(200),
+    // Zugang (#232, S2): gepflegt unter Schnittstellen → Nextcloud; wird er hier mitgegeben (Einrichten in einem Zug), landet er in derselben Anbindung
+    aktiv: z.boolean(), url: z.string().trim().max(300).optional(), benutzer: z.string().trim().max(120).optional(), passwort: z.string().max(200).optional(),
     ordner: z.string().trim().max(300).transform((x) => `/${x.replace(/^\/+|\/+$/g, '')}`),
     uhrzeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Uhrzeit im Format HH:MM'),
     /** dateien = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */
@@ -93,7 +95,10 @@ export async function backupRoutes(app: FastifyInstance) {
   /** Formularwerte mit gespeicherten Geheimnissen ergänzen (Maske = unverändert) */
   const zusammen = async (b: z.infer<typeof cfgSchema>): Promise<ExportCfg> => {
     const alt = await cfgLesen();
-    return { ...b, passwort: b.passwort === MASKE ? alt.passwort : b.passwort, datei_passwort: b.datei_passwort === MASKE ? alt.datei_passwort : b.datei_passwort };
+    return {
+      ...b, url: b.url ?? alt.url, benutzer: b.benutzer ?? alt.benutzer, passwort: b.passwort === undefined || b.passwort === MASKE ? alt.passwort : b.passwort,
+      datei_passwort: b.datei_passwort === MASKE ? alt.datei_passwort : b.datei_passwort,
+    };
   };
 
   app.get('/api/backup/nextcloud', erstellen, async () => cfgSicht());
@@ -103,9 +108,16 @@ export async function backupRoutes(app: FastifyInstance) {
     if (c.format !== 'portal' && c.datei_passwort) c.datei_passwort = '';
     const fehlt = cfgPruefen(c);
     if (c.aktiv && fehlt.length) throw new BusinessError(`Zum Aktivieren bitte ergänzen: ${fehlt.join(', ')}.`);
-    await change(req, (tx) => tx`update core.backup_export set aktiv = ${c.aktiv}, url = ${c.url}, benutzer = ${c.benutzer}, passwort = ${c.passwort}, ordner = ${c.ordner},
-                                       uhrzeit = ${c.uhrzeit}, format = ${c.format}, datei_passwort = ${c.datei_passwort}, mit_aenderungsbelegen = ${c.mit_aenderungsbelegen},
-                                       aufbewahrung_tage = ${c.aufbewahrung_tage} where id = 1`, { action: 'BACKUP_EXPORT' });
+    const alt = await cfgLesen();
+    await change(req, async (tx) => {
+      await tx`update core.backup_export set aktiv = ${c.aktiv}, ordner = ${c.ordner},
+                      uhrzeit = ${c.uhrzeit}, format = ${c.format}, datei_passwort = ${c.datei_passwort}, mit_aenderungsbelegen = ${c.mit_aenderungsbelegen},
+                      aufbewahrung_tage = ${c.aufbewahrung_tage} where id = 1`;
+      // der Zugang steht nur in der Anbindung „nextcloud“ – geändert wird er dort, auch wenn er von hier kommt
+      if (c.url !== alt.url || c.benutzer !== alt.benutzer || c.passwort !== alt.passwort) {
+        await nextcloudZugangSpeichern(tx, { url: c.url, benutzer: c.benutzer, passwort: c.passwort }, req.user?.username ?? 'system');
+      }
+    }, { action: 'BACKUP_EXPORT' });
     return { ...(await cfgSicht()), text: c.aktiv ? `Gespeichert – der Export läuft täglich ab ${c.uhrzeit} Uhr.` : 'Gespeichert – der tägliche Export ist ausgeschaltet.' };
   });
 

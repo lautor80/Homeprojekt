@@ -357,8 +357,11 @@ Reiter „Paperless“                    Reiter „E-Mail“
   Arbeitsvorrat (V1). Neuer Reiter **SAP** mit je einem Abschnitt für TC Oberthal und Euroflex (S4); Module melden
   solche Abschnitte mit `WebModule.schnittstellen` an. Die App erscheint, sobald man einen Reiter sehen darf.
   Die App *TC Oberthal → Stammdaten* ist damit aufgelöst (Vereinsdaten: Einstellungen, SAP: Schnittstellen).
-- **Noch offen:** verstreute Paperless-Felder aus den Fach-Apps (FI-Felder, Clubhaus, Instandhaltung), ein Zugang
-  für Nextcloud (S2), laufende Importe einheitlich (S4, zweiter Teil). Die E-Mail-Texte von Euroflex bleiben ein
+- **Stufe 4, Teil 2 (14.11.2026):** ein Zugang für Nextcloud (S2). Die Paperless-Felder der FI-Belege (Dokumenttypen,
+  Speicherpfad, Custom Fields) stehen im Reiter *Paperless* im Block TC Oberthal. Das Vereinsformular ist dafür in
+  Teile gegliedert: *Verein und Bank*, *Tennishalle* und *Finanzen* sind Kapitel der Einstellungen.
+- **Noch offen:** die Paperless-Felder von Clubhaus und Instandhaltung (ziehen mit deren Kapiteln um), laufende
+  Importe einheitlich (S4, zweiter Teil). Die E-Mail-Texte von Euroflex bleiben ein
   Kapitel der Einstellungen (Inhalt, nicht Zugang).
 
 #### S2 Nextcloud: ein Zugang statt zwei
@@ -377,6 +380,11 @@ Schnittstellen › Nextcloud
 ```
 
 *Aufwand:* klein bis mittel (Migration übernimmt den vorhandenen Zugang). Auch ohne S1 sinnvoll.
+
+**Umgesetzt (14.11.2026).** Es gibt die eine Anbindung *Nextcloud* im Block „Portal“ des Reiters *Nextcloud*. Die
+Sicherung und die Dokumentenablage des Vereins lesen beide diesen Zugang; die Seite *Sicherung* zeigt ihn nur noch an
+und verweist dorthin. Die Migration übernimmt den Zugang der Sicherung, sonst den der Dokumentenablage (beide nutzen
+laut Betreiber denselben Benutzer). Die alten Angaben bleiben gespeichert, werden aber nicht mehr gelesen.
 
 #### S3 E-Mail-Protokoll nur einmal
 
@@ -1139,13 +1147,13 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Kürzel | Empfehlung | Aufwand | Entscheidung |
 |---|---|---|---|
-| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Stufe 1 und 2 umgesetzt (Rahmen, Portal, Verein und Bank, Euroflex) |
+| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Rahmen, Portal, Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen – offen: Clubhaus, Verzehr, Hallenschlüssel, Instandhaltung |
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ☐ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ☐ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |
 | E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ☐ |
 | S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ◐ Stufe 1–3 umgesetzt (Reiter, Paperless je Bereich, Zuordnung und API-Schlüssel darin) |
-| S2 | Nextcloud: ein Zugang | klein–mittel | ☐ |
+| S2 | Nextcloud: ein Zugang | klein–mittel | ☑ umgesetzt |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ◐ SAP-Übernahme umgezogen; einheitlicher Import-Dialog offen |
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ umgesetzt |
@@ -1201,6 +1209,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | N1 | Gruppe *Mein Bereich* im Menü, auf der Startseite und in der Rollenpflege: Meine Mitgliedschaft, Meine Daten, Platz buchen, Mein Verzehr, Meine Trainingszeiten, Schaden melden (Pfade und Rechte unverändert) | umgesetzt 14.11.2026 |
 | E1 (Stufe 1–2) | App *Administration → Einstellungen* mit Kapiteln je Anwendung: Portal (Allgemein, Erscheinungsbild), TC Oberthal (Verein und Bank), Euroflex (Firma und Bank, E-Mail-Texte). Die Reiter in den Stammdaten-Apps sind entfallen, dort steht ein Absprung. Sichtbar, sobald man ein Kapitel sehen darf | umgesetzt 14.11.2026 – offen: Kapitel Tennishalle, Clubhaus, Finanzen, Instandhaltung (Stufe 3), Logos an einer Stelle (E2) |
 | S1 (Stufe 1–3) | App *Administration → Schnittstellen*: ein Reiter je Schnittstelle, darin je Bereich der Zugang; Paperless mit den Ablageregeln; Reiter API-Schlüssel. Anbindungen, Paperless-Zuordnung und API-Schlüssel sind keine eigenen Apps mehr | umgesetzt 14.11.2026 – offen: „Stand“ je Bereich, verstreute Paperless-Felder, S2, S4 |
+| S2 | Nextcloud: eine Anbindung für Sicherung und Dokumentenablage (`nextcloud`), Migration übernimmt den vorhandenen Zugang | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

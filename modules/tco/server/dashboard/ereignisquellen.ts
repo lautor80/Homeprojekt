@@ -37,7 +37,8 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'schnittstelle:tco.stunden': { ueberwacht: 'V_STUNDEN' },
   'schnittstelle:tco.ferien': { ueberwacht: 'V_FERIEN' },
   'schnittstelle:tco.mailabruf': { ueberwacht: 'V_MAILABRUF' },
-  'schnittstelle:tco.nextcloud': { ueberwacht: 'V_NEXTCLOUD' },
+  // ein Zugang für Sicherung und Dokumentenablage (#232, S2): Ablage überwacht, die Sicherung hat ihren eigenen Eintrag (BACKUP_EXPORT)
+  'schnittstelle:nextcloud': { ueberwacht: 'V_NEXTCLOUD' },
   'schnittstelle:transport.mail': { ohne: 'Euroflex sendet nur aus dem Dialog am Auftrag (#235): das Ergebnis sieht der Absender sofort und wiederholt dort; kein Hintergrundlauf, jede E-Mail steht im E-Mail-Protokoll' },
 
   // ---------------------------------------------------------------- automatische Läufe

@@ -117,7 +117,7 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   // App „Schnittstellen“ (#232, S1): jede Anbindung nennt den Reiter ihrer Schnittstelle – gleiche Schnittstelle, gleicher Reiter, je Bereich ein Block
   const reiter = (r.body.gruppen as { modul: string; verbindungen: { id: string; reiter: string }[] }[]).flatMap((g) => g.verbindungen.map((v) => `${v.reiter}: ${g.modul}/${v.id}`)).sort();
   assert.deepEqual(reiter, [
-    'E-Mail: core/mail', 'E-Mail: tco/tco.mailabruf', 'E-Mail: transport/transport.mail', 'EP3: tco/tco.ep3', 'Nextcloud: tco/tco.nextcloud',
+    'E-Mail: core/mail', 'E-Mail: tco/tco.mailabruf', 'E-Mail: transport/transport.mail', 'EP3: tco/tco.ep3', 'Nextcloud: core/nextcloud',
     'Paperless: tco/paperless', 'Paperless: transport/transport.paperless', 'Schulferien: tco/tco.ferien', 'Trainerstunden: tco/tco.stunden',
   ]);
   const pl = gruppe('tco').find((v) => v.id === 'paperless')!;
@@ -238,4 +238,30 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.deepEqual(authHeader(b), { Authorization: `Basic ${Buffer.from('u:p').toString('base64')}` });
   assert.throws(() => uebernehmen({ ...PAPERLESS_DEF, id: 'x', auth: ['basic'] }, b, { auth_user: 'anders', geheimnis: '********' }), /Passwort neu/);
   assert.throws(() => uebernehmen({ ...PAPERLESS_DEF, id: 'x', auth: ['basic'] }, b, { auth_user: '', geheimnis: 'nur-pw' }), /Benutzer und Passwort/);
+});
+
+test('Nextcloud: ein Zugang (#232, S2) – die Migration übernimmt den der Sicherung, sonst den der Dokumentenablage', async () => {
+  const neu = async () => {
+    await sql`delete from core.verbindungen where id = 'nextcloud'`;
+    await sql`delete from public.schema_migrations where id like ${'%018_nextcloud_ein_zugang.sql'}`;
+    await migrate(activeModules(), () => {});
+    verbindungenCacheLeeren();
+    const [v] = await sql`select url, auth_art, auth_user, geheimnis from core.verbindungen where id = 'nextcloud'`;
+    return v ? [v.url, v.auth_art, v.auth_user, v.geheimnis] : null;
+  };
+  await sql`delete from core.verbindungen where id = 'tco.nextcloud'`;
+  await sql`update core.backup_export set url = '', benutzer = '', passwort = '' where id = 1`;
+  assert.equal(await neu(), null, 'nichts eingerichtet: kein Zugang');
+  // nur die Dokumentenablage des Vereins war eingerichtet
+  await sql`insert into core.verbindungen (id, url, auth_art, auth_user, geheimnis) values ('tco.nextcloud', 'https://cloud.example.org', 'basic', 'verein', 'ablage-pw')`;
+  assert.deepEqual(await neu(), ['https://cloud.example.org', 'basic', 'verein', 'ablage-pw']);
+  // beide eingerichtet: der Zugang der Sicherung gilt
+  await sql`update core.backup_export set url = 'https://cloud.example.org', benutzer = 'vorstand', passwort = 'app-pw' where id = 1`;
+  assert.deepEqual(await neu(), ['https://cloud.example.org', 'basic', 'vorstand', 'app-pw']);
+  // ein vorhandener Zugang wird nicht überschrieben
+  await sql`update core.verbindungen set auth_user = 'gepflegt' where id = 'nextcloud'`;
+  await sql`delete from public.schema_migrations where id like ${'%018_nextcloud_ein_zugang.sql'}`;
+  await migrate(activeModules(), () => {});
+  assert.equal((await sql`select auth_user from core.verbindungen where id = 'nextcloud'`)[0].auth_user, 'gepflegt');
+  await sql`update core.backup_export set url = '', benutzer = '', passwort = '' where id = 1`;
 });

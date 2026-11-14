@@ -115,7 +115,7 @@ before(async () => {
   await admin('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' });
   await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
   config.gotenbergUrl = `http://127.0.0.1:${port}`;
-  await sql`insert into core.verbindungen (id, url, auth_art, auth_user, geheimnis) values ('tco.nextcloud', ${`http://127.0.0.1:${port}`}, 'basic', 'nc', 'app-pw')`;
+  await sql`insert into core.verbindungen (id, url, auth_art, auth_user, geheimnis) values ('nextcloud', ${`http://127.0.0.1:${port}`}, 'basic', 'nc', 'app-pw')`;
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email) values ('0000000101', 'Hans', 'Müller', 'Hans@Example.org')`;
 });
 after(async () => { await app?.close(); await sql.end(); server.close(); });

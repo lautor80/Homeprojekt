@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
+  AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '../api';
@@ -9,6 +9,7 @@ import { Section } from '../components/Section';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { download } from '../components/PdfDialog';
 import { useCan } from '../session';
+import { schnittstelleLink } from '../schnittstellen';
 import { toast } from '../toast';
 import { AblageDialog } from '../ablage';
 
@@ -413,7 +414,8 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
   if (!c) return null;
   const set = (x: Partial<Export>) => setC({ ...c, ...x });
   const daten = () => ({
-    aktiv: c.aktiv, url: c.url, benutzer: c.benutzer, passwort: c.passwort, ordner: c.ordner, uhrzeit: c.uhrzeit, format: c.format,
+    // der Zugang (Adresse, Benutzer, App-Passwort) steht unter Schnittstellen → Nextcloud und wird hier nicht mitgeschickt (#232, S2)
+    aktiv: c.aktiv, ordner: c.ordner, uhrzeit: c.uhrzeit, format: c.format,
     datei_passwort: c.format === 'portal' ? c.datei_passwort : '', mit_aenderungsbelegen: c.mit_aenderungsbelegen, aufbewahrung_tage: c.aufbewahrung_tage,
   });
   async function lauf(fn: () => Promise<void>) {
@@ -437,12 +439,12 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
             als eine Datei oder dateiweise ohne ZIP. Nach der Übertragung wird geprüft, ob alles vollständig angekommen ist.
             Ältere automatische Sicherungen im Ordner werden nach der Aufbewahrungsdauer gelöscht, andere Dateien bleiben unberührt.
           </Text>
-          <Label showColon required>Nextcloud-Adresse</Label>
-          <Input value={c.url} placeholder="https://cloud.beispiel.de (ohne /index.php/apps/…)" onInput={(e) => set({ url: e.target.value })} />
-          <Label showColon required>Benutzer</Label>
-          <Input value={c.benutzer} onInput={(e) => set({ benutzer: e.target.value })} />
-          <Label showColon required>App-Passwort</Label>
-          <Input type="Password" data-kein-autofill value={c.passwort} placeholder="Nextcloud → Einstellungen → Sicherheit → App-Passwort" onInput={(e) => set({ passwort: e.target.value })} />
+          {/* ein Zugang für das ganze Portal (#232, S2): gepflegt unter Schnittstellen → Nextcloud, hier nur angezeigt */}
+          <Label showColon>Zugang zur Nextcloud</Label>
+          <div>
+            <Text>{c.url && c.benutzer ? `${c.benutzer} @ ${c.url}${c.passwort ? '' : ' – App-Passwort fehlt'}` : 'noch nicht eingerichtet'}</Text>{' '}
+            <Link href={schnittstelleLink('Nextcloud')}>Unter Schnittstellen → Nextcloud ändern</Link>
+          </div>
           <Label showColon required>Zielordner</Label>
           <Input value={c.ordner} placeholder="/Vorstand/Portal-Sicherungen" onInput={(e) => set({ ordner: e.target.value })} />
         </div>

@@ -1,3 +1,4 @@
+import { nextcloudZugang } from './lib/nextcloud.js';
 import type { FastifyBaseLogger } from 'fastify';
 import { sql, type Tx } from './db.js';
 import { BusinessError } from './errors.js';
@@ -28,7 +29,9 @@ export async function cfgLesen(db: Tx = sql as unknown as Tx): Promise<ExportCfg
                               letzter_lauf, letzter_erfolg, letzte_meldung, letzte_datei, letzte_dauer_s, letzter_fehler
                          from core.backup_export where id = 1`;
   const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null);
-  return { ...(c as unknown as ExportCfg & ExportStatus), letzter_lauf: iso(c?.letzter_lauf), letzter_erfolg: iso(c?.letzter_erfolg) };
+  // Adresse, Benutzer und App-Passwort kommen aus der einen Anbindung „nextcloud“ (#232, S2) – die Spalten hier werden nicht mehr gelesen
+  const z = await nextcloudZugang(db);
+  return { ...(c as unknown as ExportCfg & ExportStatus), ...z, letzter_lauf: iso(c?.letzter_lauf), letzter_erfolg: iso(c?.letzter_erfolg) };
 }
 
 export function cfgPruefen(c: ExportCfg): string[] {
