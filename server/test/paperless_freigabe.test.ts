@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { FREIGABE_ADRESSE_FEHLT, nurIntern, Paperless } from '../src/lib/paperless.js';
+import { ausgehendMehrere, FREIGABE_ADRESSE_FEHLT, nurIntern, Paperless } from '../src/lib/paperless.js';
 
 /**
  * Freigabelinks gehen an Empfänger außerhalb des eigenen Netzes (Rechnungsversand per E-Mail/WhatsApp):
@@ -83,4 +83,29 @@ test('Ausgehende Texte: Freigabelinks immer mit der externen Adresse, sonst Able
   // reiner LAN-Betrieb: interne Adresse bewusst als Adresse für Freigabelinks eingetragen
   pl = new Paperless({ url: 'http://paperless:8000', token: 't', freigabeUrl: lan });
   assert.equal(pl.ausgehend(`http://paperless:8000/share/a1 ${lan}/share/a2`), `${lan}/share/a1 ${lan}/share/a2`);
+});
+
+test('Ausgehende Texte bei einem Paperless je Bereich (#232, S5): jeder Link mit dem Zugang seines Bereichs', () => {
+  const verein = new Paperless({ url: 'http://paperless:8000,https://dokumente.verein.example', token: 't' });
+  const euroflex = new Paperless({ url: 'http://paperless-euroflex:8000', token: 't', freigabeUrl: 'https://dokumente.euroflex.example' });
+  const beide = [verein, euroflex];
+  // interne Adressen werden je Bereich auf dessen externe umgeschrieben – nie auf die des anderen
+  assert.equal(ausgehendMehrere('Verein http://paperless:8000/share/v1 und Euroflex http://paperless-euroflex:8000/share/e1', beide),
+    'Verein https://dokumente.verein.example/share/v1 und Euroflex https://dokumente.euroflex.example/share/e1');
+  assert.equal(ausgehendMehrere('http://paperless-euroflex:8000/share/e1', [euroflex, verein]), 'https://dokumente.euroflex.example/share/e1', 'unabhängig von der Reihenfolge');
+  // bereits externe Links und fremde öffentliche Links bleiben
+  const fertig = 'https://dokumente.euroflex.example/share/e1 https://dokumente.verein.example/share/v1 https://anderswo.example.org/share/x';
+  assert.equal(ausgehendMehrere(fertig, beide), fertig);
+  assert.equal(ausgehendMehrere('Ohne Link.', beide), 'Ohne Link.');
+  // interne Adresse, die zu keinem Zugang gehört: abgelehnt statt geraten
+  assert.throws(() => ausgehendMehrere('http://192.168.1.50:8000/share/a1', beide), /gehört zu keinem eingerichteten Paperless/);
+  // Bereich ohne externe Adresse: abgelehnt wie bisher
+  const ohne = new Paperless({ url: 'http://paperless-neu:8000', token: 't' });
+  assert.throws(() => ausgehendMehrere('http://paperless-neu:8000/share/a1', [verein, ohne]), (e: Error) => e.message === FREIGABE_ADRESSE_FEHLT);
+  // ein einziger Zugang oder keiner: wie bisher
+  assert.equal(ausgehendMehrere('http://192.168.1.50:8000/share/a1', [euroflex]), 'https://dokumente.euroflex.example/share/a1');
+  assert.equal(ausgehendMehrere('http://192.168.1.50:8000/share/a1', []), 'http://192.168.1.50:8000/share/a1');
+  // kennt(): Adressen für die Ablage und für Freigabelinks
+  assert.deepEqual([verein.kennt('http://paperless:8000'), verein.kennt('https://dokumente.verein.example'), verein.kennt('http://paperless-euroflex:8000'), euroflex.kennt('https://dokumente.euroflex.example')],
+    [true, true, false, true]);
 });

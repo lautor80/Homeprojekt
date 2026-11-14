@@ -65,7 +65,7 @@ export const liste = (s: string | null | undefined) => (s ?? '').split(',').map(
 
 export async function vereinLesen(db: Db = DB): Promise<Verein> {
   const [v] = await db`select * from tco.verein where id = 1`;
-  const pl = await paperlessZugang(db);
+  const pl = await paperlessZugang('tco', db);
   const mail = await mailVerbindung(db);
   const [ep3, stunden, ferien] = await Promise.all([verbindungLesen('tco.ep3', db), verbindungLesen('tco.stunden', db), verbindungLesen('tco.ferien', db)]);
   return {

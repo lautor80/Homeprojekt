@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { CustomFeld, Paperless } from '../../../../server/src/lib/paperless.js';
-import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
+import { eingerichtet, paperlessFuer, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { DB } from '../verein.js';
 import { V_MAILABRUF, V_NEXTCLOUD, mailabrufAnstossen } from '../verbindung.js';
 import { tcoSchnittstelle } from '../hinweise.js';
@@ -120,7 +120,7 @@ export async function eingangRoutes(app: FastifyInstance) {
 
   // ---------------------------------------------------------------- Stammdaten für die Oberfläche
   app.get('/eingang/stamm', sehen, async () => {
-    const pl = await paperlessZentral();
+    const pl = await paperlessFuer('tco');
     const namen = async (f: () => Promise<{ name: string }[]>) => { try { return (await f()).map((x) => x.name).sort((a, b) => a.localeCompare(b, 'de')); } catch { return [] as string[]; } };
     const [nc, abruf] = await Promise.all([verbindungLesen(V_NEXTCLOUD), verbindungLesen(V_MAILABRUF)]);
     return {

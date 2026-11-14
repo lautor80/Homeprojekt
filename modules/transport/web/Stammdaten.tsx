@@ -118,7 +118,7 @@ function FirmaTab() {
       </div>
       <AblageOrdnerEinstellung />
       <MessageStrip design="Information" hideCloseButton>
-        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Adresse und API-Token werden zentral unter Administration → Schnittstellen → Anbindungen gepflegt.
+        Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Euroflex hat ein eigenes Paperless: Adresse und API-Token stehen unter Administration → Schnittstellen → Anbindungen bei „Paperless-ngx Euroflex“.
       </MessageStrip>
       <Bar style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="FIRMA" objectKey="1" />

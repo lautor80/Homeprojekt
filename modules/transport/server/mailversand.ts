@@ -2,7 +2,7 @@ import { BusinessError } from '../../../server/src/errors.js';
 import { aktuellerBenutzer } from '../../../server/src/kontext.js';
 import { mailProtokoll } from '../../../server/src/lib/mail.js';
 import {
-  authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, verbindungLesen, type Verbindung, type VerbindungDef,
+  authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperlessDef, verbindungLesen, type Verbindung, type VerbindungDef,
 } from '../../../server/src/lib/verbindungen.js';
 
 /**
@@ -100,7 +100,10 @@ async function aufrufen(v: Verbindung, body: unknown, timeout: number): Promise<
 }
 
 /** Anbindung „Euroflex E-Mail-Versand“ (Administration → Schnittstellen → Anbindungen) */
-export const TRANSPORT_VERBINDUNGEN: VerbindungDef[] = [{
+export const TRANSPORT_VERBINDUNGEN: VerbindungDef[] = [
+  // eigener Paperless-Zugang für Euroflex (#232, S5): nie dieselbe Adresse wie ein anderer Bereich
+  paperlessDef('transport', 'Euroflex'),
+  {
   id: V_MAIL, text: 'Euroflex E-Mail-Versand (Outlook 365, n8n)',
   beschreibung: 'n8n-Workflow „Euroflex Mailversand“: E-Mails zum Auftrag mit ausgewählten Anhängen über Outlook 365, aus dem Postfach des angemeldeten Benutzers. '
     + 'Jede E-Mail geht parallel als eigene E-Mail an die feste zweite Adresse. Der Webhook-Schlüssel muss dem Wert der n8n-Zugangsdatei am Webhook-Knoten (Name X-Euroflex-Key) entsprechen. '

@@ -164,6 +164,13 @@ function anbindungen() {
       const b = block.match(/beschreibung: '([^']+)'/);
       liste.push({ id, text: m[2], beschreibung: b?.[1] ?? '', datei: f, block });
     });
+    // Paperless je Bereich (#232, S5): paperlessDef('<modul>', '<Name>') – TC Oberthal behält die Kennung „paperless“
+    for (const m of t.matchAll(/\bpaperlessDef\('([a-z]+)', '([^']+)'\)/g)) {
+      liste.push({
+        id: m[1] === 'tco' ? 'paperless' : `${m[1]}.paperless`, text: `Paperless-ngx ${m[2]}`, datei: f, block: '',
+        beschreibung: `Dokumentenablage für ${m[2]} – ein eigenes Paperless je Bereich, nie dieselbe Adresse wie ein anderer Bereich.`,
+      });
+    }
   }
   return liste;
 }

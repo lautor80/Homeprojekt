@@ -435,6 +435,11 @@ export class Paperless {
     });
   }
 
+  /** gehört diese Basisadresse (ohne /share/…) zu diesem Zugang – als Adresse für die Ablage oder für Freigabelinks? */
+  kennt(basis: string): boolean {
+    return this.urls.includes(basis) || basis === this.freigabeExtern();
+  }
+
   /** Freigabelinks eines Dokuments, jüngster zuerst; abgelaufene werden ausgelassen */
   async freigabelinks(id: number): Promise<string[]> {
     const base = await this.freigabeBasis();
@@ -551,3 +556,20 @@ export function customFeldWert(f: CustomFeld, value: string | number | null): { 
   }
 }
 
+/**
+ * Ausgehender Text bei mehreren Paperless-Zugängen (je Bereich einer, #232 S5): Jeder Freigabelink wird mit dem Zugang
+ * umgeschrieben, zu dem seine Adresse gehört. Zwei Bereiche teilen sich nie eine Adresse, die Zuordnung ist also eindeutig.
+ * Ein Link mit einer nur intern erreichbaren Adresse, die zu keinem Zugang gehört, wird abgelehnt – er dürfte das Haus
+ * nicht verlassen, und welches Paperless gemeint ist, lässt sich nicht erraten. Mit nur einem Zugang gilt dessen Regel.
+ */
+export function ausgehendMehrere(text: string, zugaenge: Paperless[]): string {
+  if (zugaenge.length === 0) return text;
+  if (zugaenge.length === 1) return zugaenge[0].ausgehend(text);
+  return text.replace(/\bhttps?:\/\/[^\s<>"'()]+?\/share\/[A-Za-z0-9_-]+/g, (link) => {
+    const basis = link.slice(0, link.lastIndexOf('/share/'));
+    const pl = zugaenge.find((z) => z.kennt(basis));
+    if (pl) return pl.ausgehend(link);
+    if (!nurIntern(basis)) return link; // fremder, öffentlich erreichbarer Link
+    throw new BusinessError(`Der Freigabelink mit der Adresse ${basis} gehört zu keinem eingerichteten Paperless – bitte die Adressen unter Administration → Schnittstellen → Anbindungen prüfen.`);
+  });
+}

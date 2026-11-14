@@ -400,6 +400,27 @@ gewünscht ist; vorgegeben ist es nur für Paperless.
 *Aufwand:* mittel (Kern: Verbindung je Modul, zwei Kernfunktionen mit Bereich; Migration; Tests). Lässt sich vor
 S1 umsetzen – dann als zwei Einträge in den heutigen Anbindungen.
 
+**Umgesetzt (14.11.2026).** Entschieden am 14.11.2026: *Der heutige Zugang bleibt bei TC Oberthal, Euroflex braucht
+einen anderen.*
+
+| Bereich | Anbindung | Stand nach dem Update |
+|---|---|---|
+| TC Oberthal | *Paperless-ngx TC Oberthal* (Id weiter `paperless` – die gespeicherten Werte ziehen nicht um) | unverändert eingerichtet |
+| Euroflex | *Paperless-ngx Euroflex* (`transport.paperless`) | **nicht eingerichtet**, bis Adresse und Token eingetragen sind |
+
+- Beide stehen unter *Administration → Schnittstellen → Anbindungen* bei ihrer Anwendung; der Block „Basis“ hat kein
+  Paperless mehr.
+- Dieselbe Adresse in zwei Bereichen wird **abgelehnt** – beim Sichern und beim Verbindungstest, für die Adressen der
+  Ablage und für die Adresse der Freigabelinks (http/https und Schrägstrich am Ende spielen keine Rolle).
+- Die Auswahllisten der Paperless-Zuordnung kommen je Anwendung aus deren Paperless.
+- E-Mails: Jeder Freigabelink bekommt die externe Adresse des Paperless, zu dem er gehört.
+- Störungen stehen je Zugang im Arbeitsvorrat (V1).
+- Installation ohne Verein (nur Euroflex): Der bisherige Zugang zieht zu Euroflex um.
+
+**Folgen.** Solange Euroflex kein eigenes Paperless hat, legt Euroflex nichts ab (Hinweis „nicht eingerichtet“ in
+Aufträgen, Kontakten und Stammdaten). Dokumente, die Euroflex bisher im Paperless des Vereins abgelegt hat, bleiben
+dort – ein Umzug nach dem Einrichten ist Handarbeit in Paperless. Das zweite Paperless braucht seine eigene Sicherung.
+
 ### V – Arbeitsvorrat
 
 #### V1 Jedes Ereignis landet im Arbeitsvorrat
@@ -1071,7 +1092,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☐ |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
-| S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
+| S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ umgesetzt |
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ umgesetzt (alle 18 Lücken zu) |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☑ umgesetzt |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
@@ -1094,8 +1115,8 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Zu | Frage |
 |---|---|
-| S5 | Welcher Bereich behält das heutige Paperless – TC Oberthal oder Euroflex? Liegen dort Dokumente des anderen Bereichs? |
-| S5 | Dieselbe Adresse in zwei Bereichen: ablehnen (Annahme) oder nur warnen? |
+| S5 | ~~Welcher Bereich behält das heutige Paperless?~~ Entschieden: TC Oberthal. Offen: Liegen dort Dokumente von Euroflex, die umziehen sollen? |
+| S5 | ~~Dieselbe Adresse in zwei Bereichen: ablehnen oder nur warnen?~~ Umgesetzt: ablehnen („sie werden nie auf eine URL zeigen“). |
 | V1 | Aufgaben und Hinweise wie beschrieben – oder wirklich jedes Ereignis, auch reiner Verlauf? |
 | F1 | Feinheit: reicht die Liste der Funktionen in F1, oder jeder einzelne Knopf? |
 | F1 | Abgeschaltetes in der Rollenpflege: grau mit Hinweis (Annahme) oder ganz weg? |
@@ -1120,6 +1141,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | V1 (Teil 1) | Hinweise im Arbeitsvorrat (`core.hinweise`, „gesehen“); Selbstbedienung der Mitglieder und Hallennutzer, Einladung, Sperre nach Austritt melden sich | umgesetzt 14.11.2026 |
 | V1 (Teil 2) | Störungen von Paperless und der Vereins-Schnittstellen (überwachte Aufrufe, schließen sich von selbst), nicht gesendete E-Mails, Rückläufer und Antworten, Dokumenteneingang; Block „Euroflex“ | umgesetzt 14.11.2026 – kein offener Punkt mehr |
 | Kündigung | Vorgabe vom 14.11.2026: Kündigungen der Mitglieder werden eingereicht und stehen im Arbeitsvorrat des Vorstands; erst die Freigabe führt sie aus (Kündigungsdatum = Eingang), dann wird die Kündigungsbestätigung erzeugt, zur Prüfung angezeigt und an das Mitglied gesendet; Ablehnung mit Grund | umgesetzt 14.11.2026 |
+| S5 | Paperless je Bereich: TC Oberthal behält den bisherigen Zugang, Euroflex hat `transport.paperless`; gleiche Adresse abgelehnt; Zuordnungslisten und Freigabelinks je Bereich | umgesetzt 14.11.2026 – Euroflex ist „nicht eingerichtet“, bis sein Paperless eingetragen ist |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

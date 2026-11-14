@@ -11,7 +11,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { ablegen, anwenden, auswerten, type Regel as PaperlessRegel, type Zuordnung } from '../../../../server/src/lib/paperless-mapping.js';
 import { eingangZeit } from '../../../../server/src/lib/maileingang.js';
 import { eingangVerbuchen } from '../../../../server/src/lib/maileingang-db.js';
-import { eingerichtet, paperlessZentral, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
+import { eingerichtet, paperlessFuer, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { WebDav } from '../../../../server/src/lib/webdav.js';
 import { BILD_MIME, htmlToPdf, istPdf, pdfsZusammenfuegen } from '../../../../server/src/pdf.js';
 import { heute } from '../format.js';
@@ -176,7 +176,7 @@ async function ausfuehren(d: DokZeile, ziele: ReturnType<typeof zieleAufloesen>,
       paperlessId = vor.paperless_id as number;
       hinweise.push(`Bereits abgelegt (Paperless ${paperlessId}).`);
     } else {
-      const pl = await paperlessZentral();
+      const pl = await paperlessFuer('tco');
       if (!pl) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
       try {
         const r = await ablegen(pl, ziele.zuordnung, daten, datei, { mime, benutzer: wer });

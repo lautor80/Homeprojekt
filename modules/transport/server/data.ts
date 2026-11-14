@@ -215,10 +215,10 @@ export function rechnungsbetrag(a: Pick<Auftrag, 'frachtpreis_ek' | 'steuerrelev
 // ---------------------------------------------------------------------------
 // Lesen
 // ---------------------------------------------------------------------------
-/** Firmendaten; Paperless-Zugang kommt aus der zentralen Anbindung (Administration → Schnittstellen → Anbindungen) */
+/** Firmendaten; Paperless-Zugang kommt aus der eigenen Anbindung „Paperless-ngx Euroflex“ (Administration → Schnittstellen → Anbindungen; #232, S5) */
 export async function firmaLesen(db: Db = DB): Promise<Firma> {
   const [f] = await db`select * from transport.firma where id = 1`;
-  const pl = await paperlessZugang(db);
+  const pl = await paperlessZugang('transport', db);
   return {
     ...(f as unknown as Firma), zahlungsziel_tage: Number(f.zahlungsziel_tage), ust_satz: Number(f.ust_satz), rechnung_startnr: Number(f.rechnung_startnr),
     paperless_url: pl.url ?? '', paperless_token: pl.token ?? '',

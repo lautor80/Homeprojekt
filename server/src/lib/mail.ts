@@ -1,8 +1,9 @@
 import { sql, type Tx } from '../db.js';
 import { BusinessError } from '../errors.js';
 import { aktuellerBenutzer } from '../kontext.js';
+import { ausgehendMehrere } from './paperless.js';
 import { stoerungMelden } from './hinweise.js';
-import { authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperlessZentral, verbindungLesen, type Verbindung, type VerbindungDef } from './verbindungen.js';
+import { authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperlessAlle, verbindungLesen, type Verbindung, type VerbindungDef } from './verbindungen.js';
 
 /**
  * E-Mail-Versand des Portals über den generischen n8n-Workflow „TCO Mailversand“ (Webhook, docs/n8n/tco-mailversand.json).
@@ -217,9 +218,9 @@ export async function mailSenden(m: MailAuftrag): Promise<MailErgebnis & { proto
     throw new BusinessError('Der n8n-Mailversand ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
   }
   try {
-    // Ausgehend: Freigabelinks immer mit der externen Paperless-Adresse (auch in bearbeiteten oder erneut gesendeten Texten)
-    const pl = await paperlessZentral();
-    if (pl) m = { ...m, text: pl.ausgehend(m.text) };
+    // Ausgehend: Freigabelinks immer mit der externen Paperless-Adresse (auch in bearbeiteten oder erneut gesendeten Texten) –
+    // je Link mit dem Paperless des Bereichs, zu dem seine Adresse gehört (#232, S5)
+    m = { ...m, text: ausgehendMehrere(m.text, await paperlessAlle()) };
     const r = await mailSendenIntern(v, m);
     // Inhalt bzw. Anleitung zum Neuerzeugen auch bei Erfolg festhalten: E-Mail-Protokoll → „Erneut senden“ je Zeile (30 Tage, nie mit Zugangslinks)
     const protokoll = await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null),

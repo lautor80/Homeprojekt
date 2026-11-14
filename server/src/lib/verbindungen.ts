@@ -5,8 +5,8 @@ import { nurIntern, Paperless, paperlessKonfiguriert } from './paperless.js';
 /**
  * Zentrale Anbindungen (Administration → Schnittstellen → Anbindungen), Tabelle core.verbindungen.
  *
- * Der Kern meldet die Verbindung „paperless“ an; Module melden weitere Verbindungen über
- * ServerModule.verbindungen (z. B. n8n-Webhooks) und lesen die Werte mit verbindungLesen().
+ * Der Kern meldet den E-Mail-Versand an; Module melden ihre Verbindungen über ServerModule.verbindungen
+ * (n8n-Webhooks, ihr Paperless – je Bereich ein eigenes, siehe paperlessDef) und lesen die Werte mit verbindungLesen().
  * Geheimnisse (Token, Header-Wert, Passwort) verlassen den Server nur maskiert; beim Speichern
  * bedeutet die Maske „unverändert“.
  */
@@ -123,45 +123,91 @@ export async function verbindungSpeichern(tx: Tx, v: Verbindung, benutzer: strin
 }
 
 // ---------------------------------------------------------------------------
-// Paperless-ngx: eine Verbindung für Kern und alle Module
+// Paperless-ngx: ein eigener Zugang je Bereich (#232, S5)
 // ---------------------------------------------------------------------------
 
-export const PAPERLESS_DEF: VerbindungDef = {
-  id: 'paperless', text: 'Paperless-ngx',
-  beschreibung: 'Dokumentenablage für alle Module (Belege, Rechnungen, Mitgliederdokumente, Ablagefeld). Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst. '
-    + 'Alles Ausgehende (Freigabelinks in E-Mails und WhatsApp-Nachrichten) bekommt immer die Adresse für Freigabelinks – ohne Eintrag die erste Adresse, die aus dem Internet erreichbar ist.',
-  auth: ['token'],
-  felder: { url: 'URL für die Ablage (mehrere durch Komma, z. B. LAN und Internet)', geheimnis: 'API-Token (Paperless → Profil)' },
-  zusatz: [{ key: 'freigabe_url', text: 'Adresse für Freigabelinks (aus dem Internet erreichbar)', platzhalter: 'https://dokumente.example.org' }],
-  einstellungen: (e) => {
-    const f = String(e.freigabe_url ?? '').trim().replace(/\/+$/, '');
-    if (f && !/^https?:\/\/[^\s,]+$/i.test(f)) throw new BusinessError('Adresse für Freigabelinks: bitte genau eine Adresse mit http:// oder https:// angeben (z. B. https://dokumente.example.org).');
-    return f ? { freigabe_url: f } : {};
-  },
-  pruefen: async (v) => {
-    if (!paperlessKonfiguriert({ url: v.url, token: v.geheimnis })) return { ok: false, text: 'URL und API-Token fehlen.' };
-    const pl = new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) });
-    const url = await pl.baseUrl();
-    const k = await pl.korrespondenten();
-    const fb = pl.freigabeExtern();
-    const hinweis = !fb ? ' Achtung: Es ist keine aus dem Internet erreichbare Adresse bekannt – E-Mails und WhatsApp-Nachrichten mit Freigabelink werden abgelehnt, bis die Adresse für Freigabelinks eingetragen ist.'
-      : nurIntern(fb) ? ` Freigabelinks: ${fb} (nur im eigenen Netz erreichbar).`
-        : ` Freigabelinks: ${fb}.`;
-    return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten).${hinweis}` };
-  },
-};
+/**
+ * Id der Paperless-Anbindung eines Bereichs. Vorgabe: Jeder Bereich hat sein eigenes Paperless, zwei Bereiche zeigen nie
+ * auf dieselbe Adresse. TC Oberthal behält den bisherigen gemeinsamen Zugang – deshalb heißt seine Anbindung weiter
+ * „paperless“ (kein Umzug der gespeicherten Werte, auch nicht nach dem Einspielen einer älteren Sicherung). Jeder andere
+ * Bereich hat „<modul>.paperless“, z. B. transport.paperless für Euroflex.
+ */
+export const paperlessId = (modul: string): string => (modul === 'tco' ? 'paperless' : `${modul}.paperless`);
+export const istPaperlessId = (id: string): boolean => id === 'paperless' || id.endsWith('.paperless');
 
-/** eingestellte Adresse für Freigabelinks der Anbindung „paperless“ */
-const freigabeUrl = (v: Verbindung): string | null => String(v.einstellungen?.freigabe_url ?? '').trim() || null;
-
-/** Paperless-Client aus der zentralen Verbindung; null, wenn nicht eingerichtet */
-export async function paperlessZentral(db?: Tx): Promise<Paperless | null> {
-  const v = await verbindungLesen('paperless', db);
-  return paperlessKonfiguriert({ url: v.url, token: v.geheimnis }) ? new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) }) : null;
+/** Anbindung „Paperless-ngx <Bereich>“ – jedes Modul mit Dokumentenablage meldet seine an (ServerModule.verbindungen) */
+export function paperlessDef(modul: string, bereich: string): VerbindungDef {
+  return {
+    id: paperlessId(modul), text: `Paperless-ngx ${bereich}`,
+    beschreibung: `Dokumentenablage für ${bereich} – ein eigenes Paperless je Bereich, nie dieselbe Adresse wie ein anderer Bereich. Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst. `
+      + 'Alles Ausgehende (Freigabelinks in E-Mails und WhatsApp-Nachrichten) bekommt immer die Adresse für Freigabelinks – ohne Eintrag die erste Adresse, die aus dem Internet erreichbar ist.',
+    auth: ['token'],
+    felder: { url: 'URL für die Ablage (mehrere durch Komma, z. B. LAN und Internet)', geheimnis: 'API-Token (Paperless → Profil)' },
+    zusatz: [{ key: 'freigabe_url', text: 'Adresse für Freigabelinks (aus dem Internet erreichbar)', platzhalter: 'https://dokumente.example.org' }],
+    einstellungen: (e) => {
+      const f = String(e.freigabe_url ?? '').trim().replace(/\/+$/, '');
+      if (f && !/^https?:\/\/[^\s,]+$/i.test(f)) throw new BusinessError('Adresse für Freigabelinks: bitte genau eine Adresse mit http:// oder https:// angeben (z. B. https://dokumente.example.org).');
+      return f ? { freigabe_url: f } : {};
+    },
+    pruefen: async (v) => {
+      if (!paperlessKonfiguriert({ url: v.url, token: v.geheimnis })) return { ok: false, text: 'URL und API-Token fehlen.' };
+      await paperlessEindeutig(v);
+      const pl = new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) });
+      const url = await pl.baseUrl();
+      const k = await pl.korrespondenten();
+      const fb = pl.freigabeExtern();
+      const hinweis = !fb ? ' Achtung: Es ist keine aus dem Internet erreichbare Adresse bekannt – E-Mails und WhatsApp-Nachrichten mit Freigabelink werden abgelehnt, bis die Adresse für Freigabelinks eingetragen ist.'
+        : nurIntern(fb) ? ` Freigabelinks: ${fb} (nur im eigenen Netz erreichbar).`
+          : ` Freigabelinks: ${fb}.`;
+      return { ok: true, text: `Verbunden mit ${url} (${k.length} Korrespondenten).${hinweis}` };
+    },
+  };
 }
 
-/** Zugangsdaten für Module, die den Client selbst bauen (z. B. mit anderem Zeitlimit) */
-export async function paperlessZugang(db?: Tx): Promise<{ url: string | null; token: string | null; freigabeUrl: string | null }> {
-  const v = await verbindungLesen('paperless', db);
+/** eingestellte Adresse für Freigabelinks einer Paperless-Anbindung */
+const freigabeUrl = (v: Verbindung): string | null => String(v.einstellungen?.freigabe_url ?? '').trim() || null;
+
+/** Adressen einer Paperless-Anbindung zum Vergleichen: Rechner und Pfad, ohne http/https und Schrägstrich am Ende */
+function adressen(v: Verbindung): string[] {
+  return [...v.url.split(','), freigabeUrl(v) ?? ''].map((u) => u.trim()).filter(Boolean).map((u) => {
+    try { const x = new URL(u); return `${x.host}${x.pathname.replace(/\/+$/, '')}`.toLowerCase(); } catch { return u.toLowerCase().replace(/\/+$/, ''); }
+  });
+}
+
+/**
+ * Vorgabe (#232, S5): Zwei Bereiche zeigen nie auf dasselbe Paperless. Vor dem Sichern und beim Verbindungstest geprüft –
+ * gegen die Adressen für die Ablage und für Freigabelinks aller anderen Paperless-Anbindungen.
+ */
+export async function paperlessEindeutig(v: Verbindung, db: Tx = sql as unknown as Tx): Promise<void> {
+  const eigene = adressen(v);
+  if (!eigene.length) return;
+  const andere = (await db`select id, url, einstellungen from core.verbindungen where (id = 'paperless' or id like ${'%.paperless'}) and id <> ${v.id}`) as unknown as Verbindung[];
+  for (const a of andere) {
+    const doppelt = adressen({ ...a, einstellungen: a.einstellungen ?? {} }).find((x) => eigene.includes(x));
+    if (doppelt) {
+      throw new BusinessError(`Die Adresse ${doppelt} ist schon bei der Anbindung „${a.id}“ eingetragen. Jeder Bereich braucht sein eigenes Paperless – zwei Bereiche zeigen nie auf dieselbe Adresse.`);
+    }
+  }
+}
+
+const client = (v: Verbindung): Paperless | null =>
+  (paperlessKonfiguriert({ url: v.url, token: v.geheimnis }) ? new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) }) : null);
+
+/** Paperless-Client eines Bereichs (modul = Id des Moduls); null, wenn für diesen Bereich nicht eingerichtet */
+export async function paperlessFuer(modul: string, db?: Tx): Promise<Paperless | null> {
+  return client(await verbindungLesen(paperlessId(modul), db));
+}
+
+/** alle eingerichteten Paperless-Zugänge – für Texte, die das Haus verlassen (Freigabelinks jedes Bereichs, lib/mail.ts) */
+export async function paperlessAlle(db: Tx = sql as unknown as Tx): Promise<Paperless[]> {
+  const ids = (await db`select id from core.verbindungen where id = 'paperless' or id like ${'%.paperless'} order by id`).map((r) => r.id as string);
+  const out: Paperless[] = [];
+  for (const id of ids) { const c = client(await verbindungLesen(id, db)); if (c) out.push(c); }
+  return out;
+}
+
+/** Zugangsdaten eines Bereichs für Module, die den Client selbst bauen (z. B. mit anderem Zeitlimit) */
+export async function paperlessZugang(modul: string, db?: Tx): Promise<{ url: string | null; token: string | null; freigabeUrl: string | null }> {
+  const v = await verbindungLesen(paperlessId(modul), db);
   return eingerichtet(v) ? { url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) } : { url: null, token: null, freigabeUrl: null };
 }

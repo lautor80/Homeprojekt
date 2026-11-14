@@ -15,7 +15,8 @@ const { sql } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
-const { verbindungenCacheLeeren, paperlessZentral, uebernehmen, PAPERLESS_DEF, authHeader } = await import('../src/lib/verbindungen.js');
+const { verbindungenCacheLeeren, paperlessFuer, paperlessAlle, paperlessDef, uebernehmen, authHeader } = await import('../src/lib/verbindungen.js');
+const PAPERLESS_DEF = paperlessDef('tco', 'TC Oberthal');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 let cookie = '';
@@ -110,8 +111,14 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   let r = await call('GET', '/api/verbindungen');
   assert.equal(r.status, 200);
   const kern = r.body.gruppen.find((g: { modul: string }) => g.modul === 'core');
-  const pl = kern.verbindungen.find((v: { id: string }) => v.id === 'paperless');
-  assert.ok(pl && pl.pruefbar, 'Paperless ist zentral angemeldet');
+  // Paperless je Bereich (#232, S5): der bisherige gemeinsame Zugang gehört TC Oberthal, Euroflex hat einen eigenen (noch leer)
+  assert.ok(!kern.verbindungen.some((v: { id: string }) => /paperless/.test(v.id)), 'der Kern hat keinen gemeinsamen Zugang mehr');
+  const gruppe = (modul: string) => r.body.gruppen.find((g: { modul: string }) => g.modul === modul).verbindungen as { id: string; text: string; pruefbar: boolean; werte: { url: string; geheimnis: string } }[];
+  const pl = gruppe('tco').find((v) => v.id === 'paperless')!;
+  assert.ok(pl && pl.pruefbar, 'Paperless des Vereins');
+  assert.equal(pl.text, 'Paperless-ngx TC Oberthal');
+  const plEuroflex = gruppe('transport').find((v) => v.id === 'transport.paperless')!;
+  assert.deepEqual([plEuroflex.text, plEuroflex.pruefbar, plEuroflex.werte.url, plEuroflex.werte.geheimnis], ['Paperless-ngx Euroflex', true, '', '']);
   assert.equal(pl.werte.geheimnis, '********', 'Geheimnis kommt maskiert');
   assert.equal(pl.werte.url, 'http://verein:8000,http://extern');
 
@@ -143,8 +150,9 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.equal(r.status, 404);
 
   // Module lesen die zentrale Verbindung
-  const client = await paperlessZentral();
-  assert.ok(client, 'Client aus der zentralen Verbindung');
+  const client = await paperlessFuer('tco');
+  assert.ok(client, 'Client aus der Anbindung des Vereins');
+  assert.equal(await paperlessFuer('transport'), null, 'Euroflex: eigener Zugang, noch nicht eingerichtet');
   assert.equal(await client!.baseUrl(), `http://127.0.0.1:${port}`);
   r = await call('GET', '/api/m/tco/verein');
   assert.equal(r.body.paperless_url, `http://127.0.0.1:${port}`);
@@ -155,12 +163,52 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.equal(r.body.n8n_ep3_url, 'http://n8n:5678/webhook/ep3');
   assert.ok(kern.verbindungen.some((v: { id: string }) => v.id === 'mail'), 'Mailversand ist zentral angemeldet');
   assert.equal(r.body.paperless_token, '********', 'Token verlässt den Server auch über die Stammdaten nur maskiert');
-  r = await call('GET', '/api/m/transport/firma');
-  assert.equal(r.body.paperless, true);
-  assert.equal(r.body.paperless_token, '********');
   r = await call('GET', '/api/paperless/mapping/tco/listen');
   assert.equal(r.body.paperless, true, JSON.stringify(r.body));
   assert.deepEqual(r.body.korrespondenten, ['A', 'B']);
+
+  // --- Euroflex liest nicht mehr den Zugang des Vereins: ohne eigenes Paperless „nicht eingerichtet“
+  r = await call('GET', '/api/m/transport/firma');
+  assert.equal(r.body.paperless, false);
+  r = await call('GET', '/api/paperless/mapping/transport/listen');
+  assert.deepEqual([r.body.paperless, r.body.korrespondenten], [false, []], 'Auswahllisten je Bereich aus dessen Paperless');
+  // dieselbe Adresse wie der Verein wird abgelehnt – beim Sichern und beim Verbindungstest, auch mit anderer Schreibweise
+  r = await call('PUT', '/api/verbindungen/transport.paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'anders' });
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(r.body.message, /ist schon bei der Anbindung „paperless“ eingetragen\. Jeder Bereich braucht sein eigenes Paperless/);
+  r = await call('PUT', '/api/verbindungen/transport.paperless', { url: `http://euroflex-intern:8000,HTTPS://127.0.0.1:${port}/`, geheimnis: 'anders' });
+  assert.equal(r.status, 400, 'eine von mehreren Adressen, https statt http, Schrägstrich am Ende');
+  r = await call('PUT', '/api/verbindungen/transport.paperless', { url: 'http://euroflex-intern:8000', geheimnis: 'anders', einstellungen: { freigabe_url: `http://127.0.0.1:${port}` } });
+  assert.equal(r.status, 400, 'auch als Adresse für Freigabelinks');
+  r = await call('POST', '/api/verbindungen/transport.paperless/pruefen', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' });
+  assert.equal(r.body.ok, false);
+  assert.match(r.body.text, /zwei Bereiche zeigen nie auf dieselbe Adresse/);
+  assert.equal((await sql`select count(*)::int as n from core.verbindungen where id = 'transport.paperless'`)[0].n, 0, 'nichts gesichert');
+  // eigenes Paperless (zweite Attrappe): jetzt ist Euroflex eingerichtet, der Verein unverändert
+  const zweite = http.createServer((req, res) => {
+    res.writeHead(req.headers.authorization === 'Token euroflex' ? 200 : 401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ results: [{ id: 9, name: 'Spedition' }], next: null }));
+  });
+  await new Promise<void>((ok) => zweite.listen(0, '127.0.0.1', ok));
+  const port2 = (zweite.address() as { port: number }).port;
+  try {
+    r = await call('PUT', '/api/verbindungen/transport.paperless', { url: `http://127.0.0.1:${port2}`, geheimnis: 'euroflex', einstellungen: { freigabe_url: 'https://dokumente.euroflex.example' } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    r = await call('POST', '/api/verbindungen/transport.paperless/pruefen', {});
+    assert.equal(r.body.ok, true, JSON.stringify(r.body));
+    r = await call('GET', '/api/m/transport/firma');
+    assert.deepEqual([r.body.paperless, r.body.paperless_token], [true, '********']);
+    r = await call('GET', '/api/paperless/mapping/transport/listen');
+    assert.deepEqual([r.body.paperless, r.body.korrespondenten], [true, ['Spedition']]);
+    assert.deepEqual((await call('GET', '/api/paperless/mapping/tco/listen')).body.korrespondenten, ['A', 'B'], 'der Verein sieht weiter nur sein Paperless');
+    assert.equal(await (await paperlessFuer('transport'))!.baseUrl(), `http://127.0.0.1:${port2}`);
+    assert.equal(await (await paperlessFuer('tco'))!.baseUrl(), `http://127.0.0.1:${port}`);
+    assert.equal((await paperlessAlle()).length, 2);
+    // umgekehrt: der Verein kann die Adresse von Euroflex nicht übernehmen
+    r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port2}` });
+    assert.equal(r.status, 400);
+    assert.match(r.body.message, /Anbindung „transport\.paperless“/);
+  } finally { zweite.close(); }
 
   // Änderungsbeleg ohne Geheimnis
   const belege = await sql`select i.field, i.new_value from core.change_item i join core.change_header h on h.id = i.header_id

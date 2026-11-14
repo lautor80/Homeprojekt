@@ -1,12 +1,12 @@
 import { heute } from './format.js';
-import { authHeader, type Verbindung, type VerbindungDef } from '../../../server/src/lib/verbindungen.js';
+import { authHeader, paperlessDef, type Verbindung, type VerbindungDef } from '../../../server/src/lib/verbindungen.js';
 import { WebDav } from '../../../server/src/lib/webdav.js';
 
 /**
  * Anbindungen des Vereinsmoduls (Administration → Schnittstellen → Anbindungen): n8n-Webhooks für Importe. Zugangsdaten zu Nextcloud oder
  * EP3 liegen in den n8n-Workflows; hier steht nur die Anmeldung am jeweiligen Webhook (Basic Auth wie in SM59).
  * Die Verbindungstests rufen die lesenden Endpunkte wirklich auf, übernehmen aber nichts.
- * Paperless und Mailversand meldet der Kern.
+ * Dazu das Paperless des Vereins (je Bereich ein eigenes, #232 S5). Den Mailversand meldet der Kern.
  */
 
 export const V_EP3 = 'tco.ep3';
@@ -44,6 +44,8 @@ export async function mailabrufAnstossen(v: Verbindung, quelle: string): Promise
 }
 
 export const TCO_VERBINDUNGEN: VerbindungDef[] = [
+  // eigener Paperless-Zugang des Vereins (#232, S5) – der bisherige gemeinsame Zugang „paperless“ bleibt hier bestehen
+  paperlessDef('tco', 'TC Oberthal'),
   {
     id: V_STUNDEN, text: 'Rückmeldungen Jugendtraining (n8n)',
     beschreibung: 'Liest die Stundenrückmeldungen der Trainer aus Nextcloud über den n8n-Webhook TCO_N8N_STUNDEN. Anmeldung am Webhook mit Benutzer und Passwort, sofern n8n sie verlangt.',

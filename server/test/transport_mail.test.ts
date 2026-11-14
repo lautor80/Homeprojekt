@@ -148,7 +148,9 @@ test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Ve
   assert.deepEqual(r.body, { eingerichtet: true, postfach: 'dispo@example.org', kopieAn: 'ablage@example.org', maxMb: 1 });
 
   // Paperless (zentrale Anbindung) für die Dokumente des Auftrags
-  r = await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' });
+  // Paperless je Bereich (#232, S5): Euroflex hat seine eigene Anbindung
+  assert.equal((await call('PUT', '/api/verbindungen/paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' })).status, 404, 'den gemeinsamen Zugang gibt es ohne Verein nicht');
+  r = await call('PUT', '/api/verbindungen/transport.paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'geheim' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
 
   mock.aufrufe.length = 0;
