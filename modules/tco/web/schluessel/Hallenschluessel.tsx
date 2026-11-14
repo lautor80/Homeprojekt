@@ -8,7 +8,9 @@ import { useFunktion } from '@core/session';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { PdfDialog } from '@core/components/PdfDialog';
+import { useNavigate } from 'react-router-dom';
 import { toast } from '@core/toast';
+import { einstellungLink } from '@core/einstellungen';
 import { TCO, dat, dateiLesen, eur } from '../util';
 import '../instandhaltung/instandhaltung.css';
 
@@ -65,7 +67,8 @@ export function Hallenschluessel() {
   const [error, setError] = useState<string | null>(null);
   const [hinweise, setHinweise] = useState<string[]>([]);
   const [offen, setOffen] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('id')) || null);
-  const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'abgleich' | 'nachbuchen' | 'cfg' | 'variante'>(null);
+  const navigate = useNavigate();
+  const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'abgleich' | 'nachbuchen' | 'variante'>(null);
   /** Funktionsschalter (#232, F1): die Übernahme der Altdaten lässt sich abschalten */
   const altdatenAn = useFunktion()('tco.schluessel.altdaten');
   const [rueck, setRueck] = useState<Zeile | null>(null);
@@ -140,7 +143,7 @@ export function Hallenschluessel() {
           {daten.darf.admin && altdatenAn && <Button design="Transparent" icon="paste" onClick={() => setDlg('altdaten')}>Altdaten einfügen</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="compare" onClick={() => setDlg('abgleich')}>FI-Abgleich</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="lead" tooltip="Historische Ausgaben ohne Rechnung: Ausgeber und Wert setzen, FI-Buchungen erzeugen" onClick={() => setDlg('nachbuchen')}>Altfälle buchen</Button>}
-          {daten.darf.admin && <Button design="Transparent" icon="action-settings" tooltip="Einstellungen" onClick={() => setDlg('cfg')} />}
+          {daten.darf.admin && <Button design="Transparent" icon="action-settings" tooltip="Einstellungen (Administration → Einstellungen → TC Oberthal → Hallenschlüssel)" onClick={() => navigate(einstellungLink('tco', 'hallenschluessel'))} />}
           <Button design="Transparent" icon="refresh" tooltip="Neu laden" onClick={laden} />
         </div>
       </div>
@@ -191,7 +194,6 @@ export function Hallenschluessel() {
       {dlg === 'altdaten' && <AltdatenDialog onClose={fertig} />}
       {dlg === 'abgleich' && <AbgleichDialog onClose={() => { setDlg(null); laden(); }} />}
       {dlg === 'nachbuchen' && <NachbuchenDialog onClose={fertig} />}
-      {dlg === 'cfg' && <EinstellungenDialog onClose={fertig} />}
       {dlg === 'variante' && (
         <VarianteDialog ansicht={a} vorschlag={variante} admin={daten.darf.admin} onClose={(v) => {
           setDlg(null);
@@ -755,19 +757,19 @@ function NachbuchenDialog({ onClose }: { onClose: Fertig }) {
   );
 }
 
-function EinstellungenDialog({ onClose }: { onClose: Fertig }) {
+/** Kapitel „Hallenschlüssel“ der App Einstellungen (#232, E1) – bisher Zahnrad-Dialog in der App Hallenschlüssel */
+export function SchluesselKapitel() {
   interface Cfg { bedingungen: string; bedingungen_text: string; quittung_tage: number; link_tage: number; kassenkonto: string; pfand: { ausgabe: number; rueckgabe: number; kontoAusgabe: string; kontoRueckgabe: string } }
   const [c, setC] = useState<Cfg | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { api.get<Cfg>(`${S}/einstellungen/daten`).then(setC).catch((e) => setError((e as Error).message)); }, []);
   async function sichern() {
     if (!c) return;
-    try { onClose(await api.put<{ text: string }>(`${S}/einstellungen/daten`, { bedingungen: c.bedingungen, quittung_tage: Number(c.quittung_tage), link_tage: Number(c.link_tage), kassenkonto: c.kassenkonto })); }
+    try { toast((await api.put<{ text: string }>(`${S}/einstellungen/daten`, { bedingungen: c.bedingungen, quittung_tage: Number(c.quittung_tage), link_tage: Number(c.link_tage), kassenkonto: c.kassenkonto })).text); }
     catch (e) { setError((e as Error).message); }
   }
   return (
-    <Dialog open headerText="Einstellungen Hallenschlüssel" style={{ width: 'min(40rem, 96vw)' }} onClose={() => onClose()}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="save" disabled={!c} onClick={sichern}>Sichern</Button><Button onClick={() => onClose()}>Abbrechen</Button></>} />}>
+    <div style={{ maxWidth: '44rem' }}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       {!c ? <BusyIndicator active /> : (
         <div className="portal-bk__form">
@@ -785,7 +787,8 @@ function EinstellungenDialog({ onClose }: { onClose: Fertig }) {
           <Input value={c.kassenkonto} maxlength={10} onInput={(e) => setC({ ...c, kassenkonto: e.target.value })} />
         </div>
       )}
-    </Dialog>
+      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!c} onClick={sichern}>Sichern</Button>} />
+    </div>
   );
 }
 

@@ -11,6 +11,7 @@ import { FormGrid, TextField } from '@core/components/FormFields';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { einstellungLink } from '@core/einstellungen';
 import { TCO, dat, eur } from '../util';
 import { AbsatzDiagramm, EinnahmenDiagramm } from './Diagramme';
 import { Getraenke } from './Getraenke';
@@ -47,6 +48,7 @@ export function Clubhaus() {
   return (
     <AppPage varianten={{ repid: 'tco.clubhaus', ansicht: { jahr, tab }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setTab(feld(a, 'tab', tab)); } }} title={`Clubhausabrechnung ${jahr}`} subtitle={d ? `Getränkerechnungen, Forderungsliste gegenüber ${d.cfg.wirt} und Getränkeabsatz` : ''}
              actions={<>
+               {edit && <Button design="Transparent" icon="action-settings" tooltip="Einstellungen (Administration → Einstellungen → TC Oberthal → Clubhaus)" onClick={() => { window.location.assign(einstellungLink('tco', 'clubhaus')); }} />}
                <Label>Jahr</Label>
                <Select style={{ width: '7rem' }} onChange={(e) => setJahr(Number((e.detail.selectedOption as HTMLElement).dataset.j))}>
                  {(d?.jahre ?? [jahr]).map((j) => <Option key={j} data-j={j} selected={j === jahr}>{j}</Option>)}
@@ -83,9 +85,6 @@ export function Clubhaus() {
               </Tab>
               <Tab data-key="getr" text="Getränke und Preise" icon="lab" selected={tab === 'getr'}>
                 {tab === 'getr' && <Getraenke edit={edit} />}
-              </Tab>
-              <Tab data-key="cfg" text="Einstellungen" icon="action-settings" selected={tab === 'cfg'}>
-                <Einstellungen cfg={d.cfg} edit={edit} onSaved={() => laden()} />
               </Tab>
             </TabContainer>
           </div>
@@ -234,6 +233,17 @@ function Absatz() {
 }
 
 // ---------------------------------------------------------------- Einstellungen
+/** Kapitel „Clubhaus“ der App Einstellungen (#232, E1) – bisher Reiter „Einstellungen“ der Clubhausabrechnung */
+export function ClubhausKapitel() {
+  const can = useCan();
+  const [cfg, setCfg] = useState<Cfg | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const laden = () => api.get<Init>(`${CH}/init?jahr=${new Date().getFullYear()}`).then((d) => setCfg(d.cfg)).catch((e) => setError((e as Error).message));
+  useEffect(() => { laden(); }, []);
+  if (!cfg) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : null;
+  return <Einstellungen cfg={cfg} edit={can('tco.clubhaus:edit')} onSaved={laden} />;
+}
+
 function Einstellungen({ cfg, edit, onSaved }: { cfg: Cfg; edit: boolean; onSaved: () => void }) {
   const [c, setC] = useState(cfg);
   const [error, setError] = useState<string | null>(null);
