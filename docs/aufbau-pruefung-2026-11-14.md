@@ -503,6 +503,17 @@ Umbauschritt ─► CI
 
 *Aufwand:* klein bis mittel. **Gehört an den Anfang**, vor E1, S1 und N3.
 
+**Umgesetzt (14.11.2026):** `server/test/arbeitsvorrat_absicherung.test.ts` läuft in der CI bei jedem Schritt.
+
+- *Pfade:* Jeder Verweis eines Eintrags muss eine vorhandene Seite sein, ein `?tab=…` ein vorhandener Reiter.
+- *Quellen:* Der Test leitet aus dem Quelltext ab, was Ereignisse auslösen kann – jede Anbindung, jeden
+  automatischen Lauf, jede Route ohne Anmeldung, jede Meldung (Schaden, n8n) und jede ändernde Route der
+  Selbstbedienung. Jede davon muss in `modules/tco/server/dashboard/ereignisquellen.ts` entschieden sein: mit
+  Eintrag im Arbeitsvorrat, als offener Punkt oder mit Begründung, warum es keinen braucht.
+- *Sperrklinke:* Stand heute 44 Quellen, davon 13 mit Eintrag, 13 begründet ohne, **18 offen** (das ist die
+  Arbeitsliste für V1). Die Zahl der offenen Punkte darf nur sinken; eine neue Quelle ohne Entscheidung lässt die
+  CI scheitern.
+
 ### F – Funktionen ein- und ausschalten
 
 #### F1 Funktionsschalter in der Administration
@@ -944,7 +955,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☐ |
-| V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☐ |
+| V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ vorgegeben |
 | A1 | Administration in fünf Gruppen | klein | ☐ |
 | N1 | Gruppe „Mein Bereich“ | klein | ☐ |
