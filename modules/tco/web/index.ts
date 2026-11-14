@@ -1,6 +1,5 @@
 import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
-import { Hallenpreise } from './Hallenpreise';
 import { MailtexteKapitel } from './einstellungen/Mailtexte';
 import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinLogo, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
@@ -24,7 +23,7 @@ import { Beitraege } from './beitraege/Beitraege';
 import { Forecast } from './forecast/Forecast';
 import { Finanz } from './finanz/Finanz';
 import { Konten } from './konten/Konten';
-import { Produkte } from './produkte/Produkte';
+import { Produkte, ZuHallenpreisen } from './produkte/Produkte';
 import { Beitritt } from './antrag/Beitritt';
 import { Mitgliedsantraege } from './antrag/Mitgliedsantraege';
 import { Schnuppertraining } from './schnupper/Schnuppertraining';
@@ -128,7 +127,8 @@ const mod: WebModule = {
           text: 'Einstellungen', icon: 'action-settings',
           children: [
             { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
-            { text: 'Produkte', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
+            // alle Preise an einer Stelle (#232, N4): sichtbar für alle, die eine der Sichten sehen dürfen
+            { text: 'Produkte und Preise', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
           ],
         },
         {
@@ -159,7 +159,6 @@ const mod: WebModule = {
         {
           text: 'Tennishalle', icon: 'building',
           children: [
-            { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
             { text: 'Hallenschlüssel', icon: 'key', path: '/tco/hallenschluessel', permission: 'tco.schluessel:display' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
@@ -205,7 +204,8 @@ const mod: WebModule = {
     { path: '/tco/meine-mitgliedschaft', component: MeineMitgliedschaft, permission: 'tco.meinedaten:edit' },
     { path: '/tco/gruppen', component: Gruppen, permission: 'tco.gruppen:display' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
-    { path: '/tco/hallenpreise', component: Hallenpreise, permission: 'tco.halle:display' },
+    // bisherige App „Hallenpreise“: jetzt die Sicht „Hallenpreise (Wochenplan)“ von „Produkte und Preise“ – alte Adresse bleibt gültig
+    { path: '/tco/hallenpreise', component: ZuHallenpreisen, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
     { path: '/tco/meine-daten', component: MeineDaten, permission: 'tco.meinkonto:edit' },
     { path: '/tco/platzverwaltung', component: Platzverwaltung, permission: 'tco.platz:admin' },
@@ -230,7 +230,7 @@ const mod: WebModule = {
     { path: '/tco/forecast', component: Forecast, permission: 'tco.forecast:display' },
     { path: '/tco/finanz', component: Finanz, permission: 'tco.finanz:display' },
     { path: '/tco/konten', component: Konten, permission: 'tco.konten:display' },
-    { path: '/tco/produkte', component: Produkte, permission: 'tco.produkte:display' },
+    { path: '/tco/produkte', component: Produkte, permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
     { path: '/tco/mitgliedsantraege', component: Mitgliedsantraege, permission: 'tco.antraege:display' },
     { path: '/tco/schnuppertraining', component: SchnupperVerwaltung, permission: 'tco.schnupper:display' },
     { path: '/tco/registrierungen', component: MitgliedRegistrierungen, permission: 'tco.registrierung:mitglied' },
@@ -254,7 +254,7 @@ const mod: WebModule = {
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
-    { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
+    { text: 'Produkte und Preise', subtitle: 'Alle Preise: Halle, Getränke, Speisen – je Zeitraum, mit Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
     { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
     { text: 'Mitgliedergruppen', subtitle: 'Kategorien, Gruppen und Mannschaften im Baum', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
@@ -265,7 +265,6 @@ const mod: WebModule = {
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
     { text: 'Meine Trainingszeiten', subtitle: 'Eigene Zeiten zurückmelden, Zeitnachweise ansehen', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit' },
-    { text: 'Hallenpreise', subtitle: 'Produkte und Preismatrix', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display', kpi: kpiHalle },
     { text: 'Platz buchen', subtitle: 'Freiplätze und Halle – eigene Buchungen mit Preisen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
     { text: 'Meine Daten', subtitle: 'Anschrift, E-Mail und Telefon pflegen', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },

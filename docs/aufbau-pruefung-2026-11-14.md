@@ -1165,7 +1165,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | N1 | Gruppe „Mein Bereich“ | klein | ☑ umgesetzt |
 | N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
 | N3 | App „Zugänge“ (Registrierungen, Zuordnung, EP3-Abgleich) | mittel | ☐ |
-| N4 | Preise an einem Ort – Variante A oder B | mittel / klein | ☐ A ☐ B |
+| N4 | Preise an einem Ort – Variante A oder B | mittel / klein | ✔ A |
 | N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☑ umgesetzt |
 | N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☑ umgesetzt |
 | N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ☐ |
@@ -1185,7 +1185,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | F1 | Feinheit: reicht die Liste der Funktionen in F1, oder jeder einzelne Knopf? |
 | F1 | Abgeschaltetes in der Rollenpflege: grau mit Hinweis (Annahme) oder ganz weg? |
 | E3 | ~~Dürfen Rechnungskonto und Lastschriftkonto des Vereins verschieden sein?~~ Entschieden: „Keine Doppelten pflegen mehr“ – ein Konto, gepflegt beim Verein. |
-| N4 | Variante A oder B? |
+| N4 | ~~Variante A oder B?~~ Entschieden: A („Alle Preise in eine App“). |
 
 Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien, ggf. eine Migration ·
 *groß* = neuer Rahmen im Kern, Umsetzung in mehreren Schritten.
@@ -1214,6 +1214,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | E1 (Stufe 4) | Kapitel **Beitragseinzug** (Gläubigerdaten der Sollstellungen, Recht `tco.soll:glaeubiger`, `GET /soll/cfg`) und **Instandhaltung** (E-Mail Vorstand, Löschfrist der Fotos; Orte, Kategorien, Matrix und Zuständigkeiten bleiben Stammdaten der App). Paperless-Angaben der Fach-Apps stehen im Reiter *Schnittstellen → Paperless*: *Clubhaus: Abrechnung* (Custom Field) und *Instandhaltung: Dokumente zur Auswahl* (Typen, Pfade). Die Instandhaltungs-Einstellungen lassen sich dafür in Teilen sichern (`PUT /instandhaltung/stamm/einstellungen` ändert nur die übergebenen Angaben). Fach-Apps verweisen per Zahnrad bzw. Link | umgesetzt 14.11.2026 |
 | E2 | Alle Logos an einer Stelle: *Einstellungen → Portal → Erscheinungsbild* zeigt das Logo der Oberfläche und je Anwendung einen Block (TC Oberthal: Kopfband, Euroflex: Ausdrucke). Module melden ihr Logo an (`WebModule.logos`), gespeichert bleibt es bei der Anwendung. Das Kapitel sieht auch, wer nur das Logo seiner Anwendung pflegen darf; in *Verein und Bank* und *Firma und Bank* steht statt des Feldes ein Verweis | umgesetzt 14.11.2026 |
 | E3 | IBAN und BIC nur noch unter *Verein und Bank*: Die Gläubigerdaten (Kapitel *Beitragseinzug*) zeigen sie zur Kontrolle und pflegen nur Name, Gläubiger-ID, Bankkonto FI und Vorlauf. Migration `073_iban_eine_stelle.sql` ohne Verlust: fehlende IBAN/BIC des Vereins kommen aus den Gläubigerdaten, gleiche IBAN entfällt dort; **weicht sie ab, gilt sie weiter für die Lastschrift**, bis der Kassenwart entscheidet (Aufgabe `SOLL_KONTO` im Arbeitsvorrat, Knopf *Vereinskonto verwenden*, `POST /soll/cfg/vereinskonto`) – oder die IBAN beim Verein angleicht. Die Sollstellung prüft die IBAN des Vereins auf Gültigkeit. Das Feld *Anschrift (für Ausdrucke)* der Administration ist entfallen (kein Ausdruck las es; der Wert bleibt in `core.settings`) | umgesetzt 14.11.2026 |
+| N4 (A) | App **Produkte und Preise** (bisher *Produkte*) mit vier Sichten: *Alle Produkte*, *Hallenpreise (Wochenplan)* (bisher eigene App), *Getränke* (bisher Clubhausabrechnung), *Speisen und Gästepreise* (bisher Verzehrbuch). Jede Sicht behält ihr bisheriges Recht – niemand verliert die Pflege, die App sieht, wer eine Sicht sehen darf. Clubhausabrechnung und Verzehrbuch zeigen die Preise nur noch an und verweisen auf ihre Sicht; `/tco/hallenpreise` führt in die Sicht. Das Recht *Hallenpreise pflegen* bleibt in der Rollenpflege (Ausnahme im Menütest); ein gesetzter Funktionsschalter der App zieht mit (Migration 074) | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

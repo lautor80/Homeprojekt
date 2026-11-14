@@ -14,11 +14,11 @@ flowchart LR
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Mitgliedschaft<br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
-      B_Einstellungen["<b>Einstellungen</b><br/>Kontenstamm<br/>Produkte"]
+      B_Einstellungen["<b>Einstellungen</b><br/>Kontenstamm<br/>Produkte und Preise"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
-      B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung"]
+      B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
       B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen"]
       B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss"]
@@ -82,7 +82,7 @@ flowchart LR
 | Mein Bereich | Meine Trainingszeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit` | Eigene Zeiten zurückmelden, Zeitnachweise ansehen |
 | Mein Bereich | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
 | Einstellungen | Kontenstamm | `/tco/konten` | `tco.konten:display` | Konten, Verwendung je Jahr, Anfangsbestände |
-| Einstellungen | Produkte | `/tco/produkte` | `tco.produkte:display` | Produkte, Preise je Zeitraum, Erlöskonten |
+| Einstellungen | Produkte und Preise | `/tco/produkte` | `tco.produkte:display\|tco.halle:display\|tco.clubhaus:display\|tco.verzehr:display` | Alle Preise: Halle, Getränke, Speisen – je Zeitraum, mit Erlöskonten |
 | Mitglieder | Mitglieder | `/tco/mitglieder` | `tco.mitglieder:display` | Stammdaten, Verträge, SEPA, Unterlagen |
 | Mitglieder | Mitgliedergruppen | `/tco/gruppen` | `tco.gruppen:display` | Kategorien, Gruppen und Mannschaften im Baum |
 | Mitglieder | Mitgliedsanträge | `/tco/mitgliedsantraege` | `tco.antraege:display` |  |
@@ -93,7 +93,6 @@ flowchart LR
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Nichtmitglieder, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
-| Tennishalle | Hallenpreise | `/tco/hallenpreise` | `tco.halle:display` | Produkte und Preismatrix |
 | Tennishalle | Hallenabrechnung | `/tco/halle` | `tco.halle:display` | EP3-Buchungen abrechnen |
 | Tennishalle | Hallenschlüssel | `/tco/hallenschluessel` | `tco.schluessel:display` |  |
 | Tennishalle | Serienbuchung | `/tco/serienbuchung` | `tco.platz:serie` | Hallenwart: mehrere Plätze, Stunden, Abos |

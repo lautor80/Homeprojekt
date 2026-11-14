@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  AnalyticalTable, Button, FlexBox, Label, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Panel, SegmentedButton,
+  AnalyticalTable, Button, FlexBox, Label, Link, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Panel, SegmentedButton,
   SegmentedButtonItem, Select, Tab, TabContainer, Text, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -84,7 +84,15 @@ export function Clubhaus() {
                 {tab === 'abs' && <Absatz />}
               </Tab>
               <Tab data-key="getr" text="Getränke und Preise" icon="lab" selected={tab === 'getr'}>
-                {tab === 'getr' && <Getraenke edit={edit} />}
+                {tab === 'getr' && <>
+                  {edit && (
+                    <MessageStrip design="Information" hideCloseButton style={{ margin: '0.75rem 0' }}>
+                      Preise werden an einer Stelle gepflegt:{' '}
+                      <Link onClick={() => { window.location.assign('/tco/produkte?sicht=getraenke'); }}>Produkte und Preise → Getränke</Link>.
+                    </MessageStrip>
+                  )}
+                  <Getraenke edit={false} />
+                </>}
               </Tab>
             </TabContainer>
           </div>
