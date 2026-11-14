@@ -1,6 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
 import { MailtexteKapitel } from './einstellungen/Mailtexte';
+import { Kontenfindung } from './einstellungen/Kontenfindung';
 import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinLogo, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
 import { GlaeubigerKapitel, Sollstellung } from './soll/Sollstellung';
@@ -93,6 +94,8 @@ const mod: WebModule = {
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
     { id: 'tennishalle', text: 'Tennishalle', icon: 'building', permission: 'tco.stammdaten:edit', component: VereinHalle },
     { id: 'finanzen', text: 'Finanzen', icon: 'loan', permission: 'tco.stammdaten:edit', component: VereinFinanzen },
+    // Übersicht über alle Kapitel: welcher Vorgang bebucht welches Konto (#232, E4)
+    { id: 'kontenfindung', text: 'Kontenfindung', icon: 'accounting-document-verification', permission: 'tco.stammdaten:edit|tco.soll:glaeubiger|tco.clubhaus:display|tco.verzehr:display|tco.schluessel:admin', component: Kontenfindung },
     { id: 'beitragseinzug', text: 'Beitragseinzug', icon: 'money-bills', permission: 'tco.soll:glaeubiger', component: GlaeubigerKapitel },
     { id: 'hallenschluessel', text: 'Hallenschlüssel', icon: 'key', permission: 'tco.schluessel:admin', component: SchluesselKapitel },
     { id: 'clubhaus', text: 'Clubhaus', icon: 'meal', permission: 'tco.clubhaus:edit', component: ClubhausKapitel },

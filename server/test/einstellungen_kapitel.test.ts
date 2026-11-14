@@ -124,3 +124,16 @@ test('Logos: alle an einer Stelle – Module melden ihr Logo an, das Kapitel „
     assert.match(t, /einstellungLink\('core', 'erscheinungsbild'\)/, `${d}: Verweis auf das Kapitel Erscheinungsbild`);
   }
 });
+
+test('Kontenfindung: ein Kapitel zeigt alle Kontenangaben und führt zur jeweiligen Pflegestelle (#232, E4)', () => {
+  const k = lesen('modules/tco/web/einstellungen/Kontenfindung.tsx');
+  const quellen = [...k.matchAll(/recht: '([a-z.]+:[a-z]+)',/g)].map((m) => m[1]);
+  assert.deepEqual(quellen, ['tco.stammdaten:edit', 'tco.soll:glaeubiger', 'tco.clubhaus:display', 'tco.verzehr:display', 'tco.schluessel:admin']);
+  for (const r of quellen) assert.ok(RECHTE.has(r), `Recht ${r} gibt es im Server nicht`);
+  const kap = KAPITEL.tco.find((x) => x.id === 'kontenfindung');
+  assert.ok(kap, 'Kapitel angemeldet');
+  assert.deepEqual(kap!.permission.split('|').sort(), [...quellen].sort(), 'das Kapitel sieht, wer mindestens eine Quelle lesen darf');
+  // das Kapitel pflegt nichts selbst – keine zweite Pflegestelle
+  assert.ok(!/api\.(put|post|del)\b/.test(k), 'Kontenfindung speichert nichts');
+  for (const ziel of ['finanzen', 'beitragseinzug', 'clubhaus', 'verzehr', 'hallenschluessel']) assert.ok(k.includes(`einstellungLink('tco', '${ziel}')`), `Absprung nach „${ziel}“`);
+});

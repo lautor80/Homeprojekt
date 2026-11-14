@@ -1147,12 +1147,12 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Kürzel | Empfehlung | Aufwand | Entscheidung |
 |---|---|---|---|
-| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Rahmen, Portal, Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen, Beitragseinzug (Gläubigerdaten), Hallenschlüssel, Clubhaus, Verzehr, Instandhaltung, E-Mail-Texte ✔ |
+| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ✔ Rahmen, Portal (mit allen Logos), Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen, Kontenfindung, Beitragseinzug, Hallenschlüssel, Clubhaus, Verzehr, Instandhaltung, E-Mail-Texte |
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ✔ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ✔ |
-| E4 | Kontenfindung als ein Unterkapitel | mittel | ☐ |
+| E4 | Kontenfindung als ein Unterkapitel | mittel | ✔ (als Übersicht mit Absprung; gepflegt wird weiter im jeweiligen Kapitel) |
 | E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ✔ |
-| S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ◐ Stufe 1–3 umgesetzt (Reiter, Paperless je Bereich, Zuordnung und API-Schlüssel darin) |
+| S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ✔ Reiter je Schnittstelle, Paperless je Bereich mit den Abschnitten der Fach-Apps, Zuordnung und API-Schlüssel darin, SAP-Übernahmen |
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☑ umgesetzt |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ✔ (Altdaten Hallenschlüssel bleibt als einmalige Übernahme ein eigener Knopf) |
@@ -1169,7 +1169,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☑ umgesetzt |
 | N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☑ umgesetzt |
 | N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ✔ |
-| B1 | Varianten: eine Bauart | mittel | ☐ |
+| B1 | Varianten: eine Bauart | mittel | ☐ **offen – braucht eine Entscheidung:** Mitglieder-Analyse, Instandhaltung und Hallenschlüssel speichern eigene Varianten; die der Analyse sind ganze Auswertungen, keine Listenansichten. Die Umstellung überführt gespeicherte Varianten der Benutzer in `core.varianten` und baut drei Dialoge um – ohne Blick in den Browser und ohne Abgleich mit den vorhandenen Varianten nicht verantwortbar |
 | B2 | Reiter für Teile, Umschalter für Sichten | klein | ✔ |
 | B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ✔ (mit E1: kein Reiter „Einstellungen“ mehr in einer Fach-App) |
 | B4 | Icons eindeutig | klein | ☑ umgesetzt |
@@ -1219,6 +1219,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | E5, N7 | Im Fachbaum steht kein „Einstellungen“ mehr: *Kontenstamm* ist die letzte App von *Finanzen*, *Produkte und Preise* die letzte von *Tennishalle* (Menü und Rollenpflege); der Bereich *Einstellungen* der Rollenpflege enthält nur noch die Rechte für die Kapitel des Vereins. Euroflex: *Kontakte* mit eigenem Recht `transport.kontakte:display` (Migration gibt es jeder Rolle, die Aufträge sieht; lesen darf weiter auch, wer Aufträge sieht), App *Stammdaten* heißt *Produkte und Wertelisten* | umgesetzt 14.11.2026 |
 | N3 | App **Zugänge** (*Mitglieder → Zugänge*, `/tco/zugaenge`) mit den Reitern *Registrierungen* (Umschalter Mitglieder/Hallennutzer), *Zuordnung* und *EP3-Abgleich* – jeder mit seinem bisherigen Recht. Die Platzverwaltung behält Plätze, Belegung, Training und Abos; `/tco/registrierungen` und gespeicherte Ansichten der Platzverwaltung führen in die neue App. In der Rollenpflege heißt die App ebenfalls *Zugänge* (Funktionsschalter zieht mit, Migration 075) | umgesetzt 14.11.2026 |
 | N2, B2 | **Meine Daten** ist eine App (`/tco/meine-daten`, Rechte `tco.meinedaten:edit` oder `tco.meinkonto:edit`): Mitglieder sehen Kontakt, Bank, Verträge und Änderungen, externe Hallennutzer ihre Kontaktdaten; `/tco/meine-mitgliedschaft` bleibt gültig, in der Rollenpflege stehen beide Rechte unter der einen App (Migration 076 führt den Funktionsschalter zusammen). **Platz buchen** schaltet Kalender, Meine Buchungen und Abo-Bewerbung mit Reitern | umgesetzt 14.11.2026 |
+| E4 | Kapitel **Kontenfindung** (*Einstellungen → TC Oberthal*): eine Liste „Vorgang → Konto“ über alle fünf Stellen (Bankimport und Kasse, Lastschrift, Clubhaus, Verzehr, Hallenschlüssel) mit Absprung zur jeweiligen Pflegestelle; das Kapitel speichert nichts (keine zweite Pflegestelle). Sichtbar ist, was man lesen darf | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und
