@@ -12,6 +12,7 @@ import type { FastifyRequest } from 'fastify';
 import { can } from '../auth.js';
 import { sql } from '../db.js';
 import { activeModules } from '../modules.js';
+import { hinweisAufgaben } from './hinweise.js';
 
 export interface Aufgabe {
   /** eindeutig über alle Module – beginnt mit einem Kürzel der Quelle (z. B. JT:, SCHADEN:, BACKUP_EXPORT) */
@@ -27,7 +28,7 @@ export interface Aufgabe {
   /** Portalpfad zum Bearbeiten */
   pfad: string;
   betrag?: number;
-  /** Kästchen am Eintrag: bestätigt die Erledigung (POST auf url mit body), der Eintrag verschwindet danach. url im Modul ohne /api/m/<modul>. */
+  /** Kästchen am Eintrag: bestätigt die Erledigung (POST auf url mit body), der Eintrag verschwindet danach. url im Modul ohne /api/m/<modul>; mit /api/ beginnt eine vollständige Adresse. */
   erledigen?: { text: string; url: string; body: Record<string, unknown> };
   /** Upload „Überweisung an Einreicher“ (TC Oberthal): Zahlungsdaten und QR-Code im Popup */
   zahlung?: { id: number };
@@ -53,6 +54,8 @@ export async function kernAufgaben(req: FastifyRequest): Promise<Aufgabe[]> {
       });
     }
   }
+  // gemeldete Ereignisse des Kerns (V1), z. B. Störungen der Schnittstellen
+  out.push(...await hinweisAufgaben(req, 'core'));
   return out;
 }
 
@@ -60,7 +63,8 @@ export async function kernAufgaben(req: FastifyRequest): Promise<Aufgabe[]> {
 function absolut(modul: string, a: Aufgabe): Aufgabe {
   return {
     ...a,
-    erledigen: a.erledigen ? { ...a.erledigen, url: `/api/m/${modul}${a.erledigen.url}` } : undefined,
+    // vollständige Adressen (Hinweise des Kerns, /api/…) bleiben, wie sie sind
+    erledigen: a.erledigen ? { ...a.erledigen, url: a.erledigen.url.startsWith('/api/') ? a.erledigen.url : `/api/m/${modul}${a.erledigen.url}` } : undefined,
     kinder: a.kinder?.map((k) => absolut(modul, k)),
   };
 }

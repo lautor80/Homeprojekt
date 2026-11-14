@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
-import { DB, plAktiv, vereinLesen } from '../verein.js';
+import { DB, plAktiv, vereinLesen, type Db } from '../verein.js';
+import { tcoHinweis } from '../hinweise.js';
 import { mitgliedDokumentPruefen } from '../dokumentfreigabe.js';
 import { condense, heute } from '../format.js';
 import { kontaktLesen, mailSenden, whatsappLink } from '../kommunikation.js';
@@ -14,7 +15,7 @@ import {
 import { ART_TEXT, ARTEN, druckdatenLesen, unterlagePdf } from './pdf.js';
 import { dateiAblegen, dokumenteLesen, freigabelinks, korrName, mailText, plPruefen, SPEICHERPFAD, unterlageAblegen } from './dokumente.js';
 import { mapLesen, parse, zahlerErmitteln } from './antrag.js';
-import { istMaskiert, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
+import { istMaskiert, maskIban, maskText, type Feldschutz } from '../../../../server/src/schutz.js';
 import { einladen, einladungLesen, einladungVorlage, einloesen, EINLADUNG_PLATZHALTER, kandidaten as einladungKandidaten } from './einladung.js';
 import { abgleichen, namenLesen, vorlage as zugangVorlage, zugangSenden, PLATZHALTER } from './zugangslink.js';
 import { bankdatenErforderlich, bankSchutz, doktypMitBankdaten, P_BANK } from '../bankdaten.js';
@@ -23,7 +24,7 @@ import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
 import {
-  ausgetreteneSperren, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigenMehrere, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
+  ausgetreteneSperren, ausgetreteneSperrenMelden, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, kuendigen, kuendigenMehrere, kuendigungBestaetigen, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
 } from './selbst.js';
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
@@ -124,7 +125,7 @@ async function austrittSperrenLauf(log: FastifyInstance['log']) {
   // „Mitglieder“ aus, werden Benutzer ausgetretener Mitglieder weiterhin gesperrt (Schutzfunktion).
   if (!funktionAktiv(modulId('tco'))) return;
   try {
-    const r = await withChange({ userId: null, username: 'system', action: 'AUSTRITT_SPERRE' }, (tx) => ausgetreteneSperren(tx));
+    const r = await withChange({ userId: null, username: 'system', action: 'AUSTRITT_SPERRE' }, (tx) => ausgetreteneSperrenMelden(tx));
     if (r.gesperrt.length || r.rolleEntzogen.length) log.info(r, 'Benutzer ausgetretener Mitglieder gesperrt');
   } catch (e) { log.warn(e, 'Sperre ausgetretener Mitglieder fehlgeschlagen'); }
 }
@@ -143,16 +144,34 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return req.user.id;
   };
 
+  /** Ereignis aus „Meine Mitgliedschaft“ im Arbeitsvorrat melden (#232, V1): Kassenwart, Absprung zum Mitglied */
+  const selbstHinweis = async (tx: Db, req: FastifyRequest, h: { quelle: string; art: string; text: string; adrnr?: string; objekt?: string; state?: 'Information' | 'Critical' }) => {
+    const eigene = await eigeneAdrnr(tx, benutzerId(req));
+    const a = h.adrnr ?? eigene;
+    await tcoHinweis(tx, {
+      quelle: h.quelle, objekt: h.objekt ?? a, bereich: 'Kassenwart', recht: P_MG.display, art: h.art, state: h.state, icon: 'employee',
+      titel: a === eigene ? `${benutzer(req)} (Mitglied ${a})` : `${benutzer(req)} für Mitglied ${a}`, text: h.text, pfad: `/tco/mitglieder?adrnr=${a}`,
+    });
+  };
+
   // ---------------------------------------------------------------- „Meine Mitgliedschaft“ (nur eigene Daten)
   app.get('/mitglieder/meine', selbst, async (req) => meineLesen(DB, benutzerId(req)));
   app.put('/mitglieder/meine/kontakt', selbst, async (req) => {
     const k = z.object({ strasse: txt, plz: txt, ort: txt, telefon: txt, mobil: txt, email: txt, bildrechte: z.boolean().default(false) }).parse(req.body);
-    return { text: await change(req, (tx) => kontaktSichern(tx, benutzerId(req), k), { action: 'SELBSTAUSKUNFT' }) };
+    return { text: await change(req, async (tx) => {
+      const text = await kontaktSichern(tx, benutzerId(req), k);
+      await selbstHinweis(tx, req, { quelle: 'MG_KONTAKT', art: 'Kontaktdaten geändert', text: 'Anschrift, E-Mail oder Telefon über „Meine Mitgliedschaft“ geändert.' });
+      return text;
+    }, { action: 'SELBSTAUSKUNFT' }) };
   });
   app.put('/mitglieder/meine/bank', selbst, async (req) => {
     const b = z.object({ iban: z.string().min(1, 'Bitte die IBAN angeben.'), bic: txt, bank: txt }).parse(req.body);
     if (istMaskiert(b.iban)) throw new BusinessError('Bitte die vollständige neue IBAN eingeben.');
-    return { text: await change(req, (tx) => bankAendern(tx, benutzerId(req), b), { action: 'SELBSTAUSKUNFT', reason: 'Bankverbindung' }) };
+    return { text: await change(req, async (tx) => {
+      const text = await bankAendern(tx, benutzerId(req), b);
+      await selbstHinweis(tx, req, { quelle: 'MG_BANK', art: 'Bankverbindung geändert', state: 'Critical', text: `Neue Bankverbindung über „Meine Mitgliedschaft“ eingetragen (IBAN ${maskIban(b.iban.replace(/\s+/g, ''))}).` });
+      return text;
+    }, { action: 'SELBSTAUSKUNFT', reason: 'Bankverbindung' }) };
   });
   app.get('/mitglieder/meine/dokumente', selbst, async (req) => {
     const v = await vereinLesen();
@@ -188,12 +207,20 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const g = (await gruppenLesen(DB)).find((x) => x.id === b.gruppe);
     if (!g) throw new BusinessError('Gruppe nicht gefunden.', 404);
     if (b.entfernen) {
-      await change(req, (tx) => gruppenMitgliedEntfernen(tx, b.gruppe, a), { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
+      await change(req, async (tx) => {
+        await gruppenMitgliedEntfernen(tx, b.gruppe, a);
+        await selbstHinweis(tx, req, { quelle: 'MG_GRUPPE', objekt: `${a}:${b.gruppe}`, art: 'Gruppe: Mitglied trägt sich ein oder aus', text: `Aus der Gruppe „${g.name}“ ausgetragen.` });
+      }, { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
       return { text: `Du bist aus „${g.name}“ ausgetragen.` };
     }
     if (!g.aktiv) throw new BusinessError(`Die Gruppe „${g.name}“ ist nicht mehr aktiv.`);
     // bereits zugeordnet: nichts ändern (die Rolle bleibt)
-    if (!g.mitglieder.some((m) => m.adrnr === a)) await change(req, (tx) => gruppenMitgliedSetzen(tx, b.gruppe, a, null), { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
+    if (!g.mitglieder.some((m) => m.adrnr === a)) {
+      await change(req, async (tx) => {
+        await gruppenMitgliedSetzen(tx, b.gruppe, a, null);
+        await selbstHinweis(tx, req, { quelle: 'MG_GRUPPE', objekt: `${a}:${b.gruppe}`, art: 'Gruppe: Mitglied trägt sich ein oder aus', text: `In die Gruppe „${g.name}“ eingetragen.` });
+      }, { action: 'SELBSTAUSKUNFT', reason: 'Gruppe' });
+    }
     return { text: `Du bist in „${g.name}“ eingetragen.` };
   });
 
@@ -204,7 +231,11 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/meine/vorgang', selbst, async (req) => {
     const e = selbstSchema.parse(req.body);
     const id = benutzerId(req);
-    const p = await change(req, (tx) => selbstVorgang(tx, id, e, true, benutzer(req)), { action: e.typ, reason: `${VORGANG_TEXT[e.typ]} über „Meine Mitgliedschaft“` });
+    const p = await change(req, async (tx) => {
+      const x = await selbstVorgang(tx, id, e, true, benutzer(req));
+      await selbstHinweis(tx, req, { quelle: 'MG_VORGANG', adrnr: e.adrnr, objekt: `${e.adrnr}:${e.typ}`, art: `${VORGANG_TEXT[e.typ]} durch das Mitglied`, text: x.text });
+      return x;
+    }, { action: e.typ, reason: `${VORGANG_TEXT[e.typ]} über „Meine Mitgliedschaft“` });
     // Mitgliederinformation mit den neuen Verträgen: ablegen und an das angemeldete Mitglied senden (Kopie an den Verein)
     const unterlage = await unterlageVersenden(DB, await vereinLesen(), e.adrnr, p.unterlage, p.text, 'Portal', p.eigene);
     return { ...p, text: `${VORGANG_TEXT[e.typ]} ausgeführt: ${p.text}`, unterlage };
@@ -218,8 +249,11 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       bestaetigung: z.literal(true, { errorMap: () => ({ message: 'Bitte die Kündigung bestätigen.' }) }),
     }).parse(req.body);
     const v = await vereinLesen();
-    const r = await change(req, (tx) => (k.vertraege ? kuendigenMehrere(tx, benutzerId(req), k.vertraege, k.grund ?? null, v, benutzer(req)) : kuendigen(tx, benutzerId(req), k, v, benutzer(req))),
-      { action: 'KUENDIGUNG', reason: k.grund ?? null });
+    const r = await change(req, async (tx) => {
+      const x = await (k.vertraege ? kuendigenMehrere(tx, benutzerId(req), k.vertraege, k.grund ?? null, v, benutzer(req)) : kuendigen(tx, benutzerId(req), k, v, benutzer(req)));
+      await selbstHinweis(tx, req, { quelle: 'MG_KUENDIGUNG', art: 'Kündigung durch das Mitglied', state: 'Critical', text: `${x.text}${k.grund ? ` Grund: ${k.grund}` : ''}` });
+      return x;
+    }, { action: 'KUENDIGUNG', reason: k.grund ?? null });
     const b = await kuendigungBestaetigen(DB, v, r, k.grund ?? null);
     return { ...b, text: `${r.text}${b.gesendet ? ' Die Kündigungsbestätigung wurde per E-Mail gesendet.' : ''}` };
   });
@@ -380,7 +414,14 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       passwort: z.string().max(200),
       datenschutz: z.literal(true, { errorMap: () => ({ message: 'Bitte der Verarbeitung der Daten zustimmen.' }) }),
     }).parse(req.body);
-    const r = await withChange({ userId: null, username: 'Einladung', action: 'EINLADUNG_EINGELOEST' }, (tx) => einloesen(tx, b.token, b));
+    const r = await withChange({ userId: null, username: 'Einladung', action: 'EINLADUNG_EINGELOEST' }, async (tx) => {
+      const x = await einloesen(tx, b.token, b);
+      await tcoHinweis(tx, {
+        quelle: 'MG_ZUGANG', objekt: x.username, bereich: 'Kassenwart', recht: P_MG.display, art: 'Mitglied hat seinen Zugang eingerichtet', icon: 'add-employee',
+        titel: x.name, text: `Benutzer „${x.username}“ über den Einladungslink angelegt.`, pfad: '/tco/mitglieder',
+      });
+      return x;
+    });
     return { text: `Willkommen, ${r.name}! Ihr Zugang ist eingerichtet – melden Sie sich jetzt mit „${r.username}“ und Ihrem Kennwort an.` };
   });
 

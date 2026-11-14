@@ -11,6 +11,7 @@
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
  *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung
  *  - Clubhaus: wie bisher (Einträge der Administration liefert der Kern)
+ *  - dazu gemeldete Ereignisse (Hinweise, server/src/lib/hinweise.ts) unter der Zuständigkeit, die die meldende Stelle nennt
  */
 import type { FastifyRequest } from 'fastify';
 import { can } from '../../../../server/src/auth.js';
@@ -23,6 +24,7 @@ import { aufgaben as schluesselAufgaben, P_SCHL } from '../schluessel/logik.js';
 // Der Typ gehört seit #232 (V2) dem Kern – der Arbeitsvorrat steht auf der Startseite für alle Anwendungen
 export type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
+import { hinweisAufgaben } from '../../../../server/src/lib/hinweise.js';
 
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -309,5 +311,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
       });
     }
   }
+  // gemeldete Ereignisse (#232, V1): Selbstbedienung der Mitglieder und Hallennutzer, Läufe, Störungen – bis „gesehen“
+  out.push(...await hinweisAufgaben(req, 'tco'));
   return out;
 }

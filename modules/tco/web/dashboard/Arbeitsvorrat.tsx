@@ -36,7 +36,7 @@ export function Arbeitsvorrat({ neu, leerText }: { neu: number; leerText?: strin
   const erledigen = async (a: Aufgabe) => {
     if (!a.erledigen) return;
     setListe((l) => l.filter((x) => x.key !== a.key)); // sofort ausblenden, dann vom Server neu lesen
-    try { const r = await api.post<{ text?: string }>(`${TCO}${a.erledigen.url}`, a.erledigen.body); toast(r.text ?? 'Erledigt.'); } catch (e) { toast((e as Error).message, 6000); }
+    try { const r = await api.post<{ text?: string }>(a.erledigen.url.startsWith('/api/') ? a.erledigen.url : `${TCO}${a.erledigen.url}`, a.erledigen.body); toast(r.text ?? 'Erledigt.'); } catch (e) { toast((e as Error).message, 6000); }
     await laden();
   };
   if (!liste.length) {

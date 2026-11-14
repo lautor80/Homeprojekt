@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { hashPassword } from '../../../../server/src/auth.js';
 import { maskIban } from '../../../../server/src/schutz.js';
 import type { Db, Verein } from '../verein.js';
+import { tcoHinweis } from '../hinweise.js';
 import { condense, dat, heute } from '../format.js';
 import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import {
@@ -340,5 +341,17 @@ export async function ausgetreteneSperren(tx: Db, adrnr?: string): Promise<{ ges
     await tx`delete from core.sessions where user_id = ${u.id}`;
     r.gesperrt.push(u.username);
   }
+  return r;
+}
+
+/** Lauf: Benutzer ausgetretener Mitglieder sperren und das im Arbeitsvorrat melden (#232, V1) – sonst erfährt es niemand */
+export async function ausgetreteneSperrenMelden(tx: Db): Promise<{ gesperrt: string[]; rolleEntzogen: string[] }> {
+  const r = await ausgetreteneSperren(tx);
+  const melden = (username: string, text: string) => tcoHinweis(tx, {
+    quelle: 'MG_SPERRE', objekt: username, bereich: 'Administration', recht: 'core.users:display', art: 'Benutzer nach Austritt gesperrt', icon: 'locked',
+    titel: username, text, pfad: '/admin/benutzer',
+  });
+  for (const u of r.gesperrt) await melden(u, 'Das Mitglied ist ausgetreten – der Benutzer wurde automatisch gesperrt.');
+  for (const u of r.rolleEntzogen) await melden(u, 'Das Mitglied ist ausgetreten – die Rolle „Mitglied“ wurde entzogen. Der Benutzer bleibt wegen weiterer Rollen aktiv.');
   return r;
 }
