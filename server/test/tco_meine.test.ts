@@ -28,6 +28,14 @@ function client() {
 }
 const admin = client();
 const M = '/api/m/tco/mitglieder';
+/** Hinweise im Arbeitsvorrat TC Oberthal (Startseite), Sammeleinträge aufgelöst */
+interface Hinweis { key: string; bereich: string; titel: string; text: string; state: string; pfad: string; erledigen: { text: string; url: string; body: Record<string, unknown> }; kinder?: Hinweis[] }
+const hinweise = async (c: ReturnType<typeof client> = admin): Promise<Hinweis[]> => {
+  const r = await c('GET', '/api/arbeitsvorrat');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const liste: Hinweis[] = r.body.gruppen.find((g: { modul: string }) => g.modul === 'tco')?.aufgaben ?? [];
+  return liste.filter((a) => a.key.startsWith('HINWEIS:')).flatMap((a) => a.kinder ?? [a]);
+};
 const jahr = new Date().getFullYear();
 
 before(async () => {
@@ -134,6 +142,26 @@ test('Meine Mitgliedschaft: Anmeldung mit Startkennwort, nur eigene Daten, Konta
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await sql`select iban1 from tco.mitglieder where adrnr = '0000000501'`)[0].iban1, 'DE89370400440532013000');
   assert.ok((await sql`select count(*)::int as n from tco.mgnotiz where adrnr = '0000000501' and notiz like 'Bankverbindung%'`)[0].n >= 1);
+  // Arbeitsvorrat (#232, V1): beide Änderungen stehen als Hinweis beim Kassenwart, bis jemand „gesehen“ bestätigt
+  let h = await hinweise();
+  assert.deepEqual(h.map((a) => a.key.split(':')[1]).sort(), ['MG_BANK', 'MG_KONTAKT'], 'abgelehnte Eingaben (400) melden nichts');
+  const bank = h.find((a) => a.key.startsWith('HINWEIS:MG_BANK:'))!;
+  assert.deepEqual([bank.bereich, bank.state, bank.pfad], ['Kassenwart', 'Critical', '/tco/mitglieder?adrnr=0000000501']);
+  assert.match(bank.titel, /^Bankverbindung geändert: .+ \(Mitglied 0000000501\)$/);
+  assert.match(bank.text, /über „Meine Mitgliedschaft“ eingetragen \(IBAN /);
+  assert.ok(!bank.text.includes('DE89370400440532013000'), 'IBAN im Hinweis nur maskiert');
+  assert.equal(bank.erledigen.text, 'gesehen');
+  // die Vereinsübersicht zeigt dieselben Hinweise; das Mitglied selbst sieht sie nicht und kann nicht bestätigen
+  assert.deepEqual((await admin('GET', '/api/m/tco/dashboard/arbeitsvorrat')).body.filter((a: Hinweis) => a.key.startsWith('HINWEIS:')).map((a: Hinweis) => a.key).sort(), h.map((a) => a.key).sort());
+  assert.deepEqual(await hinweise(paula), []);
+  assert.equal((await paula('POST', bank.erledigen.url, bank.erledigen.body)).status, 403);
+  // noch eine Änderung derselben Art: derselbe Hinweis zählt hoch
+  assert.equal((await paula('PUT', `${M}/meine/kontakt`, { strasse: 'Neue Str. 5', plz: '66649', ort: 'Oberthal', telefon: '', mobil: '0170 1234567', email: 'paula.neu@example.org', bildrechte: true })).status, 200);
+  assert.match((await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_KONTAKT:'))!.titel, /^Kontaktdaten geändert: .+ \(Mitglied 0000000501\) \(2×\)$/);
+  // „gesehen“: verschwindet
+  assert.equal((await admin('POST', bank.erledigen.url, bank.erledigen.body)).status, 200);
+  h = await hinweise();
+  assert.deepEqual(h.map((a) => a.key.split(':')[1]), ['MG_KONTAKT']);
   // Kim zahlt über Paula: keine eigene Bankverbindung änderbar
   const kim = client();
   await sql`update core.users set password_hash = (select password_hash from core.users where username = 'paula.portal'), must_change_password = false where username = 'kim.portal'`;
@@ -165,6 +193,12 @@ test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12.,
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '1'`)[0].e, jugendEnde);
   assert.ok((await sql`select notiz from tco.mgnotiz where adrnr = '0000000502'`).some((n) => String(n.notiz).includes('Kim hört auf')));
+  // Arbeitsvorrat (#232, V1): die Kündigung steht beim Kassenwart – mit Grund
+  const kh = (await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_KUENDIGUNG:'))!;
+  assert.ok(kh, 'Kündigung im Arbeitsvorrat');
+  assert.deepEqual([kh.bereich, kh.state, kh.pfad], ['Kassenwart', 'Critical', '/tco/mitglieder?adrnr=0000000501']);
+  assert.match(kh.titel, /^Kündigung durch das Mitglied: .+ \(Mitglied 0000000501\)$/);
+  assert.match(kh.text, /Grund: Kim hört auf$/);
   assert.ok(r.body.pdf && Buffer.from(r.body.pdf, 'base64').subarray(0, 4).toString() === '%PDF', 'Kündigungsbestätigung als PDF');
   assert.match(r.body.dateiname, /^Kuendigungsbestaetigung_Portal_Kim\.pdf$/);
   assert.ok(r.body.hinweise.some((x: string) => /Mailversand ist nicht eingerichtet/.test(x)), JSON.stringify(r.body.hinweise));
@@ -188,6 +222,10 @@ test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12.,
   r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '2' }, { adrnr: '0000000502', vertragnr: '2' }] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /Schließfach gekündigt am .* zum 31\.12\..*Jugendtraining 2 \(.*Kim.*\) gekündigt/);
+  // abgelehnte Kündigungen (400) haben nichts gemeldet – der Hinweis zählt nur die zweite ausgeführte hoch
+  const kh2 = (await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_KUENDIGUNG:'))!;
+  assert.match(kh2.titel, /\(Mitglied 0000000501\) \(2×\)$/);
+  assert.match(kh2.text, /Schließfach gekündigt/);
   assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000501' and vertragnr = '2'`)[0].e, `${jahr}-12-31`);
   assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '2'`)[0].e, jugendEnde);
   assert.equal((await sql`select austritt from tco.mitglieder where adrnr = '0000000501'`)[0].austritt, null, 'kein Austritt ohne Mitgliedsbeitrag');
@@ -305,12 +343,17 @@ test('Benutzer: Status direkt sperren, Einzelanlage aus Mitglied/EP3, Austritt s
   assert.match(r.body.text, /Benutzer eva@example\.org gesperrt/);
   assert.equal((await sql`select active from core.users where id = ${eva.id}`)[0].active, false);
   // Kündigung zum Jahresende sperrt erst nach dem Austritt (täglicher Lauf)
-  const { ausgetreteneSperren } = await import('../../modules/tco/server/mitglieder/selbst.js');
+  const { ausgetreteneSperren, ausgetreteneSperrenMelden } = await import('../../modules/tco/server/mitglieder/selbst.js');
   const r2 = await sql.begin((tx) => ausgetreteneSperren(tx as never));
   assert.ok(!r2.gesperrt.includes('paula.portal'), 'Paula: Austritt erst zum Jahresende');
   await sql`update tco.mitglieder set austritt = current_date - 1 where adrnr = '0000000501'`;
-  const r3 = await sql.begin((tx) => ausgetreteneSperren(tx as never));
+  // der Lauf meldet die Sperre im Arbeitsvorrat (#232, V1) – unter „Administration“, Absprung zu den Benutzern
+  const r3 = await sql.begin((tx) => ausgetreteneSperrenMelden(tx as never));
   assert.ok(r3.gesperrt.includes('paula.portal'));
+  const sperre = (await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_SPERRE:') && /paula\.portal$/.test(a.titel));
+  assert.ok(sperre, 'Sperre im Arbeitsvorrat');
+  assert.deepEqual([sperre.bereich, sperre.pfad], ['Administration', '/admin/benutzer']);
+  assert.match(sperre.text, /ausgetreten – der Benutzer wurde automatisch gesperrt/);
   assert.equal((await paula('GET', `${M}/meine`)).status, 401, 'Sitzung beendet');
 });
 

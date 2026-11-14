@@ -22,6 +22,7 @@ import {
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
 import { mailProtokoll, mailSenden } from '../kommunikation.js';
+import { tcoHinweis } from '../hinweise.js';
 import { mailFehlerErledigen, abweisen, aboLauf, aktion, bewerben, freigeben, rasterLesen, saisonAendern, saisonEroeffnen, verwaltungLesen } from './abowunsch.js';
 
 /**
@@ -294,7 +295,15 @@ export async function platzRoutes(app: FastifyInstance) {
   app.post('/platz/registrierung/bestaetigen', async (req) => {
     regLimit(req.ip, 30);
     const { token } = z.object({ token: z.string().min(20).max(100) }).parse(req.body);
-    const r = await withChange({ userId: null, username: 'Selbstregistrierung', action: 'REGISTRIERUNG_BESTAETIGT' }, (tx) => emailBestaetigen(tx, token));
+    const r = await withChange({ userId: null, username: 'Selbstregistrierung', action: 'REGISTRIERUNG_BESTAETIGT' }, async (tx) => {
+      const x = await emailBestaetigen(tx, token);
+      // Arbeitsvorrat (#232, V1): Der Zugang ist ohne Zutun des Vereins freigeschaltet – der Vorstand erfährt es hier
+      await tcoHinweis(tx, {
+        quelle: 'HN_NEU', objekt: x.benutzerId, bereich: 'Vorstand', recht: 'tco.platz:admin', art: 'Neuer Hallennutzer', icon: 'add-employee',
+        titel: x.anzeigename, text: 'Hat sich selbst registriert und die E-Mail-Adresse bestätigt – der Zugang ist freigeschaltet.', pfad: '/tco/platzverwaltung',
+      });
+      return x;
+    });
     await freigabeMail(r, 'Selbstregistrierung').catch(() => '');
     return { text: `Vielen Dank, Ihre E-Mail-Adresse ist bestätigt und Ihr Zugang freigeschaltet. Sie können sich jetzt mit Ihrem Benutzernamen anmelden.` };
   });
@@ -380,6 +389,18 @@ export async function platzRoutes(app: FastifyInstance) {
                   where adrnr = ${m!.adrnr}`;
       }
       await tx`update core.users set email = ${d.email}, display_name = ${`${d.vorname} ${d.nachname}`} where id = ${uid}`;
+      // Arbeitsvorrat (#232, V1): Kunde → Vorstand (Platzverwaltung), Mitglied → Kassenwart (Mitglieder)
+      if (k) {
+        await tcoHinweis(tx, {
+          quelle: 'HN_KONTAKT', objekt: uid, bereich: 'Vorstand', recht: 'tco.platz:admin', art: 'Hallennutzer: Kontaktdaten geändert', icon: 'customer',
+          titel: `${d.vorname} ${d.nachname}`, text: 'Name, Anschrift, E-Mail oder Telefon unter „Mein Konto“ geändert.', pfad: '/tco/platzverwaltung',
+        });
+      } else {
+        await tcoHinweis(tx, {
+          quelle: 'MG_KONTAKT', objekt: m!.adrnr, bereich: 'Kassenwart', recht: 'tco.mitglieder:display', art: 'Kontaktdaten geändert', icon: 'employee',
+          titel: `${d.vorname} ${d.nachname} (Mitglied ${m!.adrnr})`, text: 'Name, Anschrift, E-Mail oder Telefon unter „Mein Konto“ geändert.', pfad: `/tco/mitglieder?adrnr=${m!.adrnr}`,
+        });
+      }
     }, { action: 'MEINE_DATEN' });
     return { text: 'Ihre Daten sind gespeichert.' };
   });

@@ -455,6 +455,28 @@ oder soll wirklich jedes Ereignis als Hinweis erscheinen?
 *Aufwand:* mittel (je Lücke eine Quelle; Fehler der Schnittstellen müssen dafür festgehalten werden, statt nur
 in der App zu erscheinen).
 
+**Umgesetzt, Teil 1 (14.11.2026) – Hinweise und die Ereignisse der Selbstbedienung.** Es gibt jetzt die Art
+*Hinweis*: Die Stelle, an der etwas geschieht, meldet es (`hinweisMelden`, Tabelle `core.hinweise`). Der Hinweis
+steht im Arbeitsvorrat der Anwendung, bis jemand mit dem Recht der zugehörigen App **gesehen** ankreuzt; Störungen
+schließen sich von selbst, sobald der nächste Versuch gelingt. Dasselbe Ereignis zum selben Mitglied zählt den
+Hinweis hoch statt ihn zu doppeln; mehrere Hinweise einer Art stehen gesammelt unter einem Eintrag („alle gesehen“).
+
+| Ereignis | Hinweis bei | Absprung |
+|---|---|---|
+| Mitglied ändert Kontaktdaten (*Meine Mitgliedschaft*, *Mein Konto*) | Kassenwart | Mitglied |
+| Mitglied ändert Bankverbindung | Kassenwart (gelb, IBAN maskiert) | Mitglied |
+| Kündigung durch das Mitglied | Kassenwart (gelb, mit Grund) | Mitglied |
+| Beitragswechsel, Jugendtraining durch das Mitglied | Kassenwart | Mitglied |
+| Mitglied trägt sich in eine Gruppe ein oder aus | Kassenwart | Mitglied |
+| Mitglied richtet über die Einladung seinen Zugang ein | Kassenwart | Mitglieder |
+| Hallennutzer ändert Kontaktdaten (*Mein Konto*) | Vorstand | Platzverwaltung |
+| Externer Hallennutzer schaltet sich per E-Mail-Bestätigung frei | Vorstand | Platzverwaltung |
+| Lauf sperrt den Benutzer eines ausgetretenen Mitglieds | Administration | Benutzer |
+
+Damit sind 9 der 18 Lücken zu. **Noch offen (9):** Störungen der Schnittstellen (Paperless, E-Mail, EP3,
+Trainerstunden, Schulferien, Mailabruf, Nextcloud), Rückläufer und Antworten auf E-Mails, Dokumenteneingang –
+dazu die Quellen aus Euroflex. Die Zahl steht als Sperrklinke im Test und kann nur sinken.
+
 #### V2 Arbeitsvorrat in den Kern, für alle Bereiche
 
 **Befund.** Der Arbeitsvorrat ist Teil der *Vereinsübersicht* und verlangt deren Recht
@@ -1035,7 +1057,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
-| V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
+| V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben – Teil 1 umgesetzt (9 von 18 Lücken zu) |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☑ umgesetzt |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ Rahmen, Apps und erste Funktionen umgesetzt |
@@ -1080,6 +1102,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | S3 | Anbindungen zeigen Testmail und die letzten 5 Versuche; „Protokoll leeren“ steht in der App E-Mail-Protokoll | umgesetzt 14.11.2026 |
 | B4 | Zahnrad nur für Einstellungen, je App ein eigenes Icon (Test) | umgesetzt 14.11.2026 |
 | V2 | Arbeitsvorrat auf der Startseite für alle Anwendungen (`GET /api/arbeitsvorrat`, `ServerModule.arbeitsvorrat`); roter Zähler am Menüeintrag *Start*; die Vereinsübersicht zeigt weiter den Ausschnitt TC Oberthal | umgesetzt 14.11.2026 – Quellen für Euroflex folgen mit V1 |
+| V1 (Teil 1) | Hinweise im Arbeitsvorrat (`core.hinweise`, „gesehen“); Selbstbedienung der Mitglieder und Hallennutzer, Einladung, Sperre nach Austritt melden sich | umgesetzt 14.11.2026 – offen: Störungen der Schnittstellen, E-Mail-Rückläufer, Dokumenteneingang, Euroflex |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

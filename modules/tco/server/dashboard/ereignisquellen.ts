@@ -12,14 +12,16 @@
  *   selbst:<modul> <route>      jede ändernde Route der Selbstbedienung (/meine/, /meinkonto)
  *
  * Kommt eine Quelle dazu, scheitert der Test, bis sie hier steht – mit
- *   aufgabe  Schlüssel(anfang) des Eintrags im Arbeitsvorrat, der das Ereignis zeigt,
+ *   aufgabe  Schlüssel(anfang) des Eintrags im Arbeitsvorrat, der das Ereignis zeigt (aus dem aktuellen Stand berechnet),
+ *   hinweis  Quelle des Hinweises, den die Stelle beim Ereignis meldet (hinweisMelden, server/src/lib/hinweise.ts) –
+ *            er steht im Arbeitsvorrat, bis jemand „gesehen“ bestätigt,
  *   offen    erscheint heute nicht; wird mit V1 (#232) geschlossen. Die Zahl der offenen Punkte darf nur sinken,
  *   ohne     braucht keinen Eintrag – mit Begründung.
  *
  * Reine Daten ohne Importe, damit der Test ohne Datenbank läuft. Mit V2 (Arbeitsvorrat im Kern) wandert das Verzeichnis
  * zu den Modulen, die ihre Quellen dann selbst anmelden.
  */
-export type Abdeckung = { aufgabe: string | string[] } | { offen: string } | { ohne: string };
+export type Abdeckung = { aufgabe: string | string[] } | { hinweis: string | string[] } | { offen: string } | { ohne: string };
 
 const VERLAUF = 'reiner Verlauf – steht in Statistik bzw. Änderungsbelegen';
 
@@ -38,7 +40,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'lauf:server/src/backup-export.ts': { aufgabe: 'BACKUP_EXPORT' },
   'lauf:modules/tco/server/platz/routes.ts': { aufgabe: ['ABO_FREIGABE', 'ABO_MAIL', 'ABO_BEWERBUNG'] },
   'lauf:modules/tco/server/instandhaltung/routes.ts': { aufgabe: 'SCHADEN' },
-  'lauf:modules/tco/server/mitglieder/routes.ts': { offen: 'Benutzer ausgetretener Mitglieder werden gesperrt, ohne dass es jemand erfährt (nur Server-Protokoll)' },
+  'lauf:modules/tco/server/mitglieder/routes.ts': { hinweis: 'MG_SPERRE' },
 
   // ---------------------------------------------------------------- Eingänge ohne Anmeldung: Kern
   'eingang:core POST /api/auth/login': { ohne: VERLAUF },
@@ -56,8 +58,8 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'eingang:tco POST /platz/registrierung': { aufgabe: ['REG_MITGLIED', 'REGISTRIERUNG'] },
   'eingang:tco POST /platz/registrierung/pruefen': { ohne: 'nur Suche im Bestand, es wird nichts angelegt' },
   'eingang:tco POST /platz/registrierung/schnell': { ohne: 'verschickt nur den Einladungslink – das Ereignis ist die Annahme (POST /einladung)' },
-  'eingang:tco POST /platz/registrierung/bestaetigen': { offen: 'externer Hallennutzer schaltet sich per E-Mail-Bestätigung selbst frei – kein Eintrag im Arbeitsvorrat' },
-  'eingang:tco POST /einladung': { offen: 'Mitglied nimmt die Einladung an und legt seinen Benutzer an – kein Eintrag im Arbeitsvorrat' },
+  'eingang:tco POST /platz/registrierung/bestaetigen': { hinweis: 'HN_NEU' },
+  'eingang:tco POST /einladung': { hinweis: 'MG_ZUGANG' },
 
   // ---------------------------------------------------------------- Meldungen
   'meldung:tco POST /schaden': { aufgabe: 'SCHADEN' },
@@ -74,10 +76,10 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'selbst:tco POST /verzehr/meine/buchen': { aufgabe: 'VZ_ABSCHLUSS' },
   'selbst:tco POST /verzehr/meine/storno': { aufgabe: 'VZ_ABSCHLUSS' },
   'selbst:tco POST /mitglieder/meine/vorgang/pruefen': { ohne: 'nur Prüfung, es wird nichts geändert' },
-  'selbst:tco POST /mitglieder/meine/vorgang': { offen: 'Beitragswechsel und Jugendtraining durch das Mitglied: nur Notiz am Mitglied und E-Mail-Kopie' },
-  'selbst:tco POST /mitglieder/meine/kuendigung': { offen: 'Kündigung durch das Mitglied: nur Notiz am Mitglied und E-Mail-Kopie' },
-  'selbst:tco PUT /mitglieder/meine/kontakt': { offen: 'Mitglied ändert Anschrift, E-Mail oder Telefon – kein Eintrag im Arbeitsvorrat' },
-  'selbst:tco PUT /mitglieder/meine/bank': { offen: 'Mitglied ändert seine Bankverbindung – kein Eintrag im Arbeitsvorrat' },
-  'selbst:tco POST /mitglieder/meine/gruppen': { offen: 'Mitglied trägt sich in eine Gruppe ein oder aus – kein Eintrag im Arbeitsvorrat' },
-  'selbst:tco PUT /meinkonto': { offen: 'Hallennutzer ändert seine Kontaktdaten – kein Eintrag im Arbeitsvorrat' },
+  'selbst:tco POST /mitglieder/meine/vorgang': { hinweis: 'MG_VORGANG' },
+  'selbst:tco POST /mitglieder/meine/kuendigung': { hinweis: 'MG_KUENDIGUNG' },
+  'selbst:tco PUT /mitglieder/meine/kontakt': { hinweis: 'MG_KONTAKT' },
+  'selbst:tco PUT /mitglieder/meine/bank': { hinweis: 'MG_BANK' },
+  'selbst:tco POST /mitglieder/meine/gruppen': { hinweis: 'MG_GRUPPE' },
+  'selbst:tco PUT /meinkonto': { hinweis: ['HN_KONTAKT', 'MG_KONTAKT'] },
 };

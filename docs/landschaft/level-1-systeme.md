@@ -166,7 +166,7 @@ flowchart LR
 | clubhaus | 18 |
 | core:admin | 17 |
 | core:apikeys | 6 |
-| core:arbeitsvorrat | 1 |
+| core:arbeitsvorrat | 2 |
 | core:audit | 3 |
 | core:auth | 7 |
 | core:backup | 15 |

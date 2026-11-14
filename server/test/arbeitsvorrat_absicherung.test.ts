@@ -6,7 +6,8 @@
  *  2. Jede Schnittstelle, jeder automatische Lauf und jeder Eingang von außen steht im Verzeichnis
  *     modules/tco/server/dashboard/ereignisquellen.ts – mit Eintrag im Arbeitsvorrat, als offener Punkt (V1) oder
  *     mit Begründung, warum es keinen Eintrag braucht. Neues ohne Entscheidung lässt den Test scheitern.
- *  3. Das Verzeichnis stimmt: nichts Veraltetes, und jeder genannte Eintrag existiert im Arbeitsvorrat.
+ *  3. Das Verzeichnis stimmt: nichts Veraltetes, jeder genannte Eintrag existiert im Arbeitsvorrat und jeder genannte
+ *     Hinweis (V1) wird im Quelltext gemeldet; auch dessen Absprung ist eine vorhandene Seite.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { EREIGNISQUELLEN } from '../../modules/tco/server/dashboard/ereignisquellen.js';
 
 /** offene Punkte im Verzeichnis, Stand 14.11.2026 – nur senken, nie erhöhen */
-const OFFEN_HOECHSTENS = 18;
+const OFFEN_HOECHSTENS = 9;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const lesen = (rel: string) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -47,6 +48,13 @@ const AV_DATEIEN = [AV_KERN, AV, ...[...lesen(AV).matchAll(/import \{[^}]*\baufg
   .map(([, p]) => path.posix.normalize(`${path.posix.dirname(AV)}/${p}.ts`))];
 /** Schlüssel der Einträge, z. B. MITGLIEDSANTRAG, SCHLUESSEL:Q, VZ_ABSCHLUSS */
 const AV_SCHLUESSEL = new Set(AV_DATEIEN.flatMap((d) => [...lesen(d).matchAll(/\bkey: ['`]([A-Z][A-Z0-9_]*(?::[A-Z]+)?)/g)].map(([, k]) => k)));
+
+/** Hinweise (V1): Dateien, die Ereignisse melden (hinweisMelden, tcoHinweis, stoerungMelden …) */
+const MELDER = QUELLTEXT.filter((q) => /\b(?:\w*Hinweis|hinweisMelden|stoerungMelden)\(/.test(q.text) && q.datei !== 'server/src/lib/hinweise.ts');
+/** gemeldete Quellen – { quelle: 'MG_BANK', … } */
+const HINWEIS_QUELLEN = new Set(MELDER.flatMap((q) => [...q.text.matchAll(/\bquelle: '([A-Z][A-Z0-9_]*)'/g)].map(([, k]) => k)));
+/** Absprünge der Meldungen: pfad im Aufruf der Meldefunktion */
+const HINWEIS_PFADE = MELDER.flatMap((q) => [...q.text.matchAll(/\b(?:\w*Hinweis|hinweisMelden|stoerungMelden)\([^;]*?\bpfad: ['`](\/[a-z0-9/-]*)/gs)].map(([, pfad]) => ({ pfad, datei: q.datei })));
 
 // ---------------------------------------------------------------- Seiten der Oberfläche
 interface Seite { pfad: string; datei: string | null }
@@ -83,6 +91,12 @@ test('Arbeitsvorrat: jeder Verweis führt auf eine vorhandene Seite und einen vo
     }
   }
   assert.ok(geprueft >= 15, `nur ${geprueft} Verweise gefunden – Erkennung prüfen`);
+  // Hinweise (V1): auch ihr Absprung muss eine vorhandene Seite sein
+  assert.ok(HINWEIS_QUELLEN.size >= 9, `nur ${HINWEIS_QUELLEN.size} gemeldete Hinweise gefunden – Erkennung prüfen`);
+  assert.ok(HINWEIS_PFADE.length >= 5, `nur ${HINWEIS_PFADE.length} Absprünge von Hinweisen gefunden – Erkennung prüfen`);
+  for (const h of HINWEIS_PFADE) {
+    assert.ok(alle.some((s) => s.pfad === h.pfad), `${h.datei}: ein Hinweis verweist auf ${h.pfad} – diese Seite gibt es nicht (mehr)`);
+  }
 });
 
 // ---------------------------------------------------------------- Ereignisquellen aus dem Quelltext
@@ -129,12 +143,16 @@ test('Ereignisquellen: genannte Einträge gibt es im Arbeitsvorrat, offene Punkt
   assert.ok(AV_SCHLUESSEL.size >= 15, 'Schlüssel des Arbeitsvorrats nicht erkannt');
   let offen = 0;
   for (const [quelle, a] of Object.entries(EREIGNISQUELLEN)) {
-    const arten = ['aufgabe', 'offen', 'ohne'].filter((x) => x in a);
-    assert.equal(arten.length, 1, `${quelle}: genau eine Angabe aus aufgabe / offen / ohne`);
+    const arten = ['aufgabe', 'hinweis', 'offen', 'ohne'].filter((x) => x in a);
+    assert.equal(arten.length, 1, `${quelle}: genau eine Angabe aus aufgabe / hinweis / offen / ohne`);
     if ('aufgabe' in a) {
       for (const aufgabe of [a.aufgabe].flat()) {
         assert.ok([...AV_SCHLUESSEL].some((k) => k === aufgabe || k.startsWith(`${aufgabe}:`)),
           `${quelle}: Eintrag „${aufgabe}“ gibt es im Arbeitsvorrat nicht (mehr) – vorhanden: ${[...AV_SCHLUESSEL].sort().join(', ')}`);
+      }
+    } else if ('hinweis' in a) {
+      for (const h of [a.hinweis].flat()) {
+        assert.ok(HINWEIS_QUELLEN.has(h), `${quelle}: Hinweis „${h}“ wird nirgends gemeldet (hinweisMelden mit quelle: '${h}') – gemeldet werden: ${[...HINWEIS_QUELLEN].sort().join(', ')}`);
       }
     } else {
       const text = 'offen' in a ? a.offen : a.ohne;
