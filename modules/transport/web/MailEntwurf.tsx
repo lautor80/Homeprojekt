@@ -277,7 +277,7 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
           </MessageStrip>
         ) : (
           <MessageStrip design="Critical" hideCloseButton>
-            Für Ihren Benutzer ist kein Postfach hinterlegt – „Senden“ ist deshalb gesperrt (Administration → Anbindungen → Euroflex E-Mail-Versand, „Postfach je Benutzer“).
+            Für Ihren Benutzer ist kein Postfach hinterlegt – „Senden“ ist deshalb gesperrt (Administration → Schnittstellen → Anbindungen → Euroflex E-Mail-Versand, „Postfach je Benutzer“).
           </MessageStrip>
         ))}
         <Text className="portal-muted portal-small">

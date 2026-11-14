@@ -2,7 +2,7 @@
  * Instandhaltung / Schadensmeldung (#205): Datenzugriff und Abläufe.
  *
  * Mitglieder melden Schäden (App „Schaden melden“, auch per QR-Code am Ort), Platzwart/Hallenwart/Vorstand bearbeiten
- * sie in der App „Instandhaltung“. Offene Meldungen stehen im Arbeitsvorrat der Vereinsübersicht (dashboard/arbeitsvorrat.ts),
+ * sie in der App „Schadensmeldungen“ (Bereich Instandhaltung). Offene Meldungen stehen im Arbeitsvorrat der Vereinsübersicht (dashboard/arbeitsvorrat.ts),
  * die Kachel „Offene Schäden“ in den Kennzahlen. E-Mails werden hier nur zusammengestellt – versendet wird in routes.ts.
  *
  * Stammdaten: Orte („Wo?“, mit Gruppe), Kategorien, Matrix Kategorie × Ort (was wo gemeldet werden kann), Zuständigkeit
@@ -125,7 +125,7 @@ export async function zustaendigkeitenLesen(db: Db): Promise<Zustaendigkeit[]> {
 export async function zustaendigkeitAnlegen(tx: Db, e: { benutzer_id: string; anlage_id: number | null; kategorie_id: number | null }): Promise<string> {
   if (!e.anlage_id && !e.kategorie_id) throw new BusinessError('Bitte einen Ort, eine Kategorie oder beides wählen.');
   if (!(await istBearbeiter(tx, e.benutzer_id))) {
-    throw new BusinessError('Zuständig sein kann nur, wer über eine Rolle die Berechtigung „Schadensmeldungen bearbeiten“ hat (Administration → Rollen).');
+    throw new BusinessError('Zuständig sein kann nur, wer über eine Rolle die Berechtigung „Schadensmeldungen bearbeiten“ hat (Administration → Benutzer und Rechte → Rollen).');
   }
   const r = await tx`insert into tco.ih_zustaendig (benutzer_id, anlage_id, kategorie_id) values (${e.benutzer_id}, ${e.anlage_id}, ${e.kategorie_id})
                      on conflict do nothing`;

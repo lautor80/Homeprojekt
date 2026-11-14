@@ -69,7 +69,7 @@ export function paperlessKonfiguriert(c: PaperlessConfig): boolean {
 }
 
 export const FREIGABE_ADRESSE_FEHLT = 'Für Freigabelinks ist keine aus dem Internet erreichbare Paperless-Adresse eingetragen – der Link wäre nur im eigenen Netz zu öffnen. '
-  + 'Bitte unter Administration → Anbindungen → Paperless-ngx die „Adresse für Freigabelinks“ eintragen (z. B. https://dokumente.example.org).';
+  + 'Bitte unter Administration → Schnittstellen → Anbindungen → Paperless-ngx die „Adresse für Freigabelinks“ eintragen (z. B. https://dokumente.example.org).';
 
 export class Paperless {
   private readonly urls: string[];

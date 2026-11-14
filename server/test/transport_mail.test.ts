@@ -162,7 +162,7 @@ test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Ve
   assert.equal(r.body.ok, false);
   assert.match(r.body.text, /X-Euroflex-Key/);
 
-  // Anbindung steht in der Liste (Administration → Anbindungen) mit ihren Zusatzfeldern
+  // Anbindung steht in der Liste (Administration → Schnittstellen → Anbindungen) mit ihren Zusatzfeldern
   r = await call('GET', '/api/verbindungen');
   const def = r.body.gruppen.flatMap((g: { verbindungen: { id: string; zusatz?: { key: string }[] }[] }) => g.verbindungen).find((v: { id: string }) => v.id === 'transport.mail');
   assert.deepEqual(def.zusatz.map((z: { key: string }) => z.key), ['kopie_an', 'postfaecher', 'max_mb']);

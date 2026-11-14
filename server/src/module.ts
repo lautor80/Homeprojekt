@@ -57,7 +57,7 @@ export interface ServerModule {
    */
   sperreErlaubt?: (req: import('fastify').FastifyRequest, objekt: string, schluessel: string) => Promise<boolean>;
   /**
-   * Vor dem Löschen eines Benutzers (Administration → Benutzer): Grund, warum er nicht gelöscht werden darf
+   * Vor dem Löschen eines Benutzers (Administration → Benutzer und Rechte → Benutzer): Grund, warum er nicht gelöscht werden darf
    * (z. B. „3 Platzbuchungen vorhanden“), sonst null. Läuft in der Lösch-Transaktion.
    */
   benutzerLoeschenSperre?: (tx: Tx, benutzerId: string) => Promise<string | null>;
@@ -75,12 +75,12 @@ export interface ServerModule {
   /** nach erfolgreicher Wiederholung nachziehen, was der erste Versand getan hätte (z. B. Rechnung „versendet“); null = nicht zuständig */
   mailFolge?: (tx: Tx, f: MailFolge) => Promise<string[] | null>;
   /**
-   * E-Mail-Protokoll (Administration → E-Mail-Protokoll): wem gehören diese Empfängeradressen (klein geschrieben)?
+   * E-Mail-Protokoll (Administration → Protokolle → E-Mail-Protokoll): wem gehören diese Empfängeradressen (klein geschrieben)?
    * Das Modul meldet seine Personen (z. B. Mitglied, Hallenkunde, Registrierung); Benutzer ergänzt der Kern.
    */
   mailPersonen?: (db: Tx, emails: string[]) => Promise<MailPerson[]>;
   /**
-   * Angeschlossene Systeme des Moduls (Administration → Anbindungen): Adresse und Zugangsdaten werden zentral
+   * Angeschlossene Systeme des Moduls (Administration → Schnittstellen → Anbindungen): Adresse und Zugangsdaten werden zentral
    * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.
    */
   verbindungen?: VerbindungDef[];

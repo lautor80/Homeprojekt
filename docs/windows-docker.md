@@ -47,7 +47,7 @@ Index (`PAPERLESS_PFAD`). Ohne Eintrag liegt alles wie bisher unter `PAPERLESS_P
 
 ## Paperless lokal anbinden
 
-Im Portal unter **Administration → Anbindungen → Paperless-ngx** URL und API-Token (Paperless → Profil) eintragen:
+Im Portal unter **Administration → Schnittstellen → Anbindungen → Paperless-ngx** URL und API-Token (Paperless → Profil) eintragen:
 
 | Paperless läuft … | URL in der Anbindung |
 |---|---|

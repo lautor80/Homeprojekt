@@ -89,7 +89,7 @@ test('Arbeitsvorrat: jeder Verweis führt auf eine vorhandene Seite und einen vo
 function ereignisquellen(): Map<string, string> {
   const out = new Map<string, string>();
   for (const { modul, datei, text } of QUELLTEXT) {
-    // Schnittstellen: Verbindungsdefinitionen (Administration → Anbindungen)
+    // Schnittstellen: Verbindungsdefinitionen (Administration → Schnittstellen → Anbindungen)
     if (text.includes('VerbindungDef')) {
       for (const [, roh] of text.matchAll(/\bid: ([A-Z][A-Z0-9_]*|'[^']+'), text: '/g)) {
         const id = roh.startsWith("'") ? roh.slice(1, -1) : new RegExp(`const ${roh} = '([^']+)'`).exec(text)?.[1];

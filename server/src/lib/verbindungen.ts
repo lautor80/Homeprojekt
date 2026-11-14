@@ -3,7 +3,7 @@ import { BusinessError } from '../errors.js';
 import { nurIntern, Paperless, paperlessKonfiguriert } from './paperless.js';
 
 /**
- * Zentrale Anbindungen (Administration → Anbindungen), Tabelle core.verbindungen.
+ * Zentrale Anbindungen (Administration → Schnittstellen → Anbindungen), Tabelle core.verbindungen.
  *
  * Der Kern meldet die Verbindung „paperless“ an; Module melden weitere Verbindungen über
  * ServerModule.verbindungen (z. B. n8n-Webhooks) und lesen die Werte mit verbindungLesen().

@@ -13,7 +13,7 @@ import {
   aktiveSchemas, datei, dateipfad, dumps, dumpVerzeichnis, entpacken, istVerschluesselt, kurzinfo, liste, ordner, pruefen, ruecksichern, sichern, speichern, uebersicht,
 } from '../backup.js';
 
-/** Sicherung und Rücksicherung (Administration → Sicherung) */
+/** Sicherung und Rücksicherung (Administration → System → Sicherung) */
 export const P_BACKUP = { erstellen: 'core.backup:create', ruecksichern: 'core.backup:restore' };
 
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';

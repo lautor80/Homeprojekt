@@ -13,6 +13,7 @@ import { useCan } from '../session';
 /**
  * E-Mail-Protokoll (Administration): alle E-Mails des Portals als Tabelle mit Filter – gesammelt je Person, Empfänger oder Vorgang.
  * Zeigt, ob eine E-Mail (z. B. die Bestätigung einer Registrierung) übergeben wurde, mit welchem Absender und mit welchem Fehler.
+ * „Protokoll leeren“ bzw. „Gefilterte Einträge löschen“ (Berechtigung core.settings:edit) – nach Anwendung und Zeitraum des Filters.
  * Je Zeile „Erneut senden“ (Berechtigung core.mail:edit): dieselbe E-Mail noch einmal an den Empfänger, der Absender erhält eine Kopie (CC).
  */
 interface Eintrag {
@@ -49,6 +50,8 @@ const tag = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const vorTagen = (n: number) => tag(new Date(Date.now() - n * 86400_000));
 /** „JJJJ-MM-TT HH:MM:SS“ → „TT.MM.JJJJ HH:MM“ */
 const zeitText = (z: string) => `${z.slice(8, 10)}.${z.slice(5, 7)}.${z.slice(0, 4)} ${z.slice(11, 16)}`;
+/** „JJJJ-MM-TT“ → „TT.MM.JJJJ“ */
+const tagText = (t: string) => `${t.slice(8, 10)}.${t.slice(5, 7)}.${t.slice(0, 4)}`;
 
 const fehlgeschlagen = (e: Eintrag) => e.status === 'fehler' || e.status === 'nicht_gesendet';
 const unzustellbar = (e: Eintrag) => (e.antworten ?? []).some((a) => a.art === 'unzustellbar');
@@ -88,7 +91,11 @@ export function MailProtokollPage() {
   const [query, setQuery] = useState(LEER);
   const [gruppe, setGruppe] = useState('');
   const [detail, setDetail] = useState<Eintrag | null>(null);
-  const darfSenden = useCan()('core.mail:edit');
+  const can = useCan();
+  const darfSenden = can('core.mail:edit');
+  // Leeren gehört zur Pflege der Anbindung (wie bisher unter „Anbindungen“): Recht „Systemeinstellungen ändern“ (#232, S3)
+  const darfLeeren = can('core.settings:edit');
+  const [leeren, setLeeren] = useState(false);
   const [frage, setFrage] = useState<Eintrag | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [meldung, setMeldung] = useState<{ ok: boolean; text: string } | null>(null);
@@ -102,6 +109,19 @@ export function MailProtokollPage() {
       setMeldung({ ok: true, text: [r.text, ...r.warnungen].join(' · ') });
     } catch (x) { setMeldung({ ok: false, text: (x as Error).message }); }
     finally { setBusy(null); l.reload(); }
+  }
+  // Gelöscht wird nach Anwendung und Zeitraum des angewendeten Filters. Suche und Status kennt das Löschen nicht –
+  // damit nie mehr verschwindet, als die Tabelle zeigt, ist der Knopf dann gesperrt.
+  const leerenFilter = { ...(query.anwendung ? { anwendung: query.anwendung } : {}), ...(query.von ? { von: query.von } : {}), ...(query.bis ? { bis: query.bis } : {}) };
+  const leerenGesperrt = !!(query.suche || query.status);
+  const leerenText = [query.anwendung && `Anwendung „${query.anwendung}“`, query.von && `ab ${tagText(query.von)}`, query.bis && `bis ${tagText(query.bis)}`].filter(Boolean).join(', ');
+  async function protokollLeeren() {
+    setLeeren(false); setMeldung(null);
+    try {
+      const r = await api.del<{ text: string }>('/api/mail/protokoll', leerenFilter);
+      setMeldung({ ok: true, text: r.text });
+    } catch (x) { setMeldung({ ok: false, text: (x as Error).message }); }
+    finally { l.reload(); }
   }
   const sendenKnopf = (e: Eintrag) => (
     <Button design="Transparent" icon="redo" loading={busy === e.id} disabled={!e.erneut || busy !== null}
@@ -167,11 +187,26 @@ export function MailProtokollPage() {
   return (
     <AppPage varianten={{ repid: 'core.mail', ansicht: { f, query, gruppe }, onAnwenden: (a) => { setF(feld(a, 'f', f)); setQuery(feld(a, 'query', query)); setGruppe(feld(a, 'gruppe', gruppe)); } }} title="E-Mail-Protokoll"
              subtitle={`Alle E-Mails des Portals je Person, Empfänger oder Vorgang · ${daten.length} Einträge${fehler ? `, davon ${fehler} nicht gesendet` : ''}${rueck ? `, ${rueck} unzustellbar` : ''}`}
-             header={filter} actions={<Button icon="refresh" onClick={l.reload}>Aktualisieren</Button>}>
+             header={filter}
+             actions={<>
+               {darfLeeren && (
+                 <Button design="Transparent" icon="delete" disabled={leerenGesperrt || !daten.length} onClick={() => setLeeren(true)}
+                         tooltip={leerenGesperrt ? 'Löschen richtet sich nur nach Anwendung und Zeitraum – bitte Suche und Status leeren und erneut suchen'
+                           : leerenText ? `Alle Einträge löschen: ${leerenText}` : 'Das ganze E-Mail-Protokoll löschen'}>
+                   {leerenText ? 'Gefilterte Einträge löschen' : 'Protokoll leeren'}
+                 </Button>
+               )}
+               <Button icon="refresh" onClick={l.reload}>Aktualisieren</Button>
+             </>}>
       {l.error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{l.error}</MessageStrip>}
       {meldung && <MessageStrip design={meldung.ok ? 'Positive' : 'Negative'} onClose={() => setMeldung(null)} style={{ marginBottom: '0.5rem' }}>{meldung.text}</MessageStrip>}
       <ConfirmDialog open={!!frage} title="E-Mail erneut senden" confirmText="Erneut senden" text={frage ? frageText(frage) : ''}
                      onConfirm={() => frage && erneut(frage)} onCancel={() => setFrage(null)} />
+      <ConfirmDialog open={leeren} danger title={leerenText ? 'Gefilterte Protokolleinträge löschen' : 'E-Mail-Protokoll leeren'} confirmText="Löschen"
+                     text={leerenText
+                       ? `Alle Einträge mit ${leerenText} werden gelöscht (alle im Zeitraum, nicht nur die angezeigten). Gespeicherte Inhalte zum erneuten Senden gehen dabei verloren.`
+                       : 'Das gesamte E-Mail-Protokoll wird gelöscht. Gespeicherte Inhalte zum erneuten Senden gehen dabei verloren.'}
+                     onConfirm={protokollLeeren} onCancel={() => setLeeren(false)} />
       {l.data?.gekuerzt && (
         <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Im Zeitraum gibt es mehr als 2000 E-Mails – durchsucht und angezeigt werden nur die neuesten 2000. Bitte den Zeitraum oder die Anwendung eingrenzen.

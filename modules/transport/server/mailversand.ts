@@ -74,7 +74,7 @@ function webhookFehler(status: number, text: string, mitSchluessel: boolean): st
   if (status === 401 || status === 403) {
     return mitSchluessel
       ? 'n8n hat den Webhook-Schlüssel abgelehnt: In der n8n-Zugangsdatei am Webhook-Knoten muss der Name „X-Euroflex-Key“ lauten und der Wert exakt dem Webhook-Schlüssel im Portal entsprechen.'
-      : 'n8n verlangt einen Webhook-Schlüssel – im Portal ist keiner hinterlegt (Administration → Anbindungen → Euroflex E-Mail-Versand).';
+      : 'n8n verlangt einen Webhook-Schlüssel – im Portal ist keiner hinterlegt (Administration → Schnittstellen → Anbindungen → Euroflex E-Mail-Versand).';
   }
   if (status === 404) return 'Der n8n-Workflow „Euroflex Mailversand“ ist nicht aktiv oder die URL stimmt nicht (Production-URL, nicht /webhook-test/).';
   return null;
@@ -99,7 +99,7 @@ async function aufrufen(v: Verbindung, body: unknown, timeout: number): Promise<
   return { status: res.status, text, json };
 }
 
-/** Anbindung „Euroflex E-Mail-Versand“ (Administration → Anbindungen) */
+/** Anbindung „Euroflex E-Mail-Versand“ (Administration → Schnittstellen → Anbindungen) */
 export const TRANSPORT_VERBINDUNGEN: VerbindungDef[] = [{
   id: V_MAIL, text: 'Euroflex E-Mail-Versand (Outlook 365, n8n)',
   beschreibung: 'n8n-Workflow „Euroflex Mailversand“: E-Mails zum Auftrag mit ausgewählten Anhängen über Outlook 365, aus dem Postfach des angemeldeten Benutzers. '
@@ -177,7 +177,7 @@ const ROLLE_TEXT: Record<Rolle, string> = { kunde: 'E-Mail an den Empfänger', k
 /** Anbindung eingerichtet und Postfach für den angemeldeten Benutzer vorhanden? Wirft sonst – vor dem Laden der Anhänge prüfen */
 export async function versandBereit(): Promise<{ v: Verbindung; e: MailEinstellungen; postfach: string }> {
   const v = await verbindungLesen(V_MAIL);
-  if (!eingerichtet(v)) throw new BusinessError('Der E-Mail-Versand über Outlook 365 ist nicht eingerichtet (Administration → Anbindungen → Euroflex E-Mail-Versand).');
+  if (!eingerichtet(v)) throw new BusinessError('Der E-Mail-Versand über Outlook 365 ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen → Euroflex E-Mail-Versand).');
   const e = einstellungenLesen(v);
   const postfach = postfachFuer(e, aktuellerBenutzer());
   if (!postfach) {
@@ -197,7 +197,7 @@ export async function euroflexMailSenden(a: VersandAuftrag): Promise<VersandErge
 
   const groesse = a.dateien.reduce((s, d) => s + d.daten.length, 0);
   if (groesse > e.max_mb * 1024 * 1024) {
-    throw new BusinessError(`Die Anhänge sind zusammen ${(groesse / 1024 / 1024).toFixed(1).replace('.', ',')} MB groß – erlaubt sind ${e.max_mb} MB je Vorgang (Administration → Anbindungen → Euroflex E-Mail-Versand).`);
+    throw new BusinessError(`Die Anhänge sind zusammen ${(groesse / 1024 / 1024).toFixed(1).replace('.', ',')} MB groß – erlaubt sind ${e.max_mb} MB je Vorgang (Administration → Schnittstellen → Anbindungen → Euroflex E-Mail-Versand).`);
   }
 
   const anhaenge = a.dateien.map((d, i) => ({ id: `a${i + 1}`, dateiname: d.name, mime: d.mime, inhalt_base64: d.daten.toString('base64') }));

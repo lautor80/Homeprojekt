@@ -7,10 +7,10 @@ import { FieldBox, FormGrid, TextField } from '../components/FormFields';
 import { ChangeHistoryButton } from '../components/ChangeHistory';
 import { toast } from '../toast';
 import { SperrHinweis, useSperre } from '../sperre';
-import { MailAbsender, MailProtokoll, type Absender } from './MailVersand';
+import { MailAbsender, MailStand, type Absender } from './MailVersand';
 
 /**
- * Administration → Anbindungen: angeschlossene Systeme des Kerns (Paperless) und der Module (z. B. n8n-Webhooks)
+ * Administration → Schnittstellen → Anbindungen: angeschlossene Systeme des Kerns (Paperless) und der Module (z. B. n8n-Webhooks)
  * an einer Stelle – Adresse, Anmeldeart, Zugangsdaten, Verbindungstest. Geheimnisse kommen maskiert vom Server;
  * die Maske beim Sichern bedeutet „unverändert“.
  */
@@ -96,7 +96,7 @@ function Verbindung({ def, gruppe }: { def: Def; gruppe: Gruppe }) {
         <ChangeHistoryButton objectType="VERBINDUNG" objectKey={def.id} />
         {test && <ObjectStatus state={test.ok ? 'Positive' : 'Negative'} showDefaultIcon>{test.text}{test.dauer_ms != null ? ` (${(test.dauer_ms / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s)` : ''}</ObjectStatus>}
       </FlexBox>
-      {def.id === 'mail' && <MailProtokoll />}
+      {def.id === 'mail' && <MailStand />}
     </Panel>
   );
 }

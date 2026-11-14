@@ -223,7 +223,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
         </Block>
       )}
 
-      <Block titel="Ablage in Paperless" hinweis={stamm.paperless.eingerichtet ? undefined : 'Paperless ist noch nicht eingerichtet (Administration → Anbindungen).'}>
+      <Block titel="Ablage in Paperless" hinweis={stamm.paperless.eingerichtet ? undefined : 'Paperless ist noch nicht eingerichtet (Administration → Schnittstellen → Anbindungen).'}>
         <CheckBox text={r.gilt_fuer === 'mail' ? 'E-Mail als PDF in Paperless ablegen' : 'Anhang in Paperless ablegen'} checked={pl.aktiv} onChange={(e) => setA({ paperless: { ...pl, aktiv: e.target.checked } })} />
         {pl.aktiv && (
           <div style={{ ...raster, marginTop: '0.5rem' }}>
@@ -247,7 +247,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
         )}
       </Block>
 
-      <Block titel="Zusätzlich in die Nextcloud" hinweis={stamm.nextcloud.eingerichtet ? undefined : 'Die Nextcloud ist noch nicht eingerichtet (Administration → Anbindungen → Nextcloud Dokumentenablage).'}>
+      <Block titel="Zusätzlich in die Nextcloud" hinweis={stamm.nextcloud.eingerichtet ? undefined : 'Die Nextcloud ist noch nicht eingerichtet (Administration → Schnittstellen → Anbindungen → Nextcloud Dokumentenablage).'}>
         <CheckBox text="Kopie in einen Ordner der Nextcloud legen" checked={nc.aktiv} onChange={(e) => setA({ nextcloud: { ...nc, aktiv: e.target.checked } })} />
         {nc.aktiv && (
           <div style={{ ...raster, marginTop: '0.5rem' }}>

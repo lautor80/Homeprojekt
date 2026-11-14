@@ -1,5 +1,5 @@
 /**
- * E-Mail-Protokoll als App (Administration → E-Mail-Protokoll): reine Hilfsfunktionen ohne Datenbank.
+ * E-Mail-Protokoll als App (Administration → Protokolle → E-Mail-Protokoll): reine Hilfsfunktionen ohne Datenbank.
  * Empfängeradressen eines Protokolleintrags, Zuordnung Adresse → Person (Mitglied, Kunde, Benutzer …) und Freitextsuche.
  */
 

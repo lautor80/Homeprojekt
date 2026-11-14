@@ -5,7 +5,7 @@ import { benutzerZuordnen } from '../platz/logik.js';
 import { buchungsrechtSichern, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
- * Zuordnung vorhandener Benutzer zu Mitglied und EP3-Kunde (Administration → Benutzer).
+ * Zuordnung vorhandener Benutzer zu Mitglied und EP3-Kunde (Administration → Benutzer und Rechte → Benutzer).
  * - Mitglied: tco.mitgliedera.benutzer_id (je Benutzer höchstens ein Mitglied)
  * - EP3-Kunde: bei Mitglied über tco.mitgliedera.zuid (EP3-Buchungen gehören dann zum Mitglied),
  *   sonst über tco.kunden.benutzer_id (Benutzer bucht als EP3-Kunde)

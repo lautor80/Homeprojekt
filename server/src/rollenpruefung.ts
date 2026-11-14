@@ -1,7 +1,7 @@
 import type { PermissionGroup } from './permissions.js';
 
 /**
- * Prüfungen der Rollenpflege (#46, Administration → Benutzerverwaltung → Rollenmatrix): Überlappungen zwischen Rollen,
+ * Prüfungen der Rollenpflege (#46, Administration → Benutzer und Rechte → Rollenmatrix): Überlappungen zwischen Rollen,
  * überflüssige Rollenzuordnungen, Funktionstrennung, fehlende Voraussetzungen, unbekannte Rechte.
  * Reine Funktion ohne Datenbank – die Routen liefern Rollen, Katalog und Benutzer.
  */

@@ -11,7 +11,7 @@ import { authHeader } from '../lib/verbindungen.js';
 import { adressen, passt, personenIndex, personenText, type MailPerson } from '../lib/mailuebersicht.js';
 import { erneutSperre, mailErneutSenden, mailSenden, mailVerbindung, mailWiederholen, nichtWiederholbar, WIEDERHOLBAR, wiederholungsArt, type MailFolge, type Wiederholung } from '../lib/mail.js';
 
-/** Mailprotokoll, Testmail und „Erneut senden“ (Administration → Anbindungen → E-Mail-Versand) */
+/** Mailprotokoll, Testmail und „Erneut senden“ (Administration → Schnittstellen → Anbindungen → E-Mail-Versand) */
 const P = 'core.settings:edit';
 /** App „E-Mail-Protokoll“: nur lesen (Empfänger, Betreff, Status – nie der Inhalt) */
 const P_ANZEIGE = 'core.mail:display';
@@ -183,7 +183,7 @@ export async function mailRoutes(app: FastifyInstance) {
     const r = await mailSenden({
       modus: 'senden', anwendung: 'Test', objekt: 'TESTMAIL', an, benutzer: wer, anhaenge: [],
       betreff: `${org}: Testmail aus dem Portal`,
-      text: `Diese Testmail wurde von ${wer} im Portal ausgelöst (Administration → Anbindungen).\n\nWenn sie ankommt, funktioniert der Versand über n8n.`,
+      text: `Diese Testmail wurde von ${wer} im Portal ausgelöst (Administration → Schnittstellen → Anbindungen).\n\nWenn sie ankommt, funktioniert der Versand über n8n.`,
     });
     if (r.status === 'fehler') throw new BusinessError(`n8n meldet einen Fehler: ${r.fehler ?? 'unbekannt'}`);
     return { text: `Testmail an ${an} übergeben (${r.status}${r.von ? `, Absender ${r.von}` : ''}${r.hinweis ? ` – ${r.hinweis}` : ''}).` };

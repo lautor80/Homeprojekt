@@ -220,7 +220,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return { ...b, text: `${r.text}${b.gesendet ? ' Die Kündigungsbestätigung wurde per E-Mail gesendet.' : ''}` };
   });
 
-  // ---------------------------------------------------------------- Administration → Benutzer: einzelner Benutzer aus Mitglied/EP3-Kunde
+  // ---------------------------------------------------------------- Administration → Benutzer und Rechte → Benutzer: einzelner Benutzer aus Mitglied/EP3-Kunde
   app.get('/mitglieder/benutzer-kandidaten', { preHandler: requireAuth('core.users:edit') }, async (req) => {
     const { suche } = z.object({ suche: z.string().max(80).default('') }).parse(req.query);
     return benutzerKandidaten(DB, suche);
@@ -239,7 +239,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return { text: `Benutzer ${a.username} angelegt (Rolle Mitglied) – ${a.hinweis}.`, username: a.username, startkennwort: a.startkennwort, rolle: 'Mitglied' };
   });
 
-  // ---------------------------------------------------------------- Administration → Benutzer: Zuordnung Mitglied / EP3-Kunde
+  // ---------------------------------------------------------------- Administration → Benutzer und Rechte → Benutzer: Zuordnung Mitglied / EP3-Kunde
   const uid = z.object({ id: z.string().uuid() });
   app.get('/mitglieder/benutzer/:id/zuordnung', { preHandler: requireAuth('core.users:display') }, async (req) => zuordnungLesen(DB, uid.parse(req.params).id));
   app.put('/mitglieder/benutzer/:id/zuordnung', { preHandler: requireAuth('core.users:edit') }, async (req) => {
@@ -261,7 +261,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return { text: await change(req, (tx) => mappingUebernehmen(tx, b.liste, b.rolleMitglied), { action: 'BENUTZER_MAPPING' }) };
   });
 
-  // ---------------------------------------------------------------- Administration → Benutzer: Mitglieder als Benutzer anlegen
+  // ---------------------------------------------------------------- Administration → Benutzer und Rechte → Benutzer: Mitglieder als Benutzer anlegen
   app.post('/mitglieder/benutzer-anlegen', { preHandler: requireAuth('core.users:edit') }, async (req) => {
     const o = z.object({ mail: z.boolean().default(true) }).parse(req.body ?? {});
     const v = await vereinLesen();
@@ -284,7 +284,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   const ccAnMich = (req: FastifyRequest, an: boolean) => {
     if (!an) return null;
     const e = (req.user?.email ?? '').trim();
-    if (!e) throw new BusinessError('Für „Kopie an mich“ ist bei deinem Benutzer keine E-Mail-Adresse hinterlegt (Administration → Benutzer).');
+    if (!e) throw new BusinessError('Für „Kopie an mich“ ist bei deinem Benutzer keine E-Mail-Adresse hinterlegt (Administration → Benutzer und Rechte → Benutzer).');
     return e;
   };
   app.post('/mitglieder/einladungen', { preHandler: requireAuth('core.users:edit') }, async (req) => {

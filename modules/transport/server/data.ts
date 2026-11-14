@@ -215,7 +215,7 @@ export function rechnungsbetrag(a: Pick<Auftrag, 'frachtpreis_ek' | 'steuerrelev
 // ---------------------------------------------------------------------------
 // Lesen
 // ---------------------------------------------------------------------------
-/** Firmendaten; Paperless-Zugang kommt aus der zentralen Anbindung (Administration → Anbindungen) */
+/** Firmendaten; Paperless-Zugang kommt aus der zentralen Anbindung (Administration → Schnittstellen → Anbindungen) */
 export async function firmaLesen(db: Db = DB): Promise<Firma> {
   const [f] = await db`select * from transport.firma where id = 1`;
   const pl = await paperlessZugang(db);

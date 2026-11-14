@@ -19,9 +19,9 @@ flowchart LR
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining<br/>Meine Trainingszeiten"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenpreise<br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Platz buchen<br/>Meine Daten<br/>Serienbuchung<br/>Platzverwaltung"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Mein Verzehr<br/>Theke<br/>Verzehrbuch"]
-      B_Instandhaltung["<b>Instandhaltung</b><br/>Schaden melden<br/>Instandhaltung"]
-      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Dokumenten-Upload"]
-      B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang"]
+      B_Instandhaltung["<b>Instandhaltung</b><br/>Schaden melden<br/>Schadensmeldungen"]
+      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss"]
+      B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
     ANB["2 · Anbindungen<br/>Rückmeldungen Jugendtraining (n8n)<br/>Schulferien Saarland (n8n)<br/>EP3-Export Hallenbuchungen (n8n)<br/>Maileingang jetzt abrufen (n8n)<br/>Nextcloud Dokumentenablage<br/>Paperless-ngx<br/>E-Mail-Versand (n8n)<br/>Euroflex E-Mail-Versand (Outlook 365, n8n)"]
@@ -74,7 +74,7 @@ flowchart LR
 | Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung |
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
-| Einstellungen | Stammdaten | `/tco/stammdaten` | `tco.stammdaten:edit` | Verein, Anbindungen, SAP-Übernahme |
+| Einstellungen | Stammdaten | `/tco/stammdaten` | `tco.stammdaten:edit` | Verein, Bank, Logo, Hallenabrechnung, SAP-Übernahme |
 | Einstellungen | Kontenstamm | `/tco/konten` | `tco.konten:display` | Konten, Verwendung je Jahr, Anfangsbestände |
 | Einstellungen | Produkte | `/tco/produkte` | `tco.produkte:display` | Produkte, Preise je Zeitraum, Erlöskonten |
 | Mitglieder | Meine Mitgliedschaft | `/tco/meine-mitgliedschaft` | `tco.meinedaten:edit` | Eigene Daten, Bankverbindung, Verträge, Kündigung |
@@ -101,14 +101,14 @@ flowchart LR
 | Clubhaus | Theke | `/tco/theke` | `tco.verzehr:theke` | Gäste kassieren, Belege senden, Mitglieder anschreiben |
 | Clubhaus | Verzehrbuch | `/tco/verzehrbuch` | `tco.verzehr:display` | Alle Positionen, Belege, Monatsabschluss, Preisliste |
 | Instandhaltung | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
-| Instandhaltung | Instandhaltung | `/tco/instandhaltung` | `tco.instandhaltung:display` | Schadensmeldungen bearbeiten, Plätze sperren |
+| Instandhaltung | Schadensmeldungen | `/tco/instandhaltung` | `tco.instandhaltung:display` | Meldungen bearbeiten, Plätze sperren |
 | Finanzen | Sollstellungen | `/tco/sollstellung` | `tco.soll:display` | Beitragseinzug per SEPA-Lastschrift |
 | Finanzen | FI-Belege | `/tco/fi` | `tco.fi:display` | Bankimport, Belege, Storno |
 | Finanzen | Beitragsforecast | `/tco/forecast` | `tco.forecast:display` | Hochrechnung der Beitragseinnahmen |
 | Finanzen | Einnahmen und Ausgaben | `/tco/finanz` | `tco.finanz:display` | Jahresübersicht, Geldkonten, Liquidität |
 | Finanzen | Jahresabschluss | `/tco/abschluss` | `tco.abschluss:display` | EAR, Vermögensübersicht, Anlagevermögen |
-| Finanzen | Dokumenten-Upload | `/tco/upload` | `tco.upload:execute` | Belege gesammelt nach Paperless |
 | Dokumente | Dokumenteneingang | `/tco/dokumenteneingang` | `tco.eingang:display` | E-Mails und Anhänge nach Regeln ablegen, Prüfliste |
+| Dokumente | Dokumenten-Upload | `/tco/upload` | `tco.upload:execute` | Belege gesammelt nach Paperless |
 
 **Öffentliche Seiten (ohne Anmeldung):** `/beitritt`, `/schnuppertraining`, `/registrierung-bestaetigen`, `/einladung`, `/schluessel-quittung`
 
@@ -125,7 +125,7 @@ flowchart LR
 | TCO Paperless Qualifizierung | Webhook /webhook/tco-paperless-qualifizieren, Zeitplan alle 30 Min., manuell (Editor) | Paperless-ngx | HTTP | Custom Fields laden, Korrespondenten laden, Dokumenttypen laden, Offene Dokumente suchen, Dokument laden, Datei laden, Dokument aktualisieren | /api/custom_fields, /api/correspondents, /api/document_types, /api/documents |
 | TCO Paperless Qualifizierung | Webhook /webhook/tco-paperless-qualifizieren, Zeitplan alle 30 Min., manuell (Editor) | OpenAI API | HTTP | OpenAI Analyse | https://api.openai.com/v1/chat/completions |
 
-## Anbindungen im Portal (Administration → Anbindungen)
+## Anbindungen im Portal (Administration → Schnittstellen → Anbindungen)
 
 | Kennung | Bezeichnung | n8n-Workflow | Beschreibung | Quelle |
 |---|---|---|---|---|

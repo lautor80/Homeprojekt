@@ -22,7 +22,7 @@ export async function portalUrl(): Promise<string | null> {
   return url ? url.replace(/\/+$/, '') : null;
 }
 
-/** true, wenn der zentrale Mailversand (Administration → Anbindungen → E-Mail-Versand) eingerichtet ist */
+/** true, wenn der zentrale Mailversand (Administration → Schnittstellen → Anbindungen → E-Mail-Versand) eingerichtet ist */
 export const mailVerfuegbar = () => versandEingerichtet();
 
 /** `stunden`: abweichende Gültigkeit, z. B. für Zugangslinks aus der Benutzerverwaltung (Tco #105) */
@@ -56,7 +56,7 @@ export async function unbekanntesKennwort(): Promise<string> {
 export async function kennwortLinkSenden(db: Db, userId: string, zweck: Zweck, ip: string | null, orgName?: string): Promise<string> {
   const url = await portalUrl();
   if (!url) throw new BusinessError('Für Kennwort-Links fehlt die Portal-Adresse (Administration → Einstellungen).');
-  if (!(await mailVerfuegbar())) throw new BusinessError('Der E-Mail-Versand ist nicht eingerichtet (Administration → Anbindungen).');
+  if (!(await mailVerfuegbar())) throw new BusinessError('Der E-Mail-Versand ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
   const [u] = await db`select username, display_name, email from core.users where id = ${userId}`;
   if (!u?.email) throw new BusinessError('Für den Benutzer ist keine E-Mail-Adresse hinterlegt.');
   const token = await tokenErzeugen(db, userId, zweck, ip);
@@ -67,7 +67,7 @@ export async function kennwortLinkSenden(db: Db, userId: string, zweck: Zweck, i
     modus: 'senden', benutzer: 'Portal', anhaenge: [], organisation: org,
     an: u.email, anwendung: 'Benutzer', objekt: u.username,
     // enthält einen persönlichen Kennwort-Link: nie speichern, sondern neu auslösen
-    wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Kennwort-Link – bitte neu auslösen: Administration → Benutzer → „Kennwort-Link senden“ bzw. „Passwort vergessen“ auf der Anmeldeseite.' },
+    wiederholung: { art: 'NEU_AUSLOESEN', hinweis: 'Enthält einen persönlichen Kennwort-Link – bitte neu auslösen: Administration → Benutzer und Rechte → Benutzer → „Kennwort-Link senden“ bzw. „Passwort vergessen“ auf der Anmeldeseite.' },
     betreff: reset ? `${org}: Kennwort zurücksetzen` : `${org}: Ihr Zugang – bitte Kennwort festlegen`,
     text: reset
       ? `Guten Tag ${u.display_name || u.username},\n\nfür Ihren Zugang (Benutzer ${u.username}) wurde das Zurücksetzen des Kennworts angefordert. `

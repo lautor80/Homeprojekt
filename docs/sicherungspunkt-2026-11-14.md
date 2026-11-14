@@ -42,7 +42,7 @@ cp .env data/sicherungspunkte/2026-11-14/env.txt
 `data/backups` steht für den Ordner aus `BACKUP_PFAD`, `portal_` für den Namen der Datenbank (`POSTGRES_DB`). Die Dokumente von Paperless (`PAPERLESS_PFAD/media`) und
 n8n (`N8N_PFAD`) sind Ordner – einmal vollständig kopieren, am besten auf ein anderes Laufwerk.
 
-Zusätzlich oder bei Portainer: im Portal *Administration → Sicherung → Sicherung erstellen und herunterladen*
+Zusätzlich oder bei Portainer: im Portal *Administration → System → Sicherung → Sicherung erstellen und herunterladen*
 (alle Bereiche, mit Änderungsbelegen) und die Datei außerhalb des Servers aufbewahren.
 
 ## 3 Zurücksetzen
@@ -65,7 +65,7 @@ docker compose up -d --build
 
 1. Stack öffnen, Variable `PORTAL_IMAGE` auf das Image aus Abschnitt 1 setzen (mit `@sha256:…` oder nach dem
    Release `:2026.11.14`), *Update the stack*.
-2. Im Portal *Administration → Sicherung*: die heruntergeladene Datei hochladen und zurücksichern.
+2. Im Portal *Administration → System → Sicherung*: die heruntergeladene Datei hochladen und zurücksichern.
 
 **Wieder nach vorn:** `git checkout main && ./update.sh` bzw. `PORTAL_IMAGE` wieder entfernen.
 

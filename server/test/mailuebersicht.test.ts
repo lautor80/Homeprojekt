@@ -1,5 +1,5 @@
 /**
- * E-Mail-Protokoll (Administration → E-Mail-Protokoll): Hilfsfunktionen ohne Datenbank –
+ * E-Mail-Protokoll (Administration → Protokolle → E-Mail-Protokoll): Hilfsfunktionen ohne Datenbank –
  * Empfängeradressen, Zuordnung Adresse → Person, Freitextsuche.
  */
 import { test } from 'node:test';

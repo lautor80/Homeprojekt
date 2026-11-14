@@ -150,7 +150,7 @@ function workflows() {
   return liste;
 }
 
-// ------------------------------------------------------------------ Anbindungen (Administration → Anbindungen)
+// ------------------------------------------------------------------ Anbindungen (Administration → Schnittstellen → Anbindungen)
 function anbindungen() {
   const liste = [];
   const quellen = [`${MOD}/server/verbindung.ts`, 'server/src/lib/verbindungen.ts', 'server/src/lib/mail.ts', 'server/src/lib/webdav.ts', 'modules/transport/server/mailversand.ts'];
@@ -282,7 +282,7 @@ function level1(ctx) {
       s += `| ${md(w.name)} | ${md(w.ausloeser.join(', '))} | ${md(ctx.systeme[g.ziel] ?? g.ziel)} | ${g.art} | ${md(g.knoten.join(', '))} | ${md([...g.details].join(', '))} |\n`;
     }
   }
-  s += '\n## Anbindungen im Portal (Administration → Anbindungen)\n\n| Kennung | Bezeichnung | n8n-Workflow | Beschreibung | Quelle |\n|---|---|---|---|---|\n';
+  s += '\n## Anbindungen im Portal (Administration → Schnittstellen → Anbindungen)\n\n| Kennung | Bezeichnung | n8n-Workflow | Beschreibung | Quelle |\n|---|---|---|---|---|\n';
   for (const a of ctx.anbindungen) s += `| \`${a.id}\` | ${md(a.text)} | ${md(a.workflow ?? '')} | ${md(a.beschreibung)} | \`${a.datei}\` |\n`;
   const ohneWf = ctx.anbindungen.filter((a) => /\(n8n\)/.test(a.text) && !a.workflow);
   if (ohneWf.length) s += `\n> Hinweis: Zu ${ohneWf.map((a) => `„${a.text}“`).join(', ')} liegt kein Workflow-Export in \`docs/n8n\` – die Workflows existieren nur in der n8n-Instanz.\n`;

@@ -30,7 +30,7 @@ Verschieben zur Verfügung steht.
 
 ## Einrichten
 
-1. Im Portal unter **Administration → API-Schlüssel** einen Schlüssel für „TC Oberthal“ mit der Berechtigung `tco.eingang:melden` anlegen.
+1. Im Portal unter **Administration → Schnittstellen → API-Schlüssel** einen Schlüssel für „TC Oberthal“ mit der Berechtigung `tco.eingang:melden` anlegen.
 2. In n8n Zugangsdaten vom Typ **Header Auth** anlegen: Name `Authorization`, Wert `Bearer pk_tco_…`. In den drei HTTP-Knoten
    („An Portal liefern“, „Ausstehende Mailaktionen“, „Erledigt melden“) auswählen.
 3. **Import from File** → `tco-maileingang.json` (oder den bestehenden Workflow „TCO Maileingang“ ersetzen). In den IMAP-Knoten die
@@ -42,7 +42,7 @@ Verschieben zur Verfügung steht.
 6. Im Knoten „E-Mail in den Papierkorb“ den Namen des Papierkorbs des Postfachs eintragen (z. B. `Trash`, `Papierkorb`).
 7. **Sofort-Start aus dem Portal:** Im Knoten „Alle Mails jetzt (Webhook)“ Zugangsdaten „Portal-Abruf (Webhook)“ vom Typ **Header Auth**
    anlegen (Name `Authorization`, Wert `Bearer <geheimer Wert>` – eigener Wert, nicht der API-Schlüssel des Portals). Im Portal unter
-   **Administration → Anbindungen → Maileingang jetzt abrufen (n8n)** die Production-URL des Webhooks
+   **Administration → Schnittstellen → Anbindungen → Maileingang jetzt abrufen (n8n)** die Production-URL des Webhooks
    (`…/webhook/tco-dokumenteneingang-alle`) eintragen, Anmeldung „Header“, Name `Authorization`, Wert wie in n8n.
 8. Einmal von Hand ausführen und das Ergebnis im Portal unter Dokumenteneingang → Protokoll ansehen, dann aktivieren.
 

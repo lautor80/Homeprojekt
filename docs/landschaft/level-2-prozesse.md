@@ -376,7 +376,7 @@ flowchart LR
 | Mitgliedergruppen | ● |  |  |  |  |  |  |  |  |  |
 | Hallenabrechnung |  |  | ● |  |  |  |  |  |  |  |
 | Hallenschlüssel |  |  |  |  |  |  |  |  |  | ● |
-| Instandhaltung |  |  |  |  |  |  |  |  | ● |  |
+| Schadensmeldungen |  |  |  |  |  |  |  |  | ● |  |
 | Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |  |  |
 | Vereinskalender |  |  |  |  |  |  | ● |  |  |  |
 | Meine Mitgliedschaft | ● |  |  |  |  |  |  |  |  |  |

@@ -1,5 +1,5 @@
 /**
- * Tabellenansicht (Administration → Tabellenansicht): Tabellenliste, Struktur, Selektion, Gruppierung –
+ * Tabellenansicht (Administration → System → Tabellenansicht): Tabellenliste, Struktur, Selektion, Gruppierung –
  * Geheimnisse nie sichtbar (auch nicht über Filter), Bankdaten nur mit Berechtigung, nur lesend.
  */
 import { test, before, after } from 'node:test';

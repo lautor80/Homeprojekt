@@ -108,7 +108,7 @@ export async function clubhausPdf(db: Db, v: Verein, jahr: number, monat: number
 
 export async function clubhausAblegen(db: Db, v: Verein, jahr: number, monat: number, pdf: Buffer, op: number, benutzer: string,
   schreiben: (fn: (tx: Db) => Promise<void>) => Promise<void>) {
-  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Anbindungen).');
+  if (!plAktiv(v)) throw new BusinessError('Paperless ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
   const pl = paperless(v);
   const titel = chTitel(jahr, monat);
   const [r] = await db`select rechnung from tco.forderungen where jahr = ${jahr} and monat = ${monat}`;

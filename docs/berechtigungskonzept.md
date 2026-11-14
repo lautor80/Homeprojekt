@@ -295,7 +295,7 @@ In einem Verein lässt sich nicht jede Trennung besetzen. Deshalb sind nur zwei 
 werden sichtbar gemacht und über Belege ausgeglichen.
 
 **Umgesetzt (11/2026, #46):** Die Rollenpflege zeigt diese Paare mit den heutigen Kennungen als Warnung – je Rolle und je
-Benutzer über mehrere Rollen (Administration → Benutzerverwaltung → Rollenmatrix → Prüfung). Module deklarieren sie in `rechteKonflikte`
+Benutzer über mehrere Rollen (Administration → Benutzer und Rechte → Rollenmatrix → Prüfung). Module deklarieren sie in `rechteKonflikte`
 (`server/src/module.ts`), der Kern in `server/src/rollenpruefung.ts`. Gesperrt wird noch nichts.
 
 ### 4.9 Lebenszyklus

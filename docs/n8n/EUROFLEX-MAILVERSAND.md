@@ -97,7 +97,7 @@ Empfänger, feste zweite Adresse und Anhänge kommen mit jedem Aufruf aus dem Po
 
 ## 4 Im Portal eintragen
 
-*Administration → Anbindungen → Euroflex E-Mail-Versand (Outlook 365, n8n)* (Recht `core.settings:edit`):
+*Administration → Schnittstellen → Anbindungen → Euroflex E-Mail-Versand (Outlook 365, n8n)* (Recht `core.settings:edit`):
 
 | Feld | Wert |
 |---|---|
@@ -125,7 +125,7 @@ Im Dialog *E-Mail mit Anhängen…* (Recht `transport.versand:execute`):
 - **E-Mail-Datei** – der bisherige Weg (`.eml` für das Mailprogramm auf dem PC), unabhängig von n8n.
 - Schlägt nur eine der beiden E-Mails fehl, nennt die Meldung, welche erledigt ist. Der Knopf heißt dann **„Rest senden“** und
   sendet nur die fehlgeschlagene – niemand bekommt etwas doppelt.
-- Jede E-Mail steht in *Administration → E-Mail-Protokoll* (Anwendung „Euroflex“, Vorgang = Auftragsnummer, Absender = Postfach).
+- Jede E-Mail steht in *Administration → Protokolle → E-Mail-Protokoll* (Anwendung „Euroflex“, Vorgang = Auftragsnummer, Absender = Postfach).
   Der Inhalt wird nicht gespeichert; „Erneut senden“ aus dem Protokoll gibt es für diese E-Mails nicht – wiederholt wird am Auftrag.
 - Ohne eingerichtete Anbindung zeigt der Dialog nur den bisherigen Entwurf.
 
