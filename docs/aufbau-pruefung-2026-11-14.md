@@ -8,9 +8,10 @@ Berechtigungskatalog (`modules/*/server/index.ts`) und alle 54 Apps (13 Administ
 Kommentar im Issue, z. B. „E1 ja, S1 ja, N1 nein, N4 Variante B“. Die Liste zum Abhaken steht in
 [Abschnitt 6](#6-entscheidungsliste).
 
-**Überarbeitet am 14.11.2026** nach dem Kommentar im Issue: Paperless hat je Bereich einen eigenen Zugang (neu
-**S5**, S1 angepasst), alle Ereignisse landen im Arbeitsvorrat (neu **V1–V3**), und vor dem Umbau gibt es einen
-Sicherungspunkt mit beschriebenem Rückweg: [sicherungspunkt-2026-11-14.md](sicherungspunkt-2026-11-14.md).
+**Überarbeitet am 14.11.2026** nach den Kommentaren im Issue: Paperless hat je Bereich einen eigenen Zugang (neu
+**S5**, S1 angepasst), alle Ereignisse landen im Arbeitsvorrat (neu **V1–V3**), jede Funktion lässt sich vom
+Administrator abschalten (neu **F1**), und vor dem Umbau gibt es einen Sicherungspunkt mit beschriebenem
+Rückweg: [sicherungspunkt-2026-11-14.md](sicherungspunkt-2026-11-14.md).
 
 ## 1 Kurzfassung
 
@@ -30,15 +31,19 @@ Sicherungspunkt mit beschriebenem Rückweg: [sicherungspunkt-2026-11-14.md](sich
 7. **Der Arbeitsvorrat gehört zum Modul TC Oberthal und kennt nicht alle Ereignisse:** Es fehlen unter anderem der
    Dokumenteneingang, unzustellbare E-Mails, Kündigungen und Beitragswechsel der Mitglieder, Fehler der
    Schnittstellen und alles aus Euroflex. → **V1–V3**
+8. **Einzelne Funktionen lassen sich nicht abschalten.** Es gibt nur ganze Module (`PORTAL_MODULES` in der `.env`,
+   mit Neustart) und Rechte je Rolle. EP3-Import, Bankimport oder „Geldkonto tauschen“ sind da, sobald jemand das
+   Recht hat. → **F1**
 
 ### Vorgaben für den Umbau
 
-Diese drei Punkte sind entschieden (Kommentar vom 14.11.2026) und gelten für jede Empfehlung unten:
+Diese vier Punkte sind entschieden (Kommentare vom 14.11.2026) und gelten für jede Empfehlung unten:
 
 | Vorgabe | Bedeutung |
 |---|---|
 | **Paperless je Bereich** | Jeder Bereich (TC Oberthal, Euroflex, künftige) hat seinen eigenen Paperless-Zugang. Zwei Bereiche zeigen nie auf dieselbe Adresse. |
 | **Alles in den Arbeitsvorrat** | Jedes Ereignis, das jemand erledigen oder wissen muss, erscheint im Arbeitsvorrat – auch nach jedem Umzug einer Funktion. |
+| **Funktionen abschaltbar** | Jede Funktion (EP3-Import, Bankimport, Umbuchung …) lässt sich vom Administrator abschalten und ist dann nirgends mehr zu sehen. |
 | **Sicherungspunkt** | Vor dem Start ein fester Stand von Programm und Daten; jeder Umbauschritt einzeln zurücknehmbar. |
 
 Was heute schon gut ist und als Vorbild dient: Zugänge zu Fremdsystemen sind bereits zentral
@@ -498,6 +503,88 @@ Umbauschritt ─► CI
 
 *Aufwand:* klein bis mittel. **Gehört an den Anfang**, vor E1, S1 und N3.
 
+### F – Funktionen ein- und ausschalten
+
+#### F1 Funktionsschalter in der Administration
+
+**Befund.** Heute gibt es zwei Hebel, keiner passt:
+
+| Hebel | Wirkt auf | Grenze |
+|---|---|---|
+| `PORTAL_MODULES` in der `.env` | ganzes Modul (TC Oberthal, Euroflex) | nur auf dem Server, mit Neustart, nichts Feineres |
+| Rechte je Rolle | wer eine App oder Aktion nutzen darf | beantwortet „wer“, nicht „gibt es das hier“; der Administrator sieht immer alles; ein Recht bündelt oft mehrere Funktionen |
+
+Beispiele für die Bündelung: `tco.halle:edit` erlaubt Buchungen zuordnen, Rechnungen bearbeiten **und** EP3
+importieren; `tco.fi:buchen` erlaubt Bankimport **und** manuelle Buchungen (darunter die Umbuchung zwischen
+Geldkonten). Den EP3-Import allein kann man heute nur ausblenden, indem man beides entzieht.
+
+**Vorgabe.** Jede Funktion ist abschaltbar; abgeschaltet heißt: nicht mehr angezeigt. Gepflegt vom Administrator.
+
+**Empfehlung.** Ein Verzeichnis aller Funktionen. Jedes Modul meldet seine Funktionen an
+(`ServerModule.funktionen`), in vier Stufen: Anwendung → Bereich → App → Funktion. Der Administrator schaltet
+auf jeder Stufe; „aus“ gilt für alles darunter.
+
+```
+Administration › Einstellungen › Funktionen
+  TC Oberthal                      [an ]
+    Tennishalle                    [an ]
+      Hallenabrechnung             [an ]
+        EP3-Import                 [aus]
+        Sammelversand              [an ]
+    Finanzen                       [an ]
+      FI-Belege                    [an ]
+        Bankimport                 [aus]
+        Umbuchung                  [aus]
+        Geldkonto tauschen         [aus]
+  Euroflex                         [an ]
+    Datenimport                    [aus]
+```
+
+**„Aus“ heißt überall aus** – nicht nur der Knopf:
+
+| Stelle | Wirkung |
+|---|---|
+| Menü, Kacheln, Reiter, Knöpfe | nicht mehr sichtbar, auch nicht für Administratoren |
+| Server | die Endpunkte der Funktion antworten wie „nicht vorhanden“ – Ausblenden allein wäre kein Schutz |
+| Automatische Läufe und Eingänge von außen | laufen nicht bzw. werden abgewiesen |
+| Einstellungen (E1), Schnittstellen (S1) | Kapitel bzw. Reiter-Abschnitt der Funktion verschwindet |
+| Arbeitsvorrat (V1) | keine Einträge der Funktion |
+| Rollenpflege | Rechte der Funktion grau mit Hinweis „abgeschaltet“; die Zuordnung bleibt erhalten |
+| Daten | bleiben unverändert; „an“ stellt alles wieder her |
+
+Verhältnis zu den Rechten: Der Schalter entscheidet, **ob es die Funktion in dieser Installation gibt**; das
+Recht, **wer sie nutzt**. Sichtbar ist sie nur, wenn beides zutrifft. Die Rechte müssen dafür nicht neu
+geschnitten werden.
+
+Abhängigkeiten zeigt die Pflege vor dem Abschalten an („Bankimport aus – dort wird heute die Gutschrift der
+Sollstellungen verbucht“). Jede Schaltung schreibt einen Änderungsbeleg. Die Pflege hat ein eigenes
+Recht (`core.funktionen:edit`); sie selbst und die Benutzerverwaltung sind nicht abschaltbar.
+
+Erste Liste der Funktionen unterhalb der Apps – aus Rechten, Knöpfen und Reitern im Quelltext, bei der
+Umsetzung je App zu vervollständigen:
+
+| Bereich | Funktionen |
+|---|---|
+| Tennishalle | EP3-Import · EP3-Abgleich · Sammelrechnung · Sammelversand · Versand per WhatsApp · Abo-Bewerbung · Online-Quittung Hallenschlüssel · Altdaten Hallenschlüssel |
+| Finanzen | Bankimport · manuelle Buchung und Umbuchung · Geldkonto tauschen · Storno · Periodenabschluss · Lastschriftlauf |
+| Mitglieder | Online-Mitgliedsantrag · Registrierung · Einladung per QR-Code · Beitragswechsel, Jugendtraining, Kündigung durch das Mitglied · nuLiga-Abgleich |
+| Jugend | Import Trainerstunden · Anmeldeformular Schnuppertraining |
+| Clubhaus | Theke · Mein Verzehr · Monatsabschluss |
+| Instandhaltung | Meldung per QR-Code · Platz sperren |
+| Dokumente | Dokumenteneingang · Ablage in die Nextcloud · Ablagefeld |
+| Euroflex | Rechnung erstellen · Rechnung entfernen · Versand · Datenimport |
+| Portal | Registrierung auf der Anmeldeseite · Benutzer wechseln · Werte ändern in der Tabellenansicht |
+
+Damit „alle Funktionen“ auch künftig gilt: eine Prüfung in der CI, dass jede App und jeder Import im
+Verzeichnis steht (wie V3). `PORTAL_MODULES` bleibt als Schalter der Installation bestehen.
+
+**Offen:** Reicht die Liste oben als Feinheit, oder soll jeder einzelne Knopf schaltbar sein? Sollen
+abgeschaltete Funktionen in der Rollenpflege grau stehen (Annahme) oder ganz verschwinden?
+
+*Aufwand:* mittel bis groß, in Stufen: (1) Verzeichnis, Pflege und Schalter für Apps, (2) Funktionen innerhalb
+der Apps, Bereich für Bereich. **Früh umsetzen** – die Rahmen für Einstellungen (E1), Schnittstellen (S1) und
+Arbeitsvorrat (V2) fragen den Schalter dann von Anfang an ab.
+
 ### A – Administration
 
 #### A1 Administration in fünf Gruppen
@@ -726,7 +813,8 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 
 ## 4 Durchsicht je App
 
-„passt“ heißt: Platz im Menü und innerer Aufbau sind stimmig.
+„passt“ heißt: Platz im Menü und innerer Aufbau sind stimmig. **F1 gilt für jede App** und steht deshalb nicht
+in jeder Zeile.
 
 ### Administration
 
@@ -769,7 +857,7 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 | Abrechnung Jugendtraining | Reiter Trainer und Entgelte sind Stammdaten; Import als Reiter; Fehler beim Abruf (Stunden, Ferien) nur in der App | E5, S4, V1 |
 | Meine Trainingszeiten | eigene Funktion zwischen Verwaltungs-Apps | N1 |
 | Hallenpreise | zweiter Pflegeort für Hallenprodukte | N4 |
-| Hallenabrechnung | EP3-Import als Knopf – gutes Muster; Einstellungen dazu liegen in den Stammdaten; gescheiterter Abruf nicht im Arbeitsvorrat | E1, S4, V1 |
+| Hallenabrechnung | EP3-Import als Knopf – gutes Muster; Einstellungen dazu liegen in den Stammdaten; gescheiterter Abruf nicht im Arbeitsvorrat; EP3-Import nicht einzeln abschaltbar | E1, S4, V1, F1 |
 | Hallenschlüssel | Einstellungen im Zahnrad-Dialog; eigene Varianten; Altdaten-Import | E1, B1, S4 |
 | Platz buchen | Hauptteile per Umschalter statt Reiter | N1, B2 |
 | Meine Daten | überschneidet sich mit „Meine Mitgliedschaft“ | N2 |
@@ -782,7 +870,7 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 | Schaden melden | eigene Funktion | N1 |
 | Instandhaltung | Reiter „Stammdaten“ enthält auch Einstellungen und Paperless-Auswahl; eigene Varianten; Name wie die Gruppe | E1, S1, B1, K5 |
 | Sollstellungen | Gläubigerdaten mit zweiter IBAN des Vereins | E3, E4 |
-| FI-Belege | Bankimport als Dialog; Einstellungen dazu in den Stammdaten | E4, S4 |
+| FI-Belege | Bankimport als Dialog; Einstellungen dazu in den Stammdaten; Bankimport, Umbuchung und „Geldkonto tauschen“ nicht einzeln abschaltbar | E4, S4, F1 |
 | Beitragsforecast | passt | – |
 | Einnahmen und Ausgaben | passt | – |
 | Jahresabschluss | passt | – |
@@ -802,6 +890,7 @@ Zahnrad in das Kapitel. *Aufwand:* klein.
 ```
 Sicherungspunkt ─ vor allem anderen
 V3 Prüfungen ──── vor E1, S1, N3
+F1 Verzeichnis ── vor E1, S1, V2
 K1–K5 ─┐
 A1 ────┼─ sofort, unabhängig
 N5 N6 ─┘
@@ -827,12 +916,13 @@ Vorschlag für die Reihenfolge:
 0. **Sicherungspunkt:** Daten auf dem Server sichern ([Anleitung](sicherungspunkt-2026-11-14.md)).
 1. **Absichern:** V3 – die Prüfungen, die jeden weiteren Schritt bewachen.
 2. **Aufräumen ohne Umbau:** K1–K5, A1, N5, N6, S3, B4 – ein kleiner Schritt, sofort sichtbar.
-3. **Arbeitsvorrat:** V2 in den Kern, danach V1 Lücke für Lücke.
-4. **Paperless je Bereich:** S5.
-5. **Menü für Mitglieder:** N1, danach N2.
-6. **Einstellungen:** E1 Rahmen mit Portal und Euroflex, E2, dann TC Oberthal Kapitel für Kapitel (E3, E4).
-7. **Schnittstellen:** S1 Rahmen, S2, danach die verstreuten Paperless-Felder, S4.
-8. **Fachliche Bereinigung:** E5, N4, N3, N7, B1, B2.
+3. **Funktionsschalter:** F1 Stufe 1 (Verzeichnis, Pflege, Apps), danach die Funktionen in den Apps.
+4. **Arbeitsvorrat:** V2 in den Kern, danach V1 Lücke für Lücke.
+5. **Paperless je Bereich:** S5.
+6. **Menü für Mitglieder:** N1, danach N2.
+7. **Einstellungen:** E1 Rahmen mit Portal und Euroflex, E2, dann TC Oberthal Kapitel für Kapitel (E3, E4).
+8. **Schnittstellen:** S1 Rahmen, S2, danach die verstreuten Paperless-Felder, S4.
+9. **Fachliche Bereinigung:** E5, N4, N3, N7, B1, B2.
 
 Bei jedem Umzug gilt: Pfade der Apps und Namen der Rechte bleiben, damit Rollen, Lesezeichen, Varianten und
 Änderungsbelege weiter passen. Verschoben wird nur, wo etwas angezeigt und gepflegt wird. Jeder Schritt ist ein
@@ -855,6 +945,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☐ |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☐ |
+| F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ vorgegeben |
 | A1 | Administration in fünf Gruppen | klein | ☐ |
 | N1 | Gruppe „Mein Bereich“ | klein | ☐ |
 | N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
@@ -876,6 +967,8 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S5 | Welcher Bereich behält das heutige Paperless – TC Oberthal oder Euroflex? Liegen dort Dokumente des anderen Bereichs? |
 | S5 | Dieselbe Adresse in zwei Bereichen: ablehnen (Annahme) oder nur warnen? |
 | V1 | Aufgaben und Hinweise wie beschrieben – oder wirklich jedes Ereignis, auch reiner Verlauf? |
+| F1 | Feinheit: reicht die Liste der Funktionen in F1, oder jeder einzelne Knopf? |
+| F1 | Abgeschaltetes in der Rollenpflege: grau mit Hinweis (Annahme) oder ganz weg? |
 | E3 | Dürfen Rechnungskonto und Lastschriftkonto des Vereins verschieden sein? |
 | N4 | Variante A oder B? |
 
