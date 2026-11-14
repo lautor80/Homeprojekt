@@ -281,7 +281,7 @@ Rechnung, Lieferschein und Transportauftrag werden per Code (PDFKit) erzeugt. **
 | Objektseite | Beteiligte (Kunde, Unternehmer, abw. Rechnungsempfänger – Auswahl zeigt höchstens 50 Treffer, beim Tippen wird über alle Kontakte gesucht, jedes Wort in Name oder Ort), Auftrags-/Fahrzeugdaten mit Rechnung (Gewicht in T, Lademeter in M; „Drucken → Rechnung“ öffnet dieselbe E-Rechnungs-Vorschau wie „Versenden → E-Rechnung“ in der Liste), zwei Stops, Holzträgerpositionen, Dokumente, Besonderheiten, Änderungshistorie |
 | Kontakt aus eingefügten Informationen (#158) | Im Dialog *Neuer Kontakt* / *Kontakt bearbeiten* (App **Kontakte** und Objektseite des Auftrags) gibt es den Bereich **„Kontaktdaten einfügen“**: Informationen per Drag & Drop ablegen, mit Strg+V einfügen, über *Aus Zwischenablage* holen, über *Datei oder Foto* wählen oder unter *Text eingeben* eintippen. Unterstützt werden **Screenshots und Fotos** (z. B. Unternehmensprofil einer Frachtenbörse, Visitenkarte; Texterkennung), kopierter Text (E-Mail-Signatur, Impressum, Briefkopf), **PDF** mit Textebene, Visitenkarte (`.vcf`) sowie Text-, HTML- und E-Mail-Dateien (`.eml`). Bilder vergrößert der Browser vor dem Senden (kleine Bildschirmschrift etwa dreifach), der Server liest sie mit `tesseract` (Deutsch/Englisch), PDFs mit `pdftotext` – beides lokal im Container (`Dockerfile`: `tesseract-ocr`, `tesseract-ocr-deu`, `poppler-utils`; `server/src/lib/texterkennung.ts`), ohne Fremddienste, nichts wird gespeichert. Der Text wird analysiert (`POST /adressen/erkennen` mit `text`, `bild` oder `pdf`; `modules/transport/server/kontakterkennung.ts`) und auf die Felder verteilt: Name/Name 2 (Rechtsform, Zeile nach „Unternehmen“/„Firma“, Niederlassung), Straße und Hausnummer, PLZ, Ort, Land (Länderkennzeichen wie `BG, 1220 Sofia` oder `D-20457`, Ländername, NL-/PL-Postleitzahl), USt-IdNr., GLN, Anrede, Vorname, Nachname (auch „z. Hd.“, „Ansprechpartner:“, passend zur E-Mail-Adresse), Telefon, Fax, E-Mail. Die Vorschläge erscheinen als Liste mit Haken (vorausgewählt, was im Dialog noch leer ist; bei abweichendem Wert steht „bisher: …“), *Felder übernehmen* trägt sie ein; nicht zugeordnete Zeilen (z. B. Mobilnummer, Funktion, Internetadresse) und bei Bild/PDF der gelesene Text werden zur Kontrolle angezeigt. Einzelne Werte in einem Eingabefeld werden weiter normal eingefügt; ein eingefügter Screenshot landet bei offenem Dialog nicht in der Auftragsablage. Ohne `tesseract` (Installation außerhalb des Containers) erscheint ein Hinweis, Text und `.vcf` funktionieren weiter |
 | Rechnungen | Einzel- und Sammelrechnungen mit lückenlosen Nummern (Start je Jahr in den Stammdaten), PDF mit EPC-GiroCode, XRechnung 3.0 (UBL) |
-| Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (Zugang unter Administration → Schnittstellen → Anbindungen) |
+| Versand | E-Mail-Texte D/E mit Platzhaltern, Rechnung an Paperless-ngx (Zugang unter Administration → Schnittstellen → Anbindungen); **E-Mail zum Auftrag über Outlook 365** (#235): ausgewählte Dokumente an den Empfänger und parallel an eine feste zweite Adresse, aus dem Postfach des Benutzers – siehe unten |
 | Stammdaten | Firmendaten inkl. Logo, Produkte, Wertelisten (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch – je Liste „Einfügen“: mehrere Werte per Copy & Paste, eine Zeile je Wert, optional `Schlüssel;Text` oder zwei Excel-Spalten; vorhandene werden übersprungen, `POST /werte/masse`), E-Mail-Texte, Datenimport |
 | Übernahme aus SAP | *Stammdaten → Datenimport* (`/transport/stammdaten?tab=IMPORT`, Recht `transport.import:execute`): CSV-Exporte (Aufträge, Aufträge_POs, Adressen, optional Träger, Produkte, Wertelisten, ZEU_RGNRKREIS). Standard: nur neue Sätze werden angelegt, Nummernkreise werden nachgezogen. **Neuaufbau** (#121): Tabellen vorher leeren und komplett neu anlegen – siehe unten |
 
@@ -332,6 +332,21 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   vorausgewählt). *Entwurf öffnen* erzeugt eine E-Mail-Datei (`.eml`, Kopf `X-Unsent: 1`) mit den Anhängen, die sich im
   Standard-Mailprogramm als neuer Entwurf öffnet (Outlook mit „Senden“; sonst in den Downloads anklicken – in Chrome/Edge
   „Dateien dieses Typs immer öffnen“). *Ohne Anhänge* öffnet direkt per `mailto:` (Browser können über `mailto:` keine Anhänge übergeben).
+- **Senden über Outlook 365** (#235, nur Euroflex): Ist die Anbindung *Administration → Schnittstellen → Anbindungen → Euroflex E-Mail-Versand
+  (Outlook 365, n8n)* eingerichtet, zeigt derselbe Dialog **Senden** und **Entwurf in Outlook** sowie das Feld *CC*.
+  *Senden* verschickt die gewählten Anhänge in einer E-Mail an den Empfänger und parallel – als eigene E-Mail mit gleichem Inhalt
+  und gleichen Anhängen – an die **feste zweite Adresse** der Anbindung. Gesendet wird über den n8n-Workflow
+  [`docs/n8n/euroflex-mailversand.json`](docs/n8n/euroflex-mailversand.json) und Microsoft Graph aus dem **Outlook-365-Postfach
+  des angemeldeten Benutzers** (Zuordnung `benutzername=adresse` in der Anbindung, sonst die E-Mail-Adresse des Benutzers); die
+  E-Mails liegen dort unter *Gesendete Elemente*. *Entwurf in Outlook* legt sie nur als Entwürfe ab. Ordnerdateien lädt der
+  Browser hoch, Paperless-Dokumente holt der Server (nur dem Auftrag zugeordnete); Höchstgröße je Vorgang in der Anbindung
+  (Standard 10 MB). Schlägt nur eine der beiden E-Mails fehl, sendet *Rest senden* nur diese. Jede E-Mail steht im
+  E-Mail-Protokoll (Anwendung „Euroflex“, Vorgang = Auftragsnummer; Inhalt wird nicht gespeichert, kein „Erneut senden“).
+  Einrichtung samt Outlook-365-Berechtigung (App-Registrierung in Microsoft Entra, Zugangsdaten in n8n):
+  [`docs/n8n/EUROFLEX-MAILVERSAND.md`](docs/n8n/EUROFLEX-MAILVERSAND.md). API: `GET /api/m/transport/mail/info`,
+  `POST /api/m/transport/auftraege/:nr/mail` mit `{ modus: 'senden' | 'entwurf', an, cc, betreff, text, dateien: [{ name, inhalt (Base64) }],
+  dokumente: [Paperless-ID], nur?: ['kunde' | 'kopie'] }` (Recht `transport.versand:execute`). Der Workflow ist in der CI auf
+  Aufbau und Logik geprüft, aber nicht gegen ein echtes Postfach gelaufen.
 - **Versenden aus der Auftragsliste** (Transportauftrag, Lieferschein, Rechnung): *E-Mail öffnen* erstellt ebenfalls einen solchen
   Entwurf mit Empfänger, Betreff, Standardtext und dem **PDF als Anhang** (bei Rechnungen die ZUGFeRD-Rechnung); *ohne Anhang*
   öffnet das Mailprogramm wie bisher per `mailto:`. *PDF herunterladen* und *E-Rechnung (XML)* bleiben daneben.
@@ -429,7 +444,8 @@ eine einzige Saldenrechnung, Paperless-Fehler werden angezeigt, Nummernvergabe m
 Alle E-Mails des Portals (Rechnungen, Verzehr, Mitglieder, Registrierung, Mitgliedsanträge, Kennwort-Links) laufen über **einen**
 n8n-Workflow: [`docs/n8n/tco-mailversand.json`](docs/n8n/tco-mailversand.json), Anleitung und Aufrufformat in
 [`docs/n8n/MAILVERSAND.md`](docs/n8n/MAILVERSAND.md). Einbindung im Portal: *Administration → Schnittstellen → Anbindungen → E-Mail-Versand (n8n)*
-(Webhook-URL, Schlüssel, Ersatzabsender je Anwendung).
+(Webhook-URL, Schlüssel, Ersatzabsender je Anwendung). Ausnahme: Euroflex sendet E-Mails zum Auftrag über einen eigenen Workflow mit Outlook 365
+([`docs/n8n/EUROFLEX-MAILVERSAND.md`](docs/n8n/EUROFLEX-MAILVERSAND.md)).
 
 **Absender** – genommen wird die erste Adresse, für die n8n ein SMTP-Konto hat (`KONTEN` im Knoten „Mail aufbereiten“):
 

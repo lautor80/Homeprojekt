@@ -180,6 +180,8 @@ services:
       WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
       N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      # größte Anfrage an einen Webhook in MiB (E-Mail-Anhänge kommen als Base64: 10 MB Anhänge ≈ 14 MiB)
+      N8N_PAYLOAD_SIZE_MAX: ${N8N_PAYLOAD_SIZE_MAX:-16}
       GENERIC_TIMEZONE: ${TZ:-Europe/Berlin}
       TZ: ${TZ:-Europe/Berlin}
     ports:
