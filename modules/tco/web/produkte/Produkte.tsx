@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text,
+  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@core/api';
-import { AppPage } from '@core/components/AppPage';
+import { AppPage, Eingebettet } from '@core/components/AppPage';
+import { Hallenpreise } from '../Hallenpreise';
+import { Getraenke } from '../clubhaus/Getraenke';
+import { VerzehrPreisePflege } from '../verzehr/Verzehrbuch';
 import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
@@ -31,7 +34,54 @@ const heute = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berli
 const zahl = (s: string) => (s.trim() === '' ? null : Number(s.replace(/\./g, '').replace(',', '.')));
 const zahlText = (v: number | null) => (v == null ? '' : String(v).replace('.', ','));
 
+/** Adresse einer Sicht – für „Preise pflegen“ in den Fach-Apps; die Namen stehen in SICHTEN */
+export const PREISE_PFAD = '/tco/produkte';
+export const preiseLink = (sicht: 'alle' | 'halle' | 'getraenke' | 'speisen') => `${PREISE_PFAD}?sicht=${sicht}`;
+
+/**
+ * Produkte und Preise (#232, N4 Variante A): alle Preise des Vereins werden in dieser einen App gepflegt. Die Sichten
+ * sind die bisherigen Pflegestellen – jede mit ihrem bisherigen Recht, damit niemand die Pflege verliert:
+ *   alle        alle Produkte mit Preis je Zeitraum, Gästepreis, Erlöskonto        tco.produkte:*
+ *   halle       Wochenplan der Hallenpreise (bisher App „Hallenpreise“)            tco.halle:display / :preise
+ *   getraenke   Getränke mit Gebinde (bisher Clubhausabrechnung → Getränke)        tco.clubhaus:display / :edit
+ *   speisen     Speisen, Sonstiges, Gästepreise (bisher Verzehrbuch → Preisliste)  tco.verzehr:display / :admin
+ * Die Fach-Apps zeigen ihre Preise nur noch an und verweisen hierher.
+ */
+/** alte Adresse der App „Hallenpreise“ */
+export function ZuHallenpreisen() { return <Navigate to={preiseLink('halle')} replace />; }
+
+const SICHTEN = [
+  { key: 'alle', text: 'Alle Produkte', recht: 'tco.produkte:display' },
+  { key: 'halle', text: 'Hallenpreise (Wochenplan)', recht: 'tco.halle:display' },
+  { key: 'getraenke', text: 'Getränke', recht: 'tco.clubhaus:display' },
+  { key: 'speisen', text: 'Speisen und Gästepreise', recht: 'tco.verzehr:display' },
+] as const;
+
 export function Produkte() {
+  const can = useCan();
+  const [params, setParams] = useSearchParams();
+  const sichten = SICHTEN.filter((s) => can(s.recht));
+  const sicht = sichten.find((s) => s.key === params.get('sicht')) ?? sichten[0];
+  if (!sicht) return <AppPage title="Produkte und Preise"><MessageStrip design="Information" hideCloseButton>Für keine der Sichten liegt eine Berechtigung vor.</MessageStrip></AppPage>;
+  return (
+    <AppPage title="Produkte und Preise" subtitle="Alle Preise des Vereins an einer Stelle – Halle, Getränke, Speisen und Sonstiges">
+      {sichten.length > 1 && (
+        <SegmentedButton style={{ marginBottom: '0.75rem', maxWidth: '100%' }} accessibleName="Sicht"
+                         onSelectionChange={(e) => setParams({ sicht: (e.detail.selectedItems[0] as HTMLElement).dataset.s ?? 'alle' }, { replace: true })}>
+          {sichten.map((s) => <SegmentedButtonItem key={s.key} data-s={s.key} selected={s.key === sicht.key}>{s.text}</SegmentedButtonItem>)}
+        </SegmentedButton>
+      )}
+      <Eingebettet>
+        {sicht.key === 'alle' && <ProdukteTabelle />}
+        {sicht.key === 'halle' && <Hallenpreise />}
+        {sicht.key === 'getraenke' && <Getraenke edit={can('tco.clubhaus:edit')} />}
+        {sicht.key === 'speisen' && <VerzehrPreisePflege />}
+      </Eingebettet>
+    </AppPage>
+  );
+}
+
+function ProdukteTabelle() {
   const can = useCan();
   const edit = can('tco.produkte:edit');
   const navigate = useNavigate();
@@ -95,7 +145,7 @@ export function Produkte() {
     <AppPage varianten={{ repid: 'tco.produkte', ansicht: { bereich, suche, nurAktuell }, onAnwenden: (a) => { setBereich(feld(a, 'bereich', bereich)); setSuche(feld(a, 'suche', suche)); setNurAktuell(feld(a, 'nurAktuell', nurAktuell)); } }} title="Produkte" subtitle="Produkte, Preise je Zeitraum und Erlöskonten"
              actions={<>
                {edit && <Button icon="batch-payments" design="Transparent" onClick={() => setMasse(true)}>Erlöskonto je Bereich</Button>}
-               {can('tco.halle:preise') && <Button icon="lead" design="Transparent" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise (Zeitfenster)</Button>}
+               {can('tco.halle:preise') && <Button icon="lead" design="Transparent" onClick={() => navigate(preiseLink('halle'))}>Hallenpreise (Wochenplan)</Button>}
                {edit && (
                  <Select key={modus ? 'offen' : 'zu'} style={{ width: '14rem' }} onChange={(e) => {
                    const b = (e.detail.selectedOption as HTMLElement).dataset.b as Bereich | undefined;

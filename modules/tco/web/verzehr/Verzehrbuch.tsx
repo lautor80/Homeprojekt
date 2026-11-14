@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
+  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
@@ -71,7 +71,13 @@ export function Verzehrbuch() {
             <Monatsabschluss admin={admin} busy={busy} neu={neu} aktion={aktion} onPdf={pdfZeigen} onVorschau={pdfUrl} />
           </Tab>
           <Tab data-key="preise" text="Preisliste" icon="tags" selected={tab === 'preise'}>
-            <Preise admin={admin} busy={busy} neu={neu} aktion={aktion} />
+            {admin && (
+              <MessageStrip design="Information" hideCloseButton style={{ margin: '0.75rem 0 0' }}>
+                Preise werden an einer Stelle gepflegt:{' '}
+                <Link onClick={() => { window.location.assign('/tco/produkte?sicht=speisen'); }}>Produkte und Preise → Speisen und Gästepreise</Link>.
+              </MessageStrip>
+            )}
+            <Preise admin={false} busy={busy} neu={neu} aktion={aktion} />
           </Tab>
         </TabContainer>
       </div>
@@ -382,6 +388,24 @@ function Monatsabschluss({ admin, busy, neu, aktion, onPdf, onVorschau }: { admi
 }
 
 // ---------------------------------------------------------------- Preisliste
+/** Pflege der Preisliste als Sicht der App „Produkte und Preise“ (#232, N4) – im Verzehrbuch steht sie nur noch zur Anzeige */
+export function VerzehrPreisePflege() {
+  const can = useCan();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [neu, setNeu] = useState(0);
+  const aktion: Aktion = async (fn, meldung) => {
+    setBusy(true); setError(null);
+    try { await fn(); if (meldung) toast(meldung, 5000); setNeu((n) => n + 1); return true; } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
+  };
+  return (
+    <>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-wrap' }}>{error}</MessageStrip>}
+      <Preise admin={can('tco.verzehr:admin')} busy={busy} neu={neu} aktion={aktion} />
+    </>
+  );
+}
+
 function Preise({ admin, busy, neu, aktion }: { admin: boolean; busy: boolean; neu: number; aktion: Aktion }) {
   const [liste, setListe] = useState<Preisliste | null>(null);
   const [f, setF] = useState<{ prod_key: string | null; rubrik: Rubrik; text: string; preis: string; preis_gast: string; ab: string } | null>(null);
@@ -410,7 +434,7 @@ function Preise({ admin, busy, neu, aktion }: { admin: boolean; busy: boolean; n
   return (
     <>
       <MessageStrip design="Information" hideCloseButton style={{ margin: '0.75rem 0' }}>
-        Getränke und ihre Mitgliederpreise kommen aus der Clubhausabrechnung (Getränke). Hier werden Speisen und Sonstiges gepflegt sowie Gästepreise für alle Produkte.
+        Getränke und ihre Mitgliederpreise stehen in der Sicht „Getränke“ von „Produkte und Preise“. Hier: Speisen und Sonstiges sowie Gästepreise für alle Produkte.
       </MessageStrip>
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
         <Section title="Preisliste (aktuell gültig)" count={liste.produkte.length} flush actions={admin && <Button icon="add" design="Emphasized" onClick={() => setF({ prod_key: null, rubrik: 'S', text: '', preis: '', preis_gast: '', ab: isoHeute() })}>Speise / Sonstiges anlegen</Button>}>

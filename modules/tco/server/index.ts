@@ -199,8 +199,8 @@ const tco: ServerModule = {
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Einstellungen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
-    { area: 'Einstellungen', app: 'Produkte', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
-    { area: 'Einstellungen', app: 'Produkte', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
+    { area: 'Einstellungen', app: 'Produkte und Preise', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
+    { area: 'Einstellungen', app: 'Produkte und Preise', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
 
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.display, text: 'Mitglieder anzeigen (Stammdaten, Verträge, SEPA, Dokumente)' },
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Gruppen zuordnen, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
