@@ -29,7 +29,7 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     routen: ['GET /einladung', 'POST /einladung'],
   },
   {
-    id: 'tco.registrierung.formular', app: 'Registrierungen', text: 'Registrierung auf der Anmeldeseite', seite: '/registrierung-bestaetigen',
+    id: 'tco.registrierung.formular', app: 'Zugänge', text: 'Registrierung auf der Anmeldeseite', seite: '/registrierung-bestaetigen',
     beschreibung: 'Knopf „Registrieren“ auf der Anmeldeseite samt Bestätigungslink per E-Mail. Abgeschaltet verschwindet der Knopf.',
     routen: ['GET /platz/registrierung', 'GET /platz/registrierung/frei', 'POST /platz/registrierung/pruefen', 'POST /platz/registrierung',
       'POST /platz/registrierung/schnell', 'POST /platz/registrierung/bestaetigen'],

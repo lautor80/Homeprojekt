@@ -14,10 +14,9 @@ import { FieldBox, FormGrid } from '@core/components/FormFields';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
 import { SperrHinweis, sperreSetzen, useSperre } from '@core/sperre';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
 import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type Belegt, type FestArt, type TagPlatz } from './PlatzBuchen';
-import { Zugaenge } from './Zugaenge';
 import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -67,6 +66,8 @@ export function Platzverwaltung() {
     } catch (e) { setError((e as Error).message); return false; } finally { setBusy(false); }
   }
 
+  // Zugänge und Zuordnung stehen in der App „Zugänge“ (#232, N3) – alte Adressen und gespeicherte Ansichten führen dorthin
+  if (tab === 'benutzer' || tab === 'zugaenge') return <Navigate to={`/tco/zugaenge?tab=${tab === 'benutzer' ? 'zuordnung' : 'registrierungen&art=halle'}`} replace />;
   return (
     <AppPage varianten={{ repid: 'tco.platzverwaltung', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos"
              actions={<ChangeHistoryButton objectType="PLATZ" objectKey="" />}>
@@ -83,12 +84,6 @@ export function Platzverwaltung() {
         </Tab>
         <Tab data-key="abos" text="Abos" icon="repost" selected={tab === 'abos'}>
           {tab === 'abos' && <Abos aktion={aktion} busy={busy} />}
-        </Tab>
-        <Tab data-key="benutzer" text="Benutzer" icon="employee" selected={tab === 'benutzer'}>
-          {tab === 'benutzer' && <BenutzerZuordnung aktion={aktion} />}
-        </Tab>
-        <Tab data-key="zugaenge" text="Zugänge" icon="add-employee" selected={tab === 'zugaenge'}>
-          {tab === 'zugaenge' && <Zugaenge aktion={aktion} />}
         </Tab>
       </TabContainer>
     </AppPage>
@@ -737,7 +732,8 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
 }
 
 // ---------------------------------------------------------------- Benutzer ↔ Mitglied
-function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
+/** Reiter „Zuordnung“ der App „Zugänge“ (#232, N3) – bisher Reiter „Benutzer“ der Platzverwaltung */
+export function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
   const [d, setD] = useState<{ benutzer: Benutzer[]; mitglieder: Mitglied[] } | null>(null);
   const [suche, setSuche] = useState('');
   const laden = () => api.get<{ benutzer: Benutzer[]; mitglieder: Mitglied[] }>(`${PA}/benutzer`).then(setD);

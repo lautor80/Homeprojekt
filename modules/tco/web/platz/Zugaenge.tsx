@@ -59,7 +59,7 @@ export function Zugaenge({ aktion }: { aktion: Aktion }) {
 }
 
 // ---------------------------------------------------------------- Registrierungen
-function Registrierungen({ aktion, onOffen }: { aktion: Aktion; onOffen: (n: number) => void }) {
+export function Registrierungen({ aktion, onOffen }: { aktion: Aktion; onOffen: (n: number) => void }) {
   const [liste, setListe] = useState<Registrierung[] | null>(null);
   const [alle, setAlle] = useState(false);
   const [frei, setFrei] = useState<Registrierung | null>(null);
@@ -180,7 +180,7 @@ function FreigabeDialog({ r, onClose, onDone, aktion }: { r: Registrierung; onCl
 }
 
 // ---------------------------------------------------------------- EP3-Abgleich
-function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
+export function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
   const [liste, setListe] = useState<Ep3Kunde[] | null>(null);
   const [suche, setSuche] = useState('');
   const [nurOffen, setNurOffen] = useState(true);
