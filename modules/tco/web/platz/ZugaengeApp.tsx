@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MessageStrip, SegmentedButton, SegmentedButtonItem, Tab, TabContainer } from '@ui5/webcomponents-react';
 import { AppPage, Eingebettet } from '@core/components/AppPage';
@@ -28,6 +28,9 @@ export function ZugaengeApp() {
   const ep3An = useFunktion()('tco.platz.ep3abgleich');
   const [params, setParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  // Fehler steht oben – bei weit gescrollter Tabelle (Zuordnung) sonst unsichtbar
+  const fehlerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (error) fehlerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [error]);
   const tabs = [
     { key: 'registrierungen', text: 'Registrierungen', icon: 'add-employee', da: mitglied || halle },
     { key: 'zuordnung', text: 'Zuordnung', icon: 'employee', da: halle },
@@ -51,7 +54,7 @@ export function ZugaengeApp() {
   if (!tab) return <AppPage title="Zugänge"><MessageStrip design="Information" hideCloseButton>Für keinen der Reiter liegt eine Berechtigung vor.</MessageStrip></AppPage>;
   return (
     <AppPage title="Zugänge" subtitle="Registrierungen freigeben, Benutzer zuordnen, EP3-Kunden abgleichen">
-      {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {error && <div ref={fehlerRef}><MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip></div>}
       <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" onTabSelect={(e) => setze({ tab: (e.detail.tab as HTMLElement).dataset.key! })}>
         {tabs.map((t) => (
           <Tab key={t.key} data-key={t.key} text={t.text} icon={t.icon} selected={tab === t.key}>
