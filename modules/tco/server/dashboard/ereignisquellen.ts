@@ -32,6 +32,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'schnittstelle:tco.ferien': { offen: 'gescheiterter Abruf der Schulferien: heute nur Hinweis in der Abrechnung Jugendtraining' },
   'schnittstelle:tco.mailabruf': { offen: 'gescheiterter Abruf des Maileingangs: kein Eintrag im Arbeitsvorrat' },
   'schnittstelle:tco.nextcloud': { offen: 'gescheiterte Ablage in die Nextcloud: kein Eintrag im Arbeitsvorrat' },
+  'schnittstelle:transport.mail': { ohne: 'Euroflex sendet nur aus dem Dialog am Auftrag (#235): das Ergebnis sieht der Absender sofort und wiederholt dort; kein Hintergrundlauf, jede E-Mail steht im E-Mail-Protokoll' },
 
   // ---------------------------------------------------------------- automatische Läufe
   'lauf:server/src/backup-export.ts': { aufgabe: 'BACKUP_EXPORT' },
