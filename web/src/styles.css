@@ -798,4 +798,5 @@ ui5-busy-indicator { max-width: 100%; }
 /* Kopfzeile: Logo und aktive Version (Uhrzeit des Codes) – web/src/version.ts */
 .portal-kopf__logo { display: inline-flex; align-items: center; gap: 0.5rem; height: 100%; }
 .portal-kopf__logo img { max-height: 2rem; }
+.portal-kopf__neu { min-width: 2rem; }
 .portal-kopf__version { font-size: 0.7rem; line-height: 1.1; color: var(--sapShell_InteractiveTextColor, var(--sapContent_LabelColor)); white-space: nowrap; opacity: 0.85; }

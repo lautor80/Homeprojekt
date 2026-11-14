@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -99,9 +100,19 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   // Oberfläche ausliefern (gebaute React-App), alle Nicht-API-Pfade -> index.html
   if (fs.existsSync(config.webDist)) {
-    await app.register(fastifyStatic, { root: config.webDist, wildcard: false });
+    // index.html nie aus dem Zwischenspeicher (sonst bliebe nach einem Update die alte Oberfläche, auch nach „Neu laden“);
+    // die übrigen Dateien tragen eine Prüfsumme im Namen und dürfen lange gespeichert werden
+    const ohneCache = (p: string) => p.endsWith('index.html');
+    await app.register(fastifyStatic, {
+      root: config.webDist, wildcard: false,
+      setHeaders: (res, p) => {
+        if (ohneCache(p)) res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        else if (p.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/')) return reply.code(404).send({ message: 'Nicht gefunden.' });
+      reply.header('Cache-Control', 'no-cache, must-revalidate');
       return reply.sendFile('index.html');
     });
   }

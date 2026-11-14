@@ -32,3 +32,11 @@ test('Version: CI → Image → Server → Kopfzeile', () => {
   assert.match(shell, /const version = versionText\(me\.version\);/);
   assert.match(shell, /<small className="portal-kopf__version">\{version\.text\}<\/small>/);
 });
+
+test('Neu laden: Knopf am Logo, index.html ohne Zwischenspeicher', () => {
+  const shell = lies('web/src/shell/Shell.tsx');
+  assert.match(shell, /<Button icon="refresh"[^>]*onClick=\{\(e\) => \{ e\.stopPropagation\(\); window\.location\.reload\(\); \}\} \/>/, 'Knopf lädt neu, ohne zur Startseite zu springen');
+  const app = lies('server/src/app.ts');
+  assert.match(app, /if \(ohneCache\(p\)\) res\.setHeader\('Cache-Control', 'no-cache, must-revalidate'\)/, 'index.html bei direktem Aufruf');
+  assert.match(app, /reply\.header\('Cache-Control', 'no-cache, must-revalidate'\);\n\s*return reply\.sendFile\('index\.html'\)/, 'index.html für alle App-Pfade');
+});
