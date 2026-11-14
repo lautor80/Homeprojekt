@@ -83,12 +83,12 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.schnupper` | ● |  |  | ● |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.schnupper_einheiten` | ● |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | `tco.sepa` | ● | ● |  |  |  |  |  |  |  |  |  |  | ● |  |
-| `tco.soll_cfg` | ● | ● |  |  |  |  |  |  |  |  |  |  | ● |  |
+| `tco.soll_cfg` | ● | ● |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.soll_kopf` |  | ● |  |  |  |  |  |  |  |  |  |  |  |  |
 | `tco.soll_pos` |  | ● |  |  |  |  |  |  |  |  |  |  |  |  |
 | `tco.trentgelt` |  |  |  | ● |  |  |  |  |  |  |  |  |  |  |
 | `tco.upload_folge` |  | ● | ● |  |  | ● |  | ● | ● |  |  |  |  |  |
-| `tco.verein` |  |  |  |  | ● |  |  |  |  |  |  |  |  |  |
+| `tco.verein` |  |  |  |  | ● |  |  | ● | ● |  |  |  |  |  |
 | `tco.vertraege` | ● | ● |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.vertragsangebote` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.vz_belege` |  | ● |  |  | ● |  |  | ● | ● |  |  |  |  |  |

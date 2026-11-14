@@ -200,7 +200,7 @@ flowchart LR
 | produkte | 6 |
 | schluessel | 28 |
 | schnupper | 6 |
-| soll | 11 |
+| soll | 12 |
 | sport | 4 |
 | teilnehmer | 4 |
 | upload | 2 |

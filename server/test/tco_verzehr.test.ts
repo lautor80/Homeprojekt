@@ -303,14 +303,39 @@ test('Verzehrbuch, Arbeitsvorrat, Monatsabschluss mit Sammelabrechnungen und Las
   assert.equal(vz.beitragsart, 'VZ');
   assert.equal(vz.betrag, 11);
   assert.match(vz.artname, /Verzehr Clubhaus/);
+  // IBAN und BIC gehören dem Verein (#232, E3): ohne IBAN beim Verein fehlt sie – mitgeschickte Werte der Gläubigerdaten bleiben unbeachtet
+  await sql`update tco.verein set iban = null, bic = null where id = 1`;
   r = await admin('PUT', '/api/m/tco/soll/cfg', { gl_name: 'TC Test', iban: 'DE02120300000000202051', bic: 'BYLADEM1001', gl_id: 'DE98ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  // Kapitel „Beitragseinzug“ der Einstellungen (#232) liest dieselben Gläubigerdaten
   r = await admin('GET', '/api/m/tco/soll/cfg');
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.cfg.gl_id, 'DE98ZZZ09999999999');
   assert.equal(r.body.cfg.vorlauf, 2);
-  assert.deepEqual(r.body.fehlt, []);
+  assert.equal(r.body.cfg.iban, '');
+  assert.deepEqual(r.body.fehlt, ['IBAN (Verein und Bank)']);
+  assert.equal((await sql`select iban from tco.soll_cfg where cfgid = 'TCO'`)[0].iban, null, 'keine zweite IBAN in den Gläubigerdaten');
+  await sql`update tco.verein set iban = 'DE02 1203 0000 0000 2020 52', bic = 'BYLADEM1001' where id = 1`;
+  assert.deepEqual((await admin('GET', '/api/m/tco/soll/cfg')).body.fehlt, ['gültige IBAN (Verein und Bank)'], 'Prüfziffer falsch');
+  await sql`update tco.verein set iban = 'DE02 1203 0000 0000 2020 51' where id = 1`;
+  r = await admin('GET', '/api/m/tco/soll/cfg');
+  assert.deepEqual([r.body.cfg.iban, r.body.cfg.bic, r.body.cfg.abweichend, r.body.fehlt], ['DE02120300000000202051', 'BYLADEM1001', false, []], 'Kapitel „Beitragseinzug“ zeigt die IBAN des Vereins');
+
+  // Altbestand mit abweichender IBAN: gilt weiter für die Lastschrift, steht im Arbeitsvorrat, bis der Kassenwart entscheidet
+  await sql`update tco.soll_cfg set iban = 'DE89370400440532013000', bic = 'COBADEFFXXX' where cfgid = 'TCO'`;
+  r = await admin('GET', '/api/m/tco/soll/cfg');
+  assert.deepEqual([r.body.cfg.iban, r.body.cfg.bic, r.body.cfg.abweichend, r.body.cfg.iban_verein], ['DE89370400440532013000', 'COBADEFFXXX', true, 'DE02120300000000202051']);
+  const aufgaben = async () => ((await admin('GET', '/api/arbeitsvorrat')).body.gruppen as { aufgaben: { key: string; text: string; pfad: string }[] }[]).flatMap((g) => g.aufgaben);
+  const offen = (await aufgaben()).find((a) => a.key === 'SOLL_KONTO');
+  assert.ok(offen, 'Aufgabe im Arbeitsvorrat');
+  assert.match(offen!.text, /DE89 … 3000.*DE02 … 2051/);
+  assert.equal(offen!.pfad, '/admin/einstellungen?kapitel=tco.beitragseinzug');
+  // gleiche IBAN beim Verein eintragen löst es ebenfalls – hier: Entscheidung für das Vereinskonto
+  r = await admin('POST', '/api/m/tco/soll/cfg/vereinskonto');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', '/api/m/tco/soll/cfg');
+  assert.deepEqual([r.body.cfg.iban, r.body.cfg.abweichend], ['DE02120300000000202051', false]);
+  assert.equal((await aufgaben()).some((a) => a.key === 'SOLL_KONTO'), false);
+  assert.match((await admin('POST', '/api/m/tco/soll/cfg/vereinskonto')).body.text, /gilt bereits/);
   const faellig = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   r = await admin('POST', '/api/m/tco/soll/laeufe', { sollper: sp, mitMb: false, mitJt: false, mitVz: true, faellig, ohne: [] });
   assert.equal(r.status, 200, JSON.stringify(r.body));

@@ -7,7 +7,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { heute } from '../format.js';
 import {
-  istBeitragsmonat, konfigFehlt, konfigLesen, konfigSpeichern, laeufeLesen, lastschriften, laufErzeugen, laufLesen,
+  istBeitragsmonat, konfigFehlt, konfigLesen, konfigSpeichern, vereinskontoVerwenden, laeufeLesen, lastschriften, laufErzeugen, laufLesen,
   laufStornieren, vorschlag, vorschlagFaelligkeit,
 } from './logik.js';
 import { sollAblegen, sollPdf, sollTitel } from './pdf.js';
@@ -61,11 +61,25 @@ export async function sollRoutes(app: FastifyInstance) {
 
   app.put('/soll/cfg', { preHandler: requireAuth(P_SOLL.glaeubiger) }, async (req) => {
     const c = z.object({
-      gl_name: z.string().trim().max(70), iban: z.string().max(40), bic: z.string().max(11).default(''),
+      // IBAN und BIC gehören dem Verein (Einstellungen → Verein und Bank, #232 E3) – mitgeschickte Werte bleiben unbeachtet
+      gl_name: z.string().trim().max(70),
       gl_id: z.string().max(35), bankkonto: z.string().max(10), vorlauf: z.coerce.number().int().min(0).max(30).default(2),
     }).parse(req.body);
     await change(req, (tx) => konfigSpeichern(tx, c, benutzer(req)));
     return { text: 'Gläubigerdaten gespeichert.' };
+  });
+
+  /**
+   * Entscheidung bei abweichender IBAN (#232, E3): Die Lastschrift zieht ab jetzt über das Konto des Vereins ein
+   * (Einstellungen → Verein und Bank). Die frühere IBAN der Gläubigerdaten steht im Änderungsbeleg.
+   */
+  app.post('/soll/cfg/vereinskonto', { preHandler: requireAuth(P_SOLL.glaeubiger) }, async (req) => {
+    const v = await vereinLesen();
+    const cfg = await konfigLesen(DB, v);
+    if (!cfg.abweichend) return { text: 'Es gilt bereits das Konto des Vereins.' };
+    if (!cfg.iban_verein) throw new BusinessError('Beim Verein ist noch keine IBAN hinterlegt (Einstellungen → Verein und Bank).');
+    await change(req, (tx) => vereinskontoVerwenden(tx, benutzer(req)), { reason: `Lastschrift über das Vereinskonto statt ${cfg.iban}` });
+    return { text: 'Die Lastschrift zieht ab jetzt über das Konto des Vereins ein.' };
   });
 
   app.get('/soll/faelligkeit', { preHandler: requireAuth(P_SOLL.display) }, async (req) => {
