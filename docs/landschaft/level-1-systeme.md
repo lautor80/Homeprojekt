@@ -25,7 +25,7 @@ flowchart LR
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
-    ANB["2 · Anbindungen<br/>Rückmeldungen Jugendtraining (n8n)<br/>Schulferien Saarland (n8n)<br/>EP3-Export Hallenbuchungen (n8n)<br/>Maileingang jetzt abrufen (n8n)<br/>Paperless-ngx TC Oberthal<br/>E-Mail-Versand (n8n)<br/>Euroflex E-Mail-Versand (Outlook 365, n8n)<br/>Paperless-ngx Euroflex"]
+    ANB["2 · Anbindungen<br/>Rückmeldungen Jugendtraining (n8n)<br/>Schulferien Saarland (n8n)<br/>EP3-Export Hallenbuchungen (n8n)<br/>Maileingang jetzt abrufen (n8n)<br/>Paperless-ngx TC Oberthal<br/>E-Mail-Versand (n8n)<br/>Nextcloud<br/>Euroflex E-Mail-Versand (Outlook 365, n8n)<br/>Paperless-ngx Euroflex"]
     RT["5 · Laufzeit<br/>db · gotenberg · backup · caddy · paperless-db · paperless-redis · paperless-tika · paperless · n8n"]
     N8N["n8n<br/>Euroflex Mailversand<br/>TCO EP3 Import Portal<br/>TCO Maileingang<br/>TCO Mailversand<br/>TCO Paperless Qualifizierung"]
     PL[("Paperless-ngx")]
@@ -135,6 +135,7 @@ flowchart LR
 | `tco.mailabruf` | Maileingang jetzt abrufen (n8n) | TCO Maileingang | Startet im Dokumenteneingang über „Posteingang abrufen“ den n8n-Workflow „TCO Maileingang“ (Webhook-Knoten „Alle Mails jetzt (Webhook)“,  | `modules/tco/server/verbindung.ts` |
 | `paperless` | Paperless-ngx TC Oberthal |  | Dokumentenablage für TC Oberthal – ein eigenes Paperless je Bereich, nie dieselbe Adresse wie ein anderer Bereich. | `modules/tco/server/verbindung.ts` |
 | `mail` | E-Mail-Versand (n8n) | TCO Mailversand | Generischer n8n-Workflow „TCO Mailversand“ für alle E-Mails des Portals (Kennwort-Links, Registrierung, Rechnungen, Mitglieder …).  | `server/src/lib/mail.ts` |
+| `nextcloud` | Nextcloud |  | Ein Zugang für alles, was das Portal in der Nextcloud ablegt (WebDAV): die tägliche Sicherung (Administration → System → Sicherung) und die Arbeitsablage des Dokumenteneingangs.  | `server/src/lib/nextcloud.ts` |
 | `transport.mail` | Euroflex E-Mail-Versand (Outlook 365, n8n) | Euroflex Mailversand | n8n-Workflow „Euroflex Mailversand“: E-Mails zum Auftrag mit ausgewählten Anhängen über Outlook 365, aus dem Postfach des angemeldeten Benutzers.  | `modules/transport/server/mailversand.ts` |
 | `transport.paperless` | Paperless-ngx Euroflex |  | Dokumentenablage für Euroflex – ein eigenes Paperless je Bereich, nie dieselbe Adresse wie ein anderer Bereich. | `modules/transport/server/mailversand.ts` |
 
