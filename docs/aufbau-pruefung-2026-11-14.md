@@ -1147,12 +1147,12 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 
 | Kürzel | Empfehlung | Aufwand | Entscheidung |
 |---|---|---|---|
-| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ◐ Rahmen, Portal, Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen, Beitragseinzug (Gläubigerdaten), Hallenschlüssel, Clubhaus, Verzehr, Instandhaltung, E-Mail-Texte ✔ |
+| E1 | Eine App „Einstellungen“ mit Kapiteln je Anwendung | groß, in Stufen | ✔ Rahmen, Portal (mit allen Logos), Euroflex, TC Oberthal: Verein und Bank, Tennishalle, Finanzen, Kontenfindung, Beitragseinzug, Hallenschlüssel, Clubhaus, Verzehr, Instandhaltung, E-Mail-Texte |
 | E2 | Kapitel „Erscheinungsbild“ mit allen Logos | klein–mittel | ✔ |
 | E3 | Doppelte Angaben zusammenführen (IBAN, Anschrift) | klein–mittel | ✔ |
 | E4 | Kontenfindung als ein Unterkapitel | mittel | ✔ (als Übersicht mit Absprung; gepflegt wird weiter im jeweiligen Kapitel) |
 | E5 | Regel Einstellungen/Stammdaten, Gruppe „Einstellungen“ im Fachbaum entfällt | mittel | ✔ |
-| S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ◐ Stufe 1–3 umgesetzt (Reiter, Paperless je Bereich, Zuordnung und API-Schlüssel darin) |
+| S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ✔ Reiter je Schnittstelle, Paperless je Bereich mit den Abschnitten der Fach-Apps, Zuordnung und API-Schlüssel darin, SAP-Übernahmen |
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☑ umgesetzt |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ✔ (Altdaten Hallenschlüssel bleibt als einmalige Übernahme ein eigener Knopf) |
@@ -1169,7 +1169,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | N5 | Dokumenten-Upload zu „Dokumente“ | klein | ☑ umgesetzt |
 | N6 | Menü und Rollenpflege gleich gliedern, mit Test | klein | ☑ umgesetzt |
 | N7 | Euroflex wie TC Oberthal aufbauen | klein–mittel | ✔ |
-| B1 | Varianten: eine Bauart | mittel | ☐ |
+| B1 | Varianten: eine Bauart | mittel | ☐ **offen – braucht eine Entscheidung:** Mitglieder-Analyse, Instandhaltung und Hallenschlüssel speichern eigene Varianten; die der Analyse sind ganze Auswertungen, keine Listenansichten. Die Umstellung überführt gespeicherte Varianten der Benutzer in `core.varianten` und baut drei Dialoge um – ohne Blick in den Browser und ohne Abgleich mit den vorhandenen Varianten nicht verantwortbar |
 | B2 | Reiter für Teile, Umschalter für Sichten | klein | ✔ |
 | B3 | Zahnrad statt Reiter „Einstellungen“ | klein | ✔ (mit E1: kein Reiter „Einstellungen“ mehr in einer Fach-App) |
 | B4 | Icons eindeutig | klein | ☑ umgesetzt |
