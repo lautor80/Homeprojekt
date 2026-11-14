@@ -18,6 +18,7 @@ import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
 import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
 import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
+import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
 import { kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
@@ -789,6 +790,7 @@ const mod: ServerModule = {
   migrationsDir: path.join(APP_ROOT, 'modules', 'transport', 'server', 'migrations'),
   paperlessKontexte: TRANSPORT_KONTEXTE,
   verbindungen: TRANSPORT_VERBINDUNGEN,
+  funktionen: TRANSPORT_FUNKTIONEN,
   // E-Mail-Protokoll: Empfängeradressen den Kontakten zuordnen
   mailPersonen: async (db, emails) => {
     if (!emails.length) return [];

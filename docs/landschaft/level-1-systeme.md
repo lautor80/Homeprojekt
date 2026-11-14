@@ -169,6 +169,7 @@ flowchart LR
 | core:audit | 3 |
 | core:auth | 7 |
 | core:backup | 15 |
+| core:funktionen | 2 |
 | core:mail | 8 |
 | core:paperless | 5 |
 | core:settings | 3 |

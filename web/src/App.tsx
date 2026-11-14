@@ -81,7 +81,7 @@ export function App() {
         const neu = await api.get<Me>('/api/auth/me');
         setState((s) => {
           if (s.kind !== 'ready') return s;
-          const schluessel = (m: Me) => JSON.stringify([m.user, [...m.permissions].sort(), m.modules]);
+          const schluessel = (m: Me) => JSON.stringify([m.user, [...m.permissions].sort(), m.modules, [...(m.aus?.ids ?? [])].sort(), [...(m.aus?.rechte ?? [])].sort()]);
           return schluessel(s.me) === schluessel(neu) ? s : { kind: 'ready', me: neu };
         });
       } catch (e) {

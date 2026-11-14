@@ -13,6 +13,7 @@ import { ApiKeysPage } from '../pages/ApiKeysPage';
 import { SperrenPage } from '../pages/SperrenPage';
 import { TabellenPage } from '../pages/TabellenPage';
 import { MailProtokollPage } from '../pages/MailProtokollPage';
+import { FunktionenPage } from '../pages/FunktionenPage';
 
 export const coreNav: { home: NavEntry; admin: NavEntry } = {
   home: { text: 'Start', icon: 'home', path: '/' },
@@ -30,7 +31,13 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
           { text: 'Rollenmatrix', icon: 'grid', path: '/admin/rollenmatrix', permission: 'core.roles:display' },
         ],
       },
-      { text: 'Einstellungen', icon: 'action-settings', path: '/admin/einstellungen', permission: 'core.settings:edit' },
+      {
+        text: 'Einstellungen', icon: 'action-settings',
+        children: [
+          { text: 'Einstellungen', icon: 'action-settings', path: '/admin/einstellungen', permission: 'core.settings:edit' },
+          { text: 'Funktionen', icon: 'activate', path: '/admin/funktionen', permission: 'core.funktionen:edit' },
+        ],
+      },
       {
         text: 'Schnittstellen', icon: 'connected',
         children: [
@@ -68,6 +75,7 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/aenderungsbelege', component: AuditPage, permission: 'core.audit:display' },
   { path: '/admin/mailprotokoll', component: MailProtokollPage, permission: 'core.mail:display' },
   { path: '/admin/einstellungen', component: SettingsPage, permission: 'core.settings:edit' },
+  { path: '/admin/funktionen', component: FunktionenPage, permission: 'core.funktionen:edit' },
   { path: '/admin/anbindungen', component: VerbindungenPage, permission: 'core.settings:edit' },
   { path: '/admin/paperless', component: PaperlessMappingPage, permission: 'core.settings:edit' },
   { path: '/admin/sperren', component: SperrenPage, permission: 'core.sperren:admin' },

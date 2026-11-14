@@ -8,7 +8,7 @@ import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Ce
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { PdfDialog } from '@core/components/PdfDialog';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { AblageFlaeche } from '@core/ablage';
@@ -53,6 +53,8 @@ const aktMonat = () => isoHeute().slice(0, 7).replace('-', '');
 export function Jugendtraining() {
   const can = useCan();
   const edit = can('tco.jt:edit');
+  /** Funktionsschalter (#232, F1): der Import der Trainerstunden lässt sich abschalten */
+  const importAn = useFunktion()('tco.jt.import');
   // Einsprung aus dem Arbeitsvorrat: ?monat=JJJJMM&tab=abr
   const [start] = useState(() => new URLSearchParams(window.location.search));
   const [monat, setMonat] = useState(() => (/^\d{6}$/.test(start.get('monat') ?? '') ? start.get('monat')! : aktMonat()));
@@ -138,9 +140,11 @@ export function Jugendtraining() {
           <Tab data-key="woche" text="Wochenraster" icon="grid" selected={tab === 'woche'}>
             <Woche m={m} zeiten={zeiten} ferien={ferien} edit={zeitEdit} adrnr={adrnr} onSetzen={setzen} onLoeschen={loeschen} onAktion={aktion} />
           </Tab>
-          <Tab data-key="import" text="Import" icon="upload" selected={tab === 'import'}>
-            <Import m={m} edit={edit} erg={imp} onErg={(r) => { setImp(r); laden(); }} onError={setError} onAktion={aktion} />
-          </Tab>
+          {importAn ? (
+            <Tab data-key="import" text="Import" icon="upload" selected={tab === 'import'}>
+              <Import m={m} edit={edit} erg={imp} onErg={(r) => { setImp(r); laden(); }} onError={setError} onAktion={aktion} />
+            </Tab>
+          ) : null}
           <Tab data-key="abr" text="Abrechnung" icon="receipt" selected={tab === 'abr'}>
             <Abrechnung m={m} edit={edit} onAktion={aktion} onError={setError} />
           </Tab>

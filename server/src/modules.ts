@@ -5,6 +5,8 @@ import type { SensitiveFieldDef } from './schutz.js';
 import type { KontextDef } from './lib/paperless-mapping.js';
 import { PAPERLESS_DEF, type VerbindungGruppe } from './lib/verbindungen.js';
 import { MAIL_DEF } from './lib/mail.js';
+import type { FunktionDef } from './funktionsschalter.js';
+import { KERN_FUNKTIONEN } from './funktionen-kern.js';
 
 // ---------------------------------------------------------------------------
 // Verfügbare Fachmodule. Neues Modul: hier importieren und eintragen.
@@ -37,6 +39,7 @@ const coreAuditObjects: AuditObjectDef[] = [
   { type: 'API_KEY', text: 'API-Schlüssel', permission: 'core.apikeys:display' },
   { type: 'PAPERLESS_MAPPING', text: 'Paperless-Zuordnung', permission: 'core.settings:edit' },
   { type: 'VERBINDUNG', text: 'Anbindung', permission: 'core.settings:edit' },
+  { type: 'FUNKTION', text: 'Funktionsschalter', permission: 'core.funktionen:edit' },
   { type: 'BACKUP_EXPORT', text: 'Nextcloud-Export der Sicherung', permission: 'core.backup:create' },
 ];
 
@@ -54,6 +57,14 @@ export function verbindungsGruppen(): VerbindungGruppe[] {
   return [
     { modul: 'core', name: 'Basis', verbindungen: [PAPERLESS_DEF, MAIL_DEF] },
     ...activeModules().filter((m) => m.verbindungen?.length).map((m) => ({ modul: m.id, name: m.name, verbindungen: m.verbindungen! })),
+  ];
+}
+
+/** Einzelne abschaltbare Funktionen des Kerns und aller aktiven Module (Administration → Einstellungen → Funktionen) */
+export function funktionsDefs(): { modul: string; def: FunktionDef }[] {
+  return [
+    ...KERN_FUNKTIONEN.map((def) => ({ modul: 'core', def })),
+    ...activeModules().flatMap((m) => (m.funktionen ?? []).map((def) => ({ modul: m.id, def }))),
   ];
 }
 

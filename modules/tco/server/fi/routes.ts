@@ -3,6 +3,8 @@ import { rechnungAufteilung } from '../halle/daten.js';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { funktionAktiv, funktionAusText } from '../../../../server/src/funktionsschalter.js';
+import { F_BANKIMPORT, F_MANUELL, TCO_FUNKTIONEN } from '../funktionen.js';
 import { DB, liste, paperless, plAktiv, vereinLesen, type Verein } from '../verein.js';
 import { fiDokumentPruefen } from '../dokumentfreigabe.js';
 import { addTage, heute } from '../format.js';
@@ -273,6 +275,9 @@ export async function fiRoutes(app: FastifyInstance) {
     const bank = liste(v.fi_bankkonten);
     const manuellKonten = liste(v.fi_manuell_konten);
     const modus = b.modus ?? (bank.includes(b.konto) ? 'bank' : 'manuell');
+    // Funktionsschalter (#232, F1): Bankimport und manuelle Buchung teilen sich diesen Endpunkt und das Recht „buchen“
+    const funktion = TCO_FUNKTIONEN.find((f) => f.id === (modus === 'bank' ? F_BANKIMPORT : F_MANUELL))!;
+    if (!funktionAktiv(funktion.id)) throw new BusinessError(funktionAusText(funktion.text), 403);
     if (modus === 'bank' && !bank.includes(b.konto)) {
       throw new BusinessError(`Konto ${b.konto} ist in den Stammdaten nicht als Konto mit Bankdatei hinterlegt (TC Oberthal → Einstellungen → Stammdaten → FI-Belege).`);
     }

@@ -7,6 +7,7 @@ import {
 import { getPublicSettings } from './settings.js';
 import { loginErfassen } from './statistik.js';
 import { activeModuleIds } from '../modules.js';
+import { schalterZustand } from '../funktionsschalter.js';
 import { kennwortLinkSenden, tokenLesen } from '../kennwort.js';
 
 // einfacher Schutz gegen Passwort-Raten: max. 10 Fehlversuche je Benutzer/IP in 15 Minuten
@@ -72,6 +73,8 @@ export async function authRoutes(app: FastifyInstance) {
         roles: u.roles,
       },
       permissions: [...u.permissions],
+      // Funktionsschalter (#232, F1): was für alle abgeschaltet ist – Rechte und Knoten (Apps, Funktionen)
+      aus: { rechte: [...schalterZustand().rechte], ids: [...schalterZustand().ids] },
       modules: activeModuleIds(),
       settings: await getPublicSettings(),
     };

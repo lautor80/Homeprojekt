@@ -22,7 +22,7 @@ import { Attribute, Attributes } from '@core/components/Attributes';
 import { ObjectHeader } from '@core/components/ObjectHeader';
 import { MasterDetail } from '@core/components/MasterDetail';
 import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import {
   H, PROBLEM_ICON, RG_STATE, RG_STATUS, dat, dateiLesen, eur, wtag, zeit,
@@ -73,6 +73,7 @@ export function Hallenabrechnung() {
   const [csvAblage, setCsvAblage] = useState(false);
   /** Dialog vor dem EP3-Import über n8n: Standardzeitraum oder Buchungen ab Datum nachladen (#103) */
   const [ep3Dlg, setEp3Dlg] = useState(false);
+  const ep3An = useFunktion()('tco.halle.ep3import');
   /**
    * EP3-Abgleich (#20): simulierter Import (nichts wird geschrieben) – fehlen im Portal Buchungen, die in den letzten 5 Tagen in EP3
    * angelegt wurden? Ohne Abweichung sind die Knöpfe „EP3 importieren“ und „CSV-Datei“ ausgeblendet.
@@ -122,12 +123,13 @@ export function Hallenabrechnung() {
 
   useEffect(() => { ladeListe(); }, [ladeListe]);
   const abgleichen = useCallback(async () => {
-    if (!edit) return;
+    // Funktionsschalter (#232, F1): ohne EP3-Import kein Abgleich – damit erscheinen auch die Import-Knöpfe nicht
+    if (!edit || !ep3An) return;
     setAbgleichLaeuft(true);
     try { setAbgleich(await api.get<Abgleich>(`${H}/import/abgleich`)); }
     catch (e) { setAbgleich({ pruefbar: false, text: (e as Error).message, fehlend: [] }); }
     finally { setAbgleichLaeuft(false); }
-  }, [edit]);
+  }, [edit, ep3An]);
   useEffect(() => { abgleichen(); }, [abgleichen]);
   /** Import-Knöpfe nur bei Abweichung oder wenn der Abgleich nicht möglich war */
   const importNoetig = !!abgleich && (!abgleich.pruefbar || abgleich.fehlend.length > 0);
