@@ -52,6 +52,10 @@ export function UsersPage() {
   /** Freitextsuche (live) und Benutzerart: Mitglieder (Rolle MITGLIED), Hallennutzer (Rolle HALLENNUTZER), übrige */
   const [suche, setSuche] = useState('');
   const [art, setArt] = useState<'ALLE' | 'MITGLIED' | 'HALLENNUTZER' | 'SONSTIGE'>('ALLE');
+  // Sortierung der Tabelle gehört zur Variante – sonst ginge „Letzte Anmeldung absteigend“ beim nächsten Öffnen verloren
+  const [sortierung, setSortierung] = useState<{ id: string; desc: boolean } | null>(null);
+  const tabelle = useRef<{ setSortBy?: (s: { id: string; desc: boolean }[]) => void }>(null);
+  useEffect(() => { tabelle.current?.setSortBy?.(sortierung ? [sortierung] : []); }, [sortierung]);
   const [mapping, setMapping] = useState(false);
   const [einzeln, setEinzeln] = useState(false);
   const users = useLoad(() => api.get<User[]>('/api/admin/users'));
@@ -174,7 +178,7 @@ export function UsersPage() {
   ];
 
   return (
-    <AppPage varianten={{ repid: 'core.users', ansicht: { filter, suche, art }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); setArt(feld(a, 'art', art)); } }}
+    <AppPage varianten={{ repid: 'core.users', ansicht: { filter, suche, art, sortierung }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); setArt(feld(a, 'art', art)); setSortierung(feld(a, 'sortierung', null as typeof sortierung)); } }}
       title="Benutzer"
       subtitle={users.data ? `${users.data.length} Benutzer` : undefined}
       actions={mayEdit && (<>
@@ -266,6 +270,12 @@ export function UsersPage() {
         loading={users.loading}
         filterable
         sortable
+        tableInstance={tabelle as never}
+        reactTableOptions={{ initialState: { sortBy: sortierung ? [sortierung] : [] } }}
+        onSort={(e) => {
+          const d = e.detail as unknown as { column: { id: string }; sortDirection?: string };
+          setSortierung(d.sortDirection === 'asc' || d.sortDirection === 'desc' ? { id: d.column.id, desc: d.sortDirection === 'desc' } : null);
+        }}
         visibleRowCountMode="Auto"
         style={{ height: 'calc(100vh - 220px)' }}
         onRowClick={(e) => { setError(null); setEdit({ ...(e.detail.row.original as User), isNew: false }); }}
