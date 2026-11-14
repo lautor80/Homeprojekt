@@ -22,6 +22,7 @@ import {
 import { vereinLesen } from '../verein.js';
 import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
 import { mailProtokoll, mailSenden } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import { tcoHinweis } from '../hinweise.js';
 import { mailFehlerErledigen, abweisen, aboLauf, aktion, bewerben, freigeben, rasterLesen, saisonAendern, saisonEroeffnen, verwaltungLesen } from './abowunsch.js';
 
@@ -130,14 +131,13 @@ async function freigabeMail(r: { email: string; anzeigename: string; ep3: boolea
     if (!v.n8n_mail_url || !r.email) return '';
     const url = await portalUrl();
     const mitglied = r.rolle === ROLLE_MITGLIED;
-    await mailSenden(v, {
-      modus: 'senden', anwendung: 'Registrierung', objekt: 'REG', an: r.email, benutzer: wer, anhaenge: [],
-      betreff: `${v.name}: Ihr Zugang ist freigeschaltet`,
-      text: `Guten Tag ${r.anzeigename},\n\nIhr Zugang zum Portal ist freigeschaltet. Sie können sich jetzt${url ? ` unter ${url}` : ''} anmelden`
-        + (r.ep3 ? ' – mit Ihrem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort (sofern Sie kein neues gewählt haben).' : ' – mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.')
-        + (mitglied ? '\n\nAls Mitglied sehen Sie unter „Meine Mitgliedschaft“ Ihre Daten, buchen Plätze und erfassen Ihren Clubhaus-Verzehr.' : '\n\nUnter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.')
-        + `\n\nViele Grüße\n${v.name}`,
+    // Texte: Einstellungen → E-Mail-Texte, sonst der Standardtext aus dem Verzeichnis (mailtexte.ts, #232)
+    const t = await mailtextFuellen(DB, v, 'registrierung.freigeschaltet', {
+      Name: r.anzeigename, Adresse: url ? ` unter ${url}` : '',
+      Kennwort: r.ep3 ? 'mit Ihrem gewählten Benutzernamen und Ihrem bisherigen EP3-Kennwort (sofern Sie kein neues gewählt haben).' : 'mit Ihrem Benutzernamen und dem bei der Registrierung gewählten Kennwort.',
+      Hinweis: mitglied ? 'Als Mitglied sehen Sie unter „Meine Mitgliedschaft“ Ihre Daten, buchen Plätze und erfassen Ihren Clubhaus-Verzehr.' : 'Unter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.',
     });
+    await mailSenden(v, { modus: 'senden', anwendung: 'Registrierung', objekt: 'REG', an: r.email, benutzer: wer, anhaenge: [], betreff: t.betreff, text: t.text });
     return ' Benachrichtigung per E-Mail gesendet.';
   } catch (e) { return ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
 }
@@ -146,27 +146,22 @@ async function ablehnungMail(r: { email: string; anzeigename: string }, grund: s
   try {
     const v = await vereinLesen();
     if (!v.n8n_mail_url || !r.email) return '';
-    await mailSenden(v, {
-      modus: 'senden', anwendung: 'Registrierung', objekt: 'REG', an: r.email, benutzer: wer, anhaenge: [],
-      betreff: `${v.name}: Ihre Registrierung`,
-      text: `Guten Tag ${r.anzeigename},\n\nIhre Registrierung konnte leider nicht freigeschaltet werden.`
-        + (grund ? `\n\nBegründung: ${grund}` : '') + `\n\nBei Fragen wenden Sie sich bitte an den Verein.\n\nViele Grüße\n${v.name}`,
-    });
+    const t = await mailtextFuellen(DB, v, 'registrierung.abgelehnt', { Name: r.anzeigename, Begruendung: grund ? `Begründung: ${grund}` : '' });
+    await mailSenden(v, { modus: 'senden', anwendung: 'Registrierung', objekt: 'REG', an: r.email, benutzer: wer, anhaenge: [], betreff: t.betreff, text: t.text });
     return ' Benachrichtigung per E-Mail gesendet.';
   } catch (e) { return ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
 }
 
 /** Bestätigungslink an externe Hallennutzer (Registrierung und „Erneut senden“ im Mailprotokoll) */
 async function bestaetigungsMail(v: Verein, url: string, r: { id: number; email: string; vorname: string; nachname: string; benutzername: string }, token: string, cc?: string) {
+  const t = await mailtextFuellen(DB, v, 'registrierung.bestaetigen', {
+    Name: `${r.vorname} ${r.nachname}`, Benutzername: r.benutzername, Stunden: String(EMAIL_STUNDEN), Link: `${url}/registrierung-bestaetigen?token=${token}`,
+  });
   await mailSenden(v, {
     modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: r.email, cc: cc ?? '', benutzer: 'Portal', anhaenge: [],
     // der Link wird nie gespeichert: „Erneut senden“ erzeugt einen neuen
     wiederholung: { art: 'REG_BESTAETIGUNG', id: r.id },
-    betreff: `${v.name}: Bitte bestätigen Sie Ihre Registrierung`,
-    text: `Guten Tag ${r.vorname} ${r.nachname},\n\nvielen Dank für Ihre Registrierung (Benutzername ${r.benutzername}). `
-      + `Bitte bestätigen Sie Ihre E-Mail-Adresse über diesen Link (${EMAIL_STUNDEN} Stunden gültig):\n\n${url}/registrierung-bestaetigen?token=${token}\n\n`
-      + `Danach ist Ihr Zugang sofort freigeschaltet und Sie können Hallen- und Freiplätze buchen.\n\n`
-      + `Haben Sie sich nicht registriert, ignorieren Sie diese E-Mail – ohne Bestätigung wird nichts angelegt.\n\nViele Grüße\n${v.name}`,
+    betreff: t.betreff, text: t.text,
   });
 }
 
@@ -260,13 +255,10 @@ export async function platzRoutes(app: FastifyInstance) {
       if (r.token) {
         await bestaetigungsMail(v, url!, { id: r.id, email: e.email, vorname: e.vorname, nachname: e.nachname, benutzername: e.benutzername }, r.token);
       } else if (v.n8n_mail_url) {
-        await mailSenden(v, {
-          modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, benutzer: 'Portal', anhaenge: [],
-          betreff: `${v.name}: Ihre Registrierung ist eingegangen`,
-          text: `Guten Tag ${e.vorname} ${e.nachname},\n\nvielen Dank für Ihre Registrierung (Benutzername ${e.benutzername}). `
-            + (r.art === 'MITGLIED' ? 'Wir prüfen Ihre Mitgliedschaft' : 'Wir prüfen Ihre Angaben')
-            + ' und benachrichtigen Sie, sobald Ihr Zugang freigeschaltet ist.\n\nViele Grüße\n' + v.name,
+        const t = await mailtextFuellen(DB, v, 'registrierung.eingegangen', {
+          Name: `${e.vorname} ${e.nachname}`, Benutzername: e.benutzername, Pruefung: r.art === 'MITGLIED' ? 'Wir prüfen Ihre Mitgliedschaft' : 'Wir prüfen Ihre Angaben',
         });
+        await mailSenden(v, { modus: 'senden', anwendung: 'Registrierung', objekt: `REG-${r.id}`, an: e.email, benutzer: 'Portal', anhaenge: [], betreff: t.betreff, text: t.text });
       }
     } catch (err) {
       req.log.warn({ registrierung: r.id, err: (err as Error).message }, 'Registrierung: E-Mail nicht gesendet');

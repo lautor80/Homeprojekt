@@ -7,6 +7,7 @@ import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { druckdatenLesen, unterlagePdf } from '../mitglieder/pdf.js';
 import { unterlageAblegen } from '../mitglieder/dokumente.js';
 import { mailSenden } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import { bankSchutz } from '../bankdaten.js';
 import { antragAblehnen, antragAnlegen, antraegeLesen, antragInfo, MAX_PERSONEN, uebernehmen } from './logik.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
@@ -115,14 +116,11 @@ export async function antragRoutes(app: FastifyInstance) {
       const v = await vereinLesen();
       if (v.n8n_mail_url) {
         const p = d.personen[0];
-        await mailSenden(v, {
-          modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: d.email, benutzer: 'Online-Antrag', anhaenge: [],
-          betreff: `${v.name}: Ihr Mitgliedsantrag ${r.nummer} ist eingegangen`,
-          text: `Guten Tag ${d.erziehungsberechtigt || `${p.vorname} ${p.nachname}`},\n\nvielen Dank für Ihren Mitgliedsantrag `
-            + `(${d.personen.map((x) => `${x.vorname} ${x.nachname}`).join(', ')}). Ihre Antragsnummer: ${r.nummer}.\n\n`
-            + 'Der Vorstand prüft den Antrag. Nach der Aufnahme erhalten Sie eine Bestätigung und die Zugangsdaten zum Mitgliederportal per E-Mail.\n\n'
-            + `Viele Grüße\n${v.name}`,
+        // Texte: Einstellungen → E-Mail-Texte, sonst der Standardtext aus dem Verzeichnis (mailtexte.ts, #232)
+        const m = await mailtextFuellen(DB, v, 'antrag.eingang', {
+          Name: d.erziehungsberechtigt || `${p.vorname} ${p.nachname}`, Personen: d.personen.map((x) => `${x.vorname} ${x.nachname}`).join(', '), Nummer: r.nummer,
         });
+        await mailSenden(v, { modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: d.email, benutzer: 'Online-Antrag', anhaenge: [], betreff: m.betreff, text: m.text });
       }
     } catch (e) { req.log.warn({ antrag: r.nummer, err: (e as Error).message }, 'Mitgliedsantrag: Eingangsbestätigung nicht gesendet'); }
     return { nummer: r.nummer, text: `Vielen Dank! Ihr Antrag ${r.nummer} ist eingegangen. Sie erhalten eine Bestätigung per E-Mail; nach der Prüfung durch den Vorstand folgen Aufnahme und Zugangsdaten.` };
@@ -203,22 +201,20 @@ export async function antragRoutes(app: FastifyInstance) {
     const nurBestand = r.mitglieder.every((m) => m.bestand);
     if (b.mail && v.n8n_mail_url && nurBestand) {
       // Vertragsänderung eines bestehenden Mitglieds: Bestätigung statt Willkommen
+      const t = await mailtextFuellen(DB, v, 'antrag.aenderung', {
+        Name: r.name, Nummer: r.nummer, Mitglieder: r.mitglieder.map((m) => `${m.name}: Mitgliedsnummer ${m.mitglnrn}`).join('\n'),
+        Mandat: r.mandat ? `Der Beitrag wird weiterhin per SEPA-Lastschrift eingezogen (Mandatsreferenz ${r.mandat}).` : '',
+      });
       await mailSenden(v, {
-        modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [],
-        betreff: `${v.name}: Ihre Vertragsänderung ${r.nummer} ist bestätigt`,
-        text: `Guten Tag ${r.name},\n\nvielen Dank – Ihre Vertragsänderung ${r.nummer} wurde übernommen.\n\n`
-          + r.mitglieder.map((m) => `${m.name}: Mitgliedsnummer ${m.mitglnrn}`).join('\n')
-          + (r.mandat ? `\n\nDer Beitrag wird weiterhin per SEPA-Lastschrift eingezogen (Mandatsreferenz ${r.mandat}).` : '')
-          + '\n\nViele Grüße\n' + v.name,
+        modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [], betreff: t.betreff, text: t.text,
       }).catch((e) => req.log.warn({ antrag: r.nummer, err: (e as Error).message }, 'Bestätigung Vertragsänderung nicht gesendet'));
     } else if (b.mail && v.n8n_mail_url) {
+      const t = await mailtextFuellen(DB, v, 'antrag.willkommen', {
+        Name: r.name, Nummer: r.nummer, Mitglieder: r.mitglieder.map((m) => `${m.name}: Mitgliedsnummer ${m.mitglnrn}`).join('\n'),
+        Mandat: r.mandat ? `Der Beitrag wird per SEPA-Lastschrift eingezogen (Mandatsreferenz ${r.mandat}).` : '',
+      });
       await mailSenden(v, {
-        modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [],
-        betreff: `${v.name}: Willkommen im Verein – Ihr Antrag ${r.nummer} ist angenommen`,
-        text: `Guten Tag ${r.name},\n\nherzlich willkommen! Ihr Mitgliedsantrag ${r.nummer} wurde angenommen.\n\n`
-          + r.mitglieder.map((m) => `${m.name}: Mitgliedsnummer ${m.mitglnrn}`).join('\n')
-          + (r.mandat ? `\n\nDer Beitrag wird per SEPA-Lastschrift eingezogen (Mandatsreferenz ${r.mandat}).` : '')
-          + '\n\nDie Zugänge zum Mitgliederportal erhalten Sie in separaten E-Mails.\n\nViele Grüße\n' + v.name,
+        modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [], betreff: t.betreff, text: t.text,
       }).catch((e) => req.log.warn({ antrag: r.nummer, err: (e as Error).message }, 'Aufnahmebestätigung nicht gesendet'));
     }
     // Vertrag festgeschrieben → Mitgliederinformation je neuem Mitglied: in Paperless ablegen (wenn eingerichtet) und zum Druck anbieten
@@ -255,12 +251,8 @@ export async function antragRoutes(app: FastifyInstance) {
       try {
         const v = await vereinLesen();
         if (v.n8n_mail_url) {
-          await mailSenden(v, {
-            modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [],
-            betreff: `${v.name}: Ihr Mitgliedsantrag ${r.nummer}`,
-            text: `Guten Tag ${r.name},\n\nIhr Mitgliedsantrag ${r.nummer} konnte leider nicht angenommen werden.`
-              + (b.grund ? `\n\nBegründung: ${b.grund}` : '') + `\n\nBei Fragen wenden Sie sich bitte an den Vorstand.\n\nViele Grüße\n${v.name}`,
-          });
+          const t = await mailtextFuellen(DB, v, 'antrag.abgelehnt', { Name: r.name, Nummer: r.nummer, Begruendung: b.grund ? `Begründung: ${b.grund}` : '' });
+          await mailSenden(v, { modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: r.nummer, an: r.email, benutzer: wer, anhaenge: [], betreff: t.betreff, text: t.text });
           zusatz = ' Antragsteller per E-Mail benachrichtigt.';
         }
       } catch (e) { zusatz = ` (E-Mail nicht gesendet: ${(e as Error).message})`; }
