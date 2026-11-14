@@ -378,6 +378,8 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
 - Vier-Augen-Prinzip später: getrennte Berechtigungen (z. B. `:erzeugen` / `:freigeben`) anlegen und
   über Rollen trennen – kein Umbau nötig.
 
+**Aufbau der Apps, Einstellungen und Schnittstellen (#232):** Prüfung aller 54 Apps auf stimmige Anordnung mit Empfehlungen, Skizzen und Entscheidungsliste (eine App „Einstellungen“ mit Kapiteln je Anwendung, Bereich „Schnittstellen“ mit einem Reiter je Schnittstelle, doppelt gepflegte Angaben) – [docs/aufbau-pruefung-2026-11-14.md](docs/aufbau-pruefung-2026-11-14.md). Reine Analyse, am Programm ist dafür nichts geändert.
+
 ## Modul `tco` (TC Oberthal – Vereinsportal)
 
 System- und Prozesslandschaft in vier Ebenen (Systeme, Prozesse, Prozessschritte, Datenbank): [docs/landschaft](docs/landschaft/README.md) –
