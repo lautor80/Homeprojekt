@@ -87,8 +87,13 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// je Benutzer eine Sitzung: das Startpasswort lässt sich nur einmal ändern
+const sitzungen = new Map<string, ReturnType<typeof client>>();
 async function anmelden(name: string) {
+  const offen = sitzungen.get(name);
+  if (offen) return offen;
   const c = client();
+  sitzungen.set(name, c);
   assert.equal((await c('POST', '/api/auth/login', { username: name, password: 'start-passwort' })).status, 200);
   assert.equal((await c('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' })).status, 200);
   return c;
@@ -210,6 +215,19 @@ test('Melden: Matrix wird geprüft, Zuständige per E-Mail, sofort im Arbeitsvor
   assert.match(ihA[0].titel, /^Sicherheitsrisiko: Platz 3 – Netz\/Pfosten$/);
   assert.match(ihA[0].text, /zuständig: Hans Hallenwart/);
   assert.equal((await mia('GET', `${T}/dashboard/arbeitsvorrat`)).status, 403);
+  // Arbeitsvorrat der Startseite (#232, V2): ohne das Recht der Vereinsübersicht – jeder sieht die Einträge seiner Apps
+  assert.equal((await client()('GET', '/api/arbeitsvorrat')).status, 401, 'nur angemeldet');
+  const hansSitzung = await anmelden('hans');
+  const hansStart = await hansSitzung('GET', '/api/arbeitsvorrat');
+  assert.equal(hansStart.status, 200, JSON.stringify(hansStart.body));
+  assert.deepEqual(hansStart.body.gruppen.map((g: { modul: string; name: string }) => [g.modul, g.name]), [['tco', 'TC Oberthal']], 'Gruppen ohne Einträge entfallen');
+  assert.deepEqual(hansStart.body.gruppen[0].aufgaben.map((a: { key: string }) => a.key), [`SCHADEN:${m1}`, `SCHADEN:${m2}`]);
+  assert.equal((await hansSitzung('GET', `${T}/dashboard/arbeitsvorrat`)).status, 403, 'die Vereinsübersicht bleibt an ihr Recht gebunden');
+  const miaStart = await mia('GET', '/api/arbeitsvorrat');
+  assert.deepEqual([miaStart.status, miaStart.body], [200, { gruppen: [] }], 'Mitglied ohne Bearbeiter-Apps: leer');
+  const adminStart = await admin('GET', '/api/arbeitsvorrat');
+  assert.deepEqual(adminStart.body.gruppen.find((g: { modul: string }) => g.modul === 'tco').aufgaben.map((a: { key: string }) => a.key),
+    r.body.map((a: { key: string }) => a.key), 'dieselben Einträge wie in der Vereinsübersicht');
   r = await admin('GET', `${T}/dashboard`);
   const k = (key: string) => r.body.bereiche.find((b: { key: string }) => b.key === 'INSTANDHALTUNG').kpis.find((x: { key: string }) => x.key === key);
   assert.equal(k('IH_OFFEN').value, '2');

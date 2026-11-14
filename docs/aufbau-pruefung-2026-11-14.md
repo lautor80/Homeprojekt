@@ -462,7 +462,7 @@ in der App zu erscheinen).
 Administration (Sicherung) stehen in einer Liste des Vereinsmoduls.
 
 **Empfehlung.** Der Arbeitsvorrat wird eine Funktion des Kerns auf der Startseite. Jedes Modul meldet seine
-Quellen an (`ServerModule.aufgaben`), so wie heute Anbindungen und künftig Einstellungen. Jeder sieht die
+Quellen an (`ServerModule.arbeitsvorrat`), so wie heute Anbindungen und künftig Einstellungen. Jeder sieht die
 Einträge, deren App er bedienen darf – ein eigenes Recht braucht es nicht.
 
 ```
@@ -480,6 +480,14 @@ Euroflex    neu
 
 Die Vereinsübersicht zeigt weiter ihren Ausschnitt (TC Oberthal). Der rote Zähler am Menüeintrag wandert zu
 *Start*. *Aufwand:* mittel.
+
+**Umgesetzt (14.11.2026).** Die Startseite zeigt über den Kacheln den Arbeitsvorrat, je Anwendung einen Block
+(*Portal*, *TC Oberthal*; bei nur einer Anwendung ohne Zusatz im Titel). Abruf `GET /api/arbeitsvorrat`
+(nur Anmeldung nötig), Sammelstelle `server/src/lib/arbeitsvorrat.ts`, Baustein der Oberfläche
+`web/src/components/Arbeitsvorrat.tsx`. Der Eintrag „Sicherung in die Nextcloud“ kommt jetzt vom Kern (Gruppe
+*Portal*) und steht nicht mehr in der Vereinsübersicht. Kann eine Anwendung ihre Einträge nicht liefern,
+bleiben die anderen sichtbar und ein roter Eintrag nennt die Störung. Euroflex meldet noch keine Quellen an –
+das gehört zu V1.
 
 #### V3 Absichern, dass beim Umbau nichts verloren geht
 
@@ -1028,7 +1036,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ vorgegeben |
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
-| V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☐ |
+| V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☑ umgesetzt |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ Rahmen, Apps und erste Funktionen umgesetzt |
 | A1 | Administration in fünf Gruppen | klein | ☑ umgesetzt |
@@ -1071,6 +1079,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | N6 | Rollenpflege in der Reihenfolge des Menüs; lose Apps im Bereich „Allgemein“; Test `server/test/menue_rollenpflege.test.ts` | umgesetzt 14.11.2026 |
 | S3 | Anbindungen zeigen Testmail und die letzten 5 Versuche; „Protokoll leeren“ steht in der App E-Mail-Protokoll | umgesetzt 14.11.2026 |
 | B4 | Zahnrad nur für Einstellungen, je App ein eigenes Icon (Test) | umgesetzt 14.11.2026 |
+| V2 | Arbeitsvorrat auf der Startseite für alle Anwendungen (`GET /api/arbeitsvorrat`, `ServerModule.arbeitsvorrat`); roter Zähler am Menüeintrag *Start*; die Vereinsübersicht zeigt weiter den Ausschnitt TC Oberthal | umgesetzt 14.11.2026 – Quellen für Euroflex folgen mit V1 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

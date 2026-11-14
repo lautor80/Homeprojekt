@@ -14,6 +14,7 @@ import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
 import { TCO_VERBINDUNGEN } from './verbindung.js';
 import { TCO_FUNKTIONEN } from './funktionen.js';
+import { arbeitsvorrat } from './dashboard/arbeitsvorrat.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
 import { gruppenRoutes, P_GR } from './gruppen/routes.js';
@@ -241,7 +242,7 @@ const tco: ServerModule = {
     { area: 'Clubhaus', app: 'Verzehrbuch', id: P_VZ.admin, text: 'Verzehr verwalten: Preisliste Speisen/Sonstiges und Gästepreise, Stornos, Monatsabschluss (Sammelabrechnungen), Belege bezahlen/stornieren, Einstellungen', requires: [P_VZ.display] },
 
     { area: 'Instandhaltung', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
-    { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat der Vereinsübersicht' },
+    { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat (Startseite)' },
     { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben, Formular in Paperless ablegen – wer dieses Recht über eine Rolle hat, kann als Zuständiger eingetragen werden', requires: [P_IH.display] },
     { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Orte („Wo?“), Kategorien, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
 
@@ -272,6 +273,8 @@ const tco: ServerModule = {
   paperlessKontexte: TCO_KONTEXTE,
   verbindungen: TCO_VERBINDUNGEN,
   funktionen: TCO_FUNKTIONEN,
+  // Arbeitsvorrat der Startseite (#232, V2) – dieselben Einträge wie in der Vereinsübersicht
+  arbeitsvorrat: (req) => arbeitsvorrat(DB, req),
   mailWiederholen, mailFolge, mailPersonen,
   // Funktionstrennung (docs/berechtigungskonzept.md, 4.8) – die Rollenpflege meldet diese Kombinationen
   rechteKonflikte: [

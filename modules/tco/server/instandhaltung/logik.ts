@@ -2,7 +2,7 @@
  * Instandhaltung / Schadensmeldung (#205): Datenzugriff und Abläufe.
  *
  * Mitglieder melden Schäden (App „Schaden melden“, auch per QR-Code am Ort), Platzwart/Hallenwart/Vorstand bearbeiten
- * sie in der App „Schadensmeldungen“ (Bereich Instandhaltung). Offene Meldungen stehen im Arbeitsvorrat der Vereinsübersicht (dashboard/arbeitsvorrat.ts),
+ * sie in der App „Schadensmeldungen“ (Bereich Instandhaltung). Offene Meldungen stehen im Arbeitsvorrat auf der Startseite und in der Vereinsübersicht (dashboard/arbeitsvorrat.ts),
  * die Kachel „Offene Schäden“ in den Kennzahlen. E-Mails werden hier nur zusammengestellt – versendet wird in routes.ts.
  *
  * Stammdaten: Orte („Wo?“, mit Gruppe), Kategorien, Matrix Kategorie × Ort (was wo gemeldet werden kann), Zuständigkeit

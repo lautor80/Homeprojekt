@@ -25,6 +25,7 @@ import { sperrRoutes } from './routes/sperren.js';
 import { tabellenRoutes } from './routes/tabellen.js';
 import { variantenRoutes } from './routes/varianten.js';
 import { funktionenRoutes, registerFunktionen } from './routes/funktionen.js';
+import { arbeitsvorratRoutes } from './routes/arbeitsvorrat.js';
 import { schalterLaden } from './lib/funktionen.js';
 import { GesperrtError } from './sperren.js';
 
@@ -77,6 +78,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(tabellenRoutes);
   await app.register(variantenRoutes);
   await app.register(funktionenRoutes);
+  await app.register(arbeitsvorratRoutes);
   await app.register(adminRoutes);
   await app.register(auditRoutes);
   await app.register(apiKeyRoutes);

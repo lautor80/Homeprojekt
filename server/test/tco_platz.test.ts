@@ -939,6 +939,14 @@ test('Halle verschlossen (#11): Hinweis ohne Hallenschlüssel, Arbeitsvorrat fü
   assert.equal(hw.pfad, `/tco/platzverwaltung?tab=belegung&datum=${d}`);
   // Klärung mit dem Kunden bestätigen: Eintrag verschwindet, bleibt aber bei „heute erfasst“ (Kassenwart)
   assert.deepEqual(hw.erledigen, { text: 'mit dem Kunden geklärt', url: '/dashboard/arbeitsvorrat/halle-geklaert', body: { bid: ohne, datum: d } });
+  // Startseite (#232, V2): derselbe Eintrag in der Gruppe der Anwendung, „erledigen“ mit vollständiger Adresse – auch am Unterpunkt
+  const start = await admin('GET', '/api/arbeitsvorrat');
+  assert.equal(start.status, 200, JSON.stringify(start.body));
+  const tcoGruppe = start.body.gruppen.find((g: any) => g.modul === 'tco');
+  assert.equal(tcoGruppe.name, 'TC Oberthal');
+  const hwStart = tcoGruppe.aufgaben.find((a: any) => a.key === hw.key);
+  assert.deepEqual(hwStart, { ...hw, erledigen: { ...hw.erledigen, url: '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert' } });
+  assert.deepEqual(tcoGruppe.aufgaben.find((a: any) => a.key === 'HALLE_HEUTE').kinder.map((k: any) => k.key), heute.kinder.map((k: any) => k.key));
   assert.equal((await bert('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', hw.erledigen.body)).status, 403);
   assert.equal((await admin('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', { bid: 'gibtsnicht', datum: d })).status, 404);
   r = await admin('POST', '/api/m/tco/dashboard/arbeitsvorrat/halle-geklaert', hw.erledigen.body);
