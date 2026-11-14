@@ -139,7 +139,14 @@ async function anhangAusPaperless(v: Verein, docId: number, rgnr: string): Promi
 // Texte
 // ---------------------------------------------------------------------------
 
-export function mailTexte(v: Verein, vorname: string, rgnrs: string[], link?: string | null) {
+/** Satz mit dem Link zum Herunterladen (Freigabelink aus Paperless, 30 Tage) */
+export const rechnungDownload = (link: string) => `Deine Rechnung kannst du 30 Tage lang über folgenden Link herunterladen:\n${link}`;
+
+/**
+ * Standardtext der Rechnungsmail. `download` ersetzt den Satz mit dem Link – das Verzeichnis der E-Mail-Texte
+ * (mailtexte.ts) setzt dort den Platzhalter {Download} ein.
+ */
+export function mailTexte(v: Verein, vorname: string, rgnrs: string[], link?: string | null, download: string | null = link ? rechnungDownload(link) : null) {
   const mehrere = rgnrs.length > 1;
   const nr = rgnrs.join(', ');
   const anrede = vorname || 'zusammen';
@@ -147,7 +154,7 @@ export function mailTexte(v: Verein, vorname: string, rgnrs: string[], link?: st
   const text = [
     `Hallo ${anrede},`, '',
     `vielen Dank dass du die Tennishalle des TC Oberthal genutzt hast. ${mehrere ? 'Anbei erhältst du deine Abrechnungen mit den Rechnungsnummern' : 'Anbei erhältst du deine Abrechnung mit der Rechnungsnummer'} ${nr} mit der Bitte um Überweisung auf unser Vereinskonto.`, '',
-    ...(link ? ['Deine Rechnung kannst du 30 Tage lang über folgenden Link herunterladen:', link, ''] : []),
+    ...(download ? [download, ''] : []),
     'Vielen Dank und beste Grüße',
     v.ansprechpartner ?? '',
   ].join('\n');

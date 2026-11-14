@@ -45,7 +45,9 @@ test('Verzeichnis: je Anlass Standardtext mit Platzhaltern, noch kein eigener Te
   const l = await liste();
   assert.equal(l.length, MAILTEXTE.length);
   assert.equal(new Set(l.map((x) => x.schluessel)).size, l.length, 'Schlüssel eindeutig');
-  assert.ok(l.every((x) => !x.eigen && !x.geaendert && x.standard.betreff && x.standard.text.length > 40), 'frisch: überall der Standardtext');
+  // (ein „Rahmen“ besteht nur aus Nachricht und Gruß – er ist kurz, muss aber die Nachricht enthalten)
+  const rahmen = (x: Eintrag) => x.pflicht.includes('Nachricht');
+  assert.ok(l.every((x) => !x.eigen && !x.geaendert && x.standard.betreff && (rahmen(x) ? x.standard.text.includes('{Nachricht}') : x.standard.text.length > 40)), 'frisch: überall der Standardtext');
   // jeder Platzhalter des Standardtexts ist beschrieben – sonst ließe sich der Standardtext nicht unverändert sichern
   for (const x of l) {
     const im = [...new Set([...`${x.standard.betreff}\n${x.standard.text}`.matchAll(/\{([A-Za-z]+)\}/g)].map((m) => m[1]))];
@@ -147,4 +149,63 @@ test('Automatische E-Mails aus dem Verzeichnis: Standardtext unverändert, bedin
   t = await mailtextFuellen(db, v, 'registrierung.bestaetigen', { Name: 'Tom Lob', Benutzername: 'tom', Stunden: '48', Link: 'https://x.example/t' });
   assert.match(t.text, /über diesen Link \(48 Stunden gültig\):\n\nhttps:\/\/x\.example\/t\n\nDanach ist Ihr Zugang sofort freigeschaltet/);
   await assert.rejects(() => mailtextFuellen(db, v, 'gibt.es.nicht', {}), /gibt es nicht/);
+});
+
+test('Verzehr, Hallenrechnung, Rahmen, Vertragsangebot und Startkennwort: Standard unverändert, eigener Text gilt', async () => {
+  const { mailtextFuellen } = await import('../../modules/tco/server/mailtexte.js');
+  const { mailTexte } = await import('../../modules/tco/server/halle/versand.js');
+  const { rechnungMailText, sammelVorlageEigen } = await import('../../modules/tco/server/halle/mailtext.js');
+  const { sammelMailVorlage, sammelMailVorlageLesen } = await import('../../modules/tco/server/halle/sammelversand.js');
+  const v = await vereinLesen();
+  const gruss = v.ansprechpartner ?? v.name;
+
+  // Verzehr: drei Anlässe, gleicher Betreff
+  let t = await mailtextFuellen(db, v, 'verzehr.beleg', { Vorname: 'Kai', Beleg: 'Verzehrbeleg', Nummer: 'VZ-9', Betrag: '12,50 €', Bezahlt: 'bezahlt per Karte' });
+  assert.deepEqual(t, { betreff: `Verzehrbeleg VZ-9 – ${v.name}`, text: `Hallo Kai,\n\nvielen Dank für deinen Besuch in unserem Clubhaus. Anbei dein Beleg VZ-9 über 12,50 € (bezahlt per Karte).\n\nViele Grüße\n${gruss}`.trim() });
+  t = await mailtextFuellen(db, v, 'verzehr.abrechnung.lastschrift', { Vorname: 'Kai', Beleg: 'Verzehrabrechnung Mai 2027', Nummer: 'VZ-10', Betrag: '40,00 €', Monat: 'Mai 2027' });
+  assert.equal(t.text, `Hallo Kai,\n\nanbei deine Verzehrabrechnung VZ-10 für den Mai 2027 über 40,00 €. Der Betrag wird mit der nächsten Lastschrift eingezogen.\n\nViele Grüße\n${gruss}`.trim());
+  t = await mailtextFuellen(db, v, 'verzehr.abrechnung.ueberweisung', { Vorname: 'Kai', Beleg: 'Verzehrabrechnung Mai 2027', Nummer: 'VZ-10', Betrag: '40,00 €', Monat: 'Mai 2027', Faellig: '15.06.2027' });
+  assert.match(t.text, /über 40,00 € mit der Bitte um Überweisung bis zum 15\.06\.2027 auf unser Vereinskonto \(Verwendungszweck: Verzehr VZ-10\)\.\n\nViele Grüße/);
+
+  // Rahmen (Hallenschlüssel, Instandhaltung) und Hallenabo: wie bisher zusammengesetzt
+  t = await mailtextFuellen(db, v, 'schluessel.rahmen', { Betreff: 'Schlüssel liegt bereit', Nachricht: 'Hallo Kai,\n\ndein Schlüssel liegt bereit.' });
+  assert.deepEqual(t, { betreff: `${v.name}: Schlüssel liegt bereit`, text: `Hallo Kai,\n\ndein Schlüssel liegt bereit.\n\nViele Grüße\n${v.name}` });
+  t = await mailtextFuellen(db, v, 'halle.abo', { Betreff: 'Hallenabo 27/28: bitte bestätigen', Name: 'Kai', Nachricht: 'dein Abo kannst du behalten.', Portal: '' });
+  assert.deepEqual(t, { betreff: 'Hallenabo 27/28: bitte bestätigen', text: `Hallo Kai,\n\ndein Abo kannst du behalten.\n\nSportliche Grüße\n${v.name}` });
+  t = await mailtextFuellen(db, v, 'halle.abo', { Betreff: 'x', Name: 'Kai', Nachricht: 'Text.', Portal: 'Zum Portal: https://portal.example.org/tco/platz-buchen?ansicht=abo' });
+  assert.equal(t.text, `Hallo Kai,\n\nText.\n\nZum Portal: https://portal.example.org/tco/platz-buchen?ansicht=abo\n\nSportliche Grüße\n${v.name}`);
+  assert.equal((await call('PUT', `${T}/instandhaltung.rahmen`, { betreff: '{Betreff}', text: 'Nur ein Gruß' })).status, 400, 'ohne {Nachricht} ginge die Benachrichtigung verloren');
+  assert.equal((await call('PUT', `${T}/instandhaltung.rahmen`, { betreff: 'TCO – {Betreff}', text: '{Nachricht}\n\nEuer Platzwart' })).status, 200);
+  assert.deepEqual(await mailtextFuellen(db, v, 'instandhaltung.rahmen', { Betreff: 'Netz gerissen', Nachricht: 'Platz 3: Netz gerissen.' }), { betreff: 'TCO – Netz gerissen', text: 'Platz 3: Netz gerissen.\n\nEuer Platzwart' });
+  assert.equal((await call('DELETE', `${T}/instandhaltung.rahmen`)).status, 200);
+
+  // Startkennwort
+  t = await mailtextFuellen(db, v, 'mitglied.startkennwort', { Name: 'Kai Lob', Benutzername: 'kai.lob', Kennwort: 'abc-123' });
+  assert.match(t.text, /^Guten Tag Kai Lob,\n\nfür Sie wurde ein Zugang zum Mitgliederportal angelegt\.\n\nAnmeldename: kai\.lob\nStartkennwort: abc-123\n\nBitte melden Sie sich an/);
+
+  // Hallenrechnung: ohne eigenen Text der Standard mit Einzahl/Mehrzahl und Link
+  assert.deepEqual(await rechnungMailText(db, v, 'Kai', ['2027_001'], 'https://dl.example/x'), mailTexte(v, 'Kai', ['2027_001'], 'https://dl.example/x'));
+  assert.deepEqual(await rechnungMailText(db, v, '', ['2027_001', '2027_002']), mailTexte(v, '', ['2027_001', '2027_002']));
+  assert.match(mailTexte(v, 'Kai', ['2027_001'], 'https://dl.example/x').text, /Vereinskonto\.\n\nDeine Rechnung kannst du 30 Tage lang über folgenden Link herunterladen:\nhttps:\/\/dl\.example\/x\n\nVielen Dank/);
+  assert.equal(await sammelVorlageEigen(db), null);
+  assert.deepEqual(await sammelMailVorlageLesen(db, v), sammelMailVorlage(v));
+  const std = (await eintrag('halle.rechnung')).standard;
+  assert.ok(std.text.includes('{Vorname}') && std.text.includes('{Rechnungsnummer}') && std.text.includes('{Download}'));
+  // eigener Text: gilt für eine und mehrere Rechnungen; im Sammelversand ohne den Satz mit dem Link
+  assert.equal((await call('PUT', `${T}/halle.rechnung`, { betreff: 'Hallenrechnung {Rechnungsnummer}', text: 'Hallo {Vorname},\n\nanbei {Rechnungsnummer}.\n\n{Download}\n\nDein TCO' })).status, 200);
+  assert.deepEqual(await rechnungMailText(db, v, '', ['2027_001', '2027_002']), { betreff: 'Hallenrechnung 2027_001, 2027_002', text: 'Hallo zusammen,\n\nanbei 2027_001, 2027_002.\n\nDein TCO' });
+  assert.equal((await rechnungMailText(db, v, 'Kai', ['2027_001'], 'https://dl.example/x')).text,
+    'Hallo Kai,\n\nanbei 2027_001.\n\nDeine Rechnung kannst du 30 Tage lang über folgenden Link herunterladen:\nhttps://dl.example/x\n\nDein TCO');
+  assert.deepEqual(await sammelMailVorlageLesen(db, v), { betreff: 'Hallenrechnung {Rechnungsnummer}', text: 'Hallo {Vorname},\n\nanbei {Rechnungsnummer}.\n\nDein TCO' });
+  assert.equal((await call('DELETE', `${T}/halle.rechnung`)).status, 200);
+
+  // Vertragsangebot: Vorbelegung im Dialog ist der Text des Vereins
+  const A = '/api/m/tco/mitgliedsantraege/angebote/mailvorlage';
+  let r = await call('GET', A);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body, (await eintrag('antrag.angebot')).standard);
+  assert.equal((await call('PUT', `${T}/antrag.angebot`, { betreff: '{Verein}: Angebot', text: 'Guten Tag {Name},\n\n{Link}\n\ngültig bis {GueltigBis}' })).status, 200);
+  r = await call('GET', A);
+  assert.deepEqual(r.body, { betreff: '{Verein}: Angebot', text: 'Guten Tag {Name},\n\n{Link}\n\ngültig bis {GueltigBis}' });
+  assert.equal((await call('DELETE', `${T}/antrag.angebot`)).status, 200);
 });

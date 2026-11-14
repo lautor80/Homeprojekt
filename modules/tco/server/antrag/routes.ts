@@ -7,7 +7,7 @@ import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { druckdatenLesen, unterlagePdf } from '../mitglieder/pdf.js';
 import { unterlageAblegen } from '../mitglieder/dokumente.js';
 import { mailSenden } from '../kommunikation.js';
-import { mailtextFuellen } from '../mailtexte.js';
+import { ANGEBOT_MAIL_VORLAGE, mailtextFuellen, mailtextVorlage } from '../mailtexte.js';
 import { bankSchutz } from '../bankdaten.js';
 import { antragAblehnen, antragAnlegen, antraegeLesen, antragInfo, MAX_PERSONEN, uebernehmen } from './logik.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
@@ -67,15 +67,7 @@ const datumD = (iso: string) => iso.split('-').reverse().join('.');
  * E-Mail zum Vertragsangebot (#12): Vorlage mit Platzhaltern {Name}, {Link}, {GueltigBis}, {Verein} – im Dialog anpassbar.
  * Die Vorlage enthält keine persönlichen Daten außer der Anrede; fehlt {Link} im angepassten Text, wird der Link angehängt.
  */
-export const ANGEBOT_MAIL_VORLAGE = {
-  betreff: '{Verein}: Ihr persönlicher Mitgliedsantrag',
-  text: 'Guten Tag {Name},\n\nwir haben Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag bereits vorbereitet. '
-    + 'Alle Angaben sind bereits eingetragen – bitte prüfen und bestätigen (ist noch keine Bankverbindung hinterlegt, ergänzen Sie sie für das SEPA-Lastschriftmandat):\n\n'
-    + '{Link}\n\n'
-    + 'Zum Öffnen geben Sie Ihr Geburtsdatum ein. Der Link ist persönlich, gilt bis {GueltigBis} und kann nur einmal verwendet werden. '
-    + 'Ihre Daten stehen nicht in dieser E-Mail; sie werden erst nach der Bestätigung über eine verschlüsselte Verbindung (HTTPS) angezeigt.\n\n'
-    + 'Viele Grüße\n{Verein}',
-};
+export { ANGEBOT_MAIL_VORLAGE };
 export function angebotMailText(vorlage: { betreff?: string | null; text?: string | null }, w: { name: string; link: string; gueltigBis: string; verein: string }) {
   const ersetzen = (t: string) => t.replace(/\{(Name|Link|GueltigBis|Verein)\}/g, (_x, k: string) =>
     k === 'Name' ? w.name : k === 'Link' ? w.link : k === 'GueltigBis' ? datumD(w.gueltigBis) : w.verein);
@@ -94,7 +86,10 @@ async function angebotMail(v: Verein, a: { nummer: string; token: string; email:
   const link = `${url}/beitritt?angebot=${a.token}`;
   if (!mail) return { link, text: `Vertragsangebot ${a.nummer} erstellt – Link bitte selbst weitergeben (gültig bis ${datumD(a.gueltigBis)}).` };
   if (!v.n8n_mail_url) return { link, text: `Vertragsangebot ${a.nummer} erstellt. Der Mailversand ist nicht eingerichtet – bitte den Link anders weitergeben.` };
-  const m = angebotMailText(vorlage, { name: a.name, link, gueltigBis: a.gueltigBis, verein: v.name });
+  // ohne Angabe aus dem Dialog: der Text des Vereins (Einstellungen → E-Mail-Texte), sonst der Standardtext
+  const basis = await mailtextVorlage(DB, v, 'antrag.angebot');
+  const m = angebotMailText({ betreff: vorlage.betreff?.trim() || basis.betreff, text: vorlage.text?.trim() || basis.text },
+    { name: a.name, link, gueltigBis: a.gueltigBis, verein: v.name });
   await mailSenden(v, { modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: a.nummer, an: a.email, benutzer: wer, anhaenge: [], betreff: m.betreff, text: m.text });
   return { link, text: `Vertragsangebot ${a.nummer} an ${a.email} gesendet (gültig bis ${datumD(a.gueltigBis)}).` };
 }
@@ -153,7 +148,7 @@ export async function antragRoutes(app: FastifyInstance) {
     return { bank: b ? { ...b, kontoinhaber: sb.text(b.kontoinhaber) } : null };
   });
   /** E-Mail-Vorlage für das Angebot (Platzhalter {Name}, {Link}, {GueltigBis}, {Verein}) */
-  app.get('/mitgliedsantraege/angebote/mailvorlage', edit, async () => ANGEBOT_MAIL_VORLAGE);
+  app.get('/mitgliedsantraege/angebote/mailvorlage', edit, async () => mailtextVorlage(DB, await vereinLesen(), 'antrag.angebot'));
   app.post('/mitgliedsantraege/angebote', edit, async (req) => {
     const b = z.object({
       personen: z.array(z.object({

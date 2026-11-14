@@ -4,6 +4,7 @@ import { kontextAblegen, kontextAktualisieren } from '../../../../server/src/lib
 import { logoWeiss, paperless, plAktiv, type Db, type Verein } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
 import { kontaktLesen, mailSenden, mobilnummer, whatsappLink, type Kontakt } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import { alleFusszeilen, betragText, C, girocode, kuerzen, LEFT, umbruch } from '../pdf/layout.js';
 import { K } from '../paperless-kontexte.js';
 import { belegLesen, belegPosten, monatsname, ZAHLART_TEXT, type Beleg, type Posten } from './logik.js';
@@ -187,15 +188,14 @@ export async function belegAblegen(db: Db, v: Verein, rgnr: string, benutzer: st
   return { pdf, docId, warnungen, beleg: b, empfaenger: e };
 }
 
-export function mailText(v: Verein, b: Beleg, e: Empfaenger) {
-  const anrede = e.vorname || e.name;
-  const betreff = `${belegTitel(b)} ${b.rgnr} – ${v.name}`;
-  const text = b.status === 'BEZAHLT'
-    ? [`Hallo ${anrede},`, '', `vielen Dank für deinen Besuch in unserem Clubhaus. Anbei dein Beleg ${b.rgnr} über ${betragText(b.betrag)} (bezahlt${b.zahlart ? ` per ${ZAHLART_TEXT[b.zahlart]}` : ''}).`, '', 'Viele Grüße', v.ansprechpartner ?? v.name]
-    : b.zahlart === 'LASTSCHRIFT'
-      ? [`Hallo ${anrede},`, '', `anbei deine Verzehrabrechnung ${b.rgnr} für den ${monatsname(b.monat ?? '')} über ${betragText(b.betrag)}. Der Betrag wird mit der nächsten Lastschrift eingezogen.`, '', 'Viele Grüße', v.ansprechpartner ?? v.name]
-      : [`Hallo ${anrede},`, '', `anbei deine Verzehrabrechnung ${b.rgnr} für den ${monatsname(b.monat ?? '')} über ${betragText(b.betrag)} mit der Bitte um Überweisung bis zum ${dat(b.faellig)} auf unser Vereinskonto (Verwendungszweck: Verzehr ${b.rgnr}).`, '', 'Viele Grüße', v.ansprechpartner ?? v.name];
-  return { betreff, text: text.join('\n') };
+/** Text der Beleg-Mail: je nach Beleg einer von drei Anlässen im Verzeichnis der E-Mail-Texte (mailtexte.ts, #232) */
+export function mailText(db: Db, v: Verein, b: Beleg, e: Empfaenger) {
+  const werte = { Vorname: e.vorname || e.name, Beleg: belegTitel(b), Nummer: b.rgnr, Betrag: betragText(b.betrag) };
+  if (b.status === 'BEZAHLT') return mailtextFuellen(db, v, 'verzehr.beleg', { ...werte, Bezahlt: `bezahlt${b.zahlart ? ` per ${ZAHLART_TEXT[b.zahlart]}` : ''}` });
+  const monat = monatsname(b.monat ?? '');
+  return b.zahlart === 'LASTSCHRIFT'
+    ? mailtextFuellen(db, v, 'verzehr.abrechnung.lastschrift', { ...werte, Monat: monat })
+    : mailtextFuellen(db, v, 'verzehr.abrechnung.ueberweisung', { ...werte, Monat: monat, Faellig: dat(b.faellig) });
 }
 
 /** E-Mail mit dem Beleg als Anhang (n8n) */
@@ -203,7 +203,7 @@ export async function belegMailen(db: Db, v: Verein, rgnr: string, an: string | 
   const r = await belegAblegen(db, v, rgnr, benutzer, w);
   const ziel = (an ?? r.empfaenger.email).trim();
   if (!ziel) throw new BusinessError('Keine E-Mail-Adresse vorhanden.');
-  const { betreff, text } = mailText(v, r.beleg, r.empfaenger);
+  const { betreff, text } = await mailText(db, v, r.beleg, r.empfaenger);
   const erg = await mailSenden(v, {
     modus: 'senden', anwendung: 'VERZEHR', objekt: rgnr, an: ziel, betreff, text, benutzer,
     anhaenge: [{ dateiname: `${rgnr}.pdf`, inhalt: r.pdf, paperless_root_id: r.docId ?? null, objekt: rgnr }],

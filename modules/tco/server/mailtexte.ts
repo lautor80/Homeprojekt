@@ -14,6 +14,7 @@ import type { Art } from './mitglieder/pdf.js';
 import { mailText as unterlagenText, unterlagenZeilen } from './mitglieder/dokumente.js';
 import { einladungVorlage } from './mitglieder/einladung.js';
 import { vorlage as zugangVorlage } from './mitglieder/zugangslink.js';
+import { mailTexte as hallenrechnungText } from './halle/versand.js';
 
 export interface MailVorlage { betreff: string; text: string }
 export interface MailtextDef {
@@ -42,6 +43,33 @@ export const kalenderEinladungVorlage = (v: Verein): MailVorlage => ({
   text: 'Hallo {Vorname},\n\nwir laden herzlich ein:\n\n{Titel}\n{Termin}\n{Ort}\n\n{Anmeldeschluss}\n\n'
     + 'Über diesen Link melden Sie sich im Vereinsportal an oder ab:\n\n{Link}\n\n{Zugang}\n\n'
     + `Viele Grüße\n${v.ansprechpartner || v.name}`,
+});
+
+/**
+ * Standardtext zum Vertragsangebot (#12) – ohne persönliche Daten außer der Anrede; fehlt {Link} im angepassten Text,
+ * hängt die Sendestelle den Link an (antrag/routes.ts).
+ */
+export const ANGEBOT_MAIL_VORLAGE: MailVorlage = {
+  betreff: '{Verein}: Ihr persönlicher Mitgliedsantrag',
+  text: 'Guten Tag {Name},\n\nwir haben Ihren Mitgliedsantrag mit dem vorgeschlagenen Vertrag bereits vorbereitet. '
+    + 'Alle Angaben sind bereits eingetragen – bitte prüfen und bestätigen (ist noch keine Bankverbindung hinterlegt, ergänzen Sie sie für das SEPA-Lastschriftmandat):\n\n'
+    + '{Link}\n\n'
+    + 'Zum Öffnen geben Sie Ihr Geburtsdatum ein. Der Link ist persönlich, gilt bis {GueltigBis} und kann nur einmal verwendet werden. '
+    + 'Ihre Daten stehen nicht in dieser E-Mail; sie werden erst nach der Bestätigung über eine verschlüsselte Verbindung (HTTPS) angezeigt.\n\n'
+    + 'Viele Grüße\n{Verein}',
+};
+
+/** Verzehr: gemeinsamer Betreff und Gruß der drei Belegtexte */
+const VERZEHR = { Vorname: 'Vorname bzw. Name des Empfängers', Beleg: '„Verzehrbeleg“ bzw. „Verzehrabrechnung <Monat>“', Nummer: 'Belegnummer', Betrag: 'Betrag mit Währung' };
+const verzehr = (v: Verein, satz: string): MailVorlage => ({
+  betreff: `{Beleg} {Nummer} – ${v.name}`, text: `Hallo {Vorname},\n\n${satz}\n\nViele Grüße\n${v.ansprechpartner ?? v.name}`,
+});
+
+/** Rahmen für Benachrichtigungen, deren Nachricht der Vorgang vorgibt (Hallenschlüssel, Instandhaltung): Betreff und Gruß */
+const rahmen = (schluessel: string, bereich: string, wann: string): MailtextDef => ({
+  schluessel, bereich, name: 'Rahmen der Benachrichtigungen (Betreff und Gruß)', wann,
+  platzhalter: { Betreff: 'Betreff der Benachrichtigung', Nachricht: 'Text der Benachrichtigung – gibt der Vorgang vor' },
+  pflicht: ['Nachricht'], standard: (v) => ({ betreff: `${v.name}: {Betreff}`, text: `{Nachricht}\n\nViele Grüße\n${v.name}` }),
 });
 
 const UNTERLAGE = { Vorname: 'Vorname des Mitglieds', Unterlagen: 'Liste der Unterlagen mit ihren Links (leer, wenn die Unterlage als Anhang mitgeht)' };
@@ -112,6 +140,24 @@ export const MAILTEXTE: MailtextDef[] = [
         + `Bei Fragen wenden Sie sich bitte an den Vorstand.\n\nViele Grüße\n${v.name}`,
     }),
   },
+  {
+    schluessel: 'antrag.angebot', bereich: 'Mitgliedsantrag', name: 'Vertragsangebot',
+    wann: 'Mitgliedsanträge → Vertragsangebot erstellen bzw. erneut senden (Vorbelegung im Dialog, dort noch änderbar)',
+    platzhalter: { Name: 'Name des Empfängers', Link: 'persönlicher Link zum Angebot', GueltigBis: 'Ende der Gültigkeit', Verein: 'Name des Vereins' },
+    pflicht: ['Link'], standard: () => ANGEBOT_MAIL_VORLAGE,
+  },
+  {
+    schluessel: 'mitglied.startkennwort', bereich: 'Zugang zum Portal', name: 'Zugang mit Startkennwort',
+    wann: 'Mitglieder → Benutzer anlegen mit E-Mail (wenn kein Kennwort-Link möglich ist)',
+    platzhalter: { Name: 'Vor- und Nachname', Benutzername: 'Anmeldename', Kennwort: 'Startkennwort' },
+    pflicht: ['Benutzername', 'Kennwort'],
+    standard: (v) => ({
+      betreff: `${v.name}: Ihr Zugang zum Mitgliederportal`,
+      text: 'Guten Tag {Name},\n\nfür Sie wurde ein Zugang zum Mitgliederportal angelegt.\n\nAnmeldename: {Benutzername}\nStartkennwort: {Kennwort}\n\n'
+        + 'Bitte melden Sie sich an und vergeben Sie ein eigenes Kennwort. Unter „Meine Mitgliedschaft“ sehen und pflegen Sie Ihre Daten, '
+        + `unter „Platz buchen“ reservieren Sie Hallen- und Freiplätze.\n\nViele Grüße\n${v.name}`,
+    }),
+  },
   // ---- Registrierung (platz/routes.ts)
   {
     schluessel: 'registrierung.eingegangen', bereich: 'Registrierung', name: 'Registrierung eingegangen', wann: 'nach einer Registrierung, die der Verein erst prüft',
@@ -177,6 +223,37 @@ export const MAILTEXTE: MailtextDef[] = [
         + 'Wenn es gefallen hat, geht die Anmeldung als Mitglied (und zu einer Trainingsgruppe) ganz einfach – die bekannten Angaben sind schon eingetragen:\n\n'
         + `{Link}\n\nViele Grüße\n${v.name}`,
     }),
+  },
+  // ---- Tennishalle
+  {
+    schluessel: 'halle.rechnung', bereich: 'Tennishalle', name: 'Hallenrechnung',
+    wann: 'Hallenrechnungen → per E-Mail senden und Sammelversand (Vorbelegung im Dialog, dort noch änderbar). Der Standardtext unterscheidet eine und mehrere Rechnungen; ein eigener Text gilt für beides',
+    platzhalter: { Vorname: 'Vorname (ohne Angabe „zusammen“)', Rechnungsnummer: 'Rechnungsnummer(n), mit Komma getrennt', Download: 'Satz mit dem Link zum Herunterladen (leer ohne Link, z. B. im Sammelversand)' },
+    pflicht: ['Rechnungsnummer'], standard: (v) => hallenrechnungText(v, '{Vorname}', ['{Rechnungsnummer}'], null, '{Download}'),
+  },
+  {
+    schluessel: 'halle.abo', bereich: 'Tennishalle', name: 'Hallenabo: Rahmen der Benachrichtigungen (Anrede und Gruß)',
+    wann: 'Hallenabo: Bestätigung anfordern, Erinnerung, frei gewordene Stunde – die Nachricht selbst gibt der Vorgang vor',
+    platzhalter: { Betreff: 'Betreff der Benachrichtigung', Name: 'Name des Abonnenten bzw. Interessenten', Nachricht: 'Text der Benachrichtigung', Portal: 'Zeile „Zum Portal: …“ (leer ohne Portal-Adresse)' },
+    pflicht: ['Nachricht'], standard: (v) => ({ betreff: '{Betreff}', text: `Hallo {Name},\n\n{Nachricht}\n\n{Portal}\n\nSportliche Grüße\n${v.name}` }),
+  },
+  rahmen('schluessel.rahmen', 'Hallenschlüssel', 'Hallenschlüssel: Benachrichtigungen an Mitglied und Schlüsselwart zu Antrag, Ausgabe und Rückgabe'),
+  rahmen('instandhaltung.rahmen', 'Instandhaltung', 'Schaden melden und Instandhaltung: Benachrichtigungen an Melder und Zuständige'),
+  // ---- Verzehr (verzehr/beleg.ts)
+  {
+    schluessel: 'verzehr.beleg', bereich: 'Verzehr', name: 'Bezahlter Beleg', wann: 'Verzehr → Beleg per E-Mail senden (bereits bezahlt)',
+    platzhalter: { ...VERZEHR, Bezahlt: '„bezahlt“ bzw. „bezahlt per <Zahlart>“' },
+    standard: (v) => verzehr(v, 'vielen Dank für deinen Besuch in unserem Clubhaus. Anbei dein Beleg {Nummer} über {Betrag} ({Bezahlt}).'),
+  },
+  {
+    schluessel: 'verzehr.abrechnung.lastschrift', bereich: 'Verzehr', name: 'Monatsabrechnung mit Lastschrift', wann: 'Verzehr → Abrechnung per E-Mail senden (Einzug per Lastschrift)',
+    platzhalter: { ...VERZEHR, Monat: 'abgerechneter Monat' },
+    standard: (v) => verzehr(v, 'anbei deine Verzehrabrechnung {Nummer} für den {Monat} über {Betrag}. Der Betrag wird mit der nächsten Lastschrift eingezogen.'),
+  },
+  {
+    schluessel: 'verzehr.abrechnung.ueberweisung', bereich: 'Verzehr', name: 'Monatsabrechnung zur Überweisung', wann: 'Verzehr → Abrechnung per E-Mail senden (Überweisung)',
+    platzhalter: { ...VERZEHR, Monat: 'abgerechneter Monat', Faellig: 'Datum, bis zu dem zu überweisen ist' },
+    standard: (v) => verzehr(v, 'anbei deine Verzehrabrechnung {Nummer} für den {Monat} über {Betrag} mit der Bitte um Überweisung bis zum {Faellig} auf unser Vereinskonto (Verwendungszweck: Verzehr {Nummer}).'),
   },
   {
     schluessel: 'kalender.einladung', bereich: 'Vereinskalender', name: 'Einladung zu einer Veranstaltung',

@@ -9,6 +9,7 @@ import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
 import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { DB, liste, paperless, vereinLesen, type Verein } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
+import { mailtextFuellen } from '../mailtexte.js';
 import {
   anlageSichern, anlagenLesen, bearbeiten, bearbeiterLesen, detailLesen, einstellungenLesen, einstellungenSichern, fotoLesenDb, fotoLoeschen,
   fotosAnhaengen, fotosMitDaten, kategorieSichern, kategorienLesen, kommentieren, kopfLesen, lauf, listeLesen, mailsNeu, matrixLesen, matrixSichern,
@@ -50,9 +51,11 @@ export async function mailsSenden(mails: Mail[], wer: Ich, log: FastifyBaseLogge
     for (const m of mails) {
       let ergebnis = '';
       try {
+        // Betreff und Gruß: Einstellungen → E-Mail-Texte (Rahmen), sonst wie bisher; die Nachricht gibt der Vorgang vor (#232)
+        const t = await mailtextFuellen(DB, v, 'instandhaltung.rahmen', { Betreff: m.betreff, Nachricht: m.text.replaceAll('{portal}', url) });
         await mailSenden(v, {
           modus: 'senden', anwendung: 'Instandhaltung', objekt: m.objekt, an: m.an, benutzer: wer.name, anhaenge: [], persoenlich: false,
-          betreff: `${v.name}: ${m.betreff}`, text: `${m.text.replaceAll('{portal}', url)}\n\nViele Grüße\n${v.name}`,
+          betreff: t.betreff, text: t.text,
         });
         n++;
         ergebnis = `an ${m.an}: ${m.betreff}`;
