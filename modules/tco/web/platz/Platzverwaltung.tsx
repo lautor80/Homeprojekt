@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
@@ -550,7 +550,11 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
   const [text, setText] = useState((b.fest ? b.fest.hinweis : b.text) ?? '');
   const [art, setArt] = useState<FestArt>(b.fest?.art ?? 'TRAINING');
   const [bezeichnung, setBezeichnung] = useState(b.fest?.bezeichnung ?? '');
-  const [weg, setWeg] = useState(false);
+  const [weg, setWegRoh] = useState(false);
+  // Während der Sicherheitsabfrage ist der Termin-Dialog ausgeblendet – UI5 meldet das als „close“. Ohne diese Sperre
+  // schlösse das den ganzen Termin (samt Abfrage), und Stornieren/Löschen geschähe nie.
+  const wegRef = useRef(false);
+  const setWeg = (v: boolean) => { wegRef.current = v; setWegRoh(v); };
   useEffect(() => { api.get<{ plaetze: Platz[] }>(`${PA}/plaetze`).then((r) => setPlaetze(r.plaetze.filter((x) => x.aktiv || x.id === p.id))).catch(() => setPlaetze([])); }, [p.id]);
   const pl = plaetze?.find((x) => x.id === platzId) ?? { zeit_von: p.zeit_von, zeit_bis: p.zeit_bis, raster: p.raster };
   // Uhrzeiten im Raster des Platzes (die bisherigen bleiben wählbar, auch wenn sie nicht im Raster liegen)
@@ -602,11 +606,8 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
   const titel = b.fest ? b.fest.bezeichnung : `${b.art === 'Abo' ? 'Abo · ' : ''}${b.kunde || 'Buchung'}`;
   return createPortal(
     <>
-      <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-              footer={<Bar startContent={!kopie && (aenderbar || absagbar || stornierbar)
-                ? <Button design="Transparent" icon="delete" disabled={busy} onClick={() => setWeg(true)}>{absagbar ? 'Diesen Termin absagen' : b.fest ? 'Löschen' : 'Stornieren'}</Button>
-                : undefined}
-                           endContent={<>
+      <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={() => { if (!wegRef.current) onClose(); }}
+              footer={<Bar endContent={<>
                 {!kopie && <Button icon="copy" onClick={() => onModus('KOPIEREN')}>Kopieren…</Button>}
                 <Button design="Emphasized" disabled={busy || !ok || (!kopie && !aenderbar)} onClick={speichern}>{kopie ? 'Kopie anlegen' : 'Speichern'}</Button>
                 <Button onClick={onClose}>Abbrechen</Button>
@@ -618,6 +619,14 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
           </Text>
           {/* wer hat wann gebucht (#11) */}
           {!b.fest && b.bid && <GebuchtInfo b={b} />}
+          {/* im Inhalt statt in der Fußleiste: dort ist im Hochformat kein Platz neben Kopieren/Speichern/Abbrechen */}
+          {!kopie && (aenderbar || absagbar || stornierbar) && (
+            <div>
+              <Button design="Negative" icon="delete" disabled={busy} onClick={() => setWeg(true)}>
+                {absagbar ? 'Diesen Termin absagen' : b.fest ? 'Löschen' : 'Stornieren'}
+              </Button>
+            </div>
+          )}
           {!kopie && !aenderbar && <MessageStrip hideCloseButton design="Information">{grund} Kopieren ist möglich.</MessageStrip>}
           {kopie && !b.fest && b.art === 'Abo' && <MessageStrip hideCloseButton>Der Abo-Termin wird als Einzelbuchung kopiert.</MessageStrip>}
           <FormGrid>
