@@ -17,7 +17,7 @@ import './instandhaltung.css';
 /**
  * Instandhaltung (#205): Schadensmeldungen bearbeiten (Status, Zuständiger, Kommentare, Fotos, Kosten, Platzsperre), Formular
  * drucken und in Paperless ablegen, lückenloses Protokoll. Stammdaten: Orte („Wo?“), Kategorien, Matrix Kategorie × Ort,
- * Zuständigkeiten je Benutzer, Einstellungen, QR-Codes. Offene Meldungen stehen zusätzlich im Arbeitsvorrat der Vereinsübersicht;
+ * Zuständigkeiten je Benutzer, Einstellungen, QR-Codes. Offene Meldungen stehen zusätzlich im Arbeitsvorrat (Startseite);
  * der Link dort öffnet /tco/instandhaltung?id=<Meldung>.
  */
 const I = `${TCO}/instandhaltung`;
@@ -45,7 +45,7 @@ export function Instandhaltung() {
   const can = useCan();
   const [error, setError] = useState<string | null>(null);
   return (
-    <AppPage title="Schadensmeldungen" subtitle="Meldungen bearbeiten, Plätze sperren – offene Meldungen stehen auch im Arbeitsvorrat der Vereinsübersicht">
+    <AppPage title="Schadensmeldungen" subtitle="Meldungen bearbeiten, Plätze sperren – offene Meldungen stehen auch im Arbeitsvorrat auf der Startseite">
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {can('tco.instandhaltung:admin') ? (
         <TabContainer contentBackgroundDesign="Transparent">

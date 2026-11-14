@@ -41,8 +41,9 @@ const QUELLTEXT: { modul: string; datei: string; text: string }[] = [
 
 // ---------------------------------------------------------------- Quellen des Arbeitsvorrats
 const AV = 'modules/tco/server/dashboard/arbeitsvorrat.ts';
-/** arbeitsvorrat.ts und alle Dateien, aus denen es eine Funktion „aufgaben“ einbindet */
-const AV_DATEIEN = [AV, ...[...lesen(AV).matchAll(/import \{[^}]*\baufgaben\b[^}]*\} from '([^']+)\.js'/g)]
+/** Arbeitsvorrat des Kerns (seit V2), arbeitsvorrat.ts des Vereinsmoduls und alle Dateien, aus denen es eine Funktion „aufgaben“ einbindet */
+const AV_KERN = 'server/src/lib/arbeitsvorrat.ts';
+const AV_DATEIEN = [AV_KERN, AV, ...[...lesen(AV).matchAll(/import \{[^}]*\baufgaben\b[^}]*\} from '([^']+)\.js'/g)]
   .map(([, p]) => path.posix.normalize(`${path.posix.dirname(AV)}/${p}.ts`))];
 /** Schlüssel der Einträge, z. B. MITGLIEDSANTRAG, SCHLUESSEL:Q, VZ_ABSCHLUSS */
 const AV_SCHLUESSEL = new Set(AV_DATEIEN.flatMap((d) => [...lesen(d).matchAll(/\bkey: ['`]([A-Z][A-Z0-9_]*(?::[A-Z]+)?)/g)].map(([, k]) => k)));

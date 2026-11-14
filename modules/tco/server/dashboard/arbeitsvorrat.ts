@@ -1,5 +1,6 @@
 /**
- * Arbeitsvorrat der Vereinsübersicht: offene Vorgänge, die jemand im Verein erledigen muss.
+ * Arbeitsvorrat TC Oberthal: offene Vorgänge, die jemand im Verein erledigen muss. Der Kern zeigt sie auf der Startseite
+ * (ServerModule.arbeitsvorrat, #232 V2), die Vereinsübersicht als Ausschnitt.
  * Jeder Eintrag erscheint nur, wenn der Benutzer die zugehörige App bedienen darf.
  *
  * Gruppierung (bereich) nach Zuständigkeit im Verein:
@@ -9,7 +10,7 @@
  *  - Vorstand:    neue Registrierungen und deren Freigabe
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
  *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung
- *  - Clubhaus, Administration: wie bisher
+ *  - Clubhaus: wie bisher (Einträge der Administration liefert der Kern)
  */
 import type { FastifyRequest } from 'fastify';
 import { can } from '../../../../server/src/auth.js';
@@ -19,25 +20,9 @@ import { ADRNR_ZU_BENUTZER, HALLENWART } from '../platz/schluessel.js';
 import { aufgaben as ihAufgaben, P_IH } from '../instandhaltung/logik.js';
 import { aufgaben as schluesselAufgaben, P_SCHL } from '../schluessel/logik.js';
 
-export interface Aufgabe {
-  key: string;
-  bereich: string;
-  titel: string;
-  text: string;
-  /** YYYY-MM-DD – Eingang des Vorgangs */
-  datum: string | null;
-  icon: string;
-  state: 'Information' | 'Critical' | 'Negative';
-  /** Portalpfad zum Bearbeiten */
-  pfad: string;
-  betrag?: number;
-  /** Kästchen am Eintrag: bestätigt die Erledigung (POST auf url mit body), der Eintrag verschwindet danach */
-  erledigen?: { text: string; url: string; body: Record<string, unknown> };
-  /** Upload „Überweisung an Einreicher“: Zahlungsdaten und QR-Code im Popup (GET /dashboard/arbeitsvorrat/upload-zahlung/:id) */
-  zahlung?: { id: number };
-  /** Unterpunkte (z. B. die einzelnen Buchungen zu „Heute n Hallenbuchungen“) */
-  kinder?: Aufgabe[];
-}
+// Der Typ gehört seit #232 (V2) dem Kern – der Arbeitsvorrat steht auf der Startseite für alle Anwendungen
+export type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
+import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -111,19 +96,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     }
   }
 
-  // Sicherung: täglicher Nextcloud-Export fehlgeschlagen bzw. seit über 36 Stunden ohne Erfolg
-  if (can(req, 'core.backup:create')) {
-    const [b] = await db`select aktiv, letzter_fehler, letzte_meldung, to_char(letzter_lauf at time zone 'Europe/Berlin', 'YYYY-MM-DD') as lauf,
-                                (letzter_erfolg is null or letzter_erfolg < now() - interval '36 hours') as veraltet
-                           from core.backup_export where id = 1`;
-    if (b?.aktiv && (b.letzter_fehler || b.veraltet)) {
-      out.push({
-        key: 'BACKUP_EXPORT', bereich: 'Administration', icon: 'cloud', state: 'Negative',
-        titel: b.letzter_fehler ? 'Nextcloud-Export der Sicherung fehlgeschlagen' : 'Keine aktuelle Sicherung in der Nextcloud',
-        text: b.letzte_meldung ?? 'Der tägliche Export ist noch nicht gelaufen.', datum: b.lauf, pfad: '/admin/sicherung',
-      });
-    }
-  }
+  // Der Nextcloud-Export der Sicherung steht seit #232 (V2) im Arbeitsvorrat des Kerns (server/src/lib/arbeitsvorrat.ts)
 
   // Vorstand: Registrierungen von Mitgliedern – je Antrag mit Zuordnungsvorschlag, prüfen und freigeben
   if (can(req, 'tco.registrierung:mitglied')) {

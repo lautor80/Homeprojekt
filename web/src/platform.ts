@@ -78,6 +78,8 @@ export interface WebModule {
    * QR-Codes an der Anlage (/tco/schaden?anlage=…). Vergleich mit dem Pfad ohne Query-String.
    */
   nachAnmeldung?: string[];
+  /** Arbeitsvorrat der Startseite: Zusatz des Moduls am Eintrag (z. B. Knopf „Zahlungsdaten“), siehe components/Arbeitsvorrat.tsx */
+  arbeitsvorratZusatz?: import('./components/Arbeitsvorrat').AufgabenZusatz;
 }
 
 export interface OeffentlichProps { orgName: string; logo?: string; onFertig: () => void }

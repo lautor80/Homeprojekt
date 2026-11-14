@@ -8,6 +8,7 @@ import { useSession, useCan, useFunktion } from '../session';
 import { coreRoutes } from './core';
 import { useNavHinweise } from '../navhinweis';
 import { abgeschaltetePfade, navAufbauen, pfadAbgeschaltet } from './nav';
+import { ArbeitsvorratWaechter } from '../arbeitsvorrat';
 import { enabledModules } from '../modules';
 import type { NavEntry, RouteDef } from '../platform';
 import { ChangePasswordForm } from '../pages/AuthPages';
@@ -107,6 +108,8 @@ export function Shell() {
 
   return (
     <AblageProvider>
+      {/* Arbeitsvorrat (#232, V2): neue Einträge am Menüeintrag „Start“ */}
+      <ArbeitsvorratWaechter />
       {waechter.map((w, i) => <w.component key={i} />)}
       <NavigationLayout
         mode={collapsed ? 'Collapsed' : 'Expanded'}

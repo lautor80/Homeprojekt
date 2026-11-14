@@ -5,6 +5,7 @@ import { enabledModules } from '../modules';
 import type { HomeTile, NavEntry } from '../platform';
 import { Tile } from '../components/Tile';
 import { navAufbauen } from '../shell/nav';
+import { StartArbeitsvorrat } from '../arbeitsvorrat';
 
 function gruss(): string {
   const h = new Date().getHours();
@@ -15,7 +16,8 @@ function gruss(): string {
 }
 
 /**
- * Startseite im Stil des Fiori Launchpad: nur Kacheln mit Absprung – aufgebaut wie die Seitenleiste.
+ * Startseite im Stil des Fiori Launchpad: oben der Arbeitsvorrat aller Anwendungen, darunter Kacheln mit Absprung –
+ * aufgebaut wie die Seitenleiste.
  *  Stufe 1 (z. B. „TC Oberthal“, „Administration“): Bereich mit eigener Überschrift
  *  Stufe 2 mit Untereinträgen (z. B. „Mitglieder“): Gruppe innerhalb des Bereichs
  *  Stufe 2/3 mit Ziel: Kachel
@@ -55,6 +57,9 @@ export function HomePage() {
         <h1 className="portal-home__greeting">{gruss()}, {vorname}</h1>
         <div className="portal-home__meta">{me.settings['org.name'] as string} · {heute}</div>
       </div>
+
+      {/* Arbeitsvorrat aller Anwendungen (#232, V2) – ohne Einträge unsichtbar */}
+      <StartArbeitsvorrat />
 
       {bereiche.map((b) => {
         const direkt = (b.children ?? []).filter((c) => !c.children && c.path);

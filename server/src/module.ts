@@ -91,4 +91,9 @@ export interface ServerModule {
    * Ids mit Präfix „<modul>.“. Siehe server/src/funktionsschalter.ts.
    */
   funktionen?: FunktionDef[];
+  /**
+   * Arbeitsvorrat (Startseite): offene Vorgänge des Moduls für den angemeldeten Benutzer. Das Modul prüft je Quelle
+   * selbst, ob der Benutzer die zugehörige App bedienen darf (can). Siehe server/src/lib/arbeitsvorrat.ts.
+   */
+  arbeitsvorrat?: (req: import('fastify').FastifyRequest) => Promise<import('./lib/arbeitsvorrat.js').Aufgabe[]>;
 }

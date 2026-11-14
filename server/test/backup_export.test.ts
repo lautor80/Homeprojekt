@@ -195,9 +195,15 @@ test('Nextcloud-Export: Einrichtung, Test, Export, Aufbewahrung, Fehler', async 
   assert.match(f.fehler, /Kein Speicherplatz/);
   r = await call('GET', `${B}/nextcloud`);
   assert.equal(r.body.letzter_fehler, true);
-  r = await call('GET', '/api/m/tco/dashboard/arbeitsvorrat');
-  const av = r.body.find((a: any) => a.key === 'BACKUP_EXPORT');
+  // Arbeitsvorrat des Kerns auf der Startseite (#232, V2) – nicht mehr in der Liste des Vereinsmoduls
+  r = await call('GET', '/api/arbeitsvorrat');
+  const kern = r.body.gruppen.find((g: any) => g.modul === 'core');
+  const av = kern?.aufgaben.find((a: any) => a.key === 'BACKUP_EXPORT');
   assert.ok(av, JSON.stringify(r.body));
+  assert.equal(kern.name, 'Portal');
+  assert.equal(av.bereich, 'Administration');
+  r = await call('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.ok(!r.body.some((a: any) => a.key === 'BACKUP_EXPORT'), 'steht nur noch im Arbeitsvorrat des Kerns');
   assert.match(av.titel, /fehlgeschlagen/);
   assert.equal(av.pfad, '/admin/sicherung');
   dav.voll = false;

@@ -21,7 +21,7 @@ import { P_SCHNUPPER } from '../schnupper/routes.js';
  *
  * Monatsabschluss: Nach Ende eines Monats gibt der Trainer seinen Zeitnachweis frei. Dabei wird der
  * Nachweis mit Stunden und Betrag in Paperless abgelegt (bzw. neue Version) und der Monat gesperrt;
- * die Jugendleitung sieht die Freigabe in „Abrechnung Jugendtraining“ und im Arbeitsvorrat der Vereinsübersicht.
+ * die Jugendleitung sieht die Freigabe in „Abrechnung Jugendtraining“ und im Arbeitsvorrat (Startseite, Vereinsübersicht).
  */
 export const P_JTM = { edit: 'tco.jtmeine:edit' };
 /**
