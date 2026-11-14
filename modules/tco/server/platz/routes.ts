@@ -76,7 +76,7 @@ async function ich(req: FastifyRequest): Promise<Ich> {
   const id = req.user?.id;
   if (!id) throw new BusinessError('Bitte mit einem persönlichen Benutzer anmelden.', 403);
   const i = await ichLesen(DB, id);
-  if (!i) throw new BusinessError('Ihr Benutzer ist keinem Mitglied zugeordnet. Bitte beim Vorstand melden (Zuordnung unter Tennishalle → Platzverwaltung → Benutzer).', 403);
+  if (!i) throw new BusinessError('Ihr Benutzer ist keinem Mitglied zugeordnet. Bitte beim Vorstand melden (Zuordnung unter Mitglieder → Zugänge → Zuordnung).', 403);
   return i;
 }
 

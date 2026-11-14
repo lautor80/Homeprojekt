@@ -204,7 +204,7 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.edit, text: 'Mitgliedergruppen pflegen: Gruppen anlegen, ändern, verschieben und löschen, Mitglieder zuordnen und Rollen vergeben', requires: [P_GR.display] },
     { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.display, text: 'Online-Mitgliedsanträge ansehen (Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)' },
     { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.edit, text: 'Online-Mitgliedsanträge prüfen, ablehnen und übernehmen (legt Mitglieder, Verträge, SEPA-Mandat und Benutzer an)', requires: [P_ANTRAG.display, 'tco.mitglieder:edit'] },
-    { area: 'Mitglieder', app: 'Registrierungen', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
+    { area: 'Mitglieder', app: 'Zugänge', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },

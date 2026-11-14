@@ -14,7 +14,7 @@ flowchart LR
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Mitgliedschaft<br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
-      B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Registrierungen<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
+      B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
@@ -83,7 +83,7 @@ flowchart LR
 | Mitglieder | Mitglieder | `/tco/mitglieder` | `tco.mitglieder:display` | Stammdaten, Verträge, SEPA, Unterlagen |
 | Mitglieder | Mitgliedergruppen | `/tco/gruppen` | `tco.gruppen:display` | Kategorien, Gruppen und Mannschaften im Baum |
 | Mitglieder | Mitgliedsanträge | `/tco/mitgliedsantraege` | `tco.antraege:display` |  |
-| Mitglieder | Registrierungen | `/tco/registrierungen` | `tco.registrierung:mitglied` |  |
+| Mitglieder | Zugänge | `/tco/zugaenge` | `tco.registrierung:mitglied\|tco.platz:admin` |  |
 | Mitglieder | Mitgliedsbeiträge | `/tco/beitraege` | `tco.beitraege:display` | Beitragsarten und Beträge je Zeitraum |
 | Mitglieder | Mitglieder-Analyse | `/tco/analyse` | `tco.analyse:display` | Altersstruktur, Ein-/Austritte, Beiträge, Varianten |
 | Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |

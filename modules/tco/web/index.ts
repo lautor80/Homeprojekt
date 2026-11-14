@@ -29,7 +29,7 @@ import { Mitgliedsantraege } from './antrag/Mitgliedsantraege';
 import { Schnuppertraining } from './schnupper/Schnuppertraining';
 import { SchnupperVerwaltung } from './schnupper/SchnupperVerwaltung';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
-import { MitgliedRegistrierungen } from './platz/MitgliedRegistrierungen';
+import { ZugaengeApp } from './platz/ZugaengeApp';
 import { MeineDaten } from './platz/MeineDaten';
 import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
@@ -129,7 +129,8 @@ const mod: WebModule = {
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
             { text: 'Mitgliedergruppen', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
             { text: 'Mitgliedsanträge', icon: 'personnel-view', path: '/tco/mitgliedsantraege', permission: 'tco.antraege:display' },
-            { text: 'Registrierungen', icon: 'add-employee', path: '/tco/registrierungen', permission: 'tco.registrierung:mitglied' },
+            // Zugänge (#232, N3): Registrierungen von Mitgliedern und Hallennutzern, Zuordnung, EP3-Abgleich an einer Stelle
+            { text: 'Zugänge', icon: 'add-employee', path: '/tco/zugaenge', permission: 'tco.registrierung:mitglied|tco.platz:admin' },
             { text: 'Mitgliedsbeiträge', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
             { text: 'Mitglieder-Analyse', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
           ],
@@ -229,7 +230,9 @@ const mod: WebModule = {
     { path: '/tco/produkte', component: Produkte, permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
     { path: '/tco/mitgliedsantraege', component: Mitgliedsantraege, permission: 'tco.antraege:display' },
     { path: '/tco/schnuppertraining', component: SchnupperVerwaltung, permission: 'tco.schnupper:display' },
-    { path: '/tco/registrierungen', component: MitgliedRegistrierungen, permission: 'tco.registrierung:mitglied' },
+    { path: '/tco/zugaenge', component: ZugaengeApp, permission: 'tco.registrierung:mitglied|tco.platz:admin' },
+    // alte Adresse (Arbeitsvorrat, Lesezeichen): dieselbe App, Reiter Registrierungen → Mitglieder
+    { path: '/tco/registrierungen', component: ZugaengeApp, permission: 'tco.registrierung:mitglied' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },

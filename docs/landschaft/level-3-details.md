@@ -43,7 +43,7 @@ flowchart LR
 | 3 | Registrierung absenden | Öffentlichkeit (ohne Anmeldung) | Vereinsportal (Modul tco) | `POST /api/m/tco/platz/registrierung` |  |  |  |
 | 4 | Bestätigungsmail | System / zeitgesteuerter Job | n8n-Workflow |  |  |  | TCO Mailversand |
 | 5 | Link bestätigen | Öffentlichkeit (ohne Anmeldung) | Vereinsportal (Modul tco) | `POST /api/m/tco/platz/registrierung/bestaetigen` |  | `/registrierung-bestaetigen` |  |
-| 6 | Kassenwart gibt frei | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/registrierungen/mitglieder/:id/freigeben` | `tco.registrierung:mitglied` | `/tco/registrierungen` |  |
+| 6 | Kassenwart gibt frei | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/registrierungen/mitglieder/:id/freigeben` | `tco.registrierung:mitglied` | `/tco/zugaenge` |  |
 | 7 | Erste Anmeldung | Mitglied | Vereinsportal (Modul tco) | `POST /api/auth/login` |  |  |  |
 
 <a id="d2"></a>
