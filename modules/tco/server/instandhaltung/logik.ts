@@ -195,12 +195,17 @@ export async function kategorieSichern(tx: Db, id: number | null, e: KategorieEi
   return { id: r.id, text: `Kategorie „${bezeichnung}“ angelegt – an allen Orten zugelassen (Matrix).` };
 }
 
-export async function einstellungenSichern(tx: Db, e: { vorstand_email: string; foto_frist_monate: number; paperless_typen?: string; paperless_pfade?: string }): Promise<string> {
-  const liste = e.vorstand_email.split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
-  if (liste.some((x) => !empfaenger(x).length)) throw new BusinessError('Bitte gültige E-Mail-Adressen angeben (mehrere mit Komma trennen).');
+/**
+ * Einstellungen sichern – nur die übergebenen Angaben ändern sich: Benachrichtigung und Fotos pflegt das Kapitel
+ * „Instandhaltung“ der Einstellungen, die Paperless-Auswahl der Reiter „Paperless“ der Schnittstellen (#232).
+ */
+export async function einstellungenSichern(tx: Db, e: { vorstand_email?: string; foto_frist_monate?: number; paperless_typen?: string; paperless_pfade?: string }): Promise<string> {
   const alt = await einstellungenLesen(tx);
+  const mail = e.vorstand_email ?? alt.vorstand_email;
+  const liste = mail.split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
+  if (liste.some((x) => !empfaenger(x).length)) throw new BusinessError('Bitte gültige E-Mail-Adressen angeben (mehrere mit Komma trennen).');
   const norm = (x: string | undefined, a: string) => (x === undefined ? a : x.split(',').map((t) => t.trim()).filter(Boolean).join(', '));
-  await tx`update tco.ih_einstellungen set vorstand_email = ${empfaenger(e.vorstand_email).join(', ')}, foto_frist_monate = ${e.foto_frist_monate},
+  await tx`update tco.ih_einstellungen set vorstand_email = ${empfaenger(mail).join(', ')}, foto_frist_monate = ${e.foto_frist_monate ?? alt.foto_frist_monate},
                   paperless_typen = ${norm(e.paperless_typen, alt.paperless_typen)}, paperless_pfade = ${norm(e.paperless_pfade, alt.paperless_pfade)} where id = 1`;
   return 'Einstellungen gesichert.';
 }

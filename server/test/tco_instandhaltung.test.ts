@@ -176,6 +176,21 @@ test('Stammdaten: Wo mit Gruppe, Matrix Kategorie × Ort, Zuständigkeit nur mit
   assert.equal((await admin('PUT', `${T}/instandhaltung/stamm/einstellungen`, { vorstand_email: 'kaputt', foto_frist_monate: 24 })).status, 400);
   r = await admin('PUT', `${T}/instandhaltung/stamm/einstellungen`, { vorstand_email: 'vorstand@tc-test.example; vorstand@tc-test.example', foto_frist_monate: 24 });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Einstellungen in Teilen (#232): das Kapitel „Instandhaltung“ sichert Benachrichtigung und Fotos, der Reiter „Paperless“
+  // der Schnittstellen die Auswahl der Dokumente – keines berührt die Angaben des anderen
+  const E = `${T}/instandhaltung/stamm/einstellungen`;
+  const vorher = (await admin('GET', E)).body;
+  assert.match(vorher.vorstand_email, /vorstand@tc-test\.example/);
+  assert.equal(vorher.foto_frist_monate, 24);
+  assert.equal((await admin('PUT', E, { paperless_typen: 'Angebot,  Rechnung', paperless_pfade: 'Instandhaltung' })).status, 200);
+  assert.deepEqual((await admin('GET', E)).body, { ...vorher, paperless_typen: 'Angebot, Rechnung', paperless_pfade: 'Instandhaltung' });
+  assert.equal((await admin('PUT', E, { foto_frist_monate: 36 })).status, 200);
+  assert.deepEqual((await admin('GET', E)).body, { ...vorher, foto_frist_monate: 36, paperless_typen: 'Angebot, Rechnung', paperless_pfade: 'Instandhaltung' });
+  assert.equal((await admin('PUT', E, { vorstand_email: 'kaputt' })).status, 400);
+  assert.equal((await admin('PUT', E, { foto_frist_monate: 0 })).status, 400);
+  assert.equal((await admin('PUT', E, { foto_frist_monate: vorher.foto_frist_monate, paperless_typen: vorher.paperless_typen, paperless_pfade: vorher.paperless_pfade })).status, 200);
+  assert.deepEqual((await admin('GET', E)).body, vorher);
+  assert.equal((await mia('GET', E)).status, 403);
   assert.equal((await mia('GET', `${T}/instandhaltung/stamm/daten`)).status, 403);
   assert.equal((await mia('GET', `${T}/instandhaltung`)).status, 403);
 });

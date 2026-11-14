@@ -4,9 +4,9 @@ import { Hallenpreise } from './Hallenpreise';
 import { MailtexteKapitel } from './einstellungen/Mailtexte';
 import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
-import { Sollstellung } from './soll/Sollstellung';
+import { GlaeubigerKapitel, Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
-import { Clubhaus, ClubhausKapitel } from './clubhaus/Clubhaus';
+import { Clubhaus, ClubhausKapitel, ClubhausPaperless } from './clubhaus/Clubhaus';
 import { MeinVerzehr } from './verzehr/MeinVerzehr';
 import { Theke } from './verzehr/Theke';
 import { Verzehrbuch, VerzehrKapitel } from './verzehr/Verzehrbuch';
@@ -42,7 +42,7 @@ import { Platzverwaltung } from './platz/Platzverwaltung';
 import { Serienbuchung } from './platz/Serienbuchung';
 import { Dokumenteneingang } from './eingang/Dokumenteneingang';
 import { SchadenMelden } from './instandhaltung/SchadenMelden';
-import { Instandhaltung } from './instandhaltung/Instandhaltung';
+import { Instandhaltung, InstandhaltungKapitel, InstandhaltungPaperless } from './instandhaltung/Instandhaltung';
 import { Hallenschluessel, SchluesselKapitel } from './schluessel/Hallenschluessel';
 import { SchluesselQuittung } from './schluessel/SchluesselQuittung';
 import { api } from '@core/api';
@@ -86,15 +86,19 @@ const mod: WebModule = {
   schnittstellen: [
     // Paperless-Felder, die bisher in den Fach-Apps standen: zur Schnittstelle, in den Block des Vereins
     { reiter: 'Paperless', id: 'fi', text: 'Finanzen: offene Belege', permission: 'tco.stammdaten:edit', component: VereinFiPaperless },
+    { reiter: 'Paperless', id: 'clubhaus', text: 'Clubhaus: Abrechnung', permission: 'tco.clubhaus:edit', component: ClubhausPaperless },
+    { reiter: 'Paperless', id: 'instandhaltung', text: 'Instandhaltung: Dokumente zur Auswahl', permission: 'tco.instandhaltung:admin', component: InstandhaltungPaperless },
     { reiter: 'SAP', id: 'sap', text: 'Übernahme aus SAP', permission: 'tco.import:execute', component: ImportTab },
   ],
   einstellungen: [
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
     { id: 'tennishalle', text: 'Tennishalle', icon: 'building', permission: 'tco.stammdaten:edit', component: VereinHalle },
     { id: 'finanzen', text: 'Finanzen', icon: 'loan', permission: 'tco.stammdaten:edit', component: VereinFinanzen },
+    { id: 'beitragseinzug', text: 'Beitragseinzug', icon: 'money-bills', permission: 'tco.soll:glaeubiger', component: GlaeubigerKapitel },
     { id: 'hallenschluessel', text: 'Hallenschlüssel', icon: 'key', permission: 'tco.schluessel:admin', component: SchluesselKapitel },
     { id: 'clubhaus', text: 'Clubhaus', icon: 'meal', permission: 'tco.clubhaus:edit', component: ClubhausKapitel },
     { id: 'verzehr', text: 'Verzehr', icon: 'cart', permission: 'tco.verzehr:admin', component: VerzehrKapitel },
+    { id: 'instandhaltung', text: 'Instandhaltung', icon: 'technical-object', permission: 'tco.instandhaltung:admin', component: InstandhaltungKapitel },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'tco.stammdaten:edit', component: MailtexteKapitel },
   ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in

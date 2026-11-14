@@ -53,6 +53,12 @@ export async function sollRoutes(app: FastifyInstance) {
     };
   });
 
+  /** Gläubigerdaten für das Kapitel „Beitragseinzug“ der Einstellungen (#232) */
+  app.get('/soll/cfg', { preHandler: requireAuth(P_SOLL.glaeubiger) }, async () => {
+    const cfg = await konfigLesen(DB, await vereinLesen());
+    return { cfg, fehlt: konfigFehlt(cfg) };
+  });
+
   app.put('/soll/cfg', { preHandler: requireAuth(P_SOLL.glaeubiger) }, async (req) => {
     const c = z.object({
       gl_name: z.string().trim().max(70), iban: z.string().max(40), bic: z.string().max(11).default(''),

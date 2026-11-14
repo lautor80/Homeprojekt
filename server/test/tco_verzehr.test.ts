@@ -305,6 +305,12 @@ test('Verzehrbuch, Arbeitsvorrat, Monatsabschluss mit Sammelabrechnungen und Las
   assert.match(vz.artname, /Verzehr Clubhaus/);
   r = await admin('PUT', '/api/m/tco/soll/cfg', { gl_name: 'TC Test', iban: 'DE02120300000000202051', bic: 'BYLADEM1001', gl_id: 'DE98ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  // Kapitel „Beitragseinzug“ der Einstellungen (#232) liest dieselben Gläubigerdaten
+  r = await admin('GET', '/api/m/tco/soll/cfg');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.cfg.gl_id, 'DE98ZZZ09999999999');
+  assert.equal(r.body.cfg.vorlauf, 2);
+  assert.deepEqual(r.body.fehlt, []);
   const faellig = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   r = await admin('POST', '/api/m/tco/soll/laeufe', { sollper: sp, mitMb: false, mitJt: false, mitVz: true, faellig, ohne: [] });
   assert.equal(r.status, 200, JSON.stringify(r.body));

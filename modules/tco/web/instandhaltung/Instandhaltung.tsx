@@ -10,6 +10,8 @@ import { PdfDialog } from '@core/components/PdfDialog';
 import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { einstellungLink } from '@core/einstellungen';
+import { schnittstelleLink } from '@core/schnittstellen';
 import { TCO, dat, eur } from '../util';
 import { AUSWIRKUNG_STATE, FOTO_URL, STATUS_STATE, fotoVerkleinern, zeitpunkt, type Foto } from './foto';
 import './instandhaltung.css';
@@ -598,7 +600,6 @@ type KatForm = { id: number | null; bezeichnung: string; sort: string; aktiv: bo
 
 function Stammdaten({ onError }: { onError: (e: string) => void }) {
   const [s, setS] = useState<StammDaten | null>(null);
-  const [cfg, setCfg] = useState({ vorstand_email: '', foto_frist_monate: '24', paperless_typen: '', paperless_pfade: '' });
   const [anlage, setAnlage] = useState<AnlageForm | null>(null);
   const [kat, setKat] = useState<KatForm | null>(null);
   const [zust, setZust] = useState(false);
@@ -606,8 +607,7 @@ function Stammdaten({ onError }: { onError: (e: string) => void }) {
   const [matrix, setMatrix] = useState<Set<string>>(new Set());
   const [matrixGeaendert, setMatrixGeaendert] = useState(false);
   const laden = () => api.get<StammDaten>(`${I}/stamm/daten`).then((x) => {
-    setS(x); setCfg({ vorstand_email: x.einstellungen.vorstand_email, foto_frist_monate: String(x.einstellungen.foto_frist_monate),
-                      paperless_typen: x.einstellungen.paperless_typen, paperless_pfade: x.einstellungen.paperless_pfade });
+    setS(x);
     setMatrix(new Set(x.matrix.map(([a, k]) => `${a}:${k}`))); setMatrixGeaendert(false);
   }).catch((e) => onError(e.message));
   useEffect(() => { laden(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -712,23 +712,13 @@ function Stammdaten({ onError }: { onError: (e: string) => void }) {
         <Text>{s.bearbeiter.map((b) => `${b.name} (${b.rollen.join(', ')})`).join(' · ') || '–'}</Text>
       </Section>
 
-      <Section title="Benachrichtigung und Fotos">
-        <div className="portal-bk__form" style={{ maxWidth: '36rem' }}>
-          <Label showColon>E-Mail Vorstand</Label>
-          <Input value={cfg.vorstand_email} placeholder="vorstand@… (mehrere mit Komma)" onInput={(e) => setCfg({ ...cfg, vorstand_email: e.target.value })} />
-          <Text className="portal-muted portal-small">Erhält jedes Sicherheitsrisiko (und nach 24 h ohne Reaktion eine Erinnerung) sowie Meldungen ohne passende Zuständigkeit.</Text>
-          <Label showColon>Fotos erledigter Meldungen löschen nach (Monaten)</Label>
-          <Input type="Number" value={cfg.foto_frist_monate} onInput={(e) => setCfg({ ...cfg, foto_frist_monate: e.target.value })} />
-          <Label showColon>Paperless: Dokumenttypen zur Auswahl</Label>
-          <Input value={cfg.paperless_typen} placeholder="z. B. Schadensmeldung, Angebot, Rechnung" onInput={(e) => setCfg({ ...cfg, paperless_typen: e.target.value })} />
-          <Label showColon>Paperless: Speicherpfade zur Auswahl</Label>
-          <Input value={cfg.paperless_pfade} placeholder="z. B. Instandhaltung" onInput={(e) => setCfg({ ...cfg, paperless_pfade: e.target.value })} />
-          <Text className="portal-muted portal-small">Im Dialog „Dokumente verknüpfen“ stehen Dokumente mit diesen Typen oder Pfaden sowie die FI-Belege zur Auswahl (mehrere mit Komma).</Text>
-          <div className="portal-row">
-            <Button design="Emphasized" icon="save"
-                    onClick={() => ausfuehren(() => api.put<{ text: string }>(`${I}/stamm/einstellungen`, { ...cfg, foto_frist_monate: Number(cfg.foto_frist_monate) }))}>Sichern</Button>
-          </div>
-        </div>
+      <Section title="Benachrichtigung, Fotos und Paperless">
+        <Text>
+          Die E-Mail des Vorstands und die Löschfrist der Fotos stehen unter{' '}
+          <Link onClick={() => { window.location.assign(einstellungLink('tco', 'instandhaltung')); }}>Administration → Einstellungen → TC Oberthal → Instandhaltung</Link>,
+          die Auswahl der Paperless-Dokumente unter{' '}
+          <Link onClick={() => { window.location.assign(schnittstelleLink('Paperless')); }}>Administration → Schnittstellen → Paperless</Link>.
+        </Text>
       </Section>
 
       {anlage && <AnlageDialog f={anlage} s={s} onClose={(neu) => { setAnlage(null); if (neu) laden(); }} />}
@@ -838,5 +828,63 @@ function ZustaendigDialog({ s, onClose }: { s: StammDaten; onClose: (neu: boolea
         <Text className="portal-muted portal-small">Mindestens Ort oder Kategorie wählen. Beispiel: Hallenwart für „Tennishalle“ (alle Kategorien), Elektriker für „Elektrik“ (alle Orte).</Text>
       </div>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- Einstellungen (#232): Kapitel und Abschnitt „Paperless“
+interface IhEinstellungen { vorstand_email: string; foto_frist_monate: number; paperless_typen: string; paperless_pfade: string }
+
+/** lädt die Einstellungen und sichert nur die Felder des jeweiligen Formulars – die übrigen bleiben, wie sie sind */
+function useIhEinstellungen() {
+  const [e, setE] = useState<IhEinstellungen | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.get<IhEinstellungen>(`${I}/stamm/einstellungen`).then(setE).catch((x) => setError((x as Error).message)); }, []);
+  async function sichern(teil: Partial<IhEinstellungen>) {
+    setBusy(true); setError(null);
+    try {
+      toast((await api.put<{ text: string }>(`${I}/stamm/einstellungen`, teil)).text);
+      setE(await api.get<IhEinstellungen>(`${I}/stamm/einstellungen`));
+    } catch (x) { setError((x as Error).message); } finally { setBusy(false); }
+  }
+  return { e, setE, error, setError, busy, sichern };
+}
+
+/** Kapitel „Instandhaltung“ der App Einstellungen: Benachrichtigung des Vorstands und Löschfrist der Fotos */
+export function InstandhaltungKapitel() {
+  const { e, setE, error, setError, busy, sichern } = useIhEinstellungen();
+  if (!e) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />;
+  return (
+    <div className="portal-bk__form" style={{ maxWidth: '36rem' }}>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+      <Label showColon>E-Mail Vorstand</Label>
+      <Input value={e.vorstand_email} placeholder="vorstand@… (mehrere mit Komma)" onInput={(x) => setE({ ...e, vorstand_email: x.target.value })} />
+      <Text className="portal-muted portal-small">Erhält jedes Sicherheitsrisiko (und nach 24 h ohne Reaktion eine Erinnerung) sowie Meldungen ohne passende Zuständigkeit.</Text>
+      <Label showColon>Fotos erledigter Meldungen löschen nach (Monaten)</Label>
+      <Input type="Number" value={String(e.foto_frist_monate)} onInput={(x) => setE({ ...e, foto_frist_monate: Number(x.target.value) || 0 })} />
+      <Text className="portal-muted portal-small">Orte, Kategorien und Zuständigkeiten bleiben Stammdaten der App „Schadensmeldungen“.</Text>
+      <div className="portal-row">
+        <Button design="Emphasized" icon="save" disabled={busy} onClick={() => sichern({ vorstand_email: e.vorstand_email, foto_frist_monate: e.foto_frist_monate })}>Sichern</Button>
+      </div>
+    </div>
+  );
+}
+
+/** Abschnitt im Reiter „Paperless“ der App Schnittstellen: welche Dokumente sich mit einer Meldung verknüpfen lassen */
+export function InstandhaltungPaperless() {
+  const { e, setE, error, setError, busy, sichern } = useIhEinstellungen();
+  if (!e) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />;
+  return (
+    <div className="portal-bk__form" style={{ maxWidth: '36rem' }}>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+      <Label showColon>Dokumenttypen zur Auswahl</Label>
+      <Input value={e.paperless_typen} placeholder="z. B. Schadensmeldung, Angebot, Rechnung" onInput={(x) => setE({ ...e, paperless_typen: x.target.value })} />
+      <Label showColon>Speicherpfade zur Auswahl</Label>
+      <Input value={e.paperless_pfade} placeholder="z. B. Instandhaltung" onInput={(x) => setE({ ...e, paperless_pfade: x.target.value })} />
+      <Text className="portal-muted portal-small">Im Dialog „Dokumente verknüpfen“ einer Schadensmeldung stehen Dokumente mit diesen Typen oder Pfaden sowie die FI-Belege zur Auswahl (mehrere mit Komma).</Text>
+      <div className="portal-row">
+        <Button design="Emphasized" icon="save" disabled={busy} onClick={() => sichern({ paperless_typen: e.paperless_typen, paperless_pfade: e.paperless_pfade })}>Sichern</Button>
+      </div>
+    </div>
   );
 }
