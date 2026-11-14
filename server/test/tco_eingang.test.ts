@@ -323,6 +323,11 @@ test('Prüfliste: Testlauf-Vorschlag, Ablage mit Regel und von Hand, ignorieren,
   r = await admin('GET', `${E}/vorgaenge?status=offen`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.offen, { pruefen: 1, fehler: 0 });
+  // Arbeitsvorrat (#232, V1): der zu prüfende Vorgang steht auf der Startseite unter „Dokumente“
+  const av = (await admin('GET', '/api/arbeitsvorrat')).body.gruppen.find((g: { modul: string }) => g.modul === 'tco').aufgaben as { key: string; bereich: string; titel: string; state: string; pfad: string }[];
+  const zuPruefen = av.find((a) => a.key === 'EINGANG_PRUEFEN')!;
+  assert.deepEqual([zuPruefen.bereich, zuPruefen.titel, zuPruefen.state, zuPruefen.pfad], ['Dokumente', 'Dokumenteneingang: 1 Vorgang zu prüfen', 'Critical', '/tco/dokumenteneingang']);
+  assert.ok(!av.some((a) => a.key === 'EINGANG_FEHLER'), 'kein Vorgang mit Fehler');
   const zeile = r.body.vorgaenge[0];
   assert.equal(zeile.id, v5);
   assert.equal(zeile.mitglied_adrnr, '0000000101');

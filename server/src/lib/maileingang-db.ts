@@ -7,6 +7,7 @@
  * Was sich nicht zuordnen lässt, wird nicht gespeichert (n8n liest ganze Posteingänge).
  */
 import type { Tx } from '../db.js';
+import { hinweisMelden } from './hinweise.js';
 import { adressen } from './mailuebersicht.js';
 import { adressenImText, betreffKern, einordnen, eingangZeit, messageIds, messageIdsImText, rueckGrund, type Eingang, type EingangArt } from './maileingang.js';
 
@@ -56,5 +57,14 @@ export async function eingangVerbuchen(db: Tx, e: Eingang): Promise<EingangErgeb
     values (${protokoll}, ${art}, ${zeit}, ${(e.von ?? '').slice(0, 300) || null}, ${(e.betreff ?? '').slice(0, 300) || null},
             ${art === 'unzustellbar' ? rueckGrund(e.text) || null : null}, ${(e.postfach ?? '').slice(0, 300) || null}, ${mid})
     on conflict do nothing returning id`;
+  // Arbeitsvorrat (#232, V1): Rückläufer und Antworten stehen unter „Administration“, bis jemand „gesehen“ bestätigt – je Art ein Hinweis
+  if (r.length > 0) {
+    await hinweisMelden(db, {
+      modul: 'core', quelle: 'MAIL_RUECKLAUF', objekt: art, bereich: 'Administration', recht: 'core.mail:display', icon: 'email', pfad: '/admin/mailprotokoll',
+      art: art === 'unzustellbar' ? 'E-Mail unzustellbar' : art === 'abwesenheit' ? 'Abwesenheitsnotiz erhalten' : 'Antwort auf eine E-Mail erhalten',
+      state: art === 'unzustellbar' ? 'Negative' : 'Information',
+      titel: `von ${(e.von ?? '').slice(0, 120) || 'unbekannt'}`, text: (e.betreff ?? '').replace(/\s+/g, ' ').slice(0, 300),
+    });
+  }
   return { zugeordnet: true, art, protokoll, neu: r.length > 0 };
 }

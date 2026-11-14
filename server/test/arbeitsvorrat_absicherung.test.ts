@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { EREIGNISQUELLEN } from '../../modules/tco/server/dashboard/ereignisquellen.js';
 
 /** offene Punkte im Verzeichnis, Stand 14.11.2026 – nur senken, nie erhöhen */
-const OFFEN_HOECHSTENS = 9;
+const OFFEN_HOECHSTENS = 0;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const lesen = (rel: string) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -143,13 +143,22 @@ test('Ereignisquellen: genannte Einträge gibt es im Arbeitsvorrat, offene Punkt
   assert.ok(AV_SCHLUESSEL.size >= 15, 'Schlüssel des Arbeitsvorrats nicht erkannt');
   let offen = 0;
   for (const [quelle, a] of Object.entries(EREIGNISQUELLEN)) {
-    const arten = ['aufgabe', 'hinweis', 'offen', 'ohne'].filter((x) => x in a);
-    assert.equal(arten.length, 1, `${quelle}: genau eine Angabe aus aufgabe / hinweis / offen / ohne`);
+    const arten = ['aufgabe', 'hinweis', 'ueberwacht', 'offen', 'ohne'].filter((x) => x in a);
+    assert.equal(arten.length, 1, `${quelle}: genau eine Angabe aus aufgabe / hinweis / ueberwacht / offen / ohne`);
     if ('aufgabe' in a) {
       for (const aufgabe of [a.aufgabe].flat()) {
         assert.ok([...AV_SCHLUESSEL].some((k) => k === aufgabe || k.startsWith(`${aufgabe}:`)),
           `${quelle}: Eintrag „${aufgabe}“ gibt es im Arbeitsvorrat nicht (mehr) – vorhanden: ${[...AV_SCHLUESSEL].sort().join(', ')}`);
       }
+    } else if ('ueberwacht' in a) {
+      // der Aufruf der Schnittstelle läuft über die Überwachung: …Schnittstelle(V_EP3, …)
+      assert.match(quelle, /^schnittstelle:/, `${quelle}: „ueberwacht“ gibt es nur für Schnittstellen`);
+      const aufruf = new RegExp(`\\b\\w*Schnittstelle\\(\\s*${a.ueberwacht}\\s*,`);
+      const wo = QUELLTEXT.filter((q) => aufruf.test(q.text)).map((q) => q.datei);
+      assert.ok(wo.length > 0, `${quelle}: kein überwachter Aufruf gefunden (…Schnittstelle(${a.ueberwacht}, …))`);
+      // und die Konstante gehört zu dieser Anbindung
+      const id = quelle.slice('schnittstelle:'.length);
+      assert.ok(QUELLTEXT.some((q) => q.text.includes(`const ${a.ueberwacht} = '${id}'`)), `${quelle}: ${a.ueberwacht} ist nicht die Id dieser Anbindung`);
     } else if ('hinweis' in a) {
       for (const h of [a.hinweis].flat()) {
         assert.ok(HINWEIS_QUELLEN.has(h), `${quelle}: Hinweis „${h}“ wird nirgends gemeldet (hinweisMelden mit quelle: '${h}') – gemeldet werden: ${[...HINWEIS_QUELLEN].sort().join(', ')}`);

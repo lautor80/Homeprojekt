@@ -23,6 +23,7 @@ import { kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
 import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
+import { hinweisAufgaben } from '../../../server/src/lib/hinweise.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
 
 export const P = {
@@ -791,6 +792,8 @@ const mod: ServerModule = {
   paperlessKontexte: TRANSPORT_KONTEXTE,
   verbindungen: TRANSPORT_VERBINDUNGEN,
   funktionen: TRANSPORT_FUNKTIONEN,
+  // Arbeitsvorrat (#232, V1): Block „Euroflex“ auf der Startseite – zeigt die Hinweise, die mit modul 'transport' gemeldet werden
+  arbeitsvorrat: (req) => hinweisAufgaben(req, 'transport'),
   // E-Mail-Protokoll: Empfängeradressen den Kontakten zuordnen
   mailPersonen: async (db, emails) => {
     if (!emails.length) return [];

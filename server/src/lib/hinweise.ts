@@ -57,7 +57,37 @@ export async function hinweisMelden(db: Tx, h: HinweisNeu): Promise<void> {
  * Scheitert das Melden selbst, steht es nur im Server-Log.
  */
 export async function stoerungMelden(h: HinweisNeu, log?: { warn: (e: unknown, text: string) => void }): Promise<void> {
+  gestoert.set(merker(h.modul, h.quelle, h.objekt), true);
   try { await hinweisMelden(HINWEIS_DB, { state: 'Negative', icon: 'error', ...h }); } catch (e) { log?.warn(e, `Hinweis ${h.modul}/${h.quelle} nicht gespeichert`); }
+}
+
+/** Stand je Schnittstelle in diesem Prozess: true = Störung gemeldet, false = läuft; fehlt = nach dem Start noch unbekannt */
+const gestoert = new Map<string, boolean>();
+const merker = (modul: string, quelle: string, objekt?: string | number | null) => `${modul}\n${quelle}\n${objekt ?? ''}`;
+
+/**
+ * Schnittstelle hat geantwortet: eine zuvor gemeldete Störung schließt sich. Kostet nur beim ersten Erfolg nach dem Start
+ * und nach einer Störung eine Datenbankabfrage – danach merkt sich der Prozess, dass nichts offen ist.
+ */
+export async function laeuft(modul: string, quelle: string, objekt?: string | number | null): Promise<void> {
+  const k = merker(modul, quelle, objekt);
+  if (gestoert.get(k) === false) return;
+  gestoert.set(k, false);
+  await hinweisBeheben(modul, quelle, objekt ?? '');
+}
+
+/**
+ * Aufruf einer Schnittstelle überwachen: Scheitert er, steht die Störung mit der Fehlermeldung im Arbeitsvorrat –
+ * der Fehler geht unverändert weiter an den Aufrufer. Klappt der nächste Aufruf, verschwindet die Störung von selbst.
+ */
+export async function ueberwacht<T>(h: Omit<HinweisNeu, 'text'>, fn: () => Promise<T>): Promise<T> {
+  let r: T;
+  try { r = await fn(); } catch (e) {
+    await stoerungMelden({ ...h, text: String((e as Error)?.message ?? e).replace(/\s+/g, ' ').slice(0, 300) });
+    throw e;
+  }
+  await laeuft(h.modul, h.quelle, h.objekt);
+  return r;
 }
 
 /** Störung behoben (der nächste Versuch hat geklappt): offene Hinweise der Quelle schließen sich von selbst */

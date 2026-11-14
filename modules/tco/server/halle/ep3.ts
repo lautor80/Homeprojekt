@@ -1,6 +1,8 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import { csvParse, dekodieren, sapDatum, sapZeit } from '../../../../server/src/lib/sapcsv.js';
 import type { Db, Verein } from '../verein.js';
+import { tcoSchnittstelle } from '../hinweise.js';
+import { V_EP3 } from '../verbindung.js';
 import { dat, heute, nameSchoen, zeit } from '../format.js';
 import { ep3BenutzerAnlegen } from '../platz/registrierung.js';
 import { ep3EventsImportieren } from '../platz/belegungen.js';
@@ -301,21 +303,26 @@ export function zeitraumDerBuchungen(csv: string | undefined): { von: string; bi
  */
 export async function ep3UeberN8n(v: Verein, benutzer: string, ab: string | null = null): Promise<{ bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string; ab?: string | null }> {
   if (!v.n8n_ep3_url) throw new BusinessError('Der EP3-Import über n8n ist nicht eingerichtet (Administration → Schnittstellen → Anbindungen).');
-  let res: Response;
-  try {
-    res = await fetch(v.n8n_ep3_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(v.n8n_ep3_auth ? { Authorization: v.n8n_ep3_auth } : {}) },
-      body: JSON.stringify({ quelle: 'Portal Hallenabrechnung', user: benutzer, ...(ab ? { ab } : {}) }),
-      signal: AbortSignal.timeout(120_000),
-    });
-  } catch (e) {
-    throw new BusinessError(`n8n nicht erreichbar: ${(e as Error).message}`);
-  }
-  const t = await res.text();
-  if (!res.ok) throw new BusinessError(`n8n antwortet mit HTTP ${res.status}: ${t.slice(0, 300)}`);
-  let j: Record<string, string | null>;
-  try { j = JSON.parse(t); } catch { throw new BusinessError('n8n hat keine gültigen Daten geliefert.'); }
-  if (!j.bookings_csv && !j.kunden_csv && !j.texte_csv) throw new BusinessError('n8n hat keine Daten geliefert.');
+  const ep3Url = v.n8n_ep3_url;
+  // Abruf überwacht (#232, V1): Scheitert er, steht die Störung im Arbeitsvorrat, bis der nächste Abruf klappt
+  const j = await tcoSchnittstelle(V_EP3, 'EP3-Export Hallenbuchungen (n8n)', async () => {
+    let res: Response;
+    try {
+      res = await fetch(ep3Url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(v.n8n_ep3_auth ? { Authorization: v.n8n_ep3_auth } : {}) },
+        body: JSON.stringify({ quelle: 'Portal Hallenabrechnung', user: benutzer, ...(ab ? { ab } : {}) }),
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (e) {
+      throw new BusinessError(`n8n nicht erreichbar: ${(e as Error).message}`);
+    }
+    const t = await res.text();
+    if (!res.ok) throw new BusinessError(`n8n antwortet mit HTTP ${res.status}: ${t.slice(0, 300)}`);
+    let x: Record<string, string | null>;
+    try { x = JSON.parse(t); } catch { throw new BusinessError('n8n hat keine gültigen Daten geliefert.'); }
+    if (!x.bookings_csv && !x.kunden_csv && !x.texte_csv) throw new BusinessError('n8n hat keine Daten geliefert.');
+    return x;
+  });
   return j as { bookings_csv?: string; kunden_csv?: string; texte_csv?: string; events_csv?: string; ab?: string | null };
 }
