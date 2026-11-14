@@ -84,6 +84,8 @@ export async function authRoutes(app: FastifyInstance) {
       aus: { rechte: [...schalterZustand().rechte], ids: [...schalterZustand().ids] },
       modules: activeModuleIds(),
       settings: await getPublicSettings(),
+      // aktive Version: Uhrzeit und Kennung des Commits, aus dem das laufende Image gebaut wurde (leer bei lokalem Start)
+      version: { zeit: process.env.PORTAL_VERSION_ZEIT || null, sha: (process.env.PORTAL_VERSION_SHA || '').slice(0, 7) || null },
     };
   });
 

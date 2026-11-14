@@ -8,9 +8,14 @@ RUN npm run build && npm prune --omit=dev --no-audit --no-fund
 
 # ---------- Laufzeit ----------
 FROM node:22-bookworm-slim
+# aktive Version (Uhrzeit und Kennung des Commits) – setzt die CI, angezeigt in der Kopfzeile neben dem Logo
+ARG BUILD_SHA=
+ARG BUILD_ZEIT=
 ENV NODE_ENV=production \
     APP_ROOT=/app \
-    PORT=8080
+    PORT=8080 \
+    PORTAL_VERSION_SHA=$BUILD_SHA \
+    PORTAL_VERSION_ZEIT=$BUILD_ZEIT
 WORKDIR /app
 # Texterkennung für eingefügte Screenshots und PDFs (Euroflex: Kontaktdaten einfügen, #158) – läuft lokal im Container
 RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \

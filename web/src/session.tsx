@@ -16,6 +16,8 @@ export interface Me {
   aus?: { rechte: string[]; ids: string[] };
   modules: string[];
   settings: Record<string, unknown>;
+  /** aktive Version: Uhrzeit (ISO) und Kurzkennung des Commits; leer bei lokalem Start */
+  version?: { zeit: string | null; sha: string | null };
 }
 
 export interface Session {
