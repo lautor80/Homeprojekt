@@ -1,7 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { AuftraegeListe } from './AuftraegeListe';
 import { AuftragDetail } from './AuftragDetail';
-import { FirmaTab, MailtexteTab, Stammdaten } from './Stammdaten';
+import { FirmaLogo, FirmaTab, MailtexteTab, Stammdaten } from './Stammdaten';
 import { Datenimport } from './Datenimport';
 import { Kontakte } from './Kontakte';
 
@@ -25,6 +25,7 @@ const mod: WebModule = {
   schnittstellen: [
     { reiter: 'SAP', id: 'sap', text: 'Datenimport aus SAP', permission: 'transport.import:execute', component: Datenimport },
   ],
+  logos: [{ id: 'ausdrucke', text: 'Ausdrucke (Seitenverhältnis ca. 6:1)', permission: 'transport.stammdaten:edit', component: FirmaLogo }],
   einstellungen: [
     { id: 'firma', text: 'Firma und Bank', icon: 'building', permission: 'transport.stammdaten:edit', component: FirmaTab },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'transport.stammdaten:edit', component: MailtexteTab },

@@ -57,6 +57,20 @@ export interface EinstellungsKapitel {
   /** Recht, mit dem man das Kapitel sieht und pflegt (mehrere mit „|“ = eines davon genügt) */
   permission: string;
   component: ComponentType;
+  /** zusätzlich sichtbar, wenn … (z. B. „Erscheinungsbild“ für alle, die das Logo ihrer Anwendung pflegen dürfen) */
+  auch?: (modules: WebModule[], can: (p?: string) => boolean) => boolean;
+}
+
+/**
+ * Logo einer Anwendung (#232, E2): gepflegt werden alle Logos an einer Stelle – Einstellungen → Portal → Erscheinungsbild.
+ * Gespeichert bleibt jedes Logo bei seiner Anwendung; das Modul bringt dafür ein kleines Formular mit (laden, ablegen, sichern).
+ */
+export interface LogoVerwendung {
+  id: string;
+  /** wofür das Logo dient, z. B. „Kopfband“, „Ausdrucke“ */
+  text: string;
+  permission: string;
+  component: ComponentType;
 }
 
 /** Abschnitt eines Moduls in einem Reiter der App „Schnittstellen“ (#232, S1) – steht im Block seines Bereichs unter dem Zugang */
@@ -104,6 +118,8 @@ export interface WebModule {
   nachAnmeldung?: string[];
   /** Kapitel dieser Anwendung in der App „Einstellungen“ (Administration → Einstellungen, #232 E1), in der Reihenfolge der Anzeige */
   einstellungen?: EinstellungsKapitel[];
+  /** Logos dieser Anwendung – erscheinen im Kapitel „Erscheinungsbild“ (#232, E2) */
+  logos?: LogoVerwendung[];
   /** Abschnitte dieser Anwendung in der App „Schnittstellen“ (Administration → Schnittstellen, #232 S1): Importe, Regeln, Felder je Schnittstelle */
   schnittstellen?: SchnittstellenAbschnitt[];
   /** Arbeitsvorrat der Startseite: Zusatz des Moduls am Eintrag (z. B. Knopf „Zahlungsdaten“), siehe components/Arbeitsvorrat.tsx */

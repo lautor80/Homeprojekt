@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
+  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Link, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -38,8 +38,11 @@ const raster = (min: string) => ({ display: 'grid', gridTemplateColumns: `repeat
 /** Auf sehr breiten Bildschirmen nicht über die ganze Breite ziehen */
 const BREITE = { maxWidth: '96rem' };
 
+/** Logo der Ausdrucke – gepflegt im Kapitel Portal → Erscheinungsbild (#232, E2: alle Logos an einer Stelle) */
+export function FirmaLogo() { return <FirmaTab nurLogo />; }
+
 /** Kapitel „Firma und Bank“ der App Einstellungen (#232, E1) – bisher Reiter „Firmendaten“ der Stammdaten */
-export function FirmaTab() {
+export function FirmaTab({ nurLogo = false }: { nurLogo?: boolean }) {
   const [f, setF] = useState<Firma | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,6 +70,33 @@ export function FirmaTab() {
     } finally {
       setBusy(false);
     }
+  }
+  const fuss = (
+    <Bar style={{ marginTop: '1rem' }} endContent={<>
+      <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
+      <Button design="Emphasized" icon="save" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
+    </>} />
+  );
+  if (nurLogo) {
+    return (
+      <>
+        <SperrHinweis s={sperre} />
+        {error && <MessageStrip design="Negative" style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+        <FormGrid>
+          <FieldBox label="Logo für Ausdrucke (PNG/JPEG, Seitenverhältnis ca. 6:1)" wide>
+            <FlexBox alignItems="Center" style={{ gap: '1rem' }}>
+              {f.logo && <img src={f.logo} alt="Logo" style={{ maxHeight: 48, maxWidth: 300 }} />}
+              <div style={{ flex: 1, maxWidth: '28rem' }}>
+                <AblageFlaeche ziel={{ titel: 'Logo für Ausdrucke', annehmen: (fs) => { logo(fs); } }} accept="image/png,image/jpeg" multiple={false}
+                               groesse="Dot" titel="Logo hier ablegen" text="PNG oder JPEG hierher ziehen oder klicken zum Auswählen" />
+              </div>
+              {f.logo && <Button design="Transparent" icon="delete" onClick={() => setF({ ...f, logo: null })}>Entfernen</Button>}
+            </FlexBox>
+          </FieldBox>
+        </FormGrid>
+        {fuss}
+      </>
+    );
   }
   return (
     <>
@@ -100,15 +130,8 @@ export function FirmaTab() {
           <TextField label="Zahlungsziel (Tage)" type="Number" value={String(f.zahlungsziel_tage)} onChange={(v) => setF({ ...f, zahlungsziel_tage: Number(v) })} />
           <TextField label="USt-Satz (%)" type="Number" value={String(f.ust_satz)} onChange={(v) => setF({ ...f, ust_satz: Number(v) })} />
           <TextField label="Erste Rechnungsnummer je Jahr" type="Number" value={String(f.rechnung_startnr)} onChange={(v) => setF({ ...f, rechnung_startnr: Number(v) })} />
-          <FieldBox label="Logo für Ausdrucke (PNG/JPEG, Seitenverhältnis ca. 6:1)" wide>
-            <FlexBox alignItems="Center" style={{ gap: '1rem' }}>
-              {f.logo && <img src={f.logo} alt="Logo" style={{ maxHeight: 48, maxWidth: 300 }} />}
-              <div style={{ flex: 1, maxWidth: '28rem' }}>
-                <AblageFlaeche ziel={{ titel: 'Logo für Ausdrucke', annehmen: (fs) => { logo(fs); } }} accept="image/png,image/jpeg" multiple={false}
-                               groesse="Dot" titel="Logo hier ablegen" text="PNG oder JPEG hierher ziehen oder klicken zum Auswählen" />
-              </div>
-              {f.logo && <Button design="Transparent" icon="delete" onClick={() => setF({ ...f, logo: null })}>Entfernen</Button>}
-            </FlexBox>
+          <FieldBox label="Logo für Ausdrucke" wide>
+            <Link onClick={() => { window.location.assign(einstellungLink('core', 'erscheinungsbild')); }}>Einstellungen → Portal → Erscheinungsbild</Link>
           </FieldBox>
         </FormGrid>
       </Section>
@@ -129,10 +152,7 @@ export function FirmaTab() {
       <MessageStrip design="Information" hideCloseButton>
         Paperless-ngx {f.paperless ? 'ist eingerichtet' : 'ist nicht eingerichtet'} – Euroflex hat ein eigenes Paperless: Adresse und API-Token stehen unter Administration → Schnittstellen bei „Paperless-ngx Euroflex“.
       </MessageStrip>
-      <Bar style={{ marginTop: '1rem' }} endContent={<>
-        <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
-        <Button design="Emphasized" icon="save" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
-      </>} />
+      {fuss}
     </>
   );
 }
