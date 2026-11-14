@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@ui5/webcomponents-react';
-import { useCan, useSession } from '../session';
+import { useCan, useFunktion, useSession } from '../session';
 import { enabledModules } from '../modules';
 import type { HomeTile, NavEntry } from '../platform';
 import { Tile } from '../components/Tile';
@@ -24,6 +24,7 @@ function gruss(): string {
 export function HomePage() {
   const { me } = useSession();
   const can = useCan();
+  const an = useFunktion();
   const navigate = useNavigate();
   const modules = enabledModules(me.modules);
 
@@ -32,7 +33,7 @@ export function HomePage() {
   for (const m of modules) for (const t of m.tiles ?? []) if (can(t.permission)) extra.set(t.path, t);
   const kachel = (e: NavEntry): HomeTile => ({ ...extra.get(e.path!), text: e.text, icon: e.icon ?? extra.get(e.path!)?.icon ?? 'action', path: e.path! });
 
-  const nav = navAufbauen(modules, can).filter((e) => e.path !== '/');
+  const nav = navAufbauen(modules, can, an).filter((e) => e.path !== '/');
   // Einträge ohne Bereich (Stufe 1 direkt mit Ziel) in einem Bereich „Allgemein“ sammeln
   const lose = nav.filter((e) => !e.children && e.path);
   const bereiche = [

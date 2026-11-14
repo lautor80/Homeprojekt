@@ -1,3 +1,5 @@
+import { rechtAbgeschaltet } from './funktionsschalter.js';
+
 export interface PermissionDef {
   /** "<objekt>:<aktivität>", z. B. "core.users:edit" */
   id: string;
@@ -42,6 +44,7 @@ export const corePermissions: PermissionDef[] = [
   { id: 'core.roles:display', text: 'Rollen anzeigen, Rollenmatrix und Prüfung ansehen (Verprobung für Benutzer zusätzlich mit „Benutzer anzeigen“)', area: 'Benutzer und Rechte', app: 'Rollen und Rollenmatrix' },
   { id: 'core.roles:edit', text: 'Rollen anlegen und ändern, auch in der Rollenmatrix', area: 'Benutzer und Rechte', app: 'Rollen und Rollenmatrix' },
   { id: 'core.settings:edit', text: 'Systemeinstellungen ändern', area: 'Einstellungen', app: 'Einstellungen' },
+  { id: 'core.funktionen:edit', text: 'Funktionen des Portals ein- und ausschalten: Anwendungen, Bereiche, Apps und einzelne Funktionen – abgeschaltet heißt für alle Benutzer nicht mehr sichtbar und nicht mehr nutzbar', area: 'Einstellungen', app: 'Funktionen' },
   { id: 'core.apikeys:display', text: 'API-Schlüssel anzeigen', area: 'Schnittstellen', app: 'API-Schlüssel' },
   { id: 'core.apikeys:edit', text: 'API-Schlüssel anlegen, ändern und sperren', area: 'Schnittstellen', app: 'API-Schlüssel' },
   { id: 'core.audit:display', text: 'Änderungsbelege anzeigen (alle Objekte)', area: 'Protokolle', app: 'Änderungsbelege' },
@@ -82,6 +85,8 @@ export function gliedern(moduleName: string, perms: PermissionDef[]): Permission
 
 /** Prüft, ob eine Menge von Berechtigungen eine bestimmte Berechtigung enthält. */
 export function hasPermission(granted: Set<string>, required: string): boolean {
+  // Funktionsschalter (#232, F1): Ein abgeschaltetes Recht hat niemand – auch nicht mit „*“
+  if (rechtAbgeschaltet(required)) return false;
   if (granted.has('*') || granted.has(required)) return true;
   // "modul.objekt:*" erlaubt alle Aktivitäten eines Objekts
   const [object] = required.split(':');

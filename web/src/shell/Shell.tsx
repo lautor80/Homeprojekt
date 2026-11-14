@@ -4,10 +4,10 @@ import {
   Avatar, Button, Dialog, IllustratedMessage, NavigationLayout, ShellBar, ShellBarBranding,
   SideNavigation, SideNavigationGroup, SideNavigationItem, SideNavigationSubItem, UserMenu, UserMenuAccount, UserMenuItem,
 } from '@ui5/webcomponents-react';
-import { useSession, useCan } from '../session';
+import { useSession, useCan, useFunktion } from '../session';
 import { coreRoutes } from './core';
 import { useNavHinweise } from '../navhinweis';
-import { navAufbauen } from './nav';
+import { abgeschaltetePfade, navAufbauen, pfadAbgeschaltet } from './nav';
 import { enabledModules } from '../modules';
 import type { NavEntry, RouteDef } from '../platform';
 import { ChangePasswordForm } from '../pages/AuthPages';
@@ -31,6 +31,7 @@ function NotFound() {
 export function Shell() {
   const { me, logout } = useSession();
   const can = useCan();
+  const an = useFunktion();
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(window.innerWidth < 900);
@@ -66,7 +67,9 @@ export function Shell() {
   const logo = me.settings['org.logo'] as string | undefined;
 
   // Navigation: Start, Fachmodule, Administration – gefiltert nach Berechtigung (gleiche Quelle wie die Startseite)
-  const nav = useMemo(() => navAufbauen(modules, can), [me]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nav = useMemo(() => navAufbauen(modules, can, an), [me]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Funktionsschalter (#232, F1): Seiten abgeschalteter Apps gibt es nicht – auch nicht über die Adresszeile
+  const ausPfade = useMemo(() => abgeschaltetePfade(modules, an), [me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const routes: RouteDef[] = [...coreRoutes, ...modules.flatMap((m) => m.routes)];
   const widgets = modules.flatMap((m) => m.sideWidgets ?? []).filter((w) => can(w.permission));
@@ -146,7 +149,8 @@ export function Shell() {
           <Routes>
             {routes.map((r) => {
               const C = r.component;
-              const el: ReactElement = can(r.permission) ? <><Nutzung pfad={r.path} /><C /></> : <NoAccess />;
+              const el: ReactElement = pfadAbgeschaltet(r.path, ausPfade) ? <NotFound />
+                : can(r.permission) ? <><Nutzung pfad={r.path} /><C /></> : <NoAccess />;
               return <Route key={r.path} path={r.path} element={el} />;
             })}
             <Route path="*" element={<NotFound />} />

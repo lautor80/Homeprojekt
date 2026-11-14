@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button, CheckBox, Input, Switch } from '@ui5/webcomponents-react';
+import { useSession } from '../session';
 
 /** Katalog wie GET /api/admin/permissions (server/src/permissions.ts → PermissionGroup) */
 export interface PermDef { id: string; text: string; requires: string[] }
@@ -26,6 +27,9 @@ export function PermissionEditor({ catalog, value, onChange, readonly }: Props) 
   const [suche, setSuche] = useState('');
   const [nurGesetzt, setNurGesetzt] = useState(false);
   const gesetzt = useMemo(() => new Set<string>(value), [value]);
+  // Funktionsschalter (#232, F1): abgeschaltete Rechte bleiben zugeordnet, sind aber grau – sie wirken erst wieder nach dem Einschalten
+  const { me } = useSession();
+  const abgeschaltet = useMemo(() => new Set<string>(me.aus?.rechte ?? []), [me]);
 
   // Voraussetzungen und Umkehrung (wer baut auf mir auf?)
   const { benoetigt, abhaengige, texte } = useMemo(() => {
@@ -132,7 +136,9 @@ export function PermissionEditor({ catalog, value, onChange, readonly }: Props) 
                         </div>
                         <div className="portal-perm__acts">
                           {app.sichtbar.map((p) => (
-                            <CheckBox key={p.id} text={p.text} readonly={readonly} wrappingType="Normal"
+                            <CheckBox key={p.id} readonly={readonly} wrappingType="Normal"
+                                      text={abgeschaltet.has(p.id) ? `${p.text} – abgeschaltet (Administration → Einstellungen → Funktionen)` : p.text}
+                                      style={abgeschaltet.has(p.id) ? { opacity: 0.55 } : undefined}
                                       title={[p.id, ...p.requires.map((r) => `setzt voraus: ${texte.get(r) ?? r}`)].join('\n')}
                                       checked={gesetzt.has(p.id)} onChange={(e) => setzen([p.id], e.target.checked)} />
                           ))}

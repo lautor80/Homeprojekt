@@ -28,6 +28,7 @@ import {
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
+import { funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
@@ -119,6 +120,9 @@ async function maskierteBankdatenAufloesen(n: z.infer<typeof neuSchema>): Promis
 /** täglicher Lauf: Benutzer ausgetretener Mitglieder sperren */
 let austrittLauf: ReturnType<typeof setInterval> | null = null;
 async function austrittSperrenLauf(log: FastifyInstance['log']) {
+  // Funktionsschalter (#232, F1): Der Lauf ruht nur, wenn das ganze Vereinsmodul abgeschaltet ist – ist allein die App
+  // „Mitglieder“ aus, werden Benutzer ausgetretener Mitglieder weiterhin gesperrt (Schutzfunktion).
+  if (!funktionAktiv(modulId('tco'))) return;
   try {
     const r = await withChange({ userId: null, username: 'system', action: 'AUSTRITT_SPERRE' }, (tx) => ausgetreteneSperren(tx));
     if (r.gesperrt.length || r.rolleEntzogen.length) log.info(r, 'Benutzer ausgetretener Mitglieder gesperrt');

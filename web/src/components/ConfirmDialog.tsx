@@ -39,7 +39,8 @@ export function ConfirmDialog({ open, title, text, confirmText = 'OK', askReason
       }
     >
       <FlexBox direction="Column" style={{ gap: '0.75rem', minWidth: 'min(420px, 80vw)' }}>
-        <Text>{text}</Text>
+        {/* Absätze: Leerzeile im Text */}
+        {text.split('\n\n').map((absatz, i) => <Text key={i}>{absatz}</Text>)}
         {askReason && (
           <>
             <Label required>Begründung</Label>

@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql, withChange, type ChangeContext, type Tx } from './db.js';
 import { config, modulAktiv } from './config.js';
 import { hasPermission } from './permissions.js';
+import { FUNKTION_AUS, funktionAusText, rechtAbgeschaltet } from './funktionsschalter.js';
 import { compareSync as bcryptVergleich } from './vendor/bcryptjs/index.js';
 
 export const SESSION_COOKIE = 'portal_sid';
@@ -170,6 +171,8 @@ export function requireAuth(permission?: string) {
     if (req.user.mustChangePassword && !req.url.startsWith('/api/auth/')) {
       return reply.code(403).send({ message: 'Bitte zuerst das Passwort ändern.', code: 'MUST_CHANGE_PASSWORD' });
     }
+    // Funktionsschalter (#232, F1): abgeschaltet gilt für alle – eigene Meldung, damit die Oberfläche ihren Stand erneuert
+    if (permission && rechtAbgeschaltet(permission)) return reply.code(403).send({ message: funktionAusText(), code: FUNKTION_AUS });
     if (permission && !hasPermission(req.user.permissions, permission)) {
       return reply.code(403).send({ message: `Keine Berechtigung (${permission}).` });
     }

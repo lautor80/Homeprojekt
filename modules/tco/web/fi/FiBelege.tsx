@@ -9,7 +9,7 @@ import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { MenuButton } from '@core/components/MenuButton';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { dat, eur } from '../util';
 import {
@@ -30,6 +30,8 @@ export function FiBelege() {
   const can = useCan();
   const buchen = can('tco.fi:buchen');
   const storno = can('tco.fi:storno');
+  /** Funktionsschalter (#232, F1): Bankimport und manuelle Buchung lassen sich einzeln abschalten */
+  const an = useFunktion();
   const [init, setInit] = useState<FiInit | null>(null);
   const [zr, setZr] = useState(merk.zr);
   const [von, setVon] = useState(merk.von);
@@ -266,8 +268,8 @@ export function FiBelege() {
   );
 
   const actions = <>
-    {buchen && <Button icon="upload" onClick={() => setBank('bank')}>Bankimport</Button>}
-    {buchen && <Button icon="add" onClick={() => setBank('manuell')}>Manuelle Buchung</Button>}
+    {buchen && an('tco.fi.bankimport') && <Button icon="upload" onClick={() => setBank('bank')}>Bankimport</Button>}
+    {buchen && an('tco.fi.manuell') && <Button icon="add" onClick={() => setBank('manuell')}>Manuelle Buchung</Button>}
     <Button icon="lead" onClick={() => setZahlRg(null)}>Teilzahlungen</Button>
     {init?.paperless && <Button icon="qr-code" tooltip="Paperless-Belege mit Folgeaktion „Überweisung an Einreicher“: Vorschau und QR-Code zur Überweisung" onClick={() => setUeberweisung(true)}>Überweisung an Einreicher</Button>}
     {can('tco.fi:geldkonto') && <Button icon="journey-change" tooltip="Markierte Belege auf ein anderes Geldkonto umkontieren" onClick={() => setGeldkonto(true)}>Geldkonto tauschen</Button>}

@@ -2,6 +2,7 @@ import type { FastifyBaseLogger, FastifyInstance, FastifyRequest } from 'fastify
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
+import { appAktiv } from '../../../../server/src/funktionsschalter.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
@@ -107,6 +108,7 @@ export async function instandhaltungRoutes(app: FastifyInstance) {
   // stündlich (nicht in Tests): Erinnerung bei Sicherheitsrisiko, Fotos nach Frist löschen
   if (!laufTimer && !process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
     laufTimer = setInterval(async () => {
+      if (!appAktiv('tco', 'Schadensmeldungen')) return; // Funktionsschalter (#232, F1): abgeschaltete Apps laufen nicht von selbst
       try {
         const r = await withChange({ userId: null, username: 'system (Instandhaltung)', action: 'IH_LAUF' }, (tx) => lauf(tx));
         if (r.erinnert.length || r.fotosGeloescht) app.log.info({ erinnert: r.erinnert, fotos: r.fotosGeloescht }, 'Instandhaltung: Lauf');

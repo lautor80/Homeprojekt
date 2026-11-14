@@ -598,6 +598,59 @@ abgeschaltete Funktionen in der Rollenpflege grau stehen (Annahme) oder ganz ver
 der Apps, Bereich für Bereich. **Früh umsetzen** – die Rahmen für Einstellungen (E1), Schnittstellen (S1) und
 Arbeitsvorrat (V2) fragen den Schalter dann von Anfang an ab.
 
+**Umgesetzt (14.11.2026) – Rahmen, alle Apps und die ersten Funktionen.** Pflege unter *Administration →
+Einstellungen → Funktionen* (Recht `core.funktionen:edit`).
+
+| Stufe | Abschaltbar | Woher |
+|---|---|---|
+| Anwendung | TC Oberthal, Euroflex | von selbst (Rechtekatalog) |
+| Bereich | alle Bereiche der beiden Anwendungen | von selbst |
+| App | alle Apps; in der Administration alle außer Benutzer, Rollen, Einstellungen, Funktionen, Sicherung | von selbst – eine neue App ist ohne Zutun abschaltbar |
+| Funktion | siehe unten | vom Modul angemeldet (`ServerModule.funktionen`) |
+
+Einzelne Funktionen der ersten Lieferung:
+
+| App | Funktion | Wirkt über |
+|---|---|---|
+| Hallenabrechnung | EP3-Import (mit Abgleich) | Routen |
+| FI-Belege | Bankimport | Route und Prüfung beim Buchen |
+| FI-Belege | Manuelle Buchung und Umbuchung | Prüfung beim Buchen |
+| FI-Belege | Geldkonto tauschen · Storno · Perioden abschließen | je ein Recht |
+| Abrechnung Jugendtraining | Import Trainerstunden | Routen |
+| Stammdaten (TC Oberthal) | Übernahme aus SAP | Recht |
+| Stammdaten (Euroflex) | Datenimport aus SAP | Recht |
+| Tabellenansicht | Werte ändern · Datensätze löschen | je ein Recht |
+
+So wirkt „Aus“:
+
+- **Rechte:** Die Rechte des Knotens hat niemand mehr, auch der Administrator nicht (zentrale Prüfung im Server und
+  in der Oberfläche). Rechte, die eines davon voraussetzen, fallen mit weg – die Pflege nennt diese Apps vor dem
+  Abschalten und markiert sie danach als „nicht nutzbar“.
+- **Anzeige:** Menü, Startseite und Seiten (auch über die Adresszeile) verschwinden; Knöpfe und Reiter einzelner
+  Funktionen ebenfalls. Offene Sitzungen gleichen sich innerhalb einer Minute an.
+- **Server:** Routen abgeschalteter Funktionen antworten mit 403 „abgeschaltet“.
+- **Läufe:** Abo-Lauf und Lauf der Instandhaltung ruhen, wenn ihre App aus ist. Die Sperre ausgetretener Mitglieder
+  ruht nur, wenn das ganze Vereinsmodul aus ist (Schutzfunktion).
+- **Arbeitsvorrat:** Einträge hängen an Rechten und entfallen damit.
+- **Rollenpflege:** abgeschaltete Rechte stehen grau mit Hinweis; die Zuordnung bleibt.
+- **Änderungsbeleg** je Schaltung (Objekt „Funktionsschalter“).
+
+Tests: `server/test/funktionen.test.ts` (Wirkung, mit Datenbank) und `server/test/funktionen_verzeichnis.test.ts`
+(jede angemeldete Funktion hat eine App, ihre Rechte und Routen gibt es, sie wirkt im Server und wird in der
+Oberfläche abgefragt).
+
+**Noch offen bei F1:**
+
+- weitere Funktionen aus der Liste oben (Sammelrechnung, Sammelversand, WhatsApp, nuLiga-Abgleich, Lastschriftlauf,
+  Altdaten Hallenschlüssel, Theke-Funktionen …) – je Funktion ein Eintrag und eine Abfrage in der Oberfläche;
+- **öffentliche Formulare** (Online-Mitgliedsantrag, Schnuppertraining, Registrierung, Schlüssel-Quittung): Sie
+  hängen an keinem Recht und laufen deshalb weiter, auch wenn ihre App aus ist – als Nächstes anzumelden;
+- Kapitel der Einstellungen (E1), Reiter der Schnittstellen (S1) und der Arbeitsvorrat im Kern (V2) fragen den
+  Schalter ab, sobald es sie gibt;
+- Apps, die Daten einer abgeschalteten App nur anzeigen, ohne deren Recht ausdrücklich vorauszusetzen, zeigen
+  diese Daten dann nicht mehr (Meldung „abgeschaltet“). Die Pflege weist darauf hin, kann sie aber nicht einzeln
+  nennen.
+
 ### A – Administration
 
 #### A1 Administration in fünf Gruppen
@@ -958,7 +1011,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ vorgegeben |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☐ |
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
-| F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ vorgegeben |
+| F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ Rahmen, Apps und erste Funktionen umgesetzt |
 | A1 | Administration in fünf Gruppen | klein | ☑ umgesetzt |
 | N1 | Gruppe „Mein Bereich“ | klein | ☐ |
 | N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
@@ -999,6 +1052,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | N6 | Rollenpflege in der Reihenfolge des Menüs; lose Apps im Bereich „Allgemein“; Test `server/test/menue_rollenpflege.test.ts` | umgesetzt 14.11.2026 |
 | S3 | Anbindungen zeigen Testmail und die letzten 5 Versuche; „Protokoll leeren“ steht in der App E-Mail-Protokoll | umgesetzt 14.11.2026 |
 | B4 | Zahnrad nur für Einstellungen, je App ein eigenes Icon (Test) | umgesetzt 14.11.2026 |
+| F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 11 einzelne Funktionen | Rahmen umgesetzt 14.11.2026 – weitere Funktionen und öffentliche Formulare offen |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und
 *Schnittstellen* eine Gruppe mit den drei bisherigen Apps:
@@ -1008,6 +1062,7 @@ Administration
   Benutzer und Rechte
     Benutzer · Rollen · Rollenmatrix
   Einstellungen
+    Einstellungen · Funktionen   (seit F1)
   Schnittstellen
     Anbindungen · Paperless-Zuordnung
     API-Schlüssel

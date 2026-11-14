@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
-import { change, requireAuth } from '../../../server/src/auth.js';
+import { can, change, requireAuth } from '../../../server/src/auth.js';
 import { asset, DB, vereinLesen, type Db, type Verein } from './verein.js';
 import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { entpacken, istZip } from '../../../server/src/lib/zip.js';
@@ -13,6 +13,7 @@ import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
 import { TCO_VERBINDUNGEN } from './verbindung.js';
+import { TCO_FUNKTIONEN } from './funktionen.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
 import { gruppenRoutes, P_GR } from './gruppen/routes.js';
@@ -270,6 +271,7 @@ const tco: ServerModule = {
   sensitiveFields: BANK_FELDER,
   paperlessKontexte: TCO_KONTEXTE,
   verbindungen: TCO_VERBINDUNGEN,
+  funktionen: TCO_FUNKTIONEN,
   mailWiederholen, mailFolge, mailPersonen,
   // Funktionstrennung (docs/berechtigungskonzept.md, 4.8) – die Rollenpflege meldet diese Kombinationen
   rechteKonflikte: [
@@ -296,7 +298,7 @@ const tco: ServerModule = {
   },
   // „Meine Mitgliedschaft“: das eigene Mitglied darf gesperrt werden (gegen gleichzeitige Pflege durch den Vorstand)
   sperreErlaubt: async (req, objekt, schluessel) => {
-    if (objekt !== 'MITGLIED' || !req.user?.id || !req.user.permissions.has('tco.meinedaten:edit')) return false;
+    if (objekt !== 'MITGLIED' || !req.user?.id || !can(req, 'tco.meinedaten:edit')) return false;
     const [a] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${req.user.id}`;
     return a?.adrnr === schluessel;
   },

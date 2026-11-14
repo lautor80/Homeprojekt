@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth, sha256 } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
+import { appAktiv } from '../../../../server/src/funktionsschalter.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { schnellwegPruefen } from '../mitglieder/einladung.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -548,6 +549,7 @@ export async function platzRoutes(app: FastifyInstance) {
   // stündlich von selbst (nicht in Tests): Erinnerung, Verfall, Angebote
   if (!process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test') {
     setInterval(() => {
+      if (!appAktiv('tco', 'Platz buchen')) return; // Funktionsschalter (#232, F1): abgeschaltete Apps laufen nicht von selbst
       withChange({ userId: null, username: 'system (Abo-Bewerbung)', action: 'ABO_LAUF' }, (tx) => aboLauf(tx)).catch((e) => app.log.warn(e, 'Abo-Lauf fehlgeschlagen'));
     }, 3_600_000).unref();
   }

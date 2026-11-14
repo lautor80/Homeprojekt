@@ -24,6 +24,8 @@ import { statistikRoutes } from './routes/statistik.js';
 import { sperrRoutes } from './routes/sperren.js';
 import { tabellenRoutes } from './routes/tabellen.js';
 import { variantenRoutes } from './routes/varianten.js';
+import { funktionenRoutes, registerFunktionen } from './routes/funktionen.js';
+import { schalterLaden } from './lib/funktionen.js';
 import { GesperrtError } from './sperren.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
@@ -36,6 +38,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(cookie);
   registerKontext(app);
   registerAuth(app);
+  registerFunktionen(app);
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof ZodError) {
@@ -73,6 +76,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(sperrRoutes);
   await app.register(tabellenRoutes);
   await app.register(variantenRoutes);
+  await app.register(funktionenRoutes);
   await app.register(adminRoutes);
   await app.register(auditRoutes);
   await app.register(apiKeyRoutes);
@@ -89,6 +93,9 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
       return reply.sendFile('index.html');
     });
   }
+
+  // Funktionsschalter (#232, F1) schon beim Start laden – automatische Läufe fragen den Stand ab, bevor die erste Anfrage kommt
+  await schalterLaden().catch((e) => app.log.warn(e, 'Funktionsschalter beim Start nicht ladbar'));
 
   return app;
 }

@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PermissionDef } from './permissions.js';
 import type { SensitiveFieldDef } from './schutz.js';
 import type { Tx } from './db.js';
+import type { FunktionDef } from './funktionsschalter.js';
 
 export interface AuditObjectDef {
   type: string;
@@ -84,4 +85,10 @@ export interface ServerModule {
    * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.
    */
   verbindungen?: VerbindungDef[];
+  /**
+   * Einzelne Funktionen innerhalb der Apps, die sich abschalten lassen (Administration → Einstellungen → Funktionen),
+   * z. B. EP3-Import oder Bankimport. Anwendung, Bereiche und Apps sind von selbst abschaltbar (aus dem Rechtekatalog).
+   * Ids mit Präfix „<modul>.“. Siehe server/src/funktionsschalter.ts.
+   */
+  funktionen?: FunktionDef[];
 }

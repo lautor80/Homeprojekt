@@ -20,7 +20,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   // Rechte geändert (Rolle entzogen) oder Sitzung abgelaufen: Oberfläche gleicht die Sitzung ab (App.tsx)
-  if ((res.status === 403 && /^Keine Berechtigung/.test(data?.message ?? '')) || (res.status === 401 && !url.startsWith('/api/auth/'))) {
+  if ((res.status === 403 && (/^Keine Berechtigung/.test(data?.message ?? '') || data?.code === 'FUNKTION_AUS')) || (res.status === 401 && !url.startsWith('/api/auth/'))) {
     window.dispatchEvent(new Event(SITZUNG_PRUEFEN));
   }
   if (!res.ok) throw new ApiError(data?.message ?? `Fehler ${res.status}`, res.status, data?.code);
