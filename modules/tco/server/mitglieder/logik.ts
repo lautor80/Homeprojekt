@@ -19,6 +19,14 @@ export const ZAHLUNGSWEISEN: Record<string, string> = {
   monatlich: 'monatlich', 'vierteljäh': 'vierteljährlich', 'halbjährli': 'halbjährlich', 'jährlich': 'jährlich',
 };
 export const ART_JUGEND = '90';
+/**
+ * Jugendtraining läuft immer eine Saison vom 01.10. bis zum 30.09. des Folgejahres und endet deshalb immer an einem
+ * 30.09. – im Zweifel auch nach dem Vereinsaustritt. Liefert den 30.09., mit dem die Saison des Tages `d` endet.
+ */
+export function saisonEnde(d: string): string {
+  const j = Number(d.slice(0, 4));
+  return d <= `${j}-09-30` ? `${j}-09-30` : `${j + 1}-09-30`;
+}
 
 export const leer = (s: unknown) => (s == null ? '' : String(s).trim());
 /** Adressverweis (Zahler): leer oder SAP-Initialwert „0000000000“ = kein Verweis */
@@ -308,23 +316,38 @@ export async function zahlerAuswahl(db: Db, ohne?: string) {
   });
 }
 
-/** SEPA-Mandate an den Austritt anpassen (wie SEPA_ENDE_SETZEN); manuell aktivierte bleiben unberührt */
+/**
+ * SEPA-Mandate an den Austritt anpassen (wie SEPA_ENDE_SETZEN); manuell aktivierte bleiben unberührt.
+ * Das Mandat gilt bis zum Austritt – läuft danach noch ein Vertrag, den es bezahlt (z. B. Jugendtraining bis zum 30.09.),
+ * bis zu dessen Ende. Gezählt werden Verträge mit Ende: die eigenen, die mit diesem Zahler und die von Personen, die über
+ * das Mitglied zahlen. Unbefristete Verträge anderer Personen verlängern nichts (dafür: Mandat manuell aktiv lassen).
+ */
 export async function sepaEndeSetzen(tx: Db, adrnr: string, austrittAlt: string | null = null): Promise<string | null> {
-  const [m] = await tx`select austritt from tco.mitglieder where adrnr = ${adrnr}`;
+  const [m] = await tx`select austritt::text as austritt from tco.mitglieder where adrnr = ${adrnr}`;
   if (m?.austritt) {
-    await tx`update tco.sepa set gueltigbis = ${m.austritt} where adrnr = ${adrnr} and not manuell_aktiv`;
+    const [v] = await tx`
+      select max(v.vertragende)::text as ende from tco.vertraege v join tco.mitglieder p on p.adrnr = v.adrnr
+       where v.vertragende is not null
+         and ((v.adrnr = ${adrnr} and (ltrim(coalesce(v.zahler_adrnr, ''), '0') = '' or v.zahler_adrnr = ${adrnr}))
+              or v.zahler_adrnr = ${adrnr}
+              or (p.adrnrkih = ${adrnr} and p.adrnr <> ${adrnr} and ltrim(coalesce(v.zahler_adrnr, ''), '0') = ''))`;
+    const ende: string = v?.ende && v.ende > m.austritt ? v.ende : m.austritt;
+    await tx`update tco.sepa set gueltigbis = ${ende} where adrnr = ${adrnr} and not manuell_aktiv`;
     await tx`update tco.sepa set status = null where status = 'X' and gueltigbis is not null and gueltigbis < current_date and not manuell_aktiv`;
-    return m.austritt;
+    return ende;
   }
-  if (austrittAlt) await tx`update tco.sepa set gueltigbis = null, status = 'X' where adrnr = ${adrnr} and gueltigbis = ${austrittAlt}`;
+  // Austritt entfernt: das vom Austritt befristete Mandat (bis zum Austritt oder zum letzten Vertrag danach) wieder aktiv
+  if (austrittAlt) await tx`update tco.sepa set gueltigbis = null, status = 'X' where adrnr = ${adrnr} and gueltigbis >= ${austrittAlt} and not manuell_aktiv`;
   return null;
 }
 
 /**
  * Austritt setzen, verschieben oder entfernen – für jeden Weg gleich (Feld „Austritt“ der Mitgliederpflege, Vorgang
  * „Kündigung“, Kündigung in „Meine Daten“). Die eigenen Verträge der Person folgen dem Austritt:
- *  - Austritt gesetzt: jeder Vertrag ohne Ende oder mit späterem Ende endet am Austritt. Ein Vertrag, der erst nach dem
- *    Austritt beginnt, bleibt stehen und wird gemeldet. Frühere Enden (z. B. Jugendtraining zum 30.09.) bleiben.
+ *  - Austritt gesetzt: jeder Vertrag ohne Ende oder mit späterem Ende endet am Austritt – Jugendtraining am Ende der
+ *    Saison, in die der Austritt fällt (30.09., auch nach dem Austritt). Ein Vertrag, der erst danach beginnt, bleibt
+ *    stehen und wird gemeldet. Frühere Enden bleiben.
+ *  - Das SEPA-Mandat gilt bis zum Ende des letzten Vertrags (sepaEndeSetzen).
  *  - Austritt verschoben oder entfernt: Verträge, die am bisherigen Austritt endeten, enden am neuen bzw. laufen wieder
  *    unbefristet – wie das SEPA-Mandat.
  * Verträge anderer Personen, die über dieses Mitglied zahlen, bleiben unberührt (eigene Mitgliedschaft).
@@ -342,26 +365,33 @@ export async function austrittSichern(tx: Db, adrnr: string, austritt: string | 
 
 /** Laufzeitende der eigenen Verträge an den Austritt anpassen (siehe austrittSichern); liefert den Zusatz für die Meldung */
 async function vertraegeAmAustritt(tx: Db, adrnr: string, alt: string | null, neu: string | null): Promise<string> {
-  const rows = await tx`select vertragnr, artname, art, vertragbegin, vertragende from tco.vertraege where adrnr = ${adrnr} order by vertragnr`;
+  const rows = await tx`select vertragnr, artname, art, vertragbegin::text as vertragbegin, vertragende::text as vertragende from tco.vertraege where adrnr = ${adrnr} order by vertragnr`;
   const name = (v: Record<string, any>) => leer(v.artname) || leer(v.art) || `Nr. ${v.vertragnr}`;
   const beendet: string[] = [];
+  const jugend: string[] = [];
   const offen: string[] = [];
   const spaeter: string[] = [];
   for (const v of rows) {
+    const jt = leer(v.art) === ART_JUGEND;
+    const grenze = (d: string) => (jt ? saisonEnde(d) : d);
     const bisher: string | null = v.vertragende ?? null;
     let soll = bisher;
-    // vom bisherigen Austritt beendet: folgt dem neuen (oder läuft wieder unbefristet)
-    if (alt && bisher === alt) soll = neu;
-    // läuft über den Austritt hinaus: endet am Austritt
-    if (neu && (!soll || soll > neu)) {
-      if (v.vertragbegin && v.vertragbegin > neu) { spaeter.push(name(v)); continue; }
-      soll = neu;
+    // vom bisherigen Austritt beendet: folgt dem neuen (oder läuft wieder unbefristet) – Jugendtraining auch, wenn es
+    // nach der früheren Regel am Austritt selbst endete
+    if (alt && bisher && (bisher === grenze(alt) || bisher === alt)) soll = neu ? grenze(neu) : null;
+    // läuft über den Austritt (Jugendtraining: über das Saisonende) hinaus: endet dort
+    if (neu && (!soll || soll > grenze(neu))) {
+      if (v.vertragbegin && v.vertragbegin > grenze(neu)) { spaeter.push(name(v)); continue; }
+      soll = grenze(neu);
     }
     if (soll === bisher) continue;
     await tx`update tco.vertraege set vertragende = ${soll} where adrnr = ${adrnr} and vertragnr = ${v.vertragnr}`;
-    (soll ? beendet : offen).push(name(v));
+    if (!soll) offen.push(name(v));
+    else if (soll === neu) beendet.push(name(v));
+    else jugend.push(`${name(v)} bis ${dat(soll)}`);
   }
   return (beendet.length ? ` Verträge enden am ${dat(neu)}: ${beendet.join(', ')}.` : '')
+    + (jugend.length ? ` Jugendtraining bis zum Saisonende: ${jugend.join(', ')}.` : '')
     + (offen.length ? ` Wieder unbefristet: ${offen.join(', ')}.` : '')
     + (spaeter.length ? ` Bitte prüfen – beginnt erst nach dem Austritt: ${spaeter.join(', ')}.` : '');
 }

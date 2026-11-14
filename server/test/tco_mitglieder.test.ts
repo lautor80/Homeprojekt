@@ -378,3 +378,46 @@ test('Bankverbindung: IBAN prüfen, BIC/Kreditinstitut ermitteln, neues SEPA-Man
   await sql`delete from tco.sepa where adrnr = '0000000901'`;
   await sql`delete from tco.mitglieder where adrnr in ('0000000901', '0000000902')`;
 });
+
+test('Austritt mit Jugendtraining: Training läuft bis zum Saisonende (30.09.), SEPA-Mandat bis zum letzten Vertrag', async () => {
+  const A = '0000000191';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, geburtsdatum, eintritt, mitglnrn, zahlungsart, iban1, mandatsrefenz)
+            values (${A}, 'Lina', 'Saison', '2012-03-03', '2020-01-01', '191', 'L', ${IBAN}, '191191')`;
+  await sql`insert into tco.sepa (adrnr, mandatsnr, mandkey, status, angelegtam) values (${A}, '1911911', '191191', 'X', '2020-01-01')`;
+  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, mitglnr, sollstellung, vertragbegin, vertragende, betrag) values
+    (${A}, '1', '3', 'Jugendliche', '191', 'halbjährlich', '2020-01-01', null, 20),
+    (${A}, '2', '90', 'Jugendtraining', '191', 'monatlich', '2024-10-01', null, 35)`;
+  const stand = async () => {
+    const v = await sql`select vertragnr, vertragende::text as e from tco.vertraege where adrnr = ${A} order by vertragnr`;
+    const [s] = await sql`select status, gueltigbis::text as g from tco.sepa where adrnr = ${A}`;
+    return [...v.map((x) => `${x.vertragnr}:${x.e ?? '-'}`), `sepa:${s.status ?? '-'}/${s.g ?? '-'}`];
+  };
+
+  // Austritt 31.12.2025: Beitrag endet am Austritt, Jugendtraining erst am 30.09.2026 – das Mandat läuft bis dahin
+  let r = await call('POST', `${M}/m/${A}/austritt`, { austritt: '2025-12-31' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await stand(), ['1:2025-12-31', '2:2026-09-30', 'sepa:-/2026-09-30']);
+  assert.match(r.body.text, /SEPA-Mandat gültig bis 30\.09\.2026/);
+  assert.match(r.body.text, /Jugendtraining bis zum Saisonende: Jugendtraining bis 30\.09\.2026/);
+
+  // Austritt in der Saison davor (30.06.2025): Training endet am 30.09.2025
+  r = await call('POST', `${M}/m/${A}/austritt`, { austritt: '2025-06-30' });
+  assert.deepEqual(await stand(), ['1:2025-06-30', '2:2025-09-30', 'sepa:-/2025-09-30']);
+  // wieder später: beide ziehen mit
+  r = await call('POST', `${M}/m/${A}/austritt`, { austritt: '2025-12-31' });
+  assert.deepEqual(await stand(), ['1:2025-12-31', '2:2026-09-30', 'sepa:-/2026-09-30']);
+
+  // Austritt entfernt: Verträge und Mandat wieder unbefristet
+  r = await call('POST', `${M}/m/${A}/austritt`, { austritt: null });
+  assert.deepEqual(await stand(), ['1:-', '2:-', 'sepa:X/-']);
+
+  // Bestand nach der früheren Regel (Jugendtraining endete am Austritt): neu speichern führt zum Saisonende
+  await sql`update tco.mitglieder set austritt = '2025-12-31' where adrnr = ${A}`;
+  await sql`update tco.vertraege set vertragende = '2025-12-31' where adrnr = ${A}`;
+  r = await call('POST', `${M}/m/${A}/austritt`, { austritt: '2026-03-31' });
+  assert.deepEqual(await stand(), ['1:2026-03-31', '2:2026-09-30', 'sepa:-/2026-09-30']);
+
+  await sql`delete from tco.vertraege where adrnr = ${A}`;
+  await sql`delete from tco.sepa where adrnr = ${A}`;
+  await sql`delete from tco.mitglieder where adrnr = ${A}`;
+});
