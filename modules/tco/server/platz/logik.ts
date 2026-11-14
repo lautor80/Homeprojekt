@@ -671,15 +671,18 @@ export async function aboBeenden(tx: Db, bid: string, ab: string): Promise<strin
   return `Abo ${bid}: ${r.length} Termin(e) ab ${dat(ab)} storniert.`;
 }
 
-/** Verwaltung: einzelnen Portal-Termin stornieren (ohne Fristen) */
+/**
+ * Verwaltung: einzelnen Termin stornieren – ohne Fristen, auch nachträglich und auch aus EP3 übernommene Buchungen
+ * (storno_portal: der EP3-Import setzt sie nicht zurück). Storniert zählt nicht mehr in Statistiken und Abrechnung.
+ * Bereits abgerechnete Termine bleiben – sonst stimmte die Rechnung nicht mehr.
+ */
 export async function verwaltungStornieren(tx: Db, bid: string, datum: string): Promise<string> {
   const [b] = await tx`select quelle, status, coalesce(assigned, '') as assigned from tco.bookings where bid = ${bid} and datum = ${datum}`;
   if (!b) throw new BusinessError('Buchung nicht gefunden.', 404);
-  if (b.quelle !== QUELLE) throw new BusinessError('EP3-Buchungen bitte im EP3-Buchungssystem stornieren (der nächste Import überschreibt sie sonst).');
-  if (b.assigned === 'Y') throw new BusinessError('Die Buchung ist bereits abgerechnet.');
-  if (!['1', '3'].includes(b.status)) throw new BusinessError('Die Buchung ist bereits storniert.');
-  await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum} where bid = ${bid} and datum = ${datum}`;
-  return `Buchung ${bid} am ${dat(datum)} storniert.`;
+  if (b.assigned === 'Y') throw new BusinessError('Die Buchung ist bereits abgerechnet – bitte zuerst aus der Hallenrechnung entfernen.');
+  if (!['1', '3', '5'].includes(b.status)) throw new BusinessError('Die Buchung ist bereits storniert.');
+  await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now() where bid = ${bid} and datum = ${datum}`;
+  return `Buchung ${bid} am ${dat(datum)} storniert${b.quelle !== QUELLE ? ' – bleibt auch beim nächsten EP3-Import storniert' : ''}.`;
 }
 
 /** Buchung aus der Verwaltung: vereinsintern (ohne Rechnung) bleibt ohne Preis, sonst Preis laut Hallenpreisen */
@@ -702,9 +705,9 @@ async function verwaltungsSlot(tx: Db, e: BuchungEingabe, ohneBid?: string): Pro
 export async function verwaltungAendern(tx: Db, bid: string, datumAlt: string, e: BuchungEingabe): Promise<string> {
   const [b] = await tx`select bid, status, quelle, coalesce(assigned, '') as assigned, preis from tco.bookings where bid = ${bid} and datum = ${datumAlt}`;
   if (!b) throw new BusinessError('Buchung nicht gefunden.', 404);
-  if (b.quelle !== QUELLE) throw new BusinessError('EP3-Buchungen bitte im EP3-Buchungssystem ändern (der nächste Import überschreibt sie sonst) – kopieren geht.');
+  // auch aus EP3 übernommene Buchungen (EP3 gibt es nicht mehr) – portal_geaendert schützt sie vor einem erneuten Import
   if (b.assigned === 'Y') throw new BusinessError('Die Buchung ist bereits abgerechnet.');
-  if (!['1', '3'].includes(b.status)) throw new BusinessError('Die Buchung ist storniert.');
+  if (!['1', '3', '5'].includes(b.status)) throw new BusinessError('Die Buchung ist storniert.');
   const s = await verwaltungsSlot(tx, e, bid);
   if (s.datum !== datumAlt) {
     // Abo: je Serie und Tag ein Termin (BID + Datum)
@@ -715,7 +718,8 @@ export async function verwaltungAendern(tx: Db, bid: string, datumAlt: string, e
   const preis = intern ? b.preis : preisVon(s.platz, s.datum, s.von, s.bis, b.status === '3' ? '3' : '1', await preiseLesen(tx)).betrag;
   await tx`update tco.bookings
               set datum = ${s.datum}, time_start = ${hhmm(s.von)}, time_ende = ${hhmm(s.bis)}, platz = ${s.platz.name}, description = ${beschreibung(s)},
-                  preis = ${preis}, assigned = ${intern || !s.platz.abrechnen ? 'X' : ''}, text = ${e.text?.trim() || null}, geaendert = ${jetzt().datum}
+                  preis = ${preis}, assigned = ${intern || !s.platz.abrechnen ? 'X' : ''}, text = ${e.text?.trim() || null}, geaendert = ${jetzt().datum},
+                  portal_geaendert = now()
             where bid = ${bid} and datum = ${datumAlt}`;
   return `Termin geändert: ${s.platz.name} am ${beschreibung(s)}.`;
 }

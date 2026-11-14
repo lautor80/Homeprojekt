@@ -253,15 +253,19 @@ export async function belegungsquote(db: Db, z: { von: string; bis: string }) {
     belegt += Math.max(0, Math.min(minutenVon(b.e), w.bis) - Math.max(minutenVon(b.s), w.von));
   }
   // feste Belegungen (Training, Schnuppertraining, Veranstaltung); leere Platzliste = alle Hallenplätze
-  const fest = await db`select plaetze, wochentage, datum_von::text as dv, datum_bis::text as db, zeit_von::text as von, zeit_bis::text as bis
+  const fest = await db`select id, quelle, ext_id, plaetze, wochentage, datum_von::text as dv, datum_bis::text as db, zeit_von::text as von, zeit_bis::text as bis
                           from tco.platzbelegungen where aktiv and art in ('TRAINING', 'SCHNUPPER', 'VERANSTALTUNG') and datum_bis >= ${z.von} and datum_von <= ${z.bis}`;
+  // abgesagte Termine (Platzverwaltung) zählen nicht als belegt
+  const ausfall = new Set((await db`select schluessel, platz_id, datum::text as datum from tco.platzbelegung_ausfall where datum between ${z.von} and ${z.bis}`)
+    .map((a) => `${a.schluessel}|${a.platz_id}|${a.datum}`));
   for (const f of fest) {
+    const k = f.quelle === 'EP3' && f.ext_id ? `EP3:${f.ext_id}` : String(f.id);
     const ziel = plaetze.filter((p) => !f.plaetze?.length || f.plaetze.includes(p.id));
     for (let d = f.dv > z.von ? f.dv : z.von; d <= (f.db < z.bis ? f.db : z.bis); d = addTage(d, 1)) {
       const wt = wochentag(d);
       if (!f.wochentage.includes(wt)) continue;
       for (const p of ziel) {
-        if (d > p.gb || !p.wochentage.includes(wt)) continue;
+        if (d > p.gb || !p.wochentage.includes(wt) || ausfall.has(`${k}|${p.id}|${d}`)) continue;
         belegt += Math.max(0, Math.min(minutenVon(f.bis), minutenVon(p.bis)) - Math.max(minutenVon(f.von), minutenVon(p.von)));
       }
     }

@@ -308,6 +308,46 @@ test('EP3-Buchungen belegen den Platz über die Aliase', async () => {
   assert.deepEqual(t.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt, [{ von: '09:00', bis: '11:00', eigen: false }]);
 });
 
+test('EP3-Buchungen in der Platzverwaltung ändern und stornieren – auch nachträglich; storniert zählt nicht mehr als belegt', async () => {
+  const { ep3Importieren } = await import('../../modules/tco/server/halle/ep3.js');
+  const { belegungsquote } = await import('../../modules/tco/server/dashboard/kpi.js');
+  const d1 = tag(-3);
+  const d2 = tag(-2);
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values
+            ('0000004721', ${d1}, '09:00', '11:00', 'FRIDA EXTERN', '1', 'Tennishalle'), ('0000004722', ${d2}, '12:00', '13:00', 'GUSTAV EXTERN', '1', 'Tennishalle')`;
+  const belegtAm = async (d: string) => (await admin('GET', `${A}/tag?datum=${d}`)).body.plaetze.find((p: { id: number }) => p.id === halleId).belegt
+    .map((b: { von: string; bid?: string }) => `${b.von} ${b.bid ?? ''}`.trim());
+  const quote = async (d: string) => (await belegungsquote(sql as never, { von: d, bis: d })).belegt;
+  const vorher = await quote(d1);
+  assert.ok((await belegtAm(d1)).includes('09:00 0000004721'));
+
+  // stornieren (vergangen, aus EP3): Platz frei, zählt nicht mehr als belegt
+  let r = await admin('POST', `${A}/storno`, { bid: '0000004721', datum: d1 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /bleibt auch beim nächsten EP3-Import storniert/);
+  assert.ok(!(await belegtAm(d1)).includes('09:00 0000004721'), 'Stunden wieder frei');
+  assert.equal(vorher - (await quote(d1)), 120, 'zwei Stunden weniger belegt');
+  assert.equal((await admin('POST', `${A}/storno`, { bid: '0000004721', datum: d1 })).status, 400, 'nur einmal');
+
+  // ändern (vergangen, aus EP3): andere Uhrzeit
+  r = await admin('PUT', `${A}/buchung/0000004722`, { platz_id: halleId, datum: d2, von: '14:00', bis: '15:00', alt_datum: d2 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok((await belegtAm(d2)).includes('14:00 0000004722'));
+
+  // ein erneuter EP3-Import setzt weder den Storno noch die Änderung zurück
+  const csv = 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;TEXT;STATUS;PREIS\n'
+    + `4721;${d1};09:00;11:00;Frida Extern;;single;0\n4722;${d2};12:00;13:00;Gustav Extern;;single;0\n`;
+  await sql.begin((tx) => ep3Importieren(tx as never, csv));
+  const [a, b] = await sql`select status, time_start::text as s from tco.bookings where bid in ('0000004721', '0000004722') order by bid`;
+  assert.deepEqual([a.status, b.status, b.s.slice(0, 5)], ['2', '1', '14:00']);
+
+  // abgerechnete Buchungen bleiben gesperrt
+  await sql`update tco.bookings set assigned = 'Y' where bid = '0000004722'`;
+  r = await admin('POST', `${A}/storno`, { bid: '0000004722', datum: d2 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits abgerechnet/);
+});
+
 test('EP3-Buchungen ohne Platzangabe belegen den einzigen Hallenplatz', async () => {
   const d = tag(5);
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status) values ('0000004712', ${d}, '15:00', '16:00', 'DORA EXTERN', '1')`;
@@ -744,14 +784,29 @@ test('EP3-Events werden als feste Belegungen übernommen (ersetzen sich beim nä
   const halle = r.body.plaetze.find((p: { id: number }) => p.id === halleId);
   assert.ok(halle.belegt.some((b: { von: string; fest?: { bezeichnung: string; art: string } }) => b.von === '15:00' && b.fest?.bezeichnung === 'Jugendtraining Mittwoch' && b.fest.art === 'TRAINING'));
   assert.ok(halle.belegt.some((b: { von: string; fest?: { art: string } }) => b.von === '07:00' && b.fest?.art === 'SPERRE'));
-  // EP3-Belegungen sind im Portal nicht änderbar
+  // EP3 gibt es nicht mehr: einzelne Termine lassen sich absagen, die Belegung lässt sich ändern (wird ins Portal übernommen)
   r = await admin('GET', `${A}/feste`);
-  const ep3 = r.body.liste.find((x: { quelle: string }) => x.quelle === 'EP3');
-  assert.equal((await admin('DELETE', `${A}/feste/${ep3.id}`)).status, 404);
-  // erneuter Import ersetzt
-  imp = await sql.begin((tx) => ep3Importieren(tx as never, ['EID;PLATZ;DATETIME_START;DATETIME_END;NAME;STATUS', `601;Halle;${d} 18:00;${d} 19:00;Training Erwachsene;enabled`].join('\n')));
+  const ep3 = r.body.liste.find((x: { ext_id: string }) => x.ext_id === '501');
+  const halleUm15 = async () => (await bert('GET', `${P}/tag?datum=${d}`)).body.plaetze.find((p: { id: number }) => p.id === halleId).belegt
+    .some((b: { von: string }) => b.von === '15:00');
+  r = await admin('POST', `${A}/feste/${ep3.id}/ausfall`, { platz_id: halleId, datum: d });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /abgesagt – der Platz ist frei/);
+  assert.equal(await halleUm15(), false, 'abgesagter Termin gibt den Platz frei');
+  assert.equal((await admin('POST', `${A}/feste/${ep3.id}/ausfall`, { platz_id: halleId, datum: tag(9) })).status, 400, 'an dem Tag findet sie nicht statt');
+  r = await admin('PUT', `${A}/feste/${ep3.id}`, { ...ep3, bezeichnung: 'Jugendtraining Mi (Portal)' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(await halleUm15(), false, 'Absage bleibt nach der Übernahme ins Portal');
+  r = await admin('POST', `${A}/feste/${ep3.id}/ausfall`, { platz_id: halleId, datum: d, zuruecknehmen: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(await halleUm15(), true, 'Absage zurückgenommen');
+  // erneuter Import ersetzt nur, was noch aus EP3 stammt – die übernommene Belegung bleibt und wird nicht doppelt angelegt
+  imp = await sql.begin((tx) => ep3Importieren(tx as never, ['EID;PLATZ;DATETIME_START;DATETIME_END;NAME;STATUS',
+    `501;Tennishalle;${d} 15:00;${d} 17:00;Jugendtraining Mittwoch;enabled`, `601;Halle;${d} 18:00;${d} 19:00;Training Erwachsene;enabled`].join('\n')));
   r = await admin('GET', `${A}/feste`);
   assert.deepEqual(r.body.liste.filter((x: { quelle: string }) => x.quelle === 'EP3').map((x: { ext_id: string }) => x.ext_id), ['601']);
+  assert.deepEqual(r.body.liste.filter((x: { ext_id: string }) => x.ext_id === '501').map((x: { quelle: string; bezeichnung: string }) => `${x.quelle} ${x.bezeichnung}`), ['PORTAL Jugendtraining Mi (Portal)']);
+  assert.equal((await admin('DELETE', `${A}/feste/${ep3.id}`)).status, 200, 'übernommene Belegung lässt sich löschen');
 });
 
 test('Platz buchen für Admin/Hallenwart (#11): Namen sehen, für andere buchen, Schnuppertraining eintragen', async () => {

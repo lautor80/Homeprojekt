@@ -13,7 +13,12 @@ export type BelegungArt = keyof typeof BELEGUNG_ARTEN;
 export interface FesteBelegung {
   id: number; bezeichnung: string; art: BelegungArt; plaetze: number[]; wochentage: string; datum_von: string; datum_bis: string;
   zeit_von: string; zeit_bis: string; hinweis: string | null; aktiv: boolean; quelle: string; ext_id: string | null;
+  /** abgesagte Termine „platzId|datum“ (tco.platzbelegung_ausfall) */
+  ausfall?: string[];
 }
+
+/** stabiler Schlüssel einer Belegung für Absagen – EP3-Belegungen bekommen bei jedem Import eine neue id */
+export const ausfallSchluessel = (f: { id: number; quelle: string; ext_id: string | null }) => (f.quelle === 'EP3' && f.ext_id ? `EP3:${f.ext_id}` : String(f.id));
 export type BelegungEingabe = Omit<FesteBelegung, 'id' | 'quelle' | 'ext_id'>;
 
 const isoWt = (iso: string) => ((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
@@ -26,7 +31,36 @@ export async function festeLesen(db: Db, von?: string, bis?: string, nurAktiv = 
      where true ${nurAktiv ? db`and aktiv` : db``}
        ${von && bis ? db`and datum_von <= ${bis} and datum_bis >= ${von}` : db``}
      order by datum_von, zeit_von, id`;
-  return rows.map((r) => ({ ...r, plaetze: (r.plaetze ?? []).map(Number), zeit_bis: r.zeit_bis === '00:00' ? '24:00' : r.zeit_bis }) as FesteBelegung);
+  const aus = await db`select schluessel, platz_id, datum::text as datum from tco.platzbelegung_ausfall
+                        ${von && bis ? db`where datum between ${von} and ${bis}` : db``}`;
+  const jeBelegung = new Map<string, string[]>();
+  for (const a of aus) jeBelegung.set(a.schluessel, [...(jeBelegung.get(a.schluessel) ?? []), `${a.platz_id}|${a.datum}`]);
+  return rows.map((r) => {
+    const f = { ...r, plaetze: (r.plaetze ?? []).map(Number), zeit_bis: r.zeit_bis === '00:00' ? '24:00' : r.zeit_bis } as FesteBelegung;
+    return { ...f, ausfall: jeBelegung.get(ausfallSchluessel(f)) ?? [] };
+  });
+}
+
+/**
+ * Einen Termin einer festen Belegung absagen (Platzverwaltung → Termin → „Diesen Termin absagen“), auch nachträglich:
+ * der Platz ist frei, die Zeit zählt nicht mehr als belegt. Mit `zuruecknehmen` gilt der Termin wieder.
+ */
+export async function festeAbsagen(tx: Db, id: number, platzId: number, datum: string, o: { grund?: string | null; wer: string; zuruecknehmen?: boolean }): Promise<string> {
+  const [f] = await tx`select id, bezeichnung, quelle, ext_id, plaetze, wochentage, datum_von::text as dv, datum_bis::text as db from tco.platzbelegungen where id = ${id}`;
+  if (!f) throw new BusinessError('Belegung nicht gefunden.', 404);
+  const k = ausfallSchluessel({ id: f.id, quelle: f.quelle, ext_id: f.ext_id });
+  if (o.zuruecknehmen) {
+    const r = await tx`delete from tco.platzbelegung_ausfall where schluessel = ${k} and platz_id = ${platzId} and datum = ${datum}`;
+    if (!r.count) throw new BusinessError('Dieser Termin ist nicht abgesagt.');
+    return `${f.bezeichnung} am ${dat(datum)} gilt wieder.`;
+  }
+  const plaetze = (f.plaetze ?? []).map(Number);
+  if (datum < f.dv || datum > f.db || !String(f.wochentage).includes(String(isoWt(datum))) || (plaetze.length && !plaetze.includes(platzId))) {
+    throw new BusinessError(`${f.bezeichnung} findet am ${dat(datum)} auf diesem Platz nicht statt.`);
+  }
+  await tx`insert into tco.platzbelegung_ausfall (schluessel, platz_id, datum, grund, angelegt_von) values (${k}, ${platzId}, ${datum}, ${o.grund ?? null}, ${o.wer})
+           on conflict do nothing`;
+  return `${f.bezeichnung} am ${dat(datum)} abgesagt – der Platz ist frei und die Zeit zählt nicht mehr als belegt.`;
 }
 
 /** Termine der festen Belegungen im Zeitraum je Platz (für die Belegungsprüfung) */
@@ -42,6 +76,7 @@ export function festeTermine(liste: FesteBelegung[], platzIds: number[], von: st
     for (let d = start; d <= ende; d = addTage(d, 1)) {
       if (!f.wochentage.includes(String(isoWt(d)))) continue;
       for (const p of ziele) {
+        if (f.ausfall?.includes(`${p}|${d}`)) continue; // abgesagt
         out.push({ id: f.id, platzId: p, datum: d, von: minuten(f.zeit_von), bis: f.zeit_bis === '24:00' ? 1440 : minuten(f.zeit_bis) || 1440, bezeichnung: f.bezeichnung, art: f.art,
           hinweis: f.hinweis, einmalig: f.datum_von === f.datum_bis && f.plaetze.length === 1, portal: f.quelle === 'PORTAL' });
       }
@@ -67,10 +102,15 @@ export async function festeSpeichern(tx: Db, id: number | null, e: BelegungEinga
     datum_von: e.datum_von, datum_bis: e.datum_bis, zeit_von: e.zeit_von, zeit_bis: zeitBis, hinweis: e.hinweis?.trim() || null, aktiv: e.aktiv,
   };
   if (id) {
-    const [alt] = await tx`select quelle from tco.platzbelegungen where id = ${id}`;
+    const [alt] = await tx`select quelle, ext_id from tco.platzbelegungen where id = ${id}`;
     if (!alt) throw new BusinessError('Belegung nicht gefunden.', 404);
-    if (alt.quelle !== 'PORTAL') throw new BusinessError('Aus EP3 übernommene Belegungen werden in EP3 gepflegt (der nächste Import überschreibt sie).');
-    await tx`update tco.platzbelegungen set ${tx(werte)} where id = ${id}`;
+    // Absagen hängen bei EP3-Belegungen am EP3-Schlüssel – nach der Übernahme ins Portal gilt die id
+    if (alt.quelle === 'EP3' && alt.ext_id) {
+      await tx`update tco.platzbelegung_ausfall set schluessel = ${String(id)} where schluessel = ${`EP3:${alt.ext_id}`}`;
+    }
+    // aus EP3 übernommen: EP3 gibt es nicht mehr – beim Ändern wird die Belegung ins Portal übernommen (quelle PORTAL,
+    // ext_id bleibt; ein erneuter EP3-Import legt sie dann nicht noch einmal an)
+    await tx`update tco.platzbelegungen set ${tx({ ...werte, quelle: 'PORTAL' })} where id = ${id}`;
     return { id, text: `„${werte.bezeichnung}“ gesichert.` };
   }
   const [r] = await tx`insert into tco.platzbelegungen ${tx(werte)} returning id`;
@@ -78,8 +118,8 @@ export async function festeSpeichern(tx: Db, id: number | null, e: BelegungEinga
 }
 
 export async function festeLoeschen(tx: Db, id: number): Promise<string> {
-  const [r] = await tx`delete from tco.platzbelegungen where id = ${id} and quelle = 'PORTAL' returning bezeichnung`;
-  if (!r) throw new BusinessError('Belegung nicht gefunden oder aus EP3 übernommen.', 404);
+  const [r] = await tx`delete from tco.platzbelegungen where id = ${id} returning bezeichnung`;
+  if (!r) throw new BusinessError('Belegung nicht gefunden.', 404);
   return `„${r.bezeichnung}“ gelöscht.`;
 }
 
@@ -121,7 +161,8 @@ export async function ep3EventsImportieren(tx: Db, rows: string[][], idx: (n: st
     const name = condense(i.name >= 0 ? r[i.name] ?? '' : '') || 'Belegung (EP3)';
     const art = /training|jugend|kurs|ag\b/i.test(name) ? 'TRAINING' : /sperr|gesperrt|wartung|pflege|reinigung|geschlossen|renovier/i.test(name) ? 'SPERRE' : 'VERANSTALTUNG';
     await tx`insert into tco.platzbelegungen (bezeichnung, art, plaetze, wochentage, datum_von, datum_bis, zeit_von, zeit_bis, quelle, ext_id)
-             values (${name}, ${art}, ${plaetze}, '1234567', ${m1[1]}, ${m2[1]}, ${vonZ}, ${bisZ}, 'EP3', ${eid})
+             select ${name}, ${art}, ${plaetze}, '1234567', ${m1[1]}::date, ${m2[1]}::date, ${vonZ}::time, ${bisZ}::time, 'EP3', ${eid}
+              where not exists (select 1 from tco.platzbelegungen where ext_id = ${eid} and quelle = 'PORTAL')
              on conflict (quelle, ext_id) where ext_id is not null do nothing`;
     n++;
   }

@@ -68,6 +68,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.mitgliedera` | ● |  | ● | ● |  |  | ● |  |  | ● | ● |  | ● | ● |
 | `tco.mitgliedsantraege` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.plaetze` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
+| `tco.platzbelegung_ausfall` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.platzbelegungen` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.prmatrix` |  |  | ● |  |  |  |  |  |  |  |  |  |  | ● |
 | `tco.produkte` |  |  | ● |  | ● |  |  |  |  | ● |  |  |  | ● |
