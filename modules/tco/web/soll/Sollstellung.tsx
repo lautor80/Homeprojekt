@@ -24,7 +24,7 @@ const STATUS: Record<string, { text: string; state: State }> = {
 };
 const ARTEN: Record<string, string> = { MB: 'Mitgliedsbeitrag', JT: 'Jugendtraining', SP: 'Spende' };
 
-interface Cfg { gl_name: string; iban: string; bic: string; gl_id: string; bankkonto: string; vorlauf: number }
+interface Cfg { gl_name: string; iban: string; bic: string; gl_id: string; bankkonto: string; vorlauf: number; /** noch eine andere IBAN als beim Verein hinterlegt (#232, E3) */ abweichend?: boolean; iban_verein?: string }
 interface Lauf {
   laufid: string; sollper: string; mit_mb: boolean; mit_jt: boolean; faellig: string; anz_pos: number; anz_tx: number; summe: number;
   status: string; zahl_datum: string | null; fi_datum: string | null; ernam: string; erdat: string; pl_doc_id: number | null; internenr: string | null;
@@ -116,6 +116,7 @@ export function GlaeubigerKapitel() {
   const ro = !can('tco.soll:glaeubiger') || !sperre.eigen;
   const [c, setC] = useState<Cfg | null>(null);
   const [fehlt, setFehlt] = useState<string[]>([]);
+  const [frage, setFrage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const laden = () => api.get<{ cfg: Cfg; fehlt: string[] }>(`${S}/cfg`).then((x) => { setC(x.cfg); setFehlt(x.fehlt); }).catch((e) => setError((e as Error).message));
@@ -124,7 +125,7 @@ export function GlaeubigerKapitel() {
   const s = (k: keyof Cfg) => (v: string) => setC({ ...c, [k]: k === 'vorlauf' ? Number(v) || 0 : v });
   async function save() {
     setBusy(true); setError(null);
-    try { toast((await api.put<{ text: string }>(`${S}/cfg`, c)).text); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { toast((await api.put<{ text: string }>(`${S}/cfg`, { gl_name: c!.gl_name, gl_id: c!.gl_id, bankkonto: c!.bankkonto, vorlauf: c!.vorlauf })).text); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return (
     <>
@@ -135,11 +136,30 @@ export function GlaeubigerKapitel() {
       <FormGrid>
         <TextField label="Name Gläubiger" required value={c.gl_name} onChange={s('gl_name')} readonly={ro} />
         <TextField label="Gläubiger-ID" required value={c.gl_id} onChange={s('gl_id')} readonly={ro} placeholder="DE98ZZZ09999999999" />
-        <TextField label="IBAN Vereinskonto" required value={c.iban} onChange={s('iban')} readonly={ro} />
-        <TextField label="BIC (optional)" value={c.bic} onChange={s('bic')} readonly={ro} />
         <TextField label="Bankkonto FI" required value={c.bankkonto} onChange={s('bankkonto')} readonly={ro} />
         <TextField label="Vorlauf (Bankarbeitstage)" type="Number" value={String(c.vorlauf)} onChange={s('vorlauf')} readonly={ro} />
+        {/* IBAN und BIC gehören dem Verein – hier nur zur Kontrolle, gepflegt wird an einer Stelle (#232, E3) */}
+        <TextField label={c.abweichend ? 'IBAN für die Lastschrift (noch abweichend)' : 'IBAN (aus „Verein und Bank“)'} value={c.iban} onChange={() => undefined} readonly />
+        <TextField label="BIC" value={c.bic} onChange={() => undefined} readonly />
       </FormGrid>
+      <Text className="portal-muted" style={{ display: 'block', margin: '0.25rem 0 0.5rem' }}>
+        IBAN und BIC pflegst du unter{' '}
+        <Link onClick={() => { window.location.assign(einstellungLink('tco', 'verein')); }}>Einstellungen → TC Oberthal → Verein und Bank</Link>.
+      </Text>
+      {c.abweichend && (
+        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          In den Gläubigerdaten steht noch die IBAN {c.iban}, beim Verein {c.iban_verein || 'keine'}. Bis zur Entscheidung zieht die Lastschrift weiter über {c.iban} ein.
+          Soll dieses Konto bleiben, trage es unter „Verein und Bank“ ein – dann stimmen beide überein. Soll das Konto des Vereins gelten:{' '}
+          {!ro && c.iban_verein && <Button design="Transparent" disabled={busy} onClick={() => setFrage(true)}>Vereinskonto verwenden</Button>}
+        </MessageStrip>
+      )}
+      <ConfirmDialog open={frage} title="Vereinskonto für die Lastschrift verwenden" confirmText="Vereinskonto verwenden"
+                     text={`Die Lastschrift zieht ab jetzt über ${c.iban_verein ?? ''} ein statt über ${c.iban}. Die bisherige IBAN bleibt im Änderungsbeleg nachvollziehbar.`}
+                     onCancel={() => setFrage(false)}
+                     onConfirm={async () => {
+                       setFrage(false); setBusy(true); setError(null);
+                       try { toast((await api.post<{ text: string }>(`${S}/cfg/vereinskonto`)).text, 5000); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+                     }} />
       <Bar endContent={<>
         <ChangeHistoryButton objectType="SOLL_CFG" objectKey="TCO" />
         {!ro && <Button design="Emphasized" loading={busy} onClick={save}>Speichern</Button>}

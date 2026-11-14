@@ -72,8 +72,10 @@ function useEinstellungen(schluessel: readonly string[], wert: (s: S) => Record<
 
 /** Portal › Allgemein */
 export function PortalAllgemein() {
-  const e = useEinstellungen(['org.name', 'org.address', 'portal.url'], (s) => ({
-    'org.name': s['org.name'] ?? '', 'org.address': s['org.address'] ?? '', 'portal.url': s['portal.url'] ?? '',
+  // Die frühere „Anschrift (für Ausdrucke)“ ist entfallen (#232, E3): kein Ausdruck las sie – die Anschrift steht bei der
+  // jeweiligen Anwendung (Verein und Bank, Firma und Bank). Ein gespeicherter Wert bleibt unberührt in core.settings.
+  const e = useEinstellungen(['org.name', 'portal.url'], (s) => ({
+    'org.name': s['org.name'] ?? '', 'portal.url': s['portal.url'] ?? '',
   }));
   return (
     <>
@@ -81,7 +83,6 @@ export function PortalAllgemein() {
       <Panel headerText="Organisation" fixed>
         <FormGrid>
           <TextField label="Name" required value={e.s['org.name']} onChange={e.set('org.name')} />
-          <TextField label="Anschrift (für Ausdrucke)" multiline wide value={e.s['org.address']} onChange={e.set('org.address')} />
         </FormGrid>
       </Panel>
       <Panel headerText="Portal" fixed style={{ marginTop: '1rem' }}>

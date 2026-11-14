@@ -27,6 +27,8 @@ export type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import { hinweisAufgaben } from '../../../../server/src/lib/hinweise.js';
 
+/** IBAN gekürzt: im Arbeitsvorrat steht nie die ganze Kontonummer */
+const maskiert = (iban: string) => (iban.length > 8 ? `${iban.slice(0, 4)} … ${iban.slice(-4)}` : iban);
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgabe[]> {
@@ -37,6 +39,22 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
 
   // Hallenschlüssel (#215): Ausgaben ohne Quittung nach der Frist, unbestätigte Rückgaben, Ausgetretene mit Schlüssel
   if (can(req, P_SCHL.display)) out.push(...await schluesselAufgaben(db));
+
+  // Kassenwart (#232, E3): aus der Zeit der doppelten Pflege steht in den Gläubigerdaten noch eine andere IBAN als beim Verein –
+  // einmalige Entscheidung, bis dahin zieht die Lastschrift weiter über das bisherige Konto ein
+  if (can(req, 'tco.soll:glaeubiger')) {
+    const [k] = await db`select c.iban as eigen, v.iban as verein from tco.soll_cfg c, tco.verein v where c.cfgid = 'TCO' and v.id = 1 and trim(coalesce(c.iban, '')) <> ''`;
+    const norm = (x: unknown) => String(x ?? '').replace(/\s/g, '').toUpperCase();
+    if (k && norm(k.eigen) !== norm(k.verein)) {
+      out.push({
+        key: 'SOLL_KONTO', bereich: 'Kassenwart', icon: 'money-bills', state: 'Critical',
+        titel: 'Lastschriftkonto weicht vom Vereinskonto ab',
+        text: `Die Lastschrift zieht noch über ${maskiert(norm(k.eigen))} ein, beim Verein steht ${norm(k.verein) ? maskiert(norm(k.verein)) : 'keine IBAN'}. `
+          + 'IBAN und BIC werden nur noch unter „Verein und Bank“ gepflegt – bitte im Kapitel „Beitragseinzug“ entscheiden.',
+        datum: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }), pfad: '/admin/einstellungen?kapitel=tco.beitragseinzug',
+      });
+    }
+  }
 
   // Kassenwart: vom Trainer freigegebene, noch nicht (vollständig) bezahlte Zeitnachweise
   if (can(req, 'tco.jt:display')) {

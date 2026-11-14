@@ -31,28 +31,42 @@ export function adrKey(a: unknown): string {
 export const BEITRAGSART_TEXT: Record<string, string> = { MB: 'Mitgliedsbeitrag', JT: 'Jugendtraining', SP: 'Spende', VZ: 'Verzehr Clubhaus' };
 
 // ---------------------------------------------------------------- Gläubigerdaten
-export interface Konfig { gl_name: string; iban: string; bic: string; gl_id: string; bankkonto: string; vorlauf: number }
+/**
+ * IBAN und BIC gehören dem Verein (Einstellungen → Verein und Bank, #232 E3) und werden hier nur gelesen.
+ * `abweichend`: Aus der Zeit der doppelten Pflege steht in den Gläubigerdaten noch eine andere IBAN – sie gilt weiter
+ * für die Lastschrift, bis der Kassenwart entscheidet (vereinskontoVerwenden). `iban_verein` ist dann die des Vereins.
+ */
+export interface Konfig { gl_name: string; iban: string; bic: string; gl_id: string; bankkonto: string; vorlauf: number; abweichend: boolean; iban_verein: string }
+/** was sich in den Gläubigerdaten pflegen lässt */
+export type KonfigEingabe = Pick<Konfig, 'gl_name' | 'gl_id' | 'bankkonto' | 'vorlauf'>;
 
 export async function konfigLesen(db: Db, v: Verein): Promise<Konfig> {
   const [c] = await db`select gl_name, iban, bic, gl_id, bankkonto, vorlauf from tco.soll_cfg where cfgid = 'TCO'`;
+  const eigen = normalisieren(c?.iban ?? '');
+  const verein = normalisieren(v.iban ?? '');
+  const abweichend = !!eigen && eigen !== verein;
   return {
-    gl_name: c?.gl_name ?? v.name ?? '', iban: c?.iban ?? (v.iban ?? ''), bic: c?.bic ?? (v.bic ?? ''), gl_id: c?.gl_id ?? '',
-    bankkonto: c?.bankkonto ?? '1200', vorlauf: c?.vorlauf ?? 2,
+    gl_name: c?.gl_name ?? v.name ?? '', iban: abweichend ? eigen : verein, bic: normalisieren((abweichend ? c?.bic : v.bic) ?? ''), gl_id: c?.gl_id ?? '',
+    bankkonto: c?.bankkonto ?? '1200', vorlauf: c?.vorlauf ?? 2, abweichend, iban_verein: verein,
   };
 }
 
 /** fehlende Pflichtangaben für die Datei */
 export function konfigFehlt(c: Konfig): string[] {
   return [
-    !c.gl_name && 'Name', !c.iban && 'IBAN', !c.gl_id && 'Gläubiger-ID', !c.bankkonto && 'Bankkonto FI',
+    !c.gl_name && 'Name', !c.iban ? 'IBAN (Verein und Bank)' : !ibanGueltig(c.iban) && 'gültige IBAN (Verein und Bank)',
+    !c.gl_id && 'Gläubiger-ID', !c.bankkonto && 'Bankkonto FI',
   ].filter(Boolean) as string[];
 }
 
-export async function konfigSpeichern(tx: Db, c: Konfig, benutzer: string) {
-  const k = { ...c, iban: normalisieren(c.iban), bic: normalisieren(c.bic), gl_id: normalisieren(c.gl_id), gl_name: c.gl_name.trim() };
+/** Entscheidung bei abweichender IBAN: Die Lastschrift zieht ab jetzt über das Konto des Vereins ein */
+export async function vereinskontoVerwenden(tx: Db, benutzer: string): Promise<void> {
+  await tx`update tco.soll_cfg set iban = null, bic = null, aenam = ${benutzer}, aedat = current_date where cfgid = 'TCO'`;
+}
+
+export async function konfigSpeichern(tx: Db, c: KonfigEingabe, benutzer: string) {
+  const k = { ...c, gl_id: normalisieren(c.gl_id), gl_name: c.gl_name.trim() };
   const f: string[] = [];
-  if (k.iban && !ibanGueltig(k.iban)) f.push(`IBAN ${k.iban} ist ungültig.`);
-  if (k.bic && !bicGueltig(k.bic)) f.push(`BIC ${k.bic} ist ungültig.`);
   if (k.gl_id && !glaeubigerIdGueltig(k.gl_id)) f.push(`Gläubiger-ID ${k.gl_id} ist ungültig (Format/Prüfziffer).`);
   if (k.bankkonto) {
     const [da] = await tx`select 1 from tco.fikonten where konto = ${k.bankkonto}`;
@@ -60,9 +74,9 @@ export async function konfigSpeichern(tx: Db, c: Konfig, benutzer: string) {
   }
   if (f.length) throw new BusinessError(f.join(' '));
   await tx`
-    insert into tco.soll_cfg (cfgid, gl_name, iban, bic, gl_id, bankkonto, vorlauf, aenam, aedat)
-    values ('TCO', ${k.gl_name}, ${k.iban}, ${k.bic || null}, ${k.gl_id}, ${k.bankkonto}, ${k.vorlauf}, ${benutzer}, current_date)
-    on conflict (cfgid) do update set gl_name = excluded.gl_name, iban = excluded.iban, bic = excluded.bic, gl_id = excluded.gl_id,
+    insert into tco.soll_cfg (cfgid, gl_name, gl_id, bankkonto, vorlauf, aenam, aedat)
+    values ('TCO', ${k.gl_name}, ${k.gl_id}, ${k.bankkonto}, ${k.vorlauf}, ${benutzer}, current_date)
+    on conflict (cfgid) do update set gl_name = excluded.gl_name, gl_id = excluded.gl_id,
       bankkonto = excluded.bankkonto, vorlauf = excluded.vorlauf, aenam = excluded.aenam, aedat = excluded.aedat`;
 }
 
