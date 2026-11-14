@@ -75,7 +75,8 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/einstellungen', component: EinstellungenPage },
   { path: '/admin/funktionen', component: FunktionenPage, permission: 'core.funktionen:edit' },
   // App „Schnittstellen“ (#232, S1); die bisherigen Adressen springen in den passenden Reiter
-  { path: '/admin/schnittstellen', component: SchnittstellenPage, permission: 'core.settings:edit|core.apikeys:display' },
+  // ohne eigenes Recht: Die App zeigt die Reiter, die der Benutzer sehen darf (web/src/schnittstellen.ts)
+  { path: '/admin/schnittstellen', component: SchnittstellenPage },
   { path: '/admin/anbindungen', component: ZuAnbindungen, permission: 'core.settings:edit' },
   { path: '/admin/paperless', component: ZuPaperlessZuordnung, permission: 'core.settings:edit' },
   { path: '/admin/sperren', component: SperrenPage, permission: 'core.sperren:admin' },

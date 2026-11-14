@@ -9,9 +9,8 @@ import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { Empty, Section } from '@core/components/Section';
 import { toast } from '@core/toast';
-import { useCan } from '@core/session';
 import { einstellungLink } from '@core/einstellungen';
-import { Datenimport } from './Datenimport';
+import { schnittstelleLink } from '@core/schnittstellen';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { T, type Werte } from './util';
@@ -401,13 +400,13 @@ export function MailtexteTab() {
 }
 
 export function Stammdaten() {
-  const can = useCan();
-  const darfImport = can('transport.import:execute');
-  // Reiter per Adresse aufrufbar, z. B. /transport/stammdaten?tab=IMPORT
+  // Reiter per Adresse aufrufbar, z. B. /transport/stammdaten?tab=WERTE
   const navigate = useNavigate();
   const aufruf = new URLSearchParams(window.location.search).get('tab');
   // #232, E1: Firmendaten und E-Mail-Texte sind Kapitel der App Einstellungen – alte Adressen (?tab=FIRMA, ?tab=MAIL) springen dorthin
-  const umgezogen = aufruf === 'FIRMA' ? einstellungLink('transport', 'firma') : aufruf === 'MAIL' ? einstellungLink('transport', 'mailtexte') : null;
+  // #232, S4: der Datenimport aus SAP steht im Reiter „SAP“ der App Schnittstellen
+  const umgezogen = aufruf === 'FIRMA' ? einstellungLink('transport', 'firma') : aufruf === 'MAIL' ? einstellungLink('transport', 'mailtexte')
+    : aufruf === 'IMPORT' ? schnittstelleLink('SAP') : null;
   useEffect(() => { if (umgezogen) navigate(umgezogen, { replace: true }); }, [umgezogen, navigate]);
   const [tab, setTabState] = useState(() => (aufruf && !umgezogen ? aufruf : 'PROD'));
   const setTab = (t: string) => {
@@ -417,18 +416,16 @@ export function Stammdaten() {
     window.history.replaceState(null, '', u);
   };
   return (
-    <AppPage title="Stammdaten Transport" subtitle={`Produkte und Wertelisten${darfImport ? ', Datenimport aus SAP' : ''} – Firmendaten und E-Mail-Texte stehen unter Administration → Einstellungen`}
+    <AppPage title="Stammdaten Transport" subtitle="Produkte und Wertelisten – Firmendaten und E-Mail-Texte stehen unter Administration → Einstellungen, der Datenimport aus SAP unter Administration → Schnittstellen"
              actions={<Button design="Transparent" icon="action-settings" tooltip="Firmendaten, Bank, Logo, Auftragsbedingungen und E-Mail-Texte: Administration → Einstellungen → Euroflex"
                               onClick={() => navigate(einstellungLink('transport', 'firma'))}>Einstellungen</Button>}>
       <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)} style={{ marginBottom: '1rem' }}>
         <Tab data-key="PROD" text="Produkte" icon="product" selected={tab === 'PROD'} />
         <Tab data-key="WERTE" text="Wertelisten" icon="list" selected={tab === 'WERTE'} />
-        {darfImport && <Tab data-key="IMPORT" text="Datenimport" icon="upload" selected={tab === 'IMPORT'} />}
       </TabContainer>
       <div style={BREITE}>
         {tab === 'PROD' && <ProdukteTab />}
         {tab === 'WERTE' && <WerteTab />}
-        {tab === 'IMPORT' && darfImport && <Datenimport />}
       </div>
     </AppPage>
   );

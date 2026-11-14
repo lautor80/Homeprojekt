@@ -3,6 +3,7 @@ import {
   AnalyticalTable, Button, DatePicker, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
+import { schnittstelleLink } from '@core/schnittstellen';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { FieldBox } from '@core/components/FormFields';
@@ -165,7 +166,7 @@ export function Upload() {
       </Section>
       <MessageStrip hideCloseButton>
         Die Dateien werden im Browser gelesen und einzeln an Paperless übergeben; der Titel ist mit dem Dateinamen vorbelegt. Fehlende Korrespondenten werden in Paperless angelegt; Tags werden nicht gesetzt.
-        Ein Hinweis in der Statusspalte zeigt CSV-Dateien, die eigentlich in eine App gehören (Jugendabrechnung, Mitglieder, Hallen-/Clubhausabrechnung → <Link href="/tco/stammdaten">Übernahme aus SAP</Link>).
+        Ein Hinweis in der Statusspalte zeigt CSV-Dateien, die eigentlich in eine App gehören (Jugendabrechnung, Mitglieder, Hallen-/Clubhausabrechnung → <Link href={schnittstelleLink('SAP')}>Übernahme aus SAP</Link>).
       </MessageStrip>
     </AppPage>
   );

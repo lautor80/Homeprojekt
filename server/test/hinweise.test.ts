@@ -217,3 +217,25 @@ test('Paperless: Störung je Zugang im Arbeitsvorrat, nach der nächsten Antwort
     assert.equal(a.titel, 'Paperless gestört: 127.0.0.1:1');
   } finally { server.close(); }
 });
+
+test('App Schnittstellen, Zeile „Stand“: zeigt die offene Störung der Anbindung – dieselbe Quelle wie der Arbeitsvorrat', async () => {
+  const stand = async () => {
+    const r = await admin('GET', '/api/verbindungen');
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const tco = (r.body.gruppen as { modul: string; verbindungen: { id: string; reiter: string; stand: { eingerichtet: boolean; gestoert: boolean; text: string; seit: string | null; anzahl: number } }[] }[]).find((g) => g.modul === 'tco')!;
+    return tco.verbindungen.find((v) => v.id === 'tco.ep3')!.stand;
+  };
+  assert.deepEqual(await stand(), { eingerichtet: false, gestoert: false, text: 'nicht eingerichtet', seit: null, anzahl: 0 });
+  assert.equal((await admin('PUT', '/api/verbindungen/tco.ep3', { url: 'http://127.0.0.1:1/webhook/ep3' })).status, 200);
+  assert.deepEqual(await stand(), { eingerichtet: true, gestoert: false, text: 'keine Störung gemeldet', seit: null, anzahl: 0 });
+  // so meldet das Vereinsmodul einen gescheiterten Abruf (tcoSchnittstelle)
+  const h = { modul: 'tco', quelle: 'SCHNITTSTELLE', objekt: 'tco.ep3', bereich: 'Administration', recht: 'core.settings:edit', art: 'Schnittstelle gestört', titel: 'EP3-Export Hallenbuchungen (n8n)', pfad: '/admin/schnittstellen' };
+  await assert.rejects(() => ueberwacht(h, async () => { throw new Error('n8n nicht erreichbar'); }));
+  await assert.rejects(() => ueberwacht(h, async () => { throw new Error('n8n antwortet mit HTTP 500'); }));
+  const s = await stand();
+  assert.deepEqual([s.eingerichtet, s.gestoert, s.text, s.anzahl], [true, true, 'n8n antwortet mit HTTP 500', 2]);
+  assert.match(s.seit ?? '', /^\d{4}-\d{2}-\d{2}$/);
+  // andere Anbindungen sind nicht betroffen; der nächste erfolgreiche Abruf räumt auf
+  await ueberwacht(h, async () => 1);
+  assert.equal((await stand()).gestoert, false);
+});

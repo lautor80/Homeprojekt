@@ -1,7 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
 import { Hallenpreise } from './Hallenpreise';
-import { TcoStammdaten, VereinTab } from './Stammdaten';
+import { ImportTab, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
 import { FiBelege } from './fi/FiBelege';
 import { Sollstellung } from './soll/Sollstellung';
 import { Jugendtraining } from './jt/Jugendtraining';
@@ -81,6 +81,10 @@ const mod: WebModule = {
   arbeitsvorratZusatz: tcoZusatz,
   // Kapitel „TC Oberthal“ der App Einstellungen (Administration → Einstellungen, #232 E1) – weitere Kapitel (Tennishalle, Clubhaus,
   // Finanzen, Instandhaltung) folgen je Fachbereich
+  // Abschnitte in der App Schnittstellen (Administration → Schnittstellen, #232 S1/S4)
+  schnittstellen: [
+    { reiter: 'SAP', id: 'sap', text: 'Übernahme aus SAP', permission: 'tco.import:execute', component: ImportTab },
+  ],
   einstellungen: [
     { id: 'verein', text: 'Verein und Bank', icon: 'group', permission: 'tco.stammdaten:edit', component: VereinTab },
   ],
@@ -109,7 +113,6 @@ const mod: WebModule = {
         {
           text: 'Einstellungen', icon: 'action-settings',
           children: [
-            { text: 'Stammdaten', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
             { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
             { text: 'Produkte', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
           ],
@@ -201,7 +204,8 @@ const mod: WebModule = {
     { path: '/tco/theke', component: Theke, permission: 'tco.verzehr:theke' },
     { path: '/tco/verzehrbuch', component: Verzehrbuch, permission: 'tco.verzehr:display' },
     { path: '/tco/fi', component: FiBelege, permission: 'tco.fi:display' },
-    { path: '/tco/stammdaten', component: TcoStammdaten, permission: 'tco.stammdaten:edit' },
+    // bisherige App „Stammdaten“: Vereinsdaten sind ein Kapitel der Einstellungen, die SAP-Übernahme ein Abschnitt der Schnittstellen
+    { path: '/tco/stammdaten', component: ZuVereinEinstellungen, permission: 'tco.stammdaten:edit' },
     { path: '/tco/uebersicht', component: DashboardPage, permission: 'tco.dashboard:display' },
     { path: '/tco/praesentationen', component: Praesentationen, permission: 'tco.praesentation:display' },
     { path: '/tco/spielerdaten', component: Spielerdaten, permission: 'tco.sport:display' },
@@ -234,7 +238,6 @@ const mod: WebModule = {
   ],
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
-    { text: 'Stammdaten', subtitle: 'Verein, Bank, Logo, Hallenabrechnung, SAP-Übernahme', icon: 'database', path: '/tco/stammdaten', permission: 'tco.stammdaten:edit' },
     { text: 'Kontenstamm', subtitle: 'Konten, Verwendung je Jahr, Anfangsbestände', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
     { text: 'Produkte', subtitle: 'Produkte, Preise je Zeitraum, Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display' },
     { text: 'Meine Mitgliedschaft', subtitle: 'Eigene Daten, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },

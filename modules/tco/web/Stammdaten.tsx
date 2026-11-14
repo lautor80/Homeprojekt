@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import {
   AnalyticalTable, Bar, Button, DatePicker, FlexBox, Label, MessageStrip, ObjectStatus, Panel, SegmentedButton,
-  SegmentedButtonItem, Tab, TabContainer, Text,
+  SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
-import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { useCan } from '@core/session';
@@ -18,24 +17,12 @@ import { TCO, dateiLesen } from './util';
 
 type Verein = Record<string, string | number | null>;
 
-export function TcoStammdaten() {
-  const can = useCan();
-  const navigate = useNavigate();
-  return (
-    <AppPage title="Stammdaten TC Oberthal" subtitle="Übernahme aus SAP – die Einstellungen des Vereins stehen unter Administration → Einstellungen">
-      {/* #232, E1: Vereinsdaten, Hallenabrechnung und FI-Belege werden an einer Stelle gepflegt – hier nur der Absprung */}
-      <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
-        Vereinsdaten, Bankverbindung, Logo und die Einstellungen der Hallenabrechnung und der FI-Belege stehen jetzt unter Administration → Einstellungen → TC Oberthal.{' '}
-        <Button design="Transparent" icon="action-settings" onClick={() => navigate(einstellungLink('tco', 'verein'))}>Zu den Einstellungen</Button>
-      </MessageStrip>
-      {can('tco.import:execute') ? (
-        <TabContainer contentBackgroundDesign="Transparent">
-          <Tab text="Übernahme aus SAP" selected><ImportTab /></Tab>
-        </TabContainer>
-      ) : null}
-    </AppPage>
-  );
-}
+/**
+ * Bisherige App „Stammdaten“ (#232, E1 und S4): Ihre Inhalte stehen jetzt in den beiden Apps der Administration –
+ * Vereinsdaten als Kapitel der Einstellungen, die Übernahme aus SAP als Abschnitt im Reiter „SAP“ der Schnittstellen.
+ * Die alte Adresse springt in das Kapitel.
+ */
+export function ZuVereinEinstellungen() { return <Navigate to={einstellungLink('tco', 'verein')} replace />; }
 
 /** Kapitel „Verein und Bank“ der App Einstellungen (#232, E1) – bisher Reiter „Verein und Anbindungen“ der Stammdaten */
 export function VereinTab() {
@@ -138,7 +125,8 @@ export function VereinTab() {
 
 interface Ergebnis { datei: string; tabelle: string | null; saetze: number; neu: number; fehler: string[]; ignoriert: string[]; geschrieben?: number }
 
-function ImportTab() {
+/** Abschnitt „Übernahme aus SAP“ im Reiter „SAP“ der App Schnittstellen (#232, S4) – bisher Reiter der Stammdaten */
+export function ImportTab() {
   const [files, setFiles] = useState<{ name: string; data: string }[]>([]);
   const [modus, setModus] = useState<'neu' | 'aktualisieren'>('neu');
   const [rows, setRows] = useState<Ergebnis[]>([]);

@@ -352,9 +352,14 @@ Reiter „Paperless“                    Reiter „E-Mail“
   ein neuer Reiter, ohne dass die Oberfläche geändert wird.
 - Rechte unverändert: Zugänge und Ablageregeln mit *Systemeinstellungen ändern*, der Reiter *API-Schlüssel* mit
   seinem eigenen Recht.
-- **Noch offen (Stufe 4):** die Zeile „Stand“ je Bereich (heute nur bei E-Mail), E-Mail-Texte von Euroflex im Reiter
-  E-Mail, verstreute Paperless-Felder aus den Fach-Apps (FI-Felder, Clubhaus, Instandhaltung), SAP-Übernahme und
-  Dateiimporte (S4), ein Zugang für Nextcloud (S2).
+- **Stufe 4, Teil 1 (14.11.2026):** Jeder Zugang zeigt die Zeile **Stand** – „keine Störung gemeldet“, „nicht
+  eingerichtet“ oder die offene Störung mit Datum und Fehlermeldung. Sie kommt aus derselben Quelle wie der
+  Arbeitsvorrat (V1). Neuer Reiter **SAP** mit je einem Abschnitt für TC Oberthal und Euroflex (S4); Module melden
+  solche Abschnitte mit `WebModule.schnittstellen` an. Die App erscheint, sobald man einen Reiter sehen darf.
+  Die App *TC Oberthal → Stammdaten* ist damit aufgelöst (Vereinsdaten: Einstellungen, SAP: Schnittstellen).
+- **Noch offen:** verstreute Paperless-Felder aus den Fach-Apps (FI-Felder, Clubhaus, Instandhaltung), ein Zugang
+  für Nextcloud (S2), laufende Importe einheitlich (S4, zweiter Teil). Die E-Mail-Texte von Euroflex bleiben ein
+  Kapitel der Einstellungen (Inhalt, nicht Zugang).
 
 #### S2 Nextcloud: ein Zugang statt zwei
 
@@ -1142,7 +1147,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | S1 | App „Schnittstellen“ mit einem Reiter je Schnittstelle | groß, in Stufen | ◐ Stufe 1–3 umgesetzt (Reiter, Paperless je Bereich, Zuordnung und API-Schlüssel darin) |
 | S2 | Nextcloud: ein Zugang | klein–mittel | ☐ |
 | S3 | E-Mail-Protokoll nur einmal | klein | ☑ umgesetzt |
-| S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ☐ |
+| S4 | Importe einheitlich, SAP-Übernahme zu den Schnittstellen | mittel | ◐ SAP-Übernahme umgezogen; einheitlicher Import-Dialog offen |
 | S5 | Paperless: eigener Zugang je Bereich | mittel | ☑ umgesetzt |
 | V1 | Jedes Ereignis in den Arbeitsvorrat, Lücken schließen | mittel | ☑ umgesetzt (alle 18 Lücken zu) |
 | V2 | Arbeitsvorrat in den Kern, für alle Bereiche | mittel | ☑ umgesetzt |
