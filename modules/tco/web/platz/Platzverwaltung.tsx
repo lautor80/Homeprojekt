@@ -573,10 +573,13 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
     const e = Math.min(min(v) + dauer, ende);
     setBis(e === 1440 ? '24:00' : hhmm(e > min(v) ? e : min(v) + raster));
   };
-  const aenderbar = b.fest ? !!b.fest.id && !!b.fest.einmalig && !!b.fest.portal : !!b.bid && !!b.portal && !b.abgerechnet;
+  // auch aus EP3 übernommene Buchungen und Belegungen – EP3 gibt es nicht mehr, gepflegt wird hier
+  const aenderbar = b.fest ? !!b.fest.id && !!b.fest.einmalig : !!b.bid && !b.abgerechnet;
+  // wiederkehrende Belegung: nur dieser eine Termin wird abgesagt (Platz frei, zählt nicht mehr als belegt)
+  const absagbar = !!b.fest?.id && !b.fest.einmalig;
   const grund = b.fest
-    ? !b.fest.portal ? 'Aus EP3 übernommen – bitte in EP3 pflegen.' : 'Wiederkehrende Belegung – bitte unter „Training & Sperrzeiten“ ändern.'
-    : !b.portal ? 'EP3-Buchung – bitte im EP3-Buchungssystem ändern.' : b.abgerechnet ? 'Bereits abgerechnet.' : '';
+    ? 'Wiederkehrende Belegung – Zeiten unter „Training & Sperrzeiten“ ändern; diesen einen Termin kannst du hier absagen.'
+    : b.abgerechnet ? 'Bereits abgerechnet – zum Stornieren zuerst aus der Hallenrechnung entfernen.' : '';
   const ziel = { platz_id: platzId, datum: tag, von, bis, text: text.trim() || null };
   const ok = !!tag && !tagFehler && min(bis) > min(von) && (!b.fest || !!bezeichnung.trim());
 
@@ -591,14 +594,15 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
   }
   function entfernen() {
     setWeg(false);
-    return onAktion(() => (b.fest ? api.del(`${PA}/feste/${b.fest.id}`) : api.post(`${PA}/storno`, { bid: b.bid, datum })));
+    return onAktion(() => (absagbar ? api.post(`${PA}/feste/${b.fest!.id}/ausfall`, { platz_id: p.id, datum })
+      : b.fest ? api.del(`${PA}/feste/${b.fest.id}`) : api.post(`${PA}/storno`, { bid: b.bid, datum })));
   }
   const titel = b.fest ? b.fest.bezeichnung : `${b.art === 'Abo' ? 'Abo · ' : ''}${b.kunde || 'Buchung'}`;
   return createPortal(
     <>
       <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-              footer={<Bar startContent={!kopie && aenderbar
-                ? <Button design="Transparent" icon="delete" disabled={busy} onClick={() => setWeg(true)}>{b.fest ? 'Löschen' : 'Stornieren'}</Button>
+              footer={<Bar startContent={!kopie && (aenderbar || absagbar)
+                ? <Button design="Transparent" icon="delete" disabled={busy} onClick={() => setWeg(true)}>{absagbar ? 'Diesen Termin absagen' : b.fest ? 'Löschen' : 'Stornieren'}</Button>
                 : undefined}
                            endContent={<>
                 {!kopie && <Button icon="copy" onClick={() => onModus('KOPIEREN')}>Kopieren…</Button>}
@@ -665,8 +669,10 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
           </Text>
         </div>
       </Dialog>
-      <ConfirmDialog open={weg} danger title={b.fest ? 'Belegung löschen' : 'Termin stornieren'} confirmText={b.fest ? 'Löschen' : 'Stornieren'}
-                     text={`${p.name}, ${tagText(datum)} ${b.von}–${b.bis} Uhr (${titel}) ${b.fest ? 'löschen' : 'stornieren'}?${b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : ''}`}
+      <ConfirmDialog open={weg} danger title={absagbar ? 'Termin absagen' : b.fest ? 'Belegung löschen' : 'Termin stornieren'} confirmText={absagbar ? 'Absagen' : b.fest ? 'Löschen' : 'Stornieren'}
+                     text={`${p.name}, ${tagText(datum)} ${b.von}–${b.bis} Uhr (${titel}) ${absagbar ? 'absagen' : b.fest ? 'löschen' : 'stornieren'}?`
+                       + (absagbar ? ' Nur dieser Termin – die übrigen Termine der Belegung bleiben.' : b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : '')
+                       + ' Die Zeit ist danach frei und zählt in den Statistiken nicht mehr als belegt.'}
                      onCancel={() => setWeg(false)} onConfirm={entfernen} />
     </>,
     document.body,

@@ -337,6 +337,7 @@ const tco: ServerModule = {
     { type: 'TCO_VEREIN', text: 'Vereinsdaten', permission: P.stammdaten },
     { type: 'PLATZ', text: 'Platz', permission: P_PLATZ.admin },
     { type: 'PLATZBELEGUNG', text: 'Feste Platzbelegung (Training, Sperrzeit)', permission: P_PLATZ.admin },
+    { type: 'PLATZ_AUSFALL', text: 'Abgesagter Termin einer festen Platzbelegung', permission: P_PLATZ.admin },
     { type: 'KAL_EVENT', text: 'Veranstaltung (Vereinskalender)', permission: P_KAL.edit },
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },

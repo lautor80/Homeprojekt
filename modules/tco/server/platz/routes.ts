@@ -20,7 +20,7 @@ import {
   ablehnen, benutzernameFrei, bestaetigen, bestandFinden, emailBestaetigen, EMAIL_STUNDEN, geschlechtVon, ROLLE, ROLLE_MITGLIED, ep3Abgleich, ep3Anlegen, ep3BenutzerAnlegen, ep3Mitglied, ep3Verknuepfen, registrieren, registrierungenLesen, rolleSicherstellen,
 } from './registrierung.js';
 import { vereinLesen } from '../verein.js';
-import { BELEGUNG_ARTEN, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
+import { BELEGUNG_ARTEN, festeAbsagen, festeLesen, festeLoeschen, festeSpeichern } from './belegungen.js';
 import { mailProtokoll, mailSenden } from '../kommunikation.js';
 import { mailtextFuellen } from '../mailtexte.js';
 import { tcoHinweis } from '../hinweise.js';
@@ -745,6 +745,13 @@ export async function platzRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
     return change(req, (tx) => festeSpeichern(tx, id, fest.parse(req.body)), { action: 'PLATZBELEGUNG' });
   });
+  /** einen Termin einer festen Belegung absagen bzw. wieder gelten lassen – auch nachträglich */
+  app.post('/platz/admin/feste/:id/ausfall', admin, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const b = z.object({ platz_id: z.coerce.number().int(), datum, grund: z.string().trim().max(200).nullish(), zuruecknehmen: z.boolean().default(false) }).parse(req.body);
+    return { text: await change(req, (tx) => festeAbsagen(tx, id, b.platz_id, b.datum, { grund: b.grund, wer: req.user?.username ?? 'Portal', zuruecknehmen: b.zuruecknehmen }), { action: 'PLATZ_AUSFALL', reason: `${id} ${b.datum}` }) };
+  });
+
   app.delete('/platz/admin/feste/:id', admin, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
     return { text: await change(req, (tx) => festeLoeschen(tx, id), { action: 'PLATZBELEGUNG' }) };

@@ -192,7 +192,7 @@ flowchart LR
 | kalender | 23 |
 | konten | 5 |
 | mitglieder | 74 |
-| platz | 67 |
+| platz | 68 |
 | praesentation | 11 |
 | produkte | 6 |
 | schluessel | 28 |

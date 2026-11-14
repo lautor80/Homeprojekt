@@ -167,7 +167,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   if (!liste.length) throw new BusinessError('Keine gültigen Buchungen in der Datei gefunden');
 
   const bids = [...new Set(liste.map((b) => b.bid))];
-  const bestand = await tx`select bid, datum::text, assigned, erstellt::text, status from tco.bookings where bid = any(${bids})`;
+  const bestand = await tx`select bid, datum::text, assigned, erstellt::text, status, portal_geaendert from tco.bookings where bid = any(${bids})`;
   const key = (b: { bid: string; datum: string }) => `${b.bid}|${b.datum}`;
   const best = new Map(bestand.map((b) => [key(b as never), b]));
   const datVon = liste.reduce((m, b) => (b.datum < m ? b.datum : m), liste[0].datum);
@@ -198,6 +198,8 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
       continue;
     }
     best.delete(key(b));
+    // in der Platzverwaltung geändert (EP3 gibt es nicht mehr): das Portal ist führend
+    if (alt.portal_geaendert) continue;
     if ((alt.assigned ?? '') !== '') {
       if (b.platz) await tx`update tco.bookings set platz = ${b.platz} where bid = ${b.bid} and datum = ${b.datum} and platz is distinct from ${b.platz}`;
       abgerechnet++;
@@ -207,9 +209,9 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
     // (z. B. Serie in EP3 auf einen anderen Wochentag verschoben – gleiche BID, neue Daten), erben die Kennzeichnung
     const erbeAlt = b.status === '3' && !aboEinzel.has(b.bid) ? abgerechnetJeBid.get(b.bid) ?? '' : '';
     if (erbeAlt) repariert++;
-    // #83: im Portal stornierte Abo-Termine bleiben storniert
+    // #83: im Portal stornierte Termine bleiben storniert (Abo-Termine des Mitglieds, Stornos der Platzverwaltung)
     await tx`update tco.bookings set time_start = ${b.time_start}, time_ende = ${b.time_ende}, kunde = ${b.kunde},
-                    status = case when storno_portal is not null and ${b.status}::text = '3' then '2' else ${b.status}::text end,
+                    status = case when storno_portal is not null then '2' else ${b.status}::text end,
                     description = ${desc}, preis = ${b.preis}, geaendert = ${h}, text = ${b.text}, platz = coalesce(${b.platz}, platz)
                     ${erbeAlt ? tx`, assigned = ${erbeAlt}` : tx``}
               where bid = ${b.bid} and datum = ${b.datum}`;
