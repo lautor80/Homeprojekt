@@ -203,7 +203,7 @@
         { "text": "Registrierung absenden", "akteur": "OEF", "system": "portal", "route": "POST /platz/registrierung" },
         { "text": "Bestätigungsmail", "akteur": "SYS", "system": "n8n", "workflow": "TCO Mailversand" },
         { "text": "Link bestätigen", "akteur": "OEF", "system": "portal", "route": "POST /platz/registrierung/bestaetigen", "app": "/registrierung-bestaetigen" },
-        { "text": "Kassenwart gibt frei", "akteur": "KW", "system": "portal", "route": "POST /registrierungen/mitglieder/:id/freigeben", "recht": "tco.registrierung:mitglied", "app": "/tco/registrierungen" },
+        { "text": "Kassenwart gibt frei", "akteur": "KW", "system": "portal", "route": "POST /registrierungen/mitglieder/:id/freigeben", "recht": "tco.registrierung:mitglied", "app": "/tco/zugaenge" },
         { "text": "Erste Anmeldung", "akteur": "MG", "system": "portal", "route": "POST /api/auth/login" }
       ]
     },
