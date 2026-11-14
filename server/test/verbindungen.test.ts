@@ -15,7 +15,7 @@ const { sql } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
-const { verbindungenCacheLeeren, paperlessFuer, paperlessAlle, paperlessDef, uebernehmen, authHeader } = await import('../src/lib/verbindungen.js');
+const { verbindungenCacheLeeren, paperlessFuer, paperlessAlle, paperlessDef, paperlessUebergang, uebernehmen, authHeader } = await import('../src/lib/verbindungen.js');
 const PAPERLESS_DEF = paperlessDef('tco', 'TC Oberthal');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -152,7 +152,9 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   // Module lesen die zentrale Verbindung
   const client = await paperlessFuer('tco');
   assert.ok(client, 'Client aus der Anbindung des Vereins');
-  assert.equal(await paperlessFuer('transport'), null, 'Euroflex: eigener Zugang, noch nicht eingerichtet');
+  // Übergang: Euroflex hat noch kein eigenes Paperless und läuft weiter über den bisherigen Zugang – die Ablage steht nicht still
+  assert.equal(await (await paperlessFuer('transport'))!.baseUrl(), `http://127.0.0.1:${port}`);
+  assert.deepEqual([await paperlessUebergang('transport'), await paperlessUebergang('tco')], [true, false]);
   assert.equal(await client!.baseUrl(), `http://127.0.0.1:${port}`);
   r = await call('GET', '/api/m/tco/verein');
   assert.equal(r.body.paperless_url, `http://127.0.0.1:${port}`);
@@ -167,11 +169,14 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   assert.equal(r.body.paperless, true, JSON.stringify(r.body));
   assert.deepEqual(r.body.korrespondenten, ['A', 'B']);
 
-  // --- Euroflex liest nicht mehr den Zugang des Vereins: ohne eigenes Paperless „nicht eingerichtet“
+  // --- Übergang: ohne eigenes Paperless nutzt Euroflex weiter den bisherigen Zugang – sichtbar in den Stammdaten und im Arbeitsvorrat
+  const uebergangImVorrat = async () => ((await call('GET', '/api/arbeitsvorrat')).body.gruppen.find((g: { modul: string }) => g.modul === 'transport')?.aufgaben ?? [])
+    .filter((a: { key: string }) => a.key === 'PAPERLESS_UEBERGANG') as { bereich: string; state: string; pfad: string; titel: string }[];
   r = await call('GET', '/api/m/transport/firma');
-  assert.equal(r.body.paperless, false);
+  assert.deepEqual([r.body.paperless, r.body.paperless_uebergang, r.body.paperless_token], [true, true, '********']);
   r = await call('GET', '/api/paperless/mapping/transport/listen');
-  assert.deepEqual([r.body.paperless, r.body.korrespondenten], [false, []], 'Auswahllisten je Bereich aus dessen Paperless');
+  assert.deepEqual([r.body.paperless, r.body.korrespondenten], [true, ['A', 'B']]);
+  assert.deepEqual(await uebergangImVorrat(), [{ ...(await uebergangImVorrat())[0], bereich: 'Administration', state: 'Critical', pfad: '/admin/anbindungen', titel: 'Euroflex nutzt noch das Paperless von TC Oberthal' }]);
   // dieselbe Adresse wie der Verein wird abgelehnt – beim Sichern und beim Verbindungstest, auch mit anderer Schreibweise
   r = await call('PUT', '/api/verbindungen/transport.paperless', { url: `http://127.0.0.1:${port}`, geheimnis: 'anders' });
   assert.equal(r.status, 400, JSON.stringify(r.body));
@@ -197,7 +202,9 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
     r = await call('POST', '/api/verbindungen/transport.paperless/pruefen', {});
     assert.equal(r.body.ok, true, JSON.stringify(r.body));
     r = await call('GET', '/api/m/transport/firma');
-    assert.deepEqual([r.body.paperless, r.body.paperless_token], [true, '********']);
+    assert.deepEqual([r.body.paperless, r.body.paperless_uebergang, r.body.paperless_token], [true, false, '********'], 'eigenes Paperless: der Übergang ist beendet');
+    assert.deepEqual(await uebergangImVorrat(), [], 'Aufgabe erledigt');
+    assert.equal(await paperlessUebergang('transport'), false);
     r = await call('GET', '/api/paperless/mapping/transport/listen');
     assert.deepEqual([r.body.paperless, r.body.korrespondenten], [true, ['Spedition']]);
     assert.deepEqual((await call('GET', '/api/paperless/mapping/tco/listen')).body.korrespondenten, ['A', 'B'], 'der Verein sieht weiter nur sein Paperless');

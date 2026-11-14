@@ -406,7 +406,7 @@ einen anderen.*
 | Bereich | Anbindung | Stand nach dem Update |
 |---|---|---|
 | TC Oberthal | *Paperless-ngx TC Oberthal* (Id weiter `paperless` – die gespeicherten Werte ziehen nicht um) | unverändert eingerichtet |
-| Euroflex | *Paperless-ngx Euroflex* (`transport.paperless`) | **nicht eingerichtet**, bis Adresse und Token eingetragen sind |
+| Euroflex | *Paperless-ngx Euroflex* (`transport.paperless`) | leer – **Übergang:** bis Adresse und Token eingetragen sind, läuft die Ablage weiter über den bisherigen Zugang |
 
 - Beide stehen unter *Administration → Schnittstellen → Anbindungen* bei ihrer Anwendung; der Block „Basis“ hat kein
   Paperless mehr.
@@ -417,9 +417,14 @@ einen anderen.*
 - Störungen stehen je Zugang im Arbeitsvorrat (V1).
 - Installation ohne Verein (nur Euroflex): Der bisherige Zugang zieht zu Euroflex um.
 
-**Folgen.** Solange Euroflex kein eigenes Paperless hat, legt Euroflex nichts ab (Hinweis „nicht eingerichtet“ in
-Aufträgen, Kontakten und Stammdaten). Dokumente, die Euroflex bisher im Paperless des Vereins abgelegt hat, bleiben
-dort – ein Umzug nach dem Einrichten ist Handarbeit in Paperless. Das zweite Paperless braucht seine eigene Sicherung.
+**Übergang.** Mit dem Update steht die Ablage von Euroflex nicht still: Solange *Paperless-ngx Euroflex* leer ist,
+nutzt Euroflex weiter das bisherige Paperless. Das ist sichtbar – als Aufgabe „Euroflex nutzt noch das Paperless von
+TC Oberthal“ im Arbeitsvorrat der Administration und als Hinweis in den Stammdaten von Euroflex. Sobald das eigene
+Paperless eingetragen ist, gilt nur noch dieses; eine gemeinsame Adresse lässt sich nicht eintragen.
+
+**Folgen.** Dokumente, die Euroflex bisher im Paperless des Vereins abgelegt hat, bleiben dort und sind nach dem
+Umstellen aus Euroflex nicht mehr erreichbar – ein Umzug ist Handarbeit in Paperless (Export/Import) und sollte vor dem
+Eintragen der neuen Adresse geklärt sein. Das zweite Paperless braucht seine eigene Sicherung.
 
 ### V – Arbeitsvorrat
 
@@ -1141,7 +1146,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | V1 (Teil 1) | Hinweise im Arbeitsvorrat (`core.hinweise`, „gesehen“); Selbstbedienung der Mitglieder und Hallennutzer, Einladung, Sperre nach Austritt melden sich | umgesetzt 14.11.2026 |
 | V1 (Teil 2) | Störungen von Paperless und der Vereins-Schnittstellen (überwachte Aufrufe, schließen sich von selbst), nicht gesendete E-Mails, Rückläufer und Antworten, Dokumenteneingang; Block „Euroflex“ | umgesetzt 14.11.2026 – kein offener Punkt mehr |
 | Kündigung | Vorgabe vom 14.11.2026: Kündigungen der Mitglieder werden eingereicht und stehen im Arbeitsvorrat des Vorstands; erst die Freigabe führt sie aus (Kündigungsdatum = Eingang), dann wird die Kündigungsbestätigung erzeugt, zur Prüfung angezeigt und an das Mitglied gesendet; Ablehnung mit Grund | umgesetzt 14.11.2026 |
-| S5 | Paperless je Bereich: TC Oberthal behält den bisherigen Zugang, Euroflex hat `transport.paperless`; gleiche Adresse abgelehnt; Zuordnungslisten und Freigabelinks je Bereich | umgesetzt 14.11.2026 – Euroflex ist „nicht eingerichtet“, bis sein Paperless eingetragen ist |
+| S5 | Paperless je Bereich: TC Oberthal behält den bisherigen Zugang, Euroflex hat `transport.paperless`; gleiche Adresse abgelehnt; Zuordnungslisten und Freigabelinks je Bereich | umgesetzt 14.11.2026 – Übergang: Euroflex nutzt das bisherige Paperless weiter, bis sein eigenes eingetragen ist (Aufgabe im Arbeitsvorrat) |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

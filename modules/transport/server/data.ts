@@ -108,9 +108,11 @@ export interface Firma {
   ust_satz: number;
   rechnung_startnr: number;
   logo: string | null;
-  /** aus core.verbindungen („paperless“), nur lesend */
+  /** aus core.verbindungen („transport.paperless“), nur lesend */
   paperless_url: string;
   paperless_token: string;
+  /** Übergang (#232, S5): Euroflex hat noch kein eigenes Paperless eingetragen und nutzt den bisherigen gemeinsamen Zugang */
+  paperless_uebergang: boolean;
   /** Auftragsbedingungen (AGB) auf dem Transportauftrag, Absätze durch Leerzeile getrennt */
   auftragsbedingungen?: string;
 }
@@ -221,7 +223,7 @@ export async function firmaLesen(db: Db = DB): Promise<Firma> {
   const pl = await paperlessZugang('transport', db);
   return {
     ...(f as unknown as Firma), zahlungsziel_tage: Number(f.zahlungsziel_tage), ust_satz: Number(f.ust_satz), rechnung_startnr: Number(f.rechnung_startnr),
-    paperless_url: pl.url ?? '', paperless_token: pl.token ?? '',
+    paperless_url: pl.url ?? '', paperless_token: pl.token ?? '', paperless_uebergang: pl.uebergang,
   };
 }
 

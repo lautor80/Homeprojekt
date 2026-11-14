@@ -101,8 +101,9 @@ async function aufrufen(v: Verbindung, body: unknown, timeout: number): Promise<
 
 /** Anbindung „Euroflex E-Mail-Versand“ (Administration → Schnittstellen → Anbindungen) */
 export const TRANSPORT_VERBINDUNGEN: VerbindungDef[] = [
-  // eigener Paperless-Zugang für Euroflex (#232, S5): nie dieselbe Adresse wie ein anderer Bereich
-  paperlessDef('transport', 'Euroflex'),
+  // eigener Paperless-Zugang für Euroflex (#232, S5): nie dieselbe Adresse wie ein anderer Bereich.
+  // Übergang: bis er eingetragen ist, läuft die Ablage über den bisherigen gemeinsamen Zugang weiter (siehe paperlessDef).
+  paperlessDef('transport', 'Euroflex', { uebergang: true }),
   {
   id: V_MAIL, text: 'Euroflex E-Mail-Versand (Outlook 365, n8n)',
   beschreibung: 'n8n-Workflow „Euroflex Mailversand“: E-Mails zum Auftrag mit ausgewählten Anhängen über Outlook 365, aus dem Postfach des angemeldeten Benutzers. '
