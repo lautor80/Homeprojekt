@@ -49,7 +49,7 @@ test('Katalog: jede Berechtigung genau einmal, mit Bereich/App, Voraussetzungen 
 
   // TC Oberthal: Bereiche in Menü-Reihenfolge
   const tco = katalog.find((g) => g.module === 'tco')!;
-  assert.deepEqual(tco.areas.map((a) => a.name), ['Allgemein', 'Einstellungen', 'Mitglieder', 'Sport', 'Jugend', 'Tennishalle', 'Clubhaus', 'Instandhaltung', 'Finanzen', 'Dokumente', 'Datenschutz']);
+  assert.deepEqual(tco.areas.map((a) => a.name), ['Allgemein', 'Mein Bereich', 'Einstellungen', 'Mitglieder', 'Sport', 'Jugend', 'Tennishalle', 'Clubhaus', 'Instandhaltung', 'Finanzen', 'Dokumente', 'Datenschutz']);
   const bank = tco.areas.find((a) => a.name === 'Datenschutz')!.apps[0].permissions;
   assert.deepEqual(bank.find((p) => p.id === 'tco.bankdaten:edit')!.requires.sort(), ['tco.bankdaten:display', 'tco.mitglieder:edit']);
   const halle = tco.areas.find((a) => a.name === 'Tennishalle')!.apps.find((a) => a.name === 'Hallenabrechnung')!;

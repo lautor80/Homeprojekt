@@ -1103,7 +1103,7 @@ eigener PR und damit einzeln zurücknehmbar; zieht eine Funktion um, zieht ihr E
 | V3 | Prüfungen, die den Arbeitsvorrat beim Umbau absichern | klein–mittel | ☑ umgesetzt |
 | F1 | Funktionsschalter: jede Funktion vom Administrator abschaltbar | mittel–groß, in Stufen | ☑ Rahmen, Apps und erste Funktionen umgesetzt |
 | A1 | Administration in fünf Gruppen | klein | ☑ umgesetzt |
-| N1 | Gruppe „Mein Bereich“ | klein | ☐ |
+| N1 | Gruppe „Mein Bereich“ | klein | ☑ umgesetzt |
 | N2 | „Meine Daten“ und „Meine Mitgliedschaft“ zusammenlegen | mittel | ☐ |
 | N3 | App „Zugänge“ (Registrierungen, Zuordnung, EP3-Abgleich) | mittel | ☐ |
 | N4 | Preise an einem Ort – Variante A oder B | mittel / klein | ☐ A ☐ B |
@@ -1147,6 +1147,7 @@ Aufwand: *klein* = ein Schritt ohne Datenänderung · *mittel* = mehrere Dateien
 | V1 (Teil 2) | Störungen von Paperless und der Vereins-Schnittstellen (überwachte Aufrufe, schließen sich von selbst), nicht gesendete E-Mails, Rückläufer und Antworten, Dokumenteneingang; Block „Euroflex“ | umgesetzt 14.11.2026 – kein offener Punkt mehr |
 | Kündigung | Vorgabe vom 14.11.2026: Kündigungen der Mitglieder werden eingereicht und stehen im Arbeitsvorrat des Vorstands; erst die Freigabe führt sie aus (Kündigungsdatum = Eingang), dann wird die Kündigungsbestätigung erzeugt, zur Prüfung angezeigt und an das Mitglied gesendet; Ablehnung mit Grund | umgesetzt 14.11.2026 |
 | S5 | Paperless je Bereich: TC Oberthal behält den bisherigen Zugang, Euroflex hat `transport.paperless`; gleiche Adresse abgelehnt; Zuordnungslisten und Freigabelinks je Bereich | umgesetzt 14.11.2026 – Übergang: Euroflex nutzt das bisherige Paperless weiter, bis sein eigenes eingetragen ist (Aufgabe im Arbeitsvorrat) |
+| N1 | Gruppe *Mein Bereich* im Menü, auf der Startseite und in der Rollenpflege: Meine Mitgliedschaft, Meine Daten, Platz buchen, Mein Verzehr, Meine Trainingszeiten, Schaden melden (Pfade und Rechte unverändert) | umgesetzt 14.11.2026 |
 | F1 | Funktionsschalter: Pflege *Administration → Einstellungen → Funktionen*; Anwendungen, Bereiche und alle Apps abschaltbar, dazu 30 einzelne Funktionen einschließlich der öffentlichen Formulare | umgesetzt 14.11.2026 – offen sind Funktionen, die mehrere Apps berühren (siehe F1) |
 
 Menü der Administration nach A1 – bis E1 und S1 fertig sind, ist *Einstellungen* die bisherige App und

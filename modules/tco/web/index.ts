@@ -89,6 +89,18 @@ const mod: WebModule = {
         { text: 'Vereinsübersicht', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
         { text: 'Präsentationen', icon: 'ppt-attachment', path: '/tco/praesentationen', permission: 'tco.praesentation:display' },
         { text: 'Vereinskalender', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
+        // Mein Bereich (#232, N1): alles, was jemand für sich selbst tut – die Fachgruppen darunter enthalten nur noch Verwaltung
+        {
+          text: 'Mein Bereich', icon: 'person-placeholder',
+          children: [
+            { text: 'Meine Mitgliedschaft', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
+            { text: 'Meine Daten', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
+            { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
+            { text: 'Mein Verzehr', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
+            { text: 'Meine Trainingszeiten', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit' },
+            { text: 'Schaden melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
+          ],
+        },
         {
           text: 'Einstellungen', icon: 'action-settings',
           children: [
@@ -100,7 +112,6 @@ const mod: WebModule = {
         {
           text: 'Mitglieder', icon: 'group',
           children: [
-            { text: 'Meine Mitgliedschaft', icon: 'customer', path: '/tco/meine-mitgliedschaft', permission: 'tco.meinedaten:edit' },
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
             { text: 'Mitgliedergruppen', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
             { text: 'Mitgliedsanträge', icon: 'personnel-view', path: '/tco/mitgliedsantraege', permission: 'tco.antraege:display' },
@@ -121,7 +132,6 @@ const mod: WebModule = {
             { text: 'Teilnehmer Jugendtraining', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
             { text: 'Schnuppertraining', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
             { text: 'Abrechnung Jugendtraining', icon: 'timesheet', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
-            { text: 'Meine Trainingszeiten', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit' },
           ],
         },
         {
@@ -130,8 +140,6 @@ const mod: WebModule = {
             { text: 'Hallenpreise', icon: 'lead', path: '/tco/hallenpreise', permission: 'tco.halle:display' },
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
             { text: 'Hallenschlüssel', icon: 'key', path: '/tco/hallenschluessel', permission: 'tco.schluessel:display' },
-            { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
-            { text: 'Meine Daten', icon: 'business-card', path: '/tco/meine-daten', permission: 'tco.meinkonto:edit' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
             { text: 'Platzverwaltung', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
           ],
@@ -140,7 +148,6 @@ const mod: WebModule = {
           text: 'Clubhaus', icon: 'meal',
           children: [
             { text: 'Clubhausabrechnung', icon: 'receipt', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
-            { text: 'Mein Verzehr', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
             { text: 'Theke', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
             { text: 'Verzehrbuch', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
           ],
@@ -148,7 +155,6 @@ const mod: WebModule = {
         {
           text: 'Instandhaltung', icon: 'technical-object',
           children: [
-            { text: 'Schaden melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
             { text: 'Schadensmeldungen', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display' },
           ],
         },
