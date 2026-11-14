@@ -197,6 +197,8 @@ export function Shell() {
           </UserMenuItem>
         )}
         <UserMenuItem icon="key" text="Passwort ändern" onClick={() => { setMenuOpen(false); setPwOpen(true); }} />
+        {/* aktive Version auch im Benutzermenü – falls die Kopfzeile sie neben dem Logo nicht unterbringt */}
+        {version && <UserMenuItem icon="history" text={version.text} tooltip={version.titel} onClick={() => { setMenuOpen(false); window.location.reload(); }} />}
         <UserMenuItem icon={dunkel ? 'light-mode' : 'dark-mode'} text={dunkel ? 'Helles Design' : 'Dunkles Design'}
                       onClick={() => { const d = !dunkel; setDunkel(d); erscheinungSetzen(d ? 'dunkel' : 'hell'); setMenuOpen(false); }} />
       </UserMenu>
