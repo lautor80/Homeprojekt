@@ -38,6 +38,8 @@ interface Meine {
   familie: Person[]; vertraege: (Vertrag & { kuendbar: boolean; endeBei: string })[];
   /** Vertragsbaum: Verträge aller verknüpften Personen; kündbar nur eigene und die von Personen, die über mich zahlen */
   vertraegeFamilie: (Vertrag & { kuendbar: boolean; endeBei: string })[]; kuendigung: { mitgliedschaft: string; jugend: string; heute: string }; gekuendigt: boolean;
+  /** eingereichte Kündigungen: warten auf die Freigabe durch den Vorstand, sind freigegeben oder wurden abgelehnt (30 Tage sichtbar) */
+  kuendigungen: { id: number; status: 'OFFEN' | 'FREIGEGEBEN' | 'ABGELEHNT'; text: string; eingang: string; ablehnung: string | null }[];
 }
 type Kontakt = { strasse: string; plz: string; ort: string; telefon: string; mobil: string; email: string; bildrechte: boolean };
 
@@ -158,6 +160,13 @@ export function MeineMitgliedschaft() {
       </Section>
 
       <Section title="Verträge" count={vertraegeBaum.filter((v) => v.laeuft).length}>
+        {d.kuendigungen.map((k) => (
+          <MessageStrip key={k.id} design={k.status === 'ABGELEHNT' ? 'Negative' : 'Information'} hideCloseButton style={{ marginBottom: '0.5rem' }}>
+            {k.status === 'OFFEN' ? `Kündigung vom ${dat(k.eingang)} eingereicht – wartet auf die Freigabe durch den Vorstand. Bis dahin ändert sich nichts. Eingereicht: ${k.text}`
+              : k.status === 'FREIGEGEBEN' ? `Kündigung vom ${dat(k.eingang)} freigegeben – die Kündigungsbestätigung kommt per E-Mail. ${k.text}`
+                : `Kündigung vom ${dat(k.eingang)} wurde nicht freigegeben${k.ablehnung ? `: ${k.ablehnung}` : '.'}`}
+          </MessageStrip>
+        ))}
         <VertragsBaum personen={d.familie.length ? d.familie : [{ adrnr: m.adrnr, name: `${m.vorname} ${m.nachname}`, mitglnrn: m.mitglnrn, geburtsdatum: m.geburtsdatum, eintritt: m.eintritt, austritt: m.austritt, rolle: 'Mitglied' }]}
                       vertraege={vertraegeBaum} ich={m.adrnr} ichText={`${m.vorname} ${m.nachname} (ich)`} aktionenBreite={190}
                       vertragAktion={(v) => (v.kuendbar && !gesperrt
@@ -169,7 +178,7 @@ export function MeineMitgliedschaft() {
         </Text>
         <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.25rem' }}>
           Mitgliedschaft und Verträge enden zum 31.12. des laufenden Jahres ({dat(d.kuendigung.mitgliedschaft)}), Jugendtraining zum nächsten 30.09. ({dat(d.kuendigung.jugend)}).
-          Kündigungsdatum ist das Tagesdatum; die Bestätigung wird gedruckt und per E-Mail zugestellt.
+          Kündigungsdatum ist der Tag, an dem du die Kündigung einreichst. Der Vorstand gibt sie frei; danach erhältst du die Kündigungsbestätigung per E-Mail.
         </Text>
       </Section>
 
@@ -276,7 +285,7 @@ function KuendigungDialog({ k, info, vertraege, busy, error, onClose, onConfirm 
   const laufende = vertraege.filter((v) => v.laeuft && !v.vertragende);
   return createPortal(
     <Dialog open headerText={k.art === 'MITGLIEDSCHAFT' ? 'Mitgliedschaft kündigen' : 'Vertrag kündigen'} style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Negative" icon="decline" disabled={busy || !ok} onClick={() => onConfirm(grund)}>Verbindlich kündigen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<Bar endContent={<><Button design="Negative" icon="decline" disabled={busy || !ok} onClick={() => onConfirm(grund)}>Kündigung einreichen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <div style={{ display: 'grid', gap: '0.75rem' }}>
         <Attributes narrow>
@@ -291,7 +300,7 @@ function KuendigungDialog({ k, info, vertraege, busy, error, onClose, onConfirm 
             {laufende.map((v) => <Text key={v.vertragnr} style={{ display: 'block' }}>{v.artname || v.art} zum {dat(v.art === '90' && info.jugend < info.mitgliedschaft ? info.jugend : info.mitgliedschaft)}</Text>)}
           </div>
         )}
-        <Text className="portal-muted portal-small">Nach der Kündigung wird die Kündigungsbestätigung angezeigt, in der Mitgliederakte abgelegt und per E-Mail an dich gesendet; der Vorstand erhält eine Kopie.</Text>
+        <Text className="portal-muted portal-small">Die Kündigung geht an den Vorstand und wird dort freigegeben. Erst dann enden Mitgliedschaft bzw. Vertrag zum genannten Datum, und du erhältst die Kündigungsbestätigung per E-Mail. Als Kündigungsdatum gilt der heutige Tag.</Text>
         <div>
           <Label showColon>Grund (optional, hilft dem Verein)</Label>
           <TextArea rows={3} value={grund} maxlength={500} onInput={(e) => setGrund(e.target.value)} style={{ width: '100%' }} />

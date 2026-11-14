@@ -180,69 +180,182 @@ test('Meine Mitgliedschaft: Anmeldung mit Startkennwort, nur eigene Daten, Konta
   assert.ok(r.body.vertraegeFamilie.every((v: any) => v.kuendbar));
 });
 
-test('Kündigung: Jugendvertrag zum nächsten 30.09., Mitgliedschaft zum 31.12., Bestätigung als PDF', async () => {
+test('Kündigung: einreichen, Freigabe durch den Vorstand, Bestätigung prüfen und senden – Jugendvertrag zum 30.09., Mitgliedschaft zum 31.12.', async () => {
   const h = new Date().toLocaleDateString('sv-SE');
   const jugendEnde = h <= `${jahr}-09-30` ? `${jahr}-09-30` : `${jahr + 1}-09-30`;
+  const K = `${M}/kuendigungen`;
+  interface Eintrag { key: string; bereich: string; titel: string; text: string; state: string; pfad: string; aktion?: { art: string; id: number } }
+  /** Einträge „Kündigung“ im Arbeitsvorrat des Vorstands (Startseite) */
+  const aufgaben = async (c: ReturnType<typeof client> = admin): Promise<Eintrag[]> =>
+    ((await c('GET', '/api/arbeitsvorrat')).body.gruppen.find((g: { modul: string }) => g.modul === 'tco')?.aufgaben ?? []).filter((x: Eintrag) => x.key.startsWith('KUENDIGUNG:'));
+  const ende = async (adrnr: string, nr: string) => (await sql`select vertragende::text as e from tco.vertraege where adrnr = ${adrnr} and vertragnr = ${nr}`)[0].e as string | null;
+  const stand = async (id: number) => (await sql`select status, abgelegt, gesendet, bearbeitet_von from tco.kuendigungen where id = ${id}`)[0];
+
   let r = await paula('GET', `${M}/meine`);
   assert.equal(r.body.kuendigung.mitgliedschaft, `${jahr}-12-31`);
   assert.equal(r.body.kuendigung.jugend, jugendEnde);
   assert.equal(r.body.vertraege.find((v: { adrnr: string }) => v.adrnr === '0000000502').endeBei, jugendEnde, 'Jugendtraining von Kim');
+  assert.deepEqual(r.body.kuendigungen, []);
 
-  // Vertrag der über mich zahlenden Person (Jugend) → nächster 30.09.
+  // --- 1. Einreichen: Vertrag der über mich zahlenden Person (Jugend). Es ändert sich noch nichts.
   r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000502', vertragnr: '1', bestaetigung: true, grund: 'Kim hört auf' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '1'`)[0].e, jugendEnde);
-  assert.ok((await sql`select notiz from tco.mgnotiz where adrnr = '0000000502'`).some((n) => String(n.notiz).includes('Kim hört auf')));
-  // Arbeitsvorrat (#232, V1): die Kündigung steht beim Kassenwart – mit Grund
-  const kh = (await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_KUENDIGUNG:'))!;
-  assert.ok(kh, 'Kündigung im Arbeitsvorrat');
-  assert.deepEqual([kh.bereich, kh.state, kh.pfad], ['Kassenwart', 'Critical', '/tco/mitglieder?adrnr=0000000501']);
-  assert.match(kh.titel, /^Kündigung durch das Mitglied: .+ \(Mitglied 0000000501\)$/);
-  assert.match(kh.text, /Grund: Kim hört auf$/);
-  assert.ok(r.body.pdf && Buffer.from(r.body.pdf, 'base64').subarray(0, 4).toString() === '%PDF', 'Kündigungsbestätigung als PDF');
-  assert.match(r.body.dateiname, /^Kuendigungsbestaetigung_Portal_Kim\.pdf$/);
-  assert.ok(r.body.hinweise.some((x: string) => /Mailversand ist nicht eingerichtet/.test(x)), JSON.stringify(r.body.hinweise));
-  // fremder Vertrag (Mitglied 504) nicht erreichbar
-  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, vertragbegin, betrag) values ('0000000504', '1', '10', 'Erwachsene', '2019-05-01', 120)`;
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000504', vertragnr: '1', bestaetigung: true });
+  const k1 = r.body.id as number;
+  assert.equal(r.body.eingereicht, true);
+  assert.match(r.body.text, /wird vom Vorstand freigegeben\. Danach erhältst du die Kündigungsbestätigung per E-Mail\. Eingereicht: Jugend \(.*Kim.*\) gekündigt am /);
+  assert.equal(r.body.pdf, undefined, 'keine Bestätigung vor der Freigabe');
+  assert.equal(await ende('0000000502', '1'), null, 'vor der Freigabe unverändert');
+  assert.ok((await sql`select notiz from tco.mgnotiz where adrnr = '0000000502'`).some((n) => /eingereicht durch .* wartet auf die Freigabe.*Kim hört auf/.test(String(n.notiz))));
+  assert.equal((await sql`select count(*)::int as n from core.change_header where object_type = 'MITGLIED' and action = 'KUENDIGUNG'`)[0].n, 0, 'am Mitglied noch nichts geändert');
+  // das Mitglied sieht den Stand; derselbe Vertrag lässt sich nicht noch einmal kündigen
+  r = await paula('GET', `${M}/meine`);
+  assert.deepEqual(r.body.kuendigungen.map((k: any) => [k.id, k.status, k.eingang]), [[k1, 'OFFEN', h]]);
+  assert.equal(r.body.vertraegeFamilie.find((v: any) => v.adrnr === '0000000502' && v.vertragnr === '1').kuendbar, false);
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000502', vertragnr: '1', bestaetigung: true });
   assert.equal(r.status, 400);
-  assert.equal((await sql`select vertragende from tco.vertraege where adrnr = '0000000504'`)[0].vertragende, null);
+  assert.match(r.body.message, /bereits eingereicht und wartet auf die Freigabe/);
+
+  // --- Arbeitsvorrat des Vorstands: freigeben – mit Knopf am Eintrag (aktion)
+  let av = await aufgaben();
+  assert.deepEqual(av.map((x) => [x.key, x.bereich, x.state, x.titel, x.pfad, x.aktion]),
+    [[`KUENDIGUNG:${k1}`, 'Vorstand', 'Critical', 'Kündigung freigeben: Paula Portal', '/tco/mitglieder?adrnr=0000000501', { art: 'KUENDIGUNG', id: k1 }]]);
+  assert.match(av[0].text, /gekündigt am .* Grund: Kim hört auf$/);
+  assert.deepEqual(await aufgaben(paula), [], 'nur mit dem Recht, Mitglieder zu pflegen');
+  assert.ok((await admin('GET', '/api/m/tco/dashboard/arbeitsvorrat')).body.some((x: Eintrag) => x.key === `KUENDIGUNG:${k1}`), 'auch in der Vereinsübersicht');
+  r = await admin('GET', `${K}/${k1}`);
+  assert.deepEqual([r.status, r.body.status, r.body.name, r.body.mitglnrn, r.body.eingang, r.body.grund, r.body.gesendet], [200, 'OFFEN', 'Paula Portal', '501', h, 'Kim hört auf', false]);
+  assert.equal((await paula('GET', `${K}/${k1}`)).status, 403);
+  assert.equal((await paula('POST', `${K}/${k1}/freigeben`)).status, 403);
+  assert.equal((await admin('GET', `${K}/${k1}/pdf`)).status, 409, 'Bestätigung erst nach der Freigabe');
+  assert.equal((await admin('POST', `${K}/${k1}/senden`)).status, 409);
+  assert.equal((await admin('GET', `${K}/999999`)).status, 404);
+
+  // --- 2. Freigabe: jetzt wird ausgeführt – Kündigungsdatum ist der Tag des Eingangs, nicht der Tag der Freigabe
+  // (die Freigabe kommt einen Tag später; am 1.10. und 1.1. gäbe das eine andere Frist – dann bleibt der Eingang heute)
+  const gestern = new Date(Date.now() - 86_400_000).toLocaleDateString('sv-SE');
+  const gj = Number(gestern.slice(0, 4));
+  const eingang = (gestern <= `${gj}-09-30` ? `${gj}-09-30` : `${gj + 1}-09-30`) === jugendEnde ? gestern : h;
+  const de = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+  await sql`update tco.kuendigungen set eingang = ${eingang} where id = ${k1}`;
+  r = await admin('POST', `${K}/${k1}/freigeben`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.text.startsWith('Freigegeben: Jugend ('), r.body.text);
+  assert.ok(r.body.text.endsWith(`gekündigt am ${de(eingang)} zum ${de(jugendEnde)}. Bitte die Kündigungsbestätigung prüfen und senden.`), r.body.text);
+  assert.equal(await ende('0000000502', '1'), jugendEnde);
+  assert.deepEqual({ ...(await stand(k1)) }, { status: 'FREIGEGEBEN', abgelegt: false, gesendet: false, bearbeitet_von: 'Admin' });
+  assert.equal((await admin('POST', `${K}/${k1}/freigeben`)).status, 409, 'nur einmal');
+  assert.equal((await admin('POST', `${K}/${k1}/ablehnen`, { grund: 'zu spät' })).status, 409);
+  av = await aufgaben();
+  assert.deepEqual(av.map((x) => x.titel), ['Kündigungsbestätigung prüfen und senden: Paula Portal'], 'bleibt im Arbeitsvorrat, bis die Bestätigung verschickt ist');
+  // der Kassenwart erfährt die ausgeführte Kündigung als Hinweis
+  const kh = (await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_KUENDIGUNG:'))!;
+  assert.ok(kh, 'Hinweis für den Kassenwart');
+  assert.deepEqual([kh.bereich, kh.state, kh.pfad], ['Kassenwart', 'Critical', '/tco/mitglieder?adrnr=0000000501']);
+  assert.match(kh.titel, /^Kündigung freigegeben: .+ \(Mitglied 0000000501\)$/);
+  assert.match(kh.text, /Grund: Kim hört auf – freigegeben von Admin$/);
+
+  // --- 3. Kündigungsbestätigung zur Prüfung, dann senden
+  r = await admin('GET', `${K}/${k1}/pdf`);
+  assert.equal(r.status, 200);
+  assert.ok(String(r.body).startsWith('%PDF'), 'Kündigungsbestätigung als PDF');
+  assert.equal((await paula('GET', `${K}/${k1}/pdf`)).status, 403);
+  // Mailversand ist nicht eingerichtet: nicht gesendet, bleibt im Arbeitsvorrat
+  r = await admin('POST', `${K}/${k1}/senden`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.fertig, r.body.gesendet], [false, false]);
+  assert.ok(r.body.hinweise.some((x: string) => /Mailversand ist nicht eingerichtet/.test(x)), JSON.stringify(r.body.hinweise));
+  assert.equal((await stand(k1)).status, 'FREIGEGEBEN');
+  assert.equal((await aufgaben()).length, 1);
+  // ohne E-Mail abschließen (Bestätigung selbst zustellen)
+  r = await admin('POST', `${K}/${k1}/senden`, { ohneMail: true });
+  assert.deepEqual([r.status, r.body.fertig, r.body.gesendet], [200, true, false]);
+  assert.deepEqual({ ...(await stand(k1)) }, { status: 'ABGESCHLOSSEN', abgelegt: false, gesendet: false, bearbeitet_von: 'Admin' });
+  assert.deepEqual(await aufgaben(), [], 'erledigt');
+  assert.equal((await admin('POST', `${K}/${k1}/senden`)).status, 409);
+  assert.deepEqual((await paula('GET', `${M}/meine`)).body.kuendigungen, []);
+
+  /** einreichen und – wenn angenommen – freigeben und abschließen; liefert die Antwort der Freigabe bzw. die Ablehnung beim Einreichen */
+  const kuendigen = async (eingabe: Record<string, unknown>) => {
+    const e1 = await paula('POST', `${M}/meine/kuendigung`, eingabe);
+    if (e1.status !== 200) return e1;
+    const f = await admin('POST', `${K}/${e1.body.id}/freigeben`);
+    assert.equal((await admin('POST', `${K}/${e1.body.id}/senden`, { ohneMail: true })).status, 200);
+    return f;
+  };
+
+  // fremder Vertrag (Mitglied 504) nicht erreichbar – schon beim Einreichen abgelehnt
+  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, vertragbegin, betrag) values ('0000000504', '1', '10', 'Erwachsene', '2019-05-01', 120)`;
+  r = await kuendigen({ art: 'VERTRAG', adrnr: '0000000504', vertragnr: '1', bestaetigung: true });
+  assert.equal(r.status, 400);
+  assert.equal(await ende('0000000504', '1'), null);
+
+  // --- Ablehnung: nichts ändert sich, das Mitglied sieht den Grund und kann erneut kündigen
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', adrnr: '0000000501', vertragnr: '2', bestaetigung: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const k2 = r.body.id as number;
+  assert.equal((await admin('POST', `${K}/${k2}/ablehnen`, { grund: '' })).status, 400, 'nur mit Grund');
+  assert.equal((await paula('POST', `${K}/${k2}/ablehnen`, { grund: 'nein' })).status, 403);
+  r = await admin('POST', `${K}/${k2}/ablehnen`, { grund: 'Schlüssel noch nicht zurückgegeben' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.hinweise.some((x: string) => /Mailversand ist nicht eingerichtet/.test(x)));
+  assert.equal(await ende('0000000501', '2'), null);
+  assert.equal((await stand(k2)).status, 'ABGELEHNT');
+  assert.deepEqual(await aufgaben(), []);
+  assert.equal((await admin('POST', `${K}/${k2}/freigeben`)).status, 409);
+  assert.ok((await sql`select notiz from tco.mgnotiz where adrnr = '0000000501'`).some((n) => /nicht freigegeben\. Grund: Schlüssel noch nicht zurückgegeben/.test(String(n.notiz))));
+  r = await paula('GET', `${M}/meine`);
+  assert.deepEqual(r.body.kuendigungen.map((k: any) => [k.id, k.status, k.ablehnung]), [[k2, 'ABGELEHNT', 'Schlüssel noch nicht zurückgegeben']]);
 
   // Mehrfachauswahl: nur gültige (laufende, ungekündigte) Verträge; mehrere in einem Schritt
   await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, sollstellung, vertragbegin, betrag) values ('0000000502', '2', '90', 'Jugendtraining 2', 'monatlich', '2024-01-01', 30)`;
-  r = await paula('GET', `${M}/meine`);
   const kb = r.body.vertraegeFamilie.filter((v: any) => v.kuendbar).map((v: any) => `${v.adrnr}|${v.vertragnr}|${v.mitgliedsbeitrag}`).sort();
-  assert.deepEqual(kb, ['0000000501|1|true', '0000000501|2|false', '0000000502|2|false'], 'gekündigter Vertrag von Kim nicht mehr wählbar');
+  assert.deepEqual(kb, ['0000000501|1|true', '0000000501|2|false'], 'gekündigter Vertrag von Kim nicht mehr wählbar, abgelehnte Kündigung wieder möglich');
   assert.equal((await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [] })).status, 400);
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000502', vertragnr: '1' }] });
+  r = await kuendigen({ art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000502', vertragnr: '1' }] });
   assert.equal(r.status, 400, 'bereits gekündigt');
-  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '2' }, { adrnr: '0000000504', vertragnr: '1' }] });
+  r = await kuendigen({ art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '2' }, { adrnr: '0000000504', vertragnr: '1' }] });
   assert.equal(r.status, 400, 'fremder Vertrag');
-  assert.equal((await sql`select vertragende from tco.vertraege where adrnr = '0000000501' and vertragnr = '2'`)[0].vertragende, null, 'nichts halb ausgeführt');
+  assert.equal(await ende('0000000501', '2'), null, 'nichts halb ausgeführt');
+  assert.equal((await sql`select count(*)::int as n from tco.kuendigungen where status = 'OFFEN'`)[0].n, 0, 'abgelehnte Eingaben hinterlassen nichts');
   r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '2' }, { adrnr: '0000000502', vertragnr: '2' }] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  const k3 = r.body.id as number;
+  assert.equal(await ende('0000000501', '2'), null, 'die Prüfung beim Einreichen ändert nichts');
+  assert.equal(await ende('0000000502', '2'), null);
+  r = await admin('POST', `${K}/${k3}/freigeben`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /Schließfach gekündigt am .* zum 31\.12\..*Jugendtraining 2 \(.*Kim.*\) gekündigt/);
-  // abgelehnte Kündigungen (400) haben nichts gemeldet – der Hinweis zählt nur die zweite ausgeführte hoch
-  const kh2 = (await hinweise()).find((a) => a.key.startsWith('HINWEIS:MG_KUENDIGUNG:'))!;
-  assert.match(kh2.titel, /\(Mitglied 0000000501\) \(2×\)$/);
-  assert.match(kh2.text, /Schließfach gekündigt/);
-  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000501' and vertragnr = '2'`)[0].e, `${jahr}-12-31`);
-  assert.equal((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000502' and vertragnr = '2'`)[0].e, jugendEnde);
+  assert.equal((await admin('POST', `${K}/${k3}/senden`, { ohneMail: true })).status, 200);
+  assert.equal((await hinweise()).filter((a) => a.key.startsWith('HINWEIS:MG_KUENDIGUNG:')).length, 2, 'je freigegebener Kündigung ein Hinweis – abgelehnte melden nichts');
+  assert.equal(await ende('0000000501', '2'), `${jahr}-12-31`);
+  assert.equal(await ende('0000000502', '2'), jugendEnde);
   assert.equal((await sql`select austritt from tco.mitglieder where adrnr = '0000000501'`)[0].austritt, null, 'kein Austritt ohne Mitgliedsbeitrag');
-  assert.match(r.body.dateiname, /^Kuendigungsbestaetigung_Portal_Paula\.pdf$/);
 
   // eigener Mitgliedsbeitrag in der Auswahl = Mitgliedschaft: Austritt 31.12. des laufenden Jahres, alle eigenen Verträge enden
   r = await paula('POST', `${M}/meine/kuendigung`, { art: 'VERTRAG', bestaetigung: true, vertraege: [{ adrnr: '0000000501', vertragnr: '1' }] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  const k4 = r.body.id as number;
+  assert.match(r.body.text, /Eingereicht: Mitgliedschaft gekündigt am .* zum 31\.12\./);
+  assert.equal((await sql`select art from tco.kuendigungen where id = ${k4}`)[0].art, 'MITGLIEDSCHAFT');
+  r = await paula('GET', `${M}/meine`);
+  assert.equal(r.body.gekuendigt, false, 'eingereicht, aber noch nicht ausgetreten');
+  assert.ok(r.body.vertraege.every((v: any) => v.adrnr !== '0000000501' || !v.kuendbar), 'eigene Verträge warten mit der Mitgliedschaft');
+  r = await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', bestaetigung: true });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Kündigung der Mitgliedschaft ist bereits eingereicht/);
+  assert.equal((await sql`select austritt from tco.mitglieder where adrnr = '0000000501'`)[0].austritt, null);
+  r = await admin('POST', `${K}/${k4}/freigeben`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /Mitgliedschaft gekündigt am .* zum 31\.12\./);
+  assert.equal((await admin('POST', `${K}/${k4}/senden`, { ohneMail: true })).status, 200);
   const [m] = await sql`select austritt::text as a from tco.mitglieder where adrnr = '0000000501'`;
   assert.equal(m.a, `${jahr}-12-31`);
   assert.ok((await sql`select vertragende::text as e from tco.vertraege where adrnr = '0000000501'`).every((v) => v.e === `${jahr}-12-31`));
-  assert.ok(r.body.pdf);
   r = await paula('GET', `${M}/meine`);
   assert.equal(r.body.gekuendigt, true);
   assert.equal((await paula('POST', `${M}/meine/kuendigung`, { art: 'MITGLIEDSCHAFT', bestaetigung: true })).status, 400, 'nur einmal');
   assert.ok((await sql`select count(*)::int as n from core.change_header where object_type = 'MITGLIED' and action = 'KUENDIGUNG'`)[0].n >= 2);
+  assert.ok((await sql`select count(*)::int as n from core.change_header where object_type = 'KUENDIGUNG'`)[0].n >= 4, 'Einreichen, Freigabe, Ablehnung und Abschluss mit Änderungsbeleg');
 });
 
 test('Sperre: eigenes Mitglied in „Meine Mitgliedschaft“ sperrbar, fremdes nicht; Vorstand und Mitglied blockieren sich gegenseitig', async () => {

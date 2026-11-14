@@ -48,6 +48,15 @@ export const vertragsEnde = (v: { art: string }, h = heute()) => (istJugend(v) ?
 export async function meineLesen(db: Db, benutzerId: string) {
   const adrnr = await eigeneAdrnr(db, benutzerId);
   const d = await detailLesen(db, adrnr);
+  // eingereichte Kündigungen (#232): bis zur Freigabe durch den Vorstand ändert sich an den Verträgen nichts
+  const kuendigungen = (await db`
+    select id::int as id, status, art, vertraege, text, eingang::text as eingang, ablehnung from tco.kuendigungen
+     where adrnr = ${adrnr} and (status in ('OFFEN', 'FREIGEGEBEN') or (status = 'ABGELEHNT' and bearbeitet_am > now() - interval '30 days'))
+     order by id desc`) as unknown as { id: number; status: string; art: string; vertraege: { adrnr: string; vertragnr: string }[]; text: string; eingang: string; ablehnung: string | null }[];
+  const wartend = kuendigungen.filter((k) => k.status === 'OFFEN');
+  const mitgliedschaftWartet = wartend.some((k) => k.art === 'MITGLIEDSCHAFT');
+  const eingereicht = (v: { adrnr: string; vertragnr: string; eigen?: boolean }) =>
+    (mitgliedschaftWartet && v.adrnr === adrnr) || wartend.some((k) => k.vertraege.some((x) => x.adrnr === v.adrnr && x.vertragnr === v.vertragnr));
   const zahltSelbst = !d.bank.adrnrkih;
   return {
     mitglied: d.mitglied, titel: d.titel, trainer: d.trainer, kanal: d.kanal, spieler: d.spieler,
@@ -58,14 +67,15 @@ export async function meineLesen(db: Db, benutzerId: string) {
       mandatsref: d.bank.mandatsref,
     },
     familie: d.familie,
-    vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && !v.vertragende, endeBei: vertragsEnde(v), mitgliedsbeitrag: istMitgliedsbeitrag(v) })),
+    vertraege: d.vertraege.map((v) => ({ ...v, kuendbar: v.laeuft && !v.vertragende && !eingereicht(v), endeBei: vertragsEnde(v), mitgliedsbeitrag: istMitgliedsbeitrag(v) })),
     // Vertragsbaum mit allen verknüpften Personen; kündbar sind nur eigene Verträge und die von Personen, die über mich zahlen
     vertraegeFamilie: d.vertraegeFamilie.map((v) => ({
       ...v, endeBei: vertragsEnde(v), mitgliedsbeitrag: istMitgliedsbeitrag(v),
-      kuendbar: v.laeuft && !v.vertragende && d.vertraege.some((x) => x.adrnr === v.adrnr && x.vertragnr === v.vertragnr),
+      kuendbar: v.laeuft && !v.vertragende && !eingereicht(v) && d.vertraege.some((x) => x.adrnr === v.adrnr && x.vertragnr === v.vertragnr),
     })),
     kuendigung: { mitgliedschaft: endeJahr(), jugend: endeJugend(), heute: heute() },
     gekuendigt: !!d.mitglied.austritt,
+    kuendigungen: kuendigungen.map(({ id, status, text, eingang, ablehnung }) => ({ id, status, text, eingang, ablehnung })),
   };
 }
 
@@ -97,6 +107,11 @@ export async function bankAendern(tx: Db, benutzerId: string, b: { iban: string;
 }
 
 export interface Kuendigung { art: 'MITGLIEDSCHAFT' | 'VERTRAG'; adrnr?: string | null; vertragnr?: string | null; grund?: string | null }
+/**
+ * Freigabe durch den Vorstand (#232, kuendigung.ts): Die Kündigung wird später ausgeführt, als sie eingereicht wurde –
+ * stichtag = Tag des Eingangs (danach richten sich die Fristen), adrnr = das Mitglied, das gekündigt hat.
+ */
+export interface KuendigungZeit { stichtag?: string; adrnr?: string }
 
 /**
  * Kündigung durch das Mitglied selbst. Kündigungsdatum = heute; Mitgliedschaft und Verträge enden zum 31.12. des laufenden
@@ -104,9 +119,9 @@ export interface Kuendigung { art: 'MITGLIEDSCHAFT' | 'VERTRAG'; adrnr?: string 
  * Verträge auch für Personen, die über das Mitglied zahlen. Anschließend Kündigungsbestätigung (PDF) erzeugen, in der
  * Mitgliederakte ablegen (Paperless) und per E-Mail (n8n) an das Mitglied senden; der Vorstand erhält eine Kopie.
  */
-export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Verein, benutzer: string): Promise<{ text: string; adrnr: string; betroffen: string; ende: string }> {
-  const eigene = await eigeneAdrnr(tx, benutzerId);
-  const h = heute();
+export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Verein, benutzer: string, o: KuendigungZeit = {}): Promise<{ text: string; adrnr: string; betroffen: string; ende: string }> {
+  const eigene = o.adrnr ?? await eigeneAdrnr(tx, benutzerId);
+  const h = o.stichtag ?? heute();
   const d = await detailLesen(tx, eigene);
   let text: string;
   let betroffen = eigene;
@@ -141,8 +156,8 @@ export async function kuendigen(tx: Db, benutzerId: string, k: Kuendigung, v: Ve
  * Mehrere Verträge in einem Schritt kündigen (Dialog „Kündigen“ mit Mehrfachauswahl). Ist der eigene Mitgliedsbeitrag dabei,
  * endet die Mitgliedschaft (Austritt, alle eigenen Verträge enden); Verträge anderer Personen werden einzeln beendet.
  */
-export async function kuendigenMehrere(tx: Db, benutzerId: string, liste: { adrnr: string; vertragnr: string }[], grund: string | null, v: Verein, benutzer: string) {
-  const eigene = await eigeneAdrnr(tx, benutzerId);
+export async function kuendigenMehrere(tx: Db, benutzerId: string, liste: { adrnr: string; vertragnr: string }[], grund: string | null, v: Verein, benutzer: string, o: KuendigungZeit = {}) {
+  const eigene = o.adrnr ?? await eigeneAdrnr(tx, benutzerId);
   const d = await detailLesen(tx, eigene);
   const wahl = [...new Map(liste.map((x) => [`${leer(x.adrnr)}|${leer(x.vertragnr)}`, x])).values()].map((x) => {
     const vt = d.vertraege.find((y) => y.adrnr === leer(x.adrnr) && y.vertragnr === leer(x.vertragnr));
@@ -152,10 +167,10 @@ export async function kuendigenMehrere(tx: Db, benutzerId: string, liste: { adrn
   });
   const austritt = !d.mitglied.austritt && wahl.some((vt) => vt.eigen && istMitgliedsbeitrag(vt));
   const ergebnisse: Awaited<ReturnType<typeof kuendigen>>[] = [];
-  if (austritt) ergebnisse.push(await kuendigen(tx, benutzerId, { art: 'MITGLIEDSCHAFT', grund }, v, benutzer));
+  if (austritt) ergebnisse.push(await kuendigen(tx, benutzerId, { art: 'MITGLIEDSCHAFT', grund }, v, benutzer, o));
   for (const vt of wahl) {
     if (austritt && vt.eigen) continue; // endet mit der Mitgliedschaft
-    ergebnisse.push(await kuendigen(tx, benutzerId, { art: 'VERTRAG', adrnr: vt.adrnr, vertragnr: vt.vertragnr, grund }, v, benutzer));
+    ergebnisse.push(await kuendigen(tx, benutzerId, { art: 'VERTRAG', adrnr: vt.adrnr, vertragnr: vt.vertragnr, grund }, v, benutzer, o));
   }
   const personen = new Set(ergebnisse.map((r) => r.betroffen));
   return {
@@ -165,13 +180,18 @@ export async function kuendigenMehrere(tx: Db, benutzerId: string, liste: { adrn
 }
 
 /** Kündigungsbestätigung drucken, ablegen und versenden (nach der Transaktion; Fehler werden als Hinweise zurückgegeben) */
-export async function kuendigungBestaetigen(db: Db, v: Verein, r: { adrnr: string; betroffen: string; text: string }, grund: string | null) {
+export async function kuendigungBestaetigen(db: Db, v: Verein, r: { adrnr: string; betroffen: string; text: string }, grund: string | null,
+  o: { ablegen?: boolean; wer?: string } = {}) {
   const hinweise: string[] = [];
+  let abgelegt = false;
   const d = await druckdatenLesen(db, r.betroffen);
   const pdf = await unterlagePdf(v, '4', d);
   const dateiname = `Kuendigungsbestaetigung_${leer(d.m.nachname)}_${leer(d.m.vorname)}.pdf`;
-  if (plAktiv(v)) {
-    await unterlageAblegen(v, '4', d.m, pdf, 'Portal').then((a) => hinweise.push(...a.warnungen)).catch((e) => hinweise.push(`Ablage in Paperless nicht möglich: ${(e as Error).message}`));
+  // o.ablegen = false: liegt schon in der Akte (erneuter Versand nach einem gescheiterten Versuch)
+  if (o.ablegen === false) abgelegt = true;
+  else if (plAktiv(v)) {
+    await unterlageAblegen(v, '4', d.m, pdf, o.wer ?? 'Portal').then((a) => { abgelegt = true; hinweise.push(...a.warnungen); })
+      .catch((e) => hinweise.push(`Ablage in Paperless nicht möglich: ${(e as Error).message}`));
   } else hinweise.push('Paperless ist nicht eingerichtet – die Bestätigung wurde nicht abgelegt.');
   const k = await kontaktLesen(db, r.adrnr);
   let gesendet = false;
@@ -181,11 +201,11 @@ export async function kuendigungBestaetigen(db: Db, v: Verein, r: { adrnr: strin
     const { betreff, text } = mailText(v, '4', k.vorname, []);
     await mailSenden(v, {
       modus: 'senden', anwendung: 'Mitglieder', objekt: r.betroffen, an: k.email, cc: v.email ?? '', betreff,
-      text: `${text}\n\n---\n${r.text}${grund ? `\nGrund: ${grund}` : ''}`, benutzer: 'Portal',
+      text: `${text}\n\n---\n${r.text}${grund ? `\nGrund: ${grund}` : ''}`, benutzer: o.wer ?? 'Portal',
       anhaenge: [{ dateiname, mime: 'application/pdf', inhalt: pdf }],
     }).then(() => { gesendet = true; }).catch((e) => hinweise.push(`E-Mail nicht gesendet: ${(e as Error).message}`));
   }
-  return { pdf: pdf.toString('base64'), dateiname, gesendet, hinweise };
+  return { pdf: pdf.toString('base64'), dateiname, gesendet, abgelegt, hinweise };
 }
 
 // ---------------------------------------------------------------------------

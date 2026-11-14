@@ -64,7 +64,7 @@ export function StartArbeitsvorrat() {
     <>
       {gruppen.filter((g) => g.aufgaben.length).map((g) => (
         <ArbeitsvorratBaum key={g.modul} liste={g.aufgaben} titel={gruppen.length > 1 ? `Arbeitsvorrat ${g.name}` : 'Arbeitsvorrat'}
-                           speicher={`portal.arbeitsvorrat.offen.${g.modul}`} onOeffnen={(a) => navigate(a.pfad)} onErledigen={erledigen}
+                           speicher={`portal.arbeitsvorrat.offen.${g.modul}`} onOeffnen={(a) => navigate(a.pfad)} onErledigen={erledigen} onNeuLaden={laden}
                            zusatz={module.find((m) => m.id === g.modul)?.arbeitsvorratZusatz} />
       ))}
     </>

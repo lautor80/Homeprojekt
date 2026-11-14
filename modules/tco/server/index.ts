@@ -340,6 +340,7 @@ const tco: ServerModule = {
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
+    { type: 'KUENDIGUNG', text: 'Kündigung durch das Mitglied (Freigabe)', permission: P_MG.display },
     { type: 'SCHADEN', text: 'Schadensmeldung', permission: P_IH.display },
     { type: 'IH_ANLAGE', text: 'Anlage (Instandhaltung)', permission: P_IH.display },
     { type: 'IH_KATEGORIE', text: 'Kategorie (Instandhaltung)', permission: P_IH.display },

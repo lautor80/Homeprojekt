@@ -7,7 +7,7 @@
  *  - Jugendwart:  alles rund um das Schnuppertraining – jede neue Anmeldung einzeln
  *  - Kassenwart:  heute erfasste Hallenbuchungen (mit den einzelnen Buchungen darunter), freigegebene Zeitnachweise der Trainer,
  *                 neue Mitgliedsanträge und Vertragswechsel – je Antrag
- *  - Vorstand:    neue Registrierungen und deren Freigabe
+ *  - Vorstand:    neue Registrierungen und deren Freigabe; Kündigungen der Mitglieder freigeben, Bestätigung prüfen und senden (#232)
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
  *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung
  *  - Dokumente:   Dokumenteneingang – Vorgänge mit Fehler und zu prüfende
@@ -309,6 +309,22 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         titel: `${r.n} Registrierung${r.n === 1 ? '' : 'en'} zu bestätigen`,
         text: 'Neue Hallennutzer warten auf Freigabe in der Platzverwaltung.',
         datum: r.seit, pfad: '/tco/platzverwaltung',
+      });
+    }
+  }
+  // Kündigungen aus „Meine Mitgliedschaft“ (#232): Der Vorstand gibt frei, prüft die Kündigungsbestätigung und sendet sie
+  if (can(req, 'tco.mitglieder:edit')) {
+    const rows = await db`
+      select k.id::int as id, k.status, k.adrnr, k.text, k.grund, k.eingang::text as eingang, k.benutzer, m.vorname, m.nachname
+        from tco.kuendigungen k join tco.mitglieder m on m.adrnr = k.adrnr
+       where k.status in ('OFFEN', 'FREIGEGEBEN') order by k.eingang, k.id`;
+    for (const r of rows) {
+      const name = `${r.vorname ?? ''} ${r.nachname ?? ''}`.trim() || r.benutzer;
+      out.push({
+        key: `KUENDIGUNG:${r.id}`, bereich: 'Vorstand', icon: 'decline', state: 'Critical',
+        titel: r.status === 'OFFEN' ? `Kündigung freigeben: ${name}` : `Kündigungsbestätigung prüfen und senden: ${name}`,
+        text: `${r.text}${r.grund ? ` Grund: ${r.grund}` : ''}`,
+        datum: r.eingang, pfad: `/tco/mitglieder?adrnr=${r.adrnr}`, aktion: { art: 'KUENDIGUNG', id: r.id },
       });
     }
   }

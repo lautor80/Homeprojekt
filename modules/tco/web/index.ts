@@ -35,7 +35,7 @@ import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
-import { zahlungZusatz } from './dashboard/Arbeitsvorrat';
+import { tcoZusatz } from './dashboard/Arbeitsvorrat';
 import { PlatzBuchen } from './platz/PlatzBuchen';
 import { Platzverwaltung } from './platz/Platzverwaltung';
 import { Serienbuchung } from './platz/Serienbuchung';
@@ -76,9 +76,9 @@ const mod: WebModule = {
   home: { component: Dashboard, permission: 'tco.dashboard:display' },
   // Ablagefeld unten in der Navigation: Dateien hineinziehen → Paperless (mit Voreinstellung)
   sideWidgets: [{ component: Ablage, permission: 'tco.upload:execute' }],
-  // Arbeitsvorrat der Startseite (#232, V2): Knopf „Zahlungsdaten“ an Einträgen „Überweisung an Einreicher“.
+  // Arbeitsvorrat der Startseite (#232, V2): Knopf „Zahlungsdaten“ an Einträgen „Überweisung an Einreicher“, „Bearbeiten“ an Kündigungen.
   // Den Hinweis „n neu“ zeigt der Kern am Menüeintrag „Start“ (web/src/arbeitsvorrat.tsx).
-  arbeitsvorratZusatz: zahlungZusatz,
+  arbeitsvorratZusatz: tcoZusatz,
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
   // modules/tco/server/index.ts; lose Apps der Stufe 2 stehen dort im Bereich „Allgemein“), geprüft in
   // server/test/menue_rollenpflege.test.ts (#232, N6). Das Zahnrad steht nur für Einstellungen (B4).

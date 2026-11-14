@@ -59,6 +59,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.kal_gruppen` | ● |  |  |  |  |  | ● |  |  |  |  |  |  |  |
 | `tco.kal_gruppen_regeln` | ● |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | `tco.kommpref` | ● |  | ● |  |  |  |  |  |  |  |  |  | ● | ● |
+| `tco.kuendigungen` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.kunden` | ● |  | ● |  |  |  |  |  |  | ● | ● |  | ● | ● |
 | `tco.mgnotiz` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.mitglieder` | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  | ● | ● |
