@@ -49,6 +49,16 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
 
   // ---------------------------------------------------------------- Funktionen innerhalb der Apps
   {
+    id: 'tco.dashboard.stufenwechsel', app: 'Vereinsübersicht', text: 'Beitragsstufenwechsel Jugend → Erwachsene',
+    beschreibung: 'In der Vereinsübersicht den Wechsel der Beitragsstufe von Jugendlichen zu Erwachsenen ausführen.',
+    permissions: ['tco.dashboard:edit'],
+  },
+  {
+    id: 'tco.sport.nuliga', app: 'Spielerdaten (nuLiga)', text: 'Abgleich mit nuLiga',
+    beschreibung: 'nuLiga-Mitgliederdaten ablegen und ID-Nr. sowie LK in die Mitglieder übernehmen.',
+    permissions: ['tco.sport:edit'],
+  },
+  {
     id: 'tco.stammdaten.sap', app: 'Stammdaten', text: 'Übernahme aus SAP',
     beschreibung: 'Reiter „Übernahme aus SAP“ in den Stammdaten: SAP-Tabellen als CSV einlesen.',
     permissions: ['tco.import:execute'],
@@ -58,6 +68,54 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     beschreibung: 'Hallenbuchungen aus EP3 holen (über n8n oder als CSV-Datei) und der Abgleich, ob im Portal Buchungen fehlen.',
     routen: ['GET /halle/import/abgleich', 'GET /halle/import/info', 'POST /halle/import/n8n', 'POST /halle/import/datei'],
     hinweis: 'Buchungen aus EP3 kommen dann nicht mehr in die Hallenabrechnung. Die Anbindung „EP3“ bleibt eingetragen.',
+  },
+  {
+    id: 'tco.halle.auto', app: 'Hallenabrechnung', text: 'Automatisch zuordnen',
+    beschreibung: 'Hallenbuchungen in einem Lauf den Rechnungen der Kunden zuordnen.',
+    routen: ['GET /halle/auto', 'POST /halle/auto'],
+  },
+  {
+    id: 'tco.halle.sammelrechnung', app: 'Hallenabrechnung', text: 'Rechnung ohne Buchung',
+    beschreibung: 'Rechnungen für mehrere Personen ohne Hallenbuchung anlegen – aus einer Namensliste, einem Foto oder einem Paperless-Dokument.',
+    routen: ['GET /halle/sammel/kandidaten', 'POST /halle/sammel/namen', 'POST /halle/sammel/rechnungen', 'POST /halle/sammel/bild',
+      'POST /halle/sammel/dokid', 'POST /halle/sammel/verwerfen', 'POST /halle/sammel'],
+  },
+  {
+    id: 'tco.halle.versand', app: 'Hallenabrechnung', text: 'Rechnungen drucken und versenden',
+    beschreibung: 'Hallenrechnungen drucken und versenden – in Paperless, per E-Mail und per WhatsApp, einzeln und gesammelt.',
+    permissions: ['tco.halle:versand'],
+    hinweis: 'Sammelversand und Versand per WhatsApp sind dann ebenfalls nicht nutzbar. Die beiden lassen sich auch einzeln abschalten.',
+  },
+  {
+    id: 'tco.halle.sammelversand', app: 'Hallenabrechnung', text: 'Sammelversand',
+    beschreibung: 'Rechnungen „In Bearbeitung“ gesammelt drucken und per E-Mail versenden.',
+    routen: ['GET /halle/sammelversand', 'GET /halle/sammelversand/mailtext', 'POST /halle/sammelversand'],
+  },
+  {
+    id: 'tco.halle.whatsapp', app: 'Hallenabrechnung', text: 'Versand per WhatsApp',
+    beschreibung: 'Hallenrechnungen über einen WhatsApp-Link an den Kunden senden.',
+    routen: ['POST /halle/whatsapp', 'POST /halle/whatsapp/bestaetigen'],
+  },
+  {
+    id: 'tco.schluessel.altdaten', app: 'Hallenschlüssel', text: 'Altdaten einfügen',
+    beschreibung: 'Frühere Schlüsselausgaben per Kopieren und Einfügen übernehmen, auf Wunsch mit Buchung auf das Kassenkonto.',
+    routen: ['POST /schluessel/altdaten/pruefen', 'POST /schluessel/altdaten'],
+  },
+  {
+    id: 'tco.platz.ep3abgleich', app: 'Platzverwaltung', text: 'EP3-Abgleich',
+    beschreibung: 'Reiter „Zugänge“: EP3-Kunden mit Benutzern verknüpfen bzw. als Hallennutzer anlegen.',
+    routen: ['GET /platz/admin/ep3', 'POST /platz/admin/ep3/:zuid/verknuepfen', 'POST /platz/admin/ep3/anlegen-alle', 'POST /platz/admin/ep3/:zuid/anlegen'],
+  },
+  {
+    id: 'tco.soll.lastschrift', app: 'Sollstellungen', text: 'Lastschriftlauf',
+    beschreibung: 'Lastschriftlauf erzeugen, als SEPA-Datei herunterladen und stornieren.',
+    permissions: ['tco.soll:edit'],
+  },
+  {
+    id: 'tco.eingang.n8n', app: 'Dokumenteneingang', text: 'E-Mail-Eingang über n8n',
+    beschreibung: 'n8n liefert eingegangene E-Mails samt Anhängen an das Portal (API-Schlüssel).',
+    permissions: ['tco.eingang:melden'],
+    hinweis: 'Die Lieferungen von n8n werden dann abgewiesen; die E-Mails bleiben im Postfach liegen.',
   },
   {
     id: F_JT_IMPORT, app: 'Abrechnung Jugendtraining', text: 'Import Trainerstunden',

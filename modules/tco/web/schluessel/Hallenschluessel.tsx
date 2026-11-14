@@ -4,6 +4,7 @@ import {
   Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
+import { useFunktion } from '@core/session';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { PdfDialog } from '@core/components/PdfDialog';
@@ -65,6 +66,8 @@ export function Hallenschluessel() {
   const [hinweise, setHinweise] = useState<string[]>([]);
   const [offen, setOffen] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('id')) || null);
   const [dlg, setDlg] = useState<null | 'ausgabe' | 'altdaten' | 'abgleich' | 'nachbuchen' | 'cfg' | 'variante'>(null);
+  /** Funktionsschalter (#232, F1): die Übernahme der Altdaten lässt sich abschalten */
+  const altdatenAn = useFunktion()('tco.schluessel.altdaten');
   const [rueck, setRueck] = useState<Zeile | null>(null);
   const laden = () => api.get<Daten>(S).then(setDaten).catch((e) => setError((e as Error).message));
   useEffect(() => {
@@ -134,7 +137,7 @@ export function Hallenschluessel() {
             <SegmentedButtonItem data-u="alle" selected={a.alle}>Alle Vorgänge</SegmentedButtonItem>
           </SegmentedButton>
           {daten.darf.edit && <Button design="Emphasized" icon="add" onClick={() => setDlg('ausgabe')}>Schlüssel ausgeben</Button>}
-          {daten.darf.admin && <Button design="Transparent" icon="paste" onClick={() => setDlg('altdaten')}>Altdaten einfügen</Button>}
+          {daten.darf.admin && altdatenAn && <Button design="Transparent" icon="paste" onClick={() => setDlg('altdaten')}>Altdaten einfügen</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="compare" onClick={() => setDlg('abgleich')}>FI-Abgleich</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="lead" tooltip="Historische Ausgaben ohne Rechnung: Ausgeber und Wert setzen, FI-Buchungen erzeugen" onClick={() => setDlg('nachbuchen')}>Altfälle buchen</Button>}
           {daten.darf.admin && <Button design="Transparent" icon="action-settings" tooltip="Einstellungen" onClick={() => setDlg('cfg')} />}

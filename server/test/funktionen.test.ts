@@ -73,7 +73,8 @@ test('Verzeichnis: Anwendung → Bereich → App → Funktion, alles an, Adminis
   assert.equal(halle.art, 'bereich');
   const abr = halle.kinder.find((k) => k.id === appId('tco', 'Hallenabrechnung'))!;
   assert.equal(abr.art, 'app');
-  assert.deepEqual(abr.kinder.map((k) => [k.id, k.art, k.text]), [[EP3, 'funktion', 'EP3-Import']]);
+  assert.deepEqual(abr.kinder.map((k) => [k.id, k.art, k.text])[0], [EP3, 'funktion', 'EP3-Import']);
+  assert.ok(abr.kinder.every((k) => k.art === 'funktion' && k.id.startsWith('tco.halle.')), 'Funktionen der Hallenabrechnung');
   assert.ok(abr.folgen.includes('Hallenpreise'), `Hallenpreise setzt „Hallenabrechnung anzeigen“ voraus: ${abr.folgen}`);
   const fi = alle.find((k) => k.id === appId('tco', 'FI-Belege'))!;
   assert.deepEqual(fi.kinder.map((k) => k.id), ['tco.fi.bankimport', 'tco.fi.manuell', 'tco.fi.geldkonto', 'tco.fi.storno', 'tco.fi.periode']);

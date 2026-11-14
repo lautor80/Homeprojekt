@@ -73,7 +73,8 @@ export function Hallenabrechnung() {
   const [csvAblage, setCsvAblage] = useState(false);
   /** Dialog vor dem EP3-Import über n8n: Standardzeitraum oder Buchungen ab Datum nachladen (#103) */
   const [ep3Dlg, setEp3Dlg] = useState(false);
-  const ep3An = useFunktion()('tco.halle.ep3import');
+  const an = useFunktion();
+  const ep3An = an('tco.halle.ep3import');
   /**
    * EP3-Abgleich (#20): simulierter Import (nichts wird geschrieben) – fehlen im Portal Buchungen, die in den letzten 5 Tagen in EP3
    * angelegt wurden? Ohne Abweichung sind die Knöpfe „EP3 importieren“ und „CSV-Datei“ ausgeblendet.
@@ -238,9 +239,9 @@ export function Hallenabrechnung() {
         {edit && <Button icon="synchronize" design="Transparent" disabled={abgleichLaeuft} tooltip={abgleich?.text ?? 'EP3 abgleichen (nur prüfen, nichts wird importiert)'} onClick={abgleichen} />}
         {edit && importNoetig && <Button icon="download-from-cloud" onClick={() => setEp3Dlg(true)}>EP3 importieren</Button>}
         {edit && importNoetig && <Button icon="upload" onClick={() => setCsvAblage(true)}>CSV-Datei</Button>}
-        {edit && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
-        {edit && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
-        {versand && <Button icon="paper-plane" tooltip="Rechnungen „In Bearbeitung“ gesammelt drucken und per E-Mail versenden" onClick={() => setSammelVersand(true)}>Sammelversand</Button>}
+        {edit && an('tco.halle.auto') && <Button icon="add-process" onClick={() => setAuto(true)}>Automatisch zuordnen</Button>}
+        {edit && an('tco.halle.sammelrechnung') && <Button icon="create-form" onClick={() => setSammel(true)}>Rechnung ohne Buchung</Button>}
+        {versand && an('tco.halle.sammelversand') && <Button icon="paper-plane" tooltip="Rechnungen „In Bearbeitung“ gesammelt drucken und per E-Mail versenden" onClick={() => setSammelVersand(true)}>Sammelversand</Button>}
         <Button icon="lead" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise</Button>
       </>}
     >
@@ -382,6 +383,8 @@ function PersonPanel(props: {
   onMailtext: (nr: string) => void; onZahlungen: (r: Rechnung) => void; onVersionen: (i: PaperlessInfo) => void; onConfirm: (c: Confirm) => void;
 }) {
   const { d, rgnr, setRgnr, rechnung, edit, versand, tun } = props;
+  /** Funktionsschalter (#232, F1): der Versand per WhatsApp lässt sich abschalten */
+  const waAn = useFunktion()('tco.halle.whatsapp');
   const k = d.kontakt;
   const aenderbar = d.rechnungen.filter((r) => r.aenderbar);
   const vergangene = d.buchungen.filter((b) => b.vergangen);
@@ -415,7 +418,7 @@ function PersonPanel(props: {
     { text: 'Druckvoransicht', icon: 'show', onClick: () => props.onPdf(r.rgnr_txt) },
     { text: 'Drucken und in Paperless ablegen', icon: 'print', hidden: !versand, onClick: () => tun(post(`${rgUrl(r.rgnr_txt)}/drucken`)) },
     { text: `Per E-Mail senden${d.kanal === 'E' ? ' (bevorzugt)' : ''}`, icon: 'email', hidden: !versand, disabled: !k?.email, onClick: () => props.onMail([r.rgnr_txt]) },
-    { text: `Per WhatsApp senden${d.kanal === 'W' ? ' (bevorzugt)' : ''}`, icon: 'discussion', hidden: !versand, disabled: !k?.mobil, onClick: () => props.onWa([r.rgnr_txt]) },
+    { text: `Per WhatsApp senden${d.kanal === 'W' ? ' (bevorzugt)' : ''}`, icon: 'discussion', hidden: !versand || !waAn, disabled: !k?.mobil, onClick: () => props.onWa([r.rgnr_txt]) },
     { text: 'E-Mail-Text anzeigen', icon: 'document-text', onClick: () => props.onMailtext(r.rgnr_txt) },
     { text: 'Als versendet markieren', icon: 'paper-plane', hidden: !edit, disabled: ['3', '4', '6'].includes(r.status), onClick: () => tun(post(`${rgUrl(r.rgnr_txt)}/status`, { aktion: 'versendet' })) },
     {

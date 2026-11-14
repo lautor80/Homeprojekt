@@ -6,6 +6,7 @@ import {
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
+import { useFunktion } from '@core/session';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { TCO } from '../util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -39,6 +40,8 @@ const STATUS: Record<Registrierung['status'], { text: string; state: 'Critical' 
 
 export function Zugaenge({ aktion }: { aktion: Aktion }) {
   const [sicht, setSicht] = useState<'reg' | 'ep3'>('reg');
+  /** Funktionsschalter (#232, F1): der EP3-Abgleich lässt sich abschalten */
+  const ep3An = useFunktion()('tco.platz.ep3abgleich');
   const [offen, setOffen] = useState<number | null>(null);
   useEffect(() => { api.get<Registrierung[]>(`${PA}/registrierungen`).then((r) => setOffen(r.length)).catch(() => undefined); }, []);
   return (
@@ -46,11 +49,11 @@ export function Zugaenge({ aktion }: { aktion: Aktion }) {
       <Toolbar design="Transparent">
         <SegmentedButton onSelectionChange={(e) => setSicht((e.detail.selectedItems[0] as HTMLElement).dataset.s as 'reg' | 'ep3')}>
           <SegmentedButtonItem data-s="reg" selected={sicht === 'reg'}>Registrierungen{offen ? ` (${offen})` : ''}</SegmentedButtonItem>
-          <SegmentedButtonItem data-s="ep3" selected={sicht === 'ep3'}>EP3-Abgleich</SegmentedButtonItem>
+          {ep3An ? <SegmentedButtonItem data-s="ep3" selected={sicht === 'ep3'}>EP3-Abgleich</SegmentedButtonItem> : null}
         </SegmentedButton>
         <ToolbarSpacer />
       </Toolbar>
-      {sicht === 'reg' ? <Registrierungen aktion={aktion} onOffen={setOffen} /> : <Ep3Abgleich aktion={aktion} />}
+      {sicht === 'reg' || !ep3An ? <Registrierungen aktion={aktion} onOffen={setOffen} /> : <Ep3Abgleich aktion={aktion} />}
     </>
   );
 }
