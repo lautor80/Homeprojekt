@@ -82,8 +82,14 @@ test('Sollstellung: Vorschlag, Lauf, Datei, Verbuchung in FI, Storno', async () 
   assert.match(r.body.message, /Gläubiger-ID/);
   r = await call('PUT', `${S}/cfg`, { gl_name: 'Tennisclub Oberthal e.V.', iban: 'DE02 1203 0000 0000 2020 51', bic: '', gl_id: 'DE98ZZZ09999999999', bankkonto: '1200', vorlauf: 2 });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  // IBAN und BIC gehören dem Verein (#232, E3): die mitgeschickte IBAN der Gläubigerdaten zählt nicht mehr
+  await sql`update tco.verein set iban = null, bic = null where id = 1`;
+  r = await call('GET', `${S}/init`);
+  assert.deepEqual(r.body.fehlt, ['IBAN (Verein und Bank)']);
+  await sql`update tco.verein set iban = 'DE02 1203 0000 0000 2020 51' where id = 1`;
   r = await call('GET', `${S}/init`);
   assert.deepEqual(r.body.fehlt, []);
+  assert.equal(r.body.cfg.iban, 'DE02120300000000202051');
 
   // ---- Vorschlag Januar 2027 (Beitragsmonat): MB + Spende + JT
   r = await call('GET', `${S}/faelligkeit?sollper=202701`);
