@@ -27,6 +27,8 @@ import { MEIN_TITEL, MeinVorgangDialog, type MeinTyp } from './MeinVorgang';
 const MG = `${TCO}/mitglieder/meine`;
 
 interface Meine {
+  /** E-Mail-Adresse als unzustellbar vermerkt – mit einer neuen Adresse entfällt der Vermerk */
+  emailUnzustellbar?: { adresse: string; seit: string } | null;
   mitglied: {
     adrnr: string; anrede: string; vorname: string; nachname: string; strasse: string; plz: string; ort: string; telefon: string; mobil: string; email: string;
     geburtsdatum: string | null; eintritt: string | null; austritt: string | null; mitglnrn: string; datenschutz: boolean; bildrechte: boolean; aktiv: boolean;
@@ -106,6 +108,12 @@ export function MeineMitgliedschaft() {
     <AppPage title="Meine Daten" subtitle="Meine Mitgliedschaft: Kontakt, Bankverbindung, Verträge und Änderungen">
       {error && !dlg && !kuend && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <SperrHinweis s={sperre} />
+      {d.emailUnzustellbar && (
+        <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          E-Mails an {d.emailUnzustellbar.adresse} kommen nicht an (seit {dat(d.emailUnzustellbar.seit)}) – der Verein kann dich per E-Mail nicht erreichen.
+          Bitte trage unter „Kontakt“ deine aktuelle E-Mail-Adresse ein.
+        </MessageStrip>
+      )}
       {schluessel.map((q) => (
         <MessageStrip key={q.token} design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Du hast am {dat(q.datum)} einen Hallenschlüssel bekommen – bitte quittiere kurz den Erhalt.{' '}
