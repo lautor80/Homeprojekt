@@ -5,6 +5,7 @@ import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStri
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
+import { DialogFuss } from '@core/components/DialogFuss';
 import { Empty, Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
@@ -260,11 +261,11 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
       )}
       {mailtext && (
         <Dialog open headerText={mailtext.v.betreff || 'Mailtext'} style={{ width: 'min(50rem, 96vw)' }} onClose={() => setMailtext(null)}
-                footer={<Bar endContent={<>
+                footer={<DialogFuss>
                   {mailtext.m.text && <Button icon="pdf-attachment" onClick={() => setMailPdf(mailtext.v)}>PDF-Vorschau</Button>}
                   {mailtext.m.text && !mailtext.m.paperless_id && <Button design="Emphasized" icon="upload-to-cloud" disabled={busy} onClick={() => mailAblegen(mailtext.v)}>Als PDF in Paperless ablegen</Button>}
                   <Button design="Transparent" onClick={() => setMailtext(null)}>Schließen</Button>
-                </>} />}>
+                </DialogFuss>}>
           <div className="portal-muted portal-small" style={{ marginBottom: '0.5rem' }}>
             Von: {mailtext.m.von || '–'}<br />An: {mailtext.m.an || '–'}<br />Datum: {mailtext.m.datum ? new Date(mailtext.m.datum).toLocaleString('de-DE') : '–'}
             {mailtext.m.anhaenge.length ? <><br />Anhänge: {mailtext.m.anhaenge.join(', ')}</> : null}
@@ -350,11 +351,11 @@ function ZuordnenDialog({ v, onClose, onDone, onBearbeiten }: { v: Vorgang; onCl
 
   return (
     <Dialog open headerText={`Regel zuordnen – ${v.betreff || '(ohne Betreff)'}`} style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<DialogFuss>
               <Button design="Emphasized" disabled={busy || !r?.anwendbar} onClick={anwenden}>Zuordnen und anwenden</Button>
               <Button design="Transparent" icon="edit" disabled={!r} onClick={() => r && onBearbeiten(r.id)}>Regel bearbeiten …</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
-            </>} />}>
+            </DialogFuss>}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : !liste.length ? <Text>Es gibt noch keine Regeln.</Text> : <>
         <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.5rem 1rem', alignItems: 'center' }}>
