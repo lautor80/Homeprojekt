@@ -904,7 +904,8 @@ test('Platzverwaltung → Belegung: freie Zeit direkt eintragen (#11)', async ()
 });
 
 test('Platzverwaltung → Belegung: Termin ändern und kopieren (#11)', async () => {
-  const d = tag(13);
+  // nicht auf einen Samstag (wiederkehrendes Schnuppertraining 09:00–10:00 kollidiert mit der Buchung um 09:00)
+  const d = [13, 17].map(tag).find((x) => new Date(`${x}T12:00:00Z`).getUTCDay() !== 6)!;
   const d2 = tag(14);
   let r = await admin('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '09:00', bis: '10:00', adrnr: ANNA, text: 'Einzel' });
   assert.equal(r.status, 200, JSON.stringify(r.body));

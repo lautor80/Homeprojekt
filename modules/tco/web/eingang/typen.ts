@@ -49,6 +49,8 @@ export interface Dokument {
 export interface Vorgang {
   id: number; postfach: string; von: string | null; von_name: string | null; betreff: string | null; datum: string | null; eingang_am: string;
   status: string; hinweis: string | null; korrespondent: string | null; mitglied_adrnr: string | null; mail_aktion: MailAktion | null; mail_erledigt: boolean;
+  /** Regel für die E-Mail selbst (automatisch gewählt oder von Hand zugeordnet) */
+  regel_id: number | null; regel_name: string | null;
   dokumente: Dokument[];
 }
 export interface VorgangListe { vorgaenge: Vorgang[]; gekuerzt: boolean; offen: { pruefen: number; fehler: number } }
