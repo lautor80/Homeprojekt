@@ -7,6 +7,7 @@ import { ForcedPasswordPage, KennwortSetzenPage, LoginPage, SetupPage } from './
 import { allModules, enabledModules } from './modules';
 import { Shell } from './shell/Shell';
 import { applyBranding } from './branding';
+import { pushBeiAbmeldung } from './push';
 import { zielAbholen, zielMerken, zielVergessen } from './anmeldeziel';
 
 type State =
@@ -65,6 +66,8 @@ export function App() {
   }, []);
 
   const logout = useCallback(async () => {
+    // Push-Nachrichten: Dieses Gerät bekommt nach dem Abmelden nichts mehr für diesen Benutzer
+    await pushBeiAbmeldung();
     await api.post('/api/auth/logout').catch(() => {});
     zurStartseite();
     await load();

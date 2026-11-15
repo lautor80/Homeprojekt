@@ -36,6 +36,8 @@ import { funktionAktiv, modulId } from '../../../../server/src/funktionsschalter
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
 import { familieLoesen, familieVerknuepfen } from './familie.js';
+import { pushAnRecht, pushStill } from '../../../../server/src/lib/push.js';
+import { PUSH } from '../push.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
@@ -276,6 +278,8 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     // Freigabe durch den Vorstand (#232): hier wird nur eingereicht – ausgeführt wird die Kündigung mit der Freigabe (kuendigung.ts)
     const v = await vereinLesen();
     const r = await change(req, (tx) => einreichen(tx, benutzerId(req), k, v, benutzer(req)), { action: 'KUENDIGUNG_EINGEREICHT', reason: k.grund ?? null });
+    // Push aufs Handy an den Vorstand (Freigabe im Arbeitsvorrat)
+    pushStill(() => pushAnRecht(P_MG.edit, PUSH.kuendigung, { titel: 'Kündigung eingereicht', text: benutzer(req), pfad: '/' }, req.user?.id));
     return { id: r.id, eingereicht: true, text: `Deine Kündigung ist eingegangen und wird vom Vorstand freigegeben. Danach erhältst du die Kündigungsbestätigung per E-Mail. Eingereicht: ${r.text}` };
   });
 

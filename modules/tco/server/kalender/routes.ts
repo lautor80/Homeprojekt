@@ -9,7 +9,8 @@ import {
   eventLesen, eventSpeichern, eventsLesen, familieLesen, familieRueckmelden, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, gruppeSpeichern,
   KATEGORIEN, meineGruppen, mitgliederAuswahl, rueckmelden, rueckmeldungLoeschen, teilnehmer, teilnehmerCsv, type Kategorie,
 } from './logik.js';
-import { einladungSenden, einladungVermerken, einladungVorschau } from './einladung.js';
+import { einladungSenden, einladungVermerken, einladungVorschau, terminText } from './einladung.js';
+import { PUSH, pushAnMitglieder } from '../push.js';
 import { gruppeZurLiga, spielplanEvent, spielplanLesen } from './spielplan.js';
 import { eventRegelnAnwenden, eventRegelnLesen, eventRegelnSpeichern, eventsMasseAendern, gruppeNachRegeln, REGEL_FELDER, type RegelFeld } from './zuordnung.js';
 
@@ -202,7 +203,13 @@ export async function kalenderRoutes(app: FastifyInstance) {
   app.put('/kalender/:id', pflege, async (req) => {
     const { id: eid } = id.parse(req.params);
     const b = eventSchema.parse(req.body);
+    const vorher = await eventLesen(DB, eid);
     await change(req, (tx) => eventSpeichern(tx, eid, { ...b, beschreibung: b.beschreibung ?? null, ort: b.ort ?? null, ende: b.ende ?? null, anmeldeschluss: b.anmeldeschluss ?? null, max_teilnehmer: b.max_teilnehmer ?? null }, wer(req)), { action: 'KAL_EVENT' });
+    // gerade abgesagt: Push aufs Handy an alle, die zugesagt haben (oder „vielleicht“), und ihre Familien
+    if (b.abgesagt && !vorher.abgesagt) {
+      const dabei = await DB`select adrnr from tco.kal_anmeldungen where event_id = ${eid} and status in ('ZUSAGE', 'VIELLEICHT')`;
+      pushAnMitglieder(DB, dabei.map((a) => a.adrnr as string), PUSH.absage, { titel: `Abgesagt: ${b.titel}`, text: terminText(vorher), pfad: `/tco/kalender?veranstaltung=${eid}` });
+    }
     return { id: eid, text: b.abgesagt ? `„${b.titel}“ ist abgesagt.` : `„${b.titel}“ gespeichert.` };
   });
 
@@ -249,8 +256,10 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const { id: eid } = id.parse(req.params);
     const b = z.object({ an: z.enum(['OFFEN', 'ALLE']).default('OFFEN'), betreff: z.string().trim().min(1, 'Bitte einen Betreff angeben.').max(200), text: z.string().trim().min(1, 'Bitte einen Text angeben.').max(10_000) }).parse(req.body);
     const e = await eventLesen(DB, eid);
-    const r = await einladungSenden(DB, await vereinLesen(), e, { ...b, wer: wer(req) });
+    const { adrnrs, ...r } = await einladungSenden(DB, await vereinLesen(), e, { ...b, wer: wer(req) });
     await change(req, (tx) => einladungVermerken(tx, e, b.an, r, wer(req)), { action: 'KAL_EINLADUNG' });
+    // zusätzlich Push aufs Handy – an die Eingeladenen und ihre Familien (je Benutzer abschaltbar)
+    pushAnMitglieder(DB, adrnrs, PUSH.einladung, { titel: `Einladung: ${e.titel}`, text: terminText(e), pfad: `/tco/kalender?veranstaltung=${eid}` });
     const teile = [`${r.gesendet} ${r.gesendet === 1 ? 'Einladung' : 'Einladungen'} gesendet`];
     if (r.ohneMail.length) teile.push(`${r.ohneMail.length} ohne E-Mail-Adresse`);
     if (r.fehler.length) teile.push(`${r.fehler.length} nicht zugestellt`);

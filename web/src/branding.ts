@@ -21,4 +21,29 @@ export function applyBranding(settings: Record<string, unknown>): void {
     if (color) root.setProperty(v, color);
     else root.removeProperty(v);
   }
+  appSymbol(settings['org.logo'] as string | undefined);
+}
+
+/**
+ * Symbol für „Zum Home-Bildschirm“ (iPhone): das Logo der Organisation, eingepasst in ein weißes Quadrat –
+ * ohne Logo bleibt das Standardsymbol aus index.html. Scheitert das Zeichnen, bleibt es ebenfalls dabei.
+ */
+function appSymbol(logo?: string): void {
+  if (!logo) return;
+  const bild = new Image();
+  bild.onload = () => {
+    try {
+      const n = 180, rand = 14;
+      const c = document.createElement('canvas');
+      c.width = n; c.height = n;
+      const g = c.getContext('2d');
+      if (!g || !bild.width || !bild.height) return;
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, n, n);
+      const f = Math.min((n - 2 * rand) / bild.width, (n - 2 * rand) / bild.height);
+      g.drawImage(bild, (n - bild.width * f) / 2, (n - bild.height * f) / 2, bild.width * f, bild.height * f);
+      document.querySelector('link[rel="apple-touch-icon"]')?.setAttribute('href', c.toDataURL('image/png'));
+    } catch { /* Standardsymbol bleibt */ }
+  };
+  bild.src = logo;
 }

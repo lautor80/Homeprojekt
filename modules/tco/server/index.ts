@@ -173,6 +173,8 @@ async function routes(app: FastifyInstance) {
   await schluesselRoutes(app);
 }
 
+import { TCO_PUSH_ARTEN } from './push.js';
+
 const tco: ServerModule = {
   id: 'tco',
   name: 'TC Oberthal',
@@ -321,6 +323,7 @@ const tco: ServerModule = {
   // ausgewählte, noch nicht gesicherte Platzzeit (Sperre mit Zeitraum, Schlüssel = Platz-ID)
   sperrObjekte: [{ type: 'PLATZZEIT', text: 'Platzzeit', permission: `${P_PLATZ.buchen}|${P_PLATZ.admin}|${P_PLATZ.serie}` }],
   registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Zum Vereinsportal registrieren', text: 'Zugang für Mitglieder und Hallennutzer – Mitglieder nach Prüfung durch den Verein, Hallennutzer nach Bestätigung der E-Mail-Adresse.' },
+  pushArten: TCO_PUSH_ARTEN,
   auditObjects: [
     { type: 'REGISTRIERUNG', text: 'Registrierung Hallennutzer', permission: P_PLATZ.admin },
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },

@@ -133,7 +133,8 @@ export async function einladungSenden(db: Db, v: Verein, e: Event, o: { an: An; 
   const gewaehlt = o.an === 'OFFEN' ? alle.filter((p) => !p.status) : alle;
   if (!gewaehlt.length) throw new BusinessError(o.an === 'OFFEN' ? 'Alle Eingeladenen haben sich bereits zurückgemeldet.' : 'Für diese Veranstaltung gibt es keine Mitglieder zum Einladen.');
   const ohneMail = gewaehlt.filter((p) => !p.email).map((p) => p.name);
-  const r = { gesendet: 0, fehler: [] as string[], ohneMail, ohneZugang: 0 };
+  // adrnrs: alle Gewählten (auch ohne E-Mail-Adresse) – für die Push-Nachricht aufs Handy
+  const r = { gesendet: 0, fehler: [] as string[], ohneMail, ohneZugang: 0, adrnrs: gewaehlt.map((p) => p.adrnr) };
   for (const p of jeAdresse(gewaehlt)) {
     const persoenlich = { Vorname: p.vorname, Zugang: p.zugang ? '' : ZUGANG_HINWEIS };
     if (!p.zugang) r.ohneZugang++;

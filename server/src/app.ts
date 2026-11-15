@@ -27,6 +27,7 @@ import { tabellenRoutes } from './routes/tabellen.js';
 import { variantenRoutes } from './routes/varianten.js';
 import { funktionenRoutes, registerFunktionen } from './routes/funktionen.js';
 import { arbeitsvorratRoutes } from './routes/arbeitsvorrat.js';
+import { pushRoutes } from './routes/push.js';
 import { laeuft, stoerungMelden } from './lib/hinweise.js';
 import { paperlessMelder } from './lib/paperless.js';
 import { schalterLaden } from './lib/funktionen.js';
@@ -83,6 +84,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(variantenRoutes);
   await app.register(funktionenRoutes);
   await app.register(arbeitsvorratRoutes);
+  await app.register(pushRoutes);
   // Arbeitsvorrat (#232, V1): Störungen von Paperless melden – je Zugang (Rechnername) ein Hinweis, der sich nach dem nächsten Erfolg schließt
   paperlessMelder({
     stoerung: (wo, text) => stoerungMelden({
@@ -103,7 +105,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   if (fs.existsSync(config.webDist)) {
     // index.html nie aus dem Zwischenspeicher (sonst bliebe nach einem Update die alte Oberfläche, auch nach „Neu laden“);
     // die übrigen Dateien tragen eine Prüfsumme im Namen und dürfen lange gespeichert werden
-    const ohneCache = (p: string) => p.endsWith('index.html');
+    const ohneCache = (p: string) => p.endsWith('index.html') || p.endsWith('sw.js');
     await app.register(fastifyStatic, {
       root: config.webDist, wildcard: false,
       setHeaders: (res, p) => {

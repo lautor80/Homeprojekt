@@ -31,6 +31,8 @@ export interface ServerModule {
   id: string;
   name: string;
   permissions: PermissionDef[];
+  /** Arten von Push-Nachrichten aufs Handy, die Benutzer je Art ein- und ausschalten (lib/push.ts) */
+  pushArten?: import('./lib/push.js').PushArt[];
   /**
    * Objekttypen mit Änderungsbelegen und die Berechtigung, mit der ein Benutzer
    * die Historie eines einzelnen Objekts sehen darf (Button "Änderungshistorie").
