@@ -182,6 +182,8 @@ export async function mailRoutes(app: FastifyInstance) {
     const wer = req.user!.displayName || req.user!.username;
     const r = await mailSenden({
       modus: 'senden', anwendung: 'Test', objekt: 'TESTMAIL', an, benutzer: wer, anhaenge: [],
+      // auch an eine als unzustellbar vermerkte Adresse: so lässt sich prüfen, ob sie wieder erreichbar ist
+      sperre_ignorieren: true,
       betreff: `${org}: Testmail aus dem Portal`,
       text: `Diese Testmail wurde von ${wer} im Portal ausgelöst (Administration → Schnittstellen).\n\nWenn sie ankommt, funktioniert der Versand über n8n.`,
     });

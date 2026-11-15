@@ -39,6 +39,7 @@ import { familieLoesen, familieVerknuepfen } from './familie.js';
 import { pushAnRecht, pushStill } from '../../../../server/src/lib/push.js';
 import { PUSH } from '../push.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
+import { emailUnzustellbarAufheben, emailUnzustellbarSetzen } from '../emailsperre.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
@@ -554,6 +555,19 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const { adrnr: a } = pAdr.parse(req.params);
     await change(req, (tx) => kopfSichern(tx, a, kopfSchema.parse(req.body)));
     return { text: 'Stammdaten gesichert.' };
+  });
+
+  // E-Mail-Adresse als unzustellbar vermerken bzw. den Vermerk zurücknehmen (../emailsperre.ts) – der Grund steht im Änderungsbeleg
+  const grundSchema = z.object({ grund: z.string().trim().min(1, 'Bitte einen Grund angeben.').max(500) });
+  app.post('/mitglieder/m/:adrnr/email-unzustellbar', schreiben, async (req) => {
+    const { adrnr: a } = pAdr.parse(req.params);
+    const { grund } = grundSchema.parse(req.body);
+    return { text: await change(req, (tx) => emailUnzustellbarSetzen(tx, a, grund), { action: 'EMAIL_UNZUSTELLBAR', reason: grund }) };
+  });
+  app.post('/mitglieder/m/:adrnr/email-unzustellbar/aufheben', schreiben, async (req) => {
+    const { adrnr: a } = pAdr.parse(req.params);
+    const { grund } = grundSchema.parse(req.body);
+    return { text: await change(req, (tx) => emailUnzustellbarAufheben(tx, a), { action: 'EMAIL_ERREICHBAR', reason: grund }) };
   });
 
   // Bankverbindung ändern: Mitglieder pflegen UND Bankdaten ändern (setzt den Klartext voraus)

@@ -139,6 +139,67 @@ Anhänge einer Antwort (z. B. ein unterschriebenes Formular) behandelt er wie je
 Zum Test eine E-Mail an eine nicht existierende Adresse senden – spätestens fünf Minuten nach dem Rückläufer steht die Zeile auf
 „unzustellbar“. „Gemeldet merken“ wirkt nur im aktiven Workflow, nicht bei „Execute workflow“ von Hand.
 
+## Unzustellbare Adressen: Vermerk im Mitgliederstamm, Versand unterdrücken
+
+Ist ein Mitglied per E-Mail nicht erreichbar, wird das im Mitgliederstamm vermerkt – und das Portal sendet nicht mehr an diese Adresse.
+In n8n ist dafür **nichts zusätzlich einzurichten**: Es genügen der Workflow „TCO Mailversand“ und, für die Rückläufer, der aktive
+Workflow „TCO Maileingang“ (siehe oben).
+
+**Wann der Vermerk gesetzt wird**
+
+| Weg | Auslöser | Quelle am Mitglied |
+|---|---|---|
+| beim Senden | n8n antwortet mit `status: "fehler"` und die Meldung des Mailservers nennt einen **dauerhaften Empfängerfehler** | „beim Senden vom Mailserver abgelehnt“ |
+| Rückläufer | der Maileingang liefert eine Unzustellbarkeitsnachricht mit einem solchen Fehler | „Unzustellbarkeitsnachricht erhalten“ |
+| von Hand | Mitglieder → Mitglied → Stammdaten → *Als unzustellbar vermerken* (Grund ist Pflicht) | „von Hand vermerkt“ |
+
+Als dauerhafter Empfängerfehler zählt nur, was eindeutig „diese Adresse gibt es nicht“ heißt (`server/src/lib/mailzustellung.ts`,
+`dauerhafterEmpfaengerfehler`): Statuscode `5.1.1`, `5.1.2`, `5.1.3`, `5.1.6`, `5.1.10`, `5.4.4`; SMTP `550`/`551`/`553` ohne anderen
+Statuscode; Texte wie „user unknown“, „no such user“, „mailbox unavailable“, „recipient address rejected“, „domain not found“; die
+Adressprüfung des Workflows („Ungültige Adresse in an“). **Nie** zählen: Webhook 404, abgelehnter Schlüssel, Zeitüberschreitung, n8n
+nicht erreichbar, Anmeldung am Mailserver, alle 4xx-Antworten (vorübergehend), Absender nicht erlaubt, Spam-/Richtlinien-Ablehnung
+(`5.7.x`), Postfach voll (`5.2.2`), Nachricht zu groß. Im Zweifel bleibt es ohne Vermerk.
+
+Vermerkt wird bei **allen Mitgliedern mit dieser Adresse** (Familie); Mitglieder ohne eigene Adresse werden über den EP3-Kundenstamm
+(gleicher Name) gefunden. Hallenkunden ohne Mitgliedssatz bekommen keinen Vermerk – ihr Rückläufer steht wie bisher im E-Mail-Protokoll.
+Nennt die Fehlermeldung beim Senden keinen Empfänger und hatte die E-Mail mehrere, wird niemand vermerkt.
+
+**Rückläufer – was ausgewertet wird**
+
+- Zustellbericht (`Final-Recipient: rfc822; …`, `Action: failed`, `Status: 5.x.x`, `Diagnostic-Code`): Die dort genannte Adresse wird
+  vermerkt, auch wenn die E-Mail nicht über das Portal lief. Der Bericht wird im Text der Nachricht und in Anhängen vom Typ
+  `message/delivery-status` gesucht.
+- Ohne Zustellbericht: Adressen aus dem Text, **an die die zugeordnete E-Mail des Portals ging**, zusammen mit den Fehlerzeilen des
+  Mailservers (z. B. `550-Requested action not taken: mailbox unavailable`). Lässt sich der Rückläufer keiner gesendeten E-Mail
+  zuordnen, wird nichts vermerkt.
+- Rückläufer werden wie bisher nicht als Eingangsdokument abgelegt (Vorgang „ignoriert“); der Hinweis des Vorgangs nennt den Vermerk.
+
+**Was der Vermerk bewirkt**
+
+Jede E-Mail läuft über `mailSenden` (`server/src/lib/mail.ts`; im Verein über `modules/tco/server/kommunikation.ts`). Vor dem Aufruf von
+n8n fragt der Kern die Module nach gesperrten Empfängern (`ServerModule.mailGesperrt`):
+
+- Alle Empfänger in „An“ gesperrt (oder das Feld lässt sich nicht sicher zerlegen): **kein Aufruf von n8n**, Rückgabe
+  `{ status: 'fehler', fehler: 'Nicht gesendet: E-Mail-Adresse … ist im Mitgliederstamm als unzustellbar vermerkt (seit …: Grund).', unzustellbar: [Adresse] }`,
+  im E-Mail-Protokoll Status `nicht_gesendet` mit demselben Text. Es entsteht keine Störung „E-Mail nicht gesendet“ je Mail – dafür
+  steht „n Mitglieder per E-Mail nicht erreichbar“ im Arbeitsvorrat des Kassenwarts.
+- Sonst: Gesperrte Adressen fallen aus An, CC und BCC heraus, die E-Mail geht an die übrigen; `hinweis` und `unzustellbar` nennen die
+  weggelassenen.
+- Ausnahme: die **Testmail** (Administration → Schnittstellen) geht immer hinaus – damit lässt sich prüfen, ob eine Adresse wieder erreichbar ist.
+- Das gilt für jede E-Mail des Portals an diese Adresse, auch für die des Kerns (Kennwort-Link, Einmal-Link, „Erneut senden“ im
+  E-Mail-Protokoll). Der Euroflex-Versand hat einen eigenen Weg und ist nicht betroffen.
+
+Programme, die vorab wissen wollen, ob jemand erreichbar ist (Serienversand, Mahnlauf), fragen
+`emailUnzustellbar(db, adrnrOderAdresse)` aus `modules/tco/server/kommunikation.ts` (liefert Mitglied, Adresse, seit, Grund, Quelle oder `null`).
+
+**Wie der Vermerk wieder verschwindet**
+
+- von selbst, sobald die **E-Mail-Adresse des Mitglieds geändert** wird (Stammdatenpflege, „Meine Daten“, Antrag, Import – Trigger in der
+  Datenbank; bei Mitgliedern ohne eigene Adresse auch mit der Änderung im EP3-Kundenstamm),
+- von Hand: Mitglied → Stammdaten → *Vermerk „unzustellbar“ zurücknehmen* (Grund ist Pflicht; gilt für alle Mitglieder mit dieser Adresse).
+
+Setzen und Zurücknehmen stehen in den Änderungsbelegen des Mitglieds (automatisch gesetzte unter dem Benutzer „system“).
+
 ### Älterer Endpunkt
 
 `POST /api/mail/eingang` (Webhook-Schlüssel der Anbindung „E-Mail-Versand“) nimmt weiterhin einzelne Rückmeldungen an, für

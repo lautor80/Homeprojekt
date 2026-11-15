@@ -85,6 +85,16 @@ export interface ServerModule {
    */
   mailPersonen?: (db: Tx, emails: string[]) => Promise<MailPerson[]>;
   /**
+   * Versand unterdrücken (server/src/lib/mailsperre.ts): Welche dieser Empfängeradressen (klein geschrieben) hat das Modul als
+   * unzustellbar vermerkt (z. B. im Mitgliederstamm)? An sie geht keine E-Mail mehr an n8n; der Grund steht im E-Mail-Protokoll.
+   */
+  mailGesperrt?: (emails: string[]) => Promise<{ email: string; grund: string }[]>;
+  /**
+   * Der Mailserver hat diese Adressen dauerhaft abgelehnt (beim Senden oder per Unzustellbarkeitsnachricht): Das Modul vermerkt
+   * das bei seinen Personen und meldet zurück, bei welchen Adressen es einen Vermerk gesetzt hat.
+   */
+  mailUnzustellbar?: (m: { emails: string[]; grund: string; quelle: 'versand' | 'ruecklaeufer' }) => Promise<string[]>;
+  /**
    * Angeschlossene Systeme des Moduls (Administration → Schnittstellen): Adresse und Zugangsdaten werden zentral
    * gepflegt und mit verbindungLesen(id) gelesen. Ids mit Präfix „<modul>.“ (z. B. tco.ep3). Paperless meldet der Kern.
    */

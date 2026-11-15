@@ -13,13 +13,17 @@ import { GR, type Gruppe, type GruppenDaten } from '../gruppen/typen';
 import { MitgliedDetail } from './Detail';
 import { NeuDialog } from './NeuDialog';
 
-const STATUS_TEXT: Record<Status, string> = { AKTIV: 'Aktive Mitglieder', AUSGETRETEN: 'Ausgetreten', SCHNUPPER: 'Schnuppertraining', KUNDEN: 'EP3-Kunden', ELTERN: 'Zahler / Eltern', ALLE: 'Alle Personen' };
+const STATUS_TEXT: Record<Status, string> = { AKTIV: 'Aktive Mitglieder', AUSGETRETEN: 'Ausgetreten', SCHNUPPER: 'Schnuppertraining', KUNDEN: 'EP3-Kunden', ELTERN: 'Zahler / Eltern', UNZUSTELLBAR: 'E-Mail unzustellbar', ALLE: 'Alle Personen' };
 const DATUM_TEXT: Record<string, string> = { EINGETRETEN: 'Eintritt', AUSGETRETEN: 'Austritt', ERFASST: 'Erfasst' };
 
 export function Mitglieder() {
   const can = useCan();
   const edit = can('tco.mitglieder:edit');
-  const [status, setStatus] = useState<Status>('AKTIV');
+  // Absprung aus dem Arbeitsvorrat: ?status=UNZUSTELLBAR
+  const [status, setStatus] = useState<Status>(() => {
+    const s = new URLSearchParams(window.location.search).get('status') as Status | null;
+    return s && s in STATUS_TEXT ? s : 'AKTIV';
+  });
   const [suche, setSuche] = useState('');
   const [datumTyp, setDatumTyp] = useState('EINGETRETEN');
   const [von, setVon] = useState('');
@@ -89,7 +93,8 @@ export function Mitglieder() {
             {liste?.zeilen.map((z) => (
               <ListItemStandard key={z.adrnr} data-a={z.adrnr} type="Active" selected={z.adrnr === adrnr}
                                 icon={z.state === 'Positive' ? 'employee' : z.schnupper ? 'physical-activity' : z.zahler ? 'employee-rejections' : 'money-bills'}
-                                description={z.info} additionalText={z.status_txt} additionalTextState={z.state}>{z.name}</ListItemStandard>
+                                description={z.email_unzustellbar ? `${z.info} · E-Mail unzustellbar` : z.info}
+                                additionalText={z.status_txt} additionalTextState={z.state}>{z.name}</ListItemStandard>
             ))}
           </List>
         }

@@ -41,6 +41,7 @@ import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
 import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { mailPersonen } from './mailpersonen.js';
+import { mailGesperrt, mailUnzustellbar } from './emailsperre.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
@@ -284,6 +285,8 @@ const tco: ServerModule = {
   // Arbeitsvorrat der Startseite (#232, V2) – dieselben Einträge wie in der Vereinsübersicht
   arbeitsvorrat: (req) => arbeitsvorrat(DB, req),
   mailWiederholen, mailFolge, mailPersonen,
+  // E-Mail-Adresse im Mitgliederstamm als unzustellbar vermerkt: Versand unterdrücken, Empfängerfehler und Rückläufer vermerken
+  mailGesperrt, mailUnzustellbar,
   // Funktionstrennung (docs/berechtigungskonzept.md, 4.8) – die Rollenpflege meldet diese Kombinationen
   rechteKonflikte: [
     { a: 'tco.jtmeine:edit', b: 'tco.jt:edit', text: 'eigene Trainingszeiten melden und die eigene Abrechnung freigeben bzw. als bezahlt kennzeichnen' },

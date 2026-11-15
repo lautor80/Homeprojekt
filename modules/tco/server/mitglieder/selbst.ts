@@ -58,6 +58,8 @@ export async function meineLesen(db: Db, benutzerId: string) {
   const zahltSelbst = !d.bank.adrnrkih;
   return {
     mitglied: d.mitglied, titel: d.titel, trainer: d.trainer, kanal: d.kanal, spieler: d.spieler,
+    // E-Mail-Adresse als unzustellbar vermerkt: Das Mitglied berichtigt sie selbst – damit entfällt der Vermerk (ohne Grund des Mailservers)
+    emailUnzustellbar: d.emailUnzustellbar ? { adresse: d.emailUnzustellbar.adresse, seit: d.emailUnzustellbar.seit } : null,
     bank: {
       zahlungsart_txt: d.bank.zahlungsart_txt, zahlungsweise_txt: d.bank.zahlungsweise_txt,
       iban: maskIban(d.bank.iban), bic: d.bank.bic ? `${d.bank.bic.slice(0, 4)}…` : '', bank: d.bank.bank,
