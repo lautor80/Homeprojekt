@@ -46,6 +46,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'lauf:modules/tco/server/platz/routes.ts': { aufgabe: ['ABO_FREIGABE', 'ABO_MAIL', 'ABO_BEWERBUNG'] },
   'lauf:modules/tco/server/instandhaltung/routes.ts': { aufgabe: 'SCHADEN' },
   'lauf:modules/tco/server/mitglieder/routes.ts': { hinweis: 'MG_SPERRE' },
+  'lauf:modules/tco/server/mahnung/routes.ts': { aufgabe: ['MAHN_VORSCHLAG', 'MAHN_KLAEREN', 'MAHN_UNERREICHBAR', 'MAHN_LAUF'] },
 
   // ---------------------------------------------------------------- Eingänge ohne Anmeldung: Kern
   'eingang:core POST /api/auth/login': { ohne: VERLAUF },
