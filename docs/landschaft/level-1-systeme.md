@@ -195,7 +195,7 @@ flowchart LR
 | kalender | 23 |
 | konten | 5 |
 | lsvs | 9 |
-| mitglieder | 77 |
+| mitglieder | 79 |
 | platz | 68 |
 | praesentation | 11 |
 | produkte | 6 |

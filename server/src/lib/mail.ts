@@ -3,6 +3,9 @@ import { BusinessError } from '../errors.js';
 import { aktuellerBenutzer } from '../kontext.js';
 import { ausgehendMehrere } from './paperless.js';
 import { stoerungMelden } from './hinweise.js';
+import { adressen } from './mailuebersicht.js';
+import { gesperrteAdressen, unzustellbarMelden } from './mailsperre.js';
+import { betroffeneEmpfaenger, dauerhafterEmpfaengerfehler, empfaengerOhne } from './mailzustellung.js';
 import { authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperlessAlle, verbindungLesen, type Verbindung, type VerbindungDef } from './verbindungen.js';
 
 /**
@@ -23,7 +26,14 @@ export interface MailAnhang {
   objekt?: string;
 }
 
-export interface MailErgebnis { status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string; von?: string; hinweis?: string }
+export interface MailErgebnis {
+  status: 'gesendet' | 'entwurf' | 'fehler'; message_id?: string; zeitpunkt?: string; fehler?: string; von?: string; hinweis?: string;
+  /**
+   * Empfängeradressen, an die nicht gesendet wurde, weil sie als unzustellbar vermerkt sind (lib/mailsperre.ts) – oder die der
+   * Mailserver bei diesem Versuch dauerhaft abgelehnt hat und die deshalb jetzt vermerkt wurden. Bei status „fehler“ ging nichts hinaus.
+   */
+  unzustellbar?: string[];
+}
 
 export interface MailAbsender { anwendung: string; email: string; name?: string | null; antwort_an?: string | null }
 
@@ -59,6 +69,8 @@ export interface MailAuftrag {
   folge?: MailFolge;
   /** Name der Organisation für „Anzeigename | Organisation“ (Standard: Einstellung org.name) */
   organisation?: string;
+  /** true = auch an als unzustellbar vermerkte Adressen senden (nur die Testmail der Administration: prüfen, ob eine Adresse wieder geht) */
+  sperre_ignorieren?: boolean;
 }
 
 export const MAIL_ID = 'mail';
@@ -162,7 +174,9 @@ export async function mailVerfuegbar(db?: Tx): Promise<boolean> {
 
 /** Versuch protokollieren (eigene Verbindung, damit der Eintrag auch bei zurückgerollter Transaktion bleibt); Fehler hier nie weiterreichen */
 export async function mailProtokoll(e: { anwendung: string; objekt: string; an: string; betreff: string; absender?: string | null; von?: string | null;
-  status: string; fehler?: string | null; benutzer?: string | null; nachricht?: unknown; message_id?: string | null }): Promise<number | null> {
+  status: string; fehler?: string | null; benutzer?: string | null; nachricht?: unknown; message_id?: string | null;
+  /** true = keine Störung im Arbeitsvorrat melden (unterdrückter Versand an eine vermerkte Adresse – dafür gibt es den Eintrag des Moduls) */
+  still?: boolean }): Promise<number | null> {
   try {
     // Message-ID ohne spitze Klammern, klein: daran werden Rückläufer und Antworten zugeordnet (lib/maileingang-db.ts)
     const mid = String(e.message_id ?? '').trim().replace(/^<|>$/g, '').toLowerCase() || null;
@@ -171,7 +185,7 @@ export async function mailProtokoll(e: { anwendung: string; objekt: string; an: 
                      ${e.fehler ? String(e.fehler).slice(0, 1000) : null}, ${e.benutzer ?? null},
                      ${e.nachricht ? sql.json(e.nachricht as never) : null}, ${mid}) returning id`;
     // Arbeitsvorrat (#232, V1): Eine E-Mail, die nicht hinausging, steht unter „Administration“, bis jemand „gesehen“ bestätigt
-    if (e.status === 'fehler' || e.status === 'nicht_gesendet') {
+    if ((e.status === 'fehler' || e.status === 'nicht_gesendet') && !e.still) {
       await stoerungMelden({
         modul: 'core', quelle: 'MAIL_FEHLER', bereich: 'Administration', recht: 'core.mail:display', art: 'E-Mail nicht gesendet', icon: 'email',
         titel: `an ${e.an || '(ohne Empfänger)'}`.slice(0, 200), text: `${e.betreff} – ${e.fehler ?? 'ohne Fehlermeldung'}`.replace(/\s+/g, ' ').slice(0, 300), pfad: '/admin/mailprotokoll',
@@ -210,18 +224,56 @@ async function organisationsName(): Promise<string> {
 // Versand
 // ---------------------------------------------------------------------------
 
+/**
+ * Versand unterdrücken: Adressen, die ein Modul als unzustellbar vermerkt hat (ServerModule.mailGesperrt), gehen nicht an n8n.
+ * Bleibt in „an“ ein Empfänger übrig, wird ohne die gesperrten gesendet (auch CC/BCC); sonst – oder wenn sich das Feld nicht
+ * sicher zerlegen lässt – wird die E-Mail abgelehnt.
+ */
+async function sperrePruefen(m: MailAuftrag): Promise<{ m: MailAuftrag; weggelassen: string[]; abgelehnt: string | null }> {
+  const frei = { m, weggelassen: [] as string[], abgelehnt: null };
+  if (m.sperre_ignorieren) return frei;
+  const gesperrt = await gesperrteAdressen([...adressen(m.an), ...adressen(m.cc), ...adressen(m.bcc)]);
+  if (!gesperrt.size) return frei;
+  const menge = new Set(gesperrt.keys());
+  const an = empfaengerOhne(m.an, menge), cc = empfaengerOhne(m.cc, menge), bcc = empfaengerOhne(m.bcc, menge);
+  const weggelassen = [...new Set([...an.entfernt, ...cc.entfernt, ...bcc.entfernt])];
+  const text = weggelassen.map((a) => `E-Mail-Adresse ${a} ist ${gesperrt.get(a)}`).join('; ');
+  if (an.unklar || cc.unklar || bcc.unklar || !adressen(an.feld).length) return { m, weggelassen, abgelehnt: `Nicht gesendet: ${text}.` };
+  return { m: { ...m, an: an.feld, cc: cc.feld, bcc: bcc.feld }, weggelassen, abgelehnt: null };
+}
+
 export async function mailSenden(m: MailAuftrag): Promise<MailErgebnis & { protokoll?: number | null }> {
-  const proto = { anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, benutzer: m.benutzer };
+  let proto = { anwendung: m.anwendung, objekt: m.objekt, an: m.an, betreff: m.betreff, benutzer: m.benutzer };
   const v = await mailVerbindung();
   if (!eingerichtet(v)) {
     await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: 'n8n-Mailversand nicht eingerichtet (Webhook-URL fehlt)', nachricht: wiederholDaten(m) });
     throw new BusinessError('Der n8n-Mailversand ist nicht eingerichtet (Administration → Schnittstellen).');
   }
+  const sperre = await sperrePruefen(m);
+  if (sperre.abgelehnt) {
+    // kein Versuch bei n8n – klares Ergebnis für den Aufrufer, Eintrag im E-Mail-Protokoll
+    const protokoll = await mailProtokoll({ ...proto, status: 'nicht_gesendet', fehler: sperre.abgelehnt, nachricht: wiederholDaten(m), still: true });
+    return { status: 'fehler', fehler: sperre.abgelehnt, unzustellbar: sperre.weggelassen, protokoll };
+  }
+  const ohne = sperre.weggelassen.length ? `Nicht gesendet an ${sperre.weggelassen.join(', ')} (als unzustellbar vermerkt).` : '';
+  m = sperre.m;
+  proto = { ...proto, an: m.an };
   try {
     // Ausgehend: Freigabelinks immer mit der externen Paperless-Adresse (auch in bearbeiteten oder erneut gesendeten Texten) –
     // je Link mit dem Paperless des Bereichs, zu dem seine Adresse gehört (#232, S5)
     m = { ...m, text: ausgehendMehrere(m.text, await paperlessAlle()) };
-    const r = await mailSendenIntern(v, m);
+    const r: MailErgebnis & { absender?: string } = await mailSendenIntern(v, m);
+    if (ohne) { r.hinweis = [r.hinweis, ohne].filter(Boolean).join(' '); r.unzustellbar = sperre.weggelassen; }
+    // Der Mailserver lehnt den Empfänger dauerhaft ab (Adresse gibt es nicht): bei der Person vermerken, künftig nicht mehr senden.
+    // Konfigurations- und vorübergehende Fehler erreichen diese Stelle nicht (Ausnahme) oder fallen durch die Einstufung.
+    if (r.status === 'fehler' && m.modus === 'senden' && dauerhafterEmpfaengerfehler(r.fehler)) {
+      const betroffen = betroffeneEmpfaenger(r.fehler, [...adressen(m.an), ...adressen(m.cc), ...adressen(m.bcc)]);
+      const vermerkt = await unzustellbarMelden(betroffen, r.fehler ?? '', 'versand');
+      if (vermerkt.length) {
+        r.unzustellbar = [...new Set([...(r.unzustellbar ?? []), ...vermerkt])];
+        r.fehler = `${r.fehler} – ${vermerkt.join(', ')} wurde als unzustellbar vermerkt, weitere E-Mails dorthin werden nicht mehr gesendet.`;
+      }
+    }
     // Inhalt bzw. Anleitung zum Neuerzeugen auch bei Erfolg festhalten: E-Mail-Protokoll → „Erneut senden“ je Zeile (30 Tage, nie mit Zugangslinks)
     const protokoll = await mailProtokoll({ ...proto, absender: r.absender, von: r.von ?? null, status: r.status, fehler: r.fehler ?? (r.hinweis || null),
       nachricht: wiederholDaten(m), message_id: r.message_id ?? null });

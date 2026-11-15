@@ -2,12 +2,14 @@ import { TCO } from '../util';
 
 export const MG = `${TCO}/mitglieder`;
 
-export type Status = 'AKTIV' | 'AUSGETRETEN' | 'SCHNUPPER' | 'KUNDEN' | 'ELTERN' | 'ALLE';
+export type Status = 'AKTIV' | 'AUSGETRETEN' | 'SCHNUPPER' | 'KUNDEN' | 'ELTERN' | 'UNZUSTELLBAR' | 'ALLE';
 export interface ListZeile {
   adrnr: string; name: string; mitglnrn: string; info: string; ort: string; eintritt: string | null; austritt: string | null;
   status_txt: string; state: 'Positive' | 'Negative' | 'Critical' | 'Information'; kunde: boolean; eltern: boolean; zahler: boolean;
   /** Kategorie Schnuppertraining (#86) */
   schnupper: boolean;
+  /** E-Mail-Adresse als unzustellbar vermerkt */
+  email_unzustellbar?: boolean;
 }
 export interface Liste { zeilen: ListZeile[]; anzahl: Record<Status, number> }
 
@@ -38,6 +40,8 @@ export interface Sepa {
 }
 export interface Detail {
   mitglied: Mitglied; titel: string; bank: Bank; trainer: boolean; zuid: string; kanal: string;
+  /** E-Mail-Adresse als unzustellbar vermerkt (auch über ein anderes Mitglied mit derselben Adresse) – das Portal sendet nicht mehr dorthin */
+  emailUnzustellbar?: EmailVermerk | null;
   /** Spielerdaten aus nuLiga (#162) */
   spieler?: { id_nr: string; lk: number | null; lk_stand: string | null; irrelevant?: boolean | null };
   /** false = Bankdaten kommen maskiert (Berechtigung tco.bankdaten:display fehlt) */
@@ -52,6 +56,10 @@ export interface Detail {
   /** Angaben zum Schnuppertraining (#86), auch nach dem Beitritt */
   schnupper: Schnupper | null;
 }
+export interface EmailVermerk { adrnr: string; name: string; adresse: string; seit: string; grund: string; quelle: 'VERSAND' | 'RUECKLAEUFER' | 'MANUELL' }
+export const EMAIL_QUELLE: Record<EmailVermerk['quelle'], string> = {
+  VERSAND: 'beim Senden vom Mailserver abgelehnt', RUECKLAEUFER: 'Unzustellbarkeitsnachricht erhalten', MANUELL: 'von Hand vermerkt',
+};
 export interface Schnupper {
   nummer: string; status: string; eingang: string; alter: number | null; gespielt: boolean; stufe: string;
   termine: { tage?: string[]; zeiten?: string[]; text?: string | null }; erziehungsberechtigt: string | null; mitteilung: string | null;

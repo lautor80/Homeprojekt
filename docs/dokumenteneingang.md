@@ -33,6 +33,8 @@ IMAP-Postfach ──> n8n: Mail + Anhänge ──> Portal: Regelwerk ──┬�
    Regel „E-Mail“. Die E-Mail wird nur dann zum Dokument (PDF aus dem Text), wenn eine solche Regel sie ablegen will.
 5. **Rückmeldungen** zu E-Mails des Portals (unzustellbar, Abwesenheit, Antwort) werden im E-Mail-Protokoll verbucht. Rückläufer und
    Abwesenheitsnotizen legt der Dokumenteneingang nicht ab (Status „nicht abgelegt“); Anhänge einer Antwort laufen normal durchs Regelwerk.
+   Sagt ein Rückläufer, dass es die Adresse nicht gibt, wird sie beim Mitglied als **unzustellbar vermerkt** (steht dann im Hinweis des
+   Vorgangs) – siehe [n8n/MAILVERSAND.md](n8n/MAILVERSAND.md#unzustellbare-adressen-vermerk-im-mitgliederstamm-versand-unterdrücken).
 6. Eindeutige Treffer aktiver Regeln werden sofort abgelegt. In die **Prüfliste** kommen: Anhänge ohne Regel, Treffer von Regeln im
    Testlauf oder mit „immer prüfen“, fehlende Pflichtfelder und fehlgeschlagene Ablagen.
 7. Sind alle Dokumente eines Vorgangs erledigt, meldet das Portal n8n die Behandlung der E-Mail. E-Mails ohne Regel und ohne
