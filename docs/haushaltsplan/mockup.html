@@ -1,0 +1,317 @@
+<title>Haushaltsplan Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: Fiori-Seite wie im Portal – Kopf mit Kennzahlen, Reiter, je Reiter Abschnitte als Karten mit Tabellen. */
+:root {
+  --bg: #f5f6f7; --surface: #ffffff; --surface-2: #f2f4f6; --text: #1d2d3e; --label: #556b82; --border: #d5dadd;
+  --brand: #0070f2; --brand-ink: #ffffff; --shell: #ffffff;
+  --positive: #256f3a; --positive-bg: #ebf5ec; --critical: #b44f00; --critical-bg: #fff3e0;
+  --negative: #aa0808; --negative-bg: #ffeaea; --info: #0064d9; --info-bg: #e8f1fd;
+  --series-1: #2a78d6; --series-2: #eb6834; --grid: #e3e7ea;
+  --font: "72", "72full", Arial, Helvetica, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171c; --surface: #1d232a; --surface-2: #252d36; --text: #f5f6f7; --label: #a9b4be; --border: #3b4652;
+  --brand: #4db1ff; --brand-ink: #0a1620; --shell: #1d232a;
+  --positive: #6fcf86; --positive-bg: #17301e; --critical: #ffb45c; --critical-bg: #3a2a12;
+  --negative: #ff8f8f; --negative-bg: #3b1a1a; --info: #7cbcff; --info-bg: #142a44;
+  --series-1: #3987e5; --series-2: #d95926; --grid: #303a45; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171c; --surface: #1d232a; --surface-2: #252d36; --text: #f5f6f7; --label: #a9b4be; --border: #3b4652;
+  --brand: #4db1ff; --brand-ink: #0a1620; --shell: #1d232a;
+  --positive: #6fcf86; --positive-bg: #17301e; --critical: #ffb45c; --critical-bg: #3a2a12;
+  --negative: #ff8f8f; --negative-bg: #3b1a1a; --info: #7cbcff; --info-bg: #142a44;
+  --series-1: #3987e5; --series-2: #d95926; --grid: #303a45; color-scheme: dark }
+
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 0 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.shell { background: var(--shell); border-bottom: 1px solid var(--border); }
+.shell .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; flex-wrap: wrap; }
+.shell b { font-size: 16px; } .shell span { color: var(--label); }
+.hinweis { background: var(--info-bg); color: var(--text); border: 1px solid var(--info); border-radius: 8px; padding: 8px 12px; margin-top: 16px; }
+.kopf { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: flex-end; justify-content: space-between; padding-block: 20px 12px; }
+h1 { font-size: 24px; font-weight: 700; margin: 0; text-wrap: balance; }
+.unter { color: var(--label); margin-top: 2px; }
+.kpis { display: flex; flex-wrap: wrap; gap: 12px 28px; }
+.kpi .l { color: var(--label); font-size: 12px; } .kpi .w { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tabs button { font: inherit; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--label); padding: 10px 14px; cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+.tabs button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.leiste { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; padding-block: 16px 4px; }
+.feld { display: flex; flex-direction: column; gap: 3px; } .feld label { color: var(--label); font-size: 12px; }
+select, input[type="number"], input[type="text"] { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+.knopf { font: inherit; border-radius: 8px; padding: 6px 14px; border: 1px solid var(--brand); background: var(--surface); color: var(--brand); cursor: pointer; }
+.knopf.haupt { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
+.karte { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-top: 16px; min-width: 0; }
+.karte > header { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.karte h2 { font-size: 16px; margin: 0; } .karte header span { color: var(--label); }
+.karte .inhalt { padding: 12px 16px; }
+.roll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { color: var(--label); font-weight: 400; font-size: 12px; background: var(--surface-2); }
+td.z, th.z { text-align: right; }
+tr.gruppe td { background: var(--surface-2); font-weight: 700; }
+tr.summe td { font-weight: 700; border-top: 2px solid var(--border); }
+td.name { white-space: normal; min-width: 180px; } td.name small { color: var(--label); display: block; }
+td input[type="number"] { width: 96px; text-align: right; }
+.status { display: inline-block; border-radius: 10px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
+.s-pos { color: var(--positive); background: var(--positive-bg); } .s-krit { color: var(--critical); background: var(--critical-bg); }
+.s-neg { color: var(--negative); background: var(--negative-bg); } .s-info { color: var(--info); background: var(--info-bg); }
+.sonder { color: var(--critical); cursor: help; border-bottom: 1px dotted var(--critical); }
+.zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 0 16px; }
+.legende { display: flex; gap: 16px; flex-wrap: wrap; color: var(--label); font-size: 12px; padding: 0 16px 4px; }
+.legende i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.chart { position: relative; padding: 4px 8px 12px; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart text { fill: var(--label); font-size: 11px; font-family: var(--font); }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.18); white-space: nowrap; }
+.tip b { display: block; }
+ul.liste { margin: 0; padding-left: 18px; } ul.liste li { margin: 4px 0; max-width: 70ch; }
+</style>
+
+<div class="shell"><div class="wrap"><b>TC Oberthal</b><span>Finanzen › Haushaltsplan</span></div></div>
+<div class="wrap">
+  <div class="hinweis"><b>Mockup zum Anschauen.</b> Alle Konten und Zahlen sind erfunden. Methode, Aufschlag, Planwerte und Vorhaben lassen sich ändern, gespeichert wird nichts.</div>
+  <div class="kopf">
+    <div><h1>Haushaltsplan 2027</h1><div class="unter">Fassung 1 · <span class="status s-info">Entwurf</span> · Grundlage: Buchungen 2021 bis Oktober 2026</div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Einnahmen Plan</div><div class="w" id="kE"></div></div>
+      <div class="kpi"><div class="l">Ausgaben Plan</div><div class="w" id="kA"></div></div>
+      <div class="kpi"><div class="l">Ergebnis Plan</div><div class="w" id="kG"></div></div>
+      <div class="kpi"><div class="l">Tiefster Geldbestand</div><div class="w" id="kL"></div></div>
+    </div>
+  </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="plan">Planung</button>
+    <button role="tab" aria-selected="false" data-tab="sollist">Soll-Ist 2026</button>
+    <button role="tab" aria-selected="false" data-tab="liq">Liquidität 2027</button>
+    <button role="tab" aria-selected="false" data-tab="vorhaben">Vorhaben</button>
+  </div>
+
+  <section id="t-plan">
+    <div class="leiste">
+      <div class="feld"><label for="aufschlag">Preissteigerung auf Ausgaben (%)</label><input type="number" id="aufschlag" value="2" step="0.5" min="0" max="15"></div>
+      <div class="feld"><label for="methodeAlle">Methode für alle Konten</label>
+        <select id="methodeAlle"><option value="">je Konto die treffsicherste</option><option value="hoch">Hochrechnung laufendes Jahr</option><option value="avg3">Durchschnitt 3 Jahre</option><option value="med5">Median 5 Jahre</option><option value="trend">Trend</option></select></div>
+      <button class="knopf" type="button" id="neu">Vorschlag neu berechnen</button>
+      <button class="knopf haupt" type="button" disabled title="Im Mockup ohne Funktion">Dem Vorstand vorlegen</button>
+    </div>
+    <div class="karte"><header><h2>Planwerte je Konto</h2><span>Vorschlag aus den Vorjahren, Planwert überschreibbar</span></header>
+      <div class="roll"><table id="planTab"></table></div></div>
+    <div class="karte"><header><h2>So entsteht der Vorschlag</h2></header><div class="inhalt"><ul class="liste">
+      <li><b>Treffsicherheit:</b> Jede Methode wird rückwirkend geprüft: Was hätte sie für 2025 vorhergesagt, und wie nah lag das am tatsächlichen Wert? Die beste Methode ist je Konto vorbelegt.</li>
+      <li><b>Sondereffekte</b> (orange markierte Jahre) zählen nicht in die Berechnung, zum Beispiel eine einmalige Sanierung.</li>
+      <li><b>Laufendes Jahr:</b> 2026 ist noch nicht zu Ende. Der Ist-Wert bis Oktober wird mit dem üblichen Jahresverlauf des Kontos auf das ganze Jahr hochgerechnet.</li>
+      <li><b>Fachdaten:</b> Beiträge und Jugendtraining kommen aus den laufenden Verträgen (Beitragsforecast), nicht aus der Vergangenheit.</li>
+    </ul></div></div>
+  </section>
+
+  <section id="t-sollist" hidden>
+    <div class="karte"><header><h2>Ausgaben 2026: Plan und Ist, aufgelaufen</h2><span>Stand 31.10.2026</span></header>
+      <div class="legende"><span><i style="background:var(--series-1)"></i>Ist</span><span><i style="background:var(--series-2)"></i>Plan</span></div>
+      <div class="chart" id="chSoll"></div></div>
+    <div class="karte"><header><h2>Abweichungen je Konto</h2><span>Toleranz 5 % (gelb) und 10 % (rot), einstellbar</span></header>
+      <div class="roll"><table id="sollTab"></table></div></div>
+  </section>
+
+  <section id="t-liq" hidden>
+    <div class="karte"><header><h2>Geldbestand 2027 je Monatsende</h2><span>Anfangsbestand 48.000 €, Tilgung Darlehen 500 € je Monat</span></header>
+      <div class="legende"><span><i style="background:var(--series-1)"></i>Geldbestand laut Plan</span><span><i style="background:var(--series-2)"></i>Mindestreserve 20.000 €</span></div>
+      <div class="chart" id="chLiq"></div></div>
+    <div class="karte"><header><h2>Monatswerte</h2><span>Planwerte verteilt nach dem Jahresverlauf der Vorjahre</span></header>
+      <div class="roll"><table id="liqTab"></table></div></div>
+  </section>
+
+  <section id="t-vorhaben" hidden>
+    <div class="karte"><header><h2>Einmalige Vorhaben</h2><span>stehen neben den laufenden Konten und lassen sich ein- und ausplanen</span></header>
+      <div class="roll"><table id="vorTab"></table></div></div>
+  </section>
+</div>
+
+<script>
+const eur = (n) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' €';
+const pct = (n) => (n > 0 ? '+' : '') + new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(n) + ' %';
+const MON = ['Jan', 'Feb', 'Mrz', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const GLEICH = Array(12).fill(1 / 12);
+const WINTER = [.16, .14, .11, .06, .04, .03, .03, .03, .05, .09, .12, .14];
+const SOMMER = [.02, .02, .06, .14, .16, .14, .12, .12, .10, .06, .04, .02];
+const HALBJ = [.5, 0, 0, 0, 0, 0, .5, 0, 0, 0, 0, 0];
+const HALLE = [.17, .15, .12, .05, .02, .01, .01, .01, .04, .12, .14, .16];
+// art E = Einnahme, A = Ausgabe; h = Ist 2021–2025; ytd = Ist Jan–Okt 2026; plan26 = Plan 2026; fach = Wert aus Fachdaten
+const K = [
+  { b: 'A', art: 'E', nr: '8001', name: 'Mitgliedsbeiträge', h: [38200, 39100, 40400, 41800, 43100], ytd: 44300, plan26: 44000, p: HALBJ, fach: 45600 },
+  { b: 'A', art: 'E', nr: '8006', name: 'Jugendtraining', h: [14100, 15300, 16900, 18200, 19400], ytd: 17050, plan26: 20000, p: GLEICH, fach: 21300 },
+  { b: 'A', art: 'E', nr: '8101', name: 'Spenden', h: [2100, 3400, 1800, 6900, 2500], ytd: 1900, plan26: 2500, p: [.05, .03, .03, .05, .05, .05, .05, .04, .05, .1, .15, .35], sonder: { 2024: 'Spendenaktion Hallendach' } },
+  { b: 'A', art: 'E', nr: '8120', name: 'Zuschüsse Verband und Gemeinde', h: [3000, 3000, 3200, 3200, 3400], ytd: 1700, plan26: 3400, p: [0, 0, 0, 0, .5, 0, 0, 0, 0, 0, .5, 0] },
+  { b: 'C', art: 'E', nr: '8400', name: 'Hallenmiete Mitglieder', h: [21500, 23800, 24900, 25600, 26800], ytd: 19300, plan26: 27500, p: HALLE },
+  { b: 'D', art: 'E', nr: '8450', name: 'Hallenmiete Gäste', h: [9800, 11200, 12600, 13100, 14200], ytd: 10900, plan26: 14500, p: HALLE },
+  { b: 'D', art: 'E', nr: '8500', name: 'Pacht Clubhaus', h: [6000, 6000, 6000, 6600, 6600], ytd: 5500, plan26: 6600, p: GLEICH },
+  { b: 'A', art: 'A', nr: '4100', name: 'Trainerentgelte', h: [15200, 16400, 18100, 19600, 21000], ytd: 18600, plan26: 21500, p: GLEICH },
+  { b: 'A', art: 'A', nr: '4200', name: 'Platzwart und Reinigung', h: [12400, 12900, 13600, 14100, 14800], ytd: 14600, plan26: 15200, p: [.05, .05, .08, .11, .11, .1, .1, .1, .1, .08, .06, .06] },
+  { b: 'C', art: 'A', nr: '5300', name: 'Wasser, Abwasser, Grundabgaben', h: [5200, 5400, 5900, 6100, 6400], ytd: 5300, plan26: 6500, p: [.05, .05, .05, .08, .1, .12, .13, .13, .1, .08, .06, .05] },
+  { b: 'A', art: 'A', nr: '4700', name: 'Jugendarbeit und Veranstaltungen', h: [3800, 4600, 5200, 5600, 6100], ytd: 6900, plan26: 6200, p: [.03, .03, .05, .08, .1, .18, .15, .1, .12, .06, .04, .06] },
+  { b: 'A', art: 'A', nr: '4300', name: 'Verbandsabgaben', h: [2900, 2900, 3050, 3050, 3200], ytd: 3200, plan26: 3200, p: [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { b: 'A', art: 'A', nr: '4500', name: 'Platzpflege und Sand', h: [7400, 7900, 8300, 8800, 9100], ytd: 9600, plan26: 9300, p: SOMMER },
+  { b: 'A', art: 'A', nr: '4600', name: 'Bälle und Spielbetrieb', h: [2600, 2900, 3100, 3000, 3300], ytd: 3050, plan26: 3300, p: SOMMER },
+  { b: 'C', art: 'A', nr: '5100', name: 'Energie Halle', h: [9200, 12800, 15900, 14200, 13600], ytd: 9700, plan26: 13500, p: WINTER },
+  { b: 'C', art: 'A', nr: '5200', name: 'Instandhaltung Halle', h: [3100, 2800, 3600, 21400, 3300], ytd: 2600, plan26: 3500, p: GLEICH, sonder: { 2024: 'Hallendach saniert' } },
+  { b: 'A', art: 'A', nr: '6100', name: 'Versicherungen', h: [3900, 4000, 4200, 4350, 4500], ytd: 4650, plan26: 4600, p: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  { b: 'A', art: 'A', nr: '6300', name: 'Verwaltung und Portal', h: [1800, 1900, 2100, 2200, 2300], ytd: 1950, plan26: 2400, p: GLEICH },
+  { b: 'B', art: 'A', nr: '7300', name: 'Darlehenszinsen', h: [2400, 2250, 2100, 1950, 1800], ytd: 1380, plan26: 1650, p: GLEICH },
+];
+K.sort((a, b) => Number(a.nr) - Number(b.nr));
+const BEREICH = { A: 'A Ideeller Tätigkeitsbereich', B: 'B Vermögensverwaltung', C: 'C Zweckbetrieb', D: 'D Wirtschaftlicher Geschäftsbetrieb' };
+const METH = { hoch: 'Hochrechnung 2026', avg3: 'Durchschnitt 3 Jahre', med5: 'Median 5 Jahre', trend: 'Trend', fach: 'Fachdaten (Verträge)' };
+const VOR = [
+  { an: true, name: 'LED-Beleuchtung Halle', art: 'A', monat: 8, betrag: 18000, konto: '5200' },
+  { an: true, name: 'Zuschuss Sportstättenförderung zur LED-Beleuchtung', art: 'E', monat: 10, betrag: 6000, konto: '8120' },
+  { an: false, name: 'Grundsanierung Platz 3', art: 'A', monat: 4, betrag: 7500, konto: '4500' },
+];
+
+const mittel = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+const median = (a) => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+function trend(werte) { // lineare Fortschreibung um ein Jahr
+  const n = werte.length, mx = (n - 1) / 2, my = mittel(werte);
+  let zs = 0, ns = 0; werte.forEach((y, x) => { zs += (x - mx) * (y - my); ns += (x - mx) ** 2; });
+  return my + (zs / ns) * (n - mx);
+}
+/** Reihe 2021..(bis) ohne Sondereffekt-Jahre; hoch = Hochrechnung 2026 anhängen */
+function reihe(k, bis, hoch) {
+  const r = []; for (let j = 2021; j <= bis; j++) if (!(k.sonder && k.sonder[j])) r.push(k.h[j - 2021]);
+  if (hoch) r.push(k.hoch); return r;
+}
+function schaetzen(m, r) { return m === 'hoch' ? r[r.length - 1] : m === 'avg3' ? mittel(r.slice(-3)) : m === 'med5' ? median(r.slice(-5)) : trend(r.slice(-5)); }
+for (const k of K) {
+  k.hoch = k.ytd / k.p.slice(0, 10).reduce((s, x) => s + x, 0);
+  k.treffer = {};
+  for (const m of ['hoch', 'avg3', 'med5', 'trend']) k.treffer[m] = Math.max(0, 100 - Math.abs(schaetzen(m, reihe(k, 2024, false)) - k.h[4]) / k.h[4] * 100);
+  k.beste = k.fach ? 'fach' : Object.entries(k.treffer).sort((a, b) => b[1] - a[1])[0][0];
+  k.methode = k.beste; k.manuell = null;
+}
+const vorschlag = (k) => Math.round((k.methode === 'fach' ? k.fach : schaetzen(k.methode, reihe(k, 2025, true))) / 10) * 10;
+const aufschlag = () => Number(document.getElementById('aufschlag').value) || 0;
+const planwert = (k) => k.manuell ?? Math.round(vorschlag(k) * (k.art === 'A' && k.methode !== 'fach' ? 1 + aufschlag() / 100 : 1) / 10) * 10;
+
+function planTabelle() {
+  let h = '<tr><th>Konto</th><th class="z">Ist 2023</th><th class="z">Ist 2024</th><th class="z">Ist 2025</th><th class="z">Hochr. 2026</th><th>Methode</th><th class="z">Treffer</th><th class="z">Vorschlag</th><th class="z">Plan 2027</th><th class="z">zu 2026</th></tr>';
+  const sum = { E: 0, A: 0 };
+  for (const art of ['E', 'A']) {
+    h += `<tr class="gruppe"><td colspan="10">${art === 'E' ? 'Einnahmen' : 'Ausgaben'}</td></tr>`;
+    let s = 0, s26 = 0;
+    for (const k of K.filter((x) => x.art === art)) {
+      const v = vorschlag(k), p = planwert(k); s += p; s26 += k.hoch;
+      const ist = (j) => k.sonder && k.sonder[j] ? `<span class="sonder" title="Sondereffekt: ${k.sonder[j]} – zählt nicht in den Vorschlag">${eur(k.h[j - 2021])}</span>` : eur(k.h[j - 2021]);
+      const opt = Object.keys(METH).filter((m) => m !== 'fach' || k.fach).map((m) => `<option value="${m}"${m === k.methode ? ' selected' : ''}>${METH[m]}${m === k.beste ? ' ★' : ''}</option>`).join('');
+      const tr = k.methode === 'fach' ? '–' : Math.round(k.treffer[k.methode]) + ' %';
+      h += `<tr><td class="name">${k.nr} ${k.name}<small>${BEREICH[k.b]}</small></td><td class="z">${ist(2023)}</td><td class="z">${ist(2024)}</td><td class="z">${ist(2025)}</td><td class="z">${eur(k.hoch)}</td>`
+        + `<td><select id="m-${k.nr}" data-m="${k.nr}" aria-label="Methode ${k.name}">${opt}</select></td><td class="z">${tr}</td><td class="z">${eur(v)}</td>`
+        + `<td class="z"><input type="number" id="p-${k.nr}" data-p="${k.nr}" step="10" value="${p}" aria-label="Plan ${k.name}"></td><td class="z">${pct((p - k.hoch) / k.hoch * 100)}</td></tr>`;
+    }
+    const vor = VOR.filter((x) => x.an && x.art === art).reduce((a, x) => a + x.betrag, 0);
+    if (vor) { h += `<tr><td class="name" colspan="8">Einmalige Vorhaben<small>siehe Reiter Vorhaben</small></td><td class="z">${eur(vor)}</td><td></td></tr>`; s += vor; }
+    h += `<tr class="summe"><td colspan="4">Summe ${art === 'E' ? 'Einnahmen' : 'Ausgaben'}</td><td class="z">${eur(s26)}</td><td colspan="3"></td><td class="z">${eur(s)}</td><td class="z">${pct((s - s26) / s26 * 100)}</td></tr>`;
+    sum[art] = s;
+  }
+  document.getElementById('planTab').innerHTML = h;
+  document.getElementById('kE').textContent = eur(sum.E);
+  document.getElementById('kA').textContent = eur(sum.A);
+  const g = document.getElementById('kG'); g.textContent = eur(sum.E - sum.A); g.style.color = sum.E - sum.A < 0 ? 'var(--negative)' : 'var(--positive)';
+}
+
+function monate27() { // Einnahmen, Ausgaben und Geldbestand je Monat 2027
+  let bestand = 48000; const out = [];
+  for (let m = 0; m < 12; m++) {
+    let e = 0, a = 0;
+    for (const k of K) { const w = planwert(k) * k.p[m]; if (k.art === 'E') e += w; else a += w; }
+    for (const v of VOR) if (v.an && v.monat === m + 1) { if (v.art === 'E') e += v.betrag; else a += v.betrag; }
+    bestand += e - a - 500; out.push({ e, a, bestand });
+  }
+  return out;
+}
+
+/** Liniendiagramm mit gemeinsamer Achse, Endbeschriftung und Fadenkreuz */
+function linien(el, serien, format) {
+  const W = 760, H = 280, L = 62, R = 96, T = 14, B = 28;
+  const alle = serien.flatMap((s) => s.werte.filter((x) => x != null));
+  let lo = Math.min(0, ...alle), hi = Math.max(...alle); const schritt = 10 ** Math.floor(Math.log10(hi - lo)) / 2 || 1;
+  hi = Math.ceil(hi / schritt) * schritt; lo = Math.floor(lo / schritt) * schritt;
+  const x = (i) => L + (W - L - R) * i / 11, y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${el.dataset.titel || 'Diagramm'}">`;
+  for (let v = lo; v <= hi + 1; v += (hi - lo) / 4) s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${format(v)}</text>`;
+  MON.forEach((m, i) => { s += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${m}</text>`; });
+  serien.forEach((r) => {
+    const pts = r.werte.map((v, i) => (v == null ? null : `${x(i)},${y(v)}`)).filter(Boolean);
+    s += `<polyline points="${pts.join(' ')}" fill="none" stroke="${r.farbe}" stroke-width="2" stroke-linejoin="round"${r.strich ? ' stroke-dasharray="6 4"' : ''}/>`;
+    const li = r.werte.reduce((a, v, i) => (v == null ? a : i), 0);
+    s += `<circle cx="${x(li)}" cy="${y(r.werte[li])}" r="4" fill="${r.farbe}" stroke="var(--surface)" stroke-width="2"/><text x="${x(li) + 9}" y="${y(r.werte[li]) + (r.dy || 4)}" style="fill:var(--text)">${r.name}</text>`;
+  });
+  s += `<line id="fk" y1="${T}" y2="${H - B}" stroke="var(--label)" stroke-width="1" visibility="hidden"/></svg><div class="tip" hidden></div>`;
+  el.innerHTML = s;
+  const svg = el.querySelector('svg'), fk = el.querySelector('#fk'), tip = el.querySelector('.tip');
+  svg.addEventListener('pointermove', (ev) => {
+    const b = svg.getBoundingClientRect(), px = (ev.clientX - b.left) / b.width * W;
+    const i = Math.max(0, Math.min(11, Math.round((px - L) / ((W - L - R) / 11))));
+    fk.setAttribute('x1', x(i)); fk.setAttribute('x2', x(i)); fk.setAttribute('visibility', 'visible');
+    tip.innerHTML = `<b>${MON[i]}</b>` + serien.map((r) => `${r.name}: ${r.werte[i] == null ? '–' : format(r.werte[i])}`).join('<br>');
+    tip.hidden = false; const tx = x(i) / W * b.width;
+    tip.style.left = Math.min(tx + 12, b.width - tip.offsetWidth - 4) + 'px'; tip.style.top = '16px';
+  });
+  svg.addEventListener('pointerleave', () => { fk.setAttribute('visibility', 'hidden'); tip.hidden = true; });
+}
+
+function sollIst() {
+  let h = '<tr><th>Konto</th><th class="z">Plan 2026</th><th class="z">Ist bis Okt.</th><th class="z">Hochrechnung</th><th class="z">Abweichung</th><th class="z">in %</th><th>Bewertung</th></tr>';
+  for (const art of ['E', 'A']) {
+    h += `<tr class="gruppe"><td colspan="7">${art === 'E' ? 'Einnahmen' : 'Ausgaben'}</td></tr>`;
+    for (const k of K.filter((x) => x.art === art)) {
+      const d = k.hoch - k.plan26, p = d / k.plan26 * 100, schlecht = art === 'A' ? p : -p;
+      const st = schlecht > 10 ? ['s-neg', art === 'A' ? 'Budget überschritten' : 'deutlich unter Plan'] : schlecht > 5 ? ['s-krit', 'beobachten'] : ['s-pos', 'im Plan'];
+      h += `<tr><td class="name">${k.nr} ${k.name}</td><td class="z">${eur(k.plan26)}</td><td class="z">${eur(k.ytd)}</td><td class="z">${eur(k.hoch)}</td><td class="z">${(d > 0 ? '+' : '') + eur(d)}</td><td class="z">${pct(p)}</td><td><span class="status ${st[0]}">${st[1]}</span></td></tr>`;
+    }
+  }
+  document.getElementById('sollTab').innerHTML = h;
+  const aus = K.filter((k) => k.art === 'A'); let ps = 0, is = 0; const plan = [], ist = [];
+  for (let m = 0; m < 12; m++) {
+    ps += aus.reduce((s, k) => s + k.plan26 * k.p[m], 0); plan.push(ps);
+    if (m < 10) { is += aus.reduce((s, k) => s + k.ytd * k.p[m] / k.p.slice(0, 10).reduce((a, x) => a + x, 0), 0); ist.push(is); } else ist.push(null);
+  }
+  const el = document.getElementById('chSoll'); el.dataset.titel = 'Ausgaben 2026 aufgelaufen, Plan und Ist';
+  linien(el, [{ name: 'Plan', farbe: 'var(--series-2)', werte: plan, strich: true }, { name: 'Ist', farbe: 'var(--series-1)', werte: ist, dy: -8 }], eur);
+}
+
+function liquiditaet() {
+  const m = monate27(); const min = Math.min(...m.map((x) => x.bestand));
+  const kl = document.getElementById('kL'); kl.textContent = eur(min); kl.style.color = min < 20000 ? 'var(--negative)' : '';
+  let h = '<tr><th>Monat</th><th class="z">Einnahmen</th><th class="z">Ausgaben</th><th class="z">Tilgung</th><th class="z">Geldbestand</th><th>Bewertung</th></tr>';
+  m.forEach((x, i) => { h += `<tr><td>${MON[i]} 2027</td><td class="z">${eur(x.e)}</td><td class="z">${eur(x.a)}</td><td class="z">${eur(500)}</td><td class="z">${eur(x.bestand)}</td><td>${x.bestand < 20000 ? '<span class="status s-neg">unter Mindestreserve</span>' : '<span class="status s-pos">ausreichend</span>'}</td></tr>`; });
+  document.getElementById('liqTab').innerHTML = h;
+  const el = document.getElementById('chLiq'); el.dataset.titel = 'Geldbestand 2027 je Monatsende';
+  linien(el, [{ name: 'Reserve', farbe: 'var(--series-2)', werte: Array(12).fill(20000), strich: true, dy: 14 }, { name: 'Bestand', farbe: 'var(--series-1)', werte: m.map((x) => x.bestand) }], eur);
+}
+
+function vorhaben() {
+  let h = '<tr><th>Einplanen</th><th>Vorhaben</th><th>Art</th><th>Monat</th><th>Konto</th><th class="z">Betrag</th></tr>';
+  VOR.forEach((v, i) => { h += `<tr><td><input type="checkbox" id="v-${i}" data-v="${i}"${v.an ? ' checked' : ''} aria-label="${v.name} einplanen"></td><td class="name">${v.name}</td><td>${v.art === 'E' ? 'Einnahme' : 'Ausgabe'}</td><td>${MON[v.monat - 1]} 2027</td><td>${v.konto}</td><td class="z">${eur(v.betrag)}</td></tr>`; });
+  document.getElementById('vorTab').innerHTML = h;
+}
+
+function alles() { planTabelle(); sollIst(); liquiditaet(); vorhaben(); }
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.dataset.m) { const k = K.find((x) => x.nr === t.dataset.m); k.methode = t.value; k.manuell = null; }
+  else if (t.dataset.p) { K.find((x) => x.nr === t.dataset.p).manuell = Number(t.value) || 0; }
+  else if (t.dataset.v) { VOR[Number(t.dataset.v)].an = t.checked; }
+  else if (t.id === 'methodeAlle') { for (const k of K) { k.methode = t.value && !k.fach ? t.value : k.beste; k.manuell = null; } }
+  else if (t.id !== 'aufschlag') return;
+  alles();
+});
+document.getElementById('neu').addEventListener('click', () => { for (const k of K) k.manuell = null; alles(); });
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+  for (const t of ['plan', 'sollist', 'liq', 'vorhaben']) document.getElementById('t-' + t).hidden = t !== b.dataset.tab;
+}));
+alles();
+</script>

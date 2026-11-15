@@ -4,13 +4,14 @@ import type { Db } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
 import { mitgliedGruppen } from '../gruppen/logik.js';
 import { familienAdrnrs, verknuepfteAdrnrs } from './familie.js';
+import { emailUnzustellbar } from '../emailsperre.js';
 
 /**
  * Port von Z2UI5_CL_TCO_MITGLIEDER / ZCL_TCO_MITGLIEDER: Mitgliederliste, Objektseite
  * (Kopf, Bank, Familie, Verträge, SEPA, Schlüssel, Notizen) und Neuanlage.
  */
 
-export const STATUS = ['AKTIV', 'AUSGETRETEN', 'SCHNUPPER', 'KUNDEN', 'ELTERN', 'ALLE'] as const;
+export const STATUS = ['AKTIV', 'AUSGETRETEN', 'SCHNUPPER', 'KUNDEN', 'ELTERN', 'UNZUSTELLBAR', 'ALLE'] as const;
 export type Status = (typeof STATUS)[number];
 export const DATUM_TYP = ['EINGETRETEN', 'AUSGETRETEN', 'ERFASST'] as const;
 
@@ -68,6 +69,8 @@ export interface ListZeile {
   status_txt: string; state: 'Positive' | 'Negative' | 'Critical' | 'Information'; kunde: boolean; eltern: boolean; zahler: boolean;
   /** Kategorie Schnuppertraining (#86): offener Schnupperer ohne Eintritt */
   schnupper: boolean;
+  /** E-Mail-Adresse als unzustellbar vermerkt – das Portal sendet nicht mehr dorthin */
+  email_unzustellbar: boolean;
 }
 
 export async function listeLesen(db: Db, f: {
@@ -76,6 +79,7 @@ export async function listeLesen(db: Db, f: {
   nur?: Set<string> | null;
 }) {
   const alle = await db`select m.adrnr, m.vorname, m.nachname, m.mitglnrn, m.plz, m.ort, m.eintritt, m.austritt, m.geburtsdatum, m.adrnrkih,
+                               m.email_unzustellbar_seit is not null as unzustellbar,
                                coalesce(a.zuid, '') <> '' as kunde,
                                exists (select 1 from tco.mitglieder k where k.adrnr <> m.adrnr and k.adrnrkih = m.adrnr) as eltern,
                                (s.adrnr is not null and m.eintritt is null and s.status not in ('MITGLIED', 'ABGESAGT')) as schnupper,
@@ -83,11 +87,11 @@ export async function listeLesen(db: Db, f: {
                           from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
                           left join tco.schnupper s on s.adrnr = m.adrnr
                          order by lower(m.nachname), lower(m.vorname), m.adrnr`;
-  const anzahl: Record<Status, number> = { AKTIV: 0, AUSGETRETEN: 0, SCHNUPPER: 0, KUNDEN: 0, ELTERN: 0, ALLE: alle.length };
+  const anzahl: Record<Status, number> = { AKTIV: 0, AUSGETRETEN: 0, SCHNUPPER: 0, KUNDEN: 0, ELTERN: 0, UNZUSTELLBAR: 0, ALLE: alle.length };
   const passt = (m: (typeof alle)[number], s: Status) =>
     s === 'AKTIV' ? istAktiv(m as never) : s === 'AUSGETRETEN' ? !!m.austritt : s === 'SCHNUPPER' ? m.schnupper
-      : s === 'KUNDEN' ? m.kunde : s === 'ELTERN' ? m.eltern : true;
-  for (const m of alle) for (const s of ['AKTIV', 'AUSGETRETEN', 'SCHNUPPER', 'KUNDEN', 'ELTERN'] as const) if (passt(m, s)) anzahl[s]++;
+      : s === 'KUNDEN' ? m.kunde : s === 'ELTERN' ? m.eltern : s === 'UNZUSTELLBAR' ? m.unzustellbar : true;
+  for (const m of alle) for (const s of ['AKTIV', 'AUSGETRETEN', 'SCHNUPPER', 'KUNDEN', 'ELTERN', 'UNZUSTELLBAR'] as const) if (passt(m, s)) anzahl[s]++;
   const such = leer(f.suche).toUpperCase();
   const zeilen: ListZeile[] = [];
   for (const m of alle) {
@@ -103,7 +107,7 @@ export async function listeLesen(db: Db, f: {
     const ort = condense(`${leer(m.plz)} ${leer(m.ort)}`);
     zeilen.push({
       adrnr: m.adrnr, name, mitglnrn: leer(m.mitglnrn), ort, eintritt: m.eintritt, austritt: m.austritt, kunde: m.kunde, eltern: m.eltern,
-      zahler: !leer(m.mitglnrn), schnupper: m.schnupper,
+      zahler: !leer(m.mitglnrn), schnupper: m.schnupper, email_unzustellbar: !!m.unzustellbar,
       info: leer(m.mitglnrn) ? (ort ? `${leer(m.mitglnrn)} · ${ort}` : `Mitglied ${leer(m.mitglnrn)}`)
         : m.st_nummer ? `Schnuppertraining ${m.st_nummer}` : (ort ? `Zahler · ${ort}` : 'Zahler'),
       status_txt: aktiv ? 'Aktiv' : m.austritt ? `Austritt ${dat(m.austritt)}` : m.schnupper ? 'Schnuppertraining'
@@ -240,6 +244,8 @@ export async function detailLesen(db: Db, adrnr: string, o: { verknuepfte?: bool
       mitglnrn: leer(m.mitglnrn), datenschutz: leer(m.checkbox1) === 'J', bildrechte: leer(m.checkbox2) === 'J',
       aktiv: istAktiv(m as never),
     },
+    /** E-Mail-Adresse als unzustellbar vermerkt (emailsperre.ts) – auch über ein anderes Mitglied mit derselben Adresse; null = erreichbar */
+    emailUnzustellbar: await emailUnzustellbar(db, adrnr),
     titel: condense(`${leer(m.nachname)} ${leer(m.vorname)}`),
     bank: {
       zahlungsart: leer(m.zahlungsart), zahlungsart_txt: ZAHLUNGSARTEN[leer(m.zahlungsart)] ?? leer(m.zahlungsart),

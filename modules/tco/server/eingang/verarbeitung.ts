@@ -315,10 +315,13 @@ export async function mailVerarbeiten(m: EingangMail) {
   // ersetzt den eigenen Aufruf von POST /api/mail/eingang. Rückläufer und Abwesenheitsnotizen werden nicht abgelegt.
   const rueck = await eingangVerbuchen(DB, {
     postfach: m.an, von: m.von, betreff: m.betreff, datum: m.datum, message_id: m.message_id,
-    in_reply_to: m.in_reply_to, references: m.references, auto: m.auto, text,
+    in_reply_to: m.in_reply_to, references: m.references, auto: m.auto,
+    // Zustellbericht (message/delivery-status) hängt als eigener Teil an der Mail: mit auswerten (Final-Recipient, Status 5.x.x)
+    text: [text, ...anhaenge.filter((a) => /delivery-status|rfc822-headers/i.test(a.mime ?? '')).map((a) => a.daten.toString('utf8').slice(0, 20_000))].join('\n\n'),
   });
-  if (rueck.art !== 'antwort' && (rueck.zugeordnet || !anhaenge.length)) {
-    const hinweis = `${rueck.art === 'unzustellbar' ? 'Unzustellbar-Meldung' : 'Abwesenheitsnotiz'}${rueck.zugeordnet ? ' – im E-Mail-Protokoll verbucht' : ''}; nicht abgelegt.`;
+  if (rueck.art !== 'antwort' && (rueck.zugeordnet || rueck.vermerkt?.length || !anhaenge.length)) {
+    const hinweis = `${rueck.art === 'unzustellbar' ? 'Unzustellbar-Meldung' : 'Abwesenheitsnotiz'}${rueck.zugeordnet ? ' – im E-Mail-Protokoll verbucht' : ''}`
+      + `${rueck.vermerkt?.length ? ` – ${rueck.vermerkt.join(', ')} im Mitgliederstamm als unzustellbar vermerkt` : ''}; nicht abgelegt.`;
     await altEntfernen();
     const [r] = await DB`
       insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, text, abgeschlossen_am)

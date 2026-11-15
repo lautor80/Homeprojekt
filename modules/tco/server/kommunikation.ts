@@ -110,6 +110,9 @@ import {
 import { N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT } from '../../../server/src/lib/verbindungen.js';
 
 export { mailProtokoll, webhookFehler, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT };
+// E-Mail-Adresse im Mitgliederstamm als unzustellbar vermerkt (emailsperre.ts): Vorabprüfung für andere Programme.
+// mailSenden() lehnt vermerkte Adressen ohnehin ab – Ergebnis { status: 'fehler', fehler: '…', unzustellbar: [Adresse] }, nichts geht an n8n.
+export { emailGesperrt, emailUnzustellbar, type EmailVermerk } from './emailsperre.js';
 export type { MailAbsender, MailAnhang, MailErgebnis, MailFolge, Wiederholung };
 
 /** Absender für eine Anwendung (Verein.mail_absender kommt aus der zentralen Anbindung); null = Standard des n8n-Workflows */
@@ -117,7 +120,11 @@ export function absenderFuer(v: Pick<Verein, 'mail_absender'>, anwendung: string
   return absenderAus(Array.isArray(v.mail_absender) ? v.mail_absender : [], anwendung);
 }
 
-/** E-Mail über den n8n-Workflow „TCO Mailversand“ – Absendername „Anzeigename | Vereinsname“ */
+/**
+ * E-Mail über den n8n-Workflow „TCO Mailversand“ – Absendername „Anzeigename | Vereinsname“.
+ * Ist ein Empfänger im Mitgliederstamm als unzustellbar vermerkt, wird an ihn nicht gesendet: Gibt es keinen anderen Empfänger in „an“,
+ * kommt { status: 'fehler', fehler, unzustellbar } zurück (Protokoll: nicht_gesendet); sonst wird ohne ihn gesendet (hinweis, unzustellbar).
+ */
 export function mailSenden(v: Pick<Verein, 'name'>, m: Omit<MailAuftrag, 'organisation'>): Promise<MailErgebnis & { protokoll?: number | null }> {
   return kernMailSenden({ ...m, organisation: v.name });
 }

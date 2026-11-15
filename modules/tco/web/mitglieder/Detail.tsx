@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
+  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
   TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -13,7 +13,7 @@ import { useCan } from '@core/session';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { ObjectHeader } from '@core/components/ObjectHeader';
 import { TCO, dat } from '../util';
-import { MG, type Auswahl, type Detail, type Vertrag } from './typen';
+import { EMAIL_QUELLE, MG, type Auswahl, type Detail, type Vertrag } from './typen';
 import { BankDialog, KommDialog, KopfDialog, VertragDialog, vertragPersonen } from './Dialoge';
 import { VertragsBaum } from './VertragsBaum';
 import { Dokumente } from './Dokumente';
@@ -97,6 +97,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
               : schnuppert ? 'Schnuppertraining' : d.schnupper?.status === 'ABGESAGT' ? 'Schnuppern abgesagt' : 'Zahler'}
           </ObjectStatus>
           {d.trainer && <ObjectStatus state="Information" inverted>Trainer</ObjectStatus>}
+          {d.emailUnzustellbar && <ObjectStatus state="Negative" inverted icon={<Icon name="email" />}>E-Mail unzustellbar</ObjectStatus>}
           {d.zuid && <ObjectStatus state="Information">EP3-Kunde {d.zuid}</ObjectStatus>}
           {m.eintritt && <span className="portal-muted portal-small">Eintritt {dat(m.eintritt)}</span>}
         </>}
@@ -127,6 +128,13 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
           )}
         </div>
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginTop: '0.75rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
+        {d.emailUnzustellbar && (
+          <MessageStrip design="Negative" hideCloseButton style={{ marginTop: '0.75rem' }}>
+            Die E-Mail-Adresse {d.emailUnzustellbar.adresse} ist seit {dat(d.emailUnzustellbar.seit)} als unzustellbar vermerkt
+            ({EMAIL_QUELLE[d.emailUnzustellbar.quelle] ?? d.emailUnzustellbar.quelle}{d.emailUnzustellbar.adrnr !== adrnr ? ` bei ${d.emailUnzustellbar.name}` : ''}).
+            Das Portal sendet keine E-Mails mehr an diese Adresse – bitte die Adresse berichtigen (Stammdaten → Bearbeiten) oder den Vermerk zurücknehmen.
+          </MessageStrip>
+        )}
         <SperrHinweis s={sperre} style={{ marginTop: '0.75rem', marginBottom: 0 }} />
       </ObjectHeader>
 
@@ -203,6 +211,9 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
   const [austritt, setAustritt] = useState(m.austritt ?? '');
   useEffect(() => setAustritt(m.austritt ?? ''), [m.austritt]);
   const [frage, setFrage] = useState(false);
+  /** E-Mail-Adresse als unzustellbar vermerken / Vermerk zurücknehmen (jeweils mit Grund) */
+  const [mailFrage, setMailFrage] = useState<'setzen' | 'aufheben' | null>(null);
+  const uz = d.emailUnzustellbar;
   return (
     <>
       <Toolbar design="Transparent">
@@ -219,7 +230,19 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
         <Feld label="Geburtsdatum">{t(dat(m.geburtsdatum))}</Feld>
         <Feld label="Telefon">{m.telefon ? <Link href={`tel:${m.telefon}`}>{m.telefon}</Link> : null}</Feld>
         <Feld label="Mobil">{m.mobil ? <Link href={`tel:${m.mobil}`}>{m.mobil}</Link> : null}</Feld>
-        <Feld label="E-Mail">{m.email ? <Link href={`mailto:${m.email}`}>{m.email}</Link> : null}</Feld>
+        <Feld label="E-Mail">
+          {m.email ? <Link href={`mailto:${m.email}`}>{m.email}</Link> : null}
+          {uz && <ObjectStatus state="Negative" style={{ display: 'block' }}>unzustellbar seit {dat(uz.seit)}</ObjectStatus>}
+        </Feld>
+        {uz && <Feld label="Grund (E-Mail unzustellbar)">{t(uz.grund || EMAIL_QUELLE[uz.quelle])}</Feld>}
+        {edit && (uz || m.email) && (
+          <Feld label="Erreichbarkeit per E-Mail">
+            {uz
+              ? <Button icon="undo" design="Transparent" onClick={() => setMailFrage('aufheben')}>Vermerk „unzustellbar“ zurücknehmen</Button>
+              : <Button icon="email" design="Transparent" tooltip="Die Adresse ist falsch oder das Postfach gibt es nicht mehr: Das Portal sendet dann keine E-Mails mehr dorthin"
+                        onClick={() => setMailFrage('setzen')}>Als unzustellbar vermerken</Button>}
+          </Feld>
+        )}
         <Feld label="Geschlecht">{t(m.geschlecht_txt)}</Feld>
         {d.spieler?.id_nr && <Feld label="ID-Nr. (nuLiga)">{t(d.spieler.id_nr)}</Feld>}
         {d.spieler?.lk != null && <Feld label="Leistungsklasse">{t(`LK ${d.spieler.lk.toFixed(1).replace('.', ',')}${d.spieler.lk_stand ? ` (Stand ${dat(d.spieler.lk_stand)})` : ''}`)}</Feld>}
@@ -255,6 +278,17 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
         <Feld label="EP3-Kundennummer">{t(d.zuid)}</Feld>
       </Raster>
       {d.schnupper && <SchnupperAngaben s={d.schnupper} />}
+      <ConfirmDialog open={mailFrage !== null} askReason danger={mailFrage === 'setzen'}
+                     title={mailFrage === 'aufheben' ? 'Vermerk zurücknehmen' : 'E-Mail-Adresse als unzustellbar vermerken'}
+                     text={mailFrage === 'aufheben'
+                       ? `An ${uz?.adresse ?? m.email} wird wieder gesendet. Bitte kurz begründen (z. B. „Postfach war voll, Mitglied hat bestätigt“).`
+                       : `Das Portal sendet keine E-Mails mehr an ${m.email}, bis die Adresse geändert oder der Vermerk zurückgenommen wird. Bitte den Grund angeben.`}
+                     confirmText={mailFrage === 'aufheben' ? 'Zurücknehmen' : 'Vermerken'} onCancel={() => setMailFrage(null)}
+                     onConfirm={(grund) => {
+                       const pfad = mailFrage === 'aufheben' ? 'email-unzustellbar/aufheben' : 'email-unzustellbar';
+                       setMailFrage(null);
+                       onAktion(() => api.post<{ text: string }>(`${MG}/m/${m.adrnr}/${pfad}`, { grund }));
+                     }} />
       <ConfirmDialog open={frage} title={austritt ? 'Austritt sichern' : 'Austritt entfernen'}
                      text={austritt
                        ? `Austritt zum ${dat(austritt)} sichern? Das SEPA-Mandat gilt dann bis zu diesem Tag.`

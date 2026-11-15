@@ -5,7 +5,8 @@
  *
  * Gruppierung (bereich) nach Zuständigkeit im Verein:
  *  - Jugendwart:  alles rund um das Schnuppertraining – jede neue Anmeldung einzeln
- *  - Kassenwart:  heute erfasste Hallenbuchungen (mit den einzelnen Buchungen darunter), freigegebene Zeitnachweise der Trainer,
+ *  - Kassenwart:  Mitglieder, deren E-Mail-Adresse als unzustellbar vermerkt ist (ein Eintrag mit der Anzahl),
+ *                 heute erfasste Hallenbuchungen (mit den einzelnen Buchungen darunter), freigegebene Zeitnachweise der Trainer,
  *                 neue Mitgliedsanträge und Vertragswechsel – je Antrag
  *  - Vorstand:    neue Registrierungen und deren Freigabe; Kündigungen der Mitglieder freigeben, Bestätigung prüfen und senden (#232)
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
@@ -28,6 +29,7 @@ import { P_MAHN } from '../mahnung/logik.js';
 export type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import { hinweisAufgaben } from '../../../../server/src/lib/hinweise.js';
+import { emailUnzustellbarAnzahl } from '../emailsperre.js';
 
 /** IBAN gekürzt: im Arbeitsvorrat steht nie die ganze Kontonummer */
 const maskiert = (iban: string) => (iban.length > 8 ? `${iban.slice(0, 4)} … ${iban.slice(-4)}` : iban);
@@ -57,6 +59,20 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
         text: `Die Lastschrift zieht noch über ${maskiert(norm(k.eigen))} ein, beim Verein steht ${norm(k.verein) ? maskiert(norm(k.verein)) : 'keine IBAN'}. `
           + 'IBAN und BIC werden nur noch unter „Verein und Bank“ gepflegt – bitte im Kapitel „Beitragseinzug“ entscheiden.',
         datum: new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }), pfad: '/admin/einstellungen?kapitel=tco.beitragseinzug',
+      });
+    }
+  }
+
+  // Kassenwart: Mitglieder, die per E-Mail nicht erreichbar sind (../emailsperre.ts) – bleibt stehen, bis die Adressen berichtigt
+  // oder die Vermerke zurückgenommen sind; bis dahin gehen keine E-Mails an diese Adressen
+  if (can(req, 'tco.mitglieder:display')) {
+    const u = await emailUnzustellbarAnzahl(db);
+    if (u.n) {
+      out.push({
+        key: 'EMAIL_UNZUSTELLBAR', bereich: 'Kassenwart', icon: 'email', state: 'Critical',
+        titel: `${u.n} Mitglied${u.n === 1 ? '' : 'er'} per E-Mail nicht erreichbar`,
+        text: 'Die E-Mail-Adresse ist als unzustellbar vermerkt – das Portal sendet nicht mehr dorthin. Adresse berichtigen oder den Vermerk zurücknehmen.',
+        datum: u.seit, pfad: '/tco/mitglieder?status=UNZUSTELLBAR',
       });
     }
   }

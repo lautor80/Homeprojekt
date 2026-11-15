@@ -5,14 +5,46 @@
  * - Abwesenheit: jüngste gesendete E-Mail der letzten 2 Tage an den Absender,
  * - Antwort: jüngste gesendete E-Mail der letzten 30 Tage an den Absender mit demselben Betreff.
  * Was sich nicht zuordnen lässt, wird nicht gespeichert (n8n liest ganze Posteingänge).
+ *
+ * Rückläufer mit dauerhaftem Empfängerfehler („Adresse gibt es nicht“) werden zusätzlich den Fachmodulen gemeldet, die die Adresse
+ * bei ihrer Person als unzustellbar vermerken (lib/mailsperre.ts) – an sie wird dann nicht mehr gesendet.
  */
 import type { Tx } from '../db.js';
 import { hinweisMelden } from './hinweise.js';
 import { adressen } from './mailuebersicht.js';
+import { unzustellbarMelden } from './mailsperre.js';
+import { dauerhafterEmpfaengerfehler, dsnAbschnitt, dsnEmpfaenger } from './mailzustellung.js';
 import { adressenImText, betreffKern, einordnen, eingangZeit, messageIds, messageIdsImText, rueckGrund, type Eingang, type EingangArt } from './maileingang.js';
 
 const TAG = 86_400_000;
-export interface EingangErgebnis { zugeordnet: boolean; art: EingangArt; protokoll: number | null; neu: boolean }
+export interface EingangErgebnis {
+  zugeordnet: boolean; art: EingangArt; protokoll: number | null; neu: boolean;
+  /** Rückläufer: Adressen, die jetzt bei einer Person als unzustellbar vermerkt sind */
+  vermerkt?: string[];
+}
+
+/**
+ * Rückläufer: dauerhaft abgelehnte Adressen bei den Personen vermerken.
+ * Sicher genannt sind die Empfänger eines Zustellberichts (Final-Recipient, Action: failed) – sie zählen auch ohne zugeordnete
+ * E-Mail des Portals. Ohne Zustellbericht zählen nur Adressen aus dem Text, an die die zugeordnete E-Mail tatsächlich ging.
+ */
+async function unzustellbarVermerken(db: Tx, e: Eingang, protokoll: number | null): Promise<string[]> {
+  const dsn = dsnEmpfaenger(e.text);
+  let kandidaten = dsn;
+  if (!dsn.length && protokoll !== null) {
+    const [p] = await db`select an from core.mail_protokoll where id = ${protokoll}`;
+    const empfaenger = new Set(adressen(p?.an as string | null));
+    kandidaten = adressenImText(e.text, [e.postfach, e.von]).filter((a) => empfaenger.has(a));
+  }
+  const vermerkt: string[] = [];
+  for (const a of kandidaten) {
+    // je Empfänger dessen Abschnitt des Zustellberichts, sonst die Fehlerzeilen des Mailservers
+    const grund = dsn.length ? rueckGrund(dsnAbschnitt(e.text, a)) || rueckGrund(e.text) : rueckGrund(e.text);
+    if (!dauerhafterEmpfaengerfehler(grund)) continue;
+    vermerkt.push(...await unzustellbarMelden([a], grund, 'ruecklaeufer'));
+  }
+  return [...new Set(vermerkt)];
+}
 
 export async function eingangVerbuchen(db: Tx, e: Eingang): Promise<EingangErgebnis> {
   const art = einordnen(e);
@@ -49,7 +81,9 @@ export async function eingangVerbuchen(db: Tx, e: Eingang): Promise<EingangErgeb
       if (p) protokoll = Number(p.id);
     }
   }
-  if (protokoll === null) return { zugeordnet: false, art, protokoll: null, neu: false };
+  // erst prüfen, dann vermerken: Ein Fehler beim Vermerken darf die Verbuchung nicht verhindern
+  const vermerkt = art === 'unzustellbar' ? await unzustellbarVermerken(db, e, protokoll).catch(() => [] as string[]) : [];
+  if (protokoll === null) return { zugeordnet: false, art, protokoll: null, neu: false, ...(vermerkt.length ? { vermerkt } : {}) };
 
   const mid = messageIds(e.message_id)[0] ?? null;
   const r = await db`
@@ -66,5 +100,5 @@ export async function eingangVerbuchen(db: Tx, e: Eingang): Promise<EingangErgeb
       titel: `von ${(e.von ?? '').slice(0, 120) || 'unbekannt'}`, text: (e.betreff ?? '').replace(/\s+/g, ' ').slice(0, 300),
     });
   }
-  return { zugeordnet: true, art, protokoll, neu: r.length > 0 };
+  return { zugeordnet: true, art, protokoll, neu: r.length > 0, ...(vermerkt.length ? { vermerkt } : {}) };
 }
