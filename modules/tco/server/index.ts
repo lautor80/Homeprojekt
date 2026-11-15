@@ -46,6 +46,8 @@ import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
+import { zuwendungRoutes } from './zuwendung/routes.js';
+import { P_ZUW } from './zuwendung/logik.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -166,6 +168,7 @@ async function routes(app: FastifyInstance) {
   await sportRoutes(app);
   await analyseRoutes(app);
   await lsvsRoutes(app);
+  await zuwendungRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
   await eingangRoutes(app);
@@ -264,6 +267,9 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
+    { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.display, text: 'Zuwendungsbestätigungen ansehen: Vorschlagsliste der Spenden je Jahr und Spender (mit Name und Anschrift), Vorschau, ausgestellte Bestätigungen und ihr PDF' },
+    { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.execute, text: 'Zuwendungsbestätigungen ausstellen (einzeln, Sammelbestätigung, Jahreslauf), Spender zuordnen und erfassen, in Paperless ablegen, per E-Mail senden bzw. als gedruckt vermerken, stornieren', requires: [P_ZUW.display] },
+    { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.admin, text: 'Einstellungen der Zuwendungsbestätigungen pflegen (Bescheid des Finanzamts, Unterzeichner, Spendenkonten und -Beitragsarten, Textbausteine) – Administration → Einstellungen → TC Oberthal', requires: [P_ZUW.display] },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
 
@@ -341,6 +347,10 @@ const tco: ServerModule = {
     { type: 'ANLAGE', text: 'Anlageobjekt', permission: P_ABSCHLUSS.display },
     { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
     { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
+    { type: 'ZUWENDUNG', text: 'Zuwendungsbestätigung', permission: P_ZUW.display },
+    { type: 'ZUW_QUELLE', text: 'Zuwendungsbestätigung: Merkmale einer Spende (Spender, Verzicht, Ausschluss)', permission: P_ZUW.display },
+    { type: 'ZUW_SPENDER', text: 'Spender ohne Mitgliedschaft', permission: P_ZUW.display },
+    { type: 'ZUW_CFG', text: 'Einstellungen Zuwendungsbestätigungen', permission: P_ZUW.display },
     { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },
     { type: 'JT_NACHWEIS', text: 'Zeitnachweis Jugendtraining', permission: P_JT.display },
     { type: 'TRAINERENTGELT', text: 'Trainerentgelt', permission: P_JT.display },

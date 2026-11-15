@@ -153,4 +153,14 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     beschreibung: 'FI-Perioden (Monate) abschließen und wieder öffnen.',
     permissions: ['tco.fi:periode'],
   },
+  {
+    id: 'tco.zuwendung.jahreslauf', app: 'Zuwendungsbestätigungen', text: 'Jahreslauf',
+    beschreibung: 'Alle offenen Zuwendungsbestätigungen eines Jahres in einem Schritt ausstellen (je Spender eine Sammelbestätigung).',
+    routen: ['POST /zuwendung/jahreslauf'],
+  },
+  {
+    id: 'tco.zuwendung.mail', app: 'Zuwendungsbestätigungen', text: 'Versand per E-Mail',
+    beschreibung: 'Zuwendungsbestätigungen als PDF per E-Mail an den Spender senden. Abgeschaltet bleibt der Druck.',
+    routen: ['POST /zuwendung/bestaetigungen/:nr/senden'],
+  },
 ];

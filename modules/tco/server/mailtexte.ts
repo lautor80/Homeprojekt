@@ -237,6 +237,16 @@ export const MAILTEXTE: MailtextDef[] = [
     platzhalter: { Betreff: 'Betreff der Benachrichtigung', Name: 'Name des Abonnenten bzw. Interessenten', Nachricht: 'Text der Benachrichtigung', Portal: 'Zeile „Zum Portal: …“ (leer ohne Portal-Adresse)' },
     pflicht: ['Nachricht'], standard: (v) => ({ betreff: '{Betreff}', text: `Hallo {Name},\n\n{Nachricht}\n\n{Portal}\n\nSportliche Grüße\n${v.name}` }),
   },
+  // ---- Finanzen (zuwendung/routes.ts)
+  {
+    schluessel: 'zuwendung.bestaetigung', bereich: 'Finanzen', name: 'Zuwendungsbestätigung', wann: 'Zuwendungsbestätigungen → per E-Mail senden (einzeln und im Jahreslauf); die Bestätigung hängt als PDF an',
+    platzhalter: { Name: 'Name des Spenders', Nummer: 'Nummer der Bestätigung', Jahr: 'Jahr der Zuwendung', Art: '„Einzelbestätigung“ bzw. „Sammelbestätigung“', Betrag: 'bestätigter Betrag mit Währung', Datum: 'Datum der Ausstellung' },
+    standard: (v) => ({
+      betreff: `${v.name}: Ihre Zuwendungsbestätigung {Jahr}`,
+      text: 'Guten Tag {Name},\n\nherzlichen Dank für Ihre Spende. Im Anhang erhalten Sie die Zuwendungsbestätigung {Nummer} ({Art}) über {Betrag} zur Vorlage beim Finanzamt.\n\n'
+        + `Bitte bewahren Sie die Bestätigung auf; das Finanzamt kann sie anfordern.\n\nViele Grüße\n${v.ansprechpartner || v.name}`,
+    }),
+  },
   rahmen('schluessel.rahmen', 'Hallenschlüssel', 'Hallenschlüssel: Benachrichtigungen an Mitglied und Schlüsselwart zu Antrag, Ausgabe und Rückgabe'),
   rahmen('instandhaltung.rahmen', 'Instandhaltung', 'Schaden melden und Instandhaltung: Benachrichtigungen an Melder und Zuständige'),
   // ---- Verzehr (verzehr/beleg.ts)
