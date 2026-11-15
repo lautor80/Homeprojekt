@@ -72,6 +72,10 @@ const vereinSchema = z.object({
   fi_feld_betrag: z.string().trim().min(1).optional(),
   fi_feld_sap: z.string().trim().min(1).optional(),
   mg_ansprechpartner: z.string().optional(),
+  lsvs_vereinsnr: z.string().trim().max(20).nullish(),
+  lsvs_ansprechpartner: z.string().trim().max(100).optional(),
+  lsvs_fachverband: z.string().trim().regex(/^\d{0,4}$/, 'Fachverbandscode: nur Ziffern').optional(),
+  lsvs_schluessel: z.string().trim().max(60).optional(),
 });
 
 async function routes(app: FastifyInstance) {
@@ -95,7 +99,10 @@ async function routes(app: FastifyInstance) {
              halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss}, halle_plaetze = ${d.halle_plaetze ?? alt.halle_plaetze},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
-             fi_feld_sap = ${d.fi_feld_sap}, mg_ansprechpartner = ${d.mg_ansprechpartner ?? alt.mg_ansprechpartner ?? ''}, updated_at = now()
+             fi_feld_sap = ${d.fi_feld_sap}, mg_ansprechpartner = ${d.mg_ansprechpartner ?? alt.mg_ansprechpartner ?? ''},
+             lsvs_vereinsnr = ${d.lsvs_vereinsnr === undefined ? alt.lsvs_vereinsnr : d.lsvs_vereinsnr || null},
+             lsvs_ansprechpartner = ${d.lsvs_ansprechpartner ?? alt.lsvs_ansprechpartner}, lsvs_fachverband = ${d.lsvs_fachverband ?? alt.lsvs_fachverband},
+             lsvs_schluessel = ${d.lsvs_schluessel ?? alt.lsvs_schluessel}, updated_at = now()
        where id = 1`);
     return { ok: true };
   });

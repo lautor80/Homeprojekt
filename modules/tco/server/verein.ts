@@ -58,6 +58,11 @@ export interface Verein {
   ch_feld_json: string;
   /** Ansprechpartner-Zeilen für die Mitglieder-Mailtexte */
   mg_ansprechpartner: string;
+  /** LSVS-Bestandsmeldung (Kopf der DOSB-Austauschdatei) */
+  lsvs_vereinsnr: string | null;
+  lsvs_ansprechpartner: string;
+  lsvs_fachverband: string;
+  lsvs_schluessel: string;
 }
 
 /** Komma-Liste aus den Einstellungen */

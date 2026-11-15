@@ -86,7 +86,16 @@ function VereinFormular({ teile }: { teile: Teil[] }) {
           </FieldBox>
         </FormGrid>
       </Panel>
-
+      )}
+      {mit('verein') && (
+      <Panel headerText="LSVS-Bestandsmeldung (Austauschdatei für das LSVSnet)" fixed style={{ marginTop: '0.75rem' }}>
+        <FormGrid>
+          <TextField label="Vereinsnummer beim LSVS (Benutzername im LSVSnet)" value={t('lsvs_vereinsnr')} onChange={s('lsvs_vereinsnr')} readonly={ro} />
+          <TextField label="Ansprechpartner für Rückfragen" value={t('lsvs_ansprechpartner')} onChange={s('lsvs_ansprechpartner')} readonly={ro} />
+          <TextField label="Fachverbandscode Tennis (DOSB-Funktionscodes)" value={t('lsvs_fachverband')} onChange={s('lsvs_fachverband')} readonly={ro} placeholder="83" />
+          <TextField label="Software-Schlüssel" value={t('lsvs_schluessel')} onChange={s('lsvs_schluessel')} readonly={ro} placeholder="linear" />
+        </FormGrid>
+      </Panel>
       )}
       {mit('logo') && (
         <FormGrid>
