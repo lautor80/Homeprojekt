@@ -38,7 +38,7 @@ const SPALTEN: AnalyticalTableColumnDefinition[] = [
   { Header: 'männlich', accessor: 'm', hAlign: 'End' },
   { Header: 'weiblich', accessor: 'w', hAlign: 'End' },
   { Header: 'divers', accessor: 'd', hAlign: 'End' },
-  { Header: 'gesamt', id: 'gesamt', hAlign: 'End', accessor: (z: { m: number; w: number; d: number }) => z.m + z.w + z.d },
+  { Header: 'gesamt', id: 'gesamt', hAlign: 'End', accessor: (r: Record<string, unknown>) => { const z = r as unknown as { m: number; w: number; d: number }; return z.m + z.w + z.d; } },
 ];
 
 /**
@@ -98,8 +98,8 @@ export function Bestandsmeldung() {
     { Header: 'Lauf', accessor: 'id', width: 70 },
     { Header: 'Stichtag', accessor: 'stichtag', width: 110, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Erzeugt', accessor: 'erstellt_am', minWidth: 150, Cell: ({ row }: Cell) => `${zeit(row.original.erstellt_am)} · ${row.original.erstellt_von}` },
-    { Header: 'Mitglieder', id: 'gesamt', width: 100, hAlign: 'End', accessor: (l: Lauf) => l.summe.gesamt },
-    { Header: 'm / w / d', id: 'mwd', width: 110, hAlign: 'End', accessor: (l: Lauf) => `${l.summe.m} / ${l.summe.w} / ${l.summe.d}` },
+    { Header: 'Mitglieder', id: 'gesamt', width: 100, hAlign: 'End', accessor: (r: Record<string, unknown>) => (r as unknown as Lauf).summe.gesamt },
+    { Header: 'm / w / d', id: 'mwd', width: 110, hAlign: 'End', accessor: (r: Record<string, unknown>) => { const l = r as unknown as Lauf; return `${l.summe.m} / ${l.summe.w} / ${l.summe.d}`; } },
     { Header: 'nicht gemeldet', accessor: 'nicht_gemeldet', width: 120, hAlign: 'End' },
     {
       Header: 'Paperless', id: 'pl', width: 150,

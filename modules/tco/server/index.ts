@@ -210,12 +210,12 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
-    { area: 'Mitglieder', app: 'LSVS-Bestandsmeldung', id: P_LSVS.display, text: 'LSVS-Bestandsmeldung ansehen: Übersicht zum Stichtag, Voransicht, Läufe mit Austauschdatei (XML) und Ausdruck herunterladen' },
-    { area: 'Mitglieder', app: 'LSVS-Bestandsmeldung', id: P_LSVS.execute, text: 'LSVS-Bestandsmeldung erzeugen: Übersicht bestätigen, Lauf mit Austauschdatei für das LSVSnet anlegen, Ausdruck in Paperless ablegen', requires: [P_LSVS.display] },
-    { area: 'Mitglieder', app: 'LSVS-Bestandsmeldung', id: P_LSVS.admin, text: 'Einstellungen der LSVS-Bestandsmeldung pflegen (Vereinsnummer, Ansprechpartner, Fachverbandscode, Software-Schlüssel) – Administration → Einstellungen → TC Oberthal', requires: [P_LSVS.display] },
 
     { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.display, text: 'Spielerdaten anzeigen: ID-Nr. und LK der Mitglieder' },
     { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.edit, text: 'nuLiga-Mitgliederdaten ablegen und ID-Nr./LK in die Mitglieder übernehmen', requires: [P_SPORT.display] },
+    { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.display, text: 'LSVS-Bestandsmeldung ansehen: Übersicht zum Stichtag, Voransicht, Läufe mit Austauschdatei (XML) und Ausdruck herunterladen' },
+    { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.execute, text: 'LSVS-Bestandsmeldung erzeugen: Übersicht bestätigen, Lauf mit Austauschdatei für das LSVSnet anlegen, Ausdruck in Paperless ablegen', requires: [P_LSVS.display] },
+    { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.admin, text: 'Einstellungen der LSVS-Bestandsmeldung pflegen (Vereinsnummer, Ansprechpartner, Fachverbandscode, Software-Schlüssel) – Administration → Einstellungen → TC Oberthal', requires: [P_LSVS.display] },
 
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm; in „Meine Trainingszeiten“ die Übersicht der Kinder im Schnuppertraining' },
