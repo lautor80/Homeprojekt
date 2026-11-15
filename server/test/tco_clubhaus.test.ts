@@ -171,7 +171,6 @@ test('Clubhaus: Getränke, Rechnung, Forderungsliste, Belege, PDF', async () => 
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(typeof r.body.saldo, 'number');
   assert.ok(r.body.wirt);
-  await sql`delete from tco.fibuchungen where internenr = '0000009003'`;
 
   // PDF und Ablage
   r = await call('GET', `${C}/pdf?jahr=2026&monat=11`);
