@@ -3,7 +3,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bestandErmitteln, bestandPruefen, bestandXml, geschlechtLsvs, stichtagStandard, type BestandMitglied } from '../../modules/tco/server/mitglieder/bestand.js';
+import { bestandErmitteln, bestandPruefen, dateiname, bestandXml, geschlechtLsvs, stichtagStandard, type BestandMitglied } from '../../modules/tco/server/lsvs/logik.js';
 
 const kopf = { schluessel: 'linear', nummer: '4711', bezeichnung: 'TC Oberthal & Co', ansprechpartner: 'Torsten Laub', fachverband: '83' };
 const m = (adrnr: string, geschlecht: string | null, geburtsdatum: string | null, eintritt: string | null, austritt: string | null = null): BestandMitglied =>
@@ -60,4 +60,14 @@ test('Bestandsmeldung: fehlende Kopfangaben, Geschlecht, Standard-Stichtag', () 
   assert.equal(geschlechtLsvs(null), null);
   assert.equal(stichtagStandard('2026-11-15'), '2027-01-01');
   assert.equal(stichtagStandard('2027-01-10'), '2027-01-01');
+  assert.equal(dateiname('2027-01-01', 5), 'LSVS_Bestandsmeldung_2027_Lauf5.xml');
+});
+
+test('Bestandsmeldung: Prüfsumme bindet die bestätigte Übersicht', () => {
+  const a = bestandErmitteln(daten, kopf, '2026-01-01');
+  assert.match(a.pruefsumme, /^[0-9a-f]{16}$/);
+  assert.equal(bestandErmitteln(daten, kopf, '2026-01-01').pruefsumme, a.pruefsumme);
+  assert.notEqual(bestandErmitteln(daten.slice(1), kopf, '2026-01-01').pruefsumme, a.pruefsumme);
+  assert.notEqual(bestandErmitteln(daten, { ...kopf, fachverband: '84' }, '2026-01-01').pruefsumme, a.pruefsumme);
+  assert.notEqual(bestandErmitteln(daten, kopf, '2027-01-01').pruefsumme, a.pruefsumme);
 });

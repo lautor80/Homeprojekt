@@ -14,7 +14,7 @@ flowchart LR
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
-      B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
+      B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse<br/>LSVS-Bestandsmeldung"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
@@ -85,6 +85,7 @@ flowchart LR
 | Mitglieder | Zugänge | `/tco/zugaenge` | `tco.registrierung:mitglied\|tco.platz:admin` |  |
 | Mitglieder | Mitgliedsbeiträge | `/tco/beitraege` | `tco.beitraege:display` | Beitragsarten und Beträge je Zeitraum |
 | Mitglieder | Mitglieder-Analyse | `/tco/analyse` | `tco.analyse:display` | Altersstruktur, Ein-/Austritte, Beiträge, Varianten |
+| Mitglieder | LSVS-Bestandsmeldung | `/tco/lsvs` | `tco.lsvs:display` | Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe |
 | Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Nichtmitglieder, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
@@ -191,7 +192,8 @@ flowchart LR
 | jt | 30 |
 | kalender | 23 |
 | konten | 5 |
-| mitglieder | 77 |
+| lsvs | 9 |
+| mitglieder | 75 |
 | platz | 68 |
 | praesentation | 11 |
 | produkte | 6 |

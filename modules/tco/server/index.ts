@@ -45,6 +45,7 @@ import { P_PROD, produkteRoutes } from './produkte/routes.js';
 import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
+import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -72,10 +73,6 @@ const vereinSchema = z.object({
   fi_feld_betrag: z.string().trim().min(1).optional(),
   fi_feld_sap: z.string().trim().min(1).optional(),
   mg_ansprechpartner: z.string().optional(),
-  lsvs_vereinsnr: z.string().trim().max(20).nullish(),
-  lsvs_ansprechpartner: z.string().trim().max(100).optional(),
-  lsvs_fachverband: z.string().trim().regex(/^\d{0,4}$/, 'Fachverbandscode: nur Ziffern').optional(),
-  lsvs_schluessel: z.string().trim().max(60).optional(),
 });
 
 async function routes(app: FastifyInstance) {
@@ -99,10 +96,7 @@ async function routes(app: FastifyInstance) {
              halle_stichtag = ${d.halle_stichtag}, halle_ausschluss = ${d.halle_ausschluss}, halle_plaetze = ${d.halle_plaetze ?? alt.halle_plaetze},
              fi_bankkonten = ${d.fi_bankkonten}, fi_manuell_konten = ${d.fi_manuell_konten}, fi_beleg_typen = ${d.fi_beleg_typen},
              fi_beleg_pfad = ${d.fi_beleg_pfad}, fi_feld_beleg = ${d.fi_feld_beleg}, fi_feld_betrag = ${d.fi_feld_betrag},
-             fi_feld_sap = ${d.fi_feld_sap}, mg_ansprechpartner = ${d.mg_ansprechpartner ?? alt.mg_ansprechpartner ?? ''},
-             lsvs_vereinsnr = ${d.lsvs_vereinsnr === undefined ? alt.lsvs_vereinsnr : d.lsvs_vereinsnr || null},
-             lsvs_ansprechpartner = ${d.lsvs_ansprechpartner ?? alt.lsvs_ansprechpartner}, lsvs_fachverband = ${d.lsvs_fachverband ?? alt.lsvs_fachverband},
-             lsvs_schluessel = ${d.lsvs_schluessel ?? alt.lsvs_schluessel}, updated_at = now()
+             fi_feld_sap = ${d.fi_feld_sap}, mg_ansprechpartner = ${d.mg_ansprechpartner ?? alt.mg_ansprechpartner ?? ''}, updated_at = now()
        where id = 1`);
     return { ok: true };
   });
@@ -171,6 +165,7 @@ async function routes(app: FastifyInstance) {
   await praesentationRoutes(app);
   await sportRoutes(app);
   await analyseRoutes(app);
+  await lsvsRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
   await eingangRoutes(app);
@@ -215,6 +210,9 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.display, text: 'Mitgliedsbeiträge (Beitragsstamm) anzeigen' },
     { area: 'Mitglieder', app: 'Mitgliedsbeiträge', id: P_BEITRAEGE.edit, text: 'Mitgliedsbeiträge pflegen: Beitragsarten, Beträge je Zeitraum, aktiv/inaktiv, Erstbefüllung aus Verträgen' },
     { area: 'Mitglieder', app: 'Mitglieder-Analyse', id: P_AN.display, text: 'Mitglieder-Analyse anzeigen (Auswertungen, Diagramme, CSV, Anzeigevarianten)' },
+    { area: 'Mitglieder', app: 'LSVS-Bestandsmeldung', id: P_LSVS.display, text: 'LSVS-Bestandsmeldung ansehen: Übersicht zum Stichtag, Voransicht, Läufe mit Austauschdatei (XML) und Ausdruck herunterladen' },
+    { area: 'Mitglieder', app: 'LSVS-Bestandsmeldung', id: P_LSVS.execute, text: 'LSVS-Bestandsmeldung erzeugen: Übersicht bestätigen, Lauf mit Austauschdatei für das LSVSnet anlegen, Ausdruck in Paperless ablegen', requires: [P_LSVS.display] },
+    { area: 'Mitglieder', app: 'LSVS-Bestandsmeldung', id: P_LSVS.admin, text: 'Einstellungen der LSVS-Bestandsmeldung pflegen (Vereinsnummer, Ansprechpartner, Fachverbandscode, Software-Schlüssel) – Administration → Einstellungen → TC Oberthal', requires: [P_LSVS.display] },
 
     { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.display, text: 'Spielerdaten anzeigen: ID-Nr. und LK der Mitglieder' },
     { area: 'Sport', app: 'Spielerdaten (nuLiga)', id: P_SPORT.edit, text: 'nuLiga-Mitgliederdaten ablegen und ID-Nr./LK in die Mitglieder übernehmen', requires: [P_SPORT.display] },

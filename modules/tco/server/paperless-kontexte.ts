@@ -83,6 +83,14 @@ export const K = {
     platzhalter: [{ name: 'titel', text: 'Titel laut Abschluss', beispiel: 'Jahresabschluss 2026' }, { name: 'jahr', text: 'Jahr', beispiel: 2026 }, { name: 'ergebnis', text: 'Ergebnis', beispiel: 4321 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Buchhaltung', datum: '{jahr}-12-31', felder: { Betrag: '{ergebnis}', DOKID: '{dokid}' } },
   },
+  lsvs: {
+    id: 'lsvs.bestandsmeldung', text: 'LSVS-Bestandsmeldung (Ausdruck eines Laufs)',
+    beschreibung: 'Ausdruck der Zahlen, die mit einem Lauf der LSVS-Bestandsmeldung als Austauschdatei für das LSVSnet erzeugt wurden.',
+    platzhalter: [{ name: 'titel', text: 'Titel laut Lauf', beispiel: 'LSVS-Bestandsmeldung 2027 (Lauf 3)' }, { name: 'jahr', text: 'Jahr des Stichtags', beispiel: 2027 },
+      { name: 'stichtag', text: 'Stichtag', beispiel: '2027-01-01' }, { name: 'lauf', text: 'Laufnummer', beispiel: 3 }, { name: 'anzahl', text: 'gemeldete Mitglieder', beispiel: 312 },
+      PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Mitglieder', datum: '{stichtag}', notiz: 'LSVS-Bestandsmeldung Lauf {lauf}: {anzahl} Mitglieder ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' } },
+  },
   ihMeldung: {
     id: 'instandhaltung.meldung', text: 'Schadensmeldung (Formular Instandhaltung)',
     beschreibung: 'Formular einer Schadensmeldung mit Protokoll und Fotos – abgelegt beim Abschluss oder bei der Weitergabe (z. B. an eine Fremdfirma); jede weitere Ablage wird eine neue Version desselben Dokuments.',
