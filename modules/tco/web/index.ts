@@ -69,6 +69,12 @@ const kpiHalle = async (): Promise<TileKpi> => {
   const l = await api.get<{ personen: unknown[]; gesamtOffen: number }>(`${H}/personen?status=1,2,3,5&buchungen=1`);
   return { value: eur(l.gesamtOffen), label: 'offen', state: l.gesamtOffen > 0 ? 'Critical' : 'Positive' };
 };
+// aktueller Saldo gegenüber der Wirtin (positiv = zugunsten des Vereins); der Server rechnet die Einzahlungen bei jedem Abruf neu aus FI
+const kpiClubhaus = async (): Promise<TileKpi> => {
+  const s = await api.get<{ saldo: number; wirt: string }>(`${TCO}/clubhaus/saldo`);
+  if (s.saldo < 0) return { value: eur(-s.saldo), label: `Saldo zugunsten ${s.wirt}`, state: 'Information' };
+  return { value: eur(s.saldo), label: s.saldo > 0 ? 'Saldo zugunsten Verein' : 'Saldo ausgeglichen', state: s.saldo > 0 ? 'Critical' : 'Positive' };
+};
 
 /** TC Oberthal – Vereinsportal (Port der abap2UI5-Apps) */
 const mod: WebModule = {
@@ -278,7 +284,7 @@ const mod: WebModule = {
     { text: 'Meine Daten', subtitle: 'Kontakt, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
     { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
-    { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display' },
+    { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display', kpi: kpiClubhaus },
     { text: 'Vereinskalender', subtitle: 'Veranstaltungen, Mannschaften, An- und Abmeldung', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
     { text: 'Mein Verzehr', subtitle: 'Verzehr im Clubhaus auf das eigene Konto anschreiben', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
     { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },

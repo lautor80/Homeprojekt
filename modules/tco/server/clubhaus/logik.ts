@@ -308,37 +308,78 @@ async function uebertrag(tx: Db, jahr: number, monat: number): Promise<number> {
   return Number(r.find((x) => x.monat === vm)?.op ?? (vm === 12 ? r.find((x) => x.monat === 13)?.op : 0) ?? 0);
 }
 
+interface MonatWerte { ek: number; vk: number; reinigung: number; provision: number; forderung: number; einzahlungen: number }
+
+/** Einzahlungen der Wirtin je Monat laut FI (Vorzeichen wie in der Forderungsliste: Einzahlung = negativ) */
+async function einzahlungenJeMonat(db: Db, konto: string, jahr: number): Promise<Map<number, number>> {
+  const r = await db`select monat::int as monat, coalesce(sum(betrag), 0)::float8 as s from tco.fibuchungen
+                      where konto = ${konto} and jahr = ${jahr} group by monat`;
+  return new Map(r.map((x): [number, number] => [Number(x.monat), -runden(Number(x.s))]));
+}
+
+/** Werte eines Monats: VK der eingekauften Getränke, Reinigung, Provision, Einzahlungen */
+async function monatRechnen(db: Db, cfg: ChCfg, g: Getraenk[], einz: Map<number, number>, jahr: number, m: number): Promise<MonatWerte> {
+  const von = `${jahr}-${String(m).padStart(2, '0')}-01`;
+  const bis = new Date(Date.UTC(jahr, m, 0)).toISOString().slice(0, 10);
+  const w = await db`select to_char(datum, 'YYYY-MM-DD') as datum, upper(produkt) as produkt, anzahl::float8 as anzahl, ekpreis::float8 as ekpreis
+                       from tco.werg where datum between ${von} and ${bis}`;
+  let ek = 0, vk = 0;
+  for (const x of w) {
+    ek += rechnen(x as any).brutto;
+    const p = getraenkAm(g, x.produkt, x.datum);
+    if (p) vk += p.menge * p.preis * Number(x.anzahl);
+  }
+  const reinigung = -runden(montage(jahr, m) * cfg.reinigung);
+  const provision = -runden(vk * cfg.provision / 100);
+  vk = runden(vk);
+  return { ek: runden(ek), vk, reinigung, provision, forderung: runden(vk + reinigung + provision), einzahlungen: einz.get(m) ?? 0 };
+}
+
 /** Monat und Folgemonate bis Dezember neu berechnen (+ Endübertrag 13) */
 export async function forderungBerechnen(tx: Db, v: Verein, jahr: number, abMonat: number): Promise<void> {
   const cfg = chCfg(v);
   const g = await getraenkeLesen(tx);
+  const einz = await einzahlungenJeMonat(tx, cfg.konto_einnahmen, jahr);
   let op = await uebertrag(tx, jahr, abMonat);
   for (let m = abMonat; m <= 12; m++) {
-    const von = `${jahr}-${String(m).padStart(2, '0')}-01`;
-    const bis = new Date(Date.UTC(jahr, m, 0)).toISOString().slice(0, 10);
-    const w = await tx`select to_char(datum, 'YYYY-MM-DD') as datum, upper(produkt) as produkt, anzahl::float8 as anzahl, ekpreis::float8 as ekpreis
-                         from tco.werg where datum between ${von} and ${bis}`;
-    let ek = 0, vk = 0;
-    for (const x of w) {
-      ek += rechnen(x as any).brutto;
-      const p = getraenkAm(g, x.produkt, x.datum);
-      if (p) vk += p.menge * p.preis * Number(x.anzahl);
-    }
-    const reinigung = -runden(montage(jahr, m) * cfg.reinigung);
-    const provision = -runden(vk * cfg.provision / 100);
-    vk = runden(vk);
-    const forderung = runden(vk + reinigung + provision);
-    const [e] = await tx`select coalesce(sum(betrag), 0)::float8 as s from tco.fibuchungen where konto = ${cfg.konto_einnahmen} and jahr = ${jahr} and monat = ${m}`;
-    const einzahlungen = -runden(Number(e.s));
-    op = runden(op + forderung + einzahlungen);
+    const x = await monatRechnen(tx, cfg, g, einz, jahr, m);
+    op = runden(op + x.forderung + x.einzahlungen);
     await tx`insert into tco.forderungen (jahr, monat, ekbrutto, vkbrutto, reinigung, provision, forderung, einzahlungen, offene_posten, waers)
-             values (${jahr}, ${m}, ${runden(ek)}, ${vk}, ${reinigung}, ${provision}, ${forderung}, ${einzahlungen}, ${op}, 'EUR')
+             values (${jahr}, ${m}, ${x.ek}, ${x.vk}, ${x.reinigung}, ${x.provision}, ${x.forderung}, ${x.einzahlungen}, ${op}, 'EUR')
              on conflict (jahr, monat) do update set ekbrutto = excluded.ekbrutto, vkbrutto = excluded.vkbrutto, reinigung = excluded.reinigung,
                provision = excluded.provision, forderung = excluded.forderung, einzahlungen = excluded.einzahlungen,
                offene_posten = excluded.offene_posten, waers = 'EUR'`;
   }
   await tx`insert into tco.forderungen (jahr, monat, offene_posten, waers) values (${jahr}, 13, ${op}, 'EUR')
            on conflict (jahr, monat) do update set offene_posten = excluded.offene_posten`;
+}
+
+/**
+ * Aktueller Saldo gegenüber der Wirtin zum laufenden Monat des Stichtags (Kachel der Startseite) – nur lesend.
+ * Die Forderungsliste wird nur beim Sichern einer Rechnung oder über „Berechnen“ fortgeschrieben; Einzahlungen, die
+ * danach in FI gebucht wurden, fehlen dort. Der Saldo nimmt deshalb den Stand der Liste und ersetzt die Einzahlungen
+ * durch den heutigen Stand aus FI. Gibt es für das Jahr noch keine Liste, wird ab Januar gerechnet wie bei „Berechnen“.
+ * Positiv = zugunsten des Vereins.
+ */
+export async function saldoAktuell(db: Db, v: Verein, stichtag: string): Promise<{ saldo: number; jahr: number; monat: number }> {
+  const jahr = Number(stichtag.slice(0, 4)), monat = Number(stichtag.slice(5, 7));
+  const cfg = chCfg(v);
+  const einz = await einzahlungenJeMonat(db, cfg.konto_einnahmen, jahr);
+  const liste = await db`select monat::int as monat, coalesce(einzahlungen, 0)::float8 as einzahlungen, coalesce(offene_posten, 0)::float8 as op
+                           from tco.forderungen where jahr = ${jahr} and monat between 1 and ${monat} order by monat`;
+  let op: number;
+  if (liste.length) {
+    op = Number(liste[liste.length - 1].op);
+    for (const z of liste) op += (einz.get(Number(z.monat)) ?? 0) - Number(z.einzahlungen);
+  } else {
+    const g = await getraenkeLesen(db);
+    op = await uebertrag(db, jahr, 1);
+    for (let m = 1; m <= monat; m++) {
+      const x = await monatRechnen(db, cfg, g, einz, jahr, m);
+      op += x.forderung + x.einzahlungen;
+    }
+  }
+  return { saldo: runden(op), jahr, monat };
 }
 
 export async function forderungenLesen(db: Db, jahr: number): Promise<Ford[]> {
