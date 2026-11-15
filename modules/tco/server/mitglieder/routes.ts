@@ -35,6 +35,7 @@ import { withChange } from '../../../../server/src/db.js';
 import { funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
+import { familieLoesen, familieVerknuepfen } from './familie.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
@@ -249,7 +250,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
 
   // Geführte Vorgänge (#154): Beitragswechsel und Jugendtraining selbst abschließen – auch für Personen, die über mich zahlen
   const selbstSchema = z.object({ typ: z.enum(['BEITRAGSWECHSEL', 'JUGENDTRAINING']), adrnr, art: z.string().trim().min(1, 'Bitte eine Beitragsart wählen') });
-  app.get('/mitglieder/meine/vorgang', selbst, async (req) => selbstKontext(DB, benutzerId(req)));
+  app.get('/mitglieder/meine/vorgang', selbst, async (req) => { const { mailAn: _mailAn, ...k } = await selbstKontext(DB, benutzerId(req)); return k; });
   app.post('/mitglieder/meine/vorgang/pruefen', selbst, async (req) => selbstVorgang(DB, benutzerId(req), selbstSchema.parse(req.body), false, benutzer(req)));
   app.post('/mitglieder/meine/vorgang', selbst, async (req) => {
     const e = selbstSchema.parse(req.body);
@@ -259,8 +260,9 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       await selbstHinweis(tx, req, { quelle: 'MG_VORGANG', adrnr: e.adrnr, objekt: `${e.adrnr}:${e.typ}`, art: `${VORGANG_TEXT[e.typ]} durch das Mitglied`, text: x.text });
       return x;
     }, { action: e.typ, reason: `${VORGANG_TEXT[e.typ]} über „Meine Mitgliedschaft“` });
-    // Mitgliederinformation mit den neuen Verträgen: ablegen und an das angemeldete Mitglied senden (Kopie an den Verein)
-    const unterlage = await unterlageVersenden(DB, await vereinLesen(), e.adrnr, p.unterlage, p.text, 'Portal', p.eigene);
+    // Mitgliederinformation mit den neuen Verträgen: ablegen und an das angemeldete Mitglied senden (Kopie an den Verein) –
+    // bei Personen der Familie, die nicht über das Mitglied zahlen, an deren Zahler (er trägt den neuen Vertrag)
+    const unterlage = await unterlageVersenden(DB, await vereinLesen(), e.adrnr, p.unterlage, p.text, 'Portal', p.mailAn);
     return { ...p, text: `${VORGANG_TEXT[e.typ]} ausgeführt: ${p.text}`, unterlage };
   });
 
@@ -522,7 +524,19 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- Objektseite
-  app.get('/mitglieder/m/:adrnr', lesen, async (req) => detailSchuetzen(await detailLesen(DB, pAdr.parse(req.params).adrnr), bankSchutz(req)));
+  app.get('/mitglieder/m/:adrnr', lesen, async (req) => detailSchuetzen(await detailLesen(DB, pAdr.parse(req.params).adrnr, { verknuepfte: true }), bankSchutz(req)));
+
+  /** Familienverknüpfung: zwei Personen ohne Zahlungsbezug zu einer Familie verbinden bzw. die Verknüpfung lösen */
+  app.post('/mitglieder/m/:adrnr/familie', schreiben, async (req) => {
+    const a = pAdr.parse(req.params).adrnr;
+    const b = z.object({ adrnr }).parse(req.body);
+    return { text: await change(req, (tx) => familieVerknuepfen(tx, a, b.adrnr, benutzer(req)), { action: 'MG_FAMILIE', reason: `${a} ↔ ${b.adrnr}` }) };
+  });
+  app.post('/mitglieder/m/:adrnr/familie/loesen', schreiben, async (req) => {
+    const a = pAdr.parse(req.params).adrnr;
+    const b = z.object({ adrnr }).parse(req.body);
+    return { text: await change(req, (tx) => familieLoesen(tx, a, b.adrnr), { action: 'MG_FAMILIE_LOESEN', reason: `${a} ↔ ${b.adrnr}` }) };
+  });
 
   /** Ausdruck „Verträge der Familie“ mit Zahler je Vertrag (Verträge → Drucken); ?beendete=1 auch beendete Verträge */
   app.get('/mitglieder/m/:adrnr/vertraege-pdf', lesen, async (req, reply) => {

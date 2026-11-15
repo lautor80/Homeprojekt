@@ -23,6 +23,8 @@ export interface Bank {
 }
 export interface Person {
   adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; eintritt: string | null; austritt: string | null; rolle: string;
+  /** direkt von Hand mit dem Mitglied verknüpft (Familienverknüpfung) – lässt sich lösen */
+  verknuepft?: boolean;
   /** zahlt über diese Adressnummer ('' = selbst) – Ebene im Vertragsbaum */
   zahlt_ueber?: string;
 }

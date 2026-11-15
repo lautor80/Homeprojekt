@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
 import { gruppenMitVorfahren, mitUntergruppen } from '../gruppen/logik.js';
+import { familienAdrnrs } from '../mitglieder/familie.js';
 
 /**
  * Vereinskalender: Veranstaltungen ankündigen und beschreiben, Mitglieder melden sich an bzw. ab.
@@ -59,12 +60,16 @@ export interface Zeitraum { von: string; bis: string }
 /** Veranstaltungen im Zeitraum mit Zahlen und eigener Rückmeldung */
 export interface FamilienPerson { adrnr: string; name: string }
 
-/** Familie: das Mitglied selbst und die Personen, die über es zahlen (aktive Mitglieder) – für die Familiensicht */
+/**
+ * Familie für die Familiensicht: das Mitglied selbst und alle mit ihm verbundenen aktiven Personen – über den Zahler
+ * (in beide Richtungen: auch wer selbst über jemanden zahlt, meldet dessen Kinder an) und über die Familienverknüpfung.
+ */
 export async function familieLesen(db: Db, adrnr: string | null): Promise<FamilienPerson[]> {
   if (!adrnr) return [];
+  const alle = await familienAdrnrs(db, adrnr);
   const rows = await db`select adrnr, coalesce(nullif(trim(concat_ws(' ', vorname, nachname)), ''), adrnr) as name
                           from tco.mitglieder
-                         where adrnr = ${adrnr} or (adrnrkih = ${adrnr} and (austritt is null or austritt >= current_date))
+                         where adrnr = ${adrnr} or (adrnr = any(${alle}::text[]) and (austritt is null or austritt >= current_date))
                          order by (adrnr = ${adrnr}) desc, geburtsdatum nulls last, adrnr`;
   return rows.map((r) => ({ adrnr: r.adrnr as string, name: r.name as string }));
 }

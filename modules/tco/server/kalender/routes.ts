@@ -56,7 +56,7 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const q = z.object({ von: datum, bis: datum, familie: z.enum(['0', '1']).optional() }).parse(req.query);
     const adrnr = await eigeneAdrnr(req);
     const alles = can(req, P_KAL.edit);
-    // Familiensicht – immer: Veranstaltungen aller verknüpften Personen (die über das Mitglied zahlen), nicht nur die eigenen
+    // Familiensicht – immer: Veranstaltungen der ganzen Familie (gleicher Zahler oder Familienverknüpfung), nicht nur die eigenen
     const familie = await familieLesen(DB, adrnr);
     const fam = familie.length > 1 ? familie : undefined;
     const gruppenFam = fam ? [...new Set((await Promise.all(fam.map((f) => meineGruppen(DB, f.adrnr)))).flat())] : null;
@@ -74,7 +74,7 @@ export async function kalenderRoutes(app: FastifyInstance) {
     const adrnr = await eigeneAdrnr(req);
     const alles = can(req, P_KAL.edit);
     const e = await eventLesen(DB, eid);
-    // Familie (Personen, die über das Mitglied zahlen): Eltern öffnen den Einladungslink auch für Veranstaltungen, die nur
+    // Familie (gleicher Zahler oder Familienverknüpfung): Eltern öffnen den Einladungslink auch für Veranstaltungen, die nur
     // für ihre Kinder gelten, und melden sie im Detail an oder ab
     const familie = await familieLesen(DB, adrnr);
     const fam = familie.length > 1 ? familie : undefined;

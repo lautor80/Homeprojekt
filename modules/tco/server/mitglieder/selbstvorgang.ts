@@ -1,6 +1,8 @@
 /**
  * Geführte Vorgänge in „Meine Mitgliedschaft“ (#154): Mitglieder wechseln selbst den Mitgliedsbeitrag und schließen ein
- * (weiteres) Jugendtraining ab – für sich und für Personen, die über sie zahlen (Kinder). Die Kündigung läuft über
+ * (weiteres) Jugendtraining ab – für sich und für Personen, die über sie zahlen (Kinder). Jugendtraining außerdem für die
+ * übrige Familie (familie.ts: gleicher Zahler oder Familienverknüpfung) – deren Verträge bleiben dabei verborgen, der Vertrag
+ * läuft über den Zahler der Person, und der erhält die Unterlage. Die Kündigung läuft über
  * selbst.ts (kuendigen). Ausgeführt wird mit derselben Logik wie in der Mitgliederverwaltung (vorgaenge.ts), aber mit
  * festen Regeln statt freier Eingaben:
  *  - Beitragswechsel nur zwischen Mitgliedsbeiträgen, zum nächsten Halbjahr, Betrag laut Beitragsstamm; Jugendbeitrag nur
@@ -14,10 +16,13 @@ import { condense, dat, heute } from '../format.js';
 import { ART_JUGEND, leer, mitgliedLesen, vertraegeLesen, vertragsarten, vertragsbeginn, verweis, type Vertrag, type VertragsArt } from './logik.js';
 import { alter, ALTER_JUGENDBEITRAG_BIS, ALTER_TRAINING_BIS, istFamilienbeitrag, istJugendbeitrag, kategorieVon, MAX_TRAINING } from '../antrag/logik.js';
 import { eigeneAdrnr } from './selbst.js';
+import { familienAdrnrs } from './familie.js';
 import { vorgang, wechselAb, type Plan } from './vorgaenge.js';
 
 export interface SelbstPerson {
   adrnr: string; name: string; ich: boolean; alter: number | null;
+  /** gehört zur Familie, zahlt aber nicht über mich: nur Jugendtraining, Verträge werden nicht gezeigt */
+  familie: boolean;
   vertraege: Vertrag[];
   /** laufender Mitgliedsbeitrag, der gewechselt werden kann, mit den möglichen neuen Beitragsarten */
   wechsel: { vertragnr: string; artname: string; betrag: number; turnus: string; arten: VertragsArt[] } | null;
@@ -38,26 +43,41 @@ export async function selbstKontext(db: Db, benutzerId: string) {
   const ab = wechselAb(h);
   const trainingAb = vertragsbeginn(h, ART_JUGEND) ?? h;
   const ich = await mitgliedLesen(db, eigene);
-  const weitere = await db`select adrnr from tco.mitglieder where adrnrkih = ${eigene} and adrnr <> ${eigene}
-                             and (austritt is null or austritt >= ${h}) order by geburtsdatum nulls last, adrnr`;
+  // Personen, die über mich zahlen – danach die übrige Familie (gleicher Zahler, Familienverknüpfung)
+  const fam = await familienAdrnrs(db, eigene);
+  const weitere = await db`select adrnr, (adrnrkih = ${eigene}) as ueber_mich from tco.mitglieder
+                            where adrnr <> ${eigene} and (adrnrkih = ${eigene} or adrnr = any(${fam}::text[]))
+                              and (austritt is null or austritt >= ${h})
+                            order by coalesce(adrnrkih = ${eigene}, false) desc, geburtsdatum nulls last, adrnr`;
+  const ueberMich = new Set(weitere.filter((w) => w.ueber_mich).map((w) => w.adrnr as string));
   const alleVertraege = (await vertraegeLesen(db, ich)).filter((v) => v.laeuft);
   const artenWechsel = (await vertragsarten(db, ab)).arten;
   const artenTraining = (await vertragsarten(db, trainingAb)).arten.filter((a) => kategorieVon(a.art, a.name) === 'TRAINING');
-  // neue Verträge nur, wenn per Lastschrift eingezogen werden kann (eigenes Konto bzw. das des Zahlers)
-  const zahler = verweis(ich.adrnrkih) ? await mitgliedLesen(db, verweis(ich.adrnrkih)) : ich;
-  const lastschrift = leer(zahler.zahlungsart) === 'L' && !!leer(zahler.iban1);
+  // neue Verträge nur, wenn per Lastschrift eingezogen werden kann (eigenes Konto bzw. das des Zahlers der Person)
+  const zahlerVon = async (m: Record<string, any>) => (verweis(m.adrnrkih) && verweis(m.adrnrkih) !== m.adrnr
+    ? (verweis(m.adrnrkih) === eigene ? ich : await mitgliedLesen(db, verweis(m.adrnrkih))) : m);
+  const zahlerIch = await zahlerVon(ich);
+  const mailAn = new Map<string, string>();
 
   const personen: SelbstPerson[] = [];
   for (const adrnr of [eigene, ...weitere.map((w) => w.adrnr as string)]) {
     const m = adrnr === eigene ? ich : await mitgliedLesen(db, adrnr);
-    const vertraege = alleVertraege.filter((v) => v.adrnr === adrnr);
+    const familie = adrnr !== eigene && !ueberMich.has(adrnr);
+    // wie bisher: wer über mich zahlt, läuft über mein Konto (bzw. das meines Zahlers); die übrige Familie über ihren eigenen Zahler
+    const zahler = familie ? await zahlerVon(m) : zahlerIch;
+    const lastschrift = leer(zahler.zahlungsart) === 'L' && !!leer(zahler.iban1);
+    mailAn.set(adrnr, familie ? zahler.adrnr as string : eigene);
+    // Verträge der übrigen Familie nur intern (laufende Einheiten zählen) – angezeigt werden sie nicht
+    const eigeneVt = familie ? (await vertraegeLesen(db, m)).filter((v) => v.laeuft && v.adrnr === adrnr) : alleVertraege.filter((v) => v.adrnr === adrnr);
+    const vertraege = familie ? [] : eigeneVt;
     const p: SelbstPerson = {
       adrnr, name: condense(`${leer(m.vorname)} ${leer(m.nachname)}`), ich: adrnr === eigene, alter: m.geburtsdatum ? alter(m.geburtsdatum, h) : null,
-      vertraege, wechsel: null, wechselHinweis: null, training: [], trainingHinweis: null, trainingAlter: false, trainingLaufend: 0,
+      familie, vertraege, wechsel: null, wechselHinweis: null, training: [], trainingHinweis: null, trainingAlter: false, trainingLaufend: 0,
     };
     // ---- Beitragswechsel
     const beitrag = vertraege.find((v) => kategorieVon(v.art, v.artname) === 'MITGLIEDSCHAFT' && !v.vertragende);
-    if (m.austritt) p.wechselHinweis = `Die Mitgliedschaft ist zum ${dat(m.austritt)} gekündigt.`;
+    if (familie) p.wechselHinweis = 'Den Beitrag wechselt die Person selbst oder ihr Zahler.';
+    else if (m.austritt) p.wechselHinweis = `Die Mitgliedschaft ist zum ${dat(m.austritt)} gekündigt.`;
     else if (!beitrag) p.wechselHinweis = 'Es läuft kein Mitgliedsbeitrag, der online gewechselt werden kann.';
     else if (istFamilienbeitrag(beitrag.artname)) p.wechselHinweis = 'Änderungen am Familienbeitrag bitte über den Vorstand.';
     else {
@@ -67,7 +87,7 @@ export async function selbstKontext(db: Db, benutzerId: string) {
       else p.wechselHinweis = 'Es gibt keine andere Beitragsart, in die online gewechselt werden kann.';
     }
     // ---- Jugendtraining
-    const laufend = vertraege.filter((v) => kategorieVon(v.art, v.artname) === 'TRAINING' && (!v.vertragende || v.vertragende >= trainingAb));
+    const laufend = eigeneVt.filter((v) => kategorieVon(v.art, v.artname) === 'TRAINING' && (!v.vertragende || v.vertragende >= trainingAb));
     p.trainingLaufend = laufend.length;
     p.trainingAlter = !!m.geburtsdatum && alter(m.geburtsdatum, trainingAb) < ALTER_TRAINING_BIS;
     if (m.austritt && m.austritt < trainingAb) p.trainingHinweis = `Austritt zum ${dat(m.austritt)}.`;
@@ -80,11 +100,11 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     }
     personen.push(p);
   }
-  return { eigene, personen, ab, trainingAb, maxTraining: MAX_TRAINING };
+  return { eigene, personen, ab, trainingAb, maxTraining: MAX_TRAINING, mailAn };
 }
 
 /** prüft (ausfuehren = false) bzw. führt aus – nur Personen und Beitragsarten, die selbstKontext anbietet */
-export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe, ausfuehren: boolean, benutzer: string): Promise<Plan & { eigene: string }> {
+export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe, ausfuehren: boolean, benutzer: string): Promise<Plan & { eigene: string; mailAn: string }> {
   const k = await selbstKontext(tx, benutzerId);
   const p = k.personen.find((x) => x.adrnr === e.adrnr);
   if (!p) throw new BusinessError('Die Person gehört nicht zu Ihrer Mitgliedschaft.', 403);
@@ -94,10 +114,10 @@ export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe
     const a = p.wechsel.arten.find((x) => x.art === e.art);
     if (!a) throw new BusinessError('Diese Beitragsart kann nicht online gewählt werden – bitte beim Vorstand melden.');
     const plan = await vorgang(tx, { typ: 'BEITRAGSWECHSEL', adrnr: p.adrnr, vertragnr: p.wechsel.vertragnr, art: a.art, ab: k.ab }, ausfuehren, wer, 'Portal');
-    return { ...plan, eigene: k.eigene };
+    return { ...plan, eigene: k.eigene, mailAn: k.mailAn.get(p.adrnr) ?? k.eigene };
   }
   const a = p.training.find((x) => x.art === e.art);
   if (!a) throw new BusinessError(p.trainingHinweis ?? 'Diese Trainingseinheit kann nicht gebucht werden.');
   const plan = await vorgang(tx, { typ: 'JUGENDTRAINING', adrnr: p.adrnr, art: a.art, beginn: k.trainingAb, mehrfach: true }, ausfuehren, wer, 'Portal');
-  return { ...plan, eigene: k.eigene };
+  return { ...plan, eigene: k.eigene, mailAn: k.mailAn.get(p.adrnr) ?? k.eigene };
 }

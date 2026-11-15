@@ -19,6 +19,8 @@ const MG = `${TCO}/mitglieder/meine`;
 interface Art { art: string; name: string; betrag: number; turnus: string }
 interface SPerson {
   adrnr: string; name: string; ich: boolean; alter: number | null; vertraege: Vertrag[];
+  /** gehört zur Familie, zahlt aber nicht über mich – nur Jugendtraining, der Vertrag läuft über den Zahler der Person */
+  familie?: boolean;
   wechsel: { vertragnr: string; artname: string; betrag: number; turnus: string; arten: Art[] } | null; wechselHinweis: string | null;
   training: Art[]; trainingHinweis: string | null; trainingAlter?: boolean; trainingLaufend?: number;
 }
@@ -55,7 +57,8 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     if (typ === 'KUENDIGUNG') return;
     api.get<Kontext>(`${MG}/vorgang`).then((roh) => {
       // Jugendtraining: nur Personen, die noch keine 21 Jahre alt sind
-      const r = typ === 'JUGENDTRAINING' ? { ...roh, personen: roh.personen.filter((p) => p.trainingAlter) } : roh;
+      // Beitragswechsel: nur für mich und Personen, die über mich zahlen
+      const r = { ...roh, personen: roh.personen.filter((p) => (typ === 'JUGENDTRAINING' ? p.trainingAlter : !p.familie)) };
       setK(r); setAdrnr((r.personen.find(moeglich) ?? r.personen[0])?.adrnr ?? ''); }).catch((e) => setError(e.message));
   }, [typ]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -144,6 +147,11 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
                   </ObjectStatus>
                 ))}
               </div>
+            )}
+            {typ === 'JUGENDTRAINING' && person?.familie && (
+              <MessageStrip design="Information" hideCloseButton style={{ gridColumn: '1 / -1' }}>
+                {person.name} zahlt nicht über dich: Der Vertrag läuft über das Konto, über das {person.name} bisher zahlt. Die Unterlage geht dorthin.
+              </MessageStrip>
             )}
             {arten.length > 0 && (
               <Auswahlfeld label={typ === 'BEITRAGSWECHSEL' ? 'Neuer Mitgliedsbeitrag' : 'Trainingseinheit'} required wide value={art}
