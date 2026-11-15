@@ -54,6 +54,12 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     permissions: ['tco.dashboard:edit'],
   },
   {
+    id: 'tco.rundschreiben.versand', app: 'Rundschreiben', text: 'Rundschreiben senden',
+    beschreibung: 'Rundschreiben per E-Mail an die Mitglieder senden (auch anhalten, fortsetzen und Fehlgeschlagene erneut senden). Abgeschaltet lassen sich Entwürfe weiter verfassen und prüfen.',
+    permissions: ['tco.rundschreiben:execute'],
+    hinweis: 'Ein laufender Versand hält nach der gerade bearbeiteten E-Mail an; die übrigen Empfänger bleiben offen und gehen nach dem Einschalten über „Versand fortsetzen“ hinaus.',
+  },
+  {
     id: 'tco.sport.nuliga', app: 'Spielerdaten (nuLiga)', text: 'Abgleich mit nuLiga',
     beschreibung: 'nuLiga-Mitgliederdaten ablegen und ID-Nr. sowie LK in die Mitglieder übernehmen.',
     permissions: ['tco.sport:edit'],
