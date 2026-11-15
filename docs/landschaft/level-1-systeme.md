@@ -162,7 +162,7 @@ flowchart LR
 | analyse | 7 |
 | antrag | 13 |
 | beitraege | 8 |
-| clubhaus | 18 |
+| clubhaus | 19 |
 | core:admin | 17 |
 | core:apikeys | 6 |
 | core:arbeitsvorrat | 2 |

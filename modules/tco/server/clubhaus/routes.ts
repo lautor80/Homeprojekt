@@ -2,10 +2,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { heute } from '../format.js';
 import { DB, paperless, plAktiv, vereinLesen, type Verein } from '../verein.js';
 import {
   absatzLesen, belegtextUebernehmen, chCfg, forderungBerechnen, forderungenLesen, getraenkeLesen, getraenkSpeichern, kandidatenIds,
-  rechnen, rechnungenLesen, rechnungLesen, rechnungLoeschen, rechnungSpeichern, treffer, NAH_TAGE, type PlDoc,
+  rechnen, rechnungenLesen, rechnungLesen, rechnungLoeschen, rechnungSpeichern, saldoAktuell, treffer, NAH_TAGE, type PlDoc,
 } from './logik.js';
 import { chTitel, clubhausAblegen, clubhausPdf } from './pdf.js';
 
@@ -74,6 +75,12 @@ export async function clubhausRoutes(app: FastifyInstance) {
       jahr: q.jahr, jahre, cfg: chCfg(v), paperless: plAktiv(v),
       rechnungen: await rechnungenLesen(DB, q.jahr), forderungen: await forderungenLesen(DB, q.jahr),
     };
+  });
+
+  // Kachel der Startseite: aktueller Saldo gegenüber der Wirtin – Einzahlungen immer mit dem heutigen Stand aus FI
+  app.get('/clubhaus/saldo', { preHandler: requireAuth(P_CH.display) }, async () => {
+    const v = await vereinLesen();
+    return { ...(await saldoAktuell(DB, v, heute())), wirt: chCfg(v).wirt };
   });
 
   app.put('/clubhaus/cfg', { preHandler: requireAuth(P_CH.edit) }, async (req) => {

@@ -151,6 +151,28 @@ test('Clubhaus: Getränke, Rechnung, Forderungsliste, Belege, PDF', async () => 
   r = await call('GET', `${C}/rechnung?rgnr=R-4711A`);
   assert.equal(r.body.belege.length, 1);
 
+  // Kachel der Startseite: Saldo zum laufenden Monat; eine später in FI gebuchte Einzahlung zählt sofort, ohne „Berechnen“
+  const { saldoAktuell } = await import('../../modules/tco/server/clubhaus/logik.js');
+  const { vereinLesen } = await import('../../modules/tco/server/verein.js');
+  const fl = (await call('GET', `${C}/init?jahr=2026`)).body.forderungen;
+  const nov = fl.find((f: any) => f.monat === 11).offene_posten;
+  assert.equal((await saldoAktuell(sql as any, await vereinLesen(), '2026-11-15')).saldo, nov);
+  assert.equal((await saldoAktuell(sql as any, await vereinLesen(), '2026-10-31')).saldo, fl.find((f: any) => f.monat === 10).offene_posten);
+  await sql`insert into tco.fibuchungen (internenr, konto, posnr, jahr, monat, datum, text, betrag, gkonto) values
+            ('0000009003', '8005', 1, 2026, 11, '2026-11-10', 'Einzahlung Clubhaus', 40, '1000')`;
+  assert.deepEqual(await saldoAktuell(sql as any, await vereinLesen(), '2026-11-15'), { saldo: Math.round((nov - 40) * 100) / 100, jahr: 2026, monat: 11 });
+  assert.equal((await saldoAktuell(sql as any, await vereinLesen(), '2026-10-31')).saldo, fl.find((f: any) => f.monat === 10).offene_posten);
+  // Liste selbst bleibt bis zum nächsten „Berechnen“ unverändert
+  assert.equal((await call('GET', `${C}/init?jahr=2026`)).body.forderungen.find((f: any) => f.monat === 11).offene_posten, nov);
+  // Jahr ohne Liste: ab Januar gerechnet (Übertrag aus Dezember 2026, 4 Montage im Januar 2027 je 26 €)
+  const dez = fl.find((f: any) => f.monat === 12).offene_posten;
+  assert.equal((await saldoAktuell(sql as any, await vereinLesen(), '2027-01-20')).saldo, Math.round((dez - 104) * 100) / 100);
+  r = await call('GET', `${C}/saldo`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(typeof r.body.saldo, 'number');
+  assert.ok(r.body.wirt);
+  await sql`delete from tco.fibuchungen where internenr = '0000009003'`;
+
   // PDF und Ablage
   r = await call('GET', `${C}/pdf?jahr=2026&monat=11`);
   assert.equal(r.ct, 'application/pdf');
