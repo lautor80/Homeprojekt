@@ -165,7 +165,7 @@ export function MitgliedDetail({ adrnr, edit: darf, onChanged, onOpen }: { adrnr
           <Vertraege d={d} aw={aw} edit={edit} onNeu={(a) => { setVtFuer(a); setDlg('vertrag'); }} onOpen={onOpen} onAktion={aktion} />
         </Tab>
         <Tab data-key="fam" text={`Familie & Schlüssel (${d.familie.length - 1})`} selected={tab === 'fam'}>
-          <Familie d={d} onOpen={onOpen} />
+          <Familie d={d} aw={aw} edit={edit} onOpen={onOpen} onAktion={aktion} />
           <Schluessel d={d} />
         </Tab>
         <Tab data-key="grp" text={`Gruppen (${d.gruppen.length})`} selected={tab === 'grp'}>
@@ -398,8 +398,16 @@ function Vertraege({ d, aw, edit, onNeu, onOpen, onAktion }: {
 }
 
 // ---------------------------------------------------------------- Familie / Schlüssel / Notizen
-function Familie({ d, onOpen }: { d: Detail; onOpen: (a: string) => void }) {
+function Familie({ d, aw, edit, onOpen, onAktion }: {
+  d: Detail; aw: Auswahl | null; edit: boolean; onOpen: (a: string) => void; onAktion: (fn: () => Promise<{ text?: string } | void>) => void;
+}) {
   const rows = d.familie.filter((p) => p.adrnr !== d.mitglied.adrnr);
+  const [neu, setNeu] = useState(false);
+  const [wahl, setWahl] = useState('');
+  const [weg, setWeg] = useState<{ adrnr: string; name: string } | null>(null);
+  // zur Auswahl: alle Personen, die noch nicht zur Familie gehören
+  const drin = new Set(d.familie.map((p) => p.adrnr));
+  const optionen = (aw?.zahler ?? []).filter((z) => !drin.has(z.adrnr)).map((z) => [z.adrnr, z.text.replace(/ – ohne IBAN$/, '').replace(/ \(Zahler\)$/, '')] as [string, string]);
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Name', accessor: 'name', minWidth: 150, Cell: ({ row, value }: Cell) => <Link onClick={() => onOpen(row.original.adrnr)}>{value}</Link> },
     { Header: 'Mitgliedsnr.', accessor: 'mitglnrn', width: 110 },
@@ -407,11 +415,44 @@ function Familie({ d, onOpen }: { d: Detail; onOpen: (a: string) => void }) {
     { Header: 'Eintritt', accessor: 'eintritt', width: 105, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Austritt', accessor: 'austritt', width: 105, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Verknüpfung', accessor: 'rolle', minWidth: 160 },
+    ...(edit ? [{
+      Header: '', id: 'loesen', width: 110, disableSortBy: true,
+      Cell: ({ row }: Cell) => (row.original.verknuepft
+        ? <Button design="Transparent" icon="broken-link" tooltip="Familienverknüpfung lösen" onClick={() => setWeg({ adrnr: row.original.adrnr, name: row.original.name })}>Lösen</Button> : null),
+    }] : []),
   ];
   return (
     <>
-      <Toolbar design="Transparent"><Title level="H5">Verknüpfte Personen ({rows.length})</Title><ToolbarSpacer /></Toolbar>
+      <Toolbar design="Transparent">
+        <Title level="H5">Verknüpfte Personen ({rows.length})</Title><ToolbarSpacer />
+        {edit && !neu && <Button icon="chain-link" onClick={() => { setWahl(''); setNeu(true); }}>Person verknüpfen</Button>}
+      </Toolbar>
+      {neu && (
+        <>
+          <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+            Die Familienverknüpfung verbindet zwei Personen ohne Zahlungsbezug, z. B. Vater und Mutter mit getrennten Konten. Die ganze Familie
+            meldet sich dann gemeinsam zu Veranstaltungen an und schließt Jugendtraining füreinander ab. Zahler, Sollstellung und SEPA ändern sich
+            nicht. Wer am selben Zahler hängt, gehört ohnehin zusammen.
+          </MessageStrip>
+          <FlexBox alignItems="End" wrap="Wrap" style={{ gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <div style={{ flex: '1 1 18rem' }}>
+              <Label>Person</Label>
+              <Select style={{ width: '100%' }} onChange={(e) => setWahl((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+                <Option data-k="" selected={!wahl}>– bitte wählen –</Option>
+                {optionen.map(([k, t]) => <Option key={k} data-k={k} selected={k === wahl}>{t}</Option>)}
+              </Select>
+            </div>
+            <Button design="Emphasized" disabled={!wahl}
+                    onClick={() => { const a = wahl; setNeu(false); onAktion(() => api.post<{ text: string }>(`${MG}/m/${d.mitglied.adrnr}/familie`, { adrnr: a })); }}>Verknüpfen</Button>
+            <Button onClick={() => setNeu(false)}>Abbrechen</Button>
+          </FlexBox>
+        </>
+      )}
       <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine verknüpften Personen" />
+      <ConfirmDialog open={!!weg} title="Familienverknüpfung lösen" confirmText="Lösen"
+                     text={`${weg?.name ?? ''} gehört danach nicht mehr zur Familie – gemeinsames Anmelden ist dann nicht mehr möglich. Verbindungen über den Zahler bleiben bestehen.`}
+                     onCancel={() => setWeg(null)}
+                     onConfirm={() => { const a = weg!.adrnr; setWeg(null); onAktion(() => api.post<{ text: string }>(`${MG}/m/${d.mitglied.adrnr}/familie/loesen`, { adrnr: a })); }} />
     </>
   );
 }

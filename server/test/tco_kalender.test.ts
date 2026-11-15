@@ -392,6 +392,62 @@ test('Familiensicht: Veranstaltungen aller verknüpften Personen, Rückmeldung p
   await sql`delete from tco.mitglieder where adrnr in (${KIM}, ${LEO})`;
 });
 
+test('Familie über Zahler und Familienverknüpfung: wer über jemanden zahlt, meldet dessen Kinder an; zwei Zahler gemeinsam', async () => {
+  // Fall 1: Gina und Kira zahlen beide über Ben – Gina meldet Kira an, obwohl niemand über sie zahlt
+  // Fall 2: Mara zahlt selbst, Milo zahlt über sie – erst die Familienverknüpfung Ben ↔ Mara macht daraus eine Familie
+  const GINA = '0000000521', KIRA = '0000000522', MARA = '0000000523', MILO = '0000000524';
+  const MG = '/api/m/tco/mitglieder';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, adrnrkih, geburtsdatum) values
+    (${GINA}, 'Gina', 'Netz', '2022-01-01', ${BEN}, '1985-05-05'), (${KIRA}, 'Kira', 'Netz', '2022-01-01', ${BEN}, '2014-03-03'),
+    (${MARA}, 'Mara', 'Lob', '2022-01-01', null, '1982-02-02'), (${MILO}, 'Milo', 'Lob', '2022-01-01', ${MARA}, '2015-06-06')`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${GINA})`;
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'gina', displayName: 'gina', password: 'start-passwort', roles: ['MITGLIED'] })).status, 200);
+  await sql`update tco.mitgliedera set benutzer_id = (select id from core.users where username = 'gina') where adrnr = ${GINA}`;
+  const gina = await anmelden('gina');
+  let r = await admin('POST', K, { titel: 'Sommerfest Familie', beginn: tage(51) });
+  const fest = r.body.id as number;
+  const Z = `von=${tag(50)}&bis=${tag(52)}`;
+  const stand = async () => Object.fromEntries((await sql`select adrnr, status from tco.kal_anmeldungen where event_id = ${fest}`).map((a) => [a.adrnr, a.status]));
+
+  r = await gina('GET', `${K}?${Z}`);
+  assert.deepEqual(r.body.familie.map((f: any) => f.name), ['Gina Netz', 'Kira Netz', 'Ben Netz'], 'gleicher Zahler = Familie, in beide Richtungen');
+  assert.equal(r.body.familiensicht, true);
+  assert.equal((await gina('POST', `${K}/${fest}/rueckmeldung-familie`, { dabei: [KIRA, MILO] })).status, 403, 'Milo gehört noch nicht dazu');
+  assert.equal((await gina('POST', `${K}/${fest}/rueckmeldung-familie`, { dabei: [KIRA] })).status, 200);
+  assert.deepEqual(await stand(), { [GINA]: 'ABSAGE', [KIRA]: 'ZUSAGE', [BEN]: 'ABSAGE' });
+
+  // Familienverknüpfung pflegen: nur mit Änderungsrecht, nicht doppelt, nicht mit sich selbst oder innerhalb der Familie
+  assert.equal((await gina('POST', `${MG}/m/${BEN}/familie`, { adrnr: MARA })).status, 403);
+  assert.equal((await admin('POST', `${MG}/m/${BEN}/familie`, { adrnr: BEN })).status, 400);
+  assert.equal((await admin('POST', `${MG}/m/${BEN}/familie`, { adrnr: GINA })).status, 400, 'zahlt schon über Ben');
+  r = await admin('POST', `${MG}/m/${BEN}/familie`, { adrnr: MARA });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Mara Lob/);
+  assert.equal((await admin('POST', `${MG}/m/${MARA}/familie`, { adrnr: BEN })).status, 400, 'bereits verknüpft');
+  assert.equal((await admin('POST', `${MG}/m/${GINA}/familie`, { adrnr: MILO })).status, 400, 'über Ben ↔ Mara schon eine Familie');
+
+  // Mitgliederverwaltung zeigt die ganze Familie; lösen lässt sich nur die direkte Verknüpfung
+  r = await admin('GET', `${MG}/m/${BEN}`);
+  assert.deepEqual(r.body.familie.filter((p: any) => p.rolle === 'Familienverknüpfung').map((p: any) => [p.name, p.verknuepft]), [['Mara Lob', true], ['Milo Lob', false]]);
+  assert.ok(r.body.familie.some((p: any) => p.name === 'Gina Netz' && p.rolle === 'Zahlt über dieses Mitglied' && !p.verknuepft));
+
+  // jetzt meldet Gina die ganze Familie an – auch das Kind des anderen Zahlers
+  r = await gina('GET', `${K}?${Z}`);
+  assert.deepEqual(r.body.familie.map((f: any) => f.name), ['Gina Netz', 'Mara Lob', 'Kira Netz', 'Milo Lob', 'Ben Netz']);
+  assert.equal((await gina('POST', `${K}/${fest}/rueckmeldung-familie`, { dabei: [GINA, KIRA, MILO] })).status, 200);
+  assert.deepEqual(await stand(), { [GINA]: 'ZUSAGE', [KIRA]: 'ZUSAGE', [BEN]: 'ABSAGE', [MARA]: 'ABSAGE', [MILO]: 'ZUSAGE' });
+
+  // Verknüpfung lösen: die Zahler-Familie bleibt, die andere Familie ist wieder getrennt
+  assert.equal((await admin('POST', `${MG}/m/${MARA}/familie/loesen`, { adrnr: GINA })).status, 404);
+  assert.equal((await admin('POST', `${MG}/m/${MARA}/familie/loesen`, { adrnr: BEN })).status, 200);
+  assert.equal((await gina('POST', `${K}/${fest}/rueckmeldung-familie`, { dabei: [MILO] })).status, 403);
+  assert.equal((await gina('GET', `${K}?${Z}`)).body.familie.length, 3);
+
+  await sql`delete from tco.kal_events where id = ${fest}`;
+  await sql`delete from tco.mitgliedera where adrnr = ${GINA}`;
+  await sql`delete from tco.mitglieder where adrnr in (${GINA}, ${KIRA}, ${MARA}, ${MILO})`;
+});
+
 test('Einladungslink: Vorschau, Versand je E-Mail-Adresse, Hinweis für Empfänger ohne Zugang, Verlauf', async () => {
   const http = await import('node:http');
   const { verbindungenCacheLeeren } = await import('../src/lib/verbindungen.js');

@@ -3,6 +3,7 @@ import { bicGueltig, ibanGueltig, normalisieren } from '../../../../server/src/l
 import type { Db } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
 import { mitgliedGruppen } from '../gruppen/logik.js';
+import { familienAdrnrs, verknuepfteAdrnrs } from './familie.js';
 
 /**
  * Port von Z2UI5_CL_TCO_MITGLIEDER / ZCL_TCO_MITGLIEDER: Mitgliederliste, Objektseite
@@ -148,20 +149,33 @@ export interface Person {
   adrnr: string; name: string; mitglnrn: string; geburtsdatum: string | null; eintritt: string | null; austritt: string | null; rolle: string;
   /** Adressnummer des abweichenden Zahlers, über den diese Person zahlt ('' = zahlt selbst) – Ebene im Vertragsbaum */
   zahlt_ueber: string;
+  /** direkt mit dem Mitglied verknüpft (Familienverknüpfung von Hand) – lässt sich an dieser Stelle lösen */
+  verknuepft?: boolean;
 }
 
-/** Mitglied, abweichender Zahler und alle (nicht ausgetretenen) Personen mit demselben Zahler bzw. diesem Mitglied als Zahler */
-export async function familieLesen(db: Db, m: Record<string, any>): Promise<Person[]> {
+/**
+ * Mitglied, abweichender Zahler und alle (nicht ausgetretenen) Personen mit demselben Zahler bzw. diesem Mitglied als Zahler.
+ * Mit `verknuepfte` (Mitgliederverwaltung) zusätzlich die übrige Familie über Familienverknüpfungen (familie.ts) – nicht in
+ * „Meine Mitgliedschaft“ und den Ausdrucken: dort sieht jeder nur die Verträge, die ihm zugeordnet sind.
+ */
+export async function familieLesen(db: Db, m: Record<string, any>, o: { verknuepfte?: boolean } = {}): Promise<Person[]> {
   const kopf = verweis(m.adrnrkih) || m.adrnr;
-  const rows = await db`select adrnr, vorname, nachname, mitglnrn, geburtsdatum, eintritt, austritt, adrnrkih from tco.mitglieder
+  const weitere = o.verknuepfte ? await familienAdrnrs(db, m.adrnr) : [];
+  const direkt = o.verknuepfte ? await verknuepfteAdrnrs(db, m.adrnr) : [];
+  const rows = await db`select adrnr, vorname, nachname, mitglnrn, geburtsdatum, eintritt, austritt, adrnrkih,
+                               (adrnr = ${kopf} or adrnr = ${m.adrnr} or (austritt is null and (adrnrkih = ${kopf} or adrnrkih = ${m.adrnr}))) as zahlerfamilie
+                          from tco.mitglieder
                          where adrnr = ${kopf} or adrnr = ${m.adrnr}
-                            or (austritt is null and (adrnrkih = ${kopf} or adrnrkih = ${m.adrnr}))`;
+                            or (austritt is null and (adrnrkih = ${kopf} or adrnrkih = ${m.adrnr}))
+                            or (austritt is null and adrnr = any(${weitere}::text[]))`;
   const p: Person[] = rows.map((r) => ({
     adrnr: r.adrnr, name: condense(`${leer(r.vorname)} ${leer(r.nachname)}`), mitglnrn: leer(r.mitglnrn), geburtsdatum: r.geburtsdatum,
     eintritt: r.eintritt, austritt: r.austritt, zahlt_ueber: verweis(r.adrnrkih) === r.adrnr ? '' : verweis(r.adrnrkih),
-    rolle: r.adrnr === m.adrnr ? 'Mitglied' : r.adrnr === verweis(m.adrnrkih) ? 'Abweichender Zahler' : r.adrnrkih === m.adrnr ? 'Zahlt über dieses Mitglied' : 'Familienmitglied',
+    rolle: r.adrnr === m.adrnr ? 'Mitglied' : r.adrnr === verweis(m.adrnrkih) ? 'Abweichender Zahler' : r.adrnrkih === m.adrnr ? 'Zahlt über dieses Mitglied'
+      : r.zahlerfamilie ? 'Familienmitglied' : 'Familienverknüpfung',
+    ...(o.verknuepfte ? { verknuepft: direkt.includes(r.adrnr) } : {}),
   }));
-  const rang = (x: Person) => (x.adrnr === m.adrnr ? 0 : x.rolle === 'Abweichender Zahler' ? 1 : 2);
+  const rang = (x: Person) => (x.adrnr === m.adrnr ? 0 : x.rolle === 'Abweichender Zahler' ? 1 : x.rolle === 'Familienverknüpfung' ? 3 : 2);
   return p.sort((a, b) => rang(a) - rang(b) || (a.geburtsdatum ?? '').localeCompare(b.geburtsdatum ?? ''));
 }
 
@@ -209,14 +223,15 @@ export async function sepaLesen(db: Db, m: Record<string, any>) {
   }));
 }
 
-export async function detailLesen(db: Db, adrnr: string) {
+/** `verknuepfte`: Familie einschließlich der Familienverknüpfungen (nur Mitgliederverwaltung) */
+export async function detailLesen(db: Db, adrnr: string, o: { verknuepfte?: boolean } = {}) {
   const m = await mitgliedLesen(db, adrnr);
   const [a] = await db`select trainer, zuid, steuernummer, id_nr, lk::float8 as lk, lk_stand::text as lk_stand, meldung_irrelevant from tco.mitgliedera where adrnr = ${adrnr}`;
   const [z] = verweis(m.adrnrkih) ? await db`select adrnr, vorname, nachname, austritt, iban1 from tco.mitglieder where adrnr = ${m.adrnrkih}` : [];
   const [k] = await db`select kanal from tco.kommpref where adrnr = ${adrnr}`;
   const schluessel = await db`select counter, ausgabe, ausgabebeleg, ruecknahme, ruecknahmebeleg from tco.schluessel where adrnr = ${adrnr} order by counter`;
   const notizen = await db`select notiz_id, erstellt_am, erstellt_von, notiz from tco.mgnotiz where adrnr = ${adrnr} order by erstellt_am desc`;
-  const familie = await familieLesen(db, m);
+  const familie = await familieLesen(db, m, o);
   return {
     mitglied: {
       adrnr: m.adrnr, anrede: leer(m.anrede), vorname: leer(m.vorname), nachname: leer(m.nachname), strasse: leer(m.strasse), plz: leer(m.plz),

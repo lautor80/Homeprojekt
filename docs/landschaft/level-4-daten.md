@@ -30,6 +30,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.eing_regeln` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
 | `tco.eing_vorgaenge` |  |  |  |  |  | ● |  | ● | ● |  |  |  |  |  |
 | `tco.einladungen` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
+| `tco.familienverknuepfungen` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.ferien` |  |  |  | ● |  |  |  |  |  |  |  |  |  |  |
 | `tco.fibankab` |  | ● | ● |  |  | ● |  | ● | ● |  |  |  |  |  |
 | `tco.fibankiban` |  | ● | ● |  |  | ● |  | ● |  |  |  |  |  |  |

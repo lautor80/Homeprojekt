@@ -199,3 +199,41 @@ test('Meine Mitgliedschaft: Beitrag wechseln und Jugendtraining selbst abschlie�
   v = await vertraege('0000000205');
   assert.deepEqual(v.map((x) => [x.art, x.beginn, x.ende, x.betrag]), [['5', '2021-01-01', tagVorher(ab), 60], ['7', ab, null, 30]]);
 });
+
+test('Meine Mitgliedschaft: Jugendtraining für die Familie über die Familienverknüpfung – Vertrag über den Zahler der Person, ohne Einblick in deren Verträge', async () => {
+  // Viktor zahlt selbst, Vera zahlt über ihn; Paula (angemeldet) wird mit Viktor verknüpft
+  const VIKTOR = '0000000208', VERA = '0000000209';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, geburtsdatum, eintritt, mitglnrn, zahlungsart, iban1, email, adrnrkih) values
+    (${VIKTOR}, 'Viktor', 'Villa', '1975-07-07', '2022-01-01', '208', 'L', 'DE02120300000000202051', 'viktor@example.org', null),
+    (${VERA}, 'Vera', 'Villa', '2014-08-08', '2022-01-01', '209', 'L', null, null, ${VIKTOR})`;
+  await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, mitglnr, sollstellung, vertragbegin, vertragende, betrag) values
+    (${VIKTOR}, '1', '5', 'Erwachsene', '208', 'halbjährlich', '2022-01-01', null, 60), (${VERA}, '1', '3', 'Jugendliche', '209', 'halbjährlich', '2022-01-01', null, 20)`;
+  const S = `${M}/meine/vorgang`;
+  assert.equal((await call('POST', `${S}/pruefen`, { typ: 'JUGENDTRAINING', adrnr: VERA, art: '90' })).status, 403, 'ohne Verknüpfung fremd');
+  assert.equal((await call('POST', `${M}/m/0000000205/familie`, { adrnr: VIKTOR })).status, 200);
+
+  let r = await call('GET', S);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.personen.map((p: any) => [p.name, p.familie]), [['Paula Eltern', false], ['Kim Eltern', false], ['Viktor Villa', true], ['Vera Villa', true]]);
+  assert.equal(r.body.mailAn, undefined);
+  const vera = r.body.personen[3];
+  assert.deepEqual(vera.vertraege, [], 'Verträge der verknüpften Familie bleiben verborgen');
+  assert.equal(vera.wechsel, null);
+  assert.deepEqual(vera.training.map((a: any) => a.art), ['90', '91']);
+  assert.equal((await call('POST', `${S}/pruefen`, { typ: 'BEITRAGSWECHSEL', adrnr: VERA, art: '7' })).status, 400, 'Beitragswechsel nur selbst oder über den Zahler');
+  // „Meine Mitgliedschaft“ selbst zeigt die verknüpfte Familie und ihre Verträge nicht
+  assert.doesNotMatch(JSON.stringify((await call('GET', `${M}/meine`)).body), /Villa/);
+
+  // Abschluss: Vertrag bei Vera ohne abweichenden Zahler (läuft damit über Viktor), Unterlage an Viktor
+  r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: VERA, art: '90' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.unterlage.an, 'viktor@example.org');
+  assert.deepEqual((await vertraege(VERA)).map((x) => x.art), ['3', '90']);
+  const [vt] = await sql`select zahler_adrnr from tco.vertraege where adrnr = ${VERA} and art = '90'`;
+  assert.equal(vt.zahler_adrnr, null);
+  assert.equal((await call('GET', S)).body.personen[3].trainingLaufend, 1);
+
+  assert.equal((await call('POST', `${M}/m/${VIKTOR}/familie/loesen`, { adrnr: '0000000205' })).status, 200);
+  assert.equal((await call('GET', S)).body.personen.length, 2);
+  assert.equal((await call('POST', `${S}/pruefen`, { typ: 'JUGENDTRAINING', adrnr: VERA, art: '91' })).status, 403);
+});

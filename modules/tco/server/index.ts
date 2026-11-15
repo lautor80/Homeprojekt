@@ -355,6 +355,7 @@ const tco: ServerModule = {
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
     { type: 'KAL_EINLADUNG', text: 'Einladung zu einer Veranstaltung (Versand)', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
+    { type: 'MG_FAMILIE', text: 'Familienverknüpfung zwischen zwei Personen', permission: P_MG.display },
     { type: 'KUENDIGUNG', text: 'Kündigung durch das Mitglied (Freigabe)', permission: P_MG.display },
     { type: 'TCO_MAILTEXT', text: 'E-Mail-Text des Vereins', permission: P.stammdaten },
     { type: 'SCHADEN', text: 'Schadensmeldung', permission: P_IH.display },
