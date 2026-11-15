@@ -356,30 +356,84 @@ test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () =>
   assert.equal(mock.docs.get(r.body.id)!.type, '9');
 });
 
-test('LSVS-Bestandsmeldung: Vorschau und XML-Datei zum Stichtag', async () => {
-  const B = '/api/m/tco/mitglieder/bestandsmeldung';
-  let r = await call('GET', `${B}?stichtag=${jahr}-01-01`);
+test('LSVS-Bestandsmeldung: Übersicht, Bestätigung, Lauf mit XML, Ausdruck, Paperless, Einstellungen', async () => {
+  const L = '/api/m/tco/lsvs';
+  const st = `${jahr}-01-01`;
+  let r = await call('GET', `${L}/vorschau?stichtag=${st}`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   // 101 und 102 sind am 01.01. Mitglied; 103 ausgetreten zum 31.12., 104 eingetreten am 15.01., 105 ohne Eintritt
   assert.deepEqual(r.body.summe, { m: 1, w: 1, d: 0, gesamt: 2 });
   assert.deepEqual(r.body.zeilen.map((z: { jahrgang: number }) => z.jahrgang), [jahr - 45, jahr - 12]);
-  assert.equal(r.body.kopf.ansprechpartner, 'Torsten Laub');
-  assert.equal(r.body.kopf.fachverband, '83');
-  assert.equal(r.body.kopf.schluessel, 'linear');
+  assert.deepEqual(r.body.kopf, { schluessel: 'linear', nummer: '', bezeichnung: r.body.kopf.bezeichnung, ansprechpartner: 'Torsten Laub', fachverband: '83' });
   assert.deepEqual(r.body.fehlt, ['Vereinsnummer beim LSVS']);
-  r = await call('GET', `${B}/xml?stichtag=${jahr}-01-01`);
-  assert.equal(r.status, 400, String(r.body));
+  assert.equal(r.body.paperless, true);
+  assert.match(r.body.bestaetigung, /Übersicht geprüft/);
+  // Voransicht des Ausdrucks gibt es schon vor dem Lauf
+  r = await call('GET', `${L}/vorschau/pdf?stichtag=${st}`);
+  assert.equal(r.status, 200);
+  assert.match(r.ct, /pdf/);
+  assert.equal(r.raw.subarray(0, 5).toString(), '%PDF-');
 
-  await sql`update tco.verein set lsvs_vereinsnr = '4711' where id = 1`;
-  r = await call('GET', `${B}/xml?stichtag=${jahr}-01-01`);
-  assert.equal(r.status, 200, String(r.body));
+  // ohne Vereinsnummer kein Lauf
+  let v = (await call('GET', `${L}/vorschau?stichtag=${st}`)).body;
+  r = await call('POST', `${L}/laeufe`, { stichtag: st, pruefsumme: v.pruefsumme, bestaetigt: true });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /Vereinsnummer beim LSVS/);
+
+  // Einstellungen: Vereinsnummer eintragen, Fachverbandscode nur Ziffern
+  r = await call('GET', `${L}/einstellungen`);
+  assert.equal(r.status, 200);
+  assert.equal((await call('PUT', `${L}/einstellungen`, { ...r.body, lsvs_fachverband: 'X1' })).status, 400);
+  assert.equal((await call('PUT', `${L}/einstellungen`, { ...r.body, lsvs_vereinsnr: '4711' })).status, 200);
+
+  // ohne Häkchen bzw. mit veralteter Übersicht kein Lauf
+  v = (await call('GET', `${L}/vorschau?stichtag=${st}`)).body;
+  assert.deepEqual(v.fehlt, []);
+  assert.equal((await call('POST', `${L}/laeufe`, { stichtag: st, pruefsumme: v.pruefsumme, bestaetigt: false })).status, 400);
+  assert.equal((await call('POST', `${L}/laeufe`, { stichtag: st, pruefsumme: v.pruefsumme })).status, 400);
+  r = await call('POST', `${L}/laeufe`, { stichtag: st, pruefsumme: 'veraltet', bestaetigt: true });
+  assert.equal(r.status, 409);
+
+  // Lauf erzeugen: Datei gespeichert, Ausdruck in Paperless abgelegt
+  r = await call('POST', `${L}/laeufe`, { stichtag: st, pruefsumme: v.pruefsumme, bestaetigt: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const id = r.body.id as number;
+  assert.equal(r.body.dateiname, `LSVS_Bestandsmeldung_${jahr}_Lauf${id}.xml`);
+  assert.equal(r.body.paperless.abgelegt, true, JSON.stringify(r.body.paperless));
+  const doc = [...mock.docs.values()].find((d) => d.title === `LSVS-Bestandsmeldung ${jahr} (Lauf ${id})`);
+  assert.ok(doc, 'Ausdruck in Paperless');
+
+  r = await call('GET', `${L}/laeufe`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].id, id);
+  assert.equal(r.body[0].summe.gesamt, 2);
+  assert.equal(r.body[0].vereinsnr, '4711');
+  assert.ok(r.body[0].paperless_id);
+  assert.equal(r.body[0].xml, undefined);
+
+  r = await call('GET', `${L}/laeufe/${id}/xml`);
+  assert.equal(r.status, 200);
   assert.match(r.ct, /xml/);
+  assert.match(String(r.headers['content-disposition']), new RegExp(`Lauf${id}\\.xml`));
   const x = String(r.body);
   assert.match(x, /<Nummer>4711<\/Nummer>/);
   assert.match(x, /<Schluessel>linear<\/Schluessel>/);
   assert.equal((x.match(/<Typ>A<\/Typ>/g) ?? []).length, 2);
   assert.equal((x.match(/<Fachverband>83<\/Fachverband>/g) ?? []).length, 2);
-  assert.equal((await call('GET', `${B}?stichtag=kaputt`)).status, 400);
+
+  // der Lauf bleibt, wie er war – auch wenn sich der Stamm danach ändert
+  await sql`update tco.verein set lsvs_vereinsnr = '9999' where id = 1`;
+  assert.match(String((await call('GET', `${L}/laeufe/${id}/xml`)).body), /<Nummer>4711<\/Nummer>/);
+  r = await call('GET', `${L}/laeufe/${id}/pdf`);
+  assert.equal(r.status, 200);
+  assert.equal(r.raw.subarray(0, 5).toString(), '%PDF-');
+  r = await call('POST', `${L}/laeufe/${id}/paperless`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await call('GET', `${L}/laeufe/9999/xml`)).status, 404);
+  r = await call('GET', `${L}/vorschau?stichtag=${st}`);
+  assert.equal(r.body.laeufe_zum_stichtag, 1);
+  assert.equal((await call('GET', `${L}/vorschau?stichtag=kaputt`)).status, 400);
 });
 
 test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {
@@ -391,7 +445,9 @@ test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {
   assert.equal((await leser('GET', T)).status, 200);
   assert.equal((await leser('GET', `${A}/init`)).status, 403);
   assert.equal((await leser('POST', `${A}/daten`, {})).status, 403);
-  assert.equal((await leser('GET', '/api/m/tco/mitglieder/bestandsmeldung')).status, 403);
+  assert.equal((await leser('GET', '/api/m/tco/lsvs/vorschau')).status, 403);
+  assert.equal((await leser('GET', '/api/m/tco/lsvs/laeufe')).status, 403);
+  assert.equal((await leser('POST', '/api/m/tco/lsvs/laeufe', {})).status, 403);
   assert.equal((await leser('GET', `${U}/stamm`)).status, 403);
   assert.equal((await leser('POST', `${U}/datei`, {})).status, 403);
   assert.equal((await leser('GET', '/api/paperless/mapping')).status, 403);

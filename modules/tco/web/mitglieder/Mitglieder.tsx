@@ -12,7 +12,6 @@ import { MG, type Liste, type Status } from './typen';
 import { GR, type Gruppe, type GruppenDaten } from '../gruppen/typen';
 import { MitgliedDetail } from './Detail';
 import { NeuDialog } from './NeuDialog';
-import { BestandsmeldungDialog } from './Bestandsmeldung';
 
 const STATUS_TEXT: Record<Status, string> = { AKTIV: 'Aktive Mitglieder', AUSGETRETEN: 'Ausgetreten', SCHNUPPER: 'Schnuppertraining', KUNDEN: 'EP3-Kunden', ELTERN: 'Zahler / Eltern', ALLE: 'Alle Personen' };
 const DATUM_TEXT: Record<string, string> = { EINGETRETEN: 'Eintritt', AUSGETRETEN: 'Austritt', ERFASST: 'Erfasst' };
@@ -30,7 +29,6 @@ export function Mitglieder() {
   const [liste, setListe] = useState<Liste | null>(null);
   const [adrnr, setAdrnr] = useState<string | null>(() => new URLSearchParams(window.location.search).get('adrnr'));
   const [neu, setNeu] = useState(false);
-  const [lsvs, setLsvs] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const laden = () => {
@@ -50,10 +48,7 @@ export function Mitglieder() {
 
   return (
     <AppPage varianten={{ repid: 'tco.mitglieder', ansicht: { status, suche, datumTyp, von, bis, gruppe }, onAnwenden: (a) => { setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setDatumTyp(feld(a, 'datumTyp', datumTyp)); setVon(feld(a, 'von', von)); setBis(feld(a, 'bis', bis)); setGruppe(feld(a, 'gruppe', gruppe)); } }} title="Mitglieder" subtitle={liste ? `${liste.anzahl.AKTIV} aktive Mitglieder · ${liste.anzahl.ALLE} Personen` : ''}
-             actions={<>
-               <Button icon="upload-to-cloud" onClick={() => setLsvs(true)} tooltip="Austauschdatei (XML) für die jährliche Bestandserhebung im LSVSnet">LSVS-Bestandsmeldung</Button>
-               {edit && <Button icon="add-employee" design="Emphasized" onClick={() => setNeu(true)}>Neues Mitglied</Button>}
-             </>}>
+             actions={edit ? <Button icon="add-employee" design="Emphasized" onClick={() => setNeu(true)}>Neues Mitglied</Button> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem', whiteSpace: 'pre-line' }}>{error}</MessageStrip>}
       <MasterDetail
         masterWidth="22rem"
@@ -100,7 +95,6 @@ export function Mitglieder() {
         }
         detail={adrnr ? <MitgliedDetail key={adrnr} adrnr={adrnr} edit={edit} onChanged={laden} onOpen={waehlen} /> : null}
       />
-      {lsvs && <BestandsmeldungDialog onClose={() => setLsvs(false)} onOpen={waehlen} />}
       {neu && (
         <NeuDialog onClose={(a, text) => {
           setNeu(false);

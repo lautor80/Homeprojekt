@@ -17,6 +17,7 @@ import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Praesentationen } from './praesentation/Praesentationen';
 import { Spielerdaten } from './sport/Spielerdaten';
 import { Analyse } from './analyse/Analyse';
+import { Bestandsmeldung, LsvsKapitel } from './lsvs/Bestandsmeldung';
 import { Teilnehmer } from './teilnehmer/Teilnehmer';
 import { Upload } from './upload/Upload';
 import { Beitraege } from './beitraege/Beitraege';
@@ -104,6 +105,7 @@ const mod: WebModule = {
     { id: 'verzehr', text: 'Verzehr', icon: 'cart', permission: 'tco.verzehr:admin', component: VerzehrKapitel },
     { id: 'instandhaltung', text: 'Instandhaltung', icon: 'technical-object', permission: 'tco.instandhaltung:admin', component: InstandhaltungKapitel },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'tco.stammdaten:edit', component: MailtexteKapitel },
+    { id: 'lsvs', text: 'LSVS-Bestandsmeldung', icon: 'official-service', permission: 'tco.lsvs:admin', component: LsvsKapitel },
   ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
   // modules/tco/server/index.ts; lose Apps der Stufe 2 stehen dort im Bereich „Allgemein“), geprüft in
@@ -143,6 +145,7 @@ const mod: WebModule = {
           text: 'Sport', icon: 'competitor',
           children: [
             { text: 'Spielerdaten (nuLiga)', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
+            { text: 'LSVS-Bestandsmeldung', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
           ],
         },
         {
@@ -226,6 +229,7 @@ const mod: WebModule = {
     { path: '/tco/praesentationen', component: Praesentationen, permission: 'tco.praesentation:display' },
     { path: '/tco/spielerdaten', component: Spielerdaten, permission: 'tco.sport:display' },
     { path: '/tco/analyse', component: Analyse, permission: 'tco.analyse:display' },
+    { path: '/tco/lsvs', component: Bestandsmeldung, permission: 'tco.lsvs:display' },
     { path: '/tco/teilnehmer', component: Teilnehmer, permission: 'tco.teilnehmer:display' },
     { path: '/tco/upload', component: Upload, permission: 'tco.upload:execute' },
     { path: '/tco/beitraege', component: Beitraege, permission: 'tco.beitraege:display' },
@@ -264,6 +268,7 @@ const mod: WebModule = {
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
     { text: 'Spielerdaten (nuLiga)', subtitle: 'ID-Nr. und LK aus der Verbandsliste abgleichen', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
+    { text: 'LSVS-Bestandsmeldung', subtitle: 'Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
     { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Nichtmitglieder, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },

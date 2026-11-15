@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
-import { leer } from './logik.js';
+import { leer } from '../mitglieder/logik.js';
 
 /**
  * LSVS-Bestandsmeldung: Austauschdatei für das LSVSnet nach der DOSB-Schnittstelle „SV-LSB“
@@ -22,7 +23,9 @@ export interface BestandKopf { schluessel: string; nummer: string; bezeichnung: 
 export interface BestandZeile { jahrgang: number; m: number; w: number; d: number }
 export interface BestandHinweis { adrnr: string; name: string; grund: string }
 export interface Bestand {
-  stichtag: string; kopf: BestandKopf; zeilen: BestandZeile[];
+  stichtag: string;
+  /** Prüfsumme der Übersicht – der Lauf wird nur erzeugt, wenn sie zur bestätigten Übersicht passt */
+  pruefsumme: string; kopf: BestandKopf; zeilen: BestandZeile[];
   summe: { m: number; w: number; d: number; gesamt: number }; hinweise: BestandHinweis[]; fehlt: string[];
 }
 
@@ -34,6 +37,8 @@ export function geschlechtLsvs(g: string | null | undefined): 'm' | 'w' | 'd' | 
   if (x === '3' || x === 'D' || x === 'X') return 'd';
   return null;
 }
+
+export const dateiname = (stichtag: string, lauf: number) => `LSVS_Bestandsmeldung_${stichtag.slice(0, 4)}_Lauf${lauf}.xml`;
 
 export const stichtagStandard = (heute: string) => {
   // bis Ende Januar die laufende Meldung (01.01. dieses Jahres), danach die kommende
@@ -63,7 +68,8 @@ export function bestandErmitteln(mitglieder: BestandMitglied[], kopf: BestandKop
     !kopf.ansprechpartner ? 'Ansprechpartner' : '', !kopf.schluessel ? 'Software-Schlüssel' : '',
   ].filter(Boolean);
   hinweise.sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  return { stichtag, kopf, zeilen, summe, hinweise, fehlt };
+  const pruefsumme = createHash('sha256').update(JSON.stringify({ stichtag, kopf, zeilen, hinweise })).digest('hex').slice(0, 16);
+  return { stichtag, pruefsumme, kopf, zeilen, summe, hinweise, fehlt };
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
@@ -98,8 +104,10 @@ export async function bestandLesen(db: Db, stichtag: string): Promise<Bestand> {
   }, stichtag);
 }
 
+export const BESTAETIGUNG = 'Ich habe die Übersicht geprüft: Zahlen je Jahrgang und Geschlecht, Kopfangaben und die nicht gemeldeten Mitglieder.';
+
 /** Datei nur mit vollständigem Kopf – sonst lehnt das LSVSnet sie ab */
 export function bestandPruefen(b: Bestand) {
-  if (b.fehlt.length) throw new BusinessError(`Für die Bestandsmeldung fehlt unter Einstellungen → TC Oberthal → Verein und Bank: ${b.fehlt.join(', ')}.`);
+  if (b.fehlt.length) throw new BusinessError(`Für die Bestandsmeldung fehlt unter Einstellungen → TC Oberthal → LSVS-Bestandsmeldung: ${b.fehlt.join(', ')}.`);
   if (!b.summe.gesamt) throw new BusinessError('Zum Stichtag gibt es keine Mitglieder mit Geburtsdatum und Geschlecht.');
 }

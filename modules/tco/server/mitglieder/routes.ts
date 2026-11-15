@@ -35,7 +35,6 @@ import { withChange } from '../../../../server/src/db.js';
 import { funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
-import { bestandLesen, bestandPruefen, bestandXml, stichtagStandard } from './bestand.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
 
@@ -496,18 +495,6 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- Liste / Stammdaten der Auswahl
-  // ---------------------------------------------------------------- LSVS-Bestandsmeldung (DOSB-Schnittstelle „SV-LSB“)
-  const stichtagQ = (q: unknown) => z.object({ stichtag: datum.optional() }).parse(q).stichtag ?? stichtagStandard(heute());
-  /** Vorschau: Zahlen je Jahrgang, Summen, Mitglieder ohne Geburtsdatum/Geschlecht, fehlende Kopfangaben */
-  app.get('/mitglieder/bestandsmeldung', lesen, async (req) => bestandLesen(DB, stichtagQ(req.query)));
-  /** Austauschdatei zum Hochladen im LSVSnet (Schritt 3 der Bestandsmeldung) */
-  app.get('/mitglieder/bestandsmeldung/xml', lesen, async (req, reply) => {
-    const b = await bestandLesen(DB, stichtagQ(req.query));
-    bestandPruefen(b);
-    const name = `LSVS_Bestandsmeldung_${b.stichtag.slice(0, 4)}.xml`;
-    return reply.type('application/xml; charset=utf-8').header('content-disposition', `attachment; filename="${name}"`).send(bestandXml(b));
-  });
-
   app.get('/mitglieder/liste', lesen, async (req) => {
     const q = z.object({
       status: z.enum(STATUS).default('AKTIV'), datumTyp: z.enum(DATUM_TYP).default('EINGETRETEN'),
