@@ -172,6 +172,7 @@ flowchart LR
 | core:funktionen | 2 |
 | core:mail | 8 |
 | core:paperless | 5 |
+| core:push | 6 |
 | core:settings | 3 |
 | core:setup | 2 |
 | core:sperren | 5 |

@@ -17,6 +17,8 @@ import { toast } from '../toast';
 import { api } from '../api';
 import { aktuelleErscheinung, erscheinungSetzen } from '../theme';
 import { AblageProvider } from '../ablage';
+import { pushAuffrischen } from '../push';
+import { PushDialog } from './PushDialog';
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('') || '?';
@@ -39,6 +41,9 @@ export function Shell() {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 900);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [pushOpen, setPushOpen] = useState(false);
+  // Push-Nachrichten: Anmeldung dieses Geräts nach dem Anmelden auffrischen (nur wenn der Benutzer sie hier eingeschaltet hat)
+  useEffect(() => { void pushAuffrischen(me.user.id); }, [me.user.id]);
   const [dunkel, setDunkel] = useState(aktuelleErscheinung() === 'dunkel');
   const profileRef = useRef<HTMLElement | null>(null);
   // Weltenwandler: ohne neue Anmeldung zu anderen Benutzern mit dieser Rolle wechseln (Berechtigungstests)
@@ -196,6 +201,7 @@ export function Shell() {
             ))}
           </UserMenuItem>
         )}
+        <UserMenuItem icon="bell" text="Benachrichtigungen" onClick={() => { setMenuOpen(false); setPushOpen(true); }} />
         <UserMenuItem icon="key" text="Passwort ändern" onClick={() => { setMenuOpen(false); setPwOpen(true); }} />
         {/* aktive Version auch im Benutzermenü – falls die Kopfzeile sie neben dem Logo nicht unterbringt */}
         {version && <UserMenuItem icon="history" text={version.text} tooltip={version.titel} onClick={() => { setMenuOpen(false); window.location.reload(); }} />}
@@ -203,6 +209,7 @@ export function Shell() {
                       onClick={() => { const d = !dunkel; setDunkel(d); erscheinungSetzen(d ? 'dunkel' : 'hell'); setMenuOpen(false); }} />
       </UserMenu>
 
+      {pushOpen && <PushDialog onClose={() => setPushOpen(false)} />}
       <Dialog open={pwOpen} headerText="Passwort ändern" onClose={() => setPwOpen(false)} style={{ width: 'min(420px, 95vw)' }}>
         {pwOpen && <ChangePasswordForm onDone={() => { setPwOpen(false); toast('Passwort geändert'); }} />}
       </Dialog>

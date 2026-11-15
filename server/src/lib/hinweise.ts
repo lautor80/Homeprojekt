@@ -14,6 +14,7 @@ import { can } from '../auth.js';
 import { sql, type Tx } from '../db.js';
 import { BusinessError } from '../errors.js';
 import type { Aufgabe } from './arbeitsvorrat.js';
+import { pushAnRecht, pushArtHinweis, pushStill } from './push.js';
 
 /** außerhalb einer Transaktion melden (Hintergrundläufe, Fehlerbehandlung) */
 export const HINWEIS_DB = sql as unknown as Tx;
@@ -42,15 +43,33 @@ export interface HinweisNeu {
 
 /** Ereignis melden – in der Transaktion der Änderung (tx) oder mit HINWEIS_DB */
 export async function hinweisMelden(db: Tx, h: HinweisNeu): Promise<void> {
-  await db`
+  const [neu] = await db`
     insert into core.hinweise (modul, quelle, objekt, bereich, recht, art, titel, text, icon, state, pfad)
     values (${h.modul}, ${h.quelle}, ${String(h.objekt ?? '')}, ${h.bereich}, ${h.recht}, ${h.art}, ${h.titel}, ${h.text ?? ''},
             ${h.icon ?? 'message-information'}, ${h.state ?? 'Information'}, ${h.pfad})
     on conflict (modul, quelle, objekt) where erledigt_am is null
     do update set bereich = excluded.bereich, recht = excluded.recht, art = excluded.art, titel = excluded.titel, text = excluded.text,
                   icon = excluded.icon, state = excluded.state, pfad = excluded.pfad,
-                  anzahl = core.hinweise.anzahl + 1, zuletzt_am = now()`;
+                  anzahl = core.hinweise.anzahl + 1, zuletzt_am = now()
+    returning id, anzahl`;
+  // Push aufs Handy: nur beim ersten Mal (Wiederholungen zählen hoch und würden sonst bei jeder Störung erneut klingeln)
+  if (neu && Number(neu.anzahl) === 1) hinweisPush(neu.id as string | number, h);
 }
+
+/**
+ * Push an alle, die dem Hinweis nachgehen dürfen – kurz nach der Meldung und nur, wenn der Hinweis dann wirklich in der
+ * Datenbank steht (die Meldung läuft meist in der Transaktion der Änderung; wird sie zurückgerollt, gibt es nichts zu melden).
+ */
+function hinweisPush(id: string | number, h: HinweisNeu): void {
+  const t = setTimeout(() => pushStill(async () => {
+    const [da] = await sql`select 1 from core.hinweise where id = ${id} and erledigt_am is null`;
+    if (da) await pushAnRecht(h.recht, pushArtHinweis(h.modul, h.quelle), { titel: h.art, text: h.titel, pfad: h.pfad });
+  }), HINWEIS_PUSH_NACH_MS);
+  t.unref();
+}
+let HINWEIS_PUSH_NACH_MS = 1500;
+/** für Tests: Wartezeit zwischen Meldung und Push */
+export const hinweisPushNach = (ms: number): void => { HINWEIS_PUSH_NACH_MS = ms; };
 
 /**
  * Störung melden, ohne den eigentlichen Fehler zu verdecken: für catch-Zweige und Hintergrundläufe.

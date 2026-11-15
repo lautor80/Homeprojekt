@@ -18,6 +18,8 @@ import { ANGEBOT_TAGE, angebotAnlegen, angebotBankAnzeige, angebotErneuern, ange
  * Mitgliedsantrag online (#12): öffentlich /api/m/tco/antrag (Formular /beitritt), Verwaltung unter
  * /api/m/tco/mitgliedsantraege (Prüfen, Ablehnen, Übernehmen). Benachrichtigung des Kassenwarts über den Arbeitsvorrat.
  */
+import { pushAnRecht, pushStill } from '../../../../server/src/lib/push.js';
+import { PUSH } from '../push.js';
 export const P_ANTRAG = { display: 'tco.antraege:display', edit: 'tco.antraege:edit' };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
@@ -106,6 +108,8 @@ export async function antragRoutes(app: FastifyInstance) {
     const r = await withChange({ userId: null, username: 'Online-Antrag', action: 'MITGLIEDSANTRAG' },
       (tx) => antragAnlegen(tx, { ...d, bildrechte: d.bildrechte ?? false }, { ...bank, bic: bank.bic ?? null, bank: bank.bank ?? null }, req.ip));
     req.log.info({ antrag: r.nummer, ip: req.ip }, 'Mitgliedsantrag eingegangen');
+    // Push aufs Handy an alle, die Anträge bearbeiten (je Benutzer abschaltbar)
+    pushStill(() => pushAnRecht(P_ANTRAG.display, PUSH.antrag, { titel: 'Neuer Mitgliedsantrag', text: `${d.personen[0].vorname} ${d.personen[0].nachname}${d.personen.length > 1 ? ` und ${d.personen.length - 1} weitere` : ''}`, pfad: '/tco/mitgliedsantraege' }));
     // Eingangsbestätigung (nicht kritisch)
     try {
       const v = await vereinLesen();
