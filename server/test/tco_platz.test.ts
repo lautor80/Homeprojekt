@@ -1321,3 +1321,79 @@ test('Arbeitsvorrat Kassenwart: Upload mit Folgeaktion „Überweisung an Einrei
   assert.equal((await sql`select count(*)::int as n from tco.upload_folge where erledigt_am is null`)[0].n, 1, 'andere Folgeaktionen bleiben unberührt');
   await sql`delete from tco.upload_folge`;
 });
+
+test('Platz buchen für die Familie: Rechnung an die Person bzw. ihren abweichenden Zahler, nur für die eigene Familie', async () => {
+  // Vera zahlt selbst; Kai zahlt über Vera. Gerd zahlt selbst, Lea zahlt über Gerd – Vera und Gerd sind als Familie verknüpft.
+  const VERA = '0000000421', KAI = '0000000422', GERD = '0000000423', LEA = '0000000424';
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, adrnrkih) values
+    (${VERA}, 'Vera', 'Volley', '2020-01-01', null), (${KAI}, 'Kai', 'Volley', '2020-01-01', ${VERA}),
+    (${GERD}, 'Gerd', 'Grundlinie', '2020-01-01', null), (${LEA}, 'Lea', 'Grundlinie', '2020-01-01', ${GERD})`;
+  await sql`insert into tco.familienverknuepfungen (adrnr_a, adrnr_b) values (${VERA}, ${GERD})`;
+  for (const [u, a] of [['vera', VERA], ['kai', KAI]] as const) {
+    assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: ['SPIELER'] })).status, 200);
+    await sql`insert into tco.mitgliedera (adrnr, benutzer_id) values (${a}, ${await userId(u)}) on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  }
+  const vera = await anmelden('vera'), kai = await anmelden('kai');
+  let r = await admin('POST', `${A}/plaetze`, { ...HALLE, name: 'Familienhalle', aliase: '', sort: 9 });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const platz = r.body.id as number;
+  const d = tag(5);
+  const buchung = async (bid: string) => (await sql`select kunde, spieler, text, benutzer_id::text as benutzer from tco.bookings where bid = ${bid}`)[0];
+
+  // Auswahl „Für wen?“: ich zuerst, dann die Familie – mit dem Namen, an den die Rechnung geht
+  r = await vera('GET', `${P}/tag?datum=${d}`);
+  assert.deepEqual(r.body.personen, [
+    { adrnr: VERA, name: 'Vera Volley', ich: true, rechnung: 'Vera Volley' },
+    { adrnr: KAI, name: 'Kai Volley', ich: false, rechnung: 'Vera Volley' },
+    { adrnr: GERD, name: 'Gerd Grundlinie', ich: false, rechnung: 'Gerd Grundlinie' },
+    { adrnr: LEA, name: 'Lea Grundlinie', ich: false, rechnung: 'Gerd Grundlinie' },
+  ]);
+
+  // für mich: wie bisher
+  r = await vera('POST', `${P}/buchungen`, { platz_id: platz, datum: d, von: '08:00', bis: '09:00', text: 'Einzel' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await buchung(r.body.bid), { kunde: 'VERA VOLLEY', spieler: null, text: 'Einzel', benutzer: await userId('vera') });
+
+  // für das eigene Kind (zahlt über mich): Rechnung an mich
+  r = await vera('POST', `${P}/buchungen`, { platz_id: platz, datum: d, von: '09:00', bis: '10:00', text: 'mit Trainer', fuer: KAI });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /gebucht für Kai Volley – die Rechnung geht an Vera Volley\.$/);
+  const kaiBid = r.body.bid as string;
+  assert.deepEqual(await buchung(kaiBid), { kunde: 'VERA VOLLEY', spieler: 'Kai Volley', text: 'für Kai Volley – mit Trainer', benutzer: await userId('vera') });
+
+  // für das Kind des anderen Zahlers: Rechnung an dessen Zahler; für den anderen Zahler selbst: Rechnung an ihn
+  r = await vera('POST', `${P}/buchungen`, { platz_id: platz, datum: d, von: '10:00', bis: '11:00', fuer: LEA });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await buchung(r.body.bid), { kunde: 'GERD GRUNDLINIE', spieler: 'Lea Grundlinie', text: 'für Lea Grundlinie', benutzer: await userId('vera') });
+  r = await vera('POST', `${P}/buchungen`, { platz_id: platz, datum: d, von: '11:00', bis: '12:00', fuer: GERD });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /gebucht für Gerd Grundlinie\.$/);
+  assert.deepEqual(await buchung(r.body.bid), { kunde: 'GERD GRUNDLINIE', spieler: 'Gerd Grundlinie', text: 'für Gerd Grundlinie', benutzer: await userId('vera') });
+
+  // nicht für Fremde
+  r = await vera('POST', `${P}/buchungen`, { platz_id: platz, datum: d, von: '12:00', bis: '13:00', fuer: BERT });
+  assert.equal(r.status, 403);
+  assert.match(r.body.message, /gehört nicht zu deiner Familie/);
+
+  // wer selbst über jemanden zahlt, bucht für sich – die Rechnung geht an den Zahler
+  r = await kai('POST', `${P}/buchungen`, { platz_id: platz, datum: d, von: '12:00', bis: '13:00' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /gebucht – die Rechnung geht an Vera Volley\.$/);
+  assert.deepEqual(await buchung(r.body.bid), { kunde: 'VERA VOLLEY', spieler: 'Kai Volley', text: 'für Kai Volley', benutzer: await userId('kai') });
+
+  // die Buchung gehört dem, der gebucht hat: er sieht und ändert sie – „für …“ bleibt an der Notiz stehen
+  const belegt = (await vera('GET', `${P}/tag?datum=${d}`)).body.plaetze.find((p: { id: number }) => p.id === platz).belegt as { von: string; eigen: boolean }[];
+  assert.deepEqual(belegt.map((b) => [b.von, b.eigen]), [['08:00', true], ['09:00', true], ['10:00', true], ['11:00', true], ['12:00', false]]);
+  r = await vera('PUT', `${P}/buchungen/${kaiBid}`, { platz_id: platz, datum: d, von: '13:00', bis: '14:00', text: 'ohne Trainer' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await buchung(kaiBid), { kunde: 'VERA VOLLEY', spieler: 'Kai Volley', text: 'für Kai Volley – ohne Trainer', benutzer: await userId('vera') });
+  r = await vera('PUT', `${P}/buchungen/${kaiBid}`, { platz_id: platz, datum: d, von: '13:00', bis: '14:00', text: 'für Kai Volley – ohne Trainer' });
+  assert.equal((await buchung(kaiBid)).text, 'für Kai Volley – ohne Trainer', 'unverändert gesichert: kein doppeltes „für …“');
+  assert.equal((await kai('DELETE', `${P}/buchungen/${kaiBid}`)).status, 404, 'das Kind storniert die Buchung der Mutter nicht');
+
+  await sql`delete from tco.bookings where platz = 'Familienhalle'`;
+  await sql`delete from tco.plaetze where id = ${platz}`;
+  await sql`delete from tco.familienverknuepfungen where adrnr_a = ${VERA}`;
+  await sql`delete from tco.mitgliedera where adrnr in (${VERA}, ${KAI})`;
+  await sql`delete from tco.mitglieder where adrnr in (${VERA}, ${KAI}, ${GERD}, ${LEA})`;
+});
