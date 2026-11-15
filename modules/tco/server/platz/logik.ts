@@ -3,6 +3,7 @@ import type { Db } from '../verein.js';
 import { addTage, condense, dat } from '../format.js';
 import { minuten, preisBerechnen, preiseLesen, type Preise } from '../halle/preis.js';
 import { adrnrAusZuid } from '../kommunikation.js';
+import { familienAdrnrs } from '../mitglieder/familie.js';
 import { festeLesen, festeTermine, type BelegungArt } from './belegungen.js';
 
 /**
@@ -355,7 +356,47 @@ async function neueBid(tx: Db): Promise<string> {
   return `9${String(n).padStart(9, '0')}`;
 }
 
-export interface BuchungEingabe { platz_id: number; datum: string; von: string; bis: string; text?: string | null }
+export interface BuchungEingabe {
+  platz_id: number; datum: string; von: string; bis: string; text?: string | null;
+  /** Adressnummer der Person, für die gebucht wird (Familie) – leer = für mich */
+  fuer?: string | null;
+}
+
+/** Person, für die ein Mitglied buchen darf: es selbst und seine Familie (mitglieder/familie.ts) */
+export interface BuchungsPerson {
+  adrnr: string; name: string; ich: boolean;
+  /** wer die Rechnung bekommt: die Person selbst oder – wenn sie über jemanden zahlt – ihr abweichender Zahler */
+  rechnung: string;
+}
+
+/**
+ * Für wen der Benutzer buchen darf – er selbst zuerst, dann die Familie (gleicher Zahler oder Familienverknüpfung).
+ * Hallennutzer ohne Mitgliedschaft buchen nur für sich.
+ */
+export async function buchungsPersonen(db: Db, ich: Ich): Promise<BuchungsPerson[]> {
+  const fam = await familienAdrnrs(db, ich.adrnr);
+  const rows = await db`
+    select m.adrnr, m.vorname, m.nachname, z.adrnr as z_adrnr, z.vorname as z_vorname, z.nachname as z_nachname
+      from tco.mitglieder m
+      left join tco.mitglieder z on z.adrnr = case when coalesce(trim(m.adrnrkih), '') ~ '^0*$' then null else trim(m.adrnrkih) end and z.adrnr <> m.adrnr
+     where m.adrnr = any(${fam}::text[]) and (m.adrnr = ${ich.adrnr} or m.austritt is null or m.austritt >= current_date)
+     order by (m.adrnr = ${ich.adrnr}) desc, m.geburtsdatum nulls last, m.adrnr`;
+  if (!rows.some((r) => r.adrnr === ich.adrnr)) return [{ adrnr: ich.adrnr, name: ich.name, ich: true, rechnung: ich.name }];
+  const name = (v: unknown, n: unknown) => condense(`${v ?? ''} ${n ?? ''}`);
+  return rows.map((r) => {
+    const eigen = name(r.vorname, r.nachname) || (r.adrnr as string);
+    return { adrnr: r.adrnr as string, name: eigen, ich: r.adrnr === ich.adrnr, rechnung: (r.z_adrnr && name(r.z_vorname, r.z_nachname)) || eigen };
+  });
+}
+
+/** Notiz der Buchung mit „für <Spieler>“ davor – so steht an Buchung und Rechnung, wer gespielt hat */
+export function notizMitSpieler(spieler: string | null | undefined, notiz: string | null | undefined): string | null {
+  const n = (notiz ?? '').trim();
+  if (!spieler) return n || null;
+  const vorn = `für ${spieler}`;
+  const rest = n.startsWith(vorn) ? n.slice(vorn.length).replace(/^\s*[–-]\s*/, '').trim() : n;
+  return (rest ? `${vorn} – ${rest}` : vorn).slice(0, 250);
+}
 
 async function slotAus(tx: Db, e: BuchungEingabe): Promise<Slot> {
   const platz = await platzLesen(tx, e.platz_id);
@@ -375,18 +416,25 @@ export async function einzelAnlegen(tx: Db, ich: Ich, e: BuchungEingabe): Promis
                                 and (datum > ${j.datum} or (datum = ${j.datum} and time_ende > ${hhmm(j.min)}::time))`;
     if (n >= s.platz.max_offen) throw new BusinessError(`Auf ${s.platz.name} sind höchstens ${s.platz.max_offen} kommende Buchung(en) gleichzeitig möglich.`);
   }
+  // Rechnung: an die Person, für die gebucht wird – zahlt sie über jemanden, an ihren abweichenden Zahler (kunde = Rechnungsempfänger)
+  const person = (await buchungsPersonen(tx, ich)).find((p) => p.adrnr === (e.fuer || ich.adrnr));
+  if (!person) throw new BusinessError('Für diese Person kannst du nicht buchen – sie gehört nicht zu deiner Familie.', 403);
+  const selbst = person.ich && person.rechnung === person.name;
+  const kunde = selbst ? ich.kunde : person.rechnung.toUpperCase();
+  const spieler = selbst ? null : person.name;
   const preis = preisVon(s.platz, s.datum, s.von, s.bis, '1', await preiseLesen(tx));
   const bid = await neueBid(tx);
-  await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz, benutzer_id, quelle)
-           values (${bid}, ${s.datum}, ${hhmm(s.von)}, ${hhmm(s.bis)}, ${ich.kunde}, '1', ${beschreibung(s)}, ${preis.betrag}, ${jetzt().datum},
-                   ${s.platz.abrechnen ? '' : 'X'}, ${e.text?.trim() || null}, ${s.platz.name}, ${ich.benutzerId}, ${QUELLE})`;
-  return { bid, text: `${s.platz.name} am ${beschreibung(s)} gebucht.` };
+  await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz, benutzer_id, quelle, spieler)
+           values (${bid}, ${s.datum}, ${hhmm(s.von)}, ${hhmm(s.bis)}, ${kunde}, '1', ${beschreibung(s)}, ${preis.betrag}, ${jetzt().datum},
+                   ${s.platz.abrechnen ? '' : 'X'}, ${notizMitSpieler(spieler, e.text)}, ${s.platz.name}, ${ich.benutzerId}, ${QUELLE}, ${spieler})`;
+  const zusatz = `${person.ich ? '' : ` für ${person.name}`}${person.rechnung !== person.name && s.platz.abrechnen ? ` – die Rechnung geht an ${person.rechnung}` : ''}`;
+  return { bid, text: `${s.platz.name} am ${beschreibung(s)} gebucht${zusatz}.` };
 }
 
 /** eigene Portal-Einzelbuchung lesen und Änderbarkeit prüfen */
 async function eigeneEinzel(tx: Db, ich: Ich, bid: string) {
   const [b] = await tx`select bid, datum::text, to_char(time_start, 'HH24:MI') as von, to_char(time_ende, 'HH24:MI') as bis, status, platz,
-                              coalesce(assigned, '') as assigned
+                              coalesce(assigned, '') as assigned, spieler
                          from tco.bookings where bid = ${bid} and benutzer_id = ${ich.benutzerId} and quelle = ${QUELLE}`;
   // fremde Buchungen: gleiche Meldung wie „nicht vorhanden“ – keine Rückschlüsse auf andere Mitglieder
   if (!b) throw new BusinessError('Buchung nicht gefunden.', 404);
@@ -398,7 +446,7 @@ async function eigeneEinzel(tx: Db, ich: Ich, bid: string) {
   if (minutenBis(b.datum, minuten(b.von)) < frist) {
     throw new BusinessError(frist ? `Ändern und Stornieren ist nur bis ${platz!.storno_frist} Stunde(n) vor Beginn möglich.` : 'Der Termin hat bereits begonnen.');
   }
-  return b as { bid: string; datum: string; von: string; bis: string; platz: string };
+  return b as { bid: string; datum: string; von: string; bis: string; platz: string; spieler: string | null };
 }
 
 export async function einzelAendern(tx: Db, ich: Ich, bid: string, e: BuchungEingabe): Promise<string> {
@@ -411,7 +459,7 @@ export async function einzelAendern(tx: Db, ich: Ich, bid: string, e: BuchungEin
   await tx`update tco.bookings
               set datum = ${s.datum}, time_start = ${hhmm(s.von)}, time_ende = ${hhmm(s.bis)}, platz = ${s.platz.name},
                   description = ${beschreibung(s)}, preis = ${preis.betrag}, geaendert = ${jetzt().datum},
-                  assigned = ${s.platz.abrechnen ? '' : 'X'}, text = ${e.text?.trim() || null}
+                  assigned = ${s.platz.abrechnen ? '' : 'X'}, text = ${notizMitSpieler(alt.spieler, e.text)}
             where bid = ${bid} and datum = ${alt.datum}`;
   return `Buchung geändert: ${s.platz.name} am ${beschreibung(s)}.`;
 }

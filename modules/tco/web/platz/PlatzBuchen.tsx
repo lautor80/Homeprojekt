@@ -51,6 +51,8 @@ interface Tag {
   datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[];
   /** Halle verschlossen (#11): Hinweis, solange am Tag kein Hallenschlüssel ausgegeben ist */
   hallenhinweis?: string | null;
+  /** für wen sich buchen lässt: ich und meine Familie; rechnung = wer die Rechnung bekommt (Person oder ihr abweichender Zahler) */
+  personen?: { adrnr: string; name: string; ich: boolean; rechnung: string }[];
   /** Admin/Hallenwart (tco.platzbuchung:verwalten, #11): Namen sehen, für andere buchen, Training & Co. eintragen */
   rechte?: { verwalten: boolean };
 }
@@ -653,6 +655,8 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
   const [fuer, setFuer] = useState<Fuer>('ICH');
   const [adrnr, setAdrnr] = useState<string | null>(null);
   const [intern, setIntern] = useState('');
+  // Buchung für ein Familienmitglied (Adressnummer) – leer = für mich
+  const [person, setPerson] = useState('');
   const [bezeichnung, setBezeichnung] = useState('');
   const [mitglieder, setMitglieder] = useState<{ adrnr: string; name: string }[]>([]);
   const ich = fuer === 'ICH';
@@ -708,7 +712,7 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
     if (e.bid) return api.put<{ text: string }>(`${PB}/buchungen/${e.bid}`, body);
     if (fuer === 'MITGLIED') return api.post<{ text: string }>(`${PB}/verwalten/buchung`, { ...body, adrnr, intern: adrnr ? null : intern.trim() || null });
     if (festArt) return api.post<{ text: string }>(`${PB}/verwalten/belegung`, { ...body, art: festArt, bezeichnung: bezeichnung.trim() });
-    return api.post<{ text: string; hinweis?: string }>(`${PB}/buchungen`, body);
+    return api.post<{ text: string; hinweis?: string }>(`${PB}/buchungen`, { ...body, fuer: person || null });
   });
   const bereit = ich ? !!pruefung && !pruefung.fehler : fuer === 'MITGLIED' ? !!adrnr || !!intern.trim() : !!bezeichnung.trim();
 
@@ -799,6 +803,19 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
           </div>
           <Text className="portal-muted portal-small">{e.von}–{bis} Uhr · {dauerText(e.dauer)}</Text>
         </div>
+        {ich && !e.bid && (tag?.personen?.length ?? 0) > 1 && (
+          <div className="portal-mz__feld">
+            <Label>Für wen?</Label>
+            <Select style={{ width: '100%' }} onChange={(x) => setPerson((x.detail.selectedOption as HTMLElement).dataset.a ?? '')}>
+              {tag!.personen!.map((f) => <Option key={f.adrnr} data-a={f.ich ? '' : f.adrnr} selected={f.ich ? !person : person === f.adrnr}>{f.name}{f.ich ? ' (ich)' : ''}</Option>)}
+            </Select>
+          </div>
+        )}
+        {ich && !e.bid && p?.abrechnen && (() => {
+          const f = tag?.personen?.find((x) => (person ? x.adrnr === person : x.ich));
+          return f && (!f.ich || f.rechnung !== f.name)
+            ? <MessageStrip hideCloseButton design="Information">Die Rechnung geht an {f.rechnung}{f.rechnung !== f.name ? ` (Zahler von ${f.name})` : ''}.</MessageStrip> : null;
+        })()}
         <div className="portal-mz__feld">
           <Label>{festArt ? 'Hinweis im Kalender (z. B. Gruppe, Trainer)' : 'Notiz (z. B. Spielpartner)'}</Label>
           <Input value={e.text} maxlength={200} style={{ width: '100%' }} onInput={(x) => setE({ ...e, text: x.target.value })} />

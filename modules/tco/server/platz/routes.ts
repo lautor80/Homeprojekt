@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { DB, type Db, type Verein } from '../verein.js';
 import { addTage } from '../format.js';
 import {
-  aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, einzelAendern, einzelAnlegen,
+  aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, buchungsPersonen, einzelAendern, einzelAnlegen,
   einzelStornieren, aboTerminStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
   tagLesen, verwaltungAendern, verwaltungKopieren, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
@@ -458,6 +458,8 @@ export async function platzRoutes(app: FastifyInstance) {
     const verwalten = can(req, P_PLATZ.verwalten);
     return {
       datum: q.datum, heute: j.datum, jetzt: hhmm(j.min), ich: { name: i.name }, plaetze: await tagLesen(DB, q.datum, i, req.sitzung, verwalten),
+      // für wen sich buchen lässt: ich und meine Familie – mit dem Namen, an den die Rechnung geht (Person oder ihr abweichender Zahler)
+      personen: await buchungsPersonen(DB, i),
       rechte: { verwalten },
       // Halle verschlossen (#11): Hinweis, wenn am Tag kein Hallenschlüssel ausgegeben ist
       hallenhinweis: (await hatSchluessel(DB, i.adrnr, q.datum)) ? null : HALLE_HINWEIS,
@@ -585,8 +587,9 @@ export async function platzRoutes(app: FastifyInstance) {
 
   app.post('/platz/buchungen', buchen, async (req) => {
     const i = await ich(req);
-    const e = buchung.parse(req.body);
-    const r = await change(req, (tx) => einzelAnlegen(tx, i, e), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis}` });
+    // fuer: Adressnummer eines Familienmitglieds – die Rechnung geht an diese Person bzw. ihren abweichenden Zahler
+    const e = buchung.extend({ fuer: z.string().min(1).max(20).nullish() }).parse(req.body);
+    const r = await change(req, (tx) => einzelAnlegen(tx, i, e), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis}${e.fuer && e.fuer !== i.adrnr ? ` für ${e.fuer}` : ''}` });
     // Halle verschlossen (#11): ohne Hallenschlüssel am Tag den Hinweis an die Bestätigung hängen
     const [pl] = await DB`select art from tco.plaetze where id = ${e.platz_id}`;
     if (pl?.art === 'HALLE' && !(await hatSchluessel(DB, i.adrnr, e.datum))) return { ...r, hinweis: HALLE_HINWEIS };
