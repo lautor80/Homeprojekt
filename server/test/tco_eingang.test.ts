@@ -465,6 +465,29 @@ test('Rückmeldungen: Rückläufer wird im E-Mail-Protokoll verbucht und nicht a
   assert.equal(r.body.rueckmeldung.zugeordnet, false);
 });
 
+test('Rückläufer mit Zustellbericht im Anhang: Adresse wird im Mitgliederstamm als unzustellbar vermerkt, nichts abgelegt', async () => {
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email) values ('0000008450', 'Dora', 'Dsn', 'dora.dsn@example.org')`;
+  const vorher = mock.docs.size;
+  // der Text nennt nur die Adresse; Status und Empfänger stehen im Teil message/delivery-status – keine E-Mail des Portals dazu im Protokoll
+  const r = await ext(key, 'POST', `${E}/mail`, mail({
+    von: 'Mail Delivery Subsystem <mailer-daemon@mx.example>', betreff: 'Delivery Status Notification (Failure)', message_id: '<bounce-8450@mx.example>', uid: 8450,
+    text: 'Die Zustellung an dora.dsn@example.org ist fehlgeschlagen.',
+    anhaenge: [
+      { name: 'details.txt', mime: 'message/delivery-status', inhalt: b64('Reporting-MTA: dns; mx.example\r\n\r\nFinal-Recipient: rfc822; dora.dsn@example.org\r\nAction: failed\r\nStatus: 5.1.1\r\nDiagnostic-Code: smtp; 550 5.1.1 The email account that you tried to reach does not exist\r\n') },
+      { name: 'original.eml', mime: 'message/rfc822', inhalt: b64('From: kasse\r\nSubject: Hallo\r\n\r\n'.repeat(5)) },
+    ],
+  }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'ignoriert', 'liegt nicht als Eingangsdokument in der Prüfliste');
+  assert.deepEqual(r.body.dokumente, []);
+  assert.deepEqual(r.body.rueckmeldung.vermerkt, ['dora.dsn@example.org']);
+  assert.match(r.body.hinweis, /Unzustellbar-Meldung – dora\.dsn@example\.org im Mitgliederstamm als unzustellbar vermerkt; nicht abgelegt\./);
+  assert.equal(mock.docs.size, vorher);
+  const [m] = await sql`select email_unzustellbar_adresse as adresse, email_unzustellbar_quelle as quelle, email_unzustellbar_grund as grund from tco.mitglieder where adrnr = '0000008450'`;
+  assert.deepEqual([m.adresse, m.quelle], ['dora.dsn@example.org', 'RUECKLAEUFER']);
+  assert.match(m.grund as string, /5\.1\.1/);
+});
+
 test('Posteingang abrufen: offene Vorgänge neu bewerten und n8n anstoßen', async () => {
   // ohne Anbindung: nur neu bewerten
   let r = await admin('POST', `${E}/abruf`);
