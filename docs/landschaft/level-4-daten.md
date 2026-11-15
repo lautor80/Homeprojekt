@@ -89,7 +89,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.soll_pos` |  | ● |  |  |  |  |  |  |  |  |  |  |  |  |
 | `tco.trentgelt` |  |  |  | ● |  |  |  |  |  |  |  |  |  |  |
 | `tco.upload_folge` |  | ● | ● |  |  | ● |  | ● | ● |  |  |  |  |  |
-| `tco.verein` |  |  |  |  | ● |  |  | ● | ● |  |  |  |  |  |
+| `tco.verein` | ● |  |  |  | ● |  |  | ● | ● |  |  |  | ● |  |
 | `tco.vertraege` | ● | ● |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.vertragsangebote` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.vz_belege` |  | ● |  |  | ● |  |  | ● | ● |  |  |  |  |  |

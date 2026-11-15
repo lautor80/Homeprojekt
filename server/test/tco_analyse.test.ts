@@ -356,6 +356,32 @@ test('Upload: Stammdaten, Übertragung mit Metadaten, Fehlerfälle', async () =>
   assert.equal(mock.docs.get(r.body.id)!.type, '9');
 });
 
+test('LSVS-Bestandsmeldung: Vorschau und XML-Datei zum Stichtag', async () => {
+  const B = '/api/m/tco/mitglieder/bestandsmeldung';
+  let r = await call('GET', `${B}?stichtag=${jahr}-01-01`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // 101 und 102 sind am 01.01. Mitglied; 103 ausgetreten zum 31.12., 104 eingetreten am 15.01., 105 ohne Eintritt
+  assert.deepEqual(r.body.summe, { m: 1, w: 1, d: 0, gesamt: 2 });
+  assert.deepEqual(r.body.zeilen.map((z: { jahrgang: number }) => z.jahrgang), [jahr - 45, jahr - 12]);
+  assert.equal(r.body.kopf.ansprechpartner, 'Torsten Laub');
+  assert.equal(r.body.kopf.fachverband, '83');
+  assert.equal(r.body.kopf.schluessel, 'linear');
+  assert.deepEqual(r.body.fehlt, ['Vereinsnummer beim LSVS']);
+  r = await call('GET', `${B}/xml?stichtag=${jahr}-01-01`);
+  assert.equal(r.status, 400, String(r.body));
+
+  await sql`update tco.verein set lsvs_vereinsnr = '4711' where id = 1`;
+  r = await call('GET', `${B}/xml?stichtag=${jahr}-01-01`);
+  assert.equal(r.status, 200, String(r.body));
+  assert.match(r.ct, /xml/);
+  const x = String(r.body);
+  assert.match(x, /<Nummer>4711<\/Nummer>/);
+  assert.match(x, /<Schluessel>linear<\/Schluessel>/);
+  assert.equal((x.match(/<Typ>A<\/Typ>/g) ?? []).length, 2);
+  assert.equal((x.match(/<Fachverband>83<\/Fachverband>/g) ?? []).length, 2);
+  assert.equal((await call('GET', `${B}?stichtag=kaputt`)).status, 400);
+});
+
 test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {
   assert.equal((await call('POST', '/api/admin/roles', { id: 'TN', name: 'Nur Teilnehmer', permissions: ['tco.teilnehmer:display'] })).status, 200);
   assert.equal((await call('POST', '/api/admin/users', { username: 'leser', displayName: 'Lea Leser', password: 'start-passwort', roles: ['TN'] })).status, 200);
@@ -365,6 +391,7 @@ test('Berechtigungen: Leser ohne Rechte bekommt 403', async () => {
   assert.equal((await leser('GET', T)).status, 200);
   assert.equal((await leser('GET', `${A}/init`)).status, 403);
   assert.equal((await leser('POST', `${A}/daten`, {})).status, 403);
+  assert.equal((await leser('GET', '/api/m/tco/mitglieder/bestandsmeldung')).status, 403);
   assert.equal((await leser('GET', `${U}/stamm`)).status, 403);
   assert.equal((await leser('POST', `${U}/datei`, {})).status, 403);
   assert.equal((await leser('GET', '/api/paperless/mapping')).status, 403);
