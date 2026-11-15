@@ -236,7 +236,7 @@ export async function eingangRoutes(app: FastifyInstance) {
     const rows = await DB`
       select v.id, v.postfach, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum,
              to_char(v.eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am, v.status, v.hinweis, v.korrespondent,
-             v.mitglied_adrnr, v.mail_aktion, v.mail_erledigt_am is not null as mail_erledigt
+             v.mitglied_adrnr, v.mail_aktion, v.mail_erledigt_am is not null as mail_erledigt, v.regel_id, v.regel_name
         from tco.eing_vorgaenge v
        where true
              ${f.status === 'offen' ? DB`and v.status in ('pruefen', 'fehler')` : f.status ? DB`and v.status = ${f.status}` : DB``}
@@ -307,8 +307,8 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.get('/eingang/vorgaenge/:id/regeln', pflegen, async (req) => regelnFuerVorgang(idParam.parse(req.params).id));
   app.post('/eingang/vorgaenge/:id/regel', pflegen, async (req) => {
     const { id } = idParam.parse(req.params);
-    const { regel_id } = z.object({ regel_id: z.number().int().positive() }).parse(req.body);
-    return regelZuordnen(id, regel_id, wer(req));
+    const { regel_id, anhaenge_ignorieren } = z.object({ regel_id: z.number().int().positive(), anhaenge_ignorieren: z.boolean().optional() }).parse(req.body);
+    return regelZuordnen(id, regel_id, wer(req), { anhaengeIgnorieren: anhaenge_ignorieren });
   });
   /** ausstehende Behandlung der E-Mail ändern (null = E-Mail unverändert lassen) */
   app.put('/eingang/vorgaenge/:id/mail', pflegen, async (req) => {

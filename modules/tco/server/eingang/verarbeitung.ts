@@ -356,10 +356,10 @@ export async function mailVerarbeiten(m: EingangMail) {
   // der Mailtext bleibt am Vorgang: Er lässt sich zu jeder E-Mail anzeigen und als PDF nach Paperless ablegen
 
   const [v] = await DB`
-    insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, mitglied_adrnr, korrespondent, text, mail_aktion)
+    insert into tco.eing_vorgaenge (postfach, message_id, ordner, uid, von, von_name, an, betreff, datum, status, hinweis, mitglied_adrnr, korrespondent, text, mail_aktion, regel_id, regel_name)
     values (${m.postfach}, ${schluessel}, ${m.ordner}, ${m.uid}, ${ab.adresse || m.von.slice(0, 500)}, ${ab.name || null}, ${m.an.slice(0, 1000)}, ${m.betreff.slice(0, 1000)},
             ${eingangZeit(m.datum)}, 'neu', ${hinweis}, ${mitglied?.adrnr ?? null}, ${korrespondent?.name ?? null}, ${text.slice(0, MAX_TEXT) || null},
-            ${fuehrend ? DB.json(mailAktionVon(fuehrend) as never) : null})
+            ${fuehrend ? DB.json(mailAktionVon(fuehrend) as never) : null}, ${mailRegel?.id ?? null}, ${mailRegel?.name ?? null})
     on conflict (postfach, message_id) do nothing
     returning id`;
   if (!v) {
@@ -558,8 +558,12 @@ export async function regelnFuerVorgang(vorgangId: number) {
  * Regeln je Anhang wirken auf alle offenen Anhänge (mit Zusammenfassen, falls die Regel es vorsieht), Regeln für die
  * E-Mail legen die E-Mail als PDF ab (nur solange der Mailtext vorliegt) bzw. setzen ihre Behandlung. Testlauf-Regeln
  * erzeugen wie beim Eingang nur einen Vorschlag.
+ *
+ * Eine Regel für die E-Mail steht danach am Vorgang (Anzeige „Regel …“). Offene Anhänge ohne eigene Regel halten die
+ * Behandlung der E-Mail zurück, bis sie entschieden sind; mit `anhaengeIgnorieren` werden sie gleich als „nicht abgelegt“
+ * geschlossen, damit die Regel die E-Mail sofort behandeln kann (nur bei aktiven Regeln).
  */
-export async function regelZuordnen(vorgangId: number, regelId: number, wer: string) {
+export async function regelZuordnen(vorgangId: number, regelId: number, wer: string, opt: { anhaengeIgnorieren?: boolean } = {}) {
   const regel = (await regelnLesen()).find((r) => r.id === regelId);
   if (!regel) throw new BusinessError('Die gewählte Regel gibt es nicht (mehr).', 404);
   if (regel.status === 'aus') throw new BusinessError(`Die Regel „${regel.name}“ ist ausgeschaltet.`);
@@ -598,15 +602,30 @@ export async function regelZuordnen(vorgangId: number, regelId: number, wer: str
     await entscheiden({ id: d.id as string, vorgang_id: String(vorgangId), art: 'mail', datei, mime: 'text/html', sha256: sha(daten), inhalt: daten.toString('base64'), kontext: k, status: 'neu' }, regel, wer);
     anzahl++;
   }
+  // Regel für die E-Mail: offene Anhänge ohne eigene Regel auf Wunsch nicht ablegen (sonst halten sie die Behandlung zurück)
+  let ignoriert = 0;
+  if (regel.gilt_fuer === 'mail' && scharf(regel) && opt.anhaengeIgnorieren) {
+    for (const d of docs.filter((x) => x.art === 'anhang')) {
+      const [z] = await DB`select regel_id from tco.eing_dokumente where id = ${d.id}`;
+      if (z?.regel_id != null) continue;
+      await dokSetzen(d.id, { status: 'ignoriert', hinweis: `Nicht abgelegt – Regel „${regel.name}“ für die E-Mail von Hand zugeordnet.`, regel, zuordnung: null, wer });
+      ignoriert++;
+    }
+  }
   // Behandlung der E-Mail aus der zugeordneten Regel (nur aktive Regeln; im Testlauf bleibt die E-Mail unangetastet)
   const hinweis = regel.status === 'testlauf' ? `Testlauf: Regel „${regel.name}“ von Hand zugeordnet (${wer}).` : `Regel „${regel.name}“ von Hand zugeordnet (${wer}).`;
   await DB`
     update tco.eing_vorgaenge set hinweis = ${hinweis},
-           mail_aktion = ${scharf(regel) ? DB.json(mailAktionVon(regel) as never) : DB`mail_aktion`}
+           mail_aktion = ${scharf(regel) ? DB.json(mailAktionVon(regel) as never) : DB`mail_aktion`},
+           regel_id = ${regel.gilt_fuer === 'mail' ? regel.id : DB`regel_id`},
+           regel_name = ${regel.gilt_fuer === 'mail' ? regel.name : DB`regel_name`}
      where id = ${vorgangId}`;
   const status = await abschliessen(vorgangId);
   const was = regel.gilt_fuer === 'anhang' ? `${anzahl} Dokument${anzahl === 1 ? '' : 'e'}` : anzahl ? 'E-Mail als PDF' : 'Behandlung der E-Mail';
-  return { status, text: `Regel „${regel.name}“ zugeordnet: ${was} ${regel.status === 'testlauf' ? 'als Vorschlag (Testlauf)' : 'angewendet'}.` };
+  const teile = [`Regel „${regel.name}“ zugeordnet: ${was} ${regel.status === 'testlauf' ? 'als Vorschlag (Testlauf)' : 'angewendet'}.`];
+  if (ignoriert) teile.push(`${ignoriert} Anhang${ignoriert === 1 ? '' : 'e'} nicht abgelegt.`);
+  if (scharf(regel) && (status === 'pruefen' || status === 'fehler')) teile.push('Die E-Mail wird behandelt, sobald die offenen Dokumente abgelegt oder ignoriert sind.');
+  return { status, text: teile.join(' ') };
 }
 
 /** Ausstehende Behandlung der E-Mail ändern (z. B. falscher Zielordner) – nur solange n8n sie noch nicht ausgeführt hat */

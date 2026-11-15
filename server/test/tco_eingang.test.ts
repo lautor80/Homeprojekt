@@ -607,6 +607,30 @@ test('Prüfliste: bestehende Regel zuordnen (je Anhang mit Zusammenfassen, E-Mai
   assert.equal(r.status, 400);
   assert.match(r.body.message, /bereits ausgeführt/);
 
+  // E-Mail-Regel auf einen Vorgang mit offenem Anhang ohne Regel: Regel steht am Vorgang; ohne Wahl wartet die Behandlung
+  r = await ext(key, 'POST', `${E}/mail`, mail({ von: 'news@zuordnen.example', betreff: 'Flyer Herbst', message_id: '<z3@zu>', uid: 73,
+    anhaenge: [{ name: 'flyer-herbst.pdf', mime: 'application/pdf', inhalt: b64('%PDF Flyer Herbst') }] }));
+  assert.equal(r.body.status, 'pruefen', JSON.stringify(r.body));
+  const vf = r.body.vorgang as number;
+  r = await admin('POST', `${E}/vorgaenge/${vf}/regel`, { regel_id: werbung.id });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'pruefen');
+  assert.match(r.body.text, /sobald die offenen Dokumente abgelegt oder ignoriert sind/);
+  r = await admin('GET', `${E}/vorgaenge?suche=${encodeURIComponent('Flyer Herbst')}`);
+  let vfl = r.body.vorgaenge.find((x: any) => x.id === vf);
+  assert.deepEqual([vfl.regel_id, vfl.regel_name], [werbung.id, 'Werbung'], 'Regel der E-Mail wird am Vorgang angezeigt');
+  assert.equal((await ext(key, 'GET', `${E}/mailaktionen`)).body.filter((a: any) => a.vorgang === vf).length, 0, 'Behandlung wartet auf den Anhang');
+  // mit „offene Anhänge nicht ablegen“: Anhang geschlossen, E-Mail wird behandelt
+  r = await admin('POST', `${E}/vorgaenge/${vf}/regel`, { regel_id: werbung.id, anhaenge_ignorieren: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.status, 'abgelegt');
+  assert.match(r.body.text, /1 Anhang nicht abgelegt/);
+  r = await admin('GET', `${E}/vorgaenge?suche=${encodeURIComponent('Flyer Herbst')}`);
+  vfl = r.body.vorgaenge.find((x: any) => x.id === vf);
+  assert.deepEqual(vfl.dokumente.map((d: any) => [d.datei, d.status, d.regel_name]), [['flyer-herbst.pdf', 'ignoriert', 'Werbung']]);
+  r = await ext(key, 'GET', `${E}/mailaktionen`);
+  assert.deepEqual(r.body.filter((a: any) => a.vorgang === vf).map((a: any) => [a.art, a.ordner, a.uid]), [['verschieben', 'Werbung', '73']]);
+
   // Testlauf-Regel je Anhang auf einen Vorgang ohne Anhang: abgelehnt
   r = await admin('POST', `${E}/vorgaenge/${vo}/regel`, { regel_id: ids.mitglied });
   assert.equal(r.status, 400);

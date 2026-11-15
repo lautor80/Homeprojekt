@@ -143,10 +143,11 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
     } catch (e) { setError((e as Error).message); setMailtext(null); setMailPdf(null); } finally { setBusy(false); }
   }
 
-  /** Regel, die einem offenen Dokument des Vorgangs zugeordnet ist (sonst einem beliebigen Dokument) */
+  /** Regel, die einem offenen Dokument des Vorgangs zugeordnet ist (sonst einem beliebigen Dokument, sonst die Regel der E-Mail) */
   const zugeordnet = (v: Vorgang) => {
     const d = v.dokumente.find((x) => x.regel_id && ['pruefen', 'fehler', 'neu'].includes(x.status)) ?? v.dokumente.find((x) => x.regel_id);
-    return d ? regeln.find((r) => r.id === d.regel_id) ?? null : null;
+    const id = d?.regel_id ?? v.regel_id;
+    return id ? regeln.find((r) => r.id === id) ?? null : null;
   };
 
   const ziel = (dok: Dokument) => {
@@ -200,7 +201,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
             <div style={{ padding: '0.25rem 1rem 0.5rem' }}>
               <Text className="portal-small">
                 {v.von_name ? `${v.von_name} <${v.von ?? ''}>` : v.von} · {zeitText(v.datum)}{v.postfach ? ` · Postfach ${v.postfach}` : ''}
-                {v.korrespondent ? ` · Korrespondent ${v.korrespondent}` : ''}{v.mitglied_adrnr ? ` · Mitglied ${v.mitglied_adrnr.replace(/^0+/, '')}` : ''}
+                {v.korrespondent ? ` · Korrespondent ${v.korrespondent}` : ''}{v.mitglied_adrnr ? ` · Mitglied ${v.mitglied_adrnr.replace(/^0+/, '')}` : ''}{v.regel_name ? ` · Regel „${v.regel_name}“` : ''}
               </Text>
               {(v.hinweis || v.mail_aktion) && (
                 <Text className="portal-muted portal-small" style={{ display: 'block' }}>
@@ -335,11 +336,15 @@ function ZuordnenDialog({ v, onClose, onDone, onBearbeiten }: { v: Vorgang; onCl
     }).catch((e) => setError((e as Error).message));
   }, [v.id]);
   const r = liste?.find((x) => String(x.id) === regelId) ?? null;
+  // offene Anhänge ohne eigene Regel halten die Behandlung der E-Mail zurück, bis sie entschieden sind
+  const offeneAnhaenge = v.dokumente.filter((d) => d.art === 'anhang' && !d.regel_id && ['pruefen', 'fehler', 'neu'].includes(d.status));
+  const [ignorieren, setIgnorieren] = useState(true);
+  const mitAnhaengen = !!r && r.gilt_fuer === 'mail' && r.status === 'aktiv' && offeneAnhaenge.length > 0;
 
   async function anwenden() {
     if (!r) return;
     setBusy(true); setError(null);
-    try { toast((await api.post<{ text: string }>(`${EING}/vorgaenge/${v.id}/regel`, { regel_id: r.id })).text, 6000); onDone(); }
+    try { toast((await api.post<{ text: string }>(`${EING}/vorgaenge/${v.id}/regel`, { regel_id: r.id, anhaenge_ignorieren: mitAnhaengen && ignorieren })).text, 6000); onDone(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -366,6 +371,17 @@ function ZuordnenDialog({ v, onClose, onDone, onBearbeiten }: { v: Vorgang; onCl
                 : 'Die Bedingungen passen nicht auf diese E-Mail. Die Regel wird trotzdem angewendet – damit sie künftig von selbst greift, „Regel bearbeiten …“ und die Bedingungen anpassen.'}
             {r.anwendbar && r.status === 'testlauf' ? ' Im Testlauf entsteht nur ein Vorschlag; die E-Mail bleibt unverändert.' : ''}
           </MessageStrip>
+        )}
+        {mitAnhaengen && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <CheckBox checked={ignorieren} onChange={(e) => setIgnorieren(e.target.checked)}
+                      text={`Offene Anhänge nicht ablegen (${offeneAnhaenge.map((d) => d.datei).join(', ')})`} />
+            <Text className="portal-muted portal-small" style={{ display: 'block' }}>
+              {ignorieren
+                ? 'Die Anhänge werden als „nicht abgelegt“ geschlossen; die E-Mail wird danach gleich wie in der Regel behandelt.'
+                : 'Die E-Mail wird erst behandelt, wenn die Anhänge abgelegt oder ignoriert sind.'}
+            </Text>
+          </div>
         )}
       </>}
     </Dialog>
