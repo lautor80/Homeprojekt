@@ -7,6 +7,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { arbeitWert, materialSumme, PlanungFehler, ressourcenSummen, terminieren, type VorgangEin } from '../../modules/tco/server/projekte/planung.js';
+import { zeitenSummen } from '../../modules/tco/server/projekte/zeiten.js';
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
@@ -40,7 +41,7 @@ before(async () => {
   await call('POST', '/api/setup', { orgName: 'TC Oberthal', username: 'admin', displayName: 'Admin', password: 'geheim-geheim' });
   await call('POST', '/api/auth/login', { username: 'admin', password: 'geheim-geheim' });
   await sql`insert into tco.fikonten (konto, name, kennzahl) values ('4581', 'Instandhaltung Plätze Test', 'C2')`;
-  await sql`insert into tco.mitglieder (adrnr, vorname, nachname) values ('0000081001', 'Anna', 'Bauer'), ('0000081002', 'Ben', 'Schmitt')`;
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname) values ('0000081001', 'Anna', 'Bauer'), ('0000081002', 'Ben', 'Schmitt'), ('0000081003', 'Clara', 'Weber')`;
 });
 after(async () => {
   await app?.close();
@@ -102,6 +103,21 @@ test('Ressourcen: Wert der Eigenleistung zum externen Satz, Materialsummen', () 
     [{ adrnr: '1', name: 'Anna', personen: 1, stunden: 8, satz: null }, { adrnr: '1', name: 'Anna', personen: 1, stunden: 4, satz: 60 }, { name: 'Helfer', personen: 3, stunden: 5, satz: null }],
     [{ menge: 10, preis: 12.5, beschafft: true }, { menge: 1, preis: 300 }], 40,
   ), { stunden: 27, eigenleistung: 8 * 40 + 4 * 60 + 15 * 40, personen: 4, material: 425, material_beschafft: 125 });
+});
+
+test('Soll-Ist der Stunden: nur bestätigte zählen, Wert zum Satz der Person', () => {
+  const s = zeitenSummen(
+    [{ adrnr: '1', name: 'Anna', stunden: 4, status: 'BESTAETIGT' }, { adrnr: '1', name: 'Anna', stunden: 3.5, status: 'GEMELDET' }, { adrnr: '2', name: 'Ben', stunden: 2, status: 'BESTAETIGT' },
+      { adrnr: null, name: 'Helfer', stunden: 12, status: 'BESTAETIGT' }, { adrnr: '3', name: 'Clara', stunden: 1, status: 'ABGELEHNT' }, { adrnr: '3', name: 'Clara', stunden: 2, status: 'BESTAETIGT' }],
+    [{ adrnr: '1', name: 'Anna', personen: 1, stunden: 8, satz: null }, { adrnr: '2', name: 'Ben', personen: 1, stunden: 4.5, satz: 60 }, { adrnr: null, name: 'Helfer', personen: 4, stunden: 6, satz: null }], 45,
+  );
+  assert.equal(s.stunden, 20);
+  assert.equal(s.gemeldet, 3.5);
+  assert.equal(s.wert, 4 * 45 + 2 * 60 + 12 * 45 + 2 * 45);
+  assert.deepEqual(s.personen, [
+    { name: 'Anna', adrnr: '1', geplant: 8, gemeldet: 3.5, bestaetigt: 4, offen: 4 }, { name: 'Ben', adrnr: '2', geplant: 4.5, gemeldet: 0, bestaetigt: 2, offen: 2.5 },
+    { name: 'Clara', adrnr: '3', geplant: 0, gemeldet: 0, bestaetigt: 2, offen: 0 }, { name: 'Helfer', adrnr: null, geplant: 24, gemeldet: 0, bestaetigt: 12, offen: 12 },
+  ]);
 });
 
 // ---------------------------------------------------------------------------
@@ -198,6 +214,8 @@ test('erneut sichern mit den Kennungen vom Server; Vorgang entfernen löst die R
   assert.deepEqual(r.body.planung.vorgaenge.map((v: any) => v.bezeichnung), ['Angebote einholen', 'Alten Belag abtragen', 'Neuen Belag einbauen', 'Linien setzen', 'Abnahme']);
   assert.deepEqual(r.body.planung.summen, s.summen);
   assert.equal(r.body.planung.arbeit[0].vorgang_id, r.body.planung.vorgaenge[1].id);
+  // Vorgänge behalten ihre Kennung – gemeldete Stunden hängen daran
+  assert.deepEqual(r.body.planung.vorgaenge.map((v: any) => v.id), s.vorgaenge.filter((v: any) => v.nr !== 5).map((v: any) => v.id));
 });
 
 test('Fehler: Kreis in den Abhängigkeiten, unbekanntes Mitglied, Ressource an fehlendem Vorgang – nichts wird geändert', async () => {
@@ -238,9 +256,145 @@ test('Projektantrag als PDF – mit und ohne Planung', async () => {
   assert.equal((await call('POST', `${P}/${leer}/loeschen`, { grund: 'Test' })).status, 200);
 });
 
-test('Antrag und Genehmigung laufen wie im Haushaltsplan; ein abgeschlossenes Projekt wird nicht mehr umgeplant', async () => {
+test('Material als Kostenposition übernehmen: anlegen, dann auf die neue Summe setzen', async () => {
+  let r = await call('POST', `${P}/${id}/material-uebernehmen`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let pos = r.body.projekt.positionen.find((x: any) => x.bezeichnung === 'Material laut Ressourcenplanung');
+  assert.equal(pos.art, 'KOSTEN');
+  assert.equal(pos.betrag, 2950);
+  assert.equal(r.body.projekt.budget.kosten, 6950);
+  const b = planung();
+  b.material[0].preis = '200';
+  await call('PUT', `${P}/${id}/planung`, b);
+  r = await call('POST', `${P}/${id}/material-uebernehmen`);
+  pos = r.body.projekt.positionen.filter((x: any) => x.bezeichnung === 'Material laut Ressourcenplanung');
+  assert.equal(pos.length, 1, 'keine zweite Position');
+  assert.equal(pos[0].betrag, 3000);
+  await call('PUT', `${P}/${id}/planung`, planung());
+});
+
+// ---------------------------------------------------------------------------
+// Zeiten: Mitglieder melden selbst, der Planer bestätigt
+// ---------------------------------------------------------------------------
+
+const MZ = `${P}/meine-zeiten`;
+const anna = client(), ben = client(), clara = client(), ohne = client();
+async function benutzer(c: ReturnType<typeof client>, name: string, adrnr: string | null) {
+  const r = await call('POST', '/api/admin/users', { username: name, displayName: name, password: 'geheim-geheim-1', roles: ['PP_TEST_MITGLIED'] });
+  assert.ok(r.status < 300, JSON.stringify(r.body));
+  await sql`update core.users set must_change_password = false where username = ${name}`;
+  if (adrnr) await sql`insert into tco.mitgliedera (adrnr, benutzer_id) select ${adrnr}, id from core.users where username = ${name} on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  assert.equal((await c('POST', '/api/auth/login', { username: name, password: 'geheim-geheim-1' })).status, 200);
+}
+
+test('Meine Zeiten: melden erst, wenn das Projekt genehmigt ist – und nur, wer eingeplant ist', async () => {
+  await sql`insert into core.roles (id, name, description) values ('PP_TEST_MITGLIED', 'PP-Test Mitglied', '')`;
+  await sql`insert into core.role_permissions (role_id, permission) values ('PP_TEST_MITGLIED', 'tco.projektzeiten:edit')`;
+  await benutzer(anna, 'pp-anna', '0000081001');
+  await benutzer(ben, 'pp-ben', '0000081002');
+  await benutzer(clara, 'pp-clara', '0000081003');
+  await benutzer(ohne, 'pp-ohne', null);
+
+  // Projekt noch Entwurf: nichts zu melden
+  let r = await anna('GET', MZ);
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.mitglied, { adrnr: '0000081001', name: 'Bauer, Anna' });
+  assert.deepEqual(r.body.projekte, []);
+  const s = (await call('GET', `${P}/${id}`)).body.planung;
+  const vAbtragen = s.vorgaenge[1].id;
+  assert.equal((await anna('POST', MZ, { projekt_id: id, datum: '2020-03-22', stunden: 4 })).status, 403);
+
   assert.equal((await call('POST', `${P}/${id}/status`, { status: 'BEANTRAGT' })).status, 200);
   assert.equal((await call('POST', `${P}/${id}/status`, { status: 'GENEHMIGT' })).status, 200);
+  r = await anna('GET', MZ);
+  assert.deepEqual(r.body.projekte.map((p: any) => [p.bezeichnung, p.eingeplant, p.vorgaenge.length]), [['PP-Test Platz 3 sanieren', true, 6]]);
+
+  // Anna meldet – die Person kommt aus der Anmeldung, eine mitgeschickte Adressnummer wird nicht beachtet
+  r = await anna('POST', MZ, { projekt_id: id, vorgang_id: vAbtragen, datum: '2020-03-22', stunden: '4,5', taetigkeit: 'Belag abgetragen', adrnr: '0000081002', name: 'Schmitt, Ben' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.zeiten.map((z: any) => [z.name, z.adrnr, z.stunden, z.status, z.vorgang, z.projekt]), [['Bauer, Anna', '0000081001', 4.5, 'GEMELDET', 'Alten Belag abtragen', 'PP-Test Platz 3 sanieren']]);
+  // Datum in der Zukunft, Vorgang eines anderen Projekts, zu viele Stunden
+  assert.equal((await anna('POST', MZ, { projekt_id: id, datum: '2099-01-01', stunden: 2 })).status, 400);
+  assert.equal((await anna('POST', MZ, { projekt_id: id, vorgang_id: 999999, datum: '2020-03-22', stunden: 2 })).status, 400);
+  assert.equal((await anna('POST', MZ, { projekt_id: id, datum: '2020-03-22', stunden: 30 })).status, 400);
+
+  // Clara ist Mitglied, aber nicht eingeplant; „ohne“ ist keinem Mitglied zugeordnet
+  assert.deepEqual((await clara('GET', MZ)).body.projekte, []);
+  assert.equal((await clara('POST', MZ, { projekt_id: id, datum: '2020-03-22', stunden: 2 })).status, 403);
+  r = await ohne('GET', MZ);
+  assert.equal(r.body.mitglied, null);
+  assert.match(r.body.hinweis, /keinem Mitglied zugeordnet/);
+  assert.equal((await ohne('POST', MZ, { projekt_id: id, datum: '2020-03-22', stunden: 2 })).status, 403);
+  // fremde Meldungen sieht niemand
+  assert.deepEqual((await ben('GET', MZ)).body.zeiten, []);
+  // ohne das Recht kein Zugriff – auch nicht mit dem Leserecht der Projekte
+  assert.equal((await client()('GET', MZ)).status, 401);
+});
+
+test('offen für alle: auch nicht eingeplante Mitglieder melden', async () => {
+  const b = { ...planung(), offen_fuer_alle: true };
+  const s = (await call('GET', `${P}/${id}`)).body.planung;
+  // mit den Kennungen des Servers sichern, damit Annas Meldung am Vorgang bleibt
+  const key = (v: number | null) => (v === null ? null : String(v));
+  const r0 = await call('PUT', `${P}/${id}/planung`, {
+    stundensatz: s.stundensatz, offen_fuer_alle: true,
+    vorgaenge: s.vorgaenge.map((v: any) => ({ key: String(v.id), bezeichnung: v.bezeichnung, beginn: v.beginn_fix, dauer: v.dauer, fertig: v.fertig, verantwortlich: v.verantwortlich, vorgaenger: v.vorgaenger.map((x: any) => ({ key: String(x.id), abstand: x.abstand })) })),
+    arbeit: s.arbeit.map((a: any) => ({ vorgang: key(a.vorgang_id), adrnr: a.adrnr, name: a.name, taetigkeit: a.taetigkeit, personen: a.personen, stunden: a.stunden, satz: a.satz })),
+    material: s.material.map((m: any) => ({ vorgang: key(m.vorgang_id), bezeichnung: m.bezeichnung, menge: m.menge, einheit: m.einheit, preis: m.preis, lieferant: m.lieferant, beschafft: m.beschafft })),
+  });
+  assert.equal(r0.status, 200, JSON.stringify(r0.body));
+  assert.equal(r0.body.planung.offen_fuer_alle, true);
+  assert.equal(r0.body.planung.zeiten[0].vorgang, 'Alten Belag abtragen', 'die Meldung hängt weiter am Vorgang');
+  assert.ok(b);
+  let r = await clara('GET', MZ);
+  assert.deepEqual(r.body.projekte.map((p: any) => [p.bezeichnung, p.eingeplant]), [['PP-Test Platz 3 sanieren', false]]);
+  r = await clara('POST', MZ, { projekt_id: id, datum: '2020-03-23', stunden: 2, taetigkeit: 'Zaun gestrichen' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+});
+
+test('Planer: bestätigen, zurückweisen mit Begründung, für Helfer erfassen – Soll-Ist zählt nur Bestätigtes', async () => {
+  let s = (await call('GET', `${P}/${id}`)).body.planung;
+  assert.deepEqual([s.ist.stunden, s.ist.gemeldet, s.ist.wert], [0, 6.5, 0]);
+  const zAnna = s.zeiten.find((z: any) => z.adrnr === '0000081001').id, zClara = s.zeiten.find((z: any) => z.adrnr === '0000081003').id;
+  let r = await call('POST', `${P}/zeiten/${zAnna}/status`, { status: 'BESTAETIGT' });
+  assert.equal(r.status, 200);
+  assert.deepEqual([r.body.planung.ist.stunden, r.body.planung.ist.gemeldet, r.body.planung.ist.wert], [4.5, 2, 202.5]);
+  assert.equal((await call('POST', `${P}/zeiten/${zClara}/status`, { status: 'ABGELEHNT' })).status, 400, 'ohne Begründung nicht');
+  r = await call('POST', `${P}/zeiten/${zClara}/status`, { status: 'ABGELEHNT', grund: 'Der Zaun gehört nicht zum Projekt' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.planung.ist.gemeldet, 0);
+  // der Planer erfasst für Helfer ohne Zugang und für ein Mitglied – gleich bestätigt
+  r = await call('POST', `${P}/${id}/zeiten`, { name: 'Helfer', datum: '2020-03-22', stunden: 12, taetigkeit: '3 Helfer je 4 Stunden' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('POST', `${P}/${id}/zeiten`, { adrnr: '0000081002', datum: '2020-03-30', stunden: '2', taetigkeit: 'Linien' });
+  assert.equal(r.status, 200);
+  s = r.body.planung;
+  assert.deepEqual([s.ist.stunden, s.ist.wert], [18.5, 4.5 * 45 + 12 * 45 + 2 * 60]);
+  assert.deepEqual(s.ist.personen.map((x: any) => [x.name, x.geplant, x.bestaetigt, x.offen]), [['Bauer, Anna', 8, 4.5, 3.5], ['Helfer', 24, 12, 12], ['Schmitt, Ben', 4.5, 2, 2.5], ['Weber, Clara', 0, 0, 0]]);
+  assert.equal((await call('POST', `${P}/${id}/zeiten`, { adrnr: '0000099999', datum: '2020-03-30', stunden: 2 })).status, 400);
+  // Übersicht zeigt die geleisteten Stunden
+  const p = (await call('GET', P)).body.projekte.find((x: any) => x.id === id);
+  assert.deepEqual(p.ist, { stunden: 18.5, gemeldet: 0, wert: s.ist.wert });
+
+  // das Mitglied sieht Status und Begründung; Bestätigtes zieht es nicht mehr zurück, Zurückgewiesenes schon – und nur Eigenes
+  const c = (await clara('GET', MZ)).body.zeiten[0];
+  assert.deepEqual([c.status, c.grund], ['ABGELEHNT', 'Der Zaun gehört nicht zum Projekt']);
+  assert.equal((await anna('POST', `${MZ}/${zAnna}/loeschen`)).status, 400);
+  assert.equal((await anna('POST', `${MZ}/${zClara}/loeschen`)).status, 404, 'fremde Meldung');
+  assert.equal((await clara('POST', `${MZ}/${zClara}/loeschen`)).status, 200);
+  // bestätigen und erfassen darf nur der Planer
+  assert.equal((await anna('POST', `${P}/zeiten/${zAnna}/status`, { status: 'GEMELDET' })).status, 403);
+  assert.equal((await anna('POST', `${P}/${id}/zeiten`, { name: 'Helfer', datum: '2020-03-22', stunden: 2 })).status, 403);
+  // Entscheidung zurücknehmen, Meldung löschen
+  r = await call('POST', `${P}/zeiten/${zAnna}/status`, { status: 'GEMELDET' });
+  assert.equal(r.body.planung.ist.gemeldet, 4.5);
+  await call('POST', `${P}/zeiten/${zAnna}/status`, { status: 'BESTAETIGT' });
+  const helfer = r.body.planung.zeiten.find((z: any) => z.name === 'Helfer').id;
+  r = await call('POST', `${P}/zeiten/${helfer}/loeschen`);
+  assert.equal(r.body.planung.zeiten.some((z: any) => z.id === helfer), false);
+});
+
+test('Antrag und Genehmigung laufen wie im Haushaltsplan; ein abgeschlossenes Projekt wird nicht mehr umgeplant', async () => {
   // die Terminplanung lebt in der Umsetzung weiter
   assert.equal((await call('POST', `${P}/${id}/status`, { status: 'UMSETZUNG' })).status, 200);
   const b = planung();
@@ -252,6 +406,10 @@ test('Antrag und Genehmigung laufen wie im Haushaltsplan; ein abgeschlossenes Pr
   r = await call('PUT', `${P}/${id}/planung`, planung());
   assert.equal(r.status, 400);
   assert.match(r.body.message, /abgeschlossen/);
+  // auf ein abgeschlossenes Projekt meldet niemand mehr
+  assert.deepEqual((await anna('GET', MZ)).body.projekte, []);
+  assert.equal((await anna('POST', MZ, { projekt_id: id, datum: '2020-03-22', stunden: 1 })).status, 403);
+  assert.equal((await call('POST', `${P}/${id}/zeiten`, { name: 'Helfer', datum: '2020-03-22', stunden: 1 })).status, 400);
 });
 
 test('Rechte: nur ansehen – kein Planen, keine Mitgliederliste; ohne Recht kein Zugriff', async () => {

@@ -9,7 +9,8 @@ import { cfgLesen } from '../haushalt/logik.js';
 import { ENTSCHEIDUNG, POSITION_TEXT, STATUS, STATUS_TEXT } from '../haushalt/projekt.js';
 import { P_PROJEKT, projekteLesen, projektLoeschen, projektnummernVorschlag, projektSichern, projektStatus } from '../haushalt/projekte.js';
 import { betragOpt, projektSchema } from '../haushalt/routes.js';
-import { mitgliederLesen, planungKennzahlen, planungSichern, projektSicht } from './logik.js';
+import { materialUebernehmen, mitgliederLesen, planungKennzahlen, planungSichern, projektSicht } from './logik.js';
+import { meinMitglied, meldbareProjekte, zeitEntscheiden, zeitErfassen, zeitLoeschen, zeitMelden, zeitenLesen, zeitZurueckziehen } from './zeiten.js';
 import { antragAblegen, antragPdf } from './pdf.js';
 
 /**
@@ -20,6 +21,8 @@ import { antragAblegen, antragPdf } from './pdf.js';
  *  - tco.projekte:approve  über Anträge entscheiden (besteht schon, siehe Haushaltsplan)
  */
 export const P_PROJ = { display: 'tco.projekte:display', edit: 'tco.projekte:edit', approve: P_PROJEKT.approve };
+/** Eigene Projektstunden melden (Meine Daten → Meine Zeiten) – nur für das dem Benutzer zugeordnete Mitglied */
+export const P_PZ = { edit: 'tco.projektzeiten:edit' };
 
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';
 const pId = z.object({ id: z.coerce.number().int().positive() });
@@ -29,8 +32,13 @@ const key = z.string().min(1).max(40);
 /** Zahl oder deutsche Schreibweise („1.234,56“); leer = 0 */
 const zahl = betragOpt.transform((v) => v ?? 0).refine((v) => v >= 0, 'Bitte keine negativen Werte');
 
+const zeitSchema = z.object({
+  projekt_id: z.coerce.number().int().positive(), vorgang_id: z.coerce.number().int().positive().nullish(), datum,
+  stunden: betragOpt.refine((v): v is number => typeof v === 'number' && v > 0, 'Bitte die Stunden angeben'), taetigkeit: text(300),
+});
+
 const planungSchema = z.object({
-  stundensatz: zahl,
+  stundensatz: zahl, offen_fuer_alle: z.boolean().default(false),
   vorgaenge: z.array(z.object({
     key, bezeichnung: z.string().trim().min(1, 'Bitte den Vorgang benennen').max(160), beginn: datum.nullish().or(z.literal('').transform(() => null)),
     dauer: z.coerce.number().int('Die Dauer in ganzen Tagen angeben').min(0).max(3660), fertig: z.coerce.number().int().min(0).max(100).default(0),
@@ -99,6 +107,61 @@ export async function projekteRoutes(app: FastifyInstance) {
     const b = planungSchema.parse(req.body);
     await change(req, (tx) => planungSichern(tx, id, b), { action: 'HH_PROJEKT_PLANUNG' });
     return projektSicht(DB, id);
+  });
+
+  /** Summe des Materials als Kostenposition übernehmen (Regeln der Kostenplanung) */
+  app.post('/projekte/:id/material-uebernehmen', planen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const summe = await change(req, (tx) => materialUebernehmen(tx, id, can(req, P_PROJ.approve)), { action: 'HH_PROJEKT_MATERIAL' });
+    return { ...(await projektSicht(DB, id)), text: `Material mit ${summe.toLocaleString('de-DE', { minimumFractionDigits: 2 })} € als Kostenposition übernommen.` };
+  });
+
+  // ---------------------------------------------------------------- Zeiten: der Planer erfasst für andere, bestätigt, weist zurück
+  app.post('/projekte/:id/zeiten', planen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = zeitSchema.omit({ projekt_id: true }).extend({ adrnr: z.string().trim().max(20).nullish(), name: text(120) }).parse(req.body);
+    await change(req, (tx) => zeitErfassen(tx, { ...b, projekt_id: id }, benutzer(req)), { action: 'HH_PROJEKT_ZEIT' });
+    return projektSicht(DB, id);
+  });
+
+  app.post('/projekte/zeiten/:id/status', planen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ status: z.enum(['GEMELDET', 'BESTAETIGT', 'ABGELEHNT']), grund: z.string().trim().max(500).nullish() }).parse(req.body);
+    const projekt = await change(req, (tx) => zeitEntscheiden(tx, id, b.status, b.grund ?? null, benutzer(req)), { action: `HH_PROJEKT_ZEIT_${b.status}`, reason: b.grund ?? undefined });
+    return projektSicht(DB, projekt);
+  });
+
+  app.post('/projekte/zeiten/:id/loeschen', planen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const projekt = await change(req, (tx) => zeitLoeschen(tx, id), { action: 'HH_PROJEKT_ZEIT' });
+    return projektSicht(DB, projekt);
+  });
+
+  // ---------------------------------------------------------------- Meine Zeiten: eigene Projektstunden (Person nur aus der Anmeldung)
+  const melden = { preHandler: requireAuth(P_PZ.edit) };
+  const meine = async (req: FastifyRequest) => {
+    const m = await meinMitglied(DB, req.user?.id);
+    return {
+      mitglied: m, projekte: m ? await meldbareProjekte(DB, m.adrnr) : [], zeiten: m ? await zeitenLesen(DB, { adrnr: m.adrnr }) : [],
+      hinweis: m ? null : 'Ihr Benutzer ist keinem Mitglied zugeordnet – Projektstunden melden nur Mitglieder.',
+    };
+  };
+  app.get('/projekte/meine-zeiten', melden, meine);
+
+  app.post('/projekte/meine-zeiten', melden, async (req) => {
+    const b = zeitSchema.parse(req.body);
+    const m = await meinMitglied(DB, req.user?.id);
+    if (!m) throw new BusinessError('Ihr Benutzer ist keinem Mitglied zugeordnet – Projektstunden melden nur Mitglieder.', 403);
+    await change(req, (tx) => zeitMelden(tx, m, b, benutzer(req)), { action: 'HH_PROJEKT_ZEIT' });
+    return { ...(await meine(req)), text: 'Gemeldet – der Projektverantwortliche bestätigt die Stunden.' };
+  });
+
+  app.post('/projekte/meine-zeiten/:id/loeschen', melden, async (req) => {
+    const { id } = pId.parse(req.params);
+    const m = await meinMitglied(DB, req.user?.id);
+    if (!m) throw new BusinessError('Meldung nicht gefunden.', 404);
+    await change(req, (tx) => zeitZurueckziehen(tx, m.adrnr, id), { action: 'HH_PROJEKT_ZEIT' });
+    return { ...(await meine(req)), text: 'Meldung zurückgezogen.' };
   });
 
   // ---------------------------------------------------------------- Projektantrag: PDF und Paperless

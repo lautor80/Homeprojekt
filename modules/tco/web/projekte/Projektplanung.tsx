@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  BusyIndicator, Button, CheckBox, DatePicker, Input, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
+  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -24,15 +25,21 @@ import './projekte.css';
  * Termine und Ressourcen sichern sich mit jeder Änderung selbst; der Server rechnet Termine, Puffer und Summen neu.
  */
 const PJ = `${TCO}/projekte`;
+/** auf Projekte in diesem Status können Mitglieder Stunden melden */
+const MELDBAR = ['GENEHMIGT', 'UMSETZUNG'];
 
 interface Summen { stunden: number; eigenleistung: number; personen: number; material: number; material_beschafft: number }
 interface Termin { beginn: string; ende: string; tage: number; fertig: number }
 interface Vorgang extends GanttVorgang { beginn_fix: string | null; verantwortlich: string | null; notiz: string | null }
 interface Arbeit { id: number; vorgang_id: number | null; adrnr: string | null; name: string; taetigkeit: string | null; personen: number; stunden: number; satz: number | null; satz_gilt: number; wert: number }
 interface Material { id: number; vorgang_id: number | null; bezeichnung: string; menge: number; einheit: string | null; preis: number; lieferant: string | null; beschafft: boolean; summe: number }
-interface Planung { stundensatz: number; vorgaenge: Vorgang[]; arbeit: Arbeit[]; material: Material[]; termin: Termin; summen: Summen; paperless: { id: number; am: string } | null }
+type ZeitStatus = 'GEMELDET' | 'BESTAETIGT' | 'ABGELEHNT';
+export interface Zeit { id: number; projekt_id: number; projekt: string; vorgang_id: number | null; vorgang: string | null; adrnr: string | null; name: string; datum: string; stunden: number; taetigkeit: string | null; status: ZeitStatus; status_text: string; grund: string | null; erfasst_von: string | null; entschieden_von: string | null }
+interface Ist { stunden: number; wert: number; gemeldet: number; personen: { name: string; adrnr: string | null; geplant: number; gemeldet: number; bestaetigt: number; offen: number }[] }
+export const ZEIT_STATE: Record<ZeitStatus, 'Critical' | 'Positive' | 'Negative'> = { GEMELDET: 'Critical', BESTAETIGT: 'Positive', ABGELEHNT: 'Negative' };
+interface Planung { stundensatz: number; offen_fuer_alle: boolean; zeiten: Zeit[]; ist: Ist; vorgaenge: Vorgang[]; arbeit: Arbeit[]; material: Material[]; termin: Termin; summen: Summen; paperless: { id: number; am: string } | null }
 interface Sicht { projekt: Projekt; planung: Planung }
-type Zeile = Projekt & { termin: Termin; summen: Summen; vorgaenge: number };
+type Zeile = Projekt & { termin: Termin; summen: Summen; vorgaenge: number; ist: { stunden: number; gemeldet: number; wert: number } };
 interface Liste extends Omit<ProjektListe, 'projekte'> {
   projekte: Zeile[]; pflege: boolean; konten: { konto: string; name: string; art: 'E' | 'A' }[]; mitglieder: { adrnr: string; name: string }[]; paperless: boolean; jahr: number;
 }
@@ -41,14 +48,14 @@ interface Liste extends Omit<ProjektListe, 'projekte'> {
 interface VZ { key: string; bezeichnung: string; beginn: string; dauer: string; fertig: string; verantwortlich: string; vor: string }
 interface AZ { vorgang: string; adrnr: string; name: string; taetigkeit: string; personen: string; stunden: string; satz: string }
 interface MZ { vorgang: string; bezeichnung: string; menge: string; einheit: string; preis: string; lieferant: string; beschafft: boolean }
-interface Entwurf { stundensatz: string; v: VZ[]; a: AZ[]; m: MZ[] }
+interface Entwurf { stundensatz: string; offen: boolean; v: VZ[]; a: AZ[]; m: MZ[] }
 
 const std = (v: number) => v.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 const vorText = (v: Vorgang) => v.vorgaenger.map((x) => `${x.nr}${x.abstand ? `${x.abstand > 0 ? '+' : ''}${x.abstand}` : ''}`).join('; ');
 function entwurfAus(p: Planung): Entwurf {
   const key = (id: number | null) => (id === null ? '' : String(id));
   return {
-    stundensatz: zahlText(p.stundensatz),
+    stundensatz: zahlText(p.stundensatz), offen: p.offen_fuer_alle,
     v: p.vorgaenge.map((x) => ({ key: String(x.id), bezeichnung: x.bezeichnung, beginn: x.beginn_fix ?? '', dauer: String(x.dauer), fertig: String(x.fertig), verantwortlich: x.verantwortlich ?? '', vor: vorText(x) })),
     a: p.arbeit.map((x) => ({ vorgang: key(x.vorgang_id), adrnr: x.adrnr ?? '', name: x.name, taetigkeit: x.taetigkeit ?? '', personen: String(x.personen), stunden: zahlText(x.stunden), satz: x.satz === null ? '' : zahlText(x.satz) })),
     m: p.material.map((x) => ({ vorgang: key(x.vorgang_id), bezeichnung: x.bezeichnung, menge: zahlText(x.menge), einheit: x.einheit ?? '', preis: zahlText(x.preis), lieferant: x.lieferant ?? '', beschafft: x.beschafft })),
@@ -73,6 +80,8 @@ export function Projektplanung() {
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Projekt | 'neu' | null>(null);
   const [pdf, setPdf] = useState(false);
+  const [zeit, setZeit] = useState<{ adrnr: string; name: string; datum: string; vorgang: string; stunden: string; taetigkeit: string } | null>(null);
+  const [weisen, setWeisen] = useState<Zeit | null>(null);
 
   const laden = useCallback(() => api.get<Liste>(PJ).then(setL).catch((x) => setError((x as Error).message)), []);
   useEffect(() => { laden(); }, [laden]);
@@ -92,7 +101,7 @@ export function Projektplanung() {
     let body;
     try {
       body = {
-        stundensatz: neu.stundensatz,
+        stundensatz: neu.stundensatz, offen_fuer_alle: neu.offen,
         vorgaenge: neu.v.map((x, i) => ({ key: x.key, bezeichnung: x.bezeichnung, beginn: x.beginn || null, dauer: x.dauer.trim() === '' ? 0 : Number(x.dauer), fertig: Number(x.fertig) || 0, verantwortlich: x.verantwortlich, vorgaenger: vorLesen(x.vor, neu.v, i) })),
         arbeit: neu.a.filter((x) => x.adrnr !== '?').map((x) => ({ vorgang: x.vorgang || null, adrnr: x.adrnr || null, name: x.name, taetigkeit: x.taetigkeit, personen: Number(x.personen) || 1, stunden: x.stunden, satz: x.satz })),
         material: neu.m.map((x) => ({ vorgang: x.vorgang || null, bezeichnung: x.bezeichnung, menge: x.menge, einheit: x.einheit, preis: x.preis, lieferant: x.lieferant, beschafft: x.beschafft })),
@@ -137,6 +146,11 @@ export function Projektplanung() {
     [v[i], v[j]] = [v[j], v[i]];
     sichern({ ...e, v });
   }
+  /** Aufruf, der die neue Sicht des Projekts liefert (Zeiten bestätigen, erfassen, Material übernehmen) */
+  async function tun(fn: () => Promise<Sicht & { text?: string }>, danach?: () => void) {
+    setBusy(true); setError(null);
+    try { const x = await fn(); if (x.text) toast(x.text, 4000); zeigen(x); danach?.(); } catch (x) { setError((x as Error).message); } finally { setBusy(false); }
+  }
   const neuerKey = () => `neu${Date.now()}${Math.round(Math.random() * 1000)}`;
 
   const vorgangWahl = (wert: string, onChange: (k: string) => void) => (
@@ -163,7 +177,7 @@ export function Projektplanung() {
                   <td>{x.vorgaenge ? <>{dat(x.termin.beginn)} – {dat(x.termin.ende)}<small style={{ display: 'block' }} className="portal-muted">{x.vorgaenge} Vorgänge · {x.termin.fertig} % erledigt</small></> : <span className="portal-muted">noch nicht geplant</span>}</td>
                   <td className="z">{euro(x.budget.kosten)}</td>
                   <td className="z">{euro(x.budget.finanzierung)}{x.budget.luecke > 0 && <small style={{ display: 'block' }}><ObjectStatus state="Negative">Lücke {euro(x.budget.luecke)}</ObjectStatus></small>}</td>
-                  <td className="z">{x.summen.stunden ? <>{std(x.summen.stunden)} Std.<small style={{ display: 'block' }} className="portal-muted">{euro(x.summen.eigenleistung)}</small></> : '–'}</td>
+                  <td className="z">{x.summen.stunden || x.ist.stunden ? <>{std(x.ist.stunden)} von {std(x.summen.stunden)} Std.<small style={{ display: 'block' }} className="portal-muted">{x.ist.gemeldet ? `${std(x.ist.gemeldet)} Std. zu bestätigen` : `Wert ${euro(x.summen.eigenleistung)}`}</small></> : '–'}</td>
                   <td className="z">{x.summen.material ? euro(x.summen.material) : '–'}</td>
                 </tr>
               ))}
@@ -191,7 +205,8 @@ export function Projektplanung() {
             {kpi('Termine', pl.vorgaenge.length ? `${dat(pl.termin.beginn)} – ${dat(pl.termin.ende)}` : `${monatKurz(p.beginn)} – ${monatKurz(p.ende)}`, pl.vorgaenge.length ? `${pl.termin.tage} Tage · ${pl.termin.fertig} % erledigt` : 'Laufzeit laut Stammdaten')}
             {kpi('Kosten', euro(p.budget.kosten), p.projektnr ? `gebucht ${euro(p.ist.kosten)}` : undefined)}
             {kpi('Finanzierung', euro(p.budget.finanzierung), p.budget.luecke > 0 ? `Lücke ${euro(p.budget.luecke)}` : 'gedeckt', p.budget.luecke > 0 ? 'Negative' : undefined)}
-            {kpi('Arbeitseinsatz', `${std(pl.summen.stunden)} Std.`, `${pl.summen.personen} Person${pl.summen.personen === 1 ? '' : 'en'} · Wert ${euro(pl.summen.eigenleistung)}`)}
+            {kpi('Arbeitseinsatz geplant', `${std(pl.summen.stunden)} Std.`, `${pl.summen.personen} Person${pl.summen.personen === 1 ? '' : 'en'} · Wert ${euro(pl.summen.eigenleistung)}`)}
+            {kpi('Geleistet (bestätigt)', `${std(pl.ist.stunden)} Std.`, `Wert ${euro(pl.ist.wert)}${pl.ist.gemeldet ? ` · ${std(pl.ist.gemeldet)} Std. warten auf Bestätigung` : ''}`)}
             {kpi('Material', euro(pl.summen.material), pl.summen.material ? `davon beschafft ${euro(pl.summen.material_beschafft)}` : undefined)}
           </div>
           {p.beschreibung && <Text style={{ display: 'block', marginTop: '0.75rem', whiteSpace: 'pre-line' }}>{p.beschreibung}</Text>}
@@ -316,8 +331,12 @@ export function Projektplanung() {
           )}
         </Section>
         <Section title="Material und Einkauf" count={e.m.length} flush
-                 actions={aenderbar && <Button design="Transparent" icon="add" disabled={busy}
-                   onClick={() => sichern({ ...e, m: [...e.m, { vorgang: '', bezeichnung: 'Neues Material', menge: '1', einheit: 'Stück', preis: '0', lieferant: '', beschafft: false }] })}>Material</Button>}>
+                 actions={aenderbar && <>
+                   {pl.summen.material > 0 && <Button design="Transparent" icon="money-bills" disabled={busy} tooltip="Legt die Kostenposition „Material laut Ressourcenplanung“ an bzw. setzt sie auf die aktuelle Summe"
+                                                        onClick={() => tun(() => api.post<Sicht & { text: string }>(`${PJ}/${p.id}/material-uebernehmen`))}>Als Kostenposition übernehmen</Button>}
+                   <Button design="Transparent" icon="add" disabled={busy}
+                   onClick={() => sichern({ ...e, m: [...e.m, { vorgang: '', bezeichnung: 'Neues Material', menge: '1', einheit: 'Stück', preis: '0', lieferant: '', beschafft: false }] })}>Material</Button>
+                 </>}>
           {e.m.length === 0 ? <Empty>Noch kein Material geplant: was eingekauft werden muss, in welcher Menge und zu welchem Preis.</Empty> : (
             <div className="hh-roll">
               <table className="hh-tab pj-tab">
@@ -337,6 +356,55 @@ export function Projektplanung() {
                     </tr>
                   ))}
                   <tr className="hh-summe"><td colSpan={6}>Summe Material{pl.summen.material_beschafft ? ` · davon beschafft ${euro(pl.summen.material_beschafft)}` : ''}</td><td className="z">{euro(pl.summen.material)}</td><td colSpan={2} /></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      </Tab>
+
+      <Tab data-key="zeiten" text="Zeiten" icon="time-entry-request" additionalText={pl.ist.gemeldet ? `${std(pl.ist.gemeldet)} offen` : String(pl.zeiten.length)} selected={tab === 'zeiten'}>
+        <Section title="Soll-Ist der Stunden" flush
+                 status={<Text className="portal-muted portal-small">es zählen bestätigte Stunden · Wert geleistet {euro(pl.ist.wert)} von {euro(pl.summen.eigenleistung)}</Text>}
+                 actions={<CheckBox text="offen für alle Mitglieder" disabled={!aenderbar || busy} checked={e.offen} title="Auch nicht eingeplante Mitglieder dürfen Stunden auf dieses Projekt melden"
+                                    onChange={(ev) => sichern({ ...e, offen: ev.target.checked })} />}>
+          {pl.ist.personen.length === 0 ? <Empty>Noch kein Arbeitseinsatz geplant und keine Stunden gemeldet.</Empty> : (
+            <div className="hh-roll">
+              <table className="hh-tab">
+                <thead><tr><th>Wer</th><th className="z">geplant</th><th className="z">gemeldet</th><th className="z">bestätigt</th><th className="z">offen</th><th>Stand</th></tr></thead>
+                <tbody>
+                  {pl.ist.personen.map((x) => (
+                    <tr key={`${x.adrnr}:${x.name}`}><td>{x.name}</td><td className="z">{std(x.geplant)}</td><td className="z">{x.gemeldet ? std(x.gemeldet) : '–'}</td><td className="z">{std(x.bestaetigt)}</td><td className="z">{std(x.offen)}</td>
+                      <td>{x.bestaetigt > x.geplant ? <ObjectStatus state="Critical">{x.geplant ? 'über Plan' : 'nicht eingeplant'}</ObjectStatus> : x.geplant > 0 && x.bestaetigt >= x.geplant ? <ObjectStatus state="Positive">erfüllt</ObjectStatus> : ''}</td></tr>
+                  ))}
+                  <tr className="hh-summe"><td>Summe</td><td className="z">{std(pl.summen.stunden)}</td><td className="z">{std(pl.ist.gemeldet)}</td><td className="z">{std(pl.ist.stunden)}</td><td className="z">{std(Math.max(0, pl.summen.stunden - pl.ist.stunden))}</td><td /></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+        <Section title="Rückmeldungen" count={pl.zeiten.length} flush
+                 status={<Text className="portal-muted portal-small">Mitglieder melden unter Meine Daten → Meine Zeiten{MELDBAR.includes(p.status) ? '' : ' – möglich, sobald das Projekt genehmigt ist'}</Text>}
+                 actions={pflege && p.status !== 'ABGESCHLOSSEN' && p.status !== 'ABGELEHNT' && <Button design="Transparent" icon="add" disabled={busy}
+                   onClick={() => setZeit({ adrnr: '', name: 'Helfer', datum: new Date().toISOString().slice(0, 10), vorgang: '', stunden: '4', taetigkeit: '' })}>Für jemanden erfassen</Button>}>
+          {pl.zeiten.length === 0 ? <Empty>Noch keine Stunden gemeldet.</Empty> : (
+            <div className="hh-roll">
+              <table className="hh-tab">
+                <thead><tr><th>Datum</th><th>Wer</th><th>Vorgang</th><th className="z">Stunden</th><th>Tätigkeit</th><th>Status</th><th /></tr></thead>
+                <tbody>
+                  {pl.zeiten.map((x) => (
+                    <tr key={x.id}>
+                      <td>{dat(x.datum)}</td><td>{x.name}</td><td>{x.vorgang ?? '–'}</td><td className="z">{std(x.stunden)}</td><td className="name">{x.taetigkeit ?? ''}{x.grund && <small>zurückgewiesen: {x.grund}</small>}</td>
+                      <td><ObjectStatus state={ZEIT_STATE[x.status]}>{x.status_text}</ObjectStatus>{x.entschieden_von && <small style={{ display: 'block' }} className="portal-muted">{x.entschieden_von}</small>}</td>
+                      <td>{pflege && (x.status === 'GEMELDET' ? <>
+                        <Button design="Transparent" icon="accept" disabled={busy} onClick={() => tun(() => api.post<Sicht>(`${PJ}/zeiten/${x.id}/status`, { status: 'BESTAETIGT' }))}>Bestätigen</Button>
+                        <Button design="Transparent" icon="decline" disabled={busy} onClick={() => setWeisen(x)}>Zurückweisen</Button>
+                      </> : <>
+                        <Button design="Transparent" icon="undo" tooltip="Entscheidung zurücknehmen" accessibleName="Entscheidung zurücknehmen" disabled={busy} onClick={() => tun(() => api.post<Sicht>(`${PJ}/zeiten/${x.id}/status`, { status: 'GEMELDET' }))} />
+                        <Button design="Transparent" icon="delete" tooltip="Meldung löschen" accessibleName="Meldung löschen" disabled={busy} onClick={() => tun(() => api.post<Sicht>(`${PJ}/zeiten/${x.id}/loeschen`))} />
+                      </>)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -372,6 +440,34 @@ export function Projektplanung() {
                          else api.get<Sicht>(`${PJ}/${war.id}`).then(zeigen).catch(zurueck);
                        }} />
       )}
+      <Dialog open={!!zeit} headerText="Stunden für jemanden erfassen" onClose={() => setZeit(null)}
+              footer={<Bar endContent={<>
+                <Button design="Emphasized" disabled={busy || !zeit || (!zeit.adrnr && !zeit.name.trim())}
+                        onClick={() => zeit && p && tun(() => api.post<Sicht>(`${PJ}/${p.id}/zeiten`, { adrnr: zeit.adrnr || null, name: zeit.name, datum: zeit.datum, vorgang_id: zeit.vorgang ? Number(zeit.vorgang) : null, stunden: zeit.stunden, taetigkeit: zeit.taetigkeit }), () => setZeit(null))}>Erfassen</Button>
+                <Button onClick={() => setZeit(null)}>Abbrechen</Button>
+              </>} />}>
+        {zeit && (
+          <div className="hh-dialog" style={{ width: 'min(34rem, 88vw)' }}>
+            <Text className="portal-muted">Für Mitglieder ohne Portalzugang oder für Helfer ohne Namen. Die Stunden gelten sofort als bestätigt.</Text>
+            <label className="hh-feld"><span>Mitglied (leer lassen für eine freie Angabe)</span>
+              <AuswahlBox eintraege={mitglieder} wert={zeit.adrnr} max={60} placeholder="Mitglied suchen" style={{ width: '100%' }} onWaehle={(k) => setZeit({ ...zeit, adrnr: k ?? '' })} /></label>
+            {!zeit.adrnr && <label className="hh-feld"><span>Wer (freie Angabe)</span><Input style={{ width: '100%' }} value={zeit.name} maxlength={120} onInput={(ev) => setZeit({ ...zeit, name: ev.target.value })} /></label>}
+            <div className="hh-leiste" style={{ paddingBottom: 0 }}>
+              <label className="hh-feld"><span>Datum</span><DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={zeit.datum} onChange={(ev) => setZeit({ ...zeit, datum: ev.detail.value })} /></label>
+              <label className="hh-feld"><span>Stunden (gesamt)</span><Input style={{ width: '6rem' }} value={zeit.stunden} onInput={(ev) => setZeit({ ...zeit, stunden: ev.target.value })} /></label>
+              <label className="hh-feld" style={{ flex: '1 1 12rem' }}><span>Vorgang</span>
+                <Select onChange={(ev) => setZeit({ ...zeit, vorgang: (ev.detail.selectedOption as HTMLElement).dataset.k ?? '' })}>
+                  <Option data-k="" selected={!zeit.vorgang}>– ohne –</Option>
+                  {pl?.vorgaenge.map((x) => <Option key={x.id} data-k={x.id} selected={zeit.vorgang === String(x.id)}>{x.nr}. {x.bezeichnung}</Option>)}
+                </Select></label>
+            </div>
+            <label className="hh-feld"><span>Tätigkeit</span><Input style={{ width: '100%' }} value={zeit.taetigkeit} maxlength={300} onInput={(ev) => setZeit({ ...zeit, taetigkeit: ev.target.value })} /></label>
+          </div>
+        )}
+      </Dialog>
+      <ConfirmDialog open={!!weisen} title="Stunden zurückweisen" confirmText="Zurückweisen" askReason danger
+                     text={weisen ? `${std(weisen.stunden)} Stunden von ${weisen.name} am ${dat(weisen.datum)} zurückweisen? Die Begründung sieht das Mitglied unter „Meine Zeiten“.` : ''}
+                     onCancel={() => setWeisen(null)} onConfirm={(grund) => { const w = weisen; setWeisen(null); if (w) tun(() => api.post<Sicht>(`${PJ}/zeiten/${w.id}/status`, { status: 'ABGELEHNT', grund })); }} />
       <PdfDialog url={pdf && p ? `${PJ}/${p.id}/pdf` : null} title={p ? `Projektantrag ${p.bezeichnung}` : ''} filename={p ? `Projektantrag ${p.bezeichnung}.pdf` : 'Projektantrag.pdf'}
                  onClose={() => setPdf(false)}
                  actions={pflege && l?.paperless && p ? (

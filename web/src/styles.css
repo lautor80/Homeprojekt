@@ -821,3 +821,6 @@ ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
 .portal-tabrahmen > table > thead { position: sticky; top: 0; z-index: 2; }
 .portal-tabrahmen > table > thead th { background: var(--sapList_HeaderBackground, #f5f6f7); box-shadow: inset 0 -1px 0 var(--sapList_BorderColor); }
 [data-component-name="AnalyticalTableBody"] { max-height: var(--portal-tabhoehe) !important; }
+
+/* Reiterleiste, deren Inhalt darunter als eigene Seite steht (Meine Daten → Meine Zeiten): kein leerer Inhaltsbereich */
+.portal-reiter-nur-kopf::part(content) { display: none; }

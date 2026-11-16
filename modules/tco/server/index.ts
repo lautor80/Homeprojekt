@@ -50,7 +50,7 @@ import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
 import { haushaltRoutes, P_HH } from './haushalt/routes.js';
-import { P_PROJ, projekteRoutes } from './projekte/routes.js';
+import { P_PROJ, P_PZ, projekteRoutes } from './projekte/routes.js';
 import { zuwendungRoutes } from './zuwendung/routes.js';
 import { P_ZUW } from './zuwendung/logik.js';
 import { mahnungRoutes, P_MAHN } from './mahnung/routes.js';
@@ -207,13 +207,15 @@ const tco: ServerModule = {
     // Mein Bereich (#232, N1): was ein Mitglied, Hallennutzer oder Trainer für sich selbst tut – im Menü an einer Stelle
     { area: 'Mein Bereich', app: 'Meine Daten', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Mein Bereich', app: 'Meine Daten', id: P_MEINKONTO, text: 'Eigene Kontaktdaten als externer Hallennutzer ansehen und ändern (Anrede, Name, Anschrift, E-Mail, Telefon – nur der dem Benutzer zugeordnete Kundenstammsatz)' },
+    { area: 'Mein Bereich', app: 'Meine Daten', id: P_JTM.edit,
+      text: 'Meine Zeiten – Training: eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
+    { area: 'Mein Bereich', app: 'Meine Daten', id: P_PZ.edit,
+      text: 'Meine Zeiten – Projekt: eigene, unbezahlte Arbeitsstunden auf Projekte melden, in denen das eigene Mitglied eingeplant ist (oder die für alle offen sind); eigene Meldungen ansehen und zurückziehen' },
     { area: 'Mein Bereich', app: 'Platz buchen', id: P_PLATZ.buchen,
       text: 'Freiplätze und Halle buchen: eigene Buchungen mit Preisen anzeigen, anlegen, ändern und stornieren – fremde Buchungen nur als „belegt“' },
     { area: 'Mein Bereich', app: 'Platz buchen', id: P_PLATZ.verwalten, requires: [P_PLATZ.buchen],
       text: 'Admin/Hallenwart in „Platz buchen“: Namen der Buchenden sehen, für andere Mitglieder oder vereinsintern buchen, Training, Schnuppertraining, Sperrzeiten und Veranstaltungen im Kalender eintragen' },
     { area: 'Mein Bereich', app: 'Mein Verzehr', id: P_VZ.edit, text: 'Eigenen Verzehr auf das eigene Mitgliedskonto anschreiben, eigene Positionen und Abrechnungen sehen, eigene Einträge in der Frist stornieren (nur das dem Benutzer zugeordnete Mitglied)' },
-    { area: 'Mein Bereich', app: 'Meine Trainingszeiten', id: P_JTM.edit,
-      text: 'Eigene Trainingszeiten zurückmelden und eigene Zeitnachweise ansehen – nur für den Trainer, dem der eigene Benutzer zugeordnet ist' },
     { area: 'Mein Bereich', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Einstellungen des Vereins pflegen (Rechnungssteller, Bank, Logo, Hallenabrechnung, FI-Belege) – Administration → Einstellungen → TC Oberthal' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },

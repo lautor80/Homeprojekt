@@ -2,6 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { runden } from '../format.js';
 import type { Db } from '../verein.js';
 import { projektLesen, type Projekt } from '../haushalt/projekte.js';
+import { zeitenLesen, zeitenSummen, type Zeit, type ZeitSummen } from './zeiten.js';
 import {
   arbeitWert, materialSumme, PlanungFehler, ressourcenSummen, terminieren, type RessourcenSummen, type VorgangEin,
 } from './planung.js';
@@ -32,8 +33,10 @@ export interface Material {
   summe: number;
 }
 export interface Planung {
-  stundensatz: number;
+  stundensatz: number; offen_fuer_alle: boolean;
   vorgaenge: Vorgang[]; arbeit: Arbeit[]; material: Material[];
+  /** gemeldete und bestätigte Stunden; Soll-Ist je Person */
+  zeiten: Zeit[]; ist: ZeitSummen;
   /** aus den Vorgängen gerechnet; ohne Vorgänge die Laufzeit des Projekts */
   termin: { beginn: string; ende: string; tage: number; fertig: number };
   summen: RessourcenSummen;
@@ -43,7 +46,7 @@ export interface Planung {
 const letzterTag = (monat: string) => { const [j, m] = monat.split('-').map(Number); return `${monat}-${String(new Date(Date.UTC(j, m, 0)).getUTCDate()).padStart(2, '0')}`; };
 
 export async function planungLesen(db: Db, p: Projekt): Promise<Planung> {
-  const [kopf] = await db`select stundensatz::float8 as stundensatz, antrag_paperless_id, antrag_paperless_am::text as am from tco.hh_projekt where id = ${p.id}`;
+  const [kopf] = await db`select stundensatz::float8 as stundensatz, offen_fuer_alle, antrag_paperless_id, antrag_paperless_am::text as am from tco.hh_projekt where id = ${p.id}`;
   const vg = await db`select id, bezeichnung, beginn::text as beginn, dauer, fertig, verantwortlich, notiz from tco.hh_projekt_vorgang where projekt_id = ${p.id} order by pos, id`;
   const ids = vg.map((v) => Number(v.id));
   const vor = ids.length ? await db`select vorgang_id, vorgaenger_id, abstand from tco.hh_projekt_vorgang_vor where vorgang_id = any(${ids}) order by vorgaenger_id` : [];
@@ -74,8 +77,10 @@ export async function planungLesen(db: Db, p: Projekt): Promise<Planung> {
     return { id: Number(m.id), vorgang_id: m.vorgang_id === null ? null : Number(m.vorgang_id), bezeichnung: m.bezeichnung, einheit: m.einheit ?? null, lieferant: m.lieferant ?? null, ...z, summe: materialSumme(z) };
   });
   const tage = vorgaenge.reduce((s, v) => s + Math.max(v.dauer, 1), 0);
+  const zeiten = await zeitenLesen(db, { projekt: p.id });
   return {
-    stundensatz, vorgaenge, arbeit, material,
+    stundensatz, offen_fuer_alle: !!kopf?.offen_fuer_alle, vorgaenge, arbeit, material,
+    zeiten, ist: zeitenSummen(zeiten, arbeit, stundensatz),
     termin: vorgaenge.length
       ? { beginn: plan.beginn, ende: plan.ende, tage: plan.tage, fertig: Math.round(vorgaenge.reduce((s, v) => s + Math.max(v.dauer, 1) * v.fertig, 0) / tage) }
       : { beginn: `${p.beginn}-01`, ende: letzterTag(p.ende), tage: 0, fertig: 0 },
@@ -91,17 +96,19 @@ export async function projektSicht(db: Db, id: number): Promise<ProjektSicht> {
 }
 
 /** Kennzahlen der Planung je Projekt für die Übersicht (ein Lesen für alle) */
-export async function planungKennzahlen(db: Db, projekte: Projekt[]): Promise<Map<number, { termin: Planung['termin']; summen: RessourcenSummen; vorgaenge: number }>> {
-  const out = new Map<number, { termin: Planung['termin']; summen: RessourcenSummen; vorgaenge: number }>();
+export async function planungKennzahlen(db: Db, projekte: Projekt[]): Promise<Map<number, { termin: Planung['termin']; summen: RessourcenSummen; vorgaenge: number; ist: { stunden: number; gemeldet: number; wert: number } }>> {
+  const out = new Map<number, { termin: Planung['termin']; summen: RessourcenSummen; vorgaenge: number; ist: { stunden: number; gemeldet: number; wert: number } }>();
   for (const p of projekte) {
     const pl = await planungLesen(db, p);
-    out.set(p.id, { termin: pl.termin, summen: pl.summen, vorgaenge: pl.vorgaenge.length });
+    out.set(p.id, { termin: pl.termin, summen: pl.summen, vorgaenge: pl.vorgaenge.length, ist: { stunden: pl.ist.stunden, gemeldet: pl.ist.gemeldet, wert: pl.ist.wert } });
   }
   return out;
 }
 
 export interface PlanungEingabe {
   stundensatz: number;
+  /** auch nicht eingeplante Mitglieder dürfen Stunden melden */
+  offen_fuer_alle?: boolean;
   /** key: beliebige Kennung der Zeile (bestehende ID oder Platzhalter) – darauf verweisen Vorgänger, Arbeit und Material */
   vorgaenge: { key: string; bezeichnung: string; beginn?: string | null; dauer: number; fertig: number; verantwortlich?: string | null; notiz?: string | null; vorgaenger: { key: string; abstand: number }[] }[];
   arbeit: { vorgang?: string | null; adrnr?: string | null; name: string; taetigkeit?: string | null; personen: number; stunden: number; satz?: number | null }[];
@@ -132,15 +139,27 @@ export async function planungSichern(tx: Db, id: number, e: PlanungEingabe): Pro
     const fehlt = adrnrs.find((a) => !da.has(a));
     if (fehlt) throw new BusinessError(`Das Mitglied ${fehlt} gibt es nicht.`);
   }
-  await tx`update tco.hh_projekt set stundensatz = ${runden(e.stundensatz)} where id = ${id} and stundensatz is distinct from ${runden(e.stundensatz)}`;
+  await tx`update tco.hh_projekt set stundensatz = ${runden(e.stundensatz)}, offen_fuer_alle = ${!!e.offen_fuer_alle}
+            where id = ${id} and (stundensatz is distinct from ${runden(e.stundensatz)} or offen_fuer_alle is distinct from ${!!e.offen_fuer_alle})`;
   await tx`delete from tco.hh_projekt_arbeit where projekt_id = ${id}`;
   await tx`delete from tco.hh_projekt_material where projekt_id = ${id}`;
-  await tx`delete from tco.hh_projekt_vorgang where projekt_id = ${id}`;
+  // Vorgänge behalten ihre ID (key = bestehende ID): gemeldete Stunden hängen daran. Entfallene werden gelöscht, neue angelegt.
+  const alt = new Set((await tx`select id from tco.hh_projekt_vorgang where projekt_id = ${id}`).map((x) => Number(x.id)));
+  const bleibt = e.vorgaenge.map((v) => Number(v.key)).filter((n) => alt.has(n));
+  await tx`delete from tco.hh_projekt_vorgang where projekt_id = ${id} and not (id = any(${bleibt}::int[]))`;
+  await tx`delete from tco.hh_projekt_vorgang_vor where vorgang_id = any(${bleibt}::int[])`;
   const neu = new Map<string, number>();
   for (const [i, v] of e.vorgaenge.entries()) {
-    const [r] = await tx`insert into tco.hh_projekt_vorgang (projekt_id, pos, bezeichnung, beginn, dauer, fertig, verantwortlich, notiz)
-                         values (${id}, ${i + 1}, ${v.bezeichnung.trim()}, ${v.beginn || null}, ${v.dauer}, ${v.fertig}, ${leer(v.verantwortlich)}, ${leer(v.notiz)}) returning id`;
-    neu.set(v.key, Number(r.id));
+    const da = alt.has(Number(v.key)) ? Number(v.key) : null;
+    if (da) {
+      await tx`update tco.hh_projekt_vorgang set pos = ${i + 1}, bezeichnung = ${v.bezeichnung.trim()}, beginn = ${v.beginn || null}, dauer = ${v.dauer}, fertig = ${v.fertig},
+                      verantwortlich = ${leer(v.verantwortlich)}, notiz = ${leer(v.notiz)} where id = ${da}`;
+      neu.set(v.key, da);
+    } else {
+      const [r] = await tx`insert into tco.hh_projekt_vorgang (projekt_id, pos, bezeichnung, beginn, dauer, fertig, verantwortlich, notiz)
+                           values (${id}, ${i + 1}, ${v.bezeichnung.trim()}, ${v.beginn || null}, ${v.dauer}, ${v.fertig}, ${leer(v.verantwortlich)}, ${leer(v.notiz)}) returning id`;
+      neu.set(v.key, Number(r.id));
+    }
   }
   for (const v of e.vorgaenge) {
     const gesehen = new Set<string>();
@@ -164,4 +183,25 @@ export async function planungSichern(tx: Db, id: number, e: PlanungEingabe): Pro
 export async function mitgliederLesen(db: Db): Promise<{ adrnr: string; name: string }[]> {
   return (await db`select adrnr, vorname, nachname from tco.mitglieder where austritt is null or austritt >= current_date order by nachname, vorname`)
     .map((r) => ({ adrnr: r.adrnr as string, name: `${r.nachname ?? ''}, ${r.vorname ?? ''}`.replace(/\s+/g, ' ').replace(/^, |, $/g, '').trim() }));
+}
+
+export const MATERIAL_POSITION = 'Material laut Ressourcenplanung';
+
+/**
+ * Summe des Materials als Kostenposition in die Kostenplanung übernehmen: Die Position „Material laut Ressourcenplanung“
+ * wird angelegt bzw. auf die aktuelle Summe gesetzt. Es gelten die Regeln der Kostenplanung – ab „beantragt“ nur noch,
+ * wer genehmigen darf.
+ */
+export async function materialUebernehmen(tx: Db, id: number, darfGenehmigen: boolean): Promise<number> {
+  const [p] = await tx`select status from tco.hh_projekt where id = ${id} for update`;
+  if (!p) throw new BusinessError(`Projekt ${id} nicht gefunden.`, 404);
+  if (p.status !== 'IDEE' && p.status !== 'ZURUECKGESTELLT' && !darfGenehmigen) {
+    throw new BusinessError('Das Projekt ist beantragt oder entschieden – die Kosten ändert jetzt nur, wer Projekte genehmigen darf.');
+  }
+  const [{ summe }] = await tx`select coalesce(sum(round(menge * preis, 2)), 0)::float8 as summe from tco.hh_projekt_material where projekt_id = ${id}`;
+  if (!summe) throw new BusinessError('Es ist noch kein Material mit Preis geplant.');
+  const [da] = await tx`select id from tco.hh_projekt_position where projekt_id = ${id} and art = 'KOSTEN' and bezeichnung = ${MATERIAL_POSITION} order by id limit 1`;
+  if (da) await tx`update tco.hh_projekt_position set betrag = ${runden(summe)} where id = ${da.id}`;
+  else await tx`insert into tco.hh_projekt_position (projekt_id, art, bezeichnung, betrag, verteilung) values (${id}, 'KOSTEN', ${MATERIAL_POSITION}, ${runden(summe)}, 'GLEICH')`;
+  return runden(summe);
 }

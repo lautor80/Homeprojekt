@@ -1,7 +1,6 @@
 # Projekte – Konzept
 
-Stand: Vorschlag, noch nicht freigegeben. Bedienbares Mockup: [mockup.html](mockup.html).
-Der Code-Entwurf der Projekte-App liegt in PR #299 (Entwurf, nicht gemergt) und wird an die Entscheidungen angepasst.
+Stand: freigegeben und umgesetzt (App Finanzen → Projekte, Meine Daten → Meine Zeiten). Bedienbares Mockup: [mockup.html](mockup.html).
 
 ## 1. Ziel
 
@@ -65,11 +64,19 @@ Begründung zurück). Erst bestätigte Stunden zählen im Soll-Ist. Bestätigte 
 Neue Tabelle `tco.hh_projekt_zeit` (Projekt, optional Vorgang, Mitglied oder Name, Datum, Stunden, Tätigkeit, Status,
 erfasst von, bestätigt von/am, Begründung) mit Änderungsbelegen. Die Tabellen des Jugendtrainings bleiben unberührt.
 
-## 5. Offene Entscheidungen
+## 5. Entscheidungen (wie empfohlen freigegeben)
 
-Stehen mit Empfehlung im Mockup (Reiter „Vorschlag“): Kalender- oder Arbeitstage; Material und Kostenplanung;
-Eigenleistung im Antrag; Herkunft des Verrechnungssatzes; Selbstanmeldung zu Arbeitseinsätzen; Änderungen nach der
-Genehmigung; Bestätigung der Projektstunden; wer auf ein Projekt melden darf; Ort der Zeiterfassung.
+| Frage | Entscheidung |
+|---|---|
+| Dauer | Kalendertage |
+| Material und Kostenplanung | Knopf „Als Kostenposition übernehmen“ – legt die Position „Material laut Ressourcenplanung“ an bzw. setzt sie auf die aktuelle Summe |
+| Eigenleistung im Antrag | eigener Abschnitt mit Wert zum externen Satz, nicht in Kosten und Finanzierung |
+| Externer Verrechnungssatz | Vorgabe je Projekt, je Zeile überschreibbar |
+| Selbstanmeldung zu Arbeitseinsätzen | nein, der Verantwortliche plant ein |
+| Ändern nach der Genehmigung | Termine und Ressourcen mit Planungsrecht; Kosten nur, wer genehmigen darf |
+| Ort der Zeiterfassung | Reiter „Meine Zeiten“ in „Meine Daten“; „Meine Trainingszeiten“ als Menüpunkt entfällt, die alte Adresse leitet weiter |
+| Wer meldet auf ein Projekt | eingeplante Mitglieder – und alle Mitglieder, wenn das Projekt „offen für alle Mitglieder“ ist |
+| Bestätigung | ja, durch den Planer; nur bestätigte Stunden zählen |
 
 ## 6. Nicht im ersten Schritt
 
