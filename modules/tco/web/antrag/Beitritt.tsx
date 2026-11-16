@@ -422,23 +422,25 @@ function Beitraege({ info, personen, eintritt, aenderung }: { info: Info; person
       <div style={{ marginBottom: '0.75rem' }}>
         <Title level="H6" style={{ marginBottom: '0.25rem' }}>{titel}</Title>
         {!zeilen.length ? <Text className="portal-muted">–</Text> : (
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead><tr>{['Person', 'Beitrag', 'Turnus', 'Betrag'].map((h, n) => <th key={h} style={{ ...zelle, textAlign: n === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
-            <tbody>
-              {zeilen.map((z, n) => (
-                <tr key={n} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
-                  <td style={zelle}><Text>{z.wer}</Text></td>
-                  <td style={zelle}><Text>{z.text}</Text></td>
-                  <td style={zelle}><Text>{z.turnus || '–'}</Text></td>
-                  <td style={{ ...zelle, textAlign: 'right' }}><Text>{z.betrag ? eur(z.betrag) : 'inklusive'}</Text></td>
+          <div className="portal-tabrahmen">
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead><tr>{['Person', 'Beitrag', 'Turnus', 'Betrag'].map((h, n) => <th key={h} style={{ ...zelle, textAlign: n === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
+              <tbody>
+                {zeilen.map((z, n) => (
+                  <tr key={n} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                    <td style={zelle}><Text>{z.wer}</Text></td>
+                    <td style={zelle}><Text>{z.text}</Text></td>
+                    <td style={zelle}><Text>{z.turnus || '–'}</Text></td>
+                    <td style={{ ...zelle, textAlign: 'right' }}><Text>{z.betrag ? eur(z.betrag) : 'inklusive'}</Text></td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                  <td style={zelle} colSpan={3}><Text style={{ fontWeight: 'bold' }}>Summe {titel}</Text></td>
+                  <td style={{ ...zelle, textAlign: 'right' }}><Text style={{ fontWeight: 'bold' }}>{summe(zeilen)}</Text></td>
                 </tr>
-              ))}
-              <tr style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
-                <td style={zelle} colSpan={3}><Text style={{ fontWeight: 'bold' }}>Summe {titel}</Text></td>
-                <td style={{ ...zelle, textAlign: 'right' }}><Text style={{ fontWeight: 'bold' }}>{summe(zeilen)}</Text></td>
-              </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         )}
         {zeilen.length > 0 && (
           <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.2rem' }}>

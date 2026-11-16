@@ -75,34 +75,36 @@ export function DetailDialog({ kpiKey, jahr, edit, onClose }: Props) {
             </div>
           )}
           {d.zeilen.length > 0 && (
-            <table className="portal-dash__table">
-              <thead>
-                <tr>
-                  {d.head.map((h, i) => <th key={i} style={{ textAlign: i <= 1 ? 'left' : 'right' }}>{h}</th>)}
-                  {bsw && <th style={{ textAlign: 'left', width: '18rem' }}>Neue Beitragsstufe</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {d.zeilen.map((z, zi) => {
-                  const k = `${z.adrnr}|${z.vertragnr}`;
-                  return (
-                    <tr key={zi} className={`portal-dash__row portal-dash__row--${z.state}`}>
-                      {z.cols.map((c, ci) => (
-                        <td key={ci} style={{ textAlign: ci <= 1 ? 'left' : 'right' }}>
-                          {ci === z.cols.length - 1 ? <ObjectStatus state={z.state}>{c}</ObjectStatus> : c}
-                        </td>
-                      ))}
-                      {bsw && (
-                        <td>
-                          <AuswahlBox wert={sel[k]} placeholder="Beitragsstufe wählen" style={{ width: '100%' }} disabled={!edit}
-                                      eintraege={(d.stufen ?? []).map((s) => ({ key: s.key, text: s.text }))} onWaehle={(x) => setSel({ ...sel, [k]: x ?? '' })} />
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="portal-tabrahmen">
+              <table className="portal-dash__table">
+                <thead>
+                  <tr>
+                    {d.head.map((h, i) => <th key={i} style={{ textAlign: i <= 1 ? 'left' : 'right' }}>{h}</th>)}
+                    {bsw && <th style={{ textAlign: 'left', width: '18rem' }}>Neue Beitragsstufe</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.zeilen.map((z, zi) => {
+                    const k = `${z.adrnr}|${z.vertragnr}`;
+                    return (
+                      <tr key={zi} className={`portal-dash__row portal-dash__row--${z.state}`}>
+                        {z.cols.map((c, ci) => (
+                          <td key={ci} style={{ textAlign: ci <= 1 ? 'left' : 'right' }}>
+                            {ci === z.cols.length - 1 ? <ObjectStatus state={z.state}>{c}</ObjectStatus> : c}
+                          </td>
+                        ))}
+                        {bsw && (
+                          <td>
+                            <AuswahlBox wert={sel[k]} placeholder="Beitragsstufe wählen" style={{ width: '100%' }} disabled={!edit}
+                                        eintraege={(d.stufen ?? []).map((s) => ({ key: s.key, text: s.text }))} onWaehle={(x) => setSel({ ...sel, [k]: x ?? '' })} />
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

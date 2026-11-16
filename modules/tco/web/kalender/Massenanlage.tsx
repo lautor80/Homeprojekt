@@ -270,7 +270,7 @@ export function MassenanlageDialog({ kategorien, gruppen, onClose, onDone }: {
             </div>
           </div>
 
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               {kopf(true)}
               <tbody>
@@ -299,7 +299,7 @@ export function MassenanlageDialog({ kategorien, gruppen, onClose, onDone }: {
           <MessageStrip design="Information" hideCloseButton>
             Mit der Freigabe werden <b>{gewaehlt.length}</b> Veranstaltung(en) im Vereinskalender angelegt. Mitglieder der zugeordneten Gruppen sehen sie sofort.
           </MessageStrip>
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               {kopf(false)}
               <tbody>
@@ -317,7 +317,7 @@ export function MassenanlageDialog({ kategorien, gruppen, onClose, onDone }: {
 
         {phase === 'protokoll' && <>
           <MessageStrip design={protokoll.every((p) => p.ok) ? 'Positive' : 'Critical'} hideCloseButton>{ergebnis}</MessageStrip>
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               <thead><tr><th><Label>Veranstaltung</Label></th><th><Label>Ergebnis</Label></th><th><Label>Meldung</Label></th></tr></thead>
               <tbody>

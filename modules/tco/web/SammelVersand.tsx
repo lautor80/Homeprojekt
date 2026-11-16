@@ -164,7 +164,7 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
             <div className="portal-az__leer"><Icon name="complete" /><Text>Keine Rechnung im Status „In Bearbeitung“.</Text></div>
           )}
           {liste.length > 0 && (
-            <div className="portal-sv__tabelle-rahmen">
+            <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
               <table className="portal-sv__tabelle">
                 <thead>
                   <tr>
@@ -217,7 +217,7 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
             Mit der Freigabe werden <b>{gewaehlt.length}</b> Rechnung(en) über zusammen <b>{eur(kz.summe)}</b> gedruckt, in Paperless abgelegt und
             per E-Mail an <b>{kz.empfaenger}</b> Empfänger versendet. Die Rechnungen erhalten den Status „Versendet“.
           </MessageStrip>
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               <thead><tr><th><Label>Empfänger</Label></th><th><Label>E-Mail-Adresse</Label></th><th><Label>Rechnung</Label></th><th className="portal-sv__zahl"><Label>Betrag</Label></th></tr></thead>
               <tbody>
@@ -269,7 +269,7 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
           <MessageStrip design={protokoll.length === okZeilen.length ? 'Positive' : 'Critical'} hideCloseButton>
             {versendet} Rechnung(en) an {okZeilen.length} Empfänger versendet{protokoll.length - okZeilen.length ? `, ${protokoll.length - okZeilen.length} Fehler` : ''}.
           </MessageStrip>
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               <thead><tr><th><Label>Empfänger (Rechnung)</Label></th><th><Label>Ergebnis</Label></th><th><Label>Meldung</Label></th></tr></thead>
               <tbody>

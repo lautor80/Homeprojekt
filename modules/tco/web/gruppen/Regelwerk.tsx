@@ -36,7 +36,7 @@ export function ErgebnisTabelle({ ergebnis }: { ergebnis: Ergebnis }) {
     <>
       <MessageStrip design={ergebnis.simulation ? 'Information' : 'Positive'} hideCloseButton>{ergebnis.text}</MessageStrip>
       {ergebnis.gruppen.length > 0 && (
-        <div className="portal-sv__tabelle-rahmen">
+        <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
           <table className="portal-sv__tabelle">
             <thead><tr><th><Label>Gruppe</Label></th><th><Label>Regel</Label></th><th><Label>{ergebnis.simulation ? 'Wird aufgenommen' : 'Aufgenommen'}</Label></th>
               <th><Label>{ergebnis.simulation ? 'Wird entfernt' : 'Entfernt'}</Label></th><th className="portal-sv__zahl"><Label>Mitglieder danach</Label></th></tr></thead>
@@ -134,7 +134,7 @@ export function RegelwerkDialog({ gruppen, gruppe, onClose }: { gruppen: Gruppe[
         </MessageStrip>
         {!zeilen && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
         {zeilen && (
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               <thead>
                 <tr>

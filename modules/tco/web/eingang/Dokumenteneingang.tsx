@@ -214,7 +214,7 @@ function Vorgaenge({ offen, edit, regeln, stamm, onRegelAus, onRegelBearbeiten }
               )}
             </div>
             {v.dokumente.length > 0 && (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="portal-tabrahmen">
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead><tr>{['Dokument', 'Status', 'Regel', offen ? 'Vorschlag' : 'Ablage', 'Hinweis', ''].map((h) => <th key={h} style={kopf}><Label>{h}</Label></th>)}</tr></thead>
                   <tbody>
@@ -477,7 +477,7 @@ function Regeln({ regeln, edit, onOeffnen, onGeaendert }: { regeln: Regel[]; edi
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <Section title="Regeln" count={regeln.length} flush actions={edit ? <Button icon="add" onClick={() => onOeffnen(null, leereRegel())}>Regel anlegen</Button> : undefined}>
         {regeln.length === 0 ? <Empty>Noch keine Regeln. Ohne Regel stehen Anhänge in der Prüfliste; E-Mails ohne Anhang bleiben unangetastet.</Empty> : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="portal-tabrahmen">
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>{['Prio', 'Regel', 'Gilt', 'Status', 'Bedingungen', 'Aktionen', 'Treffer 30 Tage', ''].map((h) => <th key={h} style={kopf}><Label>{h}</Label></th>)}</tr></thead>
               <tbody>
@@ -545,22 +545,24 @@ function Korrespondenten({ edit }: { edit: boolean }) {
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
         <Section title="Korrespondenten" count={liste.length} flush actions={edit ? <Button icon="add" onClick={() => setF({ id: null, name: '', kurz: '', adressen: '' })}>Korrespondent anlegen</Button> : undefined}>
           {liste.length === 0 ? <Empty>Ein Korrespondent fasst alle Absenderadressen und Domains eines Partners zusammen. Regeln prüfen dann nur noch „Korrespondent ist …“.</Empty> : (
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead><tr>{['Name', 'Kurzname', 'Adressen und Domains', ''].map((h) => <th key={h} style={kopf}><Label>{h}</Label></th>)}</tr></thead>
-              <tbody>
-                {liste.map((k) => (
-                  <tr key={k.id} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
-                    <td style={zelle}><Text>{k.name}</Text></td>
-                    <td style={zelle}><Text>{k.kurz}</Text></td>
-                    <td style={zelle}><Text className="portal-small">{k.adressen.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean).join(', ')}</Text></td>
-                    <td style={{ ...zelle, whiteSpace: 'nowrap' }}>
-                      {edit && <Button design="Transparent" icon="edit" tooltip="Ändern" onClick={() => setF({ ...k })} />}
-                      {edit && <Button design="Transparent" icon="delete" tooltip="Löschen" onClick={() => setLoeschen(k)} />}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="portal-tabrahmen">
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <thead><tr>{['Name', 'Kurzname', 'Adressen und Domains', ''].map((h) => <th key={h} style={kopf}><Label>{h}</Label></th>)}</tr></thead>
+                <tbody>
+                  {liste.map((k) => (
+                    <tr key={k.id} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
+                      <td style={zelle}><Text>{k.name}</Text></td>
+                      <td style={zelle}><Text>{k.kurz}</Text></td>
+                      <td style={zelle}><Text className="portal-small">{k.adressen.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean).join(', ')}</Text></td>
+                      <td style={{ ...zelle, whiteSpace: 'nowrap' }}>
+                        {edit && <Button design="Transparent" icon="edit" tooltip="Ändern" onClick={() => setF({ ...k })} />}
+                        {edit && <Button design="Transparent" icon="delete" tooltip="Löschen" onClick={() => setLoeschen(k)} />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Section>
       )}

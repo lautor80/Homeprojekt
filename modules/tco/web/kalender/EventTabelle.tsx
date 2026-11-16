@@ -218,7 +218,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
               {zuordnung.text}{!zuordnung.zeilen.length && !ueberschreiben ? ' Veranstaltungen mit Gruppe bleiben unverändert, solange „vorhandene Gruppe überschreiben“ nicht gesetzt ist.' : ''}
             </MessageStrip>
             {zuordnung.zeilen.length > 0 && (
-              <div className="portal-sv__tabelle-rahmen">
+              <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
                 <table className="portal-sv__tabelle">
                   <thead><tr><th><Label>Beginn</Label></th><th><Label>Veranstaltung</Label></th><th><Label>Gruppe bisher</Label></th><th><Label>Gruppe neu</Label></th></tr></thead>
                   <tbody>
@@ -284,7 +284,7 @@ function EventRegelnDialog({ gruppen, onClose }: { gruppen: GruppeKurz[]; onClos
         </MessageStrip>
         {!zeilen && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
         {zeilen && (
-          <div className="portal-sv__tabelle-rahmen">
+          <div className="portal-sv__tabelle-rahmen portal-tabrahmen">
             <table className="portal-sv__tabelle">
               <thead><tr><th><Label>Spalte</Label></th><th><Label>enthält den Text</Label></th><th><Label>Gruppe</Label></th><th><Label>Aktiv</Label></th><th /></tr></thead>
               <tbody>

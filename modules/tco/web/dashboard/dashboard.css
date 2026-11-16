@@ -194,10 +194,9 @@
 }
 .portal-dash__head-right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
-/* Tabelle im Detail-Popup */
+/* Tabelle im Detail-Popup – der Kopf steht über den Rahmen .portal-tabrahmen fest (styles.css) */
 .portal-dash__table { width: 100%; border-collapse: collapse; font-size: var(--sapFontSize); color: var(--sapTextColor); }
 .portal-dash__table th {
-  position: sticky; top: 0;
   padding: 0.5rem 0.5rem;
   font-weight: 400;
   color: var(--sapContent_LabelColor);
