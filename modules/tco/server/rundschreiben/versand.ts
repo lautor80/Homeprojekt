@@ -84,6 +84,8 @@ export async function versandLauf(id: number): Promise<void> {
       return;
     }
     let fehler: string | null = null;
+    // eine als unzustellbar vermerkte Adresse ist kein Zeichen für einen gestörten Mailversand
+    let stoerung = true;
     try {
       const werte = e as unknown as Pick<Empfaenger, 'anrede' | 'vorname' | 'nachname'>;
       const r = await mailSenden(v, {
@@ -96,14 +98,18 @@ export async function versandLauf(id: number): Promise<void> {
         // Inhalt und Anhänge nicht je Empfänger im Mailprotokoll speichern; wiederholt wird hier, mit Status je Empfänger
         wiederholung: { art: 'NEU_AUSLOESEN', hinweis: NEU_AUSLOESEN },
       });
-      if (r.status !== 'gesendet') fehler = r.fehler || r.hinweis || `Der Versand meldet „${r.status}“.`;
+      if (r.status !== 'gesendet') {
+        fehler = r.fehler || r.hinweis || `Der Versand meldet „${r.status}“.`;
+        stoerung = !(r as { unzustellbar?: string[] }).unzustellbar?.length;
+      }
     } catch (err) {
       fehler = (err as Error).message || 'Versand fehlgeschlagen';
     }
     await DB`update tco.rundschreiben_empfaenger
                 set status = ${fehler ? 'FEHLER' : 'GESENDET'}, fehler = ${fehler ? fehler.slice(0, 1000) : null}, gesendet_am = ${fehler ? null : new Date()}
               where id = ${e.id} and status = 'SENDET'`;
-    reihe = fehler ? reihe + 1 : 0;
+    if (!fehler) reihe = 0;
+    else if (stoerung) reihe++;
     if (reihe >= ABBRUCH_NACH) {
       await anhalten(id, `Versand angehalten: ${ABBRUCH_NACH} E-Mails in Folge sind fehlgeschlagen (zuletzt: ${fehler}). `
         + 'Bitte die Ursache beheben und den Versand fortsetzen – die übrigen Empfänger sind noch offen.');

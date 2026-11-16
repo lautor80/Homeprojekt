@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen, type Db } from '../verein.js';
-import { mailSenden } from '../kommunikation.js';
+import { emailGesperrt, mailSenden } from '../kommunikation.js';
+import { sperrText } from '../emailsperre.js';
 import { gruppenLesen } from '../gruppen/logik.js';
 import { ALTER, AUSWAHL_LEER, auswahlAus, auswahlWerte, einsetzen, empfaengerLesen, PLATZHALTER, WEG_TEXT, type Auswahl } from './empfaenger.js';
 import {
@@ -208,11 +209,15 @@ export async function rundschreibenRoutes(app: FastifyInstance) {
     const k = await kopfLesen(DB, id);
     const v = await vereinLesen();
     const erg = await empfaengerLesen(DB, k.auswahl);
+    // Vorab zeigen, welche Adressen der zentrale Versand ablehnen wird (im Mitgliederstamm als unzustellbar vermerkt)
+    const sperren = await emailGesperrt(DB, erg.empfaenger.map((e) => e.email));
+    const gesperrt = (email: string) => { const s = sperren.get(email.toLowerCase()); return s ? sperrText(s) : null; };
     const bsp = erg.empfaenger.find((e) => e.email.toLowerCase() === (fuer ?? '').toLowerCase()) ?? erg.empfaenger[0] ?? null;
     return {
-      empfaenger: erg.empfaenger.map((e) => ({ email: e.email, namen: e.namen, anrede: e.anrede, personen: e.adrnrs.length, weg: e.weg, weg_text: WEG_TEXT[e.weg] })),
+      empfaenger: erg.empfaenger.map((e) => ({ email: e.email, namen: e.namen, anrede: e.anrede, personen: e.adrnrs.length, weg: e.weg, weg_text: WEG_TEXT[e.weg], unzustellbar: gesperrt(e.email) })),
       ohne_mail: erg.ohneMail,
-      anzahl: { personen: erg.personen, mails: erg.empfaenger.length, ohne_mail: erg.ohneMail.length, dubletten: erg.dubletten, ausgeschlossen: erg.ausgeschlossen },
+      anzahl: { personen: erg.personen, mails: erg.empfaenger.length, ohne_mail: erg.ohneMail.length, dubletten: erg.dubletten, ausgeschlossen: erg.ausgeschlossen,
+        unzustellbar: erg.empfaenger.filter((e) => gesperrt(e.email)).length },
       beispiel: bsp ? { an: bsp.email, namen: bsp.namen, betreff: einsetzen(k.betreff, bsp, v.name), text: einsetzen(k.text, bsp, v.name) } : null,
       mail: !!v.n8n_mail_url,
     };

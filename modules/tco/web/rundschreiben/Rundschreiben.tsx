@@ -41,9 +41,9 @@ interface Werte {
   personen: { adrnr: string; name: string; mitglied: boolean }[]; platzhalter: Record<string, string>; anhang_max: number; anhang_anzahl: number;
 }
 interface Pruefung {
-  empfaenger: { email: string; namen: string; anrede: string; personen: number; weg: string; weg_text: string }[];
+  empfaenger: { email: string; namen: string; anrede: string; personen: number; weg: string; weg_text: string; unzustellbar: string | null }[];
   ohne_mail: { adrnr: string; name: string; grund: string }[];
-  anzahl: { personen: number; mails: number; ohne_mail: number; dubletten: number; ausgeschlossen: number };
+  anzahl: { personen: number; mails: number; ohne_mail: number; dubletten: number; ausgeschlossen: number; unzustellbar: number };
   beispiel: { an: string; namen: string; betreff: string; text: string } | null; mail: boolean;
 }
 interface ProtokollZeile { id: number; email: string | null; namen: string; personen: number; weg: string; status: string; fehler: string | null; versuche: number; gesendet_am: string | null }
@@ -199,8 +199,10 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
       Header: 'Hinweis', id: 'hinweis', minWidth: 180,
       accessor: (r: Record<string, unknown>) => {
         const e = r as unknown as Pruefung['empfaenger'][number];
-        return [e.personen > 1 ? `${e.personen} Personen, eine E-Mail` : '', e.weg !== 'EIGEN' ? e.weg_text : ''].filter(Boolean).join(' · ');
+        return [e.unzustellbar ?? '', e.personen > 1 ? `${e.personen} Personen, eine E-Mail` : '', e.weg !== 'EIGEN' ? e.weg_text : ''].filter(Boolean).join(' · ');
       },
+      Cell: ({ row, value }: Cell) => ((row.original as Pruefung['empfaenger'][number]).unzustellbar
+        ? <ObjectStatus state="Negative"><span title={value}>{value}</span></ObjectStatus> : <span title={value}>{value}</span>),
     },
     {
       Header: '', id: 'vorschau', width: 110, disableSortBy: true,
@@ -326,6 +328,12 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
               <MessageStrip design="Critical" hideCloseButton style={{ marginTop: '0.75rem' }}>
                 Ohne E-Mail-Adresse – diese Personen erreicht das Rundschreiben nicht (nach dem Versand als Liste für Brief oder Aushang):
                 {' '}{p.ohne_mail.map((o) => `${o.name}${o.grund === 'keine E-Mail-Adresse' ? '' : ` (${o.grund})`}`).join(', ')}
+              </MessageStrip>
+            )}
+            {p.anzahl.unzustellbar > 0 && (
+              <MessageStrip design="Critical" hideCloseButton style={{ marginTop: '0.75rem' }}>
+                {mehrzahl(p.anzahl.unzustellbar, 'Adresse ist', 'Adressen sind')} im Mitgliederstamm als unzustellbar vermerkt – dorthin geht keine E-Mail, sie
+                {' '}erscheinen nach dem Versand unter „Fehler“. Adresse im Mitgliederstamm berichtigen oder den Vermerk dort aufheben.
               </MessageStrip>
             )}
             {p.beispiel && (

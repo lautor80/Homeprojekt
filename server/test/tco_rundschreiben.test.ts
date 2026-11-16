@@ -98,8 +98,8 @@ async function entwurf(auswahl: Partial<typeof ALLE>, betreff = 'Rundbrief', tex
   return id;
 }
 const vorschau = async (id: number) => (await admin('GET', `${R}/${id}/empfaenger`)).body as {
-  empfaenger: { email: string; namen: string; anrede: string; personen: number; weg: string }[]; ohne_mail: { adrnr: string; name: string; grund: string }[];
-  anzahl: { personen: number; mails: number; ohne_mail: number; dubletten: number; ausgeschlossen: number }; beispiel: { an: string; betreff: string; text: string } | null;
+  empfaenger: { email: string; namen: string; anrede: string; personen: number; weg: string; unzustellbar: string | null }[]; ohne_mail: { adrnr: string; name: string; grund: string }[];
+  anzahl: { personen: number; mails: number; ohne_mail: number; dubletten: number; ausgeschlossen: number; unzustellbar: number }; beispiel: { an: string; betreff: string; text: string } | null;
 };
 const protokoll = async (id: number) => (await admin('GET', `${R}/${id}/protokoll`)).body as {
   zeilen: { id: number; email: string | null; namen: string; status: string; fehler: string | null; versuche: number }[];
@@ -237,7 +237,7 @@ test('Empfänger: alle aktiven Mitglieder – je Adresse eine E-Mail, Minderjäh
     ['papa@rs.example', 'Liebe Eltern von Kim', 'ZAHLER'],     // nicht an kim@…, sondern an den Zahler
   ]);
   assert.deepEqual(v.ohne_mail.map((o) => [o.name, o.grund]), [['Gus Kaputt', 'E-Mail-Adresse ungültig (kaputt)'], ['Carl Linie', 'keine E-Mail-Adresse']]);
-  assert.deepEqual(v.anzahl, { personen: 10, mails: 6, ohne_mail: 2, dubletten: 2, ausgeschlossen: 0 });
+  assert.deepEqual(v.anzahl, { personen: 10, mails: 6, ohne_mail: 2, dubletten: 2, ausgeschlossen: 0, unzustellbar: 0 });
   const alleAdressen = JSON.stringify(v);
   for (const nie of ['ex@rs.example', 'schnupper@rs.example', 'kim@rs.example']) assert.ok(!alleAdressen.includes(nie), nie);
   // Vorschau mit echten Werten: erster Empfänger bzw. der gewählte
@@ -374,7 +374,7 @@ test('Versand: je Adresse genau eine E-Mail, nie mehrere Adressen in An/CC, Fehl
   // Empfänger: Gruppe Spielbetrieb samt Untergruppen (Anna, Ben, Dora) und Carl (ohne Adresse)
   await admin('PUT', `${R}/${id}`, { betreff: 'Sommerfest bei {Verein}', text: '{Anrede},\n\nkommt alle, {Vorname} {Nachname}!', antwort_an: null, auswahl: { ...ALLE, alle: false, gruppen: [gSpiel], dazu: [CARL] } });
   const v = await vorschau(id);
-  assert.deepEqual(v.anzahl, { personen: 4, mails: 3, ohne_mail: 1, dubletten: 0, ausgeschlossen: 0 });
+  assert.deepEqual(v.anzahl, { personen: 4, mails: 3, ohne_mail: 1, dubletten: 0, ausgeschlossen: 0, unzustellbar: 0 });
   // Bestätigung mit falscher Zahl: nichts geht hinaus
   let r = await admin('POST', `${R}/${id}/senden`, { mails: 7 });
   assert.equal(r.status, 409);
@@ -382,7 +382,7 @@ test('Versand: je Adresse genau eine E-Mail, nie mehrere Adressen in An/CC, Fehl
   assert.equal((await admin('POST', `${R}/${id}/senden`, {})).status, 400);
   assert.equal(mails.length, 0);
 
-  verhalten.fehler.set('ben@rs.example', '550 mailbox unavailable');
+  verhalten.fehler.set('ben@rs.example', '451 Dienst nicht bereit');
   // zweimal gleichzeitig ausgelöst: nur einer gewinnt
   const beide = await Promise.all([admin('POST', `${R}/${id}/senden`, { mails: 3 }), admin('POST', `${R}/${id}/senden`, { mails: 3 })]);
   assert.deepEqual(beide.map((x) => x.status).sort(), [200, 409]);
@@ -408,7 +408,7 @@ test('Versand: je Adresse genau eine E-Mail, nie mehrere Adressen in An/CC, Fehl
   let p = await protokoll(id);
   assert.deepEqual(p.zaehler, { gesamt: 3, offen: 0, gesendet: 2, fehler: 1, ohne_mail: 1 });
   assert.deepEqual(p.zeilen.map((z) => [z.namen, z.status, z.fehler]), [
-    ['Ben Netz', 'FEHLER', '550 mailbox unavailable'], ['Carl Linie', 'OHNE_MAIL', 'keine E-Mail-Adresse'],
+    ['Ben Netz', 'FEHLER', '451 Dienst nicht bereit'], ['Carl Linie', 'OHNE_MAIL', 'keine E-Mail-Adresse'],
     ['Anna Aufschlag', 'GESENDET', null], ['Dora Volley', 'GESENDET', null],
   ]);
   // gesendet ist gesendet: nicht mehr änderbar, nicht löschbar, nicht noch einmal sendbar
@@ -424,7 +424,7 @@ test('Versand: je Adresse genau eine E-Mail, nie mehrere Adressen in An/CC, Fehl
   // Liste der nicht Erreichten (CSV) und Ausdruck
   r = await admin('GET', `${R}/${id}/nicht-erreicht.csv`);
   assert.equal(r.status, 200);
-  assert.match(r.body, /"Ben Netz";"";"";"";"ben@rs\.example";"550 mailbox unavailable"/);
+  assert.match(r.body, /"Ben Netz";"";"";"";"ben@rs\.example";"451 Dienst nicht bereit"/);
   assert.match(r.body, /"Carl Linie";"Grundlinie 7";"66649";"Oberthal";"";"keine E-Mail-Adresse"/);
   assert.ok(!/Anna/.test(r.body));
   r = await admin('GET', `${R}/${id}/pdf`);
@@ -554,6 +554,32 @@ test('Wiederaufnahme nach Neustart: Offene gehen weiter, die beim Abbruch bearbe
   // abgeschlossene Rundschreiben fasst die Wiederaufnahme nicht an
   assert.deepEqual(await versandWiederaufnehmen(), []);
   assert.equal(mails.length, 4);
+  mails.length = 0;
+});
+
+test('Als unzustellbar vermerkte Adresse: schon in der Empfängerprüfung sichtbar, im Versand „nicht erreicht“ mit Grund, kein Anhalten', async () => {
+  const { emailUnzustellbarSetzen, emailUnzustellbarAufheben } = await import('../../modules/tco/server/emailsperre.js');
+  await sql.begin((tx) => emailUnzustellbarSetzen(tx as never, FRIDA, 'Rückläufer: Postfach gibt es nicht'));
+  const id = await entwurf({ alle: false, dazu: [FRIDA, ANNA] }, 'Vermerk');
+  const v = await vorschau(id);
+  assert.equal(v.anzahl.unzustellbar, 1);
+  assert.match(v.empfaenger.find((e) => e.email === 'frida@rs.example')!.unzustellbar!, /als unzustellbar vermerkt/);
+  assert.equal(v.empfaenger.find((e) => e.email === 'anna@rs.example')!.unzustellbar, null);
+  assert.equal((await admin('POST', `${R}/${id}/senden`, { mails: 2 })).status, 200);
+  await versandWarten(id);
+  assert.equal(await status(id), 'FERTIG');
+  assert.deepEqual(mails.map((m) => m.an), ['anna@rs.example'], 'an die vermerkte Adresse geht nichts hinaus');
+  let p = await protokoll(id);
+  const frida = p.zeilen.find((z) => z.email === 'frida@rs.example')!;
+  assert.equal(frida.status, 'FEHLER');
+  assert.match(frida.fehler!, /als unzustellbar vermerkt/);
+  // Vermerk aufgehoben: erneut senden erreicht sie, Anna bekommt nichts doppelt
+  await sql.begin((tx) => emailUnzustellbarAufheben(tx as never, FRIDA));
+  assert.equal((await admin('POST', `${R}/${id}/erneut`, {})).status, 200);
+  await versandWarten(id);
+  p = await protokoll(id);
+  assert.deepEqual(p.zaehler, { gesamt: 2, offen: 0, gesendet: 2, fehler: 0, ohne_mail: 0 });
+  assert.deepEqual(mails.map((m) => m.an).sort(), ['anna@rs.example', 'frida@rs.example']);
   mails.length = 0;
 });
 
