@@ -268,7 +268,8 @@ export function AuftraegeListe() {
       if (!f.length) return toast('Unter der Auswahl ist kein fakturierter Auftrag.');
       return setDocs(f.map((x) => ({
         url: `${T}/pdf/R/${encodeURIComponent(x)}`, filename: `Rechnung_${x}.pdf`,
-        ablage: sel.filter((s) => s.faktura === x).map((s) => s.auftragsnr),
+        // in den Ordner jedes Auftrags der Rechnung – auch der nicht markierten (Sammelrechnung)
+        ablage: [...new Set([...liste.filter((s) => s.faktura === x), ...sel.filter((s) => s.faktura === x)].map((s) => s.auftragsnr))],
       })));
     }
     setDocs(sel.map((s) => ({

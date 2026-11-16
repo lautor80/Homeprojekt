@@ -24,7 +24,6 @@ import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
 import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
 import { hinweisAufgaben } from '../../../server/src/lib/hinweise.js';
-import { paperlessUebergang } from '../../../server/src/lib/verbindungen.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
 
 export const P = {
@@ -377,8 +376,9 @@ async function routes(app: FastifyInstance) {
   app.get('/xrechnung/:faktura', { preHandler: requireAuth(P.display) }, async (req) => {
     const { faktura } = z.object({ faktura: z.string() }).parse(req.params);
     const res = await xrechnungErzeugen(faktura);
-    const [{ n }] = await sql`select count(*)::int as n from transport.auftraege where faktura = ${faktura}`;
-    return { ...res, anzahlAuftraege: n };
+    // alle Aufträge der Rechnung: die Oberfläche speichert das PDF in jeden ihrer Ordner (Sammelrechnung)
+    const auftraege = (await sql`select auftragsnr from transport.auftraege where faktura = ${faktura} order by auftragsnr`).map((r) => r.auftragsnr as string);
+    return { ...res, anzahlAuftraege: auftraege.length, auftraege };
   });
 
   /** ZUGFeRD/Factur-X: eingebettetes CII-XML einzeln herunterladen */
@@ -798,14 +798,6 @@ const mod: ServerModule = {
   // Arbeitsvorrat (#232, V1): Block „Euroflex“ auf der Startseite – zeigt die Hinweise, die mit modul 'transport' gemeldet werden
   arbeitsvorrat: async (req) => {
     const out = await hinweisAufgaben(req, 'transport');
-    // Übergang (#232, S5): Solange Euroflex kein eigenes Paperless hat, steht das als Aufgabe bei der Administration
-    if (can(req, 'core.settings:edit') && await paperlessUebergang('transport')) {
-      out.unshift({
-        key: 'PAPERLESS_UEBERGANG', bereich: 'Administration', icon: 'attachment', state: 'Critical', datum: null, pfad: '/admin/schnittstellen',
-        titel: 'Euroflex nutzt noch das Paperless von TC Oberthal',
-        text: 'Jeder Bereich braucht sein eigenes Paperless. Bitte unter Anbindungen „Paperless-ngx Euroflex“ Adresse und API-Token eintragen – bis dahin legt Euroflex weiter im bisherigen Paperless ab.',
-      });
-    }
     return out;
   },
   // E-Mail-Protokoll: Empfängeradressen den Kontakten zuordnen

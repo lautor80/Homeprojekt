@@ -170,6 +170,10 @@ test('Transport: Import, Auftrag, Rechnung, Dokumente', async () => {
   // ---- XRechnung ----
   const xr = (await call('GET', `${T}/xrechnung/${jahr}_5001`)).body;
   assert.equal(xr.anzahlAuftraege, 2);
+  // alle Aufträge der Sammelrechnung – die Oberfläche speichert das PDF in den Ablageordner jedes dieser Aufträge
+  assert.equal(xr.auftraege.length, 2);
+  assert.deepEqual(xr.auftraege, [...xr.auftraege].sort());
+  assert.deepEqual((await sql`select auftragsnr from transport.auftraege where faktura = ${`${jahr}_5001`} order by 1`).map((r) => r.auftragsnr), xr.auftraege);
   assert.match(xr.xml, /<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0<\/cbc:CustomizationID>/);
   assert.match(xr.xml, /<cbc:Note>Sammelrechnung über 2 Transportaufträge<\/cbc:Note>/);
   // Holzträgerauftrag S (844,90 brutto → 710,00 netto), Frachtauftrag ohne Steuer (Empfänger = Kunde 792, DE → E)

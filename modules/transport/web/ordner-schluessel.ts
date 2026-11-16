@@ -18,3 +18,16 @@ export function ordnerWahl<T>(eigen: T | false | undefined, gemeinsam: T | undef
   if (eigen !== undefined && eigen !== null) return { ordner: eigen, quelle: 'EIGEN' };
   return gemeinsam ? { ordner: gemeinsam, quelle: 'GEMEINSAM' } : { ordner: null, quelle: 'KEINER' };
 }
+
+// ---------------------------------------------------------------- Pfad im Ablageordner: <Ordner>/<Jahr>/<Auftragsnummer>/<Datei>
+
+/** Zeichen, die in Datei- und Ordnernamen unter Windows nicht erlaubt sind, ersetzen */
+export const sauber = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim();
+/** Jahresordner aus der Auftragsnummer („2026_1235“ → 2026); Nummern ohne Jahr kommen nach „Sonstige“ */
+export const jahrVon = (nr: string) => (/^\d{4}/.test(nr) ? nr.slice(0, 4) : 'Sonstige');
+/** Ordner eines Auftrags unter dem Ablageordner: [Jahr, Auftragsnummer] */
+export const auftragsPfad = (nr: string): [string, string] => [jahrVon(nr), sauber(nr)];
+/** Anzeigepfad, z. B. „Aufträge/2026/2026_1314/Rechnung_2026_6200.pdf“ */
+export function anzeigePfad(basis: string, nr: string, datei?: string) {
+  return [basis, ...auftragsPfad(nr), datei ? sauber(datei) : ''].filter(Boolean).join('/');
+}

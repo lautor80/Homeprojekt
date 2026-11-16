@@ -331,6 +331,11 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
 - **Je Benutzer:** Jeder Benutzer legt seinen eigenen Ordner fest – der Verweis liegt im Browser unter einem Schlüssel je Benutzer
   (`modules/transport/web/ordner-schluessel.ts`), auch wenn sich mehrere einen PC teilen. Wer noch keinen eigenen gewählt hat, nutzt
   den bisher gemeinsamen Ordner des PCs weiter; „Nicht mehr verwenden“ gilt nur für den Benutzer selbst.
+- **Ablage ohne Paperless:** Euroflex legt nur in seinem **eigenen** Paperless ab (*Administration → Schnittstellen → Paperless-ngx Euroflex*).
+  Ist dort nichts eingetragen, landet nichts in Paperless – auch nicht im Paperless von TC Oberthal (der frühere Übergang ist entfernt);
+  der Ablageordner ist dann die einzige Ablage. Jeder Ausdruck liegt unter `<Ordner>\<Jahr des Auftrags>\<Auftragsnummer>\`, eine
+  Rechnung im Ordner **jedes** ihrer Aufträge (Sammelrechnung). Kommt ein Druck nicht im Ordner an (kein Ordner festgelegt, Zugriff nicht
+  erteilt, Browser ohne Ordnerzugriff), steht das als Meldung in der Vorschau bzw. am Auftrag.
 - **Kopf der Ausdrucke:** Das Firmenlogo aus den Einstellungen (*Erscheinungsbild → Euroflex „Ausdrucke“*) steht oben rechts (rechtsbündig, 96 × 16 mm bei 6:1); die Rechnung zeigt die Route als zwei Spalten ohne Pfeil,
   lange Ortsnamen werden vor der nächsten Spalte gekürzt.
 

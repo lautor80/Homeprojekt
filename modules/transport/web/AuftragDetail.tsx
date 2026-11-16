@@ -14,7 +14,7 @@ import { AuftragDokumente } from './AuftragDokumente';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Stop, type Traeger, type Werte } from './util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
-import { ablegen, auftragsOrdner, ordnerBereit } from './ordner';
+import { ablegenIn, auftragsOrdner, ordnerBereit } from './ordner';
 
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
 /** oben: Beschriftung an der ersten Zeile ausrichten (Felder mit mehreren Zeilen) */
@@ -183,14 +183,17 @@ export function AuftragDetail() {
     if (art === 'R') {
       // Rechnung: dieselbe Vorschau wie „Versenden → E-Rechnung“ in der Auftragsliste (#121)
       try {
-        // PDF zusätzlich im Ablageordner des Auftrags speichern
         const f = a!.faktura!;
+        const r = await api.get<XRes>(`${T}/xrechnung/${encodeURIComponent(f)}`);
+        // PDF im Ablageordner speichern – bei einer Sammelrechnung im Ordner jedes ihrer Aufträge; was nicht ankommt, wird gemeldet
+        const ziele = r.auftraege?.length ? r.auftraege : [nr!];
         fetch(`${T}/pdf/R/${encodeURIComponent(f)}`, { credentials: 'same-origin' })
-          .then((res) => (res.ok ? res.blob() : null))
-          .then((b) => (b ? ablegen(nr!, `Rechnung_${f}.pdf`, b) : null))
-          .then((p) => { if (p) { toast(`Gespeichert: ${p}`); setOrdnerStand((v) => v + 1); } })
-          .catch(() => undefined);
-        const r = await api.get<XRes>(`${T}/xrechnung/${encodeURIComponent(a!.faktura!)}`);
+          .then(async (res) => { if (!res.ok) throw new Error(`Rechnung nicht lesbar (Fehler ${res.status})`); return ablegenIn(ziele, `Rechnung_${f}.pdf`, await res.blob()); })
+          .then((x) => {
+            if (x.pfade.length) { toast(`Gespeichert: ${x.pfade.join(' · ')}`, 5000); setOrdnerStand((v) => v + 1); }
+            if (x.hinweis) setError(x.hinweis);
+          })
+          .catch((e) => setError(`Rechnung_${f}.pdf wurde nicht im Ablageordner gespeichert: ${(e as Error).message}`));
         if (r.anzahlAuftraege > 1) {
           r.hinweise.unshift(`Rechnung ${r.faktura} ist eine Sammelrechnung über ${r.anzahlAuftraege} Aufträge - die E-Rechnung enthält wie die PDF-Rechnung alle ${r.anzahlAuftraege} Aufträge.`);
         }
