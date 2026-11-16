@@ -12,7 +12,7 @@ flowchart LR
   end
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
-      B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender"]
+      B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung"]
@@ -74,6 +74,7 @@ flowchart LR
 | Allgemein | Vereinsübersicht | `/tco/uebersicht` | `tco.dashboard:display` | Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung |
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
+| Allgemein | Checklisten | `/tco/checklisten` | `tco.checklisten:display` | Veranstaltungen vorbereiten: Schritte, Verantwortliche, Termine |
 | Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinedaten:edit\|tco.meinkonto:edit` | Kontakt, Bankverbindung, Verträge, Kündigung |
 | Mein Bereich | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
 | Mein Bereich | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
@@ -166,6 +167,7 @@ flowchart LR
 | analyse | 7 |
 | antrag | 13 |
 | beitraege | 8 |
+| checklisten | 20 |
 | clubhaus | 19 |
 | core:admin | 17 |
 | core:apikeys | 6 |

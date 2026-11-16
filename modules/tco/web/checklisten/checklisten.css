@@ -1,0 +1,31 @@
+/* Checklisten für Veranstaltungen – ausschließlich Theme-Variablen (Hell/Dunkel, Akzentfarbe) */
+.portal-cl__tab { border-collapse: collapse; width: 100%; font-family: var(--sapFontFamily, "72", Arial, Helvetica, sans-serif); font-size: var(--sapFontSize, 0.875rem); color: var(--sapTextColor); }
+.portal-cl__tab th, .portal-cl__tab td { padding: 0.375rem 0.625rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: left; vertical-align: top; }
+.portal-cl__tab th { color: var(--sapContent_LabelColor); font-weight: 400; font-size: var(--sapFontSmallSize, 0.75rem); white-space: nowrap; }
+.portal-cl__tab td.schmal, .portal-cl__tab th.schmal { width: 1%; white-space: nowrap; }
+.portal-cl__tab td.mitte { vertical-align: middle; }
+.portal-cl__tab tr.klick { cursor: pointer; }
+.portal-cl__tab tr.klick:hover td { background: var(--sapList_Hover_Background); }
+.portal-cl__tab tr.erledigt .portal-cl__titel { text-decoration: line-through; color: var(--sapContent_LabelColor); }
+.portal-cl__titel { font-weight: 700; }
+.portal-cl__klein { display: block; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); white-space: pre-line; }
+.portal-cl__leiste { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; padding: 0 0 0.75rem; }
+.portal-cl__feld { display: flex; flex-direction: column; gap: 0.2rem; }
+.portal-cl__feld > span { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+.portal-cl__bezuege { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.portal-cl__bezug {
+  display: flex; flex-direction: column; gap: 0.125rem; min-width: 11rem; max-width: 18rem; padding: 0.5rem 0.75rem; text-align: left; cursor: pointer;
+  border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); background: var(--sapGroup_ContentBackground); color: var(--sapTextColor); font: inherit;
+}
+.portal-cl__bezug:hover { background: var(--sapList_Hover_Background); }
+.portal-cl__bezug--aktiv { border-color: var(--sapSelectedColor); box-shadow: inset 0 0 0 1px var(--sapSelectedColor); background: var(--sapList_SelectionBackgroundColor); }
+.portal-cl__bezug b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal-cl__balken { height: 0.25rem; border-radius: 0.125rem; background: var(--sapList_BorderColor); overflow: hidden; margin-top: 0.25rem; }
+.portal-cl__balken > i { display: block; height: 100%; background: var(--sapPositiveElementColor, #188918); }
+.portal-cl__dialog { display: flex; flex-direction: column; gap: 0.75rem; width: min(40rem, 88vw); }
+.portal-cl__dialog ui5-input, .portal-cl__dialog ui5-textarea, .portal-cl__dialog ui5-select { width: 100%; }
+.portal-cl__zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem 1rem; }
+/* Baum (Layout der Mitgliedergruppen, gruppen.css): Titel in einer Zeile, der Zusatz dahinter wird abgeschnitten */
+.portal-cl__zelle { min-width: 0; }
+.portal-cl__zelle > ui5-link, .portal-cl__zelle > ui5-text, .portal-cl__zelle > ui5-icon { flex: 0 0 auto; white-space: nowrap; }
+.portal-cl__zelle > .portal-small { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
