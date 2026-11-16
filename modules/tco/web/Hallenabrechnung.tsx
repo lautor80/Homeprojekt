@@ -476,11 +476,19 @@ function PersonPanel(props: {
       ) : null),
     },
     {
-      Header: 'Status', accessor: 'status', width: 140,
+      Header: 'Status', accessor: 'status', width: 190,
       Cell: ({ row }: Cell) => (
-        <ObjectStatus state={RG_STATE[row.original.status]}>
-          {RG_STATUS[row.original.status]}{row.original.wiedereroeffnet ? ' (wieder eröffnet)' : ''}
-        </ObjectStatus>
+        <span>
+          <ObjectStatus state={RG_STATE[row.original.status]}>
+            {RG_STATUS[row.original.status]}{row.original.wiedereroeffnet ? ' (wieder eröffnet)' : ''}
+          </ObjectStatus>
+          {/* Mahnwesen: zuletzt zugestellte Stufe, solange die Rechnung offen ist */}
+          {row.original.mahnstufe && row.original.offen > 0 && (
+            <ObjectStatus state="Negative" title={`${row.original.mahnstufe} zugestellt am ${dat(row.original.gemahnt_am)} (App „Mahnwesen“)`} style={{ marginLeft: '0.5rem' }}>
+              {row.original.mahnstufe}
+            </ObjectStatus>
+          )}
+        </span>
       ),
     },
     {
@@ -678,7 +686,10 @@ function PersonPanel(props: {
       {/* Positionen */}
       {rechnung && (
         <Section title={`Positionen zu ${rechnung.rgnr_txt}`} count={pos?.length ?? 0} flush
-                 status={<ObjectStatus state={RG_STATE[rechnung.status]} inverted>{RG_STATUS[rechnung.status]}</ObjectStatus>}
+                 status={<>
+                   <ObjectStatus state={RG_STATE[rechnung.status]} inverted>{RG_STATUS[rechnung.status]}</ObjectStatus>
+                   {rechnung.mahnstufe && rechnung.offen > 0 && <ObjectStatus state="Negative" inverted style={{ marginLeft: '0.5rem' }}>{rechnung.mahnstufe} · {dat(rechnung.gemahnt_am)}</ObjectStatus>}
+                 </>}
                  actions={<>
                    {rgEdit && rechnung.aenderbar && <Button icon="add" design="Transparent" onClick={props.onPosition}>Position hinzufügen</Button>}
                    {rgEdit && rechnung.aenderbar && (pos?.length ?? 0) > 1 && <Button icon="sort" design="Transparent" onClick={() => tun(post(`${rgUrl(rechnung.rgnr_txt)}/nummerieren`))}>Neu nummerieren</Button>}

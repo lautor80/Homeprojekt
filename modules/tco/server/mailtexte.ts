@@ -15,6 +15,7 @@ import { mailText as unterlagenText, unterlagenZeilen } from './mitglieder/dokum
 import { einladungVorlage } from './mitglieder/einladung.js';
 import { vorlage as zugangVorlage } from './mitglieder/zugangslink.js';
 import { mailTexte as hallenrechnungText } from './halle/versand.js';
+import { MAHN_MAILTEXTE } from './mahnung/logik.js';
 
 export interface MailVorlage { betreff: string; text: string }
 export interface MailtextDef {
@@ -265,6 +266,8 @@ export const MAILTEXTE: MailtextDef[] = [
     },
     pflicht: ['Link'], standard: (v) => kalenderEinladungVorlage(v),
   },
+  // ---- Mahnwesen (mahnung/lauf.ts): je Stufe ein Text
+  ...MAHN_MAILTEXTE,
 ];
 
 const def = (schluessel: string): MailtextDef => {
