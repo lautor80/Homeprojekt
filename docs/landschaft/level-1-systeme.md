@@ -20,7 +20,7 @@ flowchart LR
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
       B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen"]
-      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Kontenstamm"]
+      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Kontenstamm"]
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
@@ -101,6 +101,7 @@ flowchart LR
 | Instandhaltung | Schadensmeldungen | `/tco/instandhaltung` | `tco.instandhaltung:display` | Meldungen bearbeiten, Plätze sperren |
 | Finanzen | Sollstellungen | `/tco/sollstellung` | `tco.soll:display` | Beitragseinzug per SEPA-Lastschrift |
 | Finanzen | FI-Belege | `/tco/fi` | `tco.fi:display` | Bankimport, Belege, Storno |
+| Finanzen | Mahnwesen | `/tco/mahnwesen` | `tco.mahnung:display` | Zahlungserinnerungen und Mahnungen, Vorschlag und Läufe, Mahnsperren |
 | Finanzen | Beitragsforecast | `/tco/forecast` | `tco.forecast:display` | Hochrechnung der Beitragseinnahmen |
 | Finanzen | Einnahmen und Ausgaben | `/tco/finanz` | `tco.finanz:display` | Jahresübersicht, Geldkonten, Liquidität |
 | Finanzen | Jahresabschluss | `/tco/abschluss` | `tco.abschluss:display` | EAR, Vermögensübersicht, Anlagevermögen |
@@ -196,6 +197,7 @@ flowchart LR
 | kalender | 23 |
 | konten | 5 |
 | lsvs | 9 |
+| mahnung | 16 |
 | mitglieder | 79 |
 | platz | 68 |
 | praesentation | 11 |
