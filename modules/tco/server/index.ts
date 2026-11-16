@@ -50,6 +50,7 @@ import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
 import { haushaltRoutes, P_HH } from './haushalt/routes.js';
+import { P_PROJ, projekteRoutes } from './projekte/routes.js';
 import { zuwendungRoutes } from './zuwendung/routes.js';
 import { P_ZUW } from './zuwendung/logik.js';
 import { mahnungRoutes, P_MAHN } from './mahnung/routes.js';
@@ -182,6 +183,7 @@ async function routes(app: FastifyInstance) {
   await instandhaltungRoutes(app);
   await schluesselRoutes(app);
   await haushaltRoutes(app);
+  await projekteRoutes(app);
   await mahnungRoutes(app);
 }
 
@@ -288,6 +290,8 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.edit, text: 'Haushaltsplan planen: Plan anlegen, Methode und Planwerte ändern, Sondereffekte, Monatsverlauf, einmalige Vorhaben, Ablage in Paperless', requires: [P_HH.display] },
     { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.admin, text: 'Haushaltsplan beschließen und genehmigen, Nachtrag anlegen, Entwurf löschen, Einstellungen pflegen (Toleranzen, Mindestreserve, Grundlage) – Administration → Einstellungen → TC Oberthal', requires: [P_HH.display] },
     { area: 'Finanzen', app: 'Haushaltsplan', id: 'tco.projekte:approve', text: 'Projekte genehmigen: über Projektanträge entscheiden (genehmigen, ablehnen, zurückstellen) und Projekte nach dem Antrag noch ändern; Anträge erscheinen im Arbeitsvorrat', requires: [P_HH.display] },
+    { area: 'Finanzen', app: 'Projekte', id: P_PROJ.display, text: 'Projekte ansehen: Stammdaten, Kosten und Finanzierung, Terminplan (Gantt), Arbeitseinsatz der Mitglieder, Material, Projektantrag als PDF' },
+    { area: 'Finanzen', app: 'Projekte', id: P_PROJ.edit, text: 'Projekte planen: anlegen und ändern, Kosten und Finanzierung, Vorgänge mit Abhängigkeiten, Arbeitseinsatz mit externem Verrechnungssatz, Material, beantragen, Antrag in Paperless ablegen (über Anträge entscheidet „Projekte genehmigen“ beim Haushaltsplan)', requires: [P_PROJ.display] },
     { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.display, text: 'Zuwendungsbestätigungen ansehen: Vorschlagsliste der Spenden je Jahr und Spender (mit Name und Anschrift), Vorschau, ausgestellte Bestätigungen und ihr PDF' },
     { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.execute, text: 'Zuwendungsbestätigungen ausstellen (einzeln, Sammelbestätigung, Jahreslauf), Spender zuordnen und erfassen, in Paperless ablegen, per E-Mail senden bzw. als gedruckt vermerken, stornieren', requires: [P_ZUW.display] },
     { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.admin, text: 'Einstellungen der Zuwendungsbestätigungen pflegen (Bescheid des Finanzamts, Unterzeichner, Spendenkonten und -Beitragsarten, Textbausteine) – Administration → Einstellungen → TC Oberthal', requires: [P_ZUW.display] },

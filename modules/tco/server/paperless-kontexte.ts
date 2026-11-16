@@ -90,6 +90,14 @@ export const K = {
       { name: 'status', text: 'Status der Fassung', beispiel: 'vom Vorstand beschlossen' }, { name: 'ergebnis', text: 'geplantes Ergebnis', beispiel: 4321 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Buchhaltung', datum: '{heute}', felder: { Betrag: '{ergebnis}', DOKID: '{dokid}' } },
   },
+  projekt: {
+    id: 'projekt.antrag', text: 'Projektantrag',
+    beschreibung: 'PDF des Projektantrags mit Kosten, Finanzierung, Terminplan, Arbeitseinsatz und Material (App Projekte → Antrag → In Paperless ablegen).',
+    platzhalter: [{ name: 'titel', text: 'Titel des Antrags', beispiel: 'Projektantrag Flutlicht Platz 3' }, { name: 'projekt', text: 'Bezeichnung des Projekts', beispiel: 'Flutlicht Platz 3' },
+      { name: 'projektnr', text: 'Projektnummer der FI-Buchungen', beispiel: 'P2027-01' }, { name: 'status', text: 'Status des Projekts', beispiel: 'beantragt' },
+      { name: 'kosten', text: 'geplante Kosten', beispiel: 18500 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Buchhaltung', datum: '{heute}', felder: { Betrag: '{kosten}', DOKID: '{dokid}' } },
+  },
   lsvs: {
     id: 'lsvs.bestandsmeldung', text: 'LSVS-Bestandsmeldung (Ausdruck eines Laufs)',
     beschreibung: 'Ausdruck der Zahlen, die mit einem Lauf der LSVS-Bestandsmeldung als Austauschdatei für das LSVSnet erzeugt wurden.',
