@@ -36,3 +36,5 @@
 .portal-cl__fortschritt .portal-cl__balken { width: 5rem; margin-top: 0; flex: 0 0 auto; }
 .portal-cl__balken > i.rot { background: var(--sapNegativeElementColor, #bb0000); }
 .portal-cl__zahl { font-variant-numeric: tabular-nums; color: var(--sapTextColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+/* Ziehen und Ablegen auf einen Schritt: Strich am oberen Rand = davor einordnen; der Rahmen (portal-gr__ziel) = darunter schachteln */
+.portal-cl__ziel-vor { box-shadow: inset 0 3px 0 var(--sapContent_DragAndDropActiveColor, var(--sapSelectedColor)); }

@@ -47,8 +47,10 @@ interface Daten { checklisten: Checkliste[]; kategorien: Kategorie[]; personen: 
 interface Zeile { id: string; text: string; art: 'K' | 'C' | 'S'; k?: Kategorie | null; c?: Checkliste; s?: Schritt; subRows?: Zeile[] }
 type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void; toggleRowExpanded?: (id: string, v?: boolean) => void };
 /** was gerade gezogen wird: eine Checkliste oder ein Schritt */
-type Gezogen = { art: 'C'; id: number; kategorie: number | null } | { art: 'S'; id: number; von: number };
+type Gezogen = { art: 'C'; id: number; kategorie: number | null } | { art: 'S'; id: number; von: number; /** Stufen des gezogenen Schritts samt Unterschritten */ hoehe: number };
 const ZIEL = 'portal-gr__ziel';
+/** Ablegen auf einen Schritt: oberes Drittel = davor einordnen (Strich oben), sonst als Unterschritt (ganze Zeile) */
+const ZIEL_VOR = 'portal-cl__ziel-vor';
 interface ImportAntwort {
   fehler: string[]; kopfzeile: boolean; uebernommen: boolean;
   zeilen: { zeile: number; kategorie: string; checkliste: string; schritt: string; verantwortlich: string; hinweise: string; tage_vor: number | null; faellig: string | null }[];
@@ -234,15 +236,28 @@ export function Checklisten() {
 
   // ---------------------------------------------------------------- Ziehen und Ablegen im Baum
   // Checkliste auf Kategorie = dorthin verschieben; Schritt auf Checkliste = ans Ende, Schritt auf Schritt = davor
-  const darfAuf = (ziel: Zeile) => {
+  //   Schritt auf Schritt, oberes Drittel = davor (auf dessen Stufe); sonst = als letzter Unterschritt darunter (schachteln)
+  const darfAuf = (ziel: Zeile, unter = false) => {
     const g = gezogen.current;
     if (!g) return false;
     if (g.art === 'C') return ziel.art === 'K' && (ziel.k?.id ?? null) !== g.kategorie;
     if (ziel.art === 'C') return ziel.c!.id !== g.von || ziel.c!.schritte.filter((t) => t.parent_id === null).at(-1)?.id !== g.id;
     if (ziel.art !== 'S' || ziel.s!.id === g.id) return false;
-    // nicht vor einen eigenen Unterschritt
+    // nicht vor oder unter einen eigenen Unterschritt
     const quelle = ziel.c!.schritte.find((t) => t.id === g.id);
-    return !quelle || !ziel.s!.nr.startsWith(`${quelle.nr}.`);
+    if (quelle && ziel.s!.nr.startsWith(`${quelle.nr}.`)) return false;
+    if (!unter) return true;
+    // schachteln: die Stufen müssen reichen (gezogener Schritt samt seinen Unterschritten), und er hängt nicht schon als letzter dort
+    if (ziel.s!.ebene + g.hoehe > (d?.max_stufen ?? 5)) return false;
+    return ziel.c!.schritte.filter((t) => t.parent_id === ziel.s!.id).at(-1)?.id !== g.id;
+  };
+  /** wohin der Zeiger in der Zeile zeigt: oberes Drittel = davor, sonst darunter schachteln – was nicht geht, fällt auf das andere zurück */
+  const ablageArt = (e: DragEvent<HTMLElement>, ziel: Zeile): 'vor' | 'unter' | null => {
+    if (ziel.art !== 'S') return darfAuf(ziel) ? 'vor' : null;
+    const r = e.currentTarget.getBoundingClientRect();
+    const oben = e.clientY - r.top < r.height / 3;
+    const vor = darfAuf(ziel), unter = darfAuf(ziel, true);
+    return oben ? (vor ? 'vor' : unter ? 'unter' : null) : (unter ? 'unter' : vor ? 'vor' : null);
   };
   const ziehStart = (e: DragEvent<HTMLElement>, was: Gezogen, text: string) => {
     gezogen.current = was;
@@ -250,20 +265,30 @@ export function Checklisten() {
     e.dataTransfer.setData('text/plain', text);
   };
   const ablage = (ziel: Zeile) => ({
-    onDragOver: (e: DragEvent<HTMLElement>) => { if (darfAuf(ziel)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add(ZIEL); } },
-    onDragLeave: (e: DragEvent<HTMLElement>) => e.currentTarget.classList.remove(ZIEL),
+    onDragOver: (e: DragEvent<HTMLElement>) => {
+      const art = ablageArt(e, ziel);
+      if (!art) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      const strich = ziel.art === 'S' && art === 'vor';
+      e.currentTarget.classList.toggle(ZIEL_VOR, strich);
+      e.currentTarget.classList.toggle(ZIEL, !strich);
+    },
+    onDragLeave: (e: DragEvent<HTMLElement>) => e.currentTarget.classList.remove(ZIEL, ZIEL_VOR),
     onDrop: (e: DragEvent<HTMLElement>) => {
       e.preventDefault();
-      e.currentTarget.classList.remove(ZIEL);
+      e.currentTarget.classList.remove(ZIEL, ZIEL_VOR);
       const g = gezogen.current;
+      const art = ablageArt(e, ziel);
       gezogen.current = null;
-      if (!g || !darfAufMit(g, ziel)) return;
+      if (!g || !art) return;
       if (g.art === 'C') tun(() => api.post<{ text: string }>(`${CL}/${g.id}/kategorie`, { kategorie_id: ziel.k?.id ?? null }));
+      else if (ziel.art === 'S' && art === 'unter') tun(() => api.post<{ text: string }>(`${CL}/schritte/${g.id}/verschieben`, { ziel: ziel.c!.id, unter: ziel.s!.id }));
       else tun(() => api.post<{ text: string }>(`${CL}/schritte/${g.id}/verschieben`, { ziel: ziel.c!.id, vor: ziel.art === 'S' ? ziel.s!.id : null }));
       tabelle.current?.toggleRowExpanded?.(ziel.art === 'S' ? `c${ziel.c!.id}` : ziel.id, true);
+      // der Schritt, unter den geschachtelt wurde, klappt auf – sonst wäre das Abgelegte nicht zu sehen
+      if (ziel.art === 'S' && art === 'unter') tabelle.current?.toggleRowExpanded?.(ziel.id, true);
     },
   });
-  const darfAufMit = (g: Gezogen, ziel: Zeile) => { gezogen.current = g; const ok = darfAuf(ziel); gezogen.current = null; return ok; };
   const ziehbar = pflege && !busy;
   const ziehEnde = () => { gezogen.current = null; };
 
@@ -300,7 +325,7 @@ export function Checklisten() {
         }
         const y = z.s!;
         return (
-          <div className="portal-gr__zelle portal-cl__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'S', id: y.id, von: z.c!.id }, y.titel)} onDragEnd={ziehEnde} {...(pflege ? ablage(z) : {})}>
+          <div className="portal-gr__zelle portal-cl__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'S', id: y.id, von: z.c!.id, hoehe: Math.max(y.ebene, ...z.c!.schritte.filter((t) => t.nr.startsWith(`${y.nr}.`)).map((t) => t.ebene)) - y.ebene + 1 }, y.titel)} onDragEnd={ziehEnde} {...(pflege ? ablage(z) : {})}>
             <Icon name={y.blatt ? 'task' : 'group-2'} />
             <span className="portal-cl__nr">{y.nr}</span>
             <Text>{y.blatt ? y.titel : <b>{y.titel}</b>}</Text>
@@ -422,7 +447,7 @@ export function Checklisten() {
       </div>
       {pflege && d.checklisten.length > 0 && (
         <div className="portal-gr__oben">
-          Ziehen und Ablegen: Checkliste auf eine Kategorie ziehen = dorthin verschieben. Schritt auf eine Checkliste ziehen = dorthin verschieben (ans Ende), auf einen Schritt = davor einordnen (auf dessen Stufe, mit allen Unterschritten). Unterschritte über „+“ am Schritt; umhängen über „Ändern“.
+          Ziehen und Ablegen: Checkliste auf eine Kategorie ziehen = dorthin verschieben. Schritt auf eine Checkliste ziehen = dorthin verschieben (ans Ende), auf den oberen Rand eines Schritts (Strich) = davor einordnen, auf dessen Stufe; mitten auf einen Schritt (Rahmen) = als Unterschritt darunter schachteln – jeweils mit allen eigenen Unterschritten, bis zu {d?.max_stufen ?? 5} Stufen. Eine Stufe höher: auf den oberen Rand eines Schritts der gewünschten Stufe ziehen.
         </div>
       )}
       {!d.checklisten.length && !d.kategorien.length ? (
