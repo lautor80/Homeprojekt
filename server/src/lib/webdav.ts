@@ -4,7 +4,8 @@
  * eine vollständige WebDAV-Adresse (…/remote.php/…) wird unverändert übernommen.
  * Auch eine aus dem Browser kopierte Adresse der Dateien-App (…/index.php/apps/files/…?dir=…) wird auf die
  * Nextcloud-Adresse gekürzt. Anmeldung per Benutzer + App-Passwort (Basic Auth).
- * Uploads werden bei vorübergehenden Störungen (Netz, 423 gesperrt, 429, 502–504) bis zu dreimal versucht.
+ * Uploads werden bei vorübergehenden Störungen (Netz, 423 gesperrt, 429, 502–504) bis zu dreimal versucht, alle übrigen
+ * Anfragen bei Netzstörungen ebenso. Die Fehlermeldung nennt die eigentliche Ursache (statt nur „fetch failed“).
  */
 
 export interface DavEintrag { name: string; ordner: boolean; groesse: number; geaendert: string | null }
@@ -26,6 +27,24 @@ const segmente = (pfad: string) => pfad.split('/').map((s) => s.trim()).filter(B
 const VORUEBERGEHEND = new Set([0, 423, 429, 502, 503, 504]);
 const warten = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
+/** Ursache eines Netzfehlers in Worten – fetch meldet nur „fetch failed“, der Grund steckt in `cause` */
+const URSACHEN: Record<string, string> = {
+  ECONNREFUSED: 'Verbindung abgelehnt – die Nextcloud läuft gerade nicht (Neustart, Wartung, nächtliche Sicherung des Servers?)',
+  ENOTFOUND: 'Adresse nicht gefunden – DNS-Auflösung fehlgeschlagen (z. B. nach einer Zwangstrennung des Internetanschlusses)',
+  EAI_AGAIN: 'Adresse vorübergehend nicht auflösbar – DNS-Server nicht erreichbar',
+  ETIMEDOUT: 'Zeitüberschreitung beim Verbindungsaufbau', UND_ERR_CONNECT_TIMEOUT: 'Zeitüberschreitung beim Verbindungsaufbau',
+  ECONNRESET: 'Verbindung von der Gegenseite getrennt', UND_ERR_SOCKET: 'Verbindung unterbrochen', EHOSTUNREACH: 'Server nicht erreichbar (keine Route)',
+  ENETUNREACH: 'Netz nicht erreichbar', CERT_HAS_EXPIRED: 'Zertifikat der Nextcloud abgelaufen',
+  DEPTH_ZERO_SELF_SIGNED_CERT: 'Zertifikat der Nextcloud ist selbst signiert', UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'Zertifikat der Nextcloud nicht prüfbar',
+};
+export function netzUrsache(e: unknown): string {
+  const f = e as Error & { cause?: { code?: string; message?: string } };
+  if (f?.name === 'TimeoutError' || f?.name === 'AbortError') return 'Zeitüberschreitung – keine Antwort der Nextcloud';
+  const code = f?.cause?.code;
+  if (code) return `${URSACHEN[code] ?? f.cause?.message ?? 'Netzfehler'} (${code})`;
+  return f?.cause?.message ?? f?.message ?? String(e);
+}
+
 export class WebDav {
   private readonly basis: string;
   private readonly auth: string;
@@ -38,15 +57,20 @@ export class WebDav {
     return `${this.basis}/${segmente(pfad).map(encodeURIComponent).join('/')}`;
   }
 
-  private async anfrage(methode: string, pfad: string, o: { body?: Buffer | string; headers?: Record<string, string>; ordner?: boolean } = {}) {
+  /** eine Anfrage; Netzstörungen werden bis zu `versuche` Mal versucht (Uploads wiederholen selbst und geben 1 an) */
+  private async anfrage(methode: string, pfad: string, o: { body?: Buffer | string; headers?: Record<string, string>; ordner?: boolean; versuche?: number } = {}) {
     let res: Response;
-    try {
-      res = await fetch(this.url(pfad) + (o.ordner ? '/' : ''), {
-        method: methode, headers: { Authorization: this.auth, ...o.headers }, body: o.body as BodyInit | undefined,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-    } catch (e) {
-      throw new WebDavFehler(`Nextcloud nicht erreichbar: ${(e as Error).message}`, 0);
+    for (let v = 1; ; v++) {
+      try {
+        res = await fetch(this.url(pfad) + (o.ordner ? '/' : ''), {
+          method: methode, headers: { Authorization: this.auth, ...o.headers }, body: o.body as BodyInit | undefined,
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+        break;
+      } catch (e) {
+        if (v >= (o.versuche ?? 3)) throw new WebDavFehler(`Nextcloud nicht erreichbar: ${netzUrsache(e)}`, 0);
+        await warten(this.pauseMs * v);
+      }
     }
     if (res.status === 401) throw new WebDavFehler('Die Nextcloud hat die Anmeldung abgelehnt – Benutzer bzw. App-Passwort prüfen.', 401);
     return res;
@@ -69,7 +93,7 @@ export class WebDav {
   async hochladen(pfad: string, daten: Buffer, versuche = 3) {
     for (let v = 1; ; v++) {
       try {
-        const r = await this.anfrage('PUT', pfad, { body: daten, headers: { 'Content-Type': 'application/octet-stream' } });
+        const r = await this.anfrage('PUT', pfad, { body: daten, headers: { 'Content-Type': 'application/octet-stream' }, versuche: 1 });
         if ([200, 201, 204].includes(r.status)) return;
         throw new WebDavFehler(
           r.status === 507 ? 'Kein Speicherplatz mehr in der Nextcloud (HTTP 507).'

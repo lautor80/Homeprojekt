@@ -37,7 +37,7 @@ interface Export {
   /** dateien = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */
   format: 'portal' | 'zip' | 'dateien'; datei_passwort: string;
   mit_aenderungsbelegen: boolean; aufbewahrung_tage: number; letzter_lauf: string | null; letzter_erfolg: string | null; letzte_meldung: string | null;
-  letzte_datei: string | null; letzte_dauer_s: number | null; letzter_fehler: boolean; fehlt: string[];
+  letzte_datei: string | null; letzte_dauer_s: number | null; letzter_fehler: boolean; fehlt: string[]; naechster_versuch?: string | null;
 }
 
 /** Sekunden lesbar: „ca. 2 Min. 10 s“ */
@@ -438,6 +438,7 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
             Erstellt jeden Tag ab der eingestellten Uhrzeit eine vollständige Sicherung (alle Bereiche) und überträgt sie per WebDAV in den Zielordner –
             als eine Datei oder dateiweise ohne ZIP. Nach der Übertragung wird geprüft, ob alles vollständig angekommen ist.
             Ältere automatische Sicherungen im Ordner werden nach der Aufbewahrungsdauer gelöscht, andere Dateien bleiben unberührt.
+            Scheitert der Lauf (z. B. Nextcloud gerade nicht erreichbar), wird er am selben Tag 30 Minuten, 1½ und 3 Stunden nach der Uhrzeit erneut versucht.
           </Text>
           {/* ein Zugang für das ganze Portal (#232, S2): gepflegt unter Schnittstellen → Nextcloud, hier nur angezeigt */}
           <Label showColon>Zugang zur Nextcloud</Label>
@@ -480,6 +481,7 @@ function NextcloudExport({ onError }: { onError: (t: string | null) => void }) {
         <MessageStrip design={c.letzter_fehler ? 'Negative' : 'Positive'} hideCloseButton style={{ marginTop: '0.75rem' }}>
           Letzter Lauf{c.letzter_lauf ? ` ${zeit(c.letzter_lauf)}` : ''}: {c.letzte_meldung}
           {c.letzter_erfolg && c.letzter_fehler ? ` – letzter erfolgreicher Export ${zeit(c.letzter_erfolg)}.` : ''}
+          {c.letzter_fehler && c.naechster_versuch ? ` Neuer Versuch heute um ${c.naechster_versuch} Uhr.` : ''}
         </MessageStrip>
       )}
       <div className="portal-row" style={{ marginTop: '0.75rem' }}>

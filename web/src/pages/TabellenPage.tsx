@@ -16,7 +16,7 @@ import { toast } from '../toast';
 
 /**
  * Tabellenansicht (Administration → System → Tabellenansicht, wie SE16): alle Tabellen der Schemas „core“ und der aktiven
- * Module mit Struktur und Inhalt. Selektion mit Bedingungen (=, ≠, <, ≤, >, ≥, Intervall, Muster, Liste, leer),
+ * Module mit Struktur und Inhalt. Übersicht als Baum nach Schema (Standard) oder als flache Liste. Selektion mit Bedingungen (=, ≠, <, ≤, >, ≥, Intervall, Muster, Liste, leer),
  * Feldauswahl, Sortierung, Gruppierung mit Kennzahlen (Anzahl, Summe, Durchschnitt, Min, Max) – alles serverseitig;
  * im Ergebnis zusätzlich Spaltenfilter, Sortierung und Gruppierung der Tabelle. Export als CSV.
  * Mit core.tabellen:edit: im Eintrag „Werte ändern“ – einzelne Werte eines Satzes ändern (ohne Änderungsbeleg).
@@ -55,6 +55,8 @@ const LEER: Selektion = { felder: [], filter: [], sortierung: [], nach: [], summ
 
 const groesse = (b: number) => (b >= 1048576 ? `${(b / 1048576).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MB` : `${Math.ceil(b / 1024).toLocaleString('de-DE')} KB`);
 const zahl = (n: number | string) => Number(n).toLocaleString('de-DE');
+/** Schemas in Worten (Baumansicht): Portal-Kern und Module */
+const SCHEMA_TEXT: Record<string, string> = { core: 'Portal (Kern)', tco: 'TC Oberthal', transport: 'Euroflex' };
 const schutzText = { GEHEIM: 'geheim (nie sichtbar)', iban: 'Bankdaten (IBAN)', bic: 'Bankdaten (BIC)', text: 'Bankdaten (Name)' };
 
 /** Auswahl je Tabelle für die Sitzung merken (Browser-Speicher, best effort) */
@@ -91,6 +93,8 @@ export function TabellenPage() {
   const [aendernFehler, setAendernFehler] = useState<string | null>(null);
   const [speichert, setSpeichert] = useState(false);
   const [suche, setSuche] = useState('');
+  /** Übersicht als Baum nach Schema (Standard) oder als flache Liste */
+  const [darstellung, setDarstellung] = useState<'BAUM' | 'LISTE'>('BAUM');
 
   useEffect(() => {
     setStruktur(null); setErg(null); setError(null); setDetail(null); setMarkiert([]);
@@ -165,6 +169,38 @@ export function TabellenPage() {
     { Header: 'Größe', id: 'bytes', accessor: (t: Record<string, any>) => Number((t as Tabelle).bytes), width: 100, hAlign: 'End', Cell: ({ value }: Cell) => groesse(value) },
   ];
 
+  // Baum: je Schema ein Knoten mit Anzahl, Zeilen und Größe, darunter seine Tabellen
+  type Knoten = Tabelle & { knoten?: boolean; anzahl?: number; subRows?: Tabelle[] };
+  const baum: Knoten[] = useMemo(() => {
+    const schemas = [...new Set(tabellen.map((t) => t.schema))];
+    return schemas.map((schema) => {
+      const unter = tabellen.filter((t) => t.schema === schema);
+      return {
+        schema, tabelle: '', art: '', beschreibung: SCHEMA_TEXT[schema] ?? null, knoten: true, anzahl: unter.length, spalten: 0,
+        zeilen: String(unter.reduce((n, t) => n + Number(t.zeilen), 0)), bytes: String(unter.reduce((n, t) => n + Number(t.bytes), 0)), subRows: unter,
+      };
+    });
+  }, [tabellen]);
+  const baumSpalten: AnalyticalTableColumnDefinition[] = [
+    {
+      Header: 'Schema / Tabelle', id: 'name', accessor: (t: Record<string, any>) => ((t as Knoten).knoten ? t.schema : t.tabelle), width: 300,
+      Cell: ({ row }: Cell) => {
+        const t = row.original as Knoten;
+        return t.knoten
+          ? <span className="portal-row" style={{ gap: '0.5rem' }}><Icon name="database" /><b>{t.schema}</b><span className="portal-muted portal-small">{t.anzahl === 1 ? '1 Tabelle' : `${t.anzahl} Tabellen`}</span></span>
+          : <span className="portal-row" style={{ gap: '0.5rem' }}><Icon name={t.art === 'Tabelle' ? 'table-view' : 'show'} />{t.tabelle}</span>;
+      },
+    },
+    { Header: 'Art', accessor: 'art', width: 110 },
+    { Header: 'Beschreibung', accessor: 'beschreibung', Cell: ({ row, value }: Cell) => ((row.original as Knoten).knoten ? <b>{value}</b> : value ?? '') },
+    { Header: 'Zeilen (ca.)', id: 'zeilen', accessor: (t: Record<string, any>) => Number((t as Tabelle).zeilen), width: 120, hAlign: 'End', Cell: ({ value }: Cell) => zahl(value) },
+    { Header: 'Spalten', accessor: 'spalten', width: 90, hAlign: 'End', Cell: ({ row, value }: Cell) => ((row.original as Knoten).knoten ? '' : value) },
+    { Header: 'Größe', id: 'bytes', accessor: (t: Record<string, any>) => Number((t as Tabelle).bytes), width: 100, hAlign: 'End', Cell: ({ value }: Cell) => groesse(value) },
+  ];
+  // bei einer Suche alle Schemas mit Treffern aufgeklappt, sonst zugeklappt (nur die Schemas sichtbar)
+  const sucheAktiv = begriffe.length > 0;
+  const baumOffen = useMemo(() => (sucheAktiv ? Object.fromEntries(baum.map((_, i) => [String(i), true])) : {}), [sucheAktiv, baum]);
+
   // ------------------------------------------------------------------ Struktur der gewählten Tabelle
   const strukturSpalten: AnalyticalTableColumnDefinition[] = [
     { Header: 'Spalte', accessor: 'name', width: 200 },
@@ -216,7 +252,7 @@ export function TabellenPage() {
   const gruppiert = sel.nach.length > 0 || sel.summen.length > 0;
 
   return (
-    <AppPage varianten={{ repid: 'core.tabellen', ansicht: { wahl, ansicht, suche }, onAnwenden: (a) => { setWahl(feld(a, 'wahl', wahl)); setAnsicht(feld(a, 'ansicht', ansicht)); setSuche(feld(a, 'suche', suche)); } }}
+    <AppPage varianten={{ repid: 'core.tabellen', ansicht: { wahl, ansicht, suche, darstellung }, onAnwenden: (a) => { setWahl(feld(a, 'wahl', wahl)); setAnsicht(feld(a, 'ansicht', ansicht)); setSuche(feld(a, 'suche', suche)); setDarstellung(feld(a, 'darstellung', darstellung)); } }}
       title={struktur ? `Tabellenansicht: ${struktur.schema}.${struktur.tabelle}` : 'Tabellenansicht'}
       subtitle={struktur ? `${zahl(struktur.zeilen)} Einträge · ${spalten.length} Spalten` : liste.data ? `${liste.data.length} Tabellen` : undefined}
       actions={<>
@@ -235,10 +271,25 @@ export function TabellenPage() {
           <div className="portal-row" style={{ marginBottom: '0.5rem' }}>
             <Input data-kein-autofill icon={<Icon name="search" />} placeholder="Suchen: Schema, Tabelle, Beschreibung" value={suche} style={{ width: '22rem' }}
                    onInput={(e) => setSuche(e.target.value)} showClearIcon />
+            <SegmentedButton onSelectionChange={(e) => setDarstellung((e.detail.selectedItems[0] as HTMLElement).dataset.v as 'BAUM')}>
+              <SegmentedButtonItem data-v="BAUM" icon="tree" selected={darstellung === 'BAUM'}>Nach Schema</SegmentedButtonItem>
+              <SegmentedButtonItem data-v="LISTE" icon="list" selected={darstellung === 'LISTE'}>Liste</SegmentedButtonItem>
+            </SegmentedButton>
           </div>
-          <AnalyticalTable columns={uebersicht} data={tabellen} loading={liste.loading} filterable sortable groupable
-                           visibleRowCountMode="Auto" style={{ height: 'calc(100vh - 220px)' }}
-                           onRowClick={(e) => { const t = e.detail.row.original as Tabelle; setWahl(`${t.schema}.${t.tabelle}`); }} />
+          {darstellung === 'BAUM' ? (
+            // neu aufbauen, wenn die Suche beginnt oder endet – dann gilt der passende Aufklappstand
+            <AnalyticalTable key={sucheAktiv ? 'suche' : 'alle'} columns={baumSpalten} data={baum} loading={liste.loading} isTreeTable sortable
+                             reactTableOptions={{ initialState: { expanded: baumOffen }, autoResetExpanded: false } as never}
+                             visibleRowCountMode="Auto" style={{ height: 'calc(100vh - 220px)' }}
+                             onRowClick={(e) => {
+                               const r = e.detail.row as unknown as { original: Knoten; toggleRowExpanded?: () => void };
+                               if (r.original.knoten) r.toggleRowExpanded?.(); else setWahl(`${r.original.schema}.${r.original.tabelle}`);
+                             }} />
+          ) : (
+            <AnalyticalTable columns={uebersicht} data={tabellen} loading={liste.loading} filterable sortable groupable
+                             visibleRowCountMode="Auto" style={{ height: 'calc(100vh - 220px)' }}
+                             onRowClick={(e) => { const t = e.detail.row.original as Tabelle; setWahl(`${t.schema}.${t.tabelle}`); }} />
+          )}
         </>
       )}
 

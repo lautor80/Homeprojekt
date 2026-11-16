@@ -22,8 +22,8 @@ const { sql } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
-const { faellig } = await import('../src/backup-export.js');
-const { davAntwort, davBasis } = await import('../src/lib/webdav.js');
+const { faellig, naechsterVersuch } = await import('../src/backup-export.js');
+const { davAntwort, davBasis, netzUrsache, WebDav } = await import('../src/lib/webdav.js');
 const { entpacken: lesen } = await import('../src/backup.js');
 const { zipSchreiben } = await import('../src/backup-xml.js');
 
@@ -301,6 +301,42 @@ test('Zeitplan: einmal täglich ab der Uhrzeit (Europe/Berlin)', () => {
   assert.equal(faellig({ ...c, letzter_lauf: '2026-11-09T01:45:00Z' }, new Date('2026-11-10T02:00:00Z')), true);
   assert.equal(faellig({ ...c, aktiv: false }, new Date('2026-11-10T02:00:00Z')), false);
   assert.equal(faellig({ ...c, passwort: '' }, new Date('2026-11-10T02:00:00Z')), false, 'unvollständig');
+});
+
+test('Zeitplan: gescheiterter Tageslauf wird am selben Tag 30 Min., 1½ und 3 Std. nach der Uhrzeit wiederholt', () => {
+  // Uhrzeit 00:00 MEZ = 23:00 UTC am Vortag; Lauf um 00:00 gescheitert, letzter Erfolg gestern
+  const c = { aktiv: true, url: 'https://c.de', benutzer: 'u', passwort: 'p', ordner: '/x', uhrzeit: '00:00', format: 'portal' as const, datei_passwort: '', mit_aenderungsbelegen: false, aufbewahrung_tage: 7,
+    letzter_lauf: '2026-11-15T23:00:10Z' as string | null, letzter_erfolg: '2026-11-14T23:03:00Z' as string | null, letzte_meldung: 'Nextcloud nicht erreichbar', letzte_datei: null, letzte_dauer_s: 3, letzter_fehler: true };
+  const um = (utc: string) => new Date(`2026-11-1${utc}Z`);
+  assert.equal(naechsterVersuch(c, um('5T23:10:00')), '00:30');
+  assert.equal(faellig(c, um('5T23:20:00')), false, 'vor 00:30 nicht');
+  assert.equal(faellig(c, um('5T23:30:00')), true, 'um 00:30 neuer Versuch');
+  // der 00:30-Versuch scheiterte ebenfalls → nächster um 01:30, dann 03:00, danach keiner mehr
+  const zweiter = { ...c, letzter_lauf: '2026-11-15T23:30:20Z' };
+  assert.equal(naechsterVersuch(zweiter, um('5T23:40:00')), '01:30');
+  assert.equal(faellig(zweiter, um('6T00:00:00')), false);
+  assert.equal(faellig(zweiter, um('6T00:30:00')), true);
+  const dritter = { ...c, letzter_lauf: '2026-11-16T02:00:30Z' };
+  assert.equal(naechsterVersuch(dritter, um('6T02:10:00')), null, 'nach dem 03:00-Versuch kein weiterer');
+  assert.equal(faellig(dritter, um('6T20:00:00')), false);
+  // erfolgreich oder kein Fehler → keine Wiederholung; am nächsten Tag wieder der normale Lauf
+  assert.equal(faellig({ ...c, letzter_fehler: false }, um('5T23:40:00')), false);
+  assert.equal(faellig({ ...c, letzter_erfolg: '2026-11-15T23:00:50Z' }, um('5T23:40:00')), false);
+  assert.equal(faellig(dritter, um('6T23:00:00')), true, 'nächster Tag');
+  // ein von Hand gestarteter, gescheiterter Lauf am Abend löst keine Wiederholungen aus (alle Zeitpunkte liegen davor)
+  assert.equal(naechsterVersuch({ ...c, letzter_lauf: '2026-11-16T18:00:00Z' }, um('6T19:00:00')), null);
+});
+
+test('WebDAV: Netzfehler nennt die Ursache statt „fetch failed“', async () => {
+  // freier Port, auf dem niemand lauscht → Verbindung abgelehnt
+  const frei = http.createServer();
+  await new Promise<void>((ok) => frei.listen(0, '127.0.0.1', ok));
+  const port = (frei.address() as { port: number }).port;
+  await new Promise((ok) => frei.close(ok));
+  const d = new WebDav(`http://127.0.0.1:${port}`, 'u', 'p', 2000, 1);
+  await assert.rejects(d.liste('/x'), (e: Error) => /Nextcloud nicht erreichbar: Verbindung abgelehnt .*\(ECONNREFUSED\)/.test(e.message));
+  assert.match(netzUrsache(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } })), /DNS.*\(ENOTFOUND\)/);
+  assert.match(netzUrsache(Object.assign(new Error('x'), { name: 'TimeoutError' })), /Zeitüberschreitung/);
 });
 
 test('WebDAV: Adresse und PROPFIND-Antwort', () => {

@@ -173,12 +173,33 @@ export function sicherungStarten(o: { schemas: string[]; mitAenderungsbelegen: b
 // ---------------------------------------------------------------- Zeitplan
 const lokal = (d: Date) => ({ datum: d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }), zeit: d.toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' }) });
 
-/** fällig: aktiv, Uhrzeit erreicht und heute noch nicht gelaufen */
+/**
+ * Wiederholung nach einem Fehlschlag: ist der heutige Lauf gescheitert (z. B. Nextcloud gerade nicht erreichbar), wird er
+ * am selben Tag zu diesen Zeiten nach der eingestellten Uhrzeit erneut versucht – je Zeitpunkt höchstens ein Versuch.
+ */
+export const WIEDERHOLUNG_MIN = [30, 90, 180];
+const minuten = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/** nächster Wiederholungsversuch heute (HH:MM) nach einem gescheiterten Lauf – null, wenn keiner mehr ansteht */
+export function naechsterVersuch(c: ExportCfg & ExportStatus, jetzt = new Date()): string | null {
+  if (!c.aktiv || !c.letzter_fehler || !c.letzter_lauf || cfgPruefen(c).length) return null;
+  const h = lokal(jetzt);
+  const l = lokal(new Date(c.letzter_lauf));
+  // nur der heutige Lauf; heute schon erfolgreich exportiert → nichts zu wiederholen
+  if (l.datum !== h.datum || (c.letzter_erfolg && lokal(new Date(c.letzter_erfolg)).datum === h.datum)) return null;
+  const nach = minuten(l.zeit);
+  const slot = WIEDERHOLUNG_MIN.map((m) => minuten(c.uhrzeit) + m).find((m) => m > nach && m < 24 * 60);
+  return slot === undefined ? null : `${String(Math.floor(slot / 60)).padStart(2, '0')}:${String(slot % 60).padStart(2, '0')}`;
+}
+
+/** fällig: aktiv, Uhrzeit erreicht und heute noch nicht gelaufen – oder der heutige Lauf scheiterte und ein Wiederholungszeitpunkt ist erreicht */
 export function faellig(c: ExportCfg & ExportStatus, jetzt = new Date()): boolean {
   if (!c.aktiv || cfgPruefen(c).length) return false;
   const h = lokal(jetzt);
   if (h.zeit < c.uhrzeit) return false;
-  return !c.letzter_lauf || lokal(new Date(c.letzter_lauf)).datum !== h.datum;
+  if (!c.letzter_lauf || lokal(new Date(c.letzter_lauf)).datum !== h.datum) return true;
+  const w = naechsterVersuch(c, jetzt);
+  return !!w && h.zeit >= w;
 }
 
 let planer: ReturnType<typeof setInterval> | null = null;
@@ -190,13 +211,13 @@ export function planerStarten(log: FastifyBaseLogger) {
     try {
       const c = await cfgLesen();
       if (!faellig(c) || laufend()) return;
-      // mehrere Instanzen: den Tageslauf atomar beanspruchen – nur eine exportiert
-      const heute = lokal(new Date()).datum;
+      // mehrere Instanzen: den Lauf atomar beanspruchen – nur wer den gelesenen Stand noch vorfindet, exportiert
       const [frei] = await sql`update core.backup_export set letzter_lauf = now()
-                                where id = 1 and (letzter_lauf is null or (letzter_lauf at time zone 'Europe/Berlin')::date <> ${heute}::date)
+                                where id = 1 and date_trunc('milliseconds', letzter_lauf) is not distinct from ${c.letzter_lauf}::timestamptz
                                 returning id`;
       if (!frei) return;
-      log.info('Täglicher Nextcloud-Export startet');
+      const wiederholung = !!c.letzter_lauf && lokal(new Date(c.letzter_lauf)).datum === lokal(new Date()).datum;
+      log.info(wiederholung ? 'Täglicher Nextcloud-Export: neuer Versuch nach Fehlschlag' : 'Täglicher Nextcloud-Export startet');
       const j = exportStarten(c, 'system (täglicher Nextcloud-Export)');
       while (!(j.phase === 'fertig' || j.phase === 'fehler')) await new Promise((r) => setTimeout(r, 2000));
       if (j.fehler) log.warn({ fehler: j.fehler }, 'Nextcloud-Export fehlgeschlagen'); else log.info(j.ergebnis, 'Nextcloud-Export fertig');
