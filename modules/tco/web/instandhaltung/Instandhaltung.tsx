@@ -166,7 +166,7 @@ function Meldungen({ onError }: { onError: (e: string) => void }) {
           <Button design="Transparent" icon="refresh" tooltip="Neu laden" onClick={laden} />
         </div>
       </div>
-      {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
+      {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (<>
         <div className="portal-ih__rahmen">
           <table className="portal-ih__tabelle portal-ih__liste">
             <thead>
@@ -201,9 +201,9 @@ function Meldungen({ onError }: { onError: (e: string) => void }) {
               {!zeilen.length && <tr><td colSpan={SPALTEN.length} className="portal-muted">{basis.length ? 'Keine Meldung passt zu den Filtern.' : a.alle ? 'Noch keine Schadensmeldungen.' : 'Keine offenen Schadensmeldungen – alles in Ordnung.'}</td></tr>}
             </tbody>
           </table>
-          <Text className="portal-muted portal-small">{zeilen.length} von {basis.length} Meldung(en)</Text>
         </div>
-      )}
+        <Text className="portal-muted portal-small">{zeilen.length} von {basis.length} Meldung(en)</Text>
+      </>)}
       {sichern && (
         <VarianteDialog ansicht={a} vorschlag={variante} admin={can('tco.instandhaltung:admin')} onClose={(v) => {
           setSichern(false);

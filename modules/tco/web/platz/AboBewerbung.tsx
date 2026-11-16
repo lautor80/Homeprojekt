@@ -38,7 +38,7 @@ const STATUS: Record<string, string> = {
 
 function Tabelle({ kopf, children }: { kopf: string[]; children: ReactNode }) {
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="portal-tabrahmen">
       <table className="portal-sd__tabelle"><thead><tr>{kopf.map((k, i) => <th key={i}>{k}</th>)}</tr></thead><tbody>{children}</tbody></table>
     </div>
   );
@@ -322,7 +322,7 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
             {zeilen.length !== basis.length && <Text className="portal-muted">{zeilen.length} von {basis.length}</Text>}
           </span>
           {basis.length ? (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="portal-tabrahmen">
               <table className="portal-sd__tabelle">
                 <thead>
                   <tr>

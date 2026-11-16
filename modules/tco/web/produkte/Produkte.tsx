@@ -168,7 +168,7 @@ function ProdukteTabelle() {
             <CheckBox text="nur gültige und künftige" checked={nurAktuell} onChange={(e) => setNurAktuell(e.target.checked)} />
           </div>
         }>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="portal-tabrahmen">
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead><tr>{['Schlüssel', 'Bereich', 'Bezeichnung', 'Gültig ab', 'Gültig bis', 'Preis', 'Gästepreis', 'Erlöskonto', 'Status', ''].map((h) =>
                 <th key={h} style={kopf}><Label>{h}</Label></th>)}</tr></thead>
@@ -274,6 +274,7 @@ function BereichKonto({ d, onClose, onDone }: { d: Daten; onClose: () => void; o
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <div className="portal-tabrahmen">
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead><tr><th style={kopf}><Label>Bereich</Label></th><th style={kopf}><Label>Produkte</Label></th><th style={kopf}><Label>bisher</Label></th><th style={kopf}><Label>neues Erlöskonto</Label></th></tr></thead>
         <tbody>
@@ -300,6 +301,7 @@ function BereichKonto({ d, onClose, onDone }: { d: Daten; onClose: () => void; o
           })}
         </tbody>
       </table>
+      </div>
       <CheckBox text="nur Produkte ohne eigenes Erlöskonto" checked={nurOhne} onChange={(e) => setNurOhne(e.target.checked)} style={{ marginTop: '0.5rem' }} />
       <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.25rem' }}>
         Gilt für alle Zeiträume der Produkte. Einzelne Produkte lassen sich danach weiterhin abweichend pflegen.
