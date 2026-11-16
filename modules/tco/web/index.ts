@@ -11,6 +11,7 @@ import { MeinVerzehr } from './verzehr/MeinVerzehr';
 import { Theke } from './verzehr/Theke';
 import { Verzehrbuch, VerzehrKapitel } from './verzehr/Verzehrbuch';
 import { Kalender } from './kalender/Kalender';
+import { Checklisten } from './checklisten/Checklisten';
 import { Mitglieder } from './mitglieder/Mitglieder';
 import { Gruppen } from './gruppen/Gruppen';
 import { Rundschreiben } from './rundschreiben/Rundschreiben';
@@ -139,6 +140,7 @@ const mod: WebModule = {
         { text: 'Vereinsübersicht', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
         { text: 'Präsentationen', icon: 'ppt-attachment', path: '/tco/praesentationen', permission: 'tco.praesentation:display' },
         { text: 'Vereinskalender', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
+        { text: 'Checklisten', icon: 'activities', path: '/tco/checklisten', permission: 'tco.checklisten:display' },
         // Mein Bereich (#232, N1): alles, was jemand für sich selbst tut – die Fachgruppen darunter enthalten nur noch Verwaltung
         {
           text: 'Mein Bereich', icon: 'person-placeholder',
@@ -246,6 +248,7 @@ const mod: WebModule = {
     { path: '/tco/jugendtraining', component: Jugendtraining, permission: 'tco.jt:display' },
     { path: '/tco/clubhaus', component: Clubhaus, permission: 'tco.clubhaus:display' },
     { path: '/tco/kalender', component: Kalender, permission: 'tco.kalender:anmelden|tco.kalender:edit' },
+    { path: '/tco/checklisten', component: Checklisten, permission: 'tco.checklisten:display' },
     { path: '/tco/verzehr', component: MeinVerzehr, permission: 'tco.verzehr:edit' },
     { path: '/tco/theke', component: Theke, permission: 'tco.verzehr:theke' },
     { path: '/tco/verzehrbuch', component: Verzehrbuch, permission: 'tco.verzehr:display' },
@@ -311,6 +314,7 @@ const mod: WebModule = {
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display', kpi: kpiClubhaus },
     { text: 'Vereinskalender', subtitle: 'Veranstaltungen, Mannschaften, An- und Abmeldung', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
+    { text: 'Checklisten', subtitle: 'Veranstaltungen vorbereiten: Schritte, Verantwortliche, Termine', icon: 'activities', path: '/tco/checklisten', permission: 'tco.checklisten:display' },
     { text: 'Mein Verzehr', subtitle: 'Verzehr im Clubhaus auf das eigene Konto anschreiben', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
     { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
     { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },

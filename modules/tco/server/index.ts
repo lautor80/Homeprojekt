@@ -40,6 +40,7 @@ import { ichLesen, QUELLE } from './platz/logik.js';
 import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
+import { checklistenRoutes, P_CL } from './checklisten/routes.js';
 import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { mailPersonen } from './mailpersonen.js';
 import { mailGesperrt, mailUnzustellbar } from './emailsperre.js';
@@ -157,6 +158,7 @@ async function routes(app: FastifyInstance) {
   await clubhausRoutes(app);
   await verzehrRoutes(app);
   await kalenderRoutes(app);
+  await checklistenRoutes(app);
   await mitgliederRoutes(app);
   await gruppenRoutes(app);
   await rundschreibenRoutes(app);
@@ -197,6 +199,8 @@ const tco: ServerModule = {
     { area: 'Allgemein', app: 'Präsentationen', id: P_PRAES.edit, text: 'PowerPoint-Vorlagen für Präsentationen hochladen und löschen', requires: [P_PRAES.display] },
     { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.anmelden, text: 'Vereinskalender anzeigen und sich selbst zu Veranstaltungen an- bzw. abmelden (nur das dem Benutzer zugeordnete Mitglied)' },
     { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Einladungen per E-Mail versenden, Gruppen/Mannschaften pflegen' },
+    { area: 'Allgemein', app: 'Checklisten', id: P_CL.display, text: 'Checklisten für Veranstaltungen ansehen und als PDF drucken: Schritte, Verantwortliche, Fälligkeiten und Stand je Veranstaltung' },
+    { area: 'Allgemein', app: 'Checklisten', id: P_CL.edit, text: 'Checklisten pflegen: anlegen, ändern, kopieren und löschen, Schritte und Kategorien pflegen, Veranstaltungen und Termine zuordnen, Schritte abhaken', requires: [P_CL.display] },
 
     // Mein Bereich (#232, N1): was ein Mitglied, Hallennutzer oder Trainer für sich selbst tut – im Menü an einer Stelle
     { area: 'Mein Bereich', app: 'Meine Daten', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
@@ -392,6 +396,8 @@ const tco: ServerModule = {
     { type: 'KAL_EVENT', text: 'Veranstaltung (Vereinskalender)', permission: P_KAL.edit },
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
+    { type: 'CL_CHECKLISTE', text: 'Checkliste (Kopf, Schritte, Veranstaltungen, Stand)', permission: P_CL.display },
+    { type: 'CL_KATEGORIE', text: 'Kategorie einer Checkliste', permission: P_CL.display },
     { type: 'KAL_EINLADUNG', text: 'Einladung zu einer Veranstaltung (Versand)', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
     { type: 'MG_FAMILIE', text: 'Familienverknüpfung zwischen zwei Personen', permission: P_MG.display },
