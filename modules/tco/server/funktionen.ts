@@ -14,6 +14,7 @@ export const F_EP3_IMPORT = 'tco.halle.ep3import';
 export const F_BANKIMPORT = 'tco.fi.bankimport';
 export const F_MANUELL = 'tco.fi.manuell';
 export const F_JT_IMPORT = 'tco.jt.import';
+export const F_ZAEHLER_IMPORT = 'tco.zaehler.import';
 
 export const TCO_FUNKTIONEN: FunktionDef[] = [
   // ---------------------------------------------------------------- öffentliche Formulare (ohne Anmeldung, also ohne Recht)
@@ -138,6 +139,11 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     id: F_JT_IMPORT, app: 'Abrechnung Jugendtraining', text: 'Import Trainerstunden',
     beschreibung: 'Knopf „Importieren“ oben rechts: Stundenrückmeldungen der Trainer aus der Nextcloud bzw. als Datei einlesen.',
     routen: ['POST /jt/import', 'POST /jt/import/nextcloud'],
+  },
+  {
+    id: F_ZAEHLER_IMPORT, app: 'Zählerstände', text: 'CSV-Import',
+    beschreibung: 'Zählerstände aus einer CSV-Datei (Zähler; Datum; Stand; Art; Notiz) prüfen und die fehlerfreien Zeilen übernehmen.',
+    routen: ['POST /zaehler/import'],
   },
   {
     id: F_BANKIMPORT, app: 'FI-Belege', text: 'Bankimport',

@@ -10,7 +10,7 @@
  *                 neue Mitgliedsanträge und Vertragswechsel – je Antrag
  *  - Vorstand:    neue Registrierungen und deren Freigabe; Kündigungen der Mitglieder freigeben, Bestätigung prüfen und senden (#232)
  *  - Hallenwart:  Halle aufsperren (Buchungen ohne Hallenschlüssel)
- *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung
+ *  - Instandhaltung: jede offene Schadensmeldung einzeln (#205), farbig nach Auswirkung; Zähler ablesen (überfällig) und überschrittene Jahresziele
  *  - Dokumente:   Dokumenteneingang – Vorgänge mit Fehler und zu prüfende
  *  - Clubhaus: wie bisher (Einträge der Administration liefert der Kern)
  *  - dazu gemeldete Ereignisse (Hinweise, server/src/lib/hinweise.ts) unter der Zuständigkeit, die die meldende Stelle nennt
@@ -21,6 +21,8 @@ import type { Db } from '../verein.js';
 import { monatsname } from '../jt/logik.js';
 import { ADRNR_ZU_BENUTZER, HALLENWART } from '../platz/schluessel.js';
 import { aufgaben as ihAufgaben, P_IH } from '../instandhaltung/logik.js';
+import { aufgaben as zaehlerAufgaben, P_ZAEHLER } from '../zaehler/daten.js';
+import { heute } from '../format.js';
 import { aufgaben as schluesselAufgaben, P_SCHL } from '../schluessel/logik.js';
 import { aufgaben as haushaltAufgaben, cfgLesen as haushaltCfg, F_UEBERWACHUNG } from '../haushalt/logik.js';
 import { projektAufgaben } from '../haushalt/projekte.js';
@@ -44,6 +46,8 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
 
   // Instandhaltung (#205): jede offene Schadensmeldung sofort und einzeln – Sicherheitsrisiko rot, unbespielbar orange
   if (can(req, P_IH.display)) out.push(...await ihAufgaben(db));
+  // Zählerstände: überfällige Ablesungen (wer erfassen darf) und Hochrechnungen über dem Jahresziel (wer ansehen darf)
+  if (can(req, P_ZAEHLER.display)) out.push(...await zaehlerAufgaben(db, { ablesen: can(req, P_ZAEHLER.edit), ziel: true }, heute()));
 
   // Hallenschlüssel (#215): Ausgaben ohne Quittung nach der Frist, unbestätigte Rückgaben, Ausgetretene mit Schlüssel
   if (can(req, P_SCHL.display)) out.push(...await schluesselAufgaben(db));

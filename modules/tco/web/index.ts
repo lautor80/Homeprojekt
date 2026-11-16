@@ -52,6 +52,9 @@ import { Serienbuchung } from './platz/Serienbuchung';
 import { Dokumenteneingang } from './eingang/Dokumenteneingang';
 import { SchadenMelden } from './instandhaltung/SchadenMelden';
 import { Instandhaltung, InstandhaltungKapitel, InstandhaltungPaperless } from './instandhaltung/Instandhaltung';
+import { Zaehlerstaende } from './zaehler/Zaehlerstaende';
+import { ZaehlerDetail } from './zaehler/ZaehlerDetail';
+import { ZaehlerErfassen } from './zaehler/ZaehlerErfassen';
 import { Hallenschluessel, SchluesselKapitel } from './schluessel/Hallenschluessel';
 import { SchluesselQuittung } from './schluessel/SchluesselQuittung';
 import { MahnKapitel, Mahnwesen } from './mahnung/Mahnwesen';
@@ -73,6 +76,12 @@ const kpiSchaden = async (): Promise<TileKpi> => {
   const l = await api.get<{ zeilen: { auswirkung: string }[] }>(`${TCO}/instandhaltung?filter=OFFEN`);
   const sicher = l.zeilen.some((z) => z.auswirkung === 'SICHERHEIT');
   return { value: String(l.zeilen.length), label: 'offen', state: sicher ? 'Negative' : l.zeilen.length ? 'Critical' : 'Positive' };
+};
+// Zählerstände: Zähler, deren Ablesung überfällig ist (letzte Ablesung + Intervall überschritten)
+const kpiZaehler = async (): Promise<TileKpi> => {
+  const l = await api.get<{ zeilen: { aktiv: boolean; kennzahlen: { ueberfaellig: boolean } }[] }>(`${TCO}/zaehler`);
+  const n = l.zeilen.filter((z) => z.aktiv && z.kennzahlen.ueberfaellig).length;
+  return { value: String(n), label: n === 1 ? 'Ablesung überfällig' : 'Ablesungen überfällig', state: n > 0 ? 'Negative' : 'Positive' };
 };
 const kpiHalle = async (): Promise<TileKpi> => {
   const l = await api.get<{ personen: unknown[]; gesamtOffen: number }>(`${H}/personen?status=1,2,3,5&buchungen=1`);
@@ -210,6 +219,7 @@ const mod: WebModule = {
           text: 'Instandhaltung', icon: 'technical-object',
           children: [
             { text: 'Schadensmeldungen', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display' },
+            { text: 'Zählerstände', icon: 'measuring-point', path: '/tco/zaehler', permission: 'tco.zaehler:display' },
           ],
         },
         {
@@ -287,12 +297,17 @@ const mod: WebModule = {
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
     { path: '/tco/schaden', component: SchadenMelden, permission: 'tco.schaden:melden' },
     { path: '/tco/instandhaltung', component: Instandhaltung, permission: 'tco.instandhaltung:display' },
+    { path: '/tco/zaehler', component: Zaehlerstaende, permission: 'tco.zaehler:display' },
+    // QR-Code am Zähler; feste Pfade gehen im Router ohnehin vor „:id“ – steht trotzdem davor
+    { path: '/tco/zaehler/erfassen', component: ZaehlerErfassen, permission: 'tco.zaehler:edit' },
+    { path: '/tco/zaehler/:id', component: ZaehlerDetail, permission: 'tco.zaehler:display' },
     { path: '/tco/hallenschluessel', component: Hallenschluessel, permission: 'tco.schluessel:display' },
     { path: '/tco/mahnwesen', component: Mahnwesen, permission: 'tco.mahnung:display' },
   ],
   // QR-Code an der Anlage: nach der Anmeldung direkt zum vorbelegten Formular
   // Einladungslink einer Veranstaltung (/tco/kalender?veranstaltung=…): nach der Anmeldung direkt dorthin
-  nachAnmeldung: ['/tco/schaden', '/tco/kalender'],
+  // QR-Code am Zähler (/tco/zaehler/erfassen?zaehler=…): nach der Anmeldung direkt zur Erfassung
+  nachAnmeldung: ['/tco/schaden', '/tco/kalender', '/tco/zaehler/erfassen'],
   oeffentlich: [
     { pfad: '/beitritt', component: Beitritt },
     { pfad: '/schnuppertraining', component: Schnuppertraining },
@@ -329,6 +344,7 @@ const mod: WebModule = {
     { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
     { text: 'Schaden melden', subtitle: 'Etwas kaputt auf der Anlage? Mit Foto melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
     { text: 'Schadensmeldungen', subtitle: 'Meldungen bearbeiten, Plätze sperren', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display', kpi: kpiSchaden },
+    { text: 'Zählerstände', subtitle: 'Strom, Gas, Wasser erfassen und auswerten', icon: 'measuring-point', path: '/tco/zaehler', permission: 'tco.zaehler:display', kpi: kpiZaehler },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
     { text: 'FI-Belege', subtitle: 'Bankimport, Belege, Storno', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
     { text: 'Mahnwesen', subtitle: 'Zahlungserinnerungen und Mahnungen, Vorschlag und Läufe, Mahnsperren', icon: 'monitor-payments', path: '/tco/mahnwesen', permission: 'tco.mahnung:display' },
