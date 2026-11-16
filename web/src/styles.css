@@ -803,3 +803,21 @@ ui5-busy-indicator { max-width: 100%; }
 
 /* Dialog-Fußzeile mit mehreren Knöpfen: umbrechen statt abschneiden (components/DialogFuss.tsx) */
 .portal-dialogfuss { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box; padding: 0.5rem 0; }
+
+/* ---------------------------------------------------------------------------
+   Fixierter Tabellenkopf (portalweit)
+   Jede Tabelle rollt in ihrem eigenen Rahmen, der höchstens so hoch ist wie der sichtbare Seitenbereich –
+   die Kopfzeile bleibt darin stehen. Der Seitenrahmen (DynamicPage) rollt in einem eigenen Container;
+   ein „sticky“ Kopf ohne eigenen Rahmen würde hinter dem Seitentitel verschwinden.
+   - HTML-Tabellen:  <div class="portal-tabrahmen"><table>…<thead>…</thead>…</table></div>
+   - AnalyticalTable: ohne Zutun – der Tabellenkörper wird auf dieselbe Höhe begrenzt, der Kopf steht ohnehin fest.
+   --portal-tabhoehe lässt sich je Bereich überschreiben (z. B. in Dialogen oder neben einer festen Leiste).
+   --------------------------------------------------------------------------- */
+:root { --portal-tabhoehe: calc(100vh - 13rem); }
+ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
+/* sehr niedrige Fenster (Telefon quer): kein eigener Rahmen, sonst bliebe nur ein Schlitz */
+@media (max-height: 34rem) { :root, ui5-dialog { --portal-tabhoehe: none; } }
+.portal-tabrahmen { overflow: auto; max-width: 100%; max-height: var(--portal-tabhoehe); }
+.portal-tabrahmen > table > thead { position: sticky; top: 0; z-index: 2; }
+.portal-tabrahmen > table > thead th { background: var(--sapList_HeaderBackground, #f5f6f7); box-shadow: inset 0 -1px 0 var(--sapList_BorderColor); }
+[data-component-name="AnalyticalTableBody"] { max-height: var(--portal-tabhoehe) !important; }
