@@ -1,0 +1,436 @@
+<title>Checklisten Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: Fiori-Seite wie im Portal – Seitentitel mit Aktionen, darunter eine Karte mit dem Baum (Kategorie → Checkliste → Schritt);
+   Klick auf eine Checkliste wechselt in die Ansicht zum Abhaken je Veranstaltung. Import als Dialog mit vier Schritten. */
+:root {
+  --bg: #f5f6f7; --surface: #ffffff; --surface-2: #f2f4f6; --text: #1d2d3e; --label: #556b82; --border: #d5dadd;
+  --brand: #0070f2; --brand-ink: #ffffff; --shell: #ffffff; --hover: #eaecee; --auswahl: #e8f1fd;
+  --positive: #256f3a; --positive-bg: #ebf5ec; --critical: #b44f00; --critical-bg: #fff3e0;
+  --negative: #aa0808; --negative-bg: #ffeaea; --info: #0064d9; --info-bg: #e8f1fd; --schleier: rgba(29, 45, 62, 0.45);
+  --font: "72", "72full", Arial, Helvetica, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171c; --surface: #1d232a; --surface-2: #252d36; --text: #f5f6f7; --label: #a9b4be; --border: #3b4652;
+  --brand: #4db1ff; --brand-ink: #0a1620; --shell: #1d232a; --hover: #2a333d; --auswahl: #142a44;
+  --positive: #6fcf86; --positive-bg: #17301e; --critical: #ffb45c; --critical-bg: #3a2a12;
+  --negative: #ff8f8f; --negative-bg: #3b1a1a; --info: #7cbcff; --info-bg: #142a44; --schleier: rgba(0, 0, 0, 0.6); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171c; --surface: #1d232a; --surface-2: #252d36; --text: #f5f6f7; --label: #a9b4be; --border: #3b4652;
+  --brand: #4db1ff; --brand-ink: #0a1620; --shell: #1d232a; --hover: #2a333d; --auswahl: #142a44;
+  --positive: #6fcf86; --positive-bg: #17301e; --critical: #ffb45c; --critical-bg: #3a2a12;
+  --negative: #ff8f8f; --negative-bg: #3b1a1a; --info: #7cbcff; --info-bg: #142a44; --schleier: rgba(0, 0, 0, 0.6); color-scheme: dark }
+
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 0 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.shell { background: var(--shell); border-bottom: 1px solid var(--border); }
+.shell .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; flex-wrap: wrap; }
+.shell b { font-size: 16px; } .shell span { color: var(--label); }
+.hinweis { background: var(--info-bg); border: 1px solid var(--info); border-radius: 8px; padding: 8px 12px; margin-top: 16px; }
+.kopf { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; padding-block: 20px 4px; }
+h1 { font-size: 24px; font-weight: 700; margin: 0; text-wrap: balance; }
+.unter { color: var(--label); margin-top: 2px; }
+.reihe { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.reihe .frei { flex: 1; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.knopf { border-radius: 8px; padding: 6px 14px; border: 1px solid var(--brand); background: var(--surface); color: var(--brand); white-space: nowrap; }
+.knopf.haupt { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
+.knopf.still { border-color: transparent; background: transparent; }
+.knopf:disabled { opacity: 0.45; cursor: default; }
+.ik { border: 0; background: transparent; color: var(--brand); border-radius: 6px; width: 30px; height: 30px; font-size: 15px; line-height: 1; }
+.ik:hover, .knopf.still:hover { background: var(--hover); }
+input[type="text"], input[type="number"], input[type="date"], select, textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.karte { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-top: 16px; min-width: 0; }
+.karte > header { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.karte h2 { font-size: 16px; margin: 0; } .karte h2 span { color: var(--label); font-weight: 400; }
+.karte .inhalt { padding: 12px 16px; }
+.ziehhinweis { margin: 0 0 8px; padding: 6px 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--label); font-size: 12px; }
+.roll { overflow: auto; max-height: 70vh; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+thead { position: sticky; top: 0; z-index: 2; }
+th { color: var(--label); font-weight: 400; font-size: 12px; background: var(--surface-2); }
+td.ende, th.ende { text-align: right; }
+.zelle { display: flex; align-items: center; gap: 6px; min-height: 30px; border-radius: 4px; }
+.zelle[draggable="true"] { cursor: grab; }
+.zelle .auf { border: 0; background: transparent; color: var(--label); width: 22px; height: 22px; font-size: 11px; border-radius: 4px; }
+.zelle .auf:hover { background: var(--hover); }
+.zelle .leer { display: inline-block; width: 22px; }
+.zelle .zusatz { color: var(--label); font-size: 12px; overflow: hidden; text-overflow: ellipsis; max-width: 12rem; }
+.zelle .link { border: 0; background: none; padding: 0; color: var(--brand); font-weight: 700; }
+.zelle .link:hover { text-decoration: underline; }
+.sym { width: 18px; text-align: center; color: var(--label); }
+tr.ziel > td:first-child .zelle { outline: 2px dashed var(--brand); outline-offset: -2px; background: var(--hover); }
+tr.kat td { background: var(--surface-2); }
+.grau { color: var(--label); }
+.status { display: inline-block; border-radius: 10px; padding: 1px 9px; font-size: 12px; font-weight: 700; margin-left: 6px; }
+.status.gut { background: var(--positive-bg); color: var(--positive); }
+.status.warn { background: var(--critical-bg); color: var(--critical); }
+.status.schlecht { background: var(--negative-bg); color: var(--negative); }
+.bezuege { display: flex; flex-wrap: wrap; gap: 8px; }
+.bezug { display: flex; flex-direction: column; gap: 2px; min-width: 170px; max-width: 280px; padding: 8px 12px; text-align: left; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); }
+.bezug[aria-pressed="true"] { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); background: var(--auswahl); }
+.bezug small { color: var(--label); }
+.balken { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-top: 4px; }
+.balken i { display: block; height: 100%; background: var(--positive); }
+.drei { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 20px; }
+.drei .l { color: var(--label); font-size: 12px; }
+tr.erledigt .titel { text-decoration: line-through; color: var(--label); }
+td.name { white-space: normal; min-width: 200px; } td.name small { display: block; color: var(--label); }
+.titel { font-weight: 700; }
+.schleier { position: fixed; inset: 0; background: var(--schleier); display: flex; align-items: center; justify-content: center; z-index: 20;
+  padding: 16px; padding-top: max(16px, env(safe-area-inset-top, 0px)); padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+.dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: min(960px, 100%); max-height: 100%; display: flex; flex-direction: column; }
+.dialog > header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 16px; }
+.dialog > .inhalt { padding: 12px 16px; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.dialog > footer { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.dialog.schmal { width: min(560px, 100%); }
+.schritte { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 0; padding: 0 0 8px; border-bottom: 1px solid var(--border); color: var(--label); font-size: 12px; }
+.schritte li { display: flex; align-items: center; gap: 6px; }
+.schritte b { display: inline-flex; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--label); align-items: center; justify-content: center; font-weight: 400; }
+.schritte li.aktiv { color: var(--text); font-weight: 700; } .schritte li.aktiv b { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.meldung { border-radius: 8px; padding: 8px 12px; border: 1px solid; }
+.meldung.fehler { background: var(--negative-bg); border-color: var(--negative); }
+.meldung.info { background: var(--info-bg); border-color: var(--info); }
+.meldung.gut { background: var(--positive-bg); border-color: var(--positive); }
+.feld { display: flex; flex-direction: column; gap: 3px; } .feld > span { color: var(--label); font-size: 12px; }
+.feld input, .feld select { width: 100%; box-sizing: border-box; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; z-index: 30; max-width: calc(100% - 32px); }
+@media (prefers-reduced-motion: no-preference) { .balken i { transition: width 0.2s; } }
+</style>
+
+<div class="shell"><div class="wrap"><b>TC Oberthal · Vereinsportal</b><span>TC Oberthal → Checklisten</span></div></div>
+<div class="wrap">
+  <div class="hinweis"><b>Mockup mit Beispieldaten.</b> Alles hier ist bedienbar, gespeichert wird nichts: Zeilen im Baum ziehen, Checkliste anklicken und Schritte abhaken, „Importieren“ mit einer Tabelle aus Excel ausprobieren.</div>
+  <div id="seite"></div>
+</div>
+<div id="dialog"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+// ------------------------------------------------------------------ Beispieldaten (Termine relativ zu heute)
+const tag = (n) => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return d; };
+const dat = (d) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+let nr = 100;
+const S = (titel, tage, wer = '', hinweis = '') => ({ id: ++nr, titel, tage, wer, hinweis });
+const daten = {
+  kategorien: [{ id: 1, name: 'Vereinsfest' }, { id: 2, name: 'Turnier' }, { id: 3, name: 'Arbeitseinsatz' }],
+  checklisten: [
+    { id: 1, kat: 1, titel: 'Sommerfest vorbereiten', wer: 'Petra Klein', beschr: 'Ablauf wie jedes Jahr – Budget laut Vorstandsbeschluss.',
+      schritte: [S('Getränke bestellen', 14, 'Thekenwart', 'Bestellliste vom Vorjahr als Grundlage'), S('Helferliste aushängen', 9), S('Zelt und Bänke aufbauen', 1, '', 'Zelt liegt im Geräteraum'), S('Kasse vorbereiten', 0), S('Abrechnung an den Kassenwart', -7)],
+      events: [{ id: 1, titel: 'Sommerfest', termin: tag(10), ort: 'Clubhaus', erledigt: {} }, { id: 2, titel: 'Saisonabschluss', termin: tag(75), ort: 'Clubhaus', erledigt: {} }] },
+    { id: 2, kat: 2, titel: 'Jugendturnier ausrichten', wer: 'Jonas Weber', beschr: '',
+      schritte: [S('Ausschreibung veröffentlichen', 42, 'Jugendwart'), S('Meldeliste schließen und auslosen', 5), S('Plätze abziehen und Netze prüfen', 0, 'Platzwart'), S('Pokale und Urkunden besorgen', 10), S('Ergebnisse an den Verband melden', -2)],
+      events: [{ id: 3, titel: 'Jugend-Clubmeisterschaft', termin: tag(4), ort: 'Anlage', erledigt: {} }] },
+    { id: 3, kat: 2, titel: 'Medenspiel Heimspiel', wer: 'Mannschaftsführer', beschr: 'Gilt für jedes Heimspiel der Saison.',
+      schritte: [S('Bälle und Spielberichtsbogen bereitlegen', 1), S('Verpflegung organisieren', 3), S('Ergebnis online eintragen', -1)],
+      events: [{ id: 4, titel: 'Herren 40 – TC Namborn', termin: tag(6), ort: 'Anlage', erledigt: {} }, { id: 5, titel: 'Damen – TV Tholey', termin: tag(13), ort: 'Anlage', erledigt: {} }, { id: 6, titel: 'Herren 40 – TC Marpingen', termin: tag(27), ort: 'Anlage', erledigt: {} }] },
+    { id: 4, kat: 3, titel: 'Frühjahrsputz', wer: 'Platzwart', beschr: '', schritte: [S('Helfer einladen', 21, '', 'per Rundschreiben'), S('Container bestellen', 14, 'Kassenwart'), S('Geräte prüfen', 7)], events: [] },
+  ],
+};
+daten.checklisten[0].events[0].erledigt[daten.checklisten[0].schritte[0].id] = 'Thekenwart';
+daten.checklisten[1].events[0].erledigt[daten.checklisten[1].schritte[0].id] = 'Jugendwart';
+daten.checklisten[2].events[0].erledigt[daten.checklisten[2].schritte[1].id] = 'Mannschaftsführer';
+
+const ansicht = { offen: null, bezug: null, suche: '', schritte: true, nurOffen: false, auf: new Set(['k1', 'k2', 'k3', 'c1']) };
+let gezogen = null, imp = null, form = null;
+
+// ------------------------------------------------------------------ Rechnen
+const terminText = (t) => (t == null ? '' : t === 0 ? 'am Tag der Veranstaltung' : `${Math.abs(t)} Tag${Math.abs(t) === 1 ? '' : 'e'} ${t > 0 ? 'vorher' : 'danach'}`);
+const faellig = (s, e) => { if (s.tage == null) return null; const d = new Date(e.termin); d.setDate(d.getDate() - s.tage); return d; };
+function stand(s, e) {
+  if (e.erledigt[s.id]) return 'ERLEDIGT';
+  const f = faellig(s, e); if (!f) return 'OFFEN';
+  const heute = tag(0); if (f < heute) return 'UEBERFAELLIG';
+  return f <= tag(7) ? 'BALD' : 'OFFEN';
+}
+function fortschritt(c, events = c.events) {
+  const f = { gesamt: 0, erledigt: 0, ueberfaellig: 0, bald: 0 };
+  for (const e of events) for (const s of c.schritte) { const st = stand(s, e); f.gesamt++; if (st === 'ERLEDIGT') f.erledigt++; if (st === 'UEBERFAELLIG') f.ueberfaellig++; if (st === 'BALD') f.bald++; }
+  return f;
+}
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const standHtml = (f) => !f.gesamt ? '<span class="grau">–</span>' : `${f.erledigt} von ${f.gesamt}` +
+  (f.ueberfaellig ? `<span class="status schlecht">${f.ueberfaellig} überfällig</span>` : f.bald ? `<span class="status warn">${f.bald} bald fällig</span>` : f.erledigt === f.gesamt ? '<span class="status gut">fertig</span>' : '');
+function toast(text) { const t = document.getElementById('toast'); t.textContent = text; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2600); }
+const cl = (id) => daten.checklisten.find((c) => c.id === id);
+
+// ------------------------------------------------------------------ Baum
+function baumZeilen() {
+  const such = ansicht.suche.trim().toLowerCase();
+  const passt = (...t) => t.some((x) => x && x.toLowerCase().includes(such));
+  const zeilen = [];
+  for (const k of [...daten.kategorien, { id: 0, name: 'Ohne Kategorie' }]) {
+    const kPasst = !such || passt(k.name);
+    const kinder = [];
+    for (const c of daten.checklisten.filter((x) => (x.kat || 0) === k.id)) {
+      const f = fortschritt(c);
+      if (ansicht.nurOffen && !(f.gesamt > f.erledigt)) continue;
+      const cPasst = kPasst || passt(c.titel, c.beschr, c.wer, ...c.events.map((e) => e.titel));
+      const schritte = c.schritte.filter((s) => cPasst || passt(s.titel, s.hinweis, s.wer));
+      if (!cPasst && !schritte.length) continue;
+      kinder.push({ art: 'C', id: `c${c.id}`, c, k, kinder: ansicht.schritte || (such && !cPasst) ? schritte.map((s) => ({ art: 'S', id: `s${s.id}`, c, s })) : [] });
+    }
+    if (!kinder.length && (such ? !kPasst : ansicht.nurOffen)) continue;
+    zeilen.push({ art: 'K', id: `k${k.id}`, k, kinder });
+  }
+  return zeilen;
+}
+function baumHtml() {
+  const such = !!ansicht.suche.trim();
+  const zeile = (z, tiefe) => {
+    const offen = such || ansicht.auf.has(z.id);
+    const pfeil = z.kinder && z.kinder.length ? `<button class="auf" data-auf="${z.id}" aria-label="${offen ? 'zuklappen' : 'aufklappen'}">${offen ? '▼' : '▶'}</button>` : '<span class="leer"></span>';
+    const ein = `style="padding-left:${tiefe * 22}px"`;
+    let erste, wer = '', termin = '', st = '', akt = '';
+    if (z.art === 'K') {
+      erste = `<div class="zelle" ${ein}>${pfeil}<span class="sym">▤</span>${z.k.id ? `<b>${esc(z.k.name)}</b>` : `<span class="grau">${esc(z.k.name)}</span>`}</div>`;
+      termin = `<span class="grau">${z.kinder.length} Checkliste${z.kinder.length === 1 ? '' : 'n'}</span>`;
+      akt = `<button class="ik" title="Neue Checkliste in „${esc(z.k.name)}“" data-neu="${z.k.id}">＋</button>`;
+    } else if (z.art === 'C') {
+      const c = z.c, n = c.events.find((e) => fortschritt(c, [e]).erledigt < c.schritte.length) || c.events[0];
+      erste = `<div class="zelle" draggable="true" ${ein}>${pfeil}<span class="sym">☑</span><button class="link" data-oeffnen="${c.id}">${esc(c.titel)}</button>${c.beschr ? `<span class="zusatz">${esc(c.beschr)}</span>` : ''}</div>`;
+      wer = esc(c.wer);
+      termin = n ? `${esc(n.titel)} · ${dat(n.termin)}${c.events.length > 1 ? ` · +${c.events.length - 1}` : ''}` : '<span class="grau">Vorlage (ohne Termin)</span>';
+      st = standHtml(fortschritt(c));
+      akt = `<button class="ik" title="Schritt anlegen" data-schritt="${c.id}">＋</button><button class="ik" title="Checkliste kopieren" data-kopie="${c.id}">⧉</button><button class="ik" title="Checkliste löschen" data-weg="${c.id}">🗑</button>`;
+    } else {
+      const s = z.s, c = z.c;
+      erste = `<div class="zelle" draggable="true" ${ein}>${pfeil}<span class="sym">▢</span><span>${esc(s.titel)}</span>${s.hinweis ? `<span class="zusatz">${esc(s.hinweis)}</span>` : ''}</div>`;
+      wer = s.wer ? esc(s.wer) : `<span class="grau">${esc(c.wer)}</span>`;
+      termin = terminText(s.tage);
+      st = c.events.length ? `<span class="grau">${c.events.filter((e) => e.erledigt[s.id]).length} von ${c.events.length}</span>` : '';
+      akt = `<button class="ik" title="Schritt löschen" data-sweg="${s.id}" data-c="${c.id}">🗑</button>`;
+    }
+    let html = `<tr class="${z.art === 'K' ? 'kat' : ''}" data-zeile="${z.id}" data-art="${z.art}"><td>${erste}</td><td>${wer}</td><td>${termin}</td><td>${st}</td><td class="ende">${akt}</td></tr>`;
+    if (offen && z.kinder) html += z.kinder.map((k) => zeile(k, tiefe + 1)).join('');
+    return html;
+  };
+  const zeilen = baumZeilen();
+  return zeilen.length ? zeilen.map((z) => zeile(z, 0)).join('') : '<tr><td colspan="5" class="grau">Keine Checkliste und kein Schritt zu dieser Auswahl</td></tr>';
+}
+function uebersicht() {
+  const n = daten.checklisten.length;
+  return `
+  <div class="kopf">
+    <div><h1>Checklisten</h1><div class="unter">Veranstaltungen vorbereiten: Schritte, Verantwortliche und Termine</div></div>
+    <div class="reihe"><button class="knopf haupt" data-neu="0">＋ Neue Checkliste</button><button class="knopf" data-kategorie>Neue Kategorie</button><button class="knopf" data-import>⭱ Importieren</button></div>
+  </div>
+  <div class="karte"><div class="inhalt">
+    <div class="reihe" style="margin-bottom:8px">
+      <input type="text" id="suche" placeholder="Kategorie, Checkliste, Schritt oder Person suchen" value="${esc(ansicht.suche)}" style="width:min(24rem,100%)" aria-label="Suchen">
+      <label class="reihe"><input type="checkbox" id="mitSchritten" ${ansicht.schritte ? 'checked' : ''}> Schritte anzeigen</label>
+      <label class="reihe"><input type="checkbox" id="nurOffen" ${ansicht.nurOffen ? 'checked' : ''}> nur mit offenen Schritten</label>
+      <span class="frei"></span>
+      <button class="knopf still" data-alle="1" title="Alles aufklappen">▼ alle</button><button class="knopf still" data-alle="0" title="Alles zuklappen">▶ alle</button>
+    </div>
+    <p class="ziehhinweis">Ziehen und Ablegen: Checkliste auf eine Kategorie ziehen = dorthin verschieben. Schritt auf eine Checkliste ziehen = dorthin verschieben (ans Ende), auf einen Schritt = davor einordnen.</p>
+    <div class="roll"><table>
+      <thead><tr><th>Kategorie / Checkliste / Schritt</th><th>Verantwortlich</th><th>Termin / Veranstaltungen</th><th>Stand</th><th class="ende"><span hidden>${n}</span>Aktionen</th></tr></thead>
+      <tbody id="baum">${baumHtml()}</tbody>
+    </table></div>
+  </div></div>`;
+}
+
+// ------------------------------------------------------------------ Checkliste (Abhaken je Veranstaltung)
+function detail(c) {
+  const k = daten.kategorien.find((x) => x.id === c.kat);
+  const b = c.events.find((e) => e.id === ansicht.bezug) || c.events[0] || null;
+  const zeilen = c.schritte.map((s, i) => {
+    const st = b ? stand(s, b) : null, f = b ? faellig(s, b) : null;
+    const pille = { ERLEDIGT: '<span class="status gut" style="margin:0">erledigt</span>', UEBERFAELLIG: '<span class="status schlecht" style="margin:0">überfällig</span>', BALD: '<span class="status warn" style="margin:0">bald fällig</span>', OFFEN: 'offen' }[st] || '';
+    return `<tr class="${st === 'ERLEDIGT' ? 'erledigt' : ''}">
+      ${b ? `<td><input type="checkbox" data-haken="${s.id}" ${b.erledigt[s.id] ? 'checked' : ''} aria-label="${esc(s.titel)} erledigt"></td>` : ''}
+      <td class="name"><span class="titel">${i + 1}. ${esc(s.titel)}</span>${s.hinweis ? `<small>${esc(s.hinweis)}</small>` : ''}</td>
+      <td>${s.wer ? esc(s.wer) : `<span class="grau">${esc(c.wer)}</span>`}</td>
+      <td>${b ? (f ? dat(f) : '–') : terminText(s.tage) || '–'}${b && s.tage != null ? `<small class="grau" style="display:block">${terminText(s.tage)}</small>` : ''}</td>
+      ${b ? `<td>${pille}${b.erledigt[s.id] ? `<small class="grau" style="display:block">${dat(tag(0))} · ${esc(b.erledigt[s.id])}</small>` : ''}</td>` : ''}</tr>`;
+  }).join('');
+  return `
+  <div class="kopf">
+    <div><h1>${esc(c.titel)}</h1><div class="unter">${esc(k ? k.name : 'ohne Kategorie')} · ${c.schritte.length} Schritte · ${c.events.length ? `${c.events.length} Veranstaltung${c.events.length === 1 ? '' : 'en'}` : 'Vorlage'}</div></div>
+    <div class="reihe"><button class="knopf" data-zurueck>‹ Übersicht</button><button class="knopf" data-pdf>PDF</button><button class="knopf" data-kopie="${c.id}">Kopieren</button></div>
+  </div>
+  <div class="karte"><header><h2>Checkliste</h2></header><div class="inhalt">
+    <div class="drei"><div><div class="l">Kategorie</div>${esc(k ? k.name : '–')}</div><div><div class="l">Verantwortlich</div>${esc(c.wer || '–')}</div><div><div class="l">Zuletzt geändert</div>${dat(tag(-3))} · Petra Klein</div></div>
+    ${c.beschr ? `<p style="margin:12px 0 0">${esc(c.beschr)}</p>` : ''}
+  </div></div>
+  <div class="karte"><header><h2>Gültig für <span>(${c.events.length})</span></h2><button class="knopf still" data-zuordnen>＋ Veranstaltung zuordnen</button></header><div class="inhalt">
+    ${c.events.length ? `<div class="bezuege">${c.events.map((e) => { const f = fortschritt(c, [e]); return `<button class="bezug" aria-pressed="${b && b.id === e.id}" data-bezug="${e.id}"><b>${esc(e.titel)}</b><span>${dat(e.termin)}</span><small>${f.erledigt} von ${f.gesamt} erledigt${f.ueberfaellig ? ` · ${f.ueberfaellig} überfällig` : ''}</small><span class="balken"><i style="width:${f.gesamt ? 100 * f.erledigt / f.gesamt : 0}%"></i></span></button>`; }).join('')}</div>`
+      : '<span class="grau">Noch keiner Veranstaltung zugeordnet – die Checkliste ist eine Vorlage. Abgehakt wird je Veranstaltung bzw. Termin.</span>'}
+  </div></div>
+  <div class="karte"><header><h2>Schritte${b ? ` – ${esc(b.titel)}, ${dat(b.termin)}` : ''} <span>(${c.schritte.length})</span></h2></header>
+    <div class="roll"><table><thead><tr>${b ? '<th>Erledigt</th>' : ''}<th>Schritt</th><th>Verantwortlich</th><th>${b ? 'Fällig' : 'Termin'}</th>${b ? '<th>Stand</th>' : ''}</tr></thead><tbody>${zeilen || '<tr><td colspan="5" class="grau">Noch keine Schritte.</td></tr>'}</tbody></table></div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ Import aus der Zwischenablage
+const SPALTEN = ['Kategorie', 'Checkliste', 'Schritt', 'Verantwortlich', 'Termin', 'Hinweise'];
+const BEISPIEL = `${SPALTEN.join('\t')}\nVereinsfest\tWeihnachtsfeier\tRaum schmücken\tFestausschuss\t1 Tag vorher\tDeko liegt im Lager\n\t\tEinladung versenden\tSchriftführer\t21 Tage vorher\tper Rundschreiben\n\t\tWichtelgeschenke besorgen\t\t7\t\nTurnier\tJugendturnier ausrichten\tFotograf anfragen\tJugendwart\t14 Tage vorher\t`;
+function terminLesen(t) {
+  t = t.trim().toLowerCase(); if (!t) return { ok: true, tage: null };
+  if (/^-?\d{1,3}$/.test(t)) return { ok: true, tage: Number(t) };
+  if (/^am tag/.test(t)) return { ok: true, tage: 0 };
+  const m = /^(\d{1,3})\s*(tage?|wochen?)\s*(vorher|davor|vor|danach|nachher|nach)$/.exec(t);
+  if (m) { const n = Number(m[1]) * (m[2].startsWith('woche') ? 7 : 1); return { ok: true, tage: /^(danach|nachher|nach)$/.test(m[3]) ? -n : n }; }
+  return { ok: false };
+}
+function importLesen(text) {
+  const roh = text.replace(/\r\n?/g, '\n').split('\n').map((z, i) => ({ nr: i + 1, z })).filter((x) => x.z.trim());
+  const tr = roh.some((x) => x.z.includes('\t')) ? '\t' : ';';
+  const fehler = [], zeilen = [];
+  if (!roh.length) return { fehler: ['Die Zwischenablage enthält keine Zeilen.'], zeilen, kopf: false };
+  const kopf = roh[0].z.split(tr).some((c) => c.trim().toLowerCase() === 'schritt');
+  const idx = {}; (kopf ? roh[0].z.split(tr).map((c) => c.trim()) : SPALTEN).forEach((n, i) => { const s = SPALTEN.find((x) => x.toLowerCase() === n.toLowerCase()); if (s) idx[s] = i; });
+  let kat = '', check = '';
+  for (const { nr, z } of roh.slice(kopf ? 1 : 0)) {
+    const c = z.split(tr).map((x) => x.trim()), w = (n) => (idx[n] == null ? '' : c[idx[n]] || '');
+    if (w('Kategorie')) kat = w('Kategorie'); if (w('Checkliste')) check = w('Checkliste');
+    if (!check) { fehler.push(`Zeile ${nr}: Es fehlt die Checkliste.`); continue; }
+    const t = terminLesen(w('Termin'));
+    if (!t.ok) { fehler.push(`Zeile ${nr}: Termin „${w('Termin')}“ nicht erkannt – erlaubt sind z. B. 14, „14 Tage vorher“, „3 Tage danach“ oder „am Tag“.`); continue; }
+    zeilen.push({ nr, kat, check, schritt: w('Schritt'), wer: w('Verantwortlich'), tage: t.tage, hinweis: w('Hinweise') });
+  }
+  return { fehler, zeilen, kopf };
+}
+function importPlan(zeilen) {
+  const kn = new Set(), cn = new Set(), erg = new Set(); let n = 0;
+  for (const z of zeilen) {
+    if (z.kat && !daten.kategorien.some((k) => k.name.toLowerCase() === z.kat.toLowerCase())) kn.add(z.kat);
+    if (!daten.checklisten.some((c) => c.titel.toLowerCase() === z.check.toLowerCase())) cn.add(z.check); else if (z.schritt) erg.add(z.check);
+    if (z.schritt) n++;
+  }
+  return { kn: [...kn], cn: [...cn], erg: [...erg], n };
+}
+function importUebernehmen(zeilen) {
+  for (const z of zeilen) {
+    let k = z.kat ? daten.kategorien.find((x) => x.name.toLowerCase() === z.kat.toLowerCase()) : null;
+    if (z.kat && !k) { k = { id: ++nr, name: z.kat }; daten.kategorien.push(k); ansicht.auf.add(`k${k.id}`); }
+    let c = daten.checklisten.find((x) => x.titel.toLowerCase() === z.check.toLowerCase());
+    if (!c) { c = { id: ++nr, kat: k ? k.id : 0, titel: z.check, wer: '', beschr: '', schritte: [], events: [] }; daten.checklisten.push(c); }
+    ansicht.auf.add(`c${c.id}`); ansicht.auf.add(`k${c.kat || 0}`);
+    if (z.schritt) c.schritte.push(S(z.schritt, z.tage, z.wer, z.hinweis));
+  }
+}
+function importDialog() {
+  const g = imp.gelesen, plan = g && g.zeilen.length ? importPlan(g.zeilen) : null;
+  const stufe = imp.fertig ? 4 : g ? 2 : 1;
+  return `<div class="schleier"><div class="dialog" role="dialog" aria-label="Importieren">
+    <header>Importieren: Checklisten aus einer Tabelle</header>
+    <div class="inhalt">
+      <ol class="schritte">${['Quelle wählen', 'Prüfen', 'Übernehmen', 'Protokoll'].map((s, i) => `<li class="${stufe === i + 1 ? 'aktiv' : ''}"><b>${i + 1}</b>${s}</li>`).join('')}</ol>
+      <div>Tabelle in Excel markieren, kopieren und hier einfügen (Strg+V). Spalten: <b>${SPALTEN.join(' · ')}</b> – in dieser Reihenfolge oder mit den Spaltennamen in der ersten Zeile. Leere Zellen bei Kategorie und Checkliste übernehmen den Wert der Zeile darüber.</div>
+      <div class="reihe"><button class="knopf" data-beispiel>Beispieltabelle einsetzen</button><button class="knopf still" data-kopfzeile>Kopfzeile als Ausgangstabelle kopieren</button></div>
+      <textarea id="imptext" rows="7" aria-label="Tabelle" placeholder="${esc(SPALTEN.join('\t'))}">${esc(imp.text)}</textarea>
+      ${g ? g.fehler.map((f) => `<div class="meldung fehler">${esc(f)}</div>`).join('') : ''}
+      ${plan ? `<div class="meldung ${imp.fertig ? 'gut' : 'info'}">${imp.fertig ? 'Übernommen: ' : g.fehler.length ? 'Ohne die fehlerhaften Zeilen wären es: ' : 'Wird angelegt: '}${plan.kn.length} Kategorie${plan.kn.length === 1 ? '' : 'n'}, ${plan.cn.length} neue Checkliste${plan.cn.length === 1 ? '' : 'n'}, ${plan.n} Schritt${plan.n === 1 ? '' : 'e'}${plan.erg.length ? ` · an bestehende Checklisten angefügt: ${esc(plan.erg.join(', '))}` : ''}${g.kopf ? ' · erste Zeile als Spaltennamen erkannt' : ''}</div>` : ''}
+      ${g && g.zeilen.length && !imp.fertig ? `<div class="roll" style="max-height:30vh"><table><thead><tr><th>Zeile</th>${SPALTEN.map((s) => `<th>${s}</th>`).join('')}</tr></thead><tbody>${g.zeilen.map((z) => `<tr><td>${z.nr}</td><td>${esc(z.kat)}</td><td>${esc(z.check)}</td><td>${esc(z.schritt)}</td><td>${esc(z.wer)}</td><td>${terminText(z.tage)}</td><td>${esc(z.hinweis)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    </div>
+    <footer><button class="knopf ${g && !g.fehler.length ? '' : 'haupt'}" data-pruefen>Prüfen</button><button class="knopf haupt" data-uebernehmen ${!g || g.fehler.length || !g.zeilen.length || imp.fertig ? 'disabled' : ''}>Übernehmen</button><button class="knopf" data-zu>Schließen</button></footer>
+  </div></div>`;
+}
+
+// ------------------------------------------------------------------ kleine Formulare (statt Browser-Abfragen)
+function formDialog() {
+  const f = form;
+  const felder = { C: `<label class="feld"><span>Titel der Checkliste</span><input type="text" id="f1" value=""></label><label class="feld"><span>Verantwortlich</span><input type="text" id="f2"></label>`,
+    S: `<label class="feld"><span>Schritt</span><input type="text" id="f1"></label><label class="feld"><span>Tage vor der Veranstaltung (leer = ohne Termin)</span><input type="number" id="f2" value="7"></label>`,
+    K: `<label class="feld"><span>Name der Kategorie</span><input type="text" id="f1"></label>`,
+    Z: `<label class="feld"><span>Veranstaltung</span><input type="text" id="f1" placeholder="z. B. Sommerfest"></label><label class="feld"><span>Datum</span><input type="date" id="f2"></label>`,
+    W: `<div>${esc(f.text || '')}</div>` }[f.art];
+  return `<div class="schleier"><div class="dialog schmal" role="dialog" aria-label="${esc(f.titel)}"><header>${esc(f.titel)}</header><div class="inhalt">${felder}</div>
+    <footer><button class="knopf haupt" data-ok>${f.art === 'W' ? 'Löschen' : 'Sichern'}</button><button class="knopf" data-zu>Abbrechen</button></footer></div></div>`;
+}
+
+// ------------------------------------------------------------------ Zeichnen und Bedienung
+function zeichne(fokus) {
+  const c = ansicht.offen && cl(ansicht.offen);
+  document.getElementById('seite').innerHTML = c ? detail(c) : uebersicht();
+  document.getElementById('dialog').innerHTML = imp ? importDialog() : form ? formDialog() : '';
+  if (fokus) { const el = document.getElementById(fokus); if (el) { el.focus(); if (el.setSelectionRange && el.type === 'text') el.setSelectionRange(el.value.length, el.value.length); } }
+  else if (form) { const el = document.getElementById('f1'); if (el) el.focus(); }
+}
+const ziel = (el) => { const tr = el.closest('tr[data-zeile]'); return tr ? { tr, id: tr.dataset.zeile, art: tr.dataset.art } : null; };
+function darf(z) {
+  if (!gezogen || !z) return false;
+  if (gezogen.art === 'C') return z.art === 'K' && Number(z.id.slice(1)) !== (cl(gezogen.id).kat || 0);
+  if (z.art === 'S') return Number(z.id.slice(1)) !== gezogen.id;
+  return z.art === 'C';
+}
+document.addEventListener('dragstart', (e) => {
+  const z = ziel(e.target); if (!z || z.art === 'K') return;
+  gezogen = { art: z.art, id: Number(z.id.slice(1)) };
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', z.id);
+});
+document.addEventListener('dragover', (e) => { const z = ziel(e.target); if (darf(z)) { e.preventDefault(); z.tr.classList.add('ziel'); } });
+document.addEventListener('dragleave', (e) => { const z = ziel(e.target); if (z) z.tr.classList.remove('ziel'); });
+document.addEventListener('dragend', () => { gezogen = null; });
+document.addEventListener('drop', (e) => {
+  const z = ziel(e.target); if (!darf(z)) return; e.preventDefault();
+  const g = gezogen; gezogen = null;
+  if (g.art === 'C') { cl(g.id).kat = Number(z.id.slice(1)); ansicht.auf.add(z.id); toast('Checkliste verschoben.'); }
+  else {
+    const von = daten.checklisten.find((c) => c.schritte.some((s) => s.id === g.id)), s = von.schritte.find((x) => x.id === g.id);
+    const nach = z.art === 'C' ? cl(Number(z.id.slice(1))) : daten.checklisten.find((c) => c.schritte.some((x) => x.id === Number(z.id.slice(1))));
+    von.schritte.splice(von.schritte.indexOf(s), 1);
+    if (von !== nach) for (const ev of von.events) delete ev.erledigt[s.id];
+    const i = z.art === 'S' ? nach.schritte.findIndex((x) => x.id === Number(z.id.slice(1))) : nach.schritte.length;
+    nach.schritte.splice(i, 0, s); ansicht.auf.add(`c${nach.id}`); toast('Schritt verschoben.');
+  }
+  zeichne();
+});
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'suche') { ansicht.suche = e.target.value; document.getElementById('baum').innerHTML = baumHtml(); }
+  if (e.target.id === 'imptext') { imp.text = e.target.value; if (imp.gelesen) { imp.gelesen = null; imp.fertig = false; zeichne('imptext'); } }
+});
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.id === 'mitSchritten') { ansicht.schritte = t.checked; zeichne(); }
+  if (t.id === 'nurOffen') { ansicht.nurOffen = t.checked; zeichne(); }
+  if (t.dataset.haken) {
+    const c = cl(ansicht.offen), b = c.events.find((x) => x.id === ansicht.bezug) || c.events[0];
+    if (t.checked) b.erledigt[t.dataset.haken] = 'Petra Klein'; else delete b.erledigt[t.dataset.haken];
+    zeichne();
+  }
+});
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  const d = t.dataset;
+  if (d.auf) { ansicht.auf.has(d.auf) ? ansicht.auf.delete(d.auf) : ansicht.auf.add(d.auf); }
+  else if (d.alle) { ansicht.auf = new Set(d.alle === '1' ? [...daten.kategorien.map((k) => `k${k.id}`), 'k0', ...daten.checklisten.map((c) => `c${c.id}`)] : []); }
+  else if (d.oeffnen) { ansicht.offen = Number(d.oeffnen); ansicht.bezug = null; }
+  else if ('zurueck' in d) ansicht.offen = null;
+  else if (d.bezug) ansicht.bezug = Number(d.bezug);
+  else if ('pdf' in d) toast('Im Portal öffnet sich hier das PDF zum Ausdrucken (je Veranstaltung ein Blatt).');
+  else if (d.neu != null) form = { art: 'C', titel: 'Neue Checkliste', kat: Number(d.neu) };
+  else if (d.schritt) form = { art: 'S', titel: `Neuer Schritt in „${cl(Number(d.schritt)).titel}“`, c: Number(d.schritt) };
+  else if ('kategorie' in d) form = { art: 'K', titel: 'Neue Kategorie' };
+  else if ('zuordnen' in d) form = { art: 'Z', titel: 'Veranstaltung zuordnen' };
+  else if (d.weg) form = { art: 'W', titel: 'Checkliste löschen', text: `Checkliste „${cl(Number(d.weg)).titel}“ mit allen Schritten löschen?`, tun: () => { daten.checklisten.splice(daten.checklisten.indexOf(cl(Number(d.weg))), 1); } };
+  else if (d.sweg) { const c = cl(Number(d.c)); form = { art: 'W', titel: 'Schritt löschen', text: `Schritt „${c.schritte.find((s) => s.id === Number(d.sweg)).titel}“ löschen?`, tun: () => { c.schritte = c.schritte.filter((s) => s.id !== Number(d.sweg)); } }; }
+  else if (d.kopie) { const c = cl(Number(d.kopie)); daten.checklisten.push({ ...c, id: ++nr, titel: `${c.titel} (Kopie)`, schritte: c.schritte.map((s) => S(s.titel, s.tage, s.wer, s.hinweis)), events: [] }); ansicht.offen = null; ansicht.auf.add(`k${c.kat || 0}`); toast('Checkliste kopiert – ohne Veranstaltungen und ohne Stand.'); }
+  else if ('import' in d) imp = { text: '', gelesen: null, fertig: false };
+  else if ('beispiel' in d) imp = { text: BEISPIEL, gelesen: null, fertig: false };
+  else if ('kopfzeile' in d) { navigator.clipboard.writeText(SPALTEN.join('\t')).then(() => toast('Kopfzeile kopiert – in Excel einfügen.')).catch(() => toast('Kopieren ist hier nicht möglich – Spalten: ' + SPALTEN.join(', '))); return; }
+  else if ('pruefen' in d) { imp.gelesen = importLesen(imp.text); imp.fertig = false; }
+  else if ('uebernehmen' in d) { importUebernehmen(imp.gelesen.zeilen); imp.fertig = true; toast('Import übernommen.'); }
+  else if ('zu' in d) { imp = null; form = null; }
+  else if ('ok' in d) {
+    const a = document.getElementById('f1'), b = document.getElementById('f2'), v = a ? a.value.trim() : '';
+    if (form.art !== 'W' && !v) { a.focus(); return; }
+    if (form.art === 'C') { daten.checklisten.push({ id: ++nr, kat: form.kat, titel: v, wer: b.value.trim(), beschr: '', schritte: [], events: [] }); ansicht.auf.add(`k${form.kat}`); }
+    if (form.art === 'S') { cl(form.c).schritte.push(S(v, b.value === '' ? null : Number(b.value))); ansicht.auf.add(`c${form.c}`); }
+    if (form.art === 'K') { const k = { id: ++nr, name: v }; daten.kategorien.push(k); }
+    if (form.art === 'Z') { const c = cl(ansicht.offen), ev = { id: ++nr, titel: v, termin: b.value ? new Date(`${b.value}T12:00:00`) : tag(30), ort: '', erledigt: {} }; c.events.push(ev); ansicht.bezug = ev.id; }
+    if (form.art === 'W') form.tun();
+    form = null;
+  }
+  else return;
+  zeichne();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (imp || form)) { imp = null; form = null; zeichne(); } });
+zeichne();
+</script>

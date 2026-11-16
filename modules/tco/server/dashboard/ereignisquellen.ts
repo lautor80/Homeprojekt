@@ -69,6 +69,9 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
 
   // ---------------------------------------------------------------- Meldungen
   'meldung:tco POST /schaden': { aufgabe: 'SCHADEN' },
+  // Projektstunden (Meine Daten → Meine Zeiten): der Planer bestätigt sie im Projekt
+  'meldung:tco POST /projekte/meine-zeiten': { aufgabe: 'HHPROJEKTZEIT' },
+  'meldung:tco POST /projekte/meine-zeiten/:id/loeschen': { ohne: 'das Mitglied zieht die eigene, noch nicht bestätigte Meldung zurück – der Eintrag im Arbeitsvorrat entfällt damit' },
   'meldung:tco POST /eingang/mail': { aufgabe: ['EINGANG_PRUEFEN', 'EINGANG_FEHLER'] },
   'meldung:tco POST /eingang/abgleich': { ohne: 'technischer Abgleich mit n8n, welche E-Mails schon geliefert sind' },
   'meldung:tco POST /eingang/vorgaenge/:id/mail-erledigt': { ohne: 'Quittung von n8n, dass die E-Mail im Postfach behandelt ist' },

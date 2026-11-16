@@ -1,0 +1,28 @@
+/* Projekte: Termin- und Ressourcenplanung – ausschließlich Theme-Variablen (Hell/Dunkel, Akzentfarbe). Tabellen und Leisten kommen aus haushalt.css. */
+.pj-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem 1.5rem; }
+.pj-kpi > span { display: block; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+.pj-kpi > b { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
+.pj-kpi > small { display: block; color: var(--sapContent_LabelColor); }
+.pj-klick { cursor: pointer; }
+.pj-klick:hover td { background: var(--sapList_Hover_Background); }
+.pj-gantt { overflow: auto; max-width: 100%; max-height: var(--portal-tabhoehe); border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; background: var(--sapList_Background); }
+.pj-gantt svg { display: block; font-family: var(--sapFontFamily, "72", Arial, Helvetica, sans-serif); }
+.pj-gantt text { fill: var(--sapTextColor); font-size: 12px; }
+.pj-gantt text.leise { fill: var(--sapContent_LabelColor); font-size: 11px; }
+.pj-gantt .raster { stroke: var(--sapList_BorderColor); stroke-width: 1; }
+.pj-gantt .kopf { fill: var(--sapList_HeaderBackground); }
+.pj-gantt .streifen { fill: var(--sapList_AlternatingBackground, transparent); opacity: 0.5; }
+.pj-gantt .balken { fill: var(--sapChart_OrderedColor_1, #0070f2); }
+.pj-gantt .balken.kritisch { fill: var(--sapChart_OrderedColor_2, #e76500); }
+.pj-gantt .anteil { fill: var(--sapTextColor); opacity: 0.35; }
+.pj-gantt .pfeil { stroke: var(--sapContent_LabelColor); stroke-width: 1.25; fill: none; }
+.pj-gantt .spitze { fill: var(--sapContent_LabelColor); }
+.pj-gantt .heute { stroke: var(--sapNegativeElementColor, #bb0000); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.pj-legende { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding-top: 0.5rem; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+.pj-legende i { display: inline-block; width: 0.875rem; height: 0.5rem; border-radius: 2px; margin-right: 0.375rem; background: var(--sapChart_OrderedColor_1, #0070f2); }
+.pj-legende i.kritisch { background: var(--sapChart_OrderedColor_2, #e76500); }
+.pj-tab ui5-input { width: 100%; min-width: 4.5rem; }
+.pj-tab td.breit ui5-input { min-width: 13rem; }
+.pj-tab td.mittel ui5-input, .pj-tab td.mittel ui5-select, .pj-tab td.mittel ui5-combobox { min-width: 9rem; width: 100%; }
+.pj-tab td.schmal ui5-input { min-width: 4.5rem; width: 5rem; }
+.pj-tab td.datum ui5-date-picker { width: 9.5rem; }

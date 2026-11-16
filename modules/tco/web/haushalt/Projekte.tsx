@@ -28,7 +28,7 @@ export interface Projekt {
   verlauf: { am: string; von: string; status: ProjektStatus; status_text: string; grund: string | null }[];
   uebergaenge: ProjektStatus[];
 }
-interface Liste { projekte: Projekt[]; darfGenehmigen: boolean; arten: Record<Art, string>; status: Record<ProjektStatus, string>; projektnummern: string[] }
+export interface ProjektListe { projekte: Projekt[]; darfGenehmigen: boolean; arten: Record<Art, string>; status: Record<ProjektStatus, string>; projektnummern: string[] }
 
 export const PROJEKT_STATE: Record<ProjektStatus, State> = {
   IDEE: 'None', BEANTRAGT: 'Critical', GENEHMIGT: 'Positive', ABGELEHNT: 'Negative', ZURUECKGESTELLT: 'Information', UMSETZUNG: 'Positive', ABGESCHLOSSEN: 'None',
@@ -53,10 +53,10 @@ function handLesen(s: string): Record<string, number> {
 }
 
 export function ProjekteTab({ s, init, edit, onGeaendert }: { s: PlanSicht; init: Init; edit: boolean; onGeaendert: () => void }) {
-  const [l, setL] = useState<Liste | null>(null);
+  const [l, setL] = useState<ProjektListe | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offen, setOffen] = useState<Projekt | 'neu' | null>(null);
-  const laden = () => api.get<Liste>(`${HH}/projekte`).then(setL).catch((e) => setError((e as Error).message));
+  const laden = () => api.get<ProjektListe>(`${HH}/projekte`).then(setL).catch((e) => setError((e as Error).message));
   useEffect(() => { laden(); }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
   async function tun(f: () => Promise<unknown>) {
     setError(null);
@@ -152,7 +152,11 @@ export function ProjekteTab({ s, init, edit, onGeaendert }: { s: PlanSicht; init
   );
 }
 
-function ProjektDialog({ p, l, init, edit, jahr, onClose }: { p: Projekt | null; l: Liste; init: Init; edit: boolean; jahr: number; onClose: (geaendert: boolean) => void }) {
+/**
+ * Projekt mit Kostenpositionen pflegen, beantragen und entscheiden. `basis`: Adresse der Schnittstelle – der Haushaltsplan
+ * und die App „Projekte“ (projekte/Projektplanung.tsx) nutzen denselben Dialog mit ihren eigenen Rechten.
+ */
+export function ProjektDialog({ p, l, init, edit, jahr, onClose, basis = `${HH}/projekte` }: { p: Projekt | null; l: ProjektListe; init: Pick<Init, 'konten'>; edit: boolean; jahr: number; onClose: (geaendert: boolean) => void; basis?: string }) {
   type Zeile = Omit<Position, 'betrag' | 'monate'> & { betrag: string; hand: string };
   const frei = !p || p.status === 'IDEE' || p.status === 'ZURUECKGESTELLT' || l.darfGenehmigen;
   const aenderbar = edit && frei && p?.status !== 'ABGESCHLOSSEN';
@@ -169,7 +173,7 @@ function ProjektDialog({ p, l, init, edit, jahr, onClose }: { p: Projekt | null;
     setError(null);
     try { const r = await fn() as { text?: string }; if (r?.text) toast(r.text); onClose(true); } catch (e) { setError((e as Error).message); }
   }
-  const sichern = () => tun(() => api.post(`${HH}/projekte`, {
+  const sichern = () => tun(() => api.post(basis, {
     id: p?.id ?? null, ...f, bereich: f.bereich || null,
     positionen: pos.map((x) => ({ art: x.art, bezeichnung: x.bezeichnung, betrag: x.betrag, konto: x.konto || null, verteilung: x.verteilung, von: x.von || null, bis: x.bis || null, monate: x.verteilung === 'HAND' ? handLesen(x.hand) : {} })),
   }));
@@ -258,11 +262,11 @@ function ProjektDialog({ p, l, init, edit, jahr, onClose }: { p: Projekt | null;
         <ConfirmDialog open title={`${AKTION[frage]}: ${p.bezeichnung}`} confirmText={AKTION[frage]} askReason={frage === 'ABGELEHNT' || frage === 'ZURUECKGESTELLT'} danger={frage === 'ABGELEHNT'}
                        text={frage === 'GENEHMIGT' ? `Kosten ${euro(p.budget.kosten)}, Finanzierung ${euro(p.budget.finanzierung)}. Genehmigte Projekte werden in den Entwürfen des Haushaltsplans eingerechnet.`
                          : frage === 'BEANTRAGT' ? 'Der Antrag erscheint im Arbeitsvorrat derer, die Projekte genehmigen dürfen. Danach lässt sich das Projekt nur noch von ihnen ändern.' : `Neuer Status: ${l.status[frage]}.`}
-                       onCancel={() => setFrage(null)} onConfirm={(grund) => { const z = frage; setFrage(null); tun(() => api.post(`${HH}/projekte/${p.id}/status`, { status: z, grund: grund || null })); }} />
+                       onCancel={() => setFrage(null)} onConfirm={(grund) => { const z = frage; setFrage(null); tun(() => api.post(`${basis}/${p.id}/status`, { status: z, grund: grund || null })); }} />
       )}
       {p && frage === 'LOESCHEN' && (
         <ConfirmDialog open title="Projekt löschen" text={`Das Projekt „${p.bezeichnung}“ mit allen Positionen löschen?`} confirmText="Löschen" askReason danger
-                       onCancel={() => setFrage(null)} onConfirm={(grund) => { setFrage(null); tun(() => api.post(`${HH}/projekte/${p.id}/loeschen`, { grund })); }} />
+                       onCancel={() => setFrage(null)} onConfirm={(grund) => { setFrage(null); tun(() => api.post(`${basis}/${p.id}/loeschen`, { grund })); }} />
       )}
     </Dialog>
   );

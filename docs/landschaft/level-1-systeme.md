@@ -13,14 +13,14 @@ flowchart LR
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten"]
-      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Trainingszeiten<br/>Schaden melden"]
+      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Schaden melden"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
       B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen"]
-      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Zuwendungsbestätigungen<br/>Kontenstamm"]
+      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Projekte<br/>Zuwendungsbestätigungen<br/>Kontenstamm"]
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
@@ -75,10 +75,9 @@ flowchart LR
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
 | Allgemein | Checklisten | `/tco/checklisten` | `tco.checklisten:display` | Veranstaltungen vorbereiten: Schritte, Verantwortliche, Termine |
-| Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinedaten:edit\|tco.meinkonto:edit` | Kontakt, Bankverbindung, Verträge, Kündigung |
+| Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinedaten:edit\|tco.meinkonto:edit\|tco.jtmeine:edit\|tco.projektzeiten:edit` | Kontakt, Bankverbindung, Verträge, Kündigung, Meine Zeiten |
 | Mein Bereich | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
 | Mein Bereich | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
-| Mein Bereich | Meine Trainingszeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit` | Eigene Zeiten zurückmelden, Zeitnachweise ansehen |
 | Mein Bereich | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
 | Mitglieder | Mitglieder | `/tco/mitglieder` | `tco.mitglieder:display` | Stammdaten, Verträge, SEPA, Unterlagen |
 | Mitglieder | Mitgliedergruppen | `/tco/gruppen` | `tco.gruppen:display` | Kategorien, Gruppen und Mannschaften im Baum |
@@ -108,6 +107,7 @@ flowchart LR
 | Finanzen | Einnahmen und Ausgaben | `/tco/finanz` | `tco.finanz:display` | Jahresübersicht, Geldkonten, Liquidität |
 | Finanzen | Jahresabschluss | `/tco/abschluss` | `tco.abschluss:display` | EAR, Vermögensübersicht, Anlagevermögen |
 | Finanzen | Haushaltsplan | `/tco/haushalt` | `tco.haushalt:display` | Budget je Konto, Soll-Ist, Liquidität, Vorhaben |
+| Finanzen | Projekte | `/tco/projekte` | `tco.projekte:display` | Kosten, Termine (Gantt), Arbeitseinsatz, Material, Projektantrag |
 | Finanzen | Zuwendungsbestätigungen | `/tco/zuwendung` | `tco.zuwendung:display` | Spendenbescheinigungen: Einzel, Sammel, Jahreslauf |
 | Finanzen | Kontenstamm | `/tco/konten` | `tco.konten:display` | Konten, Verwendung je Jahr, Anfangsbestände |
 | Dokumente | Dokumenteneingang | `/tco/dokumenteneingang` | `tco.eingang:display` | E-Mails und Anhänge nach Regeln ablegen, Prüfliste |
@@ -206,6 +206,7 @@ flowchart LR
 | platz | 68 |
 | praesentation | 11 |
 | produkte | 6 |
+| projekte | 15 |
 | rundschreiben | 20 |
 | schluessel | 28 |
 | schnupper | 6 |

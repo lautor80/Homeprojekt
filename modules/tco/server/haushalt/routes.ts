@@ -29,7 +29,7 @@ const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-T
 const pId = z.object({ id: z.coerce.number().int().positive() });
 const konto = z.string().trim().min(1, 'Bitte ein Konto angeben').max(20);
 /** Betrag als Zahl oder in deutscher Schreibweise („1.234,56“, „5.000“); leer = null */
-const betragOpt = z.union([z.number(), z.string(), z.null()]).optional().transform((v, ctx) => {
+export const betragOpt = z.union([z.number(), z.string(), z.null()]).optional().transform((v, ctx) => {
   if (v === undefined) return undefined;
   if (v === null || (typeof v === 'string' && !v.trim())) return null;
   // „5.000“ ist in deutscher Schreibweise fünftausend: Punkte vor genau drei Ziffern sind Tausenderpunkte
@@ -49,6 +49,19 @@ const cfgSchema = z.object({
     .refine((v) => v === null || (Number.isInteger(v) && v >= 1990 && v <= 2100), '„Grundlage ab Jahr“: bitte ein Jahr zwischen 1990 und 2100 oder leer'),
   preissteigerung: z.coerce.number().min(-50).max(100),
   genehmigung_mv: z.boolean(),
+});
+
+/** Projekt mit Kostenpositionen – auch die App „Projekte“ sichert damit (projekte/routes.ts) */
+const monat = z.string().regex(/^\d{4}-\d{2}$/, 'Monat im Format JJJJ-MM');
+export const projektSchema = z.object({
+  id: z.coerce.number().int().positive().nullish(), projektnr: z.string().trim().max(20).nullish(),
+  bezeichnung: z.string().trim().min(1, 'Bitte eine Bezeichnung angeben').max(120), beschreibung: z.string().max(4000).nullish(),
+  verantwortlich: z.string().trim().max(100).nullish(), beginn: monat, ende: monat, bereich: z.enum(['A', 'B', 'C', 'D']).nullish(),
+  positionen: z.array(z.object({
+    art: z.enum(POSITION_ARTEN), bezeichnung: z.string().trim().max(120).nullish(), betrag: betragOpt.transform((v) => v ?? 0),
+    konto: z.string().trim().max(20).nullish(), verteilung: z.enum(VERTEILUNGEN), von: monat.nullish().or(z.literal('').transform(() => null)),
+    bis: monat.nullish().or(z.literal('').transform(() => null)), monate: z.record(z.coerce.number()).optional(),
+  })).max(60),
 });
 
 export async function haushaltRoutes(app: FastifyInstance) {
@@ -146,17 +159,6 @@ export async function haushaltRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- Projekte: Planung, Genehmigung, Simulation im Plan
-  const monat = z.string().regex(/^\d{4}-\d{2}$/, 'Monat im Format JJJJ-MM');
-  const projektSchema = z.object({
-    id: z.coerce.number().int().positive().nullish(), projektnr: z.string().trim().max(20).nullish(),
-    bezeichnung: z.string().trim().min(1, 'Bitte eine Bezeichnung angeben').max(120), beschreibung: z.string().max(4000).nullish(),
-    verantwortlich: z.string().trim().max(100).nullish(), beginn: monat, ende: monat, bereich: z.enum(['A', 'B', 'C', 'D']).nullish(),
-    positionen: z.array(z.object({
-      art: z.enum(POSITION_ARTEN), bezeichnung: z.string().trim().max(120).nullish(), betrag: betragOpt.transform((v) => v ?? 0),
-      konto: z.string().trim().max(20).nullish(), verteilung: z.enum(VERTEILUNGEN), von: monat.nullish().or(z.literal('').transform(() => null)),
-      bis: monat.nullish().or(z.literal('').transform(() => null)), monate: z.record(z.coerce.number()).optional(),
-    })).max(60),
-  });
 
   /** Alle Projekte mit Budget, Ist aus FI und Verlauf der Genehmigung */
   app.get('/haushalt/projekte', lesen, async (req) => ({
