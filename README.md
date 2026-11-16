@@ -325,7 +325,14 @@ jede Datei wird am **Spaltenkopf** erkannt (Dateiname egal, Kodierung UTF-8 oder
 ### Ablageordner auf dem PC (#121)
 
 Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgelegt und von dort geöffnet werden
-(z. B. im OneDrive-Ordner „Aufträge und Co“). Einrichten: *Stammdaten → Firmendaten → Ablageordner auf diesem PC → Ordner wählen*.
+(z. B. im OneDrive-Ordner „Aufträge und Co“). Einrichten: *Aufträge → Ablageordner → Ordner wählen* (für jeden, der Aufträge sieht) oder
+*Einstellungen → Euroflex → Firma und Bank → Mein Ablageordner auf diesem PC*.
+
+- **Je Benutzer:** Jeder Benutzer legt seinen eigenen Ordner fest – der Verweis liegt im Browser unter einem Schlüssel je Benutzer
+  (`modules/transport/web/ordner-schluessel.ts`), auch wenn sich mehrere einen PC teilen. Wer noch keinen eigenen gewählt hat, nutzt
+  den bisher gemeinsamen Ordner des PCs weiter; „Nicht mehr verwenden“ gilt nur für den Benutzer selbst.
+- **Kopf der Ausdrucke:** Das Firmenlogo aus den Einstellungen (*Erscheinungsbild → Euroflex „Ausdrucke“*) steht oben rechts (rechtsbündig, 96 × 16 mm bei 6:1); die Rechnung zeigt die Route als zwei Spalten ohne Pfeil,
+  lange Ortsnamen werden vor der nächsten Spalte gekürzt.
 
 - Aufbau: `<Ordner>\<Jahr>\<Auftragsnummer>\` – der Auftragsordner wird bei der **Anlage** des Auftrags erzeugt.
 - **Drucken** (Transportauftrag, Lieferschein, Rechnung – auf der Auftragsseite und in der Liste, auch direkt nach

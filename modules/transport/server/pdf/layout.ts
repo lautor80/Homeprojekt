@@ -21,16 +21,18 @@ export function topBar(p: Pdf) {
   p.rect(80, 0, 130, 3, { fill: C.dark });
 }
 
-/** Seite 1: Leiste, Logo und Punktraster rechts */
+/**
+ * Seite 1: Leiste und das Firmenlogo oben rechts, rechtsbündig am Seitenrand. Es ist das Logo aus den Einstellungen
+ * (Einstellungen → Erscheinungsbild → Euroflex „Ausdrucke“ bzw. Firma und Bank, transport.firma.logo); ohne hinterlegtes
+ * Logo steht dort der Firmenname.
+ */
 export function kopf(p: Pdf, firma: Firma) {
   topBar(p);
-  if (firma.logo) p.image(firma.logo, C.left, 11, 67.8, 11);
-  else p.text(C.left, 19, firma.name, { size: 16, bold: true });
-  const orange = [4, 5, 10, 11, 17, 23, 28];
-  for (let k = 0; k < 30; k++) {
-    p.circle(171 + (k % 6) * 3.5 + 1.1, 10 + Math.floor(k / 6) * 3.5 + 1.1, 1.1, orange.includes(k) ? C.accent : 'D5D8DC');
-  }
+  if (firma.logo) p.image(firma.logo, C.right - LOGO.b, LOGO.y, LOGO.b, LOGO.h, { align: 'right' });
+  else p.text(C.right, 21, firma.name, { size: 18, bold: true, align: 'R' });
 }
+/** Feld für das Logo in mm: bei einem Seitenverhältnis von 6:1 ist es 96 × 16 mm groß (bisher 67,8 × 11) – es endet über dem Anschriftfeld */
+const LOGO = { b: 96, h: 16, y: 9 };
 
 /** Folgeseite: Leiste und Titelzeile */
 export function folgeKopf(p: Pdf, titel: string) {
@@ -109,4 +111,12 @@ export const ibanFormat = (iban: string) => iban.replace(/\s+/g, '').replace(/(.
 export function abschnitt(p: Pdf, y: number, text: string) {
   p.text(C.left, y, text.toUpperCase(), { size: 7, bold: true, color: C.muted });
   p.line(C.left, y + 2, C.right, y + 2, C.ink, 0.4);
+}
+
+/** Text auf eine Breite (mm) kürzen – mit „…“, damit er nicht in die nächste Spalte läuft */
+export function kuerzen(p: Pdf, text: string, breite: number, size = 9): string {
+  if (!text || p.textWidth(text, { size }) <= breite) return text;
+  let t = text;
+  while (t.length > 1 && p.textWidth(`${t}…`, { size }) > breite) t = t.slice(0, -1);
+  return `${t.trimEnd()}…`;
 }

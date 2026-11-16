@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BusyIndicator, FlexBox, MessageStrip } from '@ui5/webcomponents-react';
 import { api, ApiError, SITZUNG_PRUEFEN } from './api';
-import { SessionContext, type Me } from './session';
+import { SessionContext, type Me, benutzerMerken } from './session';
 import { ForcedPasswordPage, KennwortSetzenPage, LoginPage, SetupPage } from './pages/AuthPages';
 import { allModules, enabledModules } from './modules';
 import { Shell } from './shell/Shell';
@@ -143,6 +143,7 @@ export function App() {
     }
     case 'ready':
       if (state.me.user.mustChangePassword) return <ForcedPasswordPage onDone={load} onLogout={logout} />;
+      benutzerMerken(state.me.user.id); // für Speicher im Browser je Benutzer (z. B. Ablageordner)
       return (
         <SessionContext.Provider value={{ me: state.me, reload: load, logout }}>
           <Shell />

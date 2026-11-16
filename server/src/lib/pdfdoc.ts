@@ -154,15 +154,15 @@ export class Pdf {
     this.doc.save().circle(cx * MM, cy * MM, r * MM).fill(hex(fill)).restore();
   }
 
-  /** Bild (PNG/JPEG als Data-URL oder Buffer), eingepasst in w × h mm */
-  image(img: string | Buffer, x: number, y: number, w: number, h: number) {
+  /** Bild (PNG/JPEG als Data-URL oder Buffer), eingepasst in w × h mm; `align` richtet es in diesem Feld aus (Vorgabe links) */
+  image(img: string | Buffer, x: number, y: number, w: number, h: number, o: { align?: 'center' | 'right' } = {}) {
     let data: Buffer;
     if (typeof img === 'string') {
       const m = /^data:image\/(png|jpeg);base64,(.*)$/.exec(img);
       if (!m) return;
       data = Buffer.from(m[2], 'base64');
     } else data = img;
-    this.doc.image(data, x * MM, y * MM, { fit: [w * MM, h * MM] });
+    this.doc.image(data, x * MM, y * MM, { fit: [w * MM, h * MM], ...(o.align ? { align: o.align } : {}) });
   }
 
   /** QR-Code (Fehlerkorrektur M) als Vektorgrafik, Kantenlänge w mm */

@@ -2,9 +2,13 @@
  * Ablageordner auf diesem PC (#121): Ausdrucke und hineingezogene Dateien landen je Auftrag in
  *   <gewählter Ordner>/<Jahr>/<Auftragsnummer>/
  * und werden von dort geöffnet. Technik: File System Access API (Chrome, Edge). Der Ordner wird einmal
- * in den Stammdaten gewählt; der Verweis liegt im Browser (IndexedDB) – je PC und Browser, nicht auf dem Server.
+ * gewählt (Aufträge → Ablageordner oder Einstellungen); der Verweis liegt im Browser (IndexedDB) – je Benutzer, PC und
+ * Browser, nicht auf dem Server. Wer noch keinen eigenen Ordner festgelegt hat, nutzt den bisher gemeinsamen des PCs.
  * Nach einem Browser-Neustart fragt der Browser beim ersten Klick einmal nach dem Zugriff.
  */
+
+import { benutzerId } from '@core/session';
+import { ORDNER_ALT, ordnerSchluessel, ordnerWahl } from './ordner-schluessel';
 
 type Recht = 'granted' | 'denied' | 'prompt';
 interface Ordner extends FileSystemDirectoryHandle {
@@ -15,7 +19,8 @@ interface Ordner extends FileSystemDirectoryHandle {
 
 const DB = 'portal-euroflex';
 const STORE = 'ablage';
-const KEY = 'ordner';
+/** Schlüssel des angemeldeten Benutzers – jeder legt seinen eigenen Ordner fest */
+const eigener = () => ordnerSchluessel(benutzerId());
 
 export const ordnerMoeglich = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
@@ -36,28 +41,35 @@ async function idb<T>(modus: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRe
   });
 }
 
-async function gespeichert(): Promise<Ordner | null> {
-  if (!ordnerMoeglich) return null;
-  try { return (await idb<Ordner | undefined>('readonly', (s) => s.get(KEY))) ?? null; } catch { return null; }
+async function gewaehlt(): Promise<{ ordner: Ordner | null; quelle: 'EIGEN' | 'GEMEINSAM' | 'KEINER' }> {
+  if (!ordnerMoeglich) return { ordner: null, quelle: 'KEINER' };
+  try {
+    const eigen = await idb<Ordner | false | undefined>('readonly', (s) => s.get(eigener()));
+    const gemeinsam = eigener() === ORDNER_ALT ? undefined : await idb<Ordner | undefined>('readonly', (s) => s.get(ORDNER_ALT));
+    return ordnerWahl(eigen, gemeinsam || undefined);
+  } catch { return { ordner: null, quelle: 'KEINER' }; }
 }
+const gespeichert = async (): Promise<Ordner | null> => (await gewaehlt()).ordner;
 
 /** Ordner auswählen (nur nach Klick) und merken; liefert den Ordnernamen */
 export async function ordnerWaehlen(): Promise<string> {
   const h = await (window as unknown as { showDirectoryPicker(o: object): Promise<Ordner> })
     .showDirectoryPicker({ id: 'euroflex-ablage', mode: 'readwrite' });
-  await idb('readwrite', (s) => s.put(h, KEY));
+  await idb('readwrite', (s) => s.put(h, eigener()));
   return h.name;
 }
 
+/** Für diesen Benutzer keinen Ordner mehr verwenden – auch nicht den bisher gemeinsamen des PCs */
 export async function ordnerEntfernen() {
-  await idb('readwrite', (s) => s.delete(KEY));
+  if (eigener() === ORDNER_ALT) await idb('readwrite', (s) => s.delete(ORDNER_ALT));
+  else await idb('readwrite', (s) => s.put(false, eigener()));
 }
 
 /** Name des gewählten Ordners und ob gerade Zugriff besteht */
-export async function ordnerStatus(): Promise<{ name: string; zugriff: boolean } | null> {
-  const h = await gespeichert();
+export async function ordnerStatus(): Promise<{ name: string; zugriff: boolean; /** noch der gemeinsame Ordner des PCs, kein eigener */ gemeinsam: boolean } | null> {
+  const { ordner: h, quelle } = await gewaehlt();
   if (!h) return null;
-  return { name: h.name, zugriff: (await h.queryPermission({ mode: 'readwrite' }).catch(() => 'denied')) === 'granted' };
+  return { name: h.name, zugriff: (await h.queryPermission({ mode: 'readwrite' }).catch(() => 'denied')) === 'granted', gemeinsam: quelle === 'GEMEINSAM' };
 }
 
 /**

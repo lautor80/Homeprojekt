@@ -9,9 +9,12 @@ import {
   type OrdnerDatei,
 } from './ordner';
 
-/** Einstellungen → Euroflex → Firma und Bank (bisher Stammdaten → Firmendaten): Ablageordner auf diesem PC festlegen (#121) */
+/**
+ * Ablageordner auf diesem PC festlegen (#121) – je Benutzer: in Aufträge → „Ablageordner“ (für jeden, der Aufträge sieht)
+ * und in Einstellungen → Euroflex → Firma und Bank.
+ */
 export function AblageOrdnerEinstellung() {
-  const [st, setSt] = useState<{ name: string; zugriff: boolean } | null>(null);
+  const [st, setSt] = useState<{ name: string; zugriff: boolean; gemeinsam: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lade = () => ordnerStatus().then(setSt).catch((e) => setError((e as Error).message));
   useEffect(() => { lade(); }, []);
@@ -24,7 +27,7 @@ export function AblageOrdnerEinstellung() {
   };
 
   return (
-    <Section title="Ablageordner auf diesem PC">
+    <Section title="Mein Ablageordner auf diesem PC">
       {!ordnerMoeglich ? (
         <MessageStrip hideCloseButton design="Information">
           Dieser Browser kann keine Ordner auf dem PC beschreiben. Bitte Microsoft Edge oder Google Chrome verwenden.
@@ -35,11 +38,12 @@ export function AblageOrdnerEinstellung() {
           <Text style={{ display: 'block', marginBottom: '0.75rem' }}>
             Ausdrucke (Transportauftrag, Lieferschein, Rechnung) und in einen Auftrag gezogene Dateien werden zusätzlich in
             <b> Ordner\Jahr\Auftragsnummer</b> gespeichert und von dort geöffnet; der Auftragsordner entsteht bei der Anlage.
-            Die Einstellung gilt für diesen PC und Browser. Nach einem Neustart des Browsers fragt er beim ersten Druck einmal nach dem Zugriff.
+            Die Einstellung gilt für Sie als angemeldeten Benutzer auf diesem PC und Browser – jeder Benutzer legt seinen eigenen Ordner fest. Nach einem Neustart des Browsers fragt er beim ersten Druck einmal nach dem Zugriff.
           </Text>
           <FlexBox alignItems="Center" wrap="Wrap" style={{ gap: '0.75rem' }}>
             <Icon name="folder" />
             <Text><b>{st ? st.name : 'Kein Ordner gewählt'}</b></Text>
+            {st?.gemeinsam && <Text className="portal-muted">· bisher gemeinsamer Ordner dieses PCs – „Anderen Ordner wählen“ legt Ihren eigenen fest</Text>}
             {st && <Text className={st.zugriff ? '' : 'portal-muted'}>{st.zugriff ? '· Zugriff erteilt' : '· Zugriff wird beim nächsten Druck erfragt'}</Text>}
             <Button icon="open-folder" onClick={waehlen}>{st ? 'Anderen Ordner wählen' : 'Ordner wählen'}</Button>
             {st && !st.zugriff && <Button design="Transparent" icon="unlocked" onClick={async () => { await ordnerBereit(true); lade(); }}>Zugriff erlauben</Button>}
