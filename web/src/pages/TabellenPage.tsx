@@ -502,7 +502,7 @@ function PapierkorbDialog({ tabelle, onClose }: { tabelle: string | null; onClos
         <Button design="Transparent" onClick={() => setWahl(new Set())}>keine</Button>
       </div>
       {!liste ? <Text>Lade …</Text> : !sichtbar.length ? <Text className="portal-muted">Der Papierkorb ist leer.</Text> : (
-        <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+        <div className="portal-tabrahmen" style={{ maxHeight: '50vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.875rem' }}>
             <thead><tr>{['', 'Tabelle', 'Schlüssel', 'Gelöscht', 'von', 'Grund', 'verfällt'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
             <tbody>{sichtbar.map((e) => (

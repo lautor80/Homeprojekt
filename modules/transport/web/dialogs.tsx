@@ -138,7 +138,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
           Downloads öffnen (Strg+J), bei der .eml-Datei auf ⋯ bzw. Rechtsklick → „Dateien dieses Typs immer öffnen“. Danach diesen Hinweis schließen.
         </MessageStrip>
       )}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="portal-tabrahmen"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
             <th style={{ padding: '0.5rem' }}>Auftrag</th><th>Empfänger / Betreff</th><th>E-Mail</th><th>Anhang</th>
@@ -165,7 +165,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </Dialog>
   );
 }

@@ -234,7 +234,7 @@ export function UsersPage() {
               <MessageStrip design="Positive" hideCloseButton>{mg.text}</MessageStrip>
               {mg.uebersprungen.map((u) => <MessageStrip key={u} design="Critical" hideCloseButton>{u}</MessageStrip>)}
               {mg.angelegt.length > 0 && (
-                <div style={{ maxHeight: '40vh', overflow: 'auto' }}>
+                <div className="portal-tabrahmen" style={{ maxHeight: '40vh' }}>
                   <table className="portal-tabelle" style={{ width: '100%', fontSize: '0.875rem' }}>
                     <thead><tr><th style={{ textAlign: 'left' }}>Name</th><th style={{ textAlign: 'left' }}>Anmeldename</th><th style={{ textAlign: 'left' }}>Startkennwort</th><th style={{ textAlign: 'left' }}>Hinweis</th></tr></thead>
                     <tbody>{mg.angelegt.map((a) => <tr key={a.adrnr}><td>{a.name}</td><td>{a.username}</td><td><code>{a.startkennwort ?? '–'}</code></td><td><Label>{a.hinweis}</Label></td></tr>)}</tbody>
@@ -651,7 +651,7 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
       {ergebnis ? (
         <>
           <MessageStrip design={ergebnis.zeilen.every((z) => z.ok) ? 'Positive' : 'Critical'} hideCloseButton style={{ marginBottom: '0.5rem' }}>{ergebnis.text}</MessageStrip>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <div className="portal-tabrahmen"><table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead><tr>{['Person', 'E-Mail', 'Ergebnis'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
             <tbody>{ergebnis.zeilen.map((z) => (
               <tr key={z.key}>
@@ -660,7 +660,7 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
                 <td style={zelle}><ObjectStatus state={z.ok ? 'Positive' : 'Negative'} showDefaultIcon>{z.text}</ObjectStatus></td>
               </tr>
             ))}</tbody>
-          </table>
+          </table></div>
         </>
       ) : (
         <>
@@ -669,7 +669,7 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
                     onInput={(e) => setEingabe(e.target.value)} />
           <Button icon="synchronize" disabled={!eingabe.trim() || busy} onClick={abgleichen} style={{ margin: '0.25rem 0 0.75rem' }}>Abgleichen</Button>
           {zeilen && (
-            <div style={{ maxHeight: '30vh', overflowY: 'auto', border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
+            <div className="portal-tabrahmen" style={{ maxHeight: '30vh', border: '1px solid var(--sapList_BorderColor)', borderRadius: '0.5rem', marginBottom: '0.75rem' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead><tr>{['Eingabe', 'Empfänger', 'E-Mail', 'Link'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
                 <tbody>{zeilen.map((z) => {
