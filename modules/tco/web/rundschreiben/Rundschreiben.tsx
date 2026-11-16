@@ -199,14 +199,14 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
       Header: 'Hinweis', id: 'hinweis', minWidth: 180,
       accessor: (r: Record<string, unknown>) => {
         const e = r as unknown as Pruefung['empfaenger'][number];
-        return [e.unzustellbar ?? '', e.personen > 1 ? `${e.personen} Personen, eine E-Mail` : '', e.weg !== 'EIGEN' ? e.weg_text : ''].filter(Boolean).join(' · ');
+        return [e.unzustellbar ? 'als unzustellbar vermerkt' : '', e.personen > 1 ? `${e.personen} Personen, eine E-Mail` : '', e.weg !== 'EIGEN' ? e.weg_text : ''].filter(Boolean).join(' · ');
       },
       Cell: ({ row, value }: Cell) => ((row.original as Pruefung['empfaenger'][number]).unzustellbar
-        ? <ObjectStatus state="Negative"><span title={value}>{value}</span></ObjectStatus> : <span title={value}>{value}</span>),
+        ? <ObjectStatus state="Negative"><span title={(row.original as Pruefung['empfaenger'][number]).unzustellbar ?? ''}>{value}</span></ObjectStatus> : <span title={value}>{value}</span>),
     },
     {
-      Header: '', id: 'vorschau', width: 110, disableSortBy: true,
-      Cell: ({ row }: Cell) => <Link onClick={() => pruefen((row.original as Pruefung['empfaenger'][number]).email)}>Vorschau</Link>,
+      Header: 'Vorschau', id: 'vorschau', width: 110, disableSortBy: true, disableFilters: true,
+      Cell: ({ row }: Cell) => <Link onClick={() => pruefen((row.original as Pruefung['empfaenger'][number]).email)}>anzeigen</Link>,
     },
   ], [k, geaendert]); // eslint-disable-line react-hooks/exhaustive-deps
 
