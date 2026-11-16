@@ -12,6 +12,7 @@ import { Theke } from './verzehr/Theke';
 import { Verzehrbuch, VerzehrKapitel } from './verzehr/Verzehrbuch';
 import { Kalender } from './kalender/Kalender';
 import { Checklisten } from './checklisten/Checklisten';
+import { Fanshop } from './Fanshop';
 import { Mitglieder } from './mitglieder/Mitglieder';
 import { Gruppen } from './gruppen/Gruppen';
 import { Rundschreiben } from './rundschreiben/Rundschreiben';
@@ -142,6 +143,8 @@ const mod: WebModule = {
         { text: 'Präsentationen', icon: 'ppt-attachment', path: '/tco/praesentationen', permission: 'tco.praesentation:display' },
         { text: 'Vereinskalender', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
         { text: 'Checklisten', icon: 'activities', path: '/tco/checklisten', permission: 'tco.checklisten:display' },
+        // externer Onlineshop des Vereins: Menüpunkt und Kachel öffnen ihn in einem neuen Tab
+        { text: 'Fanshop', icon: 'retail-store', path: '/tco/fanshop', extern: 'https://tc-oberthal.fan12.de/', permission: 'tco.fanshop:display' },
         // Mein Bereich (#232, N1): alles, was jemand für sich selbst tut – die Fachgruppen darunter enthalten nur noch Verwaltung
         {
           text: 'Mein Bereich', icon: 'person-placeholder',
@@ -252,6 +255,7 @@ const mod: WebModule = {
     { path: '/tco/clubhaus', component: Clubhaus, permission: 'tco.clubhaus:display' },
     { path: '/tco/kalender', component: Kalender, permission: 'tco.kalender:anmelden|tco.kalender:edit' },
     { path: '/tco/checklisten', component: Checklisten, permission: 'tco.checklisten:display' },
+    { path: '/tco/fanshop', component: Fanshop, permission: 'tco.fanshop:display' },
     { path: '/tco/verzehr', component: MeinVerzehr, permission: 'tco.verzehr:edit' },
     { path: '/tco/theke', component: Theke, permission: 'tco.verzehr:theke' },
     { path: '/tco/verzehrbuch', component: Verzehrbuch, permission: 'tco.verzehr:display' },
@@ -319,6 +323,7 @@ const mod: WebModule = {
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display', kpi: kpiClubhaus },
     { text: 'Vereinskalender', subtitle: 'Veranstaltungen, Mannschaften, An- und Abmeldung', icon: 'calendar', path: '/tco/kalender', permission: 'tco.kalender:anmelden|tco.kalender:edit' },
     { text: 'Checklisten', subtitle: 'Veranstaltungen vorbereiten: Schritte, Verantwortliche, Termine', icon: 'activities', path: '/tco/checklisten', permission: 'tco.checklisten:display' },
+    { text: 'Fanshop', subtitle: 'Vereinskleidung und Teamausstattung im Onlineshop (öffnet in neuem Tab)', icon: 'retail-store', path: '/tco/fanshop', permission: 'tco.fanshop:display' },
     { text: 'Mein Verzehr', subtitle: 'Verzehr im Clubhaus auf das eigene Konto anschreiben', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
     { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
     { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },

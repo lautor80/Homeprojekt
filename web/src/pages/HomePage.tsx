@@ -40,7 +40,7 @@ export function HomePage() {
   const vorname = me.user.vorname || me.user.displayName.split(/\s+/)[0] || me.user.displayName;
   const kacheln = (l: NavEntry[]) => (
     <div className="portal-tiles">
-      {l.map((e) => <Tile key={e.path} tile={kachel(e)} onOpen={() => navigate(e.path!)} />)}
+      {l.map((e) => <Tile key={e.path} tile={kachel(e)} onOpen={() => (e.extern ? window.open(e.extern, '_blank', 'noopener,noreferrer') : navigate(e.path!))} />)}
     </div>
   );
 
