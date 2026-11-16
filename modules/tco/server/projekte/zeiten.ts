@@ -1,4 +1,5 @@
 import { BusinessError } from '../../../../server/src/errors.js';
+import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import { heute } from '../format.js';
 import type { Db } from '../verein.js';
 
@@ -164,4 +165,17 @@ export async function zeitLoeschen(tx: Db, id: number): Promise<number> {
   const [z] = await tx`delete from tco.hh_projekt_zeit where id = ${id} returning projekt_id`;
   if (!z) throw new BusinessError('Meldung nicht gefunden.', 404);
   return Number(z.projekt_id);
+}
+
+/** Arbeitsvorrat der Planer: je Projekt die gemeldeten, noch nicht bestätigten Stunden */
+export async function aufgaben(db: Db): Promise<Aufgabe[]> {
+  const rows = await db`
+    select p.id, p.bezeichnung, count(*)::int as n, sum(z.stunden)::float8 as stunden, min(z.erfasst_am)::date::text as seit, count(distinct coalesce(z.adrnr, z.name))::int as personen
+      from tco.hh_projekt_zeit z join tco.hh_projekt p on p.id = z.projekt_id where z.status = 'GEMELDET' group by p.id, p.bezeichnung order by 5, p.id`;
+  return rows.map((r) => ({
+    key: `HHPROJEKTZEIT:${r.id}`, bereich: 'Vorstand', icon: 'time-entry-request', state: 'Information' as const,
+    titel: `Projektstunden bestätigen: ${r.bezeichnung}`,
+    text: `${r.n} Meldung${r.n === 1 ? '' : 'en'} von ${r.personen} Person${r.personen === 1 ? '' : 'en'} · ${Number(r.stunden).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Stunden – im Reiter „Zeiten“ bestätigen oder zurückweisen`,
+    datum: r.seit ?? null, pfad: '/tco/projekte',
+  }));
 }

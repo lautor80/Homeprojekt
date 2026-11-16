@@ -355,6 +355,11 @@ test('offen für alle: auch nicht eingeplante Mitglieder melden', async () => {
 test('Planer: bestätigen, zurückweisen mit Begründung, für Helfer erfassen – Soll-Ist zählt nur Bestätigtes', async () => {
   let s = (await call('GET', `${P}/${id}`)).body.planung;
   assert.deepEqual([s.ist.stunden, s.ist.gemeldet, s.ist.wert], [0, 6.5, 0]);
+  // die gemeldeten Stunden stehen im Arbeitsvorrat des Planers – und nicht in dem des Mitglieds
+  const av = (await call('GET', '/api/m/tco/dashboard/arbeitsvorrat')).body;
+  const eintrag = JSON.stringify(av).match(/Projektstunden bestätigen: PP-Test Platz 3 sanieren[^"]*","text":"([^"]*)"/);
+  assert.ok(eintrag, JSON.stringify(av).slice(0, 400));
+  assert.match(eintrag![1], /^2 Meldungen von 2 Personen · 6,5 Stunden/);
   const zAnna = s.zeiten.find((z: any) => z.adrnr === '0000081001').id, zClara = s.zeiten.find((z: any) => z.adrnr === '0000081003').id;
   let r = await call('POST', `${P}/zeiten/${zAnna}/status`, { status: 'BESTAETIGT' });
   assert.equal(r.status, 200);
