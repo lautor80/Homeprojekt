@@ -128,7 +128,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  S0["Trainer meldet Zeiten (Meine Daten → Meine Zeiten)<br/><small>Trainer · Vereinsportal (Modul tco)</small>"]:::portal
+  S0["Trainer meldet Zeiten (Mein Bereich → Meine Zeiten)<br/><small>Trainer · Vereinsportal (Modul tco)</small>"]:::portal
   S1["Rückmeldungen aus Nextcloud holen<br/><small>Kassenwart · n8n-Workflow</small>"]:::n8n
   S0 --> S1
   S2["Schulferien übernehmen<br/><small>Kassenwart · n8n-Workflow</small>"]:::n8n
@@ -147,7 +147,7 @@ flowchart LR
 
 | # | Schritt | Akteur | System | Route | Recht | App | Workflow |
 |---|---|---|---|---|---|---|---|
-| 1 | Trainer meldet Zeiten (Meine Daten → Meine Zeiten) | Trainer | Vereinsportal (Modul tco) | `POST /api/m/tco/jt/meine/zeiten` | `tco.jtmeine:edit` | `/tco/meine-daten` |  |
+| 1 | Trainer meldet Zeiten (Mein Bereich → Meine Zeiten) | Trainer | Vereinsportal (Modul tco) | `POST /api/m/tco/jt/meine/zeiten` | `tco.jtmeine:edit` | `/tco/meine-zeiten` |  |
 | 2 | Rückmeldungen aus Nextcloud holen | Kassenwart | n8n-Workflow | `POST /api/m/tco/jt/import/nextcloud` | `tco.jt:edit` |  |  |
 | 3 | Schulferien übernehmen | Kassenwart | n8n-Workflow | `POST /api/m/tco/jt/ferien` | `tco.jt:edit` |  |  |
 | 4 | Zeitnachweis freigeben | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/jt/nachweis/freigeben` | `tco.jt:edit` | `/tco/jugendtraining` |  |
@@ -379,7 +379,8 @@ flowchart LR
 | Schadensmeldungen |  |  |  |  |  |  |  |  | ● |  |
 | Abrechnung Jugendtraining |  |  |  | ● |  |  |  |  |  |  |
 | Vereinskalender |  |  |  |  |  |  | ● |  |  |  |
-| Meine Daten | ● |  |  | ● |  |  |  |  |  |  |
+| Meine Daten | ● |  |  |  |  |  |  |  |  |  |
+| Meine Zeiten |  |  |  | ● |  |  |  |  |  |  |
 | Mitgliedsanträge | ● |  |  |  |  |  |  |  |  |  |
 | Platz buchen |  |  | ● |  |  |  |  |  |  |  |
 | Schaden melden |  |  |  |  |  |  |  |  | ● |  |

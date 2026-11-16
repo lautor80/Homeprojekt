@@ -21,7 +21,7 @@ import { antragAblegen, antragPdf } from './pdf.js';
  *  - tco.projekte:approve  über Anträge entscheiden (besteht schon, siehe Haushaltsplan)
  */
 export const P_PROJ = { display: 'tco.projekte:display', edit: 'tco.projekte:edit', approve: P_PROJEKT.approve };
-/** Eigene Projektstunden melden (Meine Daten → Meine Zeiten) – nur für das dem Benutzer zugeordnete Mitglied */
+/** Eigene Projektstunden melden (Mein Bereich → Meine Zeiten) – nur für das dem Benutzer zugeordnete Mitglied */
 export const P_PZ = { edit: 'tco.projektzeiten:edit' };
 
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';

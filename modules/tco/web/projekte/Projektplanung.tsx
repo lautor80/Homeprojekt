@@ -384,7 +384,7 @@ export function Projektplanung() {
           )}
         </Section>
         <Section title="Rückmeldungen" count={pl.zeiten.length} flush
-                 status={<Text className="portal-muted portal-small">Mitglieder melden unter Meine Daten → Meine Zeiten{MELDBAR.includes(p.status) ? '' : ' – möglich, sobald das Projekt genehmigt ist'}</Text>}
+                 status={<Text className="portal-muted portal-small">Mitglieder melden unter Mein Bereich → Meine Zeiten{MELDBAR.includes(p.status) ? '' : ' – möglich, sobald das Projekt genehmigt ist'}</Text>}
                  actions={pflege && p.status !== 'ABGESCHLOSSEN' && p.status !== 'ABGELEHNT' && <Button design="Transparent" icon="add" disabled={busy}
                    onClick={() => setZeit({ adrnr: '', name: 'Helfer', datum: new Date().toISOString().slice(0, 10), vorgang: '', stunden: '4', taetigkeit: '' })}>Für jemanden erfassen</Button>}>
           {pl.zeiten.length === 0 ? <Empty>Noch keine Stunden gemeldet.</Empty> : (

@@ -8,7 +8,7 @@ import { ZEIT_STATE, type Zeit } from './Projektplanung';
 import '../haushalt/haushalt.css';
 
 /**
- * Meine Daten → Meine Zeiten → Projekt: eigene, unbezahlte Arbeitsstunden auf ein Projekt melden. Der Server ermittelt
+ * Mein Bereich → Meine Zeiten → Projekt: eigene, unbezahlte Arbeitsstunden auf ein Projekt melden. Der Server ermittelt
  * das Mitglied aus dem angemeldeten Benutzer; zur Auswahl stehen nur genehmigte und laufende Projekte, in denen man
  * eingeplant ist (oder die für alle offen sind). Der Projektverantwortliche bestätigt die Stunden.
  */

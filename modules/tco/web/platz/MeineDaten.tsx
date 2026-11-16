@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BusyIndicator, Button, Input, Label, MessageStrip, Option, SegmentedButton, SegmentedButtonItem, Select, Tab, TabContainer } from '@ui5/webcomponents-react';
-import { Navigate, useSearchParams } from 'react-router-dom';
-import { MeineZeiten } from '../jt/MeineZeiten';
-import { MeineProjektzeiten } from '../projekte/MeineProjektzeiten';
+import { BusyIndicator, Button, Input, Label, MessageStrip, Option, Select } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Section } from '@core/components/Section';
@@ -19,40 +16,8 @@ interface Daten { quelle?: 'KUNDE' | 'MITGLIED'; benutzername: string; kundennum
  * externe Hallennutzer ihre Kontaktdaten. Bisher zwei Apps mit überschneidendem Inhalt.
  */
 export function MeineDatenApp() {
-  const can = useCan();
-  const [params, setParams] = useSearchParams();
-  const stamm = can('tco.meinedaten:edit') ? <MeineMitgliedschaft /> : can('tco.meinkonto:edit') ? <MeineDaten /> : null;
-  const training = can('tco.jtmeine:edit'), projekt = can('tco.projektzeiten:edit');
-  // ohne Zeiterfassung bleibt die App, wie sie war
-  if (!training && !projekt) return stamm;
-  const reiter = params.get('reiter') === 'zeiten' || !stamm ? 'zeiten' : 'daten';
-  const art = !training || (projekt && params.get('art') === 'projekt') ? 'projekt' : 'training';
-  const setze = (n: Record<string, string>) => setParams({ ...Object.fromEntries(params), ...n }, { replace: true });
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <TabContainer tabLayout="Inline" collapsed className="portal-reiter-nur-kopf" onTabSelect={(e) => setze({ reiter: (e.detail.tab as HTMLElement).dataset.key! })}>
-        {stamm && <Tab data-key="daten" text="Meine Daten" icon="customer" selected={reiter === 'daten'} />}
-        <Tab data-key="zeiten" text="Meine Zeiten" icon="time-entry-request" selected={reiter === 'zeiten'} />
-      </TabContainer>
-      {reiter === 'zeiten' && training && projekt && (
-        <div style={{ padding: '0.75rem var(--portal-page-x, 1rem) 0' }}>
-          <SegmentedButton onSelectionChange={(e) => setze({ art: (e.detail.selectedItems[0] as HTMLElement).dataset.art! })}>
-            <SegmentedButtonItem data-art="training" selected={art === 'training'}>Training</SegmentedButtonItem>
-            <SegmentedButtonItem data-art="projekt" selected={art === 'projekt'}>Projekt</SegmentedButtonItem>
-          </SegmentedButton>
-        </div>
-      )}
-      <div style={{ flex: 1, minHeight: 0 }}>
-        {reiter === 'daten' ? stamm : art === 'training' ? <MeineZeiten /> : (
-          <AppPage title="Meine Zeiten" subtitle="Arbeitsstunden auf Projekte melden – unbezahlt, zählen als Eigenleistung des Projekts"><MeineProjektzeiten /></AppPage>
-        )}
-      </div>
-    </div>
-  );
+  return useCan()('tco.meinedaten:edit') ? <MeineMitgliedschaft /> : <MeineDaten />;
 }
-
-/** Alte Adresse „Meine Trainingszeiten“ – die Zeiterfassung ist jetzt ein Reiter in „Meine Daten“ */
-export function ZuMeinenZeiten() { return <Navigate to="/tco/meine-daten?reiter=zeiten" replace />; }
 
 export function MeineDaten() {
   const [d, setD] = useState<Daten | null>(null);
