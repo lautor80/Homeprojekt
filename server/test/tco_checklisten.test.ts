@@ -6,7 +6,7 @@
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { faelligAm, fortschritt, importLesen, importTermin, kopieTitel, stand, terminText } from '../../modules/tco/server/checklisten/logik.js';
+import { baumOrdnen, faelligAm, fortschritt, gruppenStand, importLesen, importTermin, kopieTitel, stand, terminText } from '../../modules/tco/server/checklisten/logik.js';
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
@@ -126,11 +126,31 @@ test('Import: Tabelle aus der Zwischenablage lesen', () => {
   assert.match(importLesen('  \n ').fehler[0], /keine Zeilen/);
 });
 
+test('Stufen: Baumreihenfolge mit Gliederungsnummer, Stand einer Gruppe aus ihren Blättern', () => {
+  const b = baumOrdnen([
+    { id: 1, parent_id: null, pos: 2 }, { id: 2, parent_id: null, pos: 1 }, { id: 3, parent_id: 1, pos: 2 }, { id: 4, parent_id: 1, pos: 1 },
+    { id: 5, parent_id: 4, pos: 1 }, { id: 6, parent_id: 99, pos: 1 },
+  ]);
+  assert.deepEqual(b.map((x) => [x.knoten.id, x.ebene, x.nr, x.blatt]), [[2, 1, '1', true], [6, 1, '2', true], [1, 1, '3', false], [4, 2, '3.1', false], [5, 3, '3.1.1', true], [3, 2, '3.2', true]]);
+  assert.equal(gruppenStand(['ERLEDIGT', 'ERLEDIGT']), 'ERLEDIGT');
+  assert.equal(gruppenStand(['ERLEDIGT', 'OFFEN', 'UEBERFAELLIG', 'BALD']), 'UEBERFAELLIG');
+  assert.equal(gruppenStand(['ERLEDIGT', 'BALD']), 'BALD');
+  assert.equal(gruppenStand(['ERLEDIGT', 'OFFEN']), 'OFFEN');
+  assert.equal(gruppenStand([]), 'OFFEN');
+});
+
+test('Import: Unterschritte als Weg, höchstens fünf Stufen', () => {
+  const g = importLesen('Fest\tSommerfest\tAufbau > Zelt >  Heringe einschlagen\t\t1\t\nFest\tSommerfest\ta > b > c > d > e > f');
+  assert.deepEqual(g.zeilen.map((z) => [z.schritt, z.pfad]), [['Aufbau > Zelt > Heringe einschlagen', ['Aufbau', 'Zelt', 'Heringe einschlagen']]]);
+  assert.match(g.fehler[0], /^Zeile 2: .* hat 6 Stufen – erlaubt sind höchstens 5/);
+});
+
 // ---------------------------------------------------------------------------
 // Pflege über die Schnittstellen
 // ---------------------------------------------------------------------------
 
 let kat = 0, cl = 0, s1 = 0, s2 = 0, s3 = 0;
+let stufen: Record<string, number> = {};
 
 test('Kategorien: anlegen, doppelte abgelehnt, umbenennen', async () => {
   let r = await call('POST', `${C}/kategorien`, { name: 'CL-Test Vereinsfest' });
@@ -327,6 +347,134 @@ test('Import über die Schnittstelle: prüfen schreibt nichts, übernehmen legt 
   await call('DELETE', `${C}/schritte/${alt.schritte.at(-1).id}`);
   await call('DELETE', `${C}/${neu.id}`);
   await call('DELETE', `${C}/kategorien/${d.kategorien.find((k: any) => k.name === 'CL-Test Import').id}`);
+});
+
+test('Stufen: Unterschritte bis zur fünften Stufe, Fortschritt je Gruppe, Gruppe abhaken', async () => {
+  const c = (await call('POST', C, { titel: 'CL-Test Stufen', verantwortlich: 'Festwart' })).body.id;
+  const neu = async (titel: string, parent_id: number | null = null, mehr: object = {}) => (await call('POST', `${C}/${c}/schritte`, { titel, parent_id, ...mehr })).body.id as number;
+  const aufbau = await neu('Aufbau');
+  const zelt = await neu('Zelt', aufbau);
+  const heringe = await neu('Heringe', zelt, { tage_vor: 1 });
+  const plane = await neu('Plane', zelt, { tage_vor: 1 });
+  const theke = await neu('Theke', aufbau, { tage_vor: 0 });
+  const kasse = await neu('Kasse');
+  // fünf Stufen gehen, die sechste nicht
+  const s3 = await neu('Stufe 3', zelt), s4 = await neu('Stufe 4', s3), s5 = await neu('Stufe 5', s4);
+  let r = await call('POST', `${C}/${c}/schritte`, { titel: 'Stufe 6', parent_id: s5 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /höchstens in 5 Stufen/);
+  assert.equal((await call('DELETE', `${C}/schritte/${s3}`)).status, 200, 'löschen nimmt die Unterschritte mit');
+  // Unterschritt nur in derselben Checkliste
+  assert.equal((await call('POST', `${C}/${c}/schritte`, { titel: 'fremd', parent_id: s1 })).status, 400);
+
+  let l = (await call('GET', `${C}/${c}`)).body;
+  assert.deepEqual(l.schritte.map((x: any) => [x.nr, x.titel, x.ebene, x.blatt]), [
+    ['1', 'Aufbau', 1, false], ['1.1', 'Zelt', 2, false], ['1.1.1', 'Heringe', 3, true], ['1.1.2', 'Plane', 3, true], ['1.2', 'Theke', 2, true], ['2', 'Kasse', 1, true],
+  ]);
+  assert.equal(l.schritte.find((x: any) => x.id === s4), undefined);
+
+  // Fortschritt zählt nur Blätter; die Gruppe zeigt ihren Anteil und die früheste offene Fälligkeit
+  await call('POST', `${C}/${c}/bezuege`, { termin: '2090-07-15', bezeichnung: 'CL-Test Stufenfest' });
+  l = (await call('GET', `${C}/${c}`)).body;
+  const bz = l.bezuege[0].id;
+  assert.deepEqual(l.bezuege[0].fortschritt, { gesamt: 4, erledigt: 0, ueberfaellig: 0, bald: 0 });
+  await call('POST', `${C}/bezuege/${bz}/schritte/${heringe}`, { erledigt: true });
+  l = (await call('GET', `${C}/${c}`)).body;
+  const z = (id: number) => l.bezuege[0].schritte.find((x: any) => x.schritt_id === id);
+  assert.deepEqual([z(zelt).gruppe, z(zelt).stand, z(zelt).faellig, z(zelt).erledigt], [{ gesamt: 2, erledigt: 1, ueberfaellig: 0, bald: 0 }, 'OFFEN', '2090-07-14', null]);
+  assert.deepEqual(z(aufbau).gruppe, { gesamt: 3, erledigt: 1, ueberfaellig: 0, bald: 0 });
+  assert.equal(z(heringe).gruppe, undefined);
+  assert.equal(l.bezuege[0].fortschritt.erledigt, 1);
+
+  // Gruppe abhaken = alle Blätter darunter; bereits Erledigtes bleibt, wie es ist
+  r = await call('POST', `${C}/bezuege/${bz}/schritte/${aufbau}`, { erledigt: true });
+  assert.equal(r.status, 200);
+  l = (await call('GET', `${C}/${c}`)).body;
+  assert.deepEqual([z(aufbau).stand, z(aufbau).gruppe.erledigt, z(zelt).stand, z(theke).stand, z(kasse).stand], ['ERLEDIGT', 3, 'ERLEDIGT', 'ERLEDIGT', 'OFFEN']);
+  assert.equal(l.bezuege[0].fortschritt.erledigt, 3);
+  // Gruppe wieder öffnen
+  await call('POST', `${C}/bezuege/${bz}/schritte/${zelt}`, { erledigt: false });
+  l = (await call('GET', `${C}/${c}`)).body;
+  assert.deepEqual([z(zelt).gruppe.erledigt, z(aufbau).gruppe.erledigt, z(theke).stand], [0, 1, 'ERLEDIGT']);
+
+  // ein abgehakter Schritt bekommt einen Unterschritt: sein eigener Haken entfällt, es zählt der Unterschritt
+  const zapfen = await neu('Zapfanlage', theke);
+  l = (await call('GET', `${C}/${c}`)).body;
+  assert.deepEqual([z(theke).gruppe, z(theke).stand, z(zapfen).stand], [{ gesamt: 1, erledigt: 0, ueberfaellig: 0, bald: 0 }, 'OFFEN', 'OFFEN']);
+  stufen = { c, aufbau, zelt, heringe, plane, theke, kasse, zapfen, bz };
+});
+
+test('Stufen: verschieben mit Unterschritten – unter einen Schritt, vor einen Schritt, in eine andere Checkliste; Grenzen', async () => {
+  const { c, aufbau, zelt, heringe, plane, theke, kasse, zapfen, bz } = stufen;
+  const nrs = async (id = c) => (await call('GET', `${C}/${id}`)).body.schritte.map((x: any) => `${x.nr} ${x.titel}`);
+  // Zelt (mit Heringe, Plane) unter Kasse
+  let r = await call('POST', `${C}/schritte/${zelt}/verschieben`, { ziel: c, unter: kasse });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await nrs(), ['1 Aufbau', '1.1 Theke', '1.1.1 Zapfanlage', '2 Kasse', '2.1 Zelt', '2.1.1 Heringe', '2.1.2 Plane']);
+  // nicht unter sich selbst oder einen eigenen Unterschritt
+  assert.equal((await call('POST', `${C}/schritte/${kasse}/verschieben`, { ziel: c, unter: plane })).status, 400);
+  assert.equal((await call('POST', `${C}/schritte/${kasse}/verschieben`, { ziel: c, vor: heringe })).status, 400);
+  // vor einen Schritt = auf dessen Stufe: Plane vor Zapfanlage
+  await call('POST', `${C}/schritte/${plane}/verschieben`, { ziel: c, vor: zapfen });
+  assert.deepEqual(await nrs(), ['1 Aufbau', '1.1 Theke', '1.1.1 Plane', '1.1.2 Zapfanlage', '2 Kasse', '2.1 Zelt', '2.1.1 Heringe']);
+  // Reihenfolge innerhalb der Stufe: nur die Geschwister
+  assert.equal((await call('POST', `${C}/${c}/reihenfolge`, { schritte: [zapfen, plane] })).status, 200);
+  assert.equal((await call('POST', `${C}/${c}/reihenfolge`, { schritte: [zapfen, heringe] })).status, 409, 'keine Geschwister');
+  assert.deepEqual(await nrs(), ['1 Aufbau', '1.1 Theke', '1.1.1 Zapfanlage', '1.1.2 Plane', '2 Kasse', '2.1 Zelt', '2.1.1 Heringe']);
+  // Stufengrenze beim Verschieben: Kasse (Höhe 3) unter Plane (Stufe 3) wären sechs Stufen
+  const tief = (await call('POST', `${C}/${c}/schritte`, { titel: 'tief', parent_id: heringe })).body.id;
+  r = await call('POST', `${C}/schritte/${kasse}/verschieben`, { ziel: c, unter: plane });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /höchstens in 5 Stufen .* wären es 7/);
+  await call('DELETE', `${C}/schritte/${tief}`);
+
+  // in eine andere Checkliste: der ganze Teilbaum wandert, sein Stand entfällt
+  await call('POST', `${C}/bezuege/${bz}/schritte/${heringe}`, { erledigt: true });
+  const andere = (await call('POST', C, { titel: 'CL-Test Stufen Ziel' })).body.id;
+  r = await call('POST', `${C}/schritte/${kasse}/verschieben`, { ziel: andere });
+  assert.equal(r.status, 200);
+  assert.deepEqual(await nrs(andere), ['1 Kasse', '1.1 Zelt', '1.1.1 Heringe']);
+  assert.deepEqual(await nrs(), ['1 Aufbau', '1.1 Theke', '1.1.1 Zapfanlage', '1.1.2 Plane']);
+  const [{ n }] = await sql`select count(*)::int as n from tco.cl_erledigt where schritt_id = ${heringe}`;
+  assert.equal(n, 0);
+  // zurück auf die oberste Stufe der ersten Checkliste, vor Aufbau
+  await call('POST', `${C}/schritte/${zelt}/verschieben`, { ziel: c, vor: aufbau });
+  assert.deepEqual(await nrs(), ['1 Zelt', '1.1 Heringe', '2 Aufbau', '2.1 Theke', '2.1.1 Zapfanlage', '2.1.2 Plane']);
+  assert.deepEqual(await nrs(andere), ['1 Kasse']);
+  stufen.andere = andere;
+});
+
+test('Stufen: kopieren nimmt Unterschritte mit; Import hängt unter bestehende Gruppen', async () => {
+  const { c, aufbau, theke, andere } = stufen;
+  const titel = async (id: number) => (await call('GET', `${C}/${id}`)).body.schritte.map((x: any) => `${x.nr} ${x.titel}`);
+  // Aufbau und sein Unterschritt Theke gewählt: Theke kommt nur einmal (mit Aufbau)
+  let r = await call('POST', `${C}/schritte/kopieren`, { schritte: [theke, aufbau], ziel: andere });
+  assert.equal(r.body.anzahl, 4);
+  assert.deepEqual(await titel(andere), ['1 Kasse', '2 Aufbau', '2.1 Theke', '2.1.1 Zapfanlage', '2.1.2 Plane']);
+  // ganze Checkliste kopieren: derselbe Baum
+  r = await call('POST', `${C}/${c}/kopieren`, { titel: 'CL-Test Stufen Kopie' });
+  assert.deepEqual(await titel(r.body.id), await titel(c));
+  await call('DELETE', `${C}/${r.body.id}`);
+  // PDF mit Stufen
+  const pdf = await call('GET', `${C}/${c}/pdf`);
+  assert.equal(pdf.roh.subarray(0, 5).toString(), '%PDF-');
+
+  // Import: „Aufbau > Theke > …“ findet die bestehenden Gruppen, neue Wege werden angelegt
+  const text = 'CL-Test Stufen\tAufbau > Theke > Gläser spülen\tThekenwart\t1 Tag vorher\n'
+    + 'CL-Test Stufen\tAbbau\n'
+    + 'CL-Test Stufen\tAbbau > Zelt abbauen\t\t1 Tag danach';
+  const kopf = 'Checkliste\tSchritt\tVerantwortlich\tTermin\n';
+  r = await call('POST', `${C}/import`, { text: kopf + text, pruefen: true });
+  assert.deepEqual(r.body.fehler, []);
+  assert.equal(r.body.ergebnis.schritte, 3);
+  assert.deepEqual(await titel(c), ['1 Zelt', '1.1 Heringe', '2 Aufbau', '2.1 Theke', '2.1.1 Zapfanlage', '2.1.2 Plane'], 'die Prüfung schreibt nichts');
+  r = await call('POST', `${C}/import`, { text: kopf + text, pruefen: false });
+  assert.equal(r.body.uebernommen, true);
+  assert.deepEqual(await titel(c), ['1 Zelt', '1.1 Heringe', '2 Aufbau', '2.1 Theke', '2.1.1 Zapfanlage', '2.1.2 Plane', '2.1.3 Gläser spülen', '3 Abbau', '3.1 Zelt abbauen']);
+  const l = (await call('GET', `${C}/${c}`)).body;
+  assert.deepEqual(l.schritte.filter((x: any) => x.titel === 'Gläser spülen').map((x: any) => [x.verantwortlich, x.tage_vor]), [['Thekenwart', 1]]);
+  await call('DELETE', `${C}/${c}`);
+  await call('DELETE', `${C}/${andere}`);
 });
 
 test('Schritt ändern und löschen; Kategorie in Verwendung bleibt', async () => {

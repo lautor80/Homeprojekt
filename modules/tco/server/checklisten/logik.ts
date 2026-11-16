@@ -51,6 +51,40 @@ export function fortschritt(staende: Stand[]): Fortschritt {
   };
 }
 
+/** Schritte lassen sich in so vielen Stufen schachteln (Schritt → Unterschritt → …) */
+export const MAX_STUFEN = 5;
+
+export interface BaumKnoten { id: number; parent_id: number | null; pos: number }
+export interface BaumZeile<T> { knoten: T; ebene: number; blatt: boolean; nr: string }
+
+/**
+ * Flache Liste in Baumreihenfolge bringen: jede Zeile mit Stufe (1 = oberste), Gliederungsnummer („2.1.3“) und der
+ * Angabe, ob sie ein Blatt ist (keine Unterschritte). Verwaiste Knoten (Elternteil fehlt) stehen auf der obersten Stufe.
+ */
+export function baumOrdnen<T extends BaumKnoten>(liste: T[]): BaumZeile<T>[] {
+  const ids = new Set(liste.map((x) => x.id));
+  const kinder = new Map<number | null, T[]>();
+  for (const x of liste) {
+    const p = x.parent_id !== null && ids.has(x.parent_id) ? x.parent_id : null;
+    kinder.set(p, [...(kinder.get(p) ?? []), x]);
+  }
+  for (const k of kinder.values()) k.sort((a, b) => a.pos - b.pos || a.id - b.id);
+  const out: BaumZeile<T>[] = [];
+  const gehe = (p: number | null, ebene: number, vor: string) => (kinder.get(p) ?? []).forEach((x, i) => {
+    const nr = `${vor}${i + 1}`;
+    out.push({ knoten: x, ebene, blatt: !(kinder.get(x.id)?.length), nr });
+    gehe(x.id, ebene + 1, `${nr}.`);
+  });
+  gehe(null, 1, '');
+  return out;
+}
+
+/** Stand einer Gruppe aus den Ständen ihrer Blätter: alle erledigt → erledigt, sonst das Dringendste */
+export function gruppenStand(blaetter: Stand[]): Stand {
+  if (blaetter.length && blaetter.every((s) => s === 'ERLEDIGT')) return 'ERLEDIGT';
+  return blaetter.includes('UEBERFAELLIG') ? 'UEBERFAELLIG' : blaetter.includes('BALD') ? 'BALD' : 'OFFEN';
+}
+
 /** Titel einer Kopie: „… (Kopie)“, „… (Kopie 2)“ – der erste, den es noch nicht gibt */
 export function kopieTitel(titel: string, vorhandene: string[]): string {
   const basis = titel.replace(/ \(Kopie(?: \d+)?\)$/, '');
@@ -64,9 +98,17 @@ export function kopieTitel(titel: string, vorhandene: string[]): string {
 // ---------------------------------------------------------------- Lesen
 
 export interface Kategorie { id: number; name: string; aktiv: boolean; anzahl: number }
-export interface Schritt extends Terminbezug { id: number; pos: number; titel: string; beschreibung: string | null; verantwortlich: string | null; termin_text: string }
+export interface Schritt extends Terminbezug {
+  id: number; pos: number; titel: string; beschreibung: string | null; verantwortlich: string | null; termin_text: string;
+  /** Hierarchie: übergeordneter Schritt, Stufe 1–5, Gliederungsnummer („2.1“), Blatt = ohne Unterschritte (nur Blätter werden abgehakt) */
+  parent_id: number | null; ebene: number; nr: string; blatt: boolean;
+}
 export interface Erledigt { am: string; von: string | null; notiz: string | null }
-export interface BezugSchritt { schritt_id: number; faellig: string | null; stand: Stand; erledigt: Erledigt | null }
+export interface BezugSchritt {
+  schritt_id: number; faellig: string | null; stand: Stand; erledigt: Erledigt | null;
+  /** nur bei Schritten mit Unterschritten: Fortschritt über ihre Blätter – Stand und Fälligkeit (frühester offener Unterschritt) ergeben sich daraus */
+  gruppe?: Fortschritt;
+}
 export interface Bezug {
   id: number; event_id: number | null; titel: string; termin: string; ort: string | null; abgesagt: boolean;
   schritte: BezugSchritt[]; fortschritt: Fortschritt;
@@ -95,8 +137,8 @@ export async function checklistenLesen(db: Db, ids?: number[], stichtag = heute(
     where ${alle} or c.id = any(${liste}) order by lower(c.titel), c.id`;
   if (!kopf.length) return [];
   const cids = kopf.map((c) => c.id);
-  const schritte = await db<(Omit<Schritt, 'termin_text'> & { checkliste_id: number })[]>`
-    select id, checkliste_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig
+  const schritte = await db<(Omit<Schritt, 'termin_text' | 'ebene' | 'nr' | 'blatt'> & { checkliste_id: number })[]>`
+    select id, checkliste_id, parent_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig
     from tco.cl_schritte where checkliste_id = any(${cids}) order by checkliste_id, pos, id`;
   const bezuege = await db<{ id: number; checkliste_id: number; event_id: number | null; titel: string; termin: string; ort: string | null; abgesagt: boolean }[]>`
     select b.id, b.checkliste_id, b.event_id,
@@ -109,15 +151,33 @@ export async function checklistenLesen(db: Db, ids?: number[], stichtag = heute(
     select bezug_id, schritt_id, erledigt_am, erledigt_von, notiz from tco.cl_erledigt where bezug_id = any(${bids})` : [];
   const erl = new Map(erledigt.map((e) => [`${e.bezug_id}|${e.schritt_id}`, e]));
   return kopf.map((c) => {
-    const s = schritte.filter((x) => x.checkliste_id === c.id).map(({ checkliste_id: _c, ...x }) => ({ ...x, termin_text: terminText(x) }));
+    // Baumreihenfolge; je Schritt die Blätter darunter (für den Stand der Gruppen)
+    const s: Schritt[] = baumOrdnen(schritte.filter((x) => x.checkliste_id === c.id))
+      .map(({ knoten: { checkliste_id: _c, ...x }, ebene, blatt, nr }) => ({ ...x, ebene, blatt, nr, termin_text: terminText(x) }));
+    const blaetter = new Map<number, number[]>();
+    for (const [i, sch] of s.entries()) {
+      if (sch.blatt) continue;
+      const ids: number[] = [];
+      for (let k = i + 1; k < s.length && s[k].ebene > sch.ebene; k++) if (s[k].blatt) ids.push(s[k].id);
+      blaetter.set(sch.id, ids);
+    }
     const b = bezuege.filter((x) => x.checkliste_id === c.id).map(({ checkliste_id: _c, ...x }) => {
-      const zeilen: BezugSchritt[] = s.map((sch) => {
+      const blatt = new Map<number, BezugSchritt>();
+      for (const sch of s.filter((y) => y.blatt)) {
         const e = erl.get(`${x.id}|${sch.id}`);
         const f = faelligAm(sch, x.termin);
-        return { schritt_id: sch.id, faellig: f, stand: stand(!!e, f, stichtag), erledigt: e ? { am: e.erledigt_am, von: e.erledigt_von, notiz: e.notiz } : null };
+        blatt.set(sch.id, { schritt_id: sch.id, faellig: f, stand: stand(!!e, f, stichtag), erledigt: e ? { am: e.erledigt_am, von: e.erledigt_von, notiz: e.notiz } : null });
+      }
+      const zeilen: BezugSchritt[] = s.map((sch) => {
+        if (sch.blatt) return blatt.get(sch.id)!;
+        const unter = blaetter.get(sch.id)!.map((id) => blatt.get(id)!);
+        const offen = unter.filter((z) => z.stand !== 'ERLEDIGT' && z.faellig).map((z) => z.faellig!).sort();
+        return { schritt_id: sch.id, faellig: offen[0] ?? null, stand: gruppenStand(unter.map((z) => z.stand)), erledigt: null, gruppe: fortschritt(unter.map((z) => z.stand)) };
       });
-      return { ...x, schritte: zeilen, fortschritt: fortschritt(zeilen.map((z) => z.stand)) };
+      // der Fortschritt einer Veranstaltung zählt nur, was abgehakt wird: die Blätter
+      return { ...x, schritte: zeilen, fortschritt: fortschritt([...blatt.values()].map((z) => z.stand)) };
     });
+    return { ...c, schritte: s, bezuege: b };
     return { ...c, schritte: s, bezuege: b };
   });
 }
@@ -144,7 +204,7 @@ export async function personenLesen(db: Db) {
 // ---------------------------------------------------------------- Schreiben
 
 export interface KopfEingabe { titel: string; beschreibung?: string | null; kategorie_id?: number | null; verantwortlich?: string | null; verantwortlich_id?: string | null }
-export interface SchrittEingabe { titel: string; beschreibung?: string | null; verantwortlich?: string | null; tage_vor?: number | null; faellig?: string | null }
+export interface SchrittEingabe { titel: string; beschreibung?: string | null; verantwortlich?: string | null; tage_vor?: number | null; faellig?: string | null; /** nur beim Anlegen: als Unterschritt dieses Schritts */ parent_id?: number | null }
 
 const leer = (s: string | null | undefined) => (s && s.trim() ? s.trim() : null);
 
@@ -202,9 +262,8 @@ export async function checklisteKopieren(tx: Db, id: number, o: { titel?: string
   const [n] = await tx`
     insert into tco.cl_checklisten (titel, beschreibung, kategorie_id, verantwortlich, verantwortlich_id, kopie_von, erstellt_von, geaendert_von)
     values (${titel}, ${c.beschreibung}, ${c.kategorie_id}, ${c.verantwortlich}, ${c.verantwortlich_id}, ${id}, ${wer}, ${wer}) returning id`;
-  await tx`
-    insert into tco.cl_schritte (checkliste_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig)
-    select ${n.id}, pos, titel, beschreibung, verantwortlich, tage_vor, faellig from tco.cl_schritte where checkliste_id = ${id} order by pos, id`;
+  const wurzeln = (await tx`select id from tco.cl_schritte where checkliste_id = ${id} and parent_id is null order by pos, id`).map((x) => x.id as number);
+  for (const [i, w] of wurzeln.entries()) await teilbaumKopieren(tx, w, n.id as number, null, i + 1);
   if (o.bezuege) {
     await tx`
       insert into tco.cl_bezuege (checkliste_id, event_id, termin, bezeichnung)
@@ -217,13 +276,58 @@ function schrittPruefen(e: SchrittEingabe) {
   if (e.tage_vor != null && e.faellig) throw new BusinessError('Bitte entweder „Tage vor dem Termin“ oder ein festes Datum angeben, nicht beides.');
 }
 
+/** Stufe eines Schritts (1 = oberste) und seine Checkliste */
+async function stufeVon(tx: Db, id: number): Promise<{ checkliste: number; ebene: number } | null> {
+  const [r] = await tx`
+    with recursive hoch as (
+      select id, parent_id, checkliste_id, 1 as n from tco.cl_schritte where id = ${id}
+      union all select s.id, s.parent_id, s.checkliste_id, h.n + 1 from tco.cl_schritte s join hoch h on s.id = h.parent_id
+    ) select max(n)::int as ebene, (select checkliste_id from tco.cl_schritte where id = ${id}) as checkliste from hoch`;
+  return r?.checkliste == null ? null : { checkliste: Number(r.checkliste), ebene: Number(r.ebene) };
+}
+/** IDs des Schritts und aller Schritte darunter; `hoehe` = Stufen des Teilbaums (1 = nur der Schritt selbst) */
+async function teilbaum(tx: Db, id: number): Promise<{ ids: number[]; hoehe: number }> {
+  const rows = await tx`
+    with recursive runter as (
+      select id, 1 as n from tco.cl_schritte where id = ${id}
+      union all select s.id, r.n + 1 from tco.cl_schritte s join runter r on s.parent_id = r.id
+    ) select id, n from runter`;
+  return { ids: rows.map((r) => Number(r.id)), hoehe: Math.max(1, ...rows.map((r) => Number(r.n))) };
+}
+/** Teilbaum (Schritt mit allen Unterschritten) kopieren – ohne Stand */
+async function teilbaumKopieren(tx: Db, quelle: number, checkliste: number, parent: number | null, pos: number): Promise<number> {
+  const [n] = await tx`
+    insert into tco.cl_schritte (checkliste_id, parent_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig)
+    select ${checkliste}, ${parent}, ${pos}, titel, beschreibung, verantwortlich, tage_vor, faellig from tco.cl_schritte where id = ${quelle} returning id`;
+  let anzahl = 1;
+  const kinder = (await tx`select id from tco.cl_schritte where parent_id = ${quelle} order by pos, id`).map((x) => x.id as number);
+  for (const [i, k] of kinder.entries()) anzahl += await teilbaumKopieren(tx, k, checkliste, n.id as number, i + 1);
+  return anzahl;
+}
+/** Geschwister (gleiche Checkliste, gleicher übergeordneter Schritt) fortlaufend nummerieren */
+async function nummerieren(tx: Db, ids: number[]) {
+  if (!ids.length) return;
+  const pos = ids.map((_, i) => i + 1);
+  await tx`update tco.cl_schritte s set pos = x.pos from unnest(${ids}::int[], ${pos}::int[]) as x(id, pos) where s.id = x.id`;
+}
+const geschwister = async (tx: Db, checkliste: number, parent: number | null, ohne = 0) =>
+  (await tx`select id from tco.cl_schritte where checkliste_id = ${checkliste} and parent_id is not distinct from ${parent} and id <> ${ohne} order by pos, id`).map((x) => x.id as number);
+
 export async function schrittAnlegen(tx: Db, checkliste: number, e: SchrittEingabe, wer: string): Promise<number> {
   schrittPruefen(e);
   const [c] = await tx`select 1 from tco.cl_checklisten where id = ${checkliste}`;
   if (!c) throw new BusinessError('Checkliste nicht gefunden.', 404);
+  const parent = e.parent_id ?? null;
+  if (parent !== null) {
+    const p = await stufeVon(tx, parent);
+    if (!p || p.checkliste !== checkliste) throw new BusinessError('Der übergeordnete Schritt gehört nicht zu dieser Checkliste.');
+    if (p.ebene >= MAX_STUFEN) throw new BusinessError(`Schritte lassen sich höchstens in ${MAX_STUFEN} Stufen schachteln.`);
+    // der übergeordnete Schritt wird zur Gruppe – sein eigener Haken entfällt, es zählen die Unterschritte
+    await tx`delete from tco.cl_erledigt where schritt_id = ${parent}`;
+  }
   const [r] = await tx`
-    insert into tco.cl_schritte (checkliste_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig)
-    values (${checkliste}, (select coalesce(max(pos), 0) + 1 from tco.cl_schritte where checkliste_id = ${checkliste}),
+    insert into tco.cl_schritte (checkliste_id, parent_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig)
+    values (${checkliste}, ${parent}, (select coalesce(max(pos), 0) + 1 from tco.cl_schritte where checkliste_id = ${checkliste} and parent_id is not distinct from ${parent}),
             ${e.titel.trim()}, ${leer(e.beschreibung)}, ${leer(e.verantwortlich)}, ${e.tage_vor ?? null}, ${e.faellig || null}) returning id`;
   await beruehren(tx, checkliste, wer);
   return r.id as number;
@@ -239,35 +343,51 @@ export async function schrittAendern(tx: Db, id: number, e: SchrittEingabe, wer:
   await beruehren(tx, r.checkliste_id as number, wer);
 }
 
+/** Schritt löschen – mit allen Unterschritten */
 export async function schrittLoeschen(tx: Db, id: number, wer: string) {
   const [r] = await tx`delete from tco.cl_schritte where id = ${id} returning checkliste_id`;
   if (!r) throw new BusinessError('Schritt nicht gefunden.', 404);
   await beruehren(tx, r.checkliste_id as number, wer);
 }
 
-/** Reihenfolge der Schritte einer Checkliste festlegen – `ids` muss genau ihre Schritte enthalten */
+/** Reihenfolge einer Geschwisterreihe festlegen – `ids` muss genau die Schritte unter demselben übergeordneten Schritt enthalten */
 export async function schritteOrdnen(tx: Db, checkliste: number, ids: number[], wer: string) {
-  const vorhanden = (await tx`select id from tco.cl_schritte where checkliste_id = ${checkliste}`).map((x) => x.id as number);
-  if (vorhanden.length !== ids.length || new Set(ids).size !== ids.length || !ids.every((i) => vorhanden.includes(i))) {
-    throw new BusinessError('Die Schritte haben sich inzwischen geändert – bitte neu laden.', 409);
-  }
-  const pos = ids.map((_, i) => i + 1);
-  await tx`update tco.cl_schritte s set pos = x.pos from unnest(${ids}::int[], ${pos}::int[]) as x(id, pos) where s.id = x.id`;
+  const fehler = () => new BusinessError('Die Schritte haben sich inzwischen geändert – bitte neu laden.', 409);
+  if (!ids.length || new Set(ids).size !== ids.length) throw fehler();
+  const [erster] = await tx`select parent_id from tco.cl_schritte where id = ${ids[0]} and checkliste_id = ${checkliste}`;
+  if (!erster) throw fehler();
+  const vorhanden = await geschwister(tx, checkliste, erster.parent_id as number | null);
+  if (vorhanden.length !== ids.length || !ids.every((i) => vorhanden.includes(i))) throw fehler();
+  await nummerieren(tx, ids);
   await beruehren(tx, checkliste, wer);
 }
 
-/** Schritte (auch aus verschiedenen Checklisten) ans Ende einer anderen Checkliste kopieren – ohne Stand */
+/**
+ * Schritte (auch aus verschiedenen Checklisten) ans Ende einer anderen Checkliste kopieren – mit ihren Unterschritten,
+ * ohne Stand. Ist ein Schritt samt einem seiner Unterschritte gewählt, wird der Unterschritt nicht doppelt kopiert.
+ */
 export async function schritteKopieren(tx: Db, ids: number[], ziel: number, wer: string): Promise<number> {
   const [c] = await tx`select 1 from tco.cl_checklisten where id = ${ziel}`;
   if (!c) throw new BusinessError('Die Ziel-Checkliste gibt es nicht (mehr).', 404);
-  const r = await tx`
-    insert into tco.cl_schritte (checkliste_id, pos, titel, beschreibung, verantwortlich, tage_vor, faellig)
-    select ${ziel}, (select coalesce(max(pos), 0) from tco.cl_schritte where checkliste_id = ${ziel}) + row_number() over (order by s.checkliste_id, s.pos, s.id),
-           s.titel, s.beschreibung, s.verantwortlich, s.tage_vor, s.faellig
-    from tco.cl_schritte s where s.id = any(${ids}) returning id`;
-  if (!r.length) throw new BusinessError('Bitte mindestens einen Schritt wählen.');
+  const gewaehlt = await tx`select id, checkliste_id, pos from tco.cl_schritte where id = any(${ids}) order by checkliste_id, pos, id`;
+  if (!gewaehlt.length) throw new BusinessError('Bitte mindestens einen Schritt wählen.');
+  const drin = new Set<number>();
+  const wurzeln: number[] = [];
+  for (const g of gewaehlt) {
+    if (drin.has(Number(g.id))) continue;
+    // liegt ein gewählter Schritt unter einem anderen gewählten, kommt er mit dessen Teilbaum
+    const [oben] = await tx`
+      with recursive hoch as (select parent_id from tco.cl_schritte where id = ${g.id} union all select s.parent_id from tco.cl_schritte s join hoch h on s.id = h.parent_id)
+      select 1 from hoch where parent_id = any(${ids}) limit 1`;
+    if (oben) continue;
+    wurzeln.push(Number(g.id));
+    for (const x of (await teilbaum(tx, Number(g.id))).ids) drin.add(x);
+  }
+  const [{ pos }] = await tx`select coalesce(max(pos), 0)::int as pos from tco.cl_schritte where checkliste_id = ${ziel} and parent_id is null`;
+  let anzahl = 0;
+  for (const [i, w] of wurzeln.entries()) anzahl += await teilbaumKopieren(tx, w, ziel, null, Number(pos) + i + 1);
   await beruehren(tx, ziel, wer);
-  return r.length;
+  return anzahl;
 }
 
 /** Veranstaltungen des Kalenders zuordnen (bereits zugeordnete bleiben) */
@@ -297,15 +417,21 @@ export async function bezugLoeschen(tx: Db, id: number, wer: string) {
   await beruehren(tx, r.checkliste_id as number, wer);
 }
 
-/** Schritt für einen Bezug abhaken bzw. wieder öffnen */
+/** Schritt für einen Bezug abhaken bzw. wieder öffnen – bei einem Schritt mit Unterschritten gilt es für alle Blätter darunter */
 export async function abhaken(tx: Db, bezug: number, schritt: number, e: { erledigt: boolean; notiz?: string | null }, wer: string) {
   const [p] = await tx`
     select 1 from tco.cl_bezuege b join tco.cl_schritte s on s.checkliste_id = b.checkliste_id where b.id = ${bezug} and s.id = ${schritt}`;
   if (!p) throw new BusinessError('Schritt und Veranstaltung gehören nicht zur selben Checkliste.', 404);
-  if (!e.erledigt) { await tx`delete from tco.cl_erledigt where bezug_id = ${bezug} and schritt_id = ${schritt}`; return; }
-  await tx`
-    insert into tco.cl_erledigt (bezug_id, schritt_id, erledigt_von, notiz) values (${bezug}, ${schritt}, ${wer}, ${leer(e.notiz)})
-    on conflict (bezug_id, schritt_id) do update set notiz = excluded.notiz`;
+  const alle = (await teilbaum(tx, schritt)).ids;
+  const blaetter = (await tx`select s.id from tco.cl_schritte s where s.id = any(${alle}) and not exists (select 1 from tco.cl_schritte k where k.parent_id = s.id)`).map((x) => Number(x.id));
+  if (!e.erledigt) { await tx`delete from tco.cl_erledigt where bezug_id = ${bezug} and schritt_id = any(${blaetter})`; return; }
+  const einzeln = blaetter.length === 1 && blaetter[0] === schritt;
+  for (const b of blaetter) {
+    // beim Abhaken einer Gruppe bleiben bereits erledigte Unterschritte, wie sie sind (Datum, Name, Notiz)
+    await tx`
+      insert into tco.cl_erledigt (bezug_id, schritt_id, erledigt_von, notiz) values (${bezug}, ${b}, ${wer}, ${leer(e.notiz)})
+      on conflict (bezug_id, schritt_id) do ${einzeln ? tx`update set notiz = excluded.notiz` : tx`nothing`}`;
+  }
 }
 
 export async function kategorieSpeichern(tx: Db, e: { id?: number | null; name: string; aktiv?: boolean }): Promise<number> {
@@ -339,25 +465,43 @@ export async function kategorieSetzen(tx: Db, id: number, kategorie: number | nu
 }
 
 /**
- * Schritt verschieben: in eine andere Checkliste und/oder an eine andere Stelle – vor den Schritt `vor`, sonst ans Ende.
+ * Schritt mit seinen Unterschritten verschieben – in eine andere Checkliste, unter einen anderen Schritt und/oder an eine
+ * andere Stelle: vor den Schritt `vor` (auf dessen Stufe), sonst ans Ende unter `unter`, sonst ans Ende der obersten Stufe.
  * Wechselt der Schritt die Checkliste, entfällt sein Stand (er gehörte zu den Veranstaltungen der alten Checkliste).
  */
-export async function schrittVerschieben(tx: Db, id: number, ziel: number, vor: number | null, wer: string) {
-  const [s] = await tx`select checkliste_id from tco.cl_schritte where id = ${id}`;
+export async function schrittVerschieben(tx: Db, id: number, ziel: number, vor: number | null, wer: string, unter: number | null = null) {
+  const s = await stufeVon(tx, id);
   if (!s) throw new BusinessError('Schritt nicht gefunden.', 404);
   const [c] = await tx`select 1 from tco.cl_checklisten where id = ${ziel}`;
   if (!c) throw new BusinessError('Die Ziel-Checkliste gibt es nicht (mehr).', 404);
-  const ids = (await tx`select id from tco.cl_schritte where checkliste_id = ${ziel} and id <> ${id} order by pos, id`).map((x) => x.id as number);
-  if (vor !== null && !ids.includes(vor)) throw new BusinessError('Die Schritte haben sich inzwischen geändert – bitte neu laden.', 409);
-  ids.splice(vor === null ? ids.length : ids.indexOf(vor), 0, id);
-  const quelle = s.checkliste_id as number;
-  if (quelle !== ziel) {
-    await tx`delete from tco.cl_erledigt where schritt_id = ${id}`;
-    await tx`update tco.cl_schritte set checkliste_id = ${ziel} where id = ${id}`;
-    await beruehren(tx, quelle, wer);
+  const baum = await teilbaum(tx, id);
+  let parent: number | null = unter;
+  if (vor !== null) {
+    const [v] = await tx`select parent_id from tco.cl_schritte where id = ${vor} and checkliste_id = ${ziel}`;
+    if (!v || vor === id) throw new BusinessError('Die Schritte haben sich inzwischen geändert – bitte neu laden.', 409);
+    parent = v.parent_id as number | null;
   }
-  const pos = ids.map((_, i) => i + 1);
-  await tx`update tco.cl_schritte s set pos = x.pos from unnest(${ids}::int[], ${pos}::int[]) as x(id, pos) where s.id = x.id`;
+  let ebene = 1;
+  if (parent !== null) {
+    if (baum.ids.includes(parent)) throw new BusinessError('Ein Schritt lässt sich nicht unter sich selbst oder einen seiner Unterschritte verschieben.');
+    const p = await stufeVon(tx, parent);
+    if (!p || p.checkliste !== ziel) throw new BusinessError('Der übergeordnete Schritt gehört nicht zur Ziel-Checkliste.', 409);
+    ebene = p.ebene + 1;
+  }
+  if (ebene + baum.hoehe - 1 > MAX_STUFEN) throw new BusinessError(`Schritte lassen sich höchstens in ${MAX_STUFEN} Stufen schachteln – an dieser Stelle wären es ${ebene + baum.hoehe - 1}.`);
+  const [alt] = await tx`select parent_id from tco.cl_schritte where id = ${id}`;
+  const reihe = await geschwister(tx, ziel, parent, id);
+  reihe.splice(vor === null ? reihe.length : reihe.indexOf(vor), 0, id);
+  if (s.checkliste !== ziel) {
+    await tx`delete from tco.cl_erledigt where schritt_id = any(${baum.ids})`;
+    await tx`update tco.cl_schritte set checkliste_id = ${ziel} where id = any(${baum.ids})`;
+    await beruehren(tx, s.checkliste, wer);
+  }
+  // der neue übergeordnete Schritt wird zur Gruppe – sein eigener Haken entfällt
+  if (parent !== null) await tx`delete from tco.cl_erledigt where schritt_id = ${parent}`;
+  await tx`update tco.cl_schritte set parent_id = ${parent} where id = ${id}`;
+  await nummerieren(tx, reihe);
+  await nummerieren(tx, await geschwister(tx, s.checkliste, alt.parent_id as number | null));
   await beruehren(tx, ziel, wer);
 }
 
@@ -365,7 +509,7 @@ export async function schrittVerschieben(tx: Db, id: number, ziel: number, vor: 
 
 export const IMPORT_SPALTEN = ['Kategorie', 'Checkliste', 'Schritt', 'Verantwortlich', 'Termin', 'Hinweise'] as const;
 type ImportSpalte = typeof IMPORT_SPALTEN[number];
-export interface ImportZeile { zeile: number; kategorie: string; checkliste: string; schritt: string; verantwortlich: string; hinweise: string; tage_vor: number | null; faellig: string | null }
+export interface ImportZeile { zeile: number; kategorie: string; checkliste: string; /** Schritt, bei Unterschritten der ganze Weg „Aufbau > Zelt > Heringe“ */ schritt: string; /** der Weg in Teilen */ pfad: string[]; verantwortlich: string; hinweise: string; tage_vor: number | null; faellig: string | null }
 export interface ImportGelesen { zeilen: ImportZeile[]; fehler: string[]; kopfzeile: boolean }
 
 /** Termin einer Importzeile: leer, Zahl (Tage vorher; negativ = danach), „14 Tage vorher/danach“, „am Tag“, Datum TT.MM.JJJJ oder JJJJ-MM-TT */
@@ -392,6 +536,7 @@ export function importTermin(text: string): Terminbezug | null {
  * Tabelle aus der Zwischenablage lesen (aus Excel kopiert: Spalten durch Tabulator getrennt; ersatzweise Semikolon).
  * Spalten in der Reihenfolge Kategorie · Checkliste · Schritt · Verantwortlich · Termin · Hinweise – oder beliebig, wenn die
  * erste Zeile die Spaltennamen enthält. Leere Zellen bei Kategorie und Checkliste übernehmen den Wert der Zeile darüber.
+ * Unterschritte stehen in der Spalte Schritt als Weg mit „>“: „Aufbau > Zelt > Heringe“ (höchstens fünf Stufen).
  */
 export function importLesen(text: string): ImportGelesen {
   const roh = text.replace(/\r\n?/g, '\n').split('\n').map((z, i) => ({ nr: i + 1, z })).filter((x) => x.z.trim());
@@ -421,9 +566,11 @@ export function importLesen(text: string): ImportGelesen {
     const schritt = wert('Schritt');
     if (!checkliste) { fehler.push(`Zeile ${nr}: Es fehlt die Checkliste.`); continue; }
     if (checkliste.length > 160 || kategorie.length > 80 || schritt.length > 200) { fehler.push(`Zeile ${nr}: Ein Text ist zu lang (Kategorie 80, Checkliste 160, Schritt 200 Zeichen).`); continue; }
+    const pfad = schritt.split('>').map((t) => t.trim()).filter(Boolean);
+    if (pfad.length > MAX_STUFEN) { fehler.push(`Zeile ${nr}: „${schritt}“ hat ${pfad.length} Stufen – erlaubt sind höchstens ${MAX_STUFEN}.`); continue; }
     const termin = importTermin(wert('Termin'));
     if (!termin) { fehler.push(`Zeile ${nr}: Termin „${wert('Termin')}“ nicht erkannt – erlaubt sind z. B. 14, „14 Tage vorher“, „3 Tage danach“, „am Tag“ oder ein Datum (TT.MM.JJJJ).`); continue; }
-    zeilen.push({ zeile: nr, kategorie, checkliste, schritt, verantwortlich: wert('Verantwortlich').slice(0, 120), hinweise: wert('Hinweise').slice(0, 2000), ...termin });
+    zeilen.push({ zeile: nr, kategorie, checkliste, schritt: pfad.join(' > '), pfad, verantwortlich: wert('Verantwortlich').slice(0, 120), hinweise: wert('Hinweise').slice(0, 2000), ...termin });
   }
   if (!zeilen.length && !fehler.length) fehler.push('Keine Datenzeile gefunden.');
   return { zeilen, fehler, kopfzeile };
@@ -434,12 +581,16 @@ export interface ImportErgebnis { kategorien: string[]; checklisten: string[]; e
 /**
  * Gelesene Zeilen übernehmen (`schreiben` = false: nur zeigen, was geschähe). Kategorien und Checklisten werden am Namen
  * erkannt (Groß-/Kleinschreibung egal): fehlende werden angelegt, an bestehende Checklisten werden die Schritte angefügt.
+ * Bei einem Weg („Aufbau > Zelt“) wird der übergeordnete Schritt am Titel gesucht und sonst angelegt; der letzte Teil
+ * ist immer ein neuer Schritt.
  */
 export async function importAusfuehren(tx: Db, zeilen: ImportZeile[], wer: string, schreiben: boolean): Promise<ImportErgebnis> {
   const kat = new Map((await tx`select id, name from tco.cl_kategorien`).map((k) => [(k.name as string).toLowerCase(), k.id as number]));
   const cl = new Map((await tx`select id, titel from tco.cl_checklisten order by id desc`).map((c) => [(c.titel as string).toLowerCase(), c.id as number]));
   const e: ImportErgebnis = { kategorien: [], checklisten: [], ergaenzt: [], schritte: 0 };
   let ersatz = -1;   // Platzhalter-IDs in der Vorschau
+  /** in diesem Import gefundene bzw. angelegte Schritte: Checkliste|übergeordnet|titel → ID */
+  const gruppen = new Map<string, number>();
   for (const z of zeilen) {
     let k: number | null = null;
     if (z.kategorie) {
@@ -458,8 +609,26 @@ export async function importAusfuehren(tx: Db, zeilen: ImportZeile[], wer: strin
     } else if (z.schritt && !e.checklisten.some((t) => t.toLowerCase() === z.checkliste.toLowerCase()) && !e.ergaenzt.some((t) => t.toLowerCase() === z.checkliste.toLowerCase())) {
       e.ergaenzt.push(z.checkliste);
     }
-    if (!z.schritt) continue;
-    if (schreiben) await schrittAnlegen(tx, c, { titel: z.schritt, beschreibung: z.hinweise, verantwortlich: z.verantwortlich, tage_vor: z.tage_vor, faellig: z.faellig }, wer);
+    if (!z.pfad.length) continue;
+    // Weg hinab: übergeordnete Schritte am Titel finden oder anlegen
+    let parent: number | null = null;
+    for (const teil of z.pfad.slice(0, -1)) {
+      const k = `${c}|${parent ?? 0}|${teil.toLowerCase()}`;
+      let id: number | undefined = gruppen.get(k);
+      if (id === undefined && c > 0) {
+        const da: { id: number }[] = await tx<{ id: number }[]>`select id from tco.cl_schritte where checkliste_id = ${c} and parent_id is not distinct from ${parent} and lower(titel) = lower(${teil}) order by pos, id limit 1`;
+        if (da[0]) id = Number(da[0].id);
+      }
+      if (id === undefined) id = schreiben ? await schrittAnlegen(tx, c, { titel: teil, parent_id: parent }, wer) : ersatz--;
+      gruppen.set(k, id);
+      parent = id;
+    }
+    const titel = z.pfad.at(-1)!;
+    const neu: number = schreiben
+      ? await schrittAnlegen(tx, c, { titel, beschreibung: z.hinweise, verantwortlich: z.verantwortlich, tage_vor: z.tage_vor, faellig: z.faellig, parent_id: parent }, wer)
+      : ersatz--;
+    // eine spätere Zeile darf diesen Schritt als übergeordneten nennen („Aufbau“, dann „Aufbau > Zelt“)
+    gruppen.set(`${c}|${parent ?? 0}|${titel.toLowerCase()}`, neu);
     e.schritte++;
   }
   return e;

@@ -5,7 +5,7 @@ import { DB, vereinLesen } from '../verein.js';
 import {
   abhaken, bezugLoeschen, checklisteAendern, checklisteAnlegen, checklisteKopieren, checklisteLesen, checklisteLoeschen, checklistenLesen,
   eventsZuordnen, eventsZurAuswahl, kategorieLoeschen, kategorienLesen, kategorieSpeichern, personenLesen, schrittAendern, schrittAnlegen,
-  schritteKopieren, schritteOrdnen, schrittLoeschen, STAND_TEXT, terminZuordnen, importAusfuehren, importLesen, IMPORT_SPALTEN, kategorieSetzen, schrittVerschieben,
+  schritteKopieren, schritteOrdnen, schrittLoeschen, STAND_TEXT, terminZuordnen, importAusfuehren, importLesen, IMPORT_SPALTEN, MAX_STUFEN, kategorieSetzen, schrittVerschieben,
 } from './logik.js';
 import { checklistePdf } from './pdf.js';
 
@@ -29,6 +29,8 @@ const kopfSchema = z.object({
 const schrittSchema = z.object({
   titel: z.string().trim().min(1, 'Bitte den Schritt benennen.').max(200), beschreibung: text(2000), verantwortlich: text(120),
   tage_vor: z.coerce.number().int().min(-365).max(730).nullish(), faellig: datum.nullish().or(z.literal('')),
+  /** nur beim Anlegen: Unterschritt dieses Schritts */
+  parent_id: nr.nullish(),
 });
 
 export async function checklistenRoutes(app: FastifyInstance) {
@@ -37,7 +39,7 @@ export async function checklistenRoutes(app: FastifyInstance) {
 
   app.get('/checklisten', lesen, async (req) => ({
     checklisten: await checklistenLesen(DB), kategorien: await kategorienLesen(DB), personen: await personenLesen(DB),
-    events: await eventsZurAuswahl(DB), stand_text: STAND_TEXT, import_spalten: IMPORT_SPALTEN, pflege: can(req, P_CL.edit),
+    events: await eventsZurAuswahl(DB), stand_text: STAND_TEXT, import_spalten: IMPORT_SPALTEN, max_stufen: MAX_STUFEN, pflege: can(req, P_CL.edit),
   }));
 
   app.get('/checklisten/:id', lesen, async (req) => checklisteLesen(DB, pId.parse(req.params).id));
@@ -112,8 +114,9 @@ export async function checklistenRoutes(app: FastifyInstance) {
 
   app.post('/checklisten/schritte/:id/verschieben', pflege, async (req) => {
     const { id } = pId.parse(req.params);
-    const b = z.object({ ziel: nr, vor: nr.nullish() }).parse(req.body);
-    await change(req, (tx) => schrittVerschieben(tx, id, b.ziel, b.vor ?? null, wer(req)), { action: 'CL_SCHRITT' });
+    // vor = vor diesen Schritt (auf dessen Stufe); unter = als letzter Unterschritt dieses Schritts; beides leer = ans Ende der obersten Stufe
+    const b = z.object({ ziel: nr, vor: nr.nullish(), unter: nr.nullish() }).parse(req.body);
+    await change(req, (tx) => schrittVerschieben(tx, id, b.ziel, b.vor ?? null, wer(req), b.unter ?? null), { action: 'CL_SCHRITT' });
     return { text: 'Schritt verschoben.' };
   });
 
