@@ -25,7 +25,7 @@ const lesen = (f: File) => new Promise<string>((ok, err) => {
 });
 const istPdf = (d: Dok) => /\.pdf$/i.test(d.datei ?? '');
 
-export function AuftragDokumente({ nr, edit, ordnerStand = 0 }: { nr: string; edit: boolean; ordnerStand?: number }) {
+export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: string; edit: boolean; ordnerStand?: number; /** Rechnung des Auftrags: die E-Mail startet dann mit „Rechnung (an Kunde)“ */ faktura?: string | null }) {
   const [d, setD] = useState<{ paperless: boolean; dokumente: Dok[] } | null>(null);
   // Ablageordner auf diesem PC (#121): hineingezogene Dateien landen zusätzlich dort
   const [ordner, setOrdner] = useState(false);
@@ -85,7 +85,7 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0 }: { nr: string; ed
           <Button icon="email" onClick={() => setMail(true)}>E-Mail mit Anhängen…</Button>
         </div>
       )}
-      {mail && <MailEntwurfDialog nr={nr} dokumente={d.dokumente} onClose={() => setMail(false)} />}
+      {mail && <MailEntwurfDialog nr={nr} dokumente={d.dokumente} start={faktura ? 'R' : 'T'} onClose={() => setMail(false)} />}
       {d.dokumente.length > 0 && (
         <div className="portal-ad">
           {d.dokumente.map((x) => (

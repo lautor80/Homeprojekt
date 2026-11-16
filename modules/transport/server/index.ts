@@ -7,9 +7,10 @@ import { sql, type Tx } from '../../../server/src/db.js';
 import { can, change, requireAuth } from '../../../server/src/auth.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import {
-  NR_AUFTRAG, NR_RECHNUNG, WERTE_TYPEN, adresseLesen, auftragLesen, firmaLesen, isoDate, leererStop, naechsteAdrnr,
+  NR_AUFTRAG, NR_RECHNUNG, WERTE_TYPEN, adresseLesen, auftragLesen, fahrtenFuerVersand, firmaLesen, isoDate, leererStop, naechsteAdrnr,
   naechsteNummer, num, nummerVorschau, rechnungsbetrag, traegerVorschlag, werteLesen, type Adresse, type Stop,
 } from './data.js';
+import { fahrtenBereinigen, routenSchluessel, unternehmerText, zusammenfuehrenPruefen, type Kandidat } from './fahrten.js';
 import { condense, heute } from './format.js';
 import { rechnungPdf } from './pdf/rechnung.js';
 import { lieferscheinPdf, transportauftragPdf } from './pdf/dokumente.js';
@@ -77,6 +78,11 @@ const auftragSchema = z.object({
   ladenummer: txt(30),
   besonderheiten: z.string().max(20000).nullish().transform((v) => (v ?? '').replace(/\s+$/, '') || null),
   stops: z.array(stopSchema).max(2).default([]),
+  // weitere Fahrten ab Position 2 (Fahrt 1 = Felder des Auftrags); fehlt das Feld, bleiben die gespeicherten Fahrten unverändert
+  fahrten: z.array(z.object({
+    unternehmer: z.coerce.number().int().positive().nullish().transform((v) => v ?? null),
+    kennzeichen: txt(20), fahrzeugtyp: txt(10), frachtpreis_vk: betragS, ladedatum: datum,
+  })).max(30).optional(),
   traeger: z.array(z.object({
     produkt: txt(20), prod_txt: txt(40), menge: z.coerce.number().int().min(0).default(0), preis: betragS,
   })).default([]),
@@ -161,6 +167,19 @@ async function auftragSchreiben(tx: Tx, nr: string, d: AuftragInput, typ: 'F' | 
     await tx`insert into transport.traeger ${tx({ auftragsnr: nr, pos, ...rest })}
              on conflict (auftragsnr, pos) do update set ${tx(rest)}`;
   }
+  // Weitere Fahrten (nur Frachtaufträge): als Ganzes ersetzen, Positionen ab 2 lückenlos
+  if (typ === 'H' || d.fahrten !== undefined) {
+    const fahrten = typ === 'H' ? [] : fahrtenBereinigen(d.fahrten ?? []);
+    for (const f of fahrten) {
+      if (f.unternehmer && !(await adresseLesen(f.unternehmer, tx))) throw new BusinessError(`Adresse ${f.unternehmer} existiert nicht.`);
+    }
+    await tx`delete from transport.fahrten where auftragsnr = ${nr} and pos > ${fahrten.length + 1}`;
+    for (const f of fahrten) {
+      const { pos, ...rest } = f;
+      await tx`insert into transport.fahrten ${tx({ auftragsnr: nr, pos, ...rest })}
+               on conflict (auftragsnr, pos) do update set ${tx(rest)}`;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +215,7 @@ async function routes(app: FastifyInstance) {
     const tage = q.fakt && q.fakt !== 'ALL' ? Number(q.fakt) : null;
     const rows = await sql`
       select a.auftragsnr, a.kennzeichen, a.anlagedatum, a.frachtpreis_ek, a.frachtpreis_vk, a.rgbetrag,
-             a.faktura, a.fakturadatum, a.dok_fehlen,
+             a.faktura, a.fakturadatum, a.dok_fehlen, a.abgeschlossen_am, a.abgeschlossen_grund,
              k.kundenname as kunde_txt, u.kundenname as unternehmer_txt,
              s1.plzort as s1_plzort, s1.plzort_e as s1_plzort_e, s2.plzort_e as s2_plzort_e, s1.datum as ladedatum,
              (s1.auftragsnr is not null and (coalesce(s1.firma,'') <> '' or coalesce(s1.firma_e,'') <> '' or coalesce(s1.plzort,'') <> ''
@@ -212,7 +231,18 @@ async function routes(app: FastifyInstance) {
          ${jahr ? sql`and a.anlagedatum between ${`${jahr}-01-01`} and ${`${jahr}-12-31`}` : sql``}
          ${tage !== null ? sql`and a.fakturadatum >= current_date - ${tage}::int` : sql``}
        order by a.auftragsnr desc`;
+    // weitere Fahrten je Auftrag: Unternehmer und Frachtpreis VK zählen in der Liste mit
+    const weitere = new Map<string, { namen: string[]; vk: number }>();
+    for (const f of await sql`select f.auftragsnr, f.frachtpreis_vk, u.kundenname from transport.fahrten f
+                               left join transport.adressen u on u.adrnr = f.unternehmer order by f.auftragsnr, f.pos`) {
+      const w = weitere.get(f.auftragsnr) ?? { namen: [], vk: 0 };
+      w.namen.push(f.kundenname ?? '');
+      w.vk += num(f.frachtpreis_vk);
+      weitere.set(f.auftragsnr, w);
+    }
     return rows.map((r) => {
+      const w = weitere.get(r.auftragsnr);
+      const namen = [r.unternehmer_txt ?? '', ...(w?.namen ?? [])];
       let route = r.s1_plzort ?? '';
       if (r.s1_plzort_e) route = `${route} → ${r.s1_plzort_e}`;
       if (r.s2_plzort_e) route = `${route} → ${r.s2_plzort_e}`;
@@ -222,15 +252,20 @@ async function routes(app: FastifyInstance) {
         art: !r.hat_stops && r.hat_menge ? 'Holzträger' : 'Fracht',
         anlagedatum: isoDate(r.anlagedatum),
         kunde: r.kunde_txt ?? '',
-        unternehmer: r.unternehmer_txt ?? '',
+        unternehmer: unternehmerText(namen),
+        // alle Unternehmer des Auftrags für die Suche (die Spalte zeigt bei mehreren nur die Anzahl)
+        unternehmerNamen: [...new Set(namen.filter(Boolean))].join(', '),
+        fahrten: 1 + (w?.namen.length ?? 0),
         route: route.trim(),
         ladedatum: isoDate(r.ladedatum),
         ek: num(r.frachtpreis_ek),
-        vk: num(r.frachtpreis_vk),
+        vk: num(r.frachtpreis_vk) + (w?.vk ?? 0),
         betrag: num(r.rgbetrag),
         faktura: r.faktura,
         fakturadatum: isoDate(r.fakturadatum),
-        status: r.faktura ? 'Fakturiert' : 'Offen',
+        status: r.faktura ? 'Fakturiert' : r.abgeschlossen_am ? 'Ohne Rechnung' : 'Offen',
+        abgeschlossenAm: isoDate(r.abgeschlossen_am),
+        abgeschlossenGrund: r.abgeschlossen_grund ?? null,
         dokFehlen: r.dok_fehlen,
       };
     });
@@ -264,6 +299,7 @@ async function routes(app: FastifyInstance) {
       frachtpreis_ek: 0,
       frachtpreis_vk: 0,
       stops: [leererStop(1), leererStop(2)],
+      fahrten: [],
       traeger: typ === 'H' ? await traegerVorschlag() : [],
     };
   });
@@ -300,14 +336,96 @@ async function routes(app: FastifyInstance) {
     return { auftragsnr: nr };
   });
 
+  // ---- Ohne Rechnung abschließen / wieder öffnen (ersetzt das frühere Ausbuchen mit 0 Euro) ----
+  app.post('/auftraege/abschliessen', { preHandler: requireAuth(P.edit) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), grund: z.string().trim().min(1, 'Bitte einen Grund angeben.').max(500) }).parse(req.body);
+    return change(req, async (tx) => {
+      const r = await tx`update transport.auftraege set abgeschlossen_am = current_date, abgeschlossen_grund = ${b.grund}
+                          where auftragsnr = any(${b.auftraege}) and faktura is null and abgeschlossen_am is null returning auftragsnr`;
+      if (!r.count) throw new BusinessError('Unter der Auswahl ist kein offener Auftrag.');
+      return { abgeschlossen: r.map((x) => x.auftragsnr as string).sort(), ignoriert: b.auftraege.length - r.count };
+    }, { action: 'OHNE_RECHNUNG_ABGESCHLOSSEN', reason: b.grund });
+  });
+
+  app.post('/auftraege/oeffnen', { preHandler: requireAuth(P.edit) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500) }).parse(req.body);
+    return change(req, async (tx) => {
+      const r = await tx`update transport.auftraege set abgeschlossen_am = null, abgeschlossen_grund = null
+                          where auftragsnr = any(${b.auftraege}) and abgeschlossen_am is not null returning auftragsnr`;
+      if (!r.count) throw new BusinessError('Unter der Auswahl ist kein ohne Rechnung abgeschlossener Auftrag.');
+      return { geoeffnet: r.map((x) => x.auftragsnr as string).sort() };
+    }, { action: 'WIEDER_GEOEFFNET' });
+  });
+
+  /**
+   * Zusammenführen: Mehrere offene Frachtaufträge desselben Kunden mit derselben Route werden EIN Auftrag mit mehreren Fahrten.
+   * Ziel ist der Auftrag mit der kleinsten Nummer; die übrigen werden seine Fahrten (Unternehmer, Kennzeichen, Fahrzeugtyp,
+   * Frachtpreis VK, Ladedatum), ihr Frachtpreis EK wird addiert, ihre Dokumente ziehen um – danach entfallen sie als Aufträge
+   * (Nummern werden nicht neu vergeben, der Vorgang steht im Änderungsbeleg). pruefen = true liefert nur, was geschähe.
+   */
+  app.post('/auftraege/zusammenfuehren', { preHandler: requireAuth(P.edit) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(2, 'Bitte mindestens zwei Aufträge auswählen.').max(30), pruefen: z.boolean().default(false) }).parse(req.body);
+    const nrs = [...new Set(b.auftraege)];
+    const lesen = async (db: Tx) => {
+      const auftraege = [];
+      for (const nr of nrs.sort()) auftraege.push(await auftragLesen(nr, db));
+      const kandidaten: Kandidat[] = auftraege.map((a) => ({
+        auftragsnr: a.auftragsnr, typ: a.typ, kunde: a.kunde, rechnungsempfaenger: a.rechnungsempfaenger, faktura: a.faktura,
+        abgeschlossen_am: a.abgeschlossen_am, steuerrelevant: a.steuerrelevant, steuerbefreiung: a.steuerbefreiung,
+        hatTraeger: a.traeger.some((t) => t.menge > 0), route: routenSchluessel(a.stops), ordernummer: a.ordernummer, ladenummer: a.ladenummer,
+      }));
+      return { auftraege, ...zusammenfuehrenPruefen(kandidaten) };
+    };
+    if (b.pruefen) {
+      const { auftraege, ...r } = await lesen(sql as unknown as Tx);
+      return { ...r, fahrten: auftraege.reduce((s, a) => s + 1 + a.fahrten.length, 0) };
+    }
+    return change(req, async (tx) => {
+      await tx`select 1 from transport.auftraege where auftragsnr = any(${nrs}) order by auftragsnr for update`;
+      const { auftraege, ziel, quellen, fehler, hinweise } = await lesen(tx);
+      if (fehler.length) throw new BusinessError(fehler.join(' '));
+      const z = auftraege.find((a) => a.auftragsnr === ziel)!;
+      let pos = 1 + z.fahrten.length;
+      let ek = z.frachtpreis_ek;
+      let besonderheiten = z.besonderheiten ?? '';
+      const werte = { ordernummer: z.ordernummer, ladenummer: z.ladenummer, leistungsdatum: z.leistungsdatum, dok_fehlen: z.dok_fehlen };
+      for (const q of auftraege.filter((a) => quellen.includes(a.auftragsnr))) {
+        // Fahrt 1 der Quelle (ihre Auftragsfelder, Ladedatum = Termin ihres ersten Stops) und ihre weiteren Fahrten
+        const fahrten = [
+          { unternehmer: q.unternehmer, kennzeichen: q.kennzeichen, fahrzeugtyp: q.fahrzeugtyp, frachtpreis_vk: q.frachtpreis_vk, ladedatum: q.stops[0]?.datum ?? null },
+          ...q.fahrten.map((f) => ({ unternehmer: f.unternehmer, kennzeichen: f.kennzeichen, fahrzeugtyp: f.fahrzeugtyp, frachtpreis_vk: f.frachtpreis_vk, ladedatum: f.ladedatum })),
+        ];
+        for (const f of fahrten) await tx`insert into transport.fahrten ${tx({ auftragsnr: ziel, pos: ++pos, ...f })}`;
+        ek += q.frachtpreis_ek;
+        if (q.besonderheiten && !besonderheiten.includes(q.besonderheiten)) besonderheiten = [besonderheiten, q.besonderheiten].filter(Boolean).join('\n\n');
+        werte.ordernummer ??= q.ordernummer;
+        werte.ladenummer ??= q.ladenummer;
+        werte.leistungsdatum ??= q.leistungsdatum;
+        werte.dok_fehlen ||= q.dok_fehlen;
+        await tx`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_am, erstellt_von)
+                 select ${ziel}, doc_id, titel, datei, erstellt_am, erstellt_von from transport.auftrag_dokumente where auftragsnr = ${q.auftragsnr}
+                 on conflict do nothing`;
+        await tx`delete from transport.auftrag_dokumente where auftragsnr = ${q.auftragsnr}`;
+        await tx`delete from transport.auftraege where auftragsnr = ${q.auftragsnr}`;
+      }
+      const firma = await firmaLesen(tx);
+      await tx`update transport.auftraege set ${tx({
+        ...werte, frachtpreis_ek: ek, besonderheiten: besonderheiten || null,
+        rgbetrag: rechnungsbetrag({ frachtpreis_ek: ek, steuerrelevant: z.steuerrelevant }, z.traeger, firma.ust_satz),
+      })} where auftragsnr = ${ziel}`;
+      return { ziel, quellen, fahrten: pos, hinweise };
+    }, { action: 'ZUSAMMENGEFUEHRT', reason: `Aufträge ${nrs.sort().join(', ')} zu einem Auftrag mit mehreren Fahrten` });
+  });
+
   // ---- Rechnungen (Einzel/Sammel) ----
   app.post('/rechnungen', { preHandler: requireAuth(P.rechnung) }, async (req) => {
     const { auftraege, sammel } = z.object({ auftraege: z.array(z.string()).min(1), sammel: z.boolean() }).parse(req.body);
     const firma = await firmaLesen();
     return change(req, async (tx) => {
-      const rows = await tx`select auftragsnr, faktura from transport.auftraege
+      const rows = await tx`select auftragsnr, faktura, abgeschlossen_am from transport.auftraege
                             where auftragsnr = any(${auftraege}) order by auftragsnr for update`;
-      const offen = rows.filter((r) => !r.faktura).map((r) => r.auftragsnr as string);
+      // ohne Rechnung abgeschlossene Aufträge bekommen keine Rechnung (erst wieder öffnen)
+      const offen = rows.filter((r) => !r.faktura && !r.abgeschlossen_am).map((r) => r.auftragsnr as string);
       const ignoriert = rows.length - offen.length;
       if (!offen.length) throw new BusinessError('Keine offenen Aufträge ausgewählt.');
       if (sammel && offen.length < 2) throw new BusinessError('Für eine Sammelrechnung bitte mindestens zwei offene Aufträge auswählen.');
@@ -410,8 +528,13 @@ async function routes(app: FastifyInstance) {
     const { art, auftraege } = z.object({ art: z.enum(['T', 'L', 'R']), auftraege: z.array(z.string()).min(1) }).parse(req.body);
     const texte = await sql`select art, sprache, text from transport.mailtexte`;
     const res = [];
-    for (const nr of auftraege) {
-      const a = await auftragLesen(nr);
+    // Transportauftrag: je Fahrt eine E-Mail an deren Unternehmer (Angabe „Auftrag-Fahrt“ = nur diese Fahrt)
+    const ziele: { auftrag: Awaited<ReturnType<typeof auftragLesen>>; kennung: string }[] = [];
+    for (const id of auftraege) {
+      if (art === 'T') ziele.push(...await fahrtenFuerVersand(id));
+      else ziele.push({ auftrag: await auftragLesen(id), kennung: id });
+    }
+    for (const { auftrag: a, kennung: nr } of ziele) {
       if (art === 'R' && !a.faktura) continue;
       // Empfänger: Transportauftrag → Unternehmer, Lieferschein/Rechnung → Kunde
       const adr: Adresse | null = art === 'T' ? a.unternehmerAdr : a.kundeAdr;
@@ -425,7 +548,9 @@ async function routes(app: FastifyInstance) {
       const betreff = art === 'T' ? `Transportauftrag ${nr}` : art === 'L' ? `Lieferschein ${nr}` : `Rechnung ${a.faktura}`;
       const email = adr?.email ?? '';
       res.push({
+ // bei mehreren Fahrten „Auftrag-Fahrt“ (so heißt auch das PDF); `auftrag` ist immer die Auftragsnummer
         auftragsnr: nr,
+        auftrag: a.auftragsnr,
         faktura: a.faktura,
         art: art === 'T' ? 'Transportauftrag' : art === 'L' ? 'Lieferschein' : `Rechnung ${a.faktura}`,
         empfaenger: condense(`${adr?.kundenname ?? '(kein Empfänger)'} ${email ? `<${email}>` : ''}`),

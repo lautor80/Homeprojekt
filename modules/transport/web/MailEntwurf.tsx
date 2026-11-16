@@ -93,8 +93,13 @@ const groesse = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 
 /** Vorschlag je Vorlage: passende Dateien vorauswählen (Name enthält Transportauftrag/Lieferschein/Rechnung) */
 const passt = (art: Art, name: string) => (art === 'T' ? /transport/i : art === 'L' ? /liefer/i : art === 'R' ? /rechnung/i : /^$/).test(name);
 
-export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; dokumente: MailDok[]; onClose: () => void }) {
-  const [art, setArt] = useState<Art>('T');
+export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
+  nr: string; dokumente: MailDok[]; /** Vorlage beim Öffnen: fakturierte Aufträge beginnen mit der Rechnung an den Kunden */ start?: Art; onClose: () => void;
+}) {
+  const [art, setArt] = useState<Art>(start ?? 'T');
+  // Transportauftrag bei mehreren Fahrten: je Fahrt ein Vorschlag (Unternehmer der Fahrt, Nummer „Auftrag-Fahrt“)
+  const [fahrten, setFahrten] = useState<(Vorschlag & { auftragsnr: string })[]>([]);
+  const [fahrt, setFahrt] = useState(0);
   const [an, setAn] = useState('');
   const [cc, setCc] = useState('');
   const [info, setInfo] = useState<VersandInfo | null>(null);
@@ -125,10 +130,12 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
 
   // Vorlage laden: Empfänger, Betreff, Text wie beim Versenden aus der Auftragsliste
   useEffect(() => {
-    if (art === 'FREI') { setBetreff(`Auftrag ${nr}`); setText(''); return; }
+    if (art === 'FREI') { setFahrten([]); setBetreff(`Auftrag ${nr}`); setText(''); return; }
     setError(null);
     api.post<(Vorschlag & { auftragsnr: string })[]>(`${T}/mails`, { art, auftraege: [nr] })
       .then((r) => {
+        setFahrten(art === 'T' ? r : []);
+        setFahrt(0);
         const v = r[0];
         if (!v) { setError('Zu diesem Auftrag gibt es noch keine Rechnung.'); return; }
         setAn(v.an); setBetreff(v.betreff); setText(v.text); setFaktura(v.faktura);
@@ -136,7 +143,14 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
       .catch((e) => setError((e as Error).message));
   }, [art, nr]);
   // passende Dateien vorauswählen, sobald die Liste da ist bzw. die Vorlage wechselt
-  useEffect(() => { setWahl(new Set(anhaenge.filter((x) => passt(art, x.name)).map((x) => x.key))); }, [art, anhaenge]);
+  // bei mehreren Fahrten nur den Transportauftrag der gewählten Fahrt (Dateiname enthält „Auftrag-Fahrt“)
+  const kennung = fahrten.length > 1 ? fahrten[fahrt]?.auftragsnr ?? null : null;
+  useEffect(() => { setWahl(new Set(anhaenge.filter((x) => passt(art, x.name) && (!kennung || x.name.includes(kennung))).map((x) => x.key))); }, [art, anhaenge, kennung]);
+  const waehleFahrt = (i: number) => {
+    const v = fahrten[i];
+    if (!v) return;
+    setFahrt(i); setAn(v.an); setBetreff(v.betreff); setText(v.text);
+  };
 
   const umschalten = (k: string, an_: boolean) => setWahl((w) => { const n = new Set(w); if (an_) n.add(k); else n.delete(k); return n; });
 
@@ -250,6 +264,13 @@ export function MailEntwurfDialog({ nr, dokumente, onClose }: { nr: string; doku
               {(Object.keys(ARTEN) as Art[]).map((k) => <Option key={k} data-a={k} selected={art === k}>{ARTEN[k]}</Option>)}
             </Select>
           </div>
+          {fahrten.length > 1 && (
+            <div><Label>Fahrt</Label>
+              <Select style={{ width: '100%' }} onChange={(e) => waehleFahrt(Number((e.detail.selectedOption as HTMLElement).dataset.i))}>
+                {fahrten.map((f, i) => <Option key={f.auftragsnr} data-i={i} selected={fahrt === i}>{f.auftragsnr}{f.an ? ` · ${f.an}` : ''}</Option>)}
+              </Select>
+            </div>
+          )}
           <div><Label>An</Label><Input style={{ width: '100%' }} type="Email" value={an} placeholder="E-Mail-Adresse (auch im Mailprogramm ergänzbar)" onInput={(e) => setAn(e.target.value)} /></div>
         </div>
         {outlook && <div><Label>CC</Label><Input style={{ width: '100%' }} value={cc} placeholder="weitere Empfänger, durch Komma getrennt" onInput={(e) => setCc(e.target.value)} /></div>}

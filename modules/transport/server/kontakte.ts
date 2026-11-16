@@ -39,12 +39,12 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
     const rows = await sql`
       select a.adrnr, a.kundenname, a.kundenname2, a.land, a.plz, a.ort, a.email, a.telefon,
              count(*) filter (where o.kunde = a.adrnr)::int as als_kunde,
-             count(*) filter (where o.unternehmer = a.adrnr)::int as als_unternehmer,
+             count(*) filter (where o.unternehmer = a.adrnr or exists (select 1 from transport.fahrten f where f.auftragsnr = o.auftragsnr and f.unternehmer = a.adrnr))::int as als_unternehmer,
              count(*) filter (where o.rechnungsempfaenger = a.adrnr)::int as als_re,
-             count(*) filter (where o.auftragsnr is not null and o.faktura is null and (o.kunde = a.adrnr or o.rechnungsempfaenger = a.adrnr))::int as offen,
+             count(*) filter (where o.auftragsnr is not null and o.faktura is null and o.abgeschlossen_am is null and (o.kunde = a.adrnr or o.rechnungsempfaenger = a.adrnr))::int as offen,
              max(o.anlagedatum) as letzter
         from transport.adressen a
-        left join transport.auftraege o on a.adrnr in (o.kunde, o.unternehmer, o.rechnungsempfaenger)
+        left join transport.auftraege o on a.adrnr in (o.kunde, o.unternehmer, o.rechnungsempfaenger) or exists (select 1 from transport.fahrten f where f.auftragsnr = o.auftragsnr and f.unternehmer = a.adrnr)
        where (coalesce(a.kundenname, '') <> '' or coalesce(a.kundenname2, '') <> '')
        group by a.adrnr
        order by lower(a.kundenname), lower(coalesce(a.kundenname2, '')), a.ort`;
@@ -73,7 +73,8 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
     const a = await adresseLesen(nr);
     if (!a) throw new BusinessError('Kontakt nicht gefunden.', 404);
     const rows = await sql`
-      select o.auftragsnr, o.anlagedatum, o.leistungsdatum, o.kennzeichen, o.frachtpreis_ek, o.frachtpreis_vk, o.rgbetrag, o.faktura, o.fakturadatum,
+      select o.auftragsnr, o.anlagedatum, o.leistungsdatum, o.kennzeichen, o.frachtpreis_ek, o.frachtpreis_vk, o.rgbetrag, o.faktura, o.fakturadatum, o.abgeschlossen_am,
+             exists (select 1 from transport.fahrten f where f.auftragsnr = o.auftragsnr and f.unternehmer = ${nr}) as fahrt_unternehmer,
              o.kunde, o.unternehmer, o.rechnungsempfaenger, k.kundenname as kunde_txt, u.kundenname as unternehmer_txt,
              s1.plzort as von, coalesce(s2.plzort_e, s1.plzort_e) as nach
         from transport.auftraege o
@@ -82,14 +83,15 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
         left join transport.stops s1 on s1.auftragsnr = o.auftragsnr and s1.pos = 1
         left join transport.stops s2 on s2.auftragsnr = o.auftragsnr and s2.pos = 2
        where ${nr} in (o.kunde, o.unternehmer, o.rechnungsempfaenger)
+          or exists (select 1 from transport.fahrten f where f.auftragsnr = o.auftragsnr and f.unternehmer = ${nr})
        order by o.auftragsnr desc`;
     const auftraege = rows.map((r) => ({
       auftragsnr: r.auftragsnr as string, anlagedatum: isoDate(r.anlagedatum), leistungsdatum: isoDate(r.leistungsdatum), kennzeichen: r.kennzeichen,
-      rollen: [r.kunde === nr && 'Kunde', r.unternehmer === nr && 'Unternehmer', r.rechnungsempfaenger === nr && 'Rechnungsempfänger'].filter(Boolean),
+      rollen: [r.kunde === nr && 'Kunde', (r.unternehmer === nr || r.fahrt_unternehmer) && 'Unternehmer', r.rechnungsempfaenger === nr && 'Rechnungsempfänger'].filter(Boolean),
       kunde: r.kunde_txt ?? '', unternehmer: r.unternehmer_txt ?? '',
       route: [r.von, r.nach].filter(Boolean).join(' → '),
       ek: num(r.frachtpreis_ek), vk: num(r.frachtpreis_vk), betrag: num(r.rgbetrag),
-      faktura: r.faktura, fakturadatum: isoDate(r.fakturadatum), status: r.faktura ? 'Fakturiert' : 'Offen',
+      faktura: r.faktura, fakturadatum: isoDate(r.fakturadatum), status: r.faktura ? 'Fakturiert' : r.abgeschlossen_am ? 'Ohne Rechnung' : 'Offen',
     }));
     const kunde = auftraege.filter((x) => x.rollen.includes('Kunde') || x.rollen.includes('Rechnungsempfänger'));
     const jahr = String(new Date().getFullYear());
@@ -110,7 +112,8 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
   /** Kontakt löschen – nur ohne Aufträge */
   app.delete('/kontakte/:nr', { preHandler: requireAuth(P.kontakte) }, async (req) => {
     const { nr } = z.object({ nr: z.coerce.number().int() }).parse(req.params);
-    const [o] = await sql`select count(*)::int as n from transport.auftraege where ${nr} in (kunde, unternehmer, rechnungsempfaenger)`;
+    const [o] = await sql`select count(*)::int as n from transport.auftraege o where ${nr} in (o.kunde, o.unternehmer, o.rechnungsempfaenger)
+                             or exists (select 1 from transport.fahrten f where f.auftragsnr = o.auftragsnr and f.unternehmer = ${nr})`;
     if (o.n) throw new BusinessError(`Der Kontakt ist in ${o.n} Auftrag/Aufträgen eingetragen und kann nicht gelöscht werden.`);
     const r = await change(req, (tx) => tx`delete from transport.adressen where adrnr = ${nr}`, { action: 'KONTAKT_LOESCHEN' });
     if (!r.count) throw new BusinessError('Kontakt nicht gefunden.', 404);

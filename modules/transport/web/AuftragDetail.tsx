@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectPage, ObjectStatus,
+  BusyIndicator, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, Link, MessageStrip, ObjectPage, ObjectStatus,
   ObjectPageSection, ObjectPageSubSection, ObjectPageTitle, Option, SegmentedButton, SegmentedButtonItem, Select, Switch, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
+import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { useCan } from '@core/session';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { toast } from '@core/toast';
 import { DocsDialog, XRechnungDialog, type Doc, type XRes } from './dialogs';
 import { AuftragDokumente } from './AuftragDokumente';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
-import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Stop, type Traeger, type Werte } from './util';
+import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Fahrt, type Stop, type Traeger, type Werte } from './util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { ablegenIn, auftragsOrdner, ordnerBereit } from './ordner';
 
@@ -76,6 +77,9 @@ export function AuftragDetail() {
   const [ordnerStand, setOrdnerStand] = useState(0); // neu einlesen nach Druck/Ablage
   const [kontakt, setKontakt] = useState<'NEU' | 'EDIT' | null>(null);
   const [wertTyp, setWertTyp] = useState<string | null>(null);
+  // Anzahl der gespeicherten weiteren Fahrten: gedruckt wird der gespeicherte Stand
+  const [fahrtenGespeichert, setFahrtenGespeichert] = useState(0);
+  const [abschliessen, setAbschliessen] = useState(false);
 
   const ladeAdressen = useCallback(() => api.get<AdrDD[]>(`${T}/adressen`).then(setAdrDD), []);
   const ladeWerte = useCallback(() => api.get<Werte>(`${T}/werte`).then(setWerte), []);
@@ -89,11 +93,13 @@ export function AuftragDetail() {
         // Empfänger des ersten Stops: Firma und Straße mit „laut LFS“ (laut Lieferschein) vorbelegt – bei Bedarf überschreiben.
         // Nur Frachtaufträge (Holzträgeraufträge haben keine Stops) und nur der erste Stop: ein vorbelegter zweiter würde immer mitgespeichert.
         const stops = v.stops.map((st, i) => (i === 0 && neuTyp === 'F' ? { ...st, firma_e: st.firma_e || LAUT_LFS, strasse_e: st.strasse_e || LAUT_LFS } : st));
-        setA({ ...v, stops, kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
+        setFahrtenGespeichert(0);
+        setA({ ...v, stops, fahrten: [], kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
           gewicht: null, lademeter: null, ladenummer: null, besonderheiten: null });
         setAdr({ kunde: null, unternehmer: null, rechnungsempfaenger: null });
       } else {
         const d = await api.get<Auftrag>(`${T}/auftraege/${nr}`);
+        setFahrtenGespeichert(d.fahrten?.length ?? 0);
         setA(d);
         setAdr({ kunde: d.kundeAdr ?? null, unternehmer: d.unternehmerAdr ?? null, rechnungsempfaenger: d.reAdr ?? null });
       }
@@ -115,6 +121,13 @@ export function AuftragDetail() {
   // Fakturierte Aufträge (#121): gesperrt bis auf „Dokumente fehlen“, Besonderheiten und Dokumente
   const fakturiert = !isNew && !!a.faktura;
   const mayEdit = darfBearbeiten && !fakturiert;
+
+  // Weitere Fahrten (ab Fahrt 2): eigener Unternehmer, eigenes Fahrzeug, eigener Frachtpreis VK – Fahrt 1 sind die Felder des Auftrags
+  const fahrten: Fahrt[] = a.fahrten ?? [];
+  const setFahrt = (i: number, p: Partial<Fahrt>) => setA({ ...a, fahrten: fahrten.map((f, j) => (j === i ? { ...f, ...p } : f)) });
+  const fahrtNeu = () => setA({ ...a, fahrten: [...fahrten, { pos: fahrten.length + 2, unternehmer: null, kennzeichen: null, fahrzeugtyp: a.fahrzeugtyp, frachtpreis_vk: 0, ladedatum: null }] });
+  const fahrtWeg = (i: number) => setA({ ...a, fahrten: fahrten.filter((_, j) => j !== i).map((f, j) => ({ ...f, pos: j + 2 })) });
+  const vkSumme = a.frachtpreis_vk + fahrten.reduce((s, f) => s + (f.frachtpreis_vk || 0), 0);
 
   const set = <K extends keyof Auftrag>(k: K, v: Auftrag[K]) => setA({ ...a, [k]: v });
   const setStop = (i: number, f: keyof Stop, v: string | null) => {
@@ -203,9 +216,11 @@ export function AuftragDetail() {
       }
       return;
     }
-    const id = nr!;
+    // Transportauftrag: bei mehreren Fahrten je Fahrt ein PDF an deren Unternehmer (Nummer „Auftrag-Fahrt“), alle im Ordner des Auftrags
+    if (art === 'T' && fahrtenGespeichert !== (a!.fahrten?.length ?? 0)) toast('Die Fahrten wurden geändert – gedruckt wird der gespeicherte Stand. Bitte bei Bedarf zuerst speichern.', 6000);
+    const ids = art === 'T' && fahrtenGespeichert > 0 ? Array.from({ length: fahrtenGespeichert + 1 }, (_, i) => `${nr}-${i + 1}`) : [nr!];
     const name = art === 'T' ? 'Transportauftrag' : art === 'L' ? 'Lieferschein' : 'Rechnung';
-    setDocs([{ url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, filename: `${name}_${id}.pdf`, ablage: [nr!] }]);
+    setDocs(ids.map((id) => ({ url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, filename: `${name}_${id}.pdf`, ablage: [nr!] })));
   }
 
   // Kontakte dieses Auftrags (für "Kontakt bearbeiten")
@@ -222,7 +237,20 @@ export function AuftragDetail() {
     ? `Neuer ${typ === 'H' ? 'Holzträgerauftrag' : 'Frachtauftrag'} ${vorschau}`
     : `${typ === 'H' ? 'Holzträgerauftrag' : 'Frachtauftrag'} ${nr}`;
   const unter = isNew ? 'Noch nicht gespeichert (Nummer wird beim Speichern vergeben)'
-    : a.faktura ? `Fakturiert mit ${a.faktura} am ${dat(a.fakturadatum)}` : 'Offen';
+    : a.faktura ? `Fakturiert mit ${a.faktura} am ${dat(a.fakturadatum)}`
+    : a.abgeschlossen_am ? `Ohne Rechnung abgeschlossen am ${dat(a.abgeschlossen_am)}` : 'Offen';
+  const kannAbschliessen = !isNew && darfBearbeiten && !a.faktura && !a.abgeschlossen_am;
+  /** Ohne Rechnung abschließen bzw. wieder öffnen – wirkt sofort (ungespeicherte Eingaben im Formular bleiben stehen) */
+  async function abschluss(grund: string | null) {
+    setAbschliessen(false);
+    try {
+      if (grund === null) await api.post(`${T}/auftraege/oeffnen`, { auftraege: [nr] });
+      else await api.post(`${T}/auftraege/abschliessen`, { auftraege: [nr], grund });
+      const d = await api.get<Auftrag>(`${T}/auftraege/${nr}`);
+      setA((x) => (x ? { ...x, abgeschlossen_am: d.abgeschlossen_am ?? null, abgeschlossen_grund: d.abgeschlossen_grund ?? null } : x));
+      toast(grund === null ? `Auftrag ${nr} ist wieder offen.` : `Auftrag ${nr} ohne Rechnung abgeschlossen.`);
+    } catch (e) { setError((e as Error).message); }
+  }
 
   // Anzeige: Name des gewählten Kontakts (der Schlüssel steht am Eintrag, nicht im Feld)
   const adrName = (f: 'kunde' | 'unternehmer' | 'rechnungsempfaenger') => {
@@ -309,6 +337,7 @@ export function AuftragDetail() {
             actionsBar={
               <FlexBox style={{ gap: '0.5rem' }} alignItems="Center">
                 {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={save}>Speichern</Button>}
+                {kannAbschliessen && <Button icon="complete" onClick={() => setAbschliessen(true)} tooltip="Der Auftrag bekommt keine Rechnung und gilt nicht mehr als offen">Ohne Rechnung abschließen</Button>}
                 <MenuButton text="Drucken" icon="print" items={[
                   { text: 'Transportauftrag', onClick: () => drucken('T') },
                   { text: 'Lieferschein', onClick: () => drucken('L') },
@@ -335,9 +364,15 @@ export function AuftragDetail() {
                 ausgenommen „Dokumente fehlen“, die Besonderheiten und die Zuordnung von Dokumenten.
               </MessageStrip>
             )}
+            {!!a.abgeschlossen_am && !a.faktura && (
+              <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
+                Ohne Rechnung abgeschlossen am {dat(a.abgeschlossen_am)}{a.abgeschlossen_grund ? ` – ${a.abgeschlossen_grund}` : ''}.
+                {darfBearbeiten && <>{' '}<Link onClick={() => abschluss(null)}>Wieder öffnen</Link></>}
+              </MessageStrip>
+            )}
             <Spalten n={3}>
               {beteiligter('Kunde', 'kunde')}
-              {beteiligter('Unternehmer', 'unternehmer')}
+              {beteiligter(fahrten.length ? 'Unternehmer (Fahrt 1)' : 'Unternehmer', 'unternehmer')}
               {beteiligter('Abweichender Rechnungsempfänger', 'rechnungsempfaenger', false)}
             </Spalten>
           </ObjectPageSubSection>
@@ -358,7 +393,7 @@ export function AuftragDetail() {
                 </F>
                 <F label="Auftragsnr. Kunde"><Input style={full} maxlength={40} value={a.ordernummer ?? ''} readonly={!mayEdit} onInput={(e) => set('ordernummer', e.target.value)} /></F>
                 <F label="Frachtpreis EK"><BetragInput value={a.frachtpreis_ek} readonly={!mayEdit} onChange={(v) => set('frachtpreis_ek', v)} /></F>
-                <F label="Frachtpreis VK"><BetragInput value={a.frachtpreis_vk} readonly={!mayEdit} onChange={(v) => set('frachtpreis_vk', v)} /></F>
+                <F label={fahrten.length ? 'Frachtpreis VK (Fahrt 1)' : 'Frachtpreis VK'}><BetragInput value={a.frachtpreis_vk} readonly={!mayEdit} onChange={(v) => set('frachtpreis_vk', v)} /></F>
               </Spalte>
               <Spalte titel="Fahrzeug und Ladung">
                 <F label="Kennzeichen"><Input style={full} maxlength={20} value={a.kennzeichen ?? ''} readonly={!mayEdit} onInput={(e) => set('kennzeichen', e.target.value)} /></F>
@@ -413,6 +448,7 @@ export function AuftragDetail() {
                 <F label="Faktura">
                   {a.faktura
                     ? <ObjectStatus state="Positive">{a.faktura} vom {dat(a.fakturadatum)}</ObjectStatus>
+                    : a.abgeschlossen_am ? <ObjectStatus state="Information">ohne Rechnung abgeschlossen</ObjectStatus>
                     : <ObjectStatus state="Critical">offen</ObjectStatus>}
                 </F>
                 <F label="Dokumente fehlen">
@@ -431,6 +467,67 @@ export function AuftragDetail() {
                 {stopForm(i)}
               </ObjectPageSubSection>
             ))}
+          </ObjectPageSection>
+        ) : <></>}
+
+        {showStops ? (
+          <ObjectPageSection id="fahrten" titleText="Weitere Fahrten" hideTitleText>
+            <ObjectPageSubSection id="fahrten-sub" titleText={`Weitere Fahrten${fahrten.length ? ` (${fahrten.length})` : ''}`}
+              actions={<FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+                {fahrten.length > 0 && <><Label>Frachtpreis VK aller {fahrten.length + 1} Fahrten:</Label><Text><b>{betrag(vkSumme)} EUR</b></Text></>}
+                {mayEdit && <Button icon="add" design="Transparent" onClick={fahrtNeu}>Fahrt hinzufügen</Button>}
+              </FlexBox>}>
+              <Text className="portal-muted" style={{ display: 'block', padding: '0 1rem 0.5rem' }}>
+                Fährt der Transport mit mehreren Fahrzeugen oder Unternehmern, bleibt es ein Auftrag mit einer Rechnung an den Kunden.
+                Fahrt 1 steht oben (Unternehmer, Kennzeichen, Fahrzeugtyp, Frachtpreis VK); jede weitere Fahrt bekommt hier ihren Unternehmer
+                und ihren eigenen Transportauftrag ({isNew ? 'Nummer-2' : `${nr}-2`}, …). Die Route gilt für alle Fahrten.
+              </Text>
+              {fahrten.length > 0 && (
+                <div className="portal-tabrahmen">
+                  <table style={{ width: '100%', minWidth: '62rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                        {['Fahrt', 'Unternehmer', 'Kennzeichen', 'Fahrzeugtyp', 'Ladedatum (falls abweichend)', 'Frachtpreis VK', ''].map((h) => (
+                          <th key={h} style={{ padding: '0.5rem', fontWeight: 'normal', color: 'var(--sapContent_LabelColor)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fahrten.map((f, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                          <td style={{ padding: '0.25rem 0.5rem', whiteSpace: 'nowrap' }}><b>{isNew ? `Fahrt ${i + 2}` : `${nr}-${i + 2}`}</b></td>
+                          <td style={{ padding: '0.25rem 0.5rem', minWidth: '16rem' }}>
+                            <AuswahlBox style={full} wert={f.unternehmer ? String(f.unternehmer) : ''} placeholder="Name oder Ort eingeben" readonly={!mayEdit} max={50}
+                                        eintraege={adrDD.length ? adrDD : f.unternehmer ? [{ key: String(f.unternehmer), text: f.unternehmerAdr?.kundenname ?? `Kontakt ${f.unternehmer}` }] : []}
+                                        onWaehle={(k) => setFahrt(i, { unternehmer: k ? Number(k) : null })} />
+                          </td>
+                          <td style={{ padding: '0.25rem 0.5rem' }}>
+                            <Input style={{ width: '10rem' }} maxlength={20} value={f.kennzeichen ?? ''} readonly={!mayEdit} onInput={(e) => setFahrt(i, { kennzeichen: e.target.value })} />
+                          </td>
+                          <td style={{ padding: '0.25rem 0.5rem' }}>
+                            <Select style={{ width: '11rem' }} disabled={!mayEdit} onChange={(e) => setFahrt(i, { fahrzeugtyp: e.detail.selectedOption.dataset.key || null })}>
+                              {!f.fahrzeugtyp && <Option data-key="" selected />}
+                              {(werte?.FAHRZEUGTYP ?? []).filter((w) => w.aktiv || w.key === f.fahrzeugtyp).map((w) => (
+                                <Option key={w.key} data-key={w.key} selected={w.key === f.fahrzeugtyp}>{w.text}</Option>
+                              ))}
+                              {f.fahrzeugtyp && werte && !werte.FAHRZEUGTYP.some((w) => w.key === f.fahrzeugtyp) && <Option data-key={f.fahrzeugtyp} selected>{f.fahrzeugtyp}</Option>}
+                            </Select>
+                          </td>
+                          <td style={{ padding: '0.25rem 0.5rem' }}>
+                            <DatePicker style={{ width: '9.75rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={f.ladedatum ?? ''} readonly={!mayEdit}
+                                        onChange={(e) => setFahrt(i, { ladedatum: e.detail.value || null })} />
+                          </td>
+                          <td style={{ padding: '0.25rem 0.5rem' }}><BetragInput value={f.frachtpreis_vk} readonly={!mayEdit} onChange={(v) => setFahrt(i, { frachtpreis_vk: v })} /></td>
+                          <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right' }}>
+                            {mayEdit && <Button icon="delete" design="Transparent" tooltip="Fahrt entfernen" accessibleName={`Fahrt ${i + 2} entfernen`} onClick={() => fahrtWeg(i)} />}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}
 
@@ -470,7 +567,7 @@ export function AuftragDetail() {
         {!isNew && nr ? (
           <ObjectPageSection id="dokumente" titleText="Dokumente" hideTitleText>
             <ObjectPageSubSection id="dokumente-sub" titleText="Dokumente">
-              <AuftragDokumente nr={nr} edit={darfBearbeiten} ordnerStand={ordnerStand} />
+              <AuftragDokumente nr={nr} edit={darfBearbeiten} ordnerStand={ordnerStand} faktura={a.faktura} />
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}
@@ -482,6 +579,9 @@ export function AuftragDetail() {
           </ObjectPageSubSection>
         </ObjectPageSection>
       </ObjectPage>
+      <ConfirmDialog open={abschliessen} title="Ohne Rechnung abschließen" confirmText="Abschließen" askReason
+                     text={`Auftrag ${nr} bekommt keine Rechnung und gilt nicht mehr als offen. Er bleibt erhalten und lässt sich jederzeit wieder öffnen. Der Grund steht im Änderungsbeleg und in der Auftragsliste.`}
+                     onConfirm={(grund) => abschluss(grund)} onCancel={() => setAbschliessen(false)} />
 
       <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />

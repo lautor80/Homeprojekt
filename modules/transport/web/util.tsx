@@ -16,6 +16,11 @@ export interface Adresse {
   strasse: string | null; hausnummer: string | null; land: string | null; plz: string | null; ort: string | null;
   telefon: string | null; fax: string | null; email: string | null; gln: string | null; markt: string | null; ustid: string | null;
 }
+/** Weitere Fahrt eines Auftrags (ab Position 2) – Fahrt 1 sind die Felder des Auftrags selbst */
+export interface Fahrt {
+  pos: number; unternehmer: number | null; kennzeichen: string | null; fahrzeugtyp: string | null; frachtpreis_vk: number; ladedatum: string | null;
+  unternehmerAdr?: Adresse | null;
+}
 export interface Auftrag {
   auftragsnr?: string;
   anlagedatum: string | null; leistungsdatum: string | null;
@@ -27,14 +32,18 @@ export interface Auftrag {
   kennzeichen: string | null; fahrzeugtyp: string | null; ladegut: string | null; gewicht: string | null; lademeter: number | string | null;
   ladeweise: string | null; palettentausch: string | null; ladenummer: string | null; besonderheiten: string | null;
   faktura?: string | null; fakturadatum?: string | null;
-  stops: Stop[]; traeger: Traeger[];
+  /** ohne Rechnung abgeschlossen (ersetzt das frühere Ausbuchen mit 0 Euro) */
+  abgeschlossen_am?: string | null; abgeschlossen_grund?: string | null;
+  stops: Stop[]; traeger: Traeger[]; fahrten?: Fahrt[];
   kundeAdr?: Adresse | null; unternehmerAdr?: Adresse | null; reAdr?: Adresse | null;
   typ: 'F' | 'H';
 }
 export interface ListRow {
   auftragsnr: string; kennzeichen: string | null; art: string; anlagedatum: string | null; kunde: string; unternehmer: string;
   route: string; ladedatum: string | null; ek: number; vk: number; betrag: number; faktura: string | null;
-  fakturadatum: string | null; status: 'Offen' | 'Fakturiert'; dokFehlen: boolean;
+  fakturadatum: string | null; status: 'Offen' | 'Fakturiert' | 'Ohne Rechnung'; dokFehlen: boolean;
+  /** Anzahl Fahrten (1 = nur der Auftrag selbst), alle Unternehmer für die Suche, Abschluss ohne Rechnung */
+  fahrten: number; unternehmerNamen: string; abgeschlossenAm: string | null; abgeschlossenGrund: string | null;
 }
 export interface KeyText { key: string; text: string; aktiv?: boolean }
 export interface AdrDD { key: string; text: string; zusatz: string }
