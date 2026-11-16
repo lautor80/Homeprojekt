@@ -122,7 +122,7 @@ export function fotoLesen(data: string): { daten: Buffer; typ: string } {
 export async function standPruefen(db: Db, zaehlerId: number, e: Pick<StandEingabe, 'datum' | 'stand' | 'art'>, stichtag: string, ohne: number | null = null): Promise<Pruefung> {
   const z = await zaehlerEins(db, zaehlerId);
   const st = (await staendeLesen(db, [zaehlerId])).get(zaehlerId)!.filter((s) => s.id !== ohne);
-  return pruefen(z, st, { datum: e.datum, stand: e.stand, art: e.art }, stichtag);
+  return pruefen(z, st, { id: ohne ?? undefined, datum: e.datum, stand: e.stand, art: e.art }, stichtag);
 }
 
 /** Fehler verhindern das Speichern (400), eine Warnung nur ohne Bestätigung (409) */
@@ -179,14 +179,16 @@ export async function fotoLaden(db: Db, sid: number): Promise<{ daten: Buffer; t
 
 /** Zeitraum der Auswertung: von/bis als YYYY-MM (bei raster jahr auch YYYY); ohne Angabe die letzten 12 Monate bzw. 5 Jahre */
 export function zeitraum(raster: Raster, von: string | undefined, bis: string | undefined, stichtag: string): { von: string; bis: string } {
-  const b = bis ?? (raster === 'jahr' ? stichtag.slice(0, 4) : stichtag.slice(0, 7));
+  const norm = (x: string, ende: boolean) => (x.length === 4 ? `${x}-${ende ? '12' : '01'}` : x);
+  // bis zuerst normieren: „2025“ im Monatsraster = bis 2025-12, ohne von also 2025-01 … 2025-12
+  const bRoh = bis ?? (raster === 'jahr' ? stichtag.slice(0, 4) : stichtag.slice(0, 7));
+  const b = raster === 'monat' ? norm(bRoh, true) : bRoh;
   let v = von;
   if (!v) {
     const j = +b.slice(0, 4);
     if (raster === 'jahr') v = String(j - 4);
     else { const m = +b.slice(5, 7); v = m === 12 ? `${j}-01` : `${j - 1}-${String(m + 1).padStart(2, '0')}`; }
   }
-  const norm = (x: string, ende: boolean) => (x.length === 4 ? `${x}-${ende ? '12' : '01'}` : x);
   const out = { von: norm(v, false), bis: norm(b, true) };
   if (out.von > out.bis) throw new BusinessError('„Von“ liegt nach „Bis“.');
   if (raster === 'monat' && perioden(out.von, out.bis, 'monat').length > 240) throw new BusinessError('Höchstens 240 Monate auf einmal – bitte das Jahresraster verwenden.');

@@ -26,6 +26,8 @@ const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
 
+const { zeitraum } = await import('../../modules/tco/server/zaehler/daten.js');
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -200,6 +202,28 @@ const stamm = (x: Record<string, unknown> = {}) => ({
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 let zid = 0;
 const sid: Record<string, number> = {};
+
+test('Gegenprüfung: Ändern am Tag mit zwei Ständen, mehrzeilige Notiz, Datumsfehler in Zeile 1, Monatsraster „bis JJJJ“', () => {
+  // Ändern: Schätzung (id 3) und Ablesung (id 7) am selben Tag – geprüft wird gegen den gespeicherten Vorgänger 400, nicht gegen 500
+  const st: Stand[] = [{ id: 1, datum: '2025-04-01', stand: 400, art: 'ABLESUNG' }, { id: 7, datum: '2025-05-01', stand: 500, art: 'ABLESUNG' }];
+  const p = pruefen({ faktor: 1, stellen: null }, st, { id: 3, datum: '2025-05-01', stand: 450, art: 'SCHAETZUNG' }, '2026-11-16');
+  assert.equal(p.fehler, null);
+  assert.equal(p.verbrauch, 50);
+  // mehrzeilige Notiz übersteht Export und Import
+  const csv = csvSchreiben([{ nummer: 'Z0001', bezeichnung: 'ZT', zaehlernummer: null, medium: 'STROM', einheit: 'kWh', datum: '2025-01-01', stand: 1, art: 'ABLESUNG', verbrauch: null, notiz: 'Zeile1\nZeile2' }]);
+  const l = csvLesen(csv);
+  assert.equal(l.length, 1);
+  assert.equal(l[0].notiz, 'Zeile1\nZeile2');
+  assert.equal(l[0].fehler, null);
+  // ohne Kopfzeile: ungültiges Datum in Zeile 1 wird als Fehler gemeldet, nicht verschluckt
+  const ohneKopf = csvLesen('Z0001;32.01.2025;100\nZ0001;01.02.2025;200');
+  assert.equal(ohneKopf.length, 2);
+  assert.match(ohneKopf[0].fehler ?? '', /32\.01\.2025/);
+  assert.equal(ohneKopf[1].zeile, 2);
+  // Monatsraster mit bis = Jahr: zwölf Monate dieses Jahres
+  assert.deepEqual(zeitraum('monat', undefined, '2025', '2026-11-16'), { von: '2025-01', bis: '2025-12' });
+  assert.deepEqual(zeitraum('monat', undefined, '2025-06', '2026-11-16'), { von: '2024-07', bis: '2025-06' });
+});
 
 test('Zähler anlegen und ändern (Nummernkreis Z…, Prüfung der Eingaben)', async () => {
   let r = await call('POST', Z, stamm());

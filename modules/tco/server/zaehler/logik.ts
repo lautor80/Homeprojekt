@@ -235,7 +235,8 @@ export function jahresvergleich(staende: Stand[], z: ZaehlerRechnen, anzahl = 5)
  */
 export function pruefen(z: ZaehlerRechnen, staende: Stand[], neu: Stand, stichtag: string): Pruefung {
   const s = sortieren(staende);
-  const marke: Stand = { ...neu, id: undefined };
+  // eigene id behalten: beim Ändern steht der Satz an seiner gespeicherten Stelle (gleiches Datum und gleiche Art)
+  const marke: Stand = { ...neu };
   const alle = sortieren([...s, marke]);
   const i = alle.indexOf(marke);
   const vor = i > 0 ? alle[i - 1] : null;
@@ -325,14 +326,14 @@ export const ART_TEXT: Record<StandArt, string> = { ABLESUNG: 'Ablesung', SCHAET
  * Zähler = Nummer, Zählernummer oder Bezeichnung (aufgelöst in den Routen).
  */
 export function csvLesen(text: string): CsvZeile[] {
-  const zeilen = text.replace(/^\uFEFF/, '').split(/\r?\n/);
-  const erste = zeilen.find((z) => z.trim()) ?? '';
+  const saetze = csvSaetze(text.replace(/^\uFEFF/, ''));
+  const erste = saetze.find((z) => z.text.trim())?.text ?? '';
   const anzahl = (c: string) => erste.split(c).length - 1;
   const trenner = anzahl('\t') > 0 ? '\t' : anzahl(';') > 0 && anzahl(';') >= anzahl(',') ? ';' : anzahl(',') > 0 ? ',' : ';';
   let spalten = { zaehler: 0, datum: 1, stand: 2, art: 3, notiz: 4 };
   const out: CsvZeile[] = [];
   let erstGelesen = false;
-  zeilen.forEach((roh, idx) => {
+  saetze.forEach(({ text: roh, zeile }) => {
     if (!roh.trim()) return;
     const f = felder(roh, trenner);
     if (!erstGelesen) {
@@ -347,7 +348,8 @@ export function csvLesen(text: string): CsvZeile[] {
         };
         return;
       }
-      if (!datumLesen(f[1] ?? '')) return; // Kopfzeile mit anderen Namen: Reihenfolge Zähler ; Datum ; Stand ; Art ; Notiz
+      // Kopfzeile mit anderen Namen (keine Ziffer im Datum, kein Stand): überspringen; Reihenfolge Zähler ; Datum ; Stand ; Art ; Notiz
+      if (!/\d/.test(f[1] ?? '') && zahlLesen(f[2] ?? '') == null) return;
     }
     const zaehler = f[spalten.zaehler] ?? '';
     const datumRoh = f[spalten.datum] ?? '';
@@ -360,8 +362,28 @@ export function csvLesen(text: string): CsvZeile[] {
       : !datum ? `Datum „${datumRoh}“ ungültig (TT.MM.JJJJ oder JJJJ-MM-TT).`
       : stand == null || stand < 0 ? `Stand „${f[spalten.stand] ?? ''}“ ist keine Zahl ab 0.`
       : !art ? `Art „${f[spalten.art]}“ unbekannt (Ablesung, Schätzung, Ausbau, Einbau).` : null;
-    out.push({ zeile: idx + 1, zaehler, datum: datum ?? datumRoh, stand: stand ?? 0, art: art ?? 'ABLESUNG', notiz, fehler });
+    out.push({ zeile, zaehler, datum: datum ?? datumRoh, stand: stand ?? 0, art: art ?? 'ABLESUNG', notiz, fehler });
   });
+  return out;
+}
+
+/** CSV in Datensätze teilen: Zeilenumbrüche innerhalb von Anführungszeichen gehören zum Feld (mehrzeilige Notiz); zeile = Zeilennummer des Satzanfangs */
+function csvSaetze(text: string): { text: string; zeile: number }[] {
+  const out: { text: string; zeile: number }[] = [];
+  let akt = '', start = 1, nr = 1, inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') inQ = !inQ;
+    if (!inQ && (c === '\n' || (c === '\r' && text[i + 1] === '\n'))) {
+      if (c === '\r') i++;
+      out.push({ text: akt, zeile: start });
+      akt = ''; nr++; start = nr;
+      continue;
+    }
+    if (c === '\n') nr++;
+    akt += c;
+  }
+  if (akt) out.push({ text: akt, zeile: start });
   return out;
 }
 
