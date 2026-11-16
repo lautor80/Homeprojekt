@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Children, createContext, Fragment, isValidElement, useContext } from 'react';
 import { Varianten, type VariantenProps } from './Varianten';
+import { ImportKnopf } from './ImportDialog';
 import { DynamicPage, DynamicPageHeader, DynamicPageTitle, Title, Text, Bar, Toolbar, ToolbarItem } from '@ui5/webcomponents-react';
 
 interface Props {
@@ -23,7 +24,11 @@ function toolbarItems(actions: ReactNode) {
   const aufloesen = (n: ReactNode): ReactNode[] => Children.toArray(n).flatMap((c) =>
     (isValidElement<{ children?: ReactNode }>(c) && c.type === Fragment ? aufloesen(c.props.children) : [c]));
   const flat = aufloesen(actions);
-  return flat.filter(Boolean).map((c, i) => <ToolbarItem key={i}>{c}</ToolbarItem>);
+  // Der Knopf „Importieren“ bleibt immer sichtbar: Bei wenig Platz (Laptop mit Seitenleiste, Tablet, Handy) wandern sonst
+  // zuerst die hinteren Einträge ins „…“-Menü – die Ansichtsvarianten davor blieben stehen und der Import war nicht mehr zu sehen.
+  return flat.filter(Boolean).map((c, i) => (
+    <ToolbarItem key={i} overflowPriority={isValidElement(c) && c.type === ImportKnopf ? 'NeverOverflow' : 'Default'}>{c}</ToolbarItem>
+  ));
 }
 
 /**

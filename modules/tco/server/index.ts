@@ -48,6 +48,8 @@ import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
 import { haushaltRoutes, P_HH } from './haushalt/routes.js';
+import { zuwendungRoutes } from './zuwendung/routes.js';
+import { P_ZUW } from './zuwendung/logik.js';
 import { mahnungRoutes, P_MAHN } from './mahnung/routes.js';
 
 const P = {
@@ -169,6 +171,7 @@ async function routes(app: FastifyInstance) {
   await sportRoutes(app);
   await analyseRoutes(app);
   await lsvsRoutes(app);
+  await zuwendungRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
   await eingangRoutes(app);
@@ -275,6 +278,9 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.display, text: 'Haushaltsplan ansehen: Planwerte je Konto, Soll-Ist-Vergleich, Liquiditätsvorschau, Vorhaben, PDF; überschrittene Budgets im Arbeitsvorrat' },
     { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.edit, text: 'Haushaltsplan planen: Plan anlegen, Methode und Planwerte ändern, Sondereffekte, Monatsverlauf, einmalige Vorhaben, Ablage in Paperless', requires: [P_HH.display] },
     { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.admin, text: 'Haushaltsplan beschließen und genehmigen, Nachtrag anlegen, Entwurf löschen, Einstellungen pflegen (Toleranzen, Mindestreserve, Grundlage) – Administration → Einstellungen → TC Oberthal', requires: [P_HH.display] },
+    { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.display, text: 'Zuwendungsbestätigungen ansehen: Vorschlagsliste der Spenden je Jahr und Spender (mit Name und Anschrift), Vorschau, ausgestellte Bestätigungen und ihr PDF' },
+    { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.execute, text: 'Zuwendungsbestätigungen ausstellen (einzeln, Sammelbestätigung, Jahreslauf), Spender zuordnen und erfassen, in Paperless ablegen, per E-Mail senden bzw. als gedruckt vermerken, stornieren', requires: [P_ZUW.display] },
+    { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.admin, text: 'Einstellungen der Zuwendungsbestätigungen pflegen (Bescheid des Finanzamts, Unterzeichner, Spendenkonten und -Beitragsarten, Textbausteine) – Administration → Einstellungen → TC Oberthal', requires: [P_ZUW.display] },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
 
@@ -360,6 +366,10 @@ const tco: ServerModule = {
     { type: 'MAHN_SPERRE', text: 'Mahnsperre', permission: P_MAHN.display },
     { type: 'MAHN_CFG', text: 'Einstellungen Mahnwesen', permission: P_MAHN.display },
     { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
+    { type: 'ZUWENDUNG', text: 'Zuwendungsbestätigung', permission: P_ZUW.display },
+    { type: 'ZUW_QUELLE', text: 'Zuwendungsbestätigung: Merkmale einer Spende (Spender, Verzicht, Ausschluss)', permission: P_ZUW.display },
+    { type: 'ZUW_SPENDER', text: 'Spender ohne Mitgliedschaft', permission: P_ZUW.display },
+    { type: 'ZUW_CFG', text: 'Einstellungen Zuwendungsbestätigungen', permission: P_ZUW.display },
     { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },
     { type: 'JT_NACHWEIS', text: 'Zeitnachweis Jugendtraining', permission: P_JT.display },
     { type: 'TRAINERENTGELT', text: 'Trainerentgelt', permission: P_JT.display },

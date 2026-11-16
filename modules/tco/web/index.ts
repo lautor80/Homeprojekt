@@ -18,6 +18,8 @@ import { Praesentationen } from './praesentation/Praesentationen';
 import { Spielerdaten } from './sport/Spielerdaten';
 import { Analyse } from './analyse/Analyse';
 import { Bestandsmeldung, LsvsKapitel } from './lsvs/Bestandsmeldung';
+import { Zuwendung } from './zuwendung/Zuwendung';
+import { ZuwendungKapitel } from './zuwendung/ZuwendungKapitel';
 import { Teilnehmer } from './teilnehmer/Teilnehmer';
 import { Upload } from './upload/Upload';
 import { Beitraege } from './beitraege/Beitraege';
@@ -123,6 +125,7 @@ const mod: WebModule = {
     { id: 'instandhaltung', text: 'Instandhaltung', icon: 'technical-object', permission: 'tco.instandhaltung:admin', component: InstandhaltungKapitel },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'tco.stammdaten:edit', component: MailtexteKapitel },
     { id: 'lsvs', text: 'LSVS-Bestandsmeldung', icon: 'official-service', permission: 'tco.lsvs:admin', component: LsvsKapitel },
+    { id: 'zuwendung', text: 'Zuwendungsbestätigungen', icon: 'signature', permission: 'tco.zuwendung:admin', component: ZuwendungKapitel },
     { id: 'mahnwesen', text: 'Mahnwesen', icon: 'monitor-payments', permission: 'tco.mahnung:admin', component: MahnKapitel },
   ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
@@ -210,6 +213,7 @@ const mod: WebModule = {
             { text: 'Einnahmen und Ausgaben', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
             { text: 'Jahresabschluss', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
             { text: 'Haushaltsplan', icon: 'simulate', path: '/tco/haushalt', permission: 'tco.haushalt:display' },
+            { text: 'Zuwendungsbestätigungen', icon: 'signature', path: '/tco/zuwendung', permission: 'tco.zuwendung:display' },
             { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
           ],
         },
@@ -264,6 +268,7 @@ const mod: WebModule = {
     { path: '/tco/registrierungen', component: ZugaengeApp, permission: 'tco.registrierung:mitglied' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
     { path: '/tco/haushalt', component: Haushaltsplan, permission: 'tco.haushalt:display' },
+    { path: '/tco/zuwendung', component: Zuwendung, permission: 'tco.zuwendung:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
     { path: '/tco/schaden', component: SchadenMelden, permission: 'tco.schaden:melden' },
@@ -314,6 +319,7 @@ const mod: WebModule = {
     { text: 'Einnahmen und Ausgaben', subtitle: 'Jahresübersicht, Geldkonten, Liquidität', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
     { text: 'Jahresabschluss', subtitle: 'EAR, Vermögensübersicht, Anlagevermögen', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
     { text: 'Haushaltsplan', subtitle: 'Budget je Konto, Soll-Ist, Liquidität, Vorhaben', icon: 'simulate', path: '/tco/haushalt', permission: 'tco.haushalt:display', kpi: kpiHaushalt },
+    { text: 'Zuwendungsbestätigungen', subtitle: 'Spendenbescheinigungen: Einzel, Sammel, Jahreslauf', icon: 'signature', path: '/tco/zuwendung', permission: 'tco.zuwendung:display' },
     { text: 'Dokumenten-Upload', subtitle: 'Belege gesammelt nach Paperless', icon: 'upload-to-cloud', path: '/tco/upload', permission: 'tco.upload:execute' },
     { text: 'Dokumenteneingang', subtitle: 'E-Mails und Anhänge nach Regeln ablegen, Prüfliste', icon: 'inbox', path: '/tco/dokumenteneingang', permission: 'tco.eingang:display', kpi: kpiEingang },
   ],

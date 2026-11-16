@@ -130,7 +130,7 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
   },
   {
     id: F_JT_IMPORT, app: 'Abrechnung Jugendtraining', text: 'Import Trainerstunden',
-    beschreibung: 'Reiter „Import“: Stundenrückmeldungen der Trainer aus der Nextcloud bzw. als Datei einlesen.',
+    beschreibung: 'Knopf „Importieren“ oben rechts: Stundenrückmeldungen der Trainer aus der Nextcloud bzw. als Datei einlesen.',
     routen: ['POST /jt/import', 'POST /jt/import/nextcloud'],
   },
   {
@@ -162,5 +162,15 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     id: 'tco.fi.periode', app: 'FI-Belege', text: 'Perioden abschließen',
     beschreibung: 'FI-Perioden (Monate) abschließen und wieder öffnen.',
     permissions: ['tco.fi:periode'],
+  },
+  {
+    id: 'tco.zuwendung.jahreslauf', app: 'Zuwendungsbestätigungen', text: 'Jahreslauf',
+    beschreibung: 'Alle offenen Zuwendungsbestätigungen eines Jahres in einem Schritt ausstellen (je Spender eine Sammelbestätigung).',
+    routen: ['POST /zuwendung/jahreslauf'],
+  },
+  {
+    id: 'tco.zuwendung.mail', app: 'Zuwendungsbestätigungen', text: 'Versand per E-Mail',
+    beschreibung: 'Zuwendungsbestätigungen als PDF per E-Mail an den Spender senden. Abgeschaltet bleibt der Druck.',
+    routen: ['POST /zuwendung/bestaetigungen/:nr/senden'],
   },
 ];
