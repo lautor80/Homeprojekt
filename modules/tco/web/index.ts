@@ -46,6 +46,7 @@ import { SchadenMelden } from './instandhaltung/SchadenMelden';
 import { Instandhaltung, InstandhaltungKapitel, InstandhaltungPaperless } from './instandhaltung/Instandhaltung';
 import { Hallenschluessel, SchluesselKapitel } from './schluessel/Hallenschluessel';
 import { SchluesselQuittung } from './schluessel/SchluesselQuittung';
+import { MahnKapitel, Mahnwesen } from './mahnung/Mahnwesen';
 import { api } from '@core/api';
 import type { TileKpi } from '@core/platform';
 import { H, TCO, eur } from './util';
@@ -112,6 +113,7 @@ const mod: WebModule = {
     { id: 'instandhaltung', text: 'Instandhaltung', icon: 'technical-object', permission: 'tco.instandhaltung:admin', component: InstandhaltungKapitel },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'tco.stammdaten:edit', component: MailtexteKapitel },
     { id: 'lsvs', text: 'LSVS-Bestandsmeldung', icon: 'official-service', permission: 'tco.lsvs:admin', component: LsvsKapitel },
+    { id: 'mahnwesen', text: 'Mahnwesen', icon: 'monitor-payments', permission: 'tco.mahnung:admin', component: MahnKapitel },
   ],
   // Stufe 1: TC Oberthal · Stufe 2: Bereiche · Stufe 3: Apps – Gliederung wie die Rollenpflege (Rechtekatalog in
   // modules/tco/server/index.ts; lose Apps der Stufe 2 stehen dort im Bereich „Allgemein“), geprüft in
@@ -193,6 +195,7 @@ const mod: WebModule = {
           children: [
             { text: 'Sollstellungen', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
             { text: 'FI-Belege', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
+            { text: 'Mahnwesen', icon: 'monitor-payments', path: '/tco/mahnwesen', permission: 'tco.mahnung:display' },
             { text: 'Beitragsforecast', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },
             { text: 'Einnahmen und Ausgaben', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
             { text: 'Jahresabschluss', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
@@ -254,6 +257,7 @@ const mod: WebModule = {
     { path: '/tco/schaden', component: SchadenMelden, permission: 'tco.schaden:melden' },
     { path: '/tco/instandhaltung', component: Instandhaltung, permission: 'tco.instandhaltung:display' },
     { path: '/tco/hallenschluessel', component: Hallenschluessel, permission: 'tco.schluessel:display' },
+    { path: '/tco/mahnwesen', component: Mahnwesen, permission: 'tco.mahnung:display' },
   ],
   // QR-Code an der Anlage: nach der Anmeldung direkt zum vorbelegten Formular
   // Einladungslink einer Veranstaltung (/tco/kalender?veranstaltung=…): nach der Anmeldung direkt dorthin
@@ -293,6 +297,7 @@ const mod: WebModule = {
     { text: 'Schadensmeldungen', subtitle: 'Meldungen bearbeiten, Plätze sperren', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display', kpi: kpiSchaden },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },
     { text: 'FI-Belege', subtitle: 'Bankimport, Belege, Storno', icon: 'accounting-document-verification', path: '/tco/fi', permission: 'tco.fi:display' },
+    { text: 'Mahnwesen', subtitle: 'Zahlungserinnerungen und Mahnungen, Vorschlag und Läufe, Mahnsperren', icon: 'monitor-payments', path: '/tco/mahnwesen', permission: 'tco.mahnung:display' },
     { text: 'Beitragsforecast', subtitle: 'Hochrechnung der Beitragseinnahmen', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },
     { text: 'Einnahmen und Ausgaben', subtitle: 'Jahresübersicht, Geldkonten, Liquidität', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
     { text: 'Jahresabschluss', subtitle: 'EAR, Vermögensübersicht, Anlagevermögen', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
