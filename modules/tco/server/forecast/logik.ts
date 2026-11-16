@@ -19,7 +19,7 @@ import { artNorm, preiseLesen, vertragsbetrag, type Preis } from '../beitraege/l
 
 export const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
-interface Vertrag {
+export interface Vertrag {
   adrnr: string; art: string; artname: string; betrag: number; indiv: boolean; sollstellung: string;
   beginn: string | null; ende: string | null; nachname: string; vorname: string;
 }
@@ -37,7 +37,7 @@ export function zaehltImMonat(art: string, monat: number): boolean {
   return art === '90';
 }
 
-async function vertraegeLesen(db: Db, von: string, bis: string): Promise<Vertrag[]> {
+export async function vertraegeLesen(db: Db, von: string, bis: string): Promise<Vertrag[]> {
   const r = await db`select v.adrnr, v.art, coalesce(v.artname, '') as artname, coalesce(v.betrag, 0)::float8 as betrag, v.betrag_indiv,
                             coalesce(v.sollstellung, '') as sollstellung, v.vertragbegin::text as beginn, v.vertragende::text as ende,
                             coalesce(m.nachname, '') as nachname, coalesce(m.vorname, '') as vorname

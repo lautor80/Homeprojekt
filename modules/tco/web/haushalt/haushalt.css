@@ -1,0 +1,29 @@
+/* Haushaltsplan: Eingabetabellen und Diagramme – ausschließlich Theme-Variablen (Hell/Dunkel, Akzentfarbe) */
+.hh-roll { overflow-x: auto; max-width: 100%; }
+/* ui5-tab vererbt die fette Schrift seiner Beschriftung an einfachen HTML-Inhalt – hier gilt die normale Portalschrift */
+.hh-tab, .hh-liste, .hh-leiste, .hh-chart, .hh-dialog { font-family: var(--sapFontFamily, "72", Arial, Helvetica, sans-serif); font-size: var(--sapFontSize, 0.875rem); }
+.hh-tab { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.hh-tab th, .hh-tab td { padding: 0.375rem 0.625rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: left; white-space: nowrap; color: var(--sapTextColor); }
+.hh-tab th { color: var(--sapContent_LabelColor); font-weight: 400; font-size: var(--sapFontSmallSize, 0.75rem); background: var(--sapList_HeaderBackground); }
+.hh-tab .z { text-align: right; }
+.hh-tab .name { white-space: normal; min-width: 11rem; }
+.hh-tab .name small { color: var(--sapContent_LabelColor); display: block; }
+.hh-tab tr.hh-gruppe td { background: var(--sapList_HeaderBackground); font-weight: 700; font-size: 1rem; }
+.hh-tab tr.hh-bereich td { background: var(--sapList_AlternatingBackground, transparent); font-weight: 700; }
+.hh-tab tr.hh-summe td { font-weight: 700; border-top: 2px solid var(--sapList_BorderColor); }
+.hh-tab ui5-input { width: 6.5rem; }
+.hh-tab ui5-select { min-width: 11.5rem; }
+.hh-leiste { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: flex-end; padding: 0 0 0.75rem; }
+.hh-feld { display: flex; flex-direction: column; gap: 0.2rem; }
+.hh-feld > span { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+.hh-chart { padding: 0.25rem 0.5rem 0.75rem; }
+.hh-chart svg { display: block; width: 100%; height: auto; max-width: 60rem; }
+.hh-legende { display: flex; gap: 1rem; flex-wrap: wrap; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); padding: 0.5rem 0.5rem 0.25rem; }
+.hh-legende i { display: inline-block; width: 1rem; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 0.375rem; }
+.hh-legende i.gestrichelt { border-top-style: dashed; }
+.hh-liste { margin: 0; padding-left: 1.125rem; color: var(--sapTextColor); }
+.hh-liste li { margin: 0.25rem 0; max-width: 75ch; }
+.hh-monate { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 0.5rem 0.75rem; }
+.hh-monate ui5-input { width: 100%; }
+.hh-dialog { display: flex; flex-direction: column; gap: 1rem; width: min(52rem, 88vw); }
+.hh-dialog h4 { margin: 0 0 0.375rem; font-size: 1rem; color: var(--sapTextColor); }

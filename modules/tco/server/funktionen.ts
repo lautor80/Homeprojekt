@@ -149,6 +149,11 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     permissions: ['tco.fi:storno'],
   },
   {
+    id: 'tco.haushalt.ueberwachung', app: 'Haushaltsplan', text: 'Überwachung der Budgets',
+    beschreibung: 'Überschrittene Budgets des laufenden Jahres im Arbeitsvorrat des Kassenwarts und als Kennzahl auf der Kachel „Haushaltsplan“.',
+    hinweis: 'Der Soll-Ist-Vergleich in der App bleibt. In die FI-Buchung greift der Haushaltsplan nie ein.',
+  },
+  {
     id: 'tco.fi.periode', app: 'FI-Belege', text: 'Perioden abschließen',
     beschreibung: 'FI-Perioden (Monate) abschließen und wieder öffnen.',
     permissions: ['tco.fi:periode'],

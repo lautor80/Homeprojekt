@@ -47,6 +47,7 @@ import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
+import { haushaltRoutes, P_HH } from './haushalt/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -172,6 +173,7 @@ async function routes(app: FastifyInstance) {
   await eingangRoutes(app);
   await instandhaltungRoutes(app);
   await schluesselRoutes(app);
+  await haushaltRoutes(app);
 }
 
 import { TCO_PUSH_ARTEN } from './push.js';
@@ -265,6 +267,9 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
+    { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.display, text: 'Haushaltsplan ansehen: Planwerte je Konto, Soll-Ist-Vergleich, Liquiditätsvorschau, Vorhaben, PDF; überschrittene Budgets im Arbeitsvorrat' },
+    { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.edit, text: 'Haushaltsplan planen: Plan anlegen, Methode und Planwerte ändern, Sondereffekte, Monatsverlauf, einmalige Vorhaben, Ablage in Paperless', requires: [P_HH.display] },
+    { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.admin, text: 'Haushaltsplan beschließen und genehmigen, Nachtrag anlegen, Entwurf löschen, Einstellungen pflegen (Toleranzen, Mindestreserve, Grundlage) – Administration → Einstellungen → TC Oberthal', requires: [P_HH.display] },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.display, text: 'Kontenstamm anzeigen (Konten, Kontenverwendung, Anfangsbestände)' },
     { area: 'Finanzen', app: 'Kontenstamm', id: P_KONTEN.edit, text: 'Konten anlegen und ändern, Kontenverwendung je Jahr, Anfangsbestände der Geldkonten' },
 
@@ -342,6 +347,9 @@ const tco: ServerModule = {
     { type: 'FIBANKAB', text: 'Anfangs-/Endbestand Geldkonto', permission: P_KONTEN.display },
     { type: 'BEITRAG', text: 'Beitragsart', permission: P_BEITRAEGE.display },
     { type: 'ANLAGE', text: 'Anlageobjekt', permission: P_ABSCHLUSS.display },
+    { type: 'HH_PLAN', text: 'Haushaltsplan (Fassung, Positionen, Monatswerte, Vorhaben)', permission: P_HH.display },
+    { type: 'HH_SONDEREFFEKT', text: 'Haushaltsplan: Sondereffekt / Vorgängerkonto eines Kontos', permission: P_HH.display },
+    { type: 'HH_CFG', text: 'Einstellungen Haushaltsplan', permission: P_HH.display },
     { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
     { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
     { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },

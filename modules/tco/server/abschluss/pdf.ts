@@ -40,7 +40,7 @@ export function abschlussTitel(jahr: number, t: Teile): string {
   return `Jahresabschluss ${jahr} (${teile.join(', ')})`;
 }
 
-class Abschlussdruck {
+export class Abschlussdruck {
   readonly p: Pdf;
   y = 0;
   karteTop = 0;
