@@ -1,0 +1,388 @@
+<title>Projekte Vorschlag und Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: Fiori-Seite wie im Portal – Seitentitel mit Aktionen, Reiter, je Reiter Karten mit Tabellen; der Vorschlag ist der erste Reiter. */
+:root {
+  --bg: #f5f6f7; --surface: #ffffff; --surface-2: #f2f4f6; --text: #1d2d3e; --label: #556b82; --border: #d5dadd;
+  --brand: #0070f2; --brand-ink: #ffffff; --shell: #ffffff; --hover: #eaecee;
+  --positive: #256f3a; --positive-bg: #ebf5ec; --critical: #b44f00; --critical-bg: #fff3e0;
+  --negative: #aa0808; --negative-bg: #ffeaea; --info: #0064d9; --info-bg: #e8f1fd;
+  --balken: #2a78d6; --kritisch: #e0661f; --anteil: rgba(29, 45, 62, 0.38); --schleier: rgba(29, 45, 62, 0.45);
+  --font: "72", "72full", Arial, Helvetica, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171c; --surface: #1d232a; --surface-2: #252d36; --text: #f5f6f7; --label: #a9b4be; --border: #3b4652;
+  --brand: #4db1ff; --brand-ink: #0a1620; --shell: #1d232a; --hover: #2a333d;
+  --positive: #6fcf86; --positive-bg: #17301e; --critical: #ffb45c; --critical-bg: #3a2a12;
+  --negative: #ff8f8f; --negative-bg: #3b1a1a; --info: #7cbcff; --info-bg: #142a44;
+  --balken: #3987e5; --kritisch: #e9793a; --anteil: rgba(0, 0, 0, 0.42); --schleier: rgba(0, 0, 0, 0.6); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171c; --surface: #1d232a; --surface-2: #252d36; --text: #f5f6f7; --label: #a9b4be; --border: #3b4652;
+  --brand: #4db1ff; --brand-ink: #0a1620; --shell: #1d232a; --hover: #2a333d;
+  --positive: #6fcf86; --positive-bg: #17301e; --critical: #ffb45c; --critical-bg: #3a2a12;
+  --negative: #ff8f8f; --negative-bg: #3b1a1a; --info: #7cbcff; --info-bg: #142a44;
+  --balken: #3987e5; --kritisch: #e9793a; --anteil: rgba(0, 0, 0, 0.42); --schleier: rgba(0, 0, 0, 0.6); color-scheme: dark }
+
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-block: 0 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.shell { background: var(--shell); border-bottom: 1px solid var(--border); }
+.shell .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; flex-wrap: wrap; }
+.shell b { font-size: 16px; } .shell span { color: var(--label); }
+.kopf { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; padding-block: 20px 12px; }
+h1 { font-size: 24px; font-weight: 700; margin: 0; text-wrap: balance; }
+h3 { font-size: 15px; margin: 18px 0 6px; }
+.unter { color: var(--label); margin-top: 2px; }
+.reihe { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.knopf { border-radius: 8px; padding: 6px 14px; border: 1px solid var(--brand); background: var(--surface); color: var(--brand); white-space: nowrap; }
+.knopf.haupt { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
+.knopf.still { border-color: transparent; background: transparent; }
+.knopf.still:hover, .ik:hover { background: var(--hover); }
+.ik { border: 0; background: transparent; color: var(--brand); border-radius: 6px; width: 30px; height: 30px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tabs button { background: none; border: 0; border-bottom: 3px solid transparent; color: var(--label); padding: 10px 14px; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
+input[type="text"], input[type="number"], input[type="date"], select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+.karte { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-top: 16px; min-width: 0; }
+.karte > header { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.karte h2 { font-size: 16px; margin: 0; } .karte h2 span, .karte header small { color: var(--label); font-weight: 400; }
+.karte .inhalt { padding: 12px 16px; }
+.text { max-width: 78ch; } .text li { margin: 4px 0; } .text p { margin: 6px 0; }
+.roll { overflow: auto; max-height: 70vh; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+thead { position: sticky; top: 0; z-index: 2; }
+th { color: var(--label); font-weight: 400; font-size: 12px; background: var(--surface-2); }
+td.z, th.z { text-align: right; }
+td input[type="text"] { width: 100%; box-sizing: border-box; min-width: 150px; }
+td input.kurz { min-width: 0; width: 64px; }
+td input.zahl { min-width: 0; width: 84px; text-align: right; }
+tr.summe td { font-weight: 700; border-top: 2px solid var(--border); }
+.grau { color: var(--label); }
+.status { display: inline-block; border-radius: 10px; padding: 1px 9px; font-size: 12px; font-weight: 700; }
+.status.gut { background: var(--positive-bg); color: var(--positive); }
+.status.warn { background: var(--critical-bg); color: var(--critical); }
+.status.schlecht { background: var(--negative-bg); color: var(--negative); }
+.status.neutral { background: var(--surface-2); color: var(--label); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 24px; }
+.kpi .l { color: var(--label); font-size: 12px; } .kpi .w { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; } .kpi small { color: var(--label); display: block; }
+.gantt { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.gantt svg { display: block; font-family: var(--font); }
+.gantt text { fill: var(--text); font-size: 12px; } .gantt text.leise { fill: var(--label); font-size: 11px; }
+.gantt .raster { stroke: var(--border); } .gantt .kopfband { fill: var(--surface-2); }
+.gantt .balken { fill: var(--balken); } .gantt .balken.kritisch { fill: var(--kritisch); } .gantt .anteil { fill: var(--anteil); }
+.gantt .pfeil { stroke: var(--label); stroke-width: 1.25; fill: none; } .gantt .spitze { fill: var(--label); }
+.gantt .heute { stroke: var(--negative); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.legende { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 8px; color: var(--label); font-size: 12px; }
+.legende i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; margin-right: 6px; background: var(--balken); } .legende i.k { background: var(--kritisch); }
+.frage { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-top: 10px; }
+.frage b { display: block; margin-bottom: 4px; }
+.frage label { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; cursor: pointer; }
+.frage .emp { color: var(--positive); font-size: 12px; font-weight: 700; }
+.meldung { border-radius: 8px; padding: 8px 12px; border: 1px solid var(--info); background: var(--info-bg); margin-top: 16px; }
+.meldung.fehler { border-color: var(--negative); background: var(--negative-bg); }
+.blatt { background: #fff; color: #1f1f1f; border: 1px solid var(--border); border-radius: 4px; max-width: 820px; margin: 0 auto; font-size: 12.5px; }
+.blatt .band { background: #e2701f; color: #fff; padding: 22px 28px 16px; } .blatt .band h2 { margin: 0; font-size: 26px; font-weight: 400; letter-spacing: 0.02em; } .blatt .band div { margin-top: 2px; }
+.blatt .innen { padding: 16px 28px 26px; }
+.blatt .kz { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 16px; margin-bottom: 12px; } .blatt .kz span { display: block; font-size: 10px; color: #6b6b6b; letter-spacing: 0.04em; } .blatt .kz b { font-size: 13px; }
+.blatt h4 { color: #b9561a; margin: 16px 0 6px; font-size: 13px; }
+.blatt table { font-size: 12px; } .blatt th { background: transparent; color: #6b6b6b; font-size: 10.5px; } .blatt th, .blatt td { border-color: #e3e3e3; padding: 4px 8px; }
+.blatt .rahmen { border: 1px solid #c8c8c8; border-radius: 8px; padding: 4px 6px; overflow-x: auto; }
+.blatt .klein { color: #6b6b6b; font-size: 11px; margin-top: 6px; }
+.blatt .unterschrift { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 44px; } .blatt .unterschrift div { border-top: 1px solid #6b6b6b; padding-top: 4px; color: #6b6b6b; font-size: 11px; }
+.blatt .gb { height: 9px; border-radius: 2px; background: #c8c8c8; position: relative; } .blatt .gb.k { background: #e2701f; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; z-index: 30; max-width: calc(100% - 32px); }
+</style>
+
+<div class="shell"><div class="wrap"><b>TC Oberthal · Vereinsportal</b><span>Finanzen → Projekte</span><span class="status warn">Vorschlag und Mockup – noch nicht freigegeben</span></div></div>
+<div class="wrap">
+  <div class="kopf">
+    <div><h1>Platz 3 sanieren</h1><div class="unter" id="unter"></div></div>
+    <div class="reihe"><span class="status neutral">Idee / Entwurf</span><button class="knopf" data-hinweis="Im Portal öffnet sich hier derselbe Dialog wie im Haushaltsplan: Stammdaten, Kosten, Finanzierung, Beantragen.">Stammdaten, Kosten, Antrag stellen</button><button class="knopf haupt" data-tab="antrag">Projektantrag (PDF)</button></div>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="seite"></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+// ------------------------------------------------------------------ Beispieldaten (frei erfunden, Termine relativ zu heute)
+const TAG = 86400000;
+const heute = Math.floor(Date.now() / TAG);
+const start = heute - 9;
+const iso = (n) => new Date(n * TAG).toISOString().slice(0, 10);
+const dat = (n) => { const s = iso(n); return `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}`; };
+const eur = (v) => `${Math.round(v).toLocaleString('de-DE')} €`;
+const zahl = (v) => v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+const lies = (s) => { const t = String(s).trim().replace(/\s|€/g, ''); if (!t) return 0; const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); return Number.isFinite(n) && n >= 0 ? n : 0; };
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let nr = 0;
+const d = {
+  satz: 45,
+  kosten: [
+    { art: 'Kosten', text: 'Belag und Linien (Material)', betrag: 4000 }, { art: 'Kosten', text: 'Containerdienst', betrag: 600 },
+    { art: 'Zuschuss', text: 'Landessportverband', betrag: 1500 }, { art: 'Eigenmittel', text: 'Rücklage Platzsanierung', betrag: 2500 },
+  ],
+  v: [
+    { id: ++nr, name: 'Angebote einholen', dauer: 14, vor: '', fertig: 100, wer: 'Sportwart' },
+    { id: ++nr, name: 'Alten Belag abtragen', dauer: 3, vor: '1+7', fertig: 40, wer: 'Platzwart' },
+    { id: ++nr, name: 'Neuen Belag einbauen', dauer: 5, vor: '2', fertig: 0, wer: 'Platzwart' },
+    { id: ++nr, name: 'Linien setzen', dauer: 1, vor: '3', fertig: 0, wer: '' },
+    { id: ++nr, name: 'Zaun streichen', dauer: 4, vor: '1', fertig: 0, wer: '' },
+    { id: ++nr, name: 'Abnahme durch den Vorstand', dauer: 0, vor: '4; 5', fertig: 0, wer: 'Vorsitzender' },
+  ],
+  a: [
+    { wer: 'Bauer, Anna', mitglied: true, was: 'Belag abtragen', vorgang: 2, personen: 1, stunden: 8, satz: '' },
+    { wer: 'Helfer', mitglied: false, was: 'Schubkarren fahren', vorgang: 2, personen: 4, stunden: 6, satz: '' },
+    { wer: 'Schmitt, Ben', mitglied: true, was: 'Linien einmessen', vorgang: 4, personen: 1, stunden: 4.5, satz: '60' },
+    { wer: 'Helfer', mitglied: false, was: 'Zaun streichen', vorgang: 5, personen: 3, stunden: 5, satz: '' },
+  ],
+  m: [
+    { was: 'Ziegelmehl', lieferant: 'Baustoff Müller', vorgang: 3, menge: 2.5, einheit: 't', preis: 180, da: false },
+    { was: 'Linienband', lieferant: 'Tennisbau Saar', vorgang: 4, menge: 2, einheit: 'Satz', preis: 625, da: true },
+    { was: 'Zaunfarbe', lieferant: '', vorgang: 5, menge: 6, einheit: 'Eimer', preis: 48, da: false },
+  ],
+};
+const MITGLIEDER = ['Bauer, Anna', 'Schmitt, Ben', 'Weber, Clara', 'Klein, Petra', 'Hoffmann, Jan'];
+let tab = 'vorschlag', fehler = '';
+
+// ------------------------------------------------------------------ Terminrechnung (wie im Vorschlag: Ende → Anfang, Kalendertage)
+function terminieren() {
+  fehler = '';
+  const n = d.v.length, vor = d.v.map((v, i) => String(v.vor).split(/[;,\s]+/).filter(Boolean).map((t) => {
+    const m = /^(\d+)([+-]\d+)?$/.exec(t); const j = m ? Number(m[1]) - 1 : -1;
+    if (!m || j < 0 || j >= n || j === i) { fehler = `Vorgang ${i + 1}: Vorgänger „${t}“ nicht erkannt – erlaubt sind Zeilennummern, z. B. „1; 2+3“.`; return null; }
+    return { j, abstand: Number(m[2] || 0) };
+  }).filter(Boolean));
+  const offen = vor.map((x) => new Set(x.map((p) => p.j)).size), reihe = [], bereit = [];
+  offen.forEach((o, i) => { if (!o) bereit.push(i); });
+  while (bereit.length) { const k = bereit.shift(); reihe.push(k); vor.forEach((x, i) => { if (x.some((p) => p.j === k) && !reihe.includes(i) && !bereit.includes(i)) { offen[i]--; if (!offen[i]) bereit.push(i); } }); }
+  if (reihe.length !== n) { fehler = 'Die Vorgänge bedingen sich im Kreis – bitte eine Abhängigkeit entfernen.'; return null; }
+  const fb = [], fe = [], se = [];
+  for (const k of reihe) { let b = vor[k].length ? -Infinity : start; for (const p of vor[k]) b = Math.max(b, fe[p.j] + p.abstand); fb[k] = b; fe[k] = b + Math.max(0, d.v[k].dauer); }
+  const schluss = Math.max(start, ...fe);
+  for (const k of [...reihe].reverse()) { let e = schluss; vor.forEach((x, i) => { for (const p of x) if (p.j === k) e = Math.min(e, se[i] - Math.max(0, d.v[i].dauer) - p.abstand); }); se[k] = e; }
+  const tage = d.v.reduce((s, v) => s + Math.max(1, v.dauer), 0);
+  return { z: d.v.map((v, i) => ({ beginn: fb[i], ende: v.dauer ? fe[i] - 1 : fb[i], puffer: se[i] - fe[i], kritisch: se[i] - fe[i] <= 0, vor: vor[i] })), beginn: start, ende: schluss - 1, tage: schluss - start,
+    fertig: Math.round(d.v.reduce((s, v) => s + Math.max(1, v.dauer) * v.fertig, 0) / tage) };
+}
+let plan = terminieren();
+const summen = () => {
+  const stunden = d.a.reduce((s, a) => s + a.personen * a.stunden, 0);
+  const wert = d.a.reduce((s, a) => s + a.personen * a.stunden * (a.satz === '' ? d.satz : lies(a.satz)), 0);
+  const personen = new Set(d.a.filter((a) => a.mitglied).map((a) => a.wer)).size + d.a.filter((a) => !a.mitglied).reduce((s, a) => s + a.personen, 0);
+  const material = d.m.reduce((s, m) => s + m.menge * m.preis, 0), da = d.m.filter((m) => m.da).reduce((s, m) => s + m.menge * m.preis, 0);
+  const kosten = d.kosten.filter((k) => k.art === 'Kosten').reduce((s, k) => s + k.betrag, 0), fin = d.kosten.filter((k) => k.art !== 'Kosten').reduce((s, k) => s + k.betrag, 0);
+  return { stunden, wert, personen, material, da, kosten, fin, luecke: Math.max(0, kosten - fin) };
+};
+
+// ------------------------------------------------------------------ Gantt
+function gantt() {
+  if (!plan) return '';
+  const NAME = 220, KOPF = 34, ZEILE = 28, t0 = plan.beginn - 3, t1 = plan.ende + 8, tage = t1 - t0, px = Math.min(26, Math.max(2.5, 900 / tage));
+  const W = NAME + tage * px + 16, H = KOPF + d.v.length * ZEILE + 8, x = (t) => NAME + (t - t0) * px, y = (i) => KOPF + i * ZEILE + ZEILE / 2;
+  let s = `<rect class="kopfband" x="0" y="0" width="${W}" height="${KOPF}"/>`;
+  const dt = new Date(t0 * TAG); dt.setUTCDate(1);
+  for (; dt.getTime() / TAG < t1; dt.setUTCMonth(dt.getUTCMonth() + 1)) { const t = Math.round(dt.getTime() / TAG); if (t >= t0) s += `<line class="raster" x1="${x(t)}" x2="${x(t)}" y1="0" y2="${H}"/><text class="leise" x="${x(t) + 5}" y="21">${['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'][dt.getUTCMonth()]} ${dt.getUTCFullYear()}</text>`; }
+  if (px >= 6) for (let t = t0; t < t1; t++) if (new Date(t * TAG).getUTCDay() === 1) s += `<line class="raster" stroke-opacity="0.45" x1="${x(t)}" x2="${x(t)}" y1="${KOPF}" y2="${H}"/>`;
+  s += `<line class="raster" x1="${NAME}" x2="${NAME}" y1="0" y2="${H}"/><line class="raster" x1="0" x2="${W}" y1="${KOPF}" y2="${KOPF}"/><text class="leise" x="10" y="21">Vorgang</text>`;
+  s += `<line class="heute" x1="${x(heute)}" x2="${x(heute)}" y1="${KOPF - 6}" y2="${H}"/>`;
+  plan.z.forEach((z, i) => z.vor.forEach((p) => {
+    const q = plan.z[p.j], x1 = x(q.ende + (d.v[p.j].dauer ? 1 : 0)), y1 = y(p.j), x2 = x(z.beginn), y2 = y(i);
+    const weg = x2 - 6 >= x1 + 5 ? `M${x1},${y1} H${x1 + 5} V${y2} H${x2 - 1}` : `M${x1},${y1} H${x1 + 5} V${y2 - ZEILE / 2 + (y2 > y1 ? 0 : ZEILE)} H${x2 - 8} V${y2} H${x2 - 1}`;
+    s += `<path class="pfeil" d="${weg}"/><path class="spitze" d="M${x2},${y2} l-6,-3.5 v7 z"/>`;
+  }));
+  plan.z.forEach((z, i) => {
+    const v = d.v[i], xa = x(z.beginn), b = Math.max(3, v.dauer * px), k = z.kritisch ? ' kritisch' : '';
+    const tip = `${i + 1}. ${v.name}: ${dat(z.beginn)}${v.dauer ? ` – ${dat(z.ende)} (${v.dauer} Tage)` : ' (Meilenstein)'}, ${v.fertig} % erledigt${z.kritisch ? ', kritischer Weg' : `, ${z.puffer} Tage Puffer`}`;
+    s += `<text x="10" y="${y(i) + 4}"><tspan class="leise">${i + 1}. </tspan>${esc(v.name.length > 28 ? v.name.slice(0, 27) + '…' : v.name)}</text>`;
+    s += v.dauer ? `<rect class="balken${k}" x="${xa}" y="${y(i) - 8}" width="${b}" height="16" rx="3"><title>${esc(tip)}</title></rect>${v.fertig ? `<rect class="anteil" x="${xa}" y="${y(i) - 8}" width="${b * v.fertig / 100}" height="16" rx="3"/>` : ''}`
+      : `<path class="balken${k}" d="M${xa},${y(i) - 8} l8,8 l-8,8 l-8,-8 z"><title>${esc(tip)}</title></path>`;
+  });
+  return `<div class="gantt"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gantt-Diagramm">${s}</svg></div>
+    <div class="legende"><span><i></i>Vorgang</span><span><i class="k"></i>kritischer Weg (ohne Puffer)</span><span>dunkel: erledigter Anteil</span><span>◆ Meilenstein</span><span>→ beginnt nach dem Vorgänger</span><span>gestrichelt: heute</span></div>`;
+}
+
+// ------------------------------------------------------------------ Reiter
+const FRAGEN = [
+  ['tage', 'Wie wird die Dauer gerechnet?', ['Kalendertage – einfach, Wochenenden zählen mit (Arbeitseinsätze sind meist samstags)', 'Arbeitstage Montag bis Freitag', 'Wählbar je Vorgang'], 0],
+  ['material', 'Wie hängt das Material mit der Kostenplanung zusammen?', ['Getrennt – das Material steht als Vergleich neben den Kosten', 'Knopf „als Kostenposition übernehmen“ (Summe des Materials wird eine Kostenposition)', 'Material ist die Kostenplanung: jede Zeile ist automatisch eine Kostenposition'], 1],
+  ['eigen', 'Wie erscheint die Eigenleistung im Antrag?', ['Als eigener Abschnitt mit Wert zum externen Satz – nicht in Kosten und Finanzierung', 'Zusätzlich als Finanzierungsart „Eigenleistung“ (Kosten = Fremdvergabe, davon durch Mitglieder erbracht)'], 0],
+  ['satz', 'Woher kommt der externe Verrechnungssatz?', ['Eine Vorgabe je Projekt, je Zeile überschreibbar', 'Sätze je Tätigkeit in den Einstellungen (z. B. Helfer 25 €, Fachkraft 60 €)'], 0],
+  ['helfer', 'Sollen sich Mitglieder für Arbeitseinsätze selbst melden können?', ['Nein, der Verantwortliche trägt ein', 'Ja – ein Vorgang kann eine Veranstaltung im Vereinskalender mit An- und Abmeldung anlegen (späterer Ausbau)'], 0],
+  ['sperre', 'Wer darf nach der Genehmigung noch ändern?', ['Termine und Ressourcen jeder mit Planungsrecht (sie leben in der Umsetzung weiter); Kosten nur, wer genehmigen darf', 'Nach der Genehmigung alles nur noch, wer genehmigen darf'], 0],
+];
+const wahl = Object.fromEntries(FRAGEN.map((f) => [f[0], f[3]]));
+const TABS = [['vorschlag', 'Vorschlag'], ['uebersicht', 'Übersicht'], ['kosten', 'Kosten und Finanzierung'], ['termine', 'Termine'], ['ressourcen', 'Ressourcen'], ['antrag', 'Antrag']];
+
+function vorschlag() {
+  return `<div class="karte"><header><h2>Vorschlag</h2><small>Bitte lesen, die Fragen unten beantworten – danach setze ich um</small></header><div class="inhalt text">
+    <p><b>Ziel:</b> eine eigene App „Projekte“ unter Finanzen. Sie arbeitet auf denselben Projekten wie der Haushaltsplan und ergänzt die Kostenplanung um Termine, Ressourcen und den Antrag.</p>
+    <h3>Aufbau – fünf Reiter je Projekt (oben in den Reitern zum Ausprobieren)</h3>
+    <ul>
+      <li><b>Übersicht:</b> Status, Termine, Kosten, Finanzierung, Arbeitseinsatz und Material auf einen Blick, darunter das Gantt-Diagramm.</li>
+      <li><b>Kosten und Finanzierung:</b> unverändert die Kostenplanung des Haushaltsplans (Positionen, Genehmigung, Wirkung auf den Plan), dazu der Vergleich mit Material und Eigenleistung.</li>
+      <li><b>Termine:</b> Vorgänge mit Dauer und Vorgängern („1; 2+3“ = nach Vorgang 1 und frühestens 3 Tage nach Vorgang 2). Das Portal rechnet Beginn, Ende, Puffer und den kritischen Weg und zeichnet das Gantt-Diagramm.</li>
+      <li><b>Ressourcen:</b> Arbeitseinsatz der Mitglieder (wer, wie viele Stunden, externer Verrechnungssatz) und Material (Menge, Preis, Lieferant, beschafft).</li>
+      <li><b>Antrag:</b> alles zusammen als PDF im Vereinslayout – Voransicht, Ausdruck, Ablage in Paperless.</li>
+    </ul>
+    <h3>Rechenregeln</h3>
+    <ul>
+      <li>Ein Vorgang beginnt, sobald alle Vorgänger fertig sind (plus Abstand); ohne Vorgänger mit dem Projekt. Dauer 0 ist ein Meilenstein.</li>
+      <li>Puffer = so viele Tage darf sich ein Vorgang verschieben, ohne das Projektende zu verschieben. Vorgänge ohne Puffer bilden den kritischen Weg.</li>
+      <li>Wert der Eigenleistung = Personen × Stunden × externer Verrechnungssatz: was die Arbeit kostete, wenn eine Firma sie ausführte.</li>
+    </ul>
+    <h3>Offene Entscheidungen</h3>
+    <p class="grau">Vorbelegt ist jeweils meine Empfehlung. Auswahl ändern und unten kopieren – oder einfach schreiben, was anders sein soll.</p>
+    ${FRAGEN.map(([k, frage, opts, emp]) => `<div class="frage"><b>${frage}</b>${opts.map((o, i) => `<label><input type="radio" name="f_${k}" value="${i}" ${wahl[k] === i ? 'checked' : ''}><span>${o}${i === emp ? ' <span class="emp">Empfehlung</span>' : ''}</span></label>`).join('')}</div>`).join('')}
+    <div class="reihe" style="margin-top:14px"><button class="knopf haupt" data-kopieren>Meine Auswahl kopieren</button><span class="grau">Den kopierten Text in den Chat einfügen.</span></div>
+    <h3>Nicht im ersten Schritt</h3>
+    <ul><li>Auslastung eines Mitglieds über mehrere Projekte</li><li>Feiertage und Platzsperren im Terminplan</li><li>Bestellungen und Rechnungen zum Material (das läuft weiter über FI)</li></ul>
+  </div></div>`;
+}
+function kpis(s) {
+  return `<div class="kpis">
+    <div class="kpi"><div class="l">Termine</div><div class="w">${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : '–'}</div><small>${plan ? `${plan.tage} Tage · ${plan.fertig} % erledigt` : ''}</small></div>
+    <div class="kpi"><div class="l">Kosten</div><div class="w">${eur(s.kosten)}</div></div>
+    <div class="kpi"><div class="l">Finanzierung</div><div class="w">${eur(s.fin)}</div><small>${s.luecke ? `<span class="status schlecht">Lücke ${eur(s.luecke)}</span>` : 'gedeckt'}</small></div>
+    <div class="kpi"><div class="l">Arbeitseinsatz</div><div class="w">${zahl(s.stunden)} Std.</div><small>${s.personen} Personen · Wert ${eur(s.wert)}</small></div>
+    <div class="kpi"><div class="l">Material</div><div class="w">${eur(s.material)}</div><small>davon beschafft ${eur(s.da)}</small></div>
+  </div>`;
+}
+function uebersicht() {
+  return `<div class="karte"><header><h2>Auf einen Blick</h2></header><div class="inhalt">${kpis(summen())}
+    <p style="margin:12px 0 0">Der Belag von Platz 3 ist nach 20 Jahren verbraucht. Abtragen und Einbau in Eigenleistung, Material und Linien vom Fachhandel.</p></div></div>
+    <div class="karte"><header><h2>Terminplan <span>(${d.v.length})</span></h2></header><div class="inhalt">${gantt()}</div></div>`;
+}
+function kosten() {
+  const s = summen();
+  return `<div class="karte"><header><h2>Kosten, Finanzierung und Folgekosten <span>(${d.kosten.length})</span></h2><button class="knopf still" data-hinweis="Im Portal öffnet sich hier der bekannte Dialog des Haushaltsplans – Positionen, Konten, Verteilung über die Monate, Beantragen und Genehmigen bleiben unverändert.">Bearbeiten, beantragen</button></header>
+    <div class="roll"><table><thead><tr><th>Art</th><th>Bezeichnung</th><th class="z">Betrag</th></tr></thead><tbody>
+      ${d.kosten.map((k) => `<tr><td>${k.art}</td><td>${esc(k.text)}</td><td class="z">${eur(k.betrag)}</td></tr>`).join('')}
+      <tr class="summe"><td colspan="2">Kosten</td><td class="z">${eur(s.kosten)}</td></tr><tr class="summe"><td colspan="2">Finanzierung</td><td class="z">${eur(s.fin)}</td></tr>
+      ${s.luecke ? `<tr class="summe"><td colspan="2">Noch nicht finanziert</td><td class="z"><span class="status schlecht">${eur(s.luecke)}</span></td></tr>` : ''}
+    </tbody></table></div></div>
+    <div class="karte"><header><h2>Vergleich mit der Ressourcenplanung</h2></header><div class="inhalt"><div class="kpis">
+      <div class="kpi"><div class="l">Kosten laut Kostenplanung</div><div class="w">${eur(s.kosten)}</div></div>
+      <div class="kpi"><div class="l">Material laut Ressourcenplanung</div><div class="w">${eur(s.material)}</div><small>${s.material > s.kosten ? '<span class="status schlecht">liegt über den geplanten Kosten</span>' : ''}</small></div>
+      <div class="kpi"><div class="l">Eigenleistung (kein Geldabfluss)</div><div class="w">${eur(s.wert)}</div><small>${zahl(s.stunden)} Stunden zum externen Satz</small></div>
+      <div class="kpi"><div class="l">Wert des Projekts mit Eigenleistung</div><div class="w">${eur(s.kosten + s.wert)}</div></div>
+    </div><p class="grau" style="margin:12px 0 0">Die Kostenplanung bleibt maßgeblich für Genehmigung und Haushaltsplan.</p></div></div>`;
+}
+function termine() {
+  return `<div class="karte"><header><h2>Vorgänge <span>(${d.v.length})</span></h2><small>„nach“: Zeilennummern der Vorgänger, z. B. „1; 2+3“ · Dauer 0 = Meilenstein</small><button class="knopf still" data-neu="v">＋ Vorgang</button></header>
+    <div class="roll"><table><thead><tr><th>Nr.</th><th>Vorgang</th><th>Dauer (Tage)</th><th>nach</th><th>Beginn</th><th>Ende</th><th class="z">Puffer</th><th>erledigt %</th><th>Verantwortlich</th><th></th></tr></thead><tbody>
+    ${d.v.map((v, i) => { const z = plan && plan.z[i]; return `<tr><td>${i + 1}</td>
+      <td><input type="text" id="v${v.id}name" data-v="${i}" data-f="name" value="${esc(v.name)}" aria-label="Vorgang ${i + 1}"></td>
+      <td><input type="text" class="kurz" id="v${v.id}dauer" data-v="${i}" data-f="dauer" value="${v.dauer}" aria-label="Dauer"></td>
+      <td><input type="text" class="kurz" id="v${v.id}vor" data-v="${i}" data-f="vor" value="${esc(v.vor)}" placeholder="–" aria-label="Vorgänger"></td>
+      <td>${z ? dat(z.beginn) : ''}</td><td>${z ? (v.dauer ? dat(z.ende) : '<span class="grau">Meilenstein</span>') : ''}</td>
+      <td class="z">${z ? (z.kritisch ? '<span class="status warn">kritisch</span>' : `${z.puffer} T.`) : ''}</td>
+      <td><input type="text" class="kurz" id="v${v.id}fertig" data-v="${i}" data-f="fertig" value="${v.fertig}" aria-label="erledigt"></td>
+      <td><input type="text" id="v${v.id}wer" data-v="${i}" data-f="wer" value="${esc(v.wer)}" style="min-width:110px" aria-label="Verantwortlich"></td>
+      <td><button class="ik" title="Vorgang entfernen" data-weg="v" data-i="${i}">🗑</button></td></tr>`; }).join('')}
+    </tbody></table></div></div>
+    <div class="karte"><header><h2>Gantt-Diagramm</h2><small>${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)} · ${plan.tage} Tage · ${plan.fertig} % erledigt` : ''}</small></header><div class="inhalt">${gantt()}</div></div>`;
+}
+const vorgangWahl = (art, i, wert) => `<select data-${art}="${i}" data-f="vorgang" aria-label="Vorgang"><option value="0">– ohne –</option>${d.v.map((v, k) => `<option value="${k + 1}" ${wert === k + 1 ? 'selected' : ''}>${k + 1}. ${esc(v.name)}</option>`).join('')}</select>`;
+function ressourcen() {
+  const s = summen();
+  return `<div class="karte"><header><h2>Arbeitseinsatz der Mitglieder <span>(${d.a.length})</span></h2>
+      <label class="reihe"><small>Externer Verrechnungssatz (€ je Stunde), Vorgabe</small><input type="text" class="zahl" id="satz" value="${zahl(d.satz)}" aria-label="Externer Verrechnungssatz"></label>
+      <span class="reihe"><button class="knopf still" data-neu="am">＋ Mitglied</button><button class="knopf still" data-neu="ah">＋ Helfer ohne Namen</button></span></header>
+    <div class="roll"><table><thead><tr><th>Wer</th><th>Tätigkeit</th><th>Vorgang</th><th>Personen</th><th>Std. je Person</th><th>Satz €/Std.</th><th class="z">Stunden</th><th class="z">Wert (extern)</th><th></th></tr></thead><tbody>
+    ${d.a.map((a, i) => `<tr>
+      <td>${a.mitglied ? `<select data-a="${i}" data-f="wer" aria-label="Mitglied">${MITGLIEDER.map((m) => `<option ${m === a.wer ? 'selected' : ''}>${m}</option>`).join('')}</select>` : `<input type="text" id="a${i}wer" data-a="${i}" data-f="wer" value="${esc(a.wer)}" style="min-width:110px" aria-label="Wer">`}</td>
+      <td><input type="text" id="a${i}was" data-a="${i}" data-f="was" value="${esc(a.was)}" aria-label="Tätigkeit"></td><td>${vorgangWahl('a', i, a.vorgang)}</td>
+      <td>${a.mitglied ? '1' : `<input type="text" class="kurz" id="a${i}personen" data-a="${i}" data-f="personen" value="${a.personen}" aria-label="Personen">`}</td>
+      <td><input type="text" class="kurz" id="a${i}stunden" data-a="${i}" data-f="stunden" value="${zahl(a.stunden)}" aria-label="Stunden je Person"></td>
+      <td><input type="text" class="kurz" id="a${i}satz" data-a="${i}" data-f="satz" value="${esc(a.satz)}" placeholder="${zahl(d.satz)}" aria-label="Satz"></td>
+      <td class="z">${zahl(a.personen * a.stunden)}</td><td class="z">${eur(a.personen * a.stunden * (a.satz === '' ? d.satz : lies(a.satz)))}</td>
+      <td><button class="ik" title="Zeile entfernen" data-weg="a" data-i="${i}">🗑</button></td></tr>`).join('')}
+    <tr class="summe"><td colspan="6">Summe · ${s.personen} Personen</td><td class="z">${zahl(s.stunden)}</td><td class="z">${eur(s.wert)}</td><td></td></tr></tbody></table></div></div>
+    <div class="karte"><header><h2>Material und Einkauf <span>(${d.m.length})</span></h2><button class="knopf still" data-neu="m">＋ Material</button></header>
+    <div class="roll"><table><thead><tr><th>Material</th><th>Lieferant</th><th>Vorgang</th><th>Menge</th><th>Einheit</th><th>Einzelpreis €</th><th class="z">Summe</th><th>beschafft</th><th></th></tr></thead><tbody>
+    ${d.m.map((m, i) => `<tr><td><input type="text" id="m${i}was" data-m="${i}" data-f="was" value="${esc(m.was)}" aria-label="Material"></td>
+      <td><input type="text" id="m${i}lieferant" data-m="${i}" data-f="lieferant" value="${esc(m.lieferant)}" style="min-width:120px" aria-label="Lieferant"></td><td>${vorgangWahl('m', i, m.vorgang)}</td>
+      <td><input type="text" class="kurz" id="m${i}menge" data-m="${i}" data-f="menge" value="${zahl(m.menge)}" aria-label="Menge"></td>
+      <td><input type="text" class="kurz" id="m${i}einheit" data-m="${i}" data-f="einheit" value="${esc(m.einheit)}" aria-label="Einheit"></td>
+      <td><input type="text" class="zahl" id="m${i}preis" data-m="${i}" data-f="preis" value="${zahl(m.preis)}" aria-label="Einzelpreis"></td>
+      <td class="z">${eur(m.menge * m.preis)}</td><td><input type="checkbox" data-m="${i}" data-f="da" ${m.da ? 'checked' : ''} aria-label="beschafft"></td>
+      <td><button class="ik" title="Material entfernen" data-weg="m" data-i="${i}">🗑</button></td></tr>`).join('')}
+    <tr class="summe"><td colspan="6">Summe Material · davon beschafft ${eur(s.da)}</td><td class="z">${eur(s.material)}</td><td colspan="2"></td></tr></tbody></table></div></div>`;
+}
+function antrag() {
+  const s = summen(), sp = plan ? Math.max(1, plan.tage) : 1;
+  return `<div class="karte"><header><h2>Projektantrag – Voransicht</h2><span class="reihe"><button class="knopf" data-hinweis="Im Portal lädt dieser Knopf das PDF herunter bzw. öffnet es zum Drucken.">Herunterladen / Drucken</button><button class="knopf" data-hinweis="Im Portal legt dieser Knopf das PDF in Paperless ab – erneutes Ablegen erzeugt eine neue Version desselben Dokuments.">In Paperless ablegen</button></span></header><div class="inhalt">
+  <div class="blatt"><div class="band"><h2>PROJEKTANTRAG</h2><div>Platz 3 sanieren</div></div><div class="innen">
+    <div class="kz"><div><span>ZEITRAUM</span><b>${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : ''}</b></div><div><span>KOSTEN</span><b>${eur(s.kosten)}</b></div><div><span>FINANZIERUNG</span><b>${eur(s.fin)}</b></div><div><span>EIGENLEISTUNG</span><b>${zahl(s.stunden)} Std.</b></div><div><span>STATUS</span><b>Idee / Entwurf</b></div></div>
+    <div>Verantwortlich: Sportwart · Tätigkeitsbereich C</div>
+    <p>Der Belag von Platz 3 ist nach 20 Jahren verbraucht. Abtragen und Einbau in Eigenleistung, Material und Linien vom Fachhandel.</p>
+    <h4>Kosten und Finanzierung</h4><div class="rahmen"><table><thead><tr><th>Art</th><th>Bezeichnung</th><th class="z">Betrag</th></tr></thead><tbody>
+      ${d.kosten.map((k) => `<tr><td>${k.art}</td><td>${esc(k.text)}</td><td class="z">${eur(k.betrag)}</td></tr>`).join('')}
+      <tr class="summe"><td colspan="2">Kosten</td><td class="z">${eur(s.kosten)}</td></tr><tr class="summe"><td colspan="2">Finanzierung</td><td class="z">${eur(s.fin)}</td></tr></tbody></table></div>
+    <h4>Terminplan</h4><div class="rahmen"><table><thead><tr><th>Nr.</th><th>Vorgang</th><th>Beginn</th><th>Ende</th><th class="z">Tage</th><th style="width:34%">Balkenplan</th></tr></thead><tbody>
+      ${plan ? d.v.map((v, i) => { const z = plan.z[i]; return `<tr><td>${i + 1}</td><td>${z.kritisch ? `<b>${esc(v.name)}</b>` : esc(v.name)}</td><td>${dat(z.beginn)}</td><td>${v.dauer ? dat(z.ende) : 'Meilenstein'}</td><td class="z">${v.dauer || ''}</td>
+        <td><div class="gb${z.kritisch ? ' k' : ''}" style="margin-left:${(100 * (z.beginn - plan.beginn)) / sp}%;width:${Math.max(1.5, (100 * v.dauer) / sp)}%"></div></td></tr>`; }).join('') : ''}</tbody></table></div>
+    <div class="klein">Fett und orange: kritischer Weg – verschieben sich diese Vorgänge, verschiebt sich das Projektende.</div>
+    <h4>Arbeitseinsatz der Mitglieder</h4><div class="rahmen"><table><thead><tr><th>Wer</th><th>Tätigkeit</th><th class="z">Pers.</th><th class="z">Std. je Pers.</th><th class="z">Satz €/Std.</th><th class="z">Wert</th></tr></thead><tbody>
+      ${d.a.map((a) => `<tr><td>${esc(a.wer)}</td><td>${esc(a.was)}</td><td class="z">${a.personen}</td><td class="z">${zahl(a.stunden)}</td><td class="z">${zahl(a.satz === '' ? d.satz : lies(a.satz))}</td><td class="z">${eur(a.personen * a.stunden * (a.satz === '' ? d.satz : lies(a.satz)))}</td></tr>`).join('')}
+      <tr class="summe"><td colspan="5">Summe: ${zahl(s.stunden)} Stunden von ${s.personen} Personen</td><td class="z">${eur(s.wert)}</td></tr></tbody></table></div>
+    <div class="klein">Wert der Eigenleistung zum externen Verrechnungssatz: Das kostete die Arbeit, wenn eine Firma sie ausführte. Kein Geldabfluss, nicht in den Kosten enthalten.</div>
+    <h4>Material und Einkauf</h4><div class="rahmen"><table><thead><tr><th>Bezeichnung</th><th>Lieferant</th><th class="z">Menge</th><th>Einheit</th><th class="z">Einzelpreis</th><th class="z">Summe</th></tr></thead><tbody>
+      ${d.m.map((m) => `<tr><td>${esc(m.was)}</td><td>${esc(m.lieferant)}</td><td class="z">${zahl(m.menge)}</td><td>${esc(m.einheit)}</td><td class="z">${eur(m.preis)}</td><td class="z">${eur(m.menge * m.preis)}</td></tr>`).join('')}
+      <tr class="summe"><td colspan="5">Summe Material</td><td class="z">${eur(s.material)}</td></tr></tbody></table></div>
+    <div class="unterschrift"><div>Datum, Antragsteller</div><div>Datum, Vorstand</div></div>
+  </div></div></div></div>`;
+}
+
+function zeichne(fokus) {
+  plan = terminieren() || plan;
+  document.getElementById('unter').textContent = `Idee / Entwurf · Sportwart · ${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : ''}`;
+  document.getElementById('tabs').innerHTML = TABS.map(([k, t]) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${t}</button>`).join('');
+  document.getElementById('seite').innerHTML = (fehler ? `<div class="meldung fehler">${esc(fehler)}</div>` : tab === 'vorschlag' ? '' : '<div class="meldung"><b>Mockup mit erfundenen Beispieldaten.</b> Felder ändern, Zeilen anlegen und entfernen – gespeichert wird nichts.</div>')
+    + ({ vorschlag, uebersicht, kosten, termine, ressourcen, antrag }[tab])();
+  if (fokus) { const el = document.getElementById(fokus); if (el) el.focus(); }
+}
+function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 4200); }
+
+document.addEventListener('change', (e) => {
+  const t = e.target, f = t.dataset.f;
+  if (t.name && t.name.startsWith('f_')) { wahl[t.name.slice(2)] = Number(t.value); return; }
+  if (t.id === 'satz') d.satz = lies(t.value);
+  else if (t.dataset.v != null) { const v = d.v[t.dataset.v]; if (f === 'dauer') v.dauer = Math.min(3660, Math.round(lies(t.value))); else if (f === 'fertig') v.fertig = Math.min(100, Math.round(lies(t.value))); else v[f] = t.value.trim() || (f === 'name' ? v.name : ''); }
+  else if (t.dataset.a != null) { const a = d.a[t.dataset.a]; if (f === 'personen') a.personen = Math.max(1, Math.round(lies(t.value))); else if (f === 'stunden') a.stunden = lies(t.value); else if (f === 'vorgang') a.vorgang = Number(t.value); else a[f] = t.value.trim(); }
+  else if (t.dataset.m != null) { const m = d.m[t.dataset.m]; if (f === 'da') m.da = t.checked; else if (f === 'menge' || f === 'preis') m[f] = lies(t.value); else if (f === 'vorgang') m.vorgang = Number(t.value); else m[f] = t.value.trim(); }
+  else return;
+  zeichne();
+});
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  const x = t.dataset;
+  if (x.tab) tab = x.tab;
+  else if (x.hinweis) { toast(x.hinweis); return; }
+  else if ('kopieren' in x) {
+    const text = 'Projekte-App – meine Auswahl:\n' + FRAGEN.map(([k, frage, opts]) => `- ${frage} → ${opts[wahl[k]]}`).join('\n');
+    navigator.clipboard.writeText(text).then(() => toast('Auswahl kopiert – bitte in den Chat einfügen.')).catch(() => toast('Kopieren ist hier nicht möglich – bitte die Auswahl im Chat nennen.'));
+    return;
+  }
+  else if (x.neu === 'v') d.v.push({ id: ++nr, name: 'Neuer Vorgang', dauer: 7, vor: d.v.length ? String(d.v.length) : '', fertig: 0, wer: '' });
+  else if (x.neu === 'am') d.a.push({ wer: MITGLIEDER[2], mitglied: true, was: '', vorgang: 0, personen: 1, stunden: 4, satz: '' });
+  else if (x.neu === 'ah') d.a.push({ wer: 'Helfer', mitglied: false, was: '', vorgang: 0, personen: 2, stunden: 4, satz: '' });
+  else if (x.neu === 'm') d.m.push({ was: 'Neues Material', lieferant: '', vorgang: 0, menge: 1, einheit: 'Stück', preis: 0, da: false });
+  else if (x.weg === 'a') d.a.splice(Number(x.i), 1);
+  else if (x.weg === 'm') d.m.splice(Number(x.i), 1);
+  else if (x.weg === 'v') {
+    const i = Number(x.i);
+    d.v.splice(i, 1);
+    // Zeilennummern in den Vorgänger-Angaben und an den Ressourcen mitziehen
+    for (const v of d.v) v.vor = String(v.vor).split(/[;,\s]+/).filter(Boolean).flatMap((s) => { const m = /^(\d+)([+-]\d+)?$/.exec(s); if (!m) return [s]; const n = Number(m[1]); return n === i + 1 ? [] : [`${n > i + 1 ? n - 1 : n}${m[2] || ''}`]; }).join('; ');
+    for (const r of [...d.a, ...d.m]) r.vorgang = r.vorgang === i + 1 ? 0 : r.vorgang > i + 1 ? r.vorgang - 1 : r.vorgang;
+  }
+  else return;
+  zeichne();
+});
+zeichne();
+</script>
