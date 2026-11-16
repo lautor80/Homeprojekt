@@ -141,19 +141,12 @@ export const paperlessId = (modul: string): string => (modul === 'tco' ? 'paperl
 export const istPaperlessId = (id: string): boolean => id === 'paperless' || id.endsWith('.paperless');
 
 /**
- * Übergang (#232, S5): Bereiche, die bisher den gemeinsamen Zugang „paperless“ mitbenutzt haben (Euroflex). Solange ihr
- * eigenes Paperless noch nicht eingetragen ist, lesen sie den bisherigen Zugang weiter – sonst stünde ihre Ablage mit dem
- * Update still. Sobald die eigene Anbindung eingerichtet ist, gilt nur noch sie. Der Übergang ist sichtbar: Hinweis in den
- * Stammdaten des Bereichs und Eintrag im Arbeitsvorrat der Administration (paperlessUebergang).
- */
-const uebergangsModule = new Set<string>();
-
-/**
  * Anbindung „Paperless-ngx <Bereich>“ – jedes Modul mit Dokumentenablage meldet seine an (ServerModule.verbindungen).
- * uebergang: der Bereich hat bisher den gemeinsamen Zugang mitbenutzt (siehe oben) – nicht für neue Bereiche.
+ * Jeder Bereich nutzt ausschließlich sein eigenes Paperless: Ist es nicht eingetragen, legt der Bereich nichts in
+ * Paperless ab – es gibt keinen Rückgriff auf den Zugang eines anderen Bereichs (der frühere Übergang für Euroflex,
+ * #232 S5, ist entfernt: Euroflex-Dokumente landeten sonst ungewollt im Paperless des Vereins).
  */
-export function paperlessDef(modul: string, bereich: string, o: { uebergang?: boolean } = {}): VerbindungDef {
-  if (o.uebergang && paperlessId(modul) !== 'paperless') uebergangsModule.add(modul);
+export function paperlessDef(modul: string, bereich: string): VerbindungDef {
   return {
     id: paperlessId(modul), text: `Paperless-ngx ${bereich}`, reiter: 'Paperless',
     beschreibung: `Dokumentenablage für ${bereich} – ein eigenes Paperless je Bereich, nie dieselbe Adresse wie ein anderer Bereich. Mehrere Adressen durch Komma: Für die Ablage nutzt das Portal die erste erreichbare, interne Adressen zuerst. `
@@ -210,22 +203,12 @@ export async function paperlessEindeutig(v: Verbindung, db: Tx = sql as unknown 
 const client = (v: Verbindung): Paperless | null =>
   (paperlessKonfiguriert({ url: v.url, token: v.geheimnis }) ? new Paperless({ url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) }) : null);
 
-/** Anbindung, die für einen Bereich gilt: die eigene – im Übergang (siehe uebergangsModule) ersatzweise der bisherige gemeinsame Zugang */
-async function geltend(modul: string, db?: Tx): Promise<{ v: Verbindung; uebergang: boolean }> {
-  const eigene = await verbindungLesen(paperlessId(modul), db);
-  if (eingerichtet(eigene) || !uebergangsModule.has(modul)) return { v: eigene, uebergang: false };
-  const bisher = await verbindungLesen('paperless', db);
-  return eingerichtet(bisher) ? { v: bisher, uebergang: true } : { v: eigene, uebergang: false };
-}
-
-/** nutzt der Bereich übergangsweise noch den bisherigen gemeinsamen Zugang, weil sein eigenes Paperless nicht eingetragen ist? */
-export async function paperlessUebergang(modul: string, db?: Tx): Promise<boolean> {
-  return (await geltend(modul, db)).uebergang;
-}
+/** Anbindung, die für einen Bereich gilt: ausschließlich die eigene */
+const geltend = (modul: string, db?: Tx): Promise<Verbindung> => verbindungLesen(paperlessId(modul), db);
 
 /** Paperless-Client eines Bereichs (modul = Id des Moduls); null, wenn für diesen Bereich nicht eingerichtet */
 export async function paperlessFuer(modul: string, db?: Tx): Promise<Paperless | null> {
-  return client((await geltend(modul, db)).v);
+  return client(await geltend(modul, db));
 }
 
 /** alle eingerichteten Paperless-Zugänge – für Texte, die das Haus verlassen (Freigabelinks jedes Bereichs, lib/mail.ts) */
@@ -237,7 +220,7 @@ export async function paperlessAlle(db: Tx = sql as unknown as Tx): Promise<Pape
 }
 
 /** Zugangsdaten eines Bereichs für Module, die den Client selbst bauen (z. B. mit anderem Zeitlimit) */
-export async function paperlessZugang(modul: string, db?: Tx): Promise<{ url: string | null; token: string | null; freigabeUrl: string | null; uebergang: boolean }> {
-  const { v, uebergang } = await geltend(modul, db);
-  return eingerichtet(v) ? { url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v), uebergang } : { url: null, token: null, freigabeUrl: null, uebergang: false };
+export async function paperlessZugang(modul: string, db?: Tx): Promise<{ url: string | null; token: string | null; freigabeUrl: string | null }> {
+  const v = await geltend(modul, db);
+  return eingerichtet(v) ? { url: v.url, token: v.geheimnis, freigabeUrl: freigabeUrl(v) } : { url: null, token: null, freigabeUrl: null };
 }

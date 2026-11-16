@@ -8,7 +8,7 @@
  */
 
 import { benutzerId } from '@core/session';
-import { ORDNER_ALT, ordnerSchluessel, ordnerWahl } from './ordner-schluessel';
+import { anzeigePfad, auftragsPfad, ORDNER_ALT, ordnerSchluessel, ordnerWahl, sauber } from './ordner-schluessel';
 
 type Recht = 'granted' | 'denied' | 'prompt';
 interface Ordner extends FileSystemDirectoryHandle {
@@ -88,21 +88,16 @@ export async function ordnerBereit(anfordern = false): Promise<Ordner | null> {
   }
 }
 
-const sauber = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim();
-const jahrVon = (nr: string) => (/^\d{4}/.test(nr) ? nr.slice(0, 4) : 'Sonstige');
-
-/** Anzeigepfad, z. B. „Aufträge/2026/2026_1314/Rechnung_2026_6200.pdf“ */
-export function anzeigePfad(basis: string, nr: string, datei?: string) {
-  return [basis, jahrVon(nr), sauber(nr), datei ? sauber(datei) : ''].filter(Boolean).join('/');
-}
+export { anzeigePfad };
 
 /** Ordner des Auftrags (wird bei Bedarf angelegt) */
 export async function auftragsOrdner(nr: string, { anfordern = false, anlegen = true } = {}): Promise<{ basis: string; ordner: Ordner } | null> {
   const h = await ordnerBereit(anfordern);
   if (!h) return null;
   try {
-    const jahr = await h.getDirectoryHandle(jahrVon(nr), { create: anlegen });
-    return { basis: h.name, ordner: (await jahr.getDirectoryHandle(sauber(nr), { create: anlegen })) as Ordner };
+    const [jahrName, auftragName] = auftragsPfad(nr);
+    const jahr = await h.getDirectoryHandle(jahrName, { create: anlegen });
+    return { basis: h.name, ordner: (await jahr.getDirectoryHandle(auftragName, { create: anlegen })) as Ordner };
   } catch (e) {
     if ((e as DOMException).name === 'NotFoundError') return null;
     throw e;
@@ -142,4 +137,32 @@ export async function dateienImOrdner(nr: string): Promise<{ basis: string; date
     dateien.push({ name: f.name, groesse: f.size, geaendert: f.lastModified });
   }
   return { basis: o.basis, dateien: dateien.sort((a, b) => b.geaendert - a.geaendert) };
+}
+
+/**
+ * Warum gerade nicht in den Ablageordner gespeichert werden kann – als Meldung für den Bildschirm; null = der Ordner ist
+ * bereit. Ohne eigenes Paperless ist der Ablageordner die einzige Ablage der Ausdrucke: ein Druck, der dort nicht ankommt,
+ * darf nicht still bleiben.
+ */
+export async function ordnerHindernis(): Promise<string | null> {
+  if (!ordnerMoeglich) return 'Dieser Browser kann keine Ordner auf dem PC beschreiben – bitte Microsoft Edge oder Google Chrome verwenden.';
+  const st = await ordnerStatus();
+  if (!st) return 'Es ist kein Ablageordner festgelegt – bitte unter Aufträge → „Ablageordner“ einen Ordner wählen.';
+  if (!st.zugriff) return `Der Zugriff auf den Ablageordner „${st.name}“ ist nicht erteilt – bitte unter Aufträge → „Ablageordner“ auf „Zugriff erlauben“ klicken.`;
+  return null;
+}
+
+/**
+ * Datei in die Ordner mehrerer Aufträge speichern (Sammelrechnung: in jeden). Liefert die gespeicherten Pfade und – wenn
+ * etwas fehlt – eine Meldung, warum.
+ */
+export async function ablegenIn(nrs: string[], datei: string, inhalt: Blob): Promise<{ pfade: string[]; hinweis: string | null }> {
+  const pfade: string[] = [];
+  let fehler = '';
+  for (const nr of nrs) {
+    try { const p = await ablegen(nr, datei, inhalt); if (p) pfade.push(p); } catch (e) { fehler = (e as Error).message; }
+  }
+  if (pfade.length === nrs.length) return { pfade, hinweis: null };
+  const grund = fehler || (await ordnerHindernis()) || 'Der Auftragsordner ließ sich nicht anlegen.';
+  return { pfade, hinweis: `${datei} wurde ${pfade.length ? `nur in ${pfade.length} von ${nrs.length} Auftragsordnern` : 'nicht im Ablageordner'} gespeichert: ${grund}` };
 }

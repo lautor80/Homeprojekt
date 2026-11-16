@@ -7,7 +7,7 @@ import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Ce
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { T, download } from './util';
-import { ablegen, dateiLesen } from './ordner';
+import { ablegenIn, dateiLesen } from './ordner';
 import { AUTO, autoOffen, emlErzeugen, emlHerunterladen } from './MailEntwurf';
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,7 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
   const [idx, setIdx] = useState(0);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [pfade, setPfade] = useState<string[]>([]);
+  const [nichtGespeichert, setNichtGespeichert] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const doc = docs?.[idx];
 
@@ -31,6 +32,7 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
     if (!doc) return;
     setBlobUrl(null);
     setPfade([]);
+    setNichtGespeichert(null);
     setError(null);
     if (doc.lokal) { setBlobUrl(doc.url); return; }
     let url: string | null = null;
@@ -40,15 +42,9 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
       if (!r.ok) throw new Error(JSON.parse((await r.text()) || '{}').message ?? `Fehler ${r.status}`);
       let b: Blob = await r.blob();
       // Ablageordner: speichern und die gespeicherte Datei anzeigen
-      const gespeichert: string[] = [];
-      for (const nr of doc.ablage ?? []) {
-        try {
-          const p = await ablegen(nr, doc.filename, b);
-          if (p) gespeichert.push(p);
-        } catch (e) {
-          if (!aus) setError(`Ablageordner: ${(e as Error).message}`);
-        }
-      }
+      // in den Ordner jedes Auftrags (Sammelrechnung: alle); was nicht ankommt, wird gemeldet – der Ordner ist ohne Paperless die einzige Ablage
+      const { pfade: gespeichert, hinweis } = doc.ablage?.length ? await ablegenIn(doc.ablage, doc.filename, b) : { pfade: [], hinweis: null };
+      if (!aus) setNichtGespeichert(hinweis);
       if (gespeichert.length) b = (await dateiLesen(doc.ablage![0], doc.filename)) ?? b;
       if (aus) return;
       url = URL.createObjectURL(b);
@@ -87,7 +83,12 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
           Gespeichert im Ablageordner: {pfade.join(' · ')}
         </MessageStrip>
       )}
-      {blobUrl && <iframe title="PDF" src={blobUrl} style={{ width: '100%', height: `calc(100% - ${pfade.length ? 6 : 3}rem)`, border: 'none' }} />}
+      {nichtGespeichert && (
+        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          {nichtGespeichert} Das PDF steht nur in dieser Vorschau – bei Bedarf „Herunterladen“.
+        </MessageStrip>
+      )}
+      {blobUrl && <iframe title="PDF" src={blobUrl} style={{ width: '100%', height: `calc(100% - ${3 + (pfade.length ? 3 : 0) + (nichtGespeichert ? 4 : 0)}rem)`, border: 'none' }} />}
     </Dialog>
   );
 }
@@ -173,7 +174,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
 // ---------------------------------------------------------------------------
 // E-Rechnung (XRechnung 3.0): Hinweise, Vorschau, XML, Download
 // ---------------------------------------------------------------------------
-export interface XRes { faktura: string; filename: string; xml: string; hinweise: string[]; html: string; xmlHtml: string; anzahlAuftraege: number }
+export interface XRes { faktura: string; filename: string; xml: string; hinweise: string[]; html: string; xmlHtml: string; anzahlAuftraege: number; /** alle Aufträge der Rechnung */ auftraege?: string[] }
 interface Pruefung { profil: string; datei: string; groesse: number; ok: boolean; punkte: { punkt: string; ok: boolean; detail?: string }[]; hinweise: string[] }
 
 /**

@@ -22,8 +22,6 @@ interface Firma {
   zahlungsziel_tage: number; ust_satz: number; rechnung_startnr: number; logo: string | null;
   auftragsbedingungen?: string;
   paperless?: boolean;
-  /** Übergang (#232, S5): noch kein eigenes Paperless – es läuft weiter über das von TC Oberthal */
-  paperless_uebergang?: boolean;
 }
 interface Produkt { prod_key: string; text: string; preis: number; gueltig_bis: string | null; sort: number }
 interface MailText { art: 'T' | 'L' | 'R'; sprache: 'D' | 'E'; text: string }
@@ -144,9 +142,10 @@ export function FirmaTab({ nurLogo = false }: { nurLogo?: boolean }) {
       </Section>
       </div>
       <AblageOrdnerEinstellung />
-      {f.paperless_uebergang && (
-        <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
-          Übergang: Euroflex nutzt noch das Paperless von TC Oberthal. Bitte unter Administration → Schnittstellen bei „Paperless-ngx Euroflex“ das eigene Paperless eintragen.
+      {!f.paperless && (
+        <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+          Für Euroflex ist kein eigenes Paperless eingetragen: Ausdrucke und Dateien werden nur im Ablageordner auf dem PC gespeichert, nicht in Paperless –
+          auch nicht im Paperless von TC Oberthal. Ein eigenes Paperless lässt sich unter Administration → Schnittstellen bei „Paperless-ngx Euroflex“ eintragen.
         </MessageStrip>
       )}
       <MessageStrip design="Information" hideCloseButton>
