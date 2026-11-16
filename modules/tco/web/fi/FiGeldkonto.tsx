@@ -74,7 +74,7 @@ export function GeldkontoDialog({ onClose }: { onClose: (geaendert: boolean) => 
               <Button design="Transparent" disabled={!waehlbar.length} onClick={() => { setWahl(new Set(waehlbar.map((z) => z.internenr))); setBestaetigt(false); }}>alle markieren</Button>
               <Button design="Transparent" disabled={!wahl.size} onClick={() => { setWahl(new Set()); setBestaetigt(false); }}>keine</Button>
             </div>
-            <div className="portal-ih__rahmen" style={{ maxHeight: '46vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+            <div className="portal-ih__rahmen portal-tabrahmen" style={{ maxHeight: '46vh' }}><table className="portal-ih__tabelle">
               <thead><tr><th>✓</th><th>Datum</th><th>Beleg</th><th>Buchungstext</th><th>Gegenkonto</th><th style={{ textAlign: 'right' }}>Betrag</th><th>erfasst von</th><th /></tr></thead>
               <tbody>
                 {!d.zeilen.length && <tr><td colSpan={8} className="portal-muted">Keine Belege zu dieser Auswahl.</td></tr>}

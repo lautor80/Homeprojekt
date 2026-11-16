@@ -91,7 +91,7 @@ export function Kontenfindung() {
         Welcher Vorgang bebucht welches Konto der FI-Belege. Geändert wird jede Angabe an ihrer Stelle – die Spalte „Pflege“ führt dorthin.
         Das Erlöskonto je Produkt steht in <Link onClick={() => { window.location.assign('/tco/produkte?sicht=alle'); }}>Produkte und Preise</Link>.
       </Text>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="portal-tabrahmen">
         <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: '56rem' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
             <th style={zelle}>Vorgang</th><th style={zelle}>Konto</th><th style={zelle}>Pflege</th>

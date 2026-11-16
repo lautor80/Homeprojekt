@@ -75,7 +75,7 @@ export function Bestaende({ edit: darf, jahre, aktJahr }: { edit: boolean; jahre
                </>}>
         <BusyIndicator active={busy} delay={300} style={{ width: '100%', display: 'block' }}>
           <div className="portal-busy-inhalt">
-          <div style={{ overflowX: 'auto' }}>
+          <div className="portal-tabrahmen">
             <table style={{ borderCollapse: 'collapse', width: '100%' }}>
               <thead>
                 <tr>

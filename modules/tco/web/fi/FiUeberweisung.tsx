@@ -96,7 +96,7 @@ export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
             Belege aus Paperless mit Folgeaktion „Überweisung an Einreicher“, Status „Offen“ und leerem Feld „SAP“ (noch keiner Buchung zugeordnet). „Überweisung bestätigen“ setzt den Status auf „gezahlt“. Der Einreicher steht im Feld „Eingereicht durch“. Beleg wählen für Vorschau und QR-Code.
           </Text>
           {!liste ? (error ? null : <BusyIndicator active style={{ display: 'block', margin: '1rem 0' }} />) : (
-            <div className="portal-ih__rahmen" style={{ marginTop: '0.5rem', maxHeight: '60vh', overflowY: 'auto' }}><table className="portal-ih__tabelle">
+            <div className="portal-ih__rahmen portal-tabrahmen" style={{ marginTop: '0.5rem', maxHeight: '60vh' }}><table className="portal-ih__tabelle">
               <thead><tr><th>Datum</th><th>Beleg</th><th>Titel</th><th>Korrespondent</th><th style={{ textAlign: 'right' }}>Betrag</th><th>Einreicher</th><th>hochgeladen</th><th /></tr></thead>
               <tbody>
                 {!liste.length && <tr><td colSpan={8} className="portal-muted">Keine offenen Belege mit „Überweisung an Einreicher“.</td></tr>}
