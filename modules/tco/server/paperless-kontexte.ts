@@ -101,6 +101,18 @@ export const K = {
       PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Mitglieder', datum: '{datum}', notiz: 'Rundschreiben {nummer}: {gesendet} E-Mails gesendet, {fehler} Fehler, {ohne_mail} ohne E-Mail-Adresse ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' } },
   },
+  zuwendung: {
+    id: 'zuwendung.bestaetigung', text: 'Zuwendungsbestätigung (Doppel)',
+    beschreibung: 'Doppel jeder ausgestellten Zuwendungsbestätigung (Einzel- bzw. Sammelbestätigung über Geldspenden) – es ist nach § 50 Abs. 7 EStDV aufzubewahren.',
+    platzhalter: [{ name: 'nummer', text: 'Nummer der Bestätigung', beispiel: 'ZB-2026-0007' }, { name: 'spender', text: 'Spender „Nachname Vorname“ (Korrespondent)', beispiel: 'Muster Max' },
+      { name: 'name', text: 'Spender, wie gedruckt', beispiel: 'Max Muster' }, { name: 'art', text: 'Einzelbestätigung / Sammelbestätigung', beispiel: 'Sammelbestätigung' },
+      { name: 'jahr', text: 'Jahr der Zuwendung', beispiel: 2026 }, { name: 'betrag', text: 'bestätigter Betrag', beispiel: 250 }, { name: 'datum', text: 'Datum der Ausstellung', beispiel: '2027-01-15' },
+      PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: {
+      titel: 'Zuwendungsbestätigung {nummer} {name}', korrespondent: '{spender}', dokumenttyp: 'Zuwendungsbestätigung', speicherpfad: 'Buchhaltung',
+      datum: '{datum}', notiz: '{art} {jahr} ausgestellt ({benutzer}, Vereinsportal)', felder: { Betrag: '{betrag}', DOKID: '{dokid}' },
+    },
+  },
   ihMeldung: {
     id: 'instandhaltung.meldung', text: 'Schadensmeldung (Formular Instandhaltung)',
     beschreibung: 'Formular einer Schadensmeldung mit Protokoll und Fotos – abgelegt beim Abschluss oder bei der Weitergabe (z. B. an eine Fremdfirma); jede weitere Ablage wird eine neue Version desselben Dokuments.',

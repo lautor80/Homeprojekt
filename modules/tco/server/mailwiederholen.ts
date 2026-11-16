@@ -36,5 +36,11 @@ export async function mailFolge(tx: Tx, f: MailFolge): Promise<string[] | null> 
     await tx`update tco.vz_belege set versand_am = now(), versand_art = 'MAIL', email = coalesce(email, ${String(f.an)}) where rgnr = ${String(f.rgnr)}`;
     return [];
   }
+  if (f.art === 'ZUWENDUNG') {
+    // Zuwendungsbestätigung: erst die erfolgreiche Wiederholung gilt als versendet
+    await tx`update tco.zuw_kopf set versand_status = 'GESENDET', versand_am = now(), versand_an = ${String(f.an)}, versand_hinweis = null
+              where zbnr = ${String(f.zbnr)} and status = 'A'`;
+    return [];
+  }
   return null;
 }
