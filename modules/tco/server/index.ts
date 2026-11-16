@@ -18,6 +18,7 @@ import { arbeitsvorrat } from './dashboard/arbeitsvorrat.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
 import { gruppenRoutes, P_GR } from './gruppen/routes.js';
+import { P_RS, rundschreibenRoutes } from './rundschreiben/routes.js';
 import { kontenRoutes, P_KONTEN } from './konten/routes.js';
 import { finanzRoutes, P_FINANZ } from './finanz/routes.js';
 import { beitraegeRoutes, P_BEITRAEGE } from './beitraege/routes.js';
@@ -158,6 +159,7 @@ async function routes(app: FastifyInstance) {
   await kalenderRoutes(app);
   await mitgliederRoutes(app);
   await gruppenRoutes(app);
+  await rundschreibenRoutes(app);
   await kontenRoutes(app);
   await produkteRoutes(app);
   await antragRoutes(app);
@@ -214,6 +216,9 @@ const tco: ServerModule = {
     { area: 'Mitglieder', app: 'Mitglieder', id: P_MG.edit, text: 'Mitglieder pflegen: Neuanlage, Stammdaten, Verträge, Austritt, Gruppen zuordnen, Unterlagen ablegen und versenden (Bankverbindung ändern: siehe Datenschutz)' },
     { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.display, text: 'Mitgliedergruppen anzeigen: Baum der Kategorien, Gruppen und Mannschaften mit den zugeordneten Mitgliedern' },
     { area: 'Mitglieder', app: 'Mitgliedergruppen', id: P_GR.edit, text: 'Mitgliedergruppen pflegen: Gruppen anlegen, ändern, verschieben und löschen, Mitglieder zuordnen und Rollen vergeben', requires: [P_GR.display] },
+    { area: 'Mitglieder', app: 'Rundschreiben', id: P_RS.display, text: 'Rundschreiben ansehen: Entwürfe, gesendete Rundschreiben und das Versandprotokoll je Empfänger (Namen und E-Mail-Adressen der Mitglieder)' },
+    { area: 'Mitglieder', app: 'Rundschreiben', id: P_RS.edit, text: 'Rundschreiben verfassen: Entwürfe anlegen, ändern, kopieren und löschen, Anhänge, Empfänger wählen und prüfen, Testmail an sich selbst', requires: [P_RS.display] },
+    { area: 'Mitglieder', app: 'Rundschreiben', id: P_RS.execute, text: 'Rundschreiben senden: Versand an die Mitglieder auslösen, anhalten und fortsetzen, Fehlgeschlagene erneut senden, in Paperless ablegen', requires: [P_RS.display] },
     { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.display, text: 'Online-Mitgliedsanträge ansehen (Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)' },
     { area: 'Mitglieder', app: 'Mitgliedsanträge', id: P_ANTRAG.edit, text: 'Online-Mitgliedsanträge prüfen, ablehnen und übernehmen (legt Mitglieder, Verträge, SEPA-Mandat und Benutzer an)', requires: [P_ANTRAG.display, 'tco.mitglieder:edit'] },
     { area: 'Mitglieder', app: 'Zugänge', id: P_REG, text: 'Registrierungen von Mitgliedern prüfen (Abgleich Geburtsdatum/Mitgliedsnummer), freigeben (Rolle Mitglied) oder ablehnen – Aufgabe des Kassenwarts' },
@@ -388,6 +393,7 @@ const tco: ServerModule = {
     { type: 'KAL_EINLADUNG', text: 'Einladung zu einer Veranstaltung (Versand)', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
     { type: 'MG_FAMILIE', text: 'Familienverknüpfung zwischen zwei Personen', permission: P_MG.display },
+    { type: 'RUNDSCHREIBEN', text: 'Rundschreiben an Mitglieder', permission: P_RS.display },
     { type: 'KUENDIGUNG', text: 'Kündigung durch das Mitglied (Freigabe)', permission: P_MG.display },
     { type: 'TCO_MAILTEXT', text: 'E-Mail-Text des Vereins', permission: P.stammdaten },
     { type: 'SCHADEN', text: 'Schadensmeldung', permission: P_IH.display },
