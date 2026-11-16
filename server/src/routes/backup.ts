@@ -9,7 +9,7 @@ import { BusinessError } from '../errors.js';
 import { istZip } from '../backup-xml.js';
 import { activeModules } from '../modules.js';
 import { laufend as laufendJob, lesen as jobLesen, sicht } from '../backup-job.js';
-import { cfgLesen, cfgPruefen, exportStarten, sicherungStarten, verbindungTesten, type ExportCfg } from '../backup-export.js';
+import { cfgLesen, cfgPruefen, naechsterVersuch, exportStarten, sicherungStarten, verbindungTesten, type ExportCfg } from '../backup-export.js';
 import {
   aktiveSchemas, datei, dateipfad, dumps, dumpVerzeichnis, entpacken, istVerschluesselt, kurzinfo, liste, ordner, pruefen, ruecksichern, sichern, speichern, uebersicht,
 } from '../backup.js';
@@ -81,7 +81,7 @@ export async function backupRoutes(app: FastifyInstance) {
   const MASKE = '********';
   const cfgSicht = async () => {
     const c = await cfgLesen();
-    return { ...c, passwort: c.passwort ? MASKE : '', datei_passwort: c.datei_passwort ? MASKE : '', fehlt: cfgPruefen(c) };
+    return { ...c, passwort: c.passwort ? MASKE : '', datei_passwort: c.datei_passwort ? MASKE : '', fehlt: cfgPruefen(c), naechster_versuch: naechsterVersuch(c) };
   };
   const cfgSchema = z.object({
     // Zugang (#232, S2): gepflegt unter Schnittstellen → Nextcloud; wird er hier mitgegeben (Einrichten in einem Zug), landet er in derselben Anbindung

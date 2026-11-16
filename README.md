@@ -122,6 +122,8 @@ Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db`,
 # Format wahlweise .portal (kompakt, optional verschlüsselt) oder ZIP mit XML-Dateien (lesbar, bearbeitbar, importierbar).
 # Täglicher Export in die Nextcloud (WebDAV): als eine Datei (.portal/ZIP) oder dateiweise ohne ZIP – je Lauf ein Ordner
 # mit einzelnen XML-Dateien, manifest.xml zuletzt, pruefsummen.sha256; nach jeder Übertragung Prüfung der Vollständigkeit.
+# Scheitert der Tageslauf (z. B. Nextcloud kurz nicht erreichbar), neuer Versuch am selben Tag 30 Min., 1½ und 3 Std. nach der Uhrzeit;
+# Netzfehler nennen die Ursache (ECONNREFUSED, ENOTFOUND, Zeitüberschreitung …) statt nur „fetch failed“.
 docker compose exec backup sh /backup.sh now  # Backup sofort
 docker compose logs -f app                    # Log ansehen
 ```
