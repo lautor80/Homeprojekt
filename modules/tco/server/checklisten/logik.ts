@@ -328,3 +328,139 @@ export async function kategorieLoeschen(tx: Db, id: number) {
   const r = await tx`delete from tco.cl_kategorien where id = ${id} returning id`;
   if (!r.length) throw new BusinessError('Kategorie nicht gefunden.', 404);
 }
+
+// ---------------------------------------------------------------- Baum: Verschieben
+
+/** Checkliste in eine andere Kategorie verschieben (null = ohne Kategorie) */
+export async function kategorieSetzen(tx: Db, id: number, kategorie: number | null, wer: string) {
+  await kategoriePruefen(tx, kategorie);
+  const r = await tx`update tco.cl_checklisten set kategorie_id = ${kategorie}, geaendert_am = now(), geaendert_von = ${wer} where id = ${id} returning id`;
+  if (!r.length) throw new BusinessError('Checkliste nicht gefunden.', 404);
+}
+
+/**
+ * Schritt verschieben: in eine andere Checkliste und/oder an eine andere Stelle – vor den Schritt `vor`, sonst ans Ende.
+ * Wechselt der Schritt die Checkliste, entfällt sein Stand (er gehörte zu den Veranstaltungen der alten Checkliste).
+ */
+export async function schrittVerschieben(tx: Db, id: number, ziel: number, vor: number | null, wer: string) {
+  const [s] = await tx`select checkliste_id from tco.cl_schritte where id = ${id}`;
+  if (!s) throw new BusinessError('Schritt nicht gefunden.', 404);
+  const [c] = await tx`select 1 from tco.cl_checklisten where id = ${ziel}`;
+  if (!c) throw new BusinessError('Die Ziel-Checkliste gibt es nicht (mehr).', 404);
+  const ids = (await tx`select id from tco.cl_schritte where checkliste_id = ${ziel} and id <> ${id} order by pos, id`).map((x) => x.id as number);
+  if (vor !== null && !ids.includes(vor)) throw new BusinessError('Die Schritte haben sich inzwischen geändert – bitte neu laden.', 409);
+  ids.splice(vor === null ? ids.length : ids.indexOf(vor), 0, id);
+  const quelle = s.checkliste_id as number;
+  if (quelle !== ziel) {
+    await tx`delete from tco.cl_erledigt where schritt_id = ${id}`;
+    await tx`update tco.cl_schritte set checkliste_id = ${ziel} where id = ${id}`;
+    await beruehren(tx, quelle, wer);
+  }
+  const pos = ids.map((_, i) => i + 1);
+  await tx`update tco.cl_schritte s set pos = x.pos from unnest(${ids}::int[], ${pos}::int[]) as x(id, pos) where s.id = x.id`;
+  await beruehren(tx, ziel, wer);
+}
+
+// ---------------------------------------------------------------- Import aus der Zwischenablage (Tabelle)
+
+export const IMPORT_SPALTEN = ['Kategorie', 'Checkliste', 'Schritt', 'Verantwortlich', 'Termin', 'Hinweise'] as const;
+type ImportSpalte = typeof IMPORT_SPALTEN[number];
+export interface ImportZeile { zeile: number; kategorie: string; checkliste: string; schritt: string; verantwortlich: string; hinweise: string; tage_vor: number | null; faellig: string | null }
+export interface ImportGelesen { zeilen: ImportZeile[]; fehler: string[]; kopfzeile: boolean }
+
+/** Termin einer Importzeile: leer, Zahl (Tage vorher; negativ = danach), „14 Tage vorher/danach“, „am Tag“, Datum TT.MM.JJJJ oder JJJJ-MM-TT */
+export function importTermin(text: string): Terminbezug | null {
+  const t = text.trim().toLowerCase();
+  if (!t || t === '-' || t === '–') return { tage_vor: null, faellig: null };
+  let m = /^(?:bis\s+)?(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(t);
+  if (m) {
+    const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    return Number.isNaN(Date.parse(`${iso}T12:00:00Z`)) || new Date(`${iso}T12:00:00Z`).toISOString().slice(0, 10) !== iso ? null : { tage_vor: null, faellig: iso };
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return Number.isNaN(Date.parse(`${t}T12:00:00Z`)) ? null : { tage_vor: null, faellig: t };
+  if (/^-?\d{1,3}$/.test(t)) return { tage_vor: Number(t), faellig: null };
+  if (/^am tag/.test(t)) return { tage_vor: 0, faellig: null };
+  m = /^(\d{1,3})\s*(tage?|wochen?)\s*(vorher|davor|vor|danach|nachher|nach)$/.exec(t);
+  if (m) {
+    const n = Number(m[1]) * (m[2].startsWith('woche') ? 7 : 1);
+    return { tage_vor: /^(danach|nachher|nach)$/.test(m[3]) ? -n : n, faellig: null };
+  }
+  return null;
+}
+
+/**
+ * Tabelle aus der Zwischenablage lesen (aus Excel kopiert: Spalten durch Tabulator getrennt; ersatzweise Semikolon).
+ * Spalten in der Reihenfolge Kategorie · Checkliste · Schritt · Verantwortlich · Termin · Hinweise – oder beliebig, wenn die
+ * erste Zeile die Spaltennamen enthält. Leere Zellen bei Kategorie und Checkliste übernehmen den Wert der Zeile darüber.
+ */
+export function importLesen(text: string): ImportGelesen {
+  const roh = text.replace(/\r\n?/g, '\n').split('\n').map((z, i) => ({ nr: i + 1, z })).filter((x) => x.z.trim());
+  const fehler: string[] = [];
+  if (!roh.length) return { zeilen: [], fehler: ['Die Zwischenablage enthält keine Zeilen.'], kopfzeile: false };
+  const trenner = roh.some((x) => x.z.includes('\t')) ? '\t' : ';';
+  const zellen = (z: string) => z.split(trenner).map((c) => c.trim().replace(/^"(.*)"$/s, '$1').replace(/""/g, '"').trim());
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-zäöüß]/g, '');
+  const NAMEN: Record<string, ImportSpalte> = {
+    kategorie: 'Kategorie', checkliste: 'Checkliste', event: 'Checkliste', veranstaltung: 'Checkliste', thema: 'Checkliste',
+    schritt: 'Schritt', aufgabe: 'Schritt', punkt: 'Schritt', verantwortlich: 'Verantwortlich', wer: 'Verantwortlich', zuständig: 'Verantwortlich',
+    termin: 'Termin', fällig: 'Termin', faellig: 'Termin', wann: 'Termin', hinweise: 'Hinweise', hinweis: 'Hinweise', beschreibung: 'Hinweise', bemerkung: 'Hinweise',
+  };
+  const erste = zellen(roh[0].z).map((c) => NAMEN[norm(c)]);
+  const kopfzeile = erste.filter(Boolean).length >= 2 && erste.includes('Schritt');
+  const spalte = new Map<ImportSpalte, number>();
+  if (kopfzeile) erste.forEach((n, i) => { if (n && !spalte.has(n)) spalte.set(n, i); });
+  else IMPORT_SPALTEN.forEach((n, i) => spalte.set(n, i));
+  const zeilen: ImportZeile[] = [];
+  let kategorie = '', checkliste = '';
+  for (const { nr, z } of roh.slice(kopfzeile ? 1 : 0)) {
+    const c = zellen(z);
+    const wert = (n: ImportSpalte) => (spalte.has(n) ? c[spalte.get(n)!] ?? '' : '');
+    // neue Checkliste ohne Kategorie in der Zeile: die Kategorie gilt weiter (verbundene Zellen)
+    if (wert('Kategorie')) kategorie = wert('Kategorie');
+    if (wert('Checkliste')) checkliste = wert('Checkliste');
+    const schritt = wert('Schritt');
+    if (!checkliste) { fehler.push(`Zeile ${nr}: Es fehlt die Checkliste.`); continue; }
+    if (checkliste.length > 160 || kategorie.length > 80 || schritt.length > 200) { fehler.push(`Zeile ${nr}: Ein Text ist zu lang (Kategorie 80, Checkliste 160, Schritt 200 Zeichen).`); continue; }
+    const termin = importTermin(wert('Termin'));
+    if (!termin) { fehler.push(`Zeile ${nr}: Termin „${wert('Termin')}“ nicht erkannt – erlaubt sind z. B. 14, „14 Tage vorher“, „3 Tage danach“, „am Tag“ oder ein Datum (TT.MM.JJJJ).`); continue; }
+    zeilen.push({ zeile: nr, kategorie, checkliste, schritt, verantwortlich: wert('Verantwortlich').slice(0, 120), hinweise: wert('Hinweise').slice(0, 2000), ...termin });
+  }
+  if (!zeilen.length && !fehler.length) fehler.push('Keine Datenzeile gefunden.');
+  return { zeilen, fehler, kopfzeile };
+}
+
+export interface ImportErgebnis { kategorien: string[]; checklisten: string[]; ergaenzt: string[]; schritte: number }
+
+/**
+ * Gelesene Zeilen übernehmen (`schreiben` = false: nur zeigen, was geschähe). Kategorien und Checklisten werden am Namen
+ * erkannt (Groß-/Kleinschreibung egal): fehlende werden angelegt, an bestehende Checklisten werden die Schritte angefügt.
+ */
+export async function importAusfuehren(tx: Db, zeilen: ImportZeile[], wer: string, schreiben: boolean): Promise<ImportErgebnis> {
+  const kat = new Map((await tx`select id, name from tco.cl_kategorien`).map((k) => [(k.name as string).toLowerCase(), k.id as number]));
+  const cl = new Map((await tx`select id, titel from tco.cl_checklisten order by id desc`).map((c) => [(c.titel as string).toLowerCase(), c.id as number]));
+  const e: ImportErgebnis = { kategorien: [], checklisten: [], ergaenzt: [], schritte: 0 };
+  let ersatz = -1;   // Platzhalter-IDs in der Vorschau
+  for (const z of zeilen) {
+    let k: number | null = null;
+    if (z.kategorie) {
+      k = kat.get(z.kategorie.toLowerCase()) ?? null;
+      if (k === null) {
+        k = schreiben ? await kategorieSpeichern(tx, { name: z.kategorie }) : ersatz--;
+        kat.set(z.kategorie.toLowerCase(), k);
+        e.kategorien.push(z.kategorie);
+      }
+    }
+    let c = cl.get(z.checkliste.toLowerCase());
+    if (c === undefined) {
+      c = schreiben ? await checklisteAnlegen(tx, { titel: z.checkliste, kategorie_id: k }, wer) : ersatz--;
+      cl.set(z.checkliste.toLowerCase(), c);
+      e.checklisten.push(z.checkliste);
+    } else if (z.schritt && !e.checklisten.some((t) => t.toLowerCase() === z.checkliste.toLowerCase()) && !e.ergaenzt.some((t) => t.toLowerCase() === z.checkliste.toLowerCase())) {
+      e.ergaenzt.push(z.checkliste);
+    }
+    if (!z.schritt) continue;
+    if (schreiben) await schrittAnlegen(tx, c, { titel: z.schritt, beschreibung: z.hinweise, verantwortlich: z.verantwortlich, tage_vor: z.tage_vor, faellig: z.faellig }, wer);
+    e.schritte++;
+  }
+  return e;
+}

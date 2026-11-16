@@ -167,7 +167,7 @@ flowchart LR
 | analyse | 7 |
 | antrag | 13 |
 | beitraege | 8 |
-| checklisten | 17 |
+| checklisten | 20 |
 | clubhaus | 19 |
 | core:admin | 17 |
 | core:apikeys | 6 |

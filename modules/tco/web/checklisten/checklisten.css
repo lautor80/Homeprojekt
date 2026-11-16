@@ -25,3 +25,7 @@
 .portal-cl__dialog { display: flex; flex-direction: column; gap: 0.75rem; width: min(40rem, 88vw); }
 .portal-cl__dialog ui5-input, .portal-cl__dialog ui5-textarea, .portal-cl__dialog ui5-select { width: 100%; }
 .portal-cl__zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem 1rem; }
+/* Baum (Layout der Mitgliedergruppen, gruppen.css): Titel in einer Zeile, der Zusatz dahinter wird abgeschnitten */
+.portal-cl__zelle { min-width: 0; }
+.portal-cl__zelle > ui5-link, .portal-cl__zelle > ui5-text, .portal-cl__zelle > ui5-icon { flex: 0 0 auto; white-space: nowrap; }
+.portal-cl__zelle > .portal-small { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

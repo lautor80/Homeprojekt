@@ -5,7 +5,7 @@ import { DB, vereinLesen } from '../verein.js';
 import {
   abhaken, bezugLoeschen, checklisteAendern, checklisteAnlegen, checklisteKopieren, checklisteLesen, checklisteLoeschen, checklistenLesen,
   eventsZuordnen, eventsZurAuswahl, kategorieLoeschen, kategorienLesen, kategorieSpeichern, personenLesen, schrittAendern, schrittAnlegen,
-  schritteKopieren, schritteOrdnen, schrittLoeschen, STAND_TEXT, terminZuordnen,
+  schritteKopieren, schritteOrdnen, schrittLoeschen, STAND_TEXT, terminZuordnen, importAusfuehren, importLesen, IMPORT_SPALTEN, kategorieSetzen, schrittVerschieben,
 } from './logik.js';
 import { checklistePdf } from './pdf.js';
 
@@ -37,7 +37,7 @@ export async function checklistenRoutes(app: FastifyInstance) {
 
   app.get('/checklisten', lesen, async (req) => ({
     checklisten: await checklistenLesen(DB), kategorien: await kategorienLesen(DB), personen: await personenLesen(DB),
-    events: await eventsZurAuswahl(DB), stand_text: STAND_TEXT, pflege: can(req, P_CL.edit),
+    events: await eventsZurAuswahl(DB), stand_text: STAND_TEXT, import_spalten: IMPORT_SPALTEN, pflege: can(req, P_CL.edit),
   }));
 
   app.get('/checklisten/:id', lesen, async (req) => checklisteLesen(DB, pId.parse(req.params).id));
@@ -100,6 +100,31 @@ export async function checklistenRoutes(app: FastifyInstance) {
     const b = z.object({ schritte: z.array(nr).min(1, 'Bitte mindestens einen Schritt wählen.').max(500), ziel: nr }).parse(req.body);
     const n = await change(req, (tx) => schritteKopieren(tx, b.schritte, b.ziel, wer(req)), { action: 'CL_KOPIEREN' });
     return { anzahl: n, text: `${n} Schritt${n === 1 ? '' : 'e'} kopiert.` };
+  });
+
+  // ---------------------------------------------------------------- Baum: Verschieben per Ziehen und Ablegen
+  app.post('/checklisten/:id/kategorie', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ kategorie_id: nr.nullable() }).parse(req.body);
+    await change(req, (tx) => kategorieSetzen(tx, id, b.kategorie_id, wer(req)), { action: 'CL_AENDERN' });
+    return { text: 'Checkliste verschoben.' };
+  });
+
+  app.post('/checklisten/schritte/:id/verschieben', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ ziel: nr, vor: nr.nullish() }).parse(req.body);
+    await change(req, (tx) => schrittVerschieben(tx, id, b.ziel, b.vor ?? null, wer(req)), { action: 'CL_SCHRITT' });
+    return { text: 'Schritt verschoben.' };
+  });
+
+  // ---------------------------------------------------------------- Import aus der Zwischenablage
+  /** Tabelle (aus Excel kopiert) prüfen bzw. übernehmen – übernommen wird nur, wenn keine Zeile einen Fehler hat */
+  app.post('/checklisten/import', pflege, async (req) => {
+    const b = z.object({ text: z.string().max(500_000), pruefen: z.boolean().default(true) }).parse(req.body);
+    const g = importLesen(b.text);
+    const schreiben = !b.pruefen && !g.fehler.length;
+    const ergebnis = g.zeilen.length ? await change(req, (tx) => importAusfuehren(tx, g.zeilen, wer(req), schreiben), { action: 'CL_IMPORT' }) : null;
+    return { fehler: g.fehler, kopfzeile: g.kopfzeile, zeilen: g.zeilen, ergebnis, uebernommen: schreiben && !!ergebnis };
   });
 
   // ---------------------------------------------------------------- Veranstaltungen / Termine

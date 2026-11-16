@@ -6,7 +6,7 @@
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { faelligAm, fortschritt, kopieTitel, stand, terminText } from '../../modules/tco/server/checklisten/logik.js';
+import { faelligAm, fortschritt, importLesen, importTermin, kopieTitel, stand, terminText } from '../../modules/tco/server/checklisten/logik.js';
 
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
@@ -84,6 +84,46 @@ test('Titel einer Kopie ist frei', () => {
   assert.equal(kopieTitel('Sommerfest', ['Sommerfest']), 'Sommerfest (Kopie)');
   assert.equal(kopieTitel('Sommerfest', ['Sommerfest', 'sommerfest (kopie)']), 'Sommerfest (Kopie 2)');
   assert.equal(kopieTitel('Sommerfest (Kopie)', ['Sommerfest', 'Sommerfest (Kopie)']), 'Sommerfest (Kopie 2)');
+});
+
+test('Import: Termin einer Zeile', () => {
+  assert.deepEqual(importTermin(''), { tage_vor: null, faellig: null });
+  assert.deepEqual(importTermin('14'), { tage_vor: 14, faellig: null });
+  assert.deepEqual(importTermin('-7'), { tage_vor: -7, faellig: null });
+  assert.deepEqual(importTermin('14 Tage vorher'), { tage_vor: 14, faellig: null });
+  assert.deepEqual(importTermin('1 Tag danach'), { tage_vor: -1, faellig: null });
+  assert.deepEqual(importTermin('2 Wochen vorher'), { tage_vor: 14, faellig: null });
+  assert.deepEqual(importTermin('am Tag der Veranstaltung'), { tage_vor: 0, faellig: null });
+  assert.deepEqual(importTermin('1.3.2090'), { tage_vor: null, faellig: '2090-03-01' });
+  assert.deepEqual(importTermin('bis 01.03.2090'), { tage_vor: null, faellig: '2090-03-01' });
+  assert.deepEqual(importTermin('2090-03-01'), { tage_vor: null, faellig: '2090-03-01' });
+  assert.equal(importTermin('31.02.2090'), null);
+  assert.equal(importTermin('irgendwann'), null);
+});
+
+test('Import: Tabelle aus der Zwischenablage lesen', () => {
+  // ohne Kopfzeile, feste Reihenfolge; leere Zellen übernehmen Kategorie und Checkliste von oben
+  let g = importLesen('Fest\tSommerfest\tGetränke bestellen\tThekenwart\t14\tListe vom Vorjahr\r\n\t\tZelt aufbauen\t\t1 Tag vorher\t\n\n\tHerbstfest\tEinladen\t\t\t');
+  assert.deepEqual(g.fehler, []);
+  assert.equal(g.kopfzeile, false);
+  assert.deepEqual(g.zeilen.map((z) => [z.zeile, z.kategorie, z.checkliste, z.schritt, z.verantwortlich, z.tage_vor, z.hinweise]), [
+    [1, 'Fest', 'Sommerfest', 'Getränke bestellen', 'Thekenwart', 14, 'Liste vom Vorjahr'],
+    [2, 'Fest', 'Sommerfest', 'Zelt aufbauen', '', 1, ''],
+    [4, 'Fest', 'Herbstfest', 'Einladen', '', null, ''],
+  ]);
+  // mit Kopfzeile in anderer Reihenfolge und anderen Namen, Semikolon als Trenner
+  g = importLesen('Aufgabe;Wer;Veranstaltung;Wann\nPlätze abziehen;Platzwart;Turnier;am Tag\nPokale;;;01.09.2090');
+  assert.deepEqual(g.fehler, []);
+  assert.equal(g.kopfzeile, true);
+  assert.deepEqual(g.zeilen.map((z) => [z.kategorie, z.checkliste, z.schritt, z.verantwortlich, z.tage_vor, z.faellig]), [
+    ['', 'Turnier', 'Plätze abziehen', 'Platzwart', 0, null], ['', 'Turnier', 'Pokale', '', null, '2090-09-01'],
+  ]);
+  // Fehler mit Zeilennummer
+  g = importLesen('Fest\t\tOhne Checkliste\nFest\tSommerfest\tSchritt\t\tübermorgen');
+  assert.equal(g.zeilen.length, 0);
+  assert.match(g.fehler[0], /^Zeile 1: Es fehlt die Checkliste/);
+  assert.match(g.fehler[1], /^Zeile 2: Termin „übermorgen“ nicht erkannt/);
+  assert.match(importLesen('  \n ').fehler[0], /keine Zeilen/);
 });
 
 // ---------------------------------------------------------------------------
@@ -210,6 +250,83 @@ test('Checkliste kopieren: Schritte ja, Stand nie, Veranstaltungen nur auf Wunsc
   assert.deepEqual(k.schritte.map((s: any) => s.titel), ['Getränke bestellen', 'Zelt aufbauen', 'Abrechnung an den Kassenwart', 'Getränke bestellen', 'Abrechnung an den Kassenwart']);
   assert.equal((await call('POST', `${C}/schritte/kopieren`, { schritte: [s1], ziel: 999999 })).status, 404);
   await call('DELETE', `${C}/${kopie1}`);
+});
+
+test('Baum: Checkliste in eine andere Kategorie, Schritt in eine andere Checkliste und an eine andere Stelle', async () => {
+  const k2 = (await call('POST', `${C}/kategorien`, { name: 'CL-Test Turniere' })).body.id;
+  const a = (await call('POST', C, { titel: 'CL-Test Baum A', kategorie_id: kat })).body.id;
+  const b = (await call('POST', C, { titel: 'CL-Test Baum B' })).body.id;
+  const ids: number[] = [];
+  for (const t of ['A1', 'A2', 'A3']) ids.push((await call('POST', `${C}/${a}/schritte`, { titel: t })).body.id);
+  const b1 = (await call('POST', `${C}/${b}/schritte`, { titel: 'B1' })).body.id;
+  const titel = async (id: number) => (await call('GET', `${C}/${id}`)).body.schritte.map((s: any) => s.titel);
+
+  // Kategorie wechseln und wieder lösen
+  assert.equal((await call('POST', `${C}/${a}/kategorie`, { kategorie_id: k2 })).status, 200);
+  assert.equal((await call('GET', `${C}/${a}`)).body.kategorie, 'CL-Test Turniere');
+  await call('POST', `${C}/${a}/kategorie`, { kategorie_id: null });
+  assert.equal((await call('GET', `${C}/${a}`)).body.kategorie, null);
+  assert.equal((await call('POST', `${C}/${a}/kategorie`, { kategorie_id: 999999 })).status, 400);
+
+  // innerhalb der Checkliste: A3 vor A1
+  assert.equal((await call('POST', `${C}/schritte/${ids[2]}/verschieben`, { ziel: a, vor: ids[0] })).status, 200);
+  assert.deepEqual(await titel(a), ['A3', 'A1', 'A2']);
+  // ans Ende
+  await call('POST', `${C}/schritte/${ids[2]}/verschieben`, { ziel: a });
+  assert.deepEqual(await titel(a), ['A1', 'A2', 'A3']);
+
+  // in eine andere Checkliste vor B1 – der Stand des Schritts entfällt
+  await call('POST', `${C}/${a}/bezuege`, { termin: '2090-01-01', bezeichnung: 'CL-Test Baum' });
+  const bz = (await call('GET', `${C}/${a}`)).body.bezuege[0].id;
+  await call('POST', `${C}/bezuege/${bz}/schritte/${ids[1]}`, { erledigt: true });
+  assert.equal((await call('POST', `${C}/schritte/${ids[1]}/verschieben`, { ziel: b, vor: b1 })).status, 200);
+  assert.deepEqual(await titel(a), ['A1', 'A3']);
+  assert.deepEqual(await titel(b), ['A2', 'B1']);
+  assert.equal((await call('GET', `${C}/${a}`)).body.bezuege[0].fortschritt.erledigt, 0);
+  const [{ n }] = await sql`select count(*)::int as n from tco.cl_erledigt where schritt_id = ${ids[1]}`;
+  assert.equal(n, 0);
+  // „vor“ muss in der Ziel-Checkliste liegen
+  assert.equal((await call('POST', `${C}/schritte/${ids[0]}/verschieben`, { ziel: b, vor: ids[2] })).status, 409);
+
+  await call('DELETE', `${C}/${a}`);
+  await call('DELETE', `${C}/${b}`);
+  assert.equal((await call('DELETE', `${C}/kategorien/${k2}`)).status, 200);
+});
+
+test('Import über die Schnittstelle: prüfen schreibt nichts, übernehmen legt an und fügt an bestehende an', async () => {
+  const text = 'Kategorie\tCheckliste\tSchritt\tVerantwortlich\tTermin\tHinweise\n'
+    + 'CL-Test Import\tCL-Test Importfest\tEinladungen\tSchriftführer\t21 Tage vorher\tper Rundschreiben\n'
+    + '\t\tAufräumen\t\t1 Tag danach\t\n'
+    + 'cl-test feste\tCL-Test Sommerfest vorbereiten\tMusik bestellen\t\t\t';
+  let r = await call('POST', `${C}/import`, { text, pruefen: true });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.fehler, []);
+  assert.equal(r.body.uebernommen, false);
+  assert.deepEqual(r.body.ergebnis, { kategorien: ['CL-Test Import'], checklisten: ['CL-Test Importfest'], ergaenzt: ['CL-Test Sommerfest vorbereiten'], schritte: 3 });
+  let d = (await call('GET', C)).body;
+  assert.ok(!d.checklisten.some((c: any) => c.titel === 'CL-Test Importfest'), 'die Prüfung legt nichts an');
+  assert.ok(!d.kategorien.some((k: any) => k.name === 'CL-Test Import'));
+
+  // mit Fehler wird nichts übernommen
+  r = await call('POST', `${C}/import`, { text: `${text}\nX\tY\tZ\t\tirgendwann`, pruefen: false });
+  assert.equal(r.body.uebernommen, false);
+  assert.equal(r.body.fehler.length, 1);
+  assert.ok(!(await call('GET', C)).body.checklisten.some((c: any) => c.titel === 'CL-Test Importfest'));
+
+  r = await call('POST', `${C}/import`, { text, pruefen: false });
+  assert.equal(r.body.uebernommen, true);
+  d = (await call('GET', C)).body;
+  const neu = d.checklisten.find((c: any) => c.titel === 'CL-Test Importfest');
+  assert.equal(neu.kategorie, 'CL-Test Import');
+  assert.deepEqual(neu.schritte.map((s: any) => [s.titel, s.verantwortlich, s.tage_vor, s.beschreibung]), [['Einladungen', 'Schriftführer', 21, 'per Rundschreiben'], ['Aufräumen', null, -1, null]]);
+  const alt = d.checklisten.find((c: any) => c.id === cl);
+  assert.equal(alt.schritte.at(-1).titel, 'Musik bestellen', 'an die bestehende Checkliste angefügt');
+  assert.equal(alt.kategorie, 'CL-Test Feste', 'bestehende Checkliste behält ihre Kategorie');
+  assert.equal(d.checklisten.filter((c: any) => c.titel === 'CL-Test Sommerfest vorbereiten').length, 1);
+  // aufräumen
+  await call('DELETE', `${C}/schritte/${alt.schritte.at(-1).id}`);
+  await call('DELETE', `${C}/${neu.id}`);
+  await call('DELETE', `${C}/kategorien/${d.kategorien.find((k: any) => k.name === 'CL-Test Import').id}`);
 });
 
 test('Schritt ändern und löschen; Kategorie in Verwendung bleibt', async () => {
