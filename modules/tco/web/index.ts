@@ -13,6 +13,7 @@ import { Verzehrbuch, VerzehrKapitel } from './verzehr/Verzehrbuch';
 import { Kalender } from './kalender/Kalender';
 import { Mitglieder } from './mitglieder/Mitglieder';
 import { Gruppen } from './gruppen/Gruppen';
+import { Rundschreiben } from './rundschreiben/Rundschreiben';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Praesentationen } from './praesentation/Praesentationen';
 import { Spielerdaten } from './sport/Spielerdaten';
@@ -145,6 +146,7 @@ const mod: WebModule = {
           children: [
             { text: 'Mitglieder', icon: 'employee', path: '/tco/mitglieder', permission: 'tco.mitglieder:display' },
             { text: 'Mitgliedergruppen', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
+            { text: 'Rundschreiben', icon: 'email', path: '/tco/rundschreiben', permission: 'tco.rundschreiben:display' },
             { text: 'Mitgliedsanträge', icon: 'personnel-view', path: '/tco/mitgliedsantraege', permission: 'tco.antraege:display' },
             // Zugänge (#232, N3): Registrierungen von Mitgliedern und Hallennutzern, Zuordnung, EP3-Abgleich an einer Stelle
             { text: 'Zugänge', icon: 'add-employee', path: '/tco/zugaenge', permission: 'tco.registrierung:mitglied|tco.platz:admin' },
@@ -221,6 +223,7 @@ const mod: WebModule = {
     // alte Adresse (E-Mails, Lesezeichen): dieselbe App
     { path: '/tco/meine-mitgliedschaft', component: MeineDatenApp, permission: 'tco.meinedaten:edit' },
     { path: '/tco/gruppen', component: Gruppen, permission: 'tco.gruppen:display' },
+    { path: '/tco/rundschreiben', component: Rundschreiben, permission: 'tco.rundschreiben:display' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
     // bisherige App „Hallenpreise“: jetzt die Sicht „Hallenpreise (Wochenplan)“ von „Produkte und Preise“ – alte Adresse bleibt gültig
     { path: '/tco/hallenpreise', component: ZuHallenpreisen, permission: 'tco.halle:display' },
@@ -280,6 +283,7 @@ const mod: WebModule = {
     { text: 'Produkte und Preise', subtitle: 'Alle Preise: Halle, Getränke, Speisen – je Zeitraum, mit Erlöskonten', icon: 'product', path: '/tco/produkte', permission: 'tco.produkte:display|tco.halle:display|tco.clubhaus:display|tco.verzehr:display' },
     { text: 'Mitglieder', subtitle: 'Stammdaten, Verträge, SEPA, Unterlagen', icon: 'group', path: '/tco/mitglieder', permission: 'tco.mitglieder:display', kpi: kpiMitglieder },
     { text: 'Mitgliedergruppen', subtitle: 'Kategorien, Gruppen und Mannschaften im Baum', icon: 'tree', path: '/tco/gruppen', permission: 'tco.gruppen:display' },
+    { text: 'Rundschreiben', subtitle: 'E-Mails an alle Mitglieder oder Gruppen, Versandprotokoll', icon: 'email', path: '/tco/rundschreiben', permission: 'tco.rundschreiben:display' },
     { text: 'Mitgliedsbeiträge', subtitle: 'Beitragsarten und Beträge je Zeitraum', icon: 'money-bills', path: '/tco/beitraege', permission: 'tco.beitraege:display' },
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
     { text: 'Spielerdaten (nuLiga)', subtitle: 'ID-Nr. und LK aus der Verbandsliste abgleichen', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },

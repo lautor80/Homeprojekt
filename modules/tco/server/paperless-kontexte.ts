@@ -91,6 +91,16 @@ export const K = {
       PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Mitglieder', datum: '{stichtag}', notiz: 'LSVS-Bestandsmeldung Lauf {lauf}: {anzahl} Mitglieder ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' } },
   },
+  rundschreiben: {
+    id: 'rundschreiben', text: 'Rundschreiben (Ausdruck mit Versandprotokoll)',
+    beschreibung: 'Ausdruck eines per E-Mail versandten Rundschreibens: Text, Anhänge, Versandprotokoll je Empfänger und die nicht per E-Mail Erreichten.',
+    platzhalter: [{ name: 'titel', text: 'Titel „Rundschreiben <Nr.> – <Betreff>“', beispiel: 'Rundschreiben 12 – Einladung zur Mitgliederversammlung' },
+      { name: 'nummer', text: 'Nummer des Rundschreibens', beispiel: 12 }, { name: 'betreff', text: 'Betreff', beispiel: 'Einladung zur Mitgliederversammlung' },
+      { name: 'datum', text: 'Tag des Versands', beispiel: '2026-11-15' }, { name: 'gesendet', text: 'gesendete E-Mails', beispiel: 214 },
+      { name: 'fehler', text: 'fehlgeschlagene E-Mails', beispiel: 2 }, { name: 'ohne_mail', text: 'Personen ohne E-Mail-Adresse', beispiel: 9 },
+      PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Mitglieder', datum: '{datum}', notiz: 'Rundschreiben {nummer}: {gesendet} E-Mails gesendet, {fehler} Fehler, {ohne_mail} ohne E-Mail-Adresse ({benutzer}, Vereinsportal)', felder: { DOKID: '{dokid}' } },
+  },
   zuwendung: {
     id: 'zuwendung.bestaetigung', text: 'Zuwendungsbestätigung (Doppel)',
     beschreibung: 'Doppel jeder ausgestellten Zuwendungsbestätigung (Einzel- bzw. Sammelbestätigung über Geldspenden) – es ist nach § 50 Abs. 7 EStDV aufzubewahren.',
