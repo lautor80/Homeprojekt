@@ -54,7 +54,8 @@ class Checklistendruck extends Abschlussdruck {
       const breite = B.titel - ein;
       const titel = umbruch(this.p, `${s.nr} ${s.titel}`, 8, breite);
       const text = (s.beschreibung ?? '').split(/\r?\n/).flatMap((a) => umbruch(this.p, a, 7, breite)).filter(Boolean);
-      const hoehe = Math.max(5.6, titel.length * 4 + text.length * 3.4 + (text.length ? 2.6 : 1.6));
+      // erledigte Schritte tragen unter dem Datum den Namen – dafür braucht die Zeile etwas mehr Höhe
+      const hoehe = Math.max(z?.erledigt?.von ? 7.6 : 5.6, titel.length * 4 + text.length * 3.4 + (text.length ? 2.6 : 1.6));
       this.zeilePlatz(hoehe);
       const y0 = this.y;
       if (s.blatt) {
