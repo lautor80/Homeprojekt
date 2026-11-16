@@ -10,10 +10,13 @@ import { toast } from '@core/toast';
 import { T, dat } from './util';
 import { OrdnerDateien } from './Ablageordner';
 import { ablegen, ordnerStatus } from './ordner';
+import { emlLesen, istEml } from './eml';
 
 /**
  * Dokumente zum Auftrag (Paperless): Dateien hineinziehen, auswählen oder Screenshot mit Strg+V einfügen.
  * Ablage mit Titel „Auftrag … – Dateiname“, Kunde als Korrespondent und Tag „Auftrag …“.
+ * E-Mails (.eml, z. B. aus Outlook hineingezogen) werden zerlegt: Ihre Anhänge werden wie einzelne Dateien abgelegt
+ * (Ablageordner und Paperless), die E-Mail selbst nur im Ablageordner (eml.ts).
  */
 interface Dok { doc_id: number; titel: string | null; datei: string | null; erstellt_am: string; erstellt_von: string | null }
 
@@ -41,7 +44,19 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: s
 
   const ziel: AblageZiel = {
     titel: `Auftrag ${nr}`,
-    annehmen: async (files): Promise<AblageErgebnis> => {
+    annehmen: async (eingang): Promise<AblageErgebnis> => {
+      // E-Mails zerlegen: Anhänge statt der E-Mail ablegen; die .eml selbst nur im Ablageordner (Paperless bekommt die Anhänge)
+      const files: File[] = [];
+      const nurOrdner = new Set<File>();
+      const mails: string[] = [];
+      for (const f of eingang) {
+        if (!istEml(f)) { files.push(f); continue; }
+        const m = emlLesen(new Uint8Array(await f.arrayBuffer()));
+        mails.push(`E-Mail „${m.betreff || f.name}“: ${m.anhaenge.length ? `${m.anhaenge.length} Anhang/Anhänge (${m.anhaenge.map((a) => a.name).join(', ')})` : 'keine Anhänge'}`);
+        for (const a of m.anhaenge) files.push(new File([a.daten as BlobPart], a.name, { type: a.typ || 'application/octet-stream' }));
+        if (ordner) { files.push(f); nurOrdner.add(f); }
+      }
+      if (!files.length) return { text: `${mails.join(' · ')} – nichts abzulegen${ordner ? '' : ' (kein Ablageordner für die E-Mail selbst)'}` };
       const ids: number[] = [];
       const texte: string[] = [];
       let lokal = 0;
@@ -51,16 +66,17 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: s
           if (ordner) {
             try { if (await ablegen(nr, f.name, f)) lokal++; } catch (e) { lokalFehler = (e as Error).message; }
           }
-          if (d?.paperless) {
+          if (d?.paperless && !nurOrdner.has(f)) {
             const r = await api.post<{ id: number; text: string }>(`${T}/auftraege/${nr}/dokumente`, { datei: f.name, inhalt: await lesen(f) });
             ids.push(r.id); texte.push(r.text);
           }
         }
       } finally { laden(); setStand((v) => v + 1); }
       const ord = ordner ? (lokal ? ` · ${lokal} im Ablageordner gespeichert` : ` · Ablageordner: ${lokalFehler || 'kein Zugriff (unten „Zugriff erlauben“)'}`) : '';
+      const vorweg = mails.length ? `${mails.join(' · ')} – ` : '';
       return {
-        text: (d?.paperless
-          ? (files.length === 1 ? texte[0] : `${ids.length} Datei(en) in Paperless abgelegt und Auftrag ${nr} zugeordnet`)
+        text: vorweg + (d?.paperless
+          ? (ids.length === 1 ? texte[0] : `${ids.length} Datei(en) in Paperless abgelegt und Auftrag ${nr} zugeordnet`)
           : `${lokal} Datei(en) im Ablageordner von Auftrag ${nr} gespeichert`) + (d?.paperless ? ord : ''),
         rueckgaengig: async () => { for (const id of ids) await api.del(`${T}/auftraege/${nr}/dokumente/${id}`); laden(); },
       };
@@ -101,7 +117,7 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: s
         </div>
       )}
       <OrdnerDateien nr={nr} version={ordnerStand + stand} />
-      {edit && (d.paperless || ordner) && <AblageFlaeche ziel={ziel} text={`Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen${ordner ? ' – sie landen auch im Ablageordner' : ''}`} />}
+      {edit && (d.paperless || ordner) && <AblageFlaeche ziel={ziel} text={`Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen; eine E-Mail aus Outlook (.eml) wird zerlegt und ihre Anhänge abgelegt${ordner ? ' – sie landen auch im Ablageordner' : ''}`} />}
       {!edit && !d.dokumente.length && d.paperless && <Text className="portal-muted">Keine Dokumente in Paperless zugeordnet.</Text>}
       {pdf && <PdfDialog url={`${T}/auftraege/${nr}/dokumente/${pdf.doc_id}/datei`} title={pdf.titel ?? pdf.datei ?? ''} filename={pdf.datei ?? 'dokument.pdf'} onClose={() => setPdf(null)} />}
       <ConfirmDialog open={!!loesen} title="Zuordnung lösen" confirmText="Lösen"
