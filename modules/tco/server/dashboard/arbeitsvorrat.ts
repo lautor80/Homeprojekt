@@ -22,7 +22,9 @@ import { monatsname } from '../jt/logik.js';
 import { ADRNR_ZU_BENUTZER, HALLENWART } from '../platz/schluessel.js';
 import { aufgaben as ihAufgaben, P_IH } from '../instandhaltung/logik.js';
 import { aufgaben as schluesselAufgaben, P_SCHL } from '../schluessel/logik.js';
-import { aufgaben as haushaltAufgaben } from '../haushalt/logik.js';
+import { aufgaben as haushaltAufgaben, cfgLesen as haushaltCfg, F_UEBERWACHUNG } from '../haushalt/logik.js';
+import { projektAufgaben } from '../haushalt/projekte.js';
+import { funktionAktiv } from '../../../../server/src/funktionsschalter.js';
 import { aufgaben as mahnAufgaben } from '../mahnung/lauf.js';
 import { P_MAHN } from '../mahnung/logik.js';
 
@@ -46,7 +48,11 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
   if (can(req, P_SCHL.display)) out.push(...await schluesselAufgaben(db));
 
   // Haushaltsplan: überschrittene Budgets des laufenden Jahres (nur Anzeige, kein Eingriff in die Buchung)
-  if (can(req, 'tco.haushalt:display')) out.push(...await haushaltAufgaben(db));
+  if (can(req, 'tco.haushalt:display')) {
+    out.push(...await haushaltAufgaben(db));
+    // Projekte: Anträge für die Genehmiger, überschrittene Projektbudgets für den Kassenwart
+    out.push(...await projektAufgaben(db, { genehmiger: can(req, 'tco.projekte:approve'), leser: true, ueberwachung: funktionAktiv(F_UEBERWACHUNG) }, await haushaltCfg(db)));
+  }
   // Mahnwesen: Vorschlag freigeben, Forderung nach der letzten Stufe manuell klären, nicht per E-Mail erreichbare Schuldner, fehlgeschlagener Lauf
   if (can(req, P_MAHN.display)) out.push(...await mahnAufgaben(db));
 

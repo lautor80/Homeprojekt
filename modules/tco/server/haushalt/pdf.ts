@@ -19,6 +19,8 @@ export const haushaltTitel = (s: PlanSicht) =>
   `Haushaltsplan ${s.plan.jahr}${s.plan.fassung > 1 ? ` (${s.plan.fassung - 1}. Nachtrag)` : ''}${s.plan.status === 'ENTWURF' ? ' – Entwurf' : ''}`;
 
 class Haushaltsdruck extends Abschlussdruck {
+  /** laufende Nummer der Karten */
+  nr = 1;
   constructor(v: Verein, readonly s: PlanSicht, titel: string) { super(v, s.plan.jahr, titel); }
 
   /** Wert des Basisjahres: Hochrechnung, solange das Jahr läuft */
@@ -74,10 +76,17 @@ class Haushaltsdruck extends Abschlussdruck {
     }
     const alle = this.s.positionen;
     const e = sum(alle.filter((p) => p.art === 'E')), a = sum(alle.filter((p) => p.art === 'A'));
+    if (summen.projekte_e || summen.projekte_a) {
+      this.zeilePlatz(14);
+      this.band();
+      this.txt(23, 'Projekte (eingerechnet)', { bold: true, color: C.orangeDk });
+      this.txt(188, zahl(summen.projekte_e - summen.projekte_a), { bold: true, align: 'R', color: this.farbe(summen.projekte_e - summen.projekte_a) });
+      this.y += 6.4;
+    }
     if (summen.vorhaben_e || summen.vorhaben_a) {
       this.zeilePlatz(14);
       this.band();
-      this.txt(23, 'Einmalige Vorhaben (siehe 2.)', { bold: true, color: C.orangeDk });
+      this.txt(23, 'Einmalige Vorhaben', { bold: true, color: C.orangeDk });
       this.txt(188, zahl(summen.vorhaben_e - summen.vorhaben_a), { bold: true, align: 'R', color: this.farbe(summen.vorhaben_e - summen.vorhaben_a) });
       this.y += 6.4;
     }
@@ -96,6 +105,7 @@ class Haushaltsdruck extends Abschlussdruck {
       + 'mit dem üblichen Jahresverlauf des Kontos hochgerechnet. ' : ''}Die Planwerte sind aus den Buchungen der Vorjahre abgeleitet und vom Vorstand geprüft.`);
 
     this.vorhaben();
+    this.projekte();
     this.liquiditaet();
     this.erlaeuterungen();
   }
@@ -103,7 +113,8 @@ class Haushaltsdruck extends Abschlussdruck {
   vorhaben() {
     const v = this.s.vorhaben.filter((x) => x.eingeplant);
     if (!v.length) return;
-    this.karteBeginnen('2. EINMALIGE VORHABEN', [
+    this.nr++;
+    this.karteBeginnen(`${this.nr}. EINMALIGE VORHABEN`, [
       { x: 23, text: 'VORHABEN', align: 'L' }, { x: 118, text: 'MONAT', align: 'L' }, { x: 162, text: 'EINNAHME', align: 'R' }, { x: 188, text: 'AUSGABE', align: 'R' },
     ]);
     for (const x of v) {
@@ -121,9 +132,31 @@ class Haushaltsdruck extends Abschlussdruck {
     this.karteBeenden('Einmalige Vorhaben stehen neben den laufenden Konten und sind in den Summen des Haushaltsplans enthalten.');
   }
 
+  projekte() {
+    const pr = this.s.projekte.filter((x) => x.einrechnen);
+    if (!pr.length) return;
+    this.nr++;
+    this.karteBeginnen(`${this.nr}. PROJEKTE – WIRKUNG IM GESCHÄFTSJAHR ${this.s.plan.jahr}`, [
+      { x: 23, text: 'PROJEKT', align: 'L' }, { x: 100, text: 'STATUS', align: 'L' }, { x: 138, text: 'EINNAHMEN', align: 'R' }, { x: 162, text: 'AUSGABEN', align: 'R' }, { x: 188, text: 'GELDBESTAND', align: 'R' },
+    ]);
+    for (const x of pr) {
+      this.zeilePlatz();
+      this.txt(23, this.kurz(x.bezeichnung, 74));
+      this.txt(100, this.kurz(x.status_text, 24));
+      this.txt(138, zahl(x.wirkung.sum.einnahmen), { align: 'R' });
+      this.txt(162, zahl(x.wirkung.sum.ausgaben), { align: 'R' });
+      this.txt(188, zahl(x.wirkung.sum.liquiditaet), { align: 'R', color: this.farbe(x.wirkung.sum.liquiditaet) });
+      this.zeileLinie();
+    }
+    const o = this.s.summen.ohne;
+    this.karteBeenden(`Ergebnis ohne Projekte ${betragText(o.ergebnis)}, mit Projekten ${betragText(this.s.summen.ergebnis)}. Tiefster Geldbestand ohne Projekte ${betragText(o.tiefster)}, `
+      + `mit Projekten ${betragText(this.s.liquiditaet.tiefster)}. Spalte Geldbestand: Wirkung auf den Geldbestand im Jahr einschließlich Darlehen und Tilgung, die das Ergebnis nicht berühren.`);
+  }
+
   liquiditaet() {
     const l = this.s.liquiditaet;
-    this.karteBeginnen(`${this.s.vorhaben.some((x) => x.eingeplant) ? '3' : '2'}. LIQUIDITÄTSVORSCHAU – GELDBESTAND JE MONATSENDE`, [
+    this.nr++;
+    this.karteBeginnen(`${this.nr}. LIQUIDITÄTSVORSCHAU – GELDBESTAND JE MONATSENDE`, [
       { x: 23, text: 'MONAT', align: 'L' }, { x: 90, text: 'EINNAHMEN', align: 'R' }, { x: 122, text: 'AUSGABEN', align: 'R' },
       { x: 154, text: 'TILGUNG', align: 'R' }, { x: 188, text: 'GELDBESTAND', align: 'R' },
     ]);

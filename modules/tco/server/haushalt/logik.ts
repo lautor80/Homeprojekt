@@ -12,6 +12,9 @@ import {
   planwertAus, RECHEN_METHODEN, rueckpruefung, rundenPlan,
   type Ausreisser, type Bewertung, type Hochrechnung, type JahrMonate, type Liquiditaet, type Methode, type RechenMethode,
 } from './vorschlag.js';
+import {
+  planProjekte, planProjekteFestschreiben, planProjekteKopieren, planProjektSetzen, projekteSollIst, projektnummern, type PlanProjekt, type ProjektSollIst,
+} from './projekte.js';
 
 /**
  * Haushaltsplan – Daten und Abläufe (docs/haushaltsplan/konzept.md). Der Haushaltsplan LIEST FI nur:
@@ -68,6 +71,8 @@ export interface KontoIst {
   konto: string; name: string; kennzahl: string | null; art: 'E' | 'A' | 'G' | '';
   /** Jahr → zwölf Monatswerte; die Summe eines Jahres ist der Jahreswert des Jahresabschlusses */
   jahre: Map<number, number[]>;
+  /** davon auf Projekte des Haushaltsplans gebucht (tco.fibuchungen.projekt) – in `jahre` enthalten */
+  projekt: Map<number, number[]>;
 }
 export interface IstDaten {
   konten: Map<string, KontoIst>;
@@ -83,16 +88,17 @@ export interface IstDaten {
  * (Konto 8012: Haben). Die Monate tragen das Vorzeichen so, dass ihre Summe genau diesen Jahreswert ergibt –
  * ein Storno zählt also in dem Monat, in dem es gebucht wurde.
  */
-export async function monatswerteLesen(db: Db, von: number, bis: number): Promise<IstDaten> {
+export async function monatswerteLesen(db: Db, von: number, bis: number, projektNrn: string[] = []): Promise<IstDaten> {
   const stamm = await kontenStamm(db);
   const rows = await db`
     select coalesce(jahr, extract(year from datum)::int) as jahr, coalesce(monat, extract(month from datum)::int) as monat, konto,
+           (trim(coalesce(projekt, '')) = any(${projektNrn}::text[])) as p,
            coalesce(sum(soll), 0)::float8 as soll, coalesce(sum(haben), 0)::float8 as haben
       from tco.fibuchungen
      where coalesce(jahr, extract(year from datum)::int) between ${von} and ${bis}
-     group by 1, 2, 3 order by 1, 3, 2`;
+     group by 1, 2, 3, 4 order by 1, 3, 2`;
   // je gebuchtem Konto und Jahr: Monatsbeträge und der Jahresbetrag (für das Vorzeichen)
-  const roh = new Map<string, { jahr: number; quelle: string; ziel: string; monate: number[]; jahr_betrag: number }>();
+  const roh = new Map<string, { jahr: number; quelle: string; ziel: string; monate: number[]; pmonate: number[]; jahr_betrag: number }>();
   const geld = new Map<number, number[]>(), darlehen = new Map<number, number[]>();
   const hole = (m: Map<number, number[]>, j: number) => { let a = m.get(j); if (!a) { a = null12(); m.set(j, a); } return a; };
   for (const r of rows) {
@@ -103,8 +109,9 @@ export async function monatswerteLesen(db: Db, von: number, bis: number): Promis
     const betrag = ziel === KONTO_NUR_HABEN ? Number(r.haben) : Number(r.soll) - Number(r.haben);
     const key = `${jahr}|${r.konto}`;
     let e = roh.get(key);
-    if (!e) { e = { jahr, quelle: r.konto, ziel, monate: null12(), jahr_betrag: 0 }; roh.set(key, e); }
+    if (!e) { e = { jahr, quelle: r.konto, ziel, monate: null12(), pmonate: null12(), jahr_betrag: 0 }; roh.set(key, e); }
     e.monate[mi] += betrag;
+    if (r.p) e.pmonate[mi] += betrag;
     e.jahr_betrag += betrag;
     const kz = s?.kennzahl ?? null;
     if (kontoart(String(r.konto).trim(), kz) === 'G') hole(geld, jahr)[mi] += Number(r.soll) - Number(r.haben);
@@ -116,14 +123,15 @@ export async function monatswerteLesen(db: Db, von: number, bis: number): Promis
     let ki = konten.get(e.ziel);
     if (!ki) {
       const kennzahl = k?.kennzahl ?? null;
-      ki = { konto: e.ziel, name: k?.name || e.ziel, kennzahl, art: kontoart(String(e.ziel).trim(), kennzahl), jahre: new Map() };
+      ki = { konto: e.ziel, name: k?.name || e.ziel, kennzahl, art: kontoart(String(e.ziel).trim(), kennzahl), jahre: new Map(), projekt: new Map() };
       konten.set(e.ziel, ki);
     }
     const vz = e.jahr_betrag < 0 ? -1 : 1;
     const m = hole(ki.jahre, e.jahr);
     e.monate.forEach((x, i) => { m[i] += x * vz; });
+    if (e.pmonate.some((x) => x !== 0)) { const pm = hole(ki.projekt, e.jahr); e.pmonate.forEach((x, i) => { pm[i] += x * vz; }); }
   }
-  for (const k of konten.values()) for (const [j, m] of k.jahre) k.jahre.set(j, m.map(runden));
+  for (const k of konten.values()) for (const m of [k.jahre, k.projekt]) for (const [j, a] of m) m.set(j, a.map(runden));
   for (const m of [geld, darlehen]) for (const [j, a] of m) m.set(j, a.map(runden));
   return { konten, geld, darlehen };
 }
@@ -180,9 +188,11 @@ export async function fachdatenLesen(db: Db, planjahr: number): Promise<Fachdate
 
 export interface KontoGrundlage {
   konto: string; name: string; kennzahl: string | null; art: 'E' | 'A'; bereich: Bereich | '';
-  /** Jahreswerte aller betrachteten Jahre (auch Sondereffekte) – für die Anzeige */
+  /** Jahreswerte aller betrachteten Jahre (auch Sondereffekte, einschließlich Projektbuchungen) – für die Anzeige, wie im Jahresabschluss */
   ist: Record<number, number>;
-  /** Ist des Basisjahres bis zum Stand-Monat bzw. insgesamt */
+  /** davon auf Projekte gebucht – zählt wie ein Sondereffekt nicht in die Grundlage und nicht ins Soll-Ist des Kontos */
+  ist_projekt: Record<number, number>;
+  /** Ist des Basisjahres bis zum Stand-Monat bzw. insgesamt – ohne Projektbuchungen */
   ist_stand: number; ist_basis: number; monate_basis: number[];
   sonder: { jahr: number; grund: string }[];
   /** Jahre, die in die Rechnung eingehen */
@@ -233,7 +243,7 @@ export async function grundlageLesen(db: Db, planjahr: number, heute = heuteText
   const c = cfg ?? await cfgLesen(db);
   const basisjahr = planjahr - 1;
   const von = Math.max(basisjahr - MAX_JAHRE, c.grundlage_ab ?? 0);
-  const daten = await monatswerteLesen(db, Math.min(von, basisjahr), planjahr);
+  const daten = await monatswerteLesen(db, Math.min(von, basisjahr), planjahr, await projektnummern(db));
   const eaKonten = [...daten.konten.values()].filter((k) => k.art === 'E' || k.art === 'A');
   // betrachtet wird ab dem ersten Jahr, in dem überhaupt etwas gebucht ist
   const gebucht = eaKonten.flatMap((k) => [...k.jahre.keys()]);
@@ -260,6 +270,9 @@ export async function grundlageLesen(db: Db, planjahr: number, heute = heuteText
       const v = daten.konten.get(String(vorg.vorgaenger))?.jahre.get(j);
       return v ? eigen.map((x, i) => runden(x + v[i])) : eigen;
     };
+    // Projektbuchungen sind einmalig: Sie zählen nicht in die Grundlage und werden im Soll-Ist getrennt ausgewiesen
+    const pm = (j: number) => k.projekt.get(j) ?? null12();
+    const rein = (j: number) => { const m = monate(j), p = pm(j); return m.map((x, i) => runden(x - p[i])); };
     const mitWert = jahre.filter((j) => monate(j).some((w) => Math.abs(w) > 0.004));
     if (!mitWert.length) continue;
     const erstes = mitWert[0];
@@ -267,19 +280,19 @@ export async function grundlageLesen(db: Db, planjahr: number, heute = heuteText
     const istSonder = (j: number) => sonder.some((s) => s.jahr === j);
     // ab dem ersten Gebrauch zählt jedes Jahr (auch mit 0), außer Sondereffekte und Jahre, in denen das Konto nicht verwendet wird
     const zaehlt = jahre.filter((j) => j >= erstes && !istSonder(j) && !inaktiv.has(`${k.konto}|${j}`) && (j < basisjahr || stand_monat > 0));
-    const reihe: JahrMonate[] = zaehlt.map((j) => ({ jahr: j, monate: monate(j) }));
+    const reihe: JahrMonate[] = zaehlt.map((j) => ({ jahr: j, monate: rein(j) }));
     const eingabe = { jahre: reihe, planjahr, standMonat: stand_monat };
     const m = methodenWerte(eingabe);
     const p = rueckpruefung(eingabe);
     const f = k.art === 'E' ? fach.konten.get(k.konto) : undefined;
     const fachWert = f ? summe(f.monate) : null;
-    const mb = monate(basisjahr);
-    const ist: Record<number, number> = {};
-    for (const j of jahre) ist[j] = summe(monate(j));
-    const voll = jahre.filter((j) => j >= erstes && j < basisjahr && !inaktiv.has(`${k.konto}|${j}`)).map((j) => ({ jahr: j, wert: ist[j] }));
+    const mb = rein(basisjahr);
+    const ist: Record<number, number> = {}, ist_projekt: Record<number, number> = {};
+    for (const j of jahre) { ist[j] = summe(monate(j)); const p = summe(pm(j)); if (p) ist_projekt[j] = p; }
+    const voll = jahre.filter((j) => j >= erstes && j < basisjahr && !inaktiv.has(`${k.konto}|${j}`)).map((j) => ({ jahr: j, wert: runden(ist[j] - (ist_projekt[j] ?? 0)) }));
     konten.push({
       konto: k.konto, name: k.name, kennzahl: k.kennzahl, art: k.art as 'E' | 'A', bereich: bereichVon(k.kennzahl),
-      ist, ist_stand: summe(mb.slice(0, stand_monat)), ist_basis: summe(mb), monate_basis: mb,
+      ist, ist_projekt, ist_stand: summe(mb.slice(0, stand_monat)), ist_basis: summe(mb), monate_basis: mb,
       sonder, zaehlt, werte: m.werte, treffer: p.treffer, pruefjahre: p.jahre, hoch: m.hoch, fach: fachWert,
       beste: besteMethode(m, p, fachWert), wenig_historie: m.anzahlJahre < MIN_HISTORIE, jahre_anzahl: m.anzahlJahre,
       profil: m.profil ?? (stand_monat >= 12 ? jahresverlauf([mb]) : null),
@@ -365,7 +378,14 @@ export interface PlanSicht {
   basisjahr: number; stand_monat: number; stand_text: string; jahre: number[];
   positionen: Position[];
   vorhaben: Vorhaben[];
-  summen: { einnahmen: number; ausgaben: number; ergebnis: number; vorhaben_e: number; vorhaben_a: number; basis_e: number; basis_a: number };
+  /** Projekte, die im Planjahr wirken – mit „einrechnen“ und ihrem Beitrag (Simulation) */
+  projekte: (PlanProjekt & { beitrag: { ergebnis: number; jahresende: number; tiefster: number } })[];
+  /** einnahmen/ausgaben/ergebnis MIT den eingerechneten Projekten; `ohne` = dieselben Werte ohne Projekte */
+  summen: {
+    einnahmen: number; ausgaben: number; ergebnis: number; vorhaben_e: number; vorhaben_a: number; basis_e: number; basis_a: number;
+    projekte_e: number; projekte_a: number;
+    ohne: { einnahmen: number; ausgaben: number; ergebnis: number; tiefster: number; tiefsterMonat: number; jahresende: number };
+  };
   bereiche: { bereich: Bereich | ''; text: string; einnahmen: number; ausgaben: number; ergebnis: number }[];
   liquiditaet: Liquiditaet & { tilgung: Tilgung; anfang_herkunft: Anfang; ist: (number | null)[] };
   hinweise: string[];
@@ -461,7 +481,11 @@ export async function planLesen(db: Db, id: number, heute = heuteText()): Promis
   const vor = (art: 'E' | 'A') => summe(vorhaben.filter((v) => v.eingeplant && v.art === art).map((v) => v.betrag));
   const sumArt = (art: 'E' | 'A') => summe(positionen.filter((p) => p.art === art).map((p) => p.planwert));
   const basis = (art: 'E' | 'A') => summe(positionen.filter((p) => p.art === art).map((p) => p.grundlage?.hoch?.wert ?? p.grundlage?.ist[g.basisjahr] ?? 0));
-  const einnahmen = runden(sumArt('E') + vor('E')), ausgaben = runden(sumArt('A') + vor('A'));
+  const ohneE = runden(sumArt('E') + vor('E')), ohneA = runden(sumArt('A') + vor('A'));
+  const planPr = await planProjekte(db, plan);
+  const drin = planPr.filter((x) => x.einrechnen);
+  const projekte_e = summe(drin.map((x) => x.wirkung.sum.einnahmen)), projekte_a = summe(drin.map((x) => x.wirkung.sum.ausgaben));
+  const einnahmen = runden(ohneE + projekte_e), ausgaben = runden(ohneA + projekte_a);
 
   const bereiche = ([...BEREICHE, ''] as (Bereich | '')[]).map((b) => {
     const e = summe(positionen.filter((p) => p.bereich === b && p.art === 'E').map((p) => p.planwert));
@@ -477,7 +501,20 @@ export async function planLesen(db: Db, id: number, heute = heuteText()): Promis
   // Tilgung der restlichen Monate des Basisjahres: wie im Jahr davor
   const tilgBasis = (g.daten.darlehen.get(g.basisjahr - 1) ?? null12()).map((x) => Math.max(0, x));
   const anfang = await anfangErmitteln(db, plan, g, tilgBasis);
-  const liq = liquiditaet(anfang.betrag, mE, mA, tilgung.monate, plan.mindestreserve ?? cfg.mindestreserve);
+  const reserve = plan.mindestreserve ?? cfg.mindestreserve;
+  /** Liquidität mit einer Auswahl von Projekten: Darlehen fließen zu, ihre Tilgung fließt ab – beides nur hier, nicht im Ergebnis */
+  const liqMit = (auswahl: PlanProjekt[]) => {
+    const e = [...mE], a = [...mA], t = [...tilgung.monate];
+    for (const x of auswahl) for (let i = 0; i < 12; i++) { e[i] += x.wirkung.einnahmen[i] + x.wirkung.darlehen[i]; a[i] += x.wirkung.ausgaben[i]; t[i] += x.wirkung.tilgung[i]; }
+    return liquiditaet(anfang.betrag, e, a, t, reserve);
+  };
+  const liqOhne = liqMit([]);
+  const liq = liqMit(drin);
+  // Beitrag je Projekt: was sich ändert, wenn genau dieses Projekt ein- bzw. ausgerechnet wird
+  const projekte = planPr.map((x) => {
+    const andere = liqMit(x.einrechnen ? drin.filter((y) => y.id !== x.id) : drin), mitDiesem = liqMit(x.einrechnen ? drin : [...drin, x]);
+    return { ...x, beitrag: { ergebnis: x.wirkung.sum.ergebnis, jahresende: runden(mitDiesem.monate[11].bestand - andere.monate[11].bestand), tiefster: runden(mitDiesem.tiefster - andere.tiefster) } };
+  });
   // tatsächlicher Geldbestand je Monatsende, soweit das Planjahr schon läuft
   const hj = Number(heute.slice(0, 4)), hm = Number(heute.slice(5, 7));
   const ist: (number | null)[] = Array.from({ length: 12 }, () => null);
@@ -492,8 +529,12 @@ export async function planLesen(db: Db, id: number, heute = heuteText()): Promis
   const fehlende = g.konten.filter((k) => !positionen.some((p) => p.konto === k.konto)).map((k) => ({ konto: k.konto, name: k.name }));
   return {
     plan, aenderbar: plan.status === 'ENTWURF', basisjahr: g.basisjahr, stand_monat: g.stand_monat, stand_text: standText(g), jahre: g.jahre,
-    positionen, vorhaben,
-    summen: { einnahmen, ausgaben, ergebnis: runden(einnahmen - ausgaben), vorhaben_e: vor('E'), vorhaben_a: vor('A'), basis_e: basis('E'), basis_a: basis('A') },
+    positionen, vorhaben, projekte,
+    summen: {
+      einnahmen, ausgaben, ergebnis: runden(einnahmen - ausgaben), vorhaben_e: vor('E'), vorhaben_a: vor('A'), basis_e: basis('E'), basis_a: basis('A'),
+      projekte_e, projekte_a,
+      ohne: { einnahmen: ohneE, ausgaben: ohneA, ergebnis: runden(ohneE - ohneA), tiefster: liqOhne.tiefster, tiefsterMonat: liqOhne.tiefsterMonat, jahresende: liqOhne.monate[11].bestand },
+    },
     bereiche, liquiditaet: { ...liq, tilgung, anfang_herkunft: anfang, ist }, hinweise,
     fassungen: (await planListe(db)).filter((p) => p.jahr === plan.jahr), cfg, fehlende,
   };
@@ -725,6 +766,8 @@ export async function statusSetzen(tx: Db, id: number, ziel: 'BESCHLOSSEN' | 'GE
     const sicht = await planLesen(tx, id, heute);
     if (!sicht.positionen.length) throw new BusinessError('Ein Haushaltsplan ohne Konten kann nicht beschlossen werden.');
     for (const p of sicht.positionen) if (!p.monate_fest) await monateSchreiben(tx, id, p.konto, p.monate, false);
+    // welche Projekte mit welchen Werten eingerechnet sind, gehört zur Fassung
+    await planProjekteFestschreiben(tx, plan);
     await tx`update tco.hh_plan set status = 'BESCHLOSSEN', beschlossen_am = ${datum}, beschlossen_von = ${benutzer} where id = ${id}`;
   } else {
     if (plan.status !== 'BESCHLOSSEN') throw new BusinessError(plan.status === 'ENTWURF' ? 'Der Haushaltsplan muss zuerst vom Vorstand beschlossen werden.' : `Der Haushaltsplan ${plan.jahr} ist bereits genehmigt.`);
@@ -750,7 +793,14 @@ export async function nachtragAnlegen(tx: Db, id: number, begruendung: string, b
   await tx`insert into tco.hh_monat (plan_id, konto, monat, betrag, von_hand) select ${n.id}, konto, monat, betrag, von_hand from tco.hh_monat where plan_id = ${id}`;
   await tx`insert into tco.hh_vorhaben (plan_id, bezeichnung, art, monat, betrag, konto, projekt, eingeplant)
            select ${n.id}, bezeichnung, art, monat, betrag, konto, projekt, eingeplant from tco.hh_vorhaben where plan_id = ${id} order by id`;
+  await planProjekteKopieren(tx, id, Number(n.id));
   return Number(n.id);
+}
+
+/** Projekt im Entwurf ein- oder ausrechnen (null = Vorgabe nach dem Status des Projekts) */
+export async function projektEinrechnen(tx: Db, id: number, projektId: number, einrechnen: boolean | null): Promise<void> {
+  await entwurf(tx, id);
+  await planProjektSetzen(tx, id, projektId, einrechnen);
 }
 
 /** Nur ein Entwurf lässt sich löschen */
@@ -768,7 +818,8 @@ export async function planLoeschen(tx: Db, id: number): Promise<PlanKopf> {
 
 export interface SollIstZeile {
   konto: string; name: string; art: 'E' | 'A'; bereich: Bereich | ''; bereich_text: string;
-  plan: number; ist: number; hochrechnung: number; hoch_art: Hochrechnung['art'] | 'KEINE'; geplant: boolean; bewertung: Bewertung;
+  /** ist und hochrechnung ohne Projektbuchungen; projekt = im Jahr auf Projekte gebucht (getrennt ausgewiesen, zählt nicht gegen das Budget des Kontos) */
+  plan: number; ist: number; projekt: number; hochrechnung: number; hoch_art: Hochrechnung['art'] | 'KEINE'; geplant: boolean; bewertung: Bewertung;
 }
 export interface SollIst {
   jahr: number; plan: PlanKopf | null; vorlaeufig: boolean; stand_monat: number; stand_text: string;
@@ -778,6 +829,8 @@ export interface SollIst {
   /** aufgelaufene Monatswerte: Plan für alle zwölf Monate, Ist bis zum laufenden Monat */
   verlauf: Record<'E' | 'A', { plan: number[]; ist: (number | null)[] }>;
   ueberschritten: number; beobachten: number;
+  /** Soll-Ist je Projekt: Ist-Kosten aus den FI-Buchungen mit der Projektnummer gegen das Projektbudget */
+  projekte: ProjektSollIst[];
   cfg: Cfg;
 }
 
@@ -792,7 +845,7 @@ export async function sollIst(db: Db, jahr: number, heute = heuteText()): Promis
   const bisMonat = jahr < hj ? 12 : jahr > hj ? 0 : hm;
   const zeilen: SollIstZeile[] = [];
   const mPlan = { E: null12(), A: null12() }, mIst = { E: null12(), A: null12() };
-  const konten = new Set([...(sicht?.positionen.map((p) => p.konto) ?? []), ...g.konten.filter((k) => Math.abs(k.ist_basis) > 0.004).map((k) => k.konto)]);
+  const konten = new Set([...(sicht?.positionen.map((p) => p.konto) ?? []), ...g.konten.filter((k) => Math.abs(k.ist_basis) > 0.004 || k.ist_projekt[jahr]).map((k) => k.konto)]);
   for (const konto of konten) {
     const p = sicht?.positionen.find((x) => x.konto === konto);
     const k = g.konten.find((x) => x.konto === konto);
@@ -806,7 +859,7 @@ export async function sollIst(db: Db, jahr: number, heute = heuteText()): Promis
     (k?.monate_basis ?? null12()).forEach((w, i) => { mIst[art][i] += w; });
     const bereich = p?.bereich ?? k?.bereich ?? '';
     zeilen.push({
-      konto, name: p?.name ?? k?.name ?? konto, art, bereich, bereich_text: bereichName(bereich), plan: planwert, ist, hochrechnung: runden(hoch),
+      konto, name: p?.name ?? k?.name ?? konto, art, bereich, bereich_text: bereichName(bereich), plan: planwert, ist, projekt: k?.ist_projekt[jahr] ?? 0, hochrechnung: runden(hoch),
       hoch_art: k?.hoch?.art ?? 'KEINE', geplant: !!p, bewertung: bewerten(art, planwert, hoch, cfg.toleranz_gelb, cfg.toleranz_rot),
     });
   }
@@ -831,7 +884,7 @@ export async function sollIst(db: Db, jahr: number, heute = heuteText()): Promis
     ergebnis: { plan: runden(E.plan - A.plan), ist: runden(E.ist - A.ist), hochrechnung: runden(E.hochrechnung - A.hochrechnung) },
     verlauf: { E: verlauf('E'), A: verlauf('A') },
     ueberschritten: zeilen.filter((z) => z.bewertung.stufe === 'UEBERSCHRITTEN').length,
-    beobachten: zeilen.filter((z) => z.bewertung.stufe === 'BEOBACHTEN').length, cfg,
+    beobachten: zeilen.filter((z) => z.bewertung.stufe === 'BEOBACHTEN').length, projekte: await projekteSollIst(db, jahr, cfg), cfg,
   };
 }
 

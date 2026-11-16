@@ -195,11 +195,84 @@ Sie gelten, bis der Vorstand anderes sagt; was eine Einstellung ist, steht unter
 - **Vorschläge sind auf 10 € gerundet** (wie im Mockup); von Hand eingegebene Planwerte bleiben, wie sie sind.
 - **Arbeitsvorrat:** Einträge entstehen nur für überschrittene *Ausgaben*budgets einer *beschlossenen* Fassung des laufenden Jahres.
   Einnahmen unter Plan stehen im Soll-Ist, sind aber keine Aufgabe.
-- **Projekte:** Das Feld „Projekt“ am Vorhaben ist ein freier Text. Planung, Genehmigung und Simulation von Projekten sind eine
-  eigene Erweiterung.
+- **Projekte:** Das Feld „Projekt“ am Vorhaben ist ein freier Text. Planung, Genehmigung und Simulation von Projekten stehen in
+  Abschnitt 10.
 - **AfA** wird nicht angezeigt (im Konzept „nur zur Information“).
 
 ### Nicht geprüft
 
 Die Ablage in Paperless ist nach dem Muster des Jahresabschlusses gebaut, aber nicht gegen ein echtes Paperless gelaufen
 (im Test nur die Abweisung ohne eingerichtetes Paperless).
+
+## 10 Projekte: Planung, Genehmigung und Simulation (16.11.2026)
+
+Wunsch des Vereins nach der Freigabe des Konzepts: „Spannend wäre die Planung und Genehmigung sowie Einbeziehen von Projekten,
+die Einfluss auf den Haushaltsplan hätten. Ihre Zeitspanne und Kosten sollen ebenfalls mit in den Haushaltsplan reinsimuliert
+werden können.“ Umgesetzt als Reiter **Projekte** der App Haushaltsplan (Migration `089_haushalt_projekte.sql`, Rechenkern
+`modules/tco/server/haushalt/projekt.ts`, Abläufe `projekte.ts`, Oberfläche `modules/tco/web/haushalt/Projekte.tsx`,
+Test `server/test/tco_haushalt_projekt.test.ts`).
+
+### Was ein Projekt ist
+
+| Angabe | Inhalt |
+|---|---|
+| Kopf | Bezeichnung, Beschreibung, Verantwortlicher, Tätigkeitsbereich, **Zeitspanne** Beginn/Ende als Monat – auch über mehrere Geschäftsjahre |
+| Projektnummer | die Nummer, unter der in FI gebucht wird (`tco.fibuchungen.projekt`, Stamm `tco.projekte`) – keine zweite Nummer; ohne sie gibt es kein Ist |
+| Positionen | Kosten · Zuschuss · Spende · Eigenmittel · Darlehen (Zufluss) · Tilgung des Darlehens · Folgekosten (jährlich) · Einsparung (jährlich), je mit Betrag und – wo es Einnahme oder Ausgabe ist – Konto |
+| Verteilung | gleichmäßig über die Laufzeit (oder einen eigenen Zeitraum der Position) · in einem Monat · von Hand je Monat · jährlich wiederkehrend (Folgekosten/Einsparung; ohne Angabe ab dem Monat nach dem Projektende, unbefristet) |
+
+Wirkung im Haushaltsplan: Kosten und Folgekosten sind Ausgaben, Einsparungen mindern die Ausgaben, Zuschuss und Spende sind
+Einnahmen. **Darlehen und Tilgung berühren das Ergebnis nicht** – der Zufluss und die Tilgung stehen nur in der Liquidität.
+Eigenmittel sind der Teil, den der Verein aus dem Geldbestand trägt; sie zeigen, ob die Finanzierung aufgeht (Lücke = Kosten −
+Finanzierung), wirken aber nicht gesondert.
+
+### Genehmigung
+
+Idee/Entwurf → beantragt → vom Vorstand genehmigt | abgelehnt | zurückgestellt → in Umsetzung → abgeschlossen. Jeder Schritt hält
+Datum, Benutzer und Begründung fest (Verlauf am Projekt, dazu Änderungsbelege); Ablehnen und Zurückstellen verlangen eine
+Begründung, ein Antrag mindestens eine Kostenposition.
+
+- Planen und beantragen: `tco.haushalt:edit`. **Entscheiden: eigenes Recht `tco.projekte:approve`** (Aktivität `approve` laut
+  `docs/berechtigungskonzept.md`; setzt nur `tco.haushalt:display` voraus, damit ein Vorstandsmitglied entscheiden kann, ohne zu planen).
+- Der Antrag erscheint im Arbeitsvorrat (Bereich Vorstand) bei allen, die genehmigen dürfen.
+- Ab „beantragt“ ändert ein Projekt nur noch, wer genehmigen darf – ein genehmigtes Budget lässt sich nicht still verändern.
+  Löschen geht nur für Ideen und Abgelehntes und nie, wenn das Projekt in einem beschlossenen Plan festgehalten ist.
+
+### Simulation im Plan
+
+- Im Reiter Projekte steht je Projekt, das im Planjahr wirkt, **einrechnen ja/nein**. Vorgabe nach dem Status: genehmigt, in
+  Umsetzung und abgeschlossen (wegen der Folgekosten) ja – Idee, beantragt, zurückgestellt, abgelehnt nein. Die Wahl gilt je
+  Plan-Fassung und lässt sich im Entwurf jederzeit ändern („probeweise eingerechnet“).
+- Eingerechnete Projekte wirken mit ihren Monatswerten auf Einnahmen, Ausgaben, Ergebnis und Geldbestand je Monatsende.
+  **Mehrjährige Projekte wirken anteilig** in jedem betroffenen Jahr – auch in späteren Plänen, ohne dass man sie dort neu erfasst.
+- Sichtbar ist die Auswirkung an drei Stellen: Tabelle „ohne Projekte / mit den gewählten Projekten / Unterschied“ (Einnahmen,
+  Ausgaben, Ergebnis, Geldbestand 31.12., tiefster Geldbestand), je Projekt sein **Beitrag** (was sich ändert, wenn genau dieses
+  Projekt ein- oder ausgerechnet wird) und in den Kennzahlen im Kopf („ohne Projekte …“). Die Planung zeigt eine Zeile „Projekte“.
+- **Mit dem Beschluss** wird festgeschrieben, welche Projekte mit welchen Werten eingerechnet waren (`hh_plan_projekt.fest`).
+  Wird ein Projekt später teurer oder genehmigt, ändert das die beschlossene Fassung nicht – erst ein Nachtrag rechnet wieder mit
+  dem aktuellen Stand; er übernimmt die Auswahl der Vorfassung.
+
+### Soll-Ist und Doppelzählung
+
+- **Je Projekt:** Ist-Kosten aus den FI-Buchungen mit der Projektnummer (Ausgabekonten Soll − Haben, Einnahmekonten Haben − Soll)
+  gegen das Projektbudget über die ganze Laufzeit, bewertet mit denselben Toleranzen wie ein Konto; dazu der Anteil des Jahres.
+  Ein überschrittenes Projektbudget steht im Arbeitsvorrat des Kassenwarts.
+- **Im Konto:** Projektbuchungen werden aus dem Ist des Kontos herausgerechnet und daneben als „auf Projekte gebucht“ gezeigt. Eine
+  Hallensanierung über das Instandhaltungskonto meldet also nicht zusätzlich „Budget überschritten“ für das Konto.
+- **In der Grundlage:** Projektbuchungen zählen wie ein Sondereffekt nicht in Durchschnitt, Median, Trend, Hochrechnung und
+  Jahresverlauf. Die Spalten „Ist“ der Planung zeigen weiter den vollen Jahreswert wie im Jahresabschluss.
+- Als Projektbuchung gilt, was die Projektnummer eines Projekts des Haushaltsplans trägt. Buchungen mit einer Nummer, zu der es
+  hier kein Projekt gibt, bleiben laufender Betrieb.
+
+### Entscheidungen und Grenzen
+
+- Die **einmaligen Vorhaben** bleiben als einfache Einmalposten ohne Genehmigung bestehen (kleine Dinge, die keinen Antrag
+  brauchen); größere Vorhaben mit Zeitspanne und Finanzierung gehören in die Projekte. Eine Umwandlung Vorhaben → Projekt gibt es nicht.
+- Das Portal setzt die Projektnummer nicht selbst an FI-Buchungen – sie kommt heute aus der SAP-Übernahme. Bis FI im Portal eine
+  Projektnummer erfassen lässt, gibt es für neue Projekte kein Ist; die Planung und Simulation braucht es nicht.
+- Wer planen **und** genehmigen darf, kann einen eigenen Antrag genehmigen; das Portal verhindert es nicht (kleiner Verein),
+  der Verlauf zeigt beide Schritte mit Namen.
+- Die Tilgung eines Projektdarlehens ist eine Position des Projekts. Sobald das Darlehen in FI gebucht ist, erscheint seine Tilgung
+  zusätzlich im Vorschlag aus den Darlehenskonten (Kennzahl BK) – dann das Projekt abschließen oder die Tilgungsposition beenden.
+- Ein Projekt in einem beschlossenen Plan wirkt im Soll-Ist der Konten nicht als Planwert des Kontos; Plan und Ist des Projekts
+  stehen in der eigenen Tabelle.

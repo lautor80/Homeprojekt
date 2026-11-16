@@ -192,7 +192,7 @@ flowchart LR
 | forecast | 1 |
 | gruppen | 9 |
 | halle | 41 |
-| haushalt | 23 |
+| haushalt | 28 |
 | index | 6 |
 | instandhaltung | 34 |
 | jt | 30 |
