@@ -37,11 +37,25 @@ export interface Position {
   monate: number[]; monate_fest: boolean; monate_von_hand: boolean; grundlage: Grundlage | null;
 }
 export interface Vorhaben { id: number; bezeichnung: string; art: 'E' | 'A'; monat: number; betrag: number; konto: string | null; projekt: string | null; eingeplant: boolean }
+export interface PlanProjekt {
+  id: number; bezeichnung: string; projektnr: string | null; status: 'IDEE' | 'BEANTRAGT' | 'GENEHMIGT' | 'ABGELEHNT' | 'ZURUECKGESTELLT' | 'UMSETZUNG' | 'ABGESCHLOSSEN'; status_text: string;
+  beginn: string; ende: string; einrechnen: boolean; vorgabe: boolean; gewaehlt: boolean; fest: boolean;
+  wirkung: { einnahmen: number[]; ausgaben: number[]; darlehen: number[]; tilgung: number[]; sum: { einnahmen: number; ausgaben: number; ergebnis: number; darlehen: number; tilgung: number; liquiditaet: number } };
+  beitrag: { ergebnis: number; jahresende: number; tiefster: number };
+}
+export interface ProjektSollIst {
+  id: number; bezeichnung: string; projektnr: string | null; status: PlanProjekt['status']; status_text: string; beginn: string; ende: string;
+  budget: number; ist: number; einnahmen_plan: number; einnahmen_ist: number; plan_jahr: number; ist_jahr: number; bewertung: Bewertung;
+}
 export interface LiqMonat { monat: number; einnahmen: number; ausgaben: number; tilgung: number; bestand: number; ausreichend: boolean | null }
 export interface PlanSicht {
   plan: PlanKopf; aenderbar: boolean; basisjahr: number; stand_monat: number; stand_text: string; jahre: number[];
-  positionen: Position[]; vorhaben: Vorhaben[];
-  summen: { einnahmen: number; ausgaben: number; ergebnis: number; vorhaben_e: number; vorhaben_a: number; basis_e: number; basis_a: number };
+  positionen: Position[]; vorhaben: Vorhaben[]; projekte: PlanProjekt[];
+  /** einnahmen/ausgaben/ergebnis MIT den eingerechneten Projekten; `ohne` = ohne Projekte */
+  summen: {
+    einnahmen: number; ausgaben: number; ergebnis: number; vorhaben_e: number; vorhaben_a: number; basis_e: number; basis_a: number; projekte_e: number; projekte_a: number;
+    ohne: { einnahmen: number; ausgaben: number; ergebnis: number; tiefster: number; tiefsterMonat: number; jahresende: number };
+  };
   bereiche: { bereich: string; text: string; einnahmen: number; ausgaben: number; ergebnis: number }[];
   liquiditaet: {
     anfang: number; monate: LiqMonat[]; tiefster: number; tiefsterMonat: number; mindestreserve: number | null;
@@ -57,14 +71,14 @@ export interface Init {
 export interface Bewertung { abweichung: number; prozent: number | null; stufe: 'IM_PLAN' | 'BEOBACHTEN' | 'UEBERSCHRITTEN'; state: State; text: string }
 export interface SollIstZeile {
   konto: string; name: string; art: 'E' | 'A'; bereich: string; bereich_text: string;
-  plan: number; ist: number; hochrechnung: number; hoch_art: string; geplant: boolean; bewertung: Bewertung;
+  plan: number; ist: number; projekt: number; hochrechnung: number; hoch_art: string; geplant: boolean; bewertung: Bewertung;
 }
 export interface SollIst {
   jahr: number; plan: PlanKopf | null; vorlaeufig: boolean; stand_monat: number; stand_text: string; zeilen: SollIstZeile[];
   summen: Record<'E' | 'A', { plan: number; ist: number; hochrechnung: number; bewertung: Bewertung }>;
   ergebnis: { plan: number; ist: number; hochrechnung: number };
   verlauf: Record<'E' | 'A', { plan: number[]; ist: (number | null)[] }>;
-  ueberschritten: number; beobachten: number; cfg: Cfg;
+  ueberschritten: number; beobachten: number; projekte: ProjektSollIst[]; cfg: Cfg;
 }
 
 /** Betrag ohne Nachkommastellen (Planwerte sind auf 10 € gerundet), Prozent mit Vorzeichen */

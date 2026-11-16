@@ -16,6 +16,7 @@ import { toast } from '@core/toast';
 import { dat } from '../util';
 import { LinienDiagramm } from './Diagramm';
 import { KontoDialog } from './KontoDialog';
+import { monatKurz, PROJEKT_STATE, ProjekteTab } from './Projekte';
 import {
   euro, HH, MON, MONATE, prozent, RECHEN_METHODEN, STATUS_STATE, zahlLesen, zahlText,
   type Init, type Methode, type PlanSicht, type Position, type SollIst, type Vorhaben,
@@ -185,6 +186,9 @@ export function Haushaltsplan() {
                   {vor > 0 && (
                     <tr><td className="name" colSpan={istJahre.length + 5}>Einmalige Vorhaben<small>siehe Reiter Vorhaben</small></td><td className="z">{euro(vor)}</td><td colSpan={2} /></tr>
                   )}
+                  {(art === 'E' ? s.summen.projekte_e : s.summen.projekte_a) !== 0 && (
+                    <tr><td className="name" colSpan={istJahre.length + 5}>Projekte<small>eingerechnet laut Reiter Projekte</small></td><td className="z">{euro(art === 'E' ? s.summen.projekte_e : s.summen.projekte_a)}</td><td colSpan={2} /></tr>
+                  )}
                   <tr className="hh-summe">
                     <td colSpan={istJahre.length + 1}>Summe {artText}</td><td className="z">{euro(basis)}</td><td colSpan={3} />
                     <td className="z">{euro(plan)}</td><td className="z">{basis ? prozent(((plan - basis) / basis) * 100) : '–'}</td><td />
@@ -205,6 +209,7 @@ export function Haushaltsplan() {
   // ---------------------------------------------------------------- Kopf
   const liq = s?.liquiditaet;
   const fassungen = s?.fassungen ?? [];
+  const mitProjekten = !!s && s.projekte.some((p) => p.einrechnen);
   const header = (
     <Filters>
       <Filter label="Geschäftsjahr" width="8rem">
@@ -222,8 +227,8 @@ export function Haushaltsplan() {
       {s && <>
         <HeaderKpi label="Einnahmen Plan" value={euro(s.summen.einnahmen)} />
         <HeaderKpi label="Ausgaben Plan" value={euro(s.summen.ausgaben)} />
-        <HeaderKpi label="Ergebnis Plan" value={euro(s.summen.ergebnis)} state={s.summen.ergebnis < 0 ? 'Negative' : 'Positive'} />
-        <HeaderKpi label="Tiefster Geldbestand" value={euro(liq!.tiefster)} state={liq!.mindestreserve !== null && liq!.tiefster < liq!.mindestreserve ? 'Negative' : liq!.tiefster < 0 ? 'Negative' : 'None'} />
+        <HeaderKpi label={mitProjekten ? `Ergebnis Plan (ohne Projekte ${euro(s.summen.ohne.ergebnis)})` : 'Ergebnis Plan'} value={euro(s.summen.ergebnis)} state={s.summen.ergebnis < 0 ? 'Negative' : 'Positive'} />
+        <HeaderKpi label={mitProjekten ? `Tiefster Geldbestand (ohne Projekte ${euro(s.summen.ohne.tiefster)})` : 'Tiefster Geldbestand'} value={euro(liq!.tiefster)} state={liq!.mindestreserve !== null && liq!.tiefster < liq!.mindestreserve ? 'Negative' : liq!.tiefster < 0 ? 'Negative' : 'None'} />
       </>}
     </Filters>
   );
@@ -322,32 +327,56 @@ export function Haushaltsplan() {
                            status={<Text className="portal-muted portal-small">Toleranz {zahlText(si.cfg.toleranz_gelb)} % (beobachten) und {zahlText(si.cfg.toleranz_rot)} % (überschritten) · {si.ueberschritten} überschritten, {si.beobachten} beobachten</Text>}>
                     <div className="hh-roll">
                       <table className="hh-tab">
-                        <thead><tr><th>Konto</th><th className="z">Plan {si.jahr}</th><th className="z">Ist</th><th className="z">Hochrechnung</th><th className="z">Abweichung</th><th className="z">in %</th><th>Bewertung</th></tr></thead>
+                        <thead><tr><th>Konto</th><th className="z">Plan {si.jahr}</th><th className="z">Ist</th><th className="z">Hochrechnung</th><th className="z">Abweichung</th><th className="z">in %</th><th>Bewertung</th><th className="z">auf Projekte gebucht</th></tr></thead>
                         <tbody>
                           {ARTEN.map(([art, artText]) => (
                             <Fragment key={art}>
-                              <tr className="hh-gruppe"><td colSpan={7}>{artText}</td></tr>
+                              <tr className="hh-gruppe"><td colSpan={8}>{artText}</td></tr>
                               {si.zeilen.filter((z) => z.art === art).map((z) => (
                                 <tr key={z.konto}>
                                   <td className="name">{z.konto} {z.name}<small>{z.bereich_text}{z.geplant ? '' : ' · nicht im Plan'}</small></td>
                                   <td className="z">{euro(z.plan)}</td><td className="z">{euro(z.ist)}</td><td className="z">{euro(z.hochrechnung)}</td>
                                   <td className="z">{z.bewertung.abweichung > 0 ? '+' : ''}{euro(z.bewertung.abweichung)}</td><td className="z">{prozent(z.bewertung.prozent)}</td>
                                   <td><ObjectStatus state={z.bewertung.state}>{z.bewertung.text}</ObjectStatus></td>
+                                  <td className="z">{z.projekt ? euro(z.projekt) : ''}</td>
                                 </tr>
                               ))}
                               <tr className="hh-summe">
                                 <td>Summe {artText}</td><td className="z">{euro(si.summen[art].plan)}</td><td className="z">{euro(si.summen[art].ist)}</td><td className="z">{euro(si.summen[art].hochrechnung)}</td>
                                 <td className="z">{euro(si.summen[art].bewertung.abweichung)}</td><td className="z">{prozent(si.summen[art].bewertung.prozent)}</td>
                                 <td><ObjectStatus state={si.summen[art].bewertung.state}>{si.summen[art].bewertung.text}</ObjectStatus></td>
+                                <td className="z">{euro(si.zeilen.filter((z) => z.art === art).reduce((a, z) => a + z.projekt, 0))}</td>
                               </tr>
                             </Fragment>
                           ))}
                           <tr className="hh-summe"><td>Ergebnis</td><td className="z">{euro(si.ergebnis.plan)}</td><td className="z">{euro(si.ergebnis.ist)}</td><td className="z">{euro(si.ergebnis.hochrechnung)}</td>
-                            <td className="z">{euro(si.ergebnis.hochrechnung - si.ergebnis.plan)}</td><td colSpan={2} /></tr>
+                            <td className="z">{euro(si.ergebnis.hochrechnung - si.ergebnis.plan)}</td><td colSpan={3} /></tr>
                         </tbody>
                       </table>
                     </div>
                   </Section>
+                  {si.projekte.length > 0 && (
+                    <Section title="Projekte: Budget und Ist" count={si.projekte.length} flush
+                             status={<Text className="portal-muted portal-small">Ist aus den FI-Buchungen mit der Projektnummer – im Konto oben nicht mitgezählt</Text>}>
+                      <div className="hh-roll">
+                        <table className="hh-tab">
+                          <thead><tr><th>Projekt</th><th>Status</th><th className="z">Budget gesamt</th><th className="z">Gebucht gesamt</th><th className="z">davon {si.jahr}: Plan</th><th className="z">Ist</th>
+                            <th className="z">Abweichung</th><th className="z">in %</th><th>Bewertung</th></tr></thead>
+                          <tbody>
+                            {si.projekte.map((p) => (
+                              <tr key={p.id}>
+                                <td className="name">{p.bezeichnung}<small>{p.projektnr ? `Projekt ${p.projektnr}` : 'ohne Projektnummer – Buchungen lassen sich nicht zuordnen'} · {monatKurz(p.beginn)} – {monatKurz(p.ende)}</small></td>
+                                <td><ObjectStatus state={PROJEKT_STATE[p.status]}>{p.status_text}</ObjectStatus></td>
+                                <td className="z">{euro(p.budget)}</td><td className="z">{euro(p.ist)}</td><td className="z">{euro(p.plan_jahr)}</td><td className="z">{euro(p.ist_jahr)}</td>
+                                <td className="z">{p.bewertung.abweichung > 0 ? '+' : ''}{euro(p.bewertung.abweichung)}</td><td className="z">{prozent(p.bewertung.prozent)}</td>
+                                <td><ObjectStatus state={p.bewertung.state}>{p.bewertung.text}</ObjectStatus></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Section>
+                  )}
                 </>}
               </Tab>
 
@@ -362,7 +391,7 @@ export function Haushaltsplan() {
                     ))}
                   </div>
                   <Section title={`Geldbestand ${s.plan.jahr} je Monatsende`}
-                           status={<Text className="portal-muted portal-small">Anfangsbestand {euro(liq.anfang)} · Tilgung {euro(liq.tilgung.summe)} im Jahr{liq.tilgung.quelle === 'DARLEHEN' ? ' (aus den Darlehenskonten)' : ''}</Text>}>
+                           status={<Text className="portal-muted portal-small">Anfangsbestand {euro(liq.anfang)} · Tilgung {euro(liq.tilgung.summe)} im Jahr{liq.tilgung.quelle === 'DARLEHEN' ? ' (aus den Darlehenskonten)' : ''}{mitProjekten ? ' · mit den eingerechneten Projekten (Darlehen als Zufluss, Tilgung als Abfluss)' : ''}</Text>}>
                     <LinienDiagramm titel={`Geldbestand ${s.plan.jahr} je Monatsende`} schmal={klein} serien={[
                       { name: 'Geldbestand laut Plan', farbe: 1, werte: liq.monate.map((m) => m.bestand) },
                       ...(liq.ist.some((x) => x !== null) ? [{ name: 'Geldbestand Ist', farbe: 3 as const, werte: liq.ist }] : []),
@@ -390,9 +419,13 @@ export function Haushaltsplan() {
                 </>}
               </Tab>
 
-              <Tab data-key="vorhaben" text="Vorhaben" additionalText={String(s.vorhaben.length)} icon="capital-projects" selected={tab === 'vorhaben'}>
+              <Tab data-key="projekte" text="Projekte" additionalText={String(s.projekte.length)} icon="capital-projects" selected={tab === 'projekte'}>
+                <ProjekteTab s={s} init={init} edit={edit} onGeaendert={() => planLaden()} />
+              </Tab>
+
+              <Tab data-key="vorhaben" text="Vorhaben" additionalText={String(s.vorhaben.length)} icon="add-product" selected={tab === 'vorhaben'}>
                 <Section title="Einmalige Vorhaben" count={s.vorhaben.length} flush
-                         status={<Text className="portal-muted portal-small">stehen neben den laufenden Konten und lassen sich ein- und ausplanen</Text>}
+                         status={<Text className="portal-muted portal-small">kleine Einmalposten ohne Genehmigung – größere Vorhaben mit Zeitspanne und Finanzierung gehören in den Reiter Projekte</Text>}
                          actions={aenderbar ? <Button icon="add" onClick={() => setVorhaben({ art: 'A', monat: 1, eingeplant: true, betragText: '' })}>Neues Vorhaben</Button> : undefined}>
                   {s.vorhaben.length ? (
                     <div className="hh-roll">

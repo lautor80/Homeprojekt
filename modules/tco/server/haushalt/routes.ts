@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { change, requireAuth } from '../../../../server/src/auth.js';
+import { can, change, requireAuth } from '../../../../server/src/auth.js';
+import { BusinessError } from '../../../../server/src/errors.js';
 import { funktionAktiv } from '../../../../server/src/funktionsschalter.js';
 import { heute } from '../format.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
@@ -8,10 +9,12 @@ import { kontenStamm } from '../abschluss/logik.js';
 import { kontoart } from '../finanz/logik.js';
 import {
   cfgLesen, cfgSichern, F_UEBERWACHUNG, kopfAendern, monateSetzen, nachtragAnlegen, neuBerechnen, planAnlegen, planLesen, planListe, planLoeschen,
-  positionAendern, positionEntfernen, positionHinzufuegen, sollIst, sondereffektSetzen, statusSetzen, ueberschreitungen, vorgaengerSetzen,
+  positionAendern, positionEntfernen, positionHinzufuegen, projektEinrechnen, sollIst, sondereffektSetzen, statusSetzen, ueberschreitungen, vorgaengerSetzen,
   vorhabenLoeschen, vorhabenSichern,
 } from './logik.js';
 import { haushaltAblegen, haushaltPdf } from './pdf.js';
+import { ENTSCHEIDUNG, POSITION_ARTEN, POSITION_TEXT, STATUS, STATUS_TEXT, VERTEILUNGEN } from './projekt.js';
+import { P_PROJEKT, projekteLesen, projektLoeschen, projektnummernVorschlag, projektSichern, projektStatus } from './projekte.js';
 import { METHODE_TEXT } from './vorschlag.js';
 
 /**
@@ -140,6 +143,56 @@ export async function haushaltRoutes(app: FastifyInstance) {
     const b = z.object({ id: z.coerce.number().int().positive() }).parse(req.body);
     await change(req, (tx) => vorhabenLoeschen(tx, id, b.id), { action: 'LOESCHEN' });
     return { text: 'Vorhaben gelöscht.' };
+  });
+
+  // ---------------------------------------------------------------- Projekte: Planung, Genehmigung, Simulation im Plan
+  const monat = z.string().regex(/^\d{4}-\d{2}$/, 'Monat im Format JJJJ-MM');
+  const projektSchema = z.object({
+    id: z.coerce.number().int().positive().nullish(), projektnr: z.string().trim().max(20).nullish(),
+    bezeichnung: z.string().trim().min(1, 'Bitte eine Bezeichnung angeben').max(120), beschreibung: z.string().max(4000).nullish(),
+    verantwortlich: z.string().trim().max(100).nullish(), beginn: monat, ende: monat, bereich: z.enum(['A', 'B', 'C', 'D']).nullish(),
+    positionen: z.array(z.object({
+      art: z.enum(POSITION_ARTEN), bezeichnung: z.string().trim().max(120).nullish(), betrag: betragOpt.transform((v) => v ?? 0),
+      konto: z.string().trim().max(20).nullish(), verteilung: z.enum(VERTEILUNGEN), von: monat.nullish().or(z.literal('').transform(() => null)),
+      bis: monat.nullish().or(z.literal('').transform(() => null)), monate: z.record(z.coerce.number()).optional(),
+    })).max(60),
+  });
+
+  /** Alle Projekte mit Budget, Ist aus FI und Verlauf der Genehmigung */
+  app.get('/haushalt/projekte', lesen, async (req) => ({
+    projekte: await projekteLesen(DB, await cfgLesen(DB)), darfGenehmigen: can(req, P_PROJEKT.approve),
+    arten: POSITION_TEXT, status: STATUS_TEXT, projektnummern: await projektnummernVorschlag(DB),
+  }));
+
+  app.post('/haushalt/projekte', planen, async (req) => {
+    const b = projektSchema.parse(req.body);
+    const id = await change(req, (tx) => projektSichern(tx, b, benutzer(req), can(req, P_PROJEKT.approve)));
+    return { id, text: `Projekt „${b.bezeichnung}“ gesichert.` };
+  });
+
+  /** Status: beantragen, umsetzen, abschließen (planen) – genehmigen, ablehnen, zurückstellen nur mit dem Recht „Projekte genehmigen“ */
+  app.post('/haushalt/projekte/:id/status', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ status: z.enum(STATUS), grund: z.string().trim().max(1000).nullish() }).parse(req.body);
+    // entscheiden darf, wer genehmigen darf (auch ohne Planungsrecht) – alles andere braucht das Planungsrecht
+    if (!ENTSCHEIDUNG.includes(b.status) && !can(req, P_HH.edit)) throw new BusinessError('Dafür fehlt das Recht „Haushaltsplan planen“.', 403);
+    const p = await change(req, (tx) => projektStatus(tx, id, b.status, b.grund ?? null, benutzer(req), can(req, P_PROJEKT.approve)), { action: `HH_PROJEKT_${b.status}`, reason: b.grund ?? undefined });
+    return { text: `Projekt „${p.bezeichnung}“: ${p.status_text}.` };
+  });
+
+  app.post('/haushalt/projekte/:id/loeschen', planen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ grund: z.string().trim().min(1, 'Bitte eine Begründung angeben') }).parse(req.body);
+    const name = await change(req, (tx) => projektLoeschen(tx, id), { action: 'LOESCHEN', reason: b.grund });
+    return { text: `Projekt „${name}“ gelöscht.` };
+  });
+
+  /** Simulation: Projekt in dieser Fassung ein- oder ausrechnen (einrechnen: null = Vorgabe nach dem Status) */
+  app.put('/haushalt/plan/:id/projekt', planen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ projekt_id: z.coerce.number().int().positive(), einrechnen: z.boolean().nullable() }).parse(req.body);
+    await change(req, (tx) => projektEinrechnen(tx, id, b.projekt_id, b.einrechnen));
+    return { ok: true };
   });
 
   // ---------------------------------------------------------------- Grundlage: Sondereffekte und Vorgängerkonten (gelten für alle Pläne)
