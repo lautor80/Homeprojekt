@@ -20,7 +20,6 @@
 .zs-karte__label { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
 .zs-karte__fuss { display: flex; justify-content: space-between; align-items: flex-end; gap: 0.5rem; flex-wrap: wrap; }
 /* Tabellen (Auswertung, Ablesungen, Stammdaten) */
-.zs-rahmen { overflow: auto; max-width: 100%; }
 .zs-tabelle { border-collapse: collapse; width: 100%; font-family: var(--sapFontFamily); font-size: var(--sapFontSize); color: var(--sapTextColor); }
 .zs-tabelle th, .zs-tabelle td { padding: 0.375rem 0.625rem; text-align: left; vertical-align: middle; white-space: nowrap; }
 .zs-tabelle th { background: var(--sapList_HeaderBackground); color: var(--sapList_HeaderTextColor, var(--sapTextColor)); }

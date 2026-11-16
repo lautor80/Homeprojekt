@@ -80,8 +80,7 @@ export function ZaehlerDetail() {
                <ChangeHistoryButton objectType="ZAEHLER" objectKey={z.nummer} />
              </>}>
       {fehler && <MessageStrip design="Negative" onClose={() => setFehler(null)} style={{ marginBottom: '0.5rem' }}>{fehler}</MessageStrip>}
-      <Section>
-        <ObjectHeader icon={MEDIUM_ICON[z.medium]} title={z.bezeichnung}
+      <ObjectHeader icon={MEDIUM_ICON[z.medium]} title={z.bezeichnung}
                       subtitle={`${z.nummer} · ${mediumText(z.medium)}${z.standort ? ` · ${z.standort}` : ''}`}
                       status={<>
                         {!z.aktiv && <ObjectStatus state="None" inverted>inaktiv</ObjectStatus>}
@@ -100,8 +99,7 @@ export function ZaehlerDetail() {
               : null}</Attribute>
             {z.notiz && <Attribute label="Notiz" wide>{z.notiz}</Attribute>}
           </Attributes>
-        </ObjectHeader>
-      </Section>
+      </ObjectHeader>
 
       <Section title="Kennzahlen"><KennzahlKacheln k={k} einheit={ve} jahresziel={z.jahresziel} /></Section>
 
@@ -116,7 +114,7 @@ export function ZaehlerDetail() {
         {mv.error ? <MessageStrip design="Negative" hideCloseButton>{mv.error}</MessageStrip> : !mv.data ? <BusyIndicator active /> : !mv.data.reihen[0]?.verbrauch.some((v) => v !== null) ? (
           <Empty>Noch kein Verbrauch in diesem Zeitraum.</Empty>
         ) : (
-          <SaeulenDiagramm titel={`Monatsverbrauch ${z.bezeichnung} in ${ve}`} kategorien={mv.data.perioden} kategorieText={(p, schmal) => (schmal ? periodeText(p).slice(0, 1) : periodeText(p))}
+          <SaeulenDiagramm titel={`Monatsverbrauch ${z.bezeichnung} in ${ve}`} kategorien={mv.data.perioden} kategorieText={(p, schmal) => (schmal ? periodeText(p).slice(0, 3) : periodeText(p))}
                            fmt={(v) => mitEinheit(v, ve)}
                            reihen={[{ name: z.bezeichnung, farbe: 1, werte: mv.data.reihen[0].verbrauch, geschaetzt: mv.data.perioden.map((p) => monatGeschaetzt(p, aufsteigend)) }]} />
         )}
@@ -138,7 +136,7 @@ export function ZaehlerDetail() {
 
       <Section title="Ablesungen" count={d.staende.length} flush>
         {!d.staende.length ? <Empty>Noch keine Ablesung erfasst.</Empty> : (
-          <div className="zs-rahmen">
+          <div className="portal-tabrahmen">
             <table className="zs-tabelle">
               <thead><tr>
                 <th>Datum</th><th className="zahl">Stand ({z.einheit || '–'})</th><th>Art</th><th className="zahl">Verbrauch ({ve || '–'})</th>
@@ -198,10 +196,13 @@ export function KennzahlKacheln({ k, einheit, jahresziel }: { k: Kennzahlen; ein
   return (
     <Attributes narrow>
       <Attribute label="Ø Verbrauch je Tag">{wert(mitEinheit(k.tagesdurchschnitt, einheit))}</Attribute>
-      <Attribute label="Laufendes Jahr (bis letzte Ablesung)">{wert(mitEinheit(k.verbrauchJahr, einheit))}</Attribute>
+      <Attribute label="Laufendes Jahr">{wert(mitEinheit(k.verbrauchJahr, einheit))}</Attribute>
       <Attribute label="Vorjahr">{wert(mitEinheit(k.verbrauchVorjahr, einheit))}</Attribute>
-      <Attribute label={`Prognose Jahr${veraendert !== null ? ` (${prozent(veraendert)} ggü. Vorjahr)` : ''}`}>
-        {wert(mitEinheit(k.prognoseJahr, einheit), veraendert === null ? 'None' : veraendert > 5 ? 'Critical' : veraendert < -5 ? 'Positive' : 'None')}
+      <Attribute label="Prognose Jahr">
+        {wert(mitEinheit(k.prognoseJahr, einheit))}
+        {veraendert !== null && (
+          <div><ObjectStatus state={veraendert > 5 ? 'Critical' : veraendert < -5 ? 'Positive' : 'None'}>{`${prozent(veraendert)} ggü. Vorjahr`}</ObjectStatus></div>
+        )}
       </Attribute>
       <Attribute label="Kosten-Prognose Jahr">{wert(k.kostenPrognoseJahr !== null ? eur(k.kostenPrognoseJahr) : '–')}</Attribute>
       <Attribute label="Jahresziel">

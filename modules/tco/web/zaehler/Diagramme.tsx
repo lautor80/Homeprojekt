@@ -189,7 +189,9 @@ export function StandVerlauf({ titel, punkte, fmt }: { titel: string; punkte: St
             <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={10} fill={TEXT}>{kurz(v)}</text>
           </g>
         ))}
-        <text x={L} y={H - 8} fontSize={10} fill={TEXT}>{ersteJahr === new Date(t1).getFullYear() || !jahre.length ? `${p[0].datum.slice(8, 10)}.${p[0].datum.slice(5, 7)}.${ersteJahr}` : ersteJahr}</text>
+        {(!jahre.length || x(`${jahre[0]}-01-01`) - L > 44) && (
+          <text x={L} y={H - 8} fontSize={10} fill={TEXT}>{!jahre.length ? `${p[0].datum.slice(8, 10)}.${p[0].datum.slice(5, 7)}.${ersteJahr}` : ersteJahr}</text>
+        )}
         {jahre.map((j) => {
           const xx = x(`${j}-01-01`);
           return <g key={j}><line x1={xx} x2={xx} y1={T} y2={H - B} stroke={GRID} strokeDasharray="2 3" /><text x={xx} y={H - 8} textAnchor="middle" fontSize={10} fill={TEXT}>{j}</text></g>;

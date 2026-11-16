@@ -19,7 +19,7 @@ flowchart LR
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
-      B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen"]
+      B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen<br/>Zählerstände"]
       B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Projekte<br/>Zuwendungsbestätigungen<br/>Kontenstamm"]
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
@@ -102,6 +102,7 @@ flowchart LR
 | Clubhaus | Theke | `/tco/theke` | `tco.verzehr:theke` | Gäste kassieren, Belege senden, Mitglieder anschreiben |
 | Clubhaus | Verzehrbuch | `/tco/verzehrbuch` | `tco.verzehr:display` | Alle Positionen, Belege, Monatsabschluss, Preisliste |
 | Instandhaltung | Schadensmeldungen | `/tco/instandhaltung` | `tco.instandhaltung:display` | Meldungen bearbeiten, Plätze sperren |
+| Instandhaltung | Zählerstände | `/tco/zaehler` | `tco.zaehler:display` | Strom, Gas, Wasser erfassen und auswerten |
 | Finanzen | Sollstellungen | `/tco/sollstellung` | `tco.soll:display` | Beitragseinzug per SEPA-Lastschrift |
 | Finanzen | FI-Belege | `/tco/fi` | `tco.fi:display` | Bankimport, Belege, Storno |
 | Finanzen | Mahnwesen | `/tco/mahnwesen` | `tco.mahnung:display` | Zahlungserinnerungen und Mahnungen, Vorschlag und Läufe, Mahnsperren |
@@ -217,4 +218,5 @@ flowchart LR
 | teilnehmer | 4 |
 | upload | 2 |
 | verzehr | 29 |
+| zaehler | 16 |
 | zuwendung | 18 |

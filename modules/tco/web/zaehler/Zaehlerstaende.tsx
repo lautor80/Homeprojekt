@@ -170,7 +170,7 @@ function Uebersicht({ zeilen, a, setA, onOeffnen }: { zeilen: ZaehlerZeile[]; a:
         <div className="zs-karten">{sicht.map((z) => <ZaehlerKarte key={z.id} z={z} onClick={() => onOeffnen(z.id)} />)}</div>
       ) : (
         <Section flush>
-          <div className="zs-rahmen">
+          <div className="portal-tabrahmen">
             <table className="zs-tabelle">
               <thead><tr>
                 <th>Zähler</th><th>Standort</th><th>Status</th><th className="zahl">Letzter Stand</th><th>am</th>
@@ -218,8 +218,8 @@ function ZaehlerKarte({ z, onClick }: { z: ZaehlerZeile; onClick: () => void }) 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="zs-karte__titel">{z.bezeichnung}</div>
           <div className="portal-muted portal-small">{z.nummer} · {mediumText(z.medium)}{z.standort ? ` · ${z.standort}` : ''}</div>
+          {z.aktiv ? <ObjectStatus state={f.state} showDefaultIcon={f.state !== 'None'}>{f.text}</ObjectStatus> : <ObjectStatus state="None" inverted>inaktiv</ObjectStatus>}
         </div>
-        {z.aktiv ? <ObjectStatus state={f.state} showDefaultIcon={f.state !== 'None'}>{f.text}</ObjectStatus> : <ObjectStatus state="None" inverted>inaktiv</ObjectStatus>}
       </div>
       <div className="zs-karte__werte">
         <div><div className="zs-karte__label">Letzter Stand</div>{k.letzteAblesung ? `${standText(k.letzteAblesung.stand)} ${z.einheit}` : '–'}
@@ -320,7 +320,7 @@ function AuswertungTab({ zeilen, a, setA, onError }: { zeilen: ZaehlerZeile[]; a
               <SaeulenDiagramm titel={kosten ? 'Kosten in €' : `Verbrauch in ${einheit}`} kategorien={daten.perioden} fmt={fmt(einheit)}
                                kategorieText={(p, schmal) => (schmal && p.length > 4 ? periodeText(p).slice(0, 3) : periodeText(p))}
                                reihen={reihen.map((r) => ({ name: r.bezeichnung, farbe: farbeVon(zeilen, r.zaehlerId), werte: kosten ? r.kosten : r.verbrauch }))} />
-              <div className="zs-rahmen">
+              <div className="portal-tabrahmen">
                 <table className="zs-tabelle">
                   <thead><tr><th>{raster === 'monat' ? 'Monat' : 'Jahr'}</th>{reihen.map((r) => <th key={r.zaehlerId} className="zahl">{r.bezeichnung}</th>)}{reihen.length > 1 && <th className="zahl">Summe</th>}</tr></thead>
                   <tbody>
@@ -392,7 +392,7 @@ function Ablesungen({ zeilen, stand, onGeaendert, onError }: { zeilen: ZaehlerZe
       </Filters>
       <Section title="Ablesungen" count={liste ? sicht.length : undefined} flush>
         {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !sicht.length ? <Empty>Noch keine Ablesungen.</Empty> : (
-          <div className="zs-rahmen">
+          <div className="portal-tabrahmen">
             <table className="zs-tabelle">
               <thead><tr>
                 <th>Datum</th><th>Zähler</th><th className="zahl">Stand</th><th>Art</th><th className="zahl">Verbrauch seit vorher</th>
@@ -463,11 +463,11 @@ function Stammdaten({ zeilen, onGeaendert, onError }: { zeilen: ZaehlerZeile[]; 
     <>
       <Section title="Zähler" count={zeilen.length} flush actions={<Button icon="add" onClick={() => setDlg('neu')}>Zähler anlegen</Button>}>
         {!liste.length ? <Empty>Noch kein Zähler angelegt.</Empty> : (
-          <div className="zs-rahmen">
+          <div className="portal-tabrahmen">
             <table className="zs-tabelle">
               <thead><tr>
-                <th>Nummer</th><th>Bezeichnung</th><th>Medium</th><th>Standort</th><th>Gerät Nr.</th><th>Einheit</th><th className="zahl">Faktor</th>
-                <th className="zahl">Intervall</th><th className="zahl">Arbeitspreis</th><th className="zahl">Grundpreis/Monat</th><th className="zahl">Jahresziel</th><th>Status</th><th />
+                <th>Nummer</th><th>Bezeichnung</th><th>Medium</th><th>Standort</th><th>Einheit</th><th className="zahl">Faktor</th>
+                <th className="zahl">Intervall</th><th className="zahl">Preise</th><th className="zahl">Jahresziel</th><th>Status</th><th />
               </tr></thead>
               <tbody>
                 {liste.map((z) => (
@@ -476,12 +476,13 @@ function Stammdaten({ zeilen, onGeaendert, onError }: { zeilen: ZaehlerZeile[]; 
                     <td>{z.bezeichnung}</td>
                     <td><Icon name={MEDIUM_ICON[z.medium]} style={{ verticalAlign: 'middle', marginRight: '0.375rem' }} />{mediumText(z.medium)}</td>
                     <td>{z.standort ?? ''}</td>
-                    <td>{z.zaehlernummer ?? ''}</td>
                     <td>{z.einheit}{z.verbrauchseinheit && z.verbrauchseinheit !== z.einheit ? ` → ${z.verbrauchseinheit}` : ''}</td>
                     <td className="zahl">{zahl(z.faktor, 4)}</td>
                     <td className="zahl">{z.intervall_tage ? `${z.intervall_tage} Tage` : '–'}</td>
-                    <td className="zahl">{z.arbeitspreis !== null ? eur(z.arbeitspreis) : '–'}</td>
-                    <td className="zahl">{z.grundpreis_monat !== null ? eur(z.grundpreis_monat) : '–'}</td>
+                    <td className="zahl">
+                      {z.arbeitspreis !== null ? `${eur(z.arbeitspreis)}/${vEinheit(z) || 'Einheit'}` : '–'}
+                      {z.grundpreis_monat !== null && <div className="portal-muted portal-small">{`+ ${eur(z.grundpreis_monat)}/Monat`}</div>}
+                    </td>
                     <td className="zahl">{z.jahresziel !== null ? mitEinheit(z.jahresziel, vEinheit(z)) : '–'}</td>
                     <td><ObjectStatus state={z.aktiv ? 'Positive' : 'None'}>{z.aktiv ? 'aktiv' : 'inaktiv'}</ObjectStatus></td>
                     <td><IconAktionen items={[
@@ -676,7 +677,7 @@ function ImportStaende({ onClose, onUebernommen }: { onClose: () => void; onUebe
               {ok} von {vorschau.zeilen.length} Zeilen können übernommen werden{fehler ? `; ${fehler} mit Fehler werden ausgelassen` : ''}. Warnungen gelten mit dem Übernehmen als bestätigt.
             </MessageStrip>
           )}
-          <div className="zs-rahmen" style={{ maxHeight: '50vh' }}>
+          <div className="portal-tabrahmen" style={{ maxHeight: '50vh' }}>
             <table className="zs-tabelle">
               <thead><tr><th className="zahl">Zeile</th><th>Zähler</th><th>Datum</th><th className="zahl">Stand</th><th>Art</th><th>Prüfung</th></tr></thead>
               <tbody>
