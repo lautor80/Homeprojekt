@@ -90,6 +90,8 @@ export function Shell() {
 
   /** Auf dem Handy liegt die Navigation über dem Inhalt: nach der Auswahl wieder einklappen */
   const gehe = (path: string) => { navigate(path); if (window.innerWidth < 600) setCollapsed(true); };
+  // externe Ziele (z. B. Fanshop) öffnen sich in einem neuen Tab – das Portal bleibt, wo es ist
+  const oeffne = (e: NavEntry) => { if (e.extern) window.open(e.extern, '_blank', 'noopener,noreferrer'); else if (e.path) gehe(e.path); };
 
   const isSelected = (path?: string) =>
     !!path && (path === '/' ? location.pathname === '/' : location.pathname === path || location.pathname.startsWith(path + '/'));
@@ -99,7 +101,7 @@ export function Shell() {
   const sub = (e: NavEntry) => (
     <SideNavigationSubItem key={e.path ?? e.text} text={e.text} icon={e.icon} {...tag(e)} selected={isSelected(e.path)}
                            style={eingerueckt}
-                           onClick={() => e.path && gehe(e.path)} />
+                           onClick={() => oeffne(e)} />
   );
   // Stufe-2-Gruppen sind eingeklappt; nur die Gruppe mit der geöffneten Seite klappt automatisch auf.
   // Der Benutzer kann jede Gruppe selbst auf- und zuklappen (der Zustand bleibt bis zum Seitenwechsel in eine andere Gruppe).
@@ -108,7 +110,7 @@ export function Shell() {
     <SideNavigationItem key={e.path ?? e.text} text={e.text} icon={e.icon} {...tag(e)} selected={!e.children && isSelected(e.path)}
                         style={einruecken ? eingerueckt : undefined}
                         expanded={e.children ? enthaeltAktiv(e) : undefined} unselectable={!!e.children}
-                        onClick={() => !e.children && e.path && gehe(e.path)}>
+                        onClick={() => !e.children && oeffne(e)}>
       {e.children?.map(sub)}
     </SideNavigationItem>
   );

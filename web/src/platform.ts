@@ -10,6 +10,11 @@ export interface NavEntry {
   icon?: string;
   /** Pfad innerhalb der App, z. B. "/beispiel/kontakte" */
   path?: string;
+  /**
+   * Externe Adresse (https://…): Menüpunkt und Kachel öffnen sie in einem neuen Tab statt die Seite unter `path`.
+   * `path` bleibt die Kennung des Eintrags (und zeigt beim direkten Aufruf eine Seite mit dem Link).
+   */
+  extern?: string;
   /** Eintrag nur sichtbar mit dieser Berechtigung */
   permission?: string;
   children?: NavEntry[];

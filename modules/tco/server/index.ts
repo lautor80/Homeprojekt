@@ -203,6 +203,7 @@ const tco: ServerModule = {
     { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Einladungen per E-Mail versenden, Gruppen/Mannschaften pflegen' },
     { area: 'Allgemein', app: 'Checklisten', id: P_CL.display, text: 'Checklisten für Veranstaltungen ansehen und als PDF drucken: Schritte, Verantwortliche, Fälligkeiten und Stand je Veranstaltung' },
     { area: 'Allgemein', app: 'Checklisten', id: P_CL.edit, text: 'Checklisten pflegen: anlegen, ändern, kopieren und löschen, Schritte und Kategorien pflegen, Veranstaltungen und Termine zuordnen, Schritte abhaken', requires: [P_CL.display] },
+    { area: 'Allgemein', app: 'Fanshop', id: 'tco.fanshop:display', text: 'Fanshop: Kachel und Menüpunkt zum Onlineshop des Vereins (externe Seite, öffnet in neuem Tab)' },
 
     // Mein Bereich (#232, N1): was ein Mitglied, Hallennutzer oder Trainer für sich selbst tut – im Menü an einer Stelle
     { area: 'Mein Bereich', app: 'Meine Daten', id: 'tco.meinedaten:edit', text: 'Eigene Mitgliedsdaten sehen, Kontaktdaten und Bankverbindung ändern, Mitgliedschaft/Verträge kündigen (nur das dem Benutzer zugeordnete Mitglied)' },
