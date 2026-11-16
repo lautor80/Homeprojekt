@@ -125,7 +125,7 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
   },
   {
     id: F_JT_IMPORT, app: 'Abrechnung Jugendtraining', text: 'Import Trainerstunden',
-    beschreibung: 'Reiter „Import“: Stundenrückmeldungen der Trainer aus der Nextcloud bzw. als Datei einlesen.',
+    beschreibung: 'Knopf „Importieren“ oben rechts: Stundenrückmeldungen der Trainer aus der Nextcloud bzw. als Datei einlesen.',
     routen: ['POST /jt/import', 'POST /jt/import/nextcloud'],
   },
   {
