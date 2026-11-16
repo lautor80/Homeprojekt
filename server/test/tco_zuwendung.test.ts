@@ -99,7 +99,7 @@ const buchen = async (datum: string, text: string, betrag: number, positionen: P
 const k = (internenr: string, konto = '8171', posnr = 0) => `${internenr}|${konto}|${posnr}`;
 
 interface Q { key: string; betrag: number; datum: string; herkunft: string; spender: string | null; zbnr: string | null; sperre: string | null; verzicht: boolean; vorschlag: { adrnr: string; name: string } | null; ausschluss: string | null }
-interface Sp { key: string; name: string; anschrift: string[]; email: string; fehlt: string[]; offen: Q[]; bestaetigt: Q[]; gesperrt: Q[]; summe_offen: number }
+interface Sp { key: string; name: string; anschrift: string[]; email: string; email_unzustellbar: boolean; fehlt: string[]; offen: Q[]; bestaetigt: Q[]; gesperrt: Q[]; summe_offen: number }
 interface V { sperren: string[]; spender: Sp[]; ohne_spender: Q[]; ausgeschlossen: Q[]; rueckbuchungen: { key: string; betrag: number; kandidaten: string[] }[]; summe_offen: number; anzahl_offen: number }
 const vorschlag = async (jahr = J, c = admin): Promise<V> => { const r = await c('GET', `${Z}/vorschlag?jahr=${jahr}`); assert.equal(r.status, 200, JSON.stringify(r.body)); return r.body; };
 const spender = (v: V, key: string) => v.spender.find((s) => s.key === key);
@@ -402,6 +402,15 @@ test('Versand: nur „gesendet“ zählt – unzustellbar, Fehler und fehlende A
   assert.match(r.body.text, /nicht versendet – bitte drucken\. Adresse ist als unzustellbar vermerkt/);
   [kopf] = await sql`select versand_status, versand_hinweis from tco.zuw_kopf where zbnr = ${zb2}`;
   assert.deepEqual([kopf.versand_status, kopf.versand_hinweis], ['NICHT_VERSENDET', 'Adresse ist als unzustellbar vermerkt – bitte drucken']);
+  // der Vermerk im Mitgliederstamm selbst: der zentrale Versand lehnt ab (status „fehler“, keine Ausnahme), die Vorschlagsliste zeigt ihn vorab
+  await sql`update tco.mitglieder set email = 'mia@tc-test.example', email_unzustellbar_seit = now(), email_unzustellbar_adresse = 'mia@tc-test.example',
+                   email_unzustellbar_grund = 'Postfach unbekannt', email_unzustellbar_quelle = 'MANUELL' where adrnr = ${MIA}`;
+  r = await kasse('POST', `${Z}/bestaetigungen/${zb2}/senden`, {});
+  assert.deepEqual([r.status, r.body.versendet], [200, false]);
+  assert.match(r.body.text, /nicht versendet – bitte drucken\..*unzustellbar vermerkt/);
+  assert.equal(spender(await vorschlag(), `M:${MIA}`)!.email_unzustellbar, true);
+  assert.equal((await sql`select versand_status from tco.zuw_kopf where zbnr = ${zb2}`)[0].versand_status, 'NICHT_VERSENDET');
+  await sql`update tco.mitglieder set email_unzustellbar_seit = null, email_unzustellbar_adresse = null, email_unzustellbar_grund = null, email_unzustellbar_quelle = null where adrnr = ${MIA}`;
   // Fehler des Versands (Ausnahme) und fehlende Adresse: ebenso
   await sql`update tco.mitglieder set email = 'kaputt@tc-test.example' where adrnr = ${MIA}`;
   r = await kasse('POST', `${Z}/bestaetigungen/${zb2}/senden`, {});

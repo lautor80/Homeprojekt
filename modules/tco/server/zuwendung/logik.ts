@@ -172,6 +172,8 @@ export interface Quelle {
 export interface Rueckbuchung { key: string; internenr: string; konto: string; posnr: number; datum: string; betrag: number; text: string; belnr: string; kandidaten: string[] }
 export interface SpenderZeile {
   key: string; typ: 'M' | 'X'; adrnr: string | null; spender_id: number | null; name: string; korrespondent: string; anschrift: string[]; email: string;
+  /** Adresse ist im Mitgliederstamm als unzustellbar vermerkt – der Versand wird sie ablehnen (bitte drucken) */
+  email_unzustellbar: boolean;
   /** fehlende Angaben, ohne die keine Bestätigung ausgestellt wird */
   fehlt: string[]; offen: Quelle[]; bestaetigt: Quelle[]; gesperrt: Quelle[]; summe_offen: number;
 }
@@ -187,7 +189,7 @@ export function keyTeilen(key: string): { internenr: string; konto: string; posn
   return { internenr, konto, posnr: Number(posnr) };
 }
 
-interface Person { name: string; korrespondent: string; strasse: string; plz: string; ort: string; email: string }
+interface Person { name: string; korrespondent: string; strasse: string; plz: string; ort: string; email: string; unzustellbar?: boolean }
 const anschrift = (p: Pick<Person, 'strasse' | 'plz' | 'ort'>) => [p.strasse.trim(), `${p.plz} ${p.ort}`.trim()].filter(Boolean);
 const personFehlt = (p: Person) => [!p.name.trim() && 'Name', !p.strasse.trim() && 'Straße', !(p.plz.trim() && p.ort.trim()) && 'PLZ/Ort'].filter(Boolean) as string[];
 
@@ -195,10 +197,12 @@ const personFehlt = (p: Person) => [!p.name.trim() && 'Name', !p.strasse.trim() 
 async function personenLesen(db: Db): Promise<Map<string, Person>> {
   const out = new Map<string, Person>();
   const mg = await db`select adrnr, coalesce(vorname, '') as vorname, coalesce(nachname, '') as nachname, coalesce(strasse, '') as strasse,
-                             coalesce(plz, '') as plz, coalesce(ort, '') as ort, coalesce(email, '') as email from tco.mitglieder`;
+                             coalesce(plz, '') as plz, coalesce(ort, '') as ort, coalesce(email, '') as email,
+                             (email_unzustellbar_seit is not null and lower(btrim(coalesce(email, ''))) = coalesce(email_unzustellbar_adresse, '')) as unzustellbar
+                        from tco.mitglieder`;
   for (const m of mg) {
     out.set(adrKey(m.adrnr), {
-      name: `${m.vorname} ${m.nachname}`.trim(), korrespondent: `${m.nachname} ${m.vorname}`.trim(), strasse: m.strasse, plz: m.plz, ort: m.ort, email: String(m.email).trim(),
+      name: `${m.vorname} ${m.nachname}`.trim(), korrespondent: `${m.nachname} ${m.vorname}`.trim(), strasse: m.strasse, plz: m.plz, ort: m.ort, email: String(m.email).trim(), unzustellbar: !!m.unzustellbar,
     });
   }
   return out;
@@ -294,7 +298,7 @@ export async function vorschlag(db: Db, v: Pick<Verein, 'name' | 'strasse' | 'pl
       const fehlt = typ === 'M' && !personen.has(id) ? [`Adressnummer ${id || '–'} gibt es im Mitgliederstamm nicht`] : personFehlt(p);
       g = {
         key: q.spender, typ, adrnr: typ === 'M' ? id : null, spender_id: typ === 'X' ? Number(id) : null, name: p.name || `Adressnummer ${id}`, korrespondent: p.korrespondent || p.name,
-        anschrift: anschrift(p), email: p.email, fehlt, offen: [], bestaetigt: [], gesperrt: [], summe_offen: 0,
+        anschrift: anschrift(p), email: p.email, email_unzustellbar: !!p.unzustellbar, fehlt, offen: [], bestaetigt: [], gesperrt: [], summe_offen: 0,
       };
       gruppen.set(q.spender, g);
     }

@@ -76,7 +76,7 @@ export function ZuwendungKapitel() {
       <Panel headerText="Steuerbegünstigung (Bescheid des Finanzamts)" fixed>
         <FormGrid>
           <FieldBox label="Art des Bescheids" required>
-            <Select onChange={(e) => s('bescheid_art')(((e.detail.selectedOption as HTMLElement).dataset.a ?? '') as Cfg['bescheid_art'])}>
+            <Select style={{ width: '100%' }} onChange={(e) => s('bescheid_art')(((e.detail.selectedOption as HTMLElement).dataset.a ?? '') as Cfg['bescheid_art'])}>
               <Option data-a="" selected={!c.bescheid_art}>– bitte wählen –</Option>
               {c.bescheidarten.map((b) => <Option key={b.id} data-a={b.id} selected={c.bescheid_art === b.id}>{b.text} (höchstens {b.jahre} Jahre alt)</Option>)}
             </Select>

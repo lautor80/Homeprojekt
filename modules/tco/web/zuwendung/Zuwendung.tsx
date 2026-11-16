@@ -27,7 +27,7 @@ export interface Quelle {
   vorschlag: { adrnr: string; name: string } | null;
 }
 interface Spender {
-  key: string; typ: 'M' | 'X'; adrnr: string | null; spender_id: number | null; name: string; anschrift: string[]; email: string; fehlt: string[];
+  key: string; typ: 'M' | 'X'; adrnr: string | null; spender_id: number | null; name: string; anschrift: string[]; email: string; email_unzustellbar: boolean; fehlt: string[];
   offen: Quelle[]; bestaetigt: Quelle[]; gesperrt: Quelle[]; summe_offen: number;
 }
 interface Rueck { key: string; internenr: string; datum: string; betrag: number; text: string; kandidaten: string[] }
@@ -390,7 +390,7 @@ function SpenderDialog({ s, jahr, gesperrt, darf, onClose, onGeaendert, onVorsch
               <Button onClick={onGeaendert}>Schließen</Button>
             </DialogFuss>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
-      <Text style={{ display: 'block', marginBottom: '0.5rem' }}>{[s.name, ...s.anschrift].join(' · ')}{s.email ? ` · ${s.email}` : ' · keine E-Mail-Adresse'}</Text>
+      <Text style={{ display: 'block', marginBottom: '0.5rem' }}>{[s.name, ...s.anschrift].join(' · ')}{s.email ? ` · ${s.email}${s.email_unzustellbar ? ' (als unzustellbar vermerkt – bitte drucken)' : ''}` : ' · keine E-Mail-Adresse – bitte drucken'}</Text>
       {s.fehlt.length > 0 && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>Name und Anschrift des Zuwendenden sind unvollständig ({s.fehlt.join(', ')}) – bitte {s.typ === 'M' ? 'im Mitgliederstamm' : 'beim Spender'} ergänzen.</MessageStrip>}
       {haengt && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Eine Spende ist ungeklärt – bis dahin ist keine Sammelbestätigung möglich (Einzelbestätigungen der übrigen Spenden schon).</MessageStrip>}
       <div className="portal-ih__rahmen" style={{ maxHeight: '50vh', overflowY: 'auto' }}><table className="portal-ih__tabelle" style={{ width: '100%' }}>
