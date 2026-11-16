@@ -32,6 +32,9 @@ export interface Rechnung {
   offen: number;
   aenderbar: boolean;
   wiedereroeffnet: boolean;
+  /** Mahnwesen: Name der zuletzt zugestellten Stufe (z. B. „1. Mahnung“) und Tag der Zustellung – null, wenn nie gemahnt */
+  mahnstufe: string | null;
+  gemahnt_am: string | null;
 }
 
 export interface Buchung {
@@ -238,8 +241,11 @@ export async function rechnungenLesen(db: Db, sel: Selektion | null, kunde?: str
     select k.rgnr_txt, k.kunde, k.adrnr, k.betrag::float8 as betrag, k.status, k.angelegt_am::text, k.gedruckt::text,
            k.versendet::text, k.bezahlt::text, k.doknr,
            (select count(*)::int from tco.rgpos p where p.rgnr_txt = k.rgnr_txt) as anzahl,
-           coalesce((select sum(z.betrag)::float8 from tco.rgtz z where z.rgnr_txt = k.rgnr_txt), 0) as gezahlt
+           coalesce((select sum(z.betrag)::float8 from tco.rgtz z where z.rgnr_txt = k.rgnr_txt), 0) as gezahlt,
+           mp.stufe_name as mahnstufe, to_char(mp.erledigt_am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as gemahnt_am
       from tco.rgkopf k
+      left join lateral (select p.stufe_name, p.erledigt_am from tco.mahn_posten p
+                          where p.art = 'HALLE' and p.nr = k.rgnr_txt and p.status = 'GESENDET' order by p.stufe desc, p.id desc limit 1) mp on true
      where true
        ${rgnr ? db`and k.rgnr_txt = ${rgnr}` : db``}
        ${kunde ? db`and k.kunde = ${kunde}` : db``}

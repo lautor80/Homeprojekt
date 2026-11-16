@@ -38,6 +38,8 @@ export interface Rechnung {
   rgnr_txt: string; kunde: string; adrnr: string | null; betrag: number; status: string; angelegt_am: string | null;
   gedruckt: string | null; versendet: string | null; bezahlt: string | null; doknr: string | null; anzahl: number;
   gezahlt: number; offen: number; aenderbar: boolean; wiedereroeffnet: boolean;
+  /** Mahnwesen: zuletzt zugestellte Stufe und Tag der Zustellung */
+  mahnstufe?: string | null; gemahnt_am?: string | null;
 }
 export interface Buchung {
   bid: string; datum: string; time_start: string; time_ende: string; kunde: string; status: string; art: 'Abo' | 'Einzel';

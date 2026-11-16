@@ -124,6 +124,11 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     permissions: ['tco.soll:edit'],
   },
   {
+    id: 'tco.mahnung.automatik', app: 'Mahnwesen', text: 'Automatischer Mahnlauf',
+    beschreibung: 'Zahlungserinnerungen und Mahnungen laufen zeitgesteuert im Hintergrund (Zeitplan und Modus in den Einstellungen des Mahnwesens).',
+    hinweis: 'Abgeschaltet ruht nur die Automatik – der Lauf von Hand in der App „Mahnwesen“ bleibt. Unabhängig davon ist die Automatik erst aktiv, wenn sie in den Einstellungen eingeschaltet wurde.',
+  },
+  {
     id: 'tco.eingang.n8n', app: 'Dokumenteneingang', text: 'E-Mail-Eingang über n8n',
     beschreibung: 'n8n liefert eingegangene E-Mails samt Anhängen an das Portal (API-Schlüssel).',
     permissions: ['tco.eingang:melden'],

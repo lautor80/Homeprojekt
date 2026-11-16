@@ -48,6 +48,7 @@ import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
+import { mahnungRoutes, P_MAHN } from './mahnung/routes.js';
 
 const P = {
   stammdaten: 'tco.stammdaten:edit',
@@ -174,6 +175,7 @@ async function routes(app: FastifyInstance) {
   await eingangRoutes(app);
   await instandhaltungRoutes(app);
   await schluesselRoutes(app);
+  await mahnungRoutes(app);
 }
 
 import { TCO_PUSH_ARTEN } from './push.js';
@@ -266,6 +268,9 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.storno, text: 'FI-Belege stornieren' },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.geldkonto, text: 'Geldkonto bereits gebuchter FI-Belege austauschen (Umkontierung ohne Storno und ohne Änderungsbeleg; nicht in abgeschlossenen Perioden)', requires: [P_FI.display] },
     { area: 'Finanzen', app: 'FI-Belege', id: P_FI.periode, text: 'FI-Perioden (Monate) abschließen und wieder öffnen – danach keine Buchungen, Stornos oder Änderungen darin', requires: [P_FI.display] },
+    { area: 'Finanzen', app: 'Mahnwesen', id: P_MAHN.display, text: 'Mahnwesen ansehen: offene Posten mit Mahnstufe und nächstem Schritt, Vorschau des nächsten Laufs, Läufe mit Ergebnis je Posten, Mahnsperren; Vorschläge und nicht erreichbare Schuldner im Arbeitsvorrat' },
+    { area: 'Finanzen', app: 'Mahnwesen', id: P_MAHN.execute, text: 'Mahnlauf von Hand starten, Vorschläge freigeben oder verwerfen (versendet Zahlungserinnerungen und Mahnungen per E-Mail), Zustellung per Brief/Anruf vermerken, Mahnsperren setzen und aufheben', requires: [P_MAHN.display] },
+    { area: 'Finanzen', app: 'Mahnwesen', id: P_MAHN.admin, text: 'Einstellungen des Mahnwesens pflegen: Automatik ein/aus, Modus, Zeitplan, Zahlungsziel, Stufen mit Tagen und Gebühr, Mindestbetrag, Absender – Administration → Einstellungen → TC Oberthal', requires: [P_MAHN.display] },
     { area: 'Finanzen', app: 'Beitragsforecast', id: P_FORECAST.display, text: 'Beitragsforecast anzeigen' },
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
@@ -348,6 +353,9 @@ const tco: ServerModule = {
     { type: 'BEITRAG', text: 'Beitragsart', permission: P_BEITRAEGE.display },
     { type: 'ANLAGE', text: 'Anlageobjekt', permission: P_ABSCHLUSS.display },
     { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
+    { type: 'MAHNUNG', text: 'Mahnung (Posten eines Mahnlaufs)', permission: P_MAHN.display },
+    { type: 'MAHN_SPERRE', text: 'Mahnsperre', permission: P_MAHN.display },
+    { type: 'MAHN_CFG', text: 'Einstellungen Mahnwesen', permission: P_MAHN.display },
     { type: 'SOLL_CFG', text: 'Gläubigerdaten', permission: P_SOLL.display },
     { type: 'JT_ZEIT', text: 'Trainingszeit Jugendtraining', permission: P_JT.display },
     { type: 'JT_NACHWEIS', text: 'Zeitnachweis Jugendtraining', permission: P_JT.display },
