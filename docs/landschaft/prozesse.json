@@ -82,7 +82,7 @@
       "ausloeser": "Monatsende",
       "ergebnis": "Zeitnachweis in Paperless, Trainerentgelt bezahlt",
       "schritte": [
-        { "text": "Trainer meldet Zeiten (Meine Daten → Meine Zeiten)", "akteur": "TR", "system": "portal", "route": "POST /jt/meine/zeiten", "recht": "tco.jtmeine:edit", "app": "/tco/meine-daten" },
+        { "text": "Trainer meldet Zeiten (Mein Bereich → Meine Zeiten)", "akteur": "TR", "system": "portal", "route": "POST /jt/meine/zeiten", "recht": "tco.jtmeine:edit", "app": "/tco/meine-zeiten" },
         { "text": "Rückmeldungen aus Nextcloud holen", "akteur": "KW", "system": "n8n", "route": "POST /jt/import/nextcloud", "recht": "tco.jt:edit" },
         { "text": "Schulferien übernehmen", "akteur": "KW", "system": "n8n", "route": "POST /jt/ferien", "recht": "tco.jt:edit" },
         { "text": "Zeitnachweis freigeben", "akteur": "KW", "system": "portal", "route": "POST /jt/nachweis/freigeben", "recht": "tco.jt:edit", "app": "/tco/jugendtraining" },

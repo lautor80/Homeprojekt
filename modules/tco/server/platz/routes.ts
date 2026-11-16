@@ -40,6 +40,8 @@ import { mailFehlerErledigen, abweisen, aboLauf, aktion, bewerben, freigeben, ra
  */
 import { hatSchluessel, HALLE_HINWEIS } from './schluessel.js';
 import { paperless, plAktiv } from '../verein.js';
+import { positionenLesen } from '../halle/daten.js';
+import { rechnungsBaum } from './rechnungsbaum.js';
 
 export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
@@ -483,7 +485,7 @@ export async function platzRoutes(app: FastifyInstance) {
   /**
    * Meine Hallenrechnungen (Platz buchen → Meine Buchungen → Rechnungen): Rechnungen des Mitglieds bzw. EP3-Kunden, jüngste zuerst.
    * Zuordnung wie bei den Buchungen: Adressnummer oder gleicher Kundenname. „Aktuell“ ist, was noch läuft: die noch nicht versendete
-   * Rechnung („In Bearbeitung“) und offene; bezahlte und ausgebuchte sind „frühere“. Das PDF gibt es erst für gestellte Rechnungen.
+   * Rechnung („In Bearbeitung“) und offene – sie kommen mit allen Positionen als Baum (rechnungsbaum.ts); bezahlte und ausgebuchte sind „frühere“. Das PDF gibt es erst für gestellte Rechnungen.
    */
   const RG_STATUS: Record<string, string> = { '1': 'noch nicht versendet', '2': 'offen', '3': 'offen', '4': 'bezahlt', '5': 'teilbezahlt', '6': 'ausgebucht' };
   const meineRechnungen = async (i: { adrnr: string; kunde: string }, rgnr?: string, entwurf = false) => DB`
@@ -496,12 +498,14 @@ export async function platzRoutes(app: FastifyInstance) {
   app.get('/platz/rechnungen', buchen, async (req) => {
     const i = await ich(req);
     const v = await vereinLesen();
+    const liste = (await meineRechnungen(i, undefined, true)).map((r) => ({
+      rgnr: r.rgnr as string, jahr: Number(r.jahr), betrag: Number(r.betrag), datum: r.datum as string | null, bezahlt: r.bezahlt as string | null,
+      status: RG_STATUS[r.status as string] ?? 'offen', dokument: r.status !== '1' && !!r.doknr && plAktiv(v),
+      aktuell: !['4', '6'].includes(r.status as string), entwurf: r.status === '1',
+    }));
+    // die aktuelle(n) Rechnung(en) mit allen Positionen als Baum – auch die noch nicht versendete, zu der es noch kein Dokument gibt
     return {
-      rechnungen: (await meineRechnungen(i, undefined, true)).map((r) => ({
-        rgnr: r.rgnr as string, jahr: Number(r.jahr), betrag: Number(r.betrag), datum: r.datum as string | null, bezahlt: r.bezahlt as string | null,
-        status: RG_STATUS[r.status as string] ?? 'offen', dokument: r.status !== '1' && !!r.doknr && plAktiv(v),
-        aktuell: !['4', '6'].includes(r.status as string), entwurf: r.status === '1',
-      })),
+      rechnungen: await Promise.all(liste.map(async (r) => (r.aktuell ? { ...r, baum: rechnungsBaum(await positionenLesen(DB, r.rgnr)) } : r))),
     };
   });
   /** Rechnung als PDF aus Paperless (jüngste Fassung) – nur eigene Rechnungen */

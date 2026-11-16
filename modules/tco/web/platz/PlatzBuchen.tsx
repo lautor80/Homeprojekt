@@ -78,7 +78,7 @@ interface Abo {
 }
 interface AboTermin { datum: string; von: string; bis: string; storniert: boolean; stornierbar: boolean; stornierbar_bis: string | null; abgerechnet: boolean }
 interface Meine { ich: { name: string }; einzel: Einzel[]; abos: Abo[] }
-interface Rechnung { rgnr: string; jahr: number; betrag: number; datum: string | null; bezahlt: string | null; status: string; dokument: boolean; aktuell: boolean; entwurf: boolean }
+interface Rechnung { rgnr: string; jahr: number; betrag: number; datum: string | null; bezahlt: string | null; status: string; dokument: boolean; aktuell: boolean; entwurf: boolean; baum?: { titel: string; summe: number; positionen: { text: string; menge: string; betrag: number; storno: boolean }[] }[] }
 interface Entwurf { bid?: string; platz_id: number; datum: string; von: string; dauer: number; text: string }
 
 export const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -141,7 +141,8 @@ export function PlatzBuchen() {
     if (ansicht === 'meine' && art === 'rechnung') api.get<{ rechnungen: Rechnung[] }>(`${PB}/rechnungen`).then((r) => setRechnungen(r.rechnungen)).catch(fehler);
   }, [ansicht, art]); // eslint-disable-line react-hooks/exhaustive-deps
   const rgZeile = (r: Rechnung) => (
-    <div key={r.rgnr} className="portal-mz__eintrag portal-mz__eintrag--gesperrt portal-pb__rechnung">
+    <Fragment key={r.rgnr}>
+    <div className="portal-mz__eintrag portal-mz__eintrag--gesperrt portal-pb__rechnung">
       <Icon name="receipt" />
       <div style={{ minWidth: 0 }}>
         <div className="portal-mz__art">Rechnung {r.rgnr}</div>
@@ -155,6 +156,24 @@ export function PlatzBuchen() {
       </div>
       <div className="portal-mz__dauer"><div className="portal-mz__dauer-min">{eur(r.betrag)}</div></div>
     </div>
+    {/* aktuelle Rechnung: alle Positionen als Baum – Gruppe mit Anzahl und Summe, darunter die Positionen */}
+    {r.baum && (r.baum.length ? (
+      <div className="portal-pb__rgbaum">
+        {r.baum.map((g) => (
+          <details key={g.titel} className="portal-pb__rgjahr" open>
+            <summary><b>{g.titel}</b><span className="portal-muted"> · {g.positionen.length === 1 ? '1 Position' : `${g.positionen.length} Positionen`}</span><span className="portal-pb__rgbetrag">{eur(g.summe)}</span></summary>
+            {g.positionen.map((p, n) => (
+              <div key={n} className={`portal-pb__rgpos${p.storno ? ' portal-pb__rgpos--storno' : ''}`}>
+                <span className="portal-pb__rgtext">{p.text}</span>
+                <span className="portal-muted portal-small">{p.menge}</span>
+                <span className="portal-pb__rgbetrag">{eur(p.betrag)}</span>
+              </div>
+            ))}
+          </details>
+        ))}
+      </div>
+    ) : <div className="portal-pb__rgbaum portal-muted portal-small" style={{ padding: '0.5rem 1rem' }}>Diese Rechnung hat noch keine Positionen.</div>)}
+    </Fragment>
   );
   const [zeitraum, setZeitraum] = useState<'kommend' | 'vergangen'>('kommend');
   const [entwurf, setEntwurf] = useState<Entwurf | null>(null);

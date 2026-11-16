@@ -1,6 +1,6 @@
 # Projekte – Konzept
 
-Stand: freigegeben und umgesetzt (App Finanzen → Projekte, Meine Daten → Meine Zeiten). Bedienbares Mockup: [mockup.html](mockup.html).
+Stand: freigegeben und umgesetzt (App Finanzen → Projekte, Mein Bereich → Meine Zeiten). Bedienbares Mockup: [mockup.html](mockup.html).
 
 ## 1. Ziel
 
@@ -34,8 +34,7 @@ geleisteten Stunden** durch die Mitglieder selbst.
 ermittelt, meldet Datum, Trainingsart und Dauer, gibt den Monat frei; daraus entstehen Zeitnachweis und Auszahlung.
 
 ### Vorschlag
-- **Ein Ort:** Die Zeiterfassung wird der Reiter **Meine Zeiten** in der App **Meine Daten**. Der Menüpunkt
-  „Meine Trainingszeiten“ entfällt; die alte Adresse leitet weiter.
+- **Ein Ort:** Die Zeiterfassung ist die eigene App **Meine Zeiten** im Menü **Mein Bereich** (`/tco/meine-zeiten`) – ausdrücklich nicht in „Meine Daten“ (nachträglich so entschieden). Sie ersetzt den Menüpunkt „Meine Trainingszeiten“.
 - **Zwei Arten von Zeit**, klar getrennt:
   - **Training** – unverändert: Trainingsart, Dauer, Entgelt, Monatsfreigabe, Zeitnachweis, Auszahlung.
   - **Projekt** – neu: Datum, Projekt, optional Vorgang, Stunden, Tätigkeit. Unbezahlt; zählt als Eigenleistung des
@@ -74,7 +73,7 @@ erfasst von, bestätigt von/am, Begründung) mit Änderungsbelegen. Die Tabellen
 | Externer Verrechnungssatz | Vorgabe je Projekt, je Zeile überschreibbar |
 | Selbstanmeldung zu Arbeitseinsätzen | nein, der Verantwortliche plant ein |
 | Ändern nach der Genehmigung | Termine und Ressourcen mit Planungsrecht; Kosten nur, wer genehmigen darf |
-| Ort der Zeiterfassung | Reiter „Meine Zeiten“ in „Meine Daten“; „Meine Trainingszeiten“ als Menüpunkt entfällt, die alte Adresse leitet weiter |
+| Ort der Zeiterfassung | Eigene App „Meine Zeiten“ in „Mein Bereich“ (ersetzt „Meine Trainingszeiten“); nicht in „Meine Daten“ |
 | Wer meldet auf ein Projekt | eingeplante Mitglieder – und alle Mitglieder, wenn das Projekt „offen für alle Mitglieder“ ist |
 | Bestätigung | ja, durch den Planer; nur bestätigte Stunden zählen |
 

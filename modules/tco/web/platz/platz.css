@@ -282,3 +282,16 @@
 [data-portal-theme='dunkel'] :is(.portal-pb__zeiten, .portal-pb__legende--preise) .portal-hpw__f4 { --hf-bg: #461b27; --hf: #f07592; }
 [data-portal-theme='dunkel'] .portal-pb__zeiten--preise .portal-pb__stunde { color: #f5f6f7; text-shadow: 0 0 2px rgba(0, 0, 0, 0.6); }
 [data-portal-theme='dunkel'] .portal-pb__zone { border-bottom-color: var(--sapGroup_ContentBackground, #1d232a); }
+
+/* Aktuelle Rechnung: Positionen als Baum (Gruppe → Positionen), Beträge rechtsbündig in einer Flucht */
+.portal-pb__rgbaum { border-top: 1px solid var(--sapList_BorderColor); }
+.portal-pb__rgbaum .portal-pb__rgjahr > summary { display: flex; align-items: baseline; gap: 0.25rem; }
+.portal-pb__rgbaum .portal-pb__rgjahr > summary::before { content: '▶'; font-size: 0.625rem; color: var(--sapContent_IconColor); margin-right: 0.25rem; }
+.portal-pb__rgbaum .portal-pb__rgjahr[open] > summary::before { content: '▼'; }
+.portal-pb__rgbaum .portal-pb__rgjahr > summary { list-style: none; }
+.portal-pb__rgbaum .portal-pb__rgjahr > summary::-webkit-details-marker { display: none; }
+.portal-pb__rgpos { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.125rem 0.75rem; padding: 0.375rem 1rem 0.375rem 2.25rem; border-top: 1px solid var(--sapList_BorderColor); }
+.portal-pb__rgtext { flex: 1 1 12rem; min-width: 0; }
+.portal-pb__rgbetrag { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 700; }
+.portal-pb__rgpos .portal-pb__rgbetrag { font-weight: 400; }
+.portal-pb__rgpos--storno .portal-pb__rgtext { text-decoration: line-through; color: var(--sapContent_LabelColor); }

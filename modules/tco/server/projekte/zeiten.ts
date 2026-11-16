@@ -6,7 +6,7 @@ import type { Db } from '../verein.js';
 /**
  * Projekte – Rückmeldung der geleisteten Stunden.
  *
- * Mitglieder melden ihre Stunden selbst (Meine Daten → Meine Zeiten → Projekt): die Person kommt allein aus dem
+ * Mitglieder melden ihre Stunden selbst (Mein Bereich → Meine Zeiten → Projekt): die Person kommt allein aus dem
  * angemeldeten Benutzer (tco.mitgliedera.benutzer_id), nie aus der Anfrage. Melden darf, wer im Projekt eingeplant ist
  * – oder jedes Mitglied, wenn das Projekt „offen für alle“ ist – und nur auf genehmigte und laufende Projekte.
  * Der Planer bestätigt oder weist zurück; im Soll-Ist zählen nur bestätigte Stunden. Für Helfer ohne Zugang erfasst der

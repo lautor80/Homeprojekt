@@ -36,7 +36,8 @@ import { SchnupperVerwaltung } from './schnupper/SchnupperVerwaltung';
 import { RegistrierungBestaetigen } from './platz/RegistrierungBestaetigen';
 import { ZugaengeApp } from './platz/ZugaengeApp';
 import { RollenabgleichKnopf } from './benutzer/Rollenabgleich';
-import { MeineDatenApp, ZuMeinenZeiten } from './platz/MeineDaten';
+import { MeineDatenApp } from './platz/MeineDaten';
+import { MeineZeitenApp } from './projekte/MeineZeitenApp';
 import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
 import { Haushaltsplan } from './haushalt/Haushaltsplan';
@@ -146,10 +147,11 @@ const mod: WebModule = {
           text: 'Mein Bereich', icon: 'person-placeholder',
           children: [
             // eine App für Mitglieder und Hallennutzer (#232, N2) – der Inhalt richtet sich danach, was man ist
-            // mit dem Reiter „Meine Zeiten“ (Training und Projekt) – auch für Trainer ohne eigene Mitgliedsdaten
-            { text: 'Meine Daten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit|tco.jtmeine:edit|tco.projektzeiten:edit' },
+            { text: 'Meine Daten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
             { text: 'Platz buchen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
             { text: 'Mein Verzehr', icon: 'cart', path: '/tco/verzehr', permission: 'tco.verzehr:edit' },
+            // eigene Zeiterfassung: Trainingszeiten (Trainer) und Projektstunden (Mitglieder) in einer App
+            { text: 'Meine Zeiten', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit|tco.projektzeiten:edit' },
             { text: 'Schaden melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
           ],
         },
@@ -242,7 +244,7 @@ const mod: WebModule = {
     // bisherige App „Hallenpreise“: jetzt die Sicht „Hallenpreise (Wochenplan)“ von „Produkte und Preise“ – alte Adresse bleibt gültig
     { path: '/tco/hallenpreise', component: ZuHallenpreisen, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },
-    { path: '/tco/meine-daten', component: MeineDatenApp, permission: 'tco.meinedaten:edit|tco.meinkonto:edit|tco.jtmeine:edit|tco.projektzeiten:edit' },
+    { path: '/tco/meine-daten', component: MeineDatenApp, permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
     { path: '/tco/platzverwaltung', component: Platzverwaltung, permission: 'tco.platz:admin' },
     { path: '/tco/serienbuchung', component: Serienbuchung, permission: 'tco.platz:serie' },
     { path: '/tco/sollstellung', component: Sollstellung, permission: 'tco.soll:display' },
@@ -277,7 +279,7 @@ const mod: WebModule = {
     { path: '/tco/haushalt', component: Haushaltsplan, permission: 'tco.haushalt:display' },
     { path: '/tco/projekte', component: Projektplanung, permission: 'tco.projekte:display' },
     { path: '/tco/zuwendung', component: Zuwendung, permission: 'tco.zuwendung:display' },
-    { path: '/tco/meine-zeiten', component: ZuMeinenZeiten, permission: 'tco.jtmeine:edit|tco.projektzeiten:edit' },
+    { path: '/tco/meine-zeiten', component: MeineZeitenApp, permission: 'tco.jtmeine:edit|tco.projektzeiten:edit' },
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
     { path: '/tco/schaden', component: SchadenMelden, permission: 'tco.schaden:melden' },
     { path: '/tco/instandhaltung', component: Instandhaltung, permission: 'tco.instandhaltung:display' },
@@ -311,7 +313,7 @@ const mod: WebModule = {
     { text: 'Meine Zeiten', subtitle: 'Trainingszeiten und Projektstunden zurückmelden', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit|tco.projektzeiten:edit' },
     { text: 'Hallenabrechnung', subtitle: 'EP3-Buchungen abrechnen', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display', kpi: kpiHalle },
     { text: 'Platz buchen', subtitle: 'Freiplätze und Halle – eigene Buchungen mit Preisen', icon: 'appointment', path: '/tco/platz-buchen', permission: 'tco.platzbuchung:edit' },
-    { text: 'Meine Daten', subtitle: 'Kontakt, Bankverbindung, Verträge, Kündigung, Meine Zeiten', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
+    { text: 'Meine Daten', subtitle: 'Kontakt, Bankverbindung, Verträge, Kündigung', icon: 'customer', path: '/tco/meine-daten', permission: 'tco.meinedaten:edit|tco.meinkonto:edit' },
     { text: 'Serienbuchung', subtitle: 'Hallenwart: mehrere Plätze, Stunden, Abos', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
     { text: 'Platzverwaltung', subtitle: 'Plätze, Buchungsregeln, Belegung, Abos', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
     { text: 'Clubhausabrechnung', subtitle: 'Getränkerechnungen, Forderungsliste, Absatz', icon: 'meal', path: '/tco/clubhaus', permission: 'tco.clubhaus:display', kpi: kpiClubhaus },

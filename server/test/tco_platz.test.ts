@@ -1398,3 +1398,34 @@ test('Platz buchen für die Familie: Rechnung an die Person bzw. ihren abweichen
   await sql`delete from tco.mitgliedera where adrnr in (${VERA}, ${KAI})`;
   await sql`delete from tco.mitglieder where adrnr in (${VERA}, ${KAI}, ${GERD}, ${LEA})`;
 });
+
+test('Meine Rechnungen: die aktuelle Rechnung kommt mit allen Positionen als Baum, frühere ohne', async () => {
+  const { KEY_ABO, KEY_EINZEL } = await import('../../modules/tco/server/halle/preis.js');
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, adrnr, betrag, status, angelegt_am) values
+    ('2026_901', 2026, 901, 'BAUM TEST', ${ANNA}, 105, '1', '2026-10-30'), ('2026_900', 2026, 900, 'BAUM TEST', ${ANNA}, 50, '4', '2026-03-01'),
+    ('2026_902', 2026, 902, 'FREMD', ${BERT}, 77, '1', '2026-10-30')`;
+  await sql`insert into tco.rgpos (rgnr_txt, rgpos, bid, datum, time_start, time_ende, dauer, prod_key, preis, description) values
+    ('2026_901', 1, 'BAUM-ABO', null, '18:00', '19:00', '120', ${KEY_ABO[0]}, 60, null),
+    ('2026_901', 2, 'BAUM-E1', '2026-10-05', '10:00', '11:00', '60', ${KEY_EINZEL[0]}, 20, null),
+    ('2026_901', 3, 'BAUM-E2', '2026-10-12', '10:00', '11:30', '90', ${KEY_EINZEL[0]}, 30, null),
+    ('2026_901', 4, null, null, null, null, '1', '093', -5, 'Kulanz'),
+    ('2026_900', 1, 'BAUM-ALT', '2026-02-01', '10:00', '11:00', '60', ${KEY_EINZEL[0]}, 50, null),
+    ('2026_902', 1, 'BAUM-FREMD', '2026-10-01', '10:00', '11:00', '60', ${KEY_EINZEL[0]}, 77, null)`;
+  try {
+    const r = await anna('GET', `${P}/rechnungen`);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const rg = (nr: string) => r.body.rechnungen.find((x: { rgnr: string }) => x.rgnr === nr);
+    assert.equal(rg('2026_902'), undefined, 'fremde Rechnung nicht sichtbar');
+    assert.equal(rg('2026_900').baum, undefined, 'frühere Rechnung ohne Baum');
+    const baum = rg('2026_901').baum as { titel: string; summe: number; positionen: { text: string; menge: string; betrag: number }[] }[];
+    assert.deepEqual(baum.map((g) => [g.titel, g.positionen.length, g.summe]), [['Abo', 1, 60], ['Einzelbuchungen', 2, 50], ['Weitere Positionen', 1, -5]]);
+    assert.equal(baum.reduce((s, g) => s + g.summe, 0), rg('2026_901').betrag, 'die Gruppen ergeben den Rechnungsbetrag');
+    assert.match(baum[1].positionen[1].text, /12\.10\.2026.*10:00 - 11:30 Uhr/);
+    assert.match(baum[1].positionen[1].menge, /^1,5 Std\. × 20,00 €$/);
+    assert.equal(baum[2].positionen[0].text, 'Kulanz');
+    assert.equal(JSON.stringify(baum).includes('konto'), false, 'keine Kontierung für das Mitglied');
+  } finally {
+    await sql`delete from tco.rgpos where rgnr_txt in ('2026_900', '2026_901', '2026_902')`;
+    await sql`delete from tco.rgkopf where rgnr_txt in ('2026_900', '2026_901', '2026_902')`;
+  }
+});
