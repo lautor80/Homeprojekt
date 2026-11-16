@@ -83,6 +83,13 @@ export const K = {
     platzhalter: [{ name: 'titel', text: 'Titel laut Abschluss', beispiel: 'Jahresabschluss 2026' }, { name: 'jahr', text: 'Jahr', beispiel: 2026 }, { name: 'ergebnis', text: 'Ergebnis', beispiel: 4321 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
     standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Buchhaltung', datum: '{jahr}-12-31', felder: { Betrag: '{ergebnis}', DOKID: '{dokid}' } },
   },
+  haushalt: {
+    id: 'haushalt.plan', text: 'Haushaltsplan',
+    beschreibung: 'PDF des Haushaltsplans für die Mitgliederversammlung (App Haushaltsplan → PDF → In Paperless ablegen).',
+    platzhalter: [{ name: 'titel', text: 'Titel laut Plan', beispiel: 'Haushaltsplan 2027' }, { name: 'jahr', text: 'Geschäftsjahr des Plans', beispiel: 2027 }, { name: 'fassung', text: 'Fassung', beispiel: 1 },
+      { name: 'status', text: 'Status der Fassung', beispiel: 'vom Vorstand beschlossen' }, { name: 'ergebnis', text: 'geplantes Ergebnis', beispiel: 4321 }, PH.verein, PH.heute, PH.benutzer, PH_DOKID],
+    standard: { titel: '{titel}', korrespondent: '{verein}', speicherpfad: 'Buchhaltung', datum: '{heute}', felder: { Betrag: '{ergebnis}', DOKID: '{dokid}' } },
+  },
   lsvs: {
     id: 'lsvs.bestandsmeldung', text: 'LSVS-Bestandsmeldung (Ausdruck eines Laufs)',
     beschreibung: 'Ausdruck der Zahlen, die mit einem Lauf der LSVS-Bestandsmeldung als Austauschdatei für das LSVSnet erzeugt wurden.',

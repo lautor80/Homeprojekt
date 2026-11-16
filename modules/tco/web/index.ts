@@ -38,6 +38,8 @@ import { RollenabgleichKnopf } from './benutzer/Rollenabgleich';
 import { MeineDatenApp } from './platz/MeineDaten';
 import { Einladung } from './mitglieder/Einladung';
 import { Jahresabschluss } from './abschluss/Jahresabschluss';
+import { Haushaltsplan } from './haushalt/Haushaltsplan';
+import { HaushaltKapitel } from './haushalt/Einstellungen';
 import { MeineZeiten } from './jt/MeineZeiten';
 import { Ablage } from './upload/Ablage';
 import { tcoZusatz } from './dashboard/Arbeitsvorrat';
@@ -80,6 +82,13 @@ const kpiClubhaus = async (): Promise<TileKpi> => {
   return { value: eur(s.saldo), label: s.saldo > 0 ? 'Saldo zugunsten Verein' : 'Saldo ausgeglichen', state: s.saldo > 0 ? 'Critical' : 'Positive' };
 };
 
+// überschrittene Budgets des laufenden Jahres (nur gegen einen beschlossenen Plan; Funktion „tco.haushalt.ueberwachung“)
+const kpiHaushalt = async (): Promise<TileKpi> => {
+  const k = await api.get<{ jahr: number; aktiv: boolean; plan: boolean; ueberschritten: number; beobachten: number }>(`${TCO}/haushalt/kennzahl`);
+  if (!k.aktiv || !k.plan) return { value: '–', label: k.aktiv ? `kein beschlossener Plan ${k.jahr}` : 'Überwachung abgeschaltet' };
+  return { value: String(k.ueberschritten), label: k.ueberschritten === 1 ? 'Budget überschritten' : 'Budgets überschritten', state: k.ueberschritten ? 'Negative' : k.beobachten ? 'Critical' : 'Positive' };
+};
+
 /** TC Oberthal – Vereinsportal (Port der abap2UI5-Apps) */
 const mod: WebModule = {
   id: 'tco',
@@ -109,6 +118,7 @@ const mod: WebModule = {
     { id: 'finanzen', text: 'Finanzen', icon: 'loan', permission: 'tco.stammdaten:edit', component: VereinFinanzen },
     // Übersicht über alle Kapitel: welcher Vorgang bebucht welches Konto (#232, E4)
     { id: 'kontenfindung', text: 'Kontenfindung', icon: 'accounting-document-verification', permission: 'tco.stammdaten:edit|tco.soll:glaeubiger|tco.clubhaus:display|tco.verzehr:display|tco.schluessel:admin', component: Kontenfindung },
+    { id: 'haushalt', text: 'Haushaltsplan', icon: 'expense-report', permission: 'tco.haushalt:admin', component: HaushaltKapitel },
     { id: 'beitragseinzug', text: 'Beitragseinzug', icon: 'money-bills', permission: 'tco.soll:glaeubiger', component: GlaeubigerKapitel },
     { id: 'hallenschluessel', text: 'Hallenschlüssel', icon: 'key', permission: 'tco.schluessel:admin', component: SchluesselKapitel },
     { id: 'clubhaus', text: 'Clubhaus', icon: 'meal', permission: 'tco.clubhaus:edit', component: ClubhausKapitel },
@@ -204,6 +214,7 @@ const mod: WebModule = {
             { text: 'Beitragsforecast', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },
             { text: 'Einnahmen und Ausgaben', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
             { text: 'Jahresabschluss', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
+            { text: 'Haushaltsplan', icon: 'simulate', path: '/tco/haushalt', permission: 'tco.haushalt:display' },
             { text: 'Zuwendungsbestätigungen', icon: 'signature', path: '/tco/zuwendung', permission: 'tco.zuwendung:display' },
             { text: 'Kontenstamm', icon: 'list', path: '/tco/konten', permission: 'tco.konten:display' },
           ],
@@ -259,6 +270,7 @@ const mod: WebModule = {
     // alte Adresse (Arbeitsvorrat, Lesezeichen): dieselbe App, Reiter Registrierungen → Mitglieder
     { path: '/tco/registrierungen', component: ZugaengeApp, permission: 'tco.registrierung:mitglied' },
     { path: '/tco/abschluss', component: Jahresabschluss, permission: 'tco.abschluss:display' },
+    { path: '/tco/haushalt', component: Haushaltsplan, permission: 'tco.haushalt:display' },
     { path: '/tco/zuwendung', component: Zuwendung, permission: 'tco.zuwendung:display' },
     { path: '/tco/meine-zeiten', component: MeineZeiten, permission: 'tco.jtmeine:edit' },
     { path: '/tco/dokumenteneingang', component: Dokumenteneingang, permission: 'tco.eingang:display' },
@@ -310,6 +322,7 @@ const mod: WebModule = {
     { text: 'Beitragsforecast', subtitle: 'Hochrechnung der Beitragseinnahmen', icon: 'trend-up', path: '/tco/forecast', permission: 'tco.forecast:display' },
     { text: 'Einnahmen und Ausgaben', subtitle: 'Jahresübersicht, Geldkonten, Liquidität', icon: 'bar-chart', path: '/tco/finanz', permission: 'tco.finanz:display' },
     { text: 'Jahresabschluss', subtitle: 'EAR, Vermögensübersicht, Anlagevermögen', icon: 'expense-report', path: '/tco/abschluss', permission: 'tco.abschluss:display' },
+    { text: 'Haushaltsplan', subtitle: 'Budget je Konto, Soll-Ist, Liquidität, Vorhaben', icon: 'simulate', path: '/tco/haushalt', permission: 'tco.haushalt:display', kpi: kpiHaushalt },
     { text: 'Zuwendungsbestätigungen', subtitle: 'Spendenbescheinigungen: Einzel, Sammel, Jahreslauf', icon: 'signature', path: '/tco/zuwendung', permission: 'tco.zuwendung:display' },
     { text: 'Dokumenten-Upload', subtitle: 'Belege gesammelt nach Paperless', icon: 'upload-to-cloud', path: '/tco/upload', permission: 'tco.upload:execute' },
     { text: 'Dokumenteneingang', subtitle: 'E-Mails und Anhänge nach Regeln ablegen, Prüfliste', icon: 'inbox', path: '/tco/dokumenteneingang', permission: 'tco.eingang:display', kpi: kpiEingang },

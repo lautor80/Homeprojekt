@@ -48,6 +48,7 @@ import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
+import { haushaltRoutes, P_HH } from './haushalt/routes.js';
 import { zuwendungRoutes } from './zuwendung/routes.js';
 import { P_ZUW } from './zuwendung/logik.js';
 import { mahnungRoutes, P_MAHN } from './mahnung/routes.js';
@@ -178,6 +179,7 @@ async function routes(app: FastifyInstance) {
   await eingangRoutes(app);
   await instandhaltungRoutes(app);
   await schluesselRoutes(app);
+  await haushaltRoutes(app);
   await mahnungRoutes(app);
 }
 
@@ -278,6 +280,9 @@ const tco: ServerModule = {
     { area: 'Finanzen', app: 'Einnahmen und Ausgaben', id: P_FINANZ.display, text: 'Einnahmen und Ausgaben anzeigen' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.display, text: 'Jahresabschluss anzeigen (EAR, Vermögensübersicht, Anlagenspiegel, PDF)' },
     { area: 'Finanzen', app: 'Jahresabschluss', id: P_ABSCHLUSS.edit, text: 'Anlagevermögen pflegen, Abschluss in Paperless ablegen' },
+    { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.display, text: 'Haushaltsplan ansehen: Planwerte je Konto, Soll-Ist-Vergleich, Liquiditätsvorschau, Vorhaben, PDF; überschrittene Budgets im Arbeitsvorrat' },
+    { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.edit, text: 'Haushaltsplan planen: Plan anlegen, Methode und Planwerte ändern, Sondereffekte, Monatsverlauf, einmalige Vorhaben, Ablage in Paperless', requires: [P_HH.display] },
+    { area: 'Finanzen', app: 'Haushaltsplan', id: P_HH.admin, text: 'Haushaltsplan beschließen und genehmigen, Nachtrag anlegen, Entwurf löschen, Einstellungen pflegen (Toleranzen, Mindestreserve, Grundlage) – Administration → Einstellungen → TC Oberthal', requires: [P_HH.display] },
     { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.display, text: 'Zuwendungsbestätigungen ansehen: Vorschlagsliste der Spenden je Jahr und Spender (mit Name und Anschrift), Vorschau, ausgestellte Bestätigungen und ihr PDF' },
     { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.execute, text: 'Zuwendungsbestätigungen ausstellen (einzeln, Sammelbestätigung, Jahreslauf), Spender zuordnen und erfassen, in Paperless ablegen, per E-Mail senden bzw. als gedruckt vermerken, stornieren', requires: [P_ZUW.display] },
     { area: 'Finanzen', app: 'Zuwendungsbestätigungen', id: P_ZUW.admin, text: 'Einstellungen der Zuwendungsbestätigungen pflegen (Bescheid des Finanzamts, Unterzeichner, Spendenkonten und -Beitragsarten, Textbausteine) – Administration → Einstellungen → TC Oberthal', requires: [P_ZUW.display] },
@@ -358,6 +363,9 @@ const tco: ServerModule = {
     { type: 'FIBANKAB', text: 'Anfangs-/Endbestand Geldkonto', permission: P_KONTEN.display },
     { type: 'BEITRAG', text: 'Beitragsart', permission: P_BEITRAEGE.display },
     { type: 'ANLAGE', text: 'Anlageobjekt', permission: P_ABSCHLUSS.display },
+    { type: 'HH_PLAN', text: 'Haushaltsplan (Fassung, Positionen, Monatswerte, Vorhaben)', permission: P_HH.display },
+    { type: 'HH_SONDEREFFEKT', text: 'Haushaltsplan: Sondereffekt / Vorgängerkonto eines Kontos', permission: P_HH.display },
+    { type: 'HH_CFG', text: 'Einstellungen Haushaltsplan', permission: P_HH.display },
     { type: 'SOLLSTELLUNG', text: 'Sollstellung', permission: P_SOLL.display },
     { type: 'MAHNUNG', text: 'Mahnung (Posten eines Mahnlaufs)', permission: P_MAHN.display },
     { type: 'MAHN_SPERRE', text: 'Mahnsperre', permission: P_MAHN.display },

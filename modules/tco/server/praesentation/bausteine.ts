@@ -19,12 +19,15 @@ import { chartClubhaus, chartHalleJahre, chartMtgJahre, chartMtgMonate } from '.
 import { liquiditaet, monatsverlauf } from '../dashboard/finanzen.js';
 import { benutzerVerlauf } from '../dashboard/benutzer.js';
 import type { Diagramm, Tabelle } from './pptx.js';
+import { gueltigerPlan, planLesen, sollIst } from '../haushalt/logik.js';
 
 export type DiagrammArt = 'LINIE' | 'SAEULEN';
 export interface KatalogEintrag { key: string; titel: string; bereich: string; art?: DiagrammArt }
 export interface Katalog { kpis: KatalogEintrag[]; diagramme: KatalogEintrag[]; tabellen: KatalogEintrag[] }
 
 const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+/** ohne Haushaltsplan: eine leere Reihe statt eines Diagramms ohne Daten */
+const OHNE_PLAN = [{ name: 'kein Haushaltsplan', werte: Array.from({ length: 12 }, () => 0) }];
 const de = (v: number, nk = 2) => v.toLocaleString('de-DE', { minimumFractionDigits: nk, maximumFractionDigits: nk });
 
 interface DiagrammDef { titel: string; bereich: string; art: DiagrammArt; laden: (db: Db, jahr: number) => Promise<Diagramm> }
@@ -60,6 +63,25 @@ export const DIAGRAMME: Record<string, DiagrammDef> = {
     titel: 'Hallenbuchungen der letzten fünf Jahre (Stunden)', bereich: 'Halle', art: 'SAEULEN',
     laden: async (db) => { const d = await chartHalleJahre(db); return { kategorien: d.map((x) => x.label), serien: [{ name: 'Gebuchte Stunden', werte: d.map((x) => x.val1) }] }; },
   },
+  // Haushaltsplan: gültige Fassung des Jahres (ohne Plan bleibt das Diagramm leer)
+  HH_SOLLIST: {
+    titel: 'Haushaltsplan: Ausgaben Plan und Ist, aufgelaufen', bereich: 'Finanzen', art: 'LINIE',
+    laden: async (db, j) => {
+      const s = await sollIst(db, j);
+      const bis = s.verlauf.A.ist.filter((x) => x !== null).length;
+      return { kategorien: MON, serien: s.plan ? [{ name: 'Plan', werte: s.verlauf.A.plan }, { name: 'Ist', werte: s.verlauf.A.ist.slice(0, bis).map((x) => x ?? 0) }] : OHNE_PLAN };
+    },
+  },
+  HH_LIQ: {
+    titel: 'Haushaltsplan: Geldbestand je Monatsende laut Plan', bereich: 'Finanzen', art: 'LINIE',
+    laden: async (db, j) => {
+      const p = await gueltigerPlan(db, j);
+      if (!p) return { kategorien: MON, serien: OHNE_PLAN };
+      const l = (await planLesen(db, p.id)).liquiditaet;
+      return { kategorien: MON, serien: [{ name: 'Geldbestand laut Plan', werte: l.monate.map((m) => m.bestand) },
+        ...(l.mindestreserve !== null ? [{ name: 'Mindestreserve', werte: l.monate.map(() => l.mindestreserve!) }] : [])] };
+    },
+  },
   BENUTZER: {
     titel: 'Registrierte Portal-Benutzer (24 Monate)', bereich: 'Portal', art: 'LINIE',
     laden: async (db) => {
@@ -74,6 +96,7 @@ export const TABELLEN: Record<string, { titel: string; bereich: string }> = {
   CLUB_OP: { titel: 'Offene Posten Clubhaus', bereich: 'Clubhaus' },
   CLUB_UMSATZ: { titel: 'Clubhaus: Umsatz je Monat', bereich: 'Clubhaus' },
   MTG_JUBILAEUM: { titel: 'Beitragsstufenwechsel', bereich: 'Mitglieder' },
+  HH_PLAN: { titel: 'Haushaltsplan nach Tätigkeitsbereichen', bereich: 'Finanzen' },
 };
 
 async function alleKpis(db: Db, jahr: number): Promise<(Kpi & { bereich: string })[]> {
@@ -92,7 +115,24 @@ export async function katalog(db: Db, jahr: number): Promise<Katalog> {
   };
 }
 
+/** Haushaltsplan des Jahres (gültige Fassung): Einnahmen, Ausgaben und Ergebnis je Tätigkeitsbereich, Vorhaben, Summe */
+async function tabelleHaushalt(db: Db, jahr: number): Promise<Tabelle> {
+  const kopf = ['Tätigkeitsbereich', 'Einnahmen', 'Ausgaben', 'Ergebnis'];
+  const p = await gueltigerPlan(db, jahr);
+  if (!p) return { kopf, zeilen: [[`Für ${jahr} gibt es keinen Haushaltsplan`, '', '', '']] };
+  const s = await planLesen(db, p.id);
+  const z = (t: string, e: number, a: number) => [t, de(e), de(a), de(e - a)];
+  return {
+    kopf, zeilen: [
+      ...s.bereiche.map((b) => z(b.text, b.einnahmen, b.ausgaben)),
+      ...(s.summen.vorhaben_e || s.summen.vorhaben_a ? [z('Einmalige Vorhaben', s.summen.vorhaben_e, s.summen.vorhaben_a)] : []),
+      z(`Haushaltsplan ${jahr} (${p.status_text})`, s.summen.einnahmen, s.summen.ausgaben),
+    ],
+  };
+}
+
 export async function tabelleLaden(db: Db, key: string, jahr: number): Promise<Tabelle | undefined> {
+  if (key === 'HH_PLAN') return tabelleHaushalt(db, jahr);
   const d = key === 'HAL_ABR' ? await detailHalleOffen(db) : key === 'CLUB_OP' ? await detailClubhausOp(db, jahr)
     : key === 'CLUB_UMSATZ' ? await detailClubhausUmsatz(db, jahr) : key === 'MTG_JUBILAEUM' ? await detailBeitragswechsel(db) : null;
   if (!d) return undefined;

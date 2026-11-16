@@ -1,7 +1,7 @@
 # Haushaltsplan – Konzept (Stand 15.11.2026)
 
 Dieses Dokument beschreibt, wie ein Haushaltsplan (Budget je Konto mit Soll-Ist-Vergleich) in das Vereinsportal passt.
-**Es ist noch nichts davon umgesetzt.** Zum Anschauen gibt es ein klickbares Mockup mit erfundenen Zahlen:
+**Umgesetzt** als App *Finanzen → Haushaltsplan* – was genau, steht in Abschnitt 9 „Umsetzungsstand“. Das klickbare Mockup mit erfundenen Zahlen war die Vorlage:
 [`mockup.html`](mockup.html) (Datei herunterladen und im Browser öffnen), Bildschirmfotos stehen unten.
 
 ## 1 Ziel
@@ -131,3 +131,75 @@ Neue Tabellen im Schema `tco` (alle mit Änderungsbelegen):
 3. Welche Toleranz gilt als Abweichung (Vorschlag 5 % beobachten, 10 % überschritten) und welche Mindestreserve?
 4. Sollen Überschreitungen nur angezeigt werden, oder soll das Portal beim Buchen auf ein ausgeschöpftes Budget hinweisen?
 5. Ab welchem Jahr sind die aus SAP übernommenen Buchungen vollständig genug, um als Grundlage zu dienen?
+
+## 9 Umsetzungsstand (16.11.2026)
+
+Alle drei Stufen aus Abschnitt 7 sind umgesetzt: App *Finanzen → Haushaltsplan* (`/tco/haushalt`), Migration
+`088_haushaltsplan.sql`, Code `modules/tco/server/haushalt` (`vorschlag.ts` Rechenkern, `logik.ts`, `routes.ts`, `pdf.ts`) und
+`modules/tco/web/haushalt`, Tests `server/test/tco_haushalt_vorschlag.test.ts` (Rechenkern) und `server/test/tco_haushalt.test.ts`.
+
+### Entscheidungen zu den offenen Fragen (Abschnitt 8)
+
+Sie gelten, bis der Vorstand anderes sagt; was eine Einstellung ist, steht unter *Administration → Einstellungen → TC Oberthal → Haushaltsplan*.
+
+| Frage | Entscheidung |
+|---|---|
+| 1 Ebene | Geplant wird je Konto; die Anzeige gruppiert nach Einnahmen/Ausgaben und Tätigkeitsbereich (Kennzahl A–D) mit Zwischensummen. |
+| 2 Beschluss | Entwurf → vom Vorstand beschlossen → von der Mitgliederversammlung genehmigt; „genehmigt“ ist optional (Einstellung, ob der Schritt angeboten wird). Ab „beschlossen“ unveränderlich, Änderungen nur als Nachtrag. |
+| 3 Toleranz | 5 % beobachten, 10 % überschritten (Einstellung). Mindestreserve: Vorgabe leer = der Geldbestand wird nicht bewertet. Ausreißerschwelle 50 % Abweichung vom Median (Einstellung). |
+| 4 Überschreitung | Nur Anzeige: App, Arbeitsvorrat des Kassenwarts, Kennzahl der Kachel. Kein Eingriff in die FI-Buchung. |
+| 5 Grundlage | Einstellung „Grundlage ab Jahr“; Vorgabe leer = alle vorhandenen Jahre, höchstens die letzten sechs abgeschlossenen vor dem Basisjahr. |
+
+### Was umgesetzt ist
+
+- **Ist-Werte** wie im Jahresabschluss: `monatswerteLesen` bildet je Konto, Jahr und Monat dieselben Werte wie `jahreswerteLesen`
+  (Verrechnungskonten verdichtet, Konto 8012 nur Haben, Jahr ersatzweise aus dem Datum); ein Test vergleicht „Ist Vorjahr“ je Konto
+  mit der bestehenden Funktion. Die Kontoart kommt aus `kontoart()`. Ein Storno zählt im Monat der Stornobuchung.
+- **Methoden** Hochrechnung, Durchschnitt 3 Jahre, Median 5 Jahre, Trend, Fachdaten, Manuell. Das laufende Jahr geht hochgerechnet
+  als jüngster Wert in Durchschnitt, Median und Trend ein.
+- **Hochrechnung** über den Jahresverlauf des Kontos (Monatsanteile, über die Vorjahre gemittelt). „Gebucht“ ist das laufende Jahr bis
+  zum letzten abgelaufenen Monat, der auch Buchungen hat – ein halb gebuchter Monat zählt nicht.
+- **Rückwirkende Prüfung** über bis zu drei Jahre: Jede Methode bekommt die Daten, die zum selben Zeitpunkt des Vorjahres vorlagen
+  (im Herbst also das hochgerechnete Vorjahr, nicht dessen späteren Endwert). Verglichen wird über dieselben Jahre.
+- **Sondereffekte** je Konto und Jahr mit Pflicht-Begründung, Ausreißer als Vorschlag; **Vorgängerkonto** mit „ab Jahr“;
+  **Preissteigerung** je Plan und je Konto.
+- **Fachdaten:** Die Beitragsart zeigt über `tco.beitrag.erloeskonto` auf ihr Erlöskonto (dasselbe Konto, auf das die Sollstellung bucht).
+  Fachdaten gibt es nur, wo das eindeutig ist – siehe Abweichungen.
+- **Fassungen und Status**, Nachtrag mit Begründung, Löschen nur im Entwurf; Unveränderlichkeit zusätzlich per Datenbank-Trigger.
+- **Monatsverteilung** (berechnet oder je Konto von Hand), **Liquiditätsvorschau**, **einmalige Vorhaben**, **PDF** mit Ablage in Paperless.
+- **Soll-Ist** mit Hochrechnung, Bewertung und Diagramm; **Arbeitsvorrat und Kennzahl**; **Präsentationsbausteine** `HH_PLAN`, `HH_SOLLIST`, `HH_LIQ`.
+
+### Abweichungen vom Konzept
+
+- **Einstellungen** stehen in einer eigenen Tabelle `tco.hh_cfg` (im Entwurf nicht genannt). Die Mindestreserve gibt es als Einstellung
+  und zusätzlich je Plan; Toleranzen gelten für alle Pläne.
+- **`hh_monat`** hält nicht nur von Hand geänderte Monate: Mit dem Beschluss wird der berechnete Verlauf festgeschrieben
+  (Spalte `von_hand` unterscheidet). Sonst würde sich eine beschlossene Fassung mit jeder neuen Buchung verschieben.
+- **`hh_sondereffekt` und `hh_konto_vorgaenger`** gelten für alle Pläne, nicht je Plan. Ein Sondereffekt ändert einen Entwurf erst mit
+  „Vorschlag neu berechnen“, eine beschlossene Fassung nie.
+- **Hochrechnung bei kleinem Anteil:** Sind bis zum Stand üblicherweise weniger als 15 % des Jahres angefallen (Spenden im Dezember,
+  Verbandsabgabe im März), wird nicht durch den Anteil geteilt, sondern „Ist + üblicher Rest“ gerechnet (Mittel der letzten drei Jahre
+  × fehlender Anteil). Ohne Vorjahre wird gleichmäßig hochgerechnet und das Konto als „wenig Historie“ gekennzeichnet.
+- **Trend im Herbst:** Der Trend braucht drei abgeschlossene Jahre vor dem laufenden. Dadurch reicht die rückwirkende Prüfung mit
+  sechs Jahren Historie über zwei statt drei Jahre – verglichen wird nur über Jahre, in denen alle Methoden rechnen können.
+- **Fachdaten nur bei eindeutiger Zuordnung:** Zeigt auch eine aktive Beitragsart auf das Konto, die der Beitragsforecast nicht
+  rechnet, oder ist das Konto zugleich Erlöskonto eines Produkts, bleibt es bei den Methoden aus der Vergangenheit; der Grund steht
+  unter „So entsteht der Vorschlag“. Der Forecast rechnet Sollstellungen, FI bucht Zahlungen – beides kann zeitlich auseinanderliegen.
+- **Kontoart nach Nummernbereich:** Konten mit Kennzahl A–D außerhalb von 2001–7999 und 8001–8999 sind nach `kontoart()` weder
+  Einnahme noch Ausgabe und stehen nicht im Plan; die App nennt sie als Hinweis. Konto 8012 zählt wie im Jahresabschluss nur mit
+  der Haben-Seite (die App „Einnahmen und Ausgaben“ rechnet dort Haben − Soll).
+- **Tilgung:** Vorschlag aus der Bewegung der Darlehenskonten (Kennzahl BK) der letzten zwölf bekannten Monate, überschreibbar am
+  Plan. Wurde in dieser Zeit ein Darlehen aufgenommen, weist die App darauf hin.
+- **Anfangsbestand der Liquidität:** für das Folgejahr der Geldbestand zum letzten gebuchten Monat plus das hochgerechnete
+  Restergebnis des laufenden Jahres minus Tilgung; überschreibbar am Plan.
+- **Vorschläge sind auf 10 € gerundet** (wie im Mockup); von Hand eingegebene Planwerte bleiben, wie sie sind.
+- **Arbeitsvorrat:** Einträge entstehen nur für überschrittene *Ausgaben*budgets einer *beschlossenen* Fassung des laufenden Jahres.
+  Einnahmen unter Plan stehen im Soll-Ist, sind aber keine Aufgabe.
+- **Projekte:** Das Feld „Projekt“ am Vorhaben ist ein freier Text. Planung, Genehmigung und Simulation von Projekten sind eine
+  eigene Erweiterung.
+- **AfA** wird nicht angezeigt (im Konzept „nur zur Information“).
+
+### Nicht geprüft
+
+Die Ablage in Paperless ist nach dem Muster des Jahresabschlusses gebaut, aber nicht gegen ein echtes Paperless gelaufen
+(im Test nur die Abweisung ohne eingerichtetes Paperless).

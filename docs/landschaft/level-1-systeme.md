@@ -20,7 +20,7 @@ flowchart LR
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
       B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen"]
-      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Zuwendungsbestätigungen<br/>Kontenstamm"]
+      B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Zuwendungsbestätigungen<br/>Kontenstamm"]
       B_Dokumente["<b>Dokumente</b><br/>Dokumenteneingang<br/>Dokumenten-Upload"]
     end
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
@@ -106,6 +106,7 @@ flowchart LR
 | Finanzen | Beitragsforecast | `/tco/forecast` | `tco.forecast:display` | Hochrechnung der Beitragseinnahmen |
 | Finanzen | Einnahmen und Ausgaben | `/tco/finanz` | `tco.finanz:display` | Jahresübersicht, Geldkonten, Liquidität |
 | Finanzen | Jahresabschluss | `/tco/abschluss` | `tco.abschluss:display` | EAR, Vermögensübersicht, Anlagevermögen |
+| Finanzen | Haushaltsplan | `/tco/haushalt` | `tco.haushalt:display` | Budget je Konto, Soll-Ist, Liquidität, Vorhaben |
 | Finanzen | Zuwendungsbestätigungen | `/tco/zuwendung` | `tco.zuwendung:display` | Spendenbescheinigungen: Einzel, Sammel, Jahreslauf |
 | Finanzen | Kontenstamm | `/tco/konten` | `tco.konten:display` | Konten, Verwendung je Jahr, Anfangsbestände |
 | Dokumente | Dokumenteneingang | `/tco/dokumenteneingang` | `tco.eingang:display` | E-Mails und Anhänge nach Regeln ablegen, Prüfliste |
@@ -191,6 +192,7 @@ flowchart LR
 | forecast | 1 |
 | gruppen | 9 |
 | halle | 41 |
+| haushalt | 23 |
 | index | 6 |
 | instandhaltung | 34 |
 | jt | 30 |
