@@ -29,3 +29,10 @@
 .portal-cl__zelle { min-width: 0; }
 .portal-cl__zelle > ui5-link, .portal-cl__zelle > ui5-text, .portal-cl__zelle > ui5-icon { flex: 0 0 auto; white-space: nowrap; }
 .portal-cl__zelle > .portal-small { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Stufen und Fortschritt: Gruppen (Schritte mit Unterschritten) hervorgehoben, überall derselbe Balken mit „x/y · %“ */
+.portal-cl__tab tr.gruppe td { background: var(--sapList_AlternatingBackground, transparent); }
+.portal-cl__nr { color: var(--sapContent_LabelColor); font-weight: 400; font-variant-numeric: tabular-nums; }
+.portal-cl__fortschritt { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+.portal-cl__fortschritt .portal-cl__balken { width: 5rem; margin-top: 0; flex: 0 0 auto; }
+.portal-cl__balken > i.rot { background: var(--sapNegativeElementColor, #bb0000); }
+.portal-cl__zahl { font-variant-numeric: tabular-nums; color: var(--sapTextColor); font-size: var(--sapFontSmallSize, 0.75rem); }

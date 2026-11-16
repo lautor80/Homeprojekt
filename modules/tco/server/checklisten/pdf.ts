@@ -30,7 +30,7 @@ class Checklistendruck extends Abschlussdruck {
     this.kennzahl(LEFT, b ? 'VERANSTALTUNG' : 'KATEGORIE', this.kurz(b ? b.titel : c.kategorie ?? '–', 62, 9.5));
     this.kennzahl(84, 'TERMIN', b ? `${dat(b.termin)}${b.abgesagt ? ' (abgesagt)' : ''}` : 'Vorlage');
     this.kennzahl(118, 'VERANTWORTLICH', this.kurz(c.verantwortlich ?? '–', 38, 9.5));
-    this.kennzahl(160, 'STAND', b ? `${b.fortschritt.erledigt} von ${b.fortschritt.gesamt}` : `${c.schritte.length} Schritte`,
+    this.kennzahl(160, 'STAND', b ? `${b.fortschritt.erledigt} von ${b.fortschritt.gesamt}` : `${c.schritte.filter((x) => x.blatt).length} Schritte`,
       b && b.fortschritt.ueberfaellig ? ROT : C.ink);
 
     const kopf = [b && c.kategorie ? `Kategorie: ${c.kategorie}` : '', b?.ort ? `Ort: ${b.ort}` : ''].filter(Boolean).join(' · ');
@@ -47,32 +47,39 @@ class Checklistendruck extends Abschlussdruck {
       { x: X.faellig, text: b ? 'Fällig' : 'Termin', align: 'L' }, { x: X.erledigt, text: 'Erledigt', align: 'L' },
     ]);
     if (!c.schritte.length) { this.txt(X.titel, 'Diese Checkliste hat noch keine Schritte.', { color: C.grau }); this.zeileLinie(); }
-    c.schritte.forEach((s, i) => {
+    for (const s of c.schritte) {
       const z = b?.schritte.find((x) => x.schritt_id === s.id);
-      const titel = umbruch(this.p, `${i + 1}. ${s.titel}`, 8, B.titel);
-      const text = (s.beschreibung ?? '').split(/\r?\n/).flatMap((a) => umbruch(this.p, a, 7, B.titel)).filter(Boolean);
-      const hoehe = Math.max(5.6, titel.length * 4 + text.length * 3.4 + (text.length ? 2.6 : 1.6));
+      // Unterschritte eingerückt; ein Schritt mit Unterschritten ist eine Gruppe ohne eigenes Kästchen
+      const ein = (s.ebene - 1) * 4;
+      const breite = B.titel - ein;
+      const titel = umbruch(this.p, `${s.nr} ${s.titel}`, 8, breite);
+      const text = (s.beschreibung ?? '').split(/\r?\n/).flatMap((a) => umbruch(this.p, a, 7, breite)).filter(Boolean);
+      // erledigte Schritte tragen unter dem Datum den Namen – dafür braucht die Zeile etwas mehr Höhe
+      const hoehe = Math.max(z?.erledigt?.von ? 7.6 : 5.6, titel.length * 4 + text.length * 3.4 + (text.length ? 2.6 : 1.6));
       this.zeilePlatz(hoehe);
       const y0 = this.y;
-      // Kästchen zum Abhaken – erledigte mit Haken
-      this.p.rect(X.box, y0 - 3, 3.4, 3.4, { stroke: z?.erledigt ? GRUEN : C.grau, lw: 0.3, radius: 0.5 });
-      if (z?.erledigt) {
-        this.p.line(X.box + 0.7, y0 - 1.3, X.box + 1.4, y0 - 0.5, GRUEN, 0.5);
-        this.p.line(X.box + 1.4, y0 - 0.5, X.box + 2.8, y0 - 2.4, GRUEN, 0.5);
+      if (s.blatt) {
+        // Kästchen zum Abhaken – erledigte mit Haken
+        this.p.rect(X.box + ein, y0 - 3, 3.4, 3.4, { stroke: z?.erledigt ? GRUEN : C.grau, lw: 0.3, radius: 0.5 });
+        if (z?.erledigt) {
+          this.p.line(X.box + ein + 0.7, y0 - 1.3, X.box + ein + 1.4, y0 - 0.5, GRUEN, 0.5);
+          this.p.line(X.box + ein + 1.4, y0 - 0.5, X.box + ein + 2.8, y0 - 2.4, GRUEN, 0.5);
+        }
       }
-      titel.forEach((t, j) => this.p.text(X.titel, y0 + j * 4, t, { size: 8, bold: true, color: C.ink }));
-      text.forEach((t, j) => this.p.text(X.titel, y0 + titel.length * 4 + j * 3.4, t, { size: 7, color: C.grau }));
-      this.txt(X.wer, this.kurz(s.verantwortlich ?? c.verantwortlich ?? '', B.wer));
+      titel.forEach((t, j) => this.p.text(X.titel + ein, y0 + j * 4, t, { size: 8, bold: !s.blatt || s.ebene === 1, color: C.ink }));
+      text.forEach((t, j) => this.p.text(X.titel + ein, y0 + titel.length * 4 + j * 3.4, t, { size: 7, color: C.grau }));
+      this.txt(X.wer, this.kurz(s.verantwortlich ?? (s.blatt ? c.verantwortlich ?? '' : ''), B.wer));
       if (b) this.txt(X.faellig, z?.faellig ? dat(z.faellig) : '', { color: z?.stand === 'UEBERFAELLIG' ? ROT : C.ink, bold: z?.stand === 'UEBERFAELLIG' });
-      else this.txt(X.faellig, this.kurz(s.termin_text, 19, 7), { size: 7 });
-      if (z?.erledigt) {
+      else if (s.blatt) this.txt(X.faellig, this.kurz(s.termin_text, 19, 7), { size: 7 });
+      if (z?.gruppe) this.txt(X.erledigt, `${z.gruppe.erledigt} von ${z.gruppe.gesamt}`, { color: z.stand === 'ERLEDIGT' ? GRUEN : C.grau, bold: z.stand === 'ERLEDIGT' });
+      else if (z?.erledigt) {
         this.txt(X.erledigt, tag(z.erledigt.am), { color: GRUEN });
         if (z.erledigt.von) this.p.text(X.erledigt, y0 + 3.4, this.kurz(z.erledigt.von, B.erledigt, 6.5), { size: 6.5, color: C.grau });
       }
       this.y = y0 + hoehe - 5.6;
       this.zeileLinie();
-    });
-    this.karteBeenden(`Stand ${dat(heute())} · Kästchen zum Abhaken von Hand; im Portal erledigte Schritte sind mit Datum und Namen eingetragen.`);
+    }
+    this.karteBeenden(`Stand ${dat(heute())} · Kästchen zum Abhaken von Hand; im Portal erledigte Schritte sind mit Datum und Namen eingetragen. Bei Schritten mit Unterschritten steht, wie viele davon erledigt sind.`);
   }
 }
 

@@ -28,8 +28,12 @@ const CL = `${TCO}/checklisten`;
 
 type Stand = 'ERLEDIGT' | 'UEBERFAELLIG' | 'BALD' | 'OFFEN';
 interface Kategorie { id: number; name: string; aktiv: boolean; anzahl: number }
-interface Schritt { id: number; pos: number; titel: string; beschreibung: string | null; verantwortlich: string | null; tage_vor: number | null; faellig: string | null; termin_text: string }
-interface BezugSchritt { schritt_id: number; faellig: string | null; stand: Stand; erledigt: { am: string; von: string | null; notiz: string | null } | null }
+interface Schritt {
+  id: number; pos: number; titel: string; beschreibung: string | null; verantwortlich: string | null; tage_vor: number | null; faellig: string | null; termin_text: string;
+  /** Hierarchie: übergeordneter Schritt, Stufe 1–5, Gliederungsnummer, Blatt = ohne Unterschritte */
+  parent_id: number | null; ebene: number; nr: string; blatt: boolean;
+}
+interface BezugSchritt { schritt_id: number; faellig: string | null; stand: Stand; erledigt: { am: string; von: string | null; notiz: string | null } | null; /** Schritt mit Unterschritten: Fortschritt über seine Blätter */ gruppe?: Fortschritt }
 interface Fortschritt { gesamt: number; erledigt: number; ueberfaellig: number; bald: number }
 interface Bezug { id: number; event_id: number | null; titel: string; termin: string; ort: string | null; abgesagt: boolean; schritte: BezugSchritt[]; fortschritt: Fortschritt }
 interface Checkliste {
@@ -38,7 +42,7 @@ interface Checkliste {
   schritte: Schritt[]; bezuege: Bezug[];
 }
 interface Event { id: number; titel: string; termin: string; ort: string | null; abgesagt: boolean }
-interface Daten { checklisten: Checkliste[]; kategorien: Kategorie[]; personen: { id: string; name: string }[]; events: Event[]; stand_text: Record<Stand, string>; import_spalten: string[]; pflege: boolean }
+interface Daten { checklisten: Checkliste[]; kategorien: Kategorie[]; personen: { id: string; name: string }[]; events: Event[]; stand_text: Record<Stand, string>; import_spalten: string[]; max_stufen: number; pflege: boolean }
 /** Zeile des Baums: Kategorie (k; null = „Ohne Kategorie“), Checkliste (c) oder Schritt (s in c) */
 interface Zeile { id: string; text: string; art: 'K' | 'C' | 'S'; k?: Kategorie | null; c?: Checkliste; s?: Schritt; subRows?: Zeile[] }
 type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void; toggleRowExpanded?: (id: string, v?: boolean) => void };
@@ -71,6 +75,26 @@ function StandAnzeige({ f }: { f: Fortschritt }) {
   );
 }
 
+/** Fortschritt als Balken mit „x von y“ und Prozent – für Gruppen von Schritten, Veranstaltungen und Kategorien */
+function Balken({ f }: { f: Fortschritt }) {
+  if (!f.gesamt) return <span className="portal-muted">–</span>;
+  const p = Math.round((100 * f.erledigt) / f.gesamt);
+  return (
+    <span className="portal-cl__fortschritt" title={`${f.erledigt} von ${f.gesamt} erledigt${f.ueberfaellig ? `, ${f.ueberfaellig} überfällig` : ''}${f.bald ? `, ${f.bald} bald fällig` : ''}`}>
+      <span className="portal-cl__balken"><i style={{ width: `${p}%` }} /></span>
+      <span className="portal-cl__zahl">{f.erledigt}/{f.gesamt} · {p} %</span>
+      {f.ueberfaellig > 0 && <ObjectStatus state="Negative" inverted>{f.ueberfaellig} überfällig</ObjectStatus>}
+    </span>
+  );
+}
+const plus = (a: Fortschritt, b: Fortschritt): Fortschritt => ({ gesamt: a.gesamt + b.gesamt, erledigt: a.erledigt + b.erledigt, ueberfaellig: a.ueberfaellig + b.ueberfaellig, bald: a.bald + b.bald });
+const NULL: Fortschritt = { gesamt: 0, erledigt: 0, ueberfaellig: 0, bald: 0 };
+/** Fortschritt eines Schritts über alle Veranstaltungen der Checkliste (Gruppe: ihre Blätter; Blatt: je Veranstaltung ein Haken) */
+const schrittFortschritt = (c: Checkliste, id: number): Fortschritt => c.bezuege.reduce((f, b) => {
+  const z = b.schritte.find((t) => t.schritt_id === id);
+  return z ? plus(f, z.gruppe ?? { gesamt: 1, erledigt: z.erledigt ? 1 : 0, ueberfaellig: z.stand === 'UEBERFAELLIG' ? 1 : 0, bald: z.stand === 'BALD' ? 1 : 0 }) : f;
+}, NULL);
+
 /** Eingabe der verantwortlichen Person: freier Text mit den Benutzern des Portals als Vorschlag */
 function PersonFeld({ wert, personen, onChange, placeholder }: { wert: string; personen: Daten['personen']; onChange: (v: string) => void; placeholder?: string }) {
   return (
@@ -81,7 +105,7 @@ function PersonFeld({ wert, personen, onChange, placeholder }: { wert: string; p
 }
 
 type KopfForm = { id?: number; titel: string; beschreibung: string; kategorie_id: number | null; verantwortlich: string };
-type SchrittForm = { id?: number; checkliste: number; titel: string; beschreibung: string; verantwortlich: string; art: 'OHNE' | 'TAGE' | 'DATUM'; tage: string; danach: boolean; faellig: string };
+type SchrittForm = { id?: number; checkliste: number; /** übergeordneter Schritt (null = oberste Stufe) */ unter: number | null; unterVorher: number | null; titel: string; beschreibung: string; verantwortlich: string; art: 'OHNE' | 'TAGE' | 'DATUM'; tage: string; danach: boolean; faellig: string };
 type BezugForm = { events: number[]; suche: string; termin: string; bezeichnung: string };
 
 export function Checklisten() {
@@ -135,7 +159,19 @@ export function Checklisten() {
         const cPasst = kPasst || passt(x.titel, x.beschreibung, x.verantwortlich, ...x.bezuege.map((y) => y.titel));
         const schritte = x.schritte.filter((y) => cPasst || passt(y.titel, y.beschreibung, y.verantwortlich));
         if (!cPasst && !schritte.length) return [];
-        const blaetter: Zeile[] = filter.schritte || (such && !cPasst) ? schritte.map((y) => ({ id: `s${y.id}`, text: y.titel, art: 'S', c: x, s: y })) : [];
+        // Schritte verschachteln (die Liste steht in Baumreihenfolge); bei einer Suche bleiben Treffer mit ihren übergeordneten Schritten
+        const sichtbar = new Set(schritte.map((y) => y.id));
+        if (!cPasst) for (const y of schritte) for (let p = y.parent_id; p !== null; p = x.schritte.find((t) => t.id === p)?.parent_id ?? null) sichtbar.add(p);
+        const blaetter: Zeile[] = [];
+        if (filter.schritte || (such && !cPasst)) {
+          const stapel: Zeile[] = [];
+          for (const y of x.schritte.filter((t) => sichtbar.has(t.id))) {
+            const zeile: Zeile = { id: `s${y.id}`, text: y.titel, art: 'S', c: x, s: y, subRows: [] };
+            stapel.length = y.ebene - 1;
+            (stapel[y.ebene - 2]?.subRows ?? blaetter).push(zeile);
+            stapel[y.ebene - 1] = zeile;
+          }
+        }
         return [{ id: `c${x.id}`, text: x.titel, art: 'C', k, c: x, subRows: blaetter }];
       });
       if (!kinder.length && (such ? !kPasst : filter.nurOffen || (!k && !pflege))) return [];
@@ -172,20 +208,27 @@ export function Checklisten() {
       titel: schritt.titel, beschreibung: schritt.beschreibung, verantwortlich: schritt.verantwortlich,
       tage_vor: schritt.art === 'TAGE' ? (schritt.danach ? -tage : tage) : null, faellig: schritt.art === 'DATUM' ? schritt.faellig : null,
     };
-    tun(() => (schritt.id ? api.put(`${CL}/schritte/${schritt.id}`, body) : api.post(`${CL}/${schritt.checkliste}/schritte`, body)).then(() => null), () => { tabelle.current?.toggleRowExpanded?.(`c${schritt.checkliste}`, true); setSchritt(null); });
+    tun(async () => {
+      if (!schritt.id) { await api.post(`${CL}/${schritt.checkliste}/schritte`, { ...body, parent_id: schritt.unter }); return null; }
+      await api.put(`${CL}/schritte/${schritt.id}`, body);
+      // unter einen anderen Schritt gehängt (oder auf die oberste Stufe geholt)
+      if (schritt.unter !== schritt.unterVorher) await api.post(`${CL}/schritte/${schritt.id}/verschieben`, { ziel: schritt.checkliste, unter: schritt.unter });
+      return null;
+    }, () => { tabelle.current?.toggleRowExpanded?.(`c${schritt.checkliste}`, true); setSchritt(null); });
   }
 
   function verschieben(i: number, um: number) {
     if (!c) return;
-    const ids = c.schritte.map((s) => s.id);
-    const j = i + um;
+    // getauscht wird innerhalb der Geschwister (gleicher übergeordneter Schritt)
+    const ids = c.schritte.filter((s) => s.parent_id === c.schritte[i].parent_id).map((s) => s.id);
+    const k = ids.indexOf(c.schritte[i].id), j = k + um;
     if (j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j], ids[i]];
+    [ids[k], ids[j]] = [ids[j], ids[k]];
     tun(() => api.post(`${CL}/${c.id}/reihenfolge`, { schritte: ids }).then(() => null));
   }
 
-  const schrittForm = (checkliste: number, s?: Schritt): SchrittForm => ({
-    id: s?.id, checkliste, titel: s?.titel ?? '', beschreibung: s?.beschreibung ?? '', verantwortlich: s?.verantwortlich ?? '',
+  const schrittForm = (checkliste: number, s?: Schritt, unter: number | null = null): SchrittForm => ({
+    id: s?.id, checkliste, unter: s ? s.parent_id : unter, unterVorher: s ? s.parent_id : unter, titel: s?.titel ?? '', beschreibung: s?.beschreibung ?? '', verantwortlich: s?.verantwortlich ?? '',
     art: s?.faellig ? 'DATUM' : s?.tage_vor != null ? 'TAGE' : 'OHNE', tage: s?.tage_vor != null ? String(Math.abs(s.tage_vor)) : '14', danach: (s?.tage_vor ?? 0) < 0, faellig: s?.faellig ?? '',
   });
 
@@ -195,8 +238,11 @@ export function Checklisten() {
     const g = gezogen.current;
     if (!g) return false;
     if (g.art === 'C') return ziel.art === 'K' && (ziel.k?.id ?? null) !== g.kategorie;
-    if (ziel.art === 'C') return ziel.c!.id !== g.von || ziel.c!.schritte.at(-1)?.id !== g.id;
-    return ziel.art === 'S' && ziel.s!.id !== g.id;
+    if (ziel.art === 'C') return ziel.c!.id !== g.von || ziel.c!.schritte.filter((t) => t.parent_id === null).at(-1)?.id !== g.id;
+    if (ziel.art !== 'S' || ziel.s!.id === g.id) return false;
+    // nicht vor einen eigenen Unterschritt
+    const quelle = ziel.c!.schritte.find((t) => t.id === g.id);
+    return !quelle || !ziel.s!.nr.startsWith(`${quelle.nr}.`);
   };
   const ziehStart = (e: DragEvent<HTMLElement>, was: Gezogen, text: string) => {
     gezogen.current = was;
@@ -255,8 +301,9 @@ export function Checklisten() {
         const y = z.s!;
         return (
           <div className="portal-gr__zelle portal-cl__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'S', id: y.id, von: z.c!.id }, y.titel)} onDragEnd={ziehEnde} {...(pflege ? ablage(z) : {})}>
-            <Icon name="task" />
-            <Text>{y.titel}</Text>
+            <Icon name={y.blatt ? 'task' : 'group-2'} />
+            <span className="portal-cl__nr">{y.nr}</span>
+            <Text>{y.blatt ? y.titel : <b>{y.titel}</b>}</Text>
             {y.beschreibung && <span className="portal-muted portal-small">{y.beschreibung.split('\n')[0]}</span>}
           </div>
         );
@@ -276,7 +323,7 @@ export function Checklisten() {
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
         if (z.art === 'K') return <Text className="portal-muted">{z.subRows?.length ?? 0} Checkliste{z.subRows?.length === 1 ? '' : 'n'}</Text>;
-        if (z.art === 'S') return <Text>{z.s!.termin_text}</Text>;
+        if (z.art === 'S') return z.s!.blatt ? <Text>{z.s!.termin_text}</Text> : <Text className="portal-muted">{z.c!.schritte.filter((t) => t.blatt && t.nr.startsWith(`${z.s!.nr}.`)).length} Unterschritte</Text>;
         const x = z.c!;
         if (!x.bezuege.length) return <Text className="portal-muted">Vorlage (ohne Termin)</Text>;
         const n = x.bezuege.find((y) => y.fortschritt.erledigt < y.fortschritt.gesamt) ?? x.bezuege[0];
@@ -284,15 +331,13 @@ export function Checklisten() {
       },
     },
     {
-      Header: 'Stand', id: 'stand', width: 180,
+      Header: 'Fortschritt', id: 'stand', width: 230,
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
-        if (z.art === 'C') return <StandAnzeige f={summe(z.c!)} />;
-        if (z.art === 'S') {
-          const b0 = z.c!.bezuege.filter((y) => y.schritte.some((t) => t.schritt_id === z.s!.id && t.erledigt)).length;
-          return z.c!.bezuege.length ? <Text className="portal-muted">{b0} von {z.c!.bezuege.length}</Text> : '';
-        }
-        return '';
+        // überall derselbe Balken: Kategorie = Summe ihrer Checklisten, Checkliste = alle Veranstaltungen, Schritt = seine Blätter bzw. Haken je Veranstaltung
+        if (z.art === 'C') return <Balken f={summe(z.c!)} />;
+        if (z.art === 'S') return z.c!.bezuege.length ? <Balken f={schrittFortschritt(z.c!, z.s!.id)} /> : '';
+        return <Balken f={(z.subRows ?? []).reduce((f, k) => plus(f, summe(k.c!)), NULL)} />;
       },
     },
     ...(pflege ? [{
@@ -322,9 +367,10 @@ export function Checklisten() {
         const y = z.s!;
         return (
           <FlexBox justifyContent="End">
-            <Button icon="edit" design="Transparent" tooltip="Schritt ändern" disabled={busy} onClick={() => setSchritt(schrittForm(z.c!.id, y))} />
+            {y.ebene < (d?.max_stufen ?? 5) && <Button icon="add" design="Transparent" tooltip={`Unterschritt zu „${y.titel}“ anlegen`} disabled={busy} onClick={() => setSchritt(schrittForm(z.c!.id, undefined, y.id))} />}
+            <Button icon="edit" design="Transparent" tooltip="Schritt ändern oder umhängen" disabled={busy} onClick={() => setSchritt(schrittForm(z.c!.id, y))} />
             <Button icon="delete" design="Transparent" tooltip="Schritt löschen" disabled={busy} onClick={() => setFrage({
-              titel: 'Schritt löschen', text: `Schritt „${y.titel}“ aus „${z.c!.titel}“ löschen? Er entfällt für alle zugeordneten Veranstaltungen.`, tun: () => api.del(`${CL}/schritte/${y.id}`),
+              titel: 'Schritt löschen', text: `Schritt „${y.titel}“ aus „${z.c!.titel}“ löschen${y.blatt ? '' : ' – mit allen Unterschritten'}? Er entfällt für alle zugeordneten Veranstaltungen.`, tun: () => api.del(`${CL}/schritte/${y.id}`),
             })} />
           </FlexBox>
         );
@@ -341,7 +387,13 @@ export function Checklisten() {
     if (!nurKopf) {
       for (const x of d.checklisten) {
         if (!x.schritte.length) zeilen.push([zelle(x.kategorie), zelle(x.titel), '', '', '', ''].join('\t'));
-        for (const y of x.schritte) zeilen.push([zelle(x.kategorie), zelle(x.titel), zelle(y.titel), zelle(y.verantwortlich), terminWort(y), zelle(y.beschreibung)].join('\t'));
+        // Unterschritte als Weg „Aufbau > Zelt“ – so liest sie der Import wieder ein
+        const weg: string[] = [];
+        for (const y of x.schritte) {
+          weg.length = y.ebene - 1;
+          weg[y.ebene - 1] = zelle(y.titel).replace(/>/g, '›');
+          zeilen.push([zelle(x.kategorie), zelle(x.titel), weg.join(' > '), zelle(y.verantwortlich), y.blatt ? terminWort(y) : '', zelle(y.beschreibung)].join('\t'));
+        }
       }
     }
     return zeilen.join('\n');
@@ -370,7 +422,7 @@ export function Checklisten() {
       </div>
       {pflege && d.checklisten.length > 0 && (
         <div className="portal-gr__oben">
-          Ziehen und Ablegen: Checkliste auf eine Kategorie ziehen = dorthin verschieben. Schritt auf eine Checkliste ziehen = dorthin verschieben (ans Ende), auf einen Schritt = davor einordnen.
+          Ziehen und Ablegen: Checkliste auf eine Kategorie ziehen = dorthin verschieben. Schritt auf eine Checkliste ziehen = dorthin verschieben (ans Ende), auf einen Schritt = davor einordnen (auf dessen Stufe, mit allen Unterschritten). Unterschritte über „+“ am Schritt; umhängen über „Ändern“.
         </div>
       )}
       {!d.checklisten.length && !d.kategorien.length ? (
@@ -432,30 +484,35 @@ export function Checklisten() {
                   <tr>
                     {pflege && <th className="schmal" title="Zum Kopieren markieren">Kopieren</th>}
                     {b && <th className="schmal">Erledigt</th>}
-                    <th>Schritt</th><th>Verantwortlich</th><th>{b ? 'Fällig' : 'Termin'}</th>{b && <th>Stand</th>}{pflege && <th className="schmal" />}
+                    <th>Schritt</th><th>Verantwortlich</th><th>{b ? 'Fällig' : 'Termin'}</th>{b && <th>Stand / Fortschritt</th>}{pflege && <th className="schmal" />}
                   </tr>
                 </thead>
                 <tbody>
                   {c.schritte.map((s, i) => {
                     const z = b?.schritte.find((x) => x.schritt_id === s.id);
+                    const reihe = c.schritte.filter((t) => t.parent_id === s.parent_id);
+                    const fertig = s.blatt ? !!z?.erledigt : z?.stand === 'ERLEDIGT';
                     return (
-                      <tr key={s.id} className={z?.erledigt ? 'erledigt' : ''}>
+                      <tr key={s.id} className={`${fertig ? 'erledigt' : ''}${s.blatt ? '' : ' gruppe'}`}>
                         {pflege && <td className="schmal mitte"><CheckBox accessibleName={`${s.titel} zum Kopieren markieren`} checked={markiert.includes(s.id)}
                           onChange={(e) => setMarkiert(e.target.checked ? [...markiert, s.id] : markiert.filter((m) => m !== s.id))} /></td>}
-                        {b && <td className="schmal mitte"><CheckBox accessibleName={`${s.titel} erledigt`} checked={!!z?.erledigt} disabled={!pflege || busy}
+                        {b && <td className="schmal mitte"><CheckBox accessibleName={s.blatt ? `${s.titel} erledigt` : `${s.titel}: alle Unterschritte erledigt`} checked={fertig} indeterminate={!s.blatt && !fertig && (z?.gruppe?.erledigt ?? 0) > 0}
+                          disabled={!pflege || busy} title={s.blatt ? undefined : 'Hakt alle Unterschritte ab bzw. öffnet sie wieder'}
                           onChange={(e) => { const erledigt = e.target.checked; tun(() => api.post(`${CL}/bezuege/${b.id}/schritte/${s.id}`, { erledigt }).then(() => null)); }} /></td>}
-                        <td><span className="portal-cl__titel">{i + 1}. {s.titel}</span>{s.beschreibung && <span className="portal-cl__klein">{s.beschreibung}</span>}</td>
-                        <td>{s.verantwortlich ?? <span className="portal-muted">{c.verantwortlich ?? '–'}</span>}</td>
-                        <td>{b ? (z?.faellig ? dat(z.faellig) : '–') : (s.termin_text || '–')}{b && s.termin_text && !s.faellig && <span className="portal-cl__klein">{s.termin_text}</span>}</td>
-                        {b && <td>{z && <ObjectStatus state={STATE[z.stand]} inverted={z.stand !== 'OFFEN'}>{d.stand_text[z.stand]}</ObjectStatus>}
+                        <td style={{ paddingLeft: `${0.625 + (s.ebene - 1) * 1.5}rem` }}><span className="portal-cl__titel"><span className="portal-cl__nr">{s.nr}</span> {s.titel}</span>{s.beschreibung && <span className="portal-cl__klein">{s.beschreibung}</span>}</td>
+                        <td>{s.verantwortlich ?? <span className="portal-muted">{s.blatt ? c.verantwortlich ?? '–' : ''}</span>}</td>
+                        <td>{b ? (z?.faellig ? dat(z.faellig) : '–') : (s.blatt ? s.termin_text || '–' : '')}{b && s.blatt && s.termin_text && !s.faellig && <span className="portal-cl__klein">{s.termin_text}</span>}
+                          {b && !s.blatt && z?.faellig && <span className="portal-cl__klein">nächster offener Unterschritt</span>}</td>
+                        {b && <td>{z?.gruppe ? <Balken f={z.gruppe} /> : z && <ObjectStatus state={STATE[z.stand]} inverted={z.stand !== 'OFFEN'}>{d.stand_text[z.stand]}</ObjectStatus>}
                           {z?.erledigt && <span className="portal-cl__klein">{tagZeit(z.erledigt.am)}{z.erledigt.von ? ` · ${z.erledigt.von}` : ''}</span>}</td>}
                         {pflege && (
                           <td className="schmal">
-                            <Button design="Transparent" icon="navigation-up-arrow" tooltip="Nach oben" accessibleName={`${s.titel} nach oben`} disabled={i === 0 || busy} onClick={() => verschieben(i, -1)} />
-                            <Button design="Transparent" icon="navigation-down-arrow" tooltip="Nach unten" accessibleName={`${s.titel} nach unten`} disabled={i === c.schritte.length - 1 || busy} onClick={() => verschieben(i, 1)} />
-                            <Button design="Transparent" icon="edit" tooltip="Ändern" accessibleName={`${s.titel} ändern`} onClick={() => setSchritt(schrittForm(c.id, s))} />
+                            <Button design="Transparent" icon="navigation-up-arrow" tooltip="Nach oben (innerhalb der Stufe)" accessibleName={`${s.titel} nach oben`} disabled={reihe[0].id === s.id || busy} onClick={() => verschieben(i, -1)} />
+                            <Button design="Transparent" icon="navigation-down-arrow" tooltip="Nach unten (innerhalb der Stufe)" accessibleName={`${s.titel} nach unten`} disabled={reihe.at(-1)!.id === s.id || busy} onClick={() => verschieben(i, 1)} />
+                            {s.ebene < d.max_stufen && <Button design="Transparent" icon="add" tooltip="Unterschritt anlegen" accessibleName={`Unterschritt zu ${s.titel}`} onClick={() => setSchritt(schrittForm(c.id, undefined, s.id))} />}
+                            <Button design="Transparent" icon="edit" tooltip="Ändern oder umhängen" accessibleName={`${s.titel} ändern`} onClick={() => setSchritt(schrittForm(c.id, s))} />
                             <Button design="Transparent" icon="delete" tooltip="Löschen" accessibleName={`${s.titel} löschen`} onClick={() => setFrage({
-                              titel: 'Schritt löschen', text: `Schritt „${s.titel}“ löschen? Er entfällt für alle zugeordneten Veranstaltungen.`, tun: () => api.del(`${CL}/schritte/${s.id}`),
+                              titel: 'Schritt löschen', text: `Schritt „${s.titel}“ löschen${s.blatt ? '' : ' – mit allen Unterschritten'}? Er entfällt für alle zugeordneten Veranstaltungen.`, tun: () => api.del(`${CL}/schritte/${s.id}`),
                             })} />
                           </td>
                         )}
@@ -523,6 +580,19 @@ export function Checklisten() {
         {schritt && d && (
           <div className="portal-cl__dialog">
             <label className="portal-cl__feld"><span>Schritt</span><Input value={schritt.titel} maxlength={200} onInput={(e) => setSchritt({ ...schritt, titel: e.target.value })} /></label>
+            {(() => {
+              const liste = d.checklisten.find((x) => x.id === schritt.checkliste)?.schritte ?? [];
+              const selbst = liste.find((t) => t.id === schritt.id);
+              // wählbar: Schritte, unter denen noch eine Stufe frei ist – nicht der Schritt selbst und nichts darunter
+              const wahl = liste.filter((t) => t.ebene < d.max_stufen && (!selbst || (t.id !== selbst.id && !t.nr.startsWith(`${selbst.nr}.`))));
+              return (
+                <label className="portal-cl__feld"><span>Unterschritt von (bis zu {d.max_stufen} Stufen)</span>
+                  <Select onChange={(e) => setSchritt({ ...schritt, unter: Number((e.detail.selectedOption as HTMLElement).dataset.u) || null })}>
+                    <Option data-u="" selected={schritt.unter === null}>– oberste Stufe –</Option>
+                    {wahl.map((t) => <Option key={t.id} data-u={t.id} selected={schritt.unter === t.id}>{'\u00a0\u00a0'.repeat(t.ebene - 1)}{t.nr} {t.titel}</Option>)}
+                  </Select></label>
+              );
+            })()}
             <label className="portal-cl__feld"><span>Hinweise</span><TextArea rows={3} value={schritt.beschreibung} onInput={(e) => setSchritt({ ...schritt, beschreibung: e.target.value })} /></label>
             <label className="portal-cl__feld"><span>Verantwortlich (leer = wie die Checkliste)</span>
               <PersonFeld wert={schritt.verantwortlich} personen={d.personen} onChange={(v) => setSchritt({ ...schritt, verantwortlich: v })} /></label>
@@ -665,7 +735,7 @@ export function Checklisten() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <Text>
               Tabelle in Excel markieren, kopieren und hier einfügen. Spalten: <b>{d.import_spalten.join(' · ')}</b> – in dieser Reihenfolge oder mit den Spaltennamen in der ersten Zeile.
-              Leere Zellen bei Kategorie und Checkliste übernehmen den Wert der Zeile darüber. Termin: Zahl oder „14 Tage vorher“, „3 Tage danach“, „am Tag“ oder ein Datum.
+              Leere Zellen bei Kategorie und Checkliste übernehmen den Wert der Zeile darüber. Unterschritte als Weg in der Spalte Schritt: „Aufbau &gt; Zelt &gt; Heringe“ (bis zu {d.max_stufen} Stufen). Termin: Zahl oder „14 Tage vorher“, „3 Tage danach“, „am Tag“ oder ein Datum.
             </Text>
             <div className="portal-row">
               <Button icon="paste" onClick={() => navigator.clipboard.readText().then((t) => setImp({ text: t, antwort: null })).catch(() => setError('Die Zwischenablage ist nicht erreichbar – bitte mit Strg+V in das Feld einfügen.'))}>Aus Zwischenablage einfügen</Button>
