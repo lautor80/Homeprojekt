@@ -128,7 +128,7 @@ export function Mahnwesen() {
     { Header: 'Fällig', accessor: 'faellig', width: 100, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Offen', accessor: 'betrag', width: 110, ...rechts, Cell: ({ row }: Cell) => { const p = row.original as Posten; return <span title={p.betrag < p.gesamt ? `Rest von ${eur(p.gesamt)}` : undefined}>{eur(p.betrag)}</span>; } },
     {
-      Header: 'Mahnstufe', accessor: 'stufe', width: 170,
+      Header: 'Mahnstufe', accessor: 'stufe', width: 240,
       Cell: ({ row }: Cell) => { const p = row.original as Posten; return p.stufe ? <ObjectStatus state="Negative">{p.stufe_name} · {dat(p.gemahnt_am)}</ObjectStatus> : <span className="portal-muted">–</span>; },
     },
     {

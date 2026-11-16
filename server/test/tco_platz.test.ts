@@ -880,7 +880,8 @@ test('Platz buchen für Admin/Hallenwart (#11): Namen sehen, für andere buchen,
 });
 
 test('Platzverwaltung → Belegung: freie Zeit direkt eintragen (#11)', async () => {
-  const d = tag(12);
+  // nicht auf einen Samstag (wiederkehrendes Schnuppertraining 09:00–10:00 kollidiert mit dem Medenspiel 08:00–10:00)
+  const d = [12, 16].map(tag).find((x) => new Date(`${x}T12:00:00Z`).getUTCDay() !== 6)!;
   let r = await admin('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '08:00', bis: '10:00', intern: 'Medenspiel Damen' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await admin('POST', `${A}/buchung`, { platz_id: halleId, datum: d, von: '10:00', bis: '11:00', adrnr: ANNA, text: 'mit Bert' });
