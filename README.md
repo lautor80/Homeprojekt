@@ -227,6 +227,8 @@ Die Administration hat den Menüpunkt **Benutzerverwaltung** mit **Benutzer**, *
 
 Administration → System → **Tabellenansicht** (Berechtigung `core.tabellen:display`) zeigt alle Tabellen und Sichten der
 Schemas `core` und der aktiven Module – wie SE16; Löschen nur mit eigener Berechtigung und Papierkorb (siehe unten).
+Die Übersicht ist ein **Baum nach Schema** (je Schema Anzahl Tabellen, Zeilen und Größe; Klick klappt auf, bei einer Suche sind
+alle Schemas mit Treffern aufgeklappt); der Umschalter *Liste* zeigt die bisherige flache Tabelle mit Filtern und Gruppierung.
 
 - **Übersicht**: Schema, Tabelle, Art, Beschreibung (Tabellenkommentar), Zeilen (geschätzt), Spalten, Größe – suchbar,
   filter-, sortier- und gruppierbar; Klick oder Auswahlfeld oben öffnet die Tabelle.
