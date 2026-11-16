@@ -28,6 +28,14 @@ export interface Session {
 
 export const SessionContext = createContext<Session | null>(null);
 
+/**
+ * Angemeldeter Benutzer für Stellen außerhalb von React (z. B. Speicher im Browser je Benutzer): App.tsx merkt ihn,
+ * sobald die Sitzung steht bzw. wechselt.
+ */
+let angemeldet: string | null = null;
+export const benutzerMerken = (id: string | null) => { angemeldet = id; };
+export const benutzerId = () => angemeldet;
+
 export function useSession(): Session {
   const s = useContext(SessionContext);
   if (!s) throw new Error('useSession außerhalb des SessionContext');

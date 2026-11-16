@@ -3,7 +3,7 @@ import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { APP_ROOT } from '../../../../server/src/config.js';
 import { ciiXml, facturXXmp, FX_DATEI } from '../zugferd.js';
 import { rechnungsdaten } from '../xrechnung.js';
-import { C, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, titel } from './layout.js';
+import { C, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, kuerzen, titel } from './layout.js';
 import { fakturaAuftraege, firmaLesen, kaeufer } from '../data.js';
 import { addTage, condense, dat, eur, heute, kategorie, netto, steuerGrund } from '../format.js';
 
@@ -41,6 +41,8 @@ interface Pos {
 }
 
 const ROW_H = 11.5;
+/** linker Rand der Spalte „Lieferort“ in der Positionstabelle */
+const ROUTE_NACH = 118;
 
 /**
  * Rechnungs-PDF (Einzel- oder Sammelrechnung) – Nachbau von ZCL_EU_RECHNUNG_PDF.
@@ -165,13 +167,11 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
     p.text(31, y + 4.8, ps.nr, { bold: true });
     p.text(31, y + 8.8, ps.ref, { size: 8, color: C.muted });
     if (ps.von || ps.nach) {
-      p.text(75, y + 4.8, ps.von);
+      // zwei Spalten ohne Pfeil dazwischen: Ladeort links, Lieferort rechts – lange Ortsnamen enden vor der nächsten Spalte
+      p.text(75, y + 4.8, kuerzen(p, ps.von, ROUTE_NACH - 75 - 3));
       if (ps.datL) p.text(75, y + 8.8, `Ladung ${dat(ps.datL)}`, { size: 7.5, color: C.muted });
-      p.line(112, y + 3.6, 115.5, y + 3.6, C.accent, 0.4);
-      p.line(114.3, y + 2.6, 115.5, y + 3.6, C.accent, 0.4);
-      p.line(114.3, y + 4.6, 115.5, y + 3.6, C.accent, 0.4);
-      p.text(118, y + 4.8, ps.nach);
-      if (ps.datE) p.text(118, y + 8.8, `Lieferung ${dat(ps.datE)}`, { size: 7.5, color: C.muted });
+      p.text(ROUTE_NACH, y + 4.8, kuerzen(p, ps.nach, 168 - ROUTE_NACH));
+      if (ps.datE) p.text(ROUTE_NACH, y + 8.8, `Lieferung ${dat(ps.datE)}`, { size: 7.5, color: C.muted });
     } else {
       p.text(75, y + 4.8, 'Transportleistung');
       p.text(75, y + 8.8, ps.info, { size: 7.5, color: C.muted });

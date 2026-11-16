@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  AnalyticalTable, Bar, Button, CheckBox, Dialog, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -16,6 +16,7 @@ import { toast } from '@core/toast';
 import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
 import { ordnerBereit } from './ordner';
+import { AblageOrdnerEinstellung } from './Ablageordner';
 
 // Filter und Auswahl bleiben beim Wechsel ins Detail und zurück erhalten
 const merk = {
@@ -212,6 +213,8 @@ export function AuftraegeListe() {
   useEffect(() => {
     if (baumEbene && treeRef.current?.toggleAllRowsExpanded) treeRef.current.toggleAllRowsExpanded(baumEbene === 'auf');
   }, [baumEbene, tree]);
+
+  const [ordnerDialog, setOrdnerDialog] = useState(false);
 
   // ---------------------------------------------------------------- Aktionen
   async function rechnungen(sammel: boolean) {
@@ -439,6 +442,7 @@ export function AuftraegeListe() {
         )}
       </>}
       endContent={<>
+        <Button design="Transparent" icon="open-folder" tooltip="Mein Ablageordner auf diesem PC: Ordner für Ausdrucke und abgelegte Dateien festlegen" onClick={() => setOrdnerDialog(true)}>Ablageordner</Button>
         <SegmentedButton onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.key as typeof ansicht)}>
           <SegmentedButtonItem data-key="LIST" icon="list" selected={ansicht === 'LIST'} />
           <SegmentedButtonItem data-key="TREE" icon="tree" selected={ansicht === 'TREE'} />
@@ -485,6 +489,9 @@ export function AuftraegeListe() {
         </MessageStrip>
       )}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <Dialog open={ordnerDialog} headerText="Ablageordner" onClose={() => setOrdnerDialog(false)} footer={<Bar endContent={<Button onClick={() => setOrdnerDialog(false)}>Schließen</Button>} />}>
+        <div style={{ width: 'min(46rem, 88vw)' }}>{ordnerDialog && <AblageOrdnerEinstellung />}</div>
+      </Dialog>
       {toolbar}
       <div ref={rahmen.ref} style={{ height: rahmen.hoehe }}>
       {ansicht === 'LIST' ? (
