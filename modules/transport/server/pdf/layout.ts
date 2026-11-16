@@ -21,14 +21,18 @@ export function topBar(p: Pdf) {
   p.rect(80, 0, 130, 3, { fill: C.dark });
 }
 
-/** Seite 1: Leiste und das Firmenlogo oben rechts (rechtsbündig am Seitenrand; ohne hinterlegtes Logo der Firmenname) */
+/**
+ * Seite 1: Leiste und das Firmenlogo oben rechts, rechtsbündig am Seitenrand. Es ist das Logo aus den Einstellungen
+ * (Einstellungen → Erscheinungsbild → Euroflex „Ausdrucke“ bzw. Firma und Bank, transport.firma.logo); ohne hinterlegtes
+ * Logo steht dort der Firmenname.
+ */
 export function kopf(p: Pdf, firma: Firma) {
   topBar(p);
-  if (firma.logo) p.image(firma.logo, C.right - LOGO_B, 11, LOGO_B, 11, { align: 'right' });
-  else p.text(C.right, 19, firma.name, { size: 16, bold: true, align: 'R' });
+  if (firma.logo) p.image(firma.logo, C.right - LOGO.b, LOGO.y, LOGO.b, LOGO.h, { align: 'right' });
+  else p.text(C.right, 21, firma.name, { size: 18, bold: true, align: 'R' });
 }
-/** Feld für das Logo: Breite in mm bei 11 mm Höhe (Seitenverhältnis ca. 6:1) */
-const LOGO_B = 67.8;
+/** Feld für das Logo in mm: bei einem Seitenverhältnis von 6:1 ist es 96 × 16 mm groß (bisher 67,8 × 11) – es endet über dem Anschriftfeld */
+const LOGO = { b: 96, h: 16, y: 9 };
 
 /** Folgeseite: Leiste und Titelzeile */
 export function folgeKopf(p: Pdf, titel: string) {
