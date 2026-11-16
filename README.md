@@ -352,6 +352,12 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   eine Sammelrechnung landet in jedem beteiligten Auftragsordner. Gleichnamige Dateien werden überschrieben.
 - **Drag & Drop / Strg+V** im Abschnitt *Dokumente* des Auftrags legt die Dateien im Auftragsordner ab (und wie bisher
   in Paperless, wenn eingerichtet). Darunter listet *Ablageordner* alle Dateien des Ordners; ein Klick öffnet sie aus dem Ordner.
+- **E-Mail aus Outlook hineinziehen (.eml):** Eine E-Mail-Datei (`.eml`, z. B. aus dem neuen Outlook oder Outlook im Web in den
+  Abschnitt *Dokumente* gezogen) wird im Browser zerlegt: Ihre **Anhänge** landen einzeln im Auftragsordner und – wenn eingerichtet –
+  in Paperless (dem Auftrag zugeordnet); die E-Mail selbst wird nur im Auftragsordner abgelegt. Eingebettete Bilder der Nachricht
+  (Signatur, Logos) und `winmail.dat` werden übersprungen, weitergeleitete E-Mails im Anhang bleiben eine `.eml`, gleiche Dateinamen
+  bekommen „(2)“. Die Meldung nennt Betreff und Anhänge. Code `modules/transport/web/eml.ts` (ohne Server, ohne Zusatzpaket),
+  Test `server/test/transport_eml.test.ts`. Outlook-Dateien im eigenen Format (`.msg`) werden nicht zerlegt, sondern wie bisher als Datei abgelegt.
 - **E-Mail mit Anhängen…** (Abschnitt *Dokumente*, Recht `transport.versand:execute`): Vorlage Transportauftrag / Lieferschein /
   Rechnung (Texte aus *Stammdaten → E-Mail-Texte*, Empfänger wie beim Versenden aus der Liste) oder freier Text – Empfänger,
   Betreff und Nachricht anpassbar; Anhänge aus dem Ablageordner und aus Paperless per Häkchen wählen (passende Dateien sind
