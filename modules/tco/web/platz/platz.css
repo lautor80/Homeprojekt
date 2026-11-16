@@ -18,6 +18,10 @@
 .portal-pb__punkt--sperre { background: repeating-linear-gradient(135deg, var(--sapNeutralBackground, #eff1f2) 0 3px, var(--sapList_Background, #fff) 3px 6px); border: 1px solid var(--sapNeutralBorderColor, #788fa6); }
 .portal-pb__punkt--reserviert { background: repeating-linear-gradient(135deg, var(--sapCriticalBackground, #fef7f1) 0 3px, var(--sapCriticalColor, #e76500) 3px 4px); border: 1px solid var(--sapCriticalColor, #e76500); }
 
+/* Rahmen rollt selbst in beide Richtungen (Höhe wie die Tabellen, s. „Fixierter Tabellenkopf“ in web/src/styles.css) –
+   nur so bleibt die Kopfzeile mit den Platznamen stehen; gegen die Seite greift „sticky“ nicht.
+   Auf dem Telefon rollt der Kalender weiter mit der Seite (kein Rollbereich im Rollbereich beim Buchen). */
+@media (min-width: 701px) { .portal-pb__scroll { overflow: auto; max-height: var(--portal-tabhoehe); } }
 .portal-pb__scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -177,11 +181,13 @@
 .portal-sb__kombi:hover { background: var(--sapList_Hover_Background, #eaecee); }
 .portal-sb__kombi--aktiv { background: var(--sapList_SelectionBackgroundColor, #ebf8ff); border-color: var(--sapButton_Emphasized_Background, #0070f2); }
 
-.portal-sb__matrix-scroll { overflow-x: auto; }
+/* Rahmen rollt selbst: Kopfzeile (oben) und Terminspalte (links) bleiben stehen, die Ecke liegt zuoberst */
+.portal-sb__matrix-scroll { overflow: auto; max-width: 100%; max-height: var(--portal-tabhoehe); }
 .portal-sb__matrix { border-collapse: collapse; width: 100%; font-size: var(--sapFontSize); }
 .portal-sb__matrix th, .portal-sb__matrix td { padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: center; white-space: nowrap; }
-.portal-sb__matrix th { position: sticky; top: 0; background: var(--sapList_HeaderBackground, #f5f6f7); font-weight: 400; vertical-align: bottom; }
-.portal-sb__matrix th:first-child, .portal-sb__datum { text-align: left; position: sticky; left: 0; background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-sb__matrix th { position: sticky; top: 0; z-index: 2; background: var(--sapList_HeaderBackground, #f5f6f7); font-weight: 400; vertical-align: bottom; }
+.portal-sb__matrix th:first-child, .portal-sb__datum { text-align: left; position: sticky; left: 0; z-index: 1; background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-sb__matrix th:first-child { z-index: 3; }
 .portal-sb__kopfinfo { font-size: var(--sapFontSmallSize); color: var(--sapContent_LabelColor); }
 .portal-sb__frei ui5-icon { color: var(--sapPositiveElementColor, #188918); width: 1rem; height: 1rem; }
 .portal-sb__belegt { color: var(--sapNegativeTextColor, #aa0808); font-size: var(--sapFontSmallSize); }

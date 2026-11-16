@@ -187,7 +187,7 @@ function ProdukteTab() {
           Gültige Produkte erscheinen als Vorschlag in der Trägerbestellung neuer Holzträgeraufträge.
         </Text>
         {list.length ? (
-          <div style={{ overflowX: 'auto', padding: '0.5rem 0.5rem 0.75rem' }}>
+          <div style={{ padding: '0.5rem 0.5rem 0.75rem' }}><div className="portal-tabrahmen">
             <table style={{ width: '100%', minWidth: '44rem', borderCollapse: 'collapse' }}>
               <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
                 <th style={{ ...th, width: '7.5rem' }}>Schlüssel</th>
@@ -223,7 +223,7 @@ function ProdukteTab() {
                 })}
               </tbody>
             </table>
-          </div>
+          </div></div>
         ) : (
           <Empty>Noch keine Produkte – über „Produkt hinzufügen“ anlegen oder mit dem SAP-Import (ZEU_PRODUKTE) übernehmen.</Empty>
         )}

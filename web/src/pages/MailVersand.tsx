@@ -24,7 +24,7 @@ export function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: b
         ohne Eintrag der Standard des Workflows. Antworten gehen dann an den Bearbeiter.
       </Text>
       {liste.length > 0 && (
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <div className="portal-tabrahmen"><table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead><tr>{['Anwendung', 'Absender-E-Mail', 'Absendername', 'Antworten an', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>
             {liste.map((a, i) => (
@@ -41,7 +41,7 @@ export function MailAbsender({ liste, ro, onChange }: { liste: Absender[]; ro: b
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       {!ro && <Button design="Transparent" icon="add" onClick={() => onChange([...liste, { anwendung: liste.length ? '' : '*', email: '', name: '', antwort_an: '' }])}>Absender hinzufügen</Button>}
     </div>
@@ -84,7 +84,7 @@ export function MailStand() {
       </div>
       {meldung && <MessageStrip design={meldung.ok ? 'Positive' : 'Negative'} onClose={() => setMeldung(null)} style={{ marginBottom: '0.4rem' }}>{meldung.text}</MessageStrip>}
       {!liste?.length ? <Text className="portal-muted">Noch keine Versandversuche protokolliert.</Text> : (
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <div className="portal-tabrahmen"><table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead><tr>{['Zeit', 'Anwendung', 'An', 'Betreff', 'Absender', 'Status'].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>
             {liste.map((p) => (
@@ -101,7 +101,7 @@ export function MailStand() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.4rem' }}>
         Die letzten {LETZTE} Versuche. Alle E-Mails mit Filter, „Erneut senden“ und „Protokoll leeren“: Administration → Protokolle → E-Mail-Protokoll.

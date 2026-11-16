@@ -1,9 +1,8 @@
 /* Haushaltsplan: Eingabetabellen und Diagramme – ausschließlich Theme-Variablen (Hell/Dunkel, Akzentfarbe) */
-.hh-roll { overflow: auto; max-width: 100%; max-height: calc(100vh - 12rem); }
-/* Kopfzeile bleibt beim Blättern stehen: die Tabelle rollt in ihrem eigenen Rahmen, nicht mit der Seite.
-   Kleine Bildschirme (Querformat am Telefon) behalten eine brauchbare Mindesthöhe. */
-@media (max-height: 34rem) { .hh-roll { max-height: none; overflow-y: visible; } }
-.hh-tab thead th { position: sticky; top: 0; z-index: 2; box-shadow: inset 0 -1px 0 var(--sapList_BorderColor); }
+.hh-roll { overflow: auto; max-width: 100%; max-height: var(--portal-tabhoehe); }
+/* Kopfzeile bleibt beim Blättern stehen: die Tabelle rollt in ihrem eigenen Rahmen (Höhe portalweit: --portal-tabhoehe in styles.css) */
+.hh-tab thead { position: sticky; top: 0; z-index: 2; }
+.hh-tab thead th { box-shadow: inset 0 -1px 0 var(--sapList_BorderColor); }
 /* ui5-tab vererbt die fette Schrift seiner Beschriftung an einfachen HTML-Inhalt – hier gilt die normale Portalschrift */
 .hh-tab, .hh-liste, .hh-leiste, .hh-chart, .hh-dialog { font-family: var(--sapFontFamily, "72", Arial, Helvetica, sans-serif); font-size: var(--sapFontSize, 0.875rem); }
 .hh-tab { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }

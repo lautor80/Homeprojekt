@@ -166,7 +166,7 @@ export function Konten() {
             <div className="portal-busy-inhalt">
             <Section title="Konten" count={sichtbar.length} flush
                      status={<span className="portal-muted portal-small">Kein Haken = Konto ist in diesem Jahr nicht in den Kontenlisten der FI-Belege.</span>}>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="portal-tabrahmen">
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead>
                     <tr>

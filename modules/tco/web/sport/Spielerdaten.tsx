@@ -49,7 +49,7 @@ function buchstaben<T extends { name: string }>(liste: T[]): [string, T[]][] {
 
 function Tabelle({ kopf, children, leer }: { kopf: ReactNode[]; children: ReactNode; leer?: string }) {
   return (
-    <div className="portal-sd__rahmen">
+    <div className="portal-sd__rahmen portal-tabrahmen">
       <table className="portal-sd__tabelle">
         <thead><tr>{kopf.map((k, i) => <th key={i}>{k}</th>)}</tr></thead>
         <tbody>{children}</tbody>

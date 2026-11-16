@@ -186,8 +186,8 @@ export function Hallenschluessel() {
             {!zeilen.length && <tr><td colSpan={SPALTEN.length + 1} className="portal-muted">{basis.length ? 'Kein Vorgang passt zu den Filtern.' : 'Keine Vorgänge.'}</td></tr>}
           </tbody>
         </table>
-        <Text className="portal-muted portal-small">{zeilen.length} von {basis.length} Vorgang/Vorgängen</Text>
       </div>
+      <Text className="portal-muted portal-small">{zeilen.length} von {basis.length} Vorgang/Vorgängen</Text>
 
       {dlg === 'ausgabe' && <AusgabeDialog daten={daten} onClose={fertig} />}
       {rueck && <RueckgabeDialog z={rueck} daten={daten} onClose={fertig} />}

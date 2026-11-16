@@ -163,6 +163,7 @@ export function Hallenpreise() {
           {edit && <ToolbarButton icon="add" text="Produkt" onClick={() => { setProdukte((l) => [...l, { prod_key: '', valid_from: new Date().toISOString().slice(0, 10), text: '', preis: 0, typ: '2' }]); geaendert(); }} />}
         </Toolbar>
       }>
+        <div className="portal-tabrahmen">
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead><tr>{['Schlüssel', 'Preisgruppe', 'Gültig ab', 'Gültig bis', 'Bezeichnung', 'Typ', 'Erlöskonto', 'Preis (EUR/Std. bzw. Stück)', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>
@@ -194,6 +195,7 @@ export function Hallenpreise() {
             ))}
           </tbody>
         </table>
+        </div>
       </Panel>
 
       <Panel fixed style={{ marginTop: '1rem' }} header={
@@ -213,6 +215,7 @@ export function Hallenpreise() {
           }} />}
         </Toolbar>
       }>
+        <div className="portal-tabrahmen">
         <table style={{ borderCollapse: 'collapse' }}>
           <thead><tr>{['Produkt', 'Zeitraum ab', 'Wochentag', 'Von', 'Bis', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>
@@ -246,6 +249,7 @@ export function Hallenpreise() {
             ))}
           </tbody>
         </table>
+        </div>
       </Panel>
 
       <Panel fixed style={{ marginTop: '1rem' }} header={
@@ -261,6 +265,7 @@ export function Hallenpreise() {
         </Toolbar>
       }>
         <Text style={{ color: 'var(--sapContent_LabelColor)' }}>Je Zelle oben Abo, unten Einzelbuchung. Leere Zellen haben keinen Preis (Buchungen dort ergeben einen Preisfehler).</Text>
+        <div className="portal-tabrahmen">
         <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: '0.5rem' }}>
           <thead><tr><th style={zelle} />{TAGE.map((t) => <th key={t} style={{ ...zelle, textAlign: 'left' }}><Label>{TAG_KURZ[t]}</Label></th>)}</tr></thead>
           <tbody>
@@ -280,6 +285,7 @@ export function Hallenpreise() {
             ))}
           </tbody>
         </table>
+        </div>
       </Panel>
       <FlexBox style={{ marginTop: '0.5rem' }}><Text style={{ color: 'var(--sapContent_LabelColor)' }}>
         Gültig-bis wird automatisch abgeleitet (Vortag des nächsten Zeitraums). Angrenzende Fenster eines Produkts werden beim Speichern zusammengefasst.

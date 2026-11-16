@@ -393,7 +393,7 @@ function SpenderDialog({ s, jahr, gesperrt, darf, onClose, onGeaendert, onVorsch
       <Text style={{ display: 'block', marginBottom: '0.5rem' }}>{[s.name, ...s.anschrift].join(' · ')}{s.email ? ` · ${s.email}${s.email_unzustellbar ? ' (als unzustellbar vermerkt – bitte drucken)' : ''}` : ' · keine E-Mail-Adresse – bitte drucken'}</Text>
       {s.fehlt.length > 0 && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>Name und Anschrift des Zuwendenden sind unvollständig ({s.fehlt.join(', ')}) – bitte {s.typ === 'M' ? 'im Mitgliederstamm' : 'beim Spender'} ergänzen.</MessageStrip>}
       {haengt && <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Eine Spende ist ungeklärt – bis dahin ist keine Sammelbestätigung möglich (Einzelbestätigungen der übrigen Spenden schon).</MessageStrip>}
-      <div className="portal-ih__rahmen" style={{ maxHeight: '50vh', overflowY: 'auto' }}><table className="portal-ih__tabelle" style={{ width: '100%' }}>
+      <div className="portal-ih__rahmen portal-tabrahmen" style={{ maxHeight: '50vh' }}><table className="portal-ih__tabelle" style={{ width: '100%' }}>
         <thead><tr><th /><th>Datum</th><th>Herkunft</th><th style={{ textAlign: 'right' }}>Betrag</th><th>Aufwandsverzicht</th><th /></tr></thead>
         <tbody>
           {s.offen.map((q) => zeile(q, 'offen'))}

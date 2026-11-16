@@ -435,7 +435,7 @@ export function AuftragDetail() {
           <ObjectPageSection id="traeger" titleText="Holzträger" hideTitleText>
             <ObjectPageSubSection id="traeger-sub" titleText="Holzträger"
               actions={<FlexBox alignItems="Center" style={{ gap: '0.5rem' }}><Label>Summe:</Label><Text><b>{betrag(traegerSumme)} EUR</b></Text></FlexBox>}>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="portal-tabrahmen">
               <table style={{ width: '100%', minWidth: '40rem', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--sapList_BorderColor)' }}>

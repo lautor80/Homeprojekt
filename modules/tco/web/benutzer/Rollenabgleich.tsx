@@ -53,7 +53,7 @@ function RollenabgleichDialog({ onClose, onGeaendert }: { onClose: () => void; o
       {!v && !error && <BusyIndicator active style={{ display: 'block', padding: '1.5rem 0' }} />}
       {v && <MessageStrip design={fertig ? 'Positive' : v.aenderungen.length ? 'Information' : 'Positive'} hideCloseButton style={{ marginBottom: '0.5rem' }}>{v.text}</MessageStrip>}
       {v && v.aenderungen.length > 0 && (
-        <div style={{ overflowX: 'auto', maxHeight: '50vh' }}>
+        <div className="portal-tabrahmen" style={{ maxHeight: '50vh' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead><tr style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
               <th style={zelle}>Benutzer</th><th style={zelle}>Status</th><th style={zelle}>{fertig ? 'Ergänzt' : 'Erhält'}</th><th style={zelle}>{fertig ? 'Entzogen' : 'Verliert'}</th>

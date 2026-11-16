@@ -61,7 +61,7 @@ export function MitgliedRegistrierungen() {
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
         <Section title="Registrierungen" count={liste.length} flush>
           {!liste.length ? <Text className="portal-muted" style={{ display: 'block', padding: '1rem' }}>Keine offenen Registrierungen.</Text> : (
-            <div style={{ overflowX: 'auto' }}>
+            <div className="portal-tabrahmen">
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead><tr>{['Eingegangen', 'Person', 'Nachweis', 'Vorschlag', 'Status', ''].map((h) => <th key={h} style={{ ...zelle, textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
                 <tbody>

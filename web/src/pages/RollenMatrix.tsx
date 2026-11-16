@@ -160,7 +160,7 @@ export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, 
             <Text className="portal-muted portal-small">Befunde verhindern das Sichern nicht. „Vergleichen“ stellt die betroffenen Rollen in der Matrix nebeneinander.</Text>
           </div>
           {!pruefung ? <Text>Prüfung läuft …</Text> : !befunde.length ? <MessageStrip design="Positive" hideCloseButton>Keine Befunde.</MessageStrip> : (
-            <table className="portal-rm__befunde">
+            <div className="portal-tabrahmen"><table className="portal-rm__befunde">
               <thead><tr>{['Stufe', 'Prüfung', 'Rollen', 'Befund', ''].map((h) => <th key={h}><Label>{h}</Label></th>)}</tr></thead>
               <tbody>{befunde.map((b, i) => (
                 <tr key={i}>
@@ -171,7 +171,7 @@ export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, 
                   <td>{(b.rollen.length > 0 || b.rechte.length > 0) && <Button design="Transparent" icon="compare" onClick={() => vergleichen(b)}>{b.rollen.length ? 'Vergleichen' : 'Zeigen'}</Button>}</td>
                 </tr>
               ))}</tbody>
-            </table>
+            </table></div>
           )}
         </>
       )}
@@ -359,7 +359,7 @@ function Verproben({ rollen, alleRollen, entwurf, geaendert, darfBenutzer, texte
       </div>
 
       {!wahl.length ? <Text className="portal-muted">Bitte einen oder mehrere Benutzer wählen.</Text> : !erg ? <Text>Verprobung läuft …</Text> : (
-        <table className="portal-rm__befunde">
+        <div className="portal-tabrahmen"><table className="portal-rm__befunde">
           <thead><tr>{['', 'Benutzer', 'Rollen heute', 'Rollen in der Probe', 'Rechte', 'Änderung', 'Befunde', ''].map((h, i) => <th key={i}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>{erg.map((v) => {
             const auf = offen.has(v.id);
@@ -402,7 +402,7 @@ function Verproben({ rollen, alleRollen, entwurf, geaendert, darfBenutzer, texte
               </Fragment>
             );
           })}</tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

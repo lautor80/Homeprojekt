@@ -754,6 +754,7 @@ function ProtokollDialog({ p, onClose }: { p: Protokoll | null; onClose: () => v
   return (
     <Dialog open headerText={p.titel} style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+      <div className="portal-tabrahmen">
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead><tr>{['Quelle', 'Ergebnis', 'Meldung'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
         <tbody>
@@ -779,6 +780,7 @@ function ProtokollDialog({ p, onClose }: { p: Protokoll | null; onClose: () => v
           {!p.zeilen.length && <tr><td style={zelle} colSpan={3}><Text>Keine Einträge.</Text></td></tr>}
         </tbody>
       </table>
+      </div>
     </Dialog>
   );
 }
@@ -807,6 +809,7 @@ function TeilzahlungenAbschnitt({ rechnung }: { rechnung: Rechnung }) {
                {rest > 0 ? `offen ${eur(rest)}` : rest < 0 ? `überzahlt ${eur(-rest)}` : 'vollständig gezahlt'}
              </ObjectStatus>}>
       <div style={{ padding: '0.25rem 1rem 0.75rem' }}>
+        <div className="portal-tabrahmen">
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead><tr>{['Datum', 'FI-Beleg', 'Text', 'Betrag'].map((h, i) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: i === 3 ? 'right' : 'left' }}><Label>{h}</Label></th>)}</tr></thead>
           <tbody>
@@ -825,6 +828,7 @@ function TeilzahlungenAbschnitt({ rechnung }: { rechnung: Rechnung }) {
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
     </Section>
   );
@@ -855,6 +859,7 @@ function PaperlessBlock({ pl }: { pl: PaperlessInfo }) {
       {pl.notizen.length > 0 && (
         <div>
           <Label showColon>Paperless-Notizen</Label>
+          <div className="portal-tabrahmen">
           <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: '0.25rem' }}>
             <thead><tr>{['Datum', 'Notiz'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
             <tbody>
@@ -863,6 +868,7 @@ function PaperlessBlock({ pl }: { pl: PaperlessInfo }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
