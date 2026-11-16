@@ -93,14 +93,20 @@ tr.summe td { font-weight: 700; border-top: 2px solid var(--border); }
 .blatt .klein { color: #6b6b6b; font-size: 11px; margin-top: 6px; }
 .blatt .unterschrift { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 44px; } .blatt .unterschrift div { border-top: 1px solid #6b6b6b; padding-top: 4px; color: #6b6b6b; font-size: 11px; }
 .blatt .gb { height: 9px; border-radius: 2px; background: #c8c8c8; position: relative; } .blatt .gb.k { background: #e2701f; }
+.feldM { display: flex; flex-direction: column; gap: 3px; } .feldM > span { color: var(--label); font-size: 12px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; z-index: 30; max-width: calc(100% - 32px); }
 </style>
 
-<div class="shell"><div class="wrap"><b>TC Oberthal · Vereinsportal</b><span>Finanzen → Projekte</span><span class="status warn">Vorschlag und Mockup – noch nicht freigegeben</span></div></div>
+<div class="shell"><div class="wrap"><b>TC Oberthal · Vereinsportal</b><span id="pfad">Finanzen → Projekte</span><span class="status warn">Vorschlag und Mockup – noch nicht freigegeben</span></div></div>
 <div class="wrap">
-  <div class="kopf">
+  <div class="reihe" style="padding-top:14px"><span class="grau">Ansicht im Mockup:</span><span class="tabs" style="border:0" id="sichten"></span></div>
+  <div id="kopfP" class="kopf">
     <div><h1>Platz 3 sanieren</h1><div class="unter" id="unter"></div></div>
-    <div class="reihe"><span class="status neutral">Idee / Entwurf</span><button class="knopf" data-hinweis="Im Portal öffnet sich hier derselbe Dialog wie im Haushaltsplan: Stammdaten, Kosten, Finanzierung, Beantragen.">Stammdaten, Kosten, Antrag stellen</button><button class="knopf haupt" data-tab="antrag">Projektantrag (PDF)</button></div>
+    <div class="reihe"><span class="status gut">in Umsetzung</span><button class="knopf" data-hinweis="Im Portal öffnet sich hier derselbe Dialog wie im Haushaltsplan: Stammdaten, Kosten, Finanzierung, Beantragen.">Stammdaten, Kosten, Antrag stellen</button><button class="knopf haupt" data-tab="antrag">Projektantrag (PDF)</button></div>
+  </div>
+  <div id="kopfM" class="kopf" hidden>
+    <div><h1>Meine Daten</h1><div class="unter" id="unterM"></div></div>
+    <label class="reihe"><span class="grau">Angemeldet als (nur im Mockup wählbar)</span><select id="person" aria-label="Angemeldet als"></select></label>
   </div>
   <div class="tabs" role="tablist" id="tabs"></div>
   <div id="seite"></div>
@@ -145,6 +151,24 @@ const d = {
     { was: 'Zaunfarbe', lieferant: '', vorgang: 5, menge: 6, einheit: 'Eimer', preis: 48, da: false },
   ],
 };
+// Rückmeldungen: Projektstunden (status: gemeldet | bestaetigt | abgelehnt) und – nur zur Anschauung – Trainingsstunden
+d.zeit = [
+  { wer: 'Bauer, Anna', tag: heute - 6, vorgang: 2, stunden: 4, was: 'Belag abgetragen, Nordseite', status: 'bestaetigt' },
+  { wer: 'Bauer, Anna', tag: heute - 2, vorgang: 2, stunden: 3.5, was: 'Belag abgetragen, Rest', status: 'gemeldet' },
+  { wer: 'Helfer', tag: heute - 6, vorgang: 2, stunden: 12, was: '3 Helfer je 4 Stunden (vom Platzwart erfasst)', status: 'bestaetigt' },
+  { wer: 'Schmitt, Ben', tag: heute - 1, vorgang: 4, stunden: 1.5, was: 'Linien vorbereitet', status: 'gemeldet' },
+];
+d.training = [
+  { wer: 'Schmitt, Ben', tag: heute - 8, art: 'Jugendtraining', stunden: 2 }, { wer: 'Schmitt, Ben', tag: heute - 5, art: 'Jugendtraining', stunden: 2 },
+  { wer: 'Schmitt, Ben', tag: heute - 3, art: 'Schnuppertraining', stunden: 1 },
+];
+const PERSONEN = [
+  { name: 'Bauer, Anna', rolle: 'Mitglied – im Projekt „Platz 3 sanieren“ eingeplant', trainer: false },
+  { name: 'Schmitt, Ben', rolle: 'Trainer und Mitglied – im Projekt eingeplant', trainer: true },
+  { name: 'Hoffmann, Jan', rolle: 'Mitglied – in keinem Projekt eingeplant', trainer: false },
+];
+let sicht = 'projekt', person = 0, mtab = 'zeiten', zart = 'projekt';
+const eingeplant = (name) => d.a.some((a) => a.mitglied && a.wer === name);
 const MITGLIEDER = ['Bauer, Anna', 'Schmitt, Ben', 'Weber, Clara', 'Klein, Petra', 'Hoffmann, Jan'];
 let tab = 'vorschlag', fehler = '';
 
@@ -175,7 +199,10 @@ const summen = () => {
   const personen = new Set(d.a.filter((a) => a.mitglied).map((a) => a.wer)).size + d.a.filter((a) => !a.mitglied).reduce((s, a) => s + a.personen, 0);
   const material = d.m.reduce((s, m) => s + m.menge * m.preis, 0), da = d.m.filter((m) => m.da).reduce((s, m) => s + m.menge * m.preis, 0);
   const kosten = d.kosten.filter((k) => k.art === 'Kosten').reduce((s, k) => s + k.betrag, 0), fin = d.kosten.filter((k) => k.art !== 'Kosten').reduce((s, k) => s + k.betrag, 0);
-  return { stunden, wert, personen, material, da, kosten, fin, luecke: Math.max(0, kosten - fin) };
+  const satzVon = (wer) => { const a = d.a.find((x) => x.wer === wer); return a && a.satz !== '' ? lies(a.satz) : d.satz; };
+  const ist = d.zeit.filter((z) => z.status === 'bestaetigt').reduce((x, z) => x + z.stunden, 0), gemeldet = d.zeit.filter((z) => z.status === 'gemeldet').reduce((x, z) => x + z.stunden, 0);
+  const istWert = d.zeit.filter((z) => z.status === 'bestaetigt').reduce((x, z) => x + z.stunden * satzVon(z.wer), 0);
+  return { stunden, wert, personen, material, da, kosten, fin, luecke: Math.max(0, kosten - fin), ist, gemeldet, istWert };
 };
 
 // ------------------------------------------------------------------ Gantt
@@ -212,22 +239,39 @@ const FRAGEN = [
   ['eigen', 'Wie erscheint die Eigenleistung im Antrag?', ['Als eigener Abschnitt mit Wert zum externen Satz – nicht in Kosten und Finanzierung', 'Zusätzlich als Finanzierungsart „Eigenleistung“ (Kosten = Fremdvergabe, davon durch Mitglieder erbracht)'], 0],
   ['satz', 'Woher kommt der externe Verrechnungssatz?', ['Eine Vorgabe je Projekt, je Zeile überschreibbar', 'Sätze je Tätigkeit in den Einstellungen (z. B. Helfer 25 €, Fachkraft 60 €)'], 0],
   ['helfer', 'Sollen sich Mitglieder für Arbeitseinsätze selbst melden können?', ['Nein, der Verantwortliche trägt ein', 'Ja – ein Vorgang kann eine Veranstaltung im Vereinskalender mit An- und Abmeldung anlegen (späterer Ausbau)'], 0],
+  ['ort', 'Wo liegt die Zeiterfassung?', ['Als Reiter „Meine Zeiten“ in „Meine Daten“ – der Menüpunkt „Meine Trainingszeiten“ entfällt', 'Eigener Menüpunkt „Meine Zeiten“ bleibt, „Meine Daten“ verweist nur darauf'], 0],
+  ['wer', 'Wer darf eigene Stunden auf ein Projekt melden?', ['Nur wer im Projekt als Mitglied eingeplant ist', 'Eingeplante Mitglieder – und alle Mitglieder, wenn das Projekt „offen für alle“ ist', 'Jedes Mitglied auf jedes laufende Projekt'], 1],
+  ['bestaetigen', 'Müssen gemeldete Projektstunden bestätigt werden?', ['Ja, durch den Projektverantwortlichen – erst dann zählen sie im Soll-Ist', 'Nein, gemeldete Stunden zählen sofort'], 0],
   ['sperre', 'Wer darf nach der Genehmigung noch ändern?', ['Termine und Ressourcen jeder mit Planungsrecht (sie leben in der Umsetzung weiter); Kosten nur, wer genehmigen darf', 'Nach der Genehmigung alles nur noch, wer genehmigen darf'], 0],
 ];
 const wahl = Object.fromEntries(FRAGEN.map((f) => [f[0], f[3]]));
-const TABS = [['vorschlag', 'Vorschlag'], ['uebersicht', 'Übersicht'], ['kosten', 'Kosten und Finanzierung'], ['termine', 'Termine'], ['ressourcen', 'Ressourcen'], ['antrag', 'Antrag']];
+const TABS = [['vorschlag', 'Vorschlag'], ['uebersicht', 'Übersicht'], ['kosten', 'Kosten und Finanzierung'], ['termine', 'Termine'], ['ressourcen', 'Ressourcen'], ['zeiten', 'Zeiten'], ['antrag', 'Antrag']];
 
 function vorschlag() {
   return `<div class="karte"><header><h2>Vorschlag</h2><small>Bitte lesen, die Fragen unten beantworten – danach setze ich um</small></header><div class="inhalt text">
-    <p><b>Ziel:</b> eine eigene App „Projekte“ unter Finanzen. Sie arbeitet auf denselben Projekten wie der Haushaltsplan und ergänzt die Kostenplanung um Termine, Ressourcen und den Antrag.</p>
-    <h3>Aufbau – fünf Reiter je Projekt (oben in den Reitern zum Ausprobieren)</h3>
+    <p><b>Ziel:</b> eine eigene App „Projekte“ unter Finanzen. Sie arbeitet auf denselben Projekten wie der Haushaltsplan und ergänzt die Kostenplanung um Termine, Ressourcen, die Rückmeldung der geleisteten Stunden und den Antrag.</p>
+    <h3>Aufbau – sechs Reiter je Projekt (oben in den Reitern zum Ausprobieren)</h3>
     <ul>
       <li><b>Übersicht:</b> Status, Termine, Kosten, Finanzierung, Arbeitseinsatz und Material auf einen Blick, darunter das Gantt-Diagramm.</li>
       <li><b>Kosten und Finanzierung:</b> unverändert die Kostenplanung des Haushaltsplans (Positionen, Genehmigung, Wirkung auf den Plan), dazu der Vergleich mit Material und Eigenleistung.</li>
       <li><b>Termine:</b> Vorgänge mit Dauer und Vorgängern („1; 2+3“ = nach Vorgang 1 und frühestens 3 Tage nach Vorgang 2). Das Portal rechnet Beginn, Ende, Puffer und den kritischen Weg und zeichnet das Gantt-Diagramm.</li>
       <li><b>Ressourcen:</b> Arbeitseinsatz der Mitglieder (wer, wie viele Stunden, externer Verrechnungssatz) und Material (Menge, Preis, Lieferant, beschafft).</li>
+      <li><b>Zeiten:</b> Soll-Ist der Stunden je Person; gemeldete Stunden bestätigen oder zurückweisen, für Helfer ohne Zugang erfassen.</li>
       <li><b>Antrag:</b> alles zusammen als PDF im Vereinslayout – Voransicht, Ausdruck, Ablage in Paperless.</li>
     </ul>
+    <h3>Zeiterfassung: „Meine Zeiten“ für Training und Projekte</h3>
+    <p>Oben auf <b>„Meine Daten (Mitglied, Trainer)“</b> umschalten, um es aus Sicht der Person zu sehen.</p>
+    <ul>
+      <li><b>Ein Ort:</b> Die heutige App „Meine Trainingszeiten“ wird der Reiter „Meine Zeiten“ in „Meine Daten“.</li>
+      <li><b>Zwei Arten, klar getrennt:</b> <i>Training</i> bleibt unverändert (Trainingsart, Entgelt, Monatsfreigabe, Zeitnachweis, Auszahlung). <i>Projekt</i> ist neu: Datum, Projekt, Vorgang, Stunden, Tätigkeit – unbezahlt, zählt als Eigenleistung des Projekts und erscheint nie im Zeitnachweis des Trainers.</li>
+      <li><b>Zuordnung zum Projekt</b> ist Pflicht; wählbar sind nur genehmigte und laufende Projekte.</li>
+    </ul>
+    <div class="roll"><table><thead><tr><th>Rückmeldung</th><th>Recht</th><th>Person</th></tr></thead><tbody>
+      <tr><td>Training</td><td>„Meine Trainingszeiten“ (wie bisher)</td><td style="white-space:normal">Benutzer ist einem Mitglied mit Kennzeichen „Trainer“ zugeordnet</td></tr>
+      <tr><td>Projekt, eigene Stunden</td><td>„Projektstunden melden“ (neu, für die Rolle Mitglied vorbelegt)</td><td style="white-space:normal">Benutzer ist einem Mitglied zugeordnet, das im Projekt eingeplant ist – oder das Projekt ist „offen für alle“</td></tr>
+      <tr><td>Projekt, für andere und bestätigen</td><td>„Projekte planen“</td><td style="white-space:normal">Projektverantwortliche und Planer, auch für Helfer ohne Zugang</td></tr>
+    </tbody></table></div>
+    <p class="grau">Wie heute bei den Trainingszeiten kommt die Person immer aus der Anmeldung – niemand kann fremde Stunden sehen oder ändern.</p>
     <h3>Rechenregeln</h3>
     <ul>
       <li>Ein Vorgang beginnt, sobald alle Vorgänger fertig sind (plus Abstand); ohne Vorgänger mit dem Projekt. Dauer 0 ist ein Meilenstein.</li>
@@ -239,7 +283,7 @@ function vorschlag() {
     ${FRAGEN.map(([k, frage, opts, emp]) => `<div class="frage"><b>${frage}</b>${opts.map((o, i) => `<label><input type="radio" name="f_${k}" value="${i}" ${wahl[k] === i ? 'checked' : ''}><span>${o}${i === emp ? ' <span class="emp">Empfehlung</span>' : ''}</span></label>`).join('')}</div>`).join('')}
     <div class="reihe" style="margin-top:14px"><button class="knopf haupt" data-kopieren>Meine Auswahl kopieren</button><span class="grau">Den kopierten Text in den Chat einfügen.</span></div>
     <h3>Nicht im ersten Schritt</h3>
-    <ul><li>Auslastung eines Mitglieds über mehrere Projekte</li><li>Feiertage und Platzsperren im Terminplan</li><li>Bestellungen und Rechnungen zum Material (das läuft weiter über FI)</li></ul>
+    <ul><li>Pflicht-Arbeitsstunden je Mitglied und Jahr mit Abrechnung</li><li>Auslastung eines Mitglieds über mehrere Projekte</li><li>Feiertage und Platzsperren im Terminplan</li><li>Bestellungen und Rechnungen zum Material (das läuft weiter über FI)</li></ul>
   </div></div>`;
 }
 function kpis(s) {
@@ -247,7 +291,8 @@ function kpis(s) {
     <div class="kpi"><div class="l">Termine</div><div class="w">${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : '–'}</div><small>${plan ? `${plan.tage} Tage · ${plan.fertig} % erledigt` : ''}</small></div>
     <div class="kpi"><div class="l">Kosten</div><div class="w">${eur(s.kosten)}</div></div>
     <div class="kpi"><div class="l">Finanzierung</div><div class="w">${eur(s.fin)}</div><small>${s.luecke ? `<span class="status schlecht">Lücke ${eur(s.luecke)}</span>` : 'gedeckt'}</small></div>
-    <div class="kpi"><div class="l">Arbeitseinsatz</div><div class="w">${zahl(s.stunden)} Std.</div><small>${s.personen} Personen · Wert ${eur(s.wert)}</small></div>
+    <div class="kpi"><div class="l">Arbeitseinsatz</div><div class="w">${zahl(s.stunden)} Std.</div><small>geplant · Wert ${eur(s.wert)}</small></div>
+    <div class="kpi"><div class="l">Geleistet (bestätigt)</div><div class="w">${zahl(s.ist)} Std.</div><small>Wert ${eur(s.istWert)}${s.gemeldet ? ` · ${zahl(s.gemeldet)} Std. warten auf Bestätigung` : ''}</small></div>
     <div class="kpi"><div class="l">Material</div><div class="w">${eur(s.material)}</div><small>davon beschafft ${eur(s.da)}</small></div>
   </div>`;
 }
@@ -317,7 +362,7 @@ function antrag() {
   const s = summen(), sp = plan ? Math.max(1, plan.tage) : 1;
   return `<div class="karte"><header><h2>Projektantrag – Voransicht</h2><span class="reihe"><button class="knopf" data-hinweis="Im Portal lädt dieser Knopf das PDF herunter bzw. öffnet es zum Drucken.">Herunterladen / Drucken</button><button class="knopf" data-hinweis="Im Portal legt dieser Knopf das PDF in Paperless ab – erneutes Ablegen erzeugt eine neue Version desselben Dokuments.">In Paperless ablegen</button></span></header><div class="inhalt">
   <div class="blatt"><div class="band"><h2>PROJEKTANTRAG</h2><div>Platz 3 sanieren</div></div><div class="innen">
-    <div class="kz"><div><span>ZEITRAUM</span><b>${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : ''}</b></div><div><span>KOSTEN</span><b>${eur(s.kosten)}</b></div><div><span>FINANZIERUNG</span><b>${eur(s.fin)}</b></div><div><span>EIGENLEISTUNG</span><b>${zahl(s.stunden)} Std.</b></div><div><span>STATUS</span><b>Idee / Entwurf</b></div></div>
+    <div class="kz"><div><span>ZEITRAUM</span><b>${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : ''}</b></div><div><span>KOSTEN</span><b>${eur(s.kosten)}</b></div><div><span>FINANZIERUNG</span><b>${eur(s.fin)}</b></div><div><span>EIGENLEISTUNG</span><b>${zahl(s.stunden)} Std.</b></div><div><span>STATUS</span><b>in Umsetzung</b></div></div>
     <div>Verantwortlich: Sportwart · Tätigkeitsbereich C</div>
     <p>Der Belag von Platz 3 ist nach 20 Jahren verbraucht. Abtragen und Einbau in Eigenleistung, Material und Linien vom Fachhandel.</p>
     <h4>Kosten und Finanzierung</h4><div class="rahmen"><table><thead><tr><th>Art</th><th>Bezeichnung</th><th class="z">Betrag</th></tr></thead><tbody>
@@ -338,12 +383,69 @@ function antrag() {
   </div></div></div></div>`;
 }
 
+const STATUS = { gemeldet: '<span class="status warn">gemeldet</span>', bestaetigt: '<span class="status gut">bestätigt</span>', abgelehnt: '<span class="status schlecht">zurückgewiesen</span>' };
+const vName = (n) => (n && d.v[n - 1] ? `${n}. ${d.v[n - 1].name}` : '–');
+function zeiten() {
+  const s = summen();
+  const namen = [...new Set([...d.a.map((a) => a.wer), ...d.zeit.map((z) => z.wer)])];
+  return `<div class="karte"><header><h2>Soll-Ist der Stunden</h2><small>es zählen bestätigte Stunden</small></header>
+    <div class="roll"><table><thead><tr><th>Wer</th><th class="z">geplant</th><th class="z">gemeldet</th><th class="z">bestätigt</th><th class="z">offen</th><th>Stand</th></tr></thead><tbody>
+    ${namen.map((n) => { const plan = d.a.filter((a) => a.wer === n).reduce((x, a) => x + a.personen * a.stunden, 0), gem = d.zeit.filter((z) => z.wer === n && z.status === 'gemeldet').reduce((x, z) => x + z.stunden, 0), ist = d.zeit.filter((z) => z.wer === n && z.status === 'bestaetigt').reduce((x, z) => x + z.stunden, 0);
+      return `<tr><td>${esc(n)}</td><td class="z">${zahl(plan)}</td><td class="z">${gem ? zahl(gem) : '–'}</td><td class="z">${zahl(ist)}</td><td class="z">${zahl(Math.max(0, plan - ist))}</td><td>${ist > plan ? '<span class="status warn">über Plan</span>' : plan && ist >= plan ? '<span class="status gut">erfüllt</span>' : ''}</td></tr>`; }).join('')}
+    <tr class="summe"><td>Summe</td><td class="z">${zahl(s.stunden)}</td><td class="z">${zahl(s.gemeldet)}</td><td class="z">${zahl(s.ist)}</td><td class="z">${zahl(Math.max(0, s.stunden - s.ist))}</td><td>Wert geleistet ${eur(s.istWert)} von ${eur(s.wert)}</td></tr></tbody></table></div></div>
+    <div class="karte"><header><h2>Rückmeldungen <span>(${d.zeit.length})</span></h2><small>Mitglieder melden unter Meine Daten → Meine Zeiten</small><button class="knopf still" data-neu="z">＋ Für jemanden erfassen</button></header>
+    <div class="roll"><table><thead><tr><th>Datum</th><th>Wer</th><th>Vorgang</th><th class="z">Stunden</th><th>Tätigkeit</th><th>Status</th><th></th></tr></thead><tbody>
+    ${d.zeit.map((z, i) => `<tr><td>${dat(z.tag)}</td><td>${esc(z.wer)}</td><td>${esc(vName(z.vorgang))}</td><td class="z">${zahl(z.stunden)}</td><td style="white-space:normal;min-width:180px">${esc(z.was)}</td><td>${STATUS[z.status]}</td>
+      <td>${z.status === 'gemeldet' ? `<button class="knopf still" data-zeit="bestaetigt" data-i="${i}">Bestätigen</button><button class="knopf still" data-zeit="abgelehnt" data-i="${i}">Zurückweisen</button>` : `<button class="knopf still" data-zeit="gemeldet" data-i="${i}">Zurücknehmen</button>`}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+function meine() {
+  const p = PERSONEN[person], darf = eingeplant(p.name);
+  if (mtab !== 'zeiten') return `<div class="karte"><div class="inhalt grau">Dieser Reiter bleibt, wie er heute in „Meine Daten“ ist (im Mockup nicht ausgeführt).</div></div>`;
+  const eigene = d.zeit.map((z, i) => ({ ...z, i })).filter((z) => z.wer === p.name), tr = d.training.filter((t) => t.wer === p.name);
+  const arten = `<div class="reihe" style="margin-bottom:12px"><span class="tabs" style="border:0"><button aria-selected="${zart === 'training'}" data-zart="training">Training</button><button aria-selected="${zart === 'projekt'}" data-zart="projekt">Projekt</button></span></div>`;
+  let inhalt;
+  if (zart === 'training') {
+    inhalt = !p.trainer ? '<p class="grau">Trainingszeiten melden nur Trainer. Ihr Benutzer ist keinem Trainer zugeordnet.</p>'
+      : `<p class="grau">Unverändert wie heute in „Meine Trainingszeiten“: Trainingsart, Dauer, Entgelt, Monat freigeben, Zeitnachweis. Projektstunden erscheinen hier nicht.</p>
+        <div class="roll"><table><thead><tr><th>Datum</th><th>Trainingsart</th><th class="z">Stunden</th><th class="z">Entgelt</th></tr></thead><tbody>
+        ${tr.map((t) => `<tr><td>${dat(t.tag)}</td><td>${t.art}</td><td class="z">${zahl(t.stunden)}</td><td class="z">${eur(t.stunden * 22)}</td></tr>`).join('')}
+        <tr class="summe"><td colspan="2">Monat</td><td class="z">${zahl(tr.reduce((x, t) => x + t.stunden, 0))}</td><td class="z">${eur(tr.reduce((x, t) => x + t.stunden * 22, 0))}</td></tr></tbody></table></div>
+        <div class="reihe" style="margin-top:10px"><button class="knopf" data-hinweis="Wie heute: Zeit erfassen mit Datum, Trainingsart und Dauer.">＋ Trainingszeit</button><button class="knopf" data-hinweis="Wie heute: Der Monat wird freigegeben, der Zeitnachweis entsteht.">Monat freigeben</button></div>`;
+  } else {
+    inhalt = !darf ? '<p class="grau">Sie sind in keinem laufenden Projekt eingeplant. Wer mitarbeiten möchte, meldet sich beim Projektverantwortlichen – er plant Sie ein, dann können Sie hier Ihre Stunden melden.</p>'
+      : `<div class="reihe" style="align-items:flex-end;gap:10px 14px;margin-bottom:12px">
+          <label class="feldM"><span>Datum</span><input type="date" id="zDatum" value="${iso(heute)}"></label>
+          <label class="feldM"><span>Projekt</span><select id="zProjekt" aria-label="Projekt"><option>Platz 3 sanieren</option></select></label>
+          <label class="feldM"><span>Vorgang</span><select id="zVorgang" aria-label="Vorgang"><option value="0">– ohne –</option>${d.v.map((v, k) => `<option value="${k + 1}">${k + 1}. ${esc(v.name)}</option>`).join('')}</select></label>
+          <label class="feldM"><span>Stunden</span><input type="text" class="zahl" id="zStunden" value="2"></label>
+          <label class="feldM" style="flex:1 1 200px"><span>Tätigkeit</span><input type="text" id="zWas" placeholder="Was wurde gemacht?" style="width:100%;box-sizing:border-box"></label>
+          <button class="knopf haupt" data-melden>Melden</button></div>
+        <p class="grau">Zur Auswahl stehen nur genehmigte und laufende Projekte, in denen Sie eingeplant sind. Die Stunden sind unbezahlt und zählen nach der Bestätigung als Eigenleistung des Projekts.</p>
+        <div class="roll"><table><thead><tr><th>Datum</th><th>Projekt</th><th>Vorgang</th><th class="z">Stunden</th><th>Tätigkeit</th><th>Status</th><th></th></tr></thead><tbody>
+        ${eigene.map((z) => `<tr><td>${dat(z.tag)}</td><td>Platz 3 sanieren</td><td>${esc(vName(z.vorgang))}</td><td class="z">${zahl(z.stunden)}</td><td style="white-space:normal;min-width:160px">${esc(z.was)}</td><td>${STATUS[z.status]}</td>
+          <td>${z.status === 'bestaetigt' ? '' : `<button class="ik" title="Meldung löschen" data-weg="z" data-i="${z.i}">🗑</button>`}</td></tr>`).join('') || '<tr><td colspan="7" class="grau">Noch keine Stunden gemeldet.</td></tr>'}
+        <tr class="summe"><td colspan="3">Summe · davon bestätigt ${zahl(eigene.filter((z) => z.status === 'bestaetigt').reduce((x, z) => x + z.stunden, 0))}</td><td class="z">${zahl(eigene.reduce((x, z) => x + z.stunden, 0))}</td><td colspan="3"></td></tr></tbody></table></div>`;
+  }
+  return `<div class="karte"><header><h2>Meine Zeiten</h2><small>Training und Projekt an einem Ort – ersetzt „Meine Trainingszeiten“</small></header><div class="inhalt">${arten}${inhalt}</div></div>`;
+}
+
 function zeichne(fokus) {
   plan = terminieren() || plan;
-  document.getElementById('unter').textContent = `Idee / Entwurf · Sportwart · ${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : ''}`;
+  document.getElementById('unter').textContent = `in Umsetzung · Sportwart · ${plan ? `${dat(plan.beginn)} – ${dat(plan.ende)}` : ''}`;
+  document.getElementById('sichten').innerHTML = [['projekt', 'Projekte (Planer, Vorstand)'], ['meine', 'Meine Daten (Mitglied, Trainer)']].map(([k, t]) => `<button aria-selected="${sicht === k}" data-sicht="${k}">${t}</button>`).join('');
+  document.getElementById('kopfP').hidden = sicht !== 'projekt'; document.getElementById('kopfM').hidden = sicht !== 'meine';
+  document.getElementById('pfad').textContent = sicht === 'projekt' ? 'Finanzen → Projekte' : 'Mein Bereich → Meine Daten';
+  if (sicht === 'meine') {
+    document.getElementById('person').innerHTML = PERSONEN.map((p, i) => `<option value="${i}" ${i === person ? 'selected' : ''}>${p.name}</option>`).join('');
+    document.getElementById('unterM').textContent = `${PERSONEN[person].name} · ${PERSONEN[person].rolle}`;
+    document.getElementById('tabs').innerHTML = [['kontakt', 'Kontakt und Bank'], ['vertraege', 'Verträge'], ['zeiten', 'Meine Zeiten']].map(([k, t]) => `<button role="tab" aria-selected="${mtab === k}" data-mtab="${k}">${t}</button>`).join('');
+    document.getElementById('seite').innerHTML = '<div class="meldung"><b>Mockup mit erfundenen Beispieldaten.</b> Oben rechts die Person wechseln: Mitglied im Projekt, Trainer im Projekt, Mitglied ohne Projekt.</div>' + meine();
+    return;
+  }
   document.getElementById('tabs').innerHTML = TABS.map(([k, t]) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${t}</button>`).join('');
   document.getElementById('seite').innerHTML = (fehler ? `<div class="meldung fehler">${esc(fehler)}</div>` : tab === 'vorschlag' ? '' : '<div class="meldung"><b>Mockup mit erfundenen Beispieldaten.</b> Felder ändern, Zeilen anlegen und entfernen – gespeichert wird nichts.</div>')
-    + ({ vorschlag, uebersicht, kosten, termine, ressourcen, antrag }[tab])();
+    + ({ vorschlag, uebersicht, kosten, termine, ressourcen, zeiten, antrag }[tab])();
   if (fokus) { const el = document.getElementById(fokus); if (el) el.focus(); }
 }
 function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 4200); }
@@ -351,6 +453,8 @@ function toast(t) { const el = document.getElementById('toast'); el.textContent 
 document.addEventListener('change', (e) => {
   const t = e.target, f = t.dataset.f;
   if (t.name && t.name.startsWith('f_')) { wahl[t.name.slice(2)] = Number(t.value); return; }
+  if (t.id === 'person') { person = Number(t.value); zeichne(); return; }
+  if (t.id && /^z[A-Z]/.test(t.id)) return;
   if (t.id === 'satz') d.satz = lies(t.value);
   else if (t.dataset.v != null) { const v = d.v[t.dataset.v]; if (f === 'dauer') v.dauer = Math.min(3660, Math.round(lies(t.value))); else if (f === 'fertig') v.fertig = Math.min(100, Math.round(lies(t.value))); else v[f] = t.value.trim() || (f === 'name' ? v.name : ''); }
   else if (t.dataset.a != null) { const a = d.a[t.dataset.a]; if (f === 'personen') a.personen = Math.max(1, Math.round(lies(t.value))); else if (f === 'stunden') a.stunden = lies(t.value); else if (f === 'vorgang') a.vorgang = Number(t.value); else a[f] = t.value.trim(); }
@@ -361,7 +465,19 @@ document.addEventListener('change', (e) => {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button'); if (!t) return;
   const x = t.dataset;
-  if (x.tab) tab = x.tab;
+  if (x.tab) { tab = x.tab; sicht = 'projekt'; }
+  else if (x.sicht) sicht = x.sicht;
+  else if (x.mtab) mtab = x.mtab;
+  else if (x.zart) zart = x.zart;
+  else if (x.zeit) d.zeit[Number(x.i)].status = x.zeit;
+  else if ('melden' in x) {
+    const st = lies(document.getElementById('zStunden').value), dt = document.getElementById('zDatum').value;
+    if (!st || !dt) { toast('Bitte Datum und Stunden angeben.'); return; }
+    d.zeit.push({ wer: PERSONEN[person].name, tag: Math.round(Date.parse(dt + 'T00:00:00Z') / TAG), vorgang: Number(document.getElementById('zVorgang').value), stunden: st, was: document.getElementById('zWas').value.trim(), status: 'gemeldet' });
+    toast('Gemeldet – der Projektverantwortliche bestätigt die Stunden.');
+  }
+  else if (x.neu === 'z') { d.zeit.push({ wer: 'Helfer', tag: heute, vorgang: 0, stunden: 4, was: 'vom Planer erfasst (Helfer ohne Zugang)', status: 'bestaetigt' }); toast('Im Portal öffnet sich hier ein Dialog: Person oder „Helfer“, Datum, Vorgang, Stunden.'); }
+  else if (x.weg === 'z') d.zeit.splice(Number(x.i), 1);
   else if (x.hinweis) { toast(x.hinweis); return; }
   else if ('kopieren' in x) {
     const text = 'Projekte-App – meine Auswahl:\n' + FRAGEN.map(([k, frage, opts]) => `- ${frage} → ${opts[wahl[k]]}`).join('\n');
