@@ -47,6 +47,7 @@ import { mailGesperrt, mailUnzustellbar } from './emailsperre.js';
 import { P_PROD, produkteRoutes } from './produkte/routes.js';
 import { eingangRoutes, P_EING } from './eingang/routes.js';
 import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
+import { P_ZAEHLER, zaehlerRoutes } from './zaehler/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
 import { haushaltRoutes, P_HH } from './haushalt/routes.js';
@@ -181,6 +182,7 @@ async function routes(app: FastifyInstance) {
   await uploadRoutes(app);
   await eingangRoutes(app);
   await instandhaltungRoutes(app);
+  await zaehlerRoutes(app);
   await schluesselRoutes(app);
   await haushaltRoutes(app);
   await projekteRoutes(app);
@@ -273,6 +275,9 @@ const tco: ServerModule = {
     { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.display, text: 'Alle Schadensmeldungen ansehen (mit Melder und Fotos); offene Meldungen im Arbeitsvorrat (Startseite)' },
     { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.edit, text: 'Schadensmeldungen bearbeiten: Status, Zuständiger, Kommentare, Fotos, Kosten, Platz in der Platzbuchung sperren und freigeben, Formular in Paperless ablegen – wer dieses Recht über eine Rolle hat, kann als Zuständiger eingetragen werden', requires: [P_IH.display] },
     { area: 'Instandhaltung', app: 'Schadensmeldungen', id: P_IH.admin, text: 'Stammdaten der Instandhaltung pflegen: Orte („Wo?“), Kategorien, Matrix Kategorie × Ort, Zuständigkeiten je Benutzer, E-Mail Vorstand, Löschfrist der Fotos, QR-Codes drucken', requires: [P_IH.display] },
+    { area: 'Instandhaltung', app: 'Zählerstände', id: P_ZAEHLER.display, text: 'Zählerstände ansehen: Zähler (Strom, Gas, Wasser, Wärme, PV …) mit Ablesungen, Verbrauch, Hochrechnung und Kosten, Auswertung je Monat/Jahr, Jahresvergleich, CSV-Export, Ablesebogen und QR-Codes; überschrittene Jahresziele im Arbeitsvorrat' },
+    { area: 'Instandhaltung', app: 'Zählerstände', id: P_ZAEHLER.edit, text: 'Zählerstände erfassen (mit Foto und Plausibilitätsprüfung, auch per QR-Code am Zähler), ändern, löschen und per CSV importieren; fällige Ablesungen im Arbeitsvorrat', requires: [P_ZAEHLER.display] },
+    { area: 'Instandhaltung', app: 'Zählerstände', id: P_ZAEHLER.admin, text: 'Zähler pflegen: anlegen, Bezeichnung/Standort/Zählernummer, Faktor, Stellen, Ableseintervall, Preise und Jahresziel ändern, deaktivieren, Zähler ohne Ablesungen löschen', requires: [P_ZAEHLER.display] },
 
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.display, text: 'Sollstellungen anzeigen' },
     { area: 'Finanzen', app: 'Sollstellungen', id: P_SOLL.edit, text: 'Lastschriftlauf erzeugen, herunterladen, stornieren' },
@@ -417,6 +422,8 @@ const tco: ServerModule = {
     { type: 'IH_CFG', text: 'Einstellungen Instandhaltung', permission: P_IH.display },
     { type: 'IH_MATRIX', text: 'Matrix Kategorie × Ort (Instandhaltung)', permission: P_IH.display },
     { type: 'IH_ZUSTAENDIG', text: 'Zuständigkeit (Instandhaltung)', permission: P_IH.display },
+    { type: 'ZAEHLER', text: 'Zähler (Stammdaten)', permission: P_ZAEHLER.display },
+    { type: 'ZAEHLERSTAND', text: 'Zählerstand (Ablesung)', permission: P_ZAEHLER.display },
     { type: 'EING_REGEL', text: 'Regel Dokumenteneingang', permission: P_EING.display },
     { type: 'EING_KORRESPONDENT', text: 'Korrespondent Dokumenteneingang', permission: P_EING.display },
   ],
