@@ -1,6 +1,6 @@
 import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { C, abschnitt, adressZeilen, anschrift, folgeKopf, fusszeilen, infoBlock, kopf, titel } from './layout.js';
-import { auftragLesen, firmaLesen, wertText, type Stop } from '../data.js';
+import { auftragFuerFahrt, auftragLesen, firmaLesen, wertText, type Stop } from '../data.js';
 import { condense, dat, eur, heute } from '../format.js';
 import { transportauftragAngaben } from './transportauftrag-angaben.js';
 
@@ -99,8 +99,9 @@ export async function lieferscheinPdf(nr: string): Promise<Buffer> {
  * Auftragsbedingungen aus den Stammdaten (#170).
  * (Das Smartform ZEU_SPEDITIONSAUFTRAG lag nicht im Paket – Inhalt aus den Auftragsdaten.)
  */
-export async function transportauftragPdf(nr: string): Promise<Buffer> {
-  const a = await auftragLesen(nr);
+export async function transportauftragPdf(id: string): Promise<Buffer> {
+  // bei mehreren Fahrten je Fahrt ein Transportauftrag an deren Unternehmer, Nummer „Auftrag-Fahrt“ (z. B. 2026_1260-2)
+  const { auftrag: a, kennung: nr } = await auftragFuerFahrt(id);
   const firma = await firmaLesen();
   const p = new Pdf({ title: `Transportauftrag ${nr}`, author: firma.name });
   p.newPage();

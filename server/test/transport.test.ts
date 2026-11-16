@@ -475,3 +475,111 @@ test('Fakturierte Aufträge: nur „Dokumente fehlen“ und Besonderheiten ände
   assert.equal((await call('PUT', `${T}/auftraege/2026_0007`, { ...o, kennzeichen: 'SB-NEU 1' })).status, 200);
   assert.equal((await call('GET', `${T}/auftraege/2026_0007`)).body.kennzeichen, 'SB-NEU 1');
 });
+
+test('Mehrere Fahrten in einem Auftrag: speichern, Transportauftrag und E-Mail je Fahrt, zusammenführen, ohne Rechnung abschließen', async () => {
+  const adr = async (kundenname: string, email: string) => {
+    const r = await call('POST', `${T}/adressen`, { kundenname, land: 'DE', plz: '66839', ort: 'Schmelz', email, force: true });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.adrnr as number;
+  };
+  const kunde = await adr('Fahrtentest Kunde GmbH', 'kunde@fahrtentest.example');
+  const u1 = await adr('Fahrtentest Unternehmer Eins', 'eins@fahrtentest.example');
+  const u2 = await adr('Fahrtentest Unternehmer Zwei', 'zwei@fahrtentest.example');
+  const neuF = (await call('GET', `${T}/neu/F`)).body;
+  assert.deepEqual(neuF.fahrten, []);
+  neuF.stops[0] = { ...neuF.stops[0], firma: 'Fahrtentest Werk', plzort: '66839 Limbach', land: 'DE', firma_e: 'laut LFS', plzort_e: '85354 Freising', land_e: 'DE', datum: '2026-10-30' };
+  const anlegen = async (x: Record<string, unknown>) => {
+    const r = await call('POST', `${T}/auftraege`, { ...neuF, kunde, ...x });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.auftragsnr as string;
+  };
+
+  // ---- ein Auftrag mit zwei Fahrten ----
+  const nr = await anlegen({
+    unternehmer: u1, kennzeichen: 'FT-EINS 1', frachtpreis_ek: 400, frachtpreis_vk: 250,
+    fahrten: [
+      { unternehmer: null, kennzeichen: '', fahrzeugtyp: null, frachtpreis_vk: 0, ladedatum: null }, // leere Zeile entfällt
+      { unternehmer: u2, kennzeichen: 'FT-ZWEI 2', fahrzeugtyp: '001', frachtpreis_vk: 275.5, ladedatum: '2026-10-31' },
+    ],
+  });
+  let a = (await call('GET', `${T}/auftraege/${nr}`)).body;
+  assert.equal(a.fahrten.length, 1);
+  assert.deepEqual([a.fahrten[0].pos, a.fahrten[0].unternehmer, a.fahrten[0].kennzeichen, a.fahrten[0].frachtpreis_vk, a.fahrten[0].ladedatum],
+    [2, u2, 'FT-ZWEI 2', 275.5, '2026-10-31']);
+  assert.equal(a.fahrten[0].unternehmerAdr.kundenname, 'Fahrtentest Unternehmer Zwei');
+  assert.equal(a.rgbetrag, 476, 'Rechnungsbetrag kommt weiter allein aus dem Frachtpreis EK (400 × 1,19)');
+  let zeile = (await call('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === nr);
+  assert.equal(zeile.unternehmer, '2 Unternehmer');
+  assert.match(zeile.unternehmerNamen, /Eins.*Zwei/);
+  assert.equal(zeile.fahrten, 2);
+  assert.equal(zeile.vk, 525.5);
+  // Transportauftrag je Fahrt; eine Fahrt, die es nicht gibt, ist ein Fehler
+  for (const id of [nr, `${nr}-1`, `${nr}-2`]) {
+    const p = await call('GET', `${T}/pdf/T/${id}`);
+    assert.equal(p.status, 200, id);
+    assert.match(p.ct, /pdf/);
+  }
+  assert.equal((await call('GET', `${T}/pdf/T/${nr}-3`)).status, 404);
+  // E-Mail: je Fahrt eine an deren Unternehmer, mit der Nummer der Fahrt
+  let mails = (await call('POST', `${T}/mails`, { art: 'T', auftraege: [nr] })).body;
+  assert.deepEqual(mails.map((m: any) => [m.auftragsnr, m.auftrag, m.an, m.betreff]), [
+    [`${nr}-1`, nr, 'eins@fahrtentest.example', `Transportauftrag ${nr}-1`],
+    [`${nr}-2`, nr, 'zwei@fahrtentest.example', `Transportauftrag ${nr}-2`],
+  ]);
+  mails = (await call('POST', `${T}/mails`, { art: 'T', auftraege: [`${nr}-2`] })).body;
+  assert.equal(mails.length, 1);
+  assert.equal(mails[0].an, 'zwei@fahrtentest.example');
+  // Kontakte: der Unternehmer der zweiten Fahrt sieht den Auftrag und lässt sich nicht löschen
+  const kd = (await call('GET', `${T}/kontakte/${u2}`)).body;
+  assert.ok(kd.auftraege.some((x: any) => x.auftragsnr === nr && x.rollen.includes('Unternehmer')));
+  assert.equal((await call('DELETE', `${T}/kontakte/${u2}`)).status, 400);
+  // Ändern ohne das Feld „fahrten“ lässt die Fahrten stehen, mit leerer Liste entfallen sie
+  const { fahrten: _f, ...ohne } = a;
+  assert.equal((await call('PUT', `${T}/auftraege/${nr}`, { ...ohne, kennzeichen: 'FT-EINS 9' })).status, 200);
+  assert.equal((await call('GET', `${T}/auftraege/${nr}`)).body.fahrten.length, 1);
+  assert.equal((await call('PUT', `${T}/auftraege/${nr}`, { ...ohne, fahrten: [] })).status, 200);
+  a = (await call('GET', `${T}/auftraege/${nr}`)).body;
+  assert.deepEqual(a.fahrten, []);
+  assert.equal((await call('POST', `${T}/mails`, { art: 'T', auftraege: [nr] })).body[0].auftragsnr, nr, 'eine Fahrt: Nummer ohne Endung');
+
+  // ---- zusammenführen: zwei einzelne Aufträge desselben Transports ----
+  const q = await anlegen({ unternehmer: u2, kennzeichen: 'FT-ZWEI 2', frachtpreis_ek: 300, frachtpreis_vk: 275.5, besonderheiten: 'Rampe 4' });
+  const fremd = await anlegen({ kunde: u1, unternehmer: u2 });
+  let z = await call('POST', `${T}/auftraege/zusammenfuehren`, { auftraege: [nr, fremd], pruefen: true });
+  assert.equal(z.status, 200, JSON.stringify(z.body));
+  assert.match(z.body.fehler.join(' '), /anderen Kunden/);
+  z = await call('POST', `${T}/auftraege/zusammenfuehren`, { auftraege: [nr, fremd] });
+  assert.equal(z.status, 400);
+  z = await call('POST', `${T}/auftraege/zusammenfuehren`, { auftraege: [q, nr], pruefen: true });
+  assert.deepEqual([z.body.ziel, z.body.quellen, z.body.fehler, z.body.fahrten], [nr, [q], [], 2]);
+  assert.equal((await call('GET', `${T}/auftraege/${q}`)).status, 200, 'Prüfen ändert nichts');
+  z = await call('POST', `${T}/auftraege/zusammenfuehren`, { auftraege: [q, nr] });
+  assert.equal(z.status, 200, JSON.stringify(z.body));
+  assert.deepEqual([z.body.ziel, z.body.quellen, z.body.fahrten], [nr, [q], 2]);
+  assert.equal((await call('GET', `${T}/auftraege/${q}`)).status, 404, 'die Quelle ist kein eigener Auftrag mehr');
+  a = (await call('GET', `${T}/auftraege/${nr}`)).body;
+  assert.deepEqual([a.fahrten.length, a.fahrten[0].pos, a.fahrten[0].unternehmer, a.fahrten[0].frachtpreis_vk, a.fahrten[0].ladedatum], [1, 2, u2, 275.5, '2026-10-30']);
+  assert.equal(a.frachtpreis_ek, 700);
+  assert.equal(a.rgbetrag, 833);
+  assert.equal(a.besonderheiten, 'Rampe 4');
+
+  // ---- ohne Rechnung abschließen und wieder öffnen ----
+  assert.equal((await call('POST', `${T}/auftraege/abschliessen`, { auftraege: [fremd], grund: '' })).status, 400);
+  let ab = await call('POST', `${T}/auftraege/abschliessen`, { auftraege: [fremd, '2025_0041'], grund: 'Leerfahrt, nichts zu berechnen' });
+  assert.equal(ab.status, 200, JSON.stringify(ab.body));
+  assert.deepEqual(ab.body, { abgeschlossen: [fremd], ignoriert: 1 });
+  zeile = (await call('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === fremd);
+  assert.equal(zeile.status, 'Ohne Rechnung');
+  assert.equal(zeile.abgeschlossenGrund, 'Leerfahrt, nichts zu berechnen');
+  const det = (await call('GET', `${T}/auftraege/${fremd}`)).body;
+  assert.ok(det.abgeschlossen_am);
+  // keine Rechnung, kein Zusammenführen, solange abgeschlossen
+  const re = await call('POST', `${T}/rechnungen`, { auftraege: [fremd], sammel: false });
+  assert.equal(re.status, 400);
+  assert.match(re.body.message, /Keine offenen Aufträge/);
+  assert.equal((await call('POST', `${T}/auftraege/abschliessen`, { auftraege: [fremd], grund: 'nochmal' })).status, 400);
+  ab = await call('POST', `${T}/auftraege/oeffnen`, { auftraege: [fremd] });
+  assert.deepEqual(ab.body, { geoeffnet: [fremd] });
+  assert.equal((await call('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === fremd).status, 'Offen');
+  assert.equal((await call('POST', `${T}/auftraege/oeffnen`, { auftraege: [fremd] })).status, 400);
+});

@@ -22,7 +22,7 @@ import { AblageOrdnerEinstellung } from './Ablageordner';
 const merk = {
   jahr: String(new Date().getFullYear()),
   fakt: 'ALL',
-  status: 'OPEN' as 'ALL' | 'OPEN' | 'DONE',
+  status: 'OPEN' as 'ALL' | 'OPEN' | 'DONE' | 'CLOSED',
   suche: '',
   ansicht: 'LIST' as 'LIST' | 'TREE',
   auswahl: new Set<string>(),
@@ -46,7 +46,7 @@ interface TreeRow {
   route?: string;
   ladedatum?: string | null;
   rechnung?: string;
-  rechnungState?: 'Positive' | 'Critical';
+  rechnungState?: 'Positive' | 'Critical' | 'Information';
   einnahmen: number | null;
   ausgaben: number | null;
   saldo: number;
@@ -93,8 +93,8 @@ function baum(list: ListRow[]): { rows: TreeRow[]; saldo: number } {
           unternehmer: p.unternehmer,
           route: p.route,
           ladedatum: p.ladedatum,
-          rechnung: p.faktura ? `Rechnung ${p.faktura} vom ${dat(p.fakturadatum)}` : 'Rechnung offen',
-          rechnungState: p.faktura ? 'Positive' as const : 'Critical' as const,
+          rechnung: p.faktura ? `Rechnung ${p.faktura} vom ${dat(p.fakturadatum)}` : p.status === 'Ohne Rechnung' ? `Ohne Rechnung abgeschlossen am ${dat(p.abgeschlossenAm)}` : 'Rechnung offen',
+          rechnungState: p.faktura ? 'Positive' as const : p.status === 'Ohne Rechnung' ? 'Information' as const : 'Critical' as const,
           einnahmen: p.betrag || null,
           ausgaben: p.ek || null,
           saldo: p.betrag - p.ek,
@@ -198,16 +198,19 @@ export function AuftraegeListe() {
   const liste = useMemo(() => {
     const q = suche.trim().toUpperCase();
     return basis.filter((r) => {
-      if (status === 'OPEN' && r.faktura) return false;
+      // „Offen“ = weder Rechnung noch ohne Rechnung abgeschlossen (ersetzt das frühere Ausbuchen mit 0 Euro)
+      if (status === 'OPEN' && r.status !== 'Offen') return false;
       if (status === 'DONE' && !r.faktura) return false;
-      if (q && !`${r.auftragsnr} ${r.kennzeichen ?? ''} ${r.kunde} ${r.unternehmer} ${r.route} ${r.faktura ?? ''}`.toUpperCase().includes(q)) return false;
+      if (status === 'CLOSED' && r.status !== 'Ohne Rechnung') return false;
+      if (q && !`${r.auftragsnr} ${r.kennzeichen ?? ''} ${r.kunde} ${r.unternehmer} ${r.unternehmerNamen ?? ''} ${r.route} ${r.faktura ?? ''}`.toUpperCase().includes(q)) return false;
       return true;
     });
   }, [basis, status, suche]);
 
   const summe = useMemo(() => liste.reduce((s, r) => ({ ek: s.ek + r.ek, vk: s.vk + r.vk, betrag: s.betrag + r.betrag }), { ek: 0, vk: 0, betrag: 0 }), [liste]);
   const sel = useMemo(() => liste.filter((r) => auswahl.has(r.auftragsnr)), [liste, auswahl]);
-  const offen = sel.filter((r) => !r.faktura).length;
+  const offen = sel.filter((r) => r.status === 'Offen').length;
+  const ohneRechnung = sel.filter((r) => r.status === 'Ohne Rechnung').length;
   const tree = useMemo(() => baum(liste), [liste]);
 
   useEffect(() => {
@@ -220,7 +223,7 @@ export function AuftraegeListe() {
   async function rechnungen(sammel: boolean) {
     try {
       await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
-      const nrs = sel.filter((s) => !s.faktura).map((s) => s.auftragsnr).sort(); // Server vergibt die Nummern in dieser Reihenfolge
+      const nrs = sel.filter((s) => s.status === 'Offen').map((s) => s.auftragsnr).sort(); // Server vergibt die Nummern in dieser Reihenfolge
       const r = await api.post<{ fakturen: string[]; ignoriert: number }>(`${T}/rechnungen`, { auftraege: sel.map((s) => s.auftragsnr), sammel });
       setAuswahl(new Set());
       await lade();
@@ -249,6 +252,56 @@ export function AuftraegeListe() {
       });
     } catch (e) { setError((e as Error).message); }
   }
+  // Ohne Rechnung abschließen / wieder öffnen (Recht transport.auftraege:edit)
+  const [abschliessen, setAbschliessen] = useState<string[] | null>(null);
+  async function abschliessenAusfuehren(grund: string) {
+    const nrs = abschliessen ?? [];
+    setAbschliessen(null);
+    try {
+      const r = await api.post<{ abgeschlossen: string[] }>(`${T}/auftraege/abschliessen`, { auftraege: nrs, grund });
+      setAuswahl(new Set());
+      await lade();
+      toast(`${r.abgeschlossen.length === 1 ? `Auftrag ${r.abgeschlossen[0]}` : `${r.abgeschlossen.length} Aufträge`} ohne Rechnung abgeschlossen – zu finden unter Status „Ohne Rechnung“.`, 6000);
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function oeffnen() {
+    try {
+      const r = await api.post<{ geoeffnet: string[] }>(`${T}/auftraege/oeffnen`, { auftraege: sel.filter((s) => s.status === 'Ohne Rechnung').map((s) => s.auftragsnr) });
+      setAuswahl(new Set());
+      await lade();
+      toast(`${r.geoeffnet.length === 1 ? `Auftrag ${r.geoeffnet[0]} ist` : `${r.geoeffnet.length} Aufträge sind`} wieder offen.`);
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  // Zusammenführen: mehrere offene Aufträge desselben Transports werden ein Auftrag mit mehreren Fahrten – erst prüfen, dann bestätigen
+  const [zusammen, setZusammen] = useState<{ text: string; nrs: string[] } | null>(null);
+  async function zusammenPruefen() {
+    try {
+      const nrs = sel.filter((s) => s.status === 'Offen').map((s) => s.auftragsnr);
+      const r = await api.post<{ ziel: string; quellen: string[]; fehler: string[]; hinweise: string[]; fahrten: number }>(`${T}/auftraege/zusammenfuehren`, { auftraege: nrs, pruefen: true });
+      if (r.fehler.length) return setError(`Zusammenführen nicht möglich: ${r.fehler.join(' ')}`);
+      setZusammen({
+        nrs,
+        text: `Auftrag ${r.ziel} bleibt und hat danach ${r.fahrten} Fahrten. ${r.quellen.length === 1 ? `Auftrag ${r.quellen[0]} wird` : `Die Aufträge ${r.quellen.join(', ')} werden`} zu Fahrten von ${r.ziel} `
+          + '(Unternehmer, Kennzeichen, Fahrzeugtyp, Frachtpreis VK, Ladedatum); Frachtpreis EK wird addiert, Besonderheiten und zugeordnete Dokumente ziehen um. '
+          + `${r.quellen.length === 1 ? 'Der Auftrag entfällt' : 'Die Aufträge entfallen'} danach als eigene Aufträge – die ${r.quellen.length === 1 ? 'Nummer wird' : 'Nummern werden'} nicht neu vergeben, `
+          + 'Dateien im Ablageordner bleiben dort liegen. Das lässt sich nicht automatisch rückgängig machen.'
+          + (r.hinweise.length ? ` Hinweis: ${r.hinweise.join(' ')}` : ''),
+      });
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function zusammenAusfuehren() {
+    const nrs = zusammen?.nrs ?? [];
+    setZusammen(null);
+    try {
+      const r = await api.post<{ ziel: string; fahrten: number }>(`${T}/auftraege/zusammenfuehren`, { auftraege: nrs });
+      setAuswahl(new Set());
+      await lade();
+      await ladeInit();
+      toast(`Auftrag ${r.ziel} hat jetzt ${r.fahrten} Fahrten.`, 6000);
+    } catch (e) { setError((e as Error).message); }
+  }
+
   async function entfernenAusfuehren(grund: string) {
     const nrs = entfernen?.nrs ?? [];
     setEntfernen(null);
@@ -272,11 +325,12 @@ export function AuftraegeListe() {
         ablage: [...new Set([...liste.filter((s) => s.faktura === x), ...sel.filter((s) => s.faktura === x)].map((s) => s.auftragsnr))],
       })));
     }
-    setDocs(sel.map((s) => ({
-      url: `${T}/pdf/${art}/${encodeURIComponent(s.auftragsnr)}`,
-      filename: `${art === 'T' ? 'Transportauftrag' : 'Lieferschein'}_${s.auftragsnr}.pdf`,
+    // Transportauftrag: bei mehreren Fahrten je Fahrt ein PDF (Nummer „Auftrag-Fahrt“), abgelegt im Ordner des Auftrags
+    setDocs(sel.flatMap((s) => (art === 'T' && s.fahrten > 1 ? Array.from({ length: s.fahrten }, (_, i) => `${s.auftragsnr}-${i + 1}`) : [s.auftragsnr]).map((id) => ({
+      url: `${T}/pdf/${art}/${encodeURIComponent(id)}`,
+      filename: `${art === 'T' ? 'Transportauftrag' : 'Lieferschein'}_${id}.pdf`,
       ablage: [s.auftragsnr],
-    })));
+    }))));
   }
 
   async function versenden(art: 'T' | 'L' | 'R') {
@@ -328,7 +382,7 @@ export function AuftraegeListe() {
     { Header: 'Status', accessor: 'status', id: 'status', width: 110, disableGroupBy: false },
     {
       Header: 'Auftrag', accessor: 'auftragsnr', width: 120, disableGroupBy: true,
-      Cell: ({ row }: Cell) => row.isGrouped ? null : <div><b>{row.original.auftragsnr}</b><br /><Text>{row.original.kennzeichen}</Text></div>,
+      Cell: ({ row }: Cell) => row.isGrouped ? null : <div><b>{row.original.auftragsnr}</b><br /><Text>{row.original.fahrten > 1 ? `${row.original.fahrten} Fahrten` : row.original.kennzeichen}</Text></div>,
     },
     { Header: 'Art', accessor: 'art', width: 85, responsiveMinWidth: 1350 },
     { Header: 'Angelegt', accessor: 'anlagedatum', width: 95, responsiveMinWidth: 1450, Cell: ({ value }: Cell) => dat(value) },
@@ -343,8 +397,10 @@ export function AuftraegeListe() {
       Header: 'Rechnung', accessor: 'faktura', width: 175, disableGroupBy: true,
       Cell: ({ row }: Cell) => row.isGrouped ? null : (
         <FlexBox direction="Column">
-          <ObjectStatus state={row.original.faktura ? 'Positive' : 'Critical'}>
-            {row.original.faktura ? `${row.original.faktura} vom ${dat(row.original.fakturadatum)}` : 'offen'}
+          <ObjectStatus state={row.original.faktura ? 'Positive' : row.original.status === 'Ohne Rechnung' ? 'Information' : 'Critical'}
+                        title={row.original.abgeschlossenGrund ?? undefined}>
+            {row.original.faktura ? `${row.original.faktura} vom ${dat(row.original.fakturadatum)}`
+              : row.original.status === 'Ohne Rechnung' ? `ohne Rechnung, ${dat(row.original.abgeschlossenAm)}` : 'offen'}
           </ObjectStatus>
           {row.original.dokFehlen && <ObjectStatus state="Critical" icon={<Icon name="alert" />}>Dokumente fehlen</ObjectStatus>}
         </FlexBox>
@@ -357,7 +413,7 @@ export function AuftraegeListe() {
   const tableOptions = useMemo(() => ({
     getRowId: (r: ListRow) => r.auftragsnr,
     autoResetExpanded: false,
-    initialState: { groupBy: ['status'], expanded: { 'status:Offen': true, 'status:Fakturiert': true } },
+    initialState: { groupBy: ['status'], expanded: { 'status:Offen': true, 'status:Fakturiert': true, 'status:Ohne Rechnung': true } },
   }), []);
 
   const treeColumns: AnalyticalTableColumnDefinition[] = useMemo(() => [
@@ -418,6 +474,7 @@ export function AuftraegeListe() {
           <SegmentedButtonItem data-key="ALL" selected={status === 'ALL'}>Alle</SegmentedButtonItem>
           <SegmentedButtonItem data-key="OPEN" selected={status === 'OPEN'}>Offen</SegmentedButtonItem>
           <SegmentedButtonItem data-key="DONE" selected={status === 'DONE'}>Fakturiert</SegmentedButtonItem>
+          <SegmentedButtonItem data-key="CLOSED" selected={status === 'CLOSED'}>Ohne Rechnung</SegmentedButtonItem>
         </SegmentedButton>
       </Filter>
       <Filter label="Suche" width="min(20rem, 100%)">
@@ -456,6 +513,13 @@ export function AuftraegeListe() {
           <MenuButton text="Neu" icon="create" design="Emphasized" items={[
             { text: 'Frachtauftrag', icon: 'shipping-status', onClick: () => navigate('/transport/auftraege/neu/F') },
             { text: 'Holzträgerauftrag', icon: 'product', onClick: () => navigate('/transport/auftraege/neu/H') },
+          ]} />
+        )}
+        {can('transport.auftraege:edit') && (
+          <MenuButton text="Auftrag" icon="shipping-status" disabled={!sel.length} items={[
+            { text: 'Zusammenführen (mehrere Fahrten) …', icon: 'combine', disabled: offen < 2, onClick: zusammenPruefen },
+            { text: 'Ohne Rechnung abschließen …', icon: 'complete', disabled: offen < 1, onClick: () => setAbschliessen(sel.filter((s) => s.status === 'Offen').map((s) => s.auftragsnr)) },
+            { text: 'Wieder öffnen', icon: 'undo', disabled: ohneRechnung < 1, onClick: oeffnen },
           ]} />
         )}
         {can('transport.rechnungen:create') && <>
@@ -538,6 +602,11 @@ export function AuftraegeListe() {
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <InfoDialog title={info?.title ?? ''} text={info?.text ?? null} onClose={() => setInfo(null)} />
+      <ConfirmDialog open={!!abschliessen} title="Ohne Rechnung abschließen" confirmText="Abschließen" askReason
+                     text={`${abschliessen?.length === 1 ? `Auftrag ${abschliessen[0]} bekommt` : `${abschliessen?.length ?? 0} Aufträge (${(abschliessen ?? []).join(', ')}) bekommen`} keine Rechnung und ${abschliessen?.length === 1 ? 'gilt' : 'gelten'} nicht mehr als offen. Nichts wird gelöscht – „Auftrag → Wieder öffnen“ macht es rückgängig. Der Grund steht im Änderungsbeleg und in der Liste.`}
+                     onConfirm={abschliessenAusfuehren} onCancel={() => setAbschliessen(null)} />
+      <ConfirmDialog open={!!zusammen} title="Aufträge zusammenführen" text={zusammen?.text ?? ''} confirmText="Zusammenführen" danger
+                     onConfirm={zusammenAusfuehren} onCancel={() => setZusammen(null)} />
       <ConfirmDialog open={!!entfernen} title="Rechnung entfernen" text={entfernen?.text ?? ''} confirmText="Entfernen" askReason danger
                      onConfirm={entfernenAusfuehren} onCancel={() => setEntfernen(null)} />
     </AppPage>

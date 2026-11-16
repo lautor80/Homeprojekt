@@ -478,14 +478,19 @@ export async function ausfuehren(tx: Tx, dateien: Geparst[], modus: ImportModus 
   // ---- Neuaufbau: Tabellen leeren (ein TRUNCATE – keine Einzel-Löschbelege, Fremdschlüssel bleiben gültig) ----
   let geleert: string[] = [];
   let doks: Record<string, unknown>[] = [];
+  let fahrtenAlt: Record<string, unknown>[] = [];
+  let abschlussAlt: Record<string, unknown>[] = [];
   if (ersetzen) {
     const fehlt = PFLICHT_NEUAUFBAU.filter((a) => !dateien.some((d) => d.art === a));
     if (fehlt.length) {
       throw new BusinessError(`Für den Neuaufbau fehlen: ${IMPORT_ARTEN.filter((d) => fehlt.includes(d.key)).map((d) => d.datei).join(', ')}.`);
     }
     doks = [...await tx`select * from transport.auftrag_dokumente`];
+    // im Portal gepflegt, in SAP unbekannt: weitere Fahrten und „ohne Rechnung abgeschlossen“ – nach dem Neuaufbau zurückschreiben
+    fahrtenAlt = [...await tx`select * from transport.fahrten`];
+    abschlussAlt = [...await tx`select auftragsnr, abgeschlossen_am, abgeschlossen_grund from transport.auftraege where abgeschlossen_am is not null`];
     const tab = zuLeeren(dateien);
-    await tx.unsafe(`truncate transport.auftrag_dokumente, ${tab.map((a) => TABELLE[a]).join(', ')}`);
+    await tx.unsafe(`truncate transport.auftrag_dokumente, transport.fahrten, ${tab.map((a) => TABELLE[a]).join(', ')}`);
     geleert = IMPORT_ARTEN.filter((d) => tab.includes(d.key as TabArt)).map((d) => d.tabelle.replace(/ \(.*\)$/, ''));
   }
 
@@ -541,6 +546,16 @@ export async function ausfuehren(tx: Tx, dateien: Geparst[], modus: ImportModus 
     doksZurueck += teil.length;
   }
   const doksWeg = doks.length - doksZurueck;
+  // weitere Fahrten und Abschlüsse der wieder vorhandenen Aufträge (Unternehmer nur, wenn es den Kontakt noch gibt)
+  const adrDa = new Set((await tx`select adrnr from transport.adressen`).map((r) => Number(r.adrnr)));
+  for (const f of fahrtenAlt.filter((x) => auftragsnr.has(x.auftragsnr as string))) {
+    await tx`insert into transport.fahrten ${tx({ ...f, unternehmer: f.unternehmer && adrDa.has(Number(f.unternehmer)) ? f.unternehmer : null } as Record<string, unknown>,
+      'auftragsnr', 'pos', 'unternehmer', 'kennzeichen', 'fahrzeugtyp', 'frachtpreis_vk', 'ladedatum')}`;
+  }
+  for (const x of abschlussAlt.filter((y) => auftragsnr.has(y.auftragsnr as string))) {
+    await tx`update transport.auftraege set abgeschlossen_am = ${x.abgeschlossen_am as Date}, abgeschlossen_grund = ${x.abgeschlossen_grund as string | null}
+              where auftragsnr = ${x.auftragsnr as string} and faktura is null`;
+  }
 
   // Nummernkreise (A = Auftrag, R = Rechnung): höchste importierte Nummer je Jahr, ggf. Stand aus ZEU_RGNRKREIS
   const nk: string[] = [];

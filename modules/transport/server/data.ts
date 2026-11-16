@@ -1,6 +1,7 @@
 import { sql, type Tx } from '../../../server/src/db.js';
 import { paperlessZugang } from '../../../server/src/lib/verbindungen.js';
 import { BusinessError } from '../../../server/src/errors.js';
+import { fahrtSicht, kennungZerlegen, type Fahrt } from './fahrten.js';
 
 // ---------------------------------------------------------------------------
 // Typen
@@ -78,11 +79,19 @@ export interface Auftrag {
   steuerbefreiung: 'RC' | 'DRITTLAND' | null;
   dok_fehlen: boolean;
   leistungsdatum: string | null;
+  /** ohne Rechnung abgeschlossen (ersetzt das frühere Ausbuchen mit 0 Euro); null = nicht abgeschlossen */
+  abgeschlossen_am: string | null;
+  abgeschlossen_grund: string | null;
 }
+
+/** Weitere Fahrt (ab Position 2) samt Adresse ihres Unternehmers */
+export type FahrtKomplett = Fahrt & { unternehmerAdr: Adresse | null };
 
 export interface AuftragKomplett extends Auftrag {
   stops: Stop[];
   traeger: Traeger[];
+  /** weitere Fahrten ab Position 2 – Fahrt 1 steht im Auftrag selbst (unternehmer, kennzeichen, fahrzeugtyp, frachtpreis_vk) */
+  fahrten: FahrtKomplett[];
   kundeAdr: Adresse | null;
   unternehmerAdr: Adresse | null;
   reAdr: Adresse | null;
@@ -163,6 +172,8 @@ function mapAuftrag(r: Record<string, unknown>): Auftrag {
     steuerbefreiung: (r.steuerbefreiung as 'RC' | 'DRITTLAND' | null) ?? null,
     dok_fehlen: !!r.dok_fehlen,
     leistungsdatum: isoDate(r.leistungsdatum),
+    abgeschlossen_am: isoDate(r.abgeschlossen_am),
+    abgeschlossen_grund: (r.abgeschlossen_grund as string | null) ?? null,
   };
 }
 
@@ -242,15 +253,45 @@ export async function auftragLesen(nr: string, db: Db = DB): Promise<AuftragKomp
   // immer zwei Stops liefern (Oberfläche zeigt erster/zweiter Stop)
   const s1 = stops.find((s) => s.pos === 1) ?? leererStop(1);
   const s2 = stops.find((s) => s.pos === 2) ?? leererStop(2);
+  const fahrten: FahrtKomplett[] = [];
+  for (const f of await db`select pos, unternehmer, kennzeichen, fahrzeugtyp, frachtpreis_vk, ladedatum from transport.fahrten where auftragsnr = ${nr} order by pos`) {
+    fahrten.push({
+      pos: Number(f.pos), unternehmer: (f.unternehmer as number) ?? null, kennzeichen: f.kennzeichen as string | null, fahrzeugtyp: f.fahrzeugtyp as string | null,
+      frachtpreis_vk: num(f.frachtpreis_vk), ladedatum: isoDate(f.ladedatum), unternehmerAdr: await adresseLesen((f.unternehmer as number) ?? null, db),
+    });
+  }
   return {
     ...a,
     stops: [s1, s2],
     traeger,
+    fahrten,
     kundeAdr: await adresseLesen(a.kunde, db),
     unternehmerAdr: await adresseLesen(a.unternehmer, db),
     reAdr: await adresseLesen(a.rechnungsempfaenger, db),
     typ: auftragsTyp([s1, s2], traeger),
   };
+}
+
+/**
+ * Auftrag aus Sicht einer Fahrt, für Transportauftrag und E-Mail an deren Unternehmer.
+ * `id` ist die Auftragsnummer (= Fahrt 1) oder „Auftragsnummer-Position“ (z. B. 2026_1260-2).
+ */
+export async function auftragFuerFahrt(id: string, db: Db = DB): Promise<{ auftrag: AuftragKomplett; kennung: string }> {
+  // erst die Nummer wie angegeben (eine Auftragsnummer darf selbst auf „-Zahl“ enden), dann als Fahrt lesen
+  const [da] = await db`select 1 from transport.auftraege where auftragsnr = ${id}`;
+  const z = da ? { auftragsnr: id, pos: 1 } : kennungZerlegen(id);
+  const a = await auftragLesen(z.auftragsnr, db);
+  const s = fahrtSicht<Adresse, Stop, AuftragKomplett>(a, z.pos ?? 1);
+  if (!s) throw new BusinessError(`Auftrag ${z.auftragsnr} hat keine Fahrt ${z.pos}.`, 404);
+  return s;
+}
+
+/** Alle Fahrten zu einer Angabe: eine Auftragsnummer liefert jede Fahrt des Auftrags, „Nummer-Position“ nur diese eine */
+export async function fahrtenFuerVersand(id: string, db: Db = DB): Promise<{ auftrag: AuftragKomplett; kennung: string }[]> {
+  const [da] = await db`select 1 from transport.auftraege where auftragsnr = ${id}`;
+  if (!da) return [await auftragFuerFahrt(id, db)];
+  const a = await auftragLesen(id, db);
+  return [1, ...a.fahrten.map((f) => f.pos)].map((pos) => fahrtSicht<Adresse, Stop, AuftragKomplett>(a, pos)!);
 }
 
 export async function werteLesen(db: Db = DB) {
