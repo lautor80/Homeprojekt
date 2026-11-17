@@ -175,7 +175,8 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
       limit 500`;
     for (const r of refs) {
       const wert = String(r.wert).trim();
-      if (!referenzImText(heuhaufen, wert)) continue;
+      // dieselbe Rechnungsnummer zählt nicht zweimal (schon als Nummer gefunden)
+      if (nummern.includes(wert) || !referenzImText(heuhaufen, wert)) continue;
       treffer.push({ auftragsnr: r.auftragsnr as string, art: 'referenz', punkte: PUNKTE.referenz, grund: `${r.art} ${wert} ${fundText(fundstellenReferenz(quellen, wert))}` });
     }
   }
