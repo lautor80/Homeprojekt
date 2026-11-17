@@ -501,7 +501,7 @@ export function AuftraegeListe() {
       ),
     },
     ...(mitAbrechnung ? [{
-      Header: 'Abrechnung', id: 'abrechnung', accessor: (r: ListRow) => r.abrechnung?.status ?? '', width: 120, disableGroupBy: true,
+      Header: 'Abrechnung', id: 'abrechnung', accessor: (r: Record<string, unknown>) => (r as unknown as ListRow).abrechnung?.status ?? '', width: 120, disableGroupBy: true,
       headerTooltip: 'angelegt · abgerechnet · bezahlt – überfällig erst 3 Tage nach Fälligkeit; ohne Rechnung abgeschlossen gilt als bezahlt',
       Cell: ({ row }: Cell) => row.isGrouped ? null : <AbrechnungZelle r={row.original} />,
     }] : []),
