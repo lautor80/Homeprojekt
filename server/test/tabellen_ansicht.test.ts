@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LEERER_STAND, ausTabelle, filterText, gleich, sichtbareSpalten, spalteSetzen, spaltenId, spaltenText, standLesen, type TabellenStand,
+  LEERER_STAND, ausTabelle, filterText, gleich, sichtbareSpalten, spalteSetzen, spaltenId, spaltenText, standLesen, tabellenAenderung, type TabellenStand,
 } from '../../web/src/components/tabellenAnsicht.js';
 
 const SPALTEN = [
@@ -55,4 +55,26 @@ test('Zustand der Tabelle übernehmen und vergleichen', () => {
   assert.ok(gleich(s, JSON.parse(JSON.stringify(s))));
   assert.ok(!gleich(s, LEERER_STAND));
   assert.equal(filterText({ ...s, filter: [...s.filter, { id: 'route', value: 'mannheim' }] }, SPALTEN), 'Kunde: brandt · Route: mannheim');
+});
+
+test('Sortierung im Spaltenkopf wird erkannt – auch wenn onSort vor dem neuen Zustand kommt (Variante speichert sie mit)', () => {
+  const filters: unknown[] = [];
+  const vorher = { filters, sortBy: [] };
+  // erstes Zeichnen ist keine Änderung
+  assert.equal(tabellenAenderung(vorher, null), false);
+  // gleicher Zustand (neu gezeichnet ohne Änderung): keine Meldung
+  assert.equal(tabellenAenderung({ ...vorher }, vorher), false);
+  // react-table ersetzt die Liste bei jeder Sortierung
+  const nachher = { filters, sortBy: [{ id: 'betrag', desc: true }] };
+  assert.equal(tabellenAenderung(nachher, vorher), true);
+  assert.deepEqual(ausTabelle(LEERER_STAND, nachher.filters, nachher.sortBy).sortierung, [{ id: 'betrag', desc: true }]);
+  // Filter ebenso
+  assert.equal(tabellenAenderung({ filters: [{ id: 'kunde', value: 'x' }], sortBy: nachher.sortBy }, nachher), true);
+});
+
+test('Tabellen anpassen: Meldung über ein Plugin der Tabelle (tableHooks), nicht nur über onSort/onFilter', async () => {
+  const { readFileSync } = await import('node:fs');
+  const quelle = readFileSync(new URL('../../web/src/components/TabellenAnsicht.tsx', import.meta.url), 'utf8');
+  assert.match(quelle, /tableHooks: tabellenHooks/);
+  assert.match(quelle, /hooks\.useInstance\.push/);
 });
