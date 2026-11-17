@@ -632,7 +632,7 @@ export function AuftragDetail() {
                        // neu angelegt: direkt in das gewählte Feld übernehmen
                        if (neu && typeof ziel === 'number') {
                          setA((x) => (x ? { ...x, fahrten: (x.fahrten ?? []).map((f, j) => (j === ziel ? { ...f, unternehmer: adrnr } : f)) } : x));
-                       } else if (neu && ziel) {
+                       } else if (neu && typeof ziel === 'string') {
                          await waehleAdresse(ziel, String(adrnr));
                        }
                        if (neu && ziel !== null) {
