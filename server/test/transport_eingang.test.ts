@@ -48,10 +48,17 @@ test('Nummernsuche: alle Fundstellen (Betreff, Mailtext, Dateiname, Texterkennun
     'Betreff: „AW: Rechnung 2099-0153“', 'Dateiname „Rechnung_2099_0153.pdf“', 'PDF „Rechnung_2099_0153.pdf“ (Texterkennung): „Rechnungsnummer: 2099_0153“',
   ]);
   assert.equal(L.herkunftText(['Betreff: „x“', 'Mailtext: „y“']), 'Herkunft: Betreff: „x“; Mailtext: „y“');
-  assert.equal(L.ocrNummern('Rechnung Nr. 2099 9104, Auftrag 2099 _ 0153, PLZ 2099 12345'), 'Rechnung Nr. 2099_9104, Auftrag 2099_0153, PLZ 2099 12345');
-  // Texterkennung: „2099 9104“ zählt, die Herkunft zeigt den Originaltext; im Mailtext zählt das Leerzeichen nicht
+  // Texterkennung: nur JJJJ_NNNN mit Unterstrich – Leerzeichen, Bindestrich, Schrägstrich oder kompakt werden nicht angeboten
+  assert.deepEqual(L.ocrAuftragsnummern('Rechnung Nr. 2099 9104, Auftrag 2099 _ 0153, 2099-0154, 2099/0155, 20990156, PLZ 2099 12345'), []);
+  assert.deepEqual(L.ocrAuftragsnummern('Nr. 2099_9104 und X2099_0153, 2099_01534, Fahrt 2099_0157-2, wieder 2099_9104'), ['2099_9104', '2099_0157']);
   const ocr = L.suchQuellen({ betreff: '', text: 'Tel. 2099 9104', dateien: [], ocr: [{ datei: 's.png', text: 'Kopf\nIhre Referenz  2099 9104 vom 17.11.' }] });
-  assert.deepEqual(L.herkunftNummer(ocr, '2099_9104'), ['Dokument „s.png“ (Texterkennung): „Kopf Ihre Referenz 2099 9104 vom 17.11.“']);
+  assert.deepEqual(L.quellenNummern(...ocr), [], 'Leerzeichen statt Unterstrich zählt weder im OCR-Text noch im Mailtext');
+  assert.deepEqual(L.herkunftNummer(ocr, '2099_9104'), []);
+  const ocr2 = L.suchQuellen({ betreff: '', text: '', dateien: [], ocr: [{ datei: 's.png', text: 'Ref 2099 9105 und 2099-9105\nAuftrag 2099_9105 vom 17.11.' }] });
+  assert.deepEqual(L.quellenNummern(...ocr2), ['2099_9105']);
+  assert.deepEqual(L.herkunftNummer(ocr2, '2099_9105'), ['Dokument „s.png“ (Texterkennung): „Ref 2099 9105 und 2099-9105 Auftrag 2099_9105 vom 17.11.“']);
+  // Betreff, Mailtext und Dateiname behalten alle Schreibweisen
+  assert.deepEqual(L.quellenNummern(...L.suchQuellen({ betreff: 'Auftrag 2099-0160', text: 'Ref 20990161', dateien: [], ocr: [{ datei: 'x.pdf', text: '2099-0162' }] })), ['2099_0160', '2099_0161']);
   assert.equal(L.ausschnitt('x'.repeat(100) + ' 2099_0153 ' + 'y'.repeat(100), 101, 110), `…${'x'.repeat(39)} 2099_0153 ${'y'.repeat(39)}…`);
   assert.deepEqual(L.herkunftReferenz(L.suchQuellen({ betreff: '', text: 'Bitte Order PO-4711 beachten', dateien: [], ocr: [] }), 'po-4711'), ['Mailtext: „Bitte Order PO-4711 beachten“']);
   assert.deepEqual(L.herkunftReferenz(q, 'PO-4711'), []);
@@ -81,7 +88,8 @@ test('Texterkennung: gescanntes PDF ohne Textebene wird per pdftoppm + tesseract
   const scan = readFileSync(new URL('./fixtures/eingang-scan.pdf', import.meta.url));
   assert.equal((await pdfText(scan)).trim(), '', 'keine Textebene');
   const text = await pdfScanText(scan);
-  assert.deepEqual(L.auftragsnummernFinden(L.ocrNummern(text)), ['2099_9104'], text);
+  assert.match(text, /2099\s+9104/, text);
+  assert.deepEqual(L.ocrAuftragsnummern(text), [], 'Leerzeichen statt Unterstrich wird nicht angeboten');
 });
 
 test('Punkte je Auftrag: Merkmale addiert, höchstens 100, je Merkmal einmal', () => {

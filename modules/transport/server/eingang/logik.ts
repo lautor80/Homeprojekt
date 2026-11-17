@@ -42,6 +42,8 @@ export interface Entscheidung {
 // „Lieferschein_2026_0153.pdf“ und mit Fahrtzusatz „2026_0153-2“ sollen treffen)
 const NUMMER_GETRENNT = /(?<![\p{L}\p{N}])(20\d{2})[_\-/](\d{4})(?![\p{L}\p{N}])/gu;
 const NUMMER_KOMPAKT = /(?<![\p{L}\p{N}])(20\d{2})(\d{4})(?![\p{L}\p{N}])/gu;
+// Texterkennung (OCR): nur JJJJ_NNNN mit Unterstrich – „2026 0153“, „2026-0153“, „20260153“ usw. werden dort nicht angeboten
+const NUMMER_OCR = /(?<![\p{L}\p{N}])(20\d{2})_(\d{4})(?![\p{L}\p{N}])/gu;
 
 /**
  * Auftragsnummern im Text: JJJJ_NNNN, JJJJ-NNNN, JJJJ/NNNN und JJJJNNNN (jeweils mit Wortgrenze; JJJJNNNN nur, wenn es kein Datum JJJJMMTT sein kann) → normalisiert JJJJ_NNNN,
@@ -55,6 +57,22 @@ export function auftragsnummernFinden(...texte: (string | null | undefined)[]): 
     for (const m of t.matchAll(NUMMER_GETRENNT)) add(m[1], m[2]);
     // JJJJMMTT ist fast immer ein Datum (Dateinamen wie „503_20261117_0503.PDF“) – kompakt nur, was kein Datum sein kann
     for (const m of t.matchAll(NUMMER_KOMPAKT)) if (!istDatumMmTt(m[2])) add(m[1], m[2]);
+  }
+  return out;
+}
+
+/** Auftragsnummern aus erkanntem Text (OCR): ausschließlich JJJJ_NNNN mit Unterstrich, mit Wortgrenze */
+export function ocrAuftragsnummern(text: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const m of (text ?? '').matchAll(NUMMER_OCR)) { const nr = `${m[1]}_${m[2]}`; if (!out.includes(nr)) out.push(nr); }
+  return out;
+}
+
+/** Auftragsnummern einer Quelle: Dokumente (Texterkennung) streng nur JJJJ_NNNN, sonst alle Schreibweisen */
+export function quellenNummern(...quellen: Quelle[]): string[] {
+  const out: string[] = [];
+  for (const q of quellen) {
+    for (const nr of q.art === 'dokument' ? ocrAuftragsnummern(q.text) : auftragsnummernFinden(q.text)) if (!out.includes(nr)) out.push(nr);
   }
   return out;
 }
@@ -79,8 +97,8 @@ export function referenzTauglich(wert: string | null | undefined): boolean {
 }
 
 /**
- * Textquelle der Suche: Art (Betreff, Mailtext, Dateiname, Dokument), Name des Dokuments, Text für die Suche (bei OCR mit
- * zusammengezogenen Nummern, siehe ocrNummern) und Originaltext für den Ausschnitt in der Herkunft.
+ * Textquelle der Suche: Art (Betreff, Mailtext, Dateiname, Dokument), Name des Dokuments, Text für die Suche und Originaltext
+ * für den Ausschnitt in der Herkunft.
  */
 export interface Quelle { art: 'betreff' | 'mailtext' | 'dateiname' | 'dokument'; name: string; text: string; roh: string }
 
@@ -90,16 +108,8 @@ export function suchQuellen(q: { betreff: string; text: string; dateien: string[
     { art: 'betreff', name: '', text: q.betreff, roh: q.betreff },
     { art: 'mailtext', name: '', text: q.text, roh: q.text },
     ...q.dateien.map((d): Quelle => ({ art: 'dateiname', name: d, text: d, roh: d })),
-    ...q.ocr.map((o): Quelle => ({ art: 'dokument', name: o.datei, text: ocrNummern(o.text), roh: o.text })),
+    ...q.ocr.map((o): Quelle => ({ art: 'dokument', name: o.datei, text: o.text, roh: o.text })),
   ];
-}
-
-/**
- * Texterkennung liest den Unterstrich oft als Leerzeichen („2026 0153“, auch „2026 _ 0153“) – in erkanntem Text wird das zur
- * Auftragsnummer zusammengezogen. Nur für OCR-Text: im Mailtext wäre „2026 1234“ zu oft etwas anderes.
- */
-export function ocrNummern(text: string): string {
-  return text.replace(/(?<![\p{L}\p{N}])(20\d{2})[ \t]*[ _\t][ \t]*(\d{4})(?![\p{L}\p{N}])/gu, '$1_$2');
 }
 
 /** Ausschnitt um eine Fundstelle: bis zu 40 Zeichen davor und danach, Leerraum zusammengefasst, mit „…“ an Schnittkanten */
@@ -124,9 +134,10 @@ function herkunftEintrag(q: Quelle, muster: RegExp): string | null {
 /** Herkunft einer Auftrags-/Rechnungsnummer (JJJJ_NNNN): je Quelle mit Treffer Art, Name und Textausschnitt */
 export function herkunftNummer(quellen: Quelle[], nr: string): string[] {
   const [j, n] = nr.split('_');
-  const muster = new RegExp(`(?<![\\p{L}\\p{N}])${j}(?:[_\\-/]|[ \\t]*[ _\\t][ \\t]*)?${n}(?![\\p{L}\\p{N}])`, 'u');
-  return quellen.filter((q) => auftragsnummernFinden(q.text).includes(nr))
-    .map((q) => herkunftEintrag(q, muster) ?? herkunftName(q));
+  const muster = new RegExp(`(?<![\\p{L}\\p{N}])${j}[_\\-/]?${n}(?![\\p{L}\\p{N}])`, 'u');
+  const musterOcr = new RegExp(`(?<![\\p{L}\\p{N}])${j}_${n}(?![\\p{L}\\p{N}])`, 'u');
+  return quellen.filter((q) => quellenNummern(q).includes(nr))
+    .map((q) => herkunftEintrag(q, q.art === 'dokument' ? musterOcr : muster) ?? herkunftName(q));
 }
 
 /** Herkunft einer Referenz (Wortgrenze, Groß-/Kleinschreibung und Leerraum egal) */
