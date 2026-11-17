@@ -20,6 +20,9 @@ import { paperlessSenden } from './paperless.js';
 import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
 import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
 import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
+import { mailworkflowRoutes, P_MW } from './mailworkflows.js';
+import { eingangRoutes } from './eingang/routes.js';
+import { sammelversandRoutes } from './sammelversand.js';
 import { kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
@@ -39,6 +42,10 @@ export const P = {
   kontakte: 'transport.kontakte:edit',
   stammdaten: 'transport.stammdaten:edit',
   import: 'transport.import:execute',
+  eingangDisplay: P_MW.eingangDisplay,
+  eingangEdit: P_MW.eingangEdit,
+  eingangMelden: P_MW.eingangMelden,
+  versandSenden: P_MW.versandSenden,
 };
 
 // ---------------------------------------------------------------------------
@@ -678,6 +685,9 @@ async function routes(app: FastifyInstance) {
 
   // ---- Kontakte ----
   await kontaktRoutes(app, P);
+  await mailworkflowRoutes(app, P.stammdaten);
+  await eingangRoutes(app);
+  await sammelversandRoutes(app);
   app.get('/adressen', { preHandler: requireAuth(P.display) }, async () => {
     const rows = await sql`select adrnr, kundenname, kundenname2, land, ort from transport.adressen
                            where coalesce(kundenname, '') <> '' or coalesce(kundenname2, '') <> ''
@@ -937,6 +947,10 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.rechnung, text: 'Rechnungen erstellen', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.rechnungEntfernen, text: 'Rechnungen entfernen (Aufträge wieder offen)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
+    { area: 'Euroflex', app: 'Aufträge', id: P.versandSenden, text: 'Sammelversand direkt senden statt als Entwurf in Outlook ablegen', requires: [P.versand] },
+    { area: 'Euroflex', app: 'Posteingang', id: P.eingangDisplay, text: 'Posteingang anzeigen: eingegangene E-Mails mit Zuordnung zum Auftrag' },
+    { area: 'Euroflex', app: 'Posteingang', id: P.eingangEdit, text: 'Posteingang bearbeiten: E-Mails und Anhänge am Auftrag ablegen, ignorieren, Auftrag zuordnen', requires: [P.eingangDisplay, P.display] },
+    { area: 'Euroflex', app: 'Posteingang', id: P.eingangMelden, text: 'Schnittstelle für n8n (API-Schlüssel): E-Mails aus Outlook 365 samt Anhängen an das Portal liefern und deren Behandlung abholen' },
     { area: 'Euroflex', app: 'Kontakte', id: P.kontakteDisplay, text: 'Kontakte anzeigen (Kunden, Unternehmer, Rechnungsempfänger)' },
     { area: 'Euroflex', app: 'Kontakte', id: P.kontakte, text: 'Kontakte anlegen und ändern', requires: [P.display] },
     { area: 'Euroflex', app: 'Produkte und Wertelisten', id: P.stammdaten, text: 'Stammdaten pflegen (Produkte, Wertelisten) und die Einstellungen von Euroflex: Firma und Bank, Auftragsbedingungen, E-Mail-Texte (Administration → Einstellungen → Euroflex)' },
@@ -949,6 +963,7 @@ const mod: ServerModule = {
     { type: 'WERT', text: 'Listenwert', permission: P.display },
     { type: 'MAILTEXT', text: 'E-Mail-Text', permission: P.stammdaten },
     { type: 'FIRMA', text: 'Firmendaten', permission: P.stammdaten },
+    { type: 'MAILWORKFLOW', text: 'Einstellungen Mail-Workflows', permission: P.stammdaten },
   ],
   routes,
 };
