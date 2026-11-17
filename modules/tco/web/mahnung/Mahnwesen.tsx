@@ -79,6 +79,8 @@ export function Mahnwesen() {
   const darf = { ausfuehren: can('tco.mahnung:execute'), admin: can('tco.mahnung:admin') };
   /** Funktionsschalter: Der automatische Lauf lässt sich abschalten – der Lauf von Hand bleibt */
   const automatikAn = useFunktion()('tco.mahnung.automatik');
+  /** Funktionsschalter: Mahnungen als Notiz am Paperless-Dokument protokollieren (Anhang = Fassung aus Paperless) */
+  const paperlessAn = useFunktion()('tco.mahnung.paperless');
   const [start] = useState(() => new URLSearchParams(window.location.search));
   const [tab, setTab] = useState(() => start.get('tab') ?? 'posten');
   const [d, setD] = useState<Daten | null>(null);
@@ -239,6 +241,9 @@ export function Mahnwesen() {
   const automatikText = !a ? '' : !automatikAn || !a.funktion ? 'Der automatische Mahnlauf ist als Funktion abgeschaltet (Administration → Einstellungen → Funktionen).'
     : !a.aktiv ? 'Die Automatik ist aus: Ohne Start von Hand wird nichts gemahnt und keine E-Mail gesendet.'
       : `Automatik an: ${a.wochentage.split(',').map((t) => TAGE[Number(t) - 1]).join(', ')} um ${a.uhrzeit} Uhr – ${a.modus === 'SENDEN' ? 'sendet automatisch' : 'erzeugt nur einen Vorschlag zur Freigabe'}${a.naechster ? `, nächster Lauf am ${dat(a.naechster)}` : ''}.`;
+  const protokollText = paperlessAn
+    ? ' Jede Mahnung wird als Notiz am Paperless-Dokument der Rechnung bzw. Abrechnung protokolliert; angehängt wird die dort abgelegte Fassung.'
+    : ' Mahnungen werden nicht in Paperless protokolliert (Funktion abgeschaltet).';
 
   return (
     <AppPage title="Mahnwesen" subtitle="Zahlungserinnerungen und Mahnungen für offene Hallenrechnungen und Verzehrabrechnungen"
@@ -270,7 +275,7 @@ export function Mahnwesen() {
         </Tab>
 
         <Tab data-key="vorschlag" text={`Nächster Lauf${d?.vorschlag ? ' · Vorschlag offen' : ''}`} icon="payment-approval" selected={tab === 'vorschlag'}>
-          <MessageStrip design={a?.aktiv && a.funktion && automatikAn ? 'Information' : 'Critical'} hideCloseButton style={{ marginBottom: '0.75rem' }}>{automatikText}</MessageStrip>
+          <MessageStrip design={a?.aktiv && a.funktion && automatikAn ? 'Information' : 'Critical'} hideCloseButton style={{ marginBottom: '0.75rem' }}>{automatikText}{a ? protokollText : ''}</MessageStrip>
           {d?.vorschlag && (
             <Section title={`Vorschlag aus Lauf ${d.vorschlag.id} vom ${zeit(d.vorschlag.gestartet_am)}`} count={d.vorschlag.zeilen?.length ?? 0} flush
                      status={<ObjectStatus state="Critical" inverted>wartet auf Freigabe</ObjectStatus>}
