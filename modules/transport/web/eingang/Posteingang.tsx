@@ -342,8 +342,12 @@ function Kandidaten({ kandidaten, gewaehlt, kunde, waehlbar, onWaehlen }: {
           <div style={{ minWidth: 0 }}>
             <Text><b>{k.auftragsnr}</b>{kunde(k.auftragsnr) ? ` – ${kunde(k.auftragsnr)}` : ''}</Text>
             <div className="portal-muted portal-small">
-              {[k.datum ? dat(k.datum) : '', k.punkte != null ? `${k.punkte} Punkte` : '', ...(k.begruendung ?? []).map((b) => `${b.grund} (+${b.punkte})`)].filter(Boolean).join(' · ')}
+              {[k.datum ? dat(k.datum) : '', k.punkte != null ? `${k.punkte} Punkte` : ''].filter(Boolean).join(' · ')}
             </div>
+            {/* je Grund eine Zeile – mit Herkunft (Betreff, Mailtext, Dateiname, PDF mit Textausschnitt) */}
+            {(k.begruendung ?? []).map((b, i) => (
+              <div key={i} className="portal-small" style={{ overflowWrap: 'anywhere' }}>{b.grund} <span className="portal-muted">(+{b.punkte})</span></div>
+            ))}
           </div>
           {waehlbar && (k.auftragsnr === gewaehlt
             ? <Text className="portal-small">gewählt</Text>

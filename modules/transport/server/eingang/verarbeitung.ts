@@ -27,7 +27,7 @@ import { dokumentAblegen, mimeTyp } from '../dokumente.js';
 import { ANWENDUNG } from '../mailversand.js';
 import { F_MW, workflowEinstellungen, type EingangEinstellungen } from '../mailworkflows.js';
 import {
-  absender, absenderTreffer, auftragsnummernFinden, bewerten, dateinameSicher, entscheiden, fundstellenNummer, fundstellenReferenz, fundText, htmlText, mailDateiname, mailHtml, messageIds,
+  absender, absenderTreffer, auftragsnummernFinden, bewerten, dateinameSicher, entscheiden, herkunftNummer, herkunftReferenz, herkunftText, htmlText, mailDateiname, mailHtml, messageIds,
   nummernVorrang, objektAuftrag, PUNKTE, referenzImText, relevanterAnhang, suchQuellen, speicherWarnung, V_MAILEINGANG, type Entscheidung, type Kandidat, type Treffer,
 } from './logik.js';
 
@@ -142,7 +142,7 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
   const quellen = suchQuellen(q);
 
   // 1. Auftragsnummer bzw. Rechnungsnummer (faktura), die es gibt
-  const nummern = auftragsnummernFinden(...quellen.map(([, t]) => t));
+  const nummern = auftragsnummernFinden(...quellen.map((x) => x.text));
   if (nummern.length) {
     const da = await sql`
       select auftragsnr, auftragsnr as nr, 'Auftragsnummer' as art from transport.auftraege where auftragsnr = any(${nummern})
@@ -152,17 +152,17 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
     for (const r of da) {
       const nr = r.nr as string;
       const auftrag = r.auftragsnr as string;
-      const wo = fundText(fundstellenNummer(quellen, nr));
+      const wo = herkunftText(herkunftNummer(quellen, nr));
       treffer.push({
         auftragsnr: auftrag, art: 'nummer', punkte: PUNKTE.nummer,
-        grund: r.art === 'Auftragsnummer' ? `Auftragsnummer ${nr} ${wo}` : `Rechnungsnummer ${nr} (Auftrag ${auftrag}) ${wo}`,
+        grund: r.art === 'Auftragsnummer' ? `Auftragsnummer ${nr} – ${wo}` : `Rechnungsnummer ${nr} (Auftrag ${auftrag}) – ${wo}`,
       });
     }
   }
 
   // 2. Order-, Lade- (Auftrag und Stops) und Rechnungsnummer in anderem Format (bei einer Nummer nur noch als Zusatz für denselben
   //    Auftrag, siehe 3.): grob in der Datenbank vorfiltern, Wortgrenze hier
-  const heuhaufen = quellen.map(([, t]) => t).join('\n').replace(/\s+/g, ' ').toLowerCase().slice(0, 2_000_000);
+  const heuhaufen = quellen.map((x) => x.text).join('\n').replace(/\s+/g, ' ').toLowerCase().slice(0, 2_000_000);
   if (heuhaufen.trim()) {
     const refs = await sql`
       select auftragsnr, art, wert from (
@@ -177,7 +177,7 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
       const wert = String(r.wert).trim();
       // dieselbe Rechnungsnummer zählt nicht zweimal (schon als Nummer gefunden)
       if (nummern.includes(wert) || !referenzImText(heuhaufen, wert)) continue;
-      treffer.push({ auftragsnr: r.auftragsnr as string, art: 'referenz', punkte: PUNKTE.referenz, grund: `${r.art} ${wert} ${fundText(fundstellenReferenz(quellen, wert))}` });
+      treffer.push({ auftragsnr: r.auftragsnr as string, art: 'referenz', punkte: PUNKTE.referenz, grund: `${r.art} ${wert} – ${herkunftText(herkunftReferenz(quellen, wert))}` });
     }
   }
 

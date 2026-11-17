@@ -44,7 +44,7 @@ const NUMMER_GETRENNT = /(?<![\p{L}\p{N}])(20\d{2})[_\-/](\d{4})(?![\p{L}\p{N}])
 const NUMMER_KOMPAKT = /(?<![\p{L}\p{N}])(20\d{2})(\d{4})(?![\p{L}\p{N}])/gu;
 
 /**
- * Auftragsnummern im Text: JJJJ_NNNN, JJJJ-NNNN, JJJJ/NNNN und JJJJNNNN (jeweils mit Wortgrenze) → normalisiert JJJJ_NNNN,
+ * Auftragsnummern im Text: JJJJ_NNNN, JJJJ-NNNN, JJJJ/NNNN und JJJJNNNN (jeweils mit Wortgrenze; JJJJNNNN nur, wenn es kein Datum JJJJMMTT sein kann) → normalisiert JJJJ_NNNN,
  * ohne Doppelte, in der Reihenfolge des ersten Auftretens. Ob es den Auftrag gibt, prüft der Aufrufer.
  */
 export function auftragsnummernFinden(...texte: (string | null | undefined)[]): string[] {
@@ -53,9 +53,17 @@ export function auftragsnummernFinden(...texte: (string | null | undefined)[]): 
   for (const t of texte) {
     if (!t) continue;
     for (const m of t.matchAll(NUMMER_GETRENNT)) add(m[1], m[2]);
-    for (const m of t.matchAll(NUMMER_KOMPAKT)) add(m[1], m[2]);
+    // JJJJMMTT ist fast immer ein Datum (Dateinamen wie „503_20261117_0503.PDF“) – kompakt nur, was kein Datum sein kann
+    for (const m of t.matchAll(NUMMER_KOMPAKT)) if (!istDatumMmTt(m[2])) add(m[1], m[2]);
   }
   return out;
+}
+
+/** „1117“ → true (17. November); „1351“, „0000“, „0732“ → false */
+export function istDatumMmTt(nnnn: string): boolean {
+  const mm = Number(nnnn.slice(0, 2));
+  const tt = Number(nnnn.slice(2));
+  return mm >= 1 && mm <= 12 && tt >= 1 && tt <= 31;
 }
 
 const regexSicher = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -70,15 +78,19 @@ export function referenzTauglich(wert: string | null | undefined): boolean {
   return w.length >= 4 && /\p{N}/u.test(w) && !/^[0\s]+$/.test(w);
 }
 
-/** Textquelle der Suche: Bezeichnung (Betreff, Mailtext, Dateinamen „…“, Dokument „…“ (Texterkennung)) und Text */
-export type Quelle = [ort: string, text: string];
+/**
+ * Textquelle der Suche: Art (Betreff, Mailtext, Dateiname, Dokument), Name des Dokuments, Text für die Suche (bei OCR mit
+ * zusammengezogenen Nummern, siehe ocrNummern) und Originaltext für den Ausschnitt in der Herkunft.
+ */
+export interface Quelle { art: 'betreff' | 'mailtext' | 'dateiname' | 'dokument'; name: string; text: string; roh: string }
 
-/** Bezeichnungen der Quellen für die Suche nach Nummern – Reihenfolge = Reihenfolge der Fundstellen in der Begründung */
+/** Quellen in der Reihenfolge der Herkunftsangaben: Betreff, Mailtext, Dateinamen, Dokumente (Texterkennung) */
 export function suchQuellen(q: { betreff: string; text: string; dateien: string[]; ocr: { datei: string; text: string }[] }): Quelle[] {
   return [
-    ['Betreff', q.betreff], ['Mailtext', q.text],
-    ...q.dateien.map((d): Quelle => [`Dateinamen „${d}“`, d]),
-    ...q.ocr.map((o): Quelle => [`Dokument „${o.datei}“ (Texterkennung)`, ocrNummern(o.text)]),
+    { art: 'betreff', name: '', text: q.betreff, roh: q.betreff },
+    { art: 'mailtext', name: '', text: q.text, roh: q.text },
+    ...q.dateien.map((d): Quelle => ({ art: 'dateiname', name: d, text: d, roh: d })),
+    ...q.ocr.map((o): Quelle => ({ art: 'dokument', name: o.datei, text: ocrNummern(o.text), roh: o.text })),
   ];
 }
 
@@ -90,21 +102,42 @@ export function ocrNummern(text: string): string {
   return text.replace(/(?<![\p{L}\p{N}])(20\d{2})[ \t]*[ _\t][ \t]*(\d{4})(?![\p{L}\p{N}])/gu, '$1_$2');
 }
 
-/** Alle Fundstellen einer Auftrags-/Rechnungsnummer (JJJJ_NNNN, normalisiert) */
-export function fundstellenNummer(quellen: Quelle[], nr: string): string[] {
-  return quellen.filter(([, t]) => auftragsnummernFinden(t).includes(nr)).map(([o]) => o);
+/** Ausschnitt um eine Fundstelle: bis zu 40 Zeichen davor und danach, Leerraum zusammengefasst, mit „…“ an Schnittkanten */
+export function ausschnitt(text: string, start: number, ende: number, rand = 40): string {
+  const von = Math.max(0, start - rand);
+  const bis = Math.min(text.length, ende + rand);
+  const t = text.slice(von, bis).replace(/\s+/g, ' ').trim();
+  return `${von > 0 ? '…' : ''}${t}${bis < text.length ? '…' : ''}`;
 }
 
-/** Alle Fundstellen einer Referenz (Wortgrenze, Groß-/Kleinschreibung und Leerraum egal) */
-export function fundstellenReferenz(quellen: Quelle[], wert: string): string[] {
-  return quellen.filter(([, t]) => !!t && referenzImText(t, wert)).map(([o]) => o);
+const herkunftName = (q: Quelle) => q.art === 'betreff' ? 'Betreff' : q.art === 'mailtext' ? 'Mailtext' : q.art === 'dateiname' ? `Dateiname „${q.name}“`
+  : `${/\.pdf$/i.test(q.name) ? 'PDF' : 'Dokument'} „${q.name}“ (Texterkennung)`;
+
+/** Fundstelle im Originaltext suchen (Regex mit Flag u) → „Mailtext: „…Ausschnitt…““; Dateinamen ohne Ausschnitt */
+function herkunftEintrag(q: Quelle, muster: RegExp): string | null {
+  const m = muster.exec(q.roh);
+  if (!m) return null;
+  if (q.art === 'dateiname') return herkunftName(q);
+  return `${herkunftName(q)}: „${ausschnitt(q.roh, m.index, m.index + m[0].length)}“`;
 }
 
-/** „im Betreff“, „im Betreff und im Dokument „x.pdf“ (Texterkennung)“ */
-export function fundText(orte: string[]): string {
-  const mit = orte.map((o) => `im ${o}`);
-  if (!mit.length) return 'in der E-Mail';
-  return mit.length === 1 ? mit[0] : `${mit.slice(0, -1).join(', ')} und ${mit[mit.length - 1]}`;
+/** Herkunft einer Auftrags-/Rechnungsnummer (JJJJ_NNNN): je Quelle mit Treffer Art, Name und Textausschnitt */
+export function herkunftNummer(quellen: Quelle[], nr: string): string[] {
+  const [j, n] = nr.split('_');
+  const muster = new RegExp(`(?<![\\p{L}\\p{N}])${j}(?:[_\\-/]|[ \\t]*[ _\\t][ \\t]*)?${n}(?![\\p{L}\\p{N}])`, 'u');
+  return quellen.filter((q) => auftragsnummernFinden(q.text).includes(nr))
+    .map((q) => herkunftEintrag(q, muster) ?? herkunftName(q));
+}
+
+/** Herkunft einer Referenz (Wortgrenze, Groß-/Kleinschreibung und Leerraum egal) */
+export function herkunftReferenz(quellen: Quelle[], wert: string): string[] {
+  const muster = new RegExp(`(?<![\\p{L}\\p{N}])${wert.trim().split(/\s+/).map(regexSicher).join('\\s+')}(?![\\p{L}\\p{N}])`, 'iu');
+  return quellen.filter((q) => !!q.text && referenzImText(q.text, wert)).map((q) => herkunftEintrag(q, muster) ?? herkunftName(q));
+}
+
+/** „Herkunft: Betreff: „…“; PDF „x.pdf“ (Texterkennung): „…““ */
+export function herkunftText(eintraege: string[]): string {
+  return `Herkunft: ${eintraege.length ? eintraege.join('; ') : 'E-Mail'}`;
 }
 
 /**
