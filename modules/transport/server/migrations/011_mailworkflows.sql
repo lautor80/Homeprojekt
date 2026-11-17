@@ -27,7 +27,8 @@ create table if not exists transport.eing_vorgaenge (
   hinweis          text,
   text             text,
   -- Zuordnung: gewählter Auftrag, Trefferwert 0–100, Begründungen [{grund, punkte}], Kandidaten [{auftragsnr, punkte, gruende}]
-  auftragsnr       text references transport.auftraege(auftragsnr) on delete set null,
+  -- bewusst ohne Fremdschlüssel: der SAP-Neuaufbau leert transport.auftraege per TRUNCATE
+  auftragsnr       text,
   punkte           int not null default 0,
   begruendung      jsonb not null default '[]',
   kandidaten       jsonb not null default '[]',

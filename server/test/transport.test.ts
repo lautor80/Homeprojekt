@@ -349,7 +349,7 @@ test('Kontakte: eigenes Recht für die App (#232, N7) – lesen darf, wer Kontak
   const { permissionCatalog } = await import('../src/modules.js');
   const katalog = permissionCatalog();
   const apps = katalog.find((g) => g.module === 'transport')!.areas.flatMap((a) => a.apps);
-  assert.deepEqual(apps.map((a) => a.name), ['Aufträge', 'Kontakte', 'Produkte und Wertelisten']);
+  assert.deepEqual(apps.map((a) => a.name), ['Aufträge', 'Posteingang', 'Kontakte', 'Produkte und Wertelisten']);
   assert.deepEqual(apps.find((a) => a.name === 'Kontakte')!.permissions.map((p) => p.id), ['transport.kontakte:display', 'transport.kontakte:edit']);
 });
 
