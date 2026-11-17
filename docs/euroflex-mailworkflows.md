@@ -74,7 +74,7 @@ Portal
 | Merkmal | Punkte |
 |---|---|
 | Antwort auf eine eigene Mail: `in_reply_to`/`references` ↔ `core.mail_protokoll.message_id` mit `anwendung` Euroflex, `objekt` = Auftragsnr. (bei `nr-1` Fahrtzusatz abschneiden) | 100 |
-| Auftrags- oder Rechnungsnummer `JJJJ_NNNN` (auch `JJJJ-NNNN`, `JJJJ/NNNN`, `JJJJNNNN` nur mit Wortgrenze, `JJJJNNNN` nicht, wenn es ein Datum sein kann; im OCR-Text auch `JJJJ NNNN`, weil die Texterkennung den Unterstrich oft als Leerzeichen liest) in Betreff, Mailtext, Dateiname oder OCR-Text – es zählt, wenn es den Auftrag (`auftragsnr`) bzw. die Rechnung (`faktura`) gibt | 90 |
+| Auftrags- oder Rechnungsnummer `JJJJ_NNNN` (auch `JJJJ-NNNN`, `JJJJ/NNNN`, `JJJJNNNN` nur mit Wortgrenze, `JJJJNNNN` nicht, wenn es ein Datum sein kann) in Betreff, Mailtext oder Dateiname; im OCR-Text (Texterkennung) **nur** `JJJJ_NNNN` mit Unterstrich – `JJJJ NNNN` mit Leerzeichen und alle anderen Schreibweisen werden dort nicht angeboten – es zählt, wenn es den Auftrag (`auftragsnr`) bzw. die Rechnung (`faktura`) gibt | 90 |
 | Ordernummer, Ladenummer (Auftrag oder Stops) oder Rechnungsnummer (`faktura`) in anderem Format – mindestens 4 Zeichen **mit mindestens einer Ziffer** (Platzhalter wie „FOLGT“ oder „Muster“ zählen nicht), mit Wortgrenze | 70 |
 | Absender = E-Mail von Kunde, Unternehmer oder Rechnungsempfänger eines **offenen** Auftrags (nicht abgeschlossen, ohne Rechnung bzw. letzte 90 Tage) | 50, wenn genau ein Auftrag; sonst 30 je Kandidat |
 

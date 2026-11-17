@@ -27,8 +27,8 @@ import { dokumentAblegen, mimeTyp } from '../dokumente.js';
 import { ANWENDUNG } from '../mailversand.js';
 import { F_MW, workflowEinstellungen, type EingangEinstellungen } from '../mailworkflows.js';
 import {
-  absender, absenderTreffer, auftragsnummernFinden, bewerten, dateinameSicher, entscheiden, herkunftNummer, herkunftReferenz, herkunftText, htmlText, mailDateiname, mailHtml, messageIds,
-  nummernVorrang, objektAuftrag, PUNKTE, referenzImText, relevanterAnhang, suchQuellen, speicherWarnung, V_MAILEINGANG, type Entscheidung, type Kandidat, type Treffer,
+  absender, absenderTreffer, bewerten, dateinameSicher, entscheiden, herkunftNummer, herkunftReferenz, herkunftText, htmlText, mailDateiname, mailHtml, messageIds,
+  nummernVorrang, objektAuftrag, PUNKTE, quellenNummern, referenzImText, relevanterAnhang, suchQuellen, speicherWarnung, V_MAILEINGANG, type Entscheidung, type Kandidat, type Treffer,
 } from './logik.js';
 
 /** Name für automatische Bearbeitung (n8n-Lieferung, Neubewertung ohne Benutzer) */
@@ -142,7 +142,7 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
   const quellen = suchQuellen(q);
 
   // 1. Auftragsnummer bzw. Rechnungsnummer (faktura), die es gibt
-  const nummern = auftragsnummernFinden(...quellen.map((x) => x.text));
+  const nummern = quellenNummern(...quellen);
   if (nummern.length) {
     const da = await sql`
       select auftragsnr, auftragsnr as nr, 'Auftragsnummer' as art from transport.auftraege where auftragsnr = any(${nummern})
