@@ -351,6 +351,9 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   erteilt, Browser ohne Ordnerzugriff), steht das als Meldung in der Vorschau bzw. am Auftrag.
 - **Kopf der Ausdrucke:** Das Firmenlogo aus den Einstellungen (*Erscheinungsbild → Euroflex „Ausdrucke“*) steht oben rechts (rechtsbündig, 96 × 16 mm bei 6:1); die Rechnung zeigt die Route als zwei Spalten ohne Pfeil,
   lange Ortsnamen werden vor der nächsten Spalte gekürzt.
+- **Rechnungsnummer auf der Rechnung:** ausgeschrieben als „Rechnungsnummer“ (vorher „Rechnungs-Nr.“, das DATEV beim Belegimport nicht erkannte) –
+  oben rechts im Infoblock und zusätzlich groß rechts neben dem Titel „Rechnung“/„Sammelrechnung“ (`RECHNUNGSNUMMER`, `titel()` in
+  `modules/transport/server/pdf/layout.ts`; Test `server/test/transport_rechnungsnummer.test.ts`).
 
 - Aufbau: `<Ordner>\<Jahr>\<Auftragsnummer>\` – der Auftragsordner wird bei der **Anlage** des Auftrags erzeugt.
 - **Drucken** (Transportauftrag, Lieferschein, Rechnung – auf der Auftragsseite und in der Liste, auch direkt nach

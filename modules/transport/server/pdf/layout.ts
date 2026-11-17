@@ -72,8 +72,14 @@ export function infoBlock(p: Pdf, paare: [string, string][]) {
   }
 }
 
-/** Titel mit Badge (z. B. "RECHNUNG  [1 TRANSPORTAUFTRAG]") */
-export function titel(p: Pdf, text: string, badge: string | null, unter: string | null) {
+/**
+ * Beschriftung der Rechnungsnummer – ausgeschrieben, damit DATEV (Belegerkennung) die Nummer findet;
+ * „Rechnungs-Nr.“ wurde dort nicht erkannt.
+ */
+export const RECHNUNGSNUMMER = 'Rechnungsnummer';
+
+/** Titel mit Badge (z. B. "RECHNUNG  [1 TRANSPORTAUFTRAG]"); optional rechts daneben gut lesbar die Rechnungsnummer */
+export function titel(p: Pdf, text: string, badge: string | null, unter: string | null, nummer?: string) {
   p.text(C.left, 112, text, { size: 22, bold: true });
   if (badge) {
     const bx = C.left + p.textWidth(text, { size: 22, bold: true }) + 4;
@@ -82,6 +88,12 @@ export function titel(p: Pdf, text: string, badge: string | null, unter: string 
     p.text(bx + 2.5, 110.2, badge, { size: 7, bold: true, color: C.accent });
   }
   if (unter) p.text(C.left, 118, unter, { color: C.muted });
+  if (nummer) {
+    const n = { size: 14, bold: true };
+    const l = { size: 11, color: C.muted };
+    p.text(C.right, 112, nummer, { ...n, align: 'R' });
+    p.text(C.right - p.textWidth(nummer, n) - 2.5, 112, RECHNUNGSNUMMER, { ...l, align: 'R' });
+  }
 }
 
 /** Fußzeile mit Firmendaten auf allen Seiten */
