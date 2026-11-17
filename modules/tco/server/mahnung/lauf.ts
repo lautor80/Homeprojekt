@@ -8,21 +8,24 @@
  *  - je Posten und Stufe nur ein Vorschlag bzw. eine zugestellte Mahnung (eindeutiger Index),
  *  - unmittelbar vor dem Senden wird jeder Posten erneut gegen den Zahlungsstand und die Mahnsperren geprüft,
  *  - Systemabsender (persoenlich: false) – auch beim Start von Hand, damit Antworten an die Adresse der Einstellungen gehen.
+ *
+ * Protokoll (Funktion „Mahnungen in Paperless protokollieren“): Jede Stufe wird als Notiz am Paperless-Dokument des Postens
+ * festgehalten, als Anhang dient die dort abgelegte Fassung. Fehler dabei verhindern die Mahnung nie.
  */
 import type { FastifyBaseLogger } from 'fastify';
 import { withChange } from '../../../../server/src/db.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { appAktiv, funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
 import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
-import { DB, vereinLesen, type Db, type Verein } from '../verein.js';
+import { DB, paperless, plAktiv, vereinLesen, type Db, type Verein } from '../verein.js';
 import { addTage, dat, eur, heute as heuteIso, nameSchoen, runden } from '../format.js';
 import { kontaktLesen, mailSenden, type MailAnhang } from '../kommunikation.js';
 import { mailtextFuellen } from '../mailtexte.js';
 import { adrnrErmitteln } from '../halle/daten.js';
-import { rechnungPdfErzeugen } from '../halle/versand.js';
+import { paperlessNotiz, rechnungPdfErzeugen } from '../halle/versand.js';
 import { belegErzeugen } from '../verzehr/beleg.js';
 import {
-  ART_TEXT, artenListe, automatikFaellig, F_MAHN_AUTOMATIK, faelligkeit, lokal, mailtextSchluessel, mailWerte, planen, sperreFuer, standErmitteln, STANDARD_STUFEN,
+  ART_TEXT, artenListe, automatikFaellig, F_MAHN_AUTOMATIK, F_MAHN_PAPERLESS, faelligkeit, lokal, mailtextSchluessel, mailWerte, notizText, planen, sperreFuer, standErmitteln, STANDARD_STUFEN,
   type HistorieZeile, type MahnCfg, type MahnMail, type OffenerPosten, type Plan, type PostenArt, type PostenStand, type SperreZeile, type Stufe,
 } from './logik.js';
 
@@ -283,8 +286,56 @@ export async function laufVerwerfen(tx: Db, id: number, wer: Wer): Promise<void>
 
 interface PostenZeile { id: number; art: PostenArt; nr: string; schuldner: string; name: string; stufe: number; stufe_name: string; faellig: string; betrag: number }
 
-/** Anhang zu einem Posten: Rechnung bzw. Abrechnung als PDF mit GiroCode – ein Fehler dabei verhindert die Mahnung nicht */
+// ---------------------------------------------------------------------------
+// Paperless: Dokument des Postens, Anhang, Protokoll
+// ---------------------------------------------------------------------------
+
+/** Paperless-Dokument der Rechnung bzw. Abrechnung (null = nie nach Paperless abgelegt) */
+export async function dokumentId(db: Db, art: PostenArt, nr: string): Promise<number | null> {
+  const [r] = art === 'HALLE'
+    ? await db`select doknr::text as id from tco.rgkopf where rgnr_txt = ${nr}`
+    : await db`select doc_id::text as id from tco.vz_belege where rgnr = ${nr}`;
+  const id = Number(r?.id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** Protokoll in Paperless eingeschaltet und Paperless eingerichtet */
+export const protokollAktiv = (v: Verein) => funktionAktiv(F_MAHN_PAPERLESS) && plAktiv(v);
+
+/** Notiz an das Paperless-Dokument des Postens – liefert eine Warnung statt eines Fehlers */
+export async function mahnNotiz(v: Verein, art: PostenArt, nr: string, text: string): Promise<string | null> {
+  if (!protokollAktiv(v)) return null;
+  try {
+    const id = await dokumentId(DB, art, nr);
+    if (!id) return null;
+    return await paperlessNotiz(v, id, text);
+  } catch (e) {
+    return `Paperless-Notiz nicht geschrieben: ${(e as Error).message}`;
+  }
+}
+
+export const jetztText = () => {
+  const l = lokal(new Date());
+  return `${dat(l.datum)} ${l.zeit}`;
+};
+
+/**
+ * Anhang zu einem Posten: die in Paperless abgelegte Fassung (Protokoll eingeschaltet), sonst bzw. ohne Dokument die
+ * Rechnung bzw. Abrechnung neu als PDF mit GiroCode – ein Fehler dabei verhindert die Mahnung nicht.
+ */
 async function anhang(v: Verein, p: PostenZeile): Promise<MailAnhang | null> {
+  const dateiname = p.art === 'HALLE' ? `Rechnung_${p.nr}.pdf` : `Verzehrabrechnung_${p.nr}.pdf`;
+  if (protokollAktiv(v)) {
+    try {
+      const id = await dokumentId(DB, p.art, p.nr);
+      if (id) {
+        const pl = paperless(v);
+        const ver = await pl.neuesteVersion(id);
+        const d = await pl.download(ver);
+        return { dateiname, inhalt: d.data, paperless_root_id: id, paperless_version_id: ver, objekt: p.nr };
+      }
+    } catch { /* weiter mit neu erzeugtem PDF */ }
+  }
   try {
     if (p.art === 'HALLE') return { dateiname: `Rechnung_${p.nr}.pdf`, inhalt: (await rechnungPdfErzeugen(DB, v, p.nr)).pdf, objekt: p.nr };
     return { dateiname: `Verzehrabrechnung_${p.nr}.pdf`, inhalt: (await belegErzeugen(DB, v, p.nr)).pdf, objekt: p.nr };
@@ -335,13 +386,25 @@ async function senden(laufId: number, wer: Wer, heute: string): Promise<void> {
     const stufeName = bleibt.find((p) => p.stufe === stufe)!.stufe_name;
     const gebuehr = cfg.stufen[stufe - 1]?.gebuehr ?? 0;
     const frist = addTage(heute, cfg.frist_tage);
-    const abschliessen = (status: 'GESENDET' | 'NICHT_ERREICHBAR' | 'FEHLER', an: string, meldung: string | null) => withChange(ctx, async (tx) => {
+    let anhaenge: MailAnhang[] = [];
+    const abschliessen = async (status: 'GESENDET' | 'NICHT_ERREICHBAR' | 'FEHLER', an: string, meldung: string | null) => {
+      await withChange(ctx, async (tx) => {
+        for (const [i, p] of bleibt.entries()) {
+          await tx`update tco.mahn_posten set status = ${status}, weg = ${status === 'GESENDET' ? 'MAIL' : null}, an = ${an}, meldung = ${meldung ? meldung.slice(0, 500) : null},
+                          betrag = ${p.offen.betrag}, gebuehr = ${i === 0 ? gebuehr : 0}, frist = ${frist}::date, erledigt_am = now(), erledigt_von = ${wer.name}
+                    where id = ${p.id} and status = 'VORSCHLAG'`;
+        }
+      });
+      // Protokoll am Paperless-Dokument jedes Postens; eine fehlgeschlagene Notiz wird am Posten vermerkt
+      const zeitpunkt = jetztText();
       for (const [i, p] of bleibt.entries()) {
-        await tx`update tco.mahn_posten set status = ${status}, weg = ${status === 'GESENDET' ? 'MAIL' : null}, an = ${an}, meldung = ${meldung ? meldung.slice(0, 500) : null},
-                        betrag = ${p.offen.betrag}, gebuehr = ${i === 0 ? gebuehr : 0}, frist = ${frist}::date, erledigt_am = now(), erledigt_von = ${wer.name}
-                  where id = ${p.id} and status = 'VORSCHLAG'`;
+        const w = await mahnNotiz(v, p.art, p.nr, notizText({
+          stufe_name: stufeName, ergebnis: status, zeitpunkt, wer: wer.name, lauf_id: laufId, an, betrag: p.offen.betrag, gebuehr: i === 0 ? gebuehr : 0,
+          frist: status === 'GESENDET' ? frist : null, meldung, anhaenge: anhaenge.map((a) => a.dateiname),
+        }));
+        if (w) await DB`update tco.mahn_posten set meldung = left(concat_ws(' · ', meldung, ${w}::text), 500) where id = ${p.id}`.catch(() => null);
       }
-    });
+    };
     const kontakt = schuldner.startsWith('K:') ? null : await kontaktLesen(DB, schuldner);
     const an = (kontakt?.email ?? '').trim();
     if (!an) {
@@ -352,7 +415,7 @@ async function senden(laufId: number, wer: Wer, heute: string): Promise<void> {
       posten: bleibt.map((p) => ({ ...p.offen }) as PostenStand), stufe_name: stufeName, summe, gebuehr,
     };
     const text = await mailtextFuellen(DB, v, mailtextSchluessel(stufe), mailWerte(v, kontakt?.vorname ?? '', m, frist));
-    const anhaenge: MailAnhang[] = [];
+    anhaenge = [];
     if (cfg.anhang) {
       for (const p of bleibt.slice(0, MAX_ANHAENGE)) {
         const a = await anhang(v, p);

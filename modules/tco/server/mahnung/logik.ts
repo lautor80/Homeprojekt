@@ -18,6 +18,8 @@ import type { MailtextDef, MailVorlage } from '../mailtexte.js';
 export const P_MAHN = { display: 'tco.mahnung:display', execute: 'tco.mahnung:execute', admin: 'tco.mahnung:admin' };
 /** Funktionsschalter des automatischen Laufs (funktionen.ts) */
 export const F_MAHN_AUTOMATIK = 'tco.mahnung.automatik';
+/** Funktionsschalter: Mahnungen als Notiz am Paperless-Dokument der Rechnung bzw. Abrechnung protokollieren */
+export const F_MAHN_PAPERLESS = 'tco.mahnung.paperless';
 
 export type PostenArt = 'HALLE' | 'VERZEHR';
 export const ART_TEXT: Record<PostenArt, string> = { HALLE: 'Hallenrechnung', VERZEHR: 'Verzehrabrechnung' };
@@ -310,3 +312,45 @@ export const MAHN_MAILTEXTE: MailtextDef[] = Array.from({ length: MAX_STUFEN }, 
   platzhalter: MAHN_PLATZHALTER, pflicht: ['Posten', 'Betrag'],
   standard: STANDARD[Math.min(i, STANDARD.length - 1)],
 }));
+
+// ---------------------------------------------------------------------------
+// Protokoll am Paperless-Dokument
+// ---------------------------------------------------------------------------
+
+export const WEG_TEXT: Record<string, string> = { MAIL: 'per E-Mail', BRIEF: 'per Brief', TELEFON: 'telefonisch', PERSOENLICH: 'persönlich' };
+
+export interface NotizDaten {
+  stufe_name: string;
+  ergebnis: 'GESENDET' | 'NICHT_ERREICHBAR' | 'FEHLER' | 'ZUGESTELLT';
+  /** Zeitpunkt „TT.MM.JJJJ HH:MM“ */
+  zeitpunkt: string;
+  wer: string;
+  lauf_id?: number | null;
+  weg?: string | null;
+  an?: string | null;
+  betrag: number;
+  gebuehr?: number;
+  /** neue Zahlungsfrist (ISO) */
+  frist?: string | null;
+  meldung?: string | null;
+  /** Dateinamen der Anhänge der E-Mail */
+  anhaenge?: string[];
+}
+
+/** Text der Notiz am Paperless-Dokument – eine Zeile je Mahnstufe und Ergebnis */
+export function notizText(d: NotizDaten): string {
+  const lauf = d.lauf_id ? ` (Mahnlauf ${d.lauf_id})` : '';
+  const betrag = `offen ${eur(d.betrag)}${d.gebuehr ? `, Mahngebühr ${eur(d.gebuehr)}` : ''}`;
+  const frist = d.frist ? `, neue Zahlungsfrist ${dat(d.frist)}` : '';
+  const bem = d.meldung ? ` – ${d.meldung}` : '';
+  if (d.ergebnis === 'GESENDET') {
+    const anh = d.anhaenge?.length ? `, Anhang: ${d.anhaenge.join(', ')}` : ', ohne Anhang';
+    return `${d.stufe_name} per E-Mail gesendet am ${d.zeitpunkt} an ${d.an}${lauf} durch ${d.wer} – ${betrag}${frist}${anh}`;
+  }
+  if (d.ergebnis === 'ZUGESTELLT') {
+    return `${d.stufe_name} ${WEG_TEXT[d.weg ?? ''] ?? d.weg ?? ''} zugestellt, vermerkt am ${d.zeitpunkt} durch ${d.wer} – ${betrag}${frist}${bem}`;
+  }
+  const grund = d.meldung ? `: ${d.meldung}` : '';
+  const ziel = d.an ? ` an ${d.an}` : '';
+  return `${d.stufe_name} nicht zugestellt${ziel} am ${d.zeitpunkt}${lauf}${grund} – ${betrag}. Die Stufe gilt nicht als erreicht.`;
+}
