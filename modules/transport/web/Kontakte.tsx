@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,6 +15,7 @@ import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { download, PdfDialog } from '@core/components/PdfDialog';
 import { AblageFlaeche, useAblageZiel, type AblageZiel } from '@core/ablage';
 import { useCan } from '@core/session';
+import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
 import { toast } from '@core/toast';
 import { KontaktDialog } from './KontaktDialog';
 import { LAENDER } from './laender';
@@ -50,6 +51,11 @@ export function Kontakte() {
   const [adrnr, setAdrnr] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('adrnr')) || null);
   const [neu, setNeu] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tabellen „Aufträge“ und „Dokumente“ im Kontakt anpassen (Recht transport.tabellen:edit) – mit der Variante gespeichert
+  const anpassen = can('transport.tabellen:edit');
+  const [spaltenAuf, setSpaltenAuf] = useState<TabellenStand>({ ...LEERER_STAND });
+  const [spaltenDok, setSpaltenDok] = useState<TabellenStand>({ ...LEERER_STAND });
+  const tabellen: Tabellen = { auf: spaltenAuf, setAuf: setSpaltenAuf, dok: spaltenDok, setDok: setSpaltenDok, anpassen };
 
   const laden = () => api.get<Liste>(`${T}/kontakte/liste?${new URLSearchParams({ filter, suche: suche.trim() })}`).then(setListe).catch((e) => setError(e.message));
   useEffect(() => { const t = setTimeout(laden, suche ? 250 : 0); return () => clearTimeout(t); }, [filter, suche]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -62,7 +68,13 @@ export function Kontakte() {
   };
 
   return (
-    <AppPage varianten={{ repid: 'transport.kontakte', ansicht: { filter, suche }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); } }} title="Kontakte" subtitle={liste ? `${liste.anzahl.ALLE} Kontakte · ${liste.anzahl.KUNDEN} Kunden · ${liste.anzahl.UNTERNEHMER} Unternehmer` : ''}
+    <AppPage varianten={{ repid: 'transport.kontakte', ansicht: { filter, suche, ...(anpassen ? { spalten: { auftraege: spaltenAuf, dokumente: spaltenDok } } : {}) }, onAnwenden: (a) => {
+      setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche));
+      if (anpassen && a.spalten && typeof a.spalten === 'object') {
+        const sp = a.spalten as { auftraege?: unknown; dokumente?: unknown };
+        setSpaltenAuf(standLesen(sp.auftraege)); setSpaltenDok(standLesen(sp.dokumente));
+      }
+    } }} title="Kontakte" subtitle={liste ? `${liste.anzahl.ALLE} Kontakte · ${liste.anzahl.KUNDEN} Kunden · ${liste.anzahl.UNTERNEHMER} Unternehmer` : ''}
              actions={edit ? <Button icon="add-contact" design="Emphasized" onClick={() => setNeu(true)}>Neuer Kontakt</Button> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <MasterDetail
@@ -96,7 +108,7 @@ export function Kontakte() {
             ))}
           </List>
         }
-        detail={adrnr ? <KontaktDetail key={adrnr} adrnr={adrnr} edit={edit} onChanged={laden} onGeloescht={() => { waehlen(null); laden(); }} /> : null}
+        detail={adrnr ? <KontaktDetail key={adrnr} adrnr={adrnr} edit={edit} tabellen={tabellen} onChanged={laden} onGeloescht={() => { waehlen(null); laden(); }} /> : null}
       />
       <KontaktDialog modus={neu ? 'NEU' : null} auswahl={[]} onClose={() => setNeu(false)}
                      onSaved={(a) => { setNeu(false); laden(); waehlen(a); }} />
@@ -104,7 +116,15 @@ export function Kontakte() {
   );
 }
 
-function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number; edit: boolean; onChanged: () => void; onGeloescht: () => void }) {
+interface Tabellen { auf: TabellenStand; setAuf: (s: TabellenStand) => void; dok: TabellenStand; setDok: (s: TabellenStand) => void; anpassen: boolean }
+
+/** Kopfzeile über einer Tabelle im Kontakt: Knopf „Spalten“ und gesetzte Filter */
+function TabellenKopf({ t }: { t: { knopf: ReactNode; leiste: ReactNode } }) {
+  if (!t.knopf) return null;
+  return <FlexBox alignItems="Center" justifyContent="SpaceBetween" wrap="Wrap" style={{ gap: '0.5rem' }}><div>{t.leiste}</div>{t.knopf}</FlexBox>;
+}
+
+function KontaktDetail({ adrnr, edit, tabellen, onChanged, onGeloescht }: { adrnr: number; edit: boolean; tabellen: Tabellen; onChanged: () => void; onGeloescht: () => void }) {
   const navigate = useNavigate();
   const [d, setD] = useState<Detail | null>(null);
   const [tab, setTab] = useState('stamm');
@@ -114,20 +134,12 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
   const laden = () => api.get<Detail>(`${T}/kontakte/${adrnr}`).then(setD).catch((e) => setError(e.message));
   useEffect(() => { laden(); }, [adrnr]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!d) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : <Text>Lade …</Text>;
-  const a = d.adresse;
-  const k = d.kennzahlen;
-  const rollen = [...new Set(d.auftraege.flatMap((x) => x.rollen))];
-  const land = LAENDER.find(([c]) => c === a.land)?.[1] ?? a.land ?? '';
-  const initialen = d.titel.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-  const t = (s: string | null | undefined) => (s ? <Text>{s}</Text> : <Text className="portal-muted">–</Text>);
-
   const columns: AnalyticalTableColumnDefinition[] = [
     { Header: 'Auftrag', accessor: 'auftragsnr', width: 110, Cell: ({ value }: Cell) => <Link onClick={() => navigate(`/transport/auftraege/${value}`)}>{value}</Link> },
     { Header: 'Angelegt', accessor: 'anlagedatum', width: 100, Cell: ({ value }: Cell) => dat(value) },
-    { Header: 'Rolle', accessor: 'rollen', width: 150, Cell: ({ value }: Cell) => (value as string[]).join(', ') },
+    { Header: 'Rolle', accessor: 'rollen', width: 150, disableFilters: true, Cell: ({ value }: Cell) => (value as string[]).join(', ') },
     { Header: 'Route', accessor: 'route', minWidth: 180 },
-    { Header: 'Kunde / Unternehmer', id: 'partner', minWidth: 170, Cell: ({ row }: Cell) => (row.original.rollen.includes('Kunde') ? row.original.unternehmer : row.original.kunde) || '–' },
+    { Header: 'Kunde / Unternehmer', id: 'partner', accessor: (r: Record<string, unknown>) => ((r.rollen as string[]).includes('Kunde') ? r.unternehmer : r.kunde) || '', minWidth: 170, Cell: ({ row }: Cell) => (row.original.rollen.includes('Kunde') ? row.original.unternehmer : row.original.kunde) || '–' },
     { Header: 'Betrag', accessor: 'betrag', width: 110, hAlign: 'End', Cell: ({ row }: Cell) => eur(row.original.rollen.includes('Unternehmer') && !row.original.rollen.includes('Kunde') ? row.original.ek : row.original.betrag) },
     {
       Header: 'Status', accessor: 'status', width: 160,
@@ -136,6 +148,16 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
         : <ObjectStatus state="Critical">offen</ObjectStatus>),
     },
   ];
+  const tAuf = useTabellenAnsicht({ spalten: columns, stand: tabellen.auf, onStand: tabellen.setAuf, aktiv: tabellen.anpassen, pflicht: ['auftragsnr'], titel: 'Aufträge des Kontakts anpassen' });
+
+  if (!d) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : <Text>Lade …</Text>;
+  const a = d.adresse;
+  const k = d.kennzahlen;
+  const rollen = [...new Set(d.auftraege.flatMap((x) => x.rollen))];
+  const land = LAENDER.find(([c]) => c === a.land)?.[1] ?? a.land ?? '';
+  const initialen = d.titel.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const t = (s: string | null | undefined) => (s ? <Text>{s}</Text> : <Text className="portal-muted">–</Text>);
+
 
   return (
     <div>
@@ -185,11 +207,12 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
             </div>
           </Tab>
           <Tab data-key="auf" text={`Aufträge (${d.auftraege.length})`} icon="shipping-status" selected={tab === 'auf'}>
-            <AnalyticalTable columns={columns} data={d.auftraege} visibleRows={Math.min(Math.max(d.auftraege.length, 1), 15)} minRows={1}
+            <TabellenKopf t={tAuf} />
+            <AnalyticalTable columns={tAuf.spalten} {...tAuf.tabelle} reactTableOptions={tAuf.optionen} data={d.auftraege} visibleRows={Math.min(Math.max(d.auftraege.length, 1), 15)} minRows={1}
                              noDataText="Keine Aufträge mit diesem Kontakt" onRowClick={(e) => navigate(`/transport/auftraege/${e.detail.row.original.auftragsnr}`)} />
           </Tab>
           <Tab data-key="dok" text="Dokumente" icon="documents" selected={tab === 'dok'}>
-            {tab === 'dok' && <KontaktDokumente adrnr={adrnr} titel={d.titel} edit={edit} />}
+            {tab === 'dok' && <KontaktDokumente adrnr={adrnr} titel={d.titel} edit={edit} tabellen={tabellen} />}
           </Tab>
         </TabContainer>
       </div>
@@ -206,7 +229,7 @@ function KontaktDetail({ adrnr, edit, onChanged, onGeloescht }: { adrnr: number;
   );
 }
 
-function KontaktDokumente({ adrnr, titel, edit }: { adrnr: number; titel: string; edit: boolean }) {
+function KontaktDokumente({ adrnr, titel, edit, tabellen }: { adrnr: number; titel: string; edit: boolean; tabellen: Tabellen }) {
   const [d, setD] = useState<{ paperless: boolean; korrespondent: number | null; soll?: string; dokumente: Dok[] } | null>(null);
   const [pdf, setPdf] = useState<Dok | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -240,6 +263,7 @@ function KontaktDokumente({ adrnr, titel, edit }: { adrnr: number; titel: string
     { Header: 'Datum', accessor: 'erstellt', width: 105, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Dok-Nr.', accessor: 'id', width: 85, hAlign: 'End' },
   ];
+  const tDok = useTabellenAnsicht({ spalten: columns, stand: tabellen.dok, onStand: tabellen.setDok, aktiv: tabellen.anpassen, pflicht: ['titel'], titel: 'Dokumente des Kontakts anpassen' });
 
   if (!d) return <Text>Lade Dokumente aus Paperless …</Text>;
   if (!d.paperless) return <MessageStrip hideCloseButton design="Information">Paperless ist nicht eingerichtet (Administration → Schnittstellen: Adresse und API-Token).</MessageStrip>;
@@ -247,7 +271,8 @@ function KontaktDokumente({ adrnr, titel, edit }: { adrnr: number; titel: string
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '0.5rem' }}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
       {!d.korrespondent && <MessageStrip hideCloseButton>In Paperless gibt es noch keinen Korrespondenten „{d.soll}“ – er wird beim ersten Ablegen angelegt.</MessageStrip>}
-      <AnalyticalTable columns={columns} data={d.dokumente} visibleRows={Math.min(Math.max(d.dokumente.length, 1), 12)} minRows={1} noDataText="Keine Dokumente in Paperless" />
+      <TabellenKopf t={tDok} />
+      <AnalyticalTable columns={tDok.spalten} {...tDok.tabelle} reactTableOptions={tDok.optionen} data={d.dokumente} visibleRows={Math.min(Math.max(d.dokumente.length, 1), 12)} minRows={1} noDataText="Keine Dokumente in Paperless" />
       {edit && <AblageFlaeche ziel={ziel} text="Dokumente zum Kontakt hierher ziehen (z. B. Vertrag, Preisabsprache, Versicherungsnachweis), klicken zum Auswählen oder Screenshot mit Strg+V einfügen" />}
       {pdf && <PdfDialog url={`${T}/kontakte/${adrnr}/dokumente/${pdf.id}/datei`} title={pdf.titel} filename={pdf.datei || `${pdf.titel}.pdf`} onClose={() => setPdf(null)} />}
     </div>
