@@ -676,3 +676,15 @@ test('Tabellen anpassen: Recht im Katalog, Spalten/Filter/Sortierung in der Vari
   const v = (await call('GET', '/api/varianten/transport.auftraege')).body.varianten.find((x: any) => x.name === 'Tabellentest');
   assert.deepEqual(v.ansicht.spalten, spalten);
 });
+
+test('Stop-Vorschläge: bekannte Lade-/Entladestellen und Zeitvorgaben, „laut LFS“ zählt nicht', async () => {
+  const r = await call('GET', `${T}/stops/vorschlaege`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const werk = r.body.orte.filter((o: any) => o.firma === 'Zahltest Werk');
+  assert.equal(werk.length, 1, 'je Firma + Straße + Ort nur einmal');
+  assert.equal(werk[0].plzort, '66625 Nohfelden');
+  assert.ok(werk[0].anzahl >= 3);
+  assert.ok(r.body.orte.some((o: any) => o.firma === 'Zahltest Lager' && o.plzort === '68159 Mannheim'));
+  assert.ok(!r.body.orte.some((o: any) => String(o.firma).toLowerCase() === 'laut lfs'));
+  assert.ok(r.body.zeiten.includes('07:00-08:30'));
+});

@@ -42,6 +42,13 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     hinweis: 'Abgeschaltet (oder ohne Recht) bleiben die Dialoge offen und zeigen Ergebnis und Fehler wie bisher (z. B. „Fehlgeschlagene erneut senden“).',
   },
   {
+    id: 'transport.stops.vorschlaege', app: 'Aufträge', text: 'Vorschläge beim Erfassen der Stops',
+    beschreibung: 'Beim Tippen in Firma, Straße, PLZ/Ort und Zeitvorgabe eines Stops schlägt das Portal Werte aus früheren Aufträgen vor; eine gewählte Firma übernimmt Straße, Land und PLZ/Ort mit.',
+    permissions: ['transport.vorschlaege:display'],
+    routen: ['GET /stops/vorschlaege'],
+    hinweis: 'Abgeschaltet sind es wieder einfache Eingabefelder.',
+  },
+  {
     id: 'transport.versand', app: 'Aufträge', text: 'Versand (E-Mail, Paperless)',
     beschreibung: 'Aufträge und Rechnungen per E-Mail versenden und in Paperless ablegen.',
     permissions: ['transport.versand:execute'],
