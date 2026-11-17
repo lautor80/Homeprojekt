@@ -112,7 +112,7 @@ test('Zwei E-Mails mit gemeinsamen Anhängen: beide gesendet', () => {
   ]);
   assert.deepEqual(mails[1].json.nachricht.toRecipients, [{ emailAddress: { address: 'ablage@example.org' } }]);
   assert.equal(mails[1].json.nachricht.attachments.length, 2);
-  // Absender ausdrücklich gesetzt – sonst nähme Graph bei einem Alias-Postfach dessen Hauptadresse
+  // Absender ausdrücklich gesetzt – ein Entwurf ohne from bekäme in Outlook das Konto des Öffnenden
   for (const m of mails) assert.deepEqual(m.json.nachricht.from, { emailAddress: { address: 'dispo@example.org' } });
   assert.deepEqual(r.aus['Sendbare aufteilen'].map((m) => m.json), [
     { nr: 1, absender: 'dispo@example.org', entwurf_id: 'AAMk-1=' }, { nr: 2, absender: 'dispo@example.org', entwurf_id: 'AAMk-2=' },
@@ -193,7 +193,7 @@ test('Modus pruefen: ohne E-Mails gültig, mit und ohne Postfach', () => {
   assert.equal(p.mails[0].nr, 1);
 });
 
-test('Alias als Absender (buchhaltung@ am Postfach info@): from = angefragtes Postfach, auch im Entwurfsmodus', () => {
+test('Entwurf aus einem anderen Postfach (buchhaltung@): from = angefragtes Postfach, auch im Entwurfsmodus', () => {
   const r = lauf(aufruf({ modus: 'entwurf', absender: 'buchhaltung@example.net' }), { entwurf: entwurfOk });
   assert.equal(r.gueltig, true);
   for (const m of r.aus['E-Mails aufteilen']) {
