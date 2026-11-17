@@ -6,6 +6,7 @@ import {
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
 import { T, download } from './util';
 import { ablegenIn, dateiLesen } from './ordner';
 import { AUTO, autoOffen, emlErzeugen, emlHerunterladen } from './MailEntwurf';
@@ -21,6 +22,8 @@ export interface Doc { url: string; filename: string; ablage?: string[]; lokal?:
 
 export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () => void }) {
   const [idx, setIdx] = useState(0);
+  // Recht transport.dialoge:execute (Funktionsschalter transport.dialoge.schliessen): Herunterladen lädt alle Dokumente und schließt die Vorschau sofort
+  const direkt = useCan()('transport.dialoge:execute');
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [pfade, setPfade] = useState<string[]>([]);
   const [nichtGespeichert, setNichtGespeichert] = useState<string | null>(null);
@@ -54,20 +57,31 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
     return () => { aus = true; if (url) URL.revokeObjectURL(url); };
   }, [doc]);
 
+  const einzeln = (d: Doc) => {
+    if (!d.lokal) return download(d.url, d.filename);
+    const a = document.createElement('a');
+    a.href = d.url;
+    a.download = d.filename;
+    a.click();
+    return Promise.resolve();
+  };
   const herunterladen = () => {
     if (!doc) return;
-    if (!doc.lokal) return download(doc.url, doc.filename).catch((e) => setError(e.message));
-    const a = document.createElement('a');
-    a.href = doc.url;
-    a.download = doc.filename;
-    a.click();
+    if (!direkt) { einzeln(doc).catch((e) => setError(e.message)); return; }
+    const alle = docs ?? [];
+    onClose();
+    (async () => {
+      for (const d of alle) await einzeln(d).catch((e) => toast(`${d.filename}: ${(e as Error).message}`, 10000));
+      toast(alle.length === 1 ? `${alle[0].filename} heruntergeladen.` : `${alle.length} Dokumente heruntergeladen.`, 5000);
+    })();
   };
+  const alleText = direkt && (docs?.length ?? 0) > 1 ? `Alle herunterladen (${docs!.length})` : 'Herunterladen';
 
   return (
     <Dialog open={!!docs} headerText="PDF-Vorschau" onClose={onClose} resizable
             style={{ width: '80vw', height: '88vh' }}
             footer={<Bar endContent={<>
-              <Button icon="download" disabled={!doc} onClick={herunterladen}>Herunterladen</Button>
+              <Button icon="download" disabled={!doc} onClick={herunterladen}>{alleText}</Button>
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </>} />}>
       <FlexBox alignItems="Center" style={{ gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -103,16 +117,21 @@ export interface MailRow {
 
 export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mails: MailRow[] | null; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
+  // Recht transport.dialoge:execute (Funktionsschalter transport.dialoge.schliessen): jeder Versand- oder Download-Knopf schließt den Dialog sofort
+  const direkt = useCan()('transport.dialoge:execute');
+  const fehler = (text: string) => (direkt ? toast(text, 12000) : setError(text));
+  const zu = () => { if (direkt) onClose(); };
   const [busy, setBusy] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState(false);
   const datei = (m: MailRow) => {
     const id = art === 'R' ? m.faktura! : m.auftragsnr;
     return { id, url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, name: art === 'T' ? `Transportauftrag_${id}.pdf` : art === 'L' ? `Lieferschein_${id}.pdf` : `Rechnung_${id}.pdf` };
   };
-  const pdf = (m: MailRow) => { const d = datei(m); download(d.url, d.name).catch((e) => setError(e.message)); };
+  const pdf = (m: MailRow) => { zu(); const d = datei(m); download(d.url, d.name).catch((e) => fehler(e.message)); };
   /** E-Mail-Entwurf mit dem PDF als Anhang (bei Rechnungen die ZUGFeRD-Rechnung) – öffnet sich im Mailprogramm mit „Senden“ */
   async function entwurf(m: MailRow) {
     setBusy(m.auftragsnr); setError(null);
+    zu();
     try {
       const d = datei(m);
       const res = await fetch(d.url, { credentials: 'same-origin' });
@@ -120,10 +139,10 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
       const eml = await emlErzeugen({ an: m.an, betreff: m.betreff, text: m.text, anhaenge: [{ name: d.name, daten: await res.blob() }] });
       emlHerunterladen(eml, m.betreff);
       toast(`E-Mail-Entwurf „${m.betreff}“ mit ${d.name} erstellt.`, 5000);
-      if (!autoOffen()) setHinweis(true);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+      if (!autoOffen()) { if (direkt) toast('Der Entwurf liegt als .eml in den Downloads – anklicken öffnet ihn im Mailprogramm.', 8000); else setHinweis(true); }
+    } catch (e) { fehler((e as Error).message); } finally { setBusy(null); }
   }
-  const xml = (m: MailRow) => download(`${T}/xrechnung/${encodeURIComponent(m.faktura!)}/datei`, `XRechnung_${m.faktura}.xml`).catch((e) => setError(e.message));
+  const xml = (m: MailRow) => { zu(); download(`${T}/xrechnung/${encodeURIComponent(m.faktura!)}/datei`, `XRechnung_${m.faktura}.xml`).catch((e) => fehler(e.message)); };
 
   return (
     <Dialog open={!!mails} headerText="Versenden" onClose={onClose} style={{ width: 'min(64rem, 95vw)' }}
@@ -154,7 +173,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
                 <FlexBox direction="Column" style={{ gap: '0.25rem', padding: '0.25rem 0' }}>
                   <Button design="Emphasized" icon="email" disabled={!!busy || !m.hasEmail} onClick={() => entwurf(m)}
                           tooltip="E-Mail-Entwurf mit dem PDF als Anhang">{busy === m.auftragsnr ? 'Erstelle …' : 'E-Mail öffnen'}</Button>
-                  <Link href={m.mailto} disabled={!m.hasEmail} style={{ fontSize: 'var(--sapFontSmallSize)' }}>ohne Anhang</Link>
+                  <Link href={m.mailto} disabled={!m.hasEmail} onClick={() => setTimeout(zu, 0)} style={{ fontSize: 'var(--sapFontSmallSize)' }}>ohne Anhang</Link>
                 </FlexBox>
               </td>
               <td>

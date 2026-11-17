@@ -36,6 +36,12 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     hinweis: 'Abgeschaltet zeigen die Tabellen alle Spalten; gespeicherte Varianten behalten ihre Spaltenangaben, wenden sie aber nicht an.',
   },
   {
+    id: 'transport.dialoge.schliessen', app: 'Aufträge', text: 'Versand- und Druckdialoge sofort schließen',
+    beschreibung: 'Jeder Knopf, der versendet, einen E-Mail-Entwurf erzeugt oder Dokumente herunterlädt (Versenden …, E-Mail zum Auftrag, Versenden-Liste, PDF-Vorschau), schließt den Dialog sofort; das Ergebnis und Fehler kommen als Meldung unten im Bild.',
+    permissions: ['transport.dialoge:execute'],
+    hinweis: 'Abgeschaltet (oder ohne Recht) bleiben die Dialoge offen und zeigen Ergebnis und Fehler wie bisher (z. B. „Fehlgeschlagene erneut senden“).',
+  },
+  {
     id: 'transport.versand', app: 'Aufträge', text: 'Versand (E-Mail, Paperless)',
     beschreibung: 'Aufträge und Rechnungen per E-Mail versenden und in Paperless ablegen.',
     permissions: ['transport.versand:execute'],

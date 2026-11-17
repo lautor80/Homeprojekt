@@ -20,6 +20,7 @@ siehe [n8n/EUROFLEX-MAILEINGANG.md](n8n/EUROFLEX-MAILEINGANG.md).
 | `transport.eingang` – Posteingang | `transport.eingang:display`, `transport.eingang:edit` | App Posteingang fehlt |
 | `transport.eingang.n8n` – E-Mail-Eingang über n8n | `transport.eingang:execute` (API-Schlüssel) | Lieferungen von n8n werden abgewiesen, Mails bleiben im Postfach |
 | `transport.eingang.automatik` – Automatisch ablegen | – | jede Mail landet in der Prüfliste |
+| `transport.dialoge.schliessen` – Versand- und Druckdialoge sofort schließen | `transport.dialoge:execute` | Dialoge bleiben nach dem Auslösen offen und zeigen Ergebnis/Fehler (siehe „Dialoge schließen sofort“) |
 
 Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Rollen, die `transport.versand:execute` haben.
 `transport.versandsenden:execute` wird bewusst niemandem automatisch gegeben.
@@ -165,6 +166,22 @@ Regeln im Detail:
 Der Server erzeugt die PDFs selbst (wie `GET /pdf/:art/:id`) und ruft je Mail `euroflexMailSenden` aus `mailversand.ts` auf –
 damit gelten Postfach je Benutzer, feste Kopieadresse und E-Mail-Protokoll wie beim Einzelversand. Die Message-IDs im
 Protokoll lassen Antworten im Eingang sicher dem Auftrag zuordnen.
+
+## Dialoge schließen sofort
+
+Stand 17.11.2026. Jeder Knopf, der versendet, einen E-Mail-Entwurf erzeugt oder Dokumente herunterlädt, schließt seinen Dialog **sofort**; die Arbeit läuft im Hintergrund weiter, Ergebnis und Fehler erscheinen als Meldung unten im Bild.
+
+| Dialog | Knöpfe |
+|---|---|
+| *Versenden …* (Sammelversand) | *n Entwürfe erzeugen* / *n E-Mails senden* / *Fehlgeschlagene erneut …*, *Als EML herunterladen* |
+| *E-Mail zum Auftrag* | *Senden*, *Entwurf in Outlook*, *E-Mail-Datei* / *Entwurf öffnen*, *Teilen…*, *Ohne Anhänge* |
+| *Versenden* (Liste, ohne Outlook 365) | *E-Mail öffnen*, *ohne Anhang*, *PDF herunterladen*, *E-Rechnung (XML)* |
+| *PDF-Vorschau* (nach „Drucken“) | *Herunterladen* – lädt bei mehreren Dokumenten **alle** (*Alle herunterladen (n)*) |
+
+- Schlägt etwas fehl, nennt die Meldung Auftrag und Grund (z. B. „2026_1343: Postfach nicht erreichbar“); zum Wiederholen den Dialog erneut öffnen.
+- Das Ablegen im Ablageordner beim Öffnen der PDF-Vorschau läuft wie bisher, auch wenn die Vorschau sofort wieder geschlossen wird.
+- Ohne den Hinweisdialog zur .eml-Datei: der Hinweis („Dateien dieses Typs immer öffnen“) steht in der Meldung.
+- Funktionsschalter `transport.dialoge.schliessen` mit Recht `transport.dialoge:execute` (Migration 014 gibt es jeder Rolle, die Aufträge sieht). Aus bzw. ohne Recht bleiben die Dialoge offen und zeigen Ergebnis und Fehler wie bisher.
 
 ## Dateien
 

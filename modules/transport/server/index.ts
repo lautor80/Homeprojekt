@@ -46,6 +46,8 @@ export const P = {
   zahlung: 'transport.zahlungen:edit',
   /** Tabellen anpassen: Spalten ein-/ausblenden, Spaltenfilter, Sortierung – mit der Variante gespeichert */
   tabellen: 'transport.tabellen:edit',
+  /** Versand- und Druckdialoge nach dem Auslösen sofort schließen (Ergebnis als Meldung) */
+  dialoge: 'transport.dialoge:execute',
   /** App „Kontakte“ öffnen (#232, N7) – bisher mit „Aufträge anzeigen“ */
   kontakteDisplay: 'transport.kontakte:display',
   kontakte: 'transport.kontakte:edit',
@@ -982,6 +984,7 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.abrechnung, text: 'Abrechnungsstatus in der Auftragsliste sehen (angelegt, abgerechnet, bezahlt, überfällig)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.zahlung, text: 'Zahlungseingang erfassen und zurücknehmen', requires: [P.abrechnung] },
     { area: 'Euroflex', app: 'Aufträge', id: P.tabellen, text: 'Tabellen anpassen (Auftragsliste, Aufträge und Dokumente im Kontakt): Spalten ein-/ausblenden, Filter, Sortierung – in Varianten speichern' },
+    { area: 'Euroflex', app: 'Aufträge', id: P.dialoge, text: 'Versand- und Druckdialoge schließen sich nach dem Auslösen sofort (ohne Recht bleiben sie offen)' },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versandSenden, text: 'Sammelversand direkt senden statt als Entwurf in Outlook ablegen', requires: [P.versand] },
     { area: 'Euroflex', app: 'Posteingang', id: P.eingangDisplay, text: 'Posteingang anzeigen: eingegangene E-Mails mit Zuordnung zum Auftrag' },
