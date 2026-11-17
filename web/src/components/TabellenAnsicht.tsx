@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Bar, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, Option, Select, Text, Title } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition } from '@ui5/webcomponents-react';
 import {
-  LEERER_STAND, ausTabelle, filterText, gleich, sichtbareSpalten, spalteSetzen, spaltenId, spaltenText, standLesen, type TabellenStand,
+  LEERER_STAND, ausTabelle, filterText, gleich, sichtbareSpalten, spalteSetzen, spaltenId, spaltenText, standLesen, tabellenAenderung, type TabellenStand,
 } from './tabellenAnsicht';
 
 export { LEERER_STAND, standLesen, type TabellenStand } from './tabellenAnsicht';
@@ -53,7 +53,27 @@ export function useTabellenAnsicht({ spalten, stand, onStand, aktiv, pflicht = [
     if (JSON.stringify(ist.sortierung) !== JSON.stringify(stand.sortierung) && t.setSortBy) t.setSortBy(stand.sortierung.map((s) => ({ ...s })));
   }, [stand, aktiv, sichtbar]);
 
-  // Tabelle → Stand (Filter oder Sortierung im Spaltenkopf geändert)
+  // Tabelle → Stand (Filter oder Sortierung im Spaltenkopf geändert). Maßgeblich ist ein Plugin der Tabelle (tableHooks): Es sieht
+  // bei jedem Zeichnen den aktuellen Zustand. onSort/onFilter kommen, bevor die Tabelle ihren Zustand aktualisiert – darauf allein
+  // ist kein Verlass (die Sortierung fehlte so in gespeicherten Varianten).
+  const aktivRef = useRef(aktiv);
+  aktivRef.current = aktiv;
+  const zuletzt = useRef<{ filters?: unknown; sortBy?: unknown } | null>(null);
+  const mitlesen = useRef(Object.assign((hooks: { useInstance: ((i: { state?: Record<string, unknown> }) => void)[] }) => {
+    hooks.useInstance.push((instanz) => {
+      const st = instanz.state ?? {};
+      const neu = { filters: st.filters, sortBy: st.sortBy };
+      const geaendert = tabellenAenderung(neu, zuletzt.current);
+      zuletzt.current = neu;
+      if (!geaendert || !aktivRef.current) return;
+      // nicht während des Zeichnens der Tabelle melden (setState in fremdem Render), sondern direkt danach
+      setTimeout(() => {
+        const s = ausTabelle(aktuell.current, neu.filters, neu.sortBy);
+        if (!gleich(s, aktuell.current)) melden.current(s);
+      }, 0);
+    });
+  }, { pluginName: 'tabellenAnsichtMitlesen' })).current;
+  const tabellenHooks = useRef([mitlesen]).current;
   const nachlesen = () => setTimeout(() => {
     const t = ref.current;
     if (!aktiv || !t?.state) return;
@@ -81,7 +101,7 @@ export function useTabellenAnsicht({ spalten, stand, onStand, aktiv, pflicht = [
   return {
     spalten: sichtbar,
     /** Eigenschaften für die AnalyticalTable */
-    tabelle: { tableInstance: ref as never, onFilter: nachlesen, onSort: nachlesen, ...(aktiv ? { filterable: true, sortable: true } : {}) },
+    tabelle: { tableInstance: ref as never, tableHooks: tabellenHooks as never[], onFilter: nachlesen, onSort: nachlesen, ...(aktiv ? { filterable: true, sortable: true } : {}) },
     /** in reactTableOptions übernehmen: Filter und Sortierung bleiben beim Neuladen der Daten stehen */
     optionen: { autoResetFilters: false, autoResetSortBy: false, autoResetGlobalFilter: false },
     knopf,

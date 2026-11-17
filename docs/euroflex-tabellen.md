@@ -23,6 +23,7 @@ Posteingang und Stammdaten haben keine Tabelle im Sinne einer Liste mit Spalten 
 - Gesetzte Filter stehen über der Tabelle („Filter: Kunde: brandt · Route: mannheim“) mit *Filter entfernen*.
 - Der Knopf zeigt, was angepasst ist, z. B. „Spalten (2 aus, 1 Filter)“.
 - **Speichern/Laden**: über die bestehenden Ansichtsvarianten oben rechts (Diskette). Gespeichert werden Spalten, Filter und Sortierung zusammen mit den übrigen Filtern der App; eine Standardvariante wird beim Öffnen geladen. Ältere Varianten ohne Spaltenangaben lassen die Tabelle, wie sie ist.
+  Sortierung und Filter aus dem Spaltenkopf übernimmt ein Plugin der Tabelle (`tableHooks`, liest bei jedem Zeichnen den Zustand). Vorher ging die Sortierung beim Speichern verloren, weil `onSort` kommt, bevor die Tabelle ihren Zustand aktualisiert hat (17.11.2026).
 - Spalten, die es nicht mehr gibt, und Filter auf ausgeblendeten Spalten fallen beim Laden einer Variante still weg.
 - Die Spalte *Abrechnung* hat keinen Textfilter – dafür gibt es den Filter *Zahlung* im Kopf.
 

@@ -86,6 +86,16 @@ export function ausTabelle(stand: TabellenStand, filters: unknown, sortBy: unkno
   return { ...stand, filter: f, sortierung: s };
 }
 
+/**
+ * Haben sich Filter oder Sortierung der Tabelle seit dem letzten Zeichnen geändert? (react-table ersetzt die Listen bei jeder
+ * Änderung, daher genügt der Vergleich der Referenzen.) Ohne vorherigen Stand: nein – das erste Zeichnen ist keine Änderung.
+ * Hintergrund: onSort/onFilter kommen, bevor die Tabelle ihren Zustand aktualisiert – die Sortierung fehlte so in Varianten.
+ */
+export function tabellenAenderung(neu: { filters?: unknown; sortBy?: unknown } | null | undefined, alt: { filters?: unknown; sortBy?: unknown } | null | undefined): boolean {
+  if (!neu || !alt) return false;
+  return neu.sortBy !== alt.sortBy || neu.filters !== alt.filters;
+}
+
 /** gleicher Inhalt? (verhindert Schleifen zwischen Tabelle und Stand) */
 export function gleich(a: TabellenStand, b: TabellenStand): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
