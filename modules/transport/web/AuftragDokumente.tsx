@@ -11,12 +11,15 @@ import { T, dat } from './util';
 import { OrdnerDateien } from './Ablageordner';
 import { ablegen, ordnerStatus } from './ordner';
 import { emlLesen, istEml } from './eml';
+import { AuftragEingang } from './eingang/AuftragEingang';
 
 /**
  * Dokumente zum Auftrag (Paperless): Dateien hineinziehen, auswählen oder Screenshot mit Strg+V einfügen.
  * Ablage mit Titel „Auftrag … – Dateiname“, Kunde als Korrespondent und Tag „Auftrag …“.
  * E-Mails (.eml, z. B. aus Outlook hineingezogen) werden zerlegt: Ihre Anhänge werden wie einzelne Dateien abgelegt
  * (Ablageordner und Paperless), die E-Mail selbst nur im Ablageordner (eml.ts).
+ * Abschnitt „Aus dem Posteingang“ (eingang/AuftragEingang.tsx): Dateien aus dem Euroflex-Posteingang; mit Ablageziel „lokal“
+ * werden wartende Dateien beim Öffnen in den Unterordner „Eingang“ des Ablageordners übernommen.
  */
 interface Dok { doc_id: number; titel: string | null; datei: string | null; erstellt_am: string; erstellt_von: string | null }
 
@@ -117,6 +120,7 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: s
         </div>
       )}
       <OrdnerDateien nr={nr} version={ordnerStand + stand} />
+      <AuftragEingang nr={nr} onUebernommen={() => setStand((v) => v + 1)} />
       {edit && (d.paperless || ordner) && <AblageFlaeche ziel={ziel} text={`Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen; eine E-Mail aus Outlook (.eml) wird zerlegt und ihre Anhänge abgelegt${ordner ? ' – sie landen auch im Ablageordner' : ''}`} />}
       {!edit && !d.dokumente.length && d.paperless && <Text className="portal-muted">Keine Dokumente in Paperless zugeordnet.</Text>}
       {pdf && <PdfDialog url={`${T}/auftraege/${nr}/dokumente/${pdf.doc_id}/datei`} title={pdf.titel ?? pdf.datei ?? ''} filename={pdf.datei ?? 'dokument.pdf'} onClose={() => setPdf(null)} />}

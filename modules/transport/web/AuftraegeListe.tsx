@@ -10,13 +10,14 @@ import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
 import { einstellungLink } from '@core/einstellungen';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
 import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
 import { ordnerBereit } from './ordner';
 import { AblageOrdnerEinstellung } from './Ablageordner';
+import { VersandDialog } from './VersandDialog';
 
 // Filter und Auswahl bleiben beim Wechsel ins Detail und zurück erhalten
 const merk = {
@@ -133,6 +134,8 @@ const Saldo = ({ v }: { v: number }) => <ObjectStatus state={v < 0 ? 'Negative' 
 export function AuftraegeListe() {
   const navigate = useNavigate();
   const can = useCan();
+  // Sammelversand „Versenden…“ über Outlook 365 (Funktion transport.versand.sammel); aus = bisheriges Menü „Versenden“ (EML je Dokument)
+  const sammelversand = useFunktion()('transport.versand.sammel');
   const [jahre, setJahre] = useState<KeyText[]>([]);
   const [jahr, setJahr] = useState(merk.jahr);
   const [fakt, setFakt] = useState(merk.fakt);
@@ -148,6 +151,7 @@ export function AuftraegeListe() {
 
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [mails, setMails] = useState<{ art: 'T' | 'L' | 'R'; rows: MailRow[] } | null>(null);
+  const [versand, setVersand] = useState<string[] | null>(null);
   const [xr, setXr] = useState<XRes | null>(null);
   const [info, setInfo] = useState<{ title: string; text: string } | null>(null);
   const treeRef = useRef<{ toggleAllRowsExpanded?: (v: boolean) => void } | null>(null);
@@ -534,13 +538,24 @@ export function AuftraegeListe() {
           { text: 'Lieferschein', icon: 'document-text', onClick: () => drucken('L') },
           { text: 'Rechnung', icon: 'lead', onClick: () => drucken('R') },
         ]} />
-        <MenuButton text="Versenden" icon="email" disabled={!sel.length || !can('transport.versand:execute')} items={[
-          { text: 'Transportauftrag versenden', onClick: () => versenden('T') },
-          { text: 'Lieferschein versenden', onClick: () => versenden('L') },
-          { text: 'Rechnung versenden', onClick: () => versenden('R') },
-          { text: 'E-Rechnung (ZUGFeRD / XRechnung)', icon: 'attachment-text-file', onClick: erechnung },
-          { text: 'Rechnung an Paperless senden', icon: 'cloud', onClick: paperless },
-        ]} />
+        {sammelversand && can('transport.versand:execute') && (
+          <Button icon="paper-plane" disabled={!sel.length} onClick={() => setVersand(sel.map((s) => s.auftragsnr))}
+                  tooltip="Ausgewählte Dokumente als E-Mails je Auftrag und Empfänger über Outlook 365">Versenden…</Button>
+        )}
+        {sammelversand ? (
+          <MenuButton text="E-Rechnung / Paperless" icon="attachment-text-file" disabled={!sel.length || !can('transport.versand:execute')} items={[
+            { text: 'E-Rechnung (ZUGFeRD / XRechnung)', icon: 'attachment-text-file', onClick: erechnung },
+            { text: 'Rechnung an Paperless senden', icon: 'cloud', onClick: paperless },
+          ]} />
+        ) : (
+          <MenuButton text="Versenden" icon="email" disabled={!sel.length || !can('transport.versand:execute')} items={[
+            { text: 'Transportauftrag versenden', onClick: () => versenden('T') },
+            { text: 'Lieferschein versenden', onClick: () => versenden('L') },
+            { text: 'Rechnung versenden', onClick: () => versenden('R') },
+            { text: 'E-Rechnung (ZUGFeRD / XRechnung)', icon: 'attachment-text-file', onClick: erechnung },
+            { text: 'Rechnung an Paperless senden', icon: 'cloud', onClick: paperless },
+          ]} />
+        )}
       </>}
     />
   );
@@ -600,6 +615,7 @@ export function AuftraegeListe() {
 
       <DocsDialog docs={docs} onClose={() => setDocs(null)} />
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
+      <VersandDialog auftraege={versand ?? []} open={!!versand} onClose={() => setVersand(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <InfoDialog title={info?.title ?? ''} text={info?.text ?? null} onClose={() => setInfo(null)} />
       <ConfirmDialog open={!!abschliessen} title="Ohne Rechnung abschließen" confirmText="Abschließen" askReason

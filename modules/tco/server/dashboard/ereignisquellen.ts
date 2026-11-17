@@ -40,6 +40,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   // ein Zugang für Sicherung und Dokumentenablage (#232, S2): Ablage überwacht, die Sicherung hat ihren eigenen Eintrag (BACKUP_EXPORT)
   'schnittstelle:nextcloud': { ueberwacht: 'V_NEXTCLOUD' },
   'schnittstelle:transport.mail': { ohne: 'Euroflex sendet nur aus dem Dialog am Auftrag (#235): das Ergebnis sieht der Absender sofort und wiederholt dort; kein Hintergrundlauf, jede E-Mail steht im E-Mail-Protokoll' },
+  'schnittstelle:transport.maileingang': { ohne: 'nur der Knopf „Posteingang abrufen“ im Euroflex-Posteingang: das Ergebnis sieht der Benutzer sofort; den regelmäßigen Abruf macht n8n selbst' },
 
   // ---------------------------------------------------------------- automatische Läufe
   'lauf:server/src/backup-export.ts': { aufgabe: 'BACKUP_EXPORT' },
@@ -75,6 +76,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'meldung:tco POST /eingang/mail': { aufgabe: ['EINGANG_PRUEFEN', 'EINGANG_FEHLER'] },
   'meldung:tco POST /eingang/abgleich': { ohne: 'technischer Abgleich mit n8n, welche E-Mails schon geliefert sind' },
   'meldung:tco POST /eingang/vorgaenge/:id/mail-erledigt': { ohne: 'Quittung von n8n, dass die E-Mail im Postfach behandelt ist' },
+  'meldung:transport POST /eingang/mail': { hinweis: ['EINGANG_PRUEFEN', 'EINGANG_SPEICHER'] },
 
   // ---------------------------------------------------------------- Selbstbedienung
   'selbst:tco POST /jt/meine/freigeben': { aufgabe: 'JT' },

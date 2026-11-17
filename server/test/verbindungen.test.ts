@@ -117,7 +117,7 @@ test('Anbindungen: Liste, Sichern mit Maske, Prüfen, Lesen in den Modulen', asy
   // App „Schnittstellen“ (#232, S1): jede Anbindung nennt den Reiter ihrer Schnittstelle – gleiche Schnittstelle, gleicher Reiter, je Bereich ein Block
   const reiter = (r.body.gruppen as { modul: string; verbindungen: { id: string; reiter: string }[] }[]).flatMap((g) => g.verbindungen.map((v) => `${v.reiter}: ${g.modul}/${v.id}`)).sort();
   assert.deepEqual(reiter, [
-    'E-Mail: core/mail', 'E-Mail: tco/tco.mailabruf', 'E-Mail: transport/transport.mail', 'EP3: tco/tco.ep3', 'Nextcloud: core/nextcloud',
+    'E-Mail: core/mail', 'E-Mail: tco/tco.mailabruf', 'E-Mail: transport/transport.mail', 'E-Mail: transport/transport.maileingang', 'EP3: tco/tco.ep3', 'Nextcloud: core/nextcloud',
     'Paperless: tco/paperless', 'Paperless: transport/transport.paperless', 'Schulferien: tco/tco.ferien', 'Trainerstunden: tco/tco.stunden',
   ]);
   const pl = gruppe('tco').find((v) => v.id === 'paperless')!;
