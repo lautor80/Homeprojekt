@@ -115,6 +115,38 @@ export async function ablegen(nr: string, datei: string, inhalt: Blob, anfordern
   return anzeigePfad(o.basis, nr, datei);
 }
 
+/** Unterordner im Ordner des Auftrags, z. B. „Eingang“ für Dateien aus dem Posteingang */
+export const UNTERORDNER_EINGANG = 'Eingang';
+
+/**
+ * Datei in einen Unterordner des Auftragsordners speichern (Unterordner wird angelegt). Gibt es dort schon eine Datei gleichen
+ * Namens, wird nicht überschrieben, sondern „Name (2).pdf“, „Name (3).pdf“ … gewählt – zwei Mails können gleichnamige Anhänge
+ * haben. Liefert den Anzeigepfad oder null (kein Ordner/kein Zugriff).
+ */
+export async function ablegenUnterordner(nr: string, unterordner: string, datei: string, inhalt: Blob, anfordern = false): Promise<string | null> {
+  const o = await auftragsOrdner(nr, { anfordern });
+  if (!o) return null;
+  const u = await o.ordner.getDirectoryHandle(sauber(unterordner), { create: true });
+  const name = await freierName(u, sauber(datei) || 'Datei');
+  const fh = await u.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(inhalt);
+  await w.close();
+  return `${anzeigePfad(o.basis, nr)}/${sauber(unterordner)}/${name}`;
+}
+
+/** „Scan.pdf“ → „Scan (2).pdf“, solange der Name im Ordner schon vergeben ist */
+async function freierName(ordner: FileSystemDirectoryHandle, name: string): Promise<string> {
+  const punkt = name.lastIndexOf('.');
+  const stamm = punkt > 0 ? name.slice(0, punkt) : name;
+  const endung = punkt > 0 ? name.slice(punkt) : '';
+  for (let i = 1; i < 1000; i++) {
+    const n = i === 1 ? name : `${stamm} (${i})${endung}`;
+    try { await ordner.getFileHandle(n); } catch { return n; }
+  }
+  return `${stamm} (${Date.now()})${endung}`;
+}
+
 /** Datei aus dem Ordner des Auftrags lesen */
 export async function dateiLesen(nr: string, datei: string): Promise<File | null> {
   const o = await auftragsOrdner(nr, { anlegen: false });
