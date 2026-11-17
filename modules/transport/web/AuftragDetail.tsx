@@ -80,6 +80,8 @@ export function AuftragDetail() {
   const [xr, setXr] = useState<XRes | null>(null);
   const [ordnerStand, setOrdnerStand] = useState(0); // neu einlesen nach Druck/Ablage
   const [kontakt, setKontakt] = useState<'NEU' | 'EDIT' | null>(null);
+  /** Kontakt, der beim Bearbeiten vorausgewählt ist (Menü „Kontakt bearbeiten“: Kunde, Unternehmer, Rechnungsempfänger) */
+  const [kontaktStart, setKontaktStart] = useState<string | null>(null);
   const [wertTyp, setWertTyp] = useState<string | null>(null);
   // Anzahl der gespeicherten weiteren Fahrten: gedruckt wird der gespeicherte Stand
   const [fahrtenGespeichert, setFahrtenGespeichert] = useState(0);
@@ -227,15 +229,24 @@ export function AuftragDetail() {
     setDocs(ids.map((id) => ({ url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, filename: `${name}_${id}.pdf`, ablage: [nr!] })));
   }
 
-  // Kontakte dieses Auftrags (für "Kontakt bearbeiten")
+  // Kontakte dieses Auftrags (für "Kontakt bearbeiten"): Kunde, Unternehmer (auch je weiterer Fahrt), abw. Rechnungsempfänger
   const kontakteAuftrag: AdrDD[] = [];
-  for (const [rolle, n] of [['Kunde', a.kunde], ['Unternehmer', a.unternehmer], ['Abw. Rechnungsempfänger', a.rechnungsempfaenger]] as const) {
+  const rollenAuftrag: { rolle: string; key: string }[] = [];
+  const beteiligte: [string, number | null | undefined][] = [
+    ['Kunde', a.kunde],
+    [fahrten.length ? 'Unternehmer (Fahrt 1)' : 'Unternehmer', a.unternehmer],
+    ...fahrten.map((f, i): [string, number | null | undefined] => [`Unternehmer (Fahrt ${i + 2})`, f.unternehmer]),
+    ['Abw. Rechnungsempfänger', a.rechnungsempfaenger],
+  ];
+  for (const [rolle, n] of beteiligte) {
     if (!n) continue;
+    rollenAuftrag.push({ rolle, key: String(n) });
     const vorh = kontakteAuftrag.find((k) => k.key === String(n));
     if (vorh) { vorh.zusatz = `${rolle}, ${vorh.zusatz}`; continue; }
     const dd = adrDD.find((d) => d.key === String(n));
     kontakteAuftrag.push({ key: String(n), text: dd?.text ?? `Kontakt ${n}`, zusatz: dd?.zusatz ? `${rolle} · ${dd.zusatz}` : rolle });
   }
+  const kontaktBearbeiten = (key: string) => { setKontaktStart(key); setKontakt('EDIT'); };
 
   const titel = isNew
     ? `Neuer ${typ === 'H' ? 'Holzträgerauftrag' : 'Frachtauftrag'} ${vorschau}`
@@ -361,7 +372,13 @@ export function AuftragDetail() {
           <ObjectPageSubSection id="beteiligte-sub" titleText="Beteiligte"
             actions={can('transport.kontakte:edit') ? <>
               <Button icon="add-contact" design="Transparent" onClick={() => setKontakt('NEU')}>Kontakt anlegen</Button>
-              <Button icon="edit" design="Transparent" onClick={() => kontakteAuftrag.length ? setKontakt('EDIT') : toast('Diesem Auftrag ist noch kein Kontakt zugeordnet.')}>Kontakt bearbeiten</Button>
+              {rollenAuftrag.length
+                ? <MenuButton text="Kontakt bearbeiten" icon="edit" design="Transparent" items={rollenAuftrag.map((r) => ({
+                    text: `${r.rolle}: ${kontakteAuftrag.find((k) => k.key === r.key)?.text ?? `Kontakt ${r.key}`}`,
+                    icon: r.rolle === 'Kunde' ? 'customer' : r.rolle.startsWith('Unternehmer') ? 'shipping-status' : 'receipt',
+                    onClick: () => kontaktBearbeiten(r.key),
+                  }))} />
+                : <Button icon="edit" design="Transparent" onClick={() => toast('Diesem Auftrag ist noch kein Kontakt zugeordnet.')}>Kontakt bearbeiten</Button>}
             </> : undefined}>
             <SperrHinweis s={sperre} style={{ marginBottom: '1rem' }} />
             {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
@@ -593,7 +610,7 @@ export function AuftragDetail() {
       <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
       {!isNew && nr && <VersandDialog auftraege={[nr]} open={versand} onClose={() => setVersand(false)} />}
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
-      <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} onClose={() => setKontakt(null)}
+      <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} start={kontaktStart} onClose={() => setKontakt(null)}
                      onSaved={async () => {
                        setKontakt(null);
                        await ladeAdressen();
