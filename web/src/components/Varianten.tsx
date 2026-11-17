@@ -100,7 +100,7 @@ function VarianteDialog({ repid, ansicht, vorschlag, global: darfGlobal, onClose
         <Input value={name} maxlength={30} onInput={(e) => setName(e.target.value)} />
         <CheckBox text="als Standard beim Öffnen laden" checked={standard} onChange={(e) => setStandard(e.target.checked)} />
         {darfGlobal && <CheckBox text="für alle Benutzer" checked={global} onChange={(e) => setGlobal(e.target.checked)} />}
-        <Label wrappingType="Normal">Gesichert wird die aktuelle Auswahl dieser App (Filter, Suche, Sortierung, Zeitraum). Ein vorhandener Name wird überschrieben.</Label>
+        <Label wrappingType="Normal">Gesichert wird die aktuelle Auswahl dieser App (Filter, Suche, Sortierung, Zeitraum, ausgeblendete Spalten). Ein vorhandener Name wird überschrieben.</Label>
       </div>
     </Dialog>
   );

@@ -30,6 +30,12 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     permissions: ['transport.zahlungen:edit'],
   },
   {
+    id: 'transport.tabellen', app: 'Aufträge', text: 'Tabellen anpassen (Spalten, Filter, Sortierung)',
+    beschreibung: 'Knopf „Spalten“ an den Tabellen der Auftragsliste (Liste und Baum) und an Aufträgen und Dokumenten im Kontakt: Spalten ein-/ausblenden, Filter setzen, Sortierung – gespeichert mit der Ansichtsvariante.',
+    permissions: ['transport.tabellen:edit'],
+    hinweis: 'Abgeschaltet zeigen die Tabellen alle Spalten; gespeicherte Varianten behalten ihre Spaltenangaben, wenden sie aber nicht an.',
+  },
+  {
     id: 'transport.versand', app: 'Aufträge', text: 'Versand (E-Mail, Paperless)',
     beschreibung: 'Aufträge und Rechnungen per E-Mail versenden und in Paperless ablegen.',
     permissions: ['transport.versand:execute'],

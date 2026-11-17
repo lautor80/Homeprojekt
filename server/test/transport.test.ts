@@ -662,3 +662,17 @@ test('Auftragsliste: Lade-/Entladezeiten in der Route und Abrechnungsstatus mit 
   const ids = permissionCatalog().find((g) => g.module === 'transport')!.areas.flatMap((a) => a.apps).find((a) => a.name === 'Aufträge')!.permissions.map((p) => p.id);
   for (const p of ['transport.ladezeiten:display', 'transport.abrechnung:display', 'transport.zahlungen:edit']) assert.ok(ids.includes(p), p);
 });
+
+test('Tabellen anpassen: Recht im Katalog, Spalten/Filter/Sortierung in der Variante der Auftragsliste', async () => {
+  const { permissionCatalog } = await import('../src/modules.js');
+  const ids = permissionCatalog().find((g) => g.module === 'transport')!.areas.flatMap((a) => a.apps).find((a) => a.name === 'Aufträge')!.permissions.map((p) => p.id);
+  assert.ok(ids.includes('transport.tabellen:edit'));
+  const spalten = {
+    liste: { aus: ['art', 'unternehmer'], filter: [{ id: 'kunde', value: 'Zahltest' }], sortierung: [{ id: 'auftragsnr', desc: true }] },
+    baum: { aus: ['saldo'], filter: [], sortierung: [] },
+  };
+  const r = await call('POST', '/api/varianten/transport.auftraege', { name: 'Tabellentest', standard: false, global: false, ansicht: { status: 'ALL', spalten } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const v = (await call('GET', '/api/varianten/transport.auftraege')).body.varianten.find((x: any) => x.name === 'Tabellentest');
+  assert.deepEqual(v.ansicht.spalten, spalten);
+});

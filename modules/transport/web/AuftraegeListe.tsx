@@ -19,6 +19,7 @@ import { ordnerBereit } from './ordner';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { VersandDialog } from './VersandDialog';
 import { symbole, terminText, type SymbolZustand } from './termin';
+import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
 
 // Filter und Auswahl bleiben beim Wechsel ins Detail und zurück erhalten
 const merk = {
@@ -29,6 +30,9 @@ const merk = {
   ansicht: 'LIST' as 'LIST' | 'TREE',
   zahlung: 'ALL' as ZahlungFilter,
   auswahl: new Set<string>(),
+  // Tabellenansicht (Spalten, Filter, Sortierung) je Darstellung – Funktion transport.tabellen
+  spaltenListe: { ...LEERER_STAND } as TabellenStand,
+  spaltenBaum: { ...LEERER_STAND } as TabellenStand,
 };
 
 // Filter „Zahlung“ (Spalte Abrechnung, Recht transport.abrechnung:display)
@@ -217,8 +221,12 @@ export function AuftraegeListe() {
   const [versand, setVersand] = useState<string[] | null>(null);
   const [xr, setXr] = useState<XRes | null>(null);
   const [info, setInfo] = useState<{ title: string; text: string } | null>(null);
-  const treeRef = useRef<{ toggleAllRowsExpanded?: (v: boolean) => void } | null>(null);
-  const rahmen = useRestHoehe([ansicht, firmaFehlt, !!error]);
+  // Tabellen anpassen (Recht transport.tabellen:edit): Spalten ein-/ausblenden, Filter, Sortierung – in der Variante gespeichert
+  const anpassen = can('transport.tabellen:edit');
+  const [spaltenListe, setSpaltenListeState] = useState<TabellenStand>(merk.spaltenListe);
+  const [spaltenBaum, setSpaltenBaumState] = useState<TabellenStand>(merk.spaltenBaum);
+  const setSpaltenListe = (s: TabellenStand) => { merk.spaltenListe = s; setSpaltenListeState(s); };
+  const setSpaltenBaum = (s: TabellenStand) => { merk.spaltenBaum = s; setSpaltenBaumState(s); };
 
   const setAuswahl = (s: Set<string>) => {
     merk.auswahl = s;
@@ -291,7 +299,7 @@ export function AuftraegeListe() {
   const tree = useMemo(() => baum(liste), [liste]);
 
   useEffect(() => {
-    if (baumEbene && treeRef.current?.toggleAllRowsExpanded) treeRef.current.toggleAllRowsExpanded(baumEbene === 'auf');
+    if (baumEbene && tBaum.ref.current?.toggleAllRowsExpanded) tBaum.ref.current.toggleAllRowsExpanded(baumEbene === 'auf');
   }, [baumEbene, tree]);
 
   const [ordnerDialog, setOrdnerDialog] = useState(false);
@@ -501,7 +509,7 @@ export function AuftraegeListe() {
       ),
     },
     ...(mitAbrechnung ? [{
-      Header: 'Abrechnung', id: 'abrechnung', accessor: (r: Record<string, unknown>) => (r as unknown as ListRow).abrechnung?.status ?? '', width: 120, disableGroupBy: true,
+      Header: 'Abrechnung', id: 'abrechnung', accessor: (r: Record<string, unknown>) => (r as unknown as ListRow).abrechnung?.status ?? '', width: 120, disableGroupBy: true, disableFilters: true,
       headerTooltip: 'angelegt · abgerechnet · bezahlt – überfällig erst 3 Tage nach Fälligkeit; ohne Rechnung abgeschlossen gilt als bezahlt',
       Cell: ({ row }: Cell) => row.isGrouped ? null : <AbrechnungZelle r={row.original} />,
     }] : []),
@@ -553,6 +561,13 @@ export function AuftraegeListe() {
     getRowId: (r: TreeRow) => r.id,
     initialState: { expanded: { Fracht: true, 'Holzträger': true } },
   }), []);
+
+  const tListe = useTabellenAnsicht({ spalten: columns, stand: spaltenListe, onStand: setSpaltenListe, aktiv: anpassen, pflicht: ['status', 'auftragsnr'], titel: 'Auftragsliste anpassen' });
+  const tBaum = useTabellenAnsicht({ spalten: treeColumns, stand: spaltenBaum, onStand: setSpaltenBaum, aktiv: anpassen, pflicht: ['text'], titel: 'Baumansicht anpassen' });
+  const tAktiv = ansicht === 'LIST' ? tListe : tBaum;
+  const listeOptionen = useMemo(() => ({ ...tableOptions, ...tListe.optionen }), [tableOptions]); // eslint-disable-line react-hooks/exhaustive-deps
+  const baumOptionen = useMemo(() => ({ ...treeOptions, ...tBaum.optionen }), [treeOptions]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rahmen = useRestHoehe([ansicht, firmaFehlt, !!error, !!tAktiv.leiste]);
 
   // ---------------------------------------------------------------- Kopf
   const header = (
@@ -606,6 +621,7 @@ export function AuftraegeListe() {
         )}
       </>}
       endContent={<>
+        {tAktiv.knopf}
         <Button design="Transparent" icon="open-folder" tooltip="Mein Ablageordner auf diesem PC: Ordner für Ausdrucke und abgelegte Dateien festlegen" onClick={() => setOrdnerDialog(true)}>Ablageordner</Button>
         <SegmentedButton onSelectionChange={(e) => setAnsicht((e.detail.selectedItems[0] as HTMLElement).dataset.key as typeof ansicht)}>
           <SegmentedButtonItem data-key="LIST" icon="list" selected={ansicht === 'LIST'} />
@@ -669,7 +685,14 @@ export function AuftraegeListe() {
   );
 
   return (
-    <AppPage varianten={{ repid: 'transport.auftraege', ansicht: { jahr, fakt, status, suche, ansicht, zahlung }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setFakt(feld(a, 'fakt', fakt)); setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setAnsicht(feld(a, 'ansicht', ansicht)); setZahlung(feld(a, 'zahlung', zahlung)); } }} title="Auftragsverwaltung" header={header}>
+    <AppPage varianten={{ repid: 'transport.auftraege', ansicht: { jahr, fakt, status, suche, ansicht, zahlung, ...(anpassen ? { spalten: { liste: spaltenListe, baum: spaltenBaum } } : {}) }, onAnwenden: (a) => {
+      setJahr(feld(a, 'jahr', jahr)); setFakt(feld(a, 'fakt', fakt)); setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setAnsicht(feld(a, 'ansicht', ansicht)); setZahlung(feld(a, 'zahlung', zahlung));
+      // Spalten, Filter, Sortierung – nur mit Recht; Varianten ohne diese Angaben lassen die Tabelle, wie sie ist
+      if (anpassen && a.spalten && typeof a.spalten === 'object') {
+        const sp = a.spalten as { liste?: unknown; baum?: unknown };
+        setSpaltenListe(standLesen(sp.liste)); setSpaltenBaum(standLesen(sp.baum));
+      }
+    } }} title="Auftragsverwaltung" header={header}>
       {firmaFehlt && can('transport.stammdaten:edit') && (
         <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Firmendaten (Name, Bank) fehlen noch – sie werden für Rechnungen und E-Rechnungen benötigt:
@@ -681,20 +704,22 @@ export function AuftraegeListe() {
         <div style={{ width: 'min(46rem, 88vw)' }}>{ordnerDialog && <AblageOrdnerEinstellung />}</div>
       </Dialog>
       {toolbar}
+      {tAktiv.leiste}
       <div ref={rahmen.ref} style={{ height: rahmen.hoehe }}>
       {ansicht === 'LIST' ? (
         <AnalyticalTable minRows={1}
-          columns={columns}
+          columns={tListe.spalten}
           data={liste}
           loading={loading}
           groupBy={groupBy}
           groupable
           sortable
           filterable
+          {...tListe.tabelle}
           selectionMode="Multiple"
           selectionBehavior="RowSelector"
           selectedRowIds={selectedRowIds}
-          reactTableOptions={tableOptions}
+          reactTableOptions={listeOptionen}
           onRowSelect={(e) => setAuswahl(new Set(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k] && !k.includes(':'))))}
           onRowClick={(e) => {
             const r = e.detail.row;
@@ -708,12 +733,12 @@ export function AuftraegeListe() {
         />
       ) : (
         <AnalyticalTable minRows={1}
-          columns={treeColumns}
+          columns={tBaum.spalten}
           data={tree.rows}
           isTreeTable
           loading={loading}
-          tableInstance={treeRef as never}
-          reactTableOptions={treeOptions}
+          {...tBaum.tabelle}
+          reactTableOptions={baumOptionen}
           rowHeight={52}
           visibleRowCountMode="Auto"
           noDataText="Keine Aufträge für die Auswahl"
