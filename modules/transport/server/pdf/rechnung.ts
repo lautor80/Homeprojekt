@@ -3,7 +3,7 @@ import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { APP_ROOT } from '../../../../server/src/config.js';
 import { ciiXml, facturXXmp, FX_DATEI } from '../zugferd.js';
 import { rechnungsdaten } from '../xrechnung.js';
-import { C, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, kuerzen, titel } from './layout.js';
+import { C, RECHNUNGSNUMMER, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, kuerzen, titel } from './layout.js';
 import { fakturaAuftraege, firmaLesen, kaeufer } from '../data.js';
 import { addTage, condense, dat, eur, heute, kategorie, netto, steuerGrund } from '../format.js';
 
@@ -130,13 +130,13 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
   anschrift(p, firma, adressZeilen(buyer));
   const leistung = !von ? '' : von === bis ? dat(von) : `${von.slice(8, 10)}.${von.slice(5, 7)}.–${dat(bis)}`;
   infoBlock(p, [
-    ['Rechnungs-Nr.', faktura],
+    [RECHNUNGSNUMMER, faktura],
     ['Rechnungsdatum', dat(datum)],
     ['Leistung', leistung],
     ['Ihre Referenz', multi ? `${pos.length} Bestellungen` : pos[0].ref],
     ['Fällig am', dat(faellig)],
   ]);
-  titel(p, titelText, `${pos.length} ${multi ? 'Transportaufträge' : 'Transportauftrag'}`.toUpperCase(), 'Transportrechnung · Freight Invoice');
+  titel(p, titelText, `${pos.length} ${multi ? 'Transportaufträge' : 'Transportauftrag'}`.toUpperCase(), 'Transportrechnung · Freight Invoice', faktura);
   p.text(C.left, 127, 'Sehr geehrte Damen und Herren,');
   p.text(C.left, 131.5, 'für die folgenden Transportleistungen erlauben wir uns zu berechnen:');
 
