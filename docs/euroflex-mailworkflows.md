@@ -63,7 +63,7 @@ Outlook 365 (Eingangspostfach, Ordner aus der n8n-Konfiguration, Standard: Poste
        Antwort { aktion: { ordner } }      →  Mail in den Ordner verschieben, als gelesen markieren
 Portal
   1. Idempotenz Postfach + Message-ID; Signatur-Logos, .ics, .vcf, .p7s herausfiltern
-  2. OCR lokal (Einstellung ocr): PDF → pdftotext, bei leerem Text bzw. Bild → Tesseract
+  2. OCR lokal (Einstellung ocr): PDF → pdftotext; gescanntes PDF ohne Text → pdftoppm (3 Seiten, 200 dpi) + Tesseract; Bild → Tesseract
   3. Zuordnung (eingang/logik.ts, reine Funktionen) – je Auftrag Summe der Punkte, höchstens 100
   4. Trefferwert ≥ Schwelle, eindeutig und Funktion „Automatisch ablegen“ an → ablegen, sonst Prüfliste
   5. Ablage am Auftrag (Ablageziel), Mail als PDF zusätzlich
@@ -74,9 +74,14 @@ Portal
 | Merkmal | Punkte |
 |---|---|
 | Antwort auf eine eigene Mail: `in_reply_to`/`references` ↔ `core.mail_protokoll.message_id` mit `anwendung` Euroflex, `objekt` = Auftragsnr. (bei `nr-1` Fahrtzusatz abschneiden) | 100 |
-| Auftragsnummer `JJJJ_NNNN` (auch `JJJJ-NNNN`, `JJJJ/NNNN`, `JJJJNNNN` nur mit Wortgrenze) in Betreff, Text, Dateiname oder OCR-Text, die es als Auftrag gibt | 90 |
-| Ordernummer, Ladenummer (Auftrag oder Stops) oder Rechnungsnummer (`faktura`) – mindestens 4 Zeichen, mit Wortgrenze | 70 |
+| Auftrags- oder Rechnungsnummer `JJJJ_NNNN` (auch `JJJJ-NNNN`, `JJJJ/NNNN`, `JJJJNNNN` nur mit Wortgrenze; im OCR-Text auch `JJJJ NNNN`, weil die Texterkennung den Unterstrich oft als Leerzeichen liest) in Betreff, Mailtext, Dateiname oder OCR-Text – es zählt, wenn es den Auftrag (`auftragsnr`) bzw. die Rechnung (`faktura`) gibt | 90 |
+| Ordernummer, Ladenummer (Auftrag oder Stops) oder Rechnungsnummer (`faktura`) in anderem Format – mindestens 4 Zeichen **mit mindestens einer Ziffer** (Platzhalter wie „FOLGT“ oder „Muster“ zählen nicht), mit Wortgrenze | 70 |
 | Absender = E-Mail von Kunde, Unternehmer oder Rechnungsempfänger eines **offenen** Auftrags (nicht abgeschlossen, ohne Rechnung bzw. letzte 90 Tage) | 50, wenn genau ein Auftrag; sonst 30 je Kandidat |
+
+**Nummernsuche zuerst:** Die Auftrags-/Rechnungsnummer wird vor allem anderen gesucht. Gibt es einen solchen Treffer (oder ist die
+Mail eine Antwort auf eine eigene Mail), bleiben nur diese Aufträge Kandidaten – Referenz- und Absendertreffer anderer Aufträge
+fallen weg, Order-/Ladenummern werden dann nicht mehr gesucht. Die Begründung nennt **alle Fundstellen**, z. B.
+„Rechnungsnummer 2026_0815 (Auftrag 2026_0790) im Betreff und im Dokument „Scan.pdf“ (Texterkennung)“.
 
 Die Punkte eines Auftrags werden addiert und auf 100 gedeckelt. Die Begründungen (`[{grund, punkte}]`) stehen am Vorgang
 und werden in der Prüfliste angezeigt. Liegen zwei Aufträge gleichauf, ist die Zuordnung nicht eindeutig → Prüfliste.
