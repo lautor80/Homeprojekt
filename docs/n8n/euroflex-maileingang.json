@@ -1,0 +1,850 @@
+{
+  "name": "Euroflex Maileingang",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Euroflex Maileingang (Outlook 365)\n\nHolt ungelesene Mails samt Anhängen aus dem Eingangspostfach (Microsoft Graph), liefert sie an das Portal (`POST /api/m/transport/eingang/mail`) und verschiebt sie danach in den Ordner aus der Antwort (z. B. „Portal/Zugeordnet“) – fehlende Ordner werden angelegt.\nMails ohne Antwort des Portals bleiben ungelesen liegen und kommen im nächsten Lauf erneut.\n\n**Nach dem Import eintragen**\n1. Knoten *Konfiguration*: `POSTFACH` (Adresse des Eingangspostfachs).\n2. Graph-Knoten (*Mails lesen*, *Anhänge laden*, *Ordner suchen*, *Ordner anlegen*, *Verschieben*, *Als gelesen markieren*): Zugangsdatei „OAuth2 API“ „Euroflex Microsoft Graph“.\n3. Knoten *An Portal liefern*: Zugangsdatei „Header Auth“ „Euroflex Portal API-Schlüssel“ (API-Schlüssel des Portals mit Recht transport.eingang:execute).\n4. Knoten *Webhook Portal*: Zugangsdatei „Header Auth“ „Euroflex Maileingang Webhook“.\n5. Workflow aktivieren.\n\nAnleitung: `docs/n8n/EUROFLEX-MAILEINGANG.md` im Portal-Repository.",
+        "height": 460,
+        "width": 560
+      },
+      "id": "m0",
+      "name": "Hinweis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -340
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "m1",
+      "name": "Manuell starten",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "m2",
+      "name": "Alle 5 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "euroflex-maileingang",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "m3",
+      "name": "Webhook Portal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        520
+      ],
+      "webhookId": "3f6d2b8e-5a1c-4e97-b0d4-8c2e7a9f1b63",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Euroflex Maileingang Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Einstellungen dieses Workflows – nach dem Import hier eintragen (Anleitung: docs/n8n/EUROFLEX-MAILEINGANG.md).\n// POSTFACH: Adresse des gemeinsamen Eingangspostfachs in Outlook 365. Teil des Schlüssels im Portal (Postfach + Message-ID) –\n// später nicht mehr ändern, sonst gelten bekannte Mails als neu.\nconst POSTFACH = '';\n// QUELLORDNER: aus diesem Ordner werden die ungelesenen Mails geholt – bekannter Name (Inbox) oder Ordner-ID aus Microsoft Graph.\nconst QUELLORDNER = 'Inbox';\n// ZIELWURZEL: unter diesem Ordner liegen die Zielordner aus der Antwort des Portals (z. B. „Portal/Zugeordnet“); fehlende werden angelegt.\nconst ZIELWURZEL = 'Inbox';\n// MAX: höchstens so viele Mails je Lauf; der Rest folgt im nächsten Lauf.\nconst MAX = 50;\n\nconst postfach = String(POSTFACH).trim();\nif (!/^[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+$/.test(postfach)) {\n  throw new Error('Knoten „Konfiguration“: unter POSTFACH die Adresse des Eingangspostfachs eintragen.');\n}\nreturn [{ json: {\n  postfach,\n  quellordner: String(QUELLORDNER).trim() || 'Inbox',\n  zielwurzel: String(ZIELWURZEL).trim() || 'Inbox',\n  max: Math.max(1, Math.min(Number(MAX) || 50, 200)),\n} }];"
+      },
+      "id": "m4",
+      "name": "Konfiguration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.postfach) }}/mailFolders/{{ encodeURIComponent($json.quellordner) }}/messages?$filter={{ encodeURIComponent('isRead eq false') }}&$top={{ $json.max }}&$select=id,internetMessageId,subject,from,sender,toRecipients,receivedDateTime,body,hasAttachments,internetMessageHeaders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "m5",
+      "name": "Mails lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        340
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Antwort von „Mails lesen“ prüfen und je ungelesener Mail ein Element bilden.\n// Scheitert das Lesen, bricht der Lauf mit einer verständlichen Meldung ab (sichtbar unter Executions).\nconst k = $('Konfiguration').first().json;\nconst a = $input.first().json;\n/** Klartext für eine Ablehnung durch Microsoft Graph */\nfunction graphFehler(a, schritt) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  let hinweis = '';\n  if (s === 401) hinweis = ' Die Zugangsdatei „Euroflex Microsoft Graph“ in n8n ist ungültig oder der Clientschlüssel abgelaufen.';\n  else if (s === 403) hinweis = ' Die App darf dieses Postfach nicht lesen oder ändern (Berechtigung Mail.ReadWrite bzw. Bereich in Exchange prüfen).';\n  else if (s === 404) hinweis = ' Postfach oder Ordner gibt es in Microsoft 365 nicht (Knoten „Konfiguration“ prüfen).';\n  return `${schritt} fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh}${hinweis}`;\n}\nif (a.statusCode !== 200 || !a.body || typeof a.body !== 'object' || !Array.isArray(a.body.value)) {\n  throw new Error(graphFehler(a, `Mails lesen aus ${k.postfach}/${k.quellordner}`));\n}\nreturn a.body.value.filter((m) => m && m.id).map((m, i) => ({\n  json: { postfach: k.postfach, graph_id: m.id, betreff: String(m.subject ?? ''), mail: m },\n  pairedItem: { item: 0 },\n}));"
+      },
+      "id": "m6",
+      "name": "Mails aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.postfach) }}/messages/{{ encodeURIComponent($json.graph_id) }}/attachments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "m7",
+      "name": "Anhänge laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        340
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Je Mail die Lieferung an das Portal bauen – Aufbau laut docs/euroflex-mailworkflows.md, Abschnitt „Schnittstelle für n8n“.\n// Eingang: Antworten von „Anhänge laden“ in derselben Reihenfolge wie „Mails aufteilen“.\n// Nur Dateianhänge (#microsoft.graph.fileAttachment); contentBytes ist bereits Base64. Angehängte E-Mails (itemAttachment)\n// und Verweise (referenceAttachment) werden nicht geliefert. Signaturbilder, .ics, .vcf, .p7s filtert das Portal.\nconst mails = $('Mails aufteilen').all();\nconst antworten = $input.all();\nconst MAX_ANHAENGE = 40;\nconst MAX_BASE64 = 78 * 1024 * 1024; // Portal nimmt höchstens 80 MB je Anfrage an\n/** Klartext für eine Ablehnung durch Microsoft Graph */\nfunction graphFehler(a, schritt) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  let hinweis = '';\n  if (s === 401) hinweis = ' Die Zugangsdatei „Euroflex Microsoft Graph“ in n8n ist ungültig oder der Clientschlüssel abgelaufen.';\n  else if (s === 403) hinweis = ' Die App darf dieses Postfach nicht lesen oder ändern (Berechtigung Mail.ReadWrite bzw. Bereich in Exchange prüfen).';\n  else if (s === 404) hinweis = ' Postfach oder Ordner gibt es in Microsoft 365 nicht (Knoten „Konfiguration“ prüfen).';\n  return `${schritt} fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh}${hinweis}`;\n}\n\n/** HTML grob in lesbaren Text umwandeln (für Zuordnung und Anzeige; das Original geht als html mit) */\nfunction htmlZuText(html) {\n  const zeichen = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '\"', apos: \"'\", auml: 'ä', ouml: 'ö', uuml: 'ü', Auml: 'Ä', Ouml: 'Ö', Uuml: 'Ü', szlig: 'ß', euro: '€' };\n  return String(html)\n    .replace(/<!--[\\s\\S]*?-->/g, '')\n    .replace(/<(head|style|script|title)\\b[\\s\\S]*?<\\/\\1\\s*>/gi, '')\n    .replace(/<br\\s*\\/?>/gi, '\\n')\n    .replace(/<\\/(p|div|tr|li|h[1-6]|table|blockquote)\\s*>/gi, '\\n')\n    .replace(/<(td|th)\\b[^>]*>/gi, ' ')\n    .replace(/<[^>]+>/g, '')\n    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))\n    .replace(/&#(\\d+);/g, (_, d) => String.fromCodePoint(Number(d)))\n    .replace(/&([a-z]+);/gi, (m, n) => (n in zeichen ? zeichen[n] : m))\n    .replace(/[ \\t ]+/g, ' ')\n    .replace(/ *\\n */g, '\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n}\n/** Graph-Empfänger → „Name <adresse>“ bzw. „adresse“ */\nfunction adresse(r) {\n  const e = (r && r.emailAddress) || {};\n  const addr = String(e.address ?? '').trim();\n  const name = String(e.name ?? '').replace(/[<>\"]/g, '').trim();\n  if (!addr) return name;\n  return name && name.toLowerCase() !== addr.toLowerCase() ? `${name} <${addr}>` : addr;\n}\n/** Kopfzeile aus internetMessageHeaders (Name ohne Beachtung der Groß-/Kleinschreibung) */\nfunction kopf(liste, name) {\n  const h = (Array.isArray(liste) ? liste : []).find((x) => String(x?.name ?? '').toLowerCase() === name);\n  return h ? String(h.value ?? '').replace(/\\s+/g, ' ').trim() : '';\n}\n\nreturn mails.map((it, i) => {\n  const m = it.json.mail || {};\n  const a = (antworten[i] && antworten[i].json) || {};\n  const basis = { postfach: it.json.postfach, graph_id: it.json.graph_id, betreff: String(m.subject ?? '') };\n  if (a.statusCode !== 200 || !a.body || typeof a.body !== 'object' || !Array.isArray(a.body.value)) {\n    return { json: { ...basis, ok: false, fehler: graphFehler(a, 'Anhänge laden'), payload: null }, pairedItem: { item: i } };\n  }\n  const anhaenge = a.body.value\n    .filter((x) => x && x['@odata.type'] === '#microsoft.graph.fileAttachment' && x.contentBytes)\n    .map((x) => ({\n      name: String(x.name ?? '').trim() || 'Anhang',\n      mime: String(x.contentType ?? '').trim() || 'application/octet-stream',\n      inhalt: String(x.contentBytes).replace(/\\s+/g, ''),\n    }));\n  const fehler = [];\n  if (anhaenge.length > MAX_ANHAENGE) fehler.push(`${anhaenge.length} Anhänge – das Portal nimmt höchstens ${MAX_ANHAENGE} je Mail an.`);\n  const groesse = anhaenge.reduce((s, x) => s + x.inhalt.length, 0);\n  if (groesse > MAX_BASE64) fehler.push(`Anhänge zu groß (${Math.round(groesse * 3 / 4 / 1048576)} MB) – das Portal nimmt höchstens 80 MB je Mail an.`);\n\n  const body = m.body || {};\n  const istHtml = String(body.contentType ?? '').toLowerCase() === 'html';\n  const inhalt = String(body.content ?? '');\n  const h = m.internetMessageHeaders;\n  const payload = {\n    postfach: it.json.postfach,\n    graph_id: it.json.graph_id,\n    message_id: String(m.internetMessageId ?? '').trim() || `<${it.json.graph_id}@graph.microsoft.com>`,\n    in_reply_to: kopf(h, 'in-reply-to'),\n    references: kopf(h, 'references'),\n    von: adresse(m.from || m.sender),\n    an: (Array.isArray(m.toRecipients) ? m.toRecipients : []).map(adresse).filter(Boolean).join(', '),\n    betreff: String(m.subject ?? ''),\n    datum: String(m.receivedDateTime ?? ''),\n    text: istHtml ? htmlZuText(inhalt) : inhalt,\n    ...(istHtml ? { html: inhalt } : {}),\n    anhaenge,\n  };\n  return { json: { ...basis, ok: !fehler.length, fehler: fehler.join(' '), payload: fehler.length ? null : payload }, pairedItem: { item: i } };\n});"
+      },
+      "id": "m8",
+      "name": "Für Portal packen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "m-lieferbar",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "m9",
+      "name": "Lieferbar?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:8080/api/m/transport/eingang/mail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "m10",
+      "name": "An Portal liefern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Euroflex Portal API-Schlüssel"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Antworten des Portals auswerten (einmal für alle Mails). Ergebnis ist genau EIN Element mit dem Stand für die Ordnersuche:\n// verschoben wird nur, wo das Portal mit aktion.ordner antwortet. Mails ohne gültige Antwort bleiben ungelesen im Postfach\n// und kommen im nächsten Lauf erneut (das Portal erkennt schon verarbeitete Mails und antwortet „doppelt“ mit aktion).\nconst k = $('Konfiguration').first().json;\nconst gepackt = $('Lieferbar?').all();\n\n/** „ Portal \\\\ Zugeordnet/ “ → „Portal/Zugeordnet“ */\nconst pfadNorm = (p) => String(p ?? '').split(/[\\/\\\\]/).map((t) => t.trim()).filter(Boolean).join('/');\nfunction portalFehler(a) {\n  const s = a.statusCode;\n  const b = a.body;\n  const roh = b && typeof b === 'object' ? String(b.message ?? b.fehler ?? b.error ?? JSON.stringify(b)) : String((a.error && (a.error.message || a.error)) || b || 'keine Antwort');\n  let hinweis = '';\n  if (s === 401) hinweis = ' API-Schlüssel fehlt, ist gesperrt oder abgelaufen (Zugangsdatei „Euroflex Portal API-Schlüssel“).';\n  else if (s === 403) hinweis = ' Schlüssel ohne Recht transport.eingang:execute oder Funktion „E-Mail-Eingang über n8n“ ausgeschaltet.';\n  else if (s === 404) hinweis = ' Adresse des Portals falsch oder Modul transport nicht aktiv.';\n  else if (s === 413) hinweis = ' Mail zu groß für das Portal.';\n  return `Portal (HTTP ${s ?? '–'}): ${roh.slice(0, 300)}${hinweis}`;\n}\n\nconst ergebnisse = $input.all().map((it, i) => {\n  const a = it.json || {};\n  const p = (gepackt[i] && gepackt[i].json) || {};\n  const ok = a.statusCode >= 200 && a.statusCode < 300 && a.body && typeof a.body === 'object';\n  const b = ok ? a.body : {};\n  const ordner = ok && b.aktion && typeof b.aktion === 'object' ? pfadNorm(b.aktion.ordner) : '';\n  return {\n    graph_id: p.graph_id, betreff: p.betreff, http: a.statusCode ?? null,\n    vorgang: b.vorgang ?? null, status: b.status ?? null, auftragsnr: b.auftragsnr ?? null, ordner,\n    fehler: ok ? '' : portalFehler(a),\n  };\n});\nif (ergebnisse.length && ergebnisse.every((e) => e.fehler)) {\n  throw new Error(`Keine Mail an das Portal geliefert – alle bleiben ungelesen im Postfach. ${ergebnisse[0].fehler}`);\n}\nconst verschieben = ergebnisse.filter((e) => e.ordner).map((e) => ({ graph_id: e.graph_id, pfad: e.ordner }));\nreturn [{ json: {\n  postfach: k.postfach, wurzel: k.zielwurzel, ergebnisse, verschieben,\n  offen: [...new Set(verschieben.map((v) => v.pfad))], ordner: {}, angelegt: [], fehler: {}, schritte: 0, schritt: null, anlegen: false,\n} }];"
+      },
+      "id": "m11",
+      "name": "Antwort auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Zielordner Ebene für Ebene auflösen (Schleife: Ordner planen → Ordner suchen → ggf. Ordner anlegen → zurück hierher).\n// Je Durchlauf genau ein Schritt; „schritt“ = nächste fehlende Ebene, null = alle Pfade aufgelöst oder als Fehler vermerkt.\nconst s = JSON.parse(JSON.stringify($input.first().json));\ns.schritt = null;\ns.anlegen = false;\nwhile (s.offen.length) {\n  const pfad = s.offen[0];\n  const teile = pfad.split('/');\n  let eltern = s.wurzel;\n  for (let e = 0; e < teile.length && !s.schritt; e++) {\n    const praefix = teile.slice(0, e + 1).join('/');\n    if (s.ordner[praefix]) eltern = s.ordner[praefix];\n    else s.schritt = { pfad, praefix, name: teile[e], eltern };\n  }\n  if (s.schritt) break;\n  s.offen.shift();\n}\n// Sicherung gegen eine Endlosschleife: höchstens 30 Graph-Schritte je Lauf\nif (s.schritt && s.schritte >= 30) {\n  for (const p of s.offen) s.fehler[p] = 'Ordner nicht aufgelöst: zu viele Schritte in einem Lauf.';\n  s.offen = [];\n  s.schritt = null;\n}\nreturn [{ json: s }];"
+      },
+      "id": "m12",
+      "name": "Ordner planen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "m-fehlt",
+              "leftValue": "={{ $json.schritt !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "m13",
+      "name": "Ordner fehlt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2220,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.postfach) }}/mailFolders/{{ encodeURIComponent($json.schritt.eltern) }}/childFolders?$filter={{ encodeURIComponent(\"displayName eq '\" + $json.schritt.name.replace(/'/g, \"''\") + \"'\") }}&$select=id,displayName&$top=10",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "m14",
+      "name": "Ordner suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        160
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ergebnis von „Ordner suchen“: gefunden → ID merken; nicht vorhanden → anlegen; Fehler → Pfad aufgeben (Mails bleiben ungelesen).\nconst s = JSON.parse(JSON.stringify($('Ordner planen').first().json));\nconst a = $input.first().json;\nconst st = s.schritt;\n/** Klartext für eine Ablehnung durch Microsoft Graph */\nfunction graphFehler(a, schritt) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  let hinweis = '';\n  if (s === 401) hinweis = ' Die Zugangsdatei „Euroflex Microsoft Graph“ in n8n ist ungültig oder der Clientschlüssel abgelaufen.';\n  else if (s === 403) hinweis = ' Die App darf dieses Postfach nicht lesen oder ändern (Berechtigung Mail.ReadWrite bzw. Bereich in Exchange prüfen).';\n  else if (s === 404) hinweis = ' Postfach oder Ordner gibt es in Microsoft 365 nicht (Knoten „Konfiguration“ prüfen).';\n  return `${schritt} fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh}${hinweis}`;\n}\ns.schritte += 1;\ns.anlegen = false;\nif (a.statusCode === 200 && a.body && Array.isArray(a.body.value)) {\n  const f = a.body.value.find((x) => x && x.id && String(x.displayName ?? '').toLowerCase() === st.name.toLowerCase());\n  if (f) s.ordner[st.praefix] = f.id;\n  else s.anlegen = true;\n} else {\n  s.fehler[st.pfad] = graphFehler(a, `Ordner „${st.praefix}“ suchen`);\n  s.offen = s.offen.filter((p) => p !== st.pfad);\n}\nreturn [{ json: s }];"
+      },
+      "id": "m15",
+      "name": "Suche auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "m-anlegen",
+              "leftValue": "={{ $json.anlegen === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "m16",
+      "name": "Anlegen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.postfach) }}/mailFolders/{{ encodeURIComponent($json.schritt.eltern) }}/childFolders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ displayName: $json.schritt.name }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "m17",
+      "name": "Ordner anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3100,
+        60
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ergebnis von „Ordner anlegen“: neue ID merken; sonst Pfad für diesen Lauf aufgeben (nächster Lauf versucht es erneut).\nconst s = JSON.parse(JSON.stringify($('Suche auswerten').first().json));\nconst a = $input.first().json;\nconst st = s.schritt;\n/** Klartext für eine Ablehnung durch Microsoft Graph */\nfunction graphFehler(a, schritt) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  let hinweis = '';\n  if (s === 401) hinweis = ' Die Zugangsdatei „Euroflex Microsoft Graph“ in n8n ist ungültig oder der Clientschlüssel abgelaufen.';\n  else if (s === 403) hinweis = ' Die App darf dieses Postfach nicht lesen oder ändern (Berechtigung Mail.ReadWrite bzw. Bereich in Exchange prüfen).';\n  else if (s === 404) hinweis = ' Postfach oder Ordner gibt es in Microsoft 365 nicht (Knoten „Konfiguration“ prüfen).';\n  return `${schritt} fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh}${hinweis}`;\n}\ns.schritte += 1;\ns.anlegen = false;\nif ((a.statusCode === 201 || a.statusCode === 200) && a.body && a.body.id) {\n  s.ordner[st.praefix] = a.body.id;\n  s.angelegt.push(st.praefix);\n} else {\n  s.fehler[st.pfad] = graphFehler(a, `Ordner „${st.praefix}“ anlegen`);\n  s.offen = s.offen.filter((p) => p !== st.pfad);\n}\nreturn [{ json: s }];"
+      },
+      "id": "m18",
+      "name": "Anlage auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Je Mail mit aufgelöstem Zielordner ein Element für „Verschieben“. Mails, deren Ordner nicht aufgelöst werden konnte,\n// bleiben ungelesen liegen und werden im nächsten Lauf erneut geliefert (Portal: „doppelt“) und dann verschoben.\nconst s = $input.first().json;\nreturn s.verschieben\n  .filter((v) => s.ordner[v.pfad])\n  .map((v) => ({ json: { postfach: s.postfach, graph_id: v.graph_id, pfad: v.pfad, ziel_id: s.ordner[v.pfad] } }));"
+      },
+      "id": "m19",
+      "name": "Verschieben aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.postfach) }}/messages/{{ encodeURIComponent($json.graph_id) }}/move",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ destinationId: $json.ziel_id }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "m20",
+      "name": "Verschieben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        520
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ergebnis von „Verschieben“ je Mail. Microsoft Graph vergibt beim Verschieben eine neue ID – „Als gelesen markieren“\n// verwendet deshalb die ID aus der Antwort.\nconst auftraege = $('Verschieben aufteilen').all();\n/** Klartext für eine Ablehnung durch Microsoft Graph */\nfunction graphFehler(a, schritt) {\n  const s = a.statusCode;\n  const e = a.body && typeof a.body === 'object' ? a.body.error : null;\n  const roh = e ? `${e.code ?? ''}: ${e.message ?? ''}`.replace(/^: /, '') : String((a.error && (a.error.message || a.error)) || (typeof a.body === 'string' ? a.body : '') || 'keine Antwort').slice(0, 300);\n  let hinweis = '';\n  if (s === 401) hinweis = ' Die Zugangsdatei „Euroflex Microsoft Graph“ in n8n ist ungültig oder der Clientschlüssel abgelaufen.';\n  else if (s === 403) hinweis = ' Die App darf dieses Postfach nicht lesen oder ändern (Berechtigung Mail.ReadWrite bzw. Bereich in Exchange prüfen).';\n  else if (s === 404) hinweis = ' Postfach oder Ordner gibt es in Microsoft 365 nicht (Knoten „Konfiguration“ prüfen).';\n  return `${schritt} fehlgeschlagen${s ? ` (HTTP ${s})` : ''}: ${roh}${hinweis}`;\n}\nreturn $input.all().map((it, i) => {\n  const a = it.json || {};\n  const v = (auftraege[i] && auftraege[i].json) || {};\n  const ok = (a.statusCode === 201 || a.statusCode === 200) && a.body && a.body.id;\n  return { json: {\n    postfach: v.postfach, graph_id: v.graph_id, pfad: v.pfad, ok: !!ok,\n    neue_id: ok ? a.body.id : null, fehler: ok ? '' : graphFehler(a, `Verschieben nach „${v.pfad}“`),\n  }, pairedItem: { item: i } };\n});"
+      },
+      "id": "m21",
+      "name": "Verschiebung auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "m-verschoben",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "m22",
+      "name": "Verschoben?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        3100,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent($json.postfach) }}/messages/{{ encodeURIComponent($json.neue_id) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ isRead: true }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "m23",
+      "name": "Als gelesen markieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3320,
+        520
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "",
+          "name": "Euroflex Microsoft Graph"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Zusammenfassung des Laufs (nur zur Ansicht unter Executions).\nconst st = $('Antwort auswerten').first().json;\nconst verschoben = $('Verschoben?').all();\nconst gelesen = $input.all();\nconst fehler = [];\nfor (const e of st.ergebnisse) if (e.fehler) fehler.push(`${e.betreff}: ${e.fehler}`);\nfor (const v of $('Verschiebung auswerten').all()) if (!v.json.ok) fehler.push(v.json.fehler);\ngelesen.forEach((g, i) => {\n  const s = g.json.statusCode;\n  if (s !== 200) fehler.push(`Als gelesen markieren (HTTP ${s ?? '–'}): ${verschoben[i] ? verschoben[i].json.pfad : ''}`);\n});\nreturn [{ json: {\n  geliefert: st.ergebnisse.filter((e) => !e.fehler).length,\n  verschoben: verschoben.length,\n  als_gelesen: gelesen.filter((g) => g.json.statusCode === 200).length,\n  status: st.ergebnisse.reduce((m, e) => { if (e.status) m[e.status] = (m[e.status] ?? 0) + 1; return m; }, {}),\n  fehler,\n} }];"
+      },
+      "id": "m24",
+      "name": "Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3540,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Manuell starten": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle 5 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Portal": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Konfiguration": {
+      "main": [
+        [
+          {
+            "node": "Mails lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mails lesen": {
+      "main": [
+        [
+          {
+            "node": "Mails aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mails aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Anhänge laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge laden": {
+      "main": [
+        [
+          {
+            "node": "Für Portal packen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Für Portal packen": {
+      "main": [
+        [
+          {
+            "node": "Lieferbar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lieferbar?": {
+      "main": [
+        [
+          {
+            "node": "An Portal liefern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "An Portal liefern": {
+      "main": [
+        [
+          {
+            "node": "Antwort auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Antwort auswerten": {
+      "main": [
+        [
+          {
+            "node": "Ordner planen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ordner planen": {
+      "main": [
+        [
+          {
+            "node": "Ordner fehlt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ordner fehlt?": {
+      "main": [
+        [
+          {
+            "node": "Ordner suchen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Verschieben aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ordner suchen": {
+      "main": [
+        [
+          {
+            "node": "Suche auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Suche auswerten": {
+      "main": [
+        [
+          {
+            "node": "Anlegen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anlegen?": {
+      "main": [
+        [
+          {
+            "node": "Ordner anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ordner planen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ordner anlegen": {
+      "main": [
+        [
+          {
+            "node": "Anlage auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anlage auswerten": {
+      "main": [
+        [
+          {
+            "node": "Ordner planen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verschieben aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Verschieben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verschieben": {
+      "main": [
+        [
+          {
+            "node": "Verschiebung auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verschiebung auswerten": {
+      "main": [
+        [
+          {
+            "node": "Verschoben?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verschoben?": {
+      "main": [
+        [
+          {
+            "node": "Als gelesen markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Als gelesen markieren": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

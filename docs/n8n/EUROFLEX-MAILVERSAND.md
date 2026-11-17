@@ -129,6 +129,20 @@ Im Dialog *E-Mail mit Anhängen…* (Recht `transport.versand:execute`):
   Der Inhalt wird nicht gespeichert; „Erneut senden“ aus dem Protokoll gibt es für diese E-Mails nicht – wiederholt wird am Auftrag.
 - Ohne eingerichtete Anbindung zeigt der Dialog nur den bisherigen Entwurf.
 
+## Sammelversand („Versenden…“)
+
+Der Sammelversand aus der Auftragsliste bzw. dem Auftragsdetail (*„Versenden…“* neben *„Drucken“*, Funktion
+`transport.versand.sammel`) nutzt **denselben Workflow** – es ist nichts zusätzlich zu importieren oder einzutragen:
+
+- Das Portal schickt **eine Anfrage je E-Mail** (eine E-Mail je Auftrag und Empfänger) über `euroflexMailSenden` – mit derselben
+  Anbindung, demselben Postfach je Benutzer, der festen zweiten Adresse und dem E-Mail-Protokoll wie beim Einzelversand.
+- `modus` ist je E-Mail `entwurf` oder `senden`. Standard ist `entwurf`: der Workflow legt die Nachricht mit
+  `POST /users/{postfach}/messages` an – Microsoft Graph speichert so angelegte Nachrichten im Ordner **Entwürfe**; *Senden* entfällt.
+- `senden` schickt das Portal nur, wenn die Funktion **„Automatisch senden“** (`transport.versand.automatisch`) eingeschaltet ist
+  **und** der Benutzer das Recht `transport.versandsenden:execute` hat; sonst wird jede E-Mail Entwurf.
+
+Bedienung, Vorauswahl und Modus je Dokumentart: [../euroflex-mailworkflows.md](../euroflex-mailworkflows.md), Abschnitt *Ausgang*.
+
 ## Aufruf (Portal → n8n)
 
 `POST …/webhook/euroflex-mailversand`, Header `X-Euroflex-Key`.
