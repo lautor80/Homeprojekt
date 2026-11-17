@@ -528,6 +528,7 @@ gespeichert wird nur sein SHA-256-Hash.
 
 - gilt ausschließlich für `/api/m/<modul>/…` (plus `GET /api/key` als Verbindungstest), nie für Benutzer, Rollen oder andere Module
 - kein Cookie, kein CSRF-Header nötig: `Authorization: Bearer pk_transport_…`
+- „Bearer“ ist unabhängig von Groß-/Kleinschreibung; kommt ein Schlüssel ohne „Bearer “ oder in einem anderen Header (z. B. `X-API-Key`) an, antwortet das Portal mit 401 „API-Schlüssel bitte im Header „Authorization“ mit dem Wert „Bearer pk_…“ senden.“ statt mit dem CSRF-Fehler. In n8n zeigt sich ein solcher früher Abbruch großer Anfragen oft nur als „write EPIPE“
 - Änderungsbelege tragen den Benutzer `api:<name>`
 - sperren/entsperren (mit Begründung), neuen Schlüssel erzeugen (alter sofort ungültig), optionales Ablaufdatum
 - nach 20 ungültigen Schlüsseln je IP 15 Minuten Pause

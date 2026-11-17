@@ -210,6 +210,7 @@ Cloud-Verweise (`referenceAttachment`). Solche Mails kommen ohne diese Anlage an
 | „Mails lesen … fehlgeschlagen (HTTP 401)“ | Zugangsdatei „Euroflex Microsoft Graph“ falsch oder Clientschlüssel abgelaufen |
 | „… (HTTP 403)“ | App hat kein Mail.ReadWrite für dieses Postfach: Postfach nicht in der Gruppe (Weg A) oder Zuweisung noch nicht wirksam (bis 2 Stunden) |
 | „… (HTTP 404)“ | Postfach oder `QUELLORDNER` gibt es nicht |
+| „write EPIPE“ bzw. „Ungültige Anfrage (CSRF-Schutz)“ / „API-Schlüssel bitte im Header „Authorization“ …“ | Der API-Schlüssel kommt nicht als `Authorization: Bearer pk_…` an: in der Zugangsdatei „Euroflex Portal API-Schlüssel“ muss **Name** `Authorization` und **Value** `Bearer ` + Schlüssel lauten, und im Knoten *An Portal liefern* muss *Authentication* „Generic Credential Type → Header Auth“ mit dieser Zugangsdatei gewählt sein. Das Portal lehnt dann vor dem Hochladen ab, n8n meldet deshalb nur „write EPIPE“ |
 | „Keine Mail an das Portal geliefert … (HTTP 401)“ | API-Schlüssel falsch, gesperrt oder abgelaufen; in der Zugangsdatei fehlt `Bearer ` |
 | „… (HTTP 403)“ | Schlüssel ohne `transport.eingang:execute` oder Funktion „E-Mail-Eingang über n8n“ aus |
 | „… (HTTP 404)“ / Verbindungsfehler | Portal-Adresse in *An Portal liefern* falsch oder Modul `transport` nicht aktiv |

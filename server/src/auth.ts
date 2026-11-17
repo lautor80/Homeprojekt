@@ -108,7 +108,15 @@ export function registerAuth(app: FastifyInstance): void {
 
     // API-Schlüssel: kein Cookie, daher kein CSRF-Risiko; nur Modul-Schnittstellen
     const authz = req.headers.authorization;
-    if (authz?.startsWith('Bearer ')) return apiKeyAuth(req, reply, authz.slice(7).trim());
+    const bearer = authz ? /^bearer\s+(\S.*)$/i.exec(authz.trim()) : null;
+    if (bearer) return apiKeyAuth(req, reply, bearer[1].trim());
+    // Schlüssel im falschen Header oder ohne „Bearer “ (z. B. falsch eingerichtete n8n-Zugangsdatei):
+    // klar benennen statt als CSRF-Fehler abzuweisen
+    if (authz || Object.values(req.headers).some((v) => typeof v === 'string' && /\bpk_[a-z0-9_]+_[A-Za-z0-9_-]{32,}/.test(v))) {
+      return reply.code(401).send({
+        message: 'API-Schlüssel bitte im Header „Authorization“ mit dem Wert „Bearer pk_…“ senden.',
+      });
+    }
 
     // CSRF: schreibende Aufrufe nur mit eigenem Header (kann eine fremde Seite nicht setzen)
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.headers['x-portal-request'] !== '1') {
