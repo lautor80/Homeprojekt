@@ -34,7 +34,7 @@ const b64 = (s: string | Buffer) => Buffer.from(s).toString('base64');
 
 // ---------------------------------------------------------------- nachgestellt: n8n-Webhook und Paperless
 type Aufruf = { modus: string; absender: string; objekt: string; anhaenge: { id: string; dateiname: string; mime: string; inhalt_base64: string }[];
-  mails: { nr: number; rolle: string; an: string[]; cc: string[]; betreff: string; text: string; anhaenge: string[] }[] };
+  mails: { nr: number; rolle: string; an: string[]; cc: string[]; bcc: string[]; betreff: string; text: string; anhaenge: string[] }[] };
 const mock = {
   aufrufe: [] as Aufruf[],
   /** Antwort des Workflows; ohne Angabe: alles gesendet bzw. als Entwurf abgelegt */
@@ -109,7 +109,7 @@ test('Postfach je Benutzer: Zuordnung in der Anbindung, sonst E-Mail-Adresse des
 test('Ohne Anbindung: Dialog zeigt nur den bisherigen Entwurf, Senden wird abgelehnt', async () => {
   let r = await call('GET', `${T}/mail/info`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body, { eingerichtet: false, postfach: null, kopieAn: '', maxMb: 10 });
+  assert.deepEqual(r.body, { eingerichtet: false, postfach: null, kopieAn: '', maxMb: 10, rechnung: { absender: null, bcc: [] } });
   r = await call('POST', `${T}/auftraege/${NR}/mail`, mail());
   assert.equal(r.status, 400);
   assert.match(r.body.message, /E-Mail-Versand über Outlook 365 ist nicht eingerichtet/);
@@ -132,7 +132,7 @@ test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Ve
   r = await call('PUT', '/api/verbindungen/transport.mail', { ...basis, einstellungen: { kopie_an: 'ablage@example.org' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await call('GET', `${T}/mail/info`);
-  assert.deepEqual(r.body, { eingerichtet: true, postfach: null, kopieAn: 'ablage@example.org', maxMb: 10 });
+  assert.deepEqual(r.body, { eingerichtet: true, postfach: null, kopieAn: 'ablage@example.org', maxMb: 10, rechnung: { absender: null, bcc: [] } });
   r = await call('POST', `${T}/auftraege/${NR}/mail`, mail());
   assert.equal(r.status, 400);
   assert.match(r.body.message, /kein Postfach hinterlegt/);
@@ -145,7 +145,7 @@ test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Ve
   assert.deepEqual(r.body.einstellungen, { kopie_an: 'ablage@example.org', postfaecher: 'admin=dispo@example.org', max_mb: 1 });
   assert.equal(r.body.geheimnis, '********');
   r = await call('GET', `${T}/mail/info`);
-  assert.deepEqual(r.body, { eingerichtet: true, postfach: 'dispo@example.org', kopieAn: 'ablage@example.org', maxMb: 1 });
+  assert.deepEqual(r.body, { eingerichtet: true, postfach: 'dispo@example.org', kopieAn: 'ablage@example.org', maxMb: 1, rechnung: { absender: null, bcc: [] } });
 
   // Paperless (zentrale Anbindung) für die Dokumente des Auftrags
   // Paperless je Bereich (#232, S5): Euroflex hat seine eigene Anbindung
@@ -202,6 +202,40 @@ test('Senden: E-Mail an den Kunden und parallel eigene E-Mail an die feste Adres
     ['kunde@example.org, einkauf@example.org', 'dispo@example.org', 'dispo@example.org', 'gesendet', 'm1-1@example.org', null, 'Admin'],
     ['ablage@example.org', 'dispo@example.org', 'dispo@example.org', 'gesendet', 'm2-1@example.org', null, 'Admin'],
   ]);
+});
+
+test('Rechnungsversand: Vorlage Rechnung geht aus dem festen Postfach mit BCC, nur an der E-Mail an den Empfänger', async () => {
+  const { schalterSetzen, schalterZustand } = await import('../src/funktionsschalter.js');
+  await sql`update transport.workflow_einstellungen set rechnung = ${sql.json({ absender: 'buchhaltung@example.org', bcc: 'beleg@upload.example.org' })} where id = 1`;
+  try {
+    let r = await call('GET', `${T}/mail/info`);
+    assert.deepEqual(r.body.rechnung, { absender: 'buchhaltung@example.org', bcc: ['beleg@upload.example.org'] });
+    mock.aufrufe.length = 0;
+    mock.antwort = null;
+    r = await call('POST', `${T}/auftraege/${NR}/mail`, mail({ rechnung: true, modus: 'entwurf' }));
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.postfach, 'buchhaltung@example.org');
+    const b = mock.aufrufe[0];
+    assert.equal(b.absender, 'buchhaltung@example.org');
+    assert.deepEqual(b.mails.map((m) => [m.rolle, m.bcc]), [['kunde', ['beleg@upload.example.org']], ['kopie', []]]);
+    // ohne Vorlage Rechnung: wie bisher
+    mock.aufrufe.length = 0;
+    r = await call('POST', `${T}/auftraege/${NR}/mail`, mail({ modus: 'entwurf' }));
+    assert.equal(mock.aufrufe[0].absender, 'dispo@example.org');
+    assert.deepEqual(mock.aufrufe[0].mails[0].bcc, []);
+    // Funktion aus: Rechnung wie jede andere E-Mail
+    const vorher = schalterZustand();
+    schalterSetzen({ ...vorher, ids: new Set([...vorher.ids, 'transport.versand.rechnung']) });
+    try {
+      mock.aufrufe.length = 0;
+      r = await call('POST', `${T}/auftraege/${NR}/mail`, mail({ rechnung: true, modus: 'entwurf' }));
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.equal(mock.aufrufe[0].absender, 'dispo@example.org');
+      assert.deepEqual(mock.aufrufe[0].mails[0].bcc, []);
+    } finally { schalterSetzen(vorher); }
+  } finally {
+    await sql`update transport.workflow_einstellungen set rechnung = '{}' where id = 1`;
+  }
 });
 
 test('Entwurf in Outlook; ohne Anhänge; mehrere Empfänger', async () => {

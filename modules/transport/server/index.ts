@@ -21,7 +21,7 @@ import { paperlessSenden } from './paperless.js';
 import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
 import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
 import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
-import { mailworkflowRoutes, P_MW } from './mailworkflows.js';
+import { mailworkflowRoutes, P_MW, rechnungsVersand } from './mailworkflows.js';
 import { eingangRoutes } from './eingang/routes.js';
 import { sammelversandRoutes } from './sammelversand.js';
 import { kontaktRoutes } from './kontakte.js';
@@ -651,7 +651,8 @@ async function routes(app: FastifyInstance) {
   });
 
   // ---- E-Mail zum Auftrag über Outlook 365 (#235, n8n-Workflow „Euroflex Mailversand“) ----
-  app.get('/mail/info', { preHandler: requireAuth(P.versand) }, async () => mailInfo());
+  // rechnung: Absender und BCC für E-Mails mit Rechnung (Funktion transport.versand.rechnung) – zur Anzeige im Dialog
+  app.get('/mail/info', { preHandler: requireAuth(P.versand) }, async () => ({ ...(await mailInfo()), rechnung: await rechnungsVersand() }));
 
   /**
    * Ausgewählte Dokumente des Auftrags senden: eine E-Mail an den Empfänger und parallel eine eigene E-Mail an die feste zweite
@@ -669,10 +670,13 @@ async function routes(app: FastifyInstance) {
       dateien: z.array(z.object({ name: z.string().trim().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.') })).max(30).default([]),
       dokumente: z.array(z.coerce.number().int().positive()).max(30).default([]),
       nur: z.array(z.enum(['kunde', 'kopie'])).min(1).optional(),
+      // Vorlage „Rechnung“: festes Absender-Postfach und BCC aus den Einstellungen (Funktion transport.versand.rechnung)
+      rechnung: z.boolean().default(false),
     }).parse(req.body);
     await auftragLesen(nr);
+    const rv = b.rechnung ? await rechnungsVersand() : { absender: null, bcc: [] as string[] };
     // Einrichtung, Postfach und Adressen zuerst – erst danach Dateien entpacken und Dokumente aus Paperless holen
-    await versandBereit();
+    await versandBereit(rv.absender);
     adressenPruefen(b.an, 'Empfänger');
     adressenPruefen(b.cc, 'CC');
     const erlaubt = [...DATEITYPEN, 'xml', 'zip'];
@@ -699,7 +703,7 @@ async function routes(app: FastifyInstance) {
         dateien.push({ name, daten: d.data, mime: pdf ? 'application/pdf' : d.contentType.split(';')[0].trim() || mimeTyp(name) });
       }
     }
-    return euroflexMailSenden({ nr, modus: b.modus, an: b.an, cc: b.cc, betreff: b.betreff, text: b.text, dateien, nur: b.nur, benutzer: benutzerName(req) });
+    return euroflexMailSenden({ nr, modus: b.modus, an: b.an, cc: b.cc, betreff: b.betreff, text: b.text, dateien, nur: b.nur, benutzer: benutzerName(req), absender: rv.absender, bcc: rv.bcc });
   });
 
   // ---- Paperless ----
