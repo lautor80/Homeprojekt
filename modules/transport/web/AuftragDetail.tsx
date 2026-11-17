@@ -16,6 +16,8 @@ import { VersandDialog } from './VersandDialog';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Fahrt, type Stop, type Traeger, type Werte } from './util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
+import { StopFeld, type StopVorschlag } from './StopFeld';
+import { anschrift, firmenTreffer, ortTreffer, strassenTreffer, zeitTreffer, type Vorschlaege } from './vorschlaege';
 import { ablegenIn, auftragsOrdner, ordnerBereit } from './ordner';
 
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
@@ -118,6 +120,13 @@ export function AuftragDetail() {
 
   useEffect(() => { lade(); }, [lade]);
   useEffect(() => { ladeAdressen(); ladeWerte(); }, [ladeAdressen, ladeWerte]);
+  // Vorschläge für die Stops aus früheren Aufträgen (Funktion transport.stops.vorschlaege) – einmal laden, gefiltert wird hier
+  const mitVorschlaegen = can('transport.vorschlaege:display');
+  const [vorschlaege, setVorschlaege] = useState<Vorschlaege | null>(null);
+  useEffect(() => {
+    if (!mitVorschlaegen) return;
+    api.get<Vorschlaege>(`${T}/stops/vorschlaege`).then(setVorschlaege).catch(() => setVorschlaege(null));
+  }, [mitVorschlaegen]);
 
   const typ = a?.typ ?? 'F';
   const showStops = typ === 'F';
@@ -143,6 +152,16 @@ export function AuftragDetail() {
     stops[i] = { ...stops[i], [f]: v || null };
     setA({ ...a, stops });
   };
+  /** mehrere Felder eines Stops aus einem Vorschlag; nurLeere = vorhandene Eingaben nicht überschreiben */
+  const setStopFelder = (i: number, felder: Partial<Stop>, nurLeere: boolean) => setA((x) => {
+    if (!x) return x;
+    const stops = [...x.stops];
+    const alt = stops[i] as unknown as Record<string, unknown>;
+    const neu: Record<string, unknown> = { ...alt };
+    for (const [k, v] of Object.entries(felder)) if (v && (!nurLeere || !alt[k])) neu[k] = v;
+    stops[i] = neu as unknown as Stop;
+    return { ...x, stops };
+  });
   const setTr = (i: number, f: keyof Traeger, v: string | number) => {
     const traeger = [...a.traeger];
     traeger[i] = { ...traeger[i], [f]: v };
@@ -327,23 +346,41 @@ export function AuftragDetail() {
       <DatePicker style={{ flex: '0 0 9.75rem', width: '9.75rem', minWidth: '9.75rem' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={s[f] ?? ''} readonly={!mayEdit}
                   onChange={(e) => setStop(i, f, e.detail.value)} />
     );
-    const zeit = (f: 'zeit' | 'zeit_e') => (
+    const zeit = (f: 'zeit' | 'zeit_e') => (vorschlaege && mayEdit ? (
+      <div style={{ flex: '1 1 9rem', minWidth: '9rem' }}>
+        <StopFeld wert={s[f] ?? ''} max={30} placeholder="Uhrzeit / Zeitfenster" onWert={(v) => setStop(i, f, v)} onFelder={() => undefined}
+                  vorschlaege={zeitTreffer(vorschlaege, s[f] ?? '').map((z) => ({ text: z, felder: {} }))} />
+      </div>
+    ) : (
       <Input style={{ flex: '1 1 9rem', minWidth: '9rem' }} maxlength={30} value={s[f] ?? ''} readonly={!mayEdit} placeholder="Uhrzeit / Zeitfenster"
              onInput={(e) => setStop(i, f, e.target.value)} />
-    );
+    ));
+    // Firma, Straße, PLZ/Ort mit Vorschlägen; e = Empfängerseite (Felder mit _e)
+    const vf = (art: 'firma' | 'strasse' | 'plzort', e: boolean) => {
+      const k = (f: 'firma' | 'strasse' | 'land' | 'plzort') => (e ? `${f}_e` : f) as keyof Stop;
+      const feld = k(art);
+      const wert = (s[feld] as string) ?? '';
+      if (!vorschlaege || !mayEdit) return inp(feld, 30);
+      const liste: StopVorschlag[] = art === 'firma'
+        ? firmenTreffer(vorschlaege, wert).map((o) => ({ text: o.firma, zusatz: anschrift(o), felder: { [k('strasse')]: o.strasse, [k('land')]: o.land, [k('plzort')]: o.plzort } as Partial<Stop> }))
+        : art === 'strasse'
+          ? strassenTreffer(vorschlaege, wert, s[k('plzort')] as string | null).map((o) => ({ text: o.strasse, zusatz: [o.land, o.plzort].filter(Boolean).join(' '), felder: { [k('land')]: o.land, [k('plzort')]: o.plzort } as Partial<Stop> }))
+          : ortTreffer(vorschlaege, wert).map((o) => ({ text: o.plzort, zusatz: o.land ?? undefined, felder: { [k('land')]: o.land } as Partial<Stop> }));
+      return <StopFeld wert={wert} max={30} vorschlaege={liste} onWert={(v) => setStop(i, feld, v)} onFelder={(f, nurLeere) => setStopFelder(i, f, nurLeere)} />;
+    };
     return (
       <Spalten n={2}>
         <Spalte titel="Absender">
-          <F label="Firma">{inp('firma', 30)}</F>
-          <F label="Straße">{inp('strasse', 30)}</F>
-          <F label="Land / PLZ Ort"><FlexBox style={{ gap: '0.5rem' }}>{inp('land', 3, '4rem')}{inp('plzort', 30)}</FlexBox></F>
+          <F label="Firma">{vf('firma', false)}</F>
+          <F label="Straße">{vf('strasse', false)}</F>
+          <F label="Land / PLZ Ort"><FlexBox style={{ gap: '0.5rem' }}>{inp('land', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', false)}</div></FlexBox></F>
           <F label="Ladenummer">{inp('ladenummer', 30)}</F>
           <F label="Zeitvorgabe Laden"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum')}{zeit('zeit')}</FlexBox></F>
         </Spalte>
         <Spalte titel="Empfänger">
-          <F label="Firma">{inp('firma_e', 30)}</F>
-          <F label="Straße">{inp('strasse_e', 30)}</F>
-          <F label="Land / PLZ Ort" required={!!s.firma_e}><FlexBox style={{ gap: '0.5rem' }}>{inp('land_e', 3, '4rem')}{inp('plzort_e', 30)}</FlexBox></F>
+          <F label="Firma">{vf('firma', true)}</F>
+          <F label="Straße">{vf('strasse', true)}</F>
+          <F label="Land / PLZ Ort" required={!!s.firma_e}><FlexBox style={{ gap: '0.5rem' }}>{inp('land_e', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', true)}</div></FlexBox></F>
           <F label="Zeitvorgabe Entladen"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum_e')}{zeit('zeit_e')}</FlexBox></F>
         </Spalte>
       </Spalten>

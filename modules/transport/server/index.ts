@@ -46,6 +46,8 @@ export const P = {
   zahlung: 'transport.zahlungen:edit',
   /** Tabellen anpassen: Spalten ein-/ausblenden, Spaltenfilter, Sortierung – mit der Variante gespeichert */
   tabellen: 'transport.tabellen:edit',
+  /** Stops: Vorschläge aus früheren Aufträgen (Firma mit Anschrift, Straße, PLZ/Ort, Zeitvorgabe) */
+  vorschlaege: 'transport.vorschlaege:display',
   /** Versand- und Druckdialoge nach dem Auslösen sofort schließen (Ergebnis als Meldung) */
   dialoge: 'transport.dialoge:execute',
   /** App „Kontakte“ öffnen (#232, N7) – bisher mit „Aufträge anzeigen“ */
@@ -722,6 +724,44 @@ async function routes(app: FastifyInstance) {
   await mailworkflowRoutes(app, P.stammdaten);
   await eingangRoutes(app);
   await sammelversandRoutes(app);
+  /**
+   * Vorschläge für die Stops (#Stop-Vorschläge): bekannte Lade- und Entladestellen aus allen Aufträgen, je Firma + Straße + PLZ/Ort
+   * einmal (Schreibweise der jüngsten Verwendung), jüngste zuerst; dazu die häufigsten Zeitvorgaben. Gefiltert wird im Browser.
+   * „laut LFS“ (Platzhalter beim Frachtauftrag) zählt nicht als Anschrift.
+   */
+  app.get('/stops/vorschlaege', { preHandler: requireAuth(P.vorschlaege) }, async () => {
+    const orte = await sql`
+      with alle as (
+        select firma, strasse, land, plzort, coalesce(datum, datum_e) as d from transport.stops
+        union all
+        select firma_e, strasse_e, land_e, plzort_e, coalesce(datum_e, datum) from transport.stops
+      ), sauber as (
+        select btrim(firma) as firma,
+               case when lower(btrim(coalesce(strasse, ''))) in ('', 'laut lfs') then null else btrim(strasse) end as strasse,
+               nullif(upper(btrim(coalesce(land, ''))), '') as land,
+               nullif(btrim(coalesce(plzort, '')), '') as plzort, d
+          from alle
+         where lower(btrim(coalesce(firma, ''))) not in ('', 'laut lfs')
+      )
+      select (array_agg(firma order by d desc nulls last))[1] as firma,
+             (array_agg(strasse order by d desc nulls last))[1] as strasse,
+             (array_agg(land order by (land is null), d desc nulls last))[1] as land,
+             (array_agg(plzort order by d desc nulls last))[1] as plzort,
+             count(*)::int as anzahl
+        from sauber
+       group by lower(firma), lower(coalesce(strasse, '')), lower(coalesce(plzort, ''))
+       order by max(d) desc nulls last, count(*) desc
+       limit 3000`;
+    const zeiten = await sql`
+      select z, count(*)::int as anzahl from (
+        select btrim(zeit) as z from transport.stops union all select btrim(zeit_e) from transport.stops
+      ) x where coalesce(z, '') <> '' group by z order by count(*) desc, z limit 60`;
+    return {
+      orte: orte.map((o) => ({ firma: o.firma as string, strasse: o.strasse as string | null, land: o.land as string | null, plzort: o.plzort as string | null, anzahl: o.anzahl as number })),
+      zeiten: zeiten.map((z) => z.z as string),
+    };
+  });
+
   app.get('/adressen', { preHandler: requireAuth(P.display) }, async () => {
     const rows = await sql`select adrnr, kundenname, kundenname2, land, ort from transport.adressen
                            where coalesce(kundenname, '') <> '' or coalesce(kundenname2, '') <> ''
@@ -985,6 +1025,7 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.zahlung, text: 'Zahlungseingang erfassen und zurücknehmen', requires: [P.abrechnung] },
     { area: 'Euroflex', app: 'Aufträge', id: P.tabellen, text: 'Tabellen anpassen (Auftragsliste, Aufträge und Dokumente im Kontakt): Spalten ein-/ausblenden, Filter, Sortierung – in Varianten speichern' },
     { area: 'Euroflex', app: 'Aufträge', id: P.dialoge, text: 'Versand- und Druckdialoge schließen sich nach dem Auslösen sofort (ohne Recht bleiben sie offen)' },
+    { area: 'Euroflex', app: 'Aufträge', id: P.vorschlaege, text: 'Vorschläge beim Erfassen der Stops (Firma, Straße, PLZ/Ort, Zeitvorgabe aus früheren Aufträgen)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versandSenden, text: 'Sammelversand direkt senden statt als Entwurf in Outlook ablegen', requires: [P.versand] },
     { area: 'Euroflex', app: 'Posteingang', id: P.eingangDisplay, text: 'Posteingang anzeigen: eingegangene E-Mails mit Zuordnung zum Auftrag' },
