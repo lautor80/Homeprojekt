@@ -72,6 +72,16 @@ test('Einrichtung, Anmeldung, Rechte und Änderungsbelege', async () => {
   // CSRF-Schutz: schreibender Aufruf ohne Header wird abgelehnt
   const noHeader = await app.inject({ method: 'POST', url: '/api/auth/logout' });
   assert.equal(noHeader.statusCode, 403);
+  // API-Schlüssel ohne „Bearer “ bzw. im falschen Header: klare 401-Meldung statt CSRF
+  const ohneBearer = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { authorization: 'pk_test_' + 'a'.repeat(32) } });
+  assert.equal(ohneBearer.statusCode, 401);
+  assert.match(ohneBearer.json().message, /Bearer pk_/);
+  const falscherHeader = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { 'x-api-key': 'pk_test_' + 'b'.repeat(32) } });
+  assert.equal(falscherHeader.statusCode, 401);
+  // „bearer“ in Kleinschreibung wird als API-Schlüssel erkannt (ungültig → 401 vom Schlüsselabgleich)
+  const klein = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { authorization: 'bearer pk_test_' + 'c'.repeat(32) } });
+  assert.equal(klein.statusCode, 401);
+  assert.match(klein.json().message, /Ungültiger, gesperrter/);
 
   // Rolle nur mit Anzeige-Recht
   assert.equal((await admin('POST', '/api/admin/roles', {
