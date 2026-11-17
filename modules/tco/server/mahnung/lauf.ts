@@ -474,7 +474,7 @@ export async function automatikPruefen(log: Pick<FastifyBaseLogger, 'info' | 'wa
 export async function aufgaben(db: Db) {
   type Eintrag = { key: string; bereich: string; icon: string; state: 'Critical' | 'Information' | 'Negative'; titel: string; text: string; datum: string | null; pfad: string; betrag?: number };
   const out: Eintrag[] = [];
-  const [l] = await db`select id, status, art, meldung, to_char(gestartet_am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as tag,
+  const [l] = await db`select id, status, art, meldung, to_char(gestartet_am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as tag
                          from tco.mahn_lauf l where status <> 'VERWORFEN' order by id desc limit 1`;
   if (!l) return out; // noch nie gelaufen: nichts zu tun
   const { stand } = await standLesen(db);
