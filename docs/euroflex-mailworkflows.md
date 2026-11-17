@@ -115,6 +115,9 @@ wegräumt.
 - Ablageziel `paperless`: Ablage über Kontext `auftrag.dokument`, Verknüpfung in `transport.auftrag_dokumente`, Inhalt sofort gelöscht.
 - Nicht übernommene Inhalte werden **nie** automatisch gelöscht. Die Belegung zeigt die Einstellungsseite; ab
   `speicherWarnungMb` erscheint eine Warnung (auch im Arbeitsvorrat).
+- Übernahme im Browser: automatisch beim Öffnen des Auftrags, wenn der Ablageordner verbunden und der Zugriff schon erteilt ist
+  (sonst Link „Zugriff erlauben und übernehmen“, weil der Browser nur nach einem Klick fragen darf). Nötig sind
+  `transport.eingang:edit` und `transport.auftraege:edit`. Gleiche Dateinamen werden nicht überschrieben („Name (2).pdf“).
 - Dubletten (gleicher sha256 am selben Auftrag) werden nicht erneut abgelegt (Status `dublette`).
 - Größenordnung: typische Mail 0,2–2 MB; bei ~20 Mails/Tag ohne Übernahme ~20 MB/Tag. Mit Übernahme liegen nur offene Dateien im Portal.
 
@@ -145,9 +148,19 @@ die Oberfläche zeigt es nur an.
 
 | Methode | Pfad | Recht | Inhalt |
 |---|---|---|---|
-| POST | `/versand/vorschau` | versand:execute | `{ auftraege: string[], arten: ('T'\|'L'\|'R')[], xrechnung?: boolean }` → `{ mails: [{ schluessel, auftragsnr, fahrt?, rolle: 'unternehmer'\|'kunde'\|'rechnungsempfaenger', an, cc, betreff, text, arten, anhaenge: [{ name, groesse }], modus, fehler? }], senden_erlaubt: boolean }` |
-| POST | `/versand/ausfuehren` | versand:execute | `{ mails: [{ schluessel, an, cc, betreff, text }], zusatz?: [{ name, mime, inhalt_base64 }], paperless?: number[] }` → `{ ergebnisse: [{ schluessel, status: 'entwurf'\|'gesendet'\|'fehler', text }] }` |
-| POST | `/versand/eml` | versand:execute | wie ausführen, liefert `{ dateien: [{ name, inhalt_base64 }] }` (EML mit `X-Unsent: 1`) |
+| GET | `/versand/einstellungen` | versand:execute | `{ vorauswahl, modus, senden_erlaubt, eingerichtet, postfach, kopie_an, max_mb }` – Vorauswahl für den Dialog (ohne Recht auf die Einstellungsseite) |
+| POST | `/versand/vorschau` | versand:execute | `{ auftraege: string[], arten: ('T'\|'L'\|'R')[], xrechnung?: boolean }` → `{ mails: [{ schluessel, auftragsnr, fahrt?, rolle: 'unternehmer'\|'kunde'\|'rechnungsempfaenger', empfaenger_name, an, cc, betreff, text, arten, anhaenge: [{ name, groesse }], modus, hinweis?, fehler? }], senden_erlaubt: boolean }` |
+| POST | `/versand/ausfuehren` | versand:execute | `{ auftraege, arten, xrechnung?, mails: [{ schluessel, an, cc, betreff, text }], zusatz?: [{ name, mime, inhalt_base64 }], paperless?: number[], nur_entwurf?: boolean }` → `{ ergebnisse: [{ schluessel, status: 'entwurf'\|'gesendet'\|'fehler', text }] }` |
+| POST | `/versand/eml` | versand:execute | wie ausführen, liefert `{ dateien: [{ schluessel, name, inhalt_base64 }] }` (EML mit `X-Unsent: 1`) |
+
+Regeln im Detail:
+- Der Server rechnet die Vorschau bei „ausführen“ aus `auftraege`/`arten` neu; aus `mails` übernimmt er nur An, CC, Betreff und Text.
+- „Gleicher Empfänger“ = gleiche E-Mail-Adresse (ohne Groß-/Kleinschreibung), ohne Adresse gleiche Adressnummer. Zwei Fahrten mit demselben Unternehmer ergeben eine Mail mit beiden Transportaufträgen.
+- Eine Rechnungsnummer (auch Sammelrechnung) geht nur einmal hinaus – mit dem ersten ausgewählten Auftrag.
+- `nur_entwurf: true` legt alle Mails als Entwurf ab, auch wenn „Senden“ erlaubt wäre.
+- Status je Mail richtet sich nach der Mail an den Empfänger; scheitert nur die Kopie an die feste zweite Adresse, nennt der Text den Fehler – erneutes Senden schickt dem Kunden nichts doppelt.
+- Zusätzliche Dateien (Ablageordner, Paperless) hängen an jeder Mail; Paperless nur bei genau einem Auftrag.
+- In der Auftragsliste ersetzt bei eingeschalteter Funktion ein Menü „E-Rechnung / Paperless“ das alte Menü „Versenden“; ist die Funktion aus, bleibt das alte EML-Menü.
 
 Der Server erzeugt die PDFs selbst (wie `GET /pdf/:art/:id`) und ruft je Mail `euroflexMailSenden` aus `mailversand.ts` auf –
 damit gelten Postfach je Benutzer, feste Kopieadresse und E-Mail-Protokoll wie beim Einzelversand. Die Message-IDs im
