@@ -25,8 +25,8 @@ import { adrnrErmitteln } from '../halle/daten.js';
 import { paperlessNotiz, rechnungPdfErzeugen } from '../halle/versand.js';
 import { belegErzeugen } from '../verzehr/beleg.js';
 import {
-  ART_TEXT, artenListe, automatikFaellig, F_MAHN_AUTOMATIK, F_MAHN_PAPERLESS, faelligkeit, lokal, mailtextSchluessel, mailWerte, notizText, planen, sperreFuer, standErmitteln, STANDARD_STUFEN,
-  type HistorieZeile, type MahnCfg, type MahnMail, type OffenerPosten, type Plan, type PostenArt, type PostenStand, type SperreZeile, type Stufe,
+  ART_TEXT, artenListe, automatikFaellig, F_MAHN_AUTOMATIK, F_MAHN_PAPERLESS, faelligkeit, lokal, mailtextSchluessel, mailWerte, notizText, planen, sperreFuer, standErmitteln, STANDARD_STUFEN, vorschlagAbgleichen,
+  type HistorieZeile, type MahnCfg, type MahnMail, type OffenerPosten, type Plan, type PostenArt, type PostenStand, type SperreZeile, type Stufe, type VorschlagZeile,
 } from './logik.js';
 
 export interface Wer { id: string | null; name: string }
@@ -474,15 +474,20 @@ export async function automatikPruefen(log: Pick<FastifyBaseLogger, 'info' | 'wa
 export async function aufgaben(db: Db) {
   type Eintrag = { key: string; bereich: string; icon: string; state: 'Critical' | 'Information' | 'Negative'; titel: string; text: string; datum: string | null; pfad: string; betrag?: number };
   const out: Eintrag[] = [];
-  const [l] = await db`select id, status, art, meldung, to_char(gestartet_am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as tag,
-                              (select count(distinct schuldner)::int from tco.mahn_posten p where p.lauf_id = l.id and p.status = 'VORSCHLAG') as schuldner,
-                              (select coalesce(sum(betrag), 0)::float8 from tco.mahn_posten p where p.lauf_id = l.id and p.status = 'VORSCHLAG') as betrag
+  const [l] = await db`select id, status, art, meldung, to_char(gestartet_am at time zone 'Europe/Berlin', 'YYYY-MM-DD') as tag
                          from tco.mahn_lauf l where status <> 'VERWORFEN' order by id desc limit 1`;
   if (!l) return out; // noch nie gelaufen: nichts zu tun
+  const { stand } = await standLesen(db);
   if (l.status === 'VORSCHLAG') {
+    // aktueller Zahlungsstand: inzwischen bezahlte bzw. gesperrte Posten zählen nicht mehr mit
+    const zeilen = await db`select art, nr, schuldner, betrag::float8 as betrag, status from tco.mahn_posten where lauf_id = ${l.id} and status = 'VORSCHLAG'` as unknown as VorschlagZeile[];
+    const ab = vorschlagAbgleichen(zeilen, stand, await sperrenLesen(db), heuteIso());
     out.push({
       key: `MAHN_VORSCHLAG:${l.id}`, bereich: 'Kassenwart', icon: 'payment-approval', state: 'Information', titel: 'Mahnvorschlag freigeben',
-      text: `${l.schuldner} Schuldner mit ${eur(Number(l.betrag))} – prüfen und freigeben, erst dann gehen die E-Mails hinaus.`, datum: l.tag, pfad: '/tco/mahnwesen?tab=vorschlag', betrag: Number(l.betrag),
+      text: ab.schuldner
+        ? `${ab.schuldner} Schuldner mit ${eur(ab.betrag)} – prüfen und freigeben, erst dann gehen die E-Mails hinaus.`
+        : 'Alle vorgeschlagenen Posten sind inzwischen bezahlt bzw. gesperrt – den Vorschlag verwerfen.',
+      datum: l.tag, pfad: '/tco/mahnwesen?tab=vorschlag', betrag: ab.betrag,
     });
   }
   if (l.status === 'FEHLER') {
@@ -491,7 +496,6 @@ export async function aufgaben(db: Db) {
       text: `${l.art === 'AUTO' ? 'Automatischer Lauf' : 'Lauf'} vom ${dat(l.tag)}: ${l.meldung ?? 'ohne Meldung'}`.slice(0, 300), datum: l.tag, pfad: '/tco/mahnwesen?tab=laeufe',
     });
   }
-  const { stand } = await standLesen(db);
   for (const p of stand.filter((x) => x.schritt === 'KLAEREN')) {
     out.push({
       key: `MAHN_KLAEREN:${p.art}:${p.nr}`, bereich: 'Kassenwart', icon: 'money-bills', state: 'Negative', titel: `Forderung manuell klären: ${p.name}`,

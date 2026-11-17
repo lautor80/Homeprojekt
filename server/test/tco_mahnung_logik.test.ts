@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  automatikFaellig, CFG_SCHEMA, faelligkeit, lokal, MAHN_MAILTEXTE, mailtextSchluessel, mailWerte, naechsterLauf, notizText, planen, standErmitteln, STANDARD_STUFEN,
+  automatikFaellig, CFG_SCHEMA, faelligkeit, lokal, MAHN_MAILTEXTE, mailtextSchluessel, mailWerte, naechsterLauf, notizText, planen, vorschlagAbgleichen, standErmitteln, STANDARD_STUFEN,
   type HistorieZeile, type OffenerPosten, type SperreZeile,
 } from '../../modules/tco/server/mahnung/logik.js';
 import { fuellen } from '../../modules/tco/server/mailtexte.js';
@@ -185,4 +185,29 @@ test('Paperless-Notiz: gesendet, nicht zugestellt und von Hand vermerkt', () => 
   assert.doesNotMatch(n, / an  /);
   const z = notizText({ ...basis, lauf_id: null, ergebnis: 'ZUGESTELLT', weg: 'BRIEF', wer: 'Kassenwart', frist: '2026-11-27', meldung: 'Einschreiben' });
   assert.equal(z, '1. Mahnung per Brief zugestellt, vermerkt am 17.11.2026 10:15 durch Kassenwart – offen 45,00 €, neue Zahlungsfrist 27.11.2026 – Einschreiben');
+});
+
+test('Offener Vorschlag: inzwischen bezahlt, gesperrt und teilbezahlt gegen den aktuellen Stand', () => {
+  const op = (nr: string, schuldner: string, betrag: number) => ({ art: 'HALLE' as const, nr, schuldner, name: schuldner, betrag, gesamt: betrag, datum: '2026-10-01', faellig: '2026-10-15' });
+  const z = (nr: string, schuldner: string, betrag: number, status = 'VORSCHLAG') => ({ art: 'HALLE' as const, nr, schuldner, betrag, status });
+  const zeilen = [z('VA-901', '99001', 40), z('VA-902', '99001', 60), z('VA-903', '99002', 80), z('VA-904', '99003', 25), z('VA-905', '99004', 10, 'VERWORFEN')];
+  // VA-901 bezahlt (fehlt), VA-902 unverändert, VA-903 teilbezahlt, VA-904 gesperrt
+  const offen = [op('VA-902', '99001', 60), op('VA-903', '99002', 30), op('VA-904', '99003', 25), op('VA-905', '99004', 10)];
+  const sperren = [{ id: 1, ebene: 'SCHULDNER' as const, art: null, schluessel: '99003', grund: 'Ratenzahlung', bis: null }];
+  const ab = vorschlagAbgleichen(zeilen, offen, sperren, '2026-11-17');
+  const je = new Map(ab.zeilen.map((x) => [x.nr, x]));
+  assert.equal(je.get('VA-901')!.gilt, false);
+  assert.equal(je.get('VA-901')!.aktuell, null);
+  assert.match(je.get('VA-901')!.hinweis!, /inzwischen bezahlt/);
+  assert.deepEqual([je.get('VA-902')!.gilt, je.get('VA-902')!.hinweis], [true, null]);
+  assert.equal(je.get('VA-903')!.aktuell, 30);
+  assert.match(je.get('VA-903')!.hinweis!, /teilbezahlt – gemahnt werden noch 30,00 €/);
+  assert.equal(je.get('VA-904')!.gilt, false);
+  assert.match(je.get('VA-904')!.hinweis!, /Mahnsperre \(Ratenzahlung\)/);
+  assert.equal(je.get('VA-905')!.gilt, false); // nicht mehr im Vorschlag
+  assert.equal(ab.schuldner, 2);
+  assert.equal(ab.betrag, 90);
+  // alles bezahlt: nichts gilt mehr
+  const leer = vorschlagAbgleichen([z('VA-901', '99001', 40)], [], [], '2026-11-17');
+  assert.deepEqual([leer.schuldner, leer.betrag], [0, 0]);
 });

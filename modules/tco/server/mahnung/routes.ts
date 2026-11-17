@@ -7,7 +7,7 @@ import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
 import { DB, vereinLesen } from '../verein.js';
 import { addTage, heute, runden } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
-import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, notizText, type PostenArt } from './logik.js';
+import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, notizText, vorschlagAbgleichen, type OffenerPosten, type PostenArt, type VorschlagZeile } from './logik.js';
 import { automatikPruefen, cfgLesen, cfgSichern, historieLesen, jetztText, laufAusfuehren, laufFreigeben, laufVerwerfen, mahnNotiz, sperrenLesen, standLesen, type Wer } from './lauf.js';
 
 /**
@@ -38,6 +38,15 @@ const postenEinesLaufs = (id: number) => DB`
   select id, art, nr, schuldner, name, betrag::float8 as betrag, to_char(faellig, 'YYYY-MM-DD') as faellig, stufe, stufe_name, gebuehr::float8 as gebuehr,
          to_char(frist, 'YYYY-MM-DD') as frist, status, weg, an, meldung, erledigt_am, erledigt_von
     from tco.mahn_posten where lauf_id = ${id} order by name, schuldner, faellig, id`;
+
+/**
+ * Offener Vorschlag mit aktuellem Zahlungsstand: inzwischen bezahlte bzw. gesperrte Posten sind markiert und zählen in
+ * Schuldnern und Betrag nicht mehr mit (beim Senden entfallen sie ohnehin).
+ */
+async function vorschlagAktuell(vl: Record<string, unknown>, stand: OffenerPosten[]) {
+  const ab = vorschlagAbgleichen(await postenEinesLaufs(vl.id as number) as unknown as (VorschlagZeile & Record<string, unknown>)[], stand, await sperrenLesen(DB), heute());
+  return { ...vl, schuldner: ab.schuldner, betrag: ab.betrag, zeilen: ab.zeilen };
+}
 
 export async function mahnungRoutes(app: FastifyInstance) {
   // Automatik: jede Minute prüfen, ob der Lauf fällig ist (nur im Server-Prozess, nicht in Tests). Ohne eingeschaltete
@@ -74,7 +83,7 @@ export async function mahnungRoutes(app: FastifyInstance) {
         gemahnt: stand.filter((p) => p.stufe > 0).length, klaeren: stand.filter((p) => p.schritt === 'KLAEREN').length,
       },
       plan: { mails: plan.mails, zurueckgestellt: plan.zurueckgestellt.length, summe: summe(plan.mails.map((m) => ({ betrag: m.summe }))), frist: addTage(heute(), cfg.frist_tage) },
-      vorschlag: vl ? { ...vl, zeilen: await postenEinesLaufs(vl.id as number) } : null,
+      vorschlag: vl ? await vorschlagAktuell(vl, stand) : null,
       unerreichbar,
       automatik: {
         aktiv: cfg.aktiv, funktion: funktionAktiv(F_MAHN_AUTOMATIK), modus: cfg.modus, wochentage: cfg.wochentage, uhrzeit: cfg.uhrzeit,
