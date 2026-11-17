@@ -186,10 +186,28 @@ test('Workflow-Datei: Knoten, Verbindungen, Auslöser, keine Zugangsdaten', () =
   assert.equal(p.parameters.jsonBody, '={{ JSON.stringify($json.payload) }}');
 });
 
-test('Konfiguration: ohne Postfach Abbruch mit Hinweis, sonst Standardwerte', () => {
-  assert.throws(() => ausfuehren('Konfiguration', [], {}), /POSTFACH/);
-  const code = (knoten('Konfiguration').parameters.jsCode as string).replace("const POSTFACH = '';", `const POSTFACH = '${POSTFACH}';`);
-  assert.deepEqual(ausfuehren('Konfiguration', [], {}, code)[0].json, { postfach: POSTFACH, quellordner: 'Inbox', zielwurzel: 'Inbox', max: 50 });
+test('Konfiguration: ohne Postfach Abbruch mit Hinweis, sonst je Postfach ein Element', () => {
+  const roh = knoten('Konfiguration').parameters.jsCode as string;
+  assert.throws(() => ausfuehren('Konfiguration', [], {}), /POSTFAECHER/);
+  // ältere Fassung: einzelnes POSTFACH
+  const einzeln = roh.replace("const POSTFACH = '';", `const POSTFACH = '${POSTFACH}';`);
+  assert.deepEqual(ausfuehren('Konfiguration', [], {}, einzeln).map((e) => e.json), [{ postfach: POSTFACH, quellordner: 'Inbox', zielwurzel: 'Inbox', max: 50 }]);
+  // mehrere Postfächer (info@ und buchhaltung@): bereinigt, ohne Doppelte, POSTFACH kommt dazu
+  const mehrere = roh.replace('const POSTFAECHER = [];', "const POSTFAECHER = [' Info@example.org ', 'buchhaltung@example.org', 'info@example.org'];")
+    .replace("const POSTFACH = '';", `const POSTFACH = '${POSTFACH}';`);
+  assert.deepEqual(ausfuehren('Konfiguration', [], {}, mehrere).map((e) => e.json.postfach), ['info@example.org', 'buchhaltung@example.org', POSTFACH]);
+  assert.throws(() => ausfuehren('Konfiguration', [], {}, roh.replace('const POSTFAECHER = [];', "const POSTFAECHER = ['info@example.org', 'kaputt'];")), /keine gültige Postfach-Adresse: kaputt/);
+});
+
+test('Mehrere Postfächer: Mails tragen ihr Postfach, ein gestörtes Postfach hält die anderen nicht auf', () => {
+  const INFO = 'info@example.org';
+  const aus: Record<string, Element[]> = { Konfiguration: [KONF, { json: { ...KONF.json, postfach: INFO } }] };
+  const m = ausfuehren('Mails aufteilen', [{ json: { statusCode: 200, body: { value: [graphMail('B1')] } } }, { json: { statusCode: 200, body: { value: [graphMail('I1'), graphMail('I2')] } } }], aus);
+  assert.deepEqual(m.map((e) => [e.json.postfach, e.json.graph_id]), [[POSTFACH, 'B1'], [INFO, 'I1'], [INFO, 'I2']]);
+  const teil = ausfuehren('Mails aufteilen', [{ json: { statusCode: 403, body: { error: { code: 'ErrorAccessDenied', message: 'Access is denied.' } } } }, { json: { statusCode: 200, body: { value: [graphMail('I1')] } } }], aus);
+  assert.deepEqual(teil.map((e) => e.json.postfach), [INFO]);
+  assert.match(teil[0].json.lesefehler[0], /Mails lesen aus auftraege@example\.org\/Inbox fehlgeschlagen \(HTTP 403\)/);
+  assert.throws(() => ausfuehren('Mails aufteilen', [{ json: { statusCode: 403, body: {} } }, { json: { statusCode: 200, body: { value: [] } } }], aus), /HTTP 403/);
 });
 
 test('Mails lesen abgelehnt: Lauf bricht mit Klartext ab', () => {
@@ -265,8 +283,8 @@ test('Antwort auswerten: nur Mails mit aktion.ordner werden verschoben, Pfade no
   const s = ausfuehren('Antwort auswerten', aus['An Portal liefern'], aus);
   assert.equal(s.length, 1, 'genau ein Element für die Ordnerschleife');
   const j = s[0].json;
-  assert.deepEqual(j.verschieben, [{ graph_id: 'A1', pfad: 'Portal/Zugeordnet' }, { graph_id: 'A2', pfad: 'Portal/Prüfen' }, { graph_id: 'A3', pfad: 'Portal/Zugeordnet' }]);
-  assert.deepEqual(j.offen, ['Portal/Zugeordnet', 'Portal/Prüfen']);
+  assert.deepEqual(j.verschieben, [{ postfach: POSTFACH, graph_id: 'A1', pfad: 'Portal/Zugeordnet' }, { postfach: POSTFACH, graph_id: 'A2', pfad: 'Portal/Prüfen' }, { postfach: POSTFACH, graph_id: 'A3', pfad: 'Portal/Zugeordnet' }]);
+  assert.deepEqual(j.offen, [`${POSTFACH}|Portal/Zugeordnet`, `${POSTFACH}|Portal/Prüfen`]);
   assert.deepEqual(j.ergebnisse.map((e: any) => e.status), ['abgelegt', 'pruefen', 'doppelt', null]);
   assert.match(j.ergebnisse[3].fehler, /Portal \(HTTP 500\): Datenbank nicht erreichbar/);
 
@@ -326,13 +344,13 @@ test('Ordnerschleife: leeres Postfach legt den ganzen Pfad an; Fehler beim Suche
   ordnerAufloesen(aus, sim);
   assert.deepEqual(sim.aufrufe, ['suchen Inbox/Portal', 'anlegen Inbox/Portal', 'suchen neu-1/Zugeordnet', 'anlegen neu-1/Zugeordnet', "suchen Inbox/Kunde's Ordner", "anlegen Inbox/Kunde's Ordner"]);
   assert.deepEqual(aus['Verschieben aufteilen'].map((e) => e.json.ziel_id), ['neu-2', 'neu-3']);
-  assert.deepEqual(aus['Ordner planen'][0].json.angelegt, ['Portal', 'Portal/Zugeordnet', "Kunde's Ordner"]);
+  assert.deepEqual(aus['Ordner planen'][0].json.angelegt, ['Portal', 'Portal/Zugeordnet', "Kunde's Ordner"].map((x) => `${POSTFACH}|${x}`));
 
   // Suche nach „Portal“ abgelehnt → Pfad aufgegeben, die andere Mail wird trotzdem verschoben
   sim = postfachSimulation({}, (art, name) => (art === 'suchen' && name === 'Portal' ? { statusCode: 403, body: { error: { code: 'ErrorAccessDenied', message: 'Access is denied.' } } } : null));
   ordnerAufloesen(aus, sim);
   assert.deepEqual(aus['Verschieben aufteilen'].map((e) => e.json.graph_id), ['A2']);
-  assert.match(aus['Ordner planen'][0].json.fehler['Portal/Zugeordnet'], /Ordner „Portal“ suchen fehlgeschlagen \(HTTP 403\)/);
+  assert.match(aus['Ordner planen'][0].json.fehler[`${POSTFACH}|Portal/Zugeordnet`], /Ordner „Portal“ suchen fehlgeschlagen \(HTTP 403\)/);
 
   // Anlegen abgelehnt → ebenso
   sim = postfachSimulation({}, (art) => (art === 'anlegen' ? { statusCode: 409, body: { error: { code: 'ErrorFolderExists', message: 'exists' } } } : null));
@@ -348,4 +366,37 @@ test('Ordner suchen: Name mit Hochkomma wird für $filter verdoppelt', () => {
   const $json = { schritt: { name: "Kunde's Ordner" } };
   const wert = new Function('$json', `return ${ausdruck};`)($json) as string;
   assert.equal(decodeURIComponent(wert), "displayName eq 'Kunde''s Ordner'");
+});
+
+test('Ordnerschleife mit zwei Postfächern: Ordner je Postfach getrennt aufgelöst und verschoben', () => {
+  const INFO = 'info@example.org';
+  const aus = packen([graphMail('A1'), graphMail('A2')]);
+  aus['Lieferbar?'][1].json.postfach = INFO;
+  aus['An Portal liefern'] = [
+    { json: { statusCode: 200, body: { vorgang: 1, status: 'abgelegt', auftragsnr: '2026_0153', aktion: { ordner: 'Portal/Zugeordnet' } } } },
+    { json: { statusCode: 200, body: { vorgang: 2, status: 'abgelegt', auftragsnr: '2026_0154', aktion: { ordner: 'Portal/Zugeordnet' } } } },
+  ];
+  aus['Antwort auswerten'] = ausfuehren('Antwort auswerten', aus['An Portal liefern'], aus);
+  assert.deepEqual(aus['Antwort auswerten'][0].json.offen, [`${POSTFACH}|Portal/Zugeordnet`, `${INFO}|Portal/Zugeordnet`]);
+  // je Postfach eigene Ordner: der Simulation wird das Postfach des Schritts mitgegeben
+  const sims: Record<string, ReturnType<typeof postfachSimulation>> = { [POSTFACH]: postfachSimulation({}), [INFO]: postfachSimulation({}) };
+  let eingang = aus['Antwort auswerten'];
+  for (let runde = 0; runde < 50; runde++) {
+    aus['Ordner planen'] = ausfuehren('Ordner planen', eingang, aus);
+    const st = aus['Ordner planen'][0].json;
+    if (st.schritt === null) break;
+    assert.equal(st.postfach, st.schritt.postfach, 'Graph-Adresse des Schritts');
+    aus['Ordner suchen'] = [{ json: sims[st.postfach].suchen(st.schritt.eltern, st.schritt.name) }];
+    aus['Suche auswerten'] = ausfuehren('Suche auswerten', aus['Ordner suchen'], aus);
+    const su = aus['Suche auswerten'][0].json;
+    if (su.anlegen === true) {
+      aus['Ordner anlegen'] = [{ json: sims[su.postfach].anlegen(su.schritt.eltern, su.schritt.name) }];
+      aus['Anlage auswerten'] = ausfuehren('Anlage auswerten', aus['Ordner anlegen'], aus);
+      eingang = aus['Anlage auswerten'];
+    } else eingang = su.schritt ? aus['Suche auswerten'] : eingang;
+  }
+  aus['Verschieben aufteilen'] = ausfuehren('Verschieben aufteilen', aus['Ordner planen'], aus);
+  assert.deepEqual(sims[POSTFACH].aufrufe, ['suchen Inbox/Portal', 'anlegen Inbox/Portal', 'suchen neu-1/Zugeordnet', 'anlegen neu-1/Zugeordnet']);
+  assert.deepEqual(sims[INFO].aufrufe, sims[POSTFACH].aufrufe);
+  assert.deepEqual(aus['Verschieben aufteilen'].map((e) => [e.json.postfach, e.json.graph_id, e.json.ziel_id]), [[POSTFACH, 'A1', 'neu-2'], [INFO, 'A2', 'neu-2']]);
 });

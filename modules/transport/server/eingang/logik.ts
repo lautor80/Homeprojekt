@@ -165,3 +165,16 @@ export const MAILEINGANG_VERBINDUNG: VerbindungDef = {
   header_name: 'X-Euroflex-Key',
   felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/euroflex-maileingang)', geheimnis: 'Webhook-Schlüssel', header_name: 'Header-Name' },
 };
+
+/**
+ * Eingangspostfächer für die App „Posteingang“ (Filter und Anzeige): erst die in den Einstellungen eingetragenen mit ihrer
+ * Bezeichnung (Reihenfolge der Einstellungen), dann Postfächer, aus denen schon Mails kamen, die nicht eingetragen sind
+ * (Bezeichnung = Adresse). Ohne Bezeichnung zeigt die Oberfläche den Teil vor dem @ („info“, „buchhaltung“).
+ */
+export function postfachListe(eingetragen: { adresse: string; bezeichnung: string }[], gesehen: string[]): { adresse: string; bezeichnung: string }[] {
+  const norm = (x: string) => x.trim().toLowerCase();
+  const liste = eingetragen.filter((p) => norm(p.adresse))
+    .map((p) => ({ adresse: norm(p.adresse), bezeichnung: p.bezeichnung.trim() || norm(p.adresse).split('@')[0] }));
+  for (const g of gesehen.map(norm)) if (g && !liste.some((p) => p.adresse === g)) liste.push({ adresse: g, bezeichnung: g });
+  return liste;
+}

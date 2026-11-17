@@ -91,6 +91,9 @@ const mail = (extra: Record<string, unknown> = {}) => ({
 const protokoll = () => sql`select an, betreff, absender, von, status, fehler, message_id, nachricht, benutzer from core.mail_protokoll
                              where anwendung = 'Euroflex' and objekt = ${NR} order by id`;
 
+/** /mail/info: Absender und BCC je Dokumentart – ohne Einstellung leer */
+const OHNE_ABSENDER = { T: { absender: null, bcc: [] }, L: { absender: null, bcc: [] }, R: { absender: null, bcc: [] } };
+
 test('Postfach je Benutzer: Zuordnung in der Anbindung, sonst E-Mail-Adresse des Benutzers', () => {
   assert.deepEqual([...postfaecherLesen(' Admin = dispo@example.org ; lager=lager@example.org\n')], [['admin', 'dispo@example.org'], ['lager', 'lager@example.org']]);
   assert.throws(() => postfaecherLesen('admin'), /benutzername=adresse/);
@@ -109,7 +112,7 @@ test('Postfach je Benutzer: Zuordnung in der Anbindung, sonst E-Mail-Adresse des
 test('Ohne Anbindung: Dialog zeigt nur den bisherigen Entwurf, Senden wird abgelehnt', async () => {
   let r = await call('GET', `${T}/mail/info`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body, { eingerichtet: false, postfach: null, kopieAn: '', maxMb: 10, rechnung: { absender: null, bcc: [] } });
+  assert.deepEqual(r.body, { eingerichtet: false, postfach: null, kopieAn: '', maxMb: 10, absender: OHNE_ABSENDER, rechnung: { absender: null, bcc: [] } });
   r = await call('POST', `${T}/auftraege/${NR}/mail`, mail());
   assert.equal(r.status, 400);
   assert.match(r.body.message, /E-Mail-Versand über Outlook 365 ist nicht eingerichtet/);
@@ -132,7 +135,7 @@ test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Ve
   r = await call('PUT', '/api/verbindungen/transport.mail', { ...basis, einstellungen: { kopie_an: 'ablage@example.org' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   r = await call('GET', `${T}/mail/info`);
-  assert.deepEqual(r.body, { eingerichtet: true, postfach: null, kopieAn: 'ablage@example.org', maxMb: 10, rechnung: { absender: null, bcc: [] } });
+  assert.deepEqual(r.body, { eingerichtet: true, postfach: null, kopieAn: 'ablage@example.org', maxMb: 10, absender: OHNE_ABSENDER, rechnung: { absender: null, bcc: [] } });
   r = await call('POST', `${T}/auftraege/${NR}/mail`, mail());
   assert.equal(r.status, 400);
   assert.match(r.body.message, /kein Postfach hinterlegt/);
@@ -145,7 +148,7 @@ test('Anbindung pflegen: feste zweite Adresse, Postfach je Benutzer, Größe; Ve
   assert.deepEqual(r.body.einstellungen, { kopie_an: 'ablage@example.org', postfaecher: 'admin=dispo@example.org', max_mb: 1 });
   assert.equal(r.body.geheimnis, '********');
   r = await call('GET', `${T}/mail/info`);
-  assert.deepEqual(r.body, { eingerichtet: true, postfach: 'dispo@example.org', kopieAn: 'ablage@example.org', maxMb: 1, rechnung: { absender: null, bcc: [] } });
+  assert.deepEqual(r.body, { eingerichtet: true, postfach: 'dispo@example.org', kopieAn: 'ablage@example.org', maxMb: 1, absender: OHNE_ABSENDER, rechnung: { absender: null, bcc: [] } });
 
   // Paperless (zentrale Anbindung) für die Dokumente des Auftrags
   // Paperless je Bereich (#232, S5): Euroflex hat seine eigene Anbindung
@@ -235,6 +238,29 @@ test('Rechnungsversand: Vorlage Rechnung geht aus dem festen Postfach mit BCC, n
     } finally { schalterSetzen(vorher); }
   } finally {
     await sql`update transport.workflow_einstellungen set rechnung = '{}' where id = 1`;
+  }
+});
+
+test('Absender je Dokumentart: Vorlage Transportauftrag aus dem festen Postfach, ohne BCC; andere Arten wie bisher', async () => {
+  const [alt] = await sql`select versand from transport.workflow_einstellungen where id = 1`;
+  await sql`update transport.workflow_einstellungen
+               set versand = ${sql.json({ T: { vorauswahl: true, modus: 'entwurf', absender: 'disposition@example.org', bcc: '' } })} where id = 1`;
+  try {
+    let r = await call('GET', `${T}/mail/info`);
+    assert.deepEqual(r.body.absender.T, { absender: 'disposition@example.org', bcc: [] });
+    assert.deepEqual(r.body.absender.L, { absender: null, bcc: [] });
+    mock.aufrufe.length = 0;
+    mock.antwort = null;
+    r = await call('POST', `${T}/auftraege/${NR}/mail`, mail({ art: 'T', modus: 'entwurf' }));
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(mock.aufrufe[0].absender, 'disposition@example.org');
+    assert.deepEqual(mock.aufrufe[0].mails[0].bcc, []);
+    mock.aufrufe.length = 0;
+    r = await call('POST', `${T}/auftraege/${NR}/mail`, mail({ art: 'L', modus: 'entwurf' }));
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(mock.aufrufe[0].absender, 'dispo@example.org');
+  } finally {
+    await sql`update transport.workflow_einstellungen set versand = ${sql.json(alt?.versand ?? {})} where id = 1`;
   }
 });
 

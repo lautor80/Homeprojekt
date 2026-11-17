@@ -8,6 +8,7 @@
  *  - eine Rechnung (auch eine Sammelrechnung) geht nur einmal hinaus – mit dem ersten ausgewählten Auftrag
  *  - mit aktivem Rechnungsversand (Absender-Postfach/BCC) ist eine Rechnung immer eine eigene E-Mail (nie mit Lieferschein oder
  *    Transportauftrag zusammen): Die BCC-Adresse (z. B. DATEV-Upload) übernimmt jeden Anhang als Beleg
+ *  - Absender je Dokumentart: Arten mit unterschiedlichem Absender-Postfach oder BCC gehen nie in einer E-Mail zusammen (gruppe)
  *  - Modus je E-Mail: Einstellung der ersten Art; „senden“ nur, wenn erlaubt
  */
 
@@ -66,6 +67,9 @@ export function rechnungsVersandAus(aktiv: boolean, r: { absender: string; bcc: 
   return { absender: r.absender.trim() || null, bcc: adressListe(r.bcc) };
 }
 
+/** Gruppe für mailsPlanen: Arten mit gleichem Absender und gleichem BCC dürfen in eine E-Mail */
+export const regelSchluessel = (r: { absender: string | null; bcc: string[] }) => `${(r.absender ?? '').toLowerCase()}\u0000${r.bcc.map((x) => x.toLowerCase()).sort().join(',')}`;
+
 /** deterministischer Schlüssel einer E-Mail – erste Art bestimmt Fahrt und Rolle */
 export const schluesselBilden = (auftragsnr: string, fahrt: number | undefined, rolle: Rolle) => `${auftragsnr}|${fahrt ?? ''}|${rolle}`;
 
@@ -102,7 +106,7 @@ export function empfaengerSchluessel(d: VersandDokument): string {
  * Dokumente → E-Mails. Reihenfolge bleibt erhalten (Aufträge wie ausgewählt, je Auftrag T je Fahrt, L, R).
  * Rechnungen: jede Rechnungsnummer nur einmal (Sammelrechnung beim ersten ausgewählten Auftrag).
  */
-export function mailsPlanen(dokumente: VersandDokument[], vorlagen: MailtextVorlage[], o: { rechnungEinzeln?: boolean } = {}): GeplanteMail[] {
+export function mailsPlanen(dokumente: VersandDokument[], vorlagen: MailtextVorlage[], o: { rechnungEinzeln?: boolean; gruppe?: (art: Art) => string } = {}): GeplanteMail[] {
   const mails: GeplanteMail[] = [];
   const index = new Map<string, GeplanteMail>();
   const rechnungen = new Set<string>();
@@ -112,7 +116,9 @@ export function mailsPlanen(dokumente: VersandDokument[], vorlagen: MailtextVorl
       rechnungen.add(d.faktura);
     }
     // Rechnungsversand aktiv: Rechnung als eigene E-Mail (Absender/BCC), sonst je Auftrag und Empfänger zusammenfassen
-    const k = d.art === 'R' && o.rechnungEinzeln ? `${d.auftragsnr}\u0000R\u0000${d.faktura}` : `${d.auftragsnr}\u0000${empfaengerSchluessel(d)}`;
+    // Absender je Dokumentart: nur Arten mit gleichem Absender/BCC zusammen
+    const g = o.gruppe ? `\u0000${o.gruppe(d.art)}` : '';
+    const k = d.art === 'R' && o.rechnungEinzeln ? `${d.auftragsnr}\u0000R\u0000${d.faktura}` : `${d.auftragsnr}\u0000${empfaengerSchluessel(d)}${g}`;
     const vorhanden = index.get(k);
     if (vorhanden) {
       if (!vorhanden.arten.includes(d.art)) vorhanden.arten.push(d.art);

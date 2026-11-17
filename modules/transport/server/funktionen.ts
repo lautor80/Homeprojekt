@@ -65,11 +65,11 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     hinweis: 'Abgeschaltet landet jede E-Mail des Sammelversands als Entwurf in Outlook – auch wenn in den Einstellungen „Senden“ gewählt ist.',
   },
   {
-    id: 'transport.versand.rechnung', app: 'Aufträge', text: 'Rechnungsversand: Absender-Postfach und BCC',
-    beschreibung: 'E-Mails mit einer Rechnung gehen aus dem festen Absender-Postfach (z. B. Buchhaltung) und immer mit der festen BCC-Adresse '
-      + '(z. B. DATEV-Upload) hinaus – im Dialog „E-Mail mit Anhängen…“ (Vorlage Rechnung), bei „Versenden…“ und in der E-Mail-Datei. '
-      + 'Adressen: Administration → Einstellungen → Euroflex → Mail-Workflows.',
-    hinweis: 'Abgeschaltet gehen Rechnungen wie alle anderen E-Mails aus dem Postfach des Benutzers und ohne BCC hinaus.',
+    id: 'transport.versand.rechnung', app: 'Aufträge', text: 'Versand: Absender-Postfach je Dokumentart und BCC',
+    beschreibung: 'E-Mails gehen je Dokumentart (Transportauftrag, Lieferschein, Rechnung) aus einem festen Absender-Postfach hinaus, Rechnungen '
+      + 'zusätzlich immer mit der festen BCC-Adresse (z. B. DATEV-Upload) – im Dialog „E-Mail mit Anhängen…“, bei „Versenden…“ und in der '
+      + 'E-Mail-Datei. Adressen: Administration → Einstellungen → Euroflex → Mail-Workflows, Abschnitt „Versand“.',
+    hinweis: 'Abgeschaltet gehen alle E-Mails aus dem Postfach des Benutzers und ohne BCC hinaus.',
   },
   {
     id: 'transport.eingang', app: 'Posteingang', text: 'Posteingang',

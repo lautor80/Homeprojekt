@@ -21,7 +21,7 @@ import { paperlessSenden } from './paperless.js';
 import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
 import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
 import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
-import { mailworkflowRoutes, P_MW, rechnungsVersand } from './mailworkflows.js';
+import { mailworkflowRoutes, P_MW, versandRegeln } from './mailworkflows.js';
 import { eingangRoutes } from './eingang/routes.js';
 import { sammelversandRoutes } from './sammelversand.js';
 import { kontaktRoutes } from './kontakte.js';
@@ -651,8 +651,11 @@ async function routes(app: FastifyInstance) {
   });
 
   // ---- E-Mail zum Auftrag über Outlook 365 (#235, n8n-Workflow „Euroflex Mailversand“) ----
-  // rechnung: Absender und BCC für E-Mails mit Rechnung (Funktion transport.versand.rechnung) – zur Anzeige im Dialog
-  app.get('/mail/info', { preHandler: requireAuth(P.versand) }, async () => ({ ...(await mailInfo()), rechnung: await rechnungsVersand() }));
+  // absender: Absender und BCC je Dokumentart (Funktion transport.versand.rechnung) – zur Anzeige im Dialog; rechnung = R (älter)
+  app.get('/mail/info', { preHandler: requireAuth(P.versand) }, async () => {
+    const regeln = await versandRegeln();
+    return { ...(await mailInfo()), absender: regeln, rechnung: regeln.R };
+  });
 
   /**
    * Ausgewählte Dokumente des Auftrags senden: eine E-Mail an den Empfänger und parallel eine eigene E-Mail an die feste zweite
@@ -670,11 +673,14 @@ async function routes(app: FastifyInstance) {
       dateien: z.array(z.object({ name: z.string().trim().min(1).max(200), inhalt: z.string().min(1, 'Die Datei ist leer.') })).max(30).default([]),
       dokumente: z.array(z.coerce.number().int().positive()).max(30).default([]),
       nur: z.array(z.enum(['kunde', 'kopie'])).min(1).optional(),
-      // Vorlage „Rechnung“: festes Absender-Postfach und BCC aus den Einstellungen (Funktion transport.versand.rechnung)
+      // Vorlage (Dokumentart): festes Absender-Postfach und BCC dieser Art aus den Einstellungen (Funktion transport.versand.rechnung);
+      // rechnung = true ist die ältere Form für art 'R'
+      art: z.enum(['T', 'L', 'R']).optional(),
       rechnung: z.boolean().default(false),
     }).parse(req.body);
     await auftragLesen(nr);
-    const rv = b.rechnung ? await rechnungsVersand() : { absender: null, bcc: [] as string[] };
+    const art = b.art ?? (b.rechnung ? 'R' : undefined);
+    const rv = art ? (await versandRegeln())[art] : { absender: null, bcc: [] as string[] };
     // Einrichtung, Postfach und Adressen zuerst – erst danach Dateien entpacken und Dokumente aus Paperless holen
     await versandBereit(rv.absender);
     adressenPruefen(b.an, 'Empfänger');

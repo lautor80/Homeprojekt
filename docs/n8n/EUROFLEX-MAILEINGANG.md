@@ -44,8 +44,8 @@ Webhook Portal ──┘   (POSTFACH,        GET /users/{p}/mailFolders/{ordner}
 ## 1 Outlook-365-Berechtigung (Microsoft Entra)
 
 Der Workflow nutzt **dieselbe App-Registrierung** wie der Mailversand (Anmeldung als App per OAuth 2.0 „Client Credentials“,
-siehe [EUROFLEX-MAILVERSAND.md, Abschnitt 1](EUROFLEX-MAILVERSAND.md#1-outlook-365-berechtigung-microsoft-entra)). Für das
-Eingangspostfach braucht die App **Mail.ReadWrite** als Anwendungsberechtigung: lesen, Anhänge laden, Ordner anlegen, verschieben,
+siehe [EUROFLEX-MAILVERSAND.md, Abschnitt 1](EUROFLEX-MAILVERSAND.md#1-outlook-365-berechtigung-microsoft-entra)). Für jedes
+Eingangspostfach (z. B. info@ und buchhaltung@) braucht die App **Mail.ReadWrite** als Anwendungsberechtigung: lesen, Anhänge laden, Ordner anlegen, verschieben,
 als gelesen markieren. **Mail.Send ist für den Eingang nicht nötig.**
 
 - **Weg A (auf Postfächer begrenzt, empfohlen):** Das Eingangspostfach als **direktes Mitglied** in die Gruppe aufnehmen, die beim
@@ -88,8 +88,10 @@ Geheimnis (z. B. `openssl rand -hex 32`) – **nicht** der API-Schlüssel des Po
 ## 3 Workflow importieren und eintragen
 
 1. *Workflows → Import from File* → `euroflex-maileingang.json`.
-2. Knoten **Konfiguration**: `POSTFACH` = Adresse des Eingangspostfachs. Sie ist Teil des Schlüssels im Portal (Postfach +
-   Message-ID) – **später nicht mehr ändern**. Bei Bedarf `QUELLORDNER` (Standard `Inbox`; bekannter Ordnername oder Ordner-ID aus
+2. Knoten **Konfiguration**: `POSTFAECHER` = Adressen der Eingangspostfächer, z. B. `['info@euro-flex.de', 'buchhaltung@euro-flex.de']`
+   (eine ältere Konfiguration mit `POSTFACH` gilt weiter). Jede Adresse ist Teil des Schlüssels im Portal (Postfach +
+   Message-ID) – **später nicht mehr ändern**. Jedes Postfach wird bei jedem Lauf gelesen; die App braucht für jedes Mail.ReadWrite
+   (Abschnitt 1). Bezeichnungen für den Posteingang: im Portal unter *Einstellungen → Mail-Workflows → Eingang → Eingangspostfächer*. Bei Bedarf `QUELLORDNER` (Standard `Inbox`; bekannter Ordnername oder Ordner-ID aus
    Graph), `ZIELWURZEL` (unter diesem Ordner liegen die Zielordner, Standard `Inbox`) und `MAX` (Mails je Lauf, Standard 50).
 3. Knoten **Mails lesen**, **Anhänge laden**, **Ordner suchen**, **Ordner anlegen**, **Verschieben**, **Als gelesen markieren**:
    unter *OAuth2 API* jeweils „Euroflex Microsoft Graph“ wählen.
@@ -164,7 +166,7 @@ So füllt *Für Portal packen* die Felder aus der Graph-Mail:
 
 | Feld | Quelle |
 |---|---|
-| `postfach` | `POSTFACH` aus *Konfiguration* |
+| `postfach` | Postfach aus `POSTFAECHER`, aus dem die Mail kam (klein geschrieben) |
 | `graph_id` | `id` der Mail (ändert sich beim Verschieben – nur zur Nachverfolgung) |
 | `message_id` | `internetMessageId`; fehlt sie, `<graph_id@graph.microsoft.com>` |
 | `in_reply_to`, `references` | Kopfzeilen `In-Reply-To` / `References` aus `internetMessageHeaders`, sonst leer |
@@ -182,7 +184,7 @@ Cloud-Verweise (`referenceAttachment`). Solche Mails kommen ohne diese Anlage an
 | Knoten | Aufgabe |
 |---|---|
 | Manuell starten · Alle 5 Minuten · Webhook Portal | drei Auslöser, alle mit demselben Ablauf; der Webhook antwortet sofort |
-| Konfiguration | `POSTFACH`, `QUELLORDNER`, `ZIELWURZEL`, `MAX`; ohne Postfach bricht der Lauf mit Hinweis ab |
+| Konfiguration | `POSTFAECHER` (oder `POSTFACH`), `QUELLORDNER`, `ZIELWURZEL`, `MAX`; je Postfach ein Element; ohne Postfach bricht der Lauf mit Hinweis ab |
 | Mails lesen · Mails aufteilen | ungelesene Mails des Quellordners; lehnt Graph ab, endet der Lauf mit Klartext (Executions) |
 | Anhänge laden | je Mail `GET …/messages/{id}/attachments` |
 | Für Portal packen · Lieferbar? | Lieferung bauen; Mails, deren Anhänge nicht ladbar oder zu viele/zu groß sind, werden ausgefiltert und bleiben ungelesen |
@@ -204,7 +206,7 @@ Cloud-Verweise (`referenceAttachment`). Solche Mails kommen ohne diese Anlage an
 
 | Meldung (n8n, Executions) | Ursache |
 |---|---|
-| „Knoten „Konfiguration“: unter POSTFACH …“ | Adresse des Eingangspostfachs fehlt |
+| „Knoten „Konfiguration“: unter POSTFAECHER …“ | Adressen der Eingangspostfächer fehlen |
 | „Mails lesen … fehlgeschlagen (HTTP 401)“ | Zugangsdatei „Euroflex Microsoft Graph“ falsch oder Clientschlüssel abgelaufen |
 | „… (HTTP 403)“ | App hat kein Mail.ReadWrite für dieses Postfach: Postfach nicht in der Gruppe (Weg A) oder Zuweisung noch nicht wirksam (bis 2 Stunden) |
 | „… (HTTP 404)“ | Postfach oder `QUELLORDNER` gibt es nicht |

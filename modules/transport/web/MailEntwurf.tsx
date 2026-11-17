@@ -26,7 +26,8 @@ export interface MailDok { doc_id: number; titel: string | null; datei: string |
 /** Versand über Outlook 365 (Anbindung „Euroflex E-Mail-Versand“) */
 interface VersandInfo {
   eingerichtet: boolean; postfach: string | null; kopieAn: string; maxMb: number;
-  /** Rechnungsversand (Funktion transport.versand.rechnung): Absender-Postfach und BCC für die Vorlage „Rechnung“ */
+  /** Absender-Postfach und BCC je Dokumentart (Funktion transport.versand.rechnung); rechnung = R (ältere Server) */
+  absender?: Partial<Record<'T' | 'L' | 'R', { absender: string | null; bcc: string[] }>>;
   rechnung?: { absender: string | null; bcc: string[] };
 }
 type Rolle = 'kunde' | 'kopie';
@@ -213,7 +214,7 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
         dateien.push({ name: x.name, inhalt: await datenUrl(f) });
       }
       const r = await api.post<VersandErgebnis>(`${T}/auftraege/${nr}/mail`, {
-        modus, an: an.trim(), cc: cc.trim(), betreff, text, dateien, dokumente: dokumenteIds, ...(offen ? { nur: offen } : {}), rechnung: art === 'R',
+        modus, an: an.trim(), cc: cc.trim(), betreff, text, dateien, dokumente: dokumenteIds, ...(offen ? { nur: offen } : {}), art: art === 'FREI' ? undefined : art, rechnung: art === 'R',
       });
       if (r.status === 'gesendet' || r.status === 'entwurf') { toast(r.text, 8000); onClose(); return; }
       const fehlgeschlagen = r.mails.filter((m) => m.status === 'fehler').map((m) => m.rolle);
@@ -242,8 +243,8 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   };
 
   const outlook = !!info?.eingerichtet;
-  // Vorlage „Rechnung“: Absender-Postfach und BCC des Rechnungsversands (leer = wie jede andere E-Mail)
-  const rv = art === 'R' ? info?.rechnung : undefined;
+  // Vorlage T/L/R: Absender-Postfach und BCC dieser Dokumentart (leer = Postfach des Benutzers, kein BCC)
+  const rv = art === 'T' || art === 'L' || art === 'R' ? (info?.absender?.[art] ?? (art === 'R' ? info?.rechnung : undefined)) : undefined;
   const postfach = rv?.absender || info?.postfach || null;
   const rechnungKopf = { ...(rv?.absender ? { von: rv.absender } : {}), ...(rv?.bcc.length ? { bcc: rv.bcc.join(', ') } : {}) };
   if (anleitung) {
@@ -316,8 +317,8 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
         )}
         {rv && (rv.absender || rv.bcc.length > 0) && (
           <MessageStrip design="Information" hideCloseButton>
-            Rechnungsversand:{rv.absender ? ` Absender ${rv.absender}.` : ''}{rv.bcc.length ? ` BCC an ${rv.bcc.join(', ')}.` : ''}
-            {' '}Bitte nur die Rechnung anhängen – die BCC-Adresse übernimmt jeden Anhang.
+            Fester Versand:{rv.absender ? ` Absender ${rv.absender}.` : ''}{rv.bcc.length ? ` BCC an ${rv.bcc.join(', ')}.` : ''}
+            {rv.bcc.length > 0 && ' Bitte nur das Dokument selbst anhängen – die BCC-Adresse übernimmt jeden Anhang.'}
           </MessageStrip>
         )}
         {outlook && (postfach ? (

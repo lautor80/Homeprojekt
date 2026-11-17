@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  BusyIndicator, Button, CheckBox, Icon, Label, Link, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem, Text,
+  BusyIndicator, Button, CheckBox, Icon, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -14,7 +14,7 @@ import { dat } from '../util';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
 import {
   EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
-  type EingangDokument, type Kandidat, type Vorgang, type VorgangStatus, type VorgangZeile,
+  type EingangDokument, type EingangsPostfach, type Kandidat, type Vorgang, type VorgangStatus, type VorgangZeile,
 } from './typen';
 
 /**
@@ -32,11 +32,15 @@ const FILTER: { key: VorgangStatus; text: string }[] = [
 /** Dokumente, die noch abgelegt werden können (vorausgewählt) */
 const OFFEN_DOK = (d: EingangDokument) => !['ignoriert', 'abgelegt', 'uebernommen', 'dublette', 'wartet'].includes(d.status);
 
-interface ListeAntwort { zeilen: VorgangZeile[]; letzterAbruf: string | null; schwelle: number | null }
-async function listeLaden(status: VorgangStatus): Promise<ListeAntwort> {
-  const r = await api.get<unknown>(`${EING}/vorgaenge?status=${status}`);
-  const o = (r && typeof r === 'object' && !Array.isArray(r) ? r : {}) as { letzter_abruf?: string | null; schwelle?: number | null };
-  return { zeilen: liste<VorgangZeile>(r, 'vorgaenge', 'zeilen', 'liste'), letzterAbruf: o.letzter_abruf ?? null, schwelle: o.schwelle ?? null };
+interface ListeAntwort { zeilen: VorgangZeile[]; letzterAbruf: string | null; schwelle: number | null; postfaecher: EingangsPostfach[] }
+/** postfach leer = alle Eingangspostfächer */
+async function listeLaden(status: VorgangStatus, postfach = ''): Promise<ListeAntwort> {
+  const r = await api.get<unknown>(`${EING}/vorgaenge?status=${status}${postfach ? `&postfach=${encodeURIComponent(postfach)}` : ''}`);
+  const o = (r && typeof r === 'object' && !Array.isArray(r) ? r : {}) as { letzter_abruf?: string | null; schwelle?: number | null; postfaecher?: EingangsPostfach[] };
+  return {
+    zeilen: liste<VorgangZeile>(r, 'vorgaenge', 'zeilen', 'liste'), letzterAbruf: o.letzter_abruf ?? null, schwelle: o.schwelle ?? null,
+    postfaecher: Array.isArray(o.postfaecher) ? o.postfaecher : [],
+  };
 }
 
 export function Posteingang() {
@@ -44,6 +48,9 @@ export function Posteingang() {
   const edit = can('transport.eingang:edit');
   const klein = useKlein(900);
   const [status, setStatus] = useState<VorgangStatus>('pruefen');
+  // Eingangspostfach (info@, buchhaltung@ …), leer = alle; Auswahl nur, wenn es mehr als eines gibt
+  const [postfach, setPostfach] = useState('');
+  const [postfaecher, setPostfaecher] = useState<EingangsPostfach[]>([]);
   const [zeilen, setZeilen] = useState<VorgangZeile[] | null>(null);
   const [anzahl, setAnzahl] = useState<{ pruefen: number | null; fehler: number | null }>({ pruefen: null, fehler: null });
   const [letzterAbruf, setLetzterAbruf] = useState<string | null>(null);
@@ -59,8 +66,9 @@ export function Posteingang() {
   const laden = useCallback(async () => {
     try {
       // Zähler für „Zu prüfen“ und „Fehler“ immer; die gewählte Liste ist oft eine der beiden
-      const [p, f] = await Promise.all([listeLaden('pruefen'), listeLaden('fehler')]);
-      const akt = status === 'pruefen' ? p : status === 'fehler' ? f : await listeLaden(status);
+      const [p, f] = await Promise.all([listeLaden('pruefen', postfach), listeLaden('fehler', postfach)]);
+      const akt = status === 'pruefen' ? p : status === 'fehler' ? f : await listeLaden(status, postfach);
+      setPostfaecher(p.postfaecher);
       setAnzahl({ pruefen: p.zeilen.length, fehler: f.zeilen.length });
       setZeilen(akt.zeilen);
       const abruf = akt.letzterAbruf ?? p.letzterAbruf;
@@ -69,7 +77,7 @@ export function Posteingang() {
       if (s) setSchwelle(s);
       setGewaehlt((g) => (g && akt.zeilen.some((z) => z.id === g) ? g : klein ? null : akt.zeilen[0]?.id ?? null));
     } catch (e) { setError((e as Error).message); setZeilen((z) => z ?? []); }
-  }, [status, klein]);
+  }, [status, klein, postfach]);
   useEffect(() => { setZeilen(null); laden(); }, [laden]);
 
   async function abrufen() {
@@ -102,12 +110,20 @@ export function Posteingang() {
         <SegmentedButton onSelectionChange={(e) => { setGewaehlt(null); setStatus((e.detail.selectedItems[0] as HTMLElement).dataset.key as VorgangStatus); }}>
           {FILTER.map((f) => <SegmentedButtonItem key={f.key} data-key={f.key} selected={status === f.key}>{f.text}{zaehler(f.key)}</SegmentedButtonItem>)}
         </SegmentedButton>
+        {postfaecher.length > 1 && (
+          <Select accessibleName="Eingangspostfach" style={{ width: '14rem' }}
+                  onChange={(e) => { setGewaehlt(null); setPostfach((e.detail.selectedOption as HTMLElement).dataset.k ?? ''); }}>
+            <Option data-k="" selected={!postfach}>Alle Postfächer</Option>
+            {postfaecher.map((p) => <Option key={p.adresse} data-k={p.adresse} selected={postfach === p.adresse} additionalText={p.bezeichnung !== p.adresse ? p.adresse : undefined}>{p.bezeichnung}</Option>)}
+          </Select>
+        )}
         <Text className="portal-muted portal-small" style={{ marginLeft: 'auto' }}>
           Letzter Abruf: {letzterAbruf ? zeitText(letzterAbruf) : '–'}
         </Text>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: klein ? 'minmax(0, 1fr)' : 'minmax(18rem, 26rem) minmax(0, 1fr)', gap: '1rem', alignItems: 'start' }}>
-        <Liste zeilen={zeilen} status={status} schwelle={schwelle} gewaehlt={gewaehlt} onWaehlen={waehlen} />
+        <Liste zeilen={zeilen} status={status} schwelle={schwelle} gewaehlt={gewaehlt} onWaehlen={waehlen}
+               postfaecher={postfaecher.length > 1 && !postfach ? postfaecher : []} />
         <div ref={detailRef} style={{ minWidth: 0 }}>
           {gewaehlt ? (
             <Detail key={`${gewaehlt}-${stand}`} id={gewaehlt} edit={edit} schwelle={schwelle} auftraege={auftraege}
@@ -124,8 +140,10 @@ export function Posteingang() {
 
 // ---------------------------------------------------------------------------- Liste
 
-function Liste({ zeilen, status, schwelle, gewaehlt, onWaehlen }: {
+function Liste({ zeilen, status, schwelle, gewaehlt, onWaehlen, postfaecher }: {
   zeilen: VorgangZeile[] | null; status: VorgangStatus; schwelle: number; gewaehlt: number | null; onWaehlen: (id: number) => void;
+  /** mehrere Eingangspostfächer und kein Filter: Bezeichnung des Postfachs je E-Mail anzeigen */
+  postfaecher: EingangsPostfach[];
 }) {
   if (!zeilen) return <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />;
   if (!zeilen.length) {
@@ -155,6 +173,11 @@ function Liste({ zeilen, status, schwelle, gewaehlt, onWaehlen }: {
             <Text style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.betreff || '(ohne Betreff)'}</Text>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <ObjectStatus state={t.state} inverted={t.state !== 'None'}>{t.text}</ObjectStatus>
+              {postfaecher.length > 0 && z.postfach && (
+                <Text className="portal-muted portal-small" title={z.postfach}>
+                  <Icon name="inbox" style={{ width: '0.8rem', height: '0.8rem', verticalAlign: 'middle' }} /> {postfaecher.find((p) => p.adresse === z.postfach)?.bezeichnung ?? z.postfach}
+                </Text>
+              )}
               {z.anzahl_dokumente > 0 && (
                 <Text className="portal-muted portal-small"><Icon name="attachment" style={{ width: '0.8rem', height: '0.8rem', verticalAlign: 'middle' }} /> {z.anzahl_dokumente}</Text>
               )}

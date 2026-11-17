@@ -17,7 +17,7 @@ siehe [n8n/EUROFLEX-MAILEINGANG.md](n8n/EUROFLEX-MAILEINGANG.md).
 |---|---|---|
 | `transport.versand.sammel` – Versenden über Outlook 365 | `transport.versand:execute` | Knopf „Versenden…“ fehlt, Routen `/versand/*` antworten 403 |
 | `transport.versand.automatisch` – Automatisch senden | `transport.versandsenden:execute` | jede Mail wird Entwurf, auch wenn die Einstellung „Senden“ sagt |
-| `transport.versand.rechnung` – Rechnungsversand: Absender-Postfach und BCC | – (Einstellungen: `transport.stammdaten:edit`, Versand: `transport.versand:execute`) | Rechnungen gehen wie alle E-Mails aus dem Postfach des Benutzers und ohne BCC |
+| `transport.versand.rechnung` – Versand: Absender-Postfach je Dokumentart und BCC | – (Einstellungen: `transport.stammdaten:edit`, Versand: `transport.versand:execute`) | alle E-Mails gehen aus dem Postfach des Benutzers und ohne BCC |
 | `transport.eingang` – Posteingang | `transport.eingang:display`, `transport.eingang:edit` | App Posteingang fehlt |
 | `transport.eingang.n8n` – E-Mail-Eingang über n8n | `transport.eingang:execute` (API-Schlüssel) | Lieferungen von n8n werden abgewiesen, Mails bleiben im Postfach |
 | `transport.eingang.automatik` – Automatisch ablegen | – | jede Mail landet in der Prüfliste |
@@ -39,10 +39,18 @@ Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Ro
 | Eingang | `mailAlsPdf` | ja | die E-Mail selbst zusätzlich als PDF ablegen |
 | Eingang | `ocr` | ja | Texterkennung lokal (pdftotext, Tesseract deu+eng) |
 | Eingang | `speicherWarnungMb` | 1024 | Warnung, wenn noch nicht übernommene Dateien mehr belegen |
+| Eingang | `postfaecher` | leer | Eingangspostfächer `[{ adresse, bezeichnung }]`, z. B. `info@…` „Info“ und `buchhaltung@…` „Buchhaltung“ – siehe „Mehrere Eingangspostfächer“ |
 | Versand | `T`/`L`/`R`.`vorauswahl` | T, L ja; R nein | im Dialog vorausgewählt |
 | Versand | `T`/`L`/`R`.`modus` | `entwurf` | `senden` wirkt nur mit Funktion „Automatisch senden“ und Recht |
+| Versand | `T`/`L`/`R`.`absender` | leer | festes Absender-Postfach dieser Dokumentart (leer = Postfach des Benutzers) |
+| Versand | `T`/`L`/`R`.`bcc` | leer | feste BCC-Adresse(n); die Oberfläche bietet sie nur für die **Rechnung** an (z. B. DATEV-Upload) |
 
-API: `GET /api/m/transport/workflow-einstellungen` → `{ eingang, versand }`; `PUT` mit demselben Aufbau.
+In der Oberfläche steht alles zum Versand in **einem** Abschnitt *Versand*: je Dokumentart Vorauswahl, Modus, Absender-Postfach
+und (nur Rechnung) BCC. Der frühere Abschnitt *Rechnungsversand* ist darin aufgegangen.
+
+API: `GET /api/m/transport/workflow-einstellungen` → `{ eingang, versand, rechnung }`; `PUT { eingang, versand }`. `rechnung`
+(= Absender/BCC von R, Spalte `rechnung`) wird beim Sichern mitgeschrieben und nur noch für ältere Stände gelesen: Fehlt
+`versand.R.absender`, gelten die Werte aus `rechnung`.
 
 ## Eingang
 
@@ -140,11 +148,20 @@ wegräumt.
 
 Ohne eingerichtete Anbindung (oder als Rückfallweg) lädt „Als EML herunterladen“ je Mail eine EML-Datei herunter.
 
-### Rechnungsversand (Absender-Postfach und BCC)
+### Absender je Dokumentart und BCC (Rechnung)
 
-Mit der Funktion `transport.versand.rechnung` und eingetragenen Adressen (*Einstellungen → Euroflex → Mail-Workflows →
-Rechnungsversand*, Tabelle `transport.workflow_einstellungen`, Spalte `rechnung` = `{ absender, bcc }`, Migration 016) gilt für jede
-E-Mail mit einer Rechnung:
+Mit der Funktion `transport.versand.rechnung` und eingetragenen Adressen (*Einstellungen → Euroflex → Mail-Workflows → Versand*,
+`versand.T/L/R.absender`, `versand.R.bcc`) gilt:
+
+- Jede E-Mail geht aus dem **Absender-Postfach ihrer Dokumentart** hinaus (z. B. Transportauftrag aus `dispo@…`, Rechnung aus
+  `buchhaltung@…`); leer = Postfach des Benutzers. Arten mit verschiedenem Absender oder BCC gehen bei „Versenden…“ **nie in einer
+  E-Mail zusammen** (`mailsPlanen`, Option `gruppe`). Haben alle gewählten Arten einen festen Absender, braucht der Benutzer kein
+  eigenes Postfach.
+- Einzeldialog „E-Mail mit Anhängen…“: Absender/BCC der gewählten Vorlage (T, L, R); *Freier Text* aus dem Postfach des Benutzers.
+- Jedes Absender-Postfach muss für die n8n-App freigegeben sein ([n8n/EUROFLEX-MAILVERSAND.md](n8n/EUROFLEX-MAILVERSAND.md), 1.2).
+- `GET /mail/info` und `GET /versand/einstellungen` liefern `absender: { T, L, R: { absender, bcc[] } }` (und `rechnung` = R).
+
+Für jede E-Mail mit einer Rechnung gilt zusätzlich:
 
 - **Absender** ist das feste Postfach (z. B. `buchhaltung@…`) statt des Postfachs des Benutzers – der Entwurf liegt dann in dessen
   Ordner *Entwürfe*. Das Postfach muss für die n8n-App freigegeben sein ([n8n/EUROFLEX-MAILVERSAND.md](n8n/EUROFLEX-MAILVERSAND.md), 1.2).
@@ -203,6 +220,21 @@ Stand 17.11.2026. Jeder Knopf, der versendet, einen E-Mail-Entwurf erzeugt oder 
 - Das Ablegen im Ablageordner beim Öffnen der PDF-Vorschau läuft wie bisher, auch wenn die Vorschau sofort wieder geschlossen wird.
 - Ohne den Hinweisdialog zur .eml-Datei: der Hinweis („Dateien dieses Typs immer öffnen“) steht in der Meldung.
 - Funktionsschalter `transport.dialoge.schliessen` mit Recht `transport.dialoge:execute` (Migration 014 gibt es jeder Rolle, die Aufträge sieht). Aus bzw. ohne Recht bleiben die Dialoge offen und zeigen Ergebnis und Fehler wie bisher.
+
+## Mehrere Eingangspostfächer
+
+Stand 17.11.2026. Der Eingang kann mehrere Outlook-Postfächer abrufen, z. B. `info@euro-flex.de` und `buchhaltung@euro-flex.de`:
+
+- **n8n** (Knoten *Konfiguration*): `POSTFAECHER = ['info@…', 'buchhaltung@…']` – jedes Postfach wird bei jedem Lauf gelesen;
+  verschoben und als gelesen markiert wird im Postfach, aus dem die Mail kam (Zielordner je Postfach). Ein gestörtes Postfach hält
+  die anderen nicht auf; der Fehler steht im *Ergebnis* des Laufs. Ältere Konfigurationen mit `POSTFACH` gelten weiter.
+- **Portal**: Jede Lieferung trägt `postfach`; der Vorgang behält es (Schlüssel Postfach + Message-ID – dieselbe Mail in zwei
+  Postfächern sind zwei Vorgänge). Unter *Einstellungen → Mail-Workflows → Eingang → Eingangspostfächer* bekommt jedes Postfach eine
+  Bezeichnung („Info“, „Buchhaltung“).
+- **App Posteingang**: Mit mehr als einem Postfach erscheint die Auswahl *Alle Postfächer / Info / Buchhaltung*, und jede E-Mail zeigt,
+  in welchem Postfach sie ankam. `GET /eingang/vorgaenge?postfach=…` filtert; die Antwort enthält `postfaecher: [{ adresse, bezeichnung }]`
+  (eingetragene, dann bisher gesehene ohne Eintrag).
+- Zuordnung und Ablage arbeiten für alle Postfächer gleich.
 
 ## Dateien
 
