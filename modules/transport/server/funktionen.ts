@@ -13,6 +13,23 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     permissions: ['transport.rechnungen:delete'],
   },
   {
+    id: 'transport.liste.ladezeiten', app: 'Aufträge', text: 'Lade- und Entladezeiten in der Auftragsliste',
+    beschreibung: 'Zweite Zeile der Spalte Route: Ladetermin des ersten Stops und Entladetermin der letzten Entladestelle (Datum und Uhrzeit bzw. Zeitfenster).',
+    permissions: ['transport.ladezeiten:display'],
+    hinweis: 'Abgeschaltet zeigt die Spalte Route nur die Orte.',
+  },
+  {
+    id: 'transport.liste.abrechnung', app: 'Aufträge', text: 'Abrechnungsstatus in der Auftragsliste',
+    beschreibung: 'Spalte „Abrechnung“ mit den Symbolen angelegt · abgerechnet · bezahlt (überfällig erst 3 Tage nach Fälligkeit) und Filter „Zahlung“.',
+    permissions: ['transport.abrechnung:display'],
+    hinweis: 'Schaltet auch „Zahlungseingang erfassen“ ab.',
+  },
+  {
+    id: 'transport.zahlungen', app: 'Aufträge', text: 'Zahlungseingang erfassen',
+    beschreibung: 'Menü „Zahlung“ in der Auftragsliste: Rechnungen als bezahlt markieren oder die Zahlung zurücknehmen.',
+    permissions: ['transport.zahlungen:edit'],
+  },
+  {
     id: 'transport.versand', app: 'Aufträge', text: 'Versand (E-Mail, Paperless)',
     beschreibung: 'Aufträge und Rechnungen per E-Mail versenden und in Paperless ablegen.',
     permissions: ['transport.versand:execute'],

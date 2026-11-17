@@ -583,3 +583,82 @@ test('Mehrere Fahrten in einem Auftrag: speichern, Transportauftrag und E-Mail j
   assert.equal((await call('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === fremd).status, 'Offen');
   assert.equal((await call('POST', `${T}/auftraege/oeffnen`, { auftraege: [fremd] })).status, 400);
 });
+
+test('Auftragsliste: Lade-/Entladezeiten in der Route und Abrechnungsstatus mit Zahlungseingang', async () => {
+  const r0 = await call('POST', `${T}/adressen`, { kundenname: 'Zahltest Kunde KG', land: 'DE', plz: '66625', ort: 'Nohfelden', email: 'kunde@zahltest.example', force: true });
+  assert.equal(r0.status, 200, JSON.stringify(r0.body));
+  const kunde = r0.body.adrnr as number;
+  const neu = (await call('GET', `${T}/neu/F`)).body;
+  neu.stops[0] = { ...neu.stops[0], firma: 'Zahltest Werk', plzort: '66625 Nohfelden', land: 'DE', datum: '2026-11-18', zeit: '07:00-08:30',
+    firma_e: 'Zahltest Lager', plzort_e: '68159 Mannheim', land_e: 'DE', datum_e: '2026-11-18', zeit_e: '12:30' };
+  const anlegen = async () => {
+    const r = await call('POST', `${T}/auftraege`, { ...neu, kunde, unternehmer: kunde, kennzeichen: 'ZT-1', frachtpreis_ek: 100, frachtpreis_vk: 80 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.auftragsnr as string;
+  };
+  const [a1, a2, a3] = [await anlegen(), await anlegen(), await anlegen()];
+  const zeile = async (nr: string) => (await call('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === nr);
+
+  // Admin: Termine und Status „angelegt“
+  let z = await zeile(a1);
+  assert.deepEqual([z.laden, z.entladen], [{ datum: '2026-11-18', zeit: '07:00-08:30' }, { datum: '2026-11-18', zeit: '12:30' }]);
+  assert.equal(z.abrechnung.status, 'angelegt');
+
+  // Rechnung: abgerechnet, fällig nach Zahlungsziel (14 Tage aus den Firmendaten)
+  const re = await call('POST', `${T}/rechnungen`, { auftraege: [a1, a2], sammel: true });
+  assert.equal(re.status, 200, JSON.stringify(re.body));
+  const faktura = re.body.fakturen[0] as string;
+  z = await zeile(a1);
+  assert.equal(z.abrechnung.status, 'abgerechnet');
+  // überfällig erst mehr als 3 Tage nach Fälligkeit
+  const ziel = Number((await call('GET', `${T}/firma`)).body.zahlungsziel_tage);
+  await sql`update transport.auftraege set fakturadatum = current_date - ${ziel + 3}::int where faktura = ${faktura}`;
+  assert.equal((await zeile(a1)).abrechnung.status, 'abgerechnet', 'genau 3 Tage nach Fälligkeit');
+  await sql`update transport.auftraege set fakturadatum = current_date - ${ziel + 4}::int where faktura = ${faktura}`;
+  z = await zeile(a1);
+  assert.deepEqual([z.abrechnung.status, z.abrechnung.tageUeberfaellig], ['ueberfaellig', 4]);
+
+  // Zahlungseingang: gilt für die ganze Sammelrechnung; nicht in der Zukunft, nicht vor dem Rechnungsdatum
+  const morgen = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  assert.equal((await call('POST', `${T}/zahlungen`, { auftraege: [a1], bezahltAm: morgen })).status, 400);
+  assert.equal((await call('POST', `${T}/zahlungen`, { auftraege: [a1], bezahltAm: '2020-01-01' })).status, 400);
+  assert.equal((await call('POST', `${T}/zahlungen`, { auftraege: [a3], bezahltAm: null })).status, 400, 'kein fakturierter Auftrag');
+  const gestern = (await sql`select (current_date - 1)::text as d`)[0].d as string;
+  let zp = await call('POST', `${T}/zahlungen`, { auftraege: [a1], bezahltAm: gestern });
+  assert.equal(zp.status, 200, JSON.stringify(zp.body));
+  assert.deepEqual(zp.body, { rechnungen: [faktura], auftraege: [a1, a2].sort() });
+  z = await zeile(a2);
+  assert.deepEqual([z.abrechnung.status, z.abrechnung.bezahltAm], ['bezahlt', gestern]);
+  zp = await call('POST', `${T}/zahlungen`, { auftraege: [a2], bezahltAm: null });
+  assert.equal(zp.status, 200);
+  assert.equal((await zeile(a1)).abrechnung.status, 'ueberfaellig');
+  // Rechnung entfernen löscht auch den Zahlungseingang
+  await call('POST', `${T}/zahlungen`, { auftraege: [a1], bezahltAm: gestern });
+  assert.equal((await call('POST', `${T}/rechnungen/entfernen`, { auftraege: [a1], grund: 'Zahltest' })).status, 200);
+  assert.equal((await sql`select count(*)::int as n from transport.auftraege where bezahlt_am is not null and auftragsnr = any(${[a1, a2]})`)[0].n, 0);
+
+  // ohne Rechnung abgeschlossen (früher 0 Euro) gilt als bezahlt
+  assert.equal((await call('POST', `${T}/auftraege/abschliessen`, { auftraege: [a3], grund: 'Zahltest ohne Rechnung' })).status, 200);
+  z = await zeile(a3);
+  assert.deepEqual([z.abrechnung.status, z.abrechnung.ohneRechnung], ['bezahlt', true]);
+
+  // Rechte: ohne transport.ladezeiten:display / transport.abrechnung:display keine Felder, ohne transport.zahlungen:edit keine Zahlung
+  assert.equal((await call('POST', '/api/admin/roles', { id: 'ZAHLTEST', name: 'ZAHLTEST', permissions: ['transport.auftraege:display'] })).status, 200);
+  assert.equal((await call('POST', '/api/admin/users', { username: 'zahltest', displayName: 'Zahltest', password: 'start-passwort', roles: ['ZAHLTEST'] })).status, 200);
+  let c2 = '';
+  const als = async (method: string, path: string, payload?: unknown) => {
+    const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie: c2, 'x-portal-request': '1' } });
+    const set = res.headers['set-cookie'];
+    if (set) c2 = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
+    return { status: res.statusCode, body: String(res.headers['content-type'] ?? '').includes('json') ? JSON.parse(res.body) : null };
+  };
+  assert.equal((await als('POST', '/api/auth/login', { username: 'zahltest', password: 'start-passwort' })).status, 200);
+  assert.equal((await als('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort-1' })).status, 200);
+  const ohne = (await als('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === a3);
+  assert.ok(ohne && !('laden' in ohne) && !('abrechnung' in ohne));
+  assert.equal((await als('POST', `${T}/zahlungen`, { auftraege: [a1], bezahltAm: null })).status, 403);
+  // Rechtekatalog: neue Rechte in der App „Aufträge“
+  const { permissionCatalog } = await import('../src/modules.js');
+  const ids = permissionCatalog().find((g) => g.module === 'transport')!.areas.flatMap((a) => a.apps).find((a) => a.name === 'Aufträge')!.permissions.map((p) => p.id);
+  for (const p of ['transport.ladezeiten:display', 'transport.abrechnung:display', 'transport.zahlungen:edit']) assert.ok(ids.includes(p), p);
+});

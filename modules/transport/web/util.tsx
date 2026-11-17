@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button, Menu, MenuItem } from '@ui5/webcomponents-react';
+import type { Abrechnung, Termin } from './termin';
 
 export const T = '/api/m/transport';
 
@@ -44,6 +45,10 @@ export interface ListRow {
   fakturadatum: string | null; status: 'Offen' | 'Fakturiert' | 'Ohne Rechnung'; dokFehlen: boolean;
   /** Anzahl Fahrten (1 = nur der Auftrag selbst), alle Unternehmer für die Suche, Abschluss ohne Rechnung */
   fahrten: number; unternehmerNamen: string; abgeschlossenAm: string | null; abgeschlossenGrund: string | null;
+  /** nur mit Recht transport.ladezeiten:display: Ladetermin erster Stop, Entladetermin letzte Entladestelle */
+  laden?: Termin | null; entladen?: Termin | null;
+  /** nur mit Recht transport.abrechnung:display: angelegt · abgerechnet · bezahlt (überfällig 3 Tage nach Fälligkeit) */
+  abrechnung?: Abrechnung;
 }
 export interface KeyText { key: string; text: string; aktiv?: boolean }
 export interface AdrDD { key: string; text: string; zusatz: string }
