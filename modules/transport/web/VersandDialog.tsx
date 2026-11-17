@@ -5,6 +5,7 @@ import {
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
 import { DialogFuss } from '@core/components/DialogFuss';
 import { T } from './util';
 import { dateienImOrdner, dateiLesen } from './ordner';
@@ -68,6 +69,9 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
   const [weitere, setWeitere] = useState<Weitere[] | null>(null);
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const anfrage = useRef(0);
+  // Recht transport.dialoge:execute (Funktionsschalter transport.dialoge.schliessen): Versand auslösen schließt den Dialog sofort, Ergebnis kommt als Meldung
+  const direkt = useCan()('transport.dialoge:execute');
+  const fehler = (text: string) => (direkt ? toast(`Versand fehlgeschlagen: ${text}`, 12000) : setError(text));
   const einzel = auftraege.length === 1 ? auftraege[0] : null;
   const schluessel = auftraege.join(',');
 
@@ -158,6 +162,7 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
   async function ausfuehren() {
     if (!offen.length) return;
     setBusy(true); setError(null);
+    if (direkt) { onClose(); toast(`${offen.length} ${offen.length === 1 ? 'E-Mail wird' : 'E-Mails werden'} erzeugt …`, 4000); }
     try {
       const { zusatz, paperless } = await zusatzLaden();
       const r = await api.post<{ ergebnisse: Ergebnis[] }>(`${T}/versand/ausfuehren`, {
@@ -169,8 +174,13 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
       setErgebnisse(neu);
       const gut = r.ergebnisse.filter((e) => e.status !== 'fehler').length;
       const schlecht = r.ergebnisse.length - gut;
-      toast(schlecht ? `${gut} erledigt, ${schlecht} fehlgeschlagen – Details in der Tabelle.` : `${gut} E-Mail(s) erledigt.`, 6000);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+      if (schlecht && direkt) {
+        const texte = r.ergebnisse.filter((e) => e.status === 'fehler').map((e) => `${mails.find((m) => m.schluessel === e.schluessel)?.auftragsnr ?? e.schluessel}: ${e.text}`);
+        toast(`${gut} erledigt, ${schlecht} fehlgeschlagen – ${texte.join(' · ')}. „Versenden …“ erneut öffnen, um es zu wiederholen.`, 15000);
+      } else {
+        toast(schlecht ? `${gut} erledigt, ${schlecht} fehlgeschlagen – Details in der Tabelle.` : `${gut} E-Mail(s) erledigt.`, 6000);
+      }
+    } catch (e) { fehler((e as Error).message); } finally { setBusy(false); }
   }
 
   /** Rückfallweg: je E-Mail eine EML-Datei (Entwurf), auch für Zeilen ohne Empfänger */
@@ -178,6 +188,7 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
     const liste = mails.filter((m) => m.anhaenge.length > 0);
     if (!liste.length) return;
     setBusy(true); setError(null);
+    if (direkt) onClose();
     try {
       const { zusatz, paperless } = await zusatzLaden();
       const r = await api.post<{ dateien: { name: string; inhalt_base64: string }[] }>(`${T}/versand/eml`, {
@@ -185,7 +196,7 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
       });
       for (const d of r.dateien) emlHerunterladen(base64Blob(d.inhalt_base64, 'message/rfc822'), d.name.replace(/\.eml$/i, ''));
       toast(`${r.dateien.length} E-Mail-Datei(en) heruntergeladen – in den Downloads öffnen.`, 6000);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { fehler((e as Error).message); } finally { setBusy(false); }
   }
 
   const aktivMail = mails.find((m) => m.schluessel === aktiv) ?? null;

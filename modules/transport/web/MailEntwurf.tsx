@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
+import { useCan } from '@core/session';
 import { T } from './util';
 import { dateienImOrdner, dateiLesen } from './ordner';
 
@@ -112,6 +113,9 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   const [wahl, setWahl] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Recht transport.dialoge:execute (Funktionsschalter transport.dialoge.schliessen): Senden, Entwurf, Teilen schließen den Dialog sofort, Ergebnis als Meldung
+  const direkt = useCan()('transport.dialoge:execute');
+  const fehler = (text: string) => (direkt ? toast(`E-Mail zum Auftrag ${nr}: ${text}`, 12000) : setError(text));
   const [anleitung, setAnleitung] = useState(false);
   const [eingerichtet, setEingerichtet] = useState(false);
   // Teilen mit Dateien (Windows-Freigabe → Outlook/Mail) – nur wenn der Browser es kann
@@ -171,18 +175,24 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   }
   async function entwurf() {
     setBusy(true); setError(null);
+    if (direkt) onClose();
     try {
       const dateien = await dateienLaden();
       const eml = await emlErzeugen({ an: an.trim(), betreff, text, anhaenge: dateien });
       emlHerunterladen(eml, betreff || `Auftrag_${nr}`);
+      // solange der Browser .eml nicht automatisch öffnet: einmal zeigen, wie man das einstellt (bei sofort geschlossenem Dialog als Meldung)
+      if (direkt) {
+        toast(`E-Mail-Entwurf mit ${dateien.length} Anhang/Anhängen erstellt.${autoOffen() ? '' : ' Er liegt als .eml in den Downloads (Strg+J) – „Dateien dieses Typs immer öffnen“ öffnet ihn künftig direkt.'}`, 8000);
+        return;
+      }
       toast(`E-Mail-Entwurf mit ${dateien.length} Anhang/Anhängen erstellt.`, 5000);
-      // solange der Browser .eml nicht automatisch öffnet: einmal zeigen, wie man das einstellt
       if (autoOffen()) onClose(); else setAnleitung(true);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { fehler((e as Error).message); } finally { setBusy(false); }
   }
   /** Versand über Outlook 365 (n8n): Ordnerdateien lädt der Browser hoch, Paperless-Dokumente holt der Server selbst */
   async function senden(modus: 'senden' | 'entwurf') {
     setBusy(true); setError(null);
+    if (direkt) { onClose(); toast(modus === 'senden' ? 'E-Mail wird gesendet …' : 'Entwurf wird in Outlook abgelegt …', 4000); }
     try {
       const dateien: { name: string; inhalt: string }[] = [];
       const dokumenteIds: number[] = [];
@@ -200,13 +210,15 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
       });
       if (r.status === 'gesendet' || r.status === 'entwurf') { toast(r.text, 8000); onClose(); return; }
       const fehlgeschlagen = r.mails.filter((m) => m.status === 'fehler').map((m) => m.rolle);
+      if (direkt) { toast(`${r.text} „E-Mail“ am Auftrag erneut öffnen, um es zu wiederholen.`, 15000); return; }
       if (r.status === 'teilweise') setOffen(fehlgeschlagen);
       setError(r.text);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { fehler((e as Error).message); } finally { setBusy(false); }
   }
   /** Windows-Teilen (Chrome/Edge): Anhänge direkt an Outlook bzw. die Mail-App übergeben – Empfänger kommt in die Zwischenablage */
   async function teilen() {
     setBusy(true); setError(null);
+    if (direkt) onClose();
     try {
       const files = (await dateienLaden()).map((d) => new File([d.daten], d.name, { type: d.daten.type || mime(d.name) }));
       if (an.trim()) await navigator.clipboard?.writeText(an.trim()).catch(() => undefined);
@@ -214,11 +226,12 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
       if (an.trim()) toast(`Empfänger ${an.trim()} ist in der Zwischenablage – im Mailprogramm mit Strg+V einfügen.`, 8000);
       onClose();
     } catch (e) {
-      if ((e as DOMException).name !== 'AbortError') setError((e as Error).message);
+      if ((e as DOMException).name !== 'AbortError') fehler((e as Error).message);
     } finally { setBusy(false); }
   }
   const mailto = () => {
     window.location.href = `mailto:${an.trim()}?subject=${encodeURIComponent(betreff)}&body=${encodeURIComponent(text.replace(/\r?\n/g, '\r\n'))}`;
+    if (direkt) onClose();
   };
 
   const outlook = !!info?.eingerichtet;
