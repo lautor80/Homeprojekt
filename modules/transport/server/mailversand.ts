@@ -4,6 +4,7 @@ import { mailProtokoll } from '../../../server/src/lib/mail.js';
 import {
   authHeader, eingerichtet, N8N_PLATZHALTER, N8N_PLATZHALTER_TEXT, paperlessDef, verbindungLesen, type Verbindung, type VerbindungDef,
 } from '../../../server/src/lib/verbindungen.js';
+import { MAILEINGANG_VERBINDUNG } from './eingang/logik.js';
 
 /**
  * E-Mail-Versand von Euroflex über Outlook 365 (#235): n8n-Workflow „Euroflex Mailversand“ (docs/n8n/euroflex-mailversand.json).
@@ -145,7 +146,10 @@ export const TRANSPORT_VERBINDUNGEN: VerbindungDef[] = [
       ? { ok: true, text: `n8n erreichbar, Workflow aktiv, ${key}, Postfach ${postfach} erreichbar (es wurde keine E-Mail versendet).` }
       : { ok: true, text: `n8n erreichbar, Workflow aktiv, ${key}. Für Ihren Benutzer ist kein Postfach hinterlegt – die Anmeldung an Microsoft 365 wurde nicht geprüft.` };
   },
-}];
+},
+  // Posteingang: Knopf „Jetzt abrufen“ startet den n8n-Workflow „Euroflex Maileingang“ (eingang/logik.ts)
+  MAILEINGANG_VERBINDUNG,
+];
 
 /** Was der Dialog „E-Mail mit Anhängen…“ über den Versand wissen muss */
 export async function mailInfo(): Promise<{ eingerichtet: boolean; postfach: string | null; kopieAn: string; maxMb: number }> {
