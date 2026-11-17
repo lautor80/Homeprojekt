@@ -4,11 +4,11 @@ import { change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { funktionAktiv } from '../../../../server/src/funktionsschalter.js';
 import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
-import { DB } from '../verein.js';
+import { DB, vereinLesen } from '../verein.js';
 import { addTage, heute, runden } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
-import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, type PostenArt } from './logik.js';
-import { automatikPruefen, cfgLesen, cfgSichern, historieLesen, laufAusfuehren, laufFreigeben, laufVerwerfen, sperrenLesen, standLesen, type Wer } from './lauf.js';
+import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, notizText, type PostenArt } from './logik.js';
+import { automatikPruefen, cfgLesen, cfgSichern, historieLesen, jetztText, laufAusfuehren, laufFreigeben, laufVerwerfen, mahnNotiz, sperrenLesen, standLesen, type Wer } from './lauf.js';
 
 /**
  * App „Mahnwesen“ (Finanzen): fällige Posten mit Stufe und nächstem Schritt, Vorschau des nächsten Laufs, Lauf von Hand,
@@ -133,7 +133,12 @@ export async function mahnungRoutes(app: FastifyInstance) {
                        erledigt_am = now(), erledigt_von = ${w.name} where id = ${id} returning id`;
     }, { action: 'MAHN_ZUGESTELLT' });
     if (!r) throw new BusinessError('Dieser Posten ist nicht (mehr) als „nicht erreichbar“ vermerkt.', 409);
-    return { ok: true, text: 'Zustellung vermerkt – die Stufe gilt als zugestellt.' };
+    // Protokoll am Paperless-Dokument (Funktion „Mahnungen in Paperless protokollieren“)
+    const [p] = await DB`select art, nr, stufe_name, betrag::float8 as betrag, gebuehr::float8 as gebuehr, to_char(frist, 'YYYY-MM-DD') as frist from tco.mahn_posten where id = ${id}`;
+    const warnung = p ? await mahnNotiz(await vereinLesen(DB), p.art, p.nr, notizText({
+      stufe_name: p.stufe_name, ergebnis: 'ZUGESTELLT', zeitpunkt: jetztText(), wer: w.name, weg: d.weg, betrag: p.betrag, gebuehr: p.gebuehr, frist: p.frist, meldung: d.bemerkung || null,
+    })) : null;
+    return { ok: true, text: `Zustellung vermerkt – die Stufe gilt als zugestellt.${warnung ? ` ${warnung}` : ''}` };
   });
 
   /** nicht erreicht: im nächsten Lauf erneut per E-Mail versuchen (z. B. nachdem das Postfach wieder erreichbar ist) */

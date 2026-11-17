@@ -130,6 +130,11 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     hinweis: 'Abgeschaltet ruht nur die Automatik – der Lauf von Hand in der App „Mahnwesen“ bleibt. Unabhängig davon ist die Automatik erst aktiv, wenn sie in den Einstellungen eingeschaltet wurde.',
   },
   {
+    id: 'tco.mahnung.paperless', app: 'Mahnwesen', text: 'Mahnungen in Paperless protokollieren',
+    beschreibung: 'Jede Mahnstufe (gesendet, nicht zugestellt, per Brief/Anruf vermerkt) wird als Notiz am Paperless-Dokument der Rechnung bzw. Verzehrabrechnung festgehalten; als Anhang der Mahnung dient die abgelegte Fassung aus Paperless.',
+    hinweis: 'Abgeschaltet schreibt das Mahnwesen keine Notizen und hängt das PDF wie bisher neu erzeugt an. Posten ohne Paperless-Dokument (Rechnung nie nach Paperless gedruckt) bekommen keine Notiz.',
+  },
+  {
     id: 'tco.eingang.n8n', app: 'Dokumenteneingang', text: 'E-Mail-Eingang über n8n',
     beschreibung: 'n8n liefert eingegangene E-Mails samt Anhängen an das Portal (API-Schlüssel).',
     permissions: ['tco.eingang:melden'],

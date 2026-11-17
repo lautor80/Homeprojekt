@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  automatikFaellig, CFG_SCHEMA, faelligkeit, lokal, MAHN_MAILTEXTE, mailtextSchluessel, mailWerte, naechsterLauf, planen, standErmitteln, STANDARD_STUFEN,
+  automatikFaellig, CFG_SCHEMA, faelligkeit, lokal, MAHN_MAILTEXTE, mailtextSchluessel, mailWerte, naechsterLauf, notizText, planen, standErmitteln, STANDARD_STUFEN,
   type HistorieZeile, type OffenerPosten, type SperreZeile,
 } from '../../modules/tco/server/mahnung/logik.js';
 import { fuellen } from '../../modules/tco/server/mailtexte.js';
@@ -172,4 +172,17 @@ test('E-Mail: Platzhalter je Stufe, Posten, Gebühr und Bankverbindung', () => {
   // ohne Gebühr bleibt keine Lücke
   const ohne = fuellen(MAHN_MAILTEXTE[0].standard(v as never).text, mailWerte(v, 'Mia', { posten: posten as never, stufe_name: 'Zahlungserinnerung', summe: 82.5, gebuehr: 0 }, '2026-11-25'));
   assert.ok(!ohne.includes('Mahngebühr') && !/\n{3,}/.test(ohne));
+});
+
+test('Paperless-Notiz: gesendet, nicht zugestellt und von Hand vermerkt', () => {
+  const basis = { stufe_name: '1. Mahnung', zeitpunkt: '17.11.2026 10:15', wer: 'system (Mahnlauf)', betrag: 45, lauf_id: 7 };
+  const g = notizText({ ...basis, ergebnis: 'GESENDET', an: 'max@tco-test.example', gebuehr: 5, frist: '2026-11-27', anhaenge: ['Rechnung_H-0815.pdf'] });
+  assert.match(g, /^1\. Mahnung per E-Mail gesendet am 17\.11\.2026 10:15 an max@tco-test\.example \(Mahnlauf 7\)/);
+  assert.match(g, /offen 45,00 €, Mahngebühr 5,00 €, neue Zahlungsfrist 27\.11\.2026, Anhang: Rechnung_H-0815\.pdf$/);
+  assert.match(notizText({ ...basis, ergebnis: 'GESENDET', an: 'x@y.example' }), /ohne Anhang$/);
+  const n = notizText({ ...basis, ergebnis: 'NICHT_ERREICHBAR', an: '', meldung: 'keine E-Mail-Adresse hinterlegt' });
+  assert.match(n, /^1\. Mahnung nicht zugestellt am .*: keine E-Mail-Adresse hinterlegt – offen 45,00 €\. Die Stufe gilt nicht als erreicht\.$/);
+  assert.doesNotMatch(n, / an  /);
+  const z = notizText({ ...basis, lauf_id: null, ergebnis: 'ZUGESTELLT', weg: 'BRIEF', wer: 'Kassenwart', frist: '2026-11-27', meldung: 'Einschreiben' });
+  assert.equal(z, '1. Mahnung per Brief zugestellt, vermerkt am 17.11.2026 10:15 durch Kassenwart – offen 45,00 €, neue Zahlungsfrist 27.11.2026 – Einschreiben');
 });
