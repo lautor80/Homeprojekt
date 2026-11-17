@@ -36,6 +36,8 @@ interface MahnMail { schuldner: string; name: string; posten: Posten[]; stufe: n
 interface LaufZeile {
   id: number; art: string; nr: string; schuldner: string; name: string; betrag: number; faellig: string; stufe: number; stufe_name: string; gebuehr: number;
   frist: string | null; status: string; weg: string | null; an: string | null; meldung: string | null; erledigt_am: string | null; erledigt_von: string | null;
+  /** nur im offenen Vorschlag: aktueller Zahlungsstand (inzwischen bezahlt, gesperrt, teilbezahlt) */
+  aktuell?: number | null; hinweis?: string | null; gilt?: boolean;
 }
 interface Lauf {
   id: number; art: 'AUTO' | 'MANUELL'; modus: 'VORSCHLAG' | 'SENDEN'; status: string; stichtag: string; gestartet_am: string; gestartet_von: string; beendet_am: string | null;
@@ -168,13 +170,23 @@ export function Mahnwesen() {
     { Header: 'Schuldner', accessor: 'name', minWidth: 150 },
     { Header: 'Posten', accessor: 'nr', width: 130 },
     { Header: 'Stufe', accessor: 'stufe_name', width: 160 },
-    { Header: 'Offen', accessor: 'betrag', width: 100, ...rechts, Cell: ({ value }: Cell) => eur(value) },
+    {
+      Header: 'Offen', accessor: 'betrag', width: 100, ...rechts,
+      Cell: ({ row, value }: Cell) => {
+        const z = row.original as LaufZeile;
+        if (z.hinweis === undefined || z.aktuell === value) return eur(value);
+        return z.aktuell === null ? <s>{eur(value)}</s> : <span title={`im Vorschlag ${eur(value)}`}>{eur(z.aktuell)}</span>;
+      },
+    },
     { Header: 'Gebühr', accessor: 'gebuehr', width: 80, ...rechts, Cell: ({ value }: Cell) => (value ? eur(value) : '–') },
     { Header: 'Neue Frist', accessor: 'frist', width: 100, Cell: ({ value }: Cell) => dat(value) },
     {
       Header: 'Ergebnis', accessor: 'status', minWidth: 240,
       Cell: ({ row }: Cell) => {
         const z = row.original as LaufZeile;
+        if (z.status === 'VORSCHLAG' && z.hinweis) {
+          return <span title={z.hinweis}><ObjectStatus state={z.gilt ? 'Critical' : 'Negative'}>{z.gilt ? 'geändert' : 'entfällt'}</ObjectStatus><span className="portal-muted portal-small"> · {z.hinweis}</span></span>;
+        }
         const [text, state] = POSTEN_STATUS[z.status] ?? [z.status, 'None'];
         const zusatz = [z.status === 'GESENDET' && z.weg ? `${WEG[z.weg] ?? z.weg}${z.an ? ` an ${z.an}` : ''}` : z.an, z.meldung].filter(Boolean).join(' – ');
         return <span title={zusatz}><ObjectStatus state={state}>{text}</ObjectStatus>{zusatz ? <span className="portal-muted portal-small"> · {zusatz}</span> : null}</span>;
@@ -277,7 +289,7 @@ export function Mahnwesen() {
         <Tab data-key="vorschlag" text={`Nächster Lauf${d?.vorschlag ? ' · Vorschlag offen' : ''}`} icon="payment-approval" selected={tab === 'vorschlag'}>
           <MessageStrip design={a?.aktiv && a.funktion && automatikAn ? 'Information' : 'Critical'} hideCloseButton style={{ marginBottom: '0.75rem' }}>{automatikText}{a ? protokollText : ''}</MessageStrip>
           {d?.vorschlag && (
-            <Section title={`Vorschlag aus Lauf ${d.vorschlag.id} vom ${zeit(d.vorschlag.gestartet_am)}`} count={d.vorschlag.zeilen?.length ?? 0} flush
+            <Section title={`Vorschlag aus Lauf ${d.vorschlag.id} vom ${zeit(d.vorschlag.gestartet_am)}`} count={d.vorschlag.zeilen?.filter((z) => z.gilt !== false).length ?? 0} flush
                      status={<ObjectStatus state="Critical" inverted>wartet auf Freigabe</ObjectStatus>}
                      actions={darf.ausfuehren ? <>
                        <Button design="Emphasized" icon="email" loading={busy} disabled={!d.mail || d.laeuft}

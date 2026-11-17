@@ -354,3 +354,38 @@ export function notizText(d: NotizDaten): string {
   const ziel = d.an ? ` an ${d.an}` : '';
   return `${d.stufe_name} nicht zugestellt${ziel} am ${d.zeitpunkt}${lauf}${grund} – ${betrag}. Die Stufe gilt nicht als erreicht.`;
 }
+
+// ---------------------------------------------------------------------------
+// Offener Vorschlag gegen den aktuellen Zahlungsstand
+// ---------------------------------------------------------------------------
+
+export interface VorschlagZeile { art: PostenArt; nr: string; schuldner: string; betrag: number; status: string }
+
+export interface VorschlagAbgleich {
+  /** aktuell offener Betrag – null = nicht mehr offen */
+  aktuell: number | null;
+  /** Grund, warum der Posten beim Senden entfällt bzw. sich geändert hat – null = unverändert */
+  hinweis: string | null;
+  /** wird beim Freigeben voraussichtlich noch gemahnt */
+  gilt: boolean;
+}
+
+/**
+ * Zeilen eines offenen Vorschlags gegen den aktuellen Stand prüfen: inzwischen bezahlte, nicht mehr offene oder gesperrte
+ * Posten sind markiert und zählen nicht mehr mit; bei Teilzahlung gilt der Rest. Dieselbe Prüfung macht das Senden.
+ */
+export function vorschlagAbgleichen<Z extends VorschlagZeile>(zeilen: Z[], offen: OffenerPosten[], sperren: SperreZeile[], heute: string):
+  { zeilen: (Z & VorschlagAbgleich)[]; schuldner: number; betrag: number } {
+  const jeNr = new Map(offen.map((o) => [`${o.art}:${o.nr}`, o]));
+  const out = zeilen.map((z) => {
+    if (z.status !== 'VORSCHLAG') return { ...z, aktuell: z.betrag, hinweis: null, gilt: false };
+    const o = jeNr.get(`${z.art}:${z.nr}`);
+    if (!o) return { ...z, aktuell: null, hinweis: 'inzwischen bezahlt bzw. nicht mehr offen – entfällt beim Senden', gilt: false };
+    const s = sperreFuer(o, sperren, heute);
+    if (s) return { ...z, aktuell: o.betrag, hinweis: `Mahnsperre (${s.grund}) – entfällt beim Senden`, gilt: false };
+    const hinweis = o.betrag < z.betrag - 0.004 ? `teilbezahlt – gemahnt werden noch ${eur(o.betrag)}` : null;
+    return { ...z, aktuell: o.betrag, hinweis, gilt: true };
+  });
+  const gilt = out.filter((z) => z.gilt);
+  return { zeilen: out, schuldner: new Set(gilt.map((z) => z.schuldner)).size, betrag: runden(gilt.reduce((x, z) => x + (z.aktuell ?? 0), 0)) };
+}
