@@ -20,7 +20,7 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
   {
     id: 'transport.versand.sammel', app: 'Aufträge', text: 'Versenden über Outlook 365',
     beschreibung: 'Knopf „Versenden…“ neben „Drucken“ in Auftragsliste und Auftragsdetail: ausgewählte Dokumente als E-Mails je Auftrag und Empfänger über n8n in die Outlook-Entwürfe legen.',
-    routen: ['POST /versand/vorschau', 'POST /versand/ausfuehren'],
+    routen: ['GET /versand/einstellungen', 'POST /versand/vorschau', 'POST /versand/ausfuehren', 'POST /versand/eml'],
   },
   {
     id: 'transport.versand.automatisch', app: 'Aufträge', text: 'Automatisch senden',

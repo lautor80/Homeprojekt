@@ -7,11 +7,12 @@ import {
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { toast } from '@core/toast';
 import { DocsDialog, XRechnungDialog, type Doc, type XRes } from './dialogs';
 import { AuftragDokumente } from './AuftragDokumente';
+import { VersandDialog } from './VersandDialog';
 import { KontaktDialog, WertDialog } from './KontaktDialog';
 import { MenuButton, T, betrag, dat, type AdrDD, type Adresse, type Auftrag, type Fahrt, type Stop, type Traeger, type Werte } from './util';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -62,6 +63,9 @@ export function AuftragDetail() {
   const navigate = useNavigate();
   const can = useCan();
   const darfAendern = can('transport.auftraege:edit');
+  // Sammelversand „Versenden…“ über Outlook 365 (Funktion transport.versand.sammel, Recht transport.versand:execute)
+  const sammelversand = useFunktion()('transport.versand.sammel') && can('transport.versand:execute');
+  const [versand, setVersand] = useState(false);
   const sperre = useSperre('AUFTRAG', isNew ? null : nr, darfAendern, { bezeichnung: `Auftrag ${nr ?? ''}` });
   const darfBearbeiten = darfAendern && sperre.eigen;
 
@@ -343,6 +347,9 @@ export function AuftragDetail() {
                   { text: 'Lieferschein', onClick: () => drucken('L') },
                   { text: 'Rechnung', disabled: !a.faktura, onClick: () => drucken('R') },
                 ]} />
+                {sammelversand && !isNew && (
+                  <Button icon="paper-plane" onClick={() => setVersand(true)} tooltip="Dokumente dieses Auftrags als E-Mails über Outlook 365">Versenden…</Button>
+                )}
                 {!isNew && <ChangeHistoryButton objectType="AUFTRAG" objectKey={nr!} />}
                 <Button icon="decline" design="Transparent" onClick={() => navigate('/transport/auftraege')} />
               </FlexBox>
@@ -584,6 +591,7 @@ export function AuftragDetail() {
                      onConfirm={(grund) => abschluss(grund)} onCancel={() => setAbschliessen(false)} />
 
       <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
+      {!isNew && nr && <VersandDialog auftraege={[nr]} open={versand} onClose={() => setVersand(false)} />}
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} onClose={() => setKontakt(null)}
                      onSaved={async () => {

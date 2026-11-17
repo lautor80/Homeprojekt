@@ -13,7 +13,7 @@ import {
 import { fahrtenBereinigen, routenSchluessel, unternehmerText, zusammenfuehrenPruefen, type Kandidat } from './fahrten.js';
 import { condense, heute } from './format.js';
 import { rechnungPdf } from './pdf/rechnung.js';
-import { lieferscheinPdf, transportauftragPdf } from './pdf/dokumente.js';
+import { dokumentPdf } from './pdf/erzeugen.js';
 import { xrechnungErzeugen } from './xrechnung.js';
 import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
 import { paperlessSenden } from './paperless.js';
@@ -480,20 +480,7 @@ async function routes(app: FastifyInstance) {
   // ---- Dokumente (PDF) ----
   app.get('/pdf/:art/:id', { preHandler: requireAuth(P.display) }, async (req, reply) => {
     const { art, id } = z.object({ art: z.enum(['T', 'L', 'R']), id: z.string() }).parse(req.params);
-    let pdf: Buffer;
-    let name: string;
-    if (art === 'R') {
-      const r = await rechnungPdf(id);
-      if (!r) throw new BusinessError(`Rechnung ${id} nicht gefunden.`, 404);
-      pdf = r.pdf;
-      name = r.filename;
-    } else if (art === 'L') {
-      pdf = await lieferscheinPdf(id);
-      name = `Lieferschein_${id}.pdf`;
-    } else {
-      pdf = await transportauftragPdf(id);
-      name = `Transportauftrag_${id}.pdf`;
-    }
+    const { pdf, name } = await dokumentPdf(art, id);
     return reply.type('application/pdf').header('content-disposition', `inline; filename="${name}"`).send(pdf);
   });
 
