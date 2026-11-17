@@ -4,7 +4,7 @@ import { can, requireAuth } from '../../../../server/src/auth.js';
 import { sql } from '../../../../server/src/db.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { P_MW, workflowEinstellungen } from '../mailworkflows.js';
-import type { Grund, Kandidat } from './logik.js';
+import { postfachListe, type Grund, type Kandidat } from './logik.js';
 import {
   abrufAnstossen, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, speicherStand, uebernommen, vonHandAblegen, vorgangIgnorieren,
 } from './verarbeitung.js';
@@ -58,17 +58,26 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.get('/eingang/vorgaenge', sehen, async (req) => {
     const q = z.object({
       status: z.enum(['pruefen', 'fehler', 'abgelegt', 'ignoriert']).or(z.literal('')).optional().transform((x) => x || null),
+      // Eingangspostfach (z. B. info@ oder buchhaltung@), leer = alle
+      postfach: z.string().trim().toLowerCase().max(300).optional().transform((x) => x || null),
     }).parse(req.query);
     const rows = await sql`
-      select v.id::int as id, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(v.eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
+      select v.id::int as id, v.postfach, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(v.eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
              case when v.status = 'neu' then 'pruefen' else v.status end as status, v.hinweis, v.auftragsnr, v.punkte,
              jsonb_array_length(v.kandidaten)::int as anzahl_kandidaten,
              (select count(*)::int from transport.eing_dokumente d where d.vorgang_id = v.id) as anzahl_dokumente
         from transport.eing_vorgaenge v
        where true ${q.status === 'pruefen' ? sql`and v.status in ('neu', 'pruefen')` : q.status ? sql`and v.status = ${q.status}` : sql``}
+         ${q.postfach ? sql`and v.postfach = ${q.postfach}` : sql``}
        order by v.id desc limit 500`;
-    const [letzter, e] = await Promise.all([letzterAbrufLesen(), workflowEinstellungen()]);
-    return { vorgaenge: rows, letzter_abruf: letzter, schwelle: e.eingang.schwelle };
+    const [letzter, e, gesehen] = await Promise.all([
+      letzterAbrufLesen(), workflowEinstellungen(),
+      sql`select distinct postfach from transport.eing_vorgaenge where postfach <> '' order by postfach`,
+    ]);
+    return {
+      vorgaenge: rows, letzter_abruf: letzter, schwelle: e.eingang.schwelle,
+      postfaecher: postfachListe(e.eingang.postfaecher, gesehen.map((r) => r.postfach as string)),
+    };
   });
 
   app.get('/eingang/vorgaenge/:id', sehen, async (req) => {

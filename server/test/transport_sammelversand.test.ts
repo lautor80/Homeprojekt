@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  anrede, artenOrdnen, emlBauen, emlDateiname, mailsPlanen, mailtext, modusFuer, rechnungsVersandAus, schluesselBilden,
+  anrede, artenOrdnen, emlBauen, emlDateiname, mailsPlanen, mailtext, modusFuer, rechnungsVersandAus, regelSchluessel, schluesselBilden,
   type Empfaenger, type MailtextVorlage, type VersandDokument,
 } from '../../modules/transport/server/sammelversand-logik.js';
 
@@ -186,3 +186,18 @@ test('EML Rechnungsversand: From und Bcc im Kopf', () => {
   assert.match(eml, /^From: buchhaltung@firma\.example\r\nTo: a@b\.de\r\nBcc: beleg@upload\.example\r\nSubject: Rechnung\r\n/);
   assert.ok(!emlBauen({ an: 'a@b.de', betreff: 'x', text: '', anhaenge: [] }).includes('Bcc:'));
 });
+
+test('Absender je Dokumentart: Arten mit verschiedenem Absender/BCC nie in einer E-Mail', () => {
+  // Unternehmer = Kunde (gleiche Adresse): ohne Regel eine E-Mail mit T und L
+  const doks = [T('2099_8020', KUNDE), L('2099_8020', KUNDE)];
+  assert.deepEqual(mailsPlanen(doks, VORLAGEN).map((x) => x.arten), [['T', 'L']]);
+  const regeln = { T: { absender: 'dispo@firma.example', bcc: [] }, L: { absender: null, bcc: [] }, R: { absender: 'buchhaltung@firma.example', bcc: ['beleg@upload.example'] } };
+  const getrennt = mailsPlanen(doks, VORLAGEN, { gruppe: (a) => regelSchluessel(regeln[a]) });
+  assert.deepEqual(getrennt.map((x) => x.arten), [['T'], ['L']]);
+  assert.notEqual(getrennt[0].schluessel, getrennt[1].schluessel);
+  // gleicher Absender (Groß-/Kleinschreibung egal) bleibt zusammen
+  const gleich = { ...regeln, L: { absender: 'Dispo@Firma.example', bcc: [] } };
+  assert.deepEqual(mailsPlanen(doks, VORLAGEN, { gruppe: (a) => regelSchluessel(gleich[a]) }).map((x) => x.arten), [['T', 'L']]);
+  assert.equal(regelSchluessel({ absender: null, bcc: ['B@x.example', 'a@x.example'] }), regelSchluessel({ absender: '', bcc: ['a@x.example', 'b@x.example'] }));
+});
+

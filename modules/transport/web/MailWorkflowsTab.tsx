@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, CheckBox, Input, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { Bar, Button, CheckBox, FlexBox, Input, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { FieldBox, FormGrid } from '@core/components/FormFields';
 import { Section } from '@core/components/Section';
@@ -10,7 +10,8 @@ import { T } from './util';
 import { mb, type Speicher } from './eingang/typen';
 
 /**
- * Administration → Einstellungen → Euroflex → Mail-Workflows: Eingang (Posteingang über n8n) und Versand („Versenden…“).
+ * Administration → Einstellungen → Euroflex → Mail-Workflows: Eingang (Posteingang über n8n, Eingangspostfächer) und Versand
+ * (Vorauswahl, Modus, Absender-Postfach je Dokumentart, BCC für Rechnungen).
  * GET/PUT /workflow-einstellungen, Belegung über GET /eingang/speicher. Vertrag und Bedeutung der Felder:
  * docs/euroflex-mailworkflows.md, Abschnitt „Einstellungen“; Typen in modules/transport/server/mailworkflows.ts.
  */
@@ -18,11 +19,16 @@ type Art = 'T' | 'L' | 'R';
 interface Eingang {
   ablageziel: 'lokal' | 'paperless'; schwelle: number; ordnerZugeordnet: string; ordnerPruefen: string;
   mailAlsPdf: boolean; ocr: boolean; speicherWarnungMb: number;
+  /** Eingangspostfächer mit Bezeichnung (Anzeige und Filter im Posteingang) */
+  postfaecher: Postfach[];
 }
-interface ArtEinstellung { vorauswahl: boolean; modus: 'entwurf' | 'senden' }
-/** Rechnungsversand: festes Absender-Postfach und BCC (Funktion transport.versand.rechnung) */
-interface Rechnung { absender: string; bcc: string }
-interface Einstellungen { eingang: Eingang; versand: Record<Art, ArtEinstellung>; rechnung: Rechnung }
+interface Postfach { adresse: string; bezeichnung: string }
+/** je Dokumentart: Vorauswahl, Modus, festes Absender-Postfach und BCC (BCC nur bei Rechnung angeboten; Funktion transport.versand.rechnung) */
+interface ArtEinstellung { vorauswahl: boolean; modus: 'entwurf' | 'senden'; absender: string; bcc: string }
+interface Einstellungen { eingang: Eingang; versand: Record<Art, ArtEinstellung> }
+
+const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
+const adressenOk = (s: string) => s.split(/[,;\s]+/).filter(Boolean).every((a) => EMAIL_RE.test(a));
 
 const ARTEN: { art: Art; text: string }[] = [
   { art: 'T', text: 'Transportauftrag' },
@@ -60,12 +66,16 @@ export function MailWorkflowsTab() {
   const warnOk = zahl(warnMb) >= 10 && zahl(warnMb) <= 100_000;
   const automatischSenden = funktion('transport.versand.automatisch');
   const automatischAblegen = funktion('transport.eingang.automatik');
-  const rechnungsVersand = funktion('transport.versand.rechnung');
-  const rechnung = e.rechnung ?? { absender: '', bcc: '' };
-  const rech = (x: Partial<Rechnung>) => setE({ ...e, rechnung: { ...rechnung, ...x } });
+  const absenderFunktion = funktion('transport.versand.rechnung');
+  const postfaecher = e.eingang.postfaecher ?? [];
+  const setPostfaecher = (l: Postfach[]) => setE({ ...e, eingang: { ...e.eingang, postfaecher: l } });
+  const postfachOk = (p: Postfach) => EMAIL_RE.test(p.adresse.trim());
+  const postfaecherOk = postfaecher.every(postfachOk)
+    && new Set(postfaecher.map((p) => p.adresse.trim().toLowerCase())).size === postfaecher.length;
+  const versandOk = ARTEN.every(({ art: a }) => (!e.versand[a].absender?.trim() || EMAIL_RE.test(e.versand[a].absender.trim())) && adressenOk(e.versand[a].bcc ?? ''));
 
   async function speichern() {
-    if (!e || !schwelleOk || !warnOk) return;
+    if (!e || !schwelleOk || !warnOk || !postfaecherOk || !versandOk) return;
     setBusy(true); setError(null);
     try {
       const body: Einstellungen = { ...e, eingang: { ...e.eingang, schwelle: zahl(schwelle), speicherWarnungMb: zahl(warnMb) } };
@@ -109,6 +119,27 @@ export function MailWorkflowsTab() {
             <CheckBox text="E-Mail selbst zusätzlich als PDF ablegen" checked={e.eingang.mailAlsPdf} readonly={ro} onChange={(x) => ein('mailAlsPdf')(x.target.checked)} />
             <CheckBox text="Texterkennung (OCR) für Anhänge" checked={e.eingang.ocr} readonly={ro} onChange={(x) => ein('ocr')(x.target.checked)} />
           </FieldBox>
+          <FieldBox label="Eingangspostfächer">
+            <FlexBox direction="Column" style={{ gap: '0.5rem', width: '100%' }}>
+              {postfaecher.map((p, i) => (
+                <FlexBox key={i} alignItems="Center" wrap="Wrap" style={{ gap: '0.5rem' }}>
+                  <Input style={{ flex: '2 1 14rem' }} type="Email" value={p.adresse} readonly={ro} placeholder="info@firma.de" accessibleName={`Eingangspostfach ${i + 1}`}
+                         valueState={postfachOk(p) ? 'None' : 'Negative'} data-kein-autofill
+                         onInput={(x) => setPostfaecher(postfaecher.map((q, j) => (j === i ? { ...q, adresse: x.target.value } : q)))} />
+                  <Input style={{ flex: '1 1 9rem' }} value={p.bezeichnung} readonly={ro} placeholder="Bezeichnung, z. B. Buchhaltung" maxlength={60}
+                         accessibleName={`Bezeichnung Postfach ${i + 1}`} data-kein-autofill
+                         onInput={(x) => setPostfaecher(postfaecher.map((q, j) => (j === i ? { ...q, bezeichnung: x.target.value } : q)))} />
+                  {!ro && <Button design="Transparent" icon="delete" tooltip="Postfach entfernen" accessibleName={`Postfach ${i + 1} entfernen`}
+                                  onClick={() => setPostfaecher(postfaecher.filter((_, j) => j !== i))} />}
+                </FlexBox>
+              ))}
+              {!ro && <div><Button icon="add" onClick={() => setPostfaecher([...postfaecher, { adresse: '', bezeichnung: '' }])}>Postfach hinzufügen</Button></div>}
+              <Text className="portal-muted" style={{ fontSize: 'var(--sapFontSmallSize)' }}>
+                Z. B. info@… und buchhaltung@… – im Posteingang steht bei jeder E-Mail, in welchem Postfach sie ankam, und es lässt sich danach filtern.
+                Abgerufen werden die Postfächer, die im n8n-Workflow „Euroflex Maileingang“ unter POSTFAECHER stehen.
+              </Text>
+            </FlexBox>
+          </FieldBox>
           <FieldBox label="Speicherwarnung ab (MB)" required>
             <Input type="Number" value={warnMb} readonly={ro} valueState={warnOk ? 'None' : 'Negative'} data-kein-autofill
                    onInput={(x) => setWarnMb(x.target.value)} style={{ width: '8rem' }} />
@@ -135,53 +166,53 @@ export function MailWorkflowsTab() {
         )}
       </Section>
 
-      <Section title="Versand („Versenden…“)">
+      <Section title="Versand">
         <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
-          Welche Dokumentarten im Dialog „Versenden…“ vorausgewählt sind und ob die E-Mails als Entwurf in Outlook landen oder direkt gesendet werden.
+          Je Dokumentart: Vorauswahl im Dialog „Versenden…“, ob die E-Mail als Entwurf in Outlook landet oder direkt gesendet wird, und aus welchem
+          Postfach sie hinausgeht. Absender und BCC gelten für jede E-Mail dieser Art – im Dialog „E-Mail mit Anhängen…“ (passende Vorlage), bei
+          „Versenden…“ und in der E-Mail-Datei. Leer = Postfach des Benutzers bzw. kein BCC. Arten mit verschiedenem Absender gehen nie in
+          einer E-Mail zusammen; eine Rechnung mit Absender oder BCC immer als eigene E-Mail, ohne weitere Dokumente.
         </Text>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(8rem, max-content) max-content minmax(10rem, 14rem)', gap: '0.5rem 1.5rem', alignItems: 'center', overflowX: 'auto' }}>
-          <Label>Dokumentart</Label><Label>Vorausgewählt</Label><Label>Modus</Label>
-          {ARTEN.map(({ art: a, text }) => [
-            <Text key={`${a}t`}><b>{a}</b> {text}</Text>,
-            <CheckBox key={`${a}v`} checked={e.versand[a].vorauswahl} readonly={ro} accessibleName={`${text} vorausgewählt`}
-                      onChange={(x) => art(a, { vorauswahl: x.target.checked })} />,
-            <Select key={`${a}m`} disabled={ro} accessibleName={`Modus ${text}`}
-                    onChange={(x) => art(a, { modus: ((x.detail.selectedOption as HTMLElement).dataset.k ?? 'entwurf') as ArtEinstellung['modus'] })}>
-              <Option data-k="entwurf" selected={e.versand[a].modus === 'entwurf'}>Entwurf in Outlook</Option>
-              <Option data-k="senden" selected={e.versand[a].modus === 'senden'}>Senden</Option>
-            </Select>,
-          ])}
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(8rem, max-content) max-content minmax(10rem, 13rem) minmax(13rem, 1fr) minmax(13rem, 1fr)', gap: '0.5rem 1.25rem', alignItems: 'center', minWidth: '52rem' }}>
+            <Label>Dokumentart</Label><Label>Vorausgewählt</Label><Label>Modus</Label><Label>Absender-Postfach</Label><Label>BCC</Label>
+            {ARTEN.map(({ art: a, text }) => {
+              const v = e.versand[a];
+              return [
+                <Text key={`${a}t`}><b>{a}</b> {text}</Text>,
+                <CheckBox key={`${a}v`} checked={v.vorauswahl} readonly={ro} accessibleName={`${text} vorausgewählt`}
+                          onChange={(x) => art(a, { vorauswahl: x.target.checked })} />,
+                <Select key={`${a}m`} disabled={ro} accessibleName={`Modus ${text}`}
+                        onChange={(x) => art(a, { modus: ((x.detail.selectedOption as HTMLElement).dataset.k ?? 'entwurf') as ArtEinstellung['modus'] })}>
+                  <Option data-k="entwurf" selected={v.modus === 'entwurf'}>Entwurf in Outlook</Option>
+                  <Option data-k="senden" selected={v.modus === 'senden'}>Senden</Option>
+                </Select>,
+                <Input key={`${a}a`} style={{ width: '100%' }} type="Email" value={v.absender ?? ''} readonly={ro} data-kein-autofill
+                       placeholder={a === 'R' ? 'buchhaltung@firma.de' : 'Postfach des Benutzers'} accessibleName={`Absender-Postfach ${text}`}
+                       valueState={!v.absender?.trim() || EMAIL_RE.test(v.absender.trim()) ? 'None' : 'Negative'}
+                       onInput={(x) => art(a, { absender: x.target.value })} />,
+                a === 'R'
+                  ? <Input key={`${a}b`} style={{ width: '100%' }} value={v.bcc ?? ''} readonly={ro} data-kein-autofill placeholder="…@uploadmail.datev.de"
+                           accessibleName="BCC Rechnung – erhält jede Rechnung (z. B. DATEV-Upload)" valueState={adressenOk(v.bcc ?? '') ? 'None' : 'Negative'}
+                           onInput={(x) => art(a, { bcc: x.target.value })} />
+                  : <Text key={`${a}b`} className="portal-muted">–</Text>,
+              ];
+            })}
+          </div>
         </div>
         <MessageStrip hideCloseButton design={automatischSenden ? 'Information' : 'Critical'} style={{ marginTop: '0.75rem' }}>
           „Senden“ greift nur, wenn die Funktion „Automatisch senden“ an ist (und der Benutzer das Recht dazu hat).
           {!automatischSenden && ' Die Funktion ist zurzeit aus (Administration → Funktionen) – alle E-Mails werden als Entwurf in Outlook abgelegt.'}
         </MessageStrip>
-      </Section>
-
-      <Section title="Rechnungsversand">
-        <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
-          Gilt für jede E-Mail mit einer Rechnung: im Dialog „E-Mail mit Anhängen…“ (Vorlage Rechnung), bei „Versenden…“ und in der
-          E-Mail-Datei. Eine Rechnung geht dabei immer als eigene E-Mail, ohne weitere Dokumente. Leer = Postfach des Benutzers bzw. kein BCC.
-        </Text>
-        <FormGrid>
-          <FieldBox label="Absender-Postfach (z. B. Buchhaltung)">
-            <Input style={{ width: '100%' }} type="Email" value={rechnung.absender} readonly={ro} placeholder="buchhaltung@firma.de"
-                   onInput={(x) => rech({ absender: x.target.value })} />
-          </FieldBox>
-          <FieldBox label="BCC – erhält jede Rechnung (z. B. DATEV-Upload-Adresse)">
-            <Input style={{ width: '100%' }} value={rechnung.bcc} readonly={ro} placeholder="…@uploadmail.datev.de"
-                   onInput={(x) => rech({ bcc: x.target.value })} />
-          </FieldBox>
-        </FormGrid>
-        <MessageStrip hideCloseButton design={rechnungsVersand ? 'Information' : 'Critical'} style={{ marginTop: '0.75rem' }}>
-          {rechnungsVersand
-            ? 'Das Absender-Postfach muss in Microsoft 365 für die n8n-App freigegeben sein (wie die Postfächer der Benutzer). Die Adressen stehen nur in der Datenbank des Portals.'
-            : 'Die Funktion „Rechnungsversand: Absender-Postfach und BCC“ ist aus (Administration → Funktionen) – Rechnungen gehen wie alle E-Mails aus dem Postfach des Benutzers und ohne BCC hinaus.'}
+        <MessageStrip hideCloseButton design={absenderFunktion ? 'Information' : 'Critical'} style={{ marginTop: '0.5rem' }}>
+          {absenderFunktion
+            ? 'Jedes Absender-Postfach muss in Microsoft 365 für die n8n-App freigegeben sein (wie die Postfächer der Benutzer). BCC (z. B. DATEV-Upload) erhält jede Rechnung.'
+            : 'Die Funktion „Versand: Absender je Dokumentart und BCC“ ist aus (Administration → Funktionen) – alle E-Mails gehen aus dem Postfach des Benutzers und ohne BCC hinaus.'}
         </MessageStrip>
       </Section>
 
       <Bar endContent={<Button design="Emphasized" icon="save" disabled={ro || busy || !schwelleOk || !warnOk
-        || !e.eingang.ordnerZugeordnet.trim() || !e.eingang.ordnerPruefen.trim()} onClick={speichern}>Sichern</Button>} />
+        || !e.eingang.ordnerZugeordnet.trim() || !e.eingang.ordnerPruefen.trim() || !postfaecherOk || !versandOk} onClick={speichern}>Sichern</Button>} />
     </>
   );
 }

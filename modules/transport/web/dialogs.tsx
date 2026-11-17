@@ -123,10 +123,12 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
   const zu = () => { if (direkt) onClose(); };
   const [busy, setBusy] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState(false);
-  // Rechnungsversand (Funktion transport.versand.rechnung): Absender-Postfach und BCC auch in der E-Mail-Datei
+  // Absender-Postfach und BCC der Dokumentart (Funktion transport.versand.rechnung) auch in der E-Mail-Datei
   const [rv, setRv] = useState<{ absender: string | null; bcc: string[] } | null>(null);
   useEffect(() => {
-    if (art === 'R') api.get<{ rechnung?: { absender: string | null; bcc: string[] } }>(`${T}/mail/info`).then((i) => setRv(i.rechnung ?? null)).catch(() => setRv(null));
+    type Regel = { absender: string | null; bcc: string[] };
+    api.get<{ absender?: Partial<Record<'T' | 'L' | 'R', Regel>>; rechnung?: Regel }>(`${T}/mail/info`)
+      .then((i) => setRv(i.absender?.[art] ?? (art === 'R' ? i.rechnung ?? null : null))).catch(() => setRv(null));
   }, [art]);
   const datei = (m: MailRow) => {
     const id = art === 'R' ? m.faktura! : m.auftragsnr;

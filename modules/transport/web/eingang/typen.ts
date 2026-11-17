@@ -24,7 +24,12 @@ export interface VorgangZeile {
   anzahl_dokumente: number;
   /** optional: Anzahl gleichwertiger Kandidaten (ohne eindeutigen Vorschlag) */
   anzahl_kandidaten?: number | null;
+  /** Eingangspostfach, in dem die E-Mail ankam (z. B. info@ oder buchhaltung@) */
+  postfach?: string | null;
 }
+
+/** Eingangspostfach mit Bezeichnung (Einstellungen → Mail-Workflows → Eingang) */
+export interface EingangsPostfach { adresse: string; bezeichnung: string }
 
 export interface Kandidat {
   auftragsnr: string;
