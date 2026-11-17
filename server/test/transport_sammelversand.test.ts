@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  anrede, artenOrdnen, emlBauen, emlDateiname, mailsPlanen, mailtext, modusFuer, schluesselBilden,
+  anrede, artenOrdnen, emlBauen, emlDateiname, mailsPlanen, mailtext, modusFuer, rechnungsVersandAus, schluesselBilden,
   type Empfaenger, type MailtextVorlage, type VersandDokument,
 } from '../../modules/transport/server/sammelversand-logik.js';
 
@@ -163,4 +163,26 @@ test('Routen des Sammelversands sind angemeldet und hängen am Funktionsschalter
   }
   // „senden“ prüft der Server: Funktion „Automatisch senden“ und Recht
   assert.ok(/funktionAktiv\(F_MW\.versandAutomatisch\) && can\(req, P_MW\.versandSenden\)/.test(src));
+});
+
+test('Rechnungsversand aktiv: Rechnung ist eine eigene E-Mail, Lieferschein an denselben Kunden getrennt', () => {
+  const m = mailsPlanen([L('2099_8013', KUNDE), R('2099_8013', '2099_R005', KUNDE)], VORLAGEN, { rechnungEinzeln: true });
+  assert.deepEqual(m.map((x) => [x.arten, x.rolle, x.an]), [[['L'], 'kunde', KUNDE.email], [['R'], 'rechnungsempfaenger', KUNDE.email]]);
+  assert.notEqual(m[0].schluessel, m[1].schluessel);
+  assert.equal(m[1].betreff, 'Rechnung 2099_R005');
+  // Sammelrechnung bleibt einmalig
+  assert.equal(mailsPlanen([R('2099_8013', '2099_R005', KUNDE), R('2099_8014', '2099_R005', KUNDE)], VORLAGEN, { rechnungEinzeln: true }).length, 1);
+});
+
+test('Rechnungsversand: Absender und BCC nur mit Funktion und eingetragenen Werten', () => {
+  const r = { absender: 'buchhaltung@firma.example', bcc: 'beleg@upload.example; zweite@upload.example' };
+  assert.deepEqual(rechnungsVersandAus(true, r), { absender: 'buchhaltung@firma.example', bcc: ['beleg@upload.example', 'zweite@upload.example'] });
+  assert.deepEqual(rechnungsVersandAus(false, r), { absender: null, bcc: [] });
+  assert.deepEqual(rechnungsVersandAus(true, { absender: '', bcc: '' }), { absender: null, bcc: [] });
+});
+
+test('EML Rechnungsversand: From und Bcc im Kopf', () => {
+  const eml = emlBauen({ an: 'a@b.de', bcc: 'beleg@upload.example', von: 'buchhaltung@firma.example', betreff: 'Rechnung', text: '', anhaenge: [] }, 'G');
+  assert.match(eml, /^From: buchhaltung@firma\.example\r\nTo: a@b\.de\r\nBcc: beleg@upload\.example\r\nSubject: Rechnung\r\n/);
+  assert.ok(!emlBauen({ an: 'a@b.de', betreff: 'x', text: '', anhaenge: [] }).includes('Bcc:'));
 });

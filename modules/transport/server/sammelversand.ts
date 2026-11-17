@@ -9,7 +9,7 @@ import { dokumentPdf } from './pdf/erzeugen.js';
 import { xrechnungErzeugen } from './xrechnung.js';
 import { DATEITYPEN, endung, mimeTyp, paperlessFirma } from './dokumente.js';
 import { euroflexMailSenden, mailInfo, versandBereit, type VersandDatei } from './mailversand.js';
-import { DOKUMENTARTEN, F_MW, P_MW, workflowEinstellungen } from './mailworkflows.js';
+import { DOKUMENTARTEN, F_MW, P_MW, rechnungsVersand, workflowEinstellungen } from './mailworkflows.js';
 import {
   artenOrdnen, emlBauen, emlDateiname, mailsPlanen, modusFuer,
   type Art, type Empfaenger, type GeplanteMail, type MailtextVorlage, type Modus, type VersandDokument,
@@ -122,11 +122,19 @@ interface VorschauMail {
   schluessel: string; auftragsnr: string; fahrt?: number; rolle: GeplanteMail['rolle']; empfaenger_name: string | null;
   an: string; cc: string; betreff: string; text: string; arten: Art[]; anhaenge: { name: string; groesse: number }[]; modus: Modus;
   fehler?: string; hinweis?: string;
+  /** Rechnungsversand: festes Absender-Postfach und BCC (nur bei E-Mails mit Rechnung und eingeschalteter Funktion) */
+  absender?: string; bcc?: string;
 }
+
+type RechnungsVersand = Awaited<ReturnType<typeof rechnungsVersand>>;
+/** Gilt für diese E-Mail der Rechnungsversand (Absender/BCC)? Zusätzliche Dateien gehen dann nicht mit – die BCC-Adresse
+ *  (DATEV-Upload) würde sonst jede Datei als Beleg übernehmen. */
+const alsRechnung = (m: GeplanteMail, rv: RechnungsVersand) => m.arten.includes('R') && !!(rv.absender || rv.bcc.length);
 
 async function vorschauRechnen(req: FastifyRequest, b: Auswahl, nurEntwurf: boolean) {
   const vorlagen = (await sql`select art, sprache, text from transport.mailtexte`) as unknown as MailtextVorlage[];
-  const geplant = mailsPlanen(await dokumenteSammeln(b), vorlagen);
+  const rv = await rechnungsVersand();
+  const geplant = mailsPlanen(await dokumenteSammeln(b), vorlagen, { rechnungEinzeln: !!(rv.absender || rv.bcc.length) });
   const { versand } = await workflowEinstellungen();
   const erlaubt = sendenErlaubt(req);
   const anlagen = anlagenErzeuger(b.xrechnung);
@@ -136,6 +144,8 @@ async function vorschauRechnen(req: FastifyRequest, b: Auswahl, nurEntwurf: bool
     let fehler: string | undefined;
     try { a = await anlagen(m); } catch (e) { fehler = `Dokument konnte nicht erzeugt werden: ${fehlerText(e)}`; }
     if (!fehler && !m.an) fehler = 'Empfänger fehlt';
+    const rechnung = alsRechnung(m, rv);
+    const hinweise = [...(a?.hinweise ?? []), ...(rechnung ? ['Rechnungsversand: zusätzliche Dateien werden nicht angehängt.'] : [])];
     mails.push({
       plan: m,
       anlagen: a,
@@ -145,11 +155,13 @@ async function vorschauRechnen(req: FastifyRequest, b: Auswahl, nurEntwurf: bool
         anhaenge: (a?.dateien ?? []).map((d) => ({ name: d.name, groesse: d.daten.length })),
         modus: modusFuer(m.arten, versand, erlaubt, nurEntwurf),
         ...(fehler ? { fehler } : {}),
-        ...(a?.hinweise.length ? { hinweis: a.hinweise.join(' ') } : {}),
+        ...(hinweise.length ? { hinweis: hinweise.join(' ') } : {}),
+        ...(rechnung && rv.absender ? { absender: rv.absender } : {}),
+        ...(rechnung && rv.bcc.length ? { bcc: rv.bcc.join(', ') } : {}),
       },
     });
   }
-  return { mails, senden_erlaubt: erlaubt };
+  return { mails, senden_erlaubt: erlaubt, rv };
 }
 
 /** Dateien aus dem Ablageordner (Browser, Base64) und Paperless-Dokumente des einen Auftrags */
@@ -192,6 +204,7 @@ export async function sammelversandRoutes(app: FastifyInstance) {
       modus: Object.fromEntries(DOKUMENTARTEN.map((a) => [a, versand[a].modus])) as Record<Art, Modus>,
       senden_erlaubt: sendenErlaubt(req),
       eingerichtet: info.eingerichtet, postfach: info.postfach, kopie_an: info.kopieAn, max_mb: info.maxMb,
+      rechnung: await rechnungsVersand(),
     };
   });
 
@@ -203,8 +216,10 @@ export async function sammelversandRoutes(app: FastifyInstance) {
 
   app.post('/versand/ausfuehren', { preHandler: requireAuth(P_VERSAND), bodyLimit: 40 * 1024 * 1024 }, async (req) => {
     const b = ausfuehrenSchema.parse(req.body);
-    // Einrichtung und Postfach zuerst – erst danach Dokumente erzeugen und Dateien holen
-    await versandBereit();
+    // Einrichtung und Postfach zuerst – erst danach Dokumente erzeugen und Dateien holen. Nur Rechnungen: das Postfach des
+    // Rechnungsversands genügt, der Benutzer braucht kein eigenes
+    const nurRechnung = artenOrdnen(b.arten).every((a) => a === 'R');
+    await versandBereit(nurRechnung ? (await rechnungsVersand()).absender : undefined);
     const zusatz = await zusatzLaden(b);
     const plan = await vorschauRechnen(req, b, b.nur_entwurf);
     const ergebnisse: { schluessel: string; status: 'entwurf' | 'gesendet' | 'fehler'; text: string }[] = [];
@@ -214,9 +229,11 @@ export async function sammelversandRoutes(app: FastifyInstance) {
       if (!w.an) { ergebnisse.push({ schluessel: w.schluessel, status: 'fehler', text: 'Empfänger fehlt – übersprungen.' }); continue; }
       if (!m.anlagen) { ergebnisse.push({ schluessel: w.schluessel, status: 'fehler', text: m.vorschau.fehler ?? 'Dokument konnte nicht erzeugt werden.' }); continue; }
       try {
+        const rechnung = alsRechnung(m.plan, plan.rv);
         const r = await euroflexMailSenden({
           nr: m.plan.auftragsnr, modus: m.vorschau.modus, an: w.an, cc: w.cc, betreff: w.betreff || m.plan.betreff, text: w.text,
-          dateien: [...m.anlagen.dateien, ...zusatz], benutzer: benutzerName(req),
+          dateien: rechnung ? m.anlagen.dateien : [...m.anlagen.dateien, ...zusatz], benutzer: benutzerName(req),
+          ...(rechnung ? { absender: plan.rv.absender, bcc: plan.rv.bcc } : {}),
         });
         // maßgeblich ist die E-Mail an den Empfänger; scheitert nur die Kopie an die feste zweite Adresse, steht das im Text
         const haupt = r.mails.find((x) => x.rolle === 'kunde');
@@ -241,7 +258,11 @@ export async function sammelversandRoutes(app: FastifyInstance) {
       if (!m) throw new BusinessError('Eine E-Mail gehört nicht (mehr) zur Auswahl – bitte die Vorschau neu laden.');
       if (!m.anlagen) throw new BusinessError(`${m.plan.auftragsnr}: ${m.vorschau.fehler ?? 'Dokument konnte nicht erzeugt werden.'}`);
       const betreff = w.betreff || m.plan.betreff;
-      const eml = emlBauen({ an: w.an, cc: w.cc, betreff, text: w.text, anhaenge: [...m.anlagen.dateien, ...zusatz] });
+      const rechnung = alsRechnung(m.plan, plan.rv);
+      const eml = emlBauen({
+        an: w.an, cc: w.cc, betreff, text: w.text, anhaenge: rechnung ? m.anlagen.dateien : [...m.anlagen.dateien, ...zusatz],
+        ...(rechnung ? { von: plan.rv.absender ?? undefined, bcc: plan.rv.bcc.join(', ') } : {}),
+      });
       dateien.push({ schluessel: w.schluessel, name: emlDateiname(betreff, vergeben), inhalt_base64: Buffer.from(eml, 'utf8').toString('base64') });
     }
     return { dateien };

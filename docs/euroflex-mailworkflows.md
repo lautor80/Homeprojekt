@@ -17,6 +17,7 @@ siehe [n8n/EUROFLEX-MAILEINGANG.md](n8n/EUROFLEX-MAILEINGANG.md).
 |---|---|---|
 | `transport.versand.sammel` – Versenden über Outlook 365 | `transport.versand:execute` | Knopf „Versenden…“ fehlt, Routen `/versand/*` antworten 403 |
 | `transport.versand.automatisch` – Automatisch senden | `transport.versandsenden:execute` | jede Mail wird Entwurf, auch wenn die Einstellung „Senden“ sagt |
+| `transport.versand.rechnung` – Rechnungsversand: Absender-Postfach und BCC | – (Einstellungen: `transport.stammdaten:edit`, Versand: `transport.versand:execute`) | Rechnungen gehen wie alle E-Mails aus dem Postfach des Benutzers und ohne BCC |
 | `transport.eingang` – Posteingang | `transport.eingang:display`, `transport.eingang:edit` | App Posteingang fehlt |
 | `transport.eingang.n8n` – E-Mail-Eingang über n8n | `transport.eingang:execute` (API-Schlüssel) | Lieferungen von n8n werden abgewiesen, Mails bleiben im Postfach |
 | `transport.eingang.automatik` – Automatisch ablegen | – | jede Mail landet in der Prüfliste |
@@ -138,6 +139,26 @@ wegräumt.
 4. „N Entwürfe erzeugen“ bzw. „N E-Mails senden“. Ergebnis je Mail: Entwurf / gesendet / Fehler; Fehlgeschlagene lassen sich erneut senden.
 
 Ohne eingerichtete Anbindung (oder als Rückfallweg) lädt „Als EML herunterladen“ je Mail eine EML-Datei herunter.
+
+### Rechnungsversand (Absender-Postfach und BCC)
+
+Mit der Funktion `transport.versand.rechnung` und eingetragenen Adressen (*Einstellungen → Euroflex → Mail-Workflows →
+Rechnungsversand*, Tabelle `transport.workflow_einstellungen`, Spalte `rechnung` = `{ absender, bcc }`, Migration 016) gilt für jede
+E-Mail mit einer Rechnung:
+
+- **Absender** ist das feste Postfach (z. B. `buchhaltung@…`) statt des Postfachs des Benutzers – der Entwurf liegt dann in dessen
+  Ordner *Entwürfe*. Das Postfach muss für die n8n-App freigegeben sein ([n8n/EUROFLEX-MAILVERSAND.md](n8n/EUROFLEX-MAILVERSAND.md), 1.2).
+- **BCC** an die feste(n) Adresse(n) (z. B. die DATEV-Upload-Adresse). Nur an der E-Mail an den Empfänger, nicht an der Kopie an die
+  feste zweite Adresse; im E-Mail-Protokoll steht die BCC-Adresse bei den Empfängern.
+- „Versenden…“: Die Rechnung ist immer eine **eigene E-Mail** (nie zusammen mit Lieferschein oder Transportauftrag), zusätzliche
+  Dateien aus Ablageordner/Paperless werden nicht angehängt – die DATEV-Upload-Adresse übernimmt jeden Anhang als Beleg.
+- Einzeldialog „E-Mail mit Anhängen…“: gilt bei der Vorlage *Rechnung*; der Dialog zeigt Absender und BCC an.
+- E-Mail-Dateien (.eml) erhalten `From:` und `Bcc:`. Outlook übernimmt den Absender nur, wenn das Postfach im Outlook des Benutzers
+  eingebunden ist.
+- Die Adressen stehen **nur in der Datenbank**, nie im (öffentlichen) Repository: Die DATEV-Upload-Adresse ist ein Zugang zum
+  Belegeingang.
+- Hinweis XRechnung: Wird im Dialog „XRechnung zusätzlich“ gewählt, geht die XML-Datei ebenfalls an die BCC-Adresse. Die
+  ZUGFeRD-PDF enthält die Rechnungsdaten bereits – für DATEV genügt sie.
 
 ### Modus
 

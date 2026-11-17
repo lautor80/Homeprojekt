@@ -129,6 +129,15 @@ Im Dialog *E-Mail mit Anhängen…* (Recht `transport.versand:execute`):
   Der Inhalt wird nicht gespeichert; „Erneut senden“ aus dem Protokoll gibt es für diese E-Mails nicht – wiederholt wird am Auftrag.
 - Ohne eingerichtete Anbindung zeigt der Dialog nur den bisherigen Entwurf.
 
+## Rechnungsversand aus dem Buchhaltungspostfach
+
+Mit der Funktion `transport.versand.rechnung` gehen Rechnungen aus einem festen Postfach (z. B. `buchhaltung@…`) und mit fester
+BCC-Adresse (z. B. DATEV-Upload) hinaus – Einstellung *Administration → Einstellungen → Euroflex → Mail-Workflows → Rechnungsversand*.
+Am Workflow ändert sich nichts (`absender` und `bcc` kommen mit jedem Aufruf). In Microsoft 365 muss das **Absender-Postfach für die
+App freigegeben** sein: bei Weg A (1.2) als direktes Mitglied in die Gruppe „Euroflex Versandpostfächer“ aufnehmen und mit
+`Test-ServicePrincipalAuthorization … -Resource buchhaltung@…` prüfen. Wer Entwürfe prüfen und senden soll, braucht in Outlook
+Zugriff auf dieses Postfach (Vollzugriff bzw. „Senden als“ durch den Exchange-Administrator).
+
 ## Sammelversand („Versenden…“)
 
 Der Sammelversand aus der Auftragsliste bzw. dem Auftragsdetail (*„Versenden…“* neben *„Drucken“*, Funktion

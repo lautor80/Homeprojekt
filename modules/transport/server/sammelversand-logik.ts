@@ -6,6 +6,8 @@
  *    (Betreff und Text der ersten Art, Anhänge aller Arten)
  *  - Transportauftrag je Fahrt an den Unternehmer der Fahrt, Lieferschein an den Kunden, Rechnung an den Rechnungsempfänger (sonst Kunde)
  *  - eine Rechnung (auch eine Sammelrechnung) geht nur einmal hinaus – mit dem ersten ausgewählten Auftrag
+ *  - mit aktivem Rechnungsversand (Absender-Postfach/BCC) ist eine Rechnung immer eine eigene E-Mail (nie mit Lieferschein oder
+ *    Transportauftrag zusammen): Die BCC-Adresse (z. B. DATEV-Upload) übernimmt jeden Anhang als Beleg
  *  - Modus je E-Mail: Einstellung der ersten Art; „senden“ nur, wenn erlaubt
  */
 
@@ -55,6 +57,15 @@ export interface GeplanteMail {
   dokumente: VersandDokument[];
 }
 
+/** „a@b; c@d e@f“ → Liste der Adressen (ohne Prüfung) */
+export const adressListe = (roh: string) => roh.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+
+/** Was gilt für E-Mails mit Rechnung? Absender und BCC nur mit eingeschalteter Funktion und eingetragenen Werten */
+export function rechnungsVersandAus(aktiv: boolean, r: { absender: string; bcc: string }): { absender: string | null; bcc: string[] } {
+  if (!aktiv) return { absender: null, bcc: [] };
+  return { absender: r.absender.trim() || null, bcc: adressListe(r.bcc) };
+}
+
 /** deterministischer Schlüssel einer E-Mail – erste Art bestimmt Fahrt und Rolle */
 export const schluesselBilden = (auftragsnr: string, fahrt: number | undefined, rolle: Rolle) => `${auftragsnr}|${fahrt ?? ''}|${rolle}`;
 
@@ -91,7 +102,7 @@ export function empfaengerSchluessel(d: VersandDokument): string {
  * Dokumente → E-Mails. Reihenfolge bleibt erhalten (Aufträge wie ausgewählt, je Auftrag T je Fahrt, L, R).
  * Rechnungen: jede Rechnungsnummer nur einmal (Sammelrechnung beim ersten ausgewählten Auftrag).
  */
-export function mailsPlanen(dokumente: VersandDokument[], vorlagen: MailtextVorlage[]): GeplanteMail[] {
+export function mailsPlanen(dokumente: VersandDokument[], vorlagen: MailtextVorlage[], o: { rechnungEinzeln?: boolean } = {}): GeplanteMail[] {
   const mails: GeplanteMail[] = [];
   const index = new Map<string, GeplanteMail>();
   const rechnungen = new Set<string>();
@@ -100,7 +111,8 @@ export function mailsPlanen(dokumente: VersandDokument[], vorlagen: MailtextVorl
       if (!d.faktura || rechnungen.has(d.faktura)) continue;
       rechnungen.add(d.faktura);
     }
-    const k = `${d.auftragsnr}\u0000${empfaengerSchluessel(d)}`;
+    // Rechnungsversand aktiv: Rechnung als eigene E-Mail (Absender/BCC), sonst je Auftrag und Empfänger zusammenfassen
+    const k = d.art === 'R' && o.rechnungEinzeln ? `${d.auftragsnr}\u0000R\u0000${d.faktura}` : `${d.auftragsnr}\u0000${empfaengerSchluessel(d)}`;
     const vorhanden = index.get(k);
     if (vorhanden) {
       if (!vorhanden.arten.includes(d.art)) vorhanden.arten.push(d.art);
@@ -137,9 +149,13 @@ export const kopfKodieren = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UT
 export interface EmlAnhang { name: string; mime: string; daten: Uint8Array }
 
 /** E-Mail-Datei als Entwurf (X-Unsent: 1) – Outlook öffnet sie mit „Senden“ */
-export function emlBauen(m: { an: string; cc?: string; betreff: string; text: string; anhaenge: EmlAnhang[] }, grenze = `----=_Euroflex_${Math.random().toString(36).slice(2)}`): string {
-  const teile: string[] = [`To: ${m.an}`];
+export function emlBauen(m: { an: string; cc?: string; bcc?: string; von?: string; betreff: string; text: string; anhaenge: EmlAnhang[] }, grenze = `----=_Euroflex_${Math.random().toString(36).slice(2)}`): string {
+  const teile: string[] = [];
+  // Rechnungsversand: Absender-Postfach (Outlook nimmt es, wenn das Konto dort eingerichtet ist) und BCC
+  if (m.von?.trim()) teile.push(`From: ${m.von.trim()}`);
+  teile.push(`To: ${m.an}`);
   if (m.cc?.trim()) teile.push(`Cc: ${m.cc.trim()}`);
+  if (m.bcc?.trim()) teile.push(`Bcc: ${m.bcc.trim()}`);
   teile.push(
     `Subject: ${kopfKodieren(m.betreff)}`,
     'X-Unsent: 1',

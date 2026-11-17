@@ -20,7 +20,9 @@ interface Eingang {
   mailAlsPdf: boolean; ocr: boolean; speicherWarnungMb: number;
 }
 interface ArtEinstellung { vorauswahl: boolean; modus: 'entwurf' | 'senden' }
-interface Einstellungen { eingang: Eingang; versand: Record<Art, ArtEinstellung> }
+/** Rechnungsversand: festes Absender-Postfach und BCC (Funktion transport.versand.rechnung) */
+interface Rechnung { absender: string; bcc: string }
+interface Einstellungen { eingang: Eingang; versand: Record<Art, ArtEinstellung>; rechnung: Rechnung }
 
 const ARTEN: { art: Art; text: string }[] = [
   { art: 'T', text: 'Transportauftrag' },
@@ -58,6 +60,9 @@ export function MailWorkflowsTab() {
   const warnOk = zahl(warnMb) >= 10 && zahl(warnMb) <= 100_000;
   const automatischSenden = funktion('transport.versand.automatisch');
   const automatischAblegen = funktion('transport.eingang.automatik');
+  const rechnungsVersand = funktion('transport.versand.rechnung');
+  const rechnung = e.rechnung ?? { absender: '', bcc: '' };
+  const rech = (x: Partial<Rechnung>) => setE({ ...e, rechnung: { ...rechnung, ...x } });
 
   async function speichern() {
     if (!e || !schwelleOk || !warnOk) return;
@@ -150,6 +155,28 @@ export function MailWorkflowsTab() {
         <MessageStrip hideCloseButton design={automatischSenden ? 'Information' : 'Critical'} style={{ marginTop: '0.75rem' }}>
           „Senden“ greift nur, wenn die Funktion „Automatisch senden“ an ist (und der Benutzer das Recht dazu hat).
           {!automatischSenden && ' Die Funktion ist zurzeit aus (Administration → Funktionen) – alle E-Mails werden als Entwurf in Outlook abgelegt.'}
+        </MessageStrip>
+      </Section>
+
+      <Section title="Rechnungsversand">
+        <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.75rem' }}>
+          Gilt für jede E-Mail mit einer Rechnung: im Dialog „E-Mail mit Anhängen…“ (Vorlage Rechnung), bei „Versenden…“ und in der
+          E-Mail-Datei. Eine Rechnung geht dabei immer als eigene E-Mail, ohne weitere Dokumente. Leer = Postfach des Benutzers bzw. kein BCC.
+        </Text>
+        <FormGrid>
+          <FieldBox label="Absender-Postfach (z. B. Buchhaltung)">
+            <Input style={{ width: '100%' }} type="Email" value={rechnung.absender} readonly={ro} placeholder="buchhaltung@firma.de"
+                   onInput={(x) => rech({ absender: x.target.value })} />
+          </FieldBox>
+          <FieldBox label="BCC – erhält jede Rechnung (z. B. DATEV-Upload-Adresse)">
+            <Input style={{ width: '100%' }} value={rechnung.bcc} readonly={ro} placeholder="…@uploadmail.datev.de"
+                   onInput={(x) => rech({ bcc: x.target.value })} />
+          </FieldBox>
+        </FormGrid>
+        <MessageStrip hideCloseButton design={rechnungsVersand ? 'Information' : 'Critical'} style={{ marginTop: '0.75rem' }}>
+          {rechnungsVersand
+            ? 'Das Absender-Postfach muss in Microsoft 365 für die n8n-App freigegeben sein (wie die Postfächer der Benutzer). Die Adressen stehen nur in der Datenbank des Portals.'
+            : 'Die Funktion „Rechnungsversand: Absender-Postfach und BCC“ ist aus (Administration → Funktionen) – Rechnungen gehen wie alle E-Mails aus dem Postfach des Benutzers und ohne BCC hinaus.'}
         </MessageStrip>
       </Section>
 

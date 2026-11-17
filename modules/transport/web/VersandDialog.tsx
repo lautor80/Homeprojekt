@@ -26,6 +26,8 @@ interface VorschauMail {
   schluessel: string; auftragsnr: string; fahrt?: number; rolle: Rolle; empfaenger_name: string | null;
   an: string; cc: string; betreff: string; text: string; arten: Art[]; anhaenge: { name: string; groesse: number }[]; modus: Modus;
   fehler?: string; hinweis?: string;
+  /** Rechnungsversand: Absender-Postfach und BCC dieser E-Mail */
+  absender?: string; bcc?: string;
 }
 interface Vorschau { mails: VorschauMail[]; senden_erlaubt: boolean }
 interface Ergebnis { schluessel: string; status: 'entwurf' | 'gesendet' | 'fehler'; text: string }
@@ -292,6 +294,7 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
                         {kaputt ? <Text style={{ color: 'var(--sapNegativeTextColor)' }}>{m.fehler ?? 'fehlt'}</Text>
                           : m.anhaenge.map((a) => <Text key={a.name} className="portal-small" style={{ display: 'block' }}>{a.name} ({groesse(a.groesse)})</Text>)}
                         {!!wahl.size && !kaputt && <Text className="portal-muted portal-small" style={{ display: 'block' }}>+ {wahl.size} weitere Datei(en)</Text>}
+                        {(m.absender || m.bcc) && <Text className="portal-small portal-muted" style={{ display: 'block' }}>{m.absender ? `von ${m.absender}` : ''}{m.absender && m.bcc ? ' · ' : ''}{m.bcc ? `BCC ${m.bcc}` : ''}</Text>}
                         {m.hinweis && <Text className="portal-small" style={{ display: 'block', color: 'var(--sapCriticalTextColor)' }}>{m.hinweis}</Text>}
                       </td>
                       <td style={td}><ObjectStatus state={modus(m) === 'senden' ? 'Critical' : 'None'}>{modus(m) === 'senden' ? 'Senden' : 'Entwurf'}</ObjectStatus></td>

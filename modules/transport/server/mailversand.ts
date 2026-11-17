@@ -177,6 +177,10 @@ export interface VersandAuftrag {
   /** nur diese E-Mails senden (nach einem Teilerfolg: nur die fehlgeschlagene) */
   nur?: Rolle[];
   benutzer: string;
+  /** Rechnungsversand: festes Absender-Postfach statt des Postfachs des Benutzers */
+  absender?: string | null;
+  /** Rechnungsversand: BCC – nur an der E-Mail an den Empfänger, nicht an der Kopie an die feste zweite Adresse */
+  bcc?: string[];
 }
 export interface VersandMail { rolle: Rolle; an: string; status: 'gesendet' | 'entwurf' | 'fehler'; fehler?: string }
 export interface VersandErgebnis { status: 'gesendet' | 'entwurf' | 'teilweise' | 'fehler'; text: string; postfach: string; mails: VersandMail[] }
@@ -184,11 +188,12 @@ export interface VersandErgebnis { status: 'gesendet' | 'entwurf' | 'teilweise' 
 const ROLLE_TEXT: Record<Rolle, string> = { kunde: 'E-Mail an den Empfänger', kopie: 'E-Mail an die feste zweite Adresse' };
 
 /** Anbindung eingerichtet und Postfach für den angemeldeten Benutzer vorhanden? Wirft sonst – vor dem Laden der Anhänge prüfen */
-export async function versandBereit(): Promise<{ v: Verbindung; e: MailEinstellungen; postfach: string }> {
+export async function versandBereit(absender?: string | null): Promise<{ v: Verbindung; e: MailEinstellungen; postfach: string }> {
   const v = await verbindungLesen(V_MAIL);
   if (!eingerichtet(v)) throw new BusinessError('Der E-Mail-Versand über Outlook 365 ist nicht eingerichtet (Administration → Schnittstellen → Euroflex E-Mail-Versand).');
   const e = einstellungenLesen(v);
-  const postfach = postfachFuer(e, aktuellerBenutzer());
+  // Rechnungsversand: festes Postfach (z. B. Buchhaltung) – unabhängig vom Postfach des Benutzers
+  const postfach = absender?.trim() || postfachFuer(e, aktuellerBenutzer());
   if (!postfach) {
     throw new BusinessError('Für Ihren Benutzer ist kein Postfach hinterlegt: E-Mail-Adresse am Benutzer eintragen oder das Postfach in der Anbindung „Euroflex E-Mail-Versand“ zuordnen.');
   }
@@ -197,9 +202,10 @@ export async function versandBereit(): Promise<{ v: Verbindung; e: MailEinstellu
 
 /** E-Mails zum Auftrag über den n8n-Workflow senden bzw. als Entwürfe im Postfach ablegen; jede E-Mail steht im E-Mail-Protokoll */
 export async function euroflexMailSenden(a: VersandAuftrag): Promise<VersandErgebnis> {
-  const { v, e, postfach } = await versandBereit();
+  const { v, e, postfach } = await versandBereit(a.absender);
   const an = adressenPruefen(a.an, 'Empfänger');
   const cc = adressenPruefen(a.cc, 'CC');
+  const bcc = adressenPruefen((a.bcc ?? []).join(', '), 'BCC');
   if (!an.length) throw new BusinessError('Bitte einen Empfänger angeben.');
   const betreff = a.betreff.trim();
   if (!betreff) throw new BusinessError('Bitte einen Betreff angeben.');
@@ -212,20 +218,20 @@ export async function euroflexMailSenden(a: VersandAuftrag): Promise<VersandErge
   const anhaenge = a.dateien.map((d, i) => ({ id: `a${i + 1}`, dateiname: d.name, mime: d.mime, inhalt_base64: d.daten.toString('base64') }));
   const ids = anhaenge.map((x) => x.id);
   const gemeinsam = { betreff, text: a.text, text_format: 'text', anhaenge: ids };
-  const alle: { nr: number; rolle: Rolle; an: string[]; cc: string[] }[] = [{ nr: 1, rolle: 'kunde', an, cc }];
-  if (e.kopie_an) alle.push({ nr: 2, rolle: 'kopie', an: [e.kopie_an], cc: [] });
+  const alle: { nr: number; rolle: Rolle; an: string[]; cc: string[]; bcc: string[] }[] = [{ nr: 1, rolle: 'kunde', an, cc, bcc }];
+  if (e.kopie_an) alle.push({ nr: 2, rolle: 'kopie', an: [e.kopie_an], cc: [], bcc: [] });
   const mails = alle.filter((m) => !a.nur || a.nur.includes(m.rolle));
   if (!mails.length) throw new BusinessError('Es ist keine E-Mail zu senden (die feste zweite Adresse ist nicht eingetragen).');
 
-  const proto = (m: { an: string[]; cc: string[] }) => ({
-    anwendung: ANWENDUNG, objekt: a.nr, an: [...m.an, ...m.cc].join(', '), betreff, absender: postfach, von: postfach, benutzer: a.benutzer,
+  const proto = (m: { an: string[]; cc: string[]; bcc: string[] }) => ({
+    anwendung: ANWENDUNG, objekt: a.nr, an: [...m.an, ...m.cc, ...m.bcc].join(', '), betreff, absender: postfach, von: postfach, benutzer: a.benutzer,
   });
   type Antwort = { nr?: number; status?: string; fehler?: string; message_id?: string };
   let antworten: Antwort[];
   try {
     const r = await aufrufen(v, {
       modus: a.modus, anwendung: ANWENDUNG, objekt: a.nr, benutzer: a.benutzer, absender: postfach, anhaenge,
-      mails: mails.map((m) => ({ nr: m.nr, rolle: m.rolle, an: m.an, cc: m.cc, bcc: [], ...gemeinsam })),
+      mails: mails.map((m) => ({ nr: m.nr, rolle: m.rolle, an: m.an, cc: m.cc, bcc: m.bcc, ...gemeinsam })),
     }, 180_000);
     if (!r.json || typeof r.json.status !== 'string') {
       throw new BusinessError(`Unerwartete Antwort von n8n (HTTP ${r.status}): ${r.text.replace(/\s+/g, ' ').slice(0, 150)}`, 502);

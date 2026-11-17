@@ -123,6 +123,11 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
   const zu = () => { if (direkt) onClose(); };
   const [busy, setBusy] = useState<string | null>(null);
   const [hinweis, setHinweis] = useState(false);
+  // Rechnungsversand (Funktion transport.versand.rechnung): Absender-Postfach und BCC auch in der E-Mail-Datei
+  const [rv, setRv] = useState<{ absender: string | null; bcc: string[] } | null>(null);
+  useEffect(() => {
+    if (art === 'R') api.get<{ rechnung?: { absender: string | null; bcc: string[] } }>(`${T}/mail/info`).then((i) => setRv(i.rechnung ?? null)).catch(() => setRv(null));
+  }, [art]);
   const datei = (m: MailRow) => {
     const id = art === 'R' ? m.faktura! : m.auftragsnr;
     return { id, url: `${T}/pdf/${art}/${encodeURIComponent(id)}`, name: art === 'T' ? `Transportauftrag_${id}.pdf` : art === 'L' ? `Lieferschein_${id}.pdf` : `Rechnung_${id}.pdf` };
@@ -136,7 +141,10 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
       const d = datei(m);
       const res = await fetch(d.url, { credentials: 'same-origin' });
       if (!res.ok) { const t = await res.text(); throw new Error(JSON.parse(t || '{}').message ?? `PDF konnte nicht erzeugt werden (${res.status}).`); }
-      const eml = await emlErzeugen({ an: m.an, betreff: m.betreff, text: m.text, anhaenge: [{ name: d.name, daten: await res.blob() }] });
+      const eml = await emlErzeugen({
+        an: m.an, betreff: m.betreff, text: m.text, anhaenge: [{ name: d.name, daten: await res.blob() }],
+        ...(rv?.absender ? { von: rv.absender } : {}), ...(rv?.bcc.length ? { bcc: rv.bcc.join(', ') } : {}),
+      });
       emlHerunterladen(eml, m.betreff);
       toast(`E-Mail-Entwurf „${m.betreff}“ mit ${d.name} erstellt.`, 5000);
       if (!autoOffen()) { if (direkt) toast('Der Entwurf liegt als .eml in den Downloads – anklicken öffnet ihn im Mailprogramm.', 8000); else setHinweis(true); }

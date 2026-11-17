@@ -24,7 +24,11 @@ interface Vorschlag { an: string; betreff: string; text: string; faktura: string
 interface Anhang { key: string; name: string; quelle: 'ORDNER' | 'PAPERLESS'; docId?: number; groesse?: number }
 export interface MailDok { doc_id: number; titel: string | null; datei: string | null }
 /** Versand über Outlook 365 (Anbindung „Euroflex E-Mail-Versand“) */
-interface VersandInfo { eingerichtet: boolean; postfach: string | null; kopieAn: string; maxMb: number }
+interface VersandInfo {
+  eingerichtet: boolean; postfach: string | null; kopieAn: string; maxMb: number;
+  /** Rechnungsversand (Funktion transport.versand.rechnung): Absender-Postfach und BCC für die Vorlage „Rechnung“ */
+  rechnung?: { absender: string | null; bcc: string[] };
+}
 type Rolle = 'kunde' | 'kopie';
 interface VersandErgebnis { status: 'gesendet' | 'entwurf' | 'teilweise' | 'fehler'; text: string; mails: { rolle: Rolle; an: string; status: string; fehler?: string }[] }
 const datenUrl = (f: Blob) => new Promise<string>((ok, err) => {
@@ -61,10 +65,13 @@ export function emlHerunterladen(eml: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export async function emlErzeugen(m: { an: string; betreff: string; text: string; anhaenge: { name: string; daten: Blob }[] }): Promise<Blob> {
+export async function emlErzeugen(m: { an: string; bcc?: string; von?: string; betreff: string; text: string; anhaenge: { name: string; daten: Blob }[] }): Promise<Blob> {
   const grenze = `----=_Euroflex_${Math.random().toString(36).slice(2)}`;
   const teile: string[] = [
+    // Rechnungsversand: Absender-Postfach (Outlook nimmt es, wenn das Konto dort eingerichtet ist) und BCC
+    ...(m.von ? [`From: ${m.von}`] : []),
     `To: ${m.an}`,
+    ...(m.bcc ? [`Bcc: ${m.bcc}`] : []),
     `Subject: ${kopf(m.betreff)}`,
     // Outlook öffnet die Datei damit als Entwurf (Senden-Knopf statt Antworten)
     'X-Unsent: 1',
@@ -178,7 +185,7 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
     if (direkt) onClose();
     try {
       const dateien = await dateienLaden();
-      const eml = await emlErzeugen({ an: an.trim(), betreff, text, anhaenge: dateien });
+      const eml = await emlErzeugen({ an: an.trim(), betreff, text, anhaenge: dateien, ...rechnungKopf });
       emlHerunterladen(eml, betreff || `Auftrag_${nr}`);
       // solange der Browser .eml nicht automatisch öffnet: einmal zeigen, wie man das einstellt (bei sofort geschlossenem Dialog als Meldung)
       if (direkt) {
@@ -206,7 +213,7 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
         dateien.push({ name: x.name, inhalt: await datenUrl(f) });
       }
       const r = await api.post<VersandErgebnis>(`${T}/auftraege/${nr}/mail`, {
-        modus, an: an.trim(), cc: cc.trim(), betreff, text, dateien, dokumente: dokumenteIds, ...(offen ? { nur: offen } : {}),
+        modus, an: an.trim(), cc: cc.trim(), betreff, text, dateien, dokumente: dokumenteIds, ...(offen ? { nur: offen } : {}), rechnung: art === 'R',
       });
       if (r.status === 'gesendet' || r.status === 'entwurf') { toast(r.text, 8000); onClose(); return; }
       const fehlgeschlagen = r.mails.filter((m) => m.status === 'fehler').map((m) => m.rolle);
@@ -235,6 +242,10 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   };
 
   const outlook = !!info?.eingerichtet;
+  // Vorlage „Rechnung“: Absender-Postfach und BCC des Rechnungsversands (leer = wie jede andere E-Mail)
+  const rv = art === 'R' ? info?.rechnung : undefined;
+  const postfach = rv?.absender || info?.postfach || null;
+  const rechnungKopf = { ...(rv?.absender ? { von: rv.absender } : {}), ...(rv?.bcc.length ? { bcc: rv.bcc.join(', ') } : {}) };
   if (anleitung) {
     return createPortal(
       <Dialog open headerText="E-Mail-Entwurf öffnen" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
@@ -259,9 +270,9 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   return createPortal(
     <Dialog open headerText={`E-Mail zum Auftrag ${nr}`} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
             footer={<Bar endContent={<>
-              {outlook && <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={busy || !betreff.trim() || !an.trim() || !info?.postfach}
-                                  tooltip={`Über Outlook 365 aus dem Postfach ${info?.postfach ?? '–'} senden`} onClick={() => senden('senden')}>{offen ? 'Rest senden' : 'Senden'}</Button>}
-              {outlook && <Button icon="write-new" disabled={busy || !betreff.trim() || !an.trim() || !info?.postfach}
+              {outlook && <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={busy || !betreff.trim() || !an.trim() || !postfach}
+                                  tooltip={`Über Outlook 365 aus dem Postfach ${postfach ?? '–'} senden`} onClick={() => senden('senden')}>{offen ? 'Rest senden' : 'Senden'}</Button>}
+              {outlook && <Button icon="write-new" disabled={busy || !betreff.trim() || !an.trim() || !postfach}
                                   tooltip="Als Entwurf im Outlook-Postfach ablegen und dort prüfen und senden" onClick={() => senden('entwurf')}>Entwurf in Outlook</Button>}
               <Button design={outlook ? 'Default' : 'Emphasized'} icon="email" loading={!outlook && busy} disabled={busy || !betreff.trim()}
                       tooltip="E-Mail-Datei (.eml) für das Mailprogramm auf diesem PC" onClick={entwurf}>{outlook ? 'E-Mail-Datei' : 'Entwurf öffnen'}</Button>
@@ -303,11 +314,17 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
             ))}
           </div>
         )}
-        {outlook && (info?.postfach ? (
+        {rv && (rv.absender || rv.bcc.length > 0) && (
+          <MessageStrip design="Information" hideCloseButton>
+            Rechnungsversand:{rv.absender ? ` Absender ${rv.absender}.` : ''}{rv.bcc.length ? ` BCC an ${rv.bcc.join(', ')}.` : ''}
+            {' '}Bitte nur die Rechnung anhängen – die BCC-Adresse übernimmt jeden Anhang.
+          </MessageStrip>
+        )}
+        {outlook && (postfach ? (
           <MessageStrip design={offen ? 'Critical' : 'Information'} hideCloseButton>
             {offen
               ? `Es fehlt noch: ${offen.map((r) => (r === 'kunde' ? `E-Mail an ${an.trim()}` : `E-Mail an die feste zweite Adresse ${info.kopieAn}`)).join(', ')}. „Rest senden“ sendet nur diese.`
-              : `„Senden“ verschickt über Outlook 365 aus dem Postfach ${info.postfach}.${info.kopieAn ? ` Parallel geht dieselbe E-Mail mit denselben Anhängen als eigene E-Mail an ${info.kopieAn}.` : ' Eine feste zweite Adresse ist nicht eingetragen.'}`}
+              : `„Senden“ verschickt über Outlook 365 aus dem Postfach ${postfach}.${info.kopieAn ? ` Parallel geht dieselbe E-Mail mit denselben Anhängen als eigene E-Mail an ${info.kopieAn}.` : ' Eine feste zweite Adresse ist nicht eingetragen.'}`}
           </MessageStrip>
         ) : (
           <MessageStrip design="Critical" hideCloseButton>
