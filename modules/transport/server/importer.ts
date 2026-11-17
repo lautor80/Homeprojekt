@@ -480,6 +480,7 @@ export async function ausfuehren(tx: Tx, dateien: Geparst[], modus: ImportModus 
   let doks: Record<string, unknown>[] = [];
   let fahrtenAlt: Record<string, unknown>[] = [];
   let abschlussAlt: Record<string, unknown>[] = [];
+  let zahlungAlt: Record<string, unknown>[] = [];
   if (ersetzen) {
     const fehlt = PFLICHT_NEUAUFBAU.filter((a) => !dateien.some((d) => d.art === a));
     if (fehlt.length) {
@@ -489,6 +490,7 @@ export async function ausfuehren(tx: Tx, dateien: Geparst[], modus: ImportModus 
     // im Portal gepflegt, in SAP unbekannt: weitere Fahrten und „ohne Rechnung abgeschlossen“ – nach dem Neuaufbau zurückschreiben
     fahrtenAlt = [...await tx`select * from transport.fahrten`];
     abschlussAlt = [...await tx`select auftragsnr, abgeschlossen_am, abgeschlossen_grund from transport.auftraege where abgeschlossen_am is not null`];
+    zahlungAlt = [...await tx`select auftragsnr, faktura, bezahlt_am from transport.auftraege where bezahlt_am is not null`];
     const tab = zuLeeren(dateien);
     await tx.unsafe(`truncate transport.auftrag_dokumente, transport.fahrten, ${tab.map((a) => TABELLE[a]).join(', ')}`);
     geleert = IMPORT_ARTEN.filter((d) => tab.includes(d.key as TabArt)).map((d) => d.tabelle.replace(/ \(.*\)$/, ''));
@@ -555,6 +557,11 @@ export async function ausfuehren(tx: Tx, dateien: Geparst[], modus: ImportModus 
   for (const x of abschlussAlt.filter((y) => auftragsnr.has(y.auftragsnr as string))) {
     await tx`update transport.auftraege set abgeschlossen_am = ${x.abgeschlossen_am as Date}, abgeschlossen_grund = ${x.abgeschlossen_grund as string | null}
               where auftragsnr = ${x.auftragsnr as string} and faktura is null`;
+  }
+  // Zahlungseingang (im Portal erfasst) zurückschreiben – nur, wenn die Rechnung dieselbe geblieben ist
+  for (const x of zahlungAlt.filter((y) => auftragsnr.has(y.auftragsnr as string))) {
+    await tx`update transport.auftraege set bezahlt_am = ${x.bezahlt_am as Date}
+              where auftragsnr = ${x.auftragsnr as string} and faktura = ${x.faktura as string}`;
   }
 
   // Nummernkreise (A = Auftrag, R = Rechnung): höchste importierte Nummer je Jahr, ggf. Stand aus ZEU_RGNRKREIS

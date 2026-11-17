@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, Title,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -18,6 +18,7 @@ import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
 import { ordnerBereit } from './ordner';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { VersandDialog } from './VersandDialog';
+import { symbole, terminText, type SymbolZustand } from './termin';
 
 // Filter und Auswahl bleiben beim Wechsel ins Detail und zurück erhalten
 const merk = {
@@ -26,8 +27,66 @@ const merk = {
   status: 'OPEN' as 'ALL' | 'OPEN' | 'DONE' | 'CLOSED',
   suche: '',
   ansicht: 'LIST' as 'LIST' | 'TREE',
+  zahlung: 'ALL' as ZahlungFilter,
   auswahl: new Set<string>(),
 };
+
+// Filter „Zahlung“ (Spalte Abrechnung, Recht transport.abrechnung:display)
+type ZahlungFilter = 'ALL' | 'ANGELEGT' | 'OFFEN' | 'UEBERFAELLIG' | 'BEZAHLT';
+const ZAHLUNG: { key: ZahlungFilter; text: string }[] = [
+  { key: 'ALL', text: 'Alle' },
+  { key: 'ANGELEGT', text: 'Nur angelegt' },
+  { key: 'OFFEN', text: 'Abgerechnet, nicht bezahlt' },
+  { key: 'UEBERFAELLIG', text: 'Zahlung überfällig' },
+  { key: 'BEZAHLT', text: 'Bezahlt' },
+];
+
+/** Aussehen der Symbole angelegt · abgerechnet · bezahlt – Farben aus dem Theme, offen gestrichelt (nicht nur über die Farbe erkennbar) */
+const SYMBOL_STIL: Record<SymbolZustand, CSSProperties> = {
+  erledigt: { color: 'var(--sapInformativeColor, var(--sapInformationColor))', background: 'var(--sapInformationBackgroundColor)', border: '1px solid var(--sapInformationBorderColor)' },
+  bezahlt: { color: 'var(--sapPositiveColor)', background: 'var(--sapSuccessBackground)', border: '1px solid var(--sapSuccessBorderColor)' },
+  offen: { color: 'var(--sapContent_LabelColor)', background: 'transparent', border: '1px dashed var(--sapContent_LabelColor)' },
+  ueberfaellig: { color: 'var(--sapCriticalColor)', background: 'var(--sapWarningBackground)', border: '1px solid var(--sapWarningBorderColor)' },
+};
+const SYMBOL_ICON = ['create-form', 'receipt', 'money-bills'];
+const HINWEIS_FARBE: Partial<Record<SymbolZustand, string>> = { bezahlt: 'var(--sapPositiveTextColor)', ueberfaellig: 'var(--sapCriticalTextColor)' };
+
+/** Zelle „Abrechnung“: drei Symbole, darunter ein kurzer Hinweis; Tooltip mit Datum bzw. Rechnungsnummer */
+function AbrechnungZelle({ r }: { r: ListRow }) {
+  if (!r.abrechnung) return null;
+  const s = symbole(r.abrechnung, r.faktura, r.fakturadatum, r.anlagedatum);
+  return (
+    <FlexBox direction="Column" style={{ gap: '2px' }}>
+      <FlexBox style={{ gap: '4px' }}>
+        {s.symbole.map((x, i) => (
+          <span key={i} role="img" aria-label={x.text} title={x.text}
+                style={{ ...SYMBOL_STIL[x.zustand], display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 22, borderRadius: 6, boxSizing: 'border-box' }}>
+            <Icon name={SYMBOL_ICON[i]} aria-hidden="true" style={{ width: 14, height: 14, color: 'inherit' }} />
+          </span>
+        ))}
+      </FlexBox>
+      <span style={{ fontSize: 'var(--sapFontSmallSize)', color: HINWEIS_FARBE[s.symbole[2].zustand] ?? 'var(--sapContent_LabelColor)', whiteSpace: 'nowrap' }}>{s.hinweis}</span>
+    </FlexBox>
+  );
+}
+
+/** Zelle „Route“: Orte, darunter Lade- und Entladezeit (Recht transport.ladezeiten:display) */
+function RouteZelle({ r }: { r: ListRow }) {
+  const laden = terminText(r.laden);
+  const entladen = terminText(r.entladen);
+  if (!laden && !entladen) return <Text>{r.route}</Text>;
+  return (
+    <FlexBox direction="Column" style={{ minWidth: 0 }}>
+      <Text style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.route}</Text>
+      <span className="portal-muted" style={{ fontSize: 'var(--sapFontSmallSize)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            title={`Laden ${laden || '–'} · Entladen ${entladen || '–'}`}>
+        {laden && <><Icon name="arrow-top" aria-label="Laden" style={{ width: 12, height: 12, color: 'var(--sapInformativeColor, var(--sapInformationColor))', verticalAlign: 'middle' }} /> {laden}</>}
+        {laden && entladen && <span style={{ margin: '0 0.5rem' }}>·</span>}
+        {entladen && <><Icon name="arrow-bottom" aria-label="Entladen" style={{ width: 12, height: 12, color: 'var(--sapPositiveColor)', verticalAlign: 'middle' }} /> {entladen}</>}
+      </span>
+    </FlexBox>
+  );
+}
 
 const FAKT: KeyText[] = [
   { key: 'ALL', text: 'Alle' },
@@ -142,6 +201,10 @@ export function AuftraegeListe() {
   const [status, setStatus] = useState(merk.status);
   const [suche, setSuche] = useState(merk.suche);
   const [ansicht, setAnsicht] = useState(merk.ansicht);
+  const [zahlung, setZahlung] = useState<ZahlungFilter>(merk.zahlung);
+  // Spalte „Abrechnung“, Filter „Zahlung“ und Lade-/Entladezeiten: Recht + Funktionsschalter (Funktion aus = Recht nicht vorhanden)
+  const mitAbrechnung = can('transport.abrechnung:display');
+  const mitZeiten = can('transport.ladezeiten:display');
   const [basis, setBasis] = useState<ListRow[]>([]);
   const [auswahl, setAuswahlState] = useState<Set<string>>(merk.auswahl);
   const [loading, setLoading] = useState(true);
@@ -196,7 +259,8 @@ export function AuftraegeListe() {
     merk.status = status;
     merk.suche = suche;
     merk.ansicht = ansicht;
-  }, [status, suche, ansicht]);
+    merk.zahlung = zahlung;
+  }, [status, suche, ansicht, zahlung]);
 
   // Status- und Suchfilter (wie LIST_FILTER)
   const liste = useMemo(() => {
@@ -206,15 +270,24 @@ export function AuftraegeListe() {
       if (status === 'OPEN' && r.status !== 'Offen') return false;
       if (status === 'DONE' && !r.faktura) return false;
       if (status === 'CLOSED' && r.status !== 'Ohne Rechnung') return false;
+      if (mitAbrechnung && zahlung !== 'ALL' && r.abrechnung) {
+        const z = r.abrechnung.status;
+        if (zahlung === 'ANGELEGT' && z !== 'angelegt') return false;
+        if (zahlung === 'OFFEN' && z !== 'abgerechnet' && z !== 'ueberfaellig') return false;
+        if (zahlung === 'UEBERFAELLIG' && z !== 'ueberfaellig') return false;
+        if (zahlung === 'BEZAHLT' && z !== 'bezahlt') return false;
+      }
       if (q && !`${r.auftragsnr} ${r.kennzeichen ?? ''} ${r.kunde} ${r.unternehmer} ${r.unternehmerNamen ?? ''} ${r.route} ${r.faktura ?? ''}`.toUpperCase().includes(q)) return false;
       return true;
     });
-  }, [basis, status, suche]);
+  }, [basis, status, suche, zahlung, mitAbrechnung]);
 
   const summe = useMemo(() => liste.reduce((s, r) => ({ ek: s.ek + r.ek, vk: s.vk + r.vk, betrag: s.betrag + r.betrag }), { ek: 0, vk: 0, betrag: 0 }), [liste]);
   const sel = useMemo(() => liste.filter((r) => auswahl.has(r.auftragsnr)), [liste, auswahl]);
   const offen = sel.filter((r) => r.status === 'Offen').length;
   const ohneRechnung = sel.filter((r) => r.status === 'Ohne Rechnung').length;
+  const zahlbar = sel.filter((r) => r.faktura && r.abrechnung && r.abrechnung.status !== 'bezahlt').length;
+  const bezahlt = sel.filter((r) => r.faktura && r.abrechnung?.status === 'bezahlt').length;
   const tree = useMemo(() => baum(liste), [liste]);
 
   useEffect(() => {
@@ -306,6 +379,19 @@ export function AuftraegeListe() {
     } catch (e) { setError((e as Error).message); }
   }
 
+  // Zahlungseingang (Recht transport.zahlungen:edit): Datum wählen, gilt für die ganze Rechnung (auch Sammelrechnung)
+  const [zahlDialog, setZahlDialog] = useState<string | null>(null);
+  async function zahlungSetzen(bezahltAm: string | null) {
+    setZahlDialog(null);
+    try {
+      const nrs = sel.filter((s) => s.faktura && (bezahltAm ? s.abrechnung?.status !== 'bezahlt' : s.abrechnung?.status === 'bezahlt')).map((s) => s.auftragsnr);
+      const r = await api.post<{ rechnungen: string[]; auftraege: string[] }>(`${T}/zahlungen`, { auftraege: nrs, bezahltAm });
+      setAuswahl(new Set());
+      await lade();
+      toast(`${r.rechnungen.length === 1 ? `Rechnung ${r.rechnungen[0]}` : `${r.rechnungen.length} Rechnungen`} ${bezahltAm ? `als bezahlt am ${dat(bezahltAm)} erfasst` : '– Zahlung zurückgenommen'}.`, 6000);
+    } catch (e) { setError((e as Error).message); }
+  }
+
   async function entfernenAusfuehren(grund: string) {
     const nrs = entfernen?.nrs ?? [];
     setEntfernen(null);
@@ -392,8 +478,12 @@ export function AuftraegeListe() {
     { Header: 'Angelegt', accessor: 'anlagedatum', width: 95, responsiveMinWidth: 1450, Cell: ({ value }: Cell) => dat(value) },
     { Header: 'Kunde', accessor: 'kunde', minWidth: 120 },
     { Header: 'Unternehmer', accessor: 'unternehmer', minWidth: 110, responsiveMinWidth: 1250 },
-    { Header: 'Route', accessor: 'route', minWidth: 140 },
-    { Header: 'Ladedatum', accessor: 'ladedatum', width: 95, responsiveMinWidth: 1150, Cell: ({ value }: Cell) => dat(value) },
+    {
+      Header: mitZeiten ? 'Route · Laden / Entladen' : 'Route', accessor: 'route', minWidth: mitZeiten ? 260 : 140,
+      Cell: ({ row }: Cell) => row.isGrouped ? null : <RouteZelle r={row.original} />,
+    },
+    // Ladedatum steht mit Lade-/Entladezeiten schon in der Spalte Route
+    ...(mitZeiten ? [] : [{ Header: 'Ladedatum', accessor: 'ladedatum', width: 95, responsiveMinWidth: 1150, Cell: ({ value }: Cell) => dat(value) }]),
     { Header: 'Fracht EK', accessor: 'ek', width: 105, hAlign: 'End', disableGroupBy: true, Cell: ({ row }: Cell) => row.isGrouped ? null : `${betrag(row.original.ek)} EUR` },
     { Header: 'Fracht VK', accessor: 'vk', width: 105, responsiveMinWidth: 1350, hAlign: 'End', disableGroupBy: true, Cell: ({ row }: Cell) => row.isGrouped ? null : `${betrag(row.original.vk)} EUR` },
     { Header: 'Betrag', accessor: 'betrag', width: 115, hAlign: 'End', disableGroupBy: true, Cell: ({ row }: Cell) => row.isGrouped ? null : <b>{betrag(row.original.betrag)} EUR</b> },
@@ -410,7 +500,12 @@ export function AuftraegeListe() {
         </FlexBox>
       ),
     },
-  ], []);
+    ...(mitAbrechnung ? [{
+      Header: 'Abrechnung', id: 'abrechnung', accessor: (r: Record<string, unknown>) => (r as unknown as ListRow).abrechnung?.status ?? '', width: 120, disableGroupBy: true,
+      headerTooltip: 'angelegt · abgerechnet · bezahlt – überfällig erst 3 Tage nach Fälligkeit; ohne Rechnung abgeschlossen gilt als bezahlt',
+      Cell: ({ row }: Cell) => row.isGrouped ? null : <AbrechnungZelle r={row.original} />,
+    }] : []),
+  ], [mitZeiten, mitAbrechnung]);
 
   const groupBy = useMemo(() => ['status'], []);
   const selectedRowIds = useMemo(() => Object.fromEntries([...auswahl].map((k) => [k, true])), [auswahl]);
@@ -481,6 +576,13 @@ export function AuftraegeListe() {
           <SegmentedButtonItem data-key="CLOSED" selected={status === 'CLOSED'}>Ohne Rechnung</SegmentedButtonItem>
         </SegmentedButton>
       </Filter>
+      {mitAbrechnung && (
+        <Filter label="Zahlung" width="13rem">
+          <Select style={{ width: '100%' }} onChange={(e) => setZahlung(e.detail.selectedOption.dataset.key as ZahlungFilter)}>
+            {ZAHLUNG.map((f) => <Option key={f.key} data-key={f.key} selected={f.key === zahlung}>{f.text}</Option>)}
+          </Select>
+        </Filter>
+      )}
       <Filter label="Suche" width="min(20rem, 100%)">
         <Input style={{ width: '100%' }} placeholder="Auftrag, Kunde, Kennzeichen, Ort …" value={suche} showClearIcon
                icon={<Icon name="search" />} onInput={(e) => setSuche(e.target.value)} />
@@ -533,6 +635,12 @@ export function AuftraegeListe() {
         {can('transport.rechnungen:delete') && (
           <Button icon="delete" design="Transparent" disabled={sel.length - offen < 1} onClick={entfernenPruefen} tooltip="Rechnung der ausgewählten Aufträge entfernen">Rechnung entfernen</Button>
         )}
+        {can('transport.zahlungen:edit') && (
+          <MenuButton text="Zahlung" icon="money-bills" disabled={!zahlbar && !bezahlt} items={[
+            { text: 'Als bezahlt markieren …', icon: 'accept', disabled: zahlbar < 1, onClick: () => setZahlDialog(new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)) },
+            { text: 'Zahlung zurücknehmen', icon: 'undo', disabled: bezahlt < 1, onClick: () => zahlungSetzen(null) },
+          ]} />
+        )}
         <MenuButton text="Drucken" icon="print" disabled={!sel.length} items={[
           { text: 'Transportauftrag', icon: 'shipping-status', onClick: () => drucken('T') },
           { text: 'Lieferschein', icon: 'document-text', onClick: () => drucken('L') },
@@ -561,7 +669,7 @@ export function AuftraegeListe() {
   );
 
   return (
-    <AppPage varianten={{ repid: 'transport.auftraege', ansicht: { jahr, fakt, status, suche, ansicht }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setFakt(feld(a, 'fakt', fakt)); setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setAnsicht(feld(a, 'ansicht', ansicht)); } }} title="Auftragsverwaltung" header={header}>
+    <AppPage varianten={{ repid: 'transport.auftraege', ansicht: { jahr, fakt, status, suche, ansicht, zahlung }, onAnwenden: (a) => { setJahr(feld(a, 'jahr', jahr)); setFakt(feld(a, 'fakt', fakt)); setStatus(feld(a, 'status', status)); setSuche(feld(a, 'suche', suche)); setAnsicht(feld(a, 'ansicht', ansicht)); setZahlung(feld(a, 'zahlung', zahlung)); } }} title="Auftragsverwaltung" header={header}>
       {firmaFehlt && can('transport.stammdaten:edit') && (
         <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>
           Firmendaten (Name, Bank) fehlen noch – sie werden für Rechnungen und E-Rechnungen benötigt:
@@ -623,6 +731,24 @@ export function AuftraegeListe() {
                      onConfirm={abschliessenAusfuehren} onCancel={() => setAbschliessen(null)} />
       <ConfirmDialog open={!!zusammen} title="Aufträge zusammenführen" text={zusammen?.text ?? ''} confirmText="Zusammenführen" danger
                      onConfirm={zusammenAusfuehren} onCancel={() => setZusammen(null)} />
+      <Dialog open={zahlDialog !== null} headerText="Zahlungseingang erfassen" onClose={() => setZahlDialog(null)}
+              footer={<Bar endContent={<>
+                <Button design="Emphasized" disabled={!zahlDialog} onClick={() => zahlungSetzen(zahlDialog)}>Als bezahlt markieren</Button>
+                <Button onClick={() => setZahlDialog(null)}>Abbrechen</Button>
+              </>} />}>
+        <FlexBox direction="Column" style={{ gap: '0.75rem', width: 'min(26rem, 80vw)' }}>
+          <Text>
+            {(() => {
+              const f = [...new Set(sel.filter((s) => s.faktura && s.abrechnung?.status !== 'bezahlt').map((s) => s.faktura!))];
+              return `${f.length === 1 ? `Rechnung ${f[0]} gilt` : `${f.length} Rechnungen (${f.join(', ')}) gelten`} ab dem gewählten Datum als bezahlt – bei einer Sammelrechnung alle ihre Aufträge. „Zahlung → Zahlung zurücknehmen“ macht es rückgängig.`;
+            })()}
+          </Text>
+          <FlexBox direction="Column" style={{ gap: '0.25rem' }}>
+            <Label for="ef-zahldatum">Bezahlt am</Label>
+            <DatePicker id="ef-zahldatum" formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={zahlDialog ?? ''} onChange={(e) => setZahlDialog(e.detail.value)} />
+          </FlexBox>
+        </FlexBox>
+      </Dialog>
       <ConfirmDialog open={!!entfernen} title="Rechnung entfernen" text={entfernen?.text ?? ''} confirmText="Entfernen" askReason danger
                      onConfirm={entfernenAusfuehren} onCancel={() => setEntfernen(null)} />
     </AppPage>

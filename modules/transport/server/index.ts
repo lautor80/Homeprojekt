@@ -12,6 +12,7 @@ import {
 } from './data.js';
 import { fahrtenBereinigen, routenSchluessel, unternehmerText, zusammenfuehrenPruefen, type Kandidat } from './fahrten.js';
 import { condense, heute } from './format.js';
+import { abrechnungsStatus, ladeTermine } from './abrechnung.js';
 import { rechnungPdf } from './pdf/rechnung.js';
 import { dokumentPdf } from './pdf/erzeugen.js';
 import { xrechnungErzeugen } from './xrechnung.js';
@@ -37,6 +38,12 @@ export const P = {
   /** Rechnungen entfernen (#170): Rechnungsnummer und Fakturadatum löschen, Aufträge wieder offen */
   rechnungEntfernen: 'transport.rechnungen:delete',
   versand: 'transport.versand:execute',
+  /** Auftragsliste: Lade-/Entladezeiten in der Spalte Route */
+  ladezeiten: 'transport.ladezeiten:display',
+  /** Auftragsliste: Spalte „Abrechnung“ (angelegt · abgerechnet · bezahlt) */
+  abrechnung: 'transport.abrechnung:display',
+  /** Zahlungseingang erfassen / zurücknehmen */
+  zahlung: 'transport.zahlungen:edit',
   /** App „Kontakte“ öffnen (#232, N7) – bisher mit „Aufträge anzeigen“ */
   kontakteDisplay: 'transport.kontakte:display',
   kontakte: 'transport.kontakte:edit',
@@ -222,9 +229,11 @@ async function routes(app: FastifyInstance) {
     const tage = q.fakt && q.fakt !== 'ALL' ? Number(q.fakt) : null;
     const rows = await sql`
       select a.auftragsnr, a.kennzeichen, a.anlagedatum, a.frachtpreis_ek, a.frachtpreis_vk, a.rgbetrag,
-             a.faktura, a.fakturadatum, a.dok_fehlen, a.abgeschlossen_am, a.abgeschlossen_grund,
+             a.faktura, a.fakturadatum, a.dok_fehlen, a.abgeschlossen_am, a.abgeschlossen_grund, a.bezahlt_am,
              k.kundenname as kunde_txt, u.kundenname as unternehmer_txt,
              s1.plzort as s1_plzort, s1.plzort_e as s1_plzort_e, s2.plzort_e as s2_plzort_e, s1.datum as ladedatum,
+             s1.auftragsnr as s1_da, s1.datum as s1_datum, s1.zeit as s1_zeit, s1.datum_e as s1_datum_e, s1.zeit_e as s1_zeit_e,
+             s2.auftragsnr as s2_da, s2.datum_e as s2_datum_e, s2.zeit_e as s2_zeit_e,
              (s1.auftragsnr is not null and (coalesce(s1.firma,'') <> '' or coalesce(s1.firma_e,'') <> '' or coalesce(s1.plzort,'') <> ''
                 or coalesce(s1.plzort_e,'') <> '' or coalesce(s1.strasse,'') <> '' or coalesce(s1.strasse_e,'') <> ''))
                or (s2.auftragsnr is not null and (coalesce(s2.firma,'') <> '' or coalesce(s2.firma_e,'') <> '')) as hat_stops,
@@ -247,8 +256,17 @@ async function routes(app: FastifyInstance) {
       w.vk += num(f.frachtpreis_vk);
       weitere.set(f.auftragsnr, w);
     }
+    // Lade-/Entladezeiten und Abrechnungsstatus nur mit Recht (und eingeschalteter Funktion, siehe funktionen.ts)
+    const mitZeiten = can(req, P.ladezeiten);
+    const mitAbrechnung = can(req, P.abrechnung);
+    const ziel = mitAbrechnung ? (await firmaLesen()).zahlungsziel_tage : 0;
+    const tag = heute();
     return rows.map((r) => {
       const w = weitere.get(r.auftragsnr);
+      const termine = mitZeiten ? ladeTermine(
+        r.s1_da ? { datum: isoDate(r.s1_datum), zeit: r.s1_zeit, datum_e: isoDate(r.s1_datum_e), zeit_e: r.s1_zeit_e, plzort_e: r.s1_plzort_e } : null,
+        r.s2_da ? { datum_e: isoDate(r.s2_datum_e), zeit_e: r.s2_zeit_e, plzort_e: r.s2_plzort_e } : null,
+      ) : null;
       const namen = [r.unternehmer_txt ?? '', ...(w?.namen ?? [])];
       let route = r.s1_plzort ?? '';
       if (r.s1_plzort_e) route = `${route} → ${r.s1_plzort_e}`;
@@ -274,6 +292,12 @@ async function routes(app: FastifyInstance) {
         abgeschlossenAm: isoDate(r.abgeschlossen_am),
         abgeschlossenGrund: r.abgeschlossen_grund ?? null,
         dokFehlen: r.dok_fehlen,
+        ...(termine ? { laden: termine.laden, entladen: termine.entladen } : {}),
+        ...(mitAbrechnung ? {
+          abrechnung: abrechnungsStatus({
+            faktura: r.faktura, fakturadatum: isoDate(r.fakturadatum), abgeschlossenAm: isoDate(r.abgeschlossen_am), bezahltAm: isoDate(r.bezahlt_am),
+          }, ziel, tag),
+        } : {}),
       };
     });
   });
@@ -472,9 +496,28 @@ async function routes(app: FastifyInstance) {
     return change(req, async (tx) => {
       const r = await lesen(tx);
       if (!r.rechnungen.length) throw new BusinessError('Unter der Auswahl ist kein fakturierter Auftrag.');
-      await tx`update transport.auftraege set faktura = null, fakturadatum = null where faktura = any(${r.rechnungen.map((x) => x.faktura)})`;
+      await tx`update transport.auftraege set faktura = null, fakturadatum = null, bezahlt_am = null where faktura = any(${r.rechnungen.map((x) => x.faktura)})`;
       return r;
     }, { action: 'RECHNUNG_ENTFERNT', reason: b.grund.trim() });
+  });
+
+  /**
+   * Zahlungseingang (Spalte „Abrechnung“): bezahltAm setzt das Datum, null nimmt die Zahlung zurück. Es zählt die Rechnung –
+   * bei einer Sammelrechnung gilt das Datum für alle ihre Aufträge, auch nicht ausgewählte. Steht im Änderungsbeleg.
+   */
+  app.post('/zahlungen', { preHandler: requireAuth(P.zahlung) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), bezahltAm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable() }).parse(req.body);
+    if (b.bezahltAm && b.bezahltAm > heute()) throw new BusinessError('Das Zahlungsdatum darf nicht in der Zukunft liegen.');
+    return change(req, async (tx) => {
+      const fakturen = (await tx`select distinct faktura from transport.auftraege where auftragsnr = any(${b.auftraege}) and faktura is not null`).map((r) => r.faktura as string);
+      if (!fakturen.length) throw new BusinessError('Unter der Auswahl ist kein fakturierter Auftrag.');
+      if (b.bezahltAm) {
+        const [frueh] = await tx`select faktura, fakturadatum from transport.auftraege where faktura = any(${fakturen}) and fakturadatum > ${b.bezahltAm} limit 1`;
+        if (frueh) throw new BusinessError(`Rechnung ${frueh.faktura} ist vom ${String(isoDate(frueh.fakturadatum)).split('-').reverse().join('.')} – die Zahlung kann nicht davor liegen.`);
+      }
+      const r = await tx`update transport.auftraege set bezahlt_am = ${b.bezahltAm} where faktura = any(${fakturen}) returning auftragsnr`;
+      return { rechnungen: fakturen.sort(), auftraege: r.map((x) => x.auftragsnr as string).sort() };
+    }, { action: b.bezahltAm ? 'ZAHLUNG_ERFASST' : 'ZAHLUNG_ZURUECKGENOMMEN' });
   });
 
   // ---- Dokumente (PDF) ----
@@ -933,6 +976,9 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.edit, text: 'Aufträge anlegen und ändern' },
     { area: 'Euroflex', app: 'Aufträge', id: P.rechnung, text: 'Rechnungen erstellen', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.rechnungEntfernen, text: 'Rechnungen entfernen (Aufträge wieder offen)', requires: [P.display] },
+    { area: 'Euroflex', app: 'Aufträge', id: P.ladezeiten, text: 'Lade- und Entladezeiten in der Auftragsliste sehen', requires: [P.display] },
+    { area: 'Euroflex', app: 'Aufträge', id: P.abrechnung, text: 'Abrechnungsstatus in der Auftragsliste sehen (angelegt, abgerechnet, bezahlt, überfällig)', requires: [P.display] },
+    { area: 'Euroflex', app: 'Aufträge', id: P.zahlung, text: 'Zahlungseingang erfassen und zurücknehmen', requires: [P.abrechnung] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versandSenden, text: 'Sammelversand direkt senden statt als Entwurf in Outlook ablegen', requires: [P.versand] },
     { area: 'Euroflex', app: 'Posteingang', id: P.eingangDisplay, text: 'Posteingang anzeigen: eingegangene E-Mails mit Zuordnung zum Auftrag' },
