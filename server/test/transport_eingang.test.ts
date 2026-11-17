@@ -44,15 +44,22 @@ test('Nummernsuche: alle Fundstellen (Betreff, Mailtext, Dateiname, Texterkennun
     betreff: 'AW: Rechnung 2099-0153', text: 'Anbei die Rechnung.', dateien: ['Rechnung_2099_0153.pdf', 'agb.pdf'],
     ocr: [{ datei: 'Rechnung_2099_0153.pdf', text: 'Rechnungsnummer: 2099_0153' }, { datei: 'agb.pdf', text: 'Allgemeine Bedingungen' }],
   });
-  assert.deepEqual(L.fundstellenNummer(q, '2099_0153'), ['Betreff', 'Dateinamen „Rechnung_2099_0153.pdf“', 'Dokument „Rechnung_2099_0153.pdf“ (Texterkennung)']);
-  assert.equal(L.fundText(L.fundstellenNummer(q, '2099_0153')),
-    'im Betreff, im Dateinamen „Rechnung_2099_0153.pdf“ und im Dokument „Rechnung_2099_0153.pdf“ (Texterkennung)');
-  assert.equal(L.fundText(['Mailtext']), 'im Mailtext');
+  assert.deepEqual(L.herkunftNummer(q, '2099_0153'), [
+    'Betreff: „AW: Rechnung 2099-0153“', 'Dateiname „Rechnung_2099_0153.pdf“', 'PDF „Rechnung_2099_0153.pdf“ (Texterkennung): „Rechnungsnummer: 2099_0153“',
+  ]);
+  assert.equal(L.herkunftText(['Betreff: „x“', 'Mailtext: „y“']), 'Herkunft: Betreff: „x“; Mailtext: „y“');
   assert.equal(L.ocrNummern('Rechnung Nr. 2099 9104, Auftrag 2099 _ 0153, PLZ 2099 12345'), 'Rechnung Nr. 2099_9104, Auftrag 2099_0153, PLZ 2099 12345');
-  assert.deepEqual(L.fundstellenNummer(L.suchQuellen({ betreff: '', text: 'Tel. 2099 9104', dateien: [], ocr: [{ datei: 's.pdf', text: 'Nr. 2099 9104' }] }), '2099_9104'),
-    ['Dokument „s.pdf“ (Texterkennung)'], 'Leerzeichen nur im erkannten Text');
-  assert.deepEqual(L.fundstellenReferenz(q, 'PO-4711'), []);
-  assert.deepEqual(L.fundstellenReferenz(L.suchQuellen({ betreff: '', text: 'Order PO-4711', dateien: [], ocr: [] }), 'po-4711'), ['Mailtext']);
+  // Texterkennung: „2099 9104“ zählt, die Herkunft zeigt den Originaltext; im Mailtext zählt das Leerzeichen nicht
+  const ocr = L.suchQuellen({ betreff: '', text: 'Tel. 2099 9104', dateien: [], ocr: [{ datei: 's.png', text: 'Kopf\nIhre Referenz  2099 9104 vom 17.11.' }] });
+  assert.deepEqual(L.herkunftNummer(ocr, '2099_9104'), ['Dokument „s.png“ (Texterkennung): „Kopf Ihre Referenz 2099 9104 vom 17.11.“']);
+  assert.equal(L.ausschnitt('x'.repeat(100) + ' 2099_0153 ' + 'y'.repeat(100), 101, 110), `…${'x'.repeat(39)} 2099_0153 ${'y'.repeat(39)}…`);
+  assert.deepEqual(L.herkunftReferenz(L.suchQuellen({ betreff: '', text: 'Bitte Order PO-4711 beachten', dateien: [], ocr: [] }), 'po-4711'), ['Mailtext: „Bitte Order PO-4711 beachten“']);
+  assert.deepEqual(L.herkunftReferenz(q, 'PO-4711'), []);
+  // JJJJMMTT im Dateinamen ist ein Datum, keine Auftragsnummer
+  assert.deepEqual(L.auftragsnummernFinden('503_20261117_05032615464.PDF'), []);
+  assert.deepEqual(L.auftragsnummernFinden('Ref 20261351 und 2026_1117'), ['2026_1117', '2026_1351']);
+  assert.equal(L.istDatumMmTt('1117'), true);
+  assert.equal(L.istDatumMmTt('1351'), false);
 
   const t: L.Treffer[] = [
     { auftragsnr: '2099_0153', art: 'nummer', punkte: 90, grund: 'Nr' },
@@ -232,7 +239,7 @@ test('n8n: Auftragsnummer → automatisch lokal abgelegt, Logo gefiltert, Wieder
     [['Scan.pdf', 'anhang', 'wartet', 'lokal', true], ['2026-11-17 AW Lieferschein 2099_9001.pdf', 'mail', 'wartet', 'lokal', true]]);
   const [v] = await sql`select postfach, message_id, punkte, text, abgeschlossen_am is not null as fertig, begruendung from transport.eing_vorgaenge where id = ${v1}`;
   assert.deepEqual([v.postfach, v.message_id, v.punkte, v.text, v.fertig], ['auftraege@euroflex-eingang.test', 'm1@kunde-eingang.test', 90, null, true]);
-  assert.match(v.begruendung[0].grund, /Auftragsnummer 2099_9001 im Betreff/);
+  assert.equal(v.begruendung[0].grund, 'Auftragsnummer 2099_9001 – Herkunft: Betreff: „AW: Lieferschein 2099_9001“');
 
   const n = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m1@kunde-eingang.test>', betreff: 'egal' }));
   assert.deepEqual(n.body, { vorgang: v1, status: 'doppelt', auftragsnr: '2099_9001', aktion: { ordner: 'Portal/Zugeordnet' } });
@@ -389,7 +396,8 @@ test('Nummernsuche zuerst: Rechnungsnummer mit Fundstellen, Vorrang vor dem Abse
   let [v] = await sql`select auftragsnr, punkte, kandidaten, begruendung from transport.eing_vorgaenge where id = ${r.body.vorgang}`;
   assert.deepEqual(v.kandidaten.map((k: L.Kandidat) => k.auftragsnr), ['2099_9106'], 'nur der Auftrag zur Rechnungsnummer');
   assert.deepEqual([v.auftragsnr, v.punkte], ['2099_9106', 90]);
-  assert.equal(v.begruendung[0].grund, 'Rechnungsnummer 2099_9104 (Auftrag 2099_9106) im Betreff, im Mailtext und im Dateinamen „Rechnung_2099_9104.pdf“');
+  assert.equal(v.begruendung[0].grund, 'Rechnungsnummer 2099_9104 (Auftrag 2099_9106) – Herkunft: Betreff: „Ihre Rechnung 2099-9104“; '
+    + 'Mailtext: „Zur Rechnung 2099_9104 folgt die Zahlung.“; Dateiname „Rechnung_2099_9104.pdf“');
 
   // Werbemail: „Bestellung folgt“ trifft weder Ordernummer noch Ladenummer ohne Ziffer
   r = await ext(key, 'POST', `${T}/eingang/mail`, mail({

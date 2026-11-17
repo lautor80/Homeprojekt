@@ -74,14 +74,16 @@ Portal
 | Merkmal | Punkte |
 |---|---|
 | Antwort auf eine eigene Mail: `in_reply_to`/`references` ↔ `core.mail_protokoll.message_id` mit `anwendung` Euroflex, `objekt` = Auftragsnr. (bei `nr-1` Fahrtzusatz abschneiden) | 100 |
-| Auftrags- oder Rechnungsnummer `JJJJ_NNNN` (auch `JJJJ-NNNN`, `JJJJ/NNNN`, `JJJJNNNN` nur mit Wortgrenze; im OCR-Text auch `JJJJ NNNN`, weil die Texterkennung den Unterstrich oft als Leerzeichen liest) in Betreff, Mailtext, Dateiname oder OCR-Text – es zählt, wenn es den Auftrag (`auftragsnr`) bzw. die Rechnung (`faktura`) gibt | 90 |
+| Auftrags- oder Rechnungsnummer `JJJJ_NNNN` (auch `JJJJ-NNNN`, `JJJJ/NNNN`, `JJJJNNNN` nur mit Wortgrenze, `JJJJNNNN` nicht, wenn es ein Datum sein kann; im OCR-Text auch `JJJJ NNNN`, weil die Texterkennung den Unterstrich oft als Leerzeichen liest) in Betreff, Mailtext, Dateiname oder OCR-Text – es zählt, wenn es den Auftrag (`auftragsnr`) bzw. die Rechnung (`faktura`) gibt | 90 |
 | Ordernummer, Ladenummer (Auftrag oder Stops) oder Rechnungsnummer (`faktura`) in anderem Format – mindestens 4 Zeichen **mit mindestens einer Ziffer** (Platzhalter wie „FOLGT“ oder „Muster“ zählen nicht), mit Wortgrenze | 70 |
 | Absender = E-Mail von Kunde, Unternehmer oder Rechnungsempfänger eines **offenen** Auftrags (nicht abgeschlossen, ohne Rechnung bzw. letzte 90 Tage) | 50, wenn genau ein Auftrag; sonst 30 je Kandidat |
 
 **Nummernsuche zuerst:** Die Auftrags-/Rechnungsnummer wird vor allem anderen gesucht. Gibt es einen solchen Treffer (oder ist die
 Mail eine Antwort auf eine eigene Mail), bleiben nur diese Aufträge Kandidaten – Referenz- und Absendertreffer anderer Aufträge
-fallen weg (für denselben Auftrag zählen sie weiter als Zusatz). Die Begründung nennt **alle Fundstellen**, z. B.
-„Rechnungsnummer 2026_0815 (Auftrag 2026_0790) im Betreff und im Dokument „Scan.pdf“ (Texterkennung)“.
+fallen weg (für denselben Auftrag zählen sie weiter als Zusatz). Die Begründung nennt die **Herkunft** jeder Fundstelle mit
+Textausschnitt, z. B. „Auftragsnummer 2026_1264 – Herkunft: PDF „Rechnung.PDF“ (Texterkennung): „…Ihre Referenz 2026 1264 vom…“;
+Dateiname „Rechnung_2026_1264.pdf““. Die kompakte Schreibweise `JJJJNNNN` zählt nur, wenn sie kein Datum `JJJJMMTT` sein kann
+(Dateinamen wie `503_20261117_….PDF` enthalten fast immer das Belegdatum).
 
 Die Punkte eines Auftrags werden addiert und auf 100 gedeckelt. Die Begründungen (`[{grund, punkte}]`) stehen am Vorgang
 und werden in der Prüfliste angezeigt. Liegen zwei Aufträge gleichauf, ist die Zuordnung nicht eindeutig → Prüfliste.
