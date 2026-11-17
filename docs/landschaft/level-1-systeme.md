@@ -26,7 +26,7 @@ flowchart LR
     AUTH["1 · Anmeldung & Rollen<br/>core.users · Sessions"]
     ANB["2 · Anbindungen<br/>Rückmeldungen Jugendtraining (n8n)<br/>Schulferien Saarland (n8n)<br/>EP3-Export Hallenbuchungen (n8n)<br/>Maileingang jetzt abrufen (n8n)<br/>Paperless-ngx TC Oberthal<br/>E-Mail-Versand (n8n)<br/>Nextcloud<br/>Euroflex E-Mail-Versand (Outlook 365, n8n)<br/>Paperless-ngx Euroflex"]
     RT["5 · Laufzeit<br/>db · gotenberg · backup · caddy · paperless-db · paperless-redis · paperless-tika · paperless · n8n"]
-    N8N["n8n<br/>Euroflex Mailversand<br/>TCO EP3 Import Portal<br/>TCO Maileingang<br/>TCO Mailversand<br/>TCO Paperless Qualifizierung"]
+    N8N["n8n<br/>Euroflex Maileingang<br/>Euroflex Mailversand<br/>TCO EP3 Import Portal<br/>TCO Maileingang<br/>TCO Mailversand<br/>TCO Paperless Qualifizierung"]
     PL[("Paperless-ngx")]
   end
   subgraph EXT["4 · Vereinssysteme"]
@@ -48,9 +48,9 @@ flowchart LR
   PORTAL <--> ANB
   ANB -- Webhooks --> N8N
   PORTAL -- REST --> PL
+  N8N -- "HTTP" --> PORTAL
   N8N -- "MySQL (lesend)" --> EP3
   N8N -- "IMAP" --> MAIL
-  N8N -- "HTTP" --> PORTAL
   N8N -- "SMTP" --> MAIL
   N8N -- "HTTP" --> PL
   N8N -- "HTTP" --> OAI
@@ -122,6 +122,8 @@ flowchart LR
 
 | Workflow | Auslöser | Ziel | Art | Knoten | Detail |
 |---|---|---|---|---|---|
+| Euroflex Maileingang | manuell (Editor), Zeitplan alle 5 Min., Webhook /webhook/euroflex-maileingang | extern | HTTP | Mails lesen, Anhänge laden, Ordner suchen, Ordner anlegen, Verschieben, Als gelesen markieren | https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent |
+| Euroflex Maileingang | manuell (Editor), Zeitplan alle 5 Min., Webhook /webhook/euroflex-maileingang | Vereinsportal (Modul tco) | HTTP | An Portal liefern | /api/m/transport/eingang/mail |
 | Euroflex Mailversand | Webhook /webhook/euroflex-mailversand | extern | HTTP | Postfach prüfen, Entwurf anlegen, Senden | https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent |
 | TCO EP3 Import Portal | Webhook /webhook/tco-ep3-import | EP3-bs Hallenbuchung | MySQL (lesend) | EP3 Buchungen, EP3 Kunden, EP3 Texte, EP3 Events |  |
 | TCO Maileingang | manuell (Editor), Webhook /webhook/tco-dokumenteneingang-alle, Zeitplan alle 5 Min. | Mailserver (IMAP/SMTP) | IMAP | Posteingang lesen (IMAP), Posteingang lesen (IMAP Benjamin), Anhänge laden, Als gelesen markieren, E-Mail verschieben, E-Mail in den Papierkorb |  |

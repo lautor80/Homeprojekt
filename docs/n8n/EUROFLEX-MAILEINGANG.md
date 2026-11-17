@@ -82,7 +82,7 @@ Vergeben lassen sich nur Rechte, die der Anlegende selbst besitzt. Der Schlüsse
 Name der Zugangsdatei `Euroflex Portal API-Schlüssel`, Feld **Name** = `Authorization`, Feld **Value** = `Bearer ` gefolgt vom Schlüssel.
 
 **Webhook „Posteingang abrufen“** – *Credentials → Create credential → „Header Auth“*: Name der Zugangsdatei
-`Euroflex Maileingang Webhook`, Feld **Name** = `Authorization`, Feld **Value** = `Bearer ` gefolgt von einem selbst gewählten langen
+`Euroflex Maileingang Webhook`, Feld **Name** = `X-Euroflex-Key`, Feld **Value** = ein selbst gewähltes langes
 Geheimnis (z. B. `openssl rand -hex 32`) – **nicht** der API-Schlüssel des Portals.
 
 ## 3 Workflow importieren und eintragen
@@ -107,8 +107,8 @@ Nach jedem erneuten Import sind die Schritte 2 bis 5 zu wiederholen.
 | Feld | Wert |
 |---|---|
 | Webhook-URL | `http://n8n:5678/webhook/euroflex-maileingang` (Production-URL, nicht `/webhook-test/`) |
-| Anmeldung | Schlüssel im eigenen Header, Header-Name `Authorization` |
-| Wert / Geheimnis | derselbe Wert wie in der n8n-Zugangsdatei „Euroflex Maileingang Webhook“ (`Bearer …`) |
+| Anmeldung | Schlüssel im eigenen Header, Header-Name `X-Euroflex-Key` (vorbelegt) |
+| Wert / Geheimnis | derselbe Wert wie in der n8n-Zugangsdatei „Euroflex Maileingang Webhook“ |
 
 Die Anbindung ist nur für den Knopf **„Posteingang abrufen“** in der App *Posteingang* nötig; ohne sie läuft der Eingang trotzdem
 alle 5 Minuten. Ein Aufruf startet einen echten Abruf (keine reine Verbindungsprüfung).

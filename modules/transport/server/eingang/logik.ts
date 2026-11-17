@@ -157,11 +157,11 @@ export const V_MAILEINGANG = 'transport.maileingang';
 /** Anbindung für den Knopf „Jetzt abrufen“ im Posteingang (Administration → Schnittstellen) – nur Daten, ohne Verbindungstest */
 export const MAILEINGANG_VERBINDUNG: VerbindungDef = {
   id: V_MAILEINGANG, text: 'Euroflex Maileingang jetzt abrufen (n8n)', reiter: 'E-Mail',
-  beschreibung: 'Startet über „Jetzt abrufen“ im Posteingang den n8n-Workflow „Euroflex Maileingang“ (Webhook-Knoten „Jetzt abrufen“, '
-    + 'Production-URL …/webhook/euroflex-maileingang-abruf). Anmeldung per Header: Der Webhook-Schlüssel muss dem Wert der n8n-Zugangsdatei am '
+  beschreibung: 'Startet über „Jetzt abrufen“ im Posteingang den n8n-Workflow „Euroflex Maileingang“ (Webhook-Knoten „Webhook Portal“, '
+    + 'Production-URL …/webhook/euroflex-maileingang). Anmeldung per Header: Der Webhook-Schlüssel muss dem Wert der n8n-Zugangsdatei am '
     + 'Webhook-Knoten (Name X-Euroflex-Key) entsprechen. Ohne Verbindungstest, weil jeder Aufruf den Abruf wirklich startet. '
     + 'Einrichtung: docs/n8n/EUROFLEX-MAILEINGANG.md.',
   auth: ['header', 'keine'],
   header_name: 'X-Euroflex-Key',
-  felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/euroflex-maileingang-abruf)', geheimnis: 'Webhook-Schlüssel', header_name: 'Header-Name' },
+  felder: { url: 'Webhook-URL (z. B. http://n8n:5678/webhook/euroflex-maileingang)', geheimnis: 'Webhook-Schlüssel', header_name: 'Header-Name' },
 };
