@@ -159,10 +159,10 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
       });
     }
   }
-  const sicher = treffer.length > 0;
 
-  // 2. Order-, Lade- (Auftrag und Stops) und Rechnungsnummer in anderem Format: grob in der Datenbank vorfiltern, Wortgrenze hier
-  const heuhaufen = sicher ? '' : quellen.map(([, t]) => t).join('\n').replace(/\s+/g, ' ').toLowerCase().slice(0, 2_000_000);
+  // 2. Order-, Lade- (Auftrag und Stops) und Rechnungsnummer in anderem Format (bei einer Nummer nur noch als Zusatz für denselben
+  //    Auftrag, siehe 3.): grob in der Datenbank vorfiltern, Wortgrenze hier
+  const heuhaufen = quellen.map(([, t]) => t).join('\n').replace(/\s+/g, ' ').toLowerCase().slice(0, 2_000_000);
   if (heuhaufen.trim()) {
     const refs = await sql`
       select auftragsnr, art, wert from (

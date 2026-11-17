@@ -80,7 +80,7 @@ Portal
 
 **Nummernsuche zuerst:** Die Auftrags-/Rechnungsnummer wird vor allem anderen gesucht. Gibt es einen solchen Treffer (oder ist die
 Mail eine Antwort auf eine eigene Mail), bleiben nur diese Aufträge Kandidaten – Referenz- und Absendertreffer anderer Aufträge
-fallen weg, Order-/Ladenummern werden dann nicht mehr gesucht. Die Begründung nennt **alle Fundstellen**, z. B.
+fallen weg (für denselben Auftrag zählen sie weiter als Zusatz). Die Begründung nennt **alle Fundstellen**, z. B.
 „Rechnungsnummer 2026_0815 (Auftrag 2026_0790) im Betreff und im Dokument „Scan.pdf“ (Texterkennung)“.
 
 Die Punkte eines Auftrags werden addiert und auf 100 gedeckelt. Die Begründungen (`[{grund, punkte}]`) stehen am Vorgang
