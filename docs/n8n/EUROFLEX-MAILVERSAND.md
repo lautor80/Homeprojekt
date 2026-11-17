@@ -138,6 +138,38 @@ App freigegeben** sein: bei Weg A (1.2) als direktes Mitglied in die Gruppe „E
 `Test-ServicePrincipalAuthorization … -Resource buchhaltung@…` prüfen. Wer Entwürfe prüfen und senden soll, braucht in Outlook
 Zugriff auf dieses Postfach (Vollzugriff bzw. „Senden als“ durch den Exchange-Administrator).
 
+### Absender ist nur ein Alias (z. B. `buchhaltung@` am Postfach `info@`)
+
+Graph findet ein Postfach auch über eine weitere Adresse (Alias, Proxy-Adresse). Der Entwurf landet dann im Postfach, zu dem der
+Alias gehört, und ohne Angabe nähme Graph dessen **Hauptadresse** als Absender – im Protokoll stünde `buchhaltung@`, in Outlook
+und beim Empfänger `info@`. Der Knoten *E-Mails aufteilen* setzt deshalb immer `from` = `absender`. Damit Exchange Online diese
+Adresse beim Senden auch stehen lässt, muss das Senden von Aliasen für die Organisation eingeschaltet sein:
+
+1. **Alias prüfen:** Exchange Admin Center → *Empfänger → Postfächer* → Postfach `info@…` → *E-Mail-Adressen verwalten*: dort muss
+   `buchhaltung@…` als weitere Adresse (smtp, klein geschrieben) stehen. Ist `buchhaltung@` ein **eigenes** (freigegebenes)
+   Postfach, ist nichts weiter zu tun – dann gilt der Abschnitt oben (Gruppe „Euroflex Versandpostfächer“).
+2. **Senden von Aliasen einschalten** (wirkt für alle Postfächer der Organisation; Benutzer können dann in Outlook jede ihrer
+   Adressen als Absender wählen):
+   ```powershell
+   Install-Module ExchangeOnlineManagement   # einmalig, falls noch nicht vorhanden
+   Connect-ExchangeOnline -UserPrincipalName admin@euro-flex.de
+   Get-OrganizationConfig | Format-List SendFromAliasEnabled   # Stand ansehen
+   Set-OrganizationConfig -SendFromAliasEnabled $true
+   Get-OrganizationConfig | Format-List SendFromAliasEnabled   # muss True zeigen
+   Disconnect-ExchangeOnline
+   ```
+   Alternativ im Exchange Admin Center unter *Einstellungen → E-Mail-Fluss* „Senden von Aliasen zulassen“ aktivieren.
+   Bis alle Exchange-Server die Änderung kennen, kann es einige Stunden dauern.
+3. **Kein „Senden als“ nötig:** Die App schreibt in das Postfach `info@` (über die Gruppe „Euroflex Versandpostfächer“ freigegeben)
+   und sendet mit einer Adresse **dieses** Postfachs. Ein Alias eines **anderen** Postfachs geht so nicht.
+4. **Testen:** Im Portal eine Rechnung als **Entwurf** an eine eigene externe Adresse (z. B. Gmail) schicken, in Outlook im Postfach
+   `info@` unter *Entwürfe* prüfen, dass oben `buchhaltung@` steht, senden und beim Empfänger die Kopfzeile `From:` ansehen.
+   Microsoft beschreibt das Senden von Aliasen vor allem für Outlook; für Graph mit App-Berechtigung ist es nicht ausdrücklich
+   zugesagt. Steht beim Empfänger trotzdem `info@`, bleibt nur ein eigenes freigegebenes Postfach `buchhaltung@`.
+
+Entwurf und gesendete E-Mail liegen auch mit Alias im Postfach `info@` (Ordner *Entwürfe* bzw. *Gesendete Elemente*); Antworten an
+`buchhaltung@` kommen ebenfalls dort an.
+
 ## Sammelversand („Versenden…“)
 
 Der Sammelversand aus der Auftragsliste bzw. dem Auftragsdetail (*„Versenden…“* neben *„Drucken“*, Funktion
@@ -185,7 +217,7 @@ unbekannte Anhang-Kennung, leere Datei) beantwortet der Workflow mit HTTP 400, o
 | Webhook Portal | nimmt den Aufruf an (Header Auth), Antwort erst durch einen Antwort-Knoten |
 | Aufruf prüfen · Gültig? · Antwort ungültig | Felder, Adressen und Anhang-Kennungen prüfen; sonst HTTP 400 |
 | Nur prüfen? · Postfach angegeben? · Postfach prüfen · Antwort Prüfung | Verbindungstest: liest den Ordner „Entwürfe“ des Postfachs, sendet nichts |
-| E-Mails aufteilen | je E-Mail ein Element mit der Nachricht für Microsoft Graph, Anhänge aus dem gemeinsamen Vorrat |
+| E-Mails aufteilen | je E-Mail ein Element mit der Nachricht für Microsoft Graph (`from` = `absender`, auch bei Alias-Adressen), Anhänge aus dem gemeinsamen Vorrat |
 | Entwurf anlegen | `POST /users/{postfach}/messages` – Entwurf samt Anhängen |
 | Entwürfe auswerten · Etwas zu senden? | Ergebnis je E-Mail; genau **ein** Element, damit der Versand nur einmal läuft |
 | Sendbare aufteilen · Senden | `POST /users/{postfach}/messages/{id}/send` je angelegtem Entwurf |
