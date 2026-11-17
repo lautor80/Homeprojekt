@@ -16,12 +16,14 @@ const leer: Adresse = {
 
 /**
  * Kontakt anlegen oder bearbeiten (wie KONTAKT_POPUP_DISPLAY):
- * Bearbeiten nur für die Kontakte des geöffneten Auftrags; Dublettenprüfung –
+ * Bearbeiten nur für die Kontakte des geöffneten Auftrags (Kunde, Unternehmer, Rechnungsempfänger – `start` wählt vor); Dublettenprüfung –
  * beim zweiten Klick wird trotzdem gespeichert.
  */
-export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
+export function KontaktDialog({ modus, auswahl, start, onClose, onSaved }: {
   modus: 'NEU' | 'EDIT' | null;
   auswahl: AdrDD[];
+  /** beim Bearbeiten vorausgewählter Kontakt (sonst der erste) */
+  start?: string | null;
   onClose: () => void;
   onSaved: (adrnr: number) => void;
 }) {
@@ -39,9 +41,9 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
       setNr('');
       setK(leer);
     } else if (auswahl.length) {
-      setNr(auswahl[0].key);
+      setNr(start && auswahl.some((x) => x.key === start) ? start : auswahl[0].key);
     }
-  }, [modus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [modus, start]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (modus !== 'EDIT' || !nr) return;
@@ -85,7 +87,7 @@ export function KontaktDialog({ modus, auswahl, onClose, onSaved }: {
       {edit && (
         <>
           <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
-            Auswählbar sind nur die Kontakte dieses Auftrags. Änderungen gelten für alle Aufträge, denen der Kontakt zugeordnet ist.
+            Auswählbar sind die Kontakte dieses Auftrags (Kunde, Unternehmer, Rechnungsempfänger). Änderungen gelten für alle Aufträge, denen der Kontakt zugeordnet ist.
           </MessageStrip>
           <FieldBox label="Kontakt">
             <AuswahlBox wert={nr} leerErlaubt={false} eintraege={auswahl.map((a) => ({ key: a.key, text: a.text, zusatz: a.zusatz }))} onWaehle={(k) => setNr(k ?? '')} />
