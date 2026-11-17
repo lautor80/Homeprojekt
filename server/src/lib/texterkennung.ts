@@ -1,10 +1,11 @@
 /**
- * Texterkennung (#158): Text aus Bildern (Screenshot, Foto) mit tesseract und aus PDFs mit pdftotext lesen.
+ * Texterkennung (#158): Text aus Bildern (Screenshot, Foto) mit tesseract und aus PDFs mit pdftotext lesen (gescannte PDFs:
+ * Seiten mit pdftoppm rendern, dann tesseract).
  * Beide Programme laufen lokal im Container (Dockerfile: tesseract-ocr, tesseract-ocr-deu, poppler-utils) – es werden
  * keine Daten an fremde Dienste gegeben. Die Dateien liegen nur für den Aufruf in einem eigenen temporären Ordner.
  */
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BusinessError } from '../errors.js';
@@ -66,5 +67,35 @@ export async function pdfText(pdf: Buffer, seiten = 3): Promise<string> {
       if (fehlt(e)) throw new BusinessError('PDFs können auf dem Server nicht gelesen werden (pdftotext fehlt) – bitte den Text kopieren und einfügen.');
       throw new BusinessError('Das PDF konnte nicht gelesen werden – bitte den Text kopieren und einfügen.');
     }
+  });
+}
+
+/**
+ * Gescanntes PDF ohne Textebene: die ersten Seiten mit pdftoppm (poppler-utils) als PNG rendern (200 dpi) und mit tesseract
+ * lesen. Fehlt eines der Programme, kommt eine leere Zeichenkette zurück – der Aufrufer meldet „kein Text erkannt“.
+ */
+export async function pdfScanText(pdf: Buffer, seiten = 3, sprachen = 'deu+eng'): Promise<string> {
+  if (pdf.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BusinessError('Die Datei ist kein PDF.');
+  return mitDatei('scan.pdf', pdf, async (pfad) => {
+    const ordner = pfad.slice(0, pfad.lastIndexOf('/'));
+    try {
+      await aufruf('pdftoppm', ['-r', '200', '-png', '-f', '1', '-l', String(seiten), pfad, join(ordner, 'seite')], 60_000);
+    } catch (e) {
+      if (fehlt(e)) return '';
+      throw new BusinessError('Das gescannte PDF konnte nicht gelesen werden.');
+    }
+    const bilder = (await readdir(ordner)).filter((n) => /^seite-?\d+\.png$/.test(n)).sort();
+    const teile: string[] = [];
+    for (const b of bilder) {
+      const lesen = (l: string) => aufruf('tesseract', [join(ordner, b), 'stdout', '-l', l, '--psm', '3', '-c', 'preserve_interword_spaces=1'], 45_000);
+      try {
+        teile.push(await lesen(sprachen));
+      } catch (e) {
+        if (fehlt(e)) return '';
+        if (/Failed loading language|Error opening data file/i.test((e as { stderr?: string }).stderr ?? '') && sprachen !== 'eng') teile.push(await lesen('eng'));
+        else throw new BusinessError(`Seite ${teile.length + 1} des gescannten PDFs konnte nicht gelesen werden.`);
+      }
+    }
+    return teile.join('\n');
   });
 }

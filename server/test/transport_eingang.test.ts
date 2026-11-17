@@ -29,10 +29,52 @@ test('Referenzen, Message-IDs, Objekt aus dem Protokoll', () => {
   assert.equal(L.referenzImText('Rechnung 123 anbei', '123'), false, 'mindestens 4 Zeichen');
   assert.equal(L.referenzImText('Lade  nummer  LN 7788', 'LN 7788'), true, 'Leerraum egal');
   assert.equal(L.referenzTauglich('0000'), false);
+  assert.equal(L.referenzTauglich('FOLGT'), false, 'Platzhalter ohne Ziffer');
+  assert.equal(L.referenzTauglich('Muster'), false);
+  assert.equal(L.referenzImText('Ihre Bestellung folgt in Kürze', 'FOLGT'), false);
+  assert.equal(L.referenzTauglich('PO-1'), true);
   assert.deepEqual(L.messageIds('<A@B.de>', '<x@y> <A@b.de>, ohne-at'), ['a@b.de', 'x@y']);
   assert.equal(L.objektAuftrag('2026_0153-2'), '2026_0153');
   assert.equal(L.objektAuftrag('2026_0153'), '2026_0153');
   assert.equal(L.objektAuftrag('PRUEFEN'), null);
+});
+
+test('Nummernsuche: alle Fundstellen (Betreff, Mailtext, Dateiname, Texterkennung) und Vorrang vor schwachen Treffern', () => {
+  const q = L.suchQuellen({
+    betreff: 'AW: Rechnung 2099-0153', text: 'Anbei die Rechnung.', dateien: ['Rechnung_2099_0153.pdf', 'agb.pdf'],
+    ocr: [{ datei: 'Rechnung_2099_0153.pdf', text: 'Rechnungsnummer: 2099_0153' }, { datei: 'agb.pdf', text: 'Allgemeine Bedingungen' }],
+  });
+  assert.deepEqual(L.fundstellenNummer(q, '2099_0153'), ['Betreff', 'Dateinamen „Rechnung_2099_0153.pdf“', 'Dokument „Rechnung_2099_0153.pdf“ (Texterkennung)']);
+  assert.equal(L.fundText(L.fundstellenNummer(q, '2099_0153')),
+    'im Betreff, im Dateinamen „Rechnung_2099_0153.pdf“ und im Dokument „Rechnung_2099_0153.pdf“ (Texterkennung)');
+  assert.equal(L.fundText(['Mailtext']), 'im Mailtext');
+  assert.equal(L.ocrNummern('Rechnung Nr. 2099 9104, Auftrag 2099 _ 0153, PLZ 2099 12345'), 'Rechnung Nr. 2099_9104, Auftrag 2099_0153, PLZ 2099 12345');
+  assert.deepEqual(L.fundstellenNummer(L.suchQuellen({ betreff: '', text: 'Tel. 2099 9104', dateien: [], ocr: [{ datei: 's.pdf', text: 'Nr. 2099 9104' }] }), '2099_9104'),
+    ['Dokument „s.pdf“ (Texterkennung)'], 'Leerzeichen nur im erkannten Text');
+  assert.deepEqual(L.fundstellenReferenz(q, 'PO-4711'), []);
+  assert.deepEqual(L.fundstellenReferenz(L.suchQuellen({ betreff: '', text: 'Order PO-4711', dateien: [], ocr: [] }), 'po-4711'), ['Mailtext']);
+
+  const t: L.Treffer[] = [
+    { auftragsnr: '2099_0153', art: 'nummer', punkte: 90, grund: 'Nr' },
+    { auftragsnr: '2099_0153', art: 'absender', punkte: 30, grund: 'Absender' },
+    { auftragsnr: '2099_0001', art: 'referenz', punkte: 70, grund: 'Ordernummer' },
+    { auftragsnr: '2099_0002', art: 'absender', punkte: 30, grund: 'Absender' },
+  ];
+  assert.deepEqual(L.nummernVorrang(t).map((x) => [x.auftragsnr, x.art]), [['2099_0153', 'nummer'], ['2099_0153', 'absender']]);
+  const ohne = t.filter((x) => x.art !== 'nummer');
+  assert.deepEqual(L.nummernVorrang(ohne), ohne, 'ohne Nummer bleiben alle Treffer');
+});
+
+test('Texterkennung: gescanntes PDF ohne Textebene wird per pdftoppm + tesseract gelesen', async (t) => {
+  const { execFileSync } = await import('node:child_process');
+  const da = (p: string) => { try { execFileSync('which', [p], { stdio: 'ignore' }); return true; } catch { return false; } };
+  if (!da('pdftoppm') || !da('tesseract')) return t.skip('pdftoppm oder tesseract fehlt');
+  const { readFileSync } = await import('node:fs');
+  const { pdfScanText, pdfText } = await import('../src/lib/texterkennung.js');
+  const scan = readFileSync(new URL('./fixtures/eingang-scan.pdf', import.meta.url));
+  assert.equal((await pdfText(scan)).trim(), '', 'keine Textebene');
+  const text = await pdfScanText(scan);
+  assert.deepEqual(L.auftragsnummernFinden(L.ocrNummern(text)), ['2099_9104'], text);
 });
 
 test('Punkte je Auftrag: Merkmale addiert, höchstens 100, je Merkmal einmal', () => {
@@ -333,4 +375,27 @@ test('Jetzt abrufen: ohne und mit Anbindung; Rechte', ohneDb, async () => {
   const ohne = await admin('POST', '/api/admin/api-keys', { module: 'transport', name: 'ohne-rechte', permissions: [] });
   assert.equal((await ext(ohne.body.key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<x@k>', betreff: 'x' }))).status, 403);
   assert.equal((await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<y@k>', anhaenge: Array.from({ length: 41 }, (_, i) => pdf(`${i}.pdf`, String(i))) }))).status, 400, 'höchstens 40 Anhänge');
+});
+
+test('Nummernsuche zuerst: Rechnungsnummer mit Fundstellen, Vorrang vor dem Absender, Platzhalter „FOLGT“ ohne Treffer', ohneDb, async () => {
+  await sql`insert into transport.auftraege (auftragsnr, kunde, faktura, fakturadatum) values ('2099_9106', 990002, '2099_9104', current_date)`;
+  await sql`insert into transport.auftraege (auftragsnr, ordernummer, ladenummer) values ('2099_9107', 'FOLGT', 'Muster')`;
+  // Absender gehört zu zwei offenen Aufträgen (2099_9001, 2099_9002) – die Rechnungsnummer hat Vorrang
+  let r = await ext(key, 'POST', `${T}/eingang/mail`, mail({
+    message_id: '<m-nr1@k>', von: 'Einkauf <einkauf@kunde-eingang.test>', betreff: 'Ihre Rechnung 2099-9104',
+    text: 'Zur Rechnung 2099_9104 folgt die Zahlung.', anhaenge: [pdf('Rechnung_2099_9104.pdf', 'R')],
+  }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let [v] = await sql`select auftragsnr, punkte, kandidaten, begruendung from transport.eing_vorgaenge where id = ${r.body.vorgang}`;
+  assert.deepEqual(v.kandidaten.map((k: L.Kandidat) => k.auftragsnr), ['2099_9106'], 'nur der Auftrag zur Rechnungsnummer');
+  assert.deepEqual([v.auftragsnr, v.punkte], ['2099_9106', 90]);
+  assert.equal(v.begruendung[0].grund, 'Rechnungsnummer 2099_9104 (Auftrag 2099_9106) im Betreff, im Mailtext und im Dateinamen „Rechnung_2099_9104.pdf“');
+
+  // Werbemail: „Bestellung folgt“ trifft weder Ordernummer noch Ladenummer ohne Ziffer
+  r = await ext(key, 'POST', `${T}/eingang/mail`, mail({
+    message_id: '<m-nr2@k>', von: 'Shop <shop@fremd-eingang.test>', betreff: 'Deine Bestellung wurde versandt', text: 'Rechnung folgt. Muster gratis.',
+    anhaenge: [pdf('werbung.pdf', 'W')],
+  }));
+  [v] = await sql`select auftragsnr, kandidaten from transport.eing_vorgaenge where id = ${r.body.vorgang}`;
+  assert.deepEqual([v.auftragsnr, v.kandidaten], [null, []]);
 });

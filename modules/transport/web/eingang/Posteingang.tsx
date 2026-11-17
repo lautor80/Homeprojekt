@@ -19,8 +19,8 @@ import {
 
 /**
  * App „Posteingang“ (Euroflex): E-Mails aus dem Outlook-Postfach, die n8n geliefert hat und die nicht automatisch am Auftrag
- * abgelegt wurden. Links die Liste mit dem Zuordnungsvorschlag, rechts (auf dem Handy darunter) die E-Mail mit Begründung,
- * Kandidaten, Anhängen und den Aktionen „Ignorieren“, „Neu bewerten“, „Am Auftrag ablegen“.
+ * abgelegt wurden. Links die Liste mit dem Zuordnungsvorschlag, rechts (auf dem Handy darunter) die E-Mail – darin links die
+ * Anhänge, daneben Begründung (mit Fundstellen der Auftrags-/Rechnungsnummer), Kandidaten, Text und den Aktionen „Ignorieren“, „Neu bewerten“, „Am Auftrag ablegen“.
  * Vertrag: docs/euroflex-mailworkflows.md, „Prüfliste und Ablage“.
  */
 const FILTER: { key: VorgangStatus; text: string }[] = [
@@ -202,7 +202,9 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   const [busy, setBusy] = useState(false);
   const [frage, setFrage] = useState(false);
   const [pdf, setPdf] = useState<EingangDokument | null>(null);
-  const [textOffen, setTextOffen] = useState(false);
+  const [textOffen, setTextOffen] = useState(true);
+  // Detail neben der Liste: unter etwa 1100 px Fensterbreite Anhänge über der E-Mail statt links daneben
+  const schmal = useKlein(1100);
 
   const laden = useCallback(async () => {
     try {
@@ -255,7 +257,16 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   return (
     <Section title={v.betreff || '(ohne Betreff)'}
              status={<ObjectStatus state={v.status === 'fehler' ? 'Negative' : v.status === 'abgelegt' ? 'Positive' : v.status === 'pruefen' ? 'Critical' : 'None'}>{STATUS_TEXT[v.status] ?? v.status}</ObjectStatus>}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {/* links die Anhänge, rechts die E-Mail (Kopf, Zuordnung, Text, Aktionen); schmal untereinander, Anhänge zuerst */}
+      <div style={{ display: 'grid', gridTemplateColumns: schmal ? 'minmax(0, 1fr)' : 'minmax(13rem, 17rem) minmax(0, 1fr)', gap: '1rem', alignItems: 'start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>
+        <Label>Anhänge und Dokumente ({v.dokumente.length})</Label>
+        {!v.dokumente.length ? <Text className="portal-muted">Keine Anhänge.</Text> : v.dokumente.map((d) => (
+          <DokumentKarte key={d.id} d={d} waehlbar={offen && darfAblegen && OFFEN_DOK(d)} gewaehlt={auswahl.has(d.id)}
+                         onWahl={(an) => umschalten(d, an)} vorschau={edit ? () => vorschau(d) : null} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: 0 }}>
         <div className="portal-small" style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', gap: '0.15rem 0.75rem' }}>
           <Label>Von</Label><Text style={{ overflowWrap: 'anywhere' }}>{v.von_name ? `${v.von_name} <${v.von ?? ''}>` : v.von ?? '–'}</Text>
           {v.an && <><Label>An</Label><Text style={{ overflowWrap: 'anywhere' }}>{v.an}</Text></>}
@@ -291,19 +302,6 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
           {offen && edit && !darfAblegen && <Text className="portal-muted portal-small">Zum Ablegen fehlt das Recht, Aufträge anzuzeigen.</Text>}
         </div>
 
-        {/* Anhänge */}
-        <div>
-          <Label>Anhänge und Dokumente ({v.dokumente.length})</Label>
-          {!v.dokumente.length ? <Text className="portal-muted" style={{ display: 'block' }}>Keine Anhänge.</Text> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(16rem, 100%), 1fr))', gap: '0.5rem', marginTop: '0.25rem' }}>
-              {v.dokumente.map((d) => (
-                <DokumentKarte key={d.id} d={d} waehlbar={offen && darfAblegen && OFFEN_DOK(d)} gewaehlt={auswahl.has(d.id)}
-                               onWahl={(an) => umschalten(d, an)} vorschau={edit ? () => vorschau(d) : null} />
-              ))}
-            </div>
-          )}
-        </div>
-
         {v.text && (
           <div>
             <Link onClick={() => setTextOffen(!textOffen)}>{textOffen ? 'Text der E-Mail ausblenden' : 'Text der E-Mail anzeigen'}</Link>
@@ -323,6 +321,7 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
             )}
           </div>
         )}
+      </div>
       </div>
       <ConfirmDialog open={frage} title="E-Mail ignorieren" confirmText="Ignorieren" danger
                      text="Die E-Mail und ihre Anhänge werden nicht abgelegt; die Inhalte werden im Portal gelöscht. Die E-Mail selbst bleibt im Outlook-Postfach."

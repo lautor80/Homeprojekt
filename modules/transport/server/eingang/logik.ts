@@ -61,10 +61,59 @@ export function auftragsnummernFinden(...texte: (string | null | undefined)[]): 
 const regexSicher = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const normText = (s: string) => s.replace(/\s+/g, ' ').toLowerCase();
 
-/** Referenz (Order-, Lade-, Rechnungsnummer) brauchbar? mindestens 4 Zeichen und nicht nur Nullen/Leerzeichen */
+/**
+ * Referenz (Order-, Lade-, Rechnungsnummer) brauchbar? mindestens 4 Zeichen, mindestens eine Ziffer und nicht nur Nullen –
+ * Platzhalter wie „FOLGT“, „Muster“ oder „Bestellung“ stehen in fast jeder Werbemail und ergäben Dutzende Kandidaten.
+ */
 export function referenzTauglich(wert: string | null | undefined): boolean {
   const w = (wert ?? '').trim();
-  return w.length >= 4 && /[\p{L}\p{N}]/u.test(w) && !/^0+$/.test(w);
+  return w.length >= 4 && /\p{N}/u.test(w) && !/^[0\s]+$/.test(w);
+}
+
+/** Textquelle der Suche: Bezeichnung (Betreff, Mailtext, Dateinamen „…“, Dokument „…“ (Texterkennung)) und Text */
+export type Quelle = [ort: string, text: string];
+
+/** Bezeichnungen der Quellen für die Suche nach Nummern – Reihenfolge = Reihenfolge der Fundstellen in der Begründung */
+export function suchQuellen(q: { betreff: string; text: string; dateien: string[]; ocr: { datei: string; text: string }[] }): Quelle[] {
+  return [
+    ['Betreff', q.betreff], ['Mailtext', q.text],
+    ...q.dateien.map((d): Quelle => [`Dateinamen „${d}“`, d]),
+    ...q.ocr.map((o): Quelle => [`Dokument „${o.datei}“ (Texterkennung)`, ocrNummern(o.text)]),
+  ];
+}
+
+/**
+ * Texterkennung liest den Unterstrich oft als Leerzeichen („2026 0153“, auch „2026 _ 0153“) – in erkanntem Text wird das zur
+ * Auftragsnummer zusammengezogen. Nur für OCR-Text: im Mailtext wäre „2026 1234“ zu oft etwas anderes.
+ */
+export function ocrNummern(text: string): string {
+  return text.replace(/(?<![\p{L}\p{N}])(20\d{2})[ \t]*[ _\t][ \t]*(\d{4})(?![\p{L}\p{N}])/gu, '$1_$2');
+}
+
+/** Alle Fundstellen einer Auftrags-/Rechnungsnummer (JJJJ_NNNN, normalisiert) */
+export function fundstellenNummer(quellen: Quelle[], nr: string): string[] {
+  return quellen.filter(([, t]) => auftragsnummernFinden(t).includes(nr)).map(([o]) => o);
+}
+
+/** Alle Fundstellen einer Referenz (Wortgrenze, Groß-/Kleinschreibung und Leerraum egal) */
+export function fundstellenReferenz(quellen: Quelle[], wert: string): string[] {
+  return quellen.filter(([, t]) => !!t && referenzImText(t, wert)).map(([o]) => o);
+}
+
+/** „im Betreff“, „im Betreff und im Dokument „x.pdf“ (Texterkennung)“ */
+export function fundText(orte: string[]): string {
+  const mit = orte.map((o) => `im ${o}`);
+  if (!mit.length) return 'in der E-Mail';
+  return mit.length === 1 ? mit[0] : `${mit.slice(0, -1).join(', ')} und ${mit[mit.length - 1]}`;
+}
+
+/**
+ * Vorrang der Nummernsuche: Hat die E-Mail eine Auftrags- oder Rechnungsnummer (oder ist sie die Antwort auf eine eigene E-Mail),
+ * zählen nur noch die so gefundenen Aufträge – schwache Treffer (Referenz, Absender) anderer Aufträge fallen weg.
+ */
+export function nummernVorrang(treffer: Treffer[]): Treffer[] {
+  const sicher = new Set(treffer.filter((t) => t.art === 'nummer' || t.art === 'antwort').map((t) => t.auftragsnr));
+  return sicher.size ? treffer.filter((t) => sicher.has(t.auftragsnr)) : treffer;
 }
 
 /** Steht die Referenz mit Wortgrenze im Text? (Groß-/Kleinschreibung und Leerraum egal) */

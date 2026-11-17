@@ -19,7 +19,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { funktionAktiv } from '../../../../server/src/funktionsschalter.js';
 import { HINWEIS_DB, hinweisBeheben, hinweisMelden } from '../../../../server/src/lib/hinweise.js';
 import { eingangZeit, einordnen } from '../../../../server/src/lib/maileingang.js';
-import { bildart, bildText, pdfText } from '../../../../server/src/lib/texterkennung.js';
+import { bildart, bildText, pdfScanText, pdfText } from '../../../../server/src/lib/texterkennung.js';
 import { authHeader, eingerichtet, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { htmlToPdf, istPdf } from '../../../../server/src/pdf.js';
 import { auftragLesen, firmaLesen } from '../data.js';
@@ -27,8 +27,8 @@ import { dokumentAblegen, mimeTyp } from '../dokumente.js';
 import { ANWENDUNG } from '../mailversand.js';
 import { F_MW, workflowEinstellungen, type EingangEinstellungen } from '../mailworkflows.js';
 import {
-  absender, absenderTreffer, auftragsnummernFinden, bewerten, dateinameSicher, entscheiden, htmlText, mailDateiname, mailHtml, messageIds,
-  objektAuftrag, PUNKTE, referenzImText, relevanterAnhang, speicherWarnung, V_MAILEINGANG, type Entscheidung, type Kandidat, type Treffer,
+  absender, absenderTreffer, auftragsnummernFinden, bewerten, dateinameSicher, entscheiden, fundstellenNummer, fundstellenReferenz, fundText, htmlText, mailDateiname, mailHtml, messageIds,
+  nummernVorrang, objektAuftrag, PUNKTE, referenzImText, relevanterAnhang, suchQuellen, speicherWarnung, V_MAILEINGANG, type Entscheidung, type Kandidat, type Treffer,
 } from './logik.js';
 
 /** Name für automatische Bearbeitung (n8n-Lieferung, Neubewertung ohne Benutzer) */
@@ -95,8 +95,10 @@ async function texterkennen(a: { datei: string; mime: string; daten: Buffer }): 
   try {
     if (istPdf(a.mime, a.datei)) {
       const t = (await pdfText(a.daten)).trim();
-      // gescannte PDFs ohne Textebene: Tesseract liest nur Bilder (PNG/JPEG) – das PDF bleibt ohne Text
-      return { text: t, hinweis: t ? null : 'PDF ohne Textebene – kein Text erkannt.' };
+      if (t) return { text: t, hinweis: null };
+      // gescanntes PDF ohne Textebene: Seiten als Bild rendern und mit Tesseract lesen
+      const s = (await pdfScanText(a.daten)).trim();
+      return { text: s, hinweis: s ? 'Gescanntes PDF – Text per Texterkennung gelesen.' : 'PDF ohne Textebene – kein Text erkannt.' };
     }
     if (bildart(a.daten)) return { text: (await bildText(a.daten)).trim(), hinweis: null };
     return { text: '', hinweis: null };
@@ -113,7 +115,8 @@ interface Suche {
   /** Absenderadresse (klein) */
   adresse: string;
   dateien: string[];
-  ocr: string[];
+  /** erkannter Text je Dokument (Anhang) – für die Fundstelle mit Dateinamen */
+  ocr: { datei: string; text: string }[];
   /** Treffer „Antwort auf eine eigene E-Mail“ – beim Eingang aus In-Reply-To/References, beim Neubewerten aus dem Vorgang */
   antwort: Treffer[];
 }
@@ -129,25 +132,36 @@ async function antwortTreffer(inReplyTo: string | null, references: string | nul
   return da.map((r) => ({ auftragsnr: r.auftragsnr as string, art: 'antwort' as const, punkte: PUNKTE.antwort, grund: `Antwort auf eine E-Mail des Portals zu Auftrag ${r.auftragsnr}` }));
 }
 
-/** Auftragsnummern, Referenzen und Absender suchen – liefert alle Treffer (zusammengerechnet wird in logik.ts) */
+/**
+ * Treffer suchen – zuerst Auftrags- und Rechnungsnummern (JJJJ_NNNN in Betreff, Mailtext, Dateinamen und Texterkennung der
+ * Dokumente, mit allen Fundstellen in der Begründung), dann Order-/Ladenummern und Absender. Gibt es eine Nummer, zählen nur
+ * noch die so gefundenen Aufträge (nummernVorrang). Zusammengerechnet wird in logik.ts.
+ */
 async function trefferSuchen(q: Suche): Promise<Treffer[]> {
   const treffer: Treffer[] = [...q.antwort];
-  const quellen: [string, string][] = [
-    ['Betreff', q.betreff], ['Mailtext', q.text], ...q.dateien.map((d): [string, string] => ['Dateiname', d]), ...q.ocr.map((t): [string, string] => ['Dokumenttext', t]),
-  ];
+  const quellen = suchQuellen(q);
 
-  // Auftragsnummer, die es als Auftrag gibt
+  // 1. Auftragsnummer bzw. Rechnungsnummer (faktura), die es gibt
   const nummern = auftragsnummernFinden(...quellen.map(([, t]) => t));
   if (nummern.length) {
-    const da = await sql`select auftragsnr from transport.auftraege where auftragsnr = any(${nummern})`;
+    const da = await sql`
+      select auftragsnr, auftragsnr as nr, 'Auftragsnummer' as art from transport.auftraege where auftragsnr = any(${nummern})
+      union all
+      select auftragsnr, faktura, 'Rechnungsnummer' from transport.auftraege where faktura = any(${nummern})
+      order by 1 desc limit 200`;
     for (const r of da) {
-      const nr = r.auftragsnr as string;
-      const wo = quellen.find(([, t]) => auftragsnummernFinden(t).includes(nr))?.[0] ?? 'E-Mail';
-      treffer.push({ auftragsnr: nr, art: 'nummer', punkte: PUNKTE.nummer, grund: `Auftragsnummer ${nr} im ${wo}` });
+      const nr = r.nr as string;
+      const auftrag = r.auftragsnr as string;
+      const wo = fundText(fundstellenNummer(quellen, nr));
+      treffer.push({
+        auftragsnr: auftrag, art: 'nummer', punkte: PUNKTE.nummer,
+        grund: r.art === 'Auftragsnummer' ? `Auftragsnummer ${nr} ${wo}` : `Rechnungsnummer ${nr} (Auftrag ${auftrag}) ${wo}`,
+      });
     }
   }
 
-  // Order-, Lade- (Auftrag und Stops) und Rechnungsnummer: grob in der Datenbank vorfiltern, Wortgrenze hier prüfen
+  // 2. Order-, Lade- (Auftrag und Stops) und Rechnungsnummer in anderem Format (bei einer Nummer nur noch als Zusatz für denselben
+  //    Auftrag, siehe 3.): grob in der Datenbank vorfiltern, Wortgrenze hier
   const heuhaufen = quellen.map(([, t]) => t).join('\n').replace(/\s+/g, ' ').toLowerCase().slice(0, 2_000_000);
   if (heuhaufen.trim()) {
     const refs = await sql`
@@ -157,11 +171,13 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
         union all select auftragsnr, 'Ladenummer', ladenummer from transport.stops where ladenummer is not null
         union all select auftragsnr, 'Rechnungsnummer', faktura from transport.auftraege where faktura is not null
       ) r
-      where length(btrim(wert)) >= 4 and strpos(${heuhaufen}, regexp_replace(lower(btrim(wert)), '\\s+', ' ', 'g')) > 0
+      where length(btrim(wert)) >= 4 and wert ~ '[0-9]' and strpos(${heuhaufen}, regexp_replace(lower(btrim(wert)), '\\s+', ' ', 'g')) > 0
       limit 500`;
     for (const r of refs) {
       const wert = String(r.wert).trim();
-      if (referenzImText(heuhaufen, wert)) treffer.push({ auftragsnr: r.auftragsnr as string, art: 'referenz', punkte: PUNKTE.referenz, grund: `${r.art} ${wert} gefunden` });
+      // dieselbe Rechnungsnummer zählt nicht zweimal (schon als Nummer gefunden)
+      if (nummern.includes(wert) || !referenzImText(heuhaufen, wert)) continue;
+      treffer.push({ auftragsnr: r.auftragsnr as string, art: 'referenz', punkte: PUNKTE.referenz, grund: `${r.art} ${wert} ${fundText(fundstellenReferenz(quellen, wert))}` });
     }
   }
 
@@ -181,7 +197,8 @@ async function trefferSuchen(q: Suche): Promise<Treffer[]> {
        limit 200`;
     treffer.push(...absenderTreffer(offen.map((r) => r.auftragsnr as string), q.adresse));
   }
-  return treffer;
+  // 3. Gibt es eine Nummer (oder ist es eine Antwort), bleiben nur diese Aufträge – der Absender kann dort noch Punkte geben
+  return nummernVorrang(treffer);
 }
 
 async function zuordnen(q: Suche): Promise<{ kandidaten: Kandidat[]; ent: Entscheidung }> {
@@ -355,7 +372,7 @@ export async function mailVerarbeiten(m: EingangMail): Promise<MailAntwort> {
   const antwort = await antwortTreffer(m.in_reply_to, m.references);
   const { kandidaten, ent } = ignorieren
     ? { kandidaten: [] as Kandidat[], ent: null }
-    : await zuordnen({ betreff: m.betreff, text, adresse: ab.adresse, dateien: anhaenge.map((a) => a.name), ocr: dokumente.map((d) => d.ocr).filter(Boolean), antwort });
+    : await zuordnen({ betreff: m.betreff, text, adresse: ab.adresse, dateien: anhaenge.map((a) => a.name), ocr: dokumente.filter((d) => d.ocr).map((d) => ({ datei: d.datei, text: d.ocr })), antwort });
   if (ignorieren) hinweise.unshift(`${art === 'unzustellbar' ? 'Unzustellbar-Meldung' : 'Abwesenheitsnotiz'} – nicht abgelegt.`);
   else if (!dokumente.length) hinweise.unshift('Keine Dokumente (keine Anhänge, E-Mail als PDF ist abgeschaltet) – nichts abzulegen.');
   if (ent?.hinweis && dokumente.length) hinweise.push(ent.hinweis);
@@ -437,7 +454,7 @@ export async function vorgangIgnorieren(id: number, wer: string) {
 export async function neuBewerten(id: number, wer: string) {
   const v = await vorgangOffen(id);
   if (!['neu', 'pruefen', 'fehler'].includes(v.status as string)) throw new BusinessError('Nur offene Vorgänge (prüfen, Fehler) lassen sich neu bewerten.');
-  const docs = await sql`select datei, ocr_text, status from transport.eing_dokumente where vorgang_id = ${id} order by id`;
+  const docs = await sql`select art, datei, ocr_text, status from transport.eing_dokumente where vorgang_id = ${id} order by id`;
   // liegen schon Dokumente am Auftrag, bleibt der Auftrag – nur die offenen werden erneut versucht
   const fest = docs.some((d) => AM_AUFTRAG.includes(d.status as DokStatus)) ? (v.auftragsnr as string | null) : null;
   if (fest) {
@@ -448,7 +465,8 @@ export async function neuBewerten(id: number, wer: string) {
     .map((g) => ({ auftragsnr: k.auftragsnr, art: 'antwort' as const, punkte: g.punkte, grund: g.grund })));
   const { kandidaten, ent } = await zuordnen({
     betreff: (v.betreff as string) ?? '', text: (v.text as string) ?? '', adresse: (v.von as string) ?? '',
-    dateien: docs.map((d) => d.datei as string), ocr: docs.map((d) => (d.ocr_text as string | null) ?? '').filter(Boolean), antwort,
+    dateien: docs.filter((d) => d.art !== 'mail').map((d) => d.datei as string),
+    ocr: docs.filter((d) => d.ocr_text).map((d) => ({ datei: d.datei as string, text: d.ocr_text as string })), antwort,
   });
   await sql`
     update transport.eing_vorgaenge set auftragsnr = ${ent.auftragsnr}, punkte = ${ent.punkte}, begruendung = ${sql.json(ent.begruendung as never)},
