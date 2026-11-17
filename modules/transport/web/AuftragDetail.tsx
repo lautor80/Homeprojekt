@@ -82,6 +82,8 @@ export function AuftragDetail() {
   const [kontakt, setKontakt] = useState<'NEU' | 'EDIT' | null>(null);
   /** Kontakt, der beim Bearbeiten vorausgewählt ist (Menü „Kontakt bearbeiten“: Kunde, Unternehmer, Rechnungsempfänger) */
   const [kontaktStart, setKontaktStart] = useState<string | null>(null);
+  /** Feld, in das ein neu angelegter Kontakt direkt übernommen wird (Menü „Kontakt anlegen“); Zahl = weitere Fahrt (Index) */
+  const [kontaktZiel, setKontaktZiel] = useState<'kunde' | 'unternehmer' | 'rechnungsempfaenger' | number | null>(null);
   const [wertTyp, setWertTyp] = useState<string | null>(null);
   // Anzahl der gespeicherten weiteren Fahrten: gedruckt wird der gespeicherte Stand
   const [fahrtenGespeichert, setFahrtenGespeichert] = useState(0);
@@ -247,6 +249,15 @@ export function AuftragDetail() {
     kontakteAuftrag.push({ key: String(n), text: dd?.text ?? `Kontakt ${n}`, zusatz: dd?.zusatz ? `${rolle} · ${dd.zusatz}` : rolle });
   }
   const kontaktBearbeiten = (key: string) => { setKontaktStart(key); setKontakt('EDIT'); };
+  const kontaktAnlegen = (ziel: typeof kontaktZiel) => { setKontaktZiel(ziel); setKontakt('NEU'); };
+  // Ziele für „Kontakt anlegen“ – nur solange der Auftrag bearbeitet werden darf
+  const anlageZiele: { text: string; icon: string; ziel: typeof kontaktZiel }[] = mayEdit ? [
+    { text: 'als Kunde', icon: 'customer', ziel: 'kunde' },
+    { text: fahrten.length ? 'als Unternehmer (Fahrt 1)' : 'als Unternehmer', icon: 'shipping-status', ziel: 'unternehmer' },
+    ...fahrten.map((_, i) => ({ text: `als Unternehmer (Fahrt ${i + 2})`, icon: 'shipping-status', ziel: i as typeof kontaktZiel })),
+    { text: 'als abw. Rechnungsempfänger', icon: 'receipt', ziel: 'rechnungsempfaenger' },
+    { text: 'ohne Zuordnung', icon: 'add-contact', ziel: null },
+  ] : [];
 
   const titel = isNew
     ? `Neuer ${typ === 'H' ? 'Holzträgerauftrag' : 'Frachtauftrag'} ${vorschau}`
@@ -371,7 +382,9 @@ export function AuftragDetail() {
         <ObjectPageSection id="beteiligte" titleText="Beteiligte" hideTitleText>
           <ObjectPageSubSection id="beteiligte-sub" titleText="Beteiligte"
             actions={can('transport.kontakte:edit') ? <>
-              <Button icon="add-contact" design="Transparent" onClick={() => setKontakt('NEU')}>Kontakt anlegen</Button>
+              {anlageZiele.length
+                ? <MenuButton text="Kontakt anlegen" icon="add-contact" design="Transparent" items={anlageZiele.map((z) => ({ text: z.text, icon: z.icon, onClick: () => kontaktAnlegen(z.ziel) }))} />
+                : <Button icon="add-contact" design="Transparent" onClick={() => kontaktAnlegen(null)}>Kontakt anlegen</Button>}
               {rollenAuftrag.length
                 ? <MenuButton text="Kontakt bearbeiten" icon="edit" design="Transparent" items={rollenAuftrag.map((r) => ({
                     text: `${r.rolle}: ${kontakteAuftrag.find((k) => k.key === r.key)?.text ?? `Kontakt ${r.key}`}`,
@@ -611,11 +624,24 @@ export function AuftragDetail() {
       {!isNew && nr && <VersandDialog auftraege={[nr]} open={versand} onClose={() => setVersand(false)} />}
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} start={kontaktStart} onClose={() => setKontakt(null)}
-                     onSaved={async () => {
-                       setKontakt(null);
+                     onSaved={async (adrnr) => {
+                       const neu = kontakt === 'NEU';
+                       const ziel = kontaktZiel;
+                       setKontakt(null); setKontaktZiel(null);
                        await ladeAdressen();
+                       // neu angelegt: direkt in das gewählte Feld übernehmen
+                       if (neu && typeof ziel === 'number') {
+                         setA((x) => (x ? { ...x, fahrten: (x.fahrten ?? []).map((f, j) => (j === ziel ? { ...f, unternehmer: adrnr } : f)) } : x));
+                       } else if (neu && typeof ziel === 'string') {
+                         await waehleAdresse(ziel, String(adrnr));
+                       }
+                       if (neu && ziel !== null) {
+                         const rolle = anlageZiele.find((z) => z.ziel === ziel)?.text.replace(/^als /, '') ?? '';
+                         toast(`Neuer Kontakt als ${rolle} eingetragen – Auftrag speichern nicht vergessen.`, 6000);
+                       }
+                       // bearbeitet: Anschriften der Beteiligten neu laden
                        for (const f of ['kunde', 'unternehmer', 'rechnungsempfaenger'] as const) {
-                         if (a[f]) waehleAdresse(f, String(a[f]));
+                         if (a[f] && !(neu && ziel === f)) waehleAdresse(f, String(a[f]));
                        }
                      }} />
       <WertDialog typ={wertTyp} onClose={() => setWertTyp(null)}
