@@ -38,9 +38,9 @@ export async function nachAblegen(sel: NachablageZeile[], alle: NachablageZeile[
     for (const s of sel) {
       o.schritt?.(`E-Mail-Belege ${s.auftragsnr}`);
       try {
-        const e = await eingangInOrdner(s.auftragsnr, null, { paperless: true, pruefen: true });
-        erg.eingang.uebernommen += e.uebernommen; erg.eingang.paperless += e.paperless; erg.eingang.vorhanden += e.vorhanden;
-        const t = uebernahmeText({ ...e, uebernommen: 0, paperless: 0 }, s.auftragsnr);
+        const e = await eingangInOrdner(s.auftragsnr, null, { paperless: true, erneut: true });
+        erg.eingang.uebernommen += e.uebernommen + e.erneut; erg.eingang.paperless += e.paperless; erg.eingang.vorhanden += e.vorhanden;
+        const t = uebernahmeText({ ...e, uebernommen: 0, erneut: 0, paperless: 0 }, s.auftragsnr);
         if (t) erg.meldungen.push(t);
       } catch (e) {
         // ohne Recht auf den Posteingang (403) still überspringen

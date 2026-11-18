@@ -19,6 +19,8 @@ type Art = 'T' | 'L' | 'R';
 interface Eingang {
   ablageziel: 'lokal' | 'paperless'; schwelle: number; ordnerZugeordnet: string; ordnerPruefen: string;
   mailAlsPdf: boolean; ocr: boolean; speicherWarnungMb: number;
+  /** Inhalte nach der Übernahme so viele Tage für „Erneut ablegen“ behalten (0 = sofort löschen) */
+  aufbewahrenTage?: number;
   /** Eingangspostfächer mit Bezeichnung (Anzeige und Filter im Posteingang) */
   postfaecher: Postfach[];
 }
@@ -43,6 +45,7 @@ export function MailWorkflowsTab() {
   // Zahlen als Text bearbeiten, damit ein leeres Feld beim Tippen möglich ist
   const [schwelle, setSchwelle] = useState('');
   const [warnMb, setWarnMb] = useState('');
+  const [tage, setTage] = useState('');
   const [speicher, setSpeicher] = useState<Speicher | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,7 +54,7 @@ export function MailWorkflowsTab() {
 
   useEffect(() => {
     api.get<Einstellungen>(`${T}/workflow-einstellungen`).then((x) => {
-      setE(x); setSchwelle(String(x.eingang.schwelle)); setWarnMb(String(x.eingang.speicherWarnungMb));
+      setE(x); setSchwelle(String(x.eingang.schwelle)); setWarnMb(String(x.eingang.speicherWarnungMb)); setTage(String(x.eingang.aufbewahrenTage ?? 90));
     }).catch((x) => setError((x as Error).message));
   }, []);
   const speicherLaden = () => api.get<Speicher>(`${T}/eingang/speicher`).then(setSpeicher).catch(() => setSpeicher(null));
@@ -64,6 +67,7 @@ export function MailWorkflowsTab() {
   const zahl = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s.trim()) : NaN);
   const schwelleOk = zahl(schwelle) >= 1 && zahl(schwelle) <= 100;
   const warnOk = zahl(warnMb) >= 10 && zahl(warnMb) <= 100_000;
+  const tageOk = zahl(tage) >= 0 && zahl(tage) <= 3650;
   const automatischSenden = funktion('transport.versand.automatisch');
   const automatischAblegen = funktion('transport.eingang.automatik');
   const absenderFunktion = funktion('transport.versand.rechnung');
@@ -75,10 +79,10 @@ export function MailWorkflowsTab() {
   const versandOk = ARTEN.every(({ art: a }) => (!e.versand[a].absender?.trim() || EMAIL_RE.test(e.versand[a].absender.trim())) && adressenOk(e.versand[a].bcc ?? ''));
 
   async function speichern() {
-    if (!e || !schwelleOk || !warnOk || !postfaecherOk || !versandOk) return;
+    if (!e || !schwelleOk || !warnOk || !tageOk || !postfaecherOk || !versandOk) return;
     setBusy(true); setError(null);
     try {
-      const body: Einstellungen = { ...e, eingang: { ...e.eingang, schwelle: zahl(schwelle), speicherWarnungMb: zahl(warnMb) } };
+      const body: Einstellungen = { ...e, eingang: { ...e.eingang, schwelle: zahl(schwelle), speicherWarnungMb: zahl(warnMb), aufbewahrenTage: zahl(tage) } };
       await api.put(`${T}/workflow-einstellungen`, body);
       setE(body);
       toast('Einstellungen der Mail-Workflows gesichert');
@@ -144,6 +148,11 @@ export function MailWorkflowsTab() {
             <Input type="Number" value={warnMb} readonly={ro} valueState={warnOk ? 'None' : 'Negative'} data-kein-autofill
                    onInput={(x) => setWarnMb(x.target.value)} style={{ width: '8rem' }} />
           </FieldBox>
+          <FieldBox label="Nach Übernahme aufbewahren (Tage)" required>
+            <Input type="Number" value={tage} readonly={ro} valueState={tageOk ? 'None' : 'Negative'} data-kein-autofill
+                   onInput={(x) => setTage(x.target.value)} style={{ width: '8rem' }}
+                   title="So lange behält das Portal übernommene Dateien, damit „Erneut ablegen“ sie wieder in den Ordner schreiben kann (0 = sofort löschen)" />
+          </FieldBox>
         </FormGrid>
         {!automatischAblegen && (
           <MessageStrip hideCloseButton design="Information" style={{ marginTop: '0.75rem' }}>
@@ -160,6 +169,11 @@ export function MailWorkflowsTab() {
             ) : (
               <Text className="portal-muted">
                 Belegter Speicher: {mb(speicher.bytes)} MB in {speicher.dateien} Datei(en) warten auf Übernahme (Warnung ab {speicher.warnungMb} MB).
+              </Text>
+            )}
+            {!!speicher.aufbewahrtDateien && (
+              <Text className="portal-muted" style={{ display: 'block' }}>
+                Aufbewahrt für „Erneut ablegen“: {mb(speicher.aufbewahrtBytes ?? 0)} MB in {speicher.aufbewahrtDateien} übernommenen Datei(en) – werden nach {speicher.aufbewahrenTage ?? 90} Tagen gelöscht.
               </Text>
             )}
           </div>
@@ -211,7 +225,7 @@ export function MailWorkflowsTab() {
         </MessageStrip>
       </Section>
 
-      <Bar endContent={<Button design="Emphasized" icon="save" disabled={ro || busy || !schwelleOk || !warnOk
+      <Bar endContent={<Button design="Emphasized" icon="save" disabled={ro || busy || !schwelleOk || !warnOk || !tageOk
         || !e.eingang.ordnerZugeordnet.trim() || !e.eingang.ordnerPruefen.trim() || !postfaecherOk || !versandOk} onClick={speichern}>Sichern</Button>} />
     </>
   );

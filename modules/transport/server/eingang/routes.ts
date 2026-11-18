@@ -122,7 +122,8 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.get('/eingang/dokumente/:id/datei', { preHandler: requireAuth() }, async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const [d] = await sql`select datei, mime, status, inhalt from transport.eing_dokumente where id = ${id}`;
-    const darf = can(req, P_MW.eingangEdit) || (d?.status === 'wartet' && can(req, P_AUFTRAG.edit));
+    // wartende und aufbewahrte (übernommene) Inhalte darf auch laden, wer Aufträge ändern darf – für Übernahme und „Erneut ablegen“
+    const darf = can(req, P_MW.eingangEdit) || ((d?.status === 'wartet' || d?.status === 'uebernommen') && can(req, P_AUFTRAG.edit));
     if (!darf) return reply.code(403).send({ message: `Keine Berechtigung (${P_MW.eingangEdit}).` });
     if (!d?.inhalt) throw new BusinessError('Die Datei liegt nicht (mehr) im Portal.', 404);
     const mime = (d.mime as string | null) ?? 'application/octet-stream';
@@ -173,7 +174,7 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.get('/auftraege/:nr/eingang', { preHandler: requireAuth(P_AUFTRAG.display) }, async (req) => {
     const { nr } = z.object({ nr: z.string().max(40) }).parse(req.params);
     return sql`
-      select d.id::int as id, d.datei, d.ablage_name, d.mime, d.groesse, d.status, d.ziel, d.paperless_id, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum
+      select d.id::int as id, d.datei, d.ablage_name, d.inhalt is not null as vorhanden, d.mime, d.groesse, d.status, d.ziel, d.paperless_id, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum
         from transport.eing_dokumente d join transport.eing_vorgaenge v on v.id = d.vorgang_id
        where v.auftragsnr = ${nr} and d.status in ('wartet', 'uebernommen', 'abgelegt')
        order by d.id`;
