@@ -14,7 +14,7 @@ import {
 } from './logik.js';
 import { haushaltAblegen, haushaltPdf } from './pdf.js';
 import { ENTSCHEIDUNG, POSITION_ARTEN, POSITION_TEXT, STATUS, STATUS_TEXT, VERTEILUNGEN } from './projekt.js';
-import { P_PROJEKT, projekteLesen, projektLoeschen, projektnummernVorschlag, projektSichern, projektStatus } from './projekte.js';
+import { HINWEIS_AUS_URL, HINWEIS_SCHLUESSEL, hinweisSetzen, P_PROJEKT, projekteLesen, projektLoeschen, projektnummernVorschlag, projektSichern, projektStatus } from './projekte.js';
 import { METHODE_TEXT } from './vorschlag.js';
 
 /**
@@ -249,6 +249,13 @@ export async function haushaltRoutes(app: FastifyInstance) {
   app.get('/haushalt/kennzahl', lesen, async () => {
     const u = await ueberschreitungen(DB);
     return { jahr: u.jahr, aktiv: funktionAktiv(F_UEBERWACHUNG), plan: !!u.plan, ueberschritten: u.zeilen.length, beobachten: u.beobachten };
+  });
+
+  /** Hinweis „Budget überschritten“ im Arbeitsvorrat abwählen bzw. im Soll-Ist wieder anzeigen (wer den Hinweis sieht, darf ihn abwählen) */
+  app.post(HINWEIS_AUS_URL, lesen, async (req) => {
+    const b = z.object({ schluessel: z.string().regex(HINWEIS_SCHLUESSEL), jahr: z.number().int().min(0).max(2999), aus: z.boolean().default(true) }).parse(req.body);
+    return { text: await change(req, (tx) => hinweisSetzen(tx, b.schluessel, b.jahr, b.aus, req.user!.displayName),
+      { action: b.aus ? 'HH_HINWEIS_AUS' : 'HH_HINWEIS_EIN', reason: `${b.schluessel} ${b.jahr}` }) };
   });
 
   // ---------------------------------------------------------------- PDF und Paperless

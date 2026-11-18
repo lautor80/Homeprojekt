@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
+  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
   Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -90,6 +90,14 @@ export function Haushaltsplan() {
       if (danach) danach(r); else await planLaden();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  /** Im Arbeitsvorrat abgewählter Hinweis „Budget überschritten“: Vermerk mit Link zum Wiederanzeigen */
+  const wiederAnzeigen = (schluessel: string) => si?.ausgeblendet?.includes(schluessel) && (
+    <small className="portal-muted" style={{ display: 'block' }}>
+      Hinweis ausgeblendet ·{' '}
+      <Link onClick={() => tun(() => api.post(`${HH}/hinweis/ausblenden`, { schluessel, jahr: si.jahr, aus: false }),
+        () => api.get<SollIst>(`${HH}/sollist?jahr=${si.jahr}`).then(setSi))}>wieder anzeigen</Link>
+    </small>
+  );
   const aenderbar = !!s?.aenderbar && edit;
   const jahre = useMemo(() => [...new Set([...(init?.jahre ?? []), ...(init?.plaene.map((p) => p.jahr) ?? [])])].sort((a, b) => b - a), [init]);
   const wechsel = (j: number) => { setJahr(j); setPlanId(init?.plaene.find((p) => p.jahr === j)?.id ?? null); };
@@ -337,7 +345,7 @@ export function Haushaltsplan() {
                                   <td className="name">{z.konto} {z.name}<small>{z.bereich_text}{z.geplant ? '' : ' · nicht im Plan'}</small></td>
                                   <td className="z">{euro(z.plan)}</td><td className="z">{euro(z.ist)}</td><td className="z">{euro(z.hochrechnung)}</td>
                                   <td className="z">{z.bewertung.abweichung > 0 ? '+' : ''}{euro(z.bewertung.abweichung)}</td><td className="z">{prozent(z.bewertung.prozent)}</td>
-                                  <td><ObjectStatus state={z.bewertung.state}>{z.bewertung.text}</ObjectStatus></td>
+                                  <td><ObjectStatus state={z.bewertung.state}>{z.bewertung.text}</ObjectStatus>{wiederAnzeigen(`HH:${z.konto}`)}</td>
                                   <td className="z">{z.projekt ? euro(z.projekt) : ''}</td>
                                 </tr>
                               ))}
@@ -369,7 +377,7 @@ export function Haushaltsplan() {
                                 <td><ObjectStatus state={PROJEKT_STATE[p.status]}>{p.status_text}</ObjectStatus></td>
                                 <td className="z">{euro(p.budget)}</td><td className="z">{euro(p.ist)}</td><td className="z">{euro(p.plan_jahr)}</td><td className="z">{euro(p.ist_jahr)}</td>
                                 <td className="z">{p.bewertung.abweichung > 0 ? '+' : ''}{euro(p.bewertung.abweichung)}</td><td className="z">{prozent(p.bewertung.prozent)}</td>
-                                <td><ObjectStatus state={p.bewertung.state}>{p.bewertung.text}</ObjectStatus></td>
+                                <td><ObjectStatus state={p.bewertung.state}>{p.bewertung.text}</ObjectStatus>{wiederAnzeigen(`HHPROJEKTBUDGET:${p.id}`)}</td>
                               </tr>
                             ))}
                           </tbody>

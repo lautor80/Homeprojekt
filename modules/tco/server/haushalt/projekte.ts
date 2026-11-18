@@ -283,6 +283,31 @@ export async function projekteSollIst(db: Db, jahr: number, cfg: { toleranz_gelb
 
 const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// ---------------------------------------------------------------------------
+// Hinweise „Budget überschritten“ im Arbeitsvorrat abwählen (tco.hh_hinweis_aus): Konto je Geschäftsjahr, Projekt mit jahr 0
+// ---------------------------------------------------------------------------
+
+export const HINWEIS_AUS_URL = '/haushalt/hinweis/ausblenden';
+/** HH:<Konto> (Ausgabenbudget eines Kontos) oder HHPROJEKTBUDGET:<Projekt-ID> */
+export const HINWEIS_SCHLUESSEL = /^(HH:[0-9A-Za-z._-]{1,20}|HHPROJEKTBUDGET:\d{1,10})$/;
+/** Jahr, unter dem ein Hinweis ausgeblendet wird: Konten je Geschäftsjahr, Projekte über die ganze Laufzeit (0) */
+export const hinweisJahr = (schluessel: string, jahr: number) => (schluessel.startsWith('HHPROJEKTBUDGET:') ? 0 : jahr);
+
+/** Schlüssel der ausgeblendeten Hinweise: Konten des Jahres und alle Projekte */
+export async function hinweiseAus(db: Db, jahr: number): Promise<Set<string>> {
+  const r = await db`select schluessel from tco.hh_hinweis_aus where jahr = ${jahr} or (jahr = 0 and schluessel like 'HHPROJEKTBUDGET:%')`;
+  return new Set(r.map((x) => x.schluessel as string));
+}
+
+/** Hinweis abwählen (aus = true) oder wieder anzeigen (aus = false) */
+export async function hinweisSetzen(tx: Db, schluessel: string, jahr: number, aus: boolean, von: string): Promise<string> {
+  if (!HINWEIS_SCHLUESSEL.test(schluessel)) throw new BusinessError('Unbekannter Hinweis.');
+  const j = hinweisJahr(schluessel, jahr);
+  if (aus) await tx`insert into tco.hh_hinweis_aus (schluessel, jahr, von) values (${schluessel}, ${j}, ${von}) on conflict do nothing`;
+  else await tx`delete from tco.hh_hinweis_aus where schluessel = ${schluessel} and jahr = ${j}`;
+  return aus ? 'Hinweis wird nicht mehr angezeigt.' : 'Hinweis wird wieder angezeigt.';
+}
+
 /**
  * Arbeitsvorrat: beantragte Projekte für alle, die genehmigen dürfen; überschrittene Projektbudgets für den Kassenwart.
  * `genehmiger` / `leser` sagen, was der Benutzer sehen darf.
@@ -302,12 +327,15 @@ export async function projektAufgaben(db: Db, o: { genehmiger: boolean; leser: b
     }
   }
   if (o.leser && o.ueberwachung) {
-    for (const p of alle.filter((x) => (x.status === 'GENEHMIGT' || x.status === 'UMSETZUNG') && x.bewertung?.stufe === 'UEBERSCHRITTEN')) {
+    const aus = await hinweiseAus(db, Number(heute.slice(0, 4)));
+    for (const p of alle.filter((x) => (x.status === 'GENEHMIGT' || x.status === 'UMSETZUNG') && x.bewertung?.stufe === 'UEBERSCHRITTEN'
+                                       && !aus.has(`HHPROJEKTBUDGET:${x.id}`))) {
       out.push({
         key: `HHPROJEKTBUDGET:${p.id}`, bereich: 'Kassenwart', icon: 'capital-projects', state: 'Negative',
         titel: `Projektbudget überschritten: ${p.bezeichnung}`,
         text: `Budget ${eur(p.budget.kosten)} € · gebucht ${eur(p.ist.kosten)} € (Projekt ${p.projektnr})`,
         datum: heute, pfad: '/tco/haushalt?tab=sollist', betrag: runden(p.ist.kosten - p.budget.kosten),
+        erledigen: { text: 'nicht mehr anzeigen', url: HINWEIS_AUS_URL, body: { schluessel: `HHPROJEKTBUDGET:${p.id}`, jahr: 0, aus: true } },
       });
     }
   }
