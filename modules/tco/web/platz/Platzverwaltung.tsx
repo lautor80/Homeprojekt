@@ -58,7 +58,7 @@ export function Platzverwaltung() {
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'plaetze');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Sprung innerhalb der Seite (z. B. Termin-Details → „Zur Abo-Saison“, ?tab=abos): Reiter aus der neuen Adresse übernehmen
+  // Sprung innerhalb der Seite (z. B. Termin-Details → „Zur Abo-Saison“, ?tab=abosaison): Reiter aus der neuen Adresse übernehmen
   const ort = useLocation();
   useEffect(() => { const t = new URLSearchParams(ort.search).get('tab'); if (t) setTab(t); }, [ort.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -76,7 +76,7 @@ export function Platzverwaltung() {
   // Zugänge und Zuordnung stehen in der App „Zugänge“ (#232, N3) – alte Adressen und gespeicherte Ansichten führen dorthin
   if (tab === 'benutzer' || tab === 'zugaenge') return <Navigate to={`/tco/zugaenge?tab=${tab === 'benutzer' ? 'zuordnung' : 'registrierungen&art=halle'}`} replace />;
   return (
-    <AppPage varianten={{ repid: 'tco.platzverwaltung', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos"
+    <AppPage varianten={{ repid: 'tco.platzverwaltung', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos, Abo-Saison"
              actions={<ChangeHistoryButton objectType="PLATZ" objectKey="" />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
@@ -91,7 +91,9 @@ export function Platzverwaltung() {
         </Tab>
         <Tab data-key="abos" text="Abos" icon="repost" selected={tab === 'abos'}>
           {tab === 'abos' && <Abos aktion={aktion} busy={busy} />}
-          {tab === 'abos' && <div style={{ marginTop: '1.5rem' }}><AboSaisonVerwaltung /></div>}
+        </Tab>
+        <Tab data-key="abosaison" text="Abo-Saison" icon="appointment" selected={tab === 'abosaison'}>
+          {tab === 'abosaison' && <AboSaisonVerwaltung />}
         </Tab>
       </TabContainer>
     </AppPage>
@@ -579,7 +581,7 @@ function TerminDetails({ p, b, datum, onClose, onAendern }: {
             footer={<DialogFuss>
               {b.bid && <Button icon="edit" design="Emphasized" onClick={() => onAendern('AENDERN')}>Bearbeiten</Button>}
               {b.bid && <Button icon="copy" onClick={() => onAendern('KOPIEREN')}>Kopieren…</Button>}
-              {w && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/platzverwaltung?tab=abos')}>Zur Abo-Saison</Button>}
+              {w && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/platzverwaltung?tab=abosaison')}>Zur Abo-Saison</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </DialogFuss>}>
       {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
@@ -595,7 +597,7 @@ function TerminDetails({ p, b, datum, onClose, onAendern }: {
           <Zeile l="Vorjahres-Abo">{w.vorjahr_bid ?? ''}</Zeile>
           <Text className="portal-muted" style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
             Die Stunde ist für dieses Abo reserviert, bis es freigegeben (dann entsteht das Abo) oder abgelehnt ist. Einzelbuchungen sind so lange nicht möglich.
-            Freigeben oder ablehnen geht unter „Platzverwaltung → Abos“ (Abo-Saison verwalten).
+            Freigeben oder ablehnen geht unter „Platzverwaltung → Abo-Saison“.
           </Text>
         </div>
       )}

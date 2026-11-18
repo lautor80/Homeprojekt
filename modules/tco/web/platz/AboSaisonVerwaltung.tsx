@@ -11,7 +11,7 @@ import { uhrzeitOrdnung, uhrzeitText, wochentagText } from './abospalten';
 import { STATUS, type Saison } from './AboBewerbung';
 
 /**
- * Abo-Saison verwalten (Kassenwart, #11) – in der Platzverwaltung im Reiter „Abos“ (bis dahin unter „Platz buchen → Abo-Bewerbung“).
+ * Abo-Saison verwalten (Kassenwart, #11) – in der Platzverwaltung im eigenen Reiter „Abo-Saison“ (bis dahin unter „Platz buchen → Abo-Bewerbung“).
  * Lädt die Verwaltungsdaten selbst; Fehler stehen als Meldung über der Section, Erfolge als Toast.
  */
 const PB = `${TCO}/platz`;

@@ -276,7 +276,7 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
     const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
     const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
     const zeit = (r: Record<string, any>) => `${WT[r.wochentag]} ${hm(r.von)}–${hm(r.bis)} Uhr ${r.platz}`.trim();
-    const pfad = '/tco/platzverwaltung?tab=abos'; // Abo-Saison verwalten steht in der Platzverwaltung, Reiter „Abos“
+    const pfad = '/tco/platzverwaltung?tab=abosaison'; // Abo-Saison verwalten steht in der Platzverwaltung, Reiter „Abo-Saison“
     const mails: Aufgabe[] = [];
     for (const r of rows) {
       if (r.mail_fehler && ['OFFEN', 'ANGEBOTEN'].includes(r.status)) {

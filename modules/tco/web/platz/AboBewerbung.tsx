@@ -11,7 +11,7 @@ import { TCO, dat, eur } from '../util';
 /**
  * Abo-Bewerbung für die Halle (#11): sieben Tage auf einen Blick, je Stunde der Stand aus Sicht des Benutzers.
  * Bestätigen (bisherige Abonnenten), bewerben (auch mehrere Stunden am Stück), Position in der Warteliste, Angebot annehmen.
- * Nichts davon bucht – ein Abo entsteht erst mit der Freigabe durch den Kassenwart (Platzverwaltung → Abos).
+ * Nichts davon bucht – ein Abo entsteht erst mit der Freigabe durch den Kassenwart (Platzverwaltung → Abo-Saison).
  */
 const PB = `${TCO}/platz`;
 const WT = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -175,7 +175,7 @@ export function AboBewerbung() {
       {admin && (
         <MessageStrip hideCloseButton style={{ marginTop: '0.75rem' }}>
           Kassenwart: Saison eröffnen, Fristen, Freigabe und Warteliste stehen jetzt in der Platzverwaltung.{' '}
-          <Link onClick={() => navigate('/tco/platzverwaltung?tab=abos')}>Abo-Saison verwalten: Platzverwaltung → Abos</Link>
+          <Link onClick={() => navigate('/tco/platzverwaltung?tab=abosaison')}>Abo-Saison verwalten: Platzverwaltung → Abo-Saison</Link>
         </MessageStrip>
       )}
     </>
