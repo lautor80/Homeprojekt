@@ -709,23 +709,29 @@ export async function aboAnlegen(tx: Db, e: AboEingabe, ueberspringen: boolean):
   return { bid, text: `Abo ${bid} für ${v.kunde} angelegt: ${frei.length} Termin(e) ${v.wochentag}s ${hhmm(von)}–${hhmm(bis)} Uhr auf ${platz.name}${belegt.length ? `, ${belegt.length} belegte Termin(e) ausgelassen` : ''}.` };
 }
 
+/**
+ * Abos der Platzverwaltung: im Portal angelegte und aus EP3 übernommene (EP3 gibt es nicht mehr, gepflegt wird hier).
+ * Laufende zuerst; beendete nur, wenn ihr letzter Termin höchstens 180 Tage zurückliegt.
+ */
 export async function abosLesen(db: Db) {
   const rows = await db`
     select b.bid, min(b.platz) as platz, min(b.kunde) as kunde, min(b.datum)::text as erster, max(b.datum)::text as letzter,
            to_char(min(b.time_start), 'HH24:MI') as von, to_char(max(b.time_ende), 'HH24:MI') as bis,
            count(*) filter (where b.status = '3')::int as termine, count(*) filter (where b.status = '3' and b.datum >= current_date)::int as kommend,
-           count(*) filter (where b.assigned = 'Y')::int as abgerechnet, min(b.text) as text
+           count(*) filter (where b.assigned = 'Y')::int as abgerechnet, min(b.text) as text,
+           case when bool_or(b.quelle = ${QUELLE}) then 'Portal' else 'EP3' end as quelle
       from tco.bookings b
-     where b.quelle = ${QUELLE} and b.bid in (select bid from tco.bookings where quelle = ${QUELLE} and status = '3')
+     where b.bid in (select bid from tco.bookings where status = '3' and datum >= current_date - 180)
      group by b.bid
-     order by min(b.datum) desc`;
+     order by (count(*) filter (where b.status = '3' and b.datum >= current_date) > 0) desc, min(b.datum) desc, b.bid`;
   return rows.map((r) => ({ ...r, wochentag: wochentagText(r.erster) }));
 }
 
 /** Abo ab einem Datum beenden (offene Termine stornieren) */
 export async function aboBeenden(tx: Db, bid: string, ab: string): Promise<string> {
-  const r = await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}
-                      where bid = ${bid} and quelle = ${QUELLE} and status = '3' and datum >= ${ab} and coalesce(assigned, '') <> 'Y'
+  // auch aus EP3 übernommene Abos; storno_portal: ein erneuter EP3-Import setzt die Stornos nicht zurück
+  const r = await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now()
+                      where bid = ${bid} and status = '3' and datum >= ${ab} and coalesce(assigned, '') <> 'Y'
                       returning datum`;
   if (!r.length) throw new BusinessError('Keine offenen Abo-Termine ab diesem Datum.');
   return `Abo ${bid}: ${r.length} Termin(e) ab ${dat(ab)} storniert.`;

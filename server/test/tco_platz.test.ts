@@ -273,6 +273,24 @@ test('Abos nur über die Platzverwaltung', async () => {
   assert.match(r.body.text, /3 Termin/);
   r = await admin('GET', `${A}/abos`);
   assert.equal(r.body.find((a: { bid: string }) => a.bid === aboBid).termine, 2);
+  assert.equal(r.body.find((a: { bid: string }) => a.bid === aboBid).quelle, 'Portal');
+
+  // aus EP3 übernommene Abos stehen ebenfalls in der Liste und lassen sich beenden (bleibt beim EP3-Import storniert)
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, quelle) values
+    ('8880000071', ${tag(-7)}, '07:00', '08:00', 'EVA EP3', '3', 'Abo', 15, '2025-09-01', 'Y', 'Halle', null),
+    ('8880000071', ${tag(7)}, '07:00', '08:00', 'EVA EP3', '3', 'Abo', 15, '2025-09-01', '', 'Halle', null),
+    ('8880000071', ${tag(14)}, '07:00', '08:00', 'EVA EP3', '3', 'Abo', 15, '2025-09-01', '', 'Halle', null),
+    ('8880000072', '2020-01-07', '07:00', '08:00', 'ALT EP3', '3', 'Abo', 15, '2019-09-01', 'Y', 'Halle', null)`;
+  r = await admin('GET', `${A}/abos`);
+  const eva = r.body.find((a: { bid: string }) => a.bid === '8880000071');
+  assert.deepEqual([eva?.quelle, eva?.termine, eva?.kommend, eva?.kunde], ['EP3', 3, 2, 'EVA EP3']);
+  assert.equal(r.body.some((a: { bid: string }) => a.bid === '8880000072'), false, 'längst beendete Abos nicht');
+  assert.ok(r.body.findIndex((a: { kommend: number }) => !a.kommend) === -1 || r.body.findIndex((a: { kommend: number }) => !a.kommend) > r.body.findIndex((a: { bid: string }) => a.bid === '8880000071'), 'laufende zuerst');
+  r = await admin('POST', `${A}/abos/8880000071/beenden`, { ab: tag(10) });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /1 Termin/);
+  assert.deepEqual((await sql`select status, storno_portal is not null as portal from tco.bookings where bid = '8880000071' and datum = ${tag(14)}`)[0], { status: '2', portal: true });
+  await sql`delete from tco.bookings where bid in ('8880000071', '8880000072')`;
 });
 
 test('#83: Abo mit Einzelabrechnung – Nutzer storniert einzelne Termine selbst, das Abo bleibt', async () => {

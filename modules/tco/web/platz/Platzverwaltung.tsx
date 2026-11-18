@@ -20,6 +20,7 @@ import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type AboWunschInfo, 
 import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
 import { AuswahlBox } from '@core/components/AuswahlBox';
+import { DialogFuss } from '@core/components/DialogFuss';
 
 /**
  * Platzverwaltung: Plätze (Freiplätze/Halle) mit Gültigkeit, Öffnungszeiten, Zeitraster, Buchungsdauern,
@@ -32,7 +33,7 @@ interface Platz {
   wochentage: string; zeit_von: string; zeit_bis: string; raster: number; dauer_min: number; dauer_max: number;
   vorlauf_min: number; vorlauf_max: number; storno_frist: number; max_offen: number; abrechnen: boolean; aktiv: boolean; hinweis: string | null;
 }
-interface AboZeile { bid: string; platz: string; kunde: string; wochentag: string; erster: string; letzter: string; von: string; bis: string; termine: number; kommend: number; abgerechnet: number; text: string | null }
+interface AboZeile { bid: string; platz: string; kunde: string; wochentag: string; erster: string; letzter: string; von: string; bis: string; termine: number; kommend: number; abgerechnet: number; text: string | null; quelle: 'Portal' | 'EP3' }
 interface Benutzer { id: string; name: string; username: string; adrnr: string | null; mitglied: string | null }
 interface Mitglied { adrnr: string; name: string }
 interface Preis { betrag: number | null; kostenfrei: boolean; fehler: string | null; text: string }
@@ -568,12 +569,12 @@ function TerminDetails({ p, b, datum, onClose, onAendern }: {
 
   return createPortal(
     <Dialog open headerText={w ? `Abo-Reservierung · ${w.name}` : `Buchung · ${b.kunde || d?.kunde || ''}`} onClose={onClose} style={{ width: 'min(36rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<DialogFuss>
               {b.bid && <Button icon="edit" design="Emphasized" onClick={() => onAendern('AENDERN')}>Bearbeiten</Button>}
               {b.bid && <Button icon="copy" onClick={() => onAendern('KOPIEREN')}>Kopieren…</Button>}
               {w && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/platz-buchen?ansicht=abo')}>Zur Abo-Saison</Button>}
               <Button onClick={onClose}>Schließen</Button>
-            </>} />}>
+            </DialogFuss>}>
       {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
       {w && (
         <div style={grid}>
@@ -829,6 +830,7 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
     { Header: 'kommend', accessor: 'kommend', width: 85, hAlign: 'End' },
     { Header: 'Abrechnung', accessor: 'abgerechnet', width: 120, Cell: ({ value }: Cell) => (value ? <ObjectStatus state="Positive">abgerechnet</ObjectStatus> : <ObjectStatus state="Critical">offen</ObjectStatus>) },
     { Header: 'Notiz', accessor: 'text', minWidth: 120 },
+    { Header: 'Herkunft', accessor: 'quelle', width: 95 },
     {
       Header: '', id: 'aktion', width: 110,
       Cell: ({ row }: Cell) => (row.original.kommend
@@ -842,9 +844,10 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         <ToolbarSpacer />
         {can('tco.platz:serie') && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/serienbuchung')}>Abo anlegen (Serienbuchung)</Button>}
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={abos ?? []} loading={!abos} visibleRows={Math.max(abos?.length ?? 0, 1)} noDataText="Noch keine Abos über das Portal angelegt" />
+      <AnalyticalTable minRows={1} columns={columns} data={abos ?? []} loading={!abos} visibleRows={Math.max(abos?.length ?? 0, 1)} noDataText="Keine laufenden oder kürzlich beendeten Abos" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
-        Abos legt der Hallenwart über die Serienbuchung an (auch mehrere Plätze, zweiwöchentlich oder monatlich). Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
+        Laufende Abos – im Portal angelegte und aus EP3 übernommene (Herkunft) – sowie beendete der letzten 180 Tage. Neue Abos legt der Hallenwart über die Serienbuchung an
+        (auch mehrere Plätze, zweiwöchentlich oder monatlich). Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
         für andere erscheinen die Termine als „belegt“. Abgerechnet wird wie bei EP3-Abos einmal je Serie über die Hallenabrechnung.
       </MessageStrip>
 
