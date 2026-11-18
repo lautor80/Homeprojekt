@@ -20,7 +20,6 @@ siehe [n8n/EUROFLEX-MAILEINGANG.md](n8n/EUROFLEX-MAILEINGANG.md).
 | `transport.versand.rechnung` – Versand: Absender-Postfach je Dokumentart und BCC | – (Einstellungen: `transport.stammdaten:edit`, Versand: `transport.versand:execute`) | alle E-Mails gehen aus dem Postfach des Benutzers und ohne BCC |
 | `transport.eingang` – Posteingang | `transport.eingang:display`, `transport.eingang:edit` | App Posteingang fehlt |
 | `transport.eingang.n8n` – E-Mail-Eingang über n8n | `transport.eingang:execute` (API-Schlüssel) | Lieferungen von n8n werden abgewiesen, Mails bleiben im Postfach |
-| `transport.eingang.automatik` – Automatisch ablegen | – | jede Mail landet in der Prüfliste |
 | `transport.dialoge.schliessen` – Versand- und Druckdialoge sofort schließen | `transport.dialoge:execute` | Dialoge bleiben nach dem Auslösen offen und zeigen Ergebnis/Fehler (siehe „Dialoge schließen sofort“) |
 
 Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Rollen, die `transport.versand:execute` haben.
@@ -34,7 +33,7 @@ Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Ro
 | Bereich | Feld | Standard | Bedeutung |
 |---|---|---|---|
 | Eingang | `ablageziel` | `lokal` | `lokal` = im Portal bis zur Übernahme in den Ablageordner, `paperless` = Kontext `auftrag.dokument` |
-| Eingang | `schwelle` | 80 | ab diesem Trefferwert automatisch ablegen (nur mit Funktion „Automatisch ablegen“) |
+| Eingang | `schwelle` | 80 | ab diesem Trefferwert gilt der Vorschlag als sicher (grün); abgelegt wird nie automatisch – jede Ablage wird bestätigt |
 | Eingang | `ordnerZugeordnet` / `ordnerPruefen` | `Portal/Zugeordnet` / `Portal/Prüfen` | Outlook-Ordner nach der Verarbeitung |
 | Eingang | `mailAlsPdf` | ja | die E-Mail selbst zusätzlich als PDF ablegen |
 | Eingang | `ocr` | ja | Texterkennung lokal (pdftotext, Tesseract deu+eng) |
@@ -67,7 +66,7 @@ Portal
   1. Idempotenz Postfach + Message-ID; Signatur-Logos, .ics, .vcf, .p7s herausfiltern
   2. OCR lokal (Einstellung ocr): PDF → pdftotext; gescanntes PDF ohne Text → pdftoppm (3 Seiten, 200 dpi) + Tesseract; Bild → Tesseract
   3. Zuordnung (eingang/logik.ts, reine Funktionen) – je Auftrag Summe der Punkte, höchstens 100
-  4. Trefferwert ≥ Schwelle, eindeutig und Funktion „Automatisch ablegen“ an → ablegen, sonst Prüfliste
+  4. Immer Prüfliste: eindeutig und ≥ Schwelle als sicherer Vorschlag, sonst Vorschlag mit Hinweis – abgelegt wird erst mit „Ablage bestätigen“
   5. Ablage am Auftrag (Ablageziel), Mail als PDF zusätzlich
 ```
 

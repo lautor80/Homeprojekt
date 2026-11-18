@@ -123,7 +123,6 @@ alle 5 Minuten. Ein Aufruf startet einen echten Abruf (keine reine Verbindungspr
 |---|---|---|
 | `transport.eingang` – Posteingang | `transport.eingang:display`, `transport.eingang:edit` | App *Posteingang* fehlt |
 | `transport.eingang.n8n` – E-Mail-Eingang über n8n | `transport.eingang:execute` (nur API-Schlüssel) | das Portal weist jede Lieferung ab; die Mails bleiben ungelesen im Postfach, der Lauf endet in n8n mit „Keine Mail an das Portal geliefert“ |
-| `transport.eingang.automatik` – Automatisch ablegen | – | jede Mail landet in der Prüfliste (Ordner `Portal/Prüfen`) |
 
 Für den Betrieb müssen `transport.eingang` und `transport.eingang.n8n` eingeschaltet sein.
 

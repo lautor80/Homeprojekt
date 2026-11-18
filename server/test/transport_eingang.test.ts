@@ -106,18 +106,18 @@ test('Punkte je Auftrag: Merkmale addiert, höchstens 100, je Merkmal einmal', (
   assert.deepEqual(L.absenderTreffer(['a'], 'x@y.de').map((t) => t.punkte), [50]);
 });
 
-test('Entscheidung: eindeutig, Schwelle, Automatik', () => {
+test('Entscheidung: nie automatisch ablegen – eindeutig ab Schwelle ist ein Vorschlag zur Bestätigung', () => {
   const k = (nr: string, punkte: number): L.Kandidat => ({ auftragsnr: nr, punkte, gruende: [{ grund: 'x', punkte }] });
-  assert.equal(L.entscheiden([k('A', 90), k('B', 30)], 80, true).status, 'abgelegt');
-  assert.equal(L.entscheiden([k('A', 90), k('B', 30)], 80, true).auftragsnr, 'A');
-  const unter = L.entscheiden([k('A', 70)], 80, true);
+  const sicher = L.entscheiden([k('A', 90), k('B', 30)], 80);
+  assert.deepEqual([sicher.status, sicher.auftragsnr, sicher.eindeutig], ['pruefen', 'A', true]);
+  assert.match(sicher.hinweis ?? '', /bitte die Ablage bestätigen/);
+  const unter = L.entscheiden([k('A', 70)], 80);
   assert.deepEqual([unter.status, unter.auftragsnr], ['pruefen', 'A'], 'Vorschlag bleibt stehen');
-  const aus = L.entscheiden([k('A', 100)], 80, false);
-  assert.deepEqual([aus.status, aus.auftragsnr], ['pruefen', 'A']);
-  const gleich = L.entscheiden([k('A', 30), k('B', 30)], 20, true);
+  assert.match(unter.hinweis ?? '', /unter der Schwelle/);
+  const gleich = L.entscheiden([k('A', 30), k('B', 30)], 20);
   assert.deepEqual([gleich.status, gleich.auftragsnr, gleich.eindeutig], ['pruefen', null, false]);
   assert.match(gleich.hinweis ?? '', /Nicht eindeutig/);
-  assert.deepEqual(L.entscheiden([], 80, true).status, 'pruefen');
+  assert.deepEqual(L.entscheiden([], 80).status, 'pruefen');
 });
 
 test('Anhangfilter, Dateiname der E-Mail, Speicherwarnung', () => {
@@ -135,7 +135,6 @@ test('Anhangfilter, Dateiname der E-Mail, Speicherwarnung', () => {
 type Db = typeof import('../src/db.js');
 let sql: Db['sql'];
 let app: Awaited<ReturnType<typeof import('../src/app.js')['buildApp']>>;
-let schalter: typeof import('../src/funktionsschalter.js');
 let cacheLeeren: () => void;
 let cookie = '';
 let key = '';
@@ -202,7 +201,6 @@ before(async () => {
   const { activeModules } = await import('../src/modules.js');
   const { buildApp } = await import('../src/app.js');
   const { config } = await import('../src/config.js');
-  schalter = await import('../src/funktionsschalter.js');
   cacheLeeren = (await import('../src/lib/verbindungen.js')).verbindungenCacheLeeren;
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', () => ok()));
   port = (server.address() as { port: number }).port;
@@ -235,20 +233,33 @@ after(async () => {
   server.close();
 });
 
-test('n8n: Auftragsnummer → automatisch lokal abgelegt, Logo gefiltert, Wiederholung „doppelt“', ohneDb, async () => {
+test('n8n: Auftragsnummer → Vorschlag, Bestätigung legt lokal ab, Logo gefiltert, Wiederholung „doppelt“', ohneDb, async () => {
   const r = await ext(key, 'POST', `${T}/eingang/mail`, mail({
     message_id: '<M1@Kunde-Eingang.test>', betreff: 'AW: Lieferschein 2099_9001',
     anhaenge: [pdf('Scan.pdf', 'Lieferschein unterschrieben'), { name: 'logo.png', mime: 'image/png', inhalt: b64('klein') }],
   }));
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual({ ...r.body, vorgang: 0 }, { vorgang: 0, status: 'abgelegt', auftragsnr: '2099_9001', aktion: { ordner: 'Portal/Zugeordnet' } });
+  // nie automatisch: eindeutiger Treffer über der Schwelle bleibt ein Vorschlag in der Prüfliste
+  assert.deepEqual({ ...r.body, vorgang: 0 }, { vorgang: 0, status: 'pruefen', auftragsnr: '2099_9001', aktion: { ordner: 'Portal/Prüfen' } });
   const v1 = r.body.vorgang as number;
   assert.deepEqual((await docs(v1)).map((d) => [d.datei, d.art, d.status, d.ziel, d.inhalt]),
-    [['Scan.pdf', 'anhang', 'wartet', 'lokal', true], ['2026-11-17 AW Lieferschein 2099_9001.pdf', 'mail', 'wartet', 'lokal', true]]);
-  const [v] = await sql`select postfach, message_id, punkte, text, abgeschlossen_am is not null as fertig, begruendung from transport.eing_vorgaenge where id = ${v1}`;
-  assert.deepEqual([v.postfach, v.message_id, v.punkte, v.text, v.fertig], ['auftraege@euroflex-eingang.test', 'm1@kunde-eingang.test', 90, null, true]);
+    [['Scan.pdf', 'anhang', 'neu', null, true], ['2026-11-17 AW Lieferschein 2099_9001.pdf', 'mail', 'neu', null, true]]);
+  let [v] = await sql`select postfach, message_id, punkte, text, abgeschlossen_am is not null as fertig, begruendung, hinweis from transport.eing_vorgaenge where id = ${v1}`;
+  assert.deepEqual([v.postfach, v.message_id, v.punkte, v.text, v.fertig], ['auftraege@euroflex-eingang.test', 'm1@kunde-eingang.test', 90, 'Guten Tag, anbei die Unterlagen.', false]);
   assert.equal(v.begruendung[0].grund, 'Auftragsnummer 2099_9001 – Herkunft: Betreff: „AW: Lieferschein 2099_9001“');
+  assert.match(v.hinweis, /bitte die Ablage bestätigen/);
 
+  // Bestätigen: ohne Auswahl alle offenen Dokumente
+  const b = await admin('POST', `${T}/eingang/vorgaenge/${v1}/ablegen`, { auftragsnr: '2099_9001' });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.equal(b.body.status, 'abgelegt');
+  assert.deepEqual((await docs(v1)).map((d) => [d.status, d.ziel]), [['wartet', 'lokal'], ['wartet', 'lokal']]);
+  [v] = await sql`select text, abgeschlossen_am is not null as fertig, abgelegt_von from transport.eing_vorgaenge where id = ${v1}`;
+  assert.deepEqual([v.text, v.fertig, v.abgelegt_von], [null, true, 'Admin']);
+  const liste = await admin('GET', `${T}/eingang/vorgaenge?status=abgelegt`);
+  assert.equal(liste.body.vorgaenge.find((x: any) => x.id === v1).abgelegt_von, 'Admin', 'Kennzeichnung in der Liste');
+
+  // erneute Lieferung: „doppelt“, Ordner nach dem aktuellen Stand
   const n = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m1@kunde-eingang.test>', betreff: 'egal' }));
   assert.deepEqual(n.body, { vorgang: v1, status: 'doppelt', auftragsnr: '2099_9001', aktion: { ordner: 'Portal/Zugeordnet' } });
 });
@@ -262,7 +273,8 @@ test('n8n: Absender mit zwei offenen Aufträgen → Prüfliste; Antwort auf eige
   assert.equal(v2.text, 'Guten Tag, anbei die Unterlagen.');
 
   r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m3@k>', in_reply_to: '<OUT-1@portal.test>', betreff: 'AW: Transportauftrag', anhaenge: [pdf('cmr.pdf', 'CMR')] }));
-  assert.deepEqual([r.body.status, r.body.auftragsnr], ['abgelegt', '2099_9002']);
+  assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', '2099_9002']);
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${r.body.vorgang}/ablegen`, { auftragsnr: '2099_9002' })).body.status, 'abgelegt');
 
   r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m4@k>', betreff: 'Ladung', text: 'Bitte Ladenummer LN-77881 beachten.', anhaenge: [pdf('b.pdf', 'B')] }));
   assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', '2099_9003'], 'Vorschlag unter der Schwelle');
@@ -301,7 +313,8 @@ test('n8n: Absender mit zwei offenen Aufträgen → Prüfliste; Antwort auf eige
 
 test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async () => {
   let r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m5@k>', betreff: 'nochmal 2099-9001', anhaenge: [pdf('Scan2.pdf', 'Lieferschein unterschrieben')] }));
-  assert.equal(r.body.status, 'abgelegt');
+  assert.equal(r.body.status, 'pruefen');
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${r.body.vorgang}/ablegen`, { auftragsnr: '2099_9001' })).body.status, 'abgelegt');
   assert.deepEqual((await docs(r.body.vorgang)).map((d) => [d.datei, d.status, d.inhalt]).slice(0, 1), [['Scan2.pdf', 'dublette', true]], 'Dublette bleibt herunterladbar (dauerhafte Aufbewahrung)');
 
   const s0 = (await admin('GET', `${T}/eingang/speicher`)).body;
@@ -363,21 +376,34 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   await einstellen({});
 });
 
-test('Neu bewerten nach Anlage des Auftrags, Automatik aus, Abwesenheitsnotiz', ohneDb, async () => {
+test('Neu bewerten nach Anlage des Auftrags, Auftrag ändern, Abwesenheitsnotiz', ohneDb, async () => {
   let r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m6@k>', betreff: 'Auftrag 2099_9004', anhaenge: [pdf('c.pdf', 'C')] }));
   assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', null]);
   const v6 = r.body.vorgang as number;
   await sql`insert into transport.auftraege (auftragsnr) values ('2099_9004')`;
   r = await admin('POST', `${T}/eingang/vorgaenge/${v6}/neu-bewerten`);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual([r.body.status, r.body.auftragsnr], ['abgelegt', '2099_9004']);
-
-  const vorher = schalter.schalterZustand();
-  schalter.schalterSetzen({ ids: new Set(['transport.eingang.automatik']), rechte: new Set(), routen: new Map() });
-  try {
-    r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m7@k>', betreff: 'Lieferschein 2099_9004', anhaenge: [pdf('d.pdf', 'D')] }));
-    assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', '2099_9004']);
-  } finally { schalter.schalterSetzen(vorher); }
+  assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', '2099_9004'], 'neu bewerten legt nicht ab – nur Vorschlag');
+  r = await admin('POST', `${T}/eingang/vorgaenge/${v6}/ablegen`, { auftragsnr: '2099_9004' });
+  assert.equal(r.body.status, 'abgelegt');
+  // übernommen in den Ablageordner des alten Auftrags, dann Auftrag ändern
+  const [c] = await sql`select id::int as id from transport.eing_dokumente where vorgang_id = ${v6} and datei = 'c.pdf'`;
+  await admin('POST', `${T}/eingang/dokumente/${c.id}/uebernommen`, { ablage_name: 'c.pdf' });
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${v6}/auftrag`, { auftragsnr: '2099_9004' })).status, 400, 'gleicher Auftrag');
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${v6}/auftrag`, { auftragsnr: '2099_0000' })).status, 404);
+  r = await admin('POST', `${T}/eingang/vorgaenge/${v6}/auftrag`, { auftragsnr: '2099_9002' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.alt], ['abgelegt', '2099_9002', '2099_9004']);
+  assert.deepEqual(r.body.entfernen.map((x: any) => [x.datei, x.ablage_name]), [['c.pdf', 'c.pdf']], 'alte Datei im Ordner von 2099_9004 entfernen');
+  assert.deepEqual((await docs(v6)).map((d) => [d.datei, d.status, d.ziel, d.inhalt]), [['c.pdf', 'wartet', 'lokal', true], ['2026-11-17 Auftrag 2099_9004.pdf', 'wartet', 'lokal', true]]);
+  assert.equal((await admin('GET', `${T}/auftraege/2099_9004/eingang`)).body.length, 0);
+  assert.equal((await admin('GET', `${T}/auftraege/2099_9002/eingang`)).body.filter((x: any) => x.datei === 'c.pdf').length, 1);
+  // ohne Inhalt geht es nicht (Hinweis auf erneutes Einlesen)
+  await sql`update transport.eing_dokumente set inhalt = null where id = ${c.id}`;
+  r = await admin('POST', `${T}/eingang/vorgaenge/${v6}/auftrag`, { auftragsnr: '2099_9004' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /als ungelesen markieren/);
+  await sql`update transport.eing_dokumente set inhalt = ${b64('%PDF-1.4 C')} where id = ${c.id}`;
 
   r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m8@k>', betreff: 'Automatische Antwort: Lieferschein 2099_9001' }));
   assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.aktion.ordner], ['ignoriert', null, 'Portal/Prüfen']);
@@ -388,12 +414,20 @@ test('Ablageziel Paperless: Kontext auftrag.dokument, Verknüpfung, Inhalt bleib
   cacheLeeren();
   await einstellen({ ablageziel: 'paperless', mailAlsPdf: false });
   const r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m9@k>', betreff: 'PO-99001', text: 'Lieferschein 2099_9001', anhaenge: [pdf('pl.pdf', 'Paperless')] }));
-  assert.deepEqual([r.body.status, r.body.auftragsnr], ['abgelegt', '2099_9001']);
+  assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', '2099_9001']);
+  assert.deepEqual(mock.docs, [], 'vor der Bestätigung nichts in Paperless');
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${r.body.vorgang}/ablegen`, { auftragsnr: '2099_9001' })).body.status, 'abgelegt');
   const [d] = await docs(r.body.vorgang);
   assert.deepEqual([d.status, d.ziel, d.inhalt, typeof d.paperless_id], ['abgelegt', 'paperless', true, 'number']);
   const [v] = await sql`select punkte from transport.eing_vorgaenge where id = ${r.body.vorgang}`;
   assert.equal(v.punkte, 100, '90 + 70, gedeckelt');
   assert.equal((await sql`select count(*)::int as n from transport.auftrag_dokumente where auftragsnr = '2099_9001' and doc_id = ${d.paperless_id}`)[0].n, 1);
+  assert.deepEqual(mock.docs, ['pl.pdf']);
+  // Auftrag ändern: Verknüpfung wandert, kein zweites Dokument in Paperless
+  const a = await admin('POST', `${T}/eingang/vorgaenge/${r.body.vorgang}/auftrag`, { auftragsnr: '2099_9002' });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  assert.deepEqual(a.body.entfernen, []);
+  assert.deepEqual((await sql`select auftragsnr from transport.auftrag_dokumente where doc_id = ${d.paperless_id}`).map((x) => x.auftragsnr), ['2099_9002']);
   assert.deepEqual(mock.docs, ['pl.pdf']);
   await einstellen({});
 });
@@ -401,8 +435,9 @@ test('Ablageziel Paperless: Kontext auftrag.dokument, Verknüpfung, Inhalt bleib
 test('Zugeordnete E-Mail: Inhalt fehlt → erneute Lieferung füllt ihn wieder auf', ohneDb, async () => {
   const m = mail({ message_id: '<m-nach@k>', betreff: 'Lieferschein 2099_9002', anhaenge: [pdf('Nach.pdf', 'Nachladen')] });
   let r = await ext(key, 'POST', `${T}/eingang/mail`, m);
-  assert.deepEqual([r.body.status, r.body.auftragsnr], ['abgelegt', '2099_9002']);
+  assert.deepEqual([r.body.status, r.body.auftragsnr], ['pruefen', '2099_9002']);
   const v = r.body.vorgang as number;
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${v}/ablegen`, { auftragsnr: '2099_9002' })).body.status, 'abgelegt');
   // wie vor der dauerhaften Aufbewahrung: Inhalte nach der Übernahme gelöscht
   await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = null where vorgang_id = ${v}`;
   const ids = (await sql`select id::int as id from transport.eing_dokumente where vorgang_id = ${v} order by id`).map((x) => x.id as number);
@@ -414,6 +449,29 @@ test('Zugeordnete E-Mail: Inhalt fehlt → erneute Lieferung füllt ihn wieder a
   const f = await admin('GET', `${T}/eingang/dokumente/${ids[0]}/datei`);
   assert.equal(f.status, 200);
   assert.equal(f.body, '%PDF-1.4 Nachladen');
+});
+
+test('PDF als application/octet-stream geliefert: als PDF gespeichert und angezeigt; Altbestand', ohneDb, async () => {
+  const inhalt = '%PDF-1.4 POD-Beleg \u00ff\u0000\u0001 Ende';
+  const r = await ext(key, 'POST', `${T}/eingang/mail`, mail({
+    message_id: '<m-oct@k>', betreff: 'Rechnung 300-GOH 2099_9003',
+    anhaenge: [{ name: '300042946-9747702438088-0-POD-D58VUO00.PDF', mime: 'application/octet-stream', inhalt: Buffer.from(inhalt, 'latin1').toString('base64') }],
+  }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const [d] = await sql`select id::int as id, mime, groesse, sha256 from transport.eing_dokumente where vorgang_id = ${r.body.vorgang} and art = 'anhang'`;
+  assert.equal(d.mime, 'application/pdf');
+  const f = await admin('GET', `${T}/eingang/dokumente/${d.id}/datei`);
+  assert.equal(f.status, 200);
+  assert.match(String(f.headers['content-type']), /^application\/pdf/);
+  assert.match(String(f.headers['content-disposition']), /^inline/);
+  // Altbestand: gespeicherter Typ octet-stream → die Auslieferung erkennt das PDF am Inhalt
+  await sql`update transport.eing_dokumente set mime = 'application/octet-stream' where id = ${d.id}`;
+  const g = await admin('GET', `${T}/eingang/dokumente/${d.id}/datei`);
+  assert.match(String(g.headers['content-type']), /^application\/pdf/);
+  // Inhalt unverändert (Prüfsumme des Eingangs)
+  const [x] = await sql`select encode(sha256(decode(inhalt, 'base64')), 'hex') as sha from transport.eing_dokumente where id = ${d.id}`;
+  assert.equal(x.sha, d.sha256);
+  assert.equal(d.groesse, Buffer.from(inhalt, 'latin1').length);
 });
 
 test('Jetzt abrufen: ohne und mit Anbindung; Rechte', ohneDb, async () => {

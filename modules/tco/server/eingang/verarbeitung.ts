@@ -8,6 +8,7 @@
  */
 import crypto from 'node:crypto';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { dateityp } from '../../../../server/src/lib/dateityp.js';
 import { ablegen, anwenden, auswerten, type Regel as PaperlessRegel, type Zuordnung } from '../../../../server/src/lib/paperless-mapping.js';
 import { eingangZeit } from '../../../../server/src/lib/maileingang.js';
 import { eingangVerbuchen } from '../../../../server/src/lib/maileingang-db.js';
@@ -307,7 +308,7 @@ export async function mailVerarbeiten(m: EingangMail) {
   };
 
   const anhaenge = m.anhaenge
-    .map((a) => { const daten = Buffer.from(a.inhalt.replace(/^data:[^,]*,/, ''), 'base64'); return { name: dateinameSicher(a.name, 'anhang'), mime: a.mime, daten, groesse: daten.length, text: a.text }; })
+    .map((a) => { const daten = Buffer.from(a.inhalt.replace(/^data:[^,]*,/, ''), 'base64'); const name = dateinameSicher(a.name, 'anhang'); return { name, mime: dateityp(name, a.mime, daten), daten, groesse: daten.length, text: a.text }; })
     .filter(relevanterAnhang);
   const { ab, korrespondent, mitglied, text, kontext, werte } = await mailKontext(m, anhaenge.length);
 

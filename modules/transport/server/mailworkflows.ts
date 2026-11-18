@@ -25,7 +25,6 @@ export const P_MW = {
 export const F_MW = {
   eingang: 'transport.eingang',
   eingangN8n: 'transport.eingang.n8n',
-  eingangAutomatik: 'transport.eingang.automatik',
   versandSammel: 'transport.versand.sammel',
   versandAutomatisch: 'transport.versand.automatisch',
 } as const;
