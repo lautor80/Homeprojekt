@@ -39,6 +39,7 @@ Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Ro
 | Eingang | `mailAlsPdf` | ja | die E-Mail selbst zusätzlich als PDF ablegen |
 | Eingang | `ocr` | ja | Texterkennung lokal (pdftotext, Tesseract deu+eng) |
 | Eingang | `speicherWarnungMb` | 1024 | Warnung, wenn noch nicht übernommene Dateien mehr belegen |
+| Eingang | `aufbewahrenTage` | 90 | Inhalte nach der Übernahme so viele Tage für „Erneut ablegen“ behalten; 0 = sofort löschen |
 | Eingang | `postfaecher` | leer | Eingangspostfächer `[{ adresse, bezeichnung }]`, z. B. `info@…` „Info“ und `buchhaltung@…` „Buchhaltung“ – siehe „Mehrere Eingangspostfächer“ |
 | Versand | `T`/`L`/`R`.`vorauswahl` | T, L ja; R nein | im Dialog vorausgewählt |
 | Versand | `T`/`L`/`R`.`modus` | `entwurf` | `senden` wirkt nur mit Funktion „Automatisch senden“ und Recht |
@@ -128,7 +129,10 @@ wegräumt.
 
 - Ablageziel `lokal`: Dokumente erhalten Status `wartet`, Inhalt bleibt in `transport.eing_dokumente.inhalt`.
   Öffnet jemand den Auftrag mit verbundenem Ablageordner, schreibt der Browser die wartenden Dateien nach `Eingang/` und meldet
-  jede mit `POST /eingang/dokumente/:id/uebernommen` → Inhalt wird gelöscht.
+  jede mit `POST /eingang/dokumente/:id/uebernommen` (mit `ablage_name`). Der Inhalt bleibt danach `aufbewahrenTage` (Standard 90)
+  im Portal, damit **Erneut ablegen** (Posteingang je E-Mail, Auftragsliste „Neu ablegen“) die Datei wieder in `Eingang/` schreiben
+  kann (gleicher Name, wird ersetzt; Ordner wird angelegt); danach löscht `aufbewahrungAufraeumen` ihn (läuft bei jedem Eingang und
+  jeder Übernahme). Mit 0 wird wie früher sofort gelöscht.
 - Ablageziel `paperless`: Ablage über Kontext `auftrag.dokument`, Verknüpfung in `transport.auftrag_dokumente`, Inhalt sofort gelöscht.
 - Nicht übernommene Inhalte werden **nie** automatisch gelöscht. Die Belegung zeigt die Einstellungsseite; ab
   `speicherWarnungMb` erscheint eine Warnung (auch im Arbeitsvorrat).

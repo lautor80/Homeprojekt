@@ -357,10 +357,10 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
     } catch (e) { onFehler((e as Error).message); return false; } finally { setBusy(false); }
   }
   /** wartende Dateien (Ablageziel lokal) in den Ordner des Auftrags schreiben und als übernommen melden */
-  async function uebertragen(auftragsnr: string, nur?: number[], leise = false) {
+  async function uebertragen(auftragsnr: string, nur?: number[], leise = false, erneut = false) {
     setBusy(true); setError(null);
     try {
-      const e = await eingangInOrdner(auftragsnr, null, { anfordern: true, nur });
+      const e = await eingangInOrdner(auftragsnr, null, { anfordern: true, nur, ...(erneut ? { erneut: true, paperless: true } : {}) });
       const t = uebernahmeText(e);
       if (e.fehler.length) onFehler(`In den Auftragsordner ${auftragsnr} nicht vollständig übertragen – ${e.fehler.join('; ')}`);
       else if (t || !leise) toast(t ? `Auftrag ${auftragsnr}: ${t} (Ablageordner, Unterordner „Eingang“)` : 'Nichts zu übertragen.', 6000);
@@ -454,11 +454,18 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
             {!darfUebertragen && (ordnerMoeglich ? ' – dazu fehlt das Recht „Aufträge ändern“.' : ' – dieser Browser kann keinen Ablageordner beschreiben (Edge oder Chrome verwenden).')}
           </MessageStrip>
         )}
-        {!offen && v.auftragsnr && wartend.length > 0 && darfUebertragen && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button design="Emphasized" icon="open-folder" disabled={busy} onClick={() => uebertragen(v.auftragsnr!, wartend.map((d) => d.id))}
-                    tooltip={`In <Ablageordner>/…/${v.auftragsnr}/Eingang speichern`}>
-              In Auftragsordner übertragen
+        {!offen && v.auftragsnr && darfUebertragen && v.dokumente.some((d) => ['wartet', 'uebernommen', 'abgelegt'].includes(d.status)) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            {wartend.length > 0 && (
+              <Button design="Emphasized" icon="open-folder" disabled={busy} onClick={() => uebertragen(v.auftragsnr!, wartend.map((d) => d.id))}
+                      tooltip={`In <Ablageordner>/…/${v.auftragsnr}/Eingang speichern`}>
+                In Auftragsordner übertragen
+              </Button>
+            )}
+            <Button design={wartend.length ? 'Transparent' : 'Emphasized'} icon="save" disabled={busy}
+                    onClick={() => uebertragen(v.auftragsnr!, v.dokumente.map((d) => d.id), false, true)}
+                    tooltip={`Alle Dateien dieser E-Mail noch einmal in <Ablageordner>/…/${v.auftragsnr}/Eingang speichern – der Ordner wird bei Bedarf angelegt`}>
+              Erneut ablegen
             </Button>
           </div>
         )}
@@ -518,7 +525,7 @@ function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau }: {
   const ocr = (d.ocr_auszug ?? '').trim();
   const name = d.art === 'mail' ? `E-Mail als PDF (${d.datei})` : d.datei;
   // Inhalte gibt es nur, solange das Dokument nicht abgelegt, übernommen oder ignoriert ist
-  const vorhanden = !['ignoriert', 'uebernommen', 'dublette'].includes(d.status) && !(d.status === 'abgelegt' && d.ziel === 'paperless');
+  const vorhanden = d.vorhanden ?? (!['ignoriert', 'uebernommen', 'dublette'].includes(d.status) && !(d.status === 'abgelegt' && d.ziel === 'paperless'));
   return (
     <div style={{
       border: `1px solid ${gewaehlt ? 'var(--sapSelectedColor)' : 'var(--sapList_BorderColor)'}`, borderRadius: 'var(--portal-radius, 0.75rem)',

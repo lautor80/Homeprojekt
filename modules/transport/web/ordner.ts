@@ -123,11 +123,12 @@ export const UNTERORDNER_EINGANG = 'Eingang';
  * Namens, wird nicht überschrieben, sondern „Name (2).pdf“, „Name (3).pdf“ … gewählt – zwei Mails können gleichnamige Anhänge
  * haben. Liefert den Anzeigepfad oder null (kein Ordner/kein Zugriff).
  */
-export async function ablegenUnterordner(nr: string, unterordner: string, datei: string, inhalt: Blob, anfordern = false): Promise<string | null> {
+export async function ablegenUnterordner(nr: string, unterordner: string, datei: string, inhalt: Blob, anfordern = false,
+  /** true: unter genau diesem Namen speichern und eine vorhandene Datei ersetzen („Erneut ablegen“) */ ueberschreiben = false): Promise<string | null> {
   const o = await auftragsOrdner(nr, { anfordern });
   if (!o) return null;
   const u = await o.ordner.getDirectoryHandle(sauber(unterordner), { create: true });
-  const name = await freierName(u, sauber(datei) || 'Datei');
+  const name = ueberschreiben ? (sauber(datei) || 'Datei') : await freierName(u, sauber(datei) || 'Datei');
   const fh = await u.getFileHandle(name, { create: true });
   const w = await fh.createWritable();
   await w.write(inhalt);

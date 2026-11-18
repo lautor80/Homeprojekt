@@ -508,24 +508,43 @@ export async function offeneNeuBewerten(wer: string): Promise<{ vorgaenge: numbe
 export async function uebernommen(id: number, wer: string, ablageName?: string | null) {
   const [d] = await sql`select status from transport.eing_dokumente where id = ${id}`;
   if (!d) throw new BusinessError('Das Dokument gibt es nicht (mehr).', 404);
-  if (d.status === 'uebernommen') return { status: 'uebernommen', text: 'Bereits übernommen.' };
+  if (d.status === 'uebernommen') {
+    // „Erneut ablegen“: nur den Namen im Ordner nachführen
+    if (ablageName?.trim()) await sql`update transport.eing_dokumente set ablage_name = ${ablageName.trim()} where id = ${id}`;
+    return { status: 'uebernommen', text: 'Bereits übernommen.' };
+  }
   if (d.status !== 'wartet') throw new BusinessError('Das Dokument wartet nicht auf die Übernahme in den Ablageordner.');
-  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = null, ablage_name = ${ablageName?.trim() || null}, bearbeitet_am = now(), bearbeitet_von = ${wer} where id = ${id}`;
+  // Inhalt bleibt „aufbewahrenTage“ für „Erneut ablegen“ im Portal (0 = sofort löschen); aufgeräumt in speicherPruefen
+  const tage = (await workflowEinstellungen()).eingang.aufbewahrenTage;
+  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = ${tage > 0 ? sql`inhalt` : null}, ablage_name = ${ablageName?.trim() || null},
+              bearbeitet_am = now(), bearbeitet_von = ${wer} where id = ${id}`;
   await speicherPruefen();
   return { status: 'uebernommen', text: 'In den Ablageordner übernommen.' };
 }
 
 // ---------------------------------------------------------------- Speicher
 
-export async function speicherStand(): Promise<{ bytes: number; dateien: number; warnungMb: number; warnung: boolean }> {
-  const [r] = await sql`select coalesce(sum(groesse), 0)::bigint as bytes, count(*)::int as dateien from transport.eing_dokumente where inhalt is not null`;
-  const warnungMb = (await workflowEinstellungen()).eingang.speicherWarnungMb;
+/**
+ * Belegung: bytes/dateien = noch nicht übernommene Inhalte (davon hängt die Warnung ab); aufbewahrt* = übernommene, die für
+ * „Erneut ablegen“ noch im Portal liegen (werden nach aufbewahrenTage gelöscht).
+ */
+export async function speicherStand(): Promise<{ bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes: number; aufbewahrtDateien: number; aufbewahrenTage: number }> {
+  const [r] = await sql`
+    select coalesce(sum(groesse) filter (where status <> 'uebernommen'), 0)::bigint as bytes, (count(*) filter (where status <> 'uebernommen'))::int as dateien,
+           coalesce(sum(groesse) filter (where status = 'uebernommen'), 0)::bigint as abytes, (count(*) filter (where status = 'uebernommen'))::int as adateien
+      from transport.eing_dokumente where inhalt is not null`;
+  const e = (await workflowEinstellungen()).eingang;
+  const warnungMb = e.speicherWarnungMb;
   const bytes = Number(r.bytes);
-  return { bytes, dateien: Number(r.dateien), warnungMb, warnung: speicherWarnung(bytes, warnungMb) };
+  return {
+    bytes, dateien: Number(r.dateien), warnungMb, warnung: speicherWarnung(bytes, warnungMb),
+    aufbewahrtBytes: Number(r.abytes), aufbewahrtDateien: Number(r.adateien), aufbewahrenTage: e.aufbewahrenTage,
+  };
 }
 
 /** Hinweis im Arbeitsvorrat, solange noch nicht übernommene Dateien mehr als die Grenze belegen */
 async function speicherPruefen(): Promise<void> {
+  try { await aufbewahrungAufraeumen(); } catch { /* Aufräumen holt der nächste Lauf nach */ }
   try {
     const s = await speicherStand();
     if (!s.warnung) return await hinweisBeheben('transport', 'EINGANG_SPEICHER');
@@ -536,6 +555,14 @@ async function speicherPruefen(): Promise<void> {
       text: `Mehr als ${s.warnungMb} MB: Aufträge mit verbundenem Ablageordner öffnen, damit die Dateien übernommen werden.`, pfad: '/transport/posteingang',
     });
   } catch { /* der Hinweis ist eine Zugabe – die Verarbeitung darf daran nicht scheitern */ }
+}
+
+/** Inhalte übernommener Dateien nach Ablauf der Aufbewahrung löschen (läuft bei jedem Eingang und jeder Übernahme mit) */
+export async function aufbewahrungAufraeumen(): Promise<number> {
+  const tage = (await workflowEinstellungen()).eingang.aufbewahrenTage;
+  const r = await sql`update transport.eing_dokumente set inhalt = null
+                        where status = 'uebernommen' and inhalt is not null and bearbeitet_am < now() - make_interval(days => ${tage})`;
+  return r.count;
 }
 
 // ---------------------------------------------------------------- „Jetzt abrufen“ (n8n)

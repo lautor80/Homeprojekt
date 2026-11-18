@@ -324,9 +324,19 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   assert.deepEqual((await admin('GET', `${T}/auftraege/2099_9001/eingang`)).body.map((x: any) => [x.status, x.ablage_name]).slice(0, 2),
     [['uebernommen', 'Scan (2).pdf'], ['wartet', null]]);
   assert.equal((await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`)).body.status, 'uebernommen', 'wiederholbar');
-  assert.equal((await admin('GET', `${T}/eingang/dokumente/${id}/datei`)).status, 404);
+  // Inhalt bleibt nach der Übernahme aufbewahrt (Standard 90 Tage) – für „Erneut ablegen“
+  const f2 = await admin('GET', `${T}/eingang/dokumente/${id}/datei`);
+  assert.equal(f2.status, 200, 'nach der Übernahme aufbewahrt');
+  assert.equal(f2.body, '%PDF-1.4 Lieferschein unterschrieben');
+  assert.equal((await admin('GET', `${T}/auftraege/2099_9001/eingang`)).body[0].vorhanden, true);
+  // erneut ablegen meldet den (neuen) Namen im Ordner nach
+  r = await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`, { ablage_name: 'Scan.pdf' });
+  assert.equal(r.body.status, 'uebernommen');
+  assert.equal((await admin('GET', `${T}/auftraege/2099_9001/eingang`)).body[0].ablage_name, 'Scan.pdf');
   const s1 = (await admin('GET', `${T}/eingang/speicher`)).body;
-  assert.equal(s1.dateien, s0.dateien - 1);
+  assert.equal(s1.dateien, s0.dateien - 1, 'aufbewahrte zählen nicht als wartend');
+  assert.equal(s1.aufbewahrtDateien, 1);
+  assert.equal(s1.aufbewahrenTage, 90);
 
   // Speicherwarnung im Arbeitsvorrat
   await einstellen({ speicherWarnungMb: 10 });
@@ -334,10 +344,17 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   const s2 = (await admin('GET', `${T}/eingang/speicher`)).body;
   assert.equal(s2.warnung, true);
   await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`);
+  // Aufbewahrung abgelaufen: beim nächsten Eingang aufgeräumt
+  await sql`update transport.eing_dokumente set bearbeitet_am = now() - interval '91 days' where id = ${id}`;
   await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m5b@k>', betreff: 'Hallo' }));
+  assert.equal((await sql`select inhalt is null as weg from transport.eing_dokumente where id = ${id}`)[0].weg, true, 'nach Ablauf gelöscht');
+  assert.equal((await admin('GET', `${T}/eingang/dokumente/${id}/datei`)).status, 404);
   const [h] = await sql`select titel from core.hinweise where modul = 'transport' and quelle = 'EINGANG_SPEICHER' and erledigt_am is null`;
   assert.ok(h, 'Hinweis gemeldet');
+  // Aufbewahrung 0 Tage: Inhalt wird bei der Übernahme sofort gelöscht (bisheriges Verhalten)
+  await einstellen({ speicherWarnungMb: 10, aufbewahrenTage: 0 });
   await admin('POST', `${T}/eingang/dokumente/${liste.body[1].id}/uebernommen`);
+  assert.equal((await sql`select inhalt is null as weg from transport.eing_dokumente where id = ${liste.body[1].id}`)[0].weg, true);
   assert.equal((await sql`select count(*)::int as n from core.hinweise where quelle = 'EINGANG_SPEICHER' and erledigt_am is null`)[0].n, 0, 'Hinweis behoben');
   await einstellen({});
 });

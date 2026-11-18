@@ -49,6 +49,8 @@ export interface EingangDokument {
   status: string;
   ziel: string | null;
   ocr_auszug?: string | null;
+  /** Inhalt liegt (noch) im Portal */
+  vorhanden?: boolean;
 }
 
 /** GET /eingang/vorgaenge/:id */
@@ -64,7 +66,7 @@ export interface Vorgang extends VorgangZeile {
 }
 
 /** GET /eingang/speicher */
-export interface Speicher { bytes: number; dateien: number; warnungMb: number; warnung: boolean }
+export interface Speicher { bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes?: number; aufbewahrtDateien?: number; aufbewahrenTage?: number }
 
 /** GET /auftraege/:nr/eingang */
 export interface AuftragEingangDokument {
@@ -72,6 +74,8 @@ export interface AuftragEingangDokument {
   datei: string;
   /** Dateiname im Ablageordner (Unterordner Eingang/), falls vom Browser gemeldet */
   ablage_name?: string | null;
+  /** Inhalt liegt (noch) im Portal – wartend oder nach der Übernahme aufbewahrt */
+  vorhanden?: boolean;
   mime: string | null;
   groesse: number;
   status: string;
