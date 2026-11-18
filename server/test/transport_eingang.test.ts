@@ -317,8 +317,12 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   assert.equal(f.status, 200);
   assert.match(String(f.headers['content-security-policy']), /sandbox/);
   assert.equal(f.body, '%PDF-1.4 Lieferschein unterschrieben');
-  r = await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`);
+  // der Browser meldet den Namen im Ablageordner (bei gleichnamigen Dateien „Scan (2).pdf“) – kein Pfad erlaubt
+  assert.equal((await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`, { ablage_name: '../Scan.pdf' })).status, 400);
+  r = await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`, { ablage_name: 'Scan (2).pdf' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await admin('GET', `${T}/auftraege/2099_9001/eingang`)).body.map((x: any) => [x.status, x.ablage_name]).slice(0, 2),
+    [['uebernommen', 'Scan (2).pdf'], ['wartet', null]]);
   assert.equal((await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`)).body.status, 'uebernommen', 'wiederholbar');
   assert.equal((await admin('GET', `${T}/eingang/dokumente/${id}/datei`)).status, 404);
   const s1 = (await admin('GET', `${T}/eingang/speicher`)).body;

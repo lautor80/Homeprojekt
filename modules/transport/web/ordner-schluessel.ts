@@ -23,6 +23,8 @@ export function ordnerWahl<T>(eigen: T | false | undefined, gemeinsam: T | undef
 
 /** Zeichen, die in Datei- und Ordnernamen unter Windows nicht erlaubt sind, ersetzen */
 export const sauber = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim();
+/** Name, unter dem eine Posteingangsdatei im Unterordner Eingang/ liegt: der gemeldete, sonst der bereinigte Dateiname */
+export const eingangName = (d: { datei: string; ablage_name?: string | null }) => (d.ablage_name?.trim() || sauber(d.datei) || 'Datei');
 /** Jahresordner aus der Auftragsnummer („2026_1235“ → 2026); Nummern ohne Jahr kommen nach „Sonstige“ */
 export const jahrVon = (nr: string) => (/^\d{4}/.test(nr) ? nr.slice(0, 4) : 'Sonstige');
 /** Ordner eines Auftrags unter dem Ablageordner: [Jahr, Auftragsnummer] */

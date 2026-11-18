@@ -173,12 +173,16 @@ export async function eingangRoutes(app: FastifyInstance) {
   app.get('/auftraege/:nr/eingang', { preHandler: requireAuth(P_AUFTRAG.display) }, async (req) => {
     const { nr } = z.object({ nr: z.string().max(40) }).parse(req.params);
     return sql`
-      select d.id::int as id, d.datei, d.mime, d.groesse, d.status, d.ziel, d.paperless_id, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum
+      select d.id::int as id, d.datei, d.ablage_name, d.mime, d.groesse, d.status, d.ziel, d.paperless_id, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum
         from transport.eing_dokumente d join transport.eing_vorgaenge v on v.id = d.vorgang_id
        where v.auftragsnr = ${nr} and d.status in ('wartet', 'uebernommen', 'abgelegt')
        order by d.id`;
   });
 
   /** Browser hat die Datei in den Ablageordner (Unterordner Eingang/) geschrieben → Inhalt löschen, Status „uebernommen“ */
-  app.post('/eingang/dokumente/:id/uebernommen', { preHandler: requireAuth(P_AUFTRAG.edit) }, async (req) => uebernommen(idParam.parse(req.params).id, wer(req)));
+  app.post('/eingang/dokumente/:id/uebernommen', { preHandler: requireAuth(P_AUFTRAG.edit) }, async (req) => {
+    // ablage_name: tatsächlicher Dateiname im Ordner (ohne Pfad), damit die Datei am Auftrag direkt geöffnet werden kann
+    const b = z.object({ ablage_name: z.string().trim().min(1).max(255).regex(/^[^\\/:*?"<>|]+$/, 'Ungültiger Dateiname.').nullish() }).parse(req.body ?? {});
+    return uebernommen(idParam.parse(req.params).id, wer(req), b.ablage_name);
+  });
 }

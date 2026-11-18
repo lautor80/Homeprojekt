@@ -70,10 +70,13 @@ export interface Speicher { bytes: number; dateien: number; warnungMb: number; w
 export interface AuftragEingangDokument {
   id: number;
   datei: string;
+  /** Dateiname im Ablageordner (Unterordner Eingang/), falls vom Browser gemeldet */
+  ablage_name?: string | null;
   mime: string | null;
   groesse: number;
   status: string;
   ziel: string | null;
+  paperless_id?: number | null;
   von: string | null;
   betreff: string | null;
   datum: string | null;
