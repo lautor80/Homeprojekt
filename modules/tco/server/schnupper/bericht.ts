@@ -96,3 +96,36 @@ export function berichtAbschnitte(z: SchnupperZeile, x: BerichtZusatz, einheiten
 export function einheitenZeilen(x: BerichtZusatz): [string, string, string][] {
   return [...x.einheiten].sort((a, b) => a.datum.localeCompare(b.datum)).map((e) => [datumText(e.datum), w(e.trainer), w(e.erfasst_von)]);
 }
+
+// ---------------------------------------------------------------------------- Liste: je Interessent ein paar Zeilen
+/** Spalten der kompakten Liste (Querformat) */
+export const LISTE_SPALTEN = ['Anmeldung', 'Interessent', 'Kontakt', 'Tennis und Wunschtermine', 'Stand und Betreuung'] as const;
+
+export interface ListenEintrag {
+  /** je Spalte die Zeilen (leere entfallen) */
+  spalten: string[][];
+  /** Mitteilung und Notiz als Zusatzzeile unter dem Eintrag (leer = keine) */
+  bemerkung: string;
+}
+
+const kurzDatum = (d: string | null) => (d ? datumText(d).slice(0, 6) : 'offen');
+
+/** Ein Interessent in ein paar Zeilen: Anmeldung, Person, Kontakt, Tennis/Termine, Stand/Betreuung, darunter Mitteilung/Notiz */
+export function listenEintrag(z: SchnupperZeile, einheitenKostenlos: number): ListenEintrag {
+  const nicht = (s: string | null | undefined) => !!(s ?? '').trim();
+  const termine = [z.termine.tage.join(', '), z.termine.zeiten.join(', ')].filter(Boolean).join(' · ');
+  const spalten = [
+    [z.nummer, `Eingang ${zeitpunktText(z.eingang).replace(' Uhr', '')}`],
+    [`${z.vorname} ${z.nachname}`.trim(), z.alter != null ? `${z.alter} Jahre` : '', nicht(z.erziehungsberechtigt) ? `Erziehungsberechtigt: ${z.erziehungsberechtigt!.trim()}` : ''],
+    [z.email.trim(), z.mobil.trim(), !z.email.trim() && !z.mobil.trim() ? LEER : ''],
+    [`${z.gespielt ? 'hat schon gespielt' : 'noch nie gespielt'} · ${z.stufe_txt}`, termine ? `Wunsch: ${termine}` : 'Wunsch: –', nicht(z.termine.text) ? z.termine.text!.trim() : ''],
+    [
+      z.status_txt,
+      `Einheiten: 1. ${kurzDatum(z.einheit1)} · 2. ${kurzDatum(z.einheit2)} · ${z.einheiten}/${einheitenKostenlos} geschnuppert`,
+      [nicht(z.trainer) ? `Trainer: ${z.trainer!.trim()}` : '', z.antrag ? `Antrag ${z.antrag}${z.mitglnrn ? ` · Nr. ${z.mitglnrn}` : ''}` : ''].filter(Boolean).join(' · '),
+    ],
+  ].map((s) => s.filter((x) => x.trim()));
+  const bemerkung = [nicht(z.mitteilung) ? `Mitteilung: ${z.mitteilung!.trim()}` : '', nicht(z.notiz) ? `Notiz: ${z.notiz!.trim()}` : '']
+    .filter(Boolean).join('  ·  ').replace(/\s*\r?\n\s*/g, ' / ');
+  return { spalten, bemerkung };
+}

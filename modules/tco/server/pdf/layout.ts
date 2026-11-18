@@ -18,16 +18,18 @@ export const RIGHT = 192;
 
 export const betragText = (v: number) => `${zahl(v)} €`;
 
-export function fusszeile(p: Pdf, v: Verein, seite: number, seiten: number) {
-  p.rect(0, 282, 210, 15, { fill: C.fuss });
-  p.rect(0, 281.2, 210, 1, { fill: C.orange });
+/** Fußzeile; quer = Seite im Querformat (297 × 210 mm), sonst Hochformat */
+export function fusszeile(p: Pdf, v: Verein, seite: number, seiten: number, quer = false) {
+  const breite = quer ? 297 : 210, hoehe = quer ? 210 : 297, rechtsX = breite - LEFT;
+  p.rect(0, hoehe - 15, breite, 15, { fill: C.fuss });
+  p.rect(0, hoehe - 15.8, breite, 1, { fill: C.orange });
   const links = `${v.name} · ${v.strasse ?? ''} · ${v.plz_ort ?? ''}`;
   const rechts = `${v.bank ?? ''} · IBAN ${ibanFormat(v.iban)}`;
-  const mitte = (LEFT + p.textWidth(links, { size: 7 }) + RIGHT - p.textWidth(rechts, { size: 7 })) / 2;
-  p.text(LEFT, 290.5, links, { size: 7, color: C.grau });
-  if (v.steuernr) p.text(mitte, 290.5, `Steuernummer ${v.steuernr}`, { size: 7, color: C.grau, align: 'C' });
-  p.text(RIGHT, 290.5, rechts, { size: 7, color: C.grau, align: 'R' });
-  if (seiten > 1) p.text(RIGHT, 277, `Seite ${seite} von ${seiten}`, { size: 7, color: C.grau, align: 'R' });
+  const mitte = (LEFT + p.textWidth(links, { size: 7 }) + rechtsX - p.textWidth(rechts, { size: 7 })) / 2;
+  p.text(LEFT, hoehe - 6.5, links, { size: 7, color: C.grau });
+  if (v.steuernr) p.text(mitte, hoehe - 6.5, `Steuernummer ${v.steuernr}`, { size: 7, color: C.grau, align: 'C' });
+  p.text(rechtsX, hoehe - 6.5, rechts, { size: 7, color: C.grau, align: 'R' });
+  if (seiten > 1) p.text(rechtsX, hoehe - 20, `Seite ${seite} von ${seiten}`, { size: 7, color: C.grau, align: 'R' });
 }
 
 export function alleFusszeilen(p: Pdf, v: Verein) {
