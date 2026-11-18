@@ -302,7 +302,7 @@ test('n8n: Absender mit zwei offenen Aufträgen → Prüfliste; Antwort auf eige
 test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async () => {
   let r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m5@k>', betreff: 'nochmal 2099-9001', anhaenge: [pdf('Scan2.pdf', 'Lieferschein unterschrieben')] }));
   assert.equal(r.body.status, 'abgelegt');
-  assert.deepEqual((await docs(r.body.vorgang)).map((d) => [d.datei, d.status, d.inhalt]).slice(0, 1), [['Scan2.pdf', 'dublette', false]]);
+  assert.deepEqual((await docs(r.body.vorgang)).map((d) => [d.datei, d.status, d.inhalt]).slice(0, 1), [['Scan2.pdf', 'dublette', true]], 'Dublette bleibt herunterladbar (dauerhafte Aufbewahrung)');
 
   const s0 = (await admin('GET', `${T}/eingang/speicher`)).body;
   assert.equal(s0.warnung, false);
@@ -324,7 +324,7 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   assert.deepEqual((await admin('GET', `${T}/auftraege/2099_9001/eingang`)).body.map((x: any) => [x.status, x.ablage_name]).slice(0, 2),
     [['uebernommen', 'Scan (2).pdf'], ['wartet', null]]);
   assert.equal((await admin('POST', `${T}/eingang/dokumente/${id}/uebernommen`)).body.status, 'uebernommen', 'wiederholbar');
-  // Inhalt bleibt nach der Übernahme aufbewahrt (Standard 90 Tage) – für „Erneut ablegen“
+  // Inhalt bleibt nach der Übernahme aufbewahrt (Standard dauerhaft) – Herunterladen und „Erneut ablegen“
   const f2 = await admin('GET', `${T}/eingang/dokumente/${id}/datei`);
   assert.equal(f2.status, 200, 'nach der Übernahme aufbewahrt');
   assert.equal(f2.body, '%PDF-1.4 Lieferschein unterschrieben');
@@ -335,11 +335,15 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   assert.equal((await admin('GET', `${T}/auftraege/2099_9001/eingang`)).body[0].ablage_name, 'Scan.pdf');
   const s1 = (await admin('GET', `${T}/eingang/speicher`)).body;
   assert.equal(s1.dateien, s0.dateien - 1, 'aufbewahrte zählen nicht als wartend');
-  assert.equal(s1.aufbewahrtDateien, 1);
-  assert.equal(s1.aufbewahrenTage, 90);
+  assert.equal(s1.aufbewahrtDateien, 2, 'übernommene Datei und Dublette');
+  assert.equal(s1.aufbewahrenDauerhaft, true);
+  // dauerhaft: auch nach langer Zeit nicht aufgeräumt
+  await sql`update transport.eing_dokumente set bearbeitet_am = now() - interval '5 years' where id = ${id}`;
+  await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m5a@k>', betreff: 'Hallo' }));
+  assert.equal((await admin('GET', `${T}/eingang/dokumente/${id}/datei`)).status, 200, 'dauerhaft aufbewahrt');
 
-  // Speicherwarnung im Arbeitsvorrat
-  await einstellen({ speicherWarnungMb: 10 });
+  // Speicherwarnung im Arbeitsvorrat; Aufbewahrung auf Tage umgestellt
+  await einstellen({ speicherWarnungMb: 10, aufbewahrenDauerhaft: false });
   await sql`update transport.eing_dokumente set groesse = 20 * 1024 * 1024 where id = ${liste.body[1].id}`;
   const s2 = (await admin('GET', `${T}/eingang/speicher`)).body;
   assert.equal(s2.warnung, true);
@@ -352,7 +356,7 @@ test('Dublette, Eingang am Auftrag, Datei, Übernahme, Speicher', ohneDb, async 
   const [h] = await sql`select titel from core.hinweise where modul = 'transport' and quelle = 'EINGANG_SPEICHER' and erledigt_am is null`;
   assert.ok(h, 'Hinweis gemeldet');
   // Aufbewahrung 0 Tage: Inhalt wird bei der Übernahme sofort gelöscht (bisheriges Verhalten)
-  await einstellen({ speicherWarnungMb: 10, aufbewahrenTage: 0 });
+  await einstellen({ speicherWarnungMb: 10, aufbewahrenTage: 0, aufbewahrenDauerhaft: false });
   await admin('POST', `${T}/eingang/dokumente/${liste.body[1].id}/uebernommen`);
   assert.equal((await sql`select inhalt is null as weg from transport.eing_dokumente where id = ${liste.body[1].id}`)[0].weg, true);
   assert.equal((await sql`select count(*)::int as n from core.hinweise where quelle = 'EINGANG_SPEICHER' and erledigt_am is null`)[0].n, 0, 'Hinweis behoben');
@@ -379,19 +383,37 @@ test('Neu bewerten nach Anlage des Auftrags, Automatik aus, Abwesenheitsnotiz', 
   assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.aktion.ordner], ['ignoriert', null, 'Portal/Prüfen']);
 });
 
-test('Ablageziel Paperless: Kontext auftrag.dokument, Verknüpfung, Inhalt gelöscht', ohneDb, async () => {
+test('Ablageziel Paperless: Kontext auftrag.dokument, Verknüpfung, Inhalt bleibt herunterladbar', ohneDb, async () => {
   await sql`insert into core.verbindungen (id, url, auth_art, geheimnis) values ('transport.paperless', ${`http://127.0.0.1:${port}`}, 'token', 'geheim')`;
   cacheLeeren();
   await einstellen({ ablageziel: 'paperless', mailAlsPdf: false });
   const r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m9@k>', betreff: 'PO-99001', text: 'Lieferschein 2099_9001', anhaenge: [pdf('pl.pdf', 'Paperless')] }));
   assert.deepEqual([r.body.status, r.body.auftragsnr], ['abgelegt', '2099_9001']);
   const [d] = await docs(r.body.vorgang);
-  assert.deepEqual([d.status, d.ziel, d.inhalt, typeof d.paperless_id], ['abgelegt', 'paperless', false, 'number']);
+  assert.deepEqual([d.status, d.ziel, d.inhalt, typeof d.paperless_id], ['abgelegt', 'paperless', true, 'number']);
   const [v] = await sql`select punkte from transport.eing_vorgaenge where id = ${r.body.vorgang}`;
   assert.equal(v.punkte, 100, '90 + 70, gedeckelt');
   assert.equal((await sql`select count(*)::int as n from transport.auftrag_dokumente where auftragsnr = '2099_9001' and doc_id = ${d.paperless_id}`)[0].n, 1);
   assert.deepEqual(mock.docs, ['pl.pdf']);
   await einstellen({});
+});
+
+test('Zugeordnete E-Mail: Inhalt fehlt → erneute Lieferung füllt ihn wieder auf', ohneDb, async () => {
+  const m = mail({ message_id: '<m-nach@k>', betreff: 'Lieferschein 2099_9002', anhaenge: [pdf('Nach.pdf', 'Nachladen')] });
+  let r = await ext(key, 'POST', `${T}/eingang/mail`, m);
+  assert.deepEqual([r.body.status, r.body.auftragsnr], ['abgelegt', '2099_9002']);
+  const v = r.body.vorgang as number;
+  // wie vor der dauerhaften Aufbewahrung: Inhalte nach der Übernahme gelöscht
+  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = null where vorgang_id = ${v}`;
+  const ids = (await sql`select id::int as id from transport.eing_dokumente where vorgang_id = ${v} order by id`).map((x) => x.id as number);
+  assert.equal((await admin('GET', `${T}/eingang/dokumente/${ids[0]}/datei`)).status, 404);
+  r = await ext(key, 'POST', `${T}/eingang/mail`, m);
+  assert.equal(r.body.status, 'doppelt');
+  assert.deepEqual((await docs(v)).map((d) => [d.datei, d.status, d.inhalt]), [
+    ['Nach.pdf', 'uebernommen', true], ['2026-11-17 Lieferschein 2099_9002.pdf', 'uebernommen', true]]);
+  const f = await admin('GET', `${T}/eingang/dokumente/${ids[0]}/datei`);
+  assert.equal(f.status, 200);
+  assert.equal(f.body, '%PDF-1.4 Nachladen');
 });
 
 test('Jetzt abrufen: ohne und mit Anbindung; Rechte', ohneDb, async () => {

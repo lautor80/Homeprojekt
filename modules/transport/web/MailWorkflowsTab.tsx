@@ -21,6 +21,8 @@ interface Eingang {
   mailAlsPdf: boolean; ocr: boolean; speicherWarnungMb: number;
   /** Inhalte nach der Übernahme so viele Tage für „Erneut ablegen“ behalten (0 = sofort löschen) */
   aufbewahrenTage?: number;
+  /** zugeordnete Dateien dauerhaft im Portal behalten (Standard) – jederzeit wieder herunterladbar; aus = nach aufbewahrenTage löschen */
+  aufbewahrenDauerhaft?: boolean;
   /** Eingangspostfächer mit Bezeichnung (Anzeige und Filter im Posteingang) */
   postfaecher: Postfach[];
 }
@@ -67,7 +69,8 @@ export function MailWorkflowsTab() {
   const zahl = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s.trim()) : NaN);
   const schwelleOk = zahl(schwelle) >= 1 && zahl(schwelle) <= 100;
   const warnOk = zahl(warnMb) >= 10 && zahl(warnMb) <= 100_000;
-  const tageOk = zahl(tage) >= 0 && zahl(tage) <= 3650;
+  const dauerhaft = e.eingang.aufbewahrenDauerhaft ?? true;
+  const tageOk = dauerhaft || (zahl(tage) >= 0 && zahl(tage) <= 3650);
   const automatischSenden = funktion('transport.versand.automatisch');
   const automatischAblegen = funktion('transport.eingang.automatik');
   const absenderFunktion = funktion('transport.versand.rechnung');
@@ -82,7 +85,7 @@ export function MailWorkflowsTab() {
     if (!e || !schwelleOk || !warnOk || !tageOk || !postfaecherOk || !versandOk) return;
     setBusy(true); setError(null);
     try {
-      const body: Einstellungen = { ...e, eingang: { ...e.eingang, schwelle: zahl(schwelle), speicherWarnungMb: zahl(warnMb), aufbewahrenTage: zahl(tage) } };
+      const body: Einstellungen = { ...e, eingang: { ...e.eingang, schwelle: zahl(schwelle), speicherWarnungMb: zahl(warnMb), aufbewahrenTage: Number.isFinite(zahl(tage)) ? zahl(tage) : 90, aufbewahrenDauerhaft: dauerhaft } };
       await api.put(`${T}/workflow-einstellungen`, body);
       setE(body);
       toast('Einstellungen der Mail-Workflows gesichert');
@@ -148,10 +151,19 @@ export function MailWorkflowsTab() {
             <Input type="Number" value={warnMb} readonly={ro} valueState={warnOk ? 'None' : 'Negative'} data-kein-autofill
                    onInput={(x) => setWarnMb(x.target.value)} style={{ width: '8rem' }} />
           </FieldBox>
-          <FieldBox label="Nach Übernahme aufbewahren (Tage)" required>
-            <Input type="Number" value={tage} readonly={ro} valueState={tageOk ? 'None' : 'Negative'} data-kein-autofill
-                   onInput={(x) => setTage(x.target.value)} style={{ width: '8rem' }}
-                   title="So lange behält das Portal übernommene Dateien, damit „Erneut ablegen“ sie wieder in den Ordner schreiben kann (0 = sofort löschen)" />
+          <FieldBox label="Zugeordnete Dateien aufbewahren">
+            <FlexBox direction="Column" style={{ gap: '0.25rem' }}>
+              <CheckBox text="Dauerhaft – jederzeit wieder herunterladbar" checked={dauerhaft} readonly={ro}
+                        onChange={(x) => ein('aufbewahrenDauerhaft')(x.target.checked)} />
+              {!dauerhaft && (
+                <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
+                  <Input type="Number" value={tage} readonly={ro} valueState={tageOk ? 'None' : 'Negative'} data-kein-autofill
+                         onInput={(x) => setTage(x.target.value)} style={{ width: '8rem' }} accessibleName="Aufbewahren (Tage)"
+                         title="So lange behält das Portal zugeordnete Dateien (übernommen, in Paperless, Dublette) – 0 = sofort löschen" />
+                  <Text>Tage, danach löschen</Text>
+                </FlexBox>
+              )}
+            </FlexBox>
           </FieldBox>
         </FormGrid>
         {!automatischAblegen && (
@@ -173,7 +185,8 @@ export function MailWorkflowsTab() {
             )}
             {!!speicher.aufbewahrtDateien && (
               <Text className="portal-muted" style={{ display: 'block' }}>
-                Aufbewahrt für „Erneut ablegen“: {mb(speicher.aufbewahrtBytes ?? 0)} MB in {speicher.aufbewahrtDateien} übernommenen Datei(en) – werden nach {speicher.aufbewahrenTage ?? 90} Tagen gelöscht.
+                Zugeordnet und aufbewahrt (Herunterladen, „Erneut ablegen“): {mb(speicher.aufbewahrtBytes ?? 0)} MB in {speicher.aufbewahrtDateien} Datei(en)
+                {speicher.aufbewahrenDauerhaft === false ? ` – werden nach ${speicher.aufbewahrenTage ?? 90} Tagen gelöscht.` : ' – dauerhaft.'}
               </Text>
             )}
           </div>

@@ -26,6 +26,7 @@ import { auftragLesen, firmaLesen } from '../data.js';
 import { dokumentAblegen, mimeTyp } from '../dokumente.js';
 import { ANWENDUNG } from '../mailversand.js';
 import { F_MW, workflowEinstellungen, type EingangEinstellungen } from '../mailworkflows.js';
+import { inhaltBehalten, loeschenNachTagen, nachladenZuordnen, ZUGEORDNET_ERLEDIGT, type FehlendesDokument } from './aufbewahrung.js';
 import {
   absender, absenderTreffer, bewerten, dateinameSicher, entscheiden, herkunftNummer, herkunftReferenz, herkunftText, htmlText, mailDateiname, mailHtml, messageIds,
   nummernVorrang, objektAuftrag, PUNKTE, quellenNummern, referenzImText, relevanterAnhang, suchQuellen, speicherWarnung, V_MAILEINGANG, type Entscheidung, type Kandidat, type Treffer,
@@ -252,7 +253,7 @@ export async function ablegen(vorgangId: number | string, auftragsnr: string, do
        where v.auftragsnr = ${auftragsnr} and d.sha256 = ${d.sha256} and d.id <> ${id} and d.status = any(${AM_AUFTRAG.filter((s) => s !== 'dublette')})
        limit 1` : [];
     if (dub) {
-      await setzen('dublette', { hinweis: `Liegt bereits am Auftrag ${auftragsnr} (Dokument ${dub.id}).`, inhaltLoeschen: true });
+      await setzen('dublette', { hinweis: `Liegt bereits am Auftrag ${auftragsnr} (Dokument ${dub.id}).`, inhaltLoeschen: !inhaltBehalten(e) });
       erg.dubletten++;
       continue;
     }
@@ -274,7 +275,7 @@ export async function ablegen(vorgangId: number | string, auftragsnr: string, do
       await withChange({ userId: null, username: wer, action: 'EINGANG_ABLEGEN' }, (tx) => tx`
         insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_von)
         values (${auftragsnr}, ${p.id}, ${p.titel}, ${p.datei}, ${wer}) on conflict do nothing`);
-      await setzen('abgelegt', { ziel: 'paperless', paperless_id: p.id, hinweis: p.warnungen.join(' ') || null, inhaltLoeschen: true });
+      await setzen('abgelegt', { ziel: 'paperless', paperless_id: p.id, hinweis: p.warnungen.join(' ') || null, inhaltLoeschen: !inhaltBehalten(e) });
       erg.abgelegt++;
     } catch (x) {
       await setzen('fehler', { hinweis: meldung(x) });
@@ -328,12 +329,58 @@ async function antwortVon(vorgangId: number | string, doppelt: boolean): Promise
 
 interface NeuDok { art: 'anhang' | 'mail'; datei: string; mime: string; daten: Buffer; ocr: string; hinweis: string | null }
 
+/** Anhänge der Lieferung dekodieren; Signatur-Logos, Kalender- und Signaturdateien herausfiltern */
+function anhaengeLesen(m: EingangMail) {
+  return m.anhaenge.map((a) => {
+    const daten = Buffer.from(a.inhalt.replace(/^data:[^,]*,/, ''), 'base64');
+    const name = dateinameSicher(a.name, 'anhang');
+    return { name, mime: a.mime || mimeTyp(name), daten, groesse: daten.length };
+  }).filter(relevanterAnhang);
+}
+
+/**
+ * Schon bekannte E-Mail erneut geliefert (z. B. in Outlook wieder in den Posteingang gelegt und als ungelesen markiert):
+ * Dokumente, deren Inhalt im Portal fehlt (gelöscht vor der dauerhaften Aufbewahrung), werden aus der Lieferung wieder
+ * aufgefüllt – Anhänge über Prüfsumme bzw. Dateinamen, die E-Mail als PDF wird neu erzeugt. Ignorierte bleiben leer.
+ */
+export async function inhalteNachladen(vorgangId: number | string, m: EingangMail): Promise<number> {
+  const fehlend = await sql`
+    select id::int as id, art, datei, sha256 from transport.eing_dokumente
+     where vorgang_id = ${vorgangId} and inhalt is null and status <> 'ignoriert' order by id`;
+  if (!fehlend.length) return 0;
+  const anhaenge = anhaengeLesen(m);
+  const geliefert = anhaenge.map((a) => ({ name: a.name, sha256: sha(a.daten) }));
+  let n = 0;
+  for (const z of nachladenZuordnen(fehlend as unknown as FehlendesDokument[], geliefert)) {
+    const a = anhaenge[z.index];
+    await sql`update transport.eing_dokumente set inhalt = ${a.daten.toString('base64')}, groesse = ${a.daten.length}, sha256 = ${geliefert[z.index].sha256}
+               where id = ${z.id} and inhalt is null`;
+    n++;
+  }
+  const mails = fehlend.filter((d) => d.art === 'mail');
+  if (mails.length) {
+    const text = (m.text || htmlText(m.html)).slice(0, MAX_TEXT);
+    const zeit = eingangZeit(m.datum);
+    const html = mailHtml({ von: m.von, an: m.an, betreff: m.betreff, datum: zeitBerlin(zeit), text, anhaenge: anhaenge.map((a) => a.name) });
+    const pdf = await htmlToPdf(html);
+    for (const d of mails) {
+      await sql`update transport.eing_dokumente set inhalt = ${pdf.toString('base64')}, groesse = ${pdf.length}, sha256 = ${sha(pdf)}
+                 where id = ${d.id} and inhalt is null`;
+      n++;
+    }
+  }
+  return n;
+}
+
 /** E-Mail von n8n annehmen, zuordnen und – wenn eindeutig – ablegen. Antwort laut Vertrag: Vorgang, Status, Auftrag, Ordner. */
 export async function mailVerarbeiten(m: EingangMail): Promise<MailAntwort> {
   const postfach = m.postfach.trim().toLowerCase();
   const schluessel = mailSchluessel(m);
   const [alt] = await sql`select id from transport.eing_vorgaenge where postfach = ${postfach} and message_id = ${schluessel}`;
-  if (alt) return antwortVon(alt.id as string, true);
+  if (alt) {
+    try { await inhalteNachladen(alt.id as string, m); } catch { /* Nachladen ist eine Zugabe – die Antwort an n8n bleibt „doppelt“ */ }
+    return antwortVon(alt.id as string, true);
+  }
 
   const e = (await workflowEinstellungen()).eingang;
   const ab = absender(m.von);
@@ -341,12 +388,7 @@ export async function mailVerarbeiten(m: EingangMail): Promise<MailAntwort> {
   const zeit = eingangZeit(m.datum);
   const hinweise: string[] = [];
 
-  // Anhänge: Signatur-Logos, Kalender- und Signaturdateien herausfiltern
-  const anhaenge = m.anhaenge.map((a) => {
-    const daten = Buffer.from(a.inhalt.replace(/^data:[^,]*,/, ''), 'base64');
-    const name = dateinameSicher(a.name, 'anhang');
-    return { name, mime: a.mime || mimeTyp(name), daten, groesse: daten.length };
-  }).filter(relevanterAnhang);
+  const anhaenge = anhaengeLesen(m);
 
   // Abwesenheitsnotizen und Unzustellbar-Meldungen ohne Anhang werden nicht abgelegt
   const art = einordnen({ von: m.von, betreff: m.betreff, auto: m.auto });
@@ -503,7 +545,7 @@ export async function offeneNeuBewerten(wer: string): Promise<{ vorgaenge: numbe
   return { vorgaenge: offen.length, abgelegt };
 }
 
-/** Browser hat die Datei in den Ablageordner (Unterordner Eingang/) geschrieben → Inhalt löschen */
+/** Browser hat die Datei in den Ablageordner (Unterordner Eingang/) geschrieben → Status „übernommen“ (Inhalt je nach Aufbewahrung) */
 /** ablageName: Name der Datei im Ablageordner (Unterordner Eingang/), wie ihn der Browser gemeldet hat */
 export async function uebernommen(id: number, wer: string, ablageName?: string | null) {
   const [d] = await sql`select status from transport.eing_dokumente where id = ${id}`;
@@ -514,9 +556,9 @@ export async function uebernommen(id: number, wer: string, ablageName?: string |
     return { status: 'uebernommen', text: 'Bereits übernommen.' };
   }
   if (d.status !== 'wartet') throw new BusinessError('Das Dokument wartet nicht auf die Übernahme in den Ablageordner.');
-  // Inhalt bleibt „aufbewahrenTage“ für „Erneut ablegen“ im Portal (0 = sofort löschen); aufgeräumt in speicherPruefen
-  const tage = (await workflowEinstellungen()).eingang.aufbewahrenTage;
-  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = ${tage > 0 ? sql`inhalt` : null}, ablage_name = ${ablageName?.trim() || null},
+  // Inhalt bleibt für Herunterladen und „Erneut ablegen“ im Portal – dauerhaft oder „aufbewahrenTage“ (0 = sofort löschen)
+  const behalten = inhaltBehalten((await workflowEinstellungen()).eingang);
+  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = ${behalten ? sql`inhalt` : null}, ablage_name = ${ablageName?.trim() || null},
               bearbeitet_am = now(), bearbeitet_von = ${wer} where id = ${id}`;
   await speicherPruefen();
   return { status: 'uebernommen', text: 'In den Ablageordner übernommen.' };
@@ -528,17 +570,18 @@ export async function uebernommen(id: number, wer: string, ablageName?: string |
  * Belegung: bytes/dateien = noch nicht übernommene Inhalte (davon hängt die Warnung ab); aufbewahrt* = übernommene, die für
  * „Erneut ablegen“ noch im Portal liegen (werden nach aufbewahrenTage gelöscht).
  */
-export async function speicherStand(): Promise<{ bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes: number; aufbewahrtDateien: number; aufbewahrenTage: number }> {
+export async function speicherStand(): Promise<{ bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes: number; aufbewahrtDateien: number; aufbewahrenTage: number; aufbewahrenDauerhaft: boolean }> {
+  const erledigt = [...ZUGEORDNET_ERLEDIGT];
   const [r] = await sql`
-    select coalesce(sum(groesse) filter (where status <> 'uebernommen'), 0)::bigint as bytes, (count(*) filter (where status <> 'uebernommen'))::int as dateien,
-           coalesce(sum(groesse) filter (where status = 'uebernommen'), 0)::bigint as abytes, (count(*) filter (where status = 'uebernommen'))::int as adateien
+    select coalesce(sum(groesse) filter (where status <> all(${erledigt})), 0)::bigint as bytes, (count(*) filter (where status <> all(${erledigt})))::int as dateien,
+           coalesce(sum(groesse) filter (where status = any(${erledigt})), 0)::bigint as abytes, (count(*) filter (where status = any(${erledigt})))::int as adateien
       from transport.eing_dokumente where inhalt is not null`;
   const e = (await workflowEinstellungen()).eingang;
   const warnungMb = e.speicherWarnungMb;
   const bytes = Number(r.bytes);
   return {
     bytes, dateien: Number(r.dateien), warnungMb, warnung: speicherWarnung(bytes, warnungMb),
-    aufbewahrtBytes: Number(r.abytes), aufbewahrtDateien: Number(r.adateien), aufbewahrenTage: e.aufbewahrenTage,
+    aufbewahrtBytes: Number(r.abytes), aufbewahrtDateien: Number(r.adateien), aufbewahrenTage: e.aufbewahrenTage, aufbewahrenDauerhaft: e.aufbewahrenDauerhaft,
   };
 }
 
@@ -557,11 +600,12 @@ async function speicherPruefen(): Promise<void> {
   } catch { /* der Hinweis ist eine Zugabe – die Verarbeitung darf daran nicht scheitern */ }
 }
 
-/** Inhalte übernommener Dateien nach Ablauf der Aufbewahrung löschen (läuft bei jedem Eingang und jeder Übernahme mit) */
+/** Inhalte zugeordneter, erledigter Dateien nach Ablauf der Aufbewahrung löschen – nie bei dauerhafter Aufbewahrung */
 export async function aufbewahrungAufraeumen(): Promise<number> {
-  const tage = (await workflowEinstellungen()).eingang.aufbewahrenTage;
+  const tage = loeschenNachTagen((await workflowEinstellungen()).eingang);
+  if (tage === null) return 0;
   const r = await sql`update transport.eing_dokumente set inhalt = null
-                        where status = 'uebernommen' and inhalt is not null and bearbeitet_am < now() - make_interval(days => ${tage})`;
+                        where status = any(${[...ZUGEORDNET_ERLEDIGT]}) and inhalt is not null and bearbeitet_am < now() - make_interval(days => ${tage})`;
   return r.count;
 }
 

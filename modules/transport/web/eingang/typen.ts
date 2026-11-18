@@ -66,7 +66,7 @@ export interface Vorgang extends VorgangZeile {
 }
 
 /** GET /eingang/speicher */
-export interface Speicher { bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes?: number; aufbewahrtDateien?: number; aufbewahrenTage?: number }
+export interface Speicher { bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes?: number; aufbewahrtDateien?: number; aufbewahrenTage?: number; aufbewahrenDauerhaft?: boolean }
 
 /** GET /auftraege/:nr/eingang */
 export interface AuftragEingangDokument {

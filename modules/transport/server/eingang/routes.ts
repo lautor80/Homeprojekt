@@ -5,6 +5,7 @@ import { sql } from '../../../../server/src/db.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { P_MW, workflowEinstellungen } from '../mailworkflows.js';
 import { postfachListe, type Grund, type Kandidat } from './logik.js';
+import { ZUGEORDNET_ERLEDIGT } from './aufbewahrung.js';
 import {
   abrufAnstossen, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, speicherStand, uebernommen, vonHandAblegen, vorgangIgnorieren,
 } from './verarbeitung.js';
@@ -116,14 +117,16 @@ export async function eingangRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Datei eines Dokuments, solange der Inhalt im Portal liegt. Posteingang bearbeiten – oder Aufträge ändern, wenn das Dokument
-   * auf die Übernahme in den Ablageordner wartet (der Browser holt sie beim Öffnen des Auftrags).
+   * Datei eines Dokuments, solange der Inhalt im Portal liegt (zugeordnete standardmäßig dauerhaft). Posteingang bearbeiten –
+   * oder Aufträge ansehen, wenn das Dokument einem Auftrag zugeordnet ist (wartet, übernommen, in Paperless abgelegt, Dublette):
+   * Herunterladen am Auftrag, Übernahme in den Ablageordner und „Erneut ablegen“.
    */
   app.get('/eingang/dokumente/:id/datei', { preHandler: requireAuth() }, async (req, reply) => {
     const { id } = idParam.parse(req.params);
     const [d] = await sql`select datei, mime, status, inhalt from transport.eing_dokumente where id = ${id}`;
-    // wartende und aufbewahrte (übernommene) Inhalte darf auch laden, wer Aufträge ändern darf – für Übernahme und „Erneut ablegen“
-    const darf = can(req, P_MW.eingangEdit) || ((d?.status === 'wartet' || d?.status === 'uebernommen') && can(req, P_AUFTRAG.edit));
+    // zugeordnete Inhalte darf auch laden, wer Aufträge ansehen darf
+    const zugeordnet = d?.status === 'wartet' || (ZUGEORDNET_ERLEDIGT as readonly string[]).includes(d?.status as string);
+    const darf = can(req, P_MW.eingangEdit) || (zugeordnet && can(req, P_AUFTRAG.display));
     if (!darf) return reply.code(403).send({ message: `Keine Berechtigung (${P_MW.eingangEdit}).` });
     if (!d?.inhalt) throw new BusinessError('Die Datei liegt nicht (mehr) im Portal.', 404);
     const mime = (d.mime as string | null) ?? 'application/octet-stream';

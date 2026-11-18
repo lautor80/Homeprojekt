@@ -50,8 +50,14 @@ export interface EingangEinstellungen {
   /**
    * Inhalte nach der Übernahme in den Ablageordner so viele Tage im Portal behalten – damit „Erneut ablegen“ die Datei wieder
    * in den Ordner schreiben kann (z. B. auf einem anderen PC oder nach dem Löschen). 0 = sofort löschen (bisheriges Verhalten).
+   * Gilt nur ohne „aufbewahrenDauerhaft“.
    */
   aufbewahrenTage: number;
+  /**
+   * Inhalte zugeordneter E-Mails (übernommen, in Paperless abgelegt, Dublette) dauerhaft im Portal behalten – jede zugeordnete
+   * Datei bleibt im Posteingang und am Auftrag herunterladbar (Standard). Aus: Löschen nach „aufbewahrenTage“.
+   */
+  aufbewahrenDauerhaft: boolean;
   /**
    * Eingangspostfächer (z. B. info@ und buchhaltung@) mit Bezeichnung für die App „Posteingang“ (Anzeige und Filter). Abgerufen
    * werden die Postfächer, die im n8n-Workflow unter POSTFAECHER stehen; Mails aus einem hier nicht eingetragenen Postfach
@@ -71,7 +77,7 @@ export type VersandEinstellungen = Record<Dokumentart, VersandArtEinstellung>;
 
 export const EINGANG_STANDARD: EingangEinstellungen = {
   ablageziel: 'lokal', schwelle: 80, ordnerZugeordnet: 'Portal/Zugeordnet', ordnerPruefen: 'Portal/Prüfen',
-  mailAlsPdf: true, ocr: true, speicherWarnungMb: 1024, aufbewahrenTage: 90, postfaecher: [],
+  mailAlsPdf: true, ocr: true, speicherWarnungMb: 1024, aufbewahrenTage: 90, aufbewahrenDauerhaft: true, postfaecher: [],
 };
 export const VERSAND_STANDARD: VersandEinstellungen = {
   T: { vorauswahl: true, modus: 'entwurf', absender: '', bcc: '' },
@@ -112,6 +118,7 @@ const eingangSchema = z.object({
   ocr: z.boolean(),
   speicherWarnungMb: z.coerce.number().int().min(10).max(100_000),
   aufbewahrenTage: z.coerce.number().int().min(0).max(3650).default(90),
+  aufbewahrenDauerhaft: z.boolean().default(true),
   postfaecher: z.array(postfachSchema).max(20).default([])
     .refine((l) => new Set(l.map((x) => x.adresse)).size === l.length, 'Eingangspostfach doppelt eingetragen.'),
 });

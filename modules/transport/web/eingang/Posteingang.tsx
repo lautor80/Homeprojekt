@@ -10,7 +10,7 @@ import { useKlein } from '@core/components/ResponsiveTable';
 import { Empty, Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
-import { dat } from '../util';
+import { dat, download } from '../util';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
 import { eingangInOrdner, uebernahmeText } from './uebernahme';
 import { ordnerMoeglich } from '../ordner';
@@ -33,6 +33,8 @@ const FILTER: { key: VorgangStatus; text: string }[] = [
   { key: 'ignoriert', text: 'Ignoriert' },
 ];
 /** Dokumente, die noch abgelegt werden können (vorausgewählt) */
+/** einem Auftrag zugeordnet (wartet, übernommen, in Paperless, Dublette) – laden darf dann auch, wer Aufträge ansehen darf */
+const ZUGEORDNET_DOK = (d: EingangDokument) => ['wartet', 'abgelegt', 'uebernommen', 'dublette'].includes(d.status);
 const OFFEN_DOK = (d: EingangDokument) => !['ignoriert', 'abgelegt', 'uebernommen', 'dublette', 'wartet'].includes(d.status);
 
 interface ListeAntwort { zeilen: VorgangZeile[]; letzterAbruf: string | null; schwelle: number | null; postfaecher: EingangsPostfach[] }
@@ -323,6 +325,7 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   // Übertragen in den Ablageordner des Auftrags (Unterordner Eingang/) direkt aus dem Posteingang
   const can = useCan();
   const darfUebertragen = edit && ordnerMoeglich && can('transport.auftraege:edit');
+  const darfLaden = (d: EingangDokument) => edit || (ZUGEORDNET_DOK(d) && can('transport.auftraege:display'));
 
   const laden = useCallback(async () => {
     try {
@@ -402,7 +405,8 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
         <Label>Anhänge und Dokumente ({v.dokumente.length})</Label>
         {!v.dokumente.length ? <Text className="portal-muted">Keine Anhänge.</Text> : v.dokumente.map((d) => (
           <DokumentKarte key={d.id} d={d} waehlbar={offen && darfAblegen && OFFEN_DOK(d)} gewaehlt={auswahl.has(d.id)}
-                         onWahl={(an) => umschalten(d, an)} vorschau={edit ? () => vorschau(d) : null} />
+                         onWahl={(an) => umschalten(d, an)} vorschau={darfLaden(d) ? () => vorschau(d) : null}
+                         herunterladen={darfLaden(d) ? () => download(dateiUrl(d.id), d.datei || `Dokument_${d.id}`).catch((x) => onFehler((x as Error).message)) : null} />
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: 0 }}>
@@ -518,13 +522,13 @@ function Kandidaten({ kandidaten, gewaehlt, kunde, waehlbar, onWaehlen }: {
   );
 }
 
-function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau }: {
-  d: EingangDokument; waehlbar: boolean; gewaehlt: boolean; onWahl: (an: boolean) => void; vorschau: (() => void) | null;
+function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen }: {
+  d: EingangDokument; waehlbar: boolean; gewaehlt: boolean; onWahl: (an: boolean) => void; vorschau: (() => void) | null; herunterladen: (() => void) | null;
 }) {
   const [mehr, setMehr] = useState(false);
   const ocr = (d.ocr_auszug ?? '').trim();
   const name = d.art === 'mail' ? `E-Mail als PDF (${d.datei})` : d.datei;
-  // Inhalte gibt es nur, solange das Dokument nicht abgelegt, übernommen oder ignoriert ist
+  // Inhalt liegt im Portal (Server: inhalt is not null) – zugeordnete standardmäßig dauerhaft; ignorierte nie
   const vorhanden = d.vorhanden ?? (!['ignoriert', 'uebernommen', 'dublette'].includes(d.status) && !(d.status === 'abgelegt' && d.ziel === 'paperless'));
   return (
     <div style={{
@@ -546,7 +550,15 @@ function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau }: {
           {ocr.length > 160 && <> <Link onClick={() => setMehr(!mehr)}>{mehr ? 'weniger' : 'mehr'}</Link></>}
         </Text>
       )}
-      {vorschau && vorhanden && <Link onClick={vorschau}>Vorschau</Link>}
+      {vorhanden && (vorschau || herunterladen) && (
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          {vorschau && <Link onClick={vorschau}>Vorschau</Link>}
+          {herunterladen && <Link onClick={herunterladen}>Herunterladen</Link>}
+        </div>
+      )}
+      {!vorhanden && d.status !== 'ignoriert' && (
+        <Text className="portal-muted portal-small">Inhalt nicht mehr im Portal – in Outlook in den Posteingang verschieben und als ungelesen markieren, dann wird er neu eingelesen.</Text>
+      )}
     </div>
   );
 }

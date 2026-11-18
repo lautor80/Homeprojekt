@@ -82,7 +82,7 @@ export function uebernahmeText(e: UebernahmeErgebnis, nr?: string): string {
     e.uebernommen ? `${e.uebernommen} E-Mail-Beleg(e) übernommen` : '',
     e.erneut ? `${e.erneut} erneut abgelegt` : '',
     e.paperless ? `${e.paperless} aus Paperless nachgeladen` : '',
-    e.fehlt.length ? `${e.fehlt.length} nicht im Ordner (${e.fehlt.join(', ')}) – Inhalt im Portal nicht mehr aufbewahrt, bitte aus Outlook neu ablegen` : '',
+    e.fehlt.length ? `${e.fehlt.length} nicht im Ordner (${e.fehlt.join(', ')}) – Inhalt nicht im Portal – E-Mail in Outlook in den Posteingang verschieben und als ungelesen markieren, dann wird er neu eingelesen` : '',
     e.fehler.length ? `Fehler: ${e.fehler.join('; ')}` : '',
   ].filter(Boolean);
   return teile.length ? `${nr ? `${nr}: ` : ''}${teile.join(' · ')}` : '';
