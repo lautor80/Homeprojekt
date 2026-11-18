@@ -5,6 +5,7 @@ import {
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
+import { PdfDialog } from '@core/components/PdfDialog';
 import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
@@ -38,6 +39,8 @@ export function SchnupperVerwaltung() {
   const [alle, setAlle] = useState(false);
   const [offen, setOffen] = useState<Zeile | null>(null);
   const [link, setLink] = useState<string | null>(null);
+  // Bericht zum Ausdrucken (PDF im TCO-Layout): eine Anmeldung oder die ganze Liste
+  const [pdf, setPdf] = useState<{ url: string; titel: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const laden = () => api.get<Daten>(`${S}?filter=${alle ? 'ALLE' : 'OFFEN'}`).then(setDaten).catch((e) => setError(e.message));
   useEffect(() => { setDaten(null); laden(); }, [alle]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -56,6 +59,12 @@ export function SchnupperVerwaltung() {
              actions={<>
                <Button design="Transparent" icon="action" onClick={() => window.open('/schnuppertraining', '_blank')}>Anmeldeformular öffnen</Button>
                <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur offene' : 'Auch erledigte'}</Button>
+               {!!daten?.zeilen.length && (
+                 <Button design="Transparent" icon="print" tooltip="Alle angezeigten Anmeldungen als Bericht (je Anmeldung eine Seite)"
+                         onClick={() => setPdf({ url: `${S}/pdf?filter=${alle ? 'ALLE' : 'OFFEN'}`, titel: `Schnuppertraining – ${alle ? 'alle' : 'offene'} Anmeldungen` })}>
+                   Alle drucken
+                 </Button>
+               )}
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !daten.zeilen.length ? (
@@ -95,12 +104,15 @@ export function SchnupperVerwaltung() {
             </div>
             {z.mitteilung && <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.5rem' }}>Mitteilung: {z.mitteilung}</MessageStrip>}
             {z.notiz && <Text style={{ display: 'block', marginTop: '0.5rem', whiteSpace: 'pre-line' }}><b>Notiz:</b> {z.notiz}</Text>}
-            {edit && !fertig && (
-              <div className="portal-row" style={{ marginTop: '0.75rem' }}>
+            <div className="portal-row" style={{ marginTop: '0.75rem' }}>
+              {edit && !fertig && <>
                 <Button design="Emphasized" icon="edit" onClick={() => setOffen(z)}>Bearbeiten…</Button>
                 <Button design="Transparent" icon="paper-plane" onClick={() => beitrittslink(z)}>Beitrittslink senden</Button>
-              </div>
-            )}
+              </>}
+              <Button design="Transparent" icon="print" onClick={() => setPdf({ url: `${S}/pdf?adrnrs=${z.adrnr}`, titel: `Schnuppertraining ${z.nummer} ${z.vorname} ${z.nachname}` })}>
+                Drucken
+              </Button>
+            </div>
             {z.bearbeitet_von && (
               <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
                 Zuletzt bearbeitet von {z.bearbeitet_von}{z.bearbeitet_am ? `, ${zeit(z.bearbeitet_am)}` : ''}
@@ -111,6 +123,7 @@ export function SchnupperVerwaltung() {
       })}
       {offen && daten && <BearbeitenDialog z={offen} status={daten.status} onClose={() => setOffen(null)}
                                             onDone={(t) => { setOffen(null); toast(t, 5000); laden(); }} />}
+      <PdfDialog url={pdf?.url ?? null} title={pdf?.titel ?? 'Schnuppertraining'} filename={`${pdf?.titel ?? 'Schnuppertraining'}.pdf`} onClose={() => setPdf(null)} />
       {link && (
         <Dialog open headerText="Beitrittslink" onClose={() => setLink(null)}
                 footer={<Bar endContent={<>

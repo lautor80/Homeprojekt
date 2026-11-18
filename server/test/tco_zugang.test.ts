@@ -26,7 +26,10 @@ function client(remoteAddress?: string) {
     const res = await app.inject({ method: method as 'GET', url: path, payload: payload as object, headers: { cookie, 'x-portal-request': '1' }, ...(remoteAddress ? { remoteAddress } : {}) });
     const set = res.headers['set-cookie'];
     if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
-    return { status: res.statusCode, body: res.body ? JSON.parse(res.body) : null };
+    // PDF u. ä.: kein JSON – Rohdaten und Inhaltstyp zurück
+    const json = !res.body || String(res.headers['content-type'] ?? '').includes('json') || /^[[{"]/.test(res.body);
+    return { status: res.statusCode, body: res.body && json ? JSON.parse(res.body) : null, raw: res.rawPayload, ct: String(res.headers['content-type'] ?? '') } as
+      { status: number; body: any; raw?: Buffer; ct?: string }; // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 }
 const admin = client();
@@ -388,6 +391,16 @@ test('Schnuppertraining (#86): Anmeldung als Kategorie im Mitgliederstamm, Betre
   r = await admin('PUT', `${T}/schnuppertraining/${st.adrnr}`, { status: 'TERMIN', einheit1: '2026-05-05', einheit2: '2026-05-12', trainer: 'Tom Trainer', notiz: 'sehr motiviert' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /absolviert/);
+
+  // Bericht zum Ausdrucken (TCO-Layout): einzelne Anmeldung, ganze Liste; Trainer mit Leserecht darf drucken
+  r = await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=${st.adrnr}`);
+  assert.equal(r.status, 200);
+  assert.match(r.ct ?? '', /application\/pdf/);
+  assert.equal(r.raw?.subarray(0, 5).toString(), '%PDF-');
+  assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?filter=ALLE`)).status, 200);
+  assert.equal((await trainer('GET', `${T}/schnuppertraining/pdf`)).status, 200);
+  assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=0000999999`)).status, 404);
+  assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=1;drop`)).status, 400);
 
   // Beitrittslink: vorbelegter Mitgliedsantrag
   r = await admin('POST', `${T}/schnuppertraining/${st.adrnr}/beitrittslink`, {});
