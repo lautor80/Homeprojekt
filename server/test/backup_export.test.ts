@@ -365,8 +365,11 @@ test('WebDAV: Adresse und PROPFIND-Antwort', () => {
 
 test('Vollständigkeit: fehlende Bereiche und Tabellen werden erkannt, Übersicht je Bereich', () => {
   const m = { schemas: ['core', 'tco'], tabellen: [{ name: 'core.users' }, { name: 'tco.mitglieder' }] as any[] };
-  assert.deepEqual(fehlendeTabellen(m, ['core.users', 'tco.mitglieder', 'transport.auftraege'], ['core', 'tco', 'transport']),
-    ['Bereich Transport', 'transport.auftraege']);
+  // Bereichsname laut Modul (in diesem Test ist Transport nicht aktiv – dann die Kennung)
+  const f = fehlendeTabellen(m, ['core.users', 'tco.mitglieder', 'transport.auftraege'], ['core', 'tco', 'transport']);
+  assert.equal(f.length, 2);
+  assert.match(f[0], /^Bereich [Tt]ransport$/);
+  assert.equal(f[1], 'transport.auftraege');
   assert.deepEqual(fehlendeTabellen(m, ['core.users', 'tco.mitglieder'], ['core', 'tco']), []);
   assert.equal(bereichsUebersicht({ schemas: ['core', 'transport'], tabellen: [{ name: 'core.a' }, { name: 'core.b' }, { name: 'transport.x' }] as any[] },
     (s) => (s === 'core' ? 'Basis (Benutzer, …)' : 'Transport')), 'Basis 2, Transport 1 Tabellen');
