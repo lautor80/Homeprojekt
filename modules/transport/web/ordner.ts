@@ -147,6 +147,34 @@ async function freierName(ordner: FileSystemDirectoryHandle, name: string): Prom
   return `${stamm} (${Date.now()})${endung}`;
 }
 
+/** Datei aus einem Unterordner des Auftragsordners lesen (z. B. Eingang/); null = nicht vorhanden oder kein Zugriff */
+export async function dateiLesenUnterordner(nr: string, unterordner: string, datei: string, anfordern = false): Promise<File | null> {
+  const o = await auftragsOrdner(nr, { anfordern, anlegen: false });
+  if (!o) return null;
+  try { return await (await (await o.ordner.getDirectoryHandle(sauber(unterordner))).getFileHandle(datei)).getFile(); } catch { return null; }
+}
+
+export interface OrdnerEintrag extends OrdnerDatei { /** Unterordner (leer = direkt im Auftragsordner) */ unterordner: string }
+
+/** Alle Dateien des Auftragsordners samt Unterordnern (eine Ebene, z. B. Eingang/); null = kein Zugriff/kein Ordner gewählt */
+export async function ordnerInhalt(nr: string, anfordern = false): Promise<{ basis: string; dateien: OrdnerEintrag[] } | null> {
+  const h = await ordnerBereit(anfordern);
+  if (!h) return null;
+  const o = await auftragsOrdner(nr, { anlegen: false });
+  if (!o) return { basis: h.name, dateien: [] };
+  const dateien: OrdnerEintrag[] = [];
+  const lesen = async (ordner: Ordner, unterordner: string) => {
+    for await (const e of ordner.values()) {
+      if (e.kind === 'file') {
+        const f = await (e as FileSystemFileHandle).getFile();
+        dateien.push({ name: f.name, groesse: f.size, geaendert: f.lastModified, unterordner });
+      } else if (!unterordner) await lesen(e as Ordner, e.name);
+    }
+  };
+  await lesen(o.ordner, '');
+  return { basis: o.basis, dateien: dateien.sort((a, b) => a.unterordner.localeCompare(b.unterordner, 'de') || b.geaendert - a.geaendert) };
+}
+
 /** Datei aus dem Ordner des Auftrags lesen */
 export async function dateiLesen(nr: string, datei: string): Promise<File | null> {
   const o = await auftragsOrdner(nr, { anlegen: false });

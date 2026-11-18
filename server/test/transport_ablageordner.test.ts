@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { anzeigePfad, auftragsPfad, ORDNER_ALT, ordnerSchluessel, ordnerWahl } from '../../modules/transport/web/ordner-schluessel.js';
+import { anzeigePfad, auftragsPfad, eingangName, ORDNER_ALT, ordnerSchluessel, ordnerWahl } from '../../modules/transport/web/ordner-schluessel.js';
 import { kuerzen } from '../../modules/transport/server/pdf/layout.js';
 import { Pdf } from '../src/lib/pdfdoc.js';
 
@@ -41,4 +41,11 @@ test('Ablageordner: jedes Dokument liegt unter <Ordner>/<Jahr>/<Auftragsnummer>/
   assert.deepEqual(auftragsPfad('H-17'), ['Sonstige', 'H-17']);
   assert.equal(anzeigePfad('Aufträge', '2026_1235', 'Angebot: Müller/Söhne?.pdf'), 'Aufträge/2026/2026_1235/Angebot_ Müller_Söhne_.pdf');
   assert.equal(anzeigePfad('Aufträge', '2026_1235'), 'Aufträge/2026/2026_1235');
+});
+
+test('Posteingang: Dateiname im Unterordner Eingang – gemeldeter Name, sonst der bereinigte', () => {
+  assert.equal(eingangName({ datei: 'Scan.pdf', ablage_name: 'Scan (2).pdf' }), 'Scan (2).pdf');
+  assert.equal(eingangName({ datei: '2026-11-18 Re: AW/ORDER?.pdf' }), '2026-11-18 Re_ AW_ORDER_.pdf');
+  assert.equal(eingangName({ datei: 'Bild.png', ablage_name: '  ' }), 'Bild.png');
+  assert.equal(eingangName({ datei: '' }), 'Datei');
 });

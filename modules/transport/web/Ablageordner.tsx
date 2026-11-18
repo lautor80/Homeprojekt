@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Button, FlexBox, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { createPortal } from 'react-dom';
+import { Bar, Button, Dialog, FlexBox, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
 import { Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { DocsDialog, type Doc } from './dialogs';
 import { dat } from './util';
 import {
-  anzeigePfad, auftragsOrdner, dateienImOrdner, dateiLesen, ordnerBereit, ordnerEntfernen, ordnerMoeglich, ordnerStatus, ordnerWaehlen,
-  type OrdnerDatei,
+  anzeigePfad, auftragsOrdner, dateienImOrdner, dateiLesen, dateiLesenUnterordner, ordnerBereit, ordnerEntfernen, ordnerInhalt, ordnerMoeglich, ordnerStatus, ordnerWaehlen,
+  type OrdnerDatei, type OrdnerEintrag,
 } from './ordner';
 
 /**
@@ -57,12 +58,79 @@ export function AblageOrdnerEinstellung() {
 
 const groesse = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
 
+const symbol = (name: string) => (/\.pdf$/i.test(name) ? 'pdf-attachment' : /\.(png|jpe?g|gif|webp|heic|tiff?)$/i.test(name) ? 'picture' : 'document');
+
+/**
+ * Ordner des Auftrags per Knopfdruck öffnen: Der Browser darf den Windows-Explorer nicht starten und kennt den vollen Pfad
+ * nicht – deshalb zeigt das Portal den Inhalt selbst (Auftragsordner und Unterordner wie „Eingang“); jede Datei öffnet sich
+ * per Klick direkt aus dem Ordner. „Pfad kopieren“ legt den Pfad ab dem Ablageordner in die Zwischenablage.
+ */
+export function OrdnerDialog({ nr, unterordner, onClose }: { nr: string; /** nur diesen Unterordner zeigen (z. B. „Eingang“) */ unterordner?: string; onClose: () => void }) {
+  const [daten, setDaten] = useState<{ basis: string; dateien: OrdnerEintrag[] } | null | undefined>(undefined);
+  const [docs, setDocs] = useState<Doc[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const lade = (anfordern = false) => ordnerInhalt(nr, anfordern).then(setDaten).catch((e) => setError((e as Error).message));
+  useEffect(() => { lade(); }, [nr]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dateien = (daten?.dateien ?? []).filter((x) => unterordner == null || x.unterordner === unterordner);
+  const gruppen = [...new Set(dateien.map((x) => x.unterordner))];
+  const pfad = daten ? [anzeigePfad(daten.basis, nr), unterordner].filter(Boolean).join('/') : '';
+
+  const oeffnen = async (x: OrdnerEintrag) => {
+    const f = x.unterordner ? await dateiLesenUnterordner(nr, x.unterordner, x.name) : await dateiLesen(nr, x.name);
+    if (!f) return setError(`${x.name} ist im Ordner nicht mehr vorhanden.`);
+    const url = URL.createObjectURL(f);
+    if (/\.pdf$/i.test(x.name)) setDocs([{ url, filename: x.name, lokal: true }]);
+    else { window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60_000); }
+  };
+
+  return createPortal(
+    <Dialog open headerText={`Ordner ${pfad || `Auftrag ${nr}`}`} onClose={onClose} style={{ width: 'min(42rem, 96vw)' }}
+            footer={<Bar endContent={<>
+              <Button icon="copy" disabled={!pfad} onClick={() => { navigator.clipboard?.writeText(pfad.replace(/\//g, '\\')).then(() => toast('Pfad kopiert')).catch(() => undefined); }}>Pfad kopieren</Button>
+              <Button onClick={onClose}>Schließen</Button>
+            </>} />}>
+      {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+      {daten === undefined && <Text>Lade …</Text>}
+      {daten === null && (
+        <MessageStrip hideCloseButton design="Information">
+          Kein Zugriff auf den Ablageordner. <Link onClick={() => lade(true)}>Zugriff erlauben</Link>
+        </MessageStrip>
+      )}
+      {daten && !dateien.length && <Text className="portal-muted">Der Ordner ist leer.</Text>}
+      {gruppen.map((g) => (
+        <div key={g || '.'} style={{ marginBottom: '0.75rem' }}>
+          <FlexBox alignItems="Center" style={{ gap: '0.5rem', margin: '0.25rem 0' }}>
+            <Icon name={g ? 'open-folder' : 'folder'} /><Text><b>{g || 'Auftragsordner'}</b> <span className="portal-muted">· {dateien.filter((x) => x.unterordner === g).length}</span></Text>
+          </FlexBox>
+          <div className="portal-ad">
+            {dateien.filter((x) => x.unterordner === g).map((x) => (
+              <div key={`${g}/${x.name}`} className="portal-ad__zeile">
+                <Icon name={symbol(x.name)} />
+                <div style={{ minWidth: 0 }}>
+                  <Link onClick={() => oeffnen(x)}>{x.name}</Link>
+                  <div className="portal-muted portal-small">{dat(new Date(x.geaendert).toISOString().slice(0, 10))} · {groesse(x.groesse)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Text className="portal-muted portal-small">
+        Der Browser kann den Windows-Explorer nicht selbst öffnen – die Dateien öffnen sich hier per Klick. Für den Explorer: „Pfad kopieren“ (Pfad ab Ihrem Ablageordner).
+      </Text>
+      <DocsDialog docs={docs} onClose={() => { docs?.forEach((d) => URL.revokeObjectURL(d.url)); setDocs(null); }} />
+    </Dialog>,
+    document.body,
+  );
+}
+
 /** Auftrag → Dokumente: Dateien im Ablageordner des Auftrags, Öffnen direkt aus dem Ordner */
 export function OrdnerDateien({ nr, version }: { nr: string; version?: number }) {
   const [daten, setDaten] = useState<{ basis: string; dateien: OrdnerDatei[] } | null | undefined>(undefined);
   const [eingerichtet, setEingerichtet] = useState(false);
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState(false);
   const lade = async () => {
     try {
       setEingerichtet(!!(await ordnerStatus()));
@@ -88,7 +156,9 @@ export function OrdnerDateien({ nr, version }: { nr: string; version?: number })
         <Icon name="folder" />
         <Text><b>Ablageordner</b> <span className="portal-muted">{daten ? anzeigePfad(daten.basis, nr) : ''}</span></Text>
         <Button design="Transparent" icon="refresh" tooltip="Neu einlesen" onClick={lade} />
+        <Button design="Transparent" icon="open-folder" tooltip="Auftragsordner mit allen Unterordnern anzeigen" onClick={() => setDialog(true)}>Ordner öffnen</Button>
       </FlexBox>
+      {dialog && <OrdnerDialog nr={nr} onClose={() => { setDialog(false); lade(); }} />}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
       {daten === null && (
         <MessageStrip hideCloseButton design="Information">

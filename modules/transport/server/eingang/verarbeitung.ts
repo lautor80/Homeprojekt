@@ -504,12 +504,13 @@ export async function offeneNeuBewerten(wer: string): Promise<{ vorgaenge: numbe
 }
 
 /** Browser hat die Datei in den Ablageordner (Unterordner Eingang/) geschrieben → Inhalt löschen */
-export async function uebernommen(id: number, wer: string) {
+/** ablageName: Name der Datei im Ablageordner (Unterordner Eingang/), wie ihn der Browser gemeldet hat */
+export async function uebernommen(id: number, wer: string, ablageName?: string | null) {
   const [d] = await sql`select status from transport.eing_dokumente where id = ${id}`;
   if (!d) throw new BusinessError('Das Dokument gibt es nicht (mehr).', 404);
   if (d.status === 'uebernommen') return { status: 'uebernommen', text: 'Bereits übernommen.' };
   if (d.status !== 'wartet') throw new BusinessError('Das Dokument wartet nicht auf die Übernahme in den Ablageordner.');
-  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = null, bearbeitet_am = now(), bearbeitet_von = ${wer} where id = ${id}`;
+  await sql`update transport.eing_dokumente set status = 'uebernommen', inhalt = null, ablage_name = ${ablageName?.trim() || null}, bearbeitet_am = now(), bearbeitet_von = ${wer} where id = ${id}`;
   await speicherPruefen();
   return { status: 'uebernommen', text: 'In den Ablageordner übernommen.' };
 }
