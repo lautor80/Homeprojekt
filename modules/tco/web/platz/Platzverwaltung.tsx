@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { feld } from '@core/components/Varianten';
+import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus,
+  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus,
   Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Switch, Tab, TabContainer, Text, TextArea, Title, ToggleButton, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -21,6 +21,8 @@ import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { DialogFuss } from '@core/components/DialogFuss';
+import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
+import { LEERER_ABO_FILTER, aboFilterAktiv, aboFilterLesen, aboPlaetze, aboTitel, abosFiltern, type AboFilter } from './aboFilter';
 import { AboSaisonVerwaltung } from './AboSaisonVerwaltung';
 
 /**
@@ -820,36 +822,77 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const navigate = useNavigate();
   const [abos, setAbos] = useState<AboZeile[] | null>(null);
   const [ende, setEnde] = useState<{ bid: string; ab: string } | null>(null);
+  // Schnellfilter und Tabellenstand (Spalten, Spaltenfilter, Sortierung) – beides wandert in die Ansichtsvariante
+  const [filter, setFilter] = useState<AboFilter>({ ...LEERER_ABO_FILTER });
+  const [stand, setStand] = useState<TabellenStand>({ ...LEERER_STAND });
   const laden = () => api.get<AboZeile[]>(`${PA}/abos`).then(setAbos);
   useEffect(() => {
     laden();
   }, []);
 
-  const columns: AnalyticalTableColumnDefinition[] = [
+  const columns = useMemo((): AnalyticalTableColumnDefinition[] => [
     { Header: 'Abo', accessor: 'bid', width: 110 },
     { Header: 'Mitglied', accessor: 'kunde', minWidth: 160 },
     { Header: 'Platz', accessor: 'platz', width: 110 },
-    { Header: 'Termin', id: 'termin', width: 170, Cell: ({ row }: Cell) => `${row.original.wochentag}s ${row.original.von}–${row.original.bis}` },
-    { Header: 'Zeitraum', id: 'zeitraum', width: 190, Cell: ({ row }: Cell) => `${dat(row.original.erster)} – ${dat(row.original.letzter)}` },
+    { Header: 'Termin', id: 'termin', width: 170, accessor: (r: Record<string, unknown>) => { const a = r as unknown as AboZeile; return `${a.wochentag}s ${a.von}–${a.bis}`; } },
+    { Header: 'Zeitraum', id: 'zeitraum', width: 190, accessor: (r: Record<string, unknown>) => (r as unknown as AboZeile).erster, Cell: ({ row }: Cell) => `${dat(row.original.erster)} – ${dat(row.original.letzter)}` },
     { Header: 'Termine', accessor: 'termine', width: 80, hAlign: 'End' },
     { Header: 'kommend', accessor: 'kommend', width: 85, hAlign: 'End' },
-    { Header: 'Abrechnung', accessor: 'abgerechnet', width: 120, Cell: ({ value }: Cell) => (value ? <ObjectStatus state="Positive">abgerechnet</ObjectStatus> : <ObjectStatus state="Critical">offen</ObjectStatus>) },
+    { Header: 'Abrechnung', accessor: 'abgerechnet', width: 120, disableFilters: true, Cell: ({ value }: Cell) => (value ? <ObjectStatus state="Positive">abgerechnet</ObjectStatus> : <ObjectStatus state="Critical">offen</ObjectStatus>) },
     { Header: 'Notiz', accessor: 'text', minWidth: 120 },
     { Header: 'Herkunft', accessor: 'quelle', width: 95 },
     {
-      Header: '', id: 'aktion', width: 110,
+      Header: '', id: 'aktion', width: 110, disableFilters: true, disableSortBy: true,
       Cell: ({ row }: Cell) => (row.original.kommend
         ? <Button design="Transparent" icon="stop" onClick={() => setEnde({ bid: row.original.bid, ab: isoHeute() })}>Beenden</Button> : null),
     },
-  ];
+  ], []);
+  const t = useTabellenAnsicht({ spalten: columns, stand, onStand: setStand, aktiv: true, pflicht: ['bid', 'aktion'], titel: 'Abo-Tabelle anpassen' });
+  const tabellenOptionen = useMemo(() => ({ ...t.optionen }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const alle = useMemo(() => abos ?? [], [abos]);
+  const zeilen = useMemo(() => abosFiltern(alle, filter), [alle, filter]);
+  const plaetze = useMemo(() => aboPlaetze(alle, filter.platz), [alle, filter.platz]);
+  const gefiltert = aboFilterAktiv(filter);
+  const setF = (x: Partial<AboFilter>) => setFilter((f) => ({ ...f, ...x }));
+  const auswahl = (e: { detail: { selectedOption: unknown } }) => (e.detail.selectedOption as HTMLElement).dataset.k ?? '';
+
   return (
     <>
       <Toolbar design="Transparent">
-        <Title level="H5">Abos ({abos?.length ?? 0})</Title>
+        <Title level="H5">{aboTitel(zeilen.length, alle.length, gefiltert)}</Title>
         <ToolbarSpacer />
+        <Varianten repid="tco.platzverwaltung.abos" ansicht={{ ...filter, spalten: stand }} leer={{ ...LEERER_ABO_FILTER, spalten: LEERER_STAND }}
+                   onAnwenden={(a) => { setFilter(aboFilterLesen(a)); setStand(standLesen(a.spalten)); }} />
+        {t.knopf}
         {can('tco.platz:serie') && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/serienbuchung')}>Abo anlegen (Serienbuchung)</Button>}
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={abos ?? []} loading={!abos} visibleRows={Math.max(abos?.length ?? 0, 1)} noDataText="Keine laufenden oder kürzlich beendeten Abos" />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <Input icon={<Icon name="search" />} placeholder="Suchen (Mitglied, Abo-Nr., Notiz)" accessibleName="Abos durchsuchen" showClearIcon
+               value={filter.suche} onInput={(e) => setF({ suche: e.target.value })} style={{ width: 'min(20rem, 100%)' }} />
+        <Select accessibleName="Status" style={{ width: '11rem' }} onChange={(e) => setF({ status: auswahl(e) as AboFilter['status'] })}>
+          <Option data-k="alle" selected={filter.status === 'alle'}>Status: alle</Option>
+          <Option data-k="laufend" selected={filter.status === 'laufend'}>laufend</Option>
+          <Option data-k="beendet" selected={filter.status === 'beendet'}>beendet</Option>
+        </Select>
+        <Select accessibleName="Herkunft" style={{ width: '11rem' }} onChange={(e) => setF({ herkunft: auswahl(e) as AboFilter['herkunft'] })}>
+          <Option data-k="alle" selected={filter.herkunft === 'alle'}>Herkunft: alle</Option>
+          <Option data-k="Portal" selected={filter.herkunft === 'Portal'}>Portal</Option>
+          <Option data-k="EP3" selected={filter.herkunft === 'EP3'}>EP3</Option>
+        </Select>
+        <Select accessibleName="Platz" style={{ width: '11rem' }} onChange={(e) => setF({ platz: auswahl(e) })}>
+          <Option data-k="" selected={!filter.platz}>Platz: alle</Option>
+          {plaetze.map((p) => <Option key={p} data-k={p} selected={filter.platz === p}>{p}</Option>)}
+        </Select>
+        <Select accessibleName="Abrechnung" style={{ width: '12rem' }} onChange={(e) => setF({ abrechnung: auswahl(e) as AboFilter['abrechnung'] })}>
+          <Option data-k="alle" selected={filter.abrechnung === 'alle'}>Abrechnung: alle</Option>
+          <Option data-k="abgerechnet" selected={filter.abrechnung === 'abgerechnet'}>abgerechnet</Option>
+          <Option data-k="offen" selected={filter.abrechnung === 'offen'}>offen</Option>
+        </Select>
+        {gefiltert && <Button design="Transparent" icon="clear-filter" onClick={() => setFilter({ ...LEERER_ABO_FILTER })}>Filter zurücksetzen</Button>}
+      </div>
+      {t.leiste}
+      <AnalyticalTable minRows={1} columns={t.spalten} data={zeilen} loading={!abos} visibleRows={Math.max(zeilen.length, 1)} {...t.tabelle} reactTableOptions={tabellenOptionen}
+                       noDataText={gefiltert || stand.filter.length ? 'Kein Abo passt zum Filter.' : 'Keine laufenden oder kürzlich beendeten Abos'} />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Laufende Abos – im Portal angelegte und aus EP3 übernommene (Herkunft) – sowie beendete der letzten 180 Tage. Neue Abos legt der Hallenwart über die Serienbuchung an
         (auch mehrere Plätze, zweiwöchentlich oder monatlich). Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
