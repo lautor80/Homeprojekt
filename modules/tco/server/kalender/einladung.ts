@@ -49,7 +49,7 @@ export async function eingeladene(db: Db, e: Pick<Event, 'id' | 'gruppen'>): Pro
   const ids = e.gruppen.length ? await mitUntergruppen(db, e.gruppen) : null;
   const rows = await db`
     select m.adrnr, m.vorname, m.nachname, nullif(trim(coalesce(m.email, '')), '') as email,
-           exists (select 1 from tco.mitgliedera a where a.adrnr = m.adrnr and a.benutzer_id is not null) as zugang,
+           exists (select 1 from tco.mitglied_benutzer a where a.adrnr = m.adrnr) as zugang,
            (select a.status from tco.kal_anmeldungen a where a.event_id = ${e.id} and a.adrnr = m.adrnr) as status
       from tco.mitglieder m
      where (m.austritt is null or m.austritt >= current_date)

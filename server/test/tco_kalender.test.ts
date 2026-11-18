@@ -51,8 +51,10 @@ before(async () => {
   for (const u of ['anna', 'ben', 'ohne']) {
     assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: ['MITGLIED'] })).status, 200);
   }
-  await sql`update tco.mitgliedera set benutzer_id = (select id from core.users where username = 'anna') where adrnr = ${ANNA}`;
-  await sql`update tco.mitgliedera set benutzer_id = (select id from core.users where username = 'ben') where adrnr = ${BEN}`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${ANNA}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, ${ANNA} from core.users where username = 'anna' on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${BEN}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, ${BEN} from core.users where username = 'ben' on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
 });
 after(async () => { await app?.close(); await sql.end(); });
 
@@ -402,7 +404,8 @@ test('Familie über Zahler und Familienverknüpfung: wer über jemanden zahlt, m
     (${MARA}, 'Mara', 'Lob', '2022-01-01', null, '1982-02-02'), (${MILO}, 'Milo', 'Lob', '2022-01-01', ${MARA}, '2015-06-06')`;
   await sql`insert into tco.mitgliedera (adrnr) values (${GINA})`;
   assert.equal((await admin('POST', '/api/admin/users', { username: 'gina', displayName: 'gina', password: 'start-passwort', roles: ['MITGLIED'] })).status, 200);
-  await sql`update tco.mitgliedera set benutzer_id = (select id from core.users where username = 'gina') where adrnr = ${GINA}`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${GINA}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, ${GINA} from core.users where username = 'gina' on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   const gina = await anmelden('gina');
   let r = await admin('POST', K, { titel: 'Sommerfest Familie', beginn: tage(51) });
   const fest = r.body.id as number;

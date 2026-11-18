@@ -30,7 +30,7 @@ import { mailFehlerErledigen, abweisen, aboLauf, aktion, bewerben, freigeben, ra
  * Platzbuchung (Freiplätze und Halle).
  *
  * „Platz buchen“ (tco.platzbuchung:edit): Das Mitglied wird AUSSCHLIESSLICH aus dem angemeldeten Benutzer
- * ermittelt (tco.mitgliedera.benutzer_id). Eigene Buchungen mit Preis anzeigen, anlegen, ändern, stornieren;
+ * ermittelt (tco.mitglied_benutzer). Eigene Buchungen mit Preis anzeigen, anlegen, ändern, stornieren;
  * fremde Buchungen erscheinen nur als „belegt“ (ohne Name, Nummer, Text). Abos sind nur lesbar.
  *
  * „Platzverwaltung“ (tco.platz:admin): Plätze und Buchungsregeln, Belegung mit Namen, Abos, Benutzerzuordnung.
@@ -335,7 +335,7 @@ export async function platzRoutes(app: FastifyInstance) {
                                                           from tco.kunden where benutzer_id = ${uid} order by zalias limit 1`)[0] ?? null;
   /** eigene Stammdaten: Kundenstammsatz (externe) bzw. zugeordnetes Mitglied (Hallennutzer mit Mitgliedszuordnung) */
   const eigenesMitglied = async (uid: string) => (await DB`select m.adrnr, m.mitglnrn, m.anrede, m.geschlecht, m.vorname, m.nachname, m.strasse, m.plz, m.ort, m.email, m.telefon
-                                                            from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${uid}`)[0] ?? null;
+                                                            from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${uid}`)[0] ?? null;
   const anredeAus = (g: unknown, anrede?: unknown) => {
     if (['Herr', 'Frau', 'Divers'].includes(String(anrede ?? ''))) return String(anrede);
     const x = String(g ?? '').toUpperCase();
@@ -408,8 +408,9 @@ export async function platzRoutes(app: FastifyInstance) {
   /** Auswahl: aktive Mitglieder ohne Benutzer */
   app.get('/registrierungen/mitglieder/kandidaten', kassenwart, async () => DB`
     select m.adrnr, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.mitglnrn
-      from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
-     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null
+      from tco.mitglieder m
+     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
+       and not exists (select 1 from tco.mitglied_benutzer a where a.adrnr = m.adrnr)
      order by m.nachname, m.vorname`);
   app.post('/registrierungen/mitglieder/:id/freigeben', kassenwart, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);

@@ -216,7 +216,7 @@ test('Registrierung Mitglied: Abgleich, Arbeitsvorrat, Freigabe durch den Kassen
   assert.match(r.body.text, /Rolle Mitglied/);
   const [u] = await sql`select u.id, array_agg(ur.role_id) as rollen from core.users u join core.user_roles ur on ur.user_id = u.id where u.username = 'maria' group by u.id`;
   assert.deepEqual(u.rollen, ['MITGLIED']);
-  const [z] = await sql`select benutzer_id from tco.mitgliedera where adrnr = '0000000501'`;
+  const [z] = await sql`select benutzer_id from tco.mitglied_benutzer where adrnr = '0000000501'`;
   assert.equal(z.benutzer_id, u.id);
   assert.equal((await client()('POST', '/api/auth/login', { username: 'maria', password: 'marias-kennwort' })).status, 200);
 
@@ -309,7 +309,7 @@ test('Mitgliedsantrag online: Familie mit SEPA, Übernahme legt Mitglieder und B
   const [s] = await sql`select mandatsnr from tco.sepa where adrnr = ${m[0].adrnr}`;
   assert.ok(s?.mandatsnr);
   const b = await sql`select u.username, ur.role_id, u.email from core.users u join core.user_roles ur on ur.user_id = u.id
-                       join tco.mitgliedera a on a.benutzer_id = u.id where a.adrnr = any(${m.map((x) => x.adrnr)}) order by u.username`;
+                       join tco.mitglied_benutzer a on a.benutzer_id = u.id where a.adrnr = any(${m.map((x) => x.adrnr)}) order by u.username`;
   assert.equal(b.length, 2);
   assert.ok(b.every((x) => x.role_id === 'MITGLIED'));
   // Einmal-Links und Aufnahmebestätigung
@@ -460,7 +460,7 @@ test('Einladung zum Vereinsportal: QR-Code per Mail/Brief und Schnellweg bei der
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const [u] = await sql`select u.id, array_agg(ur.role_id) as rollen from core.users u join core.user_roles ur on ur.user_id = u.id where u.username = 'nina' group by u.id`;
   assert.deepEqual(u.rollen, ['MITGLIED']);
-  assert.equal((await sql`select benutzer_id from tco.mitgliedera where adrnr = '0000000601'`)[0].benutzer_id, u.id);
+  assert.equal((await sql`select benutzer_id from tco.mitglied_benutzer where adrnr = '0000000601'`)[0].benutzer_id, u.id);
   assert.equal((await gast('POST', `${T}/einladung`, { token: t, benutzername: 'nina2', passwort: 'ninas-kennwort', datenschutz: true })).status, 410, 'nur einmal');
   assert.equal((await client()('POST', '/api/auth/login', { username: 'nina', password: 'ninas-kennwort' })).status, 200);
 

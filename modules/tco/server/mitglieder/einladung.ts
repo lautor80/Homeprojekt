@@ -10,7 +10,7 @@ const t = (x: unknown) => condense(String(x ?? ''));
 import { mailSenden, type Wiederholung } from '../kommunikation.js';
 import { C, kuerzen, LEFT } from '../pdf/layout.js';
 import { Brief } from './pdf.js';
-import { benutzerAnlegen, freierBenutzername, ROLLE_MITGLIED } from '../platz/registrierung.js';
+import { benutzerAnlegen, freierBenutzername, mitgliedBenutzerVerknuepfen, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
  * Einladung zum Vereinsportal (#10): persönlicher Link mit QR-Code für aktive Mitglieder ohne Benutzer.
@@ -23,7 +23,7 @@ export type Weg = 'MAIL' | 'BRIEF' | 'REGISTRIERUNG';
 
 const aktivOhneBenutzer = (db: Db) => db`
   m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
-  and not exists (select 1 from tco.mitgliedera a where a.adrnr = m.adrnr and a.benutzer_id is not null)`;
+  and not exists (select 1 from tco.mitglied_benutzer a where a.adrnr = m.adrnr)`;
 
 export async function kandidaten(db: Db) {
   return db`
@@ -216,8 +216,7 @@ export async function einloesen(tx: Db, token: string, d: { benutzername: string
     username: d.benutzername, displayName: t(`${e.nachname ?? ''}, ${e.vorname ?? ''}`).replace(/^, |, $/g, ''),
     email: e.email, passwortHash: await hashPassword(d.passwort), mussAendern: false, rolle: ROLLE_MITGLIED,
   });
-  await tx`insert into tco.mitgliedera (adrnr, benutzer_id) values (${e.adrnr}, ${uid})
-           on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  await mitgliedBenutzerVerknuepfen(tx, e.adrnr, uid);
   await tx`update tco.einladungen set verwendet_am = now(), benutzer_id = ${uid} where id = ${e.id}`;
   await tx`update tco.einladungen set gueltig_bis = least(gueltig_bis, now()) where adrnr = ${e.adrnr} and verwendet_am is null`;
   return { username: d.benutzername, name: t(`${e.vorname ?? ''} ${e.nachname ?? ''}`) };

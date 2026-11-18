@@ -66,8 +66,9 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.mahn_posten` |  |  | ● |  |  |  |  |  |  |  |  |  |  | ● |
 | `tco.mailtexte` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.mgnotiz` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
+| `tco.mitglied_benutzer` | ● |  | ● | ● |  |  | ● |  |  |  | ● |  | ● | ● |
 | `tco.mitglieder` | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  | ● | ● |
-| `tco.mitgliedera` | ● |  | ● | ● |  |  | ● |  |  | ● | ● |  | ● | ● |
+| `tco.mitgliedera` | ● |  | ● | ● |  |  |  |  |  | ● | ● |  | ● | ● |
 | `tco.mitgliedsantraege` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.plaetze` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.platzbelegung_ausfall` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |

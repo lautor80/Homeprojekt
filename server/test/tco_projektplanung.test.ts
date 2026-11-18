@@ -283,7 +283,10 @@ async function benutzer(c: ReturnType<typeof client>, name: string, adrnr: strin
   const r = await call('POST', '/api/admin/users', { username: name, displayName: name, password: 'geheim-geheim-1', roles: ['PP_TEST_MITGLIED'] });
   assert.ok(r.status < 300, JSON.stringify(r.body));
   await sql`update core.users set must_change_password = false where username = ${name}`;
-  if (adrnr) await sql`insert into tco.mitgliedera (adrnr, benutzer_id) select ${adrnr}, id from core.users where username = ${name} on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  if (adrnr) {
+    await sql`insert into tco.mitgliedera (adrnr) values (${adrnr}) on conflict (adrnr) do nothing`;
+    await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, ${adrnr} from core.users where username = ${name} on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
+  }
   assert.equal((await c('POST', '/api/auth/login', { username: name, password: 'geheim-geheim-1' })).status, 200);
 }
 

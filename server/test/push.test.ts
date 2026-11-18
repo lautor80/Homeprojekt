@@ -169,7 +169,8 @@ test('Verein: abgesagte Veranstaltung geht an die Angemeldeten und ihre Familie;
   const MIA = '0000000701', KIND = '0000000702', K = '/api/m/tco/kalender';
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, adrnrkih, geburtsdatum) values
     (${MIA}, 'Mia', 'Matchball', '2022-01-01', null, '1985-05-05'), (${KIND}, 'Kai', 'Matchball', '2022-01-01', ${MIA}, '2014-03-03')`;
-  await sql`insert into tco.mitgliedera (adrnr, benutzer_id) select ${MIA}, id from core.users where username = 'mia'`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${MIA}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, ${MIA} from core.users where username = 'mia' on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   const { privat: _p, ...g } = G_MIA;
   assert.equal((await mia('POST', '/api/push/geraet', g)).status, 200);
 

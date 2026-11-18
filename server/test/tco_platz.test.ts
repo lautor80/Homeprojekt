@@ -105,25 +105,34 @@ test('Platzverwaltung: Plätze mit Regeln anlegen, Prüfungen, Benutzer zuordnen
   // Benutzer ↔ Mitglied
   assert.equal((await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('anna'), adrnr: ANNA })).status, 200);
   assert.equal((await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('bert'), adrnr: BERT })).status, 200);
-  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ohne'), adrnr: ANNA });
-  assert.equal(r.status, 400);
-  assert.match(r.body.message, /bereits dem Benutzer anna zugeordnet/);
   r = await admin('GET', `${A}/benutzer`);
   assert.equal(r.body.benutzer.find((b: { username: string }) => b.username === 'anna').adrnr, ANNA);
 
-  // Zuordnung eines deaktivierten Benutzers (Altkonto) blockiert nicht, sondern wird übernommen
+  // Ein Mitglied kann mehreren Benutzern zugeordnet sein; ein Benutzer gehört zu höchstens einem Mitglied
+  const benutzerVon = async (adrnr: string) => (await sql`select u.username from tco.mitglied_benutzer mb join core.users u on u.id = mb.benutzer_id
+                                                          where mb.adrnr = ${adrnr} order by u.username`).map((x) => x.username as string);
+  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ohne'), adrnr: ANNA });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await benutzerVon(ANNA), ['anna', 'ohne']);
+  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ohne'), adrnr: BERT });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([await benutzerVon(ANNA), await benutzerVon(BERT)], [['anna'], ['bert', 'ohne']], 'neue Zuordnung ersetzt die bisherige des Benutzers');
+  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ohne'), adrnr: null });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(await benutzerVon(BERT), ['bert'], 'Lösen betrifft nur diesen Benutzer');
+
+  // Mitglied mit altem und neuem Zugang
   const INA = '0000000491';
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt) values (${INA}, 'Ina', 'Altkonto', '2020-01-01')`;
   for (const u of ['ina_alt', 'ina_neu']) {
     assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: ['SPIELER'] })).status, 200);
+    r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId(u), adrnr: INA });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
   }
-  assert.equal((await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ina_alt'), adrnr: INA })).status, 200);
+  assert.deepEqual(await benutzerVon(INA), ['ina_alt', 'ina_neu']);
   r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ina_neu'), adrnr: INA });
-  assert.match(r.body.message, /bereits dem Benutzer ina_alt zugeordnet/, 'aktiver Inhaber blockiert weiterhin');
-  await sql`update core.users set active = false where username = 'ina_alt'`;
-  r = await admin('PUT', `${A}/benutzer`, { benutzer_id: await userId('ina_neu'), adrnr: INA });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal((await sql`select benutzer_id::text as b from tco.mitgliedera where adrnr = ${INA}`)[0].b, await userId('ina_neu'));
+  assert.equal(r.status, 200, 'erneutes Zuordnen ändert nichts');
+  assert.deepEqual(await benutzerVon(INA), ['ina_alt', 'ina_neu']);
 
   // ohne Verwaltungsrecht keine Verwaltung
   assert.equal((await bert('GET', `${A}/plaetze`)).status, 403);
@@ -1268,7 +1277,8 @@ test('Arbeitsvorrat Kassenwart: Upload mit Folgeaktion „Überweisung an Einrei
   // Einreicher mit Benutzer und Bankverbindung im Mitgliederstamm
   const [einreicher] = await sql`insert into core.users (username, display_name, password_hash) values ('vera.vorstand', 'Vera Vorstand', 'x') returning id`;
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, iban1, bic1, bank1) values ('0000009901', 'Vera', 'Vorstand', '2010-01-01', 'DE89 3704 0044 0532 0130 00', 'COBADEFFXXX', 'Commerzbank')`;
-  await sql`insert into tco.mitgliedera (adrnr, benutzer_id) values ('0000009901', ${einreicher.id}) on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  await sql`insert into tco.mitgliedera (adrnr) values ('0000009901') on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${einreicher.id}, '0000009901') on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   await withChange({ userId: null, username: 'test', action: 'UPLOAD' }, async (tx) => {
     await uploadMerken(tx, { dok_id: 4720, titel: 'Pokale Sporthaus', datei: 'pokale.pdf', folgeaktion: 'Überweisung an Einreicher', einreicher: 'Vera Vorstand', benutzer_id: einreicher.id });
   });
@@ -1332,7 +1342,8 @@ test('Platz buchen für die Familie: Rechnung an die Person bzw. ihren abweichen
   await sql`insert into tco.familienverknuepfungen (adrnr_a, adrnr_b) values (${VERA}, ${GERD})`;
   for (const [u, a] of [['vera', VERA], ['kai', KAI]] as const) {
     assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: ['SPIELER'] })).status, 200);
-    await sql`insert into tco.mitgliedera (adrnr, benutzer_id) values (${a}, ${await userId(u)}) on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+    await sql`insert into tco.mitgliedera (adrnr) values (${a}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${await userId(u)}, ${a}) on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   }
   const vera = await anmelden('vera'), kai = await anmelden('kai');
   let r = await admin('POST', `${A}/plaetze`, { ...HALLE, name: 'Familienhalle', aliase: '', sort: 9 });

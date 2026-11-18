@@ -5,6 +5,7 @@ import { minuten, preisBerechnen, preiseLesen, type Preise } from '../halle/prei
 import { adrnrAusZuid } from '../kommunikation.js';
 import { familienAdrnrs } from '../mitglieder/familie.js';
 import { festeLesen, festeTermine, type BelegungArt } from './belegungen.js';
+import { mitgliedBenutzerVerknuepfen } from './registrierung.js';
 
 /**
  * Platzbuchung (Freiplätze und Halle) – grob nach dem EP3-Buchungssystem:
@@ -274,7 +275,7 @@ export function preisVon(p: Platz | undefined, datum: string, von: number, bis: 
 // ---------------------------------------------------------------------------
 
 export async function ichLesen(db: Db, benutzerId: string): Promise<Ich | null> {
-  const [m] = await db`select a.adrnr, m.vorname, m.nachname from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr
+  const [m] = await db`select a.adrnr, m.vorname, m.nachname from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr
                         where a.benutzer_id = ${benutzerId}`;
   if (m) {
     const name = condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`);
@@ -287,22 +288,18 @@ export async function ichLesen(db: Db, benutzerId: string): Promise<Ich | null> 
   return { benutzerId, adrnr: adrnrAusZuid(k.zuid), name, kunde: name.toUpperCase() };
 }
 
-/** Benutzer ↔ Mitglied (dieselbe Zuordnung wie bei „Meine Trainingszeiten“) */
+/** Benutzer ↔ Mitglied (dieselbe Zuordnung wie bei „Meine Trainingszeiten“); null = Zuordnung des Benutzers lösen */
 export async function benutzerZuordnen(tx: Db, benutzerId: string, adrnr: string | null) {
   const [u] = await tx`select display_name from core.users where id = ${benutzerId}`;
   if (!u) throw new BusinessError('Benutzer nicht gefunden.');
   if (adrnr) {
     const [m] = await tx`select vorname, nachname from tco.mitglieder where adrnr = ${adrnr}`;
     if (!m) throw new BusinessError('Mitglied nicht gefunden.');
-    // Nur ein aktiver Benutzer hält die Zuordnung fest; die eines deaktivierten (Altkonto) wird übernommen
-    const [belegt] = await tx`select u.display_name from tco.mitgliedera a join core.users u on u.id = a.benutzer_id
-                               where a.adrnr = ${adrnr} and a.benutzer_id <> ${benutzerId} and u.active`;
-    if (belegt) throw new BusinessError(`${condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`)} ist bereits dem Benutzer ${belegt.display_name} zugeordnet.`);
   }
-  await tx`update tco.mitgliedera set benutzer_id = null where benutzer_id = ${benutzerId}`;
-  if (adrnr) {
-    await tx`insert into tco.mitgliedera (adrnr, benutzer_id) values (${adrnr}, ${benutzerId})
-             on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  // Ein Mitglied kann mehreren Benutzern zugeordnet sein (tco.mitglied_benutzer), ein Benutzer höchstens einem Mitglied
+  if (!adrnr) await tx`delete from tco.mitglied_benutzer where benutzer_id = ${benutzerId}`;
+  else {
+    await mitgliedBenutzerVerknuepfen(tx, adrnr, benutzerId);
     // Abos, die die Platzverwaltung vor der Zuordnung für das Mitglied angelegt hat, gehören jetzt dem Benutzer
     const ich = await ichLesen(tx, benutzerId);
     if (ich) await tx`update tco.bookings set benutzer_id = ${benutzerId} where quelle = ${QUELLE} and benutzer_id is null and upper(kunde) = ${ich.kunde}`;
@@ -686,7 +683,7 @@ export async function aboAnlegen(tx: Db, e: AboEingabe, ueberspringen: boolean):
   }
   if (!frei.length) throw new BusinessError('Kein freier Termin in diesem Zeitraum.');
   const platz = await platzLesen(tx, e.platz_id);
-  const [lnk] = await tx`select benutzer_id::text from tco.mitgliedera where adrnr = ${e.adrnr}`;
+  const [lnk] = await tx`select benutzer_id::text from tco.mitglied_benutzer where adrnr = ${e.adrnr} order by angelegt_am, benutzer_id limit 1`;
   const bid = await neueBid(tx);
   const von = minuten(e.von);
   const bis = e.bis === '24:00' ? 1440 : minuten(e.bis);
@@ -805,7 +802,7 @@ export async function benutzerListe(db: Db) {
     select u.id::text as id, u.display_name as name, u.username, a.adrnr,
            nullif(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '')), '') as mitglied
       from core.users u
-      left join tco.mitgliedera a on a.benutzer_id = u.id
+      left join tco.mitglied_benutzer a on a.benutzer_id = u.id
       left join tco.mitglieder m on m.adrnr = a.adrnr
      where u.active
      order by u.display_name`;

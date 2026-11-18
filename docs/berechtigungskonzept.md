@@ -79,7 +79,7 @@ Benutzer aus Mitgliedern anlegen, Einladungen mit QR-Code, Zuordnung und Massenz
 Wer im Verein die Zugänge betreut, erhält damit zwangsläufig das Recht aus Befund 1.
 
 **Befund 3 – Die Zuordnung Benutzer ↔ Mitglied liegt an drei Stellen.**
-`tco.mitgliedera.benutzer_id` entscheidet, wessen Daten ein Benutzer in „Meine Mitgliedschaft“, „Platz buchen“
+`tco.mitglied_benutzer` (bis Migration 096 `tco.mitgliedera.benutzer_id`) entscheidet, wessen Daten ein Benutzer in „Meine Mitgliedschaft“, „Platz buchen“
 und „Mein Verzehr“ sieht und ändert (Kontaktdaten, Bankverbindung, Kündigung, Buchungen auf dessen Rechnung).
 Setzen dürfen sie drei verschiedene Rechte, keines schließt die Zuordnung auf sich selbst aus:
 
@@ -268,7 +268,7 @@ Diese Regeln setzt der Server in `server/src/routes/admin.ts` durch, unabhängig
 
 ### 4.7 Identität und eigene Daten
 
-- **Eine Stelle für die Zuordnung:** Nur `tco.zugaenge:edit` (und `ADMIN`) setzt `mitgliedera.benutzer_id` und
+- **Eine Stelle für die Zuordnung:** Nur `tco.zugaenge:edit` (und `ADMIN`) setzt `mitglied_benutzer` und
   `kunden.benutzer_id`. Platzverwaltung und Trainerpflege zeigen die Zuordnung nur noch an.
 - **Nie sich selbst:** Der Bearbeiter kann den eigenen Benutzer nicht zuordnen oder umhängen.
 - **Mit Beleg und Begründung:** Jede Zuordnung an ein Mitglied, das bisher keinen Zugang hatte, verlangt eine

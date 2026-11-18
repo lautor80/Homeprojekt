@@ -50,9 +50,9 @@ export function namenLesen(text: string): string[] {
 export async function abgleichen(db: Db, namen: string[]): Promise<{ eingabe: string; treffer: Empfaenger[] }[]> {
   const benutzer = await db`
     select u.id::text, u.username, u.display_name, nullif(trim(coalesce(u.email, '')), '') as email,
-           (select nullif(trim(coalesce(m.email, '')), '') from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id limit 1) as m_email,
+           (select nullif(trim(coalesce(m.email, '')), '') from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id limit 1) as m_email,
            (select array_agg(n) from (
-              select trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '')) as n from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id
+              select trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '')) as n from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id
               union select trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '')) from tco.kunden k where k.benutzer_id = u.id
               union select trim(k.zalias) from tco.kunden k where k.benutzer_id = u.id) x where n <> '') as namen
       from core.users u where u.active`;
@@ -60,7 +60,7 @@ export async function abgleichen(db: Db, namen: string[]): Promise<{ eingabe: st
     select m.adrnr, trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '')) as name, nullif(trim(coalesce(m.email, '')), '') as email
       from tco.mitglieder m
      where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
-       and not exists (select 1 from tco.mitgliedera a where a.adrnr = m.adrnr and a.benutzer_id is not null)`;
+       and not exists (select 1 from tco.mitglied_benutzer a where a.adrnr = m.adrnr)`;
   const index = new Map<string, Empfaenger[]>();
   const merke = (schluessel: string, e: Empfaenger) => {
     const k = namensSchluessel(schluessel);
@@ -125,8 +125,8 @@ export async function zugangSenden(tx: Db, v: Verein, key: string, o: Versand): 
     const id = key.slice(2);
     const [u] = await tx`
       select u.id::text, u.username, u.display_name, nullif(trim(coalesce(u.email, '')), '') as email,
-             (select m.vorname from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id limit 1) as m_vorname,
-             (select nullif(trim(coalesce(m.email, '')), '') from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id limit 1) as m_email,
+             (select m.vorname from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id limit 1) as m_vorname,
+             (select nullif(trim(coalesce(m.email, '')), '') from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = u.id limit 1) as m_email,
              (select k.vorname from tco.kunden k where k.benutzer_id = u.id limit 1) as k_vorname
         from core.users u where u.id::text = ${id} and u.active`;
     if (!u) throw new BusinessError('Benutzer nicht gefunden oder gesperrt.');
@@ -140,7 +140,7 @@ export async function zugangSenden(tx: Db, v: Verein, key: string, o: Versand): 
   } else if (key.startsWith('M:')) {
     const adrnr = key.slice(2);
     const [m] = await tx`select m.* from tco.mitglieder m where m.adrnr = ${adrnr} and m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
-                           and not exists (select 1 from tco.mitgliedera a where a.adrnr = m.adrnr and a.benutzer_id is not null)`;
+                           and not exists (select 1 from tco.mitglied_benutzer a where a.adrnr = m.adrnr)`;
     if (!m) throw new BusinessError('Mitglied nicht aktiv oder hat inzwischen einen Benutzer.');
     an = String(m.email ?? '').trim();
     const name = condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`);

@@ -10,7 +10,7 @@ export const HALLE_HINWEIS = `Die Halle ist grundsätzlich verschlossen. Bitte v
 
 /** Adressnummer zu einem Portal-Benutzer: Mitglied, sonst EP3-Kunde (99…) */
 export const ADRNR_ZU_BENUTZER = (spalte: string) => `coalesce(
-  (select a.adrnr from tco.mitgliedera a where a.benutzer_id = ${spalte} limit 1),
+  (select a.adrnr from tco.mitglied_benutzer a where a.benutzer_id = ${spalte} limit 1),
   (select '99' || lpad((k.zuid::bigint)::text, 8, '0') from tco.kunden k where k.benutzer_id = ${spalte} and k.zuid ~ '^[0-9]+$' order by k.zalias limit 1))`;
 
 /** Hallenschlüssel am Tag ausgegeben (und nicht zurückgenommen)? */

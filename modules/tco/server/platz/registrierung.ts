@@ -17,7 +17,7 @@ import { sha256 } from '../../../../server/src/auth.js';
  * - Bestehende EP3-Nutzer: Beim Registrieren kann das EP3-Konto (Benutzername/E-Mail + EP3-Kennwort) nachgewiesen
  *   werden; das Kennwort wird übernommen (bcrypt-Hash aus bs_users.pw, im Kundenimport Spalte PW). Die Zuordnung
  *   zum EP3-Kunden sorgt dafür, dass die bestehenden EP3-Buchungen als eigene erscheinen und abgerechnet werden.
- * - Freigabe: wahlweise Mitglied (tco.mitgliedera.benutzer_id), EP3-Kunde (tco.kunden.benutzer_id) oder neuer
+ * - Freigabe: wahlweise Mitglied (tco.mitglied_benutzer, auch wenn das Mitglied schon Benutzer hat), EP3-Kunde (tco.kunden.benutzer_id) oder neuer
  *   Kunde ohne Mitgliedschaft (eigener Kundenstammsatz, Adressnummer 99…).
  */
 export const ROLLE = 'HALLENNUTZER';
@@ -32,6 +32,19 @@ export const SYSTEMROLLEN: Record<string, { name: string; text: string; rechte: 
   [ROLLE_MITGLIED]: { name: 'Mitglied', text: 'Vereinsmitglieder: eigene Mitgliedsdaten sehen, ändern und kündigen („Meine Mitgliedschaft“), eigene Einzelbuchungen und eigener Clubhaus-Verzehr („Mein Verzehr“), An-/Abmeldung im Vereinskalender und Schäden melden. Wird bei Registrierung bzw. Benutzeranlage automatisch vergeben; ändern kann sie nur ein Administrator.', rechte: ROLLE_MITGLIED_RECHTE },
 };
 const GESPERRT = ['blocked', 'deleted', 'disabled'];
+
+/**
+ * Benutzer einem Mitglied zuordnen. Ein Mitglied kann mehreren Benutzern zugeordnet sein (weitere Benutzer bleiben erhalten),
+ * ein Benutzer höchstens einem Mitglied (eine bisherige Zuordnung des Benutzers wird ersetzt). zuid: EP3-Kunde, falls das Mitglied noch keinen hat.
+ */
+export async function mitgliedBenutzerVerknuepfen(tx: Db, adrnr: string, benutzerId: string, zuid?: string | null) {
+  await tx`insert into tco.mitgliedera (adrnr, zuid) values (${adrnr}, ${zuid ?? null}) on conflict (adrnr) do nothing`;
+  if (zuid) await tx`update tco.mitgliedera set zuid = ${zuid} where adrnr = ${adrnr} and zuid is null`;
+  const [bisher] = await tx`select adrnr from tco.mitglied_benutzer where benutzer_id = ${benutzerId}`;
+  if (bisher?.adrnr === adrnr) return;
+  if (bisher) await tx`delete from tco.mitglied_benutzer where benutzer_id = ${benutzerId}`;
+  await tx`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${benutzerId}, ${adrnr})`;
+}
 
 export const istBcrypt = (h: string | null | undefined) => !!h && /^\$2[abxy]?\$\d\d\$/.test(h);
 const name = (v?: string | null, n?: string | null) => condense(`${v ?? ''} ${n ?? ''}`);
@@ -143,7 +156,7 @@ export async function bestandFinden(db: Db, art: 'MITGLIED' | 'EXTERN', email: s
     const t = await db`select m.* from tco.mitglieder m
                         where lower(trim(coalesce(m.email, ''))) = ${mail} and m.geburtsdatum = ${geburtsdatum}::date
                           and m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
-                          and not exists (select 1 from tco.mitgliedera a where a.adrnr = m.adrnr and a.benutzer_id is not null)`;
+                          and not exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = m.adrnr)`;
     if (t.length !== 1) return null;
     const m = t[0];
     return { art, schluessel: m.adrnr, anrede: anrede(m.anrede, m.geschlecht), vorname: condense(m.vorname ?? ''), nachname: condense(m.nachname ?? ''),
@@ -152,7 +165,7 @@ export async function bestandFinden(db: Db, art: 'MITGLIED' | 'EXTERN', email: s
   const t = await db`select k.* from tco.kunden k
                       where lower(trim(coalesce(k.email, ''))) = ${mail} and k.benutzer_id is null
                         and coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
-                        and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)`;
+                        and not exists (select 1 from tco.mitgliedera a join tco.mitglied_benutzer mb on mb.adrnr = a.adrnr where a.zuid = k.zuid)`;
   if (t.length !== 1) return null;
   const k = t[0];
   return { art, schluessel: k.zuid, anrede: anrede(null, k.geschlecht), vorname: condense(k.vorname ?? ''), nachname: condense(k.nachname ?? '') || condense(k.zalias ?? ''),
@@ -248,8 +261,8 @@ async function vorschlaege(db: Db, p: { email: string | null; vorname: string | 
   if (p.geburtsdatum || p.mitgliedsnr) {
     const nr = condense(p.mitgliedsnr ?? '').replace(/^0+/, '');
     for (const m of await db`
-      select m.adrnr, m.vorname, m.nachname, m.austritt::text, m.mitglnrn, m.strasse, m.plz, a.benutzer_id is not null as hat_benutzer
-        from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
+      select m.adrnr, m.vorname, m.nachname, m.austritt::text, m.mitglnrn, m.strasse, m.plz, exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = m.adrnr) as hat_benutzer
+        from tco.mitglieder m
        where m.eintritt is not null
          and ${p.geburtsdatum ? db`m.geburtsdatum = ${p.geburtsdatum}::date` : db`ltrim(coalesce(m.mitglnrn, ''), '0') = ${nr || '§'}`}
          and (upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) = ${voll || '§'}
@@ -334,10 +347,8 @@ export async function benutzerAnlegen(tx: Db, b: { username: string; displayName
 async function mitgliedZuordnen(tx: Db, benutzerId: string, adrnr: string) {
   const [m] = await tx`select adrnr from tco.mitglieder where adrnr = ${adrnr}`;
   if (!m) throw new BusinessError('Mitglied nicht gefunden.');
-  const [andere] = await tx`select u.username from tco.mitgliedera a join core.users u on u.id = a.benutzer_id where a.adrnr = ${adrnr} and a.benutzer_id <> ${benutzerId}`;
-  if (andere) throw new BusinessError(`Das Mitglied ist bereits dem Benutzer ${andere.username} zugeordnet.`);
-  await tx`insert into tco.mitgliedera (adrnr, benutzer_id) values (${adrnr}, ${benutzerId})
-           on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  // weitere Benutzer des Mitglieds bleiben zugeordnet
+  await mitgliedBenutzerVerknuepfen(tx, adrnr, benutzerId);
 }
 
 async function kundeZuordnen(tx: Db, benutzerId: string, zuid: string) {
@@ -419,7 +430,7 @@ export async function ep3Abgleich(db: Db) {
      order by k.zuid, k.zalias`;
   const benutzer = await db`select u.id::text as id, u.username, u.display_name as name, lower(coalesce(u.email, '')) as email, a.adrnr,
                                      upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) as mitglied_name, lower(trim(coalesce(m.email, ''))) as mitglied_email
-                              from core.users u left join tco.mitgliedera a on a.benutzer_id = u.id left join tco.mitglieder m on m.adrnr = a.adrnr where u.active`;
+                              from core.users u left join tco.mitglied_benutzer a on a.benutzer_id = u.id left join tco.mitglieder m on m.adrnr = a.adrnr where u.active`;
   const out = [];
   for (const k of kunden) {
     const email = (k.email ?? '').trim().toLowerCase();
@@ -448,7 +459,7 @@ export async function ep3Abgleich(db: Db) {
 export async function ep3Verknuepfen(tx: Db, zuid: string, benutzerId: string): Promise<string> {
   const [u] = await tx`select username from core.users where id = ${benutzerId}`;
   if (!u) throw new BusinessError('Benutzer nicht gefunden.');
-  const [a] = await tx`select adrnr from tco.mitgliedera where benutzer_id = ${benutzerId}`;
+  const [a] = await tx`select adrnr from tco.mitglied_benutzer where benutzer_id = ${benutzerId}`;
   if (a) {
     await tx`update tco.mitgliedera set zuid = ${zuid} where adrnr = ${a.adrnr}`;
     await tx`update tco.kunden set benutzer_id = null where zuid = ${zuid}`;
@@ -474,8 +485,9 @@ export async function ep3Anlegen(tx: Db, zuid: string): Promise<{ username: stri
   const k = await tx`select * from tco.kunden where zuid = ${zuid} order by zalias`;
   if (!k.length) throw new BusinessError('EP3-Kunde nicht gefunden.');
   if (k.some((x) => x.benutzer_id)) throw new BusinessError('Dieser EP3-Kunde hat bereits einen Portalzugang.');
-  const [mz] = await tx`select a.adrnr, a.benutzer_id from tco.mitgliedera a where a.zuid = ${zuid}`;
-  if (mz?.benutzer_id) throw new BusinessError('Das zugehörige Mitglied hat bereits einen Benutzer.');
+  const [mz] = await tx`select a.adrnr, exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = a.adrnr) as hat_benutzer
+                         from tco.mitgliedera a where a.zuid = ${zuid}`;
+  if (mz?.hat_benutzer) throw new BusinessError('Das zugehörige Mitglied hat bereits einen Benutzer.');
   const username = await freierBenutzername(tx, k[0].email, k[0].zalias, zuid);
   const mitHash = k.find((x) => istBcrypt(x.pw_hash));
   let startkennwort: string | null = null;
@@ -529,7 +541,7 @@ export async function ep3BenutzerAnlegen(tx: Db, zuids?: string[]): Promise<{ an
       from tco.kunden k
      where coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
        and k.benutzer_id is null
-       and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)
+       and not exists (select 1 from tco.mitgliedera a join tco.mitglied_benutzer mb on mb.adrnr = a.adrnr where a.zuid = k.zuid)
        ${zuids ? tx`and k.zuid = any(${zuids})` : tx``}
      order by k.zuid, k.zalias`;
   const r = { angelegt: 0, mitglieder: 0, ohneKennwort: 0, uebersprungen: 0, ohneBuchung: kunden.filter((k) => !k.aktiv).length };
@@ -543,7 +555,7 @@ export async function ep3BenutzerAnlegen(tx: Db, zuids?: string[]): Promise<{ an
     // Mitglied: ZUID, sonst E-Mail, sonst Name – nur wenn es noch keinen Benutzer hat
     const [m] = await tx`
       select m.adrnr from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
-       where a.benutzer_id is null and (m.austritt is null or m.austritt >= current_date)
+       where not exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = m.adrnr) and (m.austritt is null or m.austritt >= current_date)
          and (a.zuid = ${k.zuid}
               or (${email} <> '' and lower(trim(coalesce(m.email, ''))) = ${email})
               or (${voll} <> '' and upper(trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, ''))) = ${voll}))
@@ -558,8 +570,7 @@ export async function ep3BenutzerAnlegen(tx: Db, zuids?: string[]): Promise<{ an
     try {
       const uid = await benutzerAnlegen(tx, { username, displayName: anzeige, email: email || null, passwortHash: hash, mussAendern });
       if (m) {
-        await tx`insert into tco.mitgliedera (adrnr, benutzer_id, zuid) values (${m.adrnr}, ${uid}, ${k.zuid})
-                 on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id, zuid = coalesce(tco.mitgliedera.zuid, excluded.zuid)`;
+        await mitgliedBenutzerVerknuepfen(tx, m.adrnr, uid, k.zuid);
         r.mitglieder++;
       } else {
         await tx`update tco.kunden set benutzer_id = ${uid} where zuid = ${k.zuid}`;

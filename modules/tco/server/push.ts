@@ -49,9 +49,9 @@ export async function familienBenutzer(db: Db, adrnrs: string[]): Promise<string
       select k.b from fam f join beide k on k.a = f.adrnr
     )
     select distinct a.benutzer_id
-      from fam f join tco.mitgliedera a on a.adrnr = f.adrnr
+      from fam f join tco.mitglied_benutzer a on a.adrnr = f.adrnr
       join tco.mitglieder m on m.adrnr = f.adrnr
-     where a.benutzer_id is not null and (m.austritt is null or m.austritt >= current_date)`;
+     where (m.austritt is null or m.austritt >= current_date)`;
   return rows.map((r) => r.benutzer_id as string);
 }
 

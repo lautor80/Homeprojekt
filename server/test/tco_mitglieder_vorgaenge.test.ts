@@ -45,7 +45,8 @@ before(async () => {
     ('0000000207', 'Otto', 'Passiv', '1960-01-01', '2000-01-01', '207', 'L', 'DE02120300000000202051', null)`;
   await sql`update tco.mitglieder set adrnrkih = '0000000205' where adrnr = '0000000206'`;
   // „Meine Mitgliedschaft“: der angemeldete Benutzer ist Paula Eltern, Kim zahlt über sie
-  await sql`insert into tco.mitgliedera (adrnr, benutzer_id) select '0000000205', id from core.users where username = 'admin'`;
+  await sql`insert into tco.mitgliedera (adrnr) values ('0000000205') on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, '0000000205' from core.users where username = 'admin' on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   await sql`insert into tco.vertraege (adrnr, vertragnr, art, artname, mitglnr, sollstellung, vertragbegin, vertragende, betrag) values
     ('0000000201', '1', '5', 'Erwachsene', '201', 'halbjährlich', '2020-01-01', null, 60),
     ('0000000202', '1', '3', 'Jugendliche', '202', 'halbjährlich', '2020-01-01', null, 20),

@@ -78,7 +78,7 @@ test('Mitglieder als Benutzer anlegen: E-Mail als Anmeldename, Familienadresse, 
   for (const u of ['paula.portal', 'kim.portal', 'ohne.mail']) {
     assert.deepEqual((await sql`select ur.role_id from core.user_roles ur join core.users x on x.id = ur.user_id where x.username = ${u}`).map((x) => x.role_id), ['MITGLIED'], u);
   }
-  assert.equal((await sql`select a.adrnr from tco.mitgliedera a join core.users u on u.id = a.benutzer_id where u.username = 'ohne.mail'`)[0].adrnr, '0000000504');
+  assert.equal((await sql`select a.adrnr from tco.mitglied_benutzer a join core.users u on u.id = a.benutzer_id where u.username = 'ohne.mail'`)[0].adrnr, '0000000504');
   // erneut: nichts doppelt
   r = await admin('POST', `${M}/benutzer-anlegen`, { mail: false });
   assert.equal(r.body.angelegt.length, 0);
@@ -505,6 +505,16 @@ test('Benutzer ↔ Mitglied/EP3: einzeln zuordnen und initiales Mapping', async 
   r = await admin('PUT', `${M}/benutzer/${kai.benutzerId}/zuordnung`, { zuid: null });
   assert.equal(r.status, 200);
   assert.equal((await admin('GET', `${M}/benutzer/${kai.benutzerId}/zuordnung`)).body.ep3, null);
+  // ein Mitglied kann mehreren Benutzern zugeordnet sein: Kai bekommt zusätzlich Zugriff auf Ines' Mitgliedschaft
+  r = await admin('PUT', `${M}/benutzer/${kai.benutzerId}/zuordnung`, { adrnr: '0000000506', rolleMitglied: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await admin('GET', `${M}/benutzer/${kai.benutzerId}/zuordnung`);
+  assert.deepEqual([r.body.mitglied.adrnr, r.body.mitglied.weitere, r.body.ep3?.zuid], ['0000000506', ['ines'], '67']);
+  r = await admin('GET', `${M}/benutzer/${ines.benutzerId}/zuordnung`);
+  assert.deepEqual([r.body.mitglied.adrnr, r.body.mitglied.weitere], ['0000000506', ['kai.k']], 'Ines bleibt zugeordnet');
+  r = await admin('PUT', `${M}/benutzer/${kai.benutzerId}/zuordnung`, { adrnr: null });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await admin('GET', `${M}/benutzer/${ines.benutzerId}/zuordnung`)).body.mitglied.weitere, []);
   const kim = client();
   assert.equal((await kim('POST', '/api/auth/login', { username: 'kim.portal', password: 'mein-neues-kennwort' })).status, 200);
   assert.equal((await kim('GET', `${M}/benutzer-mapping`)).status, 403);
@@ -545,7 +555,7 @@ test('Benutzer löschen: nur ohne Buchungen, nicht sich selbst; Zuordnung zum EP
 });
 
 test('Mitglieder-Benutzer haben immer das Recht für Hallenbuchungen', async () => {
-  const rollen = async (adrnr: string) => (await sql`select ur.role_id from tco.mitgliedera a join core.user_roles ur on ur.user_id = a.benutzer_id where a.adrnr = ${adrnr} order by 1`).map((x) => x.role_id);
+  const rollen = async (adrnr: string) => (await sql`select ur.role_id from tco.mitglied_benutzer a join core.user_roles ur on ur.user_id = a.benutzer_id where a.adrnr = ${adrnr} order by 1`).map((x) => x.role_id);
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname, email, eintritt, mitglnrn) values
     ('0000000591', 'Hanna', 'Halle', 'hanna.halle@example.org', '2024-01-01', '591'), ('0000000592', 'Hugo', 'Halle', 'hugo.halle@example.org', '2024-01-01', '592')`;
   // Standard: die Rolle Mitglied enthält „Platz buchen“ – keine weitere Rolle nötig
