@@ -128,6 +128,11 @@ Start automatisch migriert. Daten und Backups liegen in den Volumes `portal_db`,
 # mit einzelnen XML-Dateien, manifest.xml zuletzt, pruefsummen.sha256; nach jeder Übertragung Prüfung der Vollständigkeit.
 # Scheitert der Tageslauf (z. B. Nextcloud kurz nicht erreichbar), neuer Versuch am selben Tag 30 Min., 1½ und 3 Std. nach der Uhrzeit;
 # Netzfehler nennen die Ursache (ECONNREFUSED, ENOTFOUND, Zeitüberschreitung …) statt nur „fetch failed“.
+# Vollständigkeit: der Export enthält jede Tabelle jedes aktiven Bereichs (Basis, TC Oberthal, Transport/Euroflex …; nie: Sitzungen,
+# Sperren; Änderungsbelege nach Einstellung) – vor dem Upload gegen die Datenbank geprüft, sonst Fehler; die Meldung nennt je Bereich
+# die Zahl der Tabellen. Wird der Server während eines Exports neu gestartet (z. B. automatisches Update), bleibt der Status nicht mehr
+# auf „läuft …“ stehen: der Lauf gilt als abgebrochen (Fehler im Arbeitsvorrat) und wird – ist die letzte erfolgreiche Sicherung
+# älter als ein Tag – sofort wiederholt (abgebrochen/sofortNachAbbruch in server/src/backup-export.ts).
 docker compose exec backup sh /backup.sh now  # Backup sofort
 docker compose logs -f app                    # Log ansehen
 ```

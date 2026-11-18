@@ -120,6 +120,25 @@ async function tabellen(db: Tx, schemas: string[]): Promise<{ name: string; spal
   return rows.map((r) => ({ name: r.name as string, spalten: r.spalten as { name: string; typ: string }[] }));
 }
 
+/**
+ * Tabellen, die eine vollständige Sicherung enthalten muss: alle Tabellen aller aktiven Bereiche (Basis und jedes aktive
+ * Modul, z. B. tco und transport = Euroflex) außer den nie gesicherten; Änderungsbelege nur mitAudit.
+ */
+export async function sollTabellen(mitAudit: boolean): Promise<string[]> {
+  return (await tabellen(sql as unknown as Tx, aktiveSchemas())).map((t) => t.name).filter((n) => !NIE.has(n) && (mitAudit || !AUDIT.has(n)));
+}
+
+/** Vollständigkeit einer Sicherung: fehlende Bereiche und Tabellen gegenüber dem aktuellen Stand der Datenbank */
+export function fehlendeTabellen(m: Pick<Manifest, 'schemas' | 'tabellen'>, soll: string[], schemas = aktiveSchemas()): string[] {
+  const ist = new Set(m.tabellen.map((t) => t.name));
+  return [...schemas.filter((s) => !m.schemas.includes(s)).map((s) => `Bereich ${schemaText(s)}`), ...soll.filter((t) => !ist.has(t))];
+}
+
+/** je Bereich die Zahl der Tabellen, z. B. „Basis 23, TC Oberthal 130, Transport 13 Tabellen“ */
+export function bereichsUebersicht(m: Pick<Manifest, 'schemas' | 'tabellen'>, text: (s: string) => string = schemaText): string {
+  return m.schemas.map((s) => `${text(s).split(' (')[0]} ${m.tabellen.filter((t) => t.name.startsWith(`${s}.`)).length}`).join(', ') + ' Tabellen';
+}
+
 /** Übersicht für die Oberfläche: je Schema Tabellen und Zeilen */
 export async function uebersicht() {
   const schemas = aktiveSchemas();

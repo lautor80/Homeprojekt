@@ -2,7 +2,7 @@ import { nextcloudZugang } from './lib/nextcloud.js';
 import type { FastifyBaseLogger } from 'fastify';
 import { sql, type Tx } from './db.js';
 import { BusinessError } from './errors.js';
-import { dateiAsync, dateiname, schaetzung, sichern, speichern, type Dateiformat } from './backup.js';
+import { bereichsUebersicht, dateiAsync, dateiname, fehlendeTabellen, schaetzung, sichern, sollTabellen, speichern, type Dateiformat } from './backup.js';
 import { laufend, starten, type Job, type Phase } from './backup-job.js';
 import { dateienUebertragen, uebertragungPruefen } from './backup-dateien.js';
 import { WebDav, WebDavFehler } from './lib/webdav.js';
@@ -15,6 +15,9 @@ import { WebDav, WebDavFehler } from './lib/webdav.js';
  * XML-Dateien (siehe backup-dateien.ts). In jedem Fall wird nach dem Upload geprüft, ob alles vollständig angekommen ist.
  * Ergebnis und Fehler stehen in core.backup_export (Anzeige in Administration → System → Sicherung und im Arbeitsvorrat).
  */
+
+/** Status während eines Laufs (core.backup_export.letzte_meldung) */
+export const LAEUFT = 'läuft …';
 
 /** eine Datei (.portal, ZIP mit XML) oder „dateien“ = dateiweise Übertragung einzelner XML-Dateien ohne ZIP */
 export type ExportFormat = Dateiformat | 'dateien';
@@ -84,7 +87,7 @@ export async function exportAusfuehren(c: ExportCfg, von: string, setze: (p: Pha
   const fehlt = cfgPruefen(c);
   if (fehlt.length) throw new BusinessError(`Nextcloud-Export unvollständig eingerichtet: ${fehlt.join(', ')}.`);
   const start = Date.now();
-  await statusSetzen({ letzter_lauf: new Date().toISOString(), letzte_meldung: 'läuft …' });
+  await statusSetzen({ letzter_lauf: new Date().toISOString(), letzte_meldung: LAEUFT });
   try {
     const gesamt = Math.max(1, await schaetzung({ mitAenderungsbelegen: c.mit_aenderungsbelegen }));
     setze('lesen', 0);
@@ -92,6 +95,10 @@ export async function exportAusfuehren(c: ExportCfg, von: string, setze: (p: Pha
       mitAenderungsbelegen: c.mit_aenderungsbelegen, von, art: 'automatisch', notiz: `Nextcloud-Export nach ${c.ordner}`,
       fortschritt: (f) => setze('lesen', Math.min(0.99, f.zeilen / gesamt), `Tabelle ${f.nr} von ${f.anzahl}: ${f.tabelle}`),
     });
+    // Vollständigkeit: jede Tabelle jedes aktiven Bereichs (Basis, TC Oberthal, Transport/Euroflex …) muss enthalten sein
+    const fehlen = fehlendeTabellen(inhalt.manifest, await sollTabellen(c.mit_aenderungsbelegen));
+    if (fehlen.length) throw new BusinessError(`Sicherung unvollständig – es fehlen ${fehlen.length}: ${fehlen.slice(0, 8).join(', ')}${fehlen.length > 8 ? ' …' : ''}`);
+    const bereiche = bereichsUebersicht(inhalt.manifest);
     const d = dav(c);
     const zeilen = inhalt.manifest.tabellen.reduce((s, t) => s + t.zeilen, 0);
     const pw = c.format === 'portal' ? c.datei_passwort || null : null;
@@ -135,7 +142,7 @@ export async function exportAusfuehren(c: ExportCfg, von: string, setze: (p: Pha
       }
     }
     const dauer = Math.round((Date.now() - start) / 1000);
-    const text = `${was}, ${dauer} s)` + (geloescht ? `, ${geloescht} ältere Sicherung(en) gelöscht.` : '.');
+    const text = `${was}, ${dauer} s). Enthalten: ${bereiche}` + (geloescht ? `; ${geloescht} ältere Sicherung(en) gelöscht.` : '.');
     await statusSetzen({ letzter_erfolg: new Date().toISOString(), letzte_meldung: text, letzte_datei: name, letzte_dauer_s: dauer, letzter_fehler: false });
     return { name, groesse, geloescht, text };
   } catch (e) {
@@ -202,6 +209,27 @@ export function faellig(c: ExportCfg & ExportStatus, jetzt = new Date()): boolea
   return !!w && h.zeit >= w;
 }
 
+/** Startzeit dieses Server-Prozesses: ein „läuft …“ von davor kann nur ein abgebrochener Lauf sein */
+const PROZESS_START = Date.now();
+/** so lange darf ein Export höchstens laufen, bevor er als abgebrochen gilt (auch bei mehreren Instanzen) */
+const HOECHSTDAUER_MS = 3 * 3600_000;
+
+/**
+ * Abgebrochener Lauf: Status steht noch auf „läuft …“, in diesem Prozess läuft aber nichts – der Server wurde währenddessen
+ * neu gestartet (z. B. automatisches Update) oder der Lauf dauert unmöglich lange. Ohne diese Erkennung bliebe der Status für
+ * immer auf „läuft …“: kein Fehler im Arbeitsvorrat und keine Wiederholung.
+ */
+export function abgebrochen(c: ExportStatus, laeuftHier: boolean, prozessStart = PROZESS_START, jetzt = Date.now()): boolean {
+  if (laeuftHier || c.letzte_meldung !== LAEUFT || !c.letzter_lauf) return false;
+  const start = new Date(c.letzter_lauf).getTime();
+  return start < prozessStart || jetzt - start > HOECHSTDAUER_MS;
+}
+
+/** nach einem Abbruch sofort neu versuchen, wenn die letzte erfolgreiche Sicherung älter als ein Tag ist */
+export function sofortNachAbbruch(c: ExportStatus, jetzt = Date.now()): boolean {
+  return !c.letzter_erfolg || jetzt - new Date(c.letzter_erfolg).getTime() > 24 * 3600_000;
+}
+
 let planer: ReturnType<typeof setInterval> | null = null;
 
 /** jede Minute prüfen, ob der tägliche Export fällig ist (nur im Server-Prozess, nicht in Tests) */
@@ -209,15 +237,22 @@ export function planerStarten(log: FastifyBaseLogger) {
   if (planer) return;
   const pruefen = async () => {
     try {
-      const c = await cfgLesen();
-      if (!faellig(c) || laufend()) return;
+      let c = await cfgLesen();
+      let sofort = false;
+      if (c.aktiv && abgebrochen(c, !!laufend())) {
+        await statusSetzen({ letzte_meldung: 'Abgebrochen: Der Server wurde während des Exports neu gestartet (z. B. Update) – der Export wird wiederholt.', letzter_fehler: true });
+        log.warn('Nextcloud-Export: abgebrochenen Lauf erkannt');
+        c = await cfgLesen();
+        sofort = sofortNachAbbruch(c) && !cfgPruefen(c).length;
+      }
+      if (!(sofort || faellig(c)) || laufend()) return;
       // mehrere Instanzen: den Lauf atomar beanspruchen – nur wer den gelesenen Stand noch vorfindet, exportiert
       const [frei] = await sql`update core.backup_export set letzter_lauf = now()
                                 where id = 1 and date_trunc('milliseconds', letzter_lauf) is not distinct from ${c.letzter_lauf}::timestamptz
                                 returning id`;
       if (!frei) return;
       const wiederholung = !!c.letzter_lauf && lokal(new Date(c.letzter_lauf)).datum === lokal(new Date()).datum;
-      log.info(wiederholung ? 'Täglicher Nextcloud-Export: neuer Versuch nach Fehlschlag' : 'Täglicher Nextcloud-Export startet');
+      log.info(sofort ? 'Nextcloud-Export: neuer Versuch nach Abbruch' : wiederholung ? 'Täglicher Nextcloud-Export: neuer Versuch nach Fehlschlag' : 'Täglicher Nextcloud-Export startet');
       const j = exportStarten(c, 'system (täglicher Nextcloud-Export)');
       while (!(j.phase === 'fertig' || j.phase === 'fehler')) await new Promise((r) => setTimeout(r, 2000));
       if (j.fehler) log.warn({ fehler: j.fehler }, 'Nextcloud-Export fehlgeschlagen'); else log.info(j.ergebnis, 'Nextcloud-Export fertig');

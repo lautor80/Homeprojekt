@@ -18,6 +18,7 @@ const { sql } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
+const { fehlendeTabellen, sichern, sollTabellen } = await import('../src/backup.js');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 function client() {
@@ -283,4 +284,18 @@ test('Rücksicherung eines Bereichs: Verweise auf inzwischen gelöschte Benutzer
   assert.equal(Number((await sql`select count(*)::int as n from tco.platzbelegungen`)[0].n), 1);
   // Systemrollen sind nach der Rücksicherung vorhanden
   assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.fanshop:display', 'tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.projektzeiten:edit', 'tco.schaden:melden', 'tco.verzehr:edit']);
+});
+
+test('Vollständige Sicherung (wie der tägliche Nextcloud-Export): jede Tabelle jedes Bereichs, auch Transport/Euroflex', async () => {
+  const soll = await sollTabellen(false);
+  const transport = soll.filter((t) => t.startsWith('transport.'));
+  // alle Tabellen der Transport-Migrationen, z. B. Aufträge, Adressen und der Posteingang
+  for (const t of ['transport.auftraege', 'transport.adressen', 'transport.fahrten', 'transport.eing_vorgaenge', 'transport.eing_dokumente', 'transport.workflow_einstellungen']) {
+    assert.ok(transport.includes(t), `${t} fehlt im Soll`);
+  }
+  const inhalt = await sichern({ mitAenderungsbelegen: false, von: 'test', art: 'automatisch' });
+  assert.deepEqual(inhalt.manifest.schemas, ['core', 'transport', 'tco']);
+  assert.deepEqual(fehlendeTabellen(inhalt.manifest, soll), []);
+  assert.equal(inhalt.manifest.tabellen.filter((t) => t.name.startsWith('transport.')).length, transport.length);
+  assert.ok(inhalt.manifest.tabellen.some((t) => t.name === 'transport.adressen' && t.zeilen >= 1), 'Euroflex-Daten enthalten');
 });

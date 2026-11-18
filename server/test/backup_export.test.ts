@@ -22,9 +22,9 @@ const { sql } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
-const { faellig, naechsterVersuch } = await import('../src/backup-export.js');
+const { abgebrochen, faellig, LAEUFT, naechsterVersuch, sofortNachAbbruch } = await import('../src/backup-export.js');
 const { davAntwort, davBasis, netzUrsache, WebDav } = await import('../src/lib/webdav.js');
-const { entpacken: lesen } = await import('../src/backup.js');
+const { bereichsUebersicht, entpacken: lesen, fehlendeTabellen, sollTabellen } = await import('../src/backup.js');
 const { zipSchreiben } = await import('../src/backup-xml.js');
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -200,6 +200,12 @@ test('Nextcloud-Export: Einrichtung, Test, Export, Aufbewahrung, Fehler', async 
   assert.equal(r.body.letzter_fehler, false);
   assert.equal(r.body.letzte_datei, path.posix.basename(hoch));
   assert.match(r.body.letzte_meldung, /hochgeladen .*verschlüsselt.*1 ältere Sicherung\(en\) gelöscht/);
+  // alle aktiven Bereiche samt Tabellenzahl in der Meldung (in diesem Test nur Basis und TC Oberthal aktiv)
+  assert.match(r.body.letzte_meldung, /Enthalten: Basis \d+, TC Oberthal \d+ Tabellen/);
+  const soll = await sollTabellen(false);
+  assert.ok(soll.includes('tco.mitglieder') && soll.includes('core.users') && !soll.includes('core.sessions'));
+  assert.deepEqual(fehlendeTabellen(inhalt.manifest, soll), [], 'jede Tabelle jedes aktiven Bereichs ist in der Sicherung');
+  assert.ok(soll.every((t) => inhalt.manifest.tabellen.some((x: any) => x.name === t)));
 
   // Fehlerfall: Speicher voll → Status und Arbeitsvorrat
   dav.voll = true;
@@ -355,4 +361,28 @@ test('WebDAV: Adresse und PROPFIND-Antwort', () => {
     { name: 'portal_2026-11-09_023000_automatisch.portal', ordner: false, groesse: 1234, geaendert: '2026-11-09T01:30:05.000Z' },
     { name: 'Unterordner', ordner: true, groesse: 0, geaendert: null },
   ]);
+});
+
+test('Vollständigkeit: fehlende Bereiche und Tabellen werden erkannt, Übersicht je Bereich', () => {
+  const m = { schemas: ['core', 'tco'], tabellen: [{ name: 'core.users' }, { name: 'tco.mitglieder' }] as any[] };
+  // Bereichsname laut Modul (in diesem Test ist Transport nicht aktiv – dann die Kennung)
+  const f = fehlendeTabellen(m, ['core.users', 'tco.mitglieder', 'transport.auftraege'], ['core', 'tco', 'transport']);
+  assert.equal(f.length, 2);
+  assert.match(f[0], /^Bereich [Tt]ransport$/);
+  assert.equal(f[1], 'transport.auftraege');
+  assert.deepEqual(fehlendeTabellen(m, ['core.users', 'tco.mitglieder'], ['core', 'tco']), []);
+  assert.equal(bereichsUebersicht({ schemas: ['core', 'transport'], tabellen: [{ name: 'core.a' }, { name: 'core.b' }, { name: 'transport.x' }] as any[] },
+    (s) => (s === 'core' ? 'Basis (Benutzer, …)' : 'Transport')), 'Basis 2, Transport 1 Tabellen');
+});
+
+test('Abgebrochener Lauf (Server-Neustart während des Exports) wird erkannt und sofort wiederholt', () => {
+  const st = { letzter_lauf: '2026-11-17T22:00:03Z', letzter_erfolg: '2026-11-16T19:23:02Z', letzte_meldung: LAEUFT, letzte_datei: null, letzte_dauer_s: null, letzter_fehler: false };
+  const neustart = Date.parse('2026-11-17T22:05:00Z');
+  assert.equal(abgebrochen(st, false, neustart, Date.parse('2026-11-17T22:06:00Z')), true, 'vor dem Prozessstart begonnen');
+  assert.equal(abgebrochen(st, true, neustart, Date.parse('2026-11-17T22:06:00Z')), false, 'läuft in diesem Prozess');
+  assert.equal(abgebrochen(st, false, Date.parse('2026-11-17T21:00:00Z'), Date.parse('2026-11-17T22:30:00Z')), false, 'andere Instanz, noch nicht zu lange');
+  assert.equal(abgebrochen(st, false, Date.parse('2026-11-17T21:00:00Z'), Date.parse('2026-11-18T02:00:00Z')), true, 'länger als 3 Stunden');
+  assert.equal(abgebrochen({ ...st, letzte_meldung: 'Ordner … übertragen' }, false, neustart), false);
+  assert.equal(sofortNachAbbruch(st, Date.parse('2026-11-18T08:00:00Z')), true, 'letzter Erfolg älter als ein Tag');
+  assert.equal(sofortNachAbbruch({ ...st, letzter_erfolg: '2026-11-17T21:00:00Z' }, Date.parse('2026-11-18T08:00:00Z')), false);
 });
