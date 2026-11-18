@@ -208,7 +208,7 @@ flowchart LR
 | lsvs | 9 |
 | mahnung | 16 |
 | mitglieder | 79 |
-| platz | 68 |
+| platz | 69 |
 | praesentation | 11 |
 | produkte | 6 |
 | projekte | 15 |

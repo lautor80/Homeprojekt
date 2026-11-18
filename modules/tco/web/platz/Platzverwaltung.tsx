@@ -16,7 +16,7 @@ import { useCan } from '@core/session';
 import { SperrHinweis, sperreSetzen, useSperre } from '@core/sperre';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
-import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type Belegt, type FestArt, type TagPlatz } from './PlatzBuchen';
+import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type AboWunschInfo, type Belegt, type FestArt, type TagPlatz } from './PlatzBuchen';
 import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -357,6 +357,7 @@ function Belegung() {
   const [tagListe, setTagListe] = useState<{ datum: string; plaetze: TagPlatz[] }[] | null>(null);
   const [termin, setTermin] = useState<{ p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN' } | null>(null);
   const [eintrag, setEintrag] = useState<{ p: TagPlatz; datum: string; von: string } | null>(null);
+  const [details, setDetails] = useState<{ p: TagPlatz; b: Belegt; datum: string } | null>(null);
   const daten = useMemo(() => Array.from({ length: tage }, (_, i) => tagPlus(datum, i)), [datum, tage]);
   const laden = () => Promise.all(daten.map((d) => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${d}`))).then(setTagListe);
   useEffect(() => { setTagListe(null); laden(); }, [daten]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -393,20 +394,28 @@ function Belegung() {
           {TAGE_WAHL.map((n) => <SegmentedButtonItem key={n} data-n={n} selected={tage === n}>{n === 1 ? '1 Tag' : `${n} Tage`}</SegmentedButtonItem>)}
         </SegmentedButton>
         <Text className="portal-muted portal-pv-leiste__hinweis">
-          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – freie Zeit anklicken zum Eintragen, Termin anklicken zum Ändern/Stornieren, Kopier-Symbol zum Kopieren
+          {tage === 1 ? `Belegung ${tagText(datum)}` : `Belegung ${dat(datum)} – ${dat(bisDatum)}`} – freie Zeit anklicken zum Eintragen, Termin anklicken zum Ändern/Stornieren, Doppelklick für Details, Kopier-Symbol zum Kopieren
         </Text>
       </div>
       {spalten && spalten.plaetze.length > 0 && (
         <Kalender admin tag={{ datum }} plaetze={spalten.plaetze}
                   onFrei={(p, von) => { const z = spalten.zuDatum.get(p.id)!; setEintrag({ p: z.p, datum: z.datum, von }); }}
                   onEigen={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setTermin({ p: z.p, b, datum: z.datum, modus: 'AENDERN' }); }}
-                  onKopieren={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setTermin({ p: z.p, b, datum: z.datum, modus: 'KOPIEREN' }); }} />
+                  onKopieren={(p, b) => { const z = spalten.zuDatum.get(p.id)!; setTermin({ p: z.p, b, datum: z.datum, modus: 'KOPIEREN' }); }}
+                  onDetails={(p, b) => {
+                    const z = spalten.zuDatum.get(p.id)!;
+                    // Training & Co.: der Termin-Dialog zeigt alles; Buchungen und Abo-Reservierungen: Details
+                    if (b.fest) setTermin({ p: z.p, b, datum: z.datum, modus: 'AENDERN' }); else setDetails({ p: z.p, b, datum: z.datum });
+                  }} />
       )}
       {spalten && !spalten.plaetze.length && <MessageStrip hideCloseButton>Keine aktiven Plätze.</MessageStrip>}
+      {details && <TerminDetails {...details} onClose={() => setDetails(null)}
+                                 onAendern={(modus) => { setTermin({ ...details, modus }); setDetails(null); }} />}
       {eintrag && <EintragDialog {...eintrag} onClose={() => setEintrag(null)}
                                  onFertig={(text) => { setEintrag(null); toast(text, 5000); laden(); }} />}
       {termin && <TerminDialog key={`${termin.b.bid ?? termin.b.fest?.id}-${termin.datum}-${termin.b.von}-${termin.modus}`} {...termin}
                                onModus={(modus) => setTermin({ ...termin, modus })} onClose={() => setTermin(null)}
+                               onDetails={termin.b.bid ? () => { setDetails({ p: termin.p, b: termin.b, datum: termin.datum }); setTermin(null); } : undefined}
                                onFertig={(text) => { setTermin(null); if (text) toast(text, 5000); laden(); }} />}
     </>
   );
@@ -516,15 +525,120 @@ function GebuchtInfo({ b }: { b: Belegt }) {
   );
 }
 
+// ---------------------------------------------------------------- Details eines Termins (Doppelklick)
+interface BuchungDetails {
+  bid: string; datum: string; von: string | null; bis: string | null; platz: string | null; status: string; status_text: string; art: 'Einzel' | 'Abo';
+  kunde: string | null; spieler: string | null; text: string | null; beschreibung: string | null; preis: number | null; abgerechnet: boolean;
+  quelle: 'PORTAL' | 'EP3'; erstellt: string | null; erstellt_um: string | null; erstellt_von: string | null; geaendert: string | null;
+  storno_grund: string | null; storno_am: string | null;
+  benutzer: { username: string; name: string; email: string | null } | null;
+  mitglied: { adrnr: string; name: string; mitglnr: string | null; email: string | null; telefon: string | null } | null;
+  rechnungen: { rgnr: string; status: string; datum: string | null; betrag: number | null }[];
+  abo: { termine: number; kommend: number; storniert: number; abgerechnet: number; erster: string; letzter: string } | null;
+}
+const WUNSCH_STATUS: Record<string, string> = {
+  OFFEN: 'Bestätigung offen', BESTAETIGT: 'bestätigt – wartet auf Freigabe', WARTET: 'Bewerbung auf der Warteliste',
+  ANGEBOTEN: 'angeboten – Annahme offen', ANGENOMMEN: 'angenommen – wartet auf Freigabe',
+};
+const zeitpunkt = (s: string | null) => (s ? `${dat(s.slice(0, 10))}${s.length > 10 ? ` ${s.slice(11, 16)} Uhr` : ''}` : '');
+
+/** Zeile der Detailansicht (leere Werte entfallen) */
+function Zeile({ l, children }: { l: string; children: React.ReactNode }) {
+  if (children == null || children === '' || children === false) return null;
+  return <><Label>{l}</Label><Text style={{ whiteSpace: 'pre-wrap' }}>{children}</Text></>;
+}
+
+/**
+ * Details eines Termins: Buchung (Termin, Person, Preis und Rechnung, Abo-Serie, Anlage, Notiz) mit „Bearbeiten“ und
+ * „Kopieren“ (Termin-Dialog) – oder bei einer Abo-Reservierung der Abo-Wunsch dahinter mit Verweis auf die Abo-Saison.
+ */
+function TerminDetails({ p, b, datum, onClose, onAendern }: {
+  p: TagPlatz; b: Belegt; datum: string; onClose: () => void; onAendern: (modus: 'AENDERN' | 'KOPIEREN') => void;
+}) {
+  const navigate = useNavigate();
+  const [d, setD] = useState<BuchungDetails | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  useEffect(() => {
+    if (b.bid) api.get<BuchungDetails>(`${PA}/buchung/${encodeURIComponent(b.bid)}?datum=${datum}`).then(setD).catch((e) => setFehler((e as Error).message));
+  }, [b.bid, datum]);
+  const w: AboWunschInfo | undefined = b.wunsch;
+  const kopf = `${tagText(datum)}, ${dat(datum)} · ${b.von}–${b.bis} Uhr · ${p.name}`;
+  const grid = { display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '0.25rem 0.75rem', alignItems: 'baseline' } as const;
+  const abschnitt = (t: string) => <Title level="H6" style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>{t}</Title>;
+
+  return createPortal(
+    <Dialog open headerText={w ? `Abo-Reservierung · ${w.name}` : `Buchung · ${b.kunde || d?.kunde || ''}`} onClose={onClose} style={{ width: 'min(36rem, 96vw)' }}
+            footer={<Bar endContent={<>
+              {b.bid && <Button icon="edit" design="Emphasized" onClick={() => onAendern('AENDERN')}>Bearbeiten</Button>}
+              {b.bid && <Button icon="copy" onClick={() => onAendern('KOPIEREN')}>Kopieren…</Button>}
+              {w && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/platz-buchen?ansicht=abo')}>Zur Abo-Saison</Button>}
+              <Button onClick={onClose}>Schließen</Button>
+            </>} />}>
+      {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
+      {w && (
+        <div style={grid}>
+          <Zeile l="Termin">{kopf}</Zeile>
+          <Zeile l="Reserviert für">{`${w.name}${w.mitglied ? ' (Mitglied)' : ''}`}</Zeile>
+          <Zeile l="Art">{w.art === 'BESTAETIGUNG' ? 'Bestätigung des Vorjahres-Abos' : 'Bewerbung um ein neues Abo'}</Zeile>
+          <Zeile l="Stand">{WUNSCH_STATUS[w.status] ?? w.status}</Zeile>
+          <Zeile l="Abo-Saison">{`${w.saison} (${dat(w.saison_von)} – ${dat(w.saison_bis)})`}</Zeile>
+          <Zeile l="Eingegangen">{zeitpunkt(w.angelegt)}</Zeile>
+          <Zeile l="Angeboten am">{w.angeboten_am ? dat(w.angeboten_am) : ''}</Zeile>
+          <Zeile l="Vorjahres-Abo">{w.vorjahr_bid ?? ''}</Zeile>
+          <Text className="portal-muted" style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
+            Die Stunde ist für dieses Abo reserviert, bis es freigegeben (dann entsteht das Abo) oder abgelehnt ist. Einzelbuchungen sind so lange nicht möglich.
+            Bestätigen, freigeben oder ablehnen geht unter „Platz buchen → Abo“.
+          </Text>
+        </div>
+      )}
+      {b.bid && !d && !fehler && <Text>Lade …</Text>}
+      {d && (
+        <div style={grid}>
+          {abschnitt('Termin')}
+          <Zeile l="Wann">{kopf}</Zeile>
+          <Zeile l="Art">{`${d.status_text}${d.art === 'Abo' && d.status !== '3' ? ' (Abo)' : ''}`}</Zeile>
+          <Zeile l="Buchungsnummer">{d.bid}</Zeile>
+          <Zeile l="Notiz">{d.text ?? ''}</Zeile>
+          <Zeile l="Beschreibung">{d.beschreibung && d.beschreibung !== d.text ? d.beschreibung : ''}</Zeile>
+          {abschnitt('Person')}
+          <Zeile l="Kunde">{d.kunde || '–'}</Zeile>
+          <Zeile l="Spieler">{d.spieler ?? ''}</Zeile>
+          <Zeile l="Mitglied">{d.mitglied ? `${d.mitglied.name}${d.mitglied.mitglnr ? ` · Nr. ${d.mitglied.mitglnr}` : ''}` : ''}</Zeile>
+          <Zeile l="Kontakt">{d.mitglied ? [d.mitglied.email, d.mitglied.telefon].filter(Boolean).join(' · ') : ''}</Zeile>
+          <Zeile l="Benutzer">{d.benutzer ? `${d.benutzer.name} (${d.benutzer.username})` : d.quelle === 'EP3' ? 'EP3-Kunde (ohne Portal-Benutzer)' : 'vereinsintern (ohne Benutzer)'}</Zeile>
+          {abschnitt('Preis und Abrechnung')}
+          <Zeile l="Preis">{d.preis != null ? eur(d.preis) : 'ohne Preis'}</Zeile>
+          <Zeile l="Abgerechnet">{d.abgerechnet ? 'ja' : 'nein'}</Zeile>
+          {d.rechnungen.map((r) => (
+            <Zeile key={r.rgnr} l="Hallenrechnung">{`${r.rgnr}${r.datum ? ` vom ${dat(r.datum)}` : ''}${r.status ? ` · ${r.status}` : ''}${r.betrag != null ? ` · ${eur(r.betrag)}` : ''}`}</Zeile>
+          ))}
+          {d.abo && <>
+            {abschnitt('Abo')}
+            <Zeile l="Zeitraum">{`${dat(d.abo.erster)} – ${dat(d.abo.letzter)}`}</Zeile>
+            <Zeile l="Termine">{`${d.abo.termine} aktiv, davon ${d.abo.kommend} kommend · ${d.abo.abgerechnet} abgerechnet${d.abo.storniert ? ` · ${d.abo.storniert} storniert/entfallen` : ''}`}</Zeile>
+          </>}
+          {abschnitt('Anlage')}
+          <Zeile l="Gebucht">{`${zeitpunkt(d.erstellt_um ?? d.erstellt) || 'unbekannt'}${d.erstellt_von ? ` von ${d.erstellt_von}` : ''}${d.quelle === 'EP3' ? ' (EP3-Import)' : ''}`}</Zeile>
+          <Zeile l="Geändert">{zeitpunkt(d.geaendert)}</Zeile>
+          <Zeile l="Storno">{d.storno_grund || d.storno_am ? `${zeitpunkt(d.storno_am)}${d.storno_grund ? ` – ${d.storno_grund}` : ''}` : ''}</Zeile>
+        </div>
+      )}
+    </Dialog>,
+    document.body,
+  );
+}
+
 // ---------------------------------------------------------------- Termin ändern / kopieren aus der Belegung (#11)
 /**
  * Angeklickter Termin: Platz, Tag, Uhrzeit und Notiz ändern (Portalbuchungen, einzelne Termine von Training & Co.), stornieren bzw.
  * löschen; „Kopieren“ legt denselben Termin (gleiche Person/Bezeichnung) auf Platz, Tag und Uhrzeit des Ziels neu an – Vorschlag:
  * eine Woche später. Abo- und EP3-Termine werden als Einzelbuchung kopiert.
  */
-function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
+function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig, onDetails }: {
   p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN';
   onModus: (m: 'AENDERN' | 'KOPIEREN') => void; onClose: () => void; onFertig: (text: string) => void;
+  /** Details der Buchung anzeigen (auch ohne Doppelklick, z. B. auf dem Handy) */
+  onDetails?: () => void;
 }) {
   const kopie = modus === 'KOPIEREN';
   const [busy, setBusy] = useState(false);
@@ -608,6 +722,7 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig }: {
     <>
       <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={() => { if (!wegRef.current) onClose(); }}
               footer={<Bar endContent={<>
+                {!kopie && onDetails && <Button icon="detail-view" onClick={onDetails}>Details</Button>}
                 {!kopie && <Button icon="copy" onClick={() => onModus('KOPIEREN')}>Kopieren…</Button>}
                 <Button design="Emphasized" disabled={busy || !ok || (!kopie && !aenderbar)} onClick={speichern}>{kopie ? 'Kopie anlegen' : 'Speichern'}</Button>
                 <Button onClick={onClose}>Abbrechen</Button>

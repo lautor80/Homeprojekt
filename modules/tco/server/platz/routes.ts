@@ -42,6 +42,7 @@ import { hatSchluessel, HALLE_HINWEIS } from './schluessel.js';
 import { paperless, plAktiv } from '../verein.js';
 import { positionenLesen } from '../halle/daten.js';
 import { rechnungsBaum } from './rechnungsbaum.js';
+import { buchungDetails } from './details.js';
 
 export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
@@ -768,6 +769,13 @@ export async function platzRoutes(app: FastifyInstance) {
   app.get('/platz/admin/tag', admin, async (req) => {
     const q = z.object({ datum }).parse(req.query);
     return { datum: q.datum, plaetze: await tagLesen(DB, q.datum, 'admin', req.sitzung) };
+  });
+
+  /** Details eines Termins (Doppelklick in der Belegung) */
+  app.get('/platz/admin/buchung/:bid', admin, async (req) => {
+    const { bid } = z.object({ bid: z.string().min(1).max(40) }).parse(req.params);
+    const q = z.object({ datum }).parse(req.query);
+    return buchungDetails(DB, bid, q.datum);
   });
 
   app.post('/platz/admin/storno', admin, async (req) => {
