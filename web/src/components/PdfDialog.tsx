@@ -2,6 +2,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Bar, Button, Dialog, MessageStrip } from '@ui5/webcomponents-react';
 import { createPortal } from 'react-dom';
 
+/** Blob mit PDF-Inhalt („%PDF-“ in den ersten 1024 Bytes) als application/pdf; sonst null */
+export async function alsPdf(b: Blob): Promise<Blob | null> {
+  const kopf = new TextDecoder('latin1').decode(await b.slice(0, 1024).arrayBuffer());
+  return kopf.includes('%PDF-') ? new Blob([b], { type: 'application/pdf' }) : null;
+}
+
 /** PDF von einer API-Adresse laden und als Blob-URL liefern */
 export function usePdf(url: string | null) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -16,7 +22,13 @@ export function usePdf(url: string | null) {
         if (!r.ok) throw new Error(JSON.parse((await r.text()) || '{}').message ?? `Fehler ${r.status}`);
         return r.blob();
       })
-      .then((b) => { u = URL.createObjectURL(b); setBlobUrl(u); })
+      .then(async (b) => {
+        // Server lieferte keinen PDF-Typ (z. B. application/octet-stream): ist der Inhalt ein PDF, als PDF anzeigen – sonst
+        // zeigt der Browser im Rahmen nichts an und lädt eine namenlose Datei herunter
+        const pdf = b.type.startsWith('application/pdf') ? b : await alsPdf(b);
+        if (!pdf) throw new Error('Die Datei ist kein PDF und kann hier nicht angezeigt werden – bitte „Herunterladen“ verwenden.');
+        u = URL.createObjectURL(pdf); setBlobUrl(u);
+      })
       .catch((e) => setError(e.message));
     return () => { if (u) URL.revokeObjectURL(u); };
   }, [url]);

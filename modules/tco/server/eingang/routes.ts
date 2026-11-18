@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { dateityp } from '../../../../server/src/lib/dateityp.js';
 import type { CustomFeld, Paperless } from '../../../../server/src/lib/paperless.js';
 import { eingerichtet, paperlessFuer, verbindungLesen } from '../../../../server/src/lib/verbindungen.js';
 import { DB } from '../verein.js';
@@ -279,7 +280,9 @@ export async function eingangRoutes(app: FastifyInstance) {
     if (!d?.inhalt) throw new BusinessError('Die Datei liegt nicht (mehr) im Portal.', 404);
     // die E-Mail selbst ist ein vom Portal erzeugtes Text-HTML; fremde Dateien nur anzeigen, wenn der Typ unbedenklich ist
     const eigen = d.art === 'mail';
-    const mime = eigen ? 'text/html; charset=utf-8' : (d.mime as string | null) ?? 'application/octet-stream';
+    const daten = Buffer.from(d.inhalt as string, 'base64');
+    // Typ aus dem Inhalt (gelieferter Typ ist oft „application/octet-stream“ – dann bliebe die Vorschau leer)
+    const mime = eigen ? 'text/html; charset=utf-8' : dateityp(d.datei as string, d.mime as string | null, daten);
     const anzeigen = eigen || ANZEIGBAR.test(mime);
     const name = encodeURIComponent(d.datei as string);
     return reply
@@ -287,7 +290,7 @@ export async function eingangRoutes(app: FastifyInstance) {
       .header('content-disposition', `${anzeigen ? 'inline' : 'attachment'}; filename*=UTF-8''${name}`)
       .header('content-security-policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:")
       .header('x-content-type-options', 'nosniff')
-      .send(Buffer.from(d.inhalt as string, 'base64'));
+      .send(daten);
   });
 
   app.post('/eingang/dokumente/:id/ablegen', pflegen, async (req) => {

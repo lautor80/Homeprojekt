@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { can, requireAuth } from '../../../../server/src/auth.js';
 import { sql } from '../../../../server/src/db.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { dateityp } from '../../../../server/src/lib/dateityp.js';
 import { P_MW, workflowEinstellungen } from '../mailworkflows.js';
 import { postfachListe, type Grund, type Kandidat } from './logik.js';
 import { ZUGEORDNET_ERLEDIGT } from './aufbewahrung.js';
 import {
-  abrufAnstossen, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, speicherStand, uebernommen, vonHandAblegen, vorgangIgnorieren,
+  abrufAnstossen, auftragAendern, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, speicherStand, uebernommen, vonHandAblegen, vorgangIgnorieren,
 } from './verarbeitung.js';
 
 /**
@@ -64,7 +65,7 @@ export async function eingangRoutes(app: FastifyInstance) {
     }).parse(req.query);
     const rows = await sql`
       select v.id::int as id, v.postfach, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(v.eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
-             case when v.status = 'neu' then 'pruefen' else v.status end as status, v.hinweis, v.auftragsnr, v.punkte,
+             case when v.status = 'neu' then 'pruefen' else v.status end as status, v.hinweis, v.auftragsnr, v.punkte, v.abgelegt_von,
              jsonb_array_length(v.kandidaten)::int as anzahl_kandidaten,
              (select count(*)::int from transport.eing_dokumente d where d.vorgang_id = v.id) as anzahl_dokumente
         from transport.eing_vorgaenge v
@@ -86,7 +87,7 @@ export async function eingangRoutes(app: FastifyInstance) {
     const [v] = await sql`
       select id::int as id, postfach, von, von_name, an, betreff, to_char(datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
              case when status = 'neu' then 'pruefen' else status end as status, hinweis, text, auftragsnr, punkte, begruendung, kandidaten,
-             mail_aktion, to_char(abgeschlossen_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as abgeschlossen_am, bearbeitet_von
+             mail_aktion, to_char(abgeschlossen_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as abgeschlossen_am, bearbeitet_von, abgelegt_von
         from transport.eing_vorgaenge where id = ${id}`;
     if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
     const kand = (v.kandidaten ?? []) as Kandidat[];
@@ -129,14 +130,16 @@ export async function eingangRoutes(app: FastifyInstance) {
     const darf = can(req, P_MW.eingangEdit) || (zugeordnet && can(req, P_AUFTRAG.display));
     if (!darf) return reply.code(403).send({ message: `Keine Berechtigung (${P_MW.eingangEdit}).` });
     if (!d?.inhalt) throw new BusinessError('Die Datei liegt nicht (mehr) im Portal.', 404);
-    const mime = (d.mime as string | null) ?? 'application/octet-stream';
+    const daten = Buffer.from(d.inhalt as string, 'base64');
+    // Typ aus dem Inhalt: auch ältere Dokumente mit „application/octet-stream“ werden als PDF/Bild angezeigt
+    const mime = dateityp(d.datei as string, d.mime as string | null, daten);
     const anzeigen = ANZEIGBAR.test(mime);
     return reply
       .type(anzeigen ? mime : 'application/octet-stream')
       .header('content-disposition', `${anzeigen ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(d.datei as string)}`)
       .header('content-security-policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:")
       .header('x-content-type-options', 'nosniff')
-      .send(Buffer.from(d.inhalt as string, 'base64'));
+      .send(daten);
   });
 
   app.post('/eingang/vorgaenge/:id/ablegen', pflegen, async (req, reply) => {
@@ -144,9 +147,18 @@ export async function eingangRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const b = z.object({
       auftragsnr: z.string().trim().min(1, 'Bitte einen Auftrag wählen.').max(40),
-      dokumente: z.array(z.coerce.number().int().positive()).min(1, 'Bitte mindestens ein Dokument wählen.').max(100),
+      // ohne Auswahl: alle offenen Dokumente (Vorschlag bestätigen)
+      dokumente: z.array(z.coerce.number().int().positive()).min(1, 'Bitte mindestens ein Dokument wählen.').max(100).optional(),
     }).parse(req.body);
-    return vonHandAblegen(id, b.auftragsnr, b.dokumente, wer(req));
+    return vonHandAblegen(id, b.auftragsnr, b.dokumente ?? null, wer(req));
+  });
+
+  /** Auftrag einer abgelegten E-Mail ändern (umhängen) */
+  app.post('/eingang/vorgaenge/:id/auftrag', pflegen, async (req, reply) => {
+    if (!can(req, P_AUFTRAG.display)) return reply.code(403).send({ message: `Keine Berechtigung (${P_AUFTRAG.display}).` });
+    const { id } = idParam.parse(req.params);
+    const b = z.object({ auftragsnr: z.string().trim().min(1, 'Bitte einen Auftrag wählen.').max(40) }).parse(req.body);
+    return auftragAendern(id, b.auftragsnr, wer(req));
   });
 
   app.post('/eingang/vorgaenge/:id/ignorieren', pflegen, async (req) => vorgangIgnorieren(idParam.parse(req.params).id, wer(req)));

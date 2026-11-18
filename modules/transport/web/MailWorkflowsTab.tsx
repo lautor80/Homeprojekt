@@ -72,7 +72,6 @@ export function MailWorkflowsTab() {
   const dauerhaft = e.eingang.aufbewahrenDauerhaft ?? true;
   const tageOk = dauerhaft || (zahl(tage) >= 0 && zahl(tage) <= 3650);
   const automatischSenden = funktion('transport.versand.automatisch');
-  const automatischAblegen = funktion('transport.eingang.automatik');
   const absenderFunktion = funktion('transport.versand.rechnung');
   const postfaecher = e.eingang.postfaecher ?? [];
   const setPostfaecher = (l: Postfach[]) => setE({ ...e, eingang: { ...e.eingang, postfaecher: l } });
@@ -110,7 +109,7 @@ export function MailWorkflowsTab() {
               <Option data-k="paperless" selected={e.eingang.ablageziel === 'paperless'}>Paperless</Option>
             </Select>
           </FieldBox>
-          <FieldBox label="Schwelle für automatisches Ablegen (1–100)" required>
+          <FieldBox label="Schwelle für einen sicheren Vorschlag (1–100)" required>
             <Input type="Number" value={schwelle} readonly={ro} valueState={schwelleOk ? 'None' : 'Negative'} data-kein-autofill
                    onInput={(x) => setSchwelle(x.target.value)} style={{ width: '8rem' }} />
           </FieldBox>
@@ -166,11 +165,10 @@ export function MailWorkflowsTab() {
             </FlexBox>
           </FieldBox>
         </FormGrid>
-        {!automatischAblegen && (
-          <MessageStrip hideCloseButton design="Information" style={{ marginTop: '0.75rem' }}>
-            Die Funktion „Automatisch ablegen“ ist aus (Administration → Funktionen) – jede E-Mail landet in der Prüfliste, die Schwelle wirkt nicht.
-          </MessageStrip>
-        )}
+        <MessageStrip hideCloseButton design="Information" style={{ marginTop: '0.75rem' }}>
+          Es wird nie automatisch abgelegt: Ab der Schwelle steht der Auftrag als grüner Vorschlag im Posteingang, darunter als Vorschlag
+          mit Hinweis – jede Ablage bestätigt jemand mit „Ablage bestätigen“.
+        </MessageStrip>
         {speicher && (
           <div style={{ marginTop: '0.75rem' }}>
             {speicher.warnung ? (

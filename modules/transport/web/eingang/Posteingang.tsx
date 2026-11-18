@@ -13,23 +13,25 @@ import { toast } from '@core/toast';
 import { dat, download } from '../util';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
 import { eingangInOrdner, uebernahmeText } from './uebernahme';
-import { ordnerMoeglich } from '../ordner';
+import { entfernenUnterordner, ordnerMoeglich, UNTERORDNER_EINGANG } from '../ordner';
+import { eingangName } from '../ordner-schluessel';
 import { OHNE_ADRESSE, absenderFiltern, filterGueltig, gleicherFilter, postfachBaum, type AbsenderFilter, type PostfachKnoten } from './absenderbaum';
 import {
-  EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
+  EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, automatischAbgelegt, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
   type EingangDokument, type EingangsPostfach, type Kandidat, type Vorgang, type VorgangStatus, type VorgangZeile,
 } from './typen';
 
 /**
- * App „Posteingang“ (Euroflex): E-Mails aus dem Outlook-Postfach, die n8n geliefert hat und die nicht automatisch am Auftrag
- * abgelegt wurden. Links die Liste mit dem Zuordnungsvorschlag, rechts (auf dem Handy darunter) die E-Mail – darin links die
- * Anhänge, daneben Begründung (mit Fundstellen der Auftrags-/Rechnungsnummer), Kandidaten, Text und den Aktionen „Ignorieren“, „Neu bewerten“, „Am Auftrag ablegen“.
+ * App „Posteingang“ (Euroflex): E-Mails aus dem Outlook-Postfach, die n8n geliefert hat – jede Ablage am Auftrag wird bestätigt (nie
+ * automatisch); abgelegte sind gekennzeichnet und lassen sich an einen anderen Auftrag hängen. Links die Liste mit dem Zuordnungsvorschlag,
+ * rechts (auf dem Handy darunter) die E-Mail – darin links die Anhänge, daneben Begründung (mit Fundstellen der Auftrags-/Rechnungsnummer),
+ * Kandidaten, Text und den Aktionen „Ignorieren“, „Neu bewerten“, „Ablage bestätigen“, „Auftrag ändern“.
  * Vertrag: docs/euroflex-mailworkflows.md, „Prüfliste und Ablage“.
  */
 const FILTER: { key: VorgangStatus; text: string }[] = [
   { key: 'pruefen', text: 'Zu prüfen' },
   { key: 'fehler', text: 'Fehler' },
-  { key: 'abgelegt', text: 'Automatisch abgelegt' },
+  { key: 'abgelegt', text: 'Abgelegt' },
   { key: 'ignoriert', text: 'Ignoriert' },
 ];
 /** Dokumente, die noch abgelegt werden können (vorausgewählt) */
@@ -318,6 +320,10 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   const [auswahl, setAuswahl] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [frage, setFrage] = useState(false);
+  // „Auftrag ändern“ bei abgelegten E-Mails: neuer Auftrag und Rückfrage
+  const [aendern, setAendern] = useState(false);
+  const [nrNeu, setNrNeu] = useState('');
+  const [aendernFrage, setAendernFrage] = useState(false);
   const [pdf, setPdf] = useState<EingangDokument | null>(null);
   const [textOffen, setTextOffen] = useState(true);
   // Detail neben der Liste: unter etwa 1100 px Fensterbreite Anhänge über der E-Mail statt links daneben
@@ -349,6 +355,7 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   const punkte = v.punkte ?? 0;
   const kunde = (n: string | null | undefined) => kandidaten.find((k) => k.auftragsnr === n)?.kunde ?? kundeVon(auftraege, n);
   const nrGueltig = !!nr && (!auftraege || !auftraege.length || auftraege.some((a) => a.auftragsnr === nr));
+  const nrNeuGueltig = !!nrNeu && nrNeu !== v.auftragsnr && (!auftraege || !auftraege.length || auftraege.some((a) => a.auftragsnr === nrNeu));
 
   async function aktion(f: () => Promise<unknown>, sonst: string, danach: 'neu' | 'liste'): Promise<boolean> {
     setBusy(true); setError(null);
@@ -378,6 +385,34 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
     const ok = await aktion(() => api.post(`${EING}/vorgaenge/${v.id}/ablegen`, { auftragsnr: ziel, dokumente: ids }), `${ids.length} Datei(en) am Auftrag ${ziel} abgelegt`, 'neu');
     // Ablageziel Paperless: nichts wartet – dann still
     if (ok && darfUebertragen) await uebertragen(ziel, ids, true);
+  };
+  /** abgelegte E-Mail an einen anderen Auftrag hängen; Dateien im Ablageordner wandern mit (alter Unterordner Eingang/ → neuer) */
+  const auftragAendern = async () => {
+    const ziel = nrNeu;
+    setBusy(true); setError(null);
+    type Umhaengen = { alt: string; entfernen: { id: number; datei: string; ablage_name: string | null }[]; text?: string };
+    let r: Umhaengen | null = null;
+    try {
+      r = await api.post<Umhaengen>(`${EING}/vorgaenge/${v.id}/auftrag`, { auftragsnr: ziel });
+      toast(antwortText(r, `An Auftrag ${ziel} umgehängt`), 6000);
+      setAendern(false);
+      onGeaendert();
+    } catch (e) { onFehler((e as Error).message); } finally { setBusy(false); }
+    if (!r) return;
+    if (darfUebertragen) {
+      const offen: string[] = [];
+      for (const d of r.entfernen ?? []) {
+        try {
+          const ok = await entfernenUnterordner(r.alt, UNTERORDNER_EINGANG, eingangName(d), true);
+          if (ok === null) offen.push(eingangName(d));
+        } catch { offen.push(eingangName(d)); }
+      }
+      if (offen.length) onFehler(`Aus dem Ordner von Auftrag ${r.alt} (Unterordner „${UNTERORDNER_EINGANG}“) nicht entfernt: ${offen.join(', ')} – bitte von Hand löschen.`);
+      await uebertragen(ziel, undefined, true);
+    } else {
+      await laden();
+      if (r.entfernen?.length) onFehler(`Bitte ${r.entfernen.map(eingangName).join(', ')} von Hand aus dem Ordner von Auftrag ${r.alt} (Unterordner „${UNTERORDNER_EINGANG}“) entfernen.`);
+    }
   };
   const neuBewerten = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/neu-bewerten`), 'Zuordnung neu berechnet', 'neu');
   const ignorieren = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/ignorieren`), 'E-Mail ignoriert', 'neu');
@@ -421,13 +456,32 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
         <div style={{ border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', alignItems: 'center' }}>
             <Text style={{ fontWeight: 'bold' }}>
-              {v.auftragsnr ? `Zuordnung: Auftrag ${v.auftragsnr}${kunde(v.auftragsnr) ? ` – ${kunde(v.auftragsnr)}` : ''}`
+              {v.auftragsnr && v.status === 'abgelegt' ? `Abgelegt am Auftrag ${v.auftragsnr}${kunde(v.auftragsnr) ? ` – ${kunde(v.auftragsnr)}` : ''}`
+                : v.auftragsnr ? `Vorschlag: Auftrag ${v.auftragsnr}${kunde(v.auftragsnr) ? ` – ${kunde(v.auftragsnr)}` : ''}`
                 : kandidaten.length > 1 ? `Zuordnung nicht eindeutig: ${kandidaten.length} Kandidaten`
                   : kandidaten.length === 1 ? `Kandidat: Auftrag ${kandidaten[0].auftragsnr}${kunde(kandidaten[0].auftragsnr) ? ` – ${kunde(kandidaten[0].auftragsnr)}` : ''}`
                     : 'Kein passender Auftrag gefunden'}
             </Text>
             <ObjectStatus state={zuordnungState} inverted={zuordnungState !== 'None'}>Trefferwert {punkte} / Schwelle {schwelle}</ObjectStatus>
           </div>
+          {v.status === 'abgelegt' && (
+            automatischAbgelegt(v)
+              ? <MessageStrip hideCloseButton design="Information">Automatisch abgelegt (vor der Umstellung auf Bestätigung) – bitte prüfen und bei Bedarf „Auftrag ändern“.</MessageStrip>
+              : <Text className="portal-muted portal-small">Ablage bestätigt{v.abgelegt_von ? ` von ${v.abgelegt_von}` : ''}{v.abgeschlossen_am ? ` am ${dat(v.abgeschlossen_am)}` : ''}.</Text>
+          )}
+          {v.status === 'abgelegt' && v.auftragsnr && edit && darfAblegen && (
+            aendern ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 22rem) max-content max-content', gap: '0.5rem 0.75rem', alignItems: 'center' }}>
+                <Label required>Neuer Auftrag</Label>
+                <AuftragWahl wert={nrNeu} onChange={setNrNeu} auftraege={auftraege} disabled={busy} />
+                <Button design="Emphasized" icon="accept" disabled={busy || !nrNeuGueltig} onClick={() => setAendernFrage(true)}
+                        tooltip={!nrNeu ? 'Bitte einen Auftrag wählen' : nrNeu === v.auftragsnr ? 'Das ist der bisherige Auftrag' : !nrNeuGueltig ? `Auftrag ${nrNeu} gibt es nicht` : undefined}>Übernehmen</Button>
+                <Button design="Transparent" disabled={busy} onClick={() => setAendern(false)}>Abbrechen</Button>
+              </div>
+            ) : (
+              <div><Button design="Transparent" icon="edit" disabled={busy} onClick={() => { setNrNeu(''); setAendern(true); }}>Auftrag ändern</Button></div>
+            )
+          )}
           {begruendung.length > 0 && (
             <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
               {begruendung.map((b, i) => <li key={i}><Text className="portal-small">{b.grund} <span className="portal-muted">(+{b.punkte})</span></Text></li>)}
@@ -480,7 +534,7 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
             {darfAblegen && (
               <Button design="Emphasized" icon="accept" disabled={busy || !nrGueltig || !auswahl.size} onClick={ablegen}
                       tooltip={!nr ? 'Bitte einen Auftrag wählen' : !nrGueltig ? `Auftrag ${nr} gibt es nicht` : !auswahl.size ? 'Bitte mindestens eine Datei auswählen' : undefined}>
-                {darfUebertragen ? 'Am Auftrag ablegen und in Ordner übertragen' : 'Am Auftrag ablegen'}
+                {darfUebertragen ? 'Ablage bestätigen und in Ordner übertragen' : 'Ablage bestätigen'}
               </Button>
             )}
           </div>
@@ -490,6 +544,9 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
       <ConfirmDialog open={frage} title="E-Mail ignorieren" confirmText="Ignorieren" danger
                      text="Die E-Mail und ihre Anhänge werden nicht abgelegt; die Inhalte werden im Portal gelöscht. Die E-Mail selbst bleibt im Outlook-Postfach."
                      onCancel={() => setFrage(false)} onConfirm={() => { setFrage(false); ignorieren(); }} />
+      <ConfirmDialog open={aendernFrage} title="Auftrag ändern" confirmText="Auftrag ändern"
+                     text={`Die E-Mail und ihre Dateien hängen dann am Auftrag ${nrNeu} statt ${v.auftragsnr ?? ''}. Dateien im Ablageordner werden aus „${v.auftragsnr ?? ''}/${UNTERORDNER_EINGANG}“ entfernt und in „${nrNeu}/${UNTERORDNER_EINGANG}“ abgelegt; Paperless-Dokumente werden am neuen Auftrag verknüpft.`}
+                     onCancel={() => setAendernFrage(false)} onConfirm={() => { setAendernFrage(false); auftragAendern(); }} />
       {pdf && <PdfDialog url={dateiUrl(pdf.id)} title={pdf.datei} filename={pdf.datei || 'dokument.pdf'} onClose={() => setPdf(null)} />}
     </Section>
   );

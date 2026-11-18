@@ -148,6 +148,23 @@ async function freierName(ordner: FileSystemDirectoryHandle, name: string): Prom
   return `${stamm} (${Date.now()})${endung}`;
 }
 
+/**
+ * Datei aus einem Unterordner des Auftragsordners entfernen (z. B. nach „Auftrag ändern“ im Posteingang aus Eingang/ des alten
+ * Auftrags). true = entfernt, false = nicht vorhanden; null = kein Ordner/kein Zugriff.
+ */
+export async function entfernenUnterordner(nr: string, unterordner: string, datei: string, anfordern = false): Promise<boolean | null> {
+  const o = await auftragsOrdner(nr, { anfordern, anlegen: false });
+  if (!o) return null;
+  try {
+    const u = await o.ordner.getDirectoryHandle(sauber(unterordner));
+    await u.removeEntry(datei);
+    return true;
+  } catch (e) {
+    if ((e as DOMException).name === 'NotFoundError') return false;
+    throw e;
+  }
+}
+
 /** Datei aus einem Unterordner des Auftragsordners lesen (z. B. Eingang/); null = nicht vorhanden oder kein Zugriff */
 export async function dateiLesenUnterordner(nr: string, unterordner: string, datei: string, anfordern = false): Promise<File | null> {
   const o = await auftragsOrdner(nr, { anfordern, anlegen: false });

@@ -83,11 +83,6 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     hinweis: 'Die Lieferungen von n8n werden dann abgewiesen; die E-Mails bleiben im Postfach liegen.',
   },
   {
-    id: 'transport.eingang.automatik', app: 'Posteingang', text: 'Automatisch ablegen',
-    beschreibung: 'E-Mails, deren Zuordnung die Schwelle aus den Einstellungen erreicht, werden ohne Prüfung am Auftrag abgelegt.',
-    hinweis: 'Abgeschaltet landet jede E-Mail in der Prüfliste.',
-  },
-  {
     id: 'transport.import', app: 'Produkte und Wertelisten', text: 'Datenimport aus SAP',
     beschreibung: 'Reiter „Datenimport“ in den Stammdaten: Kontakte, Produkte und Aufträge als CSV aus SAP einlesen.',
     permissions: ['transport.import:execute'],

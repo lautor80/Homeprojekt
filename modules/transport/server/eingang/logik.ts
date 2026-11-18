@@ -28,7 +28,7 @@ export interface Grund { grund: string; punkte: number; art?: Merkmal }
 export interface Kandidat { auftragsnr: string; punkte: number; gruende: Grund[] }
 
 export interface Entscheidung {
-  status: 'abgelegt' | 'pruefen';
+  status: 'pruefen';
   /** eindeutig bester Auftrag – auch als Vorschlag in der Prüfliste; null bei Gleichstand oder ohne Kandidaten */
   auftragsnr: string | null;
   punkte: number;
@@ -215,8 +215,11 @@ export function bewerten(treffer: Treffer[]): Kandidat[] {
   }).sort((a, b) => b.punkte - a.punkte || b.auftragsnr.localeCompare(a.auftragsnr));
 }
 
-/** Eindeutig, mindestens die Schwelle und Automatik an → ablegen; sonst Prüfliste (mit Vorschlag, wenn eindeutig) */
-export function entscheiden(kandidaten: Kandidat[], schwelle: number, automatik: boolean): Entscheidung {
+/**
+ * Zuordnungsvorschlag: Es wird nie automatisch abgelegt – jede Ablage bestätigt ein Mensch im Posteingang. Eindeutig und ab der
+ * Schwelle steht der Auftrag als (grüner) Vorschlag, darunter als Vorschlag mit Hinweis; mehrdeutig ohne Auftrag.
+ */
+export function entscheiden(kandidaten: Kandidat[], schwelle: number): Entscheidung {
   const [erster, zweiter] = kandidaten;
   if (!erster) return { status: 'pruefen', auftragsnr: null, punkte: 0, begruendung: [], eindeutig: false, hinweis: 'Kein passender Auftrag gefunden.' };
   const eindeutig = !zweiter || erster.punkte > zweiter.punkte;
@@ -228,10 +231,7 @@ export function entscheiden(kandidaten: Kandidat[], schwelle: number, automatik:
   if (erster.punkte < schwelle) {
     return { ...basis, status: 'pruefen', auftragsnr: erster.auftragsnr, hinweis: `Trefferwert ${erster.punkte} liegt unter der Schwelle ${schwelle}.` };
   }
-  if (!automatik) {
-    return { ...basis, status: 'pruefen', auftragsnr: erster.auftragsnr, hinweis: 'Automatisch ablegen ist abgeschaltet (Administration → Funktionen).' };
-  }
-  return { ...basis, status: 'abgelegt', auftragsnr: erster.auftragsnr, hinweis: null };
+  return { ...basis, status: 'pruefen', auftragsnr: erster.auftragsnr, hinweis: `Vorschlag Auftrag ${erster.auftragsnr} – bitte die Ablage bestätigen.` };
 }
 
 /** Mail-Kopfdaten für den Dateinamen der E-Mail als PDF: „2026-11-17 AW Lieferschein 2026_0153.pdf“ */

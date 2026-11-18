@@ -26,6 +26,8 @@ export interface VorgangZeile {
   anzahl_kandidaten?: number | null;
   /** Eingangspostfach, in dem die E-Mail ankam (z. B. info@ oder buchhaltung@) */
   postfach?: string | null;
+  /** wer die Ablage bestätigt hat; „Posteingang (automatisch)“ = früher automatisch abgelegt */
+  abgelegt_von?: string | null;
 }
 
 /** Eingangspostfach mit Bezeichnung (Einstellungen → Mail-Workflows → Eingang) */
@@ -60,7 +62,8 @@ export interface Vorgang extends VorgangZeile {
   begruendung?: Begruendung[] | null;
   kandidaten?: Kandidat[] | null;
   dokumente: EingangDokument[];
-  /** optional: Schwelle für „automatisch ablegen“ (sonst Standard 80) */
+  /** optional: Schwelle für einen sicheren Vorschlag (sonst Standard 80) */
+  abgeschlossen_am?: string | null;
   schwelle?: number | null;
   hinweis?: string | null;
 }
@@ -128,9 +131,20 @@ export function zeitText(iso: string | null | undefined): string {
 }
 
 /** Badge der Liste: Vorschlag (grün ab Schwelle, sonst orange), mehrere Kandidaten (orange) oder kein Treffer (grau) */
-export function treffer(v: Pick<VorgangZeile, 'auftragsnr' | 'punkte' | 'anzahl_kandidaten'>, schwelle: number): { text: string; state: 'Positive' | 'Critical' | 'None' } {
+/** Bearbeiter der früheren automatischen Ablage (Server: SYSTEM in eingang/verarbeitung.ts) */
+export const AUTOMATISCH = 'Posteingang (automatisch)';
+export const automatischAbgelegt = (v: Pick<VorgangZeile, 'abgelegt_von'>) => v.abgelegt_von === AUTOMATISCH;
+
+/** Kennzeichnung je E-Mail: abgelegt (am Auftrag, bestätigt oder früher automatisch), ignoriert oder Vorschlag/Kandidaten */
+export function treffer(v: Pick<VorgangZeile, 'auftragsnr' | 'punkte' | 'anzahl_kandidaten'> & Partial<Pick<VorgangZeile, 'status' | 'abgelegt_von'>>, schwelle: number): { text: string; state: 'Positive' | 'Critical' | 'None' | 'Information' } {
   const p = v.punkte ?? 0;
   const k = v.anzahl_kandidaten ?? 0;
+  if (v.status === 'abgelegt') {
+    return automatischAbgelegt(v)
+      ? { text: `Automatisch abgelegt · ${v.auftragsnr ?? '?'}`, state: 'Information' }
+      : { text: `Abgelegt · ${v.auftragsnr ?? '?'}`, state: 'Positive' };
+  }
+  if (v.status === 'ignoriert') return { text: 'Ignoriert', state: 'None' };
   if (v.auftragsnr) return { text: `Vorschlag ${v.auftragsnr} · ${p}`, state: p >= schwelle ? 'Positive' : 'Critical' };
   if (k > 1) return { text: `${k} Kandidaten · ${p}`, state: 'Critical' };
   if (k === 1 || p > 0) return { text: `Kandidat · ${p}`, state: 'Critical' };
