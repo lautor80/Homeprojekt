@@ -22,9 +22,10 @@ import {
 } from './typen';
 
 /**
- * App „Posteingang“ (Euroflex): E-Mails aus dem Outlook-Postfach, die n8n geliefert hat – jede Ablage am Auftrag wird bestätigt (nie automatisch);
- * abgelegt wurden. Links die Liste mit dem Zuordnungsvorschlag, rechts (auf dem Handy darunter) die E-Mail – darin links die
- * Anhänge, daneben Begründung (mit Fundstellen der Auftrags-/Rechnungsnummer), Kandidaten, Text und den Aktionen „Ignorieren“, „Neu bewerten“, „Am Auftrag ablegen“.
+ * App „Posteingang“ (Euroflex): E-Mails aus dem Outlook-Postfach, die n8n geliefert hat – jede Ablage am Auftrag wird bestätigt (nie
+ * automatisch); abgelegte sind gekennzeichnet und lassen sich an einen anderen Auftrag hängen. Links die Liste mit dem Zuordnungsvorschlag,
+ * rechts (auf dem Handy darunter) die E-Mail – darin links die Anhänge, daneben Begründung (mit Fundstellen der Auftrags-/Rechnungsnummer),
+ * Kandidaten, Text und den Aktionen „Ignorieren“, „Neu bewerten“, „Ablage bestätigen“, „Auftrag ändern“.
  * Vertrag: docs/euroflex-mailworkflows.md, „Prüfliste und Ablage“.
  */
 const FILTER: { key: VorgangStatus; text: string }[] = [
