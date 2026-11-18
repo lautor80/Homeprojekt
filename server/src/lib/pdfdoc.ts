@@ -69,8 +69,9 @@ export class Pdf {
     });
   }
 
-  newPage() {
-    this.doc.addPage({ size: 'A4', margin: 0 });
+  /** Neue Seite A4, hoch (210 × 297 mm) oder quer (297 × 210 mm) */
+  newPage(quer = false) {
+    this.doc.addPage({ size: 'A4', margin: 0, layout: quer ? 'landscape' : 'portrait' });
   }
 
   pageCount() {

@@ -11,7 +11,7 @@ import {
   anmeldungAnlegen, beitrittVorbelegung, EINHEITEN_KOSTENLOS, schnupperInfo, schnupperLesen, schnupperSichern, STATUS, STUFEN, TAGE, ZEITEN,
   type SchnupperStatus, type Stufe,
 } from './logik.js';
-import { schnupperPdf } from './pdf.js';
+import { schnupperListePdf, schnupperPdf } from './pdf.js';
 
 /**
  * Schnuppertraining (#86): öffentlich /api/m/tco/schnupper (Formular /schnuppertraining), Verwaltung für Trainer unter
@@ -95,13 +95,17 @@ export async function schnupperRoutes(app: FastifyInstance) {
     return { status: STATUS, stufen: STUFEN, einheiten: EINHEITEN_KOSTENLOS, zeilen: await schnupperLesen(DB, q.filter) };
   });
 
-  /** Bericht zum Ausdrucken (TCO-Layout): je Anmeldung eine Seite mit allen Angaben; adrnrs = Auswahl (kommagetrennt), sonst die Liste filter */
+  /**
+   * Ausdruck im TCO-Layout: art=einzeln je Anmeldung eine Seite mit allen Angaben (Hochformat), art=liste je Interessent ein paar
+   * Zeilen (Querformat); adrnrs = Auswahl (kommagetrennt), sonst die Liste filter
+   */
   app.get('/schnuppertraining/pdf', { preHandler: requireAuth(P_SCHNUPPER.display) }, async (req, reply) => {
     const q = z.object({
       filter: z.enum(['OFFEN', 'ALLE']).default('OFFEN'),
+      art: z.enum(['einzeln', 'liste']).default('einzeln'),
       adrnrs: z.string().regex(/^[0-9A-Za-z]{1,12}(,[0-9A-Za-z]{1,12}){0,499}$/).optional(),
     }).parse(req.query);
-    const r = await schnupperPdf(DB, await vereinLesen(), { filter: q.filter, adrnrs: q.adrnrs?.split(',') });
+    const r = await (q.art === 'liste' ? schnupperListePdf : schnupperPdf)(DB, await vereinLesen(), { filter: q.filter, adrnrs: q.adrnrs?.split(',') });
     if (!r) throw new BusinessError('Keine Schnupper-Anmeldung für den Bericht gefunden.', 404);
     return reply.type('application/pdf')
       .header('content-disposition', `inline; filename="${r.titel.replace(/[^\wäöüÄÖÜß .()-]/g, '_')}.pdf"`).send(r.pdf);

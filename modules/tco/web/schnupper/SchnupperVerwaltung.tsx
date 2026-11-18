@@ -59,12 +59,16 @@ export function SchnupperVerwaltung() {
              actions={<>
                <Button design="Transparent" icon="action" onClick={() => window.open('/schnuppertraining', '_blank')}>Anmeldeformular öffnen</Button>
                <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur offene' : 'Auch erledigte'}</Button>
-               {!!daten?.zeilen.length && (
-                 <Button design="Transparent" icon="print" tooltip="Alle angezeigten Anmeldungen als Bericht (je Anmeldung eine Seite)"
-                         onClick={() => setPdf({ url: `${S}/pdf?filter=${alle ? 'ALLE' : 'OFFEN'}`, titel: `Schnuppertraining – ${alle ? 'alle' : 'offene'} Anmeldungen` })}>
-                   Alle drucken
+               {!!daten?.zeilen.length && <>
+                 <Button design="Transparent" icon="list" tooltip="Alle angezeigten Interessenten als Liste – je Interessent ein paar Zeilen, Querformat"
+                         onClick={() => setPdf({ url: `${S}/pdf?art=liste&filter=${alle ? 'ALLE' : 'OFFEN'}`, titel: `Schnuppertraining – Interessenten (${alle ? 'alle' : 'offene'})` })}>
+                   Liste drucken
                  </Button>
-               )}
+                 <Button design="Transparent" icon="print" tooltip="Alle angezeigten Anmeldungen als Einzelberichte (je Anmeldung eine Seite mit allen Angaben)"
+                         onClick={() => setPdf({ url: `${S}/pdf?filter=${alle ? 'ALLE' : 'OFFEN'}`, titel: `Schnuppertraining – ${alle ? 'alle' : 'offene'} Anmeldungen` })}>
+                   Alle Einzelberichte
+                 </Button>
+               </>}
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !daten.zeilen.length ? (

@@ -398,6 +398,13 @@ test('Schnuppertraining (#86): Anmeldung als Kategorie im Mitgliederstamm, Betre
   assert.match(r.ct ?? '', /application\/pdf/);
   assert.equal(r.raw?.subarray(0, 5).toString(), '%PDF-');
   assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?filter=ALLE`)).status, 200);
+  // Liste im Querformat: je Interessent ein paar Zeilen
+  r = await admin('GET', `${T}/schnuppertraining/pdf?art=liste&filter=ALLE`);
+  assert.equal(r.status, 200);
+  assert.equal(r.raw?.subarray(0, 5).toString(), '%PDF-');
+  assert.match(r.raw?.toString('latin1') ?? '', /\/MediaBox \[0 0 841\.89 595\.28\]/, 'A4 quer');
+  assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?art=liste&adrnrs=${st.adrnr}`)).status, 200);
+  assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?art=quer`)).status, 400);
   assert.equal((await trainer('GET', `${T}/schnuppertraining/pdf`)).status, 200);
   assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=0000999999`)).status, 404);
   assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=1;drop`)).status, 400);

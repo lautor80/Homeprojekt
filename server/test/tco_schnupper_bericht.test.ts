@@ -3,7 +3,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { berichtAbschnitte, datumText, einheitenZeilen, zeitpunktText } from '../../modules/tco/server/schnupper/bericht.js';
+import { berichtAbschnitte, datumText, einheitenZeilen, LISTE_SPALTEN, listenEintrag, zeitpunktText } from '../../modules/tco/server/schnupper/bericht.js';
 import type { SchnupperZeile } from '../../modules/tco/server/schnupper/logik.js';
 
 const basis: SchnupperZeile = {
@@ -71,4 +71,30 @@ test('Leere Angaben, Volljährige, zu viele Einheiten', () => {
 test('Eingetragene Einheiten nach Datum', () => {
   assert.deepEqual(einheitenZeilen(zusatz), [['05.05.2026', '–', '–'], ['12.05.2026', 'Tom Trainer', 'tom']]);
   assert.deepEqual(einheitenZeilen({ einwilligung_am: null, einheiten: [] }), []);
+});
+
+test('Liste: je Interessent ein paar Zeilen in fünf Spalten, Mitteilung und Notiz darunter', () => {
+  const e = listenEintrag(basis, 2);
+  assert.equal(e.spalten.length, LISTE_SPALTEN.length);
+  assert.deepEqual(e.spalten, [
+    ['ST-2026-0042', 'Eingang 02.05.2026 16:30'],
+    ['Mia Muster', '9 Jahre', 'Erziehungsberechtigt: Maria Muster'],
+    ['eltern@example.org', '0170 1112223'],
+    ['noch nie gespielt · Neu (noch nie gespielt)', 'Wunsch: Di, Sa · nachmittags', 'nicht vor 15 Uhr'],
+    ['Termin vereinbart', 'Einheiten: 1. 05.05. · 2. offen · 1/2 geschnuppert', 'Trainer: Tom Trainer'],
+  ]);
+  assert.equal(e.bemerkung, 'Mitteilung: Sie freut sich sehr!  ·  Notiz: Schläger leihen / mit Freundin');
+  assert.ok(e.spalten.every((s) => s.length <= 3), 'höchstens drei Zeilen je Spalte');
+});
+
+test('Liste: ohne Kontakt, ohne Wunschtage, mit Antrag, ohne Bemerkung', () => {
+  const e = listenEintrag({
+    ...basis, email: '', mobil: '', erziehungsberechtigt: null, alter: null, termine: { tage: [], zeiten: [], text: null },
+    trainer: null, antrag: 'MA-2026-0007', mitglnrn: '1234', mitteilung: null, notiz: null, gespielt: true, stufe_txt: 'Anfänger',
+  }, 2);
+  assert.deepEqual(e.spalten[1], ['Mia Muster']);
+  assert.deepEqual(e.spalten[2], ['–']);
+  assert.deepEqual(e.spalten[3], ['hat schon gespielt · Anfänger', 'Wunsch: –']);
+  assert.equal(e.spalten[4][2], 'Antrag MA-2026-0007 · Nr. 1234');
+  assert.equal(e.bemerkung, '');
 });
