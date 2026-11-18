@@ -6,9 +6,10 @@ import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { DocsDialog } from '../dialogs';
 import { T } from '../util';
-import { ablegenUnterordner, dateiLesenUnterordner, ordnerMoeglich, ordnerStatus, ordnerWaehlen, UNTERORDNER_EINGANG } from '../ordner';
+import { dateiLesenUnterordner, ordnerMoeglich, ordnerStatus, ordnerWaehlen, UNTERORDNER_EINGANG } from '../ordner';
 import { eingangName } from '../ordner-schluessel';
 import { OrdnerDialog } from '../Ablageordner';
+import { eingangInOrdner } from './uebernahme';
 import { STATUS_TEXT, dateiUrl, groesse, istPdf, liste, zeitText, type AuftragEingangDokument } from './typen';
 
 /**
@@ -55,28 +56,12 @@ export function AuftragEingang({ nr, onUebernommen }: { nr: string; onUebernomme
     const offen = (doks ?? []).filter((d) => d.status === 'wartet' && d.ziel === 'lokal');
     if (!offen.length || !darfLaden || !darfMelden) return;
     setBusy(true); setError(null);
-    let n = 0;
-    let fehler = '';
     try {
-      for (let i = 0; i < offen.length; i++) {
-        const d = offen[i];
-        try {
-          const res = await fetch(dateiUrl(d.id), { credentials: 'same-origin' });
-          if (!res.ok) {
-            const t = await res.text();
-            throw new Error((() => { try { return JSON.parse(t).message; } catch { return null; } })() ?? `Fehler ${res.status}`);
-          }
-          // nur beim ersten Schreiben nach dem Zugriff fragen (direkt nach dem Klick)
-          const pfad = await ablegenUnterordner(nr, UNTERORDNER_EINGANG, d.datei, await res.blob(), anfordern && i === 0);
-          if (!pfad) { fehler = 'Kein Zugriff auf den Ablageordner.'; break; }
-          await api.post(`${T}/eingang/dokumente/${d.id}/uebernommen`, { ablage_name: pfad.split('/').pop() });
-          n++;
-        } catch (e) { fehler = `${d.datei}: ${(e as Error).message}`; }
-      }
-    } finally {
+      const e = await eingangInOrdner(nr, offen, { anfordern });
+      if (e.uebernommen) { toast(`${e.uebernommen} ${e.uebernommen === 1 ? 'Datei' : 'Dateien'} aus dem Posteingang übernommen`, 5000); onUebernommen?.(); }
+      if (e.fehler.length) setError(`Übernahme in den Ablageordner unvollständig – ${e.fehler.join('; ')}`);
+    } catch (e) { setError((e as Error).message); } finally {
       setBusy(false);
-      if (n) { toast(`${n} ${n === 1 ? 'Datei' : 'Dateien'} aus dem Posteingang übernommen`, 5000); onUebernommen?.(); }
-      if (fehler) setError(`Übernahme in den Ablageordner unvollständig – ${fehler}`);
       await ordnerPruefen();
       await laden();
     }
