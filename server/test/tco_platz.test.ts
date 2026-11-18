@@ -273,6 +273,24 @@ test('Abos nur über die Platzverwaltung', async () => {
   assert.match(r.body.text, /3 Termin/);
   r = await admin('GET', `${A}/abos`);
   assert.equal(r.body.find((a: { bid: string }) => a.bid === aboBid).termine, 2);
+  assert.equal(r.body.find((a: { bid: string }) => a.bid === aboBid).quelle, 'Portal');
+
+  // aus EP3 übernommene Abos stehen ebenfalls in der Liste und lassen sich beenden (bleibt beim EP3-Import storniert)
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, quelle) values
+    ('8880000071', ${tag(-7)}, '07:00', '08:00', 'EVA EP3', '3', 'Abo', 15, '2025-09-01', 'Y', 'Halle', null),
+    ('8880000071', ${tag(7)}, '07:00', '08:00', 'EVA EP3', '3', 'Abo', 15, '2025-09-01', '', 'Halle', null),
+    ('8880000071', ${tag(14)}, '07:00', '08:00', 'EVA EP3', '3', 'Abo', 15, '2025-09-01', '', 'Halle', null),
+    ('8880000072', '2020-01-07', '07:00', '08:00', 'ALT EP3', '3', 'Abo', 15, '2019-09-01', 'Y', 'Halle', null)`;
+  r = await admin('GET', `${A}/abos`);
+  const eva = r.body.find((a: { bid: string }) => a.bid === '8880000071');
+  assert.deepEqual([eva?.quelle, eva?.termine, eva?.kommend, eva?.kunde], ['EP3', 3, 2, 'EVA EP3']);
+  assert.equal(r.body.some((a: { bid: string }) => a.bid === '8880000072'), false, 'längst beendete Abos nicht');
+  assert.ok(r.body.findIndex((a: { kommend: number }) => !a.kommend) === -1 || r.body.findIndex((a: { kommend: number }) => !a.kommend) > r.body.findIndex((a: { bid: string }) => a.bid === '8880000071'), 'laufende zuerst');
+  r = await admin('POST', `${A}/abos/8880000071/beenden`, { ab: tag(10) });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /1 Termin/);
+  assert.deepEqual((await sql`select status, storno_portal is not null as portal from tco.bookings where bid = '8880000071' and datum = ${tag(14)}`)[0], { status: '2', portal: true });
+  await sql`delete from tco.bookings where bid in ('8880000071', '8880000072')`;
 });
 
 test('#83: Abo mit Einzelabrechnung – Nutzer storniert einzelne Termine selbst, das Abo bleibt', async () => {
@@ -1092,6 +1110,21 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
     ('9770000001', '2026-01-13', '18:00', '19:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2025-09-01', '', 'Halle', ${annaId}, 'PORTAL'),
     ('9770000002', '2026-01-07', '18:00', '19:00', 'ANNA SPIELERIN', '3', 'Abo', 18, '2025-09-01', '', 'Halle', ${annaId}, 'PORTAL'),
     ('9770000009', '2026-01-08', '15:00', '17:00', 'JUGENDTRAINING', '3', 'Abo', 0, '2025-09-01', '', 'Halle', null, 'PORTAL')`;
+  // Details eines Abo-Termins (Doppelklick in der Platzverwaltung): Person, Preis, Hallenrechnung, Abo-Serie
+  await sql`insert into tco.rgkopf (rgnr_txt, jahr, rgnr, kunde, betrag, status, angelegt_am) values ('2026_077', 2026, 77, 'ANNA SPIELERIN', 18, '2', '2026-02-01')`;
+  await sql`insert into tco.rgpos (rgnr_txt, rgpos, bid, datum, time_start, time_ende, dauer, preis) values ('2026_077', 1, '9770000001', '2026-01-06', '18:00', '19:00', '60', 18)`;
+  let det = await admin('GET', `${P}/admin/buchung/9770000001?datum=2026-01-06`);
+  assert.equal(det.status, 200, JSON.stringify(det.body));
+  assert.deepEqual([det.body.von, det.body.bis, det.body.platz, det.body.kunde, det.body.status_text, det.body.art, det.body.preis, det.body.quelle, det.body.benutzer?.username],
+    ['18:00', '19:00', 'Halle', 'ANNA SPIELERIN', 'Abo-Termin', 'Abo', 18, 'PORTAL', 'anna']);
+  assert.deepEqual(det.body.abo, { termine: 2, kommend: 0, storniert: 0, abgerechnet: 0, erster: '2026-01-06', letzter: '2026-01-13' });
+  assert.deepEqual(det.body.rechnungen, [{ rgnr: '2026_077', status: '2 – Gedruckt', datum: '2026-02-01', betrag: 18 }]);
+  det = await admin('GET', `${P}/admin/buchung/9770000001?datum=2026-01-13`);
+  assert.deepEqual(det.body.rechnungen, [], 'Rechnung nur am abgerechneten Termin');
+  assert.equal((await admin('GET', `${P}/admin/buchung/9770000001?datum=2026-01-20`)).status, 404);
+  assert.equal((await anna('GET', `${P}/admin/buchung/9770000001?datum=2026-01-06`)).status, 403);
+  await sql`delete from tco.rgpos where rgnr_txt = '2026_077'`;
+  await sql`delete from tco.rgkopf where rgnr_txt = '2026_077'`;
   assert.equal((await anna('GET', `${P}/abowunsch`)).body.saison, null);
   assert.equal((await bert('POST', `${P}/abowunsch`, { platz_id: halleId, wochentag: 2, von: '18:00', bis: '20:00' })).status, 400, 'keine Saison');
   const saison = { name: 'Test 27/28', von: tag(30), bis: tag(90), bestaetigen_bis: tag(10), nachruecken_ab: tag(20), annahme_tage: 7 };
@@ -1227,6 +1260,12 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   assert.equal((await anna('POST', `${P}/buchungen`, { platz_id: halleId, datum: termine[0], von: '11:00', bis: '12:00' })).status, 400, 'reserviert');
   r = await anna('GET', `${P}/tag?datum=${termine[0]}`);
   assert.ok(JSON.stringify(r.body).includes('"abo":true'), 'Anzeige als reserviert');
+  assert.equal(JSON.stringify(r.body).includes('"wunsch"'), false, 'Mitglieder sehen den Abo-Wunsch nicht');
+  // Platzverwaltung: die Reservierung trägt den Abo-Wunsch (Details per Klick)
+  r = await admin('GET', `${P}/admin/tag?datum=${termine[0]}`);
+  const resv = r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.find((x: any) => x.reserviert && x.von === '11:00');
+  assert.deepEqual([resv.abo, resv.wunsch.id, resv.wunsch.status, resv.wunsch.art, resv.wunsch.name], [true, frei, 'ANGEBOTEN', 'BEWERBUNG', resv.kunde]);
+  assert.ok(resv.wunsch.saison && resv.wunsch.saison_von && resv.wunsch.saison_bis);
   assert.equal((await bert('POST', `${P}/abowunsch/${frei}/annehmen`)).status, 200);
   // eine bestehende Einzelbuchung in der Folgewoche: das Abo beginnt erst in der Woche danach
   await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz, quelle)

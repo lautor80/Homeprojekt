@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -39,6 +39,12 @@ export interface Belegt {
   portal?: boolean; abgerechnet?: boolean;
   /** Platzverwaltung (#11): Anlage der Buchung – Zeitpunkt (ältere nur Datum), angelegt von, Benutzer der Buchung, geändert am */
   angelegt?: { am: string | null; um: string | null; von: string | null; benutzer: string | null; geaendert: string | null };
+  /** Platzverwaltung: Abo-Wunsch hinter einer Abo-Reservierung */
+  wunsch?: AboWunschInfo;
+}
+export interface AboWunschInfo {
+  id: number; art: 'BESTAETIGUNG' | 'BEWERBUNG'; status: string; name: string; mitglied: boolean; adrnr: string | null;
+  saison: string; saison_von: string; saison_bis: string; angelegt: string | null; angeboten_am: string | null; vorjahr_bid: string | null;
 }
 export interface TagPlatz {
   id: number; name: string; art: 'HALLE' | 'FREI'; hinweis: string | null; zeit_von: string; zeit_bis: string; raster: number;
@@ -528,9 +534,14 @@ function PreislisteDialog({ datum, onClose }: { datum: string; onClose: () => vo
 
 // ---------------------------------------------------------------- Tageskalender: Plätze × Uhrzeit
 const REM_JE_STD = 3.5;
-export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, preiszonen, namen }: {
+export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, onDetails, admin, preiszonen, namen }: {
   tag: { datum: string; heute?: string; jetzt?: string }; plaetze: TagPlatz[];
   onFrei?: (p: TagPlatz, von: string) => void; onEigen?: (p: TagPlatz, b: Belegt) => void; admin?: boolean;
+  /**
+   * Platzverwaltung: Doppelklick auf einen Termin zeigt die Details (einfacher Klick wie bisher onEigen). Abo-Reservierungen
+   * (noch kein Abo, nur der Abo-Wunsch) öffnen schon mit einem Klick die Details.
+   */
+  onDetails?: (p: TagPlatz, b: Belegt) => void;
   /** Platzverwaltung (#11): Kopier-Knopf je Buchung bzw. Belegung */
   onKopieren?: (p: TagPlatz, b: Belegt) => void;
   /** Admin/Hallenwart in „Platz buchen“: Namen fremder Buchungen, Training & Co. farbig (#11) */
@@ -539,6 +550,17 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, pre
   preiszonen?: Preiszone[];
 }) {
   const offen = plaetze.filter((p) => !p.geschlossen);
+  // Einfach- und Doppelklick unterscheiden: der einfache Klick wartet kurz, ein zweiter Klick zeigt stattdessen die Details
+  const klickZeit = useRef<number | null>(null);
+  useEffect(() => () => { if (klickZeit.current) window.clearTimeout(klickZeit.current); }, []);
+  const blockKlick = (ev: { detail: number }, p: TagPlatz, b: Belegt, klickbar: boolean) => {
+    if (klickZeit.current) { window.clearTimeout(klickZeit.current); klickZeit.current = null; }
+    if (!onDetails) { if (klickbar) onEigen?.(p, b); return; }
+    if (ev.detail >= 2 || !klickbar) { onDetails(p, b); return; }
+    // Tastatur (detail 0): sofort
+    if (ev.detail === 0) { onEigen?.(p, b); return; }
+    klickZeit.current = window.setTimeout(() => { klickZeit.current = null; onEigen?.(p, b); }, 250);
+  };
   const start = Math.floor(Math.min(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_von))) / 60) * 60;
   const ende = Math.ceil(Math.max(...(offen.length ? offen : plaetze).map((p) => min(p.zeit_bis))) / 60) * 60;
   // Maßstab (#11): jedes Rasterfeld mindestens 1,5rem hoch, damit „Frei“ hineinpasst und kein Feld ein anderes verdeckt
@@ -633,6 +655,8 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, pre
                 // Platzverwaltung: Buchungen und Belegungen (Training & Co.) anklickbar – ändern, kopieren, stornieren (#11)
                 const klickbar = !b.reserviert && (b.fest ? admin && !!b.fest.id && !!onEigen : (b.eigen && b.aenderbar && !alt) || (admin && !!b.bid));
                 const kopierbar = !!onKopieren && !b.reserviert && (!!b.bid || !!b.fest);
+                // Details (Platzverwaltung): Buchungen und Abo-Reservierungen
+                const details = !!onDetails && (!!b.bid || !!b.wunsch);
                 return (
                   <Fragment key={i}>
                   {kopierbar && (
@@ -641,8 +665,9 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, admin, pre
                       <Icon name="copy" />
                     </button>
                   )}
-                  <button type="button" className={`portal-pb__block ${cls}${kopierbar ? ' portal-pb__block--kopierbar' : ''}`} disabled={!klickbar}
-                          style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={() => klickbar && onEigen?.(p, b)}>
+                  <button type="button" className={`portal-pb__block ${cls}${kopierbar ? ' portal-pb__block--kopierbar' : ''}`} disabled={!klickbar && !details}
+                          title={details ? (b.wunsch ? 'Klicken: Abo-Wunsch anzeigen' : 'Klicken: ändern · Doppelklick: Details') : undefined}
+                          style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={(ev) => blockKlick(ev, p, b, !!klickbar)}>
                     <span className="portal-pb__block-zeit">{b.von}–{b.bis}</span>
                     {b.eigen && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Mein Abo' : 'Meine Buchung'} · {preisText(b)}</span>}
                     {b.fest && <span className="portal-pb__block-text" title={b.fest.hinweis ?? undefined}>{b.fest.bezeichnung}</span>}

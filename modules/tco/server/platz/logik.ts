@@ -161,8 +161,16 @@ export interface Belegung {
   reserviert?: boolean;
   /** für ein Abo reserviert (#11): Bestätigung/Angebot läuft, das Abo ist noch nicht freigegeben – keine Einzelbuchung möglich */
   abo?: boolean;
+  /** Abo-Reservierung: der Abo-Wunsch dahinter (Details in der Platzverwaltung) */
+  wunsch?: AboWunschInfo;
   /** feste Belegung (Jugendtraining, Sperrzeit, Veranstaltung) – für alle mit Bezeichnung sichtbar */
   fest?: { id: number; art: BelegungArt; bezeichnung: string; hinweis: string | null; einmalig?: boolean; portal?: boolean };
+}
+
+/** Abo-Wunsch hinter einer Abo-Reservierung (Platzverwaltung: Details per Klick) */
+export interface AboWunschInfo {
+  id: number; art: 'BESTAETIGUNG' | 'BEWERBUNG'; status: string; name: string; mitglied: boolean; adrnr: string | null;
+  saison: string; saison_von: string; saison_bis: string; angelegt: string | null; angeboten_am: string | null; vorjahr_bid: string | null;
 }
 
 /** Sperrobjekt für eine ausgewählte, noch nicht gesicherte Platzzeit (Schlüssel = Platz-ID, Zeitraum von/bis) */
@@ -226,7 +234,9 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
   // (noch nicht freigegeben), sind für Einzelbuchungen gesperrt – ab heute bzw. Saisonbeginn bis Saisonende. Bestehende Buchungen bleiben.
   const heute = jetzt().datum;
   const wuensche = await db`
-    select w.platz_id, w.wochentag, w.von, w.bis, w.name, s.von::text as s_von, s.bis::text as s_bis
+    select w.id, w.art, w.status, w.adrnr, w.mitglied, w.vorjahr_bid, w.angeboten_am::text as angeboten_am,
+           to_char(w.angelegt at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as angelegt, s.name as saison,
+           w.platz_id, w.wochentag, w.von, w.bis, w.name, s.von::text as s_von, s.bis::text as s_bis
       from tco.abo_wunsch w join tco.abo_saison s on s.id = w.saison_id and s.aktiv
      where w.status in ('OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN', 'WARTET') and w.platz_id = any(${plaetze.map((p) => p.id)}::int[])
        and s.bis >= ${von}::date and s.von <= ${bis}::date`;
@@ -238,7 +248,9 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
       if (isoWochentag(d) !== w.wochentag) continue;
       if (out.some((x) => x.platzId === p.id && x.datum === d && x.von < w.bis && x.bis > w.von)) continue;
       out.push({ bid: '', datum: d, von: w.von, bis: w.bis, kunde: w.name, status: 'R', platz: p.name, platzId: p.id,
-        benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true, abo: true });
+        benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true, abo: true,
+        wunsch: { id: w.id, art: w.art, status: w.status, name: w.name, mitglied: !!w.mitglied, adrnr: w.adrnr ?? null, saison: w.saison,
+                  saison_von: w.s_von, saison_bis: w.s_bis, angelegt: w.angelegt ?? null, angeboten_am: w.angeboten_am ?? null, vorjahr_bid: w.vorjahr_bid ?? null } });
     }
   }
   return out;
@@ -484,6 +496,8 @@ export interface TagPlatz {
     portal?: boolean; abgerechnet?: boolean;
     /** Platzverwaltung (#11): wer/wann gebucht */
     angelegt?: Belegung['angelegt'];
+    /** Platzverwaltung: Abo-Wunsch hinter einer Abo-Reservierung */
+    wunsch?: AboWunschInfo;
   }[];
 }
 
@@ -509,7 +523,7 @@ export async function tagLesen(db: Db, datum: string, sicht: Ich | 'admin', sitz
         return { ...zeit, eigen: false, fest: sicht === 'admin' ? { ...f, id: b.fest.id, einmalig: !!b.fest.einmalig, portal: !!b.fest.portal } : f };
       }
       // gerade in Auswahl bei jemand anderem: normale Nutzer ohne Namen
-      if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, abo: b.abo, kunde: b.kunde } : { ...zeit, eigen: false, reserviert: true, abo: b.abo };
+      if (b.reserviert) return sicht === 'admin' || namen ? { ...zeit, eigen: false, reserviert: true, abo: b.abo, kunde: b.kunde, ...(sicht === 'admin' && b.wunsch ? { wunsch: b.wunsch } : {}) } : { ...zeit, eigen: false, reserviert: true, abo: b.abo };
       const art = b.status === '3' ? 'Abo' as const : 'Einzel' as const;
       if (sicht === 'admin') return { ...zeit, eigen: false, bid: b.bid, art, kunde: b.kunde, text: b.text, portal: b.quelle === QUELLE, abgerechnet: b.assigned === 'Y', angelegt: b.angelegt };
       // fremde Buchung: nur Zeitraum – kein Name, keine Nummer, kein Text
@@ -695,23 +709,29 @@ export async function aboAnlegen(tx: Db, e: AboEingabe, ueberspringen: boolean):
   return { bid, text: `Abo ${bid} für ${v.kunde} angelegt: ${frei.length} Termin(e) ${v.wochentag}s ${hhmm(von)}–${hhmm(bis)} Uhr auf ${platz.name}${belegt.length ? `, ${belegt.length} belegte Termin(e) ausgelassen` : ''}.` };
 }
 
+/**
+ * Abos der Platzverwaltung: im Portal angelegte und aus EP3 übernommene (EP3 gibt es nicht mehr, gepflegt wird hier).
+ * Laufende zuerst; beendete nur, wenn ihr letzter Termin höchstens 180 Tage zurückliegt.
+ */
 export async function abosLesen(db: Db) {
   const rows = await db`
     select b.bid, min(b.platz) as platz, min(b.kunde) as kunde, min(b.datum)::text as erster, max(b.datum)::text as letzter,
            to_char(min(b.time_start), 'HH24:MI') as von, to_char(max(b.time_ende), 'HH24:MI') as bis,
            count(*) filter (where b.status = '3')::int as termine, count(*) filter (where b.status = '3' and b.datum >= current_date)::int as kommend,
-           count(*) filter (where b.assigned = 'Y')::int as abgerechnet, min(b.text) as text
+           count(*) filter (where b.assigned = 'Y')::int as abgerechnet, min(b.text) as text,
+           case when bool_or(b.quelle = ${QUELLE}) then 'Portal' else 'EP3' end as quelle
       from tco.bookings b
-     where b.quelle = ${QUELLE} and b.bid in (select bid from tco.bookings where quelle = ${QUELLE} and status = '3')
+     where b.bid in (select bid from tco.bookings where status = '3' and datum >= current_date - 180)
      group by b.bid
-     order by min(b.datum) desc`;
+     order by (count(*) filter (where b.status = '3' and b.datum >= current_date) > 0) desc, min(b.datum) desc, b.bid`;
   return rows.map((r) => ({ ...r, wochentag: wochentagText(r.erster) }));
 }
 
 /** Abo ab einem Datum beenden (offene Termine stornieren) */
 export async function aboBeenden(tx: Db, bid: string, ab: string): Promise<string> {
-  const r = await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}
-                      where bid = ${bid} and quelle = ${QUELLE} and status = '3' and datum >= ${ab} and coalesce(assigned, '') <> 'Y'
+  // auch aus EP3 übernommene Abos; storno_portal: ein erneuter EP3-Import setzt die Stornos nicht zurück
+  const r = await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now()
+                      where bid = ${bid} and status = '3' and datum >= ${ab} and coalesce(assigned, '') <> 'Y'
                       returning datum`;
   if (!r.length) throw new BusinessError('Keine offenen Abo-Termine ab diesem Datum.');
   return `Abo ${bid}: ${r.length} Termin(e) ab ${dat(ab)} storniert.`;
