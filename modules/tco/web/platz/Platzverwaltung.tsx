@@ -14,7 +14,7 @@ import { FieldBox, FormGrid } from '@core/components/FormFields';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
 import { SperrHinweis, sperreSetzen, useSperre } from '@core/sperre';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { TCO, dat, eur } from '../util';
 import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type AboWunschInfo, type Belegt, type FestArt, type TagPlatz } from './PlatzBuchen';
 import { FesteBelegungen } from './FesteBelegungen';
@@ -23,6 +23,7 @@ import { AuswahlBox } from '@core/components/AuswahlBox';
 import { DialogFuss } from '@core/components/DialogFuss';
 import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
 import { LEERER_ABO_FILTER, aboFilterAktiv, aboFilterLesen, aboPlaetze, aboTitel, abosFiltern, type AboFilter } from './aboFilter';
+import { AboSaisonVerwaltung } from './AboSaisonVerwaltung';
 
 /**
  * Platzverwaltung: Plätze (Freiplätze/Halle) mit Gültigkeit, Öffnungszeiten, Zeitraster, Buchungsdauern,
@@ -57,6 +58,9 @@ export function Platzverwaltung() {
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'plaetze');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Sprung innerhalb der Seite (z. B. Termin-Details → „Zur Abo-Saison“, ?tab=abos): Reiter aus der neuen Adresse übernehmen
+  const ort = useLocation();
+  useEffect(() => { const t = new URLSearchParams(ort.search).get('tab'); if (t) setTab(t); }, [ort.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function aktion(fn: () => Promise<{ text?: string } | unknown>, nachher?: () => unknown) {
     setBusy(true); setError(null);
@@ -87,6 +91,7 @@ export function Platzverwaltung() {
         </Tab>
         <Tab data-key="abos" text="Abos" icon="repost" selected={tab === 'abos'}>
           {tab === 'abos' && <Abos aktion={aktion} busy={busy} />}
+          {tab === 'abos' && <div style={{ marginTop: '1.5rem' }}><AboSaisonVerwaltung /></div>}
         </Tab>
       </TabContainer>
     </AppPage>
@@ -574,7 +579,7 @@ function TerminDetails({ p, b, datum, onClose, onAendern }: {
             footer={<DialogFuss>
               {b.bid && <Button icon="edit" design="Emphasized" onClick={() => onAendern('AENDERN')}>Bearbeiten</Button>}
               {b.bid && <Button icon="copy" onClick={() => onAendern('KOPIEREN')}>Kopieren…</Button>}
-              {w && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/platz-buchen?ansicht=abo')}>Zur Abo-Saison</Button>}
+              {w && <Button icon="repost" design="Emphasized" onClick={() => navigate('/tco/platzverwaltung?tab=abos')}>Zur Abo-Saison</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </DialogFuss>}>
       {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
@@ -590,7 +595,7 @@ function TerminDetails({ p, b, datum, onClose, onAendern }: {
           <Zeile l="Vorjahres-Abo">{w.vorjahr_bid ?? ''}</Zeile>
           <Text className="portal-muted" style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
             Die Stunde ist für dieses Abo reserviert, bis es freigegeben (dann entsteht das Abo) oder abgelehnt ist. Einzelbuchungen sind so lange nicht möglich.
-            Bestätigen, freigeben oder ablehnen geht unter „Platz buchen → Abo“.
+            Freigeben oder ablehnen geht unter „Platzverwaltung → Abos“ (Abo-Saison verwalten).
           </Text>
         </div>
       )}
