@@ -25,7 +25,7 @@ test('Zugänge: eine App mit drei Reitern, jeder mit seinem bisherigen Recht', (
 
 test('Platzverwaltung ohne Benutzer und Zugänge; alte Adressen führen in die App „Zugänge“', () => {
   const pv = lies('modules/tco/web/platz/Platzverwaltung.tsx');
-  assert.deepEqual([...pv.matchAll(/<Tab data-key="([a-z]+)"/g)].map((m) => m[1]), ['plaetze', 'belegung', 'feste', 'abos']);
+  assert.deepEqual([...pv.matchAll(/<Tab data-key="([a-z]+)"/g)].map((m) => m[1]), ['plaetze', 'belegung', 'feste', 'abos', 'abosaison']);
   assert.match(pv, /if \(tab === 'benutzer' \|\| tab === 'zugaenge'\) return <Navigate to=\{`\/tco\/zugaenge\?tab=/);
   assert.ok(lies('modules/tco/web/index.ts').includes("{ path: '/tco/registrierungen', component: ZugaengeApp, permission: 'tco.registrierung:mitglied' }"), 'alte Adresse der Registrierungen bleibt gültig');
 });
