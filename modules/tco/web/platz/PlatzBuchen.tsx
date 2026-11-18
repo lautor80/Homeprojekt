@@ -667,7 +667,7 @@ export function Kalender({ tag, plaetze, onFrei, onEigen, onKopieren, onDetails,
                   )}
                   <button type="button" className={`portal-pb__block ${cls}${kopierbar ? ' portal-pb__block--kopierbar' : ''}`} disabled={!klickbar && !details}
                           title={details ? (b.wunsch ? 'Klicken: Abo-Wunsch anzeigen' : 'Klicken: ändern · Doppelklick: Details') : undefined}
-                          style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={(ev) => blockKlick(ev, p, b, klickbar)}>
+                          style={{ top: y(von), height: h(Math.max(bis - von, 15)) }} onClick={(ev) => blockKlick(ev, p, b, !!klickbar)}>
                     <span className="portal-pb__block-zeit">{b.von}–{b.bis}</span>
                     {b.eigen && <span className="portal-pb__block-text">{b.art === 'Abo' ? 'Mein Abo' : 'Meine Buchung'} · {preisText(b)}</span>}
                     {b.fest && <span className="portal-pb__block-text" title={b.fest.hinweis ?? undefined}>{b.fest.bezeichnung}</span>}
