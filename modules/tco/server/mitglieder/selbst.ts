@@ -13,12 +13,12 @@ import { druckdatenLesen, unterlagePdf } from './pdf.js';
 import { unterlageAblegen } from './dokumente.js';
 import { plAktiv } from '../verein.js';
 import { kennwortLinkSenden, portalUrl, unbekanntesKennwort } from '../../../../server/src/kennwort.js';
-import { benutzerAnlegen, buchungsrechtSichern, freierBenutzername, istBcrypt, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
+import { benutzerAnlegen, buchungsrechtSichern, freierBenutzername, istBcrypt, mitgliedBenutzerVerknuepfen, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from '../platz/registrierung.js';
 
 /**
  * „Meine Mitgliedschaft“ – Selbstauskunft und -pflege für Mitglieder (Berechtigung tco.meinedaten:edit).
  *
- * Das Mitglied ergibt sich AUSSCHLIESSLICH aus dem angemeldeten Benutzer (tco.mitgliedera.benutzer_id).
+ * Das Mitglied ergibt sich AUSSCHLIESSLICH aus dem angemeldeten Benutzer (tco.mitglied_benutzer).
  * Änderbar: Anschrift, Telefon, Mobil, E-Mail, Bildrechte; eigene Bankverbindung (nur wenn das Mitglied selbst zahlt).
  * Kündigung: Mitgliedschaft (Austritt) oder einzelne Verträge – auch für Personen, die über das Mitglied zahlen –
  * jeweils zum Jahresende; Vorstand wird per Notiz und (wenn eingerichtet) E-Mail informiert.
@@ -27,7 +27,7 @@ import { benutzerAnlegen, buchungsrechtSichern, freierBenutzername, istBcrypt, r
 export const P_SELBST = 'tco.meinedaten:edit';
 
 export async function eigeneAdrnr(db: Db, benutzerId: string): Promise<string> {
-  const [a] = await db`select adrnr from tco.mitgliedera where benutzer_id = ${benutzerId}`;
+  const [a] = await db`select adrnr from tco.mitglied_benutzer where benutzer_id = ${benutzerId}`;
   if (!a) throw new BusinessError('Ihr Benutzer ist keinem Mitglied zugeordnet. Bitte beim Vorstand melden.', 403);
   return a.adrnr as string;
 }
@@ -225,7 +225,8 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
   const mitglieder = await tx`
     select m.adrnr, m.vorname, m.nachname, lower(trim(coalesce(m.email, ''))) as email, a.zuid
       from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
-     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null
+     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
+       and not exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = m.adrnr)
        ${o.adrnr ? tx`and m.adrnr = ${o.adrnr}` : tx``}
      order by m.nachname, m.vorname, m.adrnr`;
   if (o.adrnr && !mitglieder.length) throw new BusinessError('Das Mitglied ist ausgetreten oder hat bereits einen Benutzer.');
@@ -252,10 +253,9 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
        order by (k.zuid = ${m.zuid ?? '§'}) desc, (k.benutzer_id is not null) desc, (k.pw_hash is not null) desc, k.zuid desc limit 1`;
     if (k?.benutzer_id) {
       // vorhandener Hallennutzer wird zum Mitglied
-      const [bereits] = await tx`select adrnr from tco.mitgliedera where benutzer_id = ${k.benutzer_id}`;
+      const [bereits] = await tx`select adrnr from tco.mitglied_benutzer where benutzer_id = ${k.benutzer_id}`;
       if (bereits) { r.uebersprungen.push(`${name}: EP3-Benutzer gehört bereits zu Mitglied ${bereits.adrnr}`); continue; }
-      await tx`insert into tco.mitgliedera (adrnr, benutzer_id, zuid) values (${m.adrnr}, ${k.benutzer_id}, ${k.zuid})
-               on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id, zuid = coalesce(tco.mitgliedera.zuid, excluded.zuid)`;
+      await mitgliedBenutzerVerknuepfen(tx, m.adrnr, k.benutzer_id, k.zuid);
       await tx`update tco.kunden set benutzer_id = null where zuid = ${k.zuid}`;
       await tx`update core.user_roles set role_id = ${ROLLE_MITGLIED} where user_id = ${k.benutzer_id} and role_id = ${ROLLE}`;
       await buchungsrechtSichern(tx, k.benutzer_id);
@@ -274,8 +274,7 @@ export async function mitgliederBenutzerAnlegen(tx: Db, v: Verein, o: { mail: bo
     else { start = randomBytes(9).toString('base64url'); hash = await hashPassword(start); }
     try {
       const uid = await benutzerAnlegen(tx, { username, displayName: name, email: m.email || null, passwortHash: hash, mussAendern: !!start, rolle: ROLLE_MITGLIED });
-      await tx`insert into tco.mitgliedera (adrnr, benutzer_id, zuid) values (${m.adrnr}, ${uid}, ${k?.zuid ?? null})
-               on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id, zuid = coalesce(tco.mitgliedera.zuid, excluded.zuid)`;
+      await mitgliedBenutzerVerknuepfen(tx, m.adrnr, uid, k?.zuid ?? null);
       let hinweis = start ? 'Startkennwort' : 'EP3-Kennwort gilt weiter';
       if (link) {
         try {
@@ -319,8 +318,9 @@ export async function benutzerKandidaten(db: Db, suche: string) {
   const mitglieder = await db`
     select m.adrnr as schluessel, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.email, m.mitglnrn,
            m.austritt::text as austritt
-      from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
-     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null
+      from tco.mitglieder m
+     where m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
+       and not exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = m.adrnr)
        and (lower(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '') || ' ' || coalesce(m.email, '') || ' ' || coalesce(m.mitglnrn, '')) like ${q})
      order by m.nachname, m.vorname limit 30`;
   const kunden = await db`
@@ -328,7 +328,7 @@ export async function benutzerKandidaten(db: Db, suche: string) {
            k.pw_hash is not null as kennwort
       from tco.kunden k
      where k.benutzer_id is null and coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
-       and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)
+       and not exists (select 1 from tco.mitgliedera a join tco.mitglied_benutzer mb on mb.adrnr = a.adrnr where a.zuid = k.zuid)
        and lower(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '') || ' ' || coalesce(k.email, '') || ' ' || k.zalias) like ${q}
      order by k.zuid, k.zalias limit 30`;
   return [
@@ -349,7 +349,7 @@ export async function ausgetreteneSperren(tx: Db, adrnr?: string): Promise<{ ges
   const rows = await tx`
     select u.id, u.username,
            exists (select 1 from core.user_roles ur where ur.user_id = u.id and ur.role_id not in (${ROLLE_MITGLIED}, ${ROLLE})) as weitere
-      from tco.mitglieder m join tco.mitgliedera a on a.adrnr = m.adrnr join core.users u on u.id = a.benutzer_id
+      from tco.mitglieder m join tco.mitglied_benutzer a on a.adrnr = m.adrnr join core.users u on u.id = a.benutzer_id
      where m.austritt is not null and m.austritt < current_date and u.active
        ${adrnr ? tx`and m.adrnr = ${adrnr}` : tx``}`;
   const r = { gesperrt: [] as string[], rolleEntzogen: [] as string[] };

@@ -178,7 +178,7 @@ export async function serieBuchen(tx: Db, e: SerienBuchung): Promise<{ bids: str
   let kunde: string;
   let benutzerId: string | null = null;
   if (e.adrnr) {
-    const [m] = await tx`select m.vorname, m.nachname, a.benutzer_id::text from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr where m.adrnr = ${e.adrnr}`;
+    const [m] = await tx`select m.vorname, m.nachname, (select a.benutzer_id::text from tco.mitglied_benutzer a where a.adrnr = m.adrnr order by a.angelegt_am, a.benutzer_id limit 1) as benutzer_id from tco.mitglieder m where m.adrnr = ${e.adrnr}`;
     if (!m) throw new BusinessError('Mitglied nicht gefunden.');
     kunde = condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`).toUpperCase();
     benutzerId = m.benutzer_id ?? null;

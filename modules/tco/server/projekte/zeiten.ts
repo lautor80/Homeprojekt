@@ -7,7 +7,7 @@ import type { Db } from '../verein.js';
  * Projekte – Rückmeldung der geleisteten Stunden.
  *
  * Mitglieder melden ihre Stunden selbst (Mein Bereich → Meine Zeiten → Projekt): die Person kommt allein aus dem
- * angemeldeten Benutzer (tco.mitgliedera.benutzer_id), nie aus der Anfrage. Melden darf, wer im Projekt eingeplant ist
+ * angemeldeten Benutzer (tco.mitglied_benutzer), nie aus der Anfrage. Melden darf, wer im Projekt eingeplant ist
  * – oder jedes Mitglied, wenn das Projekt „offen für alle“ ist – und nur auf genehmigte und laufende Projekte.
  * Der Planer bestätigt oder weist zurück; im Soll-Ist zählen nur bestätigte Stunden. Für Helfer ohne Zugang erfasst der
  * Planer selbst (gleich bestätigt). Projektstunden sind unbezahlt und berühren die Trainingszeiten (tco.jt_*) nicht.
@@ -76,7 +76,7 @@ export function zeitenSummen(
 /** Mitglied des angemeldeten Benutzers (oder null) */
 export async function meinMitglied(db: Db, benutzerId: string | null | undefined): Promise<{ adrnr: string; name: string } | null> {
   if (!benutzerId) return null;
-  const [m] = await db`select m.adrnr, m.vorname, m.nachname from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzerId}`;
+  const [m] = await db`select m.adrnr, m.vorname, m.nachname from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzerId}`;
   return m ? { adrnr: m.adrnr as string, name: `${m.nachname ?? ''}, ${m.vorname ?? ''}`.replace(/\s+/g, ' ').replace(/^, |, $/g, '').trim() } : null;
 }
 

@@ -119,8 +119,8 @@ before(async () => {
     ('008', '2015-01-01', '9999-12-31', 'Hallenschlüssel Pfand Ausgabe', 25, '3', '1590'), ('009', '2015-01-01', '9999-12-31', 'Hallenschlüssel Pfand Rücknahme', 25, '3', '1590')`;
   const r = await admin('POST', '/api/admin/users', { username: 'mia', displayName: 'Mia Matchball', password: 'start-passwort', roles: ['MITGLIED'] });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  await sql`insert into tco.mitgliedera (adrnr, benutzer_id) select ${MIA}, id from core.users where username = 'mia'
-            on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${MIA}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) select id, ${MIA} from core.users where username = 'mia' on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   mia = await anmelden('mia');
   H = heute();
 });

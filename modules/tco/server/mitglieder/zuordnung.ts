@@ -6,7 +6,7 @@ import { buchungsrechtSichern, rolleSicherstellen, ROLLE, ROLLE_MITGLIED } from 
 
 /**
  * Zuordnung vorhandener Benutzer zu Mitglied und EP3-Kunde (Administration → Benutzer und Rechte → Benutzer).
- * - Mitglied: tco.mitgliedera.benutzer_id (je Benutzer höchstens ein Mitglied)
+ * - Mitglied: tco.mitglied_benutzer (je Benutzer höchstens ein Mitglied, ein Mitglied kann mehrere Benutzer haben)
  * - EP3-Kunde: bei Mitglied über tco.mitgliedera.zuid (EP3-Buchungen gehören dann zum Mitglied),
  *   sonst über tco.kunden.benutzer_id (Benutzer bucht als EP3-Kunde)
  * Initiales Mapping: Vorschläge für alle Benutzer ohne Zuordnung nach E-Mail, Benutzername und Name.
@@ -21,13 +21,14 @@ const namen = (anzeige: string) => {
 };
 
 export interface Zuordnung {
-  mitglied: { adrnr: string; name: string; austritt: string | null } | null;
+  /** weitere: Benutzernamen anderer Benutzer desselben Mitglieds */
+  mitglied: { adrnr: string; name: string; austritt: string | null; weitere: string[] } | null;
   ep3: { zuid: string; alias: string; name: string; ueber: 'MITGLIED' | 'BENUTZER' } | null;
 }
 
 export async function zuordnungLesen(db: Db, benutzerId: string): Promise<Zuordnung> {
   const [m] = await db`select a.adrnr, a.zuid, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.austritt::text as austritt
-                         from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzerId}`;
+                         from tco.mitglied_benutzer mb join tco.mitgliedera a on a.adrnr = mb.adrnr join tco.mitglieder m on m.adrnr = a.adrnr where mb.benutzer_id = ${benutzerId}`;
   let ep3: Zuordnung['ep3'] = null;
   if (m?.zuid) {
     const [k] = await db`select zuid, zalias, trim(coalesce(vorname, '') || ' ' || coalesce(nachname, '')) as name from tco.kunden where zuid = ${m.zuid} order by zalias limit 1`;
@@ -37,7 +38,9 @@ export async function zuordnungLesen(db: Db, benutzerId: string): Promise<Zuordn
     const [k] = await db`select zuid, zalias, trim(coalesce(vorname, '') || ' ' || coalesce(nachname, '')) as name from tco.kunden where benutzer_id = ${benutzerId} order by zalias limit 1`;
     if (k) ep3 = { zuid: k.zuid, alias: k.zalias, name: k.name || k.zalias, ueber: 'BENUTZER' };
   }
-  return { mitglied: m ? { adrnr: m.adrnr, name: m.name, austritt: m.austritt } : null, ep3 };
+  const weitere = m ? (await db`select u.username from tco.mitglied_benutzer mb join core.users u on u.id = mb.benutzer_id
+                                  where mb.adrnr = ${m.adrnr} and mb.benutzer_id <> ${benutzerId} order by u.username`).map((x) => x.username as string) : [];
+  return { mitglied: m ? { adrnr: m.adrnr, name: m.name, austritt: m.austritt, weitere } : null, ep3 };
 }
 
 /** Mitglied und/oder EP3-Kunde setzen (null = Zuordnung entfernen, undefined = unverändert) */
@@ -56,7 +59,7 @@ export async function zuordnungSetzen(tx: Db, benutzerId: string, z: { adrnr?: s
     }
   }
   if (z.zuid !== undefined) {
-    const [a] = await tx`select adrnr from tco.mitgliedera where benutzer_id = ${benutzerId}`;
+    const [a] = await tx`select adrnr from tco.mitglied_benutzer where benutzer_id = ${benutzerId}`;
     // bisherige EP3-Zuordnung dieses Benutzers lösen
     await tx`update tco.kunden set benutzer_id = null where benutzer_id = ${benutzerId}`;
     if (z.zuid) {
@@ -80,16 +83,19 @@ export async function zuordnungSetzen(tx: Db, benutzerId: string, z: { adrnr?: s
 export async function zuordnungSuchen(db: Db, suche: string) {
   const q = `%${condense(suche).toLowerCase()}%`;
   const mitglieder = await db`
-    select m.adrnr, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.email, m.mitglnrn, u.username as benutzer
-      from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr left join core.users u on u.id = a.benutzer_id
+    select m.adrnr, trim(coalesce(m.nachname, '') || ', ' || coalesce(m.vorname, '')) as name, m.email, m.mitglnrn,
+           (select string_agg(u.username, ', ' order by u.username) from tco.mitglied_benutzer mb join core.users u on u.id = mb.benutzer_id
+             where mb.adrnr = m.adrnr) as benutzer
+      from tco.mitglieder m
      where (m.austritt is null or m.austritt >= current_date - 365)
        and lower(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '') || ' ' || coalesce(m.email, '') || ' ' || coalesce(m.mitglnrn, '') || ' ' || m.adrnr) like ${q}
      order by m.nachname, m.vorname limit 40`;
   const kunden = await db`
     select distinct on (k.zuid) k.zuid, k.zalias, trim(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '')) as name, k.email,
-           coalesce(u.username, mu.username) as benutzer, a.adrnr as mitglied
+           coalesce(u.username, (select string_agg(mu.username, ', ' order by mu.username) from tco.mitglied_benutzer mb join core.users mu on mu.id = mb.benutzer_id
+                                  where mb.adrnr = a.adrnr)) as benutzer, a.adrnr as mitglied
       from tco.kunden k left join core.users u on u.id = k.benutzer_id
-      left join tco.mitgliedera a on a.zuid = k.zuid left join core.users mu on mu.id = a.benutzer_id
+      left join tco.mitgliedera a on a.zuid = k.zuid
      where coalesce(k.status, '') not in ('placeholder', 'deleted')
        and lower(coalesce(k.vorname, '') || ' ' || coalesce(k.nachname, '') || ' ' || coalesce(k.email, '') || ' ' || k.zalias || ' ' || k.zuid) like ${q}
      order by k.zuid, k.zalias limit 40`;
@@ -109,20 +115,20 @@ export async function mappingVorschlaege(db: Db): Promise<MappingVorschlag[]> {
   const benutzer = await db`
     select u.id::text, u.username, u.display_name, lower(trim(coalesce(u.email, ''))) as email,
            coalesce(array_agg(ur.role_id order by ur.role_id) filter (where ur.role_id is not null), '{}') as rollen,
-           exists (select 1 from tco.mitgliedera a where a.benutzer_id = u.id) as hat_mitglied,
+           exists (select 1 from tco.mitglied_benutzer a where a.benutzer_id = u.id) as hat_mitglied,
            exists (select 1 from tco.kunden k where k.benutzer_id = u.id)
-             or exists (select 1 from tco.mitgliedera a where a.benutzer_id = u.id and a.zuid is not null) as hat_ep3
+             or exists (select 1 from tco.mitglied_benutzer mb join tco.mitgliedera a on a.adrnr = mb.adrnr where mb.benutzer_id = u.id and a.zuid is not null) as hat_ep3
       from core.users u left join core.user_roles ur on ur.user_id = u.id
      where u.active group by u.id order by lower(u.display_name)`;
   const mitglieder = await db`
     select m.adrnr, m.vorname, m.nachname, lower(trim(coalesce(m.email, ''))) as email, a.zuid
       from tco.mitglieder m left join tco.mitgliedera a on a.adrnr = m.adrnr
-     where (m.austritt is null or m.austritt >= current_date) and a.benutzer_id is null`;
+     where (m.austritt is null or m.austritt >= current_date) and not exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = m.adrnr)`;
   const kunden = await db`
     select distinct on (k.zuid) k.zuid, k.zalias, k.vorname, k.nachname, lower(trim(coalesce(k.email, ''))) as email
       from tco.kunden k
      where k.benutzer_id is null and coalesce(k.status, '') not in ('placeholder', 'blocked', 'deleted', 'disabled')
-       and not exists (select 1 from tco.mitgliedera a where a.zuid = k.zuid and a.benutzer_id is not null)
+       and not exists (select 1 from tco.mitgliedera a join tco.mitglied_benutzer mb on mb.adrnr = a.adrnr where a.zuid = k.zuid)
      order by k.zuid, k.zalias`;
   const nameVon = (v: string | null, n: string | null) => norm(`${v ?? ''} ${n ?? ''}`);
   const mitgliedNamen = new Map<string, typeof mitglieder>();

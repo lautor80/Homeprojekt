@@ -14,7 +14,8 @@ import { AuswahlBox } from '../components/AuswahlBox';
  */
 const MG = '/api/m/tco/mitglieder';
 interface Zuordnung {
-  mitglied: { adrnr: string; name: string; austritt: string | null } | null;
+  /** weitere: andere Benutzer, die demselben Mitglied zugeordnet sind */
+  mitglied: { adrnr: string; name: string; austritt: string | null; weitere?: string[] } | null;
   ep3: { zuid: string; alias: string; name: string; ueber: 'MITGLIED' | 'BENUTZER' } | null;
 }
 interface Treffer {
@@ -50,12 +51,18 @@ export function ZuordnungFelder({ benutzerId, darf, onGeaendert }: { benutzerId:
           {darf ? (
             <AuswahlBox style={{ flex: 1 }} wert={z.mitglied?.adrnr ?? ''} placeholder="Mitglied suchen (Name, E-Mail, Nummer)" filter="None" leerErlaubt={false}
                         eintraege={[...(z.mitglied && !t.mitglieder.some((m) => m.adrnr === z.mitglied!.adrnr) ? [{ key: z.mitglied.adrnr, text: `${z.mitglied.name} (${z.mitglied.adrnr})` }] : []),
-                          ...t.mitglieder.map((m) => ({ key: m.adrnr, text: `${m.name} (${m.adrnr})`, zusatz: m.benutzer ? `Benutzer ${m.benutzer}` : m.email ?? '' }))]}
+                          ...t.mitglieder.map((m) => ({ key: m.adrnr, text: `${m.name} (${m.adrnr})`, zusatz: m.benutzer ? `bereits Benutzer ${m.benutzer}` : m.email ?? '' }))]}
                         onSuche={setSuche} onWaehle={(k) => { if (k && k !== z.mitglied?.adrnr) setzen({ adrnr: k }); }} />
           ) : <Text>{z.mitglied ? `${z.mitglied.name} (${z.mitglied.adrnr})` : '–'}</Text>}
           {z.mitglied?.austritt && <ObjectStatus state="Critical">Austritt {z.mitglied.austritt.split('-').reverse().join('.')}</ObjectStatus>}
           {darf && z.mitglied && <Button design="Transparent" icon="decline" tooltip="Zuordnung entfernen" onClick={() => setzen({ adrnr: null })} />}
         </div>
+        {!!z.mitglied?.weitere?.length && (
+          <>
+            <span />
+            <Text className="portal-muted portal-small">Dem Mitglied ebenfalls zugeordnet: {z.mitglied.weitere.join(', ')}</Text>
+          </>
+        )}
         <Label showColon>EP3-Kunde</Label>
         <div className="portal-row" style={{ flexWrap: 'nowrap' }}>
           {darf ? (

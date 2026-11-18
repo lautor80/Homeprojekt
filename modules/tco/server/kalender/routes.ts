@@ -29,7 +29,7 @@ const id = z.object({ id: z.coerce.number().int().positive() });
 /** Adressnummer des angemeldeten Benutzers (oder null, wenn keinem Mitglied zugeordnet) */
 async function eigeneAdrnr(req: FastifyRequest): Promise<string | null> {
   if (!req.user?.id) return null;
-  const [a] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${req.user.id}`;
+  const [a] = await DB`select adrnr from tco.mitglied_benutzer where benutzer_id = ${req.user.id}`;
   return (a?.adrnr as string) ?? null;
 }
 

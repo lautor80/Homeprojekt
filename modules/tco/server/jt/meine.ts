@@ -16,7 +16,7 @@ import { P_SCHNUPPER } from '../schnupper/routes.js';
  * „Meine Trainingszeiten“ – Rückmeldung durch die Trainer selbst (fürs Handy).
  *
  * Sicherheit: Der Trainer wird AUSSCHLIESSLICH aus dem angemeldeten Benutzer ermittelt
- * (tco.mitgliedera.benutzer_id). Keine Route nimmt eine Adressnummer entgegen; fremde Zeiten,
+ * (tco.mitglied_benutzer). Keine Route nimmt eine Adressnummer entgegen; fremde Zeiten,
  * Beträge oder Nachweise sind damit weder lesbar noch änderbar. Bezahlte und freigegebene Monate sind gesperrt.
  *
  * Monatsabschluss: Nach Ende eines Monats gibt der Trainer seinen Zeitnachweis frei. Dabei wird der
@@ -38,7 +38,7 @@ const art = z.enum(ARTEN);
 export async function meinTrainer(req: FastifyRequest): Promise<Trainer> {
   const id = req.user?.id;
   if (!id) throw new BusinessError('Bitte mit einem persönlichen Benutzer anmelden.', 403);
-  const [a] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${id} and trainer`;
+  const [a] = await DB`select a.adrnr from tco.mitglied_benutzer mb join tco.mitgliedera a on a.adrnr = mb.adrnr where mb.benutzer_id = ${id} and a.trainer`;
   if (!a) throw new BusinessError('Ihr Benutzer ist keinem Trainer zugeordnet. Bitte bei der Jugendleitung melden (Zuordnung unter Abrechnung Jugendtraining → Entgelte).', 403);
   const t = (await trainerLesen(DB)).find((x) => x.adrnr === a.adrnr);
   if (!t) throw new BusinessError('Trainer nicht gefunden.', 403);

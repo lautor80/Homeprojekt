@@ -22,8 +22,8 @@ export async function rollenAbgleich(tx: Db, o: { ausfuehren: boolean }): Promis
     with zuordnung as (
       select a.benutzer_id as id,
              bool_or(m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)) as mitglied
-        from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr
-       where a.benutzer_id is not null group by a.benutzer_id
+        from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr
+       group by a.benutzer_id
       union all
       select k.benutzer_id, false from tco.kunden k where k.benutzer_id is not null
     )

@@ -104,8 +104,10 @@ before(async () => {
   for (const [u, rollen] of [['max', ['MITGLIED']], ['petra', ['MITGLIED']], ['theo', ['THEKE']]] as [string, string[]][]) {
     assert.equal((await admin('POST', '/api/admin/users', { username: u, displayName: u, password: 'start-passwort', roles: rollen })).status, 200);
   }
-  await sql`update tco.mitgliedera set benutzer_id = ${await userId('max')} where adrnr = ${MAX}`;
-  await sql`update tco.mitgliedera set benutzer_id = ${await userId('petra')} where adrnr = ${PETRA}`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${MAX}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${await userId('max')}, ${MAX}) on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
+  await sql`insert into tco.mitgliedera (adrnr) values (${PETRA}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${await userId('petra')}, ${PETRA}) on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
 });
 after(async () => { await app?.close(); await sql.end(); server.close(); });
 

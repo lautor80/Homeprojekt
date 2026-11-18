@@ -438,9 +438,11 @@ test('Rollenabgleich: Mitglieder „Mitglied“ + „Hallennutzer“, Nichtmitgl
   const olga = await benutzer('rg.olga', []);
   const gesperrt = await benutzer('rg.gesperrt', []);
   await sql`update core.users set active = false where id = ${gesperrt}`;
-  const vorher = await sql`select adrnr, benutzer_id from tco.mitgliedera where adrnr = '0000000101'`;
+  const vorher = await sql`select benutzer_id from tco.mitglied_benutzer where adrnr = '0000000101'`;
   for (const [adrnr, id] of [['0000000101', hans], ['0000000102', mia], ['0000000103', eva], ['0000000104', peter]] as const) {
-    await sql`insert into tco.mitgliedera (adrnr, benutzer_id) values (${adrnr}, ${id}) on conflict (adrnr) do update set benutzer_id = excluded.benutzer_id`;
+    await sql`delete from tco.mitglied_benutzer where adrnr = ${adrnr}`;
+    await sql`insert into tco.mitgliedera (adrnr) values (${adrnr}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${id}, ${adrnr}) on conflict (benutzer_id) do update set adrnr = excluded.adrnr`;
   }
   await sql`insert into tco.kunden (zuid, zalias, benutzer_id) values ('rg-1', 'Kai', ${kai}), ('rg-2', 'Gesperrt', ${gesperrt})`;
   const rollen = async (id: string) => (await sql`select role_id from core.user_roles where user_id = ${id} order by role_id`).map((r) => r.role_id as string);
@@ -474,8 +476,8 @@ test('Rollenabgleich: Mitglieder „Mitglied“ + „Hallennutzer“, Nichtmitgl
 
   // aufräumen
   await sql`delete from tco.kunden where zuid in ('rg-1', 'rg-2')`;
-  await sql`update tco.mitgliedera set benutzer_id = null where adrnr in ('0000000102', '0000000103', '0000000104')`;
-  await sql`update tco.mitgliedera set benutzer_id = ${vorher[0]?.benutzer_id ?? null} where adrnr = '0000000101'`;
+  await sql`delete from tco.mitglied_benutzer where adrnr in ('0000000101', '0000000102', '0000000103', '0000000104')`;
+  for (const v of vorher) await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${v.benutzer_id}, '0000000101') on conflict do nothing`;
   await sql`delete from core.users where username like 'rg.%'`;
 });
 

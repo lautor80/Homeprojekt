@@ -339,7 +339,7 @@ const tco: ServerModule = {
   // Begrüßung „Hallo <Vorname>“: Vorname des zugeordneten Mitglieds, sonst des Hallenkunden
   vorname: async (benutzerId) => {
     const [r] = await DB`select coalesce(
-        (select nullif(trim(m.vorname), '') from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzerId} limit 1),
+        (select nullif(trim(m.vorname), '') from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzerId} limit 1),
         (select nullif(trim(k.vorname), '') from tco.kunden k where k.benutzer_id = ${benutzerId} limit 1)) as vorname`;
     return (r?.vorname as string | null) ?? null;
   },
@@ -358,7 +358,7 @@ const tco: ServerModule = {
   // „Meine Mitgliedschaft“: das eigene Mitglied darf gesperrt werden (gegen gleichzeitige Pflege durch den Vorstand)
   sperreErlaubt: async (req, objekt, schluessel) => {
     if (objekt !== 'MITGLIED' || !req.user?.id || !can(req, 'tco.meinedaten:edit')) return false;
-    const [a] = await DB`select adrnr from tco.mitgliedera where benutzer_id = ${req.user.id}`;
+    const [a] = await DB`select adrnr from tco.mitglied_benutzer where benutzer_id = ${req.user.id}`;
     return a?.adrnr === schluessel;
   },
   // ausgewählte, noch nicht gesicherte Platzzeit (Sperre mit Zeitraum, Schlüssel = Platz-ID)

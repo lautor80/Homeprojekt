@@ -153,8 +153,12 @@ export async function trainerLesen(db: Db): Promise<Trainer[]> {
   const rows = await db`
     select a.adrnr, coalesce(m.vorname, '') as vorname, coalesce(m.nachname, '') as nachname, coalesce(a.steuernummer, '') as steuernummer,
            (select e.betrag::float8 from tco.trentgelt e where e.adrnr = a.adrnr and e.valid_to >= current_date order by e.valid_to limit 1) as satz,
-           a.benutzer_id::text as benutzer_id, u.display_name as benutzer
-      from tco.mitgliedera a left join tco.mitglieder m on m.adrnr = a.adrnr left join core.users u on u.id = a.benutzer_id
+           b.benutzer_id, b.benutzer
+      from tco.mitgliedera a left join tco.mitglieder m on m.adrnr = a.adrnr
+      left join lateral (
+        select (array_agg(mb.benutzer_id::text order by mb.angelegt_am, mb.benutzer_id))[1] as benutzer_id,
+               string_agg(u.display_name, ', ' order by mb.angelegt_am, mb.benutzer_id) as benutzer
+          from tco.mitglied_benutzer mb join core.users u on u.id = mb.benutzer_id where mb.adrnr = a.adrnr) b on true
      where a.trainer
      order by m.nachname, m.vorname`;
   return rows.map((r) => ({
@@ -164,18 +168,23 @@ export async function trainerLesen(db: Db): Promise<Trainer[]> {
   }));
 }
 
-/** Portal-Benutzer einem Trainer zuordnen (null = Zuordnung lösen); ein Benutzer gehört zu höchstens einem Trainer */
+/**
+ * Portal-Benutzer einem Trainer zuordnen; ein Benutzer gehört zu höchstens einem Mitglied, ein Mitglied kann mehrere Benutzer haben.
+ * Ein weiterer Benutzer wird ergänzt (bestehende bleiben), null löst alle Benutzer des Trainers.
+ */
 export async function trainerBenutzerSetzen(tx: Db, adrnr: string, benutzerId: string | null) {
   const [t] = await tx`select trainer from tco.mitgliedera where adrnr = ${adrnr}`;
   if (!t?.trainer) throw new BusinessError('Die Person ist nicht als Trainer gekennzeichnet.');
   if (benutzerId) {
     const [u] = await tx`select display_name from core.users where id = ${benutzerId}`;
     if (!u) throw new BusinessError('Benutzer nicht gefunden.');
-    const [belegt] = await tx`select a.adrnr, m.vorname, m.nachname from tco.mitgliedera a left join tco.mitglieder m on m.adrnr = a.adrnr
+    const [belegt] = await tx`select a.adrnr, m.vorname, m.nachname from tco.mitglied_benutzer a left join tco.mitglieder m on m.adrnr = a.adrnr
                                where a.benutzer_id = ${benutzerId} and a.adrnr <> ${adrnr}`;
     if (belegt) throw new BusinessError(`Der Benutzer ${u.display_name} ist bereits ${condense(`${belegt.vorname ?? ''} ${belegt.nachname ?? ''}`)} zugeordnet.`);
+    await tx`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${benutzerId}, ${adrnr}) on conflict (benutzer_id) do nothing`;
+  } else {
+    await tx`delete from tco.mitglied_benutzer where adrnr = ${adrnr}`;
   }
-  await tx`update tco.mitgliedera set benutzer_id = ${benutzerId} where adrnr = ${adrnr}`;
 }
 
 /** Portal-Benutzer zur Auswahl in der Trainerpflege */

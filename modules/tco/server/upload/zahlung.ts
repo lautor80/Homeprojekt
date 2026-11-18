@@ -32,7 +32,7 @@ export async function einreicherLesen(db: Db, f: { benutzer_id: string | null; e
     if (u.length === 1) benutzer = u[0].id as string;
   }
   if (benutzer) {
-    const [m] = await db`select ${spalten} from tco.mitgliedera a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzer}`;
+    const [m] = await db`select ${spalten} from tco.mitglied_benutzer a join tco.mitglieder m on m.adrnr = a.adrnr where a.benutzer_id = ${benutzer}`;
     if (m) return m;
   }
   if (!name) return null;
