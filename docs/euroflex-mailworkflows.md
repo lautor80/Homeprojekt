@@ -39,7 +39,8 @@ Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Ro
 | Eingang | `mailAlsPdf` | ja | die E-Mail selbst zusätzlich als PDF ablegen |
 | Eingang | `ocr` | ja | Texterkennung lokal (pdftotext, Tesseract deu+eng) |
 | Eingang | `speicherWarnungMb` | 1024 | Warnung, wenn noch nicht übernommene Dateien mehr belegen |
-| Eingang | `aufbewahrenTage` | 90 | Inhalte nach der Übernahme so viele Tage für „Erneut ablegen“ behalten; 0 = sofort löschen |
+| Eingang | `aufbewahrenDauerhaft` | `true` | Inhalte zugeordneter Dateien (übernommen, Paperless, Dublette) dauerhaft behalten – jederzeit herunterladbar |
+| Eingang | `aufbewahrenTage` | 90 | nur ohne `aufbewahrenDauerhaft`: Inhalte zugeordneter Dateien so viele Tage behalten; 0 = sofort löschen |
 | Eingang | `postfaecher` | leer | Eingangspostfächer `[{ adresse, bezeichnung }]`, z. B. `info@…` „Info“ und `buchhaltung@…` „Buchhaltung“ – siehe „Mehrere Eingangspostfächer“ |
 | Versand | `T`/`L`/`R`.`vorauswahl` | T, L ja; R nein | im Dialog vorausgewählt |
 | Versand | `T`/`L`/`R`.`modus` | `entwurf` | `senden` wirkt nur mit Funktion „Automatisch senden“ und Recht |
@@ -123,17 +124,20 @@ wegräumt.
 | POST | `/eingang/abruf` | edit | offene Vorgänge neu bewerten, n8n-Webhook „jetzt abrufen“ anstoßen (falls eingerichtet) |
 | GET | `/eingang/speicher` | display | `{ bytes, dateien, warnungMb, warnung: boolean }` – Belegung durch noch nicht übernommene Inhalte |
 | GET | `/auftraege/:nr/eingang` | auftraege:display | Eingangsdokumente am Auftrag: id, datei, mime, groesse, status, ziel, von, betreff, datum |
-| POST | `/eingang/dokumente/:id/uebernommen` | auftraege:edit | Browser hat die Datei in den Ablageordner (Unterordner `Eingang/`) geschrieben → Inhalt löschen, Status `uebernommen` |
+| POST | `/eingang/dokumente/:id/uebernommen` | auftraege:edit | Browser hat die Datei in den Ablageordner (Unterordner `Eingang/`) geschrieben → Status `uebernommen`, Inhalt je nach Aufbewahrung |
 
 ### Lokale Ablage und Speicher
 
 - Ablageziel `lokal`: Dokumente erhalten Status `wartet`, Inhalt bleibt in `transport.eing_dokumente.inhalt`.
   Öffnet jemand den Auftrag mit verbundenem Ablageordner, schreibt der Browser die wartenden Dateien nach `Eingang/` und meldet
-  jede mit `POST /eingang/dokumente/:id/uebernommen` (mit `ablage_name`). Der Inhalt bleibt danach `aufbewahrenTage` (Standard 90)
-  im Portal, damit **Erneut ablegen** (Posteingang je E-Mail, Auftragsliste „Neu ablegen“) die Datei wieder in `Eingang/` schreiben
+  jede mit `POST /eingang/dokumente/:id/uebernommen` (mit `ablage_name`). Der Inhalt bleibt danach im Portal – standardmäßig
+  dauerhaft (`aufbewahrenDauerhaft`), sonst `aufbewahrenTage` –, damit die Datei im Posteingang und am Auftrag herunterladbar bleibt und **Erneut ablegen** (Posteingang je E-Mail, Auftragsliste „Neu ablegen“) die Datei wieder in `Eingang/` schreiben
   kann (gleicher Name, wird ersetzt; Ordner wird angelegt); danach löscht `aufbewahrungAufraeumen` ihn (läuft bei jedem Eingang und
-  jeder Übernahme). Mit 0 wird wie früher sofort gelöscht.
-- Ablageziel `paperless`: Ablage über Kontext `auftrag.dokument`, Verknüpfung in `transport.auftrag_dokumente`, Inhalt sofort gelöscht.
+  jeder Übernahme; bei dauerhafter Aufbewahrung nie). Mit 0 Tagen wird wie früher sofort gelöscht.
+- Fehlt ein Inhalt (vor der dauerhaften Aufbewahrung gelöscht), füllt eine erneute Lieferung derselben E-Mail ihn wieder auf
+  (`inhalteNachladen`: Anhänge über Prüfsumme bzw. Dateiname, E-Mail als PDF neu erzeugt) – dazu die Mail in Outlook zurück in den
+  Quellordner verschieben und als ungelesen markieren.
+- Ablageziel `paperless`: Ablage über Kontext `auftrag.dokument`, Verknüpfung in `transport.auftrag_dokumente`; der Inhalt bleibt wie oben aufbewahrt (dauerhaft herunterladbar).
 - Nicht übernommene Inhalte werden **nie** automatisch gelöscht. Die Belegung zeigt die Einstellungsseite; ab
   `speicherWarnungMb` erscheint eine Warnung (auch im Arbeitsvorrat).
 - Übernahme im Browser: automatisch beim Öffnen des Auftrags, wenn der Ablageordner verbunden und der Zugriff schon erteilt ist

@@ -5,7 +5,7 @@ import { PdfDialog } from '@core/components/PdfDialog';
 import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { DocsDialog } from '../dialogs';
-import { T } from '../util';
+import { T, download } from '../util';
 import { dateiLesenUnterordner, ordnerMoeglich, ordnerStatus, ordnerWaehlen, UNTERORDNER_EINGANG } from '../ordner';
 import { eingangName } from '../ordner-schluessel';
 import { OrdnerDialog } from '../Ablageordner';
@@ -16,7 +16,7 @@ import { STATUS_TEXT, dateiUrl, groesse, istPdf, liste, zeitText, type AuftragEi
  * Auftrag → Dokumente, Abschnitt „Aus dem Posteingang“ (nur mit Funktion „Posteingang“): Dateien, die der Posteingang an
  * diesem Auftrag abgelegt hat. Mit Ablageziel „lokal“ warten sie im Portal (Status „wartet“), bis jemand den Auftrag mit
  * verbundenem Ablageordner öffnet: Dann schreibt der Browser sie nach <Auftragsordner>/Eingang/ und meldet jede mit
- * POST /eingang/dokumente/:id/uebernommen (mit dem Dateinamen im Ordner) – der Server löscht daraufhin den Inhalt.
+ * POST /eingang/dokumente/:id/uebernommen (mit dem Dateinamen im Ordner); der Inhalt bleibt (Standard: dauerhaft) zum Herunterladen.
  * Übernommene Dateien öffnen sich per Klick direkt aus dem Ablageordner, „Ordner öffnen“ zeigt den Unterordner „Eingang“.
  * Laden des Inhalts verlangt transport.eingang:edit, das Melden transport.auftraege:edit; ohne diese Rechte nur ein Hinweis.
  */
@@ -28,6 +28,8 @@ export function AuftragEingang({ nr, onUebernommen }: { nr: string; onUebernomme
   const aktiv = funktion('transport.eingang');
   const darfLaden = can('transport.eingang:edit');
   const darfMelden = can('transport.auftraege:edit');
+  // zugeordnete Dateien aus dem Portal öffnen/herunterladen: Posteingang bearbeiten oder Aufträge ansehen
+  const darfOeffnen = darfLaden || can('transport.auftraege:display');
   const [doks, setDoks] = useState<AuftragEingangDokument[] | null>(null);
   const [ordner, setOrdner] = useState<OrdnerZustand>('pruefen');
   const [busy, setBusy] = useState(false);
@@ -74,12 +76,18 @@ export function AuftragEingang({ nr, onUebernommen }: { nr: string; onUebernomme
     uebernehmen(false);
   }, [ordner, wartend.length, darfLaden, darfMelden, nr, uebernehmen]);
 
-  /** Übernommene Datei direkt aus dem Ablageordner öffnen (Klick darf nach dem Zugriff fragen) */
+  /** Inhalt liegt im Portal und darf geladen werden (zugeordnete Dateien standardmäßig dauerhaft) */
+  const portal = (d: AuftragEingangDokument) => !!d.vorhanden && darfOeffnen;
+  const ausPortal = (d: AuftragEingangDokument) => (istPdf(d) ? setPdf(d) : window.open(dateiUrl(d.id), '_blank', 'noopener'));
+  const herunterladen = (d: AuftragEingangDokument) => download(dateiUrl(d.id), d.datei || `Dokument_${d.id}`).catch((e) => setError((e as Error).message));
+
+  /** Übernommene Datei direkt aus dem Ablageordner öffnen (Klick darf nach dem Zugriff fragen); fehlt sie dort, aus dem Portal */
   async function lokalOeffnen(d: AuftragEingangDokument) {
     setError(null);
     try {
       const name = eingangName(d);
       const f = await dateiLesenUnterordner(nr, UNTERORDNER_EINGANG, name, true);
+      if (!f && portal(d)) return ausPortal(d);
       if (!f) {
         const st = ordnerMoeglich ? await ordnerStatus().catch(() => null) : null;
         setError(!st ? 'Kein Ablageordner verbunden – die Datei liegt im Ablageordner des PCs, von dem sie übernommen wurde (Aufträge → „Ablageordner“).'
@@ -135,10 +143,10 @@ export function AuftragEingang({ nr, onUebernommen }: { nr: string; onUebernomme
           <div key={d.id} className="portal-ad__zeile">
             <Icon name={istPdf(d) ? 'pdf-attachment' : /^image\//.test(d.mime ?? '') ? 'picture' : 'document'} />
             <div style={{ minWidth: 0 }}>
-              {d.status === 'wartet' && darfLaden
-                ? <Link onClick={() => (istPdf(d) ? setPdf(d) : window.open(dateiUrl(d.id), '_blank', 'noopener'))}>{d.datei}</Link>
-                : d.status === 'uebernommen' && ordnerMoeglich
-                  ? <Link onClick={() => lokalOeffnen(d)} title="Aus dem Ablageordner öffnen">{eingangName(d)}</Link>
+              {d.status === 'uebernommen' && ordnerMoeglich
+                ? <Link onClick={() => lokalOeffnen(d)} title="Aus dem Ablageordner öffnen">{eingangName(d)}</Link>
+                : portal(d)
+                  ? <Link onClick={() => ausPortal(d)} title="Aus dem Portal öffnen">{d.datei}</Link>
                   : d.status === 'abgelegt' && d.paperless_id && istPdf(d)
                     ? <Link onClick={() => setPdf(d)} title="Aus Paperless öffnen">{d.datei}</Link>
                     : <Text>{d.datei}</Text>}
@@ -147,10 +155,13 @@ export function AuftragEingang({ nr, onUebernommen }: { nr: string; onUebernomme
                   zeitText(d.datum), d.von ?? '', d.betreff ? `„${d.betreff}“` : ''].filter(Boolean).join(' · ')}
               </div>
             </div>
+            {portal(d)
+              ? <Button design="Transparent" icon="download" tooltip="Herunterladen" accessibleName={`${d.datei} herunterladen`} onClick={() => herunterladen(d)} />
+              : <span />}
           </div>
         ))}
       </div>
-      {pdf && <PdfDialog url={pdf.status === 'abgelegt' && pdf.paperless_id ? `${T}/auftraege/${nr}/dokumente/${pdf.paperless_id}/datei` : dateiUrl(pdf.id)}
+      {pdf && <PdfDialog url={!portal(pdf) && pdf.status === 'abgelegt' && pdf.paperless_id ? `${T}/auftraege/${nr}/dokumente/${pdf.paperless_id}/datei` : dateiUrl(pdf.id)}
                          title={pdf.datei} filename={pdf.datei || 'dokument.pdf'} onClose={() => setPdf(null)} />}
       {lokal && <DocsDialog docs={[{ url: lokal.url, filename: lokal.name, lokal: true }]} onClose={() => { URL.revokeObjectURL(lokal.url); setLokal(null); }} />}
       {ordnerDialog && <OrdnerDialog nr={nr} unterordner={UNTERORDNER_EINGANG} onClose={() => setOrdnerDialog(false)} />}
