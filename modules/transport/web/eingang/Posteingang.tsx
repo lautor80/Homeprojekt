@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BusyIndicator, Button, CheckBox, Icon, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
@@ -12,6 +12,7 @@ import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { dat } from '../util';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
+import { OHNE_ADRESSE, absenderBaum, absenderFiltern, filterGueltig, type AbsenderDomain, type AbsenderFilter } from './absenderbaum';
 import {
   EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
   type EingangDokument, type EingangsPostfach, type Kandidat, type Vorgang, type VorgangStatus, type VorgangZeile,
@@ -59,6 +60,11 @@ export function Posteingang() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stand, setStand] = useState(0);
+  // Absenderbaum: Filter nach Domain oder Adresse (gilt nur, solange es den Knoten in der aktuellen Liste gibt)
+  const [absFilter, setAbsFilter] = useState<AbsenderFilter>(null);
+  const baum = useMemo(() => absenderBaum(zeilen ?? []), [zeilen]);
+  const filter = filterGueltig(baum, absFilter) ? absFilter : null;
+  const sichtbar = useMemo(() => (zeilen ? absenderFiltern(zeilen, filter) : null), [zeilen, filter]);
   const detailRef = useRef<HTMLDivElement | null>(null);
   // Aufträge für die Auswahl und den Kundennamen – nur wer ablegen darf, braucht sie
   const auftraege = useAuftraege(edit && can('transport.auftraege:display'));
@@ -94,6 +100,12 @@ export function Posteingang() {
     if (klein) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
+  function absenderWaehlen(f: AbsenderFilter) {
+    setAbsFilter(f);
+    const neu = absenderFiltern(zeilen ?? [], f);
+    setGewaehlt((g) => (g && neu.some((z) => z.id === g) ? g : klein ? null : neu[0]?.id ?? null));
+  }
+
   const zaehler = (k: VorgangStatus) => (k === 'pruefen' || k === 'fehler') && anzahl[k] !== null ? ` (${anzahl[k]})` : '';
 
   return (
@@ -122,8 +134,13 @@ export function Posteingang() {
         </Text>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: klein ? 'minmax(0, 1fr)' : 'minmax(18rem, 26rem) minmax(0, 1fr)', gap: '1rem', alignItems: 'start' }}>
-        <Liste zeilen={zeilen} status={status} schwelle={schwelle} gewaehlt={gewaehlt} onWaehlen={waehlen}
-               postfaecher={postfaecher.length > 1 && !postfach ? postfaecher : []} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: 0 }}>
+          {zeilen && zeilen.length > 0 && (
+            <AbsenderBaum baum={baum} gesamt={zeilen.length} filter={filter} onFilter={absenderWaehlen} anfangsOffen={!klein} />
+          )}
+          <Liste zeilen={sichtbar} status={status} schwelle={schwelle} gewaehlt={gewaehlt} onWaehlen={waehlen}
+                 postfaecher={postfaecher.length > 1 && !postfach ? postfaecher : []} />
+        </div>
         <div ref={detailRef} style={{ minWidth: 0 }}>
           {gewaehlt ? (
             <Detail key={`${gewaehlt}-${stand}`} id={gewaehlt} edit={edit} schwelle={schwelle} auftraege={auftraege}
@@ -135,6 +152,73 @@ export function Posteingang() {
         </div>
       </div>
     </AppPage>
+  );
+}
+
+// ---------------------------------------------------------------------------- Absenderbaum
+
+/** Baum Domain → Absenderadresse mit Anzahl der E-Mails in der aktuellen Ansicht; Klick auf einen Knoten filtert die Liste */
+function AbsenderBaum({ baum, gesamt, filter, onFilter, anfangsOffen }: {
+  baum: AbsenderDomain[]; gesamt: number; filter: AbsenderFilter; onFilter: (f: AbsenderFilter) => void; anfangsOffen: boolean;
+}) {
+  const [offen, setOffen] = useState(anfangsOffen);
+  const [auf, setAuf] = useState<Set<string>>(new Set());
+  const umschalten = (d: string) => setAuf((s) => { const n = new Set(s); if (n.has(d)) n.delete(d); else n.add(d); return n; });
+  const ist = (art: 'domain' | 'adresse', wert: string) => filter?.art === art && filter.wert === wert;
+
+  const knoten = (aktiv: boolean, ebene: number, inhalt: React.ReactNode, onClick: () => void, key: string, vorne?: React.ReactNode) => (
+    <div key={key} role="treeitem" aria-selected={aktiv} aria-level={ebene + 1} tabIndex={0}
+         onClick={onClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+         style={{
+           display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.5rem', paddingLeft: `${0.5 + ebene * 1.25}rem`,
+           cursor: 'pointer', minWidth: 0, borderTop: '1px solid var(--sapList_BorderColor)',
+           background: aktiv ? 'var(--sapList_SelectionBackgroundColor)' : undefined,
+           boxShadow: aktiv ? 'inset 3px 0 0 var(--sapSelectedColor)' : undefined,
+         }}>
+      <span style={{ width: '1rem', flex: 'none', display: 'inline-flex', justifyContent: 'center' }}>{vorne}</span>
+      {inhalt}
+    </div>
+  );
+  const anzahl = (n: number) => <Text className="portal-muted portal-small" style={{ whiteSpace: 'nowrap' }}>{n}</Text>;
+  const klein = { width: '0.85rem', height: '0.85rem' };
+
+  return (
+    <div className="portal-ad" role="tree" aria-label="Absender">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem' }}>
+        <Link onClick={() => setOffen(!offen)}>
+          <Icon name={offen ? 'navigation-down-arrow' : 'navigation-right-arrow'} style={{ ...klein, verticalAlign: 'middle' }} /> Absender ({baum.length} {baum.length === 1 ? 'Domain' : 'Domains'})
+        </Link>
+        {filter && (
+          <Link style={{ marginLeft: 'auto' }} onClick={() => onFilter(null)}>Filter aufheben</Link>
+        )}
+      </div>
+      {offen && (
+        <div style={{ maxHeight: '22rem', overflow: 'auto' }}>
+          {knoten(!filter, 0, <><Text style={{ flex: 1, fontWeight: 'bold' }}>Alle Absender</Text>{anzahl(gesamt)}</>, () => onFilter(null), '*',
+            <Icon name="group" style={klein} />)}
+          {baum.map((d) => {
+            const aufgeklappt = auf.has(d.domain) || (filter?.art === 'adresse' && d.adressen.some((a) => a.adresse === filter.wert));
+            return [
+              knoten(ist('domain', d.domain), 1,
+                <><Text style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.domain}>
+                  {d.domain === OHNE_ADRESSE ? d.domain : `@${d.domain}`}
+                </Text>{anzahl(d.anzahl)}</>,
+                () => { onFilter({ art: 'domain', wert: d.domain }); setAuf((s) => new Set(s).add(d.domain)); }, `d:${d.domain}`,
+                <span role="button" aria-label={aufgeklappt ? 'Zuklappen' : 'Aufklappen'} style={{ display: 'inline-flex', cursor: 'pointer' }}
+                      onClick={(e) => { e.stopPropagation(); umschalten(d.domain); }}>
+                  <Icon name={aufgeklappt ? 'navigation-down-arrow' : 'navigation-right-arrow'} style={klein} />
+                </span>),
+              ...(aufgeklappt ? d.adressen.map((a) => knoten(ist('adresse', a.adresse), 2,
+                <><div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                  <Text style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.adresse}>{a.name || a.adresse}</Text>
+                  {a.name && <Text className="portal-muted portal-small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.adresse}</Text>}
+                </div>{anzahl(a.anzahl)}</>,
+                () => onFilter({ art: 'adresse', wert: a.adresse }), `a:${a.adresse}`, <Icon name="email" style={klein} />)) : []),
+            ];
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
