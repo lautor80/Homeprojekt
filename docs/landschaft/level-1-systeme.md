@@ -214,7 +214,7 @@ flowchart LR
 | projekte | 15 |
 | rundschreiben | 20 |
 | schluessel | 28 |
-| schnupper | 6 |
+| schnupper | 7 |
 | soll | 12 |
 | sport | 4 |
 | teilnehmer | 4 |
