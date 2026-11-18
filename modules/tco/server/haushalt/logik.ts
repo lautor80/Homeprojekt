@@ -14,6 +14,7 @@ import {
 } from './vorschlag.js';
 import {
   planProjekte, planProjekteFestschreiben, planProjekteKopieren, planProjektSetzen, projekteSollIst, projektnummern, type PlanProjekt, type ProjektSollIst,
+  HINWEIS_AUS_URL, hinweiseAus,
 } from './projekte.js';
 
 /**
@@ -832,6 +833,8 @@ export interface SollIst {
   /** Soll-Ist je Projekt: Ist-Kosten aus den FI-Buchungen mit der Projektnummer gegen das Projektbudget */
   projekte: ProjektSollIst[];
   cfg: Cfg;
+  /** im Arbeitsvorrat abgewählte Hinweise (HH:<Konto> des Jahres, HHPROJEKTBUDGET:<id>) – im Soll-Ist wieder einblendbar */
+  ausgeblendet: string[];
 }
 
 /** Plan gegen Ist und Hochrechnung zum Jahresende – für die gültige Fassung des Jahres */
@@ -885,6 +888,7 @@ export async function sollIst(db: Db, jahr: number, heute = heuteText()): Promis
     verlauf: { E: verlauf('E'), A: verlauf('A') },
     ueberschritten: zeilen.filter((z) => z.bewertung.stufe === 'UEBERSCHRITTEN').length,
     beobachten: zeilen.filter((z) => z.bewertung.stufe === 'BEOBACHTEN').length, projekte: await projekteSollIst(db, jahr, cfg), cfg,
+    ausgeblendet: [...await hinweiseAus(db, jahr)].sort(),
   };
 }
 
@@ -906,12 +910,14 @@ const eur = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2,
 /** Arbeitsvorrat des Kassenwarts: je überschrittenem Ausgabenbudget ein Eintrag */
 export async function aufgaben(db: Db, heute = heuteText()): Promise<Aufgabe[]> {
   const u = await ueberschreitungen(db, heute);
-  return u.zeilen.map((z) => ({
+  const aus = u.zeilen.length ? await hinweiseAus(db, u.jahr) : new Set<string>();
+  return u.zeilen.filter((z) => !aus.has(`HH:${z.konto}`)).map((z) => ({
     key: `HH:${z.konto}`, bereich: 'Kassenwart', icon: 'expense-report', state: 'Negative' as const,
     titel: `Budget überschritten: ${z.konto} ${z.name}`,
     text: z.geplant
       ? `Plan ${u.jahr}: ${eur(z.plan)} € · gebucht ${eur(z.ist)} € · Hochrechnung ${eur(z.hochrechnung)} €${z.bewertung.prozent !== null ? ` (${z.bewertung.prozent > 0 ? '+' : ''}${z.bewertung.prozent.toLocaleString('de-DE')} %)` : ''}`
       : `Im Haushaltsplan ${u.jahr} nicht geplant · gebucht ${eur(z.ist)} €`,
     datum: heute, pfad: '/tco/haushalt?tab=sollist', betrag: runden(z.hochrechnung - z.plan),
+    erledigen: { text: 'nicht mehr anzeigen', url: HINWEIS_AUS_URL, body: { schluessel: `HH:${z.konto}`, jahr: u.jahr, aus: true } },
   }));
 }

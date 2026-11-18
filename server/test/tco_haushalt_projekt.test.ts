@@ -329,6 +329,13 @@ test('Soll-Ist je Projekt aus FI; keine Doppelzählung im Konto, kein Einfluss a
   assert.deepEqual((await hh.aufgaben(db, '2077-12-20')).map((a) => a.key), []);
   const av = await pr.projektAufgaben(db, { genehmiger: false, leser: true, ueberwachung: true }, s.cfg, '2077-12-20');
   assert.deepEqual(av.map((a) => [a.key, a.bereich, a.state, a.betrag]), [[`HHPROJEKTBUDGET:${led}`, 'Kassenwart', 'Negative', 1900]]);
+  // abwählen: gilt für das Projekt über alle Jahre, im Soll-Ist vermerkt; wieder anzeigen
+  assert.deepEqual(av[0].erledigen?.body, { schluessel: `HHPROJEKTBUDGET:${led}`, jahr: 0, aus: true });
+  await sql.begin((t) => pr.hinweisSetzen(t as never, `HHPROJEKTBUDGET:${led}`, 2077, true, 'Test'));
+  assert.deepEqual(await pr.projektAufgaben(db, { genehmiger: false, leser: true, ueberwachung: true }, s.cfg, '2078-01-10'), []);
+  assert.ok((await hh.sollIst(db, 2077, '2077-12-20')).ausgeblendet.includes(`HHPROJEKTBUDGET:${led}`));
+  await sql.begin((t) => pr.hinweisSetzen(t as never, `HHPROJEKTBUDGET:${led}`, 0, false, 'Test'));
+  assert.equal((await pr.projektAufgaben(db, { genehmiger: false, leser: true, ueberwachung: true }, s.cfg, '2077-12-20')).length, 1);
   assert.deepEqual(await pr.projektAufgaben(db, { genehmiger: false, leser: true, ueberwachung: false }, s.cfg), []);
 
   // Grundlage für 2079 (Stand Anfang 2078): „Ist 2077“ wie im Jahresabschluss einschließlich Projekt – gerechnet wird ohne es

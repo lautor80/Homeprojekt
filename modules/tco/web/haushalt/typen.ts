@@ -79,6 +79,8 @@ export interface SollIst {
   ergebnis: { plan: number; ist: number; hochrechnung: number };
   verlauf: Record<'E' | 'A', { plan: number[]; ist: (number | null)[] }>;
   ueberschritten: number; beobachten: number; projekte: ProjektSollIst[]; cfg: Cfg;
+  /** im Arbeitsvorrat abgewählte Hinweise: HH:<Konto>, HHPROJEKTBUDGET:<id> */
+  ausgeblendet?: string[];
 }
 
 /** Betrag ohne Nachkommastellen (Planwerte sind auf 10 € gerundet), Prozent mit Vorzeichen */

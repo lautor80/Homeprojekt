@@ -563,6 +563,22 @@ test('Oberfläche/API: anlegen, ändern, Soll-Ist, PDF, Einstellungen, Funktions
   assert.equal((await call('PUT', '/api/funktionen', { id: 'tco.haushalt.ueberwachung', aktiv: true })).status, 200);
   assert.equal((await hh.aufgaben(db, HEUTE)).length, 2);
 
+  // Hinweis „Budget überschritten“ abwählen: verschwindet aus dem Arbeitsvorrat, im Soll-Ist vermerkt und wieder einblendbar
+  const hinweis = (await hh.aufgaben(db, HEUTE))[0];
+  assert.deepEqual(hinweis.erledigen, { text: 'nicht mehr anzeigen', url: '/haushalt/hinweis/ausblenden', body: { schluessel: 'HH:4091', jahr: 2096, aus: true } });
+  r = await call('POST', `${H}/hinweis/ausblenden`, hinweis.erledigen!.body);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual((await hh.aufgaben(db, HEUTE)).map((x) => x.key), ['HH:6091']);
+  assert.deepEqual((await call('GET', `${H}/sollist?jahr=2096`)).body.ausgeblendet, ['HH:4091']);
+  assert.deepEqual((await call('GET', `${H}/sollist?jahr=2097`)).body.ausgeblendet, [], 'gilt nur für das Geschäftsjahr');
+  assert.equal((await call('POST', `${H}/hinweis/ausblenden`, hinweis.erledigen!.body)).status, 200, 'zweimal abwählen schadet nicht');
+  assert.equal((await call('POST', `${H}/hinweis/ausblenden`, { schluessel: 'X; drop table', jahr: 2096 })).status, 400);
+  const [beleg] = await sql`select object_key, action from core.change_header where table_name = 'tco.hh_hinweis_aus' order by id desc limit 1`;
+  assert.deepEqual([beleg.object_key, beleg.action], ['HH:4091', 'HH_HINWEIS_AUS'], 'mit Änderungsbeleg');
+  r = await call('POST', `${H}/hinweis/ausblenden`, { schluessel: 'HH:4091', jahr: 2096, aus: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await hh.aufgaben(db, HEUTE)).length, 2);
+
   // PDF für die Mitgliederversammlung
   r = await call('GET', `${H}/plan/${planId}/pdf`);
   assert.equal(r.status, 200);
