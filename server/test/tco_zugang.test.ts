@@ -28,7 +28,8 @@ function client(remoteAddress?: string) {
     if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
     // PDF u. ä.: kein JSON – Rohdaten und Inhaltstyp zurück
     const json = !res.body || String(res.headers['content-type'] ?? '').includes('json') || /^[[{"]/.test(res.body);
-    return { status: res.statusCode, body: res.body && json ? JSON.parse(res.body) : null, raw: res.rawPayload, ct: String(res.headers['content-type'] ?? '') };
+    return { status: res.statusCode, body: res.body && json ? JSON.parse(res.body) : null, raw: res.rawPayload, ct: String(res.headers['content-type'] ?? '') } as
+      { status: number; body: any; raw?: Buffer; ct?: string }; // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 }
 const admin = client();
@@ -394,8 +395,8 @@ test('Schnuppertraining (#86): Anmeldung als Kategorie im Mitgliederstamm, Betre
   // Bericht zum Ausdrucken (TCO-Layout): einzelne Anmeldung, ganze Liste; Trainer mit Leserecht darf drucken
   r = await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=${st.adrnr}`);
   assert.equal(r.status, 200);
-  assert.match(r.ct, /application\/pdf/);
-  assert.equal(r.raw.subarray(0, 5).toString(), '%PDF-');
+  assert.match(r.ct ?? '', /application\/pdf/);
+  assert.equal(r.raw?.subarray(0, 5).toString(), '%PDF-');
   assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?filter=ALLE`)).status, 200);
   assert.equal((await trainer('GET', `${T}/schnuppertraining/pdf`)).status, 200);
   assert.equal((await admin('GET', `${T}/schnuppertraining/pdf?adrnrs=0000999999`)).status, 404);
