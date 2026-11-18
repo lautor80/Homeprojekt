@@ -485,8 +485,9 @@ export async function ep3Anlegen(tx: Db, zuid: string): Promise<{ username: stri
   const k = await tx`select * from tco.kunden where zuid = ${zuid} order by zalias`;
   if (!k.length) throw new BusinessError('EP3-Kunde nicht gefunden.');
   if (k.some((x) => x.benutzer_id)) throw new BusinessError('Dieser EP3-Kunde hat bereits einen Portalzugang.');
-  const [mz] = await tx`select a.adrnr from tco.mitgliedera a where a.zuid = ${zuid} and exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = a.adrnr)`;
-  if (mz) throw new BusinessError('Das zugehörige Mitglied hat bereits einen Benutzer.');
+  const [mz] = await tx`select a.adrnr, exists (select 1 from tco.mitglied_benutzer mb where mb.adrnr = a.adrnr) as hat_benutzer
+                         from tco.mitgliedera a where a.zuid = ${zuid}`;
+  if (mz?.hat_benutzer) throw new BusinessError('Das zugehörige Mitglied hat bereits einen Benutzer.');
   const username = await freierBenutzername(tx, k[0].email, k[0].zalias, zuid);
   const mitHash = k.find((x) => istBcrypt(x.pw_hash));
   let startkennwort: string | null = null;
