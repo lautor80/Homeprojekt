@@ -16,6 +16,7 @@ import { toast } from '@core/toast';
 import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
 import { ordnerBereit } from './ordner';
+import { nachAblegen, type NachablageArt } from './nachablage';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { VersandDialog } from './VersandDialog';
 import { symbole, terminText, type SymbolZustand } from './termin';
@@ -198,7 +199,8 @@ export function AuftraegeListe() {
   const navigate = useNavigate();
   const can = useCan();
   // Sammelversand „Versenden…“ über Outlook 365 (Funktion transport.versand.sammel); aus = bisheriges Menü „Versenden“ (EML je Dokument)
-  const sammelversand = useFunktion()('transport.versand.sammel');
+  const funktion = useFunktion();
+  const sammelversand = funktion('transport.versand.sammel');
   const [jahre, setJahre] = useState<KeyText[]>([]);
   const [jahr, setJahr] = useState(merk.jahr);
   const [fakt, setFakt] = useState(merk.fakt);
@@ -221,6 +223,8 @@ export function AuftraegeListe() {
   const [versand, setVersand] = useState<string[] | null>(null);
   const [xr, setXr] = useState<XRes | null>(null);
   const [info, setInfo] = useState<{ title: string; text: string } | null>(null);
+  // „Neu ablegen“: läuft gerade (Text des aktuellen Schritts)
+  const [ablage, setAblage] = useState<string | null>(null);
   // Tabellen anpassen (Recht transport.tabellen:edit): Spalten ein-/ausblenden, Filter, Sortierung – in der Variante gespeichert
   const anpassen = can('transport.tabellen:edit');
   const [spaltenListe, setSpaltenListeState] = useState<TabellenStand>(merk.spaltenListe);
@@ -429,6 +433,25 @@ export function AuftraegeListe() {
       filename: `${art === 'T' ? 'Transportauftrag' : 'Lieferschein'}_${id}.pdf`,
       ablage: [s.auftragsnr],
     }))));
+  }
+
+  /** Markierte Aufträge noch einmal drucken und im Ablageordner speichern (Ordner wird angelegt), E-Mail-Belege nachziehen */
+  async function neuAblegen(art: NachablageArt) {
+    if (!sel.length) return toast('Bitte mindestens einen Auftrag auswählen.');
+    if (art === 'rechnung' && !sel.some((s) => s.faktura)) return toast('Unter der Auswahl ist kein fakturierter Auftrag.');
+    setError(null);
+    setAblage('Ablageordner wird geprüft …');
+    try {
+      const r = await nachAblegen(sel, liste, art, { eingang: funktion('transport.eingang'), schritt: setAblage });
+      const e = r.eingang;
+      const kopf = [
+        `${r.gespeichert} von ${r.pdfs} PDF(s) im Ablageordner gespeichert (Ordner bei Bedarf angelegt).`,
+        e.uebernommen || e.paperless || e.vorhanden ? `E-Mail-Belege: ${[e.uebernommen ? `${e.uebernommen} übernommen` : '', e.paperless ? `${e.paperless} aus Paperless nachgeladen` : '', e.vorhanden ? `${e.vorhanden} schon vorhanden` : ''].filter(Boolean).join(', ')}.` : '',
+      ].filter(Boolean).join('\n');
+      if (r.meldungen.length) setInfo({ title: 'Neu ablegen', text: `${kopf}\n\nHinweise:\n${r.meldungen.join('\n')}` });
+      else toast(kopf.replace('\n', ' '), 7000);
+      if (r.vorschau.length) setDocs(r.vorschau); // zum Drucken: die gespeicherten PDFs
+    } catch (x) { setError((x as Error).message); } finally { setAblage(null); }
   }
 
   async function versenden(art: 'T' | 'L' | 'R') {
@@ -662,6 +685,11 @@ export function AuftraegeListe() {
           { text: 'Lieferschein', icon: 'document-text', onClick: () => drucken('L') },
           { text: 'Rechnung', icon: 'lead', onClick: () => drucken('R') },
         ]} />
+        <MenuButton text={ablage ? 'Ablage läuft …' : 'Neu ablegen'} icon="save" disabled={!sel.length || !!ablage} items={[
+          { text: 'Aufträge (Transportauftrag, Lieferschein)', icon: 'shipping-status', onClick: () => neuAblegen('auftrag') },
+          { text: 'Rechnungen', icon: 'lead', onClick: () => neuAblegen('rechnung') },
+          { text: 'Aufträge und Rechnungen', icon: 'documents', onClick: () => neuAblegen('alles') },
+        ]} />
         {sammelversand && can('transport.versand:execute') && (
           <Button icon="paper-plane" disabled={!sel.length} onClick={() => setVersand(sel.map((s) => s.auftragsnr))}
                   tooltip="Ausgewählte Dokumente als E-Mails je Auftrag und Empfänger über Outlook 365">Versenden…</Button>
@@ -700,6 +728,7 @@ export function AuftraegeListe() {
         </MessageStrip>
       )}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {ablage && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Neu ablegen: {ablage}</MessageStrip>}
       <Dialog open={ordnerDialog} headerText="Ablageordner" onClose={() => setOrdnerDialog(false)} footer={<Bar endContent={<Button onClick={() => setOrdnerDialog(false)}>Schließen</Button>} />}>
         <div style={{ width: 'min(46rem, 88vw)' }}>{ordnerDialog && <AblageOrdnerEinstellung />}</div>
       </Dialog>
@@ -746,7 +775,7 @@ export function AuftraegeListe() {
       )}
       </div>
 
-      <DocsDialog docs={docs} onClose={() => setDocs(null)} />
+      <DocsDialog docs={docs} onClose={() => { docs?.forEach((d) => d.lokal && URL.revokeObjectURL(d.url)); setDocs(null); }} />
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
       <VersandDialog auftraege={versand ?? []} open={!!versand} onClose={() => setVersand(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />

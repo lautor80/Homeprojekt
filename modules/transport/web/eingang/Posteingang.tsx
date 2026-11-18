@@ -12,6 +12,8 @@ import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { dat } from '../util';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
+import { eingangInOrdner, uebernahmeText } from './uebernahme';
+import { ordnerMoeglich } from '../ordner';
 import { OHNE_ADRESSE, absenderFiltern, filterGueltig, gleicherFilter, postfachBaum, type AbsenderFilter, type PostfachKnoten } from './absenderbaum';
 import {
   EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
@@ -318,6 +320,9 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   const [textOffen, setTextOffen] = useState(true);
   // Detail neben der Liste: unter etwa 1100 px Fensterbreite Anhänge über der E-Mail statt links daneben
   const schmal = useKlein(1100);
+  // Übertragen in den Ablageordner des Auftrags (Unterordner Eingang/) direkt aus dem Posteingang
+  const can = useCan();
+  const darfUebertragen = edit && ordnerMoeglich && can('transport.auftraege:edit');
 
   const laden = useCallback(async () => {
     try {
@@ -342,16 +347,35 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   const kunde = (n: string | null | undefined) => kandidaten.find((k) => k.auftragsnr === n)?.kunde ?? kundeVon(auftraege, n);
   const nrGueltig = !!nr && (!auftraege || !auftraege.length || auftraege.some((a) => a.auftragsnr === nr));
 
-  async function aktion(f: () => Promise<unknown>, sonst: string, danach: 'neu' | 'liste') {
+  async function aktion(f: () => Promise<unknown>, sonst: string, danach: 'neu' | 'liste'): Promise<boolean> {
     setBusy(true); setError(null);
     try {
       toast(antwortText(await f(), sonst), 5000);
       onGeaendert();
       if (danach === 'neu') await laden();
-    } catch (e) { onFehler((e as Error).message); } finally { setBusy(false); }
+      return true;
+    } catch (e) { onFehler((e as Error).message); return false; } finally { setBusy(false); }
   }
-  const ablegen = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/ablegen`, { auftragsnr: nr, dokumente: [...auswahl] }),
-    `${auswahl.size} Datei(en) am Auftrag ${nr} abgelegt`, 'neu');
+  /** wartende Dateien (Ablageziel lokal) in den Ordner des Auftrags schreiben und als übernommen melden */
+  async function uebertragen(auftragsnr: string, nur?: number[], leise = false) {
+    setBusy(true); setError(null);
+    try {
+      const e = await eingangInOrdner(auftragsnr, null, { anfordern: true, nur });
+      const t = uebernahmeText(e);
+      if (e.fehler.length) onFehler(`In den Auftragsordner ${auftragsnr} nicht vollständig übertragen – ${e.fehler.join('; ')}`);
+      else if (t || !leise) toast(t ? `Auftrag ${auftragsnr}: ${t} (Ablageordner, Unterordner „Eingang“)` : 'Nichts zu übertragen.', 6000);
+      onGeaendert();
+      await laden();
+    } catch (x) { onFehler((x as Error).message); } finally { setBusy(false); }
+  }
+  /** am Auftrag ablegen und – mit Ablageziel „lokal“ – die Dateien sofort in den Auftragsordner übertragen */
+  const ablegen = async () => {
+    const ziel = nr;
+    const ids = [...auswahl];
+    const ok = await aktion(() => api.post(`${EING}/vorgaenge/${v.id}/ablegen`, { auftragsnr: ziel, dokumente: ids }), `${ids.length} Datei(en) am Auftrag ${ziel} abgelegt`, 'neu');
+    // Ablageziel Paperless: nichts wartet – dann still
+    if (ok && darfUebertragen) await uebertragen(ziel, ids, true);
+  };
   const neuBewerten = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/neu-bewerten`), 'Zuordnung neu berechnet', 'neu');
   const ignorieren = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/ignorieren`), 'E-Mail ignoriert', 'neu');
 
@@ -366,6 +390,8 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
   };
 
   const zuordnungState = v.auftragsnr ? (punkte >= schwelle ? 'Positive' : 'Critical') : kandidaten.length ? 'Critical' : 'None';
+  // zugeordnet, aber noch nicht im Ablageordner (z. B. automatisch abgelegt oder Übertragung abgebrochen)
+  const wartend = v.dokumente.filter((d) => d.status === 'wartet' && d.ziel === 'lokal');
 
   return (
     <Section title={v.betreff || '(ohne Betreff)'}
@@ -422,6 +448,20 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
           </div>
         )}
 
+        {!offen && v.auftragsnr && wartend.length > 0 && (
+          <MessageStrip hideCloseButton design="Critical">
+            {wartend.length} {wartend.length === 1 ? 'Datei wartet' : 'Dateien warten'} auf die Übertragung in den Ablageordner von Auftrag {v.auftragsnr}
+            {!darfUebertragen && (ordnerMoeglich ? ' – dazu fehlt das Recht „Aufträge ändern“.' : ' – dieser Browser kann keinen Ablageordner beschreiben (Edge oder Chrome verwenden).')}
+          </MessageStrip>
+        )}
+        {!offen && v.auftragsnr && wartend.length > 0 && darfUebertragen && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button design="Emphasized" icon="open-folder" disabled={busy} onClick={() => uebertragen(v.auftragsnr!, wartend.map((d) => d.id))}
+                    tooltip={`In <Ablageordner>/…/${v.auftragsnr}/Eingang speichern`}>
+              In Auftragsordner übertragen
+            </Button>
+          </div>
+        )}
         {edit && offen && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <Button design="Transparent" icon="decline" disabled={busy} onClick={() => setFrage(true)}>Ignorieren</Button>
@@ -429,7 +469,7 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
             {darfAblegen && (
               <Button design="Emphasized" icon="accept" disabled={busy || !nrGueltig || !auswahl.size} onClick={ablegen}
                       tooltip={!nr ? 'Bitte einen Auftrag wählen' : !nrGueltig ? `Auftrag ${nr} gibt es nicht` : !auswahl.size ? 'Bitte mindestens eine Datei auswählen' : undefined}>
-                Am Auftrag ablegen
+                {darfUebertragen ? 'Am Auftrag ablegen und in Ordner übertragen' : 'Am Auftrag ablegen'}
               </Button>
             )}
           </div>
