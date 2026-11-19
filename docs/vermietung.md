@@ -54,6 +54,7 @@ Typische Einrichtung für das Haus:
 - **Waschküche/Keller oder Heizungsstrom im Zähler einer Partei**: Hausanschluss als Hauptzähler, je Partei ein Unterzähler, hinter dem Unterzähler der Partei
   der Gemeinschaftszähler „Waschküche“ (ohne Wohnung). Beispiel: Mama 2.250 kWh, Nils & Sophia 3.000 kWh inkl. Waschküche 600 kWh, nach Fläche (gleich groß)
   → Mama 2.250 + 300 = 2.550, Nils & Sophia 2.400 + 300 = 2.700 kWh; nach Personen (1 : 2) → 2.450 / 2.800 kWh.
+- **Telefon/Internet** (gemeinsamer Anschluss): *Wohneinheiten (gleiche Teile)*, umlagefähig – keine Betriebskosten nach BetrKV, nur bei vertraglicher Vereinbarung umlegen.
 - Eigener Haushaltsstrom einer Partei mit eigenem Vertrag beim Versorger gehört nicht in die Abrechnung.
 
 **Zeitanteile:** Nutzungsabschnitte je Wohnung (Mietverhältnis, Eigennutzung, Leerstand) werden lückenlos gebildet; jeder Mieter
@@ -91,6 +92,7 @@ eingrenzende Ablesungen verteilt die Abrechnung nach Wohnfläche und zeigt einen
 | `server/test/miete_gemeinschaftszaehler.test.ts` | Gemeinschaftszähler hinter einem Unterzähler, Teilung nach Fläche/Personen/gleichen Teilen, Kreisprüfung |
 | `modules/miete/server/migrations/002_gemeinschaftszaehler.sql` | Kostenart: `gemeinsam_schluessel` (flaeche, personen, einheiten) |
 | `modules/miete/server/migrations/003_hausstrom_personen.sql` | Haushaltsstrom (gemeinsam) auf *nach Personen* |
+| `modules/miete/server/migrations/004_kostenart_telefon.sql` | Kostenart *Telefon/Internet* (zu gleichen Teilen, umlagefähig) |
 
 ## Nächste Ausbaustufen (nicht umgesetzt)
 

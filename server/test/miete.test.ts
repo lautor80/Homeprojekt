@@ -74,6 +74,10 @@ test('Haus mit zwei Parteien: Einnahmen aufteilen, mit Kosten vergleichen, Neben
   const heiz = arten.find((a: any) => a.bezeichnung === 'Heizstrom');
   assert.equal((await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: null })).status, 400, 'Verbrauch ohne Hauptzähler');
   ok(await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, grundanteil: 30 }));
+  // Telefon/Internet: zu gleichen Teilen je Wohnung, umlagefähig, direkt nach dem Haushaltsstrom (Migration 004)
+  const tel = arten.find((a: any) => a.bezeichnung === 'Telefon/Internet');
+  assert.deepEqual([tel.schluessel, tel.umlagefaehig, tel.aktiv], ['einheiten', true, true]);
+  assert.equal(arten.findIndex((a: any) => a.id === tel.id) - arten.findIndex((a: any) => a.bezeichnung === 'Haushaltsstrom (gemeinsam)'), 1);
   // Haushaltsstrom (gemeinsam) ist auf Personen voreingestellt (Migration 003)
   assert.equal(arten.find((a: any) => a.bezeichnung === 'Haushaltsstrom (gemeinsam)').gemeinsam_schluessel, 'personen');
   // Gemeinsamer Verbrauch: Standard Fläche, umstellbar auf Personen (hier wieder zurück, die Rechnung unten nimmt Fläche an)
