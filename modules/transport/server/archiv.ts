@@ -1,12 +1,13 @@
 import { sql, withChange, type ChangeContext } from '../../../server/src/db.js';
 import { funktionAktiv } from '../../../server/src/funktionsschalter.js';
-import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
+import { kontextAblegen, kontextAktualisieren } from '../../../server/src/lib/paperless-mapping.js';
 import { fahrtenFuerVersand, firmaLesen } from './data.js';
 import { paperlessFirma } from './dokumente.js';
 import { condense } from './format.js';
 import { paperlessSenden } from './paperless.js';
 import { K } from './paperless-kontexte.js';
 import { auftragFeldSichern } from './paperless-auftrag.js';
+import { alsVersion, versionLabel } from './paperless-version.js';
 import { dokumentPdf } from './pdf/erzeugen.js';
 import { rechnungPdf } from './pdf/rechnung.js';
 import { ablegenNoetig, auftragAusKennung, belegAusDateiname, belegeEindeutig, belegName, belegText, type Anlass, type Beleg } from './archiv-logik.js';
@@ -18,6 +19,8 @@ import { ablegenNoetig, auftragAusKennung, belegAusDateiname, belegeEindeutig, b
  * - Felder laut zentraler Paperless-Zuordnung: Kontexte „Transportauftrag“, „Lieferschein“ und „Ausgangsrechnung“.
  * - Das abgelegte Dokument wird dem Auftrag zugeordnet (Reiter Dokumente; bei Sammelrechnungen jedem ihrer Aufträge).
  * - Ein Beleg wird nur erneut abgelegt, wenn sich der Auftrag seit der letzten Ablage geändert hat (Tabelle transport.paperless_belege).
+ *   Erneut abgelegt wird als neue Dateiversion am bisherigen Dokument („Neudruck …“/„Versand …“, Paperless ≥ 3.0) –
+ *   ein neues Dokument nur, wenn das bisherige gelöscht ist oder Paperless keine Versionen kennt.
  * - Die Ablage läuft im Hintergrund nacheinander ab; Drucken und Versenden warten nicht darauf und scheitern nicht daran.
  */
 export const F_ARCHIV = 'transport.paperless.automatisch';
@@ -80,28 +83,48 @@ export async function belegAblegen(b: Beleg, o: { anlass: Anlass; ctx: ChangeCon
     let id: number | null | undefined;
     let titel = belegText(b);
     let hinweis = '';
+    let versionMeldung: string | null = null;
     const heute = new Date().toISOString().slice(0, 10);
+    // Dokument der letzten Ablage dieses Belegs – ein Neudruck wird dort neue Version
+    const vorhanden = (bisher?.doc_id as number | null | undefined) ?? null;
+    const label = versionLabel(o.anlass);
     if (b.art === 'R') {
       const r = await rechnungPdf(b.kennung);
       if (!r) throw new Error(`Rechnung ${b.kennung} nicht gefunden.`);
-      const e = await paperlessSenden(firma, o.pdf ? { ...r, pdf: o.pdf } : r, o.benutzer);
+      const e = await paperlessSenden(firma, o.pdf ? { ...r, pdf: o.pdf } : r, o.benutzer, { vorhanden: vorhanden ? { docId: vorhanden, label } : undefined });
       if (!e.ok) throw new Error(e.message);
       id = e.id;
       titel = r.title || titel;
+      if (vorhanden && e.id === vorhanden) versionMeldung = e.message;
     } else {
       const { auftrag: a } = (await fahrtenFuerVersand(b.kennung))[0];
       const pdf = o.pdf ?? (await dokumentPdf(b.art, b.kennung)).pdf;
       const datei = belegName(b);
       const pl = paperlessFirma(firma);
       await auftragFeldSichern(pl).catch(() => undefined);
-      const r = await kontextAblegen(pl, b.art === 'T' ? K.transportauftrag : K.lieferschein, 'transport', {
+      const kontext = b.art === 'T' ? K.transportauftrag : K.lieferschein;
+      const werte = {
         kennung: b.kennung, auftragsnr: a.auftragsnr, kunde: kontaktName(a.kundeAdr), unternehmer: kontaktName(a.unternehmerAdr),
         kennzeichen: a.kennzeichen ?? '', ordernummer: a.ordernummer ?? '', leistungsdatum: a.leistungsdatum ?? '',
         anlass: o.anlass === 'druck' ? 'Druck' : 'Versand', datei, heute, benutzer: o.benutzer,
-      }, pdf, datei, { mime: 'application/pdf', benutzer: o.benutzer });
-      id = r.id;
-      titel = r.zuordnung.title || titel;
-      if (r.warnungen.length) hinweis = ` Hinweis: ${r.warnungen.join('; ')}`;
+      };
+      const hinweise: string[] = [];
+      // schon abgelegt → neue Dateiversion am selben Dokument; nur wenn das nicht geht, ein neues Dokument
+      const v = vorhanden ? await alsVersion(pl, vorhanden, pdf, datei, label) : null;
+      if (v && v.art !== 'neu') {
+        id = vorhanden;
+        const u = await kontextAktualisieren(pl, kontext, 'transport', vorhanden!, werte, { benutzer: o.benutzer, ohneNotiz: true });
+        titel = u.zuordnung.title || titel;
+        hinweise.push(...u.warnungen);
+        versionMeldung = v.art === 'version' ? `neue Version zu Paperless-Dokument ${id}` : `Datei unverändert – Paperless-Dokument ${id} bleibt`;
+      } else {
+        if (v) hinweise.push(v.grund);
+        const r = await kontextAblegen(pl, kontext, 'transport', werte, pdf, datei, { mime: 'application/pdf', benutzer: o.benutzer });
+        id = r.id;
+        titel = r.zuordnung.title || titel;
+        hinweise.push(...r.warnungen);
+      }
+      if (hinweise.length) hinweis = ` Hinweis: ${hinweise.join('; ')}`;
     }
     await sql`update transport.paperless_belege set doc_id = ${id ?? null} where art = ${b.art} and kennung = ${b.kennung}`;
     if (id) {
@@ -111,7 +134,9 @@ export async function belegAblegen(b: Beleg, o: { anlass: Anlass; ctx: ChangeCon
         select x, ${id}, ${titel}, ${belegName(b)}, ${o.benutzer} from unnest(${auftraege}::text[]) as x
         on conflict do nothing`);
     }
-    return id
+    return id && versionMeldung
+      ? { ok: true, status: 'abgelegt', id, message: `${belegText(b)}: ${versionMeldung.replace(/\.$/, '')}.${hinweis}` }
+      : id
       ? { ok: true, status: 'abgelegt', id, message: `${belegText(b)} in Paperless abgelegt (Dokument ${id}).${hinweis}` }
       : { ok: true, status: 'abgelegt', id: null, message: `${belegText(b)} an Paperless übergeben – Verarbeitung läuft noch.${hinweis}` };
   } catch (e) {
