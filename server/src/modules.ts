@@ -16,8 +16,9 @@ import { KERN_FUNKTIONEN } from './funktionen-kern.js';
 import beispiel from '../../modules/beispiel/server/index.js';
 import transport from '../../modules/transport/server/index.js';
 import tco from '../../modules/tco/server/index.js';
+import miete from '../../modules/miete/server/index.js';
 
-const available: ServerModule[] = [beispiel, transport, tco];
+const available: ServerModule[] = [beispiel, transport, tco, miete];
 
 export function activeModules(): ServerModule[] {
   return available.filter((m) => modulAktiv(m.id));

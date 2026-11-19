@@ -25,8 +25,8 @@ export const config = {
   host: process.env.HOST ?? '0.0.0.0',
   databaseUrl: process.env.DATABASE_URL ?? 'postgres://portal:portal@localhost:5432/portal',
   /**
-   * Aktive Fachmodule, z. B. "tco,transport". Leer oder "*" = alle Fachmodule
-   * (ohne das Vorlagemodul "beispiel"); sichtbar ist dann nur, wofür ein Benutzer Berechtigungen hat.
+   * Aktive Fachmodule, z. B. "tco,transport,miete". Leer oder "*" = alle Fachmodule
+   * (ohne das Vorlagemodul "beispiel" und die Vermietung "miete"); sichtbar ist dann nur, wofür ein Benutzer Berechtigungen hat.
    */
   modules: list(process.env.PORTAL_MODULES, ['*']),
   gotenbergUrl: process.env.GOTENBERG_URL ?? 'http://gotenberg:3000',
@@ -44,10 +44,13 @@ export const config = {
   logLevel: process.env.LOG_LEVEL ?? 'info',
 };
 
-/** Vorlage für neue Module – nur aktiv, wenn ausdrücklich in PORTAL_MODULES genannt */
-const VORLAGEN = ['beispiel'];
+/**
+ * Nur aktiv, wenn ausdrücklich in PORTAL_MODULES genannt: die Vorlage für neue Module und Module für den privaten
+ * Gebrauch, die in Vereins- oder Firmenportalen nicht von selbst erscheinen sollen (Vermietung).
+ */
+const VORLAGEN = ['beispiel', 'miete'];
 
-/** Ist das Modul aktiv? ("*" bzw. "alle" = alle Fachmodule ohne Vorlagen) */
+/** Ist das Modul aktiv? ("*" bzw. "alle" = alle Fachmodule ohne Vorlagen und private Module) */
 export function modulAktiv(id: string): boolean {
   if (config.modules.includes(id)) return true;
   return (config.modules.includes('*') || config.modules.includes('alle')) && !VORLAGEN.includes(id);

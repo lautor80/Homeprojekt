@@ -1,0 +1,95 @@
+# Modul `miete` – Vermietung (Entwurf und Stand)
+
+Ziel: Für ein Haus mit zwei Parteien die Mieteinnahmen je Monat in **Kaltmiete** und **Nebenkosten-Abschlag** aufteilen,
+mit den **laufenden Kosten** des Hauses vergleichen und einmal im Jahr die **Nebenkosten abrechnen**. Die Parteien teilen sich
+den **Heizstrom** und **Teile des Haushaltsstroms**; dafür gibt es Haupt- und Unterzähler. Belege liegen in **Paperless**.
+
+Das Modul folgt der Portalbasis (Vorlage `modules/beispiel`): eigenes Schema `miete`, Rechte „Objekt:Aktivität“ mit Bereich und
+App, Schreiben nur über `change()` (Änderungsbelege), Löschen mit Begründung, Fiori-Bausteine (`AppPage`, `Section`, `Filters`,
+`ConfirmDialog`, `ChangeHistoryButton`), eigenes Paperless je Bereich (`paperlessDef('miete', 'Vermietung')`), Ablagekontexte in der
+zentralen Paperless-Zuordnung, Einträge im Arbeitsvorrat.
+
+## Aktivieren
+
+Das Modul ist privat und erscheint **nicht** von selbst (wie die Vorlage `beispiel` nur aktiv, wenn ausdrücklich genannt):
+
+```
+PORTAL_MODULES=miete            # nur die Vermietung
+PORTAL_MODULES=tco,miete        # zusätzlich zu einem anderen Bereich
+```
+
+danach `./update.sh`. Anschließend in der Rollenpflege (Bereich *Vermietung*) die Rechte vergeben und unter
+*Administration → Schnittstellen → Paperless* den Zugang **Paperless-ngx Vermietung** eintragen (eigenes Paperless oder eigener
+Zugang – nie dieselbe Adresse wie ein anderer Bereich).
+
+## Apps und Funktionen
+
+| App | Recht | Funktionen |
+|---|---|---|
+| **Übersicht** | `miete.uebersicht:display` | Je Monat: Kaltmiete Soll/Ist, NK-Abschlag Soll/Ist, umlagefähige Kosten, davon Anteil der Mieter, **NK-Deckung** (Abschläge − Kostenanteil der Mieter), nicht umlagefähige Kosten, Ergebnis. Mietkonto je Mietverhältnis (Soll bis heute, gezahlt, offen). |
+| **Mieteinnahmen** | `miete.zahlungen:display` / `:edit` | Eingang erfassen mit Leistungsmonat; Aufteilung wird aus dem Soll vorgeschlagen (Teilzahlung im Verhältnis, Überzahlung zur Miete) und lässt sich ändern. **Monat buchen**: für alle Mietverhältnisse den Eingang in Höhe des Solls erfassen (Dauerauftrag). |
+| **Laufende Kosten** | `miete.kosten:display` / `:edit` | Rechnungen, Bescheide, Abschläge an Versorger mit Kostenart, Leistungszeitraum (tageweise auf Monate/Jahre verteilt), Lieferant. **Paperless**: Dokument suchen und verknüpfen, Datei hochladen (Ablage mit Regel *Kostenbeleg*), Beleg öffnen, **Aus Paperless übernehmen** (Dokumente mit dem Schlagwort des Hauses, die noch keiner Position zugeordnet sind). |
+| **Zähler** | `miete.zaehler:display` / `:edit` | Hauptzähler (Versorger) und Unterzähler je Wohnung, Ablesungen mit Verbrauch seit Vorablesung, Warnung bei fallendem Stand. |
+| **Nebenkostenabrechnung** | `miete.abrechnung:display` / `:edit` | Verteilung aller Kosten eines Kalenderjahres auf die Wohnungen; je Mietverhältnis Kosten, Vorauszahlungen (Ist), Nachzahlung/Guthaben, Ausweis § 35a EStG, Vorschlag neuer Abschlag. **Festschreiben** (nur abgeschlossene Jahre; Stand wird gespeichert), **PDF**, **In Paperless ablegen** (Regel *Nebenkostenabrechnung*), **Versendet** vermerken, **Wieder öffnen** mit Begründung. |
+| **Haus und Mieter** | `miete.stammdaten:display` / `:edit` | Reiter *Mietverhältnisse* (Mieter, Wohnung, Zeitraum, Personen; **Miete/Abschlag ab Stichtag** für Mieterhöhung und neuen Abschlag), *Wohnungen* (Fläche, Eigennutzung), *Kostenarten* (umlagefähig, Verteilerschlüssel, § 35a), *Haus* (Anschrift, Vermieter, IBAN für Nachzahlungen, Paperless-Schlagwort). |
+
+## Verteilerschlüssel
+
+| Schlüssel | Rechnung |
+|---|---|
+| Wohnfläche | Anteil = Fläche der Wohnung / Fläche aller Wohnungen |
+| Personen | nach Personentagen (Personen × Tage je Nutzungsabschnitt); Leerstand zählt 0 Personen |
+| Wohneinheiten | gleiche Teile |
+| Fester Anteil | Prozent je Wohnung (z. B. 50/50 – frei vereinbar) |
+| **Verbrauch** | Hauptzähler der Kostenart; jede Wohnung trägt den Verbrauch ihrer Unterzähler. Was der Hauptzähler mehr zeigt als alle Unterzähler zusammen (**gemeinsamer Verbrauch**, z. B. Treppenhaus, Waschkeller, Außenlicht), wird nach Wohnfläche geteilt. Hat nur eine Wohnung einen Unterzähler (**Differenzmessung**), lässt sich der Rest stattdessen der anderen Wohnung zuordnen (*Hauptzähler minus Unterzähler gehört …*). Optional **Grundkosten** in Prozent vorab nach Wohnfläche (z. B. 30 % bei Heizkosten). |
+| Direkt | Beleg ist einer Wohnung zugeordnet |
+
+Typische Einrichtung für das Haus:
+
+- **Heizstrom** (Wärmepumpe/Nachtspeicher): Hauptzähler „Heizstrom“; je Wohnung ein Wärmemengenzähler als Unterzähler → Schlüssel *Verbrauch*, Grundkosten 30 %.
+  Nur ein Zwischenzähler (z. B. OG): Rest „gehört EG“ (Differenzmessung).
+  Ohne Unterzähler: *Fester Anteil* oder *Wohnfläche*.
+- **Haushaltsstrom (gemeinsam)**: Hauptzähler „Hausstrom“; der Teil, den eine Partei allein nutzt, über einen Zwischenzähler → Rest = Gemeinschaft nach Fläche.
+- Eigener Haushaltsstrom einer Partei mit eigenem Vertrag beim Versorger gehört nicht in die Abrechnung.
+
+**Zeitanteile:** Nutzungsabschnitte je Wohnung (Mietverhältnis, Eigennutzung, Leerstand) werden lückenlos gebildet; jeder Mieter
+trägt seine Tage. Der Anteil der selbst bewohnten Wohnung und des Leerstands bleibt beim Vermieter. Verbrauch im Zeitraum = Stand am
+Ende − Stand am Vortag des Beginns; fehlt eine Ablesung genau am Stichtag, wird zwischen zwei Ablesungen linear geschätzt. Ohne
+eingrenzende Ablesungen verteilt die Abrechnung nach Wohnfläche und zeigt einen Hinweis.
+
+**Heizkostenverordnung:** In einem Zweifamilienhaus, in dem der Vermieter eine Wohnung selbst bewohnt, gilt sie nicht zwingend
+(§ 2 HeizkostenV) – Schlüssel frei vereinbar. Bei anderen Häusern: 50–70 % nach Verbrauch (Grundkosten 30–50 %).
+
+## Arbeitsvorrat (Startseite, Block „Vermietung“)
+
+- **Miete offen** je Mietverhältnis (Soll seit Jahresbeginn − Eingänge; der laufende Monat zählt ab dem 6.).
+- **Nebenkostenabrechnung <Vorjahr> erstellen** – solange ein Mietverhältnis des Vorjahres nicht festgeschrieben ist; ab Oktober rot (Frist § 556 Abs. 3 BGB: 12 Monate nach Ende des Abrechnungszeitraums).
+- **Zählerstand zum Jahreswechsel** – im Januar/Februar je Zähler ohne Ablesung um den 31.12.
+- Störungen des Paperless-Zugangs meldet der Kern (Administration).
+
+## Paperless
+
+- Zugang **Paperless-ngx Vermietung** (`miete.paperless`), Prüfung auf eindeutige Adresse wie bei allen Bereichen.
+- Ablagekontexte (Administration → Schnittstellen → Paperless → Vermietung): *Kostenbeleg* (`kosten.beleg`: Titel „{kostenart} {zeitraum} – {lieferant}“, Korrespondent = Lieferant, Tags „Nebenkosten, {objekt}“) und *Nebenkostenabrechnung an den Mieter* (`abrechnung`).
+- Verknüpfung wird im Portal gespeichert (`miete.kosten.paperless_id`, `miete.abrechnungen.paperless_id`); Belege öffnet das Portal über `GET /api/m/miete/paperless/:id/datei` (Ablage intern, nichts verlässt das Haus).
+
+## Technik
+
+| Datei | Inhalt |
+|---|---|
+| `modules/miete/server/migrations/001_miete.sql` | Schema `miete`: objekt, einheiten, vertraege, konditionen, zahlungen, zaehler, ablesungen, kostenarten (mit Vorbelegung nach BetrKV), kosten, abrechnungen; Änderungsbelege |
+| `modules/miete/server/logik.ts` | Reine Rechenlogik: Aufteilung, Soll je Monat, Zeitanteile, Zählerstände, Verteilung, Abrechnung – Test `server/test/miete_logik.test.ts` |
+| `modules/miete/server/daten.ts` | Lesen, Monatsübersicht, Abrechnung eines Jahres |
+| `modules/miete/server/index.ts` | Modul, Rechte, Routen (`/api/m/miete/...`), Arbeitsvorrat |
+| `modules/miete/server/paperless.ts`, `pdf.ts` | Anbindung, Ablagekontexte, PDF der Abrechnung (Gotenberg) |
+| `modules/miete/web/*` | Apps der Oberfläche |
+| `server/test/miete.test.ts` | Durchlauf mit Datenbank: zwei Parteien, Heizstrom mit Unterzähler, Einnahmen, Übersicht, Abrechnung, Rechte |
+
+## Nächste Ausbaustufen (nicht umgesetzt)
+
+1. **Bankimport** (CSV/CAMT) mit Zuordnung der Mieteingänge über Verwendungszweck/IBAN – Baustein wie *Bankimport* im Verein.
+2. **Versand der Abrechnung** per E-Mail (n8n) mit Freigabelink aus Paperless; Mieterportal (Selbstbedienung) mit Zugang zur eigenen Abrechnung.
+3. **Wiederkehrende Kosten** (Abschläge an Versorger automatisch je Monat anlegen) und Abgleich mit der Jahresendabrechnung des Versorgers.
+4. **Anlage V / Steuer**: Einnahmen-/Werbungskostenübersicht je Jahr (Kaltmiete, umgelegte Nebenkosten, Abschreibung, Zinsen).
+5. **Mehrere Häuser** (heute ein Objekt je Installation) und abweichende Abrechnungszeiträume (nicht Kalenderjahr).
+6. Abgeschaltete Funktionen über den Funktionsschalter (z. B. „Monat buchen“).

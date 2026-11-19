@@ -7,8 +7,9 @@ import type { WebModule } from './platform';
 import beispiel from '@modules/beispiel/web';
 import transport from '@modules/transport/web';
 import tco from '@modules/tco/web';
+import miete from '@modules/miete/web';
 
-const available: WebModule[] = [beispiel, transport, tco];
+const available: WebModule[] = [beispiel, transport, tco, miete];
 
 export function enabledModules(ids: string[]): WebModule[] {
   return available.filter((m) => ids.includes(m.id));
