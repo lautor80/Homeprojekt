@@ -74,6 +74,18 @@ test('Haus mit zwei Parteien: Einnahmen aufteilen, mit Kosten vergleichen, Neben
   const heiz = arten.find((a: any) => a.bezeichnung === 'Heizstrom');
   assert.equal((await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: null })).status, 400, 'Verbrauch ohne Hauptzähler');
   ok(await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, grundanteil: 30 }));
+  // Gemeinsamer Verbrauch: Standard Fläche, umstellbar auf Personen (hier wieder zurück, die Rechnung unten nimmt Fläche an)
+  assert.equal(heiz.gemeinsam_schluessel, 'flaeche');
+  assert.equal((await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, gemeinsam_schluessel: 'kopf' })).status, 400, 'unbekannter Schlüssel');
+  ok(await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, grundanteil: 30, gemeinsam_schluessel: 'personen' }));
+  assert.equal(ok(await admin('GET', `${M}/kostenarten`)).find((a: any) => a.id === heiz.id).gemeinsam_schluessel, 'personen');
+  ok(await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, grundanteil: 30, gemeinsam_schluessel: 'flaeche' }));
+  // Zählerbaum: Gemeinschaftszähler hinter einem Unterzähler; ein Zähler darf nicht hinter seinem eigenen Unterzähler liegen
+  const kreisA = ok(await admin('POST', `${M}/zaehler`, { bezeichnung: 'Kreisprüfung Hausanschluss', art: 'sonstig' })).id;
+  const kreisB = ok(await admin('POST', `${M}/zaehler`, { bezeichnung: 'Kreisprüfung Wohnung', art: 'sonstig', einheit_id: og, haupt_id: kreisA })).id;
+  const kreisC = ok(await admin('POST', `${M}/zaehler`, { bezeichnung: 'Kreisprüfung Waschküche', art: 'sonstig', haupt_id: kreisB })).id;
+  assert.equal((await admin('PUT', `${M}/zaehler/${kreisA}`, { bezeichnung: 'Kreisprüfung Hausanschluss', art: 'sonstig', haupt_id: kreisC })).status, 400, 'Kreis');
+  assert.equal(ok(await admin('GET', `${M}/zaehler`)).find((x: any) => x.id === kreisC).haupt_id, kreisB);
   const grundsteuer = arten.find((a: any) => a.bezeichnung === 'Grundsteuer').id;
   const reparatur = arten.find((a: any) => !a.umlagefaehig).id;
 

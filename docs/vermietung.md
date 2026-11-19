@@ -29,7 +29,7 @@ Zugang – nie dieselbe Adresse wie ein anderer Bereich).
 | **Übersicht** | `miete.uebersicht:display` | Je Monat: Kaltmiete Soll/Ist, NK-Abschlag Soll/Ist, umlagefähige Kosten, davon Anteil der Mieter, **NK-Deckung** (Abschläge − Kostenanteil der Mieter), nicht umlagefähige Kosten, Ergebnis. Mietkonto je Mietverhältnis (Soll bis heute, gezahlt, offen). |
 | **Mieteinnahmen** | `miete.zahlungen:display` / `:edit` | Eingang erfassen mit Leistungsmonat; Aufteilung wird aus dem Soll vorgeschlagen (Teilzahlung im Verhältnis, Überzahlung zur Miete) und lässt sich ändern. **Monat buchen**: für alle Mietverhältnisse den Eingang in Höhe des Solls erfassen (Dauerauftrag). **In den Folgemonat kopieren** (Kopiersymbol je Zeile): Leistungsmonat und Eingangsdatum +1 Monat, Betrag, Aufteilung und Notiz vorbelegt; ändert sich der Betrag, bleibt die Kaltmiete gleich und die Abweichung geht in den Nebenkosten-Abschlag. |
 | **Laufende Kosten** | `miete.kosten:display` / `:edit` | Rechnungen, Bescheide, Abschläge an Versorger mit Kostenart, Leistungszeitraum (tageweise auf Monate/Jahre verteilt), Lieferant. **Paperless**: Dokument suchen und verknüpfen, Datei hochladen (Ablage mit Regel *Kostenbeleg*), Beleg öffnen, **Aus Paperless übernehmen** (Dokumente mit dem Schlagwort des Hauses, die noch keiner Position zugeordnet sind). |
-| **Zähler** | `miete.zaehler:display` / `:edit` | Hauptzähler (Versorger) und Unterzähler je Wohnung, Ablesungen mit Verbrauch seit Vorablesung, Warnung bei fallendem Stand. |
+| **Zähler** | `miete.zaehler:display` / `:edit` | Hauptzähler (Versorger), Unterzähler je Wohnung und **Gemeinschaftszähler** (ohne Wohnung, z. B. Waschküche, Keller, Heizungsstrom) – auch hintereinander (*Liegt hinter Zähler*), als Baum angezeigt; Ablesungen mit Verbrauch seit Vorablesung, Warnung bei fallendem Stand. |
 | **Nebenkostenabrechnung** | `miete.abrechnung:display` / `:edit` | Verteilung aller Kosten eines Kalenderjahres auf die Wohnungen; je Mietverhältnis Kosten, Vorauszahlungen (Ist), Nachzahlung/Guthaben, Ausweis § 35a EStG, Vorschlag neuer Abschlag. **Festschreiben** (nur abgeschlossene Jahre; Stand wird gespeichert), **PDF**, **In Paperless ablegen** (Regel *Nebenkostenabrechnung*), **Versendet** vermerken, **Wieder öffnen** mit Begründung. |
 | **Haus und Mieter** | `miete.stammdaten:display` / `:edit` | Reiter *Mietverhältnisse* (Mieter, Wohnung, Zeitraum, Personen; **Miete/Abschlag ab Stichtag** für Mieterhöhung und neuen Abschlag), *Wohnungen* (Fläche, Eigennutzung), *Kostenarten* (umlagefähig, Verteilerschlüssel, § 35a), *Haus* (Anschrift, Vermieter, IBAN für Nachzahlungen, Paperless-Schlagwort). |
 
@@ -41,7 +41,7 @@ Zugang – nie dieselbe Adresse wie ein anderer Bereich).
 | Personen | nach Personentagen (Personen × Tage je Nutzungsabschnitt); Leerstand zählt 0 Personen |
 | Wohneinheiten | gleiche Teile |
 | Fester Anteil | Prozent je Wohnung (z. B. 50/50 – frei vereinbar) |
-| **Verbrauch** | Hauptzähler der Kostenart; jede Wohnung trägt den Verbrauch ihrer Unterzähler. Was der Hauptzähler mehr zeigt als alle Unterzähler zusammen (**gemeinsamer Verbrauch**, z. B. Treppenhaus, Waschkeller, Außenlicht), wird nach Wohnfläche geteilt. Hat nur eine Wohnung einen Unterzähler (**Differenzmessung**), lässt sich der Rest stattdessen der anderen Wohnung zuordnen (*Hauptzähler minus Unterzähler gehört …*). Optional **Grundkosten** in Prozent vorab nach Wohnfläche (z. B. 30 % bei Heizkosten). |
+| **Verbrauch** | Hauptzähler der Kostenart; jede Wohnung trägt den Verbrauch ihrer Unterzähler. **Gemeinsamer Verbrauch** – Gemeinschaftszähler (Waschküche, Keller, Heizungsstrom) und was der Hauptzähler mehr zeigt als alle Unterzähler zusammen (Treppenhaus, Außenlicht) – wird je Kostenart *nach Wohnfläche* (Standard), *nach Personen* (Personentage) oder *zu gleichen Teilen* geteilt (*Gemeinsamen Verbrauch teilen*). Liegt ein Gemeinschaftszähler hinter dem Zähler einer Wohnung (die Waschküche hängt am Stromkreis einer Partei), wird sein Verbrauch dort abgezogen. Zeigen die Zähler hinter einem Zähler mehr als dieser, meldet die Verteilung das. Hat nur eine Wohnung einen Unterzähler (**Differenzmessung**), lässt sich der Rest stattdessen der anderen Wohnung zuordnen (*Hauptzähler minus Unterzähler gehört …*). Optional **Grundkosten** in Prozent vorab nach Wohnfläche (z. B. 30 % bei Heizkosten). |
 | Direkt | Beleg ist einer Wohnung zugeordnet |
 
 Typische Einrichtung für das Haus:
@@ -50,6 +50,9 @@ Typische Einrichtung für das Haus:
   Nur ein Zwischenzähler (z. B. OG): Rest „gehört EG“ (Differenzmessung).
   Ohne Unterzähler: *Fester Anteil* oder *Wohnfläche*.
 - **Haushaltsstrom (gemeinsam)**: Hauptzähler „Hausstrom“; der Teil, den eine Partei allein nutzt, über einen Zwischenzähler → Rest = Gemeinschaft nach Fläche.
+- **Waschküche/Keller oder Heizungsstrom im Zähler einer Partei**: Hausanschluss als Hauptzähler, je Partei ein Unterzähler, hinter dem Unterzähler der Partei
+  der Gemeinschaftszähler „Waschküche“ (ohne Wohnung). Beispiel: Mama 2.250 kWh, Nils & Sophia 3.000 kWh inkl. Waschküche 600 kWh, nach Fläche (gleich groß)
+  → Mama 2.250 + 300 = 2.550, Nils & Sophia 2.400 + 300 = 2.700 kWh; nach Personen (1 : 2) → 2.450 / 2.800 kWh.
 - Eigener Haushaltsstrom einer Partei mit eigenem Vertrag beim Versorger gehört nicht in die Abrechnung.
 
 **Zeitanteile:** Nutzungsabschnitte je Wohnung (Mietverhältnis, Eigennutzung, Leerstand) werden lückenlos gebildet; jeder Mieter
@@ -84,6 +87,8 @@ eingrenzende Ablesungen verteilt die Abrechnung nach Wohnfläche und zeigt einen
 | `modules/miete/server/paperless.ts`, `pdf.ts` | Anbindung, Ablagekontexte, PDF der Abrechnung (Gotenberg) |
 | `modules/miete/web/*` | Apps der Oberfläche |
 | `server/test/miete.test.ts` | Durchlauf mit Datenbank: zwei Parteien, Heizstrom mit Unterzähler, Einnahmen, Übersicht, Abrechnung, Rechte |
+| `server/test/miete_gemeinschaftszaehler.test.ts` | Gemeinschaftszähler hinter einem Unterzähler, Teilung nach Fläche/Personen/gleichen Teilen, Kreisprüfung |
+| `modules/miete/server/migrations/002_gemeinschaftszaehler.sql` | Kostenart: `gemeinsam_schluessel` (flaeche, personen, einheiten) |
 
 ## Nächste Ausbaustufen (nicht umgesetzt)
 

@@ -12,7 +12,7 @@ import { paperlessFuer } from '../../../server/src/lib/verbindungen.js';
 import type { Aufgabe } from '../../../server/src/lib/arbeitsvorrat.js';
 import { hinweisAufgaben } from '../../../server/src/lib/hinweise.js';
 import { abrechnungJahr, einheitenLesen, kostenLesen, kostenartenLesen, uebersicht, vertraegeLesen, zaehlerLesen } from './daten.js';
-import { abrechnungsFrist, aufteilen, monatsErster, r2, sollMonat, standAm } from './logik.js';
+import { abrechnungsFrist, aufteilen, monatsErster, r2, sollMonat, standAm, zaehlerKreis } from './logik.js';
 import { K, MIETE_KONTEXTE, MIETE_PAPERLESS, dokumentKurz, paperless } from './paperless.js';
 import { abrechnungHtml, type AbrechnungDruck } from './pdf.js';
 
@@ -230,6 +230,7 @@ const mod: ServerModule = {
       schluessel: z.enum(['flaeche', 'personen', 'einheiten', 'anteil', 'verbrauch', 'direkt']),
       zaehler_id: z.coerce.number().int().positive().nullish().transform((v) => v ?? null), grundanteil: z.coerce.number().min(0).max(100).default(0),
       rest_einheit_id: z.coerce.number().int().positive().nullish().transform((v) => v ?? null),
+      gemeinsam_schluessel: z.enum(['flaeche', 'personen', 'einheiten']).default('flaeche'),
       anteile: z.record(z.coerce.number().min(0).max(100)).default({}), p35a: z.boolean().default(false), sort: z.coerce.number().int().default(0), aktiv: z.boolean().default(true),
     }).refine((k) => k.schluessel !== 'verbrauch' || k.zaehler_id, { message: 'Für „Verbrauch“ den Hauptzähler wählen.', path: ['zaehler_id'] });
     app.get('/kostenarten', { preHandler: requireAuth() }, async (req) => {
@@ -423,6 +424,8 @@ const mod: ServerModule = {
       const { id } = idParam.parse(req.params);
       const b = zaehlerBody.parse(req.body);
       if (b.haupt_id === id) throw new BusinessError('Ein Zähler kann nicht sein eigener Hauptzähler sein.');
+      const baum = await sql`select id, haupt_id from miete.zaehler`;
+      if (zaehlerKreis(baum as any, id, b.haupt_id)) throw new BusinessError('Ein Zähler kann nicht hinter einem seiner eigenen Unterzähler liegen.');
       await change(req, (tx) => tx`update miete.zaehler set ${tx(b)} where id = ${id}`);
       return { ok: true };
     });

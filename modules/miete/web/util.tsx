@@ -31,6 +31,12 @@ export const SCHLUESSEL: { key: Schluessel; text: string }[] = [
   { key: 'verbrauch', text: 'Verbrauch (Haupt- und Unterzähler)' },
   { key: 'direkt', text: 'Direkt einer Wohnung zugeordnet' },
 ];
+export type GemeinsamSchluessel = 'flaeche' | 'personen' | 'einheiten';
+export const GEMEINSAM: { key: GemeinsamSchluessel; text: string }[] = [
+  { key: 'flaeche', text: 'nach Wohnfläche (m²)' },
+  { key: 'personen', text: 'nach Personen' },
+  { key: 'einheiten', text: 'zu gleichen Teilen je Wohnung' },
+];
 
 export interface Einheit { id: number; kuerzel: string; bezeichnung: string; flaeche: number; personen: number; eigennutzung: boolean; sort: number }
 export interface Kondition { id: number; gueltig_ab: string; kaltmiete: number; nk_abschlag: number }
@@ -38,7 +44,7 @@ export interface Vertrag {
   id: number; nummer: string; einheit_id: number; einheit: string; name: string; email: string | null; telefon: string | null; anschrift: string | null;
   beginn: string; ende: string | null; personen: number; notiz: string | null; konditionen: Kondition[];
 }
-export interface Kostenart { id: number; bezeichnung: string; umlagefaehig: boolean; schluessel: Schluessel; zaehler_id: number | null; grundanteil: number; rest_einheit_id: number | null; anteile: Record<number, number>; p35a: boolean; sort: number; aktiv: boolean }
+export interface Kostenart { id: number; bezeichnung: string; umlagefaehig: boolean; schluessel: Schluessel; zaehler_id: number | null; grundanteil: number; rest_einheit_id: number | null; gemeinsam_schluessel: GemeinsamSchluessel; anteile: Record<number, number>; p35a: boolean; sort: number; aktiv: boolean }
 export interface Ablesung { id: number; datum: string; stand: number; notiz: string | null }
 export interface Zaehler { id: number; bezeichnung: string; nummer: string | null; art: string; masseinheit: string; einheit_id: number | null; haupt_id: number | null; aktiv: boolean; ablesungen: Ablesung[] }
 
