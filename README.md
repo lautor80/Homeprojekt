@@ -465,7 +465,7 @@ Haushaltsstroms teilen (Haupt- und Unterzähler, gemeinsamer Verbrauch nach Wohn
 (*Paperless-ngx Vermietung*). Privat: nur aktiv mit `PORTAL_MODULES=…,miete` (nicht bei `*`).
 
 Apps im Bereich *Vermietung*: **Übersicht** (Soll/Ist je Monat, NK-Deckung, Mietkonto), **Mieteinnahmen** (Erfassen mit
-vorgeschlagener Aufteilung, *Monat buchen*), **Laufende Kosten** (Leistungszeitraum, Paperless suchen/verknüpfen/hochladen,
+vorgeschlagener Aufteilung, *Monat buchen*, je Zeile *In den Folgemonat kopieren* – Kaltmiete bleibt bei Abweichungen gleich), **Laufende Kosten** (Leistungszeitraum, Paperless suchen/verknüpfen/hochladen,
 *Aus Paperless übernehmen* per Schlagwort), **Zähler**, **Nebenkostenabrechnung** (Verteilung je Wohnung, Abrechnung je
 Mietverhältnis, Festschreiben, PDF, Ablage in Paperless, § 35a EStG, Vorschlag neuer Abschlag), **Haus und Mieter**
 (Mietverhältnisse mit Miete/Abschlag ab Stichtag, Wohnungen, Kostenarten mit Verteilerschlüssel, Haus).
