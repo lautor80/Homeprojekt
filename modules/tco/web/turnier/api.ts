@@ -38,3 +38,16 @@ export interface LiveProps<D = unknown> { live: LiveDaten<D>; gross?: boolean }
 
 /** LK-Anzeige „LK 12,4“ */
 export const lkText = (v: number | null | undefined) => (v == null ? '–' : `LK ${Number(v).toFixed(1).replace('.', ',')}`);
+
+/** GET /turnier/zugang/:schluessel – persönlicher Link */
+export interface ZugangDaten {
+  turnier: LiveDaten['turnier'];
+  ich: { id: number; vorname: string; nachname: string; status: Teilnehmer['status']; lk: number | null };
+  spiele: (Spiel & { namen_a: string[]; namen_b: string[]; meine_seite: 'a' | 'b' })[];
+  runden: Runde[];
+}
+/** Props der modusspezifischen Ergänzung auf der Seite „Mein Turnier“ (z. B. Liga: „Ich habe mich um einen Termin bemüht“, Spaß: Pause wünschen) */
+export interface MeinProps { daten: ZugangDaten; schluessel: string; reload: () => void }
+
+/** Body für POST …/ergebnis (Verwaltung: /turniere/:id/spiele/:sid/ergebnis, Link: /turnier/zugang/:schluessel/ergebnis mit spiel_id) */
+export interface ErgebnisEingabeWeb { wertung: 'gespielt' | 'aufgabe' | 'wo' | 'keine'; saetze?: [number, number][] | null; sieger?: 'a' | 'b' | null }
