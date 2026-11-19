@@ -3,6 +3,7 @@ import { AuftraegeListe } from './AuftraegeListe';
 import { AuftragDetail } from './AuftragDetail';
 import { FirmaLogo, FirmaTab, MailtexteTab, Stammdaten } from './Stammdaten';
 import { Datenimport } from './Datenimport';
+import { PaperlessMigration } from './PaperlessMigration';
 import { Kontakte } from './Kontakte';
 import { Posteingang } from './eingang/Posteingang';
 import { MailWorkflowsTab } from './MailWorkflowsTab';
@@ -27,6 +28,7 @@ const mod: WebModule = {
   // Kapitel „Euroflex“ der App Einstellungen (Administration → Einstellungen, #232 E1)
   // Abschnitte in der App Schnittstellen (Administration → Schnittstellen, #232 S1/S4)
   schnittstellen: [
+    { reiter: 'Paperless', id: 'migration', text: 'Euroflex: Migration lokaler Auftragsordner', permission: 'transport.import:execute', component: PaperlessMigration },
     { reiter: 'SAP', id: 'sap', text: 'Datenimport aus SAP', permission: 'transport.import:execute', component: Datenimport },
   ],
   logos: [{ id: 'ausdrucke', text: 'Ausdrucke (Seitenverhältnis ca. 6:1)', permission: 'transport.stammdaten:edit', component: FirmaLogo }],

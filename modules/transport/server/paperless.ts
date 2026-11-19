@@ -4,6 +4,7 @@ import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
 import { fakturaAuftraege, type Firma } from './data.js';
 import { paperlessFirma } from './dokumente.js';
 import { K } from './paperless-kontexte.js';
+import { auftragFeldSichern } from './paperless-auftrag.js';
 import type { RechnungPdf } from './pdf/rechnung.js';
 
 export interface PaperlessErgebnis {
@@ -25,6 +26,8 @@ export async function paperlessSenden(firma: Firma, r: RechnungPdf, benutzer: st
     const liste = await fakturaAuftraege(r.faktura);
     const auftraege = liste.map((a) => a.auftragsnr);
     const betrag = liste.reduce((s, a) => s + a.rgbetrag, 0);
+    // Custom Field „Auftrag“ verbindet das Dokument mit dem Auftrag – anlegen, falls es in Paperless noch fehlt
+    await auftragFeldSichern(pl).catch(() => undefined);
     const e = await kontextAblegen(pl, K.rechnung, 'transport', {
       faktura: r.faktura, kunde: r.kunde, datum: r.datum, betrag: Math.round(betrag * 100) / 100, titel: r.title, auftraege: auftraege.join(', '),
       datei: r.filename, heute: new Date().toISOString().slice(0, 10), benutzer,
