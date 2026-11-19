@@ -89,6 +89,9 @@ const MODULE: Modul[] = [
   {
     name: 'Euroflex', menue: menue('modules/transport/web/index.ts', 'nav: ['), katalog: katalog('modules/transport/server/index.ts'),
   },
+  {
+    name: 'Vermietung', menue: menue('modules/miete/web/index.ts', 'nav: ['), katalog: katalog('modules/miete/server/index.ts'),
+  },
 ];
 
 /** Bereich im Katalog, in dem ein Menüpunkt der zweiten Stufe steht */
