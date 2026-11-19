@@ -167,6 +167,9 @@ test('Liga über HTTP: Runde 1, bemüht, Abschluss, Runde 2 mit Auf-/Abstieg, Ge
   assert.equal(d.spiele.length, 6 + 6 + 10);
   assert.ok(d.spiele.every((s: any) => s.feld === 'gruppe' && s.runde === 1 && s.runde_id === d.runden[0].id));
   assert.deepEqual(d.runden.map((r: any) => [r.nr, r.monat, r.status]), [[1, '2027-05-01', 'laeuft']]);
+  // Neueinsteiger: Die Online-Anmeldung bleibt bei der Liga auch im laufenden Turnier offen
+  const info = ok(await call('GET', `/api/m/tco/turnier/oeffentlich/sommerliga-2027`));
+  assert.equal(info.offen, true);
 
   const spiel = (x: number, y: number) => d.spiele.find((s: any) => (s.a[0] === P(x) && s.b[0] === P(y)) || (s.a[0] === P(y) && s.b[0] === P(x)));
   const seite = (s: any, k: number) => (s.a[0] === P(k) ? 'a' : 'b');

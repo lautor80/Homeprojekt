@@ -68,6 +68,13 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'eingang:tco POST /platz/registrierung/schnell': { ohne: 'verschickt nur den Einladungslink – das Ereignis ist die Annahme (POST /einladung)' },
   'eingang:tco POST /platz/registrierung/bestaetigen': { hinweis: 'HN_NEU' },
   'eingang:tco POST /einladung': { hinweis: 'MG_ZUGANG' },
+  // Turniere (Sport → Turniere): Anmeldung und Abmeldung melden sich bei der Turnierleitung; Ergebnisse stehen im Turnier selbst
+  'eingang:tco POST /turnier/oeffentlich/:kennung/anmeldung': { hinweis: 'TURNIER_ANMELDUNG' },
+  'eingang:tco POST /turnier/zugang/:schluessel/abmelden': { hinweis: 'TURNIER_ABMELDUNG' },
+  'eingang:tco POST /turnier/zugang/:schluessel/ergebnis': { ohne: 'Ergebnis aus dem Spiel – steht sofort in Tableau, Gruppen und Live-Ansicht der Turnierleitung, Änderungsbeleg mit Absender' },
+  'eingang:tco POST /turnier/spass/platz/:kennung/ergebnis': { ohne: 'Ergebnis aus dem Spiel – steht sofort in Tableau, Gruppen und Live-Ansicht der Turnierleitung, Änderungsbeleg mit Absender' },
+  'eingang:tco POST /turnier/liga/zugang/:schluessel/bemueht': { ohne: 'Vermerk am Spiel, steht in der Gruppe der Turnierleitung und wirkt erst beim Monatsabschluss' },
+  'eingang:tco POST /turnier/spass/zugang/:schluessel/pause': { ohne: 'Pausenwunsch für die nächste Runde, steht bei der Auslosung in der Verwaltung' },
 
   // ---------------------------------------------------------------- Meldungen
   'meldung:tco POST /schaden': { aufgabe: 'SCHADEN' },

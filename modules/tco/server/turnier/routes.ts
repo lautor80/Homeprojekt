@@ -6,6 +6,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { DB, vereinLesen, type Db } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
+import { tcoHinweis } from '../hinweise.js';
 import {
   aktiveTeilnehmer, ergebnisSpeichern, P_TURNIER, platzSchluesselErzeugen, rundenLesen, spieleLesen, teilnehmerLesen,
   teilnehmerZumZugang, turnierLesen, turnierZurKennung, zugangErzeugen, type ModusDef,
@@ -90,7 +91,8 @@ function oeffentlich(t: Turnier) {
 }
 
 const heute = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
-const anmeldungOffen = (t: Turnier) => t.status === 'anmeldung' && (!t.meldeschluss || t.meldeschluss >= heute());
+/** Anmeldung offen: Status „Anmeldung offen“ bis zum Meldeschluss; bei der Liga auch noch im laufenden Turnier (Neueinsteiger) */
+const anmeldungOffen = (t: Turnier) => (t.status === 'anmeldung' || (t.modus === 'liga' && t.status === 'laeuft')) && (!t.meldeschluss || t.meldeschluss >= heute());
 
 /** Mitglied zu Name + Geburtsjahr finden (für die LK aus nuLiga); bei mehreren Treffern keines */
 async function mitgliedFinden(db: Db, vorname: string, nachname: string, geburtsjahr: number | null): Promise<{ adrnr: string; lk: number | null } | null> {
@@ -325,6 +327,11 @@ export async function turnierRoutes(app: FastifyInstance) {
       const mg = await mitgliedFinden(tx, d.vorname, d.nachname, d.geburtsjahr);
       const [tn] = await tx<{ id: number }[]>`insert into tco.turnier_teilnehmer (turnier_id, vorname, nachname, geburtsjahr, geschlecht, email, telefon, adrnr, lk, status, bemerkung)
         values (${t.id}, ${d.vorname}, ${d.nachname}, ${d.geburtsjahr}, ${d.geschlecht}, ${d.email}, ${d.telefon}, ${mg?.adrnr ?? null}, ${d.lk ?? mg?.lk ?? null}, ${status}, ${d.bemerkung}) returning id`;
+      // Arbeitsvorrat (#232, V1): je Turnier ein offener Hinweis, weitere Meldungen zählen hoch
+      await tcoHinweis(tx, {
+        quelle: 'TURNIER_ANMELDUNG', objekt: t.id, bereich: 'Sport', recht: P_TURNIER.edit, art: 'Turnieranmeldung', icon: 'add-employee',
+        titel: t.name, text: `${d.vorname} ${d.nachname} hat sich angemeldet${status === 'warteliste' ? ' (Warteliste)' : ''}.`, pfad: '/tco/turniere',
+      });
       return { id: tn.id, status, schluessel: await zugangErzeugen(tx, tn.id) };
     });
     const gesendet = await linkSenden(req, t, { id: r.id, vorname: d.vorname, email: d.email }, r.schluessel, r.status === 'warteliste', 'Online-Anmeldung');
@@ -373,6 +380,11 @@ export async function turnierRoutes(app: FastifyInstance) {
       const [{ n }] = await tx<{ n: number }[]>`select count(*)::int as n from tco.turnier_spiele where turnier_id = ${ich.turnier_id} and (${ich.id} = any(a) or ${ich.id} = any(b))`;
       if (n) throw new BusinessError('Du bist bereits ausgelost – bitte melde dich direkt bei der Turnierleitung ab.');
       await tx`update tco.turnier_teilnehmer set status = 'abgemeldet' where id = ${ich.id}`;
+      const t = await turnierLesen(tx, ich.turnier_id);
+      await tcoHinweis(tx, {
+        quelle: 'TURNIER_ABMELDUNG', objekt: t.id, bereich: 'Sport', recht: P_TURNIER.edit, art: 'Turnierabmeldung', icon: 'employee-rejections',
+        titel: t.name, text: `${vollname(ich)} hat sich über den persönlichen Link abgemeldet.`, pfad: '/tco/turniere',
+      });
       // erste Person der Warteliste rückt nach
       await tx`update tco.turnier_teilnehmer set status = 'gemeldet' where id = (
                  select id from tco.turnier_teilnehmer where turnier_id = ${ich.turnier_id} and status = 'warteliste' order by angemeldet_am, id limit 1)
