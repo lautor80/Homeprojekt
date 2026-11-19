@@ -87,7 +87,7 @@ export function PaperlessMigration() {
         dateien.current.set(key, f.handle);
         const pfad = [...f.ordner, f.datei].join('/');
         const grund = !z ? 'kein Ordner mit Auftragsnummer im Pfad' : !typErlaubt(f.datei) ? 'Dateityp wird von Paperless nicht angenommen' : !z.bekannt ? `Auftrag ${z.nr} gibt es im Portal nicht` : '';
-        return { key, pfad, ordner: f.ordner, datei: f.datei, groesse: f.groesse, datum: dateiDatum(f.geaendert), nr: z?.nr ?? null, bekannt: !!z?.bekannt, status: 'offen', text: grund };
+        return { key, pfad, ordner: f.ordner, datei: f.datei, groesse: f.groesse, datum: dateiDatum(f.geaendert), nr: z?.nr ?? null, bekannt: !!z?.bekannt, status: 'offen' as MigStatus, text: grund };
       }).sort((a, b) => (a.nr ?? '￿').localeCompare(b.nr ?? '￿') || a.pfad.localeCompare(b.pfad));
       setListe(l);
     } catch (e) { setError((e as Error).message); } finally { setSuchen(null); }
