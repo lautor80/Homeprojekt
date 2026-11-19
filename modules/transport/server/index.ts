@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
 import { sql, type Tx } from '../../../server/src/db.js';
-import { can, change, requireAuth } from '../../../server/src/auth.js';
+import { can, change, changeCtx, requireAuth } from '../../../server/src/auth.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import {
   NR_AUFTRAG, NR_RECHNUNG, WERTE_TYPEN, adresseLesen, auftragLesen, fahrtenFuerVersand, firmaLesen, isoDate, leererStop, naechsteAdrnr,
@@ -17,7 +17,7 @@ import { rechnungPdf } from './pdf/rechnung.js';
 import { dokumentPdf } from './pdf/erzeugen.js';
 import { xrechnungErzeugen } from './xrechnung.js';
 import { FX_DATEI, pdfPruefen, zugferdXml } from './zugferd.js';
-import { paperlessSenden } from './paperless.js';
+import { belegAblegen, belegeImHintergrund, versendeteBelege } from './archiv.js';
 import { DATEITYPEN, dokumentAblegen, endung, mimeTyp, paperlessFirma } from './dokumente.js';
 import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, versandBereit, type VersandDatei } from './mailversand.js';
 import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
@@ -533,6 +533,19 @@ async function routes(app: FastifyInstance) {
     return reply.type('application/pdf').header('content-disposition', `inline; filename="${name}"`).send(pdf);
   });
 
+  /**
+   * Gedruckte Belege automatisch in Paperless ablegen (Funktion transport.paperless.automatisch). Die PDF-Vorschau „Drucken“
+   * meldet ihre Belege hier; abgelegt wird im Hintergrund, nur wenn Paperless eingerichtet ist und sich der Auftrag geändert hat.
+   */
+  app.post('/archiv', { preHandler: requireAuth(P.display) }, async (req) => {
+    const b = z.object({
+      belege: z.array(z.object({ art: z.enum(['T', 'L', 'R']), kennung: z.string().trim().min(1).max(40) })).min(1).max(200),
+      anlass: z.enum(['druck', 'versand']).default('druck'),
+    }).parse(req.body);
+    const geplant = await belegeImHintergrund(b.belege, { anlass: b.anlass, ctx: changeCtx(req), benutzer: benutzerName(req), log: req.log });
+    return { geplant };
+  });
+
   // ---- E-Rechnung ----
   app.get('/xrechnung/:faktura', { preHandler: requireAuth(P.display) }, async (req) => {
     const { faktura } = z.object({ faktura: z.string() }).parse(req.params);
@@ -709,22 +722,22 @@ async function routes(app: FastifyInstance) {
         dateien.push({ name, daten: d.data, mime: pdf ? 'application/pdf' : d.contentType.split(';')[0].trim() || mimeTyp(name) });
       }
     }
-    return euroflexMailSenden({ nr, modus: b.modus, an: b.an, cc: b.cc, betreff: b.betreff, text: b.text, dateien, nur: b.nur, benutzer: benutzerName(req), absender: rv.absender, bcc: rv.bcc });
+    const ergebnis = await euroflexMailSenden({ nr, modus: b.modus, an: b.an, cc: b.cc, betreff: b.betreff, text: b.text, dateien, nur: b.nur, benutzer: benutzerName(req), absender: rv.absender, bcc: rv.bcc });
+    // versendete Belege (Transportauftrag, Lieferschein, Rechnung) automatisch in Paperless – nur, wenn eine E-Mail hinausging
+    if (ergebnis.mails.some((m) => m.status !== 'fehler')) {
+      await belegeImHintergrund(versendeteBelege(dateien), { anlass: 'versand', ctx: changeCtx(req), benutzer: benutzerName(req), log: req.log });
+    }
+    return ergebnis;
   });
 
   // ---- Paperless ----
   app.post('/paperless', { preHandler: requireAuth(P.versand) }, async (req) => {
     const { fakturen } = z.object({ fakturen: z.array(z.string()).min(1) }).parse(req.body);
-    const firma = await firmaLesen();
-    const msgs: { faktura: string; ok: boolean; message: string }[] = [];
+    const msgs: { faktura: string; ok: boolean; message: string; id?: number | null }[] = [];
     for (const f of [...new Set(fakturen)]) {
-      const r = await rechnungPdf(f);
-      if (!r) {
-        msgs.push({ faktura: f, ok: false, message: 'PDF konnte nicht erzeugt werden.' });
-        continue;
-      }
-      const e = await paperlessSenden(firma, r, benutzerName(req));
-      msgs.push({ faktura: f, ...e });
+      // ausdrücklich gewünscht: auch ohne Änderung ablegen; merkt sich den Stand für die automatische Ablage
+      const e = await belegAblegen({ art: 'R', kennung: f }, { anlass: 'versand', ctx: changeCtx(req), benutzer: benutzerName(req), erzwingen: true });
+      msgs.push({ faktura: f, ok: e.ok, message: e.message, id: e.id });
     }
     return msgs;
   });

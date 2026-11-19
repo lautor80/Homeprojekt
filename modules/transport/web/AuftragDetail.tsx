@@ -8,6 +8,7 @@ import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { useCan, useFunktion } from '@core/session';
+import { F_ARCHIV, belegeAblegen } from './archiv';
 import { SperrHinweis, useSperre } from '@core/sperre';
 import { toast } from '@core/toast';
 import { DocsDialog, XRechnungDialog, type Doc, type XRes } from './dialogs';
@@ -66,7 +67,8 @@ export function AuftragDetail() {
   const can = useCan();
   const darfAendern = can('transport.auftraege:edit');
   // Sammelversand „Versenden…“ über Outlook 365 (Funktion transport.versand.sammel, Recht transport.versand:execute)
-  const sammelversand = useFunktion()('transport.versand.sammel') && can('transport.versand:execute');
+  const funktion = useFunktion();
+  const sammelversand = funktion('transport.versand.sammel') && can('transport.versand:execute');
   const [versand, setVersand] = useState(false);
   const sperre = useSperre('AUFTRAG', isNew ? null : nr, darfAendern, { bezeichnung: `Auftrag ${nr ?? ''}` });
   const darfBearbeiten = darfAendern && sperre.eigen;
@@ -227,6 +229,7 @@ export function AuftragDetail() {
         const r = await api.get<XRes>(`${T}/xrechnung/${encodeURIComponent(f)}`);
         // PDF im Ablageordner speichern – bei einer Sammelrechnung im Ordner jedes ihrer Aufträge; was nicht ankommt, wird gemeldet
         const ziele = r.auftraege?.length ? r.auftraege : [nr!];
+        if (funktion(F_ARCHIV)) belegeAblegen([{ art: 'R', kennung: f }], 'druck');
         fetch(`${T}/pdf/R/${encodeURIComponent(f)}`, { credentials: 'same-origin' })
           .then(async (res) => { if (!res.ok) throw new Error(`Rechnung nicht lesbar (Fehler ${res.status})`); return ablegenIn(ziele, `Rechnung_${f}.pdf`, await res.blob()); })
           .then((x) => {

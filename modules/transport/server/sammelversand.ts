@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { sql } from '../../../server/src/db.js';
-import { can, requireAuth } from '../../../server/src/auth.js';
+import { can, changeCtx, requireAuth } from '../../../server/src/auth.js';
+import { belegeImHintergrund, versendeteBelege } from './archiv.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import { funktionAktiv } from '../../../server/src/funktionsschalter.js';
 import { auftragLesen, fahrtenFuerVersand, firmaLesen, kaeufer, type Adresse } from './data.js';
@@ -236,6 +237,7 @@ export async function sammelversandRoutes(app: FastifyInstance) {
     const zusatz = await zusatzLaden(b);
     const plan = await vorschauRechnen(req, b, b.nur_entwurf);
     const ergebnisse: { schluessel: string; status: 'entwurf' | 'gesendet' | 'fehler'; text: string }[] = [];
+    const versendet: ReturnType<typeof versendeteBelege> = [];
     for (const w of b.mails) {
       const m = plan.mails.find((x) => x.plan.schluessel === w.schluessel);
       if (!m) { ergebnisse.push({ schluessel: w.schluessel, status: 'fehler', text: 'Diese E-Mail gehört nicht (mehr) zur Auswahl – bitte die Vorschau neu laden.' }); continue; }
@@ -252,10 +254,13 @@ export async function sammelversandRoutes(app: FastifyInstance) {
         const haupt = r.mails.find((x) => x.rolle === 'kunde');
         const status = haupt && haupt.status !== 'fehler' ? haupt.status : 'fehler';
         ergebnisse.push({ schluessel: w.schluessel, status, text: r.text });
+        if (status !== 'fehler') versendet.push(...versendeteBelege(m.anlagen.dateien));
       } catch (e) {
         ergebnisse.push({ schluessel: w.schluessel, status: 'fehler', text: fehlerText(e) });
       }
     }
+    // versendete Belege automatisch in Paperless (Hintergrund; nur mit eingerichtetem Paperless)
+    await belegeImHintergrund(versendet, { anlass: 'versand', ctx: changeCtx(req), benutzer: benutzerName(req), log: req.log });
     return { ergebnisse };
   });
 
@@ -265,6 +270,7 @@ export async function sammelversandRoutes(app: FastifyInstance) {
     const zusatz = await zusatzLaden(b);
     const plan = await vorschauRechnen(req, b, true);
     const vergeben = new Set<string>();
+    const versendet: ReturnType<typeof versendeteBelege> = [];
     const dateien: { schluessel: string; name: string; inhalt_base64: string }[] = [];
     for (const w of b.mails) {
       const m = plan.mails.find((x) => x.plan.schluessel === w.schluessel);
@@ -277,7 +283,10 @@ export async function sammelversandRoutes(app: FastifyInstance) {
         ...(regel.absender ? { von: regel.absender } : {}), ...(regel.bcc.length ? { bcc: regel.bcc.join(', ') } : {}),
       });
       dateien.push({ schluessel: w.schluessel, name: emlDateiname(betreff, vergeben), inhalt_base64: Buffer.from(eml, 'utf8').toString('base64') });
+      versendet.push(...versendeteBelege(m.anlagen.dateien));
     }
+    // E-Mail-Dateien zum Versenden: Belege wie beim Versand automatisch in Paperless
+    await belegeImHintergrund(versendet, { anlass: 'versand', ctx: changeCtx(req), benutzer: benutzerName(req), log: req.log });
     return { dateien };
   });
 }
