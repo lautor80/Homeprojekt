@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, Button, Dialog, Icon, Link, MessageStrip, Text, TextArea } from '@ui5/webcomponents-react';
+import { Button, Dialog, Icon, Link, MessageStrip, Text, TextArea } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
+import { DialogFuss } from '@core/components/DialogFuss';
 import { download } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { T, dat } from './util';
@@ -58,11 +59,11 @@ export function DokumentPopup({ nr, docId, titel, datei, link, edit, onClose, on
   const paperlessLink = info?.link ?? link;
   return createPortal(
     <Dialog open headerText={titel} onClose={onClose} resizable style={{ width: '90vw', height: '90vh' }}
-            footer={<Bar endContent={<>
+            footer={<DialogFuss>
               {paperlessLink && <Button icon="action" onClick={() => window.open(paperlessLink, '_blank', 'noopener')}>In Paperless öffnen</Button>}
               <Button icon="download" onClick={() => download(`${basis}/datei`, datei || `Dokument_${docId}`).catch((e) => setError((e as Error).message))}>Herunterladen</Button>
               <Button onClick={onClose}>Schließen</Button>
-            </>} />}>
+            </DialogFuss>}>
       <div style={{ display: 'flex', gap: '1rem', height: '100%', minHeight: 0 }}>
         <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {vorschauFehler && <MessageStrip design="Information" hideCloseButton>{vorschauFehler}</MessageStrip>}

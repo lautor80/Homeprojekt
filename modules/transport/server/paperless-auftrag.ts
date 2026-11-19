@@ -102,7 +102,8 @@ export async function dokumenteZumAuftrag(pl: Paperless, nr: string): Promise<{ 
 
 /** Gehört das Paperless-Dokument über das Feld „Auftrag“ zu diesem Auftrag? */
 export async function perFeldZugeordnet(pl: Paperless, nr: string, id: number): Promise<boolean> {
-  const f = await pl.feld(AUFTRAG_FELD);
-  if (!f) return false;
-  try { return feldPasst(feldWertIn(await pl.dokument(id), f.id), nr); } catch { return false; }
+  try {
+    const f = await pl.feld(AUFTRAG_FELD);
+    return f ? feldPasst(feldWertIn(await pl.dokument(id), f.id), nr) : false;
+  } catch { return false; } // Paperless nicht erreichbar oder Dokument unbekannt: nicht zugeordnet
 }

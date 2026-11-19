@@ -653,9 +653,9 @@ async function routes(app: FastifyInstance) {
   /** Dokument gehört zum Auftrag: im Portal verknüpft oder Custom Field „Auftrag“ nennt die Nummer */
   async function zumAuftrag(nr: string, id: number) {
     const [da] = await sql`select 1 from transport.auftrag_dokumente where auftragsnr = ${nr} and doc_id = ${id}`;
-    const pl = paperlessFirma(await firmaLesen());
-    if (!da && !(await perFeldZugeordnet(pl, nr, id))) throw new BusinessError('Dokument nicht gefunden.', 404);
-    return pl;
+    const f = await firmaLesen();
+    if (!da && !(f.paperless_url && f.paperless_token && await perFeldZugeordnet(paperlessFirma(f), nr, id))) throw new BusinessError('Dokument nicht gefunden.', 404);
+    return paperlessFirma(f);
   }
 
   /** Notizen (Kommentare) des Paperless-Dokuments */
@@ -760,11 +760,14 @@ async function routes(app: FastifyInstance) {
     if (ids.length) {
       // nur Dokumente, die diesem Auftrag zugeordnet sind (wie beim Herunterladen)
       const rows = await sql`select doc_id, titel, datei from transport.auftrag_dokumente where auftragsnr = ${nr} and doc_id = any(${ids}::int[])`;
-      const pl = paperlessFirma(await firmaLesen());
       // über das Custom Field „Auftrag“ zugeordnete Dokumente (Migration, Rechnungen) zählen ebenfalls
+      const fa = await firmaLesen();
       const fehlt: number[] = [];
-      for (const id of ids.filter((x) => !rows.some((r) => r.doc_id === x))) if (!(await perFeldZugeordnet(pl, nr, id))) fehlt.push(id);
+      for (const id of ids.filter((x) => !rows.some((r) => r.doc_id === x))) {
+        if (!(fa.paperless_url && fa.paperless_token && await perFeldZugeordnet(paperlessFirma(fa), nr, id))) fehlt.push(id);
+      }
       if (fehlt.length) throw new BusinessError(`Dokument ${fehlt.join(', ')} ist dem Auftrag ${nr} nicht zugeordnet.`);
+      const pl = paperlessFirma(fa);
       for (const id of ids) {
         const row = rows.find((r) => r.doc_id === id) ?? { datei: null };
         const d = await pl.download(id);
