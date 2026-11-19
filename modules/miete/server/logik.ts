@@ -280,6 +280,18 @@ export function verteilen(x: VerteilungEingabe): Verteilung {
     let quote = new Map<number, { f: number; basis: string }>();
     const nachFlaeche = () => new Map(x.einheiten.map((e) => [e.id, { f: F ? Number(e.flaeche) / F : 1 / x.einheiten.length, basis: `${zahl(Number(e.flaeche))} m² von ${zahl(F)} m²` }]));
 
+    // nach Personentagen je Nutzungsabschnitt verteilen (Schlüssel „Personen“ oder Rückfall beim Verbrauch)
+    let nachPersonen = ka.schluessel === 'personen';
+    // Verbrauch ohne verwertbare Zähler: alles ist gemeinsamer Verbrauch → Teilung wie für den gemeinsamen Verbrauch eingestellt
+    const rueckfall = (grund: string) => {
+      const gs: GemeinsamSchluessel = ka.gemeinsam_schluessel ?? 'flaeche';
+      const nach = gs === 'personen' ? 'nach Personen' : gs === 'einheiten' ? 'zu gleichen Teilen' : 'nach Wohnfläche';
+      ph.push(`${ka.bezeichnung}: ${grund} – ${nach} verteilt.`);
+      if (gs === 'personen') nachPersonen = true;
+      else if (gs === 'einheiten') quote = new Map(x.einheiten.map((e) => [e.id, { f: 1 / x.einheiten.length, basis: `1 von ${x.einheiten.length} Einheiten` }]));
+      else quote = nachFlaeche();
+    };
+
     // direkt zugeordnete Belege getrennt, der Rest nach Schlüssel
     const direkt = new Map<number, number>();
     let rest = gesamt;
@@ -307,8 +319,8 @@ export function verteilen(x: VerteilungEingabe): Verteilung {
       const unter = h ? unterzaehler(x.zaehler, h.id) : [];
       const vu = new Map(unter.map((z) => [z.id, verbrauch(z.ablesungen, x.von, x.bis)]));
       const fehlt = [...(h && vh === null ? [h] : []), ...unter.filter((z) => vu.get(z.id) === null)];
-      if (!h) { ph.push(`${ka.bezeichnung}: kein Hauptzähler hinterlegt – nach Wohnfläche verteilt.`); quote = nachFlaeche(); }
-      else if (fehlt.length) { ph.push(`${ka.bezeichnung}: Zählerstände fehlen (${fehlt.map((z) => z.bezeichnung).join(', ')}) – nach Wohnfläche verteilt. Ablesungen zu Beginn und Ende des Zeitraums erfassen.`); quote = nachFlaeche(); }
+      if (!h) rueckfall('kein Hauptzähler hinterlegt');
+      else if (fehlt.length) rueckfall(`Zählerstände fehlen (${fehlt.map((z) => z.bezeichnung).join(', ')}), Ablesungen zu Beginn und Ende des Zeitraums erfassen`);
       else {
         // Nettoverbrauch je Zähler = eigene Messung minus die Messungen der direkt dahinter liegenden Zähler
         const kinder = (id: number) => unter.filter((z) => z.haupt_id === id);
@@ -333,7 +345,7 @@ export function verteilen(x: VerteilungEingabe): Verteilung {
         if (restBei) je.set(restBei, (je.get(restBei) ?? 0) + ohneZaehler);
         const G = gemessenGemeinsam + (restBei ? 0 : ohneZaehler);
         V = [...je.values()].reduce((s, v) => s + v, 0) + G;
-        if (V <= 0) { ph.push(`${ka.bezeichnung}: kein Verbrauch im Zeitraum – nach Wohnfläche verteilt.`); quote = nachFlaeche(); }
+        if (V <= 0) rueckfall('kein Verbrauch im Zeitraum');
         else {
           // Teilung des gemeinsamen Verbrauchs
           let gs: GemeinsamSchluessel = ka.gemeinsam_schluessel ?? 'flaeche';
@@ -361,7 +373,7 @@ export function verteilen(x: VerteilungEingabe): Verteilung {
 
     // Einheit → Nutzungsabschnitte; Personen: direkt nach Personentagen über alle Abschnitte
     const anteile: Anteil[] = [];
-    if (ka.schluessel === 'personen') {
+    if (nachPersonen) {
       const gewicht = segmente.reduce((s, sg) => s + sg.personen * sg.tage, 0);
       if (gewicht <= 0) {
         ph.push(`${ka.bezeichnung}: keine Personen hinterlegt – nach Wohnfläche verteilt.`);

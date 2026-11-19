@@ -462,7 +462,7 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
 Mieteinnahmen eines Hauses je Monat in **Kaltmiete** und **Nebenkosten-Abschlag** aufteilen, mit den **laufenden Kosten**
 vergleichen und die **Nebenkosten jährlich abrechnen** – für Häuser mit mehreren Parteien, die sich Heizstrom und Teile des
 Haushaltsstroms teilen (Haupt- und Unterzähler, Gemeinschaftszähler wie Waschküche/Keller/Heizungsstrom – auch im Zähler einer Partei, dort abgezogen –,
-gemeinsamer Verbrauch je Kostenart nach Wohnfläche, Personen oder zu gleichen Teilen). Belege in einem eigenen Paperless
+gemeinsamer Verbrauch je Kostenart nach Wohnfläche, Personen oder zu gleichen Teilen – Haushaltsstrom (gemeinsam) nach Personen, auch ohne Zähler). Belege in einem eigenen Paperless
 (*Paperless-ngx Vermietung*). Privat: nur aktiv mit `PORTAL_MODULES=…,miete` (nicht bei `*`).
 
 Apps im Bereich *Vermietung*: **Übersicht** (Soll/Ist je Monat, NK-Deckung, Mietkonto), **Mieteinnahmen** (Erfassen mit
