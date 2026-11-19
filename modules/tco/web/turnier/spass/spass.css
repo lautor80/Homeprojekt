@@ -1,0 +1,46 @@
+/* Spaßturnier: Countdown, Platzkarten, Rangliste, Eingabe am Platz – nur Theme-Variablen (hell/dunkel) */
+.spass { font-family: var(--sapFontFamily); color: var(--sapTextColor); display: flex; flex-direction: column; gap: 0.75rem; }
+.spass-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.25rem; }
+.spass-kopf__titel { font-size: var(--sapFontHeader4Size, 1.125rem); font-weight: bold; }
+.spass-uhr { font-variant-numeric: tabular-nums; font-weight: bold; font-size: 1.75rem; letter-spacing: 0.02em; }
+.spass-uhr--knapp { color: var(--sapCriticalTextColor); }
+.spass-uhr--aus { color: var(--sapNegativeTextColor); }
+.spass-label { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+
+.spass-plaetze { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 0.75rem; }
+.spass-platz { display: flex; flex-direction: column; gap: 0.375rem; padding: 0.75rem 1rem; border-radius: var(--sapTile_BorderCornerRadius, 1rem);
+  background: var(--sapTile_Background, var(--sapGroup_ContentBackground)); box-shadow: var(--sapContent_Shadow0); }
+.spass-platz--gewertet { box-shadow: inset 0.25rem 0 0 var(--sapPositiveElementColor, var(--sapPositiveColor)), var(--sapContent_Shadow0); }
+.spass-platz__kopf { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.spass-platz__nr { font-weight: bold; }
+.spass-team { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.spass-team--sieger { font-weight: bold; }
+.spass-team__spiele { font-variant-numeric: tabular-nums; font-weight: bold; min-width: 1.5rem; text-align: right; }
+.spass-gegen { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+
+.spass-pausen { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; }
+.spass-chip { padding: 0.125rem 0.5rem; border-radius: 1rem; background: var(--sapNeutralBackgroundColor, var(--sapList_Background));
+  border: 1px solid var(--sapList_BorderColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+
+.spass-tabelle { width: 100%; border-collapse: collapse; font-size: var(--sapFontSize); }
+.spass-tabelle th, .spass-tabelle td { padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: right; white-space: nowrap; }
+.spass-tabelle th { color: var(--sapContent_LabelColor); font-weight: normal; font-size: var(--sapFontSmallSize, 0.75rem); }
+.spass-tabelle th:nth-child(2), .spass-tabelle td:nth-child(2) { text-align: left; white-space: normal; width: 100%; }
+.spass-tabelle-rahmen { overflow-x: auto; }
+@media (max-width: 40rem) { .spass-tabelle .spass-breit { display: none; } }
+
+/* Beamer: alles größer */
+.spass--gross { font-size: 1.4rem; }
+.spass--gross .spass-uhr { font-size: 5rem; }
+.spass--gross .spass-kopf__titel { font-size: 2rem; }
+.spass--gross .spass-plaetze { grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); }
+.spass--gross .spass-tabelle { font-size: 1.25rem; }
+.spass--gross .spass-chip { font-size: 1.1rem; }
+
+/* Eingabe am Platz (Handy) */
+.spass-wahl { display: grid; grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr)); gap: 0.375rem; }
+.spass-eingabe { display: flex; flex-direction: column; gap: 0.75rem; }
+.spass-eingabe__team { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: var(--portal-radius, 0.75rem);
+  border: 1px solid var(--sapList_BorderColor); background: var(--sapGroup_ContentBackground); }
+.spass-eingabe__namen { flex: 1; min-width: 0; font-weight: bold; overflow-wrap: anywhere; }
+.spass-eingabe__zahl { font-size: 2rem; font-weight: bold; font-variant-numeric: tabular-nums; min-width: 2.5rem; text-align: center; }

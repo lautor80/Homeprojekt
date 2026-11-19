@@ -8,14 +8,14 @@ flowchart LR
   subgraph CLIENT["Endnutzer · Client-Zugang"]
     BROWSER["Browser"]
     PHONE["Smartphone"]
-    OEFF["Öffentliche Seiten<br/>/beitritt · /schnuppertraining · /registrierung-bestaetigen · /einladung · /schluessel-quittung"]
+    OEFF["Öffentliche Seiten<br/>/beitritt · /schnuppertraining · /registrierung-bestaetigen · /einladung · /schluessel-quittung · /turnier · /turnier-live · /turnier-mein · /turnier-platz"]
   end
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten<br/>Fanshop"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Zeiten<br/>Schaden melden"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
-      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung"]
+      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
@@ -90,6 +90,7 @@ flowchart LR
 | Mitglieder | Mitglieder-Analyse | `/tco/analyse` | `tco.analyse:display` | Altersstruktur, Ein-/Austritte, Beiträge, Varianten |
 | Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |
 | Sport | LSVS-Bestandsmeldung | `/tco/lsvs` | `tco.lsvs:display` | Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe |
+| Sport | Turniere | `/tco/turniere` | `tco.turnier:display` | KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse |
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Nichtmitglieder, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
@@ -116,7 +117,7 @@ flowchart LR
 | Dokumente | Dokumenteneingang | `/tco/dokumenteneingang` | `tco.eingang:display` | E-Mails und Anhänge nach Regeln ablegen, Prüfliste |
 | Dokumente | Dokumenten-Upload | `/tco/upload` | `tco.upload:execute` | Belege gesammelt nach Paperless |
 
-**Öffentliche Seiten (ohne Anmeldung):** `/beitritt`, `/schnuppertraining`, `/registrierung-bestaetigen`, `/einladung`, `/schluessel-quittung`
+**Öffentliche Seiten (ohne Anmeldung):** `/beitritt`, `/schnuppertraining`, `/registrierung-bestaetigen`, `/einladung`, `/schluessel-quittung`, `/turnier`, `/turnier-live`, `/turnier-mein`, `/turnier-platz`
 
 ## Schnittstellen (n8n-Workflows)
 
@@ -218,6 +219,7 @@ flowchart LR
 | soll | 12 |
 | sport | 4 |
 | teilnehmer | 4 |
+| turnier | 41 |
 | upload | 2 |
 | verzehr | 29 |
 | zaehler | 16 |

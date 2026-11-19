@@ -1,0 +1,50 @@
+/* Monats-Gruppenliga: Gruppenkarten, Tabellen, Gesamtwertung – nur Theme-Variablen (hell/dunkel) */
+.liga { font-family: var(--sapFontFamily); color: var(--sapTextColor); display: flex; flex-direction: column; gap: 0.75rem; }
+.liga-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
+.liga-kopf__titel { font-size: var(--sapFontHeader4Size, 1.125rem); font-weight: bold; }
+.liga-label { color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
+.liga-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+
+.liga-gruppen { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 0.75rem; }
+.liga-gruppe { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem 1rem; border-radius: var(--sapTile_BorderCornerRadius, 1rem);
+  background: var(--sapTile_Background, var(--sapGroup_ContentBackground)); box-shadow: var(--sapContent_Shadow0); min-width: 0; }
+.liga-gruppe__kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; font-weight: bold; }
+
+.liga-tabelle { width: 100%; border-collapse: collapse; font-size: var(--sapFontSize); }
+.liga-tabelle th, .liga-tabelle td { padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: right; white-space: nowrap; }
+.liga-tabelle th { color: var(--sapContent_LabelColor); font-weight: normal; font-size: var(--sapFontSmallSize, 0.75rem); }
+.liga-tabelle .liga-name { text-align: left; white-space: normal; width: 100%; }
+.liga-tabelle-rahmen { overflow-x: auto; }
+.liga-auf { color: var(--sapPositiveTextColor, var(--sapPositiveColor)); font-weight: bold; }
+.liga-ab { color: var(--sapNegativeTextColor, var(--sapNegativeColor)); font-weight: bold; }
+.liga-ich { background: var(--sapList_SelectionBackgroundColor); }
+@media (max-width: 40rem) { .liga-tabelle .liga-breit { display: none; } }
+
+.liga-spiele { display: flex; flex-direction: column; gap: 0.125rem; }
+.liga-spiel { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; padding: 0.2rem 0.25rem; border-radius: 0.25rem;
+  font-size: var(--sapFontSmallSize, 0.8125rem); }
+.liga-spiel--klick { cursor: pointer; }
+.liga-spiel--klick:hover { background: var(--sapList_Hover_Background); }
+.liga-spiel__paar { flex: 1; min-width: 10rem; }
+.liga-spiel__erg { font-variant-numeric: tabular-nums; }
+.liga-sieger { font-weight: bold; }
+
+.liga-chip { padding: 0 0.4rem; border-radius: 1rem; border: 1px solid var(--sapList_BorderColor); font-size: var(--sapFontSmallSize, 0.75rem);
+  background: var(--sapNeutralBackgroundColor, var(--sapList_Background)); }
+.liga-chip--auf { border-color: var(--sapPositiveElementColor, var(--sapPositiveColor)); }
+.liga-chip--ab { border-color: var(--sapNegativeElementColor, var(--sapNegativeColor)); }
+.liga-chip--neu { border-color: var(--sapInformativeElementColor, var(--sapInformativeColor)); }
+
+.liga-verlauf { display: inline-flex; gap: 0.25rem; }
+.liga-verlauf span { min-width: 1.25rem; text-align: center; border-radius: 0.25rem; background: var(--sapNeutralBackgroundColor, var(--sapList_Background));
+  font-variant-numeric: tabular-nums; font-size: var(--sapFontSmallSize, 0.75rem); }
+
+.liga-einst { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr)); gap: 0.5rem 1rem; align-items: end; }
+.liga-einst > div { display: flex; flex-direction: column; gap: 0.25rem; }
+
+/* Beamer: alles größer */
+.liga--gross { font-size: 1.35rem; }
+.liga--gross .liga-kopf__titel { font-size: 2rem; }
+.liga--gross .liga-gruppen { grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); }
+.liga--gross .liga-tabelle { font-size: 1.25rem; }
+.liga--gross .liga-tabelle th { font-size: 1rem; }

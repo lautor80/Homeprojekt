@@ -1,0 +1,39 @@
+/* Turniere – KO-Tableau (Verwaltung und Live) */
+.portal-ko { display: flex; flex-direction: column; gap: 1rem; }
+.portal-ko__feldtitel { margin: 0.25rem 0 0.4rem; font-size: var(--sapFontHeader5Size, 1rem); font-weight: 600; color: var(--sapTextColor); }
+.portal-ko__sieger { font-weight: normal; color: var(--sapContent_LabelColor); margin-left: 0.5rem; }
+.portal-ko__tableau { display: flex; align-items: stretch; gap: 1rem; overflow-x: auto; padding-bottom: 0.5rem; -webkit-overflow-scrolling: touch; }
+.portal-ko__runde { display: flex; flex-direction: column; flex: 0 0 auto; width: 13.5rem; }
+.portal-ko__rundentitel { font-weight: 600; font-size: var(--sapFontSmallSize, 0.75rem); color: var(--sapContent_LabelColor); text-transform: uppercase;
+  letter-spacing: 0.03em; margin-bottom: 0.4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-ko__einstieg { display: block; text-transform: none; letter-spacing: 0; font-weight: normal; }
+.portal-ko__spiele { display: flex; flex-direction: column; justify-content: space-around; flex: 1; gap: 0.4rem; }
+.portal-ko__spiel { border: 1px solid var(--sapList_BorderColor, #e5e5e5); border-radius: 0.5rem; background: var(--sapList_Background, #fff);
+  font-size: var(--sapFontSize, 0.875rem); overflow: hidden; text-align: left; width: 100%; padding: 0; color: var(--sapTextColor); font-family: inherit; }
+button.portal-ko__spiel { cursor: pointer; }
+button.portal-ko__spiel:hover { border-color: var(--sapButton_Hover_BorderColor, #0064d9); background: var(--sapList_Hover_Background, #eaecee); }
+button.portal-ko__spiel:focus-visible { outline: 2px solid var(--sapContent_FocusColor, #0064d9); outline-offset: 1px; }
+.portal-ko__spiel--frei { opacity: 0.65; }
+.portal-ko__zeile { display: flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.5rem; min-height: 1.6rem; }
+.portal-ko__zeile + .portal-ko__zeile { border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); }
+.portal-ko__name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.portal-ko__zeile--sieger .portal-ko__name { font-weight: 700; }
+.portal-ko__leer { color: var(--sapContent_LabelColor); font-style: italic; }
+.portal-ko__setz { flex: 0 0 auto; font-size: var(--sapFontSmallSize, 0.75rem); font-weight: 600; color: var(--sapInformativeColor, #0064d9);
+  border: 1px solid currentColor; border-radius: 0.6rem; padding: 0 0.3rem; line-height: 1.1rem; }
+.portal-ko__ergebnis { padding: 0.15rem 0.5rem; font-size: var(--sapFontSmallSize, 0.75rem); color: var(--sapContent_LabelColor);
+  background: var(--sapList_HeaderBackground, #f5f6f7); border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); white-space: nowrap; }
+/* Beamer */
+.portal-ko--gross .portal-ko__runde { width: 18rem; }
+.portal-ko--gross .portal-ko__spiel { font-size: 1.25rem; }
+.portal-ko--gross .portal-ko__rundentitel { font-size: 1rem; }
+.portal-ko--gross .portal-ko__ergebnis { font-size: 1rem; }
+.portal-ko--gross .portal-ko__feldtitel { font-size: 1.5rem; }
+/* Verwaltung */
+.portal-ko__einst { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: flex-end; }
+.portal-ko__einst > div { display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-ko__setzliste { width: 100%; border-collapse: collapse; font-size: var(--sapFontSize); }
+.portal-ko__setzliste th { text-align: left; font-weight: 600; color: var(--sapContent_LabelColor); padding: 0.4rem 0.75rem; background: var(--sapList_HeaderBackground, #f5f6f7);
+  border-bottom: 1px solid var(--sapList_BorderColor, #e5e5e5); white-space: nowrap; }
+.portal-ko__setzliste td { padding: 0.3rem 0.75rem; border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); }
+.portal-ko__rahmen { overflow-x: auto; border: 1px solid var(--sapList_BorderColor, #e5e5e5); border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_Background, #fff); }

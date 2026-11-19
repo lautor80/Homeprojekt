@@ -50,6 +50,7 @@ import { instandhaltungRoutes, P_IH } from './instandhaltung/routes.js';
 import { P_ZAEHLER, zaehlerRoutes } from './zaehler/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
+import { P_TURNIER, turnierRoutes } from './turnier/routes.js';
 import { haushaltRoutes, P_HH } from './haushalt/routes.js';
 import { P_PROJ, P_PZ, projekteRoutes } from './projekte/routes.js';
 import { zuwendungRoutes } from './zuwendung/routes.js';
@@ -177,6 +178,7 @@ async function routes(app: FastifyInstance) {
   await sportRoutes(app);
   await analyseRoutes(app);
   await lsvsRoutes(app);
+  await turnierRoutes(app);
   await zuwendungRoutes(app);
   await teilnehmerRoutes(app);
   await uploadRoutes(app);
@@ -242,6 +244,8 @@ const tco: ServerModule = {
     { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.display, text: 'LSVS-Bestandsmeldung ansehen: Übersicht zum Stichtag, Voransicht, Läufe mit Austauschdatei (XML) und Ausdruck herunterladen' },
     { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.execute, text: 'LSVS-Bestandsmeldung erzeugen: Übersicht bestätigen, Lauf mit Austauschdatei für das LSVSnet anlegen, Ausdruck in Paperless ablegen', requires: [P_LSVS.display] },
     { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.admin, text: 'Einstellungen der LSVS-Bestandsmeldung pflegen (Vereinsnummer, Ansprechpartner, Fachverbandscode, Software-Schlüssel) – Administration → Einstellungen → TC Oberthal', requires: [P_LSVS.display] },
+    { area: 'Sport', app: 'Turniere', id: P_TURNIER.display, text: 'Turniere ansehen: Teilnehmende, Tableaus, Gruppen, Ranglisten und Ergebnisse' },
+    { area: 'Sport', app: 'Turniere', id: P_TURNIER.edit, text: 'Turniere anlegen und leiten: Teilnehmende pflegen, Setzung und Auslosung, Gruppen und Runden, Ergebnisse eintragen, persönliche Links senden', requires: [P_TURNIER.display] },
 
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Schnuppertraining', id: P_SCHNUPPER.display, text: 'Anmeldungen zum Schnuppertraining ansehen (Name, Alter, Spielstärke, Kontakt, Wunschtermine) – ohne Zugriff auf den übrigen Mitgliederstamm; in „Meine Trainingszeiten“ die Übersicht der Kinder im Schnuppertraining' },
@@ -366,6 +370,7 @@ const tco: ServerModule = {
   registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Zum Vereinsportal registrieren', text: 'Zugang für Mitglieder und Hallennutzer – Mitglieder nach Prüfung durch den Verein, Hallennutzer nach Bestätigung der E-Mail-Adresse.' },
   pushArten: TCO_PUSH_ARTEN,
   auditObjects: [
+    { type: 'TURNIER', text: 'Turnier', permission: P_TURNIER.display },
     { type: 'REGISTRIERUNG', text: 'Registrierung Hallennutzer', permission: P_PLATZ.admin },
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },
     { type: 'BUCHUNG', text: 'Hallenbuchung', permission: P_HALLE.display },
