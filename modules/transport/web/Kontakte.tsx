@@ -60,6 +60,21 @@ export function Kontakte() {
   const laden = () => api.get<Liste>(`${T}/kontakte/liste?${new URLSearchParams({ filter, suche: suche.trim() })}`).then(setListe).catch((e) => setError(e.message));
   useEffect(() => { const t = setTimeout(laden, suche ? 250 : 0); return () => clearTimeout(t); }, [filter, suche]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Kontakte → Paperless-Korrespondenten: erst prüfen, was fehlt, dann nach Bestätigung anlegen
+  const [abgleich, setAbgleich] = useState<{ vorhanden: number; fehlend: { name: string; adrnr: number[] }[] } | null>(null);
+  const abgleichPruefen = async () => {
+    try {
+      const r = await api.get<{ paperless: boolean; vorhanden: number; fehlend: { name: string; adrnr: number[] }[] }>(`${T}/kontakte/paperless-abgleich`);
+      if (!r.paperless) { setError('Paperless ist nicht eingerichtet (Administration → Schnittstellen: Adresse und API-Token).'); return; }
+      if (!r.fehlend.length) { toast(`Alle ${r.vorhanden} Kontakte sind in Paperless als Korrespondent vorhanden.`); return; }
+      setAbgleich(r);
+    } catch (e) { setError((e as Error).message); }
+  };
+  const abgleichAusfuehren = async () => {
+    setAbgleich(null);
+    try { const r = await api.post<{ text: string; fehler: unknown[] }>(`${T}/kontakte/paperless-abgleich`, {}); toast(r.text, r.fehler.length ? 10000 : 5000); } catch (e) { setError((e as Error).message); }
+  };
+
   const waehlen = (a: number | null) => {
     setAdrnr(a);
     const u = new URL(window.location.href);
@@ -75,7 +90,10 @@ export function Kontakte() {
         setSpaltenAuf(standLesen(sp.auftraege)); setSpaltenDok(standLesen(sp.dokumente));
       }
     } }} title="Kontakte" subtitle={liste ? `${liste.anzahl.ALLE} Kontakte · ${liste.anzahl.KUNDEN} Kunden · ${liste.anzahl.UNTERNEHMER} Unternehmer` : ''}
-             actions={edit ? <Button icon="add-contact" design="Emphasized" onClick={() => setNeu(true)}>Neuer Kontakt</Button> : undefined}>
+             actions={edit ? <>
+               <Button icon="upload-to-cloud" onClick={abgleichPruefen} tooltip="Alle Kontakte als Korrespondenten in Paperless anlegen">Nach Paperless</Button>
+               <Button icon="add-contact" design="Emphasized" onClick={() => setNeu(true)}>Neuer Kontakt</Button>
+             </> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <MasterDetail
         masterWidth="22rem"
@@ -110,6 +128,10 @@ export function Kontakte() {
         }
         detail={adrnr ? <KontaktDetail key={adrnr} adrnr={adrnr} edit={edit} tabellen={tabellen} onChanged={laden} onGeloescht={() => { waehlen(null); laden(); }} /> : null}
       />
+      <ConfirmDialog open={!!abgleich} title="Kontakte nach Paperless übertragen" confirmText={`${abgleich?.fehlend.length ?? 0} anlegen`}
+                     text={abgleich ? `${abgleich.vorhanden} Kontakte sind schon Korrespondenten in Paperless. Neu angelegt werden ${abgleich.fehlend.length}: `
+                       + `${abgleich.fehlend.slice(0, 15).map((f) => f.name).join(', ')}${abgleich.fehlend.length > 15 ? ` … und ${abgleich.fehlend.length - 15} weitere` : ''}.` : ''}
+                     onCancel={() => setAbgleich(null)} onConfirm={abgleichAusfuehren} />
       <KontaktDialog modus={neu ? 'NEU' : null} auswahl={[]} onClose={() => setNeu(false)}
                      onSaved={(a) => { setNeu(false); laden(); waehlen(a); }} />
     </AppPage>
@@ -130,6 +152,7 @@ function KontaktDetail({ adrnr, edit, tabellen, onChanged, onGeloescht }: { adrn
   const [tab, setTab] = useState('stamm');
   const [bearbeiten, setBearbeiten] = useState(false);
   const [loeschen, setLoeschen] = useState(false);
+  const [dokStand, setDokStand] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const laden = () => api.get<Detail>(`${T}/kontakte/${adrnr}`).then(setD).catch((e) => setError(e.message));
   useEffect(() => { laden(); }, [adrnr]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -173,6 +196,8 @@ function KontaktDetail({ adrnr, edit, tabellen, onChanged, onGeloescht }: { adrn
         </>}
         actions={<>
           {edit && <Button icon="edit" onClick={() => setBearbeiten(true)}>Bearbeiten</Button>}
+          {edit && <Button icon="upload-to-cloud" design="Transparent" tooltip="Kontakt als Korrespondent in Paperless prüfen und anlegen"
+                           onClick={async () => { try { toast((await api.post<{ text: string }>(`${T}/kontakte/${adrnr}/paperless`, {})).text); setDokStand((x) => x + 1); } catch (e) { setError((e as Error).message); } }} />}
           {edit && <Button icon="delete" design="Transparent" disabled={k.auftraege > 0} tooltip={k.auftraege ? 'In Aufträgen verwendet – nicht löschbar' : 'Kontakt löschen'} onClick={() => setLoeschen(true)} />}
           <ChangeHistoryButton objectType="ADRESSE" objectKey={String(adrnr)} />
         </>}
@@ -212,7 +237,7 @@ function KontaktDetail({ adrnr, edit, tabellen, onChanged, onGeloescht }: { adrn
                              noDataText="Keine Aufträge mit diesem Kontakt" onRowClick={(e) => navigate(`/transport/auftraege/${e.detail.row.original.auftragsnr}`)} />
           </Tab>
           <Tab data-key="dok" text="Dokumente" icon="documents" selected={tab === 'dok'}>
-            {tab === 'dok' && <KontaktDokumente adrnr={adrnr} titel={d.titel} edit={edit} tabellen={tabellen} />}
+            {tab === 'dok' && <KontaktDokumente key={dokStand} adrnr={adrnr} titel={d.titel} edit={edit} tabellen={tabellen} />}
           </Tab>
         </TabContainer>
       </div>
@@ -270,7 +295,12 @@ function KontaktDokumente({ adrnr, titel, edit, tabellen }: { adrnr: number; tit
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '0.5rem' }}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
-      {!d.korrespondent && <MessageStrip hideCloseButton>In Paperless gibt es noch keinen Korrespondenten „{d.soll}“ – er wird beim ersten Ablegen angelegt.</MessageStrip>}
+      {!d.korrespondent && (
+        <MessageStrip hideCloseButton>
+          In Paperless gibt es noch keinen Korrespondenten „{d.soll}“.{' '}
+          {edit && <Link onClick={async () => { try { toast((await api.post<{ text: string }>(`${T}/kontakte/${adrnr}/paperless`, {})).text); laden(); } catch (e) { setError((e as Error).message); } }}>Jetzt in Paperless anlegen</Link>}
+        </MessageStrip>
+      )}
       <TabellenKopf t={tDok} />
       <AnalyticalTable columns={tDok.spalten} {...tDok.tabelle} reactTableOptions={tDok.optionen} data={d.dokumente} visibleRows={Math.min(Math.max(d.dokumente.length, 1), 12)} minRows={1} noDataText="Keine Dokumente in Paperless" />
       {edit && <AblageFlaeche ziel={ziel} text="Dokumente zum Kontakt hierher ziehen (z. B. Vertrag, Preisabsprache, Versicherungsnachweis), klicken zum Auswählen oder Screenshot mit Strg+V einfügen" />}
