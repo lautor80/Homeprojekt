@@ -11,7 +11,7 @@ import { useLoad } from '@core/components/useLoad';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import {
-  aktuell, AuswahlFeld, dat, DatumFeld, eur, heute, M, SCHLUESSEL, Tabelle, zahl, zahlText, ZahlFeld,
+  aktuell, AuswahlFeld, dat, DatumFeld, eur, heute, GEMEINSAM, M, SCHLUESSEL, Tabelle, zahl, zahlText, ZahlFeld,
   type Einheit, type Kostenart, type Vertrag, type Zaehler,
 } from './util';
 
@@ -206,7 +206,7 @@ function Kostenarten() {
         { titel: 'Kostenart', wert: (k) => k.bezeichnung },
         { titel: 'Umlage', wert: (k) => (k.umlagefaehig ? <ObjectStatus state="Positive">umlagefähig</ObjectStatus> : <ObjectStatus>nicht umlagefähig</ObjectStatus>) },
         { titel: 'Verteilerschlüssel', wert: (k) => <>{SCHLUESSEL.find((s) => s.key === k.schluessel)?.text}
-          {k.schluessel === 'verbrauch' && <div className="portal-muted" style={{ fontSize: '0.75rem' }}>{zaehler(k.zaehler_id) ?? 'Hauptzähler fehlt'}{k.grundanteil ? `, ${k.grundanteil} % Grundkosten` : ''}{k.rest_einheit_id ? `, Rest an ${(es.data ?? []).find((e) => e.id === k.rest_einheit_id)?.kuerzel ?? '?'}` : ''}</div>}
+          {k.schluessel === 'verbrauch' && <div className="portal-muted" style={{ fontSize: '0.75rem' }}>{zaehler(k.zaehler_id) ?? 'Hauptzähler fehlt'}{k.grundanteil ? `, ${k.grundanteil} % Grundkosten` : ''}{k.rest_einheit_id ? `, Rest an ${(es.data ?? []).find((e) => e.id === k.rest_einheit_id)?.kuerzel ?? '?'}` : ''}, Gemeinschaft {GEMEINSAM.find((g) => g.key === (k.gemeinsam_schluessel ?? 'flaeche'))?.text}</div>}
           {k.schluessel === 'anteil' && <div className="portal-muted" style={{ fontSize: '0.75rem' }}>{(es.data ?? []).map((e) => `${e.kuerzel} ${k.anteile[e.id] ?? 0} %`).join(', ')}</div>}</> },
         { titel: '§ 35a', wert: (k) => (k.p35a ? 'ja' : '') },
         { titel: 'Status', wert: (k) => (k.aktiv ? '' : <ObjectStatus state="Critical">inaktiv</ObjectStatus>) },
@@ -219,7 +219,7 @@ function Kostenarten() {
 function KostenartDialog({ k, einheiten, zaehler, onClose }: { k: Partial<Kostenart>; einheiten: Einheit[]; zaehler: Zaehler[]; onClose: (neu: boolean) => void }) {
   const [f, setF] = useState({
     bezeichnung: k.bezeichnung ?? '', umlagefaehig: k.umlagefaehig ?? true, schluessel: k.schluessel ?? 'flaeche', zaehler_id: k.zaehler_id ?? null as number | null,
-    grundanteil: zahlText(k.grundanteil ?? 0), rest_einheit_id: k.rest_einheit_id ?? null as number | null, anteile: Object.fromEntries(einheiten.map((e) => [e.id, zahlText(k.anteile?.[e.id] ?? 0)])) as Record<number, string>,
+    grundanteil: zahlText(k.grundanteil ?? 0), rest_einheit_id: k.rest_einheit_id ?? null as number | null, gemeinsam_schluessel: k.gemeinsam_schluessel ?? 'flaeche', anteile: Object.fromEntries(einheiten.map((e) => [e.id, zahlText(k.anteile?.[e.id] ?? 0)])) as Record<number, string>,
     p35a: k.p35a ?? false, sort: k.sort ?? 0, aktiv: k.aktiv ?? true,
   });
   const [fehler, setFehler] = useState<string | null>(null);
@@ -244,14 +244,17 @@ function KostenartDialog({ k, einheiten, zaehler, onClose }: { k: Partial<Kosten
         {f.schluessel === 'verbrauch' && <AuswahlFeld label="Hauptzähler" required value={f.zaehler_id} leer="" onChange={(x) => setF({ ...f, zaehler_id: x })}
           optionen={zaehler.map((z) => ({ key: z.id, text: z.bezeichnung }))} />}
         {f.schluessel === 'verbrauch' && <ZahlFeld label="Grundkosten nach Wohnfläche" einheit="%" value={f.grundanteil} onChange={(x) => setF({ ...f, grundanteil: x })} />}
-        {f.schluessel === 'verbrauch' && <AuswahlFeld label="Hauptzähler minus Unterzähler gehört" value={f.rest_einheit_id} leer="allen (gemeinsamer Verbrauch nach Fläche)"
+        {f.schluessel === 'verbrauch' && <AuswahlFeld label="Hauptzähler minus Unterzähler gehört" value={f.rest_einheit_id} leer="allen (gemeinsamer Verbrauch)"
           onChange={(x) => setF({ ...f, rest_einheit_id: x })} optionen={einheiten.map((e) => ({ key: e.id, text: `${e.kuerzel} (Differenzmessung)` }))} />}
+        {f.schluessel === 'verbrauch' && <AuswahlFeld label="Gemeinsamen Verbrauch teilen" value={f.gemeinsam_schluessel} optionen={GEMEINSAM}
+          onChange={(x) => setF({ ...f, gemeinsam_schluessel: x ?? 'flaeche' })} />}
         {f.schluessel === 'anteil' && einheiten.map((e) => <ZahlFeld key={e.id} label={`Anteil ${e.kuerzel}`} einheit="%" value={f.anteile[e.id] ?? '0'} onChange={(x) => setF({ ...f, anteile: { ...f.anteile, [e.id]: x } })} />)}
         <CheckField label="Aktiv (bei neuen Kosten wählbar)" checked={f.aktiv} onChange={(x) => setF({ ...f, aktiv: x })} />
       </FormGrid>
       {f.schluessel === 'verbrauch' && <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.75rem' }}>
-        Verteilt nach dem Verbrauch der Unterzähler je Wohnung. Was der Hauptzähler mehr anzeigt, ist entweder gemeinsamer Verbrauch (Treppenhaus, Waschküche …) und wird nach Wohnfläche geteilt,
-        oder – bei einer Differenzmessung, wenn nur eine Wohnung einen Unterzähler hat – der Verbrauch der anderen Wohnung.
+        Verteilt nach dem Verbrauch der Unterzähler je Wohnung. Gemeinsamer Verbrauch – Gemeinschaftszähler (Zähler ohne Wohnung, z. B. Waschküche, Keller, Heizungsstrom;
+        liegt er hinter dem Zähler einer Wohnung, wird er dort abgezogen) und was der Hauptzähler mehr anzeigt – wird nach Fläche, Personen oder zu gleichen Teilen geteilt.
+        Bei einer Differenzmessung (nur eine Wohnung hat einen Unterzähler) gehört der Rest des Hauptzählers der anderen Wohnung.
         Grundkosten (z. B. 30 % bei Heizkosten) werden vorab nach Wohnfläche verteilt.
       </MessageStrip>}
       {f.schluessel === 'anteil' && Math.abs(summeAnteile - 100) > 0.01 && <MessageStrip design="Critical" hideCloseButton style={{ marginTop: '0.75rem' }}>Die Anteile ergeben {zahlText(summeAnteile)} % statt 100 %.</MessageStrip>}

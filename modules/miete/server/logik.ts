@@ -7,11 +7,22 @@
  *  - Zählerstände: Stand an einem Stichtag (linear zwischen zwei Ablesungen) und Verbrauch im Zeitraum
  *  - Verteilung der Kosten auf Einheiten und Nutzer nach Verteilerschlüssel (Fläche, Personen, Einheiten,
  *    fester Anteil, Verbrauch über Haupt- und Unterzähler, direkte Zuordnung)
+ *  - Zählerbaum: Unterzähler können hinter anderen Unterzählern liegen; Gemeinschaftszähler (ohne Wohnung, z. B.
+ *    Waschküche/Keller oder Heizungsstrom im Zähler einer Partei) werden vom übergeordneten Zähler abgezogen und
+ *    nach Fläche, Personen oder zu gleichen Teilen auf alle Wohnungen geteilt
  *
  * Datumswerte sind ISO-Zeichenketten (JJJJ-MM-TT); Zeiträume schließen Anfang und Ende ein.
  */
 
 export type Schluessel = 'flaeche' | 'personen' | 'einheiten' | 'anteil' | 'verbrauch' | 'direkt';
+/** Wie gemeinsamer Verbrauch (Gemeinschaftszähler, Rest des Hauptzählers) auf die Wohnungen geteilt wird */
+export type GemeinsamSchluessel = 'flaeche' | 'personen' | 'einheiten';
+
+export const GEMEINSAM_TEXT: Record<GemeinsamSchluessel, string> = {
+  flaeche: 'Wohnfläche (m²)',
+  personen: 'Personen (Personentage)',
+  einheiten: 'zu gleichen Teilen je Wohnung',
+};
 
 export const SCHLUESSEL_TEXT: Record<Schluessel, string> = {
   flaeche: 'Wohnfläche',
@@ -121,7 +132,35 @@ export function kostenAnteil(k: Kosten, von: string, bis: string): number {
 
 // ---------------------------------------------------------------- Zähler
 export interface Ablesung { datum: string; stand: number }
+/**
+ * haupt_id: Zähler, hinter dem dieser Zähler liegt (dessen Messung diesen Verbrauch enthält) – ein Hauptzähler oder
+ * ein anderer Unterzähler. einheit_id: Wohnung, der der Verbrauch gehört; ohne Wohnung und mit haupt_id = Gemeinschaftszähler.
+ */
 export interface Zaehler { id: number; bezeichnung: string; einheit_id: number | null; haupt_id: number | null; ablesungen: Ablesung[] }
+
+/** alle Zähler hinter einem Zähler (beliebig tief), Eltern vor Kindern; Kreise werden ignoriert */
+export function unterzaehler(alle: Zaehler[], id: number): Zaehler[] {
+  const out: Zaehler[] = [];
+  const gesehen = new Set<number>([id]);
+  const offen = [id];
+  while (offen.length) {
+    const p = offen.shift()!;
+    for (const z of alle.filter((x) => x.haupt_id === p && !gesehen.has(x.id))) { gesehen.add(z.id); out.push(z); offen.push(z.id); }
+  }
+  return out;
+}
+
+/** Würde ein Zähler mit diesem haupt_id einen Kreis bilden (sich selbst oder einen eigenen Unterzähler als übergeordnet haben)? */
+export function zaehlerKreis(alle: Pick<Zaehler, 'id' | 'haupt_id'>[], id: number, hauptId: number | null): boolean {
+  let p = hauptId;
+  const gesehen = new Set<number>();
+  while (p !== null && p !== undefined) {
+    if (p === id || gesehen.has(p)) return true;
+    gesehen.add(p);
+    p = alle.find((z) => z.id === p)?.haupt_id ?? null;
+  }
+  return false;
+}
 
 /** Zählerstand an einem Tag: abgelesen oder linear zwischen der Ablesung davor und danach; null, wenn nicht eingegrenzt */
 export function standAm(ablesungen: Ablesung[], datum: string): number | null {
@@ -162,6 +201,8 @@ export interface Kostenart {
    * (Treppenhaus, Waschkeller …) nach Wohnfläche; eine Wohnung = Differenzmessung (deren Verbrauch = Haupt − übrige Unterzähler).
    */
   rest_einheit_id?: number | null;
+  /** Schlüssel „verbrauch“: gemeinsamer Verbrauch nach Fläche (Standard), Personen oder gleichen Teilen */
+  gemeinsam_schluessel?: GemeinsamSchluessel;
   /** Prozent je Einheit beim Schlüssel „anteil“ */
   anteile: Record<number, number>;
   p35a: boolean;
@@ -262,30 +303,55 @@ export function verteilen(x: VerteilungEingabe): Verteilung {
     } else if (ka.schluessel === 'verbrauch') {
       const h = x.zaehler.find((z) => z.id === ka.zaehler_id);
       const vh = h ? verbrauch(h.ablesungen, x.von, x.bis) : null;
-      const unter = h ? x.zaehler.filter((z) => z.haupt_id === h.id && z.einheit_id) : [];
-      const vu = unter.map((z) => ({ z, v: verbrauch(z.ablesungen, x.von, x.bis) }));
-      const fehlt = [...(h && vh === null ? [h] : []), ...vu.filter((u) => u.v === null).map((u) => u.z)];
+      // alle Zähler hinter dem Hauptzähler: Wohnungszähler und Gemeinschaftszähler, auch hintereinander
+      const unter = h ? unterzaehler(x.zaehler, h.id) : [];
+      const vu = new Map(unter.map((z) => [z.id, verbrauch(z.ablesungen, x.von, x.bis)]));
+      const fehlt = [...(h && vh === null ? [h] : []), ...unter.filter((z) => vu.get(z.id) === null)];
       if (!h) { ph.push(`${ka.bezeichnung}: kein Hauptzähler hinterlegt – nach Wohnfläche verteilt.`); quote = nachFlaeche(); }
       else if (fehlt.length) { ph.push(`${ka.bezeichnung}: Zählerstände fehlen (${fehlt.map((z) => z.bezeichnung).join(', ')}) – nach Wohnfläche verteilt. Ablesungen zu Beginn und Ende des Zeitraums erfassen.`); quote = nachFlaeche(); }
       else {
+        // Nettoverbrauch je Zähler = eigene Messung minus die Messungen der direkt dahinter liegenden Zähler
+        const kinder = (id: number) => unter.filter((z) => z.haupt_id === id);
+        const netto = (id: number, brutto: number, name: string) => {
+          const k = kinder(id).reduce((s, z) => s + (vu.get(z.id) ?? 0), 0);
+          if (k > brutto + 0.001) { ph.push(`${ka.bezeichnung}: die Zähler hinter „${name}“ (${zahl(k, 1)}) zeigen mehr als dieser (${zahl(brutto, 1)}) – Zähler prüfen.`); return 0; }
+          return Math.max(0, brutto - k);
+        };
         const je = new Map<number, number>();
-        for (const u of vu) je.set(u.z.einheit_id!, (je.get(u.z.einheit_id!) ?? 0) + (u.v ?? 0));
-        const summeUnter = [...je.values()].reduce((s, v) => s + v, 0);
+        let gemessenGemeinsam = 0;
+        for (const z of unter) {
+          const n = netto(z.id, vu.get(z.id) ?? 0, z.bezeichnung);
+          if (z.einheit_id && x.einheiten.some((e) => e.id === z.einheit_id)) je.set(z.einheit_id, (je.get(z.einheit_id) ?? 0) + n);
+          else gemessenGemeinsam += n;
+        }
+        const direktUnter = kinder(h.id).reduce((s, z) => s + (vu.get(z.id) ?? 0), 0);
         let V = vh!;
-        if (summeUnter > V + 0.001) { ph.push(`${ka.bezeichnung}: Unterzähler (${zahl(summeUnter, 1)}) zeigen mehr als der Hauptzähler (${zahl(V, 1)}) – Hauptzähler prüfen.`); V = summeUnter; }
+        if (direktUnter > V + 0.001) { ph.push(`${ka.bezeichnung}: Unterzähler (${zahl(direktUnter, 1)}) zeigen mehr als der Hauptzähler (${zahl(V, 1)}) – Hauptzähler prüfen.`); V = direktUnter; }
+        const ohneZaehler = Math.max(0, V - direktUnter);
+        // Summe aller Nettoverbräuche (bei Messfehlern hinter Unterzählern kleiner als der Hauptzähler)
+        const restBei = ka.rest_einheit_id && x.einheiten.some((e) => e.id === ka.rest_einheit_id) ? ka.rest_einheit_id : null;
+        if (restBei) je.set(restBei, (je.get(restBei) ?? 0) + ohneZaehler);
+        const G = gemessenGemeinsam + (restBei ? 0 : ohneZaehler);
+        V = [...je.values()].reduce((s, v) => s + v, 0) + G;
         if (V <= 0) { ph.push(`${ka.bezeichnung}: kein Verbrauch im Zeitraum – nach Wohnfläche verteilt.`); quote = nachFlaeche(); }
         else {
+          // Teilung des gemeinsamen Verbrauchs
+          let gs: GemeinsamSchluessel = ka.gemeinsam_schluessel ?? 'flaeche';
+          const personentage = new Map<number, number>();
+          for (const sg of segmente) personentage.set(sg.einheit_id, (personentage.get(sg.einheit_id) ?? 0) + sg.personen * sg.tage);
+          const PT = [...personentage.values()].reduce((s, v) => s + v, 0);
+          if (G > 0 && gs === 'personen' && PT <= 0) { ph.push(`${ka.bezeichnung}: keine Personen hinterlegt – gemeinsamer Verbrauch nach Wohnfläche geteilt.`); gs = 'flaeche'; }
+          const teilG = (e: Einheit) => gs === 'personen' ? (personentage.get(e.id) ?? 0) / PT
+            : gs === 'einheiten' ? 1 / x.einheiten.length : (F ? Number(e.flaeche) / F : 1 / x.einheiten.length);
+          const nach = gs === 'personen' ? 'nach Personen' : gs === 'einheiten' ? 'zu gleichen Teilen' : 'nach Fläche';
           const g = Math.min(100, Math.max(0, Number(ka.grundanteil))) / 100;
-          const ohneZaehler = Math.max(0, V - summeUnter);
-          const restBei = ka.rest_einheit_id && x.einheiten.some((e) => e.id === ka.rest_einheit_id) ? ka.rest_einheit_id : null;
           quote = new Map(x.einheiten.map((e) => {
             const fl = F ? Number(e.flaeche) / F : 1 / x.einheiten.length;
-            let eigen = je.get(e.id) ?? 0;
-            const gemeinsam = restBei ? 0 : ohneZaehler * fl;
-            if (restBei === e.id) eigen += ohneZaehler;
+            const eigen = je.get(e.id) ?? 0;
+            const gemeinsam = G * teilG(e);
             const f = g * fl + (1 - g) * (eigen + gemeinsam) / V;
             const teile = [`${zahl(eigen, 1)} ${restBei === e.id ? 'Verbrauch (Hauptzähler minus Unterzähler)' : 'eigener Verbrauch'}`];
-            if (gemeinsam > 0) teile.push(`${zahl(gemeinsam, 1)} Anteil Gemeinschaft`);
+            if (gemeinsam > 0) teile.push(`${zahl(gemeinsam, 1)} Anteil Gemeinschaft (${nach})`);
             const basis = `${teile.join(' + ')} von ${zahl(V, 1)} gesamt${g ? `, ${zahl(g * 100, 0)} % Grundkosten nach Fläche` : ''}`;
             return [e.id, { f, basis }];
           }));

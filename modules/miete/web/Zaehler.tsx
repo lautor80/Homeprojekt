@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Bar, Button, Dialog, MessageStrip, ObjectStatus } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -12,12 +12,25 @@ import { AuswahlFeld, dat, DatumFeld, heute, M, Tabelle, zahl, ZahlFeld, type Ab
 
 const EDIT = 'miete.zaehler:edit';
 const ARTEN = [{ key: 'strom', text: 'Strom' }, { key: 'waerme', text: 'Wärme' }, { key: 'wasser', text: 'Wasser' }, { key: 'gas', text: 'Gas' }, { key: 'sonstig', text: 'Sonstiges' }];
+/** Würde der Zähler hinter „hauptId“ einen Kreis bilden (hinter sich selbst oder einem eigenen Unterzähler)? Wie zaehlerKreis im Server. */
+function zaehlerKreis(alle: Pick<Zaehler, 'id' | 'haupt_id'>[], id: number, hauptId: number | null): boolean {
+  let p = hauptId;
+  const gesehen = new Set<number>();
+  while (p !== null && p !== undefined) {
+    if (p === id || gesehen.has(p)) return true;
+    gesehen.add(p);
+    p = alle.find((z) => z.id === p)?.haupt_id ?? null;
+  }
+  return false;
+}
 const stand = (v: number) => v.toLocaleString('de-DE', { maximumFractionDigits: 3 });
 
 /**
  * Zähler und Ablesungen. Hauptzähler (ohne Wohnung) = Zähler des Versorgers, z. B. Heizstrom oder Hausstrom;
- * Unterzähler (mit Wohnung und Hauptzähler) messen den Verbrauch einer Partei. Was der Hauptzähler mehr zeigt
- * als alle Unterzähler zusammen, ist gemeinsamer Verbrauch und wird nach Wohnfläche geteilt.
+ * Unterzähler (mit Wohnung und Hauptzähler) messen den Verbrauch einer Partei. Gemeinschaftszähler (ohne Wohnung,
+ * hinter einem Haupt- oder Unterzähler) messen gemeinsamen Verbrauch wie Waschküche, Keller oder Heizungsstrom; liegen sie
+ * hinter dem Zähler einer Partei, wird ihr Verbrauch dort abgezogen. Gemeinsamer Verbrauch wird je Kostenart nach Fläche,
+ * Personen oder zu gleichen Teilen geteilt.
  */
 export function ZaehlerSeite() {
   const can = useCan();
@@ -29,15 +42,22 @@ export function ZaehlerSeite() {
   const haupt = alle.filter((z) => !z.haupt_id);
   const einheit = (id: number | null) => einheiten.data?.find((e) => e.id === id)?.kuerzel ?? '';
 
+  /** Zähler mit allen dahinter liegenden Zählern, eingerückt nach Tiefe */
+  const baum = (z: Zaehler, tiefe: number, gesehen = new Set<number>()): ReactNode[] => {
+    if (gesehen.has(z.id)) return [];
+    gesehen.add(z.id);
+    return [karte(z, tiefe), ...alle.filter((u) => u.haupt_id === z.id).flatMap((u) => baum(u, tiefe + 1, gesehen))];
+  };
+
   async function entfernen(a: Ablesung) {
     try { await api.del(`${M}/ablesungen/${a.id}`); toast('Ablesung gelöscht'); zs.reload(); } catch (e) { toast((e as Error).message); }
   }
 
-  const karte = (z: Zaehler, unter: boolean) => {
+  const karte = (z: Zaehler, tiefe: number) => {
     const letzte = z.ablesungen[z.ablesungen.length - 1];
     return (
-      <Section key={z.id} title={`${unter ? '↳ ' : ''}${z.bezeichnung}`} count={z.ablesungen.length}
-        status={<>{z.einheit_id ? <ObjectStatus state="Information">{einheit(z.einheit_id)}</ObjectStatus> : <ObjectStatus>Hauptzähler</ObjectStatus>}
+      <Section key={z.id} title={`${tiefe ? `${'\u00a0\u00a0'.repeat(tiefe - 1)}↳ ` : ''}${z.bezeichnung}`} count={z.ablesungen.length}
+        status={<>{z.einheit_id ? <ObjectStatus state="Information">{einheit(z.einheit_id)}</ObjectStatus> : z.haupt_id ? <ObjectStatus state="Indication05">Gemeinschaft</ObjectStatus> : <ObjectStatus>Hauptzähler</ObjectStatus>}
           {!z.aktiv && <ObjectStatus state="Critical">inaktiv</ObjectStatus>}</>}
         actions={can(EDIT) && <>
           <Button icon="add" onClick={() => setAblesen(z)}>Ablesung</Button>
@@ -66,7 +86,7 @@ export function ZaehlerSeite() {
         Zum Jahreswechsel (31.12.) und bei jedem Mieterwechsel alle Zähler ablesen. Fehlen Stände, werden Zwischenstände linear geschätzt; ohne eingrenzende Ablesungen verteilt die Abrechnung nach Wohnfläche.
       </MessageStrip>
       {!alle.length && <Empty>Noch keine Zähler. Beispiel: Hauptzähler „Heizstrom“ (Wärmepumpe) und je Wohnung ein Unterzähler.</Empty>}
-      {haupt.flatMap((h) => [karte(h, false), ...alle.filter((u) => u.haupt_id === h.id).map((u) => karte(u, true))])}
+      {haupt.flatMap((h) => baum(h, 0))}
       {dialog && <ZaehlerDialog z={dialog} alle={alle} einheiten={einheiten.data ?? []} onClose={(neu) => { setDialog(null); if (neu) zs.reload(); }} />}
       {ablesen && <AblesungDialog z={ablesen} onClose={(neu) => { setAblesen(null); if (neu) zs.reload(); }} />}
     </AppPage>
@@ -92,12 +112,16 @@ function ZaehlerDialog({ z, alle, einheiten, onClose }: { z: Partial<Zaehler>; a
         <TextField label="Zählernummer" value={f.nummer} onChange={(v) => setF({ ...f, nummer: v })} />
         <AuswahlFeld label="Art" value={f.art} optionen={ARTEN} onChange={(v) => setF({ ...f, art: v ?? 'strom' })} />
         <TextField label="Maßeinheit" value={f.masseinheit} onChange={(v) => setF({ ...f, masseinheit: v })} />
-        <AuswahlFeld label="Wohnung (Unterzähler)" value={f.einheit_id} leer="(keine – Hauptzähler)" onChange={(v) => setF({ ...f, einheit_id: v })}
+        <AuswahlFeld label="Wohnung (Unterzähler)" value={f.einheit_id} leer="(keine – Haupt- oder Gemeinschaftszähler)" onChange={(v) => setF({ ...f, einheit_id: v })}
           optionen={einheiten.map((e) => ({ key: e.id, text: `${e.kuerzel} – ${e.bezeichnung}` }))} />
-        <AuswahlFeld label="Gehört zu Hauptzähler" value={f.haupt_id} leer="(keiner)" onChange={(v) => setF({ ...f, haupt_id: v })}
-          optionen={alle.filter((x) => !x.haupt_id && x.id !== z.id).map((x) => ({ key: x.id, text: x.bezeichnung }))} />
+        <AuswahlFeld label="Liegt hinter Zähler" value={f.haupt_id} leer="(keinem – Hauptzähler)" onChange={(v) => setF({ ...f, haupt_id: v })}
+          optionen={alle.filter((x) => !z.id || !zaehlerKreis(alle, z.id, x.id)).map((x) => ({ key: x.id, text: x.haupt_id ? `↳ ${x.bezeichnung}` : x.bezeichnung }))} />
         <CheckField label="Aktiv" checked={f.aktiv} onChange={(v) => setF({ ...f, aktiv: v })} />
       </FormGrid>
+      {f.haupt_id && !f.einheit_id && <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.75rem' }}>
+        Gemeinschaftszähler: Sein Verbrauch wird vom Zähler, hinter dem er liegt, abgezogen und als gemeinsamer Verbrauch geteilt –
+        nach Fläche, Personen oder zu gleichen Teilen, wie bei der Kostenart eingestellt.
+      </MessageStrip>}
       {z.id && <div style={{ marginTop: '0.75rem' }}><ChangeHistoryButton objectType="ZAEHLER" objectKey={String(z.id)} /></div>}
     </Dialog>
   );

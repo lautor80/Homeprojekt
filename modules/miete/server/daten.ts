@@ -27,7 +27,7 @@ export async function vertraegeLesen(): Promise<VertragZeile[]> {
 }
 
 export async function kostenartenLesen(nurAktive = false): Promise<(Kostenart & { sort: number; aktiv: boolean })[]> {
-  const rows = await sql`select id, bezeichnung, umlagefaehig, schluessel, zaehler_id, grundanteil::float8 as grundanteil, rest_einheit_id, anteile, p35a, sort, aktiv
+  const rows = await sql`select id, bezeichnung, umlagefaehig, schluessel, zaehler_id, grundanteil::float8 as grundanteil, rest_einheit_id, gemeinsam_schluessel, anteile, p35a, sort, aktiv
                            from miete.kostenarten ${nurAktive ? sql`where aktiv` : sql``} order by sort, bezeichnung`;
   return rows.map((r) => ({ ...r, anteile: Object.fromEntries(Object.entries(r.anteile ?? {}).map(([k, v]) => [Number(k), Number(v)])) })) as any;
 }
