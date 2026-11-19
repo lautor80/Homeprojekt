@@ -14,7 +14,7 @@ import { hinweisAufgaben } from '../../../server/src/lib/hinweise.js';
 import { abrechnungJahr, einheitenLesen, kostenLesen, kostenartenLesen, uebersicht, vertraegeLesen, zaehlerLesen } from './daten.js';
 import { abrechnungsFrist, aufteilen, monatsErster, r2, sollMonat, standAm, zaehlerKreis } from './logik.js';
 import { K, MIETE_KONTEXTE, MIETE_PAPERLESS, dokumentKurz, paperless } from './paperless.js';
-import { abrechnungHtml, type AbrechnungDruck } from './pdf.js';
+import { abrechnungHtml, aufteilungHtml, type AbrechnungDruck, type AufteilungDruck } from './pdf.js';
 
 /**
  * Vermietung: Mieteinnahmen je Monat in Kaltmiete und Nebenkosten-Abschlag aufteilen, mit den laufenden Kosten
@@ -490,6 +490,31 @@ const mod: ServerModule = {
       const b = z.object({ datum: datumOpt }).parse(req.body);
       await change(req, (tx) => tx`update miete.abrechnungen set versendet_am = ${b.datum} where id = ${id}`);
       return { ok: true };
+    });
+
+    // Kostenaufteilung des Jahres auf alle Wohnungen als PDF im Querformat
+    app.get('/abrechnung/aufteilung/pdf', { preHandler: requireAuth(P.abrechnungDisplay) }, async (req, reply) => {
+      const { jahr } = jahrQuery.parse(req.query);
+      const von = `${jahr}-01-01`, bis = `${jahr}-12-31`;
+      const [{ verteilung, abrechnungen }, einheiten, vertraege, arten, [o], s] = await Promise.all([
+        abrechnungJahr(jahr), einheitenLesen(), vertraegeLesen(), kostenartenLesen(),
+        sql`select bezeichnung, strasse, plz, ort, vermieter from miete.objekt where id = 1`, getPublicSettings(),
+      ]);
+      const im = vertraege.filter((v) => v.beginn <= bis && (!v.ende || v.ende >= von)).sort((a, b) => a.beginn.localeCompare(b.beginn));
+      const d: AufteilungDruck = {
+        jahr, von, bis, objekt: (o ?? { bezeichnung: '', strasse: null, plz: null, ort: null, vermieter: null }) as any,
+        erstellt: new Date().toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' }),
+        einheiten: einheiten.map((e) => {
+          const vs = im.filter((v) => v.einheit_id === e.id);
+          return { id: e.id, kuerzel: e.kuerzel, bezeichnung: e.bezeichnung, flaeche: Number(e.flaeche), eigennutzung: e.eigennutzung,
+            personen: vs.length ? Number(vs[vs.length - 1].personen) : e.eigennutzung ? Number(e.personen) : 0, nutzer: vs.map((v) => v.name) };
+        }),
+        arten: Object.fromEntries(arten.map((k) => [k.id, { gemeinsam: k.schluessel === 'verbrauch' ? (k.gemeinsam_schluessel ?? 'flaeche') : null, grundanteil: Number(k.grundanteil) || 0 }])),
+        positionen: verteilung.positionen, hinweise: verteilung.hinweise,
+        abrechnungen: abrechnungen.map((x) => ({ name: x.name, einheit: x.einheit, von: x.von, bis: x.bis, kosten: x.kosten, vorauszahlungen: x.vorauszahlungen, ergebnis: x.ergebnis, neuerAbschlag: x.neuerAbschlag })),
+      };
+      const pdf = await htmlToPdf(aufteilungHtml(d, (s['org.color'] as string) ?? undefined), { landscape: true, margin: 0.35 });
+      return reply.type('application/pdf').header('content-disposition', `inline; filename="Kostenaufteilung_${jahr}.pdf"`).send(pdf);
     });
 
     async function druck(id: number): Promise<{ html: string; d: AbrechnungDruck; datei: string }> {

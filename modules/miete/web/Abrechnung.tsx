@@ -63,7 +63,8 @@ export function Abrechnung() {
       {!abgeschlossen && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.75rem' }}>Das Jahr {jahr} ist noch nicht abgeschlossen – Vorschau. Festschreiben geht erst ab dem 01.01.{jahr + 1}.</MessageStrip>}
       {(x?.verteilung.hinweise ?? []).map((h) => <MessageStrip key={h} design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>{h}</MessageStrip>)}
 
-      <Section title="Verteilung auf die Wohnungen" flush>
+      <Section title="Verteilung auf die Wohnungen" flush
+        actions={<Button icon="print" disabled={!x?.verteilung.positionen.length} onClick={() => window.open(`${M}/abrechnung/aufteilung/pdf?jahr=${jahr}`, '_blank')}>Kostenaufteilung drucken</Button>}>
         <Tabelle<Position> schluessel={(p) => p.kostenart_id} zeilen={x?.verteilung.positionen ?? []} leer="Keine Kosten in diesem Jahr" spalten={[
           { titel: 'Kostenart', wert: (p) => <>{p.bezeichnung}{!p.umlagefaehig && <div className="portal-muted" style={{ fontSize: '0.75rem' }}>nicht umlagefähig</div>}</>, summe: () => 'Summe' },
           { titel: 'Schlüssel', wert: (p) => schluesselText(p.schluessel) },
