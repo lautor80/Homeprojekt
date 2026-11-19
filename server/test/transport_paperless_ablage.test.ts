@@ -54,7 +54,8 @@ const NR = '2026_9301';
 
 // nachgestellt: Paperless
 const pl = { uploads: [] as { titel: string; datei: string; tags: string[]; correspondent: string | null }[], tags: [] as { id: number; name: string }[],
-  korrespondenten: [] as { id: number; name: string }[], next: 900 };
+  korrespondenten: [] as { id: number; name: string }[], next: 900,
+  versionen: [] as { doc: number; label: string; datei: string }[], geloescht: new Set<number>(), aktualisiert: [] as number[] };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -70,6 +71,12 @@ const server = http.createServer((req, res) => {
       pl.uploads.push({ titel: Buffer.from(feld('title')[0] ?? '', 'latin1').toString('utf8'), datei: /filename="([^"]+)"/.exec(body)?.[1] ?? '', tags: feld('tags'), correspondent: feld('correspondent')[0] ?? null });
       return send(200, `task-${id}`);
     }
+    if (req.method === 'POST' && (m = /^\/api\/documents\/(\d+)\/update_version\/$/.exec(u))) {
+      if (pl.geloescht.has(Number(m[1]))) return send(404, { detail: 'Not found.' });
+      const id = pl.next++;
+      pl.versionen.push({ doc: Number(m[1]), label: Buffer.from(feld('version_label')[0] ?? '', 'latin1').toString('utf8'), datei: /filename="([^"]+)"/.exec(body)?.[1] ?? '' });
+      return send(200, `task-${id}`);
+    }
     if ((m = /^\/api\/tasks\/\?task_id=task-(\d+)/.exec(u))) return send(200, [{ status: 'SUCCESS', related_document: m[1] }]);
     if (req.method === 'GET' && (m = /^\/api\/(correspondents|document_types|storage_paths|custom_fields|tags)\//.exec(u))) {
       const l: Record<string, unknown[]> = { correspondents: pl.korrespondenten, tags: pl.tags, document_types: [], storage_paths: [], custom_fields: [] };
@@ -81,7 +88,11 @@ const server = http.createServer((req, res) => {
       return send(201, neu);
     }
     if (/^\/api\/documents\/\d+\/notes\/$/.test(u)) return send(200, []);
-    if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) return send(200, { id: Number(m[1]), custom_fields: [], tags: [] });
+    if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) {
+      if (pl.geloescht.has(Number(m[1]))) return send(404, { detail: 'Not found.' });
+      if (req.method === 'PATCH') pl.aktualisiert.push(Number(m[1]));
+      return send(200, { id: Number(m[1]), custom_fields: [], tags: [] });
+    }
     send(404, { u });
   });
 });
@@ -152,14 +163,38 @@ if (mitDb) {
     await ablegen([{ art: 'T', kennung: NR }, { art: 'L', kennung: NR }]);
     assert.equal(pl.uploads.length, 2);
 
-    // Auftrag geändert → beim nächsten Versand neu abgelegt
+    // Auftrag geändert → beim nächsten Versand neue Version am vorhandenen Dokument, kein zweites Dokument
     await new Promise((ok) => setTimeout(ok, 20));
     await sql`update transport.auftraege set kennzeichen = 'WND-AM 2' where auftragsnr = ${NR}`;
     await ablegen([{ art: 'L', kennung: NR }], 'versand');
-    assert.equal(pl.uploads.length, 3);
-    assert.equal(pl.uploads[2].datei, `Lieferschein_${NR}.pdf`);
-    const [l] = await sql`select anlass from transport.paperless_belege where art = 'L' and kennung = ${NR}`;
+    assert.equal(pl.uploads.length, 2, 'kein neues Dokument');
+    assert.equal(pl.versionen.length, 1);
+    assert.equal(pl.versionen[0].doc, docs[1].doc_id);
+    assert.equal(pl.versionen[0].datei, `Lieferschein_${NR}.pdf`);
+    assert.match(pl.versionen[0].label, /^Versand \d\d\.\d\d\.\d{4} \d\d:\d\d$/);
+    assert.ok(pl.aktualisiert.includes(docs[1].doc_id), 'Metadaten am Dokument aktualisiert');
+    const [l] = await sql`select anlass, doc_id from transport.paperless_belege where art = 'L' and kennung = ${NR}`;
     assert.equal(l.anlass, 'versand');
+    assert.equal(l.doc_id, docs[1].doc_id);
+    assert.equal((await sql`select 1 from transport.auftrag_dokumente where auftragsnr = ${NR}`).length, 2, 'im Auftrag weiterhin ein Eintrag je Beleg');
+
+    // Neudruck nach weiterer Änderung: wieder Version, Bezeichnung „Neudruck …“
+    await new Promise((ok) => setTimeout(ok, 20));
+    await sql`update transport.auftraege set kennzeichen = 'WND-AM 3' where auftragsnr = ${NR}`;
+    await ablegen([{ art: 'T', kennung: NR }]);
+    assert.equal(pl.uploads.length, 2);
+    assert.deepEqual(pl.versionen.map((x) => x.doc), [docs[1].doc_id, docs[0].doc_id]);
+    assert.match(pl.versionen[1].label, /^Neudruck /);
+
+    // Dokument in Paperless gelöscht → neues Dokument, Beleg zeigt darauf
+    pl.geloescht.add(docs[0].doc_id);
+    await new Promise((ok) => setTimeout(ok, 20));
+    await sql`update transport.auftraege set kennzeichen = 'WND-AM 4' where auftragsnr = ${NR}`;
+    await ablegen([{ art: 'T', kennung: NR }]);
+    assert.equal(pl.uploads.length, 3);
+    assert.equal(pl.uploads[2].datei, `Transportauftrag_${NR}.pdf`);
+    const [t] = await sql`select doc_id from transport.paperless_belege where art = 'T' and kennung = ${NR}`;
+    assert.notEqual(t.doc_id, docs[0].doc_id);
   });
 
   test('Funktion abgeschaltet: Drucken legt nichts ab', async () => {
