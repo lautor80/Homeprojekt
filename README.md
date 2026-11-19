@@ -467,7 +467,7 @@ gemeinsamer Verbrauch je Kostenart nach Wohnfläche, Personen oder zu gleichen T
 
 Apps im Bereich *Vermietung*: **Übersicht** (Soll/Ist je Monat, NK-Deckung, Mietkonto), **Mieteinnahmen** (Erfassen mit
 vorgeschlagener Aufteilung, *Monat buchen*, je Zeile *In den Folgemonat kopieren* – Kaltmiete bleibt bei Abweichungen gleich), **Laufende Kosten** (Leistungszeitraum, Betrag aus Jahreswert für den Zeitraum oder einen Monat, Paperless suchen/verknüpfen/hochladen,
-*Aus Paperless übernehmen* per Schlagwort), **Zähler**, **Nebenkostenabrechnung** (Verteilung je Wohnung, Abrechnung je
+*Aus Paperless übernehmen* per Schlagwort), **Zähler**, **Nebenkostenabrechnung** (Verteilung je Wohnung, Ausdruck *Kostenaufteilung* im Querformat, Abrechnung je
 Mietverhältnis, Festschreiben, PDF, Ablage in Paperless, § 35a EStG, Vorschlag neuer Abschlag), **Haus und Mieter**
 (Mietverhältnisse mit Miete/Abschlag ab Stichtag, Wohnungen, Kostenarten mit Verteilerschlüssel, Haus).
 Arbeitsvorrat: offene Miete, fällige Abrechnung (Frist § 556 Abs. 3 BGB), fehlende Ablesung zum Jahreswechsel.
