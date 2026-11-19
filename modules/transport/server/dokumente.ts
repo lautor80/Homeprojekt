@@ -3,6 +3,7 @@ import { Paperless, PaperlessError, paperlessKonfiguriert } from '../../../serve
 import type { Firma } from './data.js';
 import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
 import { K } from './paperless-kontexte.js';
+import { auftragFeldSichern } from './paperless-auftrag.js';
 
 /**
  * Dokumente zum Auftrag: Datei (Drag & Drop, Auswahl, Screenshot) nach Paperless –
@@ -36,6 +37,8 @@ export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: 
   if (daten.length > 50 * 1024 * 1024) throw new BusinessError('Die Datei ist größer als 50 MB.');
   const pl = paperlessFirma(f);
   try {
+    // Custom Field „Auftrag“ verbindet das Dokument mit dem Auftrag – anlegen, falls es in Paperless noch fehlt
+    await auftragFeldSichern(pl).catch(() => undefined);
     // Felder laut zentraler Paperless-Zuordnung (Kontext „Dokument zum Auftrag“)
     const r = await kontextAblegen(pl, K.auftragDokument, 'transport', {
       auftragsnr: a.auftragsnr, kunde: a.kunde ?? '', unternehmer: a.unternehmer ?? '', kennzeichen: a.kennzeichen ?? '', ordernummer: a.ordernummer ?? '',

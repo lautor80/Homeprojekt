@@ -481,7 +481,29 @@ export class Paperless {
   }
 
   async download(id: number, original = false): Promise<{ data: Buffer; contentType: string; filename: string }> {
-    const res = await this.request('GET', `api/documents/${id}/download/${original ? '?original=true' : ''}`);
+    return this.datei(id, `api/documents/${id}/download/${original ? '?original=true' : ''}`);
+  }
+
+  /** Vorschau: archivierte Fassung (meist PDF, auch für Bilder und Office-Dateien), sonst das Original */
+  async vorschau(id: number): Promise<{ data: Buffer; contentType: string; filename: string }> {
+    return this.datei(id, `api/documents/${id}/preview/`);
+  }
+
+  /**
+   * Dokumente, deren Custom Field `feld` den Text enthält (alle Seiten). Paperless ab 2.x: custom_field_query;
+   * ältere Fassungen kennen nur custom_fields__icontains (sucht in allen Feldern) – Treffer prüft der Aufrufer genau.
+   */
+  async dokumenteMitFeldText(feld: string, text: string): Promise<Record<string, any>[]> {
+    try {
+      return await this.dokumenteSuchen({ custom_field_query: JSON.stringify([feld, 'icontains', text]) });
+    } catch (e) {
+      if (e instanceof PaperlessError && e.status === 400) return this.dokumenteSuchen({ custom_fields__icontains: text });
+      throw e;
+    }
+  }
+
+  private async datei(id: number, pfad: string): Promise<{ data: Buffer; contentType: string; filename: string }> {
+    const res = await this.request('GET', pfad);
     const cd = res.headers.get('content-disposition') ?? '';
     const fn = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd)?.[1];
     return {

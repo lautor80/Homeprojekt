@@ -6,6 +6,7 @@ import { paperlessFirma } from './dokumente.js';
 import { condense } from './format.js';
 import { paperlessSenden } from './paperless.js';
 import { K } from './paperless-kontexte.js';
+import { auftragFeldSichern } from './paperless-auftrag.js';
 import { dokumentPdf } from './pdf/erzeugen.js';
 import { rechnungPdf } from './pdf/rechnung.js';
 import { ablegenNoetig, auftragAusKennung, belegAusDateiname, belegeEindeutig, belegName, belegText, type Anlass, type Beleg } from './archiv-logik.js';
@@ -91,7 +92,9 @@ export async function belegAblegen(b: Beleg, o: { anlass: Anlass; ctx: ChangeCon
       const { auftrag: a } = (await fahrtenFuerVersand(b.kennung))[0];
       const pdf = o.pdf ?? (await dokumentPdf(b.art, b.kennung)).pdf;
       const datei = belegName(b);
-      const r = await kontextAblegen(paperlessFirma(firma), b.art === 'T' ? K.transportauftrag : K.lieferschein, 'transport', {
+      const pl = paperlessFirma(firma);
+      await auftragFeldSichern(pl).catch(() => undefined);
+      const r = await kontextAblegen(pl, b.art === 'T' ? K.transportauftrag : K.lieferschein, 'transport', {
         kennung: b.kennung, auftragsnr: a.auftragsnr, kunde: kontaktName(a.kundeAdr), unternehmer: kontaktName(a.unternehmerAdr),
         kennzeichen: a.kennzeichen ?? '', ordernummer: a.ordernummer ?? '', leistungsdatum: a.leistungsdatum ?? '',
         anlass: o.anlass === 'druck' ? 'Druck' : 'Versand', datei, heute, benutzer: o.benutzer,

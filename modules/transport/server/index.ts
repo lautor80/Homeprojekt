@@ -27,7 +27,10 @@ import { sammelversandRoutes } from './sammelversand.js';
 import { kontaktNachPaperless, kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
-import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
+import { AUFTRAG_FELD, K, TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
+import { auftragFeldSichern, dokumenteZumAuftrag, duplikatVon, feldErgaenzen, perFeldZugeordnet, zeilenZusammenfuehren, type PortalDok } from './paperless-auftrag.js';
+import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
+import { PaperlessError } from '../../../server/src/lib/paperless.js';
 import { hinweisAufgaben } from '../../../server/src/lib/hinweise.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
 
@@ -627,7 +630,53 @@ async function routes(app: FastifyInstance) {
     const rows = await sql`select doc_id, titel, datei, erstellt_am, erstellt_von from transport.auftrag_dokumente
                             where auftragsnr = ${nr} order by erstellt_am desc`;
     const f = await firmaLesen();
-    return { paperless: !!(f.paperless_url && f.paperless_token), dokumente: rows };
+    const paperless = !!(f.paperless_url && f.paperless_token);
+    // zusätzlich alle Paperless-Dokumente mit Custom Field „Auftrag“ = diese Nummer (Migration, Rechnungen); Paperless nicht
+    // erreichbar → die Portal-Verknüpfungen trotzdem zeigen
+    let docs: Record<string, any>[] = [];
+    let feldId: number | null = null;
+    let basis: string | null = null;
+    let warnung: string | null = null;
+    if (paperless) {
+      try {
+        const pl = paperlessFirma(f);
+        basis = await pl.baseUrl();
+        const t = await dokumenteZumAuftrag(pl, nr);
+        feldId = t.feldId;
+        const fehlt = rows.map((r) => r.doc_id as number).filter((id) => !t.docs.some((d) => d.id === id));
+        docs = [...t.docs, ...(fehlt.length ? await pl.dokumenteSuchen({ id__in: fehlt.join(',') }) : [])];
+      } catch (e) { warnung = `Paperless: ${(e as Error).message}`; }
+    }
+    return { paperless, warnung, dokumente: zeilenZusammenfuehren(rows as unknown as PortalDok[], docs, { nr, feldId, basis }) };
+  });
+
+  /** Dokument gehört zum Auftrag: im Portal verknüpft oder Custom Field „Auftrag“ nennt die Nummer */
+  async function zumAuftrag(nr: string, id: number) {
+    const [da] = await sql`select 1 from transport.auftrag_dokumente where auftragsnr = ${nr} and doc_id = ${id}`;
+    const f = await firmaLesen();
+    if (!da && !(f.paperless_url && f.paperless_token && await perFeldZugeordnet(paperlessFirma(f), nr, id))) throw new BusinessError('Dokument nicht gefunden.', 404);
+    return paperlessFirma(f);
+  }
+
+  /** Notizen (Kommentare) des Paperless-Dokuments */
+  app.get('/auftraege/:nr/dokumente/:id/notizen', { preHandler: requireAuth(P.display) }, async (req) => {
+    const p = z.object({ nr: z.string(), id: z.coerce.number().int().positive() }).parse(req.params);
+    const pl = await zumAuftrag(p.nr, p.id);
+    const [d, n] = await Promise.all([pl.dokument(p.id), pl.notizen(p.id)]);
+    return {
+      titel: d.title ?? null, datei: d.original_file_name ?? null, datum: d.created ? String(d.created).slice(0, 10) : null,
+      link: await pl.ansichtUrl(p.id),
+      notizen: n.map((x) => ({ id: x.id, text: x.note, erstellt: x.created, von: typeof x.user === 'object' && x.user ? x.user.username ?? null : null }))
+        .sort((a, b) => String(b.erstellt).localeCompare(String(a.erstellt))),
+    };
+  });
+
+  app.post('/auftraege/:nr/dokumente/:id/notizen', { preHandler: requireAuth(P.edit) }, async (req) => {
+    const p = z.object({ nr: z.string(), id: z.coerce.number().int().positive() }).parse(req.params);
+    const b = z.object({ text: z.string().trim().min(1, 'Bitte einen Kommentar eingeben.').max(5000) }).parse(req.body);
+    const pl = await zumAuftrag(p.nr, p.id);
+    await pl.notizAnlegen(p.id, `${b.text} (${benutzerName(req)})`);
+    return { text: 'Kommentar in Paperless gespeichert' };
   });
 
   app.post('/auftraege/:nr/dokumente', { preHandler: requireAuth(P.edit), bodyLimit: 50 * 1024 * 1024 }, async (req) => {
@@ -654,12 +703,13 @@ async function routes(app: FastifyInstance) {
     return { text: `Dokument ${p.id} vom Auftrag ${p.nr} gelöst (bleibt in Paperless)` };
   });
 
-  /** Datei nur für Dokumente, die einem Auftrag zugeordnet sind */
+  /** Datei nur für Dokumente, die dem Auftrag zugeordnet sind (Portal oder Custom Field „Auftrag“); ?vorschau=1 = Vorschau */
   app.get('/auftraege/:nr/dokumente/:id/datei', { preHandler: requireAuth(P.display) }, async (req, reply) => {
     const p = z.object({ nr: z.string(), id: z.coerce.number().int().positive() }).parse(req.params);
-    const [da] = await sql`select 1 from transport.auftrag_dokumente where auftragsnr = ${p.nr} and doc_id = ${p.id}`;
-    if (!da) throw new BusinessError('Dokument nicht gefunden.', 404);
-    const d = await paperlessFirma(await firmaLesen()).download(p.id);
+    const { vorschau } = z.object({ vorschau: z.coerce.boolean().default(false) }).parse(req.query);
+    const pl = await zumAuftrag(p.nr, p.id);
+    // Vorschau: archivierte Fassung (PDF auch für Bilder und Office-Dateien) für das Popup im Auftrag
+    const d = vorschau ? await pl.vorschau(p.id) : await pl.download(p.id);
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
 
@@ -710,11 +760,16 @@ async function routes(app: FastifyInstance) {
     if (ids.length) {
       // nur Dokumente, die diesem Auftrag zugeordnet sind (wie beim Herunterladen)
       const rows = await sql`select doc_id, titel, datei from transport.auftrag_dokumente where auftragsnr = ${nr} and doc_id = any(${ids}::int[])`;
-      const fehlt = ids.filter((id) => !rows.some((r) => r.doc_id === id));
+      // über das Custom Field „Auftrag“ zugeordnete Dokumente (Migration, Rechnungen) zählen ebenfalls
+      const fa = await firmaLesen();
+      const fehlt: number[] = [];
+      for (const id of ids.filter((x) => !rows.some((r) => r.doc_id === x))) {
+        if (!(fa.paperless_url && fa.paperless_token && await perFeldZugeordnet(paperlessFirma(fa), nr, id))) fehlt.push(id);
+      }
       if (fehlt.length) throw new BusinessError(`Dokument ${fehlt.join(', ')} ist dem Auftrag ${nr} nicht zugeordnet.`);
-      const pl = paperlessFirma(await firmaLesen());
+      const pl = paperlessFirma(fa);
       for (const id of ids) {
-        const row = rows.find((r) => r.doc_id === id)!;
+        const row = rows.find((r) => r.doc_id === id) ?? { datei: null };
         const d = await pl.download(id);
         // Paperless liefert die archivierte Fassung (meist PDF): passt die Endung des abgelegten Namens nicht dazu, gilt der Name von Paperless
         const pdf = /pdf/i.test(d.contentType);
@@ -1019,6 +1074,74 @@ async function routes(app: FastifyInstance) {
     if (!ok.length) throw new BusinessError(fehler[0] ?? 'Bitte zuerst die CSV-Dateien einlesen.');
     if (modus === 'ersetzen' && !reason?.trim()) throw new BusinessError('Für den Neuaufbau ist eine Begründung nötig.');
     return change(req, (tx) => ausfuehren(tx, ok, modus), { action: modus === 'ersetzen' ? 'IMPORT_NEUAUFBAU' : 'IMPORT', reason: reason?.trim() || undefined });
+  });
+
+  // ---- Migration lokaler Auftragsordner nach Paperless (Schnittstellen → Paperless) ----
+  // Der Browser durchsucht den gewählten Ordner; jede Datei unter einem Ordner mit Auftragsnummer kommt einzeln hierher.
+
+  /** welche der gefundenen Ordnernamen sind Aufträge im Portal? */
+  app.post('/migration/pruefen', { preHandler: requireAuth(P.import), bodyLimit: 5 * 1024 * 1024 }, async (req) => {
+    const b = z.object({ nummern: z.array(z.string().max(60)).max(50_000) }).parse(req.body);
+    const nrs = [...new Set(b.nummern.map((n) => n.trim()).filter(Boolean))];
+    const rows = nrs.length ? await sql`select auftragsnr from transport.auftraege where auftragsnr = any(${nrs})` : [];
+    const f = await firmaLesen();
+    return { bekannt: rows.map((r) => r.auftragsnr as string), paperless: !!(f.paperless_url && f.paperless_token), feld: AUFTRAG_FELD };
+  });
+
+  /**
+   * eine Datei übernehmen: Kontext „Migration lokaler Auftragsordner“ (Custom Field „Auftrag“, Dokumentdatum = Datum der Datei).
+   * Ist die Datei schon in Paperless (Dublette), wird nur die Auftragsnummer am vorhandenen Dokument ergänzt – so kann die
+   * Migration gefahrlos wiederholt werden. Bekannte Aufträge werden zusätzlich im Portal verknüpft.
+   */
+  app.post('/migration/datei', { preHandler: requireAuth(P.import), bodyLimit: 70 * 1024 * 1024 }, async (req) => {
+    const b = z.object({
+      auftragsnr: z.string().trim().min(1).max(60),
+      datei: z.string().trim().min(1).max(250),
+      pfad: z.string().max(1000).default(''),
+      datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum der Datei fehlt.'),
+      inhalt: z.string().min(1, 'Die Datei ist leer.'),
+    }).parse(req.body);
+    const nr = b.auftragsnr;
+    const name = b.datei.split(/[\\/]/).pop()!.slice(0, 150);
+    const e = endung(name);
+    if (!DATEITYPEN.includes(e)) throw new BusinessError(`Dateityp „${e || '?'}“ wird nicht unterstützt (erlaubt: ${DATEITYPEN.join(', ')}).`);
+    const daten = Buffer.from(b.inhalt.replace(/^data:[^,]*,/, ''), 'base64');
+    if (!daten.length) throw new BusinessError('Die Datei ist leer.');
+    if (daten.length > 50 * 1024 * 1024) throw new BusinessError('Die Datei ist größer als 50 MB.');
+
+    const [bekannt] = await sql`select 1 from transport.auftraege where auftragsnr = ${nr}`;
+    const werte: Record<string, unknown> = { auftragsnr: nr, kunde: '', unternehmer: '', kennzeichen: '', ordernummer: '', datei: name, pfad: b.pfad, datum: b.datum,
+      heute: new Date().toISOString().slice(0, 10), benutzer: benutzerName(req) };
+    if (bekannt) {
+      const a = await auftragLesen(nr);
+      const name2 = (x: { kundenname?: string | null; kundenname2?: string | null } | null | undefined) => (x ? [x.kundenname, x.kundenname2].filter(Boolean).join(' ').trim() : '');
+      Object.assign(werte, { kunde: name2(a.kundeAdr), unternehmer: name2(a.unternehmerAdr), kennzeichen: a.kennzeichen ?? '', ordernummer: a.ordernummer ?? '' });
+    }
+    const pl = paperlessFirma(await firmaLesen());
+    await auftragFeldSichern(pl);
+    let id: number | null = null;
+    let status: 'neu' | 'vorhanden' | 'laeuft';
+    let warnungen: string[] = [];
+    try {
+      const r = await kontextAblegen(pl, K.migration, 'transport', werte, daten, name, { mime: mimeTyp(name), benutzer: benutzerName(req), warteSekunden: 120 });
+      id = r.id; warnungen = r.warnungen; status = id ? 'neu' : 'laeuft';
+    } catch (x) {
+      const dup = x instanceof PaperlessError ? duplikatVon(x.message) : null;
+      if (!dup) throw x instanceof PaperlessError ? new BusinessError(x.message) : x;
+      id = dup; status = 'vorhanden';
+      const wert = await pl.feldWert(await pl.dokument(dup), AUFTRAG_FELD);
+      warnungen = await pl.metadatenSetzen(dup, { customFields: { [AUFTRAG_FELD]: feldErgaenzen(wert, nr) } });
+    }
+    if (id && bekannt) {
+      const titel = `Auftrag ${nr} – ${name.replace(/\.[^.]+$/, '')}`;
+      await change(req, (tx) => tx`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_von)
+                                  values (${nr}, ${id}, ${titel}, ${name}, ${benutzerName(req)}) on conflict do nothing`, { action: 'DOKUMENT_MIGRATION' });
+    }
+    const w = warnungen.length ? ` – ${warnungen.join('; ')}` : '';
+    const text = status === 'neu' ? `in Paperless abgelegt (Dokument ${id})${w}`
+      : status === 'vorhanden' ? `war schon in Paperless (Dokument ${id}) – Auftrag ${nr} im Feld „${AUFTRAG_FELD}“ ergänzt${w}`
+        : 'Paperless verarbeitet die Datei noch – später erneut übertragen, dann wird das Feld „Auftrag“ nachgetragen';
+    return { status, id, text };
   });
 }
 
