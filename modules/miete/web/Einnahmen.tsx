@@ -10,6 +10,7 @@ import { Section } from '@core/components/Section';
 import { useLoad } from '@core/components/useLoad';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { aufteilungFesteMiete, folgemonatVorlage } from './folgemonat';
 import { AuswahlFeld, dat, DatumFeld, eur, heute, JahrAuswahl, M, monatText, summe, Tabelle, zahl, zahlText, ZahlFeld, type Vertrag } from './util';
 
 interface Zahlung { id: number; vertrag_id: number; nummer: string; name: string; einheit: string; datum: string; monat: string; betrag: number; anteil_miete: number; anteil_nk: number; notiz: string | null }
@@ -24,6 +25,9 @@ export function Einnahmen() {
   const liste = useLoad(() => api.get<Zahlung[]>(`${M}/zahlungen?jahr=${jahr}`), [jahr]);
   const vertraege = useLoad(() => api.get<Vertrag[]>(`${M}/vertraege`), []);
   const [dialog, setDialog] = useState<Partial<Zahlung> | null>(null);
+  /** Kopie in den Folgemonat: Kaltmiete bleibt fest, keine Vorbelegung aus dem Soll */
+  const [kopie, setKopie] = useState(false);
+  const oeffnen = (x: Partial<Zahlung>, alsKopie = false) => { setKopie(alsKopie); setDialog(x); };
   const [monatslauf, setMonatslauf] = useState(false);
   const [loeschen, setLoeschen] = useState<Zahlung | null>(null);
   const z = liste.data ?? [];
@@ -37,7 +41,7 @@ export function Einnahmen() {
   return (
     <AppPage title="Mieteinnahmen" subtitle={`${z.length} Eingänge ${jahr}`}
       actions={can(EDIT) && <>
-        <Button icon="add" design="Emphasized" onClick={() => setDialog({ datum: heute(), monat: `${heute().slice(0, 7)}-01` })}>Eingang erfassen</Button>
+        <Button icon="add" design="Emphasized" onClick={() => oeffnen({ datum: heute(), monat: `${heute().slice(0, 7)}-01` })}>Eingang erfassen</Button>
         <Button icon="activity-items" onClick={() => setMonatslauf(true)}>Monat buchen</Button>
       </>}
       header={<Filters>
@@ -48,7 +52,7 @@ export function Einnahmen() {
       </Filters>}>
       {liste.error && <MessageStrip design="Negative" hideCloseButton>{liste.error}</MessageStrip>}
       <Section title="Eingänge" count={z.length} flush>
-        <Tabelle<Zahlung> schluessel={(x) => x.id} zeilen={z} leer="Noch keine Mieteingänge in diesem Jahr" onZeile={can(EDIT) ? (x) => setDialog(x) : undefined} spalten={[
+        <Tabelle<Zahlung> schluessel={(x) => x.id} zeilen={z} leer="Noch keine Mieteingänge in diesem Jahr" onZeile={can(EDIT) ? (x) => oeffnen(x) : undefined} spalten={[
           { titel: 'Monat', fest: true, wert: (x) => monatText(x.monat), summe: () => 'Summe' },
           { titel: 'Eingang', fest: true, wert: (x) => dat(x.datum) },
           { titel: 'Mieter', wert: (x) => `${x.name} (${x.einheit})` },
@@ -56,10 +60,13 @@ export function Einnahmen() {
           { titel: 'Kaltmiete', rechts: true, wert: (x) => eur(x.anteil_miete), summe: summe((x) => x.anteil_miete) },
           { titel: 'NK-Abschlag', rechts: true, wert: (x) => eur(x.anteil_nk), summe: summe((x) => x.anteil_nk) },
           { titel: 'Notiz', wert: (x) => x.notiz ?? '' },
-          ...(can(EDIT) ? [{ titel: '', wert: (x: Zahlung) => <Button design="Transparent" icon="delete" tooltip="Löschen" onClick={(e) => { e.stopPropagation(); setLoeschen(x); }} /> }] : []),
+          ...(can(EDIT) ? [{ titel: '', wert: (x: Zahlung) => <>
+            <Button design="Transparent" icon="copy" tooltip="In den Folgemonat kopieren" onClick={(e) => { e.stopPropagation(); oeffnen(folgemonatVorlage(x), true); }} />
+            <Button design="Transparent" icon="delete" tooltip="Löschen" onClick={(e) => { e.stopPropagation(); setLoeschen(x); }} />
+          </> }] : []),
         ]} />
       </Section>
-      {dialog && <ZahlungDialog z={dialog} vertraege={vertraege.data ?? []} onClose={(neu) => { setDialog(null); if (neu) liste.reload(); }} />}
+      {dialog && <ZahlungDialog z={dialog} kopie={kopie} vertraege={vertraege.data ?? []} onClose={(neu) => { setDialog(null); if (neu) liste.reload(); }} />}
       {monatslauf && <MonatslaufDialog onClose={(neu) => { setMonatslauf(false); if (neu) liste.reload(); }} />}
       <ConfirmDialog open={!!loeschen} danger askReason title="Mieteingang löschen" confirmText="Löschen"
         text={loeschen ? `Eingang vom ${dat(loeschen.datum)} über ${eur(loeschen.betrag)} (${loeschen.name}) löschen?` : ''}
@@ -68,7 +75,7 @@ export function Einnahmen() {
   );
 }
 
-function ZahlungDialog({ z, vertraege, onClose }: { z: Partial<Zahlung>; vertraege: Vertrag[]; onClose: (neu: boolean) => void }) {
+function ZahlungDialog({ z, kopie = false, vertraege, onClose }: { z: Partial<Zahlung>; kopie?: boolean; vertraege: Vertrag[]; onClose: (neu: boolean) => void }) {
   const [f, setF] = useState({
     vertrag_id: z.vertrag_id ?? vertraege.find((v) => !v.ende || v.ende >= heute())?.id ?? null,
     datum: z.datum ?? heute(), monat: z.monat ?? `${heute().slice(0, 7)}-01`,
@@ -84,7 +91,7 @@ function ZahlungDialog({ z, vertraege, onClose }: { z: Partial<Zahlung>; vertrae
     api.get<Soll[]>(`${M}/soll?monat=${f.monat}`).then((l) => {
       const s = l.find((x) => x.vertrag_id === f.vertrag_id) ?? null;
       setSoll(s);
-      if (!z.id && s) {
+      if (!z.id && !kopie && s) {
         // nur den noch offenen Rest vorschlagen, im Verhältnis des Solls aufgeteilt
         const sollG = s.miete + s.nk;
         const rest = Math.max(0, Math.round((sollG - s.bezahlt) * 100) / 100);
@@ -94,9 +101,11 @@ function ZahlungDialog({ z, vertraege, onClose }: { z: Partial<Zahlung>; vertrae
     }).catch(() => setSoll(null));
   }, [f.vertrag_id, f.monat]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Betrag geändert: Aufteilung im Verhältnis des Solls (wie der Server), sonst alles zur Miete */
+  /** Betrag geändert: Aufteilung im Verhältnis des Solls (wie der Server), sonst alles zur Miete.
+   *  Kopie in den Folgemonat: Kaltmiete bleibt gleich, die Abweichung geht in den Abschlag. */
   function betragNeu(v: string) {
     const b = zahl(v);
+    if (kopie) { const t = aufteilungFesteMiete(b, zahl(f.miete)); setF({ ...f, betrag: v, miete: zahlText(t.miete), nk: zahlText(t.nk) }); return; }
     const sollG = (soll?.miete ?? 0) + (soll?.nk ?? 0);
     const nk = !soll || sollG <= 0 ? 0 : b >= sollG ? soll.nk : Math.round(b * soll.nk / sollG * 100) / 100;
     setF({ ...f, betrag: v, nk: zahlText(nk), miete: zahlText(Math.round((b - nk) * 100) / 100) });
@@ -114,12 +123,13 @@ function ZahlungDialog({ z, vertraege, onClose }: { z: Partial<Zahlung>; vertrae
   const differenz = Math.round((zahl(f.betrag) - zahl(f.miete) - zahl(f.nk)) * 100) / 100;
 
   return (
-    <Dialog open headerText={z.id ? 'Mieteingang ändern' : 'Mieteingang erfassen'} style={{ width: 'min(36rem, 95vw)' }} onClose={() => onClose(false)}
+    <Dialog open headerText={z.id ? 'Mieteingang ändern' : kopie ? 'Mieteingang in Folgemonat kopieren' : 'Mieteingang erfassen'} style={{ width: 'min(36rem, 95vw)' }} onClose={() => onClose(false)}
       footer={<Bar endContent={<>
         <Button design="Emphasized" loading={busy} disabled={!f.vertrag_id || differenz !== 0} onClick={sichern}>Sichern</Button>
         <Button onClick={() => onClose(false)}>Abbrechen</Button>
       </>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
+      {kopie && <p className="portal-muted" style={{ marginTop: 0 }}>Kopie des Vormonats. Ändert sich der Betrag, bleibt die Kaltmiete gleich – die Abweichung geht in den Nebenkosten-Abschlag.</p>}
       <FormGrid>
         <AuswahlFeld label="Mietverhältnis" required value={f.vertrag_id} onChange={(v) => setF({ ...f, vertrag_id: v })}
           optionen={vertraege.map((v) => ({ key: v.id, text: `${v.name} (${v.einheit})${v.ende && v.ende < heute() ? ' – beendet' : ''}` }))} />
