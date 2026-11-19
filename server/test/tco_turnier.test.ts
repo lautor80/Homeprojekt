@@ -207,10 +207,20 @@ test('Ergebnis über den persönlichen Link: fremdes Spiel 403, ungültiges Erge
   let z = ok(await gast('GET', `${TO}/zugang/${links.anna}`));
   assert.deepEqual(z.spiele.map((x: any) => [x.wertung, x.meine_seite, x.namen_b]), [['offen', 'a', ['moritz MITGLIED']]]);
 
+  // kampflos bzw. „nicht gespielt“ entscheidet nur die Turnierleitung
+  const wo = await gast('POST', `${TO}/zugang/${links.anna}/ergebnis`, { spiel_id: s.id, wertung: 'wo', sieger: 'a' });
+  assert.equal(wo.status, 403);
+  assert.match(wo.body.message, /Turnierleitung/);
+
   // gültig: 6:4 3:6 10:8 aus Sicht von Moritz (Seite b) eingetragen
   ok(await gast('POST', `${TO}/zugang/${links.moritz}/ergebnis`, { spiel_id: s.id, wertung: 'gespielt', saetze: [[6, 4], [3, 6], [10, 8]] }));
   z = ok(await gast('GET', `${TO}/zugang/${links.anna}`));
   assert.deepEqual([z.spiele[0].wertung, z.spiele[0].sieger, z.spiele[0].saetze, z.spiele[0].eingetragen_von], ['gespielt', 'a', [[6, 4], [3, 6], [10, 8]], 'moritz MITGLIED']);
+  // das Ergebnis des Gegners kann Anna nicht überschreiben, Moritz seine eigene Eingabe aber korrigieren
+  const ueber = await gast('POST', `${TO}/zugang/${links.anna}/ergebnis`, { spiel_id: s.id, wertung: 'gespielt', saetze: [[6, 0], [6, 0]] });
+  assert.equal(ueber.status, 403);
+  assert.match(ueber.body.message, /schon ein Ergebnis/);
+  ok(await gast('POST', `${TO}/zugang/${links.moritz}/ergebnis`, { spiel_id: s.id, wertung: 'gespielt', saetze: [[6, 4], [3, 6], [10, 8]] }));
 
   // ausgelost: Abmelden über den Link nicht mehr möglich, Löschen in der Verwaltung auch nicht
   const ab = await gast('POST', `${TO}/zugang/${links.anna}/abmelden`);

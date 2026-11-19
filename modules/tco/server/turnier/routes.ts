@@ -9,7 +9,7 @@ import { mailSenden } from '../kommunikation.js';
 import { tcoHinweis } from '../hinweise.js';
 import {
   aktiveTeilnehmer, ergebnisSpeichern, P_TURNIER, platzSchluesselErzeugen, rundenLesen, spieleLesen, teilnehmerLesen,
-  teilnehmerZumZugang, turnierLesen, turnierZurKennung, zugangErzeugen, type ModusDef,
+  teilnehmerZumZugang, turnierLesen, turnierSperren, turnierZurKennung, zugangErzeugen, type ModusDef,
 } from './daten.js';
 import { kurzname, MODUS_TEXT, STANDARD_EINSTELLUNGEN, vollname, type Modus, type Teilnehmer, type Turnier } from './typen.js';
 import { KO } from './ko.js';
@@ -278,7 +278,11 @@ export async function turnierRoutes(app: FastifyInstance) {
   app.delete('/turniere/:id/spiele/:sid/ergebnis', pflegen, async (req) => {
     const { id, sid } = z.object({ id: z.coerce.number().int().positive(), sid: z.coerce.number().int().positive() }).parse(req.params);
     return change(req, async (tx) => {
+      await turnierSperren(tx, id);
       const t = await turnierLesen(tx, id);
+      if (t.status === 'beendet') throw new BusinessError('Das Turnier ist beendet – Ergebnisse lassen sich nicht mehr ändern.');
+      const [r] = await tx<{ status: string }[]>`select r.status from tco.turnier_spiele s join tco.turnier_runden r on r.id = s.runde_id where s.id = ${sid}`;
+      if (r?.status === 'abgeschlossen') throw new BusinessError('Die Runde ist abgeschlossen – zum Zurücksetzen bitte die Runde zuerst wieder öffnen oder das Ergebnis direkt korrigieren.');
       const [s] = await tx`update tco.turnier_spiele set wertung = 'offen', saetze = null, sieger = null, eingetragen_von = ${benutzer(req)}, eingetragen_am = now()
                            where id = ${sid} and turnier_id = ${id} and wertung <> 'freilos' returning *`;
       if (!s) throw new BusinessError('Spiel nicht gefunden.', 404);
@@ -377,6 +381,7 @@ export async function turnierRoutes(app: FastifyInstance) {
     const { schluessel } = z.object({ schluessel: z.string().max(80) }).parse(req.params);
     const ich = await teilnehmerZumZugang(DB, schluessel);
     await withChange({ userId: null, username: `turnier:${ich.id}`, action: 'TURNIER_ABMELDUNG' }, async (tx) => {
+      await turnierSperren(tx, ich.turnier_id);
       const [{ n }] = await tx<{ n: number }[]>`select count(*)::int as n from tco.turnier_spiele where turnier_id = ${ich.turnier_id} and (${ich.id} = any(a) or ${ich.id} = any(b))`;
       if (n) throw new BusinessError('Du bist bereits ausgelost – bitte melde dich direkt bei der Turnierleitung ab.');
       await tx`update tco.turnier_teilnehmer set status = 'abgemeldet' where id = ${ich.id}`;

@@ -88,11 +88,20 @@ export interface ErgebnisEingabe {
  */
 export async function ergebnisSpeichern(tx: Db, modi: Record<Modus, ModusDef>, spielId: number, e: ErgebnisEingabe,
   o: { von: string; turnierId?: number; nurTeilnehmer?: number }): Promise<Spiel> {
+  const [vorab] = await tx<{ turnier_id: number }[]>`select turnier_id from tco.turnier_spiele where id = ${spielId}`;
+  if (!vorab || (o.turnierId && vorab.turnier_id !== o.turnierId)) throw new BusinessError('Spiel nicht gefunden.', 404);
+  // erst das Turnier sperren, dann das Spiel: gleichzeitige Eingaben (z. B. beide Halbfinals) laufen nacheinander,
+  // damit der Abgleich des Modus (KO: Weiterrücken) immer auf dem bestätigten Stand aufsetzt
+  await turnierSperren(tx, vorab.turnier_id);
   const [s] = await tx<Spiel[]>`select * from tco.turnier_spiele where id = ${spielId} for update`;
-  if (!s || (o.turnierId && s.turnier_id !== o.turnierId)) throw new BusinessError('Spiel nicht gefunden.', 404);
   const t = await turnierLesen(tx, s.turnier_id);
   if (t.status === 'beendet') throw new BusinessError('Das Turnier ist beendet – Ergebnisse lassen sich nicht mehr ändern.');
-  if (o.nurTeilnehmer && ![...s.a, ...s.b].includes(o.nurTeilnehmer)) throw new BusinessError('Du spielst in diesem Spiel nicht mit.', 403);
+  if (o.nurTeilnehmer) {
+    if (![...s.a, ...s.b].includes(o.nurTeilnehmer)) throw new BusinessError('Du spielst in diesem Spiel nicht mit.', 403);
+    // über den persönlichen Link nur gespielte bzw. aufgegebene Spiele – kampflos und „nicht gespielt“ entscheidet die Turnierleitung
+    if (e.wertung !== 'gespielt' && e.wertung !== 'aufgabe') throw new BusinessError('Kampflose oder nicht gespielte Spiele trägt die Turnierleitung ein.', 403);
+    if (s.wertung !== 'offen' && s.eingetragen_von !== o.von) throw new BusinessError('Für dieses Spiel ist schon ein Ergebnis eingetragen – Korrekturen bitte über die Turnierleitung.', 403);
+  }
   if (!s.a.length || !s.b.length) throw new BusinessError('Die Paarung steht noch nicht fest.');
   if (s.runde_id) {
     const [r] = await tx<{ status: string }[]>`select status from tco.turnier_runden where id = ${s.runde_id}`;
@@ -121,6 +130,11 @@ export async function ergebnisSpeichern(tx: Db, modi: Record<Modus, ModusDef>, s
   return neu;
 }
 
+/** Turnier für die Dauer der Transaktion sperren (Reihenfolge: immer zuerst das Turnier, dann Spiele) */
+export async function turnierSperren(tx: Db, turnierId: number): Promise<void> {
+  await tx`select id from tco.turniere where id = ${turnierId} for update`;
+}
+
 /** neuen persönlichen Link-Schlüssel erzeugen (gespeichert wird nur der Hash) */
 export async function zugangErzeugen(tx: Db, teilnehmerId: number): Promise<string> {
   const schluessel = crypto.randomBytes(24).toString('base64url');
@@ -130,7 +144,8 @@ export async function zugangErzeugen(tx: Db, teilnehmerId: number): Promise<stri
 
 export async function teilnehmerZumZugang(db: Db, schluessel: string): Promise<Teilnehmer> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(schluessel)) throw new BusinessError('Der Link ist ungültig.', 404);
-  const [t] = await db.unsafe(`select ${TN_SPALTEN} from tco.turnier_teilnehmer where zugang_hash = $1`, [sha256(schluessel)]) as unknown as Teilnehmer[];
+  const [t] = await db.unsafe(`select ${TN_SPALTEN} from tco.turnier_teilnehmer x where zugang_hash = $1
+                                and exists (select 1 from tco.turniere t where t.id = x.turnier_id and t.status <> 'entwurf')`, [sha256(schluessel)]) as unknown as Teilnehmer[];
   if (!t || t.status === 'abgemeldet') throw new BusinessError('Der Link ist ungültig oder die Anmeldung wurde zurückgezogen.', 404);
   return t;
 }
@@ -143,7 +158,7 @@ export async function platzSchluesselErzeugen(tx: Db, turnierId: number): Promis
 }
 
 export async function platzSchluesselPruefen(db: Db, kennung: string, schluessel: string): Promise<Turnier> {
-  const [t] = await db<{ id: number }[]>`select id from tco.turniere where kennung = ${kennung} and platz_hash = ${sha256(schluessel)}`;
+  const [t] = await db<{ id: number }[]>`select id from tco.turniere where kennung = ${kennung} and platz_hash = ${sha256(schluessel)} and status <> 'entwurf'`;
   if (!t) throw new BusinessError('Der Platz-Link ist ungültig.', 404);
   return turnierLesen(db, t.id);
 }

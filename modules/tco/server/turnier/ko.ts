@@ -58,7 +58,7 @@ export async function koAbgleichen(tx: Db, t: Turnier): Promise<void> {
   for (const x of aenderungen) {
     await tx`update tco.turnier_spiele set a = ${x.a}::int[], b = ${x.b}::int[], wertung = ${x.wertung}, sieger = ${x.sieger},
                saetze = null, eingetragen_von = null, eingetragen_am = null
-             where turnier_id = ${t.id} and feld = ${x.feld} and runde = ${x.runde} and pos = ${x.pos}`;
+             where turnier_id = ${t.id} and feld = ${x.feld} and runde = ${x.runde} and pos = ${x.pos} and wertung in ('offen', 'freilos')`;
   }
 }
 
