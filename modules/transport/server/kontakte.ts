@@ -11,6 +11,7 @@ import { condense } from './format.js';
 import { DATEITYPEN, paperlessFirma } from './dokumente.js';
 import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
 import { K } from './paperless-kontexte.js';
+import { korrespondentenUebertragen, korrespondentSichern, abgleichPlanen, type EinzelErgebnis } from './korrespondenten.js';
 
 /**
  * Kontakte (Euroflex) im Layout der Mitglieder: Liste mit Rollen-Filter und Kennzahlen,
@@ -21,9 +22,28 @@ type P = { display: string; kontakte: string; kontakteDisplay: string };
 export const FILTER = { ALLE: 'Alle Kontakte', KUNDEN: 'Kunden', UNTERNEHMER: 'Unternehmer', RE: 'Rechnungsempfänger', OHNE: 'Ohne Aufträge' } as const;
 type Filter = keyof typeof FILTER;
 
+const paperlessFehler = (e: unknown): never => { if (e instanceof PaperlessError) throw new BusinessError(e.message); throw e; };
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const name = (a: { kundenname?: string | null; kundenname2?: string | null }) => condense(`${a.kundenname ?? ''} ${a.kundenname2 ?? ''}`);
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';
+
+/**
+ * Kontakt sofort als Korrespondent in Paperless prüfen und bei Bedarf anlegen (nach Anlegen/Ändern).
+ * Ohne eingerichtetes Paperless: null. Fehler brechen das Speichern des Kontakts nicht ab, sondern kommen als Hinweis zurück.
+ */
+export async function kontaktNachPaperless(adrnr: number): Promise<EinzelErgebnis | null> {
+  const f = await firmaLesen();
+  if (!f.paperless_url || !f.paperless_token) return null;
+  const a = await adresseLesen(adrnr);
+  if (!a) return null;
+  try { return await korrespondentSichern(paperlessFirma(f), { adrnr, kundenname: a.kundenname, kundenname2: a.kundenname2 }); } catch (e) {
+    return { status: 'fehler', id: null, name: name(a), text: `Paperless: ${(e as Error).message}` };
+  }
+}
+
+/** alle Kontakte mit Namen (für den Abgleich) */
+const kontakteMitNamen = () => sql<{ adrnr: number; kundenname: string | null; kundenname2: string | null }[]>`
+  select adrnr, kundenname, kundenname2 from transport.adressen where coalesce(kundenname, '') <> '' or coalesce(kundenname2, '') <> '' order by adrnr`;
 
 export async function kontaktRoutes(app: FastifyInstance, P: P) {
   // lesen darf, wer Aufträge sieht (Auswahl im Auftrag) oder die App „Kontakte“ öffnen darf (#232, N7)
@@ -66,6 +86,35 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
       anzahl, filter: FILTER,
       zeilen: alle.filter(passt[q.filter]).filter((x) => !s || x.suchtext.includes(s)).map(({ suchtext: _s, ...x }) => x),
     };
+  });
+
+  // ---------------------------------------------------------------- Kontakte → Paperless-Korrespondenten
+  /** Vorschau: wie viele Kontakte haben schon einen Korrespondenten, welche Namen fehlen */
+  app.get('/kontakte/paperless-abgleich', lesen, async () => {
+    const f = await firmaLesen();
+    if (!f.paperless_url || !f.paperless_token) return { paperless: false, vorhanden: 0, fehlend: [] };
+    try {
+      const plan = abgleichPlanen(await kontakteMitNamen(), await paperlessFirma(f).korrespondenten());
+      return { paperless: true, vorhanden: plan.vorhanden.length, fehlend: plan.fehlend };
+    } catch (e) { return paperlessFehler(e); }
+  });
+
+  /** Alle Kontakte nach Paperless übertragen: fehlende Korrespondenten anlegen */
+  app.post('/kontakte/paperless-abgleich', { preHandler: requireAuth(P.kontakte) }, async () => {
+    try {
+      const pl = paperlessFirma(await firmaLesen());
+      return await korrespondentenUebertragen(pl, await kontakteMitNamen());
+    } catch (e) { return paperlessFehler(e); }
+  });
+
+  /** Einen Kontakt nach Paperless übertragen */
+  app.post('/kontakte/:nr/paperless', { preHandler: requireAuth(P.kontakte) }, async (req) => {
+    const { nr } = z.object({ nr: z.coerce.number().int() }).parse(req.params);
+    paperlessFirma(await firmaLesen()); // Meldung, falls nicht eingerichtet
+    const r = await kontaktNachPaperless(nr);
+    if (!r) throw new BusinessError('Kontakt nicht gefunden.', 404);
+    if (r.status === 'fehler') throw new BusinessError(r.text);
+    return r;
   });
 
   app.get('/kontakte/:nr', lesen, async (req) => {
@@ -128,7 +177,6 @@ export async function kontaktRoutes(app: FastifyInstance, P: P) {
     const k = await pl.korrespondent(name(a), anlegen);
     return { pl, k, name: name(a) };
   }
-  const paperlessFehler = (e: unknown) => { if (e instanceof PaperlessError) throw new BusinessError(e.message); throw e; };
 
   app.get('/kontakte/:nr/dokumente', lesen, async (req) => {
     const { nr } = z.object({ nr: z.coerce.number().int() }).parse(req.params);

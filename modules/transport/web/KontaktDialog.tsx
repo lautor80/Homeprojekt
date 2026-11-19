@@ -60,10 +60,14 @@ export function KontaktDialog({ modus, auswahl, start, onClose, onSaved }: {
     setBusy(true);
     try {
       const body = { ...k, force };
+      type Antwort = { adrnr: number; paperless?: { status: string; text: string } | null };
       const r = modus === 'EDIT'
-        ? await api.put<{ adrnr: number }>(`${T}/adressen/${nr}`, body)
-        : await api.post<{ adrnr: number }>(`${T}/adressen`, body);
-      toast(modus === 'EDIT' ? `Kontakt "${k.kundenname}" gespeichert.` : `Kontakt "${k.kundenname}" angelegt - jetzt im Dropdown auswählbar.`);
+        ? await api.put<Antwort>(`${T}/adressen/${nr}`, body)
+        : await api.post<Antwort>(`${T}/adressen`, body);
+      // Korrespondent in Paperless wird serverseitig sofort geprüft/angelegt – angelegt oder Fehler hier melden
+      const pl = r.paperless && ['angelegt', 'fehler'].includes(r.paperless.status) ? ` ${r.paperless.text}` : '';
+      toast((modus === 'EDIT' ? `Kontakt "${k.kundenname}" gespeichert.` : `Kontakt "${k.kundenname}" angelegt - jetzt im Dropdown auswählbar.`) + pl,
+        r.paperless?.status === 'fehler' ? 8000 : 3000);
       onSaved(r.adrnr);
     } catch (e) {
       setHinweis((e as Error).message);

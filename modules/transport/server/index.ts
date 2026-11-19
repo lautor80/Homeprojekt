@@ -24,7 +24,7 @@ import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
 import { mailworkflowRoutes, P_MW, versandRegeln } from './mailworkflows.js';
 import { eingangRoutes } from './eingang/routes.js';
 import { sammelversandRoutes } from './sammelversand.js';
-import { kontaktRoutes } from './kontakte.js';
+import { kontaktNachPaperless, kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
 import { bildText, pdfText } from '../../../server/src/lib/texterkennung.js';
 import { TRANSPORT_KONTEXTE } from './paperless-kontexte.js';
@@ -823,7 +823,8 @@ async function routes(app: FastifyInstance) {
       await tx`insert into transport.adressen ${tx({ adrnr: n, ...d })}`;
       return n;
     });
-    return { adrnr };
+    // neuer Kontakt: sofort als Korrespondent in Paperless prüfen und anlegen
+    return { adrnr, paperless: await kontaktNachPaperless(adrnr) };
   });
 
   app.put('/adressen/:nr', { preHandler: requireAuth(P.kontakte) }, async (req, reply) => {
@@ -841,7 +842,8 @@ async function routes(app: FastifyInstance) {
       const r = await tx`update transport.adressen set ${tx(d)} where adrnr = ${nr}`;
       if (!r.count) throw new BusinessError('Kontakt nicht gefunden.', 404);
     });
-    return { adrnr: nr };
+    // geänderter Name: Korrespondent in Paperless sofort prüfen und bei Bedarf anlegen
+    return { adrnr: nr, paperless: await kontaktNachPaperless(nr) };
   });
 
   // ---- Wertelisten ----
