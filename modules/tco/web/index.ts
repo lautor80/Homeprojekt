@@ -19,6 +19,12 @@ import { Rundschreiben } from './rundschreiben/Rundschreiben';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Praesentationen } from './praesentation/Praesentationen';
 import { Spielerdaten } from './sport/Spielerdaten';
+import { Turniere } from './turnier/Turniere';
+import { TurnierDetail } from './turnier/TurnierDetail';
+import { TurnierAnmeldung } from './turnier/TurnierAnmeldung';
+import { TurnierLive } from './turnier/TurnierLive';
+import { TurnierMein } from './turnier/TurnierMein';
+import { SpassPlatz } from './turnier/spass/SpassPlatz';
 import { Analyse } from './analyse/Analyse';
 import { Bestandsmeldung, LsvsKapitel } from './lsvs/Bestandsmeldung';
 import { Zuwendung } from './zuwendung/Zuwendung';
@@ -185,6 +191,7 @@ const mod: WebModule = {
           children: [
             { text: 'Spielerdaten (nuLiga)', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
             { text: 'LSVS-Bestandsmeldung', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
+            { text: 'Turniere', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
           ],
         },
         {
@@ -277,6 +284,8 @@ const mod: WebModule = {
     { path: '/tco/spielerdaten', component: Spielerdaten, permission: 'tco.sport:display' },
     { path: '/tco/analyse', component: Analyse, permission: 'tco.analyse:display' },
     { path: '/tco/lsvs', component: Bestandsmeldung, permission: 'tco.lsvs:display' },
+    { path: '/tco/turniere', component: Turniere, permission: 'tco.turnier:display' },
+    { path: '/tco/turniere/:id', component: TurnierDetail, permission: 'tco.turnier:display' },
     { path: '/tco/teilnehmer', component: Teilnehmer, permission: 'tco.teilnehmer:display' },
     { path: '/tco/upload', component: Upload, permission: 'tco.upload:execute' },
     { path: '/tco/beitraege', component: Beitraege, permission: 'tco.beitraege:display' },
@@ -314,6 +323,10 @@ const mod: WebModule = {
     { pfad: '/registrierung-bestaetigen', component: RegistrierungBestaetigen },
     { pfad: '/einladung', component: Einladung },
     { pfad: '/schluessel-quittung', component: SchluesselQuittung },
+    { pfad: '/turnier', component: TurnierAnmeldung },
+    { pfad: '/turnier-live', component: TurnierLive },
+    { pfad: '/turnier-mein', component: TurnierMein },
+    { pfad: '/turnier-platz', component: SpassPlatz },
   ],
   tiles: [
     { text: 'Vereinsübersicht', subtitle: 'Kennzahlen Mitglieder, Clubhaus, Finanzen, Jugend, Halle, Instandhaltung', icon: 'business-objects-experience', path: '/tco/uebersicht', permission: 'tco.dashboard:display' },
@@ -326,6 +339,7 @@ const mod: WebModule = {
     { text: 'Mitglieder-Analyse', subtitle: 'Altersstruktur, Ein-/Austritte, Beiträge, Varianten', icon: 'pie-chart', path: '/tco/analyse', permission: 'tco.analyse:display' },
     { text: 'Spielerdaten (nuLiga)', subtitle: 'ID-Nr. und LK aus der Verbandsliste abgleichen', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
     { text: 'LSVS-Bestandsmeldung', subtitle: 'Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
+    { text: 'Turniere', subtitle: 'KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
     { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Nichtmitglieder, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
