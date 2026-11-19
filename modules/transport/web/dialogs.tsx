@@ -6,7 +6,8 @@ import {
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
+import { F_ARCHIV, belegAusUrl, belegeAblegen } from './archiv';
 import { T, download } from './util';
 import { ablegenIn, dateiLesen } from './ordner';
 import { AUTO, autoOffen, emlErzeugen, emlHerunterladen } from './MailEntwurf';
@@ -31,6 +32,11 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
   const doc = docs?.[idx];
 
   useEffect(() => setIdx(0), [docs]);
+  // Drucken: Belege des Portals automatisch in Paperless ablegen (Funktion transport.paperless.automatisch)
+  const archiv = useFunktion()(F_ARCHIV);
+  useEffect(() => {
+    if (archiv && docs) belegeAblegen(docs.filter((d) => !d.lokal).map((d) => belegAusUrl(d.url)), 'druck');
+  }, [docs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!doc) return;
     setBlobUrl(null);
@@ -119,6 +125,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
   const [error, setError] = useState<string | null>(null);
   // Recht transport.dialoge:execute (Funktionsschalter transport.dialoge.schliessen): jeder Versand- oder Download-Knopf schließt den Dialog sofort
   const direkt = useCan()('transport.dialoge:execute');
+  const archiv = useFunktion()(F_ARCHIV);
   const fehler = (text: string) => (direkt ? toast(text, 12000) : setError(text));
   const zu = () => { if (direkt) onClose(); };
   const [busy, setBusy] = useState<string | null>(null);
@@ -148,6 +155,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
         ...(rv?.absender ? { von: rv.absender } : {}), ...(rv?.bcc.length ? { bcc: rv.bcc.join(', ') } : {}),
       });
       emlHerunterladen(eml, m.betreff);
+      if (archiv) belegeAblegen([belegAusUrl(d.url)], 'versand');
       toast(`E-Mail-Entwurf „${m.betreff}“ mit ${d.name} erstellt.`, 5000);
       if (!autoOffen()) { if (direkt) toast('Der Entwurf liegt als .eml in den Downloads – anklicken öffnet ihn im Mailprogramm.', 8000); else setHinweis(true); }
     } catch (e) { fehler((e as Error).message); } finally { setBusy(null); }

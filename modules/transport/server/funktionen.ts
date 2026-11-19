@@ -54,6 +54,13 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     permissions: ['transport.versand:execute'],
   },
   {
+    id: 'transport.paperless.automatisch', app: 'Aufträge', text: 'Belege automatisch in Paperless ablegen',
+    beschreibung: 'Transportaufträge, Lieferscheine und Rechnungen werden beim Drucken und Versenden automatisch in Paperless abgelegt und dem Auftrag '
+      + 'zugeordnet, sofern Paperless für Euroflex eingerichtet ist. Erneut abgelegt wird nur, wenn sich der Auftrag seit der letzten Ablage geändert hat.',
+    routen: ['POST /archiv'],
+    hinweis: 'Abgeschaltet legt Drucken und Versenden nichts in Paperless ab; „Versenden → Paperless“ für Rechnungen bleibt.',
+  },
+  {
     id: 'transport.versand.sammel', app: 'Aufträge', text: 'Versenden über Outlook 365',
     beschreibung: 'Knopf „Versenden…“ neben „Drucken“ in Auftragsliste und Auftragsdetail: ausgewählte Dokumente als E-Mails je Auftrag und Empfänger über n8n in die Outlook-Entwürfe legen.',
     routen: ['GET /versand/einstellungen', 'POST /versand/vorschau', 'POST /versand/ausfuehren', 'POST /versand/eml'],
