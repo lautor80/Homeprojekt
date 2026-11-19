@@ -68,7 +68,7 @@ const prozent = (q: number) => `${Math.round(q * 100)} %`;
 export function Rangliste({ zeilen, name, hervorheben }: { zeilen: RanglistenZeile[]; name: (id: number) => string; hervorheben?: number }) {
   if (!zeilen.length) return <MessageStrip hideCloseButton>Noch keine Teilnehmenden.</MessageStrip>;
   return (
-    <div className="spass-tabelle-rahmen">
+    <div className="spass-tabelle-rahmen portal-tabrahmen">
       <table className="spass-tabelle">
         <thead>
           <tr>

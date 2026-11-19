@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BusyIndicator, Button, Dialog, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { DialogFuss } from '@core/components/DialogFuss';
 import { api, qs } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { Empty, Section } from '@core/components/Section';
@@ -144,7 +145,7 @@ export function KoVerwaltung({ detail, darfPflegen, reload }: VerwaltungProps) {
         )} flush>
         {vorschau?.hinweis && <MessageStrip design="Critical" hideCloseButton style={{ margin: '0.5rem' }}>{vorschau.hinweis}</MessageStrip>}
         {!vorschau ? <BusyIndicator active style={{ margin: '1rem' }} /> : !vorschau.staerke.length ? <Empty>Noch keine gemeldeten Teilnehmenden.</Empty> : (
-          <div className="portal-ko__rahmen" style={{ border: 0, borderRadius: 0 }}>
+          <div className="portal-ko__rahmen portal-tabrahmen" style={{ border: 0, borderRadius: 0 }}>
             <table className="portal-ko__setzliste">
               <thead><tr><th>Rang</th><th>Setzplatz</th><th>Name</th><th>LK</th><th>Freilos</th></tr></thead>
               <tbody>
@@ -178,11 +179,11 @@ export function KoVerwaltung({ detail, darfPflegen, reload }: VerwaltungProps) {
       )}
       {gewaehlt && !eingabe && (
         <Dialog open headerText="Ergebnis" onClose={() => setGewaehlt(null)}
-          footer={<Bar endContent={<>
+          footer={<DialogFuss>
             <Button design="Emphasized" icon="edit" onClick={() => setEingabe(true)}>Ändern</Button>
             <Button design="Negative" icon="reset" disabled={busy} onClick={() => zuruecksetzen(gewaehlt)}>Zurücksetzen</Button>
             <Button onClick={() => setGewaehlt(null)}>Schließen</Button>
-          </>} />}>
+          </DialogFuss>}>
           <Text style={{ display: 'block', minWidth: 'min(380px, 80vw)' }}>
             {tnName(gewaehlt.a[0])} – {tnName(gewaehlt.b[0])}: <b>{ergebnisText(gewaehlt)}</b>
           </Text>

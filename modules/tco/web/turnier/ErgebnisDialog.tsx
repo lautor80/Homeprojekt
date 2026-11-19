@@ -164,7 +164,7 @@ export function ErgebnisDialog({ offen, spiel, namenA, namenB, art, liga, onSpei
         ) : (
           <>
             {wertung !== 'wo' && (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="portal-tabrahmen">
                 <table style={{ borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>

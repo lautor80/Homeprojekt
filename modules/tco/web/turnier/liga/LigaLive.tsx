@@ -42,7 +42,7 @@ export function GruppenKarte({ g, name, mitSpielen, onSpiel, spielExtra, ich, ko
   return (
     <div className="liga-gruppe">
       <div className="liga-gruppe__kopf"><span>Gruppe {g.gruppe}</span>{kopfExtra}</div>
-      <div className="liga-tabelle-rahmen">
+      <div className="liga-tabelle-rahmen portal-tabrahmen">
         <table className="liga-tabelle">
           <thead><tr><th>Pl.</th><th className="liga-name">Name</th><th title="Siege">S</th><th title="Niederlagen">N</th><th>Sätze</th><th className="liga-breit">Spiele</th><th className="liga-breit" title="offene Spiele">offen</th></tr></thead>
           <tbody>
@@ -89,7 +89,7 @@ export function GruppenKarte({ g, name, mitSpielen, onSpiel, spielExtra, ich, ko
 export function Gesamtwertung({ gesamt, verlauf, runden, name }: { gesamt: GesamtZeile[]; verlauf: LigaLiveDaten['verlauf']; runden: LigaRunde[]; name: (id: number) => string }) {
   if (!gesamt.length) return <Text className="portal-muted">Noch keine Wertung.</Text>;
   return (
-    <div className="liga-tabelle-rahmen">
+    <div className="liga-tabelle-rahmen portal-tabrahmen">
       <table className="liga-tabelle">
         <thead>
           <tr>
