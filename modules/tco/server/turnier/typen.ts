@@ -93,7 +93,8 @@ export interface Spiel {
   saetze: Satz[] | null;
   wertung: Wertung;
   sieger: Seite | 'x' | null;
-  bemueht: Seite | null;
+  /** Liga: wer sich um einen Termin bemüht hat ('beide' ab Migration 100_turnier_liga) */
+  bemueht: Seite | 'beide' | null;
   eingetragen_von: string | null;
   eingetragen_am: string | null;
 }
