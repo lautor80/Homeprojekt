@@ -74,6 +74,8 @@ test('Haus mit zwei Parteien: Einnahmen aufteilen, mit Kosten vergleichen, Neben
   const heiz = arten.find((a: any) => a.bezeichnung === 'Heizstrom');
   assert.equal((await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: null })).status, 400, 'Verbrauch ohne Hauptzähler');
   ok(await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, grundanteil: 30 }));
+  // Haushaltsstrom (gemeinsam) ist auf Personen voreingestellt (Migration 003)
+  assert.equal(arten.find((a: any) => a.bezeichnung === 'Haushaltsstrom (gemeinsam)').gemeinsam_schluessel, 'personen');
   // Gemeinsamer Verbrauch: Standard Fläche, umstellbar auf Personen (hier wieder zurück, die Rechnung unten nimmt Fläche an)
   assert.equal(heiz.gemeinsam_schluessel, 'flaeche');
   assert.equal((await admin('PUT', `${M}/kostenarten/${heiz.id}`, { ...heiz, zaehler_id: hz, gemeinsam_schluessel: 'kopf' })).status, 400, 'unbekannter Schlüssel');

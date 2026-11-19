@@ -41,7 +41,7 @@ Zugang – nie dieselbe Adresse wie ein anderer Bereich).
 | Personen | nach Personentagen (Personen × Tage je Nutzungsabschnitt); Leerstand zählt 0 Personen |
 | Wohneinheiten | gleiche Teile |
 | Fester Anteil | Prozent je Wohnung (z. B. 50/50 – frei vereinbar) |
-| **Verbrauch** | Hauptzähler der Kostenart; jede Wohnung trägt den Verbrauch ihrer Unterzähler. **Gemeinsamer Verbrauch** – Gemeinschaftszähler (Waschküche, Keller, Heizungsstrom) und was der Hauptzähler mehr zeigt als alle Unterzähler zusammen (Treppenhaus, Außenlicht) – wird je Kostenart *nach Wohnfläche* (Standard), *nach Personen* (Personentage) oder *zu gleichen Teilen* geteilt (*Gemeinsamen Verbrauch teilen*). Liegt ein Gemeinschaftszähler hinter dem Zähler einer Wohnung (die Waschküche hängt am Stromkreis einer Partei), wird sein Verbrauch dort abgezogen. Zeigen die Zähler hinter einem Zähler mehr als dieser, meldet die Verteilung das. Hat nur eine Wohnung einen Unterzähler (**Differenzmessung**), lässt sich der Rest stattdessen der anderen Wohnung zuordnen (*Hauptzähler minus Unterzähler gehört …*). Optional **Grundkosten** in Prozent vorab nach Wohnfläche (z. B. 30 % bei Heizkosten). |
+| **Verbrauch** | Hauptzähler der Kostenart; jede Wohnung trägt den Verbrauch ihrer Unterzähler. **Gemeinsamer Verbrauch** – Gemeinschaftszähler (Waschküche, Keller, Heizungsstrom) und was der Hauptzähler mehr zeigt als alle Unterzähler zusammen (Treppenhaus, Außenlicht) – wird je Kostenart *nach Wohnfläche* (Standard), *nach Personen* (Personentage) oder *zu gleichen Teilen* geteilt (*Gemeinsamen Verbrauch teilen*). Liegt ein Gemeinschaftszähler hinter dem Zähler einer Wohnung (die Waschküche hängt am Stromkreis einer Partei), wird sein Verbrauch dort abgezogen. Zeigen die Zähler hinter einem Zähler mehr als dieser, meldet die Verteilung das. Fehlen Hauptzähler oder Ablesungen, wird der ganze Betrag so geteilt wie der gemeinsame Verbrauch (mit Hinweis). Hat nur eine Wohnung einen Unterzähler (**Differenzmessung**), lässt sich der Rest stattdessen der anderen Wohnung zuordnen (*Hauptzähler minus Unterzähler gehört …*). Optional **Grundkosten** in Prozent vorab nach Wohnfläche (z. B. 30 % bei Heizkosten). |
 | Direkt | Beleg ist einer Wohnung zugeordnet |
 
 Typische Einrichtung für das Haus:
@@ -49,7 +49,8 @@ Typische Einrichtung für das Haus:
 - **Heizstrom** (Wärmepumpe/Nachtspeicher): Hauptzähler „Heizstrom“; je Wohnung ein Wärmemengenzähler als Unterzähler → Schlüssel *Verbrauch*, Grundkosten 30 %.
   Nur ein Zwischenzähler (z. B. OG): Rest „gehört EG“ (Differenzmessung).
   Ohne Unterzähler: *Fester Anteil* oder *Wohnfläche*.
-- **Haushaltsstrom (gemeinsam)**: Hauptzähler „Hausstrom“; der Teil, den eine Partei allein nutzt, über einen Zwischenzähler → Rest = Gemeinschaft nach Fläche.
+- **Haushaltsstrom (gemeinsam)**: voreingestellt *nach Personen* je Wohnung (Personentage, Migration 003) – ohne Zähler der ganze Betrag, mit Hauptzähler „Hausstrom“
+  und Zwischenzählern der gemeinsame Rest.
 - **Waschküche/Keller oder Heizungsstrom im Zähler einer Partei**: Hausanschluss als Hauptzähler, je Partei ein Unterzähler, hinter dem Unterzähler der Partei
   der Gemeinschaftszähler „Waschküche“ (ohne Wohnung). Beispiel: Mama 2.250 kWh, Nils & Sophia 3.000 kWh inkl. Waschküche 600 kWh, nach Fläche (gleich groß)
   → Mama 2.250 + 300 = 2.550, Nils & Sophia 2.400 + 300 = 2.700 kWh; nach Personen (1 : 2) → 2.450 / 2.800 kWh.
@@ -89,6 +90,7 @@ eingrenzende Ablesungen verteilt die Abrechnung nach Wohnfläche und zeigt einen
 | `server/test/miete.test.ts` | Durchlauf mit Datenbank: zwei Parteien, Heizstrom mit Unterzähler, Einnahmen, Übersicht, Abrechnung, Rechte |
 | `server/test/miete_gemeinschaftszaehler.test.ts` | Gemeinschaftszähler hinter einem Unterzähler, Teilung nach Fläche/Personen/gleichen Teilen, Kreisprüfung |
 | `modules/miete/server/migrations/002_gemeinschaftszaehler.sql` | Kostenart: `gemeinsam_schluessel` (flaeche, personen, einheiten) |
+| `modules/miete/server/migrations/003_hausstrom_personen.sql` | Haushaltsstrom (gemeinsam) auf *nach Personen* |
 
 ## Nächste Ausbaustufen (nicht umgesetzt)
 

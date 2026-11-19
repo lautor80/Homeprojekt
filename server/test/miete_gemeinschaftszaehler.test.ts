@@ -81,4 +81,24 @@ test('Zählerbaum: Unterzähler beliebig tief, Kreise werden erkannt', () => {
   assert.equal(zaehlerKreis(ZAEHLER, 704, null), false);
 });
 
+test('Ohne Zähler bzw. ohne Ablesungen: Teilung wie beim gemeinsamen Verbrauch – nach Personen je Wohnung (1 : 2)', () => {
+  const ohne = verteilen({ ...basis, kostenarten: [ka({ zaehler_id: null, gemeinsam_schluessel: 'personen' })] });
+  assert.deepEqual(ohne.positionen[0].einheiten, { 51: 633.33, 52: 1266.67 });
+  assert.match(ohne.hinweise[0], /kein Hauptzähler hinterlegt – nach Personen verteilt/);
+  assert.match(ohne.positionen[0].anteile.find((a) => a.einheit_id === 52)!.basis, /^2,0 Pers\. × 365 Tage/);
+  const fehlt = position({ gemeinsam_schluessel: 'personen' }, ZAEHLER.map((z) => (z.id === 704 ? { ...z, ablesungen: [] } : z)));
+  assert.deepEqual(fehlt.positionen[0].einheiten, { 51: 633.33, 52: 1266.67 });
+  assert.match(fehlt.hinweise[0], /Zählerstände fehlen \(Waschküche\).*nach Personen verteilt/);
+  // Personen ändern sich im Jahr: N&S erst ab Juli zu zweit → Personentage
+  const v = verteilen({ ...basis, vertraege: [{ ...VERTRAG, ende: '2026-06-30', personen: 1 }, { ...VERTRAG, id: 62, beginn: '2026-07-01', personen: 2 }],
+    kostenarten: [ka({ zaehler_id: null, gemeinsam_schluessel: 'personen' })] });
+  const pt = { mama: 365, ns: 181 + 184 * 2 };
+  assert.deepEqual(v.positionen[0].einheiten, { 51: r(1900 * pt.mama / (pt.mama + pt.ns)), 52: r(1900 * pt.ns / (pt.mama + pt.ns)) });
+});
+
+test('Ohne Zähler, Voreinstellung Fläche bzw. gleiche Teile: wie bisher', () => {
+  assert.deepEqual(verteilen({ ...basis, einheiten: [MAMA, { ...NS, flaeche: 25 }], kostenarten: [ka({ zaehler_id: null })] }).positionen[0].einheiten, { 51: 1425, 52: 475 });
+  assert.deepEqual(verteilen({ ...basis, einheiten: [MAMA, { ...NS, flaeche: 25 }], kostenarten: [ka({ zaehler_id: null, gemeinsam_schluessel: 'einheiten' })] }).positionen[0].einheiten, { 51: 950, 52: 950 });
+});
+
 function r(x: number) { return Math.round(x * 100) / 100; }
