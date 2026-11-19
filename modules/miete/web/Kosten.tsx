@@ -10,6 +10,7 @@ import { Section } from '@core/components/Section';
 import { useLoad } from '@core/components/useLoad';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
+import { jahrAufMonat, jahrAufZeitraum, monate, monatZeitraum, type JahreswertModus } from './jahreswert';
 import { AuswahlFeld, dat, DatumFeld, eur, heute, JahrAuswahl, M, summe, Tabelle, zahl, zahlText, ZahlFeld, type Einheit, type Kostenart } from './util';
 
 interface Kosten {
@@ -89,6 +90,22 @@ function KostenDialog({ k, arten, einheiten, paperless, onClose }: { k: Partial<
   const [suche, setSuche] = useState(false);
   const [datei, setDatei] = useState<File | null>(null);
   const art = arten.find((a) => a.id === f.kostenart_id);
+  // Hilfe: Betrag aus einem Jahreswert (wird nicht gespeichert)
+  const [jw, setJw] = useState('');
+  const [modus, setModus] = useState<JahreswertModus>('zeitraum');
+  type Form = typeof f;
+  /** Betrag (und beim Monat den Leistungszeitraum) aus dem Jahreswert neu rechnen */
+  const rechne = (nf: Form, j = jw, m = modus, zeitraumSetzen = false): Form => {
+    const wert = zahl(j);
+    if (!wert) return nf;
+    if (m === 'monat') {
+      const z = zeitraumSetzen || !nf.von || !nf.bis ? monatZeitraum(nf.von || nf.datum || heute()) : { von: nf.von, bis: nf.bis };
+      return { ...nf, ...z, betrag: zahlText(jahrAufMonat(wert)) };
+    }
+    const b = jahrAufZeitraum(wert, nf.von, nf.bis);
+    return b === null ? nf : { ...nf, betrag: zahlText(b) };
+  };
+  const n = monate(f.von, f.bis);
 
   async function sichern() {
     setBusy(true); setFehler(null);
@@ -106,7 +123,7 @@ function KostenDialog({ k, arten, einheiten, paperless, onClose }: { k: Partial<
   }
 
   /** Jahresbetrag: Leistungszeitraum auf das Kalenderjahr des Belegs setzen */
-  const ganzesJahr = () => { const j = (f.datum || heute()).slice(0, 4); setF({ ...f, von: `${j}-01-01`, bis: `${j}-12-31` }); };
+  const ganzesJahr = () => { const j = (f.datum || heute()).slice(0, 4); setF(rechne({ ...f, von: `${j}-01-01`, bis: `${j}-12-31` })); };
 
   return (
     <Dialog open headerText={k.id ? 'Kosten ändern' : 'Kosten erfassen'} style={{ width: 'min(44rem, 95vw)' }} onClose={() => onClose(false)}
@@ -121,8 +138,8 @@ function KostenDialog({ k, arten, einheiten, paperless, onClose }: { k: Partial<
         <ZahlFeld label="Betrag" required value={f.betrag} onChange={(v) => setF({ ...f, betrag: v })} />
         <DatumFeld label="Beleg-/Zahlungsdatum" required value={f.datum} onChange={(v) => setF({ ...f, datum: v })} />
         <TextField label="Lieferant / Behörde" value={f.lieferant} onChange={(v) => setF({ ...f, lieferant: v })} />
-        <DatumFeld label="Leistungszeitraum von" value={f.von} onChange={(v) => setF({ ...f, von: v })} />
-        <DatumFeld label="Leistungszeitraum bis" value={f.bis} onChange={(v) => setF({ ...f, bis: v })} />
+        <DatumFeld label="Leistungszeitraum von" value={f.von} onChange={(v) => setF(rechne({ ...f, von: v }))} />
+        <DatumFeld label="Leistungszeitraum bis" value={f.bis} onChange={(v) => setF(rechne({ ...f, bis: v }))} />
         {art?.schluessel === 'direkt' && <AuswahlFeld label="Wohnung" value={f.einheit_id} leer="(nach Wohnfläche)" onChange={(v) => setF({ ...f, einheit_id: v })}
           optionen={einheiten.map((e) => ({ key: e.id, text: `${e.kuerzel} – ${e.bezeichnung}` }))} />}
         <TextField label="Belegnummer" value={f.belegnr} onChange={(v) => setF({ ...f, belegnr: v })} />
@@ -130,6 +147,18 @@ function KostenDialog({ k, arten, einheiten, paperless, onClose }: { k: Partial<
       </FormGrid>
       <div style={{ marginTop: '0.5rem' }}><Button design="Transparent" icon="calendar" onClick={ganzesJahr}>Ganzes Kalenderjahr</Button>
         <span className="portal-muted" style={{ fontSize: '0.8rem' }}> Mit Leistungszeitraum wird der Betrag tageweise auf die Monate verteilt (z. B. Jahresbescheid Grundsteuer).</span></div>
+
+      <h4 style={{ margin: '1rem 0 0.5rem' }}>Betrag aus Jahreswert</h4>
+      <FormGrid>
+        <ZahlFeld label="Jahreswert" value={jw} onChange={(v) => { setJw(v); setF(rechne(f, v)); }} />
+        <AuswahlFeld<JahreswertModus> label="Umrechnen auf" value={modus} onChange={(v) => { const m = v ?? 'zeitraum'; setModus(m); setF(rechne(f, jw, m, true)); }}
+          optionen={[{ key: 'zeitraum', text: 'Leistungszeitraum (je Monat 1/12)' }, { key: 'monat', text: 'einen Monat (1/12, Zeitraum = Monat)' }]} />
+      </FormGrid>
+      {zahl(jw) > 0 && <p className="portal-muted" style={{ fontSize: '0.8rem', margin: '0.25rem 0 0' }}>
+        {modus === 'monat' ? `${zahlText(zahl(jw))} € ÷ 12 = ${zahlText(jahrAufMonat(zahl(jw)))} € für den Monat ${f.von ? dat(f.von).slice(3) : ''}.`
+          : n === null ? 'Leistungszeitraum von–bis angeben, dann wird der Betrag errechnet.'
+          : `${zahlText(zahl(jw))} € ÷ 12 × ${zahlText(Math.round(n * 100) / 100)} Monate = ${zahlText(jahrAufZeitraum(zahl(jw), f.von, f.bis))} € (angebrochene Monate tageweise).`}
+        {' '}Der Jahreswert selbst wird nicht gespeichert – gesichert wird der Betrag.</p>}
 
       <h4 style={{ margin: '1rem 0 0.5rem' }}>Beleg in Paperless</h4>
       {!paperless && <MessageStrip design="Information" hideCloseButton>Paperless ist für die Vermietung noch nicht eingerichtet.</MessageStrip>}
