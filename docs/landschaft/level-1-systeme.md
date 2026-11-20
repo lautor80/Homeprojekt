@@ -182,6 +182,7 @@ flowchart LR
 | core:auth | 7 |
 | core:backup | 15 |
 | core:funktionen | 2 |
+| core:jobs | 7 |
 | core:mail | 8 |
 | core:paperless | 5 |
 | core:push | 6 |

@@ -2,7 +2,6 @@ import type { FastifyBaseLogger, FastifyInstance, FastifyRequest } from 'fastify
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
-import { appAktiv } from '../../../../server/src/funktionsschalter.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
@@ -41,7 +40,7 @@ const optId = z.coerce.number().int().positive().nullish().transform((v) => v ??
 const ich = (req: FastifyRequest): Ich => ({ id: req.user!.apiKey ? null : req.user!.id, name: req.user!.displayName || req.user!.username });
 
 /** Mails senden (nicht kritisch: Fehler nur protokollieren) – {portal} wird durch die Portal-Adresse ersetzt; jede Mail ins Protokoll */
-export async function mailsSenden(mails: Mail[], wer: Ich, log: FastifyBaseLogger): Promise<number> {
+export async function mailsSenden(mails: Mail[], wer: Ich, log: Pick<FastifyBaseLogger, 'warn'>): Promise<number> {
   if (!mails.length) return 0;
   try {
     if (!(await mailVerfuegbar())) return 0;
@@ -69,8 +68,6 @@ export async function mailsSenden(mails: Mail[], wer: Ich, log: FastifyBaseLogge
     return n;
   } catch (e) { log.warn({ err: (e as Error).message }, 'Instandhaltung: E-Mail-Versand nicht möglich'); return 0; }
 }
-
-let laufTimer: ReturnType<typeof setInterval> | null = null;
 
 const formularSchema = z.object({
   anlass: z.enum(Object.keys(ANLASS) as [Anlass, ...Anlass[]]).default('ABSCHLUSS'),
@@ -108,18 +105,7 @@ async function dokumentImBereich(v: Verein, cfg: Einstellungen, id: number): Pro
 }
 
 export async function instandhaltungRoutes(app: FastifyInstance) {
-  // stündlich (nicht in Tests): Erinnerung bei Sicherheitsrisiko, Fotos nach Frist löschen
-  if (!laufTimer && !process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
-    laufTimer = setInterval(async () => {
-      if (!appAktiv('tco', 'Schadensmeldungen')) return; // Funktionsschalter (#232, F1): abgeschaltete Apps laufen nicht von selbst
-      try {
-        const r = await withChange({ userId: null, username: 'system (Instandhaltung)', action: 'IH_LAUF' }, (tx) => lauf(tx));
-        if (r.erinnert.length || r.fotosGeloescht) app.log.info({ erinnert: r.erinnert, fotos: r.fotosGeloescht }, 'Instandhaltung: Lauf');
-        await mailsSenden(r.mails, { id: null, name: 'system' }, app.log);
-      } catch (e) { app.log.warn(e, 'Instandhaltung: Lauf fehlgeschlagen'); }
-    }, 3_600_000);
-    laufTimer.unref();
-  }
+  // Erinnerung bei Sicherheitsrisiko und Fotos nach Frist löschen: stündlich als Job „tco.instandhaltung.lauf“ (../jobs.ts)
 
   const melden = { preHandler: requireAuth(P_IH.melden) };
   const lesen = { preHandler: requireAuth(P_IH.display) };

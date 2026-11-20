@@ -7,6 +7,7 @@
  *
  *   schnittstelle:<id>          jede Anbindung (VerbindungDef)
  *   lauf:<datei>                jeder automatische Lauf (setInterval)
+ *   job:<id>                    jeder Job (Administration → System → Jobs; server/src/jobs-kern.ts, modules/<modul>/server/jobs.ts)
  *   eingang:<modul> <route>     jede ändernde Route ohne Anmeldung (Formulare, Links aus E-Mails, Webhooks)
  *   meldung:<modul> <route>     jede Route mit dem Vorsatz „melden“ (Schaden, n8n mit API-Schlüssel)
  *   selbst:<modul> <route>      jede ändernde Route der Selbstbedienung (/meine/, /meinkonto)
@@ -44,11 +45,23 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'schnittstelle:transport.maileingang': { ohne: 'nur der Knopf „Posteingang abrufen“ im Euroflex-Posteingang: das Ergebnis sieht der Benutzer sofort; den regelmäßigen Abruf macht n8n selbst' },
 
   // ---------------------------------------------------------------- automatische Läufe
-  'lauf:server/src/backup-export.ts': { aufgabe: 'BACKUP_EXPORT' },
-  'lauf:modules/tco/server/platz/routes.ts': { aufgabe: ['ABO_FREIGABE', 'ABO_MAIL', 'ABO_BEWERBUNG'] },
-  'lauf:modules/tco/server/instandhaltung/routes.ts': { aufgabe: 'SCHADEN' },
-  'lauf:modules/tco/server/mitglieder/routes.ts': { hinweis: 'MG_SPERRE' },
-  'lauf:modules/tco/server/mahnung/routes.ts': { aufgabe: ['MAHN_VORSCHLAG', 'MAHN_KLAEREN', 'MAHN_UNERREICHBAR', 'MAHN_LAUF'] },
+  // Planer der Jobs: ein fehlgeschlagener Lauf nach Plan meldet eine Störung (Quelle JOB), bis der nächste Lauf gelingt
+  'lauf:server/src/jobs.ts': { hinweis: 'JOB' },
+
+  // ---------------------------------------------------------------- Jobs (Administration → System → Jobs)
+  'job:core.backup.nextcloud': { aufgabe: 'BACKUP_EXPORT' },
+  'job:core.jobs.aufraeumen': { ohne: 'technisches Aufräumen alter Laufprotokolle – scheitert es, meldet der Planer die Störung (Quelle JOB)' },
+  // TC Oberthal (modules/tco/server/jobs.ts) – bisher setInterval in den Routen
+  'job:tco.platz.abolauf': { aufgabe: ['ABO_FREIGABE', 'ABO_MAIL', 'ABO_BEWERBUNG'] },
+  'job:tco.instandhaltung.lauf': { aufgabe: 'SCHADEN' },
+  'job:tco.mitglieder.austritt': { hinweis: 'MG_SPERRE' },
+  'job:tco.benutzer.rollenabgleich': { ohne: 'Rollen nach Mitgliedschaft angleichen – Änderungen stehen je Benutzer im Laufprotokoll und in den Änderungsbelegen; Rollen vergibt sonst der Administrator' },
+  'job:tco.mahnung.automatik': { aufgabe: ['MAHN_VORSCHLAG', 'MAHN_KLAEREN', 'MAHN_UNERREICHBAR', 'MAHN_LAUF'] },
+  'job:tco.rundschreiben.wiederaufnahme': { ohne: 'setzt nur einen bereits ausgelösten Versand fort – Stand und Fehler je Empfänger stehen in der App „Rundschreiben“, ein angehaltener Versand mit Grund' },
+  // TC Oberthal: Stapelfunktionen, bisher nur per Knopf (Vorgabe nicht eingeplant)
+  'job:tco.jt.ferien': { ohne: 'Abruf überwacht (V_FERIEN, Schnittstelle „Schulferien“): Störungen stehen im Arbeitsvorrat; fehlende Ferien zeigt die Abrechnung Jugendtraining' },
+  'job:tco.halle.ep3import': { ohne: 'Abruf überwacht (V_EP3): Störungen stehen im Arbeitsvorrat; das Ergebnis je Datei steht im Laufprotokoll, offene Buchungen in der Hallenabrechnung' },
+  'job:tco.eingang.mailabruf': { ohne: 'Anstoß überwacht (V_MAILABRUF): Störungen stehen im Arbeitsvorrat; was n8n danach liefert, meldet der Dokumenteneingang selbst (Prüfliste)' },
 
   // ---------------------------------------------------------------- Eingänge ohne Anmeldung: Kern
   'eingang:core POST /api/auth/login': { ohne: VERLAUF },

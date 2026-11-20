@@ -8,7 +8,7 @@ import { sperrText } from '../emailsperre.js';
 import { gruppenLesen } from '../gruppen/logik.js';
 import { ALTER, AUSWAHL_LEER, auswahlAus, auswahlWerte, einsetzen, empfaengerLesen, PLATZHALTER, WEG_TEXT, type Auswahl } from './empfaenger.js';
 import {
-  ANWENDUNG, erneutVormerken, nichtErreichtLesen, versandAnhalten, versandAusloesen, versandFortsetzen, versandStarten, versandWiederaufnehmen,
+  ANWENDUNG, erneutVormerken, nichtErreichtLesen, versandAnhalten, versandAusloesen, versandFortsetzen, versandStarten,
   ZAEHLER_LEER, zaehlerLesen,
 } from './versand.js';
 import { rundschreibenAblegen, rundschreibenPdf } from './pdf.js';
@@ -83,10 +83,7 @@ export async function rundschreibenRoutes(app: FastifyInstance) {
   const senden = { preHandler: requireAuth(P_RS.execute) };
   const pruefen = { preHandler: eine(P_RS.edit, P_RS.execute) };
 
-  // Nach einem Neustart: Rundschreiben im Versand weiterführen (einmalig, kein regelmäßiger Lauf)
-  if (process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
-    setTimeout(() => { versandWiederaufnehmen(app.log).catch((e) => app.log.warn(e, 'Rundschreiben: Wiederaufnahme fehlgeschlagen')); }, 20_000).unref();
-  }
+  // Nach einem Neustart bzw. Absturz einer Instanz: Rundschreiben im Versand weiterführen – Job „tco.rundschreiben.wiederaufnahme“ (../jobs.ts)
 
   app.get('/rundschreiben', lesen, async () => {
     const liste = await DB`select id, betreff, status, hinweis, erstellt_am::text as erstellt_am, erstellt_von, geaendert_am::text as geaendert_am,

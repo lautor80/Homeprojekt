@@ -14,6 +14,7 @@ import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
 import { TCO_VERBINDUNGEN } from './verbindung.js';
 import { TCO_FUNKTIONEN } from './funktionen.js';
+import { TCO_JOBS } from './jobs.js';
 import { arbeitsvorrat } from './dashboard/arbeitsvorrat.js';
 import { clubhausRoutes, P_CH } from './clubhaus/routes.js';
 import { mitgliederRoutes, P_MG } from './mitglieder/routes.js';
@@ -324,6 +325,8 @@ const tco: ServerModule = {
   paperlessKontexte: TCO_KONTEXTE,
   verbindungen: TCO_VERBINDUNGEN,
   funktionen: TCO_FUNKTIONEN,
+  // Hintergrundläufe und Stapelfunktionen als Jobs (Administration → System → Jobs)
+  jobs: TCO_JOBS,
   // Arbeitsvorrat der Startseite (#232, V2) – dieselben Einträge wie in der Vereinsübersicht
   arbeitsvorrat: (req) => arbeitsvorrat(DB, req),
   mailWiederholen, mailFolge, mailPersonen,

@@ -12,6 +12,7 @@ import { SperrenPage } from '../pages/SperrenPage';
 import { TabellenPage } from '../pages/TabellenPage';
 import { MailProtokollPage } from '../pages/MailProtokollPage';
 import { FunktionenPage } from '../pages/FunktionenPage';
+import { JobsPage } from '../pages/JobsPage';
 
 export const coreNav: { home: NavEntry; admin: NavEntry } = {
   home: { text: 'Start', icon: 'home', path: '/' },
@@ -57,6 +58,7 @@ export const coreNav: { home: NavEntry; admin: NavEntry } = {
           { text: 'Sicherung', icon: 'shield', path: '/admin/sicherung', permission: 'core.backup:create' },
           { text: 'Sperren', icon: 'locked', path: '/admin/sperren', permission: 'core.sperren:admin' },
           { text: 'Tabellenansicht', icon: 'table-view', path: '/admin/tabellen', permission: 'core.tabellen:display' },
+          { text: 'Jobs', icon: 'time-entry-request', path: '/admin/jobs', permission: 'core.jobs:display' },
         ],
       },
     ],
@@ -83,4 +85,5 @@ export const coreRoutes: RouteDef[] = [
   { path: '/admin/sicherung', component: BackupPage, permission: 'core.backup:create' },
   { path: '/admin/statistik', component: StatistikPage, permission: 'core.statistik:display' },
   { path: '/admin/tabellen', component: TabellenPage, permission: 'core.tabellen:display' },
+  { path: '/admin/jobs', component: JobsPage, permission: 'core.jobs:display' },
 ];

@@ -538,7 +538,13 @@ test('Wiederaufnahme nach Neustart: Offene gehen weiter, die beim Abbruch bearbe
   const zeilen = await sql`select id, email from tco.rundschreiben_empfaenger where rundschreiben_id = ${id} and status = 'OFFEN' order by id`;
   await sql`update tco.rundschreiben_empfaenger set status = 'GESENDET', gesendet_am = now(), versuche = 1 where id = ${zeilen[0].id}`;
   await sql`update tco.rundschreiben_empfaenger set status = 'SENDET', versuche = 1 where id = ${zeilen[1].id}`;
-  assert.deepEqual(await versandWiederaufnehmen(), [id]);
+  // Job „tco.rundschreiben.wiederaufnahme“: Ein eben ausgelöster Versand kann einer anderen Instanz gehören – er bleibt unberührt
+  assert.deepEqual(await versandWiederaufnehmen(undefined, { ruheMinuten: 10 }), []);
+  assert.equal((await sql`select status from tco.rundschreiben_empfaenger where id = ${zeilen[1].id}`)[0].status, 'SENDET');
+  // seit über 10 Minuten keine Bewegung (ausgelöst, begonnen): der Job nimmt den Versand wieder auf
+  await sql`update tco.rundschreiben set gesendet_am = now() - interval '1 hour', geaendert_am = now() - interval '1 hour' where id = ${id}`;
+  await sql`update tco.rundschreiben_empfaenger set begonnen_am = now() - interval '1 hour' where rundschreiben_id = ${id} and begonnen_am is not null`;
+  assert.deepEqual(await versandWiederaufnehmen(undefined, { ruheMinuten: 10 }), [id]);
   await versandWarten(id);
   assert.equal(await status(id), 'FERTIG');
   assert.equal(mails.length, 4, 'nur die vier offenen');

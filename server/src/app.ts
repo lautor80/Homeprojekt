@@ -28,6 +28,8 @@ import { variantenRoutes } from './routes/varianten.js';
 import { funktionenRoutes, registerFunktionen } from './routes/funktionen.js';
 import { arbeitsvorratRoutes } from './routes/arbeitsvorrat.js';
 import { pushRoutes } from './routes/push.js';
+import { jobRoutes } from './routes/jobs.js';
+import { jobsAnlegen } from './jobs.js';
 import { laeuft, stoerungMelden } from './lib/hinweise.js';
 import { paperlessMelder } from './lib/paperless.js';
 import { schalterLaden } from './lib/funktionen.js';
@@ -85,6 +87,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await app.register(funktionenRoutes);
   await app.register(arbeitsvorratRoutes);
   await app.register(pushRoutes);
+  await app.register(jobRoutes);
   // Arbeitsvorrat (#232, V1): Störungen von Paperless melden – je Zugang (Rechnername) ein Hinweis, der sich nach dem nächsten Erfolg schließt
   paperlessMelder({
     stoerung: (wo, text) => stoerungMelden({
@@ -122,6 +125,8 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   // Funktionsschalter (#232, F1) schon beim Start laden – automatische Läufe fragen den Stand ab, bevor die erste Anfrage kommt
   await schalterLaden().catch((e) => app.log.warn(e, 'Funktionsschalter beim Start nicht ladbar'));
+  // Jobs (Administration → System → Jobs): Zeilen mit Standardplan anlegen – den Planer startet server/src/index.ts
+  await jobsAnlegen().catch((e) => app.log.warn(e, 'Jobs beim Start nicht angelegt'));
 
   return app;
 }

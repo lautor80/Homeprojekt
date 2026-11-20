@@ -43,6 +43,7 @@ const coreAuditObjects: AuditObjectDef[] = [
   { type: 'VERBINDUNG', text: 'Anbindung', permission: 'core.settings:edit' },
   { type: 'FUNKTION', text: 'Funktionsschalter', permission: 'core.funktionen:edit' },
   { type: 'BACKUP_EXPORT', text: 'Nextcloud-Export der Sicherung', permission: 'core.backup:create' },
+  { type: 'JOB', text: 'Job (Plan)', permission: 'core.jobs:display' },
 ];
 
 export function auditObjects(): AuditObjectDef[] {

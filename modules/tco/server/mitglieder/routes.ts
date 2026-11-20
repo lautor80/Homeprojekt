@@ -27,12 +27,13 @@ import type { Verein } from '../verein.js';
 import { kontextAblegen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
 import {
-  ausgetreteneSperren, ausgetreteneSperrenMelden, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
+  ausgetreteneSperren, bankAendern, benutzerKandidaten, eigeneAdrnr, kontaktSichern, meineLesen, mitgliederBenutzerAnlegen, P_SELBST,
 } from './selbst.js';
 import { ep3Anlegen } from '../platz/registrierung.js';
 import { mappingUebernehmen, mappingVorschlaege, zuordnungLesen, zuordnungSetzen, zuordnungSuchen } from './zuordnung.js';
 import { withChange } from '../../../../server/src/db.js';
-import { funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
+import { funktionAktiv } from '../../../../server/src/funktionsschalter.js';
+import { F_ROLLENABGLEICH } from '../funktionen.js';
 import { unterlageVersenden, vorgang, vorgangKontext, VORGANG_TEXT, type Vorgang } from './vorgaenge.js';
 import { selbstKontext, selbstVorgang } from './selbstvorgang.js';
 import { familieLoesen, familieVerknuepfen } from './familie.js';
@@ -126,26 +127,11 @@ async function maskierteBankdatenAufloesen(n: z.infer<typeof neuSchema>): Promis
   if (istMaskiert(n.bic)) n.bic = quelle.bic;
 }
 
-/** regelmäßiger Lauf (alle 6 Stunden): Benutzer ausgetretener Mitglieder sperren, danach Rollen abgleichen */
-let austrittLauf: ReturnType<typeof setInterval> | null = null;
-async function austrittSperrenLauf(log: FastifyInstance['log']) {
-  // Funktionsschalter (#232, F1): Der Lauf ruht nur, wenn das ganze Vereinsmodul abgeschaltet ist – ist allein die App
-  // „Mitglieder“ aus, werden Benutzer ausgetretener Mitglieder weiterhin gesperrt (Schutzfunktion).
-  if (!funktionAktiv(modulId('tco'))) return;
-  try {
-    const r = await withChange({ userId: null, username: 'system', action: 'AUSTRITT_SPERRE' }, (tx) => ausgetreteneSperrenMelden(tx));
-    if (r.gesperrt.length || r.rolleEntzogen.length) log.info(r, 'Benutzer ausgetretener Mitglieder gesperrt');
-  } catch (e) { log.warn(e, 'Sperre ausgetretener Mitglieder fehlgeschlagen'); }
-  // Rollenabgleich: Mitglieder „Mitglied“ + „Hallennutzer“, Nichtmitglieder nur „Hallennutzer“ (abschaltbar)
-  if (!funktionAktiv(ROLLENABGLEICH)) return;
-  try {
-    const l = await withChange({ userId: null, username: 'system', action: 'ROLLENABGLEICH' }, (tx) => rollenAbgleich(tx, { ausfuehren: true }));
-    if (l.length) log.info({ benutzer: l.map((x) => x.username) }, rollenText(l, true));
-  } catch (e) { log.warn(e, 'Rollenabgleich fehlgeschlagen'); }
-}
-
-/** Funktionsschalter des Rollenabgleichs (funktionen.ts) */
-const ROLLENABGLEICH = 'tco.benutzer.rollenabgleich';
+/**
+ * Funktionsschalter des Rollenabgleichs. Der regelmäßige Lauf (alle 6 Stunden) ist – wie das Sperren der Benutzer
+ * ausgetretener Mitglieder – ein Job (../jobs.ts: „tco.mitglieder.austritt“, „tco.benutzer.rollenabgleich“).
+ */
+const ROLLENABGLEICH = F_ROLLENABGLEICH;
 
 export async function mitgliederRoutes(app: FastifyInstance) {
   // Rollenabgleich (Benutzerverwaltung → „Rollen prüfen“): Vorschau und Ausführen
@@ -158,11 +144,6 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const l = await change(req, (tx) => rollenAbgleich(tx, { ausfuehren: true }), { action: 'ROLLENABGLEICH' });
     return { aenderungen: l, text: rollenText(l, true) };
   });
-  if (!austrittLauf && process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
-    setTimeout(() => austrittSperrenLauf(app.log), 15_000).unref();
-    austrittLauf = setInterval(() => austrittSperrenLauf(app.log), 6 * 3600_000);
-    austrittLauf.unref();
-  }
   const lesen = { preHandler: requireAuth(P_MG.display) };
   const schreiben = { preHandler: requireAuth(P_MG.edit) };
   const selbst = { preHandler: requireAuth(P_SELBST) };

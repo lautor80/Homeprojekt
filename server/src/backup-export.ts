@@ -1,5 +1,4 @@
 import { nextcloudZugang } from './lib/nextcloud.js';
-import type { FastifyBaseLogger } from 'fastify';
 import { sql, type Tx } from './db.js';
 import { BusinessError } from './errors.js';
 import { bereichsUebersicht, dateiAsync, dateiname, fehlendeTabellen, schaetzung, sichern, sollTabellen, speichern, type Dateiformat } from './backup.js';
@@ -10,7 +9,8 @@ import { WebDav, WebDavFehler } from './lib/webdav.js';
 /**
  * Täglicher Export einer vollständigen Portal-Sicherung in einen festen Nextcloud-Ordner (WebDAV).
  * Läuft einmal am Tag ab der eingestellten Uhrzeit (Zeitzone des Servers, Europe/Berlin), löscht
- * danach automatische Sicherungen im Zielordner, die älter als die Aufbewahrungsdauer sind.
+ * danach automatische Sicherungen im Zielordner, die älter als die Aufbewahrungsdauer sind. Die minütliche Prüfung ist der
+ * Job „core.backup.nextcloud“ (Administration → System → Jobs, server/src/jobs-kern.ts) – dort auch „Jetzt ausführen“.
  * Formate: eine Datei (.portal bzw. ZIP mit XML) oder – ohne ZIP – dateiweise: je Lauf ein Ordner mit einzelnen
  * XML-Dateien (siehe backup-dateien.ts). In jedem Fall wird nach dem Upload geprüft, ob alles vollständig angekommen ist.
  * Ergebnis und Fehler stehen in core.backup_export (Anzeige in Administration → System → Sicherung und im Arbeitsvorrat).
@@ -230,37 +230,27 @@ export function sofortNachAbbruch(c: ExportStatus, jetzt = Date.now()): boolean 
   return !c.letzter_erfolg || jetzt - new Date(c.letzter_erfolg).getTime() > 24 * 3600_000;
 }
 
-let planer: ReturnType<typeof setInterval> | null = null;
-
-/** jede Minute prüfen, ob der tägliche Export fällig ist (nur im Server-Prozess, nicht in Tests) */
-export function planerStarten(log: FastifyBaseLogger) {
-  if (planer) return;
-  const pruefen = async () => {
-    try {
-      let c = await cfgLesen();
-      let sofort = false;
-      if (c.aktiv && abgebrochen(c, !!laufend())) {
-        await statusSetzen({ letzte_meldung: 'Abgebrochen: Der Server wurde während des Exports neu gestartet (z. B. Update) – der Export wird wiederholt.', letzter_fehler: true });
-        log.warn('Nextcloud-Export: abgebrochenen Lauf erkannt');
-        c = await cfgLesen();
-        sofort = sofortNachAbbruch(c) && !cfgPruefen(c).length;
-      }
-      if (!(sofort || faellig(c)) || laufend()) return;
-      // mehrere Instanzen: den Lauf atomar beanspruchen – nur wer den gelesenen Stand noch vorfindet, exportiert
-      const [frei] = await sql`update core.backup_export set letzter_lauf = now()
-                                where id = 1 and date_trunc('milliseconds', letzter_lauf) is not distinct from ${c.letzter_lauf}::timestamptz
-                                returning id`;
-      if (!frei) return;
-      const wiederholung = !!c.letzter_lauf && lokal(new Date(c.letzter_lauf)).datum === lokal(new Date()).datum;
-      log.info(sofort ? 'Nextcloud-Export: neuer Versuch nach Abbruch' : wiederholung ? 'Täglicher Nextcloud-Export: neuer Versuch nach Fehlschlag' : 'Täglicher Nextcloud-Export startet');
-      const j = exportStarten(c, 'system (täglicher Nextcloud-Export)');
-      while (!(j.phase === 'fertig' || j.phase === 'fehler')) await new Promise((r) => setTimeout(r, 2000));
-      if (j.fehler) log.warn({ fehler: j.fehler }, 'Nextcloud-Export fehlgeschlagen'); else log.info(j.ergebnis, 'Nextcloud-Export fertig');
-    } catch (e) {
-      // z. B. läuft gerade eine manuelle Sicherung – beim nächsten Durchlauf erneut versuchen
-      if (!(e instanceof BusinessError)) log.warn(e, 'Prüfung Nextcloud-Export fehlgeschlagen');
-    }
-  };
-  planer = setInterval(pruefen, 60_000);
-  planer.unref();
+/**
+ * Prüfung nach Plan (Job „core.backup.nextcloud“, jede Minute – server/src/jobs-kern.ts): abgebrochenen Lauf erkennen,
+ * Fälligkeit prüfen und den Lauf atomar beanspruchen (mehrere Instanzen: nur wer den gelesenen Stand noch vorfindet,
+ * exportiert). Rückgabe: die Einrichtung, mit der jetzt exportiert wird – null, wenn nichts zu tun ist.
+ */
+export async function exportNachPlan(log: (text: string, stufe?: 'info' | 'warnung') => void): Promise<(ExportCfg & ExportStatus) | null> {
+  let c = await cfgLesen();
+  let sofort = false;
+  if (c.aktiv && abgebrochen(c, !!laufend())) {
+    await statusSetzen({ letzte_meldung: 'Abgebrochen: Der Server wurde während des Exports neu gestartet (z. B. Update) – der Export wird wiederholt.', letzter_fehler: true });
+    log('Abgebrochenen Lauf erkannt (Server während des Exports neu gestartet).', 'warnung');
+    c = await cfgLesen();
+    sofort = sofortNachAbbruch(c) && !cfgPruefen(c).length;
+  }
+  // läuft gerade eine Sicherung (von Hand oder Export), beim nächsten Durchlauf erneut prüfen
+  if (!(sofort || faellig(c)) || laufend()) return null;
+  const [frei] = await sql`update core.backup_export set letzter_lauf = now()
+                            where id = 1 and date_trunc('milliseconds', letzter_lauf) is not distinct from ${c.letzter_lauf}::timestamptz
+                            returning id`;
+  if (!frei) return null;
+  const wiederholung = !!c.letzter_lauf && lokal(new Date(c.letzter_lauf)).datum === lokal(new Date()).datum;
+  log(sofort ? 'Neuer Versuch nach Abbruch.' : wiederholung ? 'Täglicher Export: neuer Versuch nach Fehlschlag.' : 'Täglicher Export ist fällig.');
+  return c;
 }
