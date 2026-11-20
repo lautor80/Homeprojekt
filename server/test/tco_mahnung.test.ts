@@ -18,7 +18,7 @@ const { migrate } = await import('../src/migrate.js');
 const { activeModules } = await import('../src/modules.js');
 const { buildApp } = await import('../src/app.js');
 const { heute, addTage } = await import('../../modules/tco/server/format.js');
-const { automatikPruefen, cfgLesen } = await import('../../modules/tco/server/mahnung/lauf.js');
+const { automatikPruefen, automatikStarten, cfgLesen } = await import('../../modules/tco/server/mahnung/lauf.js');
 const { rechnungenLesen } = await import('../../modules/tco/server/halle/daten.js');
 const { verbindungenCacheLeeren } = await import('../src/lib/verbindungen.js');
 
@@ -128,6 +128,10 @@ test('Nach der Installation: Automatik aus, Modus „nur Vorschlag“ – es geh
   assert.equal(await automatikPruefen(log), null);
   await sql`update tco.mahn_cfg set wochentage = '1,2,3,4,5,6,7', uhrzeit = '00:00', modus = 'SENDEN'`;
   assert.equal(await automatikPruefen(log), null, 'Zeitplan passt, aber Automatik aus');
+  // Job „Jetzt ausführen“ (tco.mahnung.automatik): bei ausgeschalteter Automatik nie ein Lauf und nie eine E-Mail
+  const hand = await automatikStarten({ wer: { id: null, name: 'Admin' }, manuell: true });
+  assert.equal(hand.lauf, null);
+  assert.match(hand.grund ?? '', /Einstellungen des Mahnwesens aus/);
   assert.deepEqual([await laeufe(), mails.length], [0, 0]);
   await sql`update tco.mahn_cfg set modus = 'VORSCHLAG'`;
   const u = await uebersicht();
@@ -416,6 +420,10 @@ test('Vorschlag bearbeiten und verwerfen; eigener E-Mail-Text; technischer Fehle
   // Automatik im Modus „automatisch senden“ – am nächsten Tag (heute lief sie schon)
   assert.equal((await einstellungen({ modus: 'SENDEN' })).status, 200);
   assert.equal(await automatikPruefen(log), null, 'heute schon gelaufen');
+  // auch „Jetzt ausführen“ im Job hält sich an „höchstens einmal je Tag“
+  const hand = await automatikStarten({ wer: { id: null, name: 'Admin' }, manuell: true });
+  assert.equal(hand.lauf, null);
+  assert.match(hand.grund ?? '', /heute schon gelaufen/);
   await sql`update tco.mahn_cfg set letzter_lauf = now() - interval '1 day'`;
   const a = await automatikPruefen(log);
   assert.deepEqual([a?.status, a?.modus, a?.gesendet], ['FERTIG', 'SENDEN', 1]);

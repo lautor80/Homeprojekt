@@ -76,9 +76,10 @@ export async function regelnAnwenden(tx: Db, o: { simulation: boolean; stichtag?
   if (!regeln.length) return [];
   const stichtag = o.stichtag ?? (await tx`select current_date::text as d`)[0].d as string;
   const gruppen = new Map((await gruppenLesen(tx)).map((g) => [g.id, g]));
-  // aktive Mitglieder wie in der Mitgliederliste: mit Eintritt, nicht ausgetreten
+  // aktive Mitglieder: mit Eintritt und ohne Kündigung – wer gekündigt hat (Austritt gesetzt, auch künftig), gehört
+  // keiner Gruppe mehr an (gruppen/logik.ts, gekuendigteAustragen) und wird auch vom Regelwerk nicht aufgenommen
   const aktive = await tx`select adrnr, vorname, nachname, geburtsdatum::text as geburtsdatum, geschlecht from tco.mitglieder
-                           where eintritt is not null and (austritt is null or austritt >= ${stichtag}::date)`;
+                           where eintritt is not null and austritt is null`;
   const namen = new Map((await tx`select adrnr, vorname, nachname from tco.mitglieder`).map((m) => [m.adrnr as string, condense(`${m.vorname ?? ''} ${m.nachname ?? ''}`) || (m.adrnr as string)]));
   // Mitgliedsstamm: 1 = männlich, 2 = weiblich
   const geschlecht = (m: { geschlecht?: unknown }): RegelGeschlecht => { const g = String(m.geschlecht ?? '').trim(); return g === '1' ? 'M' : g === '2' ? 'W' : ''; };

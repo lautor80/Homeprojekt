@@ -2,7 +2,6 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth, sha256 } from '../../../../server/src/auth.js';
 import { withChange } from '../../../../server/src/db.js';
-import { appAktiv } from '../../../../server/src/funktionsschalter.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import { schnellwegPruefen } from '../mitglieder/einladung.js';
 import { BusinessError } from '../../../../server/src/errors.js';
@@ -549,7 +548,7 @@ export async function platzRoutes(app: FastifyInstance) {
     const e = saison.parse(req.body);
     return { text: await change(req, (tx) => saisonAendern(tx, id, e), { action: 'ABO_SAISON', reason: e.name }) };
   });
-  /** fällige Schritte sofort ausführen (läuft sonst stündlich von selbst) */
+  /** fällige Schritte sofort ausführen (läuft sonst stündlich als Job „tco.platz.abolauf“, ../jobs.ts) */
   app.post('/platz/admin/abosaison/lauf', admin, async (req) => {
     const o = z.object({ mail: z.boolean().default(false) }).parse(req.body ?? {});
     const r = await change(req, (tx) => aboLauf(tx, undefined, { mail: o.mail, manuell: true }), { action: 'ABO_LAUF' });
@@ -567,13 +566,7 @@ export async function platzRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: z.coerce.number().int().positive().nullish() }).parse(req.body ?? {});
     return { text: await change(req, (tx) => mailFehlerErledigen(tx, id ?? null), { action: 'ABO_MAIL_ERLEDIGT', reason: id ? String(id) : 'alle' }) };
   });
-  // stündlich von selbst (nicht in Tests): Erinnerung, Verfall, Angebote
-  if (!process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test') {
-    setInterval(() => {
-      if (!appAktiv('tco', 'Platz buchen')) return; // Funktionsschalter (#232, F1): abgeschaltete Apps laufen nicht von selbst
-      withChange({ userId: null, username: 'system (Abo-Bewerbung)', action: 'ABO_LAUF' }, (tx) => aboLauf(tx)).catch((e) => app.log.warn(e, 'Abo-Lauf fehlgeschlagen'));
-    }, 3_600_000).unref();
-  }
+  // Erinnerung, Verfall, Angebote laufen stündlich als Job „tco.platz.abolauf“ (../jobs.ts, Administration → System → Jobs)
 
   /** Preis und Regeln vorab prüfen (Buchungsdialog) */
   app.post('/platz/pruefen', buchen, async (req) => {

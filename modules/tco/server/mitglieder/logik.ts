@@ -2,7 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { bicGueltig, ibanGueltig, normalisieren } from '../../../../server/src/lib/sepa.js';
 import type { Db } from '../verein.js';
 import { condense, dat, heute } from '../format.js';
-import { mitgliedGruppen } from '../gruppen/logik.js';
+import { austragenText, gekuendigteAustragen, mitgliedGruppen } from '../gruppen/logik.js';
 import { familienAdrnrs, verknuepfteAdrnrs } from './familie.js';
 import { emailUnzustellbar } from '../emailsperre.js';
 
@@ -372,6 +372,8 @@ export async function sepaEndeSetzen(tx: Db, adrnr: string, austrittAlt: string 
  *  - Austritt verschoben oder entfernt: Verträge, die am bisherigen Austritt endeten, enden am neuen bzw. laufen wieder
  *    unbefristet – wie das SEPA-Mandat.
  * Verträge anderer Personen, die über dieses Mitglied zahlen, bleiben unberührt (eigene Mitgliedschaft).
+ * Mit dem Austritt (der erfassten Kündigung) verliert das Mitglied sofort alle Gruppenzuordnungen; solange der Austritt
+ * gesetzt ist, lässt es sich keiner Gruppe mehr zuordnen. Wird er entfernt (Kündigung zurückgenommen), wieder.
  */
 export async function austrittSichern(tx: Db, adrnr: string, austritt: string | null): Promise<string> {
   const m = await mitgliedLesen(tx, adrnr);
@@ -381,7 +383,10 @@ export async function austrittSichern(tx: Db, adrnr: string, austritt: string | 
   await tx`update tco.mitglieder set austritt = ${austritt} where adrnr = ${adrnr}`;
   const vt = await vertraegeAmAustritt(tx, adrnr, alt, austritt);
   const ende = await sepaEndeSetzen(tx, adrnr, alt);
-  return (austritt ? `Austritt ${dat(austritt)} gesichert – SEPA-Mandat gültig bis ${dat(ende)}.` : 'Austritt entfernt – SEPA-Mandat wieder aktiv und unbefristet.') + vt;
+  // Kündigung erfasst: ab sofort keine Gruppenzuordnungen mehr (gruppen/logik.ts) – auch wenn der Austritt erst künftig erreicht ist
+  const gruppen = austritt ? ((await gekuendigteAustragen(tx, adrnr)).get(adrnr) ?? 0) : 0;
+  return (austritt ? `Austritt ${dat(austritt)} gesichert – SEPA-Mandat gültig bis ${dat(ende)}.` : 'Austritt entfernt – SEPA-Mandat wieder aktiv und unbefristet.') + vt
+    + (gruppen ? ` ${austragenText(gruppen)}` : '');
 }
 
 /** Laufzeitende der eigenen Verträge an den Austritt anpassen (siehe austrittSichern); liefert den Zusatz für die Meldung */

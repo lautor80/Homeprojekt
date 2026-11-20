@@ -4,7 +4,8 @@
  *  1. Das Mitglied reicht die Kündigung in „Meine Mitgliedschaft“ ein (einreichen): geprüft wie bisher, aber an Verträgen
  *     und Mitgliedschaft ändert sich noch nichts. Status OFFEN, Eintrag im Arbeitsvorrat des Vorstands.
  *  2. Der Vorstand gibt frei (freigeben): Erst jetzt wird die Kündigung ausgeführt – mit dem Tag des Eingangs als
- *     Kündigungsdatum, damit die Frist nicht von der Bearbeitungszeit abhängt. Status FREIGEGEBEN.
+ *     Kündigungsdatum, damit die Frist nicht von der Bearbeitungszeit abhängt. Status FREIGEGEBEN. Bei Kündigung der
+ *     Mitgliedschaft verliert das Mitglied dabei alle Gruppenzuordnungen (austrittSichern).
  *  3. Die Kündigungsbestätigung wird erzeugt und zur Prüfung angezeigt (pdf) und danach an das Mitglied gesendet und in
  *     der Mitgliederakte abgelegt (senden). Status ABGESCHLOSSEN.
  *  Oder der Vorstand lehnt ab (ablehnen): nichts ändert sich, das Mitglied erfährt den Grund per E-Mail.
@@ -16,6 +17,7 @@ import { kontaktLesen, mailSenden } from '../kommunikation.js';
 import { tcoHinweis } from '../hinweise.js';
 import { fuellen, mailtextVorlage } from '../mailtexte.js';
 import { leer, notizAnlegen } from './logik.js';
+import { austragenText, mitgliedGruppen } from '../gruppen/logik.js';
 import { druckdatenLesen, unterlagePdf } from './pdf.js';
 import { eigeneAdrnr, kuendigen, kuendigenMehrere, kuendigungBestaetigen, type Kuendigung } from './selbst.js';
 
@@ -104,14 +106,19 @@ export async function kuendigungLesen(db: Db, id: number) {
 export async function freigeben(tx: Db, id: number, v: Verein, wer: string): Promise<{ text: string }> {
   const k = await zeile(tx, id, true);
   if (k.status !== 'OFFEN') throw new BusinessError(k.status === 'ABGELEHNT' ? 'Diese Kündigung wurde abgelehnt.' : 'Diese Kündigung ist bereits freigegeben.', 409);
+  // Gruppenzuordnungen: Mit der Freigabe steht die Kündigung der Mitgliedschaft fest (Austritt gesetzt) – austrittSichern
+  // trägt das Mitglied dabei aus allen Gruppen aus. Das Einreichen allein ändert nichts (die Kündigung kann abgelehnt werden).
+  const vorher = (await mitgliedGruppen(tx, k.adrnr)).length;
   const r = await ausfuehren(tx, { adrnr: k.adrnr, vertraege: k.vertraege, mehrfach: k.mehrfach, grund: k.grund, stichtag: k.eingang }, v, `${k.benutzer}, freigegeben von ${wer}`);
+  const ausgetragen = vorher - (await mitgliedGruppen(tx, k.adrnr)).length;
+  const gruppen = ausgetragen > 0 ? ` ${austragenText(ausgetragen)}` : '';
   await tx`update tco.kuendigungen set status = 'FREIGEGEBEN', text = ${r.text}, betroffen = ${r.betroffen}, ende = ${r.ende}, bearbeitet_am = now(), bearbeitet_von = ${wer} where id = ${id}`;
   // der Kassenwart erfährt es im Arbeitsvorrat (Hinweis, bis „gesehen“)
   await tcoHinweis(tx, {
     quelle: 'MG_KUENDIGUNG', objekt: `${k.adrnr}:${id}`, bereich: 'Kassenwart', recht: 'tco.mitglieder:display', art: 'Kündigung freigegeben', state: 'Critical', icon: 'employee',
-    titel: `${k.benutzer} (Mitglied ${k.adrnr})`, text: `${r.text}${k.grund ? ` Grund: ${k.grund}` : ''} – freigegeben von ${wer}`, pfad: `/tco/mitglieder?adrnr=${k.adrnr}`,
+    titel: `${k.benutzer} (Mitglied ${k.adrnr})`, text: `${r.text}${gruppen}${k.grund ? ` Grund: ${k.grund}` : ''} – freigegeben von ${wer}`, pfad: `/tco/mitglieder?adrnr=${k.adrnr}`,
   });
-  return { text: r.text };
+  return { text: `${r.text}${gruppen}` };
 }
 
 /** Schritt 3a: Kündigungsbestätigung zur Prüfung – erzeugt aus dem Stand nach der Freigabe, noch nicht abgelegt oder gesendet */

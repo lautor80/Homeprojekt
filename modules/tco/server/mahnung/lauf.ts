@@ -444,22 +444,47 @@ async function senden(laufId: number, wer: Wer, heute: string): Promise<void> {
 // Automatik
 // ---------------------------------------------------------------------------
 
+/** Ergebnis der Automatik: der gestartete Lauf oder der Grund, warum keiner stattfand */
+export type AutomatikErgebnis = { lauf: LaufErgebnis; grund: null } | { lauf: null; grund: string };
+
 /**
- * Jede Minute aus dem Hintergrund gerufen: startet den Lauf, wenn die Automatik eingeschaltet und fällig ist.
- * Mehrere Instanzen: Der Tageslauf wird atomar beansprucht – nur eine startet.
+ * Automatischer Mahnlauf – als Job „tco.mahnung.automatik“ (Administration → System → Jobs) jede Minute nach Plan gerufen:
+ * startet den Lauf, wenn die Automatik eingeschaltet und laut den Einstellungen des Mahnwesens fällig ist.
+ *
+ * `manuell` („Jetzt ausführen“): derselbe Lauf, aber ohne Prüfung von Wochentag und Uhrzeit. Ist die Automatik in den
+ * Einstellungen (oder per Funktionsschalter) aus, wird auch von Hand nichts erzeugt und keine E-Mail gesendet. In beiden
+ * Fällen höchstens ein automatischer Lauf je Tag: Der Tageslauf wird atomar beansprucht – bei mehreren Instanzen startet
+ * nur eine. Fehler des Laufs werden geworfen (der Lauf selbst steht mit Status FEHLER im Mahnwesen).
  */
-export async function automatikPruefen(log: Pick<FastifyBaseLogger, 'info' | 'warn'>, jetzt = new Date()): Promise<LaufErgebnis | null> {
-  // Funktionsschalter: abgeschaltete Apps und Funktionen laufen nicht von selbst
-  if (!funktionAktiv(modulId('tco')) || !appAktiv('tco', 'Mahnwesen') || !funktionAktiv(F_MAHN_AUTOMATIK)) return null;
+export async function automatikStarten(o: { wer: Wer; manuell: boolean; jetzt?: Date }): Promise<AutomatikErgebnis> {
+  const jetzt = o.jetzt ?? new Date();
+  // Funktionsschalter: abgeschaltete Apps und Funktionen laufen nicht – auch nicht von Hand über die Jobs
+  if (!funktionAktiv(modulId('tco')) || !appAktiv('tco', 'Mahnwesen')) {
+    return { lauf: null, grund: 'Die App „Mahnwesen“ ist abgeschaltet (Administration → Einstellungen → Funktionen) – kein Mahnlauf.' };
+  }
+  if (!funktionAktiv(F_MAHN_AUTOMATIK)) {
+    return { lauf: null, grund: 'Die Funktion „Automatischer Mahnlauf“ ist abgeschaltet (Administration → Einstellungen → Funktionen) – kein Mahnlauf, keine E-Mail.' };
+  }
   const cfg = await cfgLesen(DB);
-  if (!automatikFaellig(cfg, jetzt)) return null;
+  if (!cfg.aktiv) {
+    return { lauf: null, grund: 'Die Automatik ist in den Einstellungen des Mahnwesens aus – es wurde nichts erzeugt und keine E-Mail gesendet. Lauf von Hand: App „Mahnwesen“.' };
+  }
   const tag = lokal(jetzt).datum;
+  const heuteGelaufen = !!cfg.letzter_lauf && lokal(new Date(cfg.letzter_lauf)).datum === tag;
+  if (o.manuell ? heuteGelaufen : !automatikFaellig(cfg, jetzt)) {
+    return { lauf: null, grund: heuteGelaufen ? 'Die Automatik ist heute schon gelaufen (höchstens einmal je Tag) – weitere Läufe von Hand in der App „Mahnwesen“.' : 'Noch nicht fällig (Wochentage und Uhrzeit in den Einstellungen des Mahnwesens).' };
+  }
   const [frei] = await DB`update tco.mahn_cfg set letzter_lauf = ${jetzt}
                            where id = 1 and aktiv and (letzter_lauf is null or (letzter_lauf at time zone 'Europe/Berlin')::date <> ${tag}::date) returning id`;
-  if (!frei) return null;
+  if (!frei) return { lauf: null, grund: 'Die Automatik ist heute schon gelaufen (höchstens einmal je Tag).' };
+  return { lauf: await laufAusfuehren({ art: 'AUTO', modus: cfg.modus, wer: o.wer, heute: tag }), grund: null };
+}
+
+/** Prüfung nach Plan mit dem Systembenutzer „system (Mahnlauf)“ – Fehler nur ins Log, Ergebnis null ohne Lauf */
+export async function automatikPruefen(log: Pick<FastifyBaseLogger, 'info' | 'warn'>, jetzt = new Date()): Promise<LaufErgebnis | null> {
   try {
-    const r = await laufAusfuehren({ art: 'AUTO', modus: cfg.modus, wer: SYSTEM, heute: tag });
-    log.info({ lauf: r.id, gesendet: r.gesendet, posten: r.posten }, `Mahnlauf: ${r.text}`);
+    const { lauf: r } = await automatikStarten({ wer: SYSTEM, manuell: false, jetzt });
+    if (r) log.info({ lauf: r.id, gesendet: r.gesendet, posten: r.posten }, `Mahnlauf: ${r.text}`);
     return r;
   } catch (e) {
     log.warn({ err: (e as Error).message }, 'Mahnlauf fehlgeschlagen');

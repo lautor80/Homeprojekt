@@ -360,6 +360,8 @@ test('Mitglieder zur Aufnahme: Geschlecht, Jahrgang und Alter für die Filter', 
   await sql`update tco.mitglieder set austritt = current_date + 30 where adrnr = ${DORA}`;
   await sql`insert into tco.mitglieder (adrnr, vorname, nachname) values ('0000000699', 'Zita', 'Zahler')`;
   assert.deepEqual((await admin('GET', `${G}/mitglieder`)).body.map((m: any) => m.adrnr).sort(), [ANNA, BEN, CARL]);
+  // Kündigung zurückgenommen: Dora ist wieder aktiv (gekündigte Mitglieder lassen sich keiner Gruppe zuordnen)
+  await sql`update tco.mitglieder set austritt = null where adrnr = ${DORA}`;
 });
 
 test('Regelwerk: Mitglieder nach Alter zuordnen, Kalenderjahr zählt, Vorschau, andere entfernen (#16)', async () => {
