@@ -106,6 +106,11 @@ export interface ServerModule {
    */
   funktionen?: FunktionDef[];
   /**
+   * Jobs des Moduls (Administration → System → Jobs): Funktionen, die nach Plan oder von Hand als Lauf mit eigenem
+   * Protokoll ausgeführt werden. Ids mit Präfix „<modul>.“. Siehe server/src/job-typen.ts.
+   */
+  jobs?: import('./job-typen.js').JobDef[];
+  /**
    * Arbeitsvorrat (Startseite): offene Vorgänge des Moduls für den angemeldeten Benutzer. Das Modul prüft je Quelle
    * selbst, ob der Benutzer die zugehörige App bedienen darf (can). Siehe server/src/lib/arbeitsvorrat.ts.
    */
