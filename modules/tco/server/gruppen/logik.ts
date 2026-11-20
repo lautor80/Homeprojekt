@@ -1,6 +1,6 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
-import { condense } from '../format.js';
+import { condense, dat } from '../format.js';
 import { regelText, type RegelGeschlecht } from './alter.js';
 
 /**
@@ -137,6 +137,40 @@ export async function personenDerGruppe(db: Db, id: number): Promise<Set<string>
   return new Set((await db`select distinct adrnr from tco.kal_gruppe_mitglieder where gruppe_id = any(${ids})`).map((r) => r.adrnr as string));
 }
 
+// ---------------------------------------------------------------- Kündigung
+// Wer seine Mitgliedschaft gekündigt hat (Austritt gesetzt – auch wenn er erst künftig erreicht ist), verliert ab diesem
+// Zeitpunkt alle Gruppenzuordnungen und kann keiner Gruppe mehr zugeordnet werden. Wird die Kündigung zurückgenommen
+// (Austritt entfernt), ist die Zuordnung wieder möglich; die früheren Zuordnungen kehren nicht von selbst zurück.
+
+/** „Aus 2 Gruppen ausgetragen.“ – Zusatz für Rückmeldungen und Hinweise */
+export const austragenText = (n: number) => `Aus ${n} Gruppe${n === 1 ? '' : 'n'} ausgetragen.`;
+
+/**
+ * Alle Gruppenzuordnungen gekündigter Mitglieder entfernen – adrnr = nur dieses Mitglied (direkt mit der Kündigung),
+ * sonst alle (regelmäßiger Lauf, fängt Altfälle und Importe ab). Idempotent; der Änderungsbeleg entsteht über den
+ * Audit-Trigger von tco.kal_gruppe_mitglieder in der Transaktion des Aufrufers. Liefert je Mitglied die Zahl der Gruppen.
+ */
+export async function gekuendigteAustragen(tx: Db, adrnr?: string): Promise<Map<string, number>> {
+  const r = await tx`delete from tco.kal_gruppe_mitglieder gm using tco.mitglieder m
+                      where m.adrnr = gm.adrnr and m.austritt is not null ${adrnr ? tx`and m.adrnr = ${adrnr}` : tx``}
+                  returning gm.adrnr`;
+  const je = new Map<string, number>();
+  for (const x of r) je.set(x.adrnr as string, (je.get(x.adrnr as string) ?? 0) + 1);
+  return je;
+}
+
+/** Gekündigte Mitglieder dürfen keiner Gruppe mehr zugeordnet werden – erst die Kündigung zurücknehmen */
+async function gekuendigtAbweisen(tx: Db, adrnrs: string[]): Promise<void> {
+  if (!adrnrs.length) return;
+  const r = await tx`select adrnr, vorname, nachname, austritt::text as austritt from tco.mitglieder
+                      where adrnr = any(${adrnrs}) and austritt is not null order by lower(nachname), lower(vorname), adrnr`;
+  if (!r.length) return;
+  const namen = r.map((x) => `${condense(`${x.vorname ?? ''} ${x.nachname ?? ''}`) || x.adrnr} (Austritt ${dat(x.austritt as string)})`).join(', ');
+  throw new BusinessError(r.length === 1
+    ? `${namen} hat die Mitgliedschaft gekündigt und kann keiner Gruppe mehr zugeordnet werden – dazu erst die Kündigung zurücknehmen (Austritt entfernen).`
+    : `Gekündigte Mitglieder können keiner Gruppe mehr zugeordnet werden: ${namen} – dazu erst die Kündigung zurücknehmen (Austritt entfernen).`);
+}
+
 async function gruppeHolen(tx: Db, id: number) {
   const [g] = await tx`select id, parent_id, name, position from tco.kal_gruppen where id = ${id}`;
   if (!g) throw new BusinessError('Gruppe nicht gefunden.', 404);
@@ -238,6 +272,7 @@ export async function gruppenMitgliedSetzen(tx: Db, gruppeId: number, adrnr: str
   const g = await gruppeHolen(tx, gruppeId);
   const [m] = await tx`select 1 from tco.mitglieder where adrnr = ${adrnr}`;
   if (!m) throw new BusinessError('Mitglied nicht gefunden.');
+  await gekuendigtAbweisen(tx, [adrnr]);
   const [da] = await tx`select 1 from tco.kal_gruppe_mitglieder where gruppe_id = ${gruppeId} and adrnr = ${adrnr}`;
   if (!da) {
     const unter = (await ueberUntergruppe(tx, gruppeId, [adrnr])).get(adrnr);
@@ -258,6 +293,7 @@ export async function gruppenMitgliederAufnehmen(tx: Db, gruppeId: number, adrnr
   const vorhanden = new Set((await tx`select adrnr from tco.mitglieder where adrnr = any(${liste})`).map((r) => r.adrnr as string));
   const fehlt = liste.filter((a) => !vorhanden.has(a));
   if (fehlt.length) throw new BusinessError(`Mitglied nicht gefunden: ${fehlt.join(', ')}.`);
+  await gekuendigtAbweisen(tx, liste);
   const unter = await ueberUntergruppe(tx, gruppeId, liste);
   const rest = liste.filter((a) => !unter.has(a));
   let neu = 0;

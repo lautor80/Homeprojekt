@@ -10,6 +10,7 @@ import {
   ART_JUGEND, saisonEnde, austrittSichern, bankSichern, detailLesen, emailGueltig, kopfSichern, leer, mitgliedLesen, notizAnlegen, vertragAendern, verweis,
 } from './logik.js';
 import { druckdatenLesen, unterlagePdf } from './pdf.js';
+import { gekuendigteAustragen } from '../gruppen/logik.js';
 import { unterlageAblegen } from './dokumente.js';
 import { plAktiv } from '../verein.js';
 import { kennwortLinkSenden, portalUrl, unbekanntesKennwort } from '../../../../server/src/kennwort.js';
@@ -366,9 +367,15 @@ export async function ausgetreteneSperren(tx: Db, adrnr?: string): Promise<{ ges
   return r;
 }
 
-/** Lauf: Benutzer ausgetretener Mitglieder sperren und das im Arbeitsvorrat melden (#232, V1) – sonst erfährt es niemand */
-export async function ausgetreteneSperrenMelden(tx: Db): Promise<{ gesperrt: string[]; rolleEntzogen: string[] }> {
-  const r = await ausgetreteneSperren(tx);
+/**
+ * Lauf: Benutzer ausgetretener Mitglieder sperren und das im Arbeitsvorrat melden (#232, V1) – sonst erfährt es niemand.
+ * Außerdem verlieren gekündigte Mitglieder (Austritt gesetzt, auch künftig) ihre Gruppenzuordnungen – fängt Altfälle und
+ * Importe ab, bei denen der Austritt nicht über austrittSichern gesetzt wurde. Idempotent; Änderungsbeleg über den
+ * Audit-Trigger in der Transaktion des Laufs. gruppen = je Mitglied die Zahl der entfernten Zuordnungen.
+ */
+export async function ausgetreteneSperrenMelden(tx: Db): Promise<{ gesperrt: string[]; rolleEntzogen: string[]; gruppen: { adrnr: string; anzahl: number }[] }> {
+  const gruppen = [...(await gekuendigteAustragen(tx)).entries()].map(([adrnr, anzahl]) => ({ adrnr, anzahl }));
+  const r = { ...(await ausgetreteneSperren(tx)), gruppen };
   const melden = (username: string, text: string) => tcoHinweis(tx, {
     quelle: 'MG_SPERRE', objekt: username, bereich: 'Administration', recht: 'core.users:display', art: 'Benutzer nach Austritt gesperrt', icon: 'locked',
     titel: username, text, pfad: '/admin/benutzer',
