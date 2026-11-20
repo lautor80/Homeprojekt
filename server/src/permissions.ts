@@ -57,6 +57,9 @@ export const corePermissions: PermissionDef[] = [
   { id: 'core.tabellen:display', text: 'Tabellenansicht: Struktur und Inhalt aller Datenbanktabellen lesen, selektieren und gruppieren (nur lesend; Kennwort-Hashes, Tokens und Zugangsschlüssel nie, Bankdaten nur mit der Bankdaten-Berechtigung im Klartext)', area: 'System', app: 'Tabellenansicht' },
   { id: 'core.tabellen:delete', text: 'Tabellenansicht: markierte Datensätze löschen und aus dem Papierkorb wiederherstellen (Papierkorb 7 Tage; Sätze mit abhängigen Einträgen und Änderungsbelege nicht)', area: 'System', app: 'Tabellenansicht', requires: ['core.tabellen:display'] },
   { id: 'core.tabellen:edit', text: 'Tabellenansicht: einzelne Werte eines Datensatzes ändern (ohne Änderungsbeleg und ohne die fachlichen Prüfungen der Apps – nicht Benutzer, Rollen, Sitzungen, Schlüsselspalten und Geheimnisse; Bankdaten nur mit der Bankdaten-Berechtigung)', area: 'System', app: 'Tabellenansicht', requires: ['core.tabellen:display'] },
+  { id: 'core.jobs:display', text: 'Jobs: Jobs, ihre Pläne und die Protokolle der Läufe ansehen', area: 'System', app: 'Jobs' },
+  { id: 'core.jobs:edit', text: 'Jobs ein- und ausplanen und ihren Plan ändern (Intervall, Uhrzeit, Wochentage)', area: 'System', app: 'Jobs', requires: ['core.jobs:display'] },
+  { id: 'core.jobs:execute', text: 'Jobs von Hand ausführen („Jetzt ausführen“) und laufende Läufe abbrechen – manche Jobs verlangen zusätzlich das Recht ihrer App', area: 'System', app: 'Jobs', requires: ['core.jobs:display'] },
 ];
 
 /**

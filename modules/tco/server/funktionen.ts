@@ -15,6 +15,7 @@ export const F_BANKIMPORT = 'tco.fi.bankimport';
 export const F_MANUELL = 'tco.fi.manuell';
 export const F_JT_IMPORT = 'tco.jt.import';
 export const F_ZAEHLER_IMPORT = 'tco.zaehler.import';
+export const F_ROLLENABGLEICH = 'tco.benutzer.rollenabgleich';
 
 export const TCO_FUNKTIONEN: FunktionDef[] = [
   // ---------------------------------------------------------------- öffentliche Formulare (ohne Anmeldung, also ohne Recht)
@@ -109,7 +110,7 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     routen: ['POST /schluessel/altdaten/pruefen', 'POST /schluessel/altdaten'],
   },
   {
-    id: 'tco.benutzer.rollenabgleich', app: 'Zugänge', text: 'Rollenabgleich der Vereinsbenutzer',
+    id: F_ROLLENABGLEICH, app: 'Zugänge', text: 'Rollenabgleich der Vereinsbenutzer',
     beschreibung: 'Prüft regelmäßig (alle 6 Stunden) und auf Knopfdruck in der Benutzerverwaltung: Mitglieder haben die Rollen „Mitglied“ und „Hallennutzer“, Nichtmitglieder nur „Hallennutzer“.',
     routen: ['GET /benutzer/rollenabgleich', 'POST /benutzer/rollenabgleich'],
     hinweis: 'Abgeschaltet ruhen der regelmäßige Lauf und der Knopf „Rollen prüfen“; Rollen vergibt dann nur noch der Administrator.',

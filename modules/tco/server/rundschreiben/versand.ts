@@ -138,9 +138,25 @@ async function abschliessen(id: number): Promise<void> {
 /**
  * Nach einem Neustart: Rundschreiben im Versand weiterführen. Zeilen, die beim Abbruch gerade in Arbeit waren, werden
  * als Fehler gezeigt (Zustellung ungewiss) – nicht erneut gesendet.
+ *
+ * `ruheMinuten` (Job „tco.rundschreiben.wiederaufnahme“, regelmäßig): nur Rundschreiben, an denen seit so vielen Minuten
+ * niemand mehr arbeitet (kein Empfänger begonnen, nicht ausgelöst oder fortgesetzt) – ein Versand, den gerade eine andere
+ * Instanz des Portals abarbeitet, bleibt unberührt. Ohne Angabe: alle, die in diesem Prozess nicht laufen.
  */
-export async function versandWiederaufnehmen(log?: { warn: (o: unknown, t: string) => void; info: (o: unknown, t: string) => void }): Promise<number[]> {
-  const offen = (await DB`select id from tco.rundschreiben where status = 'VERSAND' order by id`).map((r) => Number(r.id)).filter((id) => !laeufe.has(id));
+export async function versandWiederaufnehmen(
+  log?: { warn: (o: unknown, t: string) => void; info: (o: unknown, t: string) => void },
+  o: { ruheMinuten?: number } = {},
+): Promise<number[]> {
+  const ruhe = Math.max(0, o.ruheMinuten ?? 0);
+  const kandidaten = ruhe
+    ? await DB`select r.id from tco.rundschreiben r
+                where r.status = 'VERSAND'
+                  and greatest(r.gesendet_am, r.geaendert_am,
+                               (select max(e.begonnen_am) from tco.rundschreiben_empfaenger e where e.rundschreiben_id = r.id))
+                      < now() - make_interval(mins => ${ruhe}::int)
+                order by r.id`
+    : await DB`select id from tco.rundschreiben where status = 'VERSAND' order by id`;
+  const offen = kandidaten.map((r) => Number(r.id)).filter((id) => !laeufe.has(id));
   for (const id of offen) {
     await DB`update tco.rundschreiben_empfaenger set status = 'FEHLER', fehler = ${UNTERBROCHEN} where rundschreiben_id = ${id} and status = 'SENDET'`;
     log?.info({ rundschreiben: id }, 'Rundschreiben: Versand wird fortgesetzt');

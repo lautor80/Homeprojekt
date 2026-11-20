@@ -8,12 +8,12 @@ import { DB, vereinLesen } from '../verein.js';
 import { addTage, heute, runden } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
 import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, notizText, vorschlagAbgleichen, type OffenerPosten, type PostenArt, type VorschlagZeile } from './logik.js';
-import { automatikPruefen, cfgLesen, cfgSichern, historieLesen, jetztText, laufAusfuehren, laufFreigeben, laufVerwerfen, mahnNotiz, sperrenLesen, standLesen, type Wer } from './lauf.js';
+import { cfgLesen, cfgSichern, historieLesen, jetztText, laufAusfuehren, laufFreigeben, laufVerwerfen, mahnNotiz, sperrenLesen, standLesen, type Wer } from './lauf.js';
 
 /**
  * App „Mahnwesen“ (Finanzen): fällige Posten mit Stufe und nächstem Schritt, Vorschau des nächsten Laufs, Lauf von Hand,
  * Vorschlag freigeben, Läufe mit Ergebnis je Posten, Liste „nicht per E-Mail erreichbar“, Mahnsperren, Einstellungen.
- * Der automatische Lauf startet hier im Hintergrund (jede Minute geprüft, nicht in Tests).
+ * Der automatische Lauf ist der Job „tco.mahnung.automatik“ (../jobs.ts, Administration → System → Jobs).
  */
 export { P_MAHN };
 
@@ -21,8 +21,6 @@ const wer = (req: FastifyRequest): Wer => ({ id: req.user?.id ?? null, name: req
 const pId = z.object({ id: z.coerce.number().int().positive() });
 const ART = z.enum(['HALLE', 'VERZEHR']);
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
-
-let planer: ReturnType<typeof setInterval> | null = null;
 
 const laufSpalten = () => DB`l.id, l.art, l.modus, l.status, to_char(l.stichtag, 'YYYY-MM-DD') as stichtag, l.gestartet_am, l.gestartet_von, l.beendet_am, l.freigegeben_am, l.freigegeben_von,
   l.zurueckgestellt, l.meldung,
@@ -49,13 +47,6 @@ async function vorschlagAktuell(vl: Record<string, unknown>, stand: OffenerPoste
 }
 
 export async function mahnungRoutes(app: FastifyInstance) {
-  // Automatik: jede Minute prüfen, ob der Lauf fällig ist (nur im Server-Prozess, nicht in Tests). Ohne eingeschaltete
-  // Automatik in den Einstellungen geschieht nichts – nach der Installation ist sie aus.
-  if (!planer && !process.env.NODE_TEST_CONTEXT && process.env.NODE_ENV !== 'test' && !process.env.TEST_DATABASE_URL) {
-    planer = setInterval(() => { automatikPruefen(app.log).catch((e) => app.log.warn(e, 'Mahnlauf: Prüfung fehlgeschlagen')); }, 60_000);
-    planer.unref();
-  }
-
   const lesen = { preHandler: requireAuth(P_MAHN.display) };
   const ausfuehren = { preHandler: requireAuth(P_MAHN.execute) };
   const admin = { preHandler: requireAuth(P_MAHN.admin) };

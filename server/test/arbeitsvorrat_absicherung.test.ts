@@ -3,7 +3,7 @@
  *
  *  1. Jeder Pfad, auf den ein Eintrag des Arbeitsvorrats verweist, ist eine vorhandene Seite; ein „?tab=…“ gibt es
  *     als Reiter der Seite. Zieht eine Funktion um, fällt der tote Verweis hier auf.
- *  2. Jede Schnittstelle, jeder automatische Lauf und jeder Eingang von außen steht im Verzeichnis
+ *  2. Jede Schnittstelle, jeder automatische Lauf, jeder Job und jeder Eingang von außen steht im Verzeichnis
  *     modules/tco/server/dashboard/ereignisquellen.ts – mit Eintrag im Arbeitsvorrat, als offener Punkt (V1) oder
  *     mit Begründung, warum es keinen Eintrag braucht. Neues ohne Entscheidung lässt den Test scheitern.
  *  3. Das Verzeichnis stimmt: nichts Veraltetes, jeder genannte Eintrag existiert im Arbeitsvorrat und jeder genannte
@@ -117,6 +117,11 @@ function ereignisquellen(): Map<string, string> {
     // automatische Läufe
     const laeufe = text.match(/\bsetInterval\(/g)?.length ?? 0;
     for (let i = 0; i < laeufe; i++) out.set(`lauf:${datei}${i ? `#${i + 1}` : ''}`, datei);
+    // Jobs (Administration → System → Jobs): jeder Job ist eine eigene Quelle – Kern-Jobs in server/src/jobs-kern.ts,
+    // Jobs der Module in modules/<modul>/server/jobs.ts, je Definition „id: '<modul>.<…>'“
+    if (datei === 'server/src/jobs-kern.ts' || datei === `modules/${modul}/server/jobs.ts`) {
+      for (const [, id] of text.matchAll(new RegExp(`\\bid: '(${modul}\\.[a-z0-9_.-]+)'`, 'g'))) out.set(`job:${id}`, datei);
+    }
     // Routen, die etwas ändern
     for (const [, methode, pfad, rest] of text.matchAll(/\bapp\.(post|put|delete|patch)\('([^']+)',\s*([^\n]*)/g)) {
       const route = `${modul} ${methode.toUpperCase()} ${pfad}`;
@@ -132,7 +137,7 @@ function ereignisquellen(): Map<string, string> {
 test('Ereignisquellen: jede Schnittstelle, jeder Lauf und jeder Eingang ist im Verzeichnis entschieden', () => {
   const quellen = ereignisquellen();
   // Anker: Die Erkennung darf nicht still leerlaufen
-  for (const k of ['schnittstelle:paperless', 'schnittstelle:mail', 'schnittstelle:tco.ep3', 'lauf:server/src/backup-export.ts', 'eingang:tco POST /antrag', 'meldung:tco POST /eingang/mail', 'selbst:tco POST /mitglieder/meine/kuendigung']) {
+  for (const k of ['schnittstelle:paperless', 'schnittstelle:mail', 'schnittstelle:tco.ep3', 'lauf:server/src/jobs.ts', 'job:core.backup.nextcloud', 'job:core.jobs.aufraeumen', 'eingang:tco POST /antrag', 'meldung:tco POST /eingang/mail', 'selbst:tco POST /mitglieder/meine/kuendigung']) {
     assert.ok(quellen.has(k), `Erkennung defekt: ${k} nicht gefunden`);
   }
   const fehlt = [...quellen].filter(([k]) => !(k in EREIGNISQUELLEN)).map(([k, datei]) => `  ${k}   (${datei})`);
