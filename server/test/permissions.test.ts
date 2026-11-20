@@ -10,7 +10,7 @@ import path from 'node:path';
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/test/i.test(url.split('/').pop() ?? '')) throw new Error('TEST_DATABASE_URL fehlt oder enthält nicht "test".');
 process.env.DATABASE_URL = url;
-process.env.PORTAL_MODULES = 'beispiel,transport,tco,miete';
+process.env.PORTAL_MODULES = 'beispiel,transport,tco,miete,wca';
 
 const { permissionCatalog } = await import('../src/modules.js');
 const { gliedern } = await import('../src/permissions.js');
@@ -60,7 +60,7 @@ test('Katalog: jede Berechtigung genau einmal, mit Bereich/App, Voraussetzungen 
 
 test('Navigation: jede Berechtigung aus Menü/Routen/Kacheln steht im Katalog', () => {
   const ids = new Set(permissionCatalog().flatMap((g) => g.permissions.map((p) => p.id)));
-  for (const datei of ['web/src/pages/HomePage.tsx', 'web/src/shell/Shell.tsx', 'modules/tco/web/index.ts', 'modules/transport/web/index.ts', 'modules/beispiel/web/index.ts', 'modules/miete/web/index.ts']) {
+  for (const datei of ['web/src/pages/HomePage.tsx', 'web/src/shell/Shell.tsx', 'modules/tco/web/index.ts', 'modules/transport/web/index.ts', 'modules/beispiel/web/index.ts', 'modules/miete/web/index.ts', 'modules/wca/web/index.ts']) {
     const text = readFileSync(path.join(APP_ROOT, datei), 'utf8');
     for (const [, wert] of text.matchAll(/permission:\s*'([^']+)'/g)) for (const id of wert.split('|')) assert.ok(ids.has(id), `${datei}: ${id} fehlt im Katalog`);
   }

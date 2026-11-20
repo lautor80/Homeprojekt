@@ -822,3 +822,66 @@ ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
 .portal-tabrahmen > table > thead th { background: var(--sapList_HeaderBackground, #f5f6f7); box-shadow: inset 0 -1px 0 var(--sapList_BorderColor); }
 [data-component-name="AnalyticalTableBody"] { max-height: var(--portal-tabhoehe) !important; }
 
+
+/* ---------------------------------------------------------------------------
+   WCA Zeitenkontrolle (modules/wca/web)
+   --------------------------------------------------------------------------- */
+.portal-wca-tabelle { border-collapse: collapse; width: 100%; }
+.portal-wca-tabelle th, .portal-wca-tabelle td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: left; vertical-align: top; }
+.portal-wca-tabelle th { white-space: nowrap; font-weight: bold; }
+.portal-wca-tabelle--klein th, .portal-wca-tabelle--klein td { padding: 0.25rem 0.5rem; font-size: var(--sapFontSmallSize); }
+.portal-wca-tabelle .portal-wca-rechts, .portal-wca-matrix .portal-wca-rechts { text-align: right; }
+.portal-wca-tabelle .portal-wca-breit { min-width: 16rem; max-width: 40rem; white-space: normal; overflow-wrap: anywhere; }
+.portal-wca-tabelle tr.portal-wca-klick:hover, .portal-wca-tabelle th.portal-wca-klick:hover { background: var(--sapList_Hover_Background); }
+.portal-wca-klick { cursor: pointer; }
+.portal-wca-tabelle tr.portal-wca-offen { background: var(--sapList_SelectionBackgroundColor); }
+.portal-wca-tabelle tr.portal-wca-detail > td { background: var(--sapGroup_ContentBackground); padding: 0.75rem 1rem; }
+.portal-wca-gruppe > td { background: var(--sapList_GroupHeaderBackground); color: var(--sapList_GroupHeaderTextColor); }
+.portal-wca-summe { font-weight: bold; }
+.portal-wca-detailinhalt { display: flex; flex-direction: column; gap: 0.75rem; min-width: min(40rem, 85vw); }
+.portal-wca-tagliste { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.portal-wca-fundkurz { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+.portal-wca-fundkurz li { margin-bottom: 0.4rem; }
+.portal-wca-funde { white-space: nowrap; }
+.portal-wca-person { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.portal-wca-pill { font-size: var(--sapFontSmallSize); }
+.portal-wca-chips { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 1rem; }
+.portal-wca-chips .portal-row { flex-wrap: wrap; }
+
+.portal-wca-kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; margin: 0.5rem 0 1rem; }
+.portal-wca-kachel { background: var(--sapTile_Background); color: var(--sapTile_TextColor); border-radius: var(--sapTile_BorderCornerRadius); box-shadow: var(--sapContent_Shadow0); padding: 1rem; display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.portal-wca-kachel--klick { cursor: pointer; }
+.portal-wca-kachel--klick:hover { box-shadow: var(--sapContent_Shadow1); }
+.portal-wca-kachel__titel { font-size: var(--sapFontSize); color: var(--sapTile_TitleTextColor); font-weight: bold; }
+
+.portal-wca-balken { display: inline-flex; width: 8rem; max-width: 100%; height: 0.6rem; border-radius: 0.3rem; overflow: hidden; background: var(--sapNeutralBackground); vertical-align: middle; }
+.portal-wca-kachel .portal-wca-balken { width: 100%; }
+.portal-wca-balken > span { display: block; height: 100%; }
+.portal-wca-balken__B { background: var(--sapChart_OrderedColor_1); }
+.portal-wca-balken__P { background: var(--sapChart_OrderedColor_2); }
+.portal-wca-balken__I { background: var(--sapChart_OrderedColor_3); }
+.portal-wca-balken__A { background: var(--sapChart_OrderedColor_4); }
+.portal-wca-legende { display: inline-flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: center; }
+.portal-wca-punkt { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; margin-right: 0.3rem; vertical-align: middle; border: 1px solid var(--sapList_BorderColor); }
+
+/* Tagesmatrix Vollständigkeit: Status über Theme-Hintergründe */
+.portal-wca-matrix { border-collapse: collapse; font-size: var(--sapFontSmallSize); }
+.portal-wca-matrix th, .portal-wca-matrix td { border: 1px solid var(--sapList_BorderColor); padding: 0.15rem 0.25rem; text-align: center; min-width: 1.9rem; white-space: nowrap; }
+.portal-wca-matrix .portal-wca-matrix__name { text-align: left; position: sticky; left: 0; z-index: 1; background: var(--sapList_Background); min-width: 9rem; }
+.portal-wca-matrix thead .portal-wca-matrix__name { z-index: 3; background: var(--sapList_HeaderBackground); }
+.portal-wca-matrix .portal-wca-gruppe .portal-wca-matrix__name { background: var(--sapList_GroupHeaderBackground); }
+.portal-wca-matrix__we { color: var(--sapContent_LabelColor); }
+.portal-wca-tag--ok { background: var(--sapSuccessBackground); }
+.portal-wca-tag--teil { background: var(--sapWarningBackground); }
+.portal-wca-tag--fehlt { background: var(--sapErrorBackground); color: var(--sapNegativeTextColor); font-weight: bold; }
+.portal-wca-tag--abwesend { background: var(--sapInformationBackground); }
+.portal-wca-tag--feiertag, .portal-wca-tag--frei { background: var(--sapNeutralBackground); }
+.portal-wca-tag--extra { background: var(--sapIndicationColor_7_Background, var(--sapInformationBackground)); font-style: italic; }
+.portal-wca-tag--zukunft, .portal-wca-tag--aus { color: var(--sapContent_LabelColor); }
+
+.portal-wca-regeln { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.75rem; }
+.portal-wca-regel { border: 1px solid var(--sapList_BorderColor); border-radius: var(--sapElement_BorderCornerRadius); padding: 0.6rem 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-wca-regel--aus { opacity: 0.6; }
+.portal-wca-wortregel { border-top: 1px solid var(--sapList_BorderColor); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.portal-wca-vorgaben td { vertical-align: middle; }
+.portal-wca-hilfe p, .portal-wca-hilfe ul { margin: 0 0 0.5rem; line-height: 1.5; }

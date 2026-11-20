@@ -476,6 +476,35 @@ Mietverhältnis, Festschreiben, PDF, Ablage in Paperless, § 35a EStG, Vorschlag
 Arbeitsvorrat: offene Miete, fällige Abrechnung (Frist § 556 Abs. 3 BGB), fehlende Ablesung zum Jahreswechsel.
 Entwurf, Rechenregeln und Ausbaustufen: [docs/vermietung.md](docs/vermietung.md).
 
+## Modul `wca` (WCA Zeitenkontrolle)
+
+Tempo-Zeitexporte (Ansicht **Teamreport** als CSV) importieren und die Zeitbuchungen eines Teams prüfen: **Vollständigkeit**
+je Person und Tag (Soll aus Arbeitstagen, Soll je Tag und Feiertagen je Standort), **Billable-Quote** (B / (B + P + I)),
+**Kontierung** (Error-Account, fehlender Account, Ticket auf mehreren Accounts, Kundenarbeit auf internem Projekt …),
+**Plausibilität** (lange Tage, lange Einzelbuchungen, Buchung an freien Tagen), **Textqualität** (leer, nur IDs, nur
+Allgemeinbegriffe, kopierte Mailtexte, Wortlisten) und das **Regelwerk** für Buchungstexte („<ID>: …“, mindestens fünf
+Wörter). Je Person entsteht ein fertiger **Rückfrage-Text**. Aktiv mit `PORTAL_MODULES=…,wca` oder `*`.
+
+App im Bereich *WCA*: **Zeitenkontrolle** – Auswertung mit Stichtag und Zeitraum (Monat, Kalenderwoche, alles), Reiter
+für Übersicht, Vollständigkeit, Billable, Kontierung und Texte; Import über *Importieren* (Prüflauf zeigt je Datei Personen,
+Rückmeldungen, Stunden, Zeitraum, Warnungen und wie viele Buchungstage ersetzt würden; erst *Übernehmen* schreibt). Ein
+erneuter Import **ersetzt je Person und Datum** die älteren Buchungen (neue Datei gewinnt) – derselbe Export zweimal
+verdoppelt nichts. Einstellungen: Prüfregeln, Schwellen, Wortlisten und Personenvorgaben (Standort, Soll je Tag,
+Arbeitstage, im Team von/bis, ausblenden).
+
+| Recht | Inhalt |
+|---|---|
+| `wca.auswertung:display` | Auswertung anzeigen |
+| `wca.import:display` / `wca.import:edit` | Importe anzeigen / Tempo-Exporte importieren und Importe löschen |
+| `wca.einstellungen:display` / `wca.einstellungen:edit` | Prüfregeln und Personenvorgaben anzeigen / ändern |
+
+API unter `/api/m/wca`: `GET /auswertung?stichtag=JJJJ-MM-TT&zeitraum=JJJJ-MM|JJJJ-Www|alle`,
+`POST /import` (`{ dateien: [{ name, csv, geaendert? }], uebernehmen }`, CSV als Text oder Data-URL, bis 50 MB),
+`GET /importe`, `DELETE /importe/:id` (Begründung Pflicht), `GET|PUT /einstellungen`, `PUT|DELETE /personen/:person`.
+Änderungsbelege: `WCA_IMPORT`, `WCA_EINST`, `WCA_PERSON`. Schema `wca` (Import, Einträge mit Tagen, gelernte
+Account-/Bereichsschlüssel, Einstellungen, Personenvorgaben). Importformat, Ersetzungslogik, Ableitungen, alle
+Prüfregeln, Kennzahlen und Einstellungen: [docs/wca.md](docs/wca.md).
+
 ## Modul `tco` (TC Oberthal – Vereinsportal)
 
 System- und Prozesslandschaft in vier Ebenen (Systeme, Prozesse, Prozessschritte, Datenbank): [docs/landschaft](docs/landschaft/README.md) –
