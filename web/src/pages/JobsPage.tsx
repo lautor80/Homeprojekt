@@ -97,6 +97,9 @@ function StatusAnzeige({ status }: { status: LaufStatus }) {
 
 interface LaufFilter { job: string; status: string; von: string; bis: string }
 
+/** Text auf eine Zeile kürzen (…) */
+const EINE_ZEILE = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as const;
+
 export function JobsPage() {
   const can = useCan();
   const darfPlanen = can('core.jobs:edit');
@@ -169,15 +172,16 @@ export function JobsPage() {
         const j = row.original as JobSicht;
         return (
           <div style={{ minWidth: 0, lineHeight: 1.3 }} title={j.beschreibung}>
-            <Text style={{ fontWeight: 'bold' }}>{j.text}</Text>
-            <Text className="portal-muted portal-small" style={{ display: 'block' }} maxLines={2}>{j.beschreibung}</Text>
+            <div style={{ fontWeight: 'bold', ...EINE_ZEILE }}>{j.text}</div>
+            {/* eine Zeile Beschreibung – die ganze steht im Tooltip und im Startdialog */}
+            <div className="portal-muted portal-small" style={EINE_ZEILE}>{j.beschreibung}</div>
           </div>
         );
       },
     },
-    { Header: 'Bereich', accessor: 'bereich', width: 160 },
+    // ohne Spalte „Bereich“: Die Tabellen sind schon nach Bereich gegliedert
     {
-      Header: 'Plan', accessor: 'planText', width: 190,
+      Header: 'Plan', accessor: 'planText', width: 170,
       Cell: ({ row }: Cell) => {
         const j = row.original as JobSicht;
         return <Text title={j.geaendertAm ? `geändert am ${uhr(j.geaendertAm)}${j.geaendertVon ? ` von ${j.geaendertVon}` : ''}` : 'Standardplan'}>{j.planText}{j.geaendertAm ? ' *' : ''}</Text>;
@@ -190,7 +194,7 @@ export function JobsPage() {
     },
     { Header: 'Nächster Lauf', accessor: 'naechsterLauf', width: 140, Cell: ({ row }: Cell) => { const j = row.original as JobSicht; return j.eingeplant ? uhr(j.naechsterLauf) : '–'; } },
     {
-      Header: 'Letzter Lauf', id: 'letzter', width: 220,
+      Header: 'Letzter Lauf', id: 'letzter', width: 200,
       Cell: ({ row }: Cell) => {
         const l = (row.original as JobSicht).letzterLauf;
         if (!l) return <Text className="portal-muted">noch nie</Text>;
@@ -203,7 +207,7 @@ export function JobsPage() {
       },
     },
     {
-      Header: 'Läuft gerade', accessor: 'laeuft', width: 120,
+      Header: 'Läuft', accessor: 'laeuft', width: 90,
       Cell: ({ row }: Cell) => { const id = (row.original as JobSicht).laeuft; return id ? <Link onClick={(e) => { e.stopPropagation(); oeffneLauf(id); }}><StatusAnzeige status="LAEUFT" /></Link> : '–'; },
     },
     {
