@@ -16,6 +16,7 @@ import {
   vertragsbeginn, vertragsZahler, verweis, type Vertrag,
 } from './logik.js';
 import { ART_TEXT, druckdatenLesen, unterlagePdf, type Art } from './pdf.js';
+import { austragenText, mitgliedGruppen } from '../gruppen/logik.js';
 import { unterlageAblegen } from './dokumente.js';
 import { unterlagenMail } from '../mailtexte.js';
 
@@ -202,6 +203,9 @@ async function kuendigung(tx: Db, g: Kuendigung, m: Record<string, any>, eigene:
       if (aus) await vertragAendern(tx, g.adrnr, vt.vertragnr, { ende: bis });
     }
     schritte.unshift(`Austritt zum ${dat(g.ende)} – SEPA-Mandat gilt bis ${mandatBis > g.ende ? `zum Ende des letzten Vertrags am ${dat(mandatBis)}` : 'dahin'}; der Portal-Benutzer wird nach dem Austritt gesperrt`);
+    // Kündigung erfasst: alle Gruppenzuordnungen entfallen sofort (austrittSichern) – auch wenn der Austritt erst künftig ist
+    const gruppen = (await mitgliedGruppen(tx, g.adrnr)).length;
+    if (gruppen) schritte.push(aus ? austragenText(gruppen).replace(/\.$/, '') : `Aus ${gruppen} Gruppe${gruppen === 1 ? '' : 'n'} austragen`);
     if (aus) await austrittSichern(tx, g.adrnr, g.ende);
     const zahlende = await tx`select vorname, nachname from tco.mitglieder where adrnrkih = ${g.adrnr} and adrnr <> ${g.adrnr}
                                and (austritt is null or austritt > ${g.ende})`;

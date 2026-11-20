@@ -107,7 +107,7 @@ export const TCO_JOBS: JobDef[] = [
     id: 'tco.mitglieder.austritt',
     text: 'Benutzer ausgetretener Mitglieder sperren',
     beschreibung: 'Sperrt die Benutzer ausgetretener Mitglieder bzw. entzieht ihnen die Rolle „Mitglied“, wenn sie weitere Rollen haben; jede '
-      + 'Sperre steht als Hinweis im Arbeitsvorrat. Schutzfunktion: läuft auch, wenn nur die App „Mitglieder“ abgeschaltet ist, und von Hand immer.',
+      + 'Sperre steht als Hinweis im Arbeitsvorrat. Trägt außerdem gekündigte Mitglieder aus allen Gruppen aus (Altfälle, Importe). Schutzfunktion: läuft auch, wenn nur die App „Mitglieder“ abgeschaltet ist, und von Hand immer.',
     bereich: 'Mitglieder → Mitglieder',
     standardPlan: { art: 'intervall', minuten: 360 },
     recht: 'core.users:edit',
@@ -119,10 +119,13 @@ export const TCO_JOBS: JobDef[] = [
       }
       const { ausgetreteneSperrenMelden } = await import('./mitglieder/selbst.js');
       const r = await (await db()).withChange(aenderung(ctx, 'AUSTRITT_SPERRE'), (tx) => ausgetreteneSperrenMelden(tx));
-      if (!r.gesperrt.length && !r.rolleEntzogen.length) return nichts(ctx, 'Kein Benutzer eines ausgetretenen Mitglieds mehr aktiv.');
+      if (!r.gesperrt.length && !r.rolleEntzogen.length && !r.gruppen.length) return nichts(ctx, 'Kein Benutzer eines ausgetretenen Mitglieds mehr aktiv, kein gekündigtes Mitglied mehr in einer Gruppe.');
       for (const u of r.gesperrt) ctx.log(`${u}: gesperrt`);
       for (const u of r.rolleEntzogen) ctx.log(`${u}: Rolle „Mitglied“ entzogen (bleibt wegen weiterer Rollen aktiv)`);
-      return `${n(r.gesperrt.length, 'Benutzer', 'Benutzer')} gesperrt, ${n(r.rolleEntzogen.length, 'Benutzer', 'Benutzern')} die Rolle „Mitglied“ entzogen.`;
+      // Kündigung beendet alle Gruppenzuordnungen – der Lauf fängt Altfälle und Importe ab
+      for (const g of r.gruppen) ctx.log(`Mitglied ${g.adrnr}: gekündigt, aus ${n(g.anzahl, 'Gruppe', 'Gruppen')} ausgetragen`);
+      return `${n(r.gesperrt.length, 'Benutzer', 'Benutzer')} gesperrt, ${n(r.rolleEntzogen.length, 'Benutzer', 'Benutzern')} die Rolle „Mitglied“ entzogen, `
+        + `${n(r.gruppen.length, 'gekündigtes Mitglied', 'gekündigte Mitglieder')} aus Gruppen ausgetragen.`;
     },
   },
   {
