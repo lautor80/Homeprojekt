@@ -142,16 +142,16 @@ async function texteImportieren(tx: Db, rows: string[][], idx: (n: string) => nu
 const AKTIV = ['1', '3', '5'];
 
 /**
- * Bereits aktive Buchung einer anderen BID im selben Zeitraum: gleicher Platz, überschneidende Zeit. Fehlt die
- * Platzangabe auf einer Seite, zählt es nur bei gleichem Kunden als Duplikat (sonst könnte es ein anderer Platz sein).
+ * Bereits aktive Buchung einer anderen BID im selben Zeitraum: gleicher Platz, überschneidende Zeit. Ohne Platzangabe
+ * (auf einer der beiden Seiten) nie – es könnte ein anderer Platz sein, z. B. zwei Plätze zur selben Zeit.
  */
 export async function duplikatVon(tx: Db, b: Pick<ImpBuchung, 'bid' | 'datum' | 'time_start' | 'time_ende' | 'kunde' | 'platz'>): Promise<string | null> {
-  if (!b.time_start || !b.time_ende) return null;
+  if (!b.time_start || !b.time_ende || !b.platz) return null;
   const [d] = await tx`
     select bid from tco.bookings
      where datum = ${b.datum} and bid <> ${b.bid} and status = any(${AKTIV})
        and time_start < ${b.time_ende}::time and time_ende > ${b.time_start}::time
-       and (platz = ${b.platz}::text or ((platz is null or ${b.platz}::text is null) and upper(kunde) = ${b.kunde}))
+       and platz = ${b.platz}
      order by bid limit 1`;
   return d ? (d.bid as string) : null;
 }
@@ -208,8 +208,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
     const desc = `${dat(b.datum)} von ${zeit(b.time_start)} bis ${zeit(b.time_ende)} Uhr`;
     const alt = best.get(key(b));
     if (!alt) {
-      // Duplikat: Den Termin belegt schon eine andere aktive Buchung (gleicher Platz – ohne Platzangabe gleicher Kunde –,
-      // überschneidende Zeit). Das Portal ist das führende Buchungssystem: Sein Bestand bleibt, der Termin aus EP3 wird
+      // Duplikat: Den Termin belegt schon eine andere aktive Buchung (gleicher Platz, überschneidende Zeit). Das Portal ist das führende Buchungssystem: Sein Bestand bleibt, der Termin aus EP3 wird
       // storniert übernommen (storno_portal: bleibt auch bei späteren Importen storniert).
       const dup = AKTIV.includes(b.status) ? await duplikatVon(tx, b) : null;
       if (dup) {
