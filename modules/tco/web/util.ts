@@ -68,6 +68,8 @@ export interface Position {
   /** Kontierung: Erlöskonto der Position, sonst des Produkts, sonst Hallenmiete */
   konto?: string;
   konto_name?: string;
+  /** Buchung über mehrere Preisklassen: Aufteilung je Preisklasse (ep ist dann nur der Durchschnitt) */
+  teile?: { text: string; von: string; bis: string; stunden: number; stundenpreis: number; betrag: number }[];
 }
 export interface PaperlessInfo {
   doknr: string | null; link: string | null; notizen: { id: number; note: string; created: string }[];

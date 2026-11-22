@@ -134,6 +134,32 @@ export function preisBerechnen(
   return r;
 }
 
+/** Teil einer Rechnungsposition: Zeitabschnitt einer Preisklasse mit Stunden × Stundenpreis */
+export interface PositionsTeil { text: string; von: string; bis: string; stunden: number; stundenpreis: number; betrag: number }
+
+/**
+ * Aufteilung einer Buchungsposition (Einzel/Abo) nach Preisklassen – nur, wenn die Buchung mehr als eine Preisklasse
+ * berührt und die heutigen Preise den gespeicherten Betrag ergeben (sonst wurden die Preise seit der Zuordnung
+ * geändert und die Aufteilung stimmte nicht). Rundungscent gehen an den größten Teil, damit die Summe exakt passt.
+ */
+export function positionAufteilen(
+  pos: { datum: string | null; time_start: string | null; time_ende: string | null; prod_key: string | null; betrag: number },
+  p: Preise,
+): PositionsTeil[] | undefined {
+  const key = pos.prod_key ?? '';
+  const status = KEY_ABO.includes(key) ? '3' : KEY_EINZEL.includes(key) ? '1' : null;
+  if (!status || !pos.datum) return undefined;
+  const pr = preisBerechnen({ datum: pos.datum, time_start: pos.time_start, time_ende: pos.time_ende, status }, p);
+  if (pr.fehler || !pr.teile || pr.teile.length < 2 || Math.abs(pr.betrag - pos.betrag) > 0.005) return undefined;
+  const teile = pr.teile.map((t) => ({ text: t.text, von: t.von, bis: t.bis, stunden: t.minuten / 60, stundenpreis: t.stundenpreis, betrag: t.betrag }));
+  const rest = runden(pos.betrag - teile.reduce((s, t) => s + t.betrag, 0));
+  if (rest) {
+    const groesster = teile.reduce((a, b) => (b.betrag > a.betrag ? b : a));
+    groesster.betrag = runden(groesster.betrag + rest);
+  }
+  return teile;
+}
+
 /** Preisklasse im Tagesverlauf: zusammenhängender Zeitraum mit einem Stundenpreis */
 export interface Preiszone {
   prodKey: string; text: string; von: string; bis: string; stundenpreis: number;

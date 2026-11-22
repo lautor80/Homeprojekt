@@ -33,7 +33,10 @@ export function rechnungsBaum(positionen: DruckPosition[]): BaumGruppe[] {
         const text = (miete && teile.length > 1 ? teile.slice(1) : teile).join(' · ');
         return {
           text, storno: p.storno, betrag: p.betrag,
-          menge: p.storno ? 'storniert' : p.anzahl === 1 && !miete ? '' : `${zahl(p.anzahl)} ${miete ? 'Std.' : '×'} ${miete ? '×' : ''} ${eur(p.ep)}`.replace(/\s+/g, ' '),
+          menge: p.storno ? 'storniert'
+            // über mehrere Preisklassen: je Preisklasse Stunden × Stundenpreis statt Durchschnitt
+            : p.teile?.length ? p.teile.map((t) => `${zahl(t.stunden)} Std. × ${eur(t.stundenpreis)}`).join(' + ')
+            : p.anzahl === 1 && !miete ? '' : `${zahl(p.anzahl)} ${miete ? 'Std.' : '×'} ${miete ? '×' : ''} ${eur(p.ep)}`.replace(/\s+/g, ' '),
         };
       }),
     });
