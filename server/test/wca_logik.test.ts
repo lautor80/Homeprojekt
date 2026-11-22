@@ -450,3 +450,34 @@ test('Erkannter Feiertag: ≥ 3 aktive Personen, kaum jemand gebucht', () => {
   assert.equal(f?.quelle, 'erkannt');
   assert.ok(a.personen.every((p) => p.offen === 0 && p.tageStatus.find((t) => t.tag === '2026-11-10')!.status === 'feiertag'));
 });
+
+test('Freigabe: freigegebener Text wird für Regel und Account nicht mehr gemeldet', () => {
+  const FEHL = 'Unknown - please review';
+  const roh = [
+    e({ acc: FEHL, key: 'FRG-1', text: 'Freigabe  Testtext Lieferavis', tage: [['2026-11-02', 4]] }),
+    e({ acc: FEHL, key: 'FRG-2', text: 'Anderer Text zur Freigabe Lieferavis', tage: [['2026-11-03', 4]] }),
+    e({ acc: 'Unknown - please review|Kunde Gamma', key: 'FRG-3', text: 'Freigabe Testtext Lieferavis', tage: [['2026-11-04', 4]] }),
+  ];
+  const vorher = lauf(roh);
+  const k1 = funde(vorher, 'K1');
+  assert.equal(k1.length, 3);
+  assert.ok(k1.every((f) => f.freigebbar));
+  assert.equal(vorher.freigegeben, 0);
+  assert.equal(vorher.eintraege.find((x) => x.key === 'FRG-1')?.acc, FEHL);
+
+  // Groß-/Kleinschreibung und Leerzeichen egal; nur gleiche Regel, gleicher Account, gleicher Text
+  const nachher = auswerten({
+    eintraege: roh, accKeys: {}, berKeys: { 'WDE Internal Projects': 'WDEINT001' }, dateien: 1, einstellungen: einstellungenErgaenzen(null),
+    vorgaben: [], heute: '2026-11-20', stichtag: '2026-11-06', zeitraum: '2026-11',
+    freigaben: [{ regel: 'K1', acc: ` ${FEHL} `, text: 'freigabe testtext   LIEFERAVIS ' }, { regel: 'T1', acc: FEHL, text: 'Anderer Text zur Freigabe Lieferavis' }],
+  });
+  const rest = funde(nachher, 'K1');
+  assert.equal(rest.length, 2);
+  assert.deepEqual(rest.map((f) => nachher.eintraege[f.eintrag!].key).sort(), ['FRG-2', 'FRG-3']);
+  assert.equal(nachher.freigegeben, 1);
+
+  // Tagesfunde ohne Rückmeldung (P1) lassen sich nicht freigeben
+  const p1 = funde(lauf([e({ tage: [['2026-11-02', 7]] }), e({ key: 'WDEINT001-2', tage: [['2026-11-02', 6]] })]), 'P1');
+  assert.equal(p1.length, 1);
+  assert.equal(p1[0].freigebbar, false);
+});

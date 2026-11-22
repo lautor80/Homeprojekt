@@ -6,7 +6,7 @@
  * erkannt), dann Soll/Ist/Offen je Tag, alle Prüfregeln, Fundgruppen, Personensummen und der Rückfrage-Text.
  */
 import type {
-  Auswertung, AuswEintrag, Einstellungen, Feiertag, Fund, FundGruppe, Kategorie, PersonAuswertung, PersonVorgabe,
+  Auswertung, AuswEintrag, Einstellungen, Feiertag, FreigabeSchluessel, Fund, FundGruppe, Kategorie, PersonAuswertung, PersonVorgabe,
   RegelInfo, RohEintrag, TagStatus, Typ, Zeitraum,
 } from '../typen.js';
 import {
@@ -29,7 +29,15 @@ export interface AuswertungEingabe {
   zeitraum?: string; // 'YYYY-MM' | 'YYYY-Www' | 'alle'; Default Monat des Stichtags
   /** optional: Bereich der Tagesspalten aller Importe (von–bis); sonst aus den Buchungen */
   datenBereich?: { von: string | null; bis: string | null };
+  /** freigegebene Texte: Funde dieser Regel zu Rückmeldungen mit diesem Account und Text werden nicht gemeldet */
+  freigaben?: FreigabeSchluessel[];
 }
+
+/** Text für den Freigabe-Vergleich: getrimmt, Leerraum zusammengefasst, klein */
+export const textNorm = (t: string) => (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** Vergleichsschlüssel einer Freigabe (Regel, Account roh, normalisierter Text) */
+export const freigabeSchluessel = (f: FreigabeSchluessel) => `${f.regel}\u0000${(f.acc || '').trim()}\u0000${textNorm(f.text)}`;
 
 // ---------------------------------------------------------------------------
 // Ableitungen je Eintrag
@@ -361,7 +369,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
     const tage = x.tage.filter(([t]) => t >= a && t <= e);
     return {
       person: x.person, team: pers.get(x.person)?.team ?? x.team, typ: x.typ, kat: x.kat, accName: x.accName, kunde: x.kunde,
-      accKey: x.accKey, ber: x.ber, berKey: x.berKey, key: x.key, text: x.text, errorAccount: x.errorAccount,
+      accKey: x.accKey, ber: x.ber, berKey: x.berKey, key: x.key, text: x.text, acc: x.acc, errorAccount: x.errorAccount,
       ohneAccount: x.ohneAccount, intern: x.intern, tage, stunden: r2(tage.reduce((n, [, v]) => n + v, 0)),
     };
   });
@@ -369,8 +377,17 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
   // Prüfen
   const roh = pruefen({ eintraege: alle, imZeitraum, personTage, vornamen, einst, a, e, accountAb, istArbeit, feiertag, imTeam });
   const tippVon = (regel: string) => einst.wortRegeln?.[regel]?.tipp ?? REGELN.find((r) => r.id === regel)?.tipp ?? '';
+  const freigabeSet = new Set((ein.freigaben ?? []).map(freigabeSchluessel));
+  let freigegeben = 0;
   const funde: Fund[] = [];
   for (const f of roh) {
+    if (f.ei !== null && freigabeSet.size) {
+      const x = alle[f.ei];
+      if (freigabeSet.has(freigabeSchluessel({ regel: f.regel, acc: x.acc, text: x.text }))) {
+        if (!pers.get(f.person)?.ausgeblendet) freigegeben++;
+        continue;
+      }
+    }
     let stunden = 0;
     if (f.ei !== null) {
       const x = alle[f.ei];
@@ -380,6 +397,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
     funde.push({
       regel: f.regel, kategorie: f.kategorie, art: f.art, stufe: f.stufe, person: f.person,
       eintrag: f.ei === null ? null : index.get(f.ei) ?? null, tag: f.tag, stunden: r2(stunden), meldung: f.meldung, tipp: tippVon(f.regel),
+      freigebbar: f.ei !== null,
     });
   }
 
@@ -499,6 +517,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
     gruppen,
     feiertage,
     regeln,
+    freigegeben,
   };
 }
 

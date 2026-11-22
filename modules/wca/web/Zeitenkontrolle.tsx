@@ -8,7 +8,8 @@ import { ImportKnopf } from '@core/components/ImportDialog';
 import { Empty, Section } from '@core/components/Section';
 import { useLoad } from '@core/components/useLoad';
 import { useCan } from '@core/session';
-import type { Auswertung, Stufe } from '../server/typen';
+import { toast } from '@core/toast';
+import type { AuswEintrag, Auswertung, Fund, Stufe } from '../server/typen';
 import { FILTER_START, sichtBerechnen, zeilen, type Filter } from './ansicht';
 import { Beschreibung } from './Beschreibung';
 import { ReiterBillable } from './ReiterBillable';
@@ -51,7 +52,19 @@ export function Zeitenkontrolle() {
 
   const d = useLoad(() => api.get<Auswertung>(`${W}/auswertung${qs({ stichtag, zeitraum })}`), [stichtag, zeitraum]);
   const a = d.data;
-  const sicht = useMemo(() => (a ? sichtBerechnen(a, filter) : null), [a, filter]);
+  const darfFreigeben = can('wca.einstellungen:edit');
+  const sicht = useMemo(() => {
+    if (!a) return null;
+    const s = sichtBerechnen(a, filter);
+    if (darfFreigeben) {
+      s.freigeben = (e: AuswEintrag, x: Fund) => {
+        api.post(`${W}/freigaben`, { regel: x.regel, acc: e.acc, text: e.text, person: e.person, meldung: x.meldung })
+          .then(() => { toast(`${x.regel} für „${e.text.slice(0, 60)}“ freigegeben`); d.reload(); })
+          .catch((err: Error) => toast(err.message));
+      };
+    }
+    return s;
+  }, [a, filter, darfFreigeben]); // eslint-disable-line react-hooks/exhaustive-deps
   const anzahlK = useMemo(() => (sicht ? zeilen(sicht.gruppen, ['K', 'P'], filter.stufe).length : 0), [sicht, filter.stufe]);
   const anzahlT = useMemo(() => (sicht ? zeilen(sicht.gruppen, ['T', 'R'], filter.stufe).length : 0), [sicht, filter.stufe]);
 

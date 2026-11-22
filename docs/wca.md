@@ -162,6 +162,16 @@ Reihenfolge der Textregeln: T1, T2, T3b/T3 und T9 schließen einander aus (die e
 nur Texte, die keine dieser Regeln (außer T3b) getroffen hat. Wortlisten: kommagetrennt, `*` am Ende = Wortanfang,
 Präfix `re:` = regulärer Ausdruck, sonst ganzes Wort (Groß-/Kleinschreibung egal).
 
+### Freigaben
+
+Ist ein Fund fachlich in Ordnung (z. B. K5: der Text nennt einen Kunden, die Buchung auf dem anderen Account stimmt
+trotzdem), gibt *Freigeben* am Fund den Text frei. Gespeichert wird **Regel + Account (roh) + Text** (Tabelle
+`wca.freigabe`, Änderungsbeleg `WCA_FREIGABE`); der Textvergleich ignoriert Groß-/Kleinschreibung und Leerzeichen.
+Danach meldet die Regel diesen Text auf diesem Account bei keiner Person und an keinem Tag mehr; andere Regeln und
+derselbe Text auf einem anderen Account werden weiter geprüft. Tagesfunde ohne Rückmeldung (P1, P3) lassen sich nicht
+freigeben. Die Auswertung liefert die Zahl der ausgeblendeten Funde (`freigegeben`). Liste und *Zurücknehmen*:
+App *Prüfregeln* → *Freigegebene Texte*. Recht: `wca.einstellungen:edit`.
+
 ## Einstellungen
 
 Global für alle Personen (Tabelle `wca.einstellungen`, Änderungsbeleg `WCA_EINST`); fehlende Werte ergänzt der
