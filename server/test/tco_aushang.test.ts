@@ -38,7 +38,7 @@ const T = '/api/m/tco';
 const tag = (n: number) => new Date(Date.now() + n * 86_400_000).toLocaleDateString('sv-SE');
 const PNG = `data:image/png;base64,${Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('aushang-bild')]).toString('base64')}`;
 const PDF = `data:application/pdf;base64,${Buffer.from('%PDF-1.4\n%%EOF').toString('base64')}`;
-const basis = { titel: 'Halle', text: 'Bitte **sauber** verlassen.', stil: 'INFO', anzeige: 'EINMAL', bestaetigen: false, aktiv: true, gueltig_von: tag(-1), gueltig_bis: null, rollen: [] as string[] };
+const basis = { titel: 'Halle', text: 'Bitte **sauber** verlassen.', stil: 'INFO', anzeige: 'EINMAL', bestaetigen: false, aktiv: true, gueltig_von: tag(-1), gueltig_bis: null as string | null, rollen: [] as string[] };
 
 before(async () => {
   await sql.unsafe(`drop schema if exists tco cascade; drop schema if exists transport cascade; drop schema if exists beispiel cascade; drop schema if exists core cascade;
