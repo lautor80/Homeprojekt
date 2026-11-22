@@ -29,6 +29,8 @@ interface Posten {
   art: 'HALLE' | 'VERZEHR'; art_txt: string; nr: string; schuldner: string; name: string; betrag: number; gesamt: number; datum: string; faellig: string;
   stufe: number; stufe_name: string; gemahnt_am: string | null; naechste: number | null; naechste_name: string; schritt: Schritt; schritt_txt: string;
   ab: string | null; hinweis: string; sperre: { id: number; grund: string; bis: string | null; ebene: string } | null;
+  /** Buchungssperre: Schuldner darf bis zur Zahlung keine neuen Hallenstunden buchen */
+  buchungssperre?: boolean;
   versuch: { id: number; an: string; meldung: string; tag: string | null } | null;
   kontakt?: { anschrift: string; telefon: string; email: string } | null;
 }
@@ -46,7 +48,7 @@ interface Lauf {
 }
 interface Daten {
   posten: Posten[];
-  kennzahlen: { offen: number; offen_betrag: number; faellig: number; faellig_betrag: number; gemahnt: number; klaeren: number };
+  kennzahlen: { offen: number; offen_betrag: number; faellig: number; faellig_betrag: number; gemahnt: number; klaeren: number; buchungssperre?: number };
   plan: { mails: MahnMail[]; zurueckgestellt: number; summe: number; frist: string };
   vorschlag: Lauf | null;
   unerreichbar: Posten[];
@@ -133,7 +135,15 @@ export function Mahnwesen() {
     { Header: 'Offen', accessor: 'betrag', width: 110, ...rechts, Cell: ({ row }: Cell) => { const p = row.original as Posten; return <span title={p.betrag < p.gesamt ? `Rest von ${eur(p.gesamt)}` : undefined}>{eur(p.betrag)}</span>; } },
     {
       Header: 'Mahnstufe', accessor: 'stufe', width: 240,
-      Cell: ({ row }: Cell) => { const p = row.original as Posten; return p.stufe ? <ObjectStatus state="Negative">{p.stufe_name} · {dat(p.gemahnt_am)}</ObjectStatus> : <span className="portal-muted">–</span>; },
+      Cell: ({ row }: Cell) => {
+        const p = row.original as Posten;
+        if (!p.stufe) return <span className="portal-muted">–</span>;
+        return (
+          <span title={p.buchungssperre ? 'Buchungssperre: bis zur Zahlung keine neuen Hallenstunden' : undefined}>
+            <ObjectStatus state="Negative" icon={p.buchungssperre ? 'locked' : undefined}>{p.stufe_name} · {dat(p.gemahnt_am)}</ObjectStatus>
+          </span>
+        );
+      },
     },
     {
       Header: 'Nächster Schritt', accessor: 'schritt_txt', minWidth: 260,
@@ -266,6 +276,7 @@ export function Mahnwesen() {
                  <HeaderKpi label={`${d.kennzahlen.faellig} davon fällig`} value={eur(d.kennzahlen.faellig_betrag)} state={d.kennzahlen.faellig ? 'Critical' : 'Positive'} />
                  <HeaderKpi label="bereits gemahnt" value={d.kennzahlen.gemahnt} />
                  <HeaderKpi label="manuell zu klären" value={d.kennzahlen.klaeren} state={d.kennzahlen.klaeren ? 'Negative' : 'None'} />
+                 {!!d.kennzahlen.buchungssperre && <HeaderKpi label="mit Buchungssperre (Halle)" value={d.kennzahlen.buchungssperre} state="Negative" />}
                </FlexBox>
              ) : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
@@ -499,7 +510,7 @@ function ZustellungDialog({ posten, onClose }: { posten: Posten; onClose: (ok: b
 
 interface Cfg {
   aktiv: boolean; modus: 'VORSCHLAG' | 'SENDEN'; wochentage: number[]; uhrzeit: string; zahlungsziel_tage: number | null | ''; frist_tage: number | string;
-  stufen: { name: string; tage: number | string; gebuehr: number | string }[]; mindestbetrag: number | string; max_je_lauf: number | string; arten: string[];
+  stufen: { name: string; tage: number | string; gebuehr: number | string; buchungssperre?: boolean }[]; mindestbetrag: number | string; max_je_lauf: number | string; arten: string[];
   halle_gedruckt: boolean; anhang: boolean; absender: string; absender_name: string; antwort_an: string; kopie_an: string;
   verein_zahlungsziel: number; verein_email: string; max_stufen: number; funktion: boolean; naechster: string | null; mail: boolean; letzter_lauf: string | null;
 }
@@ -519,7 +530,7 @@ export function MahnKapitel() {
     try {
       const r = await api.put<{ text: string }>(`${M}/einstellungen`, {
         aktiv: c.aktiv, modus: c.modus, wochentage: c.wochentage, uhrzeit: c.uhrzeit, zahlungsziel_tage: c.zahlungsziel_tage === null ? '' : c.zahlungsziel_tage,
-        frist_tage: c.frist_tage, stufen: c.stufen.map((x) => ({ name: x.name, tage: x.tage, gebuehr: zahl(x.gebuehr) })), mindestbetrag: zahl(c.mindestbetrag),
+        frist_tage: c.frist_tage, stufen: c.stufen.map((x) => ({ name: x.name, tage: x.tage, gebuehr: zahl(x.gebuehr), buchungssperre: !!x.buchungssperre })), mindestbetrag: zahl(c.mindestbetrag),
         max_je_lauf: c.max_je_lauf, arten: c.arten, halle_gedruckt: c.halle_gedruckt, anhang: c.anhang,
         absender: c.absender, absender_name: c.absender_name, antwort_an: c.antwort_an, kopie_an: c.kopie_an,
       });
@@ -588,12 +599,16 @@ export function MahnKapitel() {
                 <div style={{ flex: '2 1 12rem' }}><Label showColon>Stufe {i + 1}</Label><Input style={{ width: '100%' }} value={x.name} onInput={(e) => stufe(i, 'name', e.target.value)} /></div>
                 <div style={{ flex: '1 1 9rem' }}><Label showColon>{i === 0 ? 'Tage nach Fälligkeit' : 'Tage nach vorheriger Stufe'}</Label><Input style={{ width: '100%' }} type="Number" value={String(x.tage)} onInput={(e) => stufe(i, 'tage', e.target.value)} /></div>
                 <div style={{ flex: '1 1 7rem' }}><Label showColon>Mahngebühr (€)</Label><Input style={{ width: '100%' }} value={String(x.gebuehr)} onInput={(e) => stufe(i, 'gebuehr', e.target.value)} /></div>
+                <CheckBox text="Buchungssperre" checked={!!x.buchungssperre} title="Ab dieser Stufe (zugestellt) bis zur Zahlung keine neuen Hallenstunden"
+                          onChange={(e) => c && setC({ ...c, stufen: c.stufen.map((y, j) => (j === i ? { ...y, buchungssperre: e.target.checked } : y)) })} />
                 <Button icon="delete" design="Transparent" tooltip="Stufe entfernen" disabled={c.stufen.length <= 1 || i < c.stufen.length - 1} onClick={() => s('stufen')(c.stufen.slice(0, -1))} />
               </FlexBox>
             ))}
             <Text className="portal-muted portal-small" style={{ display: 'block' }}>
               Nach der letzten Stufe geht keine weitere E-Mail hinaus: Ist deren Frist verstrichen, steht der Posten als „Forderung manuell klären“ im Arbeitsvorrat des Kassenwarts.
               Die Texte je Stufe stehen im Kapitel „E-Mail-Texte“ (Bereich Mahnwesen). Die Mahngebühr der höchsten Stufe wird je E-Mail einmal ausgewiesen.
+              „Buchungssperre“: Ab der ersten so gekennzeichneten Stufe kann das Mitglied keine neuen Hallenstunden buchen, bis alle so angemahnten Posten bezahlt sind –
+              nach der Anmeldung erscheint ein Hinweis, den es bestätigen muss. Mit dem Zahlungseingang ist die Sperre automatisch aufgehoben; eine Mahnsperre hebt sie ebenfalls auf.
             </Text>
           </Section>
 

@@ -25,6 +25,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.bookings` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.bookings_ch` |  |  | ● |  |  |  |  | ● | ● |  | ● |  |  | ● |
 | `tco.bookingstxt` |  |  | ● |  |  |  |  |  |  |  | ● |  |  | ● |
+| `tco.buchungssperre_gesehen` |  |  | ● |  |  |  |  |  |  |  | ● |  |  | ● |
 | `tco.eing_dokumente` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
 | `tco.eing_korrespondenten` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |
 | `tco.eing_regeln` |  |  |  |  |  | ● |  |  |  |  |  |  |  |  |

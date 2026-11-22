@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  automatikFaellig, CFG_SCHEMA, faelligkeit, lokal, MAHN_MAILTEXTE, mailtextSchluessel, mailWerte, naechsterLauf, notizText, planen, vorschlagAbgleichen, standErmitteln, STANDARD_STUFEN,
+  automatikFaellig, CFG_SCHEMA, faelligkeit, lokal, MAHN_MAILTEXTE, mailtextSchluessel, mailWerte, naechsterLauf, notizText, planen, vorschlagAbgleichen, sperrPosten, sperrStufe, sperrText, standErmitteln, STANDARD_STUFEN,
   type HistorieZeile, type OffenerPosten, type SperreZeile,
 } from '../../modules/tco/server/mahnung/logik.js';
 import { fuellen } from '../../modules/tco/server/mailtexte.js';
@@ -210,4 +210,28 @@ test('Offener Vorschlag: inzwischen bezahlt, gesperrt und teilbezahlt gegen den 
   // alles bezahlt: nichts gilt mehr
   const leer = vorschlagAbgleichen([z('VA-901', '99001', 40)], [], [], '2026-11-17');
   assert.deepEqual([leer.schuldner, leer.betrag], [0, 0]);
+});
+
+test('Buchungssperre: ab der ersten gekennzeichneten Stufe, nicht bei Mahnsperre, Meldung an das Mitglied', () => {
+  const stufen = STANDARD_STUFEN.map((x, i) => ({ ...x, buchungssperre: i === 1 }));
+  assert.equal(sperrStufe(CFG), null);
+  assert.equal(sperrStufe({ stufen }), 2);
+  const stand = standErmitteln([p('S1', 'A', 50, '2026-09-01'), p('S2', 'A', 20, '2026-09-10'), p('S3', 'B', 30, '2026-09-01'), p('S4', 'C', 40, '2026-09-01')], [
+    h('S1', 1, 'GESENDET', '2026-10-01'), h('S1', 2, 'GESENDET', '2026-10-20'),
+    h('S2', 1, 'GESENDET', '2026-10-01'), h('S2', 2, 'GESENDET', '2026-10-20'), h('S2', 3, 'GESENDET', '2026-11-05'),
+    h('S3', 1, 'GESENDET', '2026-10-01'),
+    h('S4', 1, 'GESENDET', '2026-10-01'), h('S4', 2, 'GESENDET', '2026-10-20'),
+  ], [{ id: 1, ebene: 'SCHULDNER', art: null, schluessel: 'C', grund: 'Ratenzahlung', bis: null }], { ...CFG, stufen }, HEUTE);
+  // S1 (1. Mahnung) und S2 (2. Mahnung – „ab“) sperren; S3 nur erinnert; S4 mit Mahnsperre
+  assert.deepEqual(sperrPosten(stand, { stufen }).map((x) => [x.nr, x.schuldner]), [['S1', 'A'], ['S2', 'A']]);
+  assert.deepEqual(sperrPosten(stand, CFG), [], 'ohne Kennzeichen keine Sperre');
+  assert.equal(sperrText([]), null);
+  assert.equal(sperrText([{ nr: 'S1', betrag: 50 }, { nr: 'S2', betrag: 20.5 }]),
+    'Neue Hallenstunden können erst wieder gebucht werden, wenn die angemahnten Rechnungen S1, S2 (offen 70,50 €) bezahlt sind. '
+    + 'Nach dem Zahlungseingang wird die Buchung automatisch wieder freigegeben.');
+  // Einstellungen: Kennzeichen wird übernommen, fehlt es, ist es aus
+  const c = CFG_SCHEMA.parse({ aktiv: false, modus: 'VORSCHLAG', wochentage: [1], uhrzeit: '08:00', zahlungsziel_tage: '', frist_tage: 10,
+    stufen: [{ name: 'E', tage: 7, gebuehr: 0 }, { name: 'M', tage: 14, gebuehr: 0, buchungssperre: true }], mindestbetrag: 5, max_je_lauf: 50, arten: ['HALLE'],
+    halle_gedruckt: false, anhang: true, absender: '', absender_name: '', antwort_an: '', kopie_an: '' });
+  assert.deepEqual(c.stufen.map((x) => x.buchungssperre), [false, true]);
 });

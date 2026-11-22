@@ -42,6 +42,8 @@ import { paperless, plAktiv } from '../verein.js';
 import { positionenLesen } from '../halle/daten.js';
 import { rechnungsBaum } from './rechnungsbaum.js';
 import { buchungDetails } from './details.js';
+import { buchungssperreLesen } from '../mahnung/lauf.js';
+import { sperrText } from '../mahnung/logik.js';
 
 export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
@@ -80,6 +82,23 @@ async function ich(req: FastifyRequest): Promise<Ich> {
   const i = await ichLesen(DB, id);
   if (!i) throw new BusinessError('Ihr Benutzer ist keinem Mitglied zugeordnet. Bitte beim Vorstand melden (Zuordnung unter Mitglieder → Zugänge → Zuordnung).', 403);
   return i;
+}
+
+/**
+ * Buchungssperre aus dem Mahnwesen: Wer (bzw. für wen gebucht wird) angemahnte Rechnungen ab der Stufe mit dem Kennzeichen
+ * „Buchungssperre“ offen hat, bucht keine neuen Hallenstunden – Freiplätze, Ändern und Stornieren bleiben möglich.
+ * platzId = null: Hallenbuchung ohne bestimmten Platz (Abo-Bewerbung). Ergebnis: Meldung bzw. null = darf buchen.
+ */
+async function hallenSperre(i: Ich, platzId: number | null, fuer?: string | null): Promise<string | null> {
+  if (platzId !== null) {
+    const [pl] = await DB`select art from tco.plaetze where id = ${platzId}`;
+    if (pl?.art !== 'HALLE') return null;
+  }
+  return sperrText(await buchungssperreLesen(DB, [i.adrnr, fuer ?? '']));
+}
+async function hallenSperrePruefen(i: Ich, platzId: number | null, fuer?: string | null): Promise<void> {
+  const t = await hallenSperre(i, platzId, fuer);
+  if (t) throw new BusinessError(t, 403);
 }
 
 const serieAnfrage = z.object({
@@ -464,11 +483,36 @@ export async function platzRoutes(app: FastifyInstance) {
       // für wen sich buchen lässt: ich und meine Familie – mit dem Namen, an den die Rechnung geht (Person oder ihr abweichender Zahler)
       personen: await buchungsPersonen(DB, i),
       rechte: { verwalten },
+      // Buchungssperre aus dem Mahnwesen (nur Hallenplätze)
+      buchungssperre: await hallenSperre(i, null),
       // Halle verschlossen (#11): Hinweis, wenn am Tag kein Hallenschlüssel ausgegeben ist
       hallenhinweis: (await hatSchluessel(DB, i.adrnr, q.datum)) ? null : HALLE_HINWEIS,
       // Preisklassen einer Einzelbuchung im Tagesverlauf (farbiger Strich neben der Uhrzeit)
       preiszonen: preiszonen(q.datum, await preiseLesen(DB)),
     };
+  });
+
+  /**
+   * Buchungssperre nach der Anmeldung (Wächter „Buchungssperre“ der Oberfläche): gesperrt mit den angemahnten Posten und ob der
+   * Hinweis in dieser Sitzung schon bestätigt wurde. Ohne zugeordnetes Mitglied: nicht gesperrt.
+   */
+  app.get('/platz/buchungssperre', buchen, async (req) => {
+    const id = req.user?.id;
+    const i = id ? await ichLesen(DB, id) : null;
+    if (!i) return { gesperrt: false, posten: [], text: null, bestaetigt: true };
+    const posten = await buchungssperreLesen(DB, [i.adrnr]);
+    const [g] = req.sitzung ? await DB`select 1 from tco.buchungssperre_gesehen where sitzung = ${req.sitzung}` : [];
+    return { gesperrt: posten.length > 0, posten, text: sperrText(posten), bestaetigt: !!g || !req.sitzung };
+  });
+  app.post('/platz/buchungssperre/bestaetigen', buchen, async (req) => {
+    const i = await ich(req);
+    const posten = await buchungssperreLesen(DB, [i.adrnr]);
+    if (req.sitzung) {
+      await DB`delete from tco.buchungssperre_gesehen where bestaetigt_am < now() - interval '90 days'`;
+      await DB`insert into tco.buchungssperre_gesehen (sitzung, user_id, posten) values (${req.sitzung}, ${i.benutzerId}, ${posten.map((p) => p.nr).join(', ')})
+               on conflict (sitzung) do update set bestaetigt_am = now(), posten = excluded.posten`;
+    }
+    return { ok: true };
   });
 
   /** Preisliste (Einzelbuchung) der Woche des Datums – zum Nachsehen aus „Platz buchen“, nur lesend */
@@ -526,11 +570,14 @@ export async function platzRoutes(app: FastifyInstance) {
   app.post('/platz/abowunsch', buchen, async (req) => {
     const i = await ich(req);
     const e = z.object({ platz_id: z.coerce.number().int().positive(), wochentag: z.coerce.number().int().min(1).max(7), von: uhr, bis: uhr }).parse(req.body);
+    await hallenSperrePruefen(i, e.platz_id);
     return { text: await change(req, (tx) => bewerben(tx, i, e), { action: 'ABO_BEWERBUNG', reason: `${e.wochentag} ${e.von}–${e.bis}` }) };
   });
   app.post('/platz/abowunsch/:id/:aktion', buchen, async (req) => {
     const i = await ich(req);
     const p = z.object({ id: z.coerce.number().int().positive(), aktion: z.enum(['bestaetigen', 'abgeben', 'zurueckziehen', 'annehmen', 'ablehnen']) }).parse(req.params);
+    // Abo bestätigen bzw. ein Angebot annehmen bucht Hallenstunden für die Saison – Abgeben und Zurückziehen bleiben möglich
+    if (p.aktion === 'bestaetigen' || p.aktion === 'annehmen') await hallenSperrePruefen(i, null);
     return { text: await change(req, (tx) => aktion(tx, i, p.id, p.aktion), { action: `ABO_${p.aktion.toUpperCase()}`, reason: String(p.id) }) };
   });
   const saison = z.object({
@@ -570,13 +617,15 @@ export async function platzRoutes(app: FastifyInstance) {
 
   /** Preis und Regeln vorab prüfen (Buchungsdialog) */
   app.post('/platz/pruefen', buchen, async (req) => {
-    await ich(req);
-    const e = buchung.extend({ bid: z.string().nullish() }).parse(req.body);
+    const i = await ich(req);
+    const e = buchung.extend({ bid: z.string().nullish(), fuer: z.string().max(20).nullish() }).parse(req.body);
     const p = await platzLesen(DB, e.platz_id);
     if (!p.aktiv) throw new BusinessError('Platz nicht gefunden.', 404);
     const von = minuten(e.von);
     const bis = e.bis === '24:00' ? 1440 : minuten(e.bis);
     let fehler = regelnPruefen({ platz: p, datum: e.datum, von, bis }, false);
+    // neue Buchung (nicht Ändern einer bestehenden): Buchungssperre aus dem Mahnwesen
+    if (!fehler && !e.bid) fehler = await hallenSperre(i, p.id, e.fuer);
     if (!fehler) {
       const b = (await belegungLesen(DB, [p], e.datum, e.datum, req.sitzung)).find((x) => (x.reserviert || x.bid !== e.bid) && x.von < bis && x.bis > von);
       if (b) fehler = b.fest ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr: ${b.fest.bezeichnung}.` : b.abo ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr für ein Abo reserviert.` : b.reserviert ? `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr wird gerade von jemand anderem gebucht.` : `Von ${hhmm(b.von)} bis ${hhmm(b.bis)} Uhr bereits belegt.`;
@@ -588,6 +637,7 @@ export async function platzRoutes(app: FastifyInstance) {
     const i = await ich(req);
     // fuer: Adressnummer eines Familienmitglieds – die Rechnung geht an diese Person bzw. ihren abweichenden Zahler
     const e = buchung.extend({ fuer: z.string().min(1).max(20).nullish() }).parse(req.body);
+    await hallenSperrePruefen(i, e.platz_id, e.fuer);
     const r = await change(req, (tx) => einzelAnlegen(tx, i, e), { action: 'PLATZ_BUCHEN', reason: `${e.datum} ${e.von}–${e.bis}${e.fuer && e.fuer !== i.adrnr ? ` für ${e.fuer}` : ''}` });
     // Halle verschlossen (#11): ohne Hallenschlüssel am Tag den Hinweis an die Bestätigung hängen
     const [pl] = await DB`select art from tco.plaetze where id = ${e.platz_id}`;

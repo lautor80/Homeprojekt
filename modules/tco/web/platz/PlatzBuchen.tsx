@@ -57,6 +57,8 @@ interface Tag {
   datum: string; heute: string; jetzt: string; ich: { name: string }; plaetze: TagPlatz[]; preiszonen?: Preiszone[];
   /** Halle verschlossen (#11): Hinweis, solange am Tag kein Hallenschlüssel ausgegeben ist */
   hallenhinweis?: string | null;
+  /** Buchungssperre aus dem Mahnwesen: keine neuen Hallenstunden bis zur Zahlung der angemahnten Rechnungen */
+  buchungssperre?: string | null;
   /** für wen sich buchen lässt: ich und meine Familie; rechnung = wer die Rechnung bekommt (Person oder ihr abweichender Zahler) */
   personen?: { adrnr: string; name: string; ich: boolean; rechnung: string }[];
   /** Admin/Hallenwart (tco.platzbuchung:verwalten, #11): Namen sehen, für andere buchen, Training & Co. eintragen */
@@ -250,6 +252,11 @@ export function PlatzBuchen() {
               </div>
             )}
 
+            {tag?.buchungssperre && plaetze.some((p) => p.art === 'HALLE') && (
+              <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>
+                <b>Buchungssperre Halle:</b> {tag.buchungssperre}
+              </MessageStrip>
+            )}
             {tag?.hallenhinweis && plaetze.some((p) => p.art === 'HALLE') && (
               <MessageStrip design="Critical" hideCloseButton className="portal-pb__hallenhinweis" style={{ marginBottom: '0.75rem' }}>
                 <b>Halle verschlossen:</b> {tag.hallenhinweis}
@@ -725,11 +732,11 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
     setPruefung(null);
     if (!p || !ich) return;
     const t = setTimeout(() => {
-      api.post<{ fehler: string | null; preis: Preis }>(`${PB}/pruefen`, { platz_id: e.platz_id, datum: e.datum, von: e.von, bis, bid: e.bid ?? null })
+      api.post<{ fehler: string | null; preis: Preis }>(`${PB}/pruefen`, { platz_id: e.platz_id, datum: e.datum, von: e.von, bis, bid: e.bid ?? null, fuer: person || null })
         .then(setPruefung).catch((x) => setMeldung((x as Error).message));
     }, 200);
     return () => clearTimeout(t);
-  }, [e.platz_id, e.datum, e.von, e.dauer, p?.id, sperre.zustand, ich]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [e.platz_id, e.datum, e.von, e.dauer, p?.id, sperre.zustand, ich, person]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const beginne = useMemo(() => {
     if (!p) return [] as string[];
@@ -769,6 +776,9 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
             </>} />}>
       <div className="portal-mz__form">
         {meldung && <MessageStrip design="Negative" onClose={() => setMeldung(null)}>{meldung}</MessageStrip>}
+        {ich && !e.bid && p?.art === 'HALLE' && tag?.buchungssperre && (
+          <MessageStrip design="Negative" hideCloseButton><b>Buchungssperre Halle:</b> {tag.buchungssperre}</MessageStrip>
+        )}
         {ich && !e.bid && p?.art === 'HALLE' && tag?.hallenhinweis && (
           <MessageStrip design="Critical" hideCloseButton><b>Halle verschlossen:</b> {tag.hallenhinweis}</MessageStrip>
         )}
