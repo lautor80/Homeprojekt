@@ -68,6 +68,8 @@ test('Tempo-Export prüfen, übernehmen, ersetzen, auswerten; Einstellungen, Vor
   // Leere Auswertung ohne Daten läuft
   ok(await admin('GET', AUSW));
   assert.equal((await admin('GET', `${M}/auswertung?zeitraum=2026-13x`)).status, 400, 'ungültiger Zeitraum');
+  assert.equal((await admin('GET', `${M}/auswertung?zeitraum=2026-10,2026-x`)).status, 400, 'ungültiger Teil-Zeitraum');
+  ok(await admin('GET', `${M}/auswertung?stichtag=2026-11-20&zeitraum=2026-10,2026-W46`));
 
   // Prüflauf: zeigt Kennzahlen, schreibt nichts
   const pruef = ok(await admin('POST', `${M}/import`, { dateien: [{ name: DATEI, csv: CSV }], uebernehmen: false }));

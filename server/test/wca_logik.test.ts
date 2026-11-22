@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { stundenLesen, tagesSpalte, tempoCsvLesen } from '../../modules/wca/server/logik/csv.js';
 import { feiertageBerechnet, feiertageManuell, ostersonntag } from '../../modules/wca/server/logik/feiertage.js';
-import { auswerten, teamKurz, typAbleiten, type AuswertungEingabe } from '../../modules/wca/server/logik/auswertung.js';
+import { auswerten, imZeitraumTag, teamKurz, typAbleiten, zeitraeumeLesen, type AuswertungEingabe } from '../../modules/wca/server/logik/auswertung.js';
 import { einstellungenErgaenzen, REGELN, STANDARD_EINSTELLUNGEN } from '../../modules/wca/server/logik/standard.js';
 import { textAnalyse, allgemeinPruefer } from '../../modules/wca/server/logik/text.js';
 import { isoWocheId } from '../../modules/wca/server/logik/datum.js';
@@ -480,4 +480,37 @@ test('Freigabe: freigegebener Text wird für Regel und Account nicht mehr gemeld
   const p1 = funde(lauf([e({ tage: [['2026-11-02', 7]] }), e({ key: 'WDEINT001-2', tage: [['2026-11-02', 6]] })]), 'P1');
   assert.equal(p1.length, 1);
   assert.equal(p1[0].freigebbar, false);
+});
+
+// ---------------------------------------------------------------------------
+// Mehrere Zeiträume
+// ---------------------------------------------------------------------------
+
+test('Zeiträume: mehrere kommagetrennt – sortiert, angrenzende verschmolzen, „alle“ umfasst alles, Ungültiges entfällt', () => {
+  const z = zeitraeumeLesen('2026-11,2026-09,2026-W40', '2026-01-05', '2026-11-20')!;
+  assert.equal(z.id, '2026-09,2026-W40,2026-11');
+  assert.equal(z.text, 'September 2026 + KW 40 (28.09.–04.10.) + November 2026');
+  assert.deepEqual(z.teile, [{ von: '2026-09-01', bis: '2026-10-04' }, { von: '2026-11-01', bis: '2026-11-30' }]);
+  assert.deepEqual([z.von, z.bis], ['2026-09-01', '2026-11-30']);
+  assert.ok(imZeitraumTag(z, '2026-10-04') && !imZeitraumTag(z, '2026-10-05') && imZeitraumTag(z, '2026-11-01'));
+  assert.deepEqual(zeitraeumeLesen('2026-11', null, '2026-11-20'), { id: '2026-11', text: 'November 2026', von: '2026-11-01', bis: '2026-11-30' }, 'einer ohne Teile');
+  assert.equal(zeitraeumeLesen('2026-10,alle', '2026-01-05', '2026-11-20')!.id, 'alle');
+  assert.equal(zeitraeumeLesen('2026-11,2026-11,2026-13', null, '2026-11-20')!.id, '2026-11', 'doppelt/ungültig entfällt');
+  assert.equal(zeitraeumeLesen('2026-13', null, '2026-11-20'), null);
+});
+
+test('Auswertung über zwei Wochen mit Lücke = Summe der Einzelwochen, Tage dazwischen zählen nicht', () => {
+  const w45 = fixtureAuswerten({ zeitraum: '2026-W45' }).personen[0];
+  const w47 = fixtureAuswerten({ zeitraum: '2026-W47' }).personen[0];
+  const a = fixtureAuswerten({ zeitraum: '2026-W47,2026-W45' });
+  const p = a.personen[0];
+  assert.equal(a.zeitraum.id, '2026-W45,2026-W47');
+  assert.deepEqual(a.zeitraum.teile, [{ von: '2026-11-02', bis: '2026-11-08' }, { von: '2026-11-16', bis: '2026-11-22' }]);
+  assert.equal(p.ist, w45.ist + w47.ist);
+  assert.equal(p.soll, w45.soll + w47.soll);
+  assert.equal(p.offen, w45.offen + w47.offen);
+  assert.equal(p.tageStatus.length, 14);
+  assert.ok(!p.tageStatus.some((t) => t.tag >= '2026-11-09' && t.tag <= '2026-11-15'), 'KW 46 nicht enthalten');
+  assert.ok(a.eintraege.every((x) => x.tage.every(([t]) => t < '2026-11-09' || t > '2026-11-15')));
+  assert.match(p.rueckfrage, /02\.11\.2026–08\.11\.2026, 16\.11\.2026–20\.11\.2026, Stand 20\.11\.2026/);
 });

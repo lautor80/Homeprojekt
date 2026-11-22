@@ -108,7 +108,8 @@ const importSchema = z.object({
 
 const auswertungQuery = z.object({
   stichtag: datum.optional().or(z.literal('').transform(() => undefined)),
-  zeitraum: z.string().regex(/^(\d{4}-\d{2}|\d{4}-W\d{2}|alle)$/, 'Zeitraum: JJJJ-MM, JJJJ-Www oder alle').optional().or(z.literal('').transform(() => undefined)),
+  zeitraum: z.string().max(2000).regex(/^(\d{4}-\d{2}|\d{4}-W\d{2}|alle)(,(\d{4}-\d{2}|\d{4}-W\d{2}|alle))*$/, 'Zeitraum: JJJJ-MM, JJJJ-Www oder alle (mehrere mit Komma)')
+    .optional().or(z.literal('').transform(() => undefined)),
 });
 
 const freigabeSchema = z.object({

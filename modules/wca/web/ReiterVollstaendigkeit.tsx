@@ -52,7 +52,8 @@ function tageZwischen(von: string, bis: string): string[] {
 /** Reiter „Vollständigkeit“: Tagesmatrix, Feiertage, Vollständigkeit je Person mit Tagesdetail, Exporte */
 export function ReiterVollstaendigkeit({ sicht }: { sicht: Sicht }) {
   const { a, f, personen } = sicht;
-  const tage = useMemo(() => tageZwischen(a.zeitraum.von, a.zeitraum.bis), [a.zeitraum]);
+  const tage = useMemo(() => tageZwischen(a.zeitraum.von, a.zeitraum.bis)
+    .filter((t) => !a.zeitraum.teile || a.zeitraum.teile.some((z) => t >= z.von && t <= z.bis)), [a.zeitraum]);
   const feiertage = a.feiertage.filter((x) => sicht.standorte.includes(x.standort) || x.standort === '*');
 
   function exportieren(nurOffen: boolean) {

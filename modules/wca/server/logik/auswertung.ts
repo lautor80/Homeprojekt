@@ -26,7 +26,7 @@ export interface AuswertungEingabe {
   vorgaben: PersonVorgabe[];
   heute: string; // ISO, für Stichtag-Vorschlag
   stichtag?: string;
-  zeitraum?: string; // 'YYYY-MM' | 'YYYY-Www' | 'alle'; Default Monat des Stichtags
+  zeitraum?: string; // 'YYYY-MM' | 'YYYY-Www' | 'alle', mehrere kommagetrennt; Default Monat des Stichtags
   /** optional: Bereich der Tagesspalten aller Importe (von–bis); sonst aus den Buchungen */
   datenBereich?: { von: string | null; bis: string | null };
   /** freigegebene Texte: Funde dieser Regel zu Rückmeldungen mit diesem Account und Text werden nicht gemeldet */
@@ -104,6 +104,40 @@ export function zeitraumLesen(id: string, minTag: string | null, stichtag: strin
   }
   if (id === 'alle') return { id, text: 'Alles bis Stichtag', von: minTag && minTag < stichtag ? minTag : stichtag, bis: stichtag };
   return null;
+}
+
+/**
+ * Einen oder mehrere Zeiträume (kommagetrennt) lesen. Mehrere werden zu einem Zeitraum mit Teilbereichen
+ * zusammengefasst (überlappende/angrenzende verschmolzen); „alle“ umfasst alles. Ungültige Teile entfallen.
+ */
+export function zeitraeumeLesen(ids: string, minTag: string | null, stichtag: string): Zeitraum | null {
+  const liste: Zeitraum[] = [];
+  for (const id of ids.split(',').map((x) => x.trim()).filter(Boolean)) {
+    const z = zeitraumLesen(id, minTag, stichtag);
+    if (z && !liste.some((x) => x.id === z.id)) liste.push(z);
+  }
+  if (!liste.length) return null;
+  const alle = liste.find((x) => x.id === 'alle');
+  if (alle) return alle;
+  if (liste.length === 1) return liste[0];
+  liste.sort((x, y) => (x.von < y.von ? -1 : x.von > y.von ? 1 : x.bis < y.bis ? -1 : 1));
+  const teile: { von: string; bis: string }[] = [];
+  for (const z of liste) {
+    const l = teile[teile.length - 1];
+    if (l && z.von <= plusTage(l.bis, 1)) { if (z.bis > l.bis) l.bis = z.bis; } else teile.push({ von: z.von, bis: z.bis });
+  }
+  return {
+    id: liste.map((x) => x.id).join(','),
+    text: liste.map((x) => x.text).join(' + '),
+    von: teile[0].von,
+    bis: teile.reduce((m, t) => (t.bis > m ? t.bis : m), teile[0].bis),
+    teile,
+  };
+}
+
+/** Liegt der Tag in einem der Teilbereiche (ohne Teile: zwischen von und bis)? */
+export function imZeitraumTag(z: Zeitraum, tag: string): boolean {
+  return z.teile ? z.teile.some((t) => tag >= t.von && tag <= t.bis) : tag >= z.von && tag <= z.bis;
 }
 
 function zeitraeumeListe(minTag: string | null, stichtag: string, buchMonate: Set<string>): Zeitraum[] {
@@ -268,9 +302,13 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
 
   const vorschlag = stichtagVorschlag(ein.heute, minTag, maxTag);
   const stichtag = ein.stichtag && /^\d{4}-\d{2}-\d{2}$/.test(ein.stichtag) ? ein.stichtag : vorschlag;
-  const zeitraum = (ein.zeitraum && zeitraumLesen(ein.zeitraum, minTag, stichtag)) || zeitraumLesen(stichtag.slice(0, 7), minTag, stichtag)!;
+  const zeitraum = (ein.zeitraum && zeitraeumeLesen(ein.zeitraum, minTag, stichtag)) || zeitraumLesen(stichtag.slice(0, 7), minTag, stichtag)!;
   const a = zeitraum.von;
   const e = zeitraum.bis < stichtag ? zeitraum.bis : stichtag;
+  /** Tag im (ggf. zusammengesetzten) Zeitraum – ohne Stichtagsgrenze */
+  const drin = (t: string) => imZeitraumTag(zeitraum, t);
+  /** Tag im Zeitraum bis zum Stichtag */
+  const zaehlt = (t: string) => t >= a && t <= e && drin(t);
 
   // Personen ableiten
   const vorgaben = new Map(ein.vorgaben.map((v) => [v.person, v]));
@@ -362,11 +400,11 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
   for (const p of jePerson.keys()) { const v = vorname(p).toLowerCase(); if (v.length >= 3) vornamen.add(v); }
 
   // Einträge im Zeitraum
-  const imZeitraum = alle.filter((x) => x.tage.some(([t]) => t >= a && t <= e));
+  const imZeitraum = alle.filter((x) => x.tage.some(([t]) => zaehlt(t)));
   const index = new Map<number, number>();
   const eintraege: AuswEintrag[] = imZeitraum.map((x, j) => {
     index.set(x.i, j);
-    const tage = x.tage.filter(([t]) => t >= a && t <= e);
+    const tage = x.tage.filter(([t]) => zaehlt(t));
     return {
       person: x.person, team: pers.get(x.person)?.team ?? x.team, typ: x.typ, kat: x.kat, accName: x.accName, kunde: x.kunde,
       accKey: x.accKey, ber: x.ber, berKey: x.berKey, key: x.key, text: x.text, acc: x.acc, errorAccount: x.errorAccount,
@@ -375,7 +413,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
   });
 
   // Prüfen
-  const roh = pruefen({ eintraege: alle, imZeitraum, personTage, vornamen, einst, a, e, accountAb, istArbeit, feiertag, imTeam });
+  const roh = pruefen({ eintraege: alle, imZeitraum, personTage, vornamen, einst, a, e, drin, accountAb, istArbeit, feiertag, imTeam });
   const tippVon = (regel: string) => einst.wortRegeln?.[regel]?.tipp ?? REGELN.find((r) => r.id === regel)?.tipp ?? '';
   const freigabeSet = new Set((ein.freigaben ?? []).map(freigabeSchluessel));
   let freigegeben = 0;
@@ -392,7 +430,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
     if (f.ei !== null) {
       const x = alle[f.ei];
       if (f.tag) stunden = x.tage.find(([t]) => t === f.tag)?.[1] ?? 0;
-      else stunden = x.tage.filter(([t]) => t >= a && t <= e && (!f.ab || t >= f.ab)).reduce((n, [, v]) => n + v, 0);
+      else stunden = x.tage.filter(([t]) => zaehlt(t) && (!f.ab || t >= f.ab)).reduce((n, [, v]) => n + v, 0);
     } else if (f.tag) stunden = personTage.get(f.person)?.get(f.tag)?.t ?? 0;
     funde.push({
       regel: f.regel, kategorie: f.kategorie, art: f.art, stufe: f.stufe, person: f.person,
@@ -429,6 +467,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
     let soll = 0, ist = 0, offen = 0, fehltage = 0, sollTage = 0, B = 0, P = 0, I = 0, A = 0;
     const tageStatus: TagStatus[] = [];
     for (const t of tageVonBis(a, zeitraum.bis)) {
+      if (!drin(t)) continue;
       const pt = tage.get(t) ?? { t: 0, A: 0, B: 0, P: 0, I: 0, n: 0 };
       const wt = wochentag(t);
       const arbeit = istArbeit(p.person, t);
@@ -482,13 +521,13 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
       eintraegeZeitraum: ent.length, texteUnauffaellig: ent.length ? 1 - schlecht / ent.length : null,
       rueckfrage: '',
     };
-    pa.rueckfrage = rueckfrageText(pa, gp, eintraege, a, e, stichtag);
+    pa.rueckfrage = rueckfrageText(pa, gp, eintraege, a, e, stichtag, zeitraum.teile);
     personen.push(pa);
   }
 
   // Feiertage im Zeitraum je Standort
   const feiertage: Feiertag[] = [];
-  for (const s of standorte) feiertage.push(...kal.imBereich(s, a, zeitraum.bis));
+  for (const s of standorte) feiertage.push(...kal.imBereich(s, a, zeitraum.bis).filter((f) => drin(f.tag)));
 
   // Regelinfos (ohne ausgeblendete Personen)
   const sichtbar = funde.filter((f) => !pers.get(f.person)?.ausgeblendet);
@@ -536,7 +575,8 @@ function kuerzen(s: string, n: number): string {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 }
 
-export function rueckfrageText(p: PersonAuswertung, gruppen: FundGruppe[], eintraege: AuswEintrag[], a: string, e: string, stichtag: string): string {
+export function rueckfrageText(p: PersonAuswertung, gruppen: FundGruppe[], eintraege: AuswEintrag[], a: string, e: string, stichtag: string,
+  teile?: { von: string; bis: string }[]): string {
   const z: string[] = [`Hallo ${vorname(p.person)},`, ''];
   const offen = p.tageStatus.filter((t) => t.tag <= e && (t.status === 'fehlt' || t.status === 'teilweise'));
   const ersterTag = (g: FundGruppe) => (g.eintrag !== null ? eintraege[g.eintrag].tage[0]?.[0] ?? '' : g.tag ?? '');
@@ -558,7 +598,8 @@ export function rueckfrageText(p: PersonAuswertung, gruppen: FundGruppe[], eintr
   };
   const ko = abschnitt(['K', 'P']);
   const tx = abschnitt(['T', 'R']);
-  const zr = `${datumDe(a)}–${datumDe(e)}, Stand ${datumDe(stichtag)}`;
+  const bereiche = teile ? teile.filter((t) => t.von <= e).map((t) => `${datumDe(t.von)}–${datumDe(t.bis < e ? t.bis : e)}`).join(', ') : `${datumDe(a)}–${datumDe(e)}`;
+  const zr = `${bereiche}, Stand ${datumDe(stichtag)}`;
   if (!offen.length && !ko.length && !tx.length) {
     z.push(`bei der Prüfung deiner Zeiterfassung (${zr}) ist mir nichts aufgefallen.`, '', 'Alles in Ordnung – danke!');
     return z.join('\n');

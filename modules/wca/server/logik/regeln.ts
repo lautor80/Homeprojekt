@@ -61,6 +61,8 @@ export interface PruefKontext {
   einst: Einstellungen;
   a: string;
   e: string; // min(Zeitraumende, Stichtag)
+  /** optional: Tag im Zeitraum (bei mehreren Zeiträumen mit Lücken); ohne gilt a..e */
+  drin?: (tag: string) => boolean;
   accountAb: string;
   /** Arbeitstag der Person? (Wochentag, im Team, kein Feiertag) */
   istArbeit: (person: string, tag: string) => boolean;
@@ -90,7 +92,8 @@ export function pruefen(k: PruefKontext): RohFund[] {
   const recurRe = wortRegex(einst.regeltermine);
   const allgemein = allgemeinPruefer(einst.allgemeinZusatz);
   const istRegeltermin = (s: string) => !!recurRe && recurRe.test(s);
-  const tageIn = (x: Eint) => x.tage.filter(([t]) => t >= a && t <= e);
+  const drin = k.drin ?? (() => true);
+  const tageIn = (x: Eint) => x.tage.filter(([t]) => t >= a && t <= e && drin(t));
 
   // --- Lernschritte über alle Einträge ---------------------------------------------------------
   const byKey = new Map<string, Map<string, { h: number; x: Eint }>>();
@@ -266,7 +269,7 @@ export function pruefen(k: PruefKontext): RohFund[] {
   // --- Tagesregeln P1, P3 ------------------------------------------------------------------------
   for (const [p, tage] of k.personTage) {
     for (const [t, pt] of tage) {
-      if (t < a || t > e) continue;
+      if (t < a || t > e || !drin(t)) continue;
       if (pt.t > einst.langerTag) {
         add({ regel: 'P1', kategorie: 'P', art: 'pl', stufe: pt.t > einst.langerTag + 2 ? 2 : 1, person: p, ei: null, tag: t, meldung: `${zahl(pt.t)} h an einem Tag.` });
       }

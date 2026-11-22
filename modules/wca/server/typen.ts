@@ -243,10 +243,12 @@ export interface Feiertag {
 }
 
 export interface Zeitraum {
-  id: string; // 'YYYY-MM', 'YYYY-Www' oder 'alle'
+  id: string; // 'YYYY-MM', 'YYYY-Www' oder 'alle'; bei mehreren Zeiträumen kommagetrennt
   text: string; // 'November 2026', 'KW 46 (09.11.–15.11.)', 'Alles bis Stichtag'
-  von: string;
-  bis: string;
+  von: string; // frühester Tag
+  bis: string; // spätester Tag
+  /** nur bei mehreren gewählten Zeiträumen: die (zusammengefassten) Teilbereiche; Tage dazwischen zählen nicht */
+  teile?: { von: string; bis: string }[];
 }
 
 export interface Auswertung {

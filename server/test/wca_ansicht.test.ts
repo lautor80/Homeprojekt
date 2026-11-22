@@ -1,7 +1,7 @@
 /** WCA Zeitenkontrolle: Drilldown je Person (Kategorie → Projekt → Tätigkeit), rein ohne Datenbank */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { baum } from '../../modules/wca/web/ansicht.js';
+import { baum, baumFelderLesen, BAUM_STANDARD } from '../../modules/wca/web/ansicht.js';
 import type { AuswEintrag } from '../../modules/wca/server/typen.js';
 
 function e(o: Partial<AuswEintrag>): AuswEintrag {
@@ -37,4 +37,40 @@ test('Drilldown: Kategorie → Projekt → Tätigkeit, gleiche Texte zusammengef
   assert.deepEqual([runde[0].text, runde[0].zusatz, runde[0].stunden, runde[0].tage, runde[0].eintraege], ['Teamrunde', 'WDEINT001-9, WDEINT001-10', 2.5, 2, [0, 1]]);
   assert.equal(intern.kinder[1].zusatz, '', 'ohne Account: Bereich als Projekt');
   assert.equal(intern.tage, 3);
+});
+
+test('Drilldown: frei wählbare Felder – Reihenfolge bestimmt die Gruppierung, Zeitfelder teilen nach Tagen auf', () => {
+  const liste = [
+    e({ typ: 'B', accName: 'Servicemanagement', kunde: 'Kunde Drill GmbH', acc: 'Servicemanagement|Kunde Drill GmbH', ber: 'Managed Services',
+        key: 'DRL-1', text: 'Mapping', tage: [['2026-10-30', 2], ['2026-11-02', 6]], stunden: 8 }),
+    e({ typ: 'I', key: 'WDEINT001-9', text: 'Teamrunde', tage: [['2026-11-02', 1]], stunden: 1 }),
+    e({ typ: 'B', accName: 'Rollout', kunde: 'Kunde Drill GmbH', acc: 'Rollout|Kunde Drill GmbH', ber: 'Managed Services', key: 'DRL-2',
+        text: 'Schulung', tage: [['2026-11-03', 3]], stunden: 3 }),
+  ].map((x, i) => ({ e: x, i }));
+
+  // Monat → Kategorie: chronologisch, Stunden je Monat aufgeteilt
+  const m = baum(liste, ['monat', 'kategorie']);
+  assert.deepEqual(m.map((k) => [k.text, k.stunden, k.tage]), [['Oktober 2026', 2, 1], ['November 2026', 10, 2]]);
+  assert.deepEqual(m[1].kinder.map((k) => [k.text, k.stunden]), [['Billable', 9], ['Intern', 1]]);
+  assert.deepEqual(m[1].kinder[0].eintraege, [0, 2]);
+
+  // Kunde → Projekt: Kunde nicht mehr als Zusatz am Projekt
+  const k = baum(liste, ['kunde', 'projekt']);
+  assert.deepEqual(k.map((x) => x.text), ['Kunde Drill GmbH', 'Walldorf intern']);
+  assert.deepEqual(k[0].kinder.map((x) => [x.text, x.zusatz, x.stunden]), [['Servicemanagement', 'Managed Services', 8], ['Rollout', 'Managed Services', 3]]);
+
+  // Tag → Ticket (Blatt), Ticket nicht als Zusatz
+  const t = baum(liste, ['tag', 'ticket', 'taetigkeit']);
+  assert.deepEqual(t.map((x) => x.text), ['Fr 30.10.2026', 'Mo 02.11.2026', 'Di 03.11.2026']);
+  assert.deepEqual(t[1].kinder.map((x) => [x.text, x.stunden]), [['DRL-1', 6], ['WDEINT001-9', 1]]);
+  assert.equal(t[1].kinder[0].kinder[0].zusatz, '');
+
+  // KW
+  assert.deepEqual(baum(liste, ['woche']).map((x) => [x.text, x.stunden]), [['KW 44/2026', 2], ['KW 45/2026', 10]]);
+
+  // Standard und gespeicherte Auswahl
+  assert.deepEqual(baum(liste).map((x) => x.feld), ['kategorie', 'kategorie']);
+  assert.deepEqual(baumFelderLesen(['tag', 'quatsch', 'tag', 'kunde']), ['tag', 'kunde']);
+  assert.deepEqual(baumFelderLesen([]), BAUM_STANDARD);
+  assert.deepEqual(baumFelderLesen('x'), BAUM_STANDARD);
 });
