@@ -14,8 +14,8 @@ import {
 import { rundschreibenAblegen, rundschreibenPdf } from './pdf.js';
 
 /**
- * App „Rundschreiben“: E-Mails an alle Mitglieder oder an Mitgliedergruppen – Vereinsinformation an Mitglieder, keine
- * Werbung an Dritte. Entwurf (Betreff, Text mit Platzhaltern, Anhänge, Empfängerauswahl), prüfbare Empfängerliste,
+ * App „Rundschreiben“: E-Mails an alle Mitglieder, an Mitgliedergruppen und/oder an die Benutzer gewählter Rollen
+ * (z. B. externe Hallennutzer) – Vereins- und Hallenbetriebsinformation, keine Werbung an Dritte. Entwurf (Betreff, Text mit Platzhaltern, Anhänge, Empfängerauswahl), prüfbare Empfängerliste,
  * Testmail an sich selbst, Versand im Hintergrund mit Status je Empfänger, Protokoll.
  *
  * Berechtigungsobjekte:
@@ -32,7 +32,8 @@ export const ANHANG_ANZAHL = 5;
 const benutzer = (req: FastifyRequest) => req.user?.displayName || req.user?.username || 'unbekannt';
 const pId = z.object({ id: z.coerce.number().int().positive() });
 const pAnhang = pId.extend({ aid: z.coerce.number().int().positive() });
-const adrnr = z.string().trim().min(1).max(20);
+/** Mitgliedsnummer oder „B:<Benutzer-Id>“ */
+const adrnr = z.string().trim().min(1).max(40);
 const EMAIL = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/;
 
 const entwurfSchema = z.object({
@@ -42,7 +43,7 @@ const entwurfSchema = z.object({
     .refine((x) => !x || EMAIL.test(x), 'Die Antwortadresse ist keine gültige E-Mail-Adresse.'),
   auswahl: z.object({
     alle: z.boolean(), gruppen: z.array(z.number().int().positive()).max(200), alter: z.enum(ALTER), arten: z.array(z.string().max(20)).max(50),
-    dazu: z.array(adrnr).max(2000), ohne: z.array(adrnr).max(2000),
+    dazu: z.array(adrnr).max(2000), ohne: z.array(adrnr).max(2000), rollen: z.array(z.string().trim().min(1).max(60)).max(50).default([]),
   }),
 });
 
@@ -211,7 +212,7 @@ export async function rundschreibenRoutes(app: FastifyInstance) {
     const gesperrt = (email: string) => { const s = sperren.get(email.toLowerCase()); return s ? sperrText(s) : null; };
     const bsp = erg.empfaenger.find((e) => e.email.toLowerCase() === (fuer ?? '').toLowerCase()) ?? erg.empfaenger[0] ?? null;
     return {
-      empfaenger: erg.empfaenger.map((e) => ({ email: e.email, namen: e.namen, anrede: e.anrede, personen: e.adrnrs.length, weg: e.weg, weg_text: WEG_TEXT[e.weg], unzustellbar: gesperrt(e.email) })),
+      empfaenger: erg.empfaenger.map((e) => ({ email: e.email, namen: e.namen, anrede: e.anrede, personen: e.adrnrs.length + e.benutzer.length, rolle: e.adrnrs.length === 0, weg: e.weg, weg_text: WEG_TEXT[e.weg], unzustellbar: gesperrt(e.email) })),
       ohne_mail: erg.ohneMail,
       anzahl: { personen: erg.personen, mails: erg.empfaenger.length, ohne_mail: erg.ohneMail.length, dubletten: erg.dubletten, ausgeschlossen: erg.ausgeschlossen,
         unzustellbar: erg.empfaenger.filter((e) => gesperrt(e.email)).length },
@@ -278,7 +279,7 @@ export async function rundschreibenRoutes(app: FastifyInstance) {
   app.get('/rundschreiben/:id/protokoll', lesen, async (req) => {
     const { id } = pId.parse(req.params);
     await kopfLesen(DB, id);
-    const zeilen = await DB`select id::int as id, email, namen, cardinality(adrnrs) as personen, weg, status, fehler, versuche, gesendet_am::text as gesendet_am
+    const zeilen = await DB`select id::int as id, email, namen, cardinality(adrnrs) + cardinality(benutzer_ids) as personen, weg, status, fehler, versuche, gesendet_am::text as gesendet_am
                               from tco.rundschreiben_empfaenger where rundschreiben_id = ${id}
                              order by case status when 'FEHLER' then 0 when 'OHNE_MAIL' then 1 when 'SENDET' then 2 when 'OFFEN' then 3 else 4 end, lower(namen), id`;
     return { zeilen, zaehler: (await zaehlerLesen(DB, [id])).get(id) ?? ZAEHLER_LEER };

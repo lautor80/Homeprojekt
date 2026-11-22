@@ -28,7 +28,8 @@ const RS = `${TCO}/rundschreiben`;
 
 type Status = 'ENTWURF' | 'VERSAND' | 'ANGEHALTEN' | 'FERTIG';
 interface Zaehler { gesamt: number; offen: number; gesendet: number; fehler: number; ohne_mail: number }
-interface Auswahl { alle: boolean; gruppen: number[]; alter: '' | 'ERWACHSENE' | 'JUGEND'; arten: string[]; dazu: string[]; ohne: string[] }
+interface Auswahl { alle: boolean; gruppen: number[]; alter: '' | 'ERWACHSENE' | 'JUGEND'; arten: string[]; dazu: string[]; ohne: string[]; rollen: string[] }
+type Modus = 'ALLE' | 'GRUPPEN' | 'ROLLEN';
 interface ListenZeile { id: number; betreff: string; status: Status; erstellt_von: string | null; geaendert_am: string; gesendet_am: string | null; gesendet_von: string | null; zaehler: Zaehler }
 interface Anhang { id: number; dateiname: string; mime: string; groesse: number }
 interface Kopf {
@@ -38,10 +39,11 @@ interface Kopf {
 }
 interface Werte {
   gruppen: { id: number; name: string; pfad: string; ebene: number; gesamt: number }[]; arten: { art: string; text: string; anzahl: number }[];
-  personen: { adrnr: string; name: string; mitglied: boolean }[]; platzhalter: Record<string, string>; anhang_max: number; anhang_anzahl: number;
+  personen: { adrnr: string; name: string; mitglied: boolean }[]; benutzer: { key: string; name: string; rollen: string[] }[];
+  rollen: { id: string; name: string; anzahl: number }[]; platzhalter: Record<string, string>; anhang_max: number; anhang_anzahl: number;
 }
 interface Pruefung {
-  empfaenger: { email: string; namen: string; anrede: string; personen: number; weg: string; weg_text: string; unzustellbar: string | null }[];
+  empfaenger: { email: string; namen: string; anrede: string; personen: number; rolle: boolean; weg: string; weg_text: string; unzustellbar: string | null }[];
   ohne_mail: { adrnr: string; name: string; grund: string }[];
   anzahl: { personen: number; mails: number; ohne_mail: number; dubletten: number; ausgeschlossen: number; unzustellbar: number };
   beispiel: { an: string; namen: string; betreff: string; text: string } | null; mail: boolean;
@@ -85,7 +87,7 @@ export function Rundschreiben() {
 
   const sel = liste?.find((z) => z.id === id) ?? null;
   return (
-    <AppPage title="Rundschreiben" subtitle="Vereinsinformation per E-Mail an alle Mitglieder oder an Mitgliedergruppen – jede Person erhält ihre eigene E-Mail"
+    <AppPage title="Rundschreiben" subtitle="Vereinsinformation per E-Mail an alle Mitglieder, an Mitgliedergruppen oder an Benutzerrollen (z. B. Hallennutzer) – jede Person erhält ihre eigene E-Mail"
              actions={darf.edit ? <Button icon="add" design="Emphasized" onClick={neu}>Neues Rundschreiben</Button> : undefined}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!mail && (
@@ -132,6 +134,7 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [frage, setFrage] = useState<'senden' | 'loeschen' | null>(null);
+  const [modusGewaehlt, setModus] = useState<Modus | null>(null);
   const datei = useRef<HTMLInputElement>(null);
   const edit = darf.edit;
 
@@ -212,7 +215,12 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
 
   if (!k) return error ? <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip> : null;
   const groesse = k.anhaenge.reduce((s, a) => s + a.groesse, 0);
-  const nachGruppen = !k.auswahl.alle;
+  const rollen = k.auswahl.rollen ?? [];
+  const modus: Modus = modusGewaehlt ?? (k.auswahl.alle ? 'ALLE' : k.auswahl.gruppen.length || !rollen.length ? 'GRUPPEN' : 'ROLLEN');
+  const nachGruppen = modus === 'GRUPPEN';
+  const nurRollen = modus === 'ROLLEN';
+  const modusSetzen = (m: Modus) => { setModus(m); wahl(m === 'ALLE' ? { alle: true } : m === 'GRUPPEN' ? { alle: false } : { alle: false, gruppen: [] }); };
+  const rollenName = (id: string) => w?.rollen.find((r) => r.id === id)?.name ?? id;
 
   return (
     <>
@@ -233,10 +241,16 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
       <Section title="1. Empfänger wählen">
         <FormGrid>
           <FieldBox label="An">
-            <Select disabled={!edit} onChange={(e) => wahl({ alle: (e.detail.selectedOption as HTMLElement).dataset.k === 'ALLE' })}>
-              <Option data-k="ALLE" selected={k.auswahl.alle}>Alle aktiven Mitglieder</Option>
-              <Option data-k="GRUPPEN" selected={!k.auswahl.alle}>Mitglieder ausgewählter Gruppen</Option>
+            <Select disabled={!edit} onChange={(e) => modusSetzen(((e.detail.selectedOption as HTMLElement).dataset.k ?? 'ALLE') as Modus)}>
+              <Option data-k="ALLE" selected={modus === 'ALLE'}>Alle aktiven Mitglieder</Option>
+              <Option data-k="GRUPPEN" selected={modus === 'GRUPPEN'}>Mitglieder ausgewählter Gruppen</Option>
+              <Option data-k="ROLLEN" selected={modus === 'ROLLEN'}>Nur Benutzer ausgewählter Rollen (z. B. Hallennutzer)</Option>
             </Select>
+          </FieldBox>
+          <FieldBox label={nurRollen ? 'Rollen (Berechtigungsgruppen)' : 'Zusätzlich Benutzer dieser Rollen'} required={nurRollen}>
+            <MultiComboBox disabled={!edit} noTypeahead placeholder={nurRollen ? 'Rollen wählen' : 'keine'} onSelectionChange={(e) => wahl({ rollen: gewaehlt(e) })}>
+              {w?.rollen.map((r) => <MultiComboBoxItem key={r.id} data-k={r.id} text={r.name} additionalText={`${r.anzahl}`} selected={rollen.includes(r.id)} />)}
+            </MultiComboBox>
           </FieldBox>
           {nachGruppen && (
             <FieldBox label="Mitgliedergruppen (Untergruppen eingeschlossen)" required>
@@ -245,32 +259,36 @@ function Entwurf({ id, darf, onGeaendert, onWeg, onKopie }: {
               </MultiComboBox>
             </FieldBox>
           )}
-          <FieldBox label="Altersgruppe">
-            <Select disabled={!edit} onChange={(e) => wahl({ alter: ((e.detail.selectedOption as HTMLElement).dataset.k ?? '') as Auswahl['alter'] })}>
+          <FieldBox label="Altersgruppe (nur Mitglieder)">
+            <Select disabled={!edit || nurRollen} onChange={(e) => wahl({ alter: ((e.detail.selectedOption as HTMLElement).dataset.k ?? '') as Auswahl['alter'] })}>
               <Option data-k="" selected={k.auswahl.alter === ''}>Alle</Option>
               <Option data-k="ERWACHSENE" selected={k.auswahl.alter === 'ERWACHSENE'}>Erwachsene (ab 18 Jahren)</Option>
               <Option data-k="JUGEND" selected={k.auswahl.alter === 'JUGEND'}>Kinder und Jugendliche (unter 18)</Option>
             </Select>
           </FieldBox>
-          <FieldBox label="Beitragsart (leer = alle)">
-            <MultiComboBox disabled={!edit} noTypeahead placeholder="Alle Beitragsarten" onSelectionChange={(e) => wahl({ arten: gewaehlt(e) })}>
+          <FieldBox label="Beitragsart (nur Mitglieder, leer = alle)">
+            <MultiComboBox disabled={!edit || nurRollen} noTypeahead placeholder="Alle Beitragsarten" onSelectionChange={(e) => wahl({ arten: gewaehlt(e) })}>
               {w?.arten.map((a) => <MultiComboBoxItem key={a.art} data-k={a.art} text={a.text} additionalText={`${a.anzahl}`} selected={k.auswahl.arten.includes(a.art)} />)}
             </MultiComboBox>
           </FieldBox>
           <FieldBox label="Zusätzlich einzelne Personen">
             <MultiComboBox disabled={!edit} placeholder="Name suchen" onSelectionChange={(e) => wahl({ dazu: gewaehlt(e) })}>
               {w?.personen.map((x) => <MultiComboBoxItem key={x.adrnr} data-k={x.adrnr} text={x.name} additionalText={x.mitglied ? '' : 'Zahler/Elternteil'} selected={k.auswahl.dazu.includes(x.adrnr)} />)}
+              {w?.benutzer.map((x) => <MultiComboBoxItem key={x.key} data-k={x.key} text={x.name} additionalText={x.rollen.map(rollenName).join(', ') || 'Benutzer'} selected={k.auswahl.dazu.includes(x.key)} />)}
             </MultiComboBox>
           </FieldBox>
           <FieldBox label="Diese Personen ausschließen">
             <MultiComboBox disabled={!edit} placeholder="Name suchen" onSelectionChange={(e) => wahl({ ohne: gewaehlt(e) })}>
               {w?.personen.map((x) => <MultiComboBoxItem key={x.adrnr} data-k={x.adrnr} text={x.name} selected={k.auswahl.ohne.includes(x.adrnr)} />)}
+              {w?.benutzer.map((x) => <MultiComboBoxItem key={x.key} data-k={x.key} text={x.name} additionalText={x.rollen.map(rollenName).join(', ') || 'Benutzer'} selected={k.auswahl.ohne.includes(x.key)} />)}
             </MultiComboBox>
           </FieldBox>
         </FormGrid>
         <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
-          Empfänger sind nur aktive Mitglieder – Ausgetretene und Schnupper-Kontakte nie. Bei Minderjährigen geht die E-Mail an die Eltern
-          (Zahler bzw. Kontoinhaber). Teilen sich mehrere Personen eine Adresse, kommt dort nur eine E-Mail an.
+          Empfänger sind aktive Mitglieder – Ausgetretene und Schnupper-Kontakte nie. Bei Minderjährigen geht die E-Mail an die Eltern
+          (Zahler bzw. Kontoinhaber). Über Rollen kommen aktive Benutzer dazu, z. B. externe Hallennutzer: Ist ein Benutzer einem Mitglied
+          zugeordnet, zählt er als Mitglied, sonst gilt die Adresse aus seinem Kundenstamm bzw. Benutzerkonto; gesperrte Benutzer nie.
+          Rollen sind für Informationen zum Hallen- und Vereinsbetrieb gedacht, nicht für Werbung. Teilen sich mehrere Personen eine Adresse, kommt dort nur eine E-Mail an.
         </Text>
       </Section>
 
