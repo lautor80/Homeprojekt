@@ -17,6 +17,7 @@ import { PdfDialog } from '@core/components/PdfDialog';
 import '../jt/meine.css';
 import './platz.css';
 import { AboBewerbung } from './AboBewerbung';
+import { AushangInPlatzBuchen } from './Aushang';
 // Farben der Preise wie im Wochenplan der Hallenpreise (portal-hpw__f0 … f4)
 import '../hallenpreise.css';
 
@@ -227,6 +228,8 @@ export function PlatzBuchen() {
           <Tab data-k="abo" icon="repost" text="Abo-Bewerbung" selected={ansicht === 'abo'} />
         </TabContainer>
 
+        {/* Aushang: Hinweise des Vereins (Platzverwaltung → Aushang), fällige öffnen sich beim Aufruf */}
+        <AushangInPlatzBuchen />
         {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
 
         {ansicht === 'kalender' && (

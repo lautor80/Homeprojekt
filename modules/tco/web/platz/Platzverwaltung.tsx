@@ -24,6 +24,7 @@ import { DialogFuss } from '@core/components/DialogFuss';
 import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
 import { LEERER_ABO_FILTER, aboFilterAktiv, aboFilterLesen, aboPlaetze, aboTitel, abosFiltern, type AboFilter } from './aboFilter';
 import { AboSaisonVerwaltung } from './AboSaisonVerwaltung';
+import { AushangVerwaltung } from './AushangVerwaltung';
 
 /**
  * Platzverwaltung: Plätze (Freiplätze/Halle) mit Gültigkeit, Öffnungszeiten, Zeitraster, Buchungsdauern,
@@ -58,6 +59,7 @@ export function Platzverwaltung() {
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'plaetze');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const darfAushang = useCan()('tco.platz:aushang');
   // Sprung innerhalb der Seite (z. B. Termin-Details → „Zur Abo-Saison“, ?tab=abosaison): Reiter aus der neuen Adresse übernehmen
   const ort = useLocation();
   useEffect(() => { const t = new URLSearchParams(ort.search).get('tab'); if (t) setTab(t); }, [ort.key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -76,7 +78,7 @@ export function Platzverwaltung() {
   // Zugänge und Zuordnung stehen in der App „Zugänge“ (#232, N3) – alte Adressen und gespeicherte Ansichten führen dorthin
   if (tab === 'benutzer' || tab === 'zugaenge') return <Navigate to={`/tco/zugaenge?tab=${tab === 'benutzer' ? 'zuordnung' : 'registrierungen&art=halle'}`} replace />;
   return (
-    <AppPage varianten={{ repid: 'tco.platzverwaltung', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos, Abo-Saison"
+    <AppPage varianten={{ repid: 'tco.platzverwaltung', ansicht: { tab }, onAnwenden: (a) => { setTab(feld(a, 'tab', tab)); } }} title="Platzverwaltung" subtitle="Freiplätze und Halle: Plätze, Buchungsregeln, Belegung, Abos, Abo-Saison, Aushang"
              actions={<ChangeHistoryButton objectType="PLATZ" objectKey="" />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <TabContainer tabLayout="Inline" onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
@@ -95,6 +97,11 @@ export function Platzverwaltung() {
         <Tab data-key="abosaison" text="Abo-Saison" icon="appointment" selected={tab === 'abosaison'}>
           {tab === 'abosaison' && <AboSaisonVerwaltung />}
         </Tab>
+        {darfAushang && (
+          <Tab data-key="aushang" text="Aushang" icon="message-popup" selected={tab === 'aushang'}>
+            {tab === 'aushang' && <AushangVerwaltung />}
+          </Tab>
+        )}
       </TabContainer>
     </AppPage>
   );
