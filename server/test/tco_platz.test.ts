@@ -1479,3 +1479,35 @@ test('Meine Rechnungen: die aktuelle Rechnung kommt mit allen Positionen als Bau
     await sql`delete from tco.rgkopf where rgnr_txt in ('2026_900', '2026_901', '2026_902')`;
   }
 });
+
+test('EP3-Import: Duplikate werden storniert übernommen – der Bestand im Portal bleibt', async () => {
+  const { ep3Importieren } = await import('../../modules/tco/server/halle/ep3.js');
+  const d = tag(61), e = tag(62);
+  // Bestand: Abo-Termin 10–11 Uhr (wie eine in EP3 verschobene Serie, deren alte Termine abgerechnet stehen blieben)
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz, assigned) values
+            ('0000009301', ${d}, '10:00', '11:00', 'YURI DUP', '3', 'Dup-Halle', 'Y'),
+            ('0000009302', ${e}, '18:00', '19:00', 'OHNE PLATZ', '1', null, '')`;
+  const csv = 'BID;DATUM;TIME_START;TIME_ENDE;KUNDE;TEXT;STATUS;PREIS;PLATZ\n'
+    + `9390;${d};10:00;11:00;Yuri Dup;;subscription;0;Dup-Halle\n`       // gleiche Zeit, gleicher Platz → Duplikat
+    + `9391;${d};10:30;11:30;Anna Anders;;single;0;Dup-Halle\n`         // überschneidet → Duplikat (anderer Kunde, gleicher Platz)
+    + `9392;${d};10:00;11:00;Yuri Dup;;single;0;Dup-Platz-2\n`          // anderer Platz → kein Duplikat
+    + `9393;${d};11:00;12:00;Yuri Dup;;single;0;Dup-Halle\n`            // schließt direkt an → kein Duplikat
+    + `9394;${e};18:00;19:00;Ohne Platz;;single;0;\n`                  // ohne Platz → nie Duplikat (könnte ein anderer Platz sein)
+    + `9395;${e};18:00;19:00;Jemand Anderes;;single;0;Dup-Halle\n`      // Bestand ohne Platz → kein Duplikat
+    + `9396;${d};10:00;11:00;Yuri Dup;;cancelled;0;Dup-Halle\n`;        // storniert in EP3 → bleibt einfach storniert
+  const imp = await sql.begin((tx) => ep3Importieren(tx as never, csv));
+  assert.match(imp.text, /2 Duplikate storniert \(Termin im Portal schon belegt\)/);
+  assert.deepEqual(imp.details?.filter((x) => x.art === 'Duplikat storniert').map((x) => x.text.match(/Buchung (\d+), belegt durch (\d+)/)?.slice(1)),
+    [['9390', '9301'], ['9391', '9301']]);
+  const st = Object.fromEntries((await sql`select bid, status, storno_portal is not null as sp, storno_grund from tco.bookings where bid like '00000093%' order by bid`)
+    .map((r) => [r.bid.replace(/^0+/, ''), [r.status, r.sp, r.storno_grund ? 'Grund' : '']]));
+  assert.deepEqual(st, {
+    9301: ['3', false, ''], 9302: ['1', false, ''],
+    9390: ['2', true, 'Grund'], 9391: ['2', true, 'Grund'], 9392: ['1', false, ''], 9393: ['1', false, ''],
+    9394: ['1', false, ''], 9395: ['1', false, ''], 9396: ['2', false, ''],
+  });
+  // ein erneuter Import lässt die Duplikate storniert und den Bestand unverändert
+  await sql.begin((tx) => ep3Importieren(tx as never, csv));
+  assert.deepEqual((await sql`select bid from tco.bookings where bid like '00000093%' and status = '2' order by bid`).map((r) => r.bid.replace(/^0+/, '')), ['9390', '9391', '9396']);
+  assert.equal((await sql`select status from tco.bookings where bid = '0000009301'`)[0].status, '3');
+});
