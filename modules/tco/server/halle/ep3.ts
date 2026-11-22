@@ -32,7 +32,7 @@ const PLATZ_SPALTEN = ['PLATZ', 'SQUARE', 'SQUARE_NAME', 'COURT', 'SNAME', 'SID'
 const STATUS: Record<string, string> = { single: '1', subscription: '3', cancelled: '2' };
 
 /** Einzelne Änderungen für das Importprotokoll (neu angelegte Kunden, neu ergänzte Buchungen) */
-export interface ImportDetail { art: 'Kunde neu' | 'Buchung neu'; text: string }
+export interface ImportDetail { art: 'Kunde neu' | 'Buchung neu' | 'Duplikat storniert'; text: string }
 export interface ImportErgebnis {
   typ: Ep3Typ | null; text: string; ok: boolean; details?: ImportDetail[];
   /** EP3-Namen (Schlüssel der Personenliste) mit neu ergänzten Buchungen – vollständig, ohne Obergrenze */
@@ -138,6 +138,24 @@ async function texteImportieren(tx: Db, rows: string[][], idx: (n: string) => nu
   return { typ: 'TEXTE', ok: true, text: `Buchungstexte: ${rows.length} gelesen, ${texte.size} übertragen` };
 }
 
+/** belegende Status: Einzel, Abo, Sperre */
+const AKTIV = ['1', '3', '5'];
+
+/**
+ * Bereits aktive Buchung einer anderen BID im selben Zeitraum: gleicher Platz, überschneidende Zeit. Fehlt die
+ * Platzangabe auf einer Seite, zählt es nur bei gleichem Kunden als Duplikat (sonst könnte es ein anderer Platz sein).
+ */
+export async function duplikatVon(tx: Db, b: Pick<ImpBuchung, 'bid' | 'datum' | 'time_start' | 'time_ende' | 'kunde' | 'platz'>): Promise<string | null> {
+  if (!b.time_start || !b.time_ende) return null;
+  const [d] = await tx`
+    select bid from tco.bookings
+     where datum = ${b.datum} and bid <> ${b.bid} and status = any(${AKTIV})
+       and time_start < ${b.time_ende}::time and time_ende > ${b.time_start}::time
+       and (platz = ${b.platz}::text or ((platz is null or ${b.platz}::text is null) and upper(kunde) = ${b.kunde}))
+     order by bid limit 1`;
+  return d ? (d.bid as string) : null;
+}
+
 interface ImpBuchung { bid: string; datum: string; time_start: string | null; time_ende: string | null; kunde: string; text: string | null; status: string; preis: number | null; platz: string | null }
 
 async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) => number): Promise<ImportErgebnis> {
@@ -184,11 +202,24 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   let abgerechnet = 0;
   let geerbt = 0;
   let repariert = 0;
+  const duplikate: ImportDetail[] = [];
   const h = heute();
   for (const b of liste) {
     const desc = `${dat(b.datum)} von ${zeit(b.time_start)} bis ${zeit(b.time_ende)} Uhr`;
     const alt = best.get(key(b));
     if (!alt) {
+      // Duplikat: Den Termin belegt schon eine andere aktive Buchung (gleicher Platz – ohne Platzangabe gleicher Kunde –,
+      // überschneidende Zeit). Das Portal ist das führende Buchungssystem: Sein Bestand bleibt, der Termin aus EP3 wird
+      // storniert übernommen (storno_portal: bleibt auch bei späteren Importen storniert).
+      const dup = AKTIV.includes(b.status) ? await duplikatVon(tx, b) : null;
+      if (dup) {
+        await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz, storno_portal, storno_grund)
+                 values (${b.bid}, ${b.datum}, ${b.time_start}, ${b.time_ende}, ${b.kunde}, '2', ${desc}, ${b.preis}, ${h}, '', ${b.text}, ${b.platz}, now(),
+                         ${`Duplikat aus EP3 – Termin ist bereits durch Buchung ${dup} belegt`})`;
+        duplikate.push({ art: 'Duplikat storniert', text: `${nameSchoen(b.kunde) || 'ohne Namen'} – ${dat(b.datum)}, ${zeit(b.time_start)}–${zeit(b.time_ende)} Uhr`
+          + `${b.platz ? `, ${b.platz}` : ''} (Buchung ${b.bid.replace(/^0+/, '')}, belegt durch ${dup.replace(/^0+/, '')})` });
+        continue;
+      }
       const erbe = b.status === '3' && !aboEinzel.has(b.bid) ? abgerechnetJeBid.get(b.bid) ?? '' : '';
       if (erbe) geerbt++;
       await tx`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, text, platz)
@@ -228,6 +259,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
   if (entfallen) text += `, ${entfallen} entfallen`;
   if (geerbt) text += ` (${geerbt} neue Termine bereits abgerechneter Abos automatisch mitgesperrt)`;
   if (repariert) text += ` (${repariert} offene Termine bereits abgerechneter Abos nachträglich gesperrt)`;
+  if (duplikate.length) text += `, ${duplikate.length} Duplikat${duplikate.length === 1 ? '' : 'e'} storniert (Termin im Portal schon belegt)`;
   const details = neuListe
     .sort((a, b) => nameSchoen(a.kunde).localeCompare(nameSchoen(b.kunde), 'de') || a.datum.localeCompare(b.datum) || (a.time_start ?? '').localeCompare(b.time_start ?? ''))
     .map((b): ImportDetail => ({
@@ -235,7 +267,7 @@ async function buchungenImportieren(tx: Db, rows: string[][], idx: (n: string) =
       text: `${nameSchoen(b.kunde) || 'ohne Namen'} – ${dat(b.datum)}, ${zeit(b.time_start)}–${zeit(b.time_ende)} Uhr`
         + `${b.platz ? `, ${b.platz}` : ''} (${b.status === '3' ? 'Abo' : 'Einzel'}, Buchung ${b.bid.replace(/^0+/, '')})`,
     }));
-  return { typ: 'BUCHUNGEN', ok: true, text, details: begrenzt(details, 'Buchung neu'), personenNeu: [...new Set(neuListe.map((b) => b.kunde))] };
+  return { typ: 'BUCHUNGEN', ok: true, text, details: [...begrenzt(duplikate, 'Duplikat storniert'), ...begrenzt(details, 'Buchung neu')], personenNeu: [...new Set(neuListe.map((b) => b.kunde))] };
 }
 
 /**
