@@ -87,3 +87,54 @@ export function summen(ps: PersonAuswertung[]) {
   return s;
 }
 export const unauffaellig = (s: { ent: number; entBad: number }) => (s.ent ? 1 - s.entBad / s.ent : null);
+
+/** Knoten im Drilldown je Person: Kategorie (Typ) → Projekt (Account) → Tätigkeit (Text) */
+export interface Knoten {
+  id: string;
+  text: string;
+  zusatz: string; // z. B. Kunde · Bereich bzw. Ticket
+  stunden: number;
+  tage: number; // Buchungstage
+  eintraege: number[]; // Indizes in Auswertung.eintraege
+  kinder: Knoten[];
+}
+
+const TYP_TEXT: Record<string, string> = { B: 'Billable', P: 'PreSales', I: 'Intern', A: 'Abwesenheit' };
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Baum der Buchungen einer Person im Zeitraum: Kategorie (Billable, PreSales, Intern, Abwesenheit) → Projekt (Account,
+ * ohne Account der Bereich) → Tätigkeit (gleicher Text zusammengefasst). Je Ebene nach Stunden absteigend.
+ */
+export function baum(eintraege: { e: AuswEintrag; i: number }[]): Knoten[] {
+  const neu = (id: string, text: string, zusatz = ''): Knoten => ({ id, text, zusatz, stunden: 0, tage: 0, eintraege: [], kinder: [] });
+  const kats = new Map<string, Knoten>();
+  const tageJe = new Map<Knoten, Set<string>>();
+  const add = (k: Knoten, e: AuswEintrag, i: number) => {
+    k.stunden += e.stunden;
+    k.eintraege.push(i);
+    const s = tageJe.get(k) ?? new Set<string>();
+    for (const [t] of e.tage) s.add(t);
+    tageJe.set(k, s);
+  };
+  for (const { e, i } of eintraege) {
+    if (!e.stunden) continue;
+    let kat = kats.get(e.typ);
+    if (!kat) { kat = neu(e.typ, TYP_TEXT[e.typ] ?? e.typ); kats.set(e.typ, kat); }
+    const projName = e.ohneAccount ? (e.ber || 'Kein Account') : e.accName;
+    const projId = `${e.typ}|${e.ohneAccount ? `ber:${e.ber}` : e.acc}`;
+    let proj = kat.kinder.find((k) => k.id === projId);
+    if (!proj) { proj = neu(projId, projName, [e.kunde, e.ohneAccount ? '' : e.ber].filter(Boolean).join(' · ')); kat.kinder.push(proj); }
+    const tText = e.text.replace(/\s+/g, ' ').trim();
+    const tId = `${projId}|${tText.toLowerCase()}`;
+    let t = proj.kinder.find((k) => k.id === tId);
+    if (!t) { t = neu(tId, tText || '(kein Text)', e.key); proj.kinder.push(t); }
+    else if (e.key && !t.zusatz.split(', ').includes(e.key)) t.zusatz = t.zusatz ? `${t.zusatz}, ${e.key}` : e.key;
+    add(kat, e, i); add(proj, e, i); add(t, e, i);
+  }
+  const fertig = (ks: Knoten[]): Knoten[] => ks
+    .map((k) => ({ ...k, stunden: r2(k.stunden), tage: tageJe.get(k)?.size ?? 0, kinder: fertig(k.kinder) }))
+    .sort((x, y) => y.stunden - x.stunden || x.text.localeCompare(y.text, 'de'));
+  const reihenfolge = ['B', 'P', 'I', 'A'];
+  return fertig([...kats.values()]).sort((x, y) => reihenfolge.indexOf(x.id) - reihenfolge.indexOf(y.id));
+}

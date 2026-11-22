@@ -561,6 +561,9 @@ verdoppelt nichts. Einstellungen: Prüfregeln, Schwellen, Wortlisten und Persone
 Arbeitstage, im Team von/bis, ausblenden). **Freigeben:** an jedem Fund zu einer Rückmeldung (Übersicht/Personendetail,
 Reiter Kontierung und Texte) akzeptiert *Freigeben* den Text für diese Regel und diesen Account – er wird danach bei
 allen Personen und Tagen nicht mehr bemängelt; Liste und *Zurücknehmen* unter Prüfregeln → *Freigegebene Texte*.
+**Drilldown je Person** (Personendetail in der Übersicht): Baum Kategorie (Billable, PreSales, Intern, Abwesenheit) →
+Projekt (Account, ohne Account der Bereich) → Tätigkeit (gleicher Text zusammengefasst) mit Stunden, Anteil, Buchungstagen
+und höchster Fundstufe.
 
 | Recht | Inhalt |
 |---|---|

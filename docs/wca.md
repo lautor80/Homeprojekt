@@ -162,6 +162,14 @@ Reihenfolge der Textregeln: T1, T2, T3b/T3 und T9 schließen einander aus (die e
 nur Texte, die keine dieser Regeln (außer T3b) getroffen hat. Wortlisten: kommagetrennt, `*` am Ende = Wortanfang,
 Präfix `re:` = regulärer Ausdruck, sonst ganzes Wort (Groß-/Kleinschreibung egal).
 
+### Drilldown je Person
+
+Im Personendetail (Übersicht, Zeile aufklappen) zeigt ein Baum die Buchungen im Zeitraum: **Kategorie** (Typ Billable,
+PreSales, Intern, Abwesenheit) → **Projekt** (Account mit Kunde und Bereich; ohne Account der Bereich) → **Tätigkeit**
+(Buchungstext; gleiche Texte – Groß-/Kleinschreibung und Leerzeichen egal – zusammengefasst, Tickets aufgezählt). Je
+Knoten: Stunden, Anteil an der Person, Anzahl Buchungstage und die höchste Fundstufe ab dem Stufenfilter. Ebenen auf-
+und zuklappbar, „Alle aufklappen“/„Alle zuklappen“. Rein in der Oberfläche berechnet (`baum` in `modules/wca/web/ansicht.ts`).
+
 ### Freigaben
 
 Ist ein Fund fachlich in Ordnung (z. B. K5: der Text nennt einen Kunden, die Buchung auf dem anderen Account stimmt
