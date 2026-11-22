@@ -132,8 +132,10 @@ interface FeldDef {
 
 const zeitlich = (a: Knoten, b: Knoten) => (a.wert < b.wert ? -1 : a.wert > b.wert ? 1 : 0);
 
-/** Felder, nach denen der Buchungsbaum gruppiert werden kann */
-export const BAUM_FELDER = {
+/** Felder, nach denen der Buchungsbaum gruppiert werden kann (Reihenfolge = Reihenfolge der Auswahlliste) */
+export type BaumFeld = 'kategorie' | 'projekt' | 'kunde' | 'bereich' | 'ticket' | 'taetigkeit' | 'monat' | 'woche' | 'tag';
+
+export const BAUM_FELDER: Record<BaumFeld, FeldDef> = {
   kategorie: {
     text: 'Kategorie',
     wert: ({ e }) => ({ key: e.typ, text: TYP_TEXT[e.typ] ?? e.typ }),
@@ -173,9 +175,7 @@ export const BAUM_FELDER = {
     },
     sort: zeitlich,
   },
-} satisfies Record<string, FeldDef>;
-
-export type BaumFeld = keyof typeof BAUM_FELDER;
+};
 export const BAUM_STANDARD: BaumFeld[] = ['kategorie', 'projekt', 'taetigkeit'];
 
 /** gespeicherte Feldliste prüfen: nur bekannte Felder, jedes einmal, mindestens eines */
@@ -212,7 +212,7 @@ export function baum(eintraege: { e: AuswEintrag; i: number }[], felder: BaumFel
       const s: Stueck = { e, i, tag, h };
       let k = wurzel;
       for (const feld of fl) {
-        const def: FeldDef = BAUM_FELDER[feld];
+        const def = BAUM_FELDER[feld];
         const w = def.wert(s);
         let idx = kindIndex.get(k);
         if (!idx) kindIndex.set(k, (idx = new Map()));
@@ -234,7 +234,7 @@ export function baum(eintraege: { e: AuswEintrag; i: number }[], felder: BaumFel
   }
   const fertig = (ks: Knoten[]): Knoten[] => {
     const r = ks.map((k) => ({ ...k, stunden: r2(k.stunden), tage: tageJe.get(k)?.size ?? 0, zusatz: zusatzText(k.feld, zusatzJe.get(k) ?? []), kinder: fertig(k.kinder) }));
-    const sort = r.length ? (BAUM_FELDER[r[0].feld] as FeldDef).sort : undefined;
+    const sort = r.length ? BAUM_FELDER[r[0].feld].sort : undefined;
     return r.sort((x, y) => (sort ? sort(x, y) : 0) || y.stunden - x.stunden || x.text.localeCompare(y.text, 'de'));
   };
   return fertig(wurzel.kinder);
