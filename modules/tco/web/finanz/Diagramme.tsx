@@ -123,3 +123,61 @@ export function VerlaufDiagramm({ punkte, schmal = false }: { punkte: VerlaufPun
     </svg>
   );
 }
+
+export interface ErgebnisPunkt { label: string; ergebnis: number; vorjahr: number }
+
+/**
+ * Ergebnis je Profit-Center als waagerechte Balken um die Nulllinie: Gewinn grün nach rechts,
+ * Verlust rot nach links; der Strich markiert das Ergebnis des Vorjahres.
+ */
+export function ErgebnisDiagramm({ titel, punkte, jahr, schmal = false }: { titel: string; punkte: ErgebnisPunkt[]; jahr: number; schmal?: boolean }) {
+  if (!punkte.length) return null;
+  const POS = 'var(--sapPositiveColor, #188918)', NEG = 'var(--sapNegativeColor, #D20A0A)';
+  const zeile = schmal ? 30 : 34;
+  const W = schmal ? 420 : 800, ML = schmal ? 104 : 160, MR = schmal ? 12 : 24, MT = 52, MB = 26;
+  const H = MT + MB + zeile * punkte.length;
+  const pw = W - ML - MR;
+  const werte = punkte.flatMap((p) => [p.ergebnis, p.vorjahr]);
+  const lo = Math.min(0, ...werte), hi = Math.max(0, ...werte);
+  const span = hi - lo || 1;
+  const x = (v: number) => ML + ((v - lo) / span) * pw;
+  const x0 = x(0);
+  const bh = zeile * 0.5;
+  const ticks = [0, 1, 2, 3, 4].map((k) => lo + (span * k) / 4);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 820 }} fontFamily="var(--sapFontFamily)" role="img" aria-label={titel}>
+      {ticks.map((t, k) => (
+        <g key={k}>
+          <line x1={x(t)} y1={MT} x2={x(t)} y2={H - MB} stroke={GRID} />
+          <text x={x(t)} y={H - MB + 14} textAnchor="middle" fontSize={10} fill={TEXT}>{kurz(t)}</text>
+        </g>
+      ))}
+      {punkte.map((p, i) => {
+        const yc = MT + zeile * i + zeile / 2;
+        const xa = Math.min(x0, x(p.ergebnis)), w = Math.abs(x(p.ergebnis) - x0);
+        const rechts = p.ergebnis >= 0;
+        return (
+          <g key={i}>
+            <text x={ML - 8} y={yc + 4} textAnchor="end" fontSize={11} fill={TITLE}>{p.label}</text>
+            {w > 0 && <rect x={xa} y={yc - bh / 2} width={w} height={bh} fill={rechts ? POS : NEG} rx={2}>
+              <title>{`${p.label} ${jahr}: ${fmt(p.ergebnis, 2)} €`}</title>
+            </rect>}
+            <line x1={x(p.vorjahr)} y1={yc - bh / 2 - 3} x2={x(p.vorjahr)} y2={yc + bh / 2 + 3} stroke={TITLE} strokeWidth={2}>
+              <title>{`${p.label} ${jahr - 1}: ${fmt(p.vorjahr, 2)} €`}</title>
+            </line>
+            {!schmal && <text x={rechts ? Math.max(x(p.ergebnis), x(p.vorjahr)) + 6 : Math.min(x(p.ergebnis), x(p.vorjahr)) - 6} y={yc + 4}
+                                textAnchor={rechts ? 'start' : 'end'} fontSize={10} fill={TEXT}>{fmt(p.ergebnis)} €</text>}
+          </g>
+        );
+      })}
+      <line x1={x0} y1={MT - 4} x2={x0} y2={H - MB} stroke={TEXT} />
+      {!schmal && <text x={ML} y={20} fontSize={13} fontWeight="bold" fill={TITLE}>{titel}</text>}
+      <rect x={ML} y={28} width={14} height={9} fill={POS} rx={2} />
+      <text x={ML + 20} y={36} fontSize={11} fill={TEXT}>Gewinn {jahr}</text>
+      <rect x={ML + 110} y={28} width={14} height={9} fill={NEG} rx={2} />
+      <text x={ML + 130} y={36} fontSize={11} fill={TEXT}>Verlust {jahr}</text>
+      <line x1={ML + 225} y1={26} x2={ML + 225} y2={39} stroke={TITLE} strokeWidth={2} />
+      <text x={ML + 232} y={36} fontSize={11} fill={TEXT}>Vorjahr {jahr - 1}</text>
+    </svg>
+  );
+}

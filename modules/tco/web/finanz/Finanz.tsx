@@ -10,7 +10,7 @@ import { Attribute, Attributes } from '@core/components/Attributes';
 import { Section } from '@core/components/Section';
 import { ResponsiveTable, useKlein } from '@core/components/ResponsiveTable';
 import { TCO, dat, eur } from '../util';
-import { BalkenDiagramm, VerlaufDiagramm } from './Diagramme';
+import { BalkenDiagramm, ErgebnisDiagramm, VerlaufDiagramm } from './Diagramme';
 
 /**
  * Einnahmen & Ausgaben – Port von Z2UI5_CL_TCO_FINANZUEBERSICHT (Fachlogik ZCL_TCO_FINANZEN im Server).
@@ -27,6 +27,10 @@ type State = 'None' | 'Positive' | 'Negative' | 'Critical' | 'Information';
 interface Monat { monat: number; einnahmen: number; ausgaben: number; ergebnis: number; kumuliert: number }
 interface Jahr { jahr: number; einnahmen: number; ausgaben: number; ergebnis: number; geld_eb: number }
 interface KontoWert { art: 'E' | 'A'; konto: string; name: string; wert: number; wert_vj: number }
+interface ProfitCenter {
+  profitcenter: string; text: string; einnahmen: number; ausgaben: number; ergebnis: number;
+  einnahmen_vj: number; ausgaben_vj: number; ergebnis_vj: number; konten: KontoWert[];
+}
 interface Geld { konto: string; name: string; anfangsbestand: number; zugang: number; abgang: number; endbestand: number }
 interface Ergebnis { jahr: number; einnahmen: number; ausgaben: number; gewinn: number; geld_ab: number; geld_eb: number; geld_delta: number; differenz: number; letzte_bu: string | null }
 interface Liquiditaet {
@@ -37,6 +41,8 @@ interface Liquiditaet {
 interface Uebersicht {
   jahr: number; monate: Monat[]; ergebnis: Ergebnis; geldkonten: Geld[]; jahre: Jahr[];
   einnahmen: KontoWert[]; ausgaben: KontoWert[]; liquiditaet: Liquiditaet; info: string | null;
+  /** Ergebnis je Profit-Center (Kontenstamm) */
+  profitcenter?: ProfitCenter[];
 }
 interface Auswahl { jahre: number[]; geldkonten: { konto: string; name: string }[] }
 interface Verlauf { jahr: number; monat: number; einnahmen: number; ausgaben: number; bestand: number; zukunft: boolean; offen?: number }
@@ -163,6 +169,8 @@ export function Finanz() {
               <ResponsiveTable titelSpalten={2} columns={geldSpalten} data={d.geldkonten} visibleRows={Math.max(d.geldkonten.length, 1)} noDataText="Keine Geldkonten mit Bestand oder Bewegung" />
             </Section>
 
+            {d.profitcenter && <ProfitCenterBericht jahr={jahr} zeilen={d.profitcenter} klein={klein} />}
+
             <Section title="Einnahmen je Konto" count={d.einnahmen.length} flush>
               <ResponsiveTable titelSpalten={2} columns={kontoSpalten(true)} data={d.einnahmen} visibleRows={Math.max(d.einnahmen.length, 1)} noDataText={`Keine Einnahmen in ${jahr - 1}/${jahr}`} />
             </Section>
@@ -277,6 +285,54 @@ function Monatsverlauf({ jahr, auswahl, klein }: { jahr: number; auswahl: Auswah
       {punkte.length ? <VerlaufDiagramm punkte={punkte} schmal={klein} /> : <div className="portal-empty">Bitte mindestens ein Jahr wählen.</div>}
       <div className="portal-muted portal-small" style={{ marginTop: '0.5rem' }}>
         Einnahmen und Ausgaben werden über das Gegenkonto den gewählten Geldkonten zugeordnet; der Kontostand ist der Stand der gewählten Geldkonten zum Monatsende. Zukünftige Monate sind blass dargestellt.
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * Ergebnis je Profit-Center (Kontenstamm): Diagramm Ergebnis mit Vorjahr, Einnahmen und Ausgaben
+ * je Profit-Center und Tabelle mit aufklappbaren Konten. Summe = Gewinn des Jahres.
+ */
+function ProfitCenterBericht({ jahr, zeilen, klein }: { jahr: number; zeilen: ProfitCenter[]; klein: boolean }) {
+  const daten = useMemo(() => {
+    const sum = (k: 'einnahmen' | 'ausgaben' | 'ergebnis' | 'ergebnis_vj') => zeilen.reduce((s, z) => s + z[k], 0);
+    return [
+      ...zeilen.map((z) => ({
+        name: z.text, einnahmen: z.einnahmen, ausgaben: z.ausgaben, ergebnis: z.ergebnis, ergebnis_vj: z.ergebnis_vj, ebene: 0,
+        subRows: z.konten.map((k) => {
+          const e = k.art === 'E';
+          return { name: `${k.konto} ${k.name}`, einnahmen: e ? k.wert : 0, ausgaben: e ? 0 : k.wert,
+                   ergebnis: e ? k.wert : -k.wert, ergebnis_vj: e ? k.wert_vj : -k.wert_vj, ebene: 1 };
+        }),
+      })),
+      { name: 'Gesamt (Gewinn)', einnahmen: sum('einnahmen'), ausgaben: sum('ausgaben'), ergebnis: sum('ergebnis'), ergebnis_vj: sum('ergebnis_vj'), ebene: 0, gesamt: true },
+    ];
+  }, [zeilen]);
+  const leer = (r: Record<string, any>, v: number) => r.ebene === 1 && Math.abs(v) < 0.005;
+  const spalten: AnalyticalTableColumnDefinition[] = [
+    { Header: 'Profit-Center', accessor: 'name', minWidth: 220, Cell: ({ row }: Cell) => (
+      <Text style={{ fontWeight: row.original.ebene === 0 ? 'bold' : undefined }}>{row.original.name}</Text>) },
+    spalte('Einnahmen', 'einnahmen', (r) => (leer(r, r.einnahmen) ? null : <Betrag v={r.einnahmen} />)),
+    spalte('Ausgaben', 'ausgaben', (r) => (leer(r, r.ausgaben) ? null : <Betrag v={r.ausgaben} />)),
+    spalte(`Ergebnis ${jahr}`, 'ergebnis', (r) => <Betrag v={r.ergebnis} state={stateOf(r.ergebnis)} fett={r.ebene === 0} />, { minWidth: 130 }),
+    spalte(`Ergebnis ${jahr - 1}`, 'ergebnis_vj', (r) => <Betrag v={r.ergebnis_vj} />, { minWidth: 130 }),
+    spalte('Veränderung', 'delta', (r) => <Betrag v={r.ergebnis - r.ergebnis_vj} state={stateOf(r.ergebnis - r.ergebnis_vj)} />),
+  ];
+  const ohne = zeilen.find((z) => !z.profitcenter);
+  return (
+    <Section title={`Ergebnis je Profit-Center ${jahr}`} count={zeilen.length}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 24rem), 1fr))', gap: 'var(--portal-gap, 1rem)', alignItems: 'start', marginBottom: '0.75rem' }}>
+        <ErgebnisDiagramm titel={`Ergebnis je Profit-Center ${jahr}`} jahr={jahr} schmal={klein}
+                          punkte={zeilen.map((z) => ({ label: z.text, ergebnis: z.ergebnis, vorjahr: z.ergebnis_vj }))} />
+        <BalkenDiagramm schmal={klein} titel={`Einnahmen und Ausgaben je Profit-Center ${jahr}`} name1="Einnahmen" name2="Ausgaben"
+                        punkte={zeilen.map((z) => ({ label: z.text, val1: z.einnahmen, val2: z.ausgaben }))} />
+      </div>
+      <ResponsiveTable columns={spalten} data={daten} isTreeTable visibleRows={daten.length} hervorheben={(r) => !!r.gesamt}
+                       withRowHighlight highlightField={(r: Record<string, any>) => (r.gesamt ? 'Information' : 'None')} />
+      <div className="portal-muted portal-small" style={{ marginTop: '0.5rem' }}>
+        Zuordnung der Konten über das Profit-Center im Kontenstamm (Finanzen → Kontenstamm). Ergebnis = Einnahmen − Ausgaben; die Summe aller Zeilen ist der Gewinn.
+        {ohne ? ` ${ohne.konten.length} Konten mit Buchungen haben noch kein Profit-Center.` : ''} Zeile aufklappen zeigt die Konten.
       </div>
     </Section>
   );

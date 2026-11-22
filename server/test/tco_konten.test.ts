@@ -182,6 +182,24 @@ test('Einnahmen & Ausgaben: Übersicht, Geldkonten, Konten, Liquidität, Verlauf
   assert.deepEqual(r.body.einnahmen, [{ art: 'E', konto: '8003', name: 'Hallenmiete', wert: 80, wert_vj: 0 }]);
   assert.deepEqual(r.body.ausgaben, [{ art: 'A', konto: '2300', name: 'Versicherungen Verein', wert: 240, wert_vj: 0 }]);
 
+  // ---- Ergebnis je Profit-Center: alle Profit-Center des Katalogs, Konten ohne Zuordnung gesammelt, Summe = Gewinn
+  assert.deepEqual(r.body.profitcenter.map((p: any) => p.profitcenter), ['Jugendarbeit', 'Vereinsbetrieb', 'Clubhaus', 'Halle', 'Turniere', '']);
+  assert.equal(r.body.profitcenter.at(-1).text, 'ohne Profit-Center');
+  assert.deepEqual([r.body.profitcenter.at(-1).ausgaben, r.body.profitcenter.at(-1).einnahmen, r.body.profitcenter.at(-1).ergebnis], [240, 80, -160]);
+  assert.equal(r.body.profitcenter.find((p: any) => p.profitcenter === 'Vereinsbetrieb').konten.length, 0, 'Porto ohne Buchungen');
+  await sql`update tco.fikonten set profitcenter = 'Halle' where konto = '8003'`;
+  await sql`update tco.fikonten set profitcenter = 'Altbestand SAP' where konto = '2300'`;
+  r = await call('GET', `${F}/uebersicht?jahr=${JAHR}`);
+  const pc = r.body.profitcenter;
+  assert.deepEqual(pc.map((p: any) => p.profitcenter), ['Jugendarbeit', 'Vereinsbetrieb', 'Clubhaus', 'Halle', 'Turniere', 'Altbestand SAP'], 'unbekannter Wert als eigene Zeile, keine Zeile „ohne“');
+  const halle = pc.find((p: any) => p.profitcenter === 'Halle');
+  assert.deepEqual([halle.einnahmen, halle.ausgaben, halle.ergebnis, halle.ergebnis_vj], [80, 0, 80, 0]);
+  assert.deepEqual(halle.konten.map((k: any) => k.konto), ['8003']);
+  const alt = pc.find((p: any) => p.profitcenter === 'Altbestand SAP');
+  assert.deepEqual([alt.text, alt.ausgaben, alt.ergebnis], ['Altbestand SAP', 240, -240]);
+  assert.equal(pc.reduce((s: number, p: any) => s + p.ergebnis, 0), r.body.ergebnis.gewinn);
+  await sql`update tco.fikonten set profitcenter = '' where konto in ('8003', '2300')`;
+
   // Liquidität: Geld 690 + Forderungen 0 + Kredit 654 (Saldo +200 nach Tilgung, kein AB) = 890
   const l = r.body.liquiditaet;
   assert.deepEqual([l.geld, l.forderung, l.kredit, l.liquiditaet], [690, 0, 200, 890]);
