@@ -102,7 +102,7 @@ export async function teilnehmerPdf(v: Verein, rows: Teilnehmer[], a: Teilnehmer
     p.text(sp.mail, y, kuerzen(p, t.email || '–', 8, 46), { size: 8, color: t.email ? C.ink : C.grau });
     p.text(sp.einh, y, String(t.einheiten), { size: 8, bold: true, color: C.ink, align: 'R' });
     p.text(sp.betrag, y, betragText(t.trainingsbeitrag), { ...normal, align: 'R' });
-    p.text(sp.mitgl, y, t.mitglied ? 'Ja' : 'Nein', { size: 8, bold: true, color: t.mitglied ? '256F3A' : C.orangeDk, align: 'R' });
+    p.text(sp.mitgl, y, t.familienbeitrag ? 'Familie' : t.mitglied ? 'Ja' : 'Nein', { size: 8, bold: true, color: t.mitglied ? '256F3A' : C.orangeDk, align: 'R' });
     y += 4.8;
   });
 
@@ -117,7 +117,7 @@ export async function teilnehmerPdf(v: Verein, rows: Teilnehmer[], a: Teilnehmer
   y += 9;
   if (y > 270) { p.newPage(); y = 18; }
   p.text(LEFT, y, 'Jeder laufende Vertrag der Art 90 (Jugendtraining) zählt als Einheit; Trainingsbeitrag = Summe dieser Verträge je Turnus.', grau);
-  p.text(LEFT, y + 4, 'Ein laufender Vertrag einer Art unter 90 macht die Person zum Vereinsmitglied. Enthält personenbezogene Daten – nur für den internen Gebrauch.', grau);
+  p.text(LEFT, y + 4, 'Mitglied: laufender Vertrag einer Art unter 90 oder Familienbeitrag in der Familie („Familie“). Enthält personenbezogene Daten – nur für den internen Gebrauch.', grau);
 
   // ---- Fußzeilen (interne Liste, ohne Vereins-IBAN)
   const n = p.pageCount();

@@ -91,7 +91,7 @@ flowchart LR
 | Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |
 | Sport | LSVS-Bestandsmeldung | `/tco/lsvs` | `tco.lsvs:display` | Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe |
 | Sport | Turniere | `/tco/turniere` | `tco.turnier:display` | KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse |
-| Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Nichtmitglieder, E-Mail |
+| Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Familienbeitrag, Trainingszeiten je Saison, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
 | Tennishalle | Hallenabrechnung | `/tco/halle` | `tco.halle:display` | EP3-Buchungen abrechnen |
@@ -219,7 +219,7 @@ flowchart LR
 | schnupper | 7 |
 | soll | 12 |
 | sport | 4 |
-| teilnehmer | 4 |
+| teilnehmer | 7 |
 | turnier | 41 |
 | upload | 2 |
 | verzehr | 29 |

@@ -10,13 +10,53 @@ import { leer } from '../mitglieder/logik.js';
  *  - Vertragsart 90 = Jugendtraining: jeder laufende Vertrag ist eine gebuchte Einheit
  *  - eine Vertragsart < 90 macht die Person zum Vereinsmitglied
  *  - gelistet werden nur Personen mit mindestens einer Trainingseinheit
+ *  - Familienbeitrag: Hat die Person selbst oder jemand aus ihrer Familie (Eltern/Zahler bzw. Familienverknüpfung,
+ *    siehe mitglieder/familie.ts) einen laufenden Mitgliedsvertrag mit „Famil…“ in der Bezeichnung, ist sie darüber
+ *    Vereinsmitglied – Ausweis „Familienbeitrag“ statt „Ja“
  */
 
 export const ART_JUGEND = 90;
 
 export interface Teilnehmer {
   adrnr: string; nachname: string; vorname: string; name: string; email: string; geburtsdatum: string | null; alter: number | null;
-  einheiten: number; trainingsbeitrag: number; mitglied: boolean; mitglied_text: 'Ja' | 'Nein'; mitglied_state: 'Positive' | 'Critical';
+  einheiten: number; trainingsbeitrag: number; mitglied: boolean; mitglied_text: 'Ja' | 'Nein' | 'Familienbeitrag'; mitglied_state: 'Positive' | 'Critical';
+  /** Mitglied über einen Familienbeitrag; familie_von = Name der Person mit dem Familienbeitrag */
+  familienbeitrag: boolean; familie_von: string;
+}
+
+/** Vertrag ist ein Familienbeitrag (Mitgliedsvertrag, Bezeichnung enthält „Famil…“ – wie im Online-Antrag) */
+export const istFamilienVertrag = (art: unknown, artname: unknown) => artKlasse(art) === 'MITGLIED' && /famil/i.test(leer(artname));
+
+/**
+ * Familienbeiträge zu den angegebenen Personen: je Person der Name dessen, der in ihrer Familie (Person selbst,
+ * Zahler/Eltern, Familienverknüpfung – über mehrere Schritte) einen laufenden Familienbeitrag hat. Nur aktive Personen.
+ */
+export async function familienbeitraege(db: Db, adrnrs: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!adrnrs.length) return out;
+  const rows = await db`
+    with recursive kanten as (
+      select adrnr as a, adrnrkih as b from tco.mitglieder
+       where adrnrkih is not null and ltrim(trim(adrnrkih), '0') <> '' and adrnrkih <> adrnr
+      union
+      select adrnr_a, adrnr_b from tco.familienverknuepfungen
+    ), beide as (
+      select a, b from kanten union select b, a from kanten
+    ), fam(start, adrnr) as (
+      select x, x from unnest(${adrnrs}::text[]) as t(x)
+      union
+      select f.start, k.b from fam f join beide k on k.a = f.adrnr
+    )
+    select f.start, f.adrnr, m.nachname, m.vorname, v.art, v.artname
+      from fam f join tco.mitglieder m on m.adrnr = f.adrnr and m.austritt is null
+                 join tco.vertraege v on v.adrnr = f.adrnr and v.vertragende is null
+     where v.artname ilike '%famil%'
+     order by f.start, (f.adrnr = f.start) desc, f.adrnr`;
+  for (const r of rows) {
+    if (out.has(r.start) || !istFamilienVertrag(r.art, r.artname)) continue;
+    out.set(r.start, `${leer(r.vorname)} ${leer(r.nachname)}`.trim());
+  }
+  return out;
 }
 
 const artNorm = (a: unknown) => leer(a).replace(/^0+(?=\d)/, '');
@@ -54,7 +94,7 @@ export async function teilnehmerLesen(db: Db, stichtag = heute()): Promise<Teiln
       t = {
         adrnr: r.adrnr, nachname: leer(r.nachname), vorname: leer(r.vorname), name: `${leer(r.nachname)}, ${leer(r.vorname)}`, email: leer(r.email),
         geburtsdatum: r.geburtsdatum, alter: alterAm(r.geburtsdatum, stichtag), einheiten: 0, trainingsbeitrag: 0,
-        mitglied: false, mitglied_text: 'Nein', mitglied_state: 'Critical',
+        mitglied: false, mitglied_text: 'Nein', mitglied_state: 'Critical', familienbeitrag: false, familie_von: '',
       };
       m.set(r.adrnr, t);
     }
@@ -63,7 +103,13 @@ export async function teilnehmerLesen(db: Db, stichtag = heute()): Promise<Teiln
     else if (k === 'MITGLIED') t.mitglied = true;
   }
   const out = [...m.values()].filter((t) => t.einheiten > 0);
-  for (const t of out) { t.mitglied_text = t.mitglied ? 'Ja' : 'Nein'; t.mitglied_state = t.mitglied ? 'Positive' : 'Critical'; }
+  const fam = await familienbeitraege(db, out.map((t) => t.adrnr));
+  for (const t of out) {
+    const von = fam.get(t.adrnr);
+    if (von !== undefined) { t.familienbeitrag = true; t.familie_von = von; t.mitglied = true; }
+    t.mitglied_text = t.familienbeitrag ? 'Familienbeitrag' : t.mitglied ? 'Ja' : 'Nein';
+    t.mitglied_state = t.mitglied ? 'Positive' : 'Critical';
+  }
   return out.sort((a, b) => a.nachname.localeCompare(b.nachname, 'de') || a.vorname.localeCompare(b.vorname, 'de'));
 }
 
@@ -84,12 +130,14 @@ export async function teilnehmerDetail(db: Db, adrnr: string, stichtag = heute()
   const zahler = m.adrnrkih && !/^0*$/.test(leer(m.adrnrkih))
     ? (await db`select adrnr, nachname, vorname, email, telefon6 from tco.mitglieder where adrnr = ${m.adrnrkih}`)[0] ?? null : null;
   const einheiten = vertraege.filter((x) => x.jugend && !x.vertragende).length;
+  const familie = (await familienbeitraege(db, [adrnr])).get(adrnr);
   return {
     adrnr: m.adrnr, name: `${leer(m.nachname)}, ${leer(m.vorname)}`, anrede: leer(m.anrede), vorname: leer(m.vorname), nachname: leer(m.nachname),
     strasse: leer(m.strasse), plz: leer(m.plz), ort: leer(m.ort), email: leer(m.email), telefon: leer(m.telefon), mobil: leer(m.telefon6),
     geburtsdatum: m.geburtsdatum as string | null, alter: alterAm(m.geburtsdatum, stichtag), eintritt: m.eintritt as string | null, austritt: m.austritt as string | null,
     mitglnr: leer(m.mitglnrn).replace(/^0+(?=\d)/, ''),
-    mitglied: vertraege.some((x) => !x.vertragende && artKlasse(x.art) === 'MITGLIED'),
+    mitglied: familie !== undefined || vertraege.some((x) => !x.vertragende && artKlasse(x.art) === 'MITGLIED'),
+    familienbeitrag: familie !== undefined, familie_von: familie ?? '',
     einheiten, trainingsbeitrag: runden(vertraege.filter((x) => x.jugend && !x.vertragende).reduce((s, x) => s + x.betrag, 0)),
     zahler: zahler ? { adrnr: zahler.adrnr, name: `${leer(zahler.nachname)}, ${leer(zahler.vorname)}`, email: leer(zahler.email), mobil: leer(zahler.telefon6) } : null,
     vertraege,

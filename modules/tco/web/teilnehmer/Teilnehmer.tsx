@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem, Text,
+  AnalyticalTable, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
-import { api } from '@core/api';
+import { api, qs } from '@core/api';
+import { useCan } from '@core/session';
+import { toast } from '@core/toast';
 import { AppPage } from '@core/components/AppPage';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { Filter, Filters, HeaderKpi } from '@core/components/Filters';
@@ -15,23 +17,33 @@ import { useLoad } from '@core/components/useLoad';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { TCO, dat, eur } from '../util';
 import { Dlg } from '../mitglieder/Dialoge';
+import { Trainingszeiten, saisonHeute, saisonOptionen, saisonText, WOCHENTAGE, type SaisonRef, type Trainingszeit } from './Trainingszeiten';
 
 export const TN = `${TCO}/teilnehmer`;
 
 interface Teilnehmer {
   adrnr: string; nachname: string; vorname: string; name: string; email: string; geburtsdatum: string | null; alter: number | null;
   einheiten: number; trainingsbeitrag: number; mitglied: boolean; mitglied_text: string; mitglied_state: 'Positive' | 'Critical';
+  zeiten: Trainingszeit[]; zeiten_text: string; familienbeitrag: boolean; familie_von: string;
 }
-interface Liste { teilnehmer: Teilnehmer[]; einheiten: number; mitglieder: number; nichtmitglieder: number }
+interface Liste {
+  teilnehmer: Teilnehmer[]; einheiten: number; mitglieder: number; nichtmitglieder: number;
+  saison: SaisonRef & { text: string }; vorjahr: SaisonRef & { text: string }; mit_zeiten: number;
+}
 type FilterArt = 'ALL' | 'MEMBER' | 'NONMEMBER';
 
 /**
  * Teilnehmer Jugendtraining (Port von Z2UI5_CL_TCO_JUGENDTRAINING): Trefferliste aller Personen mit
  * laufendem Jugendtraining-Vertrag, Suche über Name/E-Mail, Filter Alle/Mitglieder/Nichtmitglieder,
  * Sortierung über die Spaltenköpfe, Mehrfachauswahl mit „E-Mail an Auswahl“ (BCC) und Detail je Person.
+ * Trainingszeiten je Saison (Sommer/Winter eines Jahres): Spalte in der Liste, Wochenplan und Pflege im Detail
+ * (Wochentag Mo–So mit Uhrzeit, Recht tco.teilnehmer:edit); „Aus … übernehmen“ füllt leere Teilnehmer aus dem Vorjahr.
  */
 export function Teilnehmer() {
-  const { data, error: ladeFehler, loading, reload } = useLoad(() => api.get<Liste>(TN));
+  const can = useCan();
+  const edit = can('tco.teilnehmer:edit');
+  const [saison, setSaison] = useState<SaisonRef>(saisonHeute());
+  const { data, error: ladeFehler, loading, reload } = useLoad(() => api.get<Liste>(`${TN}${qs({ jahr: saison.jahr, saison: saison.saison })}`), [saison.jahr, saison.saison]);
   const [filter, setFilter] = useState<FilterArt>('ALL');
   const [suche, setSuche] = useState('');
   const [sel, setSel] = useState<string[]>([]);
@@ -76,8 +88,52 @@ export function Teilnehmer() {
     { Header: 'Alter', accessor: 'alter', width: 80, hAlign: 'End', Cell: ({ value }: Cell) => (value === null ? '' : String(value)) },
     { Header: 'Einheiten', accessor: 'einheiten', width: 100, hAlign: 'End', Cell: ({ value }: Cell) => <Text style={{ fontWeight: 'bold' }}>{value}</Text> },
     { Header: 'Trainingsbeitrag', accessor: 'trainingsbeitrag', width: 140, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
-    { Header: 'Mitglied', accessor: 'mitglied_text', width: 100, Cell: ({ row, value }: Cell) => <ObjectStatus state={row.original.mitglied_state}>{value}</ObjectStatus> },
+    {
+      Header: 'Mitglied', accessor: 'mitglied_text', width: 150,
+      Cell: ({ row, value }: Cell) => (
+        <span title={row.original.familienbeitrag && row.original.familie_von ? `Familienbeitrag über ${row.original.familie_von}` : undefined}>
+          <ObjectStatus state={row.original.mitglied_state}>{value}</ObjectStatus>
+        </span>
+      ),
+    },
+    {
+      Header: `Trainingszeiten ${saisonText(saison)}`, accessor: 'zeiten_text', minWidth: 220,
+      Cell: ({ row, value }: Cell) => (value
+        ? <Link onClick={() => setDetail(row.original.adrnr)}>{value}</Link>
+        : <Text className="portal-muted">{edit ? <Link onClick={() => setDetail(row.original.adrnr)}>zuordnen</Link> : '–'}</Text>),
+    },
   ];
+
+  /** Wochenplan der Saison: je Wochentag und Uhrzeit die Teilnehmer der aktuellen Auswahl */
+  const plan = useMemo(() => {
+    const m = new Map<string, { wochentag: number; von: string; bis: string; namen: string[] }>();
+    for (const t of rows) for (const z of t.zeiten) {
+      const k = `${z.wochentag}|${z.von}|${z.bis}`;
+      const e = m.get(k) ?? { wochentag: z.wochentag, von: z.von, bis: z.bis, namen: [] };
+      e.namen.push(`${t.vorname} ${t.nachname}`.trim());
+      m.set(k, e);
+    }
+    return [...m.values()].sort((a, b) => a.wochentag - b.wochentag || a.von.localeCompare(b.von) || a.bis.localeCompare(b.bis))
+      .map((e) => ({ ...e, tag: WOCHENTAGE[e.wochentag - 1].lang, zeit: `${e.von}–${e.bis}`, anzahl: e.namen.length, teilnehmer: e.namen.sort((a, b) => a.localeCompare(b, 'de')).join(', ') }));
+  }, [rows]);
+  const planSpalten: AnalyticalTableColumnDefinition[] = [
+    { Header: 'Tag', accessor: 'tag', width: 120 },
+    { Header: 'Uhrzeit', accessor: 'zeit', width: 130 },
+    { Header: 'Anzahl', accessor: 'anzahl', width: 90, hAlign: 'End' },
+    { Header: 'Teilnehmer', accessor: 'teilnehmer', minWidth: 300 },
+  ];
+
+  async function uebernehmen() {
+    if (!data) return;
+    setError(null);
+    try {
+      const r = await api.post<{ text: string }>(`${TN}/zeiten/uebernehmen`, {
+        von: { jahr: data.vorjahr.jahr, saison: data.vorjahr.saison }, nach: { jahr: saison.jahr, saison: saison.saison },
+      });
+      toast(r.text);
+      reload();
+    } catch (e) { setError((e as Error).message); }
+  }
 
   async function mail() {
     setError(null);
@@ -98,16 +154,34 @@ export function Teilnehmer() {
           <SegmentedButtonItem data-f="NONMEMBER" selected={filter === 'NONMEMBER'}>Nichtmitglieder{data ? ` (${data.nichtmitglieder})` : ''}</SegmentedButtonItem>
         </SegmentedButton>
       </Filter>
+      <Filter label="Saison">
+        <Select style={{ width: '11rem' }} onChange={(e) => {
+          const [j, s] = ((e.detail.selectedOption as HTMLElement).dataset.k ?? '').split('|');
+          setSaison({ jahr: Number(j), saison: s as SaisonRef['saison'] });
+        }}>
+          {saisonOptionen(saison).map((o) => (
+            <Option key={`${o.jahr}|${o.saison}`} data-k={`${o.jahr}|${o.saison}`} selected={o.jahr === saison.jahr && o.saison === saison.saison}>{saisonText(o)}</Option>
+          ))}
+        </Select>
+      </Filter>
       <Filter label="Suche" width="16rem">
         <Input style={{ width: '100%' }} placeholder="Name oder E-Mail…" value={suche} showClearIcon onInput={(e) => setSuche(e.target.value)} />
       </Filter>
       <HeaderKpi label="Einheiten in der Auswahl" value={einheiten.toLocaleString('de-DE')} />
+      <HeaderKpi label={`Mit Trainingszeiten (${saisonText(saison)})`} value={data ? `${data.mit_zeiten} / ${data.teilnehmer.length}` : ''}
+                 state={data && data.teilnehmer.length && data.mit_zeiten < data.teilnehmer.length ? 'Critical' : 'None'} />
     </Filters>
   );
 
   return (
     <AppPage varianten={{ repid: 'tco.teilnehmer', ansicht: { filter, suche }, onAnwenden: (a) => { setFilter(feld(a, 'filter', filter)); setSuche(feld(a, 'suche', suche)); } }} title={`Teilnehmer Jugendtraining (${rows.length})`} subtitle={`${einheiten} Einheiten – Personen mit laufendem Jugendtraining-Vertrag`} header={header}
              actions={<>
+               {edit && data && (
+                 <Button icon="copy" design="Transparent" onClick={uebernehmen}
+                         tooltip={`Trainingszeiten aus ${data.vorjahr.text} für alle Teilnehmer übernehmen, die in ${saisonText(saison)} noch keine Zeiten haben`}>
+                   Aus {data.vorjahr.text} übernehmen
+                 </Button>
+               )}
                <Button icon="pdf-attachment" disabled={!rows.length} onClick={() => setPdf(pdfUrl())}
                        tooltip="Teilnehmerliste als PDF im Vereinslayout (aktuelle Auswahl bzw. markierte Teilnehmer)">
                  {markiertSichtbar.length ? `PDF (${markiertSichtbar.length} markiert)` : 'PDF-Ansicht'}
@@ -122,11 +196,16 @@ export function Teilnehmer() {
         <AnalyticalTable minRows={1} columns={columns} data={rows} loading={loading} sortable visibleRows={Math.min(Math.max(rows.length, 1), 25)}
                          noDataText="Keine Teilnehmer gefunden" />
       </Section>
+      <Section title={`Wochenplan ${saisonText(saison)}`} count={plan.length} flush>
+        <AnalyticalTable minRows={1} columns={planSpalten} data={plan} visibleRows={Math.min(Math.max(plan.length, 1), 14)}
+                         noDataText={`Für ${saisonText(saison)} sind noch keine Trainingszeiten zugeordnet${edit ? ' – im Detail eines Teilnehmers zuordnen' : ''}.`} />
+      </Section>
       <MessageStrip hideCloseButton>
         Jeder laufende Vertrag der Art 90 (Jugendtraining) zählt als gebuchte Einheit; ein laufender Vertrag einer Art unter 90 macht die Person zum Vereinsmitglied.
+        „Familienbeitrag“: Die Person selbst oder jemand aus ihrer Familie (Eltern/Zahler, Familienverknüpfung) hat einen laufenden Familienbeitrag.
         Stammdaten werden unter „Mitglieder“ gepflegt.
       </MessageStrip>
-      {detail && <DetailDialog adrnr={detail} onClose={() => setDetail(null)} />}
+      {detail && <DetailDialog adrnr={detail} saison={saison} edit={edit} onGespeichert={reload} onClose={() => setDetail(null)} />}
       {pdf && <PdfDialog url={pdf} title="Teilnehmer Jugendtraining" filename={`Teilnehmer_Jugendtraining_${new Date().toLocaleDateString('sv-SE')}.pdf`}
                          onClose={() => setPdf(null)} />}
     </AppPage>
@@ -136,11 +215,12 @@ export function Teilnehmer() {
 interface Detail {
   adrnr: string; name: string; anrede: string; vorname: string; nachname: string; strasse: string; plz: string; ort: string; email: string; telefon: string; mobil: string;
   geburtsdatum: string | null; alter: number | null; eintritt: string | null; austritt: string | null; mitglnr: string; mitglied: boolean;
+  familienbeitrag: boolean; familie_von: string;
   einheiten: number; trainingsbeitrag: number; zahler: { adrnr: string; name: string; email: string; mobil: string } | null;
   vertraege: { vertragnr: string; art: string; artname: string; sollstellung: string; vertragbegin: string | null; vertragende: string | null; betrag: number; jugend: boolean; laeuft: boolean }[];
 }
 
-function DetailDialog({ adrnr, onClose }: { adrnr: string; onClose: () => void }) {
+function DetailDialog({ adrnr, saison, edit, onGespeichert, onClose }: { adrnr: string; saison: SaisonRef; edit: boolean; onGespeichert: () => void; onClose: () => void }) {
   const navigate = useNavigate();
   const [d, setD] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +242,9 @@ function DetailDialog({ adrnr, onClose }: { adrnr: string; onClose: () => void }
           <ObjectHeader title={`${d.vorname} ${d.nachname}`.trim()} icon="family-care"
                         subtitle={d.mitglnr ? `Mitgliedsnummer ${d.mitglnr}` : 'ohne Mitgliedsnummer'}
                         status={<>
-                          <ObjectStatus state={d.mitglied ? 'Positive' : 'Critical'} inverted>{d.mitglied ? 'Vereinsmitglied' : 'Nichtmitglied'}</ObjectStatus>
+                          <ObjectStatus state={d.mitglied ? 'Positive' : 'Critical'} inverted>
+                            {d.familienbeitrag ? `Familienbeitrag${d.familie_von ? ` (${d.familie_von})` : ''}` : d.mitglied ? 'Vereinsmitglied' : 'Nichtmitglied'}
+                          </ObjectStatus>
                           <ObjectStatus state="Information">{d.einheiten} Einheit(en) · {eur(d.trainingsbeitrag)}</ObjectStatus>
                         </>}>
             <Attributes>
@@ -174,6 +256,7 @@ function DetailDialog({ adrnr, onClose }: { adrnr: string; onClose: () => void }
               <Attribute label="Zahler">{d.zahler ? <Link onClick={() => navigate(`/tco/mitglieder?adrnr=${encodeURIComponent(d.zahler!.adrnr)}`)}>{d.zahler.name}</Link> : ''}</Attribute>
             </Attributes>
           </ObjectHeader>
+          <Trainingszeiten adrnr={adrnr} start={saison} edit={edit} onGespeichert={onGespeichert} />
           <Section title="Verträge" count={d.vertraege.length} flush>
             <AnalyticalTable minRows={1} columns={columns} data={d.vertraege} visibleRows={Math.max(d.vertraege.length, 1)} noDataText="Keine Verträge"
                              withRowHighlight highlightField={(r: Record<string, any>) => (r.laeuft ? (r.jugend ? 'Information' : 'None') : 'Critical')} />
