@@ -844,6 +844,13 @@ ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
 .portal-wca-fundkurz li { margin-bottom: 0.4rem; }
 .portal-wca-funde { white-space: nowrap; }
 .portal-wca-freigabe { height: 1.5rem; min-width: 0; font-size: 0.8125rem; vertical-align: middle; }
+.portal-wca-baum { border: 1px solid var(--sapList_BorderColor); border-radius: 0.5rem; padding: 0.25rem 0.5rem; }
+.portal-wca-baum__zeile { display: grid; grid-template-columns: 2rem minmax(0, 1fr) 5.5rem 3.5rem 4.5rem; align-items: center; gap: 0.5rem; min-height: 2rem; border-bottom: 1px solid var(--sapList_BorderColor); }
+.portal-wca-baum > div:last-child > .portal-wca-baum__zeile:last-child { border-bottom: 0; }
+.portal-wca-baum__e0 { font-weight: bold; }
+.portal-wca-baum__text { overflow-wrap: anywhere; }
+.portal-wca-baum__zahl { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.portal-wca-baum__blatt { width: 0.5rem; height: 0.5rem; justify-self: center; color: var(--sapContent_LabelColor); }
 .portal-wca-person { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
 .portal-wca-pill { font-size: var(--sapFontSmallSize); }
 .portal-wca-chips { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 1rem; }

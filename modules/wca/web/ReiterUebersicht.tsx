@@ -4,6 +4,7 @@ import { Attribute, Attributes } from '@core/components/Attributes';
 import { Section } from '@core/components/Section';
 import type { PersonAuswertung } from '../server/typen';
 import { mitKategorie, summen, tageVon, unauffaellig, zeilen, type Filter, type Sicht, type Zeile } from './ansicht';
+import { Drilldown } from './Drilldown';
 import { FreigabeKnopf, tageText } from './FundListe';
 import {
   arbeitstageText, dat, Kachel, Kacheln, kopieren, Pill, proz, quote, type Spalte, std, StufeStatus, stufeText, summe, Tabelle, Verteilung,
@@ -151,6 +152,7 @@ export function PersonDetail({ sicht, p }: { sicht: Sicht; p: PersonAuswertung }
           </div>
         ) : <div className="portal-muted">keine</div>}
       </div>
+      <Drilldown sicht={sicht} p={p} />
       <FundKurz titel="Kontierung und Plausibilität" liste={kp} sicht={sicht} />
       <FundKurz titel="Texte und Regelwerk" liste={tr} sicht={sicht} />
       <div>
