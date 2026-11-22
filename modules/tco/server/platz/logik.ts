@@ -727,14 +727,25 @@ export async function abosLesen(db: Db) {
   return rows.map((r) => ({ ...r, wochentag: wochentagText(r.erster) }));
 }
 
-/** Abo ab einem Datum beenden (offene Termine stornieren) */
-export async function aboBeenden(tx: Db, bid: string, ab: string): Promise<string> {
-  // auch aus EP3 übernommene Abos; storno_portal: ein erneuter EP3-Import setzt die Stornos nicht zurück
-  const r = await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now()
-                      where bid = ${bid} and status = '3' and datum >= ${ab} and coalesce(assigned, '') <> 'Y'
+/**
+ * Abo ab einem Datum beenden (Termine stornieren). Auch aus EP3 übernommene Abos; storno_portal: ein erneuter EP3-Import
+ * setzt die Stornos nicht zurück. Bereits abgerechnete Termine (EP3-Abos werden als ganze Serie abgerechnet, alle Termine
+ * sind dann gekennzeichnet) nur mit Kommentar – wie beim einzelnen Storno; die Rechnung selbst bleibt unverändert und muss
+ * bei Bedarf in der Hallenabrechnung korrigiert werden (Gutschrift).
+ */
+export async function aboBeenden(tx: Db, bid: string, ab: string, grund?: string | null): Promise<string> {
+  const kommentar = grund?.trim() || null;
+  const [z] = await tx`select count(*) filter (where coalesce(assigned, '') <> 'Y')::int as offen, count(*) filter (where assigned = 'Y')::int as abgerechnet
+                         from tco.bookings where bid = ${bid} and status = '3' and datum >= ${ab}`;
+  if (!z.offen && !z.abgerechnet) throw new BusinessError('Keine Abo-Termine ab diesem Datum.');
+  if (z.abgerechnet && !kommentar) {
+    throw new BusinessError(`${z.abgerechnet} Termin(e) ab ${dat(ab)} sind bereits abgerechnet – zum Beenden bitte einen Kommentar angeben.`);
+  }
+  const r = await tx`update tco.bookings set status = '2', geaendert = ${jetzt().datum}, storno_portal = now(), storno_grund = ${kommentar}
+                      where bid = ${bid} and status = '3' and datum >= ${ab}
                       returning datum`;
-  if (!r.length) throw new BusinessError('Keine offenen Abo-Termine ab diesem Datum.');
-  return `Abo ${bid}: ${r.length} Termin(e) ab ${dat(ab)} storniert.`;
+  return `Abo ${bid}: ${r.length} Termin(e) ab ${dat(ab)} storniert.`
+    + (z.abgerechnet ? ` ${z.abgerechnet} davon waren bereits abgerechnet – die Rechnung bitte in der Hallenabrechnung prüfen.` : '');
 }
 
 /**

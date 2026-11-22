@@ -837,8 +837,8 @@ export async function platzRoutes(app: FastifyInstance) {
 
   app.post('/platz/admin/abos/:bid/beenden', admin, async (req) => {
     const { bid } = z.object({ bid: z.string().min(1) }).parse(req.params);
-    const { ab } = z.object({ ab: datum.default(() => addTage(jetzt().datum, 1)) }).parse(req.body ?? {});
-    return { text: await change(req, (tx) => aboBeenden(tx, bid, ab), { action: 'PLATZ_ABO_ENDE', reason: bid }) };
+    const { ab, grund } = z.object({ ab: datum.default(() => addTage(jetzt().datum, 1)), grund: z.string().trim().max(500).nullish() }).parse(req.body ?? {});
+    return { text: await change(req, (tx) => aboBeenden(tx, bid, ab, grund), { action: 'PLATZ_ABO_ENDE', reason: grund ? `${bid}: ${grund}` : bid }) };
   });
 
   app.get('/platz/admin/benutzer', admin, async () => benutzerListe(DB));

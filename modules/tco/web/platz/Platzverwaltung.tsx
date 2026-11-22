@@ -830,7 +830,7 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const can = useCan();
   const navigate = useNavigate();
   const [abos, setAbos] = useState<AboZeile[] | null>(null);
-  const [ende, setEnde] = useState<{ bid: string; ab: string } | null>(null);
+  const [ende, setEnde] = useState<{ bid: string; ab: string; grund: string; abgerechnet: boolean } | null>(null);
   // Schnellfilter und Tabellenstand (Spalten, Spaltenfilter, Sortierung) – beides wandert in die Ansichtsvariante
   const [filter, setFilter] = useState<AboFilter>({ ...LEERER_ABO_FILTER });
   const [stand, setStand] = useState<TabellenStand>({ ...LEERER_STAND });
@@ -853,7 +853,7 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
     {
       Header: '', id: 'aktion', width: 110, disableFilters: true, disableSortBy: true,
       Cell: ({ row }: Cell) => (row.original.kommend
-        ? <Button design="Transparent" icon="stop" onClick={() => setEnde({ bid: row.original.bid, ab: isoHeute() })}>Beenden</Button> : null),
+        ? <Button design="Transparent" icon="stop" onClick={() => setEnde({ bid: row.original.bid, ab: isoHeute(), grund: '', abgerechnet: (row.original.abgerechnet ?? 0) > 0 })}>Beenden</Button> : null),
     },
   ], []);
   const t = useTabellenAnsicht({ spalten: columns, stand, onStand: setStand, aktiv: true, pflicht: ['bid', 'aktion'], titel: 'Abo-Tabelle anpassen' });
@@ -911,12 +911,20 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
       {ende && createPortal(
         <Dialog open headerText={`Abo ${ende.bid} beenden`} onClose={() => setEnde(null)}
                 footer={<Bar endContent={<>
-                  <Button design="Negative" disabled={busy} onClick={() => aktion(() => api.post(`${PA}/abos/${ende.bid}/beenden`, { ab: ende.ab }), async () => { setEnde(null); await laden(); })}>Termine stornieren</Button>
+                  <Button design="Negative" disabled={busy} onClick={() => aktion(() => api.post(`${PA}/abos/${ende.bid}/beenden`, { ab: ende.ab, grund: ende.grund.trim() || null }), async () => { setEnde(null); await laden(); })}>Termine stornieren</Button>
                   <Button onClick={() => setEnde(null)}>Abbrechen</Button>
                 </>} />}>
           <div className="portal-mz__form">
-            <Label>Alle noch nicht abgerechneten Termine stornieren ab</Label>
+            <Label>Alle Termine stornieren ab</Label>
             <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={ende.ab} onChange={(e) => e.detail.value && setEnde({ ...ende, ab: e.detail.value })} />
+            <Label required={ende.abgerechnet}>Kommentar{ende.abgerechnet ? ' (nötig – Termine sind bereits abgerechnet)' : ''}</Label>
+            <TextArea rows={2} value={ende.grund} placeholder="z. B. Abo entfällt auf Wunsch des Kunden" onInput={(e) => setEnde({ ...ende, grund: e.target.value })} />
+            {ende.abgerechnet && (
+              <MessageStrip design="Critical" hideCloseButton>
+                Das Abo ist bereits abgerechnet (EP3-Abos als ganze Serie). Die Termine werden trotzdem storniert; die Rechnung bleibt unverändert –
+                bei Bedarf in der Hallenabrechnung korrigieren (Gutschrift).
+              </MessageStrip>
+            )}
           </div>
         </Dialog>,
         document.body,
