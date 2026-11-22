@@ -36,3 +36,9 @@ create table if not exists tco.aushang_gesehen (
   bestaetigt_am timestamptz,
   primary key (aushang_id, user_id)
 );
+
+-- „Für neue Hallenbucher“: Beim Einschalten gelten alle bestehenden Benutzer als informiert (vorab = Bestand, nie
+-- angezeigt); wer sich danach registriert, sieht den Hinweis beim ersten Aufruf von „Platz buchen“ – mit Bestätigung.
+-- Die Verwaltung kann ihn je Benutzer oder für alle wieder anzeigen (Zeile löschen).
+alter table tco.aushaenge add column if not exists neue_bucher boolean not null default false;
+alter table tco.aushang_gesehen add column if not exists vorab boolean not null default false;

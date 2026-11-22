@@ -7,7 +7,7 @@ import { DB, vereinLesen, type Db } from '../verein.js';
 import { heute } from '../format.js';
 import { ANHANG_ANZAHL, ANHANG_MAX, P_RS } from '../rundschreiben/routes.js';
 import { AUSWAHL_LEER } from '../rundschreiben/empfaenger.js';
-import { ANZEIGEN, fuerBenutzer, pruefen, rundschreibenText, stand, STILE, type Aushang, type Gesehen } from './aushang.js';
+import { ANZEIGEN, fuerBenutzer, kenntnisnahmen, normalisieren, pruefen, rundschreibenText, stand, STILE, type Aushang, type Gesehen } from './aushang.js';
 
 /**
  * Hinweise in der Hallenbuchung („Aushang“, Logik: ./aushang.ts).
@@ -32,13 +32,13 @@ const schema = z.object({
   text: z.string().max(10_000, 'Der Text darf höchstens 10.000 Zeichen haben.'),
   stil: z.enum(STILE), anzeige: z.enum(ANZEIGEN), bestaetigen: z.boolean(), aktiv: z.boolean(),
   gueltig_von: datum, gueltig_bis: datum.nullish().transform((x) => x || null),
-  rollen: z.array(z.string().trim().min(1).max(60)).max(50),
-});
+  rollen: z.array(z.string().trim().min(1).max(60)).max(50), neue_bucher: z.boolean().default(false),
+}).transform(normalisieren);
 
 const zeile = (r: Record<string, unknown>): Aushang => ({
   id: Number(r.id), titel: r.titel as string, text: r.text as string, stil: r.stil as Aushang['stil'], gueltig_von: r.gueltig_von as string,
   gueltig_bis: (r.gueltig_bis as string | null) ?? null, rollen: (r.rollen as string[]) ?? [], anzeige: r.anzeige as Aushang['anzeige'],
-  bestaetigen: !!r.bestaetigen, aktiv: !!r.aktiv,
+  bestaetigen: !!r.bestaetigen, aktiv: !!r.aktiv, neue_bucher: !!r.neue_bucher,
 });
 
 async function bilderLesen(db: Db, ids: number[]): Promise<Map<number, { id: number; dateiname: string; groesse: number }[]>> {
@@ -52,10 +52,14 @@ async function bilderLesen(db: Db, ids: number[]): Promise<Map<number, { id: num
   return out;
 }
 async function lesen(db: Db, id: number): Promise<Aushang> {
-  const [r] = await db`select id, titel, text, stil, gueltig_von::text as gueltig_von, gueltig_bis::text as gueltig_bis, rollen, anzeige, bestaetigen, aktiv from tco.aushaenge where id = ${id}`;
+  const [r] = await db`select id, titel, text, stil, gueltig_von::text as gueltig_von, gueltig_bis::text as gueltig_bis, rollen, anzeige, bestaetigen, aktiv, neue_bucher from tco.aushaenge where id = ${id}`;
   if (!r) throw new BusinessError('Den Aushang gibt es nicht (mehr).', 404);
   return zeile(r);
 }
+
+/** „Für neue Hallenbucher“: alle bestehenden Benutzer gelten als informiert (Bestand, wird ihnen nicht angezeigt) */
+const bestandMarkieren = (db: Db, id: number) =>
+  db`insert into tco.aushang_gesehen (aushang_id, user_id, vorab) select ${id}, u.id, true from core.users u on conflict (aushang_id, user_id) do nothing`;
 
 /** Bild ausliefern: Verwaltung immer, sonst nur, wenn der Aushang heute für den Benutzer gilt */
 async function bildSenden(req: FastifyRequest, reply: import('fastify').FastifyReply) {
@@ -78,10 +82,10 @@ export async function aushangRoutes(app: FastifyInstance) {
   /** geltende Aushänge (zum Nachlesen) und die, die sich jetzt von selbst öffnen (Ids, in Reihenfolge) */
   app.get('/platz/aushaenge', buchen, async (req) => {
     const uid = req.user?.id;
-    const alle = (await DB`select id, titel, text, stil, gueltig_von::text as gueltig_von, gueltig_bis::text as gueltig_bis, rollen, anzeige, bestaetigen, aktiv from tco.aushaenge where aktiv`).map(zeile);
+    const alle = (await DB`select id, titel, text, stil, gueltig_von::text as gueltig_von, gueltig_bis::text as gueltig_bis, rollen, anzeige, bestaetigen, aktiv, neue_bucher from tco.aushaenge where aktiv`).map(zeile);
     const gesehen = new Map<number, Gesehen>();
     if (uid) {
-      for (const g of await DB`select aushang_id, bestaetigt_am is not null as bestaetigt from tco.aushang_gesehen where user_id = ${uid}`) {
+      for (const g of await DB`select aushang_id, (bestaetigt_am is not null or vorab) as bestaetigt from tco.aushang_gesehen where user_id = ${uid}`) {
         gesehen.set(Number(g.aushang_id), { gesehen: true, bestaetigt: !!g.bestaetigt });
       }
     }
@@ -117,8 +121,9 @@ export async function aushangRoutes(app: FastifyInstance) {
   app.get('/aushaenge', pflegen, async (req) => {
     const h = heute();
     const liste = await DB`
-      select id, titel, text, stil, gueltig_von::text as gueltig_von, gueltig_bis::text as gueltig_bis, rollen, anzeige, bestaetigen, aktiv, erstellt_von, geaendert_am::text as geaendert_am, geaendert_von,
-             (select count(*)::int from tco.aushang_gesehen g where g.aushang_id = a.id) as gesehen,
+      select id, titel, text, stil, gueltig_von::text as gueltig_von, gueltig_bis::text as gueltig_bis, rollen, anzeige, bestaetigen, aktiv, neue_bucher, erstellt_von, geaendert_am::text as geaendert_am, geaendert_von,
+             (select count(*)::int from tco.aushang_gesehen g where g.aushang_id = a.id and not g.vorab) as gesehen,
+             (select count(*)::int from tco.aushang_gesehen g where g.aushang_id = a.id and g.vorab) as bestand,
              (select count(*)::int from tco.aushang_gesehen g where g.aushang_id = a.id and g.bestaetigt_am is not null) as bestaetigt
         from tco.aushaenge a order by gueltig_von desc, id desc`;
     const bilder = await bilderLesen(DB, liste.map((r) => Number(r.id)));
@@ -126,7 +131,7 @@ export async function aushangRoutes(app: FastifyInstance) {
     return {
       liste: liste.map((r) => {
         const a = zeile(r);
-        return { ...a, stand: stand(a, h), bilder: bilder.get(a.id) ?? [], gesehen: Number(r.gesehen), bestaetigt: Number(r.bestaetigt),
+        return { ...a, stand: stand(a, h), bilder: bilder.get(a.id) ?? [], gesehen: Number(r.gesehen), bestaetigt: Number(r.bestaetigt), bestand: Number(r.bestand),
           erstellt_von: r.erstellt_von, geaendert_am: r.geaendert_am, geaendert_von: r.geaendert_von };
       }),
       rollen: rollen.map((r) => ({ id: r.id as string, name: r.name as string })),
@@ -138,28 +143,37 @@ export async function aushangRoutes(app: FastifyInstance) {
     const d = schema.parse(req.body);
     const f = pruefen(d);
     if (f) throw new BusinessError(f);
-    const [r] = await change(req, (tx) => tx`
-      insert into tco.aushaenge (titel, text, stil, gueltig_von, gueltig_bis, rollen, anzeige, bestaetigen, aktiv, erstellt_von, geaendert_von)
-      values (${d.titel}, ${d.text}, ${d.stil}, ${d.gueltig_von}, ${d.gueltig_bis}, ${d.rollen}::text[], ${d.anzeige}, ${d.bestaetigen}, ${d.aktiv}, ${benutzer(req)}, ${benutzer(req)})
-      returning id`);
-    return { id: Number(r.id) };
+    const id = await change(req, async (tx) => {
+      const [r] = await tx`
+        insert into tco.aushaenge (titel, text, stil, gueltig_von, gueltig_bis, rollen, anzeige, bestaetigen, aktiv, neue_bucher, erstellt_von, geaendert_von)
+        values (${d.titel}, ${d.text}, ${d.stil}, ${d.gueltig_von}, ${d.gueltig_bis}, ${d.rollen}::text[], ${d.anzeige}, ${d.bestaetigen}, ${d.aktiv}, ${d.neue_bucher},
+                ${benutzer(req)}, ${benutzer(req)})
+        returning id`;
+      if (d.neue_bucher) await bestandMarkieren(tx, Number(r.id));
+      return Number(r.id);
+    });
+    return { id };
   });
 
   /**
-   * Ändern. Wird der Inhalt geändert (Titel, Text, Bestätigungspflicht), gilt er als neu: Alle sehen ihn noch einmal
-   * (bisherige Kenntnisnahmen entfallen) – nur bei „neu anzeigen“ = true; sonst bleibt der Stand.
+   * Ändern. Mit „neu anzeigen“ = true sehen ihn alle noch einmal (bisherige Kenntnisnahmen entfallen), sonst bleibt der
+   * Stand. „Für neue Hallenbucher“ eingeschaltet: Bestand gilt als informiert; ausgeschaltet: der Bestand sieht ihn auch.
    */
   app.put('/aushaenge/:id', pflegen, async (req) => {
     const { id } = pId.parse(req.params);
-    const d = schema.extend({ neu_anzeigen: z.boolean().default(false) }).parse(req.body);
+    const d = schema.parse(req.body);
+    const { neu_anzeigen } = z.object({ neu_anzeigen: z.boolean().default(false) }).parse(req.body);
     const f = pruefen(d);
     if (f) throw new BusinessError(f);
     await change(req, async (tx) => {
-      await lesen(tx, id);
+      const alt = await lesen(tx, id);
       await tx`update tco.aushaenge set titel = ${d.titel}, text = ${d.text}, stil = ${d.stil}, gueltig_von = ${d.gueltig_von}, gueltig_bis = ${d.gueltig_bis},
-                      rollen = ${d.rollen}::text[], anzeige = ${d.anzeige}, bestaetigen = ${d.bestaetigen}, aktiv = ${d.aktiv}, geaendert_am = now(), geaendert_von = ${benutzer(req)}
+                      rollen = ${d.rollen}::text[], anzeige = ${d.anzeige}, bestaetigen = ${d.bestaetigen}, aktiv = ${d.aktiv}, neue_bucher = ${d.neue_bucher}, geaendert_am = now(), geaendert_von = ${benutzer(req)}
                 where id = ${id}`;
-      if (d.neu_anzeigen) await tx`delete from tco.aushang_gesehen where aushang_id = ${id}`;
+      const k = kenntnisnahmen(!!alt.neue_bucher, d.neue_bucher, neu_anzeigen);
+      if (k === 'ALLE_LOESCHEN') await tx`delete from tco.aushang_gesehen where aushang_id = ${id}`;
+      if (k === 'BESTAND_MARKIEREN') await bestandMarkieren(tx, id);
+      if (k === 'BESTAND_LOESCHEN') await tx`delete from tco.aushang_gesehen where aushang_id = ${id} and vorab`;
     });
     return { ok: true };
   });
@@ -204,10 +218,21 @@ export async function aushangRoutes(app: FastifyInstance) {
     await lesen(DB, id);
     return {
       zeilen: await DB`
-        select coalesce(nullif(u.display_name, ''), u.username) as name, u.username, g.gesehen_am::text as gesehen_am, g.bestaetigt_am::text as bestaetigt_am
+        select u.id::text as user_id, coalesce(nullif(u.display_name, ''), u.username) as name, u.username, g.gesehen_am::text as gesehen_am,
+               g.bestaetigt_am::text as bestaetigt_am, g.vorab
           from tco.aushang_gesehen g join core.users u on u.id = g.user_id
-         where g.aushang_id = ${id} order by g.gesehen_am desc`,
+         where g.aushang_id = ${id} order by g.vorab, g.gesehen_am desc, lower(u.display_name)`,
     };
+  });
+
+  /** einem Benutzer den Aushang wieder anzeigen (z. B. Bestand bei „für neue Hallenbucher“ oder erneut bestätigen lassen) */
+  app.delete('/aushaenge/:id/gesehen/:uid', pflegen, async (req) => {
+    const { id, uid } = pId.extend({ uid: z.string().uuid() }).parse(req.params);
+    await change(req, async (tx) => {
+      await lesen(tx, id);
+      await tx`delete from tco.aushang_gesehen where aushang_id = ${id} and user_id = ${uid}`;
+    });
+    return { ok: true };
   });
 
   /**

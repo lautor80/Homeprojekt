@@ -161,3 +161,47 @@ test('Aushang: Rechte, Pflege, Bilder, Anzeige je Benutzer, Bestätigung, erneut
   assert.equal((await sql`select count(*)::int as n from tco.aushang_gesehen where aushang_id = ${warnung}`)[0].n, 0);
   assert.equal((await pfleger('GET', `${T}/aushaenge/${warnung}/gesehen`)).status, 404);
 });
+
+test('Aushang für neue Hallenbucher: Bestand informiert, neue Benutzer sehen ihn bis zur Bestätigung, einzeln wieder anzeigen', async () => {
+  const pfleger = client();
+  assert.equal((await pfleger('POST', '/api/auth/login', { username: 'auspfleger', password: 'neues-passwort' })).status, 200);
+  const bucher = client();
+  assert.equal((await bucher('POST', '/api/auth/login', { username: 'ausbucher', password: 'neues-passwort' })).status, 200);
+  // „bei jedem Aufruf“ und ohne Bestätigung werden zu „einmal, mit Bestätigung“
+  let r = await pfleger('POST', `${T}/aushaenge`, { ...basis, titel: 'Hallenordnung', anzeige: 'IMMER', bestaetigen: false, neue_bucher: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const id = r.body.id as number;
+  const a = (await pfleger('GET', `${T}/aushaenge`)).body.liste.find((x: { id: number }) => x.id === id);
+  assert.deepEqual([a.anzeige, a.bestaetigen, a.neue_bucher, a.gesehen], ['EINMAL', true, true, 0]);
+  assert.ok(a.bestand >= 3, 'alle bestehenden Benutzer gelten als informiert');
+  // bestehender Bucher: steht zum Nachlesen da, öffnet sich aber nicht
+  r = await bucher('GET', `${T}/platz/aushaenge`);
+  assert.ok(r.body.aktuell.some((x: { id: number }) => x.id === id));
+  assert.ok(!r.body.oeffnen.includes(id));
+  // neu registrierter Hallenbucher: öffnet sich, bis er bestätigt
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'ausneu', displayName: 'Neu Bucher', password: 'start-passwort', roles: ['AUSBUCHER'] })).status, 200);
+  const neuling = await anmelden('ausneu');
+  assert.ok((await neuling('GET', `${T}/platz/aushaenge`)).body.oeffnen.includes(id));
+  await neuling('POST', `${T}/platz/aushaenge/${id}/gesehen`, {});
+  assert.ok((await neuling('GET', `${T}/platz/aushaenge`)).body.oeffnen.includes(id), 'nur gesehen reicht nicht');
+  await neuling('POST', `${T}/platz/aushaenge/${id}/gesehen`, { bestaetigt: true });
+  assert.ok(!(await neuling('GET', `${T}/platz/aushaenge`)).body.oeffnen.includes(id), 'nach der Bestätigung unterdrückt');
+  // Nachweis: der Neue mit Bestätigung, der Bestand als „vorab“
+  const zeilen = (await pfleger('GET', `${T}/aushaenge/${id}/gesehen`)).body.zeilen as { user_id: string; username: string; vorab: boolean; bestaetigt_am: string | null }[];
+  assert.ok(zeilen.find((z) => z.username === 'ausneu' && !z.vorab && z.bestaetigt_am));
+  const bestand = zeilen.find((z) => z.username === 'ausbucher')!;
+  assert.equal(bestand.vorab, true);
+  // Admin zeigt ihn einzelnen Benutzern wieder an – dem Neuen und dem Bestand
+  for (const u of [zeilen.find((z) => z.username === 'ausneu')!.user_id, bestand.user_id]) {
+    assert.equal((await pfleger('DELETE', `${T}/aushaenge/${id}/gesehen/${u}`)).status, 200);
+  }
+  assert.ok((await neuling('GET', `${T}/platz/aushaenge`)).body.oeffnen.includes(id));
+  assert.ok((await bucher('GET', `${T}/platz/aushaenge`)).body.oeffnen.includes(id));
+  assert.equal((await bucher('DELETE', `${T}/aushaenge/${id}/gesehen/${bestand.user_id}`)).status, 403);
+  // ausgeschaltet: der Bestand sieht ihn jetzt auch
+  assert.equal((await pfleger('PUT', `${T}/aushaenge/${id}`, { ...basis, titel: 'Hallenordnung', neue_bucher: false })).status, 200);
+  assert.equal((await sql`select count(*)::int as n from tco.aushang_gesehen where aushang_id = ${id} and vorab`)[0].n, 0);
+  // wieder eingeschaltet: wer ihn noch nicht bestätigt hat, gilt jetzt als Bestand
+  assert.equal((await pfleger('PUT', `${T}/aushaenge/${id}`, { ...basis, titel: 'Hallenordnung', neue_bucher: true })).status, 200);
+  assert.ok(!(await bucher('GET', `${T}/platz/aushaenge`)).body.oeffnen.includes(id));
+});

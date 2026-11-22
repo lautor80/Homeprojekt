@@ -24,16 +24,17 @@ type Stand = 'AKTUELL' | 'GEPLANT' | 'ABGELAUFEN' | 'AUS';
 interface Bild { id: number; dateiname: string; groesse: number }
 interface Aushang {
   id: number; titel: string; text: string; stil: Stil; gueltig_von: string; gueltig_bis: string | null; rollen: string[]; anzeige: Anzeige;
-  bestaetigen: boolean; aktiv: boolean; stand: Stand; bilder: Bild[]; gesehen: number; bestaetigt: number; geaendert_von: string | null;
+  bestaetigen: boolean; aktiv: boolean; neue_bucher: boolean; stand: Stand; bilder: Bild[]; gesehen: number; bestaetigt: number; bestand: number; geaendert_von: string | null;
 }
-type Form = Pick<Aushang, 'titel' | 'text' | 'stil' | 'gueltig_von' | 'gueltig_bis' | 'rollen' | 'anzeige' | 'bestaetigen' | 'aktiv'>;
+type Form = Pick<Aushang, 'titel' | 'text' | 'stil' | 'gueltig_von' | 'gueltig_bis' | 'rollen' | 'anzeige' | 'bestaetigen' | 'aktiv' | 'neue_bucher'>;
+interface GesehenZeile { user_id: string; name: string; gesehen_am: string; bestaetigt_am: string | null; vorab: boolean }
 interface Daten { liste: Aushang[]; rollen: { id: string; name: string }[]; heute: string; bild_max: number; bild_anzahl: number; rundschreiben: boolean }
 
 const STAND: Record<Stand, { text: string; state: 'Positive' | 'Information' | 'None' | 'Critical' }> = {
   AKTUELL: { text: 'wird angezeigt', state: 'Positive' }, GEPLANT: { text: 'geplant', state: 'Information' },
   ABGELAUFEN: { text: 'abgelaufen', state: 'None' }, AUS: { text: 'ausgeschaltet', state: 'Critical' },
 };
-const LEER = (heute: string): Form => ({ titel: '', text: '', stil: 'WARNUNG', gueltig_von: heute, gueltig_bis: null, rollen: [], anzeige: 'EINMAL', bestaetigen: false, aktiv: true });
+const LEER = (heute: string): Form => ({ titel: '', text: '', stil: 'WARNUNG', gueltig_von: heute, gueltig_bis: null, rollen: [], anzeige: 'EINMAL', bestaetigen: false, aktiv: true, neue_bucher: false });
 const gewaehlt = (e: { detail: { items: unknown } }) => (e.detail.items as HTMLElement[]).map((i) => i.dataset.k ?? '').filter(Boolean);
 const leseDatei = (f: Blob) => new Promise<string>((ok, err) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => err(r.error); r.readAsDataURL(f); });
 
@@ -82,7 +83,7 @@ export function AushangVerwaltung() {
           <List onItemClick={(e) => setId(Number((e.detail.item as HTMLElement).dataset.id))}>
             {d.liste.map((a) => (
               <ListItemStandard key={a.id} data-id={a.id} type="Active" selected={a.id === id} icon={STIL[a.stil].icon}
-                                description={`${dat(a.gueltig_von)} – ${a.gueltig_bis ? dat(a.gueltig_bis) : 'unbefristet'} · ${a.anzeige === 'IMMER' ? 'bei jedem Aufruf' : 'einmal je Benutzer'}`
+                                description={`${dat(a.gueltig_von)} – ${a.gueltig_bis ? dat(a.gueltig_bis) : 'unbefristet'} · ${a.neue_bucher ? 'für neue Hallenbucher' : a.anzeige === 'IMMER' ? 'bei jedem Aufruf' : 'einmal je Benutzer'}`
                                   + ` · gesehen ${a.gesehen}${a.bestaetigen ? `, bestätigt ${a.bestaetigt}` : ''}${a.bilder.length ? ` · ${a.bilder.length} Bild${a.bilder.length === 1 ? '' : 'er'}` : ''}`}
                                 additionalText={STAND[a.stand].text} additionalTextState={STAND[a.stand].state}>
                 {a.titel || '(ohne Titel)'}
@@ -104,13 +105,13 @@ function Editor({ a, d, onFehler, onGesichert, onWeg, onBilder }: {
 }) {
   const navigate = useNavigate();
   const [f, setF] = useState<Form>(() => (a ? { titel: a.titel, text: a.text, stil: a.stil, gueltig_von: a.gueltig_von, gueltig_bis: a.gueltig_bis,
-    rollen: a.rollen, anzeige: a.anzeige, bestaetigen: a.bestaetigen, aktiv: a.aktiv } : LEER(d.heute)));
+    rollen: a.rollen, anzeige: a.anzeige, bestaetigen: a.bestaetigen, aktiv: a.aktiv, neue_bucher: a.neue_bucher } : LEER(d.heute)));
   const [neuAnzeigen, setNeuAnzeigen] = useState(false);
   const [geaendert, setGeaendert] = useState(!a);
   const [bilder, setBilder] = useState<Bild[]>(a?.bilder ?? []);
   const [busy, setBusy] = useState(false);
   const [vorschau, setVorschau] = useState(false);
-  const [gesehen, setGesehen] = useState<{ name: string; gesehen_am: string; bestaetigt_am: string | null }[] | null>(null);
+  const [gesehen, setGesehen] = useState<GesehenZeile[] | null>(null);
   const [frage, setFrage] = useState(false);
   const datei = useRef<HTMLInputElement>(null);
   const setze = (x: Partial<Form>) => { setF((alt) => ({ ...alt, ...x })); setGeaendert(true); };
@@ -142,7 +143,15 @@ function Editor({ a, d, onFehler, onGesichert, onWeg, onBilder }: {
   });
   const bildWeg = (b: Bild) => lauf(async () => { if (a) { setBilder((await api.del<{ bilder: Bild[] }>(`${A}/${a.id}/bilder/${b.id}`)).bilder); onBilder(); } });
   const loeschen = () => lauf(async () => { if (a) { await api.del(`${A}/${a.id}`); toast('Aushang gelöscht'); onWeg(); } });
-  const wer = () => lauf(async () => { if (a) setGesehen((await api.get<{ zeilen: NonNullable<typeof gesehen> }>(`${A}/${a.id}/gesehen`)).zeilen); });
+  const wer = () => lauf(async () => { if (a) setGesehen((await api.get<{ zeilen: GesehenZeile[] }>(`${A}/${a.id}/gesehen`)).zeilen); });
+  /** einem Benutzer wieder anzeigen – er sieht den Aushang beim nächsten Aufruf von „Platz buchen“ */
+  const wiederAnzeigen = (g: GesehenZeile) => lauf(async () => {
+    if (!a) return;
+    await api.del(`${A}/${a.id}/gesehen/${g.user_id}`);
+    toast(`${g.name} sieht den Aushang beim nächsten Aufruf wieder`);
+    setGesehen((l) => l?.filter((x) => x.user_id !== g.user_id) ?? null);
+    onBilder();
+  });
   const alsRundschreiben = () => lauf(async () => {
     if (!a) return;
     const r = await api.post<{ id: number; text: string }>(`${A}/${a.id}/rundschreiben`);
@@ -187,19 +196,28 @@ function Editor({ a, d, onFehler, onGesichert, onWeg, onBilder }: {
           </MultiComboBox>
         </FieldBox>
         <FieldBox label="Anzeigen">
-          <Select onChange={(e) => setze({ anzeige: (e.detail.selectedOption as HTMLElement).dataset.k as Anzeige })}>
+          <Select disabled={f.neue_bucher} onChange={(e) => setze({ anzeige: (e.detail.selectedOption as HTMLElement).dataset.k as Anzeige })}>
             <Option data-k="EINMAL" selected={f.anzeige === 'EINMAL'}>einmal je Benutzer</Option>
             <Option data-k="IMMER" selected={f.anzeige === 'IMMER'}>bei jedem Aufruf von „Platz buchen“</Option>
           </Select>
         </FieldBox>
         <FieldBox label="Optionen" wide>
           <FlexBox wrap="Wrap" style={{ gap: '0 1.5rem' }}>
-            <CheckBox text="Bestätigung verlangen („Zur Kenntnis genommen“)" checked={f.bestaetigen} onChange={(e) => setze({ bestaetigen: e.target.checked })} />
+            <CheckBox text="Für neue Hallenbucher (einmal, mit Bestätigung)" checked={f.neue_bucher}
+                      onChange={(e) => setze(e.target.checked ? { neue_bucher: true, anzeige: 'EINMAL', bestaetigen: true } : { neue_bucher: false })} />
+            <CheckBox text="Bestätigung verlangen („Zur Kenntnis genommen“)" checked={f.bestaetigen} disabled={f.neue_bucher} onChange={(e) => setze({ bestaetigen: e.target.checked })} />
             <CheckBox text="Aktiv" checked={f.aktiv} onChange={(e) => setze({ aktiv: e.target.checked })} />
             {a && <CheckBox text="Beim Sichern allen noch einmal zeigen" checked={neuAnzeigen} onChange={(e) => { setNeuAnzeigen(e.target.checked); setGeaendert(true); }} />}
           </FlexBox>
         </FieldBox>
       </FormGrid>
+      {f.neue_bucher && (
+        <MessageStrip design="Information" hideCloseButton style={{ marginTop: '0.5rem' }}>
+          Für neue Hallenbucher: Alle Benutzer, die es beim {a?.neue_bucher ? 'Einschalten' : 'Sichern'} schon gibt, gelten als informiert und sehen den Hinweis nicht.
+          Wer sich danach registriert, sieht ihn beim ersten Aufruf von „Platz buchen“ – vor der ersten Buchung – und muss ihn bestätigen; danach erscheint er
+          nicht mehr. Unter „Gesehen von“ lässt er sich einzelnen Benutzern wieder anzeigen, mit „Beim Sichern allen noch einmal zeigen“ allen.
+        </MessageStrip>
+      )}
 
       <div style={{ marginTop: '1rem' }}>
         <FlexBox alignItems="Center" style={{ gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -235,18 +253,25 @@ function Editor({ a, d, onFehler, onGesichert, onWeg, onBilder }: {
         </Dialog>
       )}
       {gesehen && (
-        <Dialog open headerText={`Gesehen von ${gesehen.length}`} style={{ width: 'min(34rem, 96vw)' }} onClose={() => setGesehen(null)}
+        <Dialog open headerText={`Gesehen von ${gesehen.filter((g) => !g.vorab).length}`} style={{ width: 'min(38rem, 96vw)' }} onClose={() => setGesehen(null)}
                 footer={<Bar endContent={<Button onClick={() => setGesehen(null)}>Schließen</Button>} />}>
           {gesehen.length === 0 ? <Empty>Noch niemand.</Empty> : (
-            <List>
-              {gesehen.map((g, i) => (
-                <ListItemStandard key={i} description={`gesehen ${new Date(g.gesehen_am).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}`}
-                                  additionalText={g.bestaetigt_am ? `bestätigt ${new Date(g.bestaetigt_am).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : ''}
-                                  additionalTextState={g.bestaetigt_am ? 'Positive' : 'None'}>
-                  {g.name}
-                </ListItemStandard>
+            <div style={{ display: 'grid', gap: '0.25rem' }}>
+              {gesehen.map((g) => (
+                <FlexBox key={g.user_id} alignItems="Center" justifyContent="SpaceBetween" style={{ gap: '0.5rem', padding: '0.25rem 0', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+                  <div>
+                    <Text><b>{g.name}</b></Text><br />
+                    <Text className="portal-muted portal-small">
+                      {g.vorab ? 'Bestand – gilt als informiert, nicht angezeigt'
+                        : `gesehen ${new Date(g.gesehen_am).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })}`
+                          + (g.bestaetigt_am ? ` · bestätigt ${new Date(g.bestaetigt_am).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}` : '')}
+                    </Text>
+                  </div>
+                  <Button icon="refresh" design="Transparent" disabled={busy} onClick={() => wiederAnzeigen(g)}
+                          tooltip="Beim nächsten Aufruf von „Platz buchen“ wieder anzeigen (mit Bestätigung, falls verlangt)">wieder anzeigen</Button>
+                </FlexBox>
               ))}
-            </List>
+            </div>
           )}
         </Dialog>
       )}

@@ -7,6 +7,10 @@
  *  - „einmal je Benutzer“ (EINMAL): bis der Benutzer ihn gesehen hat – mit Bestätigungspflicht bis zur Bestätigung,
  *  - „bei jedem Aufruf“ (IMMER): bei jedem Öffnen von „Platz buchen“, solange er gilt.
  * Die Reihenfolge: kritisch vor Warnung vor Information, dann der neueste zuerst.
+ *
+ * „Für neue Hallenbucher“ (neue_bucher): immer einmal je Benutzer mit Bestätigungspflicht. Beim Einschalten gelten alle
+ * bestehenden Benutzer als informiert (Bestand); wer sich danach registriert, sieht den Hinweis beim ersten Aufruf von
+ * „Platz buchen“, also vor der ersten Buchung. Die Verwaltung kann ihn je Benutzer oder für alle wieder anzeigen.
  */
 
 export const STILE = ['INFO', 'WARNUNG', 'KRITISCH'] as const;
@@ -17,6 +21,8 @@ export type Anzeige = (typeof ANZEIGEN)[number];
 export interface Aushang {
   id: number; titel: string; text: string; stil: Stil; gueltig_von: string; gueltig_bis: string | null;
   rollen: string[]; anzeige: Anzeige; bestaetigen: boolean; aktiv: boolean;
+  /** für neue Hallenbucher: Bestand gilt beim Einschalten als informiert */
+  neue_bucher?: boolean;
 }
 export interface Gesehen { gesehen: boolean; bestaetigt: boolean }
 
@@ -41,6 +47,22 @@ export const sortieren = <T extends Pick<Aushang, 'stil' | 'gueltig_von' | 'id'>
 export function fuerBenutzer<T extends Aushang>(alle: T[], d: { heute: string; rollen: string[]; gesehen: Map<number, Gesehen> }): { aktuell: T[]; oeffnen: T[] } {
   const aktuell = sortieren(alle.filter((a) => gilt(a, d.heute, d.rollen)));
   return { aktuell, oeffnen: aktuell.filter((a) => oeffnetSich(a, d.gesehen.get(a.id))) };
+}
+
+/** „Für neue Hallenbucher“ heißt immer: einmal je Benutzer, mit Bestätigung */
+export function normalisieren<T extends Pick<Aushang, 'anzeige' | 'bestaetigen'> & { neue_bucher?: boolean }>(a: T): T {
+  return a.neue_bucher ? ({ ...a, anzeige: 'EINMAL', bestaetigen: true } as T) : a;
+}
+
+/**
+ * Was beim Sichern mit den Kenntnisnahmen geschieht: „allen noch einmal zeigen“ löscht alle; „für neue Hallenbucher“ neu
+ * eingeschaltet markiert den Bestand als informiert; ausgeschaltet entfallen die Bestandsmarken (dann sehen ihn alle).
+ */
+export function kenntnisnahmen(alt: boolean, neu: boolean, allenNeu: boolean): 'ALLE_LOESCHEN' | 'BESTAND_MARKIEREN' | 'BESTAND_LOESCHEN' | null {
+  if (allenNeu) return 'ALLE_LOESCHEN';
+  if (!alt && neu) return 'BESTAND_MARKIEREN';
+  if (alt && !neu) return 'BESTAND_LOESCHEN';
+  return null;
 }
 
 /** Gültigkeit prüfen; Fehlertext oder null */

@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fuerBenutzer, gilt, oeffnetSich, pruefen, rundschreibenText, sortieren, stand, type Aushang, type Gesehen } from '../../modules/tco/server/platz/aushang.js';
+import { fuerBenutzer, gilt, kenntnisnahmen, normalisieren, oeffnetSich, pruefen, rundschreibenText, sortieren, stand, type Aushang, type Gesehen } from '../../modules/tco/server/platz/aushang.js';
 
 const a = (id: number, rest: Partial<Aushang> = {}): Aushang => ({
   id, titel: `A${id}`, text: '', stil: 'INFO', gueltig_von: '2026-11-01', gueltig_bis: null, rollen: [], anzeige: 'EINMAL', bestaetigen: false, aktiv: true, ...rest,
@@ -48,4 +48,14 @@ test('Prüfungen, Stand und Rundschreiben-Text', () => {
   assert.deepEqual([a(1), a(1, { aktiv: false }), a(1, { gueltig_von: '2026-12-01' }), a(1, { gueltig_bis: '2026-11-02' })].map((x) => stand(x, H)), ['AKTUELL', 'AUS', 'GEPLANT', 'ABGELAUFEN']);
   assert.equal(rundschreibenText({ titel: 'Halle', text: 'Bitte fegen.\n' }, 'Der Vorstand'), '{Anrede},\n\nBitte fegen.\n\nViele Grüße\nDer Vorstand');
   assert.equal(rundschreibenText({ titel: 'Halle sauber', text: '' }, 'TC'), '{Anrede},\n\nHalle sauber\n\nViele Grüße\nTC');
+});
+
+test('für neue Hallenbucher: immer einmal mit Bestätigung; was beim Sichern mit den Kenntnisnahmen geschieht', () => {
+  assert.deepEqual(normalisieren({ anzeige: 'IMMER' as const, bestaetigen: false, neue_bucher: true }), { anzeige: 'EINMAL', bestaetigen: true, neue_bucher: true });
+  assert.deepEqual(normalisieren({ anzeige: 'IMMER' as const, bestaetigen: false, neue_bucher: false }), { anzeige: 'IMMER', bestaetigen: false, neue_bucher: false });
+  assert.equal(kenntnisnahmen(false, true, false), 'BESTAND_MARKIEREN');
+  assert.equal(kenntnisnahmen(true, false, false), 'BESTAND_LOESCHEN');
+  assert.equal(kenntnisnahmen(true, true, false), null);
+  assert.equal(kenntnisnahmen(false, false, false), null);
+  assert.equal(kenntnisnahmen(false, true, true), 'ALLE_LOESCHEN', 'allen noch einmal zeigen geht vor');
 });
