@@ -9,8 +9,8 @@ import { change, requireAuth } from '../../../server/src/auth.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import { tempoCsvLesen } from './logik/csv.js';
 import { STANDARD_EINSTELLUNGEN, einstellungenErgaenzen } from './logik/standard.js';
-import { auswerten } from './logik/auswertung.js';
-import type { Einstellungen, ImportAntwort, ImportErgebnis, ImportZeile, PersonVorgabe, RohEintrag } from './typen.js';
+import { auswerten, textNorm } from './logik/auswertung.js';
+import type { Einstellungen, Freigabe, FreigabeSchluessel, ImportAntwort, ImportErgebnis, ImportZeile, PersonVorgabe, RohEintrag } from './typen.js';
 
 /**
  * WCA Zeitenkontrolle: Tempo-Zeitexporte (Teamreport als CSV) importieren und die Zeitbuchungen prüfen –
@@ -111,7 +111,24 @@ const auswertungQuery = z.object({
   zeitraum: z.string().regex(/^(\d{4}-\d{2}|\d{4}-W\d{2}|alle)$/, 'Zeitraum: JJJJ-MM, JJJJ-Www oder alle').optional().or(z.literal('').transform(() => undefined)),
 });
 
+const freigabeSchema = z.object({
+  regel: z.string().trim().min(1).max(50),
+  acc: z.string().max(1000).default(''),
+  text: z.string().max(20000),
+  person: z.string().max(200).default(''),
+  meldung: z.string().max(2000).default(''),
+}).refine((v) => textNorm(v.text) !== '', { message: 'Leere Texte lassen sich nicht freigeben.', path: ['text'] });
+
 // ------------------------------------------------------------------ Lesen
+
+async function freigabenLesen(): Promise<Freigabe[]> {
+  const rows = await sql`select id, regel, acc, text, person, meldung, freigegeben_von as "freigegebenVon", freigegeben_am as "freigegebenAm"
+                           from wca.freigabe order by freigegeben_am desc, regel`;
+  return rows.map((r) => ({
+    id: r.id, regel: r.regel, acc: r.acc, text: r.text, person: r.person, meldung: r.meldung, freigegebenVon: r.freigegebenVon,
+    freigegebenAm: r.freigegebenAm instanceof Date ? r.freigegebenAm.toISOString() : String(r.freigegebenAm),
+  }));
+}
 
 async function einstellungenLesen(db: Tx = DB): Promise<Einstellungen> {
   const [z1] = await db`select daten from wca.einstellungen where id = 1`;
@@ -249,20 +266,23 @@ const mod: ServerModule = {
     { type: 'WCA_IMPORT', text: 'Tempo-Import (WCA)', permission: P.importDisplay },
     { type: 'WCA_EINST', text: 'Prüfregeln (WCA)', permission: P.einstellungenDisplay },
     { type: 'WCA_PERSON', text: 'Personenvorgabe (WCA)', permission: P.einstellungenDisplay },
+    { type: 'WCA_FREIGABE', text: 'Freigegebener Text (WCA)', permission: P.einstellungenDisplay },
   ],
 
   routes(app) {
     // ------------------------------------------------------------------ Auswertung
     app.get('/auswertung', { preHandler: requireAuth(P.auswertung) }, async (req) => {
       const q = auswertungQuery.parse(req.query);
-      const [eintraege, keys, einstellungen, vorgaben, [{ n, von, bis }]] = await Promise.all([
+      const [eintraege, keys, einstellungen, vorgaben, [{ n, von, bis }], freigaben] = await Promise.all([
         eintraegeLesen(), schluesselLesen(), einstellungenLesen(), vorgabenLesen(),
         sql`select count(*)::int as n, min(von) as von, max(bis) as bis from wca.import`,
+        sql`select regel, acc, text from wca.freigabe`,
       ]);
       // Datenbereich = Tagesspalten aller Importe (auch leere Tage am Ende zählen, z. B. für den Stichtag)
       return auswerten({
         eintraege, accKeys: keys.accKeys, berKeys: keys.berKeys, dateien: n, einstellungen, vorgaben,
         heute: heute(), stichtag: q.stichtag, zeitraum: q.zeitraum, datenBereich: { von: von ?? null, bis: bis ?? null },
+        freigaben: freigaben as unknown as FreigabeSchluessel[],
       });
     });
 
@@ -346,6 +366,29 @@ const mod: ServerModule = {
         on conflict (person) do update set
           standort = excluded.standort, soll_tag = excluded.soll_tag, arbeitstage = excluded.arbeitstage,
           von = excluded.von, bis = excluded.bis, ausblenden = excluded.ausblenden`);
+      return { ok: true };
+    });
+
+    // ------------------------------------------------------------------ Freigaben (Text gilt für Regel + Account als in Ordnung)
+    app.get('/freigaben', { preHandler: requireAuth(P.einstellungenDisplay) }, async () => freigabenLesen());
+
+    app.post('/freigaben', { preHandler: requireAuth(P.einstellungenEdit) }, async (req) => {
+      const v = freigabeSchema.parse(req.body ?? {});
+      const acc = v.acc.trim();
+      const norm = textNorm(v.text);
+      await change(req, (tx) => tx`
+        insert into wca.freigabe (regel, acc, text_norm, text, person, meldung, freigegeben_von)
+        values (${v.regel}, ${acc}, ${norm}, ${v.text.trim()}, ${v.person}, ${v.meldung}, ${benutzer(req)})
+        on conflict (regel, acc, text_norm) do nothing`, { action: 'WCA_FREIGABE' });
+      return { ok: true };
+    });
+
+    app.delete('/freigaben/:id', { preHandler: requireAuth(P.einstellungenEdit) }, async (req) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      await change(req, async (tx) => {
+        const r = await tx`delete from wca.freigabe where id = ${id}`;
+        if (r.count === 0) throw new BusinessError('Freigabe nicht gefunden.', 404);
+      });
       return { ok: true };
     });
 

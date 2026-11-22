@@ -843,6 +843,7 @@ ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
 .portal-wca-fundkurz { margin: 0.25rem 0 0; padding-left: 1.25rem; }
 .portal-wca-fundkurz li { margin-bottom: 0.4rem; }
 .portal-wca-funde { white-space: nowrap; }
+.portal-wca-freigabe { height: 1.5rem; min-width: 0; font-size: 0.8125rem; vertical-align: middle; }
 .portal-wca-person { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
 .portal-wca-pill { font-size: var(--sapFontSmallSize); }
 .portal-wca-chips { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 1rem; }

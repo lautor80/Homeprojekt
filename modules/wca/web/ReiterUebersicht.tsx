@@ -4,7 +4,7 @@ import { Attribute, Attributes } from '@core/components/Attributes';
 import { Section } from '@core/components/Section';
 import type { PersonAuswertung } from '../server/typen';
 import { mitKategorie, summen, tageVon, unauffaellig, zeilen, type Filter, type Sicht, type Zeile } from './ansicht';
-import { tageText } from './FundListe';
+import { FreigabeKnopf, tageText } from './FundListe';
 import {
   arbeitstageText, dat, Kachel, Kacheln, kopieren, Pill, proz, quote, type Spalte, std, StufeStatus, stufeText, summe, Tabelle, Verteilung,
   VerteilungLegende, wtm, zahl,
@@ -177,7 +177,7 @@ function FundKurz({ titel, liste, sicht }: { titel: string; liste: Zeile[]; sich
               <li key={z.id}>
                 <StufeStatus stufe={z.stufe} /> {tageText(tageVon(a, z))} · {zahl(z.stunden)} h{e ? ` · ${e.accName}${e.key ? ` (${e.key})` : ''}` : ''}
                 {e?.text ? <> · „{e.text}“</> : null}
-                {z.funde.map((x, i) => <div key={i} className="portal-muted portal-small">→ {x.regel}: {x.meldung}</div>)}
+                {z.funde.map((x, i) => <div key={i} className="portal-muted portal-small">→ {x.regel}: {x.meldung} <FreigabeKnopf sicht={sicht} e={e} x={x} /></div>)}
               </li>
             );
           })}

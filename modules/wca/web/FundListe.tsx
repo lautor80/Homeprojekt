@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button, Text } from '@ui5/webcomponents-react';
 import { Section } from '@core/components/Section';
-import type { Kategorie } from '../server/typen';
+import type { AuswEintrag, Fund, Kategorie } from '../server/typen';
 import { tageVon, zeilen as zeilenBilden, type Sicht, type Zeile } from './ansicht';
 import { dat, kopieren, type Spalte, stufeText, StufeStatus, Tabelle, tm, tsv, zahl } from './util';
 
@@ -10,6 +10,16 @@ export function tageText(tage: string[]): string {
   if (!tage.length) return '';
   if (tage.length === 1) return tm(tage[0]);
   return `${tm(tage[0])}–${tm(tage[tage.length - 1])} (${tage.length} Tage)`;
+}
+
+/** Knopf „Freigeben“ an einem Fund: der Text gilt danach für diese Regel und diesen Account als in Ordnung */
+export function FreigabeKnopf({ sicht, e, x }: { sicht: Sicht; e: AuswEintrag | null; x: Fund }) {
+  if (!sicht.freigeben || !e || !x.freigebbar) return null;
+  return (
+    <Button design="Transparent" icon="accept" className="portal-wca-freigabe"
+            tooltip={`Text für ${x.regel} auf diesem Account freigeben – wird danach nicht mehr bemängelt`}
+            onClick={() => sicht.freigeben!(e, x)}>Freigeben</Button>
+  );
 }
 
 /**
@@ -59,7 +69,7 @@ export function FundListe({ sicht, kategorien, titel }: { sicht: Sicht; kategori
         return (
           <>
             {e && <div>{e.text ? `„${e.text}“` : <span className="portal-muted">(kein Text)</span>}</div>}
-            {z.funde.map((x, i) => <div key={i} className="portal-muted portal-small">{x.meldung}</div>)}
+            {z.funde.map((x, i) => <div key={i} className="portal-muted portal-small">{x.meldung} <FreigabeKnopf sicht={sicht} e={e} x={x} /></div>)}
           </>
         );
       },
@@ -85,6 +95,7 @@ export function FundListe({ sicht, kategorien, titel }: { sicht: Sicht; kategori
       <div className="portal-wca-chips">
         <Text className="portal-muted">
           {liste.length} fehlerhafte Rückmeldungen bzw. Personentage mit zusammen {einzel} Einzelfehlern ab Stufe {stufeText(f.stufe)}
+          {a.freigegeben ? ` · ${a.freigegeben} freigegebene Funde ausgeblendet (Prüfregeln → Freigegebene Texte)` : ''}
         </Text>
         <div className="portal-row">
           <Button design={regel === null ? 'Emphasized' : 'Default'} onClick={() => setRegel(null)}>Alle ({alle.length})</Button>

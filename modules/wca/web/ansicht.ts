@@ -27,6 +27,8 @@ export interface Sicht {
   teams: string[];
   standorte: string[];
   alleSichtbar: PersonAuswertung[];
+  /** Fund freigeben (Text gilt für Regel und Account als in Ordnung); fehlt ohne Recht */
+  freigeben?: (eintrag: AuswEintrag, fund: Fund) => void;
 }
 
 export function sichtBerechnen(a: Auswertung, f: Filter): Sicht {

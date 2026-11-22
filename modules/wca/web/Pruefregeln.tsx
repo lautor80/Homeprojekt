@@ -11,6 +11,7 @@ import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { REGELN } from '../server/logik/standard';
 import type { Einstellungen, PersonVorgabe, Stufe, WortRegel } from '../server/typen';
+import { Freigaben } from './Freigaben';
 import { Personenvorgaben } from './Personenvorgaben';
 import { ARTEN, eingabeZahl, KATEGORIEN, STUFEN, W, zahlEingabe } from './util';
 
@@ -206,6 +207,7 @@ export function Pruefregeln() {
           </Section>
 
           <Personenvorgaben daten={d.data} edit={edit} onGeaendert={() => d.reload()} />
+          <Freigaben edit={edit} />
         </>
       )}
       <ConfirmDialog open={zuruecksetzen} title="Auf Standard zurücksetzen" confirmText="Zurücksetzen"

@@ -558,18 +558,21 @@ für Übersicht, Vollständigkeit, Billable, Kontierung und Texte; Import über 
 Rückmeldungen, Stunden, Zeitraum, Warnungen und wie viele Buchungstage ersetzt würden; erst *Übernehmen* schreibt). Ein
 erneuter Import **ersetzt je Person und Datum** die älteren Buchungen (neue Datei gewinnt) – derselbe Export zweimal
 verdoppelt nichts. Einstellungen: Prüfregeln, Schwellen, Wortlisten und Personenvorgaben (Standort, Soll je Tag,
-Arbeitstage, im Team von/bis, ausblenden).
+Arbeitstage, im Team von/bis, ausblenden). **Freigeben:** an jedem Fund zu einer Rückmeldung (Übersicht/Personendetail,
+Reiter Kontierung und Texte) akzeptiert *Freigeben* den Text für diese Regel und diesen Account – er wird danach bei
+allen Personen und Tagen nicht mehr bemängelt; Liste und *Zurücknehmen* unter Prüfregeln → *Freigegebene Texte*.
 
 | Recht | Inhalt |
 |---|---|
 | `wca.auswertung:display` | Auswertung anzeigen |
 | `wca.import:display` / `wca.import:edit` | Importe anzeigen / Tempo-Exporte importieren und Importe löschen |
-| `wca.einstellungen:display` / `wca.einstellungen:edit` | Prüfregeln und Personenvorgaben anzeigen / ändern |
+| `wca.einstellungen:display` / `wca.einstellungen:edit` | Prüfregeln, Personenvorgaben und Freigaben anzeigen / ändern (auch *Freigeben*) |
 
 API unter `/api/m/wca`: `GET /auswertung?stichtag=JJJJ-MM-TT&zeitraum=JJJJ-MM|JJJJ-Www|alle`,
 `POST /import` (`{ dateien: [{ name, csv, geaendert? }], uebernehmen }`, CSV als Text oder Data-URL, bis 50 MB),
-`GET /importe`, `DELETE /importe/:id` (Begründung Pflicht), `GET|PUT /einstellungen`, `PUT|DELETE /personen/:person`.
-Änderungsbelege: `WCA_IMPORT`, `WCA_EINST`, `WCA_PERSON`. Schema `wca` (Import, Einträge mit Tagen, gelernte
+`GET /importe`, `DELETE /importe/:id` (Begründung Pflicht), `GET|PUT /einstellungen`, `PUT|DELETE /personen/:person`,
+`GET|POST /freigaben` (`{ regel, acc, text, person?, meldung? }`), `DELETE /freigaben/:id`.
+Änderungsbelege: `WCA_IMPORT`, `WCA_EINST`, `WCA_PERSON`, `WCA_FREIGABE`. Schema `wca` (Import, Einträge mit Tagen, gelernte
 Account-/Bereichsschlüssel, Einstellungen, Personenvorgaben). Importformat, Ersetzungslogik, Ableitungen, alle
 Prüfregeln, Kennzahlen und Einstellungen: [docs/wca.md](docs/wca.md).
 

@@ -138,6 +138,22 @@ export interface Fund {
   stunden: number; // zählende Stunden im Zeitraum
   meldung: string;
   tipp: string;
+  freigebbar: boolean; // nur Funde zu einer Rückmeldung (mit Text) lassen sich freigeben
+}
+
+/** Freigabe: Text gilt für Regel und Account als in Ordnung (Tabelle wca.freigabe) */
+export interface FreigabeSchluessel {
+  regel: string;
+  acc: string; // Account roh („Name|Kunde“)
+  text: string;
+}
+
+export interface Freigabe extends FreigabeSchluessel {
+  id: string;
+  person: string;
+  meldung: string;
+  freigegebenVon: string | null;
+  freigegebenAm: string;
 }
 
 /** Eine Rückmeldung bzw. ein Personentag mit allen Funden (Zeile in den Fundlisten) */
@@ -164,6 +180,7 @@ export interface AuswEintrag {
   berKey: string;
   key: string;
   text: string;
+  acc: string; // Account roh („Name|Kunde“), Schlüssel für Freigaben
   errorAccount: boolean;
   ohneAccount: boolean;
   intern: boolean;
@@ -244,6 +261,7 @@ export interface Auswertung {
   gruppen: FundGruppe[]; // alle Fundgruppen (ohne Stufenfilter; Filter macht die Oberfläche)
   feiertage: Feiertag[]; // im Zeitraum
   regeln: RegelInfo[];
+  freigegeben: number; // Funde im Zeitraum, die wegen einer Freigabe nicht gemeldet werden
 }
 
 export interface RegelInfo {

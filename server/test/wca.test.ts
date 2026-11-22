@@ -169,6 +169,29 @@ test('Tempo-Export prüfen, übernehmen, ersetzen, auswerten; Einstellungen, Vor
   assert.equal(leer.eintraege.length, 0);
   ok(await admin('POST', `${M}/import`, { dateien: [{ name: DATEI, csv: CSV }], uebernehmen: true }));
 
+  // Freigabe: ein bemängelter Text gilt für Regel und Account als in Ordnung, Zurücknehmen meldet ihn wieder
+  const vorFrei = ok(await admin('GET', AUSW));
+  const fg = vorFrei.gruppen.find((g: any) => g.eintrag !== null && g.funde.some((f: any) => f.freigebbar) && vorFrei.eintraege[g.eintrag].text.trim());
+  assert.ok(fg, 'Fixture hat einen freigebbaren Fund');
+  const fe = vorFrei.eintraege[fg.eintrag];
+  const ff = fg.funde.find((f: any) => f.freigebbar);
+  const zahl = (a: any) => a.gruppen.flatMap((g: any) => g.funde).filter((f: any) => f.regel === ff.regel).length;
+  assert.equal(vorFrei.freigegeben, 0);
+  assert.equal((await admin('POST', `${M}/freigaben`, { regel: ff.regel, acc: fe.acc, text: '   ' })).status, 400);
+  ok(await admin('POST', `${M}/freigaben`, { regel: ff.regel, acc: fe.acc, text: fe.text, person: fe.person, meldung: ff.meldung }));
+  ok(await admin('POST', `${M}/freigaben`, { regel: ff.regel, acc: fe.acc, text: ` ${fe.text.toUpperCase()} ` })); // doppelt: kein Fehler, keine zweite Zeile
+  const freigaben = ok(await admin('GET', `${M}/freigaben`));
+  assert.equal(freigaben.length, 1);
+  assert.equal(freigaben[0].freigegebenVon, 'Admin');
+  const nachFrei = ok(await admin('GET', AUSW));
+  assert.ok(nachFrei.freigegeben >= 1);
+  assert.ok(zahl(nachFrei) < zahl(vorFrei));
+  ok(await admin('DELETE', `${M}/freigaben/${freigaben[0].id}`));
+  assert.equal((await admin('DELETE', `${M}/freigaben/${freigaben[0].id}`)).status, 404);
+  assert.equal(zahl(ok(await admin('GET', AUSW))), zahl(vorFrei));
+  const [{ fb }] = await sql`select count(*)::int as fb from core.change_header where object_type = 'WCA_FREIGABE'`;
+  assert.ok(fb >= 2, `Änderungsbelege Freigabe: ${fb}`);
+
   // Rechte: nur Auswertung anzeigen
   ok(await admin('POST', '/api/admin/roles', { id: 'WCA_LESEN', name: 'Zeiten lesen', permissions: ['wca.auswertung:display'] }));
   ok(await admin('POST', '/api/admin/users', { username: 'leser', displayName: 'Leser', password: 'geheim-geheim', roles: ['WCA_LESEN'] }));
@@ -180,4 +203,6 @@ test('Tempo-Export prüfen, übernehmen, ersetzen, auswerten; Einstellungen, Vor
   assert.equal((await leser('GET', `${M}/importe`)).status, 403);
   assert.equal((await leser('GET', `${M}/einstellungen`)).status, 403);
   assert.equal((await leser('PUT', `${M}/einstellungen`, {})).status, 403);
+  assert.equal((await leser('POST', `${M}/freigaben`, { regel: 'K1', acc: '', text: 'x' })).status, 403);
+  assert.equal((await leser('GET', `${M}/freigaben`)).status, 403);
 });
