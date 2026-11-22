@@ -290,7 +290,22 @@ test('Abos nur über die Platzverwaltung', async () => {
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.match(r.body.text, /1 Termin/);
   assert.deepEqual((await sql`select status, storno_portal is not null as portal from tco.bookings where bid = '8880000071' and datum = ${tag(14)}`)[0], { status: '2', portal: true });
-  await sql`delete from tco.bookings where bid in ('8880000071', '8880000072')`;
+  // EP3-Abo als ganze Serie abgerechnet (alle Termine gekennzeichnet): Beenden nur mit Kommentar, dann auch die abgerechneten
+  await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, description, preis, erstellt, assigned, platz) values
+    ('8880000073', ${tag(-7)}, '09:00', '10:00', 'SONNTAG EP3', '3', 'Abo', 15, '2025-09-01', 'Y', 'Halle'),
+    ('8880000073', ${tag(7)}, '09:00', '10:00', 'SONNTAG EP3', '3', 'Abo', 15, '2025-09-01', 'Y', 'Halle'),
+    ('8880000073', ${tag(14)}, '09:00', '10:00', 'SONNTAG EP3', '3', 'Abo', 15, '2025-09-01', 'Y', 'Halle')`;
+  r = await admin('POST', `${A}/abos/8880000073/beenden`, { ab: tag(1) });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /2 Termin\(e\) ab .* sind bereits abgerechnet – zum Beenden bitte einen Kommentar angeben/);
+  assert.equal((await admin('POST', `${A}/abos/8880000073/beenden`, { ab: tag(1), grund: '  ' })).status, 400, 'leerer Kommentar zählt nicht');
+  r = await admin('POST', `${A}/abos/8880000073/beenden`, { ab: tag(1), grund: 'Abo entfällt' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /2 Termin\(e\) .* storniert\. 2 davon waren bereits abgerechnet/);
+  assert.deepEqual((await sql`select status, storno_grund from tco.bookings where bid = '8880000073' order by datum`).map((x) => [x.status, x.storno_grund]),
+    [['3', null], ['2', 'Abo entfällt'], ['2', 'Abo entfällt']]);
+  assert.equal((await admin('POST', `${A}/abos/8880000073/beenden`, { ab: tag(1), grund: 'nochmal' })).status, 400, 'keine Termine mehr');
+  await sql`delete from tco.bookings where bid in ('8880000071', '8880000072', '8880000073')`;
 });
 
 test('#83: Abo mit Einzelabrechnung – Nutzer storniert einzelne Termine selbst, das Abo bleibt', async () => {
