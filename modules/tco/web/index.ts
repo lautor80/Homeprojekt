@@ -53,6 +53,7 @@ import { HaushaltKapitel } from './haushalt/Einstellungen';
 import { Ablage } from './upload/Ablage';
 import { tcoZusatz } from './dashboard/Arbeitsvorrat';
 import { PlatzBuchen } from './platz/PlatzBuchen';
+import { BuchungssperreWaechter } from './platz/Buchungssperre';
 import { Platzverwaltung } from './platz/Platzverwaltung';
 import { Serienbuchung } from './platz/Serienbuchung';
 import { Dokumenteneingang } from './eingang/Dokumenteneingang';
@@ -115,6 +116,8 @@ const mod: WebModule = {
   home: { component: Dashboard, permission: 'tco.dashboard:display' },
   // Ablagefeld unten in der Navigation: Dateien hineinziehen → Paperless (mit Voreinstellung)
   sideWidgets: [{ component: Ablage, permission: 'tco.upload:execute' }],
+  // Buchungssperre aus dem Mahnwesen: Hinweis nach der Anmeldung, der bestätigt werden muss
+  waechter: [{ component: BuchungssperreWaechter, permission: 'tco.platzbuchung:edit' }],
   // Arbeitsvorrat der Startseite (#232, V2): Knopf „Zahlungsdaten“ an Einträgen „Überweisung an Einreicher“, „Bearbeiten“ an Kündigungen.
   // Den Hinweis „n neu“ zeigt der Kern am Menüeintrag „Start“ (web/src/arbeitsvorrat.tsx).
   arbeitsvorratZusatz: tcoZusatz,

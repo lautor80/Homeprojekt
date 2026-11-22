@@ -7,7 +7,7 @@ import { mailVerfuegbar } from '../../../../server/src/lib/mail.js';
 import { DB, vereinLesen } from '../verein.js';
 import { addTage, heute, runden } from '../format.js';
 import { kontaktLesen } from '../kommunikation.js';
-import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, notizText, vorschlagAbgleichen, type OffenerPosten, type PostenArt, type VorschlagZeile } from './logik.js';
+import { CFG_SCHEMA, F_MAHN_AUTOMATIK, naechsterLauf, P_MAHN, planen, SCHRITT_TEXT, ART_TEXT, MAX_STUFEN, notizText, sperrPosten, vorschlagAbgleichen, type OffenerPosten, type PostenArt, type VorschlagZeile } from './logik.js';
 import { cfgLesen, cfgSichern, historieLesen, jetztText, laufAusfuehren, laufFreigeben, laufVerwerfen, mahnNotiz, sperrenLesen, standLesen, type Wer } from './lauf.js';
 
 /**
@@ -67,11 +67,14 @@ export async function mahnungRoutes(app: FastifyInstance) {
     }
     const summe = (l: { betrag: number }[]) => runden(l.reduce((s, p) => s + p.betrag, 0));
     const faellig = stand.filter((p) => p.schritt !== 'NICHT_FAELLIG');
+    // Buchungssperre (Kennzeichen an der Stufe): Mitglieder, die bis zur Zahlung keine neuen Hallenstunden buchen dürfen
+    const gesperrt = new Set(sperrPosten(stand, cfg).map((p) => `${p.art}:${p.nr}`));
     return {
-      posten: stand.map((p) => ({ ...p, art_txt: ART_TEXT[p.art], schritt_txt: SCHRITT_TEXT[p.schritt] })),
+      posten: stand.map((p) => ({ ...p, art_txt: ART_TEXT[p.art], schritt_txt: SCHRITT_TEXT[p.schritt], buchungssperre: gesperrt.has(`${p.art}:${p.nr}`) })),
       kennzahlen: {
         offen: stand.length, offen_betrag: summe(stand), faellig: faellig.length, faellig_betrag: summe(faellig),
         gemahnt: stand.filter((p) => p.stufe > 0).length, klaeren: stand.filter((p) => p.schritt === 'KLAEREN').length,
+        buchungssperre: new Set(stand.filter((p) => gesperrt.has(`${p.art}:${p.nr}`)).map((p) => p.schuldner)).size,
       },
       plan: { mails: plan.mails, zurueckgestellt: plan.zurueckgestellt.length, summe: summe(plan.mails.map((m) => ({ betrag: m.summe }))), frist: addTage(heute(), cfg.frist_tage) },
       vorschlag: vl ? await vorschlagAktuell(vl, stand) : null,

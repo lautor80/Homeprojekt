@@ -25,7 +25,8 @@ export type PostenArt = 'HALLE' | 'VERZEHR';
 export const ART_TEXT: Record<PostenArt, string> = { HALLE: 'Hallenrechnung', VERZEHR: 'Verzehrabrechnung' };
 export const MAX_STUFEN = 4;
 
-export interface Stufe { name: string; tage: number; gebuehr: number }
+/** buchungssperre: ab dieser Stufe (zugestellt) darf der Schuldner bis zur Zahlung keine neuen Hallenstunden buchen */
+export interface Stufe { name: string; tage: number; gebuehr: number; buchungssperre?: boolean }
 export interface MahnCfg {
   aktiv: boolean; modus: 'VORSCHLAG' | 'SENDEN'; wochentage: string; uhrzeit: string;
   /** null = Zahlungsziel des Vereins */
@@ -35,7 +36,8 @@ export interface MahnCfg {
 }
 
 export const STANDARD_STUFEN: Stufe[] = [
-  { name: 'Zahlungserinnerung', tage: 7, gebuehr: 0 }, { name: '1. Mahnung', tage: 14, gebuehr: 0 }, { name: '2. Mahnung', tage: 14, gebuehr: 0 },
+  { name: 'Zahlungserinnerung', tage: 7, gebuehr: 0, buchungssperre: false }, { name: '1. Mahnung', tage: 14, gebuehr: 0, buchungssperre: false },
+  { name: '2. Mahnung', tage: 14, gebuehr: 0, buchungssperre: false },
 ];
 
 const mail = z.string().trim().max(200).refine((x) => !x || /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(x), 'Bitte eine gültige E-Mail-Adresse angeben');
@@ -52,6 +54,7 @@ export const CFG_SCHEMA = z.object({
     name: z.string().trim().min(1, 'Jede Stufe braucht einen Namen').max(40),
     tage: z.coerce.number().int().min(0).max(365),
     gebuehr: z.coerce.number().min(0).max(50, 'Mahngebühr höchstens 50 €').transform(runden),
+    buchungssperre: z.boolean().default(false),
   })).min(1, 'Mindestens eine Stufe').max(MAX_STUFEN, `Höchstens ${MAX_STUFEN} Stufen`),
   mindestbetrag: z.coerce.number().min(0).max(1000).transform(runden),
   max_je_lauf: z.coerce.number().int().min(1).max(500),
@@ -388,4 +391,41 @@ export function vorschlagAbgleichen<Z extends VorschlagZeile>(zeilen: Z[], offen
   });
   const gilt = out.filter((z) => z.gilt);
   return { zeilen: out, schuldner: new Set(gilt.map((z) => z.schuldner)).size, betrag: runden(gilt.reduce((x, z) => x + (z.aktuell ?? 0), 0)) };
+}
+
+// ---------------------------------------------------------------------------
+// Buchungssperre: keine neuen Hallenstunden bis zur Zahlung
+// ---------------------------------------------------------------------------
+
+/**
+ * Erste Stufe (1-basiert) mit dem Kennzeichen „Buchungssperre“ – null, wenn keine Stufe es trägt (Sperre aus).
+ * Das Kennzeichen gilt „ab dieser Stufe“: auch alle höheren Stufen sperren.
+ */
+export const sperrStufe = (cfg: Pick<MahnCfg, 'stufen'>): number | null => {
+  const i = cfg.stufen.findIndex((s) => !!s.buchungssperre);
+  return i < 0 ? null : i + 1;
+};
+
+export interface SperrPosten { art: PostenArt; nr: string; schuldner: string; name: string; betrag: number; faellig: string; stufe_name: string; gemahnt_am: string | null }
+
+/**
+ * Posten, die eine Buchungssperre auslösen: noch offen (Rest > 0), zugestellte Stufe mindestens die Sperrstufe und keine
+ * aktive Mahnsperre (eine Mahnsperre – z. B. Ratenzahlung vereinbart – hebt auch die Buchungssperre auf).
+ * Ist alles bezahlt, ist der Posten nicht mehr offen: Die Sperre endet ohne weiteres Zutun.
+ */
+export function sperrPosten(stand: PostenStand[], cfg: Pick<MahnCfg, 'stufen'>): SperrPosten[] {
+  const ab = sperrStufe(cfg);
+  if (ab === null) return [];
+  return stand.filter((p) => p.stufe >= ab && !p.sperre && p.betrag > 0)
+    .map((p) => ({ art: p.art, nr: p.nr, schuldner: p.schuldner, name: p.name, betrag: p.betrag, faellig: p.faellig, stufe_name: p.stufe_name, gemahnt_am: p.gemahnt_am }))
+    .sort((a, b) => a.faellig.localeCompare(b.faellig) || a.nr.localeCompare(b.nr));
+}
+
+/** Meldung an das Mitglied (Anmeldung, Platz buchen) – null ohne Sperre */
+export function sperrText(posten: Pick<SperrPosten, 'nr' | 'betrag'>[]): string | null {
+  if (!posten.length) return null;
+  const summe = runden(posten.reduce((s, p) => s + p.betrag, 0));
+  return `Neue Hallenstunden können erst wieder gebucht werden, wenn ${posten.length === 1 ? 'die angemahnte Rechnung' : 'die angemahnten Rechnungen'} `
+    + `${posten.map((p) => p.nr).join(', ')} (offen ${eur(summe)}) bezahlt ${posten.length === 1 ? 'ist' : 'sind'}. `
+    + 'Nach dem Zahlungseingang wird die Buchung automatisch wieder freigegeben.';
 }

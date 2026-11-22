@@ -25,8 +25,8 @@ import { adrnrErmitteln } from '../halle/daten.js';
 import { paperlessNotiz, rechnungPdfErzeugen } from '../halle/versand.js';
 import { belegErzeugen } from '../verzehr/beleg.js';
 import {
-  ART_TEXT, artenListe, automatikFaellig, F_MAHN_AUTOMATIK, F_MAHN_PAPERLESS, faelligkeit, lokal, mailtextSchluessel, mailWerte, notizText, planen, sperreFuer, standErmitteln, STANDARD_STUFEN, vorschlagAbgleichen,
-  type HistorieZeile, type MahnCfg, type MahnMail, type OffenerPosten, type Plan, type PostenArt, type PostenStand, type SperreZeile, type Stufe, type VorschlagZeile,
+  ART_TEXT, artenListe, automatikFaellig, F_MAHN_AUTOMATIK, F_MAHN_PAPERLESS, faelligkeit, lokal, mailtextSchluessel, mailWerte, notizText, planen, sperreFuer, sperrPosten, sperrStufe, standErmitteln, STANDARD_STUFEN, vorschlagAbgleichen,
+  type HistorieZeile, type MahnCfg, type MahnMail, type OffenerPosten, type Plan, type PostenArt, type PostenStand, type SperreZeile, type SperrPosten, type Stufe, type VorschlagZeile,
 } from './logik.js';
 
 export interface Wer { id: string | null; name: string }
@@ -42,7 +42,7 @@ export async function cfgLesen(db: Db = DB): Promise<MahnCfg> {
   const [c] = await db`select aktiv, modus, wochentage, uhrzeit, zahlungsziel_tage, frist_tage, stufen, mindestbetrag::float8 as mindestbetrag, max_je_lauf, arten,
                               halle_gedruckt, anhang, absender, absender_name, antwort_an, kopie_an, letzter_lauf
                          from tco.mahn_cfg where id = 1`;
-  const stufen = (Array.isArray(c?.stufen) ? c.stufen as Stufe[] : STANDARD_STUFEN).map((s) => ({ name: String(s.name), tage: Number(s.tage), gebuehr: Number(s.gebuehr) || 0 }));
+  const stufen = (Array.isArray(c?.stufen) ? c.stufen as Stufe[] : STANDARD_STUFEN).map((s) => ({ name: String(s.name), tage: Number(s.tage), gebuehr: Number(s.gebuehr) || 0, buchungssperre: s.buchungssperre === true }));
   return {
     aktiv: !!c?.aktiv, modus: c?.modus === 'SENDEN' ? 'SENDEN' : 'VORSCHLAG', wochentage: c?.wochentage ?? '1', uhrzeit: c?.uhrzeit ?? '08:00',
     zahlungsziel_tage: c?.zahlungsziel_tage ?? null, frist_tage: c?.frist_tage ?? 10, stufen: stufen.length ? stufen : STANDARD_STUFEN,
@@ -159,6 +159,23 @@ export async function standLesen(db: Db = DB, heute = heuteIso()): Promise<Stand
     stand = standErmitteln(posten, historie, sperren, cfg, heute, adressen);
   }
   return { cfg, stand };
+}
+
+/**
+ * Buchungssperre der Schuldner (Adressnummern): angemahnte, noch offene Posten ab der Stufe mit dem Kennzeichen
+ * „Buchungssperre“ (logik.ts, sperrPosten). Leer = darf buchen. Wird bei jeder Prüfung frisch aus dem Zahlungsstand
+ * ermittelt – ist alles bezahlt, ist die Sperre ohne weiteres Zutun aufgehoben.
+ */
+export async function buchungssperreLesen(db: Db, schuldner: string[], heute = heuteIso()): Promise<SperrPosten[]> {
+  const wer = [...new Set(schuldner.filter(Boolean))];
+  if (!wer.length) return [];
+  const cfg = await cfgLesen(db);
+  if (sperrStufe(cfg) === null) return [];
+  const [verein] = await db`select zahlungsziel_tage from tco.verein where id = 1`;
+  const posten = (await offenePostenLesen(db, { zahlungsziel_tage: verein?.zahlungsziel_tage ?? 14 }, cfg)).filter((p) => wer.includes(p.schuldner));
+  if (!posten.length) return [];
+  const [historie, sperren] = [await historieLesen(db), await sperrenLesen(db, true, heute)];
+  return sperrPosten(standErmitteln(posten, historie, sperren, cfg, heute), cfg);
 }
 
 // ---------------------------------------------------------------------------
