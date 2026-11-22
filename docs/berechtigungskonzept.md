@@ -392,6 +392,7 @@ Administrator. Kl. = Klasse nach 4.2.
 | `tco.analyse:display` – Mitglieder-Analyse | F |  |  |  |  | ● | ● | ● |  |  |  |  |  |
 | **Jugend** | | | | | | | | | | | | | |
 | `tco.teilnehmer:display` – Teilnehmer Jugendtraining | F |  |  | ● |  |  |  |  | ● |  |  |  |  |
+| `tco.teilnehmer:edit` – Trainingszeiten je Saison pflegen | F |  |  |  |  |  |  |  | ● |  |  |  |  |
 | `tco.jt:display` – Abrechnung Jugendtraining anzeigen | F |  |  |  |  |  |  | ● | ● |  |  |  | ● |
 | `tco.jt:edit` – Zeiten erfassen, Nachweise, bezahlt kennzeichnen | F |  |  |  |  |  |  | ● | ● |  |  |  |  |
 | `tco.trainerentgelte:edit` – Trainer und Trainerentgelte pflegen | F |  |  |  |  |  |  | ● |  |  |  |  |  |

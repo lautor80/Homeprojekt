@@ -343,7 +343,7 @@ const mod: WebModule = {
     { text: 'Spielerdaten (nuLiga)', subtitle: 'ID-Nr. und LK aus der Verbandsliste abgleichen', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
     { text: 'LSVS-Bestandsmeldung', subtitle: 'Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
     { text: 'Turniere', subtitle: 'KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
-    { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Nichtmitglieder, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
+    { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Familienbeitrag, Trainingszeiten je Saison, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
     { text: 'Meine Zeiten', subtitle: 'Trainingszeiten und Projektstunden zurückmelden', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit|tco.projektzeiten:edit' },
