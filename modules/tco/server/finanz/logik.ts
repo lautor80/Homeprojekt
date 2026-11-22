@@ -1,6 +1,7 @@
 import { heute as heuteText, runden } from '../format.js';
 import type { Db } from '../verein.js';
 import { anfangsbestand } from '../fi/daten.js';
+import { PROFITCENTER } from '../konten/logik.js';
 import { monatsende, offeneRechnungen, offeneRechnungenJe, type OffeneRechnungen } from '../offeneposten.js';
 
 /**
@@ -108,6 +109,52 @@ export async function kontowerte(db: Db, jahr: number): Promise<KontoWert[]> {
   return [...map.values()]
     .map((k) => ({ ...k, wert: runden(k.wert), wert_vj: runden(k.wert_vj) }))
     .sort((a, b) => (a.art === b.art ? Number(a.konto) - Number(b.konto) : a.art === 'E' ? -1 : 1));
+}
+
+export interface ProfitCenterWert {
+  /** Schlüssel aus dem Kontenstamm, '' = Konten ohne Profit-Center */
+  profitcenter: string;
+  text: string;
+  einnahmen: number; ausgaben: number; ergebnis: number;
+  einnahmen_vj: number; ausgaben_vj: number; ergebnis_vj: number;
+  /** Einnahme- und Ausgabekonten des Profit-Centers mit Wert und Vorjahr */
+  konten: KontoWert[];
+}
+
+/**
+ * Ergebnis je Profit-Center (Kontenstamm, tco.fikonten.profitcenter) mit Vorjahr.
+ * Einnahmen/Ausgaben wie in kontowerte(); Ergebnis = Einnahmen − Ausgaben. Die Summe aller Zeilen
+ * ist der Gewinn des Jahres. Alle Profit-Center des Katalogs erscheinen (auch ohne Buchungen),
+ * dahinter Werte, die im Katalog fehlen (z. B. aus SAP übernommen), zuletzt „ohne Profit-Center“,
+ * wenn dort etwas gebucht ist.
+ */
+export async function profitcenterwerte(db: Db, jahr: number, konten?: KontoWert[]): Promise<ProfitCenterWert[]> {
+  const kw = konten ?? await kontowerte(db, jahr);
+  const pcRows = await db`select konto, coalesce(profitcenter, '') as profitcenter from tco.fikonten`;
+  const pcMap = new Map<string, string>(pcRows.map((r) => [String(r.konto).trim(), String(r.profitcenter).trim()]));
+  const neu = (profitcenter: string, text: string): ProfitCenterWert => ({
+    profitcenter, text, einnahmen: 0, ausgaben: 0, ergebnis: 0, einnahmen_vj: 0, ausgaben_vj: 0, ergebnis_vj: 0, konten: [],
+  });
+  const out = new Map<string, ProfitCenterWert>();
+  for (const p of PROFITCENTER) if (p.key) out.set(p.key, neu(p.key, p.text));
+  let ohne: ProfitCenterWert | null = null;
+  for (const k of kw) {
+    const pc = pcMap.get(k.konto) ?? '';
+    let z: ProfitCenterWert | undefined;
+    if (!pc) z = ohne ??= neu('', 'ohne Profit-Center');
+    else {
+      z = out.get(pc);
+      if (!z) { z = neu(pc, pc); out.set(pc, z); }
+    }
+    z.konten.push(k);
+    if (k.art === 'E') { z.einnahmen += k.wert; z.einnahmen_vj += k.wert_vj; } else { z.ausgaben += k.wert; z.ausgaben_vj += k.wert_vj; }
+  }
+  const liste = [...out.values()];
+  if (ohne) liste.push(ohne);
+  return liste.map((z) => {
+    const einnahmen = runden(z.einnahmen), ausgaben = runden(z.ausgaben), einnahmen_vj = runden(z.einnahmen_vj), ausgaben_vj = runden(z.ausgaben_vj);
+    return { ...z, einnahmen, ausgaben, ergebnis: runden(einnahmen - ausgaben), einnahmen_vj, ausgaben_vj, ergebnis_vj: runden(einnahmen_vj - ausgaben_vj) };
+  });
 }
 
 export interface Geld { konto: string; name: string; anfangsbestand: number; zugang: number; abgang: number; endbestand: number }
@@ -264,6 +311,7 @@ export async function uebersicht(db: Db, jahr: number) {
   return {
     jahr, monate, ergebnis: erg, geldkonten: geld, jahre,
     einnahmen: konten.filter((k) => k.art === 'E'), ausgaben: konten.filter((k) => k.art === 'A'),
+    profitcenter: await profitcenterwerte(db, jahr, konten),
     liquiditaet: await liquiditaet(db, jahr, liqMonat),
     info: erg.einnahmen === 0 && erg.ausgaben === 0 ? `Für ${jahr} liegen keine Buchungen vor.` : null,
   };
