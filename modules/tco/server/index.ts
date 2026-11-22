@@ -34,6 +34,7 @@ import { P_UP, uploadRoutes } from './upload/routes.js';
 import { BANK_FELDER, P_BANK } from './bankdaten.js';
 import { meineZeitenRoutes, P_JTM } from './jt/meine.js';
 import { platzRoutes, P_MEINKONTO, P_PLATZ, P_REG } from './platz/routes.js';
+import { aushangRoutes, P_AUSHANG } from './platz/aushang-routes.js';
 import { antragRoutes, P_ANTRAG } from './antrag/routes.js';
 import { P_SCHNUPPER, schnupperRoutes } from './schnupper/routes.js';
 import { rolleSicherstellen } from './platz/registrierung.js';
@@ -155,6 +156,7 @@ async function routes(app: FastifyInstance) {
 
   await halleRoutes(app);
   await platzRoutes(app);
+  await aushangRoutes(app);
   await fiRoutes(app);
   await sollRoutes(app);
   await jtRoutes(app);
@@ -269,6 +271,8 @@ const tco: ServerModule = {
       text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
       text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
+    { area: 'Tennishalle', app: 'Platzverwaltung', id: P_AUSHANG, requires: [P_PLATZ.admin],
+      text: 'Aushang in der Hallenbuchung pflegen: Hinweise mit Bildern (z. B. Hallenverschmutzung), die beim Aufruf von „Platz buchen“ erscheinen – Zeitraum, Zielrollen, Bestätigungspflicht, wer hat gesehen/bestätigt, als Rundschreiben übernehmen' },
     { area: 'Tennishalle', app: 'Produkte und Preise', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
     { area: 'Tennishalle', app: 'Produkte und Preise', id: P_PROD.edit, text: 'Produkte pflegen: anlegen, Bezeichnung/Preise/Erlöskonto ändern, neuer Preis ab Stichtag, Produkt beenden', requires: [P_PROD.display] },
 
@@ -414,6 +418,7 @@ const tco: ServerModule = {
     { type: 'PLATZ', text: 'Platz', permission: P_PLATZ.admin },
     { type: 'PLATZBELEGUNG', text: 'Feste Platzbelegung (Training, Sperrzeit)', permission: P_PLATZ.admin },
     { type: 'PLATZ_AUSFALL', text: 'Abgesagter Termin einer festen Platzbelegung', permission: P_PLATZ.admin },
+    { type: 'AUSHANG', text: 'Aushang in der Hallenbuchung (Hinweis mit Bildern)', permission: P_AUSHANG },
     { type: 'KAL_EVENT', text: 'Veranstaltung (Vereinskalender)', permission: P_KAL.edit },
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
