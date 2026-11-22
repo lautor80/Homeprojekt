@@ -624,3 +624,59 @@ test('Paperless: Ausdruck des gesendeten Rundschreibens ablegen – von selbst n
   assert.match(r.body.text, /in Paperless abgelegt \(DOKID \d{6}\)/);
   assert.equal(paperlessDocs.length, 2);
 });
+
+test('Rollen: Rundschreiben an Hallennutzer ohne Mitgliedschaft – Kundenstamm, Mitglied ohne doppelte E-Mail, gesperrte nie, erneut senden, nicht erreicht', async () => {
+  await mailEinrichten();
+  mails.length = 0;
+  const neu = async (username: string, anzeige: string, email: string | null, aktiv = true) => {
+    const [u] = await sql`insert into core.users (username, display_name, email, password_hash, active) values (${username}, ${anzeige}, ${email}, 'x', ${aktiv}) returning id::text as id`;
+    await sql`insert into core.user_roles (user_id, role_id) values (${u.id}, 'HALLENNUTZER')`;
+    return u.id as string;
+  };
+  const hugo = await neu('rshugo', 'Hugo Halle', 'hugo.konto@rs.example');
+  await sql`insert into tco.kunden (zuid, zalias, email, vorname, nachname, strasse, plz, wohnort, benutzer_id)
+            values ('RS1', 'RS1', 'hugo@rs.example', 'Hugo', 'Halle', 'Hallenweg 1', '66649', 'Oberthal', ${hugo})`;
+  const hanna = await neu('rshanna', 'Halle, Hanna', null);
+  await sql`insert into tco.kunden (zuid, zalias, email, vorname, nachname, strasse, plz, wohnort, benutzer_id)
+            values ('RS2', 'RS2', null, 'Hanna', 'Halle', 'Netzgasse 2', '66649', 'Oberthal', ${hanna})`;
+  await neu('rsgesperrt', 'Gerd Gesperrt', 'gerd@rs.example', false);
+  const anna = await neu('rsanna', 'Anna Aufschlag', 'anna.konto@rs.example');
+  await sql`insert into tco.mitgliedera (adrnr) values (${ANNA}) on conflict (adrnr) do nothing`;
+  await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${anna}, ${ANNA})`;
+
+  // Auswahlwerte: Rolle mit Anzahl aktiver Benutzer, Hallennutzer einzeln wählbar (Anna nicht – sie steht als Mitglied in der Liste)
+  const w = (await admin('GET', `${R}/auswahl`)).body as { rollen: { id: string; anzahl: number }[]; benutzer: { key: string; name: string }[] };
+  assert.equal(w.rollen.find((r) => r.id === 'HALLENNUTZER')?.anzahl, 3);
+  assert.deepEqual(w.benutzer.filter((x) => x.name.includes('Halle')).map((x) => x.key).sort(), [`B:${hanna}`, `B:${hugo}`].sort());
+
+  const id = await entwurf({ alle: false, rollen: ['HALLENNUTZER'] } as never, 'Halle sauber halten');
+  const v = await vorschau(id);
+  assert.deepEqual(v.empfaenger.map((e) => [e.email, e.anrede, e.weg]).sort(), [
+    ['anna@rs.example', 'Hallo Anna', 'EIGEN'],
+    ['hugo@rs.example', 'Hallo Hugo', 'KUNDE'],
+  ]);
+  assert.deepEqual(v.ohne_mail.map((o) => [o.name, o.grund]), [['Hanna Halle', 'keine E-Mail-Adresse']]);
+  assert.equal((await admin('POST', `${R}/${id}/senden`, { mails: 2 })).status, 200);
+  await versandWarten(id);
+  assert.equal(await status(id), 'FERTIG');
+  assert.deepEqual(mails.map((m) => m.an).sort(), ['anna@rs.example', 'hugo@rs.example']);
+  assert.equal(mailAn('hugo@rs.example')[0].text, 'Hallo Hugo,\n\nes gibt Neues im TC Test.\n\nViele Grüße');
+  const [z] = await sql`select benutzer_ids::text[] as b, adrnrs from tco.rundschreiben_empfaenger where rundschreiben_id = ${id} and email = 'hugo@rs.example'`;
+  assert.deepEqual([z.b, z.adrnrs], [[hugo], []]);
+
+  // nicht erreicht: Anschrift aus dem Kundenstamm
+  const csv = (await admin('GET', `${R}/${id}/nicht-erreicht.csv`)).body as string;
+  assert.match(csv, /"Hanna Halle";"Netzgasse 2";"66649";"Oberthal";"";"keine E-Mail-Adresse"/);
+
+  // Adresse im Benutzerkonto nachgetragen → erneut senden erreicht Hanna
+  await sql`update core.users set email = 'hanna@rs.example' where id = ${hanna}`;
+  const r = await admin('POST', `${R}/${id}/erneut`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.nachgetragen, 1);
+  await versandWarten(id);
+  assert.equal(mailAn('hanna@rs.example').length, 1);
+  assert.equal(mails.length, 3);
+  const p = await protokoll(id);
+  assert.deepEqual(p.zaehler, { gesamt: 3, offen: 0, gesendet: 3, fehler: 0, ohne_mail: 0 });
+  mails.length = 0;
+});

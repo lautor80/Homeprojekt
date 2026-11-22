@@ -13,6 +13,14 @@
  *  - alle anderen: die eigene Adresse, sonst die des Kontoinhabers, sonst die des Zahlers.
  * Je E-Mail-Adresse entsteht genau ein Empfänger (Familien mit gemeinsamer Adresse) – mit gemeinsamer Anrede.
  *
+ * Rollen (Berechtigungsgruppen): Zusätzlich lassen sich alle aktiven Benutzer gewählter Rollen anschreiben – z. B.
+ * externe Hallennutzer, die in keiner Mitgliedergruppe stehen. Das ist Information zum Hallen- und Vereinsbetrieb an
+ * Vertragspartner, keine Werbung. Ist ein Benutzer einem Mitglied zugeordnet, zählt er als dieses Mitglied (Adressregeln
+ * oben, keine doppelte E-Mail); sonst geht die E-Mail an die Adresse aus dem Kundenstamm (Hallennutzer pflegen sie unter
+ * „Meine Daten“), ersatzweise an die des Benutzerkontos. Gesperrte Benutzer sind nie dabei. Altersgruppe und
+ * Beitragsart grenzen nur die Mitgliederauswahl ein, nicht die Rollen. Einzelne Benutzer werden in „dazu“/„ohne“ als
+ * „B:<Benutzer-Id>“ geführt.
+ *
  * Der Rechenteil (empfaengerErmitteln) kommt ohne Datenbank aus.
  */
 import type { Db } from '../verein.js';
@@ -34,8 +42,12 @@ export interface Auswahl {
   dazu: string[];
   /** einzelne Personen nie */
   ohne: string[];
+  /** zusätzlich alle aktiven Benutzer dieser Rollen (core.roles.id) */
+  rollen: string[];
 }
-export const AUSWAHL_LEER: Auswahl = { alle: false, gruppen: [], alter: '', arten: [], dazu: [], ohne: [] };
+export const AUSWAHL_LEER: Auswahl = { alle: false, gruppen: [], alter: '', arten: [], dazu: [], ohne: [], rollen: [] };
+/** Schlüssel einzelner Benutzer in „dazu“/„ohne“ */
+export const BENUTZER = 'B:';
 
 /** Auswahl aus der Datenbank (jsonb) – fehlende Angaben wie „nichts gewählt“ */
 export function auswahlAus(roh: unknown): Auswahl {
@@ -44,7 +56,22 @@ export function auswahlAus(roh: unknown): Auswahl {
   return {
     alle: !!a.alle, gruppen: Array.isArray(a.gruppen) ? [...new Set(a.gruppen.map(Number).filter((n) => Number.isInteger(n) && n > 0))] : [],
     alter: ALTER.includes(a.alter as Altersgruppe) ? (a.alter as Altersgruppe) : '', arten: texte(a.arten), dazu: texte(a.dazu), ohne: texte(a.ohne),
+    rollen: texte(a.rollen),
   };
+}
+
+/** Portal-Benutzer (für die Auswahl nach Rollen) */
+export interface Benutzer {
+  id: string; vorname: string; nachname: string;
+  /** Adresse aus dem Kundenstamm (Hallennutzer), sonst '' */
+  email: string;
+  /** Adresse des Benutzerkontos */
+  emailBenutzer: string;
+  aktiv: boolean;
+  /** zugeordnetes Mitglied ('' = keines) */
+  adrnr: string;
+  rollen: string[];
+  strasse: string; plz: string; ort: string;
 }
 
 export interface Person {
@@ -56,15 +83,19 @@ export interface Person {
   /** offene Anmeldung zum Schnuppertraining ohne Eintritt */
   schnupper: boolean;
 }
-export type Weg = 'EIGEN' | 'ZAHLER' | 'KONTOINHABER' | 'FAMILIE';
+export type Weg = 'EIGEN' | 'ZAHLER' | 'KONTOINHABER' | 'FAMILIE' | 'KUNDE' | 'BENUTZER';
 export const WEG_TEXT: Record<Weg, string> = {
   EIGEN: 'eigene Adresse', ZAHLER: 'Adresse des Zahlers', KONTOINHABER: 'Adresse des Kontoinhabers', FAMILIE: 'Adresse der Familie',
+  KUNDE: 'Hallennutzer (Kundenstamm)', BENUTZER: 'Adresse des Benutzerkontos',
 };
 export interface Empfaenger {
   /** E-Mail-Adresse, wie sie im Stamm steht (verglichen wird ohne Groß-/Kleinschreibung) */
   email: string; adrnrs: string[]; namen: string; anrede: string; vorname: string; nachname: string; weg: Weg;
+  /** Benutzer ohne Mitgliedschaft, für die diese E-Mail bestimmt ist (Auswahl nach Rolle) */
+  benutzer: string[];
 }
-export interface OhneMail { adrnr: string; name: string; grund: string; strasse: string; plz: string; ort: string }
+/** adrnr = '' und benutzer gesetzt: Benutzer ohne Mitgliedschaft */
+export interface OhneMail { adrnr: string; benutzer?: string; name: string; grund: string; strasse: string; plz: string; ort: string }
 export interface Ergebnis {
   empfaenger: Empfaenger[];
   ohneMail: OhneMail[];
@@ -129,16 +160,28 @@ function adressFinder(d: { personen: Person[]; verknuepfungen: [string, string][
   };
 }
 
+/** Adresse eines Benutzers ohne Mitgliedschaft: Kundenstamm vor Benutzerkonto; null = keine gültige */
+export function benutzerAdresse(b: Pick<Benutzer, 'email' | 'emailBenutzer'>): { email: string; weg: Weg } | null {
+  if (EMAIL.test(sauber(b.email))) return { email: sauber(b.email), weg: 'KUNDE' };
+  if (EMAIL.test(sauber(b.emailBenutzer))) return { email: sauber(b.emailBenutzer), weg: 'BENUTZER' };
+  return null;
+}
+const benutzerName = (b: Pick<Benutzer, 'id' | 'vorname' | 'nachname'>) => condense(`${b.vorname} ${b.nachname}`) || b.id;
+
 /**
  * Empfänger aus dem Bestand berechnen.
  * @param inGruppen  Personen der gewählten Gruppen samt Untergruppen
  * @param arten      laufende Beitragsarten je Person
+ * @param benutzer   Portal-Benutzer mit Rollen (nur für die Auswahl nach Rollen bzw. einzelne Benutzer nötig)
  */
 export function empfaengerErmitteln(d: {
   personen: Person[]; auswahl: Auswahl; inGruppen: Set<string>; arten: Map<string, Set<string>>; verknuepfungen: [string, string][]; heute: string;
+  benutzer?: Benutzer[];
 }): Ergebnis {
   const { auswahl: a, heute } = d;
+  const rollen = a.rollen ?? [];
   const alle = new Map(d.personen.map((p) => [p.adrnr, p]));
+  const konten = new Map((d.benutzer ?? []).map((b) => [b.id, b]));
   const zahltFuerAktive = new Set(d.personen.filter((p) => p.zahler && istAktiv(p, heute)).map((p) => p.zahler));
 
   // 1. Auswahl: alle bzw. Gruppen, eingegrenzt nach Altersgruppe und Beitragsart
@@ -156,45 +199,75 @@ export function empfaengerErmitteln(d: {
     const p = alle.get(adrnr);
     if (p && einzelnErlaubt(p, zahltFuerAktive, heute)) gewaehlt.add(adrnr);
   }
+  // 2a. Benutzer gewählter Rollen bzw. einzeln hinzugefügte Benutzer: als Mitglied, wenn einem zugeordnet, sonst als Benutzer
+  const benutzerGewaehlt = new Set<string>();
+  const nimm = (b: Benutzer) => {
+    if (!b.aktiv) return;
+    const m = b.adrnr ? alle.get(b.adrnr) : undefined;
+    if (m && einzelnErlaubt(m, zahltFuerAktive, heute)) gewaehlt.add(m.adrnr);
+    else benutzerGewaehlt.add(b.id);
+  };
+  if (rollen.length) for (const b of konten.values()) if (b.rollen.some((r) => rollen.includes(r))) nimm(b);
+  for (const k of a.dazu) if (k.startsWith(BENUTZER) && konten.has(k.slice(BENUTZER.length))) nimm(konten.get(k.slice(BENUTZER.length))!);
+
   // 3. Ausschlüsse gehen vor
   let ausgeschlossen = 0;
-  for (const adrnr of a.ohne) if (gewaehlt.delete(adrnr)) ausgeschlossen++;
+  for (const k of a.ohne) {
+    if (k.startsWith(BENUTZER)) {
+      const b = konten.get(k.slice(BENUTZER.length));
+      if (!b) continue;
+      if (benutzerGewaehlt.delete(b.id) || (b.adrnr && gewaehlt.delete(b.adrnr))) ausgeschlossen++;
+    } else if (gewaehlt.delete(k)) ausgeschlossen++;
+  }
 
   // 4. Adresse je Person
   const adresse = adressFinder(d);
 
-  // 5. je Adresse ein Empfänger
-  const sortiert = [...gewaehlt].map((x) => alle.get(x)!).sort((x, y) => x.nachname.localeCompare(y.nachname, 'de') || x.vorname.localeCompare(y.vorname, 'de') || x.adrnr.localeCompare(y.adrnr));
-  const jeAdresse = new Map<string, { email: string; personen: { p: Person; weg: Weg }[] }>();
+  // 5. je Adresse ein Empfänger – Mitglieder und Benutzer gemeinsam (dieselbe Adresse bekommt nur eine E-Mail)
+  interface Eintrag { key: string; konto: boolean; vorname: string; nachname: string; name: string; jung: boolean; weg: Weg }
+  const eintraege: { e: Omit<Eintrag, 'weg'>; ad: { email: string; weg: Weg } | null; ohne: OhneMail }[] = [];
+  for (const adrnr of gewaehlt) {
+    const p = alle.get(adrnr)!;
+    const ungueltig = [p.email, p.emailkih].map(sauber).filter(Boolean)[0];
+    eintraege.push({
+      e: { key: p.adrnr, konto: false, vorname: p.vorname, nachname: p.nachname, name: personName(p), jung: istMinderjaehrig(p, heute) }, ad: adresse(p),
+      ohne: { adrnr: p.adrnr, name: personName(p), grund: ungueltig ? `E-Mail-Adresse ungültig (${ungueltig})` : 'keine E-Mail-Adresse', strasse: p.strasse, plz: p.plz, ort: p.ort },
+    });
+  }
+  for (const id of benutzerGewaehlt) {
+    const b = konten.get(id)!;
+    const ungueltig = [b.email, b.emailBenutzer].map(sauber).filter(Boolean)[0];
+    eintraege.push({
+      e: { key: b.id, konto: true, vorname: b.vorname, nachname: b.nachname, name: benutzerName(b), jung: false }, ad: benutzerAdresse(b),
+      ohne: { adrnr: '', benutzer: b.id, name: benutzerName(b), grund: ungueltig ? `E-Mail-Adresse ungültig (${ungueltig})` : 'keine E-Mail-Adresse', strasse: b.strasse, plz: b.plz, ort: b.ort },
+    });
+  }
+  eintraege.sort((x, y) => x.e.nachname.localeCompare(y.e.nachname, 'de') || x.e.vorname.localeCompare(y.e.vorname, 'de') || x.e.key.localeCompare(y.e.key));
+  const jeAdresse = new Map<string, { email: string; personen: Eintrag[] }>();
   const ohneMail: OhneMail[] = [];
-  for (const p of sortiert) {
-    const ad = adresse(p);
-    if (!ad) {
-      const ungueltig = [p.email, p.emailkih].map(sauber).filter(Boolean)[0];
-      ohneMail.push({ adrnr: p.adrnr, name: personName(p), grund: ungueltig ? `E-Mail-Adresse ungültig (${ungueltig})` : 'keine E-Mail-Adresse', strasse: p.strasse, plz: p.plz, ort: p.ort });
-      continue;
-    }
+  for (const { e: x, ad, ohne } of eintraege) {
+    if (!ad) { ohneMail.push(ohne); continue; }
     const k = ad.email.toLowerCase();
     const e = jeAdresse.get(k) ?? { email: ad.email, personen: [] };
-    e.personen.push({ p, weg: ad.weg });
+    e.personen.push({ ...x, weg: ad.weg });
     jeAdresse.set(k, e);
   }
   const empfaenger: Empfaenger[] = [...jeAdresse.values()].map((e) => {
     // Erwachsene zuerst (Eltern vor Kindern), dann nach Vorname
-    const l = [...e.personen].sort((x, y) => Number(istMinderjaehrig(x.p, heute)) - Number(istMinderjaehrig(y.p, heute)) || x.p.vorname.localeCompare(y.p.vorname, 'de'));
-    const vornamen = [...new Set(l.map((x) => x.p.vorname).filter(Boolean))];
-    const nachnamen = [...new Set(l.map((x) => x.p.nachname).filter(Boolean))];
+    const l = [...e.personen].sort((x, y) => Number(x.jung) - Number(y.jung) || x.vorname.localeCompare(y.vorname, 'de'));
+    const vornamen = [...new Set(l.map((x) => x.vorname).filter(Boolean))];
+    const nachnamen = [...new Set(l.map((x) => x.nachname).filter(Boolean))];
     // nur Kinder, und die Adresse gehört nicht ihnen selbst: die Eltern ansprechen
-    const eltern = l.every((x) => istMinderjaehrig(x.p, heute) && x.weg !== 'EIGEN');
+    const eltern = l.every((x) => x.jung && x.weg !== 'EIGEN');
     const namen = aufzaehlung(vornamen);
     return {
-      email: e.email, adrnrs: l.map((x) => x.p.adrnr), namen: l.map((x) => personName(x.p)).join(', '),
+      email: e.email, adrnrs: l.filter((x) => !x.konto).map((x) => x.key), benutzer: l.filter((x) => x.konto).map((x) => x.key), namen: l.map((x) => x.name).join(', '),
       anrede: !namen ? 'Hallo zusammen' : eltern ? `Liebe Eltern von ${namen}` : `Hallo ${namen}`,
       vorname: namen, nachname: nachnamen.join(' / '), weg: l.find((x) => x.weg !== 'EIGEN')?.weg ?? 'EIGEN',
     };
   }).sort((x, y) => x.namen.localeCompare(y.namen, 'de'));
 
-  const mitAdresse = empfaenger.reduce((n, e) => n + e.adrnrs.length, 0);
+  const mitAdresse = empfaenger.reduce((n, e) => n + e.adrnrs.length + e.benutzer.length, 0);
   return { empfaenger, ohneMail, personen: mitAdresse + ohneMail.length, dubletten: mitAdresse - empfaenger.length, ausgeschlossen };
 }
 
@@ -216,7 +289,32 @@ export const PLATZHALTER: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------- Datenbank
-interface Bestand { personen: Person[]; arten: Map<string, Set<string>>; verknuepfungen: [string, string][]; heute: string }
+interface Bestand { personen: Person[]; arten: Map<string, Set<string>>; verknuepfungen: [string, string][]; heute: string; benutzer: Benutzer[] }
+
+/** „Nachname, Vorname“ oder „Vorname Nachname“ (Anzeigename des Benutzers) zerlegen */
+export function nameZerlegen(anzeige: string): { vorname: string; nachname: string } {
+  const t = condense(sauber(anzeige));
+  if (t.includes(',')) { const [n, ...v] = t.split(','); return { vorname: condense(v.join(',')), nachname: condense(n) }; }
+  const [v, ...n] = t.split(' ');
+  return { vorname: v ?? '', nachname: n.join(' ') };
+}
+
+async function benutzerLesen(db: Db): Promise<Benutzer[]> {
+  const rows = await db`
+    select u.id::text as id, u.display_name, coalesce(u.email, '') as email_benutzer, u.active,
+           coalesce((select mb.adrnr from tco.mitglied_benutzer mb where mb.benutzer_id = u.id), '') as adrnr,
+           array(select ur.role_id from core.user_roles ur where ur.user_id = u.id order by 1) as rollen,
+           k.vorname, k.nachname, k.email, k.strasse, k.plz, k.wohnort
+      from core.users u left join tco.kunden k on k.benutzer_id = u.id`;
+  return rows.map((r) => {
+    const z = nameZerlegen(r.display_name as string);
+    const kv = condense(sauber(r.vorname)), kn = condense(sauber(r.nachname));
+    return {
+      id: r.id as string, vorname: kv || kn ? kv : z.vorname, nachname: kv || kn ? kn : z.nachname, email: sauber(r.email), emailBenutzer: sauber(r.email_benutzer),
+      aktiv: !!r.active, adrnr: sauber(r.adrnr), rollen: (r.rollen as string[]) ?? [], strasse: sauber(r.strasse), plz: sauber(r.plz), ort: sauber(r.wohnort),
+    };
+  });
+}
 
 async function bestandLesen(db: Db): Promise<Bestand> {
   const [{ heute }] = await db`select to_char(current_date, 'YYYY-MM-DD') as heute`;
@@ -235,7 +333,7 @@ async function bestandLesen(db: Db): Promise<Bestand> {
     arten.set(r.adrnr as string, (arten.get(r.adrnr as string) ?? new Set()).add(sauber(r.art)));
   }
   const verknuepfungen = (await db`select adrnr_a, adrnr_b from tco.familienverknuepfungen`).map((r) => [r.adrnr_a, r.adrnr_b] as [string, string]);
-  return { personen, arten, verknuepfungen, heute: heute as string };
+  return { personen, arten, verknuepfungen, heute: heute as string, benutzer: await benutzerLesen(db) };
 }
 
 /** Empfänger eines Rundschreibens aus dem aktuellen Bestand */
@@ -255,18 +353,34 @@ export async function adressenLesen(db: Db, adrnrs: string[]): Promise<Map<strin
   return new Map(adrnrs.map((a) => [a, (alle.get(a) && adresse(alle.get(a)!)?.email) || null]));
 }
 
-/** Was sich im Entwurf wählen lässt: Gruppen, Beitragsarten und die Personen zum Hinzufügen bzw. Ausschließen */
+/** aktuelle Adresse einzelner Benutzer ohne Mitgliedschaft (für „erneut senden“); null = keine bzw. gesperrt */
+export async function benutzerAdressenLesen(db: Db, ids: string[]): Promise<Map<string, string | null>> {
+  if (!ids.length) return new Map();
+  const alle = new Map((await benutzerLesen(db)).map((b) => [b.id, b]));
+  return new Map(ids.map((id) => { const b = alle.get(id); return [id, b?.aktiv ? benutzerAdresse(b)?.email ?? null : null]; }));
+}
+
+/** Was sich im Entwurf wählen lässt: Gruppen, Beitragsarten, Rollen und die Personen bzw. Benutzer zum Hinzufügen oder Ausschließen */
 export async function auswahlWerte(db: Db) {
   const b = await bestandLesen(db);
   const zahltFuerAktive = new Set(b.personen.filter((p) => p.zahler && istAktiv(p, b.heute)).map((p) => p.zahler));
   const personen = b.personen.filter((p) => einzelnErlaubt(p, zahltFuerAktive, b.heute))
     .map((p) => ({ adrnr: p.adrnr, name: condense(`${p.nachname}, ${p.vorname}`).replace(/^, |, $/g, '') || p.adrnr, mitglied: istAktiv(p, b.heute) }))
     .sort((x, y) => x.name.localeCompare(y.name, 'de'));
+  // Benutzer ohne (wählbares) Mitglied, z. B. externe Hallennutzer – einzeln hinzufügen bzw. ausschließen
+  const mitglieder = new Set(personen.map((p) => p.adrnr));
+  const benutzer = b.benutzer.filter((x) => x.aktiv && !(x.adrnr && mitglieder.has(x.adrnr)))
+    .map((x) => ({ key: `${BENUTZER}${x.id}`, name: condense(`${x.nachname}, ${x.vorname}`).replace(/^, |, $/g, '') || x.id, rollen: x.rollen }))
+    .sort((x, y) => x.name.localeCompare(y.name, 'de'));
+  const rollen = (await db`
+    select r.id, r.name, count(u.id)::int as anzahl
+      from core.roles r left join core.user_roles ur on ur.role_id = r.id left join core.users u on u.id = ur.user_id and u.active
+     group by r.id, r.name order by r.name`).map((r) => ({ id: r.id as string, name: r.name as string, anzahl: Number(r.anzahl) }));
   const arten = await db`
     select v.art, coalesce(nullif(trim(max(bt.bezeichnung)), ''), nullif(trim(max(v.artname)), ''), v.art) as text, count(distinct v.adrnr)::int as anzahl
       from tco.vertraege v join tco.mitglieder m on m.adrnr = v.adrnr left join tco.beitrag bt on bt.art = v.art
      where coalesce(v.art, '') <> '' and (v.vertragbegin is null or v.vertragbegin <= current_date) and (v.vertragende is null or v.vertragende >= current_date)
        and m.eintritt is not null and (m.austritt is null or m.austritt >= current_date)
      group by v.art order by 2`;
-  return { personen, arten: arten.map((r) => ({ art: sauber(r.art), text: r.text as string, anzahl: Number(r.anzahl) })) };
+  return { personen, benutzer, rollen, arten: arten.map((r) => ({ art: sauber(r.art), text: r.text as string, anzahl: Number(r.anzahl) })) };
 }

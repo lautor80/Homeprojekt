@@ -19,7 +19,7 @@ import { withChange } from '../../../../server/src/db.js';
 import { appAktiv, funktionAktiv, modulId } from '../../../../server/src/funktionsschalter.js';
 import { DB, plAktiv, vereinLesen, type Db } from '../verein.js';
 import { mailSenden, type MailAnhang } from '../kommunikation.js';
-import { adressenLesen, auswahlAus, einsetzen, empfaengerLesen, type Empfaenger } from './empfaenger.js';
+import { adressenLesen, auswahlAus, benutzerAdressenLesen, einsetzen, empfaengerLesen, type Empfaenger } from './empfaenger.js';
 
 export const F_VERSAND = 'tco.rundschreiben.versand';
 export const ANWENDUNG = 'Rundschreiben';
@@ -183,17 +183,18 @@ export async function versandAusloesen(tx: Db, id: number, wer: Ausloeser, erwar
     throw new BusinessError(`Die Empfängerliste hat sich geändert (jetzt ${erg.empfaenger.length} statt ${erwartet} E-Mails) – bitte die Empfänger noch einmal prüfen.`, 409);
   }
   const zeilen = [
-    ...erg.empfaenger.map((e) => ({ email: e.email, adrnrs: e.adrnrs, namen: e.namen, anrede: e.anrede, vorname: e.vorname, nachname: e.nachname, weg: e.weg, status: 'OFFEN', fehler: null as string | null })),
+    ...erg.empfaenger.map((e) => ({ email: e.email, adrnrs: e.adrnrs, benutzer: e.benutzer, namen: e.namen, anrede: e.anrede, vorname: e.vorname, nachname: e.nachname, weg: e.weg, status: 'OFFEN', fehler: null as string | null })),
     ...erg.ohneMail.map((o) => {
       const [vorname, ...rest] = o.name.split(' ');
-      return { email: null, adrnrs: [o.adrnr], namen: o.name, anrede: `Hallo ${vorname}`, vorname, nachname: rest.join(' '), weg: '', status: 'OHNE_MAIL', fehler: o.grund };
+      return { email: null, adrnrs: o.adrnr ? [o.adrnr] : [], benutzer: o.benutzer ? [o.benutzer] : [], namen: o.name, anrede: `Hallo ${vorname}`, vorname, nachname: rest.join(' '), weg: '', status: 'OHNE_MAIL', fehler: o.grund };
     }),
   ];
   await tx`
-    insert into tco.rundschreiben_empfaenger (rundschreiben_id, email, adrnrs, namen, anrede, vorname, nachname, weg, status, fehler)
-    select ${id}, x.email, array(select jsonb_array_elements_text(x.adrnrs)), x.namen, x.anrede, x.vorname, x.nachname, x.weg, x.status, x.fehler
+    insert into tco.rundschreiben_empfaenger (rundschreiben_id, email, adrnrs, benutzer_ids, namen, anrede, vorname, nachname, weg, status, fehler)
+    select ${id}, x.email, array(select jsonb_array_elements_text(x.adrnrs)), array(select jsonb_array_elements_text(x.benutzer))::uuid[],
+           x.namen, x.anrede, x.vorname, x.nachname, x.weg, x.status, x.fehler
       from jsonb_to_recordset(${tx.json(zeilen as never)})
-           as x(email text, adrnrs jsonb, namen text, anrede text, vorname text, nachname text, weg text, status text, fehler text)`;
+           as x(email text, adrnrs jsonb, benutzer jsonb, namen text, anrede text, vorname text, nachname text, weg text, status text, fehler text)`;
   await tx`update tco.rundschreiben
               set status = 'VERSAND', hinweis = null, gesendet_am = now(), gesendet_von = ${wer.name}, absender = ${wer.email},
                   absender_name = ${wer.email ? `${wer.name} | ${v.name}` : null}, geaendert_am = now(), geaendert_von = ${wer.name}
@@ -223,18 +224,19 @@ export async function erneutVormerken(tx: Db, id: number, nur?: number[]): Promi
   const [rs] = await tx`select status from tco.rundschreiben where id = ${id} for update`;
   if (!rs) throw new BusinessError('Das Rundschreiben gibt es nicht (mehr).', 404);
   if (rs.status !== 'FERTIG' && rs.status !== 'ANGEHALTEN') throw new BusinessError('Erneut senden geht erst, wenn der Versand abgeschlossen oder angehalten ist.', 409);
-  const alle = await tx`select id, email, adrnrs, status from tco.rundschreiben_empfaenger where rundschreiben_id = ${id} order by id for update`;
+  const alle = await tx`select id, email, adrnrs, benutzer_ids::text[] as benutzer, status from tco.rundschreiben_empfaenger where rundschreiben_id = ${id} order by id for update`;
   const vergeben = new Set(alle.filter((z) => z.email).map((z) => String(z.email).toLowerCase()));
   const offen = alle.filter((z) => (z.status === 'FEHLER' || z.status === 'OHNE_MAIL') && (!nur || nur.includes(Number(z.id))));
   const aktuell = await adressenLesen(tx, [...new Set(offen.flatMap((z) => z.adrnrs as string[]))]);
+  const konten = await benutzerAdressenLesen(tx, [...new Set(offen.flatMap((z) => (z.benutzer as string[] | null) ?? []))]);
   let vorgemerkt = 0, nachgetragen = 0;
   for (const z of offen) {
-    const neu = [...new Set((z.adrnrs as string[]).map((a) => aktuell.get(a) ?? ''))];
+    const neu = [...new Set([...(z.adrnrs as string[]).map((a) => aktuell.get(a) ?? ''), ...((z.benutzer as string[] | null) ?? []).map((b) => konten.get(b) ?? '')])];
     // nur übernehmen, wenn alle Personen der Zeile jetzt dieselbe, in diesem Rundschreiben noch nicht verwendete Adresse haben
     const adresse = neu.length === 1 && neu[0] && !vergeben.has(neu[0].toLowerCase()) ? neu[0] : null;
     if (z.status === 'OHNE_MAIL') {
       if (!adresse) continue;
-      await tx`update tco.rundschreiben_empfaenger set email = ${adresse}, weg = 'EIGEN', status = 'OFFEN', fehler = null where id = ${z.id}`;
+      await tx`update tco.rundschreiben_empfaenger set email = ${adresse}, weg = ${(z.adrnrs as string[]).length ? 'EIGEN' : 'BENUTZER'}, status = 'OFFEN', fehler = null where id = ${z.id}`;
       vergeben.add(adresse.toLowerCase());
       nachgetragen++;
     } else {
@@ -269,12 +271,23 @@ export interface NichtErreicht { name: string; strasse: string; plz: string; ort
 
 /** Personen, die das Rundschreiben nicht per E-Mail erreicht hat (Fehler oder ohne Adresse) – mit Anschrift für Brief oder Aushang */
 export async function nichtErreichtLesen(db: Db, id: number): Promise<NichtErreicht[]> {
+  // Mitglieder mit Anschrift aus dem Mitgliederstamm, Benutzer ohne Mitgliedschaft mit der aus dem Kundenstamm
   const rows = await db`
-    select coalesce(nullif(trim(concat_ws(' ', m.vorname, m.nachname)), ''), a.adrnr) as name, coalesce(m.strasse, '') as strasse, coalesce(m.plz, '') as plz,
-           coalesce(m.ort, '') as ort, coalesce(e.email, '') as email,
-           case when e.status = 'OHNE_MAIL' then coalesce(e.fehler, 'keine E-Mail-Adresse') else coalesce(e.fehler, 'nicht gesendet') end as grund
-      from tco.rundschreiben_empfaenger e cross join lateral unnest(e.adrnrs) as a(adrnr) left join tco.mitglieder m on m.adrnr = a.adrnr
-     where e.rundschreiben_id = ${id} and e.status in ('FEHLER', 'OHNE_MAIL')
-     order by lower(m.nachname), lower(m.vorname), a.adrnr`;
+    select name, strasse, plz, ort, email, grund from (
+      select coalesce(nullif(trim(concat_ws(' ', m.vorname, m.nachname)), ''), a.adrnr) as name, coalesce(m.strasse, '') as strasse, coalesce(m.plz, '') as plz,
+             coalesce(m.ort, '') as ort, coalesce(e.email, '') as email,
+             case when e.status = 'OHNE_MAIL' then coalesce(e.fehler, 'keine E-Mail-Adresse') else coalesce(e.fehler, 'nicht gesendet') end as grund,
+             lower(coalesce(m.nachname, '')) as s1, lower(coalesce(m.vorname, '')) as s2, a.adrnr as s3
+        from tco.rundschreiben_empfaenger e cross join lateral unnest(e.adrnrs) as a(adrnr) left join tco.mitglieder m on m.adrnr = a.adrnr
+       where e.rundschreiben_id = ${id} and e.status in ('FEHLER', 'OHNE_MAIL')
+      union all
+      select coalesce(nullif(trim(concat_ws(' ', k.vorname, k.nachname)), ''), u.display_name, b.id::text), coalesce(k.strasse, ''), coalesce(k.plz, ''),
+             coalesce(k.wohnort, ''), coalesce(e.email, ''),
+             case when e.status = 'OHNE_MAIL' then coalesce(e.fehler, 'keine E-Mail-Adresse') else coalesce(e.fehler, 'nicht gesendet') end,
+             lower(coalesce(k.nachname, u.display_name, '')), lower(coalesce(k.vorname, '')), b.id::text
+        from tco.rundschreiben_empfaenger e cross join lateral unnest(e.benutzer_ids) as b(id)
+        left join core.users u on u.id = b.id left join tco.kunden k on k.benutzer_id = b.id
+       where e.rundschreiben_id = ${id} and e.status in ('FEHLER', 'OHNE_MAIL')
+    ) x order by s1, s2, s3`;
   return rows.map((r) => ({ name: r.name as string, strasse: (r.strasse as string).trim(), plz: (r.plz as string).trim(), ort: (r.ort as string).trim(), email: r.email as string, grund: r.grund as string }));
 }
