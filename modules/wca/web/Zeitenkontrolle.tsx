@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { BusyIndicator, DatePicker, Input, MessageStrip, Option, Select, Tab, TabContainer } from '@ui5/webcomponents-react';
+import { BusyIndicator, DatePicker, Input, MessageStrip, MultiComboBox, MultiComboBoxItem, Option, Select, Tab, TabContainer } from '@ui5/webcomponents-react';
 import { useSearchParams } from 'react-router-dom';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -33,12 +33,29 @@ function Auswahl({ wert, optionen, onChange, alle = 'Alle', breite = '12rem' }: 
   );
 }
 
+/**
+ * Zeitraumauswahl mit Mehrfachauswahl (Monate, Wochen, alles). Mindestens ein Zeitraum bleibt gewählt;
+ * „Alles bis Stichtag“ schließt die übrigen aus.
+ */
+function ZeitraumAuswahl({ wert, optionen, onChange }: { wert: string[]; optionen: { id: string; text: string }[]; onChange: (ids: string[]) => void }) {
+  return (
+    <MultiComboBox key={wert.join()} style={{ width: '22rem', maxWidth: '100%' }} placeholder="Zeitraum wählen"
+                   onSelectionChange={(e) => {
+                     let ids = e.detail.items.map((i) => (i as HTMLElement).dataset.key!).filter(Boolean);
+                     if (ids.includes('alle')) ids = wert.includes('alle') && ids.length > 1 ? ids.filter((x) => x !== 'alle') : ['alle'];
+                     onChange(ids.length ? ids : wert);
+                   }}>
+      {optionen.map((o) => <MultiComboBoxItem key={o.id} data-key={o.id} text={o.text} selected={wert.includes(o.id)} />)}
+    </MultiComboBox>
+  );
+}
+
 const REITER = ['uebersicht', 'vollstaendigkeit', 'billable', 'kontierung', 'texte', 'regeln', 'beschreibung'] as const;
 type Reiter = typeof REITER[number];
 
 /**
  * WCA Zeitenkontrolle: importierte Tempo-Zeitexporte eines Teams prüfen – Vollständigkeit, Billable, Kontierung, Texte.
- * Zeitraum und Stichtag rechnet der Server; Team, Standort, Stufe, Person und Suche filtern hier.
+ * Zeitraum (auch mehrere) und Stichtag rechnet der Server; Team, Standort, Stufe, Person und Suche filtern hier.
  */
 export function Zeitenkontrolle() {
   const can = useCan();
@@ -76,7 +93,7 @@ export function Zeitenkontrolle() {
   const kopf = a && sicht && !leer ? (
     <Filters>
       <FilterFeld label="Zeitraum">
-        <Auswahl alle={null} breite="15rem" wert={a.zeitraum.id} optionen={a.zeitraeume.map((z) => ({ key: z.id, text: z.text }))} onChange={setZeitraum} />
+        <ZeitraumAuswahl wert={a.zeitraum.id.split(',')} optionen={a.zeitraeume} onChange={(ids) => setZeitraum(ids.join(','))} />
       </FilterFeld>
       <FilterFeld label="Stichtag">
         <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={a.stichtag} style={{ width: '10rem' }}

@@ -22,7 +22,7 @@ export function Beschreibung({ regeln }: { regeln: RegelInfo[] }) {
         </p>
         <p>
           Importiert werden beliebig viele Exporte; überschneiden sich zwei Dateien, gilt je Person und Tag die zuletzt importierte Datei.
-          Ausgewertet wird immer ein <b>Zeitraum</b> (Monat, Kalenderwoche oder alles) bis zum <b>Stichtag</b> – dem letzten bewerteten Tag.
+          Ausgewertet wird immer ein <b>Zeitraum</b> (Monat, Kalenderwoche oder alles – auch mehrere zusammen; Tage zwischen den gewählten Zeiträumen zählen nicht) bis zum <b>Stichtag</b> – dem letzten bewerteten Tag.
           Vorschlag für den Stichtag ist der letzte Arbeitstag vor heute, begrenzt auf die vorhandenen Daten.
         </p>
       </Section>

@@ -851,6 +851,8 @@ ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
 .portal-wca-baum__text { overflow-wrap: anywhere; }
 .portal-wca-baum__zahl { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .portal-wca-baum__blatt { width: 0.5rem; height: 0.5rem; justify-self: center; color: var(--sapContent_LabelColor); }
+.portal-wca-gruppierung { margin: 0.25rem 0 0.5rem; }
+.portal-wca-gruppierung__feld { display: inline-flex; align-items: center; border: 1px solid var(--sapList_BorderColor); border-radius: 1rem; padding: 0 0.125rem 0 0.25rem; background: var(--sapList_Background); }
 .portal-wca-person { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
 .portal-wca-pill { font-size: var(--sapFontSmallSize); }
 .portal-wca-chips { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 1rem; }

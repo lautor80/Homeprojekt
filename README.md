@@ -553,7 +553,8 @@ je Person und Tag (Soll aus Arbeitstagen, Soll je Tag und Feiertagen je Standort
 Allgemeinbegriffe, kopierte Mailtexte, Wortlisten) und das **Regelwerk** für Buchungstexte („<ID>: …“, mindestens fünf
 Wörter). Je Person entsteht ein fertiger **Rückfrage-Text**. Aktiv mit `PORTAL_MODULES=…,wca` oder `*`.
 
-App im Bereich *WCA*: **Zeitenkontrolle** – Auswertung mit Stichtag und Zeitraum (Monat, Kalenderwoche, alles), Reiter
+App im Bereich *WCA*: **Zeitenkontrolle** – Auswertung mit Stichtag und Zeitraum (Monat, Kalenderwoche, alles; **Mehrfachauswahl**
+– mehrere Monate/Wochen werden zusammen ausgewertet, Tage in Lücken dazwischen zählen nicht, „Alles“ schließt die übrigen aus), Reiter
 für Übersicht, Vollständigkeit, Billable, Kontierung und Texte; Import über *Importieren* (Prüflauf zeigt je Datei Personen,
 Rückmeldungen, Stunden, Zeitraum, Warnungen und wie viele Buchungstage ersetzt würden; erst *Übernehmen* schreibt). Ein
 erneuter Import **ersetzt je Person und Datum** die älteren Buchungen (neue Datei gewinnt) – derselbe Export zweimal
@@ -561,9 +562,12 @@ verdoppelt nichts. Einstellungen: Prüfregeln, Schwellen, Wortlisten und Persone
 Arbeitstage, im Team von/bis, ausblenden). **Freigeben:** an jedem Fund zu einer Rückmeldung (Übersicht/Personendetail,
 Reiter Kontierung und Texte) akzeptiert *Freigeben* den Text für diese Regel und diesen Account – er wird danach bei
 allen Personen und Tagen nicht mehr bemängelt; Liste und *Zurücknehmen* unter Prüfregeln → *Freigegebene Texte*.
-**Drilldown je Person** (Personendetail in der Übersicht): Baum Kategorie (Billable, PreSales, Intern, Abwesenheit) →
-Projekt (Account, ohne Account der Bereich) → Tätigkeit (gleicher Text zusammengefasst) mit Stunden, Anteil, Buchungstagen
-und höchster Fundstufe.
+**Drilldown je Person** (Personendetail in der Übersicht): Baum der Buchungen mit Stunden, Anteil, Buchungstagen und
+höchster Fundstufe, standardmäßig Kategorie (Billable, PreSales, Intern, Abwesenheit) → Projekt (Account, ohne Account der
+Bereich) → Tätigkeit (gleicher Text zusammengefasst). Über die **Gruppierung** lassen sich die Ebenen frei wählen – Kategorie,
+Projekt, Kunde, Bereich, Ticket, Tätigkeit, Monat, Kalenderwoche, Tag –, mit ◀/▶ umsortieren (die Reihenfolge bestimmt die
+Gruppierung), entfernen oder über *+ Ebene hinzufügen* ergänzen; *Standard* stellt die Ausgangsform her. Zeitfelder teilen
+die Stunden eines Eintrags auf seine Buchungstage auf. Die Auswahl merkt sich der Browser (`ansicht.ts` → `baum`).
 
 | Recht | Inhalt |
 |---|---|
@@ -571,7 +575,7 @@ und höchster Fundstufe.
 | `wca.import:display` / `wca.import:edit` | Importe anzeigen / Tempo-Exporte importieren und Importe löschen |
 | `wca.einstellungen:display` / `wca.einstellungen:edit` | Prüfregeln, Personenvorgaben und Freigaben anzeigen / ändern (auch *Freigeben*) |
 
-API unter `/api/m/wca`: `GET /auswertung?stichtag=JJJJ-MM-TT&zeitraum=JJJJ-MM|JJJJ-Www|alle`,
+API unter `/api/m/wca`: `GET /auswertung?stichtag=JJJJ-MM-TT&zeitraum=JJJJ-MM|JJJJ-Www|alle` (mehrere kommagetrennt, z. B. `2026-09,2026-11`),
 `POST /import` (`{ dateien: [{ name, csv, geaendert? }], uebernehmen }`, CSV als Text oder Data-URL, bis 50 MB),
 `GET /importe`, `DELETE /importe/:id` (Begründung Pflicht), `GET|PUT /einstellungen`, `PUT|DELETE /personen/:person`,
 `GET|POST /freigaben` (`{ regel, acc, text, person?, meldung? }`), `DELETE /freigaben/:id`.

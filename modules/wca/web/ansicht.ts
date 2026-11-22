@@ -88,9 +88,11 @@ export function summen(ps: PersonAuswertung[]) {
 }
 export const unauffaellig = (s: { ent: number; entBad: number }) => (s.ent ? 1 - s.entBad / s.ent : null);
 
-/** Knoten im Drilldown je Person: Kategorie (Typ) → Projekt (Account) → Tätigkeit (Text) */
+/** Knoten im Drilldown je Person; die Ebenen ergeben sich aus der gewählten Feldreihenfolge */
 export interface Knoten {
   id: string;
+  feld: BaumFeld;
+  wert: string; // Rohwert des Felds (Typ, Account, JJJJ-MM, Tag …)
   text: string;
   zusatz: string; // z. B. Kunde · Bereich bzw. Ticket
   stunden: number;
@@ -100,41 +102,145 @@ export interface Knoten {
 }
 
 const TYP_TEXT: Record<string, string> = { B: 'Billable', P: 'PreSales', I: 'Intern', A: 'Abwesenheit' };
+const TYP_FOLGE = ['B', 'P', 'I', 'A'];
+const MONATSNAMEN = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const WT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const textNorm = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/** ISO-Kalenderwoche 'JJJJ-Www' eines Tages */
+function kw(tag: string): string {
+  const d = new Date(`${tag}T00:00:00Z`);
+  const wt = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() + 3 - wt);
+  const j = d.getUTCFullYear();
+  return `${j}-W${String(Math.floor(Math.round((d.getTime() - Date.UTC(j, 0, 1)) / 86400000) / 7) + 1).padStart(2, '0')}`;
+}
+
+/** ein Buchungstag eines Eintrags – Grundlage des Baums (zeitbezogene Felder teilen Einträge nach Tagen auf) */
+interface Stueck { e: AuswEintrag; i: number; tag: string; h: number }
+
+interface FeldDef {
+  text: string;
+  /** Schlüssel und Anzeige des Knotens */
+  wert: (s: Stueck) => { key: string; text: string };
+  /** Zusatz je Knoten; `gewaehlt` = alle Felder des Baums (Zusatz nur, wenn das Feld nicht selbst Ebene ist) */
+  zusatz?: (s: Stueck, gewaehlt: BaumFeld[]) => string[];
+  /** feste Sortierung statt Stunden absteigend */
+  sort?: (a: Knoten, b: Knoten) => number;
+}
+
+const zeitlich = (a: Knoten, b: Knoten) => (a.wert < b.wert ? -1 : a.wert > b.wert ? 1 : 0);
+
+/** Felder, nach denen der Buchungsbaum gruppiert werden kann */
+export const BAUM_FELDER = {
+  kategorie: {
+    text: 'Kategorie',
+    wert: ({ e }) => ({ key: e.typ, text: TYP_TEXT[e.typ] ?? e.typ }),
+    sort: (a, b) => TYP_FOLGE.indexOf(a.wert) - TYP_FOLGE.indexOf(b.wert),
+  },
+  projekt: {
+    text: 'Projekt (Account)',
+    wert: ({ e }) => (e.ohneAccount ? { key: `ber:${e.ber}`, text: e.ber || 'Kein Account' } : { key: e.acc, text: e.accName }),
+    zusatz: ({ e }, g) => [g.includes('kunde') ? '' : e.kunde, e.ohneAccount || g.includes('bereich') ? '' : e.ber],
+  },
+  kunde: { text: 'Kunde', wert: ({ e }) => ({ key: e.kunde.toLowerCase(), text: e.kunde || '(ohne Kunde)' }) },
+  bereich: { text: 'Bereich', wert: ({ e }) => ({ key: e.ber.toLowerCase(), text: e.ber || '(ohne Bereich)' }) },
+  ticket: {
+    text: 'Ticket',
+    wert: ({ e }) => ({ key: e.key, text: e.key || '(ohne Ticket)' }),
+  },
+  taetigkeit: {
+    text: 'Tätigkeit (Text)',
+    wert: ({ e }) => { const t = textNorm(e.text); return { key: t.toLowerCase(), text: t || '(kein Text)' }; },
+    zusatz: ({ e }, g) => [g.includes('ticket') ? '' : e.key],
+  },
+  monat: {
+    text: 'Monat',
+    wert: ({ tag }) => ({ key: tag.slice(0, 7), text: `${MONATSNAMEN[Number(tag.slice(5, 7)) - 1]} ${tag.slice(0, 4)}` }),
+    sort: zeitlich,
+  },
+  woche: {
+    text: 'Kalenderwoche',
+    wert: ({ tag }) => { const w = kw(tag); return { key: w, text: `KW ${Number(w.slice(6))}/${w.slice(0, 4)}` }; },
+    sort: zeitlich,
+  },
+  tag: {
+    text: 'Tag',
+    wert: ({ tag }) => {
+      const wt = WT[(new Date(`${tag}T00:00:00Z`).getUTCDay() + 6) % 7];
+      return { key: tag, text: `${wt} ${tag.slice(8, 10)}.${tag.slice(5, 7)}.${tag.slice(0, 4)}` };
+    },
+    sort: zeitlich,
+  },
+} satisfies Record<string, FeldDef>;
+
+export type BaumFeld = keyof typeof BAUM_FELDER;
+export const BAUM_STANDARD: BaumFeld[] = ['kategorie', 'projekt', 'taetigkeit'];
+
+/** gespeicherte Feldliste prüfen: nur bekannte Felder, jedes einmal, mindestens eines */
+export function baumFelderLesen(roh: unknown): BaumFeld[] {
+  if (!Array.isArray(roh)) return [...BAUM_STANDARD];
+  const r = roh.filter((f, i): f is BaumFeld => typeof f === 'string' && f in BAUM_FELDER && roh.indexOf(f) === i);
+  return r.length ? r : [...BAUM_STANDARD];
+}
 
 /**
- * Baum der Buchungen einer Person im Zeitraum: Kategorie (Billable, PreSales, Intern, Abwesenheit) → Projekt (Account,
- * ohne Account der Bereich) → Tätigkeit (gleicher Text zusammengefasst). Je Ebene nach Stunden absteigend.
+ * Baum der Buchungen einer Person im Zeitraum, gruppiert nach den Feldern in der gegebenen Reihenfolge
+ * (Standard: Kategorie → Projekt → Tätigkeit). Gleiche Texte werden zusammengefasst (Leerraum, Groß/klein egal).
+ * Zeitbezogene Felder (Monat, Woche, Tag) teilen die Stunden eines Eintrags auf seine Buchungstage auf.
+ * Je Ebene nach Stunden absteigend; Kategorie in fester Reihenfolge, Zeitfelder chronologisch.
  */
-export function baum(eintraege: { e: AuswEintrag; i: number }[]): Knoten[] {
-  const neu = (id: string, text: string, zusatz = ''): Knoten => ({ id, text, zusatz, stunden: 0, tage: 0, eintraege: [], kinder: [] });
-  const kats = new Map<string, Knoten>();
+export function baum(eintraege: { e: AuswEintrag; i: number }[], felder: BaumFeld[] = BAUM_STANDARD): Knoten[] {
+  const fl = felder.length ? felder : BAUM_STANDARD;
+  const neu = (id: string, feld: BaumFeld, wert: string, text: string): Knoten => ({ id, feld, wert, text, zusatz: '', stunden: 0, tage: 0, eintraege: [], kinder: [] });
+  const wurzel = neu('', fl[0], '', '');
   const tageJe = new Map<Knoten, Set<string>>();
-  const add = (k: Knoten, e: AuswEintrag, i: number) => {
-    k.stunden += e.stunden;
-    k.eintraege.push(i);
-    const s = tageJe.get(k) ?? new Set<string>();
-    for (const [t] of e.tage) s.add(t);
-    tageJe.set(k, s);
+  const zusatzJe = new Map<Knoten, string[]>();
+  const kindIndex = new Map<Knoten, Map<string, Knoten>>();
+  const add = (k: Knoten, s: Stueck) => {
+    k.stunden += s.h;
+    if (!k.eintraege.includes(s.i)) k.eintraege.push(s.i);
+    let t = tageJe.get(k);
+    if (!t) tageJe.set(k, (t = new Set()));
+    t.add(s.tag);
   };
   for (const { e, i } of eintraege) {
     if (!e.stunden) continue;
-    let kat = kats.get(e.typ);
-    if (!kat) { kat = neu(e.typ, TYP_TEXT[e.typ] ?? e.typ); kats.set(e.typ, kat); }
-    const projName = e.ohneAccount ? (e.ber || 'Kein Account') : e.accName;
-    const projId = `${e.typ}|${e.ohneAccount ? `ber:${e.ber}` : e.acc}`;
-    let proj = kat.kinder.find((k) => k.id === projId);
-    if (!proj) { proj = neu(projId, projName, [e.kunde, e.ohneAccount ? '' : e.ber].filter(Boolean).join(' · ')); kat.kinder.push(proj); }
-    const tText = e.text.replace(/\s+/g, ' ').trim();
-    const tId = `${projId}|${tText.toLowerCase()}`;
-    let t = proj.kinder.find((k) => k.id === tId);
-    if (!t) { t = neu(tId, tText || '(kein Text)', e.key); proj.kinder.push(t); }
-    else if (e.key && !t.zusatz.split(', ').includes(e.key)) t.zusatz = t.zusatz ? `${t.zusatz}, ${e.key}` : e.key;
-    add(kat, e, i); add(proj, e, i); add(t, e, i);
+    for (const [tag, h] of e.tage) {
+      if (!h) continue;
+      const s: Stueck = { e, i, tag, h };
+      let k = wurzel;
+      for (const feld of fl) {
+        const def: FeldDef = BAUM_FELDER[feld];
+        const w = def.wert(s);
+        let idx = kindIndex.get(k);
+        if (!idx) kindIndex.set(k, (idx = new Map()));
+        let c = idx.get(w.key);
+        if (!c) {
+          c = neu(`${k.id ? `${k.id}|` : ''}${feld}:${w.key}`, feld, w.key, w.text);
+          idx.set(w.key, c);
+          k.kinder.push(c);
+        }
+        for (const z of def.zusatz?.(s, fl) ?? []) {
+          if (!z) continue;
+          const l = zusatzJe.get(c) ?? [];
+          if (!l.includes(z)) { l.push(z); zusatzJe.set(c, l); }
+        }
+        add(c, s);
+        k = c;
+      }
+    }
   }
-  const fertig = (ks: Knoten[]): Knoten[] => ks
-    .map((k) => ({ ...k, stunden: r2(k.stunden), tage: tageJe.get(k)?.size ?? 0, kinder: fertig(k.kinder) }))
-    .sort((x, y) => y.stunden - x.stunden || x.text.localeCompare(y.text, 'de'));
-  const reihenfolge = ['B', 'P', 'I', 'A'];
-  return fertig([...kats.values()]).sort((x, y) => reihenfolge.indexOf(x.id) - reihenfolge.indexOf(y.id));
+  const fertig = (ks: Knoten[]): Knoten[] => {
+    const r = ks.map((k) => ({ ...k, stunden: r2(k.stunden), tage: tageJe.get(k)?.size ?? 0, zusatz: zusatzText(k.feld, zusatzJe.get(k) ?? []), kinder: fertig(k.kinder) }));
+    const sort = r.length ? (BAUM_FELDER[r[0].feld] as FeldDef).sort : undefined;
+    return r.sort((x, y) => (sort ? sort(x, y) : 0) || y.stunden - x.stunden || x.text.localeCompare(y.text, 'de'));
+  };
+  return fertig(wurzel.kinder);
+}
+
+/** Projekt: „Kunde · Bereich“ (einmal je Wert), sonst Liste mit Komma (z. B. Tickets) */
+function zusatzText(feld: BaumFeld, l: string[]): string {
+  return feld === 'projekt' ? l.join(' · ') : l.join(', ');
 }
