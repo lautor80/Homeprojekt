@@ -5,7 +5,7 @@ import { adrnrAusZuid, kanalLesen, kontaktLesen, type Kontakt } from '../kommuni
 import { protokoll, vorgangAnlegen } from '../schluessel/vorgang.js';
 import {
   KEY_ABO, KEY_EINZEL, KEY_SCHLUESSEL_AUSGABE, KEY_SCHLUESSEL_RUECKNAHME, KEY_SONSTIGES,
-  preisBerechnen, preiseLesen, type Preise,
+  positionAufteilen, preisBerechnen, preiseLesen, type PositionsTeil, type Preise,
 } from './preis.js';
 
 // ---------------------------------------------------------------------------
@@ -378,9 +378,12 @@ export interface DruckPosition {
   /** Kontierung: Erlöskonto der Position, sonst des Produkts, sonst Hallenmiete */
   konto: string;
   konto_name: string;
+  /** Buchung über mehrere Preisklassen: Aufteilung (Zeit, Stunden × Stundenpreis); ep ist dann nur der Durchschnitt */
+  teile?: PositionsTeil[];
 }
 
 export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPosition[]> {
+  const preise = await preiseLesen(db);
   const rows = await db`
     select p.rgpos, p.bid, p.datum::text, p.time_start::text, p.time_ende::text, p.dauer, p.prod_key,
            p.preis::float8 as preis, p.description, p.beleg_doc_id, p.erloeskonto, b.status as bstatus,
@@ -422,6 +425,11 @@ export async function positionenLesen(db: Db, rgnr: string): Promise<DruckPositi
       art, beschreibung: beschr, anzahl, ep, betrag, storno, manuell, beleg_doc_id: p.beleg_doc_id ?? null,
       erloeskonto: p.erloeskonto?.trim() || null,
       konto: p.konto, konto_name: p.konto_name,
+      ...(() => {
+        if (manuell || storno || !(art === 'Einzel' || art === 'Abo')) return {};
+        const teile = positionAufteilen({ datum: p.datum, time_start: p.time_start, time_ende: p.time_ende, prod_key: key, betrag }, preise);
+        return teile ? { teile } : {};
+      })(),
     };
   });
 }

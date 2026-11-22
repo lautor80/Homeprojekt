@@ -524,7 +524,16 @@ function PersonPanel(props: {
       },
     },
     { Header: 'Menge', accessor: 'anzahl', width: 80, hAlign: 'End', Cell: ({ value }: Cell) => Number(value).toLocaleString('de-DE', { maximumFractionDigits: 2 }) },
-    { Header: 'Einzelpreis', accessor: 'ep', width: 110, hAlign: 'End', Cell: ({ value }: Cell) => eur(value) },
+    {
+      Header: 'Einzelpreis', accessor: 'ep', width: 180, hAlign: 'End',
+      // über mehrere Preisklassen: je Preisklasse Stunden × Stundenpreis statt Durchschnitt
+      Cell: ({ row, value }: Cell) => {
+        const teile = (row.original as Position).teile;
+        if (!teile?.length) return eur(value);
+        const zeile = (t: NonNullable<Position['teile']>[number]) => `${t.stunden.toLocaleString('de-DE', { maximumFractionDigits: 2 })} × ${eur(t.stundenpreis)}`;
+        return <Text title={teile.map((t) => `${t.von}–${t.bis} Uhr ${t.text}: ${zeile(t)} = ${eur(t.betrag)}`).join('\n')}>{teile.map(zeile).join(' + ')}</Text>;
+      },
+    },
     {
       Header: 'Betrag', accessor: 'betrag', width: 110, hAlign: 'End',
       Cell: ({ row }: Cell) => <Text style={{ color: row.original.storno ? 'var(--sapNegativeTextColor)' : undefined }}>{eur(row.original.betrag)}{row.original.storno ? ' (storniert)' : ''}</Text>,

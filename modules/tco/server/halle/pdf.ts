@@ -45,8 +45,10 @@ export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am:
   // Positionen
   let top = 84;
   let y = tabellenkopf(p, top);
+  const menge = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   for (const ps of pos) {
-    if (y > 262) {
+    const teile = ps.teile ?? [];
+    if (y + teile.length * 4.6 > 262) {
       p.rect(LEFT, top, 174, y - 4.4 - top, { stroke: C.rand, lw: 0.3, radius: 3 });
       p.newPage();
       top = 18;
@@ -61,9 +63,19 @@ export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am:
       p.text(76, y, datumT, t);
       p.text(95, y, uhr, t);
     } else p.text(34, y, kuerzen(p, ps.beschreibung, 9, 94), t);
-    p.text(146, y, betragText(ps.ep), { ...t, align: 'R' });
-    p.text(164, y, ps.anzahl.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), { ...t, align: 'R' });
+    // über mehrere Preisklassen: kein Durchschnittspreis, sondern die Aufteilung als Unterzeilen
+    if (!teile.length) p.text(146, y, betragText(ps.ep), { ...t, align: 'R' });
+    p.text(164, y, menge(ps.anzahl), { ...t, align: 'R' });
     p.text(187, y, betragText(ps.betrag), { ...t, align: 'R' });
+    for (const tl of teile) {
+      y += 4.6;
+      const u = { size: 8, color: C.grau };
+      p.text(57, y, kuerzen(p, tl.text, 8, 36), u);
+      p.text(95, y, `${tl.von} - ${tl.bis} Uhr`, u);
+      p.text(146, y, betragText(tl.stundenpreis), { ...u, align: 'R' });
+      p.text(164, y, menge(tl.stunden), { ...u, align: 'R' });
+      p.text(187, y, betragText(tl.betrag), { ...u, align: 'R' });
+    }
     p.line(22, y + 2.7, 188, y + 2.7, C.linie, 0.25);
     y += 7;
   }
