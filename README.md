@@ -518,6 +518,19 @@ Ausdrucke und Dateien können zusätzlich in einem **Ordner auf dem PC** abgeleg
   Sammelrechnung werden **alle** ihre Aufträge wieder offen) und verlangt einen Grund; Rechnungsnummer und Fakturadatum werden gelöscht
   (`POST /rechnungen/entfernen`, Änderungsbeleg `RECHNUNG_ENTFERNT`). Die Nummer wird nicht neu vergeben; versendete oder in Paperless
   abgelegte Rechnungen bleiben dort bestehen.
+- **Rechnung korrigieren** (Recht `transport.rechnungen:create`): Fakturierte Aufträge lassen sich wieder öffnen und bearbeiten – die
+  **Rechnungsnummer bleibt gleich**. Im Auftrag *Rechnung korrigieren* (oder in der Auftragsliste fakturierte Aufträge auswählen →
+  *Rechnung korrigieren*), dann einen **Vermerk** angeben, der die Änderung erklärt. Geöffnet wird immer die ganze Rechnung (bei einer
+  Sammelrechnung alle ihre Aufträge); Nummer und Rechnungsdatum werden vorgemerkt (`faktura_reserviert`, `fakturadatum_reserviert`,
+  Migration `021_rechnung_korrektur.sql`), ein erfasster Zahlungseingang bleibt. Der Auftrag ist danach voll bearbeitbar; die Liste zeigt
+  „*Nummer* in Korrektur“, der Auftrag einen Hinweis mit dem Vermerk. *Speichern und Rechnung erzeugen* im Auftrag bzw. *Einzelrechnungen* in
+  der Liste vergibt wieder **dieselbe Nummer mit demselben Rechnungsdatum** (Sammelrechnung vollständig, auch nicht ausgewählte Aufträge) und
+  öffnet die PDF-Vorschau zum Neudruck. Der Vermerk steht als „Korrigierte Rechnung vom TT.MM.JJJJ: …“ hervorgehoben über den Positionen
+  der PDF-Rechnung und als Hinweis (Note) in XRechnung/ZUGFeRD; in Paperless kommt der Neudruck als neue Version an dasselbe Dokument.
+  Solange eine Rechnung in Korrektur ist, kann der Auftrag nicht ohne Rechnung abgeschlossen oder zusammengeführt werden; *Rechnung entfernen*
+  verwirft die Korrektur samt vorgemerkter Nummer. Routen `POST /rechnungen/korrigieren` (mit `pruefen`), `POST /rechnungen`; Änderungsbeleg
+  `RECHNUNG_ZUR_KORREKTUR_GEOEFFNET` mit dem Vermerk als Grund. Logik `modules/transport/server/rechnung-korrektur.ts`,
+  Tests `server/test/transport_rechnung_korrektur.test.ts` und `transport.test.ts`.
 - **Fakturierte Aufträge** (#121) sind gesperrt: Die Objektseite zeigt alle Felder schreibgeschützt, der Server
   übernimmt bei `PUT /auftraege/:nr` nur noch **Dokumente fehlen** (Schalter Ja/Nein) und die **Besonderheiten**.
   Dokumente können weiterhin zugeordnet und gelöst werden.

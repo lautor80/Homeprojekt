@@ -55,6 +55,7 @@ export function ciiXml(d: Rechnungsdaten): string {
     '<rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter>', el('ram:ID', FX_GUIDELINE), '</ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>',
     '<rsm:ExchangedDocument>', el('ram:ID', d.faktura), el('ram:TypeCode', '380'), `<ram:IssueDateTime>${datum102(fakturadatum)}</ram:IssueDateTime>`,
     d.anzahl > 1 ? `<ram:IncludedNote>${el('ram:Content', `Sammelrechnung über ${d.anzahl} Transportaufträge`)}</ram:IncludedNote>` : '',
+    d.vermerk ? `<ram:IncludedNote>${el('ram:Content', d.vermerk)}</ram:IncludedNote>` : '',
     '</rsm:ExchangedDocument>',
     '<rsm:SupplyChainTradeTransaction>',
   ];

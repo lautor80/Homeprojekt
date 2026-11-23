@@ -158,8 +158,8 @@ function baum(list: ListRow[]): { rows: TreeRow[]; saldo: number } {
           unternehmer: p.unternehmer,
           route: p.route,
           ladedatum: p.ladedatum,
-          rechnung: p.faktura ? `Rechnung ${p.faktura} vom ${dat(p.fakturadatum)}` : p.status === 'Ohne Rechnung' ? `Ohne Rechnung abgeschlossen am ${dat(p.abgeschlossenAm)}` : 'Rechnung offen',
-          rechnungState: p.faktura ? 'Positive' as const : p.status === 'Ohne Rechnung' ? 'Information' as const : 'Critical' as const,
+          rechnung: p.faktura ? `Rechnung ${p.faktura} vom ${dat(p.fakturadatum)}` : p.fakturaReserviert ? `Rechnung ${p.fakturaReserviert} zur Korrektur geöffnet` : p.status === 'Ohne Rechnung' ? `Ohne Rechnung abgeschlossen am ${dat(p.abgeschlossenAm)}` : 'Rechnung offen',
+          rechnungState: p.faktura ? 'Positive' as const : p.fakturaReserviert ? 'Critical' as const : p.status === 'Ohne Rechnung' ? 'Information' as const : 'Critical' as const,
           einnahmen: p.betrag || null,
           ausgaben: p.ek || null,
           saldo: p.betrag - p.ek,
@@ -289,7 +289,7 @@ export function AuftraegeListe() {
         if (zahlung === 'UEBERFAELLIG' && z !== 'ueberfaellig') return false;
         if (zahlung === 'BEZAHLT' && z !== 'bezahlt') return false;
       }
-      if (q && !`${r.auftragsnr} ${r.kennzeichen ?? ''} ${r.kunde} ${r.unternehmer} ${r.unternehmerNamen ?? ''} ${r.route} ${r.faktura ?? ''}`.toUpperCase().includes(q)) return false;
+      if (q && !`${r.auftragsnr} ${r.kennzeichen ?? ''} ${r.kunde} ${r.unternehmer} ${r.unternehmerNamen ?? ''} ${r.route} ${r.faktura ?? r.fakturaReserviert ?? ''}`.toUpperCase().includes(q)) return false;
       return true;
     });
   }, [basis, status, suche, zahlung, mitAbrechnung]);
@@ -298,6 +298,8 @@ export function AuftraegeListe() {
   const sel = useMemo(() => liste.filter((r) => auswahl.has(r.auftragsnr)), [liste, auswahl]);
   const offen = sel.filter((r) => r.status === 'Offen').length;
   const ohneRechnung = sel.filter((r) => r.status === 'Ohne Rechnung').length;
+  const mitRechnung = sel.filter((r) => r.faktura || r.fakturaReserviert).length;
+  const fakturiert = sel.filter((r) => r.faktura).length;
   const zahlbar = sel.filter((r) => r.faktura && r.abrechnung && r.abrechnung.status !== 'bezahlt').length;
   const bezahlt = sel.filter((r) => r.faktura && r.abrechnung?.status === 'bezahlt').length;
   const tree = useMemo(() => baum(liste), [liste]);
@@ -312,14 +314,18 @@ export function AuftraegeListe() {
   async function rechnungen(sammel: boolean) {
     try {
       await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
-      const nrs = sel.filter((s) => s.status === 'Offen').map((s) => s.auftragsnr).sort(); // Server vergibt die Nummern in dieser Reihenfolge
-      const r = await api.post<{ fakturen: string[]; ignoriert: number }>(`${T}/rechnungen`, { auftraege: sel.map((s) => s.auftragsnr), sammel });
+      // zur Korrektur geöffnete Rechnungen kommen mit ihrer bisherigen Nummer zurück (Server: zuerst, dann neue Nummern)
+      const nrs = sel.filter((s) => s.status === 'Offen' && !s.fakturaReserviert).map((s) => s.auftragsnr).sort(); // Server vergibt die Nummern in dieser Reihenfolge
+      const r = await api.post<{ fakturen: string[]; ignoriert: number; korrigiert: { faktura: string; auftraege: string[] }[] }>(`${T}/rechnungen`, { auftraege: sel.map((s) => s.auftragsnr), sammel });
       setAuswahl(new Set());
       await lade();
       await ladeInit();
       if (r.ignoriert) toast(`Aufgrund bereits bestehender Rechnungen wurden ${r.ignoriert} Aufträge nicht bearbeitet.`);
+      if (r.korrigiert.length) toast(`Korrigiert mit unveränderter Nummer: ${r.korrigiert.map((k) => k.faktura).join(', ')}.`, 6000);
+      const korr = r.korrigiert.map((k) => ({ url: `${T}/pdf/R/${encodeURIComponent(k.faktura)}`, filename: `Rechnung_${k.faktura}.pdf`, ablage: k.auftraege }));
+      const neue = r.fakturen.slice(r.korrigiert.length);
       // Einzelrechnungen: je Auftrag eine Rechnung (gleiche Reihenfolge), Sammelrechnung: in jeden Auftragsordner
-      setDocs(r.fakturen.map((f, i) => ({ url: `${T}/pdf/R/${encodeURIComponent(f)}`, filename: `Rechnung_${f}.pdf`, ablage: sammel ? nrs : nrs[i] ? [nrs[i]] : [] })));
+      setDocs([...korr, ...neue.map((f, i) => ({ url: `${T}/pdf/R/${encodeURIComponent(f)}`, filename: `Rechnung_${f}.pdf`, ablage: sammel ? nrs : nrs[i] ? [nrs[i]] : [] }))]);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -401,6 +407,33 @@ export function AuftraegeListe() {
       setAuswahl(new Set());
       await lade();
       toast(`${r.rechnungen.length === 1 ? `Rechnung ${r.rechnungen[0]}` : `${r.rechnungen.length} Rechnungen`} ${bezahltAm ? `als bezahlt am ${dat(bezahltAm)} erfasst` : '– Zahlung zurückgenommen'}.`, 6000);
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  // Rechnung zur Korrektur öffnen (Recht transport.rechnungen:create): ganze Rechnung, Nummer bleibt vorgemerkt, Vermerk Pflicht
+  const [korrektur, setKorrektur] = useState<{ text: string; nrs: string[] } | null>(null);
+  async function korrekturPruefen() {
+    const nrs = sel.filter((s) => s.faktura).map((s) => s.auftragsnr);
+    try {
+      const r = await api.post<{ rechnungen: { faktura: string; auftraege: string[] }[]; zusaetzlich: string[] }>(`${T}/rechnungen/korrigieren`, { auftraege: nrs, pruefen: true });
+      if (!r.rechnungen.length) return toast('Unter der Auswahl ist kein fakturierter Auftrag.');
+      const liste = r.rechnungen.map((x) => `${x.faktura} (Auftrag ${x.auftraege.join(', ')})`).join('; ');
+      setKorrektur({
+        nrs,
+        text: `${r.rechnungen.length === 1 ? 'Rechnung' : `${r.rechnungen.length} Rechnungen`} ${liste} ${r.rechnungen.length === 1 ? 'wird' : 'werden'} zur Korrektur geöffnet: Die Aufträge lassen sich wieder bearbeiten.`
+          + (r.zusaetzlich.length ? ` Mit dabei (Sammelrechnung): ${r.zusaetzlich.join(', ')}.` : '')
+          + '\n\nDanach „Einzelrechnungen“ wählen – die Rechnung bekommt dieselbe Nummer und dasselbe Rechnungsdatum zurück. Der Vermerk steht mit dem Datum der Korrektur auf der neuen Rechnung und im Änderungsbeleg.',
+      });
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function korrekturAusfuehren(vermerk: string) {
+    const nrs = korrektur?.nrs ?? [];
+    setKorrektur(null);
+    try {
+      const r = await api.post<{ rechnungen: { faktura: string }[] }>(`${T}/rechnungen/korrigieren`, { auftraege: nrs, vermerk });
+      setAuswahl(new Set());
+      await lade();
+      toast(`Rechnung ${r.rechnungen.map((x) => x.faktura).join(', ')} zur Korrektur geöffnet – Aufträge bearbeiten, dann neu erzeugen.`, 6000);
     } catch (e) { setError((e as Error).message); }
   }
 
@@ -523,8 +556,9 @@ export function AuftraegeListe() {
       Cell: ({ row }: Cell) => row.isGrouped ? null : (
         <FlexBox direction="Column">
           <ObjectStatus state={row.original.faktura ? 'Positive' : row.original.status === 'Ohne Rechnung' ? 'Information' : 'Critical'}
-                        title={row.original.abgeschlossenGrund ?? undefined}>
+                        title={row.original.abgeschlossenGrund ?? row.original.rechnungVermerk ?? undefined}>
             {row.original.faktura ? `${row.original.faktura} vom ${dat(row.original.fakturadatum)}`
+              : row.original.fakturaReserviert ? `${row.original.fakturaReserviert} in Korrektur`
               : row.original.status === 'Ohne Rechnung' ? `ohne Rechnung, ${dat(row.original.abgeschlossenAm)}` : 'offen'}
           </ObjectStatus>
           {row.original.dokFehlen && <ObjectStatus state="Critical" icon={<Icon name="alert" />}>Dokumente fehlen</ObjectStatus>}
@@ -663,16 +697,18 @@ export function AuftraegeListe() {
         {can('transport.auftraege:edit') && (
           <MenuButton text="Auftrag" icon="shipping-status" disabled={!sel.length} items={[
             { text: 'Zusammenführen (mehrere Fahrten) …', icon: 'combine', disabled: offen < 2, onClick: zusammenPruefen },
-            { text: 'Ohne Rechnung abschließen …', icon: 'complete', disabled: offen < 1, onClick: () => setAbschliessen(sel.filter((s) => s.status === 'Offen').map((s) => s.auftragsnr)) },
+            { text: 'Ohne Rechnung abschließen …', icon: 'complete', disabled: offen < 1, onClick: () => setAbschliessen(sel.filter((s) => s.status === 'Offen' && !s.fakturaReserviert).map((s) => s.auftragsnr)) },
             { text: 'Wieder öffnen', icon: 'undo', disabled: ohneRechnung < 1, onClick: oeffnen },
           ]} />
         )}
         {can('transport.rechnungen:create') && <>
           <Button icon="lead" disabled={offen < 1} onClick={() => rechnungen(false)}>Einzelrechnungen</Button>
           <Button icon="collections-insight" disabled={offen < 2} onClick={() => rechnungen(true)}>Sammelrechnung</Button>
+          <Button icon="edit" design="Transparent" disabled={fakturiert < 1} onClick={korrekturPruefen}
+                  tooltip="Rechnung wieder öffnen, Aufträge bearbeiten und mit derselben Rechnungsnummer neu erzeugen">Rechnung korrigieren</Button>
         </>}
         {can('transport.rechnungen:delete') && (
-          <Button icon="delete" design="Transparent" disabled={sel.length - offen < 1} onClick={entfernenPruefen} tooltip="Rechnung der ausgewählten Aufträge entfernen">Rechnung entfernen</Button>
+          <Button icon="delete" design="Transparent" disabled={mitRechnung < 1} onClick={entfernenPruefen} tooltip="Rechnung der ausgewählten Aufträge entfernen">Rechnung entfernen</Button>
         )}
         {can('transport.zahlungen:edit') && (
           <MenuButton text="Zahlung" icon="money-bills" disabled={!zahlbar && !bezahlt} items={[
@@ -803,6 +839,8 @@ export function AuftraegeListe() {
           </FlexBox>
         </FlexBox>
       </Dialog>
+      <ConfirmDialog open={!!korrektur} title="Rechnung korrigieren" text={korrektur?.text ?? ''} confirmText="Zur Korrektur öffnen" askReason
+                     onConfirm={korrekturAusfuehren} onCancel={() => setKorrektur(null)} />
       <ConfirmDialog open={!!entfernen} title="Rechnung entfernen" text={entfernen?.text ?? ''} confirmText="Entfernen" askReason danger
                      onConfirm={entfernenAusfuehren} onCancel={() => setEntfernen(null)} />
     </AppPage>

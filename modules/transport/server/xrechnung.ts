@@ -1,5 +1,6 @@
 import { fakturaAuftraege, firmaLesen, kaeufer } from './data.js';
 import { condense, dat, eur, heute, katText, kategorie, steuerGrund } from './format.js';
+import { korrekturVermerk } from './rechnung-korrektur.js';
 
 export interface XRechnung {
   faktura: string;
@@ -65,6 +66,8 @@ export interface Rechnungsdaten {
   faellig: string;
   katSatz: (k: string) => number;
   hinweise: string[];
+  /** korrigierte Rechnung (gleiche Nummer): „Korrigierte Rechnung vom …: Vermerk“, sonst leer */
+  vermerk: string;
 }
 
 export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | null> {
@@ -175,6 +178,7 @@ export async function rechnungsdaten(faktura: string): Promise<Rechnungsdaten | 
   return {
     faktura, fakturadatum, firma, buyer, buyerName, buyerKontakt, ustid, lines, tax, netto, steuer, brutto, ref, order, von, bis, hasO, drittland,
     anzahl: auftraege.length, zahlungsziel, faellig: faelligD.toISOString().slice(0, 10), katSatz, hinweise,
+    vermerk: korrekturVermerk(auftraege[0].rechnung_vermerk, auftraege[0].rechnung_korrigiert_am),
   };
 }
 
@@ -216,6 +220,7 @@ export async function xrechnungErzeugen(faktura: string): Promise<XRechnung> {
     el('cbc:IssueDate', fakturadatum),
     el('cbc:InvoiceTypeCode', '380'),
     anzahl > 1 ? el('cbc:Note', `Sammelrechnung über ${anzahl} Transportaufträge`) : '',
+    el('cbc:Note', d.vermerk),
     el('cbc:DocumentCurrencyCode', 'EUR'),
     el('cbc:BuyerReference', ref),
   ];
