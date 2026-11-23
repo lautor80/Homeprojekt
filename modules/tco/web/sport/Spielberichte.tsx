@@ -88,7 +88,7 @@ function SpieltageImport({ onClose, onDone }: { onClose: () => void; onDone: () 
           <Button design="Transparent" disabled={busy} onClick={() => setZeilen(null)}>Zurück</Button>
         </>}>
           {ignoriert > 0 && <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.4rem' }}>{ignoriert} Textzeile(n) ohne Datum übergangen.</Text>}
-          <div className="portal-sd__rahmen">
+          <div className="portal-sd__rahmen portal-tabrahmen">
             <table className="portal-sd__tabelle">
               <thead><tr><th /><th>Datum</th><th>Uhrzeit</th><th>Liga</th><th>Heim</th><th>Gast</th><th>Ort</th><th>Saison</th><th>Status</th></tr></thead>
               <tbody>
@@ -163,13 +163,13 @@ function MeldelisteImport({ vereine, onClose, onDone }: { vereine: string[]; onC
             (Rang, Mannschaft, LK, ID-Nummer, Name) markieren, kopieren und hier einfügen. Für Gegner genauso – dann stehen beim Spielbericht
             beide Aufstellungen zur Auswahl. Ein erneuter Import ersetzt die Liste.
           </Text>
-          <div className="portal-sb__felder">
+          <div className="portal-spb__felder">
             <div><Label for="ml-saison" showColon required>Saison</Label><Input id="ml-saison" value={saison} onInput={(e) => setSaison(e.target.value)} /></div>
             <div>
               <Label for="ml-verein" showColon required>Verein</Label>
               <Input id="ml-verein" value={verein} onInput={(e) => setVerein(e.target.value)} placeholder="z. B. TC Oberthal" />
               {vereine.length > 0 && (
-                <div className="portal-sb__chips">{vereine.slice(0, 8).map((x) => <Button key={x} design={x === verein ? 'Emphasized' : 'Transparent'} onClick={() => setVerein(x)}>{x}</Button>)}</div>
+                <div className="portal-spb__chips">{vereine.slice(0, 8).map((x) => <Button key={x} design={x === verein ? 'Emphasized' : 'Transparent'} onClick={() => setVerein(x)}>{x}</Button>)}</div>
               )}
             </div>
             <div><Label for="ml-konk" showColon required>Konkurrenz</Label><Input id="ml-konk" value={konkurrenz} onInput={(e) => setKonkurrenz(e.target.value)} placeholder="z. B. Herren 40" /></div>
@@ -192,7 +192,7 @@ function MeldelisteImport({ vereine, onClose, onDone }: { vereine: string[]; onC
               <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.4rem' }}>
                 {v.spieler.length} Spieler erkannt{v.ignoriert ? ` · ${v.ignoriert} Zeile(n) ohne Spieler übergangen` : ''}.
               </Text>
-              <div className="portal-sd__rahmen">
+              <div className="portal-sd__rahmen portal-tabrahmen">
                 <table className="portal-sd__tabelle">
                   <thead><tr><th>Rang</th><th>Mannschaft</th><th>Name</th><th>Vorname</th><th>ID-Nr.</th><th>LK</th><th>Nation</th></tr></thead>
                   <tbody>{v.spieler.map((s) => (
@@ -264,14 +264,14 @@ export function Spielberichte() {
               </Select>
               <Button design="Transparent" icon="refresh" tooltip="Aktualisieren" onClick={laden} />
             </div>
-            <div className="portal-sd__rahmen">
-              <table className="portal-sd__tabelle portal-sb__liste">
+            <div className="portal-sd__rahmen portal-tabrahmen">
+              <table className="portal-sd__tabelle portal-spb__liste">
                 <thead><tr><th>Datum</th><th>Liga</th><th>Heim</th><th>Gast</th><th>Ort</th><th>Meldelisten</th><th>Spielbericht</th><th>Ergebnis</th><th /></tr></thead>
                 <tbody>
                   {zeilen.map((z) => {
                     const st = BERICHT_STATUS[z.status];
                     return (
-                      <tr key={z.id} className="portal-sb__klick" onClick={() => navigate(`/tco/spielberichte/${z.id}`)}>
+                      <tr key={z.id} className="portal-spb__klick" onClick={() => navigate(`/tco/spielberichte/${z.id}`)}>
                         <td style={{ whiteSpace: 'nowrap' }}><b>{wtag(z.datum)} {dat(z.datum)}</b>{z.uhrzeit && <div className="portal-muted portal-small">{z.uhrzeit} Uhr</div>}</td>
                         <td>{z.liga}{z.nr && <div className="portal-muted portal-small">Spiel-Nr. {z.nr}</div>}</td>
                         <td>{z.heim}</td><td>{z.gast}</td>
@@ -302,13 +302,13 @@ export function Spielberichte() {
               Je Saison, Verein und Konkurrenz eine Liste. Zum Spieltag passt die Liste, deren Verein im Mannschaftsnamen und deren Konkurrenz
               in der Liga steht („TC Oberthal 1“ in „Herren 40 Verbandsliga“ → TC Oberthal, Herren 40). Mitglieder werden über die ID-Nr. erkannt.
             </Text>
-            <div className="portal-sd__rahmen">
+            <div className="portal-sd__rahmen portal-tabrahmen">
               <table className="portal-sd__tabelle">
                 <thead><tr><th>Saison</th><th>Verein</th><th>Konkurrenz</th><th>Spieler</th><th>Stand</th><th /></tr></thead>
                 <tbody>
                   {listen.map((l) => (
                     <Fragment key={l.id}>
-                      <tr className="portal-sb__klick" onClick={() => listeOeffnen(l.id)}>
+                      <tr className="portal-spb__klick" onClick={() => listeOeffnen(l.id)}>
                         <td>{l.saison}</td><td><b>{l.verein}</b></td><td>{l.konkurrenz}</td><td>{l.spieler}</td><td className="portal-muted">{dat(l.stand.slice(0, 10))}</td>
                         <td onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                           <Button design="Transparent" icon={offen?.id === l.id ? 'collapse' : 'expand'} tooltip="Spieler anzeigen" onClick={() => listeOeffnen(l.id)} />
@@ -317,12 +317,14 @@ export function Spielberichte() {
                       </tr>
                       {offen?.id === l.id && (
                         <tr><td colSpan={6} style={{ background: 'var(--sapList_AlternatingBackground, #fafafa)' }}>
+                          <div className="portal-tabrahmen">
                           <table className="portal-sd__tabelle">
                             <thead><tr><th>Rang</th><th>Mannschaft</th><th>Name</th><th>ID-Nr.</th><th>LK</th><th>Nation</th><th>Mitglied</th></tr></thead>
                             <tbody>{offen.spieler.map((s) => (
                               <tr key={s.rang}><td><b>{s.rang}</b></td><td>{s.mannschaft ?? '–'}</td><td>{s.nachname}, {s.vorname}</td><td>{s.id_nr ?? '–'}</td><td>{lkText(s.lk) || '–'}</td><td>{s.nation}</td><td>{s.adrnr ? '✓' : ''}</td></tr>
                             ))}</tbody>
                           </table>
+                          </div>
                         </td></tr>
                       )}
                     </Fragment>

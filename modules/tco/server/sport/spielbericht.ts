@@ -200,8 +200,11 @@ async function sperreEingereicht(tx: Db, id: number) {
 export async function berichtSpeichern(tx: Db, id: number, daten: SbDaten): Promise<string> {
   await spieltag(tx, id);
   const alt = await sperreEingereicht(tx, id);
-  const geaendert = !alt || JSON.stringify(alt.daten) !== JSON.stringify(daten);
-  if (!geaendert) return 'Keine Änderungen.';
+  // Vergleich in der Datenbank: jsonb ordnet die Schlüssel, ein Textvergleich würde immer „geändert“ melden
+  if (alt) {
+    const [g] = await tx`select daten = ${tx.json(daten as never)}::jsonb as gleich from tco.sb_berichte where spieltag_id = ${id}`;
+    if (g?.gleich) return 'Keine Änderungen.';
+  }
   const [r] = await tx`
     insert into tco.sb_berichte (spieltag_id, daten) values (${id}, ${tx.json(daten as never)})
     on conflict (spieltag_id) do update set daten = excluded.daten,
