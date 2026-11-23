@@ -23,6 +23,8 @@ import { Rundschreiben } from './rundschreiben/Rundschreiben';
 import { Dashboard, DashboardPage } from './dashboard/Dashboard';
 import { Praesentationen } from './praesentation/Praesentationen';
 import { Spielerdaten } from './sport/Spielerdaten';
+import { Spielberichte } from './sport/Spielberichte';
+import { Spielbericht } from './sport/Spielbericht';
 import { Turniere } from './turnier/Turniere';
 import { TurnierDetail } from './turnier/TurnierDetail';
 import { TurnierAnmeldung } from './turnier/TurnierAnmeldung';
@@ -204,6 +206,7 @@ const mod: WebModule = {
             { text: 'Spielerdaten (nuLiga)', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
             { text: 'LSVS-Bestandsmeldung', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
             { text: 'Turniere', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
+            { text: 'Spielberichte', icon: 'form', path: '/tco/spielberichte', permission: 'tco.spielbericht:display' },
           ],
         },
         {
@@ -302,6 +305,8 @@ const mod: WebModule = {
     { path: '/tco/lsvs', component: Bestandsmeldung, permission: 'tco.lsvs:display' },
     { path: '/tco/turniere', component: Turniere, permission: 'tco.turnier:display' },
     { path: '/tco/turniere/:id', component: TurnierDetail, permission: 'tco.turnier:display' },
+    { path: '/tco/spielberichte', component: Spielberichte, permission: 'tco.spielbericht:display' },
+    { path: '/tco/spielberichte/:id', component: Spielbericht, permission: 'tco.spielbericht:display' },
     { path: '/tco/teilnehmer', component: Teilnehmer, permission: 'tco.teilnehmer:display' },
     { path: '/tco/upload', component: Upload, permission: 'tco.upload:execute' },
     { path: '/tco/beitraege', component: Beitraege, permission: 'tco.beitraege:display' },
@@ -356,6 +361,7 @@ const mod: WebModule = {
     { text: 'Spielerdaten (nuLiga)', subtitle: 'ID-Nr. und LK aus der Verbandsliste abgleichen', icon: 'competitor', path: '/tco/spielerdaten', permission: 'tco.sport:display' },
     { text: 'LSVS-Bestandsmeldung', subtitle: 'Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
     { text: 'Turniere', subtitle: 'KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
+    { text: 'Spielberichte', subtitle: 'Mannschaftsspieltage und Meldelisten aus STB.LIGA.NU, Spielbericht erfassen, freigeben, einreichen', icon: 'form', path: '/tco/spielberichte', permission: 'tco.spielbericht:display' },
     { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Familienbeitrag, Trainingszeiten je Saison, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
