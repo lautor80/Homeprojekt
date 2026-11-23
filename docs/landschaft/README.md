@@ -5,10 +5,10 @@ Mehrstufige Landschaft zu Issue #118. Die Seiten werden aus dem Code erzeugt; nu
 
 | Ebene | Inhalt | Seite |
 |---|---|---|
-| 1 | Systeme, Apps (49), Schnittstellen (6 n8n-Workflows, 9 Anbindungen), Container (10) | [level-1-systeme.md](level-1-systeme.md) |
+| 1 | Systeme, Apps (50), Schnittstellen (6 n8n-Workflows, 9 Anbindungen), Container (10) | [level-1-systeme.md](level-1-systeme.md) |
 | 2 | Kernprozesse (10) mit Schritten, Akteuren, Routen, Rechten | [level-2-prozesse.md](level-2-prozesse.md) |
 | 3 | Detailprozesse (4) | [level-3-details.md](level-3-details.md) |
-| 4 | Datenbankabhängigkeiten (181 Tabellen) | [level-4-daten.md](level-4-daten.md) |
+| 4 | Datenbankabhängigkeiten (185 Tabellen) | [level-4-daten.md](level-4-daten.md) |
 
 ## Aktualisieren
 

@@ -15,7 +15,7 @@ flowchart LR
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten<br/>Vorstandssitzungen<br/>Fanshop"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Zeiten<br/>Schaden melden<br/>Mannschaftsmeldung"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
-      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere<br/>Anmeldematrix"]
+      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere<br/>Spielberichte<br/>Anmeldematrix"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallen-Lastschrift<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
@@ -93,6 +93,7 @@ flowchart LR
 | Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |
 | Sport | LSVS-Bestandsmeldung | `/tco/lsvs` | `tco.lsvs:display` | Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe |
 | Sport | Turniere | `/tco/turniere` | `tco.turnier:display` | KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse |
+| Sport | Spielberichte | `/tco/spielberichte` | `tco.spielbericht:display` | Mannschaftsspieltage und Meldelisten aus STB.LIGA.NU, Spielbericht erfassen, freigeben, einreichen |
 | Sport | Anmeldematrix | `/tco/anmeldematrix` | `tco.anmeldematrix:display` | Mannschaftsmeldung je Saison: fest, Ersatz oder nicht – je Mitglied und Mannschaft |
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Familienbeitrag, Trainingszeiten je Saison, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
@@ -223,7 +224,7 @@ flowchart LR
 | schluessel | 28 |
 | schnupper | 7 |
 | soll | 12 |
-| sport | 4 |
+| sport | 19 |
 | teilnehmer | 7 |
 | turnier | 41 |
 | upload | 2 |

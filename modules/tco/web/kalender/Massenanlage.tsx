@@ -80,7 +80,7 @@ const beginnText = (z: Zeile) => (z.beginn_lokal
 const stunden = (v: string) => Number(v.trim().replace(',', '.'));
 
 /** Tabelle aus der Zwischenablage (HTML) → Zeilen mit Tabulator, damit Spalten sicher erkannt werden */
-function htmlTabelle(html: string): string | null {
+export function htmlTabelle(html: string): string | null {
   if (!/<table/i.test(html)) return null;
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const zeilen = [...doc.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('th,td')].map((c) => (c.textContent ?? '').replace(/\s+/g, ' ').trim()).join('\t'));
