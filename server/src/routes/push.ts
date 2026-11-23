@@ -6,6 +6,9 @@ import {
   pushAbwahl, pushAbwahlSetzen, pushArtenFuer, pushGeraetAbmelden, pushGeraetAnmelden, pushGeraete, pushSchluessel, pushTest,
 } from '../lib/push.js';
 import { getSettings } from './settings.js';
+import { activeModules } from '../modules.js';
+
+const SYMBOL_GROESSEN = [180, 192, 512] as const;
 
 /**
  * Push-Nachrichten aufs Handy (lib/push.ts): Jeder angemeldete Benutzer schaltet sie je Gerät selbst ein und aus und
@@ -69,9 +72,19 @@ export async function pushRoutes(app: FastifyInstance) {
       name, short_name: name.length > 12 ? 'Portal' : name, start_url: '/', scope: '/', display: 'standalone',
       background_color: '#ffffff', theme_color: typeof s['org.color'] === 'string' ? s['org.color'] : '#0a6ed1',
       icons: [
-        { src: '/push-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-        { src: '/push-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        { src: '/api/push/symbol-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: '/api/push/symbol-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       ],
     });
+  });
+
+  /** Symbol für den Home-Bildschirm: vom Modul (z. B. Vereinswappen), sonst die Glocke aus web/public */
+  app.get('/api/push/symbol-:groesse.png', async (req, reply) => {
+    const g = Number((req.params as { groesse: string }).groesse);
+    const groesse = SYMBOL_GROESSEN.find((x) => x === g);
+    if (!groesse) throw new BusinessError('Unbekannte Symbolgröße.', 404);
+    const modul = activeModules().find((m) => m.appSymbol);
+    if (!modul?.appSymbol) return reply.redirect(`/push-${groesse}.png`);
+    return reply.type('image/png').header('Cache-Control', 'public, max-age=86400').send(modul.appSymbol(groesse));
   });
 }

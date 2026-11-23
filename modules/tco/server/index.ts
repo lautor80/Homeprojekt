@@ -381,6 +381,8 @@ const tco: ServerModule = {
   sperrObjekte: [{ type: 'PLATZZEIT', text: 'Platzzeit', permission: `${P_PLATZ.buchen}|${P_PLATZ.admin}|${P_PLATZ.serie}` }],
   registrierung: { pfad: '/api/m/tco/platz/registrierung', titel: 'Zum Vereinsportal registrieren', text: 'Zugang für Mitglieder und Hallennutzer – Mitglieder nach Prüfung durch den Verein, Hallennutzer nach Bestätigung der E-Mail-Adresse.' },
   pushArten: TCO_PUSH_ARTEN,
+  // Vereinswappen weiß auf Vereinsorange (assets/app-*.png, aus logo_weiss.png)
+  appSymbol: (groesse) => asset(`app-${groesse}.png`),
   auditObjects: [
     { type: 'TURNIER', text: 'Turnier', permission: P_TURNIER.display },
     { type: 'REGISTRIERUNG', text: 'Registrierung Hallennutzer', permission: P_PLATZ.admin },

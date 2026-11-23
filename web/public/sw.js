@@ -7,7 +7,7 @@ self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = {}; }
   e.waitUntil(self.registration.showNotification(d.titel || 'Portal', {
-    body: d.text || '', icon: '/push-192.png', badge: '/push-192.png', data: { pfad: typeof d.pfad === 'string' && d.pfad.startsWith('/') ? d.pfad : '/' },
+    body: d.text || '', icon: '/api/push/symbol-192.png', badge: '/push-192.png', data: { pfad: typeof d.pfad === 'string' && d.pfad.startsWith('/') ? d.pfad : '/' },
   }));
 });
 

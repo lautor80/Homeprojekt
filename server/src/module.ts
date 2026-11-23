@@ -33,6 +33,8 @@ export interface ServerModule {
   permissions: PermissionDef[];
   /** Arten von Push-Nachrichten aufs Handy, die Benutzer je Art ein- und ausschalten (lib/push.ts) */
   pushArten?: import('./lib/push.js').PushArt[];
+  /** Symbol auf dem Home-Bildschirm des Handys (PNG, quadratisch, 180/192/512px); das erste aktive Modul gewinnt, sonst die Glocke */
+  appSymbol?: (groesse: 180 | 192 | 512) => Buffer;
   /**
    * Objekttypen mit Änderungsbelegen und die Berechtigung, mit der ein Benutzer
    * die Historie eines einzelnen Objekts sehen darf (Button "Änderungshistorie").
