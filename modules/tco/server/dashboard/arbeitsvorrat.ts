@@ -30,6 +30,7 @@ import { aufgaben as projektzeitAufgaben } from '../projekte/zeiten.js';
 import { funktionAktiv } from '../../../../server/src/funktionsschalter.js';
 import { aufgaben as mahnAufgaben } from '../mahnung/lauf.js';
 import { P_MAHN } from '../mahnung/logik.js';
+import { aufgaben as vorstandAufgaben, P_VS } from '../vorstand/logik.js';
 
 // Der Typ gehört seit #232 (V2) dem Kern – der Arbeitsvorrat steht auf der Startseite für alle Anwendungen
 export type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
@@ -62,6 +63,8 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
   if (can(req, 'tco.projekte:edit')) out.push(...await projektzeitAufgaben(db));
   // Mahnwesen: Vorschlag freigeben, Forderung nach der letzten Stufe manuell klären, nicht per E-Mail erreichbare Schuldner, fehlgeschlagener Lauf
   if (can(req, P_MAHN.display)) out.push(...await mahnAufgaben(db));
+  // Vorstandssitzungen: fällige und überfällige Aufgaben aus den Protokollen, Protokolle im Entwurf für die Freigabe
+  if (can(req, P_VS.edit) || can(req, P_VS.approve)) out.push(...await vorstandAufgaben(db, { aufgaben: can(req, P_VS.edit), freigabe: can(req, P_VS.approve) }));
 
   // Kassenwart (#232, E3): aus der Zeit der doppelten Pflege steht in den Gläubigerdaten noch eine andere IBAN als beim Verein –
   // einmalige Entscheidung, bis dahin zieht die Lastschrift weiter über das bisherige Konto ein

@@ -44,6 +44,7 @@ import { TCO_KONTEXTE } from './paperless-kontexte.js';
 import { P_VZ, verzehrRoutes } from './verzehr/routes.js';
 import { kalenderRoutes, P_KAL } from './kalender/routes.js';
 import { checklistenRoutes, P_CL } from './checklisten/routes.js';
+import { P_VS, vorstandRoutes } from './vorstand/routes.js';
 import { mailFolge, mailWiederholen } from './mailwiederholen.js';
 import { mailPersonen } from './mailpersonen.js';
 import { mailGesperrt, mailUnzustellbar } from './emailsperre.js';
@@ -167,6 +168,7 @@ async function routes(app: FastifyInstance) {
   await verzehrRoutes(app);
   await kalenderRoutes(app);
   await checklistenRoutes(app);
+  await vorstandRoutes(app);
   await mitgliederRoutes(app);
   await gruppenRoutes(app);
   await rundschreibenRoutes(app);
@@ -212,6 +214,9 @@ const tco: ServerModule = {
     { area: 'Allgemein', app: 'Vereinskalender', id: P_KAL.edit, text: 'Veranstaltungen anlegen, ändern, absagen und löschen, Teilnehmerlisten (CSV), Rückmeldungen für Mitglieder setzen, Einladungen per E-Mail versenden, Gruppen/Mannschaften pflegen' },
     { area: 'Allgemein', app: 'Checklisten', id: P_CL.display, text: 'Checklisten für Veranstaltungen ansehen und als PDF drucken: Schritte, Verantwortliche, Fälligkeiten und Stand je Veranstaltung' },
     { area: 'Allgemein', app: 'Checklisten', id: P_CL.edit, text: 'Checklisten pflegen: anlegen, ändern, kopieren und löschen, Schritte und Kategorien pflegen, Veranstaltungen und Termine zuordnen, Schritte abhaken', requires: [P_CL.display] },
+    { area: 'Allgemein', app: 'Vorstandssitzungen', id: P_VS.display, text: 'Vorstandssitzungen ansehen: Protokolle mit Teilnehmern, Tagesordnung, Beschlüssen, Aufgaben und Anlagen, Beschlussregister, PDF' },
+    { area: 'Allgemein', app: 'Vorstandssitzungen', id: P_VS.edit, text: 'Vorstandssitzungen anlegen und protokollieren: Teilnahme, Tagesordnung, Beschlüsse, Aufgaben (auch abhaken), Anlagen, Veranstaltung verknüpfen oder anlegen, alte Protokolle aus Markdown importieren, Vorstandsgruppe einstellen', requires: [P_VS.display] },
+    { area: 'Allgemein', app: 'Vorstandssitzungen', id: P_VS.approve, text: 'Protokolle von Vorstandssitzungen freigeben (danach schreibgeschützt) und die Freigabe für Korrekturen zurücknehmen', requires: [P_VS.display] },
     { area: 'Allgemein', app: 'Fanshop', id: 'tco.fanshop:display', text: 'Fanshop: Kachel und Menüpunkt zum Onlineshop des Vereins (externe Seite, öffnet in neuem Tab)' },
 
     // Mein Bereich (#232, N1): was ein Mitglied, Hallennutzer oder Trainer für sich selbst tut – im Menü an einer Stelle
@@ -427,6 +432,8 @@ const tco: ServerModule = {
     { type: 'KAL_ANMELDUNG', text: 'An-/Abmeldung Veranstaltung', permission: P_KAL.edit },
     { type: 'KAL_GRUPPE', text: 'Mitgliedergruppe / Mannschaft', permission: P_KAL.edit },
     { type: 'CL_CHECKLISTE', text: 'Checkliste (Kopf, Schritte, Veranstaltungen, Stand)', permission: P_CL.display },
+    { type: 'VS_SITZUNG', text: 'Vorstandssitzung (Kopf, Teilnehmer, Tagesordnung, Beschlüsse, Aufgaben)', permission: P_VS.display },
+    { type: 'VS_CFG', text: 'Einstellung Vorstandssitzungen (Vorstandsgruppe)', permission: P_VS.display },
     { type: 'CL_KATEGORIE', text: 'Kategorie einer Checkliste', permission: P_CL.display },
     { type: 'KAL_EINLADUNG', text: 'Einladung zu einer Veranstaltung (Versand)', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },
