@@ -12,7 +12,7 @@ flowchart LR
   end
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
-      B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten<br/>Fanshop"]
+      B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten<br/>Vorstandssitzungen<br/>Fanshop"]
       B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Zeiten<br/>Schaden melden"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere<br/>Spielberichte"]
@@ -75,6 +75,7 @@ flowchart LR
 | Allgemein | Präsentationen | `/tco/praesentationen` | `tco.praesentation:display` |  |
 | Allgemein | Vereinskalender | `/tco/kalender` | `tco.kalender:anmelden\|tco.kalender:edit` | Veranstaltungen, Mannschaften, An- und Abmeldung |
 | Allgemein | Checklisten | `/tco/checklisten` | `tco.checklisten:display` | Veranstaltungen vorbereiten: Schritte, Verantwortliche, Termine |
+| Allgemein | Vorstandssitzungen | `/tco/vorstand` | `tco.vorstand:display` | Protokolle, Beschlüsse und Aufgaben des Vorstands |
 | Allgemein | Fanshop | `/tco/fanshop` | `` | Vereinskleidung und Teamausstattung im Onlineshop (öffnet in neuem Tab) |
 | Mein Bereich | Meine Daten | `/tco/meine-daten` | `tco.meinedaten:edit\|tco.meinkonto:edit` | Kontakt, Bankverbindung, Verträge, Kündigung |
 | Mein Bereich | Platz buchen | `/tco/platz-buchen` | `tco.platzbuchung:edit` | Freiplätze und Halle – eigene Buchungen mit Preisen |
@@ -225,5 +226,6 @@ flowchart LR
 | turnier | 41 |
 | upload | 2 |
 | verzehr | 29 |
+| vorstand | 28 |
 | zaehler | 16 |
 | zuwendung | 18 |
