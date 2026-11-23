@@ -344,7 +344,7 @@ export async function laeufeLesen(db: Db) {
     select laufid, sollper, mit_mb, mit_jt, faellig::text as faellig, anz_pos, anz_tx, summe::float8 as summe, status,
            zahl_datum::text as zahl_datum, fi_datum::text as fi_datum, ernam, erdat::text as erdat, pl_doc_id,
            (select max(internenr) from tco.soll_pos p where p.laufid = k.laufid) as internenr
-      from tco.soll_kopf k order by laufid desc`;
+      from tco.soll_kopf k where typ = 'BEITRAG' order by laufid desc`;
 }
 
 export async function laufLesen(db: Db, laufid: string) {
@@ -371,28 +371,32 @@ export async function laufStornieren(tx: Db, laufid: string) {
   await tx`delete from tco.soll_pos where laufid = ${laufid}`;
   await tx`update tco.soll_kopf set status = 'S' where laufid = ${laufid}`;
   await tx`update tco.vz_belege set laufid = null where laufid = ${laufid} and status <> 'BEZAHLT'`;
+  // Hallenrechnungen (Lauf der Hallen-Lastschrift): wieder für den nächsten Lauf frei
+  await tx`update tco.rgkopf set laufid = null where laufid = ${laufid}`;
 }
 
 // ---------------------------------------------------------------- Zusammenspiel mit FI Belege
-export interface OffenerLauf { laufid: string; sollper: string; faellig: string | null; summe: number; anzahl: number; konto: string; text: string }
+export interface OffenerLauf { laufid: string; typ: string; sollper: string; faellig: string | null; summe: number; anzahl: number; konto: string; text: string }
 
 /** Offene Läufe (erzeugt, noch nicht verbucht) mit Summe der offenen Positionen und Hauptkonto */
 export async function offeneLaeufe(db: Db): Promise<OffenerLauf[]> {
   const rows = await db`
-    select k.laufid, k.sollper, k.faellig::text as faellig, p.konto, sum(p.betrag)::float8 as summe, count(*)::int as n
+    select k.laufid, k.typ, k.sollper, k.faellig::text as faellig, p.konto, sum(p.betrag)::float8 as summe, count(*)::int as n
       from tco.soll_kopf k join tco.soll_pos p on p.laufid = k.laufid and coalesce(p.status, '') = ''
      where k.status in ('E', 'Z')
-     group by k.laufid, k.sollper, k.faellig, p.konto`;
+     group by k.laufid, k.typ, k.sollper, k.faellig, p.konto`;
   const m = new Map<string, OffenerLauf & { max: number }>();
   for (const r of rows) {
-    const l = m.get(r.laufid) ?? { laufid: r.laufid, sollper: r.sollper, faellig: r.faellig, summe: 0, anzahl: 0, konto: r.konto, max: 0, text: '' };
+    const l = m.get(r.laufid) ?? { laufid: r.laufid, typ: r.typ, sollper: r.sollper, faellig: r.faellig, summe: 0, anzahl: 0, konto: r.konto, max: 0, text: '' };
     l.summe = runden(l.summe + r.summe);
     l.anzahl += r.n;
     if (r.summe > l.max) { l.max = r.summe; l.konto = r.konto; }
     m.set(r.laufid, l);
   }
   return [...m.values()].map(({ max: _m, ...l }) => ({
-    ...l, text: `Sollstellung Lauf ${Number(l.laufid)} (${l.sollper.slice(4, 6)}/${l.sollper.slice(0, 4)}, ${l.anzahl} Positionen)`,
+    ...l, text: l.typ === 'HALLE'
+      ? `Hallen-Lastschrift Lauf ${Number(l.laufid)} (${l.anzahl} Rechnung${l.anzahl === 1 ? '' : 'en'})`
+      : `Sollstellung Lauf ${Number(l.laufid)} (${l.sollper.slice(4, 6)}/${l.sollper.slice(0, 4)}, ${l.anzahl} Positionen)`,
   })).sort((a, b) => b.laufid.localeCompare(a.laufid));
 }
 
@@ -403,17 +407,24 @@ export function laufZuZahlung(laeufe: OffenerLauf[], betrag: number, datum: stri
     .sort((a, b) => tage(a.faellig ?? datum, datum) - tage(b.faellig ?? datum, datum))[0] ?? null;
 }
 
-/** Positionen der Splitbuchung eines Laufs (Erlöskonto je Position, Text „Vertragsart/Name des Zahlers“) */
+/**
+ * Positionen der Splitbuchung eines Laufs (Erlöskonto je Position, Text „Vertragsart/Name des Zahlers“).
+ * Hallen-Lastschrift: je Rechnung eine Position auf 8003 mit Rechnungsnummer – das Buchen teilt sie nach den Erlöskonten
+ * der Rechnung auf und markiert die Rechnung als bezahlt.
+ */
 export async function laufPositionen(db: Db, laufid: string) {
-  const [k] = await db`select status from tco.soll_kopf where laufid = ${laufid}`;
+  const [k] = await db`select status, typ from tco.soll_kopf where laufid = ${laufid}`;
   if (!k) throw new BusinessError(`Sollstellung Lauf ${Number(laufid)} nicht gefunden`);
   if (!['E', 'Z'].includes(k.status)) throw new BusinessError(`Sollstellung Lauf ${Number(laufid)} ist bereits verbucht oder storniert`);
   const pos = await db`
-    select adrnr, vertragnr, konto, betrag::float8 as betrag, artname, fi_name from tco.soll_pos
+    select adrnr, vertragnr, konto, betrag::float8 as betrag, artname, fi_name, rgnr_txt from tco.soll_pos
      where laufid = ${laufid} and coalesce(status, '') = ''
      order by zahler_name, zahler_adrnr, mitglied_name, beitragsart, vertragnr`;
   if (!pos.length) throw new BusinessError(`Sollstellung Lauf ${Number(laufid)} hat keine offenen Positionen`);
-  return pos.map((p) => ({ adrnr: p.adrnr as string, vertragnr: p.vertragnr as string, gkonto: p.konto as string, betrag: p.betrag as number, text: `${String(p.artname ?? '').trim()}/${p.fi_name ?? ''}`.slice(0, 60) }));
+  return pos.map((p) => ({
+    adrnr: p.adrnr as string, vertragnr: p.vertragnr as string, gkonto: p.konto as string, betrag: p.betrag as number,
+    text: `${String(p.artname ?? '').trim()}/${p.fi_name ?? ''}`.slice(0, 60), rgnr: k.typ === 'HALLE' ? (p.rgnr_txt as string | null) : null,
+  }));
 }
 
 /** Nach dem Buchen in FI: Positionen mit interner Nummer und Position der Erlöszeile versehen, Lauf verbucht */
@@ -423,7 +434,8 @@ export async function laufVerbucht(tx: Db, laufid: string, internenr: string, da
   for (const p of pos) {
     const n = zaehler.get(p.gkonto) ?? 0;
     zaehler.set(p.gkonto, n + 1);
-    await tx`update tco.soll_pos set status = 'V', internenr = ${internenr}, fi_posnr = ${n}
+    // Hallenrechnungen werden nach Erlöskonten aufgeteilt – die Zeile der Position ist dann nicht eindeutig
+    await tx`update tco.soll_pos set status = 'V', internenr = ${internenr}, fi_posnr = ${p.rgnr ? null : n}
               where laufid = ${laufid} and adrnr = ${p.adrnr} and vertragnr = ${p.vertragnr}`;
   }
   await tx`update tco.soll_kopf set status = 'V', zahl_datum = ${datum}, fi_datum = current_date where laufid = ${laufid}`;
@@ -435,6 +447,8 @@ export async function laufVerbucht(tx: Db, laufid: string, internenr: string, da
 export async function laufZuruecksetzen(tx: Db, internenr: string): Promise<string | null> {
   const [p] = await tx`select laufid from tco.soll_pos where internenr = ${internenr} and status = 'V' limit 1`;
   if (!p) return null;
+  const [r] = await tx`select rgnr_txt from tco.soll_pos where laufid = ${p.laufid} and rueck_internenr is not null limit 1`;
+  if (r) throw new BusinessError(`Zum Lauf ${Number(p.laufid)} ist eine Rücklastschrift gebucht (Hallenrechnung ${r.rgnr_txt}) – bitte zuerst diese Buchung stornieren.`);
   await tx`update tco.soll_pos set status = '', internenr = null, fi_posnr = null where laufid = ${p.laufid} and internenr = ${internenr}`;
   await tx`update tco.soll_kopf set status = 'E', zahl_datum = null, fi_datum = null where laufid = ${p.laufid} and status = 'V'`;
   await tx`update tco.vz_belege set status = 'GESTELLT', bezahlt_am = null where laufid = ${p.laufid} and status = 'BEZAHLT'`;

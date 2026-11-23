@@ -5,6 +5,7 @@ import { condense, dat, heute, eur } from '../format.js';
 import { kontaktLesen, mailSenden, whatsappLink, type Kontakt, type MailAnhang } from '../kommunikation.js';
 import { adrnrErmitteln, positionenLesen, statusSetzen } from './daten.js';
 import { rechnungPdf } from './pdf.js';
+import { rechnungZahlart } from './lastschrift.js';
 import { kontextAktualisieren, uploadMeta, zuordnen } from '../../../../server/src/lib/paperless-mapping.js';
 import { K } from '../paperless-kontexte.js';
 
@@ -40,10 +41,11 @@ export async function paperlessNotiz(v: Verein, doknr: string | number | null | 
 }
 
 async function kopf(db: Db, rgnr: string) {
-  const [k] = await db`select rgnr_txt, kunde, adrnr, status, betrag::float8 as betrag, angelegt_am::text, doknr
+  const [k] = await db`select rgnr_txt, kunde, adrnr, status, betrag::float8 as betrag, angelegt_am::text, doknr, zahlart, einzug_ab::text as einzug_ab, laufid
                          from tco.rgkopf where rgnr_txt = ${rgnr}`;
   if (!k) throw new BusinessError(`Rechnung ${rgnr} nicht gefunden`);
-  return k as unknown as { rgnr_txt: string; kunde: string; adrnr: string | null; status: string; betrag: number; angelegt_am: string | null; doknr: string | null };
+  return k as unknown as { rgnr_txt: string; kunde: string; adrnr: string | null; status: string; betrag: number; angelegt_am: string | null; doknr: string | null;
+    zahlart: string | null; einzug_ab: string | null; laufid: string | null };
 }
 
 /** PDF erzeugen (ohne Ablage) */
@@ -61,8 +63,10 @@ export async function rechnungPdfErzeugen(db: Db, v: Verein, rgnr: string, w?: S
   const pos = await positionenLesen(db, rgnr);
   if (!pos.length) throw new BusinessError(`Rechnung ${rgnr} hat keine Positionen`);
   pos.forEach((p, i) => { p.rgpos = i + 1; });
-  const pdf = await rechnungPdf(v, k, kontakt, pos);
-  return { pdf, kopf: { ...k, adrnr }, kontakt };
+  // Lastschrift: Zahlart und angekündigter Einzug werden beim Druck festgeschrieben (Vorschau schreibt nichts)
+  const ls = await rechnungZahlart(db, v, { ...k, adrnr }, w);
+  const pdf = await rechnungPdf(v, k, kontakt, pos, ls);
+  return { pdf, kopf: { ...k, adrnr }, kontakt, lastschrift: ls };
 }
 
 /**
@@ -146,14 +150,17 @@ export const rechnungDownload = (link: string) => `Deine Rechnung kannst du 30 T
  * Standardtext der Rechnungsmail. `download` ersetzt den Satz mit dem Link – das Verzeichnis der E-Mail-Texte
  * (mailtexte.ts) setzt dort den Platzhalter {Download} ein.
  */
-export function mailTexte(v: Verein, vorname: string, rgnrs: string[], link?: string | null, download: string | null = link ? rechnungDownload(link) : null) {
+export function mailTexte(v: Verein, vorname: string, rgnrs: string[], link?: string | null, download: string | null = link ? rechnungDownload(link) : null,
+  lastschrift = false) {
   const mehrere = rgnrs.length > 1;
   const nr = rgnrs.join(', ');
   const anrede = vorname || 'zusammen';
   const betreff = mehrere ? `Rechnungen des TC Oberthal ${nr}` : `Rechnung des TC Oberthal ${nr}`;
   const text = [
     `Hallo ${anrede},`, '',
-    `vielen Dank dass du die Tennishalle des TC Oberthal genutzt hast. ${mehrere ? 'Anbei erhältst du deine Abrechnungen mit den Rechnungsnummern' : 'Anbei erhältst du deine Abrechnung mit der Rechnungsnummer'} ${nr} mit der Bitte um Überweisung auf unser Vereinskonto.`, '',
+    `vielen Dank dass du die Tennishalle des TC Oberthal genutzt hast. ${mehrere ? 'Anbei erhältst du deine Abrechnungen mit den Rechnungsnummern' : 'Anbei erhältst du deine Abrechnung mit der Rechnungsnummer'} ${nr}`
+      + (lastschrift ? '. Der Betrag wird wie auf der Rechnung angekündigt per SEPA-Lastschrift von deinem Konto eingezogen – du musst nichts weiter tun.'
+        : ' mit der Bitte um Überweisung auf unser Vereinskonto.'), '',
     ...(download ? [download, ''] : []),
     'Vielen Dank und beste Grüße',
     v.ansprechpartner ?? '',

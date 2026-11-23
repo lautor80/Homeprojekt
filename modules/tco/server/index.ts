@@ -9,6 +9,7 @@ import { ausfuehren, pruefen, TABELLEN } from './importer.js';
 import { entpacken, istZip } from '../../../server/src/lib/zip.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import { halleRoutes, P_HALLE } from './halle/routes.js';
+import { halleLastschriftRoutes, P_HALLE_LS } from './halle/lastschrift-routes.js';
 import { fiRoutes, P_FI } from './fi/routes.js';
 import { P_SOLL, sollRoutes } from './soll/routes.js';
 import { jtRoutes, P_JT } from './jt/routes.js';
@@ -155,6 +156,7 @@ async function routes(app: FastifyInstance) {
   });
 
   await halleRoutes(app);
+  await halleLastschriftRoutes(app);
   await platzRoutes(app);
   await aushangRoutes(app);
   await fiRoutes(app);
@@ -262,6 +264,8 @@ const tco: ServerModule = {
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.display, text: 'Hallenabrechnung anzeigen' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.edit, text: 'Buchungen zuordnen, Rechnungen bearbeiten, EP3 importieren' },
     { area: 'Tennishalle', app: 'Hallenabrechnung', id: P_HALLE.versand, text: 'Hallenrechnungen drucken und versenden (Paperless, E-Mail, WhatsApp)' },
+    { area: 'Tennishalle', app: 'Hallen-Lastschrift', id: P_HALLE_LS, requires: [P_HALLE.display],
+      text: 'Hallenrechnungen per SEPA-Lastschrift: Lastschriftlauf erzeugen und stornieren, Mandate der Hallenbucher erfassen und widerrufen, Einstellungen (Einschalten, Vorabankündigung, Rücklastschriftgebühr)' },
     { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.display, text: 'Hallenschlüssel: Ausgaben und Rückgaben mit Quittung, Beleg und Protokoll ansehen; offene Quittungen im Arbeitsvorrat' },
     { area: 'Tennishalle', app: 'Hallenschlüssel', id: P_SCHL.edit, requires: [P_SCHL.display],
       text: 'Hallenschlüssel ausgeben und zurücknehmen (Rechnungsposition bzw. Gutschrift in der Hallenabrechnung), Empfang bestätigen, Quittungslink senden, Beleg in Paperless ablegen, stornieren' },

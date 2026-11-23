@@ -4,6 +4,7 @@ import { dat, runden } from '../format.js';
 import { laufPositionen, laufVerbucht, laufZuruecksetzen } from '../soll/logik.js';
 import { rechnungAufteilung, zahlungAufteilen } from '../halle/daten.js';
 import { periodenPruefen } from './perioden.js';
+import { rueckPositionen, rueckVerbucht, rueckZuruecksetzen } from '../halle/lastschrift.js';
 
 /** Schreibende FI-Logik: Buchen, Storno, Rechnung und Belege zuordnen, Notizen */
 
@@ -26,9 +27,11 @@ export interface Umsatz {
   notiz?: string | null;
   /** Sammelgutschrift einer Sollstellung: Positionen kommen aus dem Lauf */
   laufid?: string | null;
+  /** Rücklastschrift einer Hallen-Lastschrift (Lauf und End-to-End-Referenz): Positionen kommen aus dem Lauf */
+  rueck?: { laufid: string; e2e: string } | null;
 }
 
-export interface Gebucht { internenr: string; belnr: string; rechnungen: string[]; belege: number[]; laufid: string | null }
+export interface Gebucht { internenr: string; belnr: string; rechnungen: string[]; belege: number[]; laufid: string | null; rueck: string[] }
 
 const TEXT_MAX = 60;
 const kurz = (s: string, n = TEXT_MAX) => (s.length > n ? s.slice(0, n) : s);
@@ -92,8 +95,21 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     if (summe !== runden(u.betrag)) {
       throw new BusinessError(`${dat(u.datum)} ${u.text.slice(0, 30)}: Summe Sollstellung Lauf ${Number(u.laufid)} (${summe.toFixed(2)}) ≠ Gutschrift (${runden(u.betrag).toFixed(2)})`);
     }
-    u.positionen = lp.map((p) => ({ gkonto: p.gkonto, betrag: p.betrag, text: p.text, rgnr: null }));
+    u.positionen = lp.map((p) => ({ gkonto: p.gkonto, betrag: p.betrag, text: p.text, rgnr: p.rgnr ?? null }));
     laufPos.set(u, lp);
+  }
+  // Rücklastschrift: Erlös je Rechnung und Bankgebühr zurück (Positionen aus dem Lauf, nicht aus der Erfassung)
+  const rueckGebuehr = new Map<Umsatz, number>();
+  const rueckDoppelt = new Set<string>();
+  for (const u of umsaetze) {
+    if (!u.rueck) continue;
+    const key = `${u.rueck.laufid}|${u.rueck.e2e}`;
+    if (rueckDoppelt.has(key)) throw new BusinessError(`Rücklastschrift ${u.rueck.e2e} ist mehrfach erfasst.`);
+    rueckDoppelt.add(key);
+    if (u.laufid) throw new BusinessError(`${dat(u.datum)} ${u.text.slice(0, 30)}: Sammelgutschrift und Rücklastschrift zugleich?`);
+    const r = await rueckPositionen(tx, u.rueck.laufid, u.rueck.e2e, u.betrag);
+    u.positionen = r.positionen;
+    rueckGebuehr.set(u, r.gebuehr);
   }
   const fehler = umsaetze.flatMap((u, i) => pruefen(u, i + 1));
   if (fehler.length) throw new BusinessError(`Bitte folgende Umsätze prüfen:\n${fehler.join('\n')}`);
@@ -186,7 +202,8 @@ export async function umsaetzeBuchen(tx: Db, umsaetze: Umsatz[], benutzer: strin
     const belege = [...new Set([...rgBelege, ...(u.belege?.length ? await belegeZuordnen(tx, internenr, u.belege) : [])])];
     if (u.notiz?.trim()) await notizAnlegen(tx, internenr, u.notiz, benutzer);
     if (u.laufid) await laufVerbucht(tx, u.laufid, internenr, u.datum);
-    out.push({ internenr, belnr, rechnungen, belege, laufid: u.laufid ?? null });
+    const rueck = u.rueck ? await rueckVerbucht(tx, u.rueck.laufid, u.rueck.e2e, internenr, u.datum, rueckGebuehr.get(u) ?? 0) : [];
+    out.push({ internenr, belnr, rechnungen, belege, laufid: u.laufid ?? null, rueck });
   }
   return out;
 }
@@ -288,13 +305,15 @@ export async function stornieren(tx: Db, internenr: string, grund: string, benut
   const rechnungen = [...new Set(rows.map((r) => r.rgnr_txt).filter(Boolean))] as string[];
   for (const rg of rechnungen) await rechnungLoesen(tx, internenr, rg);
   const lauf = await laufZuruecksetzen(tx, internenr);
+  const rueck = await rueckZuruecksetzen(tx, internenr);
   await notizAnlegen(tx, neu, `Stornogrund (Storno zu ${internenr}): ${grund.trim()}`, benutzer);
   await notizAnlegen(tx, internenr, `Storniert durch ${neu}: ${grund.trim()}`, benutzer);
   return {
     internenr: neu, belnr, rechnungen, lauf,
     text: `Buchung ${internenr} storniert – Storno-Beleg ${neu} (ext. ${belnr})`
       + (rechnungen.length ? `; Rechnung ${rechnungen.join(', ')} wieder offen` : '')
-      + (lauf ? `; Sollstellung Lauf ${Number(lauf)} wieder offen` : ''),
+      + (lauf ? `; Sollstellung Lauf ${Number(lauf)} wieder offen` : '')
+      + (rueck.length ? `; Rücklastschrift zurückgenommen – Hallenrechnung ${rueck.join(', ')} wieder bezahlt` : ''),
   };
 }
 

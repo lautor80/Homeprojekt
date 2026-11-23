@@ -1,5 +1,7 @@
 import type { WebModule } from '@core/platform';
 import { Hallenabrechnung } from './Hallenabrechnung';
+import { HallenLastschrift } from './halle/HallenLastschrift';
+import { ZahlartWaechter } from './halle/ZahlartWaechter';
 import { MailtexteKapitel } from './einstellungen/Mailtexte';
 import { Kontenfindung } from './einstellungen/Kontenfindung';
 import { ImportTab, VereinFinanzen, VereinFiPaperless, VereinHalle, VereinLogo, VereinTab, ZuVereinEinstellungen } from './Stammdaten';
@@ -117,7 +119,11 @@ const mod: WebModule = {
   // Ablagefeld unten in der Navigation: Dateien hineinziehen → Paperless (mit Voreinstellung)
   sideWidgets: [{ component: Ablage, permission: 'tco.upload:execute' }],
   // Buchungssperre aus dem Mahnwesen: Hinweis nach der Anmeldung, der bestätigt werden muss
-  waechter: [{ component: BuchungssperreWaechter, permission: 'tco.platzbuchung:edit' }],
+  waechter: [
+    { component: BuchungssperreWaechter, permission: 'tco.platzbuchung:edit' },
+    // Hallen-Lastschrift: einmalige Frage nach der Zahlart der Hallenrechnungen (nur eingeschaltet und bei Hallenbuchern)
+    { component: ZahlartWaechter, permission: 'tco.platzbuchung:edit' },
+  ],
   // Arbeitsvorrat der Startseite (#232, V2): Knopf „Zahlungsdaten“ an Einträgen „Überweisung an Einreicher“, „Bearbeiten“ an Kündigungen.
   // Den Hinweis „n neu“ zeigt der Kern am Menüeintrag „Start“ (web/src/arbeitsvorrat.tsx).
   arbeitsvorratZusatz: tcoZusatz,
@@ -209,6 +215,7 @@ const mod: WebModule = {
           text: 'Tennishalle', icon: 'building',
           children: [
             { text: 'Hallenabrechnung', icon: 'sales-order', path: '/tco/halle', permission: 'tco.halle:display' },
+            { text: 'Hallen-Lastschrift', icon: 'batch-payments', path: '/tco/hallen-lastschrift', permission: 'tco.halle:lastschrift' },
             { text: 'Hallenschlüssel', icon: 'key', path: '/tco/hallenschluessel', permission: 'tco.schluessel:display' },
             { text: 'Serienbuchung', icon: 'repost', path: '/tco/serienbuchung', permission: 'tco.platz:serie' },
             { text: 'Platzverwaltung', icon: 'map', path: '/tco/platzverwaltung', permission: 'tco.platz:admin' },
@@ -264,6 +271,7 @@ const mod: WebModule = {
     { path: '/tco/gruppen', component: Gruppen, permission: 'tco.gruppen:display' },
     { path: '/tco/rundschreiben', component: Rundschreiben, permission: 'tco.rundschreiben:display' },
     { path: '/tco/halle', component: Hallenabrechnung, permission: 'tco.halle:display' },
+    { path: '/tco/hallen-lastschrift', component: HallenLastschrift, permission: 'tco.halle:lastschrift' },
     // bisherige App „Hallenpreise“: jetzt die Sicht „Hallenpreise (Wochenplan)“ von „Produkte und Preise“ – alte Adresse bleibt gültig
     { path: '/tco/hallenpreise', component: ZuHallenpreisen, permission: 'tco.halle:display' },
     { path: '/tco/platz-buchen', component: PlatzBuchen, permission: 'tco.platzbuchung:edit' },

@@ -86,6 +86,8 @@ export async function offenePostenLesen(db: Db, v: Pick<Verein, 'zahlungsziel_ta
              nullif(trim(concat_ws(' ', m.vorname, m.nachname)), '') as mitglied
         from tco.rgkopf k left join tco.mitglieder m on m.adrnr = k.adrnr
        where k.status = any(${status}) ${liste ? db`and k.rgnr_txt = any(${liste})` : db``}
+         -- per Lastschrift angekündigt bzw. im Lauf: wird eingezogen, keine Mahnung (nach einer Rücklastschrift wieder Überweisung)
+         and coalesce(k.zahlart, '') <> 'LASTSCHRIFT'
        order by k.rgnr_txt`;
     const jeKunde = new Map<string, string | null>();
     for (const r of rows) {
