@@ -16,6 +16,7 @@ import {
   abstimmung, STAND_STATE, STAND_TEXT, STATUS_STATE, tagIso, uhrzeit, VS,
   type AufgabeZeile, type BeschlussZeile, type SitzungZeile, type Uebersicht,
 } from './typen';
+import { FormatText } from './FormatText';
 import './vorstand.css';
 
 /**
@@ -81,14 +82,14 @@ export function Vorstand() {
   ];
   const bSpalten: AnalyticalTableColumnDefinition[] = [
     { Header: 'Nr.', accessor: 'nr', width: 115 },
-    { Header: 'Beschluss', accessor: 'text', minWidth: 320, Cell: ({ row }: Cell) => <span className="portal-vs__umbruch">{row.original.text}</span> },
+    { Header: 'Beschluss', accessor: 'text', minWidth: 320, Cell: ({ row }: Cell) => <FormatText text={row.original.text} kompakt className="portal-vs__umbruch" /> },
     { Header: 'Abstimmung', accessor: 'ja', width: 170, Cell: ({ row }: Cell) => (
       <span>{abstimmung(row.original) || '–'}{row.original.ergebnis && <ObjectStatus state={row.original.ergebnis === 'ANGENOMMEN' ? 'Positive' : 'Negative'} style={{ marginLeft: '0.4rem' }}>{row.original.ergebnis === 'ANGENOMMEN' ? 'angenommen' : 'abgelehnt'}</ObjectStatus>}</span>) },
     { Header: 'Sitzung', accessor: 'sitzung_nr', width: 200, Cell: ({ row }: Cell) => (
       <span className="portal-vs__zelle2"><Link onClick={() => navigate(`/tco/vorstand/${row.original.sitzung_id}`)}>{row.original.sitzung_nr} · {dat(row.original.datum)}</Link><span className="portal-muted">{row.original.top}</span></span>) },
   ];
   const aSpalten: AnalyticalTableColumnDefinition[] = [
-    { Header: 'Aufgabe', accessor: 'text', minWidth: 280, Cell: ({ row }: Cell) => <span className="portal-vs__umbruch">{row.original.text}</span> },
+    { Header: 'Aufgabe', accessor: 'text', minWidth: 280, Cell: ({ row }: Cell) => <FormatText text={row.original.text} kompakt className="portal-vs__umbruch" /> },
     { Header: 'Wer', accessor: 'verantwortlich', width: 150 },
     { Header: 'Fällig', accessor: 'faellig', width: 110, Cell: ({ value }: Cell) => (value ? dat(value) : '–') },
     { Header: 'Stand', accessor: 'stand', width: 130, Cell: ({ row }: Cell) => <ObjectStatus state={STAND_STATE[(row.original as AufgabeZeile).stand]} inverted>{STAND_TEXT[(row.original as AufgabeZeile).stand]}</ObjectStatus> },

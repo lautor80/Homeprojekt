@@ -10,6 +10,8 @@ const MM = 72 / 25.4;
 export interface TextOpts {
   size?: number;
   bold?: boolean;
+  /** kursiv (Helvetica-Oblique); bei PDF/A mit eigenen Schriften ohne Kursivschnitt aufrecht */
+  italic?: boolean;
   color?: string;
   align?: 'L' | 'R' | 'C';
 }
@@ -82,8 +84,9 @@ export class Pdf {
     this.doc.switchToPage(i);
   }
 
-  private font(size = 9, bold = false) {
-    const name = this.pdfa ? (bold ? 'Sans-Bold' : 'Sans') : bold ? 'Helvetica-Bold' : 'Helvetica';
+  private font(size = 9, bold = false, italic = false) {
+    const name = this.pdfa ? (bold ? 'Sans-Bold' : 'Sans')
+      : italic ? (bold ? 'Helvetica-BoldOblique' : 'Helvetica-Oblique') : bold ? 'Helvetica-Bold' : 'Helvetica';
     this.doc.font(name).fontSize(size);
   }
 
@@ -104,13 +107,13 @@ export class Pdf {
   }
 
   textWidth(text: string, o: TextOpts = {}): number {
-    this.font(o.size, o.bold);
+    this.font(o.size, o.bold, o.italic);
     return this.doc.widthOfString(text) / MM;
   }
 
   text(x: number, y: number, text: string | null | undefined, o: TextOpts = {}) {
     if (!text) return;
-    this.font(o.size, o.bold);
+    this.font(o.size, o.bold, o.italic);
     let px = x;
     if (o.align === 'R') px = x - this.textWidth(text, o);
     else if (o.align === 'C') px = x - this.textWidth(text, o) / 2;
@@ -133,6 +136,11 @@ export class Pdf {
     if (!text) return 0;
     this.font(o.size, o.bold);
     return this.doc.heightOfString(text, { width: w * MM, lineGap: (o.lineGap ?? 1) * MM }) / MM;
+  }
+
+  /** anklickbarer Bereich (mm) mit Verknüpfung, z. B. über einem Text */
+  link(x: number, y: number, w: number, h: number, url: string) {
+    this.doc.link(x * MM, y * MM, w * MM, h * MM, url);
   }
 
   rect(x: number, y: number, w: number, h: number, o: RectOpts) {

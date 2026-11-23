@@ -26,7 +26,7 @@ function client() {
     const set = res.headers['set-cookie'];
     if (set) cookie = (Array.isArray(set) ? set : [set]).map((c) => c.split(';')[0]).join('; ');
     const ct = String(res.headers['content-type'] ?? '');
-    return { status: res.statusCode, body: ct.includes('json') ? JSON.parse(res.body) : res.body, roh: res.rawPayload, typ: ct };
+    return { status: res.statusCode, body: ct.includes('json') ? JSON.parse(res.body) : res.body, roh: res.rawPayload, typ: ct, kopf: res.headers };
   };
 }
 const call = client();
@@ -177,6 +177,32 @@ test('Anlagen: zur Sitzung und zum Tagesordnungspunkt, Abruf, Löschen', async (
   // falscher Tagesordnungspunkt
   r = await call('POST', `${V}/sitzungen/${sid}/anlagen`, { top_id: 999999, dateien: [{ name: 'x.pdf', data: b64(PDF) }] });
   assert.equal(r.status, 400);
+});
+
+test('Links als Anlage und formatierter Protokolltext (auch im PDF)', async () => {
+  let r = await call('POST', `${V}/sitzungen/${sid}/links`, { top_id: top, url: 'https://www.tc-oberthal.de/platz4', bezeichnung: '' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  r = await call('POST', `${V}/sitzungen/${sid}/links`, { url: 'www.nuliga.de', bezeichnung: 'Spielplan  nuLiga' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  for (const url of ['javascript:alert(1)', 'ftp://x.de/a', 'kein link']) {
+    assert.equal((await call('POST', `${V}/sitzungen/${sid}/links`, { url })).status, 400, url);
+  }
+  assert.equal((await call('POST', `${V}/sitzungen/${sid}/links`, { top_id: 999999, url: 'https://x.de' })).status, 400, 'fremder TOP');
+  const s = (await call('GET', `${V}/sitzungen/${sid}`)).body;
+  const links = s.anlagen.filter((a: any) => a.url);
+  assert.deepEqual(links.map((a: any) => [a.dateiname, a.url, a.top_id, a.groesse]), [
+    ['tc-oberthal.de', 'https://www.tc-oberthal.de/platz4', top, 0], ['Spielplan nuLiga', 'https://www.nuliga.de/', null, 0],
+  ]);
+  // Abruf einer Link-Anlage leitet weiter
+  const w = await call('GET', `${V}/sitzungen/${sid}/anlagen/${links[0].id}`);
+  assert.equal(w.status, 302);
+  assert.equal(w.kopf.location, 'https://www.tc-oberthal.de/platz4');
+  // formatierter Text wird gespeichert, wie er ist, und im PDF gesetzt (Prüfung unten beim PDF)
+  await sql`update tco.vs_tops set text = ${'**Ergebnis:** Angebot *B* ist ~~teurer~~ günstiger.\n\n- Ausführung im **März**\n- Details: [Angebot](https://www.tc-oberthal.de/angebot) und https://www.nuliga.de\n1. erstens\n2. zweitens'} where id = ${top}`;
+  const pdf = await call('GET', `${V}/sitzungen/${sid}/pdf`);
+  assert.equal(pdf.status, 200);
+  assert.equal(pdf.roh.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdf.roh.toString('latin1').includes('/URI (https://www.tc-oberthal.de/angebot)'), 'Verknüpfung im PDF anklickbar');
 });
 
 test('Arbeitsvorrat: überfällige Aufgabe und Protokoll zur Freigabe, abhaken aus dem Arbeitsvorrat', async () => {

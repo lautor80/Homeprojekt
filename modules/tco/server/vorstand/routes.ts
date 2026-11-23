@@ -6,7 +6,7 @@ import { dateityp } from '../../../../server/src/lib/dateityp.js';
 import { entpacken, istZip } from '../../../../server/src/lib/zip.js';
 import { DB, vereinLesen } from '../verein.js';
 import {
-  anlageAnlegen, anlageLoeschen, aufgabeErledigt, aufgabenLesen, beschluesseLesen, cfgLesen, cfgSpeichern, eintragAendern, eintragAnlegen,
+  anlageAnlegen, anlageLoeschen, linkAnlegen, aufgabeErledigt, aufgabenLesen, beschluesseLesen, cfgLesen, cfgSpeichern, eintragAendern, eintragAnlegen,
   eintragLoeschen, eventSetzen, eventsZurAuswahl, gastAnlegen, importAusfuehren, P_VS, rueckmeldungenUebernehmen, sitzungAendern, sitzungAnlegen,
   sitzungenLesen, sitzungLesen, sitzungLoeschen, statusSetzen, teilnahmeAlle, teilnahmeSetzen, teilnehmerLoeschen, topAendern, topAnlegen,
   topLoeschen, topsOrdnen, vorstandEintragen, vorstandLesen,
@@ -236,10 +236,19 @@ export async function vorstandRoutes(app: FastifyInstance) {
     return { text: `${dateien.length} Anlage${dateien.length === 1 ? '' : 'n'} gesichert.` };
   });
 
+  /** Verknüpfung (URL) als Anlage zur Sitzung oder zum Tagesordnungspunkt */
+  app.post('/vorstand/sitzungen/:id/links', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ top_id: nr.nullish(), url: z.string().trim().min(1, 'Bitte die Adresse angeben.').max(2000), bezeichnung: z.string().max(200).nullish() }).parse(req.body);
+    await change(req, (tx) => linkAnlegen(tx, id, { top_id: b.top_id ?? null, url: b.url, bezeichnung: b.bezeichnung ?? null }, wer(req)), { action: 'VS_ANLAGE' });
+    return { text: 'Verknüpfung hinzugefügt.' };
+  });
+
   app.get('/vorstand/sitzungen/:id/anlagen/:aid', lesen, async (req, reply) => {
     const p = z.object({ id: nr, aid: nr }).parse(req.params);
-    const [a] = await DB`select dateiname, mime, inhalt from tco.vs_anlagen where id = ${p.aid} and sitzung_id = ${p.id}`;
+    const [a] = await DB`select dateiname, mime, inhalt, url from tco.vs_anlagen where id = ${p.aid} and sitzung_id = ${p.id}`;
     if (!a) throw new BusinessError('Die Anlage gibt es nicht (mehr).', 404);
+    if (a.url) return reply.redirect(a.url as string);
     const mime = a.mime === 'text/markdown' ? 'text/plain; charset=utf-8' : (a.mime as string);
     return reply.type(mime).header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.dateiname as string)}`).send(Buffer.from(a.inhalt as Uint8Array));
   });
