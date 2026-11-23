@@ -35,7 +35,7 @@ const T = '/api/m/tco';
 const L = `${T}/halle/lastschrift`;
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 const MIA = '0000000611';           // Mitglied mit Lastschrift-Mandat
-const HUGO = '9900000711';          // reiner Hallenbucher (EP3-Kunde 711)
+const HUGO = '9990000711';          // reiner Hallenbucher, im Portal registriert (Kunde 90000711)
 
 async function anmelden(name: string) {
   const c = client();
@@ -73,7 +73,7 @@ before(async () => {
   await sql`insert into tco.mitgliedera (adrnr) values (${MIA}) on conflict do nothing`;
   await sql`insert into tco.sepa (adrnr, mandatsnr, status, angelegtam) values (${MIA}, 'TCO-611', 'X', '2020-01-01')`;
   await sql`insert into tco.kunden (zuid, zalias, status, email, vorname, nachname, strasse, plz, wohnort)
-            values ('711', 'HUGO', 'enabled', 'hugo@example.org', 'Hugo', 'Halle', 'Weg 2', '66649', 'Oberthal')`;
+            values ('90000711', 'hugo', 'portal', 'hugo@example.org', 'Hugo', 'Halle', 'Weg 2', '66649', 'Oberthal')`;
 });
 after(async () => { await app?.close(); await sql.end(); });
 
@@ -94,7 +94,7 @@ test('Hallen-Lastschrift: Entscheidung, Rechnung, Lauf, Bankimport, Rücklastsch
   const miaId = await benutzer('mia');
   const hugoId = await benutzer('hugo');
   await sql`insert into tco.mitglied_benutzer (benutzer_id, adrnr) values (${miaId}, ${MIA})`;
-  await sql`update tco.kunden set benutzer_id = ${hugoId} where zuid = '711'`;
+  await sql`update tco.kunden set benutzer_id = ${hugoId} where zuid = '90000711'`;
   const mia = await anmelden('mia');
   const hugo = await anmelden('hugo');
 
@@ -124,7 +124,7 @@ test('Hallen-Lastschrift: Entscheidung, Rechnung, Lauf, Bankimport, Rücklastsch
   assert.match(r.body.message, /IBAN ist ungültig/);
   r = await hugo('POST', `${T}/halle/zahlart/ich`, { zahlart: 'LASTSCHRIFT', kontoinhaber: 'Hugo Halle', iban: 'DE02 5001 0517 0137 0750 30', zustimmung: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.mandatsref, 'TCOH-9900000711-1');
+  assert.equal(r.body.mandatsref, 'TCOH-9990000711-1');
   r = await hugo('GET', `${T}/halle/zahlart/ich`);
   assert.deepEqual([r.body.fragen, r.body.zahlart, r.body.iban], [false, 'LASTSCHRIFT', 'DE02 •••• 5030']);
   const [z] = await sql`select ip, benutzer_id::text as b, mandatsdatum::text as d, mandatstext from tco.halle_zahlart where adrnr = ${HUGO}`;
@@ -170,7 +170,7 @@ test('Hallen-Lastschrift: Entscheidung, Rechnung, Lauf, Bankimport, Rücklastsch
   const faellig = bankTag(5);
   r = await admin('POST', `${L}/vorschlag`, { faellig });
   assert.deepEqual(r.body.pos.map((p: any) => [p.rgnr, p.betrag, p.sequenz, p.mandatsref]),
-    [['2026_801', 75, 'FRST', 'TCOH-9900000711-1'], ['2026_802', 40, 'RCUR', 'TCO-611']]);
+    [['2026_801', 75, 'FRST', 'TCOH-9990000711-1'], ['2026_802', 40, 'RCUR', 'TCO-611']]);
 
   // ---- Lauf
   r = await admin('POST', `${L}/laeufe`, { faellig, ohne: [] });
@@ -185,7 +185,7 @@ test('Hallen-Lastschrift: Entscheidung, Rechnung, Lauf, Bankimport, Rücklastsch
   assert.match(xml, /<SeqTp>RCUR<\/SeqTp>/);
   assert.match(xml, new RegExp(`<EndToEndId>TCOH${n}-1</EndToEndId>`));
   assert.match(xml, new RegExp(`<EndToEndId>TCOH${n}-2</EndToEndId>`));
-  assert.match(xml, /<MndtId>TCOH-9900000711-1<\/MndtId>/);
+  assert.match(xml, /<MndtId>TCOH-9990000711-1<\/MndtId>/);
   assert.match(xml, /<IBAN>DE89370400440532013000<\/IBAN>/);
   assert.deepEqual((await sql`select laufid from tco.rgkopf where rgnr_txt in ('2026_801', '2026_802')`).map((x) => x.laufid), [lauf, lauf]);
   assert.equal((await admin('POST', `${L}/vorschlag`, { faellig })).body.pos.length, 0, 'kein Doppeleinzug');
@@ -208,7 +208,7 @@ test('Hallen-Lastschrift: Entscheidung, Rechnung, Lauf, Bankimport, Rücklastsch
   // ---- Rücklastschrift Hugo: 75 + 3,00 Bankgebühr (Referenz aus dem Lauf)
   const eref = (await admin('GET', `${L}/laeufe/${n}`)).body.pos.find((p: any) => p.rgnr === '2026_801').e2e_id as string;
   assert.match(eref, new RegExp(`^TCOH${n}-[12]$`));
-  const rueck = csv([`${de(faellig)};${de(faellig)};Hugo Halle;RETOURE;Rücklastschrift EREF+${eref} MREF+TCOH-9900000711-1 Konto erloschen;-78,00;`]);
+  const rueck = csv([`${de(faellig)};${de(faellig)};Hugo Halle;RETOURE;Rücklastschrift EREF+${eref} MREF+TCOH-9990000711-1 Konto erloschen;-78,00;`]);
   r = await admin('POST', `${T}/fi/bank/lesen`, { konto: '1200', data: b64(rueck) });
   u = r.body.umsaetze[0];
   assert.deepEqual([u.rueck?.e2e, u.rueck?.rechnungen, u.rueck?.gebuehr], [eref, ['2026_801'], 3]);
@@ -274,7 +274,7 @@ test('Hallen-Lastschrift: Entscheidung, Rechnung, Lauf, Bankimport, Rücklastsch
 
   // Übersicht der Zahlarten; Verwaltung erfasst ein Papiermandat für Mia
   r = await admin('GET', `${L}/zahlarten`);
-  assert.deepEqual(r.body.zahlarten.map((x: any) => [x.adrnr, x.status, x.mandatsref]), [['9900000711', 'AKTIV', 'TCOH-9900000711-1'], [MIA, 'WIDERRUFEN', 'TCO-611']]);
+  assert.deepEqual(r.body.zahlarten.map((x: any) => [x.adrnr, x.status, x.mandatsref]), [['9990000711', 'AKTIV', 'TCOH-9990000711-1'], [MIA, 'WIDERRUFEN', 'TCO-611']]);
   r = await admin('POST', `${L}/zahlarten`, { adrnr: MIA, zahlart: 'LASTSCHRIFT', kontoinhaber: 'Mia Mandat', iban: 'DE02500105170137075030', mandatsdatum: '2026-01-15' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const [mz] = await sql`select quelle, status, mandatsdatum::text as d, erfasst_ueber from tco.halle_zahlart where adrnr = ${MIA}`;
