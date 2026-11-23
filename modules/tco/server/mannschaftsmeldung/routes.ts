@@ -37,14 +37,14 @@ async function eigeneAdrnr(req: FastifyRequest): Promise<string> {
 }
 
 export async function mannschaftsmeldungRoutes(app: FastifyInstance) {
-  const melden = { preHandler: requireAuth(P_MM.melden) };
+  const selbst = { preHandler: requireAuth(P_MM.melden) };
   const ansehen = { preHandler: requireAuth(P_MM.display) };
   const pflege = { preHandler: requireAuth(P_MM.edit) };
 
   // ---------------------------------------------------------------- Mein Bereich
-  app.get('/mannschaftsmeldung/meine', melden, async (req) => meineLesen(DB, await eigeneAdrnr(req)));
+  app.get('/mannschaftsmeldung/meine', selbst, async (req) => meineLesen(DB, await eigeneAdrnr(req)));
   /** eigene Angabe oder die eines Familienmitglieds */
-  app.post('/mannschaftsmeldung/meine/:id', melden, async (req) => {
+  app.post('/mannschaftsmeldung/meine/:id', selbst, async (req) => {
     const { id: n } = id.parse(req.params);
     const b = angabe.parse(req.body);
     await zurFamilie(DB, await eigeneAdrnr(req), b.adrnr);
