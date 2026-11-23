@@ -82,6 +82,13 @@ export interface Auftrag {
   /** ohne Rechnung abgeschlossen (ersetzt das frühere Ausbuchen mit 0 Euro); null = nicht abgeschlossen */
   abgeschlossen_am: string | null;
   abgeschlossen_grund: string | null;
+  /** Rechnung zur Korrektur geöffnet: diese Nummer (und dieses Datum) wird beim erneuten Erzeugen wieder vergeben */
+  faktura_reserviert: string | null;
+  fakturadatum_reserviert: string | null;
+  /** erklärt die Korrektur, steht auf der neu gedruckten Rechnung */
+  rechnung_vermerk: string | null;
+  /** Datum, an dem die korrigierte Rechnung erzeugt wurde */
+  rechnung_korrigiert_am: string | null;
 }
 
 /** Weitere Fahrt (ab Position 2) samt Adresse ihres Unternehmers */
@@ -174,6 +181,10 @@ function mapAuftrag(r: Record<string, unknown>): Auftrag {
     leistungsdatum: isoDate(r.leistungsdatum),
     abgeschlossen_am: isoDate(r.abgeschlossen_am),
     abgeschlossen_grund: (r.abgeschlossen_grund as string | null) ?? null,
+    faktura_reserviert: (r.faktura_reserviert as string | null) ?? null,
+    fakturadatum_reserviert: isoDate(r.fakturadatum_reserviert),
+    rechnung_vermerk: (r.rechnung_vermerk as string | null) ?? null,
+    rechnung_korrigiert_am: isoDate(r.rechnung_korrigiert_am),
   };
 }
 

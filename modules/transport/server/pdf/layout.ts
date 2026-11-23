@@ -126,6 +126,25 @@ export function abschnitt(p: Pdf, y: number, text: string) {
 }
 
 /** Text auf eine Breite (mm) kürzen – mit „…“, damit er nicht in die nächste Spalte läuft */
+/** Text an Wortgrenzen in Zeilen bis zur Breite umbrechen (höchstens max Zeilen, die letzte wird gekürzt) */
+export function umbrechen(p: Pdf, text: string, breite: number, o: { size?: number; bold?: boolean } = {}, max = 4): string[] {
+  const zeilen: string[] = [];
+  let z = '';
+  for (const w of text.split(/\s+/).filter(Boolean)) {
+    const t = z ? `${z} ${w}` : w;
+    if (z && p.textWidth(t, o) > breite) { zeilen.push(z); z = w; } else z = t;
+  }
+  if (z) zeilen.push(z);
+  if (zeilen.length > max) {
+    const rest = zeilen.slice(max - 1).join(' ');
+    zeilen.length = max - 1;
+    let t = rest;
+    while (t.length > 1 && p.textWidth(`${t}…`, o) > breite) t = t.slice(0, -1);
+    zeilen.push(`${t.trimEnd()}…`);
+  }
+  return zeilen;
+}
+
 export function kuerzen(p: Pdf, text: string, breite: number, size = 9): string {
   if (!text || p.textWidth(text, { size }) <= breite) return text;
   let t = text;

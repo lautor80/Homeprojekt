@@ -33,6 +33,7 @@ import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
 import { PaperlessError } from '../../../server/src/lib/paperless.js';
 import { hinweisAufgaben } from '../../../server/src/lib/hinweise.js';
 import { ausfuehren, dekodieren, parsen, pruefen, type Geparst, type OhneZiel } from './importer.js';
+import { rechnungenPlanen } from './rechnung-korrektur.js';
 
 export const P = {
   display: 'transport.auftraege:display',
@@ -239,6 +240,7 @@ async function routes(app: FastifyInstance) {
     const rows = await sql`
       select a.auftragsnr, a.kennzeichen, a.anlagedatum, a.frachtpreis_ek, a.frachtpreis_vk, a.rgbetrag,
              a.faktura, a.fakturadatum, a.dok_fehlen, a.abgeschlossen_am, a.abgeschlossen_grund, a.bezahlt_am,
+             a.faktura_reserviert, a.rechnung_vermerk,
              k.kundenname as kunde_txt, u.kundenname as unternehmer_txt,
              s1.plzort as s1_plzort, s1.plzort_e as s1_plzort_e, s2.plzort_e as s2_plzort_e, s1.datum as ladedatum,
              s1.auftragsnr as s1_da, s1.datum as s1_datum, s1.zeit as s1_zeit, s1.datum_e as s1_datum_e, s1.zeit_e as s1_zeit_e,
@@ -297,6 +299,9 @@ async function routes(app: FastifyInstance) {
         betrag: num(r.rgbetrag),
         faktura: r.faktura,
         fakturadatum: isoDate(r.fakturadatum),
+        // zur Korrektur geöffnet: Rechnungsnummer vorgemerkt, Auftrag wieder offen und bearbeitbar
+        fakturaReserviert: r.faktura_reserviert ?? null,
+        rechnungVermerk: r.rechnung_vermerk ?? null,
         status: r.faktura ? 'Fakturiert' : r.abgeschlossen_am ? 'Ohne Rechnung' : 'Offen',
         abgeschlossenAm: isoDate(r.abgeschlossen_am),
         abgeschlossenGrund: r.abgeschlossen_grund ?? null,
@@ -381,8 +386,8 @@ async function routes(app: FastifyInstance) {
     const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), grund: z.string().trim().min(1, 'Bitte einen Grund angeben.').max(500) }).parse(req.body);
     return change(req, async (tx) => {
       const r = await tx`update transport.auftraege set abgeschlossen_am = current_date, abgeschlossen_grund = ${b.grund}
-                          where auftragsnr = any(${b.auftraege}) and faktura is null and abgeschlossen_am is null returning auftragsnr`;
-      if (!r.count) throw new BusinessError('Unter der Auswahl ist kein offener Auftrag.');
+                          where auftragsnr = any(${b.auftraege}) and faktura is null and faktura_reserviert is null and abgeschlossen_am is null returning auftragsnr`;
+      if (!r.count) throw new BusinessError('Unter der Auswahl ist kein offener Auftrag (zur Korrektur geöffnete Rechnungen bitte neu erzeugen oder entfernen).');
       return { abgeschlossen: r.map((x) => x.auftragsnr as string).sort(), ignoriert: b.auftraege.length - r.count };
     }, { action: 'OHNE_RECHNUNG_ABGESCHLOSSEN', reason: b.grund });
   });
@@ -410,7 +415,7 @@ async function routes(app: FastifyInstance) {
       const auftraege = [];
       for (const nr of nrs.sort()) auftraege.push(await auftragLesen(nr, db));
       const kandidaten: Kandidat[] = auftraege.map((a) => ({
-        auftragsnr: a.auftragsnr, typ: a.typ, kunde: a.kunde, rechnungsempfaenger: a.rechnungsempfaenger, faktura: a.faktura,
+        auftragsnr: a.auftragsnr, typ: a.typ, kunde: a.kunde, rechnungsempfaenger: a.rechnungsempfaenger, faktura: a.faktura ?? a.faktura_reserviert,
         abgeschlossen_am: a.abgeschlossen_am, steuerrelevant: a.steuerrelevant, steuerbefreiung: a.steuerbefreiung,
         hatTraeger: a.traeger.some((t) => t.menge > 0), route: routenSchluessel(a.stops), ordernummer: a.ordernummer, ladenummer: a.ladenummer,
       }));
@@ -462,34 +467,48 @@ async function routes(app: FastifyInstance) {
     const { auftraege, sammel } = z.object({ auftraege: z.array(z.string()).min(1), sammel: z.boolean() }).parse(req.body);
     const firma = await firmaLesen();
     return change(req, async (tx) => {
-      const rows = await tx`select auftragsnr, faktura, abgeschlossen_am from transport.auftraege
-                            where auftragsnr = any(${auftraege}) order by auftragsnr for update`;
+      // zur Korrektur geöffnete Rechnungen kommen immer vollständig zurück – bei einer Sammelrechnung mit allen ihren Aufträgen
+      const rows = await tx`select auftragsnr, faktura, abgeschlossen_am, faktura_reserviert, fakturadatum_reserviert from transport.auftraege
+                            where auftragsnr = any(${auftraege})
+                               or faktura_reserviert in (select faktura_reserviert from transport.auftraege
+                                                          where auftragsnr = any(${auftraege}) and faktura_reserviert is not null)
+                            order by auftragsnr for update`;
       // ohne Rechnung abgeschlossene Aufträge bekommen keine Rechnung (erst wieder öffnen)
-      const offen = rows.filter((r) => !r.faktura && !r.abgeschlossen_am).map((r) => r.auftragsnr as string);
-      const ignoriert = rows.length - offen.length;
-      if (!offen.length) throw new BusinessError('Keine offenen Aufträge ausgewählt.');
-      if (sammel && offen.length < 2) throw new BusinessError('Für eine Sammelrechnung bitte mindestens zwei offene Aufträge auswählen.');
-      const jahr = new Date().getFullYear();
+      const plan = rechnungenPlanen(rows.map((r) => ({
+        auftragsnr: r.auftragsnr as string, faktura: r.faktura as string | null, abgeschlossen_am: r.abgeschlossen_am,
+        faktura_reserviert: r.faktura_reserviert as string | null, fakturadatum_reserviert: isoDate(r.fakturadatum_reserviert),
+      })), auftraege);
+      if (!plan.neu.length && !plan.korrekturen.length) throw new BusinessError('Keine offenen Aufträge ausgewählt.');
+      if (sammel && plan.neu.length === 1 && !plan.korrekturen.length) throw new BusinessError('Für eine Sammelrechnung bitte mindestens zwei offene Aufträge auswählen.');
       const fakturen: string[] = [];
+      // Korrektur: dieselbe Nummer und dasselbe Rechnungsdatum wie vorher; der Vermerk bekommt das Datum der Korrektur
+      for (const k of plan.korrekturen) {
+        await tx`update transport.auftraege set faktura = ${k.faktura}, fakturadatum = coalesce(${k.datum}::date, current_date),
+                        faktura_reserviert = null, fakturadatum_reserviert = null, rechnung_korrigiert_am = current_date
+                  where auftragsnr = any(${k.auftraege})`;
+        fakturen.push(k.faktura);
+      }
+      const jahr = new Date().getFullYear();
       let faktura = '';
-      for (const nr of offen) {
+      for (const nr of plan.neu) {
         if (!sammel || !faktura) {
           faktura = await naechsteNummer(tx, NR_RECHNUNG, jahr, firma.rechnung_startnr);
           fakturen.push(faktura);
         }
         await tx`update transport.auftraege set faktura = ${faktura}, fakturadatum = current_date where auftragsnr = ${nr}`;
       }
-      return { fakturen, ignoriert };
+      return { fakturen, ignoriert: plan.ignoriert, korrigiert: plan.korrekturen.map((k) => ({ faktura: k.faktura, auftraege: k.auftraege })) };
     }, { action: sammel ? 'SAMMELRECHNUNG' : 'RECHNUNG' });
   });
 
   /**
-   * Rechnungen entfernen (#170): Die Rechnung wird als Ganzes entfernt – bei einer Sammelrechnung alle ihre Aufträge.
-   * pruefen = true liefert nur, welche Rechnungen und Aufträge betroffen sind. Die Rechnungsnummer wird nicht neu vergeben;
-   * der Vorgang steht im Änderungsbeleg (RECHNUNG_ENTFERNT, mit Grund).
+   * Rechnung zur Korrektur öffnen: Die ganze Rechnung (Sammelrechnung: alle ihre Aufträge) wird wieder bearbeitbar.
+   * Nummer und Rechnungsdatum bleiben vorgemerkt und werden beim erneuten Erzeugen wieder vergeben; der Vermerk erklärt die
+   * Änderung, steht im Änderungsbeleg und auf der neu gedruckten Rechnung. Ein erfasster Zahlungseingang bleibt erhalten.
+   * pruefen = true liefert nur, welche Rechnungen und Aufträge betroffen sind.
    */
-  app.post('/rechnungen/entfernen', { preHandler: requireAuth(P.rechnungEntfernen) }, async (req) => {
-    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), pruefen: z.boolean().default(false), grund: z.string().max(500).default('') }).parse(req.body);
+  app.post('/rechnungen/korrigieren', { preHandler: requireAuth(P.rechnung) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), pruefen: z.boolean().default(false), vermerk: z.string().max(500).default('') }).parse(req.body);
     const lesen = async (db: Tx) => {
       const fakturen = (await db`select distinct faktura from transport.auftraege where auftragsnr = any(${b.auftraege}) and faktura is not null`).map((r) => r.faktura as string);
       const betroffen = fakturen.length
@@ -501,11 +520,48 @@ async function routes(app: FastifyInstance) {
       };
     };
     if (b.pruefen) return lesen(sql as unknown as Tx);
+    const vermerk = b.vermerk.trim();
+    if (!vermerk) throw new BusinessError('Bitte einen Vermerk angeben – er erklärt die Änderung und steht auf der neuen Rechnung.');
+    return change(req, async (tx) => {
+      await tx`select 1 from transport.auftraege where auftragsnr = any(${b.auftraege}) order by auftragsnr for update`;
+      const r = await lesen(tx);
+      if (!r.rechnungen.length) throw new BusinessError('Unter der Auswahl ist kein fakturierter Auftrag.');
+      await tx`update transport.auftraege set faktura_reserviert = faktura, fakturadatum_reserviert = fakturadatum,
+                      faktura = null, fakturadatum = null, rechnung_vermerk = ${vermerk}
+                where faktura = any(${r.rechnungen.map((x) => x.faktura)})`;
+      return r;
+    }, { action: 'RECHNUNG_ZUR_KORREKTUR_GEOEFFNET', reason: vermerk });
+  });
+
+  /**
+   * Rechnungen entfernen (#170): Die Rechnung wird als Ganzes entfernt – bei einer Sammelrechnung alle ihre Aufträge.
+   * pruefen = true liefert nur, welche Rechnungen und Aufträge betroffen sind. Die Rechnungsnummer wird nicht neu vergeben;
+   * der Vorgang steht im Änderungsbeleg (RECHNUNG_ENTFERNT, mit Grund).
+   */
+  app.post('/rechnungen/entfernen', { preHandler: requireAuth(P.rechnungEntfernen) }, async (req) => {
+    const b = z.object({ auftraege: z.array(z.string()).min(1).max(500), pruefen: z.boolean().default(false), grund: z.string().max(500).default('') }).parse(req.body);
+    const lesen = async (db: Tx) => {
+      // auch zur Korrektur geöffnete Rechnungen (vorgemerkte Nummer) – sie werden dann nicht mehr neu erzeugt
+      const fakturen = (await db`select distinct coalesce(faktura, faktura_reserviert) as f from transport.auftraege
+                                  where auftragsnr = any(${b.auftraege}) and coalesce(faktura, faktura_reserviert) is not null`).map((r) => r.f as string);
+      const betroffen = fakturen.length
+        ? await db`select auftragsnr, coalesce(faktura, faktura_reserviert) as faktura from transport.auftraege
+                    where faktura = any(${fakturen}) or faktura_reserviert = any(${fakturen}) order by 2, auftragsnr`
+        : [];
+      return {
+        rechnungen: fakturen.sort().map((f) => ({ faktura: f, auftraege: betroffen.filter((r) => r.faktura === f).map((r) => r.auftragsnr as string) })),
+        zusaetzlich: betroffen.map((r) => r.auftragsnr as string).filter((n) => !b.auftraege.includes(n)),
+      };
+    };
+    if (b.pruefen) return lesen(sql as unknown as Tx);
     if (!b.grund.trim()) throw new BusinessError('Bitte einen Grund angeben – er steht im Änderungsbeleg.');
     return change(req, async (tx) => {
       const r = await lesen(tx);
       if (!r.rechnungen.length) throw new BusinessError('Unter der Auswahl ist kein fakturierter Auftrag.');
-      await tx`update transport.auftraege set faktura = null, fakturadatum = null, bezahlt_am = null where faktura = any(${r.rechnungen.map((x) => x.faktura)})`;
+      const fs = r.rechnungen.map((x) => x.faktura);
+      await tx`update transport.auftraege set faktura = null, fakturadatum = null, bezahlt_am = null, faktura_reserviert = null,
+                      fakturadatum_reserviert = null, rechnung_vermerk = null, rechnung_korrigiert_am = null
+                where faktura = any(${fs}) or faktura_reserviert = any(${fs})`;
       return r;
     }, { action: 'RECHNUNG_ENTFERNT', reason: b.grund.trim() });
   });

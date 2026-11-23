@@ -3,9 +3,10 @@ import { Pdf } from '../../../../server/src/lib/pdfdoc.js';
 import { APP_ROOT } from '../../../../server/src/config.js';
 import { ciiXml, facturXXmp, FX_DATEI } from '../zugferd.js';
 import { rechnungsdaten } from '../xrechnung.js';
-import { C, RECHNUNGSNUMMER, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, kuerzen, titel } from './layout.js';
+import { C, RECHNUNGSNUMMER, adressZeilen, anschrift, folgeKopf, fusszeilen, ibanFormat, infoBlock, kopf, kuerzen, titel, umbrechen } from './layout.js';
 import { fakturaAuftraege, firmaLesen, kaeufer } from '../data.js';
 import { addTage, condense, dat, eur, heute, kategorie, netto, steuerGrund } from '../format.js';
+import { korrekturVermerk } from '../rechnung-korrektur.js';
 
 export interface RechnungPdf {
   faktura: string;
@@ -139,6 +140,16 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
   titel(p, titelText, `${pos.length} ${multi ? 'Transportaufträge' : 'Transportauftrag'}`.toUpperCase(), 'Transportrechnung · Freight Invoice', faktura);
   p.text(C.left, 127, 'Sehr geehrte Damen und Herren,');
   p.text(C.left, 131.5, 'für die folgenden Transportleistungen erlauben wir uns zu berechnen:');
+  // Korrigierte Rechnung (gleiche Nummer): Vermerk mit Datum der Korrektur, hervorgehoben vor den Positionen
+  const vermerk = korrekturVermerk(auftraege[0].rechnung_vermerk, auftraege[0].rechnung_korrigiert_am);
+  let y = 139;
+  if (vermerk) {
+    const zeilen = umbrechen(p, vermerk, C.right - C.left - 6, { size: 8.5, bold: true });
+    const h = 3 + zeilen.length * 4;
+    p.rect(C.left, 134.5, C.right - C.left, h, { fill: C.soft, stroke: C.line, lw: 0.25, radius: 1 });
+    zeilen.forEach((z, i) => p.text(C.left + 3, 138 + i * 4, z, { size: 8.5, bold: true }));
+    y = 134.5 + h + 5;
+  }
 
   // ---- Positionen ----
   const kopfzeile = (y: number) => {
@@ -149,7 +160,6 @@ export async function rechnungPdf(faktura: string): Promise<RechnungPdf | null> 
     p.text(190, y, 'NETTO', { ...o, align: 'R' });
     p.line(C.left, y + 2, C.right, y + 2, C.ink, 0.4);
   };
-  let y = 139;
   kopfzeile(y);
   y += 6;
   pos.forEach((ps, idx) => {

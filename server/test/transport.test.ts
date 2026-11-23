@@ -688,3 +688,69 @@ test('Stop-Vorschläge: bekannte Lade-/Entladestellen und Zeitvorgaben, „laut 
   assert.ok(!r.body.orte.some((o: any) => String(o.firma).toLowerCase() === 'laut lfs'));
   assert.ok(r.body.zeiten.includes('07:00-08:30'));
 });
+
+test('Rechnung korrigieren: wieder öffnen, bearbeiten, mit derselben Nummer und demselben Datum neu erzeugen, Vermerk auf der Rechnung', async () => {
+  const r0 = await call('POST', `${T}/adressen`, { kundenname: 'Korrekturtest Spedition GmbH', land: 'DE', plz: '66606', ort: 'St. Wendel', email: 'rechnung@korrekturtest.example', force: true });
+  assert.equal(r0.status, 200, JSON.stringify(r0.body));
+  const kunde = r0.body.adrnr as number;
+  const neu = (await call('GET', `${T}/neu/F`)).body;
+  neu.stops[0] = { ...neu.stops[0], firma: 'Korrekturtest Werk', plzort: '66606 St. Wendel', land: 'DE', firma_e: 'Korrekturtest Lager', plzort_e: '54290 Trier', land_e: 'DE' };
+  const anlegen = async () => {
+    const r = await call('POST', `${T}/auftraege`, { ...neu, kunde, unternehmer: kunde, kennzeichen: 'KT-1', frachtpreis_ek: 200, frachtpreis_vk: 150 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.auftragsnr as string;
+  };
+  const [k1, k2, k3] = [await anlegen(), await anlegen(), await anlegen()];
+  const re = await call('POST', `${T}/rechnungen`, { auftraege: [k1, k2], sammel: true });
+  assert.equal(re.status, 200, JSON.stringify(re.body));
+  const faktura = re.body.fakturen[0] as string;
+  await sql`update transport.auftraege set fakturadatum = '2026-11-02' where faktura = ${faktura}`;
+  const gestern = (await sql`select (current_date - 1)::text as d`)[0].d as string;
+  assert.equal((await call('POST', `${T}/zahlungen`, { auftraege: [k1], bezahltAm: gestern })).status, 200);
+  // fakturiert: nur eingeschränkt änderbar
+  let a = (await call('GET', `${T}/auftraege/${k1}`)).body;
+  assert.equal((await call('PUT', `${T}/auftraege/${k1}`, { ...a, frachtpreis_ek: 999 })).status, 200);
+  assert.equal(Number((await call('GET', `${T}/auftraege/${k1}`)).body.frachtpreis_ek), 200);
+
+  // prüfen: ganze Sammelrechnung; ohne Vermerk nicht; ohne Rechnung nicht
+  let ko = await call('POST', `${T}/rechnungen/korrigieren`, { auftraege: [k1], pruefen: true });
+  assert.deepEqual(ko.body, { rechnungen: [{ faktura, auftraege: [k1, k2].sort() }], zusaetzlich: [k2] });
+  assert.equal((await call('POST', `${T}/rechnungen/korrigieren`, { auftraege: [k1] })).status, 400, 'ohne Vermerk');
+  assert.equal((await call('POST', `${T}/rechnungen/korrigieren`, { auftraege: [k3], vermerk: 'x' })).status, 400, 'nicht fakturiert');
+  ko = await call('POST', `${T}/rechnungen/korrigieren`, { auftraege: [k1], vermerk: 'Frachtpreis nach Absprache angepasst' });
+  assert.equal(ko.status, 200, JSON.stringify(ko.body));
+  a = (await call('GET', `${T}/auftraege/${k1}`)).body;
+  assert.deepEqual([a.faktura, a.faktura_reserviert, a.fakturadatum_reserviert, a.rechnung_vermerk], [null, faktura, '2026-11-02', 'Frachtpreis nach Absprache angepasst']);
+  const zeile = (await call('GET', `${T}/auftraege?jahr=ALL&fakt=ALL`)).body.find((r: any) => r.auftragsnr === k2);
+  assert.deepEqual([zeile.status, zeile.fakturaReserviert], ['Offen', faktura]);
+  // jetzt voll bearbeitbar; nicht ohne Rechnung abschließbar, nicht zusammenführbar
+  assert.equal((await call('PUT', `${T}/auftraege/${k1}`, { ...a, frachtpreis_ek: 250 })).status, 200);
+  assert.equal(Number((await call('GET', `${T}/auftraege/${k1}`)).body.frachtpreis_ek), 250);
+  assert.equal((await call('POST', `${T}/auftraege/abschliessen`, { auftraege: [k1], grund: 'nein' })).status, 400);
+  assert.equal((await call('POST', `${T}/auftraege/zusammenfuehren`, { auftraege: [k1, k3] })).status, 400);
+
+  // neu erzeugen: Auswahl k1 + k3 als Einzelrechnungen → Sammelrechnung kommt vollständig mit derselben Nummer, k3 neue Nummer
+  const nr = await call('POST', `${T}/rechnungen`, { auftraege: [k1, k3], sammel: false });
+  assert.equal(nr.status, 200, JSON.stringify(nr.body));
+  assert.equal(nr.body.fakturen[0], faktura);
+  assert.equal(nr.body.fakturen.length, 2);
+  assert.notEqual(nr.body.fakturen[1], faktura);
+  assert.deepEqual(nr.body.korrigiert, [{ faktura, auftraege: [k1, k2].sort() }]);
+  const rows = await sql`select auftragsnr, faktura, fakturadatum::text as d, faktura_reserviert, bezahlt_am is not null as bezahlt, rechnung_korrigiert_am is not null as korr
+                           from transport.auftraege where auftragsnr = any(${[k1, k2]}) order by auftragsnr`;
+  assert.ok(rows.every((r) => r.faktura === faktura && r.d === '2026-11-02' && !r.faktura_reserviert && r.bezahlt && r.korr), JSON.stringify(rows));
+  // Vermerk in der E-Rechnung
+  const xr = (await call('GET', `${T}/xrechnung/${faktura}`)).body;
+  assert.match(xr.xml, /<cbc:Note>Korrigierte Rechnung vom \d{2}\.\d{2}\.\d{4}: Frachtpreis nach Absprache angepasst<\/cbc:Note>/);
+  assert.equal((await call('GET', `${T}/pdf/R/${faktura}`)).status, 200);
+  const hist = (await call('GET', `/api/audit/object/AUFTRAG/${k2}`)).body;
+  assert.ok(hist.some((d: { action: string }) => d.action === 'RECHNUNG_ZUR_KORREKTUR_GEOEFFNET'), JSON.stringify(hist.map((d: any) => d.action)));
+
+  // erneut öffnen und dann entfernen: vorgemerkte Nummer verfällt
+  assert.equal((await call('POST', `${T}/rechnungen/korrigieren`, { auftraege: [k2], vermerk: 'doch storniert' })).status, 200);
+  const ent = await call('POST', `${T}/rechnungen/entfernen`, { auftraege: [k2], grund: 'Korrektur verworfen' });
+  assert.equal(ent.status, 200, JSON.stringify(ent.body));
+  assert.deepEqual(ent.body.rechnungen, [{ faktura, auftraege: [k1, k2].sort() }]);
+  const leer = await sql`select count(*)::int as n from transport.auftraege where auftragsnr = any(${[k1, k2]}) and (faktura is not null or faktura_reserviert is not null or rechnung_vermerk is not null)`;
+  assert.equal(leer[0].n, 0);
+});

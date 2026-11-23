@@ -92,6 +92,7 @@ export function AuftragDetail() {
   // Anzahl der gespeicherten weiteren Fahrten: gedruckt wird der gespeicherte Stand
   const [fahrtenGespeichert, setFahrtenGespeichert] = useState(0);
   const [abschliessen, setAbschliessen] = useState(false);
+  const [korrigieren, setKorrigieren] = useState(false);
 
   const ladeAdressen = useCallback(() => api.get<AdrDD[]>(`${T}/adressen`).then(setAdrDD), []);
   const ladeWerte = useCallback(() => api.get<Werte>(`${T}/werte`).then(setWerte), []);
@@ -286,8 +287,40 @@ export function AuftragDetail() {
     : `${typ === 'H' ? 'Holzträgerauftrag' : 'Frachtauftrag'} ${nr}`;
   const unter = isNew ? 'Noch nicht gespeichert (Nummer wird beim Speichern vergeben)'
     : a.faktura ? `Fakturiert mit ${a.faktura} am ${dat(a.fakturadatum)}`
+    : a.faktura_reserviert ? `Rechnung ${a.faktura_reserviert} zur Korrektur geöffnet`
     : a.abgeschlossen_am ? `Ohne Rechnung abgeschlossen am ${dat(a.abgeschlossen_am)}` : 'Offen';
-  const kannAbschliessen = !isNew && darfBearbeiten && !a.faktura && !a.abgeschlossen_am;
+  const kannAbschliessen = !isNew && darfBearbeiten && !a.faktura && !a.faktura_reserviert && !a.abgeschlossen_am;
+  const darfRechnung = can('transport.rechnungen:create');
+
+  /** Rechnung zur Korrektur öffnen: ganze Rechnung, Nummer und Datum bleiben vorgemerkt, der Vermerk kommt auf die neue Rechnung */
+  async function korrekturOeffnen(vermerk: string) {
+    setKorrigieren(false);
+    try {
+      const r = await api.post<{ rechnungen: { faktura: string; auftraege: string[] }[] }>(`${T}/rechnungen/korrigieren`, { auftraege: [nr], vermerk });
+      await lade();
+      const weitere = r.rechnungen.flatMap((x) => x.auftraege).filter((x) => x !== nr);
+      toast(`Rechnung ${r.rechnungen.map((x) => x.faktura).join(', ')} zur Korrektur geöffnet${weitere.length ? ` (mit Auftrag ${weitere.join(', ')})` : ''}.`, 6000);
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  /** Speichern und die zur Korrektur geöffnete Rechnung mit derselben Nummer neu erzeugen, dann zur Vorschau */
+  async function speichernUndRechnung() {
+    setBusy(true);
+    setError(null);
+    try {
+      await ordnerBereit(true);
+      await api.put(`${T}/auftraege/${nr}`, { ...a, typ });
+      const r = await api.post<{ korrigiert: { faktura: string; auftraege: string[] }[] }>(`${T}/rechnungen`, { auftraege: [nr], sammel: false });
+      await lade();
+      toast(`Rechnung ${r.korrigiert.map((k) => k.faktura).join(', ')} mit unveränderter Nummer neu erzeugt.`, 6000);
+      setDocs(r.korrigiert.map((k) => ({ url: `${T}/pdf/R/${encodeURIComponent(k.faktura)}`, filename: `Rechnung_${k.faktura}.pdf`, ablage: k.auftraege })));
+    } catch (e) {
+      setError((e as Error).message);
+      window.scrollTo({ top: 0 });
+    } finally {
+      setBusy(false);
+    }
+  }
   /** Ohne Rechnung abschließen bzw. wieder öffnen – wirkt sofort (ungespeicherte Eingaben im Formular bleiben stehen) */
   async function abschluss(grund: string | null) {
     setAbschliessen(false);
@@ -403,6 +436,12 @@ export function AuftragDetail() {
             actionsBar={
               <FlexBox style={{ gap: '0.5rem' }} alignItems="Center">
                 {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={save}>Speichern</Button>}
+                {!!a.faktura_reserviert && darfBearbeiten && darfRechnung && (
+                  <Button icon="lead" loading={busy} onClick={speichernUndRechnung} tooltip={`Speichern und Rechnung ${a.faktura_reserviert} mit derselben Nummer neu erzeugen`}>Speichern und Rechnung erzeugen</Button>
+                )}
+                {fakturiert && darfBearbeiten && darfRechnung && (
+                  <Button icon="edit" onClick={() => setKorrigieren(true)} tooltip="Rechnung wieder öffnen, Auftrag ändern und mit derselben Rechnungsnummer neu erzeugen">Rechnung korrigieren</Button>
+                )}
                 {kannAbschliessen && <Button icon="complete" onClick={() => setAbschliessen(true)} tooltip="Der Auftrag bekommt keine Rechnung und gilt nicht mehr als offen">Ohne Rechnung abschließen</Button>}
                 <MenuButton text="Drucken" icon="print" items={[
                   { text: 'Transportauftrag', onClick: () => drucken('T') },
@@ -439,6 +478,19 @@ export function AuftragDetail() {
               <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
                 Der Auftrag ist fakturiert ({a.faktura} vom {dat(a.fakturadatum)}) und kann nicht mehr geändert werden –
                 ausgenommen „Dokumente fehlen“, die Besonderheiten und die Zuordnung von Dokumenten.
+              </MessageStrip>
+            )}
+            {!!a.faktura_reserviert && (
+              <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '1rem' }}>
+                Rechnung {a.faktura_reserviert} vom {dat(a.fakturadatum_reserviert ?? null)} ist zur Korrektur geöffnet
+                {a.rechnung_vermerk ? ` – Vermerk: ${a.rechnung_vermerk}` : ''}. Der Auftrag lässt sich bearbeiten;
+                „Speichern und Rechnung erzeugen“ (oder „Einzelrechnungen“ in der Auftragsliste) vergibt wieder die Nummer {a.faktura_reserviert} mit
+                demselben Rechnungsdatum. Der Vermerk steht mit dem Datum der Korrektur auf der neuen Rechnung.
+              </MessageStrip>
+            )}
+            {!!a.faktura && !!a.rechnung_korrigiert_am && (
+              <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
+                Korrigierte Rechnung vom {dat(a.rechnung_korrigiert_am)}{a.rechnung_vermerk ? ` – ${a.rechnung_vermerk}` : ''}.
               </MessageStrip>
             )}
             {!!a.abgeschlossen_am && !a.faktura && (
@@ -525,6 +577,7 @@ export function AuftragDetail() {
                 <F label="Faktura">
                   {a.faktura
                     ? <ObjectStatus state="Positive">{a.faktura} vom {dat(a.fakturadatum)}</ObjectStatus>
+                    : a.faktura_reserviert ? <ObjectStatus state="Critical">{a.faktura_reserviert} in Korrektur</ObjectStatus>
                     : a.abgeschlossen_am ? <ObjectStatus state="Information">ohne Rechnung abgeschlossen</ObjectStatus>
                     : <ObjectStatus state="Critical">offen</ObjectStatus>}
                 </F>
@@ -660,6 +713,9 @@ export function AuftragDetail() {
                      text={`Auftrag ${nr} bekommt keine Rechnung und gilt nicht mehr als offen. Er bleibt erhalten und lässt sich jederzeit wieder öffnen. Der Grund steht im Änderungsbeleg und in der Auftragsliste.`}
                      onConfirm={(grund) => abschluss(grund)} onCancel={() => setAbschliessen(false)} />
 
+      <ConfirmDialog open={korrigieren} title="Rechnung korrigieren" confirmText="Zur Korrektur öffnen" askReason
+                     text={`Rechnung ${a.faktura ?? ''} wird zur Korrektur geöffnet – bei einer Sammelrechnung mit allen ihren Aufträgen. Danach lässt sich der Auftrag bearbeiten; „Speichern und Rechnung erzeugen“ vergibt wieder die Nummer ${a.faktura ?? ''} mit demselben Rechnungsdatum.\n\nBitte als Grund einen Vermerk angeben: Er erklärt die Änderung, steht mit dem Datum der Korrektur auf der neuen Rechnung und im Änderungsbeleg.`}
+                     onConfirm={korrekturOeffnen} onCancel={() => setKorrigieren(false)} />
       <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
       {!isNew && nr && <VersandDialog auftraege={[nr]} open={versand} onClose={() => setVersand(false)} />}
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />

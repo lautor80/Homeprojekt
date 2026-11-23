@@ -35,6 +35,8 @@ export interface Auftrag {
   faktura?: string | null; fakturadatum?: string | null;
   /** ohne Rechnung abgeschlossen (ersetzt das frühere Ausbuchen mit 0 Euro) */
   abgeschlossen_am?: string | null; abgeschlossen_grund?: string | null;
+  /** Rechnung zur Korrektur geöffnet: vorgemerkte Nummer, Vermerk */
+  faktura_reserviert?: string | null; fakturadatum_reserviert?: string | null; rechnung_vermerk?: string | null; rechnung_korrigiert_am?: string | null;
   stops: Stop[]; traeger: Traeger[]; fahrten?: Fahrt[];
   kundeAdr?: Adresse | null; unternehmerAdr?: Adresse | null; reAdr?: Adresse | null;
   typ: 'F' | 'H';
@@ -45,6 +47,8 @@ export interface ListRow {
   fakturadatum: string | null; status: 'Offen' | 'Fakturiert' | 'Ohne Rechnung'; dokFehlen: boolean;
   /** Anzahl Fahrten (1 = nur der Auftrag selbst), alle Unternehmer für die Suche, Abschluss ohne Rechnung */
   fahrten: number; unternehmerNamen: string; abgeschlossenAm: string | null; abgeschlossenGrund: string | null;
+  /** Rechnung zur Korrektur geöffnet: diese Nummer wird beim erneuten Erzeugen wieder vergeben */
+  fakturaReserviert?: string | null; rechnungVermerk?: string | null;
   /** nur mit Recht transport.ladezeiten:display: Ladetermin erster Stop, Entladetermin letzte Entladestelle */
   laden?: Termin | null; entladen?: Termin | null;
   /** nur mit Recht transport.abrechnung:display: angelegt · abgerechnet · bezahlt (überfällig 3 Tage nach Fälligkeit) */
