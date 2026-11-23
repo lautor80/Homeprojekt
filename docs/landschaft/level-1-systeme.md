@@ -13,9 +13,9 @@ flowchart LR
   subgraph STACK["Heimserver · Docker-Stack (Portainer)"]
     subgraph PORTAL["3 · Vereinsportal – Modul tco"]
       B_Allgemein["<b>Allgemein</b><br/>Vereinsübersicht<br/>Präsentationen<br/>Vereinskalender<br/>Checklisten<br/>Vorstandssitzungen<br/>Fanshop"]
-      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Zeiten<br/>Schaden melden"]
+      B_MeinBereich["<b>Mein Bereich</b><br/>Meine Daten<br/>Platz buchen<br/>Mein Verzehr<br/>Meine Zeiten<br/>Schaden melden<br/>Mannschaftsmeldung"]
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
-      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere"]
+      B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere<br/>Anmeldematrix"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
       B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallen-Lastschrift<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
@@ -82,6 +82,7 @@ flowchart LR
 | Mein Bereich | Mein Verzehr | `/tco/verzehr` | `tco.verzehr:edit` | Verzehr im Clubhaus auf das eigene Konto anschreiben |
 | Mein Bereich | Meine Zeiten | `/tco/meine-zeiten` | `tco.jtmeine:edit\|tco.projektzeiten:edit` | Trainingszeiten und Projektstunden zurückmelden |
 | Mein Bereich | Schaden melden | `/tco/schaden` | `tco.schaden:melden` | Etwas kaputt auf der Anlage? Mit Foto melden |
+| Mein Bereich | Mannschaftsmeldung | `/tco/mannschaftsmeldung` | `tco.mannschaftsmeldung:melden` | Für die nächste Saison angeben, in welchen Mannschaften du spielst |
 | Mitglieder | Mitglieder | `/tco/mitglieder` | `tco.mitglieder:display` | Stammdaten, Verträge, SEPA, Unterlagen |
 | Mitglieder | Mitgliedergruppen | `/tco/gruppen` | `tco.gruppen:display` | Kategorien, Gruppen und Mannschaften im Baum |
 | Mitglieder | Rundschreiben | `/tco/rundschreiben` | `tco.rundschreiben:display` | E-Mails an alle Mitglieder oder Gruppen, Versandprotokoll |
@@ -92,6 +93,7 @@ flowchart LR
 | Sport | Spielerdaten (nuLiga) | `/tco/spielerdaten` | `tco.sport:display` | ID-Nr. und LK aus der Verbandsliste abgleichen |
 | Sport | LSVS-Bestandsmeldung | `/tco/lsvs` | `tco.lsvs:display` | Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe |
 | Sport | Turniere | `/tco/turniere` | `tco.turnier:display` | KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse |
+| Sport | Anmeldematrix | `/tco/anmeldematrix` | `tco.anmeldematrix:display` | Mannschaftsmeldung je Saison: fest, Ersatz oder nicht – je Mitglied und Mannschaft |
 | Jugend | Teilnehmer Jugendtraining | `/tco/teilnehmer` | `tco.teilnehmer:display` | Trefferliste, Mitglieder/Familienbeitrag, Trainingszeiten je Saison, E-Mail |
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
@@ -211,6 +213,7 @@ flowchart LR
 | konten | 5 |
 | lsvs | 9 |
 | mahnung | 16 |
+| mannschaftsmeldung | 10 |
 | mitglieder | 79 |
 | platz | 83 |
 | praesentation | 11 |
