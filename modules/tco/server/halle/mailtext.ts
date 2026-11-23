@@ -6,13 +6,14 @@
 import type { Db, Verein } from '../verein.js';
 import { fuellen, mailtextEigen, type MailVorlage } from '../mailtexte.js';
 import { mailTexte, rechnungDownload } from './versand.js';
+import { rechnungenPerLastschrift } from './lastschrift.js';
 
 const SCHLUESSEL = 'halle.rechnung';
 
 /** Vorbelegung im Dialog „per E-Mail senden“ */
 export async function rechnungMailText(db: Db, v: Verein, vorname: string, rgnrs: string[], link?: string | null): Promise<MailVorlage> {
   const eigen = await mailtextEigen(db, SCHLUESSEL);
-  if (!eigen) return mailTexte(v, vorname, rgnrs, link);
+  if (!eigen) return mailTexte(v, vorname, rgnrs, link, undefined, await rechnungenPerLastschrift(db, v, rgnrs));
   const werte = { Vorname: vorname || 'zusammen', Rechnungsnummer: rgnrs.join(', '), Download: link ? rechnungDownload(link) : '' };
   return { betreff: fuellen(eigen.betreff, werte), text: fuellen(eigen.text, werte) };
 }

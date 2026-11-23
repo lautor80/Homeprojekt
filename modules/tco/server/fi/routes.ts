@@ -70,6 +70,7 @@ const umsatzSchema = z.object({
   belege: z.array(z.coerce.number().int().positive()).default([]),
   notiz: z.string().max(255).nullish(),
   laufid: z.string().regex(/^\d+$/).nullish(),
+  rueck: z.object({ laufid: z.string().regex(/^\d+$/), e2e: z.string().max(35) }).nullish(),
 });
 
 export async function fiRoutes(app: FastifyInstance) {
@@ -290,6 +291,7 @@ export async function fiRoutes(app: FastifyInstance) {
       positionen: u.positionen.length > 1 ? u.positionen.filter((p) => p.betrag !== 0) : u.positionen,
       // Sollstellungs-Läufe gibt es nur aus der Bankdatei
       laufid: modus === 'bank' ? u.laufid : null,
+      rueck: modus === 'bank' ? u.rueck : null,
     }));
     const erg = await change(req, async (tx) => {
       const r = await umsaetzeBuchen(tx, umsaetze, benutzer(req));
@@ -309,7 +311,8 @@ export async function fiRoutes(app: FastifyInstance) {
     return {
       gebucht: erg, warnungen: warn,
       text: `${erg.length} Buchung(en) erstellt (intern ${nrn[0]}${nrn.length > 1 ? ` bis ${nrn[nrn.length - 1]}` : ''})`
-        + (rg ? `, ${rg} Rechnung(en) verknüpft` : '') + (bl ? `, ${bl} Beleg(e) zugeordnet` : ''),
+        + (rg ? `, ${rg} Rechnung(en) verknüpft` : '') + (bl ? `, ${bl} Beleg(e) zugeordnet` : '')
+        + (erg.some((g) => g.rueck.length) ? `, Rücklastschrift: Hallenrechnung ${erg.flatMap((g) => g.rueck).join(', ')} wieder offen – bitte neu versenden` : ''),
     };
   });
 

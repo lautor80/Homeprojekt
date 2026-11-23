@@ -9,7 +9,7 @@ import { dat, dateiLesen, eur } from '../util';
 import { KontoBox, ZuordnenDialog } from './FiDialoge';
 import { AblageFlaeche } from '@core/ablage';
 import { fiBelegZiel } from './ablage';
-import { F, betragParse, betragText, heute, type BankDatei, type Konto, type OffeneRechnung, type Position } from './typen';
+import { F, betragParse, betragText, heute, type BankDatei, type Konto, type OffeneRechnung, type Position, type Rueck } from './typen';
 
 interface Row {
   uid: number;
@@ -30,6 +30,7 @@ interface Row {
   belegText: string;
   notiz: string;
   laufid: string | null;     // Sollstellung: Positionen kommen aus dem Lauf
+  rueck: Rueck | null;       // Rücklastschrift einer Hallen-Lastschrift: Positionen kommen aus dem Lauf
 }
 
 let uid = 1;
@@ -92,6 +93,7 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
         betrag: u.betrag, betragEingabe: betragText(u.betrag), statusText: u.statusText, herkunft: u.herkunft, art: u.art,
         positionen: u.positionen.length ? u.positionen.map((p, i) => pos(p.gkonto, i === 0 ? 0 : p.betrag, p.text ?? '', p.rgnr ?? null)) : [pos()],
         summenmodus: false, belege: u.belegVorschlag?.doks ?? [], belegText: u.belegVorschlag?.text ?? '', notiz: '', laufid: u.laufid,
+        rueck: u.rueck ?? null,
       })));
     } catch (e) {
       setError((e as Error).message);
@@ -104,9 +106,9 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
   const updPos = (u: number, i: number, p: Partial<Row['positionen'][number]>) =>
     upd(u, (r) => ({ ...r, art: 'hand', positionen: r.positionen.map((x, j) => (j === i ? { ...x, ...p } : x)) }));
   const leer = (): Row => ({ uid: uid++, sel: true, neu: true, datum: heute(), text: '', name: '', zweck: '', betrag: 0, betragEingabe: '', statusText: 'manuelle Buchung',
-    herkunft: '', art: 'hand', positionen: [pos()], summenmodus: false, belege: [], belegText: '', notiz: '', laufid: null });
+    herkunft: '', art: 'hand', positionen: [pos()], summenmodus: false, belege: [], belegText: '', notiz: '', laufid: null, rueck: null });
   const neueZeile = (vorlage?: Row) => setRows((l) => [...l, vorlage
-    ? { ...vorlage, uid: uid++, belege: [], belegText: '', notiz: '', statusText: `Kopie von ${vorlage.text}` }
+    ? { ...vorlage, uid: uid++, belege: [], belegText: '', notiz: '', statusText: `Kopie von ${vorlage.text}`, laufid: null, rueck: null }
     : leer()]);
 
   // leere, unberührte Erfasszeilen zählen nicht
@@ -123,7 +125,8 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
         konto, modus, iban: datei?.iban ?? null,
         umsaetze: ausgewaehlt.map((x) => {
           const b = berechnet(x);
-          return { datum: x.datum, text: x.text, betrag: b.betrag, positionen: b.positionen, belege: x.belege, notiz: x.notiz || null, laufid: x.laufid };
+          return { datum: x.datum, text: x.text, betrag: b.betrag, positionen: b.positionen, belege: x.belege, notiz: x.notiz || null, laufid: x.laufid,
+            rueck: x.rueck ? { laufid: x.rueck.laufid, e2e: x.rueck.e2e } : null };
         }),
       });
       onDone(datei?.endsaldo !== null && datei ? `${r.text} · Endsaldo Bank ${eur(datei.endsaldo)}` : r.text, r.warnungen);
@@ -177,7 +180,16 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
                   <Button design="Transparent" icon="decline" onClick={() => upd(r.uid, (x) => ({ ...x, laufid: null, art: 'hand', herkunft: '' }))}>Zuordnung aufheben</Button>
                 </div>
               );
-            })() : r.neu ? r.positionen.map((p, i) => (
+            })() : r.neu && r.rueck ? (
+              <div>
+                <ObjectStatus state="Negative" showDefaultIcon>Rücklastschrift {r.rueck.e2e} · Hallenrechnung {r.rueck.rechnungen.join(', ')}</ObjectStatus><br />
+                <Label wrappingType="Normal">
+                  Erlös und Bankgebühr ({eur(r.rueck.gebuehr)}) werden zurückgebucht; die Rechnung ist danach wieder offen (Zahlart Überweisung)
+                  {r.rueck.aufRechnung > 0 ? ` und trägt die Rücklastschriftgebühr von ${eur(r.rueck.aufRechnung)}` : ''} – bitte anschließend neu versenden.
+                </Label><br />
+                <Button design="Transparent" icon="decline" onClick={() => upd(r.uid, (x) => ({ ...x, rueck: null, art: 'hand', herkunft: '', positionen: [pos()] }))}>Zuordnung aufheben</Button>
+              </div>
+            ) : r.neu ? r.positionen.map((p, i) => (
               <div key={i} style={{ marginBottom: '0.35rem' }}>
                 <FlexBox style={{ gap: '0.25rem' }} alignItems="Center">
                   <KontoBox konten={konten} value={p.gkonto} ohne={konto} style={{ flex: 1 }} placeholder="Gegenkonto wählen …"
@@ -200,7 +212,7 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
                 )}
               </div>
             )) : <Text>{r.statusText}</Text>}
-            {r.neu && !r.laufid && !manuell && r.betrag > 0 && (datei?.laeufe.length ?? 0) > 0 && (
+            {r.neu && !r.laufid && !r.rueck && !manuell && r.betrag > 0 && (datei?.laeufe.length ?? 0) > 0 && (
               <Select style={{ width: '100%', marginTop: '0.15rem' }} onChange={(e) => {
                 const id = (e.detail.selectedOption as HTMLElement).dataset.key;
                 const l = datei!.laeufe.find((x) => x.laufid === id);
@@ -210,7 +222,7 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
                 {datei!.laeufe.map((l) => <Option key={l.laufid} data-key={l.laufid}>{l.text} · {eur(l.summe)}</Option>)}
               </Select>
             )}
-            {r.neu && !r.laufid && (
+            {r.neu && !r.laufid && !r.rueck && (
               <FlexBox style={{ gap: '0.25rem' }} wrap="Wrap">
                 <Button design="Transparent" icon="add" onClick={() => upd(r.uid, (x) => ({ ...x, art: 'hand', positionen: [...x.positionen, pos()] }))}>
                   {r.positionen.length > 1 ? 'Weitere Position' : 'Aufteilen'}

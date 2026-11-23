@@ -3,6 +3,7 @@ import { condense } from '../format.js';
 import { kontaktLesen, type Kontakt } from '../kommunikation.js';
 import { adrnrErmitteln, positionenLesen, rechnungenLesen } from './daten.js';
 import { mailTexte, mailVersand, type Schreiber } from './versand.js';
+import { rechnungenPerLastschrift } from './lastschrift.js';
 import { sammelVorlageEigen } from './mailtext.js';
 
 /**
@@ -104,7 +105,7 @@ export async function sammelversand(db: Db, v: Verein, w: Schreiber, d: { rgnrs:
       }
       const { betreff, text } = geaendert
         ? { betreff: fuellen(eigen.betreff, vorname, rgnrs), text: fuellen(eigen.text, vorname, rgnrs) }
-        : mailTexte(v, vorname, rgnrs);
+        : mailTexte(v, vorname, rgnrs, null, null, await rechnungenPerLastschrift(db, v, rgnrs));
       const r = await mailVersand(db, v, w, { rgnrs, an: email, betreff, text, neudruck: true, entwurf: false, benutzer: d.benutzer });
       zeilen.push({ quelle, ok: r.status === 'gesendet', text: [r.text, ...r.warnungen].join(' · '), rgnrs });
     } catch (e) {

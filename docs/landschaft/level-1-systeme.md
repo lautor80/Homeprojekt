@@ -17,7 +17,7 @@ flowchart LR
       B_Mitglieder["<b>Mitglieder</b><br/>Mitglieder<br/>Mitgliedergruppen<br/>Rundschreiben<br/>Mitgliedsanträge<br/>Zugänge<br/>Mitgliedsbeiträge<br/>Mitglieder-Analyse"]
       B_Sport["<b>Sport</b><br/>Spielerdaten (nuLiga)<br/>LSVS-Bestandsmeldung<br/>Turniere"]
       B_Jugend["<b>Jugend</b><br/>Teilnehmer Jugendtraining<br/>Schnuppertraining<br/>Abrechnung Jugendtraining"]
-      B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
+      B_Tennishalle["<b>Tennishalle</b><br/>Hallenabrechnung<br/>Hallen-Lastschrift<br/>Hallenschlüssel<br/>Serienbuchung<br/>Platzverwaltung<br/>Produkte und Preise"]
       B_Clubhaus["<b>Clubhaus</b><br/>Clubhausabrechnung<br/>Theke<br/>Verzehrbuch"]
       B_Instandhaltung["<b>Instandhaltung</b><br/>Schadensmeldungen<br/>Zählerstände"]
       B_Finanzen["<b>Finanzen</b><br/>Sollstellungen<br/>FI-Belege<br/>Mahnwesen<br/>Beitragsforecast<br/>Einnahmen und Ausgaben<br/>Jahresabschluss<br/>Haushaltsplan<br/>Projekte<br/>Zuwendungsbestätigungen<br/>Kontenstamm"]
@@ -95,6 +95,7 @@ flowchart LR
 | Jugend | Schnuppertraining | `/tco/schnuppertraining` | `tco.schnupper:display` | Anmeldungen, Einheiten, Beitrittslink |
 | Jugend | Abrechnung Jugendtraining | `/tco/jugendtraining` | `tco.jt:display` | Trainingszeiten, Zeitnachweise, Trainerentgelte |
 | Tennishalle | Hallenabrechnung | `/tco/halle` | `tco.halle:display` | EP3-Buchungen abrechnen |
+| Tennishalle | Hallen-Lastschrift | `/tco/hallen-lastschrift` | `tco.halle:lastschrift` |  |
 | Tennishalle | Hallenschlüssel | `/tco/hallenschluessel` | `tco.schluessel:display` |  |
 | Tennishalle | Serienbuchung | `/tco/serienbuchung` | `tco.platz:serie` | Hallenwart: mehrere Plätze, Stunden, Abos |
 | Tennishalle | Platzverwaltung | `/tco/platzverwaltung` | `tco.platz:admin` | Plätze, Buchungsregeln, Belegung, Abos |
@@ -200,7 +201,7 @@ flowchart LR
 | finanz | 3 |
 | forecast | 1 |
 | gruppen | 9 |
-| halle | 41 |
+| halle | 53 |
 | haushalt | 28 |
 | index | 6 |
 | instandhaltung | 34 |

@@ -5,6 +5,7 @@ import { addTage, runden } from '../format.js';
 import { kontenLesen, kontostand, offeneRechnungen } from './daten.js';
 import type { Position } from './buchen.js';
 import { laufZuZahlung, offeneLaeufe, type OffenerLauf } from '../soll/logik.js';
+import { lsKonfigLesen, rueckKandidaten, rueckPositionen, rueckZuUmsatz } from '../halle/lastschrift.js';
 
 /** Bankimport (BANK_FILE_READ, BANK_MATCH_EXISTING, BANK_PROPOSE_ACCOUNTS, BANK_PROPOSE_DOCS) */
 
@@ -26,6 +27,8 @@ export interface BankUmsatz {
   belegVorschlag: { doks: number[]; text: string } | null;
   buchungsText: string;        // Text der Buchung („Name Verwendungszweck“)
   laufid: string | null;       // Sollstellung (Sammelgutschrift)
+  /** Rücklastschrift einer Hallen-Lastschrift: Positionen kommen beim Buchen aus dem Lauf */
+  rueck: { laufid: string; e2e: string; rechnungen: string[]; gebuehr: number; aufRechnung: number } | null;
 }
 
 export interface BankDatei {
@@ -103,7 +106,7 @@ export function bankDateiLesen(buf: Buffer) {
     throw new BusinessError(`Keine Bankdatei: Spalten Buchungstag/Verwendungszweck/Betrag nicht gefunden. Erste Zeile: "${rows[0].join(';').slice(0, 120)}"`);
   }
   const f = (r: string[], i: number) => (i >= 0 ? (r[i] ?? '').replace(/\s*\n\s*/g, ' ').trim() : '');
-  const umsaetze: Omit<BankUmsatz, 'status' | 'statusText' | 'positionen' | 'herkunft' | 'art' | 'belegVorschlag' | 'buchungsText' | 'laufid'>[] = [];
+  const umsaetze: Omit<BankUmsatz, 'status' | 'statusText' | 'positionen' | 'herkunft' | 'art' | 'belegVorschlag' | 'buchungsText' | 'laufid' | 'rueck'>[] = [];
   let id = 0;
   for (const r of rows.slice(1)) {
     const d = datum(f(r, c.tag));
@@ -156,7 +159,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   const bis = datumListe[datumListe.length - 1];
   const u: BankUmsatz[] = d.umsaetze.map((x) => ({
     ...x, status: 'neu', statusText: 'neu', positionen: [], herkunft: '', art: 'keine', belegVorschlag: null,
-    buchungsText: kurzText(x.name, x.zweck), laufid: null,
+    buchungsText: kurzText(x.name, x.zweck), laufid: null, rueck: null,
   }));
 
   // ---- Abgleich (drei Läufe, jede vorhandene Buchung höchstens einmal)
@@ -216,8 +219,26 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   };
 
   const laufVergeben = new Set<string>();
+  const rueckOffen = await rueckKandidaten(db);
+  const rueckGebuehr = (await lsKonfigLesen(db)).gebuehr;
   for (const x of u.filter((y) => y.status === 'neu')) {
     const nz = `${x.name} ${x.zweck}`;
+    // Rücklastschrift einer Hallen-Lastschrift (End-to-End-Referenz im Verwendungszweck)
+    if (x.betrag < 0) {
+      const rk = rueckZuUmsatz(rueckOffen, x);
+      if (rk) {
+        rueckOffen.splice(rueckOffen.indexOf(rk), 1);
+        const r = await rueckPositionen(db, rk.laufid, rk.e2e, x.betrag);
+        const auf = runden(rueckGebuehr ?? r.gebuehr);
+        x.positionen = r.positionen;
+        x.rueck = { laufid: rk.laufid, e2e: rk.e2e, rechnungen: r.rechnungen, gebuehr: r.gebuehr, aufRechnung: auf };
+        x.art = 'regel';
+        x.herkunft = `Regel: Rücklastschrift Hallen-Lastschrift Lauf ${Number(rk.laufid)} (${rk.e2e}) – Hallenrechnung ${r.rechnungen.join(', ')} wird wieder offen`
+          + (auf > 0 ? `, Gebühr ${auf.toFixed(2).replace('.', ',')} € kommt auf die Rechnung` : '');
+        x.buchungsText = kurzText(`Rücklastschrift ${r.rechnungen.join(' ')}`, x.name);
+        continue;
+      }
+    }
     // Sammelgutschrift einer Sollstellung (Summe passt, Fälligkeit ±14 Tage)
     if (x.betrag > 0) {
       const l = laufZuZahlung(laeufe.filter((y) => !laufVergeben.has(y.laufid)), x.betrag, x.datum);
@@ -281,7 +302,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
 
   // ---- Belegvorschlag
   const vergeben = new Set<number>();
-  for (const x of u.filter((y) => y.status === 'neu' && !y.laufid)) {
+  for (const x of u.filter((y) => y.status === 'neu' && !y.laufid && !y.rueck)) {
     const key = musterSchluessel(x.name, x.zweck);
     if (!key) continue;
     const gkonto = x.positionen[0]?.gkonto ?? null;

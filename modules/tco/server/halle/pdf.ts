@@ -4,13 +4,17 @@ import { addTage, condense, dat } from '../format.js';
 import type { Kontakt } from '../kommunikation.js';
 import { alleFusszeilen, betragText, C, girocode, kuerzen, LEFT, umbruch } from '../pdf/layout.js';
 import type { DruckPosition } from './daten.js';
+import { ibanMaske, type RechnungLastschrift } from './lastschrift.js';
 
 /**
  * Hallenrechnung als PDF (Port von ZCL_TCO_RECHNUNG_PDF, Layout „Modern, Logo weiß“):
  * orangefarbenes Kopfband mit Logo, Positionstabelle, Zahlkarte mit GiroCode.
  * „ZU ZAHLEN“ ist der volle Rechnungsbetrag (Anzahlungen stehen nicht auf der Rechnung).
+ * Lastschrift (`ls`): Die Rechnung ist die Vorabankündigung – frühester Einzug, Mandatsreferenz, Gläubiger-ID und
+ * maskierte IBAN statt Zahlungsziel und GiroCode.
  */
-export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am: string | null; betrag: number }, kunde: Kontakt, pos: DruckPosition[]): Promise<Buffer> {
+export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am: string | null; betrag: number }, kunde: Kontakt, pos: DruckPosition[],
+  ls: RechnungLastschrift | null = null): Promise<Buffer> {
   const p = new Pdf({ title: `Rechnung ${k.rgnr_txt}`, author: v.name, creator: 'TCO Vereinsportal' });
   p.newPage();
   const datum = k.angelegt_am ?? new Date().toISOString().slice(0, 10);
@@ -30,15 +34,15 @@ export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am:
   const grau = { size: 7, color: C.grau };
   const fett = { size: 9.5, bold: true, color: C.ink };
   p.text(LEFT, 58, 'RECHNUNG AN', grau);
-  p.text(66, 58, 'ZAHLUNGSZIEL', grau);
+  p.text(66, 58, ls ? 'EINZUG AB' : 'ZAHLUNGSZIEL', grau);
   p.text(104, 58, 'ANSPRECHPARTNER', grau);
   p.text(144, 58, 'STEUERNUMMER', grau);
   p.text(LEFT, 63, kuerzen(p, name, 9.5, 46), fett);
   p.text(LEFT, 67.5, kuerzen(p, kunde.strasse, 9, 46), { size: 9, color: C.ink });
   p.text(LEFT, 72, condense(`${kunde.plz} ${kunde.ort}`), { size: 9, color: C.ink });
-  p.text(66, 63, dat(ziel), fett);
+  p.text(66, 63, dat(ls ? ls.einzugAb : ziel), fett);
   p.text(66, 69.5, 'ZAHLUNGSART', grau);
-  p.text(66, 74, 'Rechnung', fett);
+  p.text(66, 74, ls ? 'SEPA-Lastschrift' : 'Rechnung', fett);
   p.text(104, 63, v.ansprechpartner ?? '', fett);
   p.text(144, 63, v.steuernr ?? '', fett);
 
@@ -91,7 +95,12 @@ export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am:
     p.newPage();
     y = 18;
   }
-  const absaetze = [
+  const absaetze = ls ? [
+    'Vielen Dank für Ihre Buchung in unserer Tennishalle.',
+    `Den Rechnungsbetrag ziehen wir frühestens am ${dat(ls.einzugAb)} per SEPA-Lastschrift von Ihrem Konto ${ibanMaske(ls.iban)} ein `
+      + `(Mandatsreferenz ${ls.mandatsref}, Gläubiger-ID ${ls.glaeubigerId}). Sie müssen nichts weiter tun.`,
+    'Bitte sorgen Sie für ausreichende Deckung des Kontos. Kosten einer Rücklastschrift werden der Rechnung hinzugefügt.',
+  ] : [
     'Vielen Dank für Ihre Buchung in unserer Tennishalle.',
     `Wir bitten um Überweisung des Rechnungsbetrages bis zum ${dat(ziel)}. Am einfachsten geht es mit dem QR-Code rechts – einfach in der Banking-App scannen.`,
     'Bitte geben Sie bei der Überweisung die Rechnungsnummer an.',
@@ -112,8 +121,20 @@ export async function rechnungPdf(v: Verein, k: { rgnr_txt: string; angelegt_am:
   p.rect(104, y, 88, 13, { fill: C.orangeSoft, radius: 3 });
   p.rect(104, y + 7, 88, 6, { fill: C.orangeSoft });
   p.rect(104, y, 88, 64, { stroke: C.orange, lw: 0.45, radius: 3 });
-  p.text(109, y + 8.6, 'ZU ZAHLEN', { size: 8, bold: true, color: C.orangeDk });
+  p.text(109, y + 8.6, ls ? 'WIRD EINGEZOGEN' : 'ZU ZAHLEN', { size: 8, bold: true, color: C.orangeDk });
   p.text(187, y + 9.3, betragText(k.betrag), { size: 15, bold: true, color: C.orangeDk, align: 'R' });
+  if (ls) {
+    const zeilen: [string, string][] = [
+      [kuerzen(p, ls.kontoinhaber, 9, 78), 'Kontoinhaber'], [ibanMaske(ls.iban), 'IBAN'], [dat(ls.einzugAb), 'Einzug frühestens am'],
+      [ls.mandatsref, 'Mandatsreferenz'], [ls.glaeubigerId, 'Gläubiger-ID des Vereins'],
+    ];
+    zeilen.forEach(([w, l], i) => {
+      p.text(109, y + 21 + i * 8.2, w, { size: 9, bold: true, color: C.ink });
+      p.text(109, y + 24.6 + i * 8.2, l, { size: 7.5, color: C.grau });
+    });
+    alleFusszeilen(p, v);
+    return p.render();
+  }
   if (k.betrag > 0) p.qr(girocode(v, k.betrag, zweck), 109, y + 18, 31);
   p.text(146, y + 22, kuerzen(p, v.name, 9, 44), { size: 9, bold: true, color: C.ink });
   p.text(146, y + 25.8, v.bank ?? '', { size: 7.5, color: C.grau });

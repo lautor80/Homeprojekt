@@ -23,7 +23,10 @@ export interface BankUmsatz {
   saldo: number | null; status: 'neu' | 'gebucht'; statusText: string; positionen: Position[]; herkunft: string;
   art: 'regel' | 'historie' | 'keine'; belegVorschlag: { doks: number[]; text: string } | null; buchungsText: string;
   laufid: string | null;
+  /** Rücklastschrift einer Hallen-Lastschrift: Positionen kommen beim Buchen aus dem Lauf */
+  rueck: Rueck | null;
 }
+export interface Rueck { laufid: string; e2e: string; rechnungen: string[]; gebuehr: number; aufRechnung: number }
 export interface OffenerLauf { laufid: string; sollper: string; faellig: string | null; summe: number; anzahl: number; konto: string; text: string }
 export interface BankDatei {
   konto: string; info: string; iban: string | null; von: string; bis: string; endsaldo: number | null; saldoFi: number;
