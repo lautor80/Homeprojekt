@@ -81,3 +81,21 @@
 .portal-vs__imp th, .portal-vs__imp td { padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor); text-align: left; vertical-align: top; }
 .portal-vs__imp th { color: var(--sapContent_LabelColor); font-weight: 400; font-size: var(--sapFontSmallSize, 0.75rem); white-space: nowrap; }
 .portal-vs__hinweis { font-size: var(--sapFontSmallSize, 0.75rem); margin-top: 0.2rem; max-width: 18rem; }
+
+/* formatierte Protokolltexte (FormatText.tsx, server/vorstand/format.ts) */
+.portal-vs__fmt { white-space: normal; overflow-wrap: anywhere; }
+.portal-vs__fmt p { margin: 0 0 0.5rem; }
+.portal-vs__fmt ul, .portal-vs__fmt ol { margin: 0 0 0.5rem; padding-left: 1.4rem; }
+.portal-vs__fmt li { margin: 0.1rem 0; }
+.portal-vs__fmt > :last-child { margin-bottom: 0; }
+.portal-vs__fmt--kompakt p, .portal-vs__fmt--kompakt ul, .portal-vs__fmt--kompakt ol { margin-bottom: 0.2rem; }
+.portal-vs__fmt a { color: var(--sapLinkColor, #0064d9); }
+.portal-vs__fmt a:hover { color: var(--sapLink_Hover_Color, #0064d9); text-decoration: underline; }
+.portal-vs__editor { display: flex; flex-direction: column; width: 100%; border: 1px solid var(--sapField_BorderColor, #89919a); border-radius: 0.25rem; background: var(--sapField_Background, #fff); }
+.portal-vs__editor:focus-within { outline: 2px solid var(--sapContent_FocusColor, #0070f2); outline-offset: 1px; }
+.portal-vs__werkzeuge { display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; padding: 0.15rem 0.25rem; border-bottom: 1px solid var(--sapList_BorderColor, #e5e5e5); background: var(--sapList_HeaderBackground, #f5f6f7); }
+.portal-vs__trenner { width: 1px; height: 1.25rem; margin: 0 0.25rem; background: var(--sapList_BorderColor, #d9d9d9); }
+.portal-vs__eingabe { width: 100%; box-sizing: border-box; border: 0; resize: vertical; padding: 0.5rem 0.6rem; font: inherit; line-height: 1.5; color: var(--sapTextColor); background: transparent; min-height: 4.5rem; }
+.portal-vs__eingabe:focus { outline: none; }
+.portal-vs__vorschau { padding: 0.5rem 0.6rem; min-height: 4.5rem; line-height: 1.5; }
+.portal-vs__hilfe { font-size: var(--sapFontSmallSize, 0.75rem); padding: 0.25rem 0.6rem 0.35rem; border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); }

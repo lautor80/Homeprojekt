@@ -5,6 +5,7 @@
  * Der Vorstand ist die Mitgliedergruppe aus der Einstellung (tco.vs_cfg) – ohne Einstellung die Gruppe mit dem Namen
  * „Vorstand“ –, samt ihrer Untergruppen. Die Rolle eines Mitglieds ist seine Rolle in der Gruppe, sonst der Name der Untergruppe.
  */
+import { linkPruefen } from './format.js';
 import { BusinessError } from '../../../../server/src/errors.js';
 import { dateityp } from '../../../../server/src/lib/dateityp.js';
 import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
@@ -79,7 +80,8 @@ export interface Eintrag {
   verantwortlich: string | null; faellig: string | null; erledigt_am: string | null; erledigt_von: string | null;
 }
 export interface Top { id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[] }
-export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; erstellt_am: string; erstellt_von: string | null }
+/** Datei oder Verknüpfung (url gesetzt, dann ist dateiname die Bezeichnung und groesse 0) */
+export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
 export interface SitzungDetail extends Sitzung {
   teilnehmer: Teilnehmer[]; tops: Top[]; anlagen: Anlage[];
   beschlussfaehig: ReturnType<typeof beschlussfaehig>;
@@ -164,9 +166,9 @@ export async function sitzungLesen(db: Db, id: number): Promise<SitzungDetail> {
       text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[] }));
   const eintraege = (await db`select ${EINTRAG_SQL(db)} from tco.vs_eintraege x join tco.vs_tops t on t.id = x.top_id where t.sitzung_id = ${id} order by x.pos, x.id`).map(eintragAus);
   for (const e of eintraege) tops.find((t) => t.id === e.top_id)?.eintraege.push(e);
-  const anlagen = (await db`select id, top_id, dateiname, mime, groesse, erstellt_am, erstellt_von from tco.vs_anlagen where sitzung_id = ${id} order by id`)
+  const anlagen = (await db`select id, top_id, dateiname, mime, groesse, url, erstellt_am, erstellt_von from tco.vs_anlagen where sitzung_id = ${id} order by id`)
     .map((a) => ({ id: Number(a.id), top_id: a.top_id == null ? null : Number(a.top_id), dateiname: a.dateiname as string, mime: a.mime as string,
-      groesse: Number(a.groesse), erstellt_am: tagZeit(a.erstellt_am)!, erstellt_von: (a.erstellt_von as string) ?? null }));
+      groesse: Number(a.groesse), url: (a.url as string) ?? null, erstellt_am: tagZeit(a.erstellt_am)!, erstellt_von: (a.erstellt_von as string) ?? null }));
   return { ...s, teilnehmer, tops, anlagen, beschlussfaehig: beschlussfaehig(teilnehmer), naechste: UEBERGAENGE[s.status] };
 }
 
@@ -551,6 +553,22 @@ export async function anlageAnlegen(tx: Db, id: number, a: { top_id?: number | n
   const name = a.dateiname.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 200);
   const [r] = await tx`insert into tco.vs_anlagen (sitzung_id, top_id, dateiname, mime, groesse, inhalt, erstellt_von)
                        values (${id}, ${a.top_id ?? null}, ${name}, ${a.mime}, ${a.inhalt.length}, ${a.inhalt}, ${wer}) returning id`;
+  await beruehren(tx, id, wer);
+  return Number(r.id);
+}
+
+/** Verknüpfung (URL) als Anlage – zur Sitzung oder zu einem Tagesordnungspunkt; Bezeichnung leer = Rechnername der Adresse */
+export async function linkAnlegen(tx: Db, id: number, a: { top_id?: number | null; url: string; bezeichnung?: string | null }, wer: string) {
+  await sitzungFuerAenderung(tx, id);
+  if (a.top_id) {
+    const [t] = await tx`select 1 from tco.vs_tops where id = ${a.top_id} and sitzung_id = ${id}`;
+    if (!t) throw new BusinessError('Der Tagesordnungspunkt gehört nicht zu dieser Sitzung.');
+  }
+  const url = linkPruefen(a.url);
+  if (!url) throw new BusinessError('Bitte eine vollständige Web-Adresse angeben, z. B. https://www.tc-oberthal.de/…');
+  const name = (a.bezeichnung ?? '').replace(/\s+/g, ' ').trim().slice(0, 200) || new URL(url).hostname.replace(/^www\./, '');
+  const [r] = await tx`insert into tco.vs_anlagen (sitzung_id, top_id, dateiname, mime, groesse, url, erstellt_von)
+                       values (${id}, ${a.top_id ?? null}, ${name}, 'text/uri-list', 0, ${url}, ${wer}) returning id`;
   await beruehren(tx, id, wer);
   return Number(r.id);
 }

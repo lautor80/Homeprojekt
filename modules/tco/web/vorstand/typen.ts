@@ -22,7 +22,7 @@ export interface Eintrag {
   verantwortlich: string | null; faellig: string | null; erledigt_am: string | null; erledigt_von: string | null;
 }
 export interface Top { id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[] }
-export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; erstellt_am: string; erstellt_von: string | null }
+export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
 export interface SitzungDetail extends Sitzung {
   teilnehmer: Teilnehmer[]; tops: Top[]; anlagen: Anlage[];
   beschlussfaehig: { anwesend: number; gesamt: number; ok: boolean | null };

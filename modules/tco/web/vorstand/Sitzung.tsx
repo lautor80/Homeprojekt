@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, SegmentedButton, SegmentedButtonItem,
-  Select, SuggestionItem, Text, TextArea,
+  Select, SuggestionItem, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -17,6 +17,7 @@ import {
   abstimmung, tagIso, uhrzeit, VS,
   type Eintrag, type EventWahl, type SitzungDetail, type Status, type Teilnahme, type Top, type Uebersicht,
 } from './typen';
+import { FormatEditor, FormatText } from './FormatText';
 import './vorstand.css';
 
 /**
@@ -29,6 +30,8 @@ const SCHRITTE: { s: Status; text: string }[] = [
 ];
 const TEILNAHME: { s: Teilnahme; text: string }[] = [{ s: 'ANWESEND', text: 'da' }, { s: 'ENTSCHULDIGT', text: 'entsch.' }, { s: 'FEHLT', text: 'fehlt' }];
 const RUECK: Record<string, string> = { ZUSAGE: 'Zusage', ABSAGE: 'Absage', VIELLEICHT: 'vielleicht' };
+/** Rechnername einer Verknüpfung (für die Zeile der Anlage) */
+const linkZiel = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 const groesse = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const initialen = (n: string) => n.split(/[,\s]+/).filter(Boolean).slice(0, 2).reverse().map((x) => x[0]?.toUpperCase()).join('');
 
@@ -47,6 +50,8 @@ export function Sitzung() {
   const [top, setTop] = useState<TopForm | null>(null);
   const [eintrag, setEintrag] = useState<EintragForm | null>(null);
   const [gast, setGast] = useState<{ name: string; rolle: string } | null>(null);
+  /** Verknüpfung (URL) als Anlage hinzufügen: zur Sitzung (top_id null) oder zum Tagesordnungspunkt */
+  const [link, setLink] = useState<{ top_id: number | null; url: string; bezeichnung: string } | null>(null);
   const [ev, setEv] = useState<EventWahl[] | null>(null);
   const [frage, setFrage] = useState<{ titel: string; text: string; grund?: boolean; danger?: boolean; tun: (grund: string) => Promise<unknown> } | null>(null);
   const [pdf, setPdf] = useState<string | null>(null);
@@ -92,8 +97,8 @@ export function Sitzung() {
     await tun(() => api.post(`${VS}/sitzungen/${s.id}/anlagen`, { top_id, dateien }));
   }
   const anlageWaehlen = (topId: number | null) => { anlageZiel.current = topId; datei.current?.click(); };
-  const anlageLink = (a: { id: number; dateiname: string }) => (
-    <Link key={a.id} href={`${VS}/sitzungen/${s.id}/anlagen/${a.id}`} target="_blank">{a.dateiname}</Link>
+  const anlageLink = (a: { id: number; dateiname: string; url: string | null }) => (
+    <Link key={a.id} href={a.url ?? `${VS}/sitzungen/${s.id}/anlagen/${a.id}`} target="_blank" tooltip={a.url ?? undefined}>{a.dateiname}</Link>
   );
   const schieben = (i: number, um: number) => {
     const ids = s.tops.map((t) => t.id);
@@ -196,13 +201,16 @@ export function Sitzung() {
           </Section>
 
           {/* ---- Anlagen zur Sitzung */}
-          <Section title="Anlagen" count={s.anlagen.length} actions={s.pflege && s.status !== 'FREIGEGEBEN' ? <Button design="Transparent" icon="attachment" onClick={() => anlageWaehlen(null)}>Hinzufügen</Button> : undefined}>
+          <Section title="Anlagen" count={s.anlagen.length} actions={s.pflege && s.status !== 'FREIGEGEBEN' ? <>
+            <Button design="Transparent" icon="attachment" onClick={() => anlageWaehlen(null)}>Datei</Button>
+            <Button design="Transparent" icon="chain-link" onClick={() => setLink({ top_id: null, url: '', bezeichnung: '' })}>Link</Button>
+          </> : undefined}>
             {!s.anlagen.length && <Empty>Keine Anlagen.</Empty>}
             {s.anlagen.map((a) => (
               <div key={a.id} className="portal-vs__anlage">
-                <Icon name={a.mime === 'application/pdf' ? 'pdf-attachment' : a.mime.startsWith('image/') ? 'picture' : 'document'} />
+                <Icon name={a.url ? 'chain-link' : a.mime === 'application/pdf' ? 'pdf-attachment' : a.mime.startsWith('image/') ? 'picture' : 'document'} />
                 {anlageLink(a)}
-                <span className="portal-muted">{a.top_id ? `TOP ${s.tops.find((t) => t.id === a.top_id)?.nr ?? ''}` : 'Sitzung'} · {groesse(a.groesse)}</span>
+                <span className="portal-muted">{a.top_id ? `TOP ${s.tops.find((t) => t.id === a.top_id)?.nr ?? ''}` : 'Sitzung'} · {a.url ? linkZiel(a.url) : groesse(a.groesse)}</span>
                 {rw && <Button design="Transparent" icon="delete" tooltip="Anlage löschen" onClick={() => setFrage({ titel: 'Anlage löschen', danger: true, text: `„${a.dateiname}“ löschen?`, tun: () => tun(() => api.del(`${VS}/sitzungen/${s.id}/anlagen/${a.id}`)) })} />}
               </div>
             ))}
@@ -211,7 +219,7 @@ export function Sitzung() {
 
         {/* ---- Tagesordnung und Protokoll */}
         <div className="portal-vs__rechts">
-          {s.bemerkung && <Section title="Vorbemerkung"><div className="portal-vs__text">{s.bemerkung}</div></Section>}
+          {s.bemerkung && <Section title="Vorbemerkung"><FormatText text={s.bemerkung} className="portal-vs__text" /></Section>}
           <Section title="Tagesordnung und Protokoll" count={s.tops.length}
                    actions={rw ? <Button design="Transparent" icon="add" onClick={() => setTop({ titel: '', verantwortlich: '', text: '', status: 'OFFEN' })}>Tagesordnungspunkt</Button> : undefined}>
             {!s.tops.length && <Empty>Noch keine Tagesordnungspunkte.</Empty>}
@@ -231,12 +239,12 @@ export function Sitzung() {
                     </span>
                   )}
                 </header>
-                {t.text ? <div className="portal-vs__text">{t.text}</div> : rw ? <Link className="portal-vs__klein" onClick={() => setTop({ id: t.id, titel: t.titel, verantwortlich: t.verantwortlich ?? '', text: '', status: t.status })}>Protokolltext erfassen …</Link> : null}
+                {t.text ? <FormatText text={t.text} className="portal-vs__text" /> : rw ? <Link className="portal-vs__klein" onClick={() => setTop({ id: t.id, titel: t.titel, verantwortlich: t.verantwortlich ?? '', text: '', status: t.status })}>Protokolltext erfassen …</Link> : null}
                 {t.eintraege.map((e) => (
                   <div key={e.id} className={`portal-vs__eintrag portal-vs__eintrag--${e.art.toLowerCase()}`}>
                     <span className="portal-vs__art">{e.art === 'BESCHLUSS' ? `Beschluss ${e.nr}` : e.art === 'AUFGABE' ? 'Aufgabe' : 'Info'}</span>
                     <span className="portal-vs__etext">
-                      <span className={e.erledigt_am ? 'portal-vs__erledigt' : undefined}>{e.text}</span>
+                      <FormatText text={e.text} kompakt className={e.erledigt_am ? 'portal-vs__erledigt' : undefined} />
                       {e.art === 'BESCHLUSS' && (abstimmung(e) || e.ergebnis) && (
                         <span className="portal-muted">{abstimmung(e)}{e.ergebnis && <ObjectStatus state={e.ergebnis === 'ANGENOMMEN' ? 'Positive' : 'Negative'} style={{ marginLeft: '0.4rem' }}>{e.ergebnis === 'ANGENOMMEN' ? 'angenommen' : 'abgelehnt'}</ObjectStatus>}</span>
                       )}
@@ -261,6 +269,7 @@ export function Sitzung() {
                     <Button design="Transparent" icon="add" onClick={() => eintragNeu(t, 'AUFGABE')}>Aufgabe</Button>
                     <Button design="Transparent" icon="add" onClick={() => eintragNeu(t, 'INFO')}>Info</Button>
                     <Button design="Transparent" icon="attachment" onClick={() => anlageWaehlen(t.id)}>Anlage</Button>
+                    <Button design="Transparent" icon="chain-link" onClick={() => setLink({ top_id: t.id, url: '', bezeichnung: '' })}>Link</Button>
                     <span style={{ flex: 1 }} />
                     {t.status === 'OFFEN' && <Button design="Transparent" onClick={() => tun(() => api.put(`${VS}/tops/${t.id}`, { ...t, status: 'VERTAGT' }))}>Vertagen</Button>}
                     {t.status !== 'ERLEDIGT'
@@ -293,7 +302,7 @@ export function Sitzung() {
             <FieldBox label="Ende (HH:MM)"><Input value={kopf.ende} maxlength={5} onInput={(e) => setKopf({ ...kopf, ende: e.target.value })} /></FieldBox>
             <FieldBox label="Sitzungsleitung"><Input value={kopf.leitung} showSuggestions onInput={(e) => setKopf({ ...kopf, leitung: e.target.value })}>{namen.map((n) => <SuggestionItem key={n} text={n} />)}</Input></FieldBox>
             <FieldBox label="Protokoll"><Input value={kopf.protokoll_von} showSuggestions onInput={(e) => setKopf({ ...kopf, protokoll_von: e.target.value })}>{namen.map((n) => <SuggestionItem key={n} text={n} />)}</Input></FieldBox>
-            <FieldBox label="Vorbemerkung" wide><TextArea rows={3} value={kopf.bemerkung} onInput={(e) => setKopf({ ...kopf, bemerkung: e.target.value })} /></FieldBox>
+            <FieldBox label="Vorbemerkung" wide><FormatEditor label="Vorbemerkung" rows={3} value={kopf.bemerkung} onChange={(v) => setKopf({ ...kopf, bemerkung: v })} /></FieldBox>
           </FormGrid>
         </Dialog>
       )}
@@ -307,7 +316,7 @@ export function Sitzung() {
           <FormGrid>
             <FieldBox label="Titel" required><Input value={top.titel} onInput={(e) => setTop({ ...top, titel: e.target.value })} /></FieldBox>
             <FieldBox label="Bericht / verantwortlich"><Input value={top.verantwortlich} showSuggestions onInput={(e) => setTop({ ...top, verantwortlich: e.target.value })}>{namen.map((n) => <SuggestionItem key={n} text={n} />)}</Input></FieldBox>
-            <FieldBox label="Protokolltext" wide><TextArea rows={10} growing growingMaxRows={24} value={top.text} onInput={(e) => setTop({ ...top, text: e.target.value })} placeholder="Was wurde besprochen? Beschlüsse und Aufgaben werden darunter einzeln erfasst." /></FieldBox>
+            <FieldBox label="Protokolltext" wide><FormatEditor label="Protokolltext" rows={12} value={top.text} onChange={(v) => setTop({ ...top, text: v })} placeholder="Was wurde besprochen? Beschlüsse und Aufgaben werden darunter einzeln erfasst." /></FieldBox>
           </FormGrid>
         </Dialog>
       )}
@@ -322,7 +331,7 @@ export function Sitzung() {
                 }}>Sichern</Button><Button onClick={() => setEintrag(null)}>Abbrechen</Button></>} />}>
           <FormGrid>
             <FieldBox label={eintrag.art === 'BESCHLUSS' ? 'Wortlaut des Beschlusses' : eintrag.art === 'AUFGABE' ? 'Was ist zu tun?' : 'Text'} required wide>
-              <TextArea rows={4} growing value={eintrag.text} onInput={(e) => setEintrag({ ...eintrag, text: e.target.value })} />
+              <FormatEditor label={eintrag.art === 'BESCHLUSS' ? 'Wortlaut des Beschlusses' : 'Text'} rows={4} value={eintrag.text} onChange={(v) => setEintrag({ ...eintrag, text: v })} />
             </FieldBox>
             {eintrag.art === 'BESCHLUSS' && (<>
               <FieldBox label="Ja"><Input type="Number" value={eintrag.ja} onInput={(e) => setEintrag({ ...eintrag, ja: e.target.value })} /></FieldBox>
@@ -351,6 +360,19 @@ export function Sitzung() {
           <FormGrid columns={1}>
             <FieldBox label="Name" required><Input value={gast.name} onInput={(e) => setGast({ ...gast, name: e.target.value })} /></FieldBox>
             <FieldBox label="Funktion / Anlass"><Input value={gast.rolle} placeholder="z. B. Jugendtrainer, zu TOP 4" onInput={(e) => setGast({ ...gast, rolle: e.target.value })} /></FieldBox>
+          </FormGrid>
+        </Dialog>
+      )}
+
+      {link && (
+        <Dialog open headerText={`Link hinzufügen${link.top_id ? ` – TOP ${s.tops.find((t) => t.id === link.top_id)?.nr ?? ''}` : ''}`} onClose={() => setLink(null)} style={{ width: 'min(36rem, 96vw)' }}
+                footer={<Bar endContent={<><Button design="Emphasized" disabled={!link.url.trim() || busy} onClick={async () => {
+                  const ok = await tun(() => api.post(`${VS}/sitzungen/${s.id}/links`, link));
+                  if (ok) setLink(null);
+                }}>Hinzufügen</Button><Button onClick={() => setLink(null)}>Abbrechen</Button></>} />}>
+          <FormGrid>
+            <FieldBox label="Adresse (URL)" required wide><Input value={link.url} placeholder="https://…" onInput={(e) => setLink({ ...link, url: e.target.value })} /></FieldBox>
+            <FieldBox label="Bezeichnung" wide><Input value={link.bezeichnung} maxlength={200} placeholder="leer = Name der Website" onInput={(e) => setLink({ ...link, bezeichnung: e.target.value })} /></FieldBox>
           </FormGrid>
         </Dialog>
       )}
