@@ -157,3 +157,31 @@ export function namenLesen(s: string): string[] {
   }
   return teile;
 }
+
+/** Anzeigeform einer Person: „Vorname Nachname“ */
+export const personName = (p: Pick<Person, 'vorname' | 'nachname'>) => `${p.vorname} ${p.nachname}`.replace(/\s+/g, ' ').trim();
+
+/**
+ * Verantwortliche immer mit Vornamen: „weiß, kas, laub“ → „Jan Weißing, Christian Kasper, Torsten Laub“.
+ * Erst der ganze Text als eine Person („Laub, Torsten“), sonst je Teil (Trenner , ; / & + „und“): voller Name, eindeutiger
+ * Nach- oder Vorname, dann eindeutiger Anfang (ab 2 Buchstaben) von Nach- oder Vorname. Was nicht eindeutig ist, bleibt,
+ * wie es eingegeben wurde.
+ */
+export function verantwortlicheAnzeigen(text: string | null | undefined, personen: Person[]): string | null {
+  const t = (text ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  // eine Person, auch als „Nachname, Vorname“ – nur wenn höchstens ein Komma und sonst kein Trenner vorkommt
+  const ganz = /^[^,;/&+]+(?:,[^,;/&+]+)?$/.test(t) && !/\s+und\s+/i.test(t) ? personZuordnen(t, personen) : null;
+  if (ganz) return personName(ganz);
+  const teile = t.split(/\s*[,;/&+]\s*|\s+und\s+/i).map((x) => x.trim()).filter(Boolean);
+  const namen = teile.map((x) => {
+    const p = personZuordnen(x, personen);
+    if (p) return personName(p);
+    const w = norm(x);
+    if (w.length < 2 || w.includes(' ')) return x;
+    const treffer = personen.filter((q) => norm(q.nachname).startsWith(w) || (norm(q.vorname).split(' ')[0] ?? '').startsWith(w));
+    const eindeutig = [...new Map(treffer.map((q) => [personName(q), q])).values()];
+    return eindeutig.length === 1 ? personName(eindeutig[0]) : x;
+  });
+  return [...new Set(namen)].join(', ');
+}

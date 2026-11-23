@@ -88,7 +88,8 @@ export function Sitzung() {
   const gaeste = s.teilnehmer.filter((t) => t.art === 'GAST');
   const offen = vsListe.filter((t) => t.status === 'OFFEN').length;
   const bf = s.beschlussfaehig;
-  const namen = s.teilnehmer.map((t) => t.name);
+  // Vorschläge für Verantwortliche immer „Vorname Nachname“ (die Teilnehmerliste führt „Nachname, Vorname“)
+  const namen = s.teilnehmer.map((t) => (t.name.includes(',') ? t.name.split(',').map((x) => x.trim()).reverse().join(' ') : t.name));
 
   async function hochladen(l: FileList | null) {
     if (!l?.length || !s) return;

@@ -39,3 +39,22 @@ test('Link-Anlage: Adresse prüfen', () => {
   assert.equal(linkPruefen('www.nuliga.de'), 'https://www.nuliga.de/');
   for (const x of ['javascript:alert(1)', 'ftp://x.de', 'https://intern', 'kein link', '']) assert.equal(linkPruefen(x), null, x);
 });
+
+test('Verantwortliche immer mit Vornamen: Kürzel, Nach- und Vornamen, mehrere, Unklares bleibt', async () => {
+  const { verantwortlicheAnzeigen } = await import('../../modules/tco/server/vorstand/regeln.js');
+  const P = [
+    { adrnr: '1', vorname: 'Torsten', nachname: 'Laub' }, { adrnr: '2', vorname: 'Christian', nachname: 'Kasper' },
+    { adrnr: '3', vorname: 'Jan', nachname: 'Weißing' }, { adrnr: '4', vorname: 'Konstantin', nachname: 'Born' },
+    { adrnr: '5', vorname: 'Johannes', nachname: 'Haab' }, { adrnr: '6', vorname: 'Benjamin', nachname: 'Hartyniuk' },
+  ];
+  assert.equal(verantwortlicheAnzeigen('weiß, kas, laub', P), 'Jan Weißing, Christian Kasper, Torsten Laub');
+  assert.equal(verantwortlicheAnzeigen('laub', P), 'Torsten Laub');
+  assert.equal(verantwortlicheAnzeigen('jan', P), 'Jan Weißing', 'Vorname');
+  assert.equal(verantwortlicheAnzeigen('kons', P), 'Konstantin Born', 'Anfang des Vornamens');
+  assert.equal(verantwortlicheAnzeigen('Laub, Torsten', P), 'Torsten Laub', '„Nachname, Vorname“ ist eine Person');
+  assert.equal(verantwortlicheAnzeigen('Torsten Laub und born', P), 'Torsten Laub, Konstantin Born');
+  assert.equal(verantwortlicheAnzeigen('ha', P), 'ha', 'mehrdeutig (Haab, Hartyniuk) bleibt');
+  assert.equal(verantwortlicheAnzeigen('Platzwart', P), 'Platzwart');
+  assert.equal(verantwortlicheAnzeigen('laub / Laub', P), 'Torsten Laub', 'doppelt nur einmal');
+  assert.equal(verantwortlicheAnzeigen('  ', P), null);
+});

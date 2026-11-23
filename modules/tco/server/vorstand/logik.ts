@@ -13,7 +13,7 @@ import { dat, heute } from '../format.js';
 import type { Db } from '../verein.js';
 import { mdZaehlen, type MdProtokoll } from './markdown.js';
 import {
-  ART_TEXT, beschlussfaehig, beschlussNr, ergebnisAus, personZuordnen, sitzungNr, STATUS_TEXT, UEBERGAENGE,
+  ART_TEXT, beschlussfaehig, beschlussNr, ergebnisAus, personZuordnen, sitzungNr, STATUS_TEXT, UEBERGAENGE, verantwortlicheAnzeigen,
   type Ergebnis, type Person, type Status, type Teilnahme,
 } from './regeln.js';
 
@@ -33,6 +33,26 @@ export async function cfgLesen(db: Db): Promise<{ gruppe_id: number | null; grup
   if (c?.gruppe_id) return { gruppe_id: Number(c.gruppe_id), gruppe: c.name as string, automatisch: false };
   const [g] = await db`select id, name from tco.kal_gruppen where lower(trim(name)) = 'vorstand' order by (parent_id is null) desc, id limit 1`;
   return { gruppe_id: g ? Number(g.id) : null, gruppe: (g?.name as string) ?? null, automatisch: true };
+}
+
+/**
+ * Personen für die Anzeige der Verantwortlichen („Vorname Nachname“ statt „laub“): Mitglieder der Vorstandsgruppe und alle
+ * Mitglieder, die je als Vorstand an einer Sitzung teilgenommen haben (auch frühere Vorstände in alten Protokollen).
+ */
+export async function namensPersonen(db: Db): Promise<Person[]> {
+  const vs = await vorstandLesen(db, (await cfgLesen(db)).gruppe_id);
+  const tn = await db`select distinct m.adrnr, coalesce(m.vorname, '') as vorname, coalesce(m.nachname, '') as nachname
+                        from tco.vs_teilnehmer p join tco.mitglieder m on m.adrnr = p.adrnr`;
+  const alle = new Map<string, Person>();
+  for (const p of [...vs, ...tn.map((r) => ({ adrnr: r.adrnr as string, vorname: r.vorname as string, nachname: r.nachname as string }))]) {
+    if (p.nachname.trim() && !alle.has(p.adrnr)) alle.set(p.adrnr, { adrnr: p.adrnr, vorname: p.vorname.trim(), nachname: p.nachname.trim() });
+  }
+  return [...alle.values()];
+}
+/** Verantwortliche beim Sichern in die Form „Vorname Nachname“ bringen (Unklares bleibt, wie eingegeben) */
+async function verantwortlicheNormal(db: Db, v: string | null | undefined): Promise<string | null> {
+  const t = leer(v);
+  return t ? verantwortlicheAnzeigen(t, await namensPersonen(db)) : null;
 }
 
 export async function cfgSpeichern(tx: Db, gruppeId: number | null) {
@@ -162,10 +182,16 @@ export async function sitzungLesen(db: Db, id: number): Promise<SitzungDetail> {
     art: t.art as Teilnehmer['art'], status: t.status as Teilnahme, rueckmeldung: (t.rueckmeldung as string) ?? null,
   }));
   const tops = (await db`select id, pos, titel, verantwortlich, text, status from tco.vs_tops where sitzung_id = ${id} order by pos, id`)
-    .map((t, i) => ({ id: Number(t.id), pos: Number(t.pos), nr: i + 1, titel: t.titel as string, verantwortlich: (t.verantwortlich as string) ?? null,
+    .map((t, i): Top => ({ id: Number(t.id), pos: Number(t.pos), nr: i + 1, titel: t.titel as string, verantwortlich: (t.verantwortlich as string) ?? null,
       text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[] }));
   const eintraege = (await db`select ${EINTRAG_SQL(db)} from tco.vs_eintraege x join tco.vs_tops t on t.id = x.top_id where t.sitzung_id = ${id} order by x.pos, x.id`).map(eintragAus);
   for (const e of eintraege) tops.find((t) => t.id === e.top_id)?.eintraege.push(e);
+  // Verantwortliche immer mit Vornamen anzeigen (auch alte Kürzel wie „laub“, „kas“)
+  const personen = tops.some((t) => t.verantwortlich || t.eintraege.some((e) => e.verantwortlich)) ? await namensPersonen(db) : [];
+  for (const t of tops) {
+    t.verantwortlich = verantwortlicheAnzeigen(t.verantwortlich, personen);
+    for (const e of t.eintraege) e.verantwortlich = verantwortlicheAnzeigen(e.verantwortlich, personen);
+  }
   const anlagen = (await db`select id, top_id, dateiname, mime, groesse, url, erstellt_am, erstellt_von from tco.vs_anlagen where sitzung_id = ${id} order by id`)
     .map((a) => ({ id: Number(a.id), top_id: a.top_id == null ? null : Number(a.top_id), dateiname: a.dateiname as string, mime: a.mime as string,
       groesse: Number(a.groesse), url: (a.url as string) ?? null, erstellt_am: tagZeit(a.erstellt_am)!, erstellt_von: (a.erstellt_von as string) ?? null }));
@@ -209,8 +235,10 @@ export async function aufgabenLesen(db: Db, f: { offen?: boolean } = {}): Promis
      where x.art = 'AUFGABE' and (not ${!!f.offen}::boolean or x.erledigt_am is null)
      order by (x.erledigt_am is not null), x.faellig nulls last, s_datum desc, x.id`;
   const h = heute();
+  const personen = rows.some((r) => r.verantwortlich) ? await namensPersonen(db) : [];
   return rows.map((r) => {
     const e = eintragAus(r);
+    e.verantwortlich = verantwortlicheAnzeigen(e.verantwortlich, personen);
     return { ...e, sitzung_id: Number(r.sitzung_id), sitzung_nr: sitzungNr(Number(r.s_jahr), Number(r.s_lfd)), datum: r.s_datum as string,
       top: r.t_titel as string, stand: aufgabeStand(!!e.erledigt_am, e.faellig, h) };
   });
@@ -447,7 +475,7 @@ export async function topAnlegen(tx: Db, id: number, t: TopEingabe, wer: string)
   const pos = vorVerschiedenes ? Number(letzt.pos) : letzt ? Number(letzt.pos) + 1 : 0;
   if (vorVerschiedenes) await tx`update tco.vs_tops set pos = pos + 1 where id = ${letzt.id}`;
   const [r] = await tx`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich, text, status)
-                       values (${id}, ${pos}, ${t.titel.trim()}, ${leer(t.verantwortlich)}, ${leer(t.text)}, ${t.status ?? 'OFFEN'}) returning id`;
+                       values (${id}, ${pos}, ${t.titel.trim()}, ${await verantwortlicheNormal(tx, t.verantwortlich)}, ${leer(t.text)}, ${t.status ?? 'OFFEN'}) returning id`;
   await beruehren(tx, id, wer);
   return Number(r.id);
 }
@@ -455,7 +483,7 @@ export async function topAnlegen(tx: Db, id: number, t: TopEingabe, wer: string)
 export async function topAendern(tx: Db, topId: number, t: TopEingabe, wer: string) {
   const sid = await sitzungZuTop(tx, topId);
   await sitzungFuerAenderung(tx, sid);
-  await tx`update tco.vs_tops set titel = ${t.titel.trim()}, verantwortlich = ${leer(t.verantwortlich)}, text = ${leer(t.text)}, status = ${t.status ?? 'OFFEN'} where id = ${topId}`;
+  await tx`update tco.vs_tops set titel = ${t.titel.trim()}, verantwortlich = ${await verantwortlicheNormal(tx, t.verantwortlich)}, text = ${leer(t.text)}, status = ${t.status ?? 'OFFEN'} where id = ${topId}`;
   await beruehren(tx, sid, wer);
 }
 
@@ -496,6 +524,7 @@ export async function eintragAnlegen(tx: Db, topId: number, e: EintragEingabe, w
   const sid = await sitzungZuTop(tx, topId);
   const s = await sitzungFuerAenderung(tx, sid);
   const w = eintragWerte(e);
+  w.verantwortlich = await verantwortlicheNormal(tx, w.verantwortlich);
   const nr = e.art === 'BESCHLUSS' ? await naechsteBeschlussNr(tx, s.jahr) : null;
   const [p] = await tx`select coalesce(max(pos), -1) + 1 as p from tco.vs_eintraege where top_id = ${topId}`;
   const [r] = await tx`
@@ -520,6 +549,7 @@ export async function eintragAendern(tx: Db, eid: number, e: EintragEingabe, wer
     throw new BusinessError('Ein Beschluss behält seine Nummer – aus einem Beschluss wird kein anderer Eintrag und umgekehrt. Bitte löschen und neu anlegen.');
   }
   const w = eintragWerte(e);
+  w.verantwortlich = await verantwortlicheNormal(tx, w.verantwortlich);
   await tx`update tco.vs_eintraege set art = ${e.art}, text = ${e.text.trim()}, ja = ${w.ja}, nein = ${w.nein}, enthaltung = ${w.enthaltung},
              ergebnis = ${w.ergebnis}, verantwortlich = ${w.verantwortlich}, faellig = ${w.faellig} where id = ${eid}`;
   await beruehren(tx, alt.sid, wer);
