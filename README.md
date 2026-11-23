@@ -177,7 +177,7 @@ sondern diese Bausteine verwenden:
 | `ObjectHeader` | Objektkopf: Avatar/Initialen, Titel, Untertitel, Statuszeile (`ObjectStatus`), Aktionen, Attribute (Object Page Header) |
 | `Section` | Abschnitt als weiße Karte mit Titel, Anzahl, Status und Aktionen; `flush` für Tabellen (Object Page Section) |
 | `Attributes` / `Attribute` | Beschriftete Anzeigewerte im Raster (Formular-Anzeige) |
-| `Tile` | Kachel der Startseite mit optionaler Kennzahl (Launchpad-Kachel); Kennzahl über `HomeTile.kpi` im Modul |
+| `Tile` | Kachel der Startseite mit optionaler Kennzahl (Launchpad-Kachel); Kennzahl über `HomeTile.kpi` im Modul. Die Kennzahl ist nie breiter als der Platz neben dem Symbol (Bezeichnung wird gekürzt); auf dem Handy (bis 600px, z. B. Pixel 9 Pro) rutscht sie in eine eigene Zeile unter das Symbol, statt es zu überdecken – Test `server/test/kachel_kennzahl.test.ts` |
 | `FormGrid` / `TextField` / `CheckField` | Eingabeformulare in Dialogen |
 | `ConfirmDialog`, `PdfDialog`, `MenuButton`, `ChangeHistoryButton`, `toast` | Sicherheitsabfrage mit Begründung, PDF-Vorschau, Menü-Button, Änderungshistorie, Erfolgsmeldung |
 
