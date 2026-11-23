@@ -55,6 +55,8 @@ import { P_ZAEHLER, zaehlerRoutes } from './zaehler/routes.js';
 import { schluesselRoutes, P_SCHL } from './schluessel/routes.js';
 import { lsvsRoutes, P_LSVS } from './lsvs/routes.js';
 import { P_TURNIER, turnierRoutes } from './turnier/routes.js';
+import { P_SB, spielberichtRoutes } from './sport/spielbericht-routes.js';
+import { mannschaftsmeldungRoutes, P_MM } from './mannschaftsmeldung/routes.js';
 import { haushaltRoutes, P_HH } from './haushalt/routes.js';
 import { P_PROJ, P_PZ, projekteRoutes } from './projekte/routes.js';
 import { zuwendungRoutes } from './zuwendung/routes.js';
@@ -183,6 +185,8 @@ async function routes(app: FastifyInstance) {
   await dashboardRoutes(app);
   await praesentationRoutes(app);
   await sportRoutes(app);
+  await spielberichtRoutes(app);
+  await mannschaftsmeldungRoutes(app);
   await analyseRoutes(app);
   await lsvsRoutes(app);
   await turnierRoutes(app);
@@ -232,6 +236,7 @@ const tco: ServerModule = {
     { area: 'Mein Bereich', app: 'Meine Zeiten', id: P_PZ.edit,
       text: 'Projekt: eigene, unbezahlte Arbeitsstunden auf Projekte melden, in denen das eigene Mitglied eingeplant ist (oder die für alle offen sind); eigene Meldungen ansehen und zurückziehen' },
     { area: 'Mein Bereich', app: 'Schaden melden', id: P_IH.melden, text: 'Schäden an der Anlage melden (mit Fotos, auch per QR-Code an der Anlage) und den Stand der eigenen Meldungen sehen' },
+    { area: 'Mein Bereich', app: 'Mannschaftsmeldung', id: P_MM.melden, text: 'An der Mannschaftsmeldung teilnehmen: je Mannschaft (Altersklasse) fest, Ersatz oder nicht angeben – für sich und die eigene Familie, solange die Abfrage offen ist' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.stammdaten, text: 'Vereinsdaten und Einstellungen des Vereins pflegen (Rechnungssteller, Bank, Logo, Hallenabrechnung, FI-Belege) – Administration → Einstellungen → TC Oberthal' },
     { area: 'Einstellungen', app: 'Stammdaten', id: P.import, text: 'Übernahme der SAP-Tabellen (CSV)', requires: [P.stammdaten] },
 
@@ -256,6 +261,11 @@ const tco: ServerModule = {
     { area: 'Sport', app: 'LSVS-Bestandsmeldung', id: P_LSVS.admin, text: 'Einstellungen der LSVS-Bestandsmeldung pflegen (Vereinsnummer, Ansprechpartner, Fachverbandscode, Software-Schlüssel) – Administration → Einstellungen → TC Oberthal', requires: [P_LSVS.display] },
     { area: 'Sport', app: 'Turniere', id: P_TURNIER.display, text: 'Turniere ansehen: Teilnehmende, Tableaus, Gruppen, Ranglisten und Ergebnisse' },
     { area: 'Sport', app: 'Turniere', id: P_TURNIER.edit, text: 'Turniere anlegen und leiten: Teilnehmende pflegen, Setzung und Auslosung, Gruppen und Runden, Ergebnisse eintragen, persönliche Links senden', requires: [P_TURNIER.display] },
+    { area: 'Sport', app: 'Spielberichte', id: P_SB.display, text: 'Spielberichte ansehen: Mannschaftsspieltage, Meldelisten, Spielberichte mit Ergebnissen und Freigaben, PDF' },
+    { area: 'Sport', app: 'Spielberichte', id: P_SB.edit, text: 'Spielberichte erfassen: Aufstellung und Ergebnisse eintragen, Freigabe der Mannschaftsführer und des OSR erteilen, einreichen und Einreichung zurücknehmen', requires: [P_SB.display] },
+    { area: 'Sport', app: 'Spielberichte', id: P_SB.import, text: 'Mannschaftsspieltage und Meldelisten aus STB.LIGA.NU importieren (eingefügte Tabelle), Spieltage ohne Bericht und Meldelisten löschen', requires: [P_SB.display] },
+    { area: 'Sport', app: 'Anmeldematrix', id: P_MM.display, text: 'Anmeldematrix ansehen: Angaben aller Mitglieder je Mannschaft (fest, Ersatz, nicht), Summen, CSV' },
+    { area: 'Sport', app: 'Anmeldematrix', id: P_MM.edit, text: 'Abfragen der Mannschaftsmeldung anlegen, Mannschaften wählen, öffnen und schließen, löschen; Angaben für Mitglieder eintragen', requires: [P_MM.display] },
 
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.display, text: 'Teilnehmer Jugendtraining anzeigen' },
     { area: 'Jugend', app: 'Teilnehmer Jugendtraining', id: P_TN.edit, text: 'Trainingszeiten der Teilnehmer je Saison (Sommer/Winter) pflegen: Wochentage Mo–So mit Uhrzeit, Zeiten aus einer anderen Saison übernehmen', requires: [P_TN.display] },
@@ -388,6 +398,9 @@ const tco: ServerModule = {
   pushArten: TCO_PUSH_ARTEN,
   auditObjects: [
     { type: 'TURNIER', text: 'Turnier', permission: P_TURNIER.display },
+    { type: 'SPIELBERICHT', text: 'Spielbericht / Spieltag', permission: P_SB.display },
+    { type: 'MELDELISTE', text: 'Meldeliste', permission: P_SB.display },
+    { type: 'MANNSCHAFTSMELDUNG', text: 'Mannschaftsmeldung', permission: P_MM.display },
     { type: 'REGISTRIERUNG', text: 'Registrierung Hallennutzer', permission: P_PLATZ.admin },
     { type: 'RECHNUNG', text: 'Hallenrechnung', permission: P_HALLE.display },
     { type: 'BUCHUNG', text: 'Hallenbuchung', permission: P_HALLE.display },

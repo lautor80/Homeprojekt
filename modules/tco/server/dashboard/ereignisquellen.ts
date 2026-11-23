@@ -105,6 +105,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'selbst:tco POST /jt/meine/zeiten': { ohne: 'Erfassung der eigenen Zeiten – das Ereignis ist die Freigabe des Monats' },
   'selbst:tco POST /jt/meine/zeiten/loeschen': { ohne: 'Erfassung der eigenen Zeiten – das Ereignis ist die Freigabe des Monats' },
   'selbst:tco POST /jt/meine/generieren': { ohne: 'Erfassung der eigenen Zeiten – das Ereignis ist die Freigabe des Monats' },
+  'selbst:tco POST /mannschaftsmeldung/meine/:id': { ohne: 'Angabe zur Mannschaftsmeldung (fest/Ersatz/nicht) – der Sportwart sieht alle Angaben gesammelt in der Anmeldematrix, die Abfrage hat eine Frist' },
   'selbst:tco POST /verzehr/meine/buchen': { aufgabe: 'VZ_ABSCHLUSS' },
   'selbst:tco POST /verzehr/meine/storno': { aufgabe: 'VZ_ABSCHLUSS' },
   'selbst:tco POST /mitglieder/meine/vorgang/pruefen': { ohne: 'nur Prüfung, es wird nichts geändert' },
