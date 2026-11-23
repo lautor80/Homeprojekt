@@ -182,7 +182,7 @@ export async function sitzungLesen(db: Db, id: number): Promise<SitzungDetail> {
     art: t.art as Teilnehmer['art'], status: t.status as Teilnahme, rueckmeldung: (t.rueckmeldung as string) ?? null,
   }));
   const tops = (await db`select id, pos, titel, verantwortlich, text, status from tco.vs_tops where sitzung_id = ${id} order by pos, id`)
-    .map((t, i) => ({ id: Number(t.id), pos: Number(t.pos), nr: i + 1, titel: t.titel as string, verantwortlich: (t.verantwortlich as string) ?? null,
+    .map((t, i): Top => ({ id: Number(t.id), pos: Number(t.pos), nr: i + 1, titel: t.titel as string, verantwortlich: (t.verantwortlich as string) ?? null,
       text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[] }));
   const eintraege = (await db`select ${EINTRAG_SQL(db)} from tco.vs_eintraege x join tco.vs_tops t on t.id = x.top_id where t.sitzung_id = ${id} order by x.pos, x.id`).map(eintragAus);
   for (const e of eintraege) tops.find((t) => t.id === e.top_id)?.eintraege.push(e);
