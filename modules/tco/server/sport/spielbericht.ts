@@ -158,10 +158,12 @@ export interface Freigabe { name: string; am: string; von: string }
 const freigabe = (r: Record<string, unknown>, k: 'heim' | 'gast' | 'osr'): Freigabe | null =>
   (r[`${k}_name`] ? { name: String(r[`${k}_name`]), am: String(r[`${k}_am`]), von: String(r[`${k}_von`] ?? '') } : null);
 
-async function spieltag(db: Db, id: number) {
+export interface SpieltagDaten { id: number; saison: string; datum: string; uhrzeit: string | null; nr: string; halle: string; platz: string; liga: string; heim: string; gast: string }
+
+async function spieltag(db: Db, id: number): Promise<SpieltagDaten> {
   const [s] = await db`select id, saison, datum::text as datum, uhrzeit, nr, halle, platz, liga, heim, gast from tco.sb_spieltage where id = ${id}`;
   if (!s) throw new BusinessError('Spieltag nicht gefunden.', 404);
-  return s;
+  return { ...(s as unknown as SpieltagDaten), uhrzeit: zeitText(s.uhrzeit) };
 }
 
 export async function berichtLesen(db: Db, id: number) {
@@ -179,7 +181,7 @@ export async function berichtLesen(db: Db, id: number) {
     return { team, ...vereinUndNummer(team), liste: l ? { id: l.id, konkurrenz: l.konkurrenz, verein: l.verein } : null, spieler };
   };
   return {
-    spieltag: { ...s, uhrzeit: zeitText(s.uhrzeit) },
+    spieltag: s,
     heim: await seite(s.heim), gast: await seite(s.gast),
     daten: (b?.daten as SbDaten | undefined) ?? leererBericht(),
     gespeichert: !!b, status: (b?.status ?? 'entwurf') as 'entwurf' | 'eingereicht', stand: b?.stand ?? null,
