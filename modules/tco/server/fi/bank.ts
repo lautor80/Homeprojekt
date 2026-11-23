@@ -5,6 +5,7 @@ import { addTage, runden } from '../format.js';
 import { kontenLesen, kontostand, offeneRechnungen } from './daten.js';
 import type { Position } from './buchen.js';
 import { laufZuZahlung, offeneLaeufe, type OffenerLauf } from '../soll/logik.js';
+import { abgleichen, namensTeile, type VorhandeneBuchung } from './abgleich.js';
 import { lsKonfigLesen, rueckKandidaten, rueckPositionen, rueckZuUmsatz } from '../halle/lastschrift.js';
 
 /** Bankimport (BANK_FILE_READ, BANK_MATCH_EXISTING, BANK_PROPOSE_ACCOUNTS, BANK_PROPOSE_DOCS) */
@@ -70,10 +71,6 @@ function musterSchluessel(name: string, zweck: string): string {
   const k = (name.trim() ? name.trim().slice(0, 25) : zweck.trim().slice(0, 14)).toUpperCase();
   return k.length >= 3 ? k : '';
 }
-
-/** Namensteile (mind. 3 Zeichen, ohne Umlaut-/Großschreibungsunterschiede) */
-const namensTeile = (s: string) => s.toUpperCase().replace(/Ä/g, 'AE').replace(/Ö/g, 'OE').replace(/Ü/g, 'UE').replace(/ß/g, 'SS')
-  .split(/[^A-Z0-9]+/).filter((t) => t.length >= 3);
 
 /**
  * Offene Hallenrechnung zu einer Gutschrift ohne Rechnungsnummer im Text (RGNR_BY_AMOUNT):
@@ -162,37 +159,18 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
     buchungsText: kurzText(x.name, x.zweck), laufid: null, rueck: null,
   }));
 
-  // ---- Abgleich (drei Läufe, jede vorhandene Buchung höchstens einmal)
+  // ---- Abgleich: zuerst nach Zahler, dann nach Betrag/Datum, zuletzt Sammelpositionen (jede Buchung höchstens einmal).
+  // Stornierte Buchungen und Storno-Belege sind keine Bankbewegungen und zählen nicht.
   const vorhanden = (await db`
-    select internenr, min(datum)::text as datum, sum(coalesce(soll, 0) - coalesce(haben, 0))::float8 as betrag,
-           split_part(min(coalesce(belnr, '')), ',', 1) as belnr
-      from tco.fibuchungen
-     where konto = ${konto} and datum between ${addTage(von, -12)} and ${addTage(bis, 12)}
-     group by internenr`).map((r) => ({ ...r, betrag: runden(r.betrag), frei: true })) as { internenr: string; datum: string; betrag: number; belnr: string; frei: boolean }[];
-  const tage = (a: string, b: string) => Math.abs((Date.parse(a) - Date.parse(b)) / 86_400_000);
-  for (const x of u) {
-    const t = vorhanden.find((v) => v.frei && v.betrag === x.betrag && (v.datum === x.datum || v.datum === x.valuta));
-    if (t) { t.frei = false; x.status = 'gebucht'; x.statusText = `bereits gebucht (intern ${t.internenr})`; }
-  }
-  for (const x of u.filter((y) => y.status === 'neu')) {
-    const t = vorhanden.filter((v) => v.frei && v.betrag === x.betrag && tage(v.datum, x.datum) <= 7)
-      .sort((a, b) => tage(a.datum, x.datum) - tage(b.datum, x.datum))[0];
-    if (t) { t.frei = false; x.status = 'gebucht'; x.statusText = `bereits gebucht (intern ${t.internenr})`; }
-  }
-  for (const x of u.filter((y) => y.status === 'neu')) {
-    const gruppen = new Map<string, typeof vorhanden>();
-    for (const v of vorhanden.filter((y) => y.frei && y.belnr && tage(y.datum, x.datum) <= 12)) {
-      const k = `${v.datum}|${v.belnr}`;
-      gruppen.set(k, [...(gruppen.get(k) ?? []), v]);
-    }
-    for (const g of gruppen.values()) {
-      if (g.length < 2 || runden(g.reduce((s, v) => s + v.betrag, 0)) !== x.betrag) continue;
-      g.forEach((v) => { v.frei = false; });
-      x.status = 'gebucht';
-      x.statusText = `bereits gebucht (Sammelposition ${g.length} Belege, ${g[0].belnr})`;
-      break;
-    }
-  }
+    select b.internenr, min(b.datum)::text as datum, sum(coalesce(b.soll, 0) - coalesce(b.haben, 0))::float8 as betrag,
+           split_part(min(coalesce(b.belnr, '')), ',', 1) as belnr,
+           coalesce(min(b.text) filter (where b.posnr = 0), min(b.text), '') as text
+      from tco.fibuchungen b
+     where b.konto = ${konto} and b.datum between ${addTage(von, -12)} and ${addTage(bis, 12)}
+       and b.storno_zu is null
+       and not exists (select 1 from tco.fibuchungen s where s.storno_zu = b.internenr)
+     group by b.internenr`) as unknown as VorhandeneBuchung[];
+  abgleichen(u, vorhanden);
 
   // ---- Vorbelegung Gegenkonto
   const jahr = Number(bis.slice(0, 4));
