@@ -77,7 +77,7 @@ export function Vorstand() {
     { Header: 'Beschlüsse', accessor: 'beschluesse', width: 100 },
     { Header: 'Offene Aufgaben', accessor: 'aufgaben_offen', width: 130, Cell: ({ value }: Cell) => (value ? <ObjectStatus state="Critical">{value}</ObjectStatus> : '–') },
     { Header: 'Anlagen', accessor: 'anlagen', width: 85 },
-    { Header: 'Status', accessor: 'status_text', width: 170, Cell: ({ row }: Cell) => <ObjectStatus state={STATUS_STATE[row.original.status]} inverted>{row.original.status_text}</ObjectStatus> },
+    { Header: 'Status', accessor: 'status_text', width: 170, Cell: ({ row }: Cell) => <ObjectStatus state={STATUS_STATE[(row.original as SitzungZeile).status]} inverted>{row.original.status_text}</ObjectStatus> },
   ];
   const bSpalten: AnalyticalTableColumnDefinition[] = [
     { Header: 'Nr.', accessor: 'nr', width: 115 },
@@ -91,7 +91,7 @@ export function Vorstand() {
     { Header: 'Aufgabe', accessor: 'text', minWidth: 280, Cell: ({ row }: Cell) => <span className="portal-vs__umbruch">{row.original.text}</span> },
     { Header: 'Wer', accessor: 'verantwortlich', width: 150 },
     { Header: 'Fällig', accessor: 'faellig', width: 110, Cell: ({ value }: Cell) => (value ? dat(value) : '–') },
-    { Header: 'Stand', accessor: 'stand', width: 130, Cell: ({ row }: Cell) => <ObjectStatus state={STAND_STATE[row.original.stand]} inverted>{STAND_TEXT[row.original.stand]}</ObjectStatus> },
+    { Header: 'Stand', accessor: 'stand', width: 130, Cell: ({ row }: Cell) => <ObjectStatus state={STAND_STATE[(row.original as AufgabeZeile).stand]} inverted>{STAND_TEXT[(row.original as AufgabeZeile).stand]}</ObjectStatus> },
     { Header: 'Aus', accessor: 'sitzung_nr', width: 210, Cell: ({ row }: Cell) => (
       <span className="portal-vs__zelle2"><Link onClick={() => navigate(`/tco/vorstand/${row.original.sitzung_id}`)}>{row.original.sitzung_nr} · {dat(row.original.datum)}</Link><span className="portal-muted">{row.original.top}</span></span>) },
     ...(d?.pflege ? [{ Header: '', id: 'haken', width: 120, Cell: ({ row }: Cell) => (
