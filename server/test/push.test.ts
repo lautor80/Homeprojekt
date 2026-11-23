@@ -73,6 +73,15 @@ test('Einstellungen: nur angemeldet; Schlüssel bleibt gleich; Arten je nach Rec
   assert.equal(m.status, 200);
   assert.equal(m.body.name, 'Testverein');
   assert.equal(m.body.display, 'standalone');
+  // Home-Bildschirm: Symbol vom Modul TC Oberthal (Vereinswappen), ohne Anmeldung
+  assert.deepEqual(m.body.icons.map((i: { src: string }) => i.src), ['/api/push/symbol-192.png', '/api/push/symbol-512.png']);
+  for (const g of [180, 192, 512]) {
+    const s = await app.inject({ method: 'GET', url: `/api/push/symbol-${g}.png` });
+    assert.equal(s.statusCode, 200, `symbol-${g}`);
+    assert.equal(s.headers['content-type'], 'image/png');
+    assert.equal(s.rawPayload.readUInt32BE(16), g, 'Breite laut PNG-Kopf');
+  }
+  assert.equal((await app.inject({ method: 'GET', url: '/api/push/symbol-64.png' })).statusCode, 404);
 
   const a = await admin('GET', '/api/push');
   assert.equal(a.status, 200, JSON.stringify(a.body));

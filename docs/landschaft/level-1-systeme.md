@@ -186,7 +186,7 @@ flowchart LR
 | core:jobs | 7 |
 | core:mail | 8 |
 | core:paperless | 5 |
-| core:push | 6 |
+| core:push | 7 |
 | core:settings | 3 |
 | core:setup | 2 |
 | core:sperren | 5 |
