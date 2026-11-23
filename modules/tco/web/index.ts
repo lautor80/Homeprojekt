@@ -25,6 +25,8 @@ import { Praesentationen } from './praesentation/Praesentationen';
 import { Spielerdaten } from './sport/Spielerdaten';
 import { Spielberichte } from './sport/Spielberichte';
 import { Spielbericht } from './sport/Spielbericht';
+import { MeineMannschaftsmeldung } from './mannschaftsmeldung/MeineMannschaftsmeldung';
+import { Anmeldematrix } from './mannschaftsmeldung/Anmeldematrix';
 import { Turniere } from './turnier/Turniere';
 import { TurnierDetail } from './turnier/TurnierDetail';
 import { TurnierAnmeldung } from './turnier/TurnierAnmeldung';
@@ -185,6 +187,7 @@ const mod: WebModule = {
             // eigene Zeiterfassung: Trainingszeiten (Trainer) und Projektstunden (Mitglieder) in einer App
             { text: 'Meine Zeiten', icon: 'time-entry-request', path: '/tco/meine-zeiten', permission: 'tco.jtmeine:edit|tco.projektzeiten:edit' },
             { text: 'Schaden melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
+            { text: 'Mannschaftsmeldung', icon: 'survey', path: '/tco/mannschaftsmeldung', permission: 'tco.mannschaftsmeldung:melden' },
           ],
         },
         {
@@ -207,6 +210,7 @@ const mod: WebModule = {
             { text: 'LSVS-Bestandsmeldung', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
             { text: 'Turniere', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
             { text: 'Spielberichte', icon: 'form', path: '/tco/spielberichte', permission: 'tco.spielbericht:display' },
+            { text: 'Anmeldematrix', icon: 'table-view', path: '/tco/anmeldematrix', permission: 'tco.anmeldematrix:display' },
           ],
         },
         {
@@ -307,6 +311,8 @@ const mod: WebModule = {
     { path: '/tco/turniere/:id', component: TurnierDetail, permission: 'tco.turnier:display' },
     { path: '/tco/spielberichte', component: Spielberichte, permission: 'tco.spielbericht:display' },
     { path: '/tco/spielberichte/:id', component: Spielbericht, permission: 'tco.spielbericht:display' },
+    { path: '/tco/mannschaftsmeldung', component: MeineMannschaftsmeldung, permission: 'tco.mannschaftsmeldung:melden' },
+    { path: '/tco/anmeldematrix', component: Anmeldematrix, permission: 'tco.anmeldematrix:display' },
     { path: '/tco/teilnehmer', component: Teilnehmer, permission: 'tco.teilnehmer:display' },
     { path: '/tco/upload', component: Upload, permission: 'tco.upload:execute' },
     { path: '/tco/beitraege', component: Beitraege, permission: 'tco.beitraege:display' },
@@ -362,6 +368,7 @@ const mod: WebModule = {
     { text: 'LSVS-Bestandsmeldung', subtitle: 'Mitgliedermeldung an den Landessportverband: Übersicht, XML für das LSVSnet, Läufe', icon: 'official-service', path: '/tco/lsvs', permission: 'tco.lsvs:display' },
     { text: 'Turniere', subtitle: 'KO mit Nebenrunde, Monatsliga, Spaßturnier – Anmeldung und Live-Ergebnisse', icon: 'org-chart', path: '/tco/turniere', permission: 'tco.turnier:display' },
     { text: 'Spielberichte', subtitle: 'Mannschaftsspieltage und Meldelisten aus STB.LIGA.NU, Spielbericht erfassen, freigeben, einreichen', icon: 'form', path: '/tco/spielberichte', permission: 'tco.spielbericht:display' },
+    { text: 'Anmeldematrix', subtitle: 'Mannschaftsmeldung je Saison: fest, Ersatz oder nicht – je Mitglied und Mannschaft', icon: 'table-view', path: '/tco/anmeldematrix', permission: 'tco.anmeldematrix:display' },
     { text: 'Teilnehmer Jugendtraining', subtitle: 'Trefferliste, Mitglieder/Familienbeitrag, Trainingszeiten je Saison, E-Mail', icon: 'family-protection', path: '/tco/teilnehmer', permission: 'tco.teilnehmer:display' },
     { text: 'Schnuppertraining', subtitle: 'Anmeldungen, Einheiten, Beitrittslink', icon: 'physical-activity', path: '/tco/schnuppertraining', permission: 'tco.schnupper:display' },
     { text: 'Abrechnung Jugendtraining', subtitle: 'Trainingszeiten, Zeitnachweise, Trainerentgelte', icon: 'family-care', path: '/tco/jugendtraining', permission: 'tco.jt:display' },
@@ -380,6 +387,7 @@ const mod: WebModule = {
     { text: 'Theke', subtitle: 'Gäste kassieren, Belege senden, Mitglieder anschreiben', icon: 'payment-approval', path: '/tco/theke', permission: 'tco.verzehr:theke' },
     { text: 'Verzehrbuch', subtitle: 'Alle Positionen, Belege, Monatsabschluss, Preisliste', icon: 'course-book', path: '/tco/verzehrbuch', permission: 'tco.verzehr:display' },
     { text: 'Schaden melden', subtitle: 'Etwas kaputt auf der Anlage? Mit Foto melden', icon: 'camera', path: '/tco/schaden', permission: 'tco.schaden:melden' },
+    { text: 'Mannschaftsmeldung', subtitle: 'Für die nächste Saison angeben, in welchen Mannschaften du spielst', icon: 'survey', path: '/tco/mannschaftsmeldung', permission: 'tco.mannschaftsmeldung:melden' },
     { text: 'Schadensmeldungen', subtitle: 'Meldungen bearbeiten, Plätze sperren', icon: 'wrench', path: '/tco/instandhaltung', permission: 'tco.instandhaltung:display', kpi: kpiSchaden },
     { text: 'Zählerstände', subtitle: 'Strom, Gas, Wasser erfassen und auswerten', icon: 'measuring-point', path: '/tco/zaehler', permission: 'tco.zaehler:display', kpi: kpiZaehler },
     { text: 'Sollstellungen', subtitle: 'Beitragseinzug per SEPA-Lastschrift', icon: 'collections-insight', path: '/tco/sollstellung', permission: 'tco.soll:display' },

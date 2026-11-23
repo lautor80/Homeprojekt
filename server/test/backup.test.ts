@@ -283,7 +283,7 @@ test('Rücksicherung eines Bereichs: Verweise auf inzwischen gelöschte Benutzer
   assert.equal((await sql`select benutzer_id from tco.kunden where zuid = '88'`)[0].benutzer_id, null);
   assert.equal(Number((await sql`select count(*)::int as n from tco.platzbelegungen`)[0].n), 1);
   // Systemrollen sind nach der Rücksicherung vorhanden
-  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.fanshop:display', 'tco.kalender:anmelden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.projektzeiten:edit', 'tco.schaden:melden', 'tco.verzehr:edit']);
+  assert.deepEqual((await sql`select permission from core.role_permissions where role_id = 'MITGLIED' order by 1`).map((x) => x.permission), ['tco.fanshop:display', 'tco.kalender:anmelden', 'tco.mannschaftsmeldung:melden', 'tco.meinedaten:edit', 'tco.platzbuchung:edit', 'tco.projektzeiten:edit', 'tco.schaden:melden', 'tco.verzehr:edit']);
 });
 
 test('Vollständige Sicherung (wie der tägliche Nextcloud-Export): jede Tabelle jedes Bereichs, auch Transport/Euroflex', async () => {
