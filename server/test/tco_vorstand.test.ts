@@ -179,6 +179,24 @@ test('Anlagen: zur Sitzung und zum Tagesordnungspunkt, Abruf, Löschen', async (
   assert.equal(r.status, 400);
 });
 
+test('Verantwortliche: Kürzel werden mit Vornamen angezeigt und so gesichert', async () => {
+  // alter Bestand (z. B. Import): nur Kürzel in der Datenbank
+  const [t] = await sql`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich) values (${sid}, 99, 'Kürzel', 'laub, mus') returning id`;
+  await sql`insert into tco.vs_eintraege (top_id, pos, art, text, verantwortlich) values (${t.id}, 0, 'AUFGABE', 'Altlast', 'beisp')`;
+  let s = (await call('GET', `${V}/sitzungen/${sid}`)).body;
+  const top9 = s.tops.find((x: any) => x.id === t.id);
+  assert.equal(top9.verantwortlich, 'Torsten Laub, Erika Muster');
+  assert.equal(top9.eintraege[0].verantwortlich, 'Hans Beispiel');
+  const a = (await call('GET', `${V}/aufgaben`)).body.aufgaben.find((x: any) => x.text === 'Altlast');
+  assert.equal(a.verantwortlich, 'Hans Beispiel', 'auch in der Aufgabenliste');
+  // beim Sichern in die volle Form gebracht
+  assert.equal((await call('PUT', `${V}/tops/${t.id}`, { titel: 'Kürzel', verantwortlich: 'erika', text: null, status: 'OFFEN' })).status, 200);
+  assert.equal((await sql`select verantwortlich from tco.vs_tops where id = ${t.id}`)[0].verantwortlich, 'Erika Muster');
+  assert.equal((await call('DELETE', `${V}/tops/${t.id}`)).status, 200);
+  s = (await call('GET', `${V}/sitzungen/${sid}`)).body;
+  assert.equal(s.tops.find((x: any) => x.titel === 'Sanierung Platz 4').verantwortlich, 'Platzwart', 'Rollen bleiben');
+});
+
 test('Links als Anlage und formatierter Protokolltext (auch im PDF)', async () => {
   let r = await call('POST', `${V}/sitzungen/${sid}/links`, { top_id: top, url: 'https://www.tc-oberthal.de/platz4', bezeichnung: '' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
