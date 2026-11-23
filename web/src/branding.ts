@@ -1,3 +1,13 @@
+let portalUrl: string | null = null;
+
+/**
+ * Basis für Links, die weitergegeben werden (Website, Aushang, QR-Code, Einladungen): die eingestellte Portal-Adresse
+ * (Administration → Einstellungen), nur ohne sie die Adresse, unter der das Portal gerade geöffnet ist.
+ */
+export function portalAdresse(): string {
+  return portalUrl ?? window.location.origin;
+}
+
 /** Theme-Variablen, die mit der Organisationsfarbe überschrieben werden. */
 const BRAND_VARS = [
   '--sapBrandColor',
@@ -14,6 +24,8 @@ const BRAND_VARS = [
  * Markierungen) – so wie heute das Orange beim TCO.
  */
 export function applyBranding(settings: Record<string, unknown>): void {
+  const url = settings['portal.url'];
+  portalUrl = typeof url === 'string' && url.trim() ? url.trim().replace(/\/+$/, '') : null;
   document.title = (settings['org.name'] as string) || 'Portal';
   const color = settings['org.color'] as string | undefined;
   const root = document.documentElement.style;

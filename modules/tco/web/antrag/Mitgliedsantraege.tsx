@@ -12,6 +12,7 @@ import { Section } from '@core/components/Section';
 import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { TCO, dat } from '../util';
+import { portalAdresse } from '@core/branding';
 
 /**
  * Mitgliedsanträge (online, /beitritt): Eingang prüfen (Dubletten, Angaben, Bankdaten nur mit Berechtigung im Klartext),
@@ -81,7 +82,7 @@ export function Mitgliedsantraege() {
       )}
       <Angebote alle={alle} edit={edit} arten={arten} version={angebotVersion} onError={setError} />
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !liste.length ? (
-        <MessageStrip hideCloseButton>Keine offenen Anträge.{formularAn && <> Link zum Formular für Website und Aushang: <b>{window.location.origin}/beitritt</b></>}</MessageStrip>
+        <MessageStrip hideCloseButton>Keine offenen Anträge.{formularAn && <> Link zum Formular für Website und Aushang: <b>{portalAdresse()}/beitritt</b></>}</MessageStrip>
       ) : liste.map((a) => (
         <Section key={a.id} title={`${a.nummer} · ${a.daten.personen.map((p) => `${p.vorname} ${p.nachname}`).join(', ')}`}
                  status={<ObjectStatus state={STATUS[a.status][1]} inverted>{STATUS[a.status][0]}</ObjectStatus>}>

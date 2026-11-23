@@ -10,6 +10,7 @@ import { Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
 import { TCO, dat } from '../util';
+import { portalAdresse } from '@core/branding';
 
 /**
  * Schnuppertraining (#86) für Trainer: Anmeldungen aus /schnuppertraining mit Kontakt und Wunschterminen, Status und
@@ -72,7 +73,7 @@ export function SchnupperVerwaltung() {
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!daten ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !daten.zeilen.length ? (
-        <MessageStrip hideCloseButton>Keine offenen Anmeldungen. Link zum Formular für Website und Aushang: <b>{window.location.origin}/schnuppertraining</b></MessageStrip>
+        <MessageStrip hideCloseButton>Keine offenen Anmeldungen. Link zum Formular für Website und Aushang: <b>{portalAdresse()}/schnuppertraining</b></MessageStrip>
       ) : daten.zeilen.map((z) => {
         const termine = [[...z.termine.tage, ...z.termine.zeiten].join(', '), z.termine.text].filter(Boolean).join(' · ');
         const fertig = z.status === 'MITGLIED' || z.status === 'ABGESAGT';

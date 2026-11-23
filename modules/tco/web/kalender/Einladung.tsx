@@ -4,6 +4,7 @@ import { Bar, Button, Dialog, FlexBox, Input, Label, MessageStrip, SegmentedButt
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
+import { portalAdresse } from '@core/branding';
 
 /**
  * Einladungslink einer Veranstaltung: kopieren, teilen oder per E-Mail an die Mitglieder senden, für die sie gilt.
@@ -20,7 +21,7 @@ interface Ergebnis { text: string; gesendet: number; fehler: string[]; ohneMail:
 
 /** Adresse der Veranstaltung – muss zu veranstaltungLink() im Server passen */
 export const VERANSTALTUNG_PARAM = 'veranstaltung';
-const eigenerLink = (id: number) => `${window.location.origin}/tco/kalender?${VERANSTALTUNG_PARAM}=${id}`;
+const eigenerLink = (id: number) => `${portalAdresse()}/tco/kalender?${VERANSTALTUNG_PARAM}=${id}`;
 const zeit = (am: string) => new Date(am).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export function EinladungDialog({ id, titel, onClose }: { id: number; titel: string; onClose: () => void }) {

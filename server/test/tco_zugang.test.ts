@@ -559,6 +559,11 @@ test('Mailprotokoll und Testmail', async () => {
   verbindungenCacheLeeren();
   // Anmeldeseite: Registrierung heißt „Zum Vereinsportal registrieren“
   assert.equal((await client()('GET', '/api/settings/public')).body.registrierung.titel, 'Zum Vereinsportal registrieren');
+  // Portal-Adresse für Links zum Weitergeben (z. B. Mitgliedsantrag /beitritt): die eingestellte, nicht die aufgerufene Adresse
+  assert.equal((await admin('PUT', '/api/settings', { 'portal.url': 'https://portal.tc-oberthal.example/' })).status, 200);
+  assert.equal((await client()('GET', '/api/settings/public')).body['portal.url'], 'https://portal.tc-oberthal.example', 'ohne abschließenden Schrägstrich');
+  assert.equal((await admin('GET', '/api/auth/me')).body.settings['portal.url'], 'https://portal.tc-oberthal.example');
+  assert.equal((await admin('PUT', '/api/settings', { 'portal.url': 'https://portal.example.org' })).status, 200);
 });
 
 test('Mailprotokoll: fehlgeschlagene E-Mails erneut senden', async () => {

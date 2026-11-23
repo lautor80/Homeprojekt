@@ -15,12 +15,23 @@ export async function getSettings(keys?: readonly string[]): Promise<Record<stri
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+/**
+ * Öffentliche Adresse des Portals (Einstellung „Portal-Adresse“, sonst PORTAL_URL) ohne abschließenden Schrägstrich –
+ * die Oberfläche baut damit Links, die weitergegeben werden (Website, Aushang, QR-Code), statt mit der Adresse,
+ * unter der gerade jemand angemeldet ist (z. B. intern im Heimnetz).
+ */
+async function oeffentlicheAdresse(): Promise<string | null> {
+  const [r] = await sql`select value from core.settings where key = 'portal.url'`;
+  const url = (typeof r?.value === 'string' && r.value.trim()) || process.env.PORTAL_URL || '';
+  return url ? url.replace(/\/+$/, '') : null;
+}
+
 export async function getPublicSettings(): Promise<Record<string, unknown>> {
   const s = await getSettings(PUBLIC_KEYS);
   const angemeldet = activeModules().find((m) => m.registrierung)?.registrierung ?? null;
   // Funktionsschalter (#232, F1): ist die Registrierung abgeschaltet, bietet die Anmeldeseite sie nicht mehr an
   const reg = angemeldet && !routeAbgeschaltet('GET', angemeldet.pfad) ? angemeldet : null;
-  return { ...s, registrierung: reg, module: activeModules().map((m) => m.id) };
+  return { ...s, 'portal.url': await oeffentlicheAdresse(), registrierung: reg, module: activeModules().map((m) => m.id) };
 }
 
 const settingsSchema = z.object({
