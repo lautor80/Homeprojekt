@@ -18,6 +18,7 @@ import { dat } from '../util';
 import { lkText, MODUS_TEXT, STATUS_TEXT, T, vollname, type LiveDaten, type Teilnehmer, type Turnier, type TurnierDetail as Detail, type TurnierStatus } from './api';
 import { MODUS_UI } from './modi';
 import { STATUS_STATE, TurnierStammDialog } from './Turniere';
+import { portalAdresse } from '@core/branding';
 
 /**
  * Detailseite eines Turniers (/tco/turniere/:id): Kopf mit Status und Statuswechsel, öffentliche Links, Reiter
@@ -132,7 +133,7 @@ export function TurnierDetail() {
 /** öffentliche Links mit Kopieren-Knopf; Hinweis, wenn die Portal-Adresse fehlt oder das Turnier noch Entwurf ist */
 function Links({ detail }: { detail: Detail }) {
   const t = detail.turnier;
-  const basis = (detail.url ?? window.location.origin).replace(/\/+$/, '');
+  const basis = (detail.url ?? portalAdresse()).replace(/\/+$/, '');
   const k = encodeURIComponent(t.kennung);
   const links = [
     { text: 'Anmeldung', url: `${basis}/turnier?t=${k}` },

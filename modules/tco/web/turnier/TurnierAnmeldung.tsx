@@ -7,6 +7,7 @@ import { CenterCard } from '@core/pages/AuthPages';
 import type { OeffentlichProps } from '@core/platform';
 import { dat } from '../util';
 import { STATUS_TEXT, TO, type LiveDaten } from './api';
+import { portalAdresse } from '@core/branding';
 
 /**
  * Öffentliche Turnier-Anmeldung /turnier?t=<kennung> (ohne Anmeldung am Portal). Nach dem Absenden gibt es den
@@ -72,7 +73,7 @@ export function TurnierAnmeldung({ orgName, logo }: OeffentlichProps) {
   const t = info.turnier;
 
   if (fertig) {
-    const absolut = fertig.link ? `${window.location.origin}${fertig.link}` : null;
+    const absolut = fertig.link ? `${portalAdresse()}${fertig.link}` : null;
     return (
       <CenterCard title={orgName} subtitle={t.name} logo={logo}>
         <MessageStrip design={fertig.status === 'warteliste' ? 'Critical' : 'Positive'} hideCloseButton style={{ marginBottom: '1rem' }}>{fertig.text}</MessageStrip>

@@ -2,10 +2,11 @@ import { Bar, Button, Dialog, Icon, Link, Text } from '@ui5/webcomponents-react'
 import { toast } from '@core/toast';
 import { ERFASSEN_PFAD, QR_URL } from './format';
 import './zaehler.css';
+import { portalAdresse } from '@core/branding';
 
 /** QR-Code zum Ausdrucken: führt am Zähler direkt zur Erfassung mit vorbelegtem Zähler */
 export function QrDialog({ id, nummer, bezeichnung, standort, onClose }: { id: number; nummer: string; bezeichnung: string; standort: string | null; onClose: () => void }) {
-  const link = `${window.location.origin}${ERFASSEN_PFAD(id)}`;
+  const link = `${portalAdresse()}${ERFASSEN_PFAD(id)}`;
   function drucken() {
     const w = window.open('', '_blank', 'width=480,height=640');
     if (!w) { toast('Bitte Pop-ups für das Portal erlauben, um den QR-Code zu drucken.'); return; }
