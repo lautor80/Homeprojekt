@@ -12,8 +12,11 @@
  *    derselben Zeile („(6/0/0)“, „einstimmig“) oder darunter („Abstimmung: 5 Ja, 0 Nein, 1 Enthaltung“)
  *  - Aufgabe: „- [ ] Text @Wer bis 10.12.“ („- [x]“ = erledigt) oder „Aufgabe: …“ / „ToDo: …“; „(Wer, bis …)“ geht auch
  *  - Anlagen: Verweise auf Dateien „[Name](anlagen/datei.pdf)“ bzw. Bilder – im ZIP werden sie am Dateinamen gefunden
+ *  - Exporte aus Docmost/Joplin (Schlüssel/Wert-Tabelle, Teilnehmer als Ankreuzliste in <details>, Tagesordnung als
+ *    HTML-Tabelle) werden vorher in diese Form gebracht (export.ts)
  */
 import { abstimmungLesen, datumLesen, namenLesen, zeitenLesen, type Ergebnis } from './regeln.js';
+import { exportAufbereiten } from './export.js';
 
 export interface MdEintrag {
   art: 'BESCHLUSS' | 'AUFGABE' | 'INFO';
@@ -45,7 +48,7 @@ const FELDER: Record<string, Feld> = {
   anwesend: 'anwesend', anwesende: 'anwesend', teilnehmer: 'anwesend', teilnehmende: 'anwesend',
   entschuldigt: 'entschuldigt', abwesend: 'entschuldigt', fehlend: 'entschuldigt', 'es fehlten': 'entschuldigt', 'nicht anwesend': 'entschuldigt',
   gaeste: 'gaeste', 'gäste': 'gaeste', gast: 'gaeste',
-  protokoll: 'protokoll', protokollfuehrer: 'protokoll', 'protokollführer': 'protokoll', 'protokollführung': 'protokoll', schriftfuehrer: 'protokoll', 'schriftführer': 'protokoll',
+  protokoll: 'protokoll', verantwortlich: 'protokoll', protokollfuehrer: 'protokoll', 'protokollführer': 'protokoll', 'protokollführung': 'protokoll', schriftfuehrer: 'protokoll', 'schriftführer': 'protokoll',
   leitung: 'leitung', sitzungsleitung: 'leitung', vorsitz: 'leitung', versammlungsleitung: 'leitung',
   titel: 'titel', title: 'titel', art: 'art', sitzung: 'art',
 };
@@ -61,7 +64,8 @@ function verweise(z: string, anlagen: string[]): string {
     if (/^(https?:|mailto:|#)/i.test(ziel)) return alles;
     const name = basis(ziel);
     if (name && !anlagen.includes(name)) anlagen.push(name);
-    return text || name;
+    // Bild ohne Beschreibung: nur Anlage, kein Text
+    return text || (alles.startsWith('!') ? '' : name);
   });
 }
 
@@ -129,6 +133,11 @@ export function markdownLesen(inhalt: string, datei: string): MdProtokoll {
     }
   }
 
+  // ---- Exporte aus Docmost/Joplin aufbereiten
+  const aufb = exportAufbereiten(zeilen, datei);
+  zeilen = aufb.zeilen;
+  p.hinweise.push(...aufb.hinweise);
+
   // ---- Überschriften: Titel (erste H1, wenn es nur eine gibt) und Stufe der Tagesordnungspunkte
   const ueber = zeilen.map((z) => /^(#{1,6})\s+(.*)$/.exec(z)).map((m) => (m ? { stufe: m[1].length, text: m[2].trim() } : null));
   const h1 = ueber.filter((u) => u?.stufe === 1).length;
@@ -171,7 +180,13 @@ export function markdownLesen(inhalt: string, datei: string): MdProtokoll {
     // Kopfdaten (nur vor dem ersten Tagesordnungspunkt)
     if (!top) {
       const punkt = /^\s*[-*+]\s+(.*)$/.exec(z);
-      if (punkt && liste) { setzen(liste, punkt[1].replace(/\*\*|__/g, '').trim()); continue; }
+      if (punkt && liste) {
+        // Ankreuzliste der Teilnehmer: angekreuzt = anwesend, sonst entschuldigt
+        const kreuz = liste === 'anwesend' ? /^\[([ xX])\]\s+(.*)$/.exec(punkt[1]) : null;
+        if (kreuz) setzen(kreuz[1] === ' ' ? 'entschuldigt' : 'anwesend', kreuz[2].replace(/\*\*|__/g, '').trim());
+        else setzen(liste, punkt[1].replace(/\*\*|__/g, '').trim());
+        continue;
+      }
       const m = /^([\p{L} ]{2,30}?)\s*:\s*(.*)$/u.exec(s);
       const f = m ? FELDER[m[1].trim().toLowerCase()] : undefined;
       if (m && f) {
