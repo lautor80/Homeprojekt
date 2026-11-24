@@ -102,7 +102,9 @@ export function ZuordnenDialog({ open, ziele, titel, vorauswahl = [], onPick, on
         // vorausgewählte, nicht offene Belege (Dauerbeleg) ergänzen
         const fehlend = vorauswahl.filter((id) => !l.some((b) => b.id === id));
         const extra = await Promise.all(fehlend.map((id) => api.get<Beleg>(`${F}/belege/${id}`).catch(() => null)));
-        setBelege([...(extra.filter(Boolean) as Beleg[]), ...l]);
+        // Vorschläge oben, damit sie nicht in der alphabetischen Liste untergehen
+        const vor = new Set(vorauswahl);
+        setBelege([...(extra.filter(Boolean) as Beleg[]), ...l.filter((b) => vor.has(b.id)), ...l.filter((b) => !vor.has(b.id))]);
       })
       .catch((e) => { setError(e.message); setBelege([]); });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps

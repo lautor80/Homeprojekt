@@ -287,6 +287,9 @@ test('FI Bankimport: Hallenrechnung am Betrag erkennen, Rechnungs-PDF wird Beleg
   // zwei Rechnungen über 62,00: ohne passenden Namen kein Vorschlag, mit Namen die richtige
   assert.equal(u('Fremd Person').positionen.length, 0);
   assert.equal(u('Wind, Klaus').positionen[0].rgnr, '2026_302');
+  // Rechnungs-PDF wird als Beleg vorgeschlagen (Button „Vorschlag …“), auch ohne Buchungshistorie des Zahlers
+  assert.deepEqual(u('Petra Sonne').belegVorschlag, { doks: [654], text: 'Beleg-Vorschlag: Rechnung 2026_301 (Paperless 654)' });
+  assert.equal(u('Wind, Klaus').belegVorschlag, null, 'Rechnung ohne PDF: kein Belegvorschlag');
 
   // Buchen: Rechnung bezahlt, Rechnungs-PDF 654 ist Beleg der Buchung
   const p = u('Petra Sonne');
