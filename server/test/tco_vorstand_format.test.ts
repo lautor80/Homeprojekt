@@ -58,3 +58,48 @@ test('Verantwortliche immer mit Vornamen: Kürzel, Nach- und Vornamen, mehrere, 
   assert.equal(verantwortlicheAnzeigen('laub / Laub', P), 'Torsten Laub', 'doppelt nur einmal');
   assert.equal(verantwortlicheAnzeigen('  ', P), null);
 });
+
+// ---- Editor: gespeicherter Text ↔ bearbeitbarer Bereich (contenteditable), DOM im Test nachgebaut
+import { knotenZuText, textZuKnoten, type DomKnoten, type Knoten } from '../../modules/tco/server/vorstand/format.js';
+
+type El = { tag: string; attr?: Record<string, string>; style?: DomKnoten['style']; kinder?: (El | string)[] };
+function dom(x: El | string): DomKnoten {
+  if (typeof x === 'string') return { nodeType: 3, nodeName: '#text', textContent: x, childNodes: [] };
+  return { nodeType: 1, nodeName: x.tag.toUpperCase(), textContent: null, childNodes: (x.kinder ?? []).map(dom), getAttribute: (n) => x.attr?.[n] ?? null, style: x.style ?? {} };
+}
+const ausKnoten = (k: Knoten): El | string => (typeof k === 'string' ? k
+  : { tag: k.tag, attr: { ...(k.href ? { href: k.href } : {}), ...(k.start ? { start: String(k.start) } : {}) }, kinder: k.kinder.map(ausKnoten) });
+const rund = (t: string) => knotenZuText(textZuKnoten(t).map(ausKnoten).map(dom));
+
+test('Editor: gespeicherter Text bleibt nach dem Aufbau im Editor gleich', () => {
+  for (const t of [
+    'Zwei Angebote liegen vor.',
+    'Zeile eins\nZeile zwei\n\nNeuer Absatz',
+    '**Ergebnis:** Angebot *B* ist ~~teurer~~ günstiger.',
+    '- Ausführung im **März**\n- Details: [Angebot](https://www.tc-oberthal.de/angebot) und https://www.nuliga.de\n1. erstens\n2. zweitens',
+    'Text davor\n- a\n- b\n\nText danach',
+    '3. drei\n4. vier',
+    '**fett mit *kursiv***',
+    'siehe www.tc-oberthal.de',
+  ]) assert.equal(rund(t), t, t);
+  assert.equal(rund('- a\n  weiter'), '- a weiter', 'Fortsetzungszeile wird Teil des Punkts');
+  assert.equal(rund(''), '');
+});
+
+test('Editor: typische Browser-Strukturen → gespeicherter Text', () => {
+  const t = (...k: (El | string)[]) => knotenZuText(k.map(dom));
+  // erste Zeile als freier Text, weitere als div; leere Zeile = div mit br
+  assert.equal(t('Erste', { tag: 'div', kinder: ['Zweite'] }, { tag: 'div', kinder: [{ tag: 'br' }] }, { tag: 'div', kinder: ['Dritte'] }), 'Erste\nZweite\n\nDritte');
+  // Fett über b, strong und Inline-Stil; Leerzeichen am Rand außerhalb der Zeichen
+  assert.equal(t({ tag: 'div', kinder: ['Das ', { tag: 'b', kinder: ['ist '] }, { tag: 'strong', kinder: ['wichtig'] }, '.'] }), 'Das **ist wichtig**.');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'span', style: { fontWeight: '700' }, kinder: ['F'] }, { tag: 'span', style: { fontStyle: 'italic' }, kinder: ['K'] }, { tag: 'span', style: { textDecorationLine: 'line-through' }, kinder: ['D'] }] }), '**F***K*~~D~~');
+  // Aufzählung mit Formatierung und Link, nummerierte Liste mit Start
+  assert.equal(t({ tag: 'ul', kinder: [{ tag: 'li', kinder: [{ tag: 'b', kinder: ['a'] }] }, { tag: 'li', kinder: [{ tag: 'a', attr: { href: 'https://x.de' }, kinder: ['Link'] }] }] },
+    { tag: 'ol', attr: { start: '2' }, kinder: [{ tag: 'li', kinder: ['zwei'] }, { tag: 'li', kinder: ['drei'] }] }), '- **a**\n- [Link](https://x.de)\n2. zwei\n3. drei');
+  // br in einer Zeile trennt, abschließendes br ist nur Platzhalter; unsichere Links werden Text
+  assert.equal(t({ tag: 'div', kinder: ['a', { tag: 'br' }, 'b', { tag: 'br' }] }), 'a\nb');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'a', attr: { href: 'javascript:alert(1)' }, kinder: ['x'] }] }), 'x');
+  // verschachtelte Liste wird flach, geschütztes Leerzeichen wird normales
+  assert.equal(t({ tag: 'ul', kinder: [{ tag: 'li', kinder: ['a', { tag: 'ul', kinder: [{ tag: 'li', kinder: ['b'] }] }] }] }), '- a\n- b');
+  assert.equal(t({ tag: 'div', kinder: ['a b'] }), 'a b');
+});

@@ -99,3 +99,12 @@
 .portal-vs__eingabe:focus { outline: none; }
 .portal-vs__vorschau { padding: 0.5rem 0.6rem; min-height: 4.5rem; line-height: 1.5; }
 .portal-vs__hilfe { font-size: var(--sapFontSmallSize, 0.75rem); padding: 0.25rem 0.6rem 0.35rem; border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); }
+
+/* Editor mit Formatierung beim Schreiben (FormatEditor) */
+.portal-vs__schreibflaeche { position: relative; }
+.portal-vs__eingabe[contenteditable] { overflow-wrap: anywhere; white-space: pre-wrap; resize: none; overflow-y: auto; max-height: 32rem; cursor: text; }
+.portal-vs__eingabe[contenteditable] div { min-height: 1.5em; }
+.portal-vs__eingabe[contenteditable] a { color: var(--sapLinkColor, #0064d9); text-decoration: underline; }
+.portal-vs__eingabe[contenteditable] ul, .portal-vs__eingabe[contenteditable] ol { margin: 0.15rem 0; padding-left: 1.4rem; }
+.portal-vs__platzhalter { position: absolute; inset: 0; padding: 0.5rem 0.6rem; color: var(--sapField_PlaceholderTextColor, #6a6d70); pointer-events: none; font-style: italic; }
+.portal-vs__linkfeld { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor, #e5e5e5); }
