@@ -38,3 +38,5 @@ fieldset:disabled .portal-mm__opt { cursor: default; opacity: 0.8; }
 .portal-mm__zelle--2 { background: #fff4d6; color: #6b4a00; font-weight: 600; }
 .portal-mm__zelle--3 { background: #eef0f4; color: #4a5466; }
 .portal-mm__summe { font-variant-numeric: tabular-nums; }
+/* nicht zugeordnete Mannschaft: ausgegraut (schraffiert, damit es auch ohne Farbe erkennbar ist) */
+.portal-mm__zelle--aus { background: repeating-linear-gradient(135deg, #eceef1 0 6px, #f6f7f9 6px 12px); color: #8a93a3; }

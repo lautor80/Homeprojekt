@@ -12,14 +12,15 @@ import './mannschaftsmeldung.css';
 /**
  * Sport → Anmeldematrix: Abfragen der Mannschaftsmeldung anlegen (Titel, Saison, Frist, Hinweis, Mannschaften aus den
  * Mitgliedergruppen), öffnen und schließen. Die Matrix zeigt je Person (Mitglieder der gewählten Gruppen und alle mit
- * Angabe) und Mannschaft 1 = fest, 2 = Ersatz, 3 = nicht; unten die Summen je Mannschaft. Mit Pflegerecht lässt sich jede
- * Zelle ändern (z. B. Angaben auf Papier), auch nach der Frist. CSV für Excel.
+ * Angabe) und Mannschaft 1 = fest, 2 = Ersatz, 3 = nicht; unten die Summen je Mannschaft. Zellen von Mannschaften, deren
+ * Gruppe die Person nicht zugeordnet ist, sind ausgegraut (dort kann sie nicht gemeldet werden; „ohne Angabe“ zählt sie
+ * nicht mit). Mit Pflegerecht lässt sich jede mögliche Zelle ändern (z. B. Angaben auf Papier), auch nach der Frist. CSV für Excel.
  */
 type Wahl = 1 | 2 | 3;
 type Status = 'entwurf' | 'offen' | 'geschlossen';
 interface AbfrageKopf { id: number; titel: string; saison: string; frist: string | null; hinweis: string; status: Status; mannschaften: number; personen: number }
 interface Mannschaft { gruppe_id: number; name: string; pfad: string }
-interface Zeile { adrnr: string; name: string; geburtsjahr: number | null; geschlecht: string; inGruppe: boolean; wahl: Record<number, Wahl | undefined>; bemerkung: string; geaendert: string | null }
+interface Zeile { adrnr: string; name: string; geburtsjahr: number | null; geschlecht: string; inGruppe: boolean; moeglich: number[]; wahl: Record<number, Wahl | undefined>; bemerkung: string; geaendert: string | null }
 interface Matrix {
   abfrage: Omit<AbfrageKopf, 'mannschaften' | 'personen'>; mannschaften: Mannschaft[]; zeilen: Zeile[];
   summen: { gruppe_id: number; fest: number; ersatz: number; nicht: number; offen: number }[];
@@ -188,11 +189,17 @@ export function Anmeldematrix() {
                       </td>
                       {m.mannschaften.map((x) => {
                         const w = z.wahl[x.gruppe_id];
+                        const ok = z.moeglich.includes(x.gruppe_id);
+                        // nicht zugeordnet: ausgegraut; eine trotzdem vorhandene Angabe bleibt sichtbar und lässt sich entfernen
+                        if (!ok && !w) return <td key={x.gruppe_id} className="portal-mm__zelle portal-mm__zelle--aus" title={`${x.name}: nicht zugeordnet`} aria-label={`${z.name}, ${x.name}: nicht zugeordnet`} />;
                         return (
-                          <td key={x.gruppe_id} className={`portal-mm__zelle${w ? ` portal-mm__zelle--${w}` : ''}`}>
+                          <td key={x.gruppe_id} className={`portal-mm__zelle${w ? ` portal-mm__zelle--${w}` : ''}${ok ? '' : ' portal-mm__zelle--aus'}`}
+                              title={ok ? undefined : `${x.name}: nicht zugeordnet – Angabe nur noch entfernbar`}>
                             {edit ? (
                               <select value={w ?? ''} disabled={busy} aria-label={`${z.name}, ${x.name}`} onChange={(e) => zelle(z, x.gruppe_id, e.target.value)}>
-                                <option value="">–</option><option value="1">1 fest</option><option value="2">2 Ersatz</option><option value="3">3 nicht</option>
+                                <option value="">–</option>
+                                {ok && <><option value="1">1 fest</option><option value="2">2 Ersatz</option><option value="3">3 nicht</option></>}
+                                {!ok && w && <option value={w}>{w}</option>}
                               </select>
                             ) : (w ?? '–')}
                           </td>

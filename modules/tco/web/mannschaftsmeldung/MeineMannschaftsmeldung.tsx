@@ -9,11 +9,12 @@ import './mannschaftsmeldung.css';
 
 /**
  * Mein Bereich → Mannschaftsmeldung: Für jede offene Abfrage gibt man je Mannschaft (Altersklasse) an, ob man fest spielt,
- * als Ersatz zur Verfügung steht oder nicht teilnimmt – für sich und die Personen der eigenen Familie. Gesichert wird je
+ * als Ersatz zur Verfügung steht oder nicht teilnimmt – für sich und die Personen der eigenen Familie. Jede Person sieht nur
+ * die Mannschaften, deren Gruppe sie zugeordnet ist (nur dort könnte sie gemeldet werden). Gesichert wird je
  * Person; bis zur Frist lässt sich alles ändern. Abgeschlossene Abfragen stehen zum Nachsehen darunter.
  */
 type Wahl = 1 | 2 | 3;
-interface Person { adrnr: string; name: string; wahl: Record<number, Wahl>; bemerkung: string }
+interface Person { adrnr: string; name: string; mannschaften: { gruppe_id: number; name: string; pfad: string }[]; wahl: Record<number, Wahl>; bemerkung: string }
 interface Abfrage {
   id: number; titel: string; saison: string; frist: string | null; hinweis: string; status: 'offen' | 'geschlossen' | 'entwurf'; bearbeitbar: boolean;
   mannschaften: { gruppe_id: number; name: string; pfad: string }[]; personen: Person[];
@@ -30,13 +31,14 @@ function PersonKarte({ a, p, onGesichert }: { a: Abfrage; p: Person; onGesichert
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { setWahl(p.wahl); setBem(p.bemerkung); }, [p]);
   const dirty = JSON.stringify(Object.entries(wahl).filter(([, v]) => v != null).sort()) !== JSON.stringify(Object.entries(p.wahl).sort()) || bem !== p.bemerkung;
-  const offen = a.mannschaften.filter((m) => !wahl[m.gruppe_id]).length;
+  const offen = p.mannschaften.filter((m) => !wahl[m.gruppe_id]).length;
+  const keine = !p.mannschaften.length;
 
   async function sichern() {
     setBusy(true); setError(null);
     try {
       const r = await api.post<{ text: string }>(`${M}/meine/${a.id}`, {
-        adrnr: p.adrnr, bemerkung: bem, wahl: a.mannschaften.map((m) => ({ gruppe_id: m.gruppe_id, wahl: wahl[m.gruppe_id] ?? null })),
+        adrnr: p.adrnr, bemerkung: bem, wahl: p.mannschaften.map((m) => ({ gruppe_id: m.gruppe_id, wahl: wahl[m.gruppe_id] ?? null })),
       });
       toast(r.text); onGesichert();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -46,11 +48,14 @@ function PersonKarte({ a, p, onGesichert }: { a: Abfrage; p: Person; onGesichert
     <div className="portal-mm__person">
       <div className="portal-mm__kopf">
         <b>{p.name}</b>
-        {offen ? <ObjectStatus state="Critical">{offen} offen</ObjectStatus> : <ObjectStatus state="Positive">vollständig</ObjectStatus>}
+        {keine ? null : offen ? <ObjectStatus state="Critical">{offen} offen</ObjectStatus> : <ObjectStatus state="Positive">vollständig</ObjectStatus>}
       </div>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      {keine && (
+        <Text className="portal-muted">Für diese Abfrage keiner Mannschaft zugeordnet. Falls das nicht stimmt, bitte beim Sportwart melden.</Text>
+      )}
       <div className="portal-mm__liste">
-        {a.mannschaften.map((m) => (
+        {p.mannschaften.map((m) => (
           <fieldset key={m.gruppe_id} className="portal-mm__zeile" disabled={!a.bearbeitbar || busy}>
             <legend className="portal-mm__mannschaft" title={m.pfad}>{m.name}</legend>
             <div className="portal-mm__wahl" role="radiogroup" aria-label={`${p.name}: ${m.name}`}>
@@ -68,9 +73,9 @@ function PersonKarte({ a, p, onGesichert }: { a: Abfrage; p: Person; onGesichert
           </fieldset>
         ))}
       </div>
-      <TextArea rows={2} disabled={!a.bearbeitbar || busy} value={bem} maxlength={500} placeholder="Bemerkung (optional), z. B. „im Juni im Urlaub“"
-                onInput={(e) => setBem(e.target.value)} style={{ width: '100%', marginTop: '0.5rem' }} />
-      {a.bearbeitbar && (
+      {!keine && <TextArea rows={2} disabled={!a.bearbeitbar || busy} value={bem} maxlength={500} placeholder="Bemerkung (optional), z. B. „im Juni im Urlaub“"
+                onInput={(e) => setBem(e.target.value)} style={{ width: '100%', marginTop: '0.5rem' }} />}
+      {a.bearbeitbar && !keine && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
           {dirty && <Button design="Transparent" disabled={busy} onClick={() => { setWahl(p.wahl); setBem(p.bemerkung); }}>Verwerfen</Button>}
           <Button design="Emphasized" icon="save" disabled={busy || !dirty} onClick={sichern}>Sichern</Button>
