@@ -310,7 +310,9 @@ test('Import: prüfen schreibt nichts, übernehmen legt freigegebene Sitzungen m
   assert.equal(r.body.uebernommen, 1);
   const id = r.body.zeilen[0].sitzung_id;
   const s = (await call('GET', `${V}/sitzungen/${id}`)).body;
-  assert.deepEqual([s.nr, s.status, s.importiert, s.titel, s.datum, s.ort], ['VS 2090/02', 'FREIGEGEBEN', true, 'Vorstandssitzung März', '2090-03-04', 'Clubhaus']);
+  assert.deepEqual([s.nr, s.status, s.importiert, s.titel, s.datum, s.ort], ['VS 2090/01', 'FREIGEGEBEN', true, 'Vorstandssitzung März', '2090-03-04', 'Clubhaus']);
+  // Nummern folgen dem Datum: das importierte März-Protokoll liegt vor der November-Sitzung
+  assert.equal((await call('GET', `${V}/sitzungen/${sid}`)).body.nr, 'VS 2090/02');
   assert.ok(s.event, 'Veranstaltung angelegt');
   assert.equal((await sql`select anmeldung from tco.kal_events where id = ${s.event.id}`)[0].anmeldung, false, 'vergangene Sitzung ohne An-/Abmeldung');
   assert.deepEqual(s.teilnehmer.map((t: any) => [t.name, t.art, t.status]), [
@@ -376,4 +378,29 @@ test('Rechte: ansehen, protokollieren, freigeben', async () => {
   const f = await schreiber('POST', `${V}/sitzungen/${r.body.id}/status`, { status: 'FREIGEGEBEN' });
   assert.equal(f.status, 403, 'freigeben nur mit dem Recht zur Freigabe');
   assert.equal((await schreiber('POST', `${V}/sitzungen/${sid}/status`, { status: 'ENTWURF' })).status, 403, 'zurücknehmen auch nicht');
+});
+
+test('Nummern der Sitzungen folgen dem Datum – beim Anlegen, Verschieben ins andere Jahr und Löschen', async () => {
+  const nr = async (id: number) => (await call('GET', `${V}/sitzungen/${id}`)).body.nr as string;
+  const neu = async (titel: string, datum: string) => {
+    const r = await call('POST', `${V}/sitzungen`, { titel, datum, vorlage: false });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.id as number;
+  };
+  const c = await neu('Nr C', '2089-09-01');
+  const a = await neu('Nr A', '2089-01-15');
+  const b = await neu('Nr B', '2089-05-10');
+  assert.deepEqual([await nr(a), await nr(b), await nr(c)], ['VS 2089/01', 'VS 2089/02', 'VS 2089/03']);
+  // Datum ändern: B nach hinten
+  const kopf = (await call('GET', `${V}/sitzungen/${b}`)).body;
+  assert.equal((await call('PUT', `${V}/sitzungen/${b}`, { titel: kopf.titel, art: kopf.art, datum: '2089-12-01' })).status, 200);
+  assert.deepEqual([await nr(a), await nr(c), await nr(b)], ['VS 2089/01', 'VS 2089/02', 'VS 2089/03']);
+  // ins Vorjahr: Jahr und Nummer folgen dem Datum
+  assert.equal((await call('PUT', `${V}/sitzungen/${b}`, { titel: kopf.titel, art: kopf.art, datum: '2088-06-01' })).status, 200);
+  assert.equal(await nr(b), 'VS 2088/01');
+  assert.deepEqual([await nr(a), await nr(c)], ['VS 2089/01', 'VS 2089/02']);
+  // Löschen schließt die Lücke
+  assert.equal((await call('DELETE', `${V}/sitzungen/${a}`)).status, 200);
+  assert.equal(await nr(c), 'VS 2089/01');
+  for (const id of [b, c]) assert.equal((await call('DELETE', `${V}/sitzungen/${id}`)).status, 200);
 });

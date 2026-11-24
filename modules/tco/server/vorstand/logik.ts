@@ -283,6 +283,26 @@ async function naechsteLfd(tx: Db, jahr: number) {
   return Number(n.n);
 }
 
+/**
+ * Nummern der Sitzungen (VS <jahr>/<lfd>) neu ordnen: je Jahr aufsteigend nach dem Datum der Sitzung (bei verknüpfter
+ * Veranstaltung deren Datum), bei gleichem Datum nach Beginn und Anlage; das Jahr ist das Jahr dieses Datums.
+ * Nach jedem Anlegen, Import, Löschen und jeder Änderung von Datum oder Veranstaltung aufrufen. Ändert nur abweichende Zeilen.
+ */
+export async function nummernOrdnen(tx: Db): Promise<number> {
+  await tx`lock table tco.vs_sitzungen in share row exclusive mode`;
+  const neu = (db: Db) => db`
+    select x.id, extract(year from x.d)::int as jahr,
+           row_number() over (partition by extract(year from x.d) order by x.d, x.beginn nulls last, x.id)::int as lfd
+      from (select s.id, s.beginn, coalesce((e.beginn at time zone 'Europe/Berlin')::date, s.datum) as d
+              from tco.vs_sitzungen s left join tco.kal_events e on e.id = s.event_id) x`;
+  // erst die abweichenden Nummern freimachen (eindeutig je Jahr), dann setzen
+  const weg = await tx`update tco.vs_sitzungen s set lfd = -s.id
+                         from (${neu(tx)}) n where n.id = s.id and (s.jahr, s.lfd) is distinct from (n.jahr, n.lfd) returning s.id`;
+  if (!weg.length) return 0;
+  await tx`update tco.vs_sitzungen s set jahr = n.jahr, lfd = n.lfd from (${neu(tx)}) n where n.id = s.id and s.lfd < 0`;
+  return weg.length;
+}
+
 async function naechsteBeschlussNr(tx: Db, jahr: number) {
   await tx`select pg_advisory_xact_lock(hashtext('tco.vs_beschluss'), ${jahr})`;
   const [n] = await tx`select coalesce(max(nr_lfd), 0) + 1 as n from tco.vs_eintraege where nr_jahr = ${jahr}`;
@@ -368,6 +388,7 @@ export async function sitzungAnlegen(tx: Db, e: KopfEingabe & { event_id?: numbe
             ${leer(e.bemerkung)}, ${wer}, ${wer})
     returning id`;
   const id = Number(r.id);
+  await nummernOrdnen(tx);
   await vorstandEintragen(tx, id);
   if (eventId) await rueckmeldungenUebernehmen(tx, id);
   if (e.vorlage !== false) await tagesordnungVorschlagen(tx, id, d.datum);
@@ -381,12 +402,14 @@ export async function sitzungAendern(tx: Db, id: number, e: KopfEingabe, wer: st
            ort = ${leer(e.ort)}, leitung = ${leer(e.leitung)}, protokoll_von = ${leer(e.protokoll_von)}, bemerkung = ${leer(e.bemerkung)},
            geaendert_am = now(), geaendert_von = ${wer}
      where id = ${id}`;
+  await nummernOrdnen(tx);
 }
 
 export async function sitzungLoeschen(tx: Db, id: number) {
   const s = await sitzungFuerAenderung(tx, id);
   if (s.status !== 'GEPLANT' && s.status !== 'ENTWURF') throw new BusinessError('Löschen geht nur bei geplanten Sitzungen und Protokollen im Entwurf.');
   await tx`delete from tco.vs_sitzungen where id = ${id}`;
+  await nummernOrdnen(tx);
 }
 
 /** Veranstaltung verknüpfen (event_id), neu anlegen (anlegen) oder lösen (beides leer) */
@@ -408,6 +431,7 @@ export async function eventSetzen(tx: Db, id: number, o: { event_id?: number | n
       from tco.kal_events e
      where s.id = ${id} and e.id = s.event_id`;
   await tx`update tco.vs_sitzungen set event_id = ${eventId}, geaendert_am = now(), geaendert_von = ${wer} where id = ${id}`;
+  await nummernOrdnen(tx);
   if (eventId) await rueckmeldungenUebernehmen(tx, id);
   return eventId;
 }
@@ -727,6 +751,8 @@ export async function importAusfuehren(tx: Db, dateien: ImportDatei[], o: { schr
     await tx`insert into tco.vs_anlagen (sitzung_id, dateiname, mime, groesse, inhalt, erstellt_von)
              values (${sid}, ${basisname(d.name)}, 'text/markdown', ${d.inhalt.length}, ${d.inhalt}, ${wer})`;
   }
+  // Nummern nach dem Datum ordnen (importierte Altprotokolle liegen meist vor bestehenden Sitzungen)
+  if (o.schreiben && zeilen.some((z) => z.sitzung_id)) await nummernOrdnen(tx);
   return zeilen;
 }
 
