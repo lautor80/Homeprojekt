@@ -4,6 +4,9 @@ import { runden } from '../format.js';
  * Abgleich der Bankumsätze mit vorhandenen Buchungen (BANK_MATCH_EXISTING) – ohne Datenbank, damit testbar.
  *
  * Jede vorhandene Buchung wird höchstens einmal verbraucht. Reihenfolge:
+ * 0. Rechnungsnummer: gleicher Betrag, höchstens 7 Tage auseinander und die Buchung ist mit der Hallenrechnung verknüpft,
+ *    deren Nummer im Verwendungszweck steht – unabhängig vom Buchungstext (Becker 2026.083 war mit dem Text von
+ *    Wilhelm gebucht und wurde deshalb erneut zum Buchen angeboten).
  * 1. Zahler: gleicher Betrag, höchstens 7 Tage auseinander und der Name des Zahlers steht im Buchungstext.
  *    Erst danach greifen die Läufe nur nach Betrag – sonst „verbraucht“ ein anderer Zahler mit gleichem Betrag
  *    die Buchung (Klimov 24 € hielt die Mueller-Buchung für seine, Mueller wurde doppelt gebucht).
@@ -19,6 +22,7 @@ export interface AbgleichUmsatz {
   betrag: number;
   status: 'neu' | 'gebucht';
   statusText: string;
+  zweck?: string;
 }
 
 export interface VorhandeneBuchung {
@@ -27,6 +31,13 @@ export interface VorhandeneBuchung {
   betrag: number;
   belnr: string;
   text: string;
+  /** verknüpfte Hallenrechnung (rgnr_txt, z. B. 2026_083) */
+  rgnr?: string | null;
+}
+
+/** Rechnungsnummern im Text („2026_083“, „2026.083“, „2026 083“, „2026083“ …) als rgnr_txt */
+export function rechnungsNummern(text: string): string[] {
+  return [...new Set([...text.matchAll(/(?<!\d)(20\d{2})\D{0,4}(\d{3})(?!\d)/g)].map((m) => `${m[1]}_${m[2]}`))];
 }
 
 /** Namensteile (mind. 3 Zeichen, ohne Umlaut-/Großschreibungsunterschiede) */
@@ -53,6 +64,13 @@ export function abgleichen<U extends AbgleichUmsatz>(umsaetze: U[], vorhanden: V
   };
   const naechste = (x: U, k: typeof v) => [...k].sort((a, b) => tage(a.datum, x.datum) - tage(b.datum, x.datum))[0];
 
+  // 0. nach Rechnungsnummer
+  for (const x of offen()) {
+    const nr = rechnungsNummern(`${x.name} ${x.zweck ?? ''}`);
+    if (!nr.length) continue;
+    const t = naechste(x, v.filter((y) => y.frei && y.rgnr && nr.includes(y.rgnr) && y.betrag === x.betrag && tage(y.datum, x.datum) <= 7));
+    if (t) treffer(x, t, `bereits gebucht (intern ${t.internenr}, Rechnung ${t.rgnr})`);
+  }
   // 1. nach Zahler
   for (const x of offen()) {
     const t = naechste(x, v.filter((y) => y.frei && y.betrag === x.betrag && tage(y.datum, x.datum) <= 7 && nenntZahler(x.name, y.text)));
