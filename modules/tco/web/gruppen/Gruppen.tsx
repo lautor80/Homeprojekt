@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, BusyIndicator, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
+  AnalyticalTable, BusyIndicator, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -25,7 +25,7 @@ import { GR, mitUntergruppen, type AufnahmeMitglied, type Gruppe, type GruppenDa
  * Der Vereinskalender zeigt den Baum im Reiter „Gruppen / Mannschaften“ mit demselben Layout (GruppenBaum eingebettet, #16).
  */
 interface Zeile { id: string; text: string; g: Gruppe; m?: GruppenMitglied; /** Knoten „Direkt zugeordnet“ einer Gruppe mit Untergruppen */ direkt?: boolean; subRows?: Zeile[] }
-interface Form { id: number | null; parent_id: number | null; name: string; beschreibung: string; aktiv: boolean; position: string }
+interface Form { id: number | null; parent_id: number | null; name: string; beschreibung: string; aktiv: boolean; position: string; nur_rollen: string[] }
 type Tabelle = { toggleAllRowsExpanded?: (v: boolean) => void; toggleRowExpanded?: (id: string, v?: boolean) => void };
 
 const zeilenId = (g: Gruppe) => `g${g.id}`;
@@ -58,6 +58,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
   const [berechnen, setBerechnen] = useState<Gruppe | 'ALLE' | null>(null);
   const tabelle = useRef<Tabelle | null>(null);
   const pflege = !!d?.pflege;
+  const rollenName = useMemo(() => new Map((d?.rollen ?? []).map((r) => [r.id, r.name])), [d]);
   // Regelwerk und Neu berechnen nur mit tco.gruppen:edit (im Kalender reicht tco.kalender:edit für die übrige Pflege)
   const mitRegelwerk = pflege && d?.regelwerk !== false;
 
@@ -182,6 +183,11 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
             <Text><b>{z.g.name}</b></Text>
             {z.g.beschreibung && <span className="portal-muted portal-small">{z.g.beschreibung}</span>}
             {z.g.regel && <ObjectStatus state="Information" title={`Regelwerk: Mitglieder werden automatisch abgeleitet – ${z.g.regel}`}>{z.g.regel}</ObjectStatus>}
+            {z.g.nur_rollen.length > 0 && (
+              <ObjectStatus state="Indication05" icon="locked" title="Selbsteintrag in „Meine Mitgliedschaft“ nur für diese Berechtigungsgruppen (auch in den Untergruppen)">
+                nur {z.g.nur_rollen.map((r) => rollenName.get(r) ?? r).join(', ')}
+              </ObjectStatus>
+            )}
             {!z.g.aktiv && <ObjectStatus state="Critical">inaktiv</ObjectStatus>}
           </div>
         );
@@ -229,15 +235,15 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
             </>}
             <Button icon="add-employee" design="Transparent" tooltip="Mitglieder aufnehmen" disabled={busy} onClick={() => setAufnehmen(z.g)} />
             <Button icon="add-folder" design="Transparent" tooltip="Untergruppe anlegen" disabled={busy}
-                    onClick={() => setForm({ id: null, parent_id: z.g.id, name: '', beschreibung: '', aktiv: true, position: '' })} />
+                    onClick={() => setForm({ id: null, parent_id: z.g.id, name: '', beschreibung: '', aktiv: true, position: '', nur_rollen: [] })} />
             <Button icon="edit" design="Transparent" tooltip="Gruppe ändern oder verschieben" disabled={busy}
-                    onClick={() => setForm({ id: z.g.id, parent_id: z.g.parent_id, name: z.g.name, beschreibung: z.g.beschreibung ?? '', aktiv: z.g.aktiv, position: z.g.position == null ? '' : String(z.g.position) })} />
+                    onClick={() => setForm({ id: z.g.id, parent_id: z.g.parent_id, name: z.g.name, beschreibung: z.g.beschreibung ?? '', aktiv: z.g.aktiv, position: z.g.position == null ? '' : String(z.g.position), nur_rollen: z.g.nur_rollen ?? [] })} />
             <Button icon="delete" design="Transparent" tooltip="Gruppe löschen" disabled={busy} onClick={() => setWeg(z.g)} />
           </FlexBox>
         );
       },
     }] : []),
-  ], [pflege, mitRegelwerk, busy, zumMitglied, gruppen]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [pflege, mitRegelwerk, busy, zumMitglied, gruppen, rollenName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabellenOptionen = useMemo(() => ({ autoResetExpanded: false, getRowId: (r: Zeile) => r.id }), []);
 
@@ -247,7 +253,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
       <Button icon="activities" tooltip="Regeln, nach denen Mitglieder ihren Gruppen zugeordnet werden (z. B. nach Alter)" onClick={() => setRegelwerk(true)}>Regelwerk</Button>
       <Button icon="synchronize" tooltip="Regelwerk auf den gesamten Baum anwenden: Gruppenzuordnung aller Mitglieder nach Alter und Geschlecht neu berechnen" disabled={busy} onClick={() => setBerechnen('ALLE')}>Neu berechnen</Button>
     </>}
-    <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true, position: '' })}>Neue Gruppe</Button>
+    <Button icon="add" design="Emphasized" onClick={() => setForm({ id: null, parent_id: null, name: '', beschreibung: '', aktiv: true, position: '', nur_rollen: [] })}>Neue Gruppe</Button>
   </> : undefined;
 
   const inhalt = <>
@@ -287,7 +293,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
 
       {regelwerk && <RegelwerkDialog gruppen={gruppen} gruppe={regelwerk === true ? null : regelwerk} onClose={(geaendert) => { setRegelwerk(null); if (geaendert) lauf(async () => undefined); }} />}
       {berechnen && <BerechnenDialog gruppe={berechnen === 'ALLE' ? null : berechnen} onClose={() => { setBerechnen(null); lauf(async () => undefined); }} />}
-      {form && <GruppeDialog form={form} gruppen={gruppen} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
+      {form && <GruppeDialog form={form} gruppen={gruppen} rollen={d?.rollen ?? []} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
       {aufnehmen && <AufnehmenDialog gruppe={aufnehmen} gruppen={gruppen} onClose={(text) => { setAufnehmen(null); if (text) lauf(async () => ({ text })); }} />}
       <ConfirmDialog open={!!weg} title="Gruppe löschen" danger confirmText="Löschen"
                      text={weg ? `Gruppe „${weg.pfad}“ löschen?${weg.mitglieder.length ? ` Die Zuordnung von ${weg.mitglieder.length} Mitglied${weg.mitglieder.length === 1 ? '' : 'ern'} entfällt.` : ''}` : ''}
@@ -300,7 +306,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
 }
 
 // ---------------------------------------------------------------- Gruppe anlegen / ändern / verschieben
-function GruppeDialog({ form, gruppen, onClose }: { form: Form; gruppen: Gruppe[]; onClose: (text?: string) => void }) {
+function GruppeDialog({ form, gruppen, rollen, onClose }: { form: Form; gruppen: Gruppe[]; rollen: { id: string; name: string }[]; onClose: (text?: string) => void }) {
   const [f, setF] = useState(form);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -313,7 +319,7 @@ function GruppeDialog({ form, gruppen, onClose }: { form: Form; gruppen: Gruppe[
     setError(null);
     try {
       const r = await api.post<{ text: string }>(GR, {
-        id: f.id, parent_id: f.parent_id, name: f.name, beschreibung: f.beschreibung, aktiv: f.aktiv, position: f.position.trim() === '' ? null : Number(f.position.trim()),
+        id: f.id, parent_id: f.parent_id, name: f.name, beschreibung: f.beschreibung, aktiv: f.aktiv, position: f.position.trim() === '' ? null : Number(f.position.trim()), nur_rollen: f.nur_rollen,
       });
       onClose(r.text);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -336,6 +342,13 @@ function GruppeDialog({ form, gruppen, onClose }: { form: Form; gruppen: Gruppe[
         </FieldBox>
         <FieldBox label="Beschreibung">
           <TextArea rows={3} maxlength={500} value={f.beschreibung} onInput={(e) => setF({ ...f, beschreibung: e.target.value })} />
+        </FieldBox>
+        <FieldBox label="Selbsteintrag nur für Berechtigungsgruppen">
+          <MultiComboBox style={{ width: '100%' }} placeholder="alle Mitglieder"
+                         onSelectionChange={(e) => setF({ ...f, nur_rollen: e.detail.items.map((i) => (i as HTMLElement).dataset.key!) })}>
+            {rollen.map((r) => <MultiComboBoxItem key={r.id} data-key={r.id} text={r.name} selected={f.nur_rollen.includes(r.id)} />)}
+          </MultiComboBox>
+          <span className="portal-muted portal-small">In „Meine Mitgliedschaft“ können sich nur Benutzer mit einer dieser Berechtigungsgruppen eintragen – auch in die Untergruppen. Leer = alle Mitglieder. Die Pflege hier bleibt unberührt.</span>
         </FieldBox>
         {f.id && <CheckBox text="Aktiv (inaktive Gruppen stehen im Kalender nicht mehr zur Auswahl)" checked={f.aktiv} onChange={(e) => setF({ ...f, aktiv: e.target.checked })} />}
       </FormGrid>

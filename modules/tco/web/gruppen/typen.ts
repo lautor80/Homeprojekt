@@ -7,6 +7,8 @@ export interface Gruppe {
   id: number; parent_id: number | null; name: string; beschreibung: string | null; aktiv: boolean;
   /** Position innerhalb der Ebene; null = ohne Position (nach Name hinter den übrigen) */
   position: number | null;
+  /** Selbsteintrag in „Meine Mitgliedschaft“ nur für diese Berechtigungsgruppen (Rollen-IDs); leer = alle Mitglieder */
+  nur_rollen: string[];
   /** aktive Regeln des Regelwerks als Text; null = keine Regel */
   regel: string | null;
   /** „Spielbetrieb › Mannschaften › Herren 40“ */
@@ -27,6 +29,8 @@ export interface GruppenDaten {
   pflege: boolean;
   /** Regelwerk pflegen und anwenden (nur tco.gruppen:edit) */
   regelwerk?: boolean;
+  /** Berechtigungsgruppen (Rollen) zur Auswahl „Selbsteintrag nur für“ – nur bei Pflege */
+  rollen?: { id: string; name: string }[];
 }
 
 /** IDs einer Gruppe und aller ihrer Untergruppen */

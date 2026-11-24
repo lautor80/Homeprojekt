@@ -546,3 +546,57 @@ test('Vereinskalender-Reiter „Gruppen / Mannschaften“: Baum mit tco.kalender
   assert.equal((await kal('PUT', `${G}/regeln`, { regeln: [] })).status, 403);
   assert.equal((await kal('POST', `${G}/regeln/anwenden`, { simulation: true })).status, 403);
 });
+
+test('Selbsteintrag nur für Berechtigungsgruppen: Gruppe „Vorstand“ nur für die Berechtigungsgruppe Vorstand', async () => {
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'GRVORSTAND', name: 'Vorstand Gruppentest', permissions: [] })).status, 200);
+  let r = await admin('POST', G, { name: 'Vorstand Gruppentest', nur_rollen: ['GRVORSTAND'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const vorstand = r.body.id as number;
+  const kasse = await neu('Kassenprüfer Gruppentest', vorstand);
+  assert.equal((await admin('POST', G, { name: 'Unbekannte Rolle', nur_rollen: ['GIBTESNICHT'] })).status, 400);
+
+  r = await admin('GET', G);
+  assert.deepEqual(r.body.gruppen.find((x: any) => x.id === vorstand).nur_rollen, ['GRVORSTAND']);
+  assert.deepEqual(r.body.gruppen.find((x: any) => x.id === kasse).nur_rollen, []);
+  assert.ok(r.body.rollen.some((x: any) => x.id === 'GRVORSTAND' && x.name === 'Vorstand Gruppentest'), 'Auswahl der Berechtigungsgruppen');
+  const leser = client();
+  assert.equal((await leser('POST', '/api/auth/login', { username: 'grleser', password: 'neues-passwort' })).status, 200);
+  assert.deepEqual((await leser('GET', G)).body.rollen, [], 'ohne Pflege keine Rollenliste');
+
+  // Mitglied ohne die Berechtigungsgruppe: Hinweis im Baum, Eintragen abgelehnt – auch in die Untergruppe
+  const anna = client(), ben = client();
+  assert.equal((await anna('POST', '/api/auth/login', { username: 'anna', password: 'neues-passwort' })).status, 200);
+  assert.equal((await ben('POST', '/api/auth/login', { username: 'ben', password: 'neues-passwort' })).status, 200);
+  r = await anna('GET', `${M}/meine/gruppen`);
+  assert.equal(r.body.gruppen.find((x: any) => x.id === vorstand).nur, 'nur „Vorstand Gruppentest“');
+  assert.equal(r.body.gruppen.find((x: any) => x.id === kasse).nur, 'nur „Vorstand Gruppentest“');
+  assert.equal(r.body.gruppen.find((x: any) => x.id === ohne).nur, null);
+  r = await anna('POST', `${M}/meine/gruppen`, { gruppe: vorstand });
+  assert.equal(r.status, 403, JSON.stringify(r.body));
+  assert.match(r.body.message, /nur Mitglieder der Berechtigungsgruppe „Vorstand Gruppentest“/);
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: kasse })).status, 403);
+  assert.ok(!(await anna('GET', `${M}/meine/gruppen`)).body.meine.some((x: any) => [vorstand, kasse].includes(x.id)));
+
+  // mit der Berechtigungsgruppe: eintragen möglich
+  await sql`insert into core.user_roles (user_id, role_id) select id, 'GRVORSTAND' from core.users where username = 'ben'`;
+  r = await ben('GET', `${M}/meine/gruppen`);
+  assert.equal(r.body.gruppen.find((x: any) => x.id === vorstand).nur, null);
+  assert.equal((await ben('POST', `${M}/meine/gruppen`, { gruppe: vorstand })).status, 200);
+  assert.ok((await ben('GET', `${M}/meine/gruppen`)).body.meine.some((x: any) => x.id === vorstand));
+
+  // die Pflege bleibt unberührt; austragen kann sich jeder
+  assert.equal((await admin('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA] })).status, 200);
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: vorstand, entfernen: true })).status, 200);
+
+  // ändern ohne nur_rollen (z. B. Verschieben im Baum) behält die Beschränkung; leer hebt sie auf
+  assert.equal((await admin('POST', G, { id: vorstand, name: 'Vorstand Gruppentest', parent_id: null })).status, 200);
+  assert.deepEqual((await admin('GET', G)).body.gruppen.find((x: any) => x.id === vorstand).nur_rollen, ['GRVORSTAND']);
+  assert.equal((await admin('POST', G, { id: vorstand, name: 'Vorstand Gruppentest', nur_rollen: [] })).status, 200);
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: vorstand })).status, 200);
+
+  // aufräumen
+  for (const a of [ANNA, BEN]) await admin('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [a], entfernen: true });
+  assert.equal((await admin('DELETE', `${G}/${kasse}`)).status, 200);
+  assert.equal((await admin('DELETE', `${G}/${vorstand}`)).status, 200);
+  await sql`delete from core.user_roles where role_id = 'GRVORSTAND'`;
+});

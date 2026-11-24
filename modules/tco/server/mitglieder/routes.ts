@@ -41,7 +41,7 @@ import { pushAnRecht, pushStill } from '../../../../server/src/lib/push.js';
 import { PUSH } from '../push.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { emailUnzustellbarAufheben, emailUnzustellbarSetzen } from '../emailsperre.js';
-import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe } from '../gruppen/logik.js';
+import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe, selbstSperre } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -200,11 +200,24 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     return reply.type(d.contentType).header('content-disposition', `inline; filename="${encodeURIComponent(d.filename)}"`).send(d.data);
   });
 
-  /** eigene Gruppen: der Baum der Gruppen (ohne die Mitglieder der Gruppen) und die eigenen Zuordnungen */
+  /** Namen der Berechtigungsgruppen (Rollen) für Hinweise zum beschränkten Selbsteintrag */
+  const rollenNamen = async (ids: string[]) => {
+    const n = new Map((await DB`select id, name from core.roles where id = any(${ids})`).map((r) => [r.id as string, r.name as string]));
+    return ids.map((i) => `„${n.get(i) ?? i}“`).join(' oder ');
+  };
+  /**
+   * eigene Gruppen: der Baum der Gruppen (ohne die Mitglieder der Gruppen) und die eigenen Zuordnungen.
+   * nur = Hinweis, wenn sich das Mitglied mangels Berechtigungsgruppe nicht selbst eintragen darf (z. B. „Vorstand“).
+   */
   app.get('/mitglieder/meine/gruppen', selbst, async (req) => {
     const a = await eigeneAdrnr(DB, benutzerId(req));
+    const alle = await gruppenLesen(DB);
+    const rollen = req.user?.roles ?? [];
     return {
-      gruppen: (await gruppenLesen(DB)).map(({ id, parent_id, name, ebene, aktiv }) => ({ id, parent_id, name, ebene, aktiv })),
+      gruppen: await Promise.all(alle.map(async ({ id, parent_id, name, ebene, aktiv }) => {
+        const sperre = selbstSperre(alle, id, rollen);
+        return { id, parent_id, name, ebene, aktiv, nur: sperre ? `nur ${await rollenNamen(sperre.nur_rollen)}` : null };
+      })),
       meine: await mitgliedGruppen(DB, a),
     };
   });
@@ -212,7 +225,8 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/meine/gruppen', selbst, async (req) => {
     const b = z.object({ gruppe: z.coerce.number().int().positive(), entfernen: z.boolean().default(false) }).parse(req.body);
     const a = await eigeneAdrnr(DB, benutzerId(req));
-    const g = (await gruppenLesen(DB)).find((x) => x.id === b.gruppe);
+    const alle = await gruppenLesen(DB);
+    const g = alle.find((x) => x.id === b.gruppe);
     if (!g) throw new BusinessError('Gruppe nicht gefunden.', 404);
     if (b.entfernen) {
       await change(req, async (tx) => {
@@ -222,6 +236,12 @@ export async function mitgliederRoutes(app: FastifyInstance) {
       return { text: `Du bist aus „${g.name}“ ausgetragen.` };
     }
     if (!g.aktiv) throw new BusinessError(`Die Gruppe „${g.name}“ ist nicht mehr aktiv.`);
+    // beschränkte Gruppe (z. B. „Vorstand“): nur Benutzer mit der Berechtigungsgruppe – austragen bleibt immer möglich
+    const sperre = selbstSperre(alle, b.gruppe, req.user?.roles ?? []);
+    if (sperre) {
+      throw new BusinessError(`In die Gruppe „${g.name}“ können sich nur Mitglieder der Berechtigungsgruppe ${await rollenNamen(sperre.nur_rollen)} eintragen`
+        + (sperre.id === g.id ? '.' : ` (Beschränkung der Gruppe „${sperre.name}“).`), 403);
+    }
     // bereits zugeordnet: nichts ändern (die Rolle bleibt)
     if (!g.mitglieder.some((m) => m.adrnr === a)) {
       await change(req, async (tx) => {

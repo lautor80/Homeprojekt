@@ -10,6 +10,8 @@ import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfer
  *  - tco.gruppen:display  Baum der Gruppen mit den zugeordneten Mitgliedern anzeigen
  *  - tco.gruppen:edit     Gruppen anlegen, ändern, verschieben, löschen und Mitglieder zuordnen
  * Die Zuordnung eines einzelnen Mitglieds im Mitgliedsstamm läuft über tco.mitglieder:edit (mitglieder/routes.ts).
+ * Selbsteintrag in „Meine Mitgliedschaft“ lässt sich je Gruppe auf Berechtigungsgruppen beschränken (nur_rollen, z. B. „Vorstand“);
+ * die Pflege hier ist davon nicht betroffen.
  * Der Vereinskalender zeigt denselben Baum im Reiter „Gruppen / Mannschaften“ (#16): tco.kalender:edit darf ihn anzeigen
  * und Gruppen sowie Mitglieder pflegen – das Regelwerk (Ableitung nach Alter und Geschlecht) bleibt tco.gruppen:edit vorbehalten.
  */
@@ -32,9 +34,14 @@ export async function gruppenRoutes(app: FastifyInstance) {
   const pflege = { preHandler: eine(P_GR.edit, P_KAL_EDIT) };
   const regelwerk = { preHandler: requireAuth(P_GR.edit) };
 
-  app.get('/gruppen', lesen, async (req) => ({
-    gruppen: await gruppenLesen(DB), pflege: can(req, P_GR.edit) || can(req, P_KAL_EDIT), regelwerk: can(req, P_GR.edit),
-  }));
+  app.get('/gruppen', lesen, async (req) => {
+    const pflegt = can(req, P_GR.edit) || can(req, P_KAL_EDIT);
+    return {
+      gruppen: await gruppenLesen(DB), pflege: pflegt, regelwerk: can(req, P_GR.edit),
+      // Auswahl für „Selbsteintrag nur für Berechtigungsgruppen“ im Dialog der Gruppe
+      rollen: pflegt ? (await DB`select id, name from core.roles order by lower(name), id`).map((r) => ({ id: r.id as string, name: r.name as string })) : [],
+    };
+  });
 
   /** Aktive Mitglieder zur Auswahl mit Geschlecht, Jahrgang und Alter für die Filter */
   app.get('/gruppen/mitglieder', pflege, async () => aufnahmeMitglieder(DB));
@@ -81,6 +88,8 @@ export async function gruppenRoutes(app: FastifyInstance) {
       // Position innerhalb der Ebene; weglassen = nicht ändern
       position: z.number().int().min(0, 'Die Position darf nicht negativ sein.').max(9999).nullable().optional(),
       name: z.string().max(80), beschreibung: z.string().max(500).nullish(), aktiv: z.boolean().default(true),
+      // Selbsteintrag nur für diese Berechtigungsgruppen (leer = alle Mitglieder); weglassen = nicht ändern
+      nur_rollen: z.array(z.string().min(1).max(60)).max(30).optional(),
     }).parse(req.body);
     const n = await change(req, (tx) => gruppeSpeichern(tx, b.id ?? null, b), { action: 'GRUPPE' });
     return { id: n, text: `Gruppe „${b.name.trim()}“ gespeichert.` };

@@ -9,7 +9,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `core.nutzung` |  |  |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.password_tokens` |  |  |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.role_permissions` |  |  | ● |  |  |  |  |  | ● |  | ● |  |  | ● |
-| `core.roles` |  |  | ● |  |  |  |  |  | ● |  | ● |  |  | ● |
+| `core.roles` | ● |  | ● |  |  |  |  |  | ● |  | ● |  | ● | ● |
 | `core.sessions` | ● |  |  |  |  |  |  |  |  |  | ● | ● | ● |  |
 | `core.settings` |  |  |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `core.sperren` |  |  | ● |  |  |  |  |  |  |  | ● |  |  | ● |

@@ -5,7 +5,8 @@ import { Empty } from '@core/components/Section';
 import { GR, type Gruppe, type GruppenDaten } from '../gruppen/typen';
 import { MG, type Detail } from './typen';
 
-export type BaumGruppe = Pick<Gruppe, 'id' | 'parent_id' | 'name' | 'ebene' | 'aktiv'>;
+/** nur = in „Meine Mitgliedschaft“: Selbsteintrag nur für bestimmte Berechtigungsgruppen, z. B. „nur „Vorstand““ */
+export type BaumGruppe = Pick<Gruppe, 'id' | 'parent_id' | 'name' | 'ebene' | 'aktiv'> & { nur?: string | null };
 
 /**
  * Baum der Mitgliedergruppen mit Ankreuzfeld je Gruppe – im Mitgliedsstamm (Reiter „Gruppen“) und in „Meine Mitgliedschaft“.
@@ -44,9 +45,10 @@ export function GruppenAuswahl({ baum, zugeordnet: liste, edit, rolleAenderbar, 
         const rolle = zugeordnet.get(g.id) ?? '';
         return (
           <div key={g.id} className="portal-row" style={{ paddingLeft: `${g.ebene * 1.75}rem`, minHeight: '2.75rem', borderBottom: '1px solid var(--sapList_BorderColor)', flexWrap: 'nowrap' }}>
-            <CheckBox text={g.name} checked={drin || geerbt} disabled={!edit || geerbt || (!g.aktiv && !drin)}
+            <CheckBox text={g.name} checked={drin || geerbt} disabled={!edit || geerbt || (!g.aktiv && !drin) || (!!g.nur && !drin)}
                       onChange={(e) => setzen(g.id, e.target.checked ? {} : { entfernen: true })} />
             {!g.aktiv && <span className="portal-muted portal-small">inaktiv</span>}
+            {g.nur && !geerbt && <span className="portal-muted portal-small" title="Eintragen können sich nur Mitglieder dieser Berechtigungsgruppe">{g.nur}</span>}
             {geerbt && <span className="portal-muted portal-small">über Untergruppe</span>}
             <div style={{ flex: 1 }} />
             {drin && (edit && rolleAenderbar
