@@ -31,6 +31,15 @@
 .portal-vs__spalten { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
 .portal-vs__links { flex: 1 1 20rem; max-width: 26rem; min-width: 0; display: flex; flex-direction: column; }
 .portal-vs__rechts { flex: 999 1 32rem; min-width: 0; display: flex; flex-direction: column; }
+/* „Tagesordnung und Protokoll“: Kopfzeile mit „+ Tagesordnungspunkt“ bleibt beim Rollen oben stehen
+   (die Karte darf dafür nichts abschneiden – overflow: hidden verhindert „sticky“) */
+.portal-vs__agenda { overflow: visible; }
+.portal-vs__agenda > .portal-section__head {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--sapGroup_ContentBackground, #fff);
+  border-radius: var(--portal-radius) var(--portal-radius) 0 0;
+  box-shadow: 0 2px 4px -2px rgba(0, 0, 0, 0.15);
+}
 @media (max-width: 900px) { .portal-vs__links { max-width: none; } }
 
 .portal-vs__event { display: flex; gap: 0.75rem; align-items: flex-start; }
