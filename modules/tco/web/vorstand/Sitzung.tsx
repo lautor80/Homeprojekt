@@ -221,7 +221,7 @@ export function Sitzung() {
         {/* ---- Tagesordnung und Protokoll */}
         <div className="portal-vs__rechts">
           {s.bemerkung && <Section title="Vorbemerkung"><FormatText text={s.bemerkung} className="portal-vs__text" /></Section>}
-          <Section title="Tagesordnung und Protokoll" count={s.tops.length}
+          <Section title="Tagesordnung und Protokoll" count={s.tops.length} className="portal-vs__agenda"
                    actions={rw ? <Button design="Transparent" icon="add" onClick={() => setTop({ titel: '', verantwortlich: '', text: '', status: 'OFFEN' })}>Tagesordnungspunkt</Button> : undefined}>
             {!s.tops.length && <Empty>Noch keine Tagesordnungspunkte.</Empty>}
             {s.tops.map((t, i) => (
