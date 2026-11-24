@@ -172,7 +172,8 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   const vorhanden = (await db`
     select b.internenr, min(b.datum)::text as datum, sum(coalesce(b.soll, 0) - coalesce(b.haben, 0))::float8 as betrag,
            split_part(min(coalesce(b.belnr, '')), ',', 1) as belnr,
-           coalesce(min(b.text) filter (where b.posnr = 0), min(b.text), '') as text
+           coalesce(min(b.text) filter (where b.posnr = 0), min(b.text), '') as text,
+           min(b.rgnr_txt) as rgnr
       from tco.fibuchungen b
      where b.konto = ${konto} and b.datum between ${addTage(von, -12)} and ${addTage(bis, 12)}
        and b.storno_zu is null
