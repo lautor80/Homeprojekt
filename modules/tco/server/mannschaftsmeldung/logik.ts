@@ -4,8 +4,10 @@
  * Der Sportwart legt je Saison eine Abfrage an und wählt die Mannschaften (Altersklassen) aus den Mitgliedergruppen.
  * Ist die Abfrage offen, gibt jedes Mitglied – auch für die Personen seiner Familie – je Mannschaft an:
  *   1 = fest teilnehmen · 2 = als Ersatz · 3 = nicht teilnehmen  (keine Angabe = noch offen)
- * Alle sehen alle Mannschaften der Abfrage. Bis zur Frist (einschließlich) und solange die Abfrage offen ist, lässt sich die
- * Angabe ändern. Die Anmeldematrix zeigt alle Personen mit Rückmeldung und alle Mitglieder der gewählten Gruppen.
+ * Relevant ist eine Mannschaft nur für Personen, die ihrer Gruppe (oder einer Untergruppe) zugeordnet sind – nur dort
+ * könnten sie gemeldet werden. Mitglieder sehen nur diese Mannschaften; in der Anmeldematrix sind die übrigen Zellen
+ * ausgegraut. Bis zur Frist (einschließlich) und solange die Abfrage offen ist, lässt sich die Angabe ändern. Die
+ * Anmeldematrix zeigt alle Personen mit Rückmeldung und alle Mitglieder der gewählten Gruppen.
  */
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
@@ -20,13 +22,14 @@ export type AbfrageStatus = 'entwurf' | 'offen' | 'geschlossen';
 export interface Abfrage { id: number; titel: string; saison: string; frist: string | null; hinweis: string; status: AbfrageStatus }
 export interface Mannschaft { gruppe_id: number; name: string; pfad: string }
 
-/** Zählung je Mannschaft: fest / Ersatz / nicht / ohne Angabe (aus den Zeilen der Matrix) */
-export function zaehlen(mannschaften: { gruppe_id: number }[], zeilen: { wahl: Record<number, Wahl | undefined> }[]) {
+/** Zählung je Mannschaft: fest / Ersatz / nicht / ohne Angabe – „ohne Angabe“ nur bei Personen, für die die Mannschaft möglich ist */
+export function zaehlen(mannschaften: { gruppe_id: number }[], zeilen: { wahl: Record<number, Wahl | undefined>; moeglich?: number[] }[]) {
   return mannschaften.map((m) => {
     const z = { gruppe_id: m.gruppe_id, fest: 0, ersatz: 0, nicht: 0, offen: 0 };
     for (const p of zeilen) {
       const w = p.wahl[m.gruppe_id];
-      if (w === 1) z.fest++; else if (w === 2) z.ersatz++; else if (w === 3) z.nicht++; else z.offen++;
+      if (w === 1) z.fest++; else if (w === 2) z.ersatz++; else if (w === 3) z.nicht++;
+      else if (!p.moeglich || p.moeglich.includes(m.gruppe_id)) z.offen++;
     }
     return z;
   });
@@ -48,6 +51,13 @@ async function mannschaftenLesen(db: Db, abfrageIds: number[]): Promise<Map<numb
     if (!g) continue;
     out.set(Number(r.abfrage_id), [...(out.get(Number(r.abfrage_id)) ?? []), { gruppe_id: g.id, name: g.name, pfad: g.pfad }]);
   }
+  return out;
+}
+
+/** je Person die Mannschaften, für die sie infrage kommt: Mitglied der Gruppe oder einer ihrer Untergruppen */
+export async function moeglicheMannschaften(db: Db, gruppen: number[]): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  for (const g of gruppen) for (const a of await personenDerGruppe(db, g)) out.set(a, [...(out.get(a) ?? []), g]);
   return out;
 }
 
@@ -112,6 +122,8 @@ export interface MatrixZeile {
   adrnr: string; name: string; geburtsjahr: number | null; geschlecht: string;
   /** Mitglied einer der gewählten Gruppen (sollte antworten) */
   inGruppe: boolean;
+  /** Mannschaften, für die die Person infrage kommt (Gruppenzuordnung); die übrigen Zellen sind ausgegraut */
+  moeglich: number[];
   wahl: Record<number, Wahl | undefined>;
   bemerkung: string;
   geaendert: string | null;
@@ -121,8 +133,8 @@ export async function matrixLesen(db: Db, id: number) {
   const a = await abfrage(db, id);
   const mannschaften = (await mannschaftenLesen(db, [id])).get(id) ?? [];
   // Mitglieder der gewählten Gruppen (samt Untergruppen) und alle mit Rückmeldung
-  const inGruppe = new Set<string>();
-  for (const m of mannschaften) for (const p of await personenDerGruppe(db, m.gruppe_id)) inGruppe.add(p);
+  const moeglich = await moeglicheMannschaften(db, mannschaften.map((m) => m.gruppe_id));
+  const inGruppe = new Set(moeglich.keys());
   const antworten = await db`select adrnr, gruppe_id, wahl, geaendert_am::text as am from tco.mm_antworten where abfrage_id = ${id}`;
   const bem = new Map((await db`select adrnr, text from tco.mm_bemerkungen where abfrage_id = ${id}`).map((r) => [r.adrnr as string, r.text as string]));
   const alle = [...new Set([...inGruppe, ...antworten.map((x) => x.adrnr as string), ...bem.keys()])];
@@ -135,7 +147,7 @@ export async function matrixLesen(db: Db, id: number) {
       const eigene = antworten.filter((x) => x.adrnr === p.adrnr);
       return {
         adrnr: p.adrnr, name: condense(`${p.nachname ?? ''}, ${p.vorname ?? ''}`), geburtsjahr: p.jahr ?? null, geschlecht: String(p.geschlecht).trim(),
-        inGruppe: inGruppe.has(p.adrnr),
+        inGruppe: inGruppe.has(p.adrnr), moeglich: moeglich.get(p.adrnr) ?? [],
         wahl: Object.fromEntries(eigene.map((x) => [Number(x.gruppe_id), Number(x.wahl) as Wahl])),
         bemerkung: bem.get(p.adrnr) ?? '',
         geaendert: eigene.map((x) => x.am as string).sort().at(-1) ?? null,
@@ -169,6 +181,13 @@ export async function angabeSpeichern(tx: Db, id: number, b: Angabe, wer: string
   }
   const gueltig = new Set((await tx`select gruppe_id from tco.mm_mannschaften where abfrage_id = ${id}`).map((r) => Number(r.gruppe_id)));
   for (const w of b.wahl) if (!gueltig.has(w.gruppe_id)) throw new BusinessError('Eine Mannschaft gehört nicht (mehr) zu dieser Abfrage – bitte neu laden.');
+  const moeglich = (await moeglicheMannschaften(tx, [...gueltig])).get(b.adrnr) ?? [];
+  if (!o.verwaltung) {
+    // Mitglieder geben nur für Mannschaften an, denen sie zugeordnet sind (Entfernen einer Angabe geht immer)
+    if (b.wahl.some((w) => w.wahl != null && !moeglich.includes(w.gruppe_id))) {
+      throw new BusinessError('Für eine der Mannschaften ist die Person nicht vorgesehen (keine Gruppenzuordnung) – bitte beim Sportwart melden.');
+    }
+  }
   let n = 0;
   for (const w of b.wahl) {
     if (w.wahl == null) await tx`delete from tco.mm_antworten where abfrage_id = ${id} and gruppe_id = ${w.gruppe_id} and adrnr = ${b.adrnr}`;
@@ -183,7 +202,7 @@ export async function angabeSpeichern(tx: Db, id: number, b: Angabe, wer: string
   if (t) await tx`insert into tco.mm_bemerkungen (abfrage_id, adrnr, text) values (${id}, ${b.adrnr}, ${t}) on conflict (abfrage_id, adrnr) do update set text = excluded.text`;
   else await tx`delete from tco.mm_bemerkungen where abfrage_id = ${id} and adrnr = ${b.adrnr}`;
   const [p] = await tx`select vorname from tco.mitglieder where adrnr = ${b.adrnr}`;
-  return `Mannschaftsmeldung${p?.vorname ? ` für ${p.vorname}` : ''} gesichert (${n} von ${gueltig.size} Mannschaften angegeben).`;
+  return `Mannschaftsmeldung${p?.vorname ? ` für ${p.vorname}` : ''} gesichert (${n} von ${moeglich.length} möglichen Mannschaften angegeben).`;
 }
 
 // ---------------------------------------------------------------- Mein Bereich
@@ -197,16 +216,28 @@ export async function meineLesen(db: Db, adrnr: string) {
   const ms = await mannschaftenLesen(db, ids);
   const antworten = await db`select abfrage_id, gruppe_id, adrnr, wahl from tco.mm_antworten where abfrage_id = any(${ids}::int[]) and adrnr = any(${personen}::text[])`;
   const bem = await db`select abfrage_id, adrnr, text from tco.mm_bemerkungen where abfrage_id = any(${ids}::int[]) and adrnr = any(${personen}::text[])`;
-  return {
-    abfragen: abfragen.map((a) => ({
-      ...a, bearbeitbar: antwortMoeglich(a), mannschaften: ms.get(a.id) ?? [],
-      personen: familie.map((f) => ({
-        adrnr: f.adrnr, name: f.name,
-        wahl: Object.fromEntries(antworten.filter((x) => Number(x.abfrage_id) === a.id && x.adrnr === f.adrnr).map((x) => [Number(x.gruppe_id), Number(x.wahl) as Wahl])),
-        bemerkung: (bem.find((x) => Number(x.abfrage_id) === a.id && x.adrnr === f.adrnr)?.text as string | undefined) ?? '',
-      })),
-    })),
-  };
+  const out = [];
+  for (const a of abfragen) {
+    const mannschaften = ms.get(a.id) ?? [];
+    const moeglich = await moeglicheMannschaften(db, mannschaften.map((m) => m.gruppe_id));
+    // nur Personen, die für mindestens eine Mannschaft infrage kommen – man selbst immer (mit Hinweis, falls keine)
+    const leute = familie.filter((f) => f.adrnr === adrnr || moeglich.has(f.adrnr));
+    out.push({
+      ...a, bearbeitbar: antwortMoeglich(a), mannschaften,
+      personen: leute.map((f) => {
+        const eigene = moeglich.get(f.adrnr) ?? [];
+        return {
+          adrnr: f.adrnr, name: f.name,
+          /** nur die Mannschaften, für die die Person infrage kommt (Gruppenzuordnung) */
+          mannschaften: mannschaften.filter((m) => eigene.includes(m.gruppe_id)),
+          wahl: Object.fromEntries(antworten.filter((x) => Number(x.abfrage_id) === a.id && x.adrnr === f.adrnr && eigene.includes(Number(x.gruppe_id)))
+            .map((x) => [Number(x.gruppe_id), Number(x.wahl) as Wahl])),
+          bemerkung: (bem.find((x) => Number(x.abfrage_id) === a.id && x.adrnr === f.adrnr)?.text as string | undefined) ?? '',
+        };
+      }),
+    });
+  }
+  return { abfragen: out };
 }
 
 /** gehört die Person zur Familie des angemeldeten Mitglieds? */
