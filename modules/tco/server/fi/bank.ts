@@ -72,6 +72,14 @@ function musterSchluessel(name: string, zweck: string): string {
   return k.length >= 3 ? k : '';
 }
 
+/** Paperless-Dokument einer Hallenrechnung (rgkopf.doknr, ggf. mit führenden Nullen) */
+export function rechnungsDok(doknr: unknown): number | null {
+  const t = String(doknr ?? '').trim();
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return n > 0 ? n : null;
+}
+
 /**
  * Offene Hallenrechnung zu einer Gutschrift ohne Rechnungsnummer im Text (RGNR_BY_AMOUNT):
  * offener Betrag = Gutschrift. Gibt es mehrere, gewinnt die einzige, deren Kunde zum Namen des Zahlers passt;
@@ -175,9 +183,11 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   // ---- Vorbelegung Gegenkonto
   const jahr = Number(bis.slice(0, 4));
   const gk = new Set((await kontenLesen(db, jahr)).filter((k) => k.aktiv && k.konto !== konto).map((k) => k.konto));
-  const rgnrDa = new Map((await db`select rgnr_txt, status, betrag::float8 as betrag from tco.rgkopf`).map((r) => [r.rgnr_txt as string, r]));
+  const rgnrDa = new Map((await db`select rgnr_txt, status, betrag::float8 as betrag, doknr from tco.rgkopf`).map((r) => [r.rgnr_txt as string, r]));
   const offeneRg = (await offeneRechnungen(db) as unknown as { rgnr_txt: string; kunde: string; offen: number }[]).filter((r) => r.offen > 0);
   const rgVergeben = new Set<string>();
+  /** erkannte Hallenrechnung je Umsatz (auch bereits abgeschlossene) – ihr PDF wird als Beleg vorgeschlagen */
+  const rgZuUmsatz = new Map<BankUmsatz, string>();
   const historie = await db`
     select internenr, upper(coalesce(text, '')) as text, gkonto, datum::text as datum,
            (coalesce(soll, 0) - coalesce(haben, 0))::float8 as betrag
@@ -237,6 +247,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
         const offen = rg.status !== '4' && rg.status !== '6';
         setze(x, '8003', `Regel: Hallenrechnung ${m} im Text${offen ? '' : ' (bereits abgeschlossen)'}`, 'regel', { rgnr: offen ? m : null });
         if (offen) rgVergeben.add(m);
+        rgZuUmsatz.set(x, m);
         continue;
       }
       if (/sumup/i.test(nz)) {
@@ -259,6 +270,7 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
       const rg = rechnungAmBetrag(offeneRg.filter((r) => !rgVergeben.has(r.rgnr_txt)), x.betrag, x.name);
       if (rg && setze(x, '8003', `Vorschlag: offene Hallenrechnung ${rg.rgnr_txt} (${rg.kunde}) mit gleichem Betrag${rg.name ? ' und Namen' : ' – bitte prüfen'}`, 'regel', { rgnr: rg.rgnr_txt })) {
         rgVergeben.add(rg.rgnr_txt);
+        rgZuUmsatz.set(x, rg.rgnr_txt);
         continue;
       }
     }
@@ -281,6 +293,14 @@ export async function bankAbgleich(db: Db, konto: string, buf: Buffer,
   // ---- Belegvorschlag
   const vergeben = new Set<number>();
   for (const x of u.filter((y) => y.status === 'neu' && !y.laufid && !y.rueck)) {
+    // Hallenrechnung erkannt: das Rechnungs-PDF in Paperless ist der Beleg (unabhängig von der Historie des Zahlers)
+    const rgnr = rgZuUmsatz.get(x);
+    const dok = rgnr ? rechnungsDok(rgnrDa.get(rgnr)?.doknr) : null;
+    if (rgnr && dok) {
+      vergeben.add(dok);
+      x.belegVorschlag = { doks: [dok], text: `Beleg-Vorschlag: Rechnung ${rgnr} (Paperless ${dok})` };
+      continue;
+    }
     const key = musterSchluessel(x.name, x.zweck);
     if (!key) continue;
     const gkonto = x.positionen[0]?.gkonto ?? null;
