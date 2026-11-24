@@ -15,6 +15,8 @@ export interface Gruppe {
   id: number; parent_id: number | null; name: string; beschreibung: string | null; aktiv: boolean;
   /** Position innerhalb der Ebene (kleinste zuerst); null = ohne Position, dann nach Name hinter den übrigen */
   position: number | null;
+  /** Selbsteintrag nur für diese Berechtigungsgruppen (core.roles.id); leer = für alle Mitglieder. Gilt auch für die Untergruppen. */
+  nur_rollen: string[];
   /** aktive Regeln des Regelwerks als Text, z. B. „6–7 Jahre (Kalenderjahr zählt) · weiblich“; null = keine Regel */
   regel: string | null;
   /** Namen von der obersten Ebene bis zur Gruppe, z. B. „Spielbetrieb › Mannschaften › Herren 40“ */
@@ -50,7 +52,7 @@ export async function aufnahmeMitglieder(db: Db): Promise<AufnahmeMitglied[]> {
 
 /** Alle Gruppen in Baumreihenfolge (Eltern vor Kindern, je Ebene nach Name) mit den direkt zugeordneten Mitgliedern */
 export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
-  const g = await db`select id, parent_id, name, beschreibung, aktiv, position from tco.kal_gruppen`;
+  const g = await db`select id, parent_id, name, beschreibung, aktiv, position, nur_rollen from tco.kal_gruppen`;
   const regeln = new Map<number, string[]>();
   for (const r of await db`select gruppe_id, alter_von, alter_bis, jahrgang, geschlecht, andere_entfernen from tco.kal_gruppen_regeln where aktiv order by id`) {
     const text = regelText({
@@ -73,7 +75,7 @@ export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
   const alle = g.map((x) => ({
     id: Number(x.id), parent_id: x.parent_id == null ? null : Number(x.parent_id), name: x.name as string,
     beschreibung: (x.beschreibung as string | null) ?? null, aktiv: !!x.aktiv,
-    position: x.position == null ? null : Number(x.position), regel: regeln.get(Number(x.id))?.join(' oder ') ?? null,
+    position: x.position == null ? null : Number(x.position), nur_rollen: [...((x.nur_rollen as string[] | null) ?? [])], regel: regeln.get(Number(x.id))?.join(' oder ') ?? null,
   }));
   const ids = new Set(alle.map((x) => x.id));
   const kinder = new Map<number | null, typeof alle>();
@@ -102,6 +104,21 @@ export async function gruppenLesen(db: Db): Promise<Gruppe[]> {
   };
   lauf(null, '', 0);
   return out;
+}
+
+type SperrGruppe = Pick<Gruppe, 'id' | 'parent_id' | 'name' | 'nur_rollen'>;
+/**
+ * Selbsteintrag in „Meine Mitgliedschaft“: Ist die Gruppe oder eine Gruppe darüber auf Berechtigungsgruppen beschränkt
+ * (z. B. „Vorstand“), darf sich nur eintragen, wer auf jeder beschränkten Ebene mindestens eine der Rollen hat.
+ * Liefert die erste beschränkende Gruppe (von unten), deren Rollen fehlen, sonst null. Kommt ohne Datenbank aus.
+ */
+export function selbstSperre(gruppen: SperrGruppe[], id: number, rollen: readonly string[]): SperrGruppe | null {
+  const je = new Map(gruppen.map((g) => [g.id, g]));
+  const habe = new Set(rollen);
+  for (let g = je.get(id), n = 0; g && n < 50; g = g.parent_id == null ? undefined : je.get(g.parent_id), n++) {
+    if (g.nur_rollen.length && !g.nur_rollen.some((r) => habe.has(r))) return g;
+  }
+  return null;
 }
 
 /** Gruppen-IDs samt aller Untergruppen */
@@ -181,7 +198,7 @@ async function gruppeHolen(tx: Db, id: number) {
  * Gruppe anlegen oder ändern. parent_id: undefined = übergeordnete Gruppe nicht ändern (bei Neuanlage: oberste Ebene),
  * null = oberste Ebene. Eine Gruppe kann nicht unter sich selbst oder eine ihrer Untergruppen gehängt werden.
  */
-export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: string; beschreibung?: string | null; aktiv: boolean; parent_id?: number | null; position?: number | null }) {
+export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: string; beschreibung?: string | null; aktiv: boolean; parent_id?: number | null; position?: number | null; nur_rollen?: string[] }) {
   const name = condense(d.name);
   if (!name) throw new BusinessError('Bitte einen Namen angeben.');
   const alt = id ? await gruppeHolen(tx, id) : null;
@@ -195,16 +212,25 @@ export async function gruppeSpeichern(tx: Db, id: number | null, d: { name: stri
       throw new BusinessError(`„${name}“ kann nicht unter sich selbst oder eine eigene Untergruppe gehängt werden.`);
     }
   }
+  // Selbsteintrag nur für Berechtigungsgruppen: undefined = nicht ändern; nur vorhandene Rollen
+  const rollenNeu = d.nur_rollen === undefined ? null : [...new Set(d.nur_rollen)];
+  if (rollenNeu?.length) {
+    const da = new Set((await tx`select id from core.roles where id = any(${rollenNeu})`).map((r) => r.id as string));
+    const fehlt = rollenNeu.filter((r) => !da.has(r));
+    if (fehlt.length) throw new BusinessError(`Die Berechtigungsgruppe ${fehlt.map((r) => `„${r}“`).join(', ')} gibt es nicht.`);
+  }
   const [dup] = await tx`select id from tco.kal_gruppen
                           where lower(name) = lower(${name}) and coalesce(parent_id, 0) = ${parent ?? 0} and id <> ${id ?? 0}`;
   if (dup) throw new BusinessError(`Die Gruppe „${name}“ gibt es ${parent == null ? '' : 'auf dieser Ebene '}bereits.`);
   if (id) {
     await tx`update tco.kal_gruppen set name = ${name}, beschreibung = ${d.beschreibung?.trim() || null}, aktiv = ${d.aktiv}, parent_id = ${parent}, position = ${position} where id = ${id}`;
+    if (rollenNeu) await tx`update tco.kal_gruppen set nur_rollen = ${rollenNeu}::text[] where id = ${id}`;
     // verschoben: Mitglieder der Gruppe (und ihrer Untergruppen) stehen nicht noch einmal in den neuen Gruppen darüber
     if (parent !== (alt?.parent_id ?? null)) await hierarchieBereinigen(tx);
     return id;
   }
-  const [n] = await tx`insert into tco.kal_gruppen (name, beschreibung, aktiv, parent_id, position) values (${name}, ${d.beschreibung?.trim() || null}, ${d.aktiv}, ${parent}, ${position}) returning id`;
+  const [n] = await tx`insert into tco.kal_gruppen (name, beschreibung, aktiv, parent_id, position, nur_rollen)
+                       values (${name}, ${d.beschreibung?.trim() || null}, ${d.aktiv}, ${parent}, ${position}, ${rollenNeu ?? []}::text[]) returning id`;
   return Number(n.id);
 }
 
