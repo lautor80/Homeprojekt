@@ -103,6 +103,14 @@ export function datumLesen(s: string, bezug?: string | null): string | null {
     const mo = MONATE.indexOf(m[2].toLowerCase().replace('maerz', 'märz')) + 1;
     return gueltig(+m[3], mo, +m[1]) ? iso(+m[3], mo, +m[1]) : null;
   }
+  // „August 13, 2026“ (englische Schreibweise aus Exporten, auch mit englischen Monatsnamen)
+  const ENGLISCH = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  m = /\b([a-zäö]+)\s+(\d{1,2}),?\s+(\d{4})\b/i.exec(s);
+  if (m) {
+    const name = m[1].toLowerCase().replace('maerz', 'märz');
+    const mo = (ENGLISCH.indexOf(name) + 1) || (MONATE.indexOf(name) + 1);
+    if (mo) return gueltig(+m[3], mo, +m[2]) ? iso(+m[3], mo, +m[2]) : null;
+  }
   return null;
 }
 

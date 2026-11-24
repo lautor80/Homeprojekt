@@ -175,3 +175,67 @@ test('Markdown: ohne Datum und ohne Tagesordnung gibt es Hinweise, der Text blei
   assert.equal(p.tops[0].text, 'Kurze Notiz ohne Gliederung.\nZweite Zeile.');
   assert.equal(p.hinweise.length, 2);
 });
+
+test('Markdown: Export aus Docmost/Joplin – Kopftabelle, Teilnehmer zum Ankreuzen, Tagesordnung als HTML-Tabelle', () => {
+  const p = markdownLesen([
+    '# 2090-08-13',
+    '',
+    '# Informationen',
+    '',
+    '|     |     |',
+    '| --- | --- |',
+    '| Datum | August 13, 2090 |',
+    '| Verantwortlich | T. Laub |',
+    '| Status |     |',
+    '| Ort | Clubhaus |',
+    '| Hinweis | Erstes Treffen nach Monaten |',
+    '| **nächste Termine** |     |',
+    '',
+    '<details>',
+    '<summary>Teilnehmer</summary>',
+    '',
+    '- [x] Torsten Laub (Beisitzer)',
+    '- [x] Erika Muster',
+    '- [ ] Hans Muster',
+    '',
+    '</details>',
+    '',
+    '# Agenda',
+    '',
+    '<div class="joplin-table-wrapper"><table><tbody>'
+      + '<tr><th colspan="1"><p>Nr</p></th><th><p>Thema</p></th><th><p>Besprochen</p></th><th><p>Verantwortlich</p></th></tr>'
+      + '<tr><td colspan="4" style="background-color: #b4d5ff;"><p></p></td></tr>'
+      + '<tr><td><p>1</p></td><td><p>Hallenpreise</p></td><td><p>Abos bleiben gleich.</p><p>Einzelbuchung <strong>2€/Stunde </strong>mehr &amp; fertig.</p></td><td><p>Kasper</p></td></tr>'
+      + '<tr><td><p>2</p></td><td><p>Jugendtraining</p></td><td><p>Beitrag auf 28,50€ ab 01.10.2090. Einstimmiger Beschluss durch den Vorstand.</p>'
+      + '<img src="files/0190/image.png" width="2806"></td><td><p></p></td></tr>'
+      + '<tr><td><p>3</p></td><td><p>Winterrunde</p></td><td><ul><li><p>Meldeschluss Sonntag</p></li><li><p>Wen fragen?</p><ul><li><p>Herren =&gt; Jan</p></li></ul></li></ul><p>Bälle zahlt der Verein.</p></td><td><p></p></td></tr>'
+      + '<tr><td style="background-color: #b4d5ff;"><p></p></td><td colspan="2"><p><strong>allgemeine Themen</strong></p></td><td><p></p></td></tr>'
+      + '<tr><td><p>4</p></td><td><p></p></td><td><p></p></td><td><p></p></td></tr>'
+      + '</tbody></table></div>',
+  ].join('\n'), '2090-08-13.md');
+  assert.equal(p.titel, null, 'Titel nur Datum → Titel aus Art und Datum');
+  assert.equal(p.datum, '2090-08-13');
+  assert.equal(p.ort, 'Clubhaus');
+  assert.equal(p.protokoll, 'T. Laub');
+  assert.deepEqual(p.anwesend, ['Torsten Laub (Beisitzer)', 'Erika Muster']);
+  assert.deepEqual(p.entschuldigt, ['Hans Muster']);
+  assert.equal(p.bemerkung, 'Hinweis: Erstes Treffen nach Monaten');
+  assert.deepEqual(p.tops.map((t) => t.titel), ['Hallenpreise', 'Jugendtraining', 'Winterrunde'], 'leere Zeilen und Zwischenüberschriften entfallen');
+  assert.equal(p.tops[0].verantwortlich, 'Kasper');
+  assert.equal(p.tops[0].text, 'Abos bleiben gleich.\n\nEinzelbuchung **2€/Stunde** mehr & fertig.');
+  assert.equal(p.tops[0].eintraege.length, 0, 'keine Aufgaben aus der Teilnehmerliste');
+  assert.deepEqual(p.tops[1].eintraege, [
+    { art: 'BESCHLUSS', text: 'Beitrag auf 28,50€ ab 01.10.2090. Einstimmiger Beschluss durch den Vorstand.', ja: null, nein: 0, enthaltung: null, ergebnis: 'ANGENOMMEN' },
+  ]);
+  assert.deepEqual(p.tops[1].anlagen, ['image.png']);
+  assert.equal(p.tops[1].text, '', 'Bild ohne Beschreibung nur als Anlage');
+  assert.equal(p.tops[2].text, '- Meldeschluss Sonntag\n- Wen fragen?\n- – Herren => Jan\n\nBälle zahlt der Verein.');
+  assert.ok(!p.tops.some((t) => /<|\|/.test(t.text)), 'kein HTML und keine Tabellenzeichen im Text');
+  assert.deepEqual(p.hinweise, []);
+});
+
+test('Datum in englischer Schreibweise', () => {
+  assert.equal(datumLesen('August 13, 2026'), '2026-08-13');
+  assert.equal(datumLesen('March 1 2027'), '2027-03-01');
+  assert.equal(datumLesen('13. August 2026'), '2026-08-13');
+});
