@@ -274,6 +274,35 @@ export async function themaParken(tx: Db, themaId: number, wer: string): Promise
   return entfernen ? 'ENTFERNT' : 'VERTAGT';
 }
 
+/**
+ * Beliebigen Tagesordnungspunkt in den Themenparkplatz verschieben: Gehört er schon zu einem Thema, wird dieses wieder
+ * geparkt. Sonst entsteht ein Thema aus dem Punkt (Titel, Protokolltext als Beschreibung, Verantwortlicher als Einreicher,
+ * Anlagen kopiert) mit Priorität und Zeitraum – und wird dann wie ein Thema geparkt (Punkt entfernt bzw. vertagt).
+ */
+export async function topParken(tx: Db, topId: number, e: { prioritaet: 1 | 2 | 3; von: string; bis: string }, wer: { name: string; userId: string | null }) {
+  const [t] = await tx`select tp.id, tp.titel, tp.text, tp.verantwortlich, tp.status, tp.sitzung_id, s.status as s_status, th.id as thema_id
+                         from tco.vs_tops tp join tco.vs_sitzungen s on s.id = tp.sitzung_id left join tco.vs_themen th on th.top_id = tp.id
+                        where tp.id = ${topId} for update of tp`;
+  if (!t) throw new BusinessError('Den Tagesordnungspunkt gibt es nicht (mehr).', 404);
+  if (t.s_status === 'FREIGEGEBEN') throw new BusinessError('Das Protokoll ist freigegeben – der Punkt kann nicht mehr geparkt werden.');
+  if (t.status === 'ERLEDIGT') throw new BusinessError('Der Tagesordnungspunkt ist abgeschlossen – erst wieder öffnen.');
+  let themaId = t.thema_id == null ? null : Number(t.thema_id);
+  if (!themaId) {
+    zeitraumPruefen(e.von, e.bis);
+    const einreicher = leer(t.verantwortlich as string | null) ?? wer.name;
+    const [n] = await tx`
+      insert into tco.vs_themen (titel, beschreibung, prioritaet, einreicher, einreicher_user, von, bis, top_id, erstellt_von, geaendert_von)
+      values (${t.titel as string}, ${leer(t.text as string | null)}, ${e.prioritaet}, ${einreicher}, ${einreicher === wer.name ? wer.userId : null},
+              ${e.von}, ${e.bis}, ${topId}, ${wer.name}, ${wer.name})
+      returning id`;
+    themaId = Number(n.id);
+    await tx`insert into tco.vs_themen_anlagen (thema_id, dateiname, mime, groesse, inhalt, url, erstellt_von)
+             select ${themaId}, dateiname, mime, groesse, inhalt, url, coalesce(erstellt_von, ${wer.name}) from tco.vs_anlagen where top_id = ${topId} order by id`;
+  }
+  const ergebnis = await themaParken(tx, themaId, wer.name);
+  return { thema_id: themaId, ergebnis, neu: t.thema_id == null };
+}
+
 /** neue Sitzung mit Vorlage: vorgeschlagene Themen gleich einplanen; Rückgabe: Anzahl */
 export async function vorschlaegeEinplanen(tx: Db, sitzungId: number, wer: string): Promise<number> {
   const s = await sitzungDatum(tx, sitzungId);

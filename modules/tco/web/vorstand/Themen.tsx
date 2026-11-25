@@ -313,3 +313,105 @@ export function ThemenInSitzung({ s, rw, stand, onGeaendert }: { s: SitzungDetai
     </Section>
   );
 }
+
+// ---------------------------------------------------------------- Auswahl: Themen aus dem Parkplatz in die Tagesordnung aufnehmen
+
+export function ThemenAuswahlDialog({ sitzungId, onClose, onFertig }: { sitzungId: number; onClose: () => void; onFertig: () => void }) {
+  const [d, setD] = useState<{ vorgeschlagen: Thema[]; weitere: Thema[] } | null>(null);
+  const [wahl, setWahl] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  useEffect(() => {
+    api.get<{ vorgeschlagen: Thema[]; weitere: Thema[] }>(`${VS}/sitzungen/${sitzungId}/themen`)
+      .then((r) => { setD(r); setWahl(new Set(r.vorgeschlagen.map((t) => t.id))); })
+      .catch((e) => setFehler(e.message));
+  }, [sitzungId]);
+  const umschalten = (id: number, an: boolean) => { const n = new Set(wahl); if (an) n.add(id); else n.delete(id); setWahl(n); };
+  async function uebernehmen() {
+    setBusy(true); setFehler(null);
+    try {
+      const r = await api.post<{ text: string }>(`${VS}/sitzungen/${sitzungId}/themen`, { ids: [...wahl] });
+      toast(r.text);
+      onFertig();
+    } catch (e) { setFehler((e as Error).message); setBusy(false); }
+  }
+  const zeile = (t: Thema) => (
+    <div key={t.id} className="portal-vs__parkthema">
+      <CheckBox checked={wahl.has(t.id)} accessibleName={t.titel} onChange={(e) => umschalten(t.id, e.target.checked)} />
+      <span className="portal-vs__zelle2" style={{ flex: 1 }}>
+        <span>{t.titel}</span>
+        <span className="portal-muted">
+          <ObjectStatus state={PRIO_STATE[t.prioritaet]}>{t.prioritaet_text}</ObjectStatus> · {t.einreicher} · {zeitraum(t.von, t.bis)}
+          {t.anlagen.length ? <> · <Icon name="attachment" /> {t.anlagen.length}</> : null}
+          {t.ueberfaellig && <> · <ObjectStatus state="Negative">Zeitraum vorbei</ObjectStatus></>}
+        </span>
+      </span>
+    </div>
+  );
+  return (
+    <Dialog open headerText="Themen aus dem Parkplatz aufnehmen" onClose={onClose} style={{ width: 'min(40rem, 96vw)' }}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="add" disabled={!wahl.size || busy} onClick={uebernehmen}>{wahl.size > 1 ? `${wahl.size} Themen aufnehmen` : 'Aufnehmen'}</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{fehler}</MessageStrip>}
+      {!d ? <BusyIndicator active /> : (<>
+        {!d.vorgeschlagen.length && !d.weitere.length && <Empty>Im Themenparkplatz liegt kein geparktes Thema.</Empty>}
+        {d.vorgeschlagen.length > 0 && <div className="portal-vs__parkkopf"><span><Icon name="lightbulb" /> Vorgeschlagen – Sitzung im Zeitraum</span></div>}
+        {d.vorgeschlagen.map(zeile)}
+        {d.weitere.length > 0 && <div className="portal-vs__parkkopf" style={{ marginTop: '0.75rem' }}><span>Weitere geparkte Themen</span></div>}
+        {d.weitere.map(zeile)}
+        <Text className="portal-muted" style={{ display: 'block', marginTop: '0.5rem' }}>Jedes Thema wird ein Tagesordnungspunkt vor „Verschiedenes“ – mit Beschreibung, Einreicher und Anlagen.</Text>
+      </>)}
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- Tagesordnungspunkt in den Parkplatz verschieben
+
+export function TopParkenDialog({ top, onClose, onFertig }: { top: { id: number; titel: string; text: string | null; verantwortlich: string | null }; onClose: () => void; onFertig: () => void }) {
+  const [f, setF] = useState<{ prioritaet: 1 | 2 | 3; von: string; bis: string }>(() => {
+    const h = new Date(); const bis = new Date(h); bis.setMonth(bis.getMonth() + 3);
+    return { prioritaet: 2, von: tagIsoLokal(h), bis: tagIsoLokal(bis) };
+  });
+  const [busy, setBusy] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const ok = /^\d{4}-\d{2}-\d{2}$/.test(f.von) && /^\d{4}-\d{2}-\d{2}$/.test(f.bis) && f.bis >= f.von;
+  async function parken() {
+    setBusy(true); setFehler(null);
+    try {
+      const r = await api.post<{ text: string }>(`${VS}/tops/${top.id}/parken`, f);
+      toast(r.text);
+      onFertig();
+    } catch (e) { setFehler((e as Error).message); setBusy(false); }
+  }
+  return (
+    <Dialog open headerText="In den Themenparkplatz verschieben" onClose={onClose} style={{ width: 'min(36rem, 96vw)' }}
+            footer={<Bar endContent={<>
+              <Button design="Emphasized" icon="bookmark" disabled={!ok || busy} onClick={parken}>Parken</Button>
+              <Button onClick={onClose}>Abbrechen</Button>
+            </>} />}>
+      {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{fehler}</MessageStrip>}
+      <Text style={{ display: 'block', marginBottom: '0.75rem' }}>
+        „{top.titel}“ wird ein Thema im Parkplatz{top.verantwortlich ? ` (Einreicher: ${top.verantwortlich})` : ''}{top.text ? ', der Protokolltext wird zur Beschreibung' : ''}; Anlagen werden übernommen.
+        Ohne Protokolltext und Einträge verschwindet der Punkt aus der Tagesordnung, sonst bleibt er als „vertagt“ stehen.
+      </Text>
+      <FormGrid>
+        <FieldBox label="Priorität">
+          <SegmentedButton accessibleName="Priorität" onSelectionChange={(e) => {
+            const p = Number((e.detail.selectedItems[0] as HTMLElement | undefined)?.dataset.p) as 1 | 2 | 3;
+            if (p) setF({ ...f, prioritaet: p });
+          }}>
+            {PRIOS.map((x) => <SegmentedButtonItem key={x.p} data-p={x.p} selected={f.prioritaet === x.p}>{x.text}</SegmentedButtonItem>)}
+          </SegmentedButton>
+        </FieldBox>
+        <FieldBox label="Besprechen ab" required>
+          <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={f.von} onChange={(e) => setF({ ...f, von: e.detail.value })} />
+        </FieldBox>
+        <FieldBox label="spätestens bis" required>
+          <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={f.bis} valueState={f.bis < f.von ? 'Negative' : 'None'} onChange={(e) => setF({ ...f, bis: e.detail.value })} />
+        </FieldBox>
+      </FormGrid>
+    </Dialog>
+  );
+}

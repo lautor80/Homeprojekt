@@ -16,7 +16,7 @@ import { protokollPdf } from './pdf.js';
 import { STATUS_TEXT, TEILNAHME_TEXT } from './regeln.js';
 import {
   themaAbschliessen, themaAendern, themaAnlageAnlegen, themaAnlageLoeschen, themaAnlegen, themaLesen, themaLoeschen, themaParken, themenFuerSitzung,
-  themenLesen, themenZuordnen,
+  themenLesen, themenZuordnen, topParken,
 } from './themen.js';
 import { heute } from '../format.js';
 
@@ -376,6 +376,14 @@ export async function vorstandRoutes(app: FastifyInstance) {
     const { id } = pId.parse(req.params);
     const r = await change(req, (tx) => themaParken(tx, id, wer(req)), { action: 'VS_THEMA' });
     return { ergebnis: r, text: r === 'ENTFERNT' ? 'Thema wieder geparkt – aus der Tagesordnung entfernt.' : 'Thema wieder geparkt – der Punkt ist als vertagt markiert.' };
+  });
+
+  /** beliebigen Tagesordnungspunkt in den Themenparkplatz verschieben (neues Thema mit Priorität und Zeitraum bzw. Thema wieder parken) */
+  app.post('/vorstand/tops/:id/parken', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ prioritaet: z.coerce.number().int().min(1).max(3).default(2).transform((p) => p as 1 | 2 | 3), von: datum, bis: datum }).partial({ von: true, bis: true }).parse(req.body ?? {});
+    const r = await change(req, (tx) => topParken(tx, id, { prioritaet: b.prioritaet ?? 2, von: b.von ?? '', bis: b.bis ?? '' }, { name: wer(req), userId: req.user?.id ?? null }), { action: 'VS_THEMA' });
+    return { ...r, text: `In den Themenparkplatz verschoben – ${r.ergebnis === 'ENTFERNT' ? 'aus der Tagesordnung entfernt' : 'der Punkt ist als vertagt markiert'}.` };
   });
 
   // ---------------------------------------------------------------- PDF

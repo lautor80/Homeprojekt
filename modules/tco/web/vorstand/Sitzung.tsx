@@ -18,7 +18,7 @@ import {
   type Eintrag, type EventWahl, type SitzungDetail, type Status, type Teilnahme, type Top, type Uebersicht,
 } from './typen';
 import { FormatEditor, FormatText } from './FormatText';
-import { ThemenInSitzung } from './Themen';
+import { ThemenAuswahlDialog, ThemenInSitzung, TopParkenDialog } from './Themen';
 import './vorstand.css';
 
 /**
@@ -56,11 +56,31 @@ export function Sitzung() {
   const [ev, setEv] = useState<EventWahl[] | null>(null);
   const [frage, setFrage] = useState<{ titel: string; text: string; grund?: boolean; danger?: boolean; tun: (grund: string) => Promise<unknown> } | null>(null);
   const [pdf, setPdf] = useState<string | null>(null);
+  /** Themenparkplatz: Themen aufnehmen (Auswahl) bzw. Tagesordnungspunkt parken */
+  const [ausPark, setAusPark] = useState(false);
+  const [parkTop, setParkTop] = useState<Top | null>(null);
   const datei = useRef<HTMLInputElement>(null);
   const anlageZiel = useRef<number | null>(null);
 
   const laden = useCallback(() => api.get<SitzungDetail>(`${VS}/sitzungen/${id}`).then(setS).catch((e) => setError(e.message)), [id]);
   useEffect(() => { laden(); }, [laden]);
+  // Tagesordnung: Kopfzeile steht unter dem Seitentitel fest, nur die Punkte rollen – dazu die Höhe des (festen) Seitentitels
+  const geladen = !!s;
+  useEffect(() => {
+    if (!geladen) return;
+    const titel = document.querySelector('ui5-dynamic-page-title') as HTMLElement | null;
+    const wurzel = document.documentElement.style;
+    const setzen = () => {
+      const r = titel?.getBoundingClientRect();
+      wurzel.setProperty('--vs-titel', `${Math.round(r?.height ?? 0)}px`);
+      wurzel.setProperty('--vs-oben', `${Math.round((r?.top ?? 0) + (r?.height ?? 0))}px`);
+    };
+    setzen();
+    const ro = titel ? new ResizeObserver(setzen) : null;
+    if (titel) ro!.observe(titel);
+    window.addEventListener('resize', setzen);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', setzen); wurzel.removeProperty('--vs-titel'); wurzel.removeProperty('--vs-oben'); };
+  }, [geladen]);
 
   /** Aufruf mit Fehleranzeige, danach neu laden */
   async function tun<T>(fn: () => Promise<T>, danach?: (r: T) => void) {
@@ -226,7 +246,10 @@ export function Sitzung() {
         <div className="portal-vs__rechts">
           {s.bemerkung && <Section title="Vorbemerkung"><FormatText text={s.bemerkung} className="portal-vs__text" /></Section>}
           <Section title="Tagesordnung und Protokoll" count={s.tops.length} className="portal-vs__agenda"
-                   actions={rw ? <Button design="Transparent" icon="add" onClick={() => setTop({ titel: '', verantwortlich: '', text: '', status: 'OFFEN' })}>Tagesordnungspunkt</Button> : undefined}>
+                   actions={rw ? <>
+                     <Button design="Transparent" icon="bookmark" tooltip="Themen aus dem Themenparkplatz in die Tagesordnung aufnehmen" onClick={() => setAusPark(true)}>Aus dem Parkplatz</Button>
+                     <Button design="Transparent" icon="add" onClick={() => setTop({ titel: '', verantwortlich: '', text: '', status: 'OFFEN' })}>Tagesordnungspunkt</Button>
+                   </> : undefined}>
             {!s.tops.length && <Empty>Noch keine Tagesordnungspunkte.</Empty>}
             {s.tops.map((t, i) => (
               <article key={t.id} className={`portal-vs__top portal-vs__top--${t.status.toLowerCase()}`}>
@@ -241,6 +264,10 @@ export function Sitzung() {
                       <Button design="Transparent" icon="navigation-up-arrow" tooltip="nach oben" disabled={i === 0 || busy} onClick={() => schieben(i, -1)} />
                       <Button design="Transparent" icon="navigation-down-arrow" tooltip="nach unten" disabled={i === s.tops.length - 1 || busy} onClick={() => schieben(i, 1)} />
                       <Button design="Transparent" icon="edit" tooltip="Ändern / Protokolltext" onClick={() => setTop({ id: t.id, titel: t.titel, verantwortlich: t.verantwortlich ?? '', text: t.text ?? '', status: t.status })} />
+                      {t.status !== 'ERLEDIGT' && (
+                        <Button design="Transparent" icon="bookmark" tooltip="In den Themenparkplatz verschieben" disabled={busy}
+                                onClick={() => (t.thema_id ? tun(() => api.post(`${VS}/themen/${t.thema_id}/parken`)) : setParkTop(t))} />
+                      )}
                       <Button design="Transparent" icon="delete" tooltip="Löschen" onClick={() => setFrage({ titel: 'Tagesordnungspunkt löschen', danger: true, text: `TOP ${t.nr} „${t.titel}“ mit Beschlüssen und Aufgaben löschen?`, tun: () => tun(() => api.del(`${VS}/tops/${t.id}`)) })} />
                     </span>
                   )}
@@ -387,6 +414,8 @@ export function Sitzung() {
 
       {ev && <VeranstaltungDialog s={s} events={ev} onClose={() => setEv(null)} onSetzen={async (b) => { if (await tun(() => api.post(`${VS}/sitzungen/${s.id}/veranstaltung`, b))) setEv(null); }} />}
 
+      {ausPark && <ThemenAuswahlDialog sitzungId={s.id} onClose={() => setAusPark(false)} onFertig={() => { setAusPark(false); laden(); }} />}
+      {parkTop && <TopParkenDialog top={parkTop} onClose={() => setParkTop(null)} onFertig={() => { setParkTop(null); laden(); }} />}
       <ConfirmDialog open={!!frage} title={frage?.titel ?? ''} text={frage?.text ?? ''} askReason={frage?.grund} danger={frage?.danger}
                      confirmText={frage?.danger ? 'Löschen' : 'OK'} onCancel={() => setFrage(null)}
                      onConfirm={async (g) => { const f = frage; setFrage(null); try { await f?.tun(g); } catch (e) { setError((e as Error).message); } }} />
