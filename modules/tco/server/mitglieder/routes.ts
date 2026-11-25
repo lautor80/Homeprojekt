@@ -41,6 +41,7 @@ import { pushAnRecht, pushStill } from '../../../../server/src/lib/push.js';
 import { PUSH } from '../push.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { emailUnzustellbarAufheben, emailUnzustellbarSetzen } from '../emailsperre.js';
+import * as aenderung from './aenderung.js';
 import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe, selbstSperre } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
@@ -256,18 +257,60 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   const selbstSchema = z.object({ typ: z.enum(['BEITRAGSWECHSEL', 'JUGENDTRAINING']), adrnr, art: z.string().trim().min(1, 'Bitte eine Beitragsart wählen') });
   app.get('/mitglieder/meine/vorgang', selbst, async (req) => { const { mailAn: _mailAn, ...k } = await selbstKontext(DB, benutzerId(req)); return k; });
   app.post('/mitglieder/meine/vorgang/pruefen', selbst, async (req) => selbstVorgang(DB, benutzerId(req), selbstSchema.parse(req.body), false, benutzer(req)));
+  /**
+   * Freigabe durch den Vorstand: Beitragswechsel und Jugendtraining werden nur eingereicht (aenderung.ts). Der Vorstand wird
+   * im Arbeitsvorrat und per Push informiert; erst die Freigabe führt aus, danach geht die Mitgliederinformation per E-Mail
+   * an das Mitglied (bei Personen der Familie, die nicht über das Mitglied zahlen, an deren Zahler).
+   */
   app.post('/mitglieder/meine/vorgang', selbst, async (req) => {
     const e = selbstSchema.parse(req.body);
-    const id = benutzerId(req);
-    const p = await change(req, async (tx) => {
-      const x = await selbstVorgang(tx, id, e, true, benutzer(req));
-      await selbstHinweis(tx, req, { quelle: 'MG_VORGANG', adrnr: e.adrnr, objekt: `${e.adrnr}:${e.typ}`, art: `${VORGANG_TEXT[e.typ]} durch das Mitglied`, text: x.text });
-      return x;
-    }, { action: e.typ, reason: `${VORGANG_TEXT[e.typ]} über „Meine Mitgliedschaft“` });
-    // Mitgliederinformation mit den neuen Verträgen: ablegen und an das angemeldete Mitglied senden (Kopie an den Verein) –
-    // bei Personen der Familie, die nicht über das Mitglied zahlen, an deren Zahler (er trägt den neuen Vertrag)
-    const unterlage = await unterlageVersenden(DB, await vereinLesen(), e.adrnr, p.unterlage, p.text, 'Portal', p.mailAn);
-    return { ...p, text: `${VORGANG_TEXT[e.typ]} ausgeführt: ${p.text}`, unterlage };
+    const r = await change(req, (tx) => aenderung.einreichen(tx, benutzerId(req), e, benutzer(req)),
+      { action: `${e.typ}_EINGEREICHT`, reason: `${VORGANG_TEXT[e.typ]} über „Meine Mitgliedschaft“` });
+    pushStill(() => pushAnRecht(P_MG.edit, PUSH.aenderung, { titel: `${VORGANG_TEXT[e.typ]} eingereicht`, text: `${benutzer(req)}: ${r.text}`, pfad: '/' }, req.user?.id));
+    return {
+      id: r.id, eingereicht: true, schritte: r.schritte, unterlage: null,
+      text: `${VORGANG_TEXT[e.typ]} eingereicht – der Vorstand gibt ihn frei. Danach erhältst du die Mitgliederinformation per E-Mail. Bis dahin ändert sich nichts. Eingereicht: ${r.text}`,
+    };
+  });
+
+  // ---------------------------------------------------------------- Änderungen freigeben (Vorstand) – aus dem Arbeitsvorrat
+  const aid = (req: FastifyRequest) => z.object({ id: z.coerce.number().int().positive() }).parse(req.params).id;
+  app.get('/mitglieder/aenderungen/:id', schreiben, async (req) => aenderung.aenderungLesen(DB, aid(req)));
+  /** Freigabe: ausführen, danach sofort die Mitgliederinformation ablegen und an das Mitglied senden */
+  app.post('/mitglieder/aenderungen/:id/freigeben', schreiben, async (req) => {
+    const id = aid(req);
+    const { a, plan } = await change(req, (tx) => aenderung.freigeben(tx, id, benutzer(req)), { action: 'MG_AENDERUNG_FREIGABE', reason: `Freigabe Antrag ${id}` });
+    const r = await aenderung.mitteilen(DB, await vereinLesen(), id, benutzer(req));
+    await change(req, (tx) => aenderung.festhalten(tx, id, r), { action: 'MG_AENDERUNG_MITTEILUNG', reason: r.gesendet ? 'gesendet' : 'E-Mail nicht gesendet' });
+    return {
+      fertig: r.fertig, gesendet: r.gesendet, hinweise: r.hinweise,
+      text: `${VORGANG_TEXT[a.typ]} freigegeben und ausgeführt: ${plan.text}${r.gesendet ? ' Die Mitgliederinformation wurde an das Mitglied gesendet.' : ' Die Mitgliederinformation wurde nicht gesendet.'}`,
+    };
+  });
+  /** E-Mail erneut senden – oder ohne E-Mail abschließen (Unterlage herunterladen und selbst zustellen) */
+  app.post('/mitglieder/aenderungen/:id/senden', schreiben, async (req) => {
+    const id = aid(req);
+    const { ohneMail } = z.object({ ohneMail: z.boolean().default(false) }).parse(req.body ?? {});
+    const r = await aenderung.mitteilen(DB, await vereinLesen(), id, benutzer(req), { ohneMail });
+    await change(req, (tx) => aenderung.festhalten(tx, id, r), { action: 'MG_AENDERUNG_MITTEILUNG', reason: r.fertig ? (r.gesendet ? 'gesendet' : 'ohne E-Mail abgeschlossen') : 'E-Mail nicht gesendet' });
+    return {
+      fertig: r.fertig, gesendet: r.gesendet, hinweise: r.hinweise,
+      text: r.gesendet ? 'Die Mitgliederinformation wurde an das Mitglied gesendet.' : r.fertig ? 'Ohne E-Mail abgeschlossen – bitte die Mitgliederinformation selbst zustellen.' : 'Die Mitgliederinformation wurde nicht gesendet.',
+    };
+  });
+  app.get('/mitglieder/aenderungen/:id/pdf', schreiben, async (req, reply) => {
+    const a = await aenderung.aenderungLesen(DB, aid(req));
+    if (a.status !== 'FREIGEGEBEN' && a.status !== 'ABGESCHLOSSEN') throw new BusinessError('Die Mitgliederinformation gibt es erst nach der Freigabe.', 409);
+    const d = await druckdatenLesen(DB, a.adrnr);
+    const pdf = await unterlagePdf(await vereinLesen(), '2', d);
+    return reply.type('application/pdf').header('content-disposition', `inline; filename="${encodeURIComponent(`Mitgliederinformation_${a.name.replace(/\s+/g, '_')}.pdf`)}"`).send(pdf);
+  });
+  app.post('/mitglieder/aenderungen/:id/ablehnen', schreiben, async (req) => {
+    const id = aid(req);
+    const { grund } = z.object({ grund: z.string().trim().min(3, 'Bitte einen Grund angeben – das Mitglied erhält ihn per E-Mail.').max(500) }).parse(req.body);
+    const a = await change(req, (tx) => aenderung.ablehnen(tx, id, grund, benutzer(req)), { action: 'MG_AENDERUNG_ABGELEHNT', reason: grund });
+    const hinweise = await aenderung.ablehnungMitteilen(DB, await vereinLesen(), a, grund, benutzer(req));
+    return { hinweise, text: `Antrag abgelehnt.${hinweise.length ? '' : ' Das Mitglied wurde per E-Mail unterrichtet.'}` };
   });
 
   app.post('/mitglieder/meine/kuendigung', selbst, async (req) => {

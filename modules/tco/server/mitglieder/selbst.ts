@@ -77,6 +77,13 @@ export async function meineLesen(db: Db, benutzerId: string) {
     kuendigung: { mitgliedschaft: endeJahr(), jugend: endeJugend(), heute: heute() },
     gekuendigt: !!d.mitglied.austritt,
     kuendigungen: kuendigungen.map(({ id, status, text, eingang, ablehnung }) => ({ id, status, text, eingang, ablehnung })),
+    // Beitragswechsel und Jugendtraining (Freigabe durch den Vorstand, aenderung.ts)
+    antraege: (await db`
+      select a.id::int as id, a.typ, a.status, a.text, a.eingang::text as eingang, a.ablehnung, trim(coalesce(m.vorname, '') || ' ' || coalesce(m.nachname, '')) as person
+        from tco.mg_aenderungen a join tco.mitglieder m on m.adrnr = a.adrnr
+       where a.antragsteller = ${adrnr}
+         and (a.status in ('OFFEN', 'FREIGEGEBEN') or (a.status in ('ABGELEHNT', 'ABGESCHLOSSEN') and a.bearbeitet_am > now() - interval '30 days'))
+       order by a.id desc`).map((a) => ({ id: a.id as number, typ: a.typ as string, status: a.status as string, text: a.text as string, eingang: a.eingang as string, ablehnung: (a.ablehnung as string) ?? null, person: a.person as string })),
   };
 }
 

@@ -66,6 +66,7 @@ Abgeleitet aus den Quelltexten hinter den Routen jedes Prozessschritts (Routenda
 | `tco.kunden` | ● |  | ● |  |  |  |  |  |  | ● | ● |  | ● | ● |
 | `tco.mahn_posten` |  |  | ● |  |  |  |  |  |  |  |  |  |  | ● |
 | `tco.mailtexte` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
+| `tco.mg_aenderungen` | ● |  |  |  |  |  |  | ● | ● |  |  |  | ● |  |
 | `tco.mgnotiz` | ● |  |  |  |  |  |  |  |  |  |  |  | ● |  |
 | `tco.mitglied_benutzer` | ● |  | ● | ● |  |  | ● |  |  |  | ● |  | ● | ● |
 | `tco.mitglieder` | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  | ● | ● |

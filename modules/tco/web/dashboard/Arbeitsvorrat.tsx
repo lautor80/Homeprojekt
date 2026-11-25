@@ -10,6 +10,7 @@ import { aufgabenGesehen } from '@core/arbeitsvorratGesehen';
 import { ArbeitsvorratBaum, type Aufgabe, type AufgabenZusatz } from '@core/components/Arbeitsvorrat';
 import { MitgliedWahl } from '../fi/FiUeberweisung';
 import { KuendigungKnopf } from '../mitglieder/KuendigungFreigabe';
+import { AenderungKnopf } from '../mitglieder/AenderungFreigabe';
 
 const dat = (iso: string) => iso.split('-').reverse().join('.');
 
@@ -56,10 +57,11 @@ function ZahlungKnopf({ id, onUeberwiesen }: { id: number; onUeberwiesen?: () =>
     </>
   );
 }
-/** Zusätze des Vereins an Einträgen des Arbeitsvorrats: Zahlungsdaten (Überweisung an Einreicher), Kündigung bearbeiten (#232) */
+/** Zusätze des Vereins an Einträgen des Arbeitsvorrats: Zahlungsdaten (Überweisung an Einreicher), Kündigung bearbeiten (#232), Beitragswechsel/Jugendtraining freigeben */
 export const tcoZusatz: AufgabenZusatz = (a, erledigt, neuLaden) => (
   a.zahlung ? <ZahlungKnopf id={a.zahlung.id} onUeberwiesen={a.erledigen ? erledigt : undefined} />
-    : a.aktion?.art === 'KUENDIGUNG' ? <KuendigungKnopf id={a.aktion.id} onFertig={neuLaden} /> : null
+    : a.aktion?.art === 'KUENDIGUNG' ? <KuendigungKnopf id={a.aktion.id} onFertig={neuLaden} />
+      : a.aktion?.art === 'MG_AENDERUNG' ? <AenderungKnopf id={a.aktion.id} onFertig={neuLaden} /> : null
 );
 
 interface Zahlung {

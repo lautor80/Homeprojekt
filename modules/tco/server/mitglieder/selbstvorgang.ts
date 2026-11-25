@@ -8,7 +8,8 @@
  *  - Beitragswechsel nur zwischen Mitgliedsbeiträgen, zum nächsten Halbjahr, Betrag laut Beitragsstamm; Jugendbeitrag nur
  *    bis 17 Jahre; Familienbeitrag und inaktive Mitgliedschaft nur über den Vorstand.
  *  - Jugendtraining nur für Personen, die zum Trainingsbeginn noch keine 21 Jahre alt sind, höchstens zwei Einheiten, Beginn zum nächsten Monatsersten, nur bei Lastschrift mit IBAN.
- * Der Vorstand wird über Notiz und Kopie der E-Mail informiert.
+ * Seit der Freigabe durch den Vorstand werden beide Vorgänge nur eingereicht (aenderung.ts) und erst nach der Freigabe
+ * ausgeführt; die Mitgliederinformation geht dann per E-Mail an das Mitglied.
  */
 import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
@@ -58,6 +59,8 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     ? (verweis(m.adrnrkih) === eigene ? ich : await mitgliedLesen(db, verweis(m.adrnrkih))) : m);
   const zahlerIch = await zahlerVon(ich);
   const mailAn = new Map<string, string>();
+  // eingereichte, noch nicht freigegebene Beitragswechsel (Freigabe durch den Vorstand, aenderung.ts)
+  const wartend = new Set((await db`select adrnr from tco.mg_aenderungen where typ = 'BEITRAGSWECHSEL' and status = 'OFFEN'`).map((r) => r.adrnr as string));
 
   const personen: SelbstPerson[] = [];
   for (const adrnr of [eigene, ...weitere.map((w) => w.adrnr as string)]) {
@@ -80,6 +83,7 @@ export async function selbstKontext(db: Db, benutzerId: string) {
     else if (m.austritt) p.wechselHinweis = `Die Mitgliedschaft ist zum ${dat(m.austritt)} gekündigt.`;
     else if (!beitrag) p.wechselHinweis = 'Es läuft kein Mitgliedsbeitrag, der online gewechselt werden kann.';
     else if (istFamilienbeitrag(beitrag.artname)) p.wechselHinweis = 'Änderungen am Familienbeitrag bitte über den Vorstand.';
+    else if (wartend.has(adrnr)) p.wechselHinweis = 'Ein Beitragswechsel ist bereits eingereicht und wartet auf die Freigabe durch den Vorstand.';
     else {
       const arten = artenWechsel.filter((a) => kategorieVon(a.art, a.name) === 'MITGLIEDSCHAFT' && a.art !== beitrag.art && !istFamilienbeitrag(a.name)
         && (!istJugendbeitrag(a.name) || (!!m.geburtsdatum && alter(m.geburtsdatum, ab) <= ALTER_JUGENDBEITRAG_BIS)));
@@ -104,7 +108,10 @@ export async function selbstKontext(db: Db, benutzerId: string) {
 }
 
 /** prüft (ausfuehren = false) bzw. führt aus – nur Personen und Beitragsarten, die selbstKontext anbietet */
-export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe, ausfuehren: boolean, benutzer: string): Promise<Plan & { eigene: string; mailAn: string }> {
+/** Angaben, mit denen der Vorgang später (nach der Freigabe) genau so ausgeführt wird */
+export interface SelbstParameter { vertragnr: string | null; art: string; artname: string; ab: string }
+
+export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe, ausfuehren: boolean, benutzer: string): Promise<Plan & { eigene: string; mailAn: string; parameter: SelbstParameter }> {
   const k = await selbstKontext(tx, benutzerId);
   const p = k.personen.find((x) => x.adrnr === e.adrnr);
   if (!p) throw new BusinessError('Die Person gehört nicht zu Ihrer Mitgliedschaft.', 403);
@@ -114,10 +121,10 @@ export async function selbstVorgang(tx: Db, benutzerId: string, e: SelbstEingabe
     const a = p.wechsel.arten.find((x) => x.art === e.art);
     if (!a) throw new BusinessError('Diese Beitragsart kann nicht online gewählt werden – bitte beim Vorstand melden.');
     const plan = await vorgang(tx, { typ: 'BEITRAGSWECHSEL', adrnr: p.adrnr, vertragnr: p.wechsel.vertragnr, art: a.art, ab: k.ab }, ausfuehren, wer, 'Portal');
-    return { ...plan, eigene: k.eigene, mailAn: k.mailAn.get(p.adrnr) ?? k.eigene };
+    return { ...plan, eigene: k.eigene, mailAn: k.mailAn.get(p.adrnr) ?? k.eigene, parameter: { vertragnr: p.wechsel.vertragnr, art: a.art, artname: a.name, ab: k.ab } };
   }
   const a = p.training.find((x) => x.art === e.art);
   if (!a) throw new BusinessError(p.trainingHinweis ?? 'Diese Trainingseinheit kann nicht gebucht werden.');
   const plan = await vorgang(tx, { typ: 'JUGENDTRAINING', adrnr: p.adrnr, art: a.art, beginn: k.trainingAb, mehrfach: true }, ausfuehren, wer, 'Portal');
-  return { ...plan, eigene: k.eigene, mailAn: k.mailAn.get(p.adrnr) ?? k.eigene };
+  return { ...plan, eigene: k.eigene, mailAn: k.mailAn.get(p.adrnr) ?? k.eigene, parameter: { vertragnr: null, art: a.art, artname: a.name, ab: k.trainingAb } };
 }

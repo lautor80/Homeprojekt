@@ -215,7 +215,7 @@ flowchart LR
 | lsvs | 9 |
 | mahnung | 16 |
 | mannschaftsmeldung | 10 |
-| mitglieder | 79 |
+| mitglieder | 84 |
 | platz | 83 |
 | praesentation | 11 |
 | produkte | 6 |

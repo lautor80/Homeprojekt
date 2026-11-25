@@ -149,7 +149,17 @@ test('Kündigung: einzelner Vertrag mit Fristhinweis, Mitgliedschaft mit Austrit
   assert.match(r.body.message, /bereits zum .* gekündigt/);
 });
 
-test('Meine Mitgliedschaft: Beitrag wechseln und Jugendtraining selbst abschließen – nur das Angebotene, auch für Kinder', async () => {
+/** Antrag aus „Meine Mitgliedschaft“ einreichen (ändert nichts) und als Vorstand freigeben (führt aus, Mitgliederinformation) */
+async function beantragen(body: Record<string, string>) {
+  const e = await call('POST', `${M}/meine/vorgang`, body);
+  assert.equal(e.status, 200, JSON.stringify(e.body));
+  assert.equal(e.body.eingereicht, true);
+  const f = await call('POST', `${M}/aenderungen/${e.body.id}/freigeben`, {});
+  assert.equal(f.status, 200, JSON.stringify(f.body));
+  return { ...f.body, id: e.body.id as number, eingereicht: e.body };
+}
+
+test('Meine Mitgliedschaft: Beitrag wechseln und Jugendtraining selbst beantragen – nur das Angebotene, auch für Kinder; Freigabe durch den Vorstand', async () => {
   const S = `${M}/meine/vorgang`;
   let r = await call('GET', S);
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -171,32 +181,68 @@ test('Meine Mitgliedschaft: Beitrag wechseln und Jugendtraining selbst abschlie�
   r = await call('POST', `${S}/pruefen`, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '90' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal((await vertraege('0000000206')).length, 1);
+  // einreichen: es ändert sich nichts, der Vorstand sieht den Antrag im Arbeitsvorrat, das Mitglied in „Meine Mitgliedschaft“
   r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '90' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.match(r.body.text, /^Abschluss Jugendtraining ausgeführt/);
-  assert.equal(r.body.unterlage.titel, 'Mitgliederinformation');
-  assert.ok(Buffer.from(r.body.unterlage.pdf, 'base64').subarray(0, 4).toString() === '%PDF');
+  assert.equal(r.body.eingereicht, true);
+  assert.match(r.body.text, /^Abschluss Jugendtraining eingereicht/);
+  assert.equal(r.body.unterlage, null);
+  const antrag = r.body.id as number;
+  assert.equal((await vertraege('0000000206')).length, 1, 'vor der Freigabe kein neuer Vertrag');
+  let m = await call('GET', `${M}/meine`);
+  assert.deepEqual(m.body.antraege.map((a: any) => [a.id, a.typ, a.status, a.person]), [[antrag, 'JUGENDTRAINING', 'OFFEN', 'Kim Eltern']]);
+  const av = await call('GET', '/api/m/tco/dashboard/arbeitsvorrat');
+  assert.ok(JSON.stringify(av.body).includes(`MG_AENDERUNG:${antrag}`), 'Eintrag im Arbeitsvorrat');
+  let a = await call('GET', `${M}/aenderungen/${antrag}`);
+  assert.deepEqual([a.status, a.body.status, a.body.typ, a.body.name, a.body.artname], [200, 'OFFEN', 'JUGENDTRAINING', 'Kim Eltern', 'Jugendtraining']);
+  assert.equal((await call('GET', `${M}/aenderungen/${antrag}/pdf`)).status, 409, 'Mitgliederinformation erst nach der Freigabe');
+  // Freigabe: ausgeführt; ohne Mailversand bleibt der Antrag FREIGEGEBEN (Hinweis), dann ohne E-Mail abschließen
+  r = await call('POST', `${M}/aenderungen/${antrag}/freigeben`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /freigegeben und ausgeführt/);
+  assert.deepEqual([r.body.gesendet, r.body.fertig], [false, false]);
+  assert.ok(r.body.hinweise.some((h: string) => /Mailversand/.test(h)));
+  assert.equal((await call('POST', `${M}/aenderungen/${antrag}/freigeben`, {})).status, 409, 'nicht zweimal');
   let v = await vertraege('0000000206');
   assert.deepEqual(v.map((x) => [x.art, x.betrag, x.ende]), [['3', 20, null], ['90', 35, null]]);
   assert.equal(v[1].beginn.slice(8), '01');
-  const [n] = await sql`select notiz, erstellt_von from tco.mgnotiz where adrnr = '0000000206'`;
-  assert.equal(n.erstellt_von, 'Portal');
-  assert.match(n.notiz, /Admin über „Meine Mitgliedschaft“/);
+  const pdf = await app.inject({ method: 'GET', url: `${M}/aenderungen/${antrag}/pdf`, headers: { cookie, 'x-portal-request': '1' } });
+  assert.equal(pdf.statusCode, 200);
+  assert.equal(pdf.rawPayload.subarray(0, 4).toString(), '%PDF');
+  assert.equal((await call('GET', `${M}/aenderungen/${antrag}`)).body.status, 'FREIGEGEBEN');
+  r = await call('POST', `${M}/aenderungen/${antrag}/senden`, { ohneMail: true });
+  assert.deepEqual([r.status, r.body.fertig], [200, true]);
+  assert.equal((await call('GET', `${M}/aenderungen/${antrag}`)).body.status, 'ABGESCHLOSSEN');
+  const notizen = await sql`select notiz, erstellt_von from tco.mgnotiz where adrnr = '0000000206' order by 1`;
+  assert.ok(notizen.some((n) => n.erstellt_von === 'Portal' && /eingereicht durch Admin – wartet auf die Freigabe/.test(n.notiz)));
+  assert.ok(notizen.some((n) => n.erstellt_von === 'Portal' && /Admin über „Meine Mitgliedschaft“, freigegeben von Admin/.test(n.notiz)));
   // keine Obergrenze: dieselbe Einheit ein zweites Mal, eine weitere Einheit – und danach ist immer noch alles buchbar
-  r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '90' });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '91' });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
+  await beantragen({ typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '90' });
+  await beantragen({ typ: 'JUGENDTRAINING', adrnr: '0000000206', art: '91' });
   assert.deepEqual((await vertraege('0000000206')).map((x) => x.art), ['3', '90', '90', '91']);
   r = await call('GET', S);
   assert.equal(r.body.personen[1].trainingHinweis, null);
   assert.equal(r.body.personen[1].trainingLaufend, 3);
   assert.deepEqual(r.body.personen[1].training.map((x: any) => x.art).sort(), ['90', '91']);
 
-  // Beitragswechsel zum nächsten Halbjahr
+  // Beitragswechsel zum nächsten Halbjahr: abgelehnt ändert nichts; solange einer wartet, kein zweiter
   const ab = r.body.ab as string;
   r = await call('POST', S, { typ: 'BEITRAGSWECHSEL', adrnr: '0000000205', art: '7' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
+  const wechsel = r.body.id as number;
+  assert.equal((await call('POST', S, { typ: 'BEITRAGSWECHSEL', adrnr: '0000000205', art: '7' })).status, 400, 'bereits eingereicht');
+  assert.match((await call('GET', S)).body.personen[0].wechselHinweis, /wartet auf die Freigabe/);
+  assert.equal((await call('POST', `${M}/aenderungen/${wechsel}/ablehnen`, { grund: '' })).status, 400, 'Grund Pflicht');
+  r = await call('POST', `${M}/aenderungen/${wechsel}/ablehnen`, { grund: 'Bitte erst mit dem Kassenwart sprechen' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.hinweise.length, 'ohne Mailversand: Hinweis');
+  assert.equal((await call('POST', `${M}/aenderungen/${wechsel}/freigeben`, {})).status, 409, 'abgelehnt');
+  assert.deepEqual((await vertraege('0000000205')).map((x) => [x.art, x.ende]), [['5', null]]);
+  m = await call('GET', `${M}/meine`);
+  assert.equal(m.body.antraege.find((x: any) => x.id === wechsel).ablehnung, 'Bitte erst mit dem Kassenwart sprechen');
+  a = await call('GET', `${M}/aenderungen/${wechsel}`);
+  assert.deepEqual([a.body.status, a.body.ab], ['ABGELEHNT', ab]);
+  await beantragen({ typ: 'BEITRAGSWECHSEL', adrnr: '0000000205', art: '7' });
   v = await vertraege('0000000205');
   assert.deepEqual(v.map((x) => [x.art, x.beginn, x.ende, x.betrag]), [['5', '2021-01-01', tagVorher(ab), 60], ['7', ab, null, 30]]);
 });
@@ -225,10 +271,10 @@ test('Meine Mitgliedschaft: Jugendtraining für die Familie über die Familienve
   // „Meine Mitgliedschaft“ selbst zeigt die verknüpfte Familie und ihre Verträge nicht
   assert.doesNotMatch(JSON.stringify((await call('GET', `${M}/meine`)).body), /Villa/);
 
-  // Abschluss: Vertrag bei Vera ohne abweichenden Zahler (läuft damit über Viktor), Unterlage an Viktor
-  r = await call('POST', S, { typ: 'JUGENDTRAINING', adrnr: VERA, art: '90' });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.unterlage.an, 'viktor@example.org');
+  // Abschluss nach Freigabe: Vertrag bei Vera ohne abweichenden Zahler (läuft damit über Viktor), Unterlage an Viktor
+  const f = await beantragen({ typ: 'JUGENDTRAINING', adrnr: VERA, art: '90' });
+  const a = await call('GET', `${M}/aenderungen/${f.id}`);
+  assert.deepEqual([a.body.mail_an, a.body.email], ['Viktor Villa', 'viktor@example.org']);
   assert.deepEqual((await vertraege(VERA)).map((x) => x.art), ['3', '90']);
   const [vt] = await sql`select zahler_adrnr from tco.vertraege where adrnr = ${VERA} and art = '90'`;
   assert.equal(vt.zahler_adrnr, null);
