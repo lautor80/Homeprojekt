@@ -9,6 +9,7 @@
  *  - Vorschlag: Liegt das Datum einer Sitzung im Zeitraum eines geparkten Themas, wird es in der Sitzung vorgeschlagen;
  *    beim Anlegen mit „Tagesordnung vorschlagen“ wird es gleich eingeplant (nach Priorität).
  *  - Stand: GEPARKT · EINGEPLANT (Punkt offen) · BESPROCHEN (Punkt erledigt) · ABGESCHLOSSEN (ohne Sitzung erledigt/zurückgezogen)
+ *  - Verlauf: Das Thema merkt sich die Kette seiner Tagesordnungspunkte (verlauf.ts) – parken und wieder aufnehmen setzt sie fort.
  *
  * Rechte: Themen einreichen und eigene ändern mit tco.vorstand:display; fremde Themen ändern, zuordnen und parken mit
  * tco.vorstand:edit.
@@ -19,6 +20,7 @@ import type { Db } from '../verein.js';
 import { linkPruefen } from './format.js';
 import { ANLAGE_MAX, anlageAnlegen, linkAnlegen, topAnlegen } from './logik.js';
 import { sitzungNr } from './regeln.js';
+import { verlaufLesen, type VerlaufPunkt } from './verlauf.js';
 
 export type ThemaStand = 'GEPARKT' | 'EINGEPLANT' | 'BESPROCHEN' | 'ABGESCHLOSSEN';
 export const STAND_TEXT: Record<ThemaStand, string> = { GEPARKT: 'geparkt', EINGEPLANT: 'eingeplant', BESPROCHEN: 'besprochen', ABGESCHLOSSEN: 'abgeschlossen' };
@@ -35,6 +37,8 @@ export interface Thema {
   sitzung: { id: number; nr: string; datum: string; status: string; top_id: number | null; vertagt: boolean } | null;
   abgeschlossen_am: string | null; abgeschlossen_von: string | null; abschluss_grund: string | null;
   anlagen: ThemaAnlage[];
+  /** Kette der Tagesordnungspunkte (leer = noch nie in einer Sitzung) und – beim Lesen eines einzelnen Themas – deren Verlauf */
+  kette: number | null; verlauf?: VerlaufPunkt[];
   erstellt_am: string; erstellt_von: string | null; geaendert_am: string; geaendert_von: string | null;
 }
 export interface ThemaEingabe { titel: string; beschreibung?: string | null; prioritaet: 1 | 2 | 3; einreicher?: string | null; von: string; bis: string }
@@ -68,7 +72,7 @@ export function zeitraumPruefen(von: string, bis: string) {
 // ---------------------------------------------------------------- lesen
 
 const THEMA_SQL = (db: Db) => db`
-  th.*, t.status as top_status, t.sitzung_id as top_sitzung,
+  th.*, t.status as top_status, t.sitzung_id as top_sitzung, coalesce(th.kette, t.kette, t.id) as kette_k,
   coalesce(t.sitzung_id, th.zuletzt_sitzung_id) as s_id,
   s.jahr as s_jahr, s.lfd as s_lfd, s.status as s_status,
   coalesce((e.beginn at time zone 'Europe/Berlin')::date, s.datum)::text as s_datum`;
@@ -92,7 +96,7 @@ function themaAus(r: Record<string, unknown>, anlagen: ThemaAnlage[], userId: st
       top_id: r.top_sitzung ? Number(r.top_id) : null, vertagt: topStatus === 'VERTAGT' || !r.top_id,
     } : null,
     abgeschlossen_am: zeit(r.abgeschlossen_am), abgeschlossen_von: (r.abgeschlossen_von as string) ?? null, abschluss_grund: (r.abschluss_grund as string) ?? null,
-    anlagen, erstellt_am: zeit(r.erstellt_am)!, erstellt_von: (r.erstellt_von as string) ?? null,
+    anlagen, kette: r.kette_k == null ? null : Number(r.kette_k), erstellt_am: zeit(r.erstellt_am)!, erstellt_von: (r.erstellt_von as string) ?? null,
     geaendert_am: zeit(r.geaendert_am)!, geaendert_von: (r.geaendert_von as string) ?? null,
   };
 }
@@ -123,6 +127,7 @@ export async function themenLesen(db: Db, o: { offen?: boolean; ids?: number[]; 
 export async function themaLesen(db: Db, id: number, userId: string | null, stichtag: string): Promise<Thema> {
   const [t] = await themenLesen(db, { ids: [id], userId, stichtag });
   if (!t) throw new BusinessError('Das Thema gibt es nicht (mehr).', 404);
+  t.verlauf = t.kette == null ? [] : (await verlaufAlle(db, t.kette));
   return t;
 }
 
@@ -225,13 +230,16 @@ export async function themaZuordnen(tx: Db, sitzungId: number, themaId: number, 
   const stand = themaStand({ abgeschlossen: !!t.abgeschlossen_am, top_status: (t.top_status as 'OFFEN' | 'ERLEDIGT' | 'VERTAGT' | null) ?? null });
   if (stand !== 'GEPARKT') throw new BusinessError(`„${t.titel}“ ist nicht mehr geparkt (${STAND_TEXT[stand]}).`);
   // vorige Zuordnung (vertagter Punkt) merken
-  const [alt] = t.top_id ? await tx`select sitzung_id from tco.vs_tops where id = ${t.top_id}` : [];
-  const topId = await topAnlegen(tx, sitzungId, { titel: t.titel as string, verantwortlich: t.einreicher as string, text: (t.beschreibung as string) ?? null }, wer);
+  const [alt] = t.top_id ? await tx`select sitzung_id, coalesce(kette, id) as kette from tco.vs_tops where id = ${t.top_id}` : [];
+  // Verlauf: der neue Punkt setzt die Kette des Themas fort (bzw. die des vertagten Punkts)
+  const kette = t.kette != null ? Number(t.kette) : alt ? Number(alt.kette) : null;
+  const topId = await topAnlegen(tx, sitzungId, { titel: t.titel as string, verantwortlich: t.einreicher as string, text: (t.beschreibung as string) ?? null }, wer, { kette });
   for (const a of await tx`select dateiname, mime, inhalt, url from tco.vs_themen_anlagen where thema_id = ${themaId} order by id`) {
     if (a.url) await linkAnlegen(tx, sitzungId, { top_id: topId, url: a.url as string, bezeichnung: a.dateiname as string }, wer);
     else await anlageAnlegen(tx, sitzungId, { top_id: topId, dateiname: a.dateiname as string, mime: a.mime as string, inhalt: Buffer.from(a.inhalt as Uint8Array) }, wer);
   }
   await tx`update tco.vs_themen set top_id = ${topId}, zuletzt_sitzung_id = ${alt ? Number(alt.sitzung_id) : (t.zuletzt_sitzung_id as number | null) ?? null},
+                                    kette = (select coalesce(kette, id) from tco.vs_tops where id = ${topId}),
                                     geaendert_am = now(), geaendert_von = ${wer} where id = ${themaId}`;
   return topId;
 }
@@ -263,7 +271,10 @@ export async function themaParken(tx: Db, themaId: number, wer: string): Promise
   const sid = Number(t.sitzung_id);
   const entfernen = t.s_status === 'GEPLANT' && !t.text && !Number(t.eintraege);
   // vertagt: Verknüpfung bleibt (Stand „geparkt“), damit die Folgesitzung den vertagten Punkt als Thema übernimmt statt ihn zu kopieren
-  await tx`update tco.vs_themen set top_id = ${entfernen ? null : t.top_id}, zuletzt_sitzung_id = ${sid}, geaendert_am = now(), geaendert_von = ${wer} where id = ${themaId}`;
+  // Verlauf: die Kette bleibt am Thema, auch wenn der Punkt entfernt wird
+  await tx`update tco.vs_themen set top_id = ${entfernen ? null : t.top_id}, zuletzt_sitzung_id = ${sid},
+                                    kette = coalesce(kette, (select coalesce(kette, id) from tco.vs_tops where id = ${t.top_id})),
+                                    geaendert_am = now(), geaendert_von = ${wer} where id = ${themaId}`;
   if (entfernen) {
     await tx`delete from tco.vs_anlagen where top_id = ${t.top_id}`;
     await tx`delete from tco.vs_tops where id = ${t.top_id}`;
@@ -280,7 +291,7 @@ export async function themaParken(tx: Db, themaId: number, wer: string): Promise
  * Anlagen kopiert) mit Priorität und Zeitraum – und wird dann wie ein Thema geparkt (Punkt entfernt bzw. vertagt).
  */
 export async function topParken(tx: Db, topId: number, e: { prioritaet: 1 | 2 | 3; von: string; bis: string }, wer: { name: string; userId: string | null }) {
-  const [t] = await tx`select tp.id, tp.titel, tp.text, tp.verantwortlich, tp.status, tp.sitzung_id, s.status as s_status, th.id as thema_id
+  const [t] = await tx`select tp.id, tp.titel, tp.text, tp.verantwortlich, tp.status, tp.sitzung_id, coalesce(tp.kette, tp.id) as kette, s.status as s_status, th.id as thema_id
                          from tco.vs_tops tp join tco.vs_sitzungen s on s.id = tp.sitzung_id left join tco.vs_themen th on th.top_id = tp.id
                         where tp.id = ${topId} for update of tp`;
   if (!t) throw new BusinessError('Den Tagesordnungspunkt gibt es nicht (mehr).', 404);
@@ -291,9 +302,9 @@ export async function topParken(tx: Db, topId: number, e: { prioritaet: 1 | 2 | 
     zeitraumPruefen(e.von, e.bis);
     const einreicher = leer(t.verantwortlich as string | null) ?? wer.name;
     const [n] = await tx`
-      insert into tco.vs_themen (titel, beschreibung, prioritaet, einreicher, einreicher_user, von, bis, top_id, erstellt_von, geaendert_von)
+      insert into tco.vs_themen (titel, beschreibung, prioritaet, einreicher, einreicher_user, von, bis, top_id, kette, erstellt_von, geaendert_von)
       values (${t.titel as string}, ${leer(t.text as string | null)}, ${e.prioritaet}, ${einreicher}, ${einreicher === wer.name ? wer.userId : null},
-              ${e.von}, ${e.bis}, ${topId}, ${wer.name}, ${wer.name})
+              ${e.von}, ${e.bis}, ${topId}, ${Number(t.kette)}, ${wer.name}, ${wer.name})
       returning id`;
     themaId = Number(n.id);
     await tx`insert into tco.vs_themen_anlagen (thema_id, dateiname, mime, groesse, inhalt, url, erstellt_von)
@@ -322,3 +333,8 @@ export async function themaZuTop(db: Db, topId: number): Promise<number | null> 
 
 /** Text für Hinweise: „VS 2026/04 vom 23.11.2026“ */
 export const sitzungText = (s: { nr: string; datum: string }) => `${s.nr} vom ${dat(s.datum)}`;
+
+/** Verlauf einer Kette (alle Punkte, chronologisch – auch wenn das Thema erst in einer Sitzung war) */
+async function verlaufAlle(db: Db, kette: number): Promise<VerlaufPunkt[]> {
+  return (await verlaufLesen(db, [kette], { auchEinzeln: true })).get(kette) ?? [];
+}

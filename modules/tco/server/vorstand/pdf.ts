@@ -3,7 +3,7 @@ import { C, LEFT, umbruch } from '../pdf/layout.js';
 import type { Db, Verein } from '../verein.js';
 import { Abschlussdruck } from '../abschluss/pdf.js';
 import { sitzungLesen, type SitzungDetail } from './logik.js';
-import { abstimmungText, ART_TEXT } from './regeln.js';
+import { abstimmungText, ART_TEXT, verlaufKurz } from './regeln.js';
 import { textLesen, type Stueck } from './format.js';
 
 /**
@@ -120,6 +120,8 @@ class Protokolldruck extends Abschlussdruck {
       this.txt(LEFT + 2, this.kurz(`TOP ${t.nr}  ${t.titel}`, 130, 9.5), { size: 9.5, bold: true });
       if (t.verantwortlich) this.p.text(190, this.y, this.kurz(t.verantwortlich, 38, 7.5), { size: 7.5, color: C.grau, align: 'R' });
       this.y += 7;
+      // Verlauf: frühere Behandlungen des Themas
+      if (t.verlauf_vorher.length) this.absatz(`Bisher behandelt: ${verlaufKurz(t.verlauf_vorher)}`, { size: 7.5, color: C.grau, einzug: 2 });
       if (t.status === 'VERTAGT') { this.absatz('Der Punkt wurde vertagt.', { color: C.grau }); }
       if (t.text) { this.formatiert(t.text); this.y += 1.5; }
       for (const e of t.eintraege) {

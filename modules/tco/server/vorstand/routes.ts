@@ -19,6 +19,7 @@ import {
   themenLesen, themenZuordnen, topParken,
 } from './themen.js';
 import { heute } from '../format.js';
+import { ketteVonTop, punkteZurAuswahl, themaVerketten, topLoesen, topVerketten } from './verlauf.js';
 
 /**
  * Berechtigungsobjekte Vorstandssitzungen:
@@ -384,6 +385,43 @@ export async function vorstandRoutes(app: FastifyInstance) {
     const b = z.object({ prioritaet: z.coerce.number().int().min(1).max(3).default(2).transform((p) => p as 1 | 2 | 3), von: datum, bis: datum }).partial({ von: true, bis: true }).parse(req.body ?? {});
     const r = await change(req, (tx) => topParken(tx, id, { prioritaet: b.prioritaet ?? 2, von: b.von ?? '', bis: b.bis ?? '' }, { name: wer(req), userId: req.user?.id ?? null }), { action: 'VS_THEMA' });
     return { ...r, text: `In den Themenparkplatz verschoben – ${r.ergebnis === 'ENTFERNT' ? 'aus der Tagesordnung entfernt' : 'der Punkt ist als vertagt markiert'}.` };
+  });
+
+  // ---------------------------------------------------------------- Verlauf über mehrere Sitzungen (Kette)
+  /** Punkte anderer Sitzungen zum Verketten (gleichnamige zuerst); top = Punkt bzw. thema = Thema, für das gewählt wird */
+  app.get('/vorstand/punkte', lesen, async (req) => {
+    const q = z.object({ top: nr.optional(), thema: nr.optional(), suche: z.string().max(200).optional() }).parse(req.query);
+    let titel: string | null = null, ohneSitzung: number | null = null, ohneKette: number | null = null;
+    if (q.top) {
+      const [t] = await DB`select titel from tco.vs_tops where id = ${q.top}`;
+      if (!t) throw new BusinessError('Den Tagesordnungspunkt gibt es nicht (mehr).', 404);
+      const k = await ketteVonTop(DB, q.top);
+      titel = t.titel as string; ohneSitzung = k.sitzung_id; ohneKette = k.kette;
+    } else if (q.thema) {
+      const t = await themaLesen(DB, q.thema, req.user?.id ?? null, heute());
+      titel = t.titel; ohneKette = t.kette;
+    }
+    return { punkte: await punkteZurAuswahl(DB, { titel, suche: q.suche ?? null, ohneSitzung, ohneKette }) };
+  });
+
+  /** Punkt mit einem Punkt einer anderen Sitzung verketten bzw. die Verkettung lösen */
+  app.post('/vorstand/tops/:id/verketten', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ mit: nr }).parse(req.body);
+    await change(req, (tx) => topVerketten(tx, id, b.mit), { action: 'VS_TOP' });
+    return { text: 'Verkettet – der Verlauf steht jetzt bei beiden Punkten.' };
+  });
+  app.delete('/vorstand/tops/:id/verketten', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    await change(req, (tx) => topLoesen(tx, id), { action: 'VS_TOP' });
+    return { text: 'Verkettung gelöst.' };
+  });
+  /** Thema mit einem Punkt einer Sitzung verketten (z. B. ein neu geparktes Thema mit seiner Vorgeschichte) */
+  app.post('/vorstand/themen/:id/verketten', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ mit: nr }).parse(req.body);
+    await change(req, (tx) => themaVerketten(tx, id, b.mit), { action: 'VS_THEMA' });
+    return { text: 'Verkettet – der Verlauf steht jetzt beim Thema.' };
   });
 
   // ---------------------------------------------------------------- PDF

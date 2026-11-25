@@ -528,3 +528,79 @@ test('Themenparkplatz: beliebigen Tagesordnungspunkt parken und wieder aufnehmen
   r = await call('POST', `${V}/tops/${neu.id}/parken`, {});
   assert.deepEqual([r.status, r.body.neu, r.body.ergebnis], [200, false, 'VERTAGT']);
 });
+
+test('Verlauf: vertagt übernommen, geparkt und wieder aufgenommen, von Hand und gleichnamig verkettet, lösen', async () => {
+  const W = 'Winterhallenrunde Altenkessel';
+  const sitzung = async (titel: string, datum: string, vorlage: boolean) => (await call('POST', `${V}/sitzungen`, { titel, datum, vorlage })).body.id as number;
+  const lies = async (id: number) => (await call('GET', `${V}/sitzungen/${id}`)).body;
+  const sitzungen = (l: any[]) => l.map((v: any) => v.sitzung_id);
+
+  // 21.11.: begonnen und vertagt
+  const a = await sitzung('Verlauf November', '2085-11-21', false);
+  const topA = (await call('POST', `${V}/sitzungen/${a}/tops`, { titel: W, verantwortlich: 'Erika Muster', text: 'Anfrage aus Altenkessel: vier Plätze freitags.' })).body.id as number;
+  await call('POST', `${V}/tops/${topA}/eintraege`, { art: 'INFO', text: 'Termine noch offen' });
+  await call('POST', `${V}/sitzungen/${a}/status`, { status: 'LAEUFT' });
+  assert.equal((await call('PUT', `${V}/tops/${topA}`, { titel: W, verantwortlich: 'Erika Muster', text: 'Anfrage aus Altenkessel: vier Plätze freitags.', status: 'VERTAGT' })).status, 200);
+
+  // Folgesitzung übernimmt den vertagten Punkt – mit dem Verlauf
+  const b = await sitzung('Verlauf Dezember', '2085-12-05', true);
+  let d = await lies(b);
+  const topB = d.tops.find((t: any) => t.titel === W);
+  assert.ok(topB, 'vertagter Punkt übernommen');
+  assert.deepEqual(topB.verlauf_vorher.map((v: any) => [v.sitzung_id, v.status, v.text, v.eintraege.map((e: any) => e.text)]),
+    [[a, 'VERTAGT', 'Anfrage aus Altenkessel: vier Plätze freitags.', ['Termine noch offen']]]);
+  assert.equal(d.tops.find((t: any) => t.titel === 'Verschiedenes').verlauf_vorher.length, 0, 'nur zusammenhängende Punkte');
+  assert.deepEqual(sitzungen((await lies(a)).tops.find((t: any) => t.id === topA).verlauf_nachher), [b]);
+
+  // in den Parkplatz (Punkt ohne Protokoll wird entfernt) – das Thema behält den Verlauf
+  let r = await call('POST', `${V}/tops/${topB.id}/parken`, { prioritaet: 1, von: '2085-12-06', bis: '2086-01-31' });
+  assert.deepEqual([r.status, r.body.ergebnis], [200, 'ENTFERNT']);
+  const thema = r.body.thema_id as number;
+  let t = (await call('GET', `${V}/themen/${thema}`)).body;
+  assert.deepEqual(sitzungen(t.verlauf), [a]);
+
+  // wieder aufgenommen (Vorschlag der neuen Sitzung): der neue Punkt setzt die Kette fort
+  const c = await sitzung('Verlauf Januar', '2086-01-10', true);
+  d = await lies(c);
+  const topC = d.tops.find((x: any) => x.thema_id === thema);
+  assert.ok(topC, 'Thema eingeplant');
+  assert.deepEqual(sitzungen(topC.verlauf_vorher), [a]);
+  t = (await call('GET', `${V}/themen/${thema}`)).body;
+  assert.deepEqual(sitzungen(t.verlauf), [a, c]);
+
+  // von Hand verketten (anderer Titel): Auswahl bietet die früheren Punkte, gleichnamige zuerst
+  const dz = await sitzung('Verlauf Februar', '2086-02-07', false);
+  const topD = (await call('POST', `${V}/sitzungen/${dz}/tops`, { titel: 'Hallenrunde Altenkessel – Rückmeldung' })).body.id as number;
+  assert.equal((await lies(dz)).tops[0].verlauf_vorher.length, 0);
+  r = await call('GET', `${V}/punkte?top=${topD}&suche=Altenkessel`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok(r.body.punkte.some((p: any) => p.id === topC.id) && !r.body.punkte.some((p: any) => p.sitzung_id === dz));
+  assert.equal((await call('POST', `${V}/tops/${topD}/verketten`, { mit: topD })).status, 400);
+  assert.equal((await call('POST', `${V}/tops/${topD}/verketten`, { mit: topC.id })).status, 200);
+  assert.equal((await call('POST', `${V}/tops/${topD}/verketten`, { mit: topA })).status, 400, 'schon verkettet');
+  assert.deepEqual(sitzungen((await lies(dz)).tops[0].verlauf_vorher), [a, c]);
+  assert.deepEqual(sitzungen((await lies(c)).tops.find((x: any) => x.id === topC.id).verlauf_nachher), [dz]);
+
+  // gleichnamig fortgesetzt: neuer Punkt nach einem vertagten gleichen Titels wird automatisch verkettet
+  await call('POST', `${V}/sitzungen/${dz}/status`, { status: 'LAEUFT' });
+  await call('PUT', `${V}/tops/${topD}`, { titel: 'Hallenrunde Altenkessel – Rückmeldung', status: 'VERTAGT' });
+  const e = await sitzung('Verlauf März', '2086-03-06', false);
+  const topE = (await call('POST', `${V}/sitzungen/${e}/tops`, { titel: 'hallenrunde  altenkessel – rückmeldung' })).body.id as number;
+  assert.deepEqual(sitzungen((await lies(e)).tops.find((x: any) => x.id === topE).verlauf_vorher), [a, c, dz]);
+
+  // lösen: der Punkt steht allein, die übrigen bleiben verkettet
+  assert.equal((await call('DELETE', `${V}/tops/${topD}/verketten`)).status, 200);
+  assert.deepEqual((await lies(dz)).tops[0].verlauf_vorher, []);
+  assert.deepEqual(sitzungen((await lies(e)).tops.find((x: any) => x.id === topE).verlauf_vorher), [a, c]);
+  assert.equal((await call('DELETE', `${V}/tops/${topD}/verketten`)).status, 400, 'nicht mehr verkettet');
+  t = (await call('GET', `${V}/themen/${thema}`)).body;
+  assert.deepEqual(sitzungen(t.verlauf), [a, c, e]);
+
+  // ein Thema ohne Vorgeschichte mit einem früheren Punkt verketten
+  const neu = (await call('POST', `${V}/themen`, { titel: 'Altenkessel Abrechnung', prioritaet: 2, von: '2086-04-01', bis: '2086-04-30' })).body.id as number;
+  assert.deepEqual((await call('GET', `${V}/themen/${neu}`)).body.verlauf, []);
+  assert.equal((await call('POST', `${V}/themen/${neu}/verketten`, { mit: topD })).status, 200);
+  assert.deepEqual(sitzungen((await call('GET', `${V}/themen/${neu}`)).body.verlauf), [dz]);
+  // das PDF nennt den bisherigen Verlauf
+  assert.equal((await call('GET', `${V}/sitzungen/${e}/pdf`)).status, 200);
+});

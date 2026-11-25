@@ -25,7 +25,17 @@ export interface Top {
   id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[];
   /** aus dem Themenparkplatz */
   thema_id: number | null;
+  /** Verlauf über mehrere Sitzungen: frühere und spätere Behandlungen desselben Themas */
+  kette: number; verlauf_vorher: VerlaufPunkt[]; verlauf_nachher: VerlaufPunkt[];
 }
+/** Behandlung eines Themas in einer Sitzung (Verlauf) */
+export interface VerlaufPunkt {
+  top_id: number; sitzung_id: number; sitzung_nr: string; sitzung_titel: string; sitzung_status: Status; sitzung_status_text: string;
+  datum: string; titel: string; status: Top['status']; verantwortlich: string | null; text: string | null; eintraege: Eintrag[];
+}
+/** Punkt einer anderen Sitzung zur Auswahl beim Verketten */
+export interface PunktWahl { id: number; titel: string; status: Top['status']; kette: number; gleichnamig: boolean; sitzung_id: number; sitzung_nr: string; datum: string }
+export const TOP_STATUS_TEXT: Record<Top['status'], string> = { OFFEN: 'offen', ERLEDIGT: 'abgeschlossen', VERTAGT: 'vertagt' };
 export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
 export interface SitzungDetail extends Sitzung {
   teilnehmer: Teilnehmer[]; tops: Top[]; anlagen: Anlage[];
@@ -52,7 +62,7 @@ export interface Thema {
   stand: ThemaStand; stand_text: string; ueberfaellig: boolean;
   sitzung: { id: number; nr: string; datum: string; status: Status; top_id: number | null; vertagt: boolean } | null;
   abgeschlossen_am: string | null; abgeschlossen_von: string | null; abschluss_grund: string | null;
-  anlagen: ThemaAnlage[]; erstellt_am: string; erstellt_von: string | null; geaendert_am: string; geaendert_von: string | null;
+  anlagen: ThemaAnlage[]; kette: number | null; verlauf?: VerlaufPunkt[]; erstellt_am: string; erstellt_von: string | null; geaendert_am: string; geaendert_von: string | null;
 }
 export interface ThemenDaten { themen: Thema[]; vorstand: string[]; ich: string; pflege: boolean; freigabe: boolean }
 export const PRIO_STATE: Record<number, 'Negative' | 'Critical' | 'None'> = { 1: 'Negative', 2: 'Critical', 3: 'None' };

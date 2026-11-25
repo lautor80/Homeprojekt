@@ -193,3 +193,30 @@ export function verantwortlicheAnzeigen(text: string | null | undefined, persone
   });
   return [...new Set(namen)].join(', ');
 }
+
+// ---------------------------------------------------------------- Verlauf eines Themas über mehrere Sitzungen
+
+/** Reihenfolge im Verlauf: Datum der Sitzung, dann Sitzung, dann Punkt */
+export function verlaufOrdnung(a: { datum: string; sitzung_id: number; top_id: number }, b: { datum: string; sitzung_id: number; top_id: number }) {
+  return a.datum.localeCompare(b.datum) || a.sitzung_id - b.sitzung_id || a.top_id - b.top_id;
+}
+
+/**
+ * Verlauf aus Sicht eines Punkts: frühere Behandlungen (vorher) und spätere (nachher), jeweils chronologisch;
+ * der Punkt selbst und weitere Punkte derselben Sitzung zählen nach ihrer Id.
+ */
+export function verlaufTeilen<T extends { datum: string; sitzung_id: number; top_id: number }>(liste: T[], hier: { datum: string; sitzung_id: number; top_id: number }) {
+  const sortiert = liste.filter((x) => x.top_id !== hier.top_id).sort(verlaufOrdnung);
+  return { vorher: sortiert.filter((x) => verlaufOrdnung(x, hier) < 0), nachher: sortiert.filter((x) => verlaufOrdnung(x, hier) > 0) };
+}
+
+/** Stichwort für Titelvergleiche (automatische Verkettung gleichnamiger Punkte) */
+export const titelSchluessel = (t: string) => t.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+
+export const TOP_STATUS_TEXT = { OFFEN: 'offen', ERLEDIGT: 'abgeschlossen', VERTAGT: 'vertagt' } as const;
+
+/** Verlauf in einer Zeile (Protokoll-PDF): „VS 2026/12 vom 21.11.2026 (vertagt); VS 2027/01 vom 09.01.2027 (offen)“ */
+export function verlaufKurz(l: { sitzung_nr: string; datum: string; status: keyof typeof TOP_STATUS_TEXT }[]): string {
+  const d = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+  return l.map((v) => `${v.sitzung_nr} vom ${d(v.datum)} (${TOP_STATUS_TEXT[v.status]})`).join('; ');
+}
