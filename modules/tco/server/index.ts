@@ -454,6 +454,7 @@ const tco: ServerModule = {
     { type: 'MG_FAMILIE', text: 'Familienverknüpfung zwischen zwei Personen', permission: P_MG.display },
     { type: 'RUNDSCHREIBEN', text: 'Rundschreiben an Mitglieder', permission: P_RS.display },
     { type: 'KUENDIGUNG', text: 'Kündigung durch das Mitglied (Freigabe)', permission: P_MG.display },
+    { type: 'MG_AENDERUNG', text: 'Beitragswechsel/Jugendtraining durch das Mitglied (Freigabe)', permission: P_MG.display },
     { type: 'TCO_MAILTEXT', text: 'E-Mail-Text des Vereins', permission: P.stammdaten },
     { type: 'SCHADEN', text: 'Schadensmeldung', permission: P_IH.display },
     { type: 'IH_ANLAGE', text: 'Anlage (Instandhaltung)', permission: P_IH.display },

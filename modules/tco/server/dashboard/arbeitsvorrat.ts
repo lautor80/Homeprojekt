@@ -386,6 +386,24 @@ export async function arbeitsvorrat(db: Db, req: FastifyRequest): Promise<Aufgab
       });
     }
   }
+  // Beitragswechsel und Jugendtraining aus „Meine Mitgliedschaft“: Der Vorstand gibt frei, danach geht die Mitgliederinformation
+  // per E-Mail an das Mitglied; ging sie nicht hinaus, bleibt der Antrag hier (erneut senden oder ohne E-Mail abschließen)
+  if (can(req, 'tco.mitglieder:edit')) {
+    const rows = await db`
+      select a.id::int as id, a.status, a.typ, a.adrnr, a.text, a.eingang::text as eingang, a.benutzer, m.vorname, m.nachname
+        from tco.mg_aenderungen a join tco.mitglieder m on m.adrnr = a.adrnr
+       where a.status in ('OFFEN', 'FREIGEGEBEN') order by a.eingang, a.id`;
+    for (const r of rows) {
+      const name = `${r.vorname ?? ''} ${r.nachname ?? ''}`.trim() || r.benutzer;
+      const was = r.typ === 'BEITRAGSWECHSEL' ? 'Beitragswechsel' : 'Jugendtraining';
+      out.push({
+        key: `MG_AENDERUNG:${r.id}`, bereich: 'Vorstand', icon: r.typ === 'BEITRAGSWECHSEL' ? 'switch-classes' : 'family-care', state: r.status === 'OFFEN' ? 'Critical' : 'Negative',
+        titel: r.status === 'OFFEN' ? `${was} freigeben: ${name}` : `Mitgliederinformation nicht gesendet: ${name}`,
+        text: `${r.text}${r.benutzer && r.status === 'OFFEN' ? ` – eingereicht von ${r.benutzer}` : ''}`,
+        datum: r.eingang, pfad: `/tco/mitglieder?adrnr=${r.adrnr}`, aktion: { art: 'MG_AENDERUNG', id: r.id },
+      });
+    }
+  }
   // Dokumenteneingang (#232, V1): Vorgänge, deren Ablage gescheitert ist oder die auf eine Prüfung warten
   if (can(req, 'tco.eingang:display')) {
     const [e] = await db`select count(*) filter (where status = 'fehler')::int as fehler, count(*) filter (where status = 'pruefen')::int as pruefen,

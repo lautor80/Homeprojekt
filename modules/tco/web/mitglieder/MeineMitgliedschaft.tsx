@@ -42,6 +42,8 @@ interface Meine {
   vertraegeFamilie: (Vertrag & { kuendbar: boolean; endeBei: string })[]; kuendigung: { mitgliedschaft: string; jugend: string; heute: string }; gekuendigt: boolean;
   /** eingereichte Kündigungen: warten auf die Freigabe durch den Vorstand, sind freigegeben oder wurden abgelehnt (30 Tage sichtbar) */
   kuendigungen: { id: number; status: 'OFFEN' | 'FREIGEGEBEN' | 'ABGELEHNT'; text: string; eingang: string; ablehnung: string | null }[];
+  /** Beitragswechsel und Jugendtraining: warten auf die Freigabe durch den Vorstand, sind ausgeführt oder wurden abgelehnt (30 Tage sichtbar) */
+  antraege: { id: number; typ: 'BEITRAGSWECHSEL' | 'JUGENDTRAINING'; status: 'OFFEN' | 'FREIGEGEBEN' | 'ABGESCHLOSSEN' | 'ABGELEHNT'; text: string; eingang: string; ablehnung: string | null; person: string }[];
 }
 type Kontakt = { strasse: string; plz: string; ort: string; telefon: string; mobil: string; email: string; bildrechte: boolean };
 
@@ -168,6 +170,16 @@ export function MeineMitgliedschaft() {
       </Section>
 
       <Section title="Verträge" count={vertraegeBaum.filter((v) => v.laeuft).length}>
+        {d.antraege.map((a) => {
+          const was = `${a.typ === 'BEITRAGSWECHSEL' ? 'Beitragswechsel' : 'Jugendtraining'} für ${a.person} vom ${dat(a.eingang)}`;
+          return (
+            <MessageStrip key={`a${a.id}`} design={a.status === 'ABGELEHNT' ? 'Negative' : a.status === 'OFFEN' ? 'Information' : 'Positive'} hideCloseButton style={{ marginBottom: '0.5rem' }}>
+              {a.status === 'OFFEN' ? `${was} eingereicht – wartet auf die Freigabe durch den Vorstand. Bis dahin ändert sich nichts. Beantragt: ${a.text}`
+                : a.status === 'ABGELEHNT' ? `${was} wurde nicht freigegeben${a.ablehnung ? `: ${a.ablehnung}` : '.'}`
+                  : `${was} freigegeben: ${a.text} Die Mitgliederinformation kommt bzw. kam per E-Mail.`}
+            </MessageStrip>
+          );
+        })}
         {d.kuendigungen.map((k) => (
           <MessageStrip key={k.id} design={k.status === 'ABGELEHNT' ? 'Negative' : 'Information'} hideCloseButton style={{ marginBottom: '0.5rem' }}>
             {k.status === 'OFFEN' ? `Kündigung vom ${dat(k.eingang)} eingereicht – wartet auf die Freigabe durch den Vorstand. Bis dahin ändert sich nichts. Eingereicht: ${k.text}`

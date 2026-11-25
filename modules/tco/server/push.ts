@@ -11,7 +11,7 @@ import { pushAnBenutzer, pushStill, type PushArt, type PushNachricht } from '../
 import type { Db } from './verein.js';
 
 export const PUSH = {
-  einladung: 'tco:KAL_EINLADUNG', absage: 'tco:KAL_ABSAGE', antrag: 'tco:MITGLIEDSANTRAG', kuendigung: 'tco:KUENDIGUNG',
+  einladung: 'tco:KAL_EINLADUNG', absage: 'tco:KAL_ABSAGE', antrag: 'tco:MITGLIEDSANTRAG', kuendigung: 'tco:KUENDIGUNG', aenderung: 'tco:MG_AENDERUNG',
 } as const;
 
 const KAL = 'tco.kalender:anmelden', MG = 'tco.mitglieder:display', HALLE = 'tco.platz:admin';
@@ -20,6 +20,7 @@ export const TCO_PUSH_ARTEN: PushArt[] = [
   { id: PUSH.absage, gruppe: 'Vereinskalender', text: 'Veranstaltung abgesagt', recht: KAL },
   { id: PUSH.antrag, gruppe: 'Mitglieder', text: 'Neuer Mitgliedsantrag oder Vertragswechsel', recht: 'tco.antraege:display' },
   { id: PUSH.kuendigung, gruppe: 'Mitglieder', text: 'Kündigung eingereicht', recht: 'tco.mitglieder:edit' },
+  { id: PUSH.aenderung, gruppe: 'Mitglieder', text: 'Beitragswechsel oder Jugendtraining eingereicht (Freigabe)', recht: 'tco.mitglieder:edit' },
   { id: 'tco:MG_KUENDIGUNG', gruppe: 'Mitglieder', text: 'Kündigung freigegeben', recht: MG, hinweis: true },
   { id: 'tco:MG_VORGANG', gruppe: 'Mitglieder', text: 'Beitragswechsel oder Jugendtraining durch das Mitglied', recht: MG, hinweis: true },
   { id: 'tco:MG_BANK', gruppe: 'Mitglieder', text: 'Bankverbindung geändert', recht: MG, hinweis: true },

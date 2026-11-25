@@ -10,7 +10,7 @@ import './vorgang.css';
 
 /**
  * Geführte Vorgänge in „Meine Mitgliedschaft“ (#154): Beitrag wechseln, Jugendtraining abschließen, kündigen –
- * jeweils Angaben → Prüfen → Ergebnis. Mitglieder wählen nur aus dem, was der Server anbietet (feste Termine und Beträge).
+ * jeweils Angaben → Prüfen → Ergebnis. Alle drei werden nur eingereicht; der Vorstand gibt frei, danach kommt die Unterlage per E-Mail. Mitglieder wählen nur aus dem, was der Server anbietet (feste Termine und Beträge).
  */
 export type MeinTyp = 'BEITRAGSWECHSEL' | 'JUGENDTRAINING' | 'KUENDIGUNG';
 export const MEIN_TITEL: Record<MeinTyp, string> = { BEITRAGSWECHSEL: 'Beitrag wechseln', JUGENDTRAINING: 'Jugendtraining abschließen', KUENDIGUNG: 'Kündigen' };
@@ -102,7 +102,11 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
           art: 'VERTRAG', grund: grund || null, bestaetigung: true, vertraege: gewaehlte.map((v) => ({ adrnr: v.adrnr, vertragnr: v.vertragnr })),
         });
         setErgebnis({ text: r.text, schritte: (plan?.schritte.slice(0, -1) ?? []).map((s) => `Nach der Freigabe: ${s}`), unterlage: null });
-      } else setErgebnis(await api.post<Ergebnis>(`${MG}/vorgang`, { typ, adrnr, art }));
+      } else {
+        // Freigabe durch den Vorstand: eingereicht – ausgeführt wird erst nach der Freigabe, dann kommt die Mitgliederinformation per E-Mail
+        const r = await api.post<Ergebnis>(`${MG}/vorgang`, { typ, adrnr, art });
+        setErgebnis({ ...r, schritte: r.schritte.filter((s) => !s.startsWith('Notiz am Mitglied')).map((s) => `Nach der Freigabe: ${s}`) });
+      }
       setSchritt(2);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
@@ -113,7 +117,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
     : schritt === 1
       ? <><Button disabled={busy} onClick={() => setSchritt(0)}>Zurück</Button>
           <Button design={typ === 'KUENDIGUNG' ? 'Negative' : 'Emphasized'} disabled={busy || !!gesperrt || !ok} onClick={ausfuehren}>
-            {typ === 'KUENDIGUNG' ? 'Kündigung einreichen' : typ === 'JUGENDTRAINING' ? 'Verbindlich abschließen' : 'Verbindlich wechseln'}</Button></>
+            {typ === 'KUENDIGUNG' ? 'Kündigung einreichen' : typ === 'JUGENDTRAINING' ? 'Training beantragen' : 'Wechsel beantragen'}</Button></>
       : <Button design="Emphasized" onClick={() => onClose(true)}>Fertig</Button>;
 
   const personenWahl = k && (k.personen.length > 1 || (typ === 'JUGENDTRAINING' && k.personen.length === 1 && !k.personen[0].ich))
@@ -199,9 +203,14 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
 
       {schritt === 1 && plan && (
         <>
-          <Title level="H5" style={{ marginBottom: '0.5rem' }}>Das passiert, wenn du bestätigst</Title>
+          <Title level="H5" style={{ marginBottom: '0.5rem' }}>{typ === 'KUENDIGUNG' ? 'Das passiert, wenn du bestätigst' : 'Das passiert nach der Freigabe durch den Vorstand'}</Title>
           <ol className="portal-vg__liste">{plan.schritte.filter((s) => !s.startsWith('Notiz am Mitglied')).map((s) => <li key={s}>{s}</li>)}</ol>
           {plan.warnungen.map((w) => <MessageStrip key={w} design="Critical" hideCloseButton style={{ marginTop: '0.5rem' }}>{w}</MessageStrip>)}
+          {typ !== 'KUENDIGUNG' && (
+            <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
+              Dein Antrag geht an den Vorstand. Erst nach seiner Freigabe wird die Änderung wirksam; dann erhältst du die Mitgliederinformation per E-Mail.
+            </MessageStrip>
+          )}
           <CheckBox style={{ marginTop: '0.75rem', marginLeft: '-0.5rem' }} wrappingType="Normal" checked={ok} onChange={(e) => setOk(e.target.checked)}
                     text={typ === 'KUENDIGUNG' ? 'Ja, ich möchte verbindlich kündigen.'
                       : typ === 'JUGENDTRAINING' ? 'Ich schließe das Training verbindlich ab, bin mit dem Einzug per SEPA-Lastschrift einverstanden und habe die Kündigungsfrist (zum 30.09.) zur Kenntnis genommen.'
@@ -211,7 +220,7 @@ export function MeinVorgangDialog({ typ, kuendigung, gesperrt, onClose }: {
 
       {schritt === 2 && ergebnis && (
         <>
-          <MessageStrip design="Positive" hideCloseButton style={{ marginBottom: '0.75rem' }}>{ergebnis.text}</MessageStrip>
+          <MessageStrip design={typ === 'KUENDIGUNG' || !ergebnis.unterlage ? 'Information' : 'Positive'} hideCloseButton style={{ marginBottom: '0.75rem' }}>{ergebnis.text}</MessageStrip>
           <ol className="portal-vg__liste">{ergebnis.schritte.filter((s) => !s.startsWith('Notiz am Mitglied')).map((s) => <li key={s}>{s}</li>)}</ol>
           {ergebnis.unterlage && (
             <div style={{ marginTop: '0.75rem' }}>

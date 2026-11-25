@@ -109,7 +109,7 @@ export const EREIGNISQUELLEN: Record<string, Abdeckung> = {
   'selbst:tco POST /verzehr/meine/buchen': { aufgabe: 'VZ_ABSCHLUSS' },
   'selbst:tco POST /verzehr/meine/storno': { aufgabe: 'VZ_ABSCHLUSS' },
   'selbst:tco POST /mitglieder/meine/vorgang/pruefen': { ohne: 'nur Prüfung, es wird nichts geändert' },
-  'selbst:tco POST /mitglieder/meine/vorgang': { hinweis: 'MG_VORGANG' },
+  'selbst:tco POST /mitglieder/meine/vorgang': { aufgabe: 'MG_AENDERUNG' },
   'selbst:tco POST /mitglieder/meine/kuendigung': { aufgabe: 'KUENDIGUNG' },
   'selbst:tco PUT /mitglieder/meine/kontakt': { hinweis: 'MG_KONTAKT' },
   'selbst:tco PUT /mitglieder/meine/bank': { hinweis: 'MG_BANK' },

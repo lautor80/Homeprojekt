@@ -38,6 +38,12 @@ export const kuendigungAbgelehntVorlage = (v: Verein): MailVorlage => ({
   text: `Hallo {Vorname},\n\nIhre Kündigung vom {Eingang} konnten wir nicht freigeben.\n\nEingereicht: {Eingereicht}\nGrund: {Grund}\n\nBei Fragen melden Sie sich bitte beim Vorstand.\n\n${v.name}`,
 });
 
+/** Ablehnung eines Beitragswechsels bzw. Jugendtrainings aus „Meine Mitgliedschaft“ */
+export const aenderungAbgelehntVorlage = (v: Verein): MailVorlage => ({
+  betreff: `${v.name}: Ihr Antrag vom {Eingang} ({Vorgang})`,
+  text: `Hallo {Vorname},\n\nIhren Antrag vom {Eingang} ({Vorgang}) konnten wir nicht freigeben.\n\nEingereicht: {Eingereicht}\nGrund: {Grund}\n\nAn Ihrer Mitgliedschaft hat sich nichts geändert. Bei Fragen melden Sie sich bitte beim Vorstand.\n\n${v.name}`,
+});
+
 /** Standardtext der Einladung zu einer Veranstaltung (Vereinskalender → Veranstaltung → Einladen) – mit Platzhaltern */
 export const kalenderEinladungVorlage = (v: Verein): MailVorlage => ({
   betreff: `${v.name}: Einladung – {Titel}`,
@@ -91,6 +97,11 @@ export const MAILTEXTE: MailtextDef[] = [
     schluessel: 'mitglied.kuendigung.abgelehnt', bereich: 'Mitglieder', name: 'Kündigung nicht freigegeben', wann: 'Arbeitsvorrat → Kündigung ablehnen',
     platzhalter: { Vorname: 'Vorname des Mitglieds', Eingang: 'Datum, an dem die Kündigung einging', Eingereicht: 'was gekündigt werden sollte', Grund: 'Grund der Ablehnung' },
     pflicht: ['Grund'], standard: (v) => kuendigungAbgelehntVorlage(v),
+  },
+  {
+    schluessel: 'mitglied.aenderung.abgelehnt', bereich: 'Mitglieder', name: 'Beitragswechsel/Jugendtraining nicht freigegeben', wann: 'Arbeitsvorrat → Antrag ablehnen',
+    platzhalter: { Vorname: 'Vorname des Mitglieds', Eingang: 'Datum, an dem der Antrag einging', Vorgang: 'Beitragswechsel oder Abschluss Jugendtraining', Eingereicht: 'was beantragt wurde', Grund: 'Grund der Ablehnung' },
+    pflicht: ['Grund'], standard: (v) => aenderungAbgelehntVorlage(v),
   },
   {
     schluessel: 'mitglied.einladung', bereich: 'Zugang zum Portal', name: 'Einladung zum Vereinsportal',
