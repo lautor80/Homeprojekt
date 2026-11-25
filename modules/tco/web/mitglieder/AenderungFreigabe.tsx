@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, Dialog, Label, MessageStrip, Text, TextArea } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Label, MessageStrip, Text, TextArea } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { Attribute, Attributes } from '@core/components/Attributes';
+import { DialogFuss } from '@core/components/DialogFuss';
 import { download } from '@core/components/PdfDialog';
 import { toast } from '@core/toast';
 import { TCO, dat } from '../util';
@@ -55,7 +56,7 @@ function AenderungDialog({ id, onClose }: { id: number; onClose: () => void }) {
 
   return createPortal(
     <Dialog open headerText={a ? `${a.typ_text} freigeben` : 'Antrag freigeben'} resizable onClose={onClose} style={{ width: 'min(40rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<DialogFuss>
               {a?.status === 'OFFEN' && !ablehnen && <Button design="Emphasized" icon="accept" disabled={busy} onClick={() => aktion(() => api.post(`${basis}/freigeben`, {}))}>Freigeben und Mitglied informieren</Button>}
               {a?.status === 'OFFEN' && !ablehnen && <Button design="Negative" icon="decline" disabled={busy} onClick={() => setAblehnen(true)}>Ablehnen</Button>}
               {a?.status === 'OFFEN' && ablehnen && <Button design="Negative" icon="decline" disabled={busy || grund.trim().length < 3} onClick={() => aktion(() => api.post(`${basis}/ablehnen`, { grund }))}>Ablehnung senden</Button>}
@@ -64,7 +65,7 @@ function AenderungDialog({ id, onClose }: { id: number; onClose: () => void }) {
               {freigegeben && <Button icon="download" disabled={busy} onClick={() => download(`${basis}/pdf`, pdfName).catch((e) => setError((e as Error).message))}>Mitgliederinformation</Button>}
               {freigegeben && <Button disabled={busy} tooltip="Die Mitgliederinformation selbst zustellen (herunterladen, drucken) und den Antrag abschließen" onClick={() => aktion(() => api.post(`${basis}/senden`, { ohneMail: true }))}>Ohne E-Mail abschließen</Button>}
               <Button onClick={onClose}>Schließen</Button>
-            </>} />}>
+            </DialogFuss>}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {hinweise.map((h) => <MessageStrip key={h} design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>{h}</MessageStrip>)}
       {!a ? (error ? null : <BusyIndicator active style={{ display: 'block' }} />) : (
