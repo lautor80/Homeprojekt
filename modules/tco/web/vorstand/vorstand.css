@@ -31,14 +31,19 @@
 .portal-vs__spalten { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
 .portal-vs__links { flex: 1 1 20rem; max-width: 26rem; min-width: 0; display: flex; flex-direction: column; }
 .portal-vs__rechts { flex: 999 1 32rem; min-width: 0; display: flex; flex-direction: column; }
-/* „Tagesordnung und Protokoll“: Kopfzeile mit „+ Tagesordnungspunkt“ bleibt beim Rollen oben stehen
-   (die Karte darf dafür nichts abschneiden – overflow: hidden verhindert „sticky“) */
-.portal-vs__agenda { overflow: visible; }
-.portal-vs__agenda > .portal-section__head {
-  position: sticky; top: 0; z-index: 3;
-  background: var(--sapGroup_ContentBackground, #fff);
-  border-radius: var(--portal-radius) var(--portal-radius) 0 0;
-  box-shadow: 0 2px 4px -2px rgba(0, 0, 0, 0.15);
+/* „Tagesordnung und Protokoll“: die Kopfzeile mit „+ Tagesordnungspunkt“ steht fest, nur die Tagesordnungspunkte rollen
+   (eigener Rahmen, höchstens so hoch wie der sichtbare Seitenbereich – wie bei den Tabellen, --portal-tabhoehe) */
+.portal-vs__rechts { align-self: stretch; }
+.portal-section.portal-vs__agenda { position: sticky; top: var(--vs-titel, 0px); z-index: 2; }
+.portal-section.portal-vs__agenda > .portal-section__body {
+  overflow-y: auto; overscroll-behavior: contain;
+  /* sichtbarer Bereich unter Seitentitel, abzüglich Kopfzeile des Abschnitts und Rand */
+  max-height: calc(100vh - var(--vs-oben, 8rem) - 4.5rem);
+}
+/* schmal (Spalten untereinander) oder sehr niedrig: wie bisher mit der Seite rollen */
+@media (max-width: 900px), (max-height: 34rem) {
+  .portal-section.portal-vs__agenda { position: static; }
+  .portal-section.portal-vs__agenda > .portal-section__body { max-height: none; overflow-y: visible; }
 }
 @media (max-width: 900px) { .portal-vs__links { max-width: none; } }
 

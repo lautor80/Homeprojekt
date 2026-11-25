@@ -492,3 +492,39 @@ test('Themenparkplatz: einreichen mit Anlagen, automatisch einplanen, wieder par
   // Sitzung löschen gibt eingeplante Themen frei
   assert.equal((await call('DELETE', `${V}/sitzungen/${april}`)).status, 200);
 });
+
+test('Themenparkplatz: beliebigen Tagesordnungspunkt parken und wieder aufnehmen', async () => {
+  const s = (await call('POST', `${V}/sitzungen`, { titel: 'Mai', datum: '2086-05-05', vorlage: false })).body.id as number;
+  const leerTop = (await call('POST', `${V}/sitzungen/${s}/tops`, { titel: 'Netz in der Halle', verantwortlich: 'Erika Muster' })).body.id as number;
+  await call('POST', `${V}/sitzungen/${s}/anlagen`, { top_id: leerTop, dateien: [{ name: 'Angebot Netz.pdf', data: b64(PDF) }] });
+  const textTop = (await call('POST', `${V}/sitzungen/${s}/tops`, { titel: 'Social Media', text: 'Jeannine hat übernommen.' })).body.id as number;
+  // ohne Zeitraum kein neues Thema
+  assert.equal((await call('POST', `${V}/tops/${leerTop}/parken`, { prioritaet: 1 })).status, 400);
+  // geplante Sitzung, Punkt ohne Protokolltext: Thema entsteht (Einreicher = Verantwortlicher, Anlage übernommen), Punkt entfernt
+  let r = await call('POST', `${V}/tops/${leerTop}/parken`, { prioritaet: 1, von: '2086-05-01', bis: '2086-07-31' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.ergebnis, r.body.neu], ['ENTFERNT', true]);
+  const netz = r.body.thema_id as number;
+  let t = (await call('GET', `${V}/themen/${netz}`)).body;
+  assert.deepEqual([t.titel, t.einreicher, t.prioritaet, t.stand, t.sitzung.id, t.anlagen.map((a: any) => a.dateiname)], ['Netz in der Halle', 'Erika Muster', 1, 'GEPARKT', s, ['Angebot Netz.pdf']]);
+  let d = (await call('GET', `${V}/sitzungen/${s}`)).body;
+  assert.deepEqual(d.tops.map((x: any) => x.titel), ['Social Media']);
+  assert.equal(d.anlagen.length, 0, 'Anlage des entfernten Punkts ist im Thema');
+  // laufende Sitzung, Punkt mit Text: vertagt und verknüpft; ein Thema-Punkt lässt sich ohne Angaben erneut parken
+  await call('POST', `${V}/sitzungen/${s}/status`, { status: 'LAEUFT' });
+  r = await call('POST', `${V}/tops/${textTop}/parken`, { prioritaet: 3, von: '2086-06-01', bis: '2086-06-30' });
+  assert.deepEqual([r.status, r.body.ergebnis], [200, 'VERTAGT']);
+  t = (await call('GET', `${V}/themen/${r.body.thema_id}`)).body;
+  assert.deepEqual([t.beschreibung, t.einreicher, t.stand, t.sitzung.vertagt], ['Jeannine hat übernommen.', 'Admin', 'GEPARKT', true]);
+  d = (await call('GET', `${V}/sitzungen/${s}`)).body;
+  assert.deepEqual(d.tops.map((x: any) => [x.titel, x.status, x.thema_id]), [['Social Media', 'VERTAGT', r.body.thema_id]]);
+  // wieder aufnehmen (Auswahl „Aus dem Parkplatz“)
+  r = await call('POST', `${V}/sitzungen/${s}/themen`, { ids: [netz] });
+  assert.deepEqual([r.status, r.body.zugeordnet], [200, 1]);
+  d = (await call('GET', `${V}/sitzungen/${s}`)).body;
+  const neu = d.tops.find((x: any) => x.thema_id === netz);
+  assert.equal(neu.verantwortlich, 'Erika Muster');
+  assert.deepEqual(d.anlagen.filter((a: any) => a.top_id === neu.id).map((a: any) => a.dateiname), ['Angebot Netz.pdf']);
+  r = await call('POST', `${V}/tops/${neu.id}/parken`, {});
+  assert.deepEqual([r.status, r.body.neu, r.body.ergebnis], [200, false, 'VERTAGT']);
+});
