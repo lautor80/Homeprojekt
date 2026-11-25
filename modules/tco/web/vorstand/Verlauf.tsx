@@ -12,18 +12,20 @@ import { FormatText } from './FormatText';
  * geparkt und wieder aufgenommen, gleichnamig fortgesetzt oder von Hand verkettet). Bei jedem Punkt steht, wie das Thema in
  * früheren Sitzungen behandelt wurde – Protokolltext, Beschlüsse, Aufgaben und Infos.
  */
-const STATUS_STATE: Record<VerlaufPunkt['status'], 'Positive' | 'Critical' | 'Information'> = { ERLEDIGT: 'Positive', VERTAGT: 'Critical', OFFEN: 'Information' };
 
 /** Eine Behandlung im Verlauf */
-function VerlaufEintrag({ v, onSitzung, aktuell }: { v: VerlaufPunkt; onSitzung: (id: number) => void; aktuell?: boolean }) {
+function VerlaufEintrag({ v, onSitzung, aktuell, titel }: { v: VerlaufPunkt; onSitzung: (id: number) => void; aktuell?: boolean; titel?: string }) {
+  // Titel nur zeigen, wenn er vom aktuellen abweicht; Stand der Sitzung nur, solange das Protokoll nicht freigegeben ist
+  const andererTitel = !titel || v.titel.trim().toLowerCase() !== titel.trim().toLowerCase();
   return (
     <li className={`portal-vs__vpunkt${aktuell ? ' portal-vs__vpunkt--hier' : ''}`}>
       <div className="portal-vs__vkopf">
         {aktuell ? <b>{v.sitzung_nr}</b> : <Link onClick={() => onSitzung(v.sitzung_id)}>{v.sitzung_nr}</Link>}
         <span>{dat(v.datum)}</span>
-        <ObjectStatus state={STATUS_STATE[v.status]}>{TOP_STATUS_TEXT[v.status]}</ObjectStatus>
-        {v.sitzung_status !== 'FREIGEGEBEN' && <span className="portal-muted">Protokoll: {v.sitzung_status_text}</span>}
-        {v.titel && <span className="portal-muted portal-vs__vtitel">„{v.titel}“{v.verantwortlich ? ` · ${v.verantwortlich}` : ''}</span>}
+        <span className={`portal-vs__vstand portal-vs__vstand--${v.status.toLowerCase()}`}>{TOP_STATUS_TEXT[v.status]}</span>
+        {v.verantwortlich && <span className="portal-muted">{v.verantwortlich}</span>}
+        {v.sitzung_status !== 'FREIGEGEBEN' && <span className="portal-muted">{v.sitzung_status_text}</span>}
+        {andererTitel && <span className="portal-muted portal-vs__vtitel">als „{v.titel}“</span>}
       </div>
       {v.text && <FormatText text={v.text} kompakt className="portal-vs__vtext" />}
       {v.eintraege.map((e) => (
@@ -42,7 +44,7 @@ function VerlaufEintrag({ v, onSitzung, aktuell }: { v: VerlaufPunkt; onSitzung:
 }
 
 /** Verlauf bei einem Tagesordnungspunkt: frühere Behandlungen aufgeklappt, spätere als Hinweis */
-export function TopVerlauf({ vorher, nachher, rw, onLoesen }: { vorher: VerlaufPunkt[]; nachher: VerlaufPunkt[]; rw: boolean; onLoesen: () => void }) {
+export function TopVerlauf({ titel, vorher, nachher, rw, onLoesen }: { titel: string; vorher: VerlaufPunkt[]; nachher: VerlaufPunkt[]; rw: boolean; onLoesen: () => void }) {
   const navigate = useNavigate();
   if (!vorher.length && !nachher.length) return null;
   const zu = (id: number) => navigate(`/tco/vorstand/${id}`);
@@ -55,7 +57,7 @@ export function TopVerlauf({ vorher, nachher, rw, onLoesen }: { vorher: VerlaufP
         </span>
         {rw && <Button design="Transparent" icon="disconnected" tooltip="Verkettung dieses Punkts lösen" onClick={(e) => { e.preventDefault(); onLoesen(); }} />}
       </summary>
-      {vorher.length > 0 && <ol className="portal-vs__vliste">{vorher.map((v) => <VerlaufEintrag key={v.top_id} v={v} onSitzung={zu} />)}</ol>}
+      {vorher.length > 0 && <ol className="portal-vs__vliste">{vorher.map((v) => <VerlaufEintrag key={v.top_id} v={v} titel={titel} onSitzung={zu} />)}</ol>}
       {nachher.length > 0 && (
         <div className="portal-vs__klein">
           Weiter behandelt in: {nachher.map((v, i) => <span key={v.top_id}>{i ? ', ' : ''}<Link onClick={() => zu(v.sitzung_id)}>{v.sitzung_nr}</Link> ({dat(v.datum)}, {TOP_STATUS_TEXT[v.status]})</span>)}
