@@ -262,7 +262,8 @@ export async function themaParken(tx: Db, themaId: number, wer: string): Promise
   if (t.status === 'ERLEDIGT') throw new BusinessError('Der Tagesordnungspunkt ist abgeschlossen – erst wieder öffnen.');
   const sid = Number(t.sitzung_id);
   const entfernen = t.s_status === 'GEPLANT' && !t.text && !Number(t.eintraege);
-  await tx`update tco.vs_themen set top_id = null, zuletzt_sitzung_id = ${sid}, geaendert_am = now(), geaendert_von = ${wer} where id = ${themaId}`;
+  // vertagt: Verknüpfung bleibt (Stand „geparkt“), damit die Folgesitzung den vertagten Punkt als Thema übernimmt statt ihn zu kopieren
+  await tx`update tco.vs_themen set top_id = ${entfernen ? null : t.top_id}, zuletzt_sitzung_id = ${sid}, geaendert_am = now(), geaendert_von = ${wer} where id = ${themaId}`;
   if (entfernen) {
     await tx`delete from tco.vs_anlagen where top_id = ${t.top_id}`;
     await tx`delete from tco.vs_tops where id = ${t.top_id}`;
