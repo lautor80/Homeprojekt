@@ -49,6 +49,8 @@ export interface Uebersicht {
   vorstand: { adrnr: string; name: string; rolle: string | null }[];
   events: EventWahl[]; gruppen: { id: number; name: string; parent_id: number | null }[];
   status_text: Record<Status, string>; teilnahme_text: Record<Teilnahme, string>; pflege: boolean; freigabe: boolean;
+  /** Themenparkplatz: geparkte Themen, davon verspätet (Beginn erreicht) und bald fällig (Beginn in 30 Tagen) */
+  themen: { geparkt: number; verspaetet: number; bald: number };
 }
 export interface BeschlussZeile extends Eintrag { sitzung_id: number; sitzung_nr: string; sitzung_titel: string; datum: string; top: string }
 export interface AufgabeZeile extends Eintrag { sitzung_id: number; sitzung_nr: string; datum: string; top: string; stand: Stand }
@@ -59,7 +61,7 @@ export interface ThemaAnlage { id: number; dateiname: string; mime: string; groe
 export interface Thema {
   id: number; titel: string; beschreibung: string | null; prioritaet: 1 | 2 | 3; prioritaet_text: string;
   einreicher: string; eigenes: boolean; von: string; bis: string;
-  stand: ThemaStand; stand_text: string; ueberfaellig: boolean;
+  stand: ThemaStand; stand_text: string; ueberfaellig: boolean; frist: 'VERSPAETET' | 'BALD' | null;
   sitzung: { id: number; nr: string; datum: string; status: Status; top_id: number | null; vertagt: boolean } | null;
   abgeschlossen_am: string | null; abgeschlossen_von: string | null; abschluss_grund: string | null;
   anlagen: ThemaAnlage[]; kette: number | null; verlauf?: VerlaufPunkt[]; erstellt_am: string; erstellt_von: string | null; geaendert_am: string; geaendert_von: string | null;

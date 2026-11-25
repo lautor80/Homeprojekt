@@ -16,7 +16,7 @@ import { protokollPdf } from './pdf.js';
 import { STATUS_TEXT, TEILNAHME_TEXT } from './regeln.js';
 import {
   themaAbschliessen, themaAendern, themaAnlageAnlegen, themaAnlageLoeschen, themaAnlegen, themaLesen, themaLoeschen, themaParken, themenFuerSitzung,
-  themenLesen, themenZuordnen, topParken,
+  themenLesen, themenZaehlen, themenZuordnen, topParken,
 } from './themen.js';
 import { heute } from '../format.js';
 import { ketteVonTop, punkteZurAuswahl, themaVerketten, topLoesen, topVerketten } from './verlauf.js';
@@ -87,6 +87,8 @@ export async function vorstandRoutes(app: FastifyInstance) {
       vorstand: await vorstandLesen(DB, cfg.gruppe_id), events: await eventsZurAuswahl(DB),
       gruppen: (await DB`select id, name, parent_id from tco.kal_gruppen where aktiv order by lower(name), id`).map((g) => ({ id: Number(g.id), name: g.name as string, parent_id: g.parent_id == null ? null : Number(g.parent_id) })),
       status_text: STATUS_TEXT, teilnahme_text: TEILNAHME_TEXT, ...rechte(req),
+      // Themenparkplatz: Anzahl geparkter Themen, davon verspätet (Zeitraum begonnen) und bald fällig (Beginn in 30 Tagen)
+      themen: themenZaehlen(await themenLesen(DB, { offen: true, stichtag: heute() })),
     };
   });
 

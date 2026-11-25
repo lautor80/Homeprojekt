@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, Select, Tab, TabContainer, Text,
+  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
@@ -142,6 +142,7 @@ export function Vorstand() {
             <div className="portal-vs__kachel"><span className="portal-vs__klabel">Protokolle im Entwurf</span><span className="portal-vs__kwert">{d.sitzungen.filter((s) => s.status === 'ENTWURF').length}</span></div>
             <div className="portal-vs__kachel"><span className="portal-vs__klabel">Offene Aufgaben</span><span className="portal-vs__kwert">{d.sitzungen.reduce((n, s) => n + s.aufgaben_offen, 0)}</span></div>
             <div className="portal-vs__kachel"><span className="portal-vs__klabel">Beschlüsse{jahr ? ` ${jahr}` : ''}</span><span className="portal-vs__kwert">{d.sitzungen.reduce((n, s) => n + s.beschluesse, 0)}</span></div>
+            <ParkplatzKachel z={d.themen} onClick={() => setTab('themen')} />
           </div>
           <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key ?? 'sitzungen')}>
             <Tab data-key="sitzungen" text={`Sitzungen (${d.sitzungen.length})`} icon="meeting-room" selected={tab === 'sitzungen'}>
@@ -150,7 +151,7 @@ export function Vorstand() {
                 <ResponsiveTable columns={spalten} data={d.sitzungen} titelSpalten={2} noDataText="Noch keine Sitzungen – „Neue Sitzung“ oder alte Protokolle importieren." visibleRows={Math.min(Math.max(d.sitzungen.length, 3), 20)} />
               </Section>
             </Tab>
-            <Tab data-key="themen" text="Themenparkplatz" icon="bookmark" selected={tab === 'themen'}>
+            <Tab data-key="themen" text={`Themenparkplatz (${d.themen.geparkt})`} icon="bookmark" selected={tab === 'themen'}>
               {tab === 'themen' && <ThemenParkplatz onFehler={setError} />}
             </Tab>
             <Tab data-key="beschluesse" text="Beschlüsse" icon="decision" selected={tab === 'beschluesse'}>
@@ -364,5 +365,25 @@ function MarkdownImport({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
       )}
     </ImportDialog>
+  );
+}
+
+/**
+ * Kennzahl Themenparkplatz: Anzahl geparkter Themen; Symbol rot, wenn bei einem der Besprechungszeitraum schon begonnen hat
+ * (Beginn ≤ heute), orange, wenn er in den nächsten 30 Tagen beginnt.
+ */
+export const parkplatzDesign = (z: { verspaetet: number; bald: number }) => (z.verspaetet ? 'Negative' : z.bald ? 'Critical' : 'Default') as 'Negative' | 'Critical' | 'Default';
+
+function ParkplatzKachel({ z, onClick }: { z: { geparkt: number; verspaetet: number; bald: number }; onClick: () => void }) {
+  const hinweis = [z.verspaetet && `${z.verspaetet} verspätet`, z.bald && `${z.bald} beginnt in 30 Tagen`].filter(Boolean).join(' · ');
+  return (
+    <button type="button" className="portal-vs__kachel portal-vs__kachel--knopf" onClick={onClick} title="Themenparkplatz öffnen">
+      <span className="portal-vs__klabel">Themenparkplatz</span>
+      <span className="portal-vs__kwert portal-vs__kwert--icon">
+        <Icon name="bookmark" design={parkplatzDesign(z)} accessibleName={z.verspaetet ? 'verspätet' : z.bald ? 'bald fällig' : 'geparkt'} />
+        {z.geparkt}
+      </span>
+      <span className="portal-muted">{hinweis || 'geparkte Themen'}</span>
+    </button>
   );
 }

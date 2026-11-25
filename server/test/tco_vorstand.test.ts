@@ -604,3 +604,13 @@ test('Verlauf: vertagt übernommen, geparkt und wieder aufgenommen, von Hand und
   // das PDF nennt den bisherigen Verlauf
   assert.equal((await call('GET', `${V}/sitzungen/${e}/pdf`)).status, 200);
 });
+
+test('Übersicht: Anzahl der geparkten Themen, davon verspätet und bald fällig', async () => {
+  const r = await call('GET', V);
+  assert.equal(r.status, 200);
+  const t = (await call('GET', `${V}/themen`)).body.themen.filter((x: any) => x.stand === 'GEPARKT');
+  assert.deepEqual(r.body.themen, {
+    geparkt: t.length, verspaetet: t.filter((x: any) => x.frist === 'VERSPAETET').length, bald: t.filter((x: any) => x.frist === 'BALD').length,
+  });
+  assert.ok(r.body.themen.geparkt > 0);
+});
