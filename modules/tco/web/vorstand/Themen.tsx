@@ -23,6 +23,8 @@ import { FormatEditor, FormatText } from './FormatText';
  */
 const PRIOS: { p: 1 | 2 | 3; text: string }[] = [{ p: 1, text: 'hoch' }, { p: 2, text: 'mittel' }, { p: 3, text: 'niedrig' }];
 const groesse = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+/** Zeilenhöhe der Themenübersicht: Platz für Titel, zwei Zeilen Beschreibung bzw. Stand mit Sitzung */
+export const THEMEN_ZEILENHOEHE = 88;
 const tagIsoLokal = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
 
 /** Stand eines Themas als Kennzeichen, mit Sitzung */
@@ -76,7 +78,7 @@ export function ThemenParkplatz({ onFehler }: { onFehler: (t: string) => void })
       </div>
       {!d ? <BusyIndicator active /> : (
         <ResponsiveTable columns={spalten} data={d.themen} noDataText="Keine Themen – „Thema parken“ sammelt Themen für kommende Sitzungen."
-                         visibleRows={Math.min(Math.max(d.themen.length, 3), 25)} />
+                         rowHeight={THEMEN_ZEILENHOEHE} visibleRows={Math.min(Math.max(d.themen.length, 3), 25)} />
       )}
       {dialog !== null && d && (
         <ThemaDialog id={dialog === 'neu' ? null : dialog} daten={d} onClose={() => setDialog(null)} onGeaendert={laden} />
@@ -178,7 +180,7 @@ export function ThemaDialog({ id, daten, onClose, onGeaendert }: {
         {t && !darf && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Ändern kann nur der Einreicher oder wer Vorstandssitzungen pflegt.</MessageStrip>}
         {t?.stand === 'EINGEPLANT' && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Das Thema steht auf der Tagesordnung von {t.sitzung?.nr}. Änderungen hier ändern den Tagesordnungspunkt nicht.</MessageStrip>}
         <FormGrid>
-          <FieldBox label="Thema" required wide><Input value={f.titel} readonly={!rw} maxlength={200} onInput={(e) => setF({ ...f, titel: e.target.value })} /></FieldBox>
+          <FieldBox label="Thema" required wide><Input className="portal-vs__thema-titel" style={{ width: '100%' }} value={f.titel} readonly={!rw} maxlength={200} onInput={(e) => setF({ ...f, titel: e.target.value })} /></FieldBox>
           <FieldBox label="Priorität">
             <SegmentedButton accessibleName="Priorität" onSelectionChange={(e) => {
               const p = Number((e.detail.selectedItems[0] as HTMLElement | undefined)?.dataset.p) as 1 | 2 | 3;
