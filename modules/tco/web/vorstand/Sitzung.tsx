@@ -259,8 +259,8 @@ export function Sitzung() {
                 <header className="portal-vs__tkopf">
                   <span className="portal-vs__tnr">TOP {t.nr}</span>
                   <span className="portal-vs__ttitel">{t.titel}</span>
-                  {t.thema_id && <ObjectStatus state="Indication05" icon="bookmark" title="aus dem Themenparkplatz">Parkplatz</ObjectStatus>}
-                  {t.verlauf_vorher.length > 0 && <ObjectStatus state="Information" icon="history" title="wurde schon in früheren Sitzungen behandelt">fortgesetzt</ObjectStatus>}
+                  {t.thema_id && <ObjectStatus state="Indication05" icon={<Icon name="bookmark" />} title="aus dem Themenparkplatz">Parkplatz</ObjectStatus>}
+                  {t.verlauf_vorher.length > 0 && <ObjectStatus state="Information" icon={<Icon name="history" />} title="wurde schon in früheren Sitzungen behandelt">fortgesetzt</ObjectStatus>}
                   {t.verantwortlich && <span className="portal-muted">{t.verantwortlich}</span>}
                   {t.status !== 'OFFEN' && <ObjectStatus state={t.status === 'ERLEDIGT' ? 'Positive' : 'Critical'} inverted>{t.status === 'ERLEDIGT' ? 'erledigt' : 'vertagt'}</ObjectStatus>}
                   {rw && (
@@ -277,7 +277,7 @@ export function Sitzung() {
                     </span>
                   )}
                 </header>
-                <TopVerlauf vorher={t.verlauf_vorher} nachher={t.verlauf_nachher} rw={rw}
+                <TopVerlauf titel={t.titel} vorher={t.verlauf_vorher} nachher={t.verlauf_nachher} rw={rw}
                             onLoesen={() => setFrage({ titel: 'Verkettung lösen', text: `TOP ${t.nr} „${t.titel}“ aus dem Verlauf lösen? Die übrigen Punkte bleiben untereinander verkettet.`, tun: () => tun(() => api.del(`${VS}/tops/${t.id}/verketten`)) })} />
                 {t.text ? <FormatText text={t.text} className="portal-vs__text" /> : rw ? <Link className="portal-vs__klein" onClick={() => setTop({ id: t.id, titel: t.titel, verantwortlich: t.verantwortlich ?? '', text: '', status: t.status })}>Protokolltext erfassen …</Link> : null}
                 {t.eintraege.map((e) => (
