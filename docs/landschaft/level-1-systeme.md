@@ -229,6 +229,6 @@ flowchart LR
 | turnier | 41 |
 | upload | 2 |
 | verzehr | 29 |
-| vorstand | 43 |
+| vorstand | 47 |
 | zaehler | 16 |
 | zuwendung | 18 |

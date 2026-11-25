@@ -15,6 +15,7 @@ import { toast } from '@core/toast';
 import { dat, dateiLesen } from '../util';
 import { PRIO_STATE, THEMA_STATE, VS, zeitraum, type SitzungDetail, type Thema, type ThemenDaten } from './typen';
 import { FormatEditor, FormatText } from './FormatText';
+import { ThemaVerlauf, VerkettenDialog } from './Verlauf';
 
 /**
  * Themenparkplatz der Vorstandssitzungen: Themen sammeln, beschreiben, priorisieren (hoch/mittel/niedrig), mit Anlagen und
@@ -107,6 +108,7 @@ export function ThemaDialog({ id, daten, onClose, onGeaendert }: {
   const [fehler, setFehler] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [frage, setFrage] = useState<{ titel: string; text: string; grund?: boolean; danger?: boolean; tun: (g: string) => Promise<unknown> } | null>(null);
+  const [verketten, setVerketten] = useState(false);
   const datei = useRef<HTMLInputElement>(null);
 
   const laden = useCallback(async () => {
@@ -242,11 +244,22 @@ export function ThemaDialog({ id, daten, onClose, onGeaendert }: {
             </div>
             <input ref={datei} type="file" multiple hidden onChange={(e) => { dateienGewaehlt(e.target.files); e.target.value = ''; }} />
           </FieldBox>
+          {t && (
+            <FieldBox label="Verlauf in Sitzungen" wide>
+              <div className="portal-vs__thema-verlauf">
+                <ThemaVerlauf verlauf={t.verlauf ?? []} onSitzung={(sid) => { onClose(); navigate(`/tco/vorstand/${sid}`); }} />
+                {daten.pflege && t.stand !== 'ABGESCHLOSSEN' && (
+                  <Button design="Transparent" icon="connected" disabled={busy} onClick={() => setVerketten(true)}>Mit früherem Punkt verketten</Button>
+                )}
+              </div>
+            </FieldBox>
+          )}
         </FormGrid>
         <Text className="portal-muted" style={{ display: 'block', marginTop: '0.5rem' }}>
           Fällt eine Vorstandssitzung in den Zeitraum, wird das Thema dort vorgeschlagen – bei einer neuen Sitzung mit Tagesordnungsvorschlag gleich eingeplant.
         </Text>
       </>)}
+      {verketten && t && <VerkettenDialog ziel={{ thema: t.id }} onClose={() => setVerketten(false)} onFertig={() => { setVerketten(false); onGeaendert(); laden(); }} />}
       <ConfirmDialog open={!!frage} title={frage?.titel ?? ''} text={frage?.text ?? ''} askReason={frage?.grund} danger={frage?.danger}
                      confirmText={frage?.danger ? 'Löschen' : 'OK'} onCancel={() => setFrage(null)}
                      onConfirm={async (g) => { const x = frage; setFrage(null); await x?.tun(g); }} />

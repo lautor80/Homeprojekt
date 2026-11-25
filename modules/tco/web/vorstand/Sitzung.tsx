@@ -19,6 +19,7 @@ import {
 } from './typen';
 import { FormatEditor, FormatText } from './FormatText';
 import { ThemenAuswahlDialog, ThemenInSitzung, TopParkenDialog } from './Themen';
+import { TopVerlauf, VerkettenDialog } from './Verlauf';
 import './vorstand.css';
 
 /**
@@ -59,6 +60,8 @@ export function Sitzung() {
   /** Themenparkplatz: Themen aufnehmen (Auswahl) bzw. Tagesordnungspunkt parken */
   const [ausPark, setAusPark] = useState(false);
   const [parkTop, setParkTop] = useState<Top | null>(null);
+  /** Verlauf: Tagesordnungspunkt mit einem Punkt einer anderen Sitzung verketten */
+  const [verketten, setVerketten] = useState<number | null>(null);
   const datei = useRef<HTMLInputElement>(null);
   const anlageZiel = useRef<number | null>(null);
 
@@ -257,6 +260,7 @@ export function Sitzung() {
                   <span className="portal-vs__tnr">TOP {t.nr}</span>
                   <span className="portal-vs__ttitel">{t.titel}</span>
                   {t.thema_id && <ObjectStatus state="Indication05" icon="bookmark" title="aus dem Themenparkplatz">Parkplatz</ObjectStatus>}
+                  {t.verlauf_vorher.length > 0 && <ObjectStatus state="Information" icon="history" title="wurde schon in früheren Sitzungen behandelt">fortgesetzt</ObjectStatus>}
                   {t.verantwortlich && <span className="portal-muted">{t.verantwortlich}</span>}
                   {t.status !== 'OFFEN' && <ObjectStatus state={t.status === 'ERLEDIGT' ? 'Positive' : 'Critical'} inverted>{t.status === 'ERLEDIGT' ? 'erledigt' : 'vertagt'}</ObjectStatus>}
                   {rw && (
@@ -264,6 +268,7 @@ export function Sitzung() {
                       <Button design="Transparent" icon="navigation-up-arrow" tooltip="nach oben" disabled={i === 0 || busy} onClick={() => schieben(i, -1)} />
                       <Button design="Transparent" icon="navigation-down-arrow" tooltip="nach unten" disabled={i === s.tops.length - 1 || busy} onClick={() => schieben(i, 1)} />
                       <Button design="Transparent" icon="edit" tooltip="Ändern / Protokolltext" onClick={() => setTop({ id: t.id, titel: t.titel, verantwortlich: t.verantwortlich ?? '', text: t.text ?? '', status: t.status })} />
+                      <Button design="Transparent" icon="connected" tooltip="Mit einem Punkt einer früheren Sitzung verketten (Verlauf)" disabled={busy} onClick={() => setVerketten(t.id)} />
                       {t.status !== 'ERLEDIGT' && (
                         <Button design="Transparent" icon="bookmark" tooltip="In den Themenparkplatz verschieben" disabled={busy}
                                 onClick={() => (t.thema_id ? tun(() => api.post(`${VS}/themen/${t.thema_id}/parken`)) : setParkTop(t))} />
@@ -272,6 +277,8 @@ export function Sitzung() {
                     </span>
                   )}
                 </header>
+                <TopVerlauf vorher={t.verlauf_vorher} nachher={t.verlauf_nachher} rw={rw}
+                            onLoesen={() => setFrage({ titel: 'Verkettung lösen', text: `TOP ${t.nr} „${t.titel}“ aus dem Verlauf lösen? Die übrigen Punkte bleiben untereinander verkettet.`, tun: () => tun(() => api.del(`${VS}/tops/${t.id}/verketten`)) })} />
                 {t.text ? <FormatText text={t.text} className="portal-vs__text" /> : rw ? <Link className="portal-vs__klein" onClick={() => setTop({ id: t.id, titel: t.titel, verantwortlich: t.verantwortlich ?? '', text: '', status: t.status })}>Protokolltext erfassen …</Link> : null}
                 {t.eintraege.map((e) => (
                   <div key={e.id} className={`portal-vs__eintrag portal-vs__eintrag--${e.art.toLowerCase()}`}>
@@ -416,6 +423,7 @@ export function Sitzung() {
 
       {ausPark && <ThemenAuswahlDialog sitzungId={s.id} onClose={() => setAusPark(false)} onFertig={() => { setAusPark(false); laden(); }} />}
       {parkTop && <TopParkenDialog top={parkTop} onClose={() => setParkTop(null)} onFertig={() => { setParkTop(null); laden(); }} />}
+      {verketten && <VerkettenDialog ziel={{ top: verketten }} onClose={() => setVerketten(null)} onFertig={() => { setVerketten(null); laden(); }} />}
       <ConfirmDialog open={!!frage} title={frage?.titel ?? ''} text={frage?.text ?? ''} askReason={frage?.grund} danger={frage?.danger}
                      confirmText={frage?.danger ? 'Löschen' : 'OK'} onCancel={() => setFrage(null)}
                      onConfirm={async (g) => { const f = frage; setFrage(null); try { await f?.tun(g); } catch (e) { setError((e as Error).message); } }} />

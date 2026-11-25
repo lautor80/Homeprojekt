@@ -13,8 +13,9 @@ import { dat, heute } from '../format.js';
 import type { Db } from '../verein.js';
 import { mdZaehlen, type MdProtokoll } from './markdown.js';
 import { themenZuordnen, vorschlaegeEinplanen } from './themen.js';
+import { automatischVerketten, verlaufLesen, type VerlaufPunkt } from './verlauf.js';
 import {
-  ART_TEXT, beschlussfaehig, beschlussNr, ergebnisAus, personZuordnen, sitzungNr, STATUS_TEXT, UEBERGAENGE, verantwortlicheAnzeigen,
+  ART_TEXT, beschlussfaehig, beschlussNr, ergebnisAus, personZuordnen, sitzungNr, STATUS_TEXT, UEBERGAENGE, verantwortlicheAnzeigen, verlaufTeilen,
   type Ergebnis, type Person, type Status, type Teilnahme,
 } from './regeln.js';
 
@@ -104,6 +105,8 @@ export interface Top {
   id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[];
   /** aus dem Themenparkplatz (Thema-Id) */
   thema_id: number | null;
+  /** Kette zusammenhängender Punkte über mehrere Sitzungen und deren Verlauf (frühere und spätere Behandlungen) */
+  kette: number; verlauf_vorher: VerlaufPunkt[]; verlauf_nachher: VerlaufPunkt[];
 }
 /** Datei oder Verknüpfung (url gesetzt, dann ist dateiname die Bezeichnung und groesse 0) */
 export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
@@ -165,9 +168,9 @@ export async function sitzungenLesen(db: Db, f: { jahr?: number | null; suche?: 
   }));
 }
 
-const EINTRAG_SQL = (db: Db) => db`
+export const EINTRAG_SQL = (db: Db) => db`
   x.id, x.top_id, x.pos, x.art, x.text, x.nr_jahr, x.nr_lfd, x.ja, x.nein, x.enthaltung, x.ergebnis, x.verantwortlich, x.faellig, x.erledigt_am, x.erledigt_von`;
-const eintragAus = (r: Record<string, unknown>): Eintrag => ({
+export const eintragAus = (r: Record<string, unknown>): Eintrag => ({
   id: Number(r.id), top_id: Number(r.top_id), pos: Number(r.pos), art: r.art as Eintrag['art'], text: r.text as string,
   nr: r.nr_jahr ? beschlussNr(Number(r.nr_jahr), Number(r.nr_lfd)) : null,
   ja: (r.ja as number) ?? null, nein: (r.nein as number) ?? null, enthaltung: (r.enthaltung as number) ?? null, ergebnis: (r.ergebnis as Ergebnis) ?? null,
@@ -186,10 +189,17 @@ export async function sitzungLesen(db: Db, id: number): Promise<SitzungDetail> {
     id: Number(t.id), adrnr: (t.adrnr as string) ?? null, name: t.name as string, rolle: (t.rolle as string) ?? null,
     art: t.art as Teilnehmer['art'], status: t.status as Teilnahme, rueckmeldung: (t.rueckmeldung as string) ?? null,
   }));
-  const tops = (await db`select t.id, t.pos, t.titel, t.verantwortlich, t.text, t.status, th.id as thema_id
+  const tops = (await db`select t.id, t.pos, t.titel, t.verantwortlich, t.text, t.status, th.id as thema_id, coalesce(t.kette, t.id) as kette
                            from tco.vs_tops t left join tco.vs_themen th on th.top_id = t.id where t.sitzung_id = ${id} order by t.pos, t.id`)
     .map((t, i): Top => ({ id: Number(t.id), pos: Number(t.pos), nr: i + 1, titel: t.titel as string, verantwortlich: (t.verantwortlich as string) ?? null,
-      text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[], thema_id: t.thema_id == null ? null : Number(t.thema_id) }));
+      text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[], thema_id: t.thema_id == null ? null : Number(t.thema_id),
+      kette: Number(t.kette), verlauf_vorher: [], verlauf_nachher: [] }));
+  const verlauf = await verlaufLesen(db, tops.map((t) => t.kette));
+  for (const t of tops) {
+    const v = verlaufTeilen(verlauf.get(t.kette) ?? [], { datum: s.datum, sitzung_id: s.id, top_id: t.id });
+    t.verlauf_vorher = v.vorher;
+    t.verlauf_nachher = v.nachher;
+  }
   const eintraege = (await db`select ${EINTRAG_SQL(db)} from tco.vs_eintraege x join tco.vs_tops t on t.id = x.top_id where t.sitzung_id = ${id} order by x.pos, x.id`).map(eintragAus);
   for (const e of eintraege) tops.find((t) => t.id === e.top_id)?.eintraege.push(e);
   // Verantwortliche immer mit Vornamen anzeigen (auch alte Kürzel wie „laub“, „kas“)
@@ -374,12 +384,13 @@ async function tagesordnungVorschlagen(tx: Db, sitzungId: number, datum: string,
   const [vor] = await tx`select id, jahr, lfd from tco.vs_sitzungen where id <> ${sitzungId} and datum < ${datum}::date order by datum desc, id desc limit 1`;
   const titel = ['Begrüßung und Feststellung der Beschlussfähigkeit'];
   if (vor) titel.push(`Genehmigung des Protokolls ${sitzungNr(Number(vor.jahr), Number(vor.lfd))}`);
-  const vertagt = vor ? await tx`select t.titel, t.verantwortlich, th.id as thema_id from tco.vs_tops t left join tco.vs_themen th on th.top_id = t.id
+  const vertagt = vor ? await tx`select t.titel, t.verantwortlich, coalesce(t.kette, t.id) as kette, th.id as thema_id from tco.vs_tops t left join tco.vs_themen th on th.top_id = t.id
                                   where t.sitzung_id = ${vor.id} and t.status = 'VERTAGT' order by t.pos, t.id` : [];
   let pos = 0;
   for (const t of titel) await tx`insert into tco.vs_tops (sitzung_id, pos, titel) values (${sitzungId}, ${pos++}, ${t})`;
   for (const t of vertagt.filter((x) => x.thema_id == null)) {
-    await tx`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich) values (${sitzungId}, ${pos++}, ${t.titel as string}, ${(t.verantwortlich as string) ?? null})`;
+    // vertagter Punkt: setzt die Kette fort (Verlauf über die Sitzungen)
+    await tx`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich, kette) values (${sitzungId}, ${pos++}, ${t.titel as string}, ${(t.verantwortlich as string) ?? null}, ${Number(t.kette)})`;
   }
   await tx`insert into tco.vs_tops (sitzung_id, pos, titel) values (${sitzungId}, ${pos++}, 'Verschiedenes')`;
   // Themenparkplatz: vertagte Themen der Vorsitzung, dann die Themen, in deren Zeitraum die Sitzung fällt (vor „Verschiedenes“)
@@ -507,7 +518,11 @@ export async function teilnehmerLoeschen(tx: Db, tid: number, wer: string) {
 
 export interface TopEingabe { titel: string; verantwortlich?: string | null; text?: string | null; status?: Top['status'] }
 
-export async function topAnlegen(tx: Db, id: number, t: TopEingabe, wer: string): Promise<number> {
+/**
+ * Neuer Punkt; o.kette setzt eine bestehende Kette fort (z. B. Thema aus dem Parkplatz), sonst wird automatisch verkettet,
+ * wenn der letzte gleichnamige Punkt einer früheren Sitzung vertagt wurde.
+ */
+export async function topAnlegen(tx: Db, id: number, t: TopEingabe, wer: string, o: { kette?: number | null } = {}): Promise<number> {
   await sitzungFuerAenderung(tx, id);
   // vor „Verschiedenes“ einordnen, wenn es der letzte Punkt ist
   const [letzt] = await tx`select id, pos, titel from tco.vs_tops where sitzung_id = ${id} order by pos desc, id desc limit 1`;
@@ -516,6 +531,8 @@ export async function topAnlegen(tx: Db, id: number, t: TopEingabe, wer: string)
   if (vorVerschiedenes) await tx`update tco.vs_tops set pos = pos + 1 where id = ${letzt.id}`;
   const [r] = await tx`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich, text, status)
                        values (${id}, ${pos}, ${t.titel.trim()}, ${await verantwortlicheNormal(tx, t.verantwortlich)}, ${leer(t.text)}, ${t.status ?? 'OFFEN'}) returning id`;
+  if (o.kette != null) await tx`update tco.vs_tops set kette = ${o.kette} where id = ${r.id}`;
+  else await automatischVerketten(tx, Number(r.id));
   await beruehren(tx, id, wer);
   return Number(r.id);
 }
@@ -531,7 +548,8 @@ export async function topLoeschen(tx: Db, topId: number, wer: string) {
   const sid = await sitzungZuTop(tx, topId);
   await sitzungFuerAenderung(tx, sid);
   // Thema aus dem Parkplatz ist danach wieder geparkt (zuletzt in dieser Sitzung)
-  await tx`update tco.vs_themen set zuletzt_sitzung_id = ${sid} where top_id = ${topId}`;
+  await tx`update tco.vs_themen set zuletzt_sitzung_id = ${sid}, kette = coalesce(kette, (select coalesce(kette, id) from tco.vs_tops where id = ${topId}))
+            where top_id = ${topId}`;
   await tx`delete from tco.vs_tops where id = ${topId}`;
   await beruehren(tx, sid, wer);
 }
