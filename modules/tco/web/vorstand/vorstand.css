@@ -117,3 +117,14 @@
 .portal-vs__eingabe[contenteditable] ul, .portal-vs__eingabe[contenteditable] ol { margin: 0.15rem 0; padding-left: 1.4rem; }
 .portal-vs__platzhalter { position: absolute; inset: 0; padding: 0.5rem 0.6rem; color: var(--sapField_PlaceholderTextColor, #6a6d70); pointer-events: none; font-style: italic; }
 .portal-vs__linkfeld { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--sapList_BorderColor, #e5e5e5); }
+
+/* Themenparkplatz */
+.portal-vs__kurz { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+.portal-vs__thema-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.75rem; }
+.portal-vs__thema-anlagen { display: flex; flex-direction: column; gap: 0.25rem; }
+.portal-vs__thema-anlage { display: flex; align-items: center; gap: 0.4rem; }
+.portal-vs__thema-knoepfe { display: flex; gap: 0.25rem; }
+.portal-vs__thema-link { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.portal-vs__parkkopf { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-weight: 600; margin: 0 0 0.25rem; }
+.portal-vs__parkthema { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0; border-top: 1px solid var(--sapList_BorderColor); }
+.portal-vs__parkthema--vorschlag { background: var(--sapInformationBackgroundColor, #f5faff); margin: 0 -0.5rem; padding: 0.4rem 0.5rem; border-radius: 0.25rem; }

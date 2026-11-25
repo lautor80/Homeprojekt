@@ -404,3 +404,91 @@ test('Nummern der Sitzungen folgen dem Datum – beim Anlegen, Verschieben ins a
   assert.equal(await nr(c), 'VS 2089/01');
   for (const id of [b, c]) assert.equal((await call('DELETE', `${V}/sitzungen/${id}`)).status, 200);
 });
+
+test('Themenparkplatz: einreichen mit Anlagen, automatisch einplanen, wieder parken, vertagt übernehmen, besprochen, abschließen', async () => {
+  const T = `${V}/themen`;
+  const einreicher = await benutzer('themen', ['tco.vorstand:display']);
+  const andere = await benutzer('themen2', ['tco.vorstand:display']);
+  // Zeitraum ist Pflicht und vorwärts
+  assert.equal((await einreicher('POST', T, { titel: 'ohne Zeitraum', prioritaet: 2 })).status, 400);
+  assert.equal((await einreicher('POST', T, { titel: 'rückwärts', prioritaet: 2, von: '2087-03-02', bis: '2087-03-01' })).status, 400);
+  let r = await einreicher('POST', T, {
+    titel: 'Hallenpreise Winter', beschreibung: 'Vorschlag **Einzelbuchung +2 €**', prioritaet: 1, von: '2087-03-01', bis: '2087-04-30',
+    dateien: [{ name: 'Kalkulation.pdf', data: b64(PDF) }], links: [{ url: 'https://example.org/preise', bezeichnung: 'Preisliste Nachbarverein' }],
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const hoch = r.body.id as number;
+  const niedrig = (await einreicher('POST', T, { titel: 'Kühlschrank', prioritaet: 3, von: '2087-03-01', bis: '2087-03-31' })).body.id as number;
+  const spaeter = (await call('POST', T, { titel: 'Sommerfest', prioritaet: 2, von: '2087-06-01', bis: '2087-06-30', einreicher: 'Erika Muster' })).body.id as number;
+  r = await einreicher('GET', `${T}/${hoch}`);
+  assert.deepEqual([r.body.stand, r.body.prioritaet_text, r.body.einreicher, r.body.eigenes, r.body.anlagen.length], ['GEPARKT', 'hoch', 'VS themen', true, 2]);
+  const pdf = r.body.anlagen.find((a: any) => !a.url);
+  const dl = await einreicher('GET', `${T}/${hoch}/anlagen/${pdf.id}`);
+  assert.deepEqual([dl.status, dl.typ], [200, 'application/pdf']);
+  // nur Einreicher oder Pflege ändern
+  assert.equal((await andere('PUT', `${T}/${hoch}`, { titel: 'x', prioritaet: 1, von: '2087-03-01', bis: '2087-04-30' })).status, 403);
+  assert.equal((await einreicher('PUT', `${T}/${hoch}`, { titel: 'Hallenpreise Winter', beschreibung: 'Vorschlag **Einzelbuchung +2 €**', prioritaet: 1, von: '2087-03-01', bis: '2087-04-30' })).status, 200);
+  // zuordnen nur mit Pflege
+  assert.equal((await einreicher('POST', `${V}/sitzungen/${sid}/themen`, { ids: [hoch] })).status, 403);
+
+  // neue Sitzung im Zeitraum mit Tagesordnungsvorschlag: Themen automatisch eingeplant (Priorität), vor „Verschiedenes“
+  r = await call('POST', `${V}/sitzungen`, { titel: 'März', datum: '2087-03-15', vorlage: true });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const maerz = r.body.id as number;
+  let s = (await call('GET', `${V}/sitzungen/${maerz}`)).body;
+  assert.deepEqual(s.tops.map((t: any) => [t.titel, t.thema_id]), [
+    ['Begrüßung und Feststellung der Beschlussfähigkeit', null], ['Hallenpreise Winter', hoch], ['Kühlschrank', niedrig], ['Verschiedenes', null],
+  ]);
+  const topHoch = s.tops[1];
+  assert.deepEqual([topHoch.verantwortlich, topHoch.text], ['VS themen', 'Vorschlag **Einzelbuchung +2 €**']);
+  assert.deepEqual(s.anlagen.filter((a: any) => a.top_id === topHoch.id).map((a: any) => a.dateiname).sort(), ['Kalkulation.pdf', 'Preisliste Nachbarverein']);
+  r = await call('GET', `${V}/sitzungen/${maerz}/themen`);
+  assert.deepEqual([r.body.vorgeschlagen.length, r.body.weitere.map((t: any) => t.id)], [0, [spaeter]]);
+  r = await call('GET', T);
+  assert.deepEqual(r.body.themen.filter((t: any) => [hoch, niedrig].includes(t.id)).map((t: any) => [t.stand, t.sitzung.id]), [['EINGEPLANT', maerz], ['EINGEPLANT', maerz]]);
+
+  // wieder parken: geplante Sitzung, Punkt ohne Protokoll → entfernt (samt kopierten Anlagen); nicht erneut vorgeschlagen
+  r = await call('POST', `${T}/${niedrig}/parken`);
+  assert.deepEqual([r.status, r.body.ergebnis], [200, 'ENTFERNT']);
+  s = (await call('GET', `${V}/sitzungen/${maerz}`)).body;
+  assert.ok(!s.tops.some((t: any) => t.titel === 'Kühlschrank'));
+  r = await call('GET', `${V}/sitzungen/${maerz}/themen`);
+  assert.deepEqual([r.body.vorgeschlagen.map((t: any) => t.id), r.body.weitere.map((t: any) => t.id).sort()], [[], [niedrig, spaeter].sort()]);
+  // von Hand zuordnen
+  r = await call('POST', `${V}/sitzungen/${maerz}/themen`, { ids: [spaeter, spaeter] });
+  assert.deepEqual([r.status, r.body.zugeordnet], [200, 1]);
+
+  // Sitzung läuft: parken → Punkt vertagt; die nächste Sitzung übernimmt das Thema (nicht doppelt)
+  await call('POST', `${V}/sitzungen/${maerz}/status`, { status: 'LAEUFT' });
+  r = await call('POST', `${T}/${hoch}/parken`);
+  assert.deepEqual([r.status, r.body.ergebnis], [200, 'VERTAGT']);
+  s = (await call('GET', `${V}/sitzungen/${maerz}`)).body;
+  assert.equal(s.tops.find((t: any) => t.titel === 'Hallenpreise Winter').status, 'VERTAGT');
+  r = await call('GET', `${T}/${hoch}`);
+  assert.deepEqual([r.body.stand, r.body.sitzung.id, r.body.sitzung.vertagt], ['GEPARKT', maerz, true]);
+  r = await call('POST', `${V}/sitzungen`, { titel: 'April', datum: '2087-04-20', vorlage: true });
+  const april = r.body.id as number;
+  s = (await call('GET', `${V}/sitzungen/${april}`)).body;
+  assert.deepEqual(s.tops.filter((t: any) => t.titel === 'Hallenpreise Winter').map((t: any) => t.thema_id), [hoch]);
+  assert.ok(!s.tops.some((t: any) => t.titel === 'Kühlschrank'), 'Kühlschrank: Zeitraum vorbei');
+  // besprochen: Punkt abgeschlossen → nicht mehr unter den offenen Themen
+  const tp = s.tops.find((t: any) => t.thema_id === hoch);
+  assert.equal((await call('PUT', `${V}/tops/${tp.id}`, { ...tp, status: 'ERLEDIGT' })).status, 200);
+  r = await call('GET', T);
+  assert.ok(!r.body.themen.some((t: any) => t.id === hoch));
+  assert.equal((await call('GET', `${T}?offen=0`)).body.themen.find((t: any) => t.id === hoch).stand, 'BESPROCHEN');
+  assert.equal((await call('POST', `${T}/${hoch}/parken`)).status, 400, 'abgeschlossener Punkt');
+
+  // überfällig, abschließen durch den Einreicher, löschen nur ohne Sitzung
+  r = await einreicher('GET', `${T}/${niedrig}`);
+  assert.equal(r.body.stand, 'GEPARKT');
+  assert.equal((await andere('POST', `${T}/${niedrig}/abschliessen`, { abgeschlossen: true })).status, 403);
+  assert.equal((await einreicher('POST', `${T}/${niedrig}/abschliessen`, { abgeschlossen: true, grund: 'hat sich erledigt' })).status, 200);
+  r = await einreicher('GET', `${T}/${niedrig}`);
+  assert.deepEqual([r.body.stand, r.body.abschluss_grund], ['ABGESCHLOSSEN', 'hat sich erledigt']);
+  assert.equal((await einreicher('DELETE', `${T}/${niedrig}`)).status, 400, 'war schon in einer Sitzung');
+  const weg = (await einreicher('POST', T, { titel: 'Tippfehler', prioritaet: 2, von: '2087-01-01', bis: '2087-01-02' })).body.id;
+  assert.equal((await einreicher('DELETE', `${T}/${weg}`)).status, 200);
+  // Sitzung löschen gibt eingeplante Themen frei
+  assert.equal((await call('DELETE', `${V}/sitzungen/${april}`)).status, 200);
+});

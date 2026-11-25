@@ -447,6 +447,7 @@ const tco: ServerModule = {
     { type: 'CL_CHECKLISTE', text: 'Checkliste (Kopf, Schritte, Veranstaltungen, Stand)', permission: P_CL.display },
     { type: 'VS_SITZUNG', text: 'Vorstandssitzung (Kopf, Teilnehmer, Tagesordnung, Beschlüsse, Aufgaben)', permission: P_VS.display },
     { type: 'VS_CFG', text: 'Einstellung Vorstandssitzungen (Vorstandsgruppe)', permission: P_VS.display },
+    { type: 'VS_THEMA', text: 'Thema im Themenparkplatz der Vorstandssitzungen', permission: P_VS.display },
     { type: 'CL_KATEGORIE', text: 'Kategorie einer Checkliste', permission: P_CL.display },
     { type: 'KAL_EINLADUNG', text: 'Einladung zu einer Veranstaltung (Versand)', permission: P_KAL.edit },
     { type: 'MITGLIED', text: 'Mitglied', permission: P_MG.display, sperrtAuch: ['SCHLUESSEL', 'KOMMPREF'] },

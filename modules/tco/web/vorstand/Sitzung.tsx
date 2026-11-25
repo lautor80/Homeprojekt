@@ -18,6 +18,7 @@ import {
   type Eintrag, type EventWahl, type SitzungDetail, type Status, type Teilnahme, type Top, type Uebersicht,
 } from './typen';
 import { FormatEditor, FormatText } from './FormatText';
+import { ThemenInSitzung } from './Themen';
 import './vorstand.css';
 
 /**
@@ -216,6 +217,9 @@ export function Sitzung() {
               </div>
             ))}
           </Section>
+
+          {/* ---- Themenparkplatz: Vorschläge (Sitzung im Zeitraum) und weitere geparkte Themen */}
+          {s.status !== 'FREIGEGEBEN' && <ThemenInSitzung s={s} rw={rw} stand={s.geaendert_am} onGeaendert={laden} />}
         </div>
 
         {/* ---- Tagesordnung und Protokoll */}
@@ -229,6 +233,7 @@ export function Sitzung() {
                 <header className="portal-vs__tkopf">
                   <span className="portal-vs__tnr">TOP {t.nr}</span>
                   <span className="portal-vs__ttitel">{t.titel}</span>
+                  {t.thema_id && <ObjectStatus state="Indication05" icon="bookmark" title="aus dem Themenparkplatz">Parkplatz</ObjectStatus>}
                   {t.verantwortlich && <span className="portal-muted">{t.verantwortlich}</span>}
                   {t.status !== 'OFFEN' && <ObjectStatus state={t.status === 'ERLEDIGT' ? 'Positive' : 'Critical'} inverted>{t.status === 'ERLEDIGT' ? 'erledigt' : 'vertagt'}</ObjectStatus>}
                   {rw && (
@@ -272,7 +277,9 @@ export function Sitzung() {
                     <Button design="Transparent" icon="attachment" onClick={() => anlageWaehlen(t.id)}>Anlage</Button>
                     <Button design="Transparent" icon="chain-link" onClick={() => setLink({ top_id: t.id, url: '', bezeichnung: '' })}>Link</Button>
                     <span style={{ flex: 1 }} />
-                    {t.status === 'OFFEN' && <Button design="Transparent" onClick={() => tun(() => api.put(`${VS}/tops/${t.id}`, { ...t, status: 'VERTAGT' }))}>Vertagen</Button>}
+                    {t.status === 'OFFEN' && (t.thema_id
+                      ? <Button design="Transparent" icon="bookmark" tooltip="nicht dazu gekommen: zurück in den Themenparkplatz" onClick={() => tun(() => api.post(`${VS}/themen/${t.thema_id}/parken`))}>Wieder parken</Button>
+                      : <Button design="Transparent" onClick={() => tun(() => api.put(`${VS}/tops/${t.id}`, { ...t, status: 'VERTAGT' }))}>Vertagen</Button>)}
                     {t.status !== 'ERLEDIGT'
                       ? <Button onClick={() => tun(() => api.put(`${VS}/tops/${t.id}`, { ...t, status: 'ERLEDIGT' }))}>Abschließen</Button>
                       : <Button design="Transparent" onClick={() => tun(() => api.put(`${VS}/tops/${t.id}`, { ...t, status: 'OFFEN' }))}>Wieder öffnen</Button>}

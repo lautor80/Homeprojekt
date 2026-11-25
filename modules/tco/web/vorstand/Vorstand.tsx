@@ -17,14 +17,15 @@ import {
   type AufgabeZeile, type BeschlussZeile, type SitzungZeile, type Uebersicht,
 } from './typen';
 import { FormatText } from './FormatText';
+import { ThemenParkplatz } from './Themen';
 import './vorstand.css';
 
 /**
- * Vorstandssitzungen: Übersicht der Sitzungen (Protokolle), Beschlussregister und Aufgaben aus allen Sitzungen.
+ * Vorstandssitzungen: Übersicht der Sitzungen (Protokolle), Themenparkplatz, Beschlussregister und Aufgaben aus allen Sitzungen.
  * Neue Sitzung mit Veranstaltung im Vereinskalender, Vorstandsgruppe einstellen, alte Protokolle aus Markdown importieren.
  * Die Sitzung selbst (Teilnehmer, Tagesordnung, Beschlüsse, Anlagen, Freigabe) steht in Sitzung.tsx (/tco/vorstand/:id).
  */
-type Reiter = 'sitzungen' | 'beschluesse' | 'aufgaben';
+type Reiter = 'sitzungen' | 'themen' | 'beschluesse' | 'aufgaben';
 
 export function Vorstand() {
   const navigate = useNavigate();
@@ -149,6 +150,9 @@ export function Vorstand() {
                 <ResponsiveTable columns={spalten} data={d.sitzungen} titelSpalten={2} noDataText="Noch keine Sitzungen – „Neue Sitzung“ oder alte Protokolle importieren." visibleRows={Math.min(Math.max(d.sitzungen.length, 3), 20)} />
               </Section>
             </Tab>
+            <Tab data-key="themen" text="Themenparkplatz" icon="bookmark" selected={tab === 'themen'}>
+              {tab === 'themen' && <ThemenParkplatz onFehler={setError} />}
+            </Tab>
             <Tab data-key="beschluesse" text="Beschlüsse" icon="decision" selected={tab === 'beschluesse'}>
               <Section flush plain>
                 {filter}
@@ -230,7 +234,7 @@ function NeueSitzung({ d, onClose, onFertig }: { d: Uebersicht; onClose: () => v
         </>)}
         <FieldBox label="Tagesordnung" wide>
           <CheckBox checked={f.vorlage} onChange={(e) => setF({ ...f, vorlage: e.target.checked })}
-                    text="vorschlagen: Begrüßung, Genehmigung des letzten Protokolls, vertagte Punkte der letzten Sitzung, Verschiedenes" wrappingType="Normal" />
+                    text="vorschlagen: Begrüßung, Genehmigung des letzten Protokolls, vertagte Punkte der letzten Sitzung, Themen aus dem Themenparkplatz, deren Zeitraum passt, Verschiedenes" wrappingType="Normal" />
         </FieldBox>
       </FormGrid>
       <Text className="portal-muted" style={{ display: 'block', marginTop: '0.75rem' }}>
