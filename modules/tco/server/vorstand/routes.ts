@@ -14,12 +14,18 @@ import {
 import { markdownLesen } from './markdown.js';
 import { protokollPdf } from './pdf.js';
 import { STATUS_TEXT, TEILNAHME_TEXT } from './regeln.js';
+import {
+  themaAbschliessen, themaAendern, themaAnlageAnlegen, themaAnlageLoeschen, themaAnlegen, themaLesen, themaLoeschen, themaParken, themenFuerSitzung,
+  themenLesen, themenZuordnen,
+} from './themen.js';
+import { heute } from '../format.js';
 
 /**
  * Berechtigungsobjekte Vorstandssitzungen:
  *  - tco.vorstand:display  Sitzungen, Protokolle, Beschlüsse, Aufgaben und Anlagen ansehen, PDF
  *  - tco.vorstand:edit     Sitzungen anlegen und protokollieren, Veranstaltung verknüpfen, Anlagen, Aufgaben abhaken, Import
  *  - tco.vorstand:approve  Protokolle freigeben und die Freigabe zurücknehmen
+ * Themenparkplatz: Themen einreichen und eigene ändern mit display; fremde ändern, zuordnen und wieder parken mit edit.
  */
 export { P_VS };
 
@@ -45,6 +51,12 @@ const eintragSchema = z.object({
   ja: anzahl, nein: anzahl, enthaltung: anzahl, ergebnis: z.enum(['ANGENOMMEN', 'ABGELEHNT']).nullish(),
   verantwortlich: text(120), faellig: datum.nullish().or(z.literal('').transform(() => null)), erledigt: z.boolean().optional(),
 });
+const themaSchema = z.object({
+  titel: z.string().trim().min(1, 'Bitte das Thema benennen.').max(200), beschreibung: text(100_000),
+  prioritaet: z.coerce.number().int().min(1).max(3).default(2).transform((p) => p as 1 | 2 | 3), einreicher: text(120),
+  von: datum, bis: datum,
+});
+const linkSchema = z.object({ url: z.string().trim().min(1, 'Bitte die Adresse angeben.').max(2000), bezeichnung: z.string().max(200).nullish() });
 const dateienSchema = z.array(z.object({ name: z.string().trim().min(1).max(250), data: z.string() })).min(1, 'Bitte mindestens eine Datei wählen.').max(500);
 
 /** base64 (auch als data:-URL) dekodieren; ZIP-Archive werden entpackt */
@@ -257,6 +269,113 @@ export async function vorstandRoutes(app: FastifyInstance) {
     const p = z.object({ id: nr, aid: nr }).parse(req.params);
     await change(req, (tx) => anlageLoeschen(tx, p.id, p.aid, wer(req)), { action: 'VS_ANLAGE' });
     return { text: 'Anlage gelöscht.' };
+  });
+
+  // ---------------------------------------------------------------- Themenparkplatz
+  const person = (req: FastifyRequest) => ({ name: wer(req), userId: req.user?.id ?? null, alle: can(req, P_VS.edit) });
+  const datei = (d: { name: string; data: string }) => {
+    const inhalt = Buffer.from(d.data.replace(/^data:[^,]*,/, ''), 'base64');
+    return { dateiname: d.name, mime: dateityp(d.name, null, inhalt), inhalt };
+  };
+
+  app.get('/vorstand/themen', lesen, async (req) => {
+    const q = z.object({ offen: z.enum(['0', '1']).optional() }).parse(req.query);
+    const cfg = await cfgLesen(DB);
+    return {
+      themen: await themenLesen(DB, { offen: q.offen !== '0', userId: req.user?.id ?? null, stichtag: heute() }),
+      // Vorschläge für den Einreicher
+      vorstand: (await vorstandLesen(DB, cfg.gruppe_id)).map((m) => (m.name.includes(',') ? m.name.split(',').map((x) => x.trim()).reverse().join(' ') : m.name)),
+      ich: wer(req), ...rechte(req),
+    };
+  });
+
+  app.get('/vorstand/themen/:id', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    return themaLesen(DB, id, req.user?.id ?? null, heute());
+  });
+
+  /** Thema einreichen – samt Anlagen (Dateien und Links) */
+  app.post('/vorstand/themen', { ...lesen, bodyLimit: 40 * 1024 * 1024 }, async (req) => {
+    const b = themaSchema.extend({ dateien: z.array(z.object({ name: z.string().trim().min(1).max(250), data: z.string() })).max(20).default([]), links: z.array(linkSchema).max(20).default([]) }).parse(req.body);
+    const p = person(req);
+    const id = await change(req, async (tx) => {
+      const id = await themaAnlegen(tx, b, p);
+      // der Einreicher darf seine Anlagen immer anhängen
+      for (const d of b.dateien) await themaAnlageAnlegen(tx, id, datei(d), { ...p, alle: true });
+      for (const l of b.links) await themaAnlageAnlegen(tx, id, l, { ...p, alle: true });
+      return id;
+    }, { action: 'VS_THEMA' });
+    return { id, text: `Thema „${b.titel}“ geparkt.` };
+  });
+
+  app.put('/vorstand/themen/:id', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = themaSchema.parse(req.body);
+    await change(req, (tx) => themaAendern(tx, id, b, person(req)), { action: 'VS_THEMA' });
+    return { text: 'Gesichert.' };
+  });
+
+  app.post('/vorstand/themen/:id/abschliessen', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ abgeschlossen: z.boolean(), grund: text(500) }).parse(req.body);
+    await change(req, (tx) => themaAbschliessen(tx, id, b.abgeschlossen, b.grund ?? null, person(req)), { action: 'VS_THEMA', reason: b.grund ?? null });
+    return { text: b.abgeschlossen ? 'Thema abgeschlossen.' : 'Thema wieder geparkt.' };
+  });
+
+  app.delete('/vorstand/themen/:id', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    await change(req, (tx) => themaLoeschen(tx, id, person(req)), { action: 'VS_THEMA' });
+    return { text: 'Thema gelöscht.' };
+  });
+
+  app.post('/vorstand/themen/:id/anlagen', { ...lesen, bodyLimit: 25 * 1024 * 1024 }, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ dateien: dateienSchema.max(20) }).parse(req.body);
+    await change(req, async (tx) => { for (const d of b.dateien) await themaAnlageAnlegen(tx, id, datei(d), person(req)); }, { action: 'VS_THEMA' });
+    return { text: `${b.dateien.length} Anlage${b.dateien.length === 1 ? '' : 'n'} gesichert.` };
+  });
+
+  app.post('/vorstand/themen/:id/links', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = linkSchema.parse(req.body);
+    await change(req, (tx) => themaAnlageAnlegen(tx, id, b, person(req)), { action: 'VS_THEMA' });
+    return { text: 'Verknüpfung hinzugefügt.' };
+  });
+
+  app.get('/vorstand/themen/:id/anlagen/:aid', lesen, async (req, reply) => {
+    const p = z.object({ id: nr, aid: nr }).parse(req.params);
+    const [a] = await DB`select dateiname, mime, inhalt, url from tco.vs_themen_anlagen where id = ${p.aid} and thema_id = ${p.id}`;
+    if (!a) throw new BusinessError('Die Anlage gibt es nicht (mehr).', 404);
+    if (a.url) return reply.redirect(a.url as string);
+    const mime = a.mime === 'text/markdown' ? 'text/plain; charset=utf-8' : (a.mime as string);
+    return reply.type(mime).header('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.dateiname as string)}`).send(Buffer.from(a.inhalt as Uint8Array));
+  });
+
+  app.delete('/vorstand/themen/:id/anlagen/:aid', lesen, async (req) => {
+    const p = z.object({ id: nr, aid: nr }).parse(req.params);
+    await change(req, (tx) => themaAnlageLoeschen(tx, p.id, p.aid, person(req)), { action: 'VS_THEMA' });
+    return { text: 'Anlage gelöscht.' };
+  });
+
+  /** Themen für eine Sitzung: vorgeschlagen (Sitzung im Zeitraum) und weitere geparkte */
+  app.get('/vorstand/sitzungen/:id/themen', lesen, async (req) => {
+    const { id } = pId.parse(req.params);
+    return themenFuerSitzung(DB, id, req.user?.id ?? null, heute());
+  });
+
+  /** Themen als Tagesordnungspunkte übernehmen */
+  app.post('/vorstand/sitzungen/:id/themen', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const b = z.object({ ids: z.array(nr).min(1, 'Bitte mindestens ein Thema wählen.').max(100) }).parse(req.body);
+    const n = await change(req, (tx) => themenZuordnen(tx, id, b.ids, wer(req)), { action: 'VS_THEMA' });
+    return { zugeordnet: n, text: n ? `${n} Thema${n === 1 ? '' : 'en'} in die Tagesordnung übernommen.` : 'Keines der Themen ist noch geparkt.' };
+  });
+
+  /** zugeordnetes Thema wieder parken (nicht dazu gekommen) */
+  app.post('/vorstand/themen/:id/parken', pflege, async (req) => {
+    const { id } = pId.parse(req.params);
+    const r = await change(req, (tx) => themaParken(tx, id, wer(req)), { action: 'VS_THEMA' });
+    return { ergebnis: r, text: r === 'ENTFERNT' ? 'Thema wieder geparkt – aus der Tagesordnung entfernt.' : 'Thema wieder geparkt – der Punkt ist als vertagt markiert.' };
   });
 
   // ---------------------------------------------------------------- PDF

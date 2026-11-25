@@ -12,6 +12,7 @@ import type { Aufgabe } from '../../../../server/src/lib/arbeitsvorrat.js';
 import { dat, heute } from '../format.js';
 import type { Db } from '../verein.js';
 import { mdZaehlen, type MdProtokoll } from './markdown.js';
+import { themenZuordnen, vorschlaegeEinplanen } from './themen.js';
 import {
   ART_TEXT, beschlussfaehig, beschlussNr, ergebnisAus, personZuordnen, sitzungNr, STATUS_TEXT, UEBERGAENGE, verantwortlicheAnzeigen,
   type Ergebnis, type Person, type Status, type Teilnahme,
@@ -99,7 +100,11 @@ export interface Eintrag {
   nr: string | null; ja: number | null; nein: number | null; enthaltung: number | null; ergebnis: Ergebnis | null;
   verantwortlich: string | null; faellig: string | null; erledigt_am: string | null; erledigt_von: string | null;
 }
-export interface Top { id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[] }
+export interface Top {
+  id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[];
+  /** aus dem Themenparkplatz (Thema-Id) */
+  thema_id: number | null;
+}
 /** Datei oder Verknüpfung (url gesetzt, dann ist dateiname die Bezeichnung und groesse 0) */
 export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
 export interface SitzungDetail extends Sitzung {
@@ -181,9 +186,10 @@ export async function sitzungLesen(db: Db, id: number): Promise<SitzungDetail> {
     id: Number(t.id), adrnr: (t.adrnr as string) ?? null, name: t.name as string, rolle: (t.rolle as string) ?? null,
     art: t.art as Teilnehmer['art'], status: t.status as Teilnahme, rueckmeldung: (t.rueckmeldung as string) ?? null,
   }));
-  const tops = (await db`select id, pos, titel, verantwortlich, text, status from tco.vs_tops where sitzung_id = ${id} order by pos, id`)
+  const tops = (await db`select t.id, t.pos, t.titel, t.verantwortlich, t.text, t.status, th.id as thema_id
+                           from tco.vs_tops t left join tco.vs_themen th on th.top_id = t.id where t.sitzung_id = ${id} order by t.pos, t.id`)
     .map((t, i): Top => ({ id: Number(t.id), pos: Number(t.pos), nr: i + 1, titel: t.titel as string, verantwortlich: (t.verantwortlich as string) ?? null,
-      text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[] }));
+      text: (t.text as string) ?? null, status: t.status as Top['status'], eintraege: [] as Eintrag[], thema_id: t.thema_id == null ? null : Number(t.thema_id) }));
   const eintraege = (await db`select ${EINTRAG_SQL(db)} from tco.vs_eintraege x join tco.vs_tops t on t.id = x.top_id where t.sitzung_id = ${id} order by x.pos, x.id`).map(eintragAus);
   for (const e of eintraege) tops.find((t) => t.id === e.top_id)?.eintraege.push(e);
   // Verantwortliche immer mit Vornamen anzeigen (auch alte Kürzel wie „laub“, „kas“)
@@ -359,16 +365,26 @@ async function eventPruefen(tx: Db, eventId: number, sitzungId: number | null) {
   if (e.andere) throw new BusinessError('Diese Veranstaltung ist schon mit einer anderen Sitzung verknüpft.');
 }
 
-/** Standard-Tagesordnung einer neuen Sitzung: Begrüßung, Protokoll der letzten Sitzung, vertagte Punkte, Verschiedenes */
-async function tagesordnungVorschlagen(tx: Db, sitzungId: number, datum: string) {
+/**
+ * Standard-Tagesordnung einer neuen Sitzung: Begrüßung, Protokoll der letzten Sitzung, vertagte Punkte, Verschiedenes.
+ * Vertagte Punkte aus dem Themenparkplatz werden als Thema neu zugeordnet (samt Anlagen); danach werden die Themen
+ * eingeplant, in deren Zeitraum die Sitzung fällt.
+ */
+async function tagesordnungVorschlagen(tx: Db, sitzungId: number, datum: string, wer: string) {
   const [vor] = await tx`select id, jahr, lfd from tco.vs_sitzungen where id <> ${sitzungId} and datum < ${datum}::date order by datum desc, id desc limit 1`;
   const titel = ['Begrüßung und Feststellung der Beschlussfähigkeit'];
   if (vor) titel.push(`Genehmigung des Protokolls ${sitzungNr(Number(vor.jahr), Number(vor.lfd))}`);
-  const vertagt = vor ? await tx`select titel, verantwortlich from tco.vs_tops where sitzung_id = ${vor.id} and status = 'VERTAGT' order by pos, id` : [];
+  const vertagt = vor ? await tx`select t.titel, t.verantwortlich, th.id as thema_id from tco.vs_tops t left join tco.vs_themen th on th.top_id = t.id
+                                  where t.sitzung_id = ${vor.id} and t.status = 'VERTAGT' order by t.pos, t.id` : [];
   let pos = 0;
   for (const t of titel) await tx`insert into tco.vs_tops (sitzung_id, pos, titel) values (${sitzungId}, ${pos++}, ${t})`;
-  for (const t of vertagt) await tx`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich) values (${sitzungId}, ${pos++}, ${t.titel as string}, ${(t.verantwortlich as string) ?? null})`;
+  for (const t of vertagt.filter((x) => x.thema_id == null)) {
+    await tx`insert into tco.vs_tops (sitzung_id, pos, titel, verantwortlich) values (${sitzungId}, ${pos++}, ${t.titel as string}, ${(t.verantwortlich as string) ?? null})`;
+  }
   await tx`insert into tco.vs_tops (sitzung_id, pos, titel) values (${sitzungId}, ${pos++}, 'Verschiedenes')`;
+  // Themenparkplatz: vertagte Themen der Vorsitzung, dann die Themen, in deren Zeitraum die Sitzung fällt (vor „Verschiedenes“)
+  await themenZuordnen(tx, sitzungId, vertagt.filter((x) => x.thema_id != null).map((x) => Number(x.thema_id)), wer);
+  await vorschlaegeEinplanen(tx, sitzungId, wer);
 }
 
 export async function sitzungAnlegen(tx: Db, e: KopfEingabe & { event_id?: number | null; event_anlegen?: boolean; vorlage?: boolean }, wer: string): Promise<number> {
@@ -391,7 +407,7 @@ export async function sitzungAnlegen(tx: Db, e: KopfEingabe & { event_id?: numbe
   await nummernOrdnen(tx);
   await vorstandEintragen(tx, id);
   if (eventId) await rueckmeldungenUebernehmen(tx, id);
-  if (e.vorlage !== false) await tagesordnungVorschlagen(tx, id, d.datum);
+  if (e.vorlage !== false) await tagesordnungVorschlagen(tx, id, d.datum, wer);
   return id;
 }
 
@@ -514,6 +530,8 @@ export async function topAendern(tx: Db, topId: number, t: TopEingabe, wer: stri
 export async function topLoeschen(tx: Db, topId: number, wer: string) {
   const sid = await sitzungZuTop(tx, topId);
   await sitzungFuerAenderung(tx, sid);
+  // Thema aus dem Parkplatz ist danach wieder geparkt (zuletzt in dieser Sitzung)
+  await tx`update tco.vs_themen set zuletzt_sitzung_id = ${sid} where top_id = ${topId}`;
   await tx`delete from tco.vs_tops where id = ${topId}`;
   await beruehren(tx, sid, wer);
 }

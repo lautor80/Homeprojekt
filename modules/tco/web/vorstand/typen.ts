@@ -21,7 +21,11 @@ export interface Eintrag {
   nr: string | null; ja: number | null; nein: number | null; enthaltung: number | null; ergebnis: Ergebnis | null;
   verantwortlich: string | null; faellig: string | null; erledigt_am: string | null; erledigt_von: string | null;
 }
-export interface Top { id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[] }
+export interface Top {
+  id: number; pos: number; nr: number; titel: string; verantwortlich: string | null; text: string | null; status: 'OFFEN' | 'ERLEDIGT' | 'VERTAGT'; eintraege: Eintrag[];
+  /** aus dem Themenparkplatz */
+  thema_id: number | null;
+}
 export interface Anlage { id: number; top_id: number | null; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
 export interface SitzungDetail extends Sitzung {
   teilnehmer: Teilnehmer[]; tops: Top[]; anlagen: Anlage[];
@@ -38,6 +42,28 @@ export interface Uebersicht {
 }
 export interface BeschlussZeile extends Eintrag { sitzung_id: number; sitzung_nr: string; sitzung_titel: string; datum: string; top: string }
 export interface AufgabeZeile extends Eintrag { sitzung_id: number; sitzung_nr: string; datum: string; top: string; stand: Stand }
+
+// ---------------------------------------------------------------- Themenparkplatz
+export type ThemaStand = 'GEPARKT' | 'EINGEPLANT' | 'BESPROCHEN' | 'ABGESCHLOSSEN';
+export interface ThemaAnlage { id: number; dateiname: string; mime: string; groesse: number; url: string | null; erstellt_am: string; erstellt_von: string | null }
+export interface Thema {
+  id: number; titel: string; beschreibung: string | null; prioritaet: 1 | 2 | 3; prioritaet_text: string;
+  einreicher: string; eigenes: boolean; von: string; bis: string;
+  stand: ThemaStand; stand_text: string; ueberfaellig: boolean;
+  sitzung: { id: number; nr: string; datum: string; status: Status; top_id: number | null; vertagt: boolean } | null;
+  abgeschlossen_am: string | null; abgeschlossen_von: string | null; abschluss_grund: string | null;
+  anlagen: ThemaAnlage[]; erstellt_am: string; erstellt_von: string | null; geaendert_am: string; geaendert_von: string | null;
+}
+export interface ThemenDaten { themen: Thema[]; vorstand: string[]; ich: string; pflege: boolean; freigabe: boolean }
+export const PRIO_STATE: Record<number, 'Negative' | 'Critical' | 'None'> = { 1: 'Negative', 2: 'Critical', 3: 'None' };
+export const THEMA_STATE: Record<ThemaStand, 'None' | 'Information' | 'Positive' | 'Indication05'> = {
+  GEPARKT: 'None', EINGEPLANT: 'Information', BESPROCHEN: 'Positive', ABGESCHLOSSEN: 'Indication05',
+};
+/** „01.03.–30.04.2087“ */
+export const zeitraum = (von: string, bis: string) => {
+  const d = (x: string) => `${x.slice(8, 10)}.${x.slice(5, 7)}.`;
+  return von === bis ? `${d(von)}${von.slice(0, 4)}` : `${d(von)}${von.slice(0, 4) === bis.slice(0, 4) ? '' : von.slice(0, 4)}–${d(bis)}${bis.slice(0, 4)}`;
+};
 
 export const STATUS_STATE: Record<Status, 'None' | 'Information' | 'Critical' | 'Positive'> = {
   GEPLANT: 'None', LAEUFT: 'Information', ENTWURF: 'Critical', FREIGEGEBEN: 'Positive',
