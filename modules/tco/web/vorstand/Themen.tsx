@@ -35,6 +35,11 @@ export function ThemaStandAnzeige({ t, onSitzung }: { t: Thema; onSitzung?: (id:
       <span>
         <ObjectStatus state={THEMA_STATE[t.stand]} inverted>{t.stand_text}</ObjectStatus>
         {t.ueberfaellig && <ObjectStatus state="Negative" style={{ marginLeft: '0.4rem' }}>Zeitraum vorbei</ObjectStatus>}
+        {!t.ueberfaellig && t.frist && (
+          <ObjectStatus state={t.frist === 'VERSPAETET' ? 'Negative' : 'Critical'} icon={<Icon name="bookmark" />} style={{ marginLeft: '0.4rem' }}>
+            {t.frist === 'VERSPAETET' ? 'verspätet' : 'beginnt bald'}
+          </ObjectStatus>
+        )}
       </span>
       {t.sitzung && (
         <span className="portal-muted">

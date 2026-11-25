@@ -33,6 +33,8 @@ export interface Thema {
   id: number; titel: string; beschreibung: string | null; prioritaet: 1 | 2 | 3; prioritaet_text: string;
   einreicher: string; eigenes: boolean; von: string; bis: string;
   stand: ThemaStand; stand_text: string; ueberfaellig: boolean;
+  /** geparkt und der Besprechungszeitraum beginnt in höchstens 30 Tagen (BALD) bzw. hat schon begonnen (VERSPAETET) */
+  frist: ThemaFrist;
   /** zugeordnete Sitzung (eingeplant/besprochen) bzw. zuletzt zugeordnete (geparkt) */
   sitzung: { id: number; nr: string; datum: string; status: string; top_id: number | null; vertagt: boolean } | null;
   abgeschlossen_am: string | null; abgeschlossen_von: string | null; abschluss_grund: string | null;
@@ -54,6 +56,28 @@ export function themaStand(t: { abgeschlossen: boolean; top_status: 'OFFEN' | 'E
   if (t.top_status === 'ERLEDIGT') return 'BESPROCHEN';
   if (t.top_status === 'OFFEN') return 'EINGEPLANT';
   return 'GEPARKT';
+}
+
+export type ThemaFrist = 'VERSPAETET' | 'BALD' | null;
+/** Vorlauf, ab dem ein geparktes Thema als „bald fällig“ gilt (Tage vor Beginn des Zeitraums) */
+export const FRIST_VORLAUF_TAGE = 30;
+const plusTage = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
+/**
+ * Frist eines geparkten Themas: Beginn des Zeitraums erreicht (≤ heute) = verspätet (rot);
+ * Beginn in den nächsten 30 Tagen (≤ heute + 30) = bald (orange). Eingeplante und erledigte Themen haben keine Frist.
+ */
+export function themaFrist(t: { stand: ThemaStand; von: string }, stichtag: string): ThemaFrist {
+  if (t.stand !== 'GEPARKT') return null;
+  if (t.von <= stichtag) return 'VERSPAETET';
+  if (t.von <= plusTage(stichtag, FRIST_VORLAUF_TAGE)) return 'BALD';
+  return null;
+}
+
+/** Kennzahl für die Übersicht: geparkte Themen, davon verspätet und bald fällig */
+export function themenZaehlen(l: { stand: ThemaStand; frist: ThemaFrist }[]) {
+  const geparkt = l.filter((t) => t.stand === 'GEPARKT');
+  return { geparkt: geparkt.length, verspaetet: geparkt.filter((t) => t.frist === 'VERSPAETET').length, bald: geparkt.filter((t) => t.frist === 'BALD').length };
 }
 
 /** Liegt die Sitzung im Zeitraum des Themas? (Daten als JJJJ-MM-TT) */
@@ -90,7 +114,7 @@ function themaAus(r: Record<string, unknown>, anlagen: ThemaAnlage[], userId: st
   return {
     id: Number(r.id), titel: r.titel as string, beschreibung: (r.beschreibung as string) ?? null, prioritaet: prio, prioritaet_text: PRIO_TEXT[prio],
     einreicher: r.einreicher as string, eigenes: !!userId && r.einreicher_user === userId, von: r.von as string, bis,
-    stand, stand_text: STAND_TEXT[stand], ueberfaellig: stand === 'GEPARKT' && bis < stichtag,
+    stand, stand_text: STAND_TEXT[stand], ueberfaellig: stand === 'GEPARKT' && bis < stichtag, frist: themaFrist({ stand, von: r.von as string }, stichtag),
     sitzung: r.s_id ? {
       id: Number(r.s_id), nr: sitzungNr(Number(r.s_jahr), Number(r.s_lfd)), datum: r.s_datum as string, status: r.s_status as string,
       top_id: r.top_sitzung ? Number(r.top_id) : null, vertagt: topStatus === 'VERTAGT' || !r.top_id,
