@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  anrede, artenOrdnen, emlBauen, emlDateiname, mailsPlanen, mailtext, modusFuer, rechnungsVersandAus, regelSchluessel, schluesselBilden,
+  anrede, artenOrdnen, emlBauen, emlDateiname, mailsPlanen, mailtext, modusFuer, rechnungsVersandAus, regelSchluessel, schluesselBilden, zusatzVerteilen,
   type Empfaenger, type MailtextVorlage, type VersandDokument,
 } from '../../modules/transport/server/sammelversand-logik.js';
 
@@ -201,3 +201,30 @@ test('Absender je Dokumentart: Arten mit verschiedenem Absender/BCC nie in einer
   assert.equal(regelSchluessel({ absender: null, bcc: ['B@x.example', 'a@x.example'] }), regelSchluessel({ absender: '', bcc: ['a@x.example', 'b@x.example'] }));
 });
 
+
+test('weitere Auftragsdateien mit BCC: Empfänger ohne BCC mit allen Dateien, BCC-Adresse eigene E-Mail nur mit den Belegen', () => {
+  const belege = ['Rechnung_RV9901.pdf'];
+  const zusatz = ['POD_RV9901.pdf', 'Foto.jpg'];
+  assert.deepEqual(zusatzVerteilen(belege, zusatz, ['rv9901@upload.example']), {
+    dateien: ['Rechnung_RV9901.pdf', 'POD_RV9901.pdf', 'Foto.jpg'], bcc: [],
+    beleg: { an: 'rv9901@upload.example', dateien: ['Rechnung_RV9901.pdf'] },
+  });
+  // ohne weitere Dateien: eine E-Mail mit BCC wie bisher
+  assert.deepEqual(zusatzVerteilen(belege, [], ['rv9901@upload.example']), { dateien: belege, bcc: ['rv9901@upload.example'], beleg: null });
+  // ohne BCC (auch mit festem Absender): weitere Dateien einfach anhängen
+  assert.deepEqual(zusatzVerteilen(belege, zusatz, []), { dateien: [...belege, ...zusatz], bcc: [], beleg: null });
+});
+
+test('Versenden…: weitere Dateien gehen bei Outlook-Versand und EML gleich hinaus, fakturierte Aufträge ohne Transportauftrag vorausgewählt', () => {
+  const ROOT2 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const srv = readFileSync(path.join(ROOT2, 'modules/transport/server/sammelversand.ts'), 'utf8');
+  assert.ok(!srv.includes('ohneZusatz'), 'keine Sperre der weiteren Dateien mehr');
+  assert.equal(srv.match(/zusatzVerteilen\(m\.anlagen\.dateien, zusatz, regel\.bcc\)/g)?.length, 2, 'Versand und EML');
+  assert.ok(srv.includes("emlDateiname(`${betreff} (Belege)`, vergeben)"), 'zweite EML-Datei für die Belege');
+  assert.ok(srv.includes("nur: ['kunde']"), 'Belege-Mail ohne Kopie an die feste zweite Adresse');
+  const dlg = readFileSync(path.join(ROOT2, 'modules/transport/web/VersandDialog.tsx'), 'utf8');
+  assert.ok(dlg.includes("fakturiert ? vorauswahl.filter((a) => a !== 'T') : vorauswahl"), 'Vorauswahl ohne T');
+  assert.ok(dlg.includes('setArten(new Set(vorauswahlFuer(e.vorauswahl, fakturiert)))'), 'beim Öffnen angewandt');
+  assert.ok(readFileSync(path.join(ROOT2, 'modules/transport/web/AuftragDetail.tsx'), 'utf8').includes('fakturiert={!!a.faktura}'), 'Auftrag');
+  assert.ok(readFileSync(path.join(ROOT2, 'modules/transport/web/AuftraegeListe.tsx'), 'utf8').includes('setVersandFakturiert(sel.every((s) => !!s.faktura))'), 'Liste');
+});

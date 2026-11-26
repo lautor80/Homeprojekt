@@ -734,7 +734,7 @@ export function AuftragDetail() {
                      text={`Rechnung ${a.faktura ?? ''} wird zur Korrektur geöffnet – bei einer Sammelrechnung mit allen ihren Aufträgen. Danach lässt sich der Auftrag bearbeiten; „Speichern und Rechnung erzeugen“ vergibt wieder die Nummer ${a.faktura ?? ''} mit demselben Rechnungsdatum.\n\nBitte als Grund einen Vermerk angeben: Er erklärt die Änderung, steht mit dem Datum der Korrektur auf der neuen Rechnung und im Änderungsbeleg.`}
                      onConfirm={korrekturOeffnen} onCancel={() => setKorrigieren(false)} />
       <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
-      {!isNew && nr && <VersandDialog auftraege={[nr]} open={versand} onClose={() => setVersand(false)} />}
+      {!isNew && nr && <VersandDialog auftraege={[nr]} fakturiert={!!a.faktura} open={versand} onClose={() => setVersand(false)} />}
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} start={kontaktStart} onClose={() => setKontakt(null)}
                      onSaved={async (adrnr) => {

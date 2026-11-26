@@ -56,7 +56,12 @@ const base64Blob = (b64: string, typ: string) => {
 };
 const td: CSSProperties = { padding: '0.4rem 0.5rem', verticalAlign: 'top' };
 
-export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[]; open: boolean; onClose: () => void }) {
+/** Vorauswahl beim Öffnen: Arten aus den Einstellungen; sind alle Aufträge fakturiert (Versand der Rechnung), ohne Transportauftrag */
+export const vorauswahlFuer = (vorauswahl: Art[], fakturiert: boolean): Art[] => (fakturiert ? vorauswahl.filter((a) => a !== 'T') : vorauswahl);
+
+export function VersandDialog({ auftraege, fakturiert = false, open, onClose }: {
+  auftraege: string[]; /** alle Aufträge haben eine Rechnung – Transportauftrag dann nicht vorausgewählt */ fakturiert?: boolean; open: boolean; onClose: () => void;
+}) {
   const [einst, setEinst] = useState<Einstellungen | null>(null);
   const [arten, setArten] = useState<Set<Art>>(new Set());
   const [xrechnung, setXrechnung] = useState(false);
@@ -77,16 +82,17 @@ export function VersandDialog({ auftraege, open, onClose }: { auftraege: string[
   const einzel = auftraege.length === 1 ? auftraege[0] : null;
   const schluessel = auftraege.join(',');
 
-  // Beim Öffnen: Vorauswahl aus den Einstellungen (GET /versand/einstellungen, Recht versand:execute) – ohne Antwort Standard T + L
+  // Beim Öffnen: Vorauswahl aus den Einstellungen (GET /versand/einstellungen, Recht versand:execute) – ohne Antwort Standard T + L;
+  // fakturierte Aufträge (Versand der Rechnung) ohne Transportauftrag
   useEffect(() => {
     if (!open) return;
     setVorschau(null); setError(null); setAenderungen({}); setErgebnisse({}); setAktiv(null); setXrechnung(false); setWahl(new Set()); setWeitere(null);
     let aus = false;
     api.get<Einstellungen>(`${T}/versand/einstellungen`)
-      .then((e) => { if (aus) return; setEinst(e); setArten(new Set(e.vorauswahl)); setWeg(e.senden_erlaubt ? 'einstellung' : 'entwurf'); })
-      .catch(() => { if (aus) return; setEinst(STANDARD); setArten(new Set(STANDARD.vorauswahl)); setWeg('entwurf'); });
+      .then((e) => { if (aus) return; setEinst(e); setArten(new Set(vorauswahlFuer(e.vorauswahl, fakturiert))); setWeg(e.senden_erlaubt ? 'einstellung' : 'entwurf'); })
+      .catch(() => { if (aus) return; setEinst(STANDARD); setArten(new Set(vorauswahlFuer(STANDARD.vorauswahl, fakturiert))); setWeg('entwurf'); });
     return () => { aus = true; };
-  }, [open, schluessel]);
+  }, [open, schluessel, fakturiert]);
 
   // Weitere Auftragsdateien nur bei einem Auftrag: Ablageordner und Paperless-Dokumente
   useEffect(() => {
