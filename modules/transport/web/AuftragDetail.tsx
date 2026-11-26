@@ -312,6 +312,27 @@ export function AuftragDetail() {
     } catch (e) { setError((e as Error).message); }
   }
 
+  // Einzelrechnung direkt im Auftrag – wie „Einzelrechnungen“ in der Auftragsliste (offener Auftrag, Recht transport.rechnungen:create)
+  const kannRechnung = !isNew && darfRechnung && !a.faktura && !a.faktura_reserviert && !a.abgeschlossen_am;
+  /** Einzelrechnung erzeugen (derselbe Aufruf wie in der Liste), dann zur Vorschau; im Bearbeitungsmodus vorher speichern */
+  async function einzelrechnung() {
+    setBusy(true);
+    setError(null);
+    try {
+      await ordnerBereit(true); // Ablageordner: Zugriff jetzt (beim Klick) erfragen
+      if (darfBearbeiten) await api.put(`${T}/auftraege/${nr}`, { ...a, typ });
+      const r = await api.post<{ fakturen: string[]; ignoriert: number }>(`${T}/rechnungen`, { auftraege: [nr], sammel: false });
+      await lade();
+      if (r.ignoriert) toast('Der Auftrag hat bereits eine Rechnung – es wurde keine neue erzeugt.');
+      setDocs(r.fakturen.map((f) => ({ url: `${T}/pdf/R/${encodeURIComponent(f)}`, filename: `Rechnung_${f}.pdf`, ablage: [nr!] })));
+    } catch (e) {
+      setError((e as Error).message);
+      window.scrollTo({ top: 0 });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Speichern und die zur Korrektur geöffnete Rechnung mit derselben Nummer neu erzeugen, dann zur Vorschau */
   async function speichernUndRechnung() {
     setBusy(true);
@@ -455,6 +476,10 @@ export function AuftragDetail() {
                 {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={save}>Speichern</Button>}
                 {!!a.faktura_reserviert && darfBearbeiten && darfRechnung && (
                   <Button icon="lead" loading={busy} onClick={speichernUndRechnung} tooltip={`Speichern und Rechnung ${a.faktura_reserviert} mit derselben Nummer neu erzeugen`}>Speichern und Rechnung erzeugen</Button>
+                )}
+                {kannRechnung && (
+                  <Button icon="lead" loading={busy} onClick={einzelrechnung}
+                          tooltip={`${darfBearbeiten ? 'Speichern und ' : ''}Rechnung für diesen Auftrag erzeugen – danach mit „Versenden…“ verschicken`}>Einzelrechnung</Button>
                 )}
                 {fakturiert && darfBearbeiten && darfRechnung && (
                   <Button icon="edit" onClick={() => setKorrigieren(true)} tooltip="Rechnung wieder öffnen, Auftrag ändern und mit derselben Rechnungsnummer neu erzeugen">Rechnung korrigieren</Button>
