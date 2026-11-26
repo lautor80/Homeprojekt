@@ -46,7 +46,11 @@ export function belegErkennen(text: string, aktiv: BelegLayout[] = ['bestellung'
   if (!ganz.trim()) { const leer = leereErkennung(layout); leer.hinweise.push('Der Beleg enthält keinen lesbaren Text.'); return leer; }
   const e = layout === 'bestellung' ? bestellungLesen(zeilen) : layout === 'ladeauftrag' ? ladeauftragLesen(zeilen) : allgemeinLesen(zeilen);
   const anderer = layout === 'allgemein' && !erkannt && (ANDERER_BELEG.test(ganz) || TITEL_ANDERER.test(ganz));
-  if (anderer || !genugMerkmale(e)) {
+  // Ein eigenes Layout ist an seinen Beschriftungen erkannt: Der Beleg bleibt ein Frachtauftrag, auch wenn sich die Werte kaum
+  // zuordnen ließen (z. B. verrutschte Texterkennung) – die Maske zeigt dann, was fehlt.
+  const eigenes = layout !== 'allgemein';
+  if (eigenes && !genugMerkmale(e)) e.hinweise.push('Die Belegart wurde erkannt, die Werte ließen sich aber nicht sicher zuordnen – bitte von Hand ergänzen.');
+  if (anderer || (!eigenes && !genugMerkmale(e))) {
     const leer = leereErkennung(layout);
     leer.hinweise.push(anderer ? 'Der Beleg sieht nach einer Rechnung, einem Lieferschein oder Angebot aus, nicht nach einem Frachtauftrag.'
       : 'Im Beleg wurden zu wenige Merkmale eines Frachtauftrags gefunden (Lade-/Lieferanschrift und Preis oder Termin).');

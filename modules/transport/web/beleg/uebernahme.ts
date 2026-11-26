@@ -159,7 +159,12 @@ export interface Rueckfrage {
   kandidaten: KandidatWert[];
   /** bei „konflikt“: was beim Lesen des Belegs schon im Feld stand */
   vorhanden: Wert;
+  /** bei „unklar“: Standardwert der Neuanlage, der im Feld stehen blieb (sonst null) – die Rückfrage bleibt offen, solange er dort steht */
+  standard: Wert;
 }
+
+/** Werte, mit denen die Neuanlage Felder vorbelegt (Fahrzeugtyp, Ladegut, Ladeweise, Palettentausch): Sie gelten nicht als Eingabe des Benutzers */
+export type Standardwerte = Partial<Record<FeldId, Wert>>;
 
 export interface Fehlend { ids: FeldId[]; bezeichnung: string; hinweis: string | null }
 
@@ -174,7 +179,7 @@ export interface Uebernahme<F extends Formular = Formular> {
 }
 
 /** Vorschlag in das Formular übernehmen. Sieht der Beleg nicht nach einem Frachtauftrag aus, bleibt alles, wie es war. */
-export function belegUebernehmen<F extends Formular>(v: BelegVorschlag, form0: F): Uebernahme<F> {
+export function belegUebernehmen<F extends Formular>(v: BelegVorschlag, form0: F, standard: Standardwerte = {}): Uebernahme<F> {
   let form = form0;
   const uebernommen: Uebernommen[] = [];
   const rueckfragen: Rueckfrage[] = [];
@@ -184,7 +189,10 @@ export function belegUebernehmen<F extends Formular>(v: BelegVorschlag, form0: F
   const feld = (id: FeldId, f: Feld<string> | Feld<number> | undefined) => {
     if (!f) return;
     const alt = feldLesen(form, id);
-    const leer = istLeer(id, alt);
+    // der Standardwert der Neuanlage ist keine Eingabe: Ein eindeutiger Wert aus dem Beleg ersetzt ihn ohne Rückfrage
+    const std = standard[id];
+    const istStandard = std !== undefined && std !== null && !istLeer(id, alt) && gleich(id, alt, std);
+    const leer = istLeer(id, alt) || istStandard;
     const eindeutig = f.status === 'eindeutig' && f.wert !== null && f.wert !== undefined && String(f.wert).trim() !== '';
     if (eindeutig) {
       const neu = formWert(id, f.wert as string | number);
@@ -192,7 +200,7 @@ export function belegUebernehmen<F extends Formular>(v: BelegVorschlag, form0: F
       else if (gleich(id, alt, neu)) uebernommen.push({ id, wert: alt, herkunft: f.herkunft });
       else {
         rueckfragen.push({
-          id, bezeichnung: feldBezeichnung(id), grund: 'konflikt', hinweis: f.hinweis, vorhanden: alt,
+          id, bezeichnung: feldBezeichnung(id), grund: 'konflikt', hinweis: f.hinweis, vorhanden: alt, standard: null,
           kandidaten: [{ wert: neu, text: wertText(id, neu), herkunft: f.herkunft }],
         });
       }
@@ -201,6 +209,7 @@ export function belegUebernehmen<F extends Formular>(v: BelegVorschlag, form0: F
     if (f.status === 'unklar') {
       rueckfragen.push({
         id, bezeichnung: feldBezeichnung(id), grund: leer ? 'unklar' : 'konflikt', hinweis: f.hinweis, vorhanden: leer ? null : alt,
+        standard: istStandard ? alt : null,
         kandidaten: (f.kandidaten as { wert: string | number; text: string; herkunft: string | null }[]).map((k) => {
           const wert = formWert(id, k.wert);
           return { wert, text: k.text || wertText(id, wert), herkunft: k.herkunft };
@@ -209,7 +218,8 @@ export function belegUebernehmen<F extends Formular>(v: BelegVorschlag, form0: F
       return;
     }
     // „fehlt“ – auch ein „eindeutig“ ohne Wert wird nicht geraten, sondern nachgetragen
-    fehlt.set(id, f.hinweis);
+    // steht der Standardwert der Neuanlage im Feld, sieht es gefüllt aus, ohne dass der Beleg etwas dazu sagt
+    fehlt.set(id, istStandard ? [f.hinweis, 'Im Feld steht der Standardwert der Neuanlage – bitte prüfen.'].filter(Boolean).join(' · ') : f.hinweis);
   };
 
   for (const k of KOPF_FELDER) feld(k, v[k]);
@@ -250,7 +260,8 @@ export function offeneRueckfragen(rueckfragen: Rueckfrage[], form: Formular, ent
   return rueckfragen.filter((r) => {
     if (entschieden.has(r.id)) return false;
     const akt = feldLesen(form, r.id);
-    return r.grund === 'unklar' ? istLeer(r.id, akt) : gleich(r.id, akt, r.vorhanden);
+    if (r.grund === 'unklar') return istLeer(r.id, akt) || (r.standard !== null && gleich(r.id, akt, r.standard));
+    return gleich(r.id, akt, r.vorhanden);
   });
 }
 

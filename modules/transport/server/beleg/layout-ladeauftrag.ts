@@ -99,11 +99,20 @@ function lesen(zeilen: string[]): Gelesen {
 function blockZuordnen(namen: Name[], strom: string[], werte: Map<Name, string[]>, hinweise: string[]): void {
   let p = 0;
   const istWert = (z: string) => nurTermin(z) || nurBetrag(z) || WIE_AUFTRAGGEBER.test(z);
+  // Hat die Texterkennung eine Beschriftung verschluckt, verschieben sich die Werte. Erkennbar an der Anzahl: Es muss genau so
+  // viele Terminzeilen wie Terminbeschriftungen geben – sonst wird nichts zugeordnet (lieber leer als falsch).
+  const terminNamen = namen.filter((n) => (n === 'verladedatum' || n === 'anlieferdatum') && !werte.has(n)).length;
+  const terminZeilen = strom.filter((z) => nurTermin(z)).length;
+  if (terminNamen !== terminZeilen) {
+    hinweise.push(`Beschriftungen und Werte stehen im Beleg getrennt und passen nicht zusammen (${terminNamen} Terminbeschriftung(en), ${terminZeilen} Termin(e)) – Anschriften, Termine und Beträge wurden nicht zugeordnet, bitte von Hand ergänzen.`);
+    return;
+  }
   /** Anschrift: Zeilen bis einschließlich PLZ/Ort (höchstens fünf), keine Datums-/Betragszeilen */
   const anschriftZeilen = (): string[] | null => {
     const z: string[] = [];
     for (let k = p; k < strom.length && z.length < 5; k++) {
-      if (istWert(strom[k]) || nachLabel(strom[k], BRUTTO) !== null) return null;
+      // Telefon-/Fax-/Mailzeilen gehören nie in eine Anschrift: dann ist die Reihenfolge verrutscht
+      if (istWert(strom[k]) || nachLabel(strom[k], BRUTTO) !== null || ERREICHBAR.test(strom[k])) return null;
       z.push(strom[k]);
       if (plzOrt(strom[k])) { if (z.length < 2) return null; p = k + 1; return z; }
     }
@@ -165,7 +174,11 @@ export function ladeauftragLesen(zeilen: string[]): BelegErkennung {
   e.ordernummer = o.status === 'eindeutig' && o.wert ? textFeld(o.wert, o.herkunft ?? o.wert, MAX.ordernummer, 'Transportnummer', e.hinweise) : o;
 
   // Auftraggeber = Kunde
-  const ag = blockAus(w('auftraggeber'));
+  // Die eigene Firma (Empfänger des Ladeauftrags) ist nie der Kunde – steht sie dort, ist die Zuordnung verrutscht
+  const agRoh = blockAus(w('auftraggeber'));
+  const eigene = !!agRoh && /euro\s?-?\s?flex/i.test(anschrift(agRoh).name);
+  const ag = eigene ? null : agRoh;
+  if (eigene) e.hinweise.push('Als Auftraggeber wurde die eigene Firma gelesen – der Auftraggeber ließ sich nicht sicher zuordnen, bitte von Hand wählen.');
   if (ag) e.kunde = eindeutig(anschrift(ag), h('auftraggeber', blockText(ag)));
 
   // Verladeadresse: eigener Anschriftblock oder „wie Auftraggeber“

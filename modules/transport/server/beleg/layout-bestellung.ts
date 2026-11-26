@@ -164,16 +164,19 @@ export function bestellungLesen(zeilen: string[]): BelegErkennung {
   const lm = lademeter(text);
   e.lademeter = ausFunden(lm.map((z) => ({ wert: z.wert, text: meterText(z.wert), herkunft: z.roh })), 'Im Beleg stehen verschiedene Lademeter.',
     lm.some((z) => !z.sicher) ? 'Die Lademeter-Angabe ist nicht eindeutig lesbar (Punkt als Tausender- oder Dezimalzeichen?).' : null);
-  const gw = gewichte(text);
+  // Gewicht: Kilogramm überall; Tonnen nur in einer Zeile mit „Gewicht“ oder zusammen mit Lademetern („7,5 t LKW“ ist kein Gewicht)
+  const gw = zeilen.flatMap((z) => gewichte(z).filter((g) => /kg|kilo/i.test(g.roh) || /gewicht/i.test(z) || lademeter(z).length > 0));
+  const ungefaehr = zeilen.some((z) => /\b(?:ca\.?|circa|etwa|ungef[äa]hr)\s*\d[\d.,]*\s*(?:kg|kilo|to?\b)/i.test(z));
   e.gewicht = ausFunden(gw.map((g) => ({ wert: g.tonnen, text: tonnenText(g.tonnen), herkunft: g.roh })), 'Im Beleg stehen verschiedene Gewichte.',
     gw.some((g) => !g.sicher) ? 'Die Gewichtsangabe ist nicht eindeutig lesbar (Punkt als Tausender- oder Dezimalzeichen?).' : null);
+
+  if (ungefaehr && e.gewicht.status === 'eindeutig') e.gewicht.hinweis = 'Im Beleg steht eine ca.-Angabe.';
 
   const ladenr: Fund[] = [];
   const ladetermin: { termin: Termin; herkunft: string }[] = [];
   const laden: Block[] = [];
   const liefern: Block[] = [];
   let kontakt: string | null = null;
-  let zuletzt: 'laden' | 'liefern' | null = null;
   for (let i = 0; i < zeilen.length; i++) {
     const z = zeilen[i];
     let rest = nachLabel(z, /(?:Ladenr|Ladenummer|Lade-Nr)\.?/);
@@ -184,13 +187,13 @@ export function bestellungLesen(zeilen: string[]): BelegErkennung {
     if (art) {
       const erste = nachLabel(z, art === 'laden' ? LADESTELLE : LIEFERADRESSE);
       const { block } = blockLesen(zeilen, i + 1, BLOCK_ENDE, erste || null);
-      if (block) { (art === 'laden' ? laden : liefern).push(block); zuletzt = art; }
+      if (block) { (art === 'laden' ? laden : liefern).push(block); }
       continue;
     }
     rest = nachLabel(z, /Kontakt/);
     if (rest && !kontakt) {
       const t = telefon(rest);
-      if (t) kontakt = `${zuletzt === 'liefern' ? 'Kontakt Entladestelle' : zuletzt === 'laden' ? 'Kontakt Ladestelle' : 'Kontakt'}: ${t}`;
+      if (t) kontakt = `Kontakt laut Beleg: ${t}`;
     }
   }
   bloeckeInStop(stop, '', laden, 'Ladestelle', e.hinweise);

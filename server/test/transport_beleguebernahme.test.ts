@@ -267,3 +267,24 @@ test('Vormerkung für die Neuanlage: genau einmal abholbar, nur mit dem Schlüss
   assert.equal(belegAbholen(alt), null, 'es gibt immer nur einen vorgemerkten Beleg');
   assert.equal(belegAbholen(neu)?.dateiName, 'zweite.pdf');
 });
+
+test('Standardwerte der Neuanlage (Fahrzeugtyp, Ladegut …) gelten nicht als Eingabe des Benutzers', () => {
+  const standard = { fahrzeugtyp: '001', ladegut: '002', ladeweise: '001', palettentausch: '099' };
+  const neuanlage = (): Formular => ({ ...leer(), ...standard });
+  // eindeutig aus dem Beleg: ersetzt den Standardwert ohne Rückfrage
+  const u = belegUebernehmen(vorschlag({ fahrzeugtyp: eindeutig('003'), ladegut: eindeutig('HOLZ') }), neuanlage(), standard);
+  assert.deepEqual([u.form.fahrzeugtyp, u.form.ladegut], ['003', 'HOLZ']);
+  assert.equal(u.rueckfragen.some((r) => r.id === 'fahrzeugtyp' || r.id === 'ladegut'), false);
+  // nicht im Beleg: der Standardwert bleibt stehen und wird als solcher genannt
+  assert.equal(u.form.ladeweise, '001');
+  assert.match(u.fehlend.find((f) => f.ids.includes('ladeweise'))?.hinweis ?? '', /Standardwert der Neuanlage/);
+  // unklar: Rückfrage bleibt offen, solange der Standardwert im Feld steht
+  const v = belegUebernehmen(vorschlag({ fahrzeugtyp: unklar([['003', 'Jumbo', 'LKW-Art']]) }), neuanlage(), standard);
+  const frage = v.rueckfragen.find((r) => r.id === 'fahrzeugtyp');
+  assert.deepEqual([frage?.grund, frage?.standard, v.form.fahrzeugtyp], ['unklar', '001', '001']);
+  assert.equal(offeneRueckfragen(v.rueckfragen, v.form, new Map()).some((r) => r.id === 'fahrzeugtyp'), true);
+  assert.equal(offeneRueckfragen(v.rueckfragen, feldSetzen(v.form, 'fahrzeugtyp', '003'), new Map()).some((r) => r.id === 'fahrzeugtyp'), false);
+  // hat der Benutzer den Wert vorher selbst geändert, ist es seine Eingabe → Konflikt-Rückfrage
+  const selbst = belegUebernehmen(vorschlag({ fahrzeugtyp: eindeutig('003') }), { ...neuanlage(), fahrzeugtyp: '005' }, standard);
+  assert.deepEqual([selbst.form.fahrzeugtyp, selbst.rueckfragen.find((r) => r.id === 'fahrzeugtyp')?.grund], ['005', 'konflikt']);
+});

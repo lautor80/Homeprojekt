@@ -73,8 +73,12 @@ export async function belegAnhaengen(nr: string, q: BelegQuelle, o: { eingangUeb
     }
     if (!q.datei) return { ok: true, text: '' };
     const [d, ordner] = await Promise.all([api.get<{ paperless: boolean }>(`${T}/auftraege/${nr}/dokumente`), ordnerStatus().catch(() => null)]);
-    if (!d.paperless && !ordner) return { ok: false, text: 'Weder Paperless noch ein Ablageordner ist eingerichtet.' };
-    const r = await auftragAblegen(nr, [q.datei], { paperless: d.paperless, ordner: !!ordner });
+    // ein Ablageordner ohne erteilten Zugriff ist kein Ziel – sonst gälte „0 Dateien abgelegt“ als Erfolg
+    const ordnerBereit = !!ordner?.zugriff;
+    if (!d.paperless && !ordnerBereit) {
+      return { ok: false, text: ordner ? `Paperless ist nicht eingerichtet und der Zugriff auf den Ablageordner „${ordner.name}“ ist nicht erteilt.` : 'Weder Paperless noch ein Ablageordner ist eingerichtet.' };
+    }
+    const r = await auftragAblegen(nr, [q.datei], { paperless: d.paperless, ordner: ordnerBereit });
     return { ok: true, text: r.text };
   } catch (e) {
     return { ok: false, text: (e as Error).message };

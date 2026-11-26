@@ -58,6 +58,12 @@ export function namensWoerter(name: string | null | undefined): string[] {
   return ohne.length ? ohne : alle;
 }
 
+/** Rechtsform-Wörter eines Namens in Vergleichsform („Muster GmbH & Co. KG“ → gmbh co kg) */
+function rechtsform(name: string | null | undefined): string {
+  const roh = (name ?? '').normalize('NFC').toLowerCase().replace(/\b(?:[a-zà-ÿ]\.\s?){2,}/g, (m) => `${m.replace(/[.\s]/g, '')} `);
+  return normal(roh).split(' ').filter((w) => RECHTSFORMEN.has(w) && w !== 'und').join(' ');
+}
+
 const plzForm = (s: string | null | undefined) => (s ?? '').toUpperCase().replace(/^\s*[A-Z]{1,3}\s*-\s*/, '').replace(/[^A-Z0-9]/g, '');
 
 function enthaelt(lang: string[], kurz: string[]): boolean {
@@ -87,7 +93,8 @@ export function kontaktText(k: Kontakt): string {
 /**
  * Wie sicher passt ein Kontakt zu einer Firma des Belegs?
  *  3 = gleicher Name, PLZ oder Ort bestätigt · 2 = gleicher Name ohne Ortsangabe auf einer Seite, oder Teilname mit gleicher PLZ
- *  1 = nur Kandidat (Teilname ohne passende PLZ, oder gleicher Name an einem anderen Ort) · 0 = passt nicht
+ *  1 = nur Kandidat (Teilname ohne passende PLZ, gleicher Name an einem anderen Ort oder mit anderer Rechtsform) · 0 = passt nicht
+ * Nur Stufe 3 gilt als sicherer Treffer; 2 und 1 werden dem Benutzer zur Bestätigung vorgelegt.
  */
 export function kontaktStufe(firma: BelegAnschrift, k: Kontakt): 0 | 1 | 2 | 3 {
   const beleg = namensWoerter(firma.name);
@@ -101,6 +108,9 @@ export function kontaktStufe(firma: BelegAnschrift, k: Kontakt): 0 | 1 | 2 | 3 {
   const plzGleich = !!pb && pb === pk;
   const bestaetigt = plzGleich || (!!ob && ob === ok);
   const widerspruch = !bestaetigt && ((!!pb && !!pk) || (!!ob && !!ok));
+  // gleiche Namenswörter, aber verschiedene Rechtsform („Muster GmbH“ / „Muster AG“) sind zwei Firmen → nur Kandidat
+  const [rb, rk] = [rechtsform(firma.name), rechtsform(`${k.kundenname ?? ''} ${k.kundenname2 ?? ''}`)];
+  if (grad === 'voll' && rb && rk && rb !== rk) return 1;
   if (grad === 'voll') return bestaetigt ? 3 : widerspruch ? 1 : 2;
   return plzGleich ? 2 : 1;
 }
@@ -109,8 +119,8 @@ const NICHT_GEFUNDEN = 'Kunde nicht in den Kontakten gefunden – bitte von Hand
 const HOECHSTENS = 20;
 
 /**
- * Auftraggeber laut Beleg gegen die Kontakte: Genau ein Kontakt passt → eindeutig (wert = adrnr). Mehrere Kontakte oder mehrere
- * Firmen mit Treffern → unklar – außer der bevorzugte Kunde des Leseprofils ist unter den sicheren Treffern. Kein Kontakt → fehlt.
+ * Auftraggeber laut Beleg gegen die Kontakte: Der Beleg nennt genau eine Firma und genau ein Kontakt passt sicher (Name und
+ * PLZ/Ort) → eindeutig (wert = adrnr). Mehrere Firmen im Beleg, mehrere Kontakte oder nur unsichere Treffer → unklar – außer der bevorzugte Kunde des Leseprofils ist unter den sicheren Treffern. Kein Kontakt → fehlt.
  */
 export function kundeAbgleichen(feld: Feld<BelegAnschrift>, kontakte: Kontakt[], bevorzugt: number | null = null): { kunde: Feld<number>; kundeImBeleg: BelegAnschrift[] } {
   // alle Firmen laut Beleg, jede einmal
@@ -135,16 +145,16 @@ export function kundeAbgleichen(feld: Feld<BelegAnschrift>, kontakte: Kontakt[],
     // je Firma zählt nur die beste Stufe: ein bestätigter Treffer verdrängt gleichnamige ohne Ort und bloße Kandidaten
     for (const x of stufen.filter((y) => y.stufe === beste)) {
       const t: Treffer = { k: x.k, firma: i, herkunft: f.herkunft ?? f.a.name };
-      if (beste >= 2) { if (!sicher.has(x.k.adrnr)) sicher.set(x.k.adrnr, t); } else if (!unsicher.has(x.k.adrnr)) unsicher.set(x.k.adrnr, t);
+      if (beste >= 3) { if (!sicher.has(x.k.adrnr)) sicher.set(x.k.adrnr, t); } else if (!unsicher.has(x.k.adrnr)) unsicher.set(x.k.adrnr, t);
     }
   });
   for (const nr of sicher.keys()) unsicher.delete(nr);
 
   if (!sicher.size && !unsicher.size) return { kunde: fehlt(NICHT_GEFUNDEN), kundeImBeleg };
-  if (sicher.size === 1 && !unsicher.size) {
+  // eindeutig nur, wenn der Beleg genau EINE Firma nennt und genau ein Kontakt sicher passt
+  if (sicher.size === 1 && !unsicher.size && firmen.length === 1) {
     const [t] = [...sicher.values()];
-    const hinweis = firmen.length > 1 ? 'Im Beleg stehen mehrere Firmen – nur diese ist in den Kontakten.' : null;
-    return { kunde: eindeutig(t.k.adrnr, t.herkunft, hinweis), kundeImBeleg };
+    return { kunde: eindeutig(t.k.adrnr, t.herkunft, null), kundeImBeleg };
   }
   const vorzug = bevorzugt != null ? sicher.get(bevorzugt) : undefined;
   if (vorzug) {
@@ -155,14 +165,15 @@ export function kundeAbgleichen(feld: Feld<BelegAnschrift>, kontakte: Kontakt[],
   const hinweis = sicher.size > 1 && new Set([...sicher.values()].map((t) => t.firma)).size > 1
     ? 'Im Beleg stehen mehrere Firmen, die es in den Kontakten gibt – bitte den Auftraggeber wählen.'
     : sicher.size > 1 ? 'Mehrere Kontakte passen zum Auftraggeber im Beleg – bitte wählen.'
+      : sicher.size === 1 && !unsicher.size ? 'Im Beleg stehen mehrere Firmen – nur diese ist in den Kontakten. Bitte bestätigen.'
       : sicher.size === 1 ? 'Ein Kontakt passt, zu einer weiteren Firma im Beleg gibt es ähnliche Kontakte – bitte den Auftraggeber wählen.'
-        : 'Kein Kontakt passt sicher (Name nur teilweise gleich oder anderer Ort) – bitte prüfen und wählen oder Kontakt anlegen.';
+        : 'Kein Kontakt passt sicher (Name nur teilweise gleich, andere Rechtsform, anderer oder fehlender Ort) – bitte prüfen und wählen oder Kontakt anlegen.';
   return { kunde: unklar(kandidaten, hinweis), kundeImBeleg };
 }
 
 // ---------------------------------------------------------------- Wertelisten
 
-const FUELLWOERTER = new Set(['mit', 'und', 'oder', 'der', 'die', 'das', 'den', 'dem', 'fuer', 'von', 'vom', 'zum', 'zur', 'per', 'bis', 'laut', 'siehe', 'bitte', 'ca']);
+const FUELLWOERTER = new Set(['mit', 'und', 'oder', 'der', 'die', 'das', 'den', 'dem', 'fuer', 'von', 'vom', 'zum', 'zur', 'per', 'bis', 'laut', 'siehe', 'bitte', 'ca', 'lkw', 'auflieger', 'fahrzeug', 'kein', 'keine', 'ohne', 'nicht']);
 const woerter = (n: string) => n.split(' ').filter((w) => w.length >= 3 && !FUELLWOERTER.has(w) && !/^\d+$/.test(w));
 
 /** Werte, die zum Belegtext passen: zuerst gleicher Schlüssel oder gleiche Bezeichnung, sonst Wortvergleich („Plane“ ↔ „Planenauflieger“) */
@@ -178,8 +189,8 @@ export function listenTreffer(text: string, werte: Listenwert[]): { treffer: Lis
 }
 
 /**
- * Feld mit Belegtext (z. B. „LKW mit Plane 13,6“) gegen eine Werteliste: genau ein Wert → eindeutig (wert = Schlüssel),
- * mehrere → unklar mit Kandidaten, keiner → fehlt; der Hinweis nennt den Belegtext. liste = Name der Liste für den Hinweis.
+ * Feld mit Belegtext (z. B. „LKW mit Plane 13,6“) gegen eine Werteliste: gleicher Schlüssel/gleiche Bezeichnung → eindeutig
+ * (wert = Schlüssel), nur ähnlich oder mehrere → unklar mit Kandidaten, keiner → fehlt; der Hinweis nennt den Belegtext. liste = Name der Liste für den Hinweis.
  */
 export function wertAbgleichen(feld: Feld, werte: Listenwert[], liste: string): Feld {
   const texte: { text: string; herkunft: string | null }[] = (feld.status === 'eindeutig' && feld.wert
@@ -191,7 +202,12 @@ export function wertAbgleichen(feld: Feld, werte: Listenwert[], liste: string): 
 
   if (texte.length === 1) {
     const { treffer, genau } = listenTreffer(texte[0].text, werte);
-    if (treffer.length === 1) return eindeutig(treffer[0].key, texte[0].herkunft ?? texte[0].text.trim(), genau ? null : imBeleg);
+    // nur gleicher Schlüssel oder gleiche Bezeichnung ist eindeutig – ein ähnliches Wort wird nur zur Bestätigung vorgeschlagen
+    if (treffer.length === 1 && genau) return eindeutig(treffer[0].key, texte[0].herkunft ?? texte[0].text.trim(), null);
+    if (treffer.length === 1) {
+      return unklar([{ wert: treffer[0].key, text: treffer[0].text, herkunft: texte[0].herkunft ?? texte[0].text.trim() }],
+        `${imBeleg} – ähnlich einem Wert der Liste ${liste}, bitte bestätigen oder anders wählen.`);
+    }
     if (!treffer.length) return fehlt(`${imBeleg} – kein passender Wert in der Liste ${liste}, bitte von Hand wählen.`);
     return unklar(treffer.map((w) => ({ wert: w.key, text: w.text, herkunft: texte[0].herkunft ?? texte[0].text.trim() })),
       `${imBeleg} – mehrere Werte der Liste ${liste} passen, bitte wählen.`);

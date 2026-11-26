@@ -47,22 +47,32 @@ test('Vergleichsform: Groß/Klein, Umlaute und ß, Rechtsformen, Satzzeichen', (
   assert.equal(kontaktText(KONTAKTE[6]), 'Kunstname Niederlassung Süd');
 });
 
-test('Kunde eindeutig: ein Kontakt passt zu einer Firma – Schreibweise und Rechtsform egal', () => {
+test('Kunde eindeutig: der Beleg nennt eine Firma, genau ein Kontakt passt mit Name und PLZ/Ort', () => {
   const r = kundeAbgleichen(eins(firma('BEISPIELHOLZ GmbH + Co KG', '12345', 'Musterstadt'), 'Kopf: BEISPIELHOLZ'), KONTAKTE);
   assert.deepEqual([r.kunde.status, r.kunde.wert, r.kunde.herkunft, r.kunde.hinweis], ['eindeutig', 990101, 'Kopf: BEISPIELHOLZ', null]);
   assert.deepEqual(r.kunde.kandidaten, []);
   assert.deepEqual(r.kundeImBeleg.map((a) => a.name), ['BEISPIELHOLZ GmbH + Co KG']);
-  // ohne Ortsangabe im Beleg genügt der volle Name; Umlaut ausgeschrieben, S.A. ohne Punkte
-  assert.equal(kundeAbgleichen(eins(firma('Fantasie Logistik SA')), KONTAKTE).kunde.wert, 990102);
+  // Umlaut ausgeschrieben, Rechtsform fehlt im Beleg, PLZ mit Länderkennzeichen
   assert.equal(kundeAbgleichen(eins(firma('Mueller Phantasie Transporte', 'D-11111')), KONTAKTE).kunde.wert, 990105);
-  // Name aus Zeile 1 + 2 des Kontakts
-  assert.equal(kundeAbgleichen(eins(firma('Kunstname Niederlassung Süd')), KONTAKTE).kunde.wert, 990107);
-  assert.equal(kundeAbgleichen(eins(firma('Kunstname')), KONTAKTE).kunde.wert, 990107);
-  // eine unsicher gelesene Firma (ein Kandidat), die genau einem Kontakt entspricht
-  assert.equal(kundeAbgleichen(mehrere([firma('Beispielholz GmbH & Co. KG')], (a) => a.name), KONTAKTE).kunde.status, 'eindeutig');
+  // dieselbe Firma zweimal im Beleg zählt einmal
+  const doppelt = mehrere([firma('Beispielholz GmbH & Co. KG', '12345'), firma('BEISPIELHOLZ GMBH & CO KG', '12345')], (a) => a.name);
+  assert.deepEqual([kundeAbgleichen(doppelt, KONTAKTE).kunde.status, kundeAbgleichen(doppelt, KONTAKTE).kunde.wert], ['eindeutig', 990101]);
 });
 
-test('Kunde: zwei Firmen im Beleg mit Treffern → unklar, Kandidaten sind Kontakte', () => {
+test('Kunde: gleicher Name ohne bestätigten Ort oder mit anderer Rechtsform → nur Vorschlag zur Bestätigung', () => {
+  // ohne Ortsangabe im Beleg
+  const ohneOrt = kundeAbgleichen(eins(firma('Fantasie Logistik SA')), KONTAKTE);
+  assert.deepEqual([ohneOrt.kunde.status, ohneOrt.kunde.wert, ohneOrt.kunde.kandidaten.map((k) => k.wert)], ['unklar', null, [990102]]);
+  assert.match(ohneOrt.kunde.hinweis ?? '', /Kein Kontakt passt sicher/);
+  // Kontakt ohne Anschrift
+  const ohneAnschrift = kundeAbgleichen(eins(firma('Kunstname Niederlassung Süd', '44444', 'Irgendwo')), KONTAKTE);
+  assert.deepEqual([ohneAnschrift.kunde.status, ohneAnschrift.kunde.kandidaten.map((k) => k.wert)], ['unklar', [990107]]);
+  // gleiche Namenswörter und gleiche PLZ, aber andere Rechtsform: zwei verschiedene Firmen
+  const andereForm = kundeAbgleichen(eins(firma('Beispielholz AG', '12345', 'Musterstadt')), KONTAKTE);
+  assert.deepEqual([andereForm.kunde.status, andereForm.kunde.kandidaten.map((k) => k.wert)], ['unklar', [990101]]);
+});
+
+test('Kunde: zwei Firmen im Beleg → immer Rückfrage, Kandidaten sind Kontakte', () => {
   const feld = mehrere([firma('Beispielholz GmbH & Co. KG', '12345', 'Musterstadt'), firma('Fantasie Logistik S.A.', '1234', 'Exempelville')], (a) => a.name);
   const r = kundeAbgleichen(feld, KONTAKTE);
   assert.equal(r.kunde.status, 'unklar');
@@ -73,43 +83,50 @@ test('Kunde: zwei Firmen im Beleg mit Treffern → unklar, Kandidaten sind Konta
   ]);
   assert.match(r.kunde.hinweis ?? '', /mehrere Firmen/);
   assert.equal(r.kundeImBeleg.length, 2);
-  // zwei Firmen, aber nur eine in den Kontakten → eindeutig mit Hinweis
-  const eine = kundeAbgleichen(mehrere([firma('Beispielholz GmbH & Co. KG'), firma('Unbekannt Ausgedacht AG', '77777', 'Fernweg')], (a) => a.name), KONTAKTE);
-  assert.deepEqual([eine.kunde.status, eine.kunde.wert], ['eindeutig', 990101]);
+  // zwei Firmen, aber nur eine in den Kontakten → trotzdem nachfragen (ein Kandidat)
+  const eine = kundeAbgleichen(mehrere([firma('Beispielholz GmbH & Co. KG', '12345'), firma('Unbekannt Ausgedacht AG', '77777', 'Fernweg')], (a) => a.name), KONTAKTE);
+  assert.deepEqual([eine.kunde.status, eine.kunde.wert, eine.kunde.kandidaten.map((k) => k.wert)], ['unklar', null, [990101]]);
   assert.match(eine.kunde.hinweis ?? '', /nur diese ist in den Kontakten/);
   assert.equal(eine.kundeImBeleg.length, 2);
-  // dieselbe Firma zweimal im Beleg zählt einmal
-  assert.equal(kundeAbgleichen(mehrere([firma('Beispielholz GmbH & Co. KG'), firma('BEISPIELHOLZ GMBH & CO KG')], (a) => a.name), KONTAKTE).kunde.status, 'eindeutig');
 });
+
+const ZWILLINGE: Kontakt[] = [...KONTAKTE, kontakt(990109, 'Doppelt Erdacht GmbH', '55555', 'Zwillingen'), kontakt(990110, 'Doppelt Erdacht GmbH', '55555', 'Zwillingen')];
 
 test('Kunde: zwei Kontakte gleichen Namens → unklar; PLZ oder Ort im Beleg entscheidet', () => {
   const r = kundeAbgleichen(eins(firma('Spedition Erfunden')), KONTAKTE);
   assert.equal(r.kunde.status, 'unklar');
   assert.deepEqual(r.kunde.kandidaten.map((k) => k.wert), [990103, 990104]);
   assert.deepEqual(r.kunde.kandidaten.map((k) => k.text), ['Spedition Erfunden, 54321 Nirgendheim', 'Spedition Erfunden, 99999 Anderswo']);
-  assert.match(r.kunde.hinweis ?? '', /Mehrere Kontakte passen/);
   assert.equal(kundeAbgleichen(eins(firma('Spedition Erfunden', '99999')), KONTAKTE).kunde.wert, 990104, 'PLZ bestätigt');
   assert.equal(kundeAbgleichen(eins(firma('Spedition Erfunden', null, 'NIRGENDHEIM')), KONTAKTE).kunde.wert, 990103, 'Ort bestätigt');
   // gleicher Name, aber anderer Ort als alle Kontakte: nur Kandidaten
   const fremd = kundeAbgleichen(eins(firma('Spedition Erfunden', '10101', 'Drittstadt')), KONTAKTE);
   assert.equal(fremd.kunde.status, 'unklar');
   assert.deepEqual(fremd.kunde.kandidaten.map((k) => k.wert), [990103, 990104]);
+  // zwei Kontakte mit gleichem Namen und gleicher Anschrift
+  const zwei = kundeAbgleichen(eins(firma('Doppelt Erdacht GmbH', '55555')), ZWILLINGE);
+  assert.deepEqual([zwei.kunde.status, zwei.kunde.kandidaten.map((k) => k.wert)], ['unklar', [990109, 990110]]);
+  assert.match(zwei.kunde.hinweis ?? '', /Mehrere Kontakte passen/);
 });
 
-test('Kunde: bevorzugter Kunde des Leseprofils entscheidet unter mehreren Treffern', () => {
-  const r = kundeAbgleichen(eins(firma('Spedition Erfunden'), 'Absender'), KONTAKTE, 990104);
-  assert.deepEqual([r.kunde.status, r.kunde.wert, r.kunde.herkunft], ['eindeutig', 990104, 'Absender']);
+test('Kunde: bevorzugter Kunde des Leseprofils entscheidet nur unter sicheren Treffern', () => {
+  const r = kundeAbgleichen(eins(firma('Doppelt Erdacht GmbH', '55555'), 'Absender'), ZWILLINGE, 990110);
+  assert.deepEqual([r.kunde.status, r.kunde.wert, r.kunde.herkunft], ['eindeutig', 990110, 'Absender']);
   assert.match(r.kunde.hinweis ?? '', /im Leseprofil hinterlegte Kunde/);
   assert.deepEqual(r.kunde.kandidaten, []);
-  // auch bei zwei Firmen im Beleg
-  const zwei = mehrere([firma('Beispielholz GmbH & Co. KG'), firma('Fantasie Logistik S.A.')], (a) => a.name);
+  // zwei Firmen im Beleg, beide in den Kontakten
+  const zwei = mehrere([firma('Beispielholz GmbH & Co. KG', '12345'), firma('Fantasie Logistik S.A.', '1234')], (a) => a.name);
   assert.equal(kundeAbgleichen(zwei, KONTAKTE, 990102).kunde.wert, 990102);
+  // zwei Firmen im Beleg, nur eine in den Kontakten – und die ist hinterlegt
+  const eine = mehrere([firma('Beispielholz GmbH & Co. KG', '12345'), firma('Unbekannt Ausgedacht AG', '77777')], (a) => a.name);
+  assert.deepEqual([kundeAbgleichen(eine, KONTAKTE, 990101).kunde.status, kundeAbgleichen(eine, KONTAKTE, 990101).kunde.wert], ['eindeutig', 990101]);
   // bevorzugter Kunde nicht unter den Treffern: bleibt unklar bzw. der einzige Treffer gilt ohne Hinweis
   assert.equal(kundeAbgleichen(zwei, KONTAKTE, 990105).kunde.status, 'unklar');
-  const einer = kundeAbgleichen(eins(firma('Beispielholz GmbH & Co. KG')), KONTAKTE, 990105);
+  const einer = kundeAbgleichen(eins(firma('Beispielholz GmbH & Co. KG', '12345')), KONTAKTE, 990105);
   assert.deepEqual([einer.kunde.wert, einer.kunde.hinweis], [990101, null]);
-  // nur Teilname ohne PLZ: auch der bevorzugte Kunde wird nicht geraten
+  // nur Teilname oder Name ohne Ort: auch der bevorzugte Kunde wird nicht geraten
   assert.equal(kundeAbgleichen(eins(firma('Erdachte Werke')), KONTAKTE, 990106).kunde.status, 'unklar');
+  assert.equal(kundeAbgleichen(eins(firma('Spedition Erfunden')), KONTAKTE, 990104).kunde.status, 'unklar');
 });
 
 test('Kunde: kein Treffer → fehlt mit Hinweis; kein Auftraggeber im Beleg', () => {
@@ -126,14 +143,13 @@ test('Kunde: kein Treffer → fehlt mit Hinweis; kein Auftraggeber im Beleg', ()
   assert.equal(kundeAbgleichen(eins(firma('GmbH')), KONTAKTE).kunde.status, 'fehlt');
 });
 
-test('Kunde: nur Teilname – ohne passende PLZ Kandidat, mit passender PLZ eindeutig', () => {
+test('Kunde: nur Teilname → immer nur Kandidat, auch mit passender PLZ', () => {
   const ohne = kundeAbgleichen(eins(firma('Erdachte Werke')), KONTAKTE);
   assert.equal(ohne.kunde.status, 'unklar');
   assert.deepEqual(ohne.kunde.kandidaten.map((k) => [k.wert, k.text]), [[990106, 'Erdachte Werke Nord GmbH, 22222 Testhausen']]);
   assert.match(ohne.kunde.hinweis ?? '', /Kein Kontakt passt sicher/);
-  assert.equal(kundeAbgleichen(eins(firma('Erdachte Werke', '33333', 'Testhausen')), KONTAKTE).kunde.status, 'unklar', 'gleicher Ort ohne gleiche PLZ genügt beim Teilnamen nicht');
   const mit = kundeAbgleichen(eins(firma('Erdachte Werke', '22222')), KONTAKTE);
-  assert.deepEqual([mit.kunde.status, mit.kunde.wert], ['eindeutig', 990106]);
+  assert.deepEqual([mit.kunde.status, mit.kunde.wert, mit.kunde.kandidaten.map((k) => k.wert)], ['unklar', null, [990106]]);
   // der Beleg nennt mehr als der Kontakt
   assert.equal(kundeAbgleichen(eins(firma('Beispielholz Verwaltung GmbH')), KONTAKTE).kunde.status, 'unklar');
   // voller Treffer verdrängt den Teilnamen-Kandidaten derselben Firma
@@ -151,25 +167,28 @@ const FAHRZEUGE: Listenwert[] = [
   { key: 'KW', text: 'Kleinwagen', aktiv: true },
 ];
 
-test('Wertelisten eindeutig: Bezeichnung, Schlüssel oder genau ein Wortvergleich', () => {
+test('Wertelisten: gleiche Bezeichnung oder gleicher Schlüssel ist eindeutig, ein ähnliches Wort nur ein Vorschlag', () => {
   const gleich = wertAbgleichen(eins('planenauflieger', 'Fahrzeug: Planenauflieger'), FAHRZEUGE, 'Fahrzeugtyp');
   assert.deepEqual(gleich, { status: 'eindeutig', wert: '001', kandidaten: [], herkunft: 'Fahrzeug: Planenauflieger', hinweis: null });
   assert.equal(wertAbgleichen(eins('kw'), FAHRZEUGE, 'Fahrzeugtyp').wert, 'KW', 'Schlüssel');
   const wort = wertAbgleichen(eins('LKW mit Plane 13,6'), FAHRZEUGE, 'Fahrzeugtyp');
-  assert.deepEqual([wort.status, wort.wert, wort.hinweis, wort.herkunft], ['eindeutig', '001', 'Im Beleg: LKW mit Plane 13,6', 'LKW mit Plane 13,6']);
-  assert.equal(wertAbgleichen(eins('Kuehl-LKW'), FAHRZEUGE, 'Fahrzeugtyp').wert, '002');
+  assert.deepEqual([wort.status, wort.wert, wort.kandidaten], ['unklar', null, [{ wert: '001', text: 'Planenauflieger', herkunft: 'LKW mit Plane 13,6' }]]);
+  assert.match(wort.hinweis ?? '', /^Im Beleg: LKW mit Plane 13,6 – ähnlich einem Wert der Liste Fahrzeugtyp/);
+  assert.deepEqual(wertAbgleichen(eins('Kuehl-LKW'), FAHRZEUGE, 'Fahrzeugtyp').kandidaten.map((k) => k.wert), ['002']);
+  // „LKW“ allein verbindet nichts: kein falscher Treffer über ein allgemeines Wort
+  assert.equal(wertAbgleichen(eins('LKW mit Plane 13,6'), [{ key: 'K', text: 'Kühl-LKW' }, { key: 'X', text: 'Koffer' }], 'Fahrzeugtyp').status, 'fehlt');
   assert.deepEqual(listenTreffer('Planen-Hängerzug', FAHRZEUGE).treffer.map((w) => w.key), ['001'], 'inaktive Werte werden nicht vorgeschlagen');
 });
 
 test('Wertelisten mehrdeutig: mehrere Werte passen → unklar mit Kandidaten', () => {
-  const r = wertAbgleichen(eins('Auflieger (Plane oder Kühler)', 'Zeile 12'), FAHRZEUGE, 'Fahrzeugtyp');
+  const r = wertAbgleichen(eins('Plane oder Kühlauflieger', 'Zeile 12'), FAHRZEUGE, 'Fahrzeugtyp');
   assert.equal(r.status, 'unklar');
   assert.equal(r.wert, null);
   assert.deepEqual(r.kandidaten, [
     { wert: '001', text: 'Planenauflieger', herkunft: 'Zeile 12' },
     { wert: '002', text: 'Kühlauflieger', herkunft: 'Zeile 12' },
   ]);
-  assert.match(r.hinweis ?? '', /^Im Beleg: Auflieger \(Plane oder Kühler\) – mehrere Werte der Liste Fahrzeugtyp passen/);
+  assert.match(r.hinweis ?? '', /^Im Beleg: Plane oder Kühlauflieger – mehrere Werte der Liste Fahrzeugtyp passen/);
   // die Erkennung war sich schon nicht sicher: auch ein einzelner passender Wert wird nur vorgeschlagen
   const zwei = wertAbgleichen(mehrere(['Jumbo', 'Tieflader'], (x) => x), FAHRZEUGE, 'Fahrzeugtyp');
   assert.deepEqual([zwei.status, zwei.wert, zwei.kandidaten.map((k) => k.wert)], ['unklar', null, ['003']]);
@@ -229,7 +248,7 @@ test('Vorschlag: Kunde und Wertelisten abgeglichen, alles andere unverändert du
   const v = belegAbgleichen(e, { kontakte: KONTAKTE, werte: WERTE, auftraege: AUFTRAEGE, profil: { bezeichnung: 'Bestellung über Frachtkosten', kunde: null }, text: 'gelesener Text' });
   assert.deepEqual([v.kunde.status, v.kunde.wert], ['eindeutig', 990101]);
   assert.deepEqual(v.kundeImBeleg, [firma('Beispielholz GmbH & Co. KG', '12345', 'Musterstadt')]);
-  assert.deepEqual([v.fahrzeugtyp.wert, v.ladegut.wert, v.ladeweise.status, v.palettentausch.wert], ['001', '010', 'fehlt', 'N']);
+  assert.deepEqual([v.fahrzeugtyp.status, v.fahrzeugtyp.kandidaten.map((k) => k.wert), v.ladegut.wert, v.ladeweise.status, v.palettentausch.wert], ['unklar', ['001'], '010', 'fehlt', 'N']);
   assert.match(v.ladeweise.hinweis ?? '', /^Im Beleg: Kran/);
   assert.deepEqual(v.dubletten, [{ auftragsnr: '2099_8102', anlagedatum: '2099-03-02', kunde: null }]);
   assert.deepEqual([v.profil, v.text, v.layout, v.istFrachtauftrag], ['Bestellung über Frachtkosten', 'gelesener Text', 'bestellung', true]);

@@ -16,7 +16,7 @@ const KUNDE = /Auftraggeber(?:\s*\/\s*Frachtzahler)?|Frachtzahler/;
 const LADETERMIN = /Ladetermin|Verladedatum|Ladedatum|Abholdatum|Abholtermin/;
 const LIEFERTERMIN = /Liefertermin|Anlieferdatum|Entladedatum|Lieferdatum|Entladetermin/;
 const PREIS = /Frachtrate|Frachtpreis|Fracht|Gesamtpreis(?:\s*\(?netto\)?)?/;
-const LADENR = /Ladenr|Ladenummer|Lade-Nr|Ladereferenz|Referenz(?:nummer|-Nr)?/;
+const LADENR = /Ladenr|Ladenummer|Lade-Nr|Ladereferenz/;
 const ORDER = /(?:Bestell(?:ung)?|Auftrags?|Transport(?:auftrags?)?)\s?-?\s?(?:Nr|Nummer|No)\.?/;
 const GEWICHT = /(?:Brutto|Gesamt|Lade)?gewicht/i;
 /** Zeilen, an denen ein Anschriftblock sicher endet (jede bekannte Beschriftung) */

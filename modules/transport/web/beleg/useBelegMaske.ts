@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import { useLocation } from 'react-router-dom';
 import type { Auftrag } from '../util';
 import { KEIN_FRACHTAUFTRAG, belegErkennen } from './api';
-import { belegMarke, belegUebernehmen, feldSetzen, offeneRueckfragen, type FeldId, type KandidatWert, type Rueckfrage, type Uebernahme, type Wert } from './uebernahme';
+import { belegMarke, belegUebernehmen, feldSetzen, offeneRueckfragen, type FeldId, type KandidatWert, type Rueckfrage, type Standardwerte, type Uebernahme, type Wert } from './uebernahme';
 import { belegAbholen, type BelegQuelle, type BelegState } from './vormerkung';
 
 /** Beleg, der gerade in der Maske steckt: Quelle, Ergebnis der Übernahme und die Entscheidungen des Benutzers zu Rückfragen */
@@ -60,12 +60,20 @@ export function useBelegMaske({ aktiv, a, setA, kundeWaehlen }: {
   form.current = a;
   const kunde = useRef(kundeWaehlen);
   kunde.current = kundeWaehlen;
+  // Vorlage der Neuanlage, wie sie zuerst geladen wurde: Ihre Vorbelegungen der Wertelisten sind keine Eingabe des Benutzers
+  const vorlage = useRef<Auftrag | null>(null);
+  if (aktiv && a && !vorlage.current) vorlage.current = a;
+  if (!aktiv) vorlage.current = null;
 
   const anwenden = useCallback((quelle: BelegQuelle) => {
     const akt = form.current;
     if (!akt) return;
     if (!quelle.vorschlag.istFrachtauftrag) { setMeldung({ text: KEIN_FRACHTAUFTRAG, fehler: false }); return; }
-    const u = belegUebernehmen(quelle.vorschlag, akt);
+    const v = vorlage.current;
+    const standard: Standardwerte = v
+      ? { fahrzeugtyp: v.fahrzeugtyp ?? null, ladegut: v.ladegut ?? null, ladeweise: v.ladeweise ?? null, palettentausch: v.palettentausch ?? null }
+      : {};
+    const u = belegUebernehmen(quelle.vorschlag, akt, standard);
     angewendet.current = true;
     setMeldung(null);
     setA(u.form);

@@ -293,7 +293,7 @@ const leer = (e: BelegErkennung) => {
 const BESTELLUNG_SOLL = {
   layout: 'bestellung', istFrachtauftrag: true, kunde: 'unklar', ordernummer: '470011', leistungsdatum: '2027-03-15', frachtpreis_vk: 480, gewicht: 1.2, lademeter: 6.2,
   fahrzeugtyp: 'fehlt', ladegut: 'fehlt', ladeweise: 'fehlt', palettentausch: 'fehlt',
-  besonderheiten: 'Kontakt Entladestelle: +32 2 555 01 31\nLieferbedingung: frei Haus',
+  besonderheiten: 'Kontakt laut Beleg: +32 2 555 01 31\nLieferbedingung: frei Haus',
   stops: [{
     firma: 'Musterhalle Nord', strasse: 'Werkstr. 1', land: 'DE', plzort: '12345 Musterstadt-Süd', ladenummer: 'AB/27/03/11', datum: '2027-03-15', zeit: 'fehlt',
     firma_e: 'BEISPIEL S.A.', strasse_e: "Rue de l'Exemple 38", land_e: 'BE', plzort_e: '1000 Exempelville', datum_e: '2027-03-16', zeit_e: 'fehlt',
@@ -446,16 +446,31 @@ for (const [form, text] of [['pdftotext', LADEAUFTRAG_PDF], ['Texterkennung', LA
   });
 }
 
-test('Ladeauftrag (Texterkennung): passt ein Wert nicht zur Beschriftung, endet die Zuordnung – der Rest bleibt leer', () => {
-  // das Verladedatum fehlt im Werteblock: ab dort wird nichts mehr zugeordnet (kein Verrutschen der Werte)
+test('Ladeauftrag (Texterkennung): passen Beschriftungen und Werte nicht zusammen, wird nichts zugeordnet', () => {
+  // das Verladedatum fehlt im Werteblock: zwei Terminbeschriftungen, ein Termin → nichts verrutscht, alles bleibt leer
   const e = belegErkennen(LADEAUFTRAG_OCR.replace('wie Auftraggeber\n11.01.2027 00:00:00\n14.01.2027 00:00:00', 'wie Auftraggeber\nnach Absprache\n14.01.2027 00:00:00'));
   vertragPruefen(e);
-  assert.equal(e.kunde.wert?.name, 'Musterholz GmbH & Co. KG');
-  assert.equal(e.stops[0].firma.wert, 'Musterholz GmbH & Co. KG');
-  assert.deepEqual([e.stops[0].datum.status, e.stops[0].datum_e.status, e.stops[0].firma_e.status, e.frachtpreis_vk.status, e.fahrzeugtyp.status],
-    ['fehlt', 'fehlt', 'fehlt', 'fehlt', 'fehlt']);
-  assert.ok(e.hinweise.some((h) => /Verladedatum/.test(h) && /nicht sicher zuordnen/.test(h)));
+  assert.deepEqual([e.kunde.status, e.stops[0].firma.status, e.stops[0].datum.status, e.stops[0].datum_e.status, e.stops[0].firma_e.status, e.frachtpreis_vk.status, e.fahrzeugtyp.status],
+    ['fehlt', 'fehlt', 'fehlt', 'fehlt', 'fehlt', 'fehlt', 'fehlt']);
+  assert.ok(e.hinweise.some((h) => /passen nicht zusammen/.test(h)));
   assert.equal(e.ordernummer.wert, '88001234');
+});
+
+test('Ladeauftrag (Texterkennung): eine verschluckte Beschriftung verschiebt keine Werte', () => {
+  // die Beschriftung „Verladedatum:“ fehlt: das Verladedatum darf nicht als Anlieferdatum gelesen werden
+  const ohne = LADEAUFTRAG_OCR.replace(/^Verladedatum:\s*\n/m, '');
+  assert.notEqual(ohne, LADEAUFTRAG_OCR);
+  const e = belegErkennen(ohne);
+  vertragPruefen(e);
+  assert.deepEqual([e.stops[0].datum.status, e.stops[0].datum_e.status, e.leistungsdatum.status], ['fehlt', 'fehlt', 'fehlt']);
+  assert.ok(e.hinweise.some((h) => /passen nicht zusammen/.test(h)));
+});
+
+test('Bestellung: eine Tonnenangabe im Freitext ist kein Gewicht; ca.-Angabe wird als Hinweis genannt', () => {
+  const e = belegErkennen(BESTELLUNG_PDF);
+  assert.equal(e.gewicht.status, 'eindeutig');
+  const mitLkw = belegErkennen(BESTELLUNG_PDF.replace(/^(.*Ladetermin.*)$/m, 'Anlieferung nur mit 7,5 t LKW\n$1'));
+  assert.deepEqual([mitLkw.gewicht.status, mitLkw.gewicht.wert], [e.gewicht.status, e.gewicht.wert]);
 });
 
 test('zu lange Werte werden auf die Feldlänge der Maske gekürzt und in den Hinweisen genannt', () => {
@@ -604,8 +619,8 @@ test('Zahlen, Gewichte, Lademeter, Datum und PLZ/Ort im deutschen Format', () =>
   assert.deepEqual(lademeter('LKW mit Plane 13,6 / 2 LKW'), []);
   assert.deepEqual(termine('08.12.2026 / 8.1.27 / 27.11.2026 00:00:00 / 27.11.2026 07:30:00 / 31.02.2027 / 1.2.3').map((t) => [t.datum, t.zeit]),
     [['2026-12-08', null], ['2027-01-08', null], ['2026-11-27', null], ['2026-11-27', '07:30']]);
-  assert.deepEqual(plzOrt('D-66839 Musterstadt'), { land: 'DE', landPraefix: 'D', plz: '66839', ort: 'Musterstadt' });
-  assert.deepEqual(plzOrt('B - 7940 Exempelville'), { land: 'BE', landPraefix: 'B', plz: '7940', ort: 'Exempelville' });
+  assert.deepEqual(plzOrt('D-56789 Musterstadt'), { land: 'DE', landPraefix: 'D', plz: '56789', ort: 'Musterstadt' });
+  assert.deepEqual(plzOrt('B - 7654 Exempelville'), { land: 'BE', landPraefix: 'B', plz: '7654', ort: 'Exempelville' });
   assert.deepEqual(plzOrt('54321 Musterheim am See'), { land: null, landPraefix: null, plz: '54321', ort: 'Musterheim am See' });
   assert.equal(plzOrt('Musterstraße 12'), null);
   assert.equal(plzOrt('1275 EUR'), null);

@@ -50,7 +50,7 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
   },
   {
     id: 'transport.beleg.erfassung', app: 'Aufträge', text: 'Auftrag aus Beleg (Drag & Drop)',
-    beschreibung: 'Einen Frachtauftrag des Kunden (PDF oder Bild) in die Auftragsliste oder die Neuanlage ziehen: Das Portal liest den Beleg und füllt die '
+    beschreibung: 'Einen Frachtauftrag des Kunden (PDF oder Bild) über „Neu → Frachtauftrag aus Beleg…“ oder in der leeren Neuanlage einlesen: Das Portal liest den Beleg und füllt die '
       + 'Erfassungsmaske vor. Eindeutiges wird übernommen, bei mehreren Möglichkeiten fragt die Maske nach, Fehlendes bleibt leer – gespeichert wird erst durch den Benutzer.',
     permissions: ['transport.belegerfassung:create'],
     routen: ['POST /auftraege/beleg/erkennen'],

@@ -113,7 +113,9 @@ export async function belegRoutes(app: FastifyInstance) {
    * Beleg (PDF, PNG, JPEG) lesen und als Vorschlag für die Erfassungsmaske liefern. inhalt: Data-URL oder Base64.
    * Auch ein Beleg, der nicht nach einem Frachtauftrag aussieht, ergibt eine Antwort (istFrachtauftrag = false, Felder leer).
    */
-  app.post('/auftraege/beleg/erkennen', { preHandler: requireAuth(P_BELEG.erfassung), bodyLimit: 25 * 1024 * 1024 }, async (req): Promise<BelegVorschlag> => {
+  app.post('/auftraege/beleg/erkennen', { preHandler: requireAuth(P_BELEG.erfassung), bodyLimit: 25 * 1024 * 1024 }, async (req, reply) => {
+    // der Vorschlag nennt Kontakte und vorhandene Aufträge – nur für Benutzer, die Aufträge bearbeiten dürfen
+    if (!can(req, 'transport.auftraege:edit')) return reply.code(403).send({ message: 'Keine Berechtigung (transport.auftraege:edit).' });
     const b = z.object({
       name: z.string().trim().min(1, 'Der Dateiname fehlt.').max(500),
       inhalt: z.string().min(1, 'Die Datei ist leer.'),
@@ -129,6 +131,7 @@ export async function belegRoutes(app: FastifyInstance) {
    */
   app.post('/eingang/dokumente/:id/beleg', { preHandler: requireAuth(P_BELEG.eingang) }, async (req, reply) => {
     if (!can(req, P_MW.eingangEdit)) return reply.code(403).send({ message: `Keine Berechtigung (${P_MW.eingangEdit}).` });
+    if (!can(req, 'transport.auftraege:edit')) return reply.code(403).send({ message: 'Keine Berechtigung (transport.auftraege:edit).' });
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
     const [d] = await sql`select datei, inhalt, ocr_text from transport.eing_dokumente where id = ${id}`;
     if (!d) throw new BusinessError('Das Dokument gibt es nicht (mehr).', 404);
@@ -136,7 +139,7 @@ export async function belegRoutes(app: FastifyInstance) {
     if (!text) {
       if (!d.inhalt) {
         throw new BusinessError(`Die Datei „${d.datei as string}“ liegt nicht mehr im Portal und es ist kein gelesener Text gespeichert – `
-          + 'bitte die Datei aus der Ablage in die Auftragsliste ziehen.', 404);
+          + 'bitte die Datei aus der Ablage über „Neu → Frachtauftrag aus Beleg…“ einlesen.', 404);
       }
       text = await dateiText(Buffer.from(d.inhalt as string, 'base64'));
     }
