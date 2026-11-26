@@ -56,8 +56,9 @@ const base64Blob = (b64: string, typ: string) => {
 };
 const td: CSSProperties = { padding: '0.4rem 0.5rem', verticalAlign: 'top' };
 
-/** Vorauswahl beim Öffnen: Arten aus den Einstellungen; sind alle Aufträge fakturiert (Versand der Rechnung), ohne Transportauftrag */
-export const vorauswahlFuer = (vorauswahl: Art[], fakturiert: boolean): Art[] => (fakturiert ? vorauswahl.filter((a) => a !== 'T') : vorauswahl);
+/** Vorauswahl beim Öffnen: Arten aus den Einstellungen – sind alle Aufträge fakturiert (Versand der Rechnung), ohne Transportauftrag;
+ *  sonst (Versand eines Auftrags) nie mit Rechnung */
+export const vorauswahlFuer = (vorauswahl: Art[], fakturiert: boolean): Art[] => vorauswahl.filter((a) => a !== (fakturiert ? 'T' : 'R'));
 
 export function VersandDialog({ auftraege, fakturiert = false, open, onClose }: {
   auftraege: string[]; /** alle Aufträge haben eine Rechnung – Transportauftrag dann nicht vorausgewählt */ fakturiert?: boolean; open: boolean; onClose: () => void;

@@ -223,7 +223,7 @@ test('Versenden…: weitere Dateien gehen bei Outlook-Versand und EML gleich hin
   assert.ok(srv.includes("emlDateiname(`${betreff} (Belege)`, vergeben)"), 'zweite EML-Datei für die Belege');
   assert.ok(srv.includes("nur: ['kunde']"), 'Belege-Mail ohne Kopie an die feste zweite Adresse');
   const dlg = readFileSync(path.join(ROOT2, 'modules/transport/web/VersandDialog.tsx'), 'utf8');
-  assert.ok(dlg.includes("fakturiert ? vorauswahl.filter((a) => a !== 'T') : vorauswahl"), 'Vorauswahl ohne T');
+  assert.ok(dlg.includes("vorauswahl.filter((a) => a !== (fakturiert ? 'T' : 'R'))"), 'fakturiert ohne Transportauftrag, sonst nie mit Rechnung');
   assert.ok(dlg.includes('setArten(new Set(vorauswahlFuer(e.vorauswahl, fakturiert)))'), 'beim Öffnen angewandt');
   assert.ok(readFileSync(path.join(ROOT2, 'modules/transport/web/AuftragDetail.tsx'), 'utf8').includes('fakturiert={!!a.faktura}'), 'Auftrag');
   assert.ok(readFileSync(path.join(ROOT2, 'modules/transport/web/AuftraegeListe.tsx'), 'utf8').includes('setVersandFakturiert(sel.every((s) => !!s.faktura))'), 'Liste');
