@@ -20,7 +20,11 @@ const ID_RES = [
   /\b\d{1,3}-\d{3,6}\b/, /\b[A-Z][A-Z0-9_]{1,14}-\d{1,7}\b/, /\b\d{5,}\/\d{4}\b/, /\b(INC|RITM|REQ|CHG|SR|CS|TASK|PRB)\d{4,}\b/i, /\b\d{6,}\b/,
 ];
 
-export const LEAD_ID = /^\s*(?:\[?(?:\d{1,3}-\d{1,6}|[A-Za-z][A-Za-z0-9_]{1,14}-\d{1,7}|\d{5,}\/\d{4}|(?:INC|RITM|REQ|CHG|SR|CS)\d{4,})\]?\s*[,/&]?\s*)+:/;
+/**
+ * Führende ID(s) für das Regelwerk (R2), bewusst locker: „ID: …“, „<ID> …“, „<<ID>>: …“, „[ID] – …“, „(ID) …“, „ID - …“.
+ * Klammern beliebig (auch doppelt), danach Doppelpunkt, Bindestrich, Gedankenstrich, senkrechter Strich oder nur ein Leerzeichen.
+ */
+export const LEAD_ID = /^\s*(?:[<\[({]*\s*(?:\d{1,3}-\d{1,6}|[A-Za-z][A-Za-z0-9_]{1,14}-\d{1,7}|\d{5,}\/\d{4}|(?:INC|RITM|REQ|CHG|SR|CS)\d{4,})\s*[>\])}]*\s*[,/&]?\s*)+(?:[:|\-–—]|(?=\s)|$)/;
 
 export const MAIL_RE = /hallo zusammen|hallo liebe|hallo,|hi all|hi team|hello (all|everyone|team|my dear)|liebe kolleg|dear (all|colleagues|team)|(^|\s)von:\s|gesendet:|(^|\s)from:\s|sent:\s|ursprüngliche nachricht|original message|_{6,}|microsoft teams|besprechungs-id|meeting[- ]id|join (the )?meeting|an der besprechung teilnehmen|teams-besprechung|zoom\.us|webex|(^|\s)(wg|aw|fw|fwd):\s/i;
 export const ABS_RE = /(?<![\p{L}])(urlaub|krank\p{L}*|arzt\p{L}*|zahnarzt|feiertag|public holiday|replacement leave|sick|mittagspause|lunch\p{L}*|elternzeit|sonderurlaub|überstundenabbau|gleittag|vacation|annual leave|sick leave|parental leave|maternity leave|paternity leave|doctor\p{L}*|dentist|day off|bank holiday|out of office|pto)(?![\p{L}])/iu;

@@ -89,6 +89,7 @@ export function pruefen(k: PruefKontext): RohFund[] {
     funde.push({ ab: null, ...f });
   };
   const intRe = internRegex(einst.internMuster);
+  const ohneIdRe = internRegex(einst.regelwerkOhneIdMuster ?? '');
   const recurRe = wortRegex(einst.regeltermine);
   const allgemein = allgemeinPruefer(einst.allgemeinZusatz);
   const istRegeltermin = (s: string) => !!recurRe && recurRe.test(s);
@@ -262,7 +263,8 @@ export function pruefen(k: PruefKontext): RohFund[] {
       const R = (regel: string, stufe: Stufe, meldung: string) =>
         add({ ...base, regel, kategorie: 'R', art: 're', stufe, meldung, ab: einst.regelwerkAb });
       if (rw.wc < einst.regelwerkMinWoerter) R('R1', bill ? 2 : 1, `${rw.wc} ${rw.wc === 1 ? 'Wort' : 'Worte'} (mindestens ${einst.regelwerkMinWoerter}).`);
-      if (einst.regelwerkIdBillable && bill && !rw.lead) R('R2', 2, 'Text beginnt nicht mit „<ID>: “.');
+      const amsTicket = !!ohneIdRe && !!x.key && (ohneIdRe.test(x.pre) || ohneIdRe.test(x.berKey));
+      if (einst.regelwerkIdBillable && bill && !rw.lead && !amsTicket) R('R2', 2, 'Text beginnt nicht mit „<ID>: “.');
     }
   }
 

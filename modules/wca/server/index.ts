@@ -72,6 +72,7 @@ const einstellungenSchema = z.object({
   regelwerkAb: datum.or(z.literal('')),
   regelwerkMinWoerter: z.number().int().min(0).max(100),
   regelwerkIdBillable: z.boolean(),
+  regelwerkOhneIdMuster: text(500),
   wiederholungTage: z.number().int().min(1).max(366),
   wiederholungMinH: z.number().min(0).max(10000),
   langerTag: z.number().min(0).max(24),

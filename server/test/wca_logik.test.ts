@@ -10,7 +10,7 @@ import { stundenLesen, tagesSpalte, tempoCsvLesen } from '../../modules/wca/serv
 import { feiertageBerechnet, feiertageManuell, ostersonntag } from '../../modules/wca/server/logik/feiertage.js';
 import { auswerten, imZeitraumTag, teamKurz, typAbleiten, zeitraeumeLesen, type AuswertungEingabe } from '../../modules/wca/server/logik/auswertung.js';
 import { einstellungenErgaenzen, REGELN, STANDARD_EINSTELLUNGEN } from '../../modules/wca/server/logik/standard.js';
-import { textAnalyse, allgemeinPruefer } from '../../modules/wca/server/logik/text.js';
+import { textAnalyse, allgemeinPruefer, regelwerkAnalyse } from '../../modules/wca/server/logik/text.js';
 import { isoWocheId } from '../../modules/wca/server/logik/datum.js';
 import type { Einstellungen, PersonVorgabe, RohEintrag } from '../../modules/wca/server/typen.js';
 
@@ -180,10 +180,13 @@ test('Hilfen: Team kürzen, ISO-Woche, Textanalyse, Einstellungen ergänzen', ()
 // Rechenbeispiel (Spezifikation Abschnitt 6)
 // ---------------------------------------------------------------------------
 
+/** Rechenbeispiel wie in der Spezifikation V3: ohne AMS-Ausnahme bei R2 (eigener Test unten) */
+const FIXTURE_EINST: Einstellungen = { ...STANDARD_EINSTELLUNGEN, regelwerkOhneIdMuster: '' };
+
 function fixtureAuswerten(o: Partial<AuswertungEingabe> = {}) {
   const r = tempoCsvLesen(FIXTURE, 'teamreport_nov26.csv');
   return auswerten({
-    eintraege: r.eintraege, accKeys: r.accKeys, berKeys: r.berKeys, dateien: 1, einstellungen: STANDARD_EINSTELLUNGEN,
+    eintraege: r.eintraege, accKeys: r.accKeys, berKeys: r.berKeys, dateien: 1, einstellungen: FIXTURE_EINST,
     vorgaben: [], heute: '2026-11-20', stichtag: '2026-11-20', zeitraum: '2026-11', ...o,
   });
 }
@@ -256,6 +259,11 @@ test('Rechenbeispiel: Funde – nur T3 (Niedrig), R1 und R2; keine Kontierungsfu
   const info = (id: string) => a.regeln.find((r) => r.id === id)!;
   assert.deepEqual([info('T3').anzahl, info('R1').anzahl, info('R2').anzahl, info('K1').anzahl], [4, 10, 8, 0]);
   assert.equal(info('R2').stunden, 19);
+  // mit Standard-Einstellungen (AMS-Muster WCMS) entfallen die R2-Funde auf WCMS-Tickets
+  const std = fixtureAuswerten({ einstellungen: STANDARD_EINSTELLUNGEN });
+  const r2 = std.gruppen.flatMap((g) => g.funde.filter((f) => f.regel === 'R2').map(() => std.eintraege[g.eintrag!].key));
+  assert.equal(r2.length, 4);
+  assert.ok(r2.every((k) => !k.startsWith('WCMS-')));
 });
 
 test('Rechenbeispiel: Rückfrage-Text', () => {
@@ -399,8 +407,8 @@ test('Regel T6: gleicher Text an vielen Tagen', () => {
 });
 
 test('Regel R2 und abgeschaltete Regel', () => {
-  const ohneId = bill({ text: 'Lieferavis Schnittstelle Mapping angepasst und getestet' });
-  const a = lauf([ohneId, bill()]);
+  const ohneId = bill({ key: 'ALPHA-5', text: 'Lieferavis Schnittstelle Mapping angepasst und getestet' });
+  const a = lauf([ohneId, bill({ key: 'ALPHA-5', text: 'ALPHA-5: Lieferavis Schnittstelle Mapping angepasst und getestet' })]);
   const f = funde(a, 'R2');
   assert.equal(f.length, 1);
   assert.equal(a.eintraege[f[0].eintrag!].text, 'Lieferavis Schnittstelle Mapping angepasst und getestet');
@@ -409,6 +417,30 @@ test('Regel R2 und abgeschaltete Regel', () => {
   assert.equal(funde(aus, 'R2').length, 0);
   assert.equal(aus.regeln.find((r) => r.id === 'R2')!.aktiv, false);
   assert.equal(funde(lauf([ohneId], { einst: { regelwerkAb: '2026-12-01' } }), 'R2').length, 0, 'vor Gültigkeit');
+});
+
+test('Regel R2: lockere ID-Schreibweisen', () => {
+  const rest = 'Lieferavis Schnittstelle Mapping angepasst und getestet';
+  for (const kopf of ['ALPHA-5: ', 'ALPHA-5 ', '<ALPHA-5> ', '<ALPHA-5>: ', '<<ALPHA-5>> ', '[ALPHA-5] – ', '(ALPHA-5) ', 'ALPHA-5 - ', 'ALPHA-5 | ', 'ALPHA-5, ALPHA-6: ', 'INC123456 ']) {
+    const r = regelwerkAnalyse(kopf + rest);
+    assert.equal(r.lead, true, kopf);
+    assert.equal(r.wc, 6, kopf);
+  }
+  for (const t of [rest, 'SAP-BTP-DRC Teil 3 + Vorbereitung', 'ALPHA5 Mapping angepasst', 'Q1-Planung Mapping angepasst']) {
+    assert.equal(regelwerkAnalyse(t).lead, false, t);
+  }
+  const a = lauf([bill({ key: 'ALPHA-5', text: '<<ALPHA-5>> ' + rest })]);
+  assert.equal(funde(a, 'R2').length, 0);
+});
+
+test('Regel R2: AMS-Tickets (Muster „Ohne ID-Pflicht“) brauchen keine ID am Anfang', () => {
+  const text = 'Lieferavis Schnittstelle Mapping angepasst und getestet';
+  assert.equal(funde(lauf([bill({ key: 'WCMS-5', text })]), 'R2').length, 0, 'Standard WCMS');
+  assert.equal(funde(lauf([bill({ key: 'WCMS-5', text })], { einst: { regelwerkOhneIdMuster: '' } }), 'R2').length, 1, 'Muster leer');
+  assert.equal(funde(lauf([bill({ key: 'ALPHA-5', text })], { einst: { regelwerkOhneIdMuster: 'AL*' } }), 'R2').length, 0, 'eigenes Muster');
+  assert.equal(funde(lauf([bill({ key: 'ALPHA-5', text })]), 'R2').length, 1, 'kein AMS-Ticket');
+  // R1 (Wortzahl) gilt für AMS-Tickets weiterhin
+  assert.equal(funde(lauf([bill({ key: 'WCMS-5', text: 'Mapping angepasst' })]), 'R1').length, 1);
 });
 
 test('Regel F_*: Wortlisten (nur abrechenbar, eigene Wortliste)', () => {

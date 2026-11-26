@@ -566,8 +566,8 @@ Tempo-Zeitexporte (Ansicht **Teamreport** als CSV) importieren und die Zeitbuchu
 je Person und Tag (Soll aus Arbeitstagen, Soll je Tag und Feiertagen je Standort), **Billable-Quote** (B / (B + P + I)) und **Utilization** ((B + P) / (B + P + I)),
 **Kontierung** (Error-Account, fehlender Account, Ticket auf mehreren Accounts, Kundenarbeit auf internem Projekt …),
 **Plausibilität** (lange Tage, lange Einzelbuchungen, Buchung an freien Tagen), **Textqualität** (leer, nur IDs, nur
-Allgemeinbegriffe, kopierte Mailtexte, Wortlisten) und das **Regelwerk** für Buchungstexte („<ID>: …“, mindestens fünf
-Wörter). Je Person entsteht ein fertiger **Rückfrage-Text**. Aktiv mit `PORTAL_MODULES=…,wca` oder `*`.
+Allgemeinbegriffe, kopierte Mailtexte, Wortlisten) und das **Regelwerk** für Buchungstexte (ID am Anfang – locker: „ID: …“, „<ID> …“, „<<ID>> …“, „[ID] – …“ –, mindestens fünf
+Wörter; AMS-Tickets nach Schlüsselmuster, Standard `WCMS`, ohne ID-Pflicht). Je Person entsteht ein fertiger **Rückfrage-Text**. Aktiv mit `PORTAL_MODULES=…,wca` oder `*`.
 
 App im Bereich *WCA*: **Zeitenkontrolle** – Auswertung mit Stichtag und Zeitraum (Monat, Kalenderwoche, alles; **Mehrfachauswahl**
 – mehrere Monate/Wochen werden zusammen ausgewertet, Tage in Lücken dazwischen zählen nicht, „Alles“ schließt die übrigen aus), Reiter
