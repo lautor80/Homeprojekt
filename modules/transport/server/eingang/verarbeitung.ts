@@ -25,7 +25,7 @@ import { htmlToPdf, istPdf } from '../../../../server/src/pdf.js';
 import { auftragLesen, firmaLesen } from '../data.js';
 import { dokumentAblegen, mimeTyp } from '../dokumente.js';
 import { ANWENDUNG } from '../mailversand.js';
-import { workflowEinstellungen, type EingangEinstellungen } from '../mailworkflows.js';
+import { workflowEinstellungen } from '../mailworkflows.js';
 import { inhaltBehalten, loeschenNachTagen, nachladenZuordnen, ZUGEORDNET_ERLEDIGT, type FehlendesDokument } from './aufbewahrung.js';
 import {
   absender, absenderTreffer, bewerten, dateinameSicher, entscheiden, herkunftNummer, herkunftReferenz, herkunftText, htmlText, mailDateiname, mailHtml, messageIds,
@@ -66,7 +66,8 @@ export interface MailAntwort {
   vorgang: number;
   status: 'abgelegt' | 'pruefen' | 'ignoriert' | 'doppelt' | 'fehler';
   auftragsnr: string | null;
-  aktion: { ordner: string };
+  /** n8n: E-Mail bleibt in ihrem Outlook-Ordner und wird nur als gelesen markiert (ordner immer null – nicht mehr verschieben) */
+  aktion: { ordner: null; gelesen: true };
 }
 
 const sha = (b: Buffer | string) => crypto.createHash('sha256').update(b).digest('hex');
@@ -80,7 +81,8 @@ export function mailSchluessel(m: Pick<EingangMail, 'message_id' | 'von' | 'betr
   return id || `ohne-id-${sha(`${m.von}|${m.betreff}|${m.datum ?? ''}`).slice(0, 32)}`;
 }
 
-const ordnerFuer = (e: EingangEinstellungen, status: string) => ({ ordner: status === 'abgelegt' ? e.ordnerZugeordnet : e.ordnerPruefen });
+/** Behandlung der E-Mail in Outlook: nie verschieben, nur als gelesen markieren (abgerufen werden nur ungelesene) */
+export const MAIL_AKTION = { ordner: null, gelesen: true } as const;
 
 // ---------------------------------------------------------------- Texterkennung
 
@@ -220,7 +222,7 @@ export async function ablegen(vorgangId: number | string, auftragsnr: string, do
     if (schon) throw new BusinessError(`Dokumente dieser E-Mail liegen bereits am Auftrag ${v.auftragsnr} – weitere können nur dort abgelegt werden.`);
   }
   // wer die Ablage bestätigt hat (Kennzeichnung im Posteingang)
-  await sql`update transport.eing_vorgaenge set auftragsnr = ${auftragsnr}, abgelegt_von = ${wer} where id = ${vorgangId}`;
+  await sql`update transport.eing_vorgaenge set auftragsnr = ${auftragsnr}, abgelegt_von = ${wer}, vorgemerkt_am = null, vorgemerkt_von = null, vorgemerkt_dokumente = null where id = ${vorgangId}`;
 
   const docs = await sql`
     select id, datei, mime, sha256, inhalt from transport.eing_dokumente
@@ -317,11 +319,8 @@ async function pruefHinweis(vorgangId: number | string, offen: { status: Vorgang
 async function antwortVon(vorgangId: number | string, doppelt: boolean): Promise<MailAntwort> {
   const [v] = await sql`select id, status, auftragsnr, mail_aktion from transport.eing_vorgaenge where id = ${vorgangId}`;
   if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
-  // Ordner nach dem aktuellen Stand: eine inzwischen bestätigte E-Mail geht bei erneuter Lieferung nach „Zugeordnet“
-  const aktion = doppelt ? ordnerFuer((await workflowEinstellungen()).eingang, v.status as string)
-    : (v.mail_aktion as { ordner: string } | null) ?? ordnerFuer((await workflowEinstellungen()).eingang, v.status as string);
   const status = doppelt ? 'doppelt' : v.status === 'neu' ? 'pruefen' : (v.status as MailAntwort['status']);
-  return { vorgang: Number(v.id), status, auftragsnr: (v.auftragsnr as string | null) ?? null, aktion };
+  return { vorgang: Number(v.id), status, auftragsnr: (v.auftragsnr as string | null) ?? null, aktion: MAIL_AKTION };
 }
 
 interface NeuDok { art: 'anhang' | 'mail'; datei: string; mime: string; daten: Buffer; ocr: string; hinweis: string | null }
@@ -446,7 +445,7 @@ export async function mailVerarbeiten(m: EingangMail): Promise<MailAntwort> {
     // nie automatisch ablegen: der Vorschlag steht in der Prüfliste, bis ihn jemand bestätigt
     endstatus = await abschliessen(vorgangId);
   }
-  await sql`update transport.eing_vorgaenge set mail_aktion = ${sql.json(ordnerFuer(e, endstatus) as never)} where id = ${vorgangId}`;
+  await sql`update transport.eing_vorgaenge set mail_aktion = ${sql.json(MAIL_AKTION as never)} where id = ${vorgangId}`;
   await speicherPruefen();
   return antwortVon(vorgangId, false);
 }
@@ -521,13 +520,84 @@ export async function vonHandAblegen(id: number, auftragsnr: string, dokumente: 
   return { status: n.status as VorgangStatus, auftragsnr, ...r, text: `Auftrag ${auftragsnr}: ${teile.join(', ') || 'nichts abgelegt'}.` };
 }
 
+// ---------------------------------------------------------------- Vormerken und gesammelte Übergabe (Reiter „Posteingang“)
+
+/**
+ * E-Mail bearbeiten, ohne abzulegen: Auftrag (und optional die Dateien) festhalten. Abgelegt wird erst mit der gesammelten
+ * Übergabe (sammelUebergabe). dokumente = null: alle offenen Dateien.
+ */
+export async function vormerken(id: number, auftragsnr: string, dokumente: number[] | null, wer: string) {
+  const v = await vorgangOffen(id);
+  if (!['neu', 'pruefen', 'fehler'].includes(v.status as string)) throw new BusinessError('Nur offene E-Mails (prüfen, Fehler) lassen sich vormerken.');
+  const [auftrag] = await sql`select auftragsnr from transport.auftraege where auftragsnr = ${auftragsnr}`;
+  if (!auftrag) throw new BusinessError(`Auftrag ${auftragsnr} nicht gefunden.`, 404);
+  if (v.auftragsnr && v.auftragsnr !== auftragsnr) {
+    const [schon] = await sql`select 1 from transport.eing_dokumente where vorgang_id = ${id} and status = any(${AM_AUFTRAG}) limit 1`;
+    if (schon) throw new BusinessError(`Dokumente dieser E-Mail liegen bereits am Auftrag ${v.auftragsnr} – weitere können nur dort abgelegt werden.`);
+  }
+  const offen = (await sql`select id::int as id from transport.eing_dokumente where vorgang_id = ${id} and status = any(${OFFEN})`).map((d) => d.id as number);
+  if (!offen.length) throw new BusinessError('Diese E-Mail hat keine offenen Dateien.');
+  if (dokumente && dokumente.some((d) => !offen.includes(d))) throw new BusinessError('Mindestens ein Dokument gehört nicht zu diesem Vorgang oder ist schon erledigt.');
+  await sql`update transport.eing_vorgaenge set auftragsnr = ${auftragsnr}, vorgemerkt_am = now(), vorgemerkt_von = ${wer},
+                   vorgemerkt_dokumente = ${dokumente ? sql.json([...new Set(dokumente)] as never) : null}, bearbeitet_von = ${wer}
+             where id = ${id}`;
+  return { status: 'pruefen' as VorgangStatus, auftragsnr, vorgemerkt: true, text: `Für Auftrag ${auftragsnr} vorgemerkt – abgelegt wird mit der gesammelten Übergabe.` };
+}
+
+/** Vormerkung zurücknehmen; der gewählte Auftrag bleibt als Vorschlag stehen */
+export async function vormerkungAufheben(id: number, wer: string) {
+  await vorgangOffen(id);
+  await sql`update transport.eing_vorgaenge set vorgemerkt_am = null, vorgemerkt_von = null, vorgemerkt_dokumente = null, bearbeitet_von = ${wer} where id = ${id}`;
+  return { vorgemerkt: false, text: 'Vormerkung aufgehoben.' };
+}
+
+/**
+ * Gesammelte Übergabe: alle vorgemerkten E-Mails (oder nur die genannten) am vorgemerkten Auftrag ablegen – Ablageziel aus den
+ * Einstellungen (Paperless bzw. Ablageordner). Jede E-Mail für sich: ein Fehler hält die übrigen nicht auf; fehlgeschlagene
+ * bleiben vorgemerkt bzw. stehen unter „Fehler“.
+ */
+export async function sammelUebergabe(ids: number[] | null, wer: string) {
+  const rows = await sql`
+    select id::int as id, auftragsnr, betreff, vorgemerkt_dokumente from transport.eing_vorgaenge
+     where vorgemerkt_am is not null and status in ('neu', 'pruefen', 'fehler') and auftragsnr is not null
+       ${ids ? sql`and id = any(${ids})` : sql``}
+     order by id limit 500`;
+  const ergebnisse: { id: number; auftragsnr: string; betreff: string; ok: boolean; status: string; text: string }[] = [];
+  const summe = { abgelegt: 0, wartet: 0, dubletten: 0 };
+  for (const v of rows) {
+    const nr = v.auftragsnr as string;
+    try {
+      // inzwischen erledigte Dateien (z. B. einzeln abgelegt) zählen nicht mehr mit
+      const gewaehlt = Array.isArray(v.vorgemerkt_dokumente) ? (v.vorgemerkt_dokumente as number[]) : null;
+      const offen = (await sql`select id::int as id from transport.eing_dokumente where vorgang_id = ${v.id} and status = any(${OFFEN})`).map((d) => d.id as number);
+      const dok = gewaehlt ? gewaehlt.filter((d) => offen.includes(d)) : null;
+      const r = await vonHandAblegen(v.id as number, nr, dok && dok.length ? dok : null, wer);
+      summe.abgelegt += r.abgelegt; summe.wartet += r.wartet; summe.dubletten += r.dubletten;
+      ergebnisse.push({ id: v.id as number, auftragsnr: nr, betreff: (v.betreff as string) ?? '', ok: !r.fehler.length, status: r.status, text: r.text });
+    } catch (e) {
+      ergebnisse.push({ id: v.id as number, auftragsnr: nr, betreff: (v.betreff as string) ?? '', ok: false, status: 'fehler', text: meldung(e) });
+    }
+  }
+  const fehler = ergebnisse.filter((e) => !e.ok);
+  const teile = [
+    summe.abgelegt ? `${summe.abgelegt} Datei(en) in Paperless abgelegt` : '',
+    summe.wartet ? `${summe.wartet} Datei(en) warten auf die Übernahme in den Ablageordner` : '',
+    summe.dubletten ? `${summe.dubletten} Dublette(n)` : '',
+  ].filter(Boolean);
+  return {
+    emails: ergebnisse.length, ...summe, fehler: fehler.length, ergebnisse,
+    text: !ergebnisse.length ? 'Keine vorgemerkten E-Mails.'
+      : `${ergebnisse.length - fehler.length} von ${ergebnisse.length} E-Mail(s) übergeben${teile.length ? `: ${teile.join(', ')}` : ''}.${fehler.length ? ` Fehler: ${fehler.map((f) => `${f.betreff || `Vorgang ${f.id}`} – ${f.text}`).join('; ')}` : ''}`,
+  };
+}
+
 /** Vorgang ignorieren: offene Dokumente ignorieren und ihre Inhalte löschen (bereits Abgelegtes bleibt) */
 export async function vorgangIgnorieren(id: number, wer: string) {
   const v = await vorgangOffen(id);
   if (v.status === 'abgelegt' || v.status === 'ignoriert') throw new BusinessError('Der Vorgang ist bereits abgeschlossen.');
   await sql`update transport.eing_dokumente set status = 'ignoriert', inhalt = null, bearbeitet_am = now(), bearbeitet_von = ${wer}
              where vorgang_id = ${id} and status = any(${OFFEN})`;
-  await sql`update transport.eing_vorgaenge set bearbeitet_von = ${wer} where id = ${id}`;
+  await sql`update transport.eing_vorgaenge set bearbeitet_von = ${wer}, vorgemerkt_am = null, vorgemerkt_von = null, vorgemerkt_dokumente = null where id = ${id}`;
   const status = await abschliessen(id);
   await speicherPruefen();
   return { status, text: status === 'ignoriert' ? 'Vorgang ignoriert.' : 'Offene Dokumente ignoriert – der Rest liegt am Auftrag.' };
@@ -553,7 +623,8 @@ export async function neuBewerten(id: number, wer: string) {
   });
   await sql`
     update transport.eing_vorgaenge set auftragsnr = ${ent.auftragsnr}, punkte = ${ent.punkte}, begruendung = ${sql.json(ent.begruendung as never)},
-           kandidaten = ${sql.json(kandidaten as never)}, hinweis = ${ent.hinweis}, status = case when status = 'neu' then 'pruefen' else status end
+           kandidaten = ${sql.json(kandidaten as never)}, hinweis = ${ent.hinweis}, status = case when status = 'neu' then 'pruefen' else status end,
+           vorgemerkt_am = null, vorgemerkt_von = null, vorgemerkt_dokumente = null
      where id = ${id}`;
   return { status: 'pruefen' as VorgangStatus, auftragsnr: ent.auftragsnr, punkte: ent.punkte, text: ent.hinweis ?? 'Bitte prüfen.' };
 }
@@ -570,7 +641,8 @@ export async function letzterAbrufLesen(): Promise<string | null> {
 
 export async function offeneNeuBewerten(wer: string): Promise<{ vorgaenge: number; abgelegt: number }> {
   letzterAbruf = new Date();
-  const offen = await sql`select id from transport.eing_vorgaenge where status in ('neu', 'pruefen', 'fehler') order by id limit 500`;
+  // vorgemerkte E-Mails sind bearbeitet (Auftrag von Hand gewählt) – ihre Zuordnung bleibt bis zur Übergabe
+  const offen = await sql`select id from transport.eing_vorgaenge where status in ('neu', 'pruefen', 'fehler') and vorgemerkt_am is null order by id limit 500`;
   let abgelegt = 0;
   for (const o of offen) {
     try {

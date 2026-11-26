@@ -113,11 +113,11 @@ export function MailWorkflowsTab() {
             <Input type="Number" value={schwelle} readonly={ro} valueState={schwelleOk ? 'None' : 'Negative'} data-kein-autofill
                    onInput={(x) => setSchwelle(x.target.value)} style={{ width: '8rem' }} />
           </FieldBox>
-          <FieldBox label="Outlook-Ordner nach Zuordnung" required>
+          <FieldBox label="Outlook-Ordner nach Zuordnung (nicht mehr verwendet – E-Mails bleiben im Ordner, nur „gelesen“)" required>
             <Input value={e.eingang.ordnerZugeordnet} readonly={ro} data-kein-autofill style={{ width: '100%' }}
                    valueState={e.eingang.ordnerZugeordnet.trim() ? 'None' : 'Negative'} onInput={(x) => ein('ordnerZugeordnet')(x.target.value)} />
           </FieldBox>
-          <FieldBox label="Outlook-Ordner zum Prüfen" required>
+          <FieldBox label="Outlook-Ordner zum Prüfen (nicht mehr verwendet)" required>
             <Input value={e.eingang.ordnerPruefen} readonly={ro} data-kein-autofill style={{ width: '100%' }}
                    valueState={e.eingang.ordnerPruefen.trim() ? 'None' : 'Negative'} onInput={(x) => ein('ordnerPruefen')(x.target.value)} />
           </FieldBox>

@@ -136,7 +136,13 @@ test('Workflow-Datei: Knoten, Verbindungen, Auslöser, keine Zugangsdaten', () =
 
   // Hauptweg und Ordnerschleife
   const kette = ['Konfiguration', 'Mails lesen', 'Mails aufteilen', 'Anhänge laden', 'Für Portal packen', 'Lieferbar?', 'An Portal liefern', 'Antwort auswerten', 'Ordner planen', 'Ordner fehlt?'];
-  for (let i = 0; i < kette.length - 1; i++) assert.deepEqual(ziele(kette[i])[0], [kette[i + 1]], `${kette[i]} → ${kette[i + 1]}`);
+  for (let i = 0; i < kette.length - 1; i++) {
+    // „Antwort auswerten“ verzweigt: Ordnerschleife (nur falls das Portal einen Ordner nennt) und „nur als gelesen markieren“
+    const erwartet = kette[i] === 'Antwort auswerten' ? [kette[i + 1], 'Gelesen aufteilen'] : [kette[i + 1]];
+    assert.deepEqual(ziele(kette[i])[0], erwartet, `${kette[i]} → ${erwartet.join(', ')}`);
+  }
+  assert.deepEqual(ziele('Gelesen aufteilen'), [['Nur als gelesen markieren']]);
+  assert.deepEqual(ziele('Nur als gelesen markieren'), [['Ergebnis gelesen']]);
   assert.deepEqual(ziele('Ordner fehlt?'), [['Ordner suchen'], ['Verschieben aufteilen']]);
   assert.deepEqual(ziele('Anlegen?'), [['Ordner anlegen'], ['Ordner planen']]);
   assert.deepEqual(ziele('Anlage auswerten'), [['Ordner planen']]);
@@ -149,7 +155,7 @@ test('Workflow-Datei: Knoten, Verbindungen, Auslöser, keine Zugangsdaten', () =
   assert.doesNotMatch(roh, /client_secret|Bearer |pk_transport_[A-Za-z0-9]|instanceId|"Authorization"/i);
 
   // Graph: generische OAuth2-Zugangsdatei wie im Mailversand, Fehler je Element statt Abbruch, keine Wiederholung
-  const graphKnoten = ['Mails lesen', 'Anhänge laden', 'Ordner suchen', 'Ordner anlegen', 'Verschieben', 'Als gelesen markieren'];
+  const graphKnoten = ['Mails lesen', 'Anhänge laden', 'Ordner suchen', 'Ordner anlegen', 'Verschieben', 'Als gelesen markieren', 'Nur als gelesen markieren'];
   for (const name of graphKnoten) {
     const k = knoten(name);
     assert.match(k.parameters.url, /^=https:\/\/graph\.microsoft\.com\/v1\.0\/users\/\{\{ encodeURIComponent\(\$json\.postfach\) \}\}\//, name);
@@ -172,6 +178,10 @@ test('Workflow-Datei: Knoten, Verbindungen, Auslöser, keine Zugangsdaten', () =
   assert.match(knoten('Verschieben').parameters.url, /\/messages\/\{\{ encodeURIComponent\(\$json\.graph_id\) \}\}\/move$/);
   assert.equal(knoten('Als gelesen markieren').parameters.method, 'PATCH');
   assert.match(knoten('Als gelesen markieren').parameters.url, /\/messages\/\{\{ encodeURIComponent\(\$json\.neue_id\) \}\}$/);
+  // ohne Verschieben: die Mail behält ihre ID und bleibt in ihrem Ordner
+  assert.equal(knoten('Nur als gelesen markieren').parameters.method, 'PATCH');
+  assert.match(knoten('Nur als gelesen markieren').parameters.url, /\/messages\/\{\{ encodeURIComponent\(\$json\.graph_id\) \}\}$/);
+  assert.equal(knoten('Nur als gelesen markieren').parameters.jsonBody, '={{ JSON.stringify({ isRead: true }) }}');
   assert.equal(knoten('Ordner anlegen').parameters.method, 'POST');
   assert.match(knoten('Ordner anlegen').parameters.url, /\/childFolders$/);
 
@@ -285,15 +295,18 @@ test('Antwort auswerten: nur Mails mit aktion.ordner werden verschoben, Pfade no
   const j = s[0].json;
   assert.deepEqual(j.verschieben, [{ postfach: POSTFACH, graph_id: 'A1', pfad: 'Portal/Zugeordnet' }, { postfach: POSTFACH, graph_id: 'A2', pfad: 'Portal/Prüfen' }, { postfach: POSTFACH, graph_id: 'A3', pfad: 'Portal/Zugeordnet' }]);
   assert.deepEqual(j.offen, [`${POSTFACH}|Portal/Zugeordnet`, `${POSTFACH}|Portal/Prüfen`]);
+  assert.deepEqual(j.lesen, [], 'mit Ordner wird verschoben, nicht doppelt markiert; die abgelehnte Mail bleibt ungelesen');
   assert.deepEqual(j.ergebnisse.map((e: any) => e.status), ['abgelegt', 'pruefen', 'doppelt', null]);
   assert.match(j.ergebnisse[3].fehler, /Portal \(HTTP 500\): Datenbank nicht erreichbar/);
 
   // alles abgewiesen (z. B. Funktion „E-Mail-Eingang über n8n“ aus): Lauf als Fehler sichtbar, nichts wird angefasst
   aus['An Portal liefern'] = aus['An Portal liefern'].map(() => ({ json: { statusCode: 403, body: { message: 'Keine Berechtigung' } } }));
   assert.throws(() => ausfuehren('Antwort auswerten', aus['An Portal liefern'], aus), /Keine Mail an das Portal geliefert.*transport\.eingang:execute/);
-  // 200 ohne aktion: Mail bleibt ungelesen liegen
+  // 200 ohne Ordner: nichts verschieben, alle nur als gelesen markieren
   aus['An Portal liefern'] = aus['An Portal liefern'].map(() => ({ json: { statusCode: 200, body: { vorgang: 3, status: 'pruefen' } } }));
-  assert.deepEqual(ausfuehren('Antwort auswerten', aus['An Portal liefern'], aus)[0].json.verschieben, []);
+  const ohne = ausfuehren('Antwort auswerten', aus['An Portal liefern'], aus)[0].json;
+  assert.deepEqual(ohne.verschieben, []);
+  assert.deepEqual(ohne.lesen.map((m: any) => m.graph_id), ['A1', 'A2', 'A3', 'A4']);
 });
 
 test('Ordnerschleife: vorhandene finden, fehlende anlegen, dann verschieben und als gelesen markieren', () => {
@@ -399,4 +412,31 @@ test('Ordnerschleife mit zwei Postfächern: Ordner je Postfach getrennt aufgelö
   assert.deepEqual(sims[POSTFACH].aufrufe, ['suchen Inbox/Portal', 'anlegen Inbox/Portal', 'suchen neu-1/Zugeordnet', 'anlegen neu-1/Zugeordnet']);
   assert.deepEqual(sims[INFO].aufrufe, sims[POSTFACH].aufrufe);
   assert.deepEqual(aus['Verschieben aufteilen'].map((e) => [e.json.postfach, e.json.graph_id, e.json.ziel_id]), [[POSTFACH, 'A1', 'neu-2'], [INFO, 'A2', 'neu-2']]);
+});
+
+test('Nicht verschieben: Portal antwortet ohne Ordner → Mails bleiben im Ordner und werden nur als gelesen markiert', () => {
+  const aus = packen([graphMail('B1'), graphMail('B2'), graphMail('B3')]);
+  aus['An Portal liefern'] = [
+    { json: { statusCode: 200, body: { vorgang: 1, status: 'pruefen', auftragsnr: '2026_0153', aktion: { ordner: null, gelesen: true } } } },
+    { json: { statusCode: 200, body: { vorgang: 1, status: 'doppelt', auftragsnr: '2026_0153', aktion: { ordner: null, gelesen: true } } } },
+    { json: { statusCode: 500, body: { message: 'Datenbank nicht erreichbar' } } },
+  ];
+  aus['Antwort auswerten'] = ausfuehren('Antwort auswerten', aus['An Portal liefern'], aus);
+  const j = aus['Antwort auswerten'][0].json;
+  assert.deepEqual(j.verschieben, []);
+  assert.deepEqual(j.offen, []);
+  assert.deepEqual(j.lesen, [{ postfach: POSTFACH, graph_id: 'B1' }, { postfach: POSTFACH, graph_id: 'B2' }], 'die abgelehnte Mail bleibt ungelesen');
+  // Ordnerschleife hat nichts zu tun
+  aus['Ordner planen'] = ausfuehren('Ordner planen', aus['Antwort auswerten'], aus);
+  assert.equal(aus['Ordner planen'][0].json.schritt, null);
+  assert.deepEqual(ausfuehren('Verschieben aufteilen', aus['Ordner planen'], aus), []);
+  // nur als gelesen markieren – mit der ursprünglichen ID
+  aus['Gelesen aufteilen'] = ausfuehren('Gelesen aufteilen', aus['Antwort auswerten'], aus);
+  assert.deepEqual(aus['Gelesen aufteilen'].map((e) => e.json), [{ postfach: POSTFACH, graph_id: 'B1' }, { postfach: POSTFACH, graph_id: 'B2' }]);
+  aus['Nur als gelesen markieren'] = [{ json: { statusCode: 200, body: { id: 'B1', isRead: true } } }, { json: { statusCode: 403, body: { error: { code: 'ErrorAccessDenied' } } } }];
+  const r = ausfuehren('Ergebnis gelesen', aus['Nur als gelesen markieren'], aus)[0].json;
+  assert.deepEqual([r.geliefert, r.verschoben, r.als_gelesen], [2, 0, 1]);
+  assert.deepEqual(r.status, { pruefen: 1, doppelt: 1 });
+  assert.equal(r.fehler.length, 2, 'Portalfehler und fehlgeschlagenes Markieren');
+  assert.match(r.fehler[1], /Als gelesen markieren \(HTTP 403\)/);
 });

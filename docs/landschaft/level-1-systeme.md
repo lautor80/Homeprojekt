@@ -128,7 +128,7 @@ flowchart LR
 
 | Workflow | Auslöser | Ziel | Art | Knoten | Detail |
 |---|---|---|---|---|---|
-| Euroflex Maileingang | manuell (Editor), Zeitplan alle 5 Min., Webhook /webhook/euroflex-maileingang | extern | HTTP | Mails lesen, Anhänge laden, Ordner suchen, Ordner anlegen, Verschieben, Als gelesen markieren | https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent |
+| Euroflex Maileingang | manuell (Editor), Zeitplan alle 5 Min., Webhook /webhook/euroflex-maileingang | extern | HTTP | Mails lesen, Anhänge laden, Ordner suchen, Ordner anlegen, Verschieben, Als gelesen markieren, Nur als gelesen markieren | https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent |
 | Euroflex Maileingang | manuell (Editor), Zeitplan alle 5 Min., Webhook /webhook/euroflex-maileingang | Vereinsportal (Modul tco) | HTTP | An Portal liefern | /api/m/transport/eingang/mail |
 | Euroflex Mailversand | Webhook /webhook/euroflex-mailversand | extern | HTTP | Postfach prüfen, Entwurf anlegen, Senden | https://graph.microsoft.com/v1.0/users/{{ encodeURIComponent |
 | TCO EP3 Import Portal | Webhook /webhook/tco-ep3-import | EP3-bs Hallenbuchung | MySQL (lesend) | EP3 Buchungen, EP3 Kunden, EP3 Texte, EP3 Events |  |

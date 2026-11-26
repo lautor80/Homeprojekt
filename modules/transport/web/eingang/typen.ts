@@ -28,6 +28,9 @@ export interface VorgangZeile {
   postfach?: string | null;
   /** wer die Ablage bestätigt hat; „Posteingang (automatisch)“ = früher automatisch abgelegt */
   abgelegt_von?: string | null;
+  /** bearbeitet und für die gesammelte Übergabe vorgemerkt (Auftrag = auftragsnr) */
+  vorgemerkt?: boolean | null;
+  vorgemerkt_von?: string | null;
 }
 
 /** Eingangspostfach mit Bezeichnung (Einstellungen → Mail-Workflows → Eingang) */
@@ -58,6 +61,8 @@ export interface EingangDokument {
 /** GET /eingang/vorgaenge/:id */
 export interface Vorgang extends VorgangZeile {
   an?: string | null;
+  /** für die Übergabe gewählte Dateien (null = alle offenen) */
+  vorgemerkt_dokumente?: number[] | null;
   text?: string | null;
   begruendung?: Begruendung[] | null;
   kandidaten?: Kandidat[] | null;

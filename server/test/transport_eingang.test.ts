@@ -240,7 +240,7 @@ test('n8n: Auftragsnummer → Vorschlag, Bestätigung legt lokal ab, Logo gefilt
   }));
   assert.equal(r.status, 200, JSON.stringify(r.body));
   // nie automatisch: eindeutiger Treffer über der Schwelle bleibt ein Vorschlag in der Prüfliste
-  assert.deepEqual({ ...r.body, vorgang: 0 }, { vorgang: 0, status: 'pruefen', auftragsnr: '2099_9001', aktion: { ordner: 'Portal/Prüfen' } });
+  assert.deepEqual({ ...r.body, vorgang: 0 }, { vorgang: 0, status: 'pruefen', auftragsnr: '2099_9001', aktion: { ordner: null, gelesen: true } });
   const v1 = r.body.vorgang as number;
   assert.deepEqual((await docs(v1)).map((d) => [d.datei, d.art, d.status, d.ziel, d.inhalt]),
     [['Scan.pdf', 'anhang', 'neu', null, true], ['2026-11-17 AW Lieferschein 2099_9001.pdf', 'mail', 'neu', null, true]]);
@@ -259,14 +259,14 @@ test('n8n: Auftragsnummer → Vorschlag, Bestätigung legt lokal ab, Logo gefilt
   const liste = await admin('GET', `${T}/eingang/vorgaenge?status=abgelegt`);
   assert.equal(liste.body.vorgaenge.find((x: any) => x.id === v1).abgelegt_von, 'Admin', 'Kennzeichnung in der Liste');
 
-  // erneute Lieferung: „doppelt“, Ordner nach dem aktuellen Stand
+  // erneute Lieferung: „doppelt“ – nie verschieben, nur als gelesen markieren
   const n = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m1@kunde-eingang.test>', betreff: 'egal' }));
-  assert.deepEqual(n.body, { vorgang: v1, status: 'doppelt', auftragsnr: '2099_9001', aktion: { ordner: 'Portal/Zugeordnet' } });
+  assert.deepEqual(n.body, { vorgang: v1, status: 'doppelt', auftragsnr: '2099_9001', aktion: { ordner: null, gelesen: true } });
 });
 
 test('n8n: Absender mit zwei offenen Aufträgen → Prüfliste; Antwort auf eigene Mail → 100; Referenz unter Schwelle', ohneDb, async () => {
   let r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m2@k>', von: 'Einkauf <einkauf@kunde-eingang.test>', betreff: 'Frage', anhaenge: [pdf('a.pdf', 'A')] }));
-  assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.aktion.ordner], ['pruefen', null, 'Portal/Prüfen']);
+  assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.aktion.ordner], ['pruefen', null, null]);
   const [v2] = await sql`select kandidaten, hinweis, text from transport.eing_vorgaenge where id = ${r.body.vorgang}`;
   assert.deepEqual(v2.kandidaten.map((k: L.Kandidat) => [k.auftragsnr, k.punkte]), [['2099_9002', 30], ['2099_9001', 30]], 'abgeschlossener Auftrag 2099_9005 zählt nicht');
   assert.match(v2.hinweis, /Nicht eindeutig/);
@@ -406,7 +406,7 @@ test('Neu bewerten nach Anlage des Auftrags, Auftrag ändern, Abwesenheitsnotiz'
   await sql`update transport.eing_dokumente set inhalt = ${b64('%PDF-1.4 C')} where id = ${c.id}`;
 
   r = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<m8@k>', betreff: 'Automatische Antwort: Lieferschein 2099_9001' }));
-  assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.aktion.ordner], ['ignoriert', null, 'Portal/Prüfen']);
+  assert.deepEqual([r.body.status, r.body.auftragsnr, r.body.aktion.ordner], ['ignoriert', null, null]);
 });
 
 test('Ablageziel Paperless: Kontext auftrag.dokument, Verknüpfung, Inhalt bleibt herunterladbar', ohneDb, async () => {
@@ -472,6 +472,55 @@ test('PDF als application/octet-stream geliefert: als PDF gespeichert und angeze
   const [x] = await sql`select encode(sha256(decode(inhalt, 'base64')), 'hex') as sha from transport.eing_dokumente where id = ${d.id}`;
   assert.equal(x.sha, d.sha256);
   assert.equal(d.groesse, Buffer.from(inhalt, 'latin1').length);
+});
+
+test('Vormerken und gesammelte Übergabe: bearbeiten je E-Mail, ablegen erst mit der Übergabe', ohneDb, async () => {
+  await sql`insert into transport.auftraege (auftragsnr) values ('2099_9201'), ('2099_9202') on conflict do nothing`;
+  // drei E-Mails: Vorschlag 2099_9201, ohne Treffer, und eine, die nicht vorgemerkt wird
+  const a = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<vm1@k>', von: 'X <x@fremd-vm.test>', betreff: 'Unterlagen 2099_9201', anhaenge: [pdf('vm1.pdf', 'VM1'), pdf('vm1b.pdf', 'VM1B')] }));
+  const b = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<vm2@k>', von: 'Y <y@fremd-vm.test>', betreff: 'Scan', anhaenge: [pdf('vm2.pdf', 'VM2')] }));
+  const c = await ext(key, 'POST', `${T}/eingang/mail`, mail({ message_id: '<vm3@k>', von: 'Z <z@fremd-vm.test>', betreff: 'Noch offen 2099_9202', anhaenge: [pdf('vm3.pdf', 'VM3')] }));
+  for (const x of [a, b, c]) assert.deepEqual(x.body.aktion, { ordner: null, gelesen: true }, 'Outlook: nicht verschieben, nur als gelesen markieren');
+  const [va, vb, vc] = [a.body.vorgang, b.body.vorgang, c.body.vorgang] as number[];
+  const [vm1] = await sql`select id::int as id from transport.eing_dokumente where vorgang_id = ${va} and datei = 'vm1.pdf'` as unknown as { id: number }[];
+
+  // Vormerken: Auftrag ändern (b) und Dateiauswahl (a: nur vm1.pdf) – nichts wird abgelegt
+  let r = await admin('POST', `${T}/eingang/vorgaenge/${va}/vormerken`, { auftragsnr: '2099_9201', dokumente: [vm1.id] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.vorgemerkt, true);
+  r = await admin('POST', `${T}/eingang/vorgaenge/${vb}/vormerken`, { auftragsnr: '2099_9999' });
+  assert.equal(r.status, 404, 'unbekannter Auftrag');
+  r = await admin('POST', `${T}/eingang/vorgaenge/${vb}/vormerken`, { auftragsnr: '2099_9202' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.ok((await docs(va)).every((d) => d.status === 'neu'), 'noch nichts abgelegt');
+  let liste = (await admin('GET', `${T}/eingang/vorgaenge?status=pruefen`)).body;
+  assert.equal(liste.ablageziel, 'lokal');
+  const zeile = (id: number) => liste.vorgaenge.find((x: any) => x.id === id);
+  assert.deepEqual([zeile(va).vorgemerkt, zeile(va).auftragsnr, zeile(vb).vorgemerkt, zeile(vb).auftragsnr, zeile(vc).vorgemerkt], [true, '2099_9201', true, '2099_9202', false]);
+  assert.equal((await admin('GET', `${T}/eingang/vorgaenge/${va}`)).body.vorgemerkt_dokumente[0], vm1.id);
+
+  // „Posteingang abrufen“ bewertet vorgemerkte nicht neu – der von Hand gewählte Auftrag bleibt
+  assert.equal((await admin('POST', `${T}/eingang/abruf`)).status, 200);
+  const [nachAbruf] = await sql`select auftragsnr, vorgemerkt_am is not null as vm from transport.eing_vorgaenge where id = ${vb}`;
+  assert.deepEqual([nachAbruf.auftragsnr, nachAbruf.vm], ['2099_9202', true]);
+
+  // Vormerkung aufheben und wieder setzen
+  assert.equal((await admin('DELETE', `${T}/eingang/vorgaenge/${vb}/vormerken`)).body.vorgemerkt, false);
+  assert.equal((await admin('POST', `${T}/eingang/vorgaenge/${vb}/vormerken`, { auftragsnr: '2099_9202' })).status, 200);
+
+  // gesammelte Übergabe: beide vorgemerkten, die dritte bleibt in der Prüfliste
+  r = await admin('POST', `${T}/eingang/uebergabe`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  // a: nur die gewählte Datei; b: Anhang und die E-Mail als PDF
+  assert.deepEqual([r.body.emails, r.body.fehler, r.body.wartet], [2, 0, 3]);
+  assert.deepEqual(r.body.ergebnisse.map((e: any) => [e.id, e.auftragsnr, e.ok]), [[va, '2099_9201', true], [vb, '2099_9202', true]]);
+  assert.deepEqual((await docs(va)).map((d) => [d.datei, d.status]).filter(([n]) => String(n).startsWith('vm1')), [['vm1.pdf', 'wartet'], ['vm1b.pdf', 'neu']], 'nur die gewählte Datei');
+  assert.ok((await docs(vb)).every((d) => d.status === 'wartet'));
+  const st = await sql`select id::int as id, status, vorgemerkt_am is not null as vm, abgelegt_von from transport.eing_vorgaenge where id = any(${[va, vb, vc]}) order by id`;
+  assert.deepEqual(st.map((x) => [x.status, x.vm]), [['pruefen', false], ['abgelegt', false], ['pruefen', false]], 'a hat noch eine offene Datei, c war nicht vorgemerkt');
+  assert.equal(st[1].abgelegt_von, 'Admin');
+  r = await admin('POST', `${T}/eingang/uebergabe`, {});
+  assert.deepEqual([r.body.emails, r.body.text], [0, 'Keine vorgemerkten E-Mails.']);
 });
 
 test('Jetzt abrufen: ohne und mit Anbindung; Rechte', ohneDb, async () => {

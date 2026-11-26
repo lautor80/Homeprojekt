@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BusyIndicator, Button, CheckBox, Icon, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
+  BusyIndicator, Button, CheckBox, Icon, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -27,7 +27,11 @@ import {
  * rechts (auf dem Handy darunter) die E-Mail – darin links die Anhänge, daneben Begründung (mit Fundstellen der Auftrags-/Rechnungsnummer),
  * Kandidaten, Text und den Aktionen „Ignorieren“, „Neu bewerten“, „Ablage bestätigen“, „Auftrag ändern“.
  * Vertrag: docs/euroflex-mailworkflows.md, „Prüfliste und Ablage“.
+ *
+ * Zwei Reiter mit demselben Layout: **Posteingang** (zuerst) – jede E-Mail wird bearbeitet (Auftrag, Dateien) und nur **vorgemerkt**;
+ * abgelegt wird gesammelt mit „übergeben“ (POST /eingang/uebergabe). **Prüfliste** – wie bisher jede E-Mail einzeln bestätigen.
  */
+type Reiter = 'eingang' | 'pruefliste';
 const FILTER: { key: VorgangStatus; text: string }[] = [
   { key: 'pruefen', text: 'Zu prüfen' },
   { key: 'fehler', text: 'Fehler' },
@@ -39,14 +43,14 @@ const FILTER: { key: VorgangStatus; text: string }[] = [
 const ZUGEORDNET_DOK = (d: EingangDokument) => ['wartet', 'abgelegt', 'uebernommen', 'dublette'].includes(d.status);
 const OFFEN_DOK = (d: EingangDokument) => !['ignoriert', 'abgelegt', 'uebernommen', 'dublette', 'wartet'].includes(d.status);
 
-interface ListeAntwort { zeilen: VorgangZeile[]; letzterAbruf: string | null; schwelle: number | null; postfaecher: EingangsPostfach[] }
+interface ListeAntwort { zeilen: VorgangZeile[]; letzterAbruf: string | null; schwelle: number | null; postfaecher: EingangsPostfach[]; ablageziel: string | null }
 /** postfach leer = alle Eingangspostfächer */
 async function listeLaden(status: VorgangStatus, postfach = ''): Promise<ListeAntwort> {
   const r = await api.get<unknown>(`${EING}/vorgaenge?status=${status}${postfach ? `&postfach=${encodeURIComponent(postfach)}` : ''}`);
-  const o = (r && typeof r === 'object' && !Array.isArray(r) ? r : {}) as { letzter_abruf?: string | null; schwelle?: number | null; postfaecher?: EingangsPostfach[] };
+  const o = (r && typeof r === 'object' && !Array.isArray(r) ? r : {}) as { letzter_abruf?: string | null; schwelle?: number | null; postfaecher?: EingangsPostfach[]; ablageziel?: string | null };
   return {
     zeilen: liste<VorgangZeile>(r, 'vorgaenge', 'zeilen', 'liste'), letzterAbruf: o.letzter_abruf ?? null, schwelle: o.schwelle ?? null,
-    postfaecher: Array.isArray(o.postfaecher) ? o.postfaecher : [],
+    postfaecher: Array.isArray(o.postfaecher) ? o.postfaecher : [], ablageziel: o.ablageziel ?? null,
   };
 }
 
@@ -54,6 +58,12 @@ export function Posteingang() {
   const can = useCan();
   const edit = can('transport.eingang:edit');
   const klein = useKlein(900);
+  // Reiter „Posteingang“ (sammeln: vormerken, gesammelt übergeben) und „Prüfliste“ (einzeln bestätigen)
+  const [reiter, setReiter] = useState<Reiter>('eingang');
+  const sammel = reiter === 'eingang';
+  const [ablageziel, setAblageziel] = useState<string | null>(null);
+  const [vorgemerkt, setVorgemerkt] = useState<number | null>(null);
+  const [uebergabeFrage, setUebergabeFrage] = useState(false);
   const [status, setStatus] = useState<VorgangStatus>('pruefen');
   // Eingangspostfach (info@, buchhaltung@ …), leer = alle; Auswahl nur, wenn es mehr als eines gibt
   const [postfach, setPostfach] = useState('');
@@ -82,6 +92,8 @@ export function Posteingang() {
       const akt = status === 'pruefen' ? p : status === 'fehler' ? f : await listeLaden(status, postfach);
       setPostfaecher(p.postfaecher);
       setAnzahl({ pruefen: p.zeilen.length, fehler: f.zeilen.length });
+      setVorgemerkt([...p.zeilen, ...f.zeilen].filter((z) => z.vorgemerkt).length);
+      setAblageziel(p.ablageziel);
       setZeilen(akt.zeilen);
       const abruf = akt.letzterAbruf ?? p.letzterAbruf;
       if (abruf) setLetzterAbruf(abruf);
@@ -100,6 +112,18 @@ export function Posteingang() {
       setLetzterAbruf(new Date().toISOString());
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); await laden(); setStand((s) => s + 1); }
   }
+
+  /** gesammelte Übergabe aller vorgemerkten E-Mails (Ablageziel aus den Einstellungen: Paperless oder Ablageordner) */
+  async function uebergeben() {
+    setUebergabeFrage(false);
+    setBusy(true); setError(null);
+    try {
+      const r = await api.post<{ text?: string; fehler?: number }>(`${EING}/uebergabe`, {});
+      if (r.fehler) setError(antwortText(r, 'Nicht alle E-Mails konnten übergeben werden.'));
+      else toast(antwortText(r, 'Vorgemerkte E-Mails übergeben.'), 8000);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); await laden(); setStand((s) => s + 1); }
+  }
+  const zielText = ablageziel === 'paperless' ? 'An Paperless übergeben' : 'Gesammelt am Auftrag ablegen';
 
   function waehlen(id: number) {
     setGewaehlt(id);
@@ -124,9 +148,32 @@ export function Posteingang() {
                )}
              </>}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
+      <TabContainer tabLayout="Inline" contentBackgroundDesign="Transparent" style={{ marginBottom: '0.5rem' }}
+                    onTabSelect={(e) => {
+                      const k = (e.detail.tab as HTMLElement).dataset.key as Reiter;
+                      setReiter(k); setGewaehlt(null);
+                      // der Reiter „Posteingang“ zeigt nur Offenes (zu prüfen, Fehler)
+                      if (k === 'eingang' && status !== 'pruefen' && status !== 'fehler') setStatus('pruefen');
+                    }}>
+        <Tab data-key="eingang" text="Posteingang" icon="inbox" selected={sammel} additionalText={vorgemerkt ? `${vorgemerkt} vorgemerkt` : undefined} />
+        <Tab data-key="pruefliste" text="Prüfliste" icon="task" selected={!sammel} />
+      </TabContainer>
+      {sammel && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', alignItems: 'center', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
+          <Text style={{ flex: 1, minWidth: '16rem' }}>
+            Hier wird nichts automatisch abgelegt: je E-Mail den Vorschlag prüfen, bei Bedarf Auftrag und Dateien ändern und <b>vormerken</b> –
+            danach alle vorgemerkten E-Mails gesammelt übergeben.
+          </Text>
+          <Text className="portal-muted" style={{ whiteSpace: 'nowrap' }}>{vorgemerkt ?? 0} vorgemerkt</Text>
+          {edit && can('transport.auftraege:display') && (
+            <Button design="Emphasized" icon="paper-plane" disabled={busy || !vorgemerkt} onClick={() => setUebergabeFrage(true)}
+                    tooltip={vorgemerkt ? undefined : 'Noch keine E-Mail vorgemerkt'}>{zielText}{vorgemerkt ? ` (${vorgemerkt})` : ''}</Button>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', alignItems: 'center', marginBottom: '0.75rem' }}>
         <SegmentedButton onSelectionChange={(e) => { setGewaehlt(null); setStatus((e.detail.selectedItems[0] as HTMLElement).dataset.key as VorgangStatus); }}>
-          {FILTER.map((f) => <SegmentedButtonItem key={f.key} data-key={f.key} selected={status === f.key}>{f.text}{zaehler(f.key)}</SegmentedButtonItem>)}
+          {FILTER.filter((f) => !sammel || f.key === 'pruefen' || f.key === 'fehler').map((f) => <SegmentedButtonItem key={f.key} data-key={f.key} selected={status === f.key}>{f.text}{zaehler(f.key)}</SegmentedButtonItem>)}
         </SegmentedButton>
         {postfaecher.length > 1 && (
           <Select accessibleName="Eingangspostfach" style={{ width: '14rem' }}
@@ -149,7 +196,7 @@ export function Posteingang() {
         </div>
         <div ref={detailRef} style={{ minWidth: 0 }}>
           {gewaehlt ? (
-            <Detail key={`${gewaehlt}-${stand}`} id={gewaehlt} edit={edit} schwelle={schwelle} auftraege={auftraege}
+            <Detail key={`${gewaehlt}-${stand}-${reiter}`} id={gewaehlt} edit={edit} schwelle={schwelle} auftraege={auftraege} sammel={sammel}
                     darfAblegen={edit && can('transport.auftraege:display')}
                     onGeaendert={() => { laden(); }} onFehler={setError} />
           ) : !klein && zeilen && zeilen.length > 0 ? (
@@ -157,6 +204,9 @@ export function Posteingang() {
           ) : null}
         </div>
       </div>
+      <ConfirmDialog open={uebergabeFrage} title={zielText} confirmText="Übergeben"
+                     text={`${vorgemerkt ?? 0} vorgemerkte E-Mail(s) werden jetzt am jeweils vorgemerkten Auftrag abgelegt – ${ablageziel === 'paperless' ? 'die Dateien gehen an Paperless (Feld „Auftrag“)' : 'die Dateien warten danach auf die Übernahme in den Ablageordner des Auftrags (Ablageziel „lokal“ in den Einstellungen)'}. Nicht vorgemerkte E-Mails bleiben im Posteingang.`}
+                     onCancel={() => setUebergabeFrage(false)} onConfirm={uebergeben} />
     </AppPage>
   );
 }
@@ -292,6 +342,7 @@ function Liste({ zeilen, status, schwelle, gewaehlt, onWaehlen, postfaecher }: {
             <Text style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.betreff || '(ohne Betreff)'}</Text>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <ObjectStatus state={t.state} inverted={t.state !== 'None'}>{t.text}</ObjectStatus>
+              {z.vorgemerkt && <ObjectStatus state="Information" inverted icon={<Icon name="flag" />}>Vorgemerkt · {z.auftragsnr ?? '?'}</ObjectStatus>}
               {postfaecher.length > 0 && z.postfach && (
                 <Text className="portal-muted portal-small" title={z.postfach}>
                   <Icon name="inbox" style={{ width: '0.8rem', height: '0.8rem', verticalAlign: 'middle' }} /> {postfaecher.find((p) => p.adresse === z.postfach)?.bezeichnung ?? z.postfach}
@@ -310,8 +361,8 @@ function Liste({ zeilen, status, schwelle, gewaehlt, onWaehlen, postfaecher }: {
 
 // ---------------------------------------------------------------------------- Detail
 
-function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onGeaendert, onFehler }: {
-  id: number; edit: boolean; darfAblegen: boolean; schwelle: number; auftraege: ReturnType<typeof useAuftraege>;
+function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftraege, onGeaendert, onFehler }: {
+  id: number; edit: boolean; darfAblegen: boolean; /** Reiter „Posteingang“: vormerken statt sofort ablegen */ sammel: boolean; schwelle: number; auftraege: ReturnType<typeof useAuftraege>;
   onGeaendert: () => void; onFehler: (t: string) => void;
 }) {
   const [v, setV] = useState<Vorgang | null>(null);
@@ -340,7 +391,9 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
       const kand = Array.isArray(x.kandidaten) ? x.kandidaten : [];
       setV({ ...x, dokumente: dok, kandidaten: kand, begruendung: Array.isArray(x.begruendung) ? x.begruendung : [] });
       setNr(x.auftragsnr ?? (kand.length === 1 ? kand[0].auftragsnr : ''));
-      setAuswahl(new Set(dok.filter(OFFEN_DOK).map((d) => d.id)));
+      // vorgemerkte Dateiauswahl wiederherstellen, sonst alle offenen
+      const vm = x.vorgemerkt && Array.isArray(x.vorgemerkt_dokumente) ? new Set(x.vorgemerkt_dokumente) : null;
+      setAuswahl(new Set(dok.filter(OFFEN_DOK).filter((d) => !vm || vm.has(d.id)).map((d) => d.id)));
     } catch (e) { setError((e as Error).message); }
   }, [id]);
   useEffect(() => { laden(); }, [laden]);
@@ -386,6 +439,9 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
     // Ablageziel Paperless: nichts wartet – dann still
     if (ok && darfUebertragen) await uebertragen(ziel, ids, true);
   };
+  /** Reiter „Posteingang“: Auftrag und Dateien festhalten – abgelegt wird erst mit der gesammelten Übergabe */
+  const vormerken = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/vormerken`, { auftragsnr: nr, dokumente: [...auswahl] }), `Für Auftrag ${nr} vorgemerkt`, 'neu');
+  const vormerkungAufheben = () => aktion(() => api.del(`${EING}/vorgaenge/${v.id}/vormerken`), 'Vormerkung aufgehoben', 'neu');
   /** abgelegte E-Mail an einen anderen Auftrag hängen; Dateien im Ablageordner wandern mit (alter Unterordner Eingang/ → neuer) */
   const auftragAendern = async () => {
     const ziel = nrNeu;
@@ -451,6 +507,11 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
           <Label>Datum</Label><Text>{v.datum ? `${dat(v.datum)} ${new Date(v.datum).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : '–'}</Text>
         </div>
         {v.hinweis && <MessageStrip hideCloseButton design={v.status === 'fehler' ? 'Negative' : 'Information'}>{v.hinweis}</MessageStrip>}
+        {offen && v.vorgemerkt && (
+          <MessageStrip hideCloseButton design="Positive">
+            Vorgemerkt für Auftrag {v.auftragsnr}{kunde(v.auftragsnr) ? ` – ${kunde(v.auftragsnr)}` : ''}{v.vorgemerkt_von ? ` (${v.vorgemerkt_von})` : ''} – abgelegt wird mit der gesammelten Übergabe im Reiter „Posteingang“.
+          </MessageStrip>
+        )}
 
         {/* Zuordnung mit Trefferwert und Begründung */}
         <div style={{ border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -531,7 +592,14 @@ function Detail({ id, edit, darfAblegen, schwelle: schwelleListe, auftraege, onG
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'flex-end' }}>
             <Button design="Transparent" icon="decline" disabled={busy} onClick={() => setFrage(true)}>Ignorieren</Button>
             <Button design="Transparent" icon="synchronize" disabled={busy} tooltip="Zuordnung neu berechnen (z. B. nachdem der Auftrag angelegt wurde)" onClick={neuBewerten}>Neu bewerten</Button>
-            {darfAblegen && (
+            {v.vorgemerkt && <Button design="Transparent" icon="undo" disabled={busy} onClick={vormerkungAufheben}>Vormerkung aufheben</Button>}
+            {darfAblegen && sammel && (
+              <Button design="Emphasized" icon="flag" disabled={busy || !nrGueltig || !auswahl.size} onClick={vormerken}
+                      tooltip={!nr ? 'Bitte einen Auftrag wählen' : !nrGueltig ? `Auftrag ${nr} gibt es nicht` : !auswahl.size ? 'Bitte mindestens eine Datei auswählen' : 'Auftrag und Dateien festhalten – abgelegt wird mit der gesammelten Übergabe'}>
+                {v.vorgemerkt ? 'Vormerkung ändern' : 'Vormerken'}
+              </Button>
+            )}
+            {darfAblegen && !sammel && (
               <Button design="Emphasized" icon="accept" disabled={busy || !nrGueltig || !auswahl.size} onClick={ablegen}
                       tooltip={!nr ? 'Bitte einen Auftrag wählen' : !nrGueltig ? `Auftrag ${nr} gibt es nicht` : !auswahl.size ? 'Bitte mindestens eine Datei auswählen' : undefined}>
                 {darfUebertragen ? 'Ablage bestätigen und in Ordner übertragen' : 'Ablage bestätigen'}

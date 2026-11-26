@@ -34,7 +34,7 @@ Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Ro
 |---|---|---|---|
 | Eingang | `ablageziel` | `lokal` | `lokal` = im Portal bis zur Übernahme in den Ablageordner, `paperless` = Kontext `auftrag.dokument` |
 | Eingang | `schwelle` | 80 | ab diesem Trefferwert gilt der Vorschlag als sicher (grün); abgelegt wird nie automatisch – jede Ablage wird bestätigt |
-| Eingang | `ordnerZugeordnet` / `ordnerPruefen` | `Portal/Zugeordnet` / `Portal/Prüfen` | Outlook-Ordner nach der Verarbeitung |
+| Eingang | `ordnerZugeordnet` / `ordnerPruefen` | `Portal/Zugeordnet` / `Portal/Prüfen` | nicht mehr verwendet – E-Mails bleiben in ihrem Outlook-Ordner und werden nur als gelesen markiert |
 | Eingang | `mailAlsPdf` | ja | die E-Mail selbst zusätzlich als PDF ablegen |
 | Eingang | `ocr` | ja | Texterkennung lokal (pdftotext, Tesseract deu+eng) |
 | Eingang | `speicherWarnungMb` | 1024 | Warnung, wenn noch nicht übernommene Dateien mehr belegen |
@@ -61,7 +61,7 @@ API: `GET /api/m/transport/workflow-einstellungen` → `{ eingang, versand, rech
 Outlook 365 (Eingangspostfach, Ordner aus der n8n-Konfiguration, Standard: Posteingang)
   └─ n8n „Euroflex Maileingang“: Zeitplan 5 min · Webhook „jetzt abrufen“
        Graph: ungelesene Mails + Anhänge  →  POST /api/m/transport/eingang/mail  (Bearer pk_transport_…)
-       Antwort { aktion: { ordner } }      →  Mail in den Ordner verschieben, als gelesen markieren
+       Antwort { aktion: { ordner: null, gelesen: true } }  →  Mail bleibt in ihrem Ordner, wird nur als gelesen markiert
 Portal
   1. Idempotenz Postfach + Message-ID; Signatur-Logos, .ics, .vcf, .p7s herausfiltern
   2. OCR lokal (Einstellung ocr): PDF → pdftotext; gescanntes PDF ohne Text → pdftoppm (3 Seiten, 200 dpi) + Tesseract; Bild → Tesseract
@@ -107,8 +107,9 @@ und werden in der Prüfliste angezeigt. Liegen zwei Aufträge gleichauf, ist die
 ```
 
 Antwort: `{ "vorgang": 12, "status": "abgelegt" | "pruefen" | "ignoriert" | "doppelt", "auftragsnr": "2026_0153" | null,
-"aktion": { "ordner": "Portal/Zugeordnet" } }`. Bei `doppelt` (schon verarbeitet) ebenfalls mit `aktion`, damit n8n die Mail
-wegräumt.
+"aktion": { "ordner": null, "gelesen": true } }`. Die E-Mail wird in Outlook **nicht mehr verschoben**: n8n markiert sie nur als
+gelesen und ruft nur ungelesene ab. Bei `doppelt` (schon verarbeitet) ebenfalls mit `aktion`. Die Einstellungen
+`ordnerZugeordnet`/`ordnerPruefen` werden nicht mehr verwendet; nennt eine Antwort doch einen Ordner, verschiebt der Workflow wie früher.
 
 ### Prüfliste und Ablage (Oberfläche)
 
@@ -118,12 +119,20 @@ wegräumt.
 | GET | `/eingang/vorgaenge/:id` | display | Vorgang mit text, begruendung, kandidaten (mit Kunde/Datum), dokumente (id, art, datei, mime, groesse, status, ziel, ocr_auszug) |
 | GET | `/eingang/dokumente/:id/datei` | edit | Dateiinhalt (solange vorhanden), CSP-Sandbox |
 | POST | `/eingang/vorgaenge/:id/ablegen` | edit + auftraege:display | `{ auftragsnr, dokumente: number[] }` – legt am Auftrag ab (Ablageziel) |
+| POST | `/eingang/vorgaenge/:id/vormerken` | edit + auftraege:display | `{ auftragsnr, dokumente?: number[] }` – E-Mail bearbeiten, ohne abzulegen (Reiter „Posteingang“); `DELETE` hebt die Vormerkung auf |
+| POST | `/eingang/uebergabe` | edit + auftraege:display | `{ vorgaenge?: number[] }` – gesammelte Übergabe aller (oder der genannten) vorgemerkten E-Mails am vorgemerkten Auftrag (Ablageziel); Antwort `emails, abgelegt, wartet, dubletten, fehler, ergebnisse[], text` |
 | POST | `/eingang/vorgaenge/:id/ignorieren` | edit | Vorgang und Dokumente ignorieren, Inhalte löschen |
 | POST | `/eingang/vorgaenge/:id/neu-bewerten` | edit | Zuordnung neu berechnen |
 | POST | `/eingang/abruf` | edit | offene Vorgänge neu bewerten, n8n-Webhook „jetzt abrufen“ anstoßen (falls eingerichtet) |
 | GET | `/eingang/speicher` | display | `{ bytes, dateien, warnungMb, warnung: boolean }` – Belegung durch noch nicht übernommene Inhalte |
 | GET | `/auftraege/:nr/eingang` | auftraege:display | Eingangsdokumente am Auftrag: id, datei, mime, groesse, status, ziel, von, betreff, datum |
 | POST | `/eingang/dokumente/:id/uebernommen` | auftraege:edit | Browser hat die Datei in den Ablageordner (Unterordner `Eingang/`) geschrieben → Status `uebernommen`, Inhalt je nach Aufbewahrung |
+
+**Reiter der App Posteingang:** *Posteingang* (zuerst) und *Prüfliste* – gleiches Layout (Liste links, E-Mail rechts mit Vorschlag,
+Begründung und Kandidaten). Im Reiter *Posteingang* wird je E-Mail nur **vorgemerkt** (Auftrag und Dateien, Migration 022:
+`vorgemerkt_am/_von/_dokumente`); die Liste kennzeichnet „Vorgemerkt · Auftrag“. **Gesammelt übergeben** legt alle vorgemerkten
+E-Mails ab – jede für sich, Fehler halten die übrigen nicht auf. „Posteingang abrufen“ bewertet vorgemerkte E-Mails nicht neu;
+„Neu bewerten“ an der E-Mail hebt die Vormerkung auf. Die *Prüfliste* arbeitet wie bisher (einzeln „Ablage bestätigen“).
 
 ### Lokale Ablage und Speicher
 
