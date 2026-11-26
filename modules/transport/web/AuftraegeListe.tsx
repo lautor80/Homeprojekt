@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,7 +15,9 @@ import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
 import { DocsDialog, InfoDialog, MailDialog, XRechnungDialog, type Doc, type MailRow, type XRes } from './dialogs';
 import { MenuButton, T, betrag, dat, type KeyText, type ListRow } from './util';
-import { ordnerBereit } from './ordner';
+import { ordnerBereit, ordnerStatus } from './ordner';
+import { auftragAblegen } from './auftragAblage';
+import { useAblage } from '@core/ablage';
 import { nachAblegen, type NachablageArt } from './nachablage';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { VersandDialog } from './VersandDialog';
@@ -312,6 +314,47 @@ export function AuftraegeListe() {
 
   const [ordnerDialog, setOrdnerDialog] = useState(false);
 
+  // ---------------------------------------------------------------- Dateien auf eine Zeile ziehen
+  // Ablage beim Auftrag der Zeile wie auf der Objektseite (Paperless mit Feld „Auftrag“ und/oder Ablageordner) – Recht Aufträge ändern
+  const { ablegen: ablageStarten } = useAblage();
+  const zielZeile = useRef<HTMLElement | null>(null);
+  const markieren = (el: HTMLElement | null) => {
+    if (zielZeile.current === el) return;
+    if (zielZeile.current) { zielZeile.current.style.outline = ''; zielZeile.current.style.outlineOffset = ''; }
+    zielZeile.current = el;
+    if (el) { el.style.outline = '2px dashed var(--sapContent_DragAndDropActiveColor, var(--sapBrandColor))'; el.style.outlineOffset = '-2px'; }
+  };
+  /** Zeile unter dem Mauszeiger und ihr Auftrag (Gruppen- und Summenzeilen haben keinen) */
+  const zeileVon = (e: DragEvent): { el: HTMLElement; nr: string } | null => {
+    const el = (e.target as HTMLElement).closest?.('[role="row"]') as HTMLElement | null;
+    const nr = el?.querySelector<HTMLElement>('[data-auftrag]')?.dataset.auftrag;
+    return el && nr ? { el, nr } : null;
+  };
+  const zeilenAblage = can('transport.auftraege:edit') ? {
+    onDragOver: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes('Files')) return;
+      const z = zeileVon(e);
+      markieren(z?.el ?? null);
+      if (z) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    },
+    onDragLeave: (e: DragEvent) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) markieren(null); },
+    onDrop: (e: DragEvent) => {
+      const z = zeileVon(e);
+      markieren(null);
+      if (!z || !e.dataTransfer.files.length) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files);
+      void ablageStarten(files, {
+        titel: `Auftrag ${z.nr}`,
+        annehmen: async (f) => {
+          const [d, o] = await Promise.all([api.get<{ paperless: boolean }>(`${T}/auftraege/${z.nr}/dokumente`), ordnerStatus().catch(() => null)]);
+          if (!d.paperless && !o) throw new Error('Weder Paperless noch ein Ablageordner ist eingerichtet.');
+          return auftragAblegen(z.nr, f, { paperless: d.paperless, ordner: !!o });
+        },
+      });
+    },
+  } : {};
+
   // ---------------------------------------------------------------- Aktionen
   async function rechnungen(sammel: boolean) {
     try {
@@ -538,7 +581,7 @@ export function AuftraegeListe() {
     { Header: 'Status', accessor: 'status', id: 'status', width: 110, disableGroupBy: false },
     {
       Header: 'Auftrag', accessor: 'auftragsnr', width: 120, disableGroupBy: true,
-      Cell: ({ row }: Cell) => row.isGrouped ? null : <div><b>{row.original.auftragsnr}</b><br /><Text>{row.original.fahrten > 1 ? `${row.original.fahrten} Fahrten` : row.original.kennzeichen}</Text></div>,
+      Cell: ({ row }: Cell) => row.isGrouped ? null : <div data-auftrag={row.original.auftragsnr}><b>{row.original.auftragsnr}</b><br /><Text>{row.original.fahrten > 1 ? `${row.original.fahrten} Fahrten` : row.original.kennzeichen}</Text></div>,
     },
     { Header: 'Art', accessor: 'art', width: 85, responsiveMinWidth: 1350 },
     { Header: 'Angelegt', accessor: 'anlagedatum', width: 95, responsiveMinWidth: 1450, Cell: ({ value }: Cell) => dat(value) },
@@ -588,7 +631,7 @@ export function AuftraegeListe() {
       Cell: ({ row }: Cell) => {
         const r = row.original as TreeRow;
         return (
-          <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
+          <FlexBox alignItems="Center" style={{ gap: '0.25rem' }} {...(r.isPos ? { 'data-auftrag': r.auftragsnr } : {})}>
             {r.isPos && (
               <CheckBox checked={auswahl.has(r.auftragsnr!)} onChange={(e) => {
                 const s = new Set(auswahl);
@@ -772,7 +815,7 @@ export function AuftraegeListe() {
       </Dialog>
       {toolbar}
       {tAktiv.leiste}
-      <div ref={rahmen.ref} style={{ height: rahmen.hoehe }}>
+      <div ref={rahmen.ref} style={{ height: rahmen.hoehe }} {...zeilenAblage}>
       {ansicht === 'LIST' ? (
         <AnalyticalTable minRows={1}
           columns={tListe.spalten}

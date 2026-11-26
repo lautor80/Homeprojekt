@@ -144,8 +144,11 @@ test('Kopfzeilen: RFC 2047 (B/Q, ISO-8859-1), RFC 2231 mit Fortsetzungen, Erkenn
 
 test('Auftrag → Dokumente: E-Mails werden zerlegt, die .eml selbst nur im Ablageordner', () => {
   const q = readFileSync(path.join(ROOT, 'modules/transport/web/AuftragDokumente.tsx'), 'utf8');
-  assert.ok(q.includes("import { emlLesen, istEml } from './eml';"));
-  assert.ok(q.includes('if (!istEml(f)) { files.push(f); continue; }'));
-  assert.ok(q.includes('if (d?.paperless && !nurOrdner.has(f))'), 'Paperless bekommt nur die Anhänge');
+  // die Ablage liegt in auftragAblage.ts (gemeinsam mit dem Hineinziehen auf eine Zeile der Auftragsliste)
+  const g = readFileSync(path.join(ROOT, 'modules/transport/web/auftragAblage.ts'), 'utf8');
+  assert.ok(q.includes("import { auftragAblegen } from './auftragAblage';"));
+  assert.ok(g.includes("import { emlLesen, istEml } from './eml';"));
+  assert.ok(g.includes('if (!istEml(f)) { files.push(f); continue; }'));
+  assert.ok(g.includes('if (o.paperless && !nurOrdner.has(f))'), 'Paperless bekommt nur die Anhänge');
   assert.ok(q.includes('eine E-Mail aus Outlook (.eml) wird zerlegt'), 'Hinweis auf der Ablagefläche');
 });
