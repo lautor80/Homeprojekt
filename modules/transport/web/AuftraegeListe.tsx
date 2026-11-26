@@ -21,6 +21,8 @@ import { useAblage } from '@core/ablage';
 import { nachAblegen, type NachablageArt } from './nachablage';
 import { AblageOrdnerEinstellung } from './Ablageordner';
 import { VersandDialog } from './VersandDialog';
+import { BelegNeuDialog } from './beleg/BelegNeuDialog';
+import { F_BELEG, R_BELEG } from './beleg/api';
 import { symbole, terminText, type SymbolZustand } from './termin';
 import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
 
@@ -313,6 +315,9 @@ export function AuftraegeListe() {
   }, [baumEbene, tree]);
 
   const [ordnerDialog, setOrdnerDialog] = useState(false);
+  // Neu → „Frachtauftrag aus Beleg…“ (Recht transport.belegerfassung:create, Funktion transport.beleg.erfassung): Dialog mit Ablagezone
+  const belegErlaubt = can(R_BELEG) && funktion(F_BELEG);
+  const [belegDialog, setBelegDialog] = useState(false);
 
   // ---------------------------------------------------------------- Dateien auf eine Zeile ziehen
   // Ablage beim Auftrag der Zeile wie auf der Objektseite (Paperless mit Feld „Auftrag“ und/oder Ablageordner) – Recht Aufträge ändern
@@ -736,6 +741,7 @@ export function AuftraegeListe() {
         {can('transport.auftraege:edit') && (
           <MenuButton text="Neu" icon="create" design="Emphasized" items={[
             { text: 'Frachtauftrag', icon: 'shipping-status', onClick: () => navigate('/transport/auftraege/neu/F') },
+            ...(belegErlaubt ? [{ text: 'Frachtauftrag aus Beleg…', icon: 'add-document', onClick: () => setBelegDialog(true) }] : []),
             { text: 'Holzträgerauftrag', icon: 'product', onClick: () => navigate('/transport/auftraege/neu/H') },
           ]} />
         )}
@@ -861,6 +867,7 @@ export function AuftraegeListe() {
       <VersandDialog auftraege={versand ?? []} fakturiert={versandFakturiert} open={!!versand} onClose={() => setVersand(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <InfoDialog title={info?.title ?? ''} text={info?.text ?? null} onClose={() => setInfo(null)} />
+      <BelegNeuDialog open={belegDialog} onClose={() => setBelegDialog(false)} />
       <ConfirmDialog open={!!abschliessen} title="Ohne Rechnung abschließen" confirmText="Abschließen" askReason
                      text={`${abschliessen?.length === 1 ? `Auftrag ${abschliessen[0]} bekommt` : `${abschliessen?.length ?? 0} Aufträge (${(abschliessen ?? []).join(', ')}) bekommen`} keine Rechnung und ${abschliessen?.length === 1 ? 'gilt' : 'gelten'} nicht mehr als offen. Nichts wird gelöscht – „Auftrag → Wieder öffnen“ macht es rückgängig. Der Grund steht im Änderungsbeleg und in der Liste.`}
                      onConfirm={abschliessenAusfuehren} onCancel={() => setAbschliessen(null)} />

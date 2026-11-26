@@ -23,6 +23,7 @@ import { adressenPruefen, euroflexMailSenden, mailInfo, TRANSPORT_VERBINDUNGEN, 
 import { TRANSPORT_FUNKTIONEN } from './funktionen.js';
 import { mailworkflowRoutes, P_MW, versandRegeln } from './mailworkflows.js';
 import { eingangRoutes } from './eingang/routes.js';
+import { belegRoutes, P_BELEG } from './beleg/routes.js';
 import { sammelversandRoutes } from './sammelversand.js';
 import { kontaktNachPaperless, kontaktRoutes } from './kontakte.js';
 import { kontaktErkennen } from './kontakterkennung.js';
@@ -54,6 +55,12 @@ export const P = {
   vorschlaege: 'transport.vorschlaege:display',
   /** Versand- und Druckdialoge nach dem Auslösen sofort schließen (Ergebnis als Meldung) */
   dialoge: 'transport.dialoge:execute',
+  /** Auftrag aus Beleg: Frachtauftrag des Kunden (PDF/Bild) lesen lassen und die Erfassungsmaske vorfüllen */
+  belegErfassung: P_BELEG.erfassung,
+  /** Auftrag aus einem Dokument des Posteingangs vorbereiten */
+  belegEingang: P_BELEG.eingang,
+  /** Leseprofile für „Auftrag aus Beleg“ pflegen */
+  leseprofile: P_BELEG.profile,
   /** App „Kontakte“ öffnen (#232, N7) – bisher mit „Aufträge anzeigen“ */
   kontakteDisplay: 'transport.kontakte:display',
   kontakte: 'transport.kontakte:edit',
@@ -869,6 +876,7 @@ async function routes(app: FastifyInstance) {
   await kontaktRoutes(app, P);
   await mailworkflowRoutes(app, P.stammdaten);
   await eingangRoutes(app);
+  await belegRoutes(app);
   await sammelversandRoutes(app);
   /**
    * Vorschläge für die Stops (#Stop-Vorschläge): bekannte Lade- und Entladestellen aus allen Aufträgen, je Firma + Straße + PLZ/Ort
@@ -1242,14 +1250,17 @@ const mod: ServerModule = {
     { area: 'Euroflex', app: 'Aufträge', id: P.tabellen, text: 'Tabellen anpassen (Auftragsliste, Aufträge und Dokumente im Kontakt): Spalten ein-/ausblenden, Filter, Sortierung – in Varianten speichern' },
     { area: 'Euroflex', app: 'Aufträge', id: P.dialoge, text: 'Versand- und Druckdialoge schließen sich nach dem Auslösen sofort (ohne Recht bleiben sie offen)' },
     { area: 'Euroflex', app: 'Aufträge', id: P.vorschlaege, text: 'Vorschläge beim Erfassen der Stops (Firma, Straße, PLZ/Ort, Zeitvorgabe aus früheren Aufträgen)', requires: [P.display] },
+    { area: 'Euroflex', app: 'Aufträge', id: P.belegErfassung, text: 'Auftrag aus Beleg: Frachtauftrag des Kunden (PDF oder Bild) per Drag & Drop lesen lassen – die Erfassungsmaske wird vorausgefüllt', requires: [P.edit] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versand, text: 'Versenden (E-Mail, Paperless)', requires: [P.display] },
     { area: 'Euroflex', app: 'Aufträge', id: P.versandSenden, text: 'Sammelversand direkt senden statt als Entwurf in Outlook ablegen', requires: [P.versand] },
     { area: 'Euroflex', app: 'Posteingang', id: P.eingangDisplay, text: 'Posteingang anzeigen: eingegangene E-Mails mit Zuordnung zum Auftrag' },
     { area: 'Euroflex', app: 'Posteingang', id: P.eingangEdit, text: 'Posteingang bearbeiten: E-Mails und Anhänge am Auftrag ablegen, ignorieren, Auftrag zuordnen', requires: [P.eingangDisplay, P.display] },
     { area: 'Euroflex', app: 'Posteingang', id: P.eingangMelden, text: 'Schnittstelle für n8n (API-Schlüssel): E-Mails aus Outlook 365 samt Anhängen an das Portal liefern und deren Behandlung abholen' },
+    { area: 'Euroflex', app: 'Posteingang', id: P.belegEingang, text: 'Auftrag aus Posteingang anlegen: aus einem eingegangenen Dokument einen Auftrag vorbereiten', requires: [P.eingangEdit, P.edit] },
     { area: 'Euroflex', app: 'Kontakte', id: P.kontakteDisplay, text: 'Kontakte anzeigen (Kunden, Unternehmer, Rechnungsempfänger)' },
     { area: 'Euroflex', app: 'Kontakte', id: P.kontakte, text: 'Kontakte anlegen und ändern', requires: [P.display] },
     { area: 'Euroflex', app: 'Produkte und Wertelisten', id: P.stammdaten, text: 'Stammdaten pflegen (Produkte, Wertelisten) und die Einstellungen von Euroflex: Firma und Bank, Auftragsbedingungen, E-Mail-Texte (Administration → Einstellungen → Euroflex)' },
+    { area: 'Euroflex', app: 'Produkte und Wertelisten', id: P.leseprofile, text: 'Leseprofile für „Auftrag aus Beleg“ pflegen (Bezeichnung, aktiv, bevorzugter Kunde)', requires: [P.stammdaten] },
     { area: 'Euroflex', app: 'Produkte und Wertelisten', id: P.import, text: 'CSV-Import aus SAP', requires: [P.stammdaten] },
   ],
   auditObjects: [
@@ -1260,6 +1271,7 @@ const mod: ServerModule = {
     { type: 'MAILTEXT', text: 'E-Mail-Text', permission: P.stammdaten },
     { type: 'FIRMA', text: 'Firmendaten', permission: P.stammdaten },
     { type: 'MAILWORKFLOW', text: 'Einstellungen Mail-Workflows', permission: P.stammdaten },
+    { type: 'LESEPROFIL', text: 'Leseprofil (Auftrag aus Beleg)', permission: P.stammdaten },
   ],
   routes,
 };

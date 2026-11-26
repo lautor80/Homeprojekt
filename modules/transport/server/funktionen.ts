@@ -49,6 +49,14 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     hinweis: 'Abgeschaltet sind es wieder einfache Eingabefelder.',
   },
   {
+    id: 'transport.beleg.erfassung', app: 'Aufträge', text: 'Auftrag aus Beleg (Drag & Drop)',
+    beschreibung: 'Einen Frachtauftrag des Kunden (PDF oder Bild) in die Auftragsliste oder die Neuanlage ziehen: Das Portal liest den Beleg und füllt die '
+      + 'Erfassungsmaske vor. Eindeutiges wird übernommen, bei mehreren Möglichkeiten fragt die Maske nach, Fehlendes bleibt leer – gespeichert wird erst durch den Benutzer.',
+    permissions: ['transport.belegerfassung:create'],
+    routen: ['POST /auftraege/beleg/erkennen'],
+    hinweis: 'Abgeschaltet gibt es keine Ablagefläche für Belege.',
+  },
+  {
     id: 'transport.versand', app: 'Aufträge', text: 'Versand (E-Mail, Paperless)',
     beschreibung: 'Aufträge und Rechnungen per E-Mail versenden und in Paperless ablegen.',
     permissions: ['transport.versand:execute'],
@@ -88,6 +96,22 @@ export const TRANSPORT_FUNKTIONEN: FunktionDef[] = [
     beschreibung: 'n8n liefert E-Mails aus dem Outlook-365-Postfach samt Anhängen an das Portal (API-Schlüssel).',
     permissions: ['transport.eingang:execute'],
     hinweis: 'Die Lieferungen von n8n werden dann abgewiesen; die E-Mails bleiben im Postfach liegen.',
+  },
+  {
+    id: 'transport.beleg.eingang', app: 'Posteingang', text: 'Auftrag aus Posteingang anlegen',
+    beschreibung: 'Knopf im Posteingang: aus einem eingegangenen Dokument (Frachtauftrag des Kunden als PDF oder Bild) einen Auftrag vorbereiten – '
+      + 'die Erfassungsmaske öffnet sich vorausgefüllt, gespeichert wird erst durch den Benutzer.',
+    permissions: ['transport.belegeingang:create'],
+    routen: ['POST /eingang/dokumente/:id/beleg'],
+    hinweis: 'Abgeschaltet fehlt der Knopf im Posteingang; „Auftrag aus Beleg (Drag & Drop)“ bleibt davon unberührt.',
+  },
+  {
+    id: 'transport.beleg.profile', app: 'Produkte und Wertelisten', text: 'Leseprofile pflegen',
+    beschreibung: 'Leseprofile für „Auftrag aus Beleg“: je Layout (Bestellung über Frachtkosten, Ladeauftrag, Allgemein) die Bezeichnung, ob es beim Lesen '
+      + 'berücksichtigt wird, und ein bevorzugter Kunde, der bei mehreren passenden Kontakten gewählt wird.',
+    permissions: ['transport.leseprofile:edit'],
+    routen: ['GET /beleg/profile', 'PUT /beleg/profile/:layout'],
+    hinweis: 'Abgeschaltet gelten alle drei Layouts als aktiv und ohne bevorzugten Kunden; die Pflege ist gesperrt.',
   },
   {
     id: 'transport.import', app: 'Produkte und Wertelisten', text: 'Datenimport aus SAP',
