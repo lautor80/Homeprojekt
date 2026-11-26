@@ -14,6 +14,7 @@ import { DOKUMENTARTEN, F_MW, P_MW, versandRegeln, type VersandRegeln, workflowE
 import {
   artenOrdnen, emlBauen, emlDateiname, mailsPlanen, modusFuer, regelSchluessel,
   type Art, type Empfaenger, type GeplanteMail, type MailtextVorlage, type Modus, type VersandDokument,
+  zusatzVerteilen,
 } from './sammelversand-logik.js';
 
 /**
@@ -129,13 +130,6 @@ interface VorschauMail {
 
 /** Absender/BCC einer E-Mail: Regel ihrer ersten Art – alle Arten einer E-Mail haben dieselbe (mailsPlanen, gruppe) */
 const regelFuer = (m: GeplanteMail, regeln: VersandRegeln) => regeln[m.arten[0]] ?? { absender: null, bcc: [] };
-/** Zusätzliche Dateien gehen nicht mit, wenn die E-Mail eine BCC-Adresse hat (z. B. DATEV-Upload übernimmt jeden Anhang als
- *  Beleg) oder eine Rechnung mit festem Absender ist. */
-const ohneZusatz = (m: GeplanteMail, regeln: VersandRegeln) => {
-  const r = regelFuer(m, regeln);
-  return r.bcc.length > 0 || (m.arten.includes('R') && !!r.absender);
-};
-
 async function vorschauRechnen(req: FastifyRequest, b: Auswahl, nurEntwurf: boolean) {
   const vorlagen = (await sql`select art, sprache, text from transport.mailtexte`) as unknown as MailtextVorlage[];
   const regeln = await versandRegeln();
@@ -153,8 +147,8 @@ async function vorschauRechnen(req: FastifyRequest, b: Auswahl, nurEntwurf: bool
     try { a = await anlagen(m); } catch (e) { fehler = `Dokument konnte nicht erzeugt werden: ${fehlerText(e)}`; }
     if (!fehler && !m.an) fehler = 'Empfänger fehlt';
     const regel = regelFuer(m, regeln);
-    const ohne = ohneZusatz(m, regeln);
-    const hinweise = [...(a?.hinweise ?? []), ...(ohne ? ['Fester Absender/BCC: zusätzliche Dateien werden nicht angehängt.'] : [])];
+    // weitere Auftragsdateien gehen an den Empfänger; die BCC-Adresse bekommt dann eine eigene E-Mail nur mit den Belegen
+    const hinweise = [...(a?.hinweise ?? []), ...(regel.bcc.length ? [`Mit weiteren Dateien bekommt ${regel.bcc.join(', ')} eine eigene E-Mail nur mit den Belegen (ohne BCC an der E-Mail an den Empfänger).`] : [])];
     mails.push({
       plan: m,
       anlagen: a,
@@ -245,15 +239,29 @@ export async function sammelversandRoutes(app: FastifyInstance) {
       if (!m.anlagen) { ergebnisse.push({ schluessel: w.schluessel, status: 'fehler', text: m.vorschau.fehler ?? 'Dokument konnte nicht erzeugt werden.' }); continue; }
       try {
         const regel = regelFuer(m.plan, plan.regeln);
+        const v = zusatzVerteilen(m.anlagen.dateien, zusatz, regel.bcc);
+        const betreff = w.betreff || m.plan.betreff;
         const r = await euroflexMailSenden({
-          nr: m.plan.auftragsnr, modus: m.vorschau.modus, an: w.an, cc: w.cc, betreff: w.betreff || m.plan.betreff, text: w.text,
-          dateien: ohneZusatz(m.plan, plan.regeln) ? m.anlagen.dateien : [...m.anlagen.dateien, ...zusatz], benutzer: benutzerName(req),
-          absender: regel.absender, bcc: regel.bcc,
+          nr: m.plan.auftragsnr, modus: m.vorschau.modus, an: w.an, cc: w.cc, betreff, text: w.text,
+          dateien: v.dateien, benutzer: benutzerName(req), absender: regel.absender, bcc: v.bcc,
         });
         // maßgeblich ist die E-Mail an den Empfänger; scheitert nur die Kopie an die feste zweite Adresse, steht das im Text
         const haupt = r.mails.find((x) => x.rolle === 'kunde');
         const status = haupt && haupt.status !== 'fehler' ? haupt.status : 'fehler';
-        ergebnisse.push({ schluessel: w.schluessel, status, text: r.text });
+        let text = r.text;
+        // weitere Dateien und BCC: eigene E-Mail nur mit den Belegen an die BCC-Adresse (ohne Kopie an die feste zweite Adresse)
+        if (v.beleg && status !== 'fehler') {
+          try {
+            const b2 = await euroflexMailSenden({
+              nr: m.plan.auftragsnr, modus: m.vorschau.modus, an: v.beleg.an, cc: '', betreff, text: w.text,
+              dateien: v.beleg.dateien, benutzer: benutzerName(req), absender: regel.absender, bcc: [], nur: ['kunde'],
+            });
+            text += ` Belege an ${v.beleg.an}: ${b2.text}`;
+          } catch (e) {
+            text += ` Belege an ${v.beleg.an} fehlgeschlagen: ${fehlerText(e)}`;
+          }
+        }
+        ergebnisse.push({ schluessel: w.schluessel, status, text });
         if (status !== 'fehler') versendet.push(...versendeteBelege(m.anlagen.dateien));
       } catch (e) {
         ergebnisse.push({ schluessel: w.schluessel, status: 'fehler', text: fehlerText(e) });
@@ -278,11 +286,15 @@ export async function sammelversandRoutes(app: FastifyInstance) {
       if (!m.anlagen) throw new BusinessError(`${m.plan.auftragsnr}: ${m.vorschau.fehler ?? 'Dokument konnte nicht erzeugt werden.'}`);
       const betreff = w.betreff || m.plan.betreff;
       const regel = regelFuer(m.plan, plan.regeln);
-      const eml = emlBauen({
-        an: w.an, cc: w.cc, betreff, text: w.text, anhaenge: ohneZusatz(m.plan, plan.regeln) ? m.anlagen.dateien : [...m.anlagen.dateien, ...zusatz],
-        ...(regel.absender ? { von: regel.absender } : {}), ...(regel.bcc.length ? { bcc: regel.bcc.join(', ') } : {}),
-      });
+      const v = zusatzVerteilen(m.anlagen.dateien, zusatz, regel.bcc);
+      const von = regel.absender ? { von: regel.absender } : {};
+      const eml = emlBauen({ an: w.an, cc: w.cc, betreff, text: w.text, anhaenge: v.dateien, ...von, ...(v.bcc.length ? { bcc: v.bcc.join(', ') } : {}) });
       dateien.push({ schluessel: w.schluessel, name: emlDateiname(betreff, vergeben), inhalt_base64: Buffer.from(eml, 'utf8').toString('base64') });
+      // weitere Dateien und BCC: zweite E-Mail-Datei nur mit den Belegen an die BCC-Adresse
+      if (v.beleg) {
+        const b2 = emlBauen({ an: v.beleg.an, betreff, text: w.text, anhaenge: v.beleg.dateien, ...von });
+        dateien.push({ schluessel: w.schluessel, name: emlDateiname(`${betreff} (Belege)`, vergeben), inhalt_base64: Buffer.from(b2, 'utf8').toString('base64') });
+      }
       versendet.push(...versendeteBelege(m.anlagen.dateien));
     }
     // E-Mail-Dateien zum Versenden: Belege wie beim Versand automatisch in Paperless

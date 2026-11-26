@@ -153,7 +153,7 @@ wegräumt.
 
 1. Dokumentarten wählen: Transportauftrag (je Fahrt, an den Unternehmer der Fahrt), Lieferschein (an den Kunden), Rechnung mit
    ZUGFeRD (an den Rechnungsempfänger, sonst Kunde; nur bei Aufträgen mit Rechnung), optional XRechnung-XML.
-   Vorauswahl aus den Einstellungen.
+   Vorauswahl aus den Einstellungen; haben alle gewählten Aufträge eine Rechnung, ist der **Transportauftrag nicht vorausgewählt**.
 2. Weitere Auftragsdateien (nur bei einem Auftrag): Paperless-Dokumente des Auftrags und Dateien aus dem Ablageordner.
 3. Vorschau: **eine E-Mail je Auftrag und Empfänger**. Mehrere Dokumentarten an denselben Empfänger desselben Auftrags werden zu
    einer E-Mail zusammengefasst (Betreff und Text der ersten Art, Anhänge aller Arten). Empfänger, CC, Betreff, Text je Mail änderbar;
@@ -212,7 +212,11 @@ Regeln im Detail:
 - Eine Rechnungsnummer (auch Sammelrechnung) geht nur einmal hinaus – mit dem ersten ausgewählten Auftrag.
 - `nur_entwurf: true` legt alle Mails als Entwurf ab, auch wenn „Senden“ erlaubt wäre.
 - Status je Mail richtet sich nach der Mail an den Empfänger; scheitert nur die Kopie an die feste zweite Adresse, nennt der Text den Fehler – erneutes Senden schickt dem Kunden nichts doppelt.
-- Zusätzliche Dateien (Ablageordner, Paperless) hängen an jeder Mail; Paperless nur bei genau einem Auftrag.
+- Zusätzliche Dateien (Ablageordner, Paperless) hängen an jeder Mail; Paperless nur bei genau einem Auftrag. Hat die Mail eine feste
+  **BCC** (z. B. DATEV-Upload, die jeden Anhang als Beleg übernimmt), geht sie mit den zusätzlichen Dateien **ohne BCC** an den
+  Empfänger, und die BCC-Adresse bekommt eine **eigene Mail nur mit den Belegen** (gleicher Betreff, Text, Absender; ohne Kopie an die
+  feste zweite Adresse). Beim EML-Download sind das zwei Dateien (zweite mit „(Belege)“ im Namen). `zusatzVerteilen` in
+  `sammelversand-logik.ts`.
 - In der Auftragsliste ersetzt bei eingeschalteter Funktion ein Menü „E-Rechnung / Paperless“ das alte Menü „Versenden“; ist die Funktion aus, bleibt das alte EML-Menü.
 
 Der Server erzeugt die PDFs selbst (wie `GET /pdf/:art/:id`) und ruft je Mail `euroflexMailSenden` aus `mailversand.ts` auf –

@@ -147,6 +147,18 @@ export function modusFuer(arten: Art[], einstellung: Record<Art, { modus: Modus 
 /** gewählte Arten in fester Reihenfolge, ohne Doppelte */
 export const artenOrdnen = (arten: Art[]): Art[] => ART_REIHENFOLGE.filter((a) => arten.includes(a));
 
+// ---------------------------------------------------------------- weitere Auftragsdateien und BCC
+/**
+ * Weitere Auftragsdateien an einer E-Mail mit fester BCC-Adresse (z. B. DATEV-Upload, die jeden Anhang als Beleg übernimmt):
+ * Die E-Mail an den Empfänger bekommt Belege und weitere Dateien, aber **keine** BCC; die BCC-Adresse bekommt eine eigene E-Mail
+ * nur mit den Belegen (gleicher Betreff, Text und Absender). Ohne weitere Dateien oder ohne BCC bleibt es eine E-Mail.
+ */
+export function zusatzVerteilen<D>(belege: D[], zusatz: D[], bcc: string[]): { dateien: D[]; bcc: string[]; beleg: { an: string; dateien: D[] } | null } {
+  if (!zusatz.length) return { dateien: belege, bcc, beleg: null };
+  if (!bcc.length) return { dateien: [...belege, ...zusatz], bcc: [], beleg: null };
+  return { dateien: [...belege, ...zusatz], bcc: [], beleg: { an: bcc.join(', '), dateien: belege } };
+}
+
 // ---------------------------------------------------------------- .eml (wie MailEntwurf.emlErzeugen, serverseitig)
 const b64Zeilen = (b: Uint8Array) => Buffer.from(b).toString('base64').replace(/.{1,76}/g, '$&\r\n');
 /** Kopfzeile mit Umlauten: RFC 2047 (UTF-8, Base64) */

@@ -221,6 +221,8 @@ export function AuftraegeListe() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [mails, setMails] = useState<{ art: 'T' | 'L' | 'R'; rows: MailRow[] } | null>(null);
   const [versand, setVersand] = useState<string[] | null>(null);
+  /** beim Öffnen von „Versenden…“: alle gewählten Aufträge fakturiert → Transportauftrag nicht vorausgewählt */
+  const [versandFakturiert, setVersandFakturiert] = useState(false);
   const [xr, setXr] = useState<XRes | null>(null);
   const [info, setInfo] = useState<{ title: string; text: string } | null>(null);
   // „Neu ablegen“: läuft gerade (Text des aktuellen Schritts)
@@ -727,7 +729,7 @@ export function AuftraegeListe() {
           { text: 'Aufträge und Rechnungen', icon: 'documents', onClick: () => neuAblegen('alles') },
         ]} />
         {sammelversand && can('transport.versand:execute') && (
-          <Button icon="paper-plane" disabled={!sel.length} onClick={() => setVersand(sel.map((s) => s.auftragsnr))}
+          <Button icon="paper-plane" disabled={!sel.length} onClick={() => { setVersandFakturiert(sel.every((s) => !!s.faktura)); setVersand(sel.map((s) => s.auftragsnr)); }}
                   tooltip="Ausgewählte Dokumente als E-Mails je Auftrag und Empfänger über Outlook 365">Versenden…</Button>
         )}
         {sammelversand ? (
@@ -813,7 +815,7 @@ export function AuftraegeListe() {
 
       <DocsDialog docs={docs} onClose={() => { docs?.forEach((d) => d.lokal && URL.revokeObjectURL(d.url)); setDocs(null); }} />
       <MailDialog art={mails?.art ?? 'T'} mails={mails?.rows ?? null} onClose={() => setMails(null)} />
-      <VersandDialog auftraege={versand ?? []} open={!!versand} onClose={() => setVersand(null)} />
+      <VersandDialog auftraege={versand ?? []} fakturiert={versandFakturiert} open={!!versand} onClose={() => setVersand(null)} />
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
       <InfoDialog title={info?.title ?? ''} text={info?.text ?? null} onClose={() => setInfo(null)} />
       <ConfirmDialog open={!!abschliessen} title="Ohne Rechnung abschließen" confirmText="Abschließen" askReason
