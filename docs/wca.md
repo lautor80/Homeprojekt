@@ -108,6 +108,7 @@ Je Person und Zeitraum (bis Stichtag):
 | Vollständig | Offen ≤ Toleranz. |
 | B / P / I / A | Stunden je Typ. |
 | Billable-Quote | `B / (B + P + I)` – Anteil an der Arbeitszeit ohne Abwesenheit. |
+| Utilization | `(B + P) / (B + P + I)` – Billable und PreSales zusammen als Anteil an der Arbeitszeit ohne Abwesenheit; eigene Kachel in der Übersicht, Spalte „Util.“ in Team-, Personen- und Billable-Tabelle. |
 | Kontierung / Texte / Regelwerk | je `[Anzahl Fundgruppen, davon Niedrig, Mittel, Hoch]`; Kontierung umfasst K und P. |
 | Texte unauffällig | Anteil der Rückmeldungen (ohne Abwesenheit) ohne T-Fund. |
 

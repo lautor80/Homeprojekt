@@ -72,6 +72,10 @@ export function ReiterBillable({ sicht }: { sicht: Sicht }) {
       titel: 'Quote', rechts: true, tooltip: 'Billable-Quote B / (B + P + I)', wert: (p) => proz(p.billableQuote), sort: (p) => p.billableQuote ?? -1,
       summe: (ps) => { const s = summen(ps); return proz(quote(s.B, s.P + s.I)); },
     },
+    {
+      titel: 'Util.', rechts: true, tooltip: 'Utilization (B + P) / (B + P + I)', wert: (p) => proz(p.utilization), sort: (p) => p.utilization ?? -1,
+      summe: (ps) => { const s = summen(ps); return proz(quote(s.B + s.P, s.I)); },
+    },
     { titel: 'Verteilung', wert: (p) => <Verteilung {...p} /> },
   ];
 

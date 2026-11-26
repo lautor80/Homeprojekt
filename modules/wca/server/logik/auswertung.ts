@@ -517,6 +517,7 @@ export function auswerten(ein: AuswertungEingabe): Auswertung {
       ausgeblendet: p.ausgeblendet, aktiv: sollTage > 0 || ist > 0,
       soll: r2(soll), ist: r2(ist), offen: r2(offen), fehltage, sollTage, vollstaendig: offen <= tol,
       B: r2(B), P: r2(P), I: r2(I), A: r2(A), billableQuote: arbeitszeit > 0 ? Math.round((B / arbeitszeit) * 10000) / 10000 : null,
+      utilization: arbeitszeit > 0 ? Math.round(((B + P) / arbeitszeit) * 10000) / 10000 : null,
       tageStatus, kontierung: zaehl(['K', 'P']), texte: zaehl(['T']), regelwerk: zaehl(['R']),
       eintraegeZeitraum: ent.length, texteUnauffaellig: ent.length ? 1 - schlecht / ent.length : null,
       rueckfrage: '',

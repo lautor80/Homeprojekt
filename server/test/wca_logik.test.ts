@@ -210,6 +210,7 @@ test('Rechenbeispiel: Summen, Ableitungen und Tagesstatus (Stichtag 20.11.2026, 
   assert.equal(p.vollstaendig, false);
   assert.deepEqual([p.B, p.P, p.I, p.A], [19.5, 2, 50.5, 8]);
   assert.equal(Math.round(p.billableQuote! * 1000), 271);
+  assert.equal(Math.round(p.utilization! * 1000), 299); // (19,5 + 2) / 72
   const st = (s: string) => p.tageStatus.filter((t) => t.status === s).map((t) => t.tag.slice(8));
   assert.equal(p.tageStatus.length, 30);
   assert.equal(st('vollstaendig').length, 9);

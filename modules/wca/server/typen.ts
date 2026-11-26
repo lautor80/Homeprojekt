@@ -226,6 +226,7 @@ export interface PersonAuswertung {
   I: number;
   A: number;
   billableQuote: number | null; // B / (B + P + I)
+  utilization: number | null; // (B + P) / (B + P + I)
   tageStatus: TagStatus[]; // alle Tage des Zeitraums (auch nach Stichtag → 'zukunft')
   kontierung: [number, number, number, number]; // [Gruppen, #Niedrig, #Mittel, #Hoch] (K + P)
   texte: [number, number, number, number]; // T

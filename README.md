@@ -563,7 +563,7 @@ Entwurf, Rechenregeln und Ausbaustufen: [docs/vermietung.md](docs/vermietung.md)
 ## Modul `wca` (WCA Zeitenkontrolle)
 
 Tempo-Zeitexporte (Ansicht **Teamreport** als CSV) importieren und die Zeitbuchungen eines Teams prüfen: **Vollständigkeit**
-je Person und Tag (Soll aus Arbeitstagen, Soll je Tag und Feiertagen je Standort), **Billable-Quote** (B / (B + P + I)),
+je Person und Tag (Soll aus Arbeitstagen, Soll je Tag und Feiertagen je Standort), **Billable-Quote** (B / (B + P + I)) und **Utilization** ((B + P) / (B + P + I)),
 **Kontierung** (Error-Account, fehlender Account, Ticket auf mehreren Accounts, Kundenarbeit auf internem Projekt …),
 **Plausibilität** (lange Tage, lange Einzelbuchungen, Buchung an freien Tagen), **Textqualität** (leer, nur IDs, nur
 Allgemeinbegriffe, kopierte Mailtexte, Wortlisten) und das **Regelwerk** für Buchungstexte („<ID>: …“, mindestens fünf
