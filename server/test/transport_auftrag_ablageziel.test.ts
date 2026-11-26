@@ -14,8 +14,8 @@ const lesen = (rel: string) => readFileSync(path.join(ROOT, rel), 'utf8');
 
 test('Auftrag: Ablageziel hängt am Recht zum Ändern, nicht am Bearbeitungsmodus', () => {
   const dok = lesen('modules/transport/web/AuftragDokumente.tsx');
-  assert.ok(dok.includes('useAblageZiel(ablegen && (d?.paperless || ordner) ? ziel : null);'), 'Ziel für Navigation und Strg+V');
-  assert.ok(dok.includes('{ablegen && (d.paperless || ordner) && <AblageFlaeche ziel={ziel}'), 'Ablagefeld im Auftrag');
+  assert.ok(dok.includes('useAblageZiel(darfAblegen && (d?.paperless || ordner) ? ziel : null);'), 'Ziel für Navigation und Strg+V');
+  assert.ok(dok.includes('{darfAblegen && (d.paperless || ordner) && <AblageFlaeche ziel={ziel}'), 'Ablagefeld im Auftrag');
   assert.ok(!dok.includes('useAblageZiel(edit &&'), 'nicht mehr an edit gebunden');
   assert.ok(lesen('modules/transport/web/AuftragDetail.tsx').includes('<AuftragDokumente nr={nr} edit={darfBearbeiten} ablegen={darfAendern} '), 'Recht transport.auftraege:edit');
 });
