@@ -3,6 +3,11 @@ import { AUFTRAG_FELD } from './paperless-auftrag.js';
 
 export { AUFTRAG_FELD };
 
+/** Berechtigungen aller Euroflex-Dokumente in Paperless: Eigentümer admin, Anzeigen und Bearbeiten für Benutzer und Gruppe „Euroflex“ */
+export const RECHTE = {
+  eigentuemer: 'admin', anzeigen_benutzer: 'Euroflex', anzeigen_gruppen: 'Euroflex', bearbeiten_benutzer: 'Euroflex', bearbeiten_gruppen: 'Euroflex',
+} as const;
+
 /** Ablagekontexte von Euroflex für die zentrale Paperless-Zuordnung */
 const auftrag = [
   { name: 'auftragsnr', text: 'Auftragsnummer', beispiel: '2026_0153' },
@@ -25,7 +30,7 @@ export const K = {
     id: 'auftrag.dokument', text: 'Dokument zum Auftrag (Lieferschein, CMR, Foto …)',
     beschreibung: 'Dateien und Screenshots, die am Auftrag abgelegt werden. Die Verknüpfung zum Auftrag speichert das Portal zusätzlich selbst.',
     platzhalter: [...auftrag, PH.datei, PH.heute, PH.benutzer, PH_DOKID],
-    standard: { titel: 'Auftrag {auftragsnr} – {datei|ohneEndung}', korrespondent: '{kunde}', tags: 'Auftrag {auftragsnr}', datum: '{heute}', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
+    standard: { ...RECHTE, titel: 'Auftrag {auftragsnr} – {datei|ohneEndung}', korrespondent: '{kunde}', tags: 'Auftrag {auftragsnr}', datum: '{heute}', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
   },
   migration: {
     id: 'auftrag.migration', text: 'Migration lokaler Auftragsordner',
@@ -33,24 +38,24 @@ export const K = {
       + 'Das Custom Field „Auftrag“ verbindet das Dokument mit dem Auftrag; Dokumentdatum = Datum der Datei im Ordner.',
     platzhalter: [...auftrag, PH.datei, { name: 'pfad', text: 'Pfad im gewählten Ordner', beispiel: '2026/2026_0153/Eingang/Lieferschein_4711.pdf' },
       { name: 'datum', text: 'Datum der Datei (JJJJ-MM-TT)', beispiel: '2026-03-02' }, PH.heute, PH.benutzer, PH_DOKID],
-    standard: { titel: 'Auftrag {auftragsnr} – {datei|ohneEndung}', korrespondent: '{kunde}', tags: 'Migration', datum: '{datum}', notiz: 'Übernommen aus dem Ablageordner: {pfad}', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
+    standard: { ...RECHTE, titel: 'Auftrag {auftragsnr} – {datei|ohneEndung}', korrespondent: '{kunde}', tags: 'Migration', datum: '{datum}', notiz: 'Übernommen aus dem Ablageordner: {pfad}', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
   },
   transportauftrag: {
     id: 'auftrag.transportauftrag', text: 'Transportauftrag (beim Drucken und Versenden)',
     beschreibung: 'Wird beim Drucken und Versenden automatisch abgelegt (Funktion „Belege automatisch in Paperless ablegen“) und dem Auftrag zugeordnet – erneut nur, wenn sich der Auftrag geändert hat.',
     platzhalter: [...beleg, PH.datei, PH.heute, PH.benutzer, PH_DOKID],
-    standard: { titel: 'Transportauftrag {kennung}', korrespondent: '{unternehmer}', tags: 'Auftrag {auftragsnr}', datum: '{heute}', notiz: '{anlass} durch {benutzer} (Euroflex-Portal)', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
+    standard: { ...RECHTE, titel: 'Transportauftrag {kennung}', korrespondent: '{unternehmer}', tags: 'Auftrag {auftragsnr}', datum: '{heute}', notiz: '{anlass} durch {benutzer} (Euroflex-Portal)', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
   },
   lieferschein: {
     id: 'auftrag.lieferschein', text: 'Lieferschein (beim Drucken und Versenden)',
     beschreibung: 'Wird beim Drucken und Versenden automatisch abgelegt (Funktion „Belege automatisch in Paperless ablegen“) und dem Auftrag zugeordnet – erneut nur, wenn sich der Auftrag geändert hat.',
     platzhalter: [...beleg, PH.datei, PH.heute, PH.benutzer, PH_DOKID],
-    standard: { titel: 'Lieferschein {kennung}', korrespondent: '{kunde}', tags: 'Auftrag {auftragsnr}', datum: '{heute}', notiz: '{anlass} durch {benutzer} (Euroflex-Portal)', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
+    standard: { ...RECHTE, titel: 'Lieferschein {kennung}', korrespondent: '{kunde}', tags: 'Auftrag {auftragsnr}', datum: '{heute}', notiz: '{anlass} durch {benutzer} (Euroflex-Portal)', felder: { [AUFTRAG_FELD]: '{auftragsnr}' } },
   },
   kontaktDokument: {
     id: 'kontakt.dokument', text: 'Dokument zum Kontakt',
     platzhalter: [{ name: 'kontakt', text: 'Kontakt (Korrespondent)', beispiel: 'Holz Müller GmbH' }, { name: 'adrnr', text: 'Kontaktnummer', beispiel: '792' }, PH.datei, PH.heute, PH.benutzer, PH_DOKID],
-    standard: { titel: '{kontakt} – {datei|ohneEndung}', korrespondent: '{kontakt}', datum: '{heute}', notiz: 'Abgelegt beim Kontakt {adrnr} ({benutzer}, Euroflex-Portal)' },
+    standard: { ...RECHTE, titel: '{kontakt} – {datei|ohneEndung}', korrespondent: '{kontakt}', datum: '{heute}', notiz: 'Abgelegt beim Kontakt {adrnr} ({benutzer}, Euroflex-Portal)' },
   },
   rechnung: {
     id: 'rechnung', text: 'Ausgangsrechnung (ZUGFeRD-PDF)',
@@ -58,7 +63,7 @@ export const K = {
     platzhalter: [{ name: 'faktura', text: 'Rechnungsnummer', beispiel: '2026_5001' }, { name: 'kunde', text: 'Rechnungsempfänger (Korrespondent)', beispiel: 'Holz Müller GmbH' },
       { name: 'datum', text: 'Rechnungsdatum', beispiel: '2026-11-08' }, { name: 'betrag', text: 'Rechnungsbetrag brutto', beispiel: 1344.9 }, { name: 'titel', text: 'Titel laut Rechnung', beispiel: 'Sammelrechnung 2026_5001 - Holz Müller GmbH' },
       { name: 'auftraege', text: 'Auftragsnummern (kommagetrennt)', beispiel: '2026_0150, 2026_0153' }, PH.datei, PH.heute, PH.benutzer, PH_DOKID],
-    standard: { titel: '{titel}', korrespondent: '{kunde}', datum: '{datum}', tags: '', felder: { [AUFTRAG_FELD]: '{auftraege}' } },
+    standard: { ...RECHTE, titel: '{titel}', korrespondent: '{kunde}', datum: '{datum}', tags: '', felder: { [AUFTRAG_FELD]: '{auftraege}' } },
   },
 } satisfies Record<string, KontextDef>;
 

@@ -13,6 +13,8 @@ const regelSchema = z.object({
   titel: vorlage.optional(), korrespondent: vorlage.optional(), dokumenttyp: vorlage.optional(), speicherpfad: vorlage.optional(),
   tags: vorlage.optional(), datum: vorlage.optional(), notiz: z.string().max(500).optional(),
   felder: z.record(z.string().max(80), vorlage).optional(), anlegen: z.boolean().optional(),
+  eigentuemer: vorlage.optional(), anzeigen_benutzer: vorlage.optional(), anzeigen_gruppen: vorlage.optional(),
+  bearbeiten_benutzer: vorlage.optional(), bearbeiten_gruppen: vorlage.optional(),
 });
 
 function finden(modul: string, kontext: string) {

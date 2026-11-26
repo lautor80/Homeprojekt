@@ -16,10 +16,12 @@ import { SperrHinweis, useSperre } from '../sperre';
  * Korrespondent, Dokumenttyp, Speicherpfad, Tags, Datum, Notiz und Custom Fields gefüllt werden –
  * Vorlagen mit Platzhaltern, Vorschau mit Beispielwerten, Auswahllisten aus Paperless.
  */
-type Feld = 'titel' | 'korrespondent' | 'dokumenttyp' | 'speicherpfad' | 'tags' | 'datum' | 'notiz';
-interface Regel { titel?: string; korrespondent?: string; dokumenttyp?: string; speicherpfad?: string; tags?: string; datum?: string; notiz?: string; felder?: Record<string, string>; anlegen?: boolean }
+type Feld = 'titel' | 'korrespondent' | 'dokumenttyp' | 'speicherpfad' | 'tags' | 'datum' | 'notiz'
+  | 'eigentuemer' | 'anzeigen_benutzer' | 'anzeigen_gruppen' | 'bearbeiten_benutzer' | 'bearbeiten_gruppen';
+type Regel = Partial<Record<Feld, string>> & { felder?: Record<string, string>; anlegen?: boolean };
+interface Rechte { eigentuemer: string; anzeigen: { benutzer: string[]; gruppen: string[] }; bearbeiten: { benutzer: string[]; gruppen: string[] } }
 interface Platzhalter { name: string; text: string; beispiel: string | number }
-interface Zuordnung { title: string; created?: string; correspondent: string; documentType: string; storagePath: string; tags: string[]; notiz: string; customFields: Record<string, string | number | null>; anlegen: boolean }
+interface Zuordnung { title: string; created?: string; correspondent: string; documentType: string; storagePath: string; tags: string[]; notiz: string; customFields: Record<string, string | number | null>; anlegen: boolean; rechte?: Rechte | null }
 interface Kontext {
   id: string; text: string; beschreibung?: string; platzhalter: Platzhalter[]; standard: Regel; benutzerwahl?: Feld[];
   eigene: Regel | null; wirksam: Regel; vorschau: Zuordnung; geaendert: boolean;
@@ -27,7 +29,7 @@ interface Kontext {
 interface Modul { modul: string; name: string; kontexte: Kontext[] }
 interface Listen { paperless: boolean; fehler?: string; dokumenttypen: string[]; speicherpfade: string[]; tags: string[]; korrespondenten: string[]; felder: { name: string; typ: string }[] }
 
-const FELDER: { key: Feld; text: string; hinweis: string; liste?: keyof Listen }[] = [
+const FELDER: { key: Feld; text: string; hinweis: string; liste?: keyof Listen; rechte?: true }[] = [
   { key: 'titel', text: 'Titel', hinweis: 'Titel des Dokuments in Paperless' },
   { key: 'korrespondent', text: 'Korrespondent', hinweis: 'Name; wird bei Bedarf in Paperless angelegt', liste: 'korrespondenten' },
   { key: 'dokumenttyp', text: 'Dokumenttyp', hinweis: 'muss in Paperless existieren', liste: 'dokumenttypen' },
@@ -35,7 +37,30 @@ const FELDER: { key: Feld; text: string; hinweis: string; liste?: keyof Listen }
   { key: 'tags', text: 'Tags', hinweis: 'mehrere durch Komma; werden bei Bedarf angelegt', liste: 'tags' },
   { key: 'datum', text: 'Dokumentdatum', hinweis: 'JJJJ-MM-TT, z. B. {heute}' },
   { key: 'notiz', text: 'Notiz', hinweis: 'wird als Notiz an das Dokument angehängt (leer = keine)' },
+  { key: 'eigentuemer', text: 'Eigentümer', hinweis: 'Benutzername in Paperless (leer = Benutzer des API-Tokens)', rechte: true },
+  { key: 'anzeigen_benutzer', text: 'Anzeigen – Benutzer', hinweis: 'Benutzernamen, mehrere durch Komma', rechte: true },
+  { key: 'anzeigen_gruppen', text: 'Anzeigen – Gruppen', hinweis: 'Gruppennamen, mehrere durch Komma', rechte: true },
+  { key: 'bearbeiten_benutzer', text: 'Bearbeiten – Benutzer', hinweis: 'Benutzernamen; Bearbeiten schließt Anzeigen ein', rechte: true },
+  { key: 'bearbeiten_gruppen', text: 'Bearbeiten – Gruppen', hinweis: 'Gruppennamen; Bearbeiten schließt Anzeigen ein', rechte: true },
 ];
+/** Ergebnis eines Felds in der Vorschau */
+function ergebnis(f: Feld, v: Zuordnung): string {
+  const r = v.rechte;
+  switch (f) {
+    case 'titel': return v.title || '–';
+    case 'korrespondent': return v.correspondent || '–';
+    case 'dokumenttyp': return v.documentType || '–';
+    case 'speicherpfad': return v.storagePath || '–';
+    case 'tags': return v.tags.join(', ') || '–';
+    case 'datum': return v.created || '–';
+    case 'notiz': return v.notiz || '–';
+    case 'eigentuemer': return r?.eigentuemer || '–';
+    case 'anzeigen_benutzer': return r?.anzeigen.benutzer.join(', ') || '–';
+    case 'anzeigen_gruppen': return r?.anzeigen.gruppen.join(', ') || '–';
+    case 'bearbeiten_benutzer': return r?.bearbeiten.benutzer.join(', ') || '–';
+    case 'bearbeiten_gruppen': return r?.bearbeiten.gruppen.join(', ') || '–';
+  }
+}
 const MODS = ['|upper', '|lower', '|datum', '|kurz:40', '|pad:6', '|ohneEndung', '|betrag'];
 
 export function PaperlessMappingPage() {
@@ -126,10 +151,7 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
             : <Input value={regel[f] ?? ''} disabled={gewaehlt} placeholder={gewaehlt ? 'wählt der Benutzer an dieser Stelle' : ''} style={{ width: '100%' }}
                      onInput={(e) => set(f, e.target.value)} onFocus={() => setAktiv(f)} />}
           <span className="portal-pm__ergebnis">
-            {gewaehlt ? <span className="portal-muted">Benutzerauswahl</span>
-              : f === 'tags' ? (vorschau.tags.join(', ') || '–')
-                : f === 'titel' ? (vorschau.title || '–') : f === 'korrespondent' ? (vorschau.correspondent || '–') : f === 'dokumenttyp' ? (vorschau.documentType || '–')
-                  : f === 'speicherpfad' ? (vorschau.storagePath || '–') : f === 'datum' ? (vorschau.created || '–') : (vorschau.notiz || '–')}
+            {gewaehlt ? <span className="portal-muted">Benutzerauswahl</span> : ergebnis(f, vorschau)}
           </span>
         </div>
         <span className="portal-muted portal-small">{FELDER.find((x) => x.key === f)!.hinweis}</span>
@@ -158,7 +180,7 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
           <Tab data-key="felder" text="Standardfelder" selected={tab === 'felder'}>
             <div className="portal-pm__raster">
               <div>
-                {FELDER.map((f) => feldEingabe(f.key, f.liste))}
+                {FELDER.filter((f) => !f.rechte).map((f) => feldEingabe(f.key, f.liste))}
                 <CheckBox text="Fehlende Korrespondenten und Tags in Paperless anlegen" checked={regel.anlegen !== false} onChange={(e) => setRegel({ ...regel, anlegen: e.target.checked })} />
               </div>
               <Platzhalterliste k={k} onEinfuegen={(t) => einfuegen(aktiv, t)} />
@@ -198,6 +220,17 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
               <Platzhalterliste k={k} onEinfuegen={(t) => einfuegen(aktiv, t)} />
             </div>
           </Tab>
+          <Tab data-key="rechte" text="Berechtigungen" selected={tab === 'rechte'}>
+            <div className="portal-pm__raster">
+              <div>
+                {FELDER.filter((f) => f.rechte).map((f) => feldEingabe(f.key, f.liste))}
+                <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>
+                  Wie der Reiter „Berechtigungen“ in Paperless; gesetzt nach jeder Ablage. Alle Felder leer = Berechtigungen bleiben wie von Paperless vergeben.
+                </Text>
+              </div>
+              <Platzhalterliste k={k} onEinfuegen={(t) => einfuegen(aktiv, t)} />
+            </div>
+          </Tab>
           <Tab data-key="vorschau" text="Vorschau" selected={tab === 'vorschau'}>
             <Section title="Ergebnis mit Beispielwerten">
               <table className="portal-pm__tabelle">
@@ -209,6 +242,7 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
                   <tr><th>Tags</th><td>{vorschau.tags.join(', ') || '–'}</td></tr>
                   <tr><th>Dokumentdatum</th><td>{vorschau.created || '–'}</td></tr>
                   <tr><th>Notiz</th><td>{vorschau.notiz || '–'}</td></tr>
+                  {FELDER.filter((f) => f.rechte).map((f) => <tr key={f.key}><th>{f.text}</th><td>{ergebnis(f.key, vorschau)}</td></tr>)}
                   {Object.entries(vorschau.customFields).map(([n, v]) => <tr key={n}><th>{n}</th><td>{v === null ? '–' : typeof v === 'number' ? `${v} (Zahl)` : v}</td></tr>)}
                 </tbody>
               </table>
