@@ -97,6 +97,7 @@ export interface Einstellungen {
   regelwerkAb: string; // '2026-11-01'
   regelwerkMinWoerter: number; // 5
   regelwerkIdBillable: boolean;
+  regelwerkOhneIdMuster: string; // 'WCMS' – AMS-Tickets: ID am Anfang (R2) nicht nötig
   wiederholungTage: number; // 5 (T6)
   wiederholungMinH: number; // 8 (T6)
   langerTag: number; // 10 (P1)

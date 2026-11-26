@@ -154,6 +154,8 @@ export function Pruefregeln() {
               </FieldBox>
               <ZahlFeld label="Mindestens Wörter" value={e.regelwerkMinWoerter} onChange={zahlSet('regelwerkMinWoerter')} readonly={ro} />
               <FieldBox label="ID am Anfang"><Haken label="Pflicht bei abrechenbaren Einträgen" checked={e.regelwerkIdBillable} onChange={(v) => set('regelwerkIdBillable', v)} readonly={ro} /></FieldBox>
+              <TextFeld wide={false} label="Ohne ID-Pflicht (AMS-Tickets)" value={e.regelwerkOhneIdMuster} onChange={(v) => set('regelwerkOhneIdMuster', v)} readonly={ro}
+                        hinweis="Jira-Schlüsselmuster, z. B. WCMS; ? = ein Zeichen, * = beliebig; mehrere mit Komma" />
             </FormGrid>
           </Section>
 

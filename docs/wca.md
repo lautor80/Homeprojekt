@@ -157,7 +157,7 @@ Katalog im Quelltext: `REGELN` in `modules/wca/server/logik/standard.ts`.
 | F_intern | Interne Tätigkeit auf Kundenkonto | Wortliste („Zeiterfassung“, „interne Abstimmung“, „Townhall“ …), nur abrechenbare Einträge. | B 1 | Interne Tätigkeiten auf das passende interne Konto buchen. |
 | F_ton | Umgangssprache / Wertung | Wortliste („nervig“, „sinnlos“, „wie immer“, „???“ …). | 1, B 2 | Sachlich formulieren – der Text kann beim Kunden auf der Rechnung stehen. |
 | R1 | Regelwerk: zu wenige Wörter | Nach der führenden ID stehen weniger Wörter als verlangt (Standard 5); Regeltermine ausgenommen; ab „Regelwerk gilt ab“. | 1, B 2 | Kurz, klar, spezifisch: mindestens fünf Wörter. |
-| R2 | Regelwerk: ID am Anfang fehlt | Ein abrechenbarer Text beginnt nicht mit „<ID>: “; Regeltermine ausgenommen; ab „Regelwerk gilt ab“. | 2 | Format „<ID>: Beschreibung mit mehr als fünf Wörtern“. |
+| R2 | Regelwerk: ID am Anfang fehlt | Ein abrechenbarer Text beginnt nicht mit einer ID – erlaubt sind u. a. „ID: “, „ID “, „<ID>“, „<<ID>>“, „[ID]“, „(ID)“, „ID – “; Regeltermine und AMS-Tickets (Muster „Ohne ID-Pflicht“, Standard WCMS) ausgenommen; ab „Regelwerk gilt ab“. | 2 | Format „<ID>: Beschreibung mit mehr als fünf Wörtern“. |
 
 Reihenfolge der Textregeln: T1, T2, T3b/T3 und T9 schließen einander aus (die erste treffende gilt); T5 und T8 prüfen
 nur Texte, die keine dieser Regeln (außer T3b) getroffen hat. Wortlisten: kommagetrennt, `*` am Ende = Wortanfang,
@@ -193,6 +193,7 @@ Server mit dem Standard.
 | Error-Accounts | drei Standardnamen | K1 (zeilenweise). |
 | Account-Pflicht ab | automatisch | K2. |
 | Regelwerk an / gilt ab / min. Wörter / ID-Pflicht abrechenbar | an / 2026-11-01 / 5 / ja | R1, R2. |
+| Ohne ID-Pflicht (AMS-Tickets) | WCMS | Jira-Schlüsselmuster (Ticket-Präfix oder Bereichsschlüssel); Buchungen auf solche Tickets brauchen keine ID am Textanfang (R2). |
 | Gleicher Text: Tage / Stunden | 5 / 8 h | T6. |
 | Tag mit vielen Stunden | 10 h | P1. |
 | Lange Einzelbuchung | 8 h | P2. |

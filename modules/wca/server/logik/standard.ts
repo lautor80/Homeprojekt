@@ -50,6 +50,7 @@ export const STANDARD_EINSTELLUNGEN: Einstellungen = {
   regelwerkAb: '2026-11-01',
   regelwerkMinWoerter: 5,
   regelwerkIdBillable: true,
+  regelwerkOhneIdMuster: 'WCMS',
   wiederholungTage: 5,
   wiederholungMinH: 8,
   langerTag: 10,
@@ -102,7 +103,7 @@ export const REGELN: RegelBeschreibung[] = [
   ...Object.entries(STANDARD_WORTREGELN).map(([id, w]) =>
     R(id, 'T', w.art, w.name, `Der Text enthält einen Begriff aus der Wortliste „${w.name}“${w.nurAbrechenbar ? ' (nur abrechenbare Einträge)' : ''}.`, w.tipp)),
   R('R1', 'R', 're', 'Regelwerk: zu wenige Wörter', 'Nach der führenden ID stehen weniger Wörter als vom Regelwerk verlangt (Standard 5); Regeltermine ausgenommen.', 'Kurz, klar, spezifisch: mindestens fünf Wörter.'),
-  R('R2', 'R', 're', 'Regelwerk: ID am Anfang fehlt', 'Ein abrechenbarer Text beginnt nicht mit „<ID>: “; Regeltermine ausgenommen.', 'Format „<ID>: Beschreibung mit mehr als fünf Wörtern“.'),
+  R('R2', 'R', 're', 'Regelwerk: ID am Anfang fehlt', 'Ein abrechenbarer Text beginnt nicht mit einer ID (z. B. „ID: “, „<ID> “, „<<ID>> “, „[ID] – “); Regeltermine und AMS-Tickets ausgenommen.', 'Format „<ID>: Beschreibung mit mehr als fünf Wörtern“.'),
 ];
 
 /** fehlende Felder mit dem Standard füllen (Wortregeln je Regel zusammenführen) */
