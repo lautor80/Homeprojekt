@@ -153,7 +153,7 @@ wegräumt.
 
 1. Dokumentarten wählen: Transportauftrag (je Fahrt, an den Unternehmer der Fahrt), Lieferschein (an den Kunden), Rechnung mit
    ZUGFeRD (an den Rechnungsempfänger, sonst Kunde; nur bei Aufträgen mit Rechnung), optional XRechnung-XML.
-   Vorauswahl aus den Einstellungen; haben alle gewählten Aufträge eine Rechnung, ist der **Transportauftrag nicht vorausgewählt**.
+   Vorauswahl aus den Einstellungen; haben alle gewählten Aufträge eine Rechnung, ist der **Transportauftrag nicht vorausgewählt**; sonst (Versand eines Auftrags) ist die **Rechnung nie vorausgewählt**.
 2. Weitere Auftragsdateien (nur bei einem Auftrag): Paperless-Dokumente des Auftrags und Dateien aus dem Ablageordner.
 3. Vorschau: **eine E-Mail je Auftrag und Empfänger**. Mehrere Dokumentarten an denselben Empfänger desselben Auftrags werden zu
    einer E-Mail zusammengefasst (Betreff und Text der ersten Art, Anhänge aller Arten). Empfänger, CC, Betreff, Text je Mail änderbar;
