@@ -714,7 +714,7 @@ export function AuftragDetail() {
         {!isNew && nr ? (
           <ObjectPageSection id="dokumente" titleText="Dokumente" hideTitleText>
             <ObjectPageSubSection id="dokumente-sub" titleText="Dokumente">
-              <AuftragDokumente nr={nr} edit={darfBearbeiten} ordnerStand={ordnerStand} faktura={a.faktura} />
+              <AuftragDokumente nr={nr} edit={darfBearbeiten} ablegen={darfAendern} ordnerStand={ordnerStand} faktura={a.faktura} />
             </ObjectPageSubSection>
           </ObjectPageSection>
         ) : <></>}

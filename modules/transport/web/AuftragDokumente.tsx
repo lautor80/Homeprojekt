@@ -39,7 +39,10 @@ const lesen = (f: File) => new Promise<string>((ok, err) => {
 });
 const istPdf = (d: Dok) => /\.pdf$/i.test(d.datei ?? '');
 
-export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: string; edit: boolean; ordnerStand?: number; /** Rechnung des Auftrags: die E-Mail startet dann mit „Rechnung (an Kunde)“ */ faktura?: string | null }) {
+export function AuftragDokumente({ nr, edit, ablegen = edit, ordnerStand = 0, faktura }: {
+  nr: string; edit: boolean;
+  /** Dokumente ablegen (Ablagefeld, Strg+V, Ablagefeld der Navigation) – mit Recht zum Ändern auch ohne Bearbeitungsmodus */ ablegen?: boolean;
+  ordnerStand?: number; /** Rechnung des Auftrags: die E-Mail startet dann mit „Rechnung (an Kunde)“ */ faktura?: string | null }) {
   const [d, setD] = useState<Liste | null>(null);
   // Ablageordner auf diesem PC (#121): hineingezogene Dateien landen zusätzlich dort
   const [ordner, setOrdner] = useState(false);
@@ -93,8 +96,9 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: s
       };
     },
   };
-  // Strg+V und Ablagefeld der Navigation legen beim geöffneten Auftrag ab
-  useAblageZiel(edit && (d?.paperless || ordner) ? ziel : null);
+  // Strg+V und Ablagefeld der Navigation legen beim geöffneten Auftrag ab – auch ohne Bearbeitungsmodus, sonst landet die Datei
+  // mit der allgemeinen Voreinstellung (anderer Dokumenttyp/Korrespondent, ohne Feld „Auftrag“) in Paperless
+  useAblageZiel(ablegen && (d?.paperless || ordner) ? ziel : null);
 
   // Popup mit Vorschau und Kommentaren (DokumentPopup.tsx)
   const oeffnen = (x: Dok) => setPopup(x);
@@ -132,8 +136,8 @@ export function AuftragDokumente({ nr, edit, ordnerStand = 0, faktura }: { nr: s
       )}
       <OrdnerDateien nr={nr} version={ordnerStand + stand} />
       <AuftragEingang nr={nr} onUebernommen={() => setStand((v) => v + 1)} />
-      {edit && (d.paperless || ordner) && <AblageFlaeche ziel={ziel} text={`Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen; eine E-Mail aus Outlook (.eml) wird zerlegt und ihre Anhänge abgelegt${ordner ? ' – sie landen auch im Ablageordner' : ''}`} />}
-      {!edit && !d.dokumente.length && d.paperless && <Text className="portal-muted">Keine Dokumente in Paperless zugeordnet.</Text>}
+      {ablegen && (d.paperless || ordner) && <AblageFlaeche ziel={ziel} text={`Dokumente zum Auftrag hierher ziehen (z. B. unterschriebener Lieferschein, CMR, Foto), klicken zum Auswählen oder Screenshot mit Strg+V einfügen; eine E-Mail aus Outlook (.eml) wird zerlegt und ihre Anhänge abgelegt${ordner ? ' – sie landen auch im Ablageordner' : ''}`} />}
+      {!ablegen && !d.dokumente.length && d.paperless && <Text className="portal-muted">Keine Dokumente in Paperless zugeordnet.</Text>}
       {popup && <DokumentPopup nr={nr} docId={popup.doc_id} titel={popup.titel ?? popup.datei ?? `Dokument ${popup.doc_id}`} datei={popup.datei} link={popup.link}
                                edit={edit} onClose={() => setPopup(null)} onGeaendert={laden} />}
       <ConfirmDialog open={!!loesen} title="Zuordnung lösen" confirmText="Lösen"
