@@ -8,7 +8,8 @@ import { P_MW, workflowEinstellungen } from '../mailworkflows.js';
 import { postfachListe, type Grund, type Kandidat } from './logik.js';
 import { ZUGEORDNET_ERLEDIGT } from './aufbewahrung.js';
 import {
-  abrufAnstossen, auftragAendern, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, speicherStand, uebernommen, vonHandAblegen, vorgangIgnorieren,
+  abrufAnstossen, auftragAendern, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, sammelUebergabe, speicherStand, uebernommen, vonHandAblegen,
+  vorgangIgnorieren, vormerken, vormerkungAufheben,
 } from './verarbeitung.js';
 
 /**
@@ -66,6 +67,7 @@ export async function eingangRoutes(app: FastifyInstance) {
     const rows = await sql`
       select v.id::int as id, v.postfach, v.von, v.von_name, v.betreff, to_char(v.datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(v.eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
              case when v.status = 'neu' then 'pruefen' else v.status end as status, v.hinweis, v.auftragsnr, v.punkte, v.abgelegt_von,
+             v.vorgemerkt_am is not null as vorgemerkt, v.vorgemerkt_von,
              jsonb_array_length(v.kandidaten)::int as anzahl_kandidaten,
              (select count(*)::int from transport.eing_dokumente d where d.vorgang_id = v.id) as anzahl_dokumente
         from transport.eing_vorgaenge v
@@ -77,7 +79,7 @@ export async function eingangRoutes(app: FastifyInstance) {
       sql`select distinct postfach from transport.eing_vorgaenge where postfach <> '' order by postfach`,
     ]);
     return {
-      vorgaenge: rows, letzter_abruf: letzter, schwelle: e.eingang.schwelle,
+      vorgaenge: rows, letzter_abruf: letzter, schwelle: e.eingang.schwelle, ablageziel: e.eingang.ablageziel,
       postfaecher: postfachListe(e.eingang.postfaecher, gesehen.map((r) => r.postfach as string)),
     };
   });
@@ -87,7 +89,8 @@ export async function eingangRoutes(app: FastifyInstance) {
     const [v] = await sql`
       select id::int as id, postfach, von, von_name, an, betreff, to_char(datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
              case when status = 'neu' then 'pruefen' else status end as status, hinweis, text, auftragsnr, punkte, begruendung, kandidaten,
-             mail_aktion, to_char(abgeschlossen_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as abgeschlossen_am, bearbeitet_von, abgelegt_von
+             mail_aktion, to_char(abgeschlossen_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as abgeschlossen_am, bearbeitet_von, abgelegt_von,
+             vorgemerkt_am is not null as vorgemerkt, vorgemerkt_von, vorgemerkt_dokumente
         from transport.eing_vorgaenge where id = ${id}`;
     if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
     const kand = (v.kandidaten ?? []) as Kandidat[];
@@ -151,6 +154,25 @@ export async function eingangRoutes(app: FastifyInstance) {
       dokumente: z.array(z.coerce.number().int().positive()).min(1, 'Bitte mindestens ein Dokument wählen.').max(100).optional(),
     }).parse(req.body);
     return vonHandAblegen(id, b.auftragsnr, b.dokumente ?? null, wer(req));
+  });
+
+  /** E-Mail bearbeiten, ohne abzulegen: Auftrag und Dateien vormerken (Reiter „Posteingang“) */
+  app.post('/eingang/vorgaenge/:id/vormerken', pflegen, async (req, reply) => {
+    if (!can(req, P_AUFTRAG.display)) return reply.code(403).send({ message: `Keine Berechtigung (${P_AUFTRAG.display}).` });
+    const { id } = idParam.parse(req.params);
+    const b = z.object({
+      auftragsnr: z.string().trim().min(1, 'Bitte einen Auftrag wählen.').max(40),
+      dokumente: z.array(z.coerce.number().int().positive()).min(1, 'Bitte mindestens ein Dokument wählen.').max(100).optional(),
+    }).parse(req.body);
+    return vormerken(id, b.auftragsnr, b.dokumente ?? null, wer(req));
+  });
+  app.delete('/eingang/vorgaenge/:id/vormerken', pflegen, async (req) => vormerkungAufheben(idParam.parse(req.params).id, wer(req)));
+
+  /** Gesammelte Übergabe aller vorgemerkten E-Mails (oder der genannten) an Paperless bzw. den Ablageordner */
+  app.post('/eingang/uebergabe', pflegen, async (req, reply) => {
+    if (!can(req, P_AUFTRAG.display)) return reply.code(403).send({ message: `Keine Berechtigung (${P_AUFTRAG.display}).` });
+    const b = z.object({ vorgaenge: z.array(z.coerce.number().int().positive()).min(1).max(500).optional() }).parse(req.body ?? {});
+    return sammelUebergabe(b.vorgaenge ?? null, wer(req));
   });
 
   /** Auftrag einer abgelegten E-Mail ändern (umhängen) */

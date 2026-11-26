@@ -7,9 +7,12 @@ Fachliche Beschreibung (Zuordnung, Prüfliste, Ablage): [../euroflex-mailworkflo
 
 - **Ein Postfach:** Es gibt praktisch nur ein Eingangspostfach; dessen Adresse steht im Knoten *Konfiguration*.
 - **Nur ungelesene Mails** aus dem Quellordner (Standard: Posteingang), höchstens 50 je Lauf – der Rest folgt im nächsten Lauf.
-- **Das Portal entscheidet**, was mit der Mail geschieht: Es antwortet mit einem Outlook-Ordner (Standard `Portal/Zugeordnet` bzw.
-  `Portal/Prüfen`, einstellbar unter *Einstellungen → Euroflex → Mail-Workflows*). n8n legt fehlende Ordner unterhalb des
-  Posteingangs an, verschiebt die Mail dorthin und markiert sie als gelesen.
+- **Kein Verschieben:** Das Portal antwortet mit `aktion { ordner: null, gelesen: true }`. Die Mail **bleibt in ihrem Outlook-Ordner**
+  und wird nur **als gelesen markiert** (Zweig *Gelesen aufteilen → Nur als gelesen markieren → Ergebnis gelesen*). Weil nur
+  ungelesene Mails abgerufen werden, kommt sie nicht erneut. Die Ordnerschleife (*Ordner planen* … *Verschieben*) bleibt für
+  Antworten mit Ordner (ältere Portalversion) im Workflow, läuft aber leer.
+  **Nach einem Portal-Update muss diese Workflow-Datei in n8n neu importiert werden** – der ältere Workflow lässt Mails ohne
+  Ordner ungelesen liegen und liefert sie alle 5 Minuten erneut (das Portal antwortet „doppelt“).
 - **Keine Antwort, keine Änderung:** Lehnt das Portal ab oder ist es nicht erreichbar, bleibt die Mail ungelesen liegen und kommt im
   nächsten Lauf erneut. Doppelt verarbeitet wird nichts – das Portal erkennt bekannte Mails (Postfach + Message-ID) und antwortet
   mit `doppelt` samt Ordner.
