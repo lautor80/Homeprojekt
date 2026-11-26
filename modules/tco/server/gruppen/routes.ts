@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { DB } from '../verein.js';
 import { regelnAnwenden, regelnLesen, regelnSpeichern } from './regeln.js';
-import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppenMitgliedVerschieben, gruppeSpeichern } from './logik.js';
+import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliederAufnehmen, gruppenMitgliedSetzen, gruppenMitgliedVerschieben, gruppeSpeichern, zuordnenPruefen, zuordnenSperre } from './logik.js';
+import { BusinessError } from '../../../../server/src/errors.js';
 
 /**
  * Berechtigungsobjekte Mitgliedergruppen:
@@ -12,6 +13,10 @@ import { aufnahmeMitglieder, gruppeLoeschen, gruppenLesen, gruppenMitgliedEntfer
  * Die Zuordnung eines einzelnen Mitglieds im Mitgliedsstamm läuft über tco.mitglieder:edit (mitglieder/routes.ts).
  * Selbsteintrag in „Meine Mitgliedschaft“ lässt sich je Gruppe auf Berechtigungsgruppen beschränken (nur_rollen, z. B. „Vorstand“);
  * die Pflege hier ist davon nicht betroffen.
+ * Geschützte Gruppen (zuordnen_rollen, z. B. „Vorstand“ nur durch Kassenwart oder Präsident): Zuordnen, Austragen, Rolle,
+ * Verschieben sowie Ändern und Löschen der Gruppe sind – auch in den Untergruppen – nur Benutzern mit einer dieser
+ * Berechtigungsgruppen möglich, ganz gleich über welche App. Die Beschränkung selbst stellt ein Administrator
+ * (core.users:edit) ein oder wer sie erfüllt; Administratoren dürfen die Gruppe ändern, aber niemanden zuordnen.
  * Der Vereinskalender zeigt denselben Baum im Reiter „Gruppen / Mannschaften“ (#16): tco.kalender:edit darf ihn anzeigen
  * und Gruppen sowie Mitglieder pflegen – das Regelwerk (Ableitung nach Alter und Geschlecht) bleibt tco.gruppen:edit vorbehalten.
  */
@@ -20,6 +25,17 @@ export const P_GR = { display: 'tco.gruppen:display', edit: 'tco.gruppen:edit' }
 const P_KAL_EDIT = 'tco.kalender:edit';
 
 const id = z.object({ id: z.coerce.number().int().positive() });
+/** Administrator der Benutzerverwaltung: darf geschützte Gruppen ändern und die Beschränkung einstellen (nicht: zuordnen) */
+const P_ADMIN = 'core.users:edit';
+const rollenVon = (req: FastifyRequest) => req.user?.roles ?? [];
+
+/**
+ * Gruppe anlegen/ändern/verschieben/löschen bei geschützten Gruppen: nur wer die Beschränkung der Gruppe und der (neuen)
+ * übergeordneten Gruppe erfüllt – oder ein Administrator. Auch vom Vereinskalender genutzt.
+ */
+export async function gruppePflegePruefen(req: FastifyRequest, gruppen: (number | null | undefined)[]) {
+  if (!can(req, P_ADMIN)) await zuordnenPruefen(DB, gruppen, rollenVon(req));
+}
 
 /** angemeldet und mindestens eine der Berechtigungen */
 function eine(...perms: string[]) {
@@ -36,8 +52,13 @@ export async function gruppenRoutes(app: FastifyInstance) {
 
   app.get('/gruppen', lesen, async (req) => {
     const pflegt = can(req, P_GR.edit) || can(req, P_KAL_EDIT);
+    const alle = await gruppenLesen(DB);
+    const rollen = rollenVon(req);
     return {
-      gruppen: await gruppenLesen(DB), pflege: pflegt, regelwerk: can(req, P_GR.edit),
+      // gesperrt: Der Benutzer darf der Gruppe niemanden zuordnen (geschützte Gruppe, ihm fehlt die Berechtigungsgruppe)
+      gruppen: alle.map((g) => ({ ...g, gesperrt: !!zuordnenSperre(alle, g.id, rollen) })), pflege: pflegt, regelwerk: can(req, P_GR.edit),
+      // Beschränkung „Zuordnung nur durch“ neu einstellen
+      zuordnenAendern: pflegt && can(req, P_ADMIN),
       // Auswahl für „Selbsteintrag nur für Berechtigungsgruppen“ im Dialog der Gruppe
       rollen: pflegt ? (await DB`select id, name from core.roles order by lower(name), id`).map((r) => ({ id: r.id as string, name: r.name as string })) : [],
     };
@@ -90,13 +111,25 @@ export async function gruppenRoutes(app: FastifyInstance) {
       name: z.string().max(80), beschreibung: z.string().max(500).nullish(), aktiv: z.boolean().default(true),
       // Selbsteintrag nur für diese Berechtigungsgruppen (leer = alle Mitglieder); weglassen = nicht ändern
       nur_rollen: z.array(z.string().min(1).max(60)).max(30).optional(),
+      // Zuordnung nur durch diese Berechtigungsgruppen (leer = keine Beschränkung); weglassen = nicht ändern
+      zuordnen_rollen: z.array(z.string().min(1).max(60)).max(30).optional(),
     }).parse(req.body);
+    await gruppePflegePruefen(req, [b.id, b.parent_id]);
+    if (b.zuordnen_rollen !== undefined && !can(req, P_ADMIN)) {
+      // ohne Administratorrecht nur, wenn die Gruppe selbst schon geschützt ist (die Prüfung oben hat der Benutzer bestanden)
+      const [alt] = b.id ? await DB`select zuordnen_rollen from tco.kal_gruppen where id = ${b.id}` : [];
+      const bisher = [...((alt?.zuordnen_rollen as string[] | undefined) ?? [])].sort();
+      const neu = [...new Set(b.zuordnen_rollen)].sort();
+      if (!bisher.length && neu.length) throw new BusinessError('Die Beschränkung „Zuordnung nur durch“ stellt ein Administrator ein (Berechtigung core.users:edit).', 403);
+      if (!bisher.length) delete b.zuordnen_rollen;
+    }
     const n = await change(req, (tx) => gruppeSpeichern(tx, b.id ?? null, b), { action: 'GRUPPE' });
     return { id: n, text: `Gruppe „${b.name.trim()}“ gespeichert.` };
   });
 
   app.delete('/gruppen/:id', pflege, async (req) => {
     const { id: gid } = id.parse(req.params);
+    await gruppePflegePruefen(req, [gid]);
     const name = await change(req, (tx) => gruppeLoeschen(tx, gid), { action: 'GRUPPE', reason: 'gelöscht' });
     return { text: `Gruppe „${name}“ gelöscht.` };
   });
@@ -105,6 +138,7 @@ export async function gruppenRoutes(app: FastifyInstance) {
   app.post('/gruppen/:id/mitglieder/verschieben', pflege, async (req) => {
     const { id: gid } = id.parse(req.params);
     const b = z.object({ adrnr: z.string().min(1).max(20), von: z.number().int().positive() }).parse(req.body);
+    await zuordnenPruefen(DB, [b.von, gid], rollenVon(req));
     const name = await change(req, (tx) => gruppenMitgliedVerschieben(tx, b.von, gid, b.adrnr), { action: 'GRUPPE', reason: 'verschoben' });
     return { text: `Nach „${name}“ verschoben.` };
   });
@@ -116,6 +150,8 @@ export async function gruppenRoutes(app: FastifyInstance) {
       adrnrs: z.array(z.string().min(1).max(20)).min(1, 'Bitte mindestens ein Mitglied wählen.').max(500),
       rolle: z.string().max(60).nullish(), entfernen: z.boolean().default(false),
     }).parse(req.body);
+    // geschützte Gruppe (z. B. „Vorstand“): aufnehmen, Rolle setzen und entfernen nur mit der Berechtigungsgruppe
+    await zuordnenPruefen(DB, [gid], rollenVon(req));
     if (b.entfernen) {
       await change(req, async (tx) => { for (const a of b.adrnrs) await gruppenMitgliedEntfernen(tx, gid, a); }, { action: 'GRUPPE' });
       return { text: b.adrnrs.length === 1 ? 'Aus der Gruppe entfernt.' : `${b.adrnrs.length} Mitglieder aus der Gruppe entfernt.` };

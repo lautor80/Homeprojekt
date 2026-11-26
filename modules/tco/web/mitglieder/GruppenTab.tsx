@@ -5,8 +5,12 @@ import { Empty } from '@core/components/Section';
 import { GR, type Gruppe, type GruppenDaten } from '../gruppen/typen';
 import { MG, type Detail } from './typen';
 
-/** nur = in „Meine Mitgliedschaft“: Selbsteintrag nur für bestimmte Berechtigungsgruppen, z. B. „nur „Vorstand““ */
-export type BaumGruppe = Pick<Gruppe, 'id' | 'parent_id' | 'name' | 'ebene' | 'aktiv'> & { nur?: string | null };
+/**
+ * nur = Hinweis zur Beschränkung: in „Meine Mitgliedschaft“ Selbsteintrag nur für bestimmte Berechtigungsgruppen
+ * (z. B. „nur „Vorstand““) bzw. bei geschützten Gruppen „nur durch „Kassenwart“ oder „Präsident““.
+ * gesperrt = geschützte Gruppe, dem Benutzer fehlt die Berechtigungsgruppe: weder zuordnen noch austragen.
+ */
+export type BaumGruppe = Pick<Gruppe, 'id' | 'parent_id' | 'name' | 'ebene' | 'aktiv'> & { nur?: string | null; gesperrt?: boolean };
 
 /**
  * Baum der Mitgliedergruppen mit Ankreuzfeld je Gruppe – im Mitgliedsstamm (Reiter „Gruppen“) und in „Meine Mitgliedschaft“.
@@ -45,13 +49,13 @@ export function GruppenAuswahl({ baum, zugeordnet: liste, edit, rolleAenderbar, 
         const rolle = zugeordnet.get(g.id) ?? '';
         return (
           <div key={g.id} className="portal-row" style={{ paddingLeft: `${g.ebene * 1.75}rem`, minHeight: '2.75rem', borderBottom: '1px solid var(--sapList_BorderColor)', flexWrap: 'nowrap' }}>
-            <CheckBox text={g.name} checked={drin || geerbt} disabled={!edit || geerbt || (!g.aktiv && !drin) || (!!g.nur && !drin)}
+            <CheckBox text={g.name} checked={drin || geerbt} disabled={!edit || geerbt || !!g.gesperrt || (!g.aktiv && !drin) || (!!g.nur && !drin)}
                       onChange={(e) => setzen(g.id, e.target.checked ? {} : { entfernen: true })} />
             {!g.aktiv && <span className="portal-muted portal-small">inaktiv</span>}
-            {g.nur && !geerbt && <span className="portal-muted portal-small" title="Eintragen können sich nur Mitglieder dieser Berechtigungsgruppe">{g.nur}</span>}
+            {g.nur && !geerbt && <span className="portal-muted portal-small" title={g.gesperrt ? 'Geschützte Gruppe: Zuordnen und Austragen nur durch Benutzer dieser Berechtigungsgruppen' : 'Eintragen können sich nur Mitglieder dieser Berechtigungsgruppe'}>{g.nur}</span>}
             {geerbt && <span className="portal-muted portal-small">über Untergruppe</span>}
             <div style={{ flex: 1 }} />
-            {drin && (edit && rolleAenderbar
+            {drin && (edit && rolleAenderbar && !g.gesperrt
               ? <Input value={rolle} placeholder="Rolle, z. B. Mannschaftsführer" maxlength={60} style={{ width: 'min(16rem, 45%)' }}
                        onChange={(e) => { const v = e.target.value.trim(); if (v !== rolle) setzen(g.id, { rolle: v }); }} />
               : <Text>{rolle}</Text>)}
@@ -77,7 +81,7 @@ export function GruppenTab({ d, edit, onAktion }: { d: Detail; edit: boolean; on
         <Title level="H5">Gruppen ({d.gruppen.length})</Title>
         <ToolbarSpacer />
       </Toolbar>
-      <GruppenAuswahl baum={daten.gruppen} zugeordnet={d.gruppen} edit={edit} rolleAenderbar
+      <GruppenAuswahl baum={daten.gruppen.map((g) => (g.gesperrt ? { ...g, nur: 'geschützt – Zuordnung nur durch berechtigte Personen' } : g))} zugeordnet={d.gruppen} edit={edit} rolleAenderbar
                       leer="Es sind noch keine Mitgliedergruppen angelegt (Mitglieder → Mitgliedergruppen)."
                       setzen={(gruppe, body) => onAktion(() => api.post(`${MG}/m/${adrnr}/gruppen`, { gruppe, ...body }))} />
       {daten.gruppen.length > 0 && (

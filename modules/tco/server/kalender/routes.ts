@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { can, change, requireAuth } from '../../../../server/src/auth.js';
 import { BusinessError } from '../../../../server/src/errors.js';
+import { gruppePflegePruefen } from '../gruppen/routes.js';
+import { zuordnenPruefen } from '../gruppen/logik.js';
 import { hasPermission } from '../../../../server/src/permissions.js';
 import { DB, vereinLesen, type Db } from '../verein.js';
 import { addTage } from '../format.js';
@@ -275,17 +277,20 @@ export async function kalenderRoutes(app: FastifyInstance) {
 
   app.post('/kalender/pflege/gruppen', pflege, async (req) => {
     const b = z.object({ id: z.number().int().nullish(), name: z.string().max(80), beschreibung: z.string().max(500).nullish(), aktiv: z.boolean().default(true), parent_id: z.number().int().positive().nullish() }).parse(req.body);
+    await gruppePflegePruefen(req, [b.id, b.parent_id]);
     const n = await change(req, (tx) => gruppeSpeichern(tx, b.id ?? null, b), { action: 'KAL_GRUPPE' });
     return { id: n, text: `Gruppe „${b.name}“ gespeichert.` };
   });
   app.delete('/kalender/pflege/gruppen/:id', pflege, async (req) => {
     const { id: gid } = id.parse(req.params);
+    await gruppePflegePruefen(req, [gid]);
     await change(req, (tx) => gruppeLoeschen(tx, gid), { action: 'KAL_GRUPPE' });
     return { text: 'Gruppe gelöscht.' };
   });
   app.post('/kalender/pflege/gruppen/:id/mitglieder', pflege, async (req) => {
     const { id: gid } = id.parse(req.params);
     const b = z.object({ adrnr: z.string().min(1), rolle: z.string().max(60).nullish(), entfernen: z.boolean().default(false) }).parse(req.body);
+    await zuordnenPruefen(DB, [gid], req.user?.roles ?? []);
     await change(req, async (tx) => { if (b.entfernen) await gruppenMitgliedEntfernen(tx, gid, b.adrnr); else await gruppenMitgliedSetzen(tx, gid, b.adrnr, b.rolle ?? null); }, { action: 'KAL_GRUPPE' });
     return { text: b.entfernen ? 'Aus der Gruppe entfernt.' : 'Gespeichert.' };
   });

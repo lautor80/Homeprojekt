@@ -600,3 +600,87 @@ test('Selbsteintrag nur für Berechtigungsgruppen: Gruppe „Vorstand“ nur fü
   assert.equal((await admin('DELETE', `${G}/${vorstand}`)).status, 200);
   await sql`delete from core.user_roles where role_id = 'GRVORSTAND'`;
 });
+
+test('Geschützte Gruppe: „Vorstand“ nur durch Kassenwart oder Präsident – für alle anderen gesperrt, in jeder App', async () => {
+  for (const [id, name] of [['GRSKASSE', 'Kassenwart Schutztest'], ['GRSPRAES', 'Präsident Schutztest']]) {
+    assert.equal((await admin('POST', '/api/admin/roles', { id, name, permissions: [] })).status, 200);
+  }
+  let r = await admin('POST', G, { name: 'Vorstand Schutztest', zuordnen_rollen: ['GRSKASSE', 'GRSPRAES'] });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const vorstand = r.body.id as number;
+  const frei = await neu('Frei Schutztest');
+  assert.equal((await admin('POST', G, { name: 'Unbekannt Schutztest', zuordnen_rollen: ['GIBTESNICHT'] })).status, 400);
+  // Untergruppe: legt der Administrator an, der Schutz gilt auch dort
+  const beisitzer = await neu('Beisitzer Schutztest', vorstand);
+
+  r = await admin('GET', G);
+  assert.equal(r.body.zuordnenAendern, true);
+  assert.deepEqual(r.body.gruppen.find((x: any) => x.id === vorstand).zuordnen_rollen, ['GRSKASSE', 'GRSPRAES']);
+  for (const [gid, gesperrt] of [[vorstand, true], [beisitzer, true], [frei, false]] as const) assert.equal(r.body.gruppen.find((x: any) => x.id === gid).gesperrt, gesperrt);
+
+  const login = async (name: string) => { const c = client(); assert.equal((await c('POST', '/api/auth/login', { username: name, password: 'neues-passwort' })).status, 200); return c; };
+  const kal = await login('kalpflege'), mgpflege = await login('mgpflege'), anna = await login('anna'), ben = await login('ben');
+
+  // niemand ohne die Berechtigungsgruppe ordnet zu – auch nicht der Administrator, weder in der Gruppenpflege noch im
+  // Vereinskalender, im Mitgliedsstamm oder in „Meine Mitgliedschaft“; ebenso in der Untergruppe
+  r = await admin('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA] });
+  assert.equal(r.status, 403, JSON.stringify(r.body));
+  assert.match(r.body.message, /geschützt.*nur durch „Kassenwart Schutztest“ oder „Präsident Schutztest“/);
+  assert.equal((await kal('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA] })).status, 403);
+  assert.equal((await kal('POST', `${G}/${beisitzer}/mitglieder`, { adrnrs: [ANNA] })).status, 403);
+  assert.equal((await kal('POST', `${K}/pflege/gruppen/${vorstand}/mitglieder`, { adrnr: ANNA })).status, 403);
+  assert.equal((await mgpflege('POST', `${M}/m/${ANNA}/gruppen`, { gruppe: vorstand })).status, 403);
+  r = await anna('GET', `${M}/meine/gruppen`);
+  assert.equal(r.body.gruppen.find((x: any) => x.id === vorstand).gesperrt, true);
+  assert.equal(r.body.gruppen.find((x: any) => x.id === vorstand).nur, 'nur durch „Kassenwart Schutztest“ oder „Präsident Schutztest“');
+  assert.equal(r.body.gruppen.find((x: any) => x.id === beisitzer).gesperrt, true);
+  assert.equal(r.body.gruppen.find((x: any) => x.id === frei).gesperrt, false);
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: vorstand })).status, 403);
+  assert.ok(!(await baum()).find((x) => x.id === vorstand)!.mitglieder.length, 'niemand zugeordnet');
+  // die Gruppe ändern, verschieben, löschen oder etwas darunterhängen: ohne Berechtigungsgruppe nicht (Administrator schon)
+  assert.equal((await kal('POST', G, { id: vorstand, name: 'Vorstand umbenannt' })).status, 403);
+  assert.equal((await kal('POST', G, { id: vorstand, name: 'Vorstand Schutztest', zuordnen_rollen: [] })).status, 403);
+  assert.equal((await kal('POST', G, { name: 'Unter Vorstand', parent_id: vorstand })).status, 403);
+  assert.equal((await kal('POST', G, { id: frei, name: 'Frei Schutztest', parent_id: vorstand })).status, 403);
+  assert.equal((await kal('POST', `${K}/pflege/gruppen`, { id: vorstand, name: 'Vorstand umbenannt' })).status, 403);
+  assert.equal((await kal('DELETE', `${G}/${beisitzer}`)).status, 403);
+  assert.equal((await kal('DELETE', `${K}/pflege/gruppen/${beisitzer}`)).status, 403);
+  // eine freie Gruppe schützen darf nur der Administrator
+  assert.equal((await kal('POST', G, { id: frei, name: 'Frei Schutztest', zuordnen_rollen: ['GRSKASSE'] })).status, 403);
+  assert.equal((await kal('POST', G, { id: frei, name: 'Frei Schutztest', zuordnen_rollen: [] })).status, 200);
+  // Regelwerk: für geschützte Gruppen nicht möglich
+  r = await admin('PUT', `${G}/regeln`, { gruppe_id: vorstand, regeln: [{ gruppe_id: vorstand, alter_von: 0, alter_bis: 120 }] });
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.match(r.body.message, /kein Regelwerk möglich/);
+
+  // Kassenwart (Pflegerecht + Berechtigungsgruppe): zuordnen, Rolle setzen, verschieben, entfernen
+  await sql`insert into core.user_roles (user_id, role_id) select id, 'GRSKASSE' from core.users where username = 'kalpflege'`;
+  r = await kal('GET', G);
+  assert.equal(r.body.gruppen.find((x: any) => x.id === vorstand).gesperrt, false);
+  assert.equal(r.body.zuordnenAendern, false);
+  assert.equal((await kal('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA, BEN] })).status, 200);
+  assert.equal((await kal('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA], rolle: 'Sportwart' })).status, 200);
+  assert.equal((await kal('POST', `${G}/${beisitzer}/mitglieder/verschieben`, { adrnr: BEN, von: vorstand })).status, 200);
+  // … für alle anderen bleibt die Gruppe gesperrt: weder austragen noch herausziehen noch die Rolle ändern
+  assert.equal((await anna('POST', `${M}/meine/gruppen`, { gruppe: vorstand, entfernen: true })).status, 403);
+  assert.equal((await mgpflege('POST', `${M}/m/${ANNA}/gruppen`, { gruppe: vorstand, entfernen: true })).status, 403);
+  assert.equal((await mgpflege('POST', `${M}/m/${ANNA}/gruppen`, { gruppe: vorstand, rolle: 'Präsident' })).status, 403);
+  assert.equal((await admin('POST', `${G}/${frei}/mitglieder/verschieben`, { adrnr: ANNA, von: vorstand })).status, 403);
+  assert.equal((await admin('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA], entfernen: true })).status, 403);
+  assert.deepEqual((await baum()).find((x) => x.id === vorstand)!.mitglieder.map((m) => [m.adrnr, m.rolle]), [[ANNA, 'Sportwart']]);
+  assert.deepEqual((await baum()).find((x) => x.id === beisitzer)!.mitglieder.map((m) => m.adrnr), [BEN]);
+  // Präsident ohne Pflegerecht: darf sich in „Meine Mitgliedschaft“ selbst austragen und eintragen
+  await sql`insert into core.user_roles (user_id, role_id) select id, 'GRSPRAES' from core.users where username = 'ben'`;
+  assert.equal((await ben('GET', `${M}/meine/gruppen`)).body.gruppen.find((x: any) => x.id === beisitzer).gesperrt, false);
+  assert.equal((await ben('POST', `${M}/meine/gruppen`, { gruppe: beisitzer, entfernen: true })).status, 200);
+  assert.equal((await ben('POST', `${M}/meine/gruppen`, { gruppe: vorstand })).status, 200);
+  // wer die Beschränkung erfüllt, darf die Gruppe ändern; ändern ohne zuordnen_rollen behält den Schutz
+  assert.equal((await kal('POST', G, { id: vorstand, name: 'Vorstand Schutztest', beschreibung: 'geändert' })).status, 200);
+  assert.deepEqual((await admin('GET', G)).body.gruppen.find((x: any) => x.id === vorstand).zuordnen_rollen, ['GRSKASSE', 'GRSPRAES']);
+
+  // aufräumen: der Administrator hebt den Schutz auf, danach gilt wieder die normale Pflege
+  assert.equal((await admin('POST', G, { id: vorstand, name: 'Vorstand Schutztest', zuordnen_rollen: [] })).status, 200);
+  assert.equal((await admin('POST', `${G}/${vorstand}/mitglieder`, { adrnrs: [ANNA, BEN], entfernen: true })).status, 200);
+  for (const gid of [beisitzer, vorstand, frei]) assert.equal((await admin('DELETE', `${G}/${gid}`)).status, 200);
+  await sql`delete from core.user_roles where role_id in ('GRSKASSE', 'GRSPRAES')`;
+});
