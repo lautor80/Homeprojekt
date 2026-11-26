@@ -21,6 +21,8 @@ import { StopFeld, type StopVorschlag } from './StopFeld';
 import { anschrift, firmenTreffer, ortTreffer, strassenTreffer, zeitTreffer, type Vorschlaege } from './vorschlaege';
 import { ablegenIn, auftragsOrdner, ordnerBereit } from './ordner';
 
+const LADENUMMER_TOOLTIP = 'Ladenummer aus der Auftragsnr. Kunde übernehmen';
+
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
 /** oben: Beschriftung an der ersten Zeile ausrichten (Felder mit mehreren Zeilen) */
 function F({ label, required, oben, children }: { label: string; required?: boolean; oben?: boolean; children: ReactNode }) {
@@ -154,6 +156,13 @@ export function AuftragDetail() {
     const stops = [...a.stops];
     stops[i] = { ...stops[i], [f]: v || null };
     setA({ ...a, stops });
+  };
+  /** Ladenummer des Stops aus der Auftragsnr. Kunde (Feld hat max. 30 Zeichen, die Auftragsnr. Kunde 40 – längere werden gekürzt) */
+  const ladenummerUebernehmen = (i: number) => {
+    const nr = (a.ordernummer ?? '').trim();
+    if (!nr) return;
+    setStop(i, 'ladenummer', nr.slice(0, 30));
+    if (nr.length > 30) toast('Die Auftragsnr. Kunde ist länger als 30 Zeichen – für die Ladenummer wurde sie gekürzt.');
   };
   /** mehrere Felder eines Stops aus einem Vorschlag; nurLeere = vorhandene Eingaben nicht überschreiben */
   const setStopFelder = (i: number, felder: Partial<Stop>, nurLeere: boolean) => setA((x) => {
@@ -410,7 +419,15 @@ export function AuftragDetail() {
           <F label="Firma">{vf('firma', false)}</F>
           <F label="Straße">{vf('strasse', false)}</F>
           <F label="Land / PLZ Ort"><FlexBox style={{ gap: '0.5rem' }}>{inp('land', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', false)}</div></FlexBox></F>
-          <F label="Ladenummer">{inp('ladenummer', 30)}</F>
+          <F label="Ladenummer">
+            {mayEdit ? (
+              <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>{inp('ladenummer', 30)}</div>
+                <Button icon="copy" design="Transparent" disabled={!a.ordernummer?.trim()} onClick={() => ladenummerUebernehmen(i)}
+                        tooltip={LADENUMMER_TOOLTIP} accessibleName={LADENUMMER_TOOLTIP} />
+              </FlexBox>
+            ) : inp('ladenummer', 30)}
+          </F>
           <F label="Zeitvorgabe Laden"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum')}{zeit('zeit')}</FlexBox></F>
         </Spalte>
         <Spalte titel="Empfänger">
