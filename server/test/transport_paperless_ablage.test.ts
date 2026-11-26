@@ -55,7 +55,8 @@ const NR = '2026_9301';
 // nachgestellt: Paperless
 const pl = { uploads: [] as { titel: string; datei: string; tags: string[]; correspondent: string | null }[], tags: [] as { id: number; name: string }[],
   korrespondenten: [] as { id: number; name: string }[], next: 900,
-  versionen: [] as { doc: number; label: string; datei: string }[], geloescht: new Set<number>(), aktualisiert: [] as number[], rechte: [] as { doc: number; patch: Record<string, unknown> }[] };
+  versionen: [] as { doc: number; label: string; datei: string }[], geloescht: new Set<number>(), aktualisiert: [] as number[], rechte: [] as { doc: number; patch: Record<string, unknown> }[],
+  /** so viele Abfragen des Tasks melden noch „in Arbeit“ (Paperless braucht länger, z. B. große Fotos) */ langsam: 0 };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -77,7 +78,10 @@ const server = http.createServer((req, res) => {
       pl.versionen.push({ doc: Number(m[1]), label: Buffer.from(feld('version_label')[0] ?? '', 'latin1').toString('utf8'), datei: /filename="([^"]+)"/.exec(body)?.[1] ?? '' });
       return send(200, `task-${id}`);
     }
-    if ((m = /^\/api\/tasks\/\?task_id=task-(\d+)/.exec(u))) return send(200, [{ status: 'SUCCESS', related_document: m[1] }]);
+    if ((m = /^\/api\/tasks\/\?task_id=task-(\d+)/.exec(u))) {
+      if (pl.langsam > 0) { pl.langsam--; return send(200, [{ status: 'STARTED', related_document: null }]); }
+      return send(200, [{ status: 'SUCCESS', related_document: m[1] }]);
+    }
     if (req.method === 'GET' && (m = /^\/api\/(correspondents|document_types|storage_paths|custom_fields|tags)\//.exec(u))) {
       const l: Record<string, unknown[]> = { correspondents: pl.korrespondenten, tags: pl.tags, document_types: [], storage_paths: [], custom_fields: [] };
       return send(200, { results: l[m[1]], next: null });
@@ -110,6 +114,7 @@ if (mitDb) {
   const { activeModules } = await import('../src/modules.js');
   const { buildApp } = await import('../src/app.js');
   const { ablageFertig } = await import('../../modules/transport/server/archiv.js');
+  const { WARTEN } = await import('../../modules/transport/server/dokumente.js');
 
   let app: Awaited<ReturnType<typeof buildApp>>;
   let cookie = '';
@@ -214,5 +219,24 @@ if (mitDb) {
     const r = await call('POST', `${T}/archiv`, { belege: [{ art: 'T', kennung: NR }] });
     assert.equal(r.status, 403);
     assert.equal((await call('PUT', '/api/funktionen', { id: 'transport.paperless.automatisch', aktiv: true })).status, 200);
+  });
+
+  test('Dokument zum Auftrag: braucht Paperless länger, werden Feld „Auftrag“ und Zuordnung im Hintergrund nachgetragen', async () => {
+    WARTEN.sofort = 1; WARTEN.nachlauf = 10;
+    pl.langsam = 2;
+    const vorher = pl.uploads.length;
+    const r = await call('POST', `${T}/auftraege/${NR}/dokumente`, { datei: 'Foto_Ben.jpg', inhalt: Buffer.from('jpg').toString('base64') });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.id, null, 'noch in Arbeit');
+    assert.match(r.body.text, /automatisch nachgetragen/);
+    assert.equal(pl.uploads.length, vorher + 1);
+    let link: { doc_id: number } | undefined;
+    for (let i = 0; i < 40 && !link; i++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      [link] = await sql`select doc_id from transport.auftrag_dokumente where auftragsnr = ${NR} and datei = 'Foto_Ben.jpg'` as unknown as { doc_id: number }[];
+    }
+    assert.ok(link, 'Verknüpfung im Portal nachgetragen');
+    assert.ok(pl.aktualisiert.includes(link.doc_id), 'Felder (u. a. „Auftrag“) am Dokument gesetzt');
+    assert.ok(pl.rechte.some((x) => x.doc === link!.doc_id), 'Berechtigungen gesetzt');
   });
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ServerModule } from '../../../server/src/module.js';
 import { APP_ROOT } from '../../../server/src/config.js';
-import { sql, type Tx } from '../../../server/src/db.js';
+import { sql, withChange, type Tx } from '../../../server/src/db.js';
 import { can, change, changeCtx, requireAuth } from '../../../server/src/auth.js';
 import { BusinessError } from '../../../server/src/errors.js';
 import {
@@ -742,12 +742,24 @@ async function routes(app: FastifyInstance) {
     const k = a.kundeAdr;
     const kunde = k ? [k.kundenname, k.kundenname2].filter(Boolean).join(' ').trim() || null : null;
     const u = a.unternehmerAdr;
+    const benutzer = benutzerName(req);
     const d = await dokumentAblegen(await firmaLesen(), {
       auftragsnr: nr, kunde, unternehmer: u ? [u.kundenname, u.kundenname2].filter(Boolean).join(' ').trim() : null, kennzeichen: a.kennzeichen, ordernummer: a.ordernummer,
-      datum: new Date().toISOString().slice(0, 10), benutzer: benutzerName(req),
-    }, b.datei, b.inhalt);
+      datum: new Date().toISOString().slice(0, 10), benutzer,
+    }, b.datei, b.inhalt, {
+      // Paperless braucht länger: Feld „Auftrag“ wird im Hintergrund gesetzt, die Verknüpfung danach gespeichert
+      fertig: async (x) => {
+        await withChange(changeCtx(req, { sitzung: null, action: 'DOKUMENT_ABLEGEN' }), (tx) => tx`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_von)
+                                values (${nr}, ${x.id}, ${x.titel}, ${x.datei}, ${benutzer}) on conflict do nothing`);
+        req.log.info({ auftrag: nr, doc: x.id }, 'Dokument zum Auftrag nachgetragen');
+      },
+      fehler: (e) => req.log.warn({ auftrag: nr, err: e }, `Dokument zum Auftrag: Nachlauf fehlgeschlagen – ${(e as Error).message}`),
+    });
+    if (!d.id) {
+      return { id: null, text: `„${d.datei}“ ist an Paperless übergeben; Paperless verarbeitet es noch. Feld „Auftrag“ und Zuordnung zu ${nr} werden automatisch nachgetragen – Liste in ein bis zwei Minuten aktualisieren.` };
+    }
     await change(req, (tx) => tx`insert into transport.auftrag_dokumente (auftragsnr, doc_id, titel, datei, erstellt_von)
-                                values (${nr}, ${d.id}, ${d.titel}, ${d.datei}, ${benutzerName(req)}) on conflict do nothing`, { action: 'DOKUMENT_ABLEGEN' });
+                                values (${nr}, ${d.id}, ${d.titel}, ${d.datei}, ${benutzer}) on conflict do nothing`, { action: 'DOKUMENT_ABLEGEN' });
     return { id: d.id, text: `„${d.datei}“ in Paperless abgelegt (Dokument ${d.id}) und Auftrag ${nr} zugeordnet${d.warnungen.length ? ` – ${d.warnungen.join('; ')}` : ''}` };
   });
 

@@ -258,20 +258,42 @@ export const PH = {
  * Komplettablage über einen Kontext: Regel lesen, Platzhalter füllen, Datei hochladen, danach
  * Custom Fields/Notiz nachtragen – dabei steht `{dokid}` (Dokument-ID, 6-stellig) zur Verfügung.
  */
+export interface Nachlauf {
+  /** wie lange im Hintergrund weiter gewartet wird (Standard 15 Minuten) */
+  sekunden?: number;
+  /** Dokument fertig, Felder gesetzt – z. B. Verknüpfung im Portal speichern */
+  fertig: (r: { id: number; warnungen: string[]; zuordnung: Zuordnung }) => Promise<void>;
+  fehler?: (e: unknown) => void;
+}
+
 export async function kontextAblegen(pl: Paperless, def: KontextDef, modul: string, werte: Record<string, unknown>, daten: Buffer, datei: string,
-  o: { mime?: string; benutzer?: string; ueberschreiben?: Partial<Zuordnung>; warteSekunden?: number } = {}) {
+  o: { mime?: string; benutzer?: string; ueberschreiben?: Partial<Zuordnung>; warteSekunden?: number; nachlauf?: Nachlauf } = {}) {
   const z = await zuordnen(def, modul, { ...werte, dokid: '' }, o.ueberschreiben);
   const { meta, warnungen } = await uploadMeta(pl, z, o.mime);
   const task = await pl.upload(daten, datei, meta);
+  // Standardfelder nach dem Upload noch einmal setzen: Paperless-Zuordnungsregeln beim Einlesen
+  // können Korrespondent/Typ/Pfad überschreiben – die Regel des Portals soll gelten
+  const fertigstellen = async (id: number) => {
+    const zuordnung = await zuordnen(def, modul, { ...werte, dokid: String(id).padStart(6, '0') }, o.ueberschreiben);
+    return { zuordnung, warnungen: await nachtragen(pl, id, zuordnung, o.benutzer, true) };
+  };
   const id = await pl.warteAufDokument(task, o.warteSekunden ?? 30);
-  let zuordnung = z;
   if (id) {
-    zuordnung = await zuordnen(def, modul, { ...werte, dokid: String(id).padStart(6, '0') }, o.ueberschreiben);
-    // Standardfelder nach dem Upload noch einmal setzen: Paperless-Zuordnungsregeln beim Einlesen
-    // können Korrespondent/Typ/Pfad überschreiben – die Regel des Portals soll gelten
-    warnungen.push(...await nachtragen(pl, id, zuordnung, o.benutzer, true));
+    const f = await fertigstellen(id);
+    return { id, warnungen: [...warnungen, ...f.warnungen], zuordnung: f.zuordnung, nachlauf: false };
   }
-  return { id, warnungen, zuordnung };
+  // Paperless braucht länger (große Fotos, OCR): im Hintergrund weiter warten und Custom Fields, Notiz, Berechtigungen nachtragen –
+  // sonst bliebe das Dokument ohne diese Angaben (z. B. ohne Feld „Auftrag“) in Paperless
+  const n = o.nachlauf;
+  if (n) {
+    void (async () => {
+      const spaet = await pl.warteAufDokument(task, n.sekunden ?? 900, 2000);
+      if (!spaet) throw new Error(`Paperless hat „${datei}“ auch nach ${n.sekunden ?? 900} s nicht fertig verarbeitet (Task ${task}).`);
+      const f = await fertigstellen(spaet);
+      await n.fertig({ id: spaet, warnungen: [...warnungen, ...f.warnungen], zuordnung: f.zuordnung });
+    })().catch((e) => n.fehler?.(e));
+  }
+  return { id: null, warnungen, zuordnung: z, nachlauf: !!n };
 }
 
 /** Felder eines bestehenden Dokuments laut Kontext (neu) setzen – z. B. nach einer neuen Dateiversion */
