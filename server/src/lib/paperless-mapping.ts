@@ -36,6 +36,13 @@ export interface Regel {
   felder?: Record<string, string>;
   /** fehlende Korrespondenten/Tags in Paperless anlegen (Standard: ja) */
   anlegen?: boolean;
+  /** Berechtigungen in Paperless: Eigentümer (Benutzername) und je Anzeigen/Bearbeiten Benutzer und Gruppen (Namen, durch Komma).
+   *  Alle leer = Berechtigungen nicht anfassen (Paperless-Standard: Eigentümer ist der Benutzer des API-Tokens). */
+  eigentuemer?: string;
+  anzeigen_benutzer?: string;
+  anzeigen_gruppen?: string;
+  bearbeiten_benutzer?: string;
+  bearbeiten_gruppen?: string;
 }
 
 export interface KontextDef {
@@ -60,9 +67,27 @@ export interface Zuordnung {
   notiz: string;
   customFields: Record<string, string | number | null>;
   anlegen: boolean;
+  /** Berechtigungen (Namen); null = nicht setzen */
+  rechte?: Rechte | null;
 }
 
-export const REGEL_FELDER = ['titel', 'korrespondent', 'dokumenttyp', 'speicherpfad', 'tags', 'datum', 'notiz'] as const;
+/** Berechtigungen eines Dokuments in Paperless mit Namen statt IDs (Reiter „Berechtigungen“ in Paperless) */
+export interface Rechte { eigentuemer: string; anzeigen: { benutzer: string[]; gruppen: string[] }; bearbeiten: { benutzer: string[]; gruppen: string[] } }
+
+export const REGEL_FELDER = ['titel', 'korrespondent', 'dokumenttyp', 'speicherpfad', 'tags', 'datum', 'notiz',
+  'eigentuemer', 'anzeigen_benutzer', 'anzeigen_gruppen', 'bearbeiten_benutzer', 'bearbeiten_gruppen'] as const;
+
+const namen = (t: string) => [...new Set(t.split(',').map((x) => x.trim()).filter(Boolean))];
+/** Berechtigungen aus der Regel; alle Felder leer = null (nicht setzen) */
+export function rechteAus(regel: Regel, werte: Record<string, unknown>): Rechte | null {
+  const r: Rechte = {
+    eigentuemer: auswerten(regel.eigentuemer, werte).text,
+    anzeigen: { benutzer: namen(auswerten(regel.anzeigen_benutzer, werte).text), gruppen: namen(auswerten(regel.anzeigen_gruppen, werte).text) },
+    bearbeiten: { benutzer: namen(auswerten(regel.bearbeiten_benutzer, werte).text), gruppen: namen(auswerten(regel.bearbeiten_gruppen, werte).text) },
+  };
+  const leer = !r.eigentuemer && ![...r.anzeigen.benutzer, ...r.anzeigen.gruppen, ...r.bearbeiten.benutzer, ...r.bearbeiten.gruppen].length;
+  return leer ? null : r;
+}
 
 const condense = (s: string) => s.replace(/\s+/g, ' ').trim();
 const datText = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : iso);
@@ -114,6 +139,7 @@ export function anwenden(regel: Regel, werte: Record<string, unknown>): Zuordnun
     notiz: auswerten(regel.notiz, werte).text,
     customFields,
     anlegen: regel.anlegen !== false,
+    rechte: rechteAus(regel, werte),
   };
 }
 
@@ -210,6 +236,8 @@ export async function nachtragen(pl: Paperless, id: number, z: Zuordnung, benutz
     }).catch((e) => [`Metadaten: ${(e as Error).message}`]));
   }
   if (z.notiz) await pl.notizAnlegen(id, benutzer ? `${z.notiz} (${benutzer})` : z.notiz).catch((e) => { warnungen.push(`Notiz: ${(e as Error).message}`); });
+  // Berechtigungen (Eigentümer, Anzeigen/Bearbeiten) laut Regel
+  if (z.rechte) warnungen.push(...await pl.rechteSetzen(id, z.rechte).catch((e) => [`Berechtigungen: ${(e as Error).message}`]));
   return warnungen;
 }
 

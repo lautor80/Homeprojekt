@@ -55,7 +55,7 @@ const NR = '2026_9301';
 // nachgestellt: Paperless
 const pl = { uploads: [] as { titel: string; datei: string; tags: string[]; correspondent: string | null }[], tags: [] as { id: number; name: string }[],
   korrespondenten: [] as { id: number; name: string }[], next: 900,
-  versionen: [] as { doc: number; label: string; datei: string }[], geloescht: new Set<number>(), aktualisiert: [] as number[] };
+  versionen: [] as { doc: number; label: string; datei: string }[], geloescht: new Set<number>(), aktualisiert: [] as number[], rechte: [] as { doc: number; patch: Record<string, unknown> }[] };
 const server = http.createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c) => chunks.push(c));
@@ -88,9 +88,16 @@ const server = http.createServer((req, res) => {
       return send(201, neu);
     }
     if (/^\/api\/documents\/\d+\/notes\/$/.test(u)) return send(200, []);
+    // Benutzer und Gruppen für die Berechtigungen (Eigentümer admin, Benutzer und Gruppe Euroflex)
+    if (req.method === 'GET' && u.startsWith('/api/users/')) return send(200, { results: [{ id: 3, username: 'admin' }, { id: 7, username: 'euroflex' }], next: null });
+    if (req.method === 'GET' && u.startsWith('/api/groups/')) return send(200, { results: [{ id: 5, name: 'Euroflex' }], next: null });
     if ((m = /^\/api\/documents\/(\d+)\/$/.exec(u))) {
       if (pl.geloescht.has(Number(m[1]))) return send(404, { detail: 'Not found.' });
-      if (req.method === 'PATCH') pl.aktualisiert.push(Number(m[1]));
+      if (req.method === 'PATCH') {
+        pl.aktualisiert.push(Number(m[1]));
+        const patch = JSON.parse(Buffer.from(body, 'latin1').toString('utf8') || '{}') as Record<string, unknown>;
+        if (patch.set_permissions) pl.rechte.push({ doc: Number(m[1]), patch });
+      }
       return send(200, { id: Number(m[1]), custom_fields: [], tags: [] });
     }
     send(404, { u });
@@ -152,6 +159,11 @@ if (mitDb) {
     // Korrespondent: Unternehmer beim Transportauftrag, Kunde beim Lieferschein; Tag „Auftrag …“
     const kName = (id: string | null) => pl.korrespondenten.find((k) => String(k.id) === id)?.name;
     assert.equal(kName(pl.uploads[0].correspondent), 'Spedition Kranich');
+    // Berechtigungen jedes Euroflex-Dokuments: Eigentümer admin, Anzeigen/Bearbeiten Benutzer und Gruppe Euroflex
+    for (const r of pl.rechte) {
+      assert.deepEqual(r.patch, { owner: 3, set_permissions: { view: { users: [7], groups: [5] }, change: { users: [7], groups: [5] } } });
+    }
+    assert.ok(pl.rechte.length >= 2, 'für beide Belege');
     assert.equal(kName(pl.uploads[1].correspondent), 'Holzhandel Amsel');
     assert.equal(pl.tags.find((t) => String(t.id) === pl.uploads[0].tags[0])?.name, `Auftrag ${NR}`);
     const docs = await sql`select doc_id, datei from transport.auftrag_dokumente where auftragsnr = ${NR} order by doc_id`;

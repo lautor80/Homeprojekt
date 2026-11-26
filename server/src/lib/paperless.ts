@@ -388,6 +388,43 @@ export class Paperless {
     return warn;
   }
 
+  private benutzerCache: { users: { id: number; name: string }[]; groups: { id: number; name: string }[] } | null = null;
+  /** Benutzer (username) und Gruppen von Paperless */
+  async benutzerUndGruppen(): Promise<{ users: { id: number; name: string }[]; groups: { id: number; name: string }[] }> {
+    if (!this.benutzerCache) {
+      const users = (await this.alle<{ id: number; username: string }>('api/users/')).map((u) => ({ id: u.id, name: u.username }));
+      const groups = (await this.alle<{ id: number; name: string }>('api/groups/')).map((g) => ({ id: g.id, name: g.name }));
+      this.benutzerCache = { users, groups };
+    }
+    return this.benutzerCache;
+  }
+
+  /**
+   * Berechtigungen eines Dokuments setzen (Reiter „Berechtigungen“): Eigentümer und Anzeigen/Bearbeiten je Benutzer und Gruppe.
+   * Namen werden ohne Groß-/Kleinschreibung in IDs übersetzt; unbekannte Namen ergeben Warnungen. Ohne Eigentümer bleibt er unverändert.
+   */
+  async rechteSetzen(id: number, r: { eigentuemer: string; anzeigen: { benutzer: string[]; gruppen: string[] }; bearbeiten: { benutzer: string[]; gruppen: string[] } }): Promise<string[]> {
+    const warn: string[] = [];
+    const { users, groups } = await this.benutzerUndGruppen();
+    const ids = (liste: { id: number; name: string }[], namen: string[], art: string) => namen.flatMap((n) => {
+      const hit = liste.find((x) => x.name.trim().toLowerCase() === n.trim().toLowerCase());
+      if (!hit) warn.push(`${art} „${n}“ fehlt in Paperless`);
+      return hit ? [hit.id] : [];
+    });
+    const patch: Record<string, unknown> = {
+      set_permissions: {
+        view: { users: ids(users, r.anzeigen.benutzer, 'Benutzer'), groups: ids(groups, r.anzeigen.gruppen, 'Gruppe') },
+        change: { users: ids(users, r.bearbeiten.benutzer, 'Benutzer'), groups: ids(groups, r.bearbeiten.gruppen, 'Gruppe') },
+      },
+    };
+    if (r.eigentuemer) {
+      const [o] = ids(users, [r.eigentuemer], 'Eigentümer');
+      if (o) patch.owner = o;
+    }
+    await this.json('PATCH', `api/documents/${id}/`, patch);
+    return warn;
+  }
+
   async notizen(id: number): Promise<PaperlessNote[]> {
     const r = await this.json<PaperlessNote[] | { results: PaperlessNote[] }>('GET', `api/documents/${id}/notes/`);
     return Array.isArray(r) ? r : r?.results ?? [];
