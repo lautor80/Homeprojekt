@@ -511,7 +511,8 @@ test('Vormerken und gesammelte Übergabe: bearbeiten je E-Mail, ablegen erst mit
   // gesammelte Übergabe: beide vorgemerkten, die dritte bleibt in der Prüfliste
   r = await admin('POST', `${T}/eingang/uebergabe`, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual([r.body.emails, r.body.fehler, r.body.wartet], [2, 0, 2]);
+  // a: nur die gewählte Datei; b: Anhang und die E-Mail als PDF
+  assert.deepEqual([r.body.emails, r.body.fehler, r.body.wartet], [2, 0, 3]);
   assert.deepEqual(r.body.ergebnisse.map((e: any) => [e.id, e.auftragsnr, e.ok]), [[va, '2099_9201', true], [vb, '2099_9202', true]]);
   assert.deepEqual((await docs(va)).map((d) => [d.datei, d.status]).filter(([n]) => String(n).startsWith('vm1')), [['vm1.pdf', 'wartet'], ['vm1b.pdf', 'neu']], 'nur die gewählte Datei');
   assert.ok((await docs(vb)).every((d) => d.status === 'wartet'));
