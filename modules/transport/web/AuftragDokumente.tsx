@@ -9,8 +9,8 @@ import { DokumentPopup } from './DokumentPopup';
 import { toast } from '@core/toast';
 import { T, dat } from './util';
 import { OrdnerDateien } from './Ablageordner';
-import { ablegen, ordnerStatus } from './ordner';
-import { emlLesen, istEml } from './eml';
+import { ordnerStatus } from './ordner';
+import { auftragAblegen } from './auftragAblage';
 import { AuftragEingang } from './eingang/AuftragEingang';
 
 /**
@@ -31,12 +31,6 @@ interface Dok {
 }
 interface Liste { paperless: boolean; warnung?: string | null; dokumente: Dok[] }
 
-const lesen = (f: File) => new Promise<string>((ok, err) => {
-  const r = new FileReader();
-  r.onload = () => ok(String(r.result));
-  r.onerror = () => err(r.error);
-  r.readAsDataURL(f);
-});
 const istPdf = (d: Dok) => /\.pdf$/i.test(d.datei ?? '');
 
 export function AuftragDokumente({ nr, edit, ablegen: darfAblegen = edit, ordnerStand = 0, faktura }: {
@@ -58,45 +52,7 @@ export function AuftragDokumente({ nr, edit, ablegen: darfAblegen = edit, ordner
 
   const ziel: AblageZiel = {
     titel: `Auftrag ${nr}`,
-    annehmen: async (eingang): Promise<AblageErgebnis> => {
-      // E-Mails zerlegen: Anhänge statt der E-Mail ablegen; die .eml selbst nur im Ablageordner (Paperless bekommt die Anhänge)
-      const files: File[] = [];
-      const nurOrdner = new Set<File>();
-      const mails: string[] = [];
-      for (const f of eingang) {
-        if (!istEml(f)) { files.push(f); continue; }
-        const m = emlLesen(new Uint8Array(await f.arrayBuffer()));
-        mails.push(`E-Mail „${m.betreff || f.name}“: ${m.anhaenge.length ? `${m.anhaenge.length} Anhang/Anhänge (${m.anhaenge.map((a) => a.name).join(', ')})` : 'keine Anhänge'}`);
-        for (const a of m.anhaenge) files.push(new File([a.daten as BlobPart], a.name, { type: a.typ || 'application/octet-stream' }));
-        if (ordner) { files.push(f); nurOrdner.add(f); }
-      }
-      if (!files.length) return { text: `${mails.join(' · ')} – nichts abzulegen${ordner ? '' : ' (kein Ablageordner für die E-Mail selbst)'}` };
-      const ids: number[] = [];
-      const texte: string[] = [];
-      let lokal = 0;
-      let lokalFehler = '';
-      try {
-        for (const f of files) {
-          if (ordner) {
-            try { if (await ablegen(nr, f.name, f)) lokal++; } catch (e) { lokalFehler = (e as Error).message; }
-          }
-          if (d?.paperless && !nurOrdner.has(f)) {
-            // id null: Paperless verarbeitet noch – Feld „Auftrag“ und Zuordnung trägt der Server nach
-            const r = await api.post<{ id: number | null; text: string }>(`${T}/auftraege/${nr}/dokumente`, { datei: f.name, inhalt: await lesen(f) });
-            if (r.id) ids.push(r.id);
-            texte.push(r.text);
-          }
-        }
-      } finally { laden(); setStand((v) => v + 1); }
-      const ord = ordner ? (lokal ? ` · ${lokal} im Ablageordner gespeichert` : ` · Ablageordner: ${lokalFehler || 'kein Zugriff (unten „Zugriff erlauben“)'}`) : '';
-      const vorweg = mails.length ? `${mails.join(' · ')} – ` : '';
-      return {
-        text: vorweg + (d?.paperless
-          ? (texte.length === 1 ? texte[0] : `${texte.length} Datei(en) an Paperless übergeben${ids.length < texte.length ? ` (${texte.length - ids.length} werden noch verarbeitet und automatisch zugeordnet)` : ''} – Auftrag ${nr}`)
-          : `${lokal} Datei(en) im Ablageordner von Auftrag ${nr} gespeichert`) + (d?.paperless ? ord : ''),
-        rueckgaengig: async () => { for (const id of ids) await api.del(`${T}/auftraege/${nr}/dokumente/${id}`); laden(); },
-      };
-    },
+    annehmen: (eingang): Promise<AblageErgebnis> => auftragAblegen(nr, eingang, { paperless: !!d?.paperless, ordner, danach: () => { laden(); setStand((v) => v + 1); } }),
   };
   // Strg+V und Ablagefeld der Navigation legen beim geöffneten Auftrag ab – auch ohne Bearbeitungsmodus, sonst landet die Datei
   // mit der allgemeinen Voreinstellung (anderer Dokumenttyp/Korrespondent, ohne Feld „Auftrag“) in Paperless
