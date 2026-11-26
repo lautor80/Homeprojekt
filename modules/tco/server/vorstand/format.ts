@@ -4,19 +4,24 @@
  * Gespeichert wird einfacher Text mit wenigen Markdown-Zeichen, damit er überall lesbar bleibt:
  *   **fett** · *kursiv* (auch _kursiv_) · ~~durchgestrichen~~ · [Bezeichnung](https://…) · https://… (wird von selbst
  *   zur Verknüpfung) · Zeilen mit „- “ oder „* “ = Aufzählung · „1. “ = nummerierte Liste. Leerzeilen trennen Absätze.
+ *   Farbe: {rot}…{/rot}, {orange}…{/orange}, {gruen}…{/gruen}, {blau}…{/blau} · ==markiert== (gelber Hintergrund).
  * Verknüpfungen nur mit http(s) und mailto – alles andere bleibt Text. Kein HTML: Die Oberfläche baut daraus Elemente.
  */
 
-export interface Stueck { text: string; fett?: boolean; kursiv?: boolean; durch?: boolean; href?: string }
+export const FARBEN = ['rot', 'orange', 'gruen', 'blau'] as const;
+export type Farbe = typeof FARBEN[number];
+export const FARBE_TEXT: Record<Farbe, string> = { rot: 'Rot', orange: 'Orange', gruen: 'Grün', blau: 'Blau' };
+export interface Stueck { text: string; fett?: boolean; kursiv?: boolean; durch?: boolean; href?: string; farbe?: Farbe; markiert?: boolean }
 export type Block =
   | { art: 'absatz'; zeilen: Stueck[][] }
   | { art: 'liste'; nummeriert: boolean; start: number; punkte: Stueck[][] };
 
-// Reihenfolge: Verknüpfung mit Bezeichnung, freie Adresse, fett, durchgestrichen, kursiv (*…* oder _…_)
-const MUSTER = /\[([^\]\n]+)\]\(<?((?:https?:\/\/|mailto:)[^\s)>]+)>?\)|((?:https?:\/\/|www\.)[^\s<>"]*[^\s<>".,;:!?)\]'])|\*\*(?=\S)([\s\S]*?\S)\*\*(?!\*)|~~(?=\S)([\s\S]*?\S)~~|\*(?=[^\s*])([\s\S]*?[^\s*])\*|(?<![\p{L}\p{N}_])_(?=\S)([\s\S]*?\S)_(?![\p{L}\p{N}_])/gu;
+// Reihenfolge: Verknüpfung mit Bezeichnung, freie Adresse, Farbe, markiert, fett, durchgestrichen, kursiv (*…* oder _…_)
+const MUSTER = /\[([^\]\n]+)\]\(<?((?:https?:\/\/|mailto:)[^\s)>]+)>?\)|((?:https?:\/\/|www\.)[^\s<>"]*[^\s<>".,;:!?)\]'])|\{(?<farbe>rot|orange|gruen|blau)\}(?<gefaerbt>[\s\S]*?)\{\/\k<farbe>\}|==(?=\S)(?<mark>[\s\S]*?\S)==|\*\*(?=\S)([\s\S]*?\S)\*\*(?!\*)|~~(?=\S)([\s\S]*?\S)~~|\*(?=[^\s*])([\s\S]*?[^\s*])\*|(?<![\p{L}\p{N}_])_(?=\S)([\s\S]*?\S)_(?![\p{L}\p{N}_])/gu;
 
 type Stil = Omit<Stueck, 'text'>;
-const gleicherStil = (a: Stueck, b: Stueck) => !!a.fett === !!b.fett && !!a.kursiv === !!b.kursiv && !!a.durch === !!b.durch && a.href === b.href;
+const gleicherStil = (a: Stueck, b: Stueck) => !!a.fett === !!b.fett && !!a.kursiv === !!b.kursiv && !!a.durch === !!b.durch && a.href === b.href
+  && a.farbe === b.farbe && !!a.markiert === !!b.markiert;
 
 /** eine Zeile in Stücke mit Stil zerlegen (auch verschachtelt: **fett mit *kursiv***) */
 export function zeileLesen(text: string, stil: Stil = {}): Stueck[] {
@@ -30,9 +35,12 @@ export function zeileLesen(text: string, stil: Stil = {}): Stueck[] {
   let pos = 0;
   for (const m of text.matchAll(MUSTER)) {
     dazu({ ...stil, text: text.slice(pos, m.index) });
-    const [, bez, ziel, frei, fett, durch, kursiv1, kursiv2] = m;
+    const [, bez, ziel, frei, , , , fett, durch, kursiv1, kursiv2] = m;
+    const g = m.groups ?? {};
     const innen: Stueck[] = bez != null ? zeileLesen(bez, { ...stil, href: ziel })
       : frei != null ? [{ ...stil, text: frei, href: frei.startsWith('www.') ? `https://${frei}` : frei }]
+        : g.farbe != null ? zeileLesen(g.gefaerbt ?? '', { ...stil, farbe: g.farbe as Farbe })
+        : g.mark != null ? zeileLesen(g.mark, { ...stil, markiert: true })
         : fett != null ? zeileLesen(fett, { ...stil, fett: true })
           : durch != null ? zeileLesen(durch, { ...stil, durch: true })
             : zeileLesen(kursiv1 ?? kursiv2 ?? '', { ...stil, kursiv: true });
@@ -100,7 +108,32 @@ export function linkPruefen(url: string): string | null {
 // weiterhin das schlichte Format oben – alte Protokolle, PDF und Import bleiben unverändert.
 
 /** Baum für den Editor: Zeilen als div, Aufzählungen als ul/ol mit li, Stile b/i/s, Verknüpfung a */
-export type Knoten = string | { tag: 'div' | 'ul' | 'ol' | 'li' | 'b' | 'i' | 's' | 'a' | 'br'; href?: string; start?: number; kinder: Knoten[] };
+export type Knoten = string | { tag: 'div' | 'ul' | 'ol' | 'li' | 'b' | 'i' | 's' | 'a' | 'br' | 'font' | 'span'; href?: string; start?: number; farbe?: Farbe; markiert?: boolean; kinder: Knoten[] };
+
+/**
+ * Farben im Editor: Der Browser färbt mit <font color="…"> (foreColor) bzw. markiert mit background-color (hiliteColor).
+ * Diese Kennwerte stehen nur im Editor – die Anzeige nimmt die Farben des Themes (CSS), gespeichert wird {rot}…{/rot}.
+ */
+export const EDITOR_FARBE: Record<Farbe, string> = { rot: '#d1001f', orange: '#e76500', gruen: '#188918', blau: '#0064d9' };
+/** „keine Farbe“ im Editor (wird beim Speichern verworfen) */
+export const EDITOR_OHNE_FARBE = '#010203';
+export const EDITOR_MARKIERT = '#fff3b8';
+/** #rrggbb oder rgb(r, g, b) → #rrggbb (klein) */
+export function hexWert(v: string | null | undefined): string | null {
+  const t = (v ?? '').trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(t)) return t;
+  if (/^#[0-9a-f]{3}$/.test(t)) return `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}`;
+  const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/.exec(t);
+  if (!m || (m[4] != null && Number(m[4]) === 0)) return null;
+  return `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}`;
+}
+/** Editor-Farbwert → Farbe (null = ausdrücklich keine, undefined = keine erkannte) */
+export const farbeAusHex = (v: string | null | undefined): Farbe | null | undefined => {
+  const h = hexWert(v);
+  if (!h) return undefined;
+  if (h === EDITOR_OHNE_FARBE) return null;
+  return (Object.keys(EDITOR_FARBE) as Farbe[]).find((f) => EDITOR_FARBE[f] === h);
+};
 
 function inlineKnoten(z: Stueck[]): Knoten[] {
   return z.map((s) => {
@@ -108,6 +141,8 @@ function inlineKnoten(z: Stueck[]): Knoten[] {
     if (s.durch) k = { tag: 's', kinder: [k] };
     if (s.kursiv) k = { tag: 'i', kinder: [k] };
     if (s.fett) k = { tag: 'b', kinder: [k] };
+    if (s.farbe) k = { tag: 'font', farbe: s.farbe, kinder: [k] };
+    if (s.markiert) k = { tag: 'span', markiert: true, kinder: [k] };
     if (s.href) k = { tag: 'a', href: s.href, kinder: [k] };
     return k;
   });
@@ -141,7 +176,7 @@ const isLeer = (k: Knoten) => typeof k === 'object' && k.tag === 'div' && k.kind
 export interface DomKnoten {
   nodeType: number; nodeName: string; textContent: string | null; childNodes: ArrayLike<DomKnoten>;
   getAttribute?: (name: string) => string | null;
-  style?: { fontWeight?: string; fontStyle?: string; textDecoration?: string; textDecorationLine?: string };
+  style?: { fontWeight?: string; fontStyle?: string; textDecoration?: string; textDecorationLine?: string; color?: string; backgroundColor?: string };
 }
 const BLOCK = new Set(['DIV', 'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'SECTION', 'ARTICLE']);
 const LINK_OK = /^(https?:\/\/|mailto:)/i;
@@ -154,8 +189,18 @@ function stueckeAus(n: DomKnoten, stil: Stil, out: Stueck[]) {
   if (name === 'BR') { out.push({ text: '\n' }); return; }
   const s = { ...stil };
   const st = n.style ?? {};
-  if (name === 'B' || name === 'STRONG' || /^(bold|[6-9]00)$/.test(st.fontWeight ?? '')) s.fett = true;
+  if (name === 'B' || name === 'STRONG' || /^(bold|bolder|[6-9]00)$/.test(st.fontWeight ?? '')) s.fett = true;
+  // ausdrücklich normal (z. B. Fett im fetten Text wieder aufgehoben)
+  else if (/^(normal|lighter|[1-5]00)$/.test(st.fontWeight ?? '')) s.fett = false;
   if (name === 'I' || name === 'EM' || st.fontStyle === 'italic') s.kursiv = true;
+  else if (st.fontStyle === 'normal') s.kursiv = false;
+  // Farbe: <font color> (Browser) oder Inline-Stil; „keine Farbe“ hebt eine äußere auf
+  const ausFont = farbeAusHex(name === 'FONT' ? n.getAttribute?.('color') : null);
+  const f = ausFont !== undefined ? ausFont : farbeAusHex(st.color);
+  if (f === null) delete s.farbe; else if (f) s.farbe = f;
+  const hg = hexWert(st.backgroundColor);
+  if (hg === EDITOR_MARKIERT || name === 'MARK') s.markiert = true;
+  else if (st.backgroundColor && (st.backgroundColor === 'transparent' || hg)) s.markiert = false;
   if (name === 'S' || name === 'STRIKE' || name === 'DEL' || /line-through/.test(`${st.textDecoration ?? ''} ${st.textDecorationLine ?? ''}`)) s.durch = true;
   if (name === 'A') { const h = n.getAttribute?.('href') ?? ''; if (LINK_OK.test(h)) s.href = h; }
   for (const k of Array.from(n.childNodes)) stueckeAus(k, s, out);
@@ -197,12 +242,33 @@ export function stueckeZuText(stuecke: Stueck[]): string {
     schliessen(0);
     return s;
   };
+  // Farbe und Markierung umschließen die Stilzeichen; Leerzeichen am Rand bleiben außerhalb
+  const gefaerbt = (rs: Stueck[]) => {
+    let s = '';
+    for (let i = 0; i < rs.length;) {
+      const { farbe, markiert } = rs[i];
+      let j = i;
+      while (j < rs.length && rs[j].farbe === farbe && !!rs[j].markiert === !!markiert) j++;
+      const teil = rs.slice(i, j);
+      let t = stile(teil);
+      if ((farbe || markiert) && t.trim()) {
+        const [, vor, kern, nach] = /^(\s*)([\s\S]*?)(\s*)$/.exec(t)!;
+        let k = kern;
+        if (markiert) k = `==${k}==`;
+        if (farbe) k = `{${farbe}}${k}{/${farbe}}`;
+        t = vor + k + nach;
+      }
+      s += t;
+      i = j;
+    }
+    return s;
+  };
   let out = '';
   for (let i = 0; i < runs.length;) {
     const href = runs[i].href;
     let j = i;
     while (j < runs.length && runs[j].href === href) j++;
-    const innen = stile(runs.slice(i, j));
+    const innen = gefaerbt(runs.slice(i, j));
     const nackt = runs.slice(i, j).map((x) => x.text).join('');
     // freie Adresse bleibt freie Adresse
     out += !href ? innen : (nackt === href || `https://${nackt}` === href) && innen === nackt ? nackt : `[${innen}](${href})`;

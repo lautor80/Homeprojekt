@@ -4,7 +4,7 @@ import type { Db, Verein } from '../verein.js';
 import { Abschlussdruck } from '../abschluss/pdf.js';
 import { sitzungLesen, type SitzungDetail } from './logik.js';
 import { abstimmungText, ART_TEXT, verlaufKurz } from './regeln.js';
-import { textLesen, type Stueck } from './format.js';
+import { textLesen, type Farbe, type Stueck } from './format.js';
 
 /**
  * Protokoll einer Vorstandssitzung als PDF – im Layout der übrigen Vereinsdrucke (Kopfband, Karten, Folgekopf, Fußzeile).
@@ -15,6 +15,9 @@ import { textLesen, type Stueck } from './format.js';
 const ROT = 'B3261E';
 const GRUEN = '2E7D32';
 const BLAU = '0057BD';
+/** Textfarben der Protokolltexte ({rot}…{/rot} usw.) und Markierung (==…==) */
+const TEXTFARBE: Record<Farbe, string> = { rot: ROT, orange: 'C35500', gruen: GRUEN, blau: BLAU };
+const MARKIERT = 'FFF3B8';
 /** Anlage im Druck: Datei mit Namen, Link als anklickbare Bezeichnung mit Adresse */
 const anlageText = (a: { dateiname: string; url: string | null }) => (a.url ? `[${a.dateiname.replace(/[[\]]/g, '')}](${a.url}) (${a.url})` : a.dateiname);
 
@@ -43,7 +46,7 @@ class Protokolldruck extends Abschlussdruck {
 
   private zeileDrucken(stuecke: Stueck[], x0: number, breite: number, size: number, farbe: string, fett: boolean, marke?: { text: string; x: number }) {
     const worte = stuecke.flatMap((s) => s.text.split(/(\s+)/).filter(Boolean).map((t) => ({ t, s })));
-    const stil = (s: Stueck) => ({ size, bold: fett || !!s.fett, italic: !!s.kursiv, color: s.href ? BLAU : farbe });
+    const stil = (s: Stueck) => ({ size, bold: fett || !!s.fett, italic: !!s.kursiv, color: s.href ? BLAU : s.farbe ? TEXTFARBE[s.farbe] : farbe });
     let zeile: typeof worte = [], w = 0, erste = true;
     const ausgeben = () => {
       while (zeile.length && !zeile[zeile.length - 1].t.trim()) zeile.pop();
@@ -52,6 +55,8 @@ class Protokolldruck extends Abschlussdruck {
       let x = x0;
       for (const { t, s } of zeile) {
         const o = stil(s), tw = this.p.textWidth(t, o);
+        // Markierung: gelb hinterlegt (auch die Leerzeichen dazwischen)
+        if (s.markiert) this.p.rect(x, this.y - size * 0.33, tw, size * 0.43, { fill: MARKIERT });
         if (t.trim()) {
           this.txt(x, t, o);
           if (s.durch) this.p.line(x, this.y - size * 0.12, x + tw, this.y - size * 0.12, o.color, 0.25);

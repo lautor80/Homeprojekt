@@ -159,3 +159,29 @@
 .portal-vs__kachel--knopf:focus-visible { outline: var(--sapContent_FocusWidth, 0.125rem) var(--sapContent_FocusStyle, dotted) var(--sapContent_FocusColor); }
 .portal-vs__kwert--icon { display: inline-flex; align-items: center; gap: 0.5rem; }
 .portal-vs__kwert--icon ui5-icon { width: 1.25rem; height: 1.25rem; }
+
+/* Textfarben und Markierung (format.ts: {rot}…{/rot}, ==markiert==) – Farben des Themes (Hell/Dunkel) */
+.portal-vs__f-rot { color: var(--sapNegativeTextColor); }
+.portal-vs__f-orange { color: var(--sapCriticalTextColor); }
+.portal-vs__f-gruen { color: var(--sapPositiveTextColor); }
+.portal-vs__f-blau { color: var(--sapInformativeTextColor); }
+.portal-vs__mark { background: var(--sapWarningBackground); color: inherit; padding: 0 0.1em; border-radius: 0.15em; }
+/* im Editor setzt der Browser <font color> bzw. background-color – angezeigt werden die Theme-Farben */
+.portal-vs__eingabe font[color="#d1001f"] { color: var(--sapNegativeTextColor); }
+.portal-vs__eingabe font[color="#e76500"] { color: var(--sapCriticalTextColor); }
+.portal-vs__eingabe font[color="#188918"] { color: var(--sapPositiveTextColor); }
+.portal-vs__eingabe font[color="#0064d9"] { color: var(--sapInformativeTextColor); }
+.portal-vs__eingabe font[color="#010203"] { color: inherit; }
+.portal-vs__eingabe [style*="background-color: rgb(255, 243, 184)"] { background-color: var(--sapWarningBackground) !important; }
+.portal-vs__farbknopf {
+  width: 1.75rem; height: 1.75rem; margin: 0 0.05rem; border: 1px solid transparent; border-radius: 0.375rem; background: transparent; cursor: pointer;
+  font-family: var(--sapFontFamily); font-weight: 700; font-size: 0.9375rem; line-height: 1; text-decoration: underline; text-decoration-thickness: 0.2em; text-underline-offset: 0.12em;
+}
+.portal-vs__farbknopf:hover { background: var(--sapButton_Lite_Hover_Background, var(--sapList_Hover_Background)); }
+.portal-vs__farbknopf:focus-visible { outline: var(--sapContent_FocusWidth, 0.125rem) var(--sapContent_FocusStyle, dotted) var(--sapContent_FocusColor); }
+.portal-vs__farbknopf--an { border-color: var(--sapButton_Selected_BorderColor, var(--sapContent_FocusColor)); background: var(--sapButton_Selected_Background, var(--sapList_SelectionBackgroundColor)); }
+.portal-vs__farbknopf--rot { color: var(--sapNegativeTextColor); }
+.portal-vs__farbknopf--orange { color: var(--sapCriticalTextColor); }
+.portal-vs__farbknopf--gruen { color: var(--sapPositiveTextColor); }
+.portal-vs__farbknopf--blau { color: var(--sapInformativeTextColor); }
+.portal-vs__farbknopf--ohne { color: var(--sapTextColor); text-decoration: line-through; }
