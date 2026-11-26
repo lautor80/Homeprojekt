@@ -61,7 +61,7 @@ async function dateiText(daten: Buffer): Promise<string> {
 /** Leseprofile aus der Tabelle – alle drei Layouts in fester Reihenfolge, fehlende Zeilen mit den Standardwerten */
 async function profileLesen(): Promise<BelegProfil[]> {
   const rows = await sql`
-    select p.layout, p.bezeichnung, p.aktiv, p.kunde, nullif(btrim(concat_ws(' ', k.kundenname, k.kundenname2)), '') as kunde_name
+    select p.layout, p.bezeichnung, p.aktiv, k.adrnr as kunde, nullif(btrim(concat_ws(' ', k.kundenname, k.kundenname2)), '') as kunde_name
       from transport.beleg_profile p left join transport.adressen k on k.adrnr = p.kunde`;
   return wirksameProfile(rows.map((r): BelegProfil => ({
     layout: r.layout as BelegLayout, bezeichnung: r.bezeichnung as string, aktiv: r.aktiv as boolean,

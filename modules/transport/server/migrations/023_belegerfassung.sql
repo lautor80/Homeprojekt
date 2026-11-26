@@ -7,7 +7,7 @@ create table if not exists transport.beleg_profile (
   layout       text primary key check (layout in ('bestellung', 'ladeauftrag', 'allgemein')),
   bezeichnung  text not null,
   aktiv        boolean not null default true,
-  kunde        integer references transport.adressen(adrnr) on delete set null,
+  kunde        integer,                -- adrnr; bewusst ohne Fremdschlüssel: der SAP-Neuaufbau leert transport.adressen per truncate
   updated_at   timestamptz not null default now()
 );
 insert into transport.beleg_profile (layout, bezeichnung) values
