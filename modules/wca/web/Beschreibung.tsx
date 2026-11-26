@@ -37,6 +37,7 @@ export function Beschreibung({ regeln }: { regeln: RegelInfo[] }) {
         <p>
           Die Reihenfolge entscheidet: Eine Abwesenheit unter dem Kategorietyp „Intern“ ist Abwesenheit, ein PreSales-Ticket unter „Intern“ ist PreSales.
           Die <b>Billable-Quote</b> ist Billable / (Billable + PreSales + Intern) – Abwesenheit zählt nicht mit.
+          Die <b>Utilization</b> ist (Billable + PreSales) / (Billable + PreSales + Intern), ebenfalls ohne Abwesenheit.
         </p>
       </Section>
 

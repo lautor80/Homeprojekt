@@ -53,6 +53,7 @@ export function ReiterUebersicht({ sicht, setFilter }: { sicht: Sicht; setFilter
     { titel: 'Intern', rechts: true, wert: (t) => zahl(t.I), sort: (t) => t.I, summe: summe((t) => t.I) },
     { titel: 'Abw.', rechts: true, wert: (t) => zahl(t.A), sort: (t) => t.A, summe: summe((t) => t.A) },
     { titel: 'Quote', rechts: true, tooltip: 'Billable-Quote B / (B + P + I)', wert: (t) => proz(quote(t.B, t.P + t.I)), sort: (t) => quote(t.B, t.P + t.I) ?? -1 },
+    { titel: 'Util.', rechts: true, tooltip: 'Utilization (B + P) / (B + P + I)', wert: (t) => proz(quote(t.B + t.P, t.I)), sort: (t) => quote(t.B + t.P, t.I) ?? -1 },
     { titel: 'Verteilung', wert: (t) => <Verteilung {...t} /> },
     { titel: 'Kontierung', rechts: true, wert: (t) => zaehler([t.k, 0, 0, t.kHoch]), sort: (t) => t.kHoch * 1000 + t.k },
     { titel: 'Texte ok', rechts: true, wert: (t) => proz(unauffaellig(t)), sort: (t) => unauffaellig(t) ?? 2 },
@@ -79,6 +80,7 @@ export function ReiterUebersicht({ sicht, setFilter }: { sicht: Sicht; setFilter
     { titel: 'Intern', rechts: true, wert: (p) => zahl(p.I), sort: (p) => p.I },
     { titel: 'Abw.', rechts: true, wert: (p) => zahl(p.A), sort: (p) => p.A },
     { titel: 'Quote', rechts: true, wert: (p) => proz(p.billableQuote), sort: (p) => p.billableQuote ?? -1, tooltip: 'Billable-Quote B / (B + P + I)' },
+    { titel: 'Util.', rechts: true, wert: (p) => proz(p.utilization), sort: (p) => p.utilization ?? -1, tooltip: 'Utilization (B + P) / (B + P + I)' },
     { titel: 'Verteilung', wert: (p) => <Verteilung {...p} /> },
     { titel: 'Kontierung', rechts: true, wert: (p) => zaehler(p.kontierung), sort: (p) => p.kontierung[3] * 1000 + p.kontierung[0] },
     { titel: 'Texte ok', rechts: true, wert: (p) => proz(p.texteUnauffaellig), sort: (p) => p.texteUnauffaellig ?? 2 },
@@ -95,6 +97,8 @@ export function ReiterUebersicht({ sicht, setFilter }: { sicht: Sicht; setFilter
           <Verteilung {...s} />
           <VerteilungLegende />
         </Kachel>
+        <Kachel titel="Utilization (Billable + PreSales)" wert={proz(quote(s.B + s.P, s.I))}
+                text={`${zahl(s.B + s.P)} h von ${zahl(s.B + s.P + s.I)} h Arbeitszeit · Billable ${zahl(s.B)} h · PreSales ${zahl(s.P)} h · Intern ${zahl(s.I)} h`} />
         <Kachel titel={`Fehlerhafte Rückmeldungen ab ${stufeText(f.stufe)}`} wert={`${fehlerhaft.length} / ${s.ent}`} state={fehlerhaft.length ? 'Critical' : 'Positive'}
                 text={`zusammen ${einzel} Einzelfehler`} />
         <Kachel titel="Rückmeldungen mit Kontierungsfehler" wert={`${kHoch} hoch · ${kGruppen.length} gesamt`} state={kHoch ? 'Negative' : kGruppen.length ? 'Critical' : 'Positive'}
@@ -142,6 +146,7 @@ export function PersonDetail({ sicht, p }: { sicht: Sicht; p: PersonAuswertung }
         <Attribute label="Im Team">{dat(p.von)} – {p.bis ? dat(p.bis) : 'offen'}</Attribute>
         <Attribute label="Letzte Buchung">{p.letzteBuchung ? wtm(p.letzteBuchung) : null}</Attribute>
         <Attribute label="Billable-Quote">{proz(p.billableQuote)}</Attribute>
+        <Attribute label="Utilization">{proz(p.utilization)}</Attribute>
       </Attributes>
       <div>
         <b>Offene Tage ({offen.length})</b>
