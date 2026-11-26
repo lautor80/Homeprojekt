@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
+  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -140,7 +140,7 @@ export function Mahnwesen() {
         if (!p.stufe) return <span className="portal-muted">–</span>;
         return (
           <span title={p.buchungssperre ? 'Buchungssperre: bis zur Zahlung keine neuen Hallenstunden' : undefined}>
-            <ObjectStatus state="Negative" icon={p.buchungssperre ? 'locked' : undefined}>{p.stufe_name} · {dat(p.gemahnt_am)}</ObjectStatus>
+            <ObjectStatus state="Negative" icon={p.buchungssperre ? <Icon name="locked" /> : undefined}>{p.stufe_name} · {dat(p.gemahnt_am)}</ObjectStatus>
           </span>
         );
       },

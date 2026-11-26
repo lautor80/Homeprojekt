@@ -184,7 +184,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
             {z.g.beschreibung && <span className="portal-muted portal-small">{z.g.beschreibung}</span>}
             {z.g.regel && <ObjectStatus state="Information" title={`Regelwerk: Mitglieder werden automatisch abgeleitet – ${z.g.regel}`}>{z.g.regel}</ObjectStatus>}
             {z.g.nur_rollen.length > 0 && (
-              <ObjectStatus state="Indication05" icon="locked" title="Selbsteintrag in „Meine Mitgliedschaft“ nur für diese Berechtigungsgruppen (auch in den Untergruppen)">
+              <ObjectStatus state="Indication05" icon={<Icon name="locked" />} title="Selbsteintrag in „Meine Mitgliedschaft“ nur für diese Berechtigungsgruppen (auch in den Untergruppen)">
                 nur {z.g.nur_rollen.map((r) => rollenName.get(r) ?? r).join(', ')}
               </ObjectStatus>
             )}
