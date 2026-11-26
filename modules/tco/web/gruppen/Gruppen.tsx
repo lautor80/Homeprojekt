@@ -168,7 +168,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
         if (z.m) {
           const m = z.m;
           return (
-            <div className="portal-gr__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'M', adrnr: m.adrnr, von: z.g.id }, m.name)} onDragEnd={() => { gezogen.current = null; }}>
+            <div className="portal-gr__zelle" draggable={ziehbar && !z.g.gesperrt} onDragStart={(e) => ziehStart(e, { art: 'M', adrnr: m.adrnr, von: z.g.id }, m.name)} onDragEnd={() => { gezogen.current = null; }}>
               <Icon name="employee" />
               {zumMitglied ? <Link onClick={() => navigate(`/tco/mitglieder?adrnr=${encodeURIComponent(m.adrnr)}`)}>{m.name}</Link> : <Text>{m.name}</Text>}
               {m.mitglnrn && <span className="portal-muted portal-small">Nr. {m.mitglnrn}</span>}
@@ -177,8 +177,8 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
           );
         }
         return (
-          <div className="portal-gr__zelle" draggable={ziehbar} onDragStart={(e) => ziehStart(e, { art: 'G', id: z.g.id }, z.g.name)} onDragEnd={() => { gezogen.current = null; }}
-               {...(pflege ? ablage(z.g) : {})}>
+          <div className="portal-gr__zelle" draggable={ziehbar && !z.g.gesperrt} onDragStart={(e) => ziehStart(e, { art: 'G', id: z.g.id }, z.g.name)} onDragEnd={() => { gezogen.current = null; }}
+               {...(pflege && !z.g.gesperrt ? ablage(z.g) : {})}>
             <Icon name={z.g.ebene === 0 ? 'folder' : 'group'} />
             <Text><b>{z.g.name}</b></Text>
             {z.g.beschreibung && <span className="portal-muted portal-small">{z.g.beschreibung}</span>}
@@ -186,6 +186,11 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
             {z.g.nur_rollen.length > 0 && (
               <ObjectStatus state="Indication05" icon={<Icon name="locked" />} title="Selbsteintrag in „Meine Mitgliedschaft“ nur für diese Berechtigungsgruppen (auch in den Untergruppen)">
                 nur {z.g.nur_rollen.map((r) => rollenName.get(r) ?? r).join(', ')}
+              </ObjectStatus>
+            )}
+            {z.g.zuordnen_rollen.length > 0 && (
+              <ObjectStatus state="Indication01" icon={<Icon name="locked" />} title="Geschützte Gruppe: Zuordnen, Austragen und Ändern nur durch Benutzer dieser Berechtigungsgruppen (auch in den Untergruppen)">
+                Zuordnung nur durch {z.g.zuordnen_rollen.map((r) => rollenName.get(r) ?? r).join(' oder ')}
               </ObjectStatus>
             )}
             {!z.g.aktiv && <ObjectStatus state="Critical">inaktiv</ObjectStatus>}
@@ -199,7 +204,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
         const z = row.original as Zeile;
         if (!z.m) return '';
         const m = z.m;
-        if (!pflege) return <Text>{m.rolle ?? ''}</Text>;
+        if (!pflege || z.g.gesperrt) return <Text>{m.rolle ?? ''}</Text>;
         return (
           <Input value={m.rolle ?? ''} placeholder="z. B. Mannschaftsführer" maxlength={60} style={{ width: '100%' }} disabled={busy}
                  onChange={(e) => { const v = e.target.value.trim(); if (v !== (m.rolle ?? '')) lauf(() => api.post(`${GR}/${z.g.id}/mitglieder`, { adrnrs: [m.adrnr], rolle: v })); }} />
@@ -222,6 +227,8 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
       Cell: ({ row }: Cell) => {
         const z = row.original as Zeile;
         if (z.direkt) return '';
+        // geschützte Gruppe (z. B. „Vorstand“), dem Benutzer fehlt die Berechtigungsgruppe: keine Aktionen
+        if (z.g.gesperrt) return z.m ? '' : <Icon name="locked" className="portal-muted" accessibleName="geschützt" showTooltip />;
         if (z.m) {
           const m = z.m;
           return <Button icon="decline" design="Transparent" tooltip={`${m.name} aus „${z.g.name}“ entfernen`} disabled={busy}
@@ -293,7 +300,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
 
       {regelwerk && <RegelwerkDialog gruppen={gruppen} gruppe={regelwerk === true ? null : regelwerk} onClose={(geaendert) => { setRegelwerk(null); if (geaendert) lauf(async () => undefined); }} />}
       {berechnen && <BerechnenDialog gruppe={berechnen === 'ALLE' ? null : berechnen} onClose={() => { setBerechnen(null); lauf(async () => undefined); }} />}
-      {form && <GruppeDialog form={form} gruppen={gruppen} rollen={d?.rollen ?? []} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
+      {form && <GruppeDialog form={form} gruppen={gruppen} rollen={d?.rollen ?? []} zuordnenAendern={!!d?.zuordnenAendern} onClose={(text) => { setForm(null); if (text) lauf(async () => ({ text })); }} />}
       {aufnehmen && <AufnehmenDialog gruppe={aufnehmen} gruppen={gruppen} onClose={(text) => { setAufnehmen(null); if (text) lauf(async () => ({ text })); }} />}
       <ConfirmDialog open={!!weg} title="Gruppe löschen" danger confirmText="Löschen"
                      text={weg ? `Gruppe „${weg.pfad}“ löschen?${weg.mitglieder.length ? ` Die Zuordnung von ${weg.mitglieder.length} Mitglied${weg.mitglieder.length === 1 ? '' : 'ern'} entfällt.` : ''}` : ''}
@@ -306,8 +313,12 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
 }
 
 // ---------------------------------------------------------------- Gruppe anlegen / ändern / verschieben
-function GruppeDialog({ form, gruppen, rollen, onClose }: { form: Form; gruppen: Gruppe[]; rollen: { id: string; name: string }[]; onClose: (text?: string) => void }) {
+function GruppeDialog({ form, gruppen, rollen, zuordnenAendern, onClose }: { form: Form; gruppen: Gruppe[]; rollen: { id: string; name: string }[]; zuordnenAendern: boolean; onClose: (text?: string) => void }) {
   const [f, setF] = useState(form);
+  // „Zuordnung nur durch“: einstellbar für Administratoren – und für alle, die die Beschränkung einer geschützten Gruppe erfüllen
+  const bisher = gruppen.find((g) => g.id === form.id)?.zuordnen_rollen ?? [];
+  const [zuordnen, setZuordnen] = useState<string[]>(bisher);
+  const zuordnenEdit = zuordnenAendern || bisher.length > 0;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Ziel beim Verschieben: nicht die Gruppe selbst und keine ihrer Untergruppen
@@ -320,6 +331,7 @@ function GruppeDialog({ form, gruppen, rollen, onClose }: { form: Form; gruppen:
     try {
       const r = await api.post<{ text: string }>(GR, {
         id: f.id, parent_id: f.parent_id, name: f.name, beschreibung: f.beschreibung, aktiv: f.aktiv, position: f.position.trim() === '' ? null : Number(f.position.trim()), nur_rollen: f.nur_rollen,
+        ...(zuordnenEdit ? { zuordnen_rollen: zuordnen } : {}),
       });
       onClose(r.text);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -350,6 +362,15 @@ function GruppeDialog({ form, gruppen, rollen, onClose }: { form: Form; gruppen:
           </MultiComboBox>
           <span className="portal-muted portal-small">In „Meine Mitgliedschaft“ können sich nur Benutzer mit einer dieser Berechtigungsgruppen eintragen – auch in die Untergruppen. Leer = alle Mitglieder. Die Pflege hier bleibt unberührt.</span>
         </FieldBox>
+        {zuordnenEdit && (
+          <FieldBox label="Zuordnung nur durch Berechtigungsgruppen">
+            <MultiComboBox style={{ width: '100%' }} placeholder="keine Beschränkung"
+                           onSelectionChange={(e) => setZuordnen(e.detail.items.map((i) => (i as HTMLElement).dataset.key!))}>
+              {rollen.map((r) => <MultiComboBoxItem key={r.id} data-key={r.id} text={r.name} selected={zuordnen.includes(r.id)} />)}
+            </MultiComboBox>
+            <span className="portal-muted portal-small">Geschützte Gruppe (z. B. „Vorstand“ nur durch Kassenwart oder Präsident): Nur Benutzer mit einer dieser Berechtigungsgruppen können Personen zuordnen, austragen oder die Gruppe ändern – in jeder App und auch in den Untergruppen. Für alle anderen ist die Gruppe gesperrt, auch in „Meine Mitgliedschaft“. Leer = keine Beschränkung.</span>
+          </FieldBox>
+        )}
         {f.id && <CheckBox text="Aktiv (inaktive Gruppen stehen im Kalender nicht mehr zur Auswahl)" checked={f.aktiv} onChange={(e) => setF({ ...f, aktiv: e.target.checked })} />}
       </FormGrid>
     </Dlg>

@@ -42,7 +42,7 @@ import { PUSH } from '../push.js';
 import { ablehnen, ablehnungMitteilen, abschliessen, bestaetigungPdf, bestaetigungSenden, einreichen, freigeben, kuendigungLesen } from './kuendigung.js';
 import { emailUnzustellbarAufheben, emailUnzustellbarSetzen } from '../emailsperre.js';
 import * as aenderung from './aenderung.js';
-import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe, selbstSperre } from '../gruppen/logik.js';
+import { gruppenLesen, gruppenMitgliedEntfernen, gruppenMitgliedSetzen, mitgliedGruppen, personenDerGruppe, selbstSperre, zuordnenPruefen, zuordnenSperre, zuordnenText } from '../gruppen/logik.js';
 
 export const P_MG = { display: 'tco.mitglieder:display', edit: 'tco.mitglieder:edit' };
 
@@ -216,8 +216,11 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const rollen = req.user?.roles ?? [];
     return {
       gruppen: await Promise.all(alle.map(async ({ id, parent_id, name, ebene, aktiv }) => {
+        // geschützte Gruppe (z. B. „Vorstand“ nur durch Kassenwart oder Präsident): weder ein- noch austragen
+        const schutz = zuordnenSperre(alle, id, rollen);
+        if (schutz) return { id, parent_id, name, ebene, aktiv, nur: await zuordnenText(DB, schutz.zuordnen_rollen), gesperrt: true };
         const sperre = selbstSperre(alle, id, rollen);
-        return { id, parent_id, name, ebene, aktiv, nur: sperre ? `nur ${await rollenNamen(sperre.nur_rollen)}` : null };
+        return { id, parent_id, name, ebene, aktiv, nur: sperre ? `nur ${await rollenNamen(sperre.nur_rollen)}` : null, gesperrt: false };
       })),
       meine: await mitgliedGruppen(DB, a),
     };
@@ -229,6 +232,8 @@ export async function mitgliederRoutes(app: FastifyInstance) {
     const alle = await gruppenLesen(DB);
     const g = alle.find((x) => x.id === b.gruppe);
     if (!g) throw new BusinessError('Gruppe nicht gefunden.', 404);
+    // geschützte Gruppe: Zuordnung und Austragen nur durch die berechtigten Personen – auch nicht für sich selbst
+    await zuordnenPruefen(DB, [b.gruppe], req.user?.roles ?? []);
     if (b.entfernen) {
       await change(req, async (tx) => {
         await gruppenMitgliedEntfernen(tx, b.gruppe, a);
@@ -679,6 +684,7 @@ export async function mitgliederRoutes(app: FastifyInstance) {
   app.post('/mitglieder/m/:adrnr/gruppen', schreiben, async (req) => {
     const { adrnr: a } = pAdr.parse(req.params);
     const b = z.object({ gruppe: z.coerce.number().int().positive(), rolle: z.string().max(60).nullish(), entfernen: z.boolean().default(false) }).parse(req.body);
+    await zuordnenPruefen(DB, [b.gruppe], req.user?.roles ?? []);
     if (b.entfernen) {
       await change(req, (tx) => gruppenMitgliedEntfernen(tx, b.gruppe, a), { action: 'GRUPPE' });
       return { text: 'Aus der Gruppe entfernt.' };

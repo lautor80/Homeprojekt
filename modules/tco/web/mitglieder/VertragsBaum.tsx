@@ -170,8 +170,9 @@ export function VertragsBaum<V extends Vertrag>({
 
   return (
     <div className="portal-section">
-      <div className="portal-row" style={{ marginBottom: '0.5rem', display: kompakt ? 'none' : undefined }}>
-<Varianten repid="tco.mitglieder.vertraege" ansicht={{ suche, alle }} onAnwenden={(a) => { setSuche(feld(a, 'suche', suche)); setAlle(feld(a, 'alle', alle)); }} />
+      {/* Leiste mit Innenabstand: Variantenauswahl und Knöpfe stoßen nicht an den Rahmen der Karte */}
+      <div className="portal-row portal-vb__leiste" style={{ display: kompakt ? 'none' : undefined }}>
+        <Varianten repid="tco.mitglieder.vertraege" ansicht={{ suche, alle }} onAnwenden={(a) => { setSuche(feld(a, 'suche', suche)); setAlle(feld(a, 'alle', alle)); }} />
         <Input value={suche} placeholder="Person, Vertrag oder Zahler suchen" showClearIcon style={{ width: 'min(22rem, 100%)' }} onInput={(e) => setSuche(e.target.value)} />
         <CheckBox text="Auch beendete" checked={alle} onChange={(e) => { setAlle(e.target.checked); onAlle?.(e.target.checked); }} />
         <span className="portal-muted">

@@ -2,7 +2,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import type { Db } from '../verein.js';
 import { condense } from '../format.js';
 import { passtZurRegel, regelText, type RegelGeschlecht } from './alter.js';
-import { ausUebergeordnetenEntfernen, gruppenLesen, mitUntergruppen, ueberUntergruppe } from './logik.js';
+import { ausUebergeordnetenEntfernen, gruppenLesen, mitUntergruppen, ueberUntergruppe, zuordnenGruppen, zuordnenSperre, zuordnenText } from './logik.js';
 
 /**
  * Regelwerk der Mitgliedergruppen (#16): Regeln stellen sicher, dass die richtigen Personen in den richtigen Gruppen
@@ -41,6 +41,12 @@ export async function regelnSpeichern(tx: Db, regeln: RegelDaten[], gruppeId?: n
     if (r.alter_von != null && r.alter_bis != null && r.alter_von > r.alter_bis) throw new BusinessError(`${nr} („${gruppen.get(r.gruppe_id)}“): „Alter von“ ist größer als „Alter bis“.`);
   });
   if (gruppeId && !gruppen.has(gruppeId)) throw new BusinessError('Gruppe nicht gefunden.', 404);
+  // geschützte Gruppen (z. B. „Vorstand“): Zuordnung nur von Hand durch die berechtigten Personen, nie über das Regelwerk
+  const baum = await zuordnenGruppen(tx);
+  for (const r of regeln) {
+    const sperre = zuordnenSperre(baum, r.gruppe_id, []);
+    if (sperre) throw new BusinessError(`Für die Gruppe „${gruppen.get(r.gruppe_id)}“ ist kein Regelwerk möglich: Zuordnungen ${await zuordnenText(tx, sperre.zuordnen_rollen)}.`);
+  }
   if (gruppeId) await tx`delete from tco.kal_gruppen_regeln where gruppe_id = ${gruppeId}`;
   else await tx`delete from tco.kal_gruppen_regeln`;
   for (const r of regeln) {
@@ -90,6 +96,8 @@ export async function regelnAnwenden(tx: Db, o: { simulation: boolean; stichtag?
   for (const gid of [...new Set(regeln.map((r) => r.gruppe_id))]) {
     const g = gruppen.get(gid);
     if (!g) continue;
+    // geschützte Gruppen (Zuordnung nur durch bestimmte Berechtigungsgruppen) fasst das Regelwerk nie an
+    if (zuordnenSperre([...gruppen.values()], gid, [])) continue;
     const eigene = regeln.filter((r) => r.gruppe_id === gid);
     const streng = eigene.some((r) => r.andere_entfernen);
     const passend = new Set(aktive.filter((m) => eigene.some((r) => passtZurRegel(m.geburtsdatum as string | null, r, stichtag, geschlecht(m)))).map((m) => m.adrnr as string));

@@ -9,6 +9,10 @@ export interface Gruppe {
   position: number | null;
   /** Selbsteintrag in „Meine Mitgliedschaft“ nur für diese Berechtigungsgruppen (Rollen-IDs); leer = alle Mitglieder */
   nur_rollen: string[];
+  /** Zuordnung nur durch Benutzer dieser Berechtigungsgruppen (Rollen-IDs), z. B. „Vorstand“ nur durch Kassenwart oder Präsident; leer = keine Beschränkung */
+  zuordnen_rollen: string[];
+  /** Der angemeldete Benutzer darf dieser (geschützten) Gruppe niemanden zuordnen und sie nicht ändern */
+  gesperrt?: boolean;
   /** aktive Regeln des Regelwerks als Text; null = keine Regel */
   regel: string | null;
   /** „Spielbetrieb › Mannschaften › Herren 40“ */
@@ -31,6 +35,8 @@ export interface GruppenDaten {
   regelwerk?: boolean;
   /** Berechtigungsgruppen (Rollen) zur Auswahl „Selbsteintrag nur für“ – nur bei Pflege */
   rollen?: { id: string; name: string }[];
+  /** Beschränkung „Zuordnung nur durch“ neu einstellen (Administrator) */
+  zuordnenAendern?: boolean;
 }
 
 /** IDs einer Gruppe und aller ihrer Untergruppen */

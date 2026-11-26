@@ -558,6 +558,8 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-nowrap { white-space: nowrap; }
 .portal-stack { display: flex; flex-direction: column; gap: var(--portal-gap); }
 .portal-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+/* Leiste über dem Vertragsbaum: eingerückt, damit die Variantenauswahl nicht am Rahmen der Karte klebt */
+.portal-vb__leiste { padding: 0.75rem 1rem 0.5rem; }
 
 /* ---------------------------------------------------------------------------
    Linke Leiste: Navigation + Bausteine der Module (z. B. Ablagefeld)
