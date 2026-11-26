@@ -1,7 +1,7 @@
 import { BusinessError } from '../../../server/src/errors.js';
 import { Paperless, PaperlessError, paperlessKonfiguriert } from '../../../server/src/lib/paperless.js';
 import type { Firma } from './data.js';
-import { kontextAblegen } from '../../../server/src/lib/paperless-mapping.js';
+import { kontextAblegen, type Nachlauf } from '../../../server/src/lib/paperless-mapping.js';
 import { K } from './paperless-kontexte.js';
 import { auftragFeldSichern } from './paperless-auftrag.js';
 
@@ -28,7 +28,11 @@ export function paperlessFirma(f: Firma): Paperless {
   return new Paperless({ url: f.paperless_url, token: f.paperless_token });
 }
 
-export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: string | null; unternehmer?: string | null; kennzeichen?: string | null; ordernummer?: string | null; datum: string; benutzer?: string }, datei: string, inhalt: string) {
+/** Wartezeiten der Ablage in Sekunden: sofort (Antwort an den Browser) und Nachlauf im Hintergrund – Tests verkürzen sie */
+export const WARTEN = { sofort: 60, nachlauf: 900 };
+
+export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: string | null; unternehmer?: string | null; kennzeichen?: string | null; ordernummer?: string | null; datum: string; benutzer?: string }, datei: string, inhalt: string,
+  nachlauf?: Omit<Nachlauf, 'sekunden' | 'fertig'> & { fertig: (r: { id: number; titel: string; datei: string }) => Promise<void> }) {
   const name = datei.split(/[\\/]/).pop()!.trim().slice(0, 150);
   const e = endung(name);
   if (!DATEITYPEN.includes(e)) throw new BusinessError(`Dateityp „${e || '?'}“ wird nicht unterstützt (erlaubt: ${DATEITYPEN.join(', ')}).`);
@@ -43,8 +47,11 @@ export async function dokumentAblegen(f: Firma, a: { auftragsnr: string; kunde: 
     const r = await kontextAblegen(pl, K.auftragDokument, 'transport', {
       auftragsnr: a.auftragsnr, kunde: a.kunde ?? '', unternehmer: a.unternehmer ?? '', kennzeichen: a.kennzeichen ?? '', ordernummer: a.ordernummer ?? '',
       datei: name, heute: a.datum, benutzer: a.benutzer ?? '',
-    }, daten, name, { mime: MIME[e] ?? 'application/octet-stream', benutzer: a.benutzer });
-    if (!r.id) throw new BusinessError('Paperless verarbeitet die Datei noch – bitte in einer Minute die Dokumentliste aktualisieren (Tag „Auftrag …“).');
+    }, daten, name, {
+      mime: MIME[e] ?? 'application/octet-stream', benutzer: a.benutzer, warteSekunden: WARTEN.sofort,
+      ...(nachlauf ? { nachlauf: { sekunden: WARTEN.nachlauf, fehler: nachlauf.fehler, fertig: (x) => nachlauf.fertig({ id: x.id, titel: x.zuordnung.title || name, datei: name }) } } : {}),
+    });
+    if (!r.id && !r.nachlauf) throw new BusinessError('Paperless verarbeitet die Datei noch – bitte in einer Minute die Dokumentliste aktualisieren (Tag „Auftrag …“).');
     return { id: r.id, titel: r.zuordnung.title || name, datei: name, warnungen: r.warnungen };
   } catch (x) {
     if (x instanceof PaperlessError) throw new BusinessError(x.message);

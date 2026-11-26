@@ -81,8 +81,10 @@ export function AuftragDokumente({ nr, edit, ablegen: darfAblegen = edit, ordner
             try { if (await ablegen(nr, f.name, f)) lokal++; } catch (e) { lokalFehler = (e as Error).message; }
           }
           if (d?.paperless && !nurOrdner.has(f)) {
-            const r = await api.post<{ id: number; text: string }>(`${T}/auftraege/${nr}/dokumente`, { datei: f.name, inhalt: await lesen(f) });
-            ids.push(r.id); texte.push(r.text);
+            // id null: Paperless verarbeitet noch – Feld „Auftrag“ und Zuordnung trägt der Server nach
+            const r = await api.post<{ id: number | null; text: string }>(`${T}/auftraege/${nr}/dokumente`, { datei: f.name, inhalt: await lesen(f) });
+            if (r.id) ids.push(r.id);
+            texte.push(r.text);
           }
         }
       } finally { laden(); setStand((v) => v + 1); }
@@ -90,7 +92,7 @@ export function AuftragDokumente({ nr, edit, ablegen: darfAblegen = edit, ordner
       const vorweg = mails.length ? `${mails.join(' · ')} – ` : '';
       return {
         text: vorweg + (d?.paperless
-          ? (ids.length === 1 ? texte[0] : `${ids.length} Datei(en) in Paperless abgelegt und Auftrag ${nr} zugeordnet`)
+          ? (texte.length === 1 ? texte[0] : `${texte.length} Datei(en) an Paperless übergeben${ids.length < texte.length ? ` (${texte.length - ids.length} werden noch verarbeitet und automatisch zugeordnet)` : ''} – Auftrag ${nr}`)
           : `${lokal} Datei(en) im Ablageordner von Auftrag ${nr} gespeichert`) + (d?.paperless ? ord : ''),
         rueckgaengig: async () => { for (const id of ids) await api.del(`${T}/auftraege/${nr}/dokumente/${id}`); laden(); },
       };
