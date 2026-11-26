@@ -897,3 +897,7 @@ ui5-dialog { --portal-tabhoehe: calc(100vh - 20rem); }
 .portal-wca-wortregel { border-top: 1px solid var(--sapList_BorderColor); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .portal-wca-vorgaben td { vertical-align: middle; }
 .portal-wca-hilfe p, .portal-wca-hilfe ul { margin: 0 0 0.5rem; line-height: 1.5; }
+
+/* Reiter (ui5-tab): Der gewählte Reiter vererbt die fette Schrift seiner Beschriftung („72-Bold“) an den gesamten Inhalt –
+   Texte, Beschreibungen und Dialoge darin erschienen dadurch fett. Der Inhalt bekommt die normale Portalschrift. */
+ui5-tab > * { font-family: var(--sapFontFamily, "72", "72full", Arial, Helvetica, sans-serif); }

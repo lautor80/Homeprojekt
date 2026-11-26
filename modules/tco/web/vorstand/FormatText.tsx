@@ -1,10 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button, Input } from '@ui5/webcomponents-react';
-import { knotenZuText, linkPruefen, textLesen, textZuKnoten, type DomKnoten, type Knoten, type Stueck } from '../../server/vorstand/format';
+import {
+  EDITOR_FARBE, EDITOR_MARKIERT, EDITOR_OHNE_FARBE, FARBE_TEXT, FARBEN, farbeAusHex, hexWert, knotenZuText, linkPruefen, textLesen, textZuKnoten,
+  type DomKnoten, type Farbe, type Knoten, type Stueck,
+} from '../../server/vorstand/format';
 
 /**
  * Formatierte Protokolltexte der Vorstandssitzungen: Anzeige (FormatText) und Editor (FormatEditor), in dem Fett, Kursiv,
- * Aufzählungen und Verknüpfungen direkt beim Schreiben sichtbar sind (Enter in einer Aufzählung setzt sie fort).
+ * Farben, Markierung, Aufzählungen und Verknüpfungen direkt beim Schreiben sichtbar sind (Enter in einer Aufzählung setzt sie fort).
  * Gespeichert wird Text mit wenigen Markdown-Zeichen (server/vorstand/format.ts) – **fett**, *kursiv*, ~~durchgestrichen~~,
  * Aufzählungen, nummerierte Listen und Verknüpfungen [Bezeichnung](https://…) bzw. freie Adressen. Die Anzeige baut
  * daraus React-Elemente (kein HTML aus dem Text); Verknüpfungen öffnen in einem neuen Tab.
@@ -17,6 +20,8 @@ function Stuecke({ z }: { z: Stueck[] }) {
         if (s.durch) el = <s>{el}</s>;
         if (s.kursiv) el = <em>{el}</em>;
         if (s.fett) el = <strong>{el}</strong>;
+        if (s.farbe) el = <span className={`portal-vs__f-${s.farbe}`}>{el}</span>;
+        if (s.markiert) el = <mark className="portal-vs__mark">{el}</mark>;
         if (s.href) el = <a href={s.href} target="_blank" rel="noopener noreferrer">{el}</a>;
         return <span key={i}>{el}</span>;
       })}
@@ -44,6 +49,8 @@ function dom(k: Knoten): Node {
   if (typeof k === 'string') return document.createTextNode(k);
   const el = document.createElement(k.tag);
   if (k.tag === 'a' && k.href) { el.setAttribute('href', k.href); el.setAttribute('title', k.href); }
+  if (k.tag === 'font' && k.farbe) el.setAttribute('color', EDITOR_FARBE[k.farbe]);
+  if (k.tag === 'span' && k.markiert) el.style.backgroundColor = EDITOR_MARKIERT;
   if (k.start) el.setAttribute('start', String(k.start));
   for (const x of k.kinder) el.appendChild(dom(x));
   return el;
@@ -59,12 +66,14 @@ function umschliessend(el: HTMLElement, tag: string): HTMLElement | null {
   return null;
 }
 const befehl = (cmd: string, wert?: string) => {
-  document.execCommand('styleWithCSS', false, 'false');
+  // Markieren (hiliteColor) geht nur mit Inline-Stil; alles andere mit Tags (<b>, <font color> …)
+  document.execCommand('styleWithCSS', false, cmd === 'hiliteColor' ? 'true' : 'false');
   document.execCommand(cmd, false, wert);
+  document.execCommand('styleWithCSS', false, 'false');
 };
 
-type Zustand = { fett: boolean; kursiv: boolean; durch: boolean; liste: boolean; nummer: boolean; link: boolean };
-const AUS: Zustand = { fett: false, kursiv: false, durch: false, liste: false, nummer: false, link: false };
+type Zustand = { fett: boolean; kursiv: boolean; durch: boolean; liste: boolean; nummer: boolean; link: boolean; farbe: Farbe | null; markiert: boolean };
+const AUS: Zustand = { fett: false, kursiv: false, durch: false, liste: false, nummer: false, link: false, farbe: null, markiert: false };
 
 /**
  * Editor mit Werkzeugleiste: Fett (Strg+B), Kursiv (Strg+I), Durchgestrichen, Aufzählung, nummerierte Liste und
@@ -104,6 +113,8 @@ export function FormatEditor({ value, onChange, rows = 8, placeholder, label }: 
     setAktiv({
       fett: document.queryCommandState('bold'), kursiv: document.queryCommandState('italic'), durch: document.queryCommandState('strikeThrough'),
       liste: document.queryCommandState('insertUnorderedList'), nummer: document.queryCommandState('insertOrderedList'), link: !!umschliessend(el!, 'A'),
+      farbe: farbeAusHex(document.queryCommandValue('foreColor')) ?? null,
+      markiert: hexWert(document.queryCommandValue('hiliteColor') || document.queryCommandValue('backColor')) === EDITOR_MARKIERT,
     });
   };
   useEffect(() => {
@@ -121,7 +132,7 @@ export function FormatEditor({ value, onChange, rows = 8, placeholder, label }: 
     const sel = window.getSelection();
     if (!war && markierung.current && sel) { sel.removeAllRanges(); sel.addRange(markierung.current); }
   };
-  const ausfuehren = (cmd: string) => { zurueck(); befehl(cmd); melden(); zustand(); };
+  const ausfuehren = (cmd: string, wert?: string) => { zurueck(); befehl(cmd, wert); melden(); zustand(); };
 
   function linkOeffnen() {
     const el = feld.current;
@@ -184,6 +195,15 @@ export function FormatEditor({ value, onChange, rows = 8, placeholder, label }: 
         {knopf(aktiv.kursiv, 'italic-text', 'Kursiv (Strg+I)', () => ausfuehren('italic'))}
         {knopf(aktiv.durch, 'strikethrough', 'Durchgestrichen', () => ausfuehren('strikeThrough'))}
         <span className="portal-vs__trenner" />
+        {FARBEN.map((f) => (
+          <button key={f} type="button" className={`portal-vs__farbknopf portal-vs__farbknopf--${f}${aktiv.farbe === f ? ' portal-vs__farbknopf--an' : ''}`}
+                  title={`Textfarbe ${FARBE_TEXT[f]}`} aria-label={`Textfarbe ${FARBE_TEXT[f]}`} aria-pressed={aktiv.farbe === f}
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => ausfuehren('foreColor', aktiv.farbe === f ? EDITOR_OHNE_FARBE : EDITOR_FARBE[f])}>A</button>
+        ))}
+        <button type="button" className="portal-vs__farbknopf portal-vs__farbknopf--ohne" title="Farbe entfernen" aria-label="Farbe entfernen"
+                onMouseDown={(e) => e.preventDefault()} onClick={() => ausfuehren('foreColor', EDITOR_OHNE_FARBE)}>A</button>
+        {knopf(aktiv.markiert, 'color-fill', 'Markieren (gelb hinterlegt)', () => ausfuehren('hiliteColor', aktiv.markiert ? 'transparent' : EDITOR_MARKIERT))}
+        <span className="portal-vs__trenner" />
         {knopf(aktiv.liste, 'list', 'Aufzählung', () => ausfuehren('insertUnorderedList'))}
         {knopf(aktiv.nummer, 'numbered-text', 'Nummerierte Liste', () => ausfuehren('insertOrderedList'))}
         {knopf(aktiv.link, 'chain-link', 'Verknüpfung (Strg+K)', linkOeffnen)}
@@ -207,7 +227,7 @@ export function FormatEditor({ value, onChange, rows = 8, placeholder, label }: 
              onPaste={(e) => { e.preventDefault(); befehl('insertText', e.clipboardData.getData('text/plain')); melden(); }}
              onDrop={(e) => e.preventDefault()} />
       </div>
-      <div className="portal-muted portal-vs__hilfe">Strg+B fett · Strg+I kursiv · Strg+K Verknüpfung · Enter in einer Aufzählung setzt sie fort, Enter im leeren Punkt beendet sie</div>
+      <div className="portal-muted portal-vs__hilfe">Strg+B fett · Strg+I kursiv · Strg+K Verknüpfung · farbiges A = Textfarbe (nochmals = entfernen) · Farbeimer = gelb markieren · Enter in einer Aufzählung setzt sie fort, Enter im leeren Punkt beendet sie</div>
     </div>
   );
 }

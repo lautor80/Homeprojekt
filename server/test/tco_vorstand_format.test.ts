@@ -60,7 +60,7 @@ test('Verantwortliche immer mit Vornamen: Kürzel, Nach- und Vornamen, mehrere, 
 });
 
 // ---- Editor: gespeicherter Text ↔ bearbeitbarer Bereich (contenteditable), DOM im Test nachgebaut
-import { knotenZuText, textZuKnoten, type DomKnoten, type Knoten } from '../../modules/tco/server/vorstand/format.js';
+import { EDITOR_FARBE, EDITOR_OHNE_FARBE, hexWert, knotenZuText, textZuKnoten, type DomKnoten, type Knoten } from '../../modules/tco/server/vorstand/format.js';
 
 type El = { tag: string; attr?: Record<string, string>; style?: DomKnoten['style']; kinder?: (El | string)[] };
 function dom(x: El | string): DomKnoten {
@@ -68,7 +68,8 @@ function dom(x: El | string): DomKnoten {
   return { nodeType: 1, nodeName: x.tag.toUpperCase(), textContent: null, childNodes: (x.kinder ?? []).map(dom), getAttribute: (n) => x.attr?.[n] ?? null, style: x.style ?? {} };
 }
 const ausKnoten = (k: Knoten): El | string => (typeof k === 'string' ? k
-  : { tag: k.tag, attr: { ...(k.href ? { href: k.href } : {}), ...(k.start ? { start: String(k.start) } : {}) }, kinder: k.kinder.map(ausKnoten) });
+  : { tag: k.tag, attr: { ...(k.href ? { href: k.href } : {}), ...(k.start ? { start: String(k.start) } : {}), ...(k.farbe ? { color: EDITOR_FARBE[k.farbe] } : {}) },
+      style: k.markiert ? { backgroundColor: 'rgb(255, 243, 184)' } : {}, kinder: k.kinder.map(ausKnoten) });
 const rund = (t: string) => knotenZuText(textZuKnoten(t).map(ausKnoten).map(dom));
 
 test('Editor: gespeicherter Text bleibt nach dem Aufbau im Editor gleich', () => {
@@ -102,4 +103,37 @@ test('Editor: typische Browser-Strukturen → gespeicherter Text', () => {
   // verschachtelte Liste wird flach, geschütztes Leerzeichen wird normales
   assert.equal(t({ tag: 'ul', kinder: [{ tag: 'li', kinder: ['a', { tag: 'ul', kinder: [{ tag: 'li', kinder: ['b'] }] }] }] }), '- a\n- b');
   assert.equal(t({ tag: 'div', kinder: ['a b'] }), 'a b');
+});
+
+test('Farben und Markierung: lesen, Editor hin und zurück, Browser-Strukturen', () => {
+  assert.deepEqual(zeileLesen('Das ist {rot}offen{/rot}, das {gruen}**erledigt**{/gruen} und ==wichtig==.'), [
+    { text: 'Das ist ' }, { text: 'offen', farbe: 'rot' }, { text: ', das ' }, { text: 'erledigt', farbe: 'gruen', fett: true }, { text: ' und ' },
+    { text: 'wichtig', markiert: true }, { text: '.' },
+  ]);
+  assert.deepEqual(zeileLesen('{blau}a {orange}b{/orange}{/blau}'), [{ text: 'a ', farbe: 'blau' }, { text: 'b', farbe: 'orange' }], 'innere Farbe gilt');
+  assert.deepEqual(zeileLesen('{lila}x{/lila} {rot}ohne Ende'), [{ text: '{lila}x{/lila} {rot}ohne Ende' }], 'Unbekanntes bleibt Text');
+  assert.equal(schlichterText('{rot}Achtung{/rot} ==heute=='), 'Achtung heute');
+  for (const t of ['{rot}Achtung:{/rot} Termin', '==markiert== und {gruen}*kursiv grün*{/gruen}', '- {orange}offen{/orange}\n- [{blau}Link{/blau}](https://x.de)', '{rot}==beides=={/rot}'])
+    assert.equal(rund(t), t, t);
+  const t = (...k: (El | string)[]) => knotenZuText(k.map(dom));
+  // Browser: <font color> (foreColor), span mit Hintergrund (hiliteColor), „keine Farbe“ hebt auf, fremde Farben verfallen
+  assert.equal(t({ tag: 'div', kinder: ['a ', { tag: 'font', attr: { color: EDITOR_FARBE.rot }, kinder: ['rot '] }, 'b'] }), 'a {rot}rot{/rot} b');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'font', attr: { color: EDITOR_FARBE.blau }, kinder: ['x', { tag: 'font', attr: { color: EDITOR_OHNE_FARBE }, kinder: ['y'] }] }] }), '{blau}x{/blau}y');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'font', attr: { color: '#123456' }, kinder: ['x'] }] }), 'x');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'span', style: { backgroundColor: 'rgb(255, 243, 184)' }, kinder: ['m'] }, { tag: 'span', style: { color: 'rgb(24, 137, 24)' }, kinder: ['g'] }] }), '==m=={gruen}g{/gruen}');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'span', style: { backgroundColor: 'rgb(255, 243, 184)' }, kinder: ['m', { tag: 'span', style: { backgroundColor: 'transparent' }, kinder: ['n'] }] }] }), '==m==n');
+  assert.equal(hexWert('rgb(209, 0, 31)'), EDITOR_FARBE.rot);
+  assert.equal(hexWert('rgba(0, 0, 0, 0)'), null);
+});
+
+test('Fett aufheben: normaler Stil im fetten Bereich bleibt normal', () => {
+  const t = (...k: (El | string)[]) => knotenZuText(k.map(dom));
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'b', kinder: ['fett ', { tag: 'span', style: { fontWeight: 'normal' }, kinder: ['normal'] }] }] }), '**fett** normal');
+  assert.equal(t({ tag: 'div', kinder: [{ tag: 'i', kinder: ['k', { tag: 'span', style: { fontStyle: 'normal' }, kinder: ['n'] }] }] }), '*k*n');
+});
+
+test('Reiter: Inhalt in normaler Schrift (ui5-tab vererbt sonst „72-Bold“)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../../web/src/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /ui5-tab > \* \{ font-family: var\(--sapFontFamily/);
 });
