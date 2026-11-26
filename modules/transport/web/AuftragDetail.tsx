@@ -20,16 +20,22 @@ import { AuswahlBox } from '@core/components/AuswahlBox';
 import { StopFeld, type StopVorschlag } from './StopFeld';
 import { anschrift, firmenTreffer, ortTreffer, strassenTreffer, zeitTreffer, type Vorschlaege } from './vorschlaege';
 import { ablegenIn, auftragsOrdner, ordnerBereit } from './ordner';
+import { BelegAblage } from './beleg/BelegAblage';
+import { BelegKennzeichen, BelegPanel } from './beleg/BelegPanel';
+import { F_BELEG, R_BELEG, belegAnhaengen } from './beleg/api';
+import { anschriftZuKontakt, stopId, type FeldId, type StopFeldName } from './beleg/uebernahme';
+import { useBelegMaske } from './beleg/useBelegMaske';
 
 const LADENUMMER_TOOLTIP = 'Ladenummer aus der Auftragsnr. Kunde übernehmen';
 
 /** Feld im Formularraster: Label links, Inhalt rechts (wie SimpleForm ResponsiveGridLayout) */
 /** oben: Beschriftung an der ersten Zeile ausrichten (Felder mit mehreren Zeilen) */
-function F({ label, required, oben, children }: { label: string; required?: boolean; oben?: boolean; children: ReactNode }) {
+/** beleg: Kennzeichnung „Auftrag aus Beleg“ unter dem Feld (aus Beleg übernommen bzw. Rückfrage offen) */
+function F({ label, required, oben, beleg, children }: { label: string; required?: boolean; oben?: boolean; beleg?: 'frage' | 'beleg' | null; children: ReactNode }) {
   return (
     <>
       <Label showColon required={required} style={{ alignSelf: oben ? 'start' : 'center', justifySelf: 'end', textAlign: 'right', ...(oben ? { paddingTop: '0.5rem' } : {}) }}>{label}</Label>
-      <div style={{ minWidth: 0 }}>{children}</div>
+      <div style={{ minWidth: 0 }}>{children}<BelegKennzeichen art={beleg} /></div>
     </>
   );
 }
@@ -95,6 +101,13 @@ export function AuftragDetail() {
   const [fahrtenGespeichert, setFahrtenGespeichert] = useState(0);
   const [abschliessen, setAbschliessen] = useState(false);
   const [korrigieren, setKorrigieren] = useState(false);
+  // Auftrag aus Beleg (beleg/, docs/euroflex-belegerfassung.md): nur in der Neuanlage eines Frachtauftrags. Ein von der Auftragsliste
+  // oder dem Posteingang mitgegebener Beleg wird übernommen; die Ablagezone hier braucht Recht und Funktion.
+  const beleg = useBelegMaske({ aktiv: isNew && neuTyp === 'F', a, setA, kundeWaehlen: (n) => { void waehleAdresse('kunde', String(n)); } });
+  const belegAblage = isNew && neuTyp === 'F' && darfAendern && can(R_BELEG) && funktion(F_BELEG);
+  const [belegFrage, setBelegFrage] = useState(false);
+  /** Vorbelegung für „Kontakt anlegen“ (Anschrift laut Beleg) */
+  const [kontaktVorlage, setKontaktVorlage] = useState<Partial<Adresse> | null>(null);
 
   const ladeAdressen = useCallback(() => api.get<AdrDD[]>(`${T}/adressen`).then(setAdrDD), []);
   const ladeWerte = useCallback(() => api.get<Werte>(`${T}/werte`).then(setWerte), []);
@@ -109,8 +122,11 @@ export function AuftragDetail() {
         // Nur Frachtaufträge (Holzträgeraufträge haben keine Stops) und nur der erste Stop: ein vorbelegter zweiter würde immer mitgespeichert.
         const stops = v.stops.map((st, i) => (i === 0 && neuTyp === 'F' ? { ...st, firma_e: st.firma_e || LAUT_LFS, strasse_e: st.strasse_e || LAUT_LFS } : st));
         setFahrtenGespeichert(0);
-        setA({ ...v, stops, fahrten: [], kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
-          gewicht: null, lademeter: null, ladenummer: null, besonderheiten: null });
+        const vorlage: Auftrag = { ...v, stops, fahrten: [], kunde: null, unternehmer: null, rechnungsempfaenger: null, leistungsdatum: null, ordernummer: null,
+          gewicht: null, lademeter: null, ladenummer: null, besonderheiten: null };
+        // ein schon übernommener Beleg bleibt stehen, falls die Vorlage ein zweites Mal ankommt (Entwicklungsmodus lädt doppelt)
+        if (beleg.angewendet.current) { setA((alt) => alt ?? vorlage); return; }
+        setA(vorlage);
         setAdr({ kunde: null, unternehmer: null, rechnungsempfaenger: null });
       } else {
         const d = await api.get<Auftrag>(`${T}/auftraege/${nr}`);
@@ -121,7 +137,7 @@ export function AuftragDetail() {
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [isNew, neuTyp, nr]);
+  }, [isNew, neuTyp, nr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { lade(); }, [lade]);
   useEffect(() => { ladeAdressen(); ladeWerte(); }, [ladeAdressen, ladeWerte]);
@@ -202,7 +218,10 @@ export function AuftragDetail() {
     setA({ ...a!, stops });
   }
 
-  async function save() {
+  /** trotzRueckfragen: der Benutzer hat bestätigt, dass er mit offenen Rückfragen aus dem Beleg speichern will */
+  async function save(trotzRueckfragen = false) {
+    // Auftrag aus Beleg: offene Rückfragen einmal nachfragen – blockiert wird nicht
+    if (isNew && beleg.offen.length && !trotzRueckfragen) { setBelegFrage(true); return; }
     setBusy(true);
     setError(null);
     try {
@@ -212,9 +231,27 @@ export function AuftragDetail() {
         const r = await api.post<{ auftragsnr: string }>(`${T}/auftraege`, body);
         // Auftragsordner im Ablageordner anlegen (#121)
         const o = await auftragsOrdner(r.auftragsnr).catch(() => null);
-        toast(`Auftrag ${r.auftragsnr} gespeichert.${o ? ` Ordner ${o.basis}/${r.auftragsnr.slice(0, 4)}/${r.auftragsnr} angelegt.` : ''}`);
-        // nach der Anlage zurück in die Auftragsliste (Filter und Suche der Liste bleiben erhalten)
-        navigate('/transport/auftraege', { replace: true });
+        const gespeichert = `Auftrag ${r.auftragsnr} gespeichert.${o ? ` Ordner ${o.basis}/${r.auftragsnr.slice(0, 4)}/${r.auftragsnr} angelegt.` : ''}`;
+        const quelle = beleg.stand?.quelle;
+        if (!quelle) {
+          toast(gespeichert);
+          // nach der Anlage zurück in die Auftragsliste (Filter und Suche der Liste bleiben erhalten)
+          navigate('/transport/auftraege', { replace: true });
+          return;
+        }
+        // Auftrag aus Beleg: Datei an den Auftrag hängen bzw. die E-Mail aus dem Posteingang zuordnen (vorhandene Wege, beleg/api.ts).
+        // Der Auftrag ist gespeichert – schlägt das fehl, öffnet sich der Auftrag mit einem Hinweis.
+        const x = await belegAnhaengen(r.auftragsnr, quelle, { eingangUebertragen: can('transport.eingang:edit') });
+        if (x.ok) {
+          toast(`${gespeichert}${x.text ? ` ${x.text}` : ''}`, 6000);
+          navigate(quelle.eingang ? '/transport/posteingang' : '/transport/auftraege', { replace: true });
+        } else {
+          const hinweis = quelle.eingang
+            ? `Der Auftrag ist gespeichert, aber die E-Mail aus dem Posteingang wurde ihm nicht zugeordnet: ${x.text} Bitte im Posteingang diesem Auftrag (${r.auftragsnr}) zuordnen.`
+            : `Der Auftrag ist gespeichert, aber der Beleg „${quelle.dateiName}“ wurde nicht angehängt: ${x.text} Bitte die Datei unten unter „Dokumente“ ablegen.`;
+          toast(gespeichert);
+          navigate(`/transport/auftraege/${r.auftragsnr}`, { replace: true, state: { hinweis } });
+        }
       } else {
         await api.put(`${T}/auftraege/${nr}`, body);
         toast(`Auftrag ${nr} gespeichert.`);
@@ -281,7 +318,9 @@ export function AuftragDetail() {
     kontakteAuftrag.push({ key: String(n), text: dd?.text ?? `Kontakt ${n}`, zusatz: dd?.zusatz ? `${rolle} · ${dd.zusatz}` : rolle });
   }
   const kontaktBearbeiten = (key: string) => { setKontaktStart(key); setKontakt('EDIT'); };
-  const kontaktAnlegen = (ziel: typeof kontaktZiel) => { setKontaktZiel(ziel); setKontakt('NEU'); };
+  const kontaktAnlegen = (ziel: typeof kontaktZiel, vorlage: Partial<Adresse> | null = null) => { setKontaktVorlage(vorlage); setKontaktZiel(ziel); setKontakt('NEU'); };
+  /** Kennzeichnung „aus Beleg“ / „Rückfrage offen“ für die Felder unter einer Beschriftung */
+  const bm = (...ids: FeldId[]) => (isNew ? beleg.marke(...ids) : null);
   // Ziele für „Kontakt anlegen“ – nur solange der Auftrag bearbeitet werden darf
   const anlageZiele: { text: string; icon: string; ziel: typeof kontaktZiel }[] = mayEdit ? [
     { text: 'als Kunde', icon: 'customer', ziel: 'kunde' },
@@ -379,7 +418,7 @@ export function AuftragDetail() {
     const t = adrText(adr[f]);
     return (
       <Spalte titel={titelB}>
-        <F label="Name">{adrCombo(f)}</F>
+        <F label="Name" beleg={f === 'kunde' ? bm('kunde') : null}>{adrCombo(f)}</F>
         <F label="Straße"><Text>{t.strasse}</Text></F>
         <F label="Land/PLZ/Ort"><Text>{t.ort}</Text></F>
         {mitTel && <F label="Telefon"><Text>{t.telefon}</Text></F>}
@@ -434,13 +473,14 @@ export function AuftragDetail() {
           : ortTreffer(vorschlaege, wert).map((o) => ({ text: o.plzort, zusatz: o.land ?? undefined, felder: { [k('land')]: o.land } as Partial<Stop> }));
       return <StopFeld wert={wert} max={30} vorschlaege={liste} onWert={(v) => setStop(i, feld, v)} onFelder={(f, nurLeere) => setStopFelder(i, f, nurLeere)} />;
     };
+    const sm = (...felder: StopFeldName[]) => bm(...felder.map((x) => stopId(i, x)));
     return (
       <Spalten n={2}>
         <Spalte titel="Absender">
-          <F label="Firma">{vf('firma', false)}</F>
-          <F label="Straße">{vf('strasse', false)}</F>
-          <F label="Land / PLZ Ort"><FlexBox style={{ gap: '0.5rem' }}>{inp('land', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', false)}</div></FlexBox></F>
-          <F label="Ladenummer">
+          <F label="Firma" beleg={sm('firma')}>{vf('firma', false)}</F>
+          <F label="Straße" beleg={sm('strasse')}>{vf('strasse', false)}</F>
+          <F label="Land / PLZ Ort" beleg={sm('land', 'plzort')}><FlexBox style={{ gap: '0.5rem' }}>{inp('land', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', false)}</div></FlexBox></F>
+          <F label="Ladenummer" beleg={sm('ladenummer')}>
             {mayEdit ? (
               <FlexBox alignItems="Center" style={{ gap: '0.25rem' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>{inp('ladenummer', 30)}</div>
@@ -449,13 +489,13 @@ export function AuftragDetail() {
               </FlexBox>
             ) : inp('ladenummer', 30)}
           </F>
-          <F label="Zeitvorgabe Laden"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum')}{zeit('zeit')}</FlexBox></F>
+          <F label="Zeitvorgabe Laden" beleg={sm('datum', 'zeit')}><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum')}{zeit('zeit')}</FlexBox></F>
         </Spalte>
         <Spalte titel="Empfänger">
-          <F label="Firma">{vf('firma', true)}</F>
-          <F label="Straße">{vf('strasse', true)}</F>
-          <F label="Land / PLZ Ort" required={!!s.firma_e}><FlexBox style={{ gap: '0.5rem' }}>{inp('land_e', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', true)}</div></FlexBox></F>
-          <F label="Zeitvorgabe Entladen"><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum_e')}{zeit('zeit_e')}</FlexBox></F>
+          <F label="Firma" beleg={sm('firma_e')}>{vf('firma', true)}</F>
+          <F label="Straße" beleg={sm('strasse_e')}>{vf('strasse', true)}</F>
+          <F label="Land / PLZ Ort" required={!!s.firma_e} beleg={sm('land_e', 'plzort_e')}><FlexBox style={{ gap: '0.5rem' }}>{inp('land_e', 3, '4rem')}<div style={{ flex: 1 }}>{vf('plzort', true)}</div></FlexBox></F>
+          <F label="Zeitvorgabe Entladen" beleg={sm('datum_e', 'zeit_e')}><FlexBox style={{ gap: '0.5rem', flexWrap: 'wrap' }}>{datum('datum_e')}{zeit('zeit_e')}</FlexBox></F>
         </Spalte>
       </Spalten>
     );
@@ -473,7 +513,7 @@ export function AuftragDetail() {
             subHeader={<Text>{unter}</Text>}
             actionsBar={
               <FlexBox style={{ gap: '0.5rem' }} alignItems="Center">
-                {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={save}>Speichern</Button>}
+                {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={() => { void save(); }}>Speichern</Button>}
                 {!!a.faktura_reserviert && darfBearbeiten && darfRechnung && (
                   <Button icon="lead" loading={busy} onClick={speichernUndRechnung} tooltip={`Speichern und Rechnung ${a.faktura_reserviert} mit derselben Nummer neu erzeugen`}>Speichern und Rechnung erzeugen</Button>
                 )}
@@ -494,7 +534,8 @@ export function AuftragDetail() {
                   <Button icon="paper-plane" onClick={() => setVersand(true)} tooltip="Dokumente dieses Auftrags als E-Mails über Outlook 365">Versenden…</Button>
                 )}
                 {!isNew && <ChangeHistoryButton objectType="AUFTRAG" objectKey={nr!} />}
-                <Button icon="decline" design="Transparent" onClick={() => navigate('/transport/auftraege')} />
+                {/* Abbrechen: ein Beleg aus dem Posteingang bleibt dort unverändert in der Prüfliste */}
+                <Button icon="decline" design="Transparent" onClick={() => navigate(isNew && beleg.stand?.quelle.eingang ? '/transport/posteingang' : '/transport/auftraege')} />
               </FlexBox>
             }
           />
@@ -516,6 +557,18 @@ export function AuftragDetail() {
             </> : undefined}>
             <SperrHinweis s={sperre} style={{ marginBottom: '1rem' }} />
             {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '1rem' }}>{error}</MessageStrip>}
+            {/* Auftrag aus Beleg: Hinweis nach dem Speichern, Meldung der Erkennung, Hinweisband bzw. Ablagezone (nur Neuanlage Frachtauftrag) */}
+            {!isNew && beleg.hinweis && <MessageStrip design="Critical" onClose={beleg.hinweisSchliessen} style={{ marginBottom: '1rem' }}>{beleg.hinweis}</MessageStrip>}
+            {isNew && beleg.meldung && (
+              <MessageStrip design={beleg.meldung.fehler ? 'Negative' : 'Critical'} onClose={beleg.meldungSchliessen} style={{ marginBottom: '1rem' }}>{beleg.meldung.text}</MessageStrip>
+            )}
+            {isNew && beleg.stand && (
+              <BelegPanel beleg={beleg} a={a} adrDD={adrDD} werte={werte} bearbeitbar={mayEdit}
+                          onKontakt={can('transport.kontakte:edit') ? (b) => kontaktAnlegen('kunde', anschriftZuKontakt(b)) : undefined} />
+            )}
+            {belegAblage && !beleg.stand && (
+              <div style={{ marginBottom: '1rem' }}><BelegAblage onDatei={(f) => { void beleg.erkennen(f); }} laedt={beleg.laedt} /></div>
+            )}
             {!!a.faktura && (
               <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '1rem' }}>
                 Der Auftrag ist fakturiert ({a.faktura} vom {dat(a.fakturadatum)}) und kann nicht mehr geändert werden –
@@ -558,33 +611,33 @@ export function AuftragDetail() {
                   <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={a.anlagedatum ?? ''} readonly={!mayEdit}
                               onChange={(e) => set('anlagedatum', e.detail.value || null)} />
                 </F>
-                <F label="Leistungsdatum">
+                <F label="Leistungsdatum" beleg={bm('leistungsdatum')}>
                   <DatePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={a.leistungsdatum ?? ''} readonly={!mayEdit}
                               onChange={(e) => set('leistungsdatum', e.detail.value || null)} />
                 </F>
-                <F label="Auftragsnr. Kunde"><Input style={full} maxlength={40} value={a.ordernummer ?? ''} readonly={!mayEdit} onInput={(e) => set('ordernummer', e.target.value)} /></F>
+                <F label="Auftragsnr. Kunde" beleg={bm('ordernummer')}><Input style={full} maxlength={40} value={a.ordernummer ?? ''} readonly={!mayEdit} onInput={(e) => set('ordernummer', e.target.value)} /></F>
                 <F label="Frachtpreis EK"><BetragInput value={a.frachtpreis_ek} readonly={!mayEdit} onChange={(v) => set('frachtpreis_ek', v)} /></F>
-                <F label={fahrten.length ? 'Frachtpreis VK (Fahrt 1)' : 'Frachtpreis VK'}><BetragInput value={a.frachtpreis_vk} readonly={!mayEdit} onChange={(v) => set('frachtpreis_vk', v)} /></F>
+                <F label={fahrten.length ? 'Frachtpreis VK (Fahrt 1)' : 'Frachtpreis VK'} beleg={bm('frachtpreis_vk')}><BetragInput value={a.frachtpreis_vk} readonly={!mayEdit} onChange={(v) => set('frachtpreis_vk', v)} /></F>
               </Spalte>
               <Spalte titel="Fahrzeug und Ladung">
                 <F label="Kennzeichen"><Input style={full} maxlength={20} value={a.kennzeichen ?? ''} readonly={!mayEdit} onInput={(e) => set('kennzeichen', e.target.value)} /></F>
-                <F label="Fahrzeugtyp">{werteSelect('FAHRZEUGTYP', 'fahrzeugtyp')}</F>
-                <F label="Ladegut">{werteSelect('LADEGUT', 'ladegut')}</F>
-                <F label="Gewicht">
+                <F label="Fahrzeugtyp" beleg={bm('fahrzeugtyp')}>{werteSelect('FAHRZEUGTYP', 'fahrzeugtyp')}</F>
+                <F label="Ladegut" beleg={bm('ladegut')}>{werteSelect('LADEGUT', 'ladegut')}</F>
+                <F label="Gewicht" beleg={bm('gewicht')}>
                   <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
-                    <Input style={{ width: '8rem' }} maxlength={4} value={a.gewicht ?? ''} readonly={!mayEdit} onInput={(e) => set('gewicht', e.target.value)} />
+                    <Input style={{ width: '8rem' }} maxlength={10} value={a.gewicht ?? ''} readonly={!mayEdit} onInput={(e) => set('gewicht', e.target.value)} />
                     <Text>in T</Text>
                   </FlexBox>
                 </F>
-                <F label="Lademeter">
+                <F label="Lademeter" beleg={bm('lademeter')}>
                   <FlexBox alignItems="Center" style={{ gap: '0.5rem' }}>
                     <Input style={{ width: '8rem' }} value={a.lademeter === null || a.lademeter === undefined ? '' : String(a.lademeter).replace('.', ',')} readonly={!mayEdit}
                            onInput={(e) => set('lademeter', e.target.value.trim() ? e.target.value : null)} />
                     <Text>in M</Text>
                   </FlexBox>
                 </F>
-                <F label="Ladeweise">{werteSelect('LADEWEISE', 'ladeweise')}</F>
-                <F label="Palettentausch">{werteSelect('PALETTENTAUSCH', 'palettentausch', false)}</F>
+                <F label="Ladeweise" beleg={bm('ladeweise')}>{werteSelect('LADEWEISE', 'ladeweise')}</F>
+                <F label="Palettentausch" beleg={bm('palettentausch')}>{werteSelect('PALETTENTAUSCH', 'palettentausch', false)}</F>
               </Spalte>
               <Spalte titel="Rechnung">
                 <F label="MwSt berechnen"><CheckBox checked={a.steuerrelevant} readonly={!mayEdit}
@@ -748,6 +801,7 @@ export function AuftragDetail() {
           <ObjectPageSubSection id="besonderheiten-sub" titleText="Besonderheiten">
             <TextArea rows={8} growing style={full} value={a.besonderheiten ?? ''} readonly={!darfBearbeiten}
                       onInput={(e) => set('besonderheiten', e.target.value)} />
+            <BelegKennzeichen art={bm('besonderheiten')} />
           </ObjectPageSubSection>
         </ObjectPageSection>
       </ObjectPage>
@@ -761,7 +815,10 @@ export function AuftragDetail() {
       <DocsDialog docs={docs} onClose={() => { setDocs(null); setOrdnerStand((v) => v + 1); }} />
       {!isNew && nr && <VersandDialog auftraege={[nr]} fakturiert={!!a.faktura} open={versand} onClose={() => setVersand(false)} />}
       <XRechnungDialog data={xr} onClose={() => setXr(null)} />
-      <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} start={kontaktStart} onClose={() => setKontakt(null)}
+      <ConfirmDialog open={belegFrage} title="Rückfragen aus dem Beleg offen" confirmText="Trotzdem speichern"
+                     text={`Zu ${beleg.offen.length === 1 ? 'einem Feld' : `${beleg.offen.length} Feldern`} ist der Beleg nicht eindeutig, und es ist noch nichts gewählt oder eingetragen: ${beleg.offen.map((r) => r.bezeichnung).join(', ')}.\n\nDiese Felder bleiben so, wie sie jetzt in der Maske stehen. Trotzdem speichern?`}
+                     onConfirm={() => { setBelegFrage(false); void save(true); }} onCancel={() => setBelegFrage(false)} />
+      <KontaktDialog modus={kontakt} auswahl={kontakteAuftrag} start={kontaktStart} vorlage={kontaktVorlage} onClose={() => setKontakt(null)}
                      onSaved={async (adrnr) => {
                        const neu = kontakt === 'NEU';
                        const ziel = kontaktZiel;

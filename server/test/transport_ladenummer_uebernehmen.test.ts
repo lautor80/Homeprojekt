@@ -13,7 +13,7 @@ const web = readFileSync(path.join(ROOT, 'modules/transport/web/AuftragDetail.ts
 
 test('Ladenummer: Knopf ohne Text mit Tooltip direkt rechts neben dem Feld', () => {
   assert.ok(web.includes("const LADENUMMER_TOOLTIP = 'Ladenummer aus der Auftragsnr. Kunde übernehmen';"), 'Tooltip-Text');
-  const feld = web.indexOf('<F label="Ladenummer">');
+  const feld = web.indexOf('<F label="Ladenummer"');
   assert.ok(feld > 0, 'Feld Ladenummer');
   const ende = web.indexOf('</F>', feld);
   const block = web.slice(feld, ende);

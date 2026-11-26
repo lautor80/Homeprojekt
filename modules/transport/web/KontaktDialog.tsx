@@ -19,9 +19,11 @@ const leer: Adresse = {
  * Bearbeiten nur für die Kontakte des geöffneten Auftrags (Kunde, Unternehmer, Rechnungsempfänger – `start` wählt vor); Dublettenprüfung –
  * beim zweiten Klick wird trotzdem gespeichert.
  */
-export function KontaktDialog({ modus, auswahl, start, onClose, onSaved }: {
+export function KontaktDialog({ modus, auswahl, start, vorlage, onClose, onSaved }: {
   modus: 'NEU' | 'EDIT' | null;
   auswahl: AdrDD[];
+  /** Vorbelegung beim Anlegen (z. B. Anschrift aus einem gelesenen Beleg) – der Benutzer prüft und legt selbst an */
+  vorlage?: Partial<Adresse> | null;
   /** beim Bearbeiten vorausgewählter Kontakt (sonst der erste) */
   start?: string | null;
   onClose: () => void;
@@ -39,7 +41,7 @@ export function KontaktDialog({ modus, auswahl, start, onClose, onSaved }: {
     setForce(false);
     if (modus === 'NEU') {
       setNr('');
-      setK(leer);
+      setK(vorlage ? { ...leer, ...vorlage } : leer);
     } else if (auswahl.length) {
       setNr(start && auswahl.some((x) => x.key === start) ? start : auswahl[0].key);
     }

@@ -7,6 +7,7 @@ import { PaperlessMigration } from './PaperlessMigration';
 import { Kontakte } from './Kontakte';
 import { Posteingang } from './eingang/Posteingang';
 import { MailWorkflowsTab } from './MailWorkflowsTab';
+import { LeseprofileTab } from './beleg/LeseprofileTab';
 
 /** Transportmodul (Euroflex Auftragsverwaltung) */
 const mod: WebModule = {
@@ -36,6 +37,8 @@ const mod: WebModule = {
     { id: 'firma', text: 'Firma und Bank', icon: 'building', permission: 'transport.stammdaten:edit', component: FirmaTab },
     { id: 'mailtexte', text: 'E-Mail-Texte', icon: 'email', permission: 'transport.stammdaten:edit', component: MailtexteTab },
     { id: 'mailworkflows', text: 'Mail-Workflows (Eingang und Versand)', icon: 'email-read', permission: 'transport.stammdaten:edit', component: MailWorkflowsTab },
+    // Auftrag aus Beleg: Funktion transport.beleg.profile aus = Recht nicht vorhanden = Kapitel nicht sichtbar
+    { id: 'leseprofile', text: 'Leseprofile (Auftrag aus Beleg)', icon: 'add-document', permission: 'transport.leseprofile:edit', component: LeseprofileTab },
   ],
   routes: [
     { path: '/transport/auftraege', component: AuftraegeListe, permission: 'transport.auftraege:display' },

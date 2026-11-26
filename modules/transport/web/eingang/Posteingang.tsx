@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BusyIndicator, Button, CheckBox, Icon, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
@@ -8,13 +9,15 @@ import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { useKlein } from '@core/components/ResponsiveTable';
 import { Empty, Section } from '@core/components/Section';
-import { useCan } from '@core/session';
+import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { dat, download } from '../util';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
 import { eingangInOrdner, uebernahmeText } from './uebernahme';
 import { entfernenUnterordner, ordnerMoeglich, UNTERORDNER_EINGANG } from '../ordner';
 import { eingangName } from '../ordner-schluessel';
+import { F_BELEG_EINGANG, KEIN_FRACHTAUFTRAG, R_BELEG_EINGANG, belegAusEingang, istBelegDatei } from '../beleg/api';
+import { belegMerken, type BelegState } from '../beleg/vormerkung';
 import { OHNE_ADRESSE, absenderFiltern, filterGueltig, gleicherFilter, postfachBaum, type AbsenderFilter, type PostfachKnoten } from './absenderbaum';
 import {
   EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, automatischAbgelegt, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
@@ -383,6 +386,10 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
   const can = useCan();
   const darfUebertragen = edit && ordnerMoeglich && can('transport.auftraege:edit');
   const darfLaden = (d: EingangDokument) => edit || (ZUGEORDNET_DOK(d) && can('transport.auftraege:display'));
+  // Auftrag aus Beleg (docs/euroflex-belegerfassung.md): aus einem PDF-/Bild-Anhang einen Frachtauftrag anlegen – Recht + Funktionsschalter
+  const navigate = useNavigate();
+  const funktion = useFunktion();
+  const darfBeleg = edit && can(R_BELEG_EINGANG) && funktion(F_BELEG_EINGANG) && can('transport.auftraege:edit');
 
   const laden = useCallback(async () => {
     try {
@@ -470,6 +477,21 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
       if (r.entfernen?.length) onFehler(`Bitte ${r.entfernen.map(eingangName).join(', ')} von Hand aus dem Ordner von Auftrag ${r.alt} (Unterordner „${UNTERORDNER_EINGANG}“) entfernen.`);
     }
   };
+  /**
+   * „Auftrag daraus anlegen“: Anhang lesen lassen und die Neuanlage eines Frachtauftrags vorbefüllt öffnen. Die E-Mail bleibt dabei
+   * unverändert in der Prüfliste – erst nach dem Speichern des Auftrags wird sie ihm zugeordnet (beleg/api.ts, belegAnhaengen).
+   */
+  const belegMoeglich = (d: EingangDokument) => darfBeleg && offen && !v.vorgemerkt && d.art !== 'mail' && OFFEN_DOK(d) && d.vorhanden !== false
+    && istBelegDatei({ name: d.datei, type: d.mime });
+  const auftragAusBeleg = async (d: EingangDokument) => {
+    setBusy(true);
+    try {
+      const vorschlag = await belegAusEingang(d.id);
+      if (!vorschlag.istFrachtauftrag) { onFehler(`${d.datei}: ${KEIN_FRACHTAUFTRAG}`); return; }
+      const state: BelegState = { beleg: belegMerken({ vorschlag, dateiName: d.datei, datei: null, eingang: { vorgang: v.id, dokument: d.id, betreff: v.betreff } }) };
+      navigate('/transport/auftraege/neu/F', { state });
+    } catch (e) { onFehler((e as Error).message); } finally { setBusy(false); }
+  };
   const neuBewerten = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/neu-bewerten`), 'Zuordnung neu berechnet', 'neu');
   const ignorieren = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/ignorieren`), 'E-Mail ignoriert', 'neu');
 
@@ -497,6 +519,7 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
         {!v.dokumente.length ? <Text className="portal-muted">Keine Anhänge.</Text> : v.dokumente.map((d) => (
           <DokumentKarte key={d.id} d={d} waehlbar={offen && darfAblegen && OFFEN_DOK(d)} gewaehlt={auswahl.has(d.id)}
                          onWahl={(an) => umschalten(d, an)} vorschau={darfLaden(d) ? () => vorschau(d) : null}
+                         beleg={belegMoeglich(d) ? () => { void auftragAusBeleg(d); } : null} gesperrt={busy}
                          herunterladen={darfLaden(d) ? () => download(dateiUrl(d.id), d.datei || `Dokument_${d.id}`).catch((x) => onFehler((x as Error).message)) : null} />
         ))}
       </div>
@@ -647,8 +670,9 @@ function Kandidaten({ kandidaten, gewaehlt, kunde, waehlbar, onWaehlen }: {
   );
 }
 
-function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen }: {
+function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen, beleg, gesperrt }: {
   d: EingangDokument; waehlbar: boolean; gewaehlt: boolean; onWahl: (an: boolean) => void; vorschau: (() => void) | null; herunterladen: (() => void) | null;
+  /** „Auftrag daraus anlegen“ (Auftrag aus Beleg) – null = nicht angeboten */ beleg: (() => void) | null; gesperrt: boolean;
 }) {
   const [mehr, setMehr] = useState(false);
   const ocr = (d.ocr_auszug ?? '').trim();
@@ -679,6 +703,14 @@ function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen 
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           {vorschau && <Link onClick={vorschau}>Vorschau</Link>}
           {herunterladen && <Link onClick={herunterladen}>Herunterladen</Link>}
+        </div>
+      )}
+      {beleg && (
+        <div>
+          <Button design="Transparent" icon="add-document" disabled={gesperrt} onClick={beleg}
+                  tooltip="Beleg lesen und einen neuen Frachtauftrag vorbefüllt öffnen – die E-Mail wird erst nach dem Speichern des Auftrags zugeordnet">
+            Auftrag daraus anlegen
+          </Button>
         </div>
       )}
       {!vorhanden && d.status !== 'ignoriert' && (
