@@ -5,3 +5,5 @@
 .portal-gr__oben { margin-bottom: 0.5rem; padding: 0.375rem 0.75rem; border: 1px dashed var(--sapField_BorderColor); border-radius: 0.5rem; color: var(--sapContent_LabelColor); font-size: var(--sapFontSmallSize, 0.75rem); }
 /* eingebettet (Vereinskalender, Reiter „Gruppen / Mannschaften“): Anzahl und Aktionen in einer Leiste über dem Baum */
 .portal-gr__kopf { margin: 0.75rem 0 0.5rem; }
+/* Vertragsbaum: Leiste über der Tabelle mit Innenabstand, damit Ansichtsauswahl & Co. nicht an der abgerundeten Kartenkante anliegen */
+.portal-vb__leiste { padding: 0.5rem 0.5rem 0.5rem 0.75rem; }
