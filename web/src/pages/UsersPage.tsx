@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { feld } from '../components/Varianten';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
+  AnalyticalTable, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
   Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Switch, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
@@ -196,7 +197,7 @@ export function UsersPage() {
       {einladen === 'LISTE' && <ZugangslinkDialog onClose={() => setEinladen(false)} onModus={() => setEinladen('QR')} />}
       {mg && (
         <Dialog open headerText="Mitglieder als Benutzer anlegen" style={{ width: 'min(52rem, 96vw)' }} onClose={() => setMg(null)}
-                footer={<Bar endContent={mg === 'frage' ? <>
+                footer={<FussLeiste endContent={mg === 'frage' ? <>
                   <Button design="Emphasized" icon="group" loading={busy} onClick={async () => {
                     setBusy(true); setError(null);
                     try { const r = await api.post<MgAnlage>('/api/m/tco/mitglieder/benutzer-anlegen', { mail: mgMail }); setMg(r); toast(r.text, 8000); users.reload(); }
@@ -287,7 +288,7 @@ export function UsersPage() {
         onClose={() => setEdit(null)}
         style={{ width: 'min(640px, 95vw)' }}
         footer={
-          <Bar
+          <FussLeiste
             startContent={!edit?.isNew && edit?.username ? <ChangeHistoryButton objectType="USER" objectKey={edit.username} /> : undefined}
             endContent={
               <>
@@ -359,7 +360,7 @@ export function UsersPage() {
         headerText={`Benutzer löschen: ${loeschen.username}`}
         state="Negative"
         onClose={() => setLoeschen(null)}
-        footer={<Bar endContent={<>
+        footer={<FussLeiste endContent={<>
           <Button design="Negative" icon="delete" loading={busy} onClick={benutzerLoeschen}>Endgültig löschen</Button>
           <Button onClick={() => setLoeschen(null)}>Abbrechen</Button>
         </>} />}
@@ -375,7 +376,7 @@ export function UsersPage() {
         open={!!pwFor}
         headerText={`Passwort zurücksetzen: ${pwFor?.username ?? ''}`}
         onClose={() => setPwFor(null)}
-        footer={<Bar endContent={<>
+        footer={<FussLeiste endContent={<>
           <Button design="Emphasized" disabled={newPw.length < 10} loading={busy} onClick={resetPassword}>Zurücksetzen</Button>
           <Button disabled={!pwFor?.email} loading={busy} onClick={linkSenden}>Einmal-Link senden</Button>
           <Button onClick={() => setPwFor(null)}>Abbrechen</Button>
@@ -417,7 +418,7 @@ function EinzelAnlage({ onClose, onDone }: { onClose: () => void; onDone: () => 
   }
   return (
     <Dialog open headerText="Benutzer aus Mitglied oder EP3-Kunde anlegen" style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={ergebnis ? <Button design="Emphasized" onClick={onClose}>Schließen</Button> : <>
+            footer={<FussLeiste endContent={ergebnis ? <Button design="Emphasized" onClick={onClose}>Schließen</Button> : <>
               <Button design="Emphasized" icon="add-employee" disabled={!wahl || busy} onClick={anlegen}>Anlegen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -506,7 +507,7 @@ function EinladungDialog({ onClose, onModus }: { onClose: () => void; onModus: (
   const mitMail = [...wahl].filter((a) => liste?.find((k) => k.adrnr === a)?.email).length;
   return (
     <Dialog open headerText="Einladen & Zugangslinks" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={ergebnis ? <>
+            footer={<FussLeiste endContent={ergebnis ? <>
               {ergebnis.pdf && <Button design="Emphasized" icon="download" onClick={() => pdfLaden(ergebnis.pdf!)}>Briefe (PDF) herunterladen</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </> : <>
@@ -640,7 +641,7 @@ function ZugangslinkDialog({ onClose, onModus }: { onClose: () => void; onModus:
   const zelle = { padding: '0.3rem 0.5rem', borderTop: '1px solid var(--sapList_BorderColor)', verticalAlign: 'middle' } as const;
   return (
     <Dialog open headerText="Einladen & Zugangslinks" style={{ width: 'min(60rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={ergebnis ? <Button onClick={onClose}>Schließen</Button> : <>
+            footer={<FussLeiste endContent={ergebnis ? <Button onClick={onClose}>Schließen</Button> : <>
               <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={!empfaenger.length || !text.includes('{Link}') || !betreff.trim()} onClick={senden}>
                 {empfaenger.length} E-Mail{empfaenger.length === 1 ? '' : 's'} senden
               </Button>

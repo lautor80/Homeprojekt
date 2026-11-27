@@ -2,7 +2,8 @@ import type { ReactElement, ReactNode } from 'react';
 import { Children, createContext, Fragment, isValidElement, useContext } from 'react';
 import { Varianten, type VariantenProps } from './Varianten';
 import { ImportKnopf } from './ImportDialog';
-import { DynamicPage, DynamicPageHeader, DynamicPageTitle, Title, Text, Bar, Toolbar, ToolbarItem } from '@ui5/webcomponents-react';
+import { DynamicPage, DynamicPageHeader, DynamicPageTitle, Title, Text, Toolbar, ToolbarItem } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 
 interface Props {
   title: string;
@@ -54,7 +55,7 @@ export function AppPage({ title, subtitle, actions: actions0, varianten, header,
         )}
         {header}
         {children}
-        {footer ? <Bar style={{ marginTop: '1rem' }} endContent={<>{footer}</>} /> : null}
+        {footer ? <FussLeiste style={{ marginTop: '1rem' }} endContent={<>{footer}</>} /> : null}
       </div>
     );
   }
@@ -72,7 +73,7 @@ export function AppPage({ title, subtitle, actions: actions0, varianten, header,
         />
       }
       headerArea={header ? <DynamicPageHeader>{header}</DynamicPageHeader> : undefined}
-      footerArea={footer ? <Bar design="FloatingFooter" endContent={<>{footer}</>} /> : undefined}
+      footerArea={footer ? <FussLeiste className="portal-seitenfuss" endContent={<>{footer}</>} /> : undefined}
     >
       <div style={{ padding: '0 0 1rem' }}>{children}</div>
     </DynamicPage>

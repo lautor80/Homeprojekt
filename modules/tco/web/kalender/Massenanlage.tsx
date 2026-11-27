@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
+  Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { TCO } from '../util';
 import bildSpielplan from './anleitung/schritt1.jpg';
@@ -178,22 +179,22 @@ export function MassenanlageDialog({ kategorien, gruppen, onClose, onDone }: {
 
   const schliessen = () => { if (busy) return; if (phase === 'protokoll') onDone(ergebnis); else onClose(); };
   const fuss = phase === 'einfuegen' ? (
-    <Bar endContent={<>
+    <FussLeiste endContent={<>
       <Button design="Emphasized" icon="table-view" disabled={busy || !text.trim()} onClick={aufbereiten}>Als Tabelle aufbereiten</Button>
       <Button onClick={onClose}>Abbrechen</Button>
     </>} />
   ) : phase === 'tabelle' ? (
-    <Bar startContent={<Text className="portal-az__fuss"><b>{gewaehlt.length}</b> von {zeilen.length} Veranstaltung(en) ausgewählt</Text>}
+    <FussLeiste startContent={<Text className="portal-az__fuss"><b>{gewaehlt.length}</b> von {zeilen.length} Veranstaltung(en) ausgewählt</Text>}
          endContent={<>
            <Button design="Emphasized" icon="accept" disabled={!gewaehlt.length} onClick={() => setPhase('freigabe')}>Weiter zur Freigabe</Button>
            <Button onClick={() => setPhase('einfuegen')}>Zurück</Button>
          </>} />
   ) : phase === 'freigabe' ? (
-    <Bar endContent={<>
+    <FussLeiste endContent={<>
       <Button design="Emphasized" icon="accept" disabled={busy} onClick={anlegen}>Freigeben und anlegen</Button>
       <Button disabled={busy} onClick={() => setPhase('tabelle')}>Zurück</Button>
     </>} />
-  ) : <Bar endContent={<Button design="Emphasized" onClick={schliessen}>Schließen</Button>} />;
+  ) : <FussLeiste endContent={<Button design="Emphasized" onClick={schliessen}>Schließen</Button>} />;
 
   const kopf = (mitAuswahl: boolean) => (
     <thead>

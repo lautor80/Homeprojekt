@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -66,7 +67,7 @@ function AbfrageDialog({ alt, onClose, onDone }: { alt: AbfrageKopf | null; onCl
 
   return (
     <Dialog open headerText={alt ? 'Abfrage bearbeiten' : 'Neue Mannschaftsmeldung'} onClose={onClose} style={{ width: 'min(48rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy || !gruppen || !f.titel.trim()} onClick={sichern}>Sichern</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>

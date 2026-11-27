@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, Dialog, MessageStrip, Text, Title } from '@ui5/webcomponents-react';
+import { Button, Dialog, MessageStrip, Text, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { TCO, dat, eur } from '../util';
 
@@ -33,7 +34,7 @@ export function BuchungssperreWaechter() {
   return (
     <Dialog open headerText="Buchungssperre: offene Rechnungen" state="Negative" style={{ width: 'min(36rem, 96vw)' }}
             onBeforeClose={(e) => { if (!s.bestaetigt) e.preventDefault(); }}
-            footer={<Bar endContent={<Button design="Emphasized" icon="accept" loading={busy} onClick={bestaetigen}>Zur Kenntnis genommen</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" icon="accept" loading={busy} onClick={bestaetigen}>Zur Kenntnis genommen</Button>} />}>
       <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>
         <b>Du kannst vorübergehend keine neuen Hallenstunden buchen.</b>
       </MessageStrip>

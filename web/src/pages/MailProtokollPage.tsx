@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { feld } from '../components/Varianten';
-import { AnalyticalTable, Bar, Button, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Button, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -229,7 +230,7 @@ export function MailProtokollPage() {
       />
       <Dialog open={!!detail} headerText={detail ? `E-Mail vom ${zeitText(detail.zeit)}` : ''} onClose={() => setDetail(null)} style={{ width: 'min(760px, 96vw)' }}
               footer={
-                <Bar endContent={
+                <FussLeiste endContent={
                   <>
                     {detail?.an && <Button design="Transparent" icon="filter" onClick={() => { const an = detail.an ?? ''; setDetail(null); suchen({ ...f, suche: an }); }}>Alle E-Mails an diese Adresse</Button>}
                     {detail?.objekt && <Button design="Transparent" icon="filter" onClick={() => { const o = detail.objekt ?? ''; setDetail(null); suchen({ ...f, suche: o }); }}>Alle E-Mails zum Vorgang</Button>}

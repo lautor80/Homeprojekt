@@ -32,3 +32,8 @@
 .portal-rm__minus { color: var(--sapNegativeTextColor, #aa0808); }
 .portal-rm__herkunft { border-collapse: collapse; margin-top: 0.15rem; font-size: 0.8125rem; }
 .portal-rm__herkunft td { border: 0 !important; padding: 0.1rem 0.75rem 0.1rem 0 !important; }
+
+/* Telefon: Die fixierte erste Spalte war so breit wie der Bildschirm – die Kästchen der Rollen lagen darunter. */
+@media (max-width: 700px) {
+  .portal-rm__ecke, .portal-rm__recht { min-width: 8rem; max-width: 42vw; overflow-wrap: anywhere; }
+}

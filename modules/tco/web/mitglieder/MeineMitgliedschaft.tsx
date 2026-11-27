@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, TextArea,
+  AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { api } from '@core/api';
@@ -262,7 +263,7 @@ function KontaktDialog({ start, busy, error, onClose, onSave }: { start: Kontakt
   const set = (f: keyof Kontakt) => (v: string) => setK({ ...k, [f]: v });
   return createPortal(
     <Dialog open headerText="Kontaktdaten ändern" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={busy} onClick={() => onSave(k)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy} onClick={() => onSave(k)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <FormGrid>
         <TextField label="Straße und Hausnummer" required value={k.strasse} onChange={set('strasse')} wide />
@@ -283,7 +284,7 @@ function BankDialog({ busy, error, onClose, onSave }: { busy: boolean; error: st
   const [ok, setOk] = useState(false);
   return createPortal(
     <Dialog open headerText="Bankverbindung ändern" style={{ width: 'min(32rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={busy || !b.iban.trim() || !ok} onClick={() => onSave(b)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy || !b.iban.trim() || !ok} onClick={() => onSave(b)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <FormGrid columns={1}>
         <TextField label="Neue IBAN" required value={b.iban} onChange={(v) => setB({ ...b, iban: v })} placeholder="DE.." />
@@ -305,7 +306,7 @@ function KuendigungDialog({ k, info, vertraege, busy, error, onClose, onConfirm 
   const laufende = vertraege.filter((v) => v.laeuft && !v.vertragende);
   return createPortal(
     <Dialog open headerText={k.art === 'MITGLIEDSCHAFT' ? 'Mitgliedschaft kündigen' : 'Vertrag kündigen'} style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Negative" icon="decline" disabled={busy || !ok} onClick={() => onConfirm(grund)}>Kündigung einreichen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Negative" icon="decline" disabled={busy || !ok} onClick={() => onConfirm(grund)}>Kündigung einreichen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       <div style={{ display: 'grid', gap: '0.75rem' }}>
         <Attributes narrow>

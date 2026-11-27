@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { Bar, Button, BusyIndicator, Dialog, Icon, IllustratedMessage } from '@ui5/webcomponents-react';
+import { Button, BusyIndicator, Dialog, Icon, IllustratedMessage } from '@ui5/webcomponents-react';
+import { FussLeiste } from './components/DialogFuss';
 import '@ui5/webcomponents-fiori/dist/illustrations/DragFilesToUpload.js';
 import { toast } from './toast';
 import { einfuegenAblegen, imEingabefeld } from './ablage-regel';
@@ -222,7 +223,7 @@ export function AblageDialog({ open, titel, ziel, accept, multiple = true, text,
   const z: AblageZiel = { titel: ziel.titel, annehmen: (f) => { onClose(); return ziel.annehmen(f); } };
   return (
     <Dialog open headerText={titel} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
       <AblageFlaeche ziel={z} accept={accept} multiple={multiple} text={text} titel={feldTitel} groesse="Dialog" />
     </Dialog>
   );

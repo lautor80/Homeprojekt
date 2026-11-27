@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, Text, TextArea,
+  BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, ProgressIndicator, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { H, dat, eur } from './util';
 import './halle.css';
@@ -108,18 +109,18 @@ export function SammelVersandDialog({ open, onClose, onDone }: { open: boolean; 
   };
 
   const fuss = phase === 'auswahl' ? (
-    <Bar startContent={<Text className="portal-az__fuss"><b>{gewaehlt.length}</b> Rechnung(en) · <b>{kz.empfaenger}</b> Empfänger · <b>{eur(kz.summe)}</b></Text>}
+    <FussLeiste startContent={<Text className="portal-az__fuss"><b>{gewaehlt.length}</b> Rechnung(en) · <b>{kz.empfaenger}</b> Empfänger · <b>{eur(kz.summe)}</b></Text>}
          endContent={<>
            <Button design="Emphasized" icon="paper-plane" disabled={!gewaehlt.length} onClick={() => setPhase('freigabe')}>Weiter zur Freigabe</Button>
            <Button onClick={onClose}>Abbrechen</Button>
          </>} />
   ) : phase === 'freigabe' ? (
-    <Bar endContent={<>
+    <FussLeiste endContent={<>
       <Button design="Emphasized" icon="accept" disabled={!vorlage || textFehlt} onClick={versenden}>Freigeben, drucken und versenden</Button>
       <Button onClick={() => setPhase('auswahl')}>Zurück</Button>
     </>} />
   ) : phase === 'protokoll' ? (
-    <Bar endContent={<Button design="Emphasized" onClick={schliessen}>Schließen</Button>} />
+    <FussLeiste endContent={<Button design="Emphasized" onClick={schliessen}>Schließen</Button>} />
   ) : undefined;
 
   return createPortal(

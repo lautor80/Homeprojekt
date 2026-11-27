@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
-import { AnalyticalTable, Bar, Button, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Button, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import { useNavigate } from 'react-router-dom';
 import { fmtDateTime } from '../components/ChangeHistory';
 import { api } from '../api';
@@ -149,7 +150,7 @@ export function RolesPage() {
         onClose={() => setEdit(null)}
         style={{ width: 'min(1100px, 96vw)' }}
         footer={
-          <Bar
+          <FussLeiste
             startContent={!edit?.isNew && edit?.id ? <ChangeHistoryButton objectType="ROLE" objectKey={edit.id} /> : undefined}
             endContent={<>
               {mayEdit && !edit?.isNew && !edit?.system && !edit?.nurAdmin && (

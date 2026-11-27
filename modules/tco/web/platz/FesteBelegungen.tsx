@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, DatePicker, Dialog, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
+  AnalyticalTable, Button, DatePicker, Dialog, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
   Switch, Text, Title, ToggleButton, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -89,7 +90,7 @@ function FestDialog({ start, plaetze, onClose, onSave }: { start: Form; plaetze:
   const einmalig = f.datum_von === f.datum_bis;
   return createPortal(
     <Dialog open headerText={f.id ? `Belegung „${start.bezeichnung}“` : 'Neue feste Belegung'} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={!sperre.eigen || !f.bezeichnung.trim()} onClick={() => onSave(f)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!sperre.eigen || !f.bezeichnung.trim()} onClick={() => onSave(f)}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       <SperrHinweis s={sperre} />
       <FormGrid>
         <FieldBox label="Bezeichnung" required><Input style={{ width: '100%' }} value={f.bezeichnung} maxlength={80} onInput={(e) => set('bezeichnung', e.target.value)} /></FieldBox>

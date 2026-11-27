@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  BusyIndicator, Button, CheckBox, Dialog, Icon, Input, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { H, RG_STATUS, dat, eur, wtag, zeit, type Buchung } from './util';
 import './halle.css';
@@ -104,7 +105,7 @@ export function AutoDialog({ open, onClose, onDone }: { open: boolean; onClose: 
   return createPortal(
     <Dialog open={open} stretch={klein()} headerText="Automatische Zuordnung" onClose={onClose} className="portal-az__dialog"
             style={klein() ? undefined : { width: 'min(70rem, 96vw)', height: '90vh' }}
-            footer={<Bar startContent={
+            footer={<FussLeiste startContent={
               <Text className="portal-az__fuss">
                 <b>{kz.anzahl}</b> Buchung(en) · <b>{kz.kunden}</b> Kunde(n) · {kz.neu} neue Rechnung(en), {kz.ergaenzt} ergänzt · <b>{eur(kz.summe)}</b>
               </Text>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, CheckBox, Dialog, MessageStrip } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Dialog, MessageStrip } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -124,7 +125,7 @@ function ZahlungDialog({ z, kopie = false, vertraege, onClose }: { z: Partial<Za
 
   return (
     <Dialog open headerText={z.id ? 'Mieteingang ändern' : kopie ? 'Mieteingang in Folgemonat kopieren' : 'Mieteingang erfassen'} style={{ width: 'min(36rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<>
+      footer={<FussLeiste endContent={<>
         <Button design="Emphasized" loading={busy} disabled={!f.vertrag_id || differenz !== 0} onClick={sichern}>Sichern</Button>
         <Button onClick={() => onClose(false)}>Abbrechen</Button>
       </>} />}>
@@ -170,7 +171,7 @@ function MonatslaufDialog({ onClose }: { onClose: (neu: boolean) => void }) {
 
   return (
     <Dialog open headerText="Monat buchen" style={{ width: 'min(40rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<>
+      footer={<FussLeiste endContent={<>
         <Button design="Emphasized" loading={busy} disabled={!wahl.size} onClick={buchen}>{wahl.size} Eingänge erfassen</Button>
         <Button onClick={() => onClose(false)}>Abbrechen</Button>
       </>} />}>

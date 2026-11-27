@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, Option, Select } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Dialog, Input, Label, MessageStrip, Option, Select } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 import { api } from '../api';
 import { toast } from '../toast';
 
@@ -93,7 +94,7 @@ function VarianteDialog({ repid, ansicht, vorschlag, global: darfGlobal, onClose
   }
   return (
     <Dialog open headerText="Variante sichern" style={{ width: 'min(26rem, 96vw)' }} onClose={() => onClose(null)}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={!name.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!name.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
         <Label showColon required>Name</Label>

@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
   Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -469,7 +470,7 @@ export function Haushaltsplan() {
 
       {vorhaben && s && init && (
         <Dialog open headerText={vorhaben.id ? 'Vorhaben ändern' : 'Neues Vorhaben'} onClose={() => setVorhaben(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" disabled={!vorhaben.bezeichnung?.trim() || !vorhaben.betragText?.trim()}
                           onClick={() => tun(() => api.post(`${HH}/plan/${s.plan.id}/vorhaben`, { ...vorhaben, betrag: vorhaben.betragText, betragText: undefined })).then(() => setVorhaben(null))}>Sichern</Button>
                   <Button onClick={() => setVorhaben(null)}>Abbrechen</Button>
@@ -498,7 +499,7 @@ export function Haushaltsplan() {
 
       {(dialog === 'beschliessen' || dialog === 'genehmigen') && p0 && (
         <Dialog open headerText={dialog === 'beschliessen' ? `Haushaltsplan ${p0.jahr} beschließen` : `Genehmigung der Mitgliederversammlung eintragen`} onClose={() => setDialog(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" onClick={() => { const d = dialog; setDialog(null); tun(() => api.post(`${HH}/plan/${p0.id}/${d}`, { datum }), () => initLaden({ jahr: p0.jahr, id: p0.id }).then(() => planLaden(p0.id))); }}>
                     {dialog === 'beschliessen' ? 'Beschließen' : 'Eintragen'}</Button>
                   <Button onClick={() => setDialog(null)}>Abbrechen</Button>
@@ -514,7 +515,7 @@ export function Haushaltsplan() {
       )}
       {dialog === 'nachtrag' && p0 && (
         <Dialog open headerText={`Nachtrag zum Haushaltsplan ${p0.jahr}`} onClose={() => setDialog(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" disabled={!text.trim()} onClick={() => { setDialog(null); tun(() => api.post<{ id: number }>(`${HH}/plan/${p0.id}/nachtrag`, { begruendung: text }), (r) => initLaden({ jahr: p0.jahr, id: r.id })); }}>Nachtrag anlegen</Button>
                   <Button onClick={() => setDialog(null)}>Abbrechen</Button>
                 </>} />}>

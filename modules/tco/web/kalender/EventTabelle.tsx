@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
+  AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text,
   type AnalyticalTableColumnDefinition, type AnalyticalTableCellInstance as Cell,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
@@ -194,7 +195,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
       {regeln && <EventRegelnDialog gruppen={gruppen} onClose={() => setRegeln(false)} />}
       {loeschen && createPortal(
         <Dialog open headerText="Veranstaltungen löschen" state="Negative" onClose={() => setLoeschen(false)} style={{ width: 'min(36rem, 96vw)' }}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Negative" icon="delete" disabled={busy || !gewaehlt.length} onClick={massenLoeschen}>{gewaehlt.length} löschen</Button>
                   <Button onClick={() => setLoeschen(false)}>Abbrechen</Button>
                 </>} />}>
@@ -212,7 +213,7 @@ export function EventTabelle({ aktiv, version, kategorien, gruppen, onOeffnen, o
       )}
       {zuordnung && createPortal(
         <Dialog open headerText="Regelwerk angewendet" onClose={() => setZuordnung(null)} style={{ width: 'min(60rem, 96vw)' }}
-                footer={<Bar endContent={<Button design="Emphasized" onClick={() => setZuordnung(null)}>Schließen</Button>} />}>
+                footer={<FussLeiste endContent={<Button design="Emphasized" onClick={() => setZuordnung(null)}>Schließen</Button>} />}>
           <div className="portal-az">
             <MessageStrip design={zuordnung.zeilen.length ? 'Positive' : 'Information'} hideCloseButton>
               {zuordnung.text}{!zuordnung.zeilen.length && !ueberschreiben ? ' Veranstaltungen mit Gruppe bleiben unverändert, solange „vorhandene Gruppe überschreiben“ nicht gesetzt ist.' : ''}
@@ -271,7 +272,7 @@ function EventRegelnDialog({ gruppen, onClose }: { gruppen: GruppeKurz[]; onClos
   return createPortal(
     <Dialog open stretch={klein()} headerText="Regelwerk: Gruppe aus Text ableiten" onClose={() => !busy && onClose()}
             style={klein() ? undefined : { width: 'min(64rem, 96vw)' }}
-            footer={<Bar startContent={geaendert ? <ObjectStatus state="Critical">Änderungen noch nicht gesichert</ObjectStatus> : undefined}
+            footer={<FussLeiste startContent={geaendert ? <ObjectStatus state="Critical">Änderungen noch nicht gesichert</ObjectStatus> : undefined}
                          endContent={<>
                            <Button design="Emphasized" disabled={busy || !geaendert || fehler} onClick={sichern}>Regeln sichern</Button>
                            <Button disabled={busy} onClick={onClose}>Schließen</Button>

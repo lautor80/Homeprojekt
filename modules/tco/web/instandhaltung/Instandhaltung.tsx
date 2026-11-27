@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
   Select, Tab, TabContainer, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { PdfDialog } from '@core/components/PdfDialog';
@@ -234,7 +235,7 @@ function VarianteDialog({ ansicht, vorschlag, admin, onClose }: { ansicht: Ansic
   }
   return (
     <Dialog open headerText="Variante sichern" style={{ width: 'min(26rem, 96vw)' }} onClose={() => onClose(null)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label showColon required>Name</Label>
@@ -298,7 +299,7 @@ function DetailDialog({ id, daten, onClose, onError }: { id: number; daten: Date
   return (
     <Dialog open headerText={d ? `${d.nummer} · ${d.anlage} · ${d.kategorie}` : 'Schadensmeldung'} style={{ width: 'min(52rem, 98vw)' }}
             onClose={() => onClose(geaendert)}
-            footer={<Bar startContent={d ? <Button icon="print" onClick={() => setFormular(true)}>Formular …</Button> : undefined} endContent={<>
+            footer={<FussLeiste startContent={d ? <Button icon="print" onClick={() => setFormular(true)}>Formular …</Button> : undefined} endContent={<>
               {edit && d && <Button design="Emphasized" icon="save" loading={busy} onClick={sichern}>Sichern</Button>}
               <Button onClick={() => onClose(geaendert)}>Schließen</Button>
             </>} />}>
@@ -492,7 +493,7 @@ function DokumenteDialog({ id, arten, vorhanden, onClose }: { id: number; arten:
   }
   return (
     <Dialog open headerText="Paperless-Dokumente verknüpfen" style={{ width: 'min(60rem, 98vw)' }} onClose={() => onClose(false)}
-            footer={<Bar startContent={<Text>{sel.size} ausgewählt</Text>} endContent={<>
+            footer={<FussLeiste startContent={<Text>{sel.size} ausgewählt</Text>} endContent={<>
               <Select accessibleName="Art" onChange={(e) => setArt((e.detail.selectedOption as HTMLElement).dataset.a ?? 'SONSTIGES')}>
                 {Object.entries(arten).filter(([k]) => k !== 'FORMULAR').map(([k, t]) => <Option key={k} data-a={k} selected={art === k}>{t}</Option>)}
               </Select>
@@ -553,7 +554,7 @@ function FormularDialog({ d, anlaesse, darfAblegen, onClose }: { d: Detail; anla
   }
   return (
     <Dialog open headerText={`Formular ${d.nummer}`} style={{ width: 'min(32rem, 96vw)' }} onClose={() => onClose(hinweis.length > 0)}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button icon="print" disabled={fehltAn} onClick={() => setPdf(`${I}/${d.id}/formular.pdf?${q()}`)}>Drucken / Vorschau</Button>
               {darfAblegen && <Button design="Emphasized" icon="upload-to-cloud" loading={busy} disabled={fehltAn} onClick={ablegen}>In Paperless ablegen</Button>}
               <Button onClick={() => onClose(hinweis.length > 0)}>Schließen</Button>
@@ -742,7 +743,7 @@ function AnlageDialog({ f: start, s, onClose }: { f: AnlageForm; s: StammDaten; 
   }
   return (
     <Dialog open headerText={f.id ? 'Ort bearbeiten' : 'Ort anlegen'} style={{ width: 'min(28rem, 96vw)' }} onClose={() => onClose(false)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label showColon required>Wo (Bezeichnung)</Label>
@@ -780,7 +781,7 @@ function KategorieDialog({ f: start, onClose }: { f: KatForm; onClose: (neu: boo
   }
   return (
     <Dialog open headerText={f.id ? 'Kategorie bearbeiten' : 'Kategorie anlegen'} style={{ width: 'min(28rem, 96vw)' }} onClose={() => onClose(false)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label showColon required>Bezeichnung</Label>
@@ -807,7 +808,7 @@ function ZustaendigDialog({ s, onClose }: { s: StammDaten; onClose: (neu: boolea
   }
   return (
     <Dialog open headerText="Zuständigkeit anlegen" style={{ width: 'min(28rem, 96vw)' }} onClose={() => onClose(false)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label showColon required>Person (Benutzer mit Berechtigung)</Label>

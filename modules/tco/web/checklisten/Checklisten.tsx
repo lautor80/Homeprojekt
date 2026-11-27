@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, Select, SuggestionItem, Text, TextArea,
+  AnalyticalTable, BusyIndicator, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, Select, SuggestionItem, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -581,7 +582,7 @@ export function Checklisten() {
 
       {/* ---------- Checkliste anlegen / ändern */}
       <Dialog open={!!kopf} headerText={kopf?.id ? 'Checkliste ändern' : 'Neue Checkliste'} onClose={() => setKopf(null)}
-              footer={<Bar endContent={<><Button design="Emphasized" disabled={busy || !kopf?.titel.trim()} onClick={kopfSichern}>Sichern</Button><Button onClick={() => setKopf(null)}>Abbrechen</Button></>} />}>
+              footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy || !kopf?.titel.trim()} onClick={kopfSichern}>Sichern</Button><Button onClick={() => setKopf(null)}>Abbrechen</Button></>} />}>
         {kopf && d && (
           <div className="portal-cl__dialog">
             <label className="portal-cl__feld"><span>Titel</span><Input value={kopf.titel} maxlength={160} onInput={(e) => setKopf({ ...kopf, titel: e.target.value })} /></label>
@@ -601,7 +602,7 @@ export function Checklisten() {
 
       {/* ---------- Schritt */}
       <Dialog open={!!schritt} headerText={schritt?.id ? 'Schritt ändern' : 'Neuer Schritt'} onClose={() => setSchritt(null)}
-              footer={<Bar endContent={<><Button design="Emphasized" disabled={busy || !schritt?.titel.trim()} onClick={schrittSichern}>Sichern</Button><Button onClick={() => setSchritt(null)}>Abbrechen</Button></>} />}>
+              footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy || !schritt?.titel.trim()} onClick={schrittSichern}>Sichern</Button><Button onClick={() => setSchritt(null)}>Abbrechen</Button></>} />}>
         {schritt && d && (
           <div className="portal-cl__dialog">
             <label className="portal-cl__feld"><span>Schritt</span><Input value={schritt.titel} maxlength={200} onInput={(e) => setSchritt({ ...schritt, titel: e.target.value })} /></label>
@@ -650,7 +651,7 @@ export function Checklisten() {
 
       {/* ---------- Veranstaltung / Termin zuordnen */}
       <Dialog open={!!bezug} headerText="Veranstaltung zuordnen" onClose={() => setBezug(null)}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Emphasized" disabled={busy || !bezug || (!bezug.events.length && !bezug.termin)}
                         onClick={() => bezug && c && tun(() => api.post<{ text: string }>(`${CL}/${c.id}/bezuege`, { events: bezug.events, termin: bezug.termin || null, bezeichnung: bezug.bezeichnung }), () => setBezug(null))}>Zuordnen</Button>
                 <Button onClick={() => setBezug(null)}>Abbrechen</Button>
@@ -689,7 +690,7 @@ export function Checklisten() {
 
       {/* ---------- Checkliste kopieren */}
       <Dialog open={!!kopie} headerText="Checkliste kopieren" onClose={() => setKopie(null)}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Emphasized" disabled={busy || !kopie?.titel.trim()}
                         onClick={() => kopie && tun(() => api.post<{ id: number; text: string }>(`${CL}/${kopie.id}/kopieren`, { titel: kopie.titel, bezuege: kopie.bezuege }), (r) => { setKopie(null); if (offen) oeffnen(r.id); })}>Kopieren</Button>
                 <Button onClick={() => setKopie(null)}>Abbrechen</Button>
@@ -705,7 +706,7 @@ export function Checklisten() {
 
       {/* ---------- Schritte in eine andere Checkliste kopieren */}
       <Dialog open={ziel !== null} headerText={`${markiert.length} Schritt${markiert.length === 1 ? '' : 'e'} kopieren nach …`} onClose={() => setZiel(null)}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Emphasized" disabled={busy || !ziel}
                         onClick={() => ziel && tun(() => api.post<{ text: string }>(`${CL}/schritte/kopieren`, { schritte: markiert, ziel }), () => { setZiel(null); setMarkiert([]); })}>Kopieren</Button>
                 <Button onClick={() => setZiel(null)}>Abbrechen</Button>
@@ -723,7 +724,7 @@ export function Checklisten() {
       </Dialog>
 
       {/* ---------- Kategorien */}
-      <Dialog open={!!kategorien} headerText="Kategorien" onClose={() => setKategorien(null)} footer={<Bar endContent={<Button onClick={() => setKategorien(null)}>Schließen</Button>} />}>
+      <Dialog open={!!kategorien} headerText="Kategorien" onClose={() => setKategorien(null)} footer={<FussLeiste endContent={<Button onClick={() => setKategorien(null)}>Schließen</Button>} />}>
         {kategorien && d && (
           <div className="portal-cl__dialog">
             {d.kategorien.length > 0 && (

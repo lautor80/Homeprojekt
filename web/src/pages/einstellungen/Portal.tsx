@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, Input, MessageStrip, Panel, Text } from '@ui5/webcomponents-react';
+import { Button, Input, MessageStrip, Panel, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../../components/DialogFuss';
 import { api } from '../../api';
 import { useLoad } from '../../components/useLoad';
 import { FieldBox, FormGrid, TextField } from '../../components/FormFields';
@@ -62,7 +63,7 @@ function useEinstellungen(schluessel: readonly string[], wert: (s: S) => Record<
     </>
   );
   const fuss = (beleg: string) => (
-    <Bar style={{ marginTop: '1rem' }} endContent={<>
+    <FussLeiste style={{ marginTop: '1rem' }} endContent={<>
       <ChangeHistoryButton objectType="SETTING" objectKey={beleg} />
       <Button design="Emphasized" loading={busy} disabled={!darf} onClick={save}>Sichern</Button>
     </>} />

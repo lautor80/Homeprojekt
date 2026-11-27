@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, SegmentedButton,
+  AnalyticalTable, Button, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, SegmentedButton,
   SegmentedButtonItem, Text, TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { useFunktion } from '@core/session';
@@ -138,7 +139,7 @@ function FreigabeDialog({ r, onClose, onDone, aktion }: { r: Registrierung; onCl
   const zuordnung = art === 'MITGLIED' ? { art, adrnr } : art === 'EP3' ? { art, zuid } : { art };
   return createPortal(
     <Dialog open headerText={`Freigeben – ${r.anzeigename}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" disabled={!ok} onClick={async () => { if (await aktion(() => api.post(`${PA}/registrierungen/${r.id}/bestaetigen`, { zuordnung, bemerkung: bemerkung || null }))) onDone(); }}>Freigeben</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

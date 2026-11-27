@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer, Text,
+  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -186,7 +187,7 @@ export function Bestandsmeldung() {
                 Erzeugt einen Lauf mit der XML-Datei (Download startet sofort){v?.paperless ? ' und legt den Ausdruck in Paperless ab' : ' – Paperless ist nicht eingerichtet, der Ausdruck wird nicht abgelegt'}.
                 Hochladen im LSVSnet unter Bestandserhebung, Schritt 3.
               </Text>
-              <Bar endContent={<Button design="Emphasized" icon="upload-to-cloud" loading={busy} disabled={!bereit || !geprueft} onClick={erzeugen}>Lauf erzeugen</Button>} />
+              <FussLeiste endContent={<Button design="Emphasized" icon="upload-to-cloud" loading={busy} disabled={!bereit || !geprueft} onClick={erzeugen}>Lauf erzeugen</Button>} />
             </Panel>
           )}
         </Tab>
@@ -227,7 +228,7 @@ export function LsvsKapitel() {
           <TextField label="Software-Schlüssel" required value={c.lsvs_schluessel} onChange={s('lsvs_schluessel')} placeholder="linear" />
         </FormGrid>
       )}
-      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!c} onClick={sichern}>Sichern</Button>} />
+      <FussLeiste style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!c} onClick={sichern}>Sichern</Button>} />
     </div>
   );
 }

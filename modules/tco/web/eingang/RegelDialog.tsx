@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Bar, Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { Button, CheckBox, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { EING, MAIL_ORDNER, type Aktionen, type Extraktion, type MailArt, type PaperlessZiel, type RegelEingabe, type Stamm, type Zuordnung, type Zusammenfassen } from './typen';
@@ -140,7 +141,7 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
 
   return (
     <Dialog open headerText={id ? `Regel ändern – ${start.name}` : 'Regel anlegen'} style={{ width: 'min(60rem, 98vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy} onClick={speichern}>Speichern</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>

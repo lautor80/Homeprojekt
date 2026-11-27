@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus,
+  AnalyticalTable, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus,
   Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Switch, Tab, TabContainer, Text, TextArea, Title, ToggleButton, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
@@ -20,7 +20,7 @@ import { FEST_ARTEN, Kalender, hhmm, min, tagPlus, tagText, type AboWunschInfo, 
 import { FesteBelegungen } from './FesteBelegungen';
 import './platz.css';
 import { AuswahlBox } from '@core/components/AuswahlBox';
-import { DialogFuss } from '@core/components/DialogFuss';
+import { DialogFuss, FussLeiste } from '@core/components/DialogFuss';
 import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from '@core/components/TabellenAnsicht';
 import { LEERER_ABO_FILTER, aboFilterAktiv, aboFilterLesen, aboPlaetze, aboTitel, abosFiltern, type AboFilter } from './aboFilter';
 import { AboSaisonVerwaltung } from './AboSaisonVerwaltung';
@@ -204,7 +204,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
 
       {form && createPortal(
         <Dialog open headerText={form.id ? `Platz „${form.name}“` : 'Platz anlegen'} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setForm(null)}
-                footer={<Bar startContent={form.id ? <>
+                footer={<FussLeiste startContent={form.id ? <>
                                <Button design="Transparent" icon="delete" disabled={!sperre.eigen} onClick={() => setWeg(true)}>Löschen</Button>
                                <Button design="Transparent" icon="copy" onClick={() => kopieren(form)}>Kopieren</Button>
                              </> : undefined}
@@ -219,7 +219,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
       )}
       {massen && createPortal(
         <Dialog open headerText={`Massenänderung – ${auswahl.length} Platz/Plätze`} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setMassen(null)}
-                footer={<Bar startContent={<Text className="portal-muted">
+                footer={<FussLeiste startContent={<Text className="portal-muted">
                                {massen.geaendert.length ? `Wird gesetzt: ${massen.geaendert.map((k) => FELD_TEXT[k] ?? k).join(', ')}` : 'Noch nichts geändert'}
                              </Text>}
                              endContent={<>
@@ -470,7 +470,7 @@ function EintragDialog({ p, datum, von, onClose, onFertig }: { p: TagPlatz; datu
   }
   return createPortal(
     <Dialog open headerText={`${p.name} · ${tagText(datum)}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy || !ok} onClick={speichern}>{fest ? 'Eintragen' : 'Buchen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -738,7 +738,7 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig, onDetail
   return createPortal(
     <>
       <Dialog open={!weg} headerText={`${kopie ? 'Kopieren' : 'Termin'}: ${titel}`} style={{ width: 'min(36rem, 96vw)' }} onClose={() => { if (!wegRef.current) onClose(); }}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 {!kopie && onDetails && <Button icon="detail-view" onClick={onDetails}>Details</Button>}
                 {!kopie && <Button icon="copy" onClick={() => onModus('KOPIEREN')}>Kopieren…</Button>}
                 <Button design="Emphasized" disabled={busy || !ok || (!kopie && !aenderbar)} onClick={speichern}>{kopie ? 'Kopie anlegen' : 'Speichern'}</Button>
@@ -910,7 +910,7 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
 
       {ende && createPortal(
         <Dialog open headerText={`Abo ${ende.bid} beenden`} onClose={() => setEnde(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Negative" disabled={busy} onClick={() => aktion(() => api.post(`${PA}/abos/${ende.bid}/beenden`, { ab: ende.ab, grund: ende.grund.trim() || null }), async () => { setEnde(null); await laden(); })}>Termine stornieren</Button>
                   <Button onClick={() => setEnde(null)}>Abbrechen</Button>
                 </>} />}>

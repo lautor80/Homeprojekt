@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bar, Button, Input, Label, MessageStrip, ObjectStatus, Panel, Text, TextArea } from '@ui5/webcomponents-react';
+import { Button, Input, Label, MessageStrip, ObjectStatus, Panel, Text, TextArea } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { SperrHinweis, useSperre } from '@core/sperre';
@@ -81,7 +82,7 @@ function EinText({ t, onGeaendert }: { t: Mailtext; onGeaendert: () => void }) {
               </Text>
             ))}
           </div>
-          <Bar endContent={<>
+          <FussLeiste endContent={<>
             <ChangeHistoryButton objectType="TCO_MAILTEXT" objectKey={t.schluessel} />
             {t.eigen && <Button design="Transparent" icon="reset" disabled={busy} tooltip="Den Text des Vereins verwerfen – es gilt wieder der Standardtext des Portals"
                                 onClick={() => aktion(() => api.del(`${TCO}/mailtexte/${encodeURIComponent(t.schluessel)}`))}>Standardtext</Button>}

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
+  Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { api } from '@core/api';
@@ -130,7 +131,7 @@ export function Mitgliedsantraege() {
                      text={`Antrag ${weg?.nummer ?? ''} ablehnen? Die Begründung wird dem Antragsteller per E-Mail mitgeteilt.`}
                      onCancel={() => setWeg(null)} onConfirm={(grund) => { const a = weg!; setWeg(null); ablehnen(a, grund); }} />
       {start && (
-        <Dialog open headerText="Startkennwörter" onClose={() => setStart(null)} footer={<Bar endContent={<Button design="Emphasized" onClick={() => setStart(null)}>Schließen</Button>} />}>
+        <Dialog open headerText="Startkennwörter" onClose={() => setStart(null)} footer={<FussLeiste endContent={<Button design="Emphasized" onClick={() => setStart(null)}>Schließen</Button>} />}>
           <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>Diese Kennwörter werden nur jetzt angezeigt – bitte sicher weitergeben (Pflichtänderung bei der ersten Anmeldung).</MessageStrip>
           {start.startkennwoerter.map((s) => <div key={s.username}><Text>{s.name}: <b>{s.username}</b> / <code>{s.startkennwort}</code></Text></div>)}
         </Dialog>
@@ -151,7 +152,7 @@ function UebernahmeDialog({ a, onClose, onDone }: { a: Antrag; onClose: () => vo
   }
   return (
     <Dialog open headerText={`Antrag ${a.nummer} übernehmen`} style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" loading={busy} disabled={!a.hinweise.every((h) => !h.includes('gesperrt'))} onClick={los}>Übernehmen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -222,7 +223,7 @@ function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit
 function LinkDialog({ nummer, link, text, onClose }: { nummer: string; link: string; text: string; onClose: () => void }) {
   return (
     <Dialog open headerText={`Vertragsangebot ${nummer}`} style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button icon="copy" onClick={() => navigator.clipboard?.writeText(link).then(() => toast('Link kopiert'))}>Link kopieren</Button>
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </>} />}>
@@ -315,7 +316,7 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
   );
   return (
     <Dialog open headerText="Vertragsangebot erstellen" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="email" loading={busy} disabled={!ok} onClick={los}>{mail ? 'Erstellen und per E-Mail senden' : 'Erstellen (Link anzeigen)'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -440,7 +441,7 @@ function MitgliederinfoDruck({ liste, onClose }: { liste: NonNullable<Ergebnis['
   return (
     <>
       <Dialog open={offen === null} headerText="Mitgliederinformation drucken" style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-              footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Fertig</Button>} />}>
+              footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Fertig</Button>} />}>
         {liste.map((x, i) => (
           <div key={x.adrnr} className="portal-row" style={{ justifyContent: 'space-between', padding: '0.3rem 0' }}>
             <Text>{x.name}{x.ablage ? <span className="portal-muted portal-small"> · {x.ablage}</span> : null}</Text>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  Bar, Button, BusyIndicator, Dialog, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea,
+  Button, BusyIndicator, Dialog, Label, MessageStrip, ObjectStatus, RadioButton, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -126,7 +127,7 @@ function FreigabeDialog({ r, onClose, onDone }: { r: Registrierung; onClose: () 
   }
   return (
     <Dialog open headerText={`Registrierung prüfen – ${r.anzeigename}`} style={{ width: 'min(38rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" loading={busy} disabled={modus === 'MITGLIED' && !adrnr} onClick={freigeben}>Freigeben</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

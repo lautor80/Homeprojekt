@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, Button, CheckBox, Dialog, Input, Label, MessageStrip, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Dialog, Input, Label, MessageStrip, Option, Select, Text, TextArea } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { useCan } from '@core/session';
@@ -250,7 +251,7 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   if (anleitung) {
     return createPortal(
       <Dialog open headerText="E-Mail-Entwurf öffnen" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-              footer={<Bar endContent={<Button design="Emphasized" onClick={() => { if (eingerichtet) { try { localStorage.setItem(AUTO, '1'); } catch { /* egal */ } } onClose(); }}>Fertig</Button>} />}>
+              footer={<FussLeiste endContent={<Button design="Emphasized" onClick={() => { if (eingerichtet) { try { localStorage.setItem(AUTO, '1'); } catch { /* egal */ } } onClose(); }}>Fertig</Button>} />}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <Text>
             Der Entwurf wurde als E-Mail-Datei heruntergeladen. Aus Sicherheitsgründen darf eine Webseite keine Programme auf dem PC starten –
@@ -270,7 +271,7 @@ export function MailEntwurfDialog({ nr, dokumente, start, onClose }: {
   }
   return createPortal(
     <Dialog open headerText={`E-Mail zum Auftrag ${nr}`} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {outlook && <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={busy || !betreff.trim() || !an.trim() || !postfach}
                                   tooltip={`Über Outlook 365 aus dem Postfach ${postfach ?? '–'} senden`} onClick={() => senden('senden')}>{offen ? 'Rest senden' : 'Senden'}</Button>}
               {outlook && <Button icon="write-new" disabled={busy || !betreff.trim() || !an.trim() || !postfach}

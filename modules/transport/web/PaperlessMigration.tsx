@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnalyticalTable, Bar, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -184,7 +185,7 @@ export function PaperlessMigration() {
       )}
 
       {liste.length > 0 && (
-        <Bar endContent={<>
+        <FussLeiste endContent={<>
           {laeuft && <Button icon="stop" onClick={() => { halt.current = true; }}>Anhalten</Button>}
           <Button icon="lab" disabled={laeuft || !offen.length} onClick={() => { void uebertragen(offen[0]); }} tooltip={offen[0] ? `${offen[0].pfad} → Auftrag ${offen[0].nr}` : undefined}>
             Testlauf: 1 Datei

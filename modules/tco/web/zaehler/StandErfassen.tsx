@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Bar, Button, DatePicker, Dialog, Input, MessageStrip, Option, Select, Text, TextArea,
+  Button, DatePicker, Dialog, Input, MessageStrip, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { ApiError, api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { FieldBox, FormGrid } from '@core/components/FormFields';
@@ -198,7 +199,7 @@ export function StandErfassenDialog({ zaehler, zaehlerId, bearbeiten, onClose, o
   return (
     <>
       <Dialog open headerText={bearbeiten ? 'Zählerstand ändern' : 'Zählerstand erfassen'} onClose={onClose} style={{ width: 'min(34rem, 96vw)' }}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Emphasized" icon="save" disabled={s.gesperrt} loading={s.busy} onClick={() => s.speichern()}>Sichern</Button>
                 <Button onClick={onClose}>Abbrechen</Button>
               </>} />}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Label, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, DatePicker, Dialog, Icon, Label, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Empty, Section } from '@core/components/Section';
@@ -134,7 +135,7 @@ export function MeinVerzehr() {
 
       {bestaetigen && liste && createPortal(
         <Dialog open headerText="Auf mein Konto anschreiben" onClose={() => setBestaetigen(false)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" icon="accept" disabled={busy} onClick={async () => {
                     let text = '';
                     const ok = await aktion(async () => { text = (await api.post<{ text: string }>(`${VZ}/meine/buchen`, { datum, positionen: wuensche(mengen) })).text; });

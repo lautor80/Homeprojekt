@@ -1,5 +1,5 @@
 /* Mannschaftsmeldung (Mein Bereich) und Anmeldematrix (Sport): 1 fest = grün, 2 Ersatz = gelb, 3 nicht = grau */
-.portal-mm__personen { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; }
+.portal-mm__personen { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: 1rem; }
 .portal-mm__person { padding: 1rem; border: 1px solid var(--sapList_BorderColor, #e5e5e5); border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_Background, #fff); }
 .portal-mm__kopf { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 1rem; }
 .portal-mm__liste { display: flex; flex-direction: column; }

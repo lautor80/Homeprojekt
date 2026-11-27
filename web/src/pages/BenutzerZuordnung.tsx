@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
+  AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { toast } from '../toast';
@@ -124,7 +125,7 @@ export function InitialeZuordnung({ onClose, onDone }: { onClose: () => void; on
   ];
   return (
     <Dialog open headerText="Initiale Zuordnung: Benutzer ↔ Mitglied / EP3-Kunde" style={{ width: 'min(70rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" disabled={!gewaehlt.length || busy} onClick={uebernehmen}>{gewaehlt.length} Benutzer zuordnen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

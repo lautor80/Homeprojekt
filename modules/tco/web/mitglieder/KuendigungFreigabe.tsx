@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, Dialog, Label, MessageStrip, Text, TextArea } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Label, MessageStrip, Text, TextArea } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { Attribute, Attributes } from '@core/components/Attributes';
 import { download, usePdf } from '@core/components/PdfDialog';
@@ -56,7 +57,7 @@ function KuendigungFreigabeDialog({ id, onClose }: { id: number; onClose: () => 
   return createPortal(
     <Dialog open headerText={freigegeben ? 'Kündigungsbestätigung prüfen und senden' : 'Kündigung freigeben'} resizable onClose={onClose}
             style={{ width: freigegeben ? 'min(60rem, 96vw)' : 'min(36rem, 96vw)', height: freigegeben ? '90vh' : undefined }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {k?.status === 'OFFEN' && !ablehnen && <Button design="Emphasized" icon="accept" disabled={busy} onClick={() => aktion(() => api.post(`${basis}/freigeben`, {}), () => false)}>Freigeben</Button>}
               {k?.status === 'OFFEN' && !ablehnen && <Button design="Negative" icon="decline" disabled={busy} onClick={() => setAblehnen(true)}>Ablehnen</Button>}
               {k?.status === 'OFFEN' && ablehnen && <Button design="Negative" icon="decline" disabled={busy || grund.trim().length < 3} onClick={() => aktion(() => api.post(`${basis}/ablehnen`, { grund }), () => true)}>Ablehnung senden</Button>}

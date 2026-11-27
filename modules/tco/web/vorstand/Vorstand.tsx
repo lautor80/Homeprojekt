@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, Select, Tab, TabContainer, Text,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -203,7 +204,7 @@ function NeueSitzung({ d, onClose, onFertig }: { d: Uebersicht; onClose: () => v
 
   return (
     <Dialog open headerText="Neue Sitzung" onClose={onClose} style={{ width: 'min(44rem, 96vw)' }}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={!ok || busy} onClick={anlegen}>Anlegen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!ok || busy} onClick={anlegen}>Anlegen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{fehler}</MessageStrip>}
       <FormGrid>
         <FieldBox label="Titel" required><Input value={f.titel} onInput={(e) => setF({ ...f, titel: e.target.value })} /></FieldBox>
@@ -257,7 +258,7 @@ function GruppeDialog({ d, onClose, onFertig }: { d: Uebersicht; onClose: () => 
   const liste = d.gruppen.map((x) => ({ id: x.id, text: pfad(x.id) })).sort((a, b) => a.text.localeCompare(b.text, 'de'));
   return (
     <Dialog open headerText="Vorstandsgruppe" onClose={onClose} style={{ width: 'min(36rem, 96vw)' }}
-            footer={<Bar endContent={<><Button design="Emphasized" onClick={async () => {
+            footer={<FussLeiste endContent={<><Button design="Emphasized" onClick={async () => {
               try { await api.put(`${VS}/einstellungen`, { gruppe_id: g }); toast('Gesichert.'); onFertig(); } catch (e) { setFehler((e as Error).message); }
             }}>Sichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Bar, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, Option, Select, Text, Title } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Dialog, FlexBox, Input, Label, Link, Option, Select, Text, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 import type { AnalyticalTableColumnDefinition } from '@ui5/webcomponents-react';
 import {
   LEERER_STAND, ausTabelle, filterText, gleich, sichtbareSpalten, spalteSetzen, spaltenId, spaltenText, standLesen, tabellenAenderung, type TabellenStand,
@@ -127,7 +128,7 @@ function AnpassenDialog({ titel, spalten, stand, pflicht, onStand, onClose }: {
   const text = (id: string) => liste.find((c) => c.id === id)?.text ?? id;
   return (
     <Dialog open headerText={titel} style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-            footer={<Bar startContent={<Button design="Transparent" icon="reset" onClick={() => onStand({ ...LEERER_STAND })}>Zurücksetzen</Button>}
+            footer={<FussLeiste startContent={<Button design="Transparent" icon="reset" onClick={() => onStand({ ...LEERER_STAND })}>Zurücksetzen</Button>}
                          endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       <FlexBox direction="Column" style={{ gap: '1rem' }}>
         <section aria-label="Spalten">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api, qs } from '@core/api';
 import { toast } from '@core/toast';
 import { dat, eur } from '../util';
@@ -49,7 +50,7 @@ export function GeldkontoDialog({ onClose }: { onClose: (geaendert: boolean) => 
 
   return (
     <Dialog open headerText="Geldkonto gebuchter Belege austauschen" style={{ width: 'min(72rem, 98vw)' }} onClose={() => onClose(geaendert)}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" loading={busy} disabled={!ok} onClick={tauschen}>{gewaehlt.length} Beleg(e) auf Konto {f.nach || '…'} umkontieren</Button>
               <Button onClick={() => onClose(geaendert)}>Schließen</Button>
             </>} />}>

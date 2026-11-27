@@ -3,9 +3,10 @@ import { feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DateTimePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
+  BusyIndicator, Button, CheckBox, DateTimePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem,
   ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Tab, TabContainer, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -382,7 +383,7 @@ function DetailDialog({ id, pflege, mitglied, kategorien, onClose, onBearbeiten,
   const setzeFuer = (adrnr: string, status: Status | null) => lauf(() => api.post(`${K}/${id}/teilnehmer`, { adrnr, status }));
   return createPortal(
     <Dialog open headerText={e.titel} onClose={onClose} style={{ width: 'min(46rem, 96vw)' }}
-            footer={<Bar startContent={pflege ? <>
+            footer={<FussLeiste startContent={pflege ? <>
                            <Button icon="edit" onClick={() => onBearbeiten(e)}>Bearbeiten</Button>
                            <Button icon="copy" onClick={() => onKopieren(e)}>Kopieren</Button>
                            <Button icon="excel-attachment" onClick={() => download(`${K}/${id}/csv`, `Teilnehmer_${e.titel.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.csv`)}>Teilnehmerliste</Button>
@@ -512,7 +513,7 @@ function EventDialog({ e, d, onClose, onGespeichert }: { e: Partial<Ev>; d: Date
   }
   return createPortal(
     <Dialog open headerText={e.id ? 'Veranstaltung bearbeiten' : 'Neue Veranstaltung'} onClose={onClose} style={{ width: 'min(42rem, 96vw)' }}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={busy || !f.titel.trim() || !f.beginn} onClick={speichern}>Speichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy || !f.titel.trim() || !f.beginn} onClick={speichern}>Speichern</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       <div className="portal-kal__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label required>Titel</Label>

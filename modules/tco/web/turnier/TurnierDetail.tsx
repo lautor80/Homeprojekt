@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, Link, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Select, Tab,
+  BusyIndicator, Button, CheckBox, Dialog, Input, Label, Link, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Select, Tab,
   TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -307,7 +308,7 @@ function TeilnehmerDialog({ turnierId, tn, vorlage, onClose, onGespeichert }: {
   );
   return (
     <Dialog open headerText={tn ? `${vollname(tn)} bearbeiten` : 'Teilnehmende/n hinzufügen'} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="save" disabled={!ok} loading={busy} onClick={sichern}>Sichern</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -364,7 +365,7 @@ function MitgliedSuche({ vorhanden, onClose, onWahl }: { vorhanden: Set<string>;
   }, [q]);
   return (
     <Dialog open headerText="Mitglied hinzufügen" style={{ width: 'min(32rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Input value={q} placeholder="Name eingeben (mind. 2 Zeichen)" style={{ width: '100%' }} onInput={(e) => setQ(e.target.value)} />
@@ -400,7 +401,7 @@ function LinkDialog({ turnierId, tn, onClose }: { turnierId: number; tn: Teilneh
   }
   return (
     <Dialog open headerText={`Persönlicher Link – ${vollname(tn)}`} style={{ width: 'min(32rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={erg ? <>
+            footer={<FussLeiste endContent={erg ? <>
               <Button icon="copy" onClick={() => kopieren(erg.link)}>Kopieren</Button>
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </> : <>

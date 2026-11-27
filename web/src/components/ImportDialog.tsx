@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Bar, Button, Dialog } from '@ui5/webcomponents-react';
+import { Button, Dialog } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 
 /**
  * Importe: gleiche Stelle, gleicher Knopf, gleicher Rahmen (#232, S4).
@@ -45,7 +46,7 @@ export function ImportDialog({ open, was, schritt, breit, onClose, children }: {
   if (!open) return null;
   return (
     <Dialog open headerText={`Importieren: ${was}`} onClose={onClose} style={{ width: breit ? 'min(76rem, 98vw)' : 'min(52rem, 96vw)' }}
-            footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       <ImportSchritte schritt={schritt} />
       <div className="portal-import__inhalt">{children}</div>
     </Dialog>

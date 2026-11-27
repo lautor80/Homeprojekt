@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bar, Button, CheckBox, DatePicker, Label, Link, MessageStrip, Option, Panel, Select, Text, TextArea, Input } from '@ui5/webcomponents-react';
+import { Button, CheckBox, DatePicker, Label, Link, MessageStrip, Option, Panel, Select, Text, TextArea, Input } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
@@ -178,7 +179,7 @@ export function ZuwendungKapitel() {
         {c.muster_geprueft_am && <Text className="portal-muted portal-small" style={{ display: 'block' }}>Zuletzt bestätigt am {dat(c.muster_geprueft_am)} von {c.muster_geprueft_von}. Nach einer Änderung der Textbausteine ist neu zu bestätigen.</Text>}
       </div>
 
-      <Bar style={{ marginTop: '1rem' }} endContent={<>
+      <FussLeiste style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="ZUW_CFG" objectKey="1" />
         <Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button>
       </>} />

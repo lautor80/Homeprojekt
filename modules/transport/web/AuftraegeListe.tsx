@@ -2,9 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  AnalyticalTable, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -717,7 +718,7 @@ export function AuftraegeListe() {
   );
 
   const toolbar = (
-    <Bar
+    <FussLeiste
       startContent={<>
         <Title level="H5">Aufträge ({liste.length.toLocaleString('de-DE')})</Title>
         {sel.length > 0 && (
@@ -816,7 +817,7 @@ export function AuftraegeListe() {
       )}
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {ablage && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Neu ablegen: {ablage}</MessageStrip>}
-      <Dialog open={ordnerDialog} headerText="Ablageordner" onClose={() => setOrdnerDialog(false)} footer={<Bar endContent={<Button onClick={() => setOrdnerDialog(false)}>Schließen</Button>} />}>
+      <Dialog open={ordnerDialog} headerText="Ablageordner" onClose={() => setOrdnerDialog(false)} footer={<FussLeiste endContent={<Button onClick={() => setOrdnerDialog(false)}>Schließen</Button>} />}>
         <div style={{ width: 'min(46rem, 88vw)' }}>{ordnerDialog && <AblageOrdnerEinstellung />}</div>
       </Dialog>
       {toolbar}
@@ -874,7 +875,7 @@ export function AuftraegeListe() {
       <ConfirmDialog open={!!zusammen} title="Aufträge zusammenführen" text={zusammen?.text ?? ''} confirmText="Zusammenführen" danger
                      onConfirm={zusammenAusfuehren} onCancel={() => setZusammen(null)} />
       <Dialog open={zahlDialog !== null} headerText="Zahlungseingang erfassen" onClose={() => setZahlDialog(null)}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Emphasized" disabled={!zahlDialog} onClick={() => zahlungSetzen(zahlDialog)}>Als bezahlt markieren</Button>
                 <Button onClick={() => setZahlDialog(null)}>Abbrechen</Button>
               </>} />}>

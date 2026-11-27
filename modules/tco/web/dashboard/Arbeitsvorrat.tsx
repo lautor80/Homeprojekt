@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bar, BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
 import { api } from '@core/api';
@@ -102,7 +103,7 @@ function ZahlungDialog({ id, onClose, onUeberwiesen }: { id: number; onClose: ()
   );
   return (
     <Dialog open headerText="Zahlungsdaten" style={{ width: 'min(34rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {onUeberwiesen && <Button design="Emphasized" icon="accept" onClick={onUeberwiesen}>Überwiesen</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </>} />}>

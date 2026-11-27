@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
-import { Bar, Button, Dialog, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { Button, Dialog, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { TCO } from '../util';
 
@@ -48,7 +49,7 @@ export function AushangInhalt({ a }: { a: AushangAnzeige }) {
       )}
       {gross && (
         <Dialog open headerText={gross.dateiname} style={{ width: 'min(64rem, 98vw)' }} onClose={() => setGross(null)}
-                footer={<Bar endContent={<Button onClick={() => setGross(null)}>Schließen</Button>} />}>
+                footer={<FussLeiste endContent={<Button onClick={() => setGross(null)}>Schließen</Button>} />}>
           <img src={bildUrl(a.id, gross.id)} alt={gross.dateiname} style={{ display: 'block', maxWidth: '100%', maxHeight: '80vh', margin: '0 auto' }} />
         </Dialog>
       )}
@@ -72,7 +73,7 @@ function AushangDialog({ a, position, onFertig }: { a: AushangAnzeige; position?
     <Dialog open headerText={a.titel} state={STIL[a.stil].dialog} style={{ width: 'min(40rem, 96vw)' }}
             onBeforeClose={(e) => { if (pflicht) e.preventDefault(); }}
             onClose={() => { if (!pflicht) void melden(false); }}
-            footer={<Bar startContent={position ? <Text className="portal-muted portal-small">{position}</Text> : undefined}
+            footer={<FussLeiste startContent={position ? <Text className="portal-muted portal-small">{position}</Text> : undefined}
                          endContent={pflicht
                            ? <Button design="Emphasized" icon="accept" loading={busy} onClick={() => melden(true)}>Zur Kenntnis genommen</Button>
                            : <Button design="Emphasized" loading={busy} onClick={() => melden(false)}>Schließen</Button>} />}>

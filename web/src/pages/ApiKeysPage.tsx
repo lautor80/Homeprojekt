@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
+  AnalyticalTable, Button, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { useLoad } from '../components/useLoad';
@@ -129,7 +130,7 @@ export function ApiKeysPage() {
         onClose={() => setEdit(null)}
         style={{ width: 'min(1000px, 96vw)' }}
         footer={
-          <Bar
+          <FussLeiste
             startContent={edit?.id ? <ChangeHistoryButton objectType="API_KEY" objectKey={`${edit.module}/${edit.name}`} /> : undefined}
             endContent={<>
               {mayEdit && edit?.id && <Button icon="refresh" onClick={() => setConfirm('rotate')}>Neuer Schlüssel</Button>}
@@ -203,7 +204,7 @@ function SchluesselDialog({ shown, onClose }: { shown: { key: string; module: st
       state="Critical"
       style={{ width: 'min(760px, 95vw)' }}
       onClose={onClose}
-      footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Ich habe den Schlüssel gesichert</Button>} />}
+      footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Ich habe den Schlüssel gesichert</Button>} />}
     >
       <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '1rem' }}>
         Der Schlüssel wird nur jetzt angezeigt. Bitte direkt im Fremdsystem hinterlegen oder in einem Passwortmanager speichern.

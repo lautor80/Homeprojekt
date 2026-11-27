@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, SegmentedButton,
+  AnalyticalTable, Button, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, SegmentedButton,
   SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -140,7 +141,7 @@ function VereinFormular({ teile }: { teile: Teil[] }) {
       </Panel>
       )}
 
-      <Bar style={{ marginTop: '1rem' }} endContent={<>
+      <FussLeiste style={{ marginTop: '1rem' }} endContent={<>
         <ChangeHistoryButton objectType="TCO_VEREIN" objectKey="1" />
         {!ro && <Button design="Emphasized" loading={busy} onClick={save}>Sichern</Button>}
       </>} />

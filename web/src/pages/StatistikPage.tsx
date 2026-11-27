@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '../components/Varianten';
-import { AnalyticalTable, Bar, Button, BusyIndicator, CheckBox, Dialog, Link, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Button, BusyIndicator, CheckBox, Dialog, Link, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -111,7 +112,7 @@ export function StatistikPage() {
       )}
       {zelle && (
         <Dialog open headerText={`App-Aufrufe: ${zelle.titel}`} style={{ width: 'min(48rem, 96vw)' }} onClose={() => setZelle(null)}
-                footer={<Bar endContent={<Button design="Emphasized" onClick={() => setZelle(null)}>Schließen</Button>} />}>
+                footer={<FussLeiste endContent={<Button design="Emphasized" onClick={() => setZelle(null)}>Schließen</Button>} />}>
           {!details ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : (
             <AnalyticalTable minRows={1} columns={detailSpalten} data={details} visibleRows={Math.min(Math.max(details.length, 1), 15)}
                              noDataText="Keine App-Aufrufe (Anmeldungen ohne geöffnete App)" />

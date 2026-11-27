@@ -4,7 +4,7 @@ import type { MenuEntry } from './MenuButton';
 /** Zeilenaktionen direkt als Symbole in der Tabellenspalte (statt „…“-Menü); die Erklärung steht im Tooltip */
 export function IconAktionen({ items }: { items: (MenuEntry & { icon: string })[] }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 0 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0 }}>
       {items.filter((i) => !i.hidden).map((i) => (
         <Button key={i.text} icon={i.icon} design="Transparent" tooltip={i.text} accessibleName={i.text} disabled={i.disabled}
                 onClick={(e) => { e.stopPropagation(); i.onClick(); }} />

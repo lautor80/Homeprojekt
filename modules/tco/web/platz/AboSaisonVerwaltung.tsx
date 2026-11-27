@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Varianten, feld as variantenFeld } from '@core/components/Varianten';
-import { Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { ReactNode } from 'react';
 import '../sport/spielerdaten.css';
 import { api } from '@core/api';
@@ -218,7 +219,7 @@ function AboVerwaltung({ v, busy, tun }: { v: Verwaltung; busy: boolean; tun: (f
       )}
       {liste && (
         <Dialog open headerText={`Warteliste: ${liste.text} · ${liste.platz}`} onClose={() => setListe(null)} style={{ width: 'min(44rem, 96vw)' }}
-                footer={<Bar endContent={<Button onClick={() => setListe(null)}>Schließen</Button>} />}>
+                footer={<FussLeiste endContent={<Button onClick={() => setListe(null)}>Schließen</Button>} />}>
           <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Abo von {liste.name} ({STATUS[liste.status] ?? liste.status}). Reihenfolge: Mitglieder zuerst, sonst nach Eingang.</Text>
           <Tabelle kopf={['Position', 'Interessent', '', 'Gewünschte Zeit', 'Beworben am']}>
             {wartelisteZu(liste).map((x) => <tr key={x.id}><td>{x.position ?? '–'}</td><td>{x.name}</td><td>{x.mitglied ? 'Mitglied' : 'kein Mitglied'}</td><td>{x.text}</td><td>{dat(x.angelegt)}</td></tr>)}

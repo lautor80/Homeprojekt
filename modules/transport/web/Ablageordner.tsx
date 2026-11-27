@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, Button, Dialog, FlexBox, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { Button, Dialog, FlexBox, Icon, Link, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { Section } from '@core/components/Section';
 import { toast } from '@core/toast';
 import { DocsDialog, type Doc } from './dialogs';
@@ -85,7 +86,7 @@ export function OrdnerDialog({ nr, unterordner, onClose }: { nr: string; /** nur
 
   return createPortal(
     <Dialog open headerText={`Ordner ${pfad || `Auftrag ${nr}`}`} onClose={onClose} style={{ width: 'min(42rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button icon="copy" disabled={!pfad} onClick={() => { navigator.clipboard?.writeText(pfad.replace(/\//g, '\\')).then(() => toast('Pfad kopiert')).catch(() => undefined); }}>Pfad kopieren</Button>
               <Button onClick={onClose}>Schließen</Button>
             </>} />}>

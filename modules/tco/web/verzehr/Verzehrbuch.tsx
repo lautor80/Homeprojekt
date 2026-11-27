@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Varianten, feld } from '@core/components/Varianten';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -163,7 +164,7 @@ function Buch({ admin, busy, neu, aktion, onPdf }: { admin: boolean; busy: boole
       )}
       {storno && createPortal(
         <Dialog open headerText="Position stornieren" onClose={() => setStorno(null)}
-                footer={<Bar endContent={<><Button design="Negative" disabled={busy} onClick={async () => { if (await aktion(() => api.post(`${VZ}/storno`, { id: storno.id, grund }), 'Position storniert.')) setStorno(null); }}>Stornieren</Button><Button onClick={() => setStorno(null)}>Abbrechen</Button></>} />}>
+                footer={<FussLeiste endContent={<><Button design="Negative" disabled={busy} onClick={async () => { if (await aktion(() => api.post(`${VZ}/storno`, { id: storno.id, grund }), 'Position storniert.')) setStorno(null); }}>Stornieren</Button><Button onClick={() => setStorno(null)}>Abbrechen</Button></>} />}>
           <div className="portal-vz__form" style={{ maxWidth: '24rem' }}>
             <Text>{storno.anzahl} × {storno.text} · {storno.person} · {dat(storno.datum)} · {eur(storno.betrag)}</Text>
             <div className="portal-vz__feld"><Label>Grund</Label><Input value={grund} onInput={(e) => setGrund(e.target.value)} style={{ width: '100%' }} /></div>
@@ -228,7 +229,7 @@ function Belege({ admin, busy, neu, aktion, onPdf, warnen }: { admin: boolean; b
       )}
       {bez && createPortal(
         <Dialog open headerText={`${bez.rgnr} als bezahlt kennzeichnen`} onClose={() => setBez(null)}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={busy} onClick={async () => {
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy} onClick={async () => {
                   if (bez.status === 'OFFEN') {
                     if (await aktion(async () => { const r = await api.post<{ text: string; warnungen: string[] }>(`${VZ}/theke/kassieren`, { rgnr: bez.rgnr, zahlart: zahlart || 'BAR' }); toast(r.text, 5000); warnen(r.warnungen); })) setBez(null);
                   } else if (await aktion(async () => { const r = await api.post<{ text: string; warnungen: string[] }>(`${VZ}/belege/${bez.rgnr}/bezahlt`, { datum, zahlart: zahlart || null }); toast(r.text, 5000); warnen(r.warnungen); })) setBez(null);
@@ -248,7 +249,7 @@ function Belege({ admin, busy, neu, aktion, onPdf, warnen }: { admin: boolean; b
         </Dialog>, document.body)}
       {storno && createPortal(
         <Dialog open headerText={`${storno.rgnr} stornieren`} onClose={() => setStorno(null)}
-                footer={<Bar endContent={<><Button design="Negative" disabled={busy} onClick={async () => { if (await aktion(() => api.post(`${VZ}/belege/${storno.rgnr}/storno`, { grund }), 'Beleg storniert.')) { setStorno(null); if (storno.art === 'SAMMEL') setNachStorno(storno); } }}>Stornieren</Button><Button onClick={() => setStorno(null)}>Abbrechen</Button></>} />}>
+                footer={<FussLeiste endContent={<><Button design="Negative" disabled={busy} onClick={async () => { if (await aktion(() => api.post(`${VZ}/belege/${storno.rgnr}/storno`, { grund }), 'Beleg storniert.')) { setStorno(null); if (storno.art === 'SAMMEL') setNachStorno(storno); } }}>Stornieren</Button><Button onClick={() => setStorno(null)}>Abbrechen</Button></>} />}>
           <div className="portal-vz__form" style={{ maxWidth: '26rem' }}>
             <Text>{storno.art === 'SAMMEL' ? 'Die Positionen der Sammelabrechnung werden wieder offen. Danach kannst du einzelne Verbräuche stornieren und den Monat neu abrechnen.' : 'Alle Positionen des Gastbelegs werden storniert.'}</Text>
             <div className="portal-vz__feld"><Label>Grund</Label><Input value={grund} onInput={(e) => setGrund(e.target.value)} style={{ width: '100%' }} /></div>
@@ -273,7 +274,7 @@ function PositionenKorrektur({ beleg, busy, aktion, onClose }: { beleg: Beleg; b
   const summe = offen.reduce((s, p) => s + p.betrag, 0);
   return createPortal(
     <Dialog open stretch={klein()} headerText={`${beleg.person ?? ''} – Verbräuche bis ${monatsname(monat)}`} onClose={onClose}
-            footer={<Bar startContent={<Text className="portal-muted">{offen.length} offen · {eur(summe)}</Text>}
+            footer={<FussLeiste startContent={<Text className="portal-muted">{offen.length} offen · {eur(summe)}</Text>}
                          endContent={<>
                            <Button design="Emphasized" icon="sales-order" disabled={busy || !offen.length}
                                    onClick={async () => { if (await aktion(async () => { const r = await api.post<{ text: string; prot: { rgnr: string; text: string }[] }>(`${VZ}/abschluss`, { monat, adrnrs: [beleg.adrnr], versenden: true }); toast(r.prot.map((p) => `${p.rgnr}: ${p.text}`).join('\n') || r.text, 6000); })) onClose(); }}>
@@ -443,7 +444,7 @@ function Preise({ admin, busy, neu, aktion }: { admin: boolean; busy: boolean; n
       )}
       {f && createPortal(
         <Dialog open headerText={f.prod_key ? `${f.text} – Preis ändern` : 'Produkt anlegen'} onClose={() => setF(null)}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={busy || !f.text.trim() || !(n(f.preis) > 0)} onClick={async () => {
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={busy || !f.text.trim() || !(n(f.preis) > 0)} onClick={async () => {
                   if (await aktion(() => api.put(`${VZ}/produkte`, { prod_key: f.prod_key, rubrik: f.rubrik, text: f.text, preis: n(f.preis), preis_gast: f.preis_gast.trim() ? n(f.preis_gast) : null, ab: f.ab }), 'Preis gespeichert.')) setF(null);
                 }}>Speichern</Button><Button onClick={() => setF(null)}>Abbrechen</Button></>} />}>
           <div className="portal-vz__form">

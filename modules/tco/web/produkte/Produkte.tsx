@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  Bar, Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
+  Button, BusyIndicator, CheckBox, DatePicker, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@core/api';
 import { AppPage, Eingebettet } from '@core/components/AppPage';
@@ -200,7 +201,7 @@ function ProdukteTabelle() {
       )}
       {modus && (
         <Dialog open headerText={titel} style={{ width: 'min(34rem, 96vw)' }} onClose={() => setModus(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" disabled={busy} onClick={speichern}>{modus.art === 'beenden' ? 'Beenden' : 'Speichern'}</Button>
                   <Button design="Transparent" onClick={() => setModus(null)}>Abbrechen</Button>
                 </>} />}>
@@ -269,7 +270,7 @@ function BereichKonto({ d, onClose, onDone }: { d: Daten; onClose: () => void; o
   }
   return (
     <Dialog open headerText="Erlöskonto je Produktbereich" style={{ width: 'min(40rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" loading={busy} disabled={!Object.keys(wahl).length} onClick={speichern}>Übernehmen</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>

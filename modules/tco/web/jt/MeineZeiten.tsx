@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text, TextArea, ToggleButton,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text, TextArea, ToggleButton,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Empty, Section } from '@core/components/Section';
@@ -294,7 +295,7 @@ export function MeineZeiten() {
                                 }} />}
       {freigabe && m && createPortal(
         <Dialog open headerText={`${m.titel} freigeben`} onClose={() => setFreigabe(false)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" icon="approvals" disabled={busy}
                           onClick={async () => {
                             let text = '';
@@ -323,7 +324,7 @@ export function MeineZeiten() {
       )}
       {weg && createPortal(
         <Dialog open headerText="Zeit löschen" onClose={() => setWeg(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Negative" icon="delete" disabled={busy} onClick={async () => {
                     const z = weg;
                     setWeg(null);
@@ -337,7 +338,7 @@ export function MeineZeiten() {
       )}
       {oeffnung !== null && m && createPortal(
         <Dialog open headerText={`Öffnung von ${m.titel} anfragen`} onClose={() => setOeffnung(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" icon="paper-plane" disabled={busy} onClick={async () => {
                     let text = '';
                     const ok = await aktion(async () => { text = (await api.post<{ text: string }>(`${MZ}/oeffnung`, { monat: m.monat, grund: oeffnung })).text; });
@@ -377,7 +378,7 @@ function ErfassungDialog({ m, f, setF, busy, sch, onClose, onSpeichern, onLoesch
   const imMonat = f.datum >= m.von && f.datum <= m.bis;
   return createPortal(
     <Dialog open stretch={klein()} headerText={f.altArt ? 'Zeit ändern' : 'Zeit erfassen'} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {f.altArt && <Button design="Negative" icon="delete" disabled={busy} onClick={onLoeschen}>Löschen</Button>}
               <Button design="Emphasized" disabled={busy || !gueltig || !imMonat} onClick={() => onSpeichern(n)}>Speichern</Button>
               <Button onClick={onClose}>Abbrechen</Button>
@@ -441,7 +442,7 @@ function TageDialog({ m, busy, onClose, onAnlegen }: { m: Monat; busy: boolean; 
   const [art, setArt] = useState('Jugendtraining');
   return createPortal(
     <Dialog open stretch={klein()} headerText={`Trainingstage im ${m.titel} anlegen`} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy || !wt.length} onClick={() => onAnlegen(wt, art)}>Anlegen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { Section } from '@core/components/Section';
@@ -225,7 +226,7 @@ function SchiebenDialog({ gruppen, name, onClose, onSchieben }: { gruppen: LigaG
   const aktuell = personen.find((p) => p.id === tid)?.gruppe;
   return (
     <Dialog open headerText="Person verschieben" style={{ width: 'min(28rem, 96vw)' }} onClose={onClose}
-      footer={<Bar endContent={<>
+      footer={<FussLeiste endContent={<>
         <Button design="Emphasized" disabled={!tid || gruppe === aktuell} onClick={() => tid && onSchieben(tid, gruppe)}>Verschieben</Button>
         <Button onClick={onClose}>Abbrechen</Button>
       </>} />}>

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, Dialog, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, Select,
+  AnalyticalTable, Button, Dialog, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, Select,
   Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
@@ -86,7 +87,7 @@ export function DocsDialog({ docs, onClose }: { docs: Doc[] | null; onClose: () 
   return (
     <Dialog open={!!docs} headerText="PDF-Vorschau" onClose={onClose} resizable
             style={{ width: '80vw', height: '88vh' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button icon="download" disabled={!doc} onClick={herunterladen}>{alleText}</Button>
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </>} />}>
@@ -164,7 +165,7 @@ export function MailDialog({ art, mails, onClose }: { art: 'T' | 'L' | 'R'; mail
 
   return (
     <Dialog open={!!mails} headerText="Versenden" onClose={onClose} style={{ width: 'min(64rem, 95vw)' }}
-            footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       <MessageStrip hideCloseButton style={{ marginBottom: '0.75rem' }}>
         „E-Mail öffnen“ erstellt einen E-Mail-Entwurf mit Empfänger, Betreff, Standardtext und dem PDF als Anhang; er öffnet sich im
         Mailprogramm (Outlook mit „Senden“). „ohne Anhang“ öffnet das Mailprogramm direkt, ohne PDF. Bei Rechnungen ist das PDF bereits die E-Rechnung (ZUGFeRD 2.3, EN 16931) – die XRechnung-XML ist nur für Behördenportale nötig.
@@ -230,7 +231,7 @@ export function XRechnungDialog({ data, onClose }: { data: XRes | null; onClose:
   return (
     <Dialog open={!!data} headerText={`E-Rechnung ${data?.faktura ?? ''}`} onClose={onClose} resizable draggable
             style={{ width: 'min(64rem, 95vw)', height: '80vh' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {data && <Button design="Emphasized" icon="pdf-attachment" onClick={() => herunterladen(`${T}/pdf/R/${encodeURIComponent(data.faktura)}`, `Rechnung_${data.faktura}.pdf`)}>
                 PDF (ZUGFeRD) herunterladen
               </Button>}
@@ -287,7 +288,7 @@ export function XRechnungDialog({ data, onClose }: { data: XRes | null; onClose:
 export function InfoDialog({ title, text, onClose }: { title: string; text: string | null; onClose: () => void }) {
   return (
     <Dialog open={!!text} headerText={title} state="Positive" onClose={onClose}
-            footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>OK</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>OK</Button>} />}>
       <div style={{ whiteSpace: 'pre-line', maxWidth: '40rem' }}>{text}</div>
     </Dialog>
   );

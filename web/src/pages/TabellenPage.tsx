@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { feld } from '../components/Varianten';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
+  AnalyticalTable, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
   SegmentedButton, SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
 import { Section } from '../components/Section';
@@ -452,7 +453,7 @@ export function TabellenPage() {
 
           {detail && erg && (
             <Dialog open headerText={`Eintrag aus ${struktur.schema}.${struktur.tabelle}${bearbeiten ? ' ändern' : ''}`} style={{ width: 'min(52rem, 96vw)' }} onClose={() => setDetail(null)}
-                    footer={<Bar endContent={<>
+                    footer={<FussLeiste endContent={<>
                       {!bearbeiten && detailSchluessel && aenderbareSpalten.length > 0 && <Button icon="edit" onClick={() => { setBearbeiten({}); setAendernFehler(null); }}>Werte ändern</Button>}
                       {bearbeiten && <Button design="Emphasized" icon="save" loading={speichert} disabled={speichert || !Object.keys(bearbeiten).length} onClick={aendern}>Speichern</Button>}
                       {bearbeiten && <Button disabled={speichert} onClick={() => setBearbeiten(null)}>Abbrechen</Button>}
@@ -537,7 +538,7 @@ function PapierkorbDialog({ tabelle, onClose }: { tabelle: string | null; onClos
   const zelle = { padding: '0.3rem 0.5rem', borderTop: '1px solid var(--sapList_BorderColor)', verticalAlign: 'top' } as const;
   return (
     <Dialog open headerText="Papierkorb der Tabellenansicht" style={{ width: 'min(64rem, 96vw)' }} onClose={() => onClose(geaendert)}
-            footer={<Bar startContent={<Button design="Transparent" icon="delete" disabled={!wahl.size || busy} onClick={() => setEndgueltig(true)}>Endgültig entfernen</Button>}
+            footer={<FussLeiste startContent={<Button design="Transparent" icon="delete" disabled={!wahl.size || busy} onClick={() => setEndgueltig(true)}>Endgültig entfernen</Button>}
                          endContent={<>
                            <Button design="Emphasized" icon="undo" disabled={!wahl.size || busy} onClick={() => los('wiederherstellen')}>{wahl.size} wiederherstellen</Button>
                            <Button onClick={() => onClose(geaendert)}>Schließen</Button>

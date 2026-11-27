@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Bar, Button, Dialog, Input, Icon, Link, MessageStrip, ObjectStatus } from '@ui5/webcomponents-react';
+import { Button, Dialog, Input, Icon, Link, MessageStrip, ObjectStatus } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -127,7 +128,7 @@ function KostenDialog({ k, arten, einheiten, paperless, onClose }: { k: Partial<
 
   return (
     <Dialog open headerText={k.id ? 'Kosten ändern' : 'Kosten erfassen'} style={{ width: 'min(44rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<>
+      footer={<FussLeiste endContent={<>
         <Button design="Emphasized" loading={busy} disabled={!f.kostenart_id || !f.datum} onClick={sichern}>Sichern</Button>
         <Button onClick={() => onClose(false)}>Abbrechen</Button>
       </>} />}>
@@ -199,7 +200,7 @@ function SucheDialog({ onClose, onWahl }: { onClose: () => void; onWahl: (d: PlD
   const docs = useLoad(() => api.get<PlDok[]>(`${M}/paperless/suche?q=${encodeURIComponent(q)}`), [q]);
   return (
     <Dialog open headerText="Dokument in Paperless suchen" style={{ width: 'min(48rem, 95vw)' }} onClose={onClose}
-      footer={<Bar endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
+      footer={<FussLeiste endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
       <Input placeholder="Titel, Inhalt oder Dokumentnummer" value={text} showClearIcon icon={<Icon name="search" />} style={{ width: '100%', marginBottom: '0.75rem' }}
         onInput={(e) => setText(e.target.value)} onChange={() => setQ(text)} />
       {docs.error && <MessageStrip design="Negative" hideCloseButton>{docs.error}</MessageStrip>}
@@ -213,7 +214,7 @@ function EingangDialog({ onClose, onUebernehmen }: { onClose: () => void; onUebe
   const d = useLoad(() => api.get<{ tag: string; dokumente: PlDok[]; hinweis?: string }>(`${M}/paperless/eingang`), []);
   return (
     <Dialog open headerText="Neue Belege aus Paperless" style={{ width: 'min(48rem, 95vw)' }} onClose={onClose}
-      footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+      footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {d.error && <MessageStrip design="Negative" hideCloseButton>{d.error}</MessageStrip>}
       {d.data && <p className="portal-muted" style={{ marginTop: 0 }}>
         {d.data.tag ? `Dokumente mit dem Schlagwort „${d.data.tag}“, die noch nicht zugeordnet sind. Das Schlagwort steht unter Haus und Mieter → Haus.` : 'Unter Haus und Mieter → Haus ist kein Paperless-Schlagwort eingetragen.'}

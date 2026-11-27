@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, Button, CheckBox, DatePicker, Dialog, Link, MessageStrip, Option, Select, Text, TextArea,
+  Button, CheckBox, DatePicker, Dialog, Link, MessageStrip, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { dateiLesen, eur } from '../util';
@@ -11,7 +12,7 @@ import { MG, type Auswahl, type Detail } from './typen';
 export function Dlg({ titel, children, onClose, fuss, breite = 'min(760px, 95vw)' }: { titel: string; children: ReactNode; onClose: () => void; fuss: ReactNode; breite?: string }) {
   return createPortal(
     <Dialog open headerText={titel} onClose={onClose} resizable style={{ width: breite }}
-            footer={<Bar endContent={<>{fuss}<Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<>{fuss}<Button onClick={onClose}>Abbrechen</Button></>} />}>
       {children}
     </Dialog>,
     document.body,

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -441,7 +442,7 @@ export function Projektplanung() {
                        }} />
       )}
       <Dialog open={!!zeit} headerText="Stunden für jemanden erfassen" onClose={() => setZeit(null)}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Emphasized" disabled={busy || !zeit || (!zeit.adrnr && !zeit.name.trim())}
                         onClick={() => zeit && p && tun(() => api.post<Sicht>(`${PJ}/${p.id}/zeiten`, { adrnr: zeit.adrnr || null, name: zeit.name, datum: zeit.datum, vorgang_id: zeit.vorgang ? Number(zeit.vorgang) : null, stunden: zeit.stunden, taetigkeit: zeit.taetigkeit }), () => setZeit(null))}>Erfassen</Button>
                 <Button onClick={() => setZeit(null)}>Abbrechen</Button>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, Button, Dialog, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, TextArea } from '@ui5/webcomponents-react';
+import { Button, Dialog, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, TextArea } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
@@ -58,7 +59,7 @@ export function EinladungDialog({ id, titel, onClose }: { id: number; titel: str
 
   return createPortal(
     <Dialog open headerText={`Einladen: ${titel}`} onClose={onClose} style={{ width: 'min(44rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {v?.senden && !fertig && <Button design="Emphasized" icon="email" disabled={busy || !mitMail.length || !betreff.trim() || !text.trim()} onClick={senden}>
                 {mitMail.length ? `An ${mitMail.length} ${mitMail.length === 1 ? 'Mitglied' : 'Mitglieder'} senden` : 'Senden'}
               </Button>}

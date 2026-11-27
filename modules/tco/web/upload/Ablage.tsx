@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, Dialog, Icon, Link, MessageStrip, Text, IllustratedMessage } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Icon, Link, MessageStrip, Text, IllustratedMessage } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import '@ui5/webcomponents-fiori/dist/illustrations/DragFilesToUpload.js';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@core/api';
@@ -157,7 +158,7 @@ export function Ablage({ collapsed }: { collapsed: boolean }) {
       )}
       {zeigeProtokoll && createPortal(
         <Dialog open headerText="Zuletzt abgelegte Dateien" style={{ width: 'min(32rem, 96vw)' }} onClose={() => setZeigeProtokoll(false)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Transparent" onClick={() => { setProtokoll([]); setZeigeProtokoll(false); }}>Leeren</Button>
                   <Button onClick={() => setZeigeProtokoll(false)}>Schließen</Button>
                 </>} />}>
@@ -183,7 +184,7 @@ function VorgabeDialog({ stamm, vorgabe, wartend, onClose, onSpeichern }: {
   const navigate = useNavigate();
   return createPortal(
     <Dialog open headerText="Ablagefeld – Voreinstellung" style={{ width: 'min(30rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={!stamm?.paperless || !v.doktyp} onClick={() => onSpeichern(v)}>
                 {wartend ? `Speichern und ${wartend} Datei(en) ablegen` : 'Speichern'}
               </Button>

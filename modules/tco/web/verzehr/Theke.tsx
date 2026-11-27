@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, Dialog, Input, Label, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem, Text, ToggleButton } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Input, Label, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem, Text, ToggleButton } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { AuswahlBox } from '@core/components/AuswahlBox';
@@ -207,7 +208,7 @@ function KasseDialog({ beleg, busy, onClose, onKassieren }: { beleg: Beleg; busy
   const [zahlart, setZahlart] = useState<Zahlart>('BAR');
   return createPortal(
     <Dialog open headerText={`${eur(beleg.betrag)} kassieren`} onClose={onClose}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="payment-approval" disabled={busy} onClick={() => onKassieren(zahlart)}>Kassiert – Beleg erstellen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="payment-approval" disabled={busy} onClick={() => onKassieren(zahlart)}>Kassiert – Beleg erstellen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       <div className="portal-vz__form" style={{ maxWidth: '24rem' }}>
         <Text>{beleg.gast_name || beleg.gast_gruppe}{beleg.gast_name && beleg.gast_gruppe ? ` · ${beleg.gast_gruppe}` : ''} · {beleg.rgnr}</Text>
         <div className="portal-vz__feld">
@@ -234,7 +235,7 @@ function BelegDialog({ d, busy, mail, paperless, admin, onClose, onPdf, onMail, 
   const [mobil, setMobil] = useState(b.mobil ?? '');
   return createPortal(
     <Dialog open stretch={klein()} headerText={`Beleg ${b.rgnr}`} onClose={onClose}
-            footer={<Bar startContent={admin && b.status !== 'STORNIERT' ? <Button design="Negative" icon="delete" disabled={busy} onClick={onStorno}>Beleg stornieren</Button> : undefined}
+            footer={<FussLeiste startContent={admin && b.status !== 'STORNIERT' ? <Button design="Negative" icon="delete" disabled={busy} onClick={onStorno}>Beleg stornieren</Button> : undefined}
                          endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       <div className="portal-vz__form">
         <div className="portal-vz__zeile"><span><strong>{b.gast_name || b.gast_gruppe || b.person}</strong>{b.gast_name && b.gast_gruppe ? ` · ${b.gast_gruppe}` : ''}</span><ObjectStatus state={STATUS_STATE[b.status]} inverted>{STATUS_TEXT[b.status]}{b.zahlart ? ` · ${ZAHLART_TEXT[b.zahlart]}` : ''}</ObjectStatus></div>
