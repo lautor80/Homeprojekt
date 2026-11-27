@@ -264,7 +264,7 @@ export function BackupPage() {
           <>
             <div className="portal-bk__nacht">
               {d.nacht.slice(0, 14).map((n) => (
-                <div key={n.name} className="portal-row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+                <div key={n.name} className="portal-row" style={{ justifyContent: 'space-between' }}>
                   <Text>{zeit(n.geaendert)}</Text><Text className="portal-muted">{n.name} · {mb(n.groesse)}</Text>
                   <Button design="Transparent" icon="download" onClick={() => download(`/api/backup/nacht/${encodeURIComponent(n.name)}`, n.name).catch((e) => setError(e.message))} />
                 </div>

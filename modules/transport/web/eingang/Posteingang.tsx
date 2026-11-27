@@ -555,7 +555,7 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
           )}
           {v.status === 'abgelegt' && v.auftragsnr && edit && darfAblegen && (
             aendern ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 22rem) max-content max-content', gap: '0.5rem 0.75rem', alignItems: 'center' }}>
+              <div className="portal-m-einspaltig" style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 22rem) max-content max-content', gap: '0.5rem 0.75rem', alignItems: 'center' }}>
                 <Label required>Neuer Auftrag</Label>
                 <AuftragWahl wert={nrNeu} onChange={setNrNeu} auftraege={auftraege} disabled={busy} />
                 <Button design="Emphasized" icon="accept" disabled={busy || !nrNeuGueltig} onClick={() => setAendernFrage(true)}

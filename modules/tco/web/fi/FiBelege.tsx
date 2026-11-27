@@ -233,7 +233,7 @@ export function FiBelege() {
       <FlexBox wrap="Wrap" alignItems="End" style={{ gap: '1rem' }}>
         <FlexBox direction="Column">
           <Label>Buchungszeitraum</Label>
-          <FlexBox style={{ gap: '0.5rem' }}>
+          <FlexBox wrap="Wrap" style={{ gap: '0.5rem' }}>
             <Select style={{ width: '12rem' }} onChange={(e) => {
               const k = (e.detail.selectedOption as HTMLElement).dataset.key!;
               setZr(k);
@@ -242,7 +242,7 @@ export function FiBelege() {
             }}>
               {ZEITRAEUME.map((z) => <Option key={z.key} data-key={z.key} selected={z.key === zr}>{z.text}</Option>)}
             </Select>
-            <DateRangePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" delimiter=" – " placeholder="Von – Bis" style={{ width: '15rem' }}
+            <DateRangePicker formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" delimiter=" – " placeholder="Von – Bis" style={{ width: '15rem', maxWidth: '100%' }}
                              value={von && bis ? `${von} – ${bis}` : ''} readonly={zr !== 'frei'}
                              onChange={(e) => {
                                const [a, b] = e.detail.value.split(' – ');
@@ -252,7 +252,7 @@ export function FiBelege() {
         </FlexBox>
         <FlexBox direction="Column">
           <Label>Konto</Label>
-          <KontoBox konten={init?.konten ?? []} value={konto} alle onChange={setKonto} style={{ width: '20rem' }} />
+          <KontoBox konten={init?.konten ?? []} value={konto} alle onChange={setKonto} style={{ width: '20rem', maxWidth: '100%' }} />
         </FlexBox>
         <Button design="Emphasized" icon="search" onClick={() => laden()}>Go</Button>
         <div style={{ flex: 1 }} />

@@ -185,3 +185,9 @@
 .portal-vs__farbknopf--gruen { color: var(--sapPositiveTextColor); }
 .portal-vs__farbknopf--blau { color: var(--sapInformativeTextColor); }
 .portal-vs__farbknopf--ohne { color: var(--sapTextColor); text-decoration: line-through; }
+
+/* Telefon: Art (Beschluss/Aufgabe/Info) über dem Text – daneben blieb dem Text neben den Knöpfen keine Breite */
+@media (max-width: 600px) {
+  .portal-vs__eintrag { flex-wrap: wrap; }
+  .portal-vs__art { flex: 1 0 100%; min-width: 0; }
+}

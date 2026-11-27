@@ -64,3 +64,6 @@
   .portal-vz__kopf-wert { font-size: 1.125rem; }
   .portal-vz__rubriken ui5-toggle-button { font-size: var(--sapFontSmallSize); }
 }
+
+/* Der Warenkorb haftet am unteren Rand – das geht nur, wenn die Karte darum nicht abschneidet (overflow: hidden hebt „sticky“ auf) */
+.portal-section:has(.portal-vz__warenkorb) { overflow: visible; }

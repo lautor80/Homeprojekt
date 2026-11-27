@@ -176,7 +176,7 @@ export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: {
           {rgnr && edit && (
             <FlexBox wrap="Wrap" alignItems="Center" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
               <Button icon="search" onClick={() => zuordnen('AUTO')}>Beleg ermitteln</Button>
-              <Select style={{ width: '28rem' }} onChange={(e) => setKandSel((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
+              <Select style={{ width: '28rem', maxWidth: '100%' }} onChange={(e) => setKandSel((e.detail.selectedOption as HTMLElement).dataset.k ?? '')}>
                 <Option data-k="" selected={!kandSel}>{kand === null ? 'Belege werden geladen …' : kand.length ? 'Beleg aus der FI-Zuordnung wählen …' : 'Keine freien Belege in der Nähe des Rechnungsdatums'}</Option>
                 {(kand ?? []).map((k) => <Option key={k.doknr} data-k={k.doknr} selected={k.doknr === kandSel}>{`${k.doknr} – ${k.titel} – ${dat(k.created)} – ${eur(k.betrag)}`}</Option>)}
               </Select>

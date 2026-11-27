@@ -147,7 +147,7 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
     const rand = !r.neu ? 'var(--sapList_BorderColor)' : fehlt ? 'var(--sapCriticalColor)' : r.art === 'historie' ? 'var(--sapInformativeColor)' : 'var(--sapPositiveColor)';
     const box = (
       <div style={{ borderLeft: `4px solid ${rand}`, padding: '0.5rem 0.75rem', marginBottom: '0.5rem', background: 'var(--sapList_Background)', opacity: r.neu ? 1 : 0.6 }}>
-        <FlexBox style={{ gap: '0.75rem' }} alignItems="Start">
+        <FlexBox wrap="Wrap" style={{ gap: '0.75rem' }} alignItems="Start">
           <CheckBox checked={r.sel && r.neu} disabled={!r.neu} onChange={(e) => upd(r.uid, (x) => ({ ...x, sel: e.target.checked }))} />
           <div style={{ width: '7.5rem' }}>
             {manuell
@@ -169,7 +169,7 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
                 }} />
               : <ObjectStatus state={b.betrag > 0 ? 'Positive' : b.betrag < 0 ? 'Negative' : 'None'}>{eur(b.betrag)}</ObjectStatus>}
           </div>
-          <div style={{ width: '24rem' }}>
+          <div style={{ width: '24rem', maxWidth: '100%' }}>
             {r.neu && r.laufid ? (() => {
               const l = datei?.laeufe.find((x) => x.laufid === r.laufid);
               return (

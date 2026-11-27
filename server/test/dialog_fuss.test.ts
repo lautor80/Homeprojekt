@@ -78,3 +78,16 @@ test('Tabellen mit Zeilenaktionen nutzen die Kartenansicht (Aktionen auf dem Tel
     assert.ok(!/<AnalyticalTable\b/.test(q), `${datei}: noch eine reine AnalyticalTable`);
   }
 });
+
+test('Telefon: nebeneinander stehende Bereiche stehen untereinander, feste Breiten begrenzt (Mobil-Prüfung, Paket 3)', () => {
+  const css = readFileSync(join(wurzel, 'web/src/styles.css'), 'utf8');
+  assert.match(css, /\.portal-teilung \{ display: flex !important; flex-direction: column !important;/);
+  assert.match(css, /\.portal-m-einspaltig \{ grid-template-columns: minmax\(0, 1fr\) !important; \}/);
+  assert.match(css, /td:last-child:has\(> \.portal-iconakt\) \{ position: sticky; right: 0;/);
+  for (const datei of ['modules/transport/web/DokumentPopup.tsx', 'modules/transport/web/beleg/BelegAnsicht.tsx', 'modules/transport/web/VersandDialog.tsx', 'modules/tco/web/fi/FiDialoge.tsx']) {
+    assert.match(readFileSync(join(wurzel, datei), 'utf8'), /className="portal-teilung"/, datei);
+  }
+  // Raster mit Mindestbreite passen sich der Bildschirmbreite an
+  assert.match(readFileSync(join(wurzel, 'modules/transport/web/AuftragDetail.tsx'), 'utf8'), /minmax\(min\(\$\{n === 3 \? 300 : 380\}px, 100%\), 1fr\)/);
+  assert.match(readFileSync(join(wurzel, 'modules/tco/web/platz/platz.css'), 'utf8'), /\.portal-abo__raster \{[^}]*repeat\(7, minmax\(4\.5rem, 1fr\)\)/);
+});
