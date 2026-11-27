@@ -841,6 +841,23 @@ test('Vertragsangebot (#12): vorbelegter Antrag per Link, Öffnen mit Geburtsdat
   const [db] = await sql`select token_hash from tco.vertragsangebote`;
   assert.notEqual(db.token_hash, tok, 'nur der Hash gespeichert');
 
+  // Inhalt bleibt nach dem Versand einsehbar (Kassenwart): Angaben, Verträge, Versand – ohne Link/Schlüssel
+  const vaId = (await admin('GET', `${T}/mitgliedsantraege/angebote`)).body.liste.find((x: any) => x.nummer === r.body.nummer).id;
+  let d = await admin('GET', `${T}/mitgliedsantraege/angebote/${vaId}`);
+  assert.equal(d.status, 200, JSON.stringify(d.body));
+  assert.equal(d.body.nummer, r.body.nummer);
+  assert.equal(d.body.status, 'OFFEN');
+  assert.equal(d.body.personen[0].adrnr, '0000000777');
+  assert.equal(d.body.personen[0].geburtsdatum, '1990-04-04');
+  assert.equal(d.body.personen[0].art, '5');
+  assert.equal(d.body.strasse, 'Seeweg 7');
+  assert.equal(d.body.bemerkung, 'Willkommen!');
+  assert.equal(d.body.email, 'ines@example.org');
+  assert.ok(d.body.versand.some((v: any) => v.an === 'ines@example.org'), JSON.stringify(d.body.versand));
+  assert.ok(!JSON.stringify(d.body).includes(tok), 'kein Link-Schlüssel in der Ansicht');
+  assert.equal(d.body.token_hash, undefined);
+  assert.equal((await admin('GET', `${T}/mitgliedsantraege/angebote/999999`)).status, 404);
+
   // Öffnen: erst Geburtsdatum, falsches zählt
   r = await gast('POST', `${T}/antrag/angebot`, { token: tok });
   assert.deepEqual(r.body, { geburtsdatumNoetig: true });
@@ -868,6 +885,9 @@ test('Vertragsangebot (#12): vorbelegter Antrag per Link, Öffnen mit Geburtsdat
   assert.equal((await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: '1990-04-04' })).status, 404);
   r = await admin('GET', `${T}/mitgliedsantraege/angebote?alle=1`);
   assert.equal(r.body.liste[0].status, 'ANGENOMMEN');
+  d = await admin('GET', `${T}/mitgliedsantraege/angebote/${vaId}`);
+  assert.equal(d.body.status, 'ANGENOMMEN', 'auch nach der Annahme einsehbar');
+  assert.match(d.body.antrag ?? '', /\S/);
   r = await admin('GET', `${T}/mitgliedsantraege`);
   const ma = r.body.find((x: any) => x.status === 'EINGANG' && x.daten.personen[0].vorname === 'Ines');
   assert.equal(ma.daten.personen[0].adrnr, '0000000777');

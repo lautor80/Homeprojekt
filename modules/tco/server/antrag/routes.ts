@@ -12,7 +12,7 @@ import { bankSchutz } from '../bankdaten.js';
 import { antragAblehnen, antragAnlegen, antraegeLesen, antragInfo, MAX_PERSONEN, uebernehmen } from './logik.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import type { Verein } from '../verein.js';
-import { ANGEBOT_TAGE, angebotAnlegen, angebotBankAnzeige, angebotErneuern, angeboteLesen, angebotKandidaten, angebotOeffnen, angebotZurueckziehen } from './angebot.js';
+import { ANGEBOT_TAGE, angebotAnlegen, angebotBankAnzeige, angebotDetail, angebotErneuern, angeboteLesen, angebotKandidaten, angebotOeffnen, angebotZurueckziehen } from './angebot.js';
 
 /**
  * Mitgliedsantrag online (#12): öffentlich /api/m/tco/antrag (Formular /beitritt), Verwaltung unter
@@ -139,6 +139,13 @@ export async function antragRoutes(app: FastifyInstance) {
   app.get('/mitgliedsantraege/angebote', { preHandler: requireAuth(P_ANTRAG.display) }, async (req) => {
     const q = z.object({ alle: z.string().optional().transform((x) => x === '1' || x === 'true') }).parse(req.query);
     return { tage: ANGEBOT_TAGE, liste: await angeboteLesen(DB, q.alle) };
+  });
+  /** Inhalt eines Angebots (auch nach dem Versand): vorbelegte Angaben, Bankverbindung (Klartext nur mit Bankdaten-Recht), Versand */
+  app.get('/mitgliedsantraege/angebote/:id', { preHandler: requireAuth(P_ANTRAG.display) }, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const a = await angebotDetail(DB, id);
+    const sb = bankSchutz(req);
+    return { ...a, bank: a.bank ? { ...a.bank, kontoinhaber: sb.text(a.bank.kontoinhaber), iban: sb.iban(a.bank.iban), bic: sb.bic(a.bank.bic) || null } : null };
   });
   app.get('/mitgliedsantraege/angebote/personen', edit, async (req) => {
     const q = z.object({ suche: z.string().max(100).default('') }).parse(req.query);

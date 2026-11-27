@@ -176,7 +176,7 @@ flowchart LR
 |---|---|
 | abschluss | 9 |
 | analyse | 7 |
-| antrag | 13 |
+| antrag | 14 |
 | beitraege | 8 |
 | checklisten | 20 |
 | clubhaus | 19 |
