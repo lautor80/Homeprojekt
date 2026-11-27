@@ -23,6 +23,7 @@ import { VorgangDialog, type VorgangTyp } from './VorgangDialog';
 import { MenuButton } from '@core/components/MenuButton';
 import { useAblageZiel } from '@core/ablage';
 import { SperrHinweis, useSperre } from '@core/sperre';
+import { AngefangenDialog, angefangenText } from '../schnupper/AngefangenDialog';
 
 const t = (s: string | null | undefined) => (s ? <Text>{s}</Text> : null);
 const ibanFormat = (s: string) => s.replace(/\s/g, '').replace(/(.{4})/g, '$1 ').trim();
@@ -278,7 +279,7 @@ function Stammdaten({ d, edit, onEdit, onAktion }: { d: Detail; edit: boolean; o
         </Feld>
         <Feld label="EP3-Kundennummer">{t(d.zuid)}</Feld>
       </Raster>
-      {d.schnupper && <SchnupperAngaben s={d.schnupper} />}
+      {d.schnupper && <SchnupperAngaben s={d.schnupper} adrnr={m.adrnr} name={`${m.vorname} ${m.nachname}`.trim()} onAktion={onAktion} />}
       <ConfirmDialog open={mailFrage !== null} askReason danger={mailFrage === 'setzen'}
                      title={mailFrage === 'aufheben' ? 'Vermerk zurücknehmen' : 'E-Mail-Adresse als unzustellbar vermerken'}
                      text={mailFrage === 'aufheben'
@@ -305,11 +306,23 @@ const SCHNUPPER_STATUS: Record<string, string> = {
   NEU: 'Neu', KONTAKTIERT: 'Kontaktiert', TERMIN: 'Termin vereinbart', ABSOLVIERT: 'Schnuppern absolviert', MITGLIED: 'Mitglied geworden', ABGESAGT: 'Abgesagt',
 };
 const SCHNUPPER_STUFE: Record<string, string> = { NEU: 'Neu (noch nie gespielt)', ANFAENGER: 'Anfänger', FORTGESCHRITTEN: 'Fortgeschritten' };
-function SchnupperAngaben({ s }: { s: NonNullable<Detail['schnupper']> }) {
+const SCHNUPPER_ANGEBOT: Record<string, string> = { OFFEN: 'offen', ANGENOMMEN: 'angenommen', ZURUECKGEZOGEN: 'zurückgezogen' };
+function SchnupperAngaben({ s, adrnr, name, onAktion }: {
+  s: NonNullable<Detail['schnupper']>; adrnr: string; name: string; onAktion: (fn: () => Promise<{ text?: string } | void>) => void;
+}) {
+  // „Hat angefangen“ ist am Schnupper-Datensatz in jedem Status pflegbar – eigenes Recht, unabhängig von der Mitgliederpflege
+  const darf = useCan()('tco.schnupper:edit');
+  const [dlg, setDlg] = useState(false);
+  const g = s.angebot ?? null;
+  const angebot = g ? `${g.nummer} – ${g.status === 'OFFEN' ? (g.abgelaufen ? `abgelaufen (${dat(g.gueltig_bis)})` : `offen bis ${dat(g.gueltig_bis)}`) : SCHNUPPER_ANGEBOT[g.status] ?? g.status}` : '';
   const termine = [[...(s.termine.tage ?? []), ...(s.termine.zeiten ?? [])].join(', '), s.termine.text].filter(Boolean).join(' · ');
   return (
     <>
-      <Toolbar design="Transparent"><Title level="H5">Schnuppertraining {s.nummer}</Title><ToolbarSpacer /></Toolbar>
+      <Toolbar design="Transparent">
+        <Title level="H5">Schnuppertraining {s.nummer}</Title>
+        <ToolbarSpacer />
+        {darf && <Button icon="edit" onClick={() => setDlg(true)}>Angefangen ändern…</Button>}
+      </Toolbar>
       <Raster>
         <Feld label="Status">{t(SCHNUPPER_STATUS[s.status] ?? s.status)}</Feld>
         <Feld label="Angemeldet am">{t(s.eingang ? new Date(s.eingang).toLocaleDateString('de-DE') : '')}</Feld>
@@ -319,11 +332,16 @@ function SchnupperAngaben({ s }: { s: NonNullable<Detail['schnupper']> }) {
         <Feld label="Mögliche Termine">{t(termine)}</Feld>
         <Feld label="Erziehungsberechtigt">{t(s.erziehungsberechtigt)}</Feld>
         <Feld label="1. / 2. Einheit">{t([dat(s.einheit1), dat(s.einheit2)].filter(Boolean).join(' / '))}</Feld>
+        <Feld label="Einheiten">{t(s.einheiten != null ? `${s.einheiten}× geschnuppert` : '')}</Feld>
+        <Feld label="Hat angefangen">{t(angefangenText(s.angefangen, s.angefangen_am))}</Feld>
         <Feld label="Trainer">{t(s.trainer)}</Feld>
         <Feld label="Mitteilung">{t(s.mitteilung)}</Feld>
         <Feld label="Notiz Trainer">{t(s.notiz)}</Feld>
+        <Feld label="Vertragsangebot">{t(angebot)}</Feld>
         <Feld label="Mitgliedsantrag">{t(s.antrag)}</Feld>
       </Raster>
+      {dlg && <AngefangenDialog adrnr={adrnr} titel={`Schnuppertraining ${s.nummer} · ${name}`} angefangen={s.angefangen} angefangen_am={s.angefangen_am}
+                                onClose={() => setDlg(false)} onDone={(text) => { setDlg(false); onAktion(async () => ({ text })); }} />}
     </>
   );
 }

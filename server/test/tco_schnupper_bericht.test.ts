@@ -13,6 +13,7 @@ const basis: SchnupperZeile = {
   erziehungsberechtigt: 'Maria Muster', mitteilung: 'Sie freut sich sehr!', einheit1: '2026-05-05', einheit2: null, trainer: 'Tom Trainer',
   notiz: 'Schläger leihen\nmit Freundin', antrag: null, bearbeitet_am: '2026-05-03T08:05:00Z', bearbeitet_von: 'Jugendwart', mitglnrn: '',
   whatsapp: '491701112223', einheiten: 1,
+  angefangen: null, angefangen_am: null, angebot: null, antrag_nr: null, antrag_status: null, prozess: [],
 };
 const zusatz = { einwilligung_am: '2026-05-02T14:30:00Z', einheiten: [
   { datum: '2026-05-12', trainer: 'Tom Trainer', erfasst_von: 'tom' }, { datum: '2026-05-05', trainer: null, erfasst_von: null },
@@ -49,8 +50,26 @@ test('Alle Angaben des Schnupperantrags in Abschnitten', () => {
   assert.equal(zeile(a, 'Betreuung', 'Geschnuppert laut Trainingszeiten'), '1 von 2 kostenlosen Einheiten');
   assert.equal(zeile(a, 'Betreuung', 'Notiz'), 'Schläger leihen\nmit Freundin');
   assert.equal(zeile(a, 'Betreuung', 'Zuletzt bearbeitet'), 'Jugendwart, 03.05.2026 10:05 Uhr');
+  assert.equal(zeile(a, 'Beitritt', 'Hat angefangen'), 'offen');
+  assert.equal(zeile(a, 'Beitritt', 'Vertragsangebot'), 'kein Vertragsangebot');
   assert.equal(zeile(a, 'Beitritt', 'Mitgliedsantrag'), 'noch kein Mitgliedsantrag');
   assert.equal(zeile(a, 'Beitritt', 'Mitgliedsnummer'), '–');
+});
+
+test('Beitritt: „Hat angefangen“, Vertragsangebot und Antrag in Prüfung', () => {
+  const angebot = { id: 3, nummer: 'VA-2026-0003', status: 'OFFEN' as const, gueltig_bis: '2026-06-15', abgelaufen: false, antrag: null };
+  let a = berichtAbschnitte({ ...basis, angefangen: true, angefangen_am: '2026-06-01', angebot }, zusatz, 2);
+  assert.equal(zeile(a, 'Beitritt', 'Hat angefangen'), 'ja, seit 01.06.2026');
+  assert.equal(zeile(a, 'Beitritt', 'Vertragsangebot'), 'VA-2026-0003 offen bis 15.06.2026');
+  a = berichtAbschnitte({ ...basis, angefangen: true, angebot: { ...angebot, abgelaufen: true } }, zusatz, 2);
+  assert.deepEqual([zeile(a, 'Beitritt', 'Hat angefangen'), zeile(a, 'Beitritt', 'Vertragsangebot')], ['ja', 'VA-2026-0003 abgelaufen am 15.06.2026']);
+  a = berichtAbschnitte({
+    ...basis, angefangen: false, angebot: { ...angebot, status: 'ANGENOMMEN', antrag: 'MA-2026-0009' }, antrag_nr: 'MA-2026-0009', antrag_status: 'EINGANG',
+  }, zusatz, 2);
+  assert.deepEqual([zeile(a, 'Beitritt', 'Hat angefangen'), zeile(a, 'Beitritt', 'Vertragsangebot'), zeile(a, 'Beitritt', 'Mitgliedsantrag')],
+    ['nein', 'VA-2026-0003 angenommen', 'MA-2026-0009 (in Prüfung)']);
+  a = berichtAbschnitte({ ...basis, angebot: { ...angebot, status: 'ZURUECKGEZOGEN' } }, zusatz, 2);
+  assert.equal(zeile(a, 'Beitritt', 'Vertragsangebot'), 'VA-2026-0003 zurückgezogen');
 });
 
 test('Leere Angaben, Volljährige, zu viele Einheiten', () => {

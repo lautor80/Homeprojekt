@@ -64,6 +64,12 @@ export interface Schnupper {
   nummer: string; status: string; eingang: string; alter: number | null; gespielt: boolean; stufe: string;
   termine: { tage?: string[]; zeiten?: string[]; text?: string | null }; erziehungsberechtigt: string | null; mitteilung: string | null;
   einheit1: string | null; einheit2: string | null; trainer: string | null; notiz: string | null; antrag: string | null;
+  /** nach dem Schnuppern im Verein angefangen: true = ja, false = nein, null = offen; Datum nur bei „ja“ */
+  angefangen: boolean | null; angefangen_am: string | null;
+  /** Tage mit Schnuppertraining laut „Meine Trainingszeiten“ */
+  einheiten: number;
+  /** jüngstes Vertragsangebot zu diesem Schnupperer */
+  angebot: { nummer: string; status: 'OFFEN' | 'ANGENOMMEN' | 'ZURUECKGEZOGEN'; gueltig_bis: string; abgelaufen: boolean } | null;
 }
 export interface VertragsArt { art: string; name: string; betrag: number; turnus: string }
 export interface Auswahl {

@@ -1046,3 +1046,151 @@ test('Vertragsangebot (#12): aktives Mitglied mit abweichendem Zahler – Bankve
   const naechster = (() => { const d = new Date(`${heute()}T12:00:00Z`); return d.getUTCDate() === 1 ? heute() : new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().slice(0, 10); })();
   assert.equal(vt[2].beginn, naechster, 'Beginn zum nächsten Monatsersten');
 });
+
+test('Schnuppertraining → Vertragsangebot → Mitgliedsantrag → Mitglied: „Hat angefangen“, Verknüpfung und Prozesskette', async () => {
+  const gast = client('10.118.0.1');
+  const jahr = Number(heute().slice(0, 4));
+  const geb = `${jahr - 11}-01-15`;
+  const zustaende = (z: any) => z.prozess.map((s: any) => s.zustand);
+
+  // Anmeldung zum Schnuppertraining (minderjährig, ohne Anrede und Geburtsdatum im Stamm)
+  let r = await gast('POST', `${T}/schnupper`, {
+    vorname: 'Pia', nachname: 'Prozess', alter: 11, gespielt: false, stufe: 'NEU', email: 'peter.prozess@example.org', mobil: '0170 1180118',
+    termine: { tage: ['Mi'], zeiten: ['nachmittags'] }, erziehungsberechtigt: 'Peter Prozess', einwilligung: true,
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const stNr: string = r.body.nummer;
+  assert.match(stNr, /^ST-\d{4}-\d{4}$/);
+  const [st] = await sql`select adrnr from tco.schnupper where nummer = ${stNr}`;
+  const adrnr: string = st.adrnr;
+  const zeileLesen = async (filter = '') => {
+    const x = await admin('GET', `${T}/schnuppertraining${filter}`);
+    assert.equal(x.status, 200, JSON.stringify(x.body));
+    return x.body.zeilen.find((z: any) => z.adrnr === adrnr);
+  };
+  let z = await zeileLesen();
+  assert.deepEqual([z.angefangen, z.angefangen_am, z.angebot, z.antrag_nr, z.antrag_status], [null, null, null, null, null]);
+  assert.deepEqual(z.prozess.map((s: any) => s.schritt), ['ANFRAGE', 'SCHNUPPERN', 'ANGEBOT', 'ANTRAG', 'MITGLIED']);
+  assert.deepEqual(zustaende(z), ['erledigt', 'aktiv', 'offen', 'offen', 'offen']);
+
+  // „Hat angefangen“: eigene Route (Recht tco.schnupper:edit); die Betreuung ohne die Felder löscht den Wert nicht
+  await admin('POST', '/api/admin/roles', { id: 'PROZESS_LESER', name: 'Schnupperprozess lesen', permissions: ['tco.schnupper:display'] });
+  await admin('POST', '/api/admin/users', { username: 'prozessleser', displayName: 'Prozessleser', password: 'start-passwort', roles: ['PROZESS_LESER'] });
+  const leser = client();
+  await leser('POST', '/api/auth/login', { username: 'prozessleser', password: 'start-passwort' });
+  await leser('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' });
+  assert.equal((await leser('GET', `${T}/schnuppertraining`)).status, 200);
+  assert.equal((await leser('PUT', `${T}/schnuppertraining/${adrnr}/angefangen`, { angefangen: true })).status, 403);
+  assert.equal((await admin('PUT', `${T}/schnuppertraining/${adrnr}/angefangen`, {})).status, 400, 'angefangen ist Pflicht');
+  assert.equal((await admin('PUT', `${T}/schnuppertraining/0000999999/angefangen`, { angefangen: true })).status, 404);
+  r = await admin('PUT', `${T}/schnuppertraining/${adrnr}/angefangen`, { angefangen: true, angefangen_am: heute() });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Hat angefangen – ja/);
+  r = await admin('PUT', `${T}/schnuppertraining/${adrnr}`, { status: 'KONTAKTIERT', notiz: 'ruft zurück' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  let [s] = await sql`select status, angefangen, angefangen_am::text as am from tco.schnupper where adrnr = ${adrnr}`;
+  assert.deepEqual([s.status, s.angefangen, s.am], ['KONTAKTIERT', true, heute()], 'ohne die Felder bleibt „angefangen“ erhalten');
+  r = await admin('PUT', `${T}/schnuppertraining/${adrnr}`, { status: 'KONTAKTIERT', notiz: 'ruft zurück', angefangen: false, angefangen_am: heute() });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  [s] = await sql`select angefangen, angefangen_am::text as am from tco.schnupper where adrnr = ${adrnr}`;
+  assert.deepEqual([s.angefangen, s.am], [false, null], 'Datum nur bei „ja“');
+  r = await admin('PUT', `${T}/schnuppertraining/${adrnr}/angefangen`, { angefangen: null });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await zeileLesen()).angefangen, null);
+  r = await admin('PUT', `${T}/schnuppertraining/${adrnr}/angefangen`, { angefangen: true, angefangen_am: heute() });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+
+  // Vertragsangebot aus der Schnupperverwaltung: verknüpft, Erziehungsberechtigte aus der Anmeldung, Anrede/Geburtsdatum aus dem Dialog
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote/personen?suche=prozess`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.map((k: any) => [k.adrnr, k.schnupper, k.geburtsdatum]), [[adrnr, stNr, null]]);
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr, anrede: 'Frau', geburtsdatum: geb, art: '3' }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const vaNr: string = r.body.nummer;
+  assert.match(vaNr, /^VA-\d{4}-\d{4}$/);
+  const tok = token(r.body.link, 'angebot');
+  assert.ok(tok.length >= 40);
+  const [va] = await sql`select schnupper_adrnr, email, daten from tco.vertragsangebote where nummer = ${vaNr}`;
+  assert.equal(va.schnupper_adrnr, adrnr);
+  assert.equal(va.email, 'peter.prozess@example.org');
+  assert.equal(va.daten.erziehungsberechtigt, 'Peter Prozess');
+  assert.deepEqual([va.daten.personen[0].adrnr, va.daten.personen[0].anrede, va.daten.personen[0].geburtsdatum, va.daten.personen[0].art], [adrnr, 'Frau', geb, '3']);
+  const [stamm] = await sql`select anrede, geburtsdatum::text as geburtsdatum from tco.mitglieder where adrnr = ${adrnr}`;
+  assert.deepEqual([stamm.anrede, stamm.geburtsdatum], [null, null], 'der Stamm wird beim Angebot nicht geändert');
+  z = await zeileLesen();
+  assert.deepEqual([z.angefangen, z.angefangen_am], [true, heute()]);
+  assert.deepEqual([z.angebot.nummer, z.angebot.status, z.angebot.abgelaufen, z.angebot.antrag], [vaNr, 'OFFEN', false, null]);
+  assert.equal(typeof z.angebot.id, 'number');
+  assert.match(z.angebot.gueltig_bis, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(zustaende(z), ['erledigt', 'aktiv', 'aktiv', 'offen', 'offen']);
+  assert.match(z.prozess[2].info, new RegExp(`^${vaNr} offen bis \\d{2}\\.\\d{2}\\.\\d{4}$`));
+  r = await admin('GET', `${T}/mitgliedsantraege/angebote`);
+  assert.equal(r.body.liste.find((x: any) => x.nummer === vaNr).schnupper, stNr);
+  // zweites Angebot für denselben Schnupperer: gesperrt, solange das erste offen ist
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr, anrede: 'Frau', geburtsdatum: geb, art: '3' }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.ok(String(r.body.message).includes(vaNr) && /bereits das offene Vertragsangebot/.test(r.body.message), r.body.message);
+  assert.equal((await sql`select count(*)::int as n from tco.vertragsangebote where schnupper_adrnr = ${adrnr}`)[0].n, 1);
+
+  // Angebot öffnen (Geburtsdatum aus dem Dialog) und über den normalen Antrag annehmen
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok });
+  assert.deepEqual(r.body, { geburtsdatumNoetig: true });
+  r = await gast('POST', `${T}/antrag/angebot`, { token: tok, geburtsdatum: geb });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.daten.personen[0].vorname, r.body.daten.personen[0].anrede, r.body.daten.personen[0].geburtsdatum], ['Pia', 'Frau', geb]);
+  assert.equal(r.body.daten.erziehungsberechtigt, 'Peter Prozess');
+  r = await gast('POST', `${T}/antrag`, {
+    personen: [{ anrede: 'Frau', vorname: 'Pia', nachname: 'Prozess', geburtsdatum: geb, art: '3' }],
+    strasse: 'Kettenweg 5', plz: '66649', ort: 'Oberthal', email: 'peter.prozess@example.org', eintritt: heute(), erziehungsberechtigt: 'Peter Prozess',
+    satzung: true, datenschutz: true, bildrechte: false, kuendigung: true, angebot: tok,
+    bank: { kontoinhaber: 'Peter Prozess', iban: 'DE02 1203 0000 0000 2020 51', sepa: true },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const maNr: string = r.body.nummer;
+  assert.match(maNr, /^MA-\d{4}-\d{4}$/);
+  z = await zeileLesen();
+  assert.deepEqual([z.angebot.status, z.angebot.antrag, z.antrag_nr, z.antrag_status], ['ANGENOMMEN', maNr, maNr, 'EINGANG']);
+  assert.deepEqual(zustaende(z), ['erledigt', 'aktiv', 'erledigt', 'aktiv', 'offen']);
+  assert.equal(z.prozess[3].info, `${maNr} in Prüfung`);
+
+  // Übernahme: derselbe Stammsatz wird Mitglied, die Kette ist komplett
+  r = await admin('GET', `${T}/mitgliedsantraege`);
+  const ma = r.body.find((x: any) => x.nummer === maNr);
+  assert.ok(ma, 'Antrag im Eingang');
+  assert.equal(ma.daten.personen[0].adrnr, adrnr);
+  r = await admin('POST', `${T}/mitgliedsantraege/${ma.id}/uebernehmen`, { mail: false, unterlagen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.mitglieder[0].adrnr, adrnr, 'derselbe Stammsatz wird Mitglied');
+  assert.deepEqual(r.body.schnupper, [stNr]);
+  const pia = await sql`select adrnr, mitglnrn, eintritt::text as eintritt, geburtsdatum::text as geburtsdatum from tco.mitglieder where vorname = 'Pia' and nachname = 'Prozess'`;
+  assert.equal(pia.length, 1, 'keine Dublette');
+  assert.equal(pia[0].adrnr, adrnr);
+  assert.ok(pia[0].mitglnrn);
+  assert.deepEqual([pia[0].eintritt, pia[0].geburtsdatum], [heute(), geb]);
+  [s] = await sql`select status, antrag, angefangen, angefangen_am::text as am from tco.schnupper where adrnr = ${adrnr}`;
+  assert.deepEqual([s.status, s.antrag, s.angefangen, s.am], ['MITGLIED', maNr, true, heute()]);
+  assert.equal(await zeileLesen(), undefined, 'nicht mehr in der Liste der offenen');
+  z = await zeileLesen('?filter=ALLE');
+  assert.deepEqual([z.status, z.antrag_nr, z.antrag_status, z.angebot.status], ['MITGLIED', maNr, 'UEBERNOMMEN', 'ANGENOMMEN']);
+  assert.equal(z.prozess.length, 5);
+  assert.deepEqual(zustaende(z), ['erledigt', 'erledigt', 'erledigt', 'erledigt', 'erledigt']);
+  assert.equal(z.prozess[4].info, `Nr. ${String(pia[0].mitglnrn).trim()}`);
+
+  // am Mitglied bleiben die Schnupper-Angaben sichtbar; „Hat angefangen“ ist auch nach dem Beitritt pflegbar
+  r = await admin('GET', `${T}/mitglieder/m/${adrnr}`);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.schnupper.nummer, r.body.schnupper.status, r.body.schnupper.angefangen, r.body.schnupper.angefangen_am, r.body.schnupper.einheiten],
+    [stNr, 'MITGLIED', true, heute(), 0]);
+  assert.deepEqual([r.body.schnupper.angebot.nummer, r.body.schnupper.angebot.status, r.body.schnupper.angebot.abgelaufen], [vaNr, 'ANGENOMMEN', false]);
+  assert.match(r.body.schnupper.angebot.gueltig_bis, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal((await admin('PUT', `${T}/schnuppertraining/${adrnr}`, { status: 'KONTAKTIERT' })).status, 400, 'Mitglied: Betreuung gesperrt');
+  r = await admin('PUT', `${T}/schnuppertraining/${adrnr}/angefangen`, { angefangen: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /Hat angefangen – nein/);
+  r = await admin('GET', `${T}/mitglieder/m/${adrnr}`);
+  assert.deepEqual([r.body.schnupper.status, r.body.schnupper.angefangen, r.body.schnupper.angefangen_am], ['MITGLIED', false, null]);
+  // nach dem Beitritt: neues Angebot (Vertragsänderung) wird nicht mehr mit dem Schnupper-Datensatz verknüpft
+  r = await admin('POST', `${T}/mitgliedsantraege/angebote`, { personen: [{ adrnr, training: ['90'] }], eintritt: heute(), mail: false });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal((await sql`select schnupper_adrnr from tco.vertragsangebote where nummer = ${r.body.nummer}`)[0].schnupper_adrnr, null);
+});
