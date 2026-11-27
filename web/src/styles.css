@@ -567,7 +567,11 @@ ui5-busy-indicator { max-width: 100%; }
   .portal-m-einspaltig { grid-template-columns: minmax(0, 1fr) !important; }
   /* HTML-Tabellen: Die Symbol-Aktionen der letzten Spalte bleiben beim seitlichen Rollen am rechten Rand stehen –
      sonst sind Ändern/Löschen/QR-Code erst nach dem Wischen über alle Spalten zu sehen. */
+  :is(.portal-tabrahmen, .portal-ih__rahmen) > table > tbody > tr > td:last-child:has(ui5-button),
   td:last-child:has(> .portal-iconakt) { position: sticky; right: 0; z-index: 1; background: var(--sapList_Background, #fff); box-shadow: -1px 0 0 var(--sapList_BorderColor); }
+  /* Text-Knöpfe („Freigeben“, „Ablehnen“ …): höchstens knapp die halbe Breite, mehrere Knöpfe untereinander */
+  :is(.portal-tabrahmen, .portal-ih__rahmen) > table > tbody > tr > td:last-child:has(ui5-button) { max-width: 46vw; white-space: normal; }
+  :is(.portal-tabrahmen, .portal-ih__rahmen) > table > tbody > tr > td:last-child:has(ui5-button) ui5-button { max-width: 100%; }
   td:last-child > .portal-iconakt { flex-wrap: nowrap !important; }
 }
 /* Leiste über dem Vertragsbaum: eingerückt, damit die Variantenauswahl nicht am Rahmen der Karte klebt */
@@ -623,7 +627,8 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-ablage-meldung--fehler > ui5-icon { color: var(--sapNegativeElementColor, #aa0808); }
 /* Dokumentliste am Objekt (z. B. Auftrag) */
 .portal-ad { display: flex; flex-direction: column; border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); overflow: hidden; }
-.portal-ad__zeile { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; }
+/* bis zu zwei Knöpfe je Zeile (In Paperless öffnen, Zuordnung lösen) – der zweite rutschte sonst in die schmale Symbolspalte */
+.portal-ad__zeile { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto auto; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; }
 .portal-ad__zeile + .portal-ad__zeile { border-top: 1px solid var(--sapList_BorderColor); }
 .portal-ad__zeile > ui5-icon { color: var(--sapContent_IconColor); }
 
@@ -728,7 +733,7 @@ ui5-busy-indicator { max-width: 100%; }
   .portal-tile__kpi-value { font-size: 1.25rem; }
 
   /* iPhone: Safari zoomt beim Antippen in Eingabefelder mit Schrift unter 16px hinein */
-  ui5-input, ui5-textarea, ui5-combobox, ui5-multi-combobox { font-size: 1rem; }
+  ui5-input, ui5-textarea, ui5-combobox, ui5-multi-combobox, ui5-select, ui5-date-picker, ui5-daterange-picker, ui5-datetime-picker, ui5-time-picker, ui5-step-input { font-size: 1rem; }
 }
 @media (max-width: 480px) {
   .portal-auth { padding: 1rem; }

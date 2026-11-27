@@ -263,7 +263,7 @@ export function XRechnungDialog({ data, onClose }: { data: XRes | null; onClose:
               <MessageStrip design={pruefung.ok ? 'Positive' : 'Negative'} hideCloseButton style={{ marginBottom: '0.75rem' }}>
                 {pruefung.ok ? 'Alle Strukturprüfungen bestanden' : 'Mindestens eine Prüfung fehlgeschlagen'} · {pruefung.profil} · {Math.round(pruefung.groesse / 1024)} KB
               </MessageStrip>
-              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <div className="portal-tabrahmen"><table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <tbody>
                   {pruefung.punkte.map((p) => (
                     <tr key={p.punkt} style={{ borderBottom: '1px solid var(--sapList_BorderColor)' }}>
@@ -272,7 +272,7 @@ export function XRechnungDialog({ data, onClose }: { data: XRes | null; onClose:
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
               <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.75rem' }}>
                 Strukturprüfung des Portals. Für einen vollständigen Nachweis das PDF gelegentlich extern prüfen (z. B. veraPDF für PDF/A, Mustang oder der KoSIT-Validator für den XML-Teil).
               </Text>

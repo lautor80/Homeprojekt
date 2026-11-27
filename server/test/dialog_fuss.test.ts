@@ -84,10 +84,19 @@ test('Telefon: nebeneinander stehende Bereiche stehen untereinander, feste Breit
   assert.match(css, /\.portal-teilung \{ display: flex !important; flex-direction: column !important;/);
   assert.match(css, /\.portal-m-einspaltig \{ grid-template-columns: minmax\(0, 1fr\) !important; \}/);
   assert.match(css, /td:last-child:has\(> \.portal-iconakt\) \{ position: sticky; right: 0;/);
+  assert.match(css, /> table > tbody > tr > td:last-child:has\(ui5-button\),/, 'Knöpfe der letzten Spalte bleiben rechts stehen');
   for (const datei of ['modules/transport/web/DokumentPopup.tsx', 'modules/transport/web/beleg/BelegAnsicht.tsx', 'modules/transport/web/VersandDialog.tsx', 'modules/tco/web/fi/FiDialoge.tsx']) {
     assert.match(readFileSync(join(wurzel, datei), 'utf8'), /className="portal-teilung"/, datei);
   }
   // Raster mit Mindestbreite passen sich der Bildschirmbreite an
   assert.match(readFileSync(join(wurzel, 'modules/transport/web/AuftragDetail.tsx'), 'utf8'), /minmax\(min\(\$\{n === 3 \? 300 : 380\}px, 100%\), 1fr\)/);
   assert.match(readFileSync(join(wurzel, 'modules/tco/web/platz/platz.css'), 'utf8'), /\.portal-abo__raster \{[^}]*repeat\(7, minmax\(4\.5rem, 1fr\)\)/);
+});
+
+test('HTML-Tabellen stehen in einem Rollrahmen (sonst schneidet die Karte sie auf dem Telefon ab)', () => {
+  for (const datei of ['modules/tco/web/eingang/RegelDialog.tsx', 'modules/tco/web/turnier/ErgebnisDialog.tsx', 'modules/transport/web/dialogs.tsx',
+    'web/src/pages/PaperlessMappingPage.tsx', 'web/src/pages/RollenMatrix.tsx', 'web/src/pages/TabellenPage.tsx']) {
+    const q = readFileSync(join(wurzel, datei), 'utf8');
+    assert.match(q, /<div className="portal-tabrahmen"><table/, datei);
+  }
 });

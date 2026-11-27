@@ -177,9 +177,9 @@ function zelle(zeiten: Zeit[], d: string): { bg: string; fg: string; rand: strin
 function Kalender({ m, zeiten, ferien, sel, onTag }: { m: Monat; zeiten: Zeit[]; ferien: Map<string, Ferientag>; sel: string | null; onTag: (d: string) => void }) {
   const wochen: string[] = [];
   for (let d = addTage(m.von, -wtIdx(m.von)); d <= m.bis; d = addTage(d, 7)) wochen.push(d);
-  const zelleStil = { width: '2.4rem', height: '2.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' } as const;
+  const zelleStil = { width: '100%', maxWidth: '2.4rem', height: '2.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' } as const;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 2.4rem)', gap: '0.25rem' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 2.4rem))', gap: '0.25rem' }}>
       {['KW', ...WT].map((t) => <Label key={t} style={{ ...zelleStil, height: '1.2rem' }}>{t}</Label>)}
       {wochen.flatMap((mo) => [
         <Label key={`kw${mo}`} style={zelleStil}>{kw(mo)}</Label>,

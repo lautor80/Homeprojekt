@@ -391,9 +391,9 @@ function Verproben({ rollen, alleRollen, entwurf, geaendert, darfBenutzer, texte
                       {v.weg.length > 0 && <div><b>Fällt weg ({v.weg.length}):</b><ul>{v.weg.map((p) => <li key={p} className="portal-rm__minus">{t(p)}</li>)}</ul></div>}
                       <div><b>Rechte in der Probe ({v.allesProbe ? 'alle' : v.rechte.length}) mit Herkunft:</b>
                         {v.allesProbe ? <span> Administrator – alle Rechte.</span> : !v.rechte.length ? <span> keine</span> : (
-                          <table className="portal-rm__herkunft"><tbody>
+                          <div className="portal-tabrahmen"><table className="portal-rm__herkunft"><tbody>
                             {v.rechte.map((r) => <tr key={r.id}><td className="portal-muted">{r.app}</td><td>{r.text}</td><td>{r.rollen.join(', ')}{r.rollen.length > 1 && <span className="portal-muted"> (mehrfach)</span>}</td></tr>)}
-                          </tbody></table>
+                          </tbody></table></div>
                         )}
                       </div>
                     </td>

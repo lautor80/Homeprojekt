@@ -468,7 +468,7 @@ export function TabellenPage() {
                   </MessageStrip>
                 </>
               )}
-              <table className="portal-tabelle" style={{ width: '100%', fontSize: '0.875rem' }}>
+              <div className="portal-tabrahmen"><table className="portal-tabelle" style={{ width: '100%', fontSize: '0.875rem' }}>
                 <tbody>
                   {erg.spalten.map((s, i) => {
                     const def = spalten.find((x) => x.name === s.name);
@@ -492,7 +492,7 @@ export function TabellenPage() {
                     );
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </Dialog>
           )}
         </>
