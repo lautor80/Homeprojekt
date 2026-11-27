@@ -1340,6 +1340,17 @@ test('Abo-Bewerbung (#11): Bestätigung, Warteliste mit Position, Erinnerung, Na
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.angeboten, 1, 'nur die freie Stunde – Annas Abo läuft');
   const frei = (await sql`select id from tco.abo_wunsch where status = 'ANGEBOTEN'`)[0].id as number;
+  // Einzelstorno im laufenden Abo: Annas Stunde (10–11 Uhr, Bert wartet darauf) ist an dem einen Tag wieder frei – nicht „reserviert“
+  const zehn = async (d: string) => (await admin('GET', `${P}/admin/tag?datum=${d}`)).body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.filter((x: any) => x.von === '10:00');
+  assert.deepEqual((await zehn(tag(27))).map((x: any) => [x.bid, !!x.reserviert]), [['9770000003', false]], 'Abo-Termin belegt die Stunde');
+  await sql`update tco.bookings set status = '2' where bid = '9770000003' and datum = ${tag(27)}`;
+  assert.deepEqual(await zehn(tag(27)), [], 'einzeln storniert, das Abo läuft weiter: frei');
+  assert.doesNotMatch(String((await anna('POST', `${P}/pruefen`, { platz_id: halleId, datum: tag(27), von: '10:00', bis: '11:00' })).body.fehler ?? ''), /reserviert|belegt/i, 'nicht mehr für ein Abo reserviert');
+  assert.equal((await zehn(tag(34)))[0].bid, '9770000003', 'die übrigen Termine bleiben');
+  // endet das Abo dagegen (kein späterer Termin mehr), bleibt die Stunde für den wartenden Abo-Wunsch reserviert
+  await sql`update tco.bookings set status = '2' where bid = '9770000003' and datum = ${tag(41)}`;
+  assert.deepEqual((await zehn(tag(41))).map((x: any) => [!!x.reserviert, !!x.abo]), [[true, true]], 'Abo-Ende: Reservierung für die Warteliste');
+  await sql`update tco.bookings set status = '3' where bid = '9770000003'`;
   // während der Reservierung (Angebot läuft / angenommen): keine Einzelbuchung auf dieser Zeit, Anzeige „reserviert“
   const termine: string[] = [];
   for (let n = 1; n <= 45; n++) if (((new Date(`${tag(n)}T12:00:00Z`).getUTCDay() + 6) % 7) + 1 === wt) termine.push(tag(n));
