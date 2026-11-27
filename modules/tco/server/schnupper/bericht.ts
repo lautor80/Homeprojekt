@@ -29,6 +29,12 @@ export const zeitpunktText = (z: string | Date | null | undefined) => {
   return `${t.day}.${t.month}.${t.year} ${t.hour}:${t.minute} Uhr`;
 };
 const w = (s: string | null | undefined) => (s ?? '').trim() || LEER;
+const ANTRAG_STATUS = { EINGANG: 'in Prüfung', UEBERNOMMEN: 'übernommen', ABGELEHNT: 'abgelehnt' } as const;
+/** Vertragsangebot aus der Schnupperverwaltung: Nummer und Stand */
+const angebotText = (a: SchnupperZeile['angebot']) => (!a ? 'kein Vertragsangebot'
+  : a.status === 'ANGENOMMEN' ? `${a.nummer} angenommen`
+    : a.status === 'ZURUECKGEZOGEN' ? `${a.nummer} zurückgezogen`
+      : a.abgelaufen ? `${a.nummer} abgelaufen am ${datumText(a.gueltig_bis)}` : `${a.nummer} offen bis ${datumText(a.gueltig_bis)}`);
 
 /** Alle Angaben einer Anmeldung als Abschnitte (leere Angaben als „–“, damit jede Angabe des Antrags sichtbar ist) */
 export function berichtAbschnitte(z: SchnupperZeile, x: BerichtZusatz, einheitenKostenlos: number): BerichtAbschnitt[] {
@@ -84,7 +90,9 @@ export function berichtAbschnitte(z: SchnupperZeile, x: BerichtZusatz, einheiten
     {
       titel: 'Beitritt',
       zeilen: [
-        ['Mitgliedsantrag', z.antrag ? z.antrag : 'noch kein Mitgliedsantrag'],
+        ['Hat angefangen', z.angefangen === true ? `ja${z.angefangen_am ? `, seit ${datumText(z.angefangen_am)}` : ''}` : z.angefangen === false ? 'nein' : 'offen'],
+        ['Vertragsangebot', angebotText(z.angebot)],
+        ['Mitgliedsantrag', z.antrag ? z.antrag : z.antrag_nr ? `${z.antrag_nr}${z.antrag_status ? ` (${ANTRAG_STATUS[z.antrag_status]})` : ''}` : 'noch kein Mitgliedsantrag'],
         ['Mitgliedsnummer', w(z.mitglnrn)],
       ],
     },

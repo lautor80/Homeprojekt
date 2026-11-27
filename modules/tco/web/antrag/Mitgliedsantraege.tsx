@@ -237,6 +237,8 @@ function LinkDialog({ nummer, link, text, onClose }: { nummer: string; link: str
 interface Beitragsart { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; familie: boolean }
 interface Kandidat {
   adrnr: string; name: string; geburtsdatum: string | null; ort: string; email: string; schnupper: string | null;
+  /** Anrede aus dem Stamm ('' = keine) */
+  anrede?: string | null;
   /** aktives Mitglied (Mitgliedsnummer) – Angebot = Vertragsänderung; Zahler, wenn nicht Selbstzahler; laufende Vertragsarten */
   mitglied: string | null; zahler: string | null; vertraege: string[]; vertragsnamen: string[];
 }
@@ -245,16 +247,27 @@ interface StammBank { kontoinhaber: string; iban: string; zahler: string | null 
 interface APerson { adrnr: string | null; neu: boolean; anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; art: string; training: string[]; info?: Kandidat }
 const leerePerson = (): APerson => ({ adrnr: null, neu: false, anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', art: '', training: [] });
 const heuteIso = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
+const ANREDEN = ['Frau', 'Herr', 'Divers'];
+/** Stammsatz ohne (gültige) Anrede bzw. ohne Geburtsdatum – dann wird der Wert im Angebot erfasst */
+const anredeFehlt = (k: Kandidat | undefined) => !!k && !ANREDEN.includes(k.anrede ?? '');
+const geburtFehlt = (k: Kandidat | undefined) => !!k && !k.geburtsdatum;
 
-function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+/**
+ * `start`: Aufruf aus der Schnupperverwaltung – Person 1 (Stammsatz) wird nach dem Laden der Kandidaten vorbelegt,
+ * dazu E-Mail für den Link und Erziehungsberechtigte/r.
+ */
+export function AngebotDialog({ onClose, onDone, start }: {
+  onClose: () => void; onDone: () => void;
+  start?: { adrnr: string; email?: string | null; erziehungsberechtigt?: string | null };
+}) {
   const [arten, setArten] = useState<Beitragsart[]>([]);
   const [personen, setPersonen] = useState<APerson[]>([leerePerson()]);
   const [kandidaten, setKandidaten] = useState<Kandidat[]>([]);
   const [kontoinhaber, setKontoinhaber] = useState('');
   const [iban, setIban] = useState('');
   const [eintritt, setEintritt] = useState(heuteIso());
-  const [email, setEmail] = useState('');
-  const [erz, setErz] = useState('');
+  const [email, setEmail] = useState(start?.email ?? '');
+  const [erz, setErz] = useState(start?.erziehungsberechtigt ?? '');
   const [hinweis, setHinweis] = useState('');
   const [mail, setMail] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -275,7 +288,17 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
     if (erster) api.get<{ bank: StammBank | null }>(`${A}/angebote/personen/${erster}/bank`).then((r) => setStammBank(r.bank)).catch(() => undefined);
   }, [erster]);
   // alle Personen (ohne Mitgliedschaft und aktive Mitglieder) einmal laden – gesucht wird im Feld (schnell, ohne Neuladen beim Tippen)
-  useEffect(() => { api.get<Kandidat[]>(`${A}/angebote/personen`).then(setKandidaten).catch((e) => setError(e.message)); }, []);
+  useEffect(() => {
+    api.get<Kandidat[]>(`${A}/angebote/personen`).then((l) => {
+      setKandidaten(l);
+      if (!start) return;
+      // Vorbelegung (Schnupperverwaltung): Person 1 = dieser Stammsatz, solange dort noch nichts gewählt wurde
+      const info = l.find((x) => x.adrnr === start.adrnr);
+      if (!info) { setError('Die Person steht nicht in der Auswahl (kein Stammsatz für ein Angebot) – bitte von Hand wählen oder neu erfassen.'); return; }
+      setPersonen((alt) => alt.map((p, j) => (j === 0 && !p.neu && !p.adrnr ? { ...p, adrnr: info.adrnr, info, ...(info.mitglied ? { art: '', training: [] } : {}) } : p)));
+      setEmail((alt) => alt || info.email || '');
+    }).catch((e) => setError(e.message));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const setP = (i: number, x: Partial<APerson>) => setPersonen((l) => l.map((p, j) => (j === i ? { ...p, ...x } : p)));
   const kandidatenEintraege = useMemo(() => kandidaten.map((k) => ({
     key: k.adrnr, text: k.name,
@@ -297,7 +320,12 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
       const r = await api.post<{ nummer: string; link: string; text: string }>(`${A}/angebote`, {
         personen: personen.map((p, i) => (p.neu
           ? { anrede: p.anrede || null, vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum || null, email: p.email || null, art: i === 0 ? p.art : null, training: p.training }
-          : { adrnr: p.adrnr, art: i === 0 ? p.art : null, training: p.training })),
+          : {
+            adrnr: p.adrnr, art: i === 0 ? p.art : null, training: p.training,
+            // nur wenn im Stamm leer: hier erfasste Anrede/Geburtsdatum mitgeben (der Stammwert hat serverseitig Vorrang)
+            ...(anredeFehlt(p.info) && p.anrede ? { anrede: p.anrede } : {}),
+            ...(geburtFehlt(p.info) && p.geburtsdatum ? { geburtsdatum: p.geburtsdatum } : {}),
+          })),
         eintritt, email: email.trim() || null, erziehungsberechtigt: erz.trim() || null, bemerkung: hinweis.trim() || null, mail,
         // ohne eigene Eingabe: Bankverbindung aus dem Stamm (wird serverseitig übernommen, nach außen nur gekürzt)
         kontoinhaber: stammBank && !andereBank ? null : kontoinhaber.trim() || null, iban: stammBank && !andereBank ? null : iban.trim() || null,
@@ -344,7 +372,7 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
                             onWaehle={(k) => {
                               const info = kandidaten.find((x) => x.adrnr === k);
                               // aktive Mitglieder: Mitgliedschaft optional – die laufenden Verträge werden als Vorschlag angezeigt
-                              setP(i, { adrnr: k, info, ...(info?.mitglied ? { art: '', training: [] } : {}) });
+                              setP(i, { adrnr: k, info, anrede: '', geburtsdatum: '', ...(info?.mitglied ? { art: '', training: [] } : {}) });
                               if (i === 0 && info?.email && !email) setEmail(info.email);
                             }} />
                 {p.info?.mitglied && (
@@ -362,14 +390,33 @@ function AngebotDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
                     )}
                   </div>
                 )}
-                {p.info && !p.info.geburtsdatum && <Text className="portal-muted portal-small">Kein Geburtsdatum im Stamm – der Link öffnet dann ohne zweite Abfrage.</Text>}
+                {(anredeFehlt(p.info) || geburtFehlt(p.info)) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.5rem', marginTop: '0.25rem' }}>
+                    {anredeFehlt(p.info) && (
+                      <div><Label>Anrede (fehlt im Stamm)</Label>
+                        <Select style={{ width: '100%' }} onChange={(e) => setP(i, { anrede: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
+                          <Option data-a="" selected={!p.anrede}>–</Option>
+                          {ANREDEN.map((x) => <Option key={x} data-a={x} selected={p.anrede === x}>{x}</Option>)}
+                        </Select></div>
+                    )}
+                    {geburtFehlt(p.info) && (
+                      <div><Label>Geburtsdatum (fehlt im Stamm – Schutz des Links)</Label>
+                        <DatePicker style={{ width: '100%' }} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={p.geburtsdatum} onChange={(e) => setP(i, { geburtsdatum: e.detail.value })} /></div>
+                    )}
+                  </div>
+                )}
+                {geburtFehlt(p.info) && !p.geburtsdatum && (
+                  <Text className="portal-muted portal-small">
+                    Kein Geburtsdatum im Stamm – bitte hier erfassen (es gilt nur für dieses Angebot, der Stamm bleibt unverändert). Ohne Geburtsdatum öffnet der Link ohne zweite Abfrage.
+                  </Text>
+                )}
               </>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.5rem' }}>
                 <div><Label>Anrede</Label>
                   <Select style={{ width: '100%' }} onChange={(e) => setP(i, { anrede: (e.detail.selectedOption as HTMLElement).dataset.a ?? '' })}>
                     <Option data-a="" selected={!p.anrede}>–</Option>
-                    {['Frau', 'Herr', 'Divers'].map((x) => <Option key={x} data-a={x} selected={p.anrede === x}>{x}</Option>)}
+                    {ANREDEN.map((x) => <Option key={x} data-a={x} selected={p.anrede === x}>{x}</Option>)}
                   </Select></div>
                 <div><Label required>Vorname</Label><Input style={{ width: '100%' }} value={p.vorname} onInput={(e) => setP(i, { vorname: e.target.value })} /></div>
                 <div><Label required>Nachname</Label><Input style={{ width: '100%' }} value={p.nachname} onInput={(e) => setP(i, { nachname: e.target.value })} /></div>

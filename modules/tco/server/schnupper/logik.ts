@@ -3,6 +3,7 @@ import type { Db } from '../verein.js';
 import { condense, heute } from '../format.js';
 import { emailGueltig, leer, normName } from '../mitglieder/logik.js';
 import { mobilnummer } from '../kommunikation.js';
+import { prozessSchritte, type ProzessAngebot, type ProzessSchritt } from './prozess.js';
 
 /**
  * Schnuppertraining (#86): öffentliche Anmeldung ohne Portalzugang. Die Person wird im Mitgliederstamm angelegt
@@ -93,33 +94,71 @@ export interface SchnupperZeile {
   whatsapp: string;
   /** Tage mit Schnuppertraining laut „Meine Trainingszeiten“ (#21) */
   einheiten: number;
+  /** Hat nach dem Schnuppern im Verein angefangen: ja/nein, null = noch offen; Datum (JJJJ-MM-TT) nur bei „ja“ */
+  angefangen: boolean | null;
+  angefangen_am: string | null;
+  /** jüngstes Vertragsangebot aus der Schnupperverwaltung (vertragsangebote.schnupper_adrnr) */
+  angebot: ProzessAngebot | null;
+  /** Mitgliedsantrag (MA-Nummer): vom Beitritt, sonst aus dem Angebot, sonst der jüngste über den Beitrittslink */
+  antrag_nr: string | null;
+  antrag_status: 'EINGANG' | 'UEBERNOMMEN' | 'ABGELEHNT' | null;
+  /** Anfrage → Schnuppern → Vertragsangebot → Mitgliedsantrag → Mitglied (immer fünf Schritte, schnupper/prozess.ts) */
+  prozess: ProzessSchritt[];
 }
 
 export async function schnupperLesen(db: Db, filter: 'OFFEN' | 'ALLE'): Promise<SchnupperZeile[]> {
   const rows = await db`select s.adrnr, s.nummer, s.status, s.eingang, s.alter_jahre, s.gespielt, s.stufe, s.termine, s.erziehungsberechtigt, s.mitteilung,
                                s.einheit1::text, s.einheit2::text, s.trainer, s.notiz, s.antrag, s.bearbeitet_am, s.bearbeitet_von,
+                               s.angefangen, s.angefangen_am::text as angefangen_am,
                                m.vorname, m.nachname, m.email, m.telefon6, m.mitglnrn,
-                               (select count(distinct e.datum) from tco.schnupper_einheiten e where e.schnupper_adrnr = s.adrnr)::int as einheiten
+                               (select count(distinct e.datum) from tco.schnupper_einheiten e where e.schnupper_adrnr = s.adrnr)::int as einheiten,
+                               va.id as va_id, va.nummer as va_nummer, va.status as va_status, va.gueltig_bis as va_gueltig_bis, va.antrag as va_antrag,
+                               ma.nummer as ma_nummer, ma.status as ma_status
                           from tco.schnupper s join tco.mitglieder m on m.adrnr = s.adrnr
+                          left join lateral (select a.id, a.nummer, a.status, a.gueltig_bis::text as gueltig_bis, a.antrag
+                                               from tco.vertragsangebote a where a.schnupper_adrnr = s.adrnr
+                                              order by a.erstellt_am desc, a.id desc limit 1) va on true
+                          left join tco.mitgliedsantraege ma on ma.nummer = coalesce(nullif(s.antrag, ''),
+                                 (select y.nummer from tco.mitgliedsantraege y where y.nummer = nullif(va.antrag, '') and y.status <> 'ABGELEHNT'),
+                                 (select x.nummer from tco.mitgliedsantraege x
+                                   where x.daten->>'schnupper_adrnr' = s.adrnr and x.status in ('EINGANG', 'UEBERNOMMEN')
+                                   order by x.eingang desc, x.id desc limit 1),
+                                 nullif(va.antrag, ''))
                          ${filter === 'OFFEN' ? db`where s.status = any(${OFFEN})` : db``}
                          order by (s.status = 'NEU') desc, s.eingang desc limit 500`;
-  return rows.map((r) => ({
+  const h = heute();
+  return rows.map((r) => schnupperZeile(r, h));
+}
+
+/** Zeile der Verwaltung aus dem Datensatz (mit Vertragsangebot, Mitgliedsantrag und Prozesskette) */
+function schnupperZeile(r: Record<string, any>, h: string): SchnupperZeile { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const angebot: ProzessAngebot | null = r.va_id == null ? null : {
+    id: Number(r.va_id), nummer: r.va_nummer, status: r.va_status, gueltig_bis: r.va_gueltig_bis,
+    abgelaufen: r.va_status === 'OFFEN' && r.va_gueltig_bis < h, antrag: r.va_antrag ?? null,
+  };
+  const z: Omit<SchnupperZeile, 'prozess'> = {
     adrnr: r.adrnr, nummer: r.nummer, status: r.status, status_txt: STATUS[r.status as SchnupperStatus] ?? r.status, eingang: r.eingang,
     vorname: leer(r.vorname), nachname: leer(r.nachname), email: leer(r.email), mobil: leer(r.telefon6), alter: r.alter_jahre,
     gespielt: r.gespielt, stufe: r.stufe, stufe_txt: STUFEN[r.stufe as Stufe] ?? r.stufe, termine: { tage: [], zeiten: [], ...(r.termine ?? {}) },
     erziehungsberechtigt: r.erziehungsberechtigt, mitteilung: r.mitteilung, einheit1: r.einheit1, einheit2: r.einheit2, trainer: r.trainer,
     notiz: r.notiz, antrag: r.antrag, bearbeitet_am: r.bearbeitet_am, bearbeitet_von: r.bearbeitet_von, mitglnrn: leer(r.mitglnrn),
     whatsapp: mobilnummer(r.telefon6), einheiten: Number(r.einheiten),
-  }));
+    angefangen: r.angefangen ?? null, angefangen_am: r.angefangen === true ? (r.angefangen_am ?? null) : null,
+    angebot, antrag_nr: r.ma_nummer ?? (leer(r.antrag) || angebot?.antrag || null), antrag_status: r.ma_status ?? null,
+  };
+  return { ...z, prozess: prozessSchritte(z, EINHEITEN_KOSTENLOS) };
 }
 
 export interface Bearbeitung {
   status: SchnupperStatus; einheit1?: string | null; einheit2?: string | null; trainer?: string | null; notiz?: string | null;
+  /** „Hat angefangen“ – fehlt das Feld (undefined), bleibt der gespeicherte Wert unverändert */
+  angefangen?: boolean | null; angefangen_am?: string | null;
 }
 
 /** Status und Verlauf pflegen (Trainer); „Mitglied geworden“ setzt nur die Übernahme des Mitgliedsantrags */
 export async function schnupperSichern(tx: Db, adrnr: string, b: Bearbeitung, wer: string): Promise<string> {
-  const [s] = await tx`select s.nummer, s.status, m.eintritt from tco.schnupper s join tco.mitglieder m on m.adrnr = s.adrnr where s.adrnr = ${adrnr} for update of s`;
+  const [s] = await tx`select s.nummer, s.status, s.angefangen, s.angefangen_am::text as angefangen_am, m.eintritt
+                         from tco.schnupper s join tco.mitglieder m on m.adrnr = s.adrnr where s.adrnr = ${adrnr} for update of s`;
   if (!s) throw new BusinessError('Schnupper-Anmeldung nicht gefunden.', 404);
   if (s.status === 'MITGLIED') throw new BusinessError(`${s.nummer}: Die Person ist bereits Mitglied – keine Änderung mehr möglich.`);
   if (b.status === 'MITGLIED') throw new BusinessError('„Mitglied geworden“ wird mit der Übernahme des Mitgliedsantrags gesetzt.');
@@ -127,10 +166,27 @@ export async function schnupperSichern(tx: Db, adrnr: string, b: Bearbeitung, we
   if (b.einheit2 && !b.einheit1) throw new BusinessError('Bitte zuerst das Datum der 1. Einheit angeben.');
   // Einheiten absolviert → Status mindestens „absolviert“, sobald beide Einheiten eingetragen sind
   const status: SchnupperStatus = b.einheit2 && ['NEU', 'KONTAKTIERT', 'TERMIN'].includes(b.status) ? 'ABSOLVIERT' : b.status;
+  // „Hat angefangen“: nur mitgegebene Felder ändern den Bestand; das Datum gibt es nur bei „ja“
+  const angefangen: boolean | null = b.angefangen !== undefined ? b.angefangen : ((s.angefangen as boolean | null) ?? null);
+  const angefangenAm: string | null = angefangen === true ? (b.angefangen_am !== undefined ? b.angefangen_am || null : ((s.angefangen_am as string | null) ?? null)) : null;
   await tx`update tco.schnupper set status = ${status}, einheit1 = ${b.einheit1 || null}, einheit2 = ${b.einheit2 || null},
-             trainer = ${condense(b.trainer ?? '') || null}, notiz = ${(b.notiz ?? '').trim() || null}, bearbeitet_am = now(), bearbeitet_von = ${wer}
+             trainer = ${condense(b.trainer ?? '') || null}, notiz = ${(b.notiz ?? '').trim() || null},
+             angefangen = ${angefangen}, angefangen_am = ${angefangenAm}, bearbeitet_am = now(), bearbeitet_von = ${wer}
            where adrnr = ${adrnr}`;
   return `${s.nummer}: ${STATUS[status]} gesichert.`;
+}
+
+/**
+ * „Hat nach dem Schnuppern im Verein angefangen?“ – ja/nein/offen (null), optional seit wann (nur bei „ja“).
+ * In jedem Status pflegbar, auch nach dem Beitritt (am Mitglied) und bei abgesagten Anmeldungen.
+ */
+export async function angefangenSetzen(tx: Db, adrnr: string, angefangen: boolean | null, angefangen_am: string | null | undefined, wer: string): Promise<string> {
+  const [s] = await tx`select nummer from tco.schnupper where adrnr = ${adrnr} for update`;
+  if (!s) throw new BusinessError('Schnupper-Anmeldung nicht gefunden.', 404);
+  const am: string | null = angefangen === true ? (angefangen_am || null) : null;
+  await tx`update tco.schnupper set angefangen = ${angefangen}, angefangen_am = ${am}, bearbeitet_am = now(), bearbeitet_von = ${wer} where adrnr = ${adrnr}`;
+  const d = am ? ` (seit ${am.slice(8, 10)}.${am.slice(5, 7)}.${am.slice(0, 4)})` : '';
+  return `${s.nummer}: Hat angefangen – ${angefangen === true ? `ja${d}` : angefangen === false ? 'nein' : 'offen'} gesichert.`;
 }
 
 /** Vorbelegung des Mitgliedsantrags über den Beitrittslink (/beitritt?schnupper=<token>) – nur offene Schnupperer */

@@ -34,6 +34,7 @@
       "schritte": [
         { "text": "Schnuppertraining anmelden (optional)", "akteur": "OEF", "system": "portal", "route": "POST /schnupper", "app": "/schnuppertraining" },
         { "text": "Trainer betreut, Beitrittslink senden", "akteur": "TR", "system": "portal", "route": "POST /schnuppertraining/:adrnr/beitrittslink", "recht": "tco.schnupper:edit", "app": "/tco/schnuppertraining" },
+        { "text": "Vertragsangebot aus dem Schnuppertraining (statt Beitrittslink)", "akteur": "KW", "system": "portal", "route": "POST /mitgliedsantraege/angebote", "recht": "tco.antraege:edit", "app": "/tco/schnuppertraining" },
         { "text": "Online-Antrag mit SEPA-Mandat", "akteur": "OEF", "system": "portal", "route": "POST /antrag", "app": "/beitritt" },
         { "text": "Eingangsbestätigung per Mail", "akteur": "SYS", "system": "n8n", "workflow": "TCO Mailversand" },
         { "text": "Prüfen (Dubletten) und übernehmen", "akteur": "KW", "system": "portal", "route": "POST /mitgliedsantraege/:id/uebernehmen", "recht": "tco.antraege:edit", "app": "/tco/mitgliedsantraege" },

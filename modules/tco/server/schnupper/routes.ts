@@ -8,7 +8,7 @@ import { DB, vereinLesen } from '../verein.js';
 import { mailSenden } from '../kommunikation.js';
 import { mailtextFuellen } from '../mailtexte.js';
 import {
-  anmeldungAnlegen, beitrittVorbelegung, EINHEITEN_KOSTENLOS, schnupperInfo, schnupperLesen, schnupperSichern, STATUS, STUFEN, TAGE, ZEITEN,
+  angefangenSetzen, anmeldungAnlegen, beitrittVorbelegung, EINHEITEN_KOSTENLOS, schnupperInfo, schnupperLesen, schnupperSichern, STATUS, STUFEN, TAGE, ZEITEN,
   type SchnupperStatus, type Stufe,
 } from './logik.js';
 import { schnupperListePdf, schnupperPdf } from './pdf.js';
@@ -116,9 +116,20 @@ export async function schnupperRoutes(app: FastifyInstance) {
     const b = z.object({
       status: z.enum(Object.keys(STATUS) as [SchnupperStatus, ...SchnupperStatus[]]),
       einheit1: datum.nullish(), einheit2: datum.nullish(), trainer: txt(120).nullish(), notiz: txt(2000).nullish(),
+      /** „Hat angefangen“ – fehlen die Felder, bleiben die gespeicherten Werte unverändert */
+      angefangen: z.boolean().nullish(), angefangen_am: datum.nullish(),
     }).parse(req.body);
     const wer = req.user!.displayName || req.user!.username;
     const text = await change(req, (tx) => schnupperSichern(tx, adrnr, b, wer), { action: 'SCHNUPPER_BEARBEITEN', reason: adrnr });
+    return { text };
+  });
+
+  /** „Hat nach dem Schnuppern im Verein angefangen?“ (ja/nein/offen, optional seit wann) – in jedem Status, auch am Mitglied */
+  app.put('/schnuppertraining/:adrnr/angefangen', { preHandler: requireAuth(P_SCHNUPPER.edit) }, async (req) => {
+    const { adrnr } = pAdr.parse(req.params);
+    const b = z.object({ angefangen: z.boolean().nullable(), angefangen_am: datum.nullish() }).parse(req.body);
+    const wer = req.user!.displayName || req.user!.username;
+    const text = await change(req, (tx) => angefangenSetzen(tx, adrnr, b.angefangen, b.angefangen_am ?? null, wer), { action: 'SCHNUPPER_BEARBEITEN', reason: adrnr });
     return { text };
   });
 

@@ -276,9 +276,19 @@ export async function detailLesen(db: Db, adrnr: string, o: { verknuepfte?: bool
 /** Angaben zum Schnuppertraining (#86) für die Objektseite des Mitglieds – auch nach dem Beitritt als Historie */
 async function schnupperZuPerson(db: Db, adrnr: string) {
   const [s] = await db`select nummer, status, eingang, alter_jahre, gespielt, stufe, termine, erziehungsberechtigt, mitteilung,
-                              einheit1::text, einheit2::text, trainer, notiz, antrag
+                              einheit1::text, einheit2::text, trainer, notiz, antrag, angefangen, angefangen_am::text as angefangen_am,
+                              (select count(distinct e.datum) from tco.schnupper_einheiten e where e.schnupper_adrnr = ${adrnr})::int as einheiten
                          from tco.schnupper where adrnr = ${adrnr}`;
-  return s ? { ...s, alter: s.alter_jahre as number | null } : null;
+  if (!s) return null;
+  // jüngstes Vertragsangebot aus der Schnupperverwaltung (abgelaufen = noch offen, Gültigkeit vorbei)
+  const [a] = await db`select nummer, status, gueltig_bis::text as gueltig_bis from tco.vertragsangebote
+                        where schnupper_adrnr = ${adrnr} order by erstellt_am desc, id desc limit 1`;
+  return {
+    ...s, alter: s.alter_jahre as number | null,
+    angefangen: (s.angefangen as boolean | null) ?? null, angefangen_am: s.angefangen === true ? ((s.angefangen_am as string | null) ?? null) : null,
+    einheiten: Number(s.einheiten),
+    angebot: a ? { nummer: a.nummer as string, status: a.status as string, gueltig_bis: a.gueltig_bis as string, abgelaufen: a.status === 'OFFEN' && a.gueltig_bis < heute() } : null,
+  };
 }
 
 // ---------------------------------------------------------------- Kopf / Bank / Austritt

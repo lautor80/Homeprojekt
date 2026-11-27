@@ -125,6 +125,7 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   let bank: AngebotDaten['bank'] = null;
   /** je Person: aktives Mitglied? (Vertragsänderung – Mitgliedschaft optional) */
   const mitglied: boolean[] = [];
+  const ANREDEN = ['Herr', 'Frau', 'Divers'];
   for (const [i, x] of e.personen.entries()) {
     mitglied[i] = false;
     let p: AngebotPerson;
@@ -138,9 +139,13 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
         throw new BusinessError(`${condense(`${leer(m.vorname)} ${leer(m.nachname)}`)} ist ausgetreten (${m.austritt}) – Wiedereintritt bitte über den Mitgliederstamm.`);
       }
       mitglied[i] = !!(leer(m.mitglnrn) || m.eintritt);
+      // Anrede/Geburtsdatum: der Stamm hat Vorrang; fehlt dort die Angabe (z. B. Schnupperer), gilt die im Dialog erfasste –
+      // nur im Angebot, der Stamm wird hier nicht geändert
+      const geb: string | null = m.geburtsdatum ?? (x.geburtsdatum || null);
+      if (!m.geburtsdatum && geb && geb > heute()) throw new BusinessError(`${condense(`${leer(m.vorname)} ${leer(m.nachname)}`)}: Bitte ein gültiges Geburtsdatum angeben.`);
       p = {
-        adrnr: m.adrnr, anrede: ['Herr', 'Frau', 'Divers'].includes(leer(m.anrede)) ? leer(m.anrede) : '', vorname: leer(m.vorname), nachname: leer(m.nachname),
-        geburtsdatum: m.geburtsdatum ?? null, email: leer(m.email) || null, telefon: leer(m.telefon6) || leer(m.telefon) || null, art: null, training: [],
+        adrnr: m.adrnr, anrede: ANREDEN.includes(leer(m.anrede)) ? leer(m.anrede) : ANREDEN.includes(leer(x.anrede)) ? leer(x.anrede) : '', vorname: leer(m.vorname), nachname: leer(m.nachname),
+        geburtsdatum: geb, email: leer(m.email) || null, telefon: leer(m.telefon6) || leer(m.telefon) || null, art: null, training: [],
       };
       if (i === 0) {
         adresse = { strasse: leer(m.strasse), plz: leer(m.plz), ort: leer(m.ort), telefon: p.telefon ?? null };
@@ -188,8 +193,22 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
     if (!ibanGueltig(normalisieren(leer(e.iban)))) throw new BusinessError('Die IBAN ist ungültig (Prüfziffer/Länge).');
     bank = { kontoinhaber: condense(e.kontoinhaber ?? '') || `${personen[0].vorname} ${personen[0].nachname}`, iban: normalisieren(leer(e.iban)), bic: null, zahler_adrnr: null };
   }
+  // Schnuppertraining: Person 1 ist Schnupperer (noch kein Mitglied) → Angebot mit dem Schnupper-Datensatz verknüpfen,
+  // höchstens ein offenes Angebot je Schnupperer, Erziehungsberechtigte aus der Schnupper-Anmeldung
+  let schnupperAdrnr: string | null = null;
+  let schnupperErz = '';
+  if (personen[0].adrnr && !mitglied[0]) {
+    const [st] = await tx`select adrnr, erziehungsberechtigt from tco.schnupper where adrnr = ${personen[0].adrnr} and status <> 'MITGLIED' for update`;
+    if (st) {
+      schnupperAdrnr = st.adrnr as string;
+      schnupperErz = condense(leer(st.erziehungsberechtigt));
+      const [offen] = await tx`select nummer from tco.vertragsangebote
+                                where schnupper_adrnr = ${schnupperAdrnr} and status = 'OFFEN' and gueltig_bis >= ${heute()} order by id desc limit 1`;
+      if (offen) throw new BusinessError(`Für ${personen[0].vorname} ${personen[0].nachname} gibt es bereits das offene Vertragsangebot ${offen.nummer} – bitte dort erneuern oder zurückziehen.`);
+    }
+  }
   const daten: AngebotDaten = {
-    bank, personen, ...adresse, email, vertragsaenderung, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || null, eintritt: e.eintritt,
+    bank, personen, ...adresse, email, vertragsaenderung, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || schnupperErz || null, eintritt: e.eintritt,
     bemerkung: (e.bemerkung ?? '').trim() || null,
   };
   const jahr = heute().slice(0, 4);
@@ -197,8 +216,8 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   const nummer = `VA-${jahr}-${String(n).padStart(4, '0')}`;
   const token = randomBytes(32).toString('base64url');
   const gueltigBis = addTage(heute(), ANGEBOT_TAGE);
-  const [r] = await tx`insert into tco.vertragsangebote (nummer, token_hash, daten, email, gueltig_bis, erstellt_von)
-                       values (${nummer}, ${sha256(token)}, ${tx.json(daten as never)}, ${email}, ${gueltigBis}, ${wer}) returning id`;
+  const [r] = await tx`insert into tco.vertragsangebote (nummer, token_hash, daten, email, gueltig_bis, erstellt_von, schnupper_adrnr)
+                       values (${nummer}, ${sha256(token)}, ${tx.json(daten as never)}, ${email}, ${gueltigBis}, ${wer}, ${schnupperAdrnr}) returning id`;
   return { id: Number(r.id), nummer, token, email, name: `${personen[0].vorname} ${personen[0].nachname}`, gueltigBis };
 }
 
@@ -206,6 +225,13 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
 export async function angebotErneuern(tx: Db, id: number): Promise<{ nummer: string; token: string; email: string; name: string; gueltigBis: string }> {
   const token = randomBytes(32).toString('base64url');
   const gueltigBis = addTage(heute(), ANGEBOT_TAGE);
+  // Schnupperer: höchstens ein offenes Angebot – ein abgelaufenes nicht neu senden, wenn inzwischen ein neueres offen ist
+  const [alt] = await tx`select schnupper_adrnr from tco.vertragsangebote where id = ${id} and status = 'OFFEN' for update`;
+  if (alt?.schnupper_adrnr) {
+    const [offen] = await tx`select nummer from tco.vertragsangebote
+                              where schnupper_adrnr = ${alt.schnupper_adrnr} and id <> ${id} and status = 'OFFEN' and gueltig_bis >= ${heute()} limit 1`;
+    if (offen) throw new BusinessError(`Für diese Person gibt es bereits das offene Vertragsangebot ${offen.nummer} – bitte dieses verwenden oder zurückziehen.`);
+  }
   const [r] = await tx`update tco.vertragsangebote set token_hash = ${sha256(token)}, gueltig_bis = ${gueltigBis}, versuche = 0, geoeffnet_am = null
                         where id = ${id} and status = 'OFFEN' returning nummer, email, daten`;
   if (!r) throw new BusinessError('Angebot nicht gefunden oder bereits angenommen/zurückgezogen.', 404);
@@ -220,8 +246,9 @@ export async function angebotZurueckziehen(tx: Db, id: number): Promise<string> 
 }
 
 export async function angeboteLesen(db: Db, alle: boolean) {
-  const rows = await db`select id, nummer, status, daten, email, gueltig_bis::text as gueltig_bis, erstellt_am, erstellt_von, geoeffnet_am, antrag
-                          from tco.vertragsangebote ${alle ? db`` : db`where status = 'OFFEN'`}
+  const rows = await db`select id, nummer, status, daten, email, gueltig_bis::text as gueltig_bis, erstellt_am, erstellt_von, geoeffnet_am, antrag,
+                               (select s.nummer from tco.schnupper s where s.adrnr = a.schnupper_adrnr) as schnupper
+                          from tco.vertragsangebote a ${alle ? db`` : db`where status = 'OFFEN'`}
                          order by status = 'OFFEN' desc, erstellt_am desc limit 200`;
   const h = heute();
   return rows.map((r) => {
@@ -229,6 +256,8 @@ export async function angeboteLesen(db: Db, alle: boolean) {
     return {
       id: Number(r.id), nummer: r.nummer, status: r.status === 'OFFEN' && r.gueltig_bis < h ? 'ABGELAUFEN' : r.status,
       email: r.email, gueltig_bis: r.gueltig_bis, erstellt_am: r.erstellt_am, erstellt_von: r.erstellt_von, geoeffnet_am: r.geoeffnet_am, antrag: r.antrag,
+      /** ST-Nummer, wenn das Angebot aus dem Schnuppertraining stammt */
+      schnupper: (r.schnupper as string | null) ?? null,
       eintritt: d.eintritt, personen: d.personen.map((p) => ({ name: `${p.vorname} ${p.nachname}`, stamm: !!p.adrnr, art: p.art ?? null, training: p.training })),
     };
   });

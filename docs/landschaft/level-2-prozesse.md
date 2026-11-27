@@ -5,7 +5,7 @@ Kernprozesse von Ende zu Ende. Jeder Verweis ist gegen den Code geprüft (⚠️
 
 | ID | Prozess | Bereich | Auslöser | Ergebnis | Schritte |
 |---|---|---|---|---|---|
-| P1 | [Mitglied werden](#p1) | Mitglieder | Online-Antrag oder Schnuppertraining | aktives Mitglied mit Vertrag, SEPA-Mandat und Portalzugang | 7 |
+| P1 | [Mitglied werden](#p1) | Mitglieder | Online-Antrag oder Schnuppertraining | aktives Mitglied mit Vertrag, SEPA-Mandat und Portalzugang | 8 |
 | P2 | [Beiträge einziehen](#p2) | Finanzen | Sollmonat (Turnus der Verträge) | Beiträge auf den Erlöskonten gebucht | 7 |
 | P3 | [Halle buchen und abrechnen](#p3) | Tennishalle | Buchung im Portal oder in EP3 | bezahlte Hallenrechnung, Beleg in Paperless | 6 |
 | P4 | [Jugendtraining abrechnen](#p4) | Jugend | Monatsende | Zeitnachweis in Paperless, Trainerentgelt bezahlt | 6 |
@@ -26,16 +26,18 @@ flowchart LR
   S0["Schnuppertraining anmelden (optional)<br/><small>Öffentlichkeit (ohne Anmeldung) · Vereinsportal (Modul tco)</small>"]:::portal
   S1["Trainer betreut, Beitrittslink senden<br/><small>Trainer · Vereinsportal (Modul tco)</small>"]:::portal
   S0 --> S1
-  S2["Online-Antrag mit SEPA-Mandat<br/><small>Öffentlichkeit (ohne Anmeldung) · Vereinsportal (Modul tco)</small>"]:::portal
+  S2["Vertragsangebot aus dem Schnuppertraining (statt Beitrittslink)<br/><small>Kassenwart · Vereinsportal (Modul tco)</small>"]:::portal
   S1 --> S2
-  S3["Eingangsbestätigung per Mail<br/><small>System / zeitgesteuerter Job · n8n-Workflow</small>"]:::n8n
+  S3["Online-Antrag mit SEPA-Mandat<br/><small>Öffentlichkeit (ohne Anmeldung) · Vereinsportal (Modul tco)</small>"]:::portal
   S2 --> S3
-  S4["Prüfen (Dubletten) und übernehmen<br/><small>Kassenwart · Vereinsportal (Modul tco)</small>"]:::portal
+  S4["Eingangsbestätigung per Mail<br/><small>System / zeitgesteuerter Job · n8n-Workflow</small>"]:::n8n
   S3 --> S4
-  S5["Gruppen per Regelwerk zuordnen<br/><small>System / zeitgesteuerter Job · Vereinsportal (Modul tco)</small>"]:::portal
+  S5["Prüfen (Dubletten) und übernehmen<br/><small>Kassenwart · Vereinsportal (Modul tco)</small>"]:::portal
   S4 --> S5
-  S6["Einladung annehmen, eigene Daten pflegen<br/><small>Mitglied · Vereinsportal (Modul tco)</small>"]:::portal
+  S6["Gruppen per Regelwerk zuordnen<br/><small>System / zeitgesteuerter Job · Vereinsportal (Modul tco)</small>"]:::portal
   S5 --> S6
+  S7["Einladung annehmen, eigene Daten pflegen<br/><small>Mitglied · Vereinsportal (Modul tco)</small>"]:::portal
+  S6 --> S7
   classDef portal fill:#ffffff,stroke:#1f5fa8,stroke-width:2px,color:#1f5fa8
   classDef n8n fill:#ffffff,stroke:#2e7d32,stroke-width:2px,color:#2e7d32
   classDef extern fill:#ffffff,stroke:#2a9d8f,stroke-width:2px,color:#1d6f66
@@ -46,11 +48,12 @@ flowchart LR
 |---|---|---|---|---|---|---|---|
 | 1 | Schnuppertraining anmelden (optional) | Öffentlichkeit (ohne Anmeldung) | Vereinsportal (Modul tco) | `POST /api/m/tco/schnupper` |  | `/schnuppertraining` |  |
 | 2 | Trainer betreut, Beitrittslink senden | Trainer | Vereinsportal (Modul tco) | `POST /api/m/tco/schnuppertraining/:adrnr/beitrittslink` | `tco.schnupper:edit` | `/tco/schnuppertraining` |  |
-| 3 | Online-Antrag mit SEPA-Mandat | Öffentlichkeit (ohne Anmeldung) | Vereinsportal (Modul tco) | `POST /api/m/tco/antrag` |  | `/beitritt` |  |
-| 4 | Eingangsbestätigung per Mail | System / zeitgesteuerter Job | n8n-Workflow |  |  |  | TCO Mailversand |
-| 5 | Prüfen (Dubletten) und übernehmen | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/mitgliedsantraege/:id/uebernehmen` | `tco.antraege:edit` | `/tco/mitgliedsantraege` |  |
-| 6 | Gruppen per Regelwerk zuordnen | System / zeitgesteuerter Job | Vereinsportal (Modul tco) | `POST /api/m/tco/gruppen/regeln/anwenden` | `tco.gruppen:edit` | `/tco/gruppen` |  |
-| 7 | Einladung annehmen, eigene Daten pflegen | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/einladung` | `tco.meinedaten:edit` | `/tco/meine-daten` |  |
+| 3 | Vertragsangebot aus dem Schnuppertraining (statt Beitrittslink) | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/mitgliedsantraege/angebote` | `tco.antraege:edit` | `/tco/schnuppertraining` |  |
+| 4 | Online-Antrag mit SEPA-Mandat | Öffentlichkeit (ohne Anmeldung) | Vereinsportal (Modul tco) | `POST /api/m/tco/antrag` |  | `/beitritt` |  |
+| 5 | Eingangsbestätigung per Mail | System / zeitgesteuerter Job | n8n-Workflow |  |  |  | TCO Mailversand |
+| 6 | Prüfen (Dubletten) und übernehmen | Kassenwart | Vereinsportal (Modul tco) | `POST /api/m/tco/mitgliedsantraege/:id/uebernehmen` | `tco.antraege:edit` | `/tco/mitgliedsantraege` |  |
+| 7 | Gruppen per Regelwerk zuordnen | System / zeitgesteuerter Job | Vereinsportal (Modul tco) | `POST /api/m/tco/gruppen/regeln/anwenden` | `tco.gruppen:edit` | `/tco/gruppen` |  |
+| 8 | Einladung annehmen, eigene Daten pflegen | Mitglied | Vereinsportal (Modul tco) | `POST /api/m/tco/einladung` | `tco.meinedaten:edit` | `/tco/meine-daten` |  |
 
 <a id="p2"></a>
 ## P2 · Beiträge einziehen
