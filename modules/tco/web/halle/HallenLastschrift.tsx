@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus,
+  Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus,
   Tab, TabContainer, Text, Title,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -84,7 +85,7 @@ export function HallenLastschrift() {
       )}
       <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
         <Tab data-key="laeufe" text={`Läufe (${init?.laeufe.length ?? 0})`} selected={tab === 'laeufe'}>
-          <AnalyticalTable minRows={1} columns={laufCols} data={init?.laeufe ?? []} loading={!init} sortable
+          <ResponsiveTable minRows={1} columns={laufCols} data={init?.laeufe ?? []} loading={!init} sortable
                            visibleRows={Math.max(init?.laeufe.length ?? 0, 1)} noDataText="Noch keine Lastschriftläufe"
                            onRowClick={(e) => setAnsicht(e.detail.row.original.laufid)} />
         </Tab>
@@ -170,7 +171,7 @@ function Mandate() {
         <Text className="portal-muted portal-small">Entscheidungen aus dem Portal und von der Verwaltung erfasste Mandate. Ohne Eintrag gilt Überweisung.</Text>
         <Button icon="add" onClick={() => setErfassen(true)}>Mandat erfassen</Button>
       </FlexBox>
-      <AnalyticalTable minRows={1} columns={cols} data={d?.zahlarten ?? []} loading={!d} sortable filterable rowHeight={48}
+      <ResponsiveTable minRows={1} columns={cols} data={d?.zahlarten ?? []} loading={!d} sortable filterable rowHeight={48}
                        visibleRows={Math.max(Math.min(d?.zahlarten.length ?? 0, 20), 1)} noDataText="Noch niemand hat eine Zahlart gewählt" />
       <ConfirmDialog open={!!widerruf} danger askReason title="Mandat widerrufen" confirmText="Widerrufen" onCancel={() => setWiderruf(null)} onConfirm={widerrufen}
                      text={`Mandat von ${widerruf?.name ?? ''} widerrufen? Künftige Rechnungen gehen per Überweisung; bereits angekündigte Lastschriften außerhalb eines Laufs werden auf Überweisung umgestellt und müssen neu versendet werden.`} />
@@ -306,13 +307,13 @@ function NeuerLauf({ init, onZurueck, onErzeugt }: { init: Init | null; onZuruec
       {v && (
         <TabContainer onTabSelect={(e) => setTab((e.detail.tab as HTMLElement).dataset.key!)}>
           <Tab data-key="pos" text={`Rechnungen (${v.pos.length})`} selected={tab === 'pos'}>
-            <AnalyticalTable minRows={1} columns={posColumns({ ohne, toggle })} data={v.pos} visibleRows={Math.max(v.pos.length, 1)} noDataText="Keine Rechnung einziehbar" />
+            <ResponsiveTable minRows={1} columns={posColumns({ ohne, toggle })} data={v.pos} visibleRows={Math.max(v.pos.length, 1)} noDataText="Keine Rechnung einziehbar" />
           </Tab>
           <Tab data-key="tx" text={`Lastschriften (${v.tx.length})`} selected={tab === 'tx'}>
-            <AnalyticalTable minRows={1} columns={txCols} data={v.tx} visibleRows={Math.max(v.tx.length, 1)} noDataText="Keine Lastschriften" />
+            <ResponsiveTable minRows={1} columns={txCols} data={v.tx} visibleRows={Math.max(v.tx.length, 1)} noDataText="Keine Lastschriften" />
           </Tab>
           <Tab data-key="excl" text={`Nicht einziehbar (${v.excl.length})`} selected={tab === 'excl'}>
-            <AnalyticalTable minRows={1} columns={posColumns()} data={v.excl} visibleRows={Math.max(v.excl.length, 1)} noDataText="Nichts ausgeschlossen" />
+            <ResponsiveTable minRows={1} columns={posColumns()} data={v.excl} visibleRows={Math.max(v.excl.length, 1)} noDataText="Nichts ausgeschlossen" />
           </Tab>
           {meldungen.length > 0 && <Tab data-key="msg" text={`Prüfmeldungen (${meldungen.length})`} selected={tab === 'msg'}><Meldungen m={meldungen} /></Tab>}
         </TabContainer>
@@ -371,7 +372,7 @@ function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => vo
       {k?.status === 'E' && <MessageStrip hideCloseButton style={{ marginBottom: '0.5rem' }}>
         Datei bei der Bank einreichen. Die Gutschrift wird im Bankimport der FI Belege erkannt und auf die Rechnungen verbucht.</MessageStrip>}
       <Title level="H6" style={{ margin: '0.5rem 0' }}>Rechnungen</Title>
-      <AnalyticalTable minRows={1} columns={cols} data={d?.pos ?? []} loading={!d} visibleRows={Math.max(d?.pos.length ?? 0, 1)} noDataText="Keine Positionen" />
+      <ResponsiveTable minRows={1} columns={cols} data={d?.pos ?? []} loading={!d} visibleRows={Math.max(d?.pos.length ?? 0, 1)} noDataText="Keine Positionen" />
       <ConfirmDialog open={storno} danger askReason title="Lauf stornieren" confirmText="Stornieren" onCancel={() => setStorno(false)} onConfirm={stornieren}
                      text="Lauf stornieren? Nur, wenn die Datei nicht bei der Bank eingereicht wurde – die Rechnungen sind danach wieder für einen Lauf frei." />
     </AppPage>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '../components/Varianten';
-import { AnalyticalTable, Button, BusyIndicator, CheckBox, Dialog, Link, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { Button, BusyIndicator, CheckBox, Dialog, Link, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
@@ -103,10 +104,10 @@ export function StatistikPage() {
             {d.seit ? `Erfasst seit ${d.seit.split('-').reverse().join('.')}.` : 'Noch keine Daten erfasst.'} Ein App-Aufruf zählt höchstens einmal je Benutzer und Minute. Klick auf eine Zahl zeigt, welche Benutzer welche App aufgerufen haben.
           </Text>
           <Section title="Anmeldungen je Benutzer und Monat" count={d.anmeldungen.length} status={<Text className="portal-muted">{summe(d.anmeldungen).toLocaleString('de-DE')} Anmeldungen</Text>} flush>
-            <AnalyticalTable minRows={1} columns={benutzerSpalten} data={d.anmeldungen} visibleRows={Math.min(Math.max(d.anmeldungen.length, 1), 20)} noDataText="Keine Anmeldungen im Zeitraum" />
+            <ResponsiveTable minRows={1} columns={benutzerSpalten} data={d.anmeldungen} visibleRows={Math.min(Math.max(d.anmeldungen.length, 1), 20)} noDataText="Keine Anmeldungen im Zeitraum" />
           </Section>
           <Section title="Aufrufe je App" count={d.apps.length} status={<Text className="portal-muted">{summe(d.apps).toLocaleString('de-DE')} Aufrufe</Text>} flush>
-            <AnalyticalTable minRows={1} columns={appSpalten} data={d.apps} visibleRows={Math.min(Math.max(d.apps.length, 1), 25)} noDataText="Keine Aufrufe im Zeitraum" />
+            <ResponsiveTable minRows={1} columns={appSpalten} data={d.apps} visibleRows={Math.min(Math.max(d.apps.length, 1), 25)} noDataText="Keine Aufrufe im Zeitraum" />
           </Section>
         </>
       )}
@@ -114,7 +115,7 @@ export function StatistikPage() {
         <Dialog open headerText={`App-Aufrufe: ${zelle.titel}`} style={{ width: 'min(48rem, 96vw)' }} onClose={() => setZelle(null)}
                 footer={<FussLeiste endContent={<Button design="Emphasized" onClick={() => setZelle(null)}>Schließen</Button>} />}>
           {!details ? <BusyIndicator active style={{ display: 'block', padding: '1rem 0' }} /> : (
-            <AnalyticalTable minRows={1} columns={detailSpalten} data={details} visibleRows={Math.min(Math.max(details.length, 1), 15)}
+            <ResponsiveTable minRows={1} columns={detailSpalten} data={details} visibleRows={Math.min(Math.max(details.length, 1), 15)}
                              noDataText="Keine App-Aufrufe (Anmeldungen ohne geöffnete App)" />
           )}
         </Dialog>

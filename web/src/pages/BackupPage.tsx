@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Button, Icon, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
+  Button, Icon, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '../api';
@@ -252,7 +253,7 @@ export function BackupPage() {
 
       <Section title="Sicherungen im Portal" count={d?.dateien.length ?? 0} flush
                status={d ? <Text className="portal-muted portal-small">Ablage: {d.pfad}{d.dauerhaft ? '' : ' (nicht dauerhaft!)'}</Text> : undefined}>
-        <AnalyticalTable columns={columns} data={d?.dateien ?? []} loading={!d} visibleRows={Math.min(Math.max(d?.dateien.length ?? 0, 1), 12)} minRows={1}
+        <ResponsiveTable columns={columns} data={d?.dateien ?? []} loading={!d} visibleRows={Math.min(Math.max(d?.dateien.length ?? 0, 1), 12)} minRows={1}
                          noDataText="Noch keine Sicherung – oben erstellen oder eine Datei hochladen" />
       </Section>
 

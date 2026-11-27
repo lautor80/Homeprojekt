@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { feld } from '../components/Varianten';
 import { AnalyticalTable, Button, DatePicker, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { aktionenVorn } from '../components/ResponsiveTable';
 import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '../api';
@@ -215,7 +216,7 @@ export function MailProtokollPage() {
       )}
       <AnalyticalTable
         key={gruppe}
-        columns={columns}
+        columns={aktionenVorn(columns)}
         data={daten}
         loading={l.loading}
         filterable

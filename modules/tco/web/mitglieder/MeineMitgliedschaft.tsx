@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, TextArea,
+  BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { PdfDialog } from '@core/components/PdfDialog';
@@ -218,7 +219,7 @@ export function MeineMitgliedschaft() {
       <Section title="Dokumente" count={docs?.dokumente.length ?? undefined} flush>
         {!docs ? <BusyIndicator active style={{ display: 'block', padding: '1rem' }} />
           : docs.hinweis ? <Text className="portal-muted" style={{ display: 'block', padding: '0.75rem 1rem' }}>{docs.hinweis}</Text>
-            : <AnalyticalTable data={docs.dokumente} minRows={1} visibleRows={Math.min(Math.max(docs.dokumente.length, 1), 10)} rowHeight={44} noDataText="Keine Dokumente abgelegt"
+            : <ResponsiveTable data={docs.dokumente} minRows={1} visibleRows={Math.min(Math.max(docs.dokumente.length, 1), 10)} rowHeight={44} noDataText="Keine Dokumente abgelegt"
                                columns={[
                                  { Header: 'Datum', accessor: 'erstellt', width: 110, Cell: ({ value }: Cell) => dat(value) },
                                  { Header: 'Dokument', accessor: 'titel', minWidth: 220 },

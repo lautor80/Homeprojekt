@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectStatus,
+  Button, ComboBox, ComboBoxItem, DatePicker, FlexBox, Input, Label, MessageStrip, ObjectStatus,
   Option, Select, SegmentedButton, SegmentedButtonItem, Text, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -145,7 +146,7 @@ export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onCha
           <Text style={{ color: 'var(--sapContent_LabelColor)' }}>Der bis dahin gültige Satz wird am Vortag automatisch abgegrenzt.</Text>
         </FlexBox>
       )}
-      <AnalyticalTable minRows={1} columns={columns} data={daten} loading={!d} visibleRows={Math.max(daten.length, 1)} noDataText="Keine Entgelte in dieser Auswahl" />
+      <ResponsiveTable minRows={1} columns={columns} data={daten} loading={!d} visibleRows={Math.max(daten.length, 1)} noDataText="Keine Entgelte in dieser Auswahl" />
 
         </>
       )}
@@ -165,7 +166,7 @@ export function Entgelte({ onChanged, teil = 'entgelte', aktiv = true }: { onCha
           })}>Als Trainer aufnehmen</Button>
         </>}
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={trainerColumns} data={d?.trainer ?? []} loading={!d} visibleRows={Math.max(d?.trainer.length ?? 0, 1)} noDataText="Noch keine Trainer" />
+      <ResponsiveTable minRows={1} columns={trainerColumns} data={d?.trainer ?? []} loading={!d} visibleRows={Math.max(d?.trainer.length ?? 0, 1)} noDataText="Noch keine Trainer" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         „Meine Trainingszeiten“: Ist einem Trainer ein Portal-Benutzer zugeordnet und hat dieser die Berechtigung „Meine Trainingszeiten“
         (Rollenpflege → Jugend), meldet der Trainer seine Zeiten selbst zurück – ausschließlich für sich, ohne Einblick in andere Trainer.

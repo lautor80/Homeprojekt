@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, Icon, Input, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
+  Button, CheckBox, Icon, Input, Label, Link, MessageStrip, Option, Select, Text, TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { FormGrid, TextField } from '@core/components/FormFields';
@@ -106,9 +107,9 @@ export function Dokumente({ adrnr, edit, sel, onSel, onError, onKomm, eingang = 
       )}
       {edit && onEingang
         ? <AblageFlaeche ziel={{ titel: 'Dokumente des Mitglieds', annehmen: (f) => onEingang(f) }}>
-            <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless – Datei hierher ziehen oder Screenshot mit Strg+V einfügen'} />
+            <ResponsiveTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless – Datei hierher ziehen oder Screenshot mit Strg+V einfügen'} />
           </AblageFlaeche>
-        : <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless'} />}
+        : <ResponsiveTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText={alle.length ? 'Keine Dokumente zum Filter – Jahr „alle“ wählen oder Suche leeren' : 'Keine Dokumente in Paperless'} />}
       {ansicht && <PdfDialog url={`${MG}/dokument/${ansicht.id}/datei`} title={ansicht.titel} filename={ansicht.datei || `${ansicht.titel}.pdf`} onClose={() => setAnsicht(null)} />}
       {notizen && <NotizDialog dok={notizen} edit={edit} onClose={(neu) => { setNotizen(null); if (neu) laden(); }} />}
       {upload && <UploadDialog adrnr={adrnr} f={upload} rest={Math.max(0, eingang.length - 1)}

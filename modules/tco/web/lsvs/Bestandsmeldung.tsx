@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer, Text,
+  Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -162,7 +163,7 @@ export function Bestandsmeldung() {
                 Fachverband {v.kopf.fachverband || '–'} (Tennis) · Software {v.kopf.schluessel || '–'}
               </Text>
             )}
-            <AnalyticalTable minRows={1} columns={SPALTEN} data={v?.zeilen ?? []} visibleRows={Math.min(Math.max(v?.zeilen.length ?? 1, 1), 15)} loading={busy}
+            <ResponsiveTable minRows={1} columns={SPALTEN} data={v?.zeilen ?? []} visibleRows={Math.min(Math.max(v?.zeilen.length ?? 1, 1), 15)} loading={busy}
                              noDataText="Keine Mitglieder zum Stichtag" />
             {v && v.hinweise.length > 0 && (
               <MessageStrip design="Critical" hideCloseButton style={{ marginTop: '0.75rem' }}>
@@ -193,7 +194,7 @@ export function Bestandsmeldung() {
         </Tab>
 
         <Tab data-key="laeufe" text={`Läufe (${laeufe.length})`} icon="history" selected={tab === 'laeufe'}>
-          <AnalyticalTable minRows={1} columns={laufSpalten} data={laeufe} visibleRows={Math.min(Math.max(laeufe.length, 1), 15)} noDataText="Noch keine Läufe erzeugt" />
+          <ResponsiveTable minRows={1} columns={laufSpalten} data={laeufe} visibleRows={Math.min(Math.max(laeufe.length, 1), 15)} noDataText="Noch keine Läufe erzeugt" />
         </Tab>
       </TabContainer>
 

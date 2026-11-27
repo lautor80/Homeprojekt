@@ -664,6 +664,7 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-rt__aktionen { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.25rem 0.5rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--sapList_BorderColor, #e5e5e5); min-width: 0; }
 .portal-rt__aktionen > span { display: inline-flex; flex-wrap: wrap; align-items: center; min-width: 0; max-width: 100%; }
 .portal-rt__karte--klick { cursor: pointer; }
+.portal-rt__mehr { font: inherit; padding: 0.625rem; border: 1px dashed var(--sapList_BorderColor, #e5e5e5); border-radius: var(--portal-radius, 0.75rem); background: transparent; color: var(--sapLinkColor, #0064d9); cursor: pointer; }
 .portal-rt__karte--klick:active { background: var(--sapList_Active_Background, var(--sapList_Hover_Background)); }
 
 /* Kopfzeilen mit Titel und Knöpfen, die bei wenig Platz umbrechen (Clubhausabrechnung u. a.) */

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  AnalyticalTable, Button, FlexBox, Label, Link, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Panel, SegmentedButton,
+  Button, FlexBox, Label, Link, List, ListItemStandard, MessageStrip, ObjectStatus, Option, Panel, SegmentedButton,
   SegmentedButtonItem, Select, Tab, TabContainer, Text, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -155,7 +156,7 @@ function Forderungen({ d, edit, onAktion, onError }: { d: Init; edit: boolean; o
           <Button icon="print" onClick={() => setPdf(true)}>Drucken</Button>
         </div>
       </div>
-      <AnalyticalTable minRows={1} columns={columns} data={zeilen} visibleRows={zeilen.length}
+      <ResponsiveTable minRows={1} columns={columns} data={zeilen} visibleRows={zeilen.length}
                        onRowClick={(e) => { const m = e.detail.row.original.monat; if (m >= 1 && m <= 12) setMonat(m); }}
                        withRowHighlight highlightField={(x: Record<string, any>) => (x.monat === monat ? 'Information' : 'None')} />
       <MessageStrip hideCloseButton style={{ margin: '0.5rem 0' }}>
@@ -231,7 +232,7 @@ function Absatz() {
         </Select>
         </div>
       </div>
-      <AnalyticalTable minRows={1} columns={columns} data={tabelle} visibleRows={Math.max(tabelle.length, 1)} noDataText="Keine Getränkerechnungen"
+      <ResponsiveTable minRows={1} columns={columns} data={tabelle} visibleRows={Math.max(tabelle.length, 1)} noDataText="Keine Getränkerechnungen"
                        withRowHighlight highlightField={(r: Record<string, any>) => (r.gesamtzeile ? 'Information' : 'None')} />
       <Panel headerText="Entwicklung Absatz und durchschnittlicher EK-Preis" style={{ marginTop: '0.75rem' }}>
         <AbsatzDiagramm punkte={punkte} einheit={einheit === 'KISTE' ? 'Kisten' : 'Flaschen'} />

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
+  Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { useCan } from '@core/session';
@@ -193,11 +194,11 @@ export function Teilnehmer() {
       <Section title="Trefferliste" count={rows.length} flush
                status={sel.length ? <Text className="portal-muted">{sel.length} markiert{mitEmail.length < markiert.length ? `, ${markiert.length - mitEmail.length} ohne E-Mail` : ''}</Text> : undefined}
                actions={sel.length ? <Button design="Transparent" onClick={() => setSel([])}>Auswahl aufheben</Button> : undefined}>
-        <AnalyticalTable minRows={1} columns={columns} data={rows} loading={loading} sortable visibleRows={Math.min(Math.max(rows.length, 1), 25)}
+        <ResponsiveTable minRows={1} columns={columns} data={rows} loading={loading} sortable visibleRows={Math.min(Math.max(rows.length, 1), 25)}
                          noDataText="Keine Teilnehmer gefunden" />
       </Section>
       <Section title={`Wochenplan ${saisonText(saison)}`} count={plan.length} flush>
-        <AnalyticalTable minRows={1} columns={planSpalten} data={plan} visibleRows={Math.min(Math.max(plan.length, 1), 14)}
+        <ResponsiveTable minRows={1} columns={planSpalten} data={plan} visibleRows={Math.min(Math.max(plan.length, 1), 14)}
                          noDataText={`Für ${saisonText(saison)} sind noch keine Trainingszeiten zugeordnet${edit ? ' – im Detail eines Teilnehmers zuordnen' : ''}.`} />
       </Section>
       <MessageStrip hideCloseButton>
@@ -258,7 +259,7 @@ function DetailDialog({ adrnr, saison, edit, onGespeichert, onClose }: { adrnr: 
           </ObjectHeader>
           <Trainingszeiten adrnr={adrnr} start={saison} edit={edit} onGespeichert={onGespeichert} />
           <Section title="Verträge" count={d.vertraege.length} flush>
-            <AnalyticalTable minRows={1} columns={columns} data={d.vertraege} visibleRows={Math.max(d.vertraege.length, 1)} noDataText="Keine Verträge"
+            <ResponsiveTable minRows={1} columns={columns} data={d.vertraege} visibleRows={Math.max(d.vertraege.length, 1)} noDataText="Keine Verträge"
                              withRowHighlight highlightField={(r: Record<string, any>) => (r.laeuft ? (r.jugend ? 'Information' : 'None') : 'Critical')} />
           </Section>
         </>

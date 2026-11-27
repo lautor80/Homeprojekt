@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
+  Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -294,7 +295,7 @@ export function Mahnwesen() {
             </Select>
             <Button icon="refresh" design="Transparent" tooltip="Neu laden" onClick={() => laden()} />
           </FlexBox>
-          <AnalyticalTable minRows={1} columns={postenSpalten} data={posten} visibleRows={zeilenHoehe(posten.length)} sortable loading={!d}
+          <ResponsiveTable minRows={1} columns={postenSpalten} data={posten} visibleRows={zeilenHoehe(posten.length)} sortable loading={!d}
                            noDataText={filter === 'faellig' ? 'Keine fälligen Posten – alles im Zahlungsziel oder bezahlt' : 'Keine offenen Posten'} />
         </Tab>
 
@@ -312,7 +313,7 @@ export function Mahnwesen() {
                                })}>Freigeben und senden</Button>
                        <Button design="Transparent" icon="decline" disabled={busy} onClick={() => tun(() => api.post(`${M}/laeufe/${d.vorschlag!.id}/verwerfen`, {}))}>Verwerfen</Button>
                      </> : undefined}>
-              <AnalyticalTable minRows={1} columns={zeilenSpalten(darf.ausfuehren)} data={d.vorschlag.zeilen ?? []} visibleRows={zeilenHoehe(d.vorschlag.zeilen?.length ?? 0)} />
+              <ResponsiveTable minRows={1} columns={zeilenSpalten(darf.ausfuehren)} data={d.vorschlag.zeilen ?? []} visibleRows={zeilenHoehe(d.vorschlag.zeilen?.length ?? 0)} />
             </Section>
           )}
           <Section title="Vorschau: Das würde der nächste Lauf tun" count={d?.plan.mails.length ?? 0} flush
@@ -320,7 +321,7 @@ export function Mahnwesen() {
                      <Button icon="simulate" disabled={busy || !d?.plan.mails.length || d.laeuft} onClick={() => starten('VORSCHLAG')}>Vorschlag erzeugen</Button>
                      <Button icon="email" design="Emphasized" disabled={busy || !d?.plan.mails.length || !d.mail || d.laeuft} onClick={() => starten('SENDEN')}>Jetzt senden</Button>
                    </> : undefined}>
-            <AnalyticalTable minRows={1} columns={planSpalten} data={d?.plan.mails ?? []} visibleRows={zeilenHoehe(d?.plan.mails.length ?? 0)} loading={!d}
+            <ResponsiveTable minRows={1} columns={planSpalten} data={d?.plan.mails ?? []} visibleRows={zeilenHoehe(d?.plan.mails.length ?? 0)} loading={!d}
                              noDataText="Nichts zu mahnen – der nächste Lauf würde keine E-Mail senden" />
           </Section>
           {d && (
@@ -334,7 +335,7 @@ export function Mahnwesen() {
         </Tab>
 
         <Tab data-key="laeufe" text={`Läufe (${laeufe.length})`} icon="history" selected={tab === 'laeufe'}>
-          <AnalyticalTable minRows={1} columns={laufSpalten} data={laeufe} visibleRows={zeilenHoehe(laeufe.length)} noDataText="Noch kein Mahnlauf" />
+          <ResponsiveTable minRows={1} columns={laufSpalten} data={laeufe} visibleRows={zeilenHoehe(laeufe.length)} noDataText="Noch kein Mahnlauf" />
         </Tab>
 
         <Tab data-key="unerreichbar" text={`Nicht erreichbar (${d?.unerreichbar.length ?? 0})`} icon="email" selected={tab === 'unerreichbar'}>
@@ -342,14 +343,14 @@ export function Mahnwesen() {
             Schuldner ohne E-Mail-Adresse oder mit abgelehntem Versand: Die Stufe gilt als nicht zugestellt. Bitte per Brief oder Anruf erinnern und die Zustellung vermerken –
             erst dann zählt die Stufe. Ändert sich die E-Mail-Adresse im Stamm, versucht es der nächste Lauf von selbst erneut.
           </MessageStrip>
-          <AnalyticalTable minRows={1} columns={unSpalten} data={d?.unerreichbar ?? []} visibleRows={zeilenHoehe(d?.unerreichbar.length ?? 0)} loading={!d} noDataText="Alle Schuldner waren per E-Mail erreichbar" />
+          <ResponsiveTable minRows={1} columns={unSpalten} data={d?.unerreichbar ?? []} visibleRows={zeilenHoehe(d?.unerreichbar.length ?? 0)} loading={!d} noDataText="Alle Schuldner waren per E-Mail erreichbar" />
         </Tab>
 
         <Tab data-key="sperren" text={`Mahnsperren (${sperren.filter((s) => !s.aufgehoben_am).length})`} icon="locked" selected={tab === 'sperren'}>
           <FlexBox style={{ marginBottom: '0.5rem' }}>
             {darf.ausfuehren && <Button icon="add" onClick={() => setSperre({})}>Mahnsperre setzen</Button>}
           </FlexBox>
-          <AnalyticalTable minRows={1} columns={sperrSpalten} data={sperren} visibleRows={zeilenHoehe(sperren.length)} noDataText="Keine Mahnsperren" />
+          <ResponsiveTable minRows={1} columns={sperrSpalten} data={sperren} visibleRows={zeilenHoehe(sperren.length)} noDataText="Keine Mahnsperren" />
         </Tab>
       </TabContainer>
 
@@ -384,7 +385,7 @@ function HistorieDialog({ posten, onClose }: { posten: Posten; onClose: () => vo
             footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Rechnungsdatum {dat(posten.datum)} · fällig {dat(posten.faellig)} · offen {eur(posten.betrag)}{posten.betrag < posten.gesamt ? ` von ${eur(posten.gesamt)}` : ''}</Text>
-      <AnalyticalTable minRows={1} columns={spalten} data={z ?? []} visibleRows={zeilenHoehe(z?.length ?? 0)} loading={!z} noDataText="Noch nicht gemahnt" />
+      <ResponsiveTable minRows={1} columns={spalten} data={z ?? []} visibleRows={zeilenHoehe(z?.length ?? 0)} loading={!z} noDataText="Noch nicht gemahnt" />
     </Dialog>
   );
 }
@@ -403,7 +404,7 @@ function LaufDialog({ id, spalten, onClose }: { id: number; spalten: AnalyticalT
           {l.freigegeben_am ? ` · freigegeben ${zeit(l.freigegeben_am)} von ${l.freigegeben_von}` : ''}{l.zurueckgestellt ? ` · ${l.zurueckgestellt} Schuldner zurückgestellt (Obergrenze)` : ''}{l.meldung ? ` · ${l.meldung}` : ''}
         </Text>
       )}
-      <AnalyticalTable minRows={1} columns={spalten} data={l?.zeilen ?? []} visibleRows={zeilenHoehe(l?.zeilen?.length ?? 0)} loading={!l} noDataText="Der Lauf hatte nichts zu mahnen" />
+      <ResponsiveTable minRows={1} columns={spalten} data={l?.zeilen ?? []} visibleRows={zeilenHoehe(l?.zeilen?.length ?? 0)} loading={!l} noDataText="Der Lauf hatte nichts zu mahnen" />
     </Dialog>
   );
 }

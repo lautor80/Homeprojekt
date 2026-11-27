@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
+  Button, CheckBox, DatePicker, FlexBox, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
   TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -365,7 +366,7 @@ function SepaTabelle({ d, edit, bankEdit, onAktion }: { d: Detail; edit: boolean
       {bankEdit && d.bank.zahlungsart === 'L' && !d.bank.iban && (
         <MessageStrip hideCloseButton design="Critical" style={{ marginBottom: '0.5rem' }}>Für ein SEPA-Mandat fehlt die IBAN – bitte zuerst die Bankverbindung erfassen.</MessageStrip>
       )}
-      <AnalyticalTable columns={columns} data={d.sepa} visibleRows={Math.max(d.sepa.length, 1)} minRows={1} noDataText="Kein SEPA-Mandat hinterlegt" />
+      <ResponsiveTable columns={columns} data={d.sepa} visibleRows={Math.max(d.sepa.length, 1)} minRows={1} noDataText="Kein SEPA-Mandat hinterlegt" />
       {d.sepa.some((s) => !s.aktiv && s.austritt) && (
         <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
           Mandate ausgetretener Zahler enden mit dem Austritt. Zahlen Familienmitglieder weiter über dieses Konto, kann das Mandat manuell aktiviert werden.
@@ -482,7 +483,7 @@ function Familie({ d, aw, edit, onOpen, onAktion }: {
           </FlexBox>
         </>
       )}
-      <AnalyticalTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine verknüpften Personen" />
+      <ResponsiveTable columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} minRows={1} noDataText="Keine verknüpften Personen" />
       <ConfirmDialog open={!!weg} title="Familienverknüpfung lösen" confirmText="Lösen"
                      text={`${weg?.name ?? ''} gehört danach nicht mehr zur Familie – gemeinsames Anmelden ist dann nicht mehr möglich. Verbindungen über den Zahler bleiben bestehen.`}
                      onCancel={() => setWeg(null)}

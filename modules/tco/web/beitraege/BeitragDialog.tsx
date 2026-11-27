@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Button, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text, Title,
+  Button, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text, Title,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -134,7 +135,7 @@ export function BeitragDialog({ art, edit: darf, onClose }: { art: string | null
 
           <Title level="H5" style={{ margin: '1rem 0 0.25rem' }}>Beträge je Zeitraum</Title>
           {preise.length > 0 && (
-            <AnalyticalTable minRows={1} columns={prCols} data={preise} visibleRows={Math.min(preise.length, 8)} rowHeight={44}
+            <ResponsiveTable minRows={1} columns={prCols} data={preise} visibleRows={Math.min(preise.length, 8)} rowHeight={44}
                              withRowHighlight highlightField={(r: Record<string, any>) => r.state} />
           )}
           {edit && (
@@ -155,7 +156,7 @@ export function BeitragDialog({ art, edit: darf, onClose }: { art: string | null
 
           {!d.neu && (
             <Panel collapsed headerText={`Verträge zur Beitragsart (${d.vertraege.filter((v) => v.laeuft).length} laufend, ${d.vertraege.length} gesamt)`} style={{ marginTop: '1rem' }}>
-              <AnalyticalTable minRows={1} columns={vtCols} data={d.vertraege} visibleRows={Math.min(Math.max(d.vertraege.length, 1), 8)} rowHeight={44}
+              <ResponsiveTable minRows={1} columns={vtCols} data={d.vertraege} visibleRows={Math.min(Math.max(d.vertraege.length, 1), 8)} rowHeight={44}
                                noDataText="Keine Verträge zu dieser Beitragsart" sortable
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.laeuft ? 'Positive' : 'None')} />
               <Attributes narrow>

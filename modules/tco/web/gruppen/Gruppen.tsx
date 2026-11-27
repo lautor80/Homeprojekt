@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   AnalyticalTable, BusyIndicator, Button, CheckBox, FlexBox, Icon, Input, Link, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { aktionenVorn } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -292,7 +293,7 @@ export function GruppenBaum({ eingebettet = false, aktiv = true, onGeaendert }: 
               „Ohne Teilnahme am Spielbetrieb“ oder „Reine Hallennutzer“ – und ordne dann die Mitglieder zu.
             </Empty>
           ) : (
-            <AnalyticalTable minRows={1} columns={columns} data={baum} isTreeTable tableInstance={tabelle as never} reactTableOptions={tabellenOptionen}
+            <AnalyticalTable minRows={1} columns={aktionenVorn(columns)} data={baum} isTreeTable tableInstance={tabelle as never} reactTableOptions={tabellenOptionen}
                              visibleRows={Math.max(anzahlZeilen(baum), 1)} noDataText="Keine Gruppe und kein Mitglied zu dieser Suche" />
           )}
         </div>

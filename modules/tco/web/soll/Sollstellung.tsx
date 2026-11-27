@@ -3,6 +3,7 @@ import {
   AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer,
   Text, Title,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -99,7 +100,7 @@ export function Sollstellung() {
         </MessageStrip>
       )}
       <Title level="H5" style={{ margin: '1rem 0 0.5rem' }}>Lastschriftläufe ({init?.laeufe.length ?? 0})</Title>
-      <AnalyticalTable minRows={1} columns={laufColumns} data={init?.laeufe ?? []} loading={!init} sortable
+      <ResponsiveTable minRows={1} columns={laufColumns} data={init?.laeufe ?? []} loading={!init} sortable
                        visibleRows={Math.max(init?.laeufe.length ?? 0, 1)} noDataText="Noch keine Lastschriftläufe"
                        onRowClick={(e) => setAnsicht(e.detail.row.original.laufid)} />
     </AppPage>
@@ -292,7 +293,7 @@ function NeueSollstellung({ init, onZurueck, onErzeugt }: { init: Init | null; o
             <Gruppiert columns={cols} data={v.pos} by="zahler_name" noData="Keine Positionen fällig" />
           </Tab>
           <Tab data-key="tx" text={`Lastschriften (${txAnz})`} selected={tab === 'tx'}>
-            <AnalyticalTable minRows={1} columns={txColumns} data={v.tx} visibleRows={Math.max(v.tx.length, 1)} noDataText="Keine Lastschriften" />
+            <ResponsiveTable minRows={1} columns={txColumns} data={v.tx} visibleRows={Math.max(v.tx.length, 1)} noDataText="Keine Lastschriften" />
           </Tab>
           <Tab data-key="excl" text={`Ausgeschlossen (${v.excl.length})`} selected={tab === 'excl'}>
             <Gruppiert columns={exclCols} data={v.excl} by="grund" noData="Nichts ausgeschlossen" />
@@ -360,7 +361,7 @@ function LaufDetail({ laufid, onZurueck }: { laufid: string; onZurueck: () => vo
             <Gruppiert columns={cols} data={l.pos} by="zahler_name" noData={k?.status === 'S' ? 'Lauf storniert – keine Positionen' : 'Keine Positionen'} />
           </Tab>
           <Tab text={`Lastschriften (${l.tx.length})`}>
-            <AnalyticalTable minRows={1} columns={txColumns} data={l.tx} visibleRows={Math.max(l.tx.length, 1)} noDataText="Keine Lastschriften" />
+            <ResponsiveTable minRows={1} columns={txColumns} data={l.tx} visibleRows={Math.max(l.tx.length, 1)} noDataText="Keine Lastschriften" />
           </Tab>
         </TabContainer>
       )}

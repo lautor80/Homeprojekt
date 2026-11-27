@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  AnalyticalTable, BusyIndicator, Button, Input, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text,
+  BusyIndicator, Button, Input, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -129,7 +130,7 @@ export function Beitraege() {
       {d && !d.leer && (
         <Section title="Beitragsarten" count={zeilen.length} flush
                  status={<Text className="portal-muted portal-small">Inaktive Beiträge werden weiter eingezogen, sind aber für neue Verträge gesperrt.</Text>}>
-          <AnalyticalTable minRows={1}
+          <ResponsiveTable titelSpalten={3} minRows={1}
             key={`${filter}|${gruppen.join('|')}|${zeilen.length}`}
             columns={columns} data={zeilen} groupable sortable rowHeight={44}
             reactTableOptions={{ initialState: { groupBy: ['gruppe'], expanded: Object.fromEntries(gruppen.map((g) => [`gruppe:${g}`, true])) }, autoResetExpanded: false }}

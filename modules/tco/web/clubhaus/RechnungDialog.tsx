@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option, Panel, Select, Text,
+  Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option, Panel, Select, Text,
   TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -160,7 +161,7 @@ export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: {
         <ToolbarSpacer />
         <Text style={{ fontWeight: 'bold' }}>Summe Brutto: {eur(brutto)}</Text>
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={sichtbar} visibleRows={Math.max(sichtbar.length, 1)} noDataText="Keine Positionen – „Alle Produkte anzeigen“ wählen" />
+      <ResponsiveTable minRows={1} columns={columns} data={sichtbar} visibleRows={Math.max(sichtbar.length, 1)} noDataText="Keine Positionen – „Alle Produkte anzeigen“ wählen" />
 
       {paperless && (
         <Panel headerText={`Paperless-Belege${belege.length ? ` (${belege.length})` : ''}`} style={{ marginTop: '0.75rem' }}>
@@ -171,7 +172,7 @@ export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: {
               {Math.abs(belegSumme - brutto) > 0.05 ? ` – Abweichung ${eur(r2(belegSumme - brutto))}` : ''}
             </MessageStrip>
           )}
-          {rgnr && belege.length > 0 && <AnalyticalTable minRows={1} columns={belegCols} data={belege} visibleRows={belege.length} />}
+          {rgnr && belege.length > 0 && <ResponsiveTable minRows={1} columns={belegCols} data={belege} visibleRows={belege.length} />}
           {rgnr && edit && (
             <FlexBox wrap="Wrap" alignItems="Center" style={{ gap: '0.5rem', marginTop: '0.5rem' }}>
               <Button icon="search" onClick={() => zuordnen('AUTO')}>Beleg ermitteln</Button>

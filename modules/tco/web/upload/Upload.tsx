@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Button, DatePicker, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text,
+  Button, DatePicker, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { schnittstelleLink } from '@core/schnittstellen';
 import { api } from '@core/api';
@@ -161,7 +162,7 @@ export function Upload() {
       )}
       <Section title="Dateien" count={dateien.length} flush
                status={fertig ? <Text className="portal-muted">{fertig} übertragen</Text> : undefined}>
-        <AnalyticalTable minRows={1} columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 1)} noDataText="Noch keine Dateien – ins Ablagefeld oben ziehen oder dort klicken (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
+        <ResponsiveTable minRows={1} columns={columns} data={dateien} visibleRows={Math.max(dateien.length, 1)} noDataText="Noch keine Dateien – ins Ablagefeld oben ziehen oder dort klicken (PDF, Bilder, CSV, Office; max. 50 MB je Datei)"
                          withRowHighlight highlightField={(r: Record<string, any>) => r.state} />
       </Section>
       <MessageStrip hideCloseButton>

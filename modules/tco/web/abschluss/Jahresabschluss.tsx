@@ -4,6 +4,7 @@ import {
   AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -220,7 +221,7 @@ export function Jahresabschluss() {
             {baum ? (
               <Baum columns={earBaumSpalten} data={earBaum} noDataText={`Für ${jahr} liegen keine Buchungen vor.`} />
             ) : (
-              <AnalyticalTable minRows={1} columns={earTabelleSpalten} data={earTabelle} visibleRows={Math.max(earTabelle.length, 1)} noDataText={`Für ${jahr} liegen keine Buchungen vor.`}
+              <ResponsiveTable minRows={1} columns={earTabelleSpalten} data={earTabelle} visibleRows={Math.max(earTabelle.length, 1)} noDataText={`Für ${jahr} liegen keine Buchungen vor.`}
                                withRowHighlight highlightField={(r: Record<string, any>) => (r.state ?? 'None')} />
             )}
           </Section>
@@ -230,7 +231,7 @@ export function Jahresabschluss() {
               {baum ? (
                 <Baum columns={uebSpalten} data={uebBaum} minZeilen={3} />
               ) : (
-                <AnalyticalTable minRows={1} columns={uebSpalten} data={uebTabelle} visibleRows={uebTabelle.length}
+                <ResponsiveTable minRows={1} columns={uebSpalten} data={uebTabelle} visibleRows={uebTabelle.length}
                                  withRowHighlight highlightField={(r: Record<string, any>) => (r.state ?? 'None')} />
               )}
             </Section>
@@ -238,7 +239,7 @@ export function Jahresabschluss() {
 
           <Section title="Bankkonten – Anfangs- und Endbestand" count={d.bank.length} flush>
             {d.bank.length
-              ? <AnalyticalTable minRows={1} columns={bankSpalten} data={d.bank} visibleRows={d.bank.length} />
+              ? <ResponsiveTable minRows={1} columns={bankSpalten} data={d.bank} visibleRows={d.bank.length} />
               : <Empty>Keine Geld- oder Darlehenskonten (Kennzahl BA/BK) mit Bestand in {jahr}.</Empty>}
           </Section>
 
@@ -257,7 +258,7 @@ export function Jahresabschluss() {
               </Attributes>
             </div>
             {d.anlagen.spiegel.length ? (
-              <AnalyticalTable minRows={1} columns={anlSpalten} data={d.anlagen.spiegel} visibleRows={d.anlagen.spiegel.length}
+              <ResponsiveTable minRows={1} columns={anlSpalten} data={d.anlagen.spiegel} visibleRows={d.anlagen.spiegel.length}
                                onRowClick={(e) => setAnlage(e.detail.row.original.anlnr)}
                                withRowHighlight highlightField={(r: Record<string, any>) => ANL_STATE[r.status as Spiegel['status']]} />
             ) : <Empty>Bis {jahr} sind keine Anlageobjekte erfasst.</Empty>}
