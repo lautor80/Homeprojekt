@@ -100,7 +100,7 @@ export function KoVerwaltung({ detail, darfPflegen, reload }: VerwaltungProps) {
   const sel = <K extends keyof KoEinstellungen>(k: K, werte: [KoEinstellungen[K], string][], label: string, breite: string) => (
     <div>
       <Label>{label}</Label>
-      <Select style={{ width: breite }} accessibleName={label} disabled={!darfPflegen || busy}
+      <Select style={{ width: breite, maxWidth: '100%' }} accessibleName={label} disabled={!darfPflegen || busy}
         onChange={(e) => {
           const i = Number((e.detail.selectedOption as HTMLElement).dataset.i);
           setEinst({ ...einst, [k]: werte[i][0] });

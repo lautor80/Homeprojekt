@@ -330,7 +330,7 @@ export function TabellenPage() {
 
               {/* Felder, Sortierung, Trefferzahl */}
               <div className="portal-row" style={{ gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div style={{ display: 'grid', gap: '0.25rem', minWidth: '20rem', flex: 1 }}>
+                <div style={{ display: 'grid', gap: '0.25rem', minWidth: 'min(20rem, 100%)', flex: 1 }}>
                   <Label showColon>Felder (leer = alle)</Label>
                   <MultiComboBox data-kein-autofill disabled={gruppiert} style={{ width: '100%' }}
                                  onSelectionChange={(e) => setze({ felder: spalten.map((s) => s.name).filter((n) => e.detail.items.some((x) => x.dataset.v === n)) })}>
@@ -368,7 +368,7 @@ export function TabellenPage() {
 
               {/* Gruppierung */}
               <div className="portal-row" style={{ gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                <div style={{ display: 'grid', gap: '0.25rem', minWidth: '20rem', flex: 1 }}>
+                <div style={{ display: 'grid', gap: '0.25rem', minWidth: 'min(20rem, 100%)', flex: 1 }}>
                   <Label showColon>Gruppieren nach (verdichtet mit Anzahl)</Label>
                   <MultiComboBox data-kein-autofill style={{ width: '100%' }}
                                  onSelectionChange={(e) => {

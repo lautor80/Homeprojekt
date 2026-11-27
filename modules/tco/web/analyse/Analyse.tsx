@@ -155,7 +155,7 @@ function Diagramme({ erg }: { erg: Ergebnis }) {
   const d = erg.diagramme;
   const n = erg.kpi.mitglieder;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(28rem, 1fr))', gap: 'var(--portal-gap, 1rem)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(28rem, 100%), 1fr))', gap: 'var(--portal-gap, 1rem)' }}>
       <Section title="Altersstruktur" count={n}>
         <Saeulen punkte={d.alter} />
       </Section>

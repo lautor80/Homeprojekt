@@ -64,7 +64,7 @@ export function DokumentPopup({ nr, docId, titel, datei, link, edit, onClose, on
               <Button icon="download" onClick={() => download(`${basis}/datei`, datei || `Dokument_${docId}`).catch((e) => setError((e as Error).message))}>Herunterladen</Button>
               <Button onClick={onClose}>Schließen</Button>
             </DialogFuss>}>
-      <div style={{ display: 'flex', gap: '1rem', height: '100%', minHeight: 0 }}>
+      <div className="portal-teilung" style={{ display: 'flex', gap: '1rem', height: '100%', minHeight: 0 }}>
         <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {vorschauFehler && <MessageStrip design="Information" hideCloseButton>{vorschauFehler}</MessageStrip>}
           {!vorschau && !vorschauFehler && <Text className="portal-muted">Lade Vorschau …</Text>}

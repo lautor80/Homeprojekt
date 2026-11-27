@@ -45,7 +45,7 @@ export function BelegAnsicht({ quelle, onClose }: { quelle: BelegQuelle; onClose
   return createPortal(
     <Dialog open headerText={`Beleg: ${quelle.dateiName}`} onClose={onClose} resizable style={{ width: '90vw', height: '90vh' }}
             footer={<DialogFuss><Button onClick={onClose}>Schließen</Button></DialogFuss>}>
-      <div style={{ display: 'flex', gap: '1rem', height: '100%', minHeight: 0 }}>
+      <div className="portal-teilung" style={{ display: 'flex', gap: '1rem', height: '100%', minHeight: 0 }}>
         <div style={{ flex: '1 1 55%', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {fehler && <MessageStrip design="Information" hideCloseButton>{fehler}</MessageStrip>}
           {!vorschau && !fehler && <Text className="portal-muted">Lade Vorschau …</Text>}

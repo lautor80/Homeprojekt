@@ -558,6 +558,18 @@ ui5-busy-indicator { max-width: 100%; }
 .portal-nowrap { white-space: nowrap; }
 .portal-stack { display: flex; flex-direction: column; gap: var(--portal-gap); }
 .portal-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+/* Telefon: Bereiche, die am Rechner nebeneinander stehen (Vorschau | Angaben, Auswahl | Formular, Beschriftung | Feld),
+   untereinander stellen – sonst bleibt für eine Seite keine Breite. Die Klassen übersteuern die Angaben am Element. */
+@media (max-width: 700px) {
+  .portal-teilung { display: flex !important; flex-direction: column !important; height: auto !important; min-height: 0 !important; }
+  .portal-teilung > * { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; box-sizing: border-box; border-left: none !important; padding-left: 0 !important; }
+  .portal-teilung iframe { min-height: 60vh; }
+  .portal-m-einspaltig { grid-template-columns: minmax(0, 1fr) !important; }
+  /* HTML-Tabellen: Die Symbol-Aktionen der letzten Spalte bleiben beim seitlichen Rollen am rechten Rand stehen –
+     sonst sind Ändern/Löschen/QR-Code erst nach dem Wischen über alle Spalten zu sehen. */
+  td:last-child:has(> .portal-iconakt) { position: sticky; right: 0; z-index: 1; background: var(--sapList_Background, #fff); box-shadow: -1px 0 0 var(--sapList_BorderColor); }
+  td:last-child > .portal-iconakt { flex-wrap: nowrap !important; }
+}
 /* Leiste über dem Vertragsbaum: eingerückt, damit die Variantenauswahl nicht am Rahmen der Karte klebt */
 .portal-vb__leiste { padding: 0.75rem 1rem 0.5rem; }
 

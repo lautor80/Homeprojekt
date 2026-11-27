@@ -164,3 +164,6 @@
 .portal-sv__vorschau { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.5rem; padding: 0.625rem 0.75rem; border: 1px solid var(--sapList_BorderColor); border-radius: var(--portal-radius, 0.75rem); background: var(--sapList_HeaderBackground, #f5f6f7); }
 .portal-sv__vorschau-betreff { font-weight: bold; }
 .portal-sv__vorschau-text { white-space: pre-wrap; }
+
+/* Telefon: Die umbrechende Filterleiste ist dort sehr hoch – haftend ließe sie der Tabelle darunter kaum Platz */
+@media (max-width: 700px) { .portal-az__leiste { position: static; } }

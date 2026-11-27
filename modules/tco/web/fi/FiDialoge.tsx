@@ -163,7 +163,7 @@ export function ZuordnenDialog({ open, ziele, titel, vorauswahl = [], onPick, on
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
-      <FlexBox style={{ gap: '1rem', height: '100%' }}>
+      <FlexBox className="portal-teilung" style={{ gap: '1rem', height: '100%' }}>
         <div style={{ flex: '1 1 55%', minWidth: 0 }}>
           <FlexBox style={{ gap: '0.5rem', marginBottom: '0.5rem' }} wrap="Wrap" alignItems="Center">
             <Input placeholder="Titel oder Korrespondent suchen …" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '16rem' }} icon={null as never} />
@@ -229,7 +229,7 @@ export function BelegeDialog({ internenr, edit: darf, onClose, onChanged }: {
             </>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       <SperrHinweis s={sperre} />
-      <FlexBox style={{ gap: '1rem', height: '100%' }}>
+      <FlexBox className="portal-teilung" style={{ gap: '1rem', height: '100%' }}>
         <div style={{ flex: '0 0 20rem' }}>
           {k && (
             <div style={{ marginBottom: '1rem', lineHeight: 1.6 }}>
@@ -449,7 +449,7 @@ export function GegenkontoDialog({ zeile, onClose, onDone }: { zeile: Zeile | nu
         <CheckBox text="Nur Buchungen mit Paperless-Beleg" checked={nurBeleg} onChange={(e) => setNurBeleg(e.target.checked)} />
         <CheckBox text="Nur Buchungen mit identischem Betrag" checked={gleich} onChange={(e) => setGleich(e.target.checked)} />
       </FlexBox>
-      <FlexBox style={{ gap: '1rem' }}>
+      <FlexBox className="portal-teilung" style={{ gap: '1rem' }}>
         <div style={{ flex: '1 1 55%', minWidth: 0 }}>
           <AnalyticalTable minRows={1} columns={columns} data={gefiltert} loading={!l} visibleRows={Math.max(gefiltert.length, 1)}
                            noDataText="Keine passenden Buchungen" onRowClick={(e) => setWahl(e.detail.row.original as Hist)}

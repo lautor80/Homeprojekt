@@ -194,7 +194,7 @@ export function RollenMatrix({ ansicht, onAnsicht, roles, catalog, darfAendern, 
             <Input data-kein-autofill icon={<Icon name="search" />} placeholder="Recht, App oder Bereich suchen" value={suche} showClearIcon style={{ width: '18rem' }}
                    onInput={(e) => setSuche(e.target.value)} />
             {!fokus && (
-              <MultiComboBox data-kein-autofill placeholder="Rollen (leer = alle)" style={{ width: '22rem' }}
+              <MultiComboBox data-kein-autofill placeholder="Rollen (leer = alle)" style={{ width: '22rem', maxWidth: '100%' }}
                              onSelectionChange={(e) => setAuswahl(e.detail.items.map((i) => (i as HTMLElement).dataset.r!))}>
                 {rollen.map((r) => <MultiComboBoxItem key={r.id} data-r={r.id} text={r.id} additionalText={r.name} selected={auswahl.includes(r.id)} />)}
               </MultiComboBox>

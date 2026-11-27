@@ -119,7 +119,7 @@ function Einstellungen({ cfg, onGespeichert }: { cfg: Cfg; onGespeichert: () => 
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <CheckBox text="Lastschrift für Hallenrechnungen anbieten (Hallenbucher und Mitglieder mit Hallenrechnungen werden beim nächsten Aufruf nach der Zahlart gefragt)"
                 wrappingType="Normal" checked={c.aktiv} onChange={(e) => setC({ ...c, aktiv: e.target.checked })} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(14rem, auto) 1fr', gap: '0.5rem 1rem', alignItems: 'center', margin: '0.75rem 0' }}>
+      <div className="portal-m-einspaltig" style={{ display: 'grid', gridTemplateColumns: 'minmax(14rem, auto) 1fr', gap: '0.5rem 1rem', alignItems: 'center', margin: '0.75rem 0' }}>
         <Label>Vorabankündigung (Tage)</Label>
         <Input type="Number" value={String(c.vorankuendigung)} style={{ width: '6rem' }} onInput={(e) => setC({ ...c, vorankuendigung: Number(e.target.value) || 0 })} />
         <Label>Rücklastschriftgebühr (€)</Label>

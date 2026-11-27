@@ -50,7 +50,7 @@ function Spalte({ titel, children }: { titel?: string; children: ReactNode }) {
 }
 function Spalten({ n, children }: { n: number; children: ReactNode }) {
   // Einzug, damit Spaltentitel (Auftrag, Absender …) nicht am Kartenrand kleben
-  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${n === 3 ? 300 : 380}px, 1fr))`, gap: '1.25rem 2.5rem', padding: '0.25rem 1rem' }}>{children}</div>;
+  return <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(${n === 3 ? 300 : 380}px, 100%), 1fr))`, gap: '1.25rem 2.5rem', padding: '0.25rem 1rem' }}>{children}</div>;
 }
 
 const full = { width: '100%' };
@@ -512,7 +512,7 @@ export function AuftragDetail() {
             header={<Title level="H3" wrappingType="Normal">{titel}</Title>}
             subHeader={<Text>{unter}</Text>}
             actionsBar={
-              <FlexBox style={{ gap: '0.5rem' }} alignItems="Center">
+              <FlexBox wrap="Wrap" justifyContent="End" style={{ gap: '0.5rem' }} alignItems="Center">
                 {darfBearbeiten && <Button design="Emphasized" icon="save" loading={busy} onClick={() => { void save(); }}>Speichern</Button>}
                 {!!a.faktura_reserviert && darfBearbeiten && darfRechnung && (
                   <Button icon="lead" loading={busy} onClick={speichernUndRechnung} tooltip={`Speichern und Rechnung ${a.faktura_reserviert} mit derselben Nummer neu erzeugen`}>Speichern und Rechnung erzeugen</Button>

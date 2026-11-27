@@ -230,7 +230,7 @@ export function VersandDialog({ auftraege, fakturiert = false, open, onClose }: 
               <Button design="Emphasized" icon={anzahlSenden ? 'paper-plane' : 'write-new'} loading={busy}
                       disabled={busy || laden || !offen.length || !!ohneAnbindung} onClick={ausfuehren}>{hauptText}</Button>
             </DialogFuss>}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(15rem, 20rem) minmax(0, 1fr)', gap: '1rem', minHeight: '24rem' }}>
+      <div className="portal-teilung" style={{ display: 'grid', gridTemplateColumns: 'minmax(15rem, 20rem) minmax(0, 1fr)', gap: '1rem', minHeight: '24rem' }}>
         {/* links: Dokumentarten und weitere Dateien */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <Title level="H6">Dokumente</Title>
@@ -323,7 +323,7 @@ export function VersandDialog({ auftraege, fakturiert = false, open, onClose }: 
             </table>
           </div>
           {aktivMail ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem', borderTop: '1px solid var(--sapList_BorderColor)', paddingTop: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(14rem, 100%), 1fr))', gap: '0.5rem', borderTop: '1px solid var(--sapList_BorderColor)', paddingTop: '0.5rem' }}>
               <div><Label required>An</Label><Input style={{ width: '100%' }} value={wert(aktivMail).an} disabled={busy || !!erledigt(aktivMail)} placeholder="E-Mail-Adresse, mehrere durch Komma"
                                                   onInput={(e) => aendern(aktivMail, 'an', e.target.value)} /></div>
               <div><Label>CC</Label><Input style={{ width: '100%' }} value={wert(aktivMail).cc} disabled={busy || !!erledigt(aktivMail)} placeholder="weitere Empfänger, durch Komma getrennt"
