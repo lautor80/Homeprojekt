@@ -186,6 +186,7 @@ const A_STATUS = { OFFEN: ['offen', 'Information'], ANGENOMMEN: ['angenommen', '
 function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit: boolean; arten: Record<string, string>; version: number; onError: (t: string) => void }) {
   const [liste, setListe] = useState<AngebotZeile[] | null>(null);
   const [link, setLink] = useState<{ nummer: string; link: string; text: string } | null>(null);
+  const [ansicht, setAnsicht] = useState<number | null>(null);
   const laden = () => api.get<{ liste: AngebotZeile[] }>(`${A}/angebote?alle=${alle ? '1' : '0'}`).then((r) => setListe(r.liste)).catch((e) => onError(e.message));
   useEffect(() => { laden(); }, [alle, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const aktion = async (fn: () => Promise<{ text: string; link?: string; nummer?: string }>) => {
@@ -206,6 +207,7 @@ function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit
           </div>
           <div className="portal-row">
             <ObjectStatus state={A_STATUS[g.status][1]} inverted>{A_STATUS[g.status][0]}</ObjectStatus>
+            <Button design="Transparent" icon="display" tooltip="Inhalt des Angebots ansehen" onClick={() => setAnsicht(g.id)}>Ansehen</Button>
             {edit && (g.status === 'OFFEN' || g.status === 'ABGELAUFEN') && <>
               <Button design="Transparent" icon="refresh" tooltip="Neuen Link senden (der alte wird ungültig, wieder 30 Tage gültig)"
                       onClick={() => aktion(() => api.post(`${A}/angebote/${g.id}/erneuern`, { mail: true }))}>Neu senden</Button>
@@ -216,7 +218,76 @@ function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit
         </div>
       ))}
       {link && <LinkDialog {...link} onClose={() => setLink(null)} />}
+      {ansicht !== null && <AngebotAnsicht id={ansicht} arten={arten} onClose={() => setAnsicht(null)} />}
     </Section>
+  );
+}
+
+interface AngebotInhalt {
+  id: number; nummer: string; status: AngebotZeile['status']; email: string; gueltig_bis: string; erstellt_am: string; erstellt_von: string | null;
+  geoeffnet_am: string | null; versuche: number; antrag: string | null; schnupper: string | null;
+  personen: { adrnr: string | null; anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email: string | null; telefon: string | null; art: string | null; training: string[] }[];
+  strasse: string; plz: string; ort: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null; vertragsaenderung: boolean;
+  bank: { kontoinhaber: string; iban: string; bic: string | null; zahler: string | null } | null;
+  versand: { zeit: string; an: string; betreff: string; status: string; fehler: string | null }[];
+}
+
+/** Inhalt eines Vertragsangebots – auch nach dem Versand einsehbar (vorbelegte Angaben, Verträge, Bankverbindung, Versand) */
+function AngebotAnsicht({ id, arten, onClose }: { id: number; arten: Record<string, string>; onClose: () => void }) {
+  const [a, setA] = useState<AngebotInhalt | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  useEffect(() => { api.get<AngebotInhalt>(`${A}/angebote/${id}`).then(setA).catch((e) => setFehler(e.message)); }, [id]);
+  const zeile = (k: string, v: React.ReactNode) => v ? (
+    <div className="portal-row" style={{ alignItems: 'flex-start', padding: '0.15rem 0' }}>
+      <Label style={{ minWidth: '10rem' }}>{k}</Label><Text style={{ whiteSpace: 'pre-wrap' }}>{v}</Text>
+    </div>) : null;
+  return (
+    <Dialog open headerText={a ? `Vertragsangebot ${a.nummer}` : 'Vertragsangebot'} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
+            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+      {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
+      {!a && !fehler && <BusyIndicator active />}
+      {a && <>
+        <div className="portal-row" style={{ marginBottom: '0.5rem' }}>
+          <ObjectStatus state={A_STATUS[a.status][1]} inverted>{A_STATUS[a.status][0]}</ObjectStatus>
+          {a.vertragsaenderung && <ObjectStatus state="Information">Vertragsänderung</ObjectStatus>}
+        </div>
+        {zeile('Erstellt', `${zeit(a.erstellt_am)}${a.erstellt_von ? ` von ${a.erstellt_von}` : ''}`)}
+        {zeile('Link an', a.email)}
+        {zeile('Gültig bis', dat(a.gueltig_bis))}
+        {zeile('Geöffnet', a.geoeffnet_am ? zeit(a.geoeffnet_am) : 'noch nicht geöffnet')}
+        {a.versuche > 0 && zeile('Fehlversuche', `${a.versuche} falsche Geburtsdaten`)}
+        {zeile('Antrag', a.antrag)}
+        {zeile('Schnuppertraining', a.schnupper)}
+
+        <Title level="H5" style={{ marginTop: '0.8rem' }}>Personen und Verträge</Title>
+        {a.personen.map((p, i) => (
+          <div key={i} style={{ padding: '0.3rem 0', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
+            <Text><b>{[p.anrede, p.vorname, p.nachname].filter(Boolean).join(' ')}</b>{p.adrnr ? <span className="portal-muted portal-small"> · Stamm {p.adrnr}</span> : <span className="portal-muted portal-small"> · neu erfasst</span>}</Text><br />
+            <Text className="portal-muted portal-small">
+              {[p.geburtsdatum ? `geb. ${dat(p.geburtsdatum)}` : 'ohne Geburtsdatum', p.email, p.telefon].filter(Boolean).join(' · ')}
+            </Text><br />
+            <Text>{[p.art ? arten[p.art] ?? p.art : (i === 0 && a.vertragsaenderung ? 'Mitgliedschaft unverändert' : 'über Familienbeitrag'), ...p.training.map((t) => arten[t] ?? t)].join(' + ')}</Text>
+          </div>
+        ))}
+
+        <Title level="H5" style={{ marginTop: '0.8rem' }}>Angaben</Title>
+        {zeile('Eintritt', dat(a.eintritt))}
+        {zeile('Anschrift', [a.strasse, [a.plz, a.ort].filter(Boolean).join(' ')].filter(Boolean).join(', '))}
+        {zeile('Telefon', a.telefon)}
+        {zeile('Erziehungsberechtigt', a.erziehungsberechtigt)}
+        {zeile('Bemerkung', a.bemerkung)}
+        {zeile('Bankverbindung', a.bank
+          ? `${a.bank.kontoinhaber}\n${a.bank.iban}${a.bank.bic ? ` · ${a.bank.bic}` : ''}${a.bank.zahler ? `\nZahler: ${a.bank.zahler}` : ''}`
+          : 'keine – die Person gibt sie beim Annehmen ein')}
+
+        <Title level="H5" style={{ marginTop: '0.8rem' }}>Versand</Title>
+        {a.versand.length ? a.versand.map((v, i) => (
+          <Text key={i} className="portal-small" style={{ display: 'block' }}>
+            {zeit(v.zeit)} · an {v.an} · {v.betreff} · {v.status}{v.fehler ? ` (${v.fehler})` : ''}
+          </Text>
+        )) : <Text className="portal-muted portal-small">Kein Versand protokolliert (Link selbst weitergegeben oder Protokoll älter als 180 Tage).</Text>}
+      </>}
+    </Dialog>
   );
 }
 

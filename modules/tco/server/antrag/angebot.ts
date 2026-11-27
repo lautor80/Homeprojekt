@@ -327,3 +327,34 @@ export async function angebotAnnehmen(tx: Db, token: string, personen: { vorname
   await tx`update tco.vertragsangebote set status = 'ANGENOMMEN', antrag = ${antrag} where id = ${a.id}`;
   return { nummer: a.nummer, adrnr };
 }
+
+/**
+ * Inhalt eines Vertragsangebots für die Verwaltung (Kassenwart): alle vorbelegten Angaben, wie sie die Person beim Öffnen sieht,
+ * dazu Bankverbindung (Klartext nur mit Bankdaten-Berechtigung – maskiert in der Route) und der Versand laut Mailprotokoll
+ * (nur Zeit, Empfänger, Betreff, Status – der Mailtext enthält den Link und wird nicht angezeigt).
+ */
+export async function angebotDetail(db: Db, id: number) {
+  const [r] = await db`select id, nummer, status, daten, email, gueltig_bis::text as gueltig_bis, erstellt_am, erstellt_von, geoeffnet_am, versuche, antrag,
+                              (select s.nummer from tco.schnupper s where s.adrnr = a.schnupper_adrnr) as schnupper
+                         from tco.vertragsangebote a where id = ${id}`;
+  if (!r) throw new BusinessError('Vertragsangebot nicht gefunden.', 404);
+  const d = r.daten as AngebotDaten;
+  let zahler: string | null = null;
+  if (d.bank?.zahler_adrnr) {
+    const [z] = await db`select vorname, nachname from tco.mitglieder where adrnr = ${d.bank.zahler_adrnr}`;
+    zahler = z ? condense(`${leer(z.vorname)} ${leer(z.nachname)}`) : d.bank.zahler_adrnr;
+  }
+  const versand = await db`select zeit, an, betreff, status, fehler from core.mail_protokoll
+                            where anwendung = 'Mitgliedsantrag' and objekt = ${r.nummer} order by zeit desc limit 20`;
+  return {
+    id: Number(r.id), nummer: r.nummer as string,
+    status: (r.status === 'OFFEN' && r.gueltig_bis < heute() ? 'ABGELAUFEN' : r.status) as string,
+    email: r.email as string, gueltig_bis: r.gueltig_bis as string, erstellt_am: r.erstellt_am, erstellt_von: (r.erstellt_von as string | null) ?? null,
+    geoeffnet_am: r.geoeffnet_am ?? null, versuche: Number(r.versuche ?? 0), antrag: (r.antrag as string | null) ?? null, schnupper: (r.schnupper as string | null) ?? null,
+    personen: d.personen.map((p) => ({ ...p, adrnr: p.adrnr ?? null, email: p.email ?? null, telefon: p.telefon ?? null, art: p.art ?? null, training: p.training ?? [] })),
+    strasse: d.strasse, plz: d.plz, ort: d.ort, telefon: d.telefon ?? null, erziehungsberechtigt: d.erziehungsberechtigt ?? null,
+    eintritt: d.eintritt, bemerkung: d.bemerkung ?? null, vertragsaenderung: !!d.vertragsaenderung,
+    bank: d.bank ? { kontoinhaber: d.bank.kontoinhaber, iban: d.bank.iban, bic: d.bank.bic ?? null, zahler } : null,
+    versand: versand.map((v) => ({ zeit: v.zeit, an: v.an as string, betreff: v.betreff as string, status: v.status as string, fehler: (v.fehler as string | null) ?? null })),
+  };
+}
