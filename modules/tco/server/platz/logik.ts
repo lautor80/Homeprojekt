@@ -728,7 +728,7 @@ export async function abosLesen(db: Db) {
 }
 
 /** Termin eines Abos in der Platzverwaltung (Abos → Termine) */
-export interface AboTermin {
+export interface AboSerienTermin {
   datum: string; wochentag: string; von: string; bis: string; storniert: boolean; storno_grund: string | null; vergangen: boolean;
   /** in einer Hallenrechnung enthalten bzw. als abgerechnet gekennzeichnet – Storno nur mit Kommentar */
   abgerechnet: boolean; rechnung: string | null;
@@ -739,7 +739,7 @@ export interface AboTermin {
  * stornieren lassen, ohne das Abo zu beenden. Gilt für alle Abos – auch mit Einzelabrechnung und aus EP3 übernommene.
  */
 export async function aboTermineLesen(db: Db, bid: string): Promise<{
-  bid: string; kunde: string; platz: string; einzelabrechnung: boolean; quelle: 'Portal' | 'EP3'; termine: AboTermin[];
+  bid: string; kunde: string; platz: string; einzelabrechnung: boolean; quelle: 'Portal' | 'EP3'; termine: AboSerienTermin[];
 }> {
   const rows = await db`
     select b.datum::text as datum, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis, b.status, b.kunde, b.platz, b.quelle,
