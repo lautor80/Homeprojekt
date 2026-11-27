@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AnalyticalTable, Button, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { Button, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -50,7 +51,7 @@ export function SperrenPage() {
         Aufheben nur, wenn sicher niemand mehr daran arbeitet – nicht gesicherte Eingaben des Benutzers können dann nicht mehr gespeichert werden.
       </MessageStrip>
       <Section title="Aktive Sperren" count={liste?.length ?? 0} flush>
-        <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 20)}
+        <ResponsiveTable columns={columns} data={liste ?? []} loading={!liste} minRows={1} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 20)}
                          noDataText="Keine aktiven Sperren" />
       </Section>
       <ConfirmDialog open={!!weg} danger title="Sperre aufheben" confirmText="Aufheben"

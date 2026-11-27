@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, BusyIndicator, Button, Input, Link, MessageStrip, Option, Select, Switch, Tab, TabContainer, Text,
+  BusyIndicator, Button, Input, Link, MessageStrip, Option, Select, Switch, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -111,7 +112,7 @@ export function Analyse() {
           <Tab data-key="tabelle" text="Trefferliste" icon="table-view" selected={tab === 'tabelle'}>
             <Section title="Mitglieder und Verträge" count={rows.length ? rows.length - 1 : 0} flush
                      status={sicht.group_by ? <Text className="portal-muted">gruppiert nach {init.gruppen.find((g) => g[0] === sicht.group_by)?.[1]}</Text> : undefined}>
-              <AnalyticalTable minRows={1} columns={columns} data={rows} loading={busy} sortable={false}
+              <ResponsiveTable minRows={1} columns={columns} data={rows} loading={busy} sortable={false}
                                visibleRows={Math.min(Math.max(rows.length, 1), 25)} noDataText="Keine Mitglieder zu dieser Auswahl"
                                withRowHighlight highlightField={(r: Record<string, any>) => r.highlight} />
             </Section>

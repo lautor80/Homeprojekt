@@ -5,6 +5,7 @@ import {
   AnalyticalTable, Button, CheckBox, Dialog, Icon, Input, Label, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Select,
   SegmentedButton, SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { FussLeiste } from '../components/DialogFuss';
 import { api } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -422,7 +423,7 @@ export function TabellenPage() {
           </div>
 
           {ansicht === 'STRUKTUR' && (
-            <AnalyticalTable columns={strukturSpalten} data={spalten} filterable sortable visibleRows={Math.min(Math.max(spalten.length, 1), 25)} minRows={1} />
+            <ResponsiveTable columns={strukturSpalten} data={spalten} filterable sortable visibleRows={Math.min(Math.max(spalten.length, 1), 25)} minRows={1} />
           )}
           {ansicht === 'DATEN' && (erg ? (
             <AnalyticalTable key={`erg-${ergNr}`} columns={ergSpalten} data={daten} loading={busy} filterable sortable groupable minRows={1}

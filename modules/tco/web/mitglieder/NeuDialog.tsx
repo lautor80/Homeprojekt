@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, Title,
+  Button, CheckBox, DatePicker, FlexBox, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text, Title,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
@@ -216,7 +217,7 @@ export function NeuDialog({ onClose }: { onClose: (adrnr: string | null, text?: 
         <Title level="H5">Verträge</Title>
         <Label>({vt.filter((x) => x.sel).length} ausgewählt)</Label>
       </FlexBox>
-      <AnalyticalTable columns={columns} data={vt} visibleRows={Math.max(vt.length, 1)} minRows={1} rowHeight={44} noDataText="Keine Vertragsarten vorhanden" />
+      <ResponsiveTable columns={columns} data={vt} visibleRows={Math.max(vt.length, 1)} minRows={1} rowHeight={44} noDataText="Keine Vertragsarten vorhanden" />
     </Dlg>
   );
 }

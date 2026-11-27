@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import {
   AnalyticalTable, BusyIndicator, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Link, MessageStrip, ObjectStatus, Option, Select, SuggestionItem, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { aktionenVorn } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -457,7 +458,7 @@ export function Checklisten() {
           oder übernimm eine Tabelle aus Excel mit „Importieren“.
         </Empty>
       ) : (
-        <AnalyticalTable minRows={1} columns={columns} data={baum} isTreeTable tableInstance={tabelle as never} reactTableOptions={tabellenOptionen}
+        <AnalyticalTable minRows={1} columns={aktionenVorn(columns)} data={baum} isTreeTable tableInstance={tabelle as never} reactTableOptions={tabellenOptionen}
                          visibleRows={Math.max(anzahlZeilen(baum), 1)} noDataText="Keine Checkliste und kein Schritt zu dieser Auswahl" />
       )}
     </div>

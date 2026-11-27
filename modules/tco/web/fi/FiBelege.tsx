@@ -4,6 +4,7 @@ import {
   AnalyticalTable, Button, DateRangePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text, Title,
 } from '@ui5/webcomponents-react';
+import { aktionenVorn } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -305,7 +306,7 @@ export function FiBelege() {
       )}
       <AnalyticalTable minRows={1}
         key={`${geladen?.von}|${geladen?.bis}|${geladen?.konto}|${tab}|${tage.length}`}
-        columns={columns}
+        columns={aktionenVorn(columns)}
         data={gefiltert}
         loading={loading}
         sortable

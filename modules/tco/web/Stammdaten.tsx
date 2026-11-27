@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Button, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, SegmentedButton,
+  Button, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, SegmentedButton,
   SegmentedButtonItem, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -223,7 +224,7 @@ export function ImportTab() {
         <Button design="Emphasized" icon="upload" loading={busy} disabled={!files.length || fertig || rows.every((r) => !r.tabelle)} onClick={ausfuehren}>Übernehmen</Button>
         {files.length > 0 && <Button design="Transparent" onClick={() => { setFiles([]); setRows([]); setFertig(false); }}>Auswahl leeren</Button>}
       </FlexBox>
-      <AnalyticalTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} noDataText="Noch keine Dateien ausgewählt" loading={busy} />
+      <ResponsiveTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} noDataText="Noch keine Dateien ausgewählt" loading={busy} />
       <Panel headerText="Aktueller Bestand" fixed style={{ marginTop: '1rem' }}>
         <FlexBox wrap="Wrap" style={{ gap: '0.25rem 1.5rem' }}>
           {bestand.map((b) => (

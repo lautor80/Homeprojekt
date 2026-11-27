@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
+  BusyIndicator, Button, CheckBox, Dialog, Label, MessageStrip, ObjectStatus, Text, Title,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '../api';
@@ -135,7 +136,7 @@ export function InitialeZuordnung({ onClose, onDone }: { onClose: () => void; on
           Vorschläge für aktive Benutzer ohne Mitglied bzw. EP3-Kunde – eindeutige Treffer nach gleicher E-Mail, gleichem Benutzernamen oder gleichem Namen.
           Häkchen entfernen, um einen Vorschlag auszulassen. Einzelne Zuordnungen lassen sich jederzeit im Benutzer-Dialog ändern.
         </Text>
-        <AnalyticalTable columns={columns} data={liste ?? []} loading={!liste} minRows={2} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 14)} rowHeight={52}
+        <ResponsiveTable columns={columns} data={liste ?? []} loading={!liste} minRows={2} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 14)} rowHeight={52}
                          noDataText="Keine Vorschläge – alle Benutzer sind zugeordnet oder es gibt keine eindeutigen Treffer" />
         <CheckBox text="Benutzern mit Mitglied die Rolle „Mitglied“ geben (Meine Mitgliedschaft + Einzelbuchung; ersetzt „Hallennutzer“)" checked={rolle} onChange={(e) => setRolle(e.target.checked)} />
       </div>

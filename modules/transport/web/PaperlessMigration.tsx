@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnalyticalTable, Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Input, Link, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -179,7 +180,7 @@ export function PaperlessMigration() {
               {z.fertig} übertragen · {z.offen} offen{z.fehler ? ` · ${z.fehler} Fehler` : ''}{z.ohneAuftrag ? ` · ${z.ohneAuftrag} ohne Auftrag` : ''}{z.unbekannt ? ` · ${z.unbekannt} unbekannter Auftrag` : ''}{z.typ ? ` · ${z.typ} Dateityp nicht möglich` : ''}
             </Text>
           </div>
-          <AnalyticalTable minRows={1} columns={columns} data={sichtbar} visibleRows={Math.min(Math.max(sichtbar.length, 1), 15)} rowHeight={56}
+          <ResponsiveTable minRows={1} columns={columns} data={sichtbar} visibleRows={Math.min(Math.max(sichtbar.length, 1), 15)} rowHeight={56}
                            scaleWidthMode="Smart" noDataText="Keine Dateien für diesen Filter" />
         </Section>
       )}

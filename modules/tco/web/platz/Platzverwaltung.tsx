@@ -5,6 +5,7 @@ import {
   AnalyticalTable, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus,
   Option, SegmentedButton, SegmentedButtonItem, Select, StepInput, Switch, Tab, TabContainer, Text, TextArea, Title, ToggleButton, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { aktionenVorn, ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -191,7 +192,7 @@ function Plaetze({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         </Button>
         <Button icon="add" design="Emphasized" onClick={() => setForm({ ...NEU, sort: (plaetze?.length ?? 0) + 1 })}>Platz anlegen</Button>
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={plaetze ?? []} loading={!plaetze} visibleRows={Math.max(plaetze?.length ?? 0, 1)}
+      <AnalyticalTable minRows={1} columns={aktionenVorn(columns)} data={plaetze ?? []} loading={!plaetze} visibleRows={Math.max(plaetze?.length ?? 0, 1)}
                        selectionMode="Multiple" selectionBehavior="RowSelector"
                        reactTableOptions={{ getRowId: (r: Platz) => String(r.id), autoResetSelectedRows: false }}
                        onRowSelect={(e) => setAuswahl(Object.keys(e.detail.selectedRowIds).filter((k) => e.detail.selectedRowIds[k]).map(Number))}
@@ -900,7 +901,7 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         {gefiltert && <Button design="Transparent" icon="clear-filter" onClick={() => setFilter({ ...LEERER_ABO_FILTER })}>Filter zurücksetzen</Button>}
       </div>
       {t.leiste}
-      <AnalyticalTable minRows={1} columns={t.spalten} data={zeilen} loading={!abos} visibleRows={Math.max(zeilen.length, 1)} {...t.tabelle} reactTableOptions={tabellenOptionen}
+      <AnalyticalTable minRows={1} columns={aktionenVorn(t.spalten)} data={zeilen} loading={!abos} visibleRows={Math.max(zeilen.length, 1)} {...t.tabelle} reactTableOptions={tabellenOptionen}
                        noDataText={gefiltert || stand.filter.length ? 'Kein Abo passt zum Filter.' : 'Keine laufenden oder kürzlich beendeten Abos'} />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Laufende Abos – im Portal angelegte und aus EP3 übernommene (Herkunft) – sowie beendete der letzten 180 Tage. Neue Abos legt der Hallenwart über die Serienbuchung an
@@ -973,7 +974,7 @@ export function BenutzerZuordnung({ aktion }: { aktion: Aktion }) {
         <ToolbarSpacer />
         <Input placeholder="Suchen" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '14rem' }} />
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={liste} loading={!d} visibleRows={Math.min(Math.max(liste.length, 1), 15)} rowHeight={48} noDataText="Keine Benutzer" />
+      <ResponsiveTable minRows={1} columns={columns} data={liste} loading={!d} visibleRows={Math.min(Math.max(liste.length, 1), 15)} rowHeight={48} noDataText="Keine Benutzer" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Gebucht wird immer für das Mitglied, dem der angemeldete Benutzer zugeordnet ist (dieselbe Zuordnung wie bei „Meine Trainingszeiten“).
         Zusätzlich braucht der Benutzer die Berechtigung „Platz buchen“ (Rollenpflege → Tennishalle).

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Button, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, SegmentedButton,
+  Button, ComboBox, ComboBoxItem, Dialog, Input, Label, MessageStrip, ObjectStatus, RadioButton, SegmentedButton,
   SegmentedButtonItem, Text, TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -114,7 +115,7 @@ export function Registrierungen({ aktion, onOffen }: { aktion: Aktion; onOffen: 
         <ToolbarSpacer />
         <Button design="Transparent" icon={alle ? 'filter' : 'history'} onClick={() => setAlle(!alle)}>{alle ? 'Nur offene' : 'Auch erledigte'}</Button>
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={liste ?? []} loading={!liste} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 15)} rowHeight={52} noDataText="Keine Registrierungen" />
+      <ResponsiveTable minRows={1} columns={columns} data={liste ?? []} loading={!liste} visibleRows={Math.min(Math.max(liste?.length ?? 0, 1), 15)} rowHeight={52} noDataText="Keine Registrierungen" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Freigegebene Benutzer erhalten ausschließlich die Systemrolle „Hallennutzer“ – nur eigene Einzelbuchungen. Weitere Rechte vergibt nur die Benutzerpflege.
         Mit nachgewiesenem EP3-Konto gilt das bisherige EP3-Kennwort weiter; sonst das bei der Registrierung gewählte.
@@ -227,7 +228,7 @@ export function Ep3Abgleich({ aktion }: { aktion: Aktion }) {
         <Button design="Transparent" icon={nurOffen ? 'filter' : 'clear-filter'} onClick={() => setNurOffen(!nurOffen)}>{nurOffen ? 'Nur ohne Zuordnung' : 'Alle'}</Button>
         <Input placeholder="Suchen" value={suche} onInput={(e) => setSuche(e.target.value)} style={{ width: '14rem' }} />
       </Toolbar>
-      <AnalyticalTable minRows={1} columns={columns} data={zeilen} loading={!liste} visibleRows={Math.min(Math.max(zeilen.length, 1), 20)} rowHeight={52} noDataText="Keine EP3-Kunden ohne Zuordnung" />
+      <ResponsiveTable minRows={1} columns={columns} data={zeilen} loading={!liste} visibleRows={Math.min(Math.max(zeilen.length, 1), 20)} rowHeight={52} noDataText="Keine EP3-Kunden ohne Zuordnung" />
       <MessageStrip hideCloseButton style={{ marginTop: '0.5rem' }}>
         Der Kundenimport legt für alle EP3-Kunden mit mindestens einer Buchung in den letzten 12 Monaten automatisch Hallennutzer an (sichtbar unter Administration → Benutzer und Rechte → Benutzer): Anmeldename = E-Mail-Adresse (sonst EP3-Alias), Anzeigename „Nachname, Vorname“,
         Rolle Hallennutzer; Mitglieder werden über ZUID, E-Mail oder Name zugeordnet. Wurde das EP3-Kennwort importiert (Spalte PW), gilt es weiter – sonst muss es in der

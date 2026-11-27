@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Varianten, feld } from '@core/components/Varianten';
 import { AnalyticalTable, Button, CheckBox, Icon, Input, Link, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { aktionenVorn } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { dat, eur } from '../util';
 import type { Person, Vertrag } from './typen';
@@ -183,7 +184,7 @@ export function VertragsBaum<V extends Vertrag>({
         <Button icon="expand-all" design="Transparent" tooltip="Alles aufklappen" onClick={() => tabelle.current?.toggleAllRowsExpanded?.(true)} />
         <Button icon="collapse-all" design="Transparent" tooltip="Alles zuklappen" onClick={() => tabelle.current?.toggleAllRowsExpanded?.(false)} />
       </div>
-      <AnalyticalTable minRows={1} columns={columns} data={baum} isTreeTable tableInstance={tabelle as never} reactTableOptions={tabellenOptionen}
+      <AnalyticalTable minRows={1} columns={aktionenVorn(columns)} data={baum} isTreeTable tableInstance={tabelle as never} reactTableOptions={tabellenOptionen}
                        visibleRows={Math.max(anzahlZeilen(baum), 1)} noDataText={such ? 'Keine Person und kein Vertrag zu dieser Suche' : 'Keine Verträge'} />
     </div>
   );

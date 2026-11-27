@@ -3,6 +3,7 @@ import { feld } from '@core/components/Varianten';
 import {
   AnalyticalTable, BusyIndicator, Button, Label, MessageStrip, ObjectStatus, Option, Select, Switch, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -111,7 +112,7 @@ export function Forecast() {
           </Section>
 
           <Section title="Beiträge je Monat" flush>
-            <AnalyticalTable minRows={1} columns={monatCols} data={d.monate} visibleRows={12} rowHeight={40} />
+            <ResponsiveTable minRows={1} columns={monatCols} data={d.monate} visibleRows={12} rowHeight={40} />
           </Section>
 
           <Section title="Beiträge je Vertragsart" count={d.knoten.filter((k) => k.ebene === 2).length} flush

@@ -57,7 +57,8 @@ test('Keine UI5-Bar mehr als Knopfleiste – überall FussLeiste (bricht um)', (
 
 test('Kartenansicht der Tabellen (Telefon): Spalten ohne Überschrift bleiben als Aktionszeile, Zeilenklick wirkt', () => {
   const q = readFileSync(join(wurzel, 'web/src/components/ResponsiveTable.tsx'), 'utf8');
-  assert.match(q, /const aktionen = columns\.slice\(titelSpalten\)\.filter\(/);
+  assert.match(q, /const aktionen = mitText\.slice\(ende\)\.filter\(\(x\) => !x\.text && typeof x\.c\.Cell === 'function'\)/);
+  assert.match(q, /Weitere \{Math\.min\(SEITE/, 'lange Listen: Karten in Seiten');
   assert.match(q, /portal-rt__aktionen/);
   assert.match(q, /onRowClick/);
   assert.match(readFileSync(join(wurzel, 'web/src/styles.css'), 'utf8'), /\.portal-rt__aktionen \{[^}]*flex-wrap: wrap/);
@@ -66,4 +67,14 @@ test('Kartenansicht der Tabellen (Telefon): Spalten ohne Überschrift bleiben al
 test('Telefon: Tabellen ohne eigenen Höhenrahmen (kein Rollbereich im Rollbereich)', () => {
   const css = readFileSync(join(wurzel, 'web/src/styles.css'), 'utf8');
   assert.match(css, /@media \(max-width: 700px\) \{ :root, ui5-dialog \{ --portal-tabhoehe: none; \} \}/);
+});
+
+test('Tabellen mit Zeilenaktionen nutzen die Kartenansicht (Aktionen auf dem Telefon ohne seitliches Rollen)', () => {
+  // Stichproben aus der Mobil-Prüfung: Aktionsspalte stand ganz rechts in 600–1500 px breiten Tabellen
+  for (const [datei, anzahl] of [['modules/tco/web/mahnung/Mahnwesen.tsx', 8], ['modules/tco/web/zuwendung/Zuwendung.tsx', 4], ['modules/tco/web/mitglieder/MeineMitgliedschaft.tsx', 1],
+    ['modules/tco/web/platz/FesteBelegungen.tsx', 1], ['web/src/pages/BackupPage.tsx', 1], ['web/src/pages/SperrenPage.tsx', 1]] as const) {
+    const q = readFileSync(join(wurzel, datei), 'utf8');
+    assert.equal((q.match(/<ResponsiveTable\b/g) ?? []).length, anzahl, datei);
+    assert.ok(!/<AnalyticalTable\b/.test(q), `${datei}: noch eine reine AnalyticalTable`);
+  }
 });

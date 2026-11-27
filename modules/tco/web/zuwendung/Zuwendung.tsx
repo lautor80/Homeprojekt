@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
+  Button, CheckBox, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text,
 } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -262,19 +263,19 @@ export function Zuwendung() {
           )}
 
           <Section title="Spender" count={v?.spender.length ?? 0} flush>
-            <AnalyticalTable minRows={1} columns={spalten} data={v?.spender ?? []} loading={busy} visibleRows={Math.min(Math.max(v?.spender.length ?? 1, 1), 15)} filterable sortable
+            <ResponsiveTable minRows={1} columns={spalten} data={v?.spender ?? []} loading={busy} visibleRows={Math.min(Math.max(v?.spender.length ?? 1, 1), 15)} filterable sortable
                              noDataText={`Für ${jahr} gibt es keine Spenden mit Spender.`} />
           </Section>
 
           {v && v.ohne_spender.length > 0 && (
             <Section title="Buchungen ohne erkannten Spender" count={v.ohne_spender.length} flush>
-              <AnalyticalTable minRows={1} data={v.ohne_spender} visibleRows={Math.min(v.ohne_spender.length, 10)}
+              <ResponsiveTable minRows={1} data={v.ohne_spender} visibleRows={Math.min(v.ohne_spender.length, 10)}
                                columns={quellSpalten((q) => (darf.ausfuehren ? <Button design="Transparent" icon="person-placeholder" onClick={() => setZuordnen(q)}>Zuordnen</Button> : null))} />
             </Section>
           )}
           {v && v.ausgeschlossen.length > 0 && (
             <Section title="Ausgeschlossen (werden nicht bestätigt)" count={v.ausgeschlossen.length} flush>
-              <AnalyticalTable minRows={1} data={v.ausgeschlossen} visibleRows={Math.min(v.ausgeschlossen.length, 8)}
+              <ResponsiveTable minRows={1} data={v.ausgeschlossen} visibleRows={Math.min(v.ausgeschlossen.length, 8)}
                                columns={quellSpalten((q) => (darf.ausfuehren ? <Button design="Transparent" icon="undo" onClick={() => wiederAufnehmen(q)}>Wieder aufnehmen</Button> : null))} />
             </Section>
           )}
@@ -287,7 +288,7 @@ export function Zuwendung() {
             </Button>
             <Text className="portal-muted portal-small">Bestätigungen sind unveränderlich – Korrektur nur über Storno (mit Grund) und Neuausstellung. Das PDF bleibt auch nach dem Storno abrufbar.</Text>
           </FlexBox>
-          <AnalyticalTable minRows={1} columns={listSpalten} data={liste} loading={busy} visibleRows={Math.min(Math.max(liste.length, 1), 18)} filterable sortable noDataText={`Für ${jahr} wurde noch keine Bestätigung ausgestellt.`} />
+          <ResponsiveTable minRows={1} columns={listSpalten} data={liste} loading={busy} visibleRows={Math.min(Math.max(liste.length, 1), 18)} filterable sortable noDataText={`Für ${jahr} wurde noch keine Bestätigung ausgestellt.`} />
         </Tab>
       </TabContainer>
 

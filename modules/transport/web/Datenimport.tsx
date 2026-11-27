@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AnalyticalTable, Button, CheckBox, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { Button, CheckBox, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '@core/components/ResponsiveTable';
 import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
@@ -129,7 +130,7 @@ export function Datenimport({ onDone }: { onDone?: () => void }) {
 
       <Section title="Prüfung" count={files.length ? `${files.length} Datei(en)` : undefined} flush
                actions={files.length ? <Button design="Transparent" icon="clear-all" onClick={leeren}>Dateien entfernen</Button> : undefined}>
-        <AnalyticalTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} rowHeight={52}
+        <ResponsiveTable minRows={1} columns={columns} data={rows} visibleRows={Math.max(rows.length, 1)} rowHeight={52}
                          scaleWidthMode="Smart" noDataText="Noch keine Dateien eingelesen" />
       </Section>
 

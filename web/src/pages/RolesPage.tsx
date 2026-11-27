@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
 import { AnalyticalTable, Button, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Tag, Title, Toolbar, ToolbarSpacer } from '@ui5/webcomponents-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { FussLeiste } from '../components/DialogFuss';
 import { useNavigate } from 'react-router-dom';
 import { fmtDateTime } from '../components/ChangeHistory';
@@ -134,7 +135,7 @@ export function RolesPage() {
       </>}
     >
       {roles.error && <MessageStrip design="Negative">{roles.error}</MessageStrip>}
-      <AnalyticalTable
+      <ResponsiveTable
         columns={columns}
         data={roles.data ?? []}
         loading={roles.loading}
