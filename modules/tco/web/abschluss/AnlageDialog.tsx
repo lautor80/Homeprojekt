@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, DatePicker, Dialog, Input, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { Button, DatePicker, Dialog, Input, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -53,7 +54,7 @@ export function AnlageDialog({ anlnr, edit: darf, onClose }: { anlnr: number | n
   return (
     <Dialog open headerText={anlnr ? `Anlageobjekt ${anlnrText(anlnr)} bearbeiten` : 'Neues Anlageobjekt'} onClose={() => onClose(false)}
             style={{ width: 'min(44rem, 95vw)' }}
-            footer={<Bar startContent={anlnr ? <ChangeHistoryButton objectType="ANLAGE" objectKey={String(anlnr)} /> : undefined} endContent={<>
+            footer={<FussLeiste startContent={anlnr ? <ChangeHistoryButton objectType="ANLAGE" objectKey={String(anlnr)} /> : undefined} endContent={<>
               {edit && anlnr && <Button design="Negative" icon="delete" disabled={busy} onClick={() => setFrage(true)}>Löschen</Button>}
               {edit && <Button design="Emphasized" icon="save" disabled={busy} onClick={speichern}>Speichern</Button>}
               <Button onClick={() => onClose(false)}>{edit ? 'Abbrechen' : 'Schließen'}</Button>

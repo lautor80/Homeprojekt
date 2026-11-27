@@ -18,5 +18,5 @@
 .portal-ih__zeile:hover td { background: var(--sapList_Hover_Background, #eaecee); }
 .portal-ih__liste thead tr:nth-child(2) th { padding-top: 0; font-weight: normal; }
 /* über der Liste stehen Varianten- und Filterleiste (Meldungen zusätzlich Reiter): Rahmen entsprechend niedriger, sonst rollt die Seite mit */
-@media (min-height: 34.01rem) { .portal-ih__rahmen:has(> .portal-ih__liste) { --portal-tabhoehe: calc(100vh - 21rem); } }
+@media (min-height: 34.01rem) and (min-width: 701px) { .portal-ih__rahmen:has(> .portal-ih__liste) { --portal-tabhoehe: calc(100vh - 21rem); } }
 .portal-ih__liste td { vertical-align: top; }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bar, Button, Dialog, MessageStrip } from '@ui5/webcomponents-react';
+import { Button, Dialog, MessageStrip } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { BelegAblage } from './BelegAblage';
 import { KEIN_FRACHTAUFTRAG, belegErkennen } from './api';
 import { belegMerken, type BelegState } from './vormerkung';
@@ -38,7 +39,7 @@ export function BelegNeuDialog({ open, onClose }: { open: boolean; onClose: () =
   if (!open) return null;
   return (
     <Dialog open headerText="Frachtauftrag aus Beleg" style={{ width: 'min(40rem, 96vw)' }} onClose={schliessen}
-            footer={<Bar endContent={<Button onClick={schliessen}>Abbrechen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={schliessen}>Abbrechen</Button>} />}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {meldung && <MessageStrip design={meldung.fehler ? 'Negative' : 'Critical'} hideCloseButton>{meldung.text}</MessageStrip>}
         <BelegAblage onDatei={(f) => { void lesen(f); }} laedt={laedt} />

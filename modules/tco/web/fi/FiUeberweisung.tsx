@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Input, Label, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { usePdf } from '@core/components/PdfDialog';
@@ -83,7 +84,7 @@ export function UeberweisungDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog open headerText={wahl ? `Überweisung an Einreicher – ${wahl.titel || `Beleg ${wahl.id}`}` : 'Überweisungen an Einreicher'} resizable
             style={{ width: 'min(84rem, 98vw)', height: wahl ? '92vh' : undefined }} onClose={onClose}
-            footer={<Bar startContent={wahl ? <Button icon="nav-back" onClick={() => { setWahl(null); setZ(null); }}>Zur Liste</Button> : undefined}
+            footer={<FussLeiste startContent={wahl ? <Button icon="nav-back" onClick={() => { setWahl(null); setZ(null); }}>Zur Liste</Button> : undefined}
                          endContent={<>
                            {wahl && <Button design="Emphasized" icon="accept" disabled={busy} tooltip="Setzt in Paperless das Feld „Status“ des Belegs auf „gezahlt“"
                                             onClick={() => bestaetigen(wahl)}>Überweisung bestätigen</Button>}

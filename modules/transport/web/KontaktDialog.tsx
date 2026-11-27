@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, ComboBox, ComboBoxItem, Dialog, Input, MessageStrip, Title } from '@ui5/webcomponents-react';
+import { Button, ComboBox, ComboBoxItem, Dialog, Input, MessageStrip, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api, ApiError } from '@core/api';
 import { FieldBox, FormGrid, TextField } from '@core/components/FormFields';
 import { toast } from '@core/toast';
@@ -84,7 +85,7 @@ export function KontaktDialog({ modus, auswahl, start, vorlage, onClose, onSaved
   return (
     <Dialog open={!!modus} headerText={edit ? 'Kontakt bearbeiten' : 'Neuer Kontakt'} onClose={onClose}
             style={{ width: 'min(56rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon={edit ? 'save' : 'add-contact'} loading={busy} disabled={edit && !sperre.eigen} onClick={save}>{edit ? 'Speichern' : 'Anlegen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -154,7 +155,7 @@ export function WertDialog({ typ, onClose, onSaved }: { typ: string | null; onCl
   }
   return (
     <Dialog open={!!typ} headerText={titel} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={!text.trim()} onClick={save}>Anlegen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

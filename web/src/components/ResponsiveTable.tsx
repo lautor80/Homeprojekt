@@ -32,9 +32,14 @@ function zelle(c: AnalyticalTableColumnDefinition, r: Record<string, any>): Reac
   return value == null || value === '' ? '–' : String(value);
 }
 
+/** Bedienelemente in einer Karte: ein Tipp darauf öffnet nicht zusätzlich die Zeile */
+const BEDIENBAR = 'ui5-button, ui5-checkbox, ui5-switch, ui5-input, ui5-select, ui5-link, ui5-step-input, ui5-date-picker, ui5-combobox, ui5-multi-combobox, ui5-segmented-button, ui5-toggle-button, ui5-radio-button, ui5-textarea, a, button, input, select, textarea, label';
+
 /**
  * Tabelle, die auf dem Handy als Kartenliste erscheint: Überschrift aus der/den ersten Spalte(n),
  * darunter je Spalte „Bezeichnung: Wert“ in zwei Spalten. Auf größeren Bildschirmen eine normale AnalyticalTable.
+ * Spalten ohne Überschrift (Aktionen, Auswahlkästchen) stehen in der Karte unten als eigene, umbrechende Zeile –
+ * früher fielen sie weg, die Funktion fehlte auf dem Telefon. `onRowClick` wirkt auch auf die Karte.
  */
 export function ResponsiveTable({ columns, data, titelSpalten = 1, hervorheben, noDataText, ...rest }: Props) {
   const klein = useKlein();
@@ -42,10 +47,17 @@ export function ResponsiveTable({ columns, data, titelSpalten = 1, hervorheben, 
   if (!data.length) return <div className="portal-empty" style={{ padding: '0.75rem 1rem' }}>{noDataText ?? 'Keine Daten'}</div>;
   const kopf = columns.slice(0, titelSpalten);
   const felder = columns.slice(titelSpalten).filter((c) => typeof c.Header === 'string' && c.Header);
+  // Spalten ohne Text-Überschrift mit eigener Zelle: Aktionen, Auswahl – in der Karte als eigene Zeile
+  const aktionen = columns.slice(titelSpalten).filter((c) => !(typeof c.Header === 'string' && c.Header) && typeof c.Cell === 'function');
+  const klick = (rest as { onRowClick?: (e: never) => void }).onRowClick;
   return (
     <div className="portal-rt">
       {data.map((r, i) => (
-        <div key={i} className={`portal-rt__karte${hervorheben?.(r) ? ' portal-rt__karte--hervor' : ''}`}>
+        <div key={i} className={`portal-rt__karte${hervorheben?.(r) ? ' portal-rt__karte--hervor' : ''}${klick ? ' portal-rt__karte--klick' : ''}`}
+             onClick={klick ? (e) => {
+               if ((e.target as HTMLElement).closest?.(BEDIENBAR)) return;
+               klick({ detail: { row: { original: r, values: r, index: i } } } as never);
+             } : undefined}>
           <div className="portal-rt__titel">{kopf.map((c, j) => <span key={j}>{zelle(c, r)}</span>)}</div>
           <div className="portal-rt__felder">
             {felder.map((c, j) => (
@@ -55,6 +67,7 @@ export function ResponsiveTable({ columns, data, titelSpalten = 1, hervorheben, 
               </div>
             ))}
           </div>
+          {aktionen.length > 0 && <div className="portal-rt__aktionen">{aktionen.map((c, j) => <span key={j}>{zelle(c, r)}</span>)}</div>}
         </div>
       ))}
     </div>

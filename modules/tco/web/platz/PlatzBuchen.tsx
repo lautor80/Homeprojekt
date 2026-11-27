@@ -2,9 +2,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Tab, TabContainer, Text, ToggleButton,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Empty, Section } from '@core/components/Section';
@@ -464,7 +465,7 @@ function AboTerminStorno({ abo, termin, onClose, onFertig }: { abo: Abo; termin:
   };
   return (
     <Dialog open headerText="Abo-Termin stornieren" onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Negative" disabled={busy} onClick={los}>Termin stornieren</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -495,7 +496,7 @@ function PreislisteDialog({ datum, onClose }: { datum: string; onClose: () => vo
   for (let m = von0; m <= bis0; m += 60) stunden.push(m);
   return createPortal(
     <Dialog open stretch={klein()} headerText={woche ? `Preisliste Halle – Woche vom ${dat(woche[0].datum)}` : 'Preisliste Halle'} onClose={onClose} style={{ width: 'min(64rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {can('tco.halle:display') && <Button icon="lead" onClick={() => navigate('/tco/hallenpreise')}>Hallenpreise öffnen</Button>}
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </>} />}>
@@ -772,7 +773,7 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
 
   return createPortal(
     <Dialog open stretch={klein()} headerText={e.bid ? 'Buchung ändern' : festArt ? `${FEST_ARTEN[festArt]} eintragen` : 'Platz buchen'} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {e.bid && <Button design="Negative" icon="cancel" disabled={busy} onClick={() => setStorno(true)}>Stornieren</Button>}
               <Button design="Emphasized" disabled={busy || !bereit || sperre.zustand !== 'eigen'} onClick={speichern}>{e.bid ? 'Speichern' : festArt ? 'Eintragen' : 'Verbindlich buchen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
@@ -915,7 +916,7 @@ function BuchungDialog({ entwurf, verwalten, onClose, onFertig }: { entwurf: Ent
       </div>
       {storno && createPortal(
         <Dialog open headerText="Buchung stornieren" onClose={() => setStorno(false)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Negative" disabled={busy} onClick={() => ausfuehren(() => api.del<{ text: string }>(`${PB}/buchungen/${e.bid}`))}>Stornieren</Button>
                   <Button onClick={() => setStorno(false)}>Abbrechen</Button>
                 </>} />}>

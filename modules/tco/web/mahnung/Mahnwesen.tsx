@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
+  AnalyticalTable, Button, CheckBox, DatePicker, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -380,7 +381,7 @@ function HistorieDialog({ posten, onClose }: { posten: Posten; onClose: () => vo
   ];
   return (
     <Dialog open headerText={`Mahnhistorie ${posten.art_txt} ${posten.nr} · ${posten.name}`} style={{ width: 'min(64rem, 98vw)' }} onClose={onClose}
-            footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Rechnungsdatum {dat(posten.datum)} · fällig {dat(posten.faellig)} · offen {eur(posten.betrag)}{posten.betrag < posten.gesamt ? ` von ${eur(posten.gesamt)}` : ''}</Text>
       <AnalyticalTable minRows={1} columns={spalten} data={z ?? []} visibleRows={zeilenHoehe(z?.length ?? 0)} loading={!z} noDataText="Noch nicht gemahnt" />
@@ -394,7 +395,7 @@ function LaufDialog({ id, spalten, onClose }: { id: number; spalten: AnalyticalT
   useEffect(() => { api.get<Lauf>(`${M}/laeufe/${id}`).then(setL).catch((e) => setError((e as Error).message)); }, [id]);
   return (
     <Dialog open headerText={`Mahnlauf ${id}${l ? ` vom ${zeit(l.gestartet_am)}` : ''}`} style={{ width: 'min(72rem, 98vw)' }} onClose={onClose}
-            footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
       {l && (
         <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
@@ -436,7 +437,7 @@ function SperreDialog({ posten, onClose }: { posten?: Posten; onClose: (ok: bool
   const bereit = grund.trim().length >= 3 && (ebene === 'RECHNUNG' ? !!nr.trim() : !!person);
   return (
     <Dialog open headerText="Mahnsperre setzen" style={{ width: 'min(36rem, 96vw)' }} onClose={() => onClose(false)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="locked" loading={busy} disabled={!bereit} onClick={sichern}>Sperre setzen</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="locked" loading={busy} disabled={!bereit} onClick={sichern}>Sperre setzen</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <FormGrid columns={1}>
         <FieldBox label="Sperre gilt für">
@@ -487,7 +488,7 @@ function ZustellungDialog({ posten, onClose }: { posten: Posten; onClose: (ok: b
   }
   return (
     <Dialog open headerText={`Zustellung vermerken: ${posten.naechste_name} · ${posten.name}`} style={{ width: 'min(34rem, 96vw)' }} onClose={() => onClose(false)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="accept" loading={busy} onClick={sichern}>Als zugestellt vermerken</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="accept" loading={busy} onClick={sichern}>Als zugestellt vermerken</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {error && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <Text style={{ display: 'block', marginBottom: '0.75rem' }}>{posten.art_txt} {posten.nr} über {eur(posten.betrag)}. Mit dem Vermerk gilt die Stufe als zugestellt; die Frist für die nächste Stufe beginnt heute.</Text>
       <FormGrid columns={1}>
@@ -625,7 +626,7 @@ export function MahnKapitel() {
           </Section>
         </>
       )}
-      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" loading={busy} disabled={!c} onClick={sichern}>Sichern</Button>} />
+      <FussLeiste style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" loading={busy} disabled={!c} onClick={sichern}>Sichern</Button>} />
     </div>
   );
 }

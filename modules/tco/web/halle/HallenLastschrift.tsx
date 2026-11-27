@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus,
+  AnalyticalTable, Button, CheckBox, ComboBox, ComboBoxItem, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, ObjectStatus,
   Tab, TabContainer, Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -197,7 +198,7 @@ function MandatErfassen({ personen, onClose, onGespeichert }: { personen: { adrn
   }
   return (
     <Dialog open headerText="Mandat erfassen (Papiermandat)" onClose={onClose} style={{ width: 'min(34rem, 96vw)' }}
-            footer={<Bar endContent={<><Button onClick={onClose}>Abbrechen</Button><Button design="Emphasized" loading={busy} disabled={!adrnr} onClick={speichern}>Speichern</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button onClick={onClose}>Abbrechen</Button><Button design="Emphasized" loading={busy} disabled={!adrnr} onClick={speichern}>Speichern</Button></>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(8rem, auto) 1fr', gap: '0.5rem 0.75rem', alignItems: 'center' }}>
         <Label required>Person</Label>

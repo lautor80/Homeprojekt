@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { GR, type Gruppe } from './typen';
 import '../halle.css';
@@ -72,7 +73,7 @@ export function BerechnenDialog({ gruppe, onClose }: { gruppe: Gruppe | null; on
   return createPortal(
     <Dialog open stretch={klein()} headerText={gruppe ? `Neu berechnen – ${gruppe.pfad}` : 'Neu berechnen – alle Gruppen'} onClose={() => fertig && onClose()}
             style={klein() ? undefined : { width: 'min(64rem, 96vw)' }}
-            footer={<Bar endContent={<Button design="Emphasized" disabled={!fertig} onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" disabled={!fertig} onClick={onClose}>Schließen</Button>} />}>
       <div className="portal-az">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         {!fertig && <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} />}
@@ -119,7 +120,7 @@ export function RegelwerkDialog({ gruppen, gruppe, onClose }: { gruppen: Gruppe[
   return createPortal(
     <Dialog open stretch={klein()} headerText={gruppe ? `Regelwerk – ${gruppe.pfad}` : 'Regelwerk der Mitgliedergruppen'} onClose={() => !busy && onClose(angewendet)} className="portal-az__dialog"
             style={klein() ? undefined : { width: 'min(72rem, 96vw)', height: '88vh' }}
-            footer={<Bar startContent={geaendert ? <ObjectStatus state="Critical">Änderungen noch nicht gesichert</ObjectStatus> : undefined}
+            footer={<FussLeiste startContent={geaendert ? <ObjectStatus state="Critical">Änderungen noch nicht gesichert</ObjectStatus> : undefined}
                          endContent={<>
                            <Button design="Emphasized" disabled={busy || !geaendert || fehler} onClick={sichern}>Regeln sichern</Button>
                            <Button icon="show" disabled={busy || geaendert || !liste.length} tooltip="Zeigt, was sich ändern würde – ohne etwas zu ändern" onClick={() => anwenden(true)}>Vorschau</Button>

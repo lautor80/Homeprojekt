@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, CheckBox, FlexBox, Input, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { Button, CheckBox, FlexBox, Input, Label, MessageStrip, Option, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { FieldBox, FormGrid } from '@core/components/FormFields';
 import { Section } from '@core/components/Section';
@@ -236,7 +237,7 @@ export function MailWorkflowsTab() {
         </MessageStrip>
       </Section>
 
-      <Bar endContent={<Button design="Emphasized" icon="save" disabled={ro || busy || !schwelleOk || !warnOk || !tageOk
+      <FussLeiste endContent={<Button design="Emphasized" icon="save" disabled={ro || busy || !schwelleOk || !warnOk || !tageOk
         || !e.eingang.ordnerZugeordnet.trim() || !e.eingang.ordnerPruefen.trim() || !postfaecherOk || !versandOk} onClick={speichern}>Sichern</Button>} />
     </>
   );

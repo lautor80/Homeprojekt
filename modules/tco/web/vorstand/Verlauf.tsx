@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bar, BusyIndicator, Button, Dialog, Input, Link, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Input, Link, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api, qs } from '@core/api';
 import { toast } from '@core/toast';
 import { dat } from '../util';
@@ -104,7 +105,7 @@ export function VerkettenDialog({ ziel, onClose, onFertig }: { ziel: { top: numb
 
   return (
     <Dialog open headerText="Mit einem früheren Punkt verketten" onClose={onClose} style={{ width: 'min(40rem, 96vw)' }}
-            footer={<Bar endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Abbrechen</Button>} />}>
       <Text className="portal-muted" style={{ display: 'block', marginBottom: '0.5rem' }}>
         Gehört der Punkt zu einem Thema, das schon in einer anderen Sitzung besprochen wurde, hier den Punkt dort wählen.
         Danach steht der gesamte Verlauf bei jedem Punkt des Themas.

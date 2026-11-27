@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
+  BusyIndicator, Button, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -105,7 +106,7 @@ export function TurnierStammDialog({ turnier, onClose, onGespeichert }: { turnie
 
   return (
     <Dialog open headerText={turnier ? 'Turnier bearbeiten' : 'Neues Turnier'} style={{ width: 'min(32rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="save" disabled={!ok} loading={busy} onClick={sichern}>{turnier ? 'Sichern' : 'Anlegen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

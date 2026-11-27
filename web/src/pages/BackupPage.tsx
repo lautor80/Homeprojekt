@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, Icon, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
+  AnalyticalTable, Button, Icon, CheckBox, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, ProgressIndicator, RadioButton, Switch, Text, TextArea, TimePicker, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, ApiError } from '../api';
 import { AppPage } from '../components/AppPage';
@@ -318,7 +319,7 @@ function RuecksicherungDialog({ datei, onClose, onDone }: { datei: Datei; onClos
   const fertig = !!ergebnis;
   return (
     <Dialog open headerText={`Zurücksichern – ${datei.name}`} style={{ width: 'min(48rem, 96vw)' }} onClose={fertig && ergebnis.abgemeldet ? () => window.location.reload() : onClose}
-            footer={<Bar endContent={fertig
+            footer={<FussLeiste endContent={fertig
               ? <Button design="Emphasized" onClick={() => (ergebnis.abgemeldet ? window.location.reload() : onClose())}>{ergebnis.abgemeldet ? 'Neu anmelden' : 'Schließen'}</Button>
               : <>
                   <Button design="Negative" icon="undo" disabled={busy || !p || !wahl.length || best.trim().toUpperCase() !== 'WIEDERHERSTELLEN'} onClick={ausfuehren}>Jetzt zurücksichern</Button>
@@ -382,7 +383,7 @@ function XmlDialog({ datei, onClose, laden }: { datei: Datei; onClose: () => voi
   }
   return (
     <Dialog open headerText={`Als XML (ZIP) – ${datei.name}`} style={{ width: 'min(30rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="download" disabled={!pw || busy} onClick={los}>Herunterladen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

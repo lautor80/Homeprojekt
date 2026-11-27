@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, BusyIndicator, CheckBox, Dialog, MessageStrip, Text, Title } from '@ui5/webcomponents-react';
+import { Button, BusyIndicator, CheckBox, Dialog, MessageStrip, Text, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from '../components/DialogFuss';
 import { api } from '../api';
 import { useSession } from '../session';
 import { toast } from '../toast';
@@ -45,7 +46,7 @@ export function PushDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open headerText="Benachrichtigungen" onClose={onClose} style={{ width: 'min(560px, 95vw)' }}
-            footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.75rem' }}>{error}</MessageStrip>}
       {!stand && !error && <BusyIndicator active delay={0} style={{ width: '100%', padding: '2rem 0' }} />}
       {stand && (

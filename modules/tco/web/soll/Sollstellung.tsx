@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer,
+  AnalyticalTable, Button, CheckBox, DatePicker, FlexBox, Label, Link, MessageStrip, ObjectStatus, Panel, Tab, TabContainer,
   Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -160,7 +161,7 @@ export function GlaeubigerKapitel() {
                        setFrage(false); setBusy(true); setError(null);
                        try { toast((await api.post<{ text: string }>(`${S}/cfg/vereinskonto`)).text, 5000); await laden(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
                      }} />
-      <Bar endContent={<>
+      <FussLeiste endContent={<>
         <ChangeHistoryButton objectType="SOLL_CFG" objectKey="TCO" />
         {!ro && <Button design="Emphasized" loading={busy} onClick={save}>Speichern</Button>}
       </>} />

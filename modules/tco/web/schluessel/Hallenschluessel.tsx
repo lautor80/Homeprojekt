@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem,
   Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { useFunktion } from '@core/session';
 import { AppPage } from '@core/components/AppPage';
@@ -232,7 +233,7 @@ function AusgabeDialog({ daten, onClose }: { daten: Daten; onClose: Fertig }) {
   }
   return (
     <Dialog open headerText="Hallenschlüssel ausgeben" style={{ width: 'min(34rem, 96vw)' }} onClose={() => onClose()}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="key" loading={busy} disabled={!person} onClick={sichern}>Ausgabe erfassen</Button><Button onClick={() => onClose()}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="key" loading={busy} disabled={!person} onClick={sichern}>Ausgabe erfassen</Button><Button onClick={() => onClose()}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label showColon required>Empfänger (Mitglied oder Kunde)</Label>
@@ -280,7 +281,7 @@ function RueckgabeDialog({ z, daten, onClose }: { z: Zeile; daten: Daten; onClos
   }
   return (
     <Dialog open headerText={`Rückgabe: ${z.person}`} style={{ width: 'min(32rem, 96vw)' }} onClose={() => onClose()}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="undo" loading={busy} onClick={sichern}>Rückgabe erfassen</Button><Button onClick={() => onClose()}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="undo" loading={busy} onClick={sichern}>Rückgabe erfassen</Button><Button onClick={() => onClose()}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Text>Schlüssel ausgegeben am {dat(z.datum)}{z.tco_name ? ` von ${z.tco_name}` : ''}{z.schluessel_nr ? ` · Schlüssel ${z.schluessel_nr}` : ''}.</Text>
@@ -322,7 +323,7 @@ function DetailDialog({ id, darf, onClose, onRueckgabe }: { id: number; darf: Da
   }
   return (
     <Dialog open headerText={d ? `${d.nummer} · ${d.art_txt} · ${d.person}` : 'Hallenschlüssel'} style={{ width: 'min(50rem, 98vw)' }} onClose={() => onClose(geaendert)}
-            footer={<Bar startContent={d ? <Button icon="print" onClick={() => setPdf(true)}>Beleg</Button> : undefined}
+            footer={<FussLeiste startContent={d ? <Button icon="print" onClick={() => setPdf(true)}>Beleg</Button> : undefined}
                          endContent={<Button onClick={() => onClose(geaendert)}>Schließen</Button>} />}>
       {error && <MessageStrip design="Negative" onClose={() => setError(null)} style={{ marginBottom: '0.5rem' }}>{error}</MessageStrip>}
       {!d ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : (
@@ -378,7 +379,7 @@ function DetailDialog({ id, darf, onClose, onRueckgabe }: { id: number; darf: Da
       <PdfDialog url={pdf && d ? `${S}/${id}/beleg.pdf` : null} title={`Beleg ${d?.nummer ?? ''}`} filename={`Hallenschluessel_${d?.nummer ?? ''}.pdf`} onClose={() => setPdf(false)} />
       {storno !== null && (
         <Dialog open headerText="Vorgang stornieren" style={{ width: 'min(26rem, 96vw)' }} onClose={() => setStorno(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Negative" disabled={storno.trim().length < 3} onClick={() => { const grund = storno; setStorno(null); aktion(() => api.post<{ text: string; hinweise: string[] }>(`${S}/${id}/storno`, { grund })); }}>Stornieren</Button>
                   <Button onClick={() => setStorno(null)}>Abbrechen</Button>
                 </>} />}>
@@ -476,7 +477,7 @@ function AltdatenDialog({ onClose }: { onClose: Fertig }) {
   }
   return (
     <Dialog open headerText={fertig ? 'Altdaten – Dokumente ablegen' : p ? 'Altdaten – Vorschau' : 'Altdaten einfügen (Copy & Paste)'} style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose(fertig ? {} : undefined)}
-            footer={fertig ? <Bar endContent={<Button design="Emphasized" onClick={() => onClose({})}>Fertig</Button>} /> : <Bar endContent={<>
+            footer={fertig ? <FussLeiste endContent={<Button design="Emphasized" onClick={() => onClose({})}>Fertig</Button>} /> : <FussLeiste endContent={<>
               {!p && <Button design="Emphasized" icon="show" loading={busy} disabled={!text.trim()} onClick={() => vorschau({})}>Vorschau</Button>}
               {p && <Button icon="nav-back" disabled={busy} onClick={zurueck}>Zurück zum Einfügen</Button>}
               {p && <Button design="Emphasized" icon="accept" loading={busy} disabled={!gewaehlt.length} onClick={uebernehmen}>
@@ -609,7 +610,7 @@ function AbgleichDialog({ onClose }: { onClose: () => void }) {
   };
   return (
     <Dialog open headerText="Abgleich mit Kontobewegungen (FI-Belege)" style={{ width: 'min(78rem, 98vw)' }} onClose={() => onClose()}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" loading={busy} disabled={!paare.length} onClick={() => tun(() => api.post(`${S}/abgleich/verknuepfen`, { paare }))}>{paare.length} Verknüpfung(en) übernehmen</Button>
               <Button onClick={() => onClose()}>Schließen</Button>
             </>} />}>
@@ -711,7 +712,7 @@ function NachbuchenDialog({ onClose }: { onClose: Fertig }) {
   const ok = !!d && !d.konto_fehlt && gewaehlt.length > 0 && wert > 0 && !!f.ausgegeben_von.trim() && bestaetigt;
   return (
     <Dialog open headerText="Historische Ausgaben buchen" style={{ width: 'min(70rem, 98vw)' }} onClose={() => onClose()}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="accept" loading={busy} disabled={!ok} onClick={ausfuehren}>{gewaehlt.length} Ausgabe(n) fortschreiben · {neu.length} FI-Buchung(en) erzeugen</Button>
               <Button onClick={() => onClose()}>Abbrechen</Button>
             </>} />}>
@@ -787,7 +788,7 @@ export function SchluesselKapitel() {
           <Input value={c.kassenkonto} maxlength={10} onInput={(e) => setC({ ...c, kassenkonto: e.target.value })} />
         </div>
       )}
-      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!c} onClick={sichern}>Sichern</Button>} />
+      <FussLeiste style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!c} onClick={sichern}>Sichern</Button>} />
     </div>
   );
 }
@@ -805,7 +806,7 @@ function VarianteDialog({ ansicht, vorschlag, admin, onClose }: { ansicht: Ansic
   }
   return (
     <Dialog open headerText="Variante sichern" style={{ width: 'min(26rem, 96vw)' }} onClose={() => onClose(null)}
-            footer={<Bar endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" icon="save" onClick={sichern}>Sichern</Button><Button onClick={() => onClose(null)}>Abbrechen</Button></>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         <Label showColon required>Name</Label>

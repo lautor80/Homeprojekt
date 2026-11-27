@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text, Title,
+  AnalyticalTable, Button, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Panel, Select, Switch, Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -98,7 +99,7 @@ export function BeitragDialog({ art, edit: darf, onClose }: { art: string | null
   const titel = !d ? 'Beitrag' : d.neu ? 'Neuer Beitrag' : `Beitrag ${d.art} – ${d.bezeichnung}`;
   return createPortal(
     <Dialog open headerText={titel} onClose={() => onClose()} resizable style={{ width: 'min(860px, 95vw)' }}
-            footer={<Bar startContent={d && !d.neu ? <ChangeHistoryButton objectType="BEITRAG" objectKey={d.art} /> : undefined}
+            footer={<FussLeiste startContent={d && !d.neu ? <ChangeHistoryButton objectType="BEITRAG" objectKey={d.art} /> : undefined}
                          endContent={<>
                            {edit && <Button design="Emphasized" disabled={!d || busy} onClick={sichern}>Sichern</Button>}
                            <Button onClick={() => onClose()}>{edit ? 'Abbrechen' : 'Schließen'}</Button>

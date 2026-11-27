@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option,
   SegmentedButton, SegmentedButtonItem, Select, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -431,7 +432,7 @@ function Ablesungen({ zeilen, stand, onGeaendert, onError }: { zeilen: ZaehlerZe
                      onConfirm={standLoeschen} onCancel={() => setLoeschen(null)} />
       {foto && (
         <Dialog open headerText={`${foto.zaehler.nummer} · Ablesung vom ${dat(foto.datum)}`} onClose={() => setFoto(null)} style={{ width: 'min(52rem, 96vw)' }}
-                footer={<Bar endContent={<Button onClick={() => setFoto(null)}>Schließen</Button>} />}>
+                footer={<FussLeiste endContent={<Button onClick={() => setFoto(null)}>Schließen</Button>} />}>
           <img src={FOTO_URL(foto.id)} alt={`Zählwerk am ${dat(foto.datum)}`} style={{ display: 'block', maxWidth: '100%', maxHeight: '70vh', margin: '0 auto' }} />
         </Dialog>
       )}
@@ -565,7 +566,7 @@ export function ZaehlerStammDialog({ zaehler, onClose, onGesichert }: { zaehler:
   const ve = f.verbrauchseinheit.trim() || f.einheit.trim();
   return (
     <Dialog open headerText={zaehler ? `Zähler ${zaehler.nummer} ändern` : 'Zähler anlegen'} onClose={onClose} style={{ width: 'min(48rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="save" loading={busy} onClick={sichern}>Sichern</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

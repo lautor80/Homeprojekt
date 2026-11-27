@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, Button, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Text, Title } from '@ui5/webcomponents-react';
+import { Button, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Text, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api, qs } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
@@ -36,7 +37,7 @@ export function PeriodenDialog({ open, jahr: start, edit, onClose, onChanged }: 
 
   return createPortal(<>
     <Dialog open={open} headerText="FI-Perioden" onClose={onClose} style={{ width: 'min(44rem, 95vw)' }}
-            footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       <FlexBox alignItems="Center" justifyContent="SpaceBetween" style={{ marginBottom: '0.5rem' }}>
         <Button icon="navigation-left-arrow" design="Transparent" tooltip="Vorjahr" onClick={() => setJahr(jahr - 1)} />
         <Title level="H4">Geschäftsjahr {jahr}</Title>

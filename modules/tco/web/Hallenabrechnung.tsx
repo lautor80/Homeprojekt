@@ -3,10 +3,11 @@ import { feld } from '@core/components/Varianten';
 import { useNavigate } from 'react-router-dom';
 import { AblageDialog } from '@core/ablage';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, DatePicker, DateRangePicker, Dialog, FlexBox, Icon, Input, Label, Link, List, ListItemCustom, Tag,
+  AnalyticalTable, BusyIndicator, Button, DatePicker, DateRangePicker, Dialog, FlexBox, Icon, Input, Label, Link, List, ListItemCustom, Tag,
   ListItemGroup, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus, Option, Panel, SegmentedButton, SegmentedButtonItem,
   Select, Switch, Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import '@ui5/webcomponents-fiori/dist/illustrations/NoData.js';
 import '@ui5/webcomponents-fiori/dist/illustrations/SimpleEmptyList.js';
@@ -762,7 +763,7 @@ function ProtokollDialog({ p, onClose }: { p: Protokoll | null; onClose: () => v
   if (!p) return null;
   return (
     <Dialog open headerText={p.titel} style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       <div className="portal-tabrahmen">
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead><tr>{['Quelle', 'Ergebnis', 'Meldung'].map((h) => <th key={h} style={{ ...zelle, borderTop: 'none', textAlign: 'left' }}><Label>{h}</Label></th>)}</tr></thead>
@@ -901,7 +902,7 @@ function Ep3ImportDialog({ onClose, onStart }: { onClose: () => void; onStart: (
   const abOk = /^\d{4}-\d{2}-\d{2}$/.test(ab);
   return (
     <Dialog open headerText="Importieren: EP3-Buchungen (n8n)" style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="download-from-cloud" disabled={modus === 'AB' && !abOk} onClick={() => onStart(modus === 'AB' ? ab : null)}>Importieren</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

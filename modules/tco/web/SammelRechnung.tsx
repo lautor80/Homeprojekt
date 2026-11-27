@@ -1,8 +1,9 @@
 import { useEffect, useState, type ClipboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text, TextArea,
+  BusyIndicator, Button, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, SegmentedButton, SegmentedButtonItem, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AuswahlBox } from '@core/components/AuswahlBox';
 import { H, RG_STATUS, eur } from './util';
@@ -154,7 +155,7 @@ export function SammelDialog({ open, onClose, onDone }: { open: boolean; onClose
 
   return createPortal(
     <Dialog open headerText="Rechnungen ohne Hallenbuchung" onClose={schliessen} style={{ width: 'min(60rem, 96vw)' }} resizable
-            footer={<Bar startContent={<Text>{aktiv.length} Person(en) · {aktiv.filter((z) => z.rgnr && z.rgnr !== 'NEU' && z.wahl !== 'NEU').length} an bestehende Rechnung · zusammen {eur(summe)}</Text>}
+            footer={<FussLeiste startContent={<Text>{aktiv.length} Person(en) · {aktiv.filter((z) => z.rgnr && z.rgnr !== 'NEU' && z.wahl !== 'NEU').length} an bestehende Rechnung · zusammen {eur(summe)}</Text>}
                          endContent={<>
                            <Button design="Emphasized" icon="create" disabled={!!busy || !posOk || sperren.length > 0}
                                    tooltip={sperren.length ? sperren.join(' ') : 'Positionen auf neue bzw. die gewählten bestehenden Rechnungen buchen'}

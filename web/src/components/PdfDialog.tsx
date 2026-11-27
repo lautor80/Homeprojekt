@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Bar, Button, Dialog, MessageStrip } from '@ui5/webcomponents-react';
+import { Button, Dialog, MessageStrip } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 import { createPortal } from 'react-dom';
 
 /** Blob mit PDF-Inhalt („%PDF-“ in den ersten 1024 Bytes) als application/pdf; sonst null */
@@ -57,8 +58,8 @@ export function PdfDialog({ url, title, filename, actions, onClose }: {
   const { blobUrl, error } = usePdf(url);
   const [dlError, setDlError] = useState<string | null>(null);
   return createPortal(
-    <Dialog open={!!url} headerText={title} onClose={onClose} resizable style={{ width: '80vw', height: '88vh' }}
-            footer={<Bar endContent={<>
+    <Dialog open={!!url} headerText={title} onClose={onClose} resizable style={{ width: 'min(72rem, 96vw)', height: '88vh' }}
+            footer={<FussLeiste endContent={<>
               {actions}
               <Button icon="download" disabled={!url} onClick={() => url && download(url, filename).catch((e) => setDlError(e.message))}>Herunterladen</Button>
               <Button onClick={onClose}>Schließen</Button>

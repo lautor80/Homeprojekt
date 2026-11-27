@@ -1,4 +1,5 @@
-import { Bar, Button, Dialog, Icon, Link, Text } from '@ui5/webcomponents-react';
+import { Button, Dialog, Icon, Link, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { toast } from '@core/toast';
 import { ERFASSEN_PFAD, QR_URL } from './format';
 import './zaehler.css';
@@ -19,7 +20,7 @@ export function QrDialog({ id, nummer, bezeichnung, standort, onClose }: { id: n
   }
   return (
     <Dialog open headerText={`QR-Code ${nummer}`} onClose={onClose} style={{ width: 'min(26rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="print" onClick={drucken}>Drucken</Button>
               <Button onClick={onClose}>Schließen</Button>
             </>} />}>

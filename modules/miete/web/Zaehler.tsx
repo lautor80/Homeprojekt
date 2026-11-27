@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Bar, Button, Dialog, MessageStrip, ObjectStatus } from '@ui5/webcomponents-react';
+import { Button, Dialog, MessageStrip, ObjectStatus } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -105,7 +106,7 @@ function ZaehlerDialog({ z, alle, einheiten, onClose }: { z: Partial<Zaehler>; a
   }
   return (
     <Dialog open headerText={z.id ? 'Zähler ändern' : 'Zähler anlegen'} style={{ width: 'min(36rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<><Button design="Emphasized" disabled={!f.bezeichnung.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+      footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!f.bezeichnung.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
       <FormGrid>
         <TextField label="Bezeichnung" required value={f.bezeichnung} onChange={(v) => setF({ ...f, bezeichnung: v })} placeholder="z. B. Heizstrom Wärmepumpe" />
@@ -137,7 +138,7 @@ function AblesungDialog({ z, onClose }: { z: Zaehler; onClose: (neu: boolean) =>
   }
   return (
     <Dialog open headerText={`Ablesung ${z.bezeichnung}`} style={{ width: 'min(30rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<><Button design="Emphasized" disabled={f.stand === '' || !f.datum} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+      footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={f.stand === '' || !f.datum} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
       <FormGrid columns={1}>
         <DatumFeld label="Datum" required value={f.datum} onChange={(v) => setF({ ...f, datum: v })} />

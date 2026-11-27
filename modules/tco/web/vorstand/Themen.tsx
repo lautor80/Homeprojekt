@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Link, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem,
+  BusyIndicator, Button, CheckBox, DatePicker, Dialog, Icon, Input, Link, MessageStrip, ObjectStatus, SegmentedButton, SegmentedButtonItem,
   SuggestionItem, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -164,7 +165,7 @@ export function ThemaDialog({ id, daten, onClose, onGeaendert }: {
   const titel = !id ? 'Thema parken' : t ? `Thema: ${t.titel}` : 'Thema';
   return (
     <Dialog open headerText={titel} onClose={onClose} style={{ width: 'min(48rem, 96vw)' }}
-            footer={<Bar
+            footer={<FussLeiste
               startContent={t ? <>
                 {darf && t.stand !== 'EINGEPLANT' && (t.stand === 'ABGESCHLOSSEN'
                   ? <Button icon="undo" disabled={busy} onClick={() => tun(() => api.post(`${VS}/themen/${t.id}/abschliessen`, { abgeschlossen: false }))}>Wieder parken</Button>
@@ -370,7 +371,7 @@ export function ThemenAuswahlDialog({ sitzungId, onClose, onFertig }: { sitzungI
   );
   return (
     <Dialog open headerText="Themen aus dem Parkplatz aufnehmen" onClose={onClose} style={{ width: 'min(40rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="add" disabled={!wahl.size || busy} onClick={uebernehmen}>{wahl.size > 1 ? `${wahl.size} Themen aufnehmen` : 'Aufnehmen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -407,7 +408,7 @@ export function TopParkenDialog({ top, onClose, onFertig }: { top: { id: number;
   }
   return (
     <Dialog open headerText="In den Themenparkplatz verschieben" onClose={onClose} style={{ width: 'min(36rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="bookmark" disabled={!ok || busy} onClick={parken}>Parken</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

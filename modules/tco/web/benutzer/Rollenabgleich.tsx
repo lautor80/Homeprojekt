@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, Dialog, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { useFunktion } from '@core/session';
 import { toast } from '@core/toast';
@@ -41,7 +42,7 @@ function RollenabgleichDialog({ onClose, onGeaendert }: { onClose: () => void; o
   }
   return (
     <Dialog open headerText="Rollen prüfen" style={{ width: 'min(48rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {v && v.aenderungen.length > 0 && !fertig && <Button design="Emphasized" icon="accept" loading={busy} onClick={anpassen}>Jetzt anpassen</Button>}
               <Button onClick={onClose}>{fertig || !v?.aenderungen.length ? 'Schließen' : 'Abbrechen'}</Button>
             </>} />}>

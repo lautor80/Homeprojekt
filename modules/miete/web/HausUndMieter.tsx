@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, Dialog, MessageStrip, ObjectStatus, Tab, TabContainer } from '@ui5/webcomponents-react';
+import { Button, Dialog, MessageStrip, ObjectStatus, Tab, TabContainer } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -83,7 +84,7 @@ function VertragDialog({ v, einheiten, onClose }: { v: Partial<Vertrag>; einheit
   }
   return (
     <Dialog open headerText={v.id ? `Mietverhältnis ${v.nummer}` : 'Mietverhältnis anlegen'} style={{ width: 'min(44rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar startContent={v.id ? <Button design="Transparent" icon="delete" onClick={() => setLoeschen(true)}>Löschen</Button> : undefined}
+      footer={<FussLeiste startContent={v.id ? <Button design="Transparent" icon="delete" onClick={() => setLoeschen(true)}>Löschen</Button> : undefined}
         endContent={<><Button design="Emphasized" disabled={!f.name.trim() || !f.einheit_id || !f.beginn} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
       <FormGrid>
@@ -120,7 +121,7 @@ function KonditionenDialog({ v, edit, onClose, onGeaendert }: { v: Vertrag; edit
   }
   return (
     <Dialog open headerText={`Miete und Abschlag – ${v.name}`} style={{ width: 'min(40rem, 95vw)' }} onClose={onClose}
-      footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+      footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
       <Tabelle schluessel={(k) => k.id} zeilen={[...v.konditionen].reverse()} spalten={[
         { titel: 'Gültig ab', wert: (k) => dat(k.gueltig_ab) },
@@ -176,7 +177,7 @@ function EinheitDialog({ e, onClose }: { e: Partial<Einheit>; onClose: (neu: boo
   }
   return (
     <Dialog open headerText={e.id ? `Wohnung ${e.kuerzel}` : 'Wohnung anlegen'} style={{ width: 'min(36rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<><Button design="Emphasized" disabled={!f.kuerzel.trim() || !f.bezeichnung.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+      footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!f.kuerzel.trim() || !f.bezeichnung.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
       <FormGrid>
         <TextField label="Kürzel" required value={f.kuerzel} onChange={(x) => setF({ ...f, kuerzel: x })} placeholder="EG" />
@@ -234,7 +235,7 @@ function KostenartDialog({ k, einheiten, zaehler, onClose }: { k: Partial<Kosten
   const summeAnteile = Object.values(f.anteile).reduce((s, p) => s + zahl(p), 0);
   return (
     <Dialog open headerText={k.id ? `Kostenart ${k.bezeichnung}` : 'Kostenart anlegen'} style={{ width: 'min(40rem, 95vw)' }} onClose={() => onClose(false)}
-      footer={<Bar endContent={<><Button design="Emphasized" disabled={!f.bezeichnung.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
+      footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!f.bezeichnung.trim()} onClick={sichern}>Sichern</Button><Button onClick={() => onClose(false)}>Abbrechen</Button></>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton style={{ marginBottom: '0.75rem' }}>{fehler}</MessageStrip>}
       <FormGrid>
         <TextField label="Bezeichnung" required value={f.bezeichnung} onChange={(x) => setF({ ...f, bezeichnung: x })} />

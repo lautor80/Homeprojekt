@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, Dialog, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text } from '@ui5/webcomponents-react';
+import { Button, Dialog, Input, Label, MessageStrip, SegmentedButton, SegmentedButtonItem, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { satzSieger } from '../../server/turnier/wertung';
 import { einzelAuswerten, ErgebnisFehler, spassAuswerten, type ErgebnisEingabeWeb, type Satz, type Spiel } from './api';
 
@@ -129,7 +130,7 @@ export function ErgebnisDialog({ offen, spiel, namenA, namenB, art, liga, onSpei
 
   return (
     <Dialog open={offen} headerText="Ergebnis eintragen" style={{ width: 'min(30rem, 98vw)' }} onClose={onSchliessen}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="save" disabled={!eingabe} loading={busy} onClick={speichern}>Speichern</Button>
               <Button onClick={onSchliessen}>Abbrechen</Button>
             </>} />}>

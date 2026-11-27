@@ -1,7 +1,8 @@
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as CellInstance } from '@ui5/webcomponents-react';
-import { AnalyticalTable, Bar, Button, Dialog, MessageStrip, Tag } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Button, Dialog, MessageStrip, Tag } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 import { api } from '../api';
 
 export interface ChangeDoc {
@@ -128,7 +129,7 @@ export function ChangeHistoryButton({ objectType, objectKey }: { objectType: str
         headerText={`Änderungshistorie ${objectKey}`}
         style={{ width: 'min(1100px, 95vw)' }}
         resizable
-        footer={<Bar endContent={<Button onClick={() => setOpen(false)}>Schließen</Button>} />}
+        footer={<FussLeiste endContent={<Button onClick={() => setOpen(false)}>Schließen</Button>} />}
       >
         {error && <MessageStrip design="Negative" hideCloseButton>{error}</MessageStrip>}
         {(() => {

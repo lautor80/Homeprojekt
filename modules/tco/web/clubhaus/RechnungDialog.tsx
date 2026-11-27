@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option, Panel, Select, Text,
+  AnalyticalTable, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option, Panel, Select, Text,
   TextArea, Title, Toolbar, ToolbarSpacer,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -127,7 +128,7 @@ export function RechnungDialog({ rgnr, jahr, edit: darf, paperless, onClose }: {
   return createPortal(
     <Dialog open headerText={rgnr ? `Getränkerechnung ${rgnr}` : 'Neue Getränkerechnung'} onClose={() => onClose(geaendert)} resizable
             style={{ width: 'min(70rem, 96vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {edit && rgnr && <Button design="Negative" icon="delete" onClick={() => setWeg(true)}>Löschen</Button>}
               {edit && <Button design="Emphasized" icon="save" loading={busy} onClick={speichern}>Speichern</Button>}
               <Button onClick={() => onClose(geaendert)}>{edit ? 'Abbrechen' : 'Schließen'}</Button>

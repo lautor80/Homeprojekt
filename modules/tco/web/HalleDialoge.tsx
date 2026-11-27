@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option,
+  BusyIndicator, Button, CheckBox, Dialog, FlexBox, Input, Label, Link, MessageStrip, Option,
   Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { H, RG_STATUS, dat, eur, type PaperlessInfo, type PersonDetail, type Position, type Rechnung } from './util';
 
@@ -88,7 +89,7 @@ export function PositionAendernDialog({ rgnr, position, onClose, onSaved }: { rg
 
   return portal(
     <Dialog open={!!position && !!rgnr} headerText={`Position ${position?.rgpos ?? ''} ändern`} onClose={onClose} style={{ width: 'min(34rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" loading={busy} onClick={save}>Übernehmen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -158,7 +159,7 @@ export function PositionDialog({ open, rgnr, onClose, onSaved }: { open: boolean
 
   return portal(
     <Dialog open={open} headerText={`Neue Position zu ${rgnr ?? ''}`} onClose={onClose} style={{ width: 'min(34rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" loading={busy} disabled={!key} onClick={save}>Übernehmen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -267,7 +268,7 @@ export function MailDialog({ rgnrs, detail, onClose, onDone }: { rgnrs: string[]
 
   return portal(
     <Dialog open={!!rgnrs} headerText="Rechnung per E-Mail senden" onClose={onClose} style={{ width: 'min(46rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="paper-plane" loading={busy} disabled={!auswahl.length || !an} onClick={senden}>{entwurf ? 'Entwurf ablegen' : 'Senden'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -341,7 +342,7 @@ export function WhatsAppDialog({ rgnrs, detail, onClose, onDone }: { rgnrs: stri
   return portal(
     <Dialog open={!!rgnrs} headerText={ergebnis ? 'WhatsApp-Versand bestätigen' : 'Rechnung per WhatsApp senden'} onClose={onClose}
             style={{ width: 'min(46rem, 95vw)' }}
-            footer={<Bar endContent={ergebnis ? <>
+            footer={<FussLeiste endContent={ergebnis ? <>
               <Button design="Emphasized" icon="accept" loading={busy} onClick={bestaetigen}>Gesendet – als versendet markieren</Button>
               <Button icon="refresh" onClick={() => window.open(ergebnis.url, '_blank')}>WhatsApp erneut öffnen</Button>
               <Button onClick={() => { onClose(); }}>Nicht gesendet</Button>
@@ -377,7 +378,7 @@ export function MailtextDialog({ rgnr, onClose }: { rgnr: string | null; onClose
   const mailto = t ? `mailto:${t.an}?subject=${encodeURIComponent(t.betreff)}&body=${encodeURIComponent(t.text)}` : '';
   return portal(
     <Dialog open={!!rgnr} headerText={`E-Mail-Text zu Rechnung ${rgnr ?? ''}`} onClose={onClose} style={{ width: 'min(44rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {t?.an && <Button icon="email" onClick={() => { window.location.href = mailto; }}>Im Mailprogramm öffnen</Button>}
               <Button design="Emphasized" onClick={onClose}>Schließen</Button>
             </>} />}>
@@ -399,7 +400,7 @@ export function ZahlungenDialog({ rechnung, onClose }: { rechnung: Rechnung | nu
   const r = rechnung;
   return portal(
     <Dialog open={!!r} headerText={`Zahlungen zu Rechnung ${r?.rgnr_txt ?? ''}`} onClose={onClose} style={{ width: 'min(36rem, 95vw)' }}
-            footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       {r && (
         <FlexBox direction="Column" style={{ gap: '0.5rem' }}>
           <FlexBox justifyContent="SpaceBetween"><Text>Rechnungsbetrag</Text><Text>{eur(r.betrag)}</Text></FlexBox>
@@ -419,7 +420,7 @@ export function ZahlungenDialog({ rechnung, onClose }: { rechnung: Rechnung | nu
 export function VersionenDialog({ info, onClose }: { info: PaperlessInfo | null; onClose: () => void }) {
   return portal(
     <Dialog open={!!info} headerText={`Paperless-Dokument ${info?.doknr ?? ''} – Fassungen`} onClose={onClose} style={{ width: 'min(32rem, 95vw)' }}
-            footer={<Bar endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
       {(info?.versionen ?? []).map((v, i) => (
         <FlexBox key={v.id} justifyContent="SpaceBetween" style={{ padding: '0.25rem 0' }}>
           <Link onClick={() => window.open(`${H}/paperless/${v.id}/pdf${v.isRoot ? '' : `?root=${Number(info?.doknr)}`}`, '_blank')}>{v.isRoot ? 'Original' : v.label || `Fassung ${i + 1}`}</Link>

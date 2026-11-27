@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  Bar, Button, BusyIndicator, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
+  Button, BusyIndicator, DatePicker, Dialog, Input, Label, Link, MessageStrip, ObjectStatus, Option, Select, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { PdfDialog } from '@core/components/PdfDialog';
@@ -131,7 +132,7 @@ export function SchnupperVerwaltung() {
       <PdfDialog url={pdf?.url ?? null} title={pdf?.titel ?? 'Schnuppertraining'} filename={`${pdf?.titel ?? 'Schnuppertraining'}.pdf`} onClose={() => setPdf(null)} />
       {link && (
         <Dialog open headerText="Beitrittslink" onClose={() => setLink(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button icon="copy" onClick={() => { navigator.clipboard?.writeText(link).then(() => toast('Link kopiert.')).catch(() => undefined); }}>Kopieren</Button>
                   <Button design="Emphasized" onClick={() => setLink(null)}>Schließen</Button>
                 </>} />}>
@@ -156,7 +157,7 @@ function BearbeitenDialog({ z, status, onClose, onDone }: { z: Zeile; status: Re
   }
   return (
     <Dialog open headerText={`${z.nummer} · ${z.vorname} ${z.nachname}`} style={{ width: 'min(30rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="save" loading={busy} onClick={sichern}>Sichern</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

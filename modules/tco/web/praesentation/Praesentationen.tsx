@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bar, BusyIndicator, Button, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea, Title,
+  BusyIndicator, Button, Dialog, FlexBox, Icon, Input, Label, MessageStrip, ObjectStatus, Option, Select, Tab, TabContainer, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -284,7 +285,7 @@ function UploadDialog({ onClose, onFertig }: { onClose: () => void; onFertig: (i
   }
   return (
     <Dialog open headerText="PowerPoint-Vorlage hochladen" style={{ width: 'min(32rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy || !name.trim() || !datei} onClick={hochladen}>Hochladen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>

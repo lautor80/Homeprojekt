@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Bar, BusyIndicator, Button, Dialog, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Attribute, Attributes } from '@core/components/Attributes';
@@ -176,7 +177,7 @@ export function ZaehlerDetail() {
                      onConfirm={standLoeschen} onCancel={() => setLoeschen(null)} />
       {foto && (
         <Dialog open headerText={`Foto der Ablesung vom ${dat(foto.datum)}`} onClose={() => setFoto(null)} style={{ width: 'min(52rem, 96vw)' }}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button icon="action" onClick={() => window.open(FOTO_URL(foto.id), '_blank', 'noopener')}>In neuem Tab</Button>
                   <Button onClick={() => setFoto(null)}>Schließen</Button>
                 </>} />}>

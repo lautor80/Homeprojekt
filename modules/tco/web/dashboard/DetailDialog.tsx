@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  Bar, BusyIndicator, Button, ComboBox, ComboBoxItem, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Text,
+  BusyIndicator, Button, ComboBox, ComboBoxItem, DatePicker, Dialog, Label, MessageStrip, ObjectStatus, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
 import { toast } from '@core/toast';
@@ -58,7 +59,7 @@ export function DetailDialog({ kpiKey, jahr, edit, onClose }: Props) {
 
   return (
     <Dialog open headerText={d?.title ?? 'Details'} onClose={() => onClose(geaendert)} resizable style={{ width: 'min(60rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {bsw && edit && <Button design="Positive" icon="accept" disabled={!gewaehlt.length || busy} onClick={() => setFrage(true)}>Ausgewählte wechseln</Button>}
               <Button design="Emphasized" onClick={() => onClose(geaendert)}>Schließen</Button>
             </>} />}>

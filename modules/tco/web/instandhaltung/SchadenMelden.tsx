@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Bar, BusyIndicator, Button, Dialog, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
+  BusyIndicator, Button, Dialog, Label, MessageStrip, ObjectStatus, Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { Section } from '@core/components/Section';
@@ -176,7 +177,7 @@ export function SchadenMelden() {
 
       {frage && (
         <Dialog open headerText="Schon bekannt?" onClose={() => setFrage(false)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" onClick={senden}>Trotzdem melden</Button>
                   <Button onClick={() => setFrage(false)}>Abbrechen</Button>
                 </>} />}>

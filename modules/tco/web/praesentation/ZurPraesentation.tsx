@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bar, Button, CheckBox, Dialog, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Dialog, MessageStrip, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@core/api';
 import { useCan } from '@core/session';
@@ -53,7 +54,7 @@ function Auswahl({ bereich, onClose }: { bereich: string; onClose: () => void })
   const art = { KPI: 'Kennzahl', DIAGRAMM: 'Diagramm', TABELLE: 'Tabelle' };
   return createPortal(
     <Dialog open headerText={`Zur Präsentation – ${bereich}`} style={{ width: 'min(30rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy || !wahl.size} onClick={() => hinzu(false)}>Hinzufügen</Button>
               <Button disabled={busy || !wahl.size} onClick={() => hinzu(true)}>Hinzufügen und öffnen</Button>
               <Button onClick={onClose}>Abbrechen</Button>

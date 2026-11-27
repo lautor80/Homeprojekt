@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Bar, BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, SegmentedButton, SegmentedButtonItem,
+  BusyIndicator, Button, DatePicker, Dialog, Icon, Input, Label, Link, MessageStrip, ObjectStatus, Option, RadioButton, SegmentedButton, SegmentedButtonItem,
   Select, SuggestionItem, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -328,7 +329,7 @@ export function Sitzung() {
       {/* ---- Dialoge */}
       {kopf && (
         <Dialog open headerText="Kopfdaten" onClose={() => setKopf(null)} style={{ width: 'min(44rem, 96vw)' }}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={!kopf.titel.trim() || busy} onClick={async () => { if (await tun(() => api.put(`${VS}/sitzungen/${s.id}`, kopf))) setKopf(null); }}>Sichern</Button><Button onClick={() => setKopf(null)}>Abbrechen</Button></>} />}>
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!kopf.titel.trim() || busy} onClick={async () => { if (await tun(() => api.put(`${VS}/sitzungen/${s.id}`, kopf))) setKopf(null); }}>Sichern</Button><Button onClick={() => setKopf(null)}>Abbrechen</Button></>} />}>
           <FormGrid>
             <FieldBox label="Titel" required><Input value={kopf.titel} onInput={(e) => setKopf({ ...kopf, titel: e.target.value })} /></FieldBox>
             <FieldBox label="Art">
@@ -351,7 +352,7 @@ export function Sitzung() {
 
       {top && (
         <Dialog open headerText={top.id ? 'Tagesordnungspunkt' : 'Neuer Tagesordnungspunkt'} onClose={() => setTop(null)} style={{ width: 'min(50rem, 96vw)' }}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={!top.titel.trim() || busy} onClick={async () => {
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!top.titel.trim() || busy} onClick={async () => {
                   const ok = await tun(() => (top.id ? api.put(`${VS}/tops/${top.id}`, top) : api.post(`${VS}/sitzungen/${s.id}/tops`, top)));
                   if (ok) setTop(null);
                 }}>Sichern</Button><Button onClick={() => setTop(null)}>Abbrechen</Button></>} />}>
@@ -365,7 +366,7 @@ export function Sitzung() {
 
       {eintrag && (
         <Dialog open headerText={`${eintrag.id ? '' : 'Neue '}${eintrag.art === 'BESCHLUSS' ? 'Beschluss' : eintrag.art === 'AUFGABE' ? 'Aufgabe' : 'Info'}`} onClose={() => setEintrag(null)} style={{ width: 'min(44rem, 96vw)' }}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={!eintrag.text.trim() || busy} onClick={async () => {
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!eintrag.text.trim() || busy} onClick={async () => {
                   const body = { art: eintrag.art, text: eintrag.text, ja: zahlOderNull(eintrag.ja), nein: zahlOderNull(eintrag.nein), enthaltung: zahlOderNull(eintrag.enthaltung),
                     ergebnis: eintrag.ergebnis || null, verantwortlich: eintrag.verantwortlich, faellig: eintrag.faellig || null };
                   const ok = await tun(() => (eintrag.id ? api.put(`${VS}/eintraege/${eintrag.id}`, body) : api.post(`${VS}/tops/${eintrag.top_id}/eintraege`, body)));
@@ -398,7 +399,7 @@ export function Sitzung() {
 
       {gast && (
         <Dialog open headerText="Gast" onClose={() => setGast(null)} style={{ width: 'min(30rem, 96vw)' }}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={!gast.name.trim() || busy} onClick={async () => { if (await tun(() => api.post(`${VS}/sitzungen/${s.id}/gaeste`, gast))) setGast(null); }}>Eintragen</Button><Button onClick={() => setGast(null)}>Abbrechen</Button></>} />}>
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!gast.name.trim() || busy} onClick={async () => { if (await tun(() => api.post(`${VS}/sitzungen/${s.id}/gaeste`, gast))) setGast(null); }}>Eintragen</Button><Button onClick={() => setGast(null)}>Abbrechen</Button></>} />}>
           <FormGrid columns={1}>
             <FieldBox label="Name" required><Input value={gast.name} onInput={(e) => setGast({ ...gast, name: e.target.value })} /></FieldBox>
             <FieldBox label="Funktion / Anlass"><Input value={gast.rolle} placeholder="z. B. Jugendtrainer, zu TOP 4" onInput={(e) => setGast({ ...gast, rolle: e.target.value })} /></FieldBox>
@@ -408,7 +409,7 @@ export function Sitzung() {
 
       {link && (
         <Dialog open headerText={`Link hinzufügen${link.top_id ? ` – TOP ${s.tops.find((t) => t.id === link.top_id)?.nr ?? ''}` : ''}`} onClose={() => setLink(null)} style={{ width: 'min(36rem, 96vw)' }}
-                footer={<Bar endContent={<><Button design="Emphasized" disabled={!link.url.trim() || busy} onClick={async () => {
+                footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={!link.url.trim() || busy} onClick={async () => {
                   const ok = await tun(() => api.post(`${VS}/sitzungen/${s.id}/links`, link));
                   if (ok) setLink(null);
                 }}>Hinzufügen</Button><Button onClick={() => setLink(null)}>Abbrechen</Button></>} />}>
@@ -438,7 +439,7 @@ function VeranstaltungDialog({ s, events, onClose, onSetzen }: { s: SitzungDetai
   const [id, setId] = useState<number | null>(s.event?.id ?? frei.find((e) => tagIso(e.beginn) === s.datum)?.id ?? frei[0]?.id ?? null);
   return (
     <Dialog open headerText="Veranstaltung" onClose={onClose} style={{ width: 'min(40rem, 96vw)' }}
-            footer={<Bar endContent={<><Button design="Emphasized" disabled={wahl === 'VORHANDEN' && !id} onClick={() => onSetzen(wahl === 'VORHANDEN' ? { event_id: id } : wahl === 'NEU' ? { anlegen: true } : {})}>Übernehmen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
+            footer={<FussLeiste endContent={<><Button design="Emphasized" disabled={wahl === 'VORHANDEN' && !id} onClick={() => onSetzen(wahl === 'VORHANDEN' ? { event_id: id } : wahl === 'NEU' ? { anlegen: true } : {})}>Übernehmen</Button><Button onClick={onClose}>Abbrechen</Button></>} />}>
       <div className="portal-vs__radios">
         <RadioButton name="vs-ev" text="vorhandene Veranstaltung verknüpfen" disabled={!frei.length} checked={wahl === 'VORHANDEN'} onChange={() => setWahl('VORHANDEN')} />
         {wahl === 'VORHANDEN' && (

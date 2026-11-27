@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, CheckBox, Dialog, FlexBox, Input, Label, MessageStrip, RadioButton, Text, Title } from '@ui5/webcomponents-react';
+import { Button, CheckBox, Dialog, FlexBox, Input, Label, MessageStrip, RadioButton, Text, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { TCO } from '../util';
@@ -61,7 +62,7 @@ export function ZahlartWaechter() {
   return (
     <Dialog open headerText="Zahlart für deine Hallenrechnungen" style={{ width: 'min(38rem, 96vw)' }}
             onBeforeClose={(e) => { if (offen) e.preventDefault(); }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Transparent" onClick={spaeter} disabled={busy}>Später entscheiden</Button>
               <Button design="Emphasized" icon="accept" loading={busy} disabled={wahl === 'LASTSCHRIFT' && !zustimmung} onClick={speichern}>
                 {wahl === 'LASTSCHRIFT' ? 'Mandat erteilen' : 'Weiter per Überweisung'}

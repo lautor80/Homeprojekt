@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Link, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
+  Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Link, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
@@ -70,7 +71,7 @@ export function FirmaTab({ nurLogo = false }: { nurLogo?: boolean }) {
     }
   }
   const fuss = (
-    <Bar style={{ marginTop: '1rem' }} endContent={<>
+    <FussLeiste style={{ marginTop: '1rem' }} endContent={<>
       <ChangeHistoryButton objectType="FIRMA" objectKey="1" />
       <Button design="Emphasized" icon="save" loading={busy} disabled={!sperre.eigen} onClick={save}>Sichern</Button>
     </>} />
@@ -227,7 +228,7 @@ function ProdukteTab() {
           <Empty>Noch keine Produkte – über „Produkt hinzufügen“ anlegen oder mit dem SAP-Import (ZEU_PRODUKTE) übernehmen.</Empty>
         )}
       </Section>
-      <Bar endContent={<Button design="Emphasized" icon="save" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
+      <FussLeiste endContent={<Button design="Emphasized" icon="save" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
     </div>
   );
 }
@@ -334,7 +335,7 @@ function WerteEinfuegen({ typ, vorhanden, onClose, onDone }: {
 
   return (
     <Dialog open={!!typ} headerText={`${typ ? WERTE_TITEL[typ] : ''}: Werte einfügen`} onClose={onClose} style={{ width: 'min(44rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" icon="paste" loading={busy} disabled={!neu || zuLang > 0} onClick={save}>{neu ? `${neu} Wert(e) anlegen` : 'Anlegen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -413,7 +414,7 @@ export function MailtexteTab() {
           </Section>
         ))}
       </div>
-      <Bar endContent={<Button design="Emphasized" icon="save" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
+      <FussLeiste endContent={<Button design="Emphasized" icon="save" disabled={!sperre.eigen} onClick={save}>Sichern</Button>} />
     </>
   );
 }

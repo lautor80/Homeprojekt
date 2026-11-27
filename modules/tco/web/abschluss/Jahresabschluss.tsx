@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { feld } from '@core/components/Varianten';
 import {
-  AnalyticalTable, Bar, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Option, SegmentedButton,
+  AnalyticalTable, BusyIndicator, Button, CheckBox, Dialog, FlexBox, Icon, MessageStrip, ObjectStatus, Option, SegmentedButton,
   SegmentedButtonItem, Select, Text,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
@@ -273,7 +274,7 @@ export function Jahresabschluss() {
 
       {auswahl && (
         <Dialog open headerText={`PDF erzeugen – ${jahr}`} onClose={() => setAuswahl(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" icon="pdf-attachment" disabled={!auswahl.ear && !auswahl.steuer && !auswahl.anlagen}
                           onClick={() => { setPdf(auswahl); setAuswahl(null); }}>Voransicht</Button>
                   <Button onClick={() => setAuswahl(null)}>Abbrechen</Button>

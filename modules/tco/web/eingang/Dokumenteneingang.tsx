@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PdfDialog } from '@core/components/PdfDialog';
 import { Varianten, feld } from '@core/components/Varianten';
-import { Bar, BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, CheckBox, Dialog, Input, Label, MessageStrip, ObjectStatus, Tab, TabContainer, Text, TextArea } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { AppPage } from '@core/components/AppPage';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
-import { DialogFuss } from '@core/components/DialogFuss';
+import { DialogFuss, FussLeiste } from '@core/components/DialogFuss';
 import { Empty, Section } from '@core/components/Section';
 import { useCan } from '@core/session';
 import { toast } from '@core/toast';
@@ -307,7 +307,7 @@ function BehandlungDialog({ v, onClose, onDone }: { v: Vorgang; onClose: () => v
   }
   return (
     <Dialog open headerText={`E-Mail-Behandlung – ${v.betreff || '(ohne Betreff)'}`} style={{ width: 'min(36rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={busy || (art === 'verschieben' && !ordner)} onClick={speichern}>Speichern</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -418,7 +418,7 @@ function AblageDialog({ v, d, regeln, stamm, onClose, onDone }: { v: Vorgang; d:
 
   return (
     <Dialog open headerText={`Ablegen – ${d.art === 'mail' ? 'E-Mail als PDF' : d.datei}`} style={{ width: 'min(42rem, 96vw)' }} onClose={onClose}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" loading={busy} disabled={busy} onClick={ablegen}>Ablegen</Button>
               <Button design="Transparent" onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -568,7 +568,7 @@ function Korrespondenten({ edit }: { edit: boolean }) {
       )}
       {f && (
         <Dialog open headerText={f.id ? 'Korrespondent ändern' : 'Korrespondent anlegen'} style={{ width: 'min(36rem, 96vw)' }} onClose={() => setF(null)}
-                footer={<Bar endContent={<>
+                footer={<FussLeiste endContent={<>
                   <Button design="Emphasized" disabled={busy} onClick={speichern}>Speichern</Button>
                   <Button design="Transparent" onClick={() => setF(null)}>Abbrechen</Button>
                 </>} />}>

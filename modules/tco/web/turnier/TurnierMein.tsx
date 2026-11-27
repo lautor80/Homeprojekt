@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Bar, BusyIndicator, Button, Dialog, Link, MessageStrip, ObjectStatus, Text, Title } from '@ui5/webcomponents-react';
+import { BusyIndicator, Button, Dialog, Link, MessageStrip, ObjectStatus, Text, Title } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { CenterCard } from '@core/pages/AuthPages';
 import type { OeffentlichProps } from '@core/platform';
@@ -150,7 +151,7 @@ export function TurnierMein({ orgName, logo }: OeffentlichProps) {
                         onSpeichern={speichern} onSchliessen={() => setErgebnis(null)} />
       )}
       <Dialog open={abmelden} headerText="Vom Turnier abmelden" state="Negative" style={{ width: 'min(26rem, 96vw)' }} onClose={() => setAbmelden(false)}
-              footer={<Bar endContent={<>
+              footer={<FussLeiste endContent={<>
                 <Button design="Negative" loading={busy} onClick={abmeldenBestaetigt}>Abmelden</Button>
                 <Button onClick={() => setAbmelden(false)}>Abbrechen</Button>
               </>} />}>

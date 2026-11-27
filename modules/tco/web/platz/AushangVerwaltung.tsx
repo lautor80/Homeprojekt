@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, List, ListItemStandard, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
+  Button, CheckBox, DatePicker, Dialog, FlexBox, Input, List, ListItemStandard, MessageStrip, MultiComboBox, MultiComboBoxItem, ObjectStatus,
   Option, Select, Text, TextArea,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { ChangeHistoryButton } from '@core/components/ChangeHistory';
 import { ConfirmDialog } from '@core/components/ConfirmDialog';
@@ -245,7 +246,7 @@ function Editor({ a, d, onFehler, onGesichert, onWeg, onBilder }: {
 
       {vorschau && a && (
         <Dialog open headerText={f.titel || '(ohne Titel)'} state={STIL[f.stil].dialog} style={{ width: 'min(40rem, 96vw)' }} onClose={() => setVorschau(false)}
-                footer={<Bar endContent={f.bestaetigen
+                footer={<FussLeiste endContent={f.bestaetigen
                   ? <Button design="Emphasized" icon="accept" onClick={() => setVorschau(false)}>Zur Kenntnis genommen</Button>
                   : <Button design="Emphasized" onClick={() => setVorschau(false)}>Schließen</Button>} />}>
           <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Vorschau – so sieht es der Nutzer in „Platz buchen“.</MessageStrip>
@@ -254,7 +255,7 @@ function Editor({ a, d, onFehler, onGesichert, onWeg, onBilder }: {
       )}
       {gesehen && (
         <Dialog open headerText={`Gesehen von ${gesehen.filter((g) => !g.vorab).length}`} style={{ width: 'min(38rem, 96vw)' }} onClose={() => setGesehen(null)}
-                footer={<Bar endContent={<Button onClick={() => setGesehen(null)}>Schließen</Button>} />}>
+                footer={<FussLeiste endContent={<Button onClick={() => setGesehen(null)}>Schließen</Button>} />}>
           {gesehen.length === 0 ? <Empty>Noch niemand.</Empty> : (
             <div style={{ display: 'grid', gap: '0.25rem' }}>
               {gesehen.map((g) => (

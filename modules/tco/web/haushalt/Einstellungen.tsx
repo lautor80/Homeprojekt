@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, MessageStrip } from '@ui5/webcomponents-react';
+import { Button, MessageStrip } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { CheckField, FormGrid, TextField } from '@core/components/FormFields';
 import { useFunktion } from '@core/session';
@@ -53,7 +54,7 @@ export function HaushaltKapitel() {
           <CheckField label="Schritt „von der Mitgliederversammlung genehmigt“ anbieten" checked={f.genehmigung_mv} onChange={(v) => setF({ ...f, genehmigung_mv: v })} />
         </FormGrid>
       )}
-      <Bar style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!f} onClick={sichern}>Sichern</Button>} />
+      <FussLeiste style={{ marginTop: '1rem' }} endContent={<Button design="Emphasized" icon="save" disabled={!f} onClick={sichern}>Sichern</Button>} />
     </div>
   );
 }

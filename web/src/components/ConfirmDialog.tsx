@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bar, Button, Dialog, Label, TextArea, Text, FlexBox } from '@ui5/webcomponents-react';
+import { Button, Dialog, Label, TextArea, Text, FlexBox } from '@ui5/webcomponents-react';
+import { FussLeiste } from './DialogFuss';
 
 interface Props {
   open: boolean;
@@ -26,7 +27,7 @@ export function ConfirmDialog({ open, title, text, confirmText = 'OK', askReason
       state={danger ? 'Negative' : 'None'}
       onClose={onCancel}
       footer={
-        <Bar
+        <FussLeiste
           endContent={
             <>
               <Button design={danger ? 'Negative' : 'Emphasized'} disabled={disabled} onClick={() => onConfirm(reason.trim())}>

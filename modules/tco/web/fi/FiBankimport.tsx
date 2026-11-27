@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bar, Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
+  Button, CheckBox, DatePicker, Dialog, FlexBox, Input, Label, MessageStrip, ObjectStatus, Option, Select, Text, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api, qs } from '@core/api';
 import { ImportSchritte } from '@core/components/ImportDialog';
 import { dat, dateiLesen, eur } from '../util';
@@ -260,7 +261,7 @@ export function BankimportDialog({ open, modus, start, konten, bankkonten, manue
   return createPortal(<>
     <Dialog open={open} resizable onClose={onClose} style={{ width: '96vw', height: '94vh' }}
             headerText={manuell ? 'Manuelle Buchung – Kasse und Konten ohne Bankdatei' : 'Importieren: Bankumsätze kontieren (Bankimport)'}
-            footer={<Bar startContent={<Text>{ausgewaehlt.length} Umsatz/Umsätze ausgewählt · {eur(summeNeu)}</Text>} endContent={<>
+            footer={<FussLeiste startContent={<Text>{ausgewaehlt.length} Umsatz/Umsätze ausgewählt · {eur(summeNeu)}</Text>} endContent={<>
               <Button design="Emphasized" disabled={!ausgewaehlt.length} loading={busy} onClick={buchen}>
                 {manuell ? 'Erfasste Buchungen buchen' : 'Ausgewählte Umsätze buchen'}
               </Button>

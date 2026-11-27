@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Bar, Button, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { Button, Dialog, Input, MessageStrip, ObjectStatus, Option, Select, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import { api } from '@core/api';
 import { toast } from '@core/toast';
 import { euro, HH, MONATE, prozent, RECHEN_METHODEN, zahlLesen, zahlText, type Init, type PlanSicht, type Position } from './typen';
@@ -34,7 +35,7 @@ export function KontoDialog({ s, p, init, edit, onClose }: { s: PlanSicht; p: Po
 
   return (
     <Dialog open headerText={`${p.konto} ${p.name}`} onClose={() => onClose(geaendert)}
-            footer={<Bar endContent={<Button onClick={() => onClose(geaendert)}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={() => onClose(geaendert)}>Schließen</Button>} />}>
       <div className="hh-dialog">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
         <Text>{p.art === 'E' ? 'Einnahme' : 'Ausgabe'} · {p.bereich_text} · Plan {s.plan.jahr}: <b>{euro(p.planwert)}</b> ({p.methode_text}{p.manuell ? ', von Hand geändert' : ''})</Text>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AnalyticalTable, Bar, Button, CheckBox, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { AnalyticalTable, Button, CheckBox, MessageStrip, ObjectStatus, Text } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api } from '@core/api';
 import { AblageFlaeche } from '@core/ablage';
@@ -132,7 +133,7 @@ export function Datenimport({ onDone }: { onDone?: () => void }) {
                          scaleWidthMode="Smart" noDataText="Noch keine Dateien eingelesen" />
       </Section>
 
-      <Bar endContent={
+      <FussLeiste endContent={
         <Button design={modus === 'ersetzen' ? 'Negative' : 'Emphasized'} icon="upload-to-cloud" loading={busy} disabled={gesperrt}
                 onClick={() => (modus === 'ersetzen' ? setFrage(true) : start())}>
           {modus === 'ersetzen' ? 'Neu aufbauen' : 'Importieren'}

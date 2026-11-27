@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AnalyticalTable, Bar, Button, CheckBox, ComboBox, ComboBoxItem, ComboBoxItemGroup, Dialog, FlexBox, Input, Label, Link,
+  AnalyticalTable, Button, CheckBox, ComboBox, ComboBoxItem, ComboBoxItemGroup, Dialog, FlexBox, Input, Label, Link,
   List, ListItemStandard, MessageStrip, ObjectStatus, Text, TextArea, Title,
 } from '@ui5/webcomponents-react';
+import { FussLeiste } from '@core/components/DialogFuss';
 import type { AnalyticalTableColumnDefinition, AnalyticalTableCellInstance as Cell } from '@ui5/webcomponents-react';
 import { api, qs } from '@core/api';
 import { usePdf } from '@core/components/PdfDialog';
@@ -157,7 +158,7 @@ export function ZuordnenDialog({ open, ziele, titel, vorauswahl = [], onPick, on
 
   return portal(
     <Dialog open={open} headerText={titel} onClose={onClose} resizable style={{ width: '94vw', height: '90vh' }}
-            footer={<Bar startContent={<Text>{sel.size} Dokument(e) ausgewählt</Text>} endContent={<>
+            footer={<FussLeiste startContent={<Text>{sel.size} Dokument(e) ausgewählt</Text>} endContent={<>
               <Button design="Emphasized" disabled={!sel.size && !onPick} loading={busy} onClick={zuordnen}>{onPick ? 'Übernehmen' : 'Zuordnen'}</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -222,7 +223,7 @@ export function BelegeDialog({ internenr, edit: darf, onClose, onChanged }: {
   return portal(<>
     <Dialog open={!!internenr} headerText={`Belege zu Buchung ${internenr ?? ''} (${b?.belege.length ?? 0})`} onClose={onClose} resizable
             style={{ width: '92vw', height: '90vh' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               {edit && <Button icon="attachment" onClick={() => setZuordnen(true)}>Beleg zuordnen</Button>}
               <Button onClick={onClose}>Schließen</Button>
             </>} />}>
@@ -310,7 +311,7 @@ export function StornoDialog({ zeile, onClose, onDone }: { zeile: Zeile | null; 
   return portal(
     <Dialog open={!!zeile} headerText={`Buchung ${zeile?.internenr ?? ''} stornieren`} state="Negative" onClose={onClose}
             style={{ width: 'min(36rem, 95vw)' }}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Negative" disabled={!grund.trim() || !sperre.eigen} loading={busy} onClick={ok}>Stornieren</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
@@ -353,7 +354,7 @@ export function NotizenDialog({ zeile, onClose, onChanged }: { zeile: Zeile | nu
   }
   return portal(
     <Dialog open={!!zeile} headerText={`Notizen zur Buchung ${zeile?.internenr ?? ''}`} onClose={onClose} style={{ width: 'min(40rem, 95vw)' }}
-            footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {zeile && <Text>{dat(zeile.datum)} · {eur(zeile.betrag)} · {zeile.text}</Text>}
       {error && <MessageStrip design="Negative" hideCloseButton style={{ margin: '0.5rem 0' }}>{error}</MessageStrip>}
       <SperrHinweis s={sperre} style={{ marginTop: '0.5rem' }} />
@@ -380,7 +381,7 @@ export function ZahlungenDialog({ rgnr, open, onClose }: { rgnr: string | null; 
   useEffect(() => { if (open) { setL(null); api.get<RgZahlung[]>(`${F}/zahlungen${qs({ rgnr })}`).then(setL); } }, [open, rgnr]);
   return portal(
     <Dialog open={open} headerText={rgnr ? `Zahlungen zu Rechnung ${rgnr}` : 'Teilzahlungen offener Hallenrechnungen'} onClose={onClose}
-            style={{ width: 'min(48rem, 95vw)' }} footer={<Bar endContent={<Button onClick={onClose}>Schließen</Button>} />}>
+            style={{ width: 'min(48rem, 95vw)' }} footer={<FussLeiste endContent={<Button onClick={onClose}>Schließen</Button>} />}>
       {l && !l.length && <Text>Keine Teilzahlungen vorhanden</Text>}
       {(l ?? []).map((r) => (
         <div key={r.rgnr_txt} style={{ marginBottom: '1rem' }}>
@@ -435,7 +436,7 @@ export function GegenkontoDialog({ zeile, onClose, onDone }: { zeile: Zeile | nu
   return portal(
     <Dialog open={!!zeile} resizable style={{ width: '92vw', height: '88vh' }} onClose={onClose}
             headerText={`${zeile?.gkonto ?? ''} ${zeile?.gkontoName ?? ''} – letzte 12 Monate, Referenzbetrag ${eur(Math.abs(zeile?.betrag ?? 0))}`}
-            footer={<Bar endContent={<>
+            footer={<FussLeiste endContent={<>
               <Button design="Emphasized" disabled={!wahl?.belege || !sperre.eigen} onClick={verknuepfen}>Beleg verknüpfen</Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
