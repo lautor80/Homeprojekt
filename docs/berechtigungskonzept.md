@@ -403,6 +403,7 @@ Administrator. Kl. = Klasse nach 4.2.
 | `tco.hallenpreise:edit` – Hallenpreise pflegen | F |  |  |  |  |  |  |  |  |  | ● |  |  |
 | `tco.serienbuchung:edit` – Serienbuchung und Abos | F |  |  |  |  |  |  |  |  | ● | ● |  |  |
 | `tco.platz:admin` – Platzverwaltung: Plätze, Regeln, Belegung mit Namen, Freigabe externer Registrierungen | F |  |  |  |  |  |  |  |  |  | ● |  |  |
+| `tco.platz:abotermine` – Abos: einzelne Termine einer Serie stornieren (setzt `tco.platz:admin` voraus; abschaltbar als Funktion `tco.platz.abotermine`) | F |  |  |  |  |  |  |  |  |  | ● |  |  |
 | **Clubhaus** | | | | | | | | | | | | | |
 | `tco.clubhaus:display` – Clubhausabrechnung anzeigen | F |  |  |  |  | ● |  | ● |  |  |  | ● | ● |
 | `tco.clubhaus:edit` – Clubhausabrechnung pflegen | F |  |  |  |  |  |  |  |  |  |  | ● |  |

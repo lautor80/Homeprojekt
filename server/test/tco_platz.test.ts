@@ -46,6 +46,12 @@ async function anmelden(name: string) {
   assert.equal((await c('POST', '/api/auth/password', { current: 'start-passwort', next: 'neues-passwort' })).status, 200);
   return c;
 }
+/** erneut anmelden (das Kennwort ist nach anmelden() schon geändert) – frische Sitzung mit den aktuellen Rechten */
+async function anmelden2(name: string) {
+  const c = client();
+  assert.equal((await c('POST', '/api/auth/login', { username: name, password: 'neues-passwort' })).status, 200);
+  return c;
+}
 const userId = async (name: string) => (await sql`select id::text as id from core.users where username = ${name}`)[0].id as string;
 
 const HALLE = {
@@ -352,6 +358,73 @@ test('#83: Abo mit Einzelabrechnung – Nutzer storniert einzelne Termine selbst
   r = await bert('GET', `${P}/tag?datum=${t1}`);
   assert.ok(!r.body.plaetze.find((p: { id: number }) => p.id === halleId).belegt.some((b: { von: string }) => b.von === '20:00'));
   await admin('POST', `${A}/abos/${bid}/beenden`, { ab: tag(0) });
+});
+
+test('Platzverwaltung → Abos → Termine: einzelnen Termin der Serie stornieren, das Abo läuft weiter', async () => {
+  // aus EP3 übernommenes Abo mit Einzelabrechnung: ein vergangener und drei kommende Termine (weit voraus, eigene Uhrzeit)
+  const BID = '0000004790';
+  const [alt, k1, k2, k3] = [tag(-9), tag(61), tag(68), tag(75)];
+  for (const d of [alt, k1, k2, k3]) {
+    await sql`insert into tco.bookings (bid, datum, time_start, time_ende, kunde, status, platz) values (${BID}, ${d}, '21:00', '22:00', 'RITA TERMIN', '3', 'Tennishalle')`;
+  }
+  await sql`insert into tco.bookings_ch (bid, status_abw) values (${BID}, '1')`;
+  const T = `${A}/abos/${BID}/termine`;
+
+  // eigenes Recht: Mitglieder nicht, die Platzverwaltung allein auch nicht
+  assert.equal((await anna('GET', T)).status, 403);
+  assert.equal((await admin('POST', '/api/admin/roles', { id: 'PLATZ_OHNE_T', name: 'Platzverwaltung ohne Abo-Termine', permissions: ['tco.platz:admin'] })).status, 200);
+  assert.equal((await admin('POST', '/api/admin/users', { username: 'platz790', displayName: 'Platz 790', password: 'start-passwort', roles: ['PLATZ_OHNE_T'] })).status, 200);
+  const nurPlatz = await anmelden('platz790');
+  assert.equal((await nurPlatz('GET', `${A}/abos`)).status, 200);
+  assert.equal((await nurPlatz('GET', T)).status, 403);
+  assert.equal((await nurPlatz('POST', `${T}/storno`, { datum: k1 })).status, 403);
+
+  let r = await admin('GET', T);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.kunde, r.body.einzelabrechnung, r.body.quelle], ['RITA TERMIN', true, 'EP3']);
+  assert.deepEqual(r.body.termine.map((t: { datum: string; vergangen: boolean; storniert: boolean; von: string }) => [t.datum, t.vergangen, t.storniert, t.von]),
+    [[alt, true, false, '21:00'], [k1, false, false, '21:00'], [k2, false, false, '21:00'], [k3, false, false, '21:00']]);
+  assert.equal((await admin('GET', `${A}/abos/0000009999/termine`)).status, 404);
+
+  // einen Termin mitten in der Serie stornieren: nur dieser, das Abo bleibt
+  r = await admin('POST', `${T}/storno`, { datum: k2, grund: 'Absage wegen Krankheit' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.match(r.body.text, /storniert/);
+  assert.match(r.body.text, /Das Abo läuft weiter \(2 kommende Termin\(e\)\)/);
+  assert.deepEqual((await sql`select datum::text as d, status, storno_grund from tco.bookings where bid = ${BID} order by datum`).map((x) => [x.d, x.status, x.storno_grund]),
+    [[alt, '3', null], [k1, '3', null], [k2, '2', 'Absage wegen Krankheit'], [k3, '3', null]]);
+  const [gesperrt] = await sql`select storno_portal is not null as j from tco.bookings where bid = ${BID} and datum = ${k2}`;
+  assert.equal(gesperrt.j, true, 'bleibt auch bei einem erneuten EP3-Import storniert');
+  r = await admin('GET', T);
+  assert.deepEqual(r.body.termine.find((t: { datum: string }) => t.datum === k2).storniert, true);
+  assert.equal(r.body.termine.find((t: { datum: string }) => t.datum === k2).storno_grund, 'Absage wegen Krankheit');
+  assert.equal((await admin('GET', `${A}/abos`)).body.find((a: { bid: string }) => a.bid === BID).kommend, 2);
+  // der Platz ist an dem Tag wieder frei
+  const frei = (await admin('GET', `${A}/tag?datum=${k2}`)).body.plaetze.find((p: { id: number }) => p.id === halleId).belegt;
+  assert.ok(!frei.some((b: { bid?: string }) => b.bid === BID));
+
+  // nicht doppelt, nur Termine der Serie
+  r = await admin('POST', `${T}/storno`, { datum: k2 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bereits storniert/);
+  assert.equal((await admin('POST', `${T}/storno`, { datum: tag(62) })).status, 404);
+
+  // abgerechneter Termin: nur mit Kommentar
+  await sql`update tco.bookings set assigned = 'Y' where bid = ${BID} and datum = ${k3}`;
+  assert.equal((await admin('GET', T)).body.termine.find((t: { datum: string }) => t.datum === k3).abgerechnet, true);
+  r = await admin('POST', `${T}/storno`, { datum: k3 });
+  assert.equal(r.status, 400);
+  assert.match(r.body.message, /bitte einen Kommentar angeben/);
+  assert.equal((await admin('POST', `${T}/storno`, { datum: k3, grund: 'Halle gesperrt' })).status, 200);
+
+  // die Migration gibt das Recht allen Rollen, die die Platzverwaltung haben (hier nachgestellt)
+  await sql`insert into core.role_permissions (role_id, permission)
+            select distinct role_id, 'tco.platz:abotermine' from core.role_permissions where permission = 'tco.platz:admin' on conflict do nothing`;
+  const mitRecht = await anmelden2('platz790');
+  assert.equal((await mitRecht('GET', T)).status, 200);
+
+  await sql`delete from tco.bookings where bid = ${BID}`;
+  await sql`delete from tco.bookings_ch where bid = ${BID}`;
 });
 
 test('EP3-Buchungen belegen den Platz über die Aliase', async () => {

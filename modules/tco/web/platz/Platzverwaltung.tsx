@@ -26,6 +26,7 @@ import { LEERER_STAND, standLesen, useTabellenAnsicht, type TabellenStand } from
 import { LEERER_ABO_FILTER, aboFilterAktiv, aboFilterLesen, aboPlaetze, aboTitel, abosFiltern, type AboFilter } from './aboFilter';
 import { AboSaisonVerwaltung } from './AboSaisonVerwaltung';
 import { AushangVerwaltung } from './AushangVerwaltung';
+import { AboTermineDialog } from './AboTermine';
 
 /**
  * Platzverwaltung: Plätze (Freiplätze/Halle) mit Gültigkeit, Öffnungszeiten, Zeitraster, Buchungsdauern,
@@ -374,6 +375,9 @@ function Belegung() {
   const [tage, setTage] = useState<number>(() => Number(localStorage.getItem('tco.platz.belegung.tage')) || 1);
   const [tagListe, setTagListe] = useState<{ datum: string; plaetze: TagPlatz[] }[] | null>(null);
   const [termin, setTermin] = useState<{ p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN' } | null>(null);
+  // Termine der Abo-Serie (einzeln stornieren) – aus dem Termin-Dialog geöffnet
+  const [aboTermine, setAboTermine] = useState<{ bid: string; datum: string } | null>(null);
+  const darfAboTermine = useCan()('tco.platz:abotermine');
   const [eintrag, setEintrag] = useState<{ p: TagPlatz; datum: string; von: string } | null>(null);
   const [details, setDetails] = useState<{ p: TagPlatz; b: Belegt; datum: string } | null>(null);
   const daten = useMemo(() => Array.from({ length: tage }, (_, i) => tagPlus(datum, i)), [datum, tage]);
@@ -434,7 +438,9 @@ function Belegung() {
       {termin && <TerminDialog key={`${termin.b.bid ?? termin.b.fest?.id}-${termin.datum}-${termin.b.von}-${termin.modus}`} {...termin}
                                onModus={(modus) => setTermin({ ...termin, modus })} onClose={() => setTermin(null)}
                                onDetails={termin.b.bid ? () => { setDetails({ p: termin.p, b: termin.b, datum: termin.datum }); setTermin(null); } : undefined}
+                               onAboTermine={darfAboTermine && termin.b.bid && termin.b.art === 'Abo' ? () => { setAboTermine({ bid: termin.b.bid!, datum: termin.datum }); setTermin(null); } : undefined}
                                onFertig={(text) => { setTermin(null); if (text) toast(text, 5000); laden(); }} />}
+      {aboTermine && <AboTermineDialog {...aboTermine} onClose={() => setAboTermine(null)} onGeaendert={() => laden()} />}
     </>
   );
 }
@@ -652,11 +658,13 @@ function TerminDetails({ p, b, datum, onClose, onAendern }: {
  * löschen; „Kopieren“ legt denselben Termin (gleiche Person/Bezeichnung) auf Platz, Tag und Uhrzeit des Ziels neu an – Vorschlag:
  * eine Woche später. Abo- und EP3-Termine werden als Einzelbuchung kopiert.
  */
-function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig, onDetails }: {
+function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig, onDetails, onAboTermine }: {
   p: TagPlatz; b: Belegt; datum: string; modus: 'AENDERN' | 'KOPIEREN';
   onModus: (m: 'AENDERN' | 'KOPIEREN') => void; onClose: () => void; onFertig: (text: string) => void;
   /** Details der Buchung anzeigen (auch ohne Doppelklick, z. B. auf dem Handy) */
   onDetails?: () => void;
+  /** Abo: andere Termine der Serie einzeln stornieren (Recht tco.platz:abotermine) */
+  onAboTermine?: () => void;
 }) {
   const kopie = modus === 'KOPIEREN';
   const [busy, setBusy] = useState(false);
@@ -754,10 +762,12 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig, onDetail
           {!b.fest && b.bid && <GebuchtInfo b={b} />}
           {/* im Inhalt statt in der Fußleiste: dort ist im Hochformat kein Platz neben Kopieren/Speichern/Abbrechen */}
           {!kopie && (aenderbar || absagbar || stornierbar) && (
-            <div>
+            <div className="portal-row" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
               <Button design="Negative" icon="delete" disabled={busy} onClick={() => setWeg(true)}>
-                {absagbar ? 'Diesen Termin absagen' : b.fest ? 'Löschen' : 'Stornieren'}
+                {absagbar ? 'Diesen Termin absagen' : b.fest ? 'Löschen' : b.art === 'Abo' ? 'Diesen Termin stornieren' : 'Stornieren'}
               </Button>
+              {/* Abo: ein anderer Termin der Serie (z. B. nächste Woche) – ohne erst dorthin zu blättern */}
+              {onAboTermine && <Button icon="appointment-2" disabled={busy} onClick={onAboTermine}>Andere Termine des Abos…</Button>}
             </div>
           )}
           {!kopie && !aenderbar && <MessageStrip hideCloseButton design="Information">{grund} Kopieren ist möglich.</MessageStrip>}
@@ -816,7 +826,7 @@ function TerminDialog({ p, b, datum, modus, onModus, onClose, onFertig, onDetail
       <ConfirmDialog open={weg} danger title={absagbar ? 'Termin absagen' : b.fest ? 'Belegung löschen' : 'Termin stornieren'} confirmText={absagbar ? 'Absagen' : b.fest ? 'Löschen' : 'Stornieren'}
                      askReason={!b.fest && !!b.abgerechnet}
                      text={`${p.name}, ${tagText(datum)} ${b.von}–${b.bis} Uhr (${titel}) ${absagbar ? 'absagen' : b.fest ? 'löschen' : 'stornieren'}?`
-                       + (absagbar ? ' Nur dieser Termin – die übrigen Termine der Belegung bleiben.' : b.art === 'Abo' ? ' Nur dieser Termin – die Serie beenden Sie unter „Abos“.' : '')
+                       + (absagbar ? ' Nur dieser Termin – die übrigen Termine der Belegung bleiben.' : b.art === 'Abo' ? ' Nur dieser Termin – das Abo läuft weiter (ganze Serie beenden: Reiter „Abos“).' : '')
                        + ' Die Zeit ist danach frei und zählt in den Statistiken nicht mehr als belegt.'
                        + (!b.fest && b.abgerechnet ? ' Die Buchung ist bereits abgerechnet: bitte einen Kommentar angeben und die Rechnung in der Hallenabrechnung prüfen.' : '')}
                      onCancel={() => setWeg(false)} onConfirm={entfernen} />
@@ -832,6 +842,9 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
   const navigate = useNavigate();
   const [abos, setAbos] = useState<AboZeile[] | null>(null);
   const [ende, setEnde] = useState<{ bid: string; ab: string; grund: string; abgerechnet: boolean } | null>(null);
+  // einzelne Termine der Serie stornieren (Recht tco.platz:abotermine)
+  const [termineVon, setTermineVon] = useState<string | null>(null);
+  const darfTermine = can('tco.platz:abotermine');
   // Schnellfilter und Tabellenstand (Spalten, Spaltenfilter, Sortierung) – beides wandert in die Ansichtsvariante
   const [filter, setFilter] = useState<AboFilter>({ ...LEERER_ABO_FILTER });
   const [stand, setStand] = useState<TabellenStand>({ ...LEERER_STAND });
@@ -852,11 +865,16 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
     { Header: 'Notiz', accessor: 'text', minWidth: 120 },
     { Header: 'Herkunft', accessor: 'quelle', width: 95 },
     {
-      Header: '', id: 'aktion', width: 110, disableFilters: true, disableSortBy: true,
-      Cell: ({ row }: Cell) => (row.original.kommend
-        ? <Button design="Transparent" icon="stop" onClick={() => setEnde({ bid: row.original.bid, ab: isoHeute(), grund: '', abgerechnet: (row.original.abgerechnet ?? 0) > 0 })}>Beenden</Button> : null),
+      Header: '', id: 'aktion', width: darfTermine ? 220 : 110, disableFilters: true, disableSortBy: true,
+      Cell: ({ row }: Cell) => (
+        <div className="portal-row" style={{ flexWrap: 'nowrap', gap: '0.25rem' }}>
+          {darfTermine && <Button design="Transparent" icon="appointment-2" tooltip="Einzelne Termine der Serie stornieren" onClick={() => setTermineVon(row.original.bid)}>Termine</Button>}
+          {row.original.kommend
+            ? <Button design="Transparent" icon="stop" tooltip="Ganze Serie ab einem Datum beenden" onClick={() => setEnde({ bid: row.original.bid, ab: isoHeute(), grund: '', abgerechnet: (row.original.abgerechnet ?? 0) > 0 })}>Beenden</Button> : null}
+        </div>
+      ),
     },
-  ], []);
+  ], [darfTermine]);
   const t = useTabellenAnsicht({ spalten: columns, stand, onStand: setStand, aktiv: true, pflicht: ['bid', 'aktion'], titel: 'Abo-Tabelle anpassen' });
   const tabellenOptionen = useMemo(() => ({ ...t.optionen }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const alle = useMemo(() => abos ?? [], [abos]);
@@ -907,7 +925,10 @@ function Abos({ aktion, busy }: { aktion: Aktion; busy: boolean }) {
         Laufende Abos – im Portal angelegte und aus EP3 übernommene (Herkunft) – sowie beendete der letzten 180 Tage. Neue Abos legt der Hallenwart über die Serienbuchung an
         (auch mehrere Plätze, zweiwöchentlich oder monatlich). Mitglieder sehen ihre Abos mit Preis in „Platz buchen“, können sie aber nicht ändern;
         für andere erscheinen die Termine als „belegt“. Abgerechnet wird wie bei EP3-Abos einmal je Serie über die Hallenabrechnung.
+        {darfTermine && ' Einen einzelnen Termin stornieren Sie über „Termine“ – das Abo läuft weiter; „Beenden“ storniert alle Termine ab einem Datum.'}
       </MessageStrip>
+
+      {termineVon && <AboTermineDialog bid={termineVon} onClose={() => setTermineVon(null)} onGeaendert={() => laden()} />}
 
       {ende && createPortal(
         <Dialog open headerText={`Abo ${ende.bid} beenden`} onClose={() => setEnde(null)}

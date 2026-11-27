@@ -121,6 +121,12 @@ export const TCO_FUNKTIONEN: FunktionDef[] = [
     routen: ['GET /platz/admin/ep3', 'POST /platz/admin/ep3/:zuid/verknuepfen', 'POST /platz/admin/ep3/anlegen-alle', 'POST /platz/admin/ep3/:zuid/anlegen'],
   },
   {
+    id: 'tco.platz.abotermine', app: 'Platzverwaltung', text: 'Abo: einzelne Termine stornieren',
+    beschreibung: 'Reiter „Abos“ → „Termine“: einzelne Termine einer Abo-Serie stornieren, ohne das Abo zu beenden (auch aus dem Termin in der Belegung erreichbar).',
+    permissions: ['tco.platz:abotermine'],
+    hinweis: 'Abgeschaltet lässt sich ein einzelner Abo-Termin weiterhin über die Belegung (Termin anklicken → „Diesen Termin stornieren“) stornieren.',
+  },
+  {
     id: 'tco.soll.lastschrift', app: 'Sollstellungen', text: 'Lastschriftlauf',
     beschreibung: 'Lastschriftlauf erzeugen, als SEPA-Datei herunterladen und stornieren.',
     permissions: ['tco.soll:edit'],

@@ -727,6 +727,52 @@ export async function abosLesen(db: Db) {
   return rows.map((r) => ({ ...r, wochentag: wochentagText(r.erster) }));
 }
 
+/** Termin eines Abos in der Platzverwaltung (Abos → Termine) */
+export interface AboSerienTermin {
+  datum: string; wochentag: string; von: string; bis: string; storniert: boolean; storno_grund: string | null; vergangen: boolean;
+  /** in einer Hallenrechnung enthalten bzw. als abgerechnet gekennzeichnet – Storno nur mit Kommentar */
+  abgerechnet: boolean; rechnung: string | null;
+}
+
+/**
+ * Platzverwaltung → Abos → „Termine“: alle Termine einer Abo-Serie (aktive und stornierte), damit sich einzelne Termine
+ * stornieren lassen, ohne das Abo zu beenden. Gilt für alle Abos – auch mit Einzelabrechnung und aus EP3 übernommene.
+ */
+export async function aboTermineLesen(db: Db, bid: string): Promise<{
+  bid: string; kunde: string; platz: string; einzelabrechnung: boolean; quelle: 'Portal' | 'EP3'; termine: AboSerienTermin[];
+}> {
+  const rows = await db`
+    select b.datum::text as datum, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis, b.status, b.kunde, b.platz, b.quelle,
+           coalesce(b.assigned, '') as assigned, b.storno_grund, (b.datum < current_date) as vergangen,
+           (select max(r.rgnr_txt) from tco.rgpos r where r.bid = b.bid and (r.datum = b.datum or r.datum is null)) as rechnung,
+           exists (select 1 from tco.bookings_ch c where c.bid = b.bid and c.status_abw = '1') as aboeinzel
+      from tco.bookings b
+     where b.bid = ${bid} and b.status in ('2', '3')
+     order by b.datum`;
+  // Abo: mindestens ein aktiver Abo-Termin – oder eine vollständig stornierte Serie (mehrere Termine unter einer Nummer)
+  if (!rows.some((r) => r.status === '3') && rows.length < 2) throw new BusinessError('Abo nicht gefunden.', 404);
+  const t0 = rows.find((r) => r.status === '3') ?? rows[0];
+  return {
+    bid, kunde: t0.kunde ?? '', platz: t0.platz ?? '–', einzelabrechnung: !!t0.aboeinzel,
+    quelle: rows.some((r) => r.quelle === QUELLE) ? 'Portal' : 'EP3',
+    termine: rows.map((r) => ({
+      datum: r.datum, wochentag: wochentagText(r.datum), von: r.von, bis: r.bis, storniert: r.status === '2', storno_grund: r.storno_grund ?? null,
+      vergangen: !!r.vergangen, abgerechnet: r.assigned === 'Y' || !!r.rechnung, rechnung: r.rechnung ?? null,
+    })),
+  };
+}
+
+/** Platzverwaltung → Abos → „Termine“: einen einzelnen Termin der Serie stornieren – das Abo läuft weiter */
+export async function aboTerminVerwaltungStornieren(tx: Db, bid: string, datum: string, grund?: string | null): Promise<string> {
+  const [b] = await tx`select status from tco.bookings where bid = ${bid} and datum = ${datum}`;
+  if (!b) throw new BusinessError('Diesen Termin gibt es in dem Abo nicht.', 404);
+  if (b.status === '2') throw new BusinessError('Der Termin ist bereits storniert.');
+  if (b.status !== '3') throw new BusinessError('Das ist kein Abo-Termin.');
+  const text = await verwaltungStornieren(tx, bid, datum, grund);
+  const [rest] = await tx`select count(*)::int as n from tco.bookings where bid = ${bid} and status = '3' and datum >= current_date`;
+  return `${text} Das Abo läuft weiter (${rest.n} kommende Termin(e)).`;
+}
+
 /**
  * Abo ab einem Datum beenden (Termine stornieren). Auch aus EP3 übernommene Abos; storno_portal: ein erneuter EP3-Import
  * setzt die Stornos nicht zurück. Bereits abgerechnete Termine (EP3-Abos werden als ganze Serie abgerechnet, alle Termine

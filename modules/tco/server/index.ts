@@ -290,6 +290,8 @@ const tco: ServerModule = {
       text: 'Hallenwart: mehrere Plätze über mehrere Stunden buchen, einmalig oder als Abo (wöchentlich, zweiwöchentlich, monatlich) – mit Verfügbarkeit und Platzvorschlägen' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.admin,
       text: 'Plätze, Gültigkeit, Buchungsdauern, Vorlauf und Stornofristen pflegen; Belegung mit Namen sehen; Abos anlegen; Benutzer den Mitgliedern zuordnen' },
+    { area: 'Tennishalle', app: 'Platzverwaltung', id: P_PLATZ.abotermine, requires: [P_PLATZ.admin],
+      text: 'Abos: einzelne Termine einer Serie stornieren, ohne das Abo zu beenden (Reiter „Abos“ → „Termine“ und aus dem Termin in der Belegung) – abgerechnete Termine nur mit Kommentar' },
     { area: 'Tennishalle', app: 'Platzverwaltung', id: P_AUSHANG, requires: [P_PLATZ.admin],
       text: 'Aushang in der Hallenbuchung pflegen: Hinweise mit Bildern (z. B. Hallenverschmutzung), die beim Aufruf von „Platz buchen“ erscheinen – Zeitraum, Zielrollen, Bestätigungspflicht, wer hat gesehen/bestätigt, als Rundschreiben übernehmen' },
     { area: 'Tennishalle', app: 'Produkte und Preise', id: P_PROD.display, text: 'Produkte anzeigen (Halle, Getränke, Speisen, Sonstiges – Preise je Zeitraum, Gästepreis, Erlöskonto)' },
