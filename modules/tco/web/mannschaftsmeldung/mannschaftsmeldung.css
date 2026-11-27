@@ -40,3 +40,6 @@ fieldset:disabled .portal-mm__opt { cursor: default; opacity: 0.8; }
 .portal-mm__summe { font-variant-numeric: tabular-nums; }
 /* nicht zugeordnete Mannschaft: ausgegraut (schraffiert, damit es auch ohne Farbe erkennbar ist) */
 .portal-mm__zelle--aus { background: repeating-linear-gradient(135deg, #eceef1 0 6px, #f6f7f9 6px 12px); color: #8a93a3; }
+
+/* Telefon: schmalere fixierte Namensspalte – sonst ist nur eine Mannschaftsspalte zu sehen */
+@media (max-width: 700px) { .portal-mm__matrix .portal-mm__name { min-width: 7rem; max-width: 40vw; overflow-wrap: anywhere; } }

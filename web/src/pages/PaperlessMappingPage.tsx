@@ -233,7 +233,7 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
           </Tab>
           <Tab data-key="vorschau" text="Vorschau" selected={tab === 'vorschau'}>
             <Section title="Ergebnis mit Beispielwerten">
-              <table className="portal-pm__tabelle">
+              <div className="portal-tabrahmen"><table className="portal-pm__tabelle">
                 <tbody>
                   <tr><th>Titel</th><td>{vorschau.title || '–'}</td></tr>
                   <tr><th>Korrespondent</th><td>{vorschau.correspondent || '–'}</td></tr>
@@ -245,7 +245,7 @@ function KontextDetail({ modul, modulName, k, onSaved }: { modul: string; modulN
                   {FELDER.filter((f) => f.rechte).map((f) => <tr key={f.key}><th>{f.text}</th><td>{ergebnis(f.key, vorschau)}</td></tr>)}
                   {Object.entries(vorschau.customFields).map(([n, v]) => <tr key={n}><th>{n}</th><td>{v === null ? '–' : typeof v === 'number' ? `${v} (Zahl)` : v}</td></tr>)}
                 </tbody>
-              </table>
+              </table></div>
               <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.5rem' }}>Beispielwerte der Platzhalter – die echte Ablage nutzt die Werte des jeweiligen Objekts.</Text>
             </Section>
           </Tab>

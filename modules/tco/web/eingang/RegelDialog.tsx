@@ -305,13 +305,13 @@ export function RegelDialog({ id, start, stamm, onClose, onSaved }: {
           </MessageStrip>
         )}
         {hilfe && (
-          <table style={{ borderCollapse: 'collapse', marginTop: '0.5rem' }}>
+          <div className="portal-tabrahmen"><table style={{ borderCollapse: 'collapse', marginTop: '0.5rem' }}>
             <tbody>
               {stamm.platzhalter.map((p) => (
                 <tr key={p.name}><td style={{ padding: '0.1rem 1rem 0.1rem 0' }}><code>{`{${p.name}}`}</code></td><td><Text className="portal-small">{p.text}</Text></td></tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Block>
     </Dialog>

@@ -148,7 +148,7 @@ export function ErgebnisDialog({ offen, spiel, namenA, namenB, art, liga, onSpei
         )}
 
         {art === 'spass' ? (
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <div className="portal-tabrahmen"><table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <tbody>
               <tr>
                 <td style={{ padding: '0.25rem 0.5rem 0.25rem 0' }}><Text><b>{namen(namenA)}</b></Text></td>
@@ -159,7 +159,7 @@ export function ErgebnisDialog({ offen, spiel, namenA, namenB, art, liga, onSpei
                 <td>{zahlFeld(spass[1], (v) => setSpass([spass[0], v]), `Spiele ${namen(namenB)}`)}</td>
               </tr>
             </tbody>
-          </table>
+          </table></div>
         ) : wertung === 'keine' ? (
           <Text>Das Spiel wurde nicht ausgetragen und keine Seite hat sich nachweislich um einen Termin bemüht – niemand bekommt etwas.</Text>
         ) : (
