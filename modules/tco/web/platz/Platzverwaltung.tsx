@@ -27,6 +27,7 @@ import { LEERER_ABO_FILTER, aboFilterAktiv, aboFilterLesen, aboPlaetze, aboTitel
 import { AboSaisonVerwaltung } from './AboSaisonVerwaltung';
 import { AushangVerwaltung } from './AushangVerwaltung';
 import { AboTermineDialog } from './AboTermine';
+import { datumLesen, passtZuTagen } from './belegungDatum';
 
 /**
  * Platzverwaltung: Plätze (Freiplätze/Halle) mit Gültigkeit, Öffnungszeiten, Zeitraster, Buchungsdauern,
@@ -381,24 +382,35 @@ function Belegung() {
   const [eintrag, setEintrag] = useState<{ p: TagPlatz; datum: string; von: string } | null>(null);
   const [details, setDetails] = useState<{ p: TagPlatz; b: Belegt; datum: string } | null>(null);
   const daten = useMemo(() => Array.from({ length: tage }, (_, i) => tagPlus(datum, i)), [datum, tage]);
-  const laden = () => Promise.all(daten.map((d) => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${d}`))).then(setTagListe);
+  // Nur die Antwort auf die jüngste Anfrage zählt: Kommt die Belegung eines früher gewählten Tages später an (langsames Netz),
+  // stünde sonst der alte Tag unter dem neuen Datum – und der Termin-Dialog schlüge den falschen Tag vor.
+  const ladeNr = useRef(0);
+  const laden = () => {
+    const nr = ++ladeNr.current;
+    return Promise.all(daten.map((d) => api.get<{ datum: string; plaetze: TagPlatz[] }>(`${PA}/tag?datum=${d}`)))
+      .then((liste) => { if (nr === ladeNr.current) setTagListe(liste); });
+  };
   useEffect(() => { setTagListe(null); laden(); }, [daten]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Tag aus dem Datumsfeld übernehmen – selbst gelesen (ISO oder „Fr., 04.12.2026“), unabhängig von „valid“ des Feldes */
+  const datumWaehlen = (roh: unknown) => { const d = datumLesen(typeof roh === 'string' ? roh : ''); if (d && d !== datum) setDatum(d); };
   useEffect(() => { try { localStorage.setItem('tco.platz.belegung.tage', String(tage)); } catch { /* egal */ } }, [tage]);
 
   // mehrere Tage: je Tag und Platz eine Spalte (Spaltenkopf = Tag, bei mehreren Plätzen zusätzlich der Platz)
   const spalten = useMemo(() => {
-    if (!tagListe) return null;
+    // nur anzeigen, was zu den gewählten Tagen gehört
+    if (!tagListe || !passtZuTagen(tagListe, daten)) return null;
     const mehrerePlaetze = Math.max(...tagListe.map((t) => t.plaetze.length)) > 1;
     const zuDatum = new Map<number, { datum: string; p: TagPlatz }>();
     const plaetze: TagPlatz[] = [];
     tagListe.forEach((t, ti) => t.plaetze.forEach((p, pi) => {
       const id = ti * 1000 + pi + 1;
-      const kopf = tage === 1 ? p.name : `${tagText(t.datum).slice(0, 2)} ${dat(t.datum).slice(0, 6)}${mehrerePlaetze ? ` · ${p.name}` : ''}`;
+      // der Tag steht immer im Spaltenkopf – aus der geladenen Belegung, nicht aus dem Datumsfeld (auch bei einem Tag)
+      const kopf = `${tagText(t.datum).slice(0, 2)} ${dat(t.datum).slice(0, 6)}${mehrerePlaetze || tage === 1 ? ` · ${p.name}` : ''}`;
       zuDatum.set(id, { datum: t.datum, p });
       plaetze.push({ ...p, id, name: kopf });
     }));
     return { plaetze, zuDatum };
-  }, [tagListe, tage]);
+  }, [tagListe, tage, daten]);
 
   const bisDatum = daten[daten.length - 1];
   return (
@@ -408,7 +420,7 @@ function Belegung() {
         <div className="portal-pv-leiste__datum">
           <Button icon="navigation-left-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage zurück` : 'Vortag'} onClick={() => setDatum(tagPlus(datum, -tage))} />
           <DatePicker formatPattern="EEE, dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={datum} className="portal-pv-leiste__picker"
-                      onChange={(e) => e.detail.valid && e.detail.value && setDatum(e.detail.value)} />
+                      onChange={(e) => datumWaehlen(e.detail.value || (e.target as unknown as { value?: string }).value)} />
           <Button icon="navigation-right-arrow" design="Transparent" tooltip={tage > 1 ? `${tage} Tage weiter` : 'Folgetag'} onClick={() => setDatum(tagPlus(datum, tage))} />
           {datum !== isoHeute() && <Button design="Transparent" onClick={() => setDatum(isoHeute())}>Heute</Button>}
         </div>
@@ -430,6 +442,7 @@ function Belegung() {
                     if (b.fest) setTermin({ p: z.p, b, datum: z.datum, modus: 'AENDERN' }); else setDetails({ p: z.p, b, datum: z.datum });
                   }} />
       )}
+      {!spalten && <Text className="portal-muted">Belegung wird geladen …</Text>}
       {spalten && !spalten.plaetze.length && <MessageStrip hideCloseButton>Keine aktiven Plätze.</MessageStrip>}
       {details && <TerminDetails {...details} onClose={() => setDetails(null)}
                                  onAendern={(modus) => { setTermin({ ...details, modus }); setDetails(null); }} />}
