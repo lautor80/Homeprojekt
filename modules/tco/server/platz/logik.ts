@@ -240,6 +240,18 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
       from tco.abo_wunsch w join tco.abo_saison s on s.id = w.saison_id and s.aktiv
      where w.status in ('OFFEN', 'BESTAETIGT', 'ANGEBOTEN', 'ANGENOMMEN', 'WARTET') and w.platz_id = any(${plaetze.map((p) => p.id)}::int[])
        and s.bis >= ${von}::date and s.von <= ${bis}::date`;
+  // Ausnahme: ein einzeln stornierter Termin eines Abos, das danach weiterläuft, ist wieder frei – die Stunde wurde für
+  // diesen Tag bewusst freigegeben und wird nicht für den Abo-Wunsch (z. B. die Bestätigung desselben Abos) erneut reserviert.
+  // Endet das Abo (kein späterer aktiver Termin der Serie), bleibt die Reservierung für den Wunsch bestehen.
+  const freigegeben = wuensche.length ? (await db`
+    select b.datum::text as datum, to_char(b.time_start, 'HH24:MI') as von, to_char(b.time_ende, 'HH24:MI') as bis, b.platz
+      from tco.bookings b
+     where b.datum between ${von} and ${bis} and b.status = '2'
+       and b.time_start is not null and b.time_ende is not null
+       and (upper(trim(b.platz)) = any(${[...zu.keys()]}) ${ohnePlatz ? db`or coalesce(trim(b.platz), '') = ''` : db``})
+       and exists (select 1 from tco.bookings n where n.bid = b.bid and n.status = '3' and n.datum > b.datum)`)
+    .map((r) => ({ datum: r.datum as string, von: minuten(r.von), bis: minuten(r.bis) || 1440, platzId: r.platz?.trim() ? zu.get(gross(r.platz)) : ohnePlatz?.id }))
+    : [];
   for (const w of wuensche) {
     const p = plaetze.find((x) => x.id === w.platz_id)!;
     const start = [von, w.s_von as string, heute].sort().pop()!;
@@ -247,6 +259,7 @@ export async function belegungLesen(db: Db, plaetze: Platz[], von: string, bis: 
     for (let d = start; d <= ende; d = addTage(d, 1)) {
       if (isoWochentag(d) !== w.wochentag) continue;
       if (out.some((x) => x.platzId === p.id && x.datum === d && x.von < w.bis && x.bis > w.von)) continue;
+      if (freigegeben.some((x) => x.platzId === p.id && x.datum === d && x.von < w.bis && x.bis > w.von)) continue;
       out.push({ bid: '', datum: d, von: w.von, bis: w.bis, kunde: w.name, status: 'R', platz: p.name, platzId: p.id,
         benutzer_id: null, quelle: null, assigned: '', text: null, reserviert: true, abo: true,
         wunsch: { id: w.id, art: w.art, status: w.status, name: w.name, mitglied: !!w.mitglied, adrnr: w.adrnr ?? null, saison: w.saison,
