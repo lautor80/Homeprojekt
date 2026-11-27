@@ -216,7 +216,7 @@ flowchart LR
 | mahnung | 16 |
 | mannschaftsmeldung | 10 |
 | mitglieder | 84 |
-| platz | 83 |
+| platz | 85 |
 | praesentation | 11 |
 | produkte | 6 |
 | projekte | 15 |

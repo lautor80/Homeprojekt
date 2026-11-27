@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { DB, type Db, type Verein } from '../verein.js';
 import { addTage } from '../format.js';
 import {
-  aboAnlegen, aboBeenden, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, buchungsPersonen, einzelAendern, einzelAnlegen,
+  aboAnlegen, aboBeenden, aboTermineLesen, aboTerminVerwaltungStornieren, massenAendern, abosLesen, aboVorschau, belegungLesen, benutzerListe, benutzerZuordnen, buchungsPersonen, einzelAendern, einzelAnlegen,
   einzelStornieren, aboTerminStornieren, hhmm, ichLesen, jetzt, meineLesen, platzLesen, platzLoeschen, plaetzeLesen, platzSpeichern, preisVon, regelnPruefen,
   tagLesen, verwaltungAendern, verwaltungKopieren, verwaltungStornieren, ARTEN, type Ich,
 } from './logik.js';
@@ -45,7 +45,7 @@ import { buchungDetails } from './details.js';
 import { buchungssperreLesen } from '../mahnung/lauf.js';
 import { sperrText } from '../mahnung/logik.js';
 
-export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
+export const P_PLATZ = { buchen: 'tco.platzbuchung:edit', admin: 'tco.platz:admin', abotermine: 'tco.platz:abotermine', serie: 'tco.platz:serie', verwalten: 'tco.platzbuchung:verwalten' };
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum im Format JJJJ-MM-TT');
 const uhr = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/, 'Uhrzeit im Format HH:MM');
@@ -204,6 +204,7 @@ export async function bestaetigungErneut(tx: Db, v: Verein, id: number, cc?: str
 export async function platzRoutes(app: FastifyInstance) {
   const buchen = { preHandler: requireAuth(P_PLATZ.buchen) };
   const admin = { preHandler: requireAuth(P_PLATZ.admin) };
+  const aboTermine = { preHandler: requireAuth(P_PLATZ.abotermine) };
   // Rolle „Hallennutzer“ bei jedem Start auf den vorgesehenen Stand bringen (nur Einzelbuchung)
   await rolleSicherstellen(DB).catch((e) => app.log.error(e, 'Rolle HALLENNUTZER konnte nicht geprüft werden'));
 
@@ -839,6 +840,19 @@ export async function platzRoutes(app: FastifyInstance) {
     const { bid } = z.object({ bid: z.string().min(1) }).parse(req.params);
     const { ab, grund } = z.object({ ab: datum.default(() => addTage(jetzt().datum, 1)), grund: z.string().trim().max(500).nullish() }).parse(req.body ?? {});
     return { text: await change(req, (tx) => aboBeenden(tx, bid, ab, grund), { action: 'PLATZ_ABO_ENDE', reason: grund ? `${bid}: ${grund}` : bid }) };
+  });
+
+  /** Abos → „Termine“: Termine einer Serie und einzelnen Termin stornieren (Recht tco.platz:abotermine, Funktion tco.platz.abotermine) */
+  app.get('/platz/admin/abos/:bid/termine', aboTermine, async (req) => {
+    const { bid } = z.object({ bid: z.string().min(1).max(40) }).parse(req.params);
+    return aboTermineLesen(DB, bid);
+  });
+
+  app.post('/platz/admin/abos/:bid/termine/storno', aboTermine, async (req) => {
+    const { bid } = z.object({ bid: z.string().min(1).max(40) }).parse(req.params);
+    const e = z.object({ datum, grund: z.string().trim().max(500).nullish() }).parse(req.body);
+    return { text: await change(req, (tx) => aboTerminVerwaltungStornieren(tx, bid, e.datum, e.grund),
+      { action: 'PLATZ_STORNO', reason: `Abo ${bid} ${e.datum}${e.grund ? `: ${e.grund}` : ''}` }) };
   });
 
   app.get('/platz/admin/benutzer', admin, async () => benutzerListe(DB));
