@@ -119,8 +119,9 @@ export function SchnupperVerwaltung() {
       ) : daten.zeilen.map((z) => {
         const termine = [[...z.termine.tage, ...z.termine.zeiten].join(', '), z.termine.text].filter(Boolean).join(' · ');
         const fertig = z.status === 'MITGLIED' || z.status === 'ABGESAGT';
-        // neues Angebot: nicht bei offenem Angebot und nicht, solange ein angenommenes Angebot noch als Antrag läuft
-        const angebotNeu = angebotDarf && !fertig && !angebotOffen(z.angebot) && !(z.angebot?.status === 'ANGENOMMEN' && z.antrag_status !== 'ABGELEHNT');
+        // neues Angebot: nicht bei offenem Angebot und nicht, solange ein Antrag (aus Angebot oder Beitrittslink) in Prüfung ist
+        const angebotNeu = angebotDarf && !fertig && !angebotOffen(z.angebot) && z.antrag_status !== 'EINGANG'
+          && !(z.angebot?.status === 'ANGENOMMEN' && z.antrag_status !== 'ABGELEHNT');
         return (
           <Section key={z.adrnr} title={`${z.nummer} · ${z.vorname} ${z.nachname}${z.alter != null ? ` (${z.alter})` : ''}`}
                    status={<ObjectStatus state={STATE[z.status]} inverted>{z.status_txt}</ObjectStatus>}>

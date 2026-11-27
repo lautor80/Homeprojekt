@@ -118,10 +118,12 @@ export async function schnupperLesen(db: Db, filter: 'OFFEN' | 'ALLE'): Promise<
                           left join lateral (select a.id, a.nummer, a.status, a.gueltig_bis::text as gueltig_bis, a.antrag
                                                from tco.vertragsangebote a where a.schnupper_adrnr = s.adrnr
                                               order by a.erstellt_am desc, a.id desc limit 1) va on true
-                          left join tco.mitgliedsantraege ma on ma.nummer = coalesce(nullif(s.antrag, ''), nullif(va.antrag, ''),
+                          left join tco.mitgliedsantraege ma on ma.nummer = coalesce(nullif(s.antrag, ''),
+                                 (select y.nummer from tco.mitgliedsantraege y where y.nummer = nullif(va.antrag, '') and y.status <> 'ABGELEHNT'),
                                  (select x.nummer from tco.mitgliedsantraege x
                                    where x.daten->>'schnupper_adrnr' = s.adrnr and x.status in ('EINGANG', 'UEBERNOMMEN')
-                                   order by x.eingang desc, x.id desc limit 1))
+                                   order by x.eingang desc, x.id desc limit 1),
+                                 nullif(va.antrag, ''))
                          ${filter === 'OFFEN' ? db`where s.status = any(${OFFEN})` : db``}
                          order by (s.status = 'NEU') desc, s.eingang desc limit 500`;
   const h = heute();

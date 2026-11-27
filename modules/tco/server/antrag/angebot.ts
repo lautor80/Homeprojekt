@@ -225,6 +225,13 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
 export async function angebotErneuern(tx: Db, id: number): Promise<{ nummer: string; token: string; email: string; name: string; gueltigBis: string }> {
   const token = randomBytes(32).toString('base64url');
   const gueltigBis = addTage(heute(), ANGEBOT_TAGE);
+  // Schnupperer: höchstens ein offenes Angebot – ein abgelaufenes nicht neu senden, wenn inzwischen ein neueres offen ist
+  const [alt] = await tx`select schnupper_adrnr from tco.vertragsangebote where id = ${id} and status = 'OFFEN' for update`;
+  if (alt?.schnupper_adrnr) {
+    const [offen] = await tx`select nummer from tco.vertragsangebote
+                              where schnupper_adrnr = ${alt.schnupper_adrnr} and id <> ${id} and status = 'OFFEN' and gueltig_bis >= ${heute()} limit 1`;
+    if (offen) throw new BusinessError(`Für diese Person gibt es bereits das offene Vertragsangebot ${offen.nummer} – bitte dieses verwenden oder zurückziehen.`);
+  }
   const [r] = await tx`update tco.vertragsangebote set token_hash = ${sha256(token)}, gueltig_bis = ${gueltigBis}, versuche = 0, geoeffnet_am = null
                         where id = ${id} and status = 'OFFEN' returning nummer, email, daten`;
   if (!r) throw new BusinessError('Angebot nicht gefunden oder bereits angenommen/zurückgezogen.', 404);
