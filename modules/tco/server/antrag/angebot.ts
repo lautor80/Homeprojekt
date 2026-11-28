@@ -301,6 +301,32 @@ export async function angeboteLesen(db: Db, alle: boolean) {
   });
 }
 
+/** Bestand eines aktiven Mitglieds im Angebot: laufende Vertragsarten und Mitgliedschaften, die mit der Umstellung enden */
+export interface AngebotBestand { laufend: string[]; endet: string[] }
+
+/**
+ * Was sich für bestehende Mitglieder tatsächlich ändert (wie bei der Übernahme, logik.ts → vertragsaenderung): je Person die Arten
+ * der laufenden Verträge (gewählte Einheiten, die schon laufen, bleiben unverändert) und die Namen der bisherigen Mitgliedschaften,
+ * die enden, weil eine neue dazukommt (eigene Beitragsart bzw. Familienbeitrag). `null`: kein aktives Mitglied (Neuaufnahme).
+ */
+export async function angebotBestand(db: Db, d: AngebotDaten): Promise<(AngebotBestand | null)[]> {
+  const stichtag = d.eintritt < heute() ? heute() : d.eintritt;
+  const out: (AngebotBestand | null)[] = [];
+  for (const [i, p] of d.personen.entries()) {
+    const [m] = p.adrnr ? await db`select mitglnrn, eintritt from tco.mitglieder where adrnr = ${p.adrnr}` : [];
+    if (!m || !(leer(m.mitglnrn) || m.eintritt)) { out.push(null); continue; }
+    const vt = await db`select art, artname from tco.vertraege where adrnr = ${p.adrnr!} and (vertragende is null or vertragende >= ${stichtag}) order by vertragnr`;
+    const laufend = vt.map((v) => leer(v.art));
+    // neue Mitgliedschaft: beim Antragsteller die gewählte Art, bei weiteren Personen der Familienbeitrag des Antragstellers
+    const neu = (i === 0 ? p.art : d.personen[0].art) ?? '';
+    const endet = neu && !laufend.includes(neu)
+      ? vt.filter((v) => leer(v.art) !== neu && kategorieVon(leer(v.art), leer(v.artname)) === 'MITGLIEDSCHAFT').map((v) => leer(v.artname) || leer(v.art))
+      : [];
+    out.push({ laufend, endet });
+  }
+  return out;
+}
+
 /** gültiges, offenes Angebot zum Link (für Update gesperrt) */
 async function zumToken(tx: Db, token: string) {
   const [r] = await tx`select id, nummer, status, daten, gueltig_bis::text as gueltig_bis, geoeffnet_am, versuche
@@ -315,7 +341,7 @@ async function zumToken(tx: Db, token: string) {
  * damit die Transaktion den Zähler sichert). Ohne hinterlegtes Geburtsdatum genügt der Link.
  */
 export async function angebotOeffnen(tx: Db, token: string, geburtsdatum: string | null):
-  Promise<{ geburtsdatumNoetig: true } | { fehler: string } | { nummer: string; daten: Omit<AngebotDaten, 'personen' | 'bank'> & { personen: Omit<AngebotPerson, 'adrnr'>[]; bank: { kontoinhaber: string; iban: string } | null } }> {
+  Promise<{ geburtsdatumNoetig: true } | { fehler: string } | { nummer: string; daten: Omit<AngebotDaten, 'personen' | 'bank'> & { personen: (Omit<AngebotPerson, 'adrnr'> & { bestand: AngebotBestand | null })[]; bank: { kontoinhaber: string; iban: string } | null } }> {
   const a = await zumToken(tx, token);
   const soll = a.daten.personen[0].geburtsdatum;
   if (soll) {
@@ -328,10 +354,12 @@ export async function angebotOeffnen(tx: Db, token: string, geburtsdatum: string
   }
   await tx`update tco.vertragsangebote set geoeffnet_am = coalesce(geoeffnet_am, now()) where id = ${a.id}`;
   const d = a.daten;
+  // bestehende Mitglieder: was schon läuft und welche Mitgliedschaft mit der Umstellung endet – damit das Formular nichts als „neu“ ausweist
+  const bestand = await angebotBestand(tx, d);
   return {
     nummer: a.nummer,
     // IBAN nur gekürzt nach außen – bei „Bestätigen“ nimmt der Server die gespeicherte
-    daten: { ...d, eintritt: d.eintritt < heute() ? heute() : d.eintritt, personen: d.personen.map(({ adrnr: _a, ...p }) => p),
+    daten: { ...d, eintritt: d.eintritt < heute() ? heute() : d.eintritt, personen: d.personen.map(({ adrnr: _a, ...p }, i) => ({ ...p, bestand: bestand[i] })),
       bank: d.bank ? { kontoinhaber: d.bank.kontoinhaber, iban: ibanKurz(d.bank.iban) } : null },
   };
 }
@@ -382,6 +410,24 @@ export async function angebotDetail(db: Db, id: number) {
     const [z] = await db`select vorname, nachname from tco.mitglieder where adrnr = ${d.bank.zahler_adrnr}`;
     zahler = z ? condense(`${leer(z.vorname)} ${leer(z.nachname)}`) : d.bank.zahler_adrnr;
   }
+  // nur solange das Angebot offen ist: danach hat die Übernahme den Bestand bereits verändert
+  const bestand = r.status === 'OFFEN' ? await angebotBestand(db, d) : [];
+  // Dublette: Person wird neu aufgenommen, obwohl es unter demselben Namen schon ein aktives Mitglied gibt (anderer Stammsatz,
+  // z. B. aus der Schnupper-Anmeldung) – die Übernahme würde scheitern bzw. die Umstellung den falschen Stammsatz treffen
+  const hinweise: string[] = [];
+  if (r.status === 'OFFEN') {
+    for (const [i, p] of d.personen.entries()) {
+      if (bestand[i]) continue;
+      const doppelt = await db`select adrnr, mitglnrn from tco.mitglieder
+                                where lower(btrim(vorname)) = ${p.vorname.trim().toLowerCase()} and lower(btrim(nachname)) = ${p.nachname.trim().toLowerCase()}
+                                  and adrnr <> ${p.adrnr ?? ''} and (coalesce(mitglnrn, '') <> '' or eintritt is not null) and (austritt is null or austritt >= current_date)
+                                order by adrnr limit 3`;
+      for (const x of doppelt) {
+        hinweise.push(`${p.vorname} ${p.nachname} wird hier neu aufgenommen${p.adrnr ? ` (Stamm ${p.adrnr})` : ''}, ist aber bereits aktives Mitglied Nr. ${leer(x.mitglnrn) || '–'} (Stamm ${x.adrnr}). `
+          + 'Für eine Vertragsumstellung bitte das Angebot korrigieren und das bestehende Mitglied wählen.');
+      }
+    }
+  }
   const versand = await db`select zeit, an, betreff, status, fehler from core.mail_protokoll
                             where anwendung = 'Mitgliedsantrag' and objekt = ${r.nummer} order by zeit desc limit 20`;
   return {
@@ -389,10 +435,11 @@ export async function angebotDetail(db: Db, id: number) {
     status: (r.status === 'OFFEN' && r.gueltig_bis < heute() ? 'ABGELAUFEN' : r.status) as string,
     email: r.email as string, gueltig_bis: r.gueltig_bis as string, erstellt_am: r.erstellt_am, erstellt_von: (r.erstellt_von as string | null) ?? null,
     geoeffnet_am: r.geoeffnet_am ?? null, versuche: Number(r.versuche ?? 0), antrag: (r.antrag as string | null) ?? null, schnupper: (r.schnupper as string | null) ?? null,
-    personen: d.personen.map((p) => ({ ...p, adrnr: p.adrnr ?? null, email: p.email ?? null, telefon: p.telefon ?? null, art: p.art ?? null, training: p.training ?? [] })),
+    personen: d.personen.map((p, i) => ({ ...p, adrnr: p.adrnr ?? null, email: p.email ?? null, telefon: p.telefon ?? null, art: p.art ?? null, training: p.training ?? [], bestand: bestand[i] ?? null })),
     strasse: d.strasse, plz: d.plz, ort: d.ort, telefon: d.telefon ?? null, erziehungsberechtigt: d.erziehungsberechtigt ?? null,
     eintritt: d.eintritt, bemerkung: d.bemerkung ?? null, vertragsaenderung: !!d.vertragsaenderung,
     bank: d.bank ? { kontoinhaber: d.bank.kontoinhaber, iban: d.bank.iban, bic: d.bank.bic ?? null, zahler } : null,
+    hinweise,
     versand: versand.map((v) => ({ zeit: v.zeit, an: v.an as string, betreff: v.betreff as string, status: v.status as string, fehler: (v.fehler as string | null) ?? null })),
   };
 }

@@ -1,8 +1,8 @@
 import { BusinessError } from '../../../../server/src/errors.js';
 import { ibanGueltig, normalisieren } from '../../../../server/src/lib/sepa.js';
 import type { Db, Verein } from '../verein.js';
-import { condense, heute } from '../format.js';
-import { emailGueltig, mitgliedNeu, normName, vertragNeu, vertragsarten, vertragsZahler, type Neu, type VertragsArt } from '../mitglieder/logik.js';
+import { addTage, condense, heute } from '../format.js';
+import { emailGueltig, mitgliedNeu, normName, vertragAendern, vertragNeu, vertragsarten, vertragsZahler, type Neu, type VertragsArt } from '../mitglieder/logik.js';
 import { mitgliederBenutzerAnlegen } from '../mitglieder/selbst.js';
 import { adrnrZumToken, alsMitgliedMarkieren, schnupperFuerPerson } from '../schnupper/logik.js';
 import { angebotAnnehmen, angebotDaten, bankAusStamm } from './angebot.js';
@@ -47,6 +47,8 @@ export const ALTER_JUGENDBEITRAG_BIS = 17;
 export const ALTER_TRAINING_BIS = 21;
 export const KUENDIGUNG_TEXT = 'Die Vereinsmitgliedschaft kann mit einer Frist von 4 Wochen zum Jahresende gekündigt werden, '
   + 'die Teilnahme am Training zum 30.09. eines jeden Jahres.';
+
+const datD = (iso: string) => iso.split('-').reverse().join('.');
 
 export type Kategorie = 'MITGLIEDSCHAFT' | 'TRAINING';
 /** Mitgliedschaft: Art < 90; Training: Art 90 oder Bezeichnung mit „Training“ (ab 90); übrige (z. B. Spende, „Inaktiv“) nicht im Antrag */
@@ -307,12 +309,14 @@ export async function uebernehmen(tx: Db, v: Verein, id: number, wer: string, o:
 /**
  * Vertragsänderung für ein aktives Mitglied (Vertragsangebot #12): gewählte Verträge, die noch nicht laufen, werden ergänzt –
  * gezählt je Beitragsart (zweimal Jugendtraining gewählt, einmal laufend ⇒ eines ergänzt)
- * (Beginn wie beim Antrag, Zahler wie bei den laufenden Verträgen); laufende bleiben unverändert. Abweichungen, die der Vorstand
- * im Mitgliederstamm klären muss (zweite Mitgliedschaft, andere Bankverbindung), kommen als Hinweis.
+ * (Beginn wie beim Antrag, Zahler wie bei den laufenden Verträgen); laufende bleiben unverändert.
+ * Umstellung der Mitgliedschaft: Kommt eine neue Mitgliedschaft dazu (eigene Beitragsart oder über den Familienbeitrag), endet die
+ * bisherige am Tag vor deren Beginn – das Mitglied behält Nummer, Eintritt und alle übrigen Verträge (z. B. Jugendtraining).
+ * Abweichungen, die der Vorstand im Mitgliederstamm klären muss (andere Bankverbindung), kommen als Hinweis.
  */
 async function vertragsaenderung(tx: Db, antrag: Record<string, any>, o: { adrnr: string; name: string; gewaehlt: VertragsArt[]; familie: boolean; eintritt: string; turnusse: string[] }) {
   const out: string[] = [];
-  const laufend = await tx`select art, artname, vertragnr, sollstellung, zahler_adrnr from tco.vertraege
+  const laufend = await tx`select art, artname, vertragnr, sollstellung, zahler_adrnr, vertragbegin::text as vertragbegin, vertragende::text as vertragende from tco.vertraege
                             where adrnr = ${o.adrnr} and (vertragende is null or vertragende >= ${o.eintritt}) order by vertragnr`;
   const zAlt = String(laufend.find((v) => String(v.zahler_adrnr ?? '').trim() && v.zahler_adrnr !== o.adrnr)?.zahler_adrnr ?? '').trim();
   const zahler = zAlt && (await vertragsZahler(tx)).some((z) => z.adrnr === zAlt) ? zAlt : null;
@@ -328,14 +332,23 @@ async function vertragsaenderung(tx: Db, antrag: Record<string, any>, o: { adrnr
       frei.splice(i, 1);
       continue;
     }
+    const beginn = beginnFuer(o.eintritt, kat);
+    const turnus = a.turnus || laufend[0]?.sollstellung || o.turnusse[0] || '';
+    const vnr = await vertragNeu(tx, { adrnr: o.adrnr, art: a.art, beginn, turnus, betrag: o.familie && kat === 'MITGLIEDSCHAFT' ? 0 : a.betrag, zahler });
+    neu.push(`${a.name} (Vertrag ${vnr})`);
     if (kat === 'MITGLIEDSCHAFT') {
-      for (const v of laufend.filter((v) => kategorieVon(v.art, v.artname ?? '') === 'MITGLIEDSCHAFT')) {
-        out.push(`${o.name}: bisherige Mitgliedschaft „${v.artname}“ (Vertrag ${v.vertragnr}) läuft weiter – bitte im Mitgliederstamm beenden.`);
+      // Umstellung: die bisherige Mitgliedschaft endet am Tag vor dem Beginn der neuen
+      const bis = addTage(beginn, -1);
+      for (const v of laufend.filter((v) => v.art !== a.art && kategorieVon(v.art, v.artname ?? '') === 'MITGLIEDSCHAFT')) {
+        if (v.vertragende && v.vertragende <= bis) continue;   // endet ohnehin vorher
+        if (v.vertragbegin && v.vertragbegin > bis) {
+          out.push(`${o.name}: Mitgliedschaft „${v.artname}“ (Vertrag ${v.vertragnr}) beginnt erst am ${datD(v.vertragbegin)} – bitte im Mitgliederstamm klären.`);
+          continue;
+        }
+        await vertragAendern(tx, o.adrnr, v.vertragnr, { ende: bis });
+        out.push(`${o.name}: bisherige Mitgliedschaft „${v.artname}“ (Vertrag ${v.vertragnr}) endet am ${datD(bis)} – Umstellung auf ${o.familie ? `den Familienbeitrag (${a.name})` : a.name} ab ${datD(beginn)}.`);
       }
     }
-    const turnus = a.turnus || laufend[0]?.sollstellung || o.turnusse[0] || '';
-    const vnr = await vertragNeu(tx, { adrnr: o.adrnr, art: a.art, beginn: beginnFuer(o.eintritt, kat), turnus, betrag: o.familie && kat === 'MITGLIEDSCHAFT' ? 0 : a.betrag, zahler });
-    neu.push(`${a.name} (Vertrag ${vnr})`);
   }
   out.unshift(`${o.name}: ${neu.length ? `Verträge ergänzt – ${neu.join(', ')}` : 'keine neuen Verträge'}.`);
   // Bankverbindung des Antrags gegen den Stamm (bei abweichendem Zahler dessen) – Mandat wird nicht automatisch geändert

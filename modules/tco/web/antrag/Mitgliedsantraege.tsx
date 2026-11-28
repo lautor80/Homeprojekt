@@ -14,7 +14,7 @@ import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { TCO, dat } from '../util';
 import { portalAdresse } from '@core/branding';
-import { BeitragsUebersicht } from './Beitritt';
+import { BeitragsUebersicht, type Bestand } from './Beitritt';
 
 /**
  * Mitgliedsanträge (online, /beitritt): Eingang prüfen (Dubletten, Angaben, Bankdaten nur mit Berechtigung im Klartext),
@@ -233,10 +233,14 @@ function Angebote({ alle, edit, arten, beitragsarten, version, onError }: { alle
 interface AngebotInhalt {
   id: number; nummer: string; status: AngebotZeile['status']; email: string; gueltig_bis: string; erstellt_am: string; erstellt_von: string | null;
   geoeffnet_am: string | null; versuche: number; antrag: string | null; schnupper: string | null;
-  personen: { adrnr: string | null; anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email: string | null; telefon: string | null; art: string | null; training: string[] }[];
+  personen: { adrnr: string | null; anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email: string | null; telefon: string | null; art: string | null; training: string[];
+    /** aktives Mitglied: laufende Vertragsarten und Mitgliedschaften, die mit der Umstellung enden (nur bei offenen Angeboten) */
+    bestand?: Bestand | null }[];
   strasse: string; plz: string; ort: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null; vertragsaenderung: boolean;
   bank: { kontoinhaber: string; iban: string; bic: string | null; zahler: string | null } | null;
   versand: { zeit: string; an: string; betreff: string; status: string; fehler: string | null }[];
+  /** z. B. Dublette: Person wird neu aufgenommen, ist aber unter anderem Stammsatz schon Mitglied */
+  hinweise?: string[];
 }
 
 /** Alter am Stichtag (für „minderjährig“ wie im Formular) */
@@ -284,6 +288,7 @@ function AngebotAnsicht({ id, arten, beitragsarten, edit, onClose, onKorrigieren
           {a.vertragsaenderung && <ObjectStatus state="Information">Vertragsänderung</ObjectStatus>}
         </div>
         {a.bemerkung && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Hinweis des Vereins (steht im Formular): {a.bemerkung}</MessageStrip>}
+        {(a.hinweise ?? []).map((h) => <MessageStrip key={h} design="Negative" hideCloseButton style={{ marginBottom: '0.5rem' }}>{h}</MessageStrip>)}
         {offen && fehlt.length > 0 && (
           <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
             Nicht vollständig vorbereitet – es fehlt: {fehlt.join(', ')}. Die Person sieht deshalb das Formular zum Ergänzen statt nur „Bestätigen“.
@@ -298,7 +303,7 @@ function AngebotAnsicht({ id, arten, beitragsarten, edit, onClose, onKorrigieren
               {[p.art ? arten[p.art] ?? p.art : (a.vertragsaenderung ? 'Mitgliedschaft unverändert' : 'über den Familienbeitrag'), ...p.training.map((t) => arten[t] ?? t)].join(' + ')}
             </Text>
             <Text className="portal-muted portal-small" style={{ display: 'block' }}>
-              {[p.adrnr ? `Stamm ${p.adrnr}` : 'neu erfasst', p.email, p.telefon].filter(Boolean).join(' · ')}
+              {[p.adrnr ? `Stamm ${p.adrnr}` : 'neu erfasst', p.bestand ? 'aktives Mitglied – Vertragsumstellung' : offen ? 'wird neu aufgenommen' : '', p.email, p.telefon].filter(Boolean).join(' · ')}
             </Text>
           </div>
         ))}
@@ -314,7 +319,7 @@ function AngebotAnsicht({ id, arten, beitragsarten, edit, onClose, onKorrigieren
 
         {beitragsarten.length ? (
           <BeitragsUebersicht info={{ beitragsarten }} eintritt={eintritt} aenderung={a.vertragsaenderung}
-                              personen={a.personen.map((p) => ({ vorname: p.vorname, nachname: p.nachname, art: p.art ?? '', training: p.training }))} />
+                              personen={a.personen.map((p) => ({ vorname: p.vorname, nachname: p.nachname, art: p.art ?? '', training: p.training, bestand: p.bestand }))} />
         ) : <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.5rem' }}>Beiträge und Fälligkeit: Beitragsarten nicht verfügbar (Online-Mitgliedsantrag abgeschaltet).</Text>}
 
         <Title level="H5" style={{ margin: '0.5rem 0 0.25rem' }}>Bankverbindung (SEPA-Lastschrift)</Title>
@@ -495,10 +500,12 @@ export function AngebotDialog({ onClose, onDone, start, bearbeiten }: {
             {bearbeiten.geoeffnet_am ? ' (die Person hat das Angebot bereits geöffnet)' : ''} – die Person erhält den berichtigten Stand mit einem neuen Link, wieder 30 Tage gültig.
           </MessageStrip>
         )}
+        {(bearbeiten?.hinweise ?? []).map((h) => <MessageStrip key={h} design="Negative" hideCloseButton>{h}</MessageStrip>)}
         <MessageStrip hideCloseButton>
           Der Antrag wird vorbereitet und als persönlicher Link verschickt: keine Daten in der E-Mail, Öffnen nur mit dem Geburtsdatum, gültig 30 Tage, einmal verwendbar.
           Die Person ergänzt IBAN/SEPA-Mandat und bestätigt – der Antrag landet danach wie gewohnt im Eingang. Personen aus dem Stamm (ohne Mitgliedschaft) werden bei der Übernahme Mitglied, ohne Dublette; bei aktiven Mitgliedern werden nur die neuen Verträge ergänzt.
           Bankverbindung „aus dem Stamm“: wer nicht selbst zahlt, bekommt die des abweichenden Zahlers (Kontoinhaber = Zahler).
+          {' '}Umstellung bestehender Mitglieder (z. B. auf den Familienbeitrag): die Mitglieder wählen und beim Antragsteller die neue Mitgliedschaft – die bisherigen Mitgliedschaften enden bei der Übernahme am Tag vor deren Beginn, laufende Trainingsverträge bleiben.
         </MessageStrip>
         {personen.map((p, i) => (
           <div key={i} style={{ padding: '0.6rem', border: '1px solid var(--sapList_BorderColor)', borderRadius: 'var(--portal-radius, 0.75rem)' }}>
