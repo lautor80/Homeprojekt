@@ -12,7 +12,7 @@ import { bankSchutz } from '../bankdaten.js';
 import { antragAblehnen, antragAnlegen, antraegeLesen, antragInfo, MAX_PERSONEN, uebernehmen } from './logik.js';
 import { portalUrl } from '../../../../server/src/kennwort.js';
 import type { Verein } from '../verein.js';
-import { ANGEBOT_TAGE, angebotAnlegen, angebotBankAnzeige, angebotDetail, angebotErneuern, angeboteLesen, angebotKandidaten, angebotOeffnen, angebotZurueckziehen } from './angebot.js';
+import { ANGEBOT_TAGE, angebotAendern, angebotAnlegen, angebotBankAnzeige, angebotDetail, angebotErneuern, angeboteLesen, angebotKandidaten, angebotOeffnen, angebotZurueckziehen } from './angebot.js';
 
 /**
  * Mitgliedsantrag online (#12): öffentlich /api/m/tco/antrag (Formular /beitritt), Verwaltung unter
@@ -82,18 +82,19 @@ export function angebotMailText(vorlage: { betreff?: string | null; text?: strin
 
 /** Link zum Vertragsangebot per E-Mail – ohne persönliche Daten, nur Anrede und Link */
 async function angebotMail(v: Verein, a: { nummer: string; token: string; email: string; name: string; gueltigBis: string }, wer: string, mail: boolean,
-  vorlage: { betreff?: string | null; text?: string | null } = {}) {
+  vorlage: { betreff?: string | null; text?: string | null } = {}, korrigiert = false) {
+  const getan = korrigiert ? 'korrigiert' : 'erstellt';
   const url = await portalUrl();
   if (!url) throw new BusinessError('Die Portal-Adresse ist nicht eingerichtet (Administration → Einstellungen) – der Link kann nicht erzeugt werden.');
   const link = `${url}/beitritt?angebot=${a.token}`;
-  if (!mail) return { link, text: `Vertragsangebot ${a.nummer} erstellt – Link bitte selbst weitergeben (gültig bis ${datumD(a.gueltigBis)}).` };
-  if (!v.n8n_mail_url) return { link, text: `Vertragsangebot ${a.nummer} erstellt. Der Mailversand ist nicht eingerichtet – bitte den Link anders weitergeben.` };
+  if (!mail) return { link, text: `Vertragsangebot ${a.nummer} ${getan} – Link bitte selbst weitergeben (gültig bis ${datumD(a.gueltigBis)}).` };
+  if (!v.n8n_mail_url) return { link, text: `Vertragsangebot ${a.nummer} ${getan}. Der Mailversand ist nicht eingerichtet – bitte den Link anders weitergeben.` };
   // ohne Angabe aus dem Dialog: der Text des Vereins (Einstellungen → E-Mail-Texte), sonst der Standardtext
   const basis = await mailtextVorlage(DB, v, 'antrag.angebot');
   const m = angebotMailText({ betreff: vorlage.betreff?.trim() || basis.betreff, text: vorlage.text?.trim() || basis.text },
     { name: a.name, link, gueltigBis: a.gueltigBis, verein: v.name });
   await mailSenden(v, { modus: 'senden', anwendung: 'Mitgliedsantrag', objekt: a.nummer, an: a.email, benutzer: wer, anhaenge: [], betreff: m.betreff, text: m.text });
-  return { link, text: `Vertragsangebot ${a.nummer} an ${a.email} gesendet (gültig bis ${datumD(a.gueltigBis)}).` };
+  return { link, text: `Vertragsangebot ${a.nummer}${korrigiert ? ' korrigiert und' : ''} an ${a.email} gesendet (gültig bis ${datumD(a.gueltigBis)}).` };
 }
 
 export async function antragRoutes(app: FastifyInstance) {
@@ -160,21 +161,35 @@ export async function antragRoutes(app: FastifyInstance) {
   });
   /** E-Mail-Vorlage für das Angebot (Platzhalter {Name}, {Link}, {GueltigBis}, {Verein}) */
   app.get('/mitgliedsantraege/angebote/mailvorlage', edit, async () => mailtextVorlage(DB, await vereinLesen(), 'antrag.angebot'));
+  const angebotSchema = z.object({
+    personen: z.array(z.object({
+      adrnr: txt(20).nullish(), anrede: txt(10).nullish(), vorname: txt(60).nullish(), nachname: txt(60).nullish(), geburtsdatum: datum.nullish(),
+      email: txt(120).nullish(), art: txt(10).nullish(), training: z.array(txt(10)).max(2).default([]),
+    })).min(1).max(MAX_PERSONEN),
+    eintritt: datum, email: txt(120).nullish(), erziehungsberechtigt: txt(120).nullish(), bemerkung: txt(1000).nullish(),
+    kontoinhaber: txt(120).nullish(), iban: txt(40).nullish(),
+    mail: z.boolean().default(true), mailBetreff: txt(200).nullish(), mailText: txt(5000).nullish(),
+  });
   app.post('/mitgliedsantraege/angebote', edit, async (req) => {
-    const b = z.object({
-      personen: z.array(z.object({
-        adrnr: txt(20).nullish(), anrede: txt(10).nullish(), vorname: txt(60).nullish(), nachname: txt(60).nullish(), geburtsdatum: datum.nullish(),
-        email: txt(120).nullish(), art: txt(10).nullish(), training: z.array(txt(10)).max(2).default([]),
-      })).min(1).max(MAX_PERSONEN),
-      eintritt: datum, email: txt(120).nullish(), erziehungsberechtigt: txt(120).nullish(), bemerkung: txt(1000).nullish(),
-      kontoinhaber: txt(120).nullish(), iban: txt(40).nullish(),
-      mail: z.boolean().default(true), mailBetreff: txt(200).nullish(), mailText: txt(5000).nullish(),
-    }).parse(req.body);
+    const b = angebotSchema.parse(req.body);
     const wer = req.user!.displayName || req.user!.username;
     const v = await vereinLesen();
     if (!(await portalUrl())) throw new BusinessError('Die Portal-Adresse ist nicht eingerichtet (Administration → Einstellungen) – der Link kann nicht erzeugt werden.');
     const a = await change(req, (tx) => angebotAnlegen(tx, b, wer), { action: 'VERTRAGSANGEBOT' });
     return { nummer: a.nummer, ...(await angebotMail(v, a, wer, b.mail, { betreff: b.mailBetreff, text: b.mailText })) };
+  });
+  /**
+   * Angebot korrigieren (nur offen/abgelaufen): gleiche Eingabe und Prüfung wie beim Erstellen, dieselbe Nummer. Der bisherige
+   * Link wird ungültig, die Person bekommt den berichtigten Stand mit neuem Link (per E-Mail oder zum Weitergeben).
+   */
+  app.put('/mitgliedsantraege/angebote/:id', edit, async (req) => {
+    const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
+    const b = angebotSchema.extend({ bankBehalten: z.boolean().default(false) }).parse(req.body);
+    const wer = req.user!.displayName || req.user!.username;
+    const v = await vereinLesen();
+    if (!(await portalUrl())) throw new BusinessError('Die Portal-Adresse ist nicht eingerichtet (Administration → Einstellungen) – der Link kann nicht erzeugt werden.');
+    const a = await change(req, (tx) => angebotAendern(tx, id, b), { action: 'VERTRAGSANGEBOT_GEAENDERT', reason: String(id) });
+    return { nummer: a.nummer, ...(await angebotMail(v, a, wer, b.mail, { betreff: b.mailBetreff, text: b.mailText }, true)) };
   });
   app.post('/mitgliedsantraege/angebote/:id/erneuern', edit, async (req) => {
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(req.params);
