@@ -22,7 +22,7 @@ import './dashboard.css';
 
 type Display = 'TILE' | 'CARD';
 
-const AUSWAHL_LEER: Auswahl = { jugJahre: [], halJahre: [], finJahre: [], finKonten: [], jugAnsicht: 'TRAINER', halZeitraum: 'SAISON' };
+const AUSWAHL_LEER: Auswahl = { mtgJahr: '', jugJahre: [], halJahre: [], finJahre: [], finKonten: [], jugAnsicht: 'TRAINER', halZeitraum: 'SAISON' };
 
 /** Mehrfachauswahl der Jahre für ein Diagramm */
 function JahreWahl({ jahre, sel, onChange, width = '20rem' }: { jahre: KeyText[]; sel: string[]; onChange: (s: string[]) => void; width?: string }) {
@@ -55,7 +55,7 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
   const laden = async (j: number | null, a: Auswahl) => {
     setLaedt(true); setError(null);
     try {
-      const q = qs({ jahr: j ?? undefined, jugJahre: a.jugJahre.join(','), halJahre: a.halJahre.join(','), finJahre: a.finJahre.join(','), finKonten: a.finKonten.join(','), jugAnsicht: a.jugAnsicht, halZeitraum: a.halZeitraum });
+      const q = qs({ jahr: j ?? undefined, mtgJahr: a.mtgJahr || undefined, jugJahre: a.jugJahre.join(','), halJahre: a.halJahre.join(','), finJahre: a.finJahre.join(','), finKonten: a.finKonten.join(','), jugAnsicht: a.jugAnsicht, halZeitraum: a.halZeitraum });
       const r = await api.get<Daten>(`${DASH}${q}`);
       setD(r);
       if (r.jahr !== j) setJahr(r.jahr);
@@ -67,7 +67,9 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
   const jahrWechseln = (neu: number) => {
     const alt = jahrVorher.current ?? jahr;
     const folgt = (s: string[]) => (alt !== null && s.length === 1 && s[0] === String(alt) ? [String(neu)] : s.length ? s : [String(neu)]);
-    setAuswahl({ ...auswahl, jugJahre: folgt(auswahl.jugJahre), halJahre: folgt(auswahl.halJahre), finJahre: folgt(auswahl.finJahre) });
+    // Mitgliederentwicklung: ein eigens gewähltes Jahr bleibt, sonst gilt das neue Geschäftsjahr
+    const mtgJahr = alt !== null && auswahl.mtgJahr === String(alt) ? '' : auswahl.mtgJahr;
+    setAuswahl({ ...auswahl, mtgJahr, jugJahre: folgt(auswahl.jugJahre), halJahre: folgt(auswahl.halJahre), finJahre: folgt(auswahl.finJahre) });
     jahrVorher.current = neu;
     setJahr(neu);
   };
@@ -89,7 +91,18 @@ export function Dashboard({ ohneTitel }: { ohneTitel?: boolean } = {}) {
     const c = d.charts;
     switch (b.key) {
       case 'MITGLIEDER':
-        return <div className="portal-chartbox"><ComboChart {...c.mitgliederMonate} /><ComboChart {...c.mitgliederJahre} /></div>;
+        return (
+          <div className="portal-chartbox">
+            <div className="portal-chartbox__sel">
+              <Label>Jahr:</Label>
+              <Select style={{ width: '7.5rem' }} onChange={(e) => setAuswahl({ ...auswahl, mtgJahr: (e.detail.selectedOption as HTMLElement).dataset.j ?? '' })}>
+                {c.mitgliederMonate.jahre.map((j) => <Option key={j.key} data-j={j.key} selected={j.key === c.mitgliederMonate.jahrSel}>{j.text}</Option>)}
+              </Select>
+            </div>
+            <ComboChart title={c.mitgliederMonate.title} nameLine={c.mitgliederMonate.nameLine} namePos={c.mitgliederMonate.namePos} nameNeg={c.mitgliederMonate.nameNeg} data={c.mitgliederMonate.data} />
+            <ComboChart {...c.mitgliederJahre} />
+          </div>
+        );
       case 'CLUBHAUS':
         return <div className="portal-chartbox"><LineChart title={c.clubhaus.title} name1={c.clubhaus.name1} name2={c.clubhaus.name2} data={c.clubhaus.data} /></div>;
       case 'JUGEND':

@@ -11,7 +11,7 @@ import { BusinessError } from '../../../../server/src/errors.js';
 import { DB, plAktiv, vereinLesen } from '../verein.js';
 import { addTage, dat, heute, runden } from '../format.js';
 import {
-  auswahlBereinigen, chartClubhaus, chartHalle, chartHalleJahre, chartJugend, chartMtgJahre, chartMtgMonate, datenJahre,
+  auswahlBereinigen, chartClubhaus, chartHalle, chartHalleJahre, chartJugend, chartMtgJahre, chartMtgMonate, datenJahre, mtgJahre,
   jahreAufbauen, jahreAuswahl, jahreText, JUG_GESAMT, JUG_TRAINER, type KeyText,
 } from './charts.js';
 import { arbeitsvorrat } from './arbeitsvorrat.js';
@@ -42,7 +42,7 @@ async function geschaeftsjahre(): Promise<number[]> {
 export async function dashboardRoutes(app: FastifyInstance) {
   app.get('/dashboard', { preHandler: requireAuth(P_DASH.display) }, async (req) => {
     const q = z.object({
-      jahr: jahr.optional(), jugJahre: liste, halJahre: liste, finJahre: liste, finKonten: liste,
+      jahr: jahr.optional(), mtgJahr: jahr.optional(), jugJahre: liste, halJahre: liste, finJahre: liste, finKonten: liste,
       jugAnsicht: z.enum([JUG_GESAMT, JUG_TRAINER]).default(JUG_TRAINER),
       halZeitraum: z.enum(Object.keys(HAL_ZEITRAEUME) as [HalZeitraum, ...HalZeitraum[]]).default('SAISON'),
     }).parse(req.query);
@@ -94,11 +94,14 @@ export async function dashboardRoutes(app: FastifyInstance) {
     };
 
     const jugInt = jahreAuswahl(jugSel, gj);
+    // Mitgliederentwicklung je Monat: eigenes Jahr wählbar (auch das Folgejahr, sobald es dafür Eintritte gibt); ohne Auswahl das Geschäftsjahr
+    const mtgListe = await mtgJahre(DB, hj, gj);
+    const mtgJahr = q.mtgJahr && mtgListe.some((j) => j.key === String(q.mtgJahr)) ? q.mtgJahr : gj;
     const halInt = jahreAuswahl(halSel, gj);
     return {
       jahr: gj, jahre, heute: h, bereiche,
       charts: {
-        mitgliederMonate: { title: `Mitgliederentwicklung ${gj}`, nameLine: 'Mitglieder', namePos: 'Eintritte', nameNeg: 'Austritte', data: await chartMtgMonate(DB, gj) },
+        mitgliederMonate: { title: `Mitgliederentwicklung ${mtgJahr}`, nameLine: 'Mitglieder', namePos: 'Eintritte', nameNeg: 'Austritte', jahre: mtgListe, jahrSel: String(mtgJahr), data: await chartMtgMonate(DB, mtgJahr) },
         mitgliederJahre: { title: `Mitgliederentwicklung ${hj - 9} - ${hj}`, nameLine: 'Mitglieder zum Jahresende', namePos: 'Eintritte', nameNeg: 'Austritte', data: await chartMtgJahre(DB) },
         clubhaus: { title: `Clubheimerträge ${gj} je Monat`, name1: 'Umsatz VK brutto', name2: 'Rohertrag', data: await chartClubhaus(DB, gj) },
         finanzen,
