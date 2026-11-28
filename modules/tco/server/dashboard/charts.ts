@@ -125,10 +125,14 @@ export async function chartMtgMonate(db: Db, jahr: number): Promise<Combo[]> {
   return out;
 }
 
-/** Mitgliederentwicklung der letzten zehn Jahre: Bestand zum Jahresende, Eintritte, Austritte */
+/**
+ * Mitgliederentwicklung der letzten zehn Jahre: Bestand zum Jahresende, Eintritte, Austritte.
+ * Sind für das Folgejahr schon Eintritte erfasst, kommt es als elfte Säule dazu.
+ */
 export async function chartMtgJahre(db: Db): Promise<Combo[]> {
   const { stat } = await mitgliederStat(db);
-  const bis = Number(heute().slice(0, 4)), von = bis - 9;
+  const hj = Number(heute().slice(0, 4)), von = hj - 9;
+  const bis = stat.some((s) => s.jahr === hj + 1 && s.eintritt > 0) ? hj + 1 : hj;
   // Startbestand: alles, was vor dem Anzeigefenster passiert ist
   let bestand = stat.filter((s) => s.jahr < von).reduce((a, s) => a + s.gesamt, 0);
   const out: Combo[] = [];
