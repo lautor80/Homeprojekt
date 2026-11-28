@@ -14,6 +14,7 @@ import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { TCO, dat } from '../util';
 import { portalAdresse } from '@core/branding';
+import { BeitragsUebersicht } from './Beitritt';
 
 /**
  * Mitgliedsanträge (online, /beitritt): Eingang prüfen (Dubletten, Angaben, Bankdaten nur mit Berechtigung im Klartext),
@@ -44,6 +45,8 @@ export function Mitgliedsantraege() {
   const edit = can('tco.antraege:edit');
   const [liste, setListe] = useState<Antrag[] | null>(null);
   const [arten, setArten] = useState<Record<string, string>>({});
+  /** Beitragsarten mit Betrag und Turnus – für die Beitragsübersicht in „Vertragsangebot ansehen“ */
+  const [beitragsarten, setBeitragsarten] = useState<Beitragsart[]>([]);
   const [alle, setAlle] = useState(false);
   const [offen, setOffen] = useState<Antrag | null>(null);
   const [weg, setWeg] = useState<Antrag | null>(null);
@@ -55,7 +58,7 @@ export function Mitgliedsantraege() {
   const laden = () => api.get<Antrag[]>(`${A}?status=${alle ? 'ALLE' : 'EINGANG'}`).then(setListe).catch((e) => setError(e.message));
   useEffect(() => { setListe(null); laden(); }, [alle]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    api.get<{ beitragsarten: { art: string; name: string }[] }>(`${TCO}/antrag`).then((i) => setArten(Object.fromEntries(i.beitragsarten.map((b) => [b.art, b.name])))).catch(() => undefined);
+    api.get<{ beitragsarten: Beitragsart[] }>(`${TCO}/antrag`).then((i) => { setBeitragsarten(i.beitragsarten); setArten(Object.fromEntries(i.beitragsarten.map((b) => [b.art, b.name]))); }).catch(() => undefined);
   }, []);
 
   async function ablehnen(a: Antrag, grund: string) {
@@ -81,7 +84,7 @@ export function Mitgliedsantraege() {
           offene Vertragsangebote lassen sich nicht bestätigen. Eingegangene Anträge können weiter bearbeitet werden.
         </MessageStrip>
       )}
-      <Angebote alle={alle} edit={edit} arten={arten} version={angebotVersion} onError={setError} />
+      <Angebote alle={alle} edit={edit} arten={arten} beitragsarten={beitragsarten} version={angebotVersion} onError={setError} />
       {!liste ? <BusyIndicator active style={{ display: 'block', padding: '2rem 0' }} /> : !liste.length ? (
         <MessageStrip hideCloseButton>Keine offenen Anträge.{formularAn && <> Link zum Formular für Website und Aushang: <b>{portalAdresse()}/beitritt</b></>}</MessageStrip>
       ) : liste.map((a) => (
@@ -183,10 +186,12 @@ interface AngebotZeile {
 }
 const A_STATUS = { OFFEN: ['offen', 'Information'], ANGENOMMEN: ['angenommen', 'Positive'], ZURUECKGEZOGEN: ['zurückgezogen', 'None'], ABGELAUFEN: ['abgelaufen', 'Critical'] } as const;
 
-function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit: boolean; arten: Record<string, string>; version: number; onError: (t: string) => void }) {
+function Angebote({ alle, edit, arten, beitragsarten, version, onError }: { alle: boolean; edit: boolean; arten: Record<string, string>; beitragsarten: Beitragsart[]; version: number; onError: (t: string) => void }) {
   const [liste, setListe] = useState<AngebotZeile[] | null>(null);
   const [link, setLink] = useState<{ nummer: string; link: string; text: string } | null>(null);
   const [ansicht, setAnsicht] = useState<number | null>(null);
+  /** Korrektur eines offenen Angebots: derselbe Dialog wie beim Erstellen, vorbelegt mit dem Inhalt */
+  const [korrektur, setKorrektur] = useState<AngebotInhalt | null>(null);
   const laden = () => api.get<{ liste: AngebotZeile[] }>(`${A}/angebote?alle=${alle ? '1' : '0'}`).then((r) => setListe(r.liste)).catch((e) => onError(e.message));
   useEffect(() => { laden(); }, [alle, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const aktion = async (fn: () => Promise<{ text: string; link?: string; nummer?: string }>) => {
@@ -218,7 +223,9 @@ function Angebote({ alle, edit, arten, version, onError }: { alle: boolean; edit
         </div>
       ))}
       {link && <LinkDialog {...link} onClose={() => setLink(null)} />}
-      {ansicht !== null && <AngebotAnsicht id={ansicht} arten={arten} onClose={() => setAnsicht(null)} />}
+      {ansicht !== null && <AngebotAnsicht id={ansicht} arten={arten} beitragsarten={beitragsarten} edit={edit} onClose={() => setAnsicht(null)}
+                                           onKorrigieren={(a) => { setAnsicht(null); setKorrektur(a); }} />}
+      {korrektur && <AngebotDialog bearbeiten={korrektur} onClose={() => setKorrektur(null)} onDone={() => { setKorrektur(null); laden(); }} />}
     </Section>
   );
 }
@@ -232,8 +239,21 @@ interface AngebotInhalt {
   versand: { zeit: string; an: string; betreff: string; status: string; fehler: string | null }[];
 }
 
-/** Inhalt eines Vertragsangebots – auch nach dem Versand einsehbar (vorbelegte Angaben, Verträge, Bankverbindung, Versand) */
-function AngebotAnsicht({ id, arten, onClose }: { id: number; arten: Record<string, string>; onClose: () => void }) {
+/** Alter am Stichtag (für „minderjährig“ wie im Formular) */
+const alterAm = (geb: string, stichtag: string) => {
+  const [j, m, d] = geb.split('-').map(Number);
+  const [sj, sm, sd] = stichtag.split('-').map(Number);
+  return sj - j - (sm < m || (sm === m && sd < d) ? 1 : 0);
+};
+
+/**
+ * Inhalt eines Vertragsangebots – auch nach dem Versand einsehbar. Oben derselbe Aufbau wie bei der Person (Personen und Verträge,
+ * Anschrift und Kontakt, Beiträge und Fälligkeit mit Beträgen, Bankverbindung), darunter die Verwaltungsangaben (Link, Versand).
+ * Offene Angebote lassen sich von hier aus korrigieren – danach geht der berichtigte Stand mit neuem Link an die Person.
+ */
+function AngebotAnsicht({ id, arten, beitragsarten, edit, onClose, onKorrigieren }: {
+  id: number; arten: Record<string, string>; beitragsarten: Beitragsart[]; edit: boolean; onClose: () => void; onKorrigieren: (a: AngebotInhalt) => void;
+}) {
   const [a, setA] = useState<AngebotInhalt | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   useEffect(() => { api.get<AngebotInhalt>(`${A}/angebote/${id}`).then(setA).catch((e) => setFehler(e.message)); }, [id]);
@@ -241,9 +261,21 @@ function AngebotAnsicht({ id, arten, onClose }: { id: number; arten: Record<stri
     <div className="portal-row" style={{ alignItems: 'flex-start', padding: '0.15rem 0' }}>
       <Label style={{ minWidth: '10rem' }}>{k}</Label><Text style={{ whiteSpace: 'pre-wrap' }}>{v}</Text>
     </div>) : null;
+  const offen = !!a && (a.status === 'OFFEN' || a.status === 'ABGELAUFEN');
+  // wie beim Öffnen des Links: ein inzwischen vergangener Eintritt wird für die Person zu „heute“
+  const eintritt = a ? (offen && a.eintritt < heuteIso() ? heuteIso() : a.eintritt) : '';
+  const minderjaehrig = !!a?.personen[0]?.geburtsdatum && alterAm(a.personen[0].geburtsdatum, heuteIso()) < 18;
+  /** fehlt etwas davon, sieht die Person statt „Bestätigen“ das Formular und ergänzt selbst */
+  const fehlt = !a ? [] : [
+    ...a.personen.flatMap((p) => [!p.anrede && `Anrede ${p.vorname} ${p.nachname}`, !p.geburtsdatum && `Geburtsdatum ${p.vorname} ${p.nachname}`]),
+    !(a.strasse && a.plz && a.ort) && 'Anschrift', minderjaehrig && !a.erziehungsberechtigt && 'Erziehungsberechtigte/r',
+  ].filter((x): x is string => !!x);
   return (
-    <Dialog open headerText={a ? `Vertragsangebot ${a.nummer}` : 'Vertragsangebot'} style={{ width: 'min(44rem, 96vw)' }} onClose={onClose}
-            footer={<FussLeiste endContent={<Button design="Emphasized" onClick={onClose}>Schließen</Button>} />}>
+    <Dialog open headerText={a ? `Vertragsangebot ${a.nummer}` : 'Vertragsangebot'} style={{ width: 'min(46rem, 96vw)' }} onClose={onClose}
+            footer={<FussLeiste endContent={<>
+              {a && edit && offen && <Button icon="edit" tooltip="Inhalt berichtigen – die Person erhält den korrigierten Stand mit neuem Link" onClick={() => onKorrigieren(a)}>Korrigieren…</Button>}
+              <Button design="Emphasized" onClick={onClose}>Schließen</Button>
+            </>} />}>
       {fehler && <MessageStrip design="Negative" hideCloseButton>{fehler}</MessageStrip>}
       {!a && !fehler && <BusyIndicator active />}
       {a && <>
@@ -251,6 +283,48 @@ function AngebotAnsicht({ id, arten, onClose }: { id: number; arten: Record<stri
           <ObjectStatus state={A_STATUS[a.status][1]} inverted>{A_STATUS[a.status][0]}</ObjectStatus>
           {a.vertragsaenderung && <ObjectStatus state="Information">Vertragsänderung</ObjectStatus>}
         </div>
+        {a.bemerkung && <MessageStrip design="Information" hideCloseButton style={{ marginBottom: '0.5rem' }}>Hinweis des Vereins (steht im Formular): {a.bemerkung}</MessageStrip>}
+        {offen && fehlt.length > 0 && (
+          <MessageStrip design="Critical" hideCloseButton style={{ marginBottom: '0.5rem' }}>
+            Nicht vollständig vorbereitet – es fehlt: {fehlt.join(', ')}. Die Person sieht deshalb das Formular zum Ergänzen statt nur „Bestätigen“.
+          </MessageStrip>
+        )}
+
+        <Title level="H5" style={{ marginBottom: '0.5rem' }}>Personen und Verträge</Title>
+        {a.personen.map((p, i) => (
+          <div key={i} style={{ marginBottom: '0.35rem' }}>
+            <Text style={{ display: 'block' }}>
+              <b>{[p.anrede, p.vorname, p.nachname].filter(Boolean).join(' ')}</b>, {p.geburtsdatum ? `geb. ${dat(p.geburtsdatum)}` : 'ohne Geburtsdatum'} –{' '}
+              {[p.art ? arten[p.art] ?? p.art : (a.vertragsaenderung ? 'Mitgliedschaft unverändert' : 'über den Familienbeitrag'), ...p.training.map((t) => arten[t] ?? t)].join(' + ')}
+            </Text>
+            <Text className="portal-muted portal-small" style={{ display: 'block' }}>
+              {[p.adrnr ? `Stamm ${p.adrnr}` : 'neu erfasst', p.email, p.telefon].filter(Boolean).join(' · ')}
+            </Text>
+          </div>
+        ))}
+
+        <Title level="H5" style={{ margin: '0.75rem 0 0.25rem' }}>Anschrift und Kontakt</Title>
+        <Text style={{ display: 'block' }}>
+          {[[a.strasse, [a.plz, a.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ') || 'ohne Anschrift', a.email, a.telefon].filter(Boolean).join(' · ')}
+        </Text>
+        {a.erziehungsberechtigt && <Text style={{ display: 'block' }}>Erziehungsberechtigte/r: {a.erziehungsberechtigt}</Text>}
+        <Text style={{ display: 'block', marginBottom: '0.5rem' }}>
+          Eintritt: {dat(eintritt)}{eintritt !== a.eintritt ? ` (erfasst ${dat(a.eintritt)} – liegt zurück, für die Person gilt der heutige Tag)` : ''}
+        </Text>
+
+        {beitragsarten.length ? (
+          <BeitragsUebersicht info={{ beitragsarten }} eintritt={eintritt} aenderung={a.vertragsaenderung}
+                              personen={a.personen.map((p) => ({ vorname: p.vorname, nachname: p.nachname, art: p.art ?? '', training: p.training }))} />
+        ) : <Text className="portal-muted portal-small" style={{ display: 'block', marginBottom: '0.5rem' }}>Beiträge und Fälligkeit: Beitragsarten nicht verfügbar (Online-Mitgliedsantrag abgeschaltet).</Text>}
+
+        <Title level="H5" style={{ margin: '0.5rem 0 0.25rem' }}>Bankverbindung (SEPA-Lastschrift)</Title>
+        <Text style={{ display: 'block', whiteSpace: 'pre-wrap' }}>
+          {a.bank
+            ? `${a.bank.kontoinhaber} · IBAN ${a.bank.iban}${a.bank.bic ? ` · ${a.bank.bic}` : ''}${a.bank.zahler ? `\nZahler: ${a.bank.zahler}` : ''}\nDie Person sieht die IBAN nur gekürzt und bestätigt das Mandat.`
+            : 'keine hinterlegt – die Person gibt Kontoinhaber/in und IBAN beim Annehmen ein'}
+        </Text>
+
+        <Title level="H5" style={{ marginTop: '0.9rem' }}>Link und Versand</Title>
         {zeile('Erstellt', `${zeit(a.erstellt_am)}${a.erstellt_von ? ` von ${a.erstellt_von}` : ''}`)}
         {zeile('Link an', a.email)}
         {zeile('Gültig bis', dat(a.gueltig_bis))}
@@ -258,29 +332,6 @@ function AngebotAnsicht({ id, arten, onClose }: { id: number; arten: Record<stri
         {a.versuche > 0 && zeile('Fehlversuche', `${a.versuche} falsche Geburtsdaten`)}
         {zeile('Antrag', a.antrag)}
         {zeile('Schnuppertraining', a.schnupper)}
-
-        <Title level="H5" style={{ marginTop: '0.8rem' }}>Personen und Verträge</Title>
-        {a.personen.map((p, i) => (
-          <div key={i} style={{ padding: '0.3rem 0', borderBottom: '1px solid var(--sapList_BorderColor)' }}>
-            <Text><b>{[p.anrede, p.vorname, p.nachname].filter(Boolean).join(' ')}</b>{p.adrnr ? <span className="portal-muted portal-small"> · Stamm {p.adrnr}</span> : <span className="portal-muted portal-small"> · neu erfasst</span>}</Text><br />
-            <Text className="portal-muted portal-small">
-              {[p.geburtsdatum ? `geb. ${dat(p.geburtsdatum)}` : 'ohne Geburtsdatum', p.email, p.telefon].filter(Boolean).join(' · ')}
-            </Text><br />
-            <Text>{[p.art ? arten[p.art] ?? p.art : (i === 0 && a.vertragsaenderung ? 'Mitgliedschaft unverändert' : 'über Familienbeitrag'), ...p.training.map((t) => arten[t] ?? t)].join(' + ')}</Text>
-          </div>
-        ))}
-
-        <Title level="H5" style={{ marginTop: '0.8rem' }}>Angaben</Title>
-        {zeile('Eintritt', dat(a.eintritt))}
-        {zeile('Anschrift', [a.strasse, [a.plz, a.ort].filter(Boolean).join(' ')].filter(Boolean).join(', '))}
-        {zeile('Telefon', a.telefon)}
-        {zeile('Erziehungsberechtigt', a.erziehungsberechtigt)}
-        {zeile('Bemerkung', a.bemerkung)}
-        {zeile('Bankverbindung', a.bank
-          ? `${a.bank.kontoinhaber}\n${a.bank.iban}${a.bank.bic ? ` · ${a.bank.bic}` : ''}${a.bank.zahler ? `\nZahler: ${a.bank.zahler}` : ''}`
-          : 'keine – die Person gibt sie beim Annehmen ein')}
-
-        <Title level="H5" style={{ marginTop: '0.8rem' }}>Versand</Title>
         {a.versand.length ? a.versand.map((v, i) => (
           <Text key={i} className="portal-small" style={{ display: 'block' }}>
             {zeit(v.zeit)} · an {v.an} · {v.betreff} · {v.status}{v.fehler ? ` (${v.fehler})` : ''}
@@ -327,19 +378,26 @@ const geburtFehlt = (k: Kandidat | undefined) => !!k && !k.geburtsdatum;
  * `start`: Aufruf aus der Schnupperverwaltung – Person 1 (Stammsatz) wird nach dem Laden der Kandidaten vorbelegt,
  * dazu E-Mail für den Link und Erziehungsberechtigte/r.
  */
-export function AngebotDialog({ onClose, onDone, start }: {
+export function AngebotDialog({ onClose, onDone, start, bearbeiten }: {
   onClose: () => void; onDone: () => void;
   start?: { adrnr: string; email?: string | null; erziehungsberechtigt?: string | null };
+  /** Korrektur eines offenen Angebots: alle Felder mit dem Inhalt vorbelegt; Sichern ersetzt den Inhalt und verschickt einen neuen Link */
+  bearbeiten?: AngebotInhalt;
 }) {
   const [arten, setArten] = useState<Beitragsart[]>([]);
-  const [personen, setPersonen] = useState<APerson[]>([leerePerson()]);
+  const [personen, setPersonen] = useState<APerson[]>(() => (bearbeiten
+    ? bearbeiten.personen.map((p, i) => ({
+      adrnr: p.adrnr, neu: !p.adrnr, anrede: p.anrede ?? '', vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum ?? '',
+      email: p.email ?? '', art: i === 0 ? p.art ?? '' : '', training: p.training ?? [],
+    }))
+    : [leerePerson()]));
   const [kandidaten, setKandidaten] = useState<Kandidat[]>([]);
   const [kontoinhaber, setKontoinhaber] = useState('');
   const [iban, setIban] = useState('');
-  const [eintritt, setEintritt] = useState(heuteIso());
-  const [email, setEmail] = useState(start?.email ?? '');
-  const [erz, setErz] = useState(start?.erziehungsberechtigt ?? '');
-  const [hinweis, setHinweis] = useState('');
+  const [eintritt, setEintritt] = useState(bearbeiten?.eintritt ?? heuteIso());
+  const [email, setEmail] = useState(bearbeiten?.email ?? start?.email ?? '');
+  const [erz, setErz] = useState(bearbeiten?.erziehungsberechtigt ?? start?.erziehungsberechtigt ?? '');
+  const [hinweis, setHinweis] = useState(bearbeiten?.bemerkung ?? '');
   const [mail, setMail] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -347,6 +405,8 @@ export function AngebotDialog({ onClose, onDone, start }: {
   /** Bankverbindung des Antragstellers aus dem Stamm (maskiert); „andere“ = Vorstand erfasst eine neue */
   const [stammBank, setStammBank] = useState<StammBank | null>(null);
   const [andereBank, setAndereBank] = useState(false);
+  /** Korrektur: die im Angebot hinterlegte Bankverbindung behalten (solange der Antragsteller derselbe bleibt) */
+  const [angebotsBank, setAngebotsBank] = useState(!!bearbeiten?.bank);
   /** E-Mail an die Person – Vorlage mit Platzhaltern, anpassbar */
   const [mailBetreff, setMailBetreff] = useState('');
   const [mailText, setMailText] = useState('');
@@ -356,12 +416,15 @@ export function AngebotDialog({ onClose, onDone, start }: {
   const erster = personen[0].neu ? null : personen[0].adrnr;
   useEffect(() => {
     setStammBank(null); setAndereBank(false);
+    if (bearbeiten && erster !== (bearbeiten.personen[0].adrnr ?? null)) setAngebotsBank(false);
     if (erster) api.get<{ bank: StammBank | null }>(`${A}/angebote/personen/${erster}/bank`).then((r) => setStammBank(r.bank)).catch(() => undefined);
   }, [erster]);
   // alle Personen (ohne Mitgliedschaft und aktive Mitglieder) einmal laden – gesucht wird im Feld (schnell, ohne Neuladen beim Tippen)
   useEffect(() => {
     api.get<Kandidat[]>(`${A}/angebote/personen`).then((l) => {
       setKandidaten(l);
+      // Korrektur: Stammangaben zu den Personen des Angebots nachladen (Mitglied, laufende Verträge, was im Stamm fehlt)
+      if (bearbeiten) setPersonen((alt) => alt.map((p) => (p.adrnr && !p.neu && !p.info ? { ...p, info: l.find((x) => x.adrnr === p.adrnr) } : p)));
       if (!start) return;
       // Vorbelegung (Schnupperverwaltung): Person 1 = dieser Stammsatz, solange dort noch nichts gewählt wurde
       const info = l.find((x) => x.adrnr === start.adrnr);
@@ -385,10 +448,11 @@ export function AngebotDialog({ onClose, onDone, start }: {
     && (personen[0].art ? personen.length === 1 || familie : erweiterung && nurMitglieder && personen.some((p) => p.training.length > 0))
     && (email.trim() || (!personen[0].neu && personen[0].info?.email) || (personen[0].neu && personen[0].email.trim()));
 
+  const ausAngebot = !!bearbeiten?.bank && angebotsBank;
   async function los() {
     setBusy(true); setError(null);
     try {
-      const r = await api.post<{ nummer: string; link: string; text: string }>(`${A}/angebote`, {
+      const daten = {
         personen: personen.map((p, i) => (p.neu
           ? { anrede: p.anrede || null, vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum || null, email: p.email || null, art: i === 0 ? p.art : null, training: p.training }
           : {
@@ -399,10 +463,12 @@ export function AngebotDialog({ onClose, onDone, start }: {
           })),
         eintritt, email: email.trim() || null, erziehungsberechtigt: erz.trim() || null, bemerkung: hinweis.trim() || null, mail,
         // ohne eigene Eingabe: Bankverbindung aus dem Stamm (wird serverseitig übernommen, nach außen nur gekürzt)
-        kontoinhaber: stammBank && !andereBank ? null : kontoinhaber.trim() || null, iban: stammBank && !andereBank ? null : iban.trim() || null,
+        kontoinhaber: ausAngebot || (stammBank && !andereBank) ? null : kontoinhaber.trim() || null, iban: ausAngebot || (stammBank && !andereBank) ? null : iban.trim() || null,
         mailBetreff: mail ? mailBetreff : null, mailText: mail ? mailText : null,
-      });
-      setErgebnis(r);
+      };
+      setErgebnis(bearbeiten
+        ? await api.put<{ nummer: string; link: string; text: string }>(`${A}/angebote/${bearbeiten.id}`, { ...daten, bankBehalten: ausAngebot })
+        : await api.post<{ nummer: string; link: string; text: string }>(`${A}/angebote`, daten));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -414,13 +480,21 @@ export function AngebotDialog({ onClose, onDone, start }: {
     </Select>
   );
   return (
-    <Dialog open headerText="Vertragsangebot erstellen" style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
+    <Dialog open headerText={bearbeiten ? `Vertragsangebot ${bearbeiten.nummer} korrigieren` : 'Vertragsangebot erstellen'} style={{ width: 'min(52rem, 96vw)' }} onClose={onClose}
             footer={<FussLeiste endContent={<>
-              <Button design="Emphasized" icon="email" loading={busy} disabled={!ok} onClick={los}>{mail ? 'Erstellen und per E-Mail senden' : 'Erstellen (Link anzeigen)'}</Button>
+              <Button design="Emphasized" icon="email" loading={busy} disabled={!ok} onClick={los}>
+                {bearbeiten ? (mail ? 'Sichern und neu senden' : 'Sichern (neuen Link anzeigen)') : mail ? 'Erstellen und per E-Mail senden' : 'Erstellen (Link anzeigen)'}
+              </Button>
               <Button onClick={onClose}>Abbrechen</Button>
             </>} />}>
       <div className="portal-bk__form">
         {error && <MessageStrip design="Negative" onClose={() => setError(null)}>{error}</MessageStrip>}
+        {bearbeiten && (
+          <MessageStrip design="Critical" hideCloseButton>
+            Korrektur von {bearbeiten.nummer}: Der Inhalt wird durch die Angaben hier ersetzt, die Nummer bleibt. Der bisherige Link wird ungültig
+            {bearbeiten.geoeffnet_am ? ' (die Person hat das Angebot bereits geöffnet)' : ''} – die Person erhält den berichtigten Stand mit einem neuen Link, wieder 30 Tage gültig.
+          </MessageStrip>
+        )}
         <MessageStrip hideCloseButton>
           Der Antrag wird vorbereitet und als persönlicher Link verschickt: keine Daten in der E-Mail, Öffnen nur mit dem Geburtsdatum, gültig 30 Tage, einmal verwendbar.
           Die Person ergänzt IBAN/SEPA-Mandat und bestätigt – der Antrag landet danach wie gewohnt im Eingang. Personen aus dem Stamm (ohne Mitgliedschaft) werden bei der Übernahme Mitglied, ohne Dublette; bei aktiven Mitgliedern werden nur die neuen Verträge ergänzt.
@@ -515,7 +589,18 @@ export function AngebotDialog({ onClose, onDone, start }: {
           <div><Label>E-Mail für den Link</Label><Input style={{ width: '100%' }} type="Email" value={email} placeholder="aus dem Stamm" onInput={(e) => setEmail(e.target.value)} /></div>
           <div><Label>Erziehungsberechtigte/r (bei Minderjährigen)</Label><Input style={{ width: '100%' }} value={erz} onInput={(e) => setErz(e.target.value)} /></div>
         </div>
-        {stammBank && !andereBank ? (
+        {ausAngebot ? (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
+              <div><Label>Kontoinhaber/in (im Angebot hinterlegt{bearbeiten!.bank!.zahler ? `, Zahler ${bearbeiten!.bank!.zahler}` : ''})</Label><Input style={{ width: '100%' }} readonly value={bearbeiten!.bank!.kontoinhaber} /></div>
+              <div><Label>IBAN (im Angebot hinterlegt)</Label><Input style={{ width: '100%' }} readonly value={bearbeiten!.bank!.iban} /></div>
+            </div>
+            <div className="portal-row" style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <Text className="portal-muted portal-small">Bleibt unverändert im Angebot; die Person sieht die IBAN nur gekürzt und bestätigt das Mandat.</Text>
+              <Button design="Transparent" icon="edit" onClick={() => setAngebotsBank(false)}>Andere Bankverbindung</Button>
+            </div>
+          </div>
+        ) : stammBank && !andereBank ? (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(14rem, 1fr))', gap: '0.5rem' }}>
               <div><Label>Kontoinhaber/in{stammBank.zahler ? ` (Zahler ${stammBank.zahler})` : ' (aus dem Stamm)'}</Label><Input style={{ width: '100%' }} readonly value={stammBank.kontoinhaber} /></div>
@@ -531,6 +616,7 @@ export function AngebotDialog({ onClose, onDone, start }: {
             <div><Label>Kontoinhaber/in (optional)</Label><Input style={{ width: '100%' }} value={kontoinhaber} onInput={(e) => setKontoinhaber(e.target.value)} /></div>
             <div><Label>IBAN (optional – sonst ergänzt die Person)</Label><Input style={{ width: '100%' }} value={iban} onInput={(e) => setIban(e.target.value)} /></div>
             {stammBank && <div><Button design="Transparent" icon="undo" onClick={() => { setAndereBank(false); setKontoinhaber(''); setIban(''); }}>Bankverbindung aus dem Stamm</Button></div>}
+            {bearbeiten?.bank && erster === (bearbeiten.personen[0].adrnr ?? null) && <div><Button design="Transparent" icon="undo" onClick={() => { setAngebotsBank(true); setKontoinhaber(''); setIban(''); }}>Bankverbindung aus dem Angebot</Button></div>}
           </div>
         )}
         <Label>Hinweis an die Person (erscheint im Formular)</Label>

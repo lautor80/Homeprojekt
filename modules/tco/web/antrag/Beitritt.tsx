@@ -205,7 +205,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
         <Text style={{ display: 'block' }}>{a.strasse}, {a.plz} {a.ort} · {a.email}{a.telefon ? ` · ${a.telefon}` : ''}</Text>
         {minderjaehrig && <Text style={{ display: 'block' }}>Erziehungsberechtigte/r: {a.erziehungsberechtigt}</Text>}
         <Text style={{ display: 'block', marginBottom: '0.5rem' }}>Eintritt: {a.eintritt.split('-').reverse().join('.')}</Text>
-        <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} aenderung={aenderung} />
+        <BeitragsUebersicht info={info} personen={personen} eintritt={a.eintritt || heute()} aenderung={aenderung} />
         <Title level="H5" style={{ margin: '0.5rem 0' }}>Bankverbindung (SEPA-Lastschrift)</Title>
         {angebotBank && bankAusAngebot ? (
           <Text style={{ display: 'block', marginBottom: '0.5rem' }}>{angebotBank.kontoinhaber} · IBAN {angebotBank.iban}</Text>
@@ -344,7 +344,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
               <DatePicker style={full} formatPattern="dd.MM.yyyy" valueFormat="yyyy-MM-dd" value={a.eintritt} onChange={(e) => setA({ ...a, eintritt: e.detail.value })} />
             </Feld>
           </FlexBox>
-          <Beitraege info={info} personen={personen} eintritt={a.eintritt || heute()} aenderung={aenderung} />
+          <BeitragsUebersicht info={info} personen={personen} eintritt={a.eintritt || heute()} aenderung={aenderung} />
 
           <Title level="H5" style={{ margin: '0.5rem 0' }}>SEPA-Lastschriftmandat</Title>
           {angebotBank && (
@@ -398,17 +398,22 @@ export function beginnFuer(eintritt: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAI
 }
 const datum = (iso: string) => iso.split('-').reverse().join('.');
 
-/** Beitragsübersicht: Mitgliedschaft und Jugendtraining getrennt, je Position Betrag, Turnus und Beginn (erste Fälligkeit) */
-function Beitraege({ info, personen, eintritt, aenderung }: { info: Info; personen: Person[]; eintritt: string; aenderung?: boolean }) {
+interface BeitragsZeile { art: string; name: string; betrag: number; turnus: string }
+interface BeitragsPerson { vorname: string; nachname: string; art: string; training: string[] }
+/**
+ * Beitragsübersicht: Mitgliedschaft und Jugendtraining getrennt, je Position Betrag, Turnus und Beginn (erste Fälligkeit).
+ * Auch in der Verwaltung verwendet (Mitgliedsanträge → Vertragsangebot ansehen) – dort steht damit dasselbe wie bei der Person.
+ */
+export function BeitragsUebersicht({ info, personen, eintritt, aenderung }: { info: { beitragsarten: BeitragsZeile[] }; personen: BeitragsPerson[]; eintritt: string; aenderung?: boolean }) {
   const art = (x: string) => info.beitragsarten.find((b) => b.art === x);
-  const name = (p: Person, i: number) => `${p.vorname || (i === 0 ? 'Antragsteller/in' : `Person ${i + 1}`)} ${p.nachname}`.trim();
+  const name = (p: BeitragsPerson, i: number) => `${p.vorname || (i === 0 ? 'Antragsteller/in' : `Person ${i + 1}`)} ${p.nachname}`.trim();
   const mitglied = personen.flatMap((p, i) => {
     if (i === 0) { const b = art(p.art); return b ? [{ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus }] : []; }
     // Vertragsänderung ohne neue Mitgliedschaft: bestehende Mitgliedschaften bleiben – keine Zeile
     if (aenderung && !personen[0].art) return [];
     return [{ wer: name(p, i), text: 'über den Familienbeitrag', betrag: 0, turnus: '' }];
   });
-  const training = personen.flatMap((p, i) => p.training.map((x) => art(x)).filter((b): b is Art => !!b)
+  const training = personen.flatMap((p, i) => p.training.map((x) => art(x)).filter((b): b is BeitragsZeile => !!b)
     .map((b) => ({ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus })));
   const zelle = { padding: '0.25rem 0.4rem' } as const;
   const summe = (l: { betrag: number; turnus: string }[]) => {

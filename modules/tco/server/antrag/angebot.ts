@@ -35,6 +35,8 @@ export interface AngebotEingabe {
   personen: { adrnr?: string | null; anrede?: string | null; vorname?: string | null; nachname?: string | null; geburtsdatum?: string | null; email?: string | null; art?: string | null; training?: string[] }[];
   eintritt: string; email?: string | null; erziehungsberechtigt?: string | null; bemerkung?: string | null;
   kontoinhaber?: string | null; iban?: string | null;
+  /** nur bei der Korrektur: die im Angebot hinterlegte Bankverbindung behalten (sonst wie beim Anlegen: Eingabe bzw. Stamm) */
+  bankBehalten?: boolean;
 }
 /** IBAN gekürzt für die Anzeige im Formular: Land, Prüfziffer und die letzten vier Stellen */
 export const ibanKurz = (iban: string) => { const i = normalisieren(iban); return i.length > 8 ? `${i.slice(0, 4)} •••• •••• ${i.slice(-4)}` : '••••'; };
@@ -113,11 +115,16 @@ export async function angebotKandidaten(db: Db, suche: string) {
   }));
 }
 
-/** Angebot vorbereiten: Stammdaten übernehmen, Verträge nach den Regeln des Online-Antrags prüfen, Link erzeugen */
-export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Promise<{ id: number; nummer: string; token: string; email: string; name: string; gueltigBis: string }> {
+/**
+ * Inhalt eines Angebots aus der Eingabe des Vorstands: Stammdaten übernehmen, Verträge nach den Regeln des Online-Antrags prüfen.
+ * `alt`: Korrektur eines bestehenden Angebots – der bisherige Eintritt bleibt zulässig (auch wenn er inzwischen vergangen ist),
+ * die hinterlegte Bankverbindung kann behalten werden und das Angebot selbst zählt nicht als „bereits offenes“ des Schnupperers.
+ */
+async function angebotVorbereiten(tx: Db, e: AngebotEingabe, alt?: { id: number; daten: AngebotDaten })
+  : Promise<{ daten: AngebotDaten; email: string; schnupperAdrnr: string | null; name: string }> {
   if (!e.personen.length) throw new BusinessError('Bitte mindestens eine Person angeben.');
   if (e.personen.length > MAX_PERSONEN) throw new BusinessError(`Höchstens ${MAX_PERSONEN} Personen je Antrag.`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.eintritt) || e.eintritt < heute()) throw new BusinessError('Der Eintritt kann frühestens heute sein.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(e.eintritt) || (e.eintritt < heute() && e.eintritt !== alt?.daten.eintritt)) throw new BusinessError('Der Eintritt kann frühestens heute sein.');
   const { arten } = await vertragsarten(tx, e.eintritt);
   const art = new Map(arten.map((a) => [a.art, { ...a, kategorie: kategorieVon(a.art, a.name) }]));
   const personen: AngebotPerson[] = [];
@@ -192,6 +199,12 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   if (leer(e.iban)) {
     if (!ibanGueltig(normalisieren(leer(e.iban)))) throw new BusinessError('Die IBAN ist ungültig (Prüfziffer/Länge).');
     bank = { kontoinhaber: condense(e.kontoinhaber ?? '') || `${personen[0].vorname} ${personen[0].nachname}`, iban: normalisieren(leer(e.iban)), bic: null, zahler_adrnr: null };
+  } else if (e.bankBehalten && alt?.daten.bank) {
+    // Korrektur: hinterlegte Bankverbindung bleibt – nur solange der Antragsteller derselbe ist (sonst gilt wieder der Stamm)
+    const p0 = alt.daten.personen[0];
+    const gleich = p0.adrnr || personen[0].adrnr ? (p0.adrnr ?? null) === (personen[0].adrnr ?? null)
+      : normName(`${p0.vorname} ${p0.nachname}`) === namen[0];
+    if (gleich) bank = alt.daten.bank;
   }
   // Schnuppertraining: Person 1 ist Schnupperer (noch kein Mitglied) → Angebot mit dem Schnupper-Datensatz verknüpfen,
   // höchstens ein offenes Angebot je Schnupperer, Erziehungsberechtigte aus der Schnupper-Anmeldung
@@ -203,7 +216,7 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
       schnupperAdrnr = st.adrnr as string;
       schnupperErz = condense(leer(st.erziehungsberechtigt));
       const [offen] = await tx`select nummer from tco.vertragsangebote
-                                where schnupper_adrnr = ${schnupperAdrnr} and status = 'OFFEN' and gueltig_bis >= ${heute()} order by id desc limit 1`;
+                                where schnupper_adrnr = ${schnupperAdrnr} and id <> ${alt?.id ?? 0} and status = 'OFFEN' and gueltig_bis >= ${heute()} order by id desc limit 1`;
       if (offen) throw new BusinessError(`Für ${personen[0].vorname} ${personen[0].nachname} gibt es bereits das offene Vertragsangebot ${offen.nummer} – bitte dort erneuern oder zurückziehen.`);
     }
   }
@@ -211,6 +224,12 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
     bank, personen, ...adresse, email, vertragsaenderung, erziehungsberechtigt: condense(e.erziehungsberechtigt ?? '') || schnupperErz || null, eintritt: e.eintritt,
     bemerkung: (e.bemerkung ?? '').trim() || null,
   };
+  return { daten, email, schnupperAdrnr, name: `${personen[0].vorname} ${personen[0].nachname}` };
+}
+
+/** Angebot vorbereiten: Stammdaten übernehmen, Verträge nach den Regeln des Online-Antrags prüfen, Link erzeugen */
+export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Promise<{ id: number; nummer: string; token: string; email: string; name: string; gueltigBis: string }> {
+  const { daten, email, schnupperAdrnr, name } = await angebotVorbereiten(tx, e);
   const jahr = heute().slice(0, 4);
   const [{ n }] = await tx`select core.next_number('TCO_ANGEBOT', ${Number(jahr)})::int as n`;
   const nummer = `VA-${jahr}-${String(n).padStart(4, '0')}`;
@@ -218,7 +237,26 @@ export async function angebotAnlegen(tx: Db, e: AngebotEingabe, wer: string): Pr
   const gueltigBis = addTage(heute(), ANGEBOT_TAGE);
   const [r] = await tx`insert into tco.vertragsangebote (nummer, token_hash, daten, email, gueltig_bis, erstellt_von, schnupper_adrnr)
                        values (${nummer}, ${sha256(token)}, ${tx.json(daten as never)}, ${email}, ${gueltigBis}, ${wer}, ${schnupperAdrnr}) returning id`;
-  return { id: Number(r.id), nummer, token, email, name: `${personen[0].vorname} ${personen[0].nachname}`, gueltigBis };
+  return { id: Number(r.id), nummer, token, email, name, gueltigBis };
+}
+
+/**
+ * Angebot korrigieren (nur solange es offen ist, auch abgelaufen): Inhalt wie beim Anlegen neu prüfen und ersetzen. Die Nummer
+ * bleibt, der bisherige Link wird ungültig – es gibt einen neuen Link (wieder 30 Tage, Fehlversuche und „geöffnet“ zurückgesetzt),
+ * damit die Person nur noch den berichtigten Stand bestätigen kann. Die Änderung steht im Änderungsprotokoll.
+ */
+export async function angebotAendern(tx: Db, id: number, e: AngebotEingabe): Promise<{ id: number; nummer: string; token: string; email: string; name: string; gueltigBis: string }> {
+  const [alt] = await tx`select id, nummer, status, daten from tco.vertragsangebote where id = ${id} for update`;
+  if (!alt) throw new BusinessError('Vertragsangebot nicht gefunden.', 404);
+  if (alt.status !== 'OFFEN') throw new BusinessError(`Das Vertragsangebot ${alt.nummer} ist bereits ${alt.status === 'ANGENOMMEN' ? 'angenommen' : 'zurückgezogen'} – korrigieren lässt sich nur ein offenes Angebot.`);
+  const { daten, email, schnupperAdrnr, name } = await angebotVorbereiten(tx, e, { id, daten: alt.daten as AngebotDaten });
+  const token = randomBytes(32).toString('base64url');
+  const gueltigBis = addTage(heute(), ANGEBOT_TAGE);
+  await tx`update tco.vertragsangebote
+              set daten = ${tx.json(daten as never)}, email = ${email}, schnupper_adrnr = ${schnupperAdrnr},
+                  token_hash = ${sha256(token)}, gueltig_bis = ${gueltigBis}, versuche = 0, geoeffnet_am = null
+            where id = ${id}`;
+  return { id, nummer: alt.nummer as string, token, email, name, gueltigBis };
 }
 
 /** neuer Link (der alte wird ungültig), Gültigkeit wieder 30 Tage, Fehlversuche zurückgesetzt */
