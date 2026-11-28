@@ -9,7 +9,6 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import * as P from '../../modules/transport/server/eingang/rechnungspruefung.js';
-import { einstellungenMischen } from '../../modules/transport/server/mailworkflows.js';
 
 const url = process.env.TEST_DATABASE_URL;
 const mitDb = !!url && /test/i.test(url.split('/').pop() ?? '');
@@ -113,7 +112,9 @@ test('Firmierung: aktuell, frühere (Name, andere Reihenfolge, USt-IdNr.), Anspr
   assert.equal(P.ustidNormal(' de 814.480-003 '), 'DE814480003');
 });
 
-test('Reklamation: Betreff ohne AW:/WG:, aktuelle Firmendaten im Text; Einstellungen mit Standard und Prüfung', () => {
+test('Reklamation: Betreff ohne AW:/WG:, aktuelle Firmendaten im Text; Einstellungen mit Standard und Prüfung', async () => {
+  // erst hier laden: das Modul öffnet die Datenbank, deren Adresse der before-Hook setzt
+  const { einstellungenMischen } = await import('../../modules/transport/server/mailworkflows.js');
   const m = P.reklamationMail({ betreff: 'AW: WG: Rechnung RE-2099-4711', firma: FIRMA, alt: 'Benjamin Hartyniuk Euroflex' });
   assert.equal(m.betreff, 'Bitte um Rechnungskorrektur – Rechnung RE-2099-4711');
   assert.match(m.text, /frühere Firmierung „Benjamin Hartyniuk Euroflex“ adressiert/);
