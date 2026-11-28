@@ -26,8 +26,16 @@ interface Eingang {
   aufbewahrenDauerhaft?: boolean;
   /** Eingangspostfächer mit Bezeichnung (Anzeige und Filter im Posteingang) */
   postfaecher: Postfach[];
+  /** Eingangsrechnungen: PDF mit Rechnung, Ablieferbelegen und eigenem Transportauftrag aufteilen */
+  rechnungAufteilen?: boolean;
+  /** Rechnungsempfänger gegen Firmendaten und frühere Firmierungen prüfen */
+  firmierungPruefen?: boolean;
+  /** Rechnung an frühere Firmierung: nur markieren oder zusätzlich die Reklamation als Entwurf anlegen */
+  firmierungAktion?: 'markieren' | 'entwurf';
+  fruehereFirmierungen?: Firmierung[];
 }
 interface Postfach { adresse: string; bezeichnung: string }
+interface Firmierung { name: string; ustid: string }
 /** je Dokumentart: Vorauswahl, Modus, festes Absender-Postfach und BCC (BCC nur bei Rechnung angeboten; Funktion transport.versand.rechnung) */
 interface ArtEinstellung { vorauswahl: boolean; modus: 'entwurf' | 'senden'; absender: string; bcc: string }
 interface Einstellungen { eingang: Eingang; versand: Record<Art, ArtEinstellung> }
@@ -79,10 +87,13 @@ export function MailWorkflowsTab() {
   const postfachOk = (p: Postfach) => EMAIL_RE.test(p.adresse.trim());
   const postfaecherOk = postfaecher.every(postfachOk)
     && new Set(postfaecher.map((p) => p.adresse.trim().toLowerCase())).size === postfaecher.length;
+  const firmierungen = e.eingang.fruehereFirmierungen ?? [];
+  const setFirmierungen = (l: Firmierung[]) => setE({ ...e, eingang: { ...e.eingang, fruehereFirmierungen: l } });
+  const firmierungenOk = firmierungen.every((f) => f.name.trim() || f.ustid.trim());
   const versandOk = ARTEN.every(({ art: a }) => (!e.versand[a].absender?.trim() || EMAIL_RE.test(e.versand[a].absender.trim())) && adressenOk(e.versand[a].bcc ?? ''));
 
   async function speichern() {
-    if (!e || !schwelleOk || !warnOk || !tageOk || !postfaecherOk || !versandOk) return;
+    if (!e || !schwelleOk || !warnOk || !tageOk || !postfaecherOk || !firmierungenOk || !versandOk) return;
     setBusy(true); setError(null);
     try {
       const body: Einstellungen = { ...e, eingang: { ...e.eingang, schwelle: zahl(schwelle), speicherWarnungMb: zahl(warnMb), aufbewahrenTage: Number.isFinite(zahl(tage)) ? zahl(tage) : 90, aufbewahrenDauerhaft: dauerhaft } };
@@ -144,6 +155,44 @@ export function MailWorkflowsTab() {
               <Text className="portal-muted" style={{ fontSize: 'var(--sapFontSmallSize)' }}>
                 Z. B. info@… und buchhaltung@… – im Posteingang steht bei jeder E-Mail, in welchem Postfach sie ankam, und es lässt sich danach filtern.
                 Abgerufen werden die Postfächer, die im n8n-Workflow „Euroflex Maileingang“ unter POSTFAECHER stehen.
+              </Text>
+            </FlexBox>
+          </FieldBox>
+          <FieldBox label="Eingangsrechnungen">
+            <FlexBox direction="Column" style={{ gap: '0.25rem', width: '100%' }}>
+              <CheckBox text="PDF aufteilen: Rechnung und Ablieferbelege trennen, eigenen Transportauftrag entfernen" checked={e.eingang.rechnungAufteilen ?? true} readonly={ro}
+                        onChange={(x) => ein('rechnungAufteilen')(x.target.checked)} />
+              <CheckBox text="Rechnungsempfänger prüfen (Firmendaten aus Stammdaten → Firma)" checked={e.eingang.firmierungPruefen ?? true} readonly={ro}
+                        onChange={(x) => ein('firmierungPruefen')(x.target.checked)} />
+              <Text className="portal-muted" style={{ fontSize: 'var(--sapFontSmallSize)' }}>
+                Beides braucht die Texterkennung. Aufgeteilt wird ohne Rückfrage nur, wenn jede Seite eindeutig ist – sonst steht im Posteingang
+                „Aufteilen…“ mit Vorschlag. Das Original bleibt immer unverändert im Portal; E-Rechnungen (ZUGFeRD/XRechnung) werden nie zerlegt.
+              </Text>
+            </FlexBox>
+          </FieldBox>
+          <FieldBox label="Rechnung an frühere Firmierung">
+            <FlexBox direction="Column" style={{ gap: '0.5rem', width: '100%' }}>
+              <Select disabled={ro || !(e.eingang.firmierungPruefen ?? true)} accessibleName="Rechnung an frühere Firmierung" style={{ maxWidth: '34rem' }}
+                      onChange={(x) => ein('firmierungAktion')((x.detail.selectedOption as HTMLElement).dataset.k as 'markieren' | 'entwurf')}>
+                <Option data-k="markieren" selected={(e.eingang.firmierungAktion ?? 'markieren') === 'markieren'}>Nur markieren – Reklamation bei Bedarf von Hand anlegen</Option>
+                <Option data-k="entwurf" selected={e.eingang.firmierungAktion === 'entwurf'}>Markieren und Reklamation sofort als Entwurf vorbereiten</Option>
+              </Select>
+              {firmierungen.map((f, i) => (
+                <FlexBox key={i} alignItems="Center" wrap="Wrap" style={{ gap: '0.5rem' }}>
+                  <Input style={{ flex: '2 1 14rem' }} value={f.name} readonly={ro} placeholder="Frühere Firmierung" maxlength={200} accessibleName={`Frühere Firmierung ${i + 1}`}
+                         valueState={f.name.trim() || f.ustid.trim() ? 'None' : 'Negative'} data-kein-autofill
+                         onInput={(x) => setFirmierungen(firmierungen.map((q, j) => (j === i ? { ...q, name: x.target.value } : q)))} />
+                  <Input style={{ flex: '1 1 9rem' }} value={f.ustid} readonly={ro} placeholder="USt-IdNr. (optional)" maxlength={30}
+                         accessibleName={`USt-IdNr. der früheren Firmierung ${i + 1}`} data-kein-autofill
+                         onInput={(x) => setFirmierungen(firmierungen.map((q, j) => (j === i ? { ...q, ustid: x.target.value } : q)))} />
+                  {!ro && <Button design="Transparent" icon="delete" tooltip="Firmierung entfernen" accessibleName={`Frühere Firmierung ${i + 1} entfernen`}
+                                  onClick={() => setFirmierungen(firmierungen.filter((_, j) => j !== i))} />}
+                </FlexBox>
+              ))}
+              {!ro && <div><Button icon="add" onClick={() => setFirmierungen([...firmierungen, { name: '', ustid: '' }])}>Frühere Firmierung hinzufügen</Button></div>}
+              <Text className="portal-muted" style={{ fontSize: 'var(--sapFontSmallSize)' }}>
+                Der Entwurf geht an den Absender der E-Mail, liegt im Ordner „Entwürfe“ des Eingangspostfachs und enthält die aktuellen
+                Firmendaten und die beanstandete Rechnung. Gesendet wird immer von Hand. Im Posteingang gibt es dafür zusätzlich „Reklamation als Entwurf“.
               </Text>
             </FlexBox>
           </FieldBox>
@@ -238,7 +287,7 @@ export function MailWorkflowsTab() {
       </Section>
 
       <FussLeiste endContent={<Button design="Emphasized" icon="save" disabled={ro || busy || !schwelleOk || !warnOk || !tageOk
-        || !e.eingang.ordnerZugeordnet.trim() || !e.eingang.ordnerPruefen.trim() || !postfaecherOk || !versandOk} onClick={speichern}>Sichern</Button>} />
+        || !e.eingang.ordnerZugeordnet.trim() || !e.eingang.ordnerPruefen.trim() || !postfaecherOk || !firmierungenOk || !versandOk} onClick={speichern}>Sichern</Button>} />
     </>
   );
 }

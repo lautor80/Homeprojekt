@@ -31,7 +31,18 @@ export interface VorgangZeile {
   /** bearbeitet und für die gesammelte Übergabe vorgemerkt (Auftrag = auftragsnr) */
   vorgemerkt?: boolean | null;
   vorgemerkt_von?: string | null;
+  /** Firmierungsprüfung der Rechnungen dieser E-Mail: alt = an eine frühere Firmierung adressiert, unklar = Empfänger nicht sicher */
+  firmierung?: 'alt' | 'unklar' | null;
 }
+
+/** Einordnung einer PDF-Seite: R = Rechnung, A = Ablieferbeleg, T = eigener Transportauftrag (entfällt beim Aufteilen) */
+export type Seitenart = 'R' | 'A' | 'T';
+export interface Seite { art: Seitenart; sicher: boolean; grund: string }
+/** Ergebnis der Firmierungsprüfung einer Rechnung */
+export interface Firmierung { ergebnis: 'ok' | 'alt' | 'unklar'; text: string; alt?: string }
+export const ROLLE_TEXT: Record<string, string> = { rechnung: 'Rechnung', ablieferbeleg: 'Ablieferbeleg', transportauftrag: 'eigener Transportauftrag', original: 'Original (aufgeteilt)' };
+/** Satzanfang, mit dem der Server die Firmierungsprüfung an den Hinweis des Vorgangs hängt (eingang/verarbeitung.ts) */
+export const FIRMIERUNG_KOPF = 'Rechnungsempfänger prüfen – ';
 
 /** Eingangspostfach mit Bezeichnung (Einstellungen → Mail-Workflows → Eingang) */
 export interface EingangsPostfach { adresse: string; bezeichnung: string }
@@ -56,6 +67,14 @@ export interface EingangDokument {
   ocr_auszug?: string | null;
   /** Inhalt liegt (noch) im Portal */
   vorhanden?: boolean;
+  hinweis?: string | null;
+  /** Teil (Rechnung bzw. Ablieferbelege) dieses aufgeteilten Originals */
+  teil_von?: number | null;
+  /** rechnung | ablieferbeleg | transportauftrag | original (aufgeteiltes PDF – bleibt im Portal, wird nicht abgelegt) */
+  rolle?: string | null;
+  pruefung?: Firmierung | null;
+  /** Seitenzahl, soweit das PDF seitenweise gelesen wurde */
+  seitenzahl?: number | null;
 }
 
 /** GET /eingang/vorgaenge/:id */
@@ -71,6 +90,9 @@ export interface Vorgang extends VorgangZeile {
   abgeschlossen_am?: string | null;
   schwelle?: number | null;
   hinweis?: string | null;
+  /** Reklamation (Bitte um Rechnungskorrektur) als Entwurf angelegt */
+  reklamation_am?: string | null;
+  reklamation_von?: string | null;
 }
 
 /** GET /eingang/speicher */

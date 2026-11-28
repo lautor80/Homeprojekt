@@ -26,6 +26,8 @@ import { auftragLesen, firmaLesen } from '../data.js';
 import { dokumentAblegen, mimeTyp } from '../dokumente.js';
 import { ANWENDUNG } from '../mailversand.js';
 import { workflowEinstellungen } from '../mailworkflows.js';
+import { analyseOptionen, bildAnalysieren, firmierungHinweise, pdfAnalysieren, reklamationEntwurf, type AnalyseOptionen, type Rolle, type Teil } from './rechnung.js';
+import type { Firmierung, Seite } from './rechnungspruefung.js';
 import { inhaltBehalten, loeschenNachTagen, nachladenZuordnen, ZUGEORDNET_ERLEDIGT, type FehlendesDokument } from './aufbewahrung.js';
 import {
   absender, absenderTreffer, bewerten, dateinameSicher, entscheiden, herkunftNummer, herkunftReferenz, herkunftText, htmlText, mailDateiname, mailHtml, messageIds,
@@ -86,18 +88,34 @@ export const MAIL_AKTION = { ordner: null, gelesen: true } as const;
 
 // ---------------------------------------------------------------- Texterkennung
 
-/** Text eines Anhangs lokal lesen (PDF: Textebene, Bild: Tesseract); Fehler ergeben einen Hinweis, keinen Abbruch */
-async function texterkennen(a: { datei: string; mime: string; daten: Buffer }): Promise<{ text: string; hinweis: string | null }> {
+interface Gelesen { text: string; hinweis: string | null; rolle?: Rolle | null; seiten?: Seite[] | null; pruefung?: Firmierung | null; teile?: Teil[] }
+
+/**
+ * Text eines Anhangs lokal lesen (PDF: Textebene, Bild: Tesseract); Fehler ergeben einen Hinweis, keinen Abbruch.
+ * Mit `analyse` (Eingangsrechnungen) wird ein PDF seitenweise gelesen, eingeordnet, bei eindeutiger Mischung aus Rechnung,
+ * Ablieferbelegen und eigenem Transportauftrag aufgeteilt und der Rechnungsempfänger geprüft (rechnung.ts).
+ */
+async function texterkennen(a: { datei: string; mime: string; daten: Buffer }, analyse: AnalyseOptionen | null = null): Promise<Gelesen> {
   if (a.daten.length > MAX_OCR_BYTES) return { text: '', hinweis: 'Texterkennung übersprungen (Datei größer als 15 MB).' };
   try {
     if (istPdf(a.mime, a.datei)) {
+      const an = analyse ? await pdfAnalysieren(a.datei, a.daten, analyse).catch(() => null) : null;
+      if (an) {
+        // für die Zuordnung zählt wie bisher der Text der ersten drei Seiten
+        const t = an.texte.slice(0, 3).join('\n').trim();
+        const scan = an.gescannt ? (t ? 'Gescanntes PDF – Text per Texterkennung gelesen.' : 'PDF ohne Textebene – kein Text erkannt.') : !t ? 'PDF ohne Textebene – kein Text erkannt.' : null;
+        return { text: t, hinweis: [an.hinweis, scan].filter(Boolean).join(' ') || null, rolle: an.rolle, seiten: an.seiten, pruefung: an.pruefung, teile: an.teile };
+      }
       const t = (await pdfText(a.daten)).trim();
       if (t) return { text: t, hinweis: null };
       // gescanntes PDF ohne Textebene: Seiten als Bild rendern und mit Tesseract lesen
       const s = (await pdfScanText(a.daten)).trim();
       return { text: s, hinweis: s ? 'Gescanntes PDF – Text per Texterkennung gelesen.' : 'PDF ohne Textebene – kein Text erkannt.' };
     }
-    if (bildart(a.daten)) return { text: (await bildText(a.daten)).trim(), hinweis: null };
+    if (bildart(a.daten)) {
+      const t = (await bildText(a.daten)).trim();
+      return { text: t, hinweis: null, ...(analyse && t ? bildAnalysieren(t, analyse) : {}) };
+    }
     return { text: '', hinweis: null };
   } catch (e) {
     return { text: '', hinweis: `Texterkennung: ${meldung(e)}` };
@@ -323,7 +341,7 @@ async function antwortVon(vorgangId: number | string, doppelt: boolean): Promise
   return { vorgang: Number(v.id), status, auftragsnr: (v.auftragsnr as string | null) ?? null, aktion: MAIL_AKTION };
 }
 
-interface NeuDok { art: 'anhang' | 'mail'; datei: string; mime: string; daten: Buffer; ocr: string; hinweis: string | null }
+export interface NeuDok { art: 'anhang' | 'mail'; datei: string; mime: string; daten: Buffer; ocr: string; hinweis: string | null; rolle?: Rolle | null; seiten?: Seite[] | null; pruefung?: Firmierung | null; teile?: Teil[] }
 
 /** Anhänge der Lieferung dekodieren; Signatur-Logos, Kalender- und Signaturdateien herausfiltern */
 function anhaengeLesen(m: EingangMail) {
@@ -343,7 +361,7 @@ function anhaengeLesen(m: EingangMail) {
 export async function inhalteNachladen(vorgangId: number | string, m: EingangMail): Promise<number> {
   const fehlend = await sql`
     select id::int as id, art, datei, sha256 from transport.eing_dokumente
-     where vorgang_id = ${vorgangId} and inhalt is null and status <> 'ignoriert' order by id`;
+     where vorgang_id = ${vorgangId} and inhalt is null and status <> 'ignoriert' and teil_von is null order by id`;
   if (!fehlend.length) return 0;
   const anhaenge = anhaengeLesen(m);
   const geliefert = anhaenge.map((a) => ({ name: a.name, sha256: sha(a.daten) }));
@@ -367,6 +385,58 @@ export async function inhalteNachladen(vorgangId: number | string, m: EingangMai
     }
   }
   return n;
+}
+
+/**
+ * Dokument eines Vorgangs anlegen. Wurde ein PDF aufgeteilt (teile), bleibt das Original unverändert im Portal – Rolle
+ * „original“, Status „ignoriert“ (wird nicht abgelegt) – und die Teile „Rechnung“ und „Ablieferbelege“ stehen offen daneben.
+ */
+export async function dokumentAnlegen(vorgangId: number | string, d: NeuDok): Promise<number> {
+  const teile = d.teile ?? [];
+  const original = teile.length > 0;
+  const json = (x: unknown) => (x ? sql.json(x as never) : null);
+  const [r] = await sql`
+    insert into transport.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, ocr_text, status, hinweis, rolle, seiten, pruefung)
+    values (${vorgangId}, ${d.art}, ${d.datei}, ${d.mime}, ${d.daten.length}, ${sha(d.daten)}, ${d.daten.toString('base64')}, ${d.ocr || null},
+            ${original ? 'ignoriert' : 'neu'}, ${d.hinweis}, ${original ? 'original' : d.rolle ?? null}, ${json(d.seiten)}, ${json(d.pruefung)})
+    returning id::int as id`;
+  for (const t of teile) await teilAnlegen(vorgangId, r.id as number, t);
+  return r.id as number;
+}
+
+export async function teilAnlegen(vorgangId: number | string, originalId: number, t: Teil): Promise<void> {
+  await sql`
+    insert into transport.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, ocr_text, status, rolle, seiten, pruefung, teil_von)
+    values (${vorgangId}, 'anhang', ${t.datei}, 'application/pdf', ${t.daten.length}, ${sha(t.daten)}, ${t.daten.toString('base64')}, ${t.ocr || null},
+            'neu', ${t.rolle}, ${sql.json(t.seiten as never)}, ${t.pruefung ? sql.json(t.pruefung as never) : null}, ${originalId})`;
+}
+
+const FIRMIERUNG_KOPF = 'Rechnungsempfänger prüfen – ';
+/**
+ * Hinweis des Vorgangs um die Firmierungsprüfung ergänzen (ein früherer Satz dazu wird ersetzt). entwurf: bei einer Rechnung an
+ * eine frühere Firmierung gleich die Reklamation als Entwurf anlegen – ein Fehler dabei wird im Hinweis genannt.
+ */
+export async function firmierungMelden(vorgangId: number | string, entwurf: boolean): Promise<void> {
+  const saetze = await firmierungHinweise(vorgangId);
+  const [v] = await sql`select hinweis, reklamation_am from transport.eing_vorgaenge where id = ${vorgangId}`;
+  const rest = String(v?.hinweis ?? '').split(FIRMIERUNG_KOPF)[0].trim();
+  let zusatz = '';
+  if (entwurf && !v?.reklamation_am) {
+    const [alt] = await sql`select 1 from transport.eing_dokumente where vorgang_id = ${vorgangId} and status in ('neu', 'fehler') and pruefung->>'ergebnis' = 'alt' limit 1`;
+    if (alt) {
+      try { zusatz = ` ${(await reklamationEntwurf(vorgangId, SYSTEM)).text}`; } catch (x) { zusatz = ` Reklamations-Entwurf nicht angelegt: ${meldung(x)}`; }
+    }
+  }
+  const hinweis = [rest, saetze.length ? `${FIRMIERUNG_KOPF}${saetze.join(' ')}${zusatz}` : ''].filter(Boolean).join(' ') || null;
+  await sql`update transport.eing_vorgaenge set hinweis = ${hinweis} where id = ${vorgangId}`;
+}
+
+/** Originale aufgeteilter PDFs löschen, sobald keiner ihrer Teile mehr einen Inhalt im Portal hat (ignoriert bzw. Aufbewahrung abgelaufen) */
+async function originaleAufraeumen(): Promise<void> {
+  await sql`
+    update transport.eing_dokumente o set inhalt = null
+     where o.rolle = 'original' and o.inhalt is not null
+       and not exists (select 1 from transport.eing_dokumente t where t.teil_von = o.id and t.inhalt is not null)`;
 }
 
 /** E-Mail von n8n annehmen, zuordnen und – wenn eindeutig – ablegen. Antwort laut Vertrag: Vorgang, Status, Auftrag, Ordner. */
@@ -393,9 +463,14 @@ export async function mailVerarbeiten(m: EingangMail): Promise<MailAntwort> {
 
   const dokumente: NeuDok[] = [];
   if (!ignorieren) {
+    // Eingangsrechnungen: seitenweise einordnen, aufteilen, Firmierung prüfen – nur mit Texterkennung
+    const analyse = e.ocr && (e.rechnungAufteilen || e.firmierungPruefen) ? await analyseOptionen(e) : null;
     for (const a of anhaenge) {
-      const t = e.ocr ? await texterkennen({ datei: a.name, mime: a.mime, daten: a.daten }) : { text: '', hinweis: null };
-      dokumente.push({ art: 'anhang', datei: a.name, mime: a.mime, daten: a.daten, ocr: t.text.slice(0, MAX_OCR), hinweis: t.hinweis });
+      const t: Gelesen = e.ocr ? await texterkennen({ datei: a.name, mime: a.mime, daten: a.daten }, analyse) : { text: '', hinweis: null };
+      dokumente.push({
+        art: 'anhang', datei: a.name, mime: a.mime, daten: a.daten, ocr: t.text.slice(0, MAX_OCR), hinweis: t.hinweis,
+        rolle: t.rolle ?? null, seiten: t.seiten ?? null, pruefung: t.pruefung ?? null, teile: t.teile ?? [],
+      });
     }
     if (e.mailAlsPdf) {
       try {
@@ -434,14 +509,12 @@ export async function mailVerarbeiten(m: EingangMail): Promise<MailAntwort> {
   }
   const vorgangId = v.id as string;
 
-  for (const d of dokumente) {
-    await sql`
-      insert into transport.eing_dokumente (vorgang_id, art, datei, mime, groesse, sha256, inhalt, ocr_text, status, hinweis)
-      values (${vorgangId}, ${d.art}, ${d.datei}, ${d.mime}, ${d.daten.length}, ${sha(d.daten)}, ${d.daten.toString('base64')}, ${d.ocr || null}, 'neu', ${d.hinweis})`;
-  }
+  for (const d of dokumente) await dokumentAnlegen(vorgangId, d);
 
   let endstatus: VorgangStatus = status;
   if (status === 'neu') {
+    // Rechnung an eine frühere Firmierung bzw. unklarer Empfänger: Hinweis am Vorgang, auf Wunsch gleich der Reklamations-Entwurf
+    await firmierungMelden(vorgangId, e.firmierungAktion === 'entwurf');
     // nie automatisch ablegen: der Vorschlag steht in der Prüfliste, bis ihn jemand bestätigt
     endstatus = await abschliessen(vorgangId);
   }
@@ -599,6 +672,7 @@ export async function vorgangIgnorieren(id: number, wer: string) {
              where vorgang_id = ${id} and status = any(${OFFEN})`;
   await sql`update transport.eing_vorgaenge set bearbeitet_von = ${wer}, vorgemerkt_am = null, vorgemerkt_von = null, vorgemerkt_dokumente = null where id = ${id}`;
   const status = await abschliessen(id);
+  await originaleAufraeumen();
   await speicherPruefen();
   return { status, text: status === 'ignoriert' ? 'Vorgang ignoriert.' : 'Offene Dokumente ignoriert – der Rest liegt am Auftrag.' };
 }
@@ -626,6 +700,7 @@ export async function neuBewerten(id: number, wer: string) {
            kandidaten = ${sql.json(kandidaten as never)}, hinweis = ${ent.hinweis}, status = case when status = 'neu' then 'pruefen' else status end,
            vorgemerkt_am = null, vorgemerkt_von = null, vorgemerkt_dokumente = null
      where id = ${id}`;
+  await firmierungMelden(id, false);
   return { status: 'pruefen' as VorgangStatus, auftragsnr: ent.auftragsnr, punkte: ent.punkte, text: ent.hinweis ?? 'Bitte prüfen.' };
 }
 
@@ -681,7 +756,8 @@ export async function uebernommen(id: number, wer: string, ablageName?: string |
 export async function speicherStand(): Promise<{ bytes: number; dateien: number; warnungMb: number; warnung: boolean; aufbewahrtBytes: number; aufbewahrtDateien: number; aufbewahrenTage: number; aufbewahrenDauerhaft: boolean }> {
   const erledigt = [...ZUGEORDNET_ERLEDIGT];
   const [r] = await sql`
-    select coalesce(sum(groesse) filter (where status <> all(${erledigt})), 0)::bigint as bytes, (count(*) filter (where status <> all(${erledigt})))::int as dateien,
+    select coalesce(sum(groesse) filter (where status <> all(${erledigt}) and rolle is distinct from 'original'), 0)::bigint as bytes,
+           (count(*) filter (where status <> all(${erledigt}) and rolle is distinct from 'original'))::int as dateien,
            coalesce(sum(groesse) filter (where status = any(${erledigt})), 0)::bigint as abytes, (count(*) filter (where status = any(${erledigt})))::int as adateien
       from transport.eing_dokumente where inhalt is not null`;
   const e = (await workflowEinstellungen()).eingang;
@@ -714,6 +790,7 @@ export async function aufbewahrungAufraeumen(): Promise<number> {
   if (tage === null) return 0;
   const r = await sql`update transport.eing_dokumente set inhalt = null
                         where status = any(${[...ZUGEORDNET_ERLEDIGT]}) and inhalt is not null and bearbeitet_am < now() - make_interval(days => ${tage})`;
+  await originaleAufraeumen();
   return r.count;
 }
 
