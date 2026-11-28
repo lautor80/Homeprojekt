@@ -397,6 +397,11 @@ test('Dashboard/Mitglieder: Jahr der Mitgliederentwicklung wählbar, Folgejahr n
   assert.equal(mm.jahrSel, String(J));
   assert.equal(mm.jahre[0].key, String(J));
   assert.equal(mm.jahre.at(-1).key, '2005', 'ab dem ersten Eintritt');
+  // Zehnjahresdiagramm ohne Eintritte im Folgejahr: zehn Säulen bis zum laufenden Jahr
+  let mj = r.body.charts.mitgliederJahre;
+  assert.equal(mj.data.length, 10);
+  assert.equal(mj.data.at(-1).label, String(J));
+  assert.equal(mj.title, `Mitgliederentwicklung ${J - 9} - ${J}`);
   // Folgejahr ohne Eintritte ist nicht wählbar → Geschäftsjahr
   assert.equal((await admin('GET', `${D}?jahr=${J}&mtgJahr=${J + 1}`)).body.charts.mitgliederMonate.jahrSel, String(J));
 
@@ -423,6 +428,12 @@ test('Dashboard/Mitglieder: Jahr der Mitgliederentwicklung wählbar, Folgejahr n
     assert.equal(mm.data[0].val_line, vorher, 'Bestand im Januar = Jahresende davor');
     assert.equal(mm.data[2].bar_pos, 1);
     assert.equal(mm.data[11].val_line, vorher + 1);
+    // Zehnjahresdiagramm: Folgejahr als elfte Säule mit dem Eintritt und dem Bestand zum Jahresende
+    mj = r.body.charts.mitgliederJahre;
+    assert.equal(mj.data.length, 11);
+    assert.equal(mj.title, `Mitgliederentwicklung ${J - 9} - ${J + 1}`);
+    assert.deepEqual(mj.data.at(-1), { label: String(J + 1), val_line: vorher + 1, bar_pos: 1, bar_neg: 0 });
+    assert.equal(mj.data.at(-2).val_line, vorher);
   } finally {
     await sql`delete from tco.mitglieder where adrnr = '9731'`;
   }

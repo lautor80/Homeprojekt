@@ -96,13 +96,14 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const jugInt = jahreAuswahl(jugSel, gj);
     // Mitgliederentwicklung je Monat: eigenes Jahr wählbar (auch das Folgejahr, sobald es dafür Eintritte gibt); ohne Auswahl das Geschäftsjahr
     const mtgListe = await mtgJahre(DB, hj, gj);
+    const mtgVerlauf = await chartMtgJahre(DB);     // zehn Jahre, mit Folgejahr sobald es dafür Eintritte gibt
     const mtgJahr = q.mtgJahr && mtgListe.some((j) => j.key === String(q.mtgJahr)) ? q.mtgJahr : gj;
     const halInt = jahreAuswahl(halSel, gj);
     return {
       jahr: gj, jahre, heute: h, bereiche,
       charts: {
         mitgliederMonate: { title: `Mitgliederentwicklung ${mtgJahr}`, nameLine: 'Mitglieder', namePos: 'Eintritte', nameNeg: 'Austritte', jahre: mtgListe, jahrSel: String(mtgJahr), data: await chartMtgMonate(DB, mtgJahr) },
-        mitgliederJahre: { title: `Mitgliederentwicklung ${hj - 9} - ${hj}`, nameLine: 'Mitglieder zum Jahresende', namePos: 'Eintritte', nameNeg: 'Austritte', data: await chartMtgJahre(DB) },
+        mitgliederJahre: { title: `Mitgliederentwicklung ${mtgVerlauf[0].label} - ${mtgVerlauf[mtgVerlauf.length - 1].label}`, nameLine: 'Mitglieder zum Jahresende', namePos: 'Eintritte', nameNeg: 'Austritte', data: mtgVerlauf },
         clubhaus: { title: `Clubheimerträge ${gj} je Monat`, name1: 'Umsatz VK brutto', name2: 'Rohertrag', data: await chartClubhaus(DB, gj) },
         finanzen,
         jugend: { jahre: jugJahre, jahreSel: jugSel, ansicht: q.jugAnsicht, ...(await chartJugend(DB, jugInt, gj, q.jugAnsicht)) },
