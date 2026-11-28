@@ -383,3 +383,47 @@ test('Dashboard/Halle: Einzelbuchungen als Balken je Tag, Woche, Monat und Jahr'
   assert.equal((await admin('GET', `${D}/halle-einzel?raster=TAG&jahr=2003`)).body.jahr, new Date().getFullYear());
   assert.equal((await admin('GET', `${D}/halle-einzel?raster=XYZ`)).status, 400);
 });
+
+test('Dashboard/Mitglieder: Jahr der Mitgliederentwicklung wählbar, Folgejahr nur mit Eintritten', async () => {
+  const { mtgJahreListe } = await import('../../modules/tco/server/dashboard/charts.js');
+  // reine Liste: erster Eintritt bis laufendes Jahr, Folgejahr nur mit Eintritt, Unsinn (0, weit in der Zukunft) zählt nicht
+  assert.deepEqual(mtgJahreListe([2024, 2026], 2026, 2026).map((j: { key: string }) => j.key), ['2026', '2025', '2024']);
+  assert.deepEqual(mtgJahreListe([2025, 2027], 2026, 2026).map((j: { key: string }) => j.key), ['2027', '2026', '2025']);
+  assert.deepEqual(mtgJahreListe([0, 2031], 2026, 2025).map((j: { key: string }) => j.key), ['2026', '2025']);
+
+  // ohne Eintritte im Folgejahr: Liste endet beim laufenden Jahr, Vorbelegung ist das Geschäftsjahr
+  let r = await admin('GET', `${D}?jahr=${J}`);
+  let mm = r.body.charts.mitgliederMonate;
+  assert.equal(mm.jahrSel, String(J));
+  assert.equal(mm.jahre[0].key, String(J));
+  assert.equal(mm.jahre.at(-1).key, '2005', 'ab dem ersten Eintritt');
+  // Folgejahr ohne Eintritte ist nicht wählbar → Geschäftsjahr
+  assert.equal((await admin('GET', `${D}?jahr=${J}&mtgJahr=${J + 1}`)).body.charts.mitgliederMonate.jahrSel, String(J));
+
+  // Vorjahr gewählt: Bernd tritt im März ein; übrige Diagramme bleiben beim Geschäftsjahr
+  r = await admin('GET', `${D}?jahr=${J}&mtgJahr=${J - 1}`);
+  mm = r.body.charts.mitgliederMonate;
+  assert.equal(mm.title, `Mitgliederentwicklung ${J - 1}`);
+  assert.equal(mm.jahrSel, String(J - 1));
+  assert.equal(mm.data[2].bar_pos, 1);
+  assert.equal(r.body.jahr, J);
+  assert.equal(r.body.charts.clubhaus.title, `Clubheimerträge ${J} je Monat`);
+
+  // Eintritt zum 01.03. des Folgejahres: Folgejahr steht oben in der Liste und zeigt den Eintritt
+  await sql`insert into tco.mitglieder (adrnr, vorname, nachname, eintritt, mitglnrn) values ('9731', 'Nora', 'Neu', ${`${J + 1}-03-01`}, '9731')`;
+  try {
+    r = await admin('GET', `${D}?jahr=${J}`);
+    mm = r.body.charts.mitgliederMonate;
+    assert.equal(mm.jahre[0].key, String(J + 1));
+    assert.equal(mm.jahrSel, String(J), 'Vorbelegung bleibt das Geschäftsjahr');
+    const vorher = mm.data[11].val_line;
+    r = await admin('GET', `${D}?jahr=${J}&mtgJahr=${J + 1}`);
+    mm = r.body.charts.mitgliederMonate;
+    assert.equal(mm.title, `Mitgliederentwicklung ${J + 1}`);
+    assert.equal(mm.data[0].val_line, vorher, 'Bestand im Januar = Jahresende davor');
+    assert.equal(mm.data[2].bar_pos, 1);
+    assert.equal(mm.data[11].val_line, vorher + 1);
+  } finally {
+    await sql`delete from tco.mitglieder where adrnr = '9731'`;
+  }
+});

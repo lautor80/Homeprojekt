@@ -87,7 +87,26 @@ export async function mitgliederStat(db: Db): Promise<{ anzahl: number; stat: Mt
   return { anzahl, stat: [...stat.values()].sort((a, b) => a.jahr - b.jahr) };
 }
 
-/** Mitgliederentwicklung im Geschäftsjahr je Monat: Bestand (Linie), Eintritte, Austritte */
+/**
+ * Jahre zur Auswahl im Diagramm „Mitgliederentwicklung je Monat“ (absteigend): vom ersten Eintritt bis zum laufenden Jahr,
+ * das Geschäftsjahr ist immer dabei. Das Folgejahr wird nur angeboten, wenn dafür schon Eintritte erfasst sind.
+ */
+export function mtgJahreListe(eintrittsjahre: number[], hj: number, gj: number): KeyText[] {
+  const gueltig = eintrittsjahre.filter((j) => Number.isInteger(j) && j >= 1900 && j <= hj + 1);
+  const bis = Math.max(gueltig.includes(hj + 1) ? hj + 1 : hj, gj);
+  const von = Math.min(hj, gj, ...gueltig);
+  const out: KeyText[] = [];
+  for (let j = bis; j >= von; j--) out.push({ key: String(j), text: String(j) });
+  return out;
+}
+
+/** Jahre mit Eintritten aus dem Mitgliederbestand → Auswahlliste (siehe mtgJahreListe) */
+export async function mtgJahre(db: Db, hj: number, gj: number): Promise<KeyText[]> {
+  const rows = await db`select distinct left(eintritt::text, 4) as j from tco.mitglieder where eintritt is not null`;
+  return mtgJahreListe(rows.map((r) => Number(r.j)), hj, gj);
+}
+
+/** Mitgliederentwicklung eines Jahres je Monat: Bestand (Linie), Eintritte, Austritte */
 export async function chartMtgMonate(db: Db, jahr: number): Promise<Combo[]> {
   const von = `${jahr}-01-01`, bis = `${jahr}-12-31`;
   const rows = await db`select eintritt::text as eintritt, austritt::text as austritt from tco.mitglieder`;

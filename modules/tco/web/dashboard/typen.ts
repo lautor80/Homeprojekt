@@ -34,7 +34,7 @@ export interface Finanzen {
 export interface Daten {
   jahr: number; jahre: number[]; heute: string; bereiche: Bereich[];
   charts: {
-    mitgliederMonate: { title: string; nameLine: string; namePos: string; nameNeg: string; data: Combo[] };
+    mitgliederMonate: { title: string; nameLine: string; namePos: string; nameNeg: string; jahre: KeyText[]; jahrSel: string; data: Combo[] };
     mitgliederJahre: { title: string; nameLine: string; namePos: string; nameNeg: string; data: Combo[] };
     clubhaus: { title: string; name1: string; name2: string; data: Point[] };
     finanzen: Finanzen;
@@ -47,7 +47,7 @@ export interface DetailZeile { cols: string[]; state: State; adrnr?: string; ver
 export interface Detail { title: string; head: string[]; info: string; zeilen: DetailZeile[]; mode?: 'BSW'; stichtag?: string; stufen?: KeyText[] }
 
 /** Auswahl der Diagramme (Jahre, Konten, Ansicht) – wird als Query mitgeschickt */
-export interface Auswahl { jugJahre: string[]; halJahre: string[]; finJahre: string[]; finKonten: string[]; jugAnsicht: 'GESAMT' | 'TRAINER'; halZeitraum: 'MONAT' | 'SAISON' | 'JAHR' }
+export interface Auswahl { /** Jahr der Mitgliederentwicklung je Monat; leer = Geschäftsjahr */ mtgJahr: string; jugJahre: string[]; halJahre: string[]; finJahre: string[]; finKonten: string[]; jugAnsicht: 'GESAMT' | 'TRAINER'; halZeitraum: 'MONAT' | 'SAISON' | 'JAHR' }
 
 /** Kurzform für Achsen wie conv_short: 1,2k / 3,4M, sonst ganze Zahl */
 export function kurz(v: number): string {
