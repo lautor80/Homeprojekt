@@ -7,8 +7,10 @@ import { dateityp } from '../../../../server/src/lib/dateityp.js';
 import { P_MW, workflowEinstellungen } from '../mailworkflows.js';
 import { postfachListe, type Grund, type Kandidat } from './logik.js';
 import { ZUGEORDNET_ERLEDIGT } from './aufbewahrung.js';
+import { aufteilungZuruecknehmen, seitenVorschlag, vonHandAufteilen } from './aufteilen.js';
+import { reklamationEntwurf } from './rechnung.js';
 import {
-  abrufAnstossen, auftragAendern, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, sammelUebergabe, speicherStand, uebernommen, vonHandAblegen,
+  abrufAnstossen, auftragAendern, firmierungMelden, letzterAbrufLesen, mailVerarbeiten, neuBewerten, offeneNeuBewerten, sammelUebergabe, speicherStand, uebernommen, vonHandAblegen,
   vorgangIgnorieren, vormerken, vormerkungAufheben,
 } from './verarbeitung.js';
 
@@ -69,7 +71,11 @@ export async function eingangRoutes(app: FastifyInstance) {
              case when v.status = 'neu' then 'pruefen' else v.status end as status, v.hinweis, v.auftragsnr, v.punkte, v.abgelegt_von,
              v.vorgemerkt_am is not null as vorgemerkt, v.vorgemerkt_von,
              jsonb_array_length(v.kandidaten)::int as anzahl_kandidaten,
-             (select count(*)::int from transport.eing_dokumente d where d.vorgang_id = v.id) as anzahl_dokumente
+             (select count(*)::int from transport.eing_dokumente d where d.vorgang_id = v.id) as anzahl_dokumente,
+             -- Firmierungsprüfung der Rechnungen dieser E-Mail: alt = an eine frühere Firmierung, unklar = Empfänger nicht sicher
+             (select case when bool_or(d.pruefung->>'ergebnis' = 'alt') then 'alt' when bool_or(d.pruefung->>'ergebnis' = 'unklar') then 'unklar' end
+                from transport.eing_dokumente d
+               where d.vorgang_id = v.id and d.pruefung is not null and d.rolle is distinct from 'original' and d.status <> 'ignoriert') as firmierung
         from transport.eing_vorgaenge v
        where true ${q.status === 'pruefen' ? sql`and v.status in ('neu', 'pruefen')` : q.status ? sql`and v.status = ${q.status}` : sql``}
          ${q.postfach ? sql`and v.postfach = ${q.postfach}` : sql``}
@@ -90,7 +96,8 @@ export async function eingangRoutes(app: FastifyInstance) {
       select id::int as id, postfach, von, von_name, an, betreff, to_char(datum at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as datum, to_char(eingang_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as eingang_am,
              case when status = 'neu' then 'pruefen' else status end as status, hinweis, text, auftragsnr, punkte, begruendung, kandidaten,
              mail_aktion, to_char(abgeschlossen_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as abgeschlossen_am, bearbeitet_von, abgelegt_von,
-             vorgemerkt_am is not null as vorgemerkt, vorgemerkt_von, vorgemerkt_dokumente
+             vorgemerkt_am is not null as vorgemerkt, vorgemerkt_von, vorgemerkt_dokumente,
+             to_char(reklamation_am at time zone 'Europe/Berlin', 'YYYY-MM-DD HH24:MI') as reklamation_am, reklamation_von
         from transport.eing_vorgaenge where id = ${id}`;
     if (!v) throw new BusinessError('Den Vorgang gibt es nicht (mehr).', 404);
     const kand = (v.kandidaten ?? []) as Kandidat[];
@@ -101,7 +108,8 @@ export async function eingangRoutes(app: FastifyInstance) {
     const je = new Map(info.map((r): [string, Record<string, unknown>] => [r.auftragsnr as string, r]));
     const dokumente = await sql`
       select id::int as id, art, datei, mime, groesse, status, ziel, paperless_id, hinweis, inhalt is not null as vorhanden,
-             left(coalesce(ocr_text, ''), 500) as ocr_auszug
+             left(coalesce(ocr_text, ''), 500) as ocr_auszug, teil_von::int as teil_von, rolle, pruefung,
+             case when jsonb_typeof(seiten) = 'array' then jsonb_array_length(seiten) end as seitenzahl
         from transport.eing_dokumente where vorgang_id = ${id} order by id`;
     const e = await workflowEinstellungen();
     return {
@@ -181,6 +189,23 @@ export async function eingangRoutes(app: FastifyInstance) {
     const { id } = idParam.parse(req.params);
     const b = z.object({ auftragsnr: z.string().trim().min(1, 'Bitte einen Auftrag wählen.').max(40) }).parse(req.body);
     return auftragAendern(id, b.auftragsnr, wer(req));
+  });
+
+  // ---------------------------------------------------------------- Eingangsrechnungen: aufteilen, Firmierung reklamieren
+  /** Einordnung je Seite (Rechnung, Ablieferbeleg, eigener Transportauftrag) als Vorschlag für „Aufteilen…“ */
+  app.get('/eingang/dokumente/:id/seiten', pflegen, async (req) => seitenVorschlag(idParam.parse(req.params).id));
+  /** PDF nach der Einordnung des Benutzers aufteilen: R = Rechnung, A = Ablieferbeleg, T = eigener Transportauftrag (entfällt) */
+  app.post('/eingang/dokumente/:id/aufteilen', pflegen, async (req) => {
+    const b = z.object({ arten: z.array(z.enum(['R', 'A', 'T'])).min(2, 'Ein PDF mit einer Seite lässt sich nicht aufteilen.').max(40) }).parse(req.body);
+    return vonHandAufteilen(idParam.parse(req.params).id, b.arten, wer(req));
+  });
+  app.delete('/eingang/dokumente/:id/aufteilen', pflegen, async (req) => aufteilungZuruecknehmen(idParam.parse(req.params).id, wer(req)));
+  /** Rechnung an eine frühere Firmierung: Bitte um Korrektur als Entwurf im Postfach ablegen (gesendet wird von Hand) */
+  app.post('/eingang/vorgaenge/:id/reklamation', pflegen, async (req) => {
+    const { id } = idParam.parse(req.params);
+    const r = await reklamationEntwurf(id, wer(req));
+    await firmierungMelden(id, false);
+    return r;
   });
 
   app.post('/eingang/vorgaenge/:id/ignorieren', pflegen, async (req) => vorgangIgnorieren(idParam.parse(req.params).id, wer(req)));

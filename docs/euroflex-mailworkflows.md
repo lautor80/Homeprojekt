@@ -40,6 +40,10 @@ Migration `011_mailworkflows.sql` gibt `transport.eingang:display/edit` allen Ro
 | Eingang | `speicherWarnungMb` | 1024 | Warnung, wenn noch nicht übernommene Dateien mehr belegen |
 | Eingang | `aufbewahrenDauerhaft` | `true` | Inhalte zugeordneter Dateien (übernommen, Paperless, Dublette) dauerhaft behalten – jederzeit herunterladbar |
 | Eingang | `aufbewahrenTage` | 90 | nur ohne `aufbewahrenDauerhaft`: Inhalte zugeordneter Dateien so viele Tage behalten; 0 = sofort löschen |
+| Eingang | `rechnungAufteilen` | ja | PDF mit Rechnung, Ablieferbelegen und eigenem Transportauftrag aufteilen – siehe „Eingangsrechnungen“ |
+| Eingang | `firmierungPruefen` | ja | Rechnungsempfänger gegen die Firmendaten und die früheren Firmierungen prüfen |
+| Eingang | `firmierungAktion` | `markieren` | Rechnung an frühere Firmierung: `markieren` = nur Hinweis, `entwurf` = zusätzlich sofort die Reklamation als Entwurf |
+| Eingang | `fruehereFirmierungen` | leer (Migration 024 belegt „Benjamin Hartyniuk Euroflex“, DE814480003 vor) | `[{ name, ustid }]` – daran wird eine falsch adressierte Rechnung sicher erkannt |
 | Eingang | `postfaecher` | leer | Eingangspostfächer `[{ adresse, bezeichnung }]`, z. B. `info@…` „Info“ und `buchhaltung@…` „Buchhaltung“ – siehe „Mehrere Eingangspostfächer“ |
 | Versand | `T`/`L`/`R`.`vorauswahl` | T, L ja; R nein | im Dialog vorausgewählt |
 | Versand | `T`/`L`/`R`.`modus` | `entwurf` | `senden` wirkt nur mit Funktion „Automatisch senden“ und Recht |
@@ -124,6 +128,9 @@ gelesen und ruft nur ungelesene ab. Bei `doppelt` (schon verarbeitet) ebenfalls 
 | POST | `/eingang/vorgaenge/:id/ignorieren` | edit | Vorgang und Dokumente ignorieren, Inhalte löschen |
 | POST | `/eingang/vorgaenge/:id/neu-bewerten` | edit | Zuordnung neu berechnen |
 | POST | `/eingang/abruf` | edit | offene Vorgänge neu bewerten, n8n-Webhook „jetzt abrufen“ anstoßen (falls eingerichtet) |
+| GET | `/eingang/dokumente/:id/seiten` | edit | Einordnung je Seite `[{ art: R\|A\|T, sicher, grund }]` als Vorschlag für „Aufteilen…“ |
+| POST | `/eingang/dokumente/:id/aufteilen` | edit | `{ arten: ("R"\|"A"\|"T")[] }` – PDF nach dieser Einordnung aufteilen; `DELETE` nimmt die Aufteilung zurück |
+| POST | `/eingang/vorgaenge/:id/reklamation` | edit | Bitte um Rechnungskorrektur als Entwurf im Postfach ablegen |
 | GET | `/eingang/speicher` | display | `{ bytes, dateien, warnungMb, warnung: boolean }` – Belegung durch noch nicht übernommene Inhalte |
 | GET | `/auftraege/:nr/eingang` | auftraege:display | Eingangsdokumente am Auftrag: id, datei, mime, groesse, status, ziel, von, betreff, datum |
 | POST | `/eingang/dokumente/:id/uebernommen` | auftraege:edit | Browser hat die Datei in den Ablageordner (Unterordner `Eingang/`) geschrieben → Status `uebernommen`, Inhalt je nach Aufbewahrung |
@@ -262,6 +269,57 @@ Stand 17.11.2026. Der Eingang kann mehrere Outlook-Postfächer abrufen, z. B. `i
   in welchem Postfach sie ankam. `GET /eingang/vorgaenge?postfach=…` filtert; die Antwort enthält `postfaecher: [{ adresse, bezeichnung }]`
   (eingetragene, dann bisher gesehene ohne Eintrag).
 - Zuordnung und Ablage arbeiten für alle Postfächer gleich.
+
+## Eingangsrechnungen
+
+Stand 28.11.2026. Rechnungen von Unternehmern kommen oft noch auf die frühere Firmierung und häufig als ein PDF, in dem Rechnung,
+Ablieferbelege und manchmal der eigene Transportauftrag zusammenhängen. Der Posteingang prüft und zerlegt sie beim Eingang – nur
+mit eingeschalteter Texterkennung, alles lokal im Container (poppler-utils: `pdfinfo`, `pdftotext`, `pdftoppm`, `pdfseparate`,
+`pdfunite`; Tesseract für gescannte Seiten).
+
+**Seiten einordnen** (`eingang/rechnungspruefung.ts`, reine Logik): Jede Seite ist Rechnung (R), Ablieferbeleg (A) oder eigener
+Transportauftrag (T).
+- *Transportauftrag:* die festen Texte, die das Portal selbst druckt („Transportauftrag“, „Transport Order“, „hiermit beauftragen
+  wir Sie …“, „Bitte immer auf der Rechnung angeben“; Folgeseiten an der Kopfzeile „Transportauftrag <Nr.> · Fortsetzung“). Eine
+  Rechnung, die den Transportauftrag nur erwähnt, bleibt Rechnung.
+- *Rechnung:* das Wort Rechnung/Invoice/Gutschrift und mindestens zwei weitere Merkmale (Rechnungsnummer, Rechnungs-/Leistungsdatum,
+  USt, Beträge, Zahlungsangaben, Bankverbindung). Folgeseiten mit Summen oder „Seite 2“ gehören dazu.
+- *Ablieferbeleg:* Schlagworte (Lieferschein, CMR, Frachtbrief, Empfangsbestätigung, POD, Stempel …) – und alles, was weder Rechnung
+  noch Transportauftrag ist, weil Belege oft Scans mit Stempel und Handschrift sind.
+- Jede Seite trägt `sicher`. Nicht sicher sind z. B. viel Text ohne Merkmal direkt nach der Rechnung (AGB des Rechnungsstellers?)
+  oder ein Beleg mit Rechnungsmerkmalen.
+
+**Aufteilen:** Stecken mehrere Arten in einem PDF und ist jede Seite sicher, entstehen „<Name> – Rechnung.pdf“ und
+„<Name> – Ablieferbelege.pdf“; die Seiten des Transportauftrags entfallen. Die Seiten werden unverändert übernommen (kein Neurendern).
+- Das **Original bleibt unverändert im Portal**: Dokument mit Rolle `original`, Status `ignoriert` – es wird nicht abgelegt, ist aber
+  im Posteingang herunterladbar; die E-Mail selbst bleibt ohnehin im Postfach. Gelöscht wird es erst, wenn keiner seiner Teile
+  mehr einen Inhalt im Portal hat (E-Mail ignoriert bzw. Aufbewahrung abgelaufen).
+- Ist die Einordnung nicht eindeutig, wird nicht geteilt; am Dokument steht der Hinweis und **Aufteilen…** öffnet den Dialog mit
+  dem Vorschlag je Seite (Seite ansehen, Art wählen). **Aufteilung ändern…** und **Aufteilung zurücknehmen** gehen, solange noch
+  kein Teil am Auftrag liegt.
+- **E-Rechnungen** (ZUGFeRD/Factur-X/XRechnung als eingebettete XML) werden nie zerlegt. PDFs über 40 Seiten oder 15 MB, geschützte
+  und defekte PDFs bleiben, wie sie sind; je PDF werden höchstens 12 gescannte Seiten per Texterkennung gelesen.
+- Ein getrenntes PDF nur mit Ablieferbelegen (Beispiel: Rechnung und Belege als zwei Anhänge) wird nicht geteilt und bekommt die
+  Kennzeichnung „Ablieferbeleg“; ein einzelner eigener Transportauftrag die Kennzeichnung „eigener Transportauftrag“.
+
+**Firmierung prüfen:** Der Text der Rechnungsseiten wird gegen *Stammdaten → Firma* (Name, PLZ, USt-IdNr.) und die früheren
+Firmierungen gehalten. Reihenfolge: USt-IdNr. einer früheren Firmierung auf der Rechnung → **alt**; aktueller Firmenname gefunden →
+**ok** (fehlt die PLZ: unklar); Name einer früheren Firmierung gefunden, der aktuelle nicht → **alt**; sonst **unklar**. Der frühere
+Name wird großzügig gesucht (andere Reihenfolge, „Inh.“, Zeilenumbruch), der aktuelle streng; der Inhaber als Ansprechpartner macht
+eine richtig adressierte Rechnung nicht falsch. Das Ergebnis steht am Dokument (`pruefung`), im Hinweis des Vorgangs
+(„Rechnungsempfänger prüfen – …“, damit auch im Arbeitsvorrat) und als Kennzeichnung in der Liste („Alte Firmierung“ rot,
+„Empfänger prüfen“ orange). Abgelegt wird wie immer nur nach Bestätigung.
+
+**Reklamation:** Bei „alt“ legt **Reklamation als Entwurf** eine E-Mail an den Absender in den Ordner „Entwürfe“ des
+Eingangspostfachs (Anbindung „Euroflex E-Mail-Versand“): Bitte um Neuausstellung mit den aktuellen Firmendaten, die beanstandete
+Rechnung im Anhang, keine Kopie an die feste zweite Adresse. Mit `firmierungAktion = entwurf` geschieht das schon beim Eingang (einmal
+je E-Mail; ein Fehler steht im Hinweis). Gesendet wird immer von Hand.
+
+Migration `024_eingangsrechnung.sql`: `eing_dokumente.teil_von`, `rolle`, `seiten`, `pruefung`; `eing_vorgaenge.reklamation_am/_von`.
+Dateien: `eingang/rechnungspruefung.ts` (Regeln), `eingang/rechnung.ts` (PDF-Werkzeuge, Reklamation), `eingang/aufteilen.ts` (von
+Hand), `server/src/lib/texterkennung.ts` (`pdfSeitenTexte`, `pdfSeitenAuswahl`, `pdfHatERechnung`), Oberfläche
+`web/eingang/AufteilenDialog.tsx`. Test `server/test/transport_eingangsrechnung.test.ts` (das Zerlegen selbst läuft nur, wo
+poppler-utils installiert ist – lokal und im Container, nicht in der CI).
 
 ## Dateien
 

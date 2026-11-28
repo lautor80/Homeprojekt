@@ -63,8 +63,23 @@ export interface EingangEinstellungen {
    * werden trotzdem angenommen und mit ihrer Adresse angezeigt.
    */
   postfaecher: EingangsPostfach[];
+  /**
+   * Eingangsrechnungen: PDFs, in denen Rechnung, Ablieferbelege und/oder der eigene Transportauftrag zusammenhängen, in
+   * „… – Rechnung.pdf“ und „… – Ablieferbelege.pdf“ aufteilen (der Transportauftrag entfällt, das Original bleibt im Portal).
+   */
+  rechnungAufteilen: boolean;
+  /** Rechnungsempfänger gegen die Firmendaten (Stammdaten → Firma) und die früheren Firmierungen prüfen */
+  firmierungPruefen: boolean;
+  /**
+   * Rechnung an eine frühere Firmierung: markieren = nur Hinweis in der Prüfliste (der Reklamations-Entwurf lässt sich dort
+   * von Hand anlegen); entwurf = zusätzlich sofort einen Entwurf an den Absender im Eingangspostfach ablegen.
+   */
+  firmierungAktion: 'markieren' | 'entwurf';
+  /** frühere Firmierungen (Name und/oder USt-IdNr.), an denen eine falsch adressierte Rechnung sicher erkannt wird */
+  fruehereFirmierungen: FruehereFirmierung[];
 }
 export interface EingangsPostfach { adresse: string; bezeichnung: string }
+export interface FruehereFirmierung { name: string; ustid: string }
 
 /**
  * Je Dokumentart: Vorauswahl im Dialog „Versenden…“, Modus, festes Absender-Postfach und BCC.
@@ -77,6 +92,7 @@ export type VersandEinstellungen = Record<Dokumentart, VersandArtEinstellung>;
 export const EINGANG_STANDARD: EingangEinstellungen = {
   ablageziel: 'lokal', schwelle: 80, ordnerZugeordnet: 'Portal/Zugeordnet', ordnerPruefen: 'Portal/Prüfen',
   mailAlsPdf: true, ocr: true, speicherWarnungMb: 1024, aufbewahrenTage: 90, aufbewahrenDauerhaft: true, postfaecher: [],
+  rechnungAufteilen: true, firmierungPruefen: true, firmierungAktion: 'markieren', fruehereFirmierungen: [],
 };
 export const VERSAND_STANDARD: VersandEinstellungen = {
   T: { vorauswahl: true, modus: 'entwurf', absender: '', bcc: '' },
@@ -120,6 +136,13 @@ const eingangSchema = z.object({
   aufbewahrenDauerhaft: z.boolean().default(true),
   postfaecher: z.array(postfachSchema).max(20).default([])
     .refine((l) => new Set(l.map((x) => x.adresse)).size === l.length, 'Eingangspostfach doppelt eingetragen.'),
+  rechnungAufteilen: z.boolean().default(true),
+  firmierungPruefen: z.boolean().default(true),
+  firmierungAktion: z.enum(['markieren', 'entwurf']).default('markieren'),
+  fruehereFirmierungen: z.array(z.object({
+    name: z.string().trim().max(200).default(''),
+    ustid: z.string().trim().max(30).default(''),
+  }).refine((f) => f.name || f.ustid, 'Frühere Firmierung: bitte Name oder USt-IdNr. angeben.')).max(20).default([]),
 });
 const artSchema = z.object({
   vorauswahl: z.boolean(), modus: z.enum(['entwurf', 'senden']),

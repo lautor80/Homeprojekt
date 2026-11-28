@@ -5,7 +5,7 @@
  * keine Daten an fremde Dienste gegeben. Die Dateien liegen nur für den Aufruf in einem eigenen temporären Ordner.
  */
 import { execFile } from 'node:child_process';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BusinessError } from '../errors.js';
@@ -97,5 +97,104 @@ export async function pdfScanText(pdf: Buffer, seiten = 3, sprachen = 'deu+eng')
       }
     }
     return teile.join('\n');
+  });
+}
+
+// ---------------------------------------------------------------- seitenweise lesen und PDFs zerlegen (Euroflex Eingangsrechnungen)
+
+const istPdfInhalt = (pdf: Buffer) => pdf.subarray(0, 5).toString('latin1') === '%PDF-';
+
+/** Seitenzahl eines PDFs (pdfinfo); 0, wenn sie sich nicht bestimmen lässt (Programm fehlt, PDF defekt oder verschlüsselt) */
+export async function pdfSeitenzahl(pdf: Buffer): Promise<number> {
+  if (!istPdfInhalt(pdf)) return 0;
+  return mitDatei('datei.pdf', pdf, async (pfad) => {
+    try {
+      const m = /^Pages:\s+(\d+)/m.exec(await aufruf('pdfinfo', [pfad], 20_000));
+      return m ? Number(m[1]) : 0;
+    } catch {
+      return 0;
+    }
+  });
+}
+
+/**
+ * Text je Seite (höchstens `max` Seiten): Textebene mit pdftotext; Seiten ohne Text (Scan) werden einzeln gerendert und mit
+ * tesseract gelesen – höchstens `maxScan` Seiten, die übrigen bleiben leer. Liefert null, wenn das PDF nicht lesbar ist oder
+ * mehr als `max` Seiten hat (dann wird nicht seitenweise gearbeitet).
+ */
+export async function pdfSeitenTexte(pdf: Buffer, max = 40, maxScan = 12, sprachen = 'deu+eng'): Promise<{ seiten: string[]; gescannt: number } | null> {
+  if (!istPdfInhalt(pdf)) return null;
+  return mitDatei('datei.pdf', pdf, async (pfad) => {
+    const ordner = pfad.slice(0, pfad.lastIndexOf('/'));
+    let anzahl: number;
+    let roh: string;
+    try {
+      const m = /^Pages:\s+(\d+)/m.exec(await aufruf('pdfinfo', [pfad], 20_000));
+      anzahl = m ? Number(m[1]) : 0;
+      if (!anzahl || anzahl > max) return null;
+      roh = await aufruf('pdftotext', ['-layout', '-enc', 'UTF-8', pfad, '-'], 60_000);
+    } catch {
+      return null;
+    }
+    // pdftotext trennt die Seiten mit Seitenvorschub (auch nach der letzten)
+    const teile = roh.split('\f');
+    const seiten = Array.from({ length: anzahl }, (_, i) => (teile[i] ?? '').trim());
+    let gescannt = 0;
+    for (let i = 0; i < anzahl && gescannt < maxScan; i++) {
+      if (seiten[i]) continue;
+      const nr = String(i + 1);
+      const basis = join(ordner, `s${nr}`);
+      try {
+        await aufruf('pdftoppm', ['-r', '200', '-png', '-f', nr, '-l', nr, '-singlefile', pfad, basis], 60_000);
+        const lesen = (l: string) => aufruf('tesseract', [`${basis}.png`, 'stdout', '-l', l, '--psm', '3', '-c', 'preserve_interword_spaces=1'], 45_000);
+        try {
+          seiten[i] = (await lesen(sprachen)).trim();
+        } catch (e) {
+          if (/Failed loading language|Error opening data file/i.test((e as { stderr?: string }).stderr ?? '') && sprachen !== 'eng') seiten[i] = (await lesen('eng')).trim();
+          else throw e;
+        }
+        gescannt++;
+      } catch (e) {
+        // Texterkennung fehlt oder die Seite ist nicht lesbar: Seite bleibt leer
+        if (fehlt(e)) break;
+      } finally {
+        await rm(`${basis}.png`, { force: true }).catch(() => undefined);
+      }
+    }
+    return { seiten, gescannt };
+  });
+}
+
+/**
+ * Neues PDF aus den genannten Seiten (ab 1, in dieser Reihenfolge) – pdfseparate/pdfunite aus poppler-utils. Die Seiten werden
+ * unverändert übernommen (kein Neurendern). Wirft, wenn die Programme fehlen oder das PDF sich nicht zerlegen lässt.
+ */
+export async function pdfSeitenAuswahl(pdf: Buffer, seiten: number[]): Promise<Buffer> {
+  if (!istPdfInhalt(pdf)) throw new BusinessError('Die Datei ist kein PDF.');
+  if (!seiten.length) throw new BusinessError('Keine Seiten gewählt.');
+  return mitDatei('datei.pdf', pdf, async (pfad) => {
+    const ordner = pfad.slice(0, pfad.lastIndexOf('/'));
+    try {
+      const von = Math.min(...seiten), bis = Math.max(...seiten);
+      await aufruf('pdfseparate', ['-f', String(von), '-l', String(bis), pfad, join(ordner, 'p-%d.pdf')], 60_000);
+      const dateien = seiten.map((s) => join(ordner, `p-${s}.pdf`));
+      if (dateien.length === 1) return await readFile(dateien[0]);
+      const ziel = join(ordner, 'teil.pdf');
+      await aufruf('pdfunite', [...dateien, ziel], 60_000);
+      return await readFile(ziel);
+    } catch (e) {
+      if (fehlt(e)) throw new BusinessError('PDFs können auf dem Server nicht zerlegt werden (poppler-utils fehlt).');
+      throw new BusinessError('Das PDF lässt sich nicht zerlegen (defekt oder geschützt).');
+    }
+  });
+}
+
+/** E-Rechnung im PDF (ZUGFeRD/Factur-X/XRechnung als eingebettete XML)? Solche PDFs werden nie zerlegt. */
+export async function pdfHatERechnung(pdf: Buffer): Promise<boolean> {
+  if (!istPdfInhalt(pdf)) return false;
+  const muster = /factur-x|zugferd|xrechnung/i;
+  if (muster.test(pdf.toString('latin1'))) return true;
+  return mitDatei('datei.pdf', pdf, async (pfad) => {
+    try { return muster.test(await aufruf('pdfdetach', ['-list', pfad], 20_000)); } catch { return false; }
   });
 }

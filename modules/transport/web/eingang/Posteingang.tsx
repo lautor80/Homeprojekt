@@ -12,6 +12,7 @@ import { Empty, Section } from '@core/components/Section';
 import { useCan, useFunktion } from '@core/session';
 import { toast } from '@core/toast';
 import { dat, download } from '../util';
+import { AufteilenDialog } from './AufteilenDialog';
 import { AuftragWahl, kundeVon, useAuftraege } from './AuftragWahl';
 import { eingangInOrdner, uebernahmeText } from './uebernahme';
 import { entfernenUnterordner, ordnerMoeglich, UNTERORDNER_EINGANG } from '../ordner';
@@ -20,7 +21,7 @@ import { F_BELEG_EINGANG, KEIN_FRACHTAUFTRAG, R_BELEG_EINGANG, belegAusEingang, 
 import { belegMerken, type BelegState } from '../beleg/vormerkung';
 import { OHNE_ADRESSE, absenderFiltern, filterGueltig, gleicherFilter, postfachBaum, type AbsenderFilter, type PostfachKnoten } from './absenderbaum';
 import {
-  EING, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, automatischAbgelegt, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
+  EING, FIRMIERUNG_KOPF, ROLLE_TEXT, SCHWELLE_STANDARD, STATUS_TEXT, absender, antwortText, automatischAbgelegt, dateiUrl, groesse, istPdf, liste, treffer, zeitText,
   type EingangDokument, type EingangsPostfach, type Kandidat, type Vorgang, type VorgangStatus, type VorgangZeile,
 } from './typen';
 
@@ -346,6 +347,8 @@ function Liste({ zeilen, status, schwelle, gewaehlt, onWaehlen, postfaecher }: {
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <ObjectStatus state={t.state} inverted={t.state !== 'None'}>{t.text}</ObjectStatus>
               {z.vorgemerkt && <ObjectStatus state="Information" inverted icon={<Icon name="flag" />}>Vorgemerkt · {z.auftragsnr ?? '?'}</ObjectStatus>}
+              {z.firmierung === 'alt' && <ObjectStatus state="Negative" inverted title="Rechnung an eine frühere Firmierung adressiert">Alte Firmierung</ObjectStatus>}
+              {z.firmierung === 'unklar' && <ObjectStatus state="Critical" title="Rechnungsempfänger nicht sicher erkannt – bitte prüfen">Empfänger prüfen</ObjectStatus>}
               {postfaecher.length > 0 && z.postfach && (
                 <Text className="portal-muted portal-small" title={z.postfach}>
                   <Icon name="inbox" style={{ width: '0.8rem', height: '0.8rem', verticalAlign: 'middle' }} /> {postfaecher.find((p) => p.adresse === z.postfach)?.bezeichnung ?? z.postfach}
@@ -379,6 +382,8 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
   const [nrNeu, setNrNeu] = useState('');
   const [aendernFrage, setAendernFrage] = useState(false);
   const [pdf, setPdf] = useState<EingangDokument | null>(null);
+  // PDF mit Rechnung, Ablieferbelegen und Transportauftrag je Seite einordnen und aufteilen
+  const [teilen, setTeilen] = useState<EingangDokument | null>(null);
   const [textOffen, setTextOffen] = useState(true);
   // Detail neben der Liste: unter etwa 1100 px Fensterbreite Anhänge über der E-Mail statt links daneben
   const schmal = useKlein(1100);
@@ -448,6 +453,9 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
   };
   /** Reiter „Posteingang“: Auftrag und Dateien festhalten – abgelegt wird erst mit der gesammelten Übergabe */
   const vormerken = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/vormerken`, { auftragsnr: nr, dokumente: [...auswahl] }), `Für Auftrag ${nr} vorgemerkt`, 'neu');
+  /** Rechnung an eine frühere Firmierung: Bitte um Korrektur als Entwurf im Postfach ablegen */
+  const reklamieren = () => aktion(() => api.post(`${EING}/vorgaenge/${v.id}/reklamation`, {}), 'Reklamation als Entwurf abgelegt', 'neu');
+  const aufteilungZurueck = (d: EingangDokument) => aktion(() => api.del(`${EING}/dokumente/${d.id}/aufteilen`), 'Aufteilung zurückgenommen', 'neu');
   const vormerkungAufheben = () => aktion(() => api.del(`${EING}/vorgaenge/${v.id}/vormerken`), 'Vormerkung aufgehoben', 'neu');
   /** abgelegte E-Mail an einen anderen Auftrag hängen; Dateien im Ablageordner wandern mit (alter Unterordner Eingang/ → neuer) */
   const auftragAendern = async () => {
@@ -508,6 +516,17 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
   const zuordnungState = v.auftragsnr ? (punkte >= schwelle ? 'Positive' : 'Critical') : kandidaten.length ? 'Critical' : 'None';
   // zugeordnet, aber noch nicht im Ablageordner (z. B. automatisch abgelegt oder Übertragung abgebrochen)
   const wartend = v.dokumente.filter((d) => d.status === 'wartet' && d.ziel === 'lokal');
+  // Hinweis des Vorgangs: der Teil zur Firmierungsprüfung steht für sich (mit „Reklamation als Entwurf“)
+  const [hinweisAllgemein, hinweisFirmierung] = (() => {
+    const i = (v.hinweis ?? '').indexOf(FIRMIERUNG_KOPF);
+    return i < 0 ? [v.hinweis ?? '', ''] : [(v.hinweis ?? '').slice(0, i).trim(), (v.hinweis ?? '').slice(i).trim()];
+  })();
+  const rechnungen = v.dokumente.filter((d) => d.rolle !== 'original' && d.pruefung);
+  const alteFirmierung = rechnungen.some((d) => d.pruefung?.ergebnis === 'alt');
+  // aufteilen, solange noch kein Teil am Auftrag liegt: offenes mehrseitiges PDF oder ein Original mit ausschließlich offenen Teilen
+  const teileOffen = (d: EingangDokument) => v.dokumente.filter((t) => t.teil_von === d.id).every(OFFEN_DOK);
+  const teilbar = (d: EingangDokument) => edit && offen && istPdf(d) && d.art !== 'mail' && !d.teil_von && d.vorhanden !== false && (d.seitenzahl ?? 2) > 1
+    && (d.rolle === 'original' ? teileOffen(d) : OFFEN_DOK(d));
 
   return (
     <Section title={v.betreff || '(ohne Betreff)'}
@@ -520,6 +539,7 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
           <DokumentKarte key={d.id} d={d} waehlbar={offen && darfAblegen && OFFEN_DOK(d)} gewaehlt={auswahl.has(d.id)}
                          onWahl={(an) => umschalten(d, an)} vorschau={darfLaden(d) ? () => vorschau(d) : null}
                          beleg={belegMoeglich(d) ? () => { void auftragAusBeleg(d); } : null} gesperrt={busy}
+                         aufteilen={teilbar(d) ? () => setTeilen(d) : null} zuruecknehmen={teilbar(d) && d.rolle === 'original' ? () => { void aufteilungZurueck(d); } : null}
                          herunterladen={darfLaden(d) ? () => download(dateiUrl(d.id), d.datei || `Dokument_${d.id}`).catch((x) => onFehler((x as Error).message)) : null} />
         ))}
       </div>
@@ -529,7 +549,23 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
           {v.an && <><Label>An</Label><Text style={{ overflowWrap: 'anywhere' }}>{v.an}</Text></>}
           <Label>Datum</Label><Text>{v.datum ? `${dat(v.datum)} ${new Date(v.datum).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : '–'}</Text>
         </div>
-        {v.hinweis && <MessageStrip hideCloseButton design={v.status === 'fehler' ? 'Negative' : 'Information'}>{v.hinweis}</MessageStrip>}
+        {hinweisAllgemein && <MessageStrip hideCloseButton design={v.status === 'fehler' ? 'Negative' : 'Information'}>{hinweisAllgemein}</MessageStrip>}
+        {(hinweisFirmierung || alteFirmierung) && (
+          <MessageStrip hideCloseButton design={alteFirmierung ? 'Negative' : 'Critical'}>
+            {hinweisFirmierung || rechnungen.filter((d) => d.pruefung?.ergebnis === 'alt').map((d) => `„${d.datei}“: ${d.pruefung?.text ?? ''}`).join(' ')}
+          </MessageStrip>
+        )}
+        {alteFirmierung && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', alignItems: 'center' }}>
+            {edit && (
+              <Button design={v.reklamation_am ? 'Transparent' : 'Emphasized'} icon="email" disabled={busy} onClick={reklamieren}
+                      tooltip="Bitte um Rechnungskorrektur an den Absender – als Entwurf im Postfach (Ordner „Entwürfe“), mit der Rechnung im Anhang. Gesendet wird von Hand.">
+                {v.reklamation_am ? 'Reklamation erneut als Entwurf' : 'Reklamation als Entwurf'}
+              </Button>
+            )}
+            {v.reklamation_am && <Text className="portal-small portal-muted">Reklamations-Entwurf angelegt am {dat(v.reklamation_am)}{v.reklamation_von ? ` von ${v.reklamation_von}` : ''}.</Text>}
+          </div>
+        )}
         {offen && v.vorgemerkt && (
           <MessageStrip hideCloseButton design="Positive">
             Vorgemerkt für Auftrag {v.auftragsnr}{kunde(v.auftragsnr) ? ` – ${kunde(v.auftragsnr)}` : ''}{v.vorgemerkt_von ? ` (${v.vorgemerkt_von})` : ''} – abgelegt wird mit der gesammelten Übergabe im Reiter „Posteingang“.
@@ -639,6 +675,8 @@ function Detail({ id, edit, darfAblegen, sammel, schwelle: schwelleListe, auftra
                      text={`Die E-Mail und ihre Dateien hängen dann am Auftrag ${nrNeu} statt ${v.auftragsnr ?? ''}. Dateien im Ablageordner werden aus „${v.auftragsnr ?? ''}/${UNTERORDNER_EINGANG}“ entfernt und in „${nrNeu}/${UNTERORDNER_EINGANG}“ abgelegt; Paperless-Dokumente werden am neuen Auftrag verknüpft.`}
                      onCancel={() => setAendernFrage(false)} onConfirm={() => { setAendernFrage(false); auftragAendern(); }} />
       {pdf && <PdfDialog url={dateiUrl(pdf.id)} title={pdf.datei} filename={pdf.datei || 'dokument.pdf'} onClose={() => setPdf(null)} />}
+      {teilen && <AufteilenDialog id={teilen.id} datei={teilen.datei} onClose={() => setTeilen(null)}
+                                  onFertig={(t) => { setTeilen(null); toast(t, 6000); onGeaendert(); void laden(); }} />}
     </Section>
   );
 }
@@ -670,9 +708,11 @@ function Kandidaten({ kandidaten, gewaehlt, kunde, waehlbar, onWaehlen }: {
   );
 }
 
-function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen, beleg, gesperrt }: {
+function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen, beleg, gesperrt, aufteilen, zuruecknehmen }: {
   d: EingangDokument; waehlbar: boolean; gewaehlt: boolean; onWahl: (an: boolean) => void; vorschau: (() => void) | null; herunterladen: (() => void) | null;
   /** „Auftrag daraus anlegen“ (Auftrag aus Beleg) – null = nicht angeboten */ beleg: (() => void) | null; gesperrt: boolean;
+  /** „Aufteilen…“ (Rechnung / Ablieferbelege / Transportauftrag) bzw. die Aufteilung zurücknehmen – null = nicht angeboten */
+  aufteilen: (() => void) | null; zuruecknehmen: (() => void) | null;
 }) {
   const [mehr, setMehr] = useState(false);
   const ocr = (d.ocr_auszug ?? '').trim();
@@ -691,8 +731,26 @@ function DokumentKarte({ d, waehlbar, gewaehlt, onWahl, vorschau, herunterladen,
         <Text style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={name}>{name}</Text>
       </div>
       <Text className="portal-muted portal-small">
-        {groesse(d.groesse)} · {STATUS_TEXT[d.status] ?? d.status}{d.ziel ? ` · Ziel ${d.ziel === 'lokal' ? 'Ablageordner' : d.ziel === 'paperless' ? 'Paperless' : d.ziel}` : ''}
+        {groesse(d.groesse)} · {d.rolle === 'original' ? 'bleibt im Portal, wird nicht abgelegt' : STATUS_TEXT[d.status] ?? d.status}{d.ziel ? ` · Ziel ${d.ziel === 'lokal' ? 'Ablageordner' : d.ziel === 'paperless' ? 'Paperless' : d.ziel}` : ''}
       </Text>
+      {d.rolle && (
+        <div><ObjectStatus state={d.rolle === 'rechnung' ? 'Information' : 'None'} inverted={d.rolle === 'rechnung'}>{ROLLE_TEXT[d.rolle] ?? d.rolle}</ObjectStatus></div>
+      )}
+      {d.rolle === 'original' && d.hinweis && <Text className="portal-small" style={{ overflowWrap: 'anywhere' }}>{d.hinweis}</Text>}
+      {d.rolle !== 'original' && d.hinweis && /Aufteil|aufgeteilt|E-Rechnung/.test(d.hinweis) && (
+        <Text className="portal-small" style={{ color: 'var(--sapCriticalTextColor)', overflowWrap: 'anywhere' }}>{d.hinweis}</Text>
+      )}
+      {d.rolle !== 'original' && d.pruefung && (
+        <Text className="portal-small" style={{ overflowWrap: 'anywhere', color: d.pruefung.ergebnis === 'alt' ? 'var(--sapNegativeTextColor)' : d.pruefung.ergebnis === 'unklar' ? 'var(--sapCriticalTextColor)' : 'var(--sapPositiveTextColor)' }}>
+          {d.pruefung.text}
+        </Text>
+      )}
+      {(aufteilen || zuruecknehmen) && (
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {aufteilen && <Link onClick={gesperrt ? undefined : aufteilen}>{d.rolle === 'original' ? 'Aufteilung ändern…' : 'Aufteilen…'}</Link>}
+          {zuruecknehmen && <Link onClick={gesperrt ? undefined : zuruecknehmen}>Aufteilung zurücknehmen</Link>}
+        </div>
+      )}
       {ocr && (
         <Text className="portal-small" style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
           <span className="portal-muted">OCR: </span>{mehr || ocr.length <= 160 ? ocr : `${ocr.slice(0, 160)} …`}
