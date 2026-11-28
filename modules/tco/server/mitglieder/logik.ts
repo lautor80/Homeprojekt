@@ -644,10 +644,14 @@ export async function mitgliedNeu(tx: Db, n: Neu): Promise<{ adrnr: string; mitg
     }
   }
   const bestehend = leer(n.bestehend);
+  /** bestehender Stammsatz ist bereits Zahler mit aktivem Mandat (zahlt z. B. für die Kinder): dessen Mandatsreferenz bleibt */
+  let mandatBestand = '';
   if (bestehend) {
-    const [b] = await tx`select adrnr, mitglnrn, eintritt from tco.mitglieder where adrnr = ${bestehend} for update`;
+    const [b] = await tx`select adrnr, mitglnrn, eintritt, mandatsrefenz from tco.mitglieder where adrnr = ${bestehend} for update`;
     if (!b) throw new BusinessError(`Stammsatz ${nr(bestehend)} nicht gefunden.`);
     if (leer(b.mitglnrn) || b.eintritt) throw new BusinessError(`${vn} ${nn} (Adressnummer ${nr(bestehend)}) ist bereits Mitglied.`);
+    const [s] = await tx`select status, gueltigbis::text as gueltigbis, manuell_aktiv from tco.sepa where adrnr = ${bestehend}`;
+    if (mandatAktiv(s as never)) mandatBestand = leer(b.mandatsrefenz);
   }
   const [dup] = await tx`select adrnr, mitglnrn from tco.mitglieder where vorname = ${vn} and nachname = ${nn}
                           and geburtsdatum is not distinct from ${n.geburtsdatum || null} and adrnr <> ${bestehend}`;
@@ -672,7 +676,7 @@ export async function mitgliedNeu(tx: Db, n: Neu): Promise<{ adrnr: string; mitg
   };
   let zNeu: Record<string, unknown> | null = null;
   if (ls) {
-    Object.assign(m, { iban1: iban, bic1: bic || null, bank1: condense(n.bank) || null, mandatsrefenz: `${basisNr}${mitglnrn}`, einzuglastmandliegtvor: n.sepa ? 'J' : null });
+    Object.assign(m, { iban1: iban, bic1: bic || null, bank1: condense(n.bank) || null, mandatsrefenz: mandatBestand || `${basisNr}${mitglnrn}`, einzuglastmandliegtvor: n.sepa ? 'J' : null });
     if (n.zahler_modus === 'BESTEHEND' && zAlt) {
       Object.assign(m, { adrnrkih: zahler, abwkontoinh: condense(`${leer(zAlt.anrede)} ${leer(zAlt.vorname)} ${leer(zAlt.nachname)}`) });
     } else if (n.zahler_modus === 'NEU') {

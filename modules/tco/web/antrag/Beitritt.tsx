@@ -14,7 +14,9 @@ import { TCO, eur } from '../util';
  */
 interface Art { art: string; name: string; betrag: number; turnus: string; kategorie: 'MITGLIEDSCHAFT' | 'TRAINING'; jugend: boolean; familie: boolean }
 interface Info { verein: string; maxPersonen: number; maxTraining: number; alterJugendbeitragBis: number; alterTrainingBis: number; kuendigung: string; beitragsarten: Art[] }
-interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; telefon: string; art: string; training: string[] }
+interface Person { anrede: string; vorname: string; nachname: string; geburtsdatum: string; email: string; telefon: string; art: string; training: string[]; bestand?: Bestand | null }
+/** bestehendes Mitglied (nur aus dem Vertragsangebot): laufende Vertragsarten und Mitgliedschaften, die mit der Umstellung enden */
+export interface Bestand { laufend: string[]; endet: string[] }
 const leer = (): Person => ({ anrede: '', vorname: '', nachname: '', geburtsdatum: '', email: '', telefon: '', art: '', training: [] });
 const heute = () => new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
 const full = { width: '100%' };
@@ -58,7 +60,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
   useEffect(() => { api.get<Info>(`${TCO}/antrag`).then(setInfo).catch((e) => (istAbgeschaltet(e) ? setAus(true) : setError(e.message))); }, []);
   interface AngebotAntwort {
     geburtsdatumNoetig?: boolean; nummer?: string;
-    daten?: { personen: { anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email?: string | null; telefon?: string | null; art?: string | null; training: string[] }[];
+    daten?: { personen: { anrede: string; vorname: string; nachname: string; geburtsdatum: string | null; email?: string | null; telefon?: string | null; art?: string | null; training: string[]; bestand?: Bestand | null }[];
       strasse: string; plz: string; ort: string; email: string; telefon: string | null; erziehungsberechtigt: string | null; eintritt: string; bemerkung: string | null;
       bank: { kontoinhaber: string; iban: string } | null;
       /** Erweiterung bestehender Mitglieder: Mitgliedschaft bleibt (optional), z. B. nur Training dazu */
@@ -80,7 +82,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       setAngebotHinweis(d.bemerkung);
       setPersonen(d.personen.map((p, i) => ({
         anrede: p.anrede || '', vorname: p.vorname, nachname: p.nachname, geburtsdatum: p.geburtsdatum ?? '',
-        email: i === 0 ? '' : p.email ?? '', telefon: i === 0 ? '' : p.telefon ?? '', art: i === 0 ? p.art ?? '' : '', training: p.training ?? [],
+        email: i === 0 ? '' : p.email ?? '', telefon: i === 0 ? '' : p.telefon ?? '', art: i === 0 ? p.art ?? '' : '', training: p.training ?? [], bestand: p.bestand ?? null,
       })));
       setA((x) => ({ ...x, strasse: d.strasse, plz: d.plz, ort: d.ort, email: d.email, telefon: d.telefon ?? '', erziehungsberechtigt: d.erziehungsberechtigt ?? '', eintritt: d.eintritt }));
       setAngebotBank(d.bank);
@@ -145,7 +147,7 @@ export function Beitritt({ orgName, logo, onFertig }: OeffentlichProps) {
       const z = bestaetigt ? { ...zu, satzung: true, datenschutz: true, kuendigung: true } : zu;
       const bk = bankAusAngebot ? { sepa: bestaetigt || bank.sepa, ausAngebot: true } : { ...bank, sepa: bestaetigt || bank.sepa };
       const r = await api.post<{ text: string }>(`${TCO}/antrag`, {
-        personen: personen.map((p, i) => ({ ...p, art: i === 0 ? p.art : null, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
+        personen: personen.map(({ bestand: _b, ...p }, i) => ({ ...p, art: i === 0 ? p.art : null, email: (i === 0 ? a.email : p.email) || null, telefon: (i === 0 ? a.telefon : p.telefon) || null })),
         strasse: a.strasse, plz: a.plz, ort: a.ort, email: a.email, telefon: a.telefon || null,
         erziehungsberechtigt: minderjaehrig ? a.erziehungsberechtigt : null, eintritt: a.eintritt, bemerkung: a.bemerkung || null,
         ...z, bank: bk, website: a.website, schnupper: schnupperNr ? schnupper : null, angebot: angebotNr ? angebot : null,
@@ -399,7 +401,9 @@ export function beginnFuer(eintritt: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAI
 const datum = (iso: string) => iso.split('-').reverse().join('.');
 
 interface BeitragsZeile { art: string; name: string; betrag: number; turnus: string }
-interface BeitragsPerson { vorname: string; nachname: string; art: string; training: string[] }
+interface BeitragsPerson { vorname: string; nachname: string; art: string; training: string[]; bestand?: Bestand | null }
+const vortag = (iso: string) => new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) - 1)).toISOString().slice(0, 10);
+const LAEUFT = ' – läuft bereits, unverändert';
 /**
  * Beitragsübersicht: Mitgliedschaft und Jugendtraining getrennt, je Position Betrag, Turnus und Beginn (erste Fälligkeit).
  * Auch in der Verwaltung verwendet (Mitgliedsanträge → Vertragsangebot ansehen) – dort steht damit dasselbe wie bei der Person.
@@ -407,22 +411,33 @@ interface BeitragsPerson { vorname: string; nachname: string; art: string; train
 export function BeitragsUebersicht({ info, personen, eintritt, aenderung }: { info: { beitragsarten: BeitragsZeile[] }; personen: BeitragsPerson[]; eintritt: string; aenderung?: boolean }) {
   const art = (x: string) => info.beitragsarten.find((b) => b.art === x);
   const name = (p: BeitragsPerson, i: number) => `${p.vorname || (i === 0 ? 'Antragsteller/in' : `Person ${i + 1}`)} ${p.nachname}`.trim();
+  // bestehende Mitglieder (Vertragsangebot): Verträge, die schon laufen, bleiben unverändert – je Art deckt ein laufender Vertrag eine gewählte Einheit
+  const laeuft = (p: BeitragsPerson, x: string) => !!x && !!p.bestand?.laufend.includes(x);
   const mitglied = personen.flatMap((p, i) => {
-    if (i === 0) { const b = art(p.art); return b ? [{ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus }] : []; }
+    if (i === 0) { const b = art(p.art); return b ? [{ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus, alt: laeuft(p, p.art) }] : []; }
     // Vertragsänderung ohne neue Mitgliedschaft: bestehende Mitgliedschaften bleiben – keine Zeile
     if (aenderung && !personen[0].art) return [];
-    return [{ wer: name(p, i), text: 'über den Familienbeitrag', betrag: 0, turnus: '' }];
+    return [{ wer: name(p, i), text: 'über den Familienbeitrag', betrag: 0, turnus: '', alt: laeuft(p, personen[0].art) }];
   });
-  const training = personen.flatMap((p, i) => p.training.map((x) => art(x)).filter((b): b is BeitragsZeile => !!b)
-    .map((b) => ({ wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus })));
+  const training = personen.flatMap((p, i) => {
+    const frei = [...(p.bestand?.laufend ?? [])];
+    return p.training.map((x) => art(x)).filter((b): b is BeitragsZeile => !!b).map((b) => {
+      const n = frei.indexOf(b.art);
+      if (n >= 0) frei.splice(n, 1);
+      return { wer: name(p, i), text: b.name, betrag: b.betrag, turnus: b.turnus, alt: n >= 0 };
+    });
+  });
+  /** Umstellung: bisherige Mitgliedschaften bestehender Mitglieder enden am Tag vor dem Beginn der neuen */
+  const endet = personen.flatMap((p, i) => (p.bestand?.endet.length && (i === 0 ? p.art : personen[0].art) ? [`${name(p, i)} (${p.bestand.endet.join(', ')})`] : []));
   const zelle = { padding: '0.25rem 0.4rem' } as const;
   const summe = (l: { betrag: number; turnus: string }[]) => {
     const je = new Map<string, number>();
     for (const x of l) if (x.betrag) je.set(x.turnus, (je.get(x.turnus) ?? 0) + x.betrag);
     return [...je].map(([t, b]) => `${eur(b)}${t ? ` ${t}` : ''}`).join(' + ') || eur(0);
   };
-  const block = (titel: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAINING', zeilen: { wer: string; text: string; betrag: number; turnus: string }[], hinweis: string) => {
+  const block = (titel: string, kategorie: 'MITGLIEDSCHAFT' | 'TRAINING', zeilen: { wer: string; text: string; betrag: number; turnus: string; alt: boolean }[], hinweis: string) => {
     const beginn = beginnFuer(eintritt, kategorie);
+    const neue = zeilen.filter((z) => !z.alt).length;
     return (
       <div style={{ marginBottom: '0.75rem' }}>
         <Title level="H6" style={{ marginBottom: '0.25rem' }}>{titel}</Title>
@@ -434,7 +449,7 @@ export function BeitragsUebersicht({ info, personen, eintritt, aenderung }: { in
                 {zeilen.map((z, n) => (
                   <tr key={n} style={{ borderTop: '1px solid var(--sapList_BorderColor)' }}>
                     <td style={zelle}><Text>{z.wer}</Text></td>
-                    <td style={zelle}><Text>{z.text}</Text></td>
+                    <td style={zelle}><Text>{z.text}{z.alt ? LAEUFT : ''}</Text></td>
                     <td style={zelle}><Text>{z.turnus || '–'}</Text></td>
                     <td style={{ ...zelle, textAlign: 'right' }}><Text>{z.betrag ? eur(z.betrag) : 'inklusive'}</Text></td>
                   </tr>
@@ -447,9 +462,16 @@ export function BeitragsUebersicht({ info, personen, eintritt, aenderung }: { in
             </table>
           </div>
         )}
-        {zeilen.length > 0 && (
+        {zeilen.length > 0 && (neue > 0 ? (
           <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.2rem' }}>
-            Beginn und erste Fälligkeit: <b>{datum(beginn)}</b> – {hinweis}
+            Beginn und erste Fälligkeit{neue < zeilen.length ? ' der neuen Verträge' : ''}: <b>{datum(beginn)}</b> – {hinweis}
+          </Text>
+        ) : (
+          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.2rem' }}>Die Verträge laufen bereits – hier ändert sich nichts.</Text>
+        ))}
+        {kategorie === 'MITGLIEDSCHAFT' && endet.length > 0 && (
+          <Text className="portal-muted portal-small" style={{ display: 'block', marginTop: '0.2rem' }}>
+            Umstellung: Die bisherige Mitgliedschaft endet zum <b>{datum(vortag(beginn))}</b> – {endet.join(', ')}. Mitgliedsnummer und alle übrigen Verträge bleiben bestehen.
           </Text>
         )}
       </div>
